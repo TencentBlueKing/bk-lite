@@ -1,5 +1,5 @@
-from apps.alerts.models.models import Alert
 from apps.alerts.constants.constants import AlertStatus
+from apps.alerts.models.models import Alert
 from apps.core.logger import alert_logger as logger
 
 
@@ -27,5 +27,6 @@ class AutoCloser:
     @staticmethod
     def _close_alert(alert: Alert):
         alert.status = AlertStatus.AUTO_CLOSE
-        alert.save(update_fields=["status", "updated_at"])
+        Alert.stamp_closed_at(alert)
+        alert.save(update_fields=["status", "updated_at", "closed_at"])
         logger.info("[AlertRecovery] 自动关闭告警: %s", alert.alert_id)

@@ -3,6 +3,7 @@
   "collect_type": "snmp_6wind",
   "plugin": "Router 6WIND VSR SNMP",
   "plugin_desc": "6WIND VSR router SNMP child template (enterprise 7336). The verified profile builds on standard MIB-II and IF-MIB ifXTable plus HOST-RESOURCES hrProcessorLoad for per-core CPU utilization. Memory, temperature, fan and power state remain N/A: hrStorage mixes RAM/Flash rows that telegraf inputs.snmp cannot filter row-wise, and no stable vendor-specific scalar device-health gauges are confirmed. The shared Router SNMP floor supplies uptime, IF-MIB interface metrics and aggregate traffic through the generic snmp/router metric model while this plugin provides the 6WIND collect_type, UI and Telegraf child template. Supported brands/models — 6WIND Virtual Service Router.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_6wind'}) by (instance_id)",
   "name": "Router",
   "icon": "mm-router_路由器",

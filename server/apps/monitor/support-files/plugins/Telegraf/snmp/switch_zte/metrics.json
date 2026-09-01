@@ -3,6 +3,7 @@
   "collect_type": "snmp_zte",
   "plugin": "Switch ZTE SNMP",
   "plugin_desc": "ZTE ZXR10-series switch-specific SNMP collection (ZXR10-MIB, IANA PEN 3902). In addition to standard IF-MIB interface metrics, it collects ZTE private OIDs for device health: per-unit CPU utilization (zxr10SystemCpuUtility5m) and memory utilization (zxr10SystemMemUsed, a direct percent-used value). The ZXR10-MIB system table exposes no temperature/fan/power-supply sensors (those live in ZTE-AN-ENVMON-MIB for the access-node/OLT line, not the ZXR10 switch), so those are not collected (N/A). Supported brands/models — ZTE ZXR10-series switches.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_zte'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

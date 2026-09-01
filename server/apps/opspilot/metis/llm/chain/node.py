@@ -1,11 +1,8 @@
 import asyncio
 import hashlib
 import json
-import re
-import time
 import uuid
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs, urlparse
 
@@ -23,6 +20,24 @@ from pydantic import BaseModel as PydanticBaseModel
 from pydantic import Field as PydanticField
 
 from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.metis.llm.chain.approval_tools import ApprovalToolsMixin, _build_approval_tool, _build_choice_tool  # noqa: E402,F401
+from apps.opspilot.metis.llm.chain.deepagent_assembly import (  # noqa: E402,F401
+    DeepAgentAssemblyMixin,
+    _append_planned_execution_step_prompt,
+    _build_deep_agent_kwargs,
+    _build_interrupt_on,
+    _build_legacy_deep_agent_middleware,
+    _build_lightweight_system_prompt,
+    _build_planned_execution_runtime_middleware,
+    _build_planned_execution_tool_visibility,
+    _plan_is_skills_only,
+    _planned_step_already_answered,
+    _planned_tool_step_guidance,
+    _should_use_lightweight_after_empty_plan,
+    _should_use_lightweight_direct_reply,
+    _skill_only_step_guidance,
+    _skill_package_script_lines,
+)
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest, DoneToolConfig, ExtraConfig
 
 # ---------------------------------------------------------------------------
@@ -55,6 +70,11 @@ from apps.opspilot.metis.llm.chain.k8s_report_tools import (  # noqa: E402,F401
     should_emit_config_analysis_report,
 )
 from apps.opspilot.metis.llm.chain.k8s_tool_gate import is_k8s_agent  # noqa: E402,F401
+from apps.opspilot.metis.llm.chain.knowledge_tools import (  # noqa: E402,F401
+    KnowledgeToolsMixin,
+    _build_knowledge_retrieve_tool,
+    _normalize_kb_results,
+)
 from apps.opspilot.metis.llm.chain.lc_patches import (  # noqa: E402,F401
     _REASONING_FIELD_NAMES,
     _patched_convert_delta_to_message_chunk,
@@ -64,26 +84,27 @@ from apps.opspilot.metis.llm.chain.lc_patches import (  # noqa: E402,F401
     _patched_get_request_payload,
     merge_openai_payload_system_messages,
 )
+from apps.opspilot.metis.llm.chain.skill_sandbox import (  # noqa: E402,F401
+    SkillSandboxMixin,
+    _build_skill_backend_and_sources,
+    _cleanup_sandbox,
+    _discover_sandbox_path,
+    _ensure_skill_deps,
+    _load_skill_package_runtime_params,
+    _make_lazy_skill_deps_callback,
+    _resolve_skill_packages,
+    _sandbox_env,
+    _skill_bucket_name,
+    _skill_sandbox_base,
+)
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.metis.llm.common.structured_output_parser import StructuredOutputParser
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
-from apps.opspilot.metis.llm.middleware.planned_execution_limits import (
-    PlannedExecutionLimitMiddleware,
-    ask_limit_continue,
-    detect_limit_kind,
-    get_planned_execution_run_model_call_limit,
-    resolve_planned_execution_soft_budget_ratio,
-    resolve_planned_execution_token_budget,
-)
-from apps.opspilot.metis.llm.middleware.token_usage import TokenUsageTrackingMiddleware
+from apps.opspilot.metis.llm.middleware.planned_execution_limits import ask_limit_continue, detect_limit_kind
 from apps.opspilot.metis.llm.middleware.tool_runtime import (
     PLANNED_EXECUTION_ALWAYS_ON_BUSINESS_TOOLS,
     PLANNED_EXECUTION_ALWAYS_VISIBLE_FS_TOOLS,
     PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS,
-    SkillExecutionGuardMiddleware,
-    ToolExceptionAsResultMiddleware,
-    ToolResultCompactionMiddleware,
-    ToolVisibilityMiddleware,
     is_progressive_tools_enabled,
 )
 
@@ -96,8 +117,6 @@ try:
 except ImportError:
     PgvectorRag = None
 from apps.opspilot.metis.utils.template_loader import TemplateLoader
-from apps.opspilot.services.approval import wait_for_approval
-from apps.opspilot.utils.user_choice import wait_for_choice
 
 
 def _safe_log_preview(content: str, max_len: int = 200) -> str:
@@ -660,7 +679,13 @@ class BasicNode:
         return {"messages": result}
 
 
-class ToolsNodes(BasicNode):
+class ToolsNodes(
+    BasicNode,
+    ApprovalToolsMixin,
+    KnowledgeToolsMixin,
+    SkillSandboxMixin,
+    DeepAgentAssemblyMixin,
+):
     def __init__(self) -> None:
         self.tools = []
         self.mcp_client = None
@@ -932,8 +957,6 @@ class ToolsNodes(BasicNode):
                 return None
         else:
             try:
-                from langchain_core.callbacks import dispatch_custom_event
-
                 dispatch_custom_event(capability, payload, config=config)
             except Exception as e:
                 logger.warning(f"dispatch {capability} failed: {e}")
@@ -1189,244 +1212,6 @@ class ToolsNodes(BasicNode):
             args_schema=DoneToolInput,
         )
         return done_tool
-
-    def _build_approval_tool(self):
-        """构建 request_human_approval 工具，供 LLM 在判断操作高危时主动调用"""
-
-        class ApprovalToolInput(PydanticBaseModel):
-            action: str = PydanticField(description="即将执行的操作描述，包括工具名和关键参数")
-            reason: str = PydanticField(description="为什么需要人工审批（风险说明）")
-            risk_level: str = PydanticField(default="medium", description="风险等级: low / medium / high / critical")
-
-        async def _request_approval(action: str, reason: str, risk_level: str = "medium") -> str:
-            # 从 RunnableConfig 中获取上下文信息（通过闭包不可行，工具执行时由 ToolNode 调用）
-            # 使用唯一标识作为 tool_call_id 的替代
-            request_id = str(uuid.uuid4())[:8]
-            # 从当前执行上下文获取 execution_id
-            # 注意：ToolNode 执行工具时不传 config，所以用模块级的上下文
-            execution_id = getattr(_request_approval, "_execution_id", "") or str(int(time.time() * 1000))
-            node_id = getattr(_request_approval, "_node_id", "skill_test")
-
-            approval_request_data = {
-                "execution_id": execution_id,
-                "node_id": node_id,
-                "tool_call_id": f"approval_{request_id}",
-                "tool_name": action,
-                "tool_args": {"reason": reason, "risk_level": risk_level},
-                "timeout_seconds": 300,
-            }
-            try:
-                dispatch_custom_event("approval_request", approval_request_data)
-            except Exception as e:
-                logger.warning(f"[approval_tool] 发射 approval_request 事件失败: {e}")
-
-            logger.info(f"[approval_tool] 审批请求已发射: action={action}, risk={risk_level}, id={request_id}")
-
-            decision_info = await wait_for_approval(
-                execution_id=execution_id,
-                node_id=node_id,
-                tool_call_id=f"approval_{request_id}",
-                timeout_seconds=300,
-                poll_interval=1.0,
-                trigger_type="interactive",
-                unattended_strategy="skip",
-                timeout_fallback="deny",
-            )
-
-            decision = decision_info["decision"]
-            dec_reason = decision_info.get("reason", "")
-            logger.info(f"[approval_tool] 审批决策: decision={decision}, reason={dec_reason}")
-
-            if decision == "approve":
-                return f"已批准。你现在可以继续执行操作: {action}"
-            else:
-                return f"操作被拒绝: {action}。原因: {dec_reason}" if dec_reason else f"操作被拒绝: {action}。请告知用户操作未被批准。"
-
-        approval_tool = StructuredTool.from_function(
-            coroutine=_request_approval,
-            name="request_human_approval",
-            description=("当你判断即将执行的操作具有较高风险（如修改系统配置、删除数据、重启服务等），" "应先调用此工具请求人工审批。描述你要做什么以及为什么需要审批。" "收到审批结果后，根据结果决定是否继续执行实际操作。"),
-            args_schema=ApprovalToolInput,
-        )
-        # 存储执行上下文的引用，在 build_react_nodes 中设置
-        approval_tool._request_approval_func = _request_approval
-        return approval_tool
-
-    def _build_choice_tool(self):
-        """构建 request_user_choice 工具，供 LLM 需要向用户提问时调用"""
-        from typing import List, Literal, Optional
-
-        from langchain_core.tools import StructuredTool
-        from pydantic import BaseModel as PydanticBaseModel
-        from pydantic import Field as PydanticField
-
-        class AskUserInput(PydanticBaseModel):
-            question: str = PydanticField(description="完整的一句问句，具体、引用用户原话或当前上下文里的关键词。脱离上下文用户也能看懂。")
-            question_type: Literal["single_select", "multi_select", "confirm", "text"] = PydanticField(
-                description="single_select=N选1; multi_select=N选若干; confirm=是/否; text=开放式输入"
-            )
-            options: Optional[List[str]] = PydanticField(
-                default=None,
-                description="single_select/multi_select 必填，2~4项，每项不超40字符。confirm/text 必须为 None。",
-            )
-
-        async def _ask_user(
-            question: str,
-            question_type: str,
-            options: Optional[List[str]] = None,
-            config: RunnableConfig = None,
-        ) -> str:
-            from apps.opspilot.metis.llm.tools.common.user_choice_guard import validate_user_choice_options
-            from apps.opspilot.metis.llm.tools.kubernetes.user_choice_guard import build_kubernetes_cluster_choice_guard
-
-            configurable = getattr(_ask_user, "_configurable", {}) or {}
-            guard = build_kubernetes_cluster_choice_guard(
-                question=question,
-                options=options,
-                configurable=configurable,
-            )
-            guard_message = validate_user_choice_options(
-                question_type=question_type,
-                options=options,
-                guard=guard,
-            )
-            if guard_message:
-                logger.warning("[choice_tool] 已阻止不可信的用户选择请求: %s", guard_message)
-                return guard_message
-
-            choice_id = str(uuid.uuid4())[:8]
-            execution_id = getattr(_ask_user, "_execution_id", "") or str(int(time.time() * 1000))
-            node_id = getattr(_ask_user, "_node_id", "skill_test")
-
-            # Convert to internal options format based on question_type
-            if question_type == "confirm":
-                options_data = [
-                    {"key": "yes", "label": "是", "description": "", "recommended": False},
-                    {"key": "no", "label": "否", "description": "", "recommended": False},
-                ]
-                multiple = False
-            elif question_type == "text":
-                # Text mode: no predefined options, user types freely
-                options_data = []
-                multiple = False
-            else:
-                # single_select / multi_select
-                options_data = [{"key": opt, "label": opt, "description": "", "recommended": False} for opt in (options or [])]
-                multiple = question_type == "multi_select"
-
-            effective_min_select = 1 if not multiple else 1
-            effective_max_select = 1 if not multiple else len(options_data)
-            default_keys = [options_data[0]["key"]] if options_data else []
-
-            choice_request_data = {
-                "execution_id": execution_id,
-                "node_id": node_id,
-                "choice_id": choice_id,
-                "a2ui": build_a2ui_report_contract(
-                    component="user-choice",
-                    event_name="user_choice_request",
-                    actions=[{"key": "submit_choice", "label": "提交选择"}],
-                ),
-                "title": question,
-                "description": "",
-                "options": options_data,
-                "multiple": multiple,
-                "min_select": effective_min_select,
-                "max_select": effective_max_select,
-                "timeout_seconds": 120,
-                "default_keys": default_keys,
-                "display_hint": "text" if question_type == "text" else "auto",
-            }
-
-            # 深 agent 包装节点里 sync dispatch 可能因缺 parent run id 静默失败；
-            # 优先 adispatch，保证修复闭环的选择卡一定能推到前端。
-            try:
-                await adispatch_custom_event("user_choice_request", choice_request_data, config=config)
-            except Exception:
-                try:
-                    dispatch_custom_event("user_choice_request", choice_request_data, config=config)
-                except Exception:
-                    pass
-
-            logger.info(f"[choice_tool] 提问已发射: question={question[:50]}, " f"type={question_type}, id={choice_id}")
-
-            result = await wait_for_choice(
-                execution_id=execution_id,
-                node_id=node_id,
-                choice_id=choice_id,
-                options=options_data,
-                default_keys=default_keys,
-                timeout_seconds=120,
-                poll_interval=1.0,
-                trigger_type="interactive",
-            )
-
-            selected = result["selected"]
-            source = result["source"]
-
-            # Dispatch result event to notify frontend
-            result_payload = {
-                "execution_id": execution_id,
-                "node_id": node_id,
-                "choice_id": choice_id,
-                "selected": selected,
-                "source": source,
-            }
-            try:
-                await adispatch_custom_event("user_choice_result", result_payload, config=config)
-            except Exception:
-                try:
-                    dispatch_custom_event("user_choice_result", result_payload, config=config)
-                except Exception:
-                    pass
-
-            # Build response text for LLM
-            if question_type == "text":
-                # For text mode, selected[0] is the raw user input
-                answer_text = selected[0] if selected else ""
-            elif question_type == "confirm":
-                answer_text = "是" if "yes" in selected else "否"
-            else:
-                # single/multi select - selected keys ARE the labels
-                answer_text = ", ".join(selected)
-
-            if source == "user":
-                return f"用户回答: {answer_text}。请根据用户的回答继续执行下一步操作，不要停止。"
-            else:
-                return f"用户未在规定时间内回答，已使用默认选项: {answer_text}。请根据默认值继续操作。"
-
-        choice_tool = StructuredTool.from_function(
-            coroutine=_ask_user,
-            name="request_user_choice",
-            description=(
-                "向用户提一个澄清问题或让用户从选项中做出选择。\n"
-                "【强制】任何需要用户做选择的场景都必须调用此工具，严禁用纯文本列出选项让用户打字回复。\n"
-                "在调用之前，先确认你已经做完了所有自己能做的探索。\n\n"
-                "━━━ 应当调用的场景 ━━━\n"
-                "1. 存在多个目标/实例且用户未明确指定范围时（必须先通过搜索/查询工具确认有多个结果，再让用户选择。不能跳过查询直接问）\n"
-                "2. 请求存在多种合理解读，选错会导致返工\n"
-                "3. 需要只有用户掌握的信息（偏好、业务规则、场景背景）\n"
-                "4. 任务完成后让用户选择下一步操作\n\n"
-                "━━━ 禁止调用的场景 ━━━\n"
-                "A. 自己能查到答案的不要问（用工具查）\n"
-                "B. 用户原始消息里已经给过约束的不要再问\n"
-                "C. 不确定的细节不影响最终结果的，自己做主\n"
-                "D. 一次只问一个回合，不要连环追问（同一件事只问一次）\n"
-                "E. 寒暄性、确认性的问题不要问（hello/你好 → 直接回复文本，不调任何工具）\n"
-                "F. 第一步就让用户选集群/实例是不允许的，必须先用搜索工具确认目标位置\n"
-                "G. 用户没有提出 K8s/技术操作需求时，不要主动问是否要做检查\n\n"
-                "━━━ 参数选择 ━━━\n"
-                "能让用户点按钮就别让用户打字。\n"
-                "- single_select: N选1，options 2~4项\n"
-                "- multi_select: N选若干\n"
-                "- confirm: 是/否（options 设为 None）\n"
-                "- text: 开放式输入（options 设为 None）\n\n"
-                "question 必须是完整问句，脱离上下文也能看懂。选项必须来自实际查询结果，不得编造。"
-            ),
-            args_schema=AskUserInput,
-        )
-        choice_tool._request_choice_func = _ask_user
-        return choice_tool
 
     def _build_diff_report_tool(self):
         """构建 report_config_diff 工具，供 LLM 将配置对比结果结构化输出给前端"""
@@ -2368,729 +2153,6 @@ class ToolsNodes(BasicNode):
             await self._aemit_report_event("repair_diff_report", parsed_repair, config=config)
         return True
 
-    def _build_knowledge_retrieve_tool(self, graph_request):
-        """构建 agent 可调用的 knowledge_retrieve 工具（双模式中的“工具模式”）。
-
-        基于 request.naive_rag_request（DocumentRetrieverRequest 列表）按需检索：
-        每次调用用 agent 的 query 覆盖各请求的 search_query 再走 PgvectorRag。
-        best-effort：无知识库配置或构建失败时返回 None，不影响主引擎。
-        """
-        naive_rag_request = list(getattr(graph_request, "naive_rag_request", None) or [])
-        if not naive_rag_request:
-            return None
-        try:
-            from types import SimpleNamespace
-
-            from apps.opspilot.metis.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag
-            from apps.opspilot.metis.llm.tools.knowledge_tool import build_knowledge_retrieve_tool
-
-            # 用 DocumentRetrieverRequest 作为“知识库”载体；kwargs_map 不参与（search_fn 自带逻辑）
-            knowledge_bases = []
-            kwargs_map = {}
-            for idx, req in enumerate(naive_rag_request):
-                kb_id = str(getattr(req, "index_name", None) or f"kb_{idx}")
-                knowledge_bases.append(SimpleNamespace(id=kb_id, name=kb_id, req=req))
-                kwargs_map[kb_id] = {}
-
-            def _search_fn(kb, query, kwargs, score_threshold=0, is_qa=False):
-                req = kb.req
-                try:
-                    cloned = req.model_copy(update={"search_query": query})
-                except Exception:
-                    cloned = req
-                    try:
-                        cloned.search_query = query
-                    except Exception:
-                        pass
-                if PgvectorRag is None:
-                    return []
-                results = PgvectorRag().search(cloned)
-                return self._normalize_kb_results(results)
-
-            return build_knowledge_retrieve_tool(knowledge_bases, kwargs_map, search_fn=_search_fn)
-        except Exception as e:  # pragma: no cover - defensive
-            logger.warning("knowledge_retrieve 工具构建失败，跳过: %r", e)
-            return None
-
-    @staticmethod
-    def _normalize_kb_results(results) -> list:
-        """把 PgvectorRag 返回结果规整成 knowledge_tool 期望的 dict 列表。"""
-        normalized = []
-        for item in results or []:
-            meta = getattr(item, "metadata", None)
-            if meta is None and isinstance(item, dict):
-                meta = item.get("metadata", {})
-            page = getattr(item, "page_content", None)
-            if page is None and isinstance(item, dict):
-                page = item.get("page_content") or item.get("content", "")
-            normalized.append(
-                {
-                    "content": page or "",
-                    "title": (meta or {}).get("title") or (meta or {}).get("source", ""),
-                    "score": (meta or {}).get("score") or getattr(item, "score", 0),
-                }
-            )
-        return normalized
-
-    def _build_skill_backend_and_sources(self, graph_request):
-        """把启用的 SkillPackage 物化到「一次性沙箱目录」，返回 (backend, sources, sandbox_dir)。
-
-        采用 deepagents 自带的 ``LocalShellBackend``：它既是 ``FilesystemBackend``
-        （读写技能文件），又实现 ``SandboxBackendProtocol``（提供 ``execute`` shell
-        工具）。技能即「CLI 自运行」：SKILL.md 里直接写 ``uvx ...`` / ``npx ...`` /
-        二进制命令，由模型通过 ``execute`` 在 shell 里跑，不依赖业务工具接线。
-
-        加固（人造沙箱，best-effort 隔离，非容器级强隔离），见实现注释：
-          1. 每次运行新建临时目录、用完即弃（调用方在 finally 中 rmtree）；
-          2. virtual_mode=True：文件工具关进沙箱，不能读写宿主任意路径；
-          3. inherit_env=False + 精简白名单：不把宿主 DB 密码/密钥泄露给技能 shell。
-        sandbox_dir 交给调用方清理。best-effort：无技能或失败返回 (None, [], None)。
-
-        **backend 替换方向(Phase 1):** 当前 backend 是 ``LocalShellBackend``,
-        ``execute`` 仍跑真实宿主 shell,绝对路径可访问宿主(非强隔离)。
-        Phase 1 将按 deepagents ``SandboxBackendProtocol`` 接口替换为
-        NATS worker / 容器沙箱实现,本函数调用方不变(materializer 接口
-        向后兼容,通过 feature flag 切换 backend)。
-        """
-        packages = self._resolve_skill_packages(graph_request)
-        if not packages:
-            return None, [], None
-        backend = None
-        sources = []
-        sandbox_dir = None
-        try:
-            import os
-            import tempfile
-
-            from deepagents.backends import LocalShellBackend
-
-            from apps.opspilot.services.skill_executor import PathRewritingBackend
-            from apps.opspilot.services.skill_package.materializer import materialize_skill_package, sanitize_skill_name
-            from apps.opspilot.utils.skill_package_params import format_skillenv
-
-            base = self._skill_sandbox_base()
-            os.makedirs(base, exist_ok=True)
-            # 一次性沙箱目录：run-XXXX，用完即弃（由调用方在 finally 中清理）
-            sandbox_dir = tempfile.mkdtemp(prefix="run-", dir=base)
-            skills_dir = os.path.join(sandbox_dir, "skills")
-            os.makedirs(skills_dir, exist_ok=True)
-
-            # 加固说明：
-            #   - virtual_mode=True：沙箱目录即虚拟根，read/write/ls/glob/grep 关在沙箱内。
-            #   - inherit_env=False + 精简白名单：杜绝 Django 进程 DB 密码/密钥外泄；
-            #     TMPDIR 也指向沙箱，临时文件不外溢。
-            #   - execute 的 cwd 即沙箱目录；技能命令用相对路径，产物随沙箱销毁。
-            # 局限：execute 跑真实宿主 shell，绝对路径仍可访问宿主，非强隔离；要强隔离
-            #   需换 NATS executor / 容器沙箱（替换 SandboxBackendProtocol 即可）。
-            #
-            # Phase 0 路径解析修复:deepagents 0.5.x 的 virtual_mode 不重写
-            # execute 命令字符串里的绝对路径(/skills/...)。
-            # PathRewritingBackend 在 execute 前正则替换 /skills/ → 物理 sandbox_dir/skills/。
-            params_by_dir, secret_values = self._load_skill_package_runtime_params(graph_request, packages)
-            injected = {name: sorted(env.keys()) for name, env in (params_by_dir or {}).items() if env}
-            if injected:
-                logger.info("技能包运行时参数已加载: %s", injected)
-            else:
-                logger.warning("技能包运行时参数为空，脚本将读不到 AD_HOST 等变量")
-            inner_backend = LocalShellBackend(
-                root_dir=sandbox_dir,
-                virtual_mode=True,
-                inherit_env=False,
-                env=self._sandbox_env(sandbox_dir),
-            )
-            backend = PathRewritingBackend(
-                inner=inner_backend,
-                sandbox_dir=sandbox_dir,
-                skills_root="/skills",
-                on_skill_access=self._make_lazy_skill_deps_callback(packages),
-                params_by_package=params_by_dir,
-                secret_values=secret_values,
-            )
-            # 不在建沙箱时预装依赖:寒暄/未用技能时不应 pip install。
-            # 依赖在 read/execute 真正碰到 /skills/<name>/ 时按需安装。
-            # virtual_mode 下，物化到虚拟根的 /skills/ 即落在 sandbox_dir/skills/
-            for pkg in packages:
-                try:
-                    materialize_skill_package(pkg, backend, skills_root="/skills")
-                except Exception as me:  # 幂等：已存在/单包失败不影响其它技能
-                    import traceback
-
-                    logger.warning(
-                        "技能物化失败(%s): %s\n%s",
-                        pkg.get("name") if isinstance(pkg, dict) else pkg,
-                        me,
-                        traceback.format_exc(),
-                    )
-            for pkg in packages:
-                if not isinstance(pkg, dict):
-                    continue
-                dir_name = sanitize_skill_name(pkg.get("package_id") or pkg.get("name"))
-                env = params_by_dir.get(dir_name) or {}
-                if not env:
-                    continue
-                skillenv_path = f"/skills/{dir_name}/.skillenv"
-                try:
-                    backend.write(skillenv_path, format_skillenv(env))
-                    chmod = getattr(backend, "chmod", None)
-                    if callable(chmod):
-                        chmod(skillenv_path, 0o600)
-                except Exception as env_exc:
-                    logger.warning("写入 .skillenv 失败(%s): %r", dir_name, env_exc)
-            sources = ["/skills/"]
-            return backend, sources, sandbox_dir
-        except Exception as e:  # pragma: no cover - defensive
-            logger.warning("技能 backend 构建失败，跳过 skills: %r", e)
-            self._cleanup_sandbox(sandbox_dir)
-            return None, [], None
-
-    @classmethod
-    def _make_lazy_skill_deps_callback(cls, packages: list):
-        """返回「访问 /skills/<name>/ 时按需装依赖」的回调。
-
-        与渐进披露一致:只物化目录元数据不够触发 pip;模型 read_file SKILL.md
-        或 execute 技能脚本时才装对应包依赖。
-        """
-        from apps.opspilot.services.skill_package.materializer import sanitize_skill_name
-
-        by_dir_name: dict[str, dict] = {}
-        for pkg in packages:
-            if not isinstance(pkg, dict):
-                continue
-            dir_name = sanitize_skill_name(pkg.get("package_id") or pkg.get("name"))
-            by_dir_name[dir_name] = pkg
-
-        ensured: set[str] = set()
-
-        def _on_skill_access(names) -> None:
-            pending: list[dict] = []
-            for name in names or []:
-                key = str(name or "").strip().lower()
-                if not key or key in ensured:
-                    continue
-                pkg = by_dir_name.get(key)
-                if pkg is None:
-                    continue
-                ensured.add(key)
-                pending.append(pkg)
-            if pending:
-                cls._ensure_skill_deps(pending)
-
-        return _on_skill_access
-
-    @staticmethod
-    def _ensure_skill_deps(packages: list) -> None:  # noqa: C901
-        """根据**被访问的**技能包,确保 host Python 装了对应的 Python 库。
-
-        当前 sandbox 是 LocalShellBackend(virtual_mode),execute 跑在 host,
-        共享 host 的 sys.path,所以装 host 即可。Phase 1 切到独立容器沙箱后,
-        这个函数会变成往镜像里塞依赖,而不是往 host 装。
-
-        调用时机:PathRewritingBackend 在 read/execute 碰到 /skills/<name>/ 时
-        按需触发;建沙箱阶段不再预装。
-        """
-        import importlib.util
-        import re
-        import subprocess
-        import sys
-        from pathlib import Path
-
-        # 三层依赖发现:
-        # Layer 1: deps_map(opspilot 预设,常用技能包的兜底)
-        # Layer 2: 技能包自带的 requirements.txt / package.json(标准文件)
-        # Layer 3: skill.yaml 里的 runtime.python_packages 字段(扩展字段)
-        #
-        # 这三层互补,优先 Layer 1 → 2 → 3 任一命中即用。
-        # 长期方向:让 GitHub 技能包自己声明依赖,deps_map 退化为可选兜底。
-
-        deps_map = {
-            "pdf": ["reportlab", "pypdf", "pdfplumber", "pypdfium2"],
-            "xlsx": ["openpyxl", "pandas"],
-            "docx": ["python-docx"],
-            "pptx": ["python-pptx"],
-            "kubernetes-specialist": ["kubernetes", "pyyaml"],
-            # agent-browser 是 Node CLI,全局 npm 装好即可。
-            "agent-browser": [],
-        }
-
-        needed: set[str] = set()
-
-        # Layer 1: deps_map 兜底(按 package_id / name 的目录名匹配)
-        from apps.opspilot.services.skill_package.materializer import sanitize_skill_name
-
-        for pkg in packages:
-            if not isinstance(pkg, dict):
-                continue
-            keys = {
-                sanitize_skill_name(pkg.get("package_id")),
-                sanitize_skill_name(pkg.get("name")),
-                str(pkg.get("name") or "").lower(),
-                str(pkg.get("package_id") or "").lower(),
-            }
-            for key in keys:
-                if key in deps_map:
-                    needed.update(deps_map[key])
-                    break
-
-        # Layer 2: 扫描技能包根目录的标准依赖文件
-        # requirements.txt(PEP 标准) / package.json(Node.js 标准)
-        for pkg in packages:
-            if not isinstance(pkg, dict):
-                continue
-            extracted_root = pkg.get("extracted_root")
-            if not isinstance(extracted_root, Path):
-                continue
-            # requirements.txt
-            req_txt = extracted_root / "requirements.txt"
-            if req_txt.is_file():
-                for line in req_txt.read_text(encoding="utf-8", errors="ignore").splitlines():
-                    line = line.strip()
-                    if line and not line.startswith("#") and not line.startswith("-"):
-                        # 去掉版本约束(>=,==,<=,~=,!=,>,<,[], extras)
-                        pkg_name = re.split(r"[<>=!~;\[]", line, 1)[0].strip()
-                        if pkg_name:
-                            needed.add(pkg_name)
-                logger.warning(f"[sandbox-deps] 从 {req_txt} 检测到 Python 依赖")
-            # package.json(只取 dependencies 和 devDependencies)
-            pkg_json = extracted_root / "package.json"
-            if pkg_json.is_file():
-                try:
-                    import json
-
-                    pkg_meta = json.loads(pkg_json.read_text(encoding="utf-8"))
-                    for section in ("dependencies", "devDependencies"):
-                        deps = pkg_meta.get(section) or {}
-                        if isinstance(deps, dict):
-                            needed.update(deps.keys())
-                            logger.warning(f"[sandbox-deps] 从 {pkg_json} 检测到 Node 依赖: {list(deps.keys())}")
-                except Exception as json_err:
-                    logger.warning(f"[sandbox-deps] 解析 {pkg_json} 失败: {json_err}")
-
-        # Layer 3: skill.yaml 显式声明的 runtime.python_packages(扩展字段,优先级最高)
-        for pkg in packages:
-            if not isinstance(pkg, dict):
-                continue
-            declared = pkg.get("required_python_packages") or []
-            if declared:
-                needed.update(declared)
-                logger.warning(f"[sandbox-deps] 从 skill.yaml 声明读到 Python 依赖: {declared}")
-
-        # 过滤掉已经装好的。
-        missing: list[str] = []
-        for dep in sorted(needed):
-            # importlib.util.find_spec 比真正 import 快,且不抛副作用。
-            mod_name = dep.replace("-", "_").split("[")[0]
-            if importlib.util.find_spec(mod_name) is None:
-                missing.append(dep)
-
-        if not missing:
-            return
-
-        logger.warning(f"[sandbox-deps] 缺失依赖: {missing},开始 pip install...")
-        try:
-            result = subprocess.run(
-                [
-                    sys.executable,
-                    "-m",
-                    "pip",
-                    "install",
-                    "--quiet",
-                    # host Python 环境的 SSL CA bundle 不全,
-                    # 加 --trusted-host 绕过 PyPI HTTPS 验证。
-                    "--trusted-host",
-                    "pypi.org",
-                    "--trusted-host",
-                    "files.pythonhosted.org",
-                    *missing,
-                ],
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
-            if result.returncode == 0:
-                logger.warning(f"[sandbox-deps] 装好: {missing}")
-            else:
-                logger.warning(f"[sandbox-deps] pip install 失败(returncode={result.returncode}): " f"{result.stderr[:300]}")
-        except subprocess.TimeoutExpired:
-            logger.warning(f"[sandbox-deps] pip install 超时: {missing}")
-        except Exception as e:
-            logger.warning(f"[sandbox-deps] pip install 异常: {e!r}")
-
-    @staticmethod
-    def _skill_sandbox_base() -> str:
-        """一次性技能沙箱的父目录（每次运行在其下新建临时子目录）。"""
-        import os
-        import tempfile
-
-        return os.getenv("OPSPILOT_SKILL_LOCAL_ROOT", os.path.join(tempfile.gettempdir(), "opspilot-sandbox"))
-
-    # sandbox PATH 探测:用 shutil.which 自动发现 host 上用户工具的 bin 目录。
-    # 替代硬编码路径(~/anaconda3/bin 等),适配任何机器/任何用户 Python 布局。
-    # 探测对象是 LLM 在技能任务里常用的工具:python/pip/uv/uvx/markitdown/pypdf 等,
-    # 任何找到的工具的 bin 目录都加入 sandbox PATH,让 LLM 一次就能找到。
-    _SANDBOX_PATH_PROBES = (
-        "python3",
-        "python",
-        "pip",
-        "pip3",
-        "uv",
-        "uvx",
-        "node",
-        "npm",
-        "npx",
-        "agent-browser",
-        "ab",
-        "playwright",
-        "chromium",
-        "markitdown",
-        "pdftotext",
-        "qpdf",
-        "wkhtmltopdf",
-        "pypdf",
-        "pymupdf",
-        "pdfplumber",
-        "reportlab",
-        "kubectl",
-        "helm",
-        "kustomize",
-        "git",
-        "curl",
-        "jq",
-        "rg",
-    )
-
-    @staticmethod
-    def _discover_sandbox_path() -> str:
-        """扫描 host 上已装的工具,把它们的 bin 目录合并成一个 PATH 字符串。
-
-        解决 LLM 在 sandbox 内调 `markitdown` / `pip` / `python3` 等工具时
-        找不到的问题 — 不用每次都猜安装路径。
-
-        Returns:
-            合并后的 PATH 字符串(``os.pathsep`` 分隔,无重复)。
-        """
-        import os
-        import shutil
-        import sys
-
-        host_path = os.environ.get("PATH", "")
-        path_sep = os.pathsep
-        if not host_path:
-            host_path = "/usr/local/bin:/usr/bin:/bin" if os.name != "nt" else ""
-        host_parts = [p for p in host_path.split(path_sep) if p]
-        bins: list[str] = []
-        runtime_bins = [
-            os.path.dirname(sys.executable),
-            os.path.dirname(os.path.realpath(sys.executable)),
-        ]
-
-        for cmd in ToolsNodes._SANDBOX_PATH_PROBES:
-            try:
-                resolved = shutil.which(cmd)
-            except OSError:
-                continue
-            if not resolved:
-                continue
-            bin_dir = os.path.dirname(resolved)
-            if bin_dir and bin_dir not in host_parts and bin_dir not in bins:
-                bins.append(bin_dir)
-
-        # 合并 host PATH + 探测 bins,用 dict.fromkeys 保序去重(host PATH 本身可能有重复段)
-        # 当前服务的 venv 必须优先于父进程 PATH。否则从精简环境启动时会命中
-        # /usr/bin/python3，并与服务 venv 的依赖形成跨 Python 版本混用。
-        merged_list = runtime_bins + host_parts + bins
-        merged_unique = list(dict.fromkeys(p for p in merged_list if p))
-        return path_sep.join(merged_unique)
-
-    # Windows 套接字初始化依赖这些变量;inherit_env=False 若不带上,
-    # ldap3/socket 会报 WinError 10106(无法加载或初始化请求的服务程序)。
-    # 都是系统路径类变量,不含密钥。Linux 上这些键不存在,不会写入。
-    _WINDOWS_SOCKET_ENV_KEYS = (
-        "SystemRoot",
-        "SYSTEMROOT",
-        "SystemDrive",
-        "SYSTEMDRIVE",
-        "windir",
-        "WINDIR",
-        "PATHEXT",
-        "ComSpec",
-        "COMSPEC",
-        "USERPROFILE",
-        "USERNAME",
-        "APPDATA",
-        "LOCALAPPDATA",
-        "TEMP",
-        "TMP",
-    )
-
-    @staticmethod
-    def _sandbox_env(sandbox_dir: str) -> dict:
-        """技能 shell 的环境配置 — PATH 最大化,HOME/TMPDIR 隔离,敏感变量不携带。
-
-        设计原则:
-          - **PATH 扩展**: 用 shutil.which 探测 host 用户级 Python 工具(pip / uv / markitdown 等),
-            任何工具的 bin 目录自动加入 sandbox PATH。LLM 不必反复试不同路径,
-            一次能找到工具。分隔符用 ``os.pathsep``(Windows `;` / Linux `:`)，
-            不能写死冒号,否则 `C:\\Windows\\system32` 会被拆碎。
-          - **HOME 隔离到 sandbox_dir**: 避免 `~/.cache/pip` 等用户配置污染 host HOME,
-            sandbox 销毁后清理。
-          - **TMPDIR 隔离到 sandbox_dir**: subprocess 写 /tmp 时落沙箱内,
-            跟 L3b 的 /tmp 重写 + PathRewritingBackend 配合。
-          - **不携带敏感变量**: SECRET_KEY / DB_PASSWORD / NATS_TOKEN 等
-            不出现在 sandbox 子进程环境中,即使工具泄漏也不会泄露。
-          - **Windows 套接字**: 透传 SystemRoot / windir / PATHEXT / ComSpec,
-            否则 ldap3 建 socket 会 WinError 10106。
-        """
-        import os
-
-        env = {
-            "PATH": ToolsNodes._discover_sandbox_path(),
-            "LANG": os.environ.get("LANG", "C.UTF-8"),
-            "LC_ALL": os.environ.get("LC_ALL", os.environ.get("LANG", "C.UTF-8")),
-            "TMPDIR": sandbox_dir,  # 临时文件落在沙箱内,用完即弃
-            "HOME": sandbox_dir,  # 用户配置也隔离(PATH 透传但 HOME 不透)
-            # kubectl 默认读 ~/.kube/config,但 sandbox 把 HOME 隔离到 sandbox_dir,
-            # 找不到 kubeconfig。显式传 KUBECONFIG(host 环境变量,LLM 调 kubectl 才能连 k8s)。
-            "KUBECONFIG": os.environ.get("KUBECONFIG", os.path.expanduser("~/.kube/config")),
-        }
-        # Windows 环境变量名大小写不敏感;同时写入 SystemRoot/SYSTEMROOT
-        # 在部分 CreateProcess 路径上会异常。按规范名去重,只保留一份。
-        preferred_windows_keys = {
-            "systemroot": "SystemRoot",
-            "systemdrive": "SystemDrive",
-            "windir": "windir",
-            "pathext": "PATHEXT",
-            "comspec": "ComSpec",
-            "userprofile": "USERPROFILE",
-            "username": "USERNAME",
-            "appdata": "APPDATA",
-            "localappdata": "LOCALAPPDATA",
-            "temp": "TEMP",
-            "tmp": "TMP",
-        }
-        for key in ToolsNodes._WINDOWS_SOCKET_ENV_KEYS:
-            value = os.environ.get(key)
-            if not value:
-                continue
-            canon = preferred_windows_keys.get(key.lower(), key)
-            env.setdefault(canon, value)
-        system_root = env.get("SystemRoot")
-        if system_root:
-            system32 = os.path.join(system_root, "system32")
-            parts = [p for p in env["PATH"].split(os.pathsep) if p]
-            if system32 not in parts:
-                parts.append(system32)
-                env["PATH"] = os.pathsep.join(parts)
-            # 临时目录仍落沙箱,避免子进程写到宿主 %TEMP%。
-            env["TEMP"] = sandbox_dir
-            env["TMP"] = sandbox_dir
-        return env
-
-    @staticmethod
-    def _cleanup_sandbox(sandbox_dir: Optional[str]) -> None:
-        """删除一次性沙箱目录（用完即弃）；失败仅记录，不影响主流程。"""
-        if not sandbox_dir:
-            return
-        import shutil
-
-        try:
-            shutil.rmtree(sandbox_dir, ignore_errors=True)
-        except Exception as e:  # pragma: no cover - defensive
-            logger.debug("沙箱清理失败(%s): %r", sandbox_dir, e)
-
-    @staticmethod
-    def _skill_bucket_name() -> str:
-        """技能文件所在的私有桶（沿用项目私有桶约定）。"""
-        import os
-
-        return os.getenv("OPSPILOT_SKILL_BUCKET", "munchkin-private")
-
-    @classmethod
-    def _load_skill_package_runtime_params(cls, graph_request, packages) -> tuple[dict, list]:
-        """解密技能包参数并映射到沙箱目录名。明文只留在本进程内存。"""
-        from apps.opspilot.utils.skill_package_params import map_params_to_skill_dirs, resolve_package_params
-
-        ec = ExtraConfig.from_raw(getattr(graph_request, "extra_config", None))
-        overlay = getattr(ec, "skill_package_params_overlay", None)
-        skill_id = getattr(ec, "skill_id", None)
-
-        def _load():
-            params_by_id, secrets_by_id = resolve_package_params(skill_id, overlay=overlay)
-            return map_params_to_skill_dirs(packages, params_by_id, secrets_by_id)
-
-        try:
-            asyncio.get_running_loop()
-            in_async = True
-        except RuntimeError:
-            in_async = False
-        if in_async:
-            import concurrent.futures
-
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-                return ex.submit(_load).result()
-        return _load()
-
-    @staticmethod
-    def _resolve_skill_packages(graph_request) -> list:
-        """从 request.extra_config 解析本次启用的技能包（已 hydrate 的 dict 列表）。"""
-        try:
-            import asyncio
-
-            from apps.opspilot.services.skill_package.runtime import hydrate_skill_packages, normalize_skill_packages
-
-            ec = ExtraConfig.from_raw(getattr(graph_request, "extra_config", None))
-            raw = list(getattr(ec, "matched_skill_packages", None) or [])
-            # 兜底:matched_skill_packages 是 trigger 匹配后 top-N,前端可能漏传。
-            # 退回到 enabled_skill_packages(用户显式选中的技能包全集,用于 backend 物化)。
-            if not raw:
-                raw = list(getattr(ec, "enabled_skill_packages", None) or [])
-            if not raw:
-                return []
-            # LangGraph node 跑在 async 上下文,ORM 查询会抛
-            # "You cannot call this from an async context"。
-            # 用 ThreadPoolExecutor 把 hydrate 跑在独立线程里,
-            # 线程不在 async 上下文,可以正常同步 ORM。
-            try:
-                asyncio.get_running_loop()
-                in_async = True
-            except RuntimeError:
-                in_async = False
-            if in_async:
-                import concurrent.futures
-
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-                    future = ex.submit(hydrate_skill_packages, normalize_skill_packages(raw))
-                    return future.result()
-            return hydrate_skill_packages(normalize_skill_packages(raw))
-        except Exception as e:  # pragma: no cover - defensive
-            logger.debug("技能包解析失败: %r", e)
-            return []
-
-    def _build_interrupt_on(self, graph_request, tools) -> Optional[dict]:
-        """approval_config -> deepagents interrupt_on（人工审批 HITL）。
-
-        approval_config.tools 为空且启用 = 对所有业务工具审批（排除 deepagents 内置工具）。
-        """
-        approval = getattr(graph_request, "approval_config", None)
-        if not approval or not getattr(approval, "enabled", False):
-            return None
-        named = list(getattr(approval, "tools", None) or [])
-        if named:
-            target_names = named
-        else:
-            target_names = [t.name for t in (tools or []) if getattr(t, "name", None) and t.name not in self.DEEPAGENT_BUILTIN_TOOL_NAMES]
-        if not target_names:
-            return None
-        return {name: True for name in target_names}
-
-    @staticmethod
-    def _should_use_lightweight_direct_reply(tools, skill_sources) -> bool:
-        """无业务工具且无技能包时走轻量直答，避免规划器 + DeepAgent 内置工具烧 token。"""
-        if any(getattr(tool, "name", None) for tool in (tools or [])):
-            return False
-        return not bool(skill_sources)
-
-    @staticmethod
-    def _should_use_lightweight_after_empty_plan(plan) -> bool:
-        """规划器判定无需执行步骤时，跳过 DeepAgent/FS（含已启用技能包的寒暄场景）。"""
-        return not bool(getattr(plan, "steps", None))
-
-    _MARKDOWN_TABLE_RE = re.compile(r"\|[^\n]+\|\s*\n\s*\|?\s*:?-{3,}", re.MULTILINE)
-    _STEP_STUB_RE = re.compile(r"^执行结果\s*\d+\s*$")
-
-    @classmethod
-    def _planned_step_already_answered(cls, messages) -> bool:
-        """单步已写出给用户看的正文时，跳过总结轮，避免再复述一遍。"""
-        for message in reversed(messages or []):
-            if not isinstance(message, AIMessage):
-                continue
-            if getattr(message, "tool_calls", None):
-                continue
-            text = str(getattr(message, "content", "") or "").strip()
-            if not text:
-                continue
-            if cls._MARKDOWN_TABLE_RE.search(text):
-                return True
-            if cls._STEP_STUB_RE.match(text):
-                return False
-            return len(text) >= 15
-        return False
-
-    @staticmethod
-    def _plan_is_skills_only(candidate_plan) -> bool:
-        """整份计划是否仅依赖技能运行时（无业务工具名）。"""
-        from apps.opspilot.metis.llm.agent.tool_execution_planner import USE_SKILLS_TOOL_NAME
-
-        steps = list(getattr(candidate_plan, "steps", None) or [])
-        if not steps:
-            return False
-        for step in steps:
-            tools = [str(name) for name in (getattr(step, "tools", None) or []) if str(name)]
-            if not tools:
-                return False
-            if any(name != USE_SKILLS_TOOL_NAME for name in tools):
-                return False
-        return True
-
-    @staticmethod
-    def _skill_package_script_lines(package: dict) -> list[str]:
-        pkg_id = str(package.get("package_id") or package.get("name") or "").strip()
-        if not pkg_id:
-            return []
-        extracted = package.get("extracted_root")
-        scripts_dir = None
-        if isinstance(extracted, Path):
-            scripts_dir = extracted / "scripts"
-        elif extracted:
-            scripts_dir = Path(str(extracted)) / "scripts"
-        names: list[str] = []
-        if scripts_dir is not None and scripts_dir.is_dir():
-            names = sorted(path.name for path in scripts_dir.glob("*.py") if path.is_file() and not path.name.startswith("_"))
-        if not names:
-            return [f"- python3 /skills/{pkg_id}/scripts/<脚本>.py"]
-        return [f"- python3 /skills/{pkg_id}/scripts/{name}" for name in names]
-
-    @staticmethod
-    def _skill_only_step_guidance(packages: list | None = None) -> str:
-        """纯技能步的硬约束：直跑脚本，禁止扫包/探环境。"""
-        package_hints: list[str] = []
-        for package in packages or []:
-            if not isinstance(package, dict):
-                continue
-            package_hints.extend(ToolsNodes._skill_package_script_lines(package))
-        hint_lines = "\n".join(package_hints) if package_hints else "- python3 /skills/<包名>/scripts/<脚本>.py"
-        return (
-            "【技能包执行】连接参数已由平台注入，禁止 echo/$VAR/env/python -c 探测。"
-            "禁止反复 read_file/ls/grep 扫技能包。"
-            "禁止 --help/-h，禁止 2>&1 | head 或任何管道/重定向；用法已在本提示，不要先探命令。"
-            "必须使用下列真实脚本路径，禁止发明文件名。"
-            "直接 execute 查询，例如："
-            'python3 /skills/ad-domain-ops/scripts/ad_search.py --query "*" --type user --limit 10 --attrs sAMAccountName。'
-            "脚本 ok=true（含空结果）后立即用一张表回答并结束本步。"
-            "401、凭据无效、连接失败、解密失败或脚本 AttributeError 等实现异常时不要重试，把错误原样告诉用户并结束本步。"
-            "403 仅在可换查询范围时最多改参 1 次，否则把权限错误告诉用户。\n"
-            f"可用脚本：\n{hint_lines}"
-        )
-
-    @staticmethod
-    def _planned_tool_step_guidance() -> str:
-        """业务工具步：与技能步共用停手契约，但不收掉本步多个计划工具。"""
-        return (
-            "【工具执行】只调用本步骤计划/可见工具。"
-            "未计划工具会被拒绝，不要改调其他工具，也不要当作步骤失败去重规划。"
-            "工具已返回结构化结果（含空列表）即终态，不要把空当失败反复换参。"
-            "401、kubeconfig 无效、连接参数缺失或解密失败时不要改参重试，把错误原样告诉用户并结束本步。"
-            "工具抛出 AttributeError/TypeError 等实现异常时不要重试，把错误告诉用户。"
-            "403 仅在可换 namespace 或实例时最多改参 1 次，否则把权限错误告诉用户。"
-            "工具成功后用一两句话直接回答用户并结束本步，禁止再写第二份重复说明。"
-        )
-
-    @staticmethod
-    def _build_lightweight_system_prompt(user_system_message: str = "", *, skills_available: bool = False) -> str:
-        role = (user_system_message or "").strip() or "你是运维助手。"
-        if skills_available:
-            return f"{role}\n\n" "直接用中文简洁回答用户。" "本轮不需要调用工具或读取技能文件，不要假装调用工具或读写文件。" "严禁泄露密码、密钥、令牌等敏感信息。"
-        return f"{role}\n\n" "直接用中文简洁回答用户。" "当前没有可用工具与技能，不要假装调用工具或读写文件。" "严禁泄露密码、密钥、令牌等敏感信息。"
-
     @staticmethod
     def _is_unsupported_stream_usage_error(exc: BaseException) -> bool:
         text = str(exc).casefold()
@@ -3253,10 +2315,12 @@ class ToolsNodes(BasicNode):
                 ToolExecutionPlanner,
                 ToolPlanningError,
                 classify_tool_failure_kind,
+                drop_k8s_followup_steps_after_unresolved_target,
                 is_context_size_error,
                 is_non_replanable_tool_failure,
                 is_tool_result_failure,
             )
+            from apps.opspilot.metis.llm.tools.kubernetes.data_collection import k8s_target_lookup_exhausted_from_messages
 
             graph_request = config["configurable"]["graph_request"]
 
@@ -3304,22 +2368,15 @@ class ToolsNodes(BasicNode):
             # 紧急关闭：回退全量 Schema + 单次 DeepAgent 调用
             if not is_progressive_tools_enabled():
                 backend, skill_sources, sandbox_dir = self._build_skill_backend_and_sources(graph_request)
-                agent_kwargs: Dict[str, Any] = {
-                    "model": llm,
-                    "tools": registered_tools,
-                    "system_prompt": final_system_prompt,
-                }
-                legacy_middleware = []
-                if isinstance(token_usage_accumulator, TokenUsageAccumulator):
-                    legacy_middleware.append(TokenUsageTrackingMiddleware(token_usage_accumulator))
-                if legacy_middleware:
-                    agent_kwargs["middleware"] = legacy_middleware
-                if backend is not None:
-                    agent_kwargs["backend"] = backend
-                if skill_sources:
-                    agent_kwargs["skills"] = skill_sources
-                if interrupt_on:
-                    agent_kwargs["interrupt_on"] = interrupt_on
+                agent_kwargs = self._build_deep_agent_kwargs(
+                    llm=llm,
+                    registered_tools=registered_tools,
+                    final_system_prompt=final_system_prompt,
+                    runtime_middleware=self._build_legacy_deep_agent_middleware(token_usage_accumulator),
+                    backend=backend,
+                    skill_sources=skill_sources,
+                    interrupt_on=interrupt_on,
+                )
                 deep_agent = create_deep_agent(**agent_kwargs)
                 ec = getattr(self, "_extra_config", None)
                 matched_packages = list(getattr(ec, "matched_skill_packages", None) or []) if ec else []
@@ -3483,20 +2540,11 @@ class ToolsNodes(BasicNode):
 
             skills_only_plan = bool(skill_sources) and self._plan_is_skills_only(plan)
             active_tools = []
-            # 纯技能步：不常驻整套 FS（每轮 ~7k schema）；只放开 execute。
-            # 混有业务工具时仍常驻 FS，便于大结果落盘与读 SKILL.md。
-            # 注意：allow_unregistered_tools=False 时，仅从 hidden 去掉不够，
-            # 必须把 execute 放进 always_visible，否则模型可见工具为空、只会空谈。
-            always_visible = set()
-            hidden_tools = set(PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS)
-            if skill_sources and not skills_only_plan:
-                always_visible |= set(PLANNED_EXECUTION_ALWAYS_VISIBLE_FS_TOOLS)
-            if skills_only_plan:
-                hidden_tools.discard("execute")
-                always_visible.add("execute")
-            always_visible |= {
-                name for name in PLANNED_EXECUTION_ALWAYS_ON_BUSINESS_TOOLS if any(getattr(tool, "name", "") == name for tool in registered_tools)
-            }
+            always_visible, hidden_tools = self._build_planned_execution_tool_visibility(
+                skill_sources=skill_sources,
+                skills_only_plan=skills_only_plan,
+                registered_tools=registered_tools,
+            )
             # 无技能运行时时用短 system，避免 deepagent 技能/沙箱长文案挤爆小上下文模型。
             if not skill_sources:
                 final_system_prompt = TemplateLoader.render_template(
@@ -3505,56 +2553,29 @@ class ToolsNodes(BasicNode):
                 )
                 if additional_system_prompt:
                     final_system_prompt = f"{final_system_prompt}\n\n{additional_system_prompt}"
-            visibility_middleware = ToolVisibilityMiddleware(
-                business_tools=registered_tools,
+            runtime_middleware, visibility_middleware, limit_middleware, skill_guard = self._build_planned_execution_runtime_middleware(
+                registered_tools=registered_tools,
                 active_tools=active_tools,
+                always_visible=always_visible,
                 hidden_tools=hidden_tools,
-                always_visible_tools=always_visible,
-                allow_unregistered_tools=False,
-                include_always_visible=True,
+                skills_only_plan=skills_only_plan,
+                graph_request=graph_request,
+                token_usage_accumulator=token_usage_accumulator,
             )
-            limit_middleware = PlannedExecutionLimitMiddleware(
-                run_limit=get_planned_execution_run_model_call_limit(),
-                token_budget=resolve_planned_execution_token_budget(graph_request),
-                soft_budget_ratio=resolve_planned_execution_soft_budget_ratio(graph_request),
-                accumulator=(token_usage_accumulator if isinstance(token_usage_accumulator, TokenUsageAccumulator) else None),
-            )
-            skill_guard = SkillExecutionGuardMiddleware(enabled=skills_only_plan)
-            runtime_middleware = [
-                visibility_middleware,
-                skill_guard,
-                ToolExceptionAsResultMiddleware(),
-                ToolResultCompactionMiddleware(),
-                limit_middleware,
-            ]
-            final_system_prompt += (
-                "\n\n【分步工具执行】外部规划器已经拆分任务。"
-                "每次只完成当前步骤，只调用当前可见工具；不要自行创建待办、子任务或重复规划。"
-                "工具证据足够后立即结束当前步骤。"
-                "需要向用户提问时可使用交互工具；"
-                "但可用工具查到的定位信息（例如缺 namespace 时先反查 Pod/Events）禁止直接问用户。"
-            )
-            if isinstance(token_usage_accumulator, TokenUsageAccumulator):
-                runtime_middleware.append(TokenUsageTrackingMiddleware(token_usage_accumulator))
+            final_system_prompt = self._append_planned_execution_step_prompt(final_system_prompt)
 
             def _build_deep_agent():
-                agent_kwargs = {
-                    "model": llm,
-                    "tools": registered_tools,
-                    "system_prompt": final_system_prompt,
-                }
-                if runtime_middleware:
-                    agent_kwargs["middleware"] = runtime_middleware
-                if backend is not None:
-                    agent_kwargs["backend"] = backend
-                if skill_sources:
-                    agent_kwargs["skills"] = skill_sources
-                if interrupt_on:
-                    agent_kwargs["interrupt_on"] = interrupt_on
-                # 全量 tools 只注册到执行器，保证失败重规划后仍能执行新工具；
-                # ToolVisibilityMiddleware 会在每次模型调用前仅保留当前步骤工具，
-                # 因此全量 schema 不会发送给模型。
-                return create_deep_agent(**agent_kwargs)
+                return create_deep_agent(
+                    **self._build_deep_agent_kwargs(
+                        llm=llm,
+                        registered_tools=registered_tools,
+                        final_system_prompt=final_system_prompt,
+                        runtime_middleware=runtime_middleware,
+                        backend=backend,
+                        skill_sources=skill_sources,
+                        interrupt_on=interrupt_on,
+                    )
+                )
 
             deep_agent = _build_deep_agent()
 
@@ -3581,19 +2602,14 @@ class ToolsNodes(BasicNode):
                         visibility_middleware._hidden_tools = frozenset(PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS)
                     visibility_middleware._always_visible_tools = frozenset(always_visible)
                     # 技能运行时启用后切回完整 deepagent system（含技能说明）。
-                    final_system_prompt = TemplateLoader.render_template(
-                        "prompts/graph/deepagent_system_message",
-                        {
-                            "user_system_message": graph_request.system_message_prompt,
-                            "additional_system_prompt": additional_system_prompt or "",
-                        },
-                    )
-                    final_system_prompt += (
-                        "\n\n【分步工具执行】外部规划器已经拆分任务。"
-                        "每次只完成当前步骤，只调用当前可见工具；不要自行创建待办、子任务或重复规划。"
-                        "工具证据足够后立即结束当前步骤。"
-                        "需要向用户提问时可使用交互工具；"
-                        "但可用工具查到的定位信息（例如缺 namespace 时先反查 Pod/Events）禁止直接问用户。"
+                    final_system_prompt = self._append_planned_execution_step_prompt(
+                        TemplateLoader.render_template(
+                            "prompts/graph/deepagent_system_message",
+                            {
+                                "user_system_message": graph_request.system_message_prompt,
+                                "additional_system_prompt": additional_system_prompt or "",
+                            },
+                        )
                     )
                     deep_agent = _build_deep_agent()
 
@@ -3882,6 +2898,34 @@ class ToolsNodes(BasicNode):
 
                         failure = _step_failure(step_messages)
                         agent_state = step_result
+                        if k8s_target_lookup_exhausted_from_messages(step_messages):
+                            _collect_output_messages(step_messages)
+                            remaining_steps = drop_k8s_followup_steps_after_unresolved_target(pending_steps)
+                            logger.info(
+                                "DeepAgent k8s 目标反查已收口，跳过后续需 namespace 步骤 dropped=%s",
+                                len(pending_steps) - len(remaining_steps),
+                            )
+                            completed_steps.append(
+                                CompletedExecutionStep(
+                                    objective=step.objective,
+                                    result=_step_summary(step_messages) or "当前集群无法定位该告警对象。",
+                                )
+                            )
+                            pending_steps = remaining_steps
+                            agent_state = _compact_agent_state_with_summaries(overflow=False)
+                            await _emit_step_boundary(
+                                "planned_execution_step",
+                                {
+                                    "phase": "end",
+                                    "step_index": step_index,
+                                    "total_steps": total_steps,
+                                    "objective": step.objective,
+                                    "tools": list(step.tools),
+                                    "status": "target_unresolved",
+                                },
+                            )
+                            step_finished = True
+                            break
                         if failure:
                             _collect_output_messages(step_messages)
                             if is_context_size_error(failure):

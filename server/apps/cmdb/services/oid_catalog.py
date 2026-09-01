@@ -135,7 +135,10 @@ def _validate_coverage_gaps(metadata: dict) -> None:
             raise OidCatalogError(f"OID_CATALOG_INVALID: coverage gap detail {brand!r}")
 
 
-def load_oid_catalog(catalog_path: Path = SYSTEMOID_PATH, metadata_path: Path = SYSTEMOID_METADATA_PATH,) -> dict[str, OidCatalogEntry]:
+def load_oid_catalog(
+    catalog_path: Path = SYSTEMOID_PATH,
+    metadata_path: Path = SYSTEMOID_METADATA_PATH,
+) -> dict[str, OidCatalogEntry]:
     raw_catalog = _read_json(Path(catalog_path))
     metadata = _read_json(Path(metadata_path))
     if not isinstance(metadata, dict):
@@ -211,7 +214,12 @@ def load_oid_catalog(catalog_path: Path = SYSTEMOID_PATH, metadata_path: Path = 
                 raise OidCatalogError(f"OID_CATALOG_INVALID: verified model for {oid}")
 
         entries[oid] = OidCatalogEntry(
-            oid=oid, model=raw["model"].strip(), brand=brand, device_type=device_type, source_id=source_id, verification=verification,
+            oid=oid,
+            model=raw["model"].strip(),
+            brand=brand,
+            device_type=device_type,
+            source_id=source_id,
+            verification=verification,
         )
     coverage_gaps = metadata["coverage_gaps"]
     for entry in entries.values():
@@ -220,7 +228,11 @@ def load_oid_catalog(catalog_path: Path = SYSTEMOID_PATH, metadata_path: Path = 
     return entries
 
 
-def sync_oid_catalog(entries: Mapping[str, OidCatalogEntry], *, dry_run: bool = False,) -> OidSyncResult:
+def sync_oid_catalog(
+    entries: Mapping[str, OidCatalogEntry],
+    *,
+    dry_run: bool = False,
+) -> OidSyncResult:
     validated_entries = _validate_sync_entries(entries)
     if dry_run:
         return _sync_oid_catalog(validated_entries, write=False)
@@ -233,7 +245,9 @@ def sync_oid_catalog(entries: Mapping[str, OidCatalogEntry], *, dry_run: bool = 
                 raise
 
 
-def _validate_sync_entries(entries: Mapping[str, OidCatalogEntry],) -> dict[str, OidCatalogEntry]:
+def _validate_sync_entries(
+    entries: Mapping[str, OidCatalogEntry],
+) -> dict[str, OidCatalogEntry]:
     if not isinstance(entries, Mapping) or not entries:
         raise OidCatalogError("OID_CATALOG_INVALID: sync entries")
 
@@ -261,7 +275,11 @@ def _validate_sync_entries(entries: Mapping[str, OidCatalogEntry],) -> dict[str,
     return validated_entries
 
 
-def _sync_oid_catalog(entries: Mapping[str, OidCatalogEntry], *, write: bool,) -> OidSyncResult:
+def _sync_oid_catalog(
+    entries: Mapping[str, OidCatalogEntry],
+    *,
+    write: bool,
+) -> OidSyncResult:
     queryset = OidMapping._default_manager.all()
     if write:
         queryset = queryset.select_for_update()
@@ -278,10 +296,27 @@ def _sync_oid_catalog(entries: Mapping[str, OidCatalogEntry], *, write: bool,) -
         entry = entries[oid]
         row = existing.get(oid)
         if row is None:
-            created_entries.append(OidSyncCreate(oid=oid, model=entry.model, brand=entry.brand, device_type=entry.device_type,))
-            to_create.append(OidMapping(oid=oid, model=entry.model, brand=entry.brand, device_type=entry.device_type, built_in=True,))
+            created_entries.append(
+                OidSyncCreate(
+                    oid=oid,
+                    model=entry.model,
+                    brand=entry.brand,
+                    device_type=entry.device_type,
+                )
+            )
+            to_create.append(
+                OidMapping(
+                    oid=oid,
+                    model=entry.model,
+                    brand=entry.brand,
+                    device_type=entry.device_type,
+                    built_in=True,
+                )
+            )
             continue
         if not row.built_in:
+            # 启动期 batch_init/init_oid 会重置 built_in=True；同一 OID 的 POST 会被拒绝。
+            # 用户覆盖只能 UPDATE 已有行并设 built_in=False，同步不得改写。
             custom_override_oids.append(oid)
             continue
         values = (row.model, row.brand, row.device_type)
@@ -304,11 +339,18 @@ def _sync_oid_catalog(entries: Mapping[str, OidCatalogEntry], *, write: bool,) -
         row.updated_at = now
         to_update.append(row)
 
-    stale_builtin_oids = tuple(sorted((oid for oid, row in existing.items() if row.built_in and oid not in entries), key=_oid_sort_key,))
+    stale_builtin_oids = tuple(
+        sorted(
+            (oid for oid, row in existing.items() if row.built_in and oid not in entries),
+            key=_oid_sort_key,
+        )
+    )
     if write:
         OidMapping._default_manager.bulk_create(to_create, batch_size=500)
         OidMapping._default_manager.bulk_update(
-            to_update, ["model", "brand", "device_type", "updated_at"], batch_size=500,
+            to_update,
+            ["model", "brand", "device_type", "updated_at"],
+            batch_size=500,
         )
     return OidSyncResult(
         created=len(to_create),

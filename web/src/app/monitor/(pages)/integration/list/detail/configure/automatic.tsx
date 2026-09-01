@@ -332,6 +332,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           ) {
             updated[name] = undefined;
             updated[`${name}_error`] = null;
+            updated[`${name}_warning`] = null;
             rowChanged = true;
           }
         });
@@ -358,7 +359,12 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     );
     delete formValues.nodes;
     const rowValues = Object.keys(record)
-      .filter((key) => key !== 'key' && !key.endsWith('_error'))
+      .filter(
+        (key) =>
+          key !== 'key' &&
+          !key.endsWith('_error') &&
+          !key.endsWith('_warning')
+      )
       .reduce((acc, key) => {
         acc[key] = record[key];
         return acc;
@@ -368,6 +374,14 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       ...rowValues,
       instance_type: configsInfo?.instance_type
     };
+    if (!instance.instance_id) {
+      instance.instance_id =
+        record.instance_id ||
+        record.instance_name ||
+        formValues.instance_id ||
+        formValues.instance_name ||
+        (record.key as string);
+    }
     return instance;
   };
 
@@ -957,7 +971,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         const { name } = column;
         newData[index] = {
           ...newData[index],
-          [`${name}_error`]: null
+          [`${name}_error`]: null,
+          [`${name}_warning`]: null
         };
       });
     });
@@ -967,12 +982,14 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       normalizedData.forEach((row, index) => {
         const value = row[name];
         let errorMsg: string | null = null;
+        let warningMsg: string | null = null;
         // 如果字段标记为required，进行必填验证
         if (required) {
           if (
             value === undefined ||
             value === null ||
             value === '' ||
+            (typeof value === 'string' && !value.trim()) ||
             (Array.isArray(value) && value.length === 0)
           ) {
             errorMsg = t('common.required');
@@ -986,18 +1003,26 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
               if (value !== undefined && value !== null && value !== '') {
                 const regex = new RegExp(rule.pattern);
                 if (!regex.test(String(value))) {
-                  errorMsg = rule.message || t('common.required');
-                  break;
+                  const msg = rule.message || t('common.required');
+                  if (rule.warningOnly) {
+                    warningMsg = warningMsg || msg;
+                  } else {
+                    errorMsg = msg;
+                    break;
+                  }
                 }
               }
             }
           }
         }
-        if (errorMsg) {
-          hasError = true;
+        if (errorMsg || warningMsg) {
+          if (errorMsg) {
+            hasError = true;
+          }
           newData[index] = {
             ...newData[index],
-            [`${name}_error`]: errorMsg
+            [`${name}_error`]: errorMsg,
+            [`${name}_warning`]: warningMsg
           };
         }
       });

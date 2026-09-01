@@ -3,6 +3,7 @@
   "collect_type": "snmp_sierrawireless",
   "plugin": "Router Sierra Wireless SNMP",
   "plugin_desc": "Sierra Wireless AirLink (ALEOS) cellular LTE router / gateway SNMP collection template (SIERRA-MIB, IANA PEN 20542). In addition to standard IF-MIB interface metrics, it collects the ALEOS board/radio temperature scalar (gpsStatus temperature group, .20542.9.1.1.1.267), reported directly in degrees Celsius. The SIERRA-MIB exposes no aggregate CPU or memory scalar; cellular RSSI (.261, dBm) and power-in (.266) are available but are signed/contextual values left for a future increment, and there is no fan or power-supply state object (AirLink gateways are fanless), so CPU, memory, fan and PSU are not collected (N/A). Supported brands/models — Sierra Wireless AirLink ALEOS routers/gateways (RV/MP/LX/ES/GX series, IANA PEN 20542).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_sierrawireless'}) by (instance_id)",
   "name": "Router",
   "icon": "mm-router_路由器",

@@ -95,6 +95,7 @@ export interface SearchFilterProps {
   userList: UserItem[];
   showExactSearch?: boolean;
   modelId?: string;
+  displayFieldKeys?: string[];
   onSearch: (condition: FilterItem | null, value: any) => void;
   onChange?: (filters: FilterItem[]) => void;
   onFilterChange?: (filters: FilterItem[]) => void;

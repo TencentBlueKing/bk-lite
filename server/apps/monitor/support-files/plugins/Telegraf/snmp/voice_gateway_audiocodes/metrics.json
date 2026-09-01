@@ -3,6 +3,7 @@
   "collect_type": "snmp_audiocodes",
   "plugin": "VoiceGateway AudioCodes SNMP",
   "plugin_desc": "AudioCodes 语音网关SBC专用 SNMP 采集模板。采集标准 IF-MIB 接口流量(64 位 ifHCInOctets/ifHCOutOctets,自动展开各接口)与设备运行时长(uptime),作为该语音网关SBC对象的基础监控能力。AudioCodes 私有健康指标多为 per-row 索引表(行级过滤),telegraf 采集端暂不支持,后续按官方 MIB 补充。适用品牌型号——AudioCodes 语音网关SBC系列。",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='voice_gateway', collect_type='snmp_audiocodes'}) by (instance_id)",
   "name": "VoiceGateway",
   "icon": "mm-voice_gateway_语音网关",

@@ -1,4 +1,3 @@
-import { CARD_TONE } from './application3DCardStyle';
 import {
   neonLevelToCardTone,
   resolveApplication3DCardVisual,
@@ -10,15 +9,15 @@ import { resolveNeonLevel } from './application3DVisual';
 /** Reuse Wall card status accents; Detail only dials intensity via CSS usage. */
 export const DETAIL_STATUS_ACCENT = {
   normal: {
-    border: 'rgba(206, 220, 232, 0.28)',
-    glow: 'rgba(0, 0, 0, 0)',
-    glowWidth: 0,
-    softGlow: 'rgba(0, 0, 0, 0)',
+    border: 'rgba(64, 210, 255, 0.72)',
+    glow: 'rgba(40, 190, 255, 0.38)',
+    glowWidth: 16,
+    softGlow: 'rgba(32, 150, 220, 0.16)',
     edgeWidth: 1.5,
-    dot: CARD_TONE.normal.dot,
-    badgeBg: 'rgba(28, 44, 58, 0.42)',
-    badgeBorder: 'rgba(160, 184, 210, 0.42)',
-    badgeText: 'rgba(198, 222, 218, 0.92)',
+    dot: '#3ecbff',
+    badgeBg: 'rgba(8, 32, 52, 0.55)',
+    badgeBorder: 'rgba(64, 210, 255, 0.42)',
+    badgeText: 'rgba(72, 228, 168, 0.96)',
   },
   critical: {
     border: 'rgba(255, 92, 84, 0.92)',
@@ -70,7 +69,7 @@ export const DETAIL_STATUS_ACCENT = {
     glowWidth: 0,
     softGlow: 'rgba(0, 0, 0, 0)',
     edgeWidth: 1.5,
-    dot: CARD_TONE.unknown.dot,
+    dot: '#8b97a8',
     badgeBg: 'rgba(40, 50, 64, 0.45)',
     badgeBorder: 'rgba(140, 156, 176, 0.55)',
     badgeText: 'rgba(198, 208, 220, 0.92)',
@@ -171,19 +170,6 @@ export const resolveDetailStatus = (
     tone,
     statusLabel: visual.statusLabel,
     accent,
-    leftPanelStyle: {
-      border: `${accent.edgeWidth}px solid ${accent.border}`,
-      boxShadow:
-        accent.glowWidth > 0
-          ? [
-              `0 0 0 1px ${accent.border}`,
-              `0 0 ${Math.round(accent.glowWidth * 0.55)}px ${accent.glow}`,
-              `0 0 ${accent.glowWidth + 10}px ${accent.softGlow}`,
-              'var(--color-application3d-detail-glass-highlight)',
-              'var(--color-application3d-detail-glass-shadow)',
-          ].join(', ')
-          : '0 0 0 1px rgba(160, 180, 204, 0.12), var(--color-application3d-detail-glass-highlight), var(--color-application3d-detail-glass-shadow)',
-    } as const,
   };
 };
 

@@ -29,6 +29,7 @@ from apps.opspilot.services.wiki.markdown_import_governance_service import (
     execute_markdown_import,
     preflight_markdown_import,
 )
+from apps.opspilot.services.wiki.material_build_queue_service import has_active_runner, kb_has_user_build_in_progress, release_stale_runner_lease
 from apps.opspilot.services.wiki.native_markdown_export_service import build_native_markdown_export_zip
 from apps.opspilot.services.wiki.overview_service import get_overview
 from apps.opspilot.services.wiki.parsed_media_service import sign_media_locators
@@ -607,15 +608,18 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
         try:
             with transaction.atomic():
                 kb = WikiKnowledgeBase.objects.select_for_update().get(pk=kb.pk)
-                if running_build_record(kb):
+                if kb_has_user_build_in_progress(kb.pk) or has_active_runner(kb.pk):
                     return JsonResponse(
                         {
                             "result": False,
                             "message": "知识库存在运行中的构建任务,请等待完成后再操作",
+                            "code": "knowledge_base_build_in_progress",
                         },
                         status=400,
                     )
-                materials = list(Material.objects.select_for_update().filter(knowledge_base=kb).select_related("current_version").order_by("id"))
+                release_stale_runner_lease(kb.pk)
+                # 可空 FK 不能和 FOR UPDATE 一起 select_related，PostgreSQL 会拒绝外连接空值边。
+                materials = list(Material.objects.select_for_update().filter(knowledge_base=kb).order_by("id"))
                 task_identity = _opspilot_tasks._freeze_wiki_task_identity(
                     kb,
                     materials,

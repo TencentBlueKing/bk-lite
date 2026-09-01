@@ -54,13 +54,29 @@ export const RABBITMQ_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       query: 'rate(rabbitmq_overview_messages_published{__$labels__}[__$window__])',
       color: '#27c274'
     },
+    {
+      name: 'rabbitmq_overview_messages_delivered_rate',
+      display_name: '消息投递速率',
+      description: '消息投递速率。',
+      unit: 'cps',
+      query: 'rate(rabbitmq_overview_messages_delivered{__$labels__}[__$window__])',
+      color: '#13c2c2'
+    },
+    {
+      name: 'rabbitmq_overview_messages_acked_rate',
+      display_name: '消息确认速率',
+      description: '消息确认速率。',
+      unit: 'cps',
+      query: 'rate(rabbitmq_overview_messages_acked{__$labels__}[__$window__])',
+      color: '#8a5cff'
+    },
     // ── Diagnostics (phase 2) ──
     {
       name: 'rabbitmq_node_uptime',
       display_name: '节点运行时长',
       description: 'RabbitMQ 节点自启动以来的运行时长。',
       unit: 's',
-      query: 'rabbitmq_node_uptime{__$labels__}',
+      query: 'rabbitmq_node_uptime{__$labels__} / 1000',
       color: '#27c274'
     },
     {
@@ -182,6 +198,42 @@ export const RABBITMQ_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       unit: 'counts',
       query: 'rabbitmq_node_proc_used{__$labels__}',
       color: '#8a5cff'
+    },
+    {
+      name: 'rabbitmq_queue_messages',
+      display_name: '队列深度',
+      description: '按队列统计的消息总数。',
+      unit: 'counts',
+      query: 'sum by (queue, vhost) (rabbitmq_queue_messages{__$labels__})',
+      color: '#2f6bff',
+      dimensions: [{ name: 'queue', description: '队列' }, { name: 'vhost', description: 'vhost' }]
+    },
+    {
+      name: 'rabbitmq_queue_messages_ready',
+      display_name: '队列就绪',
+      description: '按队列统计的就绪消息。',
+      unit: 'counts',
+      query: 'sum by (queue, vhost) (rabbitmq_queue_messages_ready{__$labels__})',
+      color: '#ff8a1f',
+      dimensions: [{ name: 'queue', description: '队列' }, { name: 'vhost', description: 'vhost' }]
+    },
+    {
+      name: 'rabbitmq_queue_messages_unack',
+      display_name: '队列未确认',
+      description: '按队列统计的未确认消息。',
+      unit: 'counts',
+      query: 'sum by (queue, vhost) (rabbitmq_queue_messages_unack{__$labels__})',
+      color: '#faad14',
+      dimensions: [{ name: 'queue', description: '队列' }, { name: 'vhost', description: 'vhost' }]
+    },
+    {
+      name: 'rabbitmq_queue_consumers',
+      display_name: '队列消费者',
+      description: '按队列统计的消费者数。',
+      unit: 'counts',
+      query: 'sum by (queue, vhost) (rabbitmq_queue_consumers{__$labels__})',
+      color: '#27c274',
+      dimensions: [{ name: 'queue', description: '队列' }, { name: 'vhost', description: 'vhost' }]
     }
   ],
   summaryCards: [
@@ -274,15 +326,27 @@ export const RABBITMQ_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       ]
     },
     {
-      title: '发布速率趋势',
-      subtitle: '消息发布速率',
+      title: '投递速率',
+      subtitle: '发布 / 投递 / 确认',
       metric: 'rabbitmq_overview_messages_published_rate',
-      guide: [{ label: '发布速率', detail: '消息发布速率，与存量图分开展示避免混轴。' }],
+      guide: [{ label: '投递速率', detail: '发布、投递与确认速率。' }],
       series: [
         {
           metric: 'rabbitmq_overview_messages_published_rate',
-          label: '发布速率',
+          label: '发布',
           color: '#27c274',
+          unit: 'cps'
+        },
+        {
+          metric: 'rabbitmq_overview_messages_delivered_rate',
+          label: '投递',
+          color: '#13c2c2',
+          unit: 'cps'
+        },
+        {
+          metric: 'rabbitmq_overview_messages_acked_rate',
+          label: '确认',
+          color: '#8a5cff',
           unit: 'cps'
         }
       ]
@@ -319,6 +383,46 @@ export const RABBITMQ_DASHBOARD_CONFIG: SimpleDashboardConfig = {
           color: '#13c2c2',
           unit: 'cps'
         }
+      ]
+    },
+    {
+      title: '队列深度',
+      subtitle: '按队列 / vhost',
+      metric: 'rabbitmq_queue_messages',
+      keepDimensionSeries: true,
+      guide: [{ label: '队列深度', detail: '开启采集队列后按 queue、vhost 展示。' }],
+      series: [
+        { metric: 'rabbitmq_queue_messages', label: '深度', color: '#2f6bff', unit: 'counts' }
+      ]
+    },
+    {
+      title: '队列就绪',
+      subtitle: '按队列 / vhost',
+      metric: 'rabbitmq_queue_messages_ready',
+      keepDimensionSeries: true,
+      guide: [{ label: '队列就绪', detail: '各队列就绪消息。' }],
+      series: [
+        { metric: 'rabbitmq_queue_messages_ready', label: '就绪', color: '#ff8a1f', unit: 'counts' }
+      ]
+    },
+    {
+      title: '队列未确认',
+      subtitle: '按队列 / vhost',
+      metric: 'rabbitmq_queue_messages_unack',
+      keepDimensionSeries: true,
+      guide: [{ label: '队列未确认', detail: '各队列未确认消息。' }],
+      series: [
+        { metric: 'rabbitmq_queue_messages_unack', label: '未确认', color: '#faad14', unit: 'counts' }
+      ]
+    },
+    {
+      title: '队列消费者',
+      subtitle: '按队列 / vhost',
+      metric: 'rabbitmq_queue_consumers',
+      keepDimensionSeries: true,
+      guide: [{ label: '队列消费者', detail: '各队列消费者数。' }],
+      series: [
+        { metric: 'rabbitmq_queue_consumers', label: '消费者', color: '#27c274', unit: 'counts' }
       ]
     }
   ],

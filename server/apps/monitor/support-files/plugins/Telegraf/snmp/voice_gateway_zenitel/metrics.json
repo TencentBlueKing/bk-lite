@@ -3,6 +3,7 @@
   "collect_type": "snmp_zenitel",
   "plugin": "VoiceGateway Zenitel SNMP",
   "plugin_desc": "Zenitel Vingtor-Stentofon Exigo and Turbine voice devices SNMP child template. In addition to the shared VoiceGateway SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic, it collects VS-DEVICE-MIB temperature sensors and power-source status from the Zenitel enterprise tree. Fan speed is exposed as RPM and voltage as mV, so they are not promoted into shared fan-state or PSU-voltage health metrics in this pass.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='voice_gateway', collect_type='snmp_zenitel'}) by (instance_id)",
   "name": "VoiceGateway",
   "icon": "mm-zenitel_zenitel",

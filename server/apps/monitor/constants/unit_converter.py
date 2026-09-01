@@ -12,11 +12,11 @@ class UnitConverterConstants:
     # 单位体系定义（按照产品文档，只有同一体系的单位才能互相转换）
     # 每个体系包含单位序列（从小到大）和换算基数
     UNIT_SYSTEMS = {
-        # 百分比体系
+        # 百分比体系：percentunit 为 0.0–1.0 比例，percent 为 0–100
         'percent': {
-            'units': ['percent'],
+            'units': ['percentunit', 'percent'],
             'base': 1,
-            'display_units': ['%'],
+            'display_units': ['%', '%'],
         },
 
         # 计数体系（1000进制）
@@ -74,6 +74,7 @@ class UnitConverterConstants:
     UNIT_ID_TO_NAME = {
         # Base
         'none': 'none',
+        'percentunit': 'percentunit',
         'percent': 'percent',
 
         # Count
@@ -148,6 +149,7 @@ class UnitConverterConstants:
 
     # 展示单位映射（单位ID -> 展示格式）
     DISPLAY_UNIT_MAPPING = {
+        'percentunit': '%',
         'percent': '%',
         'counts': '',
         'thousand': 'K',
@@ -209,6 +211,7 @@ class UnitConverterConstants:
     UNIT_CATEGORY_MAPPING = {
         # Base 类别
         'none': 'Base',
+        'percentunit': 'Base',
         'percent': 'Base',
 
         # Count 类别
@@ -296,4 +299,3 @@ class UnitConverterConstants:
     PRECISION_LARGE_VALUE = 1  # 值 >= 100 时的精度
     PRECISION_MEDIUM_VALUE = 2  # 值 >= 10 时的精度
     PRECISION_SMALL_VALUE = 3  # 值 < 10 时的精度
-

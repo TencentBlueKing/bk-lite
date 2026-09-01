@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import json
 import re
+import threading
 from datetime import datetime, timezone
 
 from langchain_core.runnables import RunnableConfig
@@ -111,6 +112,8 @@ def _unresolved_connection_result(target: dict, error: str) -> str:
     payload = dict(target or {})
     payload["resolved"] = False
     payload["error"] = error
+    payload["conclusive"] = True
+    payload["lookup_exhausted"] = True
     if not payload.get("reason"):
         payload["reason"] = error
     return json.dumps(payload, ensure_ascii=False)
@@ -212,13 +215,31 @@ def _enrich_pod_snapshot(snapshot):
     return enriched
 
 
+_K8S_KIND_NAMES = frozenset(
+    {
+        "pod",
+        "deployment",
+        "statefulset",
+        "daemonset",
+        "replicaset",
+        "job",
+        "cronjob",
+        "service",
+        "node",
+    }
+)
+K8S_TARGET_RESOLVE_TOOL_NAME = "resolve_k8s_target_from_alert"
+_resolve_cache_local = threading.local()
+
+
 def _extract_labels(alert):
     labels = alert.get("labels") or {}
     labels = dict(labels) if isinstance(labels, dict) else {}
-    # 模型常把 pod_name/namespace 放在告警顶层而不是 labels 里
+    # 模型常把 pod_name/namespace/name/kind 放在告警顶层而不是 labels 里
     for key in (
         "pod",
         "pod_name",
+        "name",
         "namespace",
         "cluster",
         "cluster_id",
@@ -259,6 +280,102 @@ def _guess_resource_name_from_text(*texts: str) -> str | None:
     return None
 
 
+def _flat_object_name(labels: dict) -> str | None:
+    """顶层 name：仅在 kind 为 K8s 资源或名字像 Pod 时采用，避免把告警标题当对象名。"""
+    candidate = labels.get("name")
+    if candidate in (None, "", [], {}):
+        return None
+    text = str(candidate).strip()
+    if not text:
+        return None
+    kind = str(labels.get("kind") or labels.get("resource_type") or "").lower()
+    if kind in _K8S_KIND_NAMES:
+        return text
+    if _POD_LIKE_NAME_RE.fullmatch(text):
+        return text
+    return None
+
+
+def _mark_target_conclusive(target: dict, *, lookup_exhausted: bool = False) -> dict:
+    target["resolved"] = False
+    target["conclusive"] = True
+    if lookup_exhausted:
+        target["lookup_exhausted"] = True
+    return target
+
+
+def _parse_k8s_target_payload(content) -> dict | None:
+    payload = content
+    if isinstance(content, str):
+        text = content.strip()
+        if not text or text[0] not in "{[":
+            return None
+        try:
+            payload = json.loads(text)
+        except Exception:
+            return None
+    if isinstance(payload, dict):
+        return payload
+    return None
+
+
+def is_k8s_target_lookup_exhausted(content) -> bool:
+    """反查已终态：对象不可见、标识不足或连接失败，同一参数再调不会变。"""
+    payload = _parse_k8s_target_payload(content)
+    if not payload:
+        return False
+    if payload.get("conclusive") is True or payload.get("lookup_exhausted") is True:
+        return True
+    if payload.get("resolved") is True:
+        return False
+    missing = payload.get("missing_data") or []
+    return "namespace" in missing or "resource_type_or_name" in missing
+
+
+def k8s_target_lookup_exhausted_from_messages(messages) -> bool:
+    for message in reversed(messages or []):
+        name = str(getattr(message, "name", "") or "")
+        if name != K8S_TARGET_RESOLVE_TOOL_NAME:
+            continue
+        return is_k8s_target_lookup_exhausted(getattr(message, "content", None))
+    return False
+
+
+def _alert_resolve_fingerprint(alert: dict) -> str:
+    keys = (
+        "cluster",
+        "kind",
+        "name",
+        "namespace",
+        "pod",
+        "pod_name",
+        "resource_name",
+        "resource_type",
+        "labels",
+        "title",
+        "message",
+        "detail",
+    )
+    slim = {key: (alert or {}).get(key) for key in keys}
+    return json.dumps(slim, ensure_ascii=False, sort_keys=True, default=str)
+
+
+def _resolve_alert_cache(config: RunnableConfig = None) -> dict:
+    """同一线程内缓存反查结果。LangChain invoke 会复制 config，不能只写 configurable。"""
+    configurable = _configurable(config)
+    existing = configurable.get("_k8s_resolve_alert_cache")
+    if isinstance(existing, dict):
+        _resolve_cache_local.entries = existing
+        return existing
+    cache = getattr(_resolve_cache_local, "entries", None)
+    if not isinstance(cache, dict):
+        cache = {}
+        _resolve_cache_local.entries = cache
+    if configurable:
+        configurable["_k8s_resolve_alert_cache"] = cache
+    return cache
+
+
 def _apply_namespace_lookup(target: dict, pods: list, events: list) -> dict:
     """在缺 namespace 时，用 Pod 列表 / Events 反查命名空间。"""
     resource_name = target.get("pod_name") or target.get("resource_name")
@@ -295,12 +412,16 @@ def _apply_namespace_lookup(target: dict, pods: list, events: list) -> dict:
         target["missing_data"] = list(dict.fromkeys((target.get("missing_data") or []) + ["namespace"]))
         target["namespace_candidates"] = unique
         target["resolved"] = False
+        target["lookup_exhausted"] = True
+        target["conclusive"] = True
         target["reason"] = f"Multiple namespaces matched resource {resource_name}: {', '.join(unique)}"
     else:
         target["missing_data"] = list(dict.fromkeys((target.get("missing_data") or []) + ["namespace"]))
         if not target.get("reason"):
             target["reason"] = f"Namespace not found for resource {resource_name} via pods/events lookup"
         target["resolved"] = False
+        target["lookup_exhausted"] = True
+        target["conclusive"] = True
 
     return target
 
@@ -309,14 +430,18 @@ def _build_k8s_target_from_alert(alert: dict) -> dict:
     labels = _extract_labels(alert)
     title = alert.get("title") or ""
     message = alert.get("message") or ""
+    detail = alert.get("detail") or ""
+    resource_type_label = str(labels.get("resource_type") or labels.get("kind") or "").lower()
+    flat_name = _flat_object_name(labels)
 
     pod_name = _first_non_empty(
         labels.get("pod"),
         labels.get("pod_name"),
-        labels.get("resource_name") if str(labels.get("resource_type") or "").lower() in ("", "pod") else None,
+        labels.get("resource_name") if resource_type_label in ("", "pod") else None,
+        flat_name if resource_type_label in ("", "pod") else None,
     )
     if not pod_name:
-        pod_name = _guess_resource_name_from_text(title, message)
+        pod_name = _guess_resource_name_from_text(title, message, detail)
 
     target = {
         "cluster": labels.get("cluster") or labels.get("cluster_id"),
@@ -333,22 +458,23 @@ def _build_k8s_target_from_alert(alert: dict) -> dict:
         "reason": None,
     }
 
-    resource_type_label = str(labels.get("resource_type") or labels.get("kind") or "").lower()
     if target["pod_name"] or resource_type_label == "pod":
         target["resource_type"] = "pod"
-        target["resource_name"] = target["pod_name"] or labels.get("resource_name")
+        target["resource_name"] = target["pod_name"] or labels.get("resource_name") or (flat_name if resource_type_label == "pod" else None)
     elif target["node_name"] or resource_type_label == "node":
         target["resource_type"] = "node"
-        target["resource_name"] = target["node_name"] or labels.get("resource_name")
+        target["resource_name"] = target["node_name"] or labels.get("resource_name") or (flat_name if resource_type_label == "node" else None)
     elif target["service_name"] or resource_type_label == "service":
         target["resource_type"] = "service"
-        target["resource_name"] = target["service_name"] or labels.get("resource_name")
+        target["resource_name"] = target["service_name"] or labels.get("resource_name") or (flat_name if resource_type_label == "service" else None)
     elif target["deployment_name"] or resource_type_label == "deployment":
         target["resource_type"] = "deployment"
-        target["resource_name"] = target["deployment_name"] or labels.get("resource_name")
-    elif labels.get("resource_name"):
+        target["resource_name"] = (
+            target["deployment_name"] or labels.get("resource_name") or (flat_name if resource_type_label == "deployment" else None)
+        )
+    elif labels.get("resource_name") or flat_name:
         target["resource_type"] = resource_type_label or "pod"
-        target["resource_name"] = labels.get("resource_name")
+        target["resource_name"] = labels.get("resource_name") or flat_name
         if target["resource_type"] == "pod":
             target["pod_name"] = target["resource_name"]
 
@@ -357,6 +483,7 @@ def _build_k8s_target_from_alert(alert: dict) -> dict:
     elif not target["resource_type"] or not target["resource_name"]:
         target["reason"] = "Missing resource identifier needed to resolve Kubernetes target"
         target["missing_data"].append("resource_type_or_name")
+        _mark_target_conclusive(target)
     elif not target["namespace"]:
         target["missing_data"].append("namespace")
         target["reason"] = "Missing namespace; will attempt pods/events reverse lookup"
@@ -387,19 +514,33 @@ def normalize_alert_event(alert_payload, config: RunnableConfig = None):
 
 @tool()
 def resolve_k8s_target_from_alert(normalized_alert, config: RunnableConfig = None):
-    """从标准化告警中解析 Kubernetes 目标对象；缺 namespace 时通过 Pod/Events 反查。"""
+    """从标准化告警解析 K8s 目标；缺 namespace 时反查一次 Pod/Events。
+
+    同一告警参数只应调用一次。返回 resolved=false 且 conclusive/lookup_exhausted 时
+    表示对象当前不可见或标识不足，禁止用相同参数重试。
+    """
     alert = normalized_alert if isinstance(normalized_alert, dict) else {}
     if isinstance(normalized_alert, str):
         try:
             alert = json.loads(normalized_alert)
         except Exception:
             alert = {}
+    if not isinstance(alert, dict):
+        alert = {}
 
-    target = _build_k8s_target_from_alert(alert if isinstance(alert, dict) else {})
+    cache = _resolve_alert_cache(config)
+    fingerprint = _alert_resolve_fingerprint(alert)
+    cached = cache.get(fingerprint)
+    if isinstance(cached, str) and cached:
+        return cached
+
+    target = _build_k8s_target_from_alert(alert)
 
     connection_error = _cluster_config_error(config)
     if connection_error:
-        return _unresolved_connection_result(target, connection_error)
+        result = _unresolved_connection_result(target, connection_error)
+        cache[fingerprint] = result
+        return result
 
     needs_lookup = bool(target.get("resource_name") or target.get("pod_name")) and not target.get("namespace")
     if needs_lookup:
@@ -409,10 +550,14 @@ def resolve_k8s_target_from_alert(normalized_alert, config: RunnableConfig = Non
             pods_raw = list_kubernetes_pods.invoke({"namespace": None}, config=config)
             events_raw = list_kubernetes_events.invoke({"namespace": None}, config=config)
         except Exception as lookup_exc:
-            return _unresolved_connection_result(target, str(lookup_exc).strip() or type(lookup_exc).__name__)
+            result = _unresolved_connection_result(target, str(lookup_exc).strip() or type(lookup_exc).__name__)
+            cache[fingerprint] = result
+            return result
         lookup_error = _lookup_payload_error(pods_raw) or _lookup_payload_error(events_raw)
         if lookup_error:
-            return _unresolved_connection_result(target, lookup_error)
+            result = _unresolved_connection_result(target, lookup_error)
+            cache[fingerprint] = result
+            return result
         pods = _json_or_raw(pods_raw) or []
         events = _json_or_raw(events_raw) or []
         if not isinstance(pods, list):
@@ -430,8 +575,11 @@ def resolve_k8s_target_from_alert(normalized_alert, config: RunnableConfig = Non
         target["missing_data"] = list(dict.fromkeys((target.get("missing_data") or []) + ["namespace"]))
         if not target.get("reason"):
             target["reason"] = "Missing namespace after pods/events reverse lookup"
+        _mark_target_conclusive(target, lookup_exhausted=True)
 
-    return json.dumps(target, ensure_ascii=False)
+    result = json.dumps(target, ensure_ascii=False)
+    cache[fingerprint] = result
+    return result
 
 
 def _collect_pod_context(target, scope):

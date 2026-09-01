@@ -1,6 +1,7 @@
 """skill_channel 对话 page_context：当轮注入、不落历史、超限防御。"""
 
 import json
+import logging
 from unittest.mock import patch
 
 import pytest
@@ -130,6 +131,44 @@ class TestInjectPageContext:
         assert "禁止回答、复述或续写历史对话里已经分析过的其它图表" in text
         assert "不要沿用上一问的结论、表格、图表名或时间范围" in text
 
+    def test_disk_usage_question_keeps_resource_trend_not_throughput(self):
+        page_context = {
+            "sections": [
+                {
+                    "id": "dashboard-time-range",
+                    "label": "时间筛选",
+                    "content": "当前筛选: 最近15分钟\nKPI 快照:\n磁盘使用率: 82.9%\nCPU 使用率: 86.0%",
+                    "priority": 9,
+                },
+                {
+                    "id": "visible-charts",
+                    "label": "可见图表",
+                    "content": (
+                        "1. 资源使用趋势；序列: CPU 使用率, 内存使用率, 磁盘使用率, I/O Wait 占比；最新值: 86.0, 79.0, 82.9, 6.9\n" "2. 磁盘吞吐趋势；序列: 读吞吐, 写吞吐；最新值: 12.1, 8.4"
+                    ),
+                    "priority": 9,
+                },
+            ],
+            "images": [
+                {
+                    "caption": "资源使用趋势；序列: CPU 使用率, 内存使用率, 磁盘使用率, I/O Wait 占比；最新值: 86.0, 79.0, 82.9, 6.9",
+                    "dataUrl": _tiny_png_data_url(),
+                },
+                {
+                    "caption": "磁盘吞吐趋势；序列: 读吞吐, 写吞吐；最新值: 12.1, 8.4",
+                    "dataUrl": _tiny_png_data_url() + "A",
+                },
+            ],
+        }
+        result = chat_svc.inject_page_context("磁盘使用率高吗", page_context)
+        image_items = [item for item in result if item.get("type") == "image_url"]
+        assert len(image_items) == 1
+        text = result[-1]["message"]
+        assert "资源使用趋势" in text
+        assert "磁盘使用率: 82.9%" in text
+        assert "磁盘吞吐趋势" not in text
+        assert "《资源使用趋势》" in text
+
     def test_cpu_time_question_keeps_distribution_chart(self):
         page_context = {
             "sections": [
@@ -184,6 +223,15 @@ class TestInjectPageContext:
         }
         assert chat_svc.chart_title_matches_question("CPU 时间分布", "具体分析下CPU使用时间")
         assert not chat_svc.chart_title_matches_question("资源使用趋势", "具体分析下CPU使用时间")
+        assert not chat_svc.chart_title_matches_question("磁盘吞吐趋势", "磁盘使用率高吗")
+        assert chat_svc.chart_matches_question(
+            "资源使用趋势；序列: CPU 使用率, 内存使用率, 磁盘使用率, I/O Wait 占比；最新值: 86.0, 79.0, 82.9, 6.9",
+            "磁盘使用率高吗",
+        )
+        assert not chat_svc.chart_matches_question(
+            "磁盘吞吐趋势；序列: 读吞吐, 写吞吐；最新值: 12.1, 8.4",
+            "磁盘使用率高吗",
+        )
         result = chat_svc.inject_page_context("具体分析下CPU使用时间", page_context)
         image_items = [item for item in result if item.get("type") == "image_url"]
         assert len(image_items) == 1
@@ -495,6 +543,51 @@ class TestPageContextIngestLog:
             )
             is None
         )
+
+    def test_absent_page_context_logs_debug_without_question_payload(self, caplog):
+        skill = _skill()
+        ch = _channel(skill)
+        user = _superuser("page_ctx_absent_log")
+        question = "SECRET_PAGE_CONTEXT_ABSENT_QUESTION_SENTINEL"
+        session_id = "sess-pc-absent"
+        caplog.set_level(logging.DEBUG, logger="opspilot")
+        with _patched_stream() as mock_stream:
+            with patch(
+                "apps.opspilot.services.skill_channel_chat_service.capture_caller_identity",
+                return_value={"username": "page_ctx_absent_log"},
+            ):
+                resp = chat_svc.stream_skill_channel_chat(
+                    channel=ch,
+                    user_message=question,
+                    request=_stream_request(user, message=question),
+                    external_user_id="absent@domain.com",
+                    session_id=session_id,
+                    page_context=None,
+                )
+        assert isinstance(resp, StreamingHttpResponse)
+        assert resp["Content-Type"].startswith("text/event-stream")
+        mock_stream.assert_called_once()
+        params = mock_stream.call_args.args[0]
+        ingest_kwargs = mock_stream.call_args.args[2]
+        assert params["user_message"] == question
+        assert "page_context_ingest" not in ingest_kwargs
+        assert SkillConversationMessage.objects.filter(role="user", content=question).exists()
+
+        records = [record for record in caplog.records if "page_context absent" in str(record.msg)]
+        assert len(records) == 1
+        record = records[0]
+        assert record.name == "opspilot"
+        assert record.levelno == logging.DEBUG
+        assert record.msg == "page_context absent: session_id=%s"
+        assert record.args == (session_id,)
+        rendered = record.getMessage()
+        formatted = logging.Formatter("%(levelname)s %(name)s %(message)s").format(record)
+        assert rendered == f"page_context absent: session_id={session_id}"
+        assert question not in rendered
+        assert question not in formatted
+        assert question not in "".join(str(part) for part in record.args)
+        assert question not in caplog.text
+        assert not any(rec.levelno >= logging.INFO and "page_context absent" in rec.getMessage() for rec in caplog.records)
 
     def test_emits_summary_at_info_and_details_at_debug(self):
         report = chat_svc.build_page_context_ingest_report(

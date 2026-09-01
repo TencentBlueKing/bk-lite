@@ -3,6 +3,7 @@
   "collect_type": "snmp_huawei_usg",
   "plugin": "Firewall Huawei SNMP",
   "plugin_desc": "Huawei Secospace USG firewall SNMP collection (HUAWEI-ENTITY-EXTENT-MIB, enterprise 2011). Collects IF-MIB + 64-bit HC traffic, and per-entity CPU (hwEntityCpuUsage), memory (hwEntityMemUsage), temperature (hwEntityTemperature), and voltage (hwEntityVoltage, mV→V via /1000), each multi-dimensional by descr (entPhysicalName). Fan operational state (hwEntityFanState) and PSU state (hwEntityPwrState) are absent from the USG6390 Info-Finder MIB export; optical Rx/Tx is USG9500-only and intentionally omitted. Supported brands/models — Huawei USG6300/USG6390 and related Secospace USG appliances.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_huawei_usg'}) by (instance_id)",
   "name": "Firewall",
   "icon": "mm-firewall_防火墙",

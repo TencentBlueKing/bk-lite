@@ -3,6 +3,7 @@
   "collect_type": "snmp_watchguard",
   "plugin": "Firewall WatchGuard SNMP",
   "plugin_desc": "WatchGuard-specific SNMP collection template for Fireware firewalls. In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects WATCHGUARD-SYSTEM-STATISTICS-MIB private OIDs for device health (CPU utilization) and firewall-specific state (current active connections). Sourced from LibreNMS Fireware support and the WATCHGUARD-SYSTEM-STATISTICS-MIB. Supported brands/models — WatchGuard Firebox firewalls (Fireware OS).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_watchguard'}) by (instance_id)",
   "name": "Firewall",
   "icon": "mm-firewall_防火墙",

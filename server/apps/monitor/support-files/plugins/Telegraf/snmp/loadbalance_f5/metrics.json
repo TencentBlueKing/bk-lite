@@ -3,6 +3,7 @@
   "collect_type": "snmp_f5",
   "plugin": "Loadbalance F5 SNMP",
   "plugin_desc": "F5-specific SNMP collection template for F5 BIG-IP load balancers. In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects F5-BIGIP-SYSTEM-MIB private OIDs for device health (host CPU utilization, host memory total/used/usage) and load-balancer-specific state (current client connections). Sourced from the official F5-BIGIP-SYSTEM-MIB. Supported brands/models — F5 BIG-IP (LTM/GTM/DNS; iSeries / VIPRION / VE).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='loadbalance', collect_type='snmp_f5'}) by (instance_id)",
   "name": "Loadbalance",
   "icon": "mm-loadbalance_负载均衡",

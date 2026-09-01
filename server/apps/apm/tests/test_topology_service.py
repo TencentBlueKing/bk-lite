@@ -9,7 +9,7 @@ from apps.apm.adapters import InMemoryTraceStore, TelemetryStoreUnavailable
 from apps.apm.adapters.span_aliases import format_peer_endpoint, infer_downstream
 from apps.apm.models import ApmService
 from apps.apm.services import DjangoApmTopologyService, DjangoTelemetryCatalogService
-from apps.apm.services.contracts import CatalogDiscovery, SpanDetail, TopologySampleQuery, TopologyTarget, TraceDetail
+from apps.apm.services.contracts import CatalogDiscovery, SpanDetail, TopologyTarget, TraceDetail
 from apps.apm.tests.helpers import create_application
 
 
@@ -87,6 +87,21 @@ def _mysql_client_trace(now, *, attr_key="db.system", trace_id="b" * 32, status=
             ),
         ),
     )
+
+
+def test_topology_build_propagates_telemetry_unavailable_instead_of_no_data():
+    now = timezone.now()
+
+    class _UnavailableStore:
+        def sample_traces(self, query):
+            raise TelemetryStoreUnavailable("VictoriaTraces 查询不可用")
+
+    with pytest.raises(TelemetryStoreUnavailable, match="查询不可用"):
+        DjangoApmTopologyService(_UnavailableStore()).build(
+            [TopologyTarget("shop", "gateway", "prod", "go")],
+            started_at=now - timedelta(hours=1),
+            ended_at=now,
+        )
 
 
 def test_topology_builds_cross_service_edges_and_edge_red_from_the_same_sample():
@@ -272,6 +287,82 @@ def test_inferred_mysql_node_exists_only_in_topology_result():
 
     assert {node.service_name for node in graph.nodes if node.kind == "inferred"} == {"mysql"}
     assert {node.service_name for node in graph.nodes if node.kind == "instrumented"} == {"gateway"}
+
+
+def test_user_request_node_exists_only_in_topology_result():
+    now = timezone.now()
+    service = DjangoApmTopologyService(InMemoryTraceStore(details=[_user_entry_trace(now)]))
+
+    graph = service.build(
+        [TopologyTarget("shop", "storefront", "prod")],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+        include_user_request=True,
+    )
+
+    assert {node.service_name for node in graph.nodes if node.kind == "user_request"} == {"user_request"}
+    assert {node.service_name for node in graph.nodes if node.kind == "instrumented"} == {"storefront"}
+    assert all(node.service_namespace == "" for node in graph.nodes if node.kind == "user_request")
+
+
+@pytest.mark.django_db
+def test_catalog_http_does_not_materialize_inferred_or_user_request_nodes(apm_api_client):
+    now = timezone.now()
+    create_application("shop", (10,))
+    catalog = DjangoTelemetryCatalogService()
+    catalog.discover(CatalogDiscovery("shop", "storefront", "storefront-1", "prod", seen_at=now))
+    catalog.discover(CatalogDiscovery("shop", "gateway", "gateway-1", "prod", seen_at=now))
+    graph = DjangoApmTopologyService(
+        InMemoryTraceStore(details=[_user_entry_trace(now), _mysql_client_trace(now)]),
+    ).build(
+        [TopologyTarget("shop", "storefront", "prod"), TopologyTarget("shop", "gateway", "prod")],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+        include_inferred=True,
+        include_user_request=True,
+    )
+
+    response = apm_api_client.get("/api/v1/apm/services/")
+    names = {item["name"] for item in response.data} if isinstance(response.data, list) else {item["name"] for item in response.data["items"]}
+
+    assert {node.service_name for node in graph.nodes if node.kind == "inferred"} == {"mysql"}
+    assert {node.service_name for node in graph.nodes if node.kind == "user_request"} == {"user_request"}
+    assert all(node.service_namespace == "" for node in graph.nodes if node.kind in {"inferred", "user_request"})
+    assert response.status_code == 200
+    assert names == {"storefront", "gateway"}
+    assert "mysql" not in names
+    assert "user_request" not in names
+    assert not ApmService.objects.filter(name__in=["mysql", "user_request"]).exists()
+
+
+def test_catalog_and_red_do_not_surface_topology_synthetic_nodes():
+    from apps.apm.services import catalog as catalog_module
+    from apps.apm.services import query as query_module
+
+    for module in (catalog_module, query_module):
+        source = Path(module.__file__).read_text(encoding="utf-8")
+        assert "include_inferred" not in source
+        assert "include_user_request" not in source
+        assert "user_request" not in source
+
+
+def test_topology_query_flag_defaults_match_global_and_app_detail_shapes():
+    from apps.apm.views.topology import TopologyQuerySerializer
+
+    defaults = TopologyQuerySerializer(data={})
+    assert defaults.is_valid(), defaults.errors
+    assert defaults.validated_data["include_inferred"] is False
+    assert defaults.validated_data["include_user_request"] is False
+
+    global_shape = TopologyQuerySerializer(data={"include_inferred": True})
+    assert global_shape.is_valid(), global_shape.errors
+    assert global_shape.validated_data["include_inferred"] is True
+    assert global_shape.validated_data["include_user_request"] is False
+
+    app_detail = TopologyQuerySerializer(data={"include_inferred": True, "include_user_request": True})
+    assert app_detail.is_valid(), app_detail.errors
+    assert app_detail.validated_data["include_inferred"] is True
+    assert app_detail.validated_data["include_user_request"] is True
 
 
 def test_inferred_node_requires_org_visible_caller():
@@ -730,15 +821,12 @@ def test_topology_api_inferred_mysql_does_not_appear_in_service_catalog(apm_api_
     assert not ApmService.objects.filter(name="mysql").exists()
 
 
-def test_sample_traces_omitted_fetch_logs_template_without_leaking_payload(caplog):
+def test_sample_traces_span_fetch_failure_is_unavailable_not_empty(caplog):
     from apps.apm.adapters.victoriatraces import VictoriaTracesTelemetryStore
 
     class _Store(VictoriaTracesTelemetryStore):
         def __init__(self):
             super().__init__(endpoint="http://traces.test")
-
-        def sample_traces(self, query: TopologySampleQuery):
-            raise AssertionError("not used")
 
         def _query_rows(self, query, started_at, ended_at, *, limit=None):
             raise TelemetryStoreUnavailable("VictoriaTraces 查询不可用")
@@ -746,14 +834,14 @@ def test_sample_traces_omitted_fetch_logs_template_without_leaking_payload(caplo
     store = _Store()
     caplog.set_level("WARNING", logger="apm")
     now = timezone.now()
-    traces, omitted = store._fetch_topology_traces(
-        ["secret-token-should-not-appear", "a" * 32],
-        started_at=now - timedelta(hours=1),
-        ended_at=now,
-    )
 
-    assert traces == []
-    assert omitted == 2
+    with pytest.raises(TelemetryStoreUnavailable, match="查询不可用"):
+        store._fetch_topology_traces(
+            ["secret-token-should-not-appear", "a" * 32],
+            started_at=now - timedelta(hours=1),
+            ended_at=now,
+        )
+
     records = [
         record
         for record in caplog.records

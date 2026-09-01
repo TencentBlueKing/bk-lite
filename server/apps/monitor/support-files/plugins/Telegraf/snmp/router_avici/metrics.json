@@ -3,6 +3,7 @@
   "collect_type": "snmp_avici",
   "plugin": "Router Avici SNMP",
   "plugin_desc": "Avici Systems core router SNMP collection template (TSR / SSR series, IANA PEN 2474). This is a clean baseline template — it collects system uptime and IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, admin/oper status, speed, error/discard/packet counters and aggregate device traffic. CPU, memory, temperature, fan and power-supply state are not collected (N/A) because the Avici private MIB (enterprise 2474) does not publish stable row-filter-free scalar device-health gauges that can be reliably polled on these legacy high-speed core routers. Supported brands/models — Avici Systems TSR / SSR core routers (enterprise 2474).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_avici'}) by (instance_id)",
   "name": "Router",
   "icon": "mm-router_路由器",

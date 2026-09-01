@@ -7,12 +7,12 @@ export const APPLICATION3D_ASSETS = {
   flare: '/ops-analysis/application3d/flare.png',
 } as const;
 
-export const CARD_WORLD_WIDTH = 3.2;
-export const CARD_WORLD_HEIGHT = 4;
+export const CARD_WORLD_WIDTH = 4.6;
+export const CARD_WORLD_HEIGHT = 1.92;
 export const CARD_ASPECT = CARD_WORLD_WIDTH / CARD_WORLD_HEIGHT;
-export const CARD_GAP = 0.4;
-export const CARD_TEXTURE_WIDTH = 512;
-export const CARD_TEXTURE_HEIGHT = 640;
+export const CARD_GAP = 0.38;
+export const CARD_TEXTURE_WIDTH = 768;
+export const CARD_TEXTURE_HEIGHT = 320;
 
 export type Application3DNeonLevel = 'normal' | 'fatal' | 'error' | 'warning' | 'info' | 'remain';
 
@@ -54,10 +54,10 @@ export const NEON_PANEL: Record<
 
 /** Legacy ParticleSystem (initScene.js) */
 export const LEGACY_PARTICLE = {
-  /** Scaled down from 80000 for widget GPU; behavior identical. */
-  capacity: 12000,
-  color1: { r: 0.7, g: 0.8, b: 1.0, a: 1.0 },
-  color2: { r: 0.2, g: 0.5, b: 1.0, a: 1.0 },
+  /** Scaled down for widget GPU; faint starfield, not a glowing volume. */
+  capacity: 420,
+  color1: { r: 0.55, g: 0.65, b: 0.82, a: 0.7 },
+  color2: { r: 0.18, g: 0.32, b: 0.55, a: 0.45 },
   colorDead: { r: 0, g: 0, b: 0.2, a: 0 },
   minSize: 0.1,
   maxSize: 0.5,
@@ -66,7 +66,7 @@ export const LEGACY_PARTICLE = {
   /** Babylon default emit direction is +Y with emitPower ~1. */
   minEmitPower: 0.6,
   maxEmitPower: 1.4,
-  emitBox: 100,
+  emitBox: 28,
 } as const;
 
 /** Babylon: 0→100 @ 60fps / speedRatio */

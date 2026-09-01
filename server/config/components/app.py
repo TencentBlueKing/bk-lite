@@ -8,6 +8,8 @@ ROOT_URLCONF = "urls"
 # 检查当前数据库环境
 _db_engine = os.getenv("DB_ENGINE", "postgresql").lower()
 _migrate_patch_db_engines = {"dameng", "gaussdb", "goldendb", "oceanbase", "mysql"}
+# 显式 INSTALL_APPS 裁剪时仍须装入的 always-on 业务 app（与 extra.py 保持一致）
+_ALWAYS_ON_SCAN_APPS = frozenset({"system_mgmt", "console_mgmt"})
 
 # 模板页面配置
 TEMPLATES = [
@@ -132,11 +134,13 @@ APPS_DIR = os.path.join(BASE_DIR, "apps")
 if os.path.exists(APPS_DIR):
     install_apps = os.getenv("INSTALL_APPS", "")
     if install_apps:
+        requested_apps = {name.strip() for name in install_apps.split(",") if name.strip()}
+        requested_apps |= _ALWAYS_ON_SCAN_APPS
         app_folders = [
             name
             for name in os.listdir(APPS_DIR)
             if os.path.isdir(os.path.join(APPS_DIR, name))
-            and name in install_apps.split(",")
+            and name in requested_apps
             and (name != "license_mgmt" or _enterprise_status.should_enable_license_mgmt)
         ]
     else:

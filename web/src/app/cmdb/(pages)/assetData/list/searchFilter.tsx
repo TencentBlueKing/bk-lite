@@ -11,6 +11,7 @@ import { SearchFilterProps } from '@/app/cmdb/types/assetData';
 import { useAssetDataStore, type SavedFilter } from '@/app/cmdb/store';
 import { useSavedFiltersApi, type SavedFiltersConfigValue } from '@/app/cmdb/api/userConfig';
 import { getTagOptions } from '@/app/cmdb/utils/fieldUtils';
+import { visibleSearchableFilterAttrs } from '../searchFilterAttrs';
 import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
 
@@ -36,6 +37,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
   proxyOptions,
   showExactSearch = true,
   modelId = '',
+  displayFieldKeys,
   onSearch,
   onChange,
   onFilterChange,
@@ -68,21 +70,21 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
     }
   }, [searchAttr_store, searchAttr]);
 
-  // 附件/图片字段（企业版）不参与搜索
-  const searchableAttrs = attrList.filter(
-    (attr) => !['attachment', 'image'].includes(attr.attr_type)
+  const searchableAttrs = useMemo(
+    () => visibleSearchableFilterAttrs(attrList, displayFieldKeys),
+    [attrList, displayFieldKeys],
   );
 
-  // 初始化默认字段
   useEffect(() => {
-    if (searchableAttrs.length) {
-      setSearchAttr(searchableAttrs[0].attr_id);
-      useAssetDataStore.setState((state) => ({
-        ...state,
-        searchAttr: searchableAttrs[0].attr_id,
-      }));
-    }
-  }, [searchableAttrs.length]);
+    if (!searchableAttrs.length) return;
+    if (searchableAttrs.some((attr) => attr.attr_id === searchAttr)) return;
+    const nextAttr = searchableAttrs[0].attr_id;
+    setSearchAttr(nextAttr);
+    useAssetDataStore.setState((state) => ({
+      ...state,
+      searchAttr: nextAttr,
+    }));
+  }, [searchAttr, searchableAttrs]);
 
   // 监听窗口大小变化，更新是否折叠收藏的筛选条件
   useEffect(() => {
@@ -458,6 +460,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
         <Select
           className={`${searchFilterStyle.attrList} w-[120px]`}
           value={searchAttr}
+          popupMatchSelectWidth={false}
           onChange={onSearchAttrChange}
         >
           {searchableAttrs.map((attr) => (

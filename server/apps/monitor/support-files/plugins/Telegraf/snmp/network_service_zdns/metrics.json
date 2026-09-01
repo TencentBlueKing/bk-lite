@@ -3,6 +3,7 @@
   "collect_type": "snmp_zdns",
   "plugin": "NetworkService ZDNS SNMP",
   "plugin_desc": "ZDNS DNS/GSLB network-service SNMP collection for appliances exposing ZDNS private PEN 39810 and F5 BIG-IP LTM PEN 3375 objects. Beyond standard MIB-II / IF-MIB uptime and 64-bit HC interface traffic, it collects ZDNS private scalar health — CPU utilization, memory utilization and CPU temperature — plus DNS/DHCP/NTP/ZWP/TFTP service status and F5 LTM virtual-server, node, pool and pool-member availability states, normalized to 1=healthy / 2=fault. Query success rate, cache hit rate, recursion count and disk usage are business or capacity indicators, so they are not promoted into shared device-health metrics.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_zdns'}) by (instance_id)",
   "name": "NetworkService",
   "icon": "mm-network_service_网络服务",

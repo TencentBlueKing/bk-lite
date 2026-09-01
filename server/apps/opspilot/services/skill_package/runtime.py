@@ -6,6 +6,7 @@ from typing import Any, Iterable
 import yaml
 
 from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.services.skill_package.materialize_cache import cached_materialize_dir, store_materialized_dir
 from apps.opspilot.utils.db_cleanup import run_with_db_cleanup
 
 # SKILL.md frontmatter 提取正则(与 importer._split_frontmatter 保持一致)
@@ -223,7 +224,11 @@ def hydrate_skill_packages(skill_packages: Any) -> list[dict[str, Any]]:
             disk_markdown = _skill_markdown_from_storage(storage_path_text)
             if disk_markdown:
                 snapshot["skill_markdown"] = disk_markdown
-            extracted_root = Path(storage_path_text) / "extracted"
+            extracted_root = cached_materialize_dir(stored)
+            if extracted_root is None:
+                extracted_root = Path(storage_path_text) / "extracted"
+                if extracted_root.is_dir():
+                    store_materialized_dir(stored, extracted_root)
             snapshot["extracted_root"] = extracted_root
             asset_roots: dict[str, Path | None] = {}
             if extracted_root.is_dir():

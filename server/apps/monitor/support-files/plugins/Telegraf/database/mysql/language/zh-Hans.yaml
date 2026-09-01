@@ -217,6 +217,36 @@ monitor_object_metric:
     mysql_variables_innodb_buffer_pool_size:
       name: Buffer Pool 配置大小
       desc: innodb_buffer_pool_size 的配置值；用于衡量缓存容量基线
+    mysql_binary_files_count:
+      name: 二进制日志文件数
+      desc: SHOW BINARY LOGS 返回的 binlog 文件数量；需在高级采集选项中开启「Binary Log」
+    mysql_binary_size_bytes:
+      name: 二进制日志总大小
+      desc: 全部 binlog 文件大小之和；需在高级采集选项中开启「Binary Log」
+    mysql_table_io_waits_fetch_rate:
+      name: 表 IO 等待·读速率
+      desc: 实例汇总的表级 fetch IO 等待事件速率；需开启「表 IO Wait」
+    mysql_table_io_waits_insert_rate:
+      name: 表 IO 等待·插入速率
+      desc: 实例汇总的表级 insert IO 等待事件速率；需开启「表 IO Wait」
+    mysql_table_io_waits_update_rate:
+      name: 表 IO 等待·更新速率
+      desc: 实例汇总的表级 update IO 等待事件速率；需开启「表 IO Wait」
+    mysql_table_io_waits_delete_rate:
+      name: 表 IO 等待·删除速率
+      desc: 实例汇总的表级 delete IO 等待事件速率；需开启「表 IO Wait」
+    mysql_table_io_waits_seconds_rate:
+      name: 表 IO 等待耗时速率
+      desc: 实例汇总的表级 IO 等待耗时增长速率；需开启「表 IO Wait」
+    mysql_table_lock_waits_read_rate:
+      name: 表锁等待·读速率
+      desc: 实例汇总的 SQL 表锁读等待事件速率；需开启「表锁 Wait」
+    mysql_table_lock_waits_write_rate:
+      name: 表锁等待·写速率
+      desc: 实例汇总的 SQL 表锁写等待事件速率；需开启「表锁 Wait」
+    mysql_table_lock_waits_seconds_rate:
+      name: 表锁等待耗时速率
+      desc: 实例汇总的 SQL 表锁等待耗时增长速率；需开启「表锁 Wait」
 monitor_object_metric_group:
   Mysql:
     Base: 基础信息
@@ -228,3 +258,6 @@ monitor_object_metric_group:
     KeyCache: Key Cache
     TempTable: 临时表
     Replication: 复制状态
+    BinaryLog: 二进制日志
+    TableIOWait: 表 IO 等待
+    TableLockWait: 表锁等待

@@ -185,6 +185,10 @@ export const useConfigRenderer = () => {
     const isIfTypeFilterField =
       name === 'iftype_exclude' || name === 'iftype_include';
 
+    const warningOnlyRules = (rules || []).filter(
+      (rule: any) => rule?.warningOnly && rule?.type === 'pattern' && rule.pattern
+    );
+
     const formRules = [
       ...(required ? [{ required: true, message: t('common.required') }] : []),
       ...(isIfTypeFilterField
@@ -233,6 +237,9 @@ export const useConfigRenderer = () => {
           ];
         }
         if (rule?.type === 'pattern' && rule.pattern) {
+          if (rule.warningOnly) {
+            return [];
+          }
           return [
             {
               pattern: new RegExp(rule.pattern),
@@ -247,6 +254,9 @@ export const useConfigRenderer = () => {
     const watchField = dependency?.field;
 
     const shouldUpdate = (prevValues: any, currentValues: any) => {
+      if (warningOnlyRules.length && prevValues[name] !== currentValues[name]) {
+        return true;
+      }
       if (mutexPeerField) {
         if (!mutexValuesEqual(prevValues[mutexPeerField], currentValues[mutexPeerField])) {
           return true;
@@ -275,6 +285,22 @@ export const useConfigRenderer = () => {
 
     const isFieldVisible = (getFieldValue: any) =>
       isDependencySatisfied(dependency, getFieldValue);
+
+    const renderValueWarning = (getFieldValue: any) => {
+      if (!warningOnlyRules.length) return null;
+      const value = getFieldValue(name);
+      if (value === undefined || value === null || value === '') return null;
+      const text = String(value);
+      const hit = warningOnlyRules.find(
+        (rule: any) => !new RegExp(rule.pattern).test(text)
+      );
+      if (!hit) return null;
+      return (
+        <span className="align-middle text-[12px] leading-[18px] text-[var(--color-warning)]">
+          {hit.message}
+        </span>
+      );
+    };
 
     const locked = mode === 'edit' && editable === false;
 
@@ -464,7 +490,7 @@ export const useConfigRenderer = () => {
       </Form.Item>
     );
 
-    if (dependency?.field || mutexPeerField) {
+    if (dependency?.field || mutexPeerField || warningOnlyRules.length) {
       return (
         <Form.Item noStyle shouldUpdate={shouldUpdate} key={name}>
           {({ getFieldValue }) => {
@@ -493,6 +519,7 @@ export const useConfigRenderer = () => {
                     {mutexPeerOccupiedTip}
                   </span>
                 ) : null}
+                {!showMutexConflict ? renderValueWarning(getFieldValue) : null}
                 {showInlineDescription && !showMutexConflict && (
                   <span className="align-middle text-[12px] text-[var(--color-text-3)]">
                     {description}
@@ -601,16 +628,18 @@ export const useConfigRenderer = () => {
     };
 
     // 验证函数
-    const validateField = (value: any): string | null => {
+    const validateField = (value: any): { error: string | null; warning: string | null } => {
+      let warningMsg: string | null = null;
       // 如果字段标记为required，进行必填验证
       if (required) {
         if (
           value === undefined ||
           value === null ||
           value === '' ||
+          (typeof value === 'string' && !value.trim()) ||
           (Array.isArray(value) && value.length === 0)
         ) {
-          return t('common.required');
+          return { error: t('common.required'), warning: null };
         }
       }
       // 如果有rules配置，按照rules验证（只支持pattern类型）
@@ -621,21 +650,27 @@ export const useConfigRenderer = () => {
             if (value !== undefined && value !== null && value !== '') {
               const regex = new RegExp(rule.pattern);
               if (!regex.test(String(value))) {
-                return rule.message || t('common.required');
+                const msg = rule.message || t('common.required');
+                if (rule.warningOnly) {
+                  warningMsg = warningMsg || msg;
+                } else {
+                  return { error: msg, warning: warningMsg };
+                }
               }
             }
           }
         }
       }
-      return null;
+      return { error: null, warning: warningMsg };
     };
 
     const handleChange = (value: any, record: any, index: number) => {
       const newData = [...dataSource];
       newData[index] = { ...newData[index], [name]: value };
       // 验证当前字段
-      const errorMsg = validateField(value);
+      const { error: errorMsg, warning: warningMsg } = validateField(value);
       newData[index][`${name}_error`] = errorMsg;
+      newData[index][`${name}_warning`] = warningMsg;
       if (change_handler) {
         const changedRow = applyTableChangeHandler(
           newData[index],
@@ -647,6 +682,7 @@ export const useConfigRenderer = () => {
           newData[index] = changedRow;
           // 清除目标字段的错误状态（因为值已经被更新了）
           newData[index][`${change_handler.target_field}_error`] = null;
+          newData[index][`${change_handler.target_field}_warning`] = null;
         }
       }
       onTableDataChange(newData);
@@ -655,20 +691,27 @@ export const useConfigRenderer = () => {
     switch (type) {
       case 'input':
         column.render = (text: any, record: any, index: number) => {
-          const errorMsg = record[`${name}_error`];
+          const live = validateField(text);
+          const errorMsg = record[`${name}_error`] || live.error;
+          const warningMsg = record[`${name}_warning`] || live.warning;
           return (
             <div className="flex items-center gap-2">
               <Input
                 value={text}
                 onChange={(e) => handleChange(e.target.value, record, index)}
                 placeholder={componentProps.placeholder || label}
-                status={errorMsg ? 'error' : ''}
+                status={errorMsg ? 'error' : warningMsg ? 'warning' : ''}
                 className="flex-1"
                 {...componentProps}
               />
               {errorMsg && (
                 <Tooltip title={errorMsg}>
                   <ExclamationCircleFilled className="text-[14px] text-[var(--color-fail)]" />
+                </Tooltip>
+              )}
+              {!errorMsg && warningMsg && (
+                <Tooltip title={warningMsg}>
+                  <ExclamationCircleFilled className="text-[14px] text-[var(--color-warning)]" />
                 </Tooltip>
               )}
             </div>

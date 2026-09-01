@@ -9,7 +9,7 @@ monitor_object_metric:
   RabbitMQ:
     rabbitmq_node_uptime:
       name: 节点运行时间
-      desc: RabbitMQ 节点自启动以来的运行时间，反映节点稳定性
+      desc: RabbitMQ 节点自启动以来的运行时间（秒；Management API 原始值为毫秒）
     rabbitmq_node_running:
       name: 节点运行状态
       desc: RabbitMQ 节点是否处于运行状态，1 表示运行中，0 表示已停止
@@ -37,6 +37,12 @@ monitor_object_metric:
     rabbitmq_overview_messages_published_rate:
       name: 消息发布速率
       desc: 向 RabbitMQ 发布消息的速率，反映消息生产量
+    rabbitmq_overview_messages_delivered_rate:
+      name: 消息投递速率
+      desc: 向消费者投递消息的速率
+    rabbitmq_overview_messages_acked_rate:
+      name: 消息确认速率
+      desc: 消费者确认消息的速率
     rabbitmq_node_run_queue:
       name: 运行队列长度
       desc: Erlang 运行队列长度，反映系统 CPU 负载和调度延迟
@@ -58,17 +64,48 @@ monitor_object_metric:
     rabbitmq_node_disk_free_alarm:
       name: 磁盘空间告警
       desc: 磁盘空间使用是否触发告警，1 表示告警，0 表示正常
+    rabbitmq_node_disk_free_limit:
+      name: 磁盘剩余限制
+      desc: 触发磁盘告警的剩余空间阈值
     rabbitmq_node_fd_used:
       name: 已用文件描述符
       desc: RabbitMQ 节点当前使用的文件描述符数量，反映系统资源使用
+    rabbitmq_node_fd_total:
+      name: 文件描述符上限
+      desc: RabbitMQ 节点的文件描述符上限
     rabbitmq_node_sockets_used:
       name: 已用套接字数
       desc: RabbitMQ 节点当前使用的套接字数量，反映网络连接状况
+    rabbitmq_node_sockets_total:
+      name: 套接字上限
+      desc: RabbitMQ 节点的套接字上限
     rabbitmq_node_proc_used:
       name: 已用进程数
       desc: RabbitMQ 节点当前使用的 Erlang 进程数量，反映系统进程负载
+    rabbitmq_node_proc_total:
+      name: 进程上限
+      desc: RabbitMQ 节点的 Erlang 进程上限
+    rabbitmq_queue_messages:
+      name: 队列深度
+      desc: 单个队列中的消息总数
+    rabbitmq_queue_messages_ready:
+      name: 队列就绪消息
+      desc: 队列中待投递的就绪消息数
+    rabbitmq_queue_messages_unack:
+      name: 队列未确认消息
+      desc: 队列中已投递但未确认的消息数
+    rabbitmq_queue_consumers:
+      name: 队列消费者
+      desc: 队列上的消费者数量
+    rabbitmq_queue_consumer_utilisation:
+      name: 队列消费者利用率
+      desc: 队列可向消费者投递的时间占比
+    rabbitmq_queue_memory:
+      name: 队列内存
+      desc: 队列占用的内存
 monitor_object_metric_group:
   RabbitMQ:
     Base: 基础信息
     Performance: 性能
     Resource: 资源
+    Queue: 队列

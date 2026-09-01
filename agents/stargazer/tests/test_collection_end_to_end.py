@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import time
+import traceback
 import tracemalloc
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -121,10 +122,31 @@ class RecordingPlugin:
 class ClosableRecordingPlugin(RecordingPlugin):
     def __init__(self):
         super().__init__()
+        self.prepare_calls = 0
+        self.prepared = False
         self.close_calls = 0
+
+    async def prepare(self, request):
+        assert request.targets == ("10.10.24.1", "10.10.24.2")
+        self.prepare_calls += 1
+        self.prepared = True
+
+    async def collect(self, target, credential, context):
+        assert self.prepared
+        return await super().collect(target, credential, context)
 
     async def close(self):
         self.close_calls += 1
+
+
+class FailingClosePlugin(ClosableRecordingPlugin):
+    def __init__(self, secret):
+        super().__init__()
+        self.secret = secret
+
+    async def close(self):
+        self.close_calls += 1
+        raise RuntimeError("password=" + self.secret)
 
 
 class PluginFactory:
@@ -330,7 +352,6 @@ def build_application(redis_client, plugin, published, scheduled, *, fail_once=F
 class FixedFiveSecondPlanResolver:
     def resolve(self, _request):
         return ExecutionPlan(
-            preflight_enabled=False,
             preflight_timeout_seconds=15,
             probe_timeout_seconds=15,
             collection_timeout_seconds=5,
@@ -427,7 +448,40 @@ async def test_collection_run_closes_run_scoped_plugin(redis_client, monkeypatch
         await scheduled[0]
 
     assert accepted.status_code == 202
+    assert plugin.prepare_calls == 1
     assert plugin.close_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_plugin_close_failure_keeps_run_result_and_logs_safe_traceback(redis_client, monkeypatch):
+    published = []
+    scheduled = []
+    log_calls = []
+    plugin = FailingClosePlugin("plugin-close-secret-sentinel")
+    application, _preflight = build_application(redis_client, plugin, published, scheduled)
+    monkeypatch.setattr(collect_api, "get_collection_application", lambda: application)
+    monkeypatch.setattr(
+        "core.collection.application.logger.exception",
+        lambda message, *args, **kwargs: log_calls.append((message, args, kwargs)),
+    )
+
+    async with http_client(collect_api.collect_router, "e2e-plugin-close-failure-app") as client:
+        accepted = await client.get(
+            "/collect/collect_info",
+            headers=configuration_request("e2e-plugin-close-failure"),
+        )
+        await scheduled[0]
+
+    assert accepted.status_code == 202
+    assert plugin.close_calls == 1
+    assert len(log_calls) == 1
+    message, args, kwargs = log_calls[0]
+    formatted = (message % args) + "\n" + "".join(traceback.format_exception(*kwargs["exc_info"]))
+    assert "failed_stage=plugin_close" in formatted
+    assert "error_type=PluginCloseFailure" in formatted
+    assert "test_collection_end_to_end.py" in formatted
+    assert "in close" in formatted
+    assert "plugin-close-secret-sentinel" not in formatted
 
 
 @pytest.mark.asyncio
@@ -437,11 +491,13 @@ async def test_http_chain_uses_credential_protocol_probe_before_collection(redis
     plugin = CredentialProbePlugin()
     application, _preflight = build_application(redis_client, plugin, published, scheduled)
     monkeypatch.setattr(collect_api, "get_collection_application", lambda: application)
+    headers = configuration_request("e2e-credential-probe")
+    headers["cmdbip_precheck"] = "true"
 
     async with http_client(collect_api.collect_router, "e2e-credential-probe-app") as client:
         accepted = await client.get(
             "/collect/collect_info",
-            headers=configuration_request("e2e-credential-probe"),
+            headers=headers,
         )
         await scheduled[0]
 
@@ -615,11 +671,11 @@ async def test_snmp_256_target_timeout_load_through_http_redis_runtime_and_nats(
     community = os.getenv("STARGAZER_SNMP_TEST_COMMUNITY", "mock-snmp-community")
     targets = tuple(f"{target_prefix}.{index}" for index in range(256))
     plugin = TimeoutSnmpPlugin(community)
-    published = 0
+    metrics_published = 0
 
     async def publish_metrics(_ctx, _value, _params, _task_id):
-        nonlocal published
-        published += 1
+        nonlocal metrics_published
+        metrics_published += 1
 
     app = Sanic("e2e-snmp-load-app")
     app.config.AUTO_EXTEND = False
@@ -694,7 +750,7 @@ async def test_snmp_256_target_timeout_load_through_http_redis_runtime_and_nats(
             deadline = time.monotonic() + 20
             while time.monotonic() < deadline:
                 stats = await application.stats()
-                if stats["active_runs"] == 0 and published == 256:
+                if stats["active_runs"] == 0:
                     finished = True
                     break
                 await asyncio.sleep(0.25)
@@ -714,7 +770,7 @@ async def test_snmp_256_target_timeout_load_through_http_redis_runtime_and_nats(
     assert plugin.calls == 256
     assert plugin.credential_mismatches == 0
     assert plugin.peak == 200
-    assert published == 256
+    assert metrics_published == 0
     assert 9.5 <= wall_seconds < 20
     assert max(lag_samples, default=0) < 0.2
 
@@ -747,7 +803,7 @@ async def test_snmp_256_target_timeout_load_through_http_redis_runtime_and_nats(
         "peak_plugin_io": plugin.peak,
         "event_loop_lag_max_seconds": round(max(lag_samples, default=0), 6),
         "event_loop_lag_samples": len(lag_samples),
-        "published_results": published,
+        "published_metric_rows": metrics_published,
         "plugin_timeout_total": int(stats["plugin_timeout_total"]),
         "active_runs_after_completion": stats["active_runs"],
         "active_targets_after_completion": stats["active_targets"],
@@ -767,11 +823,11 @@ async def test_host_150_target_timeout_load_through_http_redis_runtime_and_nats(
     target_count = int(os.getenv("STARGAZER_HOST_TEST_COUNT", "150"))
     targets = tuple(f"{target_prefix}.{index}" for index in range(target_count))
     plugin = TimeoutHostPlugin(expected_username=username, expected_password=password)
-    published = 0
+    metrics_published = 0
 
     async def publish_metrics(_ctx, _value, _params, _task_id):
-        nonlocal published
-        published += 1
+        nonlocal metrics_published
+        metrics_published += 1
 
     app = Sanic("e2e-host-load-app")
     app.config.AUTO_EXTEND = False
@@ -848,7 +904,7 @@ async def test_host_150_target_timeout_load_through_http_redis_runtime_and_nats(
             deadline = time.monotonic() + 20
             while time.monotonic() < deadline:
                 stats = await application.stats()
-                if stats["active_runs"] == 0 and published == target_count:
+                if stats["active_runs"] == 0:
                     finished = True
                     break
                 await asyncio.sleep(0.25)
@@ -868,7 +924,7 @@ async def test_host_150_target_timeout_load_through_http_redis_runtime_and_nats(
     assert plugin.calls == target_count
     assert plugin.credential_mismatches == 0
     assert plugin.peak == min(target_count, 200)
-    assert published == target_count
+    assert metrics_published == 0
     assert 4.5 <= wall_seconds < 15
     assert max(lag_samples, default=0) < 0.2
 
@@ -913,7 +969,7 @@ async def test_host_150_target_timeout_load_through_http_redis_runtime_and_nats(
         "event_loop_lag_p95_seconds": round(lag_percentile(0.95), 6),
         "event_loop_lag_p99_seconds": round(lag_percentile(0.99), 6),
         "event_loop_lag_samples": len(lag_samples),
-        "published_results": published,
+        "published_metric_rows": metrics_published,
         "plugin_timeout_total": int(stats["plugin_timeout_total"]),
         "credential_mismatch_attempts": plugin.credential_mismatches,
         "active_runs_after_completion": stats["active_runs"],

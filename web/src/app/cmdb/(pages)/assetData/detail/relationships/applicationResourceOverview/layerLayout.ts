@@ -62,7 +62,8 @@ export function packLayeredNodes(params: {
 
   for (const key of LAYER_KEYS) {
     const nodes = params.layers[key] || [];
-    const layerColumns = key === 'root' ? 1 : columns;
+    const centeredRoot = key === 'root' && nodes.length <= 1;
+    const layerColumns = centeredRoot ? 1 : columns;
     const rows = Math.max(1, Math.ceil(nodes.length / layerColumns));
     const top = yCursor;
     const firstCenterY = top + BAND_PAD_Y + LAYOUT_NODE.height / 2;
@@ -72,7 +73,7 @@ export function packLayeredNodes(params: {
     nodes.forEach((node, index) => {
       const row = Math.floor(index / layerColumns);
       const col = index % layerColumns;
-      const x = key === 'root'
+      const x = centeredRoot
         ? ORIGIN_X + gridWidth / 2
         : ORIGIN_X + col * COL_STRIDE;
       positions.push({

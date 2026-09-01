@@ -145,10 +145,15 @@ export const createPageContextRegistry = (options?: {
     pilot: AiPageContextPilot,
     hint?: PageContextCollectHint,
   ): Promise<Partial<AiPageContext> | null> => {
-    const mod = await pilot.load();
-    const message = normalizeMessage(await mod.getMessage());
+    const deadlineAt = Date.now() + timeoutMs;
+    const remainingMs = () => Math.max(0, deadlineAt - Date.now());
+
+    const mod = await withTimeout(pilot.load(), remainingMs());
+    const message = normalizeMessage(
+      await withTimeout(Promise.resolve().then(() => mod.getMessage()), remainingMs()),
+    );
     if (!message) {
-      return mod.getContext(toolkit, hint);
+      return withTimeout(Promise.resolve().then(() => mod.getContext(toolkit, hint)), remainingMs());
     }
     const cached = cache.get(message.title);
     if (
@@ -158,11 +163,29 @@ export const createPageContextRegistry = (options?: {
     ) {
       return { ...cached.content, title: cached.content.title || message.title };
     }
-    const content = await mod.getContext(toolkit, hint);
-    const next = { ...content, title: content.title || message.title };
-    if (message.currentTime) {
+    const loadFull = async () => {
+      const content = await mod.getContext(toolkit, hint);
+      return { ...content, title: content.title || message.title };
+    };
+    let next: Partial<AiPageContext>;
+    let textFallback = false;
+    try {
+      next = await withTimeout(loadFull(), remainingMs());
+    } catch (error) {
+      console.warn('[ai-page-context] pilot timed out or failed', error);
+      if (typeof mod.getTextContext !== 'function') {
+        throw error;
+      }
+      const text = await Promise.resolve(mod.getTextContext());
+      if (!text?.sections?.length) {
+        throw error;
+      }
+      textFallback = true;
+      next = { ...text, title: text.title || message.title };
+    }
+    if (message.currentTime && !textFallback) {
       cache.set(message.title, { currentTime: message.currentTime, content: next });
-    } else {
+    } else if (!message.currentTime) {
       cache.delete(message.title);
     }
     return next;
@@ -184,7 +207,7 @@ export const createPageContextRegistry = (options?: {
 
     for (const pilot of matched) {
       tasks.push(
-        withTimeout(collectPilot(pilot, hint), timeoutMs).catch((error) => {
+        collectPilot(pilot, hint).catch((error) => {
           console.debug('[ai-page-context] pilot failed', error);
           return null;
         }),

@@ -20,13 +20,6 @@
           "withParentPermission": true
         },
         {
-          "title": "标签视图",
-          "icon": "shujumoxingguanli",
-          "url": "/cmdb/views/scene",
-          "name": "asset_views_scene",
-          "withParentPermission": true
-        },
-        {
           "title": "应用拓扑",
           "icon": "shujumoxingguanli",
           "url": "/cmdb/views/application",
@@ -59,6 +52,13 @@
           "icon": "shujumoxingguanli",
           "url": "/cmdb/views/rack-room",
           "name": "asset_views_rack_room",
+          "withParentPermission": true
+        },
+        {
+          "title": "标签视图",
+          "icon": "shujumoxingguanli",
+          "url": "/cmdb/views/scene",
+          "name": "asset_views_scene",
           "withParentPermission": true
         }
       ]
@@ -225,13 +225,6 @@
           "withParentPermission": true
         },
         {
-          "title": "Tag View",
-          "icon": "shujumoxingguanli",
-          "url": "/cmdb/views/scene",
-          "name": "asset_views_scene",
-          "withParentPermission": true
-        },
-        {
           "title": "Application Topology",
           "icon": "shujumoxingguanli",
           "url": "/cmdb/views/application",
@@ -264,6 +257,13 @@
           "icon": "shujumoxingguanli",
           "url": "/cmdb/views/rack-room",
           "name": "asset_views_rack_room",
+          "withParentPermission": true
+        },
+        {
+          "title": "Tag View",
+          "icon": "shujumoxingguanli",
+          "url": "/cmdb/views/scene",
+          "name": "asset_views_scene",
           "withParentPermission": true
         }
       ]

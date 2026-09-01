@@ -3,6 +3,7 @@
   "collect_type": "snmp_a10",
   "plugin": "Loadbalance A10 Thunder SNMP",
   "plugin_desc": "A10 Networks Thunder / AX (ACOS) ADC SNMP collection (A10-AX-MIB, IANA PEN 22610). In addition to standard IF-MIB interface metrics, it collects A10 private OIDs for device health: CPU utilization averaged across the control and data-plane CPUs (axSysCpuUsage) and system memory (axSysMemoryTotal / axSysMemoryUsage, in KB; utilization computed as used/total). Current-connection and temperature/fan/power OIDs are not exposed in a row-filter-free form on ACOS, so those are N/A. Supported brands/models — A10 Networks Thunder ADC / AX series (ACOS; physical and vThunder; enterprise 22610).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='loadbalance', collect_type='snmp_a10'}) by (instance_id)",
   "name": "Loadbalance",
   "icon": "mm-loadbalance_负载均衡",

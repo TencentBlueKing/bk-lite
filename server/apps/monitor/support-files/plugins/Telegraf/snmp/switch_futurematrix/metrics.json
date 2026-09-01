@@ -3,6 +3,7 @@
   "collect_type": "snmp_futurematrix",
   "plugin": "Switch FutureMatrix SNMP",
   "plugin_desc": "FutureMatrix (Huawei-compatible) SNMP collection for switches (enterprise 56813, FMEntity* OIDs). Mirrors Switch Huawei SNMP metrics: per-entity CPU/memory/temperature (descr=entPhysicalName), fan status (FMEntityFanState), per-module SFP optical Rx/Tx (raw µW; query 10*log10(µW/1000)→dBm), and IF-MIB + 64-bit HC traffic. PSU state is omitted to stay aligned with the Huawei switch template. Supported models — FutureMatrix S1730S and related campus switches on PEN 56813.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_futurematrix'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

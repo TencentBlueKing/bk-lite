@@ -10,7 +10,7 @@ monitor_object_metric:
   RabbitMQ:
     rabbitmq_node_uptime:
       name: Node Uptime
-      desc: Uptime of RabbitMQ node since startup, reflecting node stability
+      desc: Uptime of RabbitMQ node since startup in seconds (Management API reports milliseconds)
     rabbitmq_node_running:
       name: Node Running Status
       desc: Whether RabbitMQ node is running, 1 indicates running, 0 indicates stopped
@@ -40,6 +40,12 @@ monitor_object_metric:
       name: Message Publish Rate
       desc: Rate of messages published to RabbitMQ, reflecting message production
         volume
+    rabbitmq_overview_messages_delivered_rate:
+      name: Message Deliver Rate
+      desc: Rate of messages delivered to consumers
+    rabbitmq_overview_messages_acked_rate:
+      name: Message Ack Rate
+      desc: Rate of messages acknowledged by consumers
     rabbitmq_node_run_queue:
       name: Run Queue
       desc: Erlang run queue length, reflecting system CPU load and scheduling delay
@@ -63,20 +69,51 @@ monitor_object_metric:
       name: Disk Space Alarm
       desc: Whether disk space usage triggers alarm, 1 indicates alarm, 0 indicates
         normal
+    rabbitmq_node_disk_free_limit:
+      name: Disk Free Limit
+      desc: Disk free limit that triggers RabbitMQ disk alarm
     rabbitmq_node_fd_used:
       name: File Descriptors Used
       desc: Number of file descriptors currently used by RabbitMQ node, reflecting
         system resource usage
+    rabbitmq_node_fd_total:
+      name: File Descriptors Limit
+      desc: File descriptor limit for RabbitMQ node
     rabbitmq_node_sockets_used:
       name: Sockets Used
       desc: Number of sockets currently used by RabbitMQ node, reflecting network
         connection status
+    rabbitmq_node_sockets_total:
+      name: Sockets Limit
+      desc: Socket limit for RabbitMQ node
     rabbitmq_node_proc_used:
       name: Processes Used
       desc: Number of Erlang processes currently used by RabbitMQ node, reflecting
         system process load
+    rabbitmq_node_proc_total:
+      name: Processes Limit
+      desc: Erlang process limit for RabbitMQ node
+    rabbitmq_queue_messages:
+      name: Queue Depth
+      desc: Total messages in a queue
+    rabbitmq_queue_messages_ready:
+      name: Queue Ready Messages
+      desc: Ready messages waiting for delivery in a queue
+    rabbitmq_queue_messages_unack:
+      name: Queue Unacked Messages
+      desc: Delivered but unacknowledged messages in a queue
+    rabbitmq_queue_consumers:
+      name: Queue Consumers
+      desc: Number of consumers on a queue
+    rabbitmq_queue_consumer_utilisation:
+      name: Queue Consumer Utilisation
+      desc: Fraction of time the queue can deliver to consumers, as a percentage
+    rabbitmq_queue_memory:
+      name: Queue Memory
+      desc: Memory used by a queue
 monitor_object_metric_group:
   RabbitMQ:
     Base: Base
     Performance: Performance
     Resource: Resource
+    Queue: Queue

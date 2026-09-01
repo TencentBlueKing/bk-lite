@@ -2,7 +2,7 @@ from rest_framework import serializers
 
 
 class ApplicationResourceTopologyQuerySerializer(serializers.Serializer):
-    depth = serializers.IntegerField(required=False, min_value=1, max_value=3, default=1)
+    depth = serializers.IntegerField(required=False, min_value=1, max_value=5, default=1)
 
 
 class ApplicationResourceEntrySerializer(serializers.Serializer):

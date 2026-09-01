@@ -1,21 +1,13 @@
-interface AuthConfig {
-  type: string;
-  token: string;
-  password: string;
-  username: string;
-  secret_key: string;
-}
 interface Config {
-  url: string;
-  params: Record<string, any>;
-  auth: AuthConfig;
-  method: string;
-  headers: Record<string, any>;
-  timeout: number;
-  content_type: string;
-  examples: any;
-  event_fields_mapping: Record<string, string>;
-  event_fields_desc_mapping: Record<string, string>;
+  url?: string;
+  params?: Record<string, unknown>;
+  method?: string;
+  headers?: Record<string, unknown>;
+  timeout?: number;
+  content_type?: string;
+  examples?: Record<string, string>;
+  event_fields_mapping?: Record<string, string>;
+  event_fields_desc_mapping?: Record<string, string>;
 }
 
 export interface K8sDownloadFile {
@@ -42,7 +34,7 @@ export interface K8sRenderParams {
   server_url: string;
   cluster_name: string;
   push_source_id?: string;
-  team_secret?: string;
+  team_id?: string;
   insecure_skip_verify?: boolean;
 }
 
@@ -134,13 +126,19 @@ export interface SourceItem {
   name: string;
   source_id: string;
   source_type: string;
-  config: Config;
-  secret: string;
+  config?: Config;
   logo: string | null;
   access_type: string;
   is_active: boolean;
   is_effective: boolean;
   description: string;
+}
+
+export interface AlertSourceOption {
+  id: number;
+  name: string;
+  source_id: string;
+  source_type: string;
 }
 
 export interface RawEventData {
@@ -186,13 +184,11 @@ export interface EventTableItem {
 
 export interface TeamSecretItem {
     team_id: string;
-    team_name: string;
-    secret: string;
+    team_name?: string;
+    has_secret: boolean;
 }
 
-export interface TeamSecretsResponse {
-    team_secrets: TeamSecretItem[];
-}
+export type TeamSecretsResponse = TeamSecretItem[] | { team_secrets: TeamSecretItem[] };
 
 export interface TeamSecretResponse {
     team_id: string;

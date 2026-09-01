@@ -271,9 +271,9 @@ def test_effective_plugins_service_merges_configured_and_reported_plugins(db, mo
             if "hostremote" in query:
                 return {"data": {"result": []}}
             if "hostapi" in query:
-                return {"data": {"result": [{"metric": {"instance_id": "host-a"}, "value": [100, "1"]}]}}
+                return {"data": {"result": [{"metric": {"instance_id": "host-a"}, "value": [1782888110, "1782888000"]}]}}
             if "hostunused" in query:
-                return {"data": {"result": [{"metric": {"instance_id": "host-b"}, "value": [100, "1"]}]}}
+                return {"data": {"result": [{"metric": {"instance_id": "host-b"}, "value": [1782888110, "1782888000"]}]}}
             return {"data": {"result": []}}
 
     monkeypatch.setattr(effective_plugins, "VictoriaMetricsAPI", StubVictoriaMetricsAPI)
@@ -303,7 +303,7 @@ def test_effective_plugins_service_deduplicates_configured_reported_plugin(db, m
     class StubVictoriaMetricsAPI:
         def query(self, query, step="5m", time=None):
             if "hostremote" in query:
-                return {"data": {"result": [{"metric": {"instance_id": "host-a"}, "value": [100, "1"]}]}}
+                return {"data": {"result": [{"metric": {"instance_id": "host-a"}, "value": [1782888110, "1782888000"]}]}}
             return {"data": {"result": []}}
 
     monkeypatch.setattr(effective_plugins, "VictoriaMetricsAPI", StubVictoriaMetricsAPI)
@@ -353,7 +353,7 @@ def test_effective_plugins_service_deduplicates_status_queries_with_bounded_conc
                 active -= 1
             if 'kind="4"' in query:
                 raise RuntimeError("one plugin status unavailable")
-            return {"data": {"result": [{"metric": {"instance_id": "host-a"}, "value": [100, "1"]}]}}
+            return {"data": {"result": [{"metric": {"instance_id": "host-a"}, "value": [1782888110, "1782888000"]}]}}
 
     monkeypatch.setattr(effective_plugins, "VictoriaMetricsAPI", StubVictoriaMetricsAPI)
 
@@ -441,7 +441,7 @@ def test_effective_plugins_service_resolves_derived_instance_without_row(db, mon
 
     class StubVictoriaMetricsAPI:
         def query(self, query, step="5m", time=None):
-            return {"data": {"result": [{"metric": {"instance_id": "derived-pod-x"}, "value": [100, "1"]}]}}
+            return {"data": {"result": [{"metric": {"instance_id": "derived-pod-x"}, "value": [1782888110, "1782888000"]}]}}
 
     monkeypatch.setattr(effective_plugins, "VictoriaMetricsAPI", StubVictoriaMetricsAPI)
 
@@ -481,7 +481,7 @@ def test_effective_plugins_service_matches_multi_key_derived_by_primary(db, monk
 
     class StubVictoriaMetricsAPI:
         def query(self, query, step="5m", time=None):
-            return {"data": {"result": [{"metric": {"instance_id": "mac"}, "value": [100, "1"]}]}}
+            return {"data": {"result": [{"metric": {"instance_id": "mac"}, "value": [1782888110, "1782888000"]}]}}
 
     monkeypatch.setattr(effective_plugins, "VictoriaMetricsAPI", StubVictoriaMetricsAPI)
 
@@ -546,7 +546,7 @@ def test_primary_object_plugin_list_keeps_builtin_plugins_distinct_by_plugin_id(
     class StubVictoriaMetricsAPI:
         def query(self, query, step="5m", time=None):
             if "config_type='host'" in query:
-                return {"data": {"result": [{"metric": {"instance_id": "host-a"}, "value": [100, "1"]}]}}
+                return {"data": {"result": [{"metric": {"instance_id": "host-a"}, "value": [1782888110, "1782888000"]}]}}
             return {"data": {"result": []}}
 
     monkeypatch.setattr(monitor_instance, "VictoriaMetricsAPI", StubVictoriaMetricsAPI)
@@ -622,7 +622,7 @@ def test_primary_object_plugin_list_shows_configured_host_remote_not_wmi(db, mon
     class StubVictoriaMetricsAPI:
         def query(self, query, step="5m", time=None):
             if "config_type='host'" in query:
-                return {"data": {"result": [{"metric": {"instance_id": "host-a"}, "value": [100, "1"]}]}}
+                return {"data": {"result": [{"metric": {"instance_id": "host-a"}, "value": [1782888110, "1782888000"]}]}}
             return {"data": {"result": []}}
 
     monkeypatch.setattr(monitor_instance, "VictoriaMetricsAPI", StubVictoriaMetricsAPI)
@@ -691,7 +691,7 @@ def test_primary_object_plugin_list_deduplicates_flow_configured_and_reported_pl
                     "result": [
                         {
                             "metric": {"instance_id": logical_id},
-                            "value": [1781234567, "1"],
+                            "value": [1781234567, "1781234500"],
                         }
                     ]
                 }
@@ -783,7 +783,7 @@ def test_primary_object_plugin_list_batches_and_aggregates_collection_nodes(db, 
                     "result": [
                         {
                             "metric": {"instance_id": "host-a"},
-                            "value": [100, "1"],
+                            "value": [1782888110, "1782888000"],
                         }
                     ]
                 }

@@ -3,16 +3,12 @@
 # @Time: 2025/7/29 17:28
 # @Author: windyzhao
 from datetime import timedelta
+
 from django.db import transaction
 from django.utils import timezone
-from apps.alerts.constants import (
-    AlertStatus,
-    LogAction,
-    LogTargetType,
-    AlertOperate,
-    SessionStatus,
-)
-from apps.alerts.models import Alert, AlarmStrategy, OperatorLog
+
+from apps.alerts.constants import AlertOperate, AlertStatus, LogAction, LogTargetType, SessionStatus
+from apps.alerts.models import AlarmStrategy, Alert, OperatorLog
 from apps.alerts.utils.operator_log import record_operator_logs_bulk
 from apps.core.logger import alert_logger as logger
 
@@ -23,13 +19,13 @@ class WindowCalculator:
     @staticmethod
     def parse_time_str(time_str: str) -> timedelta:
         """解析时间字符串为timedelta对象"""
-        if time_str.endswith('min'):
+        if time_str.endswith("min"):
             return timedelta(minutes=int(time_str[:-3]))
-        elif time_str.endswith('h'):
+        elif time_str.endswith("h"):
             return timedelta(hours=int(time_str[:-1]))
-        elif time_str.endswith('d'):
+        elif time_str.endswith("d"):
             return timedelta(days=int(time_str[:-1]))
-        elif time_str.endswith('s'):
+        elif time_str.endswith("s"):
             return timedelta(seconds=int(time_str[:-1]))
         else:
             # 默认按分钟处理
@@ -64,18 +60,16 @@ class AlertAutoClose:
         提前过滤掉不需要自动关闭的策略，减少后续处理压力
         """
         # 获取所有告警的 rule_id
-        rule_ids = list(self.alerts.values_list('rule_id', flat=True).distinct())
+        rule_ids = list(self.alerts.values_list("rule_id", flat=True).distinct())
         rule_ids = [rid for rid in rule_ids if isinstance(rid, str) and rid.isdigit()]
         # 查询启用了自动关闭的告警策略
         # 过滤条件：is_active=True, auto_close=True, close_minutes > 0
         # 排除 INSTANT 即时告警策略：PRD 明确不引入自动关闭策略
         from apps.alerts.constants.constants import AlarmStrategyType
-        strategies = AlarmStrategy.objects.filter(
-            id__in=rule_ids,
-            is_active=True,
-            auto_close=True,
-            close_minutes__gt=0
-        ).exclude(strategy_type=AlarmStrategyType.INSTANT)
+
+        strategies = AlarmStrategy.objects.filter(id__in=rule_ids, is_active=True, auto_close=True, close_minutes__gt=0).exclude(
+            strategy_type=AlarmStrategyType.INSTANT
+        )
 
         # 建立映射字典: rule_id -> AlarmStrategy
         rule_mapping = {str(strategy.id): strategy for strategy in strategies}
@@ -107,7 +101,11 @@ class AlertAutoClose:
             if not strategy.auto_close or strategy.close_minutes <= 0:
                 logger.debug(
                     "[AlertAutoClose] 告警 %s 的策略 %s 配置为不自动关闭 (auto_close=%s, close_minutes=%s)",
-                    alert.id, strategy.id, strategy.auto_close, strategy.close_minutes)
+                    alert.id,
+                    strategy.id,
+                    strategy.auto_close,
+                    strategy.close_minutes,
+                )
                 return False
 
             # 会话窗口在未确认前不参与自动关闭倒计时
@@ -135,12 +133,17 @@ class AlertAutoClose:
             if should_close:
                 logger.info(
                     "[AlertAutoClose] 告警 %s 满足自动关闭条件: 最后事件时间=%s, 关闭时间配置=%s分钟, 自动关闭时间点=%s, 当前时间=%s",
-                    alert.id, last_event_time, strategy.close_minutes, auto_close_time, self.current_time,
+                    alert.id,
+                    last_event_time,
+                    strategy.close_minutes,
+                    auto_close_time,
+                    self.current_time,
                 )
             else:
                 logger.debug(
                     "[AlertAutoClose] 告警 %s 暂不满足自动关闭条件: 距离自动关闭还有 %.1f 分钟",
-                    alert.id, (auto_close_time - self.current_time).total_seconds() / 60,
+                    alert.id,
+                    (auto_close_time - self.current_time).total_seconds() / 60,
                 )
 
             return should_close
@@ -175,7 +178,8 @@ class AlertAutoClose:
                 locked_alert.updated_at = timezone.now()
                 locked_alert.operate = AlertOperate.CLOSE
                 locked_alert.status = AlertStatus.AUTO_CLOSE
-                locked_alert.save(update_fields=['status', 'updated_at', 'operate'])
+                Alert.stamp_closed_at(locked_alert, locked_alert.updated_at)
+                locked_alert.save(update_fields=["status", "updated_at", "operate", "closed_at"])
 
                 from apps.alerts.service.reminder_service import ReminderService
 
@@ -254,7 +258,9 @@ class AlertAutoClose:
 
         logger.info(
             "[AlertAutoClose] 告警自动关闭检查完成: 总检查数=%s, 成功关闭数=%s, 错误数=%s",
-            valid_alert_count, closed_count, error_count,
+            valid_alert_count,
+            closed_count,
+            error_count,
         )
 
         record_operator_logs_bulk(self.bulk_logs, batch_size=200)

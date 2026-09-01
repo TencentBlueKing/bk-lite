@@ -3,6 +3,7 @@
   "collect_type": "snmp_ascom",
   "plugin": "Wireless ASCOM SNMP",
   "plugin_desc": "Baseline SNMP collection template for Ascom IP-DECT wireless communication systems (enterprise PEN 27614). Collects IF-MIB 64-bit HC interface counters (ifHCInOctets/ifHCOutOctets, ifXTable) rates on the base-station Ethernet uplink and device uptime (sysUpTime). The ASCOM-IPDECT-MIB exposes only fault-log and alarm-log entry tables (ipDectFaultLogTable / ipDectActiveAlarmsTable) and per-entry error codes — it has no CPU/memory/temperature scalar objects, and active-call/handset counts are not published as pollable scalars. CPU/memory/temperature/fan/power/call-count are therefore N/A and not faked. Applicable to Ascom IP-DECT base stations and IP-DECT gateways managed over SNMP (enterprise PEN 27614) and other IF-MIB compliant wireless devices.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='wireless', collect_type='snmp_ascom'}) by (instance_id)",
   "name": "Wireless",
   "icon": "mm-ascom_ascom",

@@ -15,9 +15,11 @@ class AlertsConfig(AppConfig):
 
     def ready(self):
         # 检查是否正在运行迁移命令
-        is_running_migrations = 'makemigrations' in sys.argv or 'migrate' in sys.argv
+        is_running_migrations = "makemigrations" in sys.argv or "migrate" in sys.argv
         if not is_running_migrations:
             import apps.alerts.nats.nats  # noqa
+            import apps.alerts.openapi_api  # noqa
+
             # 注册即时告警策略缓存失效信号
             _register_instant_cache_signals()
             # 注册 Level 模型缓存失效信号
@@ -30,7 +32,8 @@ def _register_instant_cache_signals():
     确保启停 / 编辑 / 删除策略后旁路立即生效，避免最长 60s TTL 窗口内的不一致。
     """
     try:
-        from django.db.models.signals import post_save, post_delete
+        from django.db.models.signals import post_delete, post_save
+
         from apps.alerts.aggregation.processor.instant_dispatcher import InstantStrategyCache
         from apps.alerts.models.alert_operator import AlarmStrategy
 
@@ -60,7 +63,8 @@ def _register_level_cache_signals():
     将重新从 DB 加载有效级别集合，保证映射结果与最新配置一致。
     """
     try:
-        from django.db.models.signals import post_save, post_delete
+        from django.db.models.signals import post_delete, post_save
+
         from apps.alerts.aggregation.builder.alert_builder import AlertBuilder
         from apps.alerts.models.models import Level
 

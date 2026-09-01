@@ -204,7 +204,6 @@ async def collect(request):
     # Sanic 要求请求体被消费（即使是 GET 请求），否则可能出现
     # "<Request ...> body not consumed." 日志告警。
     await request.receive_body()
-
     # 1. 解析参数（兼容旧逻辑）
     params = {k.split("cmdb", 1)[-1]: v for k, v in dict(request.headers).items() if k.startswith("cmdb")}
     if not params:

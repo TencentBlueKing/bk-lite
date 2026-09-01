@@ -2,8 +2,6 @@ import os
 
 from celery.schedules import crontab
 
-# REMOTE_SERVICE
-METIS_SERVER_URL = os.getenv("METIS_SERVER_URL", "http://rag-server-api/")
 # BOT 环境变量
 KUBE_NAMESPACE = os.getenv("KUBE_NAMESPACE", "lite")
 MUNCHKIN_BASE_URL = os.getenv("MUNCHKIN_BASE_URL", "http://munchkin")

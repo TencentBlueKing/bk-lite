@@ -13,6 +13,7 @@ interface K8sGuideProps {
   loading?: boolean;
   onDownload: (fileKey: string, fileName: string, params: K8sRenderParams) => Promise<void>;
   credentialsSlot?: React.ReactNode;
+  selectedTeamId?: string;
   selectedTeamSecret?: string;
 }
 
@@ -22,6 +23,7 @@ const K8sGuide: React.FC<K8sGuideProps> = ({
   loading = false,
   onDownload,
   credentialsSlot,
+  selectedTeamId,
   selectedTeamSecret,
 }) => {
   const { t } = useTranslation();
@@ -41,9 +43,9 @@ const K8sGuide: React.FC<K8sGuideProps> = ({
     server_url: serverUrl,
     cluster_name: clusterName,
     push_source_id: pushSourceId,
-    team_secret: selectedTeamSecret,
+    team_id: selectedTeamId,
     insecure_skip_verify: insecureSkipVerify,
-  }), [serverUrl, clusterName, pushSourceId, selectedTeamSecret, insecureSkipVerify]);
+  }), [serverUrl, clusterName, pushSourceId, selectedTeamId, insecureSkipVerify]);
 
   useEffect(() => {
     if (meta?.push_source_id_default) {

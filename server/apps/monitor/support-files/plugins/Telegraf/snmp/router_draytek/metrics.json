@@ -3,6 +3,7 @@
   "collect_type": "snmp_draytek",
   "plugin": "Router DrayTek SNMP",
   "plugin_desc": "DrayTek Vigor router/firewall SNMP collection (DrayTek private MIB, IANA PEN 7367). Beyond standard IF-MIB interface metrics, it collects device memory utilisation from the DrayTek private OID (1.3.6.1.4.1.7367.3.7.0, reported directly as a percentage) and CPU utilisation via HOST-RESOURCES hrProcessorLoad. Temperature/fan/power are not exposed by the Vigor MIB, so they are N/A. Supported brands/models — DrayTek Vigor series routers / firewalls (Vigor 2xxx / 3xxx, e.g. Vigor2962 / Vigor3900; enterprise 7367). CPU requires a firmware that exposes HOST-RESOURCES.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_draytek'}) by (instance_id)",
   "name": "Router",
   "icon": "mm-router_路由器",

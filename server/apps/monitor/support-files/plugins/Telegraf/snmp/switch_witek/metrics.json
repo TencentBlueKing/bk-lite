@@ -3,6 +3,7 @@
   "collect_type": "snmp_witek",
   "plugin": "Switch Wi-Tek SNMP",
   "plugin_desc": "Wi-Tek managed switch-specific SNMP collection (enterprise PEN 12284). Beyond the shared Switch SNMP floor, it collects Wi-Tek private OIDs from SYSINFO-MIB and IMIMGMT-MIB for device health including control-plane CPU utilization, memory used/free/usage, system temperature, fan state and power-supply state. CPU is read from taskInformation.total as a direct percentage. Memory usage is derived from allocated and free bytes. Temperature is read as degrees Celsius from the solarCfg system temperature scalar. Fan and PSU raw states are normalized through telegraf processors.enum to 1=healthy / 2=fault. The shared Switch floor supplies uptime, IF-MIB interface metrics, 64-bit ifHCInOctets/ifHCOutOctets and aggregate traffic roll-ups.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_witek'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-witek_witek",

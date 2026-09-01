@@ -25,7 +25,7 @@ CollectModels 创建
   → 凭据命中另走 NATS receive_collect_credential_result → CollectTaskCredentialHit
 ```
 
-Stargazer 侧已经支持无 Telegraf 的一枪：`GET /api/collect/collect_info`，展开 `cmdbhosts`，凭据池 `cmdbcredential_N_*`，HTTP **202**，头 **`X-Task-Status` / `X-Target-Count`**。租约结束即删 Redis，不能回读 completed。失败目标会 `_enqueue_publish`，但 VM 上多为弱 `collection_status`，采集 mapping 会跳过 `collect_status=failed`。
+Stargazer 侧已经支持无 Telegraf 的一枪：`GET /api/collect/collect_info`，展开 `cmdbhosts`，凭据池 `cmdbcredential_N_*`，HTTP **202**，头 **`X-Task-Status` / `X-Target-Count`**。租约结束即删 Redis，不能回读 completed。配置采集失败目标只发布凭据结果事件，不再生成 VM `collection_status` 占位指标。
 
 扫描要迭代的是这条路的「触发 + 回流 + 写 CI」，不是再做一个运行时。
 
@@ -39,7 +39,7 @@ Stargazer 侧已经支持无 Telegraf 的一枪：`GET /api/collect/collect_info
 | `input_method` → 自动可新增可改 | 生成出来的采集与手建网段任务一致（AUTO）；扫描落库仍走 controller 新增 |
 | `CollectNetworkMetrics.get_default_oid_map` 未知当 switch | 采集债务，扫描后处理丢掉建 CI |
 | `receive_collect_credential_result` 必须命中 CollectModels | 扫描换 subject，采集回调零改 |
-| Stargazer 调度 / 失败指标形状 | 产品锁零改；失败进度走凭据事件 |
+| Stargazer 调度 / 失败交付 | 扫描不改；失败进度走凭据结果事件，不依赖 VM 失败指标 |
 | `CMDB_CREDENTIAL_CREATE_ENABLED` 的信封「默认不带密钥」 | 密钥只进监控 `env_config` |
 
 ### 现有契约必须对齐（扫描侧修，不要改错采集）

@@ -118,6 +118,51 @@ async def test_lightweight_direct_reply_records_stream_usage_from_final_chunk():
     assert accumulator.calls[0].reported is True
 
 
+def test_unsupported_stream_usage_error_is_callable_on_instance():
+    from apps.opspilot.metis.llm.chain.node import ToolsNodes
+
+    node = ToolsNodes()
+    assert node._is_unsupported_stream_usage_error(RuntimeError("Unsupported parameter: 'stream_options'")) is True
+    assert node._is_unsupported_stream_usage_error(RuntimeError("You've reached your 5-hour usage limit")) is False
+
+
+@pytest.mark.asyncio
+async def test_lightweight_stream_reraises_quota_error_instead_of_typeerror():
+    """网关 403/配额失败不得被 stream_usage 探测函数二次 TypeError 盖掉。"""
+    from apps.opspilot.metis.llm.chain.node import ToolsNodes
+
+    class QuotaError(Exception):
+        pass
+
+    async def astream(messages, config=None, stream_usage=False):
+        raise QuotaError("You've reached your 5-hour usage limit")
+        yield  # noqa: B901 — 保持 async generator 签名
+
+    node = ToolsNodes()
+    with pytest.raises(QuotaError, match="5-hour usage limit"):
+        await node._astream_lightweight_reply(astream, [HumanMessage(content="你好")], {})
+
+
+@pytest.mark.asyncio
+async def test_lightweight_stream_retries_without_usage_when_gateway_rejects_stream_options():
+    from langchain_core.messages import AIMessageChunk
+
+    from apps.opspilot.metis.llm.chain.node import ToolsNodes
+
+    calls = []
+
+    async def astream(messages, config=None, stream_usage=False):
+        calls.append(stream_usage)
+        if stream_usage:
+            raise RuntimeError("Unsupported parameter: 'stream_options'")
+        yield AIMessageChunk(content="ok")
+
+    node = ToolsNodes()
+    result = await node._astream_lightweight_reply(astream, [HumanMessage(content="你好")], {})
+    assert result.content == "ok"
+    assert calls == [True, False]
+
+
 def test_normalize_messages_empty_input():
     assert node.normalize_messages_for_llm([]) == []
 

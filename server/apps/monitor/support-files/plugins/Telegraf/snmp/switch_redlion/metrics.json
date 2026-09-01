@@ -3,6 +3,7 @@
   "collect_type": "snmp_redlion",
   "plugin": "Switch Red Lion SNMP",
   "plugin_desc": "Red Lion / N-Tron industrial Ethernet switch-specific SNMP collection (NTRON714FX6-MIB, IANA PEN 28381). In addition to standard IF-MIB interface metrics, it collects the N-Tron private dual power-input status object (ntronPowerFault). The raw codes (1=faultNone meaning both inputs OK, 2=faultPower1 meaning input 1 lost, 3=faultPower2 meaning input 2 lost) are normalized via telegraf processors.enum to 1=healthy / 2=fault. The N-Tron MIB exposes only RAM/Flash totals (no used or free, so memory utilization cannot be computed), no CPU object, no pollable numeric temperature (the onboard sensor is exposed only via the web UI / N-View, not SNMP) and no fan object (N-Tron switches are fanless and convection-cooled), so CPU, memory, temperature and fan are not collected (N/A). The power-fault object is defined in the MIB but is firmware-dependent; on firmware that does not return it the plugin degrades to a clean IF-MIB baseline. Supported brands/models — Red Lion / N-Tron industrial Ethernet switches (714FX6 and N-Tron series, IANA PEN 28381).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_redlion'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

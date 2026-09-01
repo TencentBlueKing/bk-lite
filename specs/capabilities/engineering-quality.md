@@ -17,7 +17,7 @@
 
 ## 2. 自动门禁(已落地,别绕过)
 
-- `.husky/pre-commit`:对 `web/`、`mobile/` staged 变更自动 lint/type-check。
+- `.husky/pre-commit`（仓库根目录唯一逻辑入口）：`web/`、`mobile/` staged 变更自动 eslint + type-check；`web/`、`mobile/` 的 `prepare` 注册根目录 `.husky`（`web/.husky/pre-commit` 仅转发到根钩子）。
 - `server/.pre-commit-config.yaml`:`black` + `isort` + `flake8` + `check_migrate` + `check_requirements`。
 - Python 行宽 **150**；`server/apps/` 日志走 `apps.core.logger` 的 `{app}_logger as logger`，`algorithms/` 等独立服务可用 `loguru`。
 

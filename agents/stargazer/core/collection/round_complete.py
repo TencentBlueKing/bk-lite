@@ -10,25 +10,25 @@ from core.logger import logger
 
 ROUND_COMPLETE_METRIC = "cmdb_round_complete"
 ROUND_COMPLETE_GAUGE = f"{ROUND_COMPLETE_METRIC}_gauge"
+ROUND_COMPLETE_EXTRA_LABELS = frozenset(
+    {
+        "collection_role",
+        "channel_config_version",
+        "collect_task_id",
+    }
+)
 
 
 def new_round_ts() -> int:
     return int(time.time())
 
 
-def build_round_complete_labels(
-    params: Mapping[str, Any],
-    *,
-    run_attempt_id: str = "",
-) -> dict[str, Any]:
-    """从请求和租约身份构造完成标记的通道 fencing 标签。"""
-    attempt_id = run_attempt_id or params.get("run_attempt_id") or params.get("collection_run_attempt_id")
+def build_round_complete_labels(params: Mapping[str, Any]) -> dict[str, Any]:
+    """从请求构造完成标记的稳定通道标签。"""
     labels = {
         "collection_role": params.get("collection_role") or "device",
         "channel_config_version": params.get("channel_config_version"),
         "collect_task_id": params.get("collect_task_id"),
-        "run_attempt_id": attempt_id,
-        "collection_run_attempt_id": attempt_id,
     }
     return {key: value for key, value in labels.items() if value not in (None, "")}
 
@@ -63,7 +63,7 @@ def build_round_complete_prometheus(
     }
     if extra_labels:
         for key, value in extra_labels.items():
-            if value in (None, ""):
+            if key not in ROUND_COMPLETE_EXTRA_LABELS or value in (None, ""):
                 continue
             labels[str(key)] = str(value)
     label_str = ",".join(f'{key}="{_escape_label(value)}"' for key, value in labels.items())

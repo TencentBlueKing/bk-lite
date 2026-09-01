@@ -3,6 +3,7 @@
   "collect_type": "snmp_mimosa",
   "plugin": "Wireless Mimosa SNMP",
   "plugin_desc": "Mimosa wireless PtP and PtMP backhaul SNMP child template for devices under enterprise PEN 43356. This child adds the confirmed internal temperature scalar from the Mimosa wireless system tree as device_temperature_celsius, scaled from tenths of a degree Celsius in the query. CPU, memory, fan and power-supply health are N/A because no stable shared device-health objects are confirmed for them; link and subscriber telemetry are wireless service counters and are not promoted into shared device health in this pass.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='wireless', collect_type='snmp_mimosa'}) by (instance_id)",
   "name": "Wireless",
   "icon": "mm-mimosa_mimosa",

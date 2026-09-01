@@ -13,7 +13,7 @@ meta:
   object_counts:
     dashboards: 3
     topologies: 0
-    screens: 2
+    screens: 3
     reports: 0
     architectures: 0
     datasources: 20
@@ -1528,7 +1528,7 @@ dashboards:
 topologies: []
 screens:
 - key: screen::告警运营大屏_内置
-  name: 告警运营大屏_内置
+  name: 告警运营大屏
   desc: 告警中心运营态势大屏，使用页面可配置图表节点展示今日、活动、趋势、分布与活跃告警信息
   other: {}
   view_sets:
@@ -1961,7 +1961,7 @@ screens:
     - 告警等级分布::get_alert_level_distribution
     namespace_keys: []
 - key: screen::3D机房大屏_内置
-  name: 3D机房大屏_内置
+  name: 3D机房大屏
   desc: 基于 CMDB 机房、机柜和设备数据展示的 3D 机房大屏，支持在组件内切换机房
   other: {}
   view_sets:
@@ -1997,6 +1997,40 @@ screens:
     - CMDB 3D机房布局::cmdb/get_room3d_layout
     namespace_keys:
     - 默认命名空间
+- key: screen::3D应用大屏_内置
+  name: 3D应用大屏
+  desc: 以 3D 应用墙展示当前可见应用的健康状态、活跃告警和详情
+  other: {}
+  view_sets:
+    items:
+    - h: 1080
+      w: 1920
+      x: 0
+      y: 0
+      id: builtin-application3d-main
+      type: widget
+      title: 3D应用
+      zIndex: 1
+      chartType: application3D
+      valueConfig:
+        chartType: application3D
+        sceneWidgetType: application3D
+        appearance:
+          frame: bare
+    viewport:
+      theme: screen-dark
+      width: 1920
+      height: 1080
+      background:
+        key: tech-grid
+        type: builtIn
+    decorations:
+      title: 3D应用
+      showClock: false
+      showTitle: false
+  refs:
+    datasource_keys: []
+    namespace_keys: []
 reports: []
 architectures: []
 datasources:

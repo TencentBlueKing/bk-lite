@@ -428,6 +428,7 @@ def test_oid_create_with_whitespace_rejected(superuser):
 
 @pytest.mark.django_db
 def test_oid_create_duplicate(superuser):
+    # 同一 OID 的 POST 被拒绝；用户覆盖只能走 UPDATE 并把 built_in 设为 False。
     OidMapping.objects.create(oid="1.3.6.1", device_type="switch")
     request = _req("post", superuser, data={"oid": "1.3.6.1"})
     resp = OidModelViewSet.as_view({"post": "create"})(request)

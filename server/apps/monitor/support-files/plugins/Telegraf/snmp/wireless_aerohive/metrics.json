@@ -3,6 +3,7 @@
   "collect_type": "snmp_aerohive",
   "plugin": "Wireless Aerohive SNMP",
   "plugin_desc": "Aerohive (Extreme Networks) HiveAP / HiveOS access-point and controller-specific SNMP collection (AH-SYSTEM-MIB, enterprise PEN 26928). In addition to standard IF-MIB 64-bit HC interface traffic, it collects the platform health scalars — CPU utilization (ahCpuUtilization, OID 26928.1.2.3) and memory utilization (ahMemUtilization, OID 26928.1.2.4) both reported directly as 0-100 percentages, and chassis temperature (ahEnvirmentTemp, OID 26928.1.2.10) read directly in degrees Celsius (only chassis models with a temperature sensor return a real value, fanless APs return 0). The fan-speed object (ahEnvirmentFan) is an RPM reading rather than a normalized up/down state and most APs are fanless, so fan state and power-supply objects are N/A. Supported brands/models — Aerohive / Extreme Networks HiveAP access points (AP series) and HiveManager-managed wireless devices running HiveOS (enterprise PEN 26928).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='wireless', collect_type='snmp_aerohive'}) by (instance_id)",
   "name": "Wireless",
   "icon": "mm-aerohive_aerohive",

@@ -50,6 +50,7 @@ import {
   type LayerBand,
   type LayerKey,
 } from './layerLayout';
+import { resolveLayer } from './resolveLayer';
 import {
   centerTopologyNode,
   filterRelationLinks,
@@ -57,6 +58,13 @@ import {
   resolveNeighborhood,
 } from './nodeFocus';
 import { filterResourceGroups } from './resourceInventory';
+import ExpandDepthControl from './ExpandDepthControl';
+import {
+  APP_TOPO_DEFAULT_EXPAND_DEPTH,
+  readAppTopoExpandDepth,
+  writeAppTopoExpandDepth,
+  type AppTopoExpandDepth,
+} from './expandDepth';
 import styles from './index.module.scss';
 
 interface Props {
@@ -542,37 +550,6 @@ function resolveRootNode(topology: ApplicationResourceTopologyData): Application
   return systemNode || topology.center;
 }
 
-function resolveLayer(
-  topology: ApplicationResourceTopologyData,
-  node: ApplicationResourceNode,
-  rootNode: ApplicationResourceNode
-): LayerKey {
-  if (node.id === rootNode.id) return 'root';
-  if (node.category === 'application') return 'service';
-  if (node.model_id === 'host') return 'host';
-  if (
-    node.category === 'middleware' ||
-    node.category === 'database' ||
-    node.category === 'cache' ||
-    node.category === 'message_queue'
-  ) {
-    return 'appService';
-  }
-  if (node.category === 'host') {
-    const linkedToHost = topology.links.some((link) => {
-      if (link.source === node.id) {
-        return topology.nodes.find((item) => item.id === link.target)?.model_id === 'host';
-      }
-      if (link.target === node.id) {
-        return topology.nodes.find((item) => item.id === link.source)?.model_id === 'host';
-      }
-      return false;
-    });
-    if (linkedToHost) return 'infrastructure';
-  }
-  return 'infrastructure';
-}
-
 function buildLayeredGraphData(params: {
   topology: ApplicationResourceTopologyData;
   t: (id: string, defaultMessage?: string, values?: Record<string, string | number>) => string;
@@ -587,6 +564,7 @@ function buildLayeredGraphData(params: {
   LAYER_KEYS.forEach((key) => byLayer.set(key, []));
   orderedNodes.forEach((node) => {
     const layer = resolveLayer(topology, node, rootNode);
+    if (!layer) return;
     const list = byLayer.get(layer) || [];
     list.push(node);
     byLayer.set(layer, list);
@@ -600,28 +578,34 @@ function buildLayeredGraphData(params: {
   });
   const positionById = new Map(packed.positions.map((item) => [item.id, item]));
 
-  const positionedNodes = orderedNodes.map((node) => {
+  const positionedNodes = orderedNodes.flatMap((node) => {
     const packedPosition = positionById.get(node.id);
-    return {
-      id: node.id,
-      modelId: node.model_id,
-      name: node.name,
-      subtitle: `${node.model_id} · ${t(GROUP_LABELS[node.category] || GROUP_LABELS.other)}`,
-      hop: node.hop,
-      status: 'normal' as NetworkTopologyNodeStatus,
-      x: packedPosition?.x ?? 0,
-      y: packedPosition?.y ?? packed.bands[0]?.labelY ?? 0,
-    };
+    if (!packedPosition) return [];
+    return [
+      {
+        id: node.id,
+        modelId: node.model_id,
+        name: node.name,
+        subtitle: `${node.model_id} · ${t(GROUP_LABELS[node.category] || GROUP_LABELS.other)}`,
+        hop: node.hop,
+        status: 'normal' as NetworkTopologyNodeStatus,
+        x: packedPosition.x,
+        y: packedPosition.y,
+      },
+    ];
   });
 
-  const links: Array<VisualLink & { curveOffset: number }> = topology.links.map((link) => ({
-    id: link.id,
-    source: link.source,
-    target: link.target,
-    sourcePort: link.asst_id || '',
-    targetPort: link.model_asst_id || '',
-    curveOffset: 0,
-  }));
+  const positionedIds = new Set(positionedNodes.map((node) => node.id));
+  const links: Array<VisualLink & { curveOffset: number }> = topology.links
+    .filter((link) => positionedIds.has(link.source) && positionedIds.has(link.target))
+    .map((link) => ({
+      id: link.id,
+      source: link.source,
+      target: link.target,
+      sourcePort: link.asst_id || '',
+      targetPort: link.model_asst_id || '',
+      curveOffset: 0,
+    }));
 
   return {
     graphData: buildNetworkTopologyX6GraphData({
@@ -756,7 +740,11 @@ export default function ApplicationResourceOverview({
   const [graphInstance, setGraphInstance] = useState<Graph | null>(null);
   const [graphViewport, setGraphViewport] = useState({ scaleY: 1, translateY: 0 });
   const [laneWidth, setLaneWidth] = useState(DEFAULT_LANE_WIDTH);
-  const initialDepth = modelId === 'system' ? 2 : 1;
+  const [expandDepth, setExpandDepth] = useState<AppTopoExpandDepth>(() =>
+    typeof window === 'undefined'
+      ? APP_TOPO_DEFAULT_EXPAND_DEPTH
+      : readAppTopoExpandDepth(window.localStorage)
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -785,7 +773,7 @@ export default function ApplicationResourceOverview({
       setHoveredGraphEdgeId(null);
       setLoading(true);
       try {
-        const topologyRes = await getApplicationResourceTopology(selectedTarget.model_id, selectedTarget.id, initialDepth);
+        const topologyRes = await getApplicationResourceTopology(selectedTarget.model_id, selectedTarget.id, expandDepth);
         const topologyData = withLocalRelationshipScenarios(topologyRes, selectedTarget.id);
         const resourceRes = await getApplicationResourceInstances(
           selectedTarget.model_id,
@@ -813,7 +801,7 @@ export default function ApplicationResourceOverview({
       cancelled = true;
     };
      
-  }, [initialDepth, selectedTarget?.id, selectedTarget?.model_id]);
+  }, [expandDepth, selectedTarget?.id, selectedTarget?.model_id]);
 
   const topologyNodeMap = useMemo(() => {
     return new Map((topology?.nodes || []).map((node) => [node.id, node]));
@@ -1055,7 +1043,7 @@ export default function ApplicationResourceOverview({
     setNodeContextMenu((current) => ({ ...current, visible: false }));
     setLoading(true);
     try {
-      const res = await getApplicationResourceTopology(selectedTarget.model_id, selectedTarget.id, initialDepth);
+      const res = await getApplicationResourceTopology(selectedTarget.model_id, selectedTarget.id, expandDepth);
       const topologyData = withLocalRelationshipScenarios(res, selectedTarget.id);
       setTopology(topologyData);
       const resourceRes = await getApplicationResourceInstances(
@@ -1228,39 +1216,48 @@ export default function ApplicationResourceOverview({
           />
 
           {viewMode === 'topology' && (
-            <AutoComplete
-              className={styles.nodeSearch}
-              value={nodeSearch}
-              options={nodeSearchOptions}
-              open={nodeSearchOpen}
-              size="small"
-              filterOption={false}
-              notFoundContent={nodeSearch.trim() ? t('ApplicationResourceOverview.nodeSearchEmpty') : null}
-              popupMatchSelectWidth
-              onOpenChange={(open) => {
-                setNodeSearchOpen(open && Boolean(nodeSearch.trim()));
-              }}
-              onChange={(value) => {
-                const next = typeof value === 'string' ? value : '';
-                const matched = topologyNodeMap.get(next);
-                if (matched && matched.name !== next) {
-                  return;
-                }
-                setNodeSearch(next);
-                setNodeSearchOpen(Boolean(next.trim()));
-              }}
-              onSelect={(nodeId) => {
-                handleLocateTopologyNode(String(nodeId));
-              }}
-            >
-              <Input
-                allowClear
+            <>
+              <AutoComplete
+                className={styles.nodeSearch}
+                value={nodeSearch}
+                options={nodeSearchOptions}
+                open={nodeSearchOpen}
                 size="small"
-                prefix={<SearchOutlined />}
-                placeholder={t('ApplicationResourceOverview.nodeSearchPlaceholder')}
-                aria-label={t('ApplicationResourceOverview.nodeSearchPlaceholder')}
+                filterOption={false}
+                notFoundContent={nodeSearch.trim() ? t('ApplicationResourceOverview.nodeSearchEmpty') : null}
+                popupMatchSelectWidth
+                onOpenChange={(open) => {
+                  setNodeSearchOpen(open && Boolean(nodeSearch.trim()));
+                }}
+                onChange={(value) => {
+                  const next = typeof value === 'string' ? value : '';
+                  const matched = topologyNodeMap.get(next);
+                  if (matched && matched.name !== next) {
+                    return;
+                  }
+                  setNodeSearch(next);
+                  setNodeSearchOpen(Boolean(next.trim()));
+                }}
+                onSelect={(nodeId) => {
+                  handleLocateTopologyNode(String(nodeId));
+                }}
+              >
+                <Input
+                  allowClear
+                  size="small"
+                  prefix={<SearchOutlined />}
+                  placeholder={t('ApplicationResourceOverview.nodeSearchPlaceholder')}
+                  aria-label={t('ApplicationResourceOverview.nodeSearchPlaceholder')}
+                />
+              </AutoComplete>
+              <ExpandDepthControl
+                value={expandDepth}
+                onChange={(depth) => {
+                  setExpandDepth(depth);
+                  writeAppTopoExpandDepth(window.localStorage, depth);
+                }}
               />
-            </AutoComplete>
+            </>
           )}
         </div>
 

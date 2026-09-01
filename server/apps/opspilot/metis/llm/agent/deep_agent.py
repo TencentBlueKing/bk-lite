@@ -37,7 +37,6 @@ class DeepAgentGraph(BasicGraph):
         """编译 DeepAgent 执行图"""
 
         node_builder = DeepAgentNode()
-        import logging as _dg; _dg.warning("DEBUG_DG: about to call setup")
         await node_builder.setup(request)
 
         graph_builder = StateGraph(DeepAgentState)

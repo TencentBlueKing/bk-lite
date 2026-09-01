@@ -31,6 +31,8 @@ class AlertModelFilter(FilterSet):
     incident_id = CharFilter(field_name="incident__id", lookup_expr="exact", label="事故ID")
     has_incident = CharFilter(method="filter_incident", label="是否有事故")
     rule_id = CharFilter(field_name="rule_id", label="是否有事故")
+    resource_type = CharFilter(field_name="resource_type", lookup_expr="exact", label="资源类型")
+    resource_id = CharFilter(field_name="resource_id", lookup_expr="exact", label="资源ID")
 
     class Meta:
         model = Alert
@@ -47,6 +49,8 @@ class AlertModelFilter(FilterSet):
             "created_at_before",
             "incident_id",
             "rule_id",
+            "resource_type",
+            "resource_id",
         ]
 
     @staticmethod

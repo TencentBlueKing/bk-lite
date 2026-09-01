@@ -39,6 +39,7 @@ export interface AlarmTableRow extends AlarmActionRowData {
   alert_id?: string | number;
   content?: string;
   created_at?: string | null;
+  closed_at?: string | null;
   duration?: string;
   event_count?: number;
   first_event_time?: string | null;
@@ -184,6 +185,14 @@ const AlarmTable: React.FC<AlarmTableProps> = ({
       width: 180,
       render: (_: unknown, { last_event_time }: AlarmTableRow) =>
         last_event_time ? convertToLocalizedTime(last_event_time) : '--',
+    },
+    {
+      title: t('alarms.closeTime'),
+      dataIndex: 'closed_at',
+      key: 'closed_at',
+      width: 180,
+      render: (_: unknown, { closed_at }: AlarmTableRow) =>
+        closed_at ? convertToLocalizedTime(closed_at) : '--',
     },
     {
       title: t('alarms.alertName'),
