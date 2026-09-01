@@ -176,6 +176,7 @@ export interface TableColumnSpec {
   column_name: string;
   column_type: 'str' | 'number';
   order: number;
+  is_row_key?: boolean;
 }
 
 export type TableAttrOption = TableColumnSpec[];

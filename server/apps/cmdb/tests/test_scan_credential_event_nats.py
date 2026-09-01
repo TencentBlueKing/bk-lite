@@ -2,7 +2,7 @@ import pytest
 
 from apps.cmdb.models.collect_task_credential_hit import CollectTaskCredentialHit
 from apps.cmdb.models.scan_model import ScanExecution, ScanFamilyRun, ScanHit, ScanTask
-from apps.cmdb.nats.nats import receive_collect_credential_result, receive_scan_credential_result
+from apps.cmdb.nats.nats import receive_scan_credential_result
 
 pytestmark = pytest.mark.django_db
 
@@ -27,22 +27,6 @@ def _scan_family_run(*, target_count=2, model_id="mysql"):
         target_count=target_count,
         admit_status=ScanFamilyRun.ADMIT_ACCEPTED,
     )
-
-
-def test_collect_handler_does_not_write_scan_hits():
-    family_run = _scan_family_run()
-    response = receive_collect_credential_result(
-        data={
-            "collect_task_id": family_run.id,
-            "host": "10.0.1.20",
-            "credential_id": "cred-db",
-            "status": "success",
-        }
-    )
-    assert response["result"] is False
-    assert response["message"] == "collect_task_id does not exist"
-    assert CollectTaskCredentialHit.objects.count() == 0
-    assert ScanHit.objects.count() == 0
 
 
 def test_scan_success_writes_hit_not_collect_credential_hit(mocker):

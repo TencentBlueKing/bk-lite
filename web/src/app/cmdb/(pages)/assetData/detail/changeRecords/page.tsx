@@ -25,6 +25,8 @@ import {
   AttrFieldType,
 } from '@/app/cmdb/types/assetManage';
 import { buildChangeRecordDiffRows } from './changeRecordDiff';
+import type { ChangeRecordAttributeSnapshot } from './changeRecordTypes';
+import TableFieldDiffView from './TableFieldDiffView';
 
 const { RangePicker } = DatePicker;
 
@@ -42,6 +44,7 @@ interface ChangeRecord {
   message?: string;
   before_data?: any;
   after_data?: any;
+  attribute_snapshot?: ChangeRecordAttributeSnapshot;
 }
 
 // 场景颜色（与设计稿一致）
@@ -736,8 +739,17 @@ const ChangeRecords: React.FC = () => {
                                 </tr>
                               </thead>
                               <tbody>
-                                {diffRows.map((row, i) => (
-                                  <tr key={i}>
+                                {diffRows.map((row) => row.table ? (
+                                  <tr key={row.attrId}>
+                                    <td className={styles.attrCell}>
+                                      {row.attr}
+                                    </td>
+                                    <td colSpan={3} className="p-2">
+                                      <TableFieldDiffView diff={row.table} compact />
+                                    </td>
+                                  </tr>
+                                ) : (
+                                  <tr key={row.attrId}>
                                     <td className={styles.attrCell}>
                                       {row.attr}
                                     </td>
@@ -823,8 +835,15 @@ const ChangeRecords: React.FC = () => {
                             </tr>
                           </thead>
                           <tbody>
-                            {diffRows.map((row, i) => (
-                              <tr key={i}>
+                            {diffRows.map((row) => row.table ? (
+                              <tr key={row.attrId}>
+                                <td className={styles.attrCell}>{row.attr}</td>
+                                <td colSpan={3} className="p-2">
+                                  <TableFieldDiffView diff={row.table} />
+                                </td>
+                              </tr>
+                            ) : (
+                              <tr key={row.attrId}>
                                 <td className={styles.attrCell}>{row.attr}</td>
                                 <td
                                   className={`whitespace-pre-wrap break-words ${

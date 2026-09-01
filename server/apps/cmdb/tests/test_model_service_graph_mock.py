@@ -235,6 +235,25 @@ def test_create_model_attr_duplicate(fake_graph):
         ModelManage.create_model_attr("host", {"attr_id": "ip", "attr_name": "IP", "attr_type": "str"})
 
 
+@pytest.mark.django_db
+def test_create_model_attr_rejects_multiple_table_row_keys():
+    from apps.cmdb.services.model import ModelManage
+    from apps.core.exceptions.base_app_exception import BaseAppException
+
+    attr = {
+        "attr_id": "interfaces",
+        "attr_name": "网卡",
+        "attr_type": "table",
+        "option": [
+            {"column_id": "name", "column_name": "名称", "column_type": "str", "order": 1, "is_row_key": True},
+            {"column_id": "mac", "column_name": "MAC", "column_type": "str", "order": 2, "is_row_key": True},
+        ],
+    }
+
+    with pytest.raises(BaseAppException, match="行标识"):
+        ModelManage.create_model_attr("host", attr)
+
+
 # --------------------------------------------------------------------------
 # create_model — 定点查询唯一性校验（issue #3379）
 # --------------------------------------------------------------------------

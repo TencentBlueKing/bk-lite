@@ -61,6 +61,7 @@ class ChangeRecord(models.Model):
     type = models.CharField(max_length=30, choices=OPERATE_TYPE_CHOICES, verbose_name="变更类型")
     before_data = JSONField(default=dict, verbose_name="变更前实例信息")
     after_data = JSONField(default=dict, verbose_name="变更后实例信息")
+    attribute_snapshot = JSONField(default=dict, blank=True, verbose_name="变更时属性定义快照")
     operator = models.CharField(max_length=50, default="", verbose_name="创建者")
     created_at = models.DateTimeField(auto_now_add=True, db_index=True, verbose_name="创建时间")
     model_object = models.CharField(max_length=50, default="", verbose_name="模型对象", help_text="模型对象")

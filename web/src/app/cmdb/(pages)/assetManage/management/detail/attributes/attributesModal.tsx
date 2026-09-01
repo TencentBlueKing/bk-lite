@@ -611,6 +611,13 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
       setTableColumnList(columnList);
     };
 
+    const onTableRowKeyChange = (index: number, checked: boolean) => {
+      setTableColumnList((columns) => columns.map((column, columnIndex) => ({
+        ...column,
+        is_row_key: checked && columnIndex === index,
+      })));
+    };
+
     const onTableDragEnd = (event: any) => {
       const { active, over } = event;
       if (!over) return;
@@ -1161,6 +1168,15 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                                   <Option value="str">{t('string')}</Option>
                                   <Option value="number">{t('number')}</Option>
                                 </Select>
+                                <Tooltip title={t('Model.rowIdentityHelp')}>
+                                  <Checkbox
+                                    className="mr-[10px] whitespace-nowrap"
+                                    checked={column.is_row_key === true}
+                                    onChange={(event) => onTableRowKeyChange(index, event.target.checked)}
+                                  >
+                                    {t('Model.rowIdentity')}
+                                  </Checkbox>
+                                </Tooltip>
                                 <PlusOutlined
                                   className="mr-[10px] cursor-pointer text-[var(--color-primary)]"
                                   onClick={addTableColumn}

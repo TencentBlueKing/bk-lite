@@ -1,7 +1,7 @@
 from service.collection_service import CollectionService
 
 
-def test_winsphere_snapshot_metadata_reaches_every_metric_stream():
+def test_winsphere_snapshot_metadata_is_removed_from_metric_streams():
     service = CollectionService(
         {
             "plugin_name": "winsphere_info",
@@ -34,25 +34,34 @@ def test_winsphere_snapshot_metadata_reaches_every_metric_stream():
         }
     )
 
-    assert processed["winsphere"][0]["snapshot_id"] == "snapshot-1"
-    assert processed["winsphere"][0]["snapshot_status"] == "complete"
-    assert processed["winsphere"][0]["snapshot_manifest"] == (
-        '{"schema_version":1,"snapshot_id":"snapshot-1",'
-        '"expected_models":["winsphere","winsphere_storage_pool","winsphere_vm"],'
-        '"models":{}}'
+    metadata = service._extract_round_metadata(
+        {
+            "success": True,
+            "snapshot_id": "snapshot-1",
+            "snapshot_status": "complete",
+            "snapshot_manifest": {
+                "schema_version": 1,
+                "snapshot_id": "snapshot-1",
+                "expected_models": ["winsphere", "winsphere_storage_pool", "winsphere_vm"],
+                "models": {},
+            },
+        }
     )
+
+    for rows in processed.values():
+        for row in rows:
+            assert "snapshot_id" not in row
+            assert "snapshot_status" not in row
+            assert "snapshot_manifest" not in row
     assert "snapshot_manifest" not in processed["winsphere_storage_pool"][0]
     assert processed["winsphere_vm"] == [
         {
             "bk_obj_id": "winsphere_vm",
             "collect_status": "success",
-            "snapshot_id": "snapshot-1",
-            "snapshot_status": "complete",
         }
     ]
-    assert processed["winsphere_storage_pool"][0]["host_ids"] == (
-        '["host-1","host-2"]'
-    )
+    assert metadata["details"]["snapshot_manifest"]["snapshot_id"] == "snapshot-1"
+    assert processed["winsphere_storage_pool"][0]["host_ids"] == ('["host-1","host-2"]')
 
 
 def test_winsphere_collection_exception_emits_queryable_failed_model_metric():

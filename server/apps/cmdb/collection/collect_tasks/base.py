@@ -44,6 +44,12 @@ class BaseCollect(object):
         round_ts = getattr(self.task, "_sync_round_ts", None)
         if round_ts is not None:
             kwargs["round_ts"] = round_ts
+        round_completed_at = getattr(self.task, "_sync_round_completed_at", None)
+        if round_completed_at is not None:
+            kwargs["round_completed_at"] = round_completed_at
+        snapshot_complete = getattr(self.task, "_sync_snapshot_complete", None)
+        if snapshot_complete is not None:
+            kwargs["snapshot_complete"] = bool(snapshot_complete)
         return kwargs
 
     def format_params(self):

@@ -47,12 +47,54 @@ class RecordingPlugin:
         return CollectOutcome(status=CollectOutcomeStatus.SUCCESS, value={"ok": True})
 
 
+class EmptySuccessPlugin:
+    async def collect(self, target, credential, context):
+        return CollectOutcome(status=CollectOutcomeStatus.SUCCESS, value={})
+
+
 class RecordingPublisher:
     def __init__(self):
         self.results = []
 
     async def publish(self, request, result, lease):
         self.results.append((request, result, lease))
+
+
+@pytest.mark.asyncio
+async def test_empty_successful_snapshot_does_not_publish_completion_marker(monkeypatch):
+    marker_calls = []
+
+    async def record_marker(request, round_ts):
+        marker_calls.append((request.task_id, round_ts))
+        return True
+
+    monkeypatch.setattr(
+        "core.collection.round_complete.publish_round_complete_marker",
+        record_marker,
+    )
+    publisher = RecordingPublisher()
+    request = CollectionRequest(
+        task_id="empty-complete",
+        plugin_ref="network.config",
+        targets=("10.10.24.1",),
+        credentials=({"credential_id": "c1"},),
+        params={"model_id": "network", "collect_task_id": 7},
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+    executor = TargetCollectionExecutor(
+        preflight=ReachablePreflight(),
+        plugin=EmptySuccessPlugin(),
+        publisher=publisher,
+        settings=TargetExecutorSettings(max_active_targets=1, target_task_window=1),
+    )
+
+    summary = await executor.execute(request, lease)
+
+    assert summary.collection_succeeded == 1
+    assert summary.publish_succeeded == 0
+    assert summary.publish_not_applicable == 1
+    assert publisher.results == []
+    assert marker_calls == []
 
 
 class OneTargetFailingPublisher:

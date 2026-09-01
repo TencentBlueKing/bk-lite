@@ -156,6 +156,7 @@ class TestPrimitives:
     def test_should_register_sync_beat(self):
         assert not CollectModelService.should_register_sync_beat(fake_instance(task_type=CollectPluginTypes.HOST))
         assert CollectModelService.should_register_sync_beat(fake_instance(task_type=CollectPluginTypes.CONFIG_FILE))
+        assert CollectModelService.should_register_sync_beat(fake_instance(task_type=CollectPluginTypes.K8S))
 
 
 class TestResolveCloudMeta:

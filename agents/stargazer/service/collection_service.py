@@ -224,7 +224,11 @@ class CollectionService:
                 error = ""
                 if not result.get("success", True):
                     error = str(result_data.get("cmdb_collect_error", result.get("error", "Unknown error")))
-                final_result = StructuredMetricsPayload(data=processed, error=error)
+                final_result = StructuredMetricsPayload(
+                    data=processed,
+                    error=error,
+                    round_metadata=self._extract_round_metadata(result),
+                )
             else:
                 final_result = await asyncio.to_thread(convert_to_prometheus_format, processed)
 
@@ -305,26 +309,15 @@ class CollectionService:
 
         # 处理采集成功的情况
         result_data = result.get("result", {})
-        snapshot_meta = {}
-        if result.get("snapshot_id"):
-            snapshot_meta["snapshot_id"] = result["snapshot_id"]
-        if result.get("snapshot_status"):
-            snapshot_meta["snapshot_status"] = result["snapshot_status"]
-        snapshot_manifest = result.get("snapshot_manifest")
         for model_id, items in result_data.items():
             if model_id not in processed:
                 processed[model_id] = []
-            model_snapshot_meta = dict(snapshot_meta)
-            if model_id == "winsphere" and snapshot_manifest:
-                model_snapshot_meta["snapshot_manifest"] = snapshot_manifest
-
             if not items:
                 # 空结果也标记为成功
                 processed[model_id].append(
                     {
                         "bk_obj_id": model_id,
                         "collect_status": "success",
-                        **model_snapshot_meta,
                     }
                 )
                 self._encode_winsphere_metric_labels(processed[model_id][-1])
@@ -338,7 +331,7 @@ class CollectionService:
                             item["host"] = self.host
                         item["bk_obj_id"] = model_id
                         item.setdefault("collect_status", "success")
-                        item.update(model_snapshot_meta)
+                        self._strip_snapshot_transport_fields(item)
                         self._encode_winsphere_metric_labels(item)
                 processed[model_id].extend(items)
             elif isinstance(items, dict):
@@ -347,11 +340,39 @@ class CollectionService:
                     items["host"] = self.host
                 items["collect_status"] = "success"
                 items["bk_obj_id"] = model_id
-                items.update(model_snapshot_meta)
+                self._strip_snapshot_transport_fields(items)
                 self._encode_winsphere_metric_labels(items)
                 processed[model_id].append(items)
 
         return processed
+
+    @staticmethod
+    def _strip_snapshot_transport_fields(item):
+        for key in (
+            "snapshot_id",
+            "snapshot_status",
+            "snapshot_manifest",
+            "software_snapshot_status",
+            "software_expected_count",
+            "software_error_count",
+        ):
+            item.pop(key, None)
+
+    def _extract_round_metadata(self, result):
+        if self.model_id not in {"pc", "winsphere"} or not result.get("success", True):
+            return None
+        snapshot_id = str(result.get("snapshot_id") or "").strip()
+        snapshot_status = str(result.get("snapshot_status") or "").strip()
+        if not snapshot_id or snapshot_status not in {"complete", "partial"}:
+            return None
+        details = dict(result.get("snapshot_metadata") or {})
+        if self.model_id == "winsphere":
+            details["snapshot_manifest"] = result.get("snapshot_manifest")
+        return {
+            "snapshot_id": snapshot_id,
+            "snapshot_status": snapshot_status,
+            "details": details,
+        }
 
     def _encode_winsphere_metric_labels(self, item):
         """仅在 Prometheus 传输边界编码 WinSphere 的结构化标签。"""
