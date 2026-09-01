@@ -83,6 +83,22 @@ const formatTimeValue = (value: number, unit: MetricUnit) => {
     }
   }
 
+  // Scale down sub-unit values (e.g. 0.009s → 9ms) so small latencies are not rounded to 0s.
+  const downscaleFactor: Record<number, number> = {
+    1: 1000, // µs → ns
+    2: 1000, // ms → µs
+    3: 1000, // s → ms
+    4: 60, // m → s
+    5: 60, // h → m
+    6: 24, // d → h
+  };
+  while (index > 0 && Math.abs(next) > 0 && Math.abs(next) < 1) {
+    const factor = downscaleFactor[index];
+    if (!factor) break;
+    next *= factor;
+    index -= 1;
+  }
+
   return {
     value: formatScaledValue(next),
     unit: TIME_LABELS[TIME_UNITS[index]]
