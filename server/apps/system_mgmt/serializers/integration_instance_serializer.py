@@ -50,7 +50,18 @@ class IntegrationInstanceSerializer(UsernameSerializer):
         provider_key = attrs.get("provider_key") or getattr(self.instance, "provider_key", "")
         manifest = get_provider_registry().get(provider_key)
         if manifest is None:
-            raise serializers.ValidationError({"provider_key": "Unknown provider"})
+            if self.instance is None:
+                raise serializers.ValidationError({"provider_key": "Unknown provider"})
+            is_draft = attrs.pop("is_draft", False)
+            config_scope = attrs.pop("config_scope", "")
+            attrs["_is_draft"] = is_draft
+            attrs["_config_scope"] = config_scope
+            if "provider_key" in attrs and attrs["provider_key"] != self.instance.provider_key:
+                raise serializers.ValidationError({"provider_key": "provider_key cannot be changed after creation"})
+            incoming_config = attrs.get("config")
+            if incoming_config is not None and not isinstance(incoming_config, dict):
+                raise serializers.ValidationError({"config": "Config must be an object"})
+            return attrs
         is_draft = attrs.pop("is_draft", False)
         config_scope = attrs.pop("config_scope", "")
         attrs["_is_draft"] = is_draft
@@ -116,7 +127,16 @@ class IntegrationInstanceSerializer(UsernameSerializer):
         validated_data.pop("_config_scope", None)
         manifest = get_provider_registry().get(instance.provider_key)
         if manifest is None:
-            raise serializers.ValidationError({"provider_key": "Unknown provider"})
+            incoming_config = validated_data.get("config")
+            if incoming_config is None:
+                validated_data["config"] = instance.config
+                return super().update(instance, validated_data)
+            config = deepcopy(instance.config or {})
+            for key, value in incoming_config.items():
+                if value not in (None, ""):
+                    config[key] = value
+            validated_data["config"] = config
+            return super().update(instance, validated_data)
 
         incoming_config = validated_data.get("config")
         if incoming_config is None:

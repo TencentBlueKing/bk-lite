@@ -181,6 +181,40 @@ def test_integration_instance_serializer_requires_required_capability_connection
 
 
 @pytest.mark.django_db
+def test_update_still_saves_config_when_provider_manifest_is_missing(monkeypatch):
+    class EmptyRegistry:
+        def get(self, provider_key):
+            return None
+
+    monkeypatch.setattr(
+        "apps.system_mgmt.serializers.integration_instance_serializer.get_provider_registry",
+        lambda: EmptyRegistry(),
+    )
+    instance = IntegrationInstance.objects.create(
+        name="orphan",
+        provider_key="missing",
+        config={"endpoint": "https://old.example"},
+        team=[1],
+    )
+    serializer = IntegrationInstanceSerializer(
+        instance,
+        data={
+            "name": "orphan-renamed",
+            "provider_key": "missing",
+            "config": {"endpoint": "https://new.example", "note": "keep"},
+            "team": [1],
+        },
+        partial=True,
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    saved = serializer.save()
+    assert saved.name == "orphan-renamed"
+    assert saved.config["endpoint"] == "https://new.example"
+    assert saved.config["note"] == "keep"
+
+
+@pytest.mark.django_db
 def test_integration_instance_serializer_scoped_update_only_resets_target_capability(monkeypatch):
     manifest = FakeManifest(
         instance_template=[FakeField("app_id", required=True)],

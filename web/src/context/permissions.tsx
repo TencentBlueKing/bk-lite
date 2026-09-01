@@ -188,7 +188,7 @@ export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     fetchMenus();
-  }, [apiLoading, menuLoading]);
+  }, [apiLoading, menuLoading, fetchMenus]);
 
   const hasPermission = useCallback(
     (url: string) => {

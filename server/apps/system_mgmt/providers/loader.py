@@ -72,10 +72,19 @@ def _resolve_adapter_import_path(module_path: str, adapter_path: str, pack_dir: 
     return f"{module_path}.{adapter_path}"
 
 
+def _sync_uploaded_provider_packs() -> None:
+    try:
+        from apps.system_mgmt.enterprise.provider_pack_sync import sync_uploaded_provider_packs
+    except ImportError:
+        return
+    sync_uploaded_provider_packs()
+
+
 @contextmanager
 def builtin_providers_read_lock():
     with _providers_load_lock:
         load_builtin_providers()
+        _sync_uploaded_provider_packs()
         yield
 
 
@@ -90,6 +99,8 @@ def _already_registered_adapter(adapter_key: str) -> bool:
 def _register_provider_module(
     module_path: str,
     pack_dir: Path | None = None,
+    *,
+    expected_key: str | None = None,
 ):
     if pack_dir is not None:
         validate_pack_layout(pack_dir)
@@ -102,9 +113,10 @@ def _register_provider_module(
     manifest = (
         raw_manifest if isinstance(raw_manifest, ProviderManifest) else ProviderManifest.model_validate(raw_manifest)
     )
-    if pack_dir is not None and pack_dir.name != manifest.key:
+    directory_key = expected_key if expected_key is not None else (pack_dir.name if pack_dir is not None else None)
+    if directory_key is not None and directory_key != manifest.key:
         raise ValueError(
-            f"Provider pack directory '{pack_dir.name}' must match manifest key '{manifest.key}'"
+            f"Provider pack directory '{directory_key}' must match manifest key '{manifest.key}'"
         )
     if _already_registered_provider(manifest.key):
         raise ValueError(f"Provider '{manifest.key}' is already registered")
@@ -158,12 +170,18 @@ def _register_provider_module(
 def _try_load_pack(
     module_path: str,
     pack_dir: Path | None,
+    *,
+    expected_key: str | None = None,
 ) -> None:
-    pack_name = pack_dir.name if pack_dir is not None else module_path
+    pack_name = expected_key or (pack_dir.name if pack_dir is not None else module_path)
     try:
-        _register_provider_module(module_path, pack_dir)
+        _register_provider_module(module_path, pack_dir, expected_key=expected_key)
     except Exception:
         logger.exception("Failed to load provider pack '%s'; skipping", pack_name)
+
+
+def register_uploaded_provider_pack(module_path: str, pack_dir: Path, expected_key: str) -> None:
+    _register_provider_module(module_path, pack_dir, expected_key=expected_key)
 
 
 def load_builtin_providers(force: bool = False):
@@ -195,3 +213,9 @@ def reset_builtin_providers():
         provider_registry.clear()
         capability_adapter_registry.clear()
         _providers_loaded = False
+        try:
+            from apps.system_mgmt.enterprise.provider_pack_sync import reset_sync_cache
+        except ImportError:
+            pass
+        else:
+            reset_sync_cache()

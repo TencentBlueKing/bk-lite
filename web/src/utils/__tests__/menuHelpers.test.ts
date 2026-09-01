@@ -251,3 +251,41 @@ describe('getDeepestMatchedMenuItems', () => {
     expect(getDeepestMatchedMenuItems(apmMenus, '/apm')).toEqual([]);
   });
 });
+
+describe('integration center second-layer tabs', () => {
+  const patchedCenter: MenuItem[] = [
+    menu({
+      title: '集成中心',
+      url: '/system-manager/integration-center',
+      name: 'integration_center',
+      children: [
+        menu({
+          title: '集成详情',
+          url: '/system-manager/integration-center/detail',
+          name: 'integration_detail',
+          isNotMenuItem: true,
+        }),
+        menu({
+          title: '集成实例',
+          url: '/system-manager/integration-center',
+          name: 'integration_instances',
+          withParentPermission: true,
+        }),
+        menu({
+          title: '集成类型',
+          url: '/system-manager/integration-center/provider-packs',
+          name: 'provider_packs',
+          withParentPermission: true,
+        }),
+      ],
+    }),
+  ];
+
+  it('exposes instance and pack tabs as first-layer siblings', () => {
+    const tabs = getFirstLayerSiblingMenuItems(
+      patchedCenter,
+      '/system-manager/integration-center',
+    ).filter((item) => !item.isNotMenuItem);
+    expect(tabs.map((item) => item.name)).toEqual(['integration_instances', 'provider_packs']);
+  });
+});
