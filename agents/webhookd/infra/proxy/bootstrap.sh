@@ -18,7 +18,10 @@ retry() {
     local elapsed=0
     while ! "$@" 2>/dev/null; do
         elapsed=$((elapsed + interval))
-        [ $elapsed -ge $max ] && return 1
+        if [ $elapsed -ge $max ]; then
+            "$@" || true
+            return 1
+        fi
         info "$desc... (${elapsed}s/${max}s)"
         sleep $interval
     done
