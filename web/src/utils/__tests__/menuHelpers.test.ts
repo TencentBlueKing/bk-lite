@@ -5,6 +5,7 @@ import {
   getDeepestMatchedMenuItems,
   getFirstLayerSiblingMenuItems,
   isMenuPathMatch,
+  resolveMenuIcon,
 } from '../menuHelpers';
 import type { MenuItem } from '@/types/index';
 
@@ -249,6 +250,13 @@ describe('getDeepestMatchedMenuItems', () => {
 
   it('returns empty on app-root leaf without siblings (APM home)', () => {
     expect(getDeepestMatchedMenuItems(apmMenus, '/apm')).toEqual([]);
+  });
+});
+
+describe('resolveMenuIcon', () => {
+  it('uses the line-style knowledge icon for wiki_list instead of the colored card glyph', () => {
+    expect(resolveMenuIcon(menu({ name: 'wiki_list', url: '/opspilot/wiki', icon: 'zhishiku' }))).toBe('zhishiku1');
+    expect(resolveMenuIcon(menu({ name: 'bot_list', url: '/opspilot/studio', icon: 'jiqiren2' }))).toBe('jiqiren2');
   });
 });
 

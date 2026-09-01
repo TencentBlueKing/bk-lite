@@ -9,11 +9,18 @@ import { SessionProvider, useSession } from 'next-auth/react';
 import { LocaleProvider } from '@/context/locale';
 import { useTranslation } from '@/utils/i18n';
 import { ThemeBootstrap, ThemeProvider } from '@/theme';
+import {
+  ConsoleLayoutBootstrap,
+  ConsoleLayoutProvider,
+  shouldShowAppTopSideNav,
+  useConsoleLayout,
+} from '@/console-layout';
 import { useMenus } from '@/context/menus';
 import { useClientData } from '@/context/client';
 import { usePermissions } from '@/context/permissions';
 import AuthProvider, { useAuth } from '@/context/auth';
 import TopMenu from '@/app/(core)/components/top-menu';
+import AppTopSideNav from '@/app/(core)/components/app-top-side-nav';
 import { Watermark, message } from 'antd';
 import Spin from '@/components/spin';
 import { portalBrandingDefaults, usePortalBranding } from '@/hooks/usePortalBranding';
@@ -155,6 +162,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const { portalName, watermarkEnabled, watermarkText } = usePortalBranding();
   const router = useRouter();
   const pathname = usePathname();
+  const { layout: storedChromeLayout } = useConsoleLayout();
   const [isAllowed, setIsAllowed] = useState(false);
   const [isHeaderScrolled, setIsHeaderScrolled] = useState(false);
 
@@ -191,7 +199,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
     && (
       isDashboardRenderRoute
         ? userInfoLoading || !username
-        : permissionsLoading || menusLoading
+        : ((permissionsLoading || menusLoading) && menus.length === 0)
     )
   );
 
@@ -210,6 +218,8 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
     isDashboardRoute,
     isStandaloneDashboardRoute,
   ]);
+
+  const showAppTopSide = shouldShowAppTopSideNav(storedChromeLayout, pathname, menus);
 
   const isPathInMenu = useCallback((path: string, menus: MenuItem[]): boolean => {
     for (const menu of menus) {
@@ -235,34 +245,37 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
         return;
       }
 
-      if (!isLoading) {
-        if (
-          (pathname && excludedPaths.includes(pathname))
-          || isStandaloneDashboardRoute
-        ) {
+      if (permissionsLoading || menusLoading) {
+        return;
+      }
+
+      if (
+        (pathname && excludedPaths.includes(pathname))
+        || isStandaloneDashboardRoute
+      ) {
+        setIsAllowed(true);
+        return;
+      }
+
+      const permissionPath = getProfessionalDashboardPermissionPath(pathname) || pathname;
+
+      if (permissionPath && isPathInMenu(permissionPath, configMenus)) {
+        if (hasPermission(permissionPath)) {
           setIsAllowed(true);
-          return;
-        }
-
-        const permissionPath = getProfessionalDashboardPermissionPath(pathname) || pathname;
-
-        if (permissionPath && isPathInMenu(permissionPath, configMenus)) {
-          if (hasPermission(permissionPath)) {
-            setIsAllowed(true);
-          } else {
-            setIsAllowed(false);
-            router.replace('/no-permission');
-          }
         } else {
           setIsAllowed(false);
-          router.replace('/no-found');
+          router.replace('/no-permission');
         }
+      } else {
+        setIsAllowed(false);
+        router.replace('/no-found');
       }
     };
 
     checkPermission();
   }, [
-    isLoading,
+    permissionsLoading,
+    menusLoading,
     pathname,
     isAuthenticated,
     status,
@@ -315,26 +328,44 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   }
 
   const layoutContent = (
-    <div className={`flex flex-col pr-[var(--bk-webchat-dock-width)] transition-[padding-right] duration-200 ease-out ${isDashboardShareRoute ? 'h-screen overflow-hidden' : 'min-h-screen'} ${!isAuthRoute && !isResponsiveAppRoute ? 'min-w-[1280px]' : ''}`}>
+    <div className={`flex flex-col pr-[var(--bk-webchat-dock-width)] transition-[padding-right] duration-200 ease-out ${isDashboardShareRoute ? 'h-screen overflow-hidden' : showAppTopSide ? 'h-screen overflow-x-auto overflow-y-hidden' : 'min-h-screen'} ${!isAuthRoute && !isResponsiveAppRoute ? 'min-w-[1280px]' : ''}`}>
       {isAuthenticated && hasResolvedPathname && !isAuthRoute && (
         <header
-          className={`sticky top-0 left-0 right-0 flex justify-between items-center header-bg ${isHeaderScrolled ? 'header-bg-scrolled' : ''}`}
+          className={`sticky top-0 left-0 right-0 z-20 flex shrink-0 justify-between items-center ${
+            storedChromeLayout === 'app-top'
+              ? 'bg-[color-mix(in_srgb,var(--color-bg-1)_40%,transparent)] backdrop-blur-md'
+              : `header-bg ${isHeaderScrolled ? 'header-bg-scrolled' : ''}`
+          }`}
         >
           <TopMenu hideMainMenu={hideTopMenu} />
         </header>
       )}
-      <main className={`main-content flex-1 p-4 flex text-sm ${isDashboardShareRoute ? 'min-h-0 overflow-hidden' : ''} ${!isAuthenticated || isAuthRoute ? 'h-screen' : ''}`}>
-        {shouldRenderMenu ? (
-          <WithSideMenuLayout
-            layoutType="segmented"
-            menuLevel={1}
-          >
-            {children}
-          </WithSideMenuLayout>
-        ) : (
-          children
+      <div className={showAppTopSide ? 'flex min-h-0 min-w-0 flex-1' : 'contents'}>
+        {showAppTopSide && (
+          <AppTopSideNav menus={menus} pathname={pathname} />
         )}
-      </main>
+        <main
+          className={`main-content flex-1 flex text-sm ${
+            showAppTopSide ? 'min-h-0 min-w-0 flex-col py-4 pr-4' : 'p-4'
+          } ${isDashboardShareRoute ? 'min-h-0 overflow-hidden' : ''} ${!isAuthenticated || isAuthRoute ? 'h-screen' : ''}`}
+          style={showAppTopSide ? { ['--custom-height' as string]: '100%' } : undefined}
+        >
+          {shouldRenderMenu ? (
+            <div className={showAppTopSide ? 'flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-x-auto pl-4' : 'contents'}>
+              <WithSideMenuLayout
+                layoutType="segmented"
+                menuLevel={1}
+              >
+                {children}
+              </WithSideMenuLayout>
+            </div>
+          ) : showAppTopSide ? (
+            <div className="min-h-0 min-w-0 flex-1 overflow-auto pl-4">{children}</div>
+          ) : (
+            children
+          )}
+        </main>
+      </div>
     </div>
   );
 
@@ -383,6 +414,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <head>
         <ThemeBootstrap />
+        <ConsoleLayoutBootstrap />
         {/* Tab title is owned by bootstrap script + PortalTabTitle (avoid a second React <title> overwrite). */}
         <script dangerouslySetInnerHTML={{ __html: PORTAL_TAB_TITLE_BOOTSTRAP_SCRIPT }} />
         <link rel="icon" href="/logo-site.png" type="image/png" data-portal-favicon="true" />
@@ -396,12 +428,14 @@ export default function RootLayout({
           <SessionProvider refetchInterval={30 * 60} refetchOnWindowFocus={false}>
             <LocaleProvider>
               <ThemeProvider>
-                <AuthProvider>
-                  <PortalBrandingHead />
-                  <RouteScopedLayout StandardLayout={StandardRouteLayout}>
-                    {children}
-                  </RouteScopedLayout>
-                </AuthProvider>
+                <ConsoleLayoutProvider>
+                  <AuthProvider>
+                    <PortalBrandingHead />
+                    <RouteScopedLayout StandardLayout={StandardRouteLayout}>
+                      {children}
+                    </RouteScopedLayout>
+                  </AuthProvider>
+                </ConsoleLayoutProvider>
               </ThemeProvider>
             </LocaleProvider>
           </SessionProvider>
