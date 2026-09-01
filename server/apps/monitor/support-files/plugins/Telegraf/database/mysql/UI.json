@@ -15,8 +15,8 @@
       "required": true,
       "editable": false,
       "description": "用于连接 MySQL 数据库的用户名",
-      "guide_short": "建议使用专用只读监控账号，至少具备 PROCESS 与 REPLICATION CLIENT 权限，以及 performance_schema / information_schema 的 SELECT 权限。",
-      "guide_short_en": "Use a dedicated read-only monitoring account with PROCESS and REPLICATION CLIENT plus SELECT on the required performance_schema and information_schema objects.",
+      "guide_short": "建议使用专用只读监控账号。默认采集至少需要 PROCESS，以及对 performance_schema / information_schema 的 SELECT；开启 Binary Log 或主从/副本状态时还需 REPLICATION CLIENT。",
+      "guide_short_en": "Use a dedicated read-only account. Default collection needs PROCESS plus SELECT on required performance_schema / information_schema objects; enable REPLICATION CLIENT when gathering binary logs or replica status.",
       "widget_props": {
         "placeholder": "用户名",
         "placeholder_en": "Username"
@@ -119,8 +119,148 @@
       },
       "label_en": "Interval",
       "description_en": "Collection time interval (unit: seconds)"
+    },
+    {
+      "name": "gather_process_list",
+      "advanced": true,
+      "label": "进程列表",
+      "type": "switch",
+      "required": false,
+      "default_value": true,
+      "description": "采集线程空闲、执行中、等锁等进程状态。",
+      "guide_short": "默认开启。对应 SHOW PROCESSLIST 汇总，仪表盘「线程分布」依赖此项，需 PROCESS 权限。开启后可采 mysql_process_list_*（如 threads_idle / executing / sending_data / waiting_for_lock）。关闭后上述指标为空，连接数、QPS 等 STATUS 指标仍可采。",
+      "guide_short_en": "On by default. SHOW PROCESSLIST aggregates for dashboard thread distribution; needs PROCESS. Metrics: mysql_process_list_* (idle/executing/sending/waiting). Turning off clears those only; STATUS metrics like connections/QPS still collect.",
+      "widget_props": {},
+      "transform_on_edit": {
+        "origin_path": "child.content.config.gather_process_list"
+      },
+      "label_en": "Process List",
+      "description_en": "Collect process-list thread states such as idle, executing, and waiting for lock."
+    },
+    {
+      "name": "gather_innodb_metrics",
+      "advanced": true,
+      "label": "InnoDB 指标",
+      "type": "switch",
+      "required": false,
+      "default_value": true,
+      "description": "采集缓冲池与 InnoDB 读写、行锁等性能指标。",
+      "guide_short": "默认开启。仪表盘 InnoDB/缓冲池相关图依赖此项。开启后可采 mysql_innodb_*、mysql_buffer_pool_*（命中率、脏页、行锁等待、读写与 fsync 等）。关闭后上述指标为空，连接与 QPS 等仍可采。",
+      "guide_short_en": "On by default. Dashboard InnoDB/buffer pool panels depend on it. Metrics: mysql_innodb_*, mysql_buffer_pool_* (hit/dirty ratio, row-lock waits, IO/fsync). STATUS metrics still collect when off.",
+      "widget_props": {},
+      "transform_on_edit": {
+        "origin_path": "child.content.config.gather_innodb_metrics"
+      },
+      "label_en": "InnoDB Metrics",
+      "description_en": "Collect buffer pool and InnoDB IO/row-lock performance metrics."
+    },
+    {
+      "name": "gather_global_variables",
+      "advanced": true,
+      "label": "全局变量",
+      "type": "switch",
+      "required": false,
+      "default_value": true,
+      "description": "采集连接上限、缓存容量、读写角色等配置类指标。",
+      "guide_short": "默认开启。连接使用率、打开文件使用率、表缓存使用率等「当前值/上限」类图依赖此项。开启后可采 mysql_variables_*（如 max_connections、table_open_cache、open_files_limit、tmp/innodb 缓冲池大小、read_only、log_bin）。关闭后配置类指标为空，纯 STATUS 计数仍可采。",
+      "guide_short_en": "On by default. Utilization charts that divide by limits need it. Metrics: mysql_variables_* (max_connections, caches, open_files_limit, buffer sizes, read_only, log_bin). Raw STATUS counters still collect when off.",
+      "widget_props": {},
+      "transform_on_edit": {
+        "origin_path": "child.content.config.gather_global_variables"
+      },
+      "label_en": "Global Variables",
+      "description_en": "Collect config metrics such as connection limits, cache sizes, and read-only role."
+    },
+    {
+      "name": "gather_binary_logs",
+      "advanced": true,
+      "label": "Binary Log",
+      "type": "switch",
+      "required": false,
+      "default_value": false,
+      "description": "采集 binlog 文件数量与总大小。",
+      "guide_short": "默认关闭。执行 SHOW BINARY LOGS，可采 mysql_binary_files_count、mysql_binary_size_bytes。仅实例已开 binlog 且账号有 REPLICATION CLIENT 时再开，否则连通测试/采集会失败。是否已开 binlog 可看全局变量 log_bin（需开启「全局变量」）。",
+      "guide_short_en": "Off by default. Metrics: mysql_binary_files_count, mysql_binary_size_bytes via SHOW BINARY LOGS. Enable only with binary logging on and REPLICATION CLIENT; otherwise detect/collection fails. Check log_bin via Global Variables.",
+      "widget_props": {},
+      "transform_on_edit": {
+        "origin_path": "child.content.config.gather_binary_logs"
+      },
+      "label_en": "Binary Logs",
+      "description_en": "Collect binary log file count and total size."
+    },
+    {
+      "name": "gather_slave_status",
+      "advanced": true,
+      "label": "Slave 状态",
+      "type": "switch",
+      "required": false,
+      "default_value": false,
+      "description": "采集传统主从复制延迟与 IO/SQL 线程状态。",
+      "guide_short": "默认关闭。传统 SHOW SLAVE STATUS（MySQL 5.7 / 部分 MariaDB）。开启后可采 mysql_slave_seconds_behind_master、mysql_slave_io_running、mysql_slave_sql_running。仅从库需要复制监控时开启，需 REPLICATION CLIENT；非复制实例开启可能导致采集失败。MySQL 8+ 也可改用「Replica 状态」。",
+      "guide_short_en": "Off by default. Classic SHOW SLAVE STATUS. Metrics: mysql_slave_seconds_behind_master, mysql_slave_io_running, mysql_slave_sql_running. For replicas only; needs REPLICATION CLIENT. Non-replicas may fail. On MySQL 8+ you may use Replica Status instead.",
+      "widget_props": {},
+      "transform_on_edit": {
+        "origin_path": "child.content.config.gather_slave_status"
+      },
+      "label_en": "Slave Status",
+      "description_en": "Collect classic replication lag and IO/SQL thread status."
+    },
+    {
+      "name": "gather_replica_status",
+      "advanced": true,
+      "label": "Replica 状态",
+      "type": "switch",
+      "required": false,
+      "default_value": false,
+      "description": "采集 MySQL 8+ 复制延迟与线程状态。",
+      "guide_short": "默认关闭。面向 MySQL 8+ SHOW REPLICA STATUS，指标与 Slave 状态同类（复制延迟、IO/SQL 线程）。需 REPLICATION CLIENT；与「Slave 状态」按目标版本择一即可，一般不必两个都开。非复制实例开启可能导致采集失败。",
+      "guide_short_en": "Off by default. MySQL 8+ SHOW REPLICA STATUS for lag/thread state (same class as slave metrics). Needs REPLICATION CLIENT. Prefer one of Slave or Replica by version; non-replicas may fail.",
+      "widget_props": {},
+      "transform_on_edit": {
+        "origin_path": "child.content.config.gather_replica_status"
+      },
+      "label_en": "Replica Status",
+      "description_en": "Collect MySQL 8+ replication lag and thread status."
+    },
+    {
+      "name": "gather_table_io_waits",
+      "advanced": true,
+      "label": "表 IO Wait",
+      "type": "switch",
+      "required": false,
+      "default_value": false,
+      "description": "采集各表读写删除等 IO 等待情况。",
+      "guide_short": "默认关闭。依赖 performance_schema 表 IO 汇总。开启后可采 mysql_table_io_waits_*（fetch/insert/update/delete 次数与耗时汇总）。未启用或不具备 SELECT 权限时可能导致采集失败；按表产生序列，适合排查热点表，日常默认不必开。",
+      "guide_short_en": "Off by default. Metrics: mysql_table_io_waits_* (fetch/insert/update/delete counts and time) from PERFORMANCE_SCHEMA. Needs performance_schema and SELECT; may fail otherwise. Per-table series—use for hot-table diagnosis, keep off for routine monitoring.",
+      "widget_props": {},
+      "transform_on_edit": {
+        "origin_path": "child.content.config.gather_table_io_waits"
+      },
+      "label_en": "Table IO Waits",
+      "description_en": "Collect per-table IO wait for read/write/delete operations."
+    },
+    {
+      "name": "gather_table_lock_waits",
+      "advanced": true,
+      "label": "表锁 Wait",
+      "type": "switch",
+      "required": false,
+      "default_value": false,
+      "description": "采集各表 SQL 锁等待的读写情况。",
+      "guide_short": "默认关闭。依赖 performance_schema.table_lock_waits_summary_by_table。开启后可采 mysql_table_lock_waits_*（读/写等待次数与耗时汇总）。未启用可能失败；与「表 IO Wait」类似有表级基数，仅排查锁竞争时开启。",
+      "guide_short_en": "Off by default. Metrics: mysql_table_lock_waits_* (read/write wait rates and time) from PERFORMANCE_SCHEMA. May fail if disabled. Per-table cardinality—enable only when diagnosing lock contention.",
+      "widget_props": {},
+      "transform_on_edit": {
+        "origin_path": "child.content.config.gather_table_lock_waits"
+      },
+      "label_en": "Table Lock Waits",
+      "description_en": "Collect per-table SQL lock wait for read and write."
     }
   ],
+  "advanced_panel": {
+    "title": "高级采集选项",
+    "hint": "默认即可覆盖连接、QPS、慢查询等 STATUS 指标。展开后按需开关；详细说明见各开关旁「？」指引。"
+  },
   "table_columns": [
     {
       "name": "node_ids",
