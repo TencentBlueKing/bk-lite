@@ -6,7 +6,14 @@ import asyncio
 import time
 from dataclasses import dataclass, replace
 
-from core.collection.contracts import PublishOutcome, PublishStatus, ResultPublisher, TargetCollectionResult, TargetExecutorSettings
+from core.collection.contracts import (
+    PublishOutcome,
+    PublishStatus,
+    ResultPublisher,
+    TargetCollectionResult,
+    TargetExecutorSettings,
+    has_publishable_metrics,
+)
 from core.collection.metrics import CollectionMetrics
 from core.collection.result_publisher import FuturePublishReceipt
 from core.collection.runtime import CollectionRequest, RunLease
@@ -19,9 +26,10 @@ class PendingPublish:
 
     index: int
     result: TargetCollectionResult
-    receipt: object
+    receipt: object | None
     started_at: float
     deadline: float
+    delivery_required: bool = True
 
 
 class ResultDeliveryCoordinator:
@@ -61,6 +69,16 @@ class ResultDeliveryCoordinator:
         attempt_started_at = loop.time()
         started_at = attempt_started_at if started_at is None else started_at
         deadline = started_at + self._settings.publish_total_timeout_seconds if deadline is None else deadline
+        if not _requires_delivery(self._request, result):
+            self._metrics.increment("result_delivery_not_applicable_total")
+            return PendingPublish(
+                index=index,
+                result=result,
+                receipt=None,
+                started_at=started_at,
+                deadline=deadline,
+                delivery_required=False,
+            )
         queue_deadline = min(
             deadline,
             attempt_started_at + self._settings.publish_queue_timeout_seconds,
@@ -98,6 +116,8 @@ class ResultDeliveryCoordinator:
         )
 
     async def finish(self, pending: PendingPublish) -> tuple[int, str, str]:
+        if not pending.delivery_required:
+            return pending.index, "not_applicable", ""
         current = pending
         publish_status = "failed"
         error_code = ""
@@ -196,3 +216,13 @@ class ResultDeliveryCoordinator:
             attempts,
             (self._settings.publish_queue_timeout_seconds if phase == "enqueue" else self._settings.publish_total_timeout_seconds),
         )
+
+
+def _requires_delivery(
+    request: CollectionRequest,
+    result: TargetCollectionResult,
+) -> bool:
+    """显式 callback 保持协议；普通结果仅成功且非空时进入 metrics。"""
+    if str(request.params.get("callback_subject") or "").strip():
+        return True
+    return result.status == "success" and has_publishable_metrics(result.value)

@@ -5,6 +5,17 @@ from __future__ import annotations
 from enum import Enum
 
 
+class WorkloadClass(str, Enum):
+    """采集产品负载类别。
+
+    该值由可信 API 入口写入，不从用户可控参数推断。
+    """
+
+    CONFIGURATION = "configuration"
+    MONITORING = "monitoring"
+    NETWORK_TOPOLOGY = "network_topology"
+
+
 class SubmissionStatus(str, Enum):
     ACCEPTED = "accepted"
     DUPLICATE_ACTIVE = "duplicate_active"

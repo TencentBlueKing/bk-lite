@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import threading
 import traceback
 from typing import Any, Mapping
 
@@ -19,8 +20,30 @@ _SENSITIVE_SOURCE_SINGLE_QUOTED = re.compile(
 )
 
 
+class PluginExceptionLogBudget:
+    """一个 Collection Run 共享的插件异常详情采样预算。"""
+
+    def __init__(self, *, limit: int) -> None:
+        if limit < 0:
+            raise ValueError("limit must not be negative")
+        self._remaining = int(limit)
+        self._lock = threading.Lock()
+
+    def claim(self) -> bool:
+        with self._lock:
+            if self._remaining <= 0:
+                return False
+            self._remaining -= 1
+            return True
+
+
 def should_log_plugin_exception(params: Mapping[str, Any]) -> bool:
-    return bool(params.get("_log_plugin_call_chain"))
+    if not bool(params.get("_log_plugin_call_chain")):
+        return False
+    budget = params.get("_plugin_exception_log_budget")
+    if isinstance(budget, PluginExceptionLogBudget):
+        return budget.claim()
+    return True
 
 
 def _safe_token(value: Any, *, default: str = "-", max_length: int = 160) -> str:

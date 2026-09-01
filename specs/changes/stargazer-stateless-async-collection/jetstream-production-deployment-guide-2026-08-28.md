@@ -35,18 +35,26 @@ PUBLISH_WORKERS=4
 ```
 
 注意，正确的开关名是 `NATS_METRICS_JETSTREAM_ENABLED`，不是
-`NATS_JS_PUBLISH_ENABLED`。未配置或配置为 `false` 时，Stargazer 继续使用旧 Core NATS
-发布路径。`NATS_JS_STREAM_NAME` 必须使用现场查询到的现有 Stream 名称；只有新建兜底 Stream
-时才填写 `CMDB_METRICS`。
+`NATS_JS_PUBLISH_ENABLED`。未配置时默认启用；显式配置为 `false` 会触发启动配置校验失败，生产
+不再提供 Core NATS metrics fallback。`NATS_JS_STREAM_NAME` 必须使用现场查询到的现有 Stream
+名称；只有新建兜底 Stream 时才填写 `CMDB_METRICS`。
 
 以下参数已有代码默认值，首期建议保持默认：
 
 ```env
-NATS_JS_PUBLISH_MAX_PENDING=1024
-NATS_JS_PUBLISH_MAX_PENDING_BYTES=134217728
+NATS_JS_PUBLISH_MAX_PENDING=256
+NATS_JS_PUBLISH_MAX_PENDING_BYTES=33554432
+NATS_METRICS_PENDING_SIZE_BYTES=34603008
 NATS_JS_PUBACK_TIMEOUT=30
 NATS_JS_PUBLISH_MAX_ATTEMPTS=2
+NATS_MAX_RECONNECT_ATTEMPTS=-1
+NATS_METRICS_READINESS_TIMEOUT=2
+NATS_DRAIN_TIMEOUT_SECONDS=5
 ```
+
+`NATS_METRICS_PENDING_SIZE_BYTES` 不得小于 JetStream 字节窗口；当前默认额外保留 1 MiB 协议
+余量。消息数和字节额度在创建 PubAck Task 前全局获取，`PUBLISH_WORKERS=4` 不会把 256 窗口放大
+为 1024 个 Task。
 
 不要通过不断增加 PubAck 超时或无限重试掩盖 NATS 磁盘、网络或集群故障。
 
@@ -174,6 +182,7 @@ nats stream add CMDB_METRICS \
 - 发布 `metrics.*`；
 - 接收发布请求的 `_INBOX.>` 响应；
 - 使用 JetStream publish API 获得 PubAck。
+- 读取配置 Stream 的 info，供 readiness 验证 Stream 存在且覆盖 `metrics.*`。
 
 Stargazer 账号不需要创建、更新或删除 Stream 的管理权限。
 
@@ -270,13 +279,8 @@ Stargazer 发布失败。
 - NATS 磁盘空间、replica lag 或 CPU 出现风险；
 - Stargazer 发布失败导致采集周期无法完成。
 
-回滚配置：
-
-```env
-NATS_METRICS_JETSTREAM_ENABLED=false
-```
-
-滚动重启对应 Stargazer 后，确认恢复到 Core NATS 发布。回滚时：
+生产禁止把 `NATS_METRICS_JETSTREAM_ENABLED` 设为 `false` 回退 Core NATS。应滚动回退到上一版
+已验证的 JetStream Adapter 镜像和对应配置，并确认 readiness、PubAck 与最终数据恢复。回滚时：
 
 - 不删除或修改复用的现有 Metrics Stream；
 - 不清空 Stream 消息；
@@ -293,7 +297,7 @@ NATS_METRICS_JETSTREAM_ENABLED=false
 | PubAck timeout 增加 | NATS 磁盘、replica lag、RTT、CPU | 先处理 NATS 瓶颈，不要无限重试 |
 | rejected 增加 | 权限、Stream 限额、消息大小 | 核对 NATS 账号权限和 Stream limits |
 | PubAck 成功但实例无数据 | Telegraf consumer pending、格式解析、VM 写入 | 转查消费与入库链路 |
-| pending 长时间满 1024 | PubAck 延迟或 NATS 阻塞 | 检查集群，必要时回滚，不能盲目放大窗口 |
+| pending 长时间满 256 | PubAck 延迟或 NATS 阻塞 | 同时检查 waiting 与 pending，必要时回滚，不能盲目放大窗口 |
 | 只有部分目标失败 | 对应目标格式校验和 result ID 日志 | 修复数据格式或插件，避免重复全量重推 |
 
 ## 9. 实施记录模板

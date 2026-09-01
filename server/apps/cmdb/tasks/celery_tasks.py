@@ -882,16 +882,6 @@ def sync_periodic_update_task_status():
     )
 
 
-@shared_task
-def sync_collect_credential_results_task():
-    logger.info("Skip legacy credential pull task because CMDB now receives Stargazer pushes via NATS")
-    return {
-        "result": True,
-        "skipped": True,
-        "message": "collect credential results are received via NATS push",
-    }
-
-
 @shared_task(bind=True, max_retries=3, default_retry_delay=5, soft_time_limit=240, time_limit=300)
 def sync_cmdb_display_fields_task(self, data: dict):
     """

@@ -13,10 +13,12 @@ import json
 import os
 import time
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, Iterable, Iterator
 
 from core.collection.contracts import StructuredMetricsPayload
-from core.infra.nats_utils import NatsLinesPublishError, nats_publish, nats_publish_lines
+from core.infra.control_transport import get_control_transport
+from core.infra.nats_utils import NatsLinesPublishError, nats_publish_lines
 from influxdb_client import Point, WritePrecision
 from sanic.log import logger
 
@@ -25,6 +27,27 @@ MAX_NATS_BYTES_PER_FLUSH = 900_000
 MAX_NATS_LINE_BYTES = 900_000
 MAX_NATS_LINES_PER_RESULT = 100_000
 MAX_NATS_BYTES_PER_RESULT = 64 * 1024 * 1024
+_metrics_encode_executor: ThreadPoolExecutor | None = None
+
+
+def _get_metrics_encode_executor() -> ThreadPoolExecutor:
+    global _metrics_encode_executor
+    if _metrics_encode_executor is None:
+        workers = max(1, int(os.getenv("METRICS_ENCODE_WORKERS", "2")))
+        _metrics_encode_executor = ThreadPoolExecutor(
+            max_workers=workers,
+            thread_name_prefix="stargazer-metrics-encode",
+        )
+    return _metrics_encode_executor
+
+
+async def _run_metrics_encode(function, *args):
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(
+        _get_metrics_encode_executor(),
+        function,
+        *args,
+    )
 
 
 class MetricsPublishError(RuntimeError):
@@ -108,7 +131,7 @@ async def _publish_lines_with_retry(
     skipped_count = len(getattr(before_publish, "skipped_indices", ()))
     expected_count = total_lines - skipped_count
     if success_count == expected_count:
-        logger.info(
+        logger.debug(
             "event=nats_metrics_publish_succeeded task_id=%s subject=%s "
             "success_count=%s total_lines=%s skipped_count=%s | "
             "NATS指标推送成功 成功行数=%s/%s 跳过行数=%s",
@@ -172,39 +195,14 @@ async def publish_callback_to_nats(result: Dict[str, Any], params: Dict[str, Any
     callback_data = dict(result or {})
     if callback_data.get("collect_task_id") in (None, ""):
         callback_data["collect_task_id"] = params.get("collect_task_id")
-    nats_namespace = os.getenv("NATS_NAMESPACE", "bklite")
-    subject = f"{nats_namespace}.{callback_subject}"
-
-    # server 端 NATS handler 按 {"args": [], "kwargs": {}} 格式分发参数
-    payload = {"args": [], "kwargs": {"data": callback_data}}
+    subject = f"{os.getenv('NATS_NAMESPACE', 'bklite')}.{callback_subject}"
 
     try:
-        await nats_publish(subject, payload)
+        await get_control_transport().publish_collection_callback(str(callback_subject), callback_data)
         logger.debug(f"[NATS Helper] Published callback to {subject} for task {task_id}")
     except Exception as err:
         logger.exception(
             "event=callback_publish_failed task_id=%s subject=%s " "failed_stage=callback_publish error_type=%s",
-            task_id,
-            subject,
-            type(err).__name__,
-        )
-        raise
-
-
-async def publish_credential_result_to_nats(result: Dict[str, Any], params: Dict[str, Any], task_id: str):
-    callback_subject = params.get("credential_result_subject")
-    if not callback_subject:
-        return
-
-    nats_namespace = os.getenv("NATS_NAMESPACE", "bklite")
-    subject = f"{nats_namespace}.{callback_subject}"
-    payload = {"args": [], "kwargs": {"data": dict(result or {})}}
-    try:
-        await nats_publish(subject, payload)
-        logger.debug(f"[NATS Helper] Published credential result to {subject} for task {task_id}")
-    except Exception as err:
-        logger.exception(
-            "event=credential_result_publish_failed task_id=%s subject=%s " "failed_stage=credential_result_publish error_type=%s",
             task_id,
             subject,
             type(err).__name__,
@@ -236,14 +234,14 @@ async def publish_metrics_to_nats(ctx: Dict, metrics_data: str, params: Dict[str
     subject = f"{metric_topic_prefix}.{task_type}"
 
     # 直接回调路径也先完整校验，避免后续非法行导致单目标部分投递。
-    await asyncio.to_thread(_validate_metric_result, metrics_data, params)
+    await _run_metrics_encode(_validate_metric_result, metrics_data, params)
 
     # 将 Prometheus 格式转换为 InfluxDB Line Protocol 格式
     success_count = 0
     line_ordinal = 0
     result_id = str(params.get("collection_result_id") or task_id)
     chunks = iter(_iter_line_chunks(_iter_metrics_to_influx(metrics_data, params)))
-    while chunk := await asyncio.to_thread(next, chunks, None):
+    while chunk := await _run_metrics_encode(next, chunks, None):
         message_ids = tuple(_metric_message_id(result_id, line_ordinal + index, line) for index, line in enumerate(chunk))
         publish_kwargs = {"message_ids": message_ids} if _metrics_jetstream_enabled() else {}
         success_count += await _publish_lines_with_retry(
@@ -253,7 +251,12 @@ async def publish_metrics_to_nats(ctx: Dict, metrics_data: str, params: Dict[str
             **publish_kwargs,
         )
         line_ordinal += len(chunk)
-    logger.info(f"[NATS Helper] Successfully published {success_count} metrics " f"to '{subject}' for task {task_id}")
+    logger.debug(
+        "event=nats_metrics_result_published task_id=%s subject=%s success_count=%s",
+        task_id,
+        subject,
+        success_count,
+    )
     return success_count
 
 
@@ -421,11 +424,12 @@ class _SubjectPublishLane:
                 self.metrics.observe("publish_chunk_bytes", delivered_bytes)
                 self.metrics.observe("publish_targets_per_chunk", len(delivered_ids))
 
-        for offset in range(0, len(selected), 4):
-            group = selected[offset : offset + 4]
+        encode_workers = max(1, int(os.getenv("METRICS_ENCODE_WORKERS", "2")))
+        for offset in range(0, len(selected), encode_workers):
+            group = selected[offset : offset + encode_workers]
             started = time.monotonic()
             chunks = await asyncio.gather(
-                *(asyncio.to_thread(self._next_state_chunk, state) for state in group),
+                *(_run_metrics_encode(self._next_state_chunk, state) for state in group),
                 return_exceptions=True,
             )
             if self.metrics is not None:
@@ -465,7 +469,7 @@ class _SubjectPublishLane:
 
 
 def _metrics_jetstream_enabled() -> bool:
-    return str(os.getenv("NATS_METRICS_JETSTREAM_ENABLED", "false")).strip().lower() in {
+    return str(os.getenv("NATS_METRICS_JETSTREAM_ENABLED", "true")).strip().lower() in {
         "1",
         "true",
         "yes",

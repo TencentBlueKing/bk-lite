@@ -8,6 +8,7 @@ import os
 from typing import Any, Mapping, Sequence
 
 from core.collection.constants import CLOUD_TYPES, CREDENTIAL_KEYS, DEFAULT_PORTS, FLATTENED_CREDENTIAL_KEY
+from core.collection.enums import WorkloadClass
 from core.collection.runtime import CollectionRequest
 from core.logger import logger
 
@@ -75,7 +76,12 @@ def parse_credentials_pool(raw_value: Any = None, params: Mapping[str, Any] | No
     return [item for item in credentials_pool if isinstance(item, dict)]
 
 
-def build_collection_request(*, task_id: str, params: Mapping[str, Any]) -> CollectionRequest:
+def build_collection_request(
+    *,
+    task_id: str,
+    params: Mapping[str, Any],
+    workload_class: WorkloadClass = WorkloadClass.CONFIGURATION,
+) -> CollectionRequest:
     normalized_task_id = str(task_id or "").strip()
     if not normalized_task_id:
         raise ValueError("task_id is required")
@@ -117,11 +123,9 @@ def build_collection_request(*, task_id: str, params: Mapping[str, Any]) -> Coll
         and not FLATTENED_CREDENTIAL_KEY.fullmatch(str(key))
     }
     public_params["plugin_family"] = family
-    public_params.setdefault("scope_id", str(source.get("scope_id") or "default"))
-    public_params.setdefault(
-        "credential_set_version",
-        str(source.get("credential_set_version") or "default"),
-    )
+    # 空字符串同样要规范化；否则会让不同任务意外共享 default 之外的空 scope。
+    public_params["scope_id"] = str(source.get("scope_id") or source.get("collect_task_id") or "default")
+    public_params["credential_set_version"] = str(source.get("credential_set_version") or "default")
     public_params["target_is_logical"] = logical_target
     _apply_preflight_defaults(public_params, plugin_name, family)
 
@@ -131,6 +135,7 @@ def build_collection_request(*, task_id: str, params: Mapping[str, Any]) -> Coll
         targets=targets,
         credentials=credentials,
         params=public_params,
+        workload_class=workload_class,
     )
 
 

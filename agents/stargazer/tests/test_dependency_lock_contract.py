@@ -69,7 +69,7 @@ def test_runbook_documents_stateless_runtime_limits() -> None:
     assert "PUBLISH_TIMEOUT" in readme
     assert "PREFLIGHT_REACHABILITY" not in readme
     assert "params.ip_precheck" in readme
-    assert "MAX_ACTIVE_TARGETS=0" in readme
+    assert "MAX_ACTIVE_TARGETS=0" not in readme
 
 
 def test_sanic_imports_with_the_approved_tracerite_api() -> None:
