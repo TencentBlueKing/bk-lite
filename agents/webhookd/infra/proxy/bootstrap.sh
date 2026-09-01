@@ -33,7 +33,7 @@ nats_cmd() {
         -v "$PWD/conf/certs/ca.crt:/tmp/nats/ca.crt" \
         bk-lite.tencentcloudcr.com/bklite/natsio/nats-box \
         nats -s tls://nats:4222 \
-        --user admin --password "${NATS_ADMIN_PASSWORD}" \
+        --user "${NATS_ADMIN_USERNAME}" --password "${NATS_ADMIN_PASSWORD}" \
         --tlsca /tmp/nats/ca.crt "$@"
 }
 
@@ -87,7 +87,7 @@ if ! nats_cmd stream info OBJ_bklite &>/dev/null; then
         -v "$PWD/conf/nats/jetstream.json:/tmp/nats/jetstream.json" \
         bk-lite.tencentcloudcr.com/bklite/natsio/nats-box \
         nats -s tls://nats:4222 \
-        --user admin --password "${NATS_ADMIN_PASSWORD}" \
+        --user "${NATS_ADMIN_USERNAME}" --password "${NATS_ADMIN_PASSWORD}" \
         --tlsca /tmp/nats/ca.crt \
         stream add --config /tmp/nats/jetstream.json \
     || err "Failed to create JetStream stream"
