@@ -67,6 +67,7 @@ export interface MetricItem {
 export type MetricUnit =
   | 'none'
   | 'percent'
+  | 'percentunit'
   | 'counts'
   | 'thousand'
   | 'million'

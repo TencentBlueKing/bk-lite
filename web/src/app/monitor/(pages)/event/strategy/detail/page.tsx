@@ -62,7 +62,8 @@ import {
   resolveInitialMetricPluginId,
   resolveThresholdUnit,
   resolveUnitOnMetricSelect,
-  restoreCalculationUnitState
+  restoreCalculationUnitState,
+  scaleThresholdValuesForUnitChange
 } from './strategyDetailUtils';
 import { MetricExpressionRow } from './metricExpressionTypes';
 import {
@@ -904,6 +905,9 @@ const StrategyOperation = () => {
   };
 
   const handleThresholdUnitChange = (unit: string) => {
+    setThreshold((current) =>
+      scaleThresholdValuesForUnitChange(current, thresholdUnit, unit)
+    );
     setThresholdUnit(unit);
     form.validateFields(['threshold']);
   };
