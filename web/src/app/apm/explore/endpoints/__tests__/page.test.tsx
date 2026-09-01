@@ -102,7 +102,15 @@ describe('APM 端点详情抽屉', () => {
 
 
     expect(await screen.findByText('端点趋势')).not.toBeNull();
+    expect((document.querySelector('.ant-drawer-content-wrapper') as HTMLElement | null)?.style.width).toBe('56%');
     expect(screen.getAllByTestId('endpoint-trend')).toHaveLength(3);
+    const trendCharts = screen.getByTestId('endpoint-trend-charts');
+    expect(trendCharts.className).toContain('flex-wrap');
+    expect(trendCharts.className).not.toContain('lg:grid-cols-3');
+    expect(Array.from(trendCharts.children).every((cell) => {
+      const pane = cell.lastElementChild as HTMLElement | null;
+      return cell.className.includes('flex-col') && pane?.className.includes('flex-1') && pane.className.includes('min-h-0');
+    })).toBe(true);
     expect(screen.getByText('吞吐量（请求/秒）')).not.toBeNull();
     expect(screen.getByText('错误率 %')).not.toBeNull();
     expect(screen.getByText('P95 / P99')).not.toBeNull();
