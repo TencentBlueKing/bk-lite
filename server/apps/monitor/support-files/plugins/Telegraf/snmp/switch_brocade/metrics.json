@@ -3,6 +3,7 @@
   "collect_type": "snmp_brocade",
   "plugin": "Switch Brocade SNMP",
   "plugin_desc": "Brocade/Foundry-specific SNMP collection for switches (FastIron/NetIron). In addition to standard IF-MIB interface metrics, it collects FOUNDRY-SN-AGENT-MIB OIDs for device health: 1-minute average CPU utilization, dynamic memory utilization, chassis temperature sensors, fan and power-supply status. Brocade reports CPU and memory as utilization percentages directly; fan/psu states are normalized to the unified 1=normal convention. Supported brands/models: Brocade ICX/FCX/NetIron, Ruckus ICX (formerly Brocade ICX, running FastIron), and Foundry/IronWare switches — all share FOUNDRY-SN-AGENT-MIB (enterprise 1991); Ruckus ICX users can select this template directly.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_brocade'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

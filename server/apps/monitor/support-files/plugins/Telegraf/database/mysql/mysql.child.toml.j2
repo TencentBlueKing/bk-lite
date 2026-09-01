@@ -4,17 +4,19 @@
     metric_version = 2
     interval = "{{ interval }}s"
 
-    # 扩展采集项，用于专业仪表盘与全量指标展示
-    gather_process_list = true
+    # 扩展采集项：核心开关由表单控制。
+    # 默认 true 的开关用 | default(true)（勿加 boolean=true，否则显式 false 会被当成缺失盖掉）。
+    # 默认 false 的开关可用 | default(false, true)，falsey 与未传均落 false。
+    gather_process_list = {{ gather_process_list | default(true) | lower }}
     gather_user_statistics = false
-    gather_innodb_metrics = true
-    gather_slave_status = true
-    gather_replica_status = false
-    gather_binary_logs = true
-    gather_global_variables = true
+    gather_innodb_metrics = {{ gather_innodb_metrics | default(true) | lower }}
+    gather_slave_status = {{ gather_slave_status | default(false, true) | lower }}
+    gather_replica_status = {{ gather_replica_status | default(false, true) | lower }}
+    gather_binary_logs = {{ gather_binary_logs | default(false, true) | lower }}
+    gather_global_variables = {{ gather_global_variables | default(true) | lower }}
     gather_table_schema = false
-    gather_table_io_waits = true
-    gather_table_lock_waits = true
+    gather_table_io_waits = {{ gather_table_io_waits | default(false, true) | lower }}
+    gather_table_lock_waits = {{ gather_table_lock_waits | default(false, true) | lower }}
 
     # 慢速 SQL 相关采集间隔
     interval_slow = "10s"
@@ -95,7 +97,31 @@
       "log_slave_updates",
       "slave_seconds_behind_master",
       "slave_slave_io_running",
-      "slave_slave_sql_running"
+      "slave_slave_sql_running",
+
+      # Binary Log（需 gather_binary_logs）
+      "binary_files_count",
+      "binary_size_bytes",
+
+      # 表 IO wait（需 gather_table_io_waits，measurement=mysql_perf_schema）
+      "table_io_waits_total_fetch",
+      "table_io_waits_total_insert",
+      "table_io_waits_total_update",
+      "table_io_waits_total_delete",
+      "table_io_waits_seconds_total_fetch",
+      "table_io_waits_seconds_total_insert",
+      "table_io_waits_seconds_total_update",
+      "table_io_waits_seconds_total_delete",
+
+      # 表锁 wait（需 gather_table_lock_waits；不含过于泛化的 read/write 字段名）
+      "read_normal",
+      "read_with_shared_locks",
+      "read_high_priority",
+      "read_no_insert",
+      "write_normal",
+      "write_allow_write",
+      "write_concurrent_insert",
+      "write_low_priority"
     ]
 
     [inputs.mysql.tags]

@@ -3,6 +3,7 @@
   "collect_type": "snmp_aethra",
   "plugin": "Router Aethra SNMP",
   "plugin_desc": "Aethra Telecommunications IAD/DSL 接入路由器（含 VoIP）专用 SNMP 采集模板（AETHRA-MIB，企业号 7745）。除标准 IF-MIB 接口指标外，额外采集 Aethra 私有 OID 的设备健康指标：CPU 5 分钟平均负载（cpuLoad5min，直接 %）与主内存（总内存 + 空闲内存，KBytes，使用率按 (总量-空闲)/总量 推导）。温度/风扇/电源本模板未采集，故为 N/A。适用品牌型号——Aethra Telecommunications IAD/DSL 路由器（AC2036/Dolcevita 系列，企业号 7745）。",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_aethra'}) by (instance_id)",
   "name": "Router",
   "icon": "mm-router_路由器",

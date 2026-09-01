@@ -3,6 +3,7 @@
   "collect_type": "snmp_gigamon",
   "plugin": "NetworkService Gigamon SNMP",
   "plugin_desc": "Gigamon GigaVUE network-visibility / packet-broker SNMP collection (GIGAMON-SNMP-MIB, IANA PEN 26866). Beyond standard IF-MIB 64-bit HC interface traffic (ifHCInOctets/ifHCOutOctets, ifXTable) and system uptime (sysUpTime), it collects Gigamon private scalar OIDs for chassis health: overall CPU utilization and memory utilization, both reported directly as percentages. Temperature/fan/power sensors are exposed only as per-row component tables with row-level filtering that the SNMP input cannot normalize, so those are N/A. Supported brands/models — Gigamon GigaVUE HC / TA / G-series visibility nodes and packet brokers (enterprise 26866).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_gigamon'}) by (instance_id)",
   "name": "NetworkService",
   "icon": "mm-network_service_网络服务",

@@ -3,6 +3,7 @@
   "collect_type": "snmp_korenix",
   "plugin": "Switch Korenix SNMP",
   "plugin_desc": "Korenix JetNet 工业以太网交换机专用 SNMP 采集模板（企业号 24062）。本模板基于标准 MIB-II / IF-MIB 采集设备运行时长与 64 位 HC 接口流量、接口收发错包与丢包速率、接口管理/操作状态与带宽，并按设备汇总收发总流量速率。Korenix JetNet 为无风扇导热式被动散热的工业网管交换机，其温度、双路电源输入与继电器告警等环境量由厂商私有 MIB（企业号 24062）承载，未在本基线模板中采集，故 CPU、内存、温度、风扇、电源为 N/A。适用品牌型号——Korenix JetNet 工业以太网交换机（JetNet 4508/5210G/5310G/6524G 等系列，企业号 24062）。",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_korenix'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

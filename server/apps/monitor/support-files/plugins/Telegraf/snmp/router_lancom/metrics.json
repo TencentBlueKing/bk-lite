@@ -3,6 +3,7 @@
   "collect_type": "snmp_lancom",
   "plugin": "Router LANCOM SNMP",
   "plugin_desc": "LANCOM LCOS 路由器/VPN 网关专用 SNMP 采集模板（LCOS-MIB，企业号 2356）。除标准 IF-MIB 接口指标外，额外采集 LANCOM 私有硬件温度传感器（lcsStatusHardwareInfoTemperatureDegrees，℃）。LCOS os_discovery 未暴露 CPU/内存利用率或风扇/电源状态 OID，故为 N/A。适用品牌型号——LANCOM LCOS 路由器与 VPN 网关（1xxx / ic- / ISG 系列及其他 LCOS 平台，企业号 2356）。",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_lancom'}) by (instance_id)",
   "name": "Router",
   "icon": "mm-router_路由器",

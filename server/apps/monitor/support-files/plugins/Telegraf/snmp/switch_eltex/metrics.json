@@ -3,6 +3,7 @@
   "collect_type": "snmp_eltex",
   "plugin": "Switch Eltex SNMP",
   "plugin_desc": "Eltex MES-series switch-specific SNMP collection (RADLAN/Marvell-based MIBs + ELTEX private OIDs, IANA PEN 89/35265). In addition to standard IF-MIB interface metrics, it collects Eltex private OIDs for device health: CPU utilization (rlCpuUtilDuringLast5Minutes), system memory (total/free), chassis temperature (rlPhdUnitEnvParamTempSensorValue, dedicated typed column), fan state (rlEnvMonFanState) and power-supply state (rlPhdUnitEnvParamMainPSStatus). Fan/PSU raw codes are normalized via telegraf processors.enum to 1=healthy / 2=fault. Memory utilization is computed from (total-free)/total. This is the first switch brand exposing real temperature/fan/PSU because Eltex provides them as typed value columns (no per-row type filtering needed). Supported brands/models — Eltex MES-series switches.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_eltex'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

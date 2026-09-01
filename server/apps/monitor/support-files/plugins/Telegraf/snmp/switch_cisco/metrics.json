@@ -3,6 +3,7 @@
   "collect_type": "snmp_cisco",
   "plugin": "Switch Cisco SNMP",
   "plugin_desc": "Cisco-specific SNMP collection for switches. In addition to standard IF-MIB interface metrics, it collects Cisco private OIDs for device health: CPU utilization, memory pools, temperature sensors, fan and power-supply status. Supported brands/models — Cisco Catalyst campus switches (2960/3650/3850/9200/9300/9500, etc.) and IOS/IOS-XE switches; Nexus (NX-OS) partially compatible.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_cisco'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

@@ -3,6 +3,7 @@
   "collect_type": "snmp_hillstone",
   "plugin": "Firewall Hillstone SNMP",
   "plugin_desc": "Hillstone Networks (StoneOS) firewall SNMP collection (HILLSTONE-SYSTEM/TEMPERATURE/POWER-MIB, IANA PEN 28557). In addition to standard IF-MIB interface metrics, it collects Hillstone private OIDs for device health: CPU utilization (sysCPU), system memory (sysMemTotal / sysMemUsed, in KB, utilization computed as used/total), chassis temperature sensors (dedicated per-sensor table) and power-supply state. Power state codes (fine/absent/warning/fail/unsupport) are normalized to 1=healthy / 2=fault. Fan and session-count OIDs are not exposed in a confirmed numeric form, so those are N/A. Supported brands/models — Hillstone Networks SG-6000 / E-series / A-series next-gen firewalls (StoneOS; enterprise 28557).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_hillstone'}) by (instance_id)",
   "name": "Firewall",
   "icon": "mm-firewall_防火墙",

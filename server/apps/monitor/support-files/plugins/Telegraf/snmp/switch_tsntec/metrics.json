@@ -3,6 +3,7 @@
   "collect_type": "snmp_tsntec",
   "plugin": "Switch TsnTec SNMP",
   "plugin_desc": "TsnTec 8148SC switch-specific SNMP collection (enterprise PEN 65531). Beyond the shared Switch SNMP floor, it collects vendor health OIDs for control-plane CPU usage, memory usage, CPU temperature, fan state and power-supply state. CPU and memory are reported directly as 0-100 percentages. Temperature is read as degrees Celsius from the confirmed CPU temperature scalar. Fan and PSU raw status values are normalized through telegraf processors.enum to 1=healthy / 2=fault, and the worst component state is surfaced per device. The shared Switch floor supplies uptime, IF-MIB interface metrics, 64-bit ifHCInOctets/ifHCOutOctets and aggregate traffic roll-ups.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_tsntec'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-tsntec_tsntec",

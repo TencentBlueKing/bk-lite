@@ -3,6 +3,7 @@
   "collect_type": "snmp_advantech",
   "plugin": "Switch Advantech SNMP",
   "plugin_desc": "Advantech EKI industrial managed switch-specific SNMP collection (ADVANTECH-EKI-PRONEER-MIB, IANA PEN 10297). In addition to standard IF-MIB interface metrics, it collects the Advantech private redundant-power LED-state object (ledPWR1Status under the ledStatus group) used as a power-supply health indicator. The LED raw codes (0=notSupported, 1=up meaning power present/OK, 2=down meaning power input lost) are normalized via telegraf processors.enum to 1=healthy / 2=fault, with notSupported treated as healthy. EKI switches are fanless and the ProView MIB exposes no CPU, memory, numeric temperature or fan objects (only discrete LED-state enums), so CPU, memory, temperature and fan are not collected (N/A). Supported brands/models — Advantech EKI-5000/5500/5600/5700/7000 managed industrial Ethernet switches.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_advantech'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

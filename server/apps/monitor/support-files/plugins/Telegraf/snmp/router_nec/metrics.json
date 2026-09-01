@@ -3,6 +3,7 @@
   "collect_type": "snmp_nec",
   "plugin": "Router NEC SNMP",
   "plugin_desc": "NEC UNIVERGE IX-series router SNMP collection (NEC private enterprise MIB, IANA PEN 119). Beyond standard IF-MIB interface metrics, it collects NEC private scalar OIDs for device health: 1-minute CPU utilization, memory utilization, and chassis temperature — all reported directly. Fan and power-supply states are exposed only as per-unit LLD status rows with vendor-specific codes that the SNMP input cannot normalize, so those are N/A. Supported brands/models — NEC UNIVERGE IX series routers (IX2000/IX3000 and other UNIVERGE IX platforms; enterprise 119).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_nec'}) by (instance_id)",
   "name": "Router",
   "icon": "mm-router_路由器",

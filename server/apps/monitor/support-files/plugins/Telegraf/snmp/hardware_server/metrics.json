@@ -1,6 +1,7 @@
 {
   "plugin": "Hardware Server SNMP General",
   "plugin_desc": "The SNMP general plugin is used to monitor and manage the status of devices through SNMP. Administrators can obtain key information about the device, such as interface traffic, error statistics, and status information, thereby optimizing network performance and improving management efficiency.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='hardware_server', collect_type='snmp'}) by (instance_id)",
   "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
   "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],

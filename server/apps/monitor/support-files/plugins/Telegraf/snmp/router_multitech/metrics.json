@@ -3,6 +3,7 @@
   "collect_type": "snmp_multitech",
   "plugin": "Router MultiTech SNMP",
   "plugin_desc": "MultiTech Systems cellular router / IoT gateway SNMP collection template (MultiConnect rCell series, IANA PEN 995). The rCell platform's SNMP agent is RFC1213-compatible (standard MIB-II + IF-MIB), so this is a clean baseline template — it collects system uptime and IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, admin/oper status, speed, error/discard/packet counters and aggregate device traffic. CPU, memory, temperature, fan and power-supply state are not collected (N/A) because the rCell agent does not expose pollable scalar device-health gauges for them; cellular RSSI/signal objects are not consistently scalar-walkable across firmware and are left for a future increment. Supported brands/models — MultiTech MultiConnect rCell 100/300/500 series cellular routers and IoT gateways.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_multitech'}) by (instance_id)",
   "name": "Router",
   "icon": "mm-router_路由器",

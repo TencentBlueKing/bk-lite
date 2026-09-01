@@ -3,6 +3,7 @@
   "collect_type": "snmp_parks",
   "plugin": "Switch Parks SNMP",
   "plugin_desc": "Parks PK700-series switch-specific SNMP collection (PARKS-PK700 MIB, IANA PEN 50224). In addition to standard IF-MIB interface metrics, it collects Parks private OIDs for device health: CPU utilization (cpuUsage), memory utilization (a direct percent-used scalar) and chassis chip temperature (mainChipTemperature). The PARKS-PK700 MIB exposes no fan or power-supply state object, so those are not collected (N/A); per-SFP optical power/temperature are port-level diagnostics, not device health, and are also omitted. Supported brands/models — Parks PK-series switches.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_parks'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

@@ -4,12 +4,9 @@ import shlex
 
 from apps.monitor.utils.plugin_controller import Controller
 
-
 DEFAULT_OUTPUT_LIMIT = 8192
 _OUTPUT_BLOCK_PATTERN = re.compile(r"(?ms)^\s*\[\[outputs\.[^\]]+\]\].*?(?=^\s*\[\[|\Z)")
-_SECRET_ASSIGNMENT_PATTERN = re.compile(
-    r"(?i)\b(password|passwd|token|secret|private_key|passphrase)\s*=\s*([^\s,;]+)"
-)
+_SECRET_ASSIGNMENT_PATTERN = re.compile(r"(?i)\b(password|passwd|token|secret|private_key|passphrase)\s*=\s*([^\s,;]+)")
 
 
 def render_preflight_telegraf_config(template_content: str, context: dict) -> str:
@@ -26,6 +23,7 @@ def render_telegraf_config_template(template_content: str, context: dict) -> str
 
 
 def disable_real_outputs(config_content: str) -> str:
+    """探测与正式采集共用同一套 input 配置；仅去掉真实 output，避免写入 VictoriaMetrics。"""
     without_outputs = _OUTPUT_BLOCK_PATTERN.sub("", config_content).rstrip()
     stdout_output = """
 
@@ -83,6 +81,7 @@ def build_telegraf_detect_execution(
 
 
 def sanitize_execution_result(raw_result, sensitive_values=None, output_limit=DEFAULT_OUTPUT_LIMIT) -> dict:
+    """成功判定只信任执行器返回的 success / exit_code，不做 stdout/stderr 文案推断。"""
     sensitive_values = [str(item) for item in (sensitive_values or []) if item not in (None, "")]
     if not isinstance(raw_result, dict):
         stdout, stdout_truncated = _redact_and_truncate(raw_result, sensitive_values, output_limit)
@@ -105,6 +104,12 @@ def sanitize_execution_result(raw_result, sensitive_values=None, output_limit=DE
     exit_code = raw_result.get("exit_code")
     if exit_code is None:
         exit_code = 0 if success else 1
+    else:
+        try:
+            exit_code = int(exit_code)
+        except (TypeError, ValueError):
+            exit_code = 0 if success else 1
+        success = exit_code == 0
 
     return {
         "success": success,

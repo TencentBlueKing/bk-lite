@@ -3,6 +3,7 @@
   "collect_type": "snmp_arris",
   "plugin": "Access ARRIS Cadant SNMP",
   "plugin_desc": "ARRIS Cadant E6 CMTS access-device SNMP collection using the CADANT-CMTS-EQUIPMENT-MIB private equipment tree under enterprise PEN 4998. Beyond the shared Access SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic, it collects vendor health deltas for relative card temperature, fan ambient temperature, PEM power LED status, disk-volume usage percentage, disk-volume usage level and card primary state. Card temperature is a relative 1-10 scale, so fan ambient temperature is the only Celsius temperature metric. DOCSIS port/channel/service counters are not promoted to shared device-health metrics.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='access', collect_type='snmp_arris'}) by (instance_id)",
   "name": "Access",
   "icon": "mm-access_接入设备",

@@ -3,6 +3,7 @@
   "collect_type": "snmp_accedian",
   "plugin": "NetworkService Accedian SNMP",
   "plugin_desc": "Accedian metro-Ethernet performance-assurance SNMP collection (ACD-DESC-MIB, IANA PEN 22420). Beyond standard IF-MIB 64-bit HC interface traffic (ifHCInOctets/ifHCOutOctets, ifXTable) and system uptime (sysUpTime), it collects the Accedian private scalar OID for chassis CPU utilization (acdDescCpuUsageCurrent, reported directly as a percentage). Memory utilization has no scalar object in the device-description MIB and the only temperature reading is a per-SFP diagnostics table requiring row-level filtering that the SNMP input cannot normalize, so memory/temperature/fan/power are N/A. Supported brands/models — Accedian SkyLIGHT performance modules and MetroNID / Nano / Plus metro-Ethernet performance-assurance nodes (enterprise 22420).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_accedian'}) by (instance_id)",
   "name": "NetworkService",
   "icon": "mm-network_service_网络服务",

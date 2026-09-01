@@ -3,6 +3,7 @@
   "collect_type": "snmp_raisecom",
   "plugin": "Access Raisecom SNMP",
   "plugin_desc": "Raisecom ROAP/ROS access-device SNMP collection under enterprise PEN 8886. Beyond the shared Access SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic, it collects vendor health deltas for total CPU utilization, memory total/free/usage, device temperature, fan state and power supply state. Optical transceiver, PON and alarm tables are not promoted to shared device-health metrics.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='access', collect_type='snmp_raisecom'}) by (instance_id)",
   "name": "Access",
   "icon": "mm-access_接入设备",

@@ -3,6 +3,7 @@
   "collect_type": "snmp_pluribus",
   "plugin": "Switch Pluribus SNMP",
   "plugin_desc": "Pluribus Networks Netvisor ONE 白盒/开放网络交换机专用 SNMP 采集模板（Netvisor ONE 为 Linux 基 NOS，SNMP 子代理经 AgentX 暴露标准 NET-SNMP，含 HOST-RESOURCES-MIB / UCD-SNMP-MIB / LM-SENSORS-MIB，企业号 47269）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Netvisor ONE 健康指标：CPU 使用率（HOST-RESOURCES hrProcessorLoad 多核均值）、主内存（总量 + 空闲，字节，用量按 (总量-空闲)/总量 推导）与机箱温度（LM-SENSORS 温度传感器，℃）。Netvisor ONE 以软件 NOS 运行于白盒交换机硬件，标准 NET-SNMP 未以无需行级过滤的标量形式暴露独立风扇与电源状态 OID，故风扇与电源为 N/A。适用品牌型号——Pluribus Networks 白盒交换机（Netvisor ONE NOS / Adaptive Cloud Fabric，企业号 47269）。",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_pluribus'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

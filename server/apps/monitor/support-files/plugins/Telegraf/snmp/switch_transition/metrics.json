@@ -3,6 +3,7 @@
   "collect_type": "snmp_transition",
   "plugin": "Switch Transition Networks SNMP",
   "plugin_desc": "Transition Networks (now Lantronix) switch / managed media-converter SNMP collection template (IANA PEN 868). Transition's TRANSITION-SMI private tree (chassis/card/slot module tables) exposes inventory and per-port module objects rather than no-row-level-filter scalar device-health gauges, and the ION/SISPM platform is managed primarily through standard public MIBs, so this is a clean MIB-II + IF-MIB baseline template — it collects system uptime and IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, admin/oper status, speed, error/discard/packet counters and aggregate device traffic. CPU, memory, temperature, fan and power-supply state are not collected (N/A) because they are not exposed as pollable scalar OIDs across the product line. Supported brands/models — Transition Networks SISPM/SM hardened managed switches and ION/IONMM managed media converters.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_transition'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

@@ -3,6 +3,7 @@
   "collect_type": "snmp_fortiadc",
   "plugin": "Loadbalance FortiADC SNMP",
   "plugin_desc": "Fortinet FortiADC application delivery controller / load balancer SNMP collection (FORTINET-FORTIADC-MIB, IANA PEN 12356). Beyond standard IF-MIB interface metrics, it collects FortiADC private OIDs for device health and load: system CPU utilization (fadcSysCpuUsage) and memory utilization (fadcSysMemUsage), both reported directly as percentages, plus current concurrent client connections (fadcConcurrentClientConnections). Temperature/fan/power are not exposed via the FortiADC MIB, so they are N/A. Supported brands/models — Fortinet FortiADC hardware and VM appliances (FortiADC D/E/F series; enterprise 12356).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='loadbalance', collect_type='snmp_fortiadc'}) by (instance_id)",
   "name": "Loadbalance",
   "icon": "mm-loadbalance_负载均衡",

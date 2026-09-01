@@ -3,6 +3,7 @@
   "collect_type": "snmp_netgear",
   "plugin": "Switch Netgear SNMP",
   "plugin_desc": "Netgear (FASTPATH)-specific SNMP collection for switches. In addition to standard IF-MIB interface metrics, it collects Netgear FASTPATH-BOXSERVICES private OIDs for device health: CPU utilization, system memory (total/free), temperature sensors, fan and power-supply status. Memory utilization is computed as (total - free) / total; fan and power-supply states are natively 1=normal. Supported brands/models — NETGEAR smart / managed switches (GS/M series, etc.).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_netgear'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

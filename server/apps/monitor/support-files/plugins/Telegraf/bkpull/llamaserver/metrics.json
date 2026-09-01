@@ -1,6 +1,7 @@
 {
   "plugin": "LlamaServer",
   "plugin_desc": "由 Telegraf Pull 采集器通过 Prometheus 指标端点采集 llama.cpp llama-server 关键监控指标，覆盖处理中请求、KV 缓存占用与 Token 吞吐等核心运维场景。",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='llamaserver', collect_type='bkpull'}) by (instance_id)",
   "instance_fact_bindings": [
     {

@@ -1,6 +1,7 @@
 {
   "plugin": "MSSQL",
   "plugin_desc": "MSSQL Exporter is used to collect and export metrics from Microsoft SQL Server databases, including query performance, connection counts, transaction statistics, and resource usage, to help monitor the health and performance of MSSQL instances.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='mssql', collect_type='database'}) by (instance_id)",
   "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"host"}}],
   "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],

@@ -3,6 +3,7 @@
   "collect_type": "snmp_juniper_mx",
   "plugin": "Router Juniper MX SNMP",
   "plugin_desc": "Juniper MX-specific SNMP collection template for Juniper MX-series routers (Junos). In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects JUNIPER-MIB jnxOperating private OIDs for device health (CPU utilization and memory-buffer utilization, both reported as percentages). Sourced from the official JUNIPER-MIB. Supported brands/models — Juniper MX-series service routers (MX240/480/960, etc., Junos).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_juniper_mx'}) by (instance_id)",
   "name": "Router",
   "icon": "mm-router_路由器",
