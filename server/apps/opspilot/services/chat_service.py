@@ -29,11 +29,26 @@ from apps.opspilot.services.builtin_tools import (
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY
 from apps.opspilot.services.chat_request import ChatRequest
 from apps.opspilot.services.history_service import history_service
+from apps.opspilot.services.llm_context_budget import DEFAULT_CHAT_SCENE_OUTPUT_TOKENS, working_budget_for_model
 from apps.opspilot.services.wiki.active_generation_query_service import ActiveGenerationReadError
 from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, load_wiki_budget_config
 from apps.opspilot.services.wiki.wiki_context_service import augment_prompt_with_trace, should_skip_wiki_retrieval
 from apps.opspilot.utils.agent_factory import create_agent_instance
 from apps.opspilot.utils.prompt_utils import resolve_skill_params
+
+
+def _inject_llm_working_budget(chat_kwargs, extra_config, llm_model, *, scene_output_default):
+    derived = working_budget_for_model(llm_model, scene_output_default=scene_output_default)
+    chat_kwargs["compaction_enabled"] = True
+    chat_kwargs["compaction_max_token_threshold"] = derived.compaction_threshold_tokens
+    chat_kwargs["message_trim_config"] = {
+        "enabled": True,
+        "max_single_message_tokens": derived.single_message_tokens,
+    }
+    chat_kwargs["max_output_tokens"] = derived.output_reserve_tokens
+    extra_config["input_working_tokens"] = derived.input_working_tokens
+    extra_config["context_window_tokens"] = derived.window_tokens
+    return derived
 
 
 def _truncate_candidate_title(text, limit=60):
@@ -586,6 +601,16 @@ class ChatService:
             "locale": kwargs.get("locale", "en"),
         }
 
+        scene_output_default = DEFAULT_CHAT_SCENE_OUTPUT_TOKENS
+        if wiki_active:
+            scene_output_default = load_wiki_budget_config().qa_max_output_tokens
+        derived = _inject_llm_working_budget(
+            chat_kwargs,
+            extra_config,
+            llm_model,
+            scene_output_default=scene_output_default,
+        )
+
         if wiki_active:
             budget_config = load_wiki_budget_config()
             route_calls = int((wiki_budget_trace.get("llm_budget") or {}).get("used_calls") or 0)
@@ -598,13 +623,12 @@ class ChatService:
                 )
             chat_kwargs["max_steps"] = remaining_calls
             chat_kwargs["max_model_calls"] = 1
-            chat_kwargs["max_output_tokens"] = budget_config.qa_max_output_tokens
             chat_kwargs["enable_query_rewrite"] = False
             chat_kwargs["enable_suggest"] = False
             extra_config["wiki_budget"] = {
                 **wiki_budget_trace,
                 "remaining_answer_calls": remaining_calls,
-                "max_output_tokens": budget_config.qa_max_output_tokens,
+                "max_output_tokens": derived.output_reserve_tokens,
             }
         if kwargs.get("thread_id"):
             chat_kwargs["thread_id"] = str(kwargs["thread_id"])

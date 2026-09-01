@@ -88,6 +88,27 @@ test('unwraps gateway envelopes and paginated lists', () => {
   );
   assert.deepEqual(asRecordList({ results: [{ id: 1 }] }), [{ id: 1 }]);
   assert.deepEqual(asRecordList({ items: [{ id: 2 }] }), [{ id: 2 }]);
+  assert.deepEqual(asRecordList({ messages: [{ id: 3 }] }), [{ id: 3 }]);
+});
+
+test('session history envelope maps bubbles without turning usage into a message', () => {
+  const unwrapped = unwrapPlatformPayload({
+    result: true,
+    data: {
+      messages: [{ id: 1, conversation_role: 'user', conversation_content: 'hello' }],
+      llm_context_usage: {
+        packet_tokens: 80,
+        input_working_tokens: 6800,
+        window_tokens: 8000,
+        compaction_threshold_tokens: 5100,
+        compacted: false,
+        segments: [],
+      },
+    },
+  });
+  const messages = mapPlatformMessages(asRecordList(unwrapped));
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].content, 'hello');
 });
 
 test('maps published platform skill channels and restores last selection', () => {
@@ -131,6 +152,7 @@ test('maps published platform skill channels and restores last selection', () =>
     channelId: '2',
     skillId: '20',
     skillName: 'cfg-skill',
+    enableConversationHistory: true,
   });
   assert.deepEqual(apps[1], {
     id: '1',
@@ -138,6 +160,7 @@ test('maps published platform skill channels and restores last selection', () =>
     channelId: '1',
     skillId: '10',
     skillName: 'K8s RCA',
+    enableConversationHistory: true,
   });
   assert.equal(apps[2].name, '我来测试的（智能体A）');
   assert.equal(apps[3].name, '我来测试的（智能体B）');
@@ -156,6 +179,17 @@ test('maps published platform skill channels and restores last selection', () =>
     resolvePlatformSelection([apps[0]], sessions, { appId: '1', sessionId: 's-old' }),
     { app: apps[0], sessionId: 's-new' }
   );
+});
+
+test('maps enable_conversation_history only hiding the ring when the skill saved false', () => {
+  const apps = mapPlatformApplications([
+    { id: 1, skill_id: 10, skill_name: 'on' },
+    { id: 2, skill_id: 20, skill_name: 'off', enable_conversation_history: false },
+    { id: 3, skill_id: 30, skill_name: 'explicit-on', enable_conversation_history: true },
+  ]);
+  assert.equal(apps[0].enableConversationHistory, true);
+  assert.equal(apps[1].enableConversationHistory, false);
+  assert.equal(apps[2].enableConversationHistory, true);
 });
 
 test('published-app refetch keeps the current app, or falls back when it was disabled', () => {
@@ -352,6 +386,7 @@ test('planned execution CUSTOM events stay out of chat bubbles', () => {
   assert.equal(isSilentCustomEvent('planned_execution_status'), true);
   assert.equal(isSilentCustomEvent('planned_execution_step'), true);
   assert.equal(isSilentCustomEvent('wiki_citations'), true);
+  assert.equal(isSilentCustomEvent('llm_context_usage'), true);
   assert.equal(isSilentCustomEvent('approval_request'), false);
   assert.equal(isSilentCustomEvent('config_analysis_report'), false);
 

@@ -4,6 +4,7 @@ from unittest import mock
 
 import pytest
 
+from apps.cmdb.collection.round_sync import SNAPSHOT_CONTRACT_LABEL, SNAPSHOT_CONTRACT_VERSION, CompletedRound
 from apps.cmdb.constants.constants import CollectPluginTypes, CollectRunStatusType
 from apps.cmdb.models.collect_model import (
     COLLECTION_ROLE_DEVICE,
@@ -264,12 +265,15 @@ def test_query_role_round_marker_ignores_legacy_attempt_labels():
     from apps.cmdb.services.topology_replay_service import query_role_round_marker
 
     class FakeCollection:
-        def query(self, _sql):
+        def query(self, _sql, **_kwargs):
             return {
                 "data": {
                     "result": [
                         {
                             "metric": {
+                                "__name__": "cmdb_round_complete_gauge",
+                                "instance_id": "cmdb_42",
+                                "collection_role": COLLECTION_ROLE_TOPOLOGY,
                                 "channel_config_version": "1",
                                 "run_attempt_id": "legacy-attempt",
                                 "collection_run_attempt_id": "legacy-attempt",
@@ -277,8 +281,41 @@ def test_query_role_round_marker_ignores_legacy_attempt_labels():
                             "value": [100, "100"],
                         },
                         {
-                            "metric": {"channel_config_version": "2"},
+                            "metric": {
+                                "__name__": "cmdb_round_complete_gauge",
+                                "instance_id": "cmdb_42",
+                                "collection_role": COLLECTION_ROLE_TOPOLOGY,
+                                "channel_config_version": "2",
+                            },
                             "value": [200, "200"],
+                        },
+                    ]
+                }
+            }
+
+        def query_sample_timestamps(self, _sql, **_kwargs):
+            return {
+                "data": {
+                    "result": [
+                        {
+                            "metric": {
+                                "__name__": "cmdb_round_complete_gauge",
+                                "instance_id": "cmdb_42",
+                                "collection_role": COLLECTION_ROLE_TOPOLOGY,
+                                "channel_config_version": "1",
+                                "run_attempt_id": "legacy-attempt",
+                                "collection_run_attempt_id": "legacy-attempt",
+                            },
+                            "value": [200, "150.25"],
+                        },
+                        {
+                            "metric": {
+                                "__name__": "cmdb_round_complete_gauge",
+                                "instance_id": "cmdb_42",
+                                "collection_role": COLLECTION_ROLE_TOPOLOGY,
+                                "channel_config_version": "2",
+                            },
+                            "value": [200, "250.5"],
                         },
                     ]
                 }
@@ -290,7 +327,11 @@ def test_query_role_round_marker_ignores_legacy_attempt_labels():
         collection=FakeCollection(),
     )
 
-    assert marker == {"round_ts": 200, "channel_config_version": "2"}
+    assert marker == {
+        "round_ts": 200,
+        "round_completed_at": 250.5,
+        "channel_config_version": "2",
+    }
 
 
 def test_replay_stale_when_version_mismatch(monkeypatch):
@@ -394,6 +435,51 @@ def test_replay_idempotent_same_round(monkeypatch):
     assert status == "skipped"
 
 
+def test_replay_legacy_pending_without_completion_proof_never_deletes(monkeypatch):
+    from apps.cmdb.services import topology_replay_service as replay
+
+    task = mock.Mock(
+        id=10,
+        model_id="network",
+        task_type=CollectPluginTypes.SNMP,
+        params={"has_network_topo": True, "topology_channel_config_version": 1},
+        collect_digest={},
+        format_data={"__raw_data__": [{"__name__": "network_interfaces_info_gauge"}]},
+        team=[1],
+        data_cleanup_strategy="delete",
+    )
+
+    class QS:
+        def first(self):
+            return task
+
+        def values_list(self, *_args, **_kwargs):
+            return mock.Mock(first=lambda: {})
+
+        def update(self, **_kwargs):
+            return 1
+
+    monkeypatch.setattr(replay.CollectModels._default_manager, "filter", lambda *a, **k: QS())
+    observed = {}
+
+    class FakeCannula:
+        def __init__(self, **kwargs):
+            observed.update(kwargs)
+
+        def collect_controller(self):
+            return None
+
+    monkeypatch.setattr(replay, "MetricsCannula", FakeCannula)
+
+    status = replay.replay_topology_for_task(
+        10,
+        marker={"round_ts": 200, "channel_config_version": "1"},
+    )
+
+    assert status == "played"
+    assert observed["plugin_kwargs"]["snapshot_complete"] is False
+
+
 def test_replay_missing_when_task_deleted(monkeypatch):
     from apps.cmdb.services import topology_replay_service as replay
 
@@ -413,9 +499,12 @@ def test_gate_triggers_topology_replay_for_network(monkeypatch):
             "id": 31,
             "exec_status": CollectRunStatusType.SUCCESS,
             "collect_digest": {"last_synced_round": 100},
-            "params": {"has_network_topo": True},
+            "params": {"has_network_topo": True, "topology_interval_minutes": 2400},
             "model_id": "network",
             "task_type": CollectPluginTypes.SNMP,
+            "is_interval": True,
+            "cycle_value_type": "cycle",
+            "cycle_value": "480",
         },
     ]
 
@@ -448,8 +537,30 @@ def test_gate_triggers_topology_replay_for_network(monkeypatch):
     _QS._pages = 0
     monkeypatch.setattr(ct.CollectModels._default_manager, "filter", lambda *a, **k: _QS(rows))
     monkeypatch.setattr(ct, "_purge_legacy_vm_sync_beats", lambda: 0)
-    monkeypatch.setattr(ct, "query_latest_round_ts", lambda *_a, **_k: 100)
-    monkeypatch.setattr(ct, "has_instance_vm_data", lambda *_a, **_k: False)
+    observed_lookbacks = []
+
+    def fake_completed_rounds(instance_ids, **kwargs):
+        observed_lookbacks.append((kwargs.get("collection_role"), kwargs["lookback_seconds"]))
+        if kwargs.get("collection_role") == "topology":
+            return {
+                "cmdb_31": CompletedRound(
+                    started_at=200,
+                    completed_at=260.5,
+                    labels={
+                        "channel_config_version": "1",
+                        SNAPSHOT_CONTRACT_LABEL: SNAPSHOT_CONTRACT_VERSION,
+                    },
+                )
+            }
+        return {
+            "cmdb_31": CompletedRound(
+                started_at=100,
+                completed_at=160.5,
+                labels={SNAPSHOT_CONTRACT_LABEL: SNAPSHOT_CONTRACT_VERSION},
+            )
+        }
+
+    monkeypatch.setattr(ct, "query_latest_completed_rounds", fake_completed_rounds)
 
     class _Delay:
         @staticmethod
@@ -459,8 +570,8 @@ def test_gate_triggers_topology_replay_for_network(monkeypatch):
     monkeypatch.setattr(ct, "sync_collect_task", _Delay)
     called = []
 
-    def fake_replay(task_id, params, digest):
-        called.append((task_id, params.get("has_network_topo"), digest.get("last_synced_round")))
+    def fake_replay(task_id, params, digest, *, marker):
+        called.append((task_id, params.get("has_network_topo"), digest.get("last_synced_round"), marker))
         return "played"
 
     monkeypatch.setattr(
@@ -468,6 +579,19 @@ def test_gate_triggers_topology_replay_for_network(monkeypatch):
         fake_replay,
     )
     result = ct.sync_collect_tasks_gate()
-    assert called == [(31, True, 100)]
+    assert called == [
+        (
+            31,
+            True,
+            100,
+            {
+                "round_ts": 200,
+                "round_completed_at": 260.5,
+                "channel_config_version": "1",
+                SNAPSHOT_CONTRACT_LABEL: SNAPSHOT_CONTRACT_VERSION,
+            },
+        )
+    ]
+    assert observed_lookbacks == [("device", 115_620), ("topology", 230_820)]
     assert result["topo_replayed"] == 1
     assert result["skipped"] == 1

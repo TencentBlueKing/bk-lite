@@ -1,4 +1,4 @@
-from apps.operation_analysis.services.application3d.relations import project_application_hosts, project_application_systems
+from apps.operation_analysis.services.application3d.relations import project_application_hosts, project_system_applications
 
 
 class _FakeGraph:
@@ -76,13 +76,12 @@ def test_project_application_hosts_exact_asst_and_direction(monkeypatch):
         lambda: _FakeGraph(edges),
     )
 
-    mapping, failures = project_application_hosts(["app-1", "app-2"])
+    mapping = project_application_hosts(["app-1", "app-2"])
     assert mapping["app-1"] == ["host-1"]
     assert mapping["app-2"] == []
-    assert failures == {"app-2"}
 
 
-def test_project_application_systems_contains(monkeypatch):
+def test_project_system_applications_contains(monkeypatch):
     edges = [
         {
             "model_asst_id": "system_contains_application",
@@ -90,19 +89,39 @@ def test_project_application_systems_contains(monkeypatch):
             "dst_model_id": "application",
             "src_inst_uuid": "sys-1",
             "dst_inst_uuid": "app-1",
-        }
+        },
+        {
+            "model_asst_id": "system_contains_application",
+            "src_model_id": "system",
+            "dst_model_id": "application",
+            "src_inst_uuid": "sys-1",
+            "dst_inst_uuid": "app-1",
+        },
+        {
+            "model_asst_id": "system_contains_application",
+            "src_model_id": "system",
+            "dst_model_id": "host",
+            "src_inst_uuid": "sys-1",
+            "dst_inst_uuid": "host-1",
+        },
+        {
+            "model_asst_id": "other_asst",
+            "src_model_id": "system",
+            "dst_model_id": "application",
+            "src_inst_uuid": "sys-1",
+            "dst_inst_uuid": "app-x",
+        },
     ]
     monkeypatch.setattr(
         "apps.operation_analysis.services.application3d.relations.GraphClient",
         lambda: _FakeGraph(edges),
     )
-    mapping = project_application_systems(["app-1", "app-orphan"])
-    assert mapping["app-1"] == ["sys-1"]
-    assert mapping["app-orphan"] == []
+    mapping = project_system_applications(["sys-1", "sys-empty"])
+    assert mapping["sys-1"] == ["app-1"]
+    assert mapping["sys-empty"] == []
 
 
-def test_project_application_systems_fills_model_from_entities(monkeypatch):
-    """Stock edges may omit model_id; return_entity src/dst must supply them."""
+def test_project_system_applications_fills_model_from_entities(monkeypatch):
     edges = [
         {
             "model_asst_id": "system_contains_application",
@@ -133,5 +152,5 @@ def test_project_application_systems_fills_model_from_entities(monkeypatch):
         "apps.operation_analysis.services.application3d.relations.GraphClient",
         lambda: _EntityGraph(edges),
     )
-    mapping = project_application_systems(["app-1"])
-    assert mapping["app-1"] == ["sys-1"]
+    mapping = project_system_applications(["sys-1"])
+    assert mapping["sys-1"] == ["app-1"]

@@ -4,7 +4,7 @@ import CompactEmptyState from '@/components/compact-empty-state';
 import { SearchOutlined } from '@ant-design/icons';
 import Icon from '@/components/icon';
 import { useTranslation } from '@/utils/i18n';
-import styles from './index.module.scss';
+import styles from './skill.module.scss';
 import OperateModal from '@/components/operate-modal';
 import { SelectorOption } from '@/app/opspilot/types/skill';
 

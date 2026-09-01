@@ -42,3 +42,42 @@ def test_batch_create_change_record_defaults_inst_uuid_from_payload():
 
     record = ChangeRecord.objects.get(inst_id=202)
     assert str(record.inst_uuid) == inst_uuid
+
+
+def test_batch_instance_change_record_captures_attribute_snapshot(monkeypatch):
+    snapshot = {"version": 1, "attributes": {"disks": {"attr_type": "table"}}}
+    captured = []
+    monkeypatch.setattr(
+        "apps.cmdb.services.change_record_snapshot.load_attribute_snapshot",
+        lambda model_id, attr_ids: captured.append((model_id, set(attr_ids))) or snapshot,
+    )
+
+    batch_create_change_record(
+        "instance",
+        CREATE_INST,
+        [{"inst_id": 303, "model_id": "host", "after_data": {"_id": 303, "disks": [{"name": "C:"}]}}],
+    )
+
+    record = ChangeRecord.objects.get(inst_id=303)
+    assert captured == [("host", {"disks"})]
+    assert record.attribute_snapshot == snapshot
+
+
+def test_single_instance_change_record_captures_attribute_snapshot(monkeypatch):
+    snapshot = {"version": 1, "attributes": {"interfaces": {"attr_type": "table"}}}
+    captured = []
+    monkeypatch.setattr(
+        "apps.cmdb.services.change_record_snapshot.load_attribute_snapshot",
+        lambda model_id, attr_ids: captured.append((model_id, set(attr_ids))) or snapshot,
+    )
+
+    record = create_change_record(
+        inst_id=404,
+        model_id="host",
+        label="instance",
+        _type=CREATE_INST,
+        after_data={"_id": 404, "interfaces": [{"name": "eth0"}]},
+    )
+
+    assert captured == [("host", {"interfaces"})]
+    assert record.attribute_snapshot == snapshot

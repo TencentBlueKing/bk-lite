@@ -1,12 +1,13 @@
 """Kubernetes故障诊断和监控工具"""
 import json
 from datetime import datetime, timezone
+
+from kubernetes import client
 from kubernetes.client import ApiException
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from kubernetes import client
-from apps.opspilot.metis.llm.tools.kubernetes.utils import prepare_context, format_bytes, parse_resource_quantity
 
+from apps.opspilot.metis.llm.tools.kubernetes.utils import format_bytes, parse_resource_quantity, prepare_context
 
 _EVENT_TIME_MIN = datetime.min.replace(tzinfo=timezone.utc)
 
@@ -85,7 +86,7 @@ def get_failed_kubernetes_pods(config: RunnableConfig = None):
                         "ready": container.ready,
                         "restart_count": container.restart_count,
                         "image": container.image,
-                        "state": {}
+                        "state": {},
                     }
 
                     # Check container state
@@ -93,7 +94,7 @@ def get_failed_kubernetes_pods(config: RunnableConfig = None):
                         container_info["state"] = {
                             "status": "waiting",
                             "reason": container.state.waiting.reason,
-                            "message": container.state.waiting.message
+                            "message": container.state.waiting.message,
                         }
                         if container.state.waiting.reason in ["CrashLoopBackOff", "ImagePullBackOff", "ErrImagePull", "InvalidImageName"]:
                             is_failed = True
@@ -102,33 +103,107 @@ def get_failed_kubernetes_pods(config: RunnableConfig = None):
                             "status": "terminated",
                             "reason": container.state.terminated.reason,
                             "exit_code": container.state.terminated.exit_code,
-                            "message": container.state.terminated.message
+                            "message": container.state.terminated.message,
                         }
                         if container.state.terminated.exit_code != 0:
                             is_failed = True
                     elif container.state.running:
                         container_info["state"] = {
                             "status": "running",
-                            "started_at": container.state.running.started_at.isoformat() if container.state.running.started_at else None
+                            "started_at": container.state.running.started_at.isoformat() if container.state.running.started_at else None,
                         }
 
                     container_statuses.append(container_info)
 
             if is_failed:
-                failed.append({
-                    "name": pod.metadata.name,
-                    "namespace": pod.metadata.namespace,
-                    "phase": pod.status.phase,
-                    "container_statuses": container_statuses,
-                    "node": pod.spec.node_name,
-                    "message": pod.status.message,
-                    "reason": pod.status.reason,
-                    "creation_time": pod.metadata.creation_timestamp.isoformat() if pod.metadata.creation_timestamp else None
-                })
+                failed.append(
+                    {
+                        "name": pod.metadata.name,
+                        "namespace": pod.metadata.namespace,
+                        "phase": pod.status.phase,
+                        "container_statuses": container_statuses,
+                        "node": pod.spec.node_name,
+                        "message": pod.status.message,
+                        "reason": pod.status.reason,
+                        "creation_time": pod.metadata.creation_timestamp.isoformat() if pod.metadata.creation_timestamp else None,
+                    }
+                )
 
         return json.dumps(failed)
     except ApiException as e:
         return json.dumps({"error": f"获取失败Pod列表失败: {str(e)}"})
+
+
+def _pod_is_not_ready(pod) -> bool:
+    statuses = pod.status.container_statuses or []
+    if any(not getattr(container, "ready", False) for container in statuses):
+        return True
+    for condition in pod.status.conditions or []:
+        if getattr(condition, "type", None) == "Ready" and str(getattr(condition, "status", "")) == "False":
+            return True
+    return False
+
+
+def _not_ready_pod_record(pod) -> dict:
+    container_statuses = []
+    if pod.status.container_statuses:
+        for container in pod.status.container_statuses:
+            container_statuses.append(
+                {
+                    "name": container.name,
+                    "ready": container.ready,
+                    "restart_count": container.restart_count,
+                    "image": container.image,
+                }
+            )
+    return {
+        "name": pod.metadata.name,
+        "namespace": pod.metadata.namespace,
+        "phase": pod.status.phase,
+        "ready": False,
+        "container_statuses": container_statuses,
+        "node": pod.spec.node_name,
+        "message": pod.status.message,
+        "reason": pod.status.reason,
+        "creation_time": pod.metadata.creation_timestamp.isoformat() if pod.metadata.creation_timestamp else None,
+    }
+
+
+@tool()
+def get_not_ready_kubernetes_pods(namespace=None, config: RunnableConfig = None):
+    """
+    发现 Running 但未就绪的 Pod（Readiness 失败入口）
+
+    **何时使用此工具：**
+    - Unhealthy / Readiness probe failed 告警
+    - 服务已 Running 但流量打不进去、Endpoints 不包含该 Pod
+    - get_failed_kubernetes_pods 为空，仍怀疑探针或依赖导致 Not Ready
+
+    **工具能力：**
+    - 扫描 Running（非 Succeeded/Failed/Pending）且容器 ready=False 或 Ready 条件为 False 的 Pod
+    - 可按 namespace 过滤
+
+    Args:
+        namespace (str, optional): 命名空间；省略则扫描全部命名空间
+        config (RunnableConfig): 工具配置（自动传递）
+    """
+    prepare_context(config)
+    try:
+        core_v1 = client.CoreV1Api()
+        if namespace:
+            pods = core_v1.list_namespaced_pod(namespace)
+        else:
+            pods = core_v1.list_pod_for_all_namespaces()
+        not_ready = []
+        for pod in pods.items:
+            if pod.status.phase in ("Succeeded", "Failed", "Pending"):
+                continue
+            if not _pod_is_not_ready(pod):
+                continue
+            not_ready.append(_not_ready_pod_record(pod))
+        return json.dumps(not_ready)
+    except ApiException as e:
+        return json.dumps({"error": f"获取未就绪Pod列表失败: {str(e)}"})
 
 
 @tool()
@@ -201,14 +276,16 @@ def get_pending_kubernetes_pods(config: RunnableConfig = None):
                             reason = container.state.waiting.reason or reason
                             message = container.state.waiting.message or message
 
-                pending.append({
-                    "name": pod.metadata.name,
-                    "namespace": pod.metadata.namespace,
-                    "node": pod.spec.node_name,
-                    "reason": reason,
-                    "message": message,
-                    "creation_time": pod.metadata.creation_timestamp.isoformat() if pod.metadata.creation_timestamp else None
-                })
+                pending.append(
+                    {
+                        "name": pod.metadata.name,
+                        "namespace": pod.metadata.namespace,
+                        "node": pod.spec.node_name,
+                        "reason": reason,
+                        "message": message,
+                        "creation_time": pod.metadata.creation_timestamp.isoformat() if pod.metadata.creation_timestamp else None,
+                    }
+                )
 
         return json.dumps(pending)
     except ApiException as e:
@@ -277,20 +354,19 @@ def get_high_restart_kubernetes_pods(restart_threshold: int = 5, config: Runnabl
                 high_restart_containers = []
                 for container in pod.status.container_statuses:
                     if container.restart_count >= restart_threshold:
-                        high_restart_containers.append({
-                            "name": container.name,
-                            "restart_count": container.restart_count,
-                            "ready": container.ready,
-                            "image": container.image
-                        })
+                        high_restart_containers.append(
+                            {"name": container.name, "restart_count": container.restart_count, "ready": container.ready, "image": container.image}
+                        )
 
                 if high_restart_containers:
-                    high_restart.append({
-                        "name": pod.metadata.name,
-                        "namespace": pod.metadata.namespace,
-                        "node": pod.spec.node_name,
-                        "containers": high_restart_containers
-                    })
+                    high_restart.append(
+                        {
+                            "name": pod.metadata.name,
+                            "namespace": pod.metadata.namespace,
+                            "node": pod.spec.node_name,
+                            "containers": high_restart_containers,
+                        }
+                    )
 
         return json.dumps(high_restart)
     except ApiException as e:
@@ -373,11 +449,9 @@ def get_kubernetes_node_capacity(config: RunnableConfig = None):
 
             # Get node allocatable resources
             allocatable = node.status.allocatable or {}
-            allocatable_cpu = parse_resource_quantity(
-                allocatable.get('cpu', '0'))
-            allocatable_memory = parse_resource_quantity(
-                allocatable.get('memory', '0'))
-            allocatable_pods = int(allocatable.get('pods', '0'))
+            allocatable_cpu = parse_resource_quantity(allocatable.get("cpu", "0"))
+            allocatable_memory = parse_resource_quantity(allocatable.get("memory", "0"))
+            allocatable_pods = int(allocatable.get("pods", "0"))
 
             # Calculate resource requests from pods on this node
             pods_on_node = node_pods.get(node_name, [])
@@ -388,54 +462,37 @@ def get_kubernetes_node_capacity(config: RunnableConfig = None):
                 if pod.spec.containers:
                     for container in pod.spec.containers:
                         if container.resources and container.resources.requests:
-                            cpu_request = container.resources.requests.get(
-                                'cpu', '0')
-                            memory_request = container.resources.requests.get(
-                                'memory', '0')
-                            requested_cpu += parse_resource_quantity(
-                                cpu_request)
-                            requested_memory += parse_resource_quantity(
-                                memory_request)
+                            cpu_request = container.resources.requests.get("cpu", "0")
+                            memory_request = container.resources.requests.get("memory", "0")
+                            requested_cpu += parse_resource_quantity(cpu_request)
+                            requested_memory += parse_resource_quantity(memory_request)
 
             # Calculate percentages
-            cpu_percent = (requested_cpu / allocatable_cpu
-                           * 100) if allocatable_cpu > 0 else 0
-            memory_percent = (
-                requested_memory / allocatable_memory * 100) if allocatable_memory > 0 else 0
-            pods_percent = (len(pods_on_node) / allocatable_pods
-                            * 100) if allocatable_pods > 0 else 0
+            cpu_percent = (requested_cpu / allocatable_cpu * 100) if allocatable_cpu > 0 else 0
+            memory_percent = (requested_memory / allocatable_memory * 100) if allocatable_memory > 0 else 0
+            pods_percent = (len(pods_on_node) / allocatable_pods * 100) if allocatable_pods > 0 else 0
 
             # Get node conditions
             conditions = {}
             if node.status.conditions:
                 for condition in node.status.conditions:
-                    conditions[condition.type] = {
-                        "status": condition.status,
-                        "reason": condition.reason,
-                        "message": condition.message
-                    }
+                    conditions[condition.type] = {"status": condition.status, "reason": condition.reason, "message": condition.message}
 
-            results.append({
-                "name": node_name,
-                "pods": {
-                    "used": len(pods_on_node),
-                    "capacity": allocatable_pods,
-                    "percent_used": round(pods_percent, 2)
-                },
-                "cpu": {
-                    "requested": round(requested_cpu, 3),
-                    "allocatable": round(allocatable_cpu, 3),
-                    "percent_used": round(cpu_percent, 2)
-                },
-                "memory": {
-                    "requested": int(requested_memory),
-                    "requested_human": format_bytes(requested_memory),
-                    "allocatable": int(allocatable_memory),
-                    "allocatable_human": format_bytes(allocatable_memory),
-                    "percent_used": round(memory_percent, 2)
-                },
-                "conditions": conditions
-            })
+            results.append(
+                {
+                    "name": node_name,
+                    "pods": {"used": len(pods_on_node), "capacity": allocatable_pods, "percent_used": round(pods_percent, 2)},
+                    "cpu": {"requested": round(requested_cpu, 3), "allocatable": round(allocatable_cpu, 3), "percent_used": round(cpu_percent, 2)},
+                    "memory": {
+                        "requested": int(requested_memory),
+                        "requested_human": format_bytes(requested_memory),
+                        "allocatable": int(allocatable_memory),
+                        "allocatable_human": format_bytes(allocatable_memory),
+                        "percent_used": round(memory_percent, 2),
+                    },
+                    "conditions": conditions,
+                }
+            )
 
         return json.dumps(results)
     except ApiException as e:
@@ -512,11 +569,13 @@ def get_kubernetes_orphaned_resources(config: RunnableConfig = None):
             if not pod.metadata.owner_references:
                 # Also skip pods in kube-system namespace by default
                 if pod.metadata.namespace != "kube-system":
-                    results["pods"].append({
-                        "name": pod.metadata.name,
-                        "namespace": pod.metadata.namespace,
-                        "creation_time": pod.metadata.creation_timestamp.isoformat() if pod.metadata.creation_timestamp else None
-                    })
+                    results["pods"].append(
+                        {
+                            "name": pod.metadata.name,
+                            "namespace": pod.metadata.namespace,
+                            "creation_time": pod.metadata.creation_timestamp.isoformat() if pod.metadata.creation_timestamp else None,
+                        }
+                    )
 
         # Check for orphaned services
         services = core_v1.list_service_for_all_namespaces()
@@ -526,21 +585,25 @@ def get_kubernetes_orphaned_resources(config: RunnableConfig = None):
                 if not service.metadata.owner_references:
                     # Skip default kubernetes service
                     if not (service.metadata.name == "kubernetes" and service.metadata.namespace == "default"):
-                        results["services"].append({
-                            "name": service.metadata.name,
-                            "namespace": service.metadata.namespace,
-                            "creation_time": service.metadata.creation_timestamp.isoformat() if service.metadata.creation_timestamp else None
-                        })
+                        results["services"].append(
+                            {
+                                "name": service.metadata.name,
+                                "namespace": service.metadata.namespace,
+                                "creation_time": service.metadata.creation_timestamp.isoformat() if service.metadata.creation_timestamp else None,
+                            }
+                        )
 
         # Check for orphaned PVCs
         pvcs = core_v1.list_persistent_volume_claim_for_all_namespaces()
         for pvc in pvcs.items:
             if not pvc.metadata.owner_references:
-                results["persistent_volume_claims"].append({
-                    "name": pvc.metadata.name,
-                    "namespace": pvc.metadata.namespace,
-                    "creation_time": pvc.metadata.creation_timestamp.isoformat() if pvc.metadata.creation_timestamp else None
-                })
+                results["persistent_volume_claims"].append(
+                    {
+                        "name": pvc.metadata.name,
+                        "namespace": pvc.metadata.namespace,
+                        "creation_time": pvc.metadata.creation_timestamp.isoformat() if pvc.metadata.creation_timestamp else None,
+                    }
+                )
 
         # Check for orphaned ConfigMaps
         config_maps = core_v1.list_config_map_for_all_namespaces()
@@ -551,11 +614,13 @@ def get_kubernetes_orphaned_resources(config: RunnableConfig = None):
                     # Skip some well-known system configmaps
                     system_cms = ["kube-root-ca.crt"]
                     if cm.metadata.name not in system_cms:
-                        results["config_maps"].append({
-                            "name": cm.metadata.name,
-                            "namespace": cm.metadata.namespace,
-                            "creation_time": cm.metadata.creation_timestamp.isoformat() if cm.metadata.creation_timestamp else None
-                        })
+                        results["config_maps"].append(
+                            {
+                                "name": cm.metadata.name,
+                                "namespace": cm.metadata.namespace,
+                                "creation_time": cm.metadata.creation_timestamp.isoformat() if cm.metadata.creation_timestamp else None,
+                            }
+                        )
 
         # Check for orphaned Secrets
         secrets = core_v1.list_secret_for_all_namespaces()
@@ -565,12 +630,14 @@ def get_kubernetes_orphaned_resources(config: RunnableConfig = None):
                 if not secret.metadata.owner_references:
                     # Skip service account tokens and other system secrets
                     if secret.type not in ["kubernetes.io/service-account-token", "kubernetes.io/dockercfg", "kubernetes.io/dockerconfigjson"]:
-                        results["secrets"].append({
-                            "name": secret.metadata.name,
-                            "namespace": secret.metadata.namespace,
-                            "type": secret.type,
-                            "creation_time": secret.metadata.creation_timestamp.isoformat() if secret.metadata.creation_timestamp else None
-                        })
+                        results["secrets"].append(
+                            {
+                                "name": secret.metadata.name,
+                                "namespace": secret.metadata.namespace,
+                                "type": secret.type,
+                                "creation_time": secret.metadata.creation_timestamp.isoformat() if secret.metadata.creation_timestamp else None,
+                            }
+                        )
 
         return json.dumps(results)
     except ApiException as e:
@@ -578,7 +645,7 @@ def get_kubernetes_orphaned_resources(config: RunnableConfig = None):
 
 
 @tool()
-def diagnose_kubernetes_pod_issues(namespace, pod_name, config: RunnableConfig = None):
+def diagnose_kubernetes_pod_issues(namespace, pod_name, config: RunnableConfig = None):  # noqa: C901
     """
     深度诊断单个Pod的所有问题 - 一站式故障排查
 
@@ -642,10 +709,7 @@ def diagnose_kubernetes_pod_issues(namespace, pod_name, config: RunnableConfig =
             raise
 
         # 获取相关事件
-        events = core_v1.list_namespaced_event(
-            namespace,
-            field_selector=f"involvedObject.name={pod_name},involvedObject.kind=Pod"
-        )
+        events = core_v1.list_namespaced_event(namespace, field_selector=f"involvedObject.name={pod_name},involvedObject.kind=Pod")
 
         # 整理诊断信息
         diagnosis = {
@@ -660,19 +724,21 @@ def diagnose_kubernetes_pod_issues(namespace, pod_name, config: RunnableConfig =
             "recent_events": [],
             "resource_requests": {},
             "resource_limits": {},
-            "volumes": []
+            "volumes": [],
         }
 
         # Pod条件
         if pod.status.conditions:
             for condition in pod.status.conditions:
-                diagnosis["conditions"].append({
-                    "type": condition.type,
-                    "status": condition.status,
-                    "reason": condition.reason,
-                    "message": condition.message,
-                    "last_transition_time": condition.last_transition_time.isoformat() if condition.last_transition_time else None
-                })
+                diagnosis["conditions"].append(
+                    {
+                        "type": condition.type,
+                        "status": condition.status,
+                        "reason": condition.reason,
+                        "message": condition.message,
+                        "last_transition_time": condition.last_transition_time.isoformat() if condition.last_transition_time else None,
+                    }
+                )
 
         # 容器状态
         if pod.status.container_statuses:
@@ -683,19 +749,19 @@ def diagnose_kubernetes_pod_issues(namespace, pod_name, config: RunnableConfig =
                     "restart_count": container.restart_count,
                     "image": container.image,
                     "image_id": container.image_id,
-                    "state": {}
+                    "state": {},
                 }
 
                 if container.state.waiting:
                     container_info["state"] = {
                         "status": "waiting",
                         "reason": container.state.waiting.reason,
-                        "message": container.state.waiting.message
+                        "message": container.state.waiting.message,
                     }
                 elif container.state.running:
                     container_info["state"] = {
                         "status": "running",
-                        "started_at": container.state.running.started_at.isoformat() if container.state.running.started_at else None
+                        "started_at": container.state.running.started_at.isoformat() if container.state.running.started_at else None,
                     }
                 elif container.state.terminated:
                     container_info["state"] = {
@@ -703,7 +769,7 @@ def diagnose_kubernetes_pod_issues(namespace, pod_name, config: RunnableConfig =
                         "reason": container.state.terminated.reason,
                         "exit_code": container.state.terminated.exit_code,
                         "started_at": container.state.terminated.started_at.isoformat() if container.state.terminated.started_at else None,
-                        "finished_at": container.state.terminated.finished_at.isoformat() if container.state.terminated.finished_at else None
+                        "finished_at": container.state.terminated.finished_at.isoformat() if container.state.terminated.finished_at else None,
                     }
 
                 diagnosis["containers"].append(container_info)
@@ -716,20 +782,20 @@ def diagnose_kubernetes_pod_issues(namespace, pod_name, config: RunnableConfig =
                     "ready": init_container.ready,
                     "restart_count": init_container.restart_count,
                     "image": init_container.image,
-                    "state": {}
+                    "state": {},
                 }
 
                 if init_container.state.waiting:
                     init_info["state"] = {
                         "status": "waiting",
                         "reason": init_container.state.waiting.reason,
-                        "message": init_container.state.waiting.message
+                        "message": init_container.state.waiting.message,
                     }
                 elif init_container.state.terminated:
                     init_info["state"] = {
                         "status": "terminated",
                         "reason": init_container.state.terminated.reason,
-                        "exit_code": init_container.state.terminated.exit_code
+                        "exit_code": init_container.state.terminated.exit_code,
                     }
 
                 diagnosis["init_containers"].append(init_info)
@@ -739,11 +805,9 @@ def diagnose_kubernetes_pod_issues(namespace, pod_name, config: RunnableConfig =
             for container in pod.spec.containers:
                 if container.resources:
                     if container.resources.requests:
-                        diagnosis["resource_requests"][container.name] = dict(
-                            container.resources.requests)
+                        diagnosis["resource_requests"][container.name] = dict(container.resources.requests)
                     if container.resources.limits:
-                        diagnosis["resource_limits"][container.name] = dict(
-                            container.resources.limits)
+                        diagnosis["resource_limits"][container.name] = dict(container.resources.limits)
 
         # 卷信息
         if pod.spec.volumes:
@@ -770,13 +834,15 @@ def diagnose_kubernetes_pod_issues(namespace, pod_name, config: RunnableConfig =
 
         # 最近的事件
         for event in sorted(events.items, key=_event_sort_time, reverse=True)[:10]:
-            diagnosis["recent_events"].append({
-                "type": event.type,
-                "reason": event.reason,
-                "message": event.message,
-                "count": event.count,
-                "last_timestamp": event.last_timestamp.isoformat() if event.last_timestamp else None
-            })
+            diagnosis["recent_events"].append(
+                {
+                    "type": event.type,
+                    "reason": event.reason,
+                    "message": event.message,
+                    "count": event.count,
+                    "last_timestamp": event.last_timestamp.isoformat() if event.last_timestamp else None,
+                }
+            )
 
         return json.dumps(diagnosis)
     except ApiException as e:

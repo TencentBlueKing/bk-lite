@@ -7,6 +7,7 @@ import { CustomChatMessage } from '@/app/opspilot/types/global';
 import { AGUIMessage, SSEChunk } from '@/app/opspilot/types/chat';
 import { AGUIMessageHandler } from '../aguiMessageHandler';
 import { ToolCallInfo } from '../toolCallRenderer';
+import type { LlmContextUsage } from '../llmContextUsage';
 
 interface UseSSEStreamProps {
   token: string | null;
@@ -15,6 +16,7 @@ interface UseSSEStreamProps {
   setLoading: (loading: boolean) => void;
   t: (key: string) => string;
   onCancelCleanup?: () => void;
+  onContextUsage?: (usage: LlmContextUsage) => void;
 }
 
 interface InterruptRequestConfig {
@@ -54,6 +56,7 @@ export const useSSEStream = ({
   setLoading,
   t,
   onCancelCleanup,
+  onContextUsage,
 }: UseSSEStreamProps) => {
   const abortControllerRef = useRef<AbortController | null>(null);
   const toolCallsRef = useRef<Map<string, ToolCallInfo>>(new Map());
@@ -62,8 +65,10 @@ export const useSSEStream = ({
   const isStreamActiveRef = useRef(false);
   const tokenRef = useRef(token);
   const onCancelCleanupRef = useRef(onCancelCleanup);
+  const onContextUsageRef = useRef(onContextUsage);
   tokenRef.current = token;
   onCancelCleanupRef.current = onCancelCleanup;
+  onContextUsageRef.current = onContextUsage;
 
   const stopSSEConnection = useCallback(() => {
     const currentExecutionId = latestExecutionIdRef.current;
@@ -148,7 +153,8 @@ export const useSSEStream = ({
         const handler = new AGUIMessageHandler(
           botMessage,
           updateMessages,
-          toolCallsRef.current
+          toolCallsRef.current,
+          (usage) => onContextUsageRef.current?.(usage)
         );
         
         // OpenAI SSE 格式的累积内容

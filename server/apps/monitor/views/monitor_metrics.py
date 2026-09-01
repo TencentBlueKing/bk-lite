@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
+from apps.core.decorators.api_permission import HasPermission
 from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.core.logger import monitor_logger as logger
 from apps.core.utils.loader import LanguageLoader
@@ -431,14 +432,21 @@ class MetricGroupViewSet(viewsets.ModelViewSet):
         if getattr(metric_group, "is_pre", False):
             raise BaseAppException("内置指标分组为只读，禁止修改或删除")
 
+    @HasPermission("integration_metric-Add Group")
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    @HasPermission("integration_metric-Edit Group")
     def update(self, request, *args, **kwargs):
         self._ensure_modifiable(self.get_object())
         return super().update(request, *args, **kwargs)
 
+    @HasPermission("integration_metric-Edit Group")
     def partial_update(self, request, *args, **kwargs):
         self._ensure_modifiable(self.get_object())
         return super().partial_update(request, *args, **kwargs)
 
+    @HasPermission("integration_metric-Delete Group")
     def destroy(self, request, *args, **kwargs):
         self._ensure_modifiable(self.get_object())
         return super().destroy(request, *args, **kwargs)
@@ -480,6 +488,7 @@ class MetricGroupViewSet(viewsets.ModelViewSet):
         return WebUtils.response_success(self.get_paginated_response(results).data)
 
     @action(detail=False, methods=["post"])
+    @HasPermission("integration_metric-Edit Group")
     def set_order(self, request, *args, **kwargs):
         target_ids = [item["id"] for item in request.data]
         if MetricGroup.objects.filter(id__in=target_ids, is_pre=True).exists():
@@ -506,14 +515,21 @@ class MetricViewSet(viewsets.ModelViewSet):
         if getattr(metric, "is_pre", False):
             raise BaseAppException("内置指标为只读，禁止修改或删除")
 
+    @HasPermission("integration_metric-Add Metric")
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    @HasPermission("integration_metric-Edit Metric")
     def update(self, request, *args, **kwargs):
         self._ensure_modifiable(self.get_object())
         return super().update(request, *args, **kwargs)
 
+    @HasPermission("integration_metric-Edit Metric")
     def partial_update(self, request, *args, **kwargs):
         self._ensure_modifiable(self.get_object())
         return super().partial_update(request, *args, **kwargs)
 
+    @HasPermission("integration_metric-Delete Metric")
     def destroy(self, request, *args, **kwargs):
         self._ensure_modifiable(self.get_object())
         return super().destroy(request, *args, **kwargs)
@@ -624,6 +640,7 @@ class MetricViewSet(viewsets.ModelViewSet):
         return WebUtils.response_success(response_data)
 
     @action(detail=False, methods=["post"])
+    @HasPermission("integration_metric-Edit Metric")
     def set_order(self, request, *args, **kwargs):
         target_ids = [item["id"] for item in request.data]
         if Metric.objects.filter(id__in=target_ids, is_pre=True).exists():
@@ -652,6 +669,7 @@ class MetricViewSet(viewsets.ModelViewSet):
         return WebUtils.response_success(names)
 
     @action(detail=False, methods=["post"], url_path="test_query")
+    @HasPermission("integration_metric-Edit Metric")
     def test_query(self, request, *args, **kwargs):
         query = request.data.get("query")
         if query is None or not isinstance(query, str):

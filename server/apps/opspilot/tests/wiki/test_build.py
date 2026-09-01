@@ -491,6 +491,11 @@ def test_wiki_llm_invocation_uses_wiki_timeout(monkeypatch):
         ("o4-mini", 1.0),
         ("kimi-for-coding", 1.0),
         ("moonshot/kimi-for-coding", 1.0),
+        ("kimi-k2", 1.0),
+        ("kimi-for-coding-highspeed", 1.0),
+        ("k3", 1.0),
+        ("k3-256k", 1.0),
+        ("moonshot-v1-128k", 1.0),
     ],
 )
 def test_wiki_llm_temperature_by_model(model_name, expected):

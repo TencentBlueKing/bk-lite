@@ -28,7 +28,16 @@ export interface SearchParams {
   end?: number;
   start?: number;
   step?: number;
-  query: string;
+  query?: string;
+  monitor_object_id?: React.Key;
+  metric_id?: React.Key;
+  instance_ids?: string[];
+  filters?: Array<{
+    label: string;
+    operator: string;
+    value: string;
+  }>;
+  aggregation?: string;
   source_unit?: string;
   auto_convert_unit?: boolean;
   detect_gaps?: boolean;

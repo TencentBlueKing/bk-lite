@@ -10,6 +10,14 @@ from langchain_core.tools import tool
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.tools.kubernetes.utils import prepare_context
 
+_DESCRIBE_TYPE_ALIASES = {
+    "po": "pod",
+    "deploy": "deployment",
+    "sts": "statefulset",
+}
+_DESCRIBE_SUPPORTED_TYPES = ["pod", "deployment", "service", "node", "namespace", "statefulset"]
+_DESCRIBE_NAMESPACE_REQUIRED = frozenset({"pod", "deployment", "service", "statefulset"})
+
 
 @tool()
 def verify_kubernetes_connection(config: RunnableConfig = None):
@@ -103,8 +111,9 @@ def get_kubernetes_contexts(config: RunnableConfig = None):
 
         # If platform instances are configured, use them
         if configurable.get("kubernetes_instances"):
-            from apps.opspilot.metis.llm.tools.kubernetes.connection import get_kubernetes_instances_from_configurable
             import yaml as _yaml
+
+            from apps.opspilot.metis.llm.tools.kubernetes.connection import get_kubernetes_instances_from_configurable
 
             instances = get_kubernetes_instances_from_configurable(configurable)
             result = {"clusters": []}
@@ -124,24 +133,22 @@ def get_kubernetes_contexts(config: RunnableConfig = None):
                             for ctx in kubeconfig.get("contexts", []):
                                 ctx_name = ctx.get("name", "")
                                 ctx_detail = ctx.get("context", {})
-                                cluster_info["contexts"].append({
-                                    "context_name": ctx_name,
-                                    "cluster": ctx_detail.get("cluster", ""),
-                                    "user": ctx_detail.get("user", ""),
-                                    "namespace": ctx_detail.get("namespace", "default"),
-                                    "is_current": ctx_name == current_ctx,
-                                })
+                                cluster_info["contexts"].append(
+                                    {
+                                        "context_name": ctx_name,
+                                        "cluster": ctx_detail.get("cluster", ""),
+                                        "user": ctx_detail.get("user", ""),
+                                        "namespace": ctx_detail.get("namespace", "default"),
+                                        "is_current": ctx_name == current_ctx,
+                                    }
+                                )
                     except Exception:
                         pass
                 result["clusters"].append(cluster_info)
 
             # 多集群时提示 LLM 必须让用户选择
             if len(result["clusters"]) > 1:
-                result["_instruction"] = (
-                    "检测到多个集群。仅当用户正在执行 K8s 操作且没有指定具体集群时，"
-                    "才需要调用 request_user_choice 让用户选择集群。"
-                    "如果用户只是打招呼或问非 K8s 问题，不要问集群选择。"
-                )
+                result["_instruction"] = "检测到多个集群。仅当用户正在执行 K8s 操作且没有指定具体集群时，" "才需要调用 request_user_choice 让用户选择集群。" "如果用户只是打招呼或问非 K8s 问题，不要问集群选择。"
 
             return json.dumps(result)
 
@@ -366,7 +373,7 @@ def describe_kubernetes_resource(resource_type, resource_name, namespace=None, c
     获取资源的详细信息，类似于 kubectl describe
 
     Args:
-        resource_type (str): 资源类型 (pod, deployment, service等)
+        resource_type (str): 资源类型 (pod, deployment, statefulset/sts, service, node, namespace)
         resource_name (str): 资源名称
         namespace (str, optional): 命名空间，某些资源类型需要
         config (RunnableConfig): 工具配置
@@ -380,26 +387,28 @@ def describe_kubernetes_resource(resource_type, resource_name, namespace=None, c
         core_v1 = client.CoreV1Api()
         apps_v1 = client.AppsV1Api()
 
-        resource_type = resource_type.lower()
+        resource_type = _DESCRIBE_TYPE_ALIASES.get(resource_type.lower(), resource_type.lower())
+
+        if resource_type in _DESCRIBE_NAMESPACE_REQUIRED and not namespace:
+            kind_label = {"pod": "Pod", "deployment": "Deployment", "service": "Service", "statefulset": "StatefulSet"}.get(
+                resource_type, resource_type
+            )
+            return json.dumps({"error": f"{kind_label}资源需要指定namespace"})
 
         if resource_type == "pod":
-            if not namespace:
-                return json.dumps({"error": "Pod资源需要指定namespace"})
             resource = core_v1.read_namespaced_pod(resource_name, namespace)
         elif resource_type == "deployment":
-            if not namespace:
-                return json.dumps({"error": "Deployment资源需要指定namespace"})
             resource = apps_v1.read_namespaced_deployment(resource_name, namespace)
+        elif resource_type == "statefulset":
+            resource = apps_v1.read_namespaced_stateful_set(resource_name, namespace)
         elif resource_type == "service":
-            if not namespace:
-                return json.dumps({"error": "Service资源需要指定namespace"})
             resource = core_v1.read_namespaced_service(resource_name, namespace)
         elif resource_type == "node":
             resource = core_v1.read_node(resource_name)
         elif resource_type == "namespace":
             resource = core_v1.read_namespace(resource_name)
         else:
-            return json.dumps({"error": f"暂不支持资源类型: {resource_type}", "supported_types": ["pod", "deployment", "service", "node", "namespace"]})
+            return json.dumps({"error": f"暂不支持资源类型: {resource_type}", "supported_types": _DESCRIBE_SUPPORTED_TYPES})
 
         # 转换为字典格式
         resource_dict = client.ApiClient().sanitize_for_serialization(resource)

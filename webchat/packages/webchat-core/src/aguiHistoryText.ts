@@ -15,6 +15,7 @@ const SKIP_CUSTOM_EVENTS = new Set([
   'user_choice_result',
   'assistant_text_retract',
   'stream_keepalive',
+  'llm_context_usage',
 ]);
 
 /**

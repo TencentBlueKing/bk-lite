@@ -192,9 +192,10 @@ class BaseNodeParams(metaclass=ABCMeta):
                 "model_id": _model_id,
                 "timeout": self.timeout,
                 "collect_task_id": self.instance.id,
+                "scope_id": self.instance.id,
+                "credential_set_version": str((self.instance.params or {}).get("credential_set_version") or "v1"),
                 "collection_role": self.collection_role,
                 "channel_config_version": self.channel_config_version,
-                "credential_result_subject": "receive_collect_credential_result",
             }
         )
         task_params = getattr(self.instance, "params", None) or {}

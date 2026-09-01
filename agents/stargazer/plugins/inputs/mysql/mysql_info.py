@@ -42,6 +42,7 @@ class MysqlInfo:
         }
         self.connection = None
         self.cursor = None
+        self.collection_task_id = kwargs.get("collection_task_id")
 
     async def _connect(self):
         """Establish MySQL connection."""
@@ -302,9 +303,13 @@ class MysqlInfo:
             model_data.update(self._get_replication_info())
             inst_data = {"result": {"mysql": [model_data]}, "success": True}
         except Exception as err:  # noqa
-            import traceback
-
-            logger.error(f"mysql_info main error! {traceback.format_exc()}")
+            logger.exception(
+                "event=mysql_collect_failed host=%s task_id=%s failed_stage=%s error_type=%s",
+                self.host,
+                self.collection_task_id,
+                "list_all_resources",
+                type(err).__name__,
+            )
             inst_data = {"result": {"cmdb_collect_error": str(err)}, "success": False}
 
         finally:

@@ -79,7 +79,9 @@ def test_log_material_build_token_usage_emits_searchable_line(monkeypatch):
     assert "output_tokens=7" in line
 
 
-def test_budgeted_generation_rebalances_five_raw_chunks_into_four_map_calls(monkeypatch):
+@pytest.mark.django_db
+def test_budgeted_generation_fits_legacy_32k_source_in_one_200k_call(monkeypatch):
+    from apps.opspilot.models import LLMModel
     from apps.opspilot.services.wiki import build_service
     from apps.opspilot.services.wiki.text_utils import split_text_for_llm
     from apps.opspilot.services.wiki.wiki_budget_service import LLMCallBudget
@@ -87,10 +89,49 @@ def test_budgeted_generation_rebalances_five_raw_chunks_into_four_map_calls(monk
     tail_marker = "TAIL_FACT_MUST_SURVIVE"
     source = ("文" * (32466 - len(tail_marker))) + tail_marker
     assert len(split_text_for_llm(source)) == 5
+    model = LLMModel.objects.create(name="build-200k", model="m")
 
     calls = []
 
-    def fake_invoke(_model_id, prompt, *, budget, stage, output_reserve, force_json=False):
+    def fake_invoke(_model_id, prompt, *, budget, stage, output_reserve, **_kwargs):
+        reservation = budget.ensure_call(stage, prompt, output_reserve=output_reserve)
+        result = '{"pages":[]}'
+        budget.record_call(reservation, result)
+        calls.append((stage, prompt))
+        return result
+
+    monkeypatch.setattr(build_service, "_invoke_llm", fake_invoke)
+    result = build_service.generate_material_pages_with_budget(
+        SimpleNamespace(purpose_md="", schema_md=""),
+        source,
+        model.pk,
+        budget=LLMCallBudget(max_calls=6, max_total_tokens=60000, scope="wiki_material:test"),
+        structure_revision=SimpleNamespace(
+            pk=1,
+            revision_no=1,
+            fingerprint="structure-v1",
+            structure_snapshot={"directories": []},
+        ),
+    )
+
+    assert result.pages == []
+    assert result.skipped == []
+    assert [item[0] for item in calls] == ["material_generate"]
+    assert tail_marker in calls[0][1]
+
+
+@pytest.mark.django_db
+def test_budgeted_generation_maps_when_source_exceeds_8k_input_working(monkeypatch):
+    from apps.opspilot.models import LLMModel
+    from apps.opspilot.services.wiki import build_service
+    from apps.opspilot.services.wiki.wiki_budget_service import LLMCallBudget
+
+    tail_marker = "TAIL_FACT_MUST_SURVIVE"
+    source = ("文" * (12000 - len(tail_marker))) + tail_marker
+    model = LLMModel.objects.create(name="build-8k", model="m", context_window_tokens=8_000)
+    calls = []
+
+    def fake_invoke(_model_id, prompt, *, budget, stage, output_reserve, **_kwargs):
         reservation = budget.ensure_call(stage, prompt, output_reserve=output_reserve)
         result = '{"pages":[]}' if stage == "material_reduce_generate" else '{"facts":[]}'
         budget.record_call(reservation, result)
@@ -98,41 +139,59 @@ def test_budgeted_generation_rebalances_five_raw_chunks_into_four_map_calls(monk
         return result
 
     monkeypatch.setattr(build_service, "_invoke_llm", fake_invoke)
-    budget = LLMCallBudget(
-        max_calls=6,
-        max_total_tokens=60000,
-        scope="wiki_material:test",
-    )
-    knowledge_base = SimpleNamespace(purpose_md="", schema_md="")
-    structure_revision = SimpleNamespace(
-        pk=1,
-        revision_no=1,
-        fingerprint="structure-v1",
-        structure_snapshot={"directories": []},
-    )
-
     result = build_service.generate_material_pages_with_budget(
-        knowledge_base,
+        SimpleNamespace(purpose_md="", schema_md=""),
         source,
-        1,
-        budget=budget,
-        structure_revision=structure_revision,
+        model.pk,
+        budget=LLMCallBudget(max_calls=32, max_total_tokens=None, scope="wiki_material:test"),
+        structure_revision=SimpleNamespace(
+            pk=1,
+            revision_no=1,
+            fingerprint="structure-v1",
+            structure_snapshot={"directories": []},
+        ),
     )
 
     map_calls = [item for item in calls if item[0].startswith("material_map_")]
     assert result.pages == []
     assert result.skipped == []
-    assert len(map_calls) == 4
-    assert [item[0] for item in calls] == [
-        "material_map_1",
-        "material_map_2",
-        "material_map_3",
-        "material_map_4",
-        "material_reduce_generate",
-    ]
+    assert len(map_calls) > 1
+    assert calls[-1][0] == "material_reduce_generate"
     assert tail_marker in map_calls[-1][1]
-    assert budget.used_calls == 5
-    assert budget.used_tokens <= budget.max_total_tokens
+
+
+def test_new_material_call_budget_uses_derived_per_call_cap_not_16k():
+    from apps.opspilot.services.wiki.wiki_budget_service import new_material_call_budget
+
+    budget = new_material_call_budget(1, window_tokens=200_000, scene_output_default=6000)
+    assert budget.max_context_tokens_per_call == 190_000
+
+
+@pytest.mark.django_db
+def test_invoke_llm_attaches_derived_window_and_rejects_oversized_prompt(monkeypatch):
+    from apps.opspilot.models import LLMModel
+    from apps.opspilot.services.wiki import build_service
+    from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded
+
+    captured = {}
+
+    def fake_invoke(request, _messages):
+        captured["extra"] = dict(request.extra_config or {})
+        captured["max_output"] = request.max_output_tokens
+        return '{"ok":true}'
+
+    monkeypatch.setattr(build_service.LLMClientFactory, "invoke_isolated", fake_invoke)
+    large = LLMModel.objects.create(name="invoke-200k", model="m")
+    build_service._invoke_llm(large.pk, "hello", output_reserve=6000)
+    assert captured["extra"]["input_working_tokens"] == 184_000
+    assert captured["extra"]["context_window_tokens"] == 200_000
+    assert captured["max_output"] == 6_000
+
+    small = LLMModel.objects.create(name="invoke-8k", model="m", context_window_tokens=8_000)
+    with pytest.raises(WikiBudgetExceeded) as exc:
+        build_service._invoke_llm(small.pk, "文" * 12_000, output_reserve=4000)
+    assert exc.value.code == "wiki_llm_context_window_exceeded"
+    assert "max_output" not in captured or captured["max_output"] == 6_000
 
 
 def _large_map_source():
@@ -144,12 +203,30 @@ def _large_map_source():
     return source, tail_marker
 
 
+def _patch_legacy_map_window(monkeypatch):
+    from apps.opspilot.services.llm_context_budget import LLMWorkingBudget
+    from apps.opspilot.services.wiki import build_service
+
+    primary = LLMWorkingBudget(
+        window_tokens=200_000,
+        safety_tokens=256,
+        output_reserve_tokens=6000,
+        input_working_tokens=8_000,
+        compaction_threshold_tokens=6_000,
+        knowledge_inject_tokens=1_200,
+        build_chunk_tokens=8_000,
+        single_message_tokens=1_600,
+    )
+    monkeypatch.setattr(build_service, "_material_window_limits", lambda _id: (primary, 2500, 2500))
+
+
 def test_map_retries_empty_llm_then_continues(monkeypatch):
     from apps.opspilot.services.wiki import build_service
     from apps.opspilot.services.wiki.wiki_budget_service import LLMCallBudget
 
     source, tail_marker = _large_map_source()
     calls = []
+    _patch_legacy_map_window(monkeypatch)
 
     def fake_invoke(_model_id, prompt, *, budget, stage, output_reserve, force_json=False):
         reservation = budget.ensure_call(stage, prompt, output_reserve=output_reserve)
@@ -181,18 +258,14 @@ def test_map_retries_empty_llm_then_continues(monkeypatch):
         structure_revision=structure_revision,
     )
 
+    stages = [item[0] for item in calls]
+    map_calls = [item for item in calls if item[0].startswith("material_map_")]
     assert result.pages == []
     assert result.skipped == []
-    assert [item[0] for item in calls] == [
-        "material_map_1",
-        "material_map_1_retry_2",
-        "material_map_2",
-        "material_map_3",
-        "material_map_4",
-        "material_reduce_generate",
-    ]
-    assert tail_marker in calls[-2][1]
-    assert budget.used_calls == 6
+    assert stages[:2] == ["material_map_1", "material_map_1_retry_2"]
+    assert stages[-1] == "material_reduce_generate"
+    assert "material_map_2" in stages
+    assert tail_marker in map_calls[-1][1]
     assert budget.used_tokens <= budget.max_total_tokens
 
 
@@ -202,6 +275,7 @@ def test_map_skips_chunk_after_retry_still_empty(monkeypatch, caplog):
 
     source, _tail_marker = _large_map_source()
     calls = []
+    _patch_legacy_map_window(monkeypatch)
 
     def fake_invoke(_model_id, prompt, *, budget, stage, output_reserve, force_json=False):
         reservation = budget.ensure_call(stage, prompt, output_reserve=output_reserve)
@@ -243,19 +317,14 @@ def test_map_skips_chunk_after_retry_still_empty(monkeypatch, caplog):
             "error_type": "BuildOutputInvalid",
         }
     ]
-    assert [item[0] for item in calls] == [
-        "material_map_1",
-        "material_map_1_retry_2",
-        "material_map_2",
-        "material_map_3",
-        "material_map_4",
-        "material_reduce_generate",
-    ]
+    stages = [item[0] for item in calls]
+    assert stages[:2] == ["material_map_1", "material_map_1_retry_2"]
+    assert stages[-1] == "material_reduce_generate"
+    assert "material_map_2" in stages
     assert "wiki_build_llm_skip" in caplog.text
     assert "stage=material_map_1" in caplog.text
     assert "error_type=BuildOutputInvalid" in caplog.text
     assert any(rec.msg == "wiki_build_llm_skipped kb=%s skipped=%s stages=%s" and rec.args == (None, 1, "material_map_1") for rec in caplog.records)
-    assert budget.used_calls == 6
 
 
 def test_map_still_fails_on_provider_llm_error(monkeypatch):
@@ -263,6 +332,7 @@ def test_map_still_fails_on_provider_llm_error(monkeypatch):
     from apps.opspilot.services.wiki.wiki_budget_service import LLMCallBudget
 
     source, _tail_marker = _large_map_source()
+    _patch_legacy_map_window(monkeypatch)
 
     def fake_invoke(_model_id, prompt, *, budget, stage, output_reserve, force_json=False):
         reservation = budget.ensure_call(stage, prompt, output_reserve=output_reserve)
@@ -298,6 +368,7 @@ def test_compact_empty_after_retry_fails_instead_of_skipping(monkeypatch):
     source, _tail_marker = _large_map_source()
     calls = []
     huge_fact = "x" * 20000
+    _patch_legacy_map_window(monkeypatch)
 
     def fake_invoke(_model_id, prompt, *, budget, stage, output_reserve, force_json=False):
         reservation = budget.ensure_call(stage, prompt, output_reserve=output_reserve)

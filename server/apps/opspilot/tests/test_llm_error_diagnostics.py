@@ -2,6 +2,7 @@ import pytest
 
 from apps.opspilot.metis.llm.common.llm_error_diagnostics import (
     LLM_ERROR_AUTH,
+    LLM_ERROR_BLOCKED,
     LLM_ERROR_EMPTY,
     LLM_ERROR_TIMEOUT,
     LLM_ERROR_UNREACHABLE,
@@ -40,6 +41,25 @@ def test_classify_llm_error_detects_auth_status():
         status_code = 401
 
     result = classify_llm_error(AuthError("Unauthorized"))
+    assert result["code"] == LLM_ERROR_AUTH
+
+
+def test_classify_llm_error_does_not_treat_waf_block_as_auth():
+    class Forbidden(Exception):
+        status_code = 403
+
+    result = classify_llm_error(Forbidden("Error code: 403 - Your request was blocked."))
+    assert result["code"] == LLM_ERROR_BLOCKED
+    assert result["unreachable"] is False
+    assert "鉴权失败" not in result["user_message"]
+    assert "拦截" in result["user_message"]
+
+
+def test_classify_llm_error_keeps_plain_403_as_auth():
+    class Forbidden(Exception):
+        status_code = 403
+
+    result = classify_llm_error(Forbidden("Access denied"))
     assert result["code"] == LLM_ERROR_AUTH
 
 

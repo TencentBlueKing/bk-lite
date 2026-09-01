@@ -1,7 +1,8 @@
+from hashlib import sha256
+
 import pytest
 
 from apps.cmdb.tests.e2e import pipeline
-
 
 WinsphereCollectionPlugin = pytest.importorskip(
     "apps.cmdb_enterprise.collect.winsphere",
@@ -85,11 +86,39 @@ def test_winsphere_snapshot_flows_through_all_inventory_models(monkeypatch):
         },
     }
     vm_response = pipeline.step2_push_to_vm(stargazer_payload, task_id=9400)
+    for row in vm_response["data"]["result"]:
+        row["metric"]["__name__"] = row["metric"]["__name__"].removesuffix("_gauge")
+        row["metric"].pop("snapshot_id", None)
+        row["metric"].pop("snapshot_status", None)
+        row["metric"]["collection_target"] = "10.0.0.10"
+    models = {}
+    for model_id, items in stargazer_payload["result"].items():
+        resource_ids = sorted(str(item["resource_id"]) for item in items)
+        models[model_id] = {
+            "count": len(resource_ids),
+            "identity_hash": sha256("\n".join(resource_ids).encode()).hexdigest(),
+            "authoritative": True,
+        }
+    round_metadata = {
+        ("10.0.0.10", 9999999999000): {
+            "snapshot_id": "snapshot-e2e",
+            "snapshot_status": "complete",
+            "details": {
+                "snapshot_manifest": {
+                    "schema_version": 1,
+                    "snapshot_id": "snapshot-e2e",
+                    "expected_models": list(WinsphereCollectionPlugin.MODEL_ORDER),
+                    "models": models,
+                }
+            },
+        }
+    }
 
     class FakeTask:
         id = 9400
         params = {}
         instances = [{"inst_name": "winsphere-prod"}]
+        access_point = []
 
     monkeypatch.setattr(
         WinsphereCollectionPlugin,
@@ -103,12 +132,22 @@ def test_winsphere_snapshot_flows_through_all_inventory_models(monkeypatch):
     )
     monkeypatch.setattr(
         "apps.cmdb.collection.query_vm.Collection.query",
-        lambda self, sql, timeout=60: vm_response,
+        lambda self, sql, timeout=60, min_timestamp=None: vm_response,
     )
     monkeypatch.setattr(
         "apps.cmdb_enterprise.collect.new_objects.get_collection_plugin",
         lambda plug_type, model_id: WinsphereCollectionPlugin,
     )
+
+    class Reader:
+        def __init__(self, _task):
+            pass
+
+        def get_many(self, _lookups, *, model_id):
+            assert model_id == "winsphere"
+            return round_metadata
+
+    monkeypatch.setattr(WinsphereCollectionPlugin, "round_metadata_reader_factory", Reader)
     runner = WinsphereCollectionPlugin(
         inst_name="winsphere-prod",
         inst_id=10001,
@@ -121,6 +160,4 @@ def test_winsphere_snapshot_flows_through_all_inventory_models(monkeypatch):
     assert result["winsphere"][0]["inst_name"] == "winsphere-prod"
     assert result["winsphere_host"][0]["memory_gib"] == 128.0
     assert result["winsphere_vm"][0]["up_time_seconds"] == 3600
-    assert result["winsphere_port_group"][0]["assos"][0][
-        "model_asst_id"
-    ] == "winsphere_port_group_group_winsphere_vswitch"
+    assert result["winsphere_port_group"][0]["assos"][0]["model_asst_id"] == "winsphere_port_group_group_winsphere_vswitch"

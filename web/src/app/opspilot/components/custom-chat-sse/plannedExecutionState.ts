@@ -85,12 +85,15 @@ export const applyPlannedExecutionStep = (
   }));
 
   const existingIdx = steps.findIndex((step) => step.step_index === stepIndex);
+  const syncTotalSteps = (nextSteps: PlannedExecutionStepData[]) => {
+    const latestTotal = Math.max(totalSteps, nextSteps.length);
+    return nextSteps.map((step) => ({ ...step, total_steps: latestTotal }));
+  };
 
   if (phase === 'end') {
     if (existingIdx >= 0) {
       steps[existingIdx] = {
         ...steps[existingIdx],
-        total_steps: Math.max(steps[existingIdx].total_steps, totalSteps),
         objective: objective || steps[existingIdx].objective,
         status: endStatus,
         error: endError,
@@ -108,7 +111,7 @@ export const applyPlannedExecutionStep = (
     }
 
     return {
-      steps,
+      steps: syncTotalSteps(steps),
       currentStepIndex: state.currentStepIndex === stepIndex ? null : state.currentStepIndex,
     };
   }
@@ -117,7 +120,6 @@ export const applyPlannedExecutionStep = (
   if (existingIdx >= 0) {
     steps[existingIdx] = {
       ...steps[existingIdx],
-      total_steps: Math.max(steps[existingIdx].total_steps, totalSteps),
       objective: objective || steps[existingIdx].objective,
       status: 'running',
       error: undefined,
@@ -134,7 +136,7 @@ export const applyPlannedExecutionStep = (
   }
 
   return {
-    steps,
+    steps: syncTotalSteps(steps),
     currentStepIndex: stepIndex,
   };
 };

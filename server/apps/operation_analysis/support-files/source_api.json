@@ -185,6 +185,60 @@
     ]
 },
 {
+    "key": "受控监控指标趋势::monitor/query_metric_range_scoped",
+    "name": "受控监控指标趋势",
+    "desc": "按当前用户、组织、监控对象、指标和实例权限查询范围数据，不接受原始 PromQL",
+    "rest_api": "monitor/query_metric_range_scoped",
+    "tag": ["monitor"],
+    "chart_type": ["line", "bar"],
+    "params": [
+      {
+        "name": "monitor_object_id",
+        "type": "string",
+        "value": "",
+        "alias_name": "监控对象ID",
+        "filterType": "params",
+        "required": true
+      },
+      {
+        "name": "metric_id",
+        "type": "string",
+        "value": "",
+        "alias_name": "指标ID",
+        "filterType": "params",
+        "required": true
+      },
+      {
+        "name": "instance_ids",
+        "type": "string",
+        "value": [],
+        "alias_name": "实例ID",
+        "filterType": "params",
+        "required": true
+      },
+      {
+        "name": "time_range",
+        "type": "timeRange",
+        "value": 10080,
+        "alias_name": "时间范围",
+        "filterType": "fixed",
+        "required": true
+      },
+      {
+        "name": "step",
+        "type": "string",
+        "value": "5m",
+        "alias_name": "查询步长",
+        "filterType": "params",
+        "required": true
+      }
+    ],
+    "field_schema": [
+      {"key": "name", "title": "时间", "value_type": "datetime"},
+      {"key": "value", "title": "指标值", "value_type": "number"}
+    ]
+},
+{
     "key": "主机指标趋势::monitor/get_host_metric_range",
     "name": "主机指标趋势",
     "desc": "按所选主机查询单一指标趋势，一主机一线；未选主机不退化为全量",

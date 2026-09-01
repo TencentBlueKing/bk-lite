@@ -15,7 +15,6 @@ PrivateCloudManage、@register、双类 __getattr__ 分发、监控相关方法�
 "success": bool}
 """
 import base64
-import traceback
 
 import httpx
 from sanic.log import logger
@@ -40,19 +39,21 @@ async def handle_request(method, url, client: httpx.AsyncClient, **kwargs):
     try:
         resp = await client.request(method, url, **kwargs)
     except Exception:
-        logger.exception(f"fusioninsight 请求失败,url:{url},method:{method}")
+        logger.exception("event=fusioninsight_http_failed url=%s method=%s", url, method)
         return {"result": False, "message": f"请求失败,url:{url},method:{method}", "data": {}}
     if resp.status_code > 300:
         logger.error(
-            f"fusioninsight 请求失败,url:{url},method:{method},"
-            f"status_code:{resp.status_code},message:{resp.text}"
+            "event=fusioninsight_http_failed url=%s method=%s status_code=%s",
+            url,
+            method,
+            resp.status_code,
         )
         return {
             "result": False,
             "message": f"请求错误,status_code:{resp.status_code},message:{resp.text}",
             "data": {},
         }
-    logger.info(f"fusioninsight 请求成功,url:{url},method:{method}")
+    logger.debug("event=fusioninsight_http_ok url=%s method=%s", url, method)
     return {"result": True, "data": resp.json() if resp.content else {}}
 
 
@@ -80,6 +81,7 @@ class FusionInsightManager:
         self.password = self.params.get("password") or self.params.get("accessSecret")
         self.region = self.params.get("region", "") or ""
         self.host = self.params.get("host", "") or ""
+        self.collection_task_id = self.params.get("collection_task_id")
         self.scheme = self.params.get("scheme", "https") or "https"
         self.port = int(self.params.get("port", 443))
         raw_verify_tls = self.params.get("verify_tls", True)
@@ -199,7 +201,13 @@ class FusionInsightManager:
             result = await self.exec_script()
             return {"result": result, "success": True}
         except Exception as err:  # noqa: BLE001
-            logger.error(f"{self.__class__.__name__} error! {traceback.format_exc()}")
+            logger.exception(
+                "event=fusioninsight_collect_failed host=%s task_id=%s failed_stage=%s error_type=%s",
+                self.host,
+                self.collection_task_id,
+                "list_all_resources",
+                type(err).__name__,
+            )
             return {"result": {"cmdb_collect_error": str(err)}, "success": False}
         finally:
             if self._client is not None:

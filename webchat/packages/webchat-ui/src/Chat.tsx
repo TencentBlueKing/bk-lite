@@ -18,6 +18,8 @@ import {
   generateId,
   isSilentCustomEvent,
   normalizeWebChatConfig,
+  parseLlmContextUsage,
+  type LlmContextUsage,
 } from '@webchat/core';
 import { AGUIHandler, AGUIEvent, type CustomProtocolEvent } from './agui';
 import type { ChatProps } from './chatProps';
@@ -28,6 +30,7 @@ import { ConfirmDialog } from './components/ConfirmDialog';
 import { formatDegradedCustomEvent, HitlPanels, isBlockingHitlEvent } from './components/HitlPanels';
 import { ConversationSkeleton } from './components/ConversationSkeleton';
 import { PillComposer } from './components/PillComposer';
+import ContextUsageRing from './components/ContextUsageRing';
 import {
   pendingImagesReducer,
   readFileAsDataUrl,
@@ -79,6 +82,8 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     agui,
     showFullscreenButton = true,
     showClearButton = false,
+    conversationHistoryEnabled = true,
+    initialContextUsage = null,
     showHeader = true,
     apiKey,
     credentials,
@@ -131,6 +136,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
   const [imageSelectionError, setImageSelectionError] = useState<string | null>(null);
   const [uploadedImages, setUploadedImages] = useState<PendingImage[]>([]);
   const [hitlEvent, setHitlEvent] = useState<CustomProtocolEvent | null>(null);
+  const [contextUsage, setContextUsage] = useState<LlmContextUsage | null>(null);
 
   // Refs
   const sessionManagerRef = useRef<SessionManager | null>(null);
@@ -174,6 +180,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     setIsLoading(false);
     setIsThinking(false);
     setHitlEvent(null);
+    setContextUsage(null);
 
     // Initialize SessionManager
     sessionManagerRef.current = new SessionManager({
@@ -287,10 +294,31 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     setIsLoading(false);
     setIsThinking(false);
     setHitlEvent(null);
+    setContextUsage(null);
     sessionManagerRef.current?.clearSession();
     sessionManagerRef.current?.initSession();
     setMessages(initialMessages && initialMessages.length > 0 ? initialMessages : []);
   }, [cancelPendingImageBatches, handleAGUIEvent, initialMessages, sessionId]);
+
+  const appliedUsageSessionRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!conversationHistoryEnabled) {
+      appliedUsageSessionRef.current = sessionId || null;
+      setContextUsage(null);
+      return;
+    }
+    if (!sessionId) {
+      return;
+    }
+    if (appliedUsageSessionRef.current !== sessionId) {
+      appliedUsageSessionRef.current = sessionId;
+      setContextUsage(initialContextUsage ?? null);
+      return;
+    }
+    if (initialContextUsage) {
+      setContextUsage(initialContextUsage);
+    }
+  }, [conversationHistoryEnabled, initialContextUsage, sessionId]);
 
   // Handle legacy message format (fallback)
   const handleLegacyMessage = (data: unknown) => {
@@ -310,6 +338,13 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
 
   const applyCustomEvent = (event: CustomProtocolEvent) => {
     onCustomEvent?.(event);
+    if (event.name === 'llm_context_usage') {
+      const usage = parseLlmContextUsage(event.value);
+      if (usage) {
+        setContextUsage(usage);
+      }
+      return;
+    }
     if (isBlockingHitlEvent(event)) {
       setHitlEvent(event);
       return;
@@ -670,6 +705,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     // Reset state machine to initial state
     stateMachineRef.current?.transition('idle');
     // Close the confirmation dialog
+    setContextUsage(null);
     setShowClearConfirm(false);
   }, [cancelPendingImageBatches, handleAGUIEvent, updateUploadedImages]);
 
@@ -849,17 +885,22 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
         className={`relative flex-shrink-0 ${wideLayout || panelFullscreen ? 'px-5 py-3.5' : 'px-3 py-3'}`}
         style={{ background: WC.composerWash }}
       >
-        {showClearButton && (
-          <button
-            onClick={() => setShowClearConfirm(true)}
-            className="absolute right-4 z-10 rounded p-1.5"
-            style={{ color: WC.muted, top: '-2rem' }}
-            title="清除对话"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2M10 11v6M14 11v6"/>
-            </svg>
-          </button>
+        {(conversationHistoryEnabled || showClearButton) && (
+          <div className="absolute right-4 z-10 flex items-center gap-1" style={{ top: '-2.25rem' }}>
+            {conversationHistoryEnabled ? <ContextUsageRing usage={contextUsage} /> : null}
+            {showClearButton ? (
+              <button
+                onClick={() => setShowClearConfirm(true)}
+                className="rounded p-1.5"
+                style={{ color: WC.muted }}
+                title="清除对话"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2M10 11v6M14 11v6"/>
+                </svg>
+              </button>
+            ) : null}
+          </div>
         )}
         
         {/* Image preview area */}

@@ -198,6 +198,10 @@ class AnsibleNATSService(NATSTopologyMixin, CallbackDeliveryMixin):
             "output_bytes_total": int(output_meta.get("output_bytes_total", len(output.encode("utf-8")))),
             "output_bytes_retained": int(output_meta.get("output_bytes_retained", len(output.encode("utf-8")))),
             "output_max_bytes": int(output_meta.get("output_max_bytes", 0)),
+            "stream_lines_dropped": int(output_meta.get("stream_lines_dropped", 0)),
+            "stream_publish_failures": int(output_meta.get("stream_publish_failures", 0)),
+            "stream_flush_timed_out": bool(output_meta.get("stream_flush_timed_out", False)),
+            "stream_line_chunks": int(output_meta.get("stream_line_chunks", 0)),
         }
 
         return {

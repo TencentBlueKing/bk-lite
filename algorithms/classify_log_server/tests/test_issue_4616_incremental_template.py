@@ -18,6 +18,8 @@ def _load_spell_model():
     models = types.ModuleType(f"{root_name}.models")
     models.__path__ = []
     base = types.ModuleType(f"{root_name}.models.base")
+    evaluation_contract = types.ModuleType(f"{root_name}.evaluation_contract")
+    evaluation_contract.require_unsupervised_evaluation = lambda ground_truth: None
 
     class BaseLogClusterModel:
         def __init__(self, config=None):
@@ -49,6 +51,7 @@ def _load_spell_model():
         root_name: training,
         f"{root_name}.models": models,
         f"{root_name}.models.base": base,
+        f"{root_name}.evaluation_contract": evaluation_contract,
         "mlflow": mlflow,
         "loguru": loguru,
     }

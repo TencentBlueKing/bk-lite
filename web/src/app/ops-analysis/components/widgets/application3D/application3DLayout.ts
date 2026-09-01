@@ -226,7 +226,8 @@ const cardStatusLabel = (
 
 /**
  * Resolve Wall card chrome from health DTO.
- * Uses highestSeverity / reason so alarming cards are not collapsed into one look.
+ * Unknown reasons (unavailable / no_application / no_host) share state=unknown.
+ * Alarming cards use highestSeverity so they are not collapsed into one look.
  */
 export const resolveApplication3DCardVisual = (
   item: {

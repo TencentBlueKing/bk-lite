@@ -53,6 +53,7 @@ def _perm(monkeypatch):
         f"{VIEWS}.ModelManage.search_model_info",
         lambda model_id: {"model_id": model_id, "model_name": model_id, "is_visible": True},
     )
+    monkeypatch.setattr(f"{VIEWS}.ModelManage.search_model_attr", lambda model_id: [])
 
 
 def _req(method, user, data=None, team="1", include_children="0"):
@@ -468,6 +469,45 @@ def test_partial_update_same_idempotency_key_does_not_replay_graph_write(superus
         assert _body(response)["data"]["inst_name"] == "h2"
 
     assert len(calls) == 1
+
+
+@pytest.mark.django_db
+def test_partial_update_persists_table_attribute_snapshot_for_outbox_recovery(superuser, monkeypatch):
+    from apps.cmdb.models.operation import CmdbOperation
+
+    before = {
+        "_id": 5,
+        "model_id": "host",
+        "inst_name": "h",
+        "organization": [1],
+        "interfaces": [{"mac": "00:11", "ip": "10.0.0.1"}],
+    }
+    after = {**before, "interfaces": [{"mac": "00:11", "ip": "10.0.0.2"}]}
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_uuid", lambda pk: before)
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.instance_update_by_uuid", lambda *a, **k: after)
+    monkeypatch.setattr(
+        f"{VIEWS}.ModelManage.search_model_attr",
+        lambda model_id: [
+            {
+                "attr_id": "interfaces",
+                "attr_name": "网卡",
+                "attr_type": "table",
+                "option": [
+                    {"column_id": "mac", "column_name": "MAC", "column_type": "str", "order": 1, "is_row_key": True},
+                    {"column_id": "ip", "column_name": "IP", "column_type": "str", "order": 2},
+                ],
+            }
+        ],
+    )
+    request = _req("patch", superuser, data={"interfaces": after["interfaces"]})
+    request.META["HTTP_IDEMPOTENCY_KEY"] = "update-host-table-snapshot"
+
+    response = _call({"patch": "partial_update"}, request, pk=U(5))
+
+    assert response.status_code == status.HTTP_200_OK
+    operation = CmdbOperation.objects.get(idempotency_key="update-host-table-snapshot")
+    assert operation.event_context["before_data"] == before
+    assert operation.event_context["attribute_snapshot"]["attributes"]["interfaces"]["columns"][0]["is_row_key"] is True
 
 
 # --------------------------------------------------------------------------

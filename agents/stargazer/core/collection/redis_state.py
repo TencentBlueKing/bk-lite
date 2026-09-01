@@ -8,12 +8,7 @@ import time
 import uuid
 
 from core.collection.credential_policy import CredentialFailure, CredentialScope
-from core.collection.runtime import (
-    LeaseAcquireStatus,
-    LeaseAcquisition,
-    RunLease,
-    RunStatus,
-)
+from core.collection.runtime import LeaseAcquireStatus, LeaseAcquisition, RunLease, RunStatus
 
 _ACQUIRE_RUN_LUA = """
 -- 薄租约：执行中则 duplicate_active；否则取得租约。不做 digest 冲突、不做 fencing 接管续跑。
@@ -107,6 +102,13 @@ if redis.call('HGET', run_key, 'status') ~= 'running' then
 end
 redis.call('HSET', run_key, 'expires_at_ms', now_ms + ttl_ms)
 redis.call('PEXPIRE', run_key, ttl_ms * 2)
+return 1
+"""
+
+
+_SET_CREDENTIAL_SUCCESS_LUA = """
+redis.call('SET', KEYS[1], ARGV[1], 'EX', tonumber(ARGV[2]))
+redis.call('DEL', KEYS[2])
 return 1
 """
 
@@ -239,9 +241,7 @@ class RedisCredentialStateStore:
         """一次 MGET 拉取 success + 各凭据 failure，降低并发占连接时间。"""
         keys = [self._success_key(scope)]
         normalized_ids = [str(item or "") for item in credential_ids]
-        keys.extend(
-            self._failure_key(scope, credential_id) for credential_id in normalized_ids
-        )
+        keys.extend(self._failure_key(scope, credential_id) for credential_id in normalized_ids)
         values = await self._redis.mget(keys)
         success_id = self._text(values[0] if values else None)
         failures: dict[str, CredentialFailure | None] = {}
@@ -251,15 +251,16 @@ class RedisCredentialStateStore:
         return success_id, failures
 
     async def set_success(self, scope: CredentialScope, credential_id: str) -> None:
-        await self._redis.set(
+        await self._redis.eval(
+            _SET_CREDENTIAL_SUCCESS_LUA,
+            2,
             self._success_key(scope),
+            self._failure_key(scope, credential_id),
             credential_id,
-            ex=self._affinity_ttl_seconds,
+            self._affinity_ttl_seconds,
         )
 
-    async def get_failure(
-        self, scope: CredentialScope, credential_id: str
-    ) -> CredentialFailure | None:
+    async def get_failure(self, scope: CredentialScope, credential_id: str) -> CredentialFailure | None:
         value = await self._redis.get(self._failure_key(scope, credential_id))
         return self._parse_failure(value)
 
@@ -300,10 +301,7 @@ class RedisCredentialStateStore:
         await self._redis.delete(self._failure_key(scope, credential_id))
 
     async def clear_scope_failures(self, scope: CredentialScope) -> None:
-        pattern = (
-            f"{self._key_prefix}:scope:{self._scope_digest(scope)}:"
-            "credential:*:failure"
-        )
+        pattern = f"{self._key_prefix}:scope:{self._scope_digest(scope)}:" "credential:*:failure"
         batch = []
         async for key in self._redis.scan_iter(match=pattern, count=100):
             batch.append(key)
@@ -318,10 +316,7 @@ class RedisCredentialStateStore:
 
     def _failure_key(self, scope: CredentialScope, credential_id: str) -> str:
         credential_digest = hashlib.sha256(credential_id.encode("utf-8")).hexdigest()
-        return (
-            f"{self._key_prefix}:scope:{self._scope_digest(scope)}:"
-            f"credential:{credential_digest}:failure"
-        )
+        return f"{self._key_prefix}:scope:{self._scope_digest(scope)}:" f"credential:{credential_digest}:failure"
 
     @staticmethod
     def _scope_digest(scope: CredentialScope) -> str:

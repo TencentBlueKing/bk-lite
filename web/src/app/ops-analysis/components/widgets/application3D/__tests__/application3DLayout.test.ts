@@ -227,6 +227,23 @@ describe('application3D layout', () => {
     expect(unavailable.showBadge).toBe(false);
     expect(unavailable.badgeText).toBe(UNKNOWN_STATUS_BADGE);
 
+    for (const reason of ['no_host', 'no_application'] as const) {
+      const visual = resolveApplication3DCardVisual({
+        name: '财务结算平台',
+        health: {
+          state: 'unknown',
+          reason,
+          activeAlarmCount: null,
+          highestSeverity: null,
+        },
+      });
+      expect(visual.statusLabel).toBe('状态未知');
+      expect(visual.cardTone).toBe('unknown');
+      expect(visual.neonLevel).toBe('remain');
+      expect(visual.showBadge).toBe(false);
+      expect(visual.badgeText).toBe(UNKNOWN_STATUS_BADGE);
+    }
+
     const english = resolveApplication3DCardVisual(
       {
         name: 'ops-portal',

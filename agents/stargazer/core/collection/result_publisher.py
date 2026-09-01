@@ -3,26 +3,26 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
-from core.collection.contracts import PublishOutcome, PublishStatus, TargetCollectionResult, build_collection_result_id
-from core.collection.runtime import CollectionRequest, RunLease
-from core.logger import logger
-
-CREDENTIAL_RESULT_EVENT_VERSION = 2
-CREDENTIAL_FAILURE_ERROR_CODES = frozenset(
-    {
-        "auth_failed",
-        "authentication_failed",
-        "capability_denied",
-        "snmp_error_status",
-        "snmp_authorization_failed",
-        "unauthorized",
-    }
+from core.collection.contracts import (
+    PublishOutcome,
+    PublishStatus,
+    StructuredMetricsPayload,
+    TargetCollectionResult,
+    build_collection_result_id,
+    has_publishable_metrics,
 )
+from core.collection.round_metadata import (
+    SUPPORTED_MODELS,
+    RoundMetadataConflictError,
+    RoundMetadataError,
+    RoundMetadataValidationError,
+    build_round_metadata_envelope,
+)
+from core.collection.runtime import CollectionRequest, RunLease
 
 
 @dataclass(frozen=True)
@@ -389,18 +389,14 @@ class NatsResultPublisher:
         metrics_publish: Callable | None = None,
         metrics_publish_batch: Callable | None = None,
         callback_publish: Callable | None = None,
-        credential_result_publish: Callable | None = None,
-        result_event_sink: Callable | None = None,
+        round_metadata_store=None,
         metrics=None,
-        event_max_attempts: int = 2,
     ) -> None:
         self._metrics_publish = metrics_publish
         self._metrics_publish_batch = metrics_publish_batch
         self._callback_publish = callback_publish
-        self._credential_result_publish = credential_result_publish
-        self._result_event_sink = result_event_sink
+        self._round_metadata_store = round_metadata_store
         self._metrics = metrics
-        self._event_max_attempts = max(1, int(event_max_attempts))
 
     # fmt: off
     async def publish_batch(  # noqa: C901
@@ -414,13 +410,6 @@ class NatsResultPublisher:
         for item in items:
             request, result, lease = item[:3]
             attempt_state = item[3] if len(item) > 3 else None
-            if (
-                result.status == "deferred"
-                or request.params.get("callback_subject")
-                or self._is_configuration_failure(request, result)
-            ):
-                non_metrics.append((request, result, lease, attempt_state))
-                continue
             result_id = build_collection_result_id(
                 task_id=request.task_id,
                 plugin_ref=request.plugin_ref,
@@ -428,12 +417,27 @@ class NatsResultPublisher:
                 fence=lease.fence,
                 attempt_id=lease.attempt_id,
             )
+            if request.params.get("callback_subject"):
+                non_metrics.append((request, result, lease, attempt_state))
+                continue
+            if result.status != "success" or not has_publishable_metrics(result.value):
+                outcomes[result_id] = None
+                continue
             params = self._result_params(
                 request, result, lease, result_id, attempt_state=attempt_state
             )
             metrics = result.value
-            if not metrics or result.status not in {"success", "deferred"}:
-                metrics = self._monitor_error_metrics(result, params)
+            try:
+                await self._persist_round_metadata(request, result)
+            except (RoundMetadataConflictError, RoundMetadataValidationError) as error:
+                outcomes[result_id] = PublishOutcome(
+                    status=PublishStatus.PERMANENT_FAILED,
+                    error_code=error.error_code,
+                )
+                continue
+            except Exception as error:  # noqa: BLE001 - Redis 故障按目标进入现有有限重试
+                outcomes[result_id] = error
+                continue
             metrics_entries.append(({}, metrics, params, request.task_id))
             metric_events.append((request, result, lease, result_id))
             outcomes[result_id] = None
@@ -486,25 +490,6 @@ class NatsResultPublisher:
                 for event, outcome in zip(metric_events, individual_outcomes):
                     if isinstance(outcome, BaseException):
                         outcomes[event[3]] = outcome
-            for request, result, lease, result_id in metric_events:
-                if outcomes[result_id] is not None:
-                    continue
-                try:
-                    await self._record_event_with_retry(
-                        request, result, lease, result_id
-                    )
-                except Exception as error:  # noqa: BLE001 - 事件记录按目标归因并保留原始上下文
-                    logger.exception(
-                        "event=result_event_record_failed task_id=%s target=%s error_type=%s",
-                        request.task_id,
-                        result.target,
-                        type(error).__name__,
-                    )
-                    outcomes[result_id] = PublishOutcome(
-                        status=PublishStatus.EVENT_FAILED,
-                        error_code="result_event_record_failed",
-                    )
-
         if non_metrics:
 
             async def publish_non_metric(request, result, lease, attempt_state):
@@ -536,21 +521,7 @@ class NatsResultPublisher:
                     fence=lease.fence,
                     attempt_id=lease.attempt_id,
                 )
-                if (
-                    isinstance(outcome, Exception)
-                    and self._is_configuration_failure(request, result)
-                    and not request.params.get("callback_subject")
-                ):
-                    outcomes[result_id] = PublishOutcome(
-                        status=PublishStatus.EVENT_FAILED,
-                        error_code="result_event_record_failed",
-                    )
-                else:
-                    outcomes[result_id] = (
-                        outcome
-                        if isinstance(outcome, (BaseException, PublishOutcome))
-                        else None
-                    )
+                outcomes[result_id] = outcome if isinstance(outcome, (BaseException, PublishOutcome)) else None
         return outcomes
 
     async def publish(
@@ -566,9 +537,6 @@ class NatsResultPublisher:
             fence=lease.fence,
             attempt_id=lease.attempt_id,
         )
-        if result.status == "deferred":
-            await self._record_event_with_retry(request, result, lease, result_id)
-            return
         params = self._result_params(request, result, lease, result_id)
         if params.get("callback_subject"):
             callback_publish = self._callback_publish
@@ -587,11 +555,11 @@ class NatsResultPublisher:
                 }
             )
             await callback_publish(payload, params, request.task_id)
-            await self._record_event_with_retry(request, result, lease, result_id)
             return
-        if self._is_configuration_failure(request, result):
-            await self._record_event_with_retry(request, result, lease, result_id)
+        if result.status != "success" or not has_publishable_metrics(result.value):
             return
+
+        await self._persist_round_metadata(request, result)
 
         metrics_publish = self._metrics_publish
         if metrics_publish is None:
@@ -599,20 +567,30 @@ class NatsResultPublisher:
 
             metrics_publish = publish_metrics_to_nats
         metrics = result.value
-        if not metrics or result.status not in {"success", "deferred"}:
-            metrics = self._monitor_error_metrics(result, params)
         await metrics_publish({}, metrics, params, request.task_id)
-        await self._record_event_with_retry(request, result, lease, result_id)
 
-    async def _record_event_with_retry(self, request, result, lease, result_id) -> None:
-        for attempt in range(self._event_max_attempts):
-            try:
-                await self._record_event(request, result, lease, result_id)
-                return
-            except Exception:  # noqa: BLE001 - 稳定 event_id 允许仅重试幂等事件
-                if attempt + 1 >= self._event_max_attempts:
-                    raise
-                await asyncio.sleep(0)
+    async def _persist_round_metadata(self, request, result) -> None:
+        payload = result.value
+        requires_metadata = request.params.get("model_id") in SUPPORTED_MODELS and result.status == "success"
+        if not isinstance(payload, StructuredMetricsPayload):
+            if requires_metadata:
+                raise RoundMetadataValidationError("metadata_missing")
+            return
+        if not payload.round_metadata:
+            if requires_metadata:
+                raise RoundMetadataValidationError("metadata_missing")
+            return
+        if self._round_metadata_store is None:
+            raise RoundMetadataError("metadata_unavailable")
+        envelope = build_round_metadata_envelope(
+            task_id=request.task_id,
+            target=result.target,
+            plugin_ref=request.plugin_ref,
+            model_id=request.params.get("model_id"),
+            publish_timestamp_ms=result.publish_timestamp_ms,
+            metadata=payload.round_metadata,
+        )
+        await self._round_metadata_store.save(envelope)
 
     @staticmethod
     def _result_params(
@@ -634,141 +612,3 @@ class NatsResultPublisher:
         if attempt_state is not None:
             params["_publish_attempt_state"] = attempt_state
         return params
-
-    async def _record_event(
-        self,
-        request: CollectionRequest,
-        result: TargetCollectionResult,
-        lease: RunLease,
-        result_id: str,
-    ) -> None:
-        should_sink = self._result_event_sink is not None
-        should_publish = bool(str(request.params.get("credential_result_subject") or "").strip())
-        if not should_sink and not should_publish:
-            return
-
-        credential_failures = tuple(getattr(result, "credential_failures", ()))
-        for event_index, failure in enumerate(credential_failures):
-            await self._emit_credential_event(
-                request,
-                self._build_credential_event(
-                    request=request,
-                    lease=lease,
-                    result_id=result_id,
-                    target=result.target,
-                    credential_id=failure.credential_id,
-                    status="failed",
-                    error_code=failure.error_code,
-                    attempts=result.attempts,
-                    event_index=event_index,
-                ),
-            )
-
-        if credential_failures and not result.credential_id:
-            return
-
-        await self._emit_credential_event(
-            request,
-            self._build_credential_event(
-                request=request,
-                lease=lease,
-                result_id=result_id,
-                target=result.target,
-                credential_id=result.credential_id,
-                status=result.status,
-                error_code=result.error_code,
-                attempts=result.attempts,
-                event_index=len(credential_failures),
-            ),
-        )
-
-    async def _emit_credential_event(self, request: CollectionRequest, event: dict) -> None:
-        # Redis 批推路径会在 append 时补 finished_at；实时 NATS 必须自带，
-        # 否则 Server v2 身份校验会拒收（unreachable 例外绕过）。
-        if not str(event.get("finished_at") or "").strip():
-            from datetime import datetime, timezone
-
-            event["finished_at"] = datetime.now(timezone.utc).isoformat(
-                timespec="milliseconds"
-            )
-        if self._result_event_sink is not None:
-            await self._result_event_sink(event)
-        await self._publish_credential_result_if_needed(request, event)
-
-    async def _publish_credential_result_if_needed(
-        self, request: CollectionRequest, event: dict
-    ) -> None:
-        subject = str(request.params.get("credential_result_subject") or "").strip()
-        if not subject:
-            return
-
-        publish = self._credential_result_publish
-        if publish is None:
-            from tasks.utils.nats_helper import publish_credential_result_to_nats
-
-            publish = publish_credential_result_to_nats
-        await publish(event, dict(request.params), request.task_id)
-
-    @staticmethod
-    def _build_credential_event(
-        *,
-        request: CollectionRequest,
-        lease: RunLease,
-        result_id: str,
-        target: str,
-        credential_id: str,
-        status: str,
-        error_code: str,
-        attempts: int,
-        event_index: int,
-    ) -> dict:
-        success = status == "success"
-        failure_kind = (
-            "credential"
-            if status == "failed" and error_code in CREDENTIAL_FAILURE_ERROR_CODES
-            else "task"
-        )
-        event_identity = "\0".join(
-            (result_id, str(event_index), credential_id, status, error_code)
-        )
-        collect_task_id = request.params.get("collect_task_id") or request.task_id
-        return {
-            "event_id": hashlib.sha256(event_identity.encode("utf-8")).hexdigest(),
-            "event_version": CREDENTIAL_RESULT_EVENT_VERSION,
-            "producer": "stargazer",
-            "scope_id": str(collect_task_id),
-            "collect_task_id": collect_task_id,
-            "run_id": request.task_id,
-            "run_attempt_id": lease.attempt_id,
-            "producer_instance": lease.owner_id,
-            "plugin_ref": request.plugin_ref,
-            "host": target,
-            "credential_id": credential_id,
-            "status": status,
-            "error_code": error_code,
-            "success": success,
-            "failure_kind": "" if success else failure_kind,
-            "error_message": "" if success else error_code,
-            "attempts": attempts,
-            "fence": lease.fence,
-            "result_id": result_id,
-            "event_index": event_index,
-        }
-
-    @staticmethod
-    def _monitor_error_metrics(
-        result: TargetCollectionResult,
-        params: dict,
-    ) -> str:
-        error = RuntimeError(result.error_code or result.status)
-        from tasks.utils.metrics_helper import generate_monitor_error_metrics
-
-        return generate_monitor_error_metrics(params, error)
-
-    @staticmethod
-    def _is_configuration_failure(
-        request: CollectionRequest,
-        result: TargetCollectionResult,
-    ) -> bool:
-        family = str(request.params.get("plugin_family") or "configuration")
-        return family == "configuration" and result.status in {"failed", "unreachable"}

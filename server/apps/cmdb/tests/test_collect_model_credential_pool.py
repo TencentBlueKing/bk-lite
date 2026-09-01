@@ -2,11 +2,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.serializers.collect_serializer import CollectModelLIstSerializer, CollectModelSerializer
 from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
 from apps.cmdb.services.collect_service import CollectModelService
+from apps.core.exceptions.base_app_exception import BaseAppException
 
 
 def test_collect_model_decrypt_credentials_supports_credential_pool(monkeypatch):
@@ -120,13 +120,56 @@ def test_collect_credential_pool_service_diff_ignores_reorder_and_marks_edit():
     assert edited_ids == ["cred-1"]
 
 
+def test_collect_credential_versions_only_advance_for_edited_item():
+    old_pool = [
+        {
+            "credential_id": "cred-1",
+            "credential_version": 4,
+            "username": "admin",
+            "password": "one",
+        },
+        {
+            "credential_id": "cred-2",
+            "credential_version": 7,
+            "username": "ops",
+            "password": "two",
+        },
+    ]
+    reordered_and_edited = [
+        {"credential_id": "cred-2", "username": "ops", "password": "two"},
+        {
+            "credential_id": "cred-1",
+            "username": "admin-new",
+            "password": "one",
+        },
+        {"credential_id": "cred-3", "username": "new", "password": "three"},
+    ]
+
+    versioned = CollectCredentialPoolService.assign_versions(
+        old_pool,
+        CollectCredentialPoolService.normalize_pool(reordered_and_edited),
+    )
+
+    assert [(item["credential_id"], item["credential_version"]) for item in versioned] == [
+        ("cred-2", 7),
+        ("cred-1", 5),
+        ("cred-3", 1),
+    ]
+
+
 def test_validate_pool_shape_allows_mixed_snmp_versions():
     # SNMP 凭据池可混合 v2c 与 v3（每条自带 version，字段集合不同也放行）
     pool = [
         {"credential_id": "cred-1", "version": "v2c", "community": "public", "snmp_port": 161},
         {
-            "credential_id": "cred-2", "version": "v3", "username": "ops", "level": "authPriv",
-            "integrity": "sha", "privacy": "aes", "authkey": "auth-key-1", "privkey": "priv-key-1",
+            "credential_id": "cred-2",
+            "version": "v3",
+            "username": "ops",
+            "level": "authPriv",
+            "integrity": "sha",
+            "privacy": "aes",
+            "authkey": "auth-key-1",
+            "privkey": "priv-key-1",
         },
     ]
     # 不抛异常即通过
@@ -142,8 +185,15 @@ def test_validate_pool_shape_rejects_v2c_missing_community():
 def test_validate_pool_shape_rejects_v3_missing_authkey():
     pool = [
         {"credential_id": "cred-1", "version": "v2c", "community": "public"},
-        {"credential_id": "cred-2", "version": "v3", "username": "ops", "level": "authPriv",
-         "integrity": "sha", "privacy": "aes", "privkey": "priv-key-1"},  # 缺 authkey
+        {
+            "credential_id": "cred-2",
+            "version": "v3",
+            "username": "ops",
+            "level": "authPriv",
+            "integrity": "sha",
+            "privacy": "aes",
+            "privkey": "priv-key-1",
+        },  # 缺 authkey
     ]
     with pytest.raises(BaseAppException):
         CollectCredentialPoolService.validate_pool_shape(pool)

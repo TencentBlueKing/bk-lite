@@ -9,6 +9,10 @@ import {
   ENUM_COMPARISON_METHOD
 } from '@/app/monitor/constants/event';
 import { cloneDeep } from 'lodash';
+import {
+  getThresholdValuePlaceholder
+} from './strategyDetailUtils';
+import { getMonitorUnitSelectLabel } from '@/app/monitor/components/monitor-shared/unit-label';
 
 const { Option } = Select;
 
@@ -87,13 +91,25 @@ const ThresholdList: React.FC<ThresholdListProps> = ({
           </Tooltip>
           <Select
             value={thresholdUnit}
-            style={{ width: 180 }}
+            style={{ width: 220 }}
             showSearch
-            filterOption={(input, option) =>
-              option.label.toLowerCase().includes(input.toLowerCase())
-            }
+            filterOption={(input, option) => {
+              const query = input.toLowerCase();
+              const matched = unitOptions.find(
+                (item) => item.unit_id === option?.value
+              );
+              const candidates = [
+                String(option?.label ?? ''),
+                matched?.display_unit || '',
+                matched?.unit_name || '',
+                matched?.unit_id || ''
+              ];
+              return candidates.some((text) =>
+                text.toLowerCase().includes(query)
+              );
+            }}
             options={unitOptions.map((option) => ({
-              label: option.display_unit || option.unit_name,
+              label: getMonitorUnitSelectLabel(option),
               value: option.unit_id
             }))}
             onChange={handleThresholdUnitChange}
@@ -152,6 +168,7 @@ const ThresholdList: React.FC<ThresholdListProps> = ({
                   style={{ flex: 1 }}
                   value={item.value}
                   addonAfter={getUnitLabel()}
+                  placeholder={getThresholdValuePlaceholder(thresholdUnit)}
                   onChange={(val) => handleValueChange(val, index)}
                 />
               )}

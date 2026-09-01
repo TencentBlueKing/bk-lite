@@ -223,6 +223,35 @@ def test_non_authoritative_snapshot_never_deletes_missing_instances(monkeypatch)
     assert m.delete_list == []
 
 
+@pytest.mark.parametrize("snapshot_complete,expected_deleted_ids", [(False, []), (True, [2])])
+def test_explicit_round_completeness_controls_destructive_diff(
+    monkeypatch,
+    snapshot_complete,
+    expected_deleted_ids,
+):
+    fake = FakeGraph()
+
+    class RoundBoundPlugin:
+        _MODEL_ID = "winsphere"
+
+        def __init__(self):
+            self.snapshot_complete = snapshot_complete
+
+    m = _mgmt(
+        monkeypatch,
+        fake,
+        [
+            {"inst_name": "current-vm", "_id": 1},
+            {"inst_name": "possibly-missing-vm", "_id": 2},
+        ],
+        [{"inst_name": "current-vm"}],
+        collect_plugin=RoundBoundPlugin(),
+        data_cleanup_strategy=DataCleanupStrategy.IMMEDIATELY,
+    )
+
+    assert [item["_id"] for item in m.delete_list] == expected_deleted_ids
+
+
 def test_contrast_ignores_old_fields_absent_from_incremental_payload(monkeypatch):
     fake = FakeGraph()
     old = [{"inst_name": "a", "ip_addr": "10.0.0.1", "note": "keep", "_id": 1}]

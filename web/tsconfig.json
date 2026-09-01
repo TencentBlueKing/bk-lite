@@ -87,6 +87,10 @@
       "@/app/patch-manager/(enterprise)/*": [
         "./src/app/patch-manager/(enterprise)/*",
         "./src/lib/enterpriseStub.ts"
+      ],
+      "@/app/apm/(enterprise)/*": [
+        "./src/app/apm/(enterprise)/*",
+        "./src/lib/enterpriseStub.ts"
       ]
     }
   },

@@ -21,8 +21,7 @@ from apps.opspilot.metis.llm.tools.kubernetes import diagnostics as d
 @pytest.fixture
 def core():
     c = MagicMock()
-    with patch.object(d, "prepare_context", return_value=None), \
-         patch.object(d.client, "CoreV1Api", return_value=c):
+    with patch.object(d, "prepare_context", return_value=None), patch.object(d.client, "CoreV1Api", return_value=c):
         yield c
 
 
@@ -30,28 +29,36 @@ def _state(waiting=None, terminated=None, running=None):
     return SimpleNamespace(waiting=waiting, terminated=terminated, running=running)
 
 
-def _cstatus(name="app", ready=False, restart_count=0, image="img:1", state=None,
-             image_id="id"):
-    return SimpleNamespace(name=name, ready=ready, restart_count=restart_count,
-                           image=image, image_id=image_id, state=state or _state())
+def _cstatus(name="app", ready=False, restart_count=0, image="img:1", state=None, image_id="id"):
+    return SimpleNamespace(name=name, ready=ready, restart_count=restart_count, image=image, image_id=image_id, state=state or _state())
 
 
 def _meta(name="p", ns="default", owner=None, ts=None):
-    return SimpleNamespace(name=name, namespace=ns, owner_references=owner,
-                           creation_timestamp=ts)
+    return SimpleNamespace(name=name, namespace=ns, owner_references=owner, creation_timestamp=ts)
 
 
-def _pod(name="p", ns="default", phase="Running", cstatuses=None, node="n1",
-         message=None, reason=None, ts=None, conditions=None, owner=None,
-         init_cstatuses=None, spec_containers=None, volumes=None,
-         restart_policy="Always"):
+def _pod(
+    name="p",
+    ns="default",
+    phase="Running",
+    cstatuses=None,
+    node="n1",
+    message=None,
+    reason=None,
+    ts=None,
+    conditions=None,
+    owner=None,
+    init_cstatuses=None,
+    spec_containers=None,
+    volumes=None,
+    restart_policy="Always",
+):
     return SimpleNamespace(
         metadata=_meta(name, ns, owner, ts),
-        status=SimpleNamespace(phase=phase, container_statuses=cstatuses,
-                               message=message, reason=reason, conditions=conditions,
-                               init_container_statuses=init_cstatuses),
-        spec=SimpleNamespace(node_name=node, containers=spec_containers,
-                             volumes=volumes, restart_policy=restart_policy),
+        status=SimpleNamespace(
+            phase=phase, container_statuses=cstatuses, message=message, reason=reason, conditions=conditions, init_container_statuses=init_cstatuses
+        ),
+        spec=SimpleNamespace(node_name=node, containers=spec_containers, volumes=volumes, restart_policy=restart_policy),
     )
 
 
@@ -61,36 +68,43 @@ def _items(lst):
 
 class TestFailedPods:
     def test_waiting_crashloop_flagged(self, core):
-        cs = _cstatus(state=_state(waiting=SimpleNamespace(
-            reason="CrashLoopBackOff", message="boom")))
-        core.list_pod_for_all_namespaces.return_value = _items([
-            _pod(name="bad", cstatuses=[cs]),
-        ])
+        cs = _cstatus(state=_state(waiting=SimpleNamespace(reason="CrashLoopBackOff", message="boom")))
+        core.list_pod_for_all_namespaces.return_value = _items(
+            [
+                _pod(name="bad", cstatuses=[cs]),
+            ]
+        )
         out = json.loads(d.get_failed_kubernetes_pods.invoke({"config": {}}))
         assert len(out) == 1
         assert out[0]["name"] == "bad"
         assert out[0]["container_statuses"][0]["state"]["reason"] == "CrashLoopBackOff"
 
     def test_terminated_nonzero_exit_flagged(self, core):
-        cs = _cstatus(state=_state(terminated=SimpleNamespace(
-            reason="Error", exit_code=137, message="oom")))
+        cs = _cstatus(state=_state(terminated=SimpleNamespace(reason="Error", exit_code=137, message="oom")))
         core.list_pod_for_all_namespaces.return_value = _items([_pod(cstatuses=[cs])])
         out = json.loads(d.get_failed_kubernetes_pods.invoke({"config": {}}))
         assert out[0]["container_statuses"][0]["state"]["exit_code"] == 137
 
     def test_running_pod_not_flagged(self, core):
         started = datetime(2024, 1, 1, tzinfo=timezone.utc)
-        cs = _cstatus(ready=True, state=_state(
-            running=SimpleNamespace(started_at=started)))
+        cs = _cstatus(ready=True, state=_state(running=SimpleNamespace(started_at=started)))
+        core.list_pod_for_all_namespaces.return_value = _items([_pod(cstatuses=[cs])])
+        out = json.loads(d.get_failed_kubernetes_pods.invoke({"config": {}}))
+        assert out == []
+
+    def test_running_not_ready_not_in_failed_list(self, core):
+        cs = _cstatus(ready=False, state=_state(running=SimpleNamespace(started_at=datetime(2024, 1, 1, tzinfo=timezone.utc))))
         core.list_pod_for_all_namespaces.return_value = _items([_pod(cstatuses=[cs])])
         out = json.loads(d.get_failed_kubernetes_pods.invoke({"config": {}}))
         assert out == []
 
     def test_phase_failed_flagged(self, core):
         ts = datetime(2024, 5, 1, tzinfo=timezone.utc)
-        core.list_pod_for_all_namespaces.return_value = _items([
-            _pod(phase="Failed", cstatuses=None, ts=ts, message="m", reason="Evicted"),
-        ])
+        core.list_pod_for_all_namespaces.return_value = _items(
+            [
+                _pod(phase="Failed", cstatuses=None, ts=ts, message="m", reason="Evicted"),
+            ]
+        )
         out = json.loads(d.get_failed_kubernetes_pods.invoke({"config": {}}))
         assert out[0]["phase"] == "Failed"
         assert out[0]["creation_time"] == ts.isoformat()
@@ -101,23 +115,59 @@ class TestFailedPods:
         assert "error" in out
 
 
+class TestNotReadyPods:
+    def test_running_not_ready_flagged(self, core):
+        cs = _cstatus(ready=False, restart_count=0, state=_state(running=SimpleNamespace(started_at=datetime(2024, 1, 1, tzinfo=timezone.utc))))
+        core.list_pod_for_all_namespaces.return_value = _items(
+            [
+                _pod(name="nacos-0", ns="nacos", cstatuses=[cs]),
+            ]
+        )
+        out = json.loads(d.get_not_ready_kubernetes_pods.invoke({"config": {}}))
+        assert len(out) == 1
+        assert out[0]["name"] == "nacos-0"
+        assert out[0]["namespace"] == "nacos"
+        assert out[0]["phase"] == "Running"
+        assert out[0]["ready"] is False
+
+    def test_running_ready_not_flagged(self, core):
+        cs = _cstatus(ready=True, state=_state(running=SimpleNamespace(started_at=datetime(2024, 1, 1, tzinfo=timezone.utc))))
+        core.list_pod_for_all_namespaces.return_value = _items([_pod(cstatuses=[cs])])
+        out = json.loads(d.get_not_ready_kubernetes_pods.invoke({"config": {}}))
+        assert out == []
+
+    def test_namespace_filter(self, core):
+        cs = _cstatus(ready=False, state=_state(running=SimpleNamespace(started_at=datetime(2024, 1, 1, tzinfo=timezone.utc))))
+        core.list_namespaced_pod.return_value = _items([_pod(name="nacos-0", ns="nacos", cstatuses=[cs])])
+        out = json.loads(d.get_not_ready_kubernetes_pods.invoke({"namespace": "nacos", "config": {}}))
+        assert out[0]["name"] == "nacos-0"
+        core.list_namespaced_pod.assert_called_once_with("nacos")
+
+    def test_api_exception_wrapped(self, core):
+        core.list_pod_for_all_namespaces.side_effect = ApiException(status=500)
+        out = json.loads(d.get_not_ready_kubernetes_pods.invoke({"config": {}}))
+        assert "error" in out
+
+
 class TestPendingPods:
     def test_scheduling_failed_condition(self, core):
-        cond = SimpleNamespace(type="PodScheduled", status="False",
-                               reason="Unschedulable", message="no nodes")
-        core.list_pod_for_all_namespaces.return_value = _items([
-            _pod(phase="Pending", conditions=[cond], node=None),
-        ])
+        cond = SimpleNamespace(type="PodScheduled", status="False", reason="Unschedulable", message="no nodes")
+        core.list_pod_for_all_namespaces.return_value = _items(
+            [
+                _pod(phase="Pending", conditions=[cond], node=None),
+            ]
+        )
         out = json.loads(d.get_pending_kubernetes_pods.invoke({"config": {}}))
         assert out[0]["reason"] == "Unschedulable"
         assert out[0]["message"] == "no nodes"
 
     def test_container_waiting_overrides(self, core):
-        cs = _cstatus(state=_state(waiting=SimpleNamespace(
-            reason="ContainerCreating", message="pulling")))
-        core.list_pod_for_all_namespaces.return_value = _items([
-            _pod(phase="Pending", cstatuses=[cs]),
-        ])
+        cs = _cstatus(state=_state(waiting=SimpleNamespace(reason="ContainerCreating", message="pulling")))
+        core.list_pod_for_all_namespaces.return_value = _items(
+            [
+                _pod(phase="Pending", cstatuses=[cs]),
+            ]
+        )
         out = json.loads(d.get_pending_kubernetes_pods.invoke({"config": {}}))
         assert out[0]["reason"] == "ContainerCreating"
 
@@ -136,29 +186,25 @@ class TestHighRestart:
     def test_above_threshold(self, core):
         cs = _cstatus(restart_count=7, ready=False)
         core.list_pod_for_all_namespaces.return_value = _items([_pod(cstatuses=[cs])])
-        out = json.loads(d.get_high_restart_kubernetes_pods.invoke(
-            {"restart_threshold": 5, "config": {}}))
+        out = json.loads(d.get_high_restart_kubernetes_pods.invoke({"restart_threshold": 5, "config": {}}))
         assert out[0]["containers"][0]["restart_count"] == 7
 
     def test_below_threshold_skipped(self, core):
         cs = _cstatus(restart_count=2)
         core.list_pod_for_all_namespaces.return_value = _items([_pod(cstatuses=[cs])])
-        out = json.loads(d.get_high_restart_kubernetes_pods.invoke(
-            {"restart_threshold": 5, "config": {}}))
+        out = json.loads(d.get_high_restart_kubernetes_pods.invoke({"restart_threshold": 5, "config": {}}))
         assert out == []
 
     def test_custom_threshold(self, core):
         cs = _cstatus(restart_count=3)
         core.list_pod_for_all_namespaces.return_value = _items([_pod(cstatuses=[cs])])
-        out = json.loads(d.get_high_restart_kubernetes_pods.invoke(
-            {"restart_threshold": 3, "config": {}}))
+        out = json.loads(d.get_high_restart_kubernetes_pods.invoke({"restart_threshold": 3, "config": {}}))
         assert len(out) == 1
 
     def test_string_threshold_is_coerced(self, core):
         cs = _cstatus(restart_count=3)
         core.list_pod_for_all_namespaces.return_value = _items([_pod(cstatuses=[cs])])
-        out = json.loads(d.get_high_restart_kubernetes_pods.invoke(
-            {"restart_threshold": "3", "config": {}}))
+        out = json.loads(d.get_high_restart_kubernetes_pods.invoke({"restart_threshold": "3", "config": {}}))
         assert len(out) == 1
 
     def test_api_exception_wrapped(self, core):
@@ -173,12 +219,10 @@ class TestNodeCapacity:
             metadata=SimpleNamespace(name="n1"),
             status=SimpleNamespace(
                 allocatable={"cpu": "4", "memory": "8Gi", "pods": "10"},
-                conditions=[SimpleNamespace(type="Ready", status="True",
-                                            reason="KubeletReady", message="ok")],
+                conditions=[SimpleNamespace(type="Ready", status="True", reason="KubeletReady", message="ok")],
             ),
         )
-        container = SimpleNamespace(resources=SimpleNamespace(
-            requests={"cpu": "2", "memory": "4Gi"}))
+        container = SimpleNamespace(resources=SimpleNamespace(requests={"cpu": "2", "memory": "4Gi"}))
         pod = _pod(name="p1", node="n1", spec_containers=[container])
         core.list_node.return_value = _items([node])
         core.list_pod_for_all_namespaces.return_value = _items([pod])
@@ -213,8 +257,7 @@ class TestOrphanedResources:
         orphan_pod = _pod(name="op", ns="prod", owner=None, ts=ts)
         sys_pod = _pod(name="sp", ns="kube-system", owner=None, ts=ts)
         owned_pod = _pod(name="wp", ns="prod", owner=[SimpleNamespace()], ts=ts)
-        core.list_pod_for_all_namespaces.return_value = _items(
-            [orphan_pod, sys_pod, owned_pod])
+        core.list_pod_for_all_namespaces.return_value = _items([orphan_pod, sys_pod, owned_pod])
         # services: skip default kubernetes svc, keep orphan
         svc = SimpleNamespace(metadata=_meta("mysvc", "prod", None, ts))
         k8s_svc = SimpleNamespace(metadata=_meta("kubernetes", "default", None, ts))
@@ -227,11 +270,8 @@ class TestOrphanedResources:
         root_ca = SimpleNamespace(metadata=_meta("kube-root-ca.crt", "prod", None, ts))
         core.list_config_map_for_all_namespaces.return_value = _items([cm, root_ca])
         # secret: skip sa token type
-        secret = SimpleNamespace(metadata=_meta("sec", "prod", None, ts),
-                                 type="Opaque")
-        sa_secret = SimpleNamespace(
-            metadata=_meta("sa", "prod", None, ts),
-            type="kubernetes.io/service-account-token")
+        secret = SimpleNamespace(metadata=_meta("sec", "prod", None, ts), type="Opaque")
+        sa_secret = SimpleNamespace(metadata=_meta("sa", "prod", None, ts), type="kubernetes.io/service-account-token")
         core.list_secret_for_all_namespaces.return_value = _items([secret, sa_secret])
 
         out = json.loads(d.get_kubernetes_orphaned_resources.invoke({"config": {}}))
@@ -250,33 +290,32 @@ class TestOrphanedResources:
 class TestDiagnosePod:
     def test_full_diagnosis(self, core):
         ts = datetime(2024, 1, 1, tzinfo=timezone.utc)
-        cond = SimpleNamespace(type="Ready", status="False", reason="ContainersNotReady",
-                               message="not ready", last_transition_time=ts)
-        running_cs = _cstatus(name="app", ready=True, restart_count=1,
-                              state=_state(running=SimpleNamespace(started_at=ts)))
-        init_cs = SimpleNamespace(name="init", ready=True, restart_count=0, image="i",
-                                  state=_state(terminated=SimpleNamespace(
-                                      reason="Completed", exit_code=0)))
-        spec_container = SimpleNamespace(
-            name="app",
-            resources=SimpleNamespace(requests={"cpu": "1"}, limits={"memory": "1Gi"}))
-        vol_pvc = SimpleNamespace(name="v1",
-                                  persistent_volume_claim=SimpleNamespace(claim_name="c"),
-                                  config_map=None, secret=None, empty_dir=None,
-                                  host_path=None)
-        vol_host = SimpleNamespace(name="v2", persistent_volume_claim=None,
-                                   config_map=None, secret=None, empty_dir=None,
-                                   host_path=SimpleNamespace(path="/data"))
-        pod = _pod(name="px", phase="Running", cstatuses=[running_cs],
-                   conditions=[cond], init_cstatuses=[init_cs],
-                   spec_containers=[spec_container], volumes=[vol_pvc, vol_host])
+        cond = SimpleNamespace(type="Ready", status="False", reason="ContainersNotReady", message="not ready", last_transition_time=ts)
+        running_cs = _cstatus(name="app", ready=True, restart_count=1, state=_state(running=SimpleNamespace(started_at=ts)))
+        init_cs = SimpleNamespace(
+            name="init", ready=True, restart_count=0, image="i", state=_state(terminated=SimpleNamespace(reason="Completed", exit_code=0))
+        )
+        spec_container = SimpleNamespace(name="app", resources=SimpleNamespace(requests={"cpu": "1"}, limits={"memory": "1Gi"}))
+        vol_pvc = SimpleNamespace(
+            name="v1", persistent_volume_claim=SimpleNamespace(claim_name="c"), config_map=None, secret=None, empty_dir=None, host_path=None
+        )
+        vol_host = SimpleNamespace(
+            name="v2", persistent_volume_claim=None, config_map=None, secret=None, empty_dir=None, host_path=SimpleNamespace(path="/data")
+        )
+        pod = _pod(
+            name="px",
+            phase="Running",
+            cstatuses=[running_cs],
+            conditions=[cond],
+            init_cstatuses=[init_cs],
+            spec_containers=[spec_container],
+            volumes=[vol_pvc, vol_host],
+        )
         core.read_namespaced_pod.return_value = pod
-        ev = SimpleNamespace(type="Warning", reason="BackOff", message="failed",
-                             count=3, last_timestamp=ts)
+        ev = SimpleNamespace(type="Warning", reason="BackOff", message="failed", count=3, last_timestamp=ts)
         core.list_namespaced_event.return_value = _items([ev])
 
-        out = json.loads(d.diagnose_kubernetes_pod_issues.invoke(
-            {"namespace": "default", "pod_name": "px", "config": {}}))
+        out = json.loads(d.diagnose_kubernetes_pod_issues.invoke({"namespace": "default", "pod_name": "px", "config": {}}))
         assert out["phase"] == "Running"
         assert out["conditions"][0]["type"] == "Ready"
         assert out["containers"][0]["state"]["status"] == "running"
@@ -291,33 +330,33 @@ class TestDiagnosePod:
         older = datetime(2024, 1, 1, tzinfo=timezone.utc)
         newer = datetime(2024, 1, 2, tzinfo=timezone.utc)
         core.read_namespaced_pod.return_value = _pod(name="px")
-        core.list_namespaced_event.return_value = _items([
-            SimpleNamespace(
-                type="Normal",
-                reason="NoTimestamp",
-                message="missing",
-                count=1,
-                last_timestamp=None,
-            ),
-            SimpleNamespace(
-                type="Warning",
-                reason="Older",
-                message="old",
-                count=1,
-                last_timestamp=older,
-            ),
-            SimpleNamespace(
-                type="Warning",
-                reason="Newer",
-                message="new",
-                count=1,
-                last_timestamp=newer,
-            ),
-        ])
+        core.list_namespaced_event.return_value = _items(
+            [
+                SimpleNamespace(
+                    type="Normal",
+                    reason="NoTimestamp",
+                    message="missing",
+                    count=1,
+                    last_timestamp=None,
+                ),
+                SimpleNamespace(
+                    type="Warning",
+                    reason="Older",
+                    message="old",
+                    count=1,
+                    last_timestamp=older,
+                ),
+                SimpleNamespace(
+                    type="Warning",
+                    reason="Newer",
+                    message="new",
+                    count=1,
+                    last_timestamp=newer,
+                ),
+            ]
+        )
 
-        out = json.loads(d.diagnose_kubernetes_pod_issues.invoke(
-            {"namespace": "default", "pod_name": "px", "config": {}}
-        ))
+        out = json.loads(d.diagnose_kubernetes_pod_issues.invoke({"namespace": "default", "pod_name": "px", "config": {}}))
 
         assert [event["reason"] for event in out["recent_events"]] == [
             "Newer",
@@ -332,12 +371,10 @@ class TestDiagnosePod:
 
     def test_pod_not_found_404(self, core):
         core.read_namespaced_pod.side_effect = ApiException(status=404)
-        out = json.loads(d.diagnose_kubernetes_pod_issues.invoke(
-            {"namespace": "default", "pod_name": "ghost", "config": {}}))
+        out = json.loads(d.diagnose_kubernetes_pod_issues.invoke({"namespace": "default", "pod_name": "ghost", "config": {}}))
         assert "不存在" in out["error"]
 
     def test_other_api_error_wrapped(self, core):
         core.read_namespaced_pod.side_effect = ApiException(status=500)
-        out = json.loads(d.diagnose_kubernetes_pod_issues.invoke(
-            {"namespace": "default", "pod_name": "x", "config": {}}))
+        out = json.loads(d.diagnose_kubernetes_pod_issues.invoke({"namespace": "default", "pod_name": "x", "config": {}}))
         assert "诊断Pod失败" in out["error"]

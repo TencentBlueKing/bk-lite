@@ -340,7 +340,8 @@ function MonitorDetailContent() {
                               <MetricCard
                                 key={`${metric.id}-${pluginId}-${range}`}
                                 metric={metric}
-                                idValues={idValues}
+                                monitorObjectId={objectId}
+                                instanceId={instanceId}
                                 rangeMinutes={range}
                                 interval={interval}
                                 onOpen={sheetIndex >= 0 ? () => setMetricSheetIndex(sheetIndex) : undefined}
@@ -417,7 +418,8 @@ function MonitorDetailContent() {
         open={metricSheetIndex != null}
         metrics={sheetMetrics}
         activeIndex={metricSheetIndex ?? 0}
-        idValues={idValues}
+        monitorObjectId={objectId}
+        instanceId={instanceId}
         rangeMinutes={range}
         interval={interval}
         onClose={() => setMetricSheetIndex(null)}

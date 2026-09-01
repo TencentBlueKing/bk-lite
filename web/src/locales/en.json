@@ -203,7 +203,8 @@
     "sessionExpiredTitle": "Session expired",
     "sessionExpiredDescription": "Please verify your identity again to continue on this page.",
     "reloginSuccess": "Signed in again. Please resubmit any operation that previously failed.",
-    "portalSlogan": "AI-Native Lightweight O&M Platform"
+    "portalSlogan": "AI-Native Lightweight O&M Platform",
+    "day": "Day(s)"
   },
   "userInfo": {
     "basicInfo": "Basic Information",

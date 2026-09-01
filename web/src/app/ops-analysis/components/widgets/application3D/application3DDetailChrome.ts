@@ -122,8 +122,8 @@ export const SEVERITY_BADGE: Record<
   },
 };
 
-const BASIC_KEYS = new Set(['app_id', 'app_type', 'organization']);
-const MAINTAIN_KEYS = new Set(['operator', 'bak_operator']);
+const BASIC_KEYS = new Set(['app_id', 'app_type', 'organization', 'system_code', 'status']);
+const MAINTAIN_KEYS = new Set(['operator', 'bak_operator', 'productor', 'developer', 'tester']);
 const DESCRIPTION_KEYS = new Set(['comment']);
 
 export interface DetailProperty { key: string; label: string; displayValue: string }

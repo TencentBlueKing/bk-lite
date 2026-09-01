@@ -130,7 +130,13 @@ const ProviderModelManagement: React.FC<ProviderModelManagementProps> = ({ vendo
     }));
   };
 
-  const handleModalSubmit = async (values: { name: string; model: string; team: number[]; is_multimodal?: boolean }) => {
+  const handleModalSubmit = async (values: {
+    name: string;
+    model: string;
+    team: number[];
+    is_multimodal?: boolean;
+    context_window_tokens?: number;
+  }) => {
     if (!vendorDetail) {
       message.error(t('common.fetchFailed'));
       return;
@@ -402,7 +408,7 @@ const buildModelPayload = ({
   resourceType,
 }: {
   vendor: ModelVendor;
-  values: { name: string; model: string; team: number[]; is_multimodal?: boolean };
+  values: { name: string; model: string; team: number[]; is_multimodal?: boolean; context_window_tokens?: number };
   model?: Model | null;
   resourceType: ProviderResourceType;
 }) => {
@@ -420,6 +426,7 @@ const buildModelPayload = ({
 
   if (resourceType === 'llm_model') {
     payload.is_multimodal = values.is_multimodal ?? model?.is_multimodal ?? true;
+    payload.context_window_tokens = values.context_window_tokens ?? model?.context_window_tokens ?? 200000;
   }
 
   return payload;

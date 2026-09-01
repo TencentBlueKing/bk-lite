@@ -92,7 +92,7 @@ async def test_snmp_internal_exception_logs_target_and_sanitized_call_chain(monk
         collection_plugin_ref="network.config",
         _log_plugin_call_chain=True,
     )
-    info_logs = []
+    debug_logs = []
     error_logs = []
 
     async def broken_collect():
@@ -103,17 +103,17 @@ async def test_snmp_internal_exception_logs_target_and_sanitized_call_chain(monk
 
     monkeypatch.setattr(facts, "collect", broken_collect)
     monkeypatch.setattr(
-        "plugins.inputs.network.snmp_facts.logger.info",
-        lambda message, *args: info_logs.append(message % args if args else message),
+        "plugins.inputs.network.snmp_facts.logger.debug",
+        lambda message, *args: debug_logs.append(message % args if args else message),
     )
     monkeypatch.setattr("plugins.inputs.network.snmp_facts.logger.error", capture_error)
 
     result = await facts.list_all_resources()
 
     assert result["success"] is False
-    assert len(info_logs) == 1
-    assert "event=snmp_facts_collection_started" in info_logs[0]
-    assert "target=127.0.0.1" in info_logs[0]
+    assert len(debug_logs) == 1
+    assert "event=snmp_facts_collection_started" in debug_logs[0]
+    assert "target=127.0.0.1" in debug_logs[0]
     assert len(error_logs) == 1
     assert "event=plugin_exception" in error_logs[0]
     assert "task_id=snmp-task-7" in error_logs[0]

@@ -8,6 +8,7 @@ from apps.cmdb.tasks.celery_tasks import (  # noqa: F401
     check_subscription_rules,
     collect_node_mgmt_hosts,
     consume_change_record_mirror_outbox,
+    consume_cmdb_operation_outbox,
     finalize_scan_execution,
     full_sync_auto_association_rule_task,
     recover_change_record_mirror_outbox_task,

@@ -9,6 +9,7 @@ import {
   CustomChatMessage,
   SkillViewItem,
 } from '@/app/opspilot/types/global';
+import type { LlmContextUsage } from '@/app/opspilot/components/custom-chat-sse/llmContextUsage';
 
 export type { BrowserStepAction, BrowserStepProgressData };
 export type { BrowserTaskReceivedData };
@@ -215,6 +216,8 @@ export interface CustomChatSSEProps {
   showHeader?: boolean;
   requirePermission?: boolean;
   removePendingBotMessageOnCancel?: boolean;
+  conversationHistoryEnabled?: boolean;
+  initialContextUsage?: LlmContextUsage | null;
 }
 
 export type ActionRender = (
