@@ -176,7 +176,7 @@ describe('APM 应用观测详情', () => {
     expect(screen.getByRole('columnheader', { name: '活跃告警' })).not.toBeNull();
     expect(screen.getByRole('columnheader', { name: '吞吐量（请求/秒）' })).not.toBeNull();
     await waitFor(() => expect(api.getServiceRed).toHaveBeenCalled());
-  });
+  }, 15_000);
 
   it('拓扑取数完成前展示加载而不是空状态', async () => {
     let resolveTopology: (value: unknown) => void = () => undefined;

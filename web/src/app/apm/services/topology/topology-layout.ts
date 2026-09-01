@@ -34,12 +34,16 @@ export const TOPOLOGY_CANVAS_SIZE = {
 export const TOPOLOGY_NODE_CARD = {
   minWidth: 176,
   widthSpan: 28,
-  height: 44,
+  height: 48,
   radius: 6,
-  nameOffsetX: 30,
+  iconSize: 20,
+  iconPaddingX: 10,
+  nameOffsetX: 40,
   healthGutter: 22,
   inferredBadgeWidth: 28,
 } as const;
+
+export const TOPOLOGY_NODE_MIN_GAP = 24;
 
 export const TOPOLOGY_ENTRY_PILL = {
   minWidth: 128,
@@ -136,9 +140,10 @@ const mapLayoutPositions = (
   const spanY = Math.max(maxY - minY, 1);
   const usableWidth = TOPOLOGY_CANVAS_SIZE.width - CANVAS_PADDING.left - CANVAS_PADDING.right;
   const usableHeight = TOPOLOGY_CANVAS_SIZE.height - CANVAS_PADDING.top - CANVAS_PADDING.bottom;
-  const scale = Math.min(usableWidth / spanX, usableHeight / spanY, 1.25);
-  const offsetX = CANVAS_PADDING.left + (usableWidth - spanX * scale) / 2;
-  const offsetY = CANVAS_PADDING.top + (usableHeight - spanY * scale) / 2;
+  const fitted = Math.min(usableWidth / spanX, usableHeight / spanY, 1.25);
+  const scale = Math.max(fitted, 1);
+  const offsetX = CANVAS_PADDING.left + Math.max(0, (usableWidth - spanX * scale) / 2);
+  const offsetY = CANVAS_PADDING.top + Math.max(0, (usableHeight - spanY * scale) / 2);
 
   return nodes.map((item) => {
     const raw = rawPositions.get(item.id) ?? { x: 0, y: 0 };
@@ -159,10 +164,10 @@ export const layoutLayeredTopology = async (
   const layout = new DagreLayout({
     rankdir: 'TB',
     align: 'UL',
-    nodesep: 56,
+    nodesep: TOPOLOGY_NODE_MIN_GAP + TOPOLOGY_NODE_CARD.widthSpan,
     edgesep: 28,
-    ranksep: 96,
-    nodeSize: [TOPOLOGY_NODE_CARD.minWidth, TOPOLOGY_NODE_CARD.height],
+    ranksep: 104,
+    nodeSize: [TOPOLOGY_NODE_CARD.minWidth + TOPOLOGY_NODE_CARD.widthSpan, TOPOLOGY_NODE_CARD.height],
     edgeLabelSize: [96, 18],
     edgeLabelOffset: 10,
     controlPoints: true,
@@ -198,7 +203,7 @@ const FORCE_LAYOUT = {
   seedSpringX: 0.055,
   seedSpringY: 0.32,
   kindSpringY: 0.48,
-  minDistance: TOPOLOGY_NODE_CARD.minWidth + 20,
+  minDistance: TOPOLOGY_NODE_CARD.minWidth + TOPOLOGY_NODE_CARD.widthSpan + TOPOLOGY_NODE_MIN_GAP,
 } as const;
 
 const compareTopologyId = (left: string, right: string) => (left < right ? -1 : left > right ? 1 : 0);
@@ -283,7 +288,6 @@ const runSeededForce = (
       }
       px[index] += vx[index];
       py[index] += vy[index];
-      px[index] = Math.min(TOPOLOGY_CANVAS_SIZE.width - CANVAS_PADDING.right, Math.max(CANVAS_PADDING.left, px[index]));
       py[index] = Math.min(maxSeedY, Math.max(minSeedY, py[index]));
     });
   }
@@ -427,6 +431,18 @@ export const isolateTopologyNeighborhood = (
   };
 };
 
+export const filterAnomalousTopology = (
+  nodes: ApmTopologyNode[],
+  edges: ApmTopologyEdge[],
+): { nodes: ApmTopologyNode[]; edges: ApmTopologyEdge[] } => {
+  const anomalyEdges = edges.filter((edge) => edge.error_calls > 0);
+  const visibleIds = new Set(anomalyEdges.flatMap((edge) => [edge.source, edge.target]));
+  return {
+    nodes: nodes.filter((node) => visibleIds.has(node.id)),
+    edges: anomalyEdges,
+  };
+};
+
 export const filterTopologyByKeyword = (
   nodes: ApmTopologyNode[],
   edges: ApmTopologyEdge[],
@@ -452,4 +468,44 @@ export const topologyNeighborIds = (edges: ApmTopologyEdge[], nodeId: string): S
     if (edge.target === nodeId) ids.add(edge.source);
   });
   return ids;
+};
+
+export const topologyCardsOverlap = (
+  nodes: { x: number; y: number }[],
+  width = TOPOLOGY_NODE_CARD.minWidth,
+  height = TOPOLOGY_NODE_CARD.height,
+  gap = TOPOLOGY_NODE_MIN_GAP,
+) => {
+  for (let i = 0; i < nodes.length; i += 1) {
+    for (let j = i + 1; j < nodes.length; j += 1) {
+      if (
+        Math.abs(nodes[i].x - nodes[j].x) < width + gap
+        && Math.abs(nodes[i].y - nodes[j].y) < height + gap
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
+export const fitTopologyView = (
+  nodes: PositionedApmTopologyNode[],
+  zoom = 1,
+): { x: number; y: number; k: number } => {
+  if (!nodes.length) return { x: 0, y: 0, k: zoom };
+  const halfW = (TOPOLOGY_NODE_CARD.minWidth + TOPOLOGY_NODE_CARD.widthSpan) / 2;
+  const halfH = TOPOLOGY_NODE_CARD.height / 2;
+  const minX = Math.min(...nodes.map((node) => node.x - halfW));
+  const maxX = Math.max(...nodes.map((node) => node.x + halfW));
+  const minY = Math.min(...nodes.map((node) => node.y - halfH));
+  const maxY = Math.max(...nodes.map((node) => node.y + halfH));
+  const width = Math.max(maxX - minX, 1);
+  const height = Math.max(maxY - minY, 1);
+  const k = Math.min(zoom, TOPOLOGY_CANVAS_SIZE.width / width, TOPOLOGY_CANVAS_SIZE.height / height);
+  return {
+    k,
+    x: (TOPOLOGY_CANVAS_SIZE.width - width * k) / 2 - minX * k,
+    y: (TOPOLOGY_CANVAS_SIZE.height - height * k) / 2 - minY * k,
+  };
 };

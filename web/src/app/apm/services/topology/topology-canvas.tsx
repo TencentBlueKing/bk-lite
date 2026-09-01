@@ -9,6 +9,7 @@ import { serviceLanguageLabel } from '@/app/apm/components/service-language-icon
 import TopologyServiceIcon from '@/app/apm/components/topology-service-icon';
 import {
   buildTopologyEdgeGeometry,
+  fitTopologyView,
   hasReciprocalTopologyEdge,
   layoutForceTopology,
   layoutLayeredTopology,
@@ -31,7 +32,7 @@ export type TopologyCanvasSelection =
   | { kind: 'node'; id: string }
   | { kind: 'edge'; source: string; target: string };
 
-export const MIN_TOPOLOGY_ZOOM = 0.4;
+export const MIN_TOPOLOGY_ZOOM = 0.2;
 export const MAX_TOPOLOGY_ZOOM = 2.5;
 
 export const topologyHealthColors: Record<ApmTopologyHealth, string> = {
@@ -57,7 +58,7 @@ type CanvasDrag =
   | { kind: 'pan'; startX: number; startY: number; panX: number; panY: number }
   | { kind: 'node'; id: string; startX: number; startY: number; nodeX: number; nodeY: number; k: number; moved: boolean };
 
-const topologyErrorFill = (hasErrors: boolean) => (hasErrors ? topologyHealthColors.critical : topologyHealthColors.healthy);
+const topologyErrorFill = (hasErrors: boolean) => (hasErrors ? topologyHealthColors.critical : 'var(--color-text-3)');
 
 function TopologyMetricLabel({
   errorCount,
@@ -161,8 +162,16 @@ export default function TopologyCanvas({
   }, [edges, layout, layoutKey, nodes]);
 
   useEffect(() => {
-    setView({ x: 0, y: 0, k: zoom });
-  }, [layoutKey, zoom]);
+    if (layoutResult.key !== layoutKey) {
+      setView({ x: 0, y: 0, k: zoom });
+      return;
+    }
+    const fitted = fitTopologyView(layoutResult.nodes, zoom);
+    setView({
+      ...fitted,
+      k: clampZoom(fitted.k),
+    });
+  }, [layoutKey, layoutResult, zoom]);
 
   useEffect(() => {
     setNodePositions({});
@@ -334,7 +343,10 @@ export default function TopologyCanvas({
         <div className="inline-flex w-fit flex-col overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-bg)]">
           <Button aria-label={t('apm.topology.zoomIn', '放大拓扑')} type="text" size="small" icon={<PlusOutlined aria-hidden="true" />} onClick={() => adjustZoom(view.k + 0.15)} />
           <Button aria-label={t('apm.topology.zoomOut', '缩小拓扑')} type="text" size="small" icon={<MinusOutlined aria-hidden="true" />} onClick={() => adjustZoom(view.k - 0.15)} />
-          <Button aria-label={t('apm.topology.resetZoom', '重置拓扑缩放')} type="text" size="small" icon={<AimOutlined aria-hidden="true" />} onClick={() => setView({ x: 0, y: 0, k: 1 })} />
+          <Button aria-label={t('apm.topology.resetZoom', '重置拓扑缩放')} type="text" size="small" icon={<AimOutlined aria-hidden="true" />} onClick={() => {
+            const fitted = fitTopologyView(positionedNodes, zoom);
+            setView({ ...fitted, k: clampZoom(fitted.k) });
+          }} />
         </div>
       </div>
       <svg
@@ -375,11 +387,9 @@ export default function TopologyCanvas({
             : true;
           const color = isSelected
             ? EDGE_STROKE_ACTIVE
-            : edge.health === 'critical'
+            : edge.error_calls > 0
               ? topologyHealthColors.critical
-              : edge.health === 'warning'
-                ? topologyHealthColors.warning
-                : EDGE_STROKE;
+              : EDGE_STROKE;
           const strokeWidth = Math.max(1, Math.min(2.4, 0.9 + (edge.sampled_calls / maxCalls) * 1.4));
           return (
             <g
@@ -533,9 +543,9 @@ export default function TopologyCanvas({
                 kind={node.kind}
                 language={node.language}
                 serviceName={node.service_name}
-                size={userRequest ? TOPOLOGY_ENTRY_PILL.iconSize : 14}
-                x={cardX + (userRequest ? TOPOLOGY_ENTRY_PILL.paddingX : 10)}
-                y={userRequest ? -TOPOLOGY_ENTRY_PILL.iconSize / 2 : -7}
+                size={userRequest ? TOPOLOGY_ENTRY_PILL.iconSize : TOPOLOGY_NODE_CARD.iconSize}
+                x={cardX + (userRequest ? TOPOLOGY_ENTRY_PILL.paddingX : TOPOLOGY_NODE_CARD.iconPaddingX)}
+                y={userRequest ? -TOPOLOGY_ENTRY_PILL.iconSize / 2 : -TOPOLOGY_NODE_CARD.iconSize / 2}
               />
               <clipPath id={`apm-node-label-${index}`}>
                 <rect height={cardHeight} width={labelWidth} x={cardX + nameOffsetX} y={cardY} />
