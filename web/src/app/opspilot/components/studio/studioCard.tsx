@@ -3,7 +3,6 @@
 import React from 'react';
 import EntityCard from '@/app/opspilot/components/entity-card';
 import { Studio } from '@/app/opspilot/types/studio';
-import { useTranslation } from '@/utils/i18n';
 
 interface StudioCardProps extends Studio {
   index: number;
@@ -11,14 +10,22 @@ interface StudioCardProps extends Studio {
 }
 
 const StudioCard: React.FC<StudioCardProps> = (props) => {
-  const { id, name, introduction, created_by, team_name, team, online, bot_type, is_pinned, permissions, onMenuClick } = props;
-  const { t } = useTranslation();
-  const iconTypeMapping: [string, string] = ['jiqirenjiaohukapian', 'jiqiren'];
-  const botTypeMapping: { [key: number]: string } = {
-    1: 'Pilot',
-    2: 'LobeChat',
-    3: 'Chatflow'
-  };
+  const {
+    id,
+    name,
+    introduction,
+    created_by,
+    team_name,
+    team,
+    online,
+    bot_type,
+    created_at,
+    updated_at,
+    is_pinned,
+    permissions,
+    onMenuClick,
+  } = props;
+  const iconTypeMapping = ['Chatflow', 'gongzuotai', 'Copilot'];
 
   return (
     <EntityCard
@@ -30,14 +37,14 @@ const StudioCard: React.FC<StudioCardProps> = (props) => {
       team={team}
       online={online}
       bot_type={bot_type}
-      botType={botTypeMapping[bot_type] || ''}
+      created_at={typeof created_at === 'string' ? created_at : undefined}
+      updated_at={typeof updated_at === 'string' ? updated_at : undefined}
       is_pinned={is_pinned}
       showPinButton={true}
       permissions={permissions}
       onMenuClick={onMenuClick}
       redirectUrl="/opspilot/studio/detail"
       iconTypeMapping={iconTypeMapping}
-      teamLabel={t('studio.form.manageGroup')}
     />
   );
 };

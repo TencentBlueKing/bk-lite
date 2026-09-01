@@ -89,6 +89,8 @@ const SkillPage: React.FC = () => {
         CardComponent={SkillCard}
         ModifyModalComponent={SkillModifyModal}
         itemTypeSingle="skill"
+        pageTitle={t('skill.pageTitle')}
+        pageDescription={t('skill.pageDescription')}
         onCreateFromTemplate={handleCreateFromTemplate}
         onTogglePin={handleTogglePin}
       />

@@ -10,8 +10,19 @@ interface WikiCardProps extends WikiKnowledgeBase {
 }
 
 const WikiCard: React.FC<WikiCardProps> = (props) => {
-  const { id, name, introduction, created_by, team_name, team, permissions, onMenuClick } = props;
-  const iconTypeMapping: [string, string] = ['zhishiku', 'zhishiku'];
+  const {
+    id,
+    name,
+    introduction,
+    created_by,
+    team_name,
+    team,
+    created_at,
+    updated_at,
+    permissions,
+    onMenuClick,
+  } = props;
+  const iconTypeMapping = ['zhishiku1', 'zhishiku3', 'zhishiku2', 'zhishiku'];
 
   return (
     <EntityCard
@@ -21,6 +32,8 @@ const WikiCard: React.FC<WikiCardProps> = (props) => {
       created_by={created_by || ''}
       team_name={team_name || []}
       team={team || []}
+      created_at={created_at}
+      updated_at={updated_at}
       permissions={permissions}
       onMenuClick={onMenuClick}
       redirectUrl="/opspilot/wiki/detail"

@@ -11,6 +11,8 @@ export interface Skill {
   skill_type?: number;
   is_template?: boolean;
   llm_model_name?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface ModifySkillModalProps {
