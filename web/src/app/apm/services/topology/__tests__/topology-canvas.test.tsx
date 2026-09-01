@@ -121,6 +121,7 @@ describe('APM 服务拓扑画布', () => {
     expect(result.container.querySelector('[data-topology-surface]')?.className).not.toContain('[background-size:24px_24px]');
     expect(screen.queryByText('Py')).toBeNull();
     expect(screen.queryByText('Go')).toBeNull();
+    expect(result.container.querySelector('[data-node-id="catalog"] svg')?.getAttribute('width')).toBe('20');
   });
 
   it('双向调用使用两条分离曲线且每条只有终点箭头', async () => {
@@ -149,7 +150,7 @@ describe('APM 服务拓扑画布', () => {
     const edgeMetrics = result.container.querySelector('g[data-source="catalog"] [data-topology-metrics]');
     expect(edgeMetrics?.textContent).toBe(formatTopologyEdgeMetrics(edge('catalog', 'inventory')));
     expect(edgeMetrics?.getAttribute('data-has-errors')).toBe('false');
-    expect(edgeMetrics?.querySelector('[data-error-count]')?.getAttribute('fill')).toBe('var(--color-success)');
+    expect(edgeMetrics?.querySelector('[data-error-count]')?.getAttribute('fill')).toBe('var(--color-text-3)');
     const path = result.container.querySelector<SVGPathElement>('g[data-source] > path');
     expect(path?.getAttribute('stroke')).not.toBe('var(--color-fail)');
     expect(path?.getAttribute('marker-end')).toBe('url(#apm-arrow)');
@@ -172,12 +173,12 @@ describe('APM 服务拓扑画布', () => {
     expect(result.container.querySelector('[data-node-id="catalog"] circle[fill="var(--color-fail)"]')).not.toBeNull();
   });
 
-  it('全局拓扑请求推断下游，且不打开用户请求入口', async () => {
+  it('全局拓扑不请求推断下游，且不打开用户请求入口', async () => {
     renderWithApmIntl(<ApmTopologyPage />);
 
     await waitFor(() => expect(api.getTopology).toHaveBeenCalled());
     expect(api.getTopology).toHaveBeenCalledWith(expect.objectContaining({
-      include_inferred: true,
+      include_inferred: false,
     }));
     expect(api.getTopology.mock.calls[0][0].include_user_request).toBeUndefined();
   });
@@ -200,8 +201,8 @@ describe('APM 服务拓扑画布', () => {
     await waitFor(() => {
       expect(result.container.querySelector('svg[data-layout="layered"]')).not.toBeNull();
     });
-    expect(screen.getByText('服务调用')).not.toBeNull();
-    expect(screen.queryByText('总调用数')).toBeNull();
+    expect(screen.getByText('调用')).not.toBeNull();
+    expect(screen.queryByText('服务调用')).toBeNull();
     expect(screen.queryByText('观测 Trace')).toBeNull();
     expect(screen.queryByRole('button', { name: '收起拓扑图例' })).toBeNull();
     expect(screen.queryByText('数字为错误数 / 总数')).toBeNull();
@@ -219,7 +220,7 @@ describe('APM 服务拓扑画布', () => {
     renderWithApmIntl(<ApmTopologyPage />);
 
     expect(await screen.findByText('当前拓扑按最多 200 条 Trace 抽样聚合，指标不代表所选时间窗的全量流量。')).not.toBeNull();
-    expect(screen.getByText('服务调用')).not.toBeNull();
+    expect(screen.getByText('调用')).not.toBeNull();
     expect(screen.queryByText('图上数字来自最多 200 条 Trace 样本，不是时间窗全量。')).toBeNull();
     expect(screen.queryByText('当前拓扑仅聚合查询上限内的最近 Trace，调用量不代表全量流量。')).toBeNull();
   });
@@ -383,15 +384,32 @@ describe('APM 服务拓扑画布', () => {
     expect(serviceEdge?.getAttribute('stroke-dasharray')).toBeNull();
   });
 
-  it('仅错误请求与只看异常可同时存在且语义不同', async () => {
-    renderWithApmIntl(<ApmTopologyPage />);
+  it('只看异常只展示失败的服务间调用，不重新取数', async () => {
+    api.getTopology.mockResolvedValue({
+      nodes,
+      edges: [
+        { ...edge('catalog', 'inventory'), error_calls: 3, sampled_calls: 20 },
+        edge('storefront', 'catalog'),
+      ],
+      sampled_traces: 20,
+      truncated: false,
+      data_state: 'available',
+    });
+    const result = renderWithApmIntl(<ApmTopologyPage />);
     await screen.findByRole('img', { name: 'APM 服务调用拓扑' });
-    expect(screen.getByRole('button', { name: '只看异常' })).not.toBeNull();
-    expect(screen.getByRole('combobox', { name: '按请求状态切片' })).not.toBeNull();
-    expect(screen.getByRole('textbox', { name: '按操作名切片' })).not.toBeNull();
+    await waitFor(() => expect(result.container.querySelector('[data-node-id="storefront"]')).not.toBeNull());
+    expect(screen.queryByRole('combobox', { name: '按请求状态切片' })).toBeNull();
+    expect(screen.queryByRole('textbox', { name: '按操作名切片' })).toBeNull();
     const callsBeforeAnomaly = api.getTopology.mock.calls.length;
     fireEvent.click(screen.getByRole('button', { name: '只看异常' }));
     expect(api.getTopology.mock.calls.length).toBe(callsBeforeAnomaly);
+    await waitFor(() => {
+      expect(result.container.querySelector('[data-node-id="storefront"]')).toBeNull();
+    });
+    expect(result.container.querySelector('[data-node-id="catalog"]')).not.toBeNull();
+    expect(result.container.querySelector('[data-node-id="inventory"]')).not.toBeNull();
+    expect(result.container.querySelector('g[data-source="catalog"]')).not.toBeNull();
+    expect(result.container.querySelector('g[data-source="storefront"]')).toBeNull();
   });
 
   it('节点与连线展示总数 / P95 / 错误数，错误数按有无着色', async () => {
@@ -414,10 +432,11 @@ describe('APM 服务拓扑画布', () => {
     const edgeMetrics = result.container.querySelector('g[data-source="catalog"] [data-topology-metrics]');
     expect(edgeMetrics?.textContent).toBe('100 / 40ms / 12');
     expect(edgeMetrics?.getAttribute('data-has-errors')).toBe('true');
+    expect(result.container.querySelector('g[data-source="catalog"] > path')?.getAttribute('stroke')).toBe('var(--color-fail)');
     const healthyMetrics = result.container.querySelector('[data-node-id="inventory"] [data-topology-metrics]');
     expect(healthyMetrics?.textContent).toBe('100 / 42ms / 0');
     expect(healthyMetrics?.getAttribute('data-has-errors')).toBe('false');
-    expect(healthyMetrics?.querySelector('[data-error-count]')?.getAttribute('fill')).toBe('var(--color-success)');
+    expect(healthyMetrics?.querySelector('[data-error-count]')?.getAttribute('fill')).toBe('var(--color-text-3)');
   });
 
   it('拖动服务节点会带动连线，且不平移整张画布', async () => {
@@ -500,10 +519,15 @@ describe('APM 服务拓扑画布', () => {
   });
 
   it('缩放按钮改变画布视图而不离开页面', async () => {
-    renderWithApmIntl(<ApmTopologyPage />);
+    const result = renderWithApmIntl(<ApmTopologyPage />);
     const svg = await screen.findByRole('img', { name: 'APM 服务调用拓扑' });
+    await waitFor(() => {
+      expect(result.container.querySelector('[data-topology-layout-pending="true"]')).toBeNull();
+    });
     expect(svg.getAttribute('data-topology-scale')).toBe('1.00');
     fireEvent.click(screen.getByRole('button', { name: '放大拓扑' }));
-    expect(svg.getAttribute('data-topology-scale')).not.toBe('1.00');
+    await waitFor(() => {
+      expect(svg.getAttribute('data-topology-scale')).not.toBe('1.00');
+    });
   });
 });

@@ -129,6 +129,43 @@ def test_topology_builds_cross_service_edges_and_edge_red_from_the_same_sample()
     assert graph.edges[0].error_rate == 0.5
     assert graph.edges[0].p95_ms == 20
     assert graph.edges[0].health == "critical"
+    assert by_name["gateway"].error_spans == graph.edges[0].error_calls
+    assert by_name["payment"].error_spans == 0
+    assert by_name["payment"].health == "healthy"
+
+
+def test_instrumented_node_errors_count_outbound_hops_not_bubbled_trace_status():
+    now = timezone.now()
+    bubbled = _trace(
+        "e" * 32,
+        (
+            _span("1" * 16, None, "GET /checkout", now, service="gateway", duration=40, status="error"),
+            _span("2" * 16, "1" * 16, "POST /pay", now, service="gateway", kind="client", duration=22, status="error"),
+            _span("3" * 16, "2" * 16, "POST /pay", now, service="payment", duration=18, status="error"),
+            _span("4" * 16, "3" * 16, "SELECT orders", now, service="payment", kind="client", duration=12, status="error"),
+            _span("5" * 16, "4" * 16, "SELECT orders", now, service="inventory", duration=10, status="error"),
+        ),
+    )
+    service = DjangoApmTopologyService(InMemoryTraceStore(details=[bubbled]))
+    graph = service.build(
+        [
+            TopologyTarget("shop", "gateway", "prod", "go"),
+            TopologyTarget("shop", "payment", "prod", "python"),
+            TopologyTarget("shop", "inventory", "prod", "java"),
+        ],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+    )
+
+    by_name = {node.service_name: node for node in graph.nodes}
+    by_edge = {(edge.source.split(":")[1], edge.target.split(":")[1]): edge for edge in graph.edges}
+    assert by_edge[("gateway", "payment")].error_calls == 1
+    assert by_edge[("payment", "inventory")].error_calls == 1
+    assert by_name["gateway"].error_spans == 1
+    assert by_name["payment"].error_spans == 1
+    assert by_name["inventory"].error_spans == 0
+    assert by_name["gateway"].error_spans == by_edge[("gateway", "payment")].error_calls
+    assert by_name["payment"].error_spans == by_edge[("payment", "inventory")].error_calls
 
 
 def test_topology_error_slice_drops_edges_only_present_on_ok_requests():

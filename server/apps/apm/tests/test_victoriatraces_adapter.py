@@ -228,6 +228,39 @@ def test_detail_maps_victoriatraces_string_error_tag_to_error_status():
     assert detail.spans[0].status == "error"
 
 
+def test_get_trace_falls_back_to_logsql_when_jaeger_index_misses_a_listed_trace():
+    now = timezone.now()
+    session = Mock()
+    session.get.side_effect = [
+        _response({"data": [], "errors": [{"code": 404, "msg": "trace not found"}]}, status_code=404),
+        _response({}, raw=json.dumps(_span_row("a" * 32, "1" * 16, now)).encode()),
+    ]
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+
+    detail = store.get_trace("a" * 32)
+
+    assert detail is not None
+    assert detail.trace_id == "a" * 32
+    assert detail.service_namespace == "shop"
+    assert detail.service_name == "checkout"
+    assert detail.instance_id == "pod-a"
+    assert [span.name for span in detail.spans] == ["POST /checkout"]
+    assert session.get.call_args_list[0].args[0].endswith("/select/jaeger/api/traces/" + "a" * 32)
+    assert session.get.call_args_list[1].args[0].endswith("/select/logsql/query")
+    assert session.get.call_args_list[1].kwargs["params"]["query"].startswith(f'trace_id:={json.dumps("a" * 32)}')
+
+
+def test_get_trace_stays_missing_when_jaeger_and_logsql_both_lack_the_trace():
+    session = Mock()
+    session.get.side_effect = [
+        _response({"data": [], "errors": [{"code": 404, "msg": "trace not found"}]}, status_code=404),
+        _response({}, raw=b""),
+    ]
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+
+    assert store.get_trace("a" * 32) is None
+
+
 def test_transport_failures_are_mapped_to_trace_store_degradation():
     session = Mock()
     session.get.side_effect = requests.Timeout("down")

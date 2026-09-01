@@ -44,6 +44,8 @@ type SpanLayoutItem = {
 };
 
 const FLAME_ROW_HEIGHT = 24;
+const SPAN_ATTRIBUTE_KEY_COLUMN_WIDTH = '58%';
+const SPAN_ATTRIBUTE_VALUE_COLUMN_WIDTH = '42%';
 
 const SERVICE_PALETTE = [
   'var(--theme-color-chart-primary)',
@@ -242,8 +244,8 @@ export default function ApmTraceDetailPage() {
     }))
     : [];
   const attributeColumns: TableProps<{ key: string; value: string }>['columns'] = [
-    { title: t('apm.trace.attribute', '属性'), dataIndex: 'key', width: '32%', render: (value) => <Typography.Text code>{value}</Typography.Text> },
-    { title: t('apm.trace.value', '值'), dataIndex: 'value', render: (value) => <Typography.Text className="break-all">{value}</Typography.Text> },
+    { title: t('apm.trace.attribute', '属性'), dataIndex: 'key', width: SPAN_ATTRIBUTE_KEY_COLUMN_WIDTH, render: (value) => <Typography.Text code className="break-all">{value}</Typography.Text> },
+    { title: t('apm.trace.value', '值'), dataIndex: 'value', width: SPAN_ATTRIBUTE_VALUE_COLUMN_WIDTH, render: (value) => <Typography.Text className="break-all">{value}</Typography.Text> },
   ];
 
   return (
@@ -292,50 +294,44 @@ export default function ApmTraceDetailPage() {
                   </Typography.Text>
                 </div>
               </div>
-              {hasError ? (
-                <Button
-                  danger
-                  icon={<FireFilled aria-hidden="true" />}
-                  onClick={() => firstErrorId && setSelectedSpanId(firstErrorId)}
-                >
-                  {t('apm.trace.jumpFirstError', '跳到首个错误')}
-                </Button>
-              ) : null}
-            </div>
-          </ApmSurface>
-
-          <ApmSurface padding="compact">
-            <div className="flex flex-wrap items-center gap-x-10 gap-y-4">
-              <KpiStat label={t('apm.trace.spanCount', 'Span 数')} value={trace.spans.length} />
-              <KpiStat label={t('apm.trace.errorSpans', '错误 Span')} value={errorSpans.length} danger={hasError} />
-              <KpiStat label={t('apm.trace.serviceCount', '服务数')} value={services.length} />
-              <KpiStat label={t('apm.trace.totalDuration', '总耗时')} value={formatLatency(totalDuration, false, t)} />
+              <div className="flex flex-wrap items-center gap-x-8 gap-y-3 lg:justify-end">
+                <KpiStat label={t('apm.trace.spanCount', 'Span 数')} value={trace.spans.length} />
+                <KpiStat label={t('apm.trace.errorSpans', '错误 Span')} value={errorSpans.length} danger={hasError} />
+                <KpiStat label={t('apm.trace.serviceCount', '服务数')} value={services.length} />
+                <KpiStat label={t('apm.trace.totalDuration', '总耗时')} value={formatLatency(totalDuration, false, t)} />
+                {hasError ? (
+                  <Button
+                    danger
+                    icon={<FireFilled aria-hidden="true" />}
+                    onClick={() => firstErrorId && setSelectedSpanId(firstErrorId)}
+                  >
+                    {t('apm.trace.jumpFirstError', '跳到首个错误')}
+                  </Button>
+                ) : null}
+              </div>
             </div>
           </ApmSurface>
 
           <Row gutter={[16, 16]}>
             <Col xs={24} xl={16}>
-              <div className="mb-3">
-                <Segmented<ViewMode>
-                  aria-label={t('apm.trace.viewMode', 'Trace 视图模式')}
-                  value={viewMode}
-                  onChange={setViewMode}
-                  options={[
-                    { value: 'waterfall', label: t('apm.trace.waterfall', '瀑布'), disabled: screens.md === false },
-                    { value: 'flame', label: t('apm.trace.flame', '火焰图'), disabled: screens.md === false },
-                    { value: 'list', label: t('apm.trace.spanList', '跨度列表') },
-                  ]}
-                />
-              </div>
               <ApmSurface className="h-full">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                  <Segmented<ViewMode>
+                    aria-label={t('apm.trace.viewMode', 'Trace 视图模式')}
+                    value={viewMode}
+                    onChange={setViewMode}
+                    options={[
+                      { value: 'waterfall', label: t('apm.trace.waterfall', '瀑布'), disabled: screens.md === false },
+                      { value: 'flame', label: t('apm.trace.flame', '火焰图'), disabled: screens.md === false },
+                      { value: 'list', label: t('apm.trace.spanList', '跨度列表') },
+                    ]}
+                  />
+                  <Typography.Text type="secondary" className="text-xs tabular-nums">
+                    {trace.spans.length} spans
+                  </Typography.Text>
+                </div>
                 {viewMode === 'waterfall' ? (
                   <>
-                    <div className="mb-3 flex items-center justify-between">
-                      <Typography.Text strong>{t('apm.trace.spanWaterfall', 'Span 瀑布')}</Typography.Text>
-                      <Typography.Text type="secondary" className="text-xs tabular-nums">
-                        {trace.spans.length} spans
-                      </Typography.Text>
-                    </div>
                     <div className="space-y-1 overflow-x-auto">
                       {layout.map(({ span, depth, left, width }) => {
                         const selectedRow = selectedSpanId === span.span_id;
@@ -386,20 +382,12 @@ export default function ApmTraceDetailPage() {
                     </div>
                   </>
                 ) : viewMode === 'flame' ? (
-                  <>
-                    <div className="mb-3 flex items-center justify-between">
-                      <Typography.Text strong>{t('apm.trace.spanFlame', 'Span 火焰图')}</Typography.Text>
-                      <Typography.Text type="secondary" className="text-xs tabular-nums">
-                        {trace.spans.length} spans
-                      </Typography.Text>
-                    </div>
-                    <TraceFlameChart
-                      layout={layout}
-                      services={services}
-                      selectedSpanId={selectedSpanId}
-                      onSelect={setSelectedSpanId}
-                    />
-                  </>
+                  <TraceFlameChart
+                    layout={layout}
+                    services={services}
+                    selectedSpanId={selectedSpanId}
+                    onSelect={setSelectedSpanId}
+                  />
                 ) : (
                   <>
                     <Input

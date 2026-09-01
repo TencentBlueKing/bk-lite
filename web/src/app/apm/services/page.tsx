@@ -1,11 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type Key } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   AppstoreOutlined,
   BarsOutlined,
+  DownOutlined,
   InboxOutlined,
   LoadingOutlined,
   ReloadOutlined,
@@ -15,6 +16,7 @@ import {
   Alert,
   Button,
   Drawer,
+  Dropdown,
   Empty,
   Input,
   List,
@@ -27,6 +29,7 @@ import {
   Typography,
 } from 'antd';
 import FilterToolbar from '@/components/filter-toolbar';
+import Permission from '@/components/permission';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
@@ -133,8 +136,9 @@ export default function ApmServicesPage() {
   const [metricRefreshKey, setMetricRefreshKey] = useState(0);
   const [state, setState] = useState<PageState>('loading');
   const [refreshKey, setRefreshKey] = useState(0);
-  const [organizationService, setOrganizationService] = useState<ApmService | null>(null);
+  const [organizationTargets, setOrganizationTargets] = useState<ApmService[]>([]);
   const [organizationSubmitting, setOrganizationSubmitting] = useState(false);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
   const [archivedOpen, setArchivedOpen] = useState(false);
   const [archivedServices, setArchivedServices] = useState<ApmService[]>([]);
   const [archivedKeyword, setArchivedKeyword] = useState('');
@@ -203,34 +207,70 @@ export default function ApmServicesPage() {
   }, [authLoading, getApplications, getEvents, getHealth, getServices, getSlos, refreshKey]);
 
   const submitOrganizations = async (organizationIds: number[]) => {
-    if (!organizationService) return;
+    if (!organizationTargets.length) return;
     setOrganizationSubmitting(true);
     try {
-      await setServiceOrganizations(organizationService.id, organizationIds);
-      message.success(t('apm.services.orgUpdated', '服务组织已更新'));
-      setOrganizationService(null);
+      const results = await Promise.allSettled(
+        organizationTargets.map((service) => setServiceOrganizations(service.id, organizationIds)),
+      );
+      const failed = results.filter((result) => result.status === 'rejected').length;
+      const succeeded = results.length - failed;
+      if (failed) {
+        message.warning(t('apm.services.orgBatchPartial', '已更新 {ok} 个服务组织，{failed} 个失败', { ok: succeeded, failed }));
+      } else {
+        message.success(
+          organizationTargets.length > 1
+            ? t('apm.services.orgBatchUpdated', '已更新 {count} 个服务组织', { count: succeeded })
+            : t('apm.services.orgUpdated', '服务组织已更新'),
+        );
+      }
+      setOrganizationTargets([]);
+      setSelectedRowKeys([]);
       setRefreshKey((value) => value + 1);
     } finally {
       setOrganizationSubmitting(false);
     }
   };
 
-  const setArchived = async (serviceId: string, archived: boolean) => {
-    await setServiceArchived(serviceId, archived);
-    message.success(archived ? t('apm.services.archived', '服务已归档') : t('apm.services.unarchived', '服务已解档'));
+  const setArchived = async (serviceIds: string[], archived: boolean) => {
+    const uniqueIds = [...new Set(serviceIds)];
+    const results = await Promise.allSettled(uniqueIds.map((serviceId) => setServiceArchived(serviceId, archived)));
+    const failed = results.filter((result) => result.status === 'rejected').length;
+    const succeeded = results.length - failed;
+    if (failed) {
+      message.warning(archived
+        ? t('apm.services.archiveBatchPartial', '已归档 {ok} 个服务，{failed} 个失败', { ok: succeeded, failed })
+        : t('apm.services.unarchiveBatchPartial', '已解档 {ok} 个服务，{failed} 个失败', { ok: succeeded, failed }));
+    } else {
+      message.success(archived
+        ? uniqueIds.length > 1
+          ? t('apm.services.archivedBatch', '已归档 {count} 个服务', { count: succeeded })
+          : t('apm.services.archived', '服务已归档')
+        : uniqueIds.length > 1
+          ? t('apm.services.unarchivedBatch', '已解档 {count} 个服务', { count: succeeded })
+          : t('apm.services.unarchived', '服务已解档'));
+    }
+    setSelectedRowKeys([]);
     setRefreshKey((value) => value + 1);
   };
 
-  const confirmArchive = (serviceId: string, archived: boolean) => {
+  const confirmArchive = (serviceIds: string[], archived: boolean) => {
+    const uniqueIds = [...new Set(serviceIds)];
     Modal.confirm({
-      title: archived ? t('apm.services.archiveConfirm', '确认归档服务？') : t('apm.services.unarchiveConfirm', '确认解档服务？'),
+      title: archived
+        ? uniqueIds.length > 1
+          ? t('apm.services.archiveBatchConfirm', '确认归档 {count} 个服务？', { count: uniqueIds.length })
+          : t('apm.services.archiveConfirm', '确认归档服务？')
+        : uniqueIds.length > 1
+          ? t('apm.services.unarchiveBatchConfirm', '确认解档 {count} 个服务？', { count: uniqueIds.length })
+          : t('apm.services.unarchiveConfirm', '确认解档服务？'),
       content: archived
         ? t('apm.services.archiveHint', '归档不会删除 Trace 或指标数据。')
         : t('apm.services.unarchiveHint', '解档后服务将重新出现在默认目录。'),
       okText: archived ? t('apm.services.archive', '归档') : t('apm.services.unarchive', '解档'),
       okButtonProps: archived ? { danger: true } : undefined,
       cancelText: t('common.cancel', '取消'),
-      onOk: () => setArchived(serviceId, archived),
+      onOk: () => setArchived(uniqueIds, archived),
     });
   };
 
@@ -307,6 +347,26 @@ export default function ApmServicesPage() {
         && matchesStatus;
     });
   }, [alertCounts, environment, keyword, namespace, rows, statusFilter]);
+
+  const selectedServices = useMemo(() => {
+    const selectedIds = new Set(
+      filteredRows.filter((row) => selectedRowKeys.includes(row.key)).map((row) => row.serviceId),
+    );
+    return services.filter((service) => selectedIds.has(service.id));
+  }, [filteredRows, selectedRowKeys, services]);
+
+  const organizationIdsForModal = useMemo(() => {
+    if (!organizationTargets.length) return [];
+    const signature = [...organizationTargets[0].organization_ids].sort().join(',');
+    const same = organizationTargets.every((service) => [...service.organization_ids].sort().join(',') === signature);
+    return same ? organizationTargets[0].organization_ids : [];
+  }, [organizationTargets]);
+
+  const mixedOrganizationTargets = useMemo(() => {
+    if (organizationTargets.length <= 1) return false;
+    const signature = [...organizationTargets[0].organization_ids].sort().join(',');
+    return organizationTargets.some((service) => [...service.organization_ids].sort().join(',') !== signature);
+  }, [organizationTargets]);
 
   const applicationSummaries = useMemo<ApplicationSummary[]>(() => {
     const summaries = new Map<string, {
@@ -484,6 +544,33 @@ export default function ApmServicesPage() {
           </span>
         ) : null}
         {perspective === 'service' ? (
+          <Permission requiredPermissions={['Operate']} permissionPath="/apm/services">
+            <Dropdown
+              disabled={!selectedServices.length}
+              menu={{
+                items: [
+                  {
+                    key: 'organization',
+                    label: t('apm.services.adjustOrgAction', '调整组织'),
+                    onClick: () => setOrganizationTargets(selectedServices),
+                  },
+                  {
+                    key: 'archive',
+                    danger: true,
+                    label: t('apm.services.archive', '归档'),
+                    onClick: () => confirmArchive(selectedServices.map((service) => service.id), true),
+                  },
+                ],
+              }}
+            >
+              <Button aria-label={t('apm.services.batchActions', '批量操作')} disabled={!selectedServices.length}>
+                {t('apm.services.batchActions', '批量操作')}
+                <DownOutlined aria-hidden="true" />
+              </Button>
+            </Dropdown>
+          </Permission>
+        ) : null}
+        {perspective === 'service' ? (
           <Button
             icon={<InboxOutlined aria-hidden="true" />}
             onClick={() => setArchivedOpen(true)}
@@ -600,8 +687,13 @@ export default function ApmServicesPage() {
                   alertCounts={alertCounts}
                   groupNames={groupNames}
                   metricFailureKeys={metricFailureKeys}
-                  onAdjustOrganization={(serviceId) => setOrganizationService(services.find((service) => service.id === serviceId) ?? null)}
-                  onArchive={(serviceId) => confirmArchive(serviceId, true)}
+                  onAdjustOrganization={(serviceId) => setOrganizationTargets(services.filter((service) => service.id === serviceId))}
+                  onArchive={(serviceId) => confirmArchive([serviceId], true)}
+                  rowSelection={{
+                    selectedRowKeys,
+                    onChange: setSelectedRowKeys,
+                    preserveSelectedRowKeys: true,
+                  }}
                   onRetryMetrics={retryMetrics}
                   redMetrics={redMetrics}
                   rows={filteredRows}
@@ -663,7 +755,7 @@ export default function ApmServicesPage() {
                   key="restore"
                   type="link"
                   size="small"
-                  onClick={() => confirmArchive(service.id, false)}
+                  onClick={() => confirmArchive([service.id], false)}
                 >
                   {t('apm.services.unarchive', '解档')}
                 </Button>,
@@ -699,14 +791,18 @@ export default function ApmServicesPage() {
         />
       </Drawer>
       <OrganizationAssignmentModal
-        open={Boolean(organizationService)}
-        title={organizationService
-          ? t('apm.services.adjustOrgNamed', '调整服务组织：{identity}', { identity: `${organizationService.namespace}/${organizationService.name}` })
-          : t('apm.services.adjustOrg', '调整服务组织')}
-        organizationIds={organizationService?.organization_ids ?? []}
+        open={organizationTargets.length > 0}
+        title={organizationTargets.length > 1
+          ? t('apm.services.adjustOrgBatch', '调整服务组织（{count} 个服务）', { count: organizationTargets.length })
+          : organizationTargets[0]
+            ? t('apm.services.adjustOrgNamed', '调整服务组织：{identity}', { identity: `${organizationTargets[0].namespace}/${organizationTargets[0].name}` })
+            : t('apm.services.adjustOrg', '调整服务组织')}
+        organizationIds={organizationIdsForModal}
         submitting={organizationSubmitting}
-        description={t('apm.services.orgHint', '服务组织独立于应用与实例，仅影响此逻辑服务的可见和可操作范围。')}
-        onCancel={() => setOrganizationService(null)}
+        description={mixedOrganizationTargets
+          ? t('apm.services.orgBatchHint', '所选服务当前组织不一致，保存后将覆盖为同一组组织。')
+          : t('apm.services.orgHint', '服务组织独立于应用与实例，仅影响此逻辑服务的可见和可操作范围。')}
+        onCancel={() => setOrganizationTargets([])}
         onSubmit={submitOrganizations}
       />
     </ApmRouteShell>
