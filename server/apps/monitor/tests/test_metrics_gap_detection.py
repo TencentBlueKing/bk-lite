@@ -291,7 +291,7 @@ def test_detect_gap_intervals_keeps_overlapping_series_gaps_independent():
                     "missing_points": 5,
                 },
             ],
-        }
+        },
     ]
 
 

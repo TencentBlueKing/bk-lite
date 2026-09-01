@@ -365,6 +365,7 @@ class TestQueryMonitorDataByMetric:
 
     def test_budget_error_keeps_structured_failure(self, mocker):
         obj, _ = self._setup()
+        MonitorInstance.objects.create(id="('h1',)", name="h1", monitor_object=obj, is_deleted=False)
         mocker.patch("apps.monitor.nats.monitor.get_permission_rules", return_value={"team": [1]})
         mocker.patch(
             "apps.monitor.nats.monitor.permission_filter",
@@ -384,7 +385,7 @@ class TestQueryMonitorDataByMetric:
         )
 
         result = nm.query_monitor_data_by_metric(
-            {"monitor_obj_id": obj.id, "metric": "cpu", "start": 1, "end": 2},
+            {"monitor_obj_id": obj.id, "metric": "cpu", "start": 1, "end": 2, "instance_ids": ["('h1',)"]},
             user_info={"user": SimpleNamespace(username="u", domain="d"), "team": 1},
         )
 
@@ -425,7 +426,7 @@ class TestQueryMonitorDataByMetric:
         )
 
         result = nm.query_monitor_data_by_metric(
-            {"monitor_obj_id": obj.id, "metric": "cpu", "start": 1, "end": 2},
+            {"monitor_obj_id": obj.id, "metric": "cpu", "start": 1, "end": 2, "instance_ids": ["('h1',)"]},
             user_info={"user": SimpleNamespace(username="u", domain="d"), "team": 1},
         )
 

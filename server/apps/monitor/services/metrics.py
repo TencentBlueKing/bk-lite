@@ -423,11 +423,7 @@ class Metrics:
         gaps = []
 
         for item in data_list:
-            real_points = sorted(
-                float(timestamp)
-                for timestamp, value in item.get("values", [])
-                if value is not None
-            )
+            real_points = sorted(float(timestamp) for timestamp, value in item.get("values", []) if value is not None)
             if real_points and normalized_range_start is not None:
                 first_timestamp = real_points[0]
                 missing_duration = first_timestamp - normalized_range_start
@@ -489,10 +485,7 @@ class Metrics:
         gaps_by_series = {}
         for gap in gaps:
             series_key = tuple(
-                sorted(
-                    tuple(sorted((str(key), str(value)) for key, value in item.get("metric", {}).items()))
-                    for item in gap.get("series", [])
-                )
+                sorted(tuple(sorted((str(key), str(value)) for key, value in item.get("metric", {}).items())) for item in gap.get("series", []))
             )
             gaps_by_series.setdefault(series_key, []).append(gap)
 
@@ -725,9 +718,7 @@ class Metrics:
         supplementary = monitor_obj.supplementary_indicators
         if not supplementary:
             return []
-        metrics = Metric.objects.filter(monitor_object_id=monitor_object_id, name__in=supplementary).values(
-            "name", "unit", "data_type"
-        )
+        metrics = Metric.objects.filter(monitor_object_id=monitor_object_id, name__in=supplementary).values("name", "unit", "data_type")
         unit_map = {m["name"]: m["unit"] for m in metrics}
         dtype_map = {m["name"]: m["data_type"] for m in metrics}
         return [(name, unit_map.get(name), dtype_map.get(name)) for name in supplementary]
