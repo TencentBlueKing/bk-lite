@@ -66,7 +66,7 @@ def test_builtin_application3d_screen_yaml_contains_only_the_self_fetch_scene_wi
         "height": 1080,
         "background": {"key": "tech-grid", "type": "builtIn"},
     }
-    assert screen["view_sets"]["decorations"] == {"title": "3D应用", "showClock": False, "showTitle": False}
+    assert screen["view_sets"]["decorations"] == {"title": "全景应用墙", "showClock": True, "showTitle": True}
     assert screen["refs"] == {"datasource_keys": [], "namespace_keys": []}
 
     assert screen["view_sets"]["items"] == [
@@ -98,9 +98,13 @@ def test_builtin_room3d_screen_yaml_uses_dynamic_room_switch():
         "height": 1080,
         "background": {"key": "tech-grid", "type": "builtIn"},
     }
-    assert screen["view_sets"]["decorations"] == {"title": "3D机房大屏", "showClock": False, "showTitle": False}
+    assert screen["view_sets"]["decorations"] == {"title": "机柜全景", "showClock": True, "showTitle": True}
     assert len(screen["view_sets"]["items"]) == 1
     widget = screen["view_sets"]["items"][0]
+    assert widget["x"] == 0
+    assert widget["y"] == 80
+    assert widget["w"] == 1920
+    assert widget["h"] == 1000
     assert widget["chartType"] == "room3D"
     assert widget["valueConfig"]["appearance"] == {"frame": "bare"}
     assert widget["valueConfig"]["dataSource"] == "CMDB 3D机房布局::cmdb/get_room3d_layout"
@@ -999,7 +1003,7 @@ def test_init_builtin_canvases_creates_builtin_alert_screen():
     room3d_screen = Screen.objects.get(name="3D机房大屏", is_build_in=True)
     assert room3d_screen.build_in_key == "screen::3D机房大屏_内置"
     assert room3d_screen.directory.build_in_key == "__builtin__"
-    assert room3d_screen.view_sets["decorations"] == {"title": "3D机房大屏", "showClock": False, "showTitle": False}
+    assert room3d_screen.view_sets["decorations"] == {"title": "机柜全景", "showClock": True, "showTitle": True}
     room3d_widget = room3d_screen.view_sets["items"][0]
     room3d_datasource = DataSourceAPIModel.objects.get(name="CMDB 3D机房布局")
     assert room3d_widget["chartType"] == "room3D"
@@ -1011,7 +1015,7 @@ def test_init_builtin_canvases_creates_builtin_alert_screen():
     application3d_screen = Screen.objects.get(name="3D应用大屏", is_build_in=True)
     assert application3d_screen.build_in_key == "screen::3D应用大屏_内置"
     assert application3d_screen.directory.build_in_key == "__builtin__"
-    assert application3d_screen.view_sets["decorations"] == {"title": "3D应用", "showClock": False, "showTitle": False}
+    assert application3d_screen.view_sets["decorations"] == {"title": "全景应用墙", "showClock": True, "showTitle": True}
     assert application3d_screen.view_sets["items"] == [
         {
             "h": 1080,

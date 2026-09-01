@@ -40,18 +40,18 @@ export const CARD_BADGE = {
 
 export const CARD_TONE = {
   normal: {
-    edge: 'rgba(110, 210, 230, 0.28)',
+    edge: 'rgba(92, 154, 190, 0.3)',
     edgeWidth: 0.7,
-    glow: { color: 'rgba(70, 196, 220, 0.2)', width: 11 },
-    innerGlow: 'rgba(168, 230, 246, 0.12)',
-    wash: 'rgba(20, 90, 120, 0.05)',
+    glow: { color: 'rgba(64, 136, 180, 0.22)', width: 11 },
+    innerGlow: 'rgba(152, 196, 224, 0.14)',
+    wash: 'rgba(20, 52, 82, 0.08)',
     statusFill: 'rgba(6, 12, 20, 0.72)',
     statusStroke: 'rgba(150, 176, 194, 0.28)',
     statusText: 'rgba(226, 232, 238, 0.96)',
     icon: 'rgba(236, 240, 246, 0.96)',
     badgeFill: 'rgba(4, 8, 14, 0.78)',
     badgeBorder: 'rgba(0, 0, 0, 0)',
-    tint: 0x5ab4cc,
+    tint: 0x5a92b4,
   },
   critical: {
     edge: 'rgba(255, 96, 86, 0.42)',
@@ -337,7 +337,7 @@ export const paintApplication3DCardSide = (
   const lip = ctx.createLinearGradient(0, 0, 0, h);
   lip.addColorStop(0, 'rgba(8, 16, 28, 0.2)');
   lip.addColorStop(0.72, 'rgba(18, 40, 58, 0.08)');
-  lip.addColorStop(1, tone === 'unknown' ? 'rgba(186, 196, 210, 0.28)' : 'rgba(170, 224, 240, 0.42)');
+  lip.addColorStop(1, tone === 'unknown' ? 'rgba(186, 196, 210, 0.28)' : 'rgba(142, 184, 210, 0.3)');
   ctx.fillStyle = lip;
   ctx.fillRect(0, 0, w, h);
 };
