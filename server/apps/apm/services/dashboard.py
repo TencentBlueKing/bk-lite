@@ -3,7 +3,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 from django.db.models import Prefetch, QuerySet
 from django.utils import timezone
@@ -136,12 +136,13 @@ class ApmDashboardService:
             self.reliability = None
         self.now_fn = now_fn or timezone.now
 
-    def build(self, *, organization_id: int, window: str) -> dict[str, Any]:
+    def build(self, *, organization_id: int | None = None, window: str, organization_ids: Sequence[int] | None = None) -> dict[str, Any]:
         if window not in WINDOW_DELTAS:
             raise ValueError(f"不支持的时间窗: {window}")
+        ids = tuple(organization_ids) if organization_ids is not None else (organization_id,)
         ended_at = self.now_fn()
         started_at = ended_at - WINDOW_DELTAS[window]
-        services = list(self._visible_services(organization_id))
+        services = list(self._visible_services(ids))
         empty = len(services) == 0
         if empty:
             return {
@@ -162,13 +163,13 @@ class ApmDashboardService:
         return {
             "empty": False,
             "window": window,
-            "kpis": self._safe_section(lambda: self._build_kpis(organization_id, services, started_at, ended_at, window, targets, red_by_key)),
+            "kpis": self._safe_section(lambda: self._build_kpis(ids, services, started_at, ended_at, window, targets, red_by_key)),
             "health": self._safe_section(lambda: self._build_health(targets, red_by_key)),
-            "slos": self._safe_section(lambda: self._build_slos(organization_id)),
-            "alerts": self._safe_section(lambda: self._build_alerts(organization_id)),
+            "slos": self._safe_section(lambda: self._build_slos(ids)),
+            "alerts": self._safe_section(lambda: self._build_alerts(ids)),
             "top_error_rate": self._safe_section(lambda: self._build_top_error_rate(targets, red_by_key)),
             "top_p95": self._safe_section(lambda: self._build_top_p95(targets, red_by_key)),
-            "releases": self._safe_section(lambda: self._build_releases(organization_id)),
+            "releases": self._safe_section(lambda: self._build_releases(ids)),
         }
 
     @staticmethod
@@ -182,10 +183,10 @@ class ApmDashboardService:
             logger.exception("APM dashboard section failed: %s", exc)
             return _section_failed(str(exc) or exc.__class__.__name__)
 
-    def _visible_services(self, organization_id: int) -> QuerySet[ApmService]:
+    def _visible_services(self, organization_ids: Sequence[int]) -> QuerySet[ApmService]:
         return (
             ApmService.objects.filter(
-                organization_links__organization=organization_id,
+                organization_links__organization__in=organization_ids,
                 archived_at__isnull=True,
             )
             .select_related("application")
@@ -263,7 +264,7 @@ class ApmDashboardService:
 
     def _build_kpis(
         self,
-        organization_id: int,
+        organization_ids: Sequence[int],
         services: list[ApmService],
         started_at: datetime,
         ended_at: datetime,
@@ -275,7 +276,7 @@ class ApmDashboardService:
         in_window = [service for service in services if service.last_seen_at >= started_at]
         app_count = len({service.namespace for service in in_window})
         service_count = len({service.name for service in in_window})
-        alert_count = self._active_alert_queryset(organization_id).count()
+        alert_count = self._active_alert_queryset(organization_ids).count()
 
         request_rate = 0.0
         error_rate_sum = 0.0
@@ -331,17 +332,17 @@ class ApmDashboardService:
             "sparklines": {
                 "application_count": _flat_sparkline(app_count, points),
                 "service_count": _flat_sparkline(service_count, points),
-                "active_alert_count": self._alert_sparkline(organization_id, ended_at),
+                "active_alert_count": self._alert_sparkline(organization_ids, ended_at),
                 "request_rate": self._sum_series(request_series, points) if has_request else _flat_sparkline(None, points),
                 "error_request_rate": self._sum_series(error_series, points) if has_error else _flat_sparkline(None, points),
                 "p95_ms": self._avg_series(p95_series, points) if has_p95 else _flat_sparkline(None, points),
             },
         }
 
-    def _alert_sparkline(self, organization_id: int, ended_at: datetime) -> list[float | None]:
+    def _alert_sparkline(self, organization_ids: Sequence[int], ended_at: datetime) -> list[float | None]:
         started_at = ended_at - timedelta(hours=ALERT_SPARKLINE_HOURS)
         queryset = ApmAlert.objects.filter(started_at__gte=started_at, started_at__lte=ended_at)
-        queryset = queryset.filter(build_json_membership_query(queryset, "organizations", [organization_id]))
+        queryset = queryset.filter(build_json_membership_query(queryset, "organizations", list(organization_ids)))
         buckets = [0.0] * ALERT_SPARKLINE_HOURS
         for started in queryset.values_list("started_at", flat=True):
             hour_index = int((started - started_at).total_seconds() // 3600)
@@ -414,13 +415,13 @@ class ApmDashboardService:
             ],
         }
 
-    def _build_slos(self, organization_id: int) -> dict[str, Any]:
+    def _build_slos(self, organization_ids: Sequence[int]) -> dict[str, Any]:
         if self.reliability is None:
             raise RuntimeError("MetricStore 未配置")
         slos = list(
             ApmSlo.objects.filter(
                 is_enabled=True,
-                service__organization_links__organization=organization_id,
+                service__organization_links__organization__in=organization_ids,
                 service__archived_at__isnull=True,
             )
             .select_related("service")
@@ -451,11 +452,11 @@ class ApmDashboardService:
             return _section_empty({"items": []})
         return {"items": rows}
 
-    def _build_releases(self, organization_id: int) -> dict[str, Any]:
+    def _build_releases(self, organization_ids: Sequence[int]) -> dict[str, Any]:
         ended_at = self.now_fn()
         started_at = ended_at - RELEASE_LOOKBACK
         visible_ids = ApmService.objects.filter(
-            organization_links__organization=organization_id,
+            organization_links__organization__in=organization_ids,
             archived_at__isnull=True,
         ).values_list("id", flat=True)
         events = list(
@@ -486,8 +487,8 @@ class ApmDashboardService:
             ]
         }
 
-    def _build_alerts(self, organization_id: int) -> dict[str, Any]:
-        alerts = list(self._active_alert_queryset(organization_id).order_by("-last_event_at", "-id")[:MAX_ALERT_ROWS])
+    def _build_alerts(self, organization_ids: Sequence[int]) -> dict[str, Any]:
+        alerts = list(self._active_alert_queryset(organization_ids).order_by("-last_event_at", "-id")[:MAX_ALERT_ROWS])
         if not alerts:
             return _section_empty({"items": []})
         return {
@@ -548,6 +549,6 @@ class ApmDashboardService:
         return {"items": rows}
 
     @staticmethod
-    def _active_alert_queryset(organization_id: int) -> QuerySet[ApmAlert]:
+    def _active_alert_queryset(organization_ids: Sequence[int]) -> QuerySet[ApmAlert]:
         queryset = ApmAlert.objects.filter(status=ApmAlert.Status.ACTIVE)
-        return queryset.filter(build_json_membership_query(queryset, "organizations", [organization_id]))
+        return queryset.filter(build_json_membership_query(queryset, "organizations", list(organization_ids)))

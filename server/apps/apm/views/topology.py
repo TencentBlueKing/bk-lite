@@ -11,7 +11,7 @@ from apps.apm.adapters import TelemetryStoreUnavailable, VictoriaTracesTelemetry
 from apps.apm.models import ApmService, ApmServiceInstance
 from apps.apm.renderers import ApmRenderer
 from apps.apm.services import DjangoApmTopologyService
-from apps.apm.services.access import current_organization_id, filter_current_organization
+from apps.apm.services.access import visible_organization_ids, filter_current_organization
 from apps.apm.services.contracts import TopologyTarget
 from apps.core.decorators.api_permission import HasPermission
 
@@ -52,8 +52,7 @@ class ApmTopologyViewSet(viewsets.ViewSet):
 
     @HasPermission("services-View")
     def list(self, request):
-        organization_id = current_organization_id(request)
-        if organization_id is None:
+        if not visible_organization_ids(request):
             return Response({"nodes": [], "edges": [], "sampled_traces": 0, "truncated": False, "data_state": "no_data"})
         serializer = TopologyQuerySerializer(data=request.query_params)
         if not serializer.is_valid():
