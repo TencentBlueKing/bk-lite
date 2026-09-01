@@ -13,6 +13,7 @@ from apps.monitor.models import MonitorInstance
 from apps.monitor.models.monitor_metrics import Metric
 from apps.monitor.services.authorized_metric_query import AuthorizedMetricQueryError, AuthorizedMetricQueryService
 from apps.monitor.services.metrics import Metrics as MetricsService
+from apps.monitor.services.metrics import MetricsQueryBudgetExceeded
 from apps.monitor.utils.unit_converter import UnitConverter
 
 
@@ -165,15 +166,22 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
         except ValueError as e:
             raise BaseAppException(f"invalid step: {e}")
 
-        data = MetricsService.get_metrics_range(
-            query,
-            start,
-            end,
-            step,
-            detect_gaps=detect_gaps,
-            collection_interval_seconds=collection_interval,
-            card_budget=query_budget == "card",
-        )
+        try:
+            data = MetricsService.get_metrics_range(
+                query,
+                start,
+                end,
+                step,
+                detect_gaps=detect_gaps,
+                collection_interval_seconds=collection_interval,
+                card_budget=query_budget == "card",
+            )
+        except MetricsQueryBudgetExceeded as exc:
+            return WebUtils.response_error(
+                response_data=exc.data,
+                error_message=exc.message,
+                status_code=exc.STATUS_CODE,
+            )
 
         if source_unit:
             if target_unit:

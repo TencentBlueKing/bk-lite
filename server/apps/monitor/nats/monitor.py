@@ -52,7 +52,7 @@ from apps.monitor.services.host_dashboard import (
 )
 from apps.monitor.services.host_resource_top import HostResourceTopService, validate_metric_type
 from apps.monitor.services.interface_metrics_query import InterfaceMetricsQueryError, normalize_instance_ids, query_interface_metric_items
-from apps.monitor.services.metrics import Metrics
+from apps.monitor.services.metrics import Metrics, MetricsQueryBudgetExceeded
 from apps.monitor.services.nats_query_contract import build_vm_query_failure_result as _build_vm_query_failure_result
 from apps.monitor.services.nats_query_contract import normalize_bool
 from apps.monitor.services.nats_query_contract import normalize_dimensions as _normalize_dimensions
@@ -72,6 +72,16 @@ from apps.monitor.utils.vm_query_batch import run_unique_vm_queries
 from apps.rpc.system_mgmt import SystemMgmt
 
 _normalize_bool = normalize_bool
+
+
+def _build_query_budget_failure(exc: MetricsQueryBudgetExceeded) -> dict:
+    return {
+        "result": False,
+        "data": [],
+        "message": exc.message,
+        "code": exc.data["code"],
+        "budget": exc.data,
+    }
 
 
 def _serialize_metric_plugin(metric: Metric) -> Optional[dict]:
@@ -854,6 +864,9 @@ def query_monitor_data_by_metric(query_data: dict, *args, **kwargs):
     try:
         merged_result = None
         merged_series = []
+        start_sec = int(start_time) / 1000
+        end_sec = int(end_time) / 1000
+        step_seconds = Metrics.parse_step_to_seconds(step)
         for metric, dimensions, instance_id_keys in metric_queries:
             query = _build_metric_label_query(
                 metric.query,
@@ -861,7 +874,13 @@ def query_monitor_data_by_metric(query_data: dict, *args, **kwargs):
                 dimensions=dimensions,
                 instance_id_keys=instance_id_keys,
             )
-            result = Metrics.get_metrics_range(query, start_time, end_time, step)
+            result = Metrics.get_metrics_range(
+                query,
+                start_time,
+                end_time,
+                step,
+                fill_missing=False,
+            )
             if merged_result is None:
                 merged_result = dict(result)
                 merged_data = dict(result.get("data") or {})
@@ -882,9 +901,14 @@ def query_monitor_data_by_metric(query_data: dict, *args, **kwargs):
                 enriched_metric_data["metric_id"] = metric.id
                 enriched_metric_data["monitor_plugin"] = plugin_data
                 merged_series.append(enriched_metric_data)
+            Metrics.enforce_fill_budget(start_sec, end_sec, step_seconds, merged_series)
+
+        Metrics.fill_missing_points(start_sec, end_sec, step_seconds, merged_series)
 
         return {"result": True, "data": merged_result, "message": ""}
 
+    except MetricsQueryBudgetExceeded as exc:
+        return _build_query_budget_failure(exc)
     except Exception as e:
         return {"result": False, "data": [], "message": f"查询指标数据失败: {str(e)}"}
 
@@ -1351,7 +1375,6 @@ def query_metric_range_scoped(
         start_time, end_time = parse_rfc3339_range_utc(time_range)
     except ValueError as exc:
         return {"result": False, "data": [], "message": str(exc)}
-
     user_info = kwargs.get("user_info") or {}
     user = _normalize_permission_user(
         user_info.get("user"),
@@ -1372,9 +1395,10 @@ def query_metric_range_scoped(
                 "step": step,
             }
         )
+    except MetricsQueryBudgetExceeded as exc:
+        return _build_query_budget_failure(exc)
     except AuthorizedMetricQueryError as exc:
         return {"result": False, "data": [], "message": str(exc)}
-
     if resp.get("status") == "success":
         _result = resp["data"]["result"]
         if _result:
