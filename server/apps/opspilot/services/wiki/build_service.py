@@ -15,7 +15,7 @@ from django.db import transaction
 from apps.core.logger import opspilot_logger as logger
 from apps.core.logger import safe_log_value
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
-from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
+from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory, resolve_gateway_temperature
 from apps.opspilot.models import BuildRecord, KnowledgePage, LLMModel, PageEvidence, PageVersion, WikiKnowledgeBase
 from apps.opspilot.services.llm_context_budget import derive_llm_working_budget, window_tokens_for_model_id, working_budget_for_model
 from apps.opspilot.services.wiki.cascade_service import cascade
@@ -48,8 +48,6 @@ def _material_window_limits(llm_model_id):
 _DERIVED_SYSTEM_PAGE_TYPES = frozenset({"index", "overview", "log"})
 _PARSE_LOG_PREVIEW_CHARS = 400
 _WIKI_LLM_TEMPERATURE = 0.0
-# 部分推理/新一代模型网关只接受 temperature=1，按模型名写死，其余仍用 0。
-_FIXED_UNIT_TEMPERATURE_PREFIXES = ("gpt-5", "o1", "o3", "o4-mini", "kimi-for-coding")
 _GENERATE_OUTPUT_MAX_ATTEMPTS = 2
 _RETRYABLE_BUILD_OUTPUT_MARKERS = (
     "build_output_invalid_json",
@@ -187,11 +185,7 @@ def _log_wiki_llm_invoke(stage, request, result, output_reserve):
 
 def _wiki_llm_temperature(model_name):
     """Wiki 默认 temperature=0；部分模型网关只接受 1。"""
-    name = _normalize_wiki_llm_model_id(model_name)
-    for prefix in _FIXED_UNIT_TEMPERATURE_PREFIXES:
-        if name == prefix or name.startswith(f"{prefix}-") or name.startswith(f"{prefix}."):
-            return 1.0
-    return _WIKI_LLM_TEMPERATURE
+    return resolve_gateway_temperature(model_name, _WIKI_LLM_TEMPERATURE)
 
 
 def _invoke_llm(

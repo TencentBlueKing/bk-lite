@@ -2332,6 +2332,7 @@ class ToolsNodes(
                 is_context_size_error,
                 is_non_replanable_tool_failure,
                 is_tool_result_failure,
+                merge_replanned_pending_steps,
             )
             from apps.opspilot.metis.llm.tools.kubernetes.data_collection import k8s_target_lookup_exhausted_from_messages
 
@@ -2389,7 +2390,7 @@ class ToolsNodes(
                     llm=llm,
                     registered_tools=registered_tools,
                     final_system_prompt=final_system_prompt,
-                    runtime_middleware=self._build_legacy_deep_agent_middleware(token_usage_accumulator),
+                    runtime_middleware=self._build_legacy_deep_agent_middleware(token_usage_accumulator, graph_request),
                     backend=backend,
                     skill_sources=skill_sources,
                     interrupt_on=interrupt_on,
@@ -2769,6 +2770,56 @@ class ToolsNodes(
                     step_finished = False
                     replanned = False
 
+                    async def _replan_remaining(failure_text: str, extra_messages: List[BaseMessage] | None = None) -> None:
+                        nonlocal pending_steps, total_steps, replan_count, replanned, step_finished, agent_state
+                        leftover_steps = list(pending_steps)
+                        replan_count += 1
+                        await _emit_planned_execution_status("replanning", replan_count=replan_count)
+                        replacement = await planner.plan(
+                            planning_question,
+                            tools,
+                            completed_steps=completed_steps,
+                            failure=failure_text,
+                            skill_packages=skill_packages,
+                            config=config,
+                            agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
+                        )
+                        _ensure_skill_runtime_for_plan(replacement)
+                        pending_steps = merge_replanned_pending_steps(replacement.steps, leftover_steps)
+                        completed_steps.append(
+                            CompletedExecutionStep(
+                                objective=step.objective,
+                                result=_step_summary(extra_messages or []) or failure_text[:400],
+                            )
+                        )
+                        await _emit_step_boundary(
+                            "planned_execution_step",
+                            {
+                                "phase": "end",
+                                "step_index": step_index,
+                                "total_steps": total_steps,
+                                "objective": step.objective,
+                                "tools": list(step.tools),
+                                "status": "failed",
+                                "error": failure_text[:800],
+                            },
+                        )
+                        total_steps = len(completed_steps) + len(pending_steps)
+                        await _emit_planned_execution_status(
+                            "planned",
+                            step_count=total_steps,
+                            replan_count=replan_count,
+                        )
+                        logger.warning(
+                            "DeepAgent 当前步骤已重规划并保留未覆盖后续步: count=%s, failure=%s, steps=%s",
+                            replan_count,
+                            failure_text,
+                            [item.objective for item in pending_steps],
+                        )
+                        agent_state = _compact_agent_state_with_summaries(overflow=False)
+                        replanned = True
+                        step_finished = True
+
                     def _non_replanable_status(failure_text: str) -> str:
                         kind = classify_tool_failure_kind(failure_text)
                         if kind == TOOL_FAILURE_AUTHZ:
@@ -2812,6 +2863,7 @@ class ToolsNodes(
                             step_payload["messages"] = await self._prepare_messages_for_llm(
                                 list(step_payload.get("messages") or []),
                                 graph_request,
+                                tools=active_tools,
                             )
                             step_result = await deep_agent.ainvoke(
                                 step_payload,
@@ -2850,33 +2902,7 @@ class ToolsNodes(
                                 break
                             if replan_count >= 2:
                                 raise
-                            replan_count += 1
-                            await _emit_planned_execution_status("replanning", replan_count=replan_count)
-                            replacement = await planner.plan(
-                                planning_question,
-                                tools,
-                                completed_steps=completed_steps,
-                                failure=failure,
-                                skill_packages=skill_packages,
-                                config=config,
-                                agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
-                            )
-                            _ensure_skill_runtime_for_plan(replacement)
-                            pending_steps = list(replacement.steps)
-                            total_steps = len(completed_steps) + len(pending_steps)
-                            await _emit_planned_execution_status(
-                                "planned",
-                                step_count=len(pending_steps),
-                                replan_count=replan_count,
-                            )
-                            logger.warning(
-                                "DeepAgent 当前及后续步骤已重规划: count=%s, failure=%s, steps=%s",
-                                replan_count,
-                                failure,
-                                [item.objective for item in pending_steps],
-                            )
-                            replanned = True
-                            step_finished = True
+                            await _replan_remaining(failure)
                             break
 
                         result_messages = list(step_result.get("messages") or [])
@@ -2986,34 +3012,7 @@ class ToolsNodes(
                                 break
                             if replan_count >= 2:
                                 raise ToolPlanningError(failure)
-                            replan_count += 1
-                            await _emit_planned_execution_status("replanning", replan_count=replan_count)
-                            replacement = await planner.plan(
-                                planning_question,
-                                tools,
-                                completed_steps=completed_steps,
-                                failure=failure,
-                                skill_packages=skill_packages,
-                                config=config,
-                                agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
-                            )
-                            _ensure_skill_runtime_for_plan(replacement)
-                            pending_steps = list(replacement.steps)
-                            total_steps = len(completed_steps) + len(pending_steps)
-                            await _emit_planned_execution_status(
-                                "planned",
-                                step_count=len(pending_steps),
-                                replan_count=replan_count,
-                            )
-                            logger.warning(
-                                "DeepAgent 当前及后续步骤已重规划: count=%s, failure=%s, steps=%s",
-                                replan_count,
-                                failure,
-                                [item.objective for item in pending_steps],
-                            )
-                            agent_state = _compact_agent_state_with_summaries(overflow=False)
-                            replanned = True
-                            step_finished = True
+                            await _replan_remaining(failure, extra_messages=step_messages)
                             break
 
                         _collect_output_messages(step_messages)

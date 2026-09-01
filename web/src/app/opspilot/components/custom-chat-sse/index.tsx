@@ -34,6 +34,8 @@ import {useSSEStream} from './hooks/useSSEStream';
 import {useSendMessage} from './hooks/useSendMessage';
 import {initToolCallTooltips} from './toolCallRenderer';
 import { stripPlannedExecutionDumps } from './plannedExecutionPayload';
+import ContextUsageRing from './ContextUsageRing';
+import type { LlmContextUsage } from './llmContextUsage';
 
 const normalizeThinkingText = (value?: string) => {
   if (!value) return '';
@@ -131,7 +133,9 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   useAGUIProtocol = false,
   showHeader = true,
   requirePermission = true,
-  removePendingBotMessageOnCancel = false
+  removePendingBotMessageOnCancel = false,
+  conversationHistoryEnabled = true,
+  initialContextUsage = null,
 }) => {
   const { t } = useTranslation();
 
@@ -152,6 +156,9 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   const [imageList, setImageList] = useState<UploadFile[]>([]);
   const [messages, setMessages] = useState<CustomChatMessage[]>(
     initialMessages.length ? initialMessages : []
+  );
+  const [contextUsage, setContextUsage] = useState<LlmContextUsage | null>(
+    conversationHistoryEnabled ? initialContextUsage : null
   );
   const currentBotMessageRef = useRef<CustomChatMessage | null>(null);
   const chatContentRef = useRef<HTMLDivElement>(null);
@@ -258,6 +265,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     setLoading,
     t,
     onCancelCleanup: removePendingBotMessageOnCancel ? removeCurrentPendingBotMessage : undefined,
+    onContextUsage: setContextUsage,
   });
 
   const { sendMessage } = useSendMessage({
@@ -455,7 +463,16 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     stopSSEConnection();
     updateMessages([]);
     currentBotMessageRef.current = null;
+    setContextUsage(null);
   };
+
+  useEffect(() => {
+    if (!conversationHistoryEnabled) {
+      setContextUsage(null);
+      return;
+    }
+    setContextUsage(initialContextUsage ?? null);
+  }, [conversationHistoryEnabled, initialContextUsage]);
 
   const handleSend = useCallback(
     async (msg: string, images?: UploadFile[]) => {
@@ -1110,7 +1127,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
 
         {mode === 'chat' && (
           <div className="flex-shrink-0">
-            <div className="flex justify-end pb-2">
+            <div className="flex items-center justify-end gap-1 pb-2">
               <Popconfirm
                 title={t('chat.clearConfirm')}
                 okButtonProps={{ danger: true }}
@@ -1119,8 +1136,9 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                 cancelText={t('common.cancel')}
                 getPopupContainer={(trigger) => trigger.parentElement || document.body}
               >
-                <Button type="text" className="mr-2" icon={<Icon type="shanchu" className="text-2xl" />} />
+                <Button type="text" icon={<Icon type="shanchu" className="text-2xl" />} />
               </Popconfirm>
+              {conversationHistoryEnabled ? <ContextUsageRing usage={contextUsage} /> : null}
             </div>
             <Flex vertical gap="middle">
               {renderSend({

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Form, Input, Select, Switch, Button, InputNumber, Slider, Spin, message, Modal, Checkbox } from 'antd';
 import { useTranslation } from '@/utils/i18n';
-import styles from './index.module.scss';
+import styles from './settings.module.scss';
 import { useSearchParams } from 'next/navigation';
 import CustomChatSSE from '@/app/opspilot/components/custom-chat-sse';
 import CompactEmptyState from '@/components/compact-empty-state';
@@ -875,6 +875,7 @@ const SkillSettingsPage: React.FC = () => {
               useAGUIProtocol={true}
               initialMessages={initialMessages}
               removePendingBotMessageOnCancel={true}
+              conversationHistoryEnabled={chatHistoryEnabled}
             />
           </div>
         </div>

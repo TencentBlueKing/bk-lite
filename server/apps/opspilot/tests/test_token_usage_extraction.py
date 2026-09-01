@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from openai import omit
 
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
@@ -139,3 +140,57 @@ def test_openai_client_keeps_streaming_for_custom_base():
 
     assert "stream_usage" not in created
     assert created.get("disable_streaming") is False
+
+
+def test_openai_client_uses_curl_like_user_agent_and_drops_sdk_fingerprint():
+    created = {}
+
+    class _FakeChatOpenAI:
+        def __init__(self, **kwargs):
+            created.update(kwargs)
+            self.extra_body = None
+            ua = kwargs["default_headers"]["User-Agent"]
+            self.root_client = SimpleNamespace(_custom_headers={"User-Agent": ua})
+            self.root_async_client = SimpleNamespace(_custom_headers={"User-Agent": ua})
+
+    request = BasicLLMRequest(
+        model="auto",
+        openai_api_base="https://route.example/v1",
+        openai_api_key="test-key",
+        temperature=0.2,
+    )
+    with patch(
+        "apps.opspilot.metis.llm.common.llm_client_factory.ChatOpenAI",
+        _FakeChatOpenAI,
+    ), patch(
+        "apps.opspilot.metis.llm.common.llm_client_factory.SSRFValidator.validate_llm_endpoint",
+    ):
+        llm = LLMClientFactory._create_openai_client(request, disable_stream=False)
+
+    assert created["default_headers"]["User-Agent"].startswith("curl/")
+    assert llm.root_client._custom_headers["X-Stainless-Lang"] is omit
+    assert llm.root_async_client._custom_headers["User-Agent"].startswith("curl/")
+
+
+def test_isolated_openai_client_uses_curl_like_headers():
+    captured = {}
+
+    class _FakeOpenAI:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    request = BasicLLMRequest(
+        model="auto",
+        openai_api_base="https://route.example/v1",
+        openai_api_key="test-key",
+    )
+    with patch(
+        "apps.opspilot.metis.llm.common.llm_client_factory.OpenAI",
+        _FakeOpenAI,
+    ), patch(
+        "apps.opspilot.metis.llm.common.llm_client_factory.SSRFValidator.validate_llm_endpoint",
+    ):
+        LLMClientFactory._create_isolated_openai_client(request)
+
+    assert captured["default_headers"]["User-Agent"].startswith("curl/")
+    assert captured["default_headers"]["X-Stainless-Lang"] is omit

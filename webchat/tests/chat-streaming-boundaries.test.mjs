@@ -25,6 +25,9 @@ const virtualModules = new Map([
     export class SSEStreamParser { push() { return []; } }
     export const normalizeWebChatConfig = (config) => config;
     export const isSilentCustomEvent = () => false;
+    export const parseLlmContextUsage = () => null;
+    export const contextUsagePercent = () => 0;
+    export const formatContextTokens = (tokens) => String(tokens);
     let nextId = 0;
     export const generateId = () => 'message-' + ++nextId;`,
   ],
@@ -56,6 +59,10 @@ const virtualModules = new Map([
   [
     './components/ConfirmDialog',
     `import React from 'react'; export const ConfirmDialog = ({ isOpen, onConfirm }) => isOpen ? React.createElement('button', { 'data-test': 'confirm-clear', onClick: onConfirm }, 'confirm') : null;`,
+  ],
+  [
+    './components/ContextUsageRing',
+    `import React from 'react'; export default function ContextUsageRing() { return null; }`,
   ],
   [
     './components/PillComposer',

@@ -235,7 +235,7 @@ class TestPlatformListAndEmbeddedGate:
         assert "p2" not in body
 
     def test_web_chat_list_filters_by_usage_team(self):
-        skill = _skill(usage_team=[1])
+        skill = _skill(usage_team=[1], enable_conversation_history=True)
         SkillChannel.objects.create(
             skill=skill,
             channel_type=SkillChannelChoices.WEB_CHAT,
@@ -266,10 +266,13 @@ class TestPlatformListAndEmbeddedGate:
         request.COOKIES["current_team"] = "1"
         resp = opspilot_views.list_web_chat_skill_channels(request)
         assert resp.status_code == 200
-        body = resp.content.decode()
-        assert "w1" in body
-        assert "w2" not in body
-        assert "platform-should-not-list" not in body
+        body = json.loads(resp.content.decode())
+        names = [row["name"] for row in body["data"]]
+        assert "w1" in names
+        assert "w2" not in names
+        assert "platform-should-not-list" not in names
+        w1 = next(row for row in body["data"] if row["name"] == "w1")
+        assert w1["enable_conversation_history"] is True
 
     def test_embedded_requires_api_secret(self):
         skill = _skill(usage_team=[1])
@@ -396,7 +399,8 @@ class TestSkillConversationHistory:
         owner_resp = opspilot_views.list_skill_channel_session_messages(owner_msg)
         owner_body = json.loads(owner_resp.content)
         assert owner_resp.status_code == 200
-        assert [row["conversation_content"] for row in owner_body["data"]] == ["你好智能体", "收到"]
+        assert [row["conversation_content"] for row in owner_body["data"]["messages"]] == ["你好智能体", "收到"]
+        assert owner_body["data"]["llm_context_usage"] is None
 
         other_msg = factory.get("/skill_channel/conversations/messages/", {"session_id": "own-1"})
         other_msg.user = other
@@ -414,6 +418,31 @@ class TestSkillConversationHistory:
         assert del_resp.status_code == 200
         assert not SkillConversation.objects.filter(session_id="own-1").exists()
         assert not SkillConversationMessage.objects.filter(conversation_id=conv.id).exists()
+
+    def test_messages_include_usage_snapshot_when_history_enabled(self):
+        secret = "sk-session-usage-PROMPT-SENTINEL"
+        skill = _skill(enable_conversation_history=True, skill_prompt="你是排障助手。")
+        web = self._web_channel(skill)
+        owner = _superuser("hist_usage")
+        uid = f"{owner.username}@{owner.domain}"
+        conv = SkillConversation.objects.create(session_id="usage-1", skill=skill, channel=web, external_user_id=uid)
+        SkillConversationMessage.objects.create(conversation=conv, role="user", content=f"磁盘空间 {secret}")
+        SkillConversationMessage.objects.create(conversation=conv, role="assistant", content="需要看使用率趋势")
+        factory = APIRequestFactory()
+        request = factory.get("/skill_channel/conversations/messages/", {"session_id": "usage-1"})
+        request.user = owner
+        resp = opspilot_views.list_skill_channel_session_messages(request)
+        body = json.loads(resp.content)
+        assert resp.status_code == 200
+        usage = body["data"]["llm_context_usage"]
+        assert usage is not None
+        assert usage["packet_tokens"] > 0
+        assert usage["input_working_tokens"] > 0
+        assert usage["window_tokens"] > 0
+        rendered = json.dumps(usage, ensure_ascii=False)
+        assert secret not in rendered
+        assert "磁盘空间" not in rendered
+        assert [row["conversation_content"] for row in body["data"]["messages"]][0].endswith(secret)
 
     def test_first_user_message_sets_title_and_reuse_across_channels(self):
         from apps.opspilot.services.skill_channel_chat_service import append_message, get_or_create_conversation
@@ -470,6 +499,8 @@ class TestPublishedWebSkillApis:
         ids = [row["id"] for row in data]
         assert ids.count(skill.id) == 1
         assert other.id not in ids
+        published = next(row for row in data if row["id"] == skill.id)
+        assert published["enable_conversation_history"] is False
 
     def test_agui_chat_loads_skill_and_truncates_history(self):
         skill = _skill(name="agui-skill", usage_team=[1], conversation_window_size=2)

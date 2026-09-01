@@ -61,6 +61,23 @@ class TestBuildInterruptOn:
         result = n._build_interrupt_on(req, [_tool("danger_tool"), _tool("safe_tool")])
         assert result == {"danger_tool": True}
 
+    def test_metadata_approval_required_unions_named_tools(self):
+        n = ToolsNodes()
+        exec_tool = MagicMock()
+        exec_tool.name = "exec_in_pod"
+        exec_tool.metadata = {"approval": {"required": True}}
+        req = _request(approval_config=SimpleNamespace(enabled=True, tools=["danger_tool"]))
+        result = n._build_interrupt_on(req, [_tool("danger_tool"), exec_tool, _tool("safe_tool")])
+        assert result == {"danger_tool": True, "exec_in_pod": True}
+
+    def test_metadata_approval_required_ignored_when_approval_disabled(self):
+        n = ToolsNodes()
+        exec_tool = MagicMock()
+        exec_tool.name = "exec_in_pod"
+        exec_tool.metadata = {"approval": {"required": True}}
+        req = _request(approval_config=SimpleNamespace(enabled=False, tools=[]))
+        assert n._build_interrupt_on(req, [exec_tool]) is None
+
     def test_empty_tools_means_all_business_tools_excluding_builtins(self):
         n = ToolsNodes()
         req = _request(approval_config=SimpleNamespace(enabled=True, tools=[]))
@@ -620,6 +637,7 @@ class TestBuildDeepagentNodes:
         assert "步骤摘要" in captured["ainvoke_joined"][2] or "工具执行计划目标" in captured["ainvoke_joined"][2]
 
     def test_runtime_middleware_includes_tool_result_compaction(self):
+        from apps.opspilot.metis.llm.middleware.context_window import ContextWindowMiddleware
         from apps.opspilot.metis.llm.middleware.tool_runtime import ToolResultCompactionMiddleware
 
         node = ToolsNodes()
@@ -638,6 +656,32 @@ class TestBuildDeepagentNodes:
             )
         middlewares = captured["create_kwargs"]["middleware"]
         assert any(isinstance(item, ToolResultCompactionMiddleware) for item in middlewares)
+        assert any(isinstance(item, ContextWindowMiddleware) for item in middlewares)
+
+    def test_planned_step_prepare_passes_active_tools(self):
+        seen_tool_names = []
+
+        async def _spy(self, messages, graph_request, *, tools=None):
+            seen_tool_names.append([getattr(tool, "name", "") for tool in (tools or [])])
+            return list(messages or [])
+
+        node = ToolsNodes()
+        node.all_tools = [_tool("list_kubernetes_events")]
+        req = _request(user_message="查事件")
+        captured = {}
+        with patch.object(ToolsNodes, "_prepare_messages_for_llm", _spy), patch.object(
+            ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None
+        ):
+            self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "查事件",
+                    "steps": [{"objective": "读事件", "tools": ["list_kubernetes_events"]}],
+                },
+            )
+        assert any("list_kubernetes_events" in names for names in seen_tool_names)
 
     def test_passes_tools_and_returns_only_new_messages(self):
         node = ToolsNodes()
@@ -805,6 +849,56 @@ class TestBuildDeepagentNodes:
         replan_prompt = "\n".join(str(message.content) for message in captured["planner_calls"][1])
         assert "确认时间: 执行结果 1" in replan_prompt
         assert "connection refused" in replan_prompt
+
+    def test_replan_keeps_unfinished_followup_steps(self):
+        node = ToolsNodes()
+        node.all_tools = [
+            _tool("normalize_alert_event"),
+            _tool("diagnose_node_issues"),
+            _tool("list_kubernetes_nodes"),
+            _tool("check_pvc_capacity"),
+        ]
+        req = _request(user_message="诊断节点磁盘不可调度")
+        captured = {}
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payloads=[
+                    {
+                        "goal": "诊断节点磁盘",
+                        "steps": [
+                            {"objective": "解析告警", "tools": ["normalize_alert_event"]},
+                            {"objective": "检查节点", "tools": ["diagnose_node_issues"]},
+                            {"objective": "检查 PVC", "tools": ["check_pvc_capacity"]},
+                        ],
+                    },
+                    {
+                        "goal": "先确认节点是否存在",
+                        "steps": [
+                            {"objective": "获取集群节点列表", "tools": ["list_kubernetes_nodes"]},
+                        ],
+                    },
+                ],
+                failing_agent_calls={
+                    2: {
+                        "content": '{"error": "Node不存在: k3s-worker02"}',
+                        "status": "success",
+                        "name": "diagnose_node_issues",
+                    }
+                },
+            )
+
+        assert captured["visible_tool_calls"] == [
+            ["normalize_alert_event"],
+            ["diagnose_node_issues"],
+            ["list_kubernetes_nodes"],
+            ["check_pvc_capacity"],
+            [],
+        ]
+        assert len(captured["planner_calls"]) == 2
 
     def test_json_tool_error_payload_triggers_replan(self):
         # 不用 list_kubernetes_pods：避免规划硬校验前置反查，干扰「JSON error → replan」断言。

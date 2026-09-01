@@ -40,6 +40,7 @@ from apps.opspilot.metis.llm.tools.kubernetes.diagnostics import (
     get_high_restart_kubernetes_pods,
     get_kubernetes_node_capacity,
     get_kubernetes_orphaned_resources,
+    get_not_ready_kubernetes_pods,
     get_pending_kubernetes_pods,
 )
 from apps.opspilot.metis.llm.tools.kubernetes.diagnostics_advanced import (
@@ -47,6 +48,8 @@ from apps.opspilot.metis.llm.tools.kubernetes.diagnostics_advanced import (
     check_pvc_capacity,
     diagnose_pending_pod_issues,
 )
+from apps.opspilot.metis.llm.tools.kubernetes.exec_ops import exec_in_pod
+from apps.opspilot.metis.llm.tools.kubernetes.metrics import get_kubernetes_nodes_top, get_kubernetes_pods_top
 from apps.opspilot.metis.llm.tools.kubernetes.node_diagnostics import diagnose_node_issues
 from apps.opspilot.metis.llm.tools.kubernetes.optimization import (
     check_pod_distribution,
@@ -83,7 +86,7 @@ from apps.opspilot.metis.llm.tools.kubernetes.tracing import (
 )
 
 # 工具集构造参数元数据
-from apps.opspilot.metis.llm.tools.kubernetes.utils import format_bytes, parse_resource_quantity, prepare_context, get_current_cluster_name
+from apps.opspilot.metis.llm.tools.kubernetes.utils import format_bytes, get_current_cluster_name, parse_resource_quantity, prepare_context
 
 CONSTRUCTOR_PARAMS = [
     {
@@ -109,8 +112,9 @@ __all__ = [
     "get_kubernetes_pod_logs",
     "get_kubernetes_previous_pod_logs",
     "search_workload_across_namespaces",
-    # 故障诊断和监控工具    "get_failed_kubernetes_pods",
+    "get_failed_kubernetes_pods",
     "get_pending_kubernetes_pods",
+    "get_not_ready_kubernetes_pods",
     "get_high_restart_kubernetes_pods",
     "get_kubernetes_node_capacity",
     "get_kubernetes_orphaned_resources",
@@ -154,6 +158,9 @@ __all__ = [
     "check_pod_distribution",
     "validate_probe_configuration",
     "compare_deployment_revisions",
+    "get_kubernetes_pods_top",
+    "get_kubernetes_nodes_top",
+    "exec_in_pod",
     # 高级诊断工具 (P0-新增)
     "diagnose_pending_pod_issues",
     "check_network_policies_blocking",
@@ -273,3 +280,19 @@ for _tool_obj, _rb_spec in _ROLLBACK_TOOLS:
     if not hasattr(_tool_obj, "metadata") or _tool_obj.metadata is None:
         _tool_obj.metadata = {}
     _tool_obj.metadata["rollback"] = _rb_spec
+
+
+_APPROVAL_TOOLS = [
+    (
+        exec_in_pod,
+        {
+            "required": True,
+            "description": "在 Pod 内执行白名单诊断命令，需人工审批",
+        },
+    ),
+]
+
+for _tool_obj, _approval_spec in _APPROVAL_TOOLS:
+    if not hasattr(_tool_obj, "metadata") or _tool_obj.metadata is None:
+        _tool_obj.metadata = {}
+    _tool_obj.metadata["approval"] = _approval_spec
