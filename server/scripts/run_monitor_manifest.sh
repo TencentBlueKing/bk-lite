@@ -121,8 +121,8 @@ for i, item in enumerate(registrations or []):
             "target_directory_id": effective_oa.get("target_directory_id", ""),
             "dashboard_name": effective_oa.get("dashboard_name", f"{item.get('key')}-dashboard"),
             "dashboard_desc": effective_oa.get("dashboard_desc", "Auto-created from monitor manifest"),
-            "datasource_name": effective_oa.get("datasource_name", "查询时间范围内的指标数据"),
-            "datasource_rest_api": effective_oa.get("datasource_rest_api", "monitor/mm_query_range"),
+            "datasource_name": effective_oa.get("datasource_name", "受控监控指标趋势"),
+            "datasource_rest_api": effective_oa.get("datasource_rest_api", "monitor/query_metric_range_scoped"),
             "created_by": effective_oa.get("created_by", "admin"),
         }
         existing = shared_dashboard_configs.get(effective_dashboard_key)
@@ -893,6 +893,52 @@ print(labels[0])
 PY
 }
 
+extract_first_instance_id() {
+  local result_file="$1"
+
+  RESULT_FILE="${result_file}" "${DJANGO_PYTHON}" <<'PY'
+import os
+import sys
+import yaml
+
+with open(os.environ["RESULT_FILE"], "r", encoding="utf-8") as f:
+    data = yaml.safe_load(f) or {}
+
+instances = ((data.get("result") or {}).get("instances") or [])
+if not instances or not instances[0].get("instance_id"):
+    sys.exit(1)
+print(instances[0]["instance_id"])
+PY
+}
+
+resolve_metric_id() {
+  (
+    cd "${SERVER_DIR}"
+    MYSQL_MONITOR_OBJECT_ID="${MYSQL_MONITOR_OBJECT_ID}" \
+    MYSQL_MONITOR_PLUGIN_ID="${MYSQL_MONITOR_PLUGIN_ID}" \
+    OA_QUERY_METRIC="${OA_QUERY_METRIC}" \
+    "${DJANGO_PYTHON}" manage.py shell <<'PY'
+import os
+import sys
+
+from apps.monitor.models import Metric
+
+metric_id = (
+    Metric.objects.filter(
+        monitor_object_id=int(os.environ["MYSQL_MONITOR_OBJECT_ID"]),
+        monitor_plugin_id=int(os.environ["MYSQL_MONITOR_PLUGIN_ID"]),
+        name=os.environ["OA_QUERY_METRIC"],
+    )
+    .values_list("id", flat=True)
+    .first()
+)
+if metric_id is None:
+    sys.exit(1)
+print(metric_id)
+PY
+  )
+}
+
 probe_metric_once() {
   OA_QUERY_EXPR="${OA_QUERY_EXPR}" OA_QUERY_STEP="${OA_QUERY_STEP}" METRIC_READY_LOOKBACK_SECONDS="${METRIC_READY_LOOKBACK_SECONDS}" SERVER_DIR="${SERVER_DIR}" \
   "${DJANGO_PYTHON}" <<'PY'
@@ -976,8 +1022,8 @@ for key, value in {
     "OA_TARGET_DIRECTORY_ID": oa.get("target_directory_id", ""),
     "OA_DASHBOARD_NAME": oa.get("dashboard_name", f"{reg['key']}-dashboard"),
     "OA_DASHBOARD_DESC": oa.get("dashboard_desc", "Auto-created from monitor manifest"),
-    "OA_EXISTING_DATASOURCE_NAME": oa.get("datasource_name", "查询时间范围内的指标数据"),
-    "OA_EXISTING_DATASOURCE_REST_API": oa.get("datasource_rest_api", "monitor/mm_query_range"),
+    "OA_EXISTING_DATASOURCE_NAME": oa.get("datasource_name", "受控监控指标趋势"),
+    "OA_EXISTING_DATASOURCE_REST_API": oa.get("datasource_rest_api", "monitor/query_metric_range_scoped"),
     "OA_CREATED_BY": oa.get("created_by", "admin"),
     "OA_QUERY_METRIC": oa.get("query_metric", "mysql_threads_connected"),
     "OA_QUERY_EXPR": oa.get("query_expr", ""),
@@ -1028,10 +1074,24 @@ doc = {
             "dataSource": os.environ["OA_DATASOURCE_KEY"],
             "dataSourceParams": [
                 {
-                    "name": "query",
+                    "name": "monitor_object_id",
                     "type": "string",
-                    "value": os.environ["OA_QUERY_EXPR"],
-                    "alias_name": "query",
+                    "value": os.environ["MYSQL_MONITOR_OBJECT_ID"],
+                    "alias_name": "monitor_object_id",
+                    "filterType": "params",
+                },
+                {
+                    "name": "metric_id",
+                    "type": "string",
+                    "value": os.environ["OA_METRIC_ID"],
+                    "alias_name": "metric_id",
+                    "filterType": "params",
+                },
+                {
+                    "name": "instance_ids",
+                    "type": "string",
+                    "value": [os.environ["INSTANCE_ID"]],
+                    "alias_name": "instance_ids",
                     "filterType": "params",
                 },
                 {
@@ -1076,6 +1136,8 @@ queue_operation_analysis_widget() {
   fi
 
   INSTANCE_LABEL="$(extract_first_instance_label "${result_file}")" || return 1
+  INSTANCE_ID="$(extract_first_instance_id "${result_file}")" || return 1
+  OA_METRIC_ID="$(resolve_metric_id)" || return 1
   if [[ -z "${OA_QUERY_EXPR}" ]]; then
     if [[ -z "${OA_QUERY_METRIC}" ]]; then
       return 1
@@ -1086,7 +1148,7 @@ queue_operation_analysis_widget() {
   OA_REGISTRATION_KEY="${key}"
 
   export OA_QUERY_EXPR OA_QUERY_STEP OA_QUERY_TIME_RANGE OA_WIDGET_ID OA_WIDGET_TITLE OA_WIDGET_DESC OA_WIDGET_X OA_WIDGET_Y OA_WIDGET_W OA_WIDGET_H OA_CHART_TYPE OA_DASHBOARD_NAME OA_DASHBOARD_DESC OA_DATASOURCE_KEY
-  export OA_EXISTING_DATASOURCE_NAME OA_EXISTING_DATASOURCE_REST_API OA_CREATED_BY OA_TARGET_DIRECTORY_ID INSTANCE_LABEL OA_DASHBOARD_KEY OA_REGISTRATION_KEY OA_WIDGET_X_EXPLICIT OA_WIDGET_Y_EXPLICIT
+  export OA_EXISTING_DATASOURCE_NAME OA_EXISTING_DATASOURCE_REST_API OA_CREATED_BY OA_TARGET_DIRECTORY_ID INSTANCE_LABEL INSTANCE_ID OA_METRIC_ID OA_DASHBOARD_KEY OA_REGISTRATION_KEY OA_WIDGET_X_EXPLICIT OA_WIDGET_Y_EXPLICIT
 
   log "waiting metric for operation_analysis: ${key}"
   wait_metric_ready || return 1

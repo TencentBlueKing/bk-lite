@@ -7,10 +7,7 @@ import type {
   QueryGroup,
   SearchParams
 } from '@/app/monitor/types/search';
-import {
-  getRecentTimeRange,
-  mergeViewQueryKeyValues
-} from '@/app/monitor/utils/common';
+import { getRecentTimeRange } from '@/app/monitor/utils/common';
 import { buildGapDetectionParams } from '@/app/monitor/utils/gapIntervals';
 import { calculateQueryStep } from '@/app/monitor/utils/queryStep';
 
@@ -135,16 +132,21 @@ export const buildSearchQueryParams = ({
   const selectedInstances = instances.filter((item) =>
     group.instanceIds.includes(item.instance_id)
   );
-  const queryValues: string[][] = selectedInstances.map(
-    (item) => item.instance_id_values
-  );
-  const querykeys: string[] = metricItem?.instance_id_keys || [];
-  const queryList = queryValues.map((values) => ({
-    keys: querykeys,
-    values
-  }));
   const params: SearchParams = {
-    query: '',
+    monitor_object_id: group.object,
+    metric_id: metricItem?.id,
+    instance_ids: selectedInstances.map((item) => item.instance_id),
+    aggregation: group.aggregation || 'AVG',
+    filters: group.conditions
+      .filter(
+        (condition) =>
+          condition.label && condition.condition && condition.value
+      )
+      .map((condition) => ({
+        label: String(condition.label),
+        operator: String(condition.condition),
+        value: condition.value
+      })),
     source_unit: metricItem?.unit || ''
   };
   const recentTimeRange = getRecentTimeRange(timeRange);
@@ -160,30 +162,5 @@ export const buildSearchQueryParams = ({
       collectionInterval
     );
   }
-  let query = '';
-  if (group.instanceIds.length) {
-    query += mergeViewQueryKeyValues(queryList);
-  }
-  if (group.conditions.length) {
-    const conditionQueries = group.conditions
-      .map((condition) => {
-        if (condition.label && condition.condition && condition.value) {
-          return `${condition.label}${condition.condition}"${condition.value}"`;
-        }
-        return '';
-      })
-      .filter(Boolean);
-    if (conditionQueries.length) {
-      if (query) query += ',';
-      query += conditionQueries.join(',');
-    }
-  }
-  let finalQuery = (metricItem?.query || '').replace(/__\$labels__/g, query);
-  if (group.aggregation && group.aggregation !== 'AVG') {
-    const aggFunc = group.aggregation.toLowerCase();
-    const byClause = querykeys.length ? ` by (${querykeys.join(',')})` : '';
-    finalQuery = `${aggFunc}(${finalQuery})${byClause}`;
-  }
-  params.query = finalQuery;
   return buildGapDetectionParams(params, collectionInterval);
 };
