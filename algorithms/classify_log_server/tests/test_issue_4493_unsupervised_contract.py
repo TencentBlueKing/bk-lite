@@ -3,7 +3,10 @@ from unittest.mock import patch
 import pytest
 from classify_log_server.training.config.schema import SUPPORTED_METRICS
 from classify_log_server.training.data_loader import LogDataLoader
-from classify_log_server.training.evaluation_contract import EVALUATION_CONTRACT_VERSION, SupervisedEvaluationUnsupported
+from classify_log_server.training.evaluation_contract import (
+    EVALUATION_CONTRACT_VERSION,
+    SupervisedEvaluationUnsupported,
+)
 from classify_log_server.training.models.spell_model import SpellModel
 from classify_log_server.training.trainer import UniversalTrainer
 
@@ -89,7 +92,9 @@ def test_trainer_logs_evaluation_contract_version():
         {"to_dict": lambda self: {"model": {"type": "Spell"}}},
     )()
 
-    with patch("classify_log_server.training.trainer.MLFlowUtils.log_params_batch") as log_params:
+    with patch(
+        "classify_log_server.training.trainer.MLFlowUtils.log_params_batch"
+    ) as log_params:
         trainer._log_config()
 
     logged = log_params.call_args.args[0]
