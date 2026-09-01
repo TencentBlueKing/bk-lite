@@ -1,6 +1,7 @@
 {
   "plugin": "Docker",
   "plugin_desc": "Used for collecting and analyzing the status, resource usage (CPU, memory, network, IO), and performance metrics of Docker containers, helping to identify anomalies and optimize container operational efficiency.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='docker', collect_type='docker'}) by (instance_id)",
   "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"selected_node","options":{"selection_field":"node_ids","node_field":"ip"}}],
   "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],

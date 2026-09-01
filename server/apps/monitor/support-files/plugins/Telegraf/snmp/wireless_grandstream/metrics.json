@@ -3,6 +3,7 @@
   "collect_type": "snmp_grandstream",
   "plugin": "Wireless Grandstream SNMP",
   "plugin_desc": "Baseline SNMP collection template for Grandstream GWN wireless devices (interface traffic + uptime, enterprise PEN 42397). Collects IF-MIB 64-bit HC interface counters (ifHCInOctets/ifHCOutOctets, ifXTable) rates and device uptime (sysUpTime). The GRANDSTREAM-GWN-MIB is oriented to wireless radio statistics and per-client information — it exposes only gwnDeviceUptime as a scalar system object and has no CPU/memory/temperature objects, while associated clients appear only as the per-MAC gwnClientTable with no scalar count, which telegraf inputs.snmp cannot aggregate row-wise. CPU/memory/temperature/client-count/channel-utilization are therefore N/A and not faked. Applicable to Grandstream GWN76xx/GWN78xx Wi-Fi access points and controllers (enterprise PEN 42397) and other IF-MIB compliant wireless AP devices.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='wireless', collect_type='snmp_grandstream'}) by (instance_id)",
   "name": "Wireless",
   "icon": "mm-grandstream_grandstream",

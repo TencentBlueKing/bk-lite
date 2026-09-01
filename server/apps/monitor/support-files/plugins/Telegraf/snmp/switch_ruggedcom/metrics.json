@@ -3,6 +3,7 @@
   "collect_type": "snmp_ruggedcom",
   "plugin": "Switch RuggedCOM SNMP",
   "plugin_desc": "RuggedCOM（西门子）工业以太网交换机专用 SNMP 采集模板（RUGGEDCOM-SYS-MIB，企业号 15004）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 RuggedCOM ROS 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）、主内存（已用 + 空闲，字节，用量按 已用/（已用+空闲）推导）、机箱温度（℃）与冗余电源状态（经 telegraf processors.enum 归一为 1=正常/2=异常）。RuggedCOM 工业交换机为无风扇导热式被动散热设计，故风扇为 N/A。适用品牌型号——西门子 RuggedCOM ROS 工业网管交换机（RS/RSG/RST 系列，企业号 15004）。",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_ruggedcom'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

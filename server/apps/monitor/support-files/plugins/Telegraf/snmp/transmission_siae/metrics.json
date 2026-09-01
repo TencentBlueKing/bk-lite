@@ -3,6 +3,7 @@
   "collect_type": "snmp_siae",
   "plugin": "Transmission SIAE Microelettronica SNMP",
   "plugin_desc": "SIAE Microelettronica microwave transmission SNMP child template for devices under enterprise PEN 3373. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. This child adds the confirmed sensorTempValue temperature table from SIAE-SENSOR-TEMP-MIB as device_temperature_celsius. CPU, memory, fan and power-supply health are N/A because stable shared device-health objects are not confirmed in the current MIB facts; temperature monitor up/down state is left as alarm context rather than promoted into a generic hardware-state metric.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_siae'}) by (instance_id)",
   "name": "Transmission",
   "icon": "mm-siae_siae",

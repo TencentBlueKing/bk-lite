@@ -3,6 +3,7 @@
   "collect_type": "snmp_allnet",
   "plugin": "Switch ALLNET SNMP",
   "plugin_desc": "ALLNET 企业/SMB 以太网交换机专用 SNMP 采集模板（企业号 19935）。本模板基于标准 MIB-II / IF-MIB 采集设备运行时长与 64 位 HC 接口流量、接口收发错包与丢包速率、接口管理/操作状态与带宽，并按设备汇总收发总流量速率。ALLNET 网管交换机（ALL-SG 等系列）的 SNMP agent 以标准公有 MIB 为主，其厂商私有树（企业号 19935）多为按设备动态生成的传感器对象，未以无需行级过滤的稳定标量形式发布 CPU/内存/温度/电源健康量，故 CPU、内存、温度、风扇、电源为 N/A。适用品牌型号——ALLNET 企业/SMB 以太网交换机（ALL-SG 系列等，企业号 19935）。",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_allnet'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

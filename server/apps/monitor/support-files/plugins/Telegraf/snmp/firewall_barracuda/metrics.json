@@ -3,6 +3,7 @@
   "collect_type": "snmp_barracuda",
   "plugin": "Firewall Barracuda SNMP",
   "plugin_desc": "Barracuda CloudGen Firewall / Web Filter SNMP child template for devices under enterprise PEN 20632. The shared Firewall SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. This child template adds verified bspyware system leaves for CPU/system temperature and firmware/log storage utilization. CPU, memory and fan/power-supply states are not promoted because stable shared state leaves are not confirmed; fan RPM and trap-only dead-fan signals are kept out of shared device health.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_barracuda'}) by (instance_id)",
   "name": "Firewall",
   "icon": "mm-firewall_防火墙",

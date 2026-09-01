@@ -3,6 +3,7 @@
   "collect_type": "snmp_mikrotik_router",
   "plugin": "Router MikroTik SNMP",
   "plugin_desc": "MikroTik RouterOS SNMP collection for routers. In addition to the shared Router SNMP floor, it collects HOST-RESOURCES and MIKROTIK-MIB health OIDs: per-core CPU utilization, system memory used/total and board temperature. MikroTik exposes fan as raw RPM and lacks a standardized power-supply state, so fan and power health are not collected. Memory utilization is computed from used/total. Supported brands/models - MikroTik RouterOS Ethernet routers.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_mikrotik_router'}) by (instance_id)",
   "name": "Router",
   "icon": "mm-router_路由器",

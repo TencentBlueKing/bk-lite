@@ -3,6 +3,7 @@
   "collect_type": "snmp_ruijie",
   "plugin": "Switch Ruijie SNMP",
   "plugin_desc": "Ruijie (锐捷) switch-specific SNMP collection (RUIJIE-PROCESS/MEMORY/SYSTEM MIBs, IANA PEN 4881). In addition to standard IF-MIB interface metrics, it collects Ruijie private OIDs for the full device-health set: CPU utilization (ruijieNodeCPUTotal5min), system memory (size/used, KB), chassis temperature (ruijieSystemMultipleTemperatureCurrent), fan state (ruijieSystemFanStatus) and power-supply state (ruijieSystemElectricalInformationStatus). Fan/PSU raw codes are normalized via telegraf processors.enum to 1=healthy / 2=fault. Memory utilization is computed from used/total. Supported brands/models — Ruijie Networks RG-series switches.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_ruijie'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

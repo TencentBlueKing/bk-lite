@@ -3,6 +3,7 @@
   "collect_type": "snmp_nateks",
   "plugin": "Access Nateks SNMP",
   "plugin_desc": "Nateks Megatrans and Orion access-device SNMP child template for devices under enterprise PEN 4249. Beyond the shared Access SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic, it collects confirmed private temperature-sensor values and local power-source status. CPU, memory, fan, SFP DDM, digital I/O, alarm and TLM tables are not promoted into shared device-health metrics.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='access', collect_type='snmp_nateks'}) by (instance_id)",
   "name": "Access",
   "icon": "mm-access_接入设备",

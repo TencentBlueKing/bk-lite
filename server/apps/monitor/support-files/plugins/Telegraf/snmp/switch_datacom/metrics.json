@@ -3,6 +3,7 @@
   "collect_type": "snmp_datacom",
   "plugin": "Switch Datacom SNMP",
   "plugin_desc": "Datacom DmOS-specific SNMP collection for switches (DMOS-SYSMON-MIB, IANA PEN 3709). In addition to standard IF-MIB interface metrics, it collects Datacom private OIDs for device health: per-slot CPU load (cpuLoadOneMinuteActive) and system memory (used/total bytes). The DmOS SYSMON MIB only models CPU and memory subtrees; temperature/fan/power-supply objects exist only in the legacy DMswitch-MIB (incompatible with DmOS) and are not collected here (N/A). CPU utilization is averaged across slots; memory utilization is computed from used/total. Supported brands/models — Datacom DmOS switches (DM4xxx series).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_datacom'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

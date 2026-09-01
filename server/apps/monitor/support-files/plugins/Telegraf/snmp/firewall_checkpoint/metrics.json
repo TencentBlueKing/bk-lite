@@ -3,6 +3,7 @@
   "collect_type": "snmp_checkpoint",
   "plugin": "Firewall Check Point SNMP",
   "plugin_desc": "Check Point-specific SNMP collection template for Quantum NGFW (Gaia) firewalls. In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects CHECKPOINT-MIB private OIDs for device health (CPU utilization, real memory total/free/used/usage) and firewall-specific VPN throughput (encrypted and decrypted packets per second). Supported brands/models — Check Point Security Gateways (GAiA OS).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_checkpoint'}) by (instance_id)",
   "name": "Firewall",
   "icon": "mm-firewall_防火墙",

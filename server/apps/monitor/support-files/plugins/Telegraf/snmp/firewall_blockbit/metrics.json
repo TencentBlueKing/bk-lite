@@ -3,6 +3,7 @@
   "collect_type": "snmp_blockbit",
   "plugin": "Firewall Blockbit SNMP",
   "plugin_desc": "SNMP collection template for Blockbit UTM / NGFW security appliances. Based on standard MIB-II / IF-MIB, it collects device uptime, HOST-RESOURCES hrProcessorLoad per-core CPU utilization, 64-bit HC interface traffic, interface RX/TX error and discard rates, interface admin/operational status and bandwidth, and device-wide total traffic roll-ups. Memory, temperature, fan and power remain N/A: hrStorage mixes RAM/Flash rows that telegraf inputs.snmp cannot filter row-wise, and no vendor private health scalar is publicly documented. Applicable to Blockbit UTM / NGFW security gateways managed over SNMP.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_blockbit'}) by (instance_id)",
   "name": "Firewall",
   "icon": "mm-firewall_防火墙",

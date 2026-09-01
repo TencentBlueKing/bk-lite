@@ -3,6 +3,7 @@
   "collect_type": "snmp_arista",
   "plugin": "Switch Arista SNMP",
   "plugin_desc": "Arista EOS switch SNMP collection. Beyond standard IF-MIB interface metrics, it adds device CPU utilization via HOST-RESOURCES hrProcessorLoad (averaged across cores), which the generic SNMP switch plugin does not provide. Arista exposes memory only through the multi-row hrStorage table (RAM row index not fixed) and temperature/fan/power only through the ENTITY-SENSOR table (sensor types mixed in one table), neither of which can be row/type-filtered by the SNMP input, so those are N/A. Supported brands/models — Arista Networks EOS data-center switches (7050/7060/7280/7300/7500 series and other EOS platforms).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_arista'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

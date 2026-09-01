@@ -3,6 +3,7 @@
   "collect_type": "snmp_zyxel",
   "plugin": "Switch Zyxel SNMP",
   "plugin_desc": "Zyxel-specific SNMP collection for switches (ZYXEL private MIB, enterprise 890). In addition to standard IF-MIB interface metrics, it collects Zyxel private OIDs for device health: CPU utilization (direct percentage) and hardware temperature sensors. Zyxel exposes fan as raw RPM (not a state) and this switch line has no memory-utilization or power-supply-state OID, so those health items are not collected (N/A). Supported brands/models — Zyxel GS/XGS/XS-series managed switches.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_zyxel'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

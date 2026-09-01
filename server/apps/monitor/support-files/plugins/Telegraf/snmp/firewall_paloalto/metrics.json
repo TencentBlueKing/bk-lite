@@ -3,6 +3,7 @@
   "collect_type": "snmp_paloalto",
   "plugin": "Firewall Palo Alto SNMP",
   "plugin_desc": "Palo Alto Networks-specific SNMP collection template for PAN-OS firewalls. In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects HOST-RESOURCES CPU load and PAN-COMMON-MIB private OIDs for firewall-specific session health (session-table utilization, active sessions total/TCP/UDP/ICMP and maximum supported sessions). Sourced from the official PAN-COMMON-MIB and verified against LibreNMS PAN-OS support. Supported brands/models — Palo Alto Networks PA-series firewalls (PAN-OS).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_paloalto'}) by (instance_id)",
   "name": "Firewall",
   "icon": "mm-firewall_防火墙",

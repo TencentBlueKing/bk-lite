@@ -3,6 +3,7 @@
   "collect_type": "snmp_benu",
   "plugin": "Router Benu SNMP",
   "plugin_desc": "Benu Networks router SNMP child template (enterprise PEN 39406). Beyond the shared Router SNMP baseline for MIB-II uptime and IF-MIB interface traffic, it collects BENU-CHASSIS-MIB sensor temperature, fan status and power-supply status. Host software task CPU and memory tables are process-level metrics and are not promoted to shared device CPU or memory health metrics here.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_benu'}) by (instance_id)",
   "name": "Router",
   "icon": "mm-benu_benu",
