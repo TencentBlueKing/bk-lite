@@ -106,9 +106,30 @@ def test_create_or_bind_flow_asset_creates_monitor_side_asset(db):
     assert instance.fallback_sampling_rate == 2000
     assert instance.enabled_protocols == ["netflow"]
     assert instance.auto is False
+    assert instance.created_by == "system"
+    assert instance.updated_by == "system"
     assert set(
         MonitorInstanceOrganization.objects.filter(monitor_instance_id=instance.id).values_list("organization", flat=True)
     ) == {1, 2}
+
+
+def test_create_or_bind_flow_asset_records_actor_as_maintainer(db):
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+
+    result = FlowOnboardingService.create_or_bind_asset(
+        monitor_object_id=switch_object.id,
+        protocol="netflow",
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        name="Core Switch",
+        organizations=[1],
+        actor_context={"username": "alice", "domain": "corp.com"},
+    )
+
+    instance = MonitorInstance.objects.get(id=result["instance_id"])
+    assert instance.created_by == "alice"
+    assert instance.updated_by == "alice"
+    assert instance.domain == "corp.com"
 
 
 def test_create_or_bind_flow_asset_reuses_network_device_safe_id_created_by_other_plugin(db):
@@ -709,6 +730,24 @@ def test_create_manual_collect_instance_rejects_flow_only_fields_with_validation
         cloud_region_id=1,
         ip="10.0.0.12",
     ).exists()
+
+
+def test_create_manual_collect_instance_fills_maintainer_from_actor(db):
+    obj = MonitorObject.objects.create(name="Host", display_name="Host")
+    result = ManualCollectService.create_manual_collect_instance(
+        {
+            "id": "host-1",
+            "name": "host-1",
+            "monitor_object_id": obj.id,
+            "organizations": [1],
+        },
+        actor_context={"username": "alice", "domain": "corp.com"},
+    )
+    inst = MonitorInstance.objects.get(id=result["instance_id"])
+    assert inst.created_by == "alice"
+    assert inst.updated_by == "alice"
+    assert inst.domain == "corp.com"
+    assert inst.updated_by_domain == "corp.com"
 
 
 def test_create_or_bind_flow_asset_rejects_unknown_protocol(db):

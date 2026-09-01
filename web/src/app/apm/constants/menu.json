@@ -2,7 +2,7 @@
   "zh": [
     {
       "title": "首页",
-      "icon": "shouye",
+      "icon": "home",
       "url": "/apm/home",
       "name": "home"
     },
@@ -33,6 +33,11 @@
         {
           "url": "/apm/services/[serviceId]",
           "name": "service_detail",
+          "isNotMenuItem": true
+        },
+        {
+          "url": "/apm/services/applications/[applicationId]",
+          "name": "service_application_detail",
           "isNotMenuItem": true
         }
       ]
@@ -135,7 +140,7 @@
   "en": [
     {
       "title": "Home",
-      "icon": "shouye",
+      "icon": "home",
       "url": "/apm/home",
       "name": "home"
     },
@@ -166,6 +171,11 @@
         {
           "url": "/apm/services/[serviceId]",
           "name": "service_detail",
+          "isNotMenuItem": true
+        },
+        {
+          "url": "/apm/services/applications/[applicationId]",
+          "name": "service_application_detail",
           "isNotMenuItem": true
         }
       ]

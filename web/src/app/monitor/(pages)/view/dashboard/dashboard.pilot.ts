@@ -149,9 +149,29 @@ const dashboardIdentity = () => {
 export interface DashboardPageDataStamp {
   timeRangeLabel: string;
   kpiFingerprint: string;
+  kpiReadings: string[];
   collectionStatus: string;
   uptimeState: string;
 }
+
+const cardValue = (card: Element): string =>
+  cleanLabel(
+    card.querySelector('[class*="statValue"]')?.textContent
+    || card.querySelector('[class*="collectionStatusValue"]')?.textContent
+    || '',
+  );
+
+/** 卡片「指标名: 数值」，避免模型只看到 82.9% 却不知道是磁盘使用率。 */
+export const readDashboardKpiReadings = (): string[] =>
+  Array.from(document.querySelectorAll('[class*="statCard"]'))
+    .map((card) => {
+      const labelNode = card.querySelector('[class*="statLabel"]');
+      const label = labelNode ? titleFromNode(labelNode) : '';
+      const value = cardValue(card);
+      return label && value ? `${label}: ${value}` : '';
+    })
+    .filter(Boolean)
+    .slice(0, 8);
 
 /** 从仪表盘 DOM 读取时间筛选 + KPI 指纹，用于 currentTime 与 console 诊断。 */
 export const readDashboardPageDataStamp = (): DashboardPageDataStamp => {
@@ -169,7 +189,13 @@ export const readDashboardPageDataStamp = (): DashboardPageDataStamp => {
   const uptimeState = cleanLabel(
     document.querySelector('[class*="uptimeStatusMain"]')?.textContent || '',
   );
-  return { timeRangeLabel, kpiFingerprint, collectionStatus, uptimeState };
+  return {
+    timeRangeLabel,
+    kpiFingerprint,
+    kpiReadings: readDashboardKpiReadings(),
+    collectionStatus,
+    uptimeState,
+  };
 };
 
 export const buildDashboardCurrentTime = (stamp: DashboardPageDataStamp): string =>
@@ -185,23 +211,68 @@ export function getMessage(): PageContextMessage {
   return currentTime ? { title, currentTime } : { title };
 }
 
-export async function getContext(
-  toolkit: PageContextToolkit,
-): Promise<Partial<AiPageContext>> {
-  const { objectKey, objectName, instanceName, view, monitorObjId } = dashboardIdentity();
-  const stamp = readDashboardPageDataStamp();
-  const dataUpdatedAt = buildDashboardCurrentTime(stamp);
-
+const dashboardTextSections = (
+  stamp: DashboardPageDataStamp,
+  identity: ReturnType<typeof dashboardIdentity>,
+  dataUpdatedAt: string,
+) => {
   const lines = [
     `正在查看监控专业仪表盘`,
-    objectName ? `对象: ${objectName}` : '',
-    objectKey ? `objectKey: ${objectKey}` : '',
-    monitorObjId ? `monitorObjId: ${monitorObjId}` : '',
-    instanceName ? `实例: ${instanceName}` : '',
-    `视图: ${view}`,
+    identity.objectName ? `对象: ${identity.objectName}` : '',
+    identity.objectKey ? `objectKey: ${identity.objectKey}` : '',
+    identity.monitorObjId ? `monitorObjId: ${identity.monitorObjId}` : '',
+    identity.instanceName ? `实例: ${identity.instanceName}` : '',
+    `视图: ${identity.view}`,
     stamp.timeRangeLabel ? `时间筛选: ${stamp.timeRangeLabel}` : '',
     dataUpdatedAt ? `页面数据指纹: ${dataUpdatedAt}` : '',
   ].filter(Boolean);
+  return [
+    {
+      id: 'dashboard-identity',
+      label: '当前仪表盘',
+      content: lines.join('\n'),
+      priority: 10,
+    },
+    ...(stamp.timeRangeLabel || stamp.kpiReadings.length
+      ? [{
+        id: 'dashboard-time-range',
+        label: '时间筛选',
+        content: [
+          stamp.timeRangeLabel ? `当前筛选: ${stamp.timeRangeLabel}` : '',
+          stamp.kpiReadings.length
+            ? `KPI 快照:\n${stamp.kpiReadings.join('\n')}`
+            : stamp.kpiFingerprint
+              ? `KPI 快照: ${stamp.kpiFingerprint.replace(/\|/g, ' · ')}`
+              : '',
+          stamp.uptimeState ? `运行状态: ${stamp.uptimeState}` : '',
+          stamp.collectionStatus ? `采集状态: ${stamp.collectionStatus}` : '',
+        ].filter(Boolean).join('\n'),
+        priority: 9,
+      }]
+      : []),
+  ];
+};
+
+/** 截图超时仍能带上 KPI；问「磁盘使用率高吗」至少看得到 82.9%。 */
+export function getTextContext(): Partial<AiPageContext> {
+  const identity = dashboardIdentity();
+  const stamp = readDashboardPageDataStamp();
+  const dataUpdatedAt = buildDashboardCurrentTime(stamp);
+  return {
+    url: window.location.href,
+    app: 'monitor',
+    title: document.title || `${identity.objectName} 仪表盘`,
+    sections: dashboardTextSections(stamp, identity, dataUpdatedAt),
+    images: [],
+  };
+}
+
+export async function getContext(
+  toolkit: PageContextToolkit,
+): Promise<Partial<AiPageContext>> {
+  const stamp = readDashboardPageDataStamp();
+  const dataUpdatedAt = buildDashboardCurrentTime(stamp);
+  const base = getTextContext();
 
   const nodes = Array.from(document.querySelectorAll<HTMLElement>('[_echarts_instance_]')).filter(
     (dom) => !isDecorativeDashboardChart(dom),
@@ -211,14 +282,15 @@ export async function getContext(
   const ordered = [
     ...labeled.filter((item) => item.title),
     ...labeled.filter((item) => !item.title),
-  ];
-  const images: ChartSnapshot[] = [];
-  for (const item of ordered) {
-    if (images.length >= PAGE_CONTEXT_MAX_IMAGES) break;
-    const [shot] = await toolkit.captureEchartsFromDoms([item.dom], 1);
-    if (!shot) continue;
-    images.push(await applyDashboardLabel(shot, item));
-  }
+  ].slice(0, PAGE_CONTEXT_MAX_IMAGES);
+  const captured = await Promise.all(
+    ordered.map(async (item) => {
+      const [shot] = await toolkit.captureEchartsFromDoms([item.dom], 1);
+      if (!shot) return null;
+      return applyDashboardLabel(shot, item);
+    }),
+  );
+  const images = captured.filter((item): item is ChartSnapshot => Boolean(item));
 
   const chartLines = images.length
     ? images.map((image, index) => `${index + 1}. ${image.caption}`)
@@ -227,35 +299,16 @@ export async function getContext(
   console.info('[ai-page-context] page data updated at', dataUpdatedAt, {
     timeRange: stamp.timeRangeLabel || '(unknown)',
     kpi: stamp.kpiFingerprint,
+    kpiReadings: stamp.kpiReadings,
     collectionStatus: stamp.collectionStatus,
     uptimeState: stamp.uptimeState,
     charts: chartLines,
   });
 
   return {
-    url: window.location.href,
-    app: 'monitor',
-    title: document.title || `${objectName} 仪表盘`,
+    ...base,
     sections: [
-      {
-        id: 'dashboard-identity',
-        label: '当前仪表盘',
-        content: lines.join('\n'),
-        priority: 10,
-      },
-      ...(stamp.timeRangeLabel
-        ? [{
-          id: 'dashboard-time-range',
-          label: '时间筛选',
-          content: [
-            `当前筛选: ${stamp.timeRangeLabel}`,
-            stamp.kpiFingerprint ? `KPI 快照: ${stamp.kpiFingerprint.replace(/\|/g, ' · ')}` : '',
-            stamp.uptimeState ? `运行状态: ${stamp.uptimeState}` : '',
-            stamp.collectionStatus ? `采集状态: ${stamp.collectionStatus}` : '',
-          ].filter(Boolean).join('\n'),
-          priority: 9,
-        }]
-        : []),
+      ...(base.sections || []),
       ...(chartLines.length
         ? [{
           id: 'visible-charts',

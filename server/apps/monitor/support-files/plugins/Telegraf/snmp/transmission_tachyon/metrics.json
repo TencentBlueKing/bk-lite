@@ -3,6 +3,7 @@
   "collect_type": "snmp_tachyon",
   "plugin": "Transmission Tachyon SNMP",
   "plugin_desc": "Tachyon Networks TNA 300 series transmission SNMP child template (enterprise 57344). Beyond standard IF-MIB interface metrics supplied by the shared Transmission SNMP floor, it collects Tachyon private health scalars for CPU usage, memory usage and CPU temperature. CPU and memory are reported directly as percentages, and CPU temperature is reported directly in degrees Celsius. Fan and power-supply states are not exposed as stable normalized health objects, so they are N/A. Supported brands/models - Tachyon Networks TNA 300 series 60 GHz wireless backhaul / transmission devices.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_tachyon'}) by (instance_id)",
   "name": "Transmission",
   "icon": "mm-transmission_传输设备",

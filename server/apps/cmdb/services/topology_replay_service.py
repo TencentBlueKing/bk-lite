@@ -22,7 +22,7 @@ def query_role_round_marker(
     collection_role: str,
     collection: Collection | None = None,
 ) -> dict[str, Any] | None:
-    """返回最新标记的 {round_ts, channel_config_version, run_attempt_id}。"""
+    """返回最新标记的 {round_ts, channel_config_version}。"""
     from apps.cmdb.collection.round_sync import ROUND_COMPLETE_METRIC
 
     coll = collection or Collection()
@@ -52,7 +52,6 @@ def query_role_round_marker(
             best = {
                 "round_ts": ts,
                 "channel_config_version": str(metric.get("channel_config_version") or ""),
-                "run_attempt_id": str(metric.get("run_attempt_id") or metric.get("collection_run_attempt_id") or ""),
             }
     return best
 
@@ -92,7 +91,6 @@ def _set_pending(task: CollectModels, marker: dict[str, Any]) -> None:
     params[PENDING_TOPOLOGY_REPLAY_KEY] = {
         "round_ts": marker.get("round_ts"),
         "channel_config_version": marker.get("channel_config_version"),
-        "run_attempt_id": marker.get("run_attempt_id"),
     }
     CollectModels._default_manager.filter(id=task.id).update(params=params)
 
@@ -147,7 +145,7 @@ def replay_topology_for_task(
         if fallback_ts is None:
             logger.info("[TopoReplay] 无拓扑完成标记 task_id=%s", task_id)
             return "skipped"
-        marker = {"round_ts": fallback_ts, "channel_config_version": "", "run_attempt_id": ""}
+        marker = {"round_ts": fallback_ts, "channel_config_version": ""}
 
     current_version = str(contract.get("topology_channel_config_version") or "1")
     marker_version = str(marker.get("channel_config_version") or "")
@@ -211,7 +209,6 @@ def wake_pending_topology_replay(task_id: int) -> str | None:
         marker={
             "round_ts": pending.get("round_ts"),
             "channel_config_version": pending.get("channel_config_version"),
-            "run_attempt_id": pending.get("run_attempt_id"),
         },
     )
 

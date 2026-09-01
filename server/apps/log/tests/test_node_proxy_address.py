@@ -53,7 +53,7 @@ def test_cloud_region_proxy_address_endpoint_falls_back_to_node_server_url(authe
     mocked_rpc = Mock()
     mocked_rpc.get_cloud_region_proxy_address.return_value = ""
     mocked_rpc.node_list.return_value = {"nodes": [{"id": "node-1"}]}
-    mocked_rpc.get_cloud_region_envconfig.return_value = {
+    mocked_rpc.get_cloud_region_public_config.return_value = {
         "NODE_SERVER_URL": "https://logs.example.com:8011/api/v1",
     }
     mocker.patch("apps.log.views.node.NodeMgmt", return_value=mocked_rpc)

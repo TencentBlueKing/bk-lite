@@ -18,6 +18,7 @@ from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.alert_policy import AlertConstants
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.constants.permission import PermissionConstants
+from apps.monitor.filters.id_filters import filter_positive_int_field
 from apps.monitor.filters.monitor_policy import MonitorPolicyFilter
 from apps.monitor.models import MonitorAlert, MonitorObject, PolicyOrganization, PolicyTemplate
 from apps.monitor.models.monitor_policy import MonitorPolicy
@@ -26,7 +27,7 @@ from apps.monitor.services.alert_lifecycle_notify import NOTIFY_SCOPE_ALERT_CENT
 from apps.monitor.services.node_mgmt import InstanceConfigService
 from apps.monitor.services.policy import PolicyService
 from apps.monitor.services.policy_baseline import PolicyBaselineService
-from apps.monitor.services.policy_bulk import build_bulk_policy_payloads
+from apps.monitor.services.policy_bulk import build_bulk_policy_payloads, normalize_stored_metric_unit
 from apps.monitor.services.policy_preview import PolicyPreviewService
 from apps.monitor.utils.pagination import parse_page_params
 from config.drf.pagination import CustomPageNumberPagination
@@ -124,8 +125,8 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
             return queryset
 
         monitor_object_id = self._get_monitor_object_id()
-        if monitor_object_id not in (None, ""):
-            queryset = queryset.filter(monitor_object_id=monitor_object_id)
+        # 非法非数字 id（如分类名 Network Device）不得落入 ORM，否则 ValueError → 500
+        queryset = filter_positive_int_field(queryset, "monitor_object_id", monitor_object_id)
 
         scope = self._get_data_scope()
         permission = self._get_effective_permission(monitor_object_id)
@@ -826,7 +827,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
                 {
                     **template,
                     "metric_id": metric.id,
-                    "metric_unit": "" if metric.unit in ("none", "short") else metric.unit,
+                    "metric_unit": normalize_stored_metric_unit(metric.unit, getattr(metric, "data_type", "") or ""),
                     "collect_type": collect_type or metric.monitor_plugin_id,
                 }
             )

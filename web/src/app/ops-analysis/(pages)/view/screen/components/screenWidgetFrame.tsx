@@ -2,6 +2,7 @@
 
 import React from 'react';
 import {
+  CopyOutlined,
   DeleteOutlined,
   SettingOutlined,
 } from '@ant-design/icons';
@@ -10,6 +11,10 @@ import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 import type { ScreenWidgetItem } from '@/app/ops-analysis/types/screen';
 import { normalizeScreenWidgetAppearance } from '../utils/layoutUtils';
+import {
+  resolveAnalysisCanvasInteraction,
+  shouldShowAnalysisWidgetCopyAction,
+} from '@/app/ops-analysis/utils/widgetCopy';
 
 interface ScreenWidgetFrameOptions {
   selected?: boolean;
@@ -21,7 +26,10 @@ interface ScreenWidgetFrameProps extends ScreenWidgetFrameOptions {
   item: ScreenWidgetItem;
   screenDensity?: number;
   screenUiScale?: number;
+  shareMode?: boolean;
+  isBuiltIn?: boolean;
   onConfigure?: () => void;
+  onCopy?: () => void;
   onDelete?: () => void;
   children: React.ReactNode;
 }
@@ -58,13 +66,33 @@ const ScreenWidgetFrame: React.FC<ScreenWidgetFrameProps> = ({
   editMode = false,
   screenDensity = 1,
   screenUiScale = 1,
+  shareMode = false,
+  isBuiltIn = false,
   onConfigure,
+  onCopy,
   onDelete,
   children,
 }) => {
   const { t } = useTranslation();
   const frame = normalizeScreenWidgetAppearance(item.valueConfig?.appearance).frame;
   const isBare = frame === 'bare';
+  const showCopy = shouldShowAnalysisWidgetCopyAction({
+    interaction: resolveAnalysisCanvasInteraction({
+      editMode,
+      shareMode,
+      isBuiltIn,
+    }),
+    sceneWidgetType: item.valueConfig?.sceneWidgetType,
+    chartType: item.chartType,
+  });
+  const copyMenuItem: MoreActionsDropdownItem | null = showCopy
+    ? {
+      key: 'copy',
+      icon: <CopyOutlined />,
+      label: t('common.copy'),
+      onClick: () => onCopy?.(),
+    }
+    : null;
   const menuItems: MoreActionsDropdownItem[] = [
     {
       key: 'configure',
@@ -72,6 +100,7 @@ const ScreenWidgetFrame: React.FC<ScreenWidgetFrameProps> = ({
       label: t('opsAnalysis.screen.editWidget'),
       onClick: () => onConfigure?.(),
     },
+    ...(copyMenuItem ? [copyMenuItem] : []),
     {
       key: 'delete',
       danger: true,

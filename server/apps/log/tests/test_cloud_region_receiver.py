@@ -9,7 +9,7 @@ def _node_mgmt(proxy_address="", env_config=None):
     client = Mock()
     client.get_cloud_region_proxy_address.return_value = proxy_address
     client.node_list.return_value = {"nodes": [{"id": "node-1"}]}
-    client.get_cloud_region_envconfig.return_value = env_config
+    client.get_cloud_region_public_config.return_value = env_config
     return client
 
 
@@ -23,7 +23,7 @@ def test_resolve_prefers_explicit_proxy_address():
 
     assert result == "proxy.example.com"
     client.get_cloud_region_proxy_address.assert_called_once_with(42, [1])
-    client.get_cloud_region_envconfig.assert_not_called()
+    client.get_cloud_region_public_config.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -56,7 +56,7 @@ def test_resolve_does_not_fall_back_when_cloud_region_is_not_accessible():
     result = CloudRegionReceiverService.resolve(client, 42, [1])
 
     assert result == ""
-    client.get_cloud_region_envconfig.assert_not_called()
+    client.get_cloud_region_public_config.assert_not_called()
 
 
 def test_resolve_returns_empty_for_user_without_organizations():

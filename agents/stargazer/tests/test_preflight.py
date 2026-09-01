@@ -1,10 +1,10 @@
 import asyncio
-import errno
 import socket
 import ssl
 
 import pytest
 from core.collection.contracts import PreflightStatus
+from core.collection.enums import FailureStage
 from core.collection.preflight import AsyncProtocolPreflight
 from core.collection.runtime import CollectionRequest
 from core.infra.outbound_policy import OutboundTargetPolicy, OutboundTargetRejected
@@ -279,6 +279,7 @@ async def test_tcp_preflight_returns_stable_unreachable_error(monkeypatch):
     assert result.status == PreflightStatus.UNREACHABLE
     assert result.error_code == "tcp_connection_refused"
     assert result.detail == "ConnectionRefusedError"
+    assert result.failed_stage == FailureStage.IP_PRECHECK
 
 
 @pytest.mark.asyncio
@@ -301,6 +302,7 @@ async def test_outbound_rejected_target_is_logged(monkeypatch):
 
     assert result.status == PreflightStatus.UNREACHABLE
     assert result.error_code == "outbound_target_rejected"
+    assert result.failed_stage == FailureStage.OUTBOUND_POLICY
     assert any("event=outbound_target_skipped" in item for item in logged)
     assert any("target=8.8.8.8" in item for item in logged)
     assert any("task_id=outbound-skip-log" in item for item in logged)
@@ -587,77 +589,35 @@ async def test_snmp_ip_precheck_off_still_skips_udp_probe(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_snmp_ip_precheck_timeout_defers_to_credentials(monkeypatch):
-    sent = []
-    loop = asyncio.get_running_loop()
+async def test_snmp_ip_precheck_on_defers_to_credential_probe_without_raw_udp(monkeypatch):
+    async def fail_sendall(*args, **kwargs):
+        raise AssertionError("SNMP target policy must not send a credential-free UDP probe")
 
-    async def fake_sendall(sock, data):
-        sent.append((sock.getpeername(), data))
-
-    async def fake_recv(sock, nbytes):
-        raise TimeoutError()
-
-    monkeypatch.setattr(loop, "sock_sendall", fake_sendall)
-    monkeypatch.setattr(loop, "sock_recv", fake_recv)
+    monkeypatch.setattr(asyncio.get_running_loop(), "sock_sendall", fail_sendall)
     request = CollectionRequest(
-        task_id="snmp-timeout-pass",
+        task_id="snmp-precheck-on",
         plugin_ref="network.config",
         targets=("10.10.24.1",),
         params={"preflight_kind": "snmp", "ip_precheck": True, "port": 161},
     )
     result = await AsyncProtocolPreflight().check("10.10.24.1", request, timeout_seconds=1)
     assert result.status == PreflightStatus.UNKNOWN
-    assert "deferred to credential-aware probe" in (result.detail or "")
-    assert sent
-
-
-@pytest.mark.asyncio
-async def test_snmp_ip_precheck_port_unreachable_is_hard_fail(monkeypatch):
-    loop = asyncio.get_running_loop()
-
-    async def fake_sendall(sock, data):
-        return None
-
-    async def fake_recv(sock, nbytes):
-        raise ConnectionRefusedError("ICMP port unreachable")
-
-    monkeypatch.setattr(loop, "sock_sendall", fake_sendall)
-    monkeypatch.setattr(loop, "sock_recv", fake_recv)
-    request = CollectionRequest(
-        task_id="snmp-port-unreachable",
-        plugin_ref="network.config",
-        targets=("10.10.24.1",),
-        params={"preflight_kind": "snmp", "ip_precheck": True, "port": 161},
-    )
-    result = await AsyncProtocolPreflight().check("10.10.24.1", request, timeout_seconds=1)
-    assert result.status == PreflightStatus.UNREACHABLE
-    assert result.error_code == "udp_port_unreachable"
-
-
-@pytest.mark.asyncio
-async def test_snmp_ip_precheck_network_unreachable_is_hard_fail(monkeypatch):
-    class BoomSocket(socket.socket):
-        def connect(self, address):  # noqa: ANN001
-            raise OSError(errno.ENETUNREACH, "Network is unreachable")
-
-    monkeypatch.setattr("core.collection.preflight.socket.socket", BoomSocket)
-    request = CollectionRequest(
-        task_id="snmp-net-unreachable",
-        plugin_ref="network.config",
-        targets=("10.10.24.1",),
-        params={"preflight_kind": "udp", "ip_precheck": True, "port": 161},
-    )
-    result = await AsyncProtocolPreflight().check("10.10.24.1", request, timeout_seconds=1)
-    assert result.status == PreflightStatus.UNREACHABLE
-    assert result.error_code == "udp_network_unreachable"
+    assert "credential-aware probe" in (result.detail or "")
 
 
 @pytest.mark.asyncio
 async def test_preflight_component_failure_passes(monkeypatch):
+    secret = "preflight-" + "component-secret-sentinel"
+    warning_calls = []
+
     async def boom(*args, **kwargs):
-        raise RuntimeError("probe library crashed")
+        raise RuntimeError("password=" + secret)
 
     monkeypatch.setattr("core.collection.preflight.asyncio.open_connection", boom)
+    monkeypatch.setattr(
+        "core.collection.preflight.logger.warning",
+        lambda message, *args: warning_calls.append((message, args)),
+    )
     request = CollectionRequest(
         task_id="preflight-crash",
         plugin_ref="mysql.info",
@@ -667,3 +627,7 @@ async def test_preflight_component_failure_passes(monkeypatch):
     result = await AsyncProtocolPreflight().check("10.10.24.10", request, timeout_seconds=5)
     assert result.status == PreflightStatus.UNKNOWN
     assert "preflight component failed" in (result.detail or "")
+    rendered = [template % args for template, args in warning_calls]
+    assert len(rendered) == 1
+    assert "error_type=RuntimeError" in rendered[0]
+    assert secret not in rendered[0]

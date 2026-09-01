@@ -83,6 +83,9 @@ describe('APM 错误页信息层级', () => {
     expect(screen.getByText('完整堆栈与分布')).not.toBeNull();
     expect(document.querySelector('details pre')?.textContent).toContain('at charge(payment.py:42)');
     expect(document.querySelector('details pre')?.className).not.toMatch(/bg-/);
+    const sampleTrace = screen.getByRole('link', { name: /POST \/checkout/ });
+    expect(sampleTrace.getAttribute('href')).toContain('/apm/explore/traces/');
+    expect(sampleTrace.className).not.toMatch(/justify-between/);
   });
 
   it('权限过滤造成当前页为空时仍保留游标入口', async () => {

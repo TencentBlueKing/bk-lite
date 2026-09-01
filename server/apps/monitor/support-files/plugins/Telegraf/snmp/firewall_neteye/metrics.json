@@ -3,6 +3,7 @@
   "collect_type": "snmp_neteye",
   "plugin": "Firewall Neteye SNMP",
   "plugin_desc": "网御星云（Neteye）防火墙专用 SNMP 采集模板（企业号 3224 资源 MIB）。除标准 IF-MIB 接口指标外，额外采集网御星云私有 OID 的设备健康指标：CPU 平均使用率（nsResCpuAvg）与内存（nsResMemAllocate 已用 + nsResMemLeft 空闲，用量按 已用/(已用+空闲) 推导）。会话计数与温度/风扇/电源本模板未采集，故为 N/A。适用品牌型号——北京网御星云（Neteye/Leadsec）NGFW / UTM 防火墙（企业号 3224）。",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_neteye'}) by (instance_id)",
   "name": "Firewall",
   "icon": "mm-firewall_防火墙",

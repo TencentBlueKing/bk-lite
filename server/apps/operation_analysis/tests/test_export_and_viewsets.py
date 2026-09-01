@@ -23,6 +23,31 @@ def test_normalize_dashboard_returns_list():
     assert vs.normalize_canvas_view_sets_for_storage("bad", ObjectType.DASHBOARD) == []
 
 
+def test_scene_widget_surface_contract_rejects_illegal_imports():
+    application3d = [{"valueConfig": {"chartType": "application3D", "sceneWidgetType": "application3D"}}]
+    with pytest.raises(ValueError, match="application3D is not supported on dashboard"):
+        vs.normalize_canvas_view_sets_for_storage(application3d, ObjectType.DASHBOARD)
+    with pytest.raises(ValueError, match="application3D is not supported on report"):
+        vs.normalize_canvas_view_sets_for_storage(
+            {"schema_version": 1, "filters": [], "sections": application3d},
+            ObjectType.REPORT,
+        )
+    screen = {"viewport": {"width": 1920, "height": 1080}, "items": application3d, "decorations": {}}
+    assert vs.normalize_canvas_view_sets_for_storage(screen, ObjectType.SCREEN)["items"] == application3d
+
+
+def test_network_status_topology_remains_dashboard_and_screen_only():
+    nst = [{"valueConfig": {"chartType": "networkStatusTopology", "sceneWidgetType": "networkStatusTopology"}}]
+    assert vs.normalize_canvas_view_sets_for_storage(nst, ObjectType.DASHBOARD) == nst
+    screen = {"viewport": {"width": 1920, "height": 1080}, "items": nst, "decorations": {}}
+    assert vs.normalize_canvas_view_sets_for_storage(screen, ObjectType.SCREEN)["items"] == nst
+    with pytest.raises(ValueError, match="networkStatusTopology is not supported on report"):
+        vs.normalize_canvas_view_sets_for_storage(
+            {"schema_version": 1, "filters": [], "sections": nst},
+            ObjectType.REPORT,
+        )
+
+
 def test_normalize_topology_fills_keys():
     out = vs.normalize_canvas_view_sets_for_storage({}, ObjectType.TOPOLOGY)
     assert out == {"nodes": [], "edges": [], "filters": []}

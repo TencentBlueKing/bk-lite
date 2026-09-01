@@ -14,6 +14,7 @@ export interface ModelItem {
   classification_id: string;
   model_name: string;
   icn: string;
+  app_topo_layer?: 'system' | 'service' | 'host' | 'appService' | 'infrastructure' | 'none';
   organization?: number;
   group?: number | number[];
   is_visible?: boolean;

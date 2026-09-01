@@ -3,6 +3,7 @@
   "collect_type": "snmp_dellforce",
   "plugin": "Switch Dell Force10 SNMP",
   "plugin_desc": "Dell Force10 (S-Series)-specific SNMP collection for switches (F10-S-SERIES-CHASSIS-MIB, enterprise 6027). In addition to standard IF-MIB interface metrics, it collects Dell Force10 private OIDs for device health: per-processor CPU and memory utilization, per-stack-unit temperature, fan-tray and power-supply status. CPU and memory are reported directly as percentages; fan/psu states are normalized to the unified 1=normal convention. Supported brands/models — Dell Networking / Force10 (PowerSwitch S/Z series, FTOS/OS9, enterprise 6027).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_dellforce'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

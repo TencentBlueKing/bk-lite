@@ -5,24 +5,15 @@ from django.utils import timezone
 
 from apps.apm.adapters import InMemoryTraceStore, TelemetryStoreUnavailable
 from apps.apm.services import DjangoTelemetryCatalogService, DjangoTelemetryQueryService
-from apps.apm.services.contracts import (
-    CatalogDiscovery,
-    SpanDetail,
-    TraceDetail,
-    TracePage,
-    TraceSummary,
-)
+from apps.apm.services.contracts import CatalogDiscovery, SpanDetail, TraceDetail, TracePage, TraceSummary
 from apps.apm.tests.helpers import create_application
-
 
 pytestmark = pytest.mark.django_db
 
 
 def _discover(*, organization_ids, instance_id, application_id):
     application = create_application(application_id, tuple(organization_ids))
-    result = DjangoTelemetryCatalogService().discover(
-        CatalogDiscovery(application_id, "checkout", instance_id, "production")
-    )
+    result = DjangoTelemetryCatalogService().discover(CatalogDiscovery(application_id, "checkout", instance_id, "production"))
     return application, result.instance
 
 
@@ -64,9 +55,7 @@ def _detail(trace_id, application_id, instance_id, now, attributes=None):
     )
 
 
-def test_search_filters_by_instance_org_and_uses_service_org_when_identity_is_missing(
-    apm_api_client, mocker
-):
+def test_search_filters_by_instance_org_and_uses_service_org_when_identity_is_missing(apm_api_client, mocker):
     now = timezone.now()
     _discover(organization_ids=[10], instance_id="pod-allowed", application_id="shop")
     _discover(organization_ids=[20], instance_id="pod-denied", application_id="billing")
@@ -79,7 +68,13 @@ def test_search_filters_by_instance_org_and_uses_service_org_when_identity_is_mi
         ),
         next_cursor="next",
     )
-    mocker.patch("apps.apm.views.traces.DjangoTelemetryQueryService.search_traces", return_value=page)
+
+    def search_traces(query):
+        if query.cursor:
+            return TracePage((), None)
+        return page
+
+    mocker.patch("apps.apm.views.traces.DjangoTelemetryQueryService.search_traces", side_effect=search_traces)
 
     response = apm_api_client.get(
         "/api/v1/apm/traces/",
@@ -88,12 +83,10 @@ def test_search_filters_by_instance_org_and_uses_service_org_when_identity_is_mi
 
     assert response.status_code == 200
     assert [item["trace_id"] for item in response.data["items"]] == ["a" * 32, "c" * 32]
-    assert response.data["next_cursor"] == "next"
+    assert response.data["next_cursor"] is None
 
 
-def test_direct_trace_access_is_non_enumerable_and_sensitive_attributes_never_return(
-    apm_api_client, mocker
-):
+def test_direct_trace_access_is_non_enumerable_and_sensitive_attributes_never_return(apm_api_client, mocker):
     now = timezone.now()
     _discover(organization_ids=[10], instance_id="pod-allowed", application_id="shop")
     _discover(organization_ids=[20], instance_id="pod-denied", application_id="billing")

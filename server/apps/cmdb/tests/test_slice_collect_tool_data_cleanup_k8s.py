@@ -579,7 +579,7 @@ class TestK8sSetupService:
 
     def test_generate_install_command_builds_curl(self, mocker):
         fake_node = mocker.Mock()
-        fake_node.get_cloud_region_envconfig.return_value = {"NODE_SERVER_URL": "http://srv:8000/"}
+        fake_node.get_cloud_region_public_config.return_value = {"NODE_SERVER_URL": "http://srv:8000/"}
         mocker.patch("apps.rpc.node_mgmt.NodeMgmt", return_value=fake_node)
         mocker.patch.object(k8s_mod.InfraService, "generate_install_token", return_value="TKN")
 
@@ -591,7 +591,7 @@ class TestK8sSetupService:
 
     def test_generate_install_command_missing_server_url(self, mocker):
         fake_node = mocker.Mock()
-        fake_node.get_cloud_region_envconfig.return_value = {}
+        fake_node.get_cloud_region_public_config.return_value = {}
         mocker.patch("apps.rpc.node_mgmt.NodeMgmt", return_value=fake_node)
         with pytest.raises(BaseAppException):
             K8sSetupService.generate_install_command("c1", 3)

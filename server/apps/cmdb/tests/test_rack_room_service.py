@@ -458,6 +458,46 @@ class TestLayoutViews:
             inst_uuid="550e8400-e29b-41d4-a716-446655440099",
         )
         assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert _body(response)["message"] == "实例不存在"
+
+
+@pytest.mark.unit
+class TestRacksGroupedByRoomView:
+    def test_passes_search_and_page(self, monkeypatch):
+        from apps.cmdb.views.instance import InstanceViewSet
+
+        captured = {}
+
+        def fake_list(**kwargs):
+            captured.update(kwargs)
+            return {"groups": [{"room_uuid": _uuid(1), "room_name": "北京-1F", "racks": []}], "count": 1}
+
+        monkeypatch.setattr(f"{VIEWS}.list_racks_grouped_by_room", fake_list)
+        monkeypatch.setattr(
+            f"{VIEWS}.CmdbRulesFormatUtil.format_user_groups_permissions",
+            lambda request, model_id="", permission_type=None: {model_id: {}},
+        )
+        request = MagicMock()
+        request.query_params = {"page": "2", "page_size": "10", "search": "北京"}
+        request.user.username = "alice"
+        response = InstanceViewSet().racks_grouped_by_room(request)
+        assert response.status_code == status.HTTP_200_OK
+        assert _body(response)["data"]["count"] == 1
+        assert captured["page"] == 2
+        assert captured["page_size"] == 10
+        assert captured["search"] == "北京"
+        assert captured["creator"] == "alice"
+
+    def test_rejects_unbounded_page_size(self, monkeypatch):
+        from apps.cmdb.views.instance import InstanceViewSet
+
+        monkeypatch.setattr(f"{VIEWS}.list_racks_grouped_by_room", lambda **kwargs: {"groups": [], "count": 0})
+        request = MagicMock()
+        request.query_params = {"page_size": "101"}
+        request.user.username = "alice"
+        response = InstanceViewSet().racks_grouped_by_room(request)
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "page_size" in _body(response)["message"]
 
 
 @pytest.mark.unit
@@ -580,3 +620,120 @@ class TestGetRoomListNatsHandler:
         nats.get_room_list(user_info={"team": 1})
         kwargs = mock_list_rooms.call_args.kwargs
         assert kwargs["permission_map"] == {}
+
+
+@pytest.mark.unit
+class TestListRacksGroupedByRoom:
+    """机柜选择器：按机房分组，搜索命中机房名或机柜名。"""
+
+    def _rooms(self):
+        return [
+            {"inst_uuid": _uuid(1), "inst_name": "北京-1F", "model_id": "server_room"},
+            {"inst_uuid": _uuid(2), "inst_name": "上海-2F", "model_id": "server_room"},
+        ]
+
+    def _racks(self):
+        return {
+            _uuid(11): {"inst_uuid": _uuid(11), "inst_name": "A01", "model_id": "rack"},
+            _uuid(12): {"inst_uuid": _uuid(12), "inst_name": "A02", "model_id": "rack"},
+            _uuid(21): {"inst_uuid": _uuid(21), "inst_name": "B01", "model_id": "rack"},
+            _uuid(99): {"inst_uuid": _uuid(99), "inst_name": "Z99", "model_id": "rack"},
+        }
+
+    def _patch_graph(self, monkeypatch, *, permission_ok=True):
+        rooms = self._rooms()
+        racks = self._racks()
+        room_to_racks = {
+            _uuid(1): [_uuid(11), _uuid(12)],
+            _uuid(2): [_uuid(21)],
+        }
+        rack_to_rooms = {
+            _uuid(11): [_uuid(1)],
+            _uuid(12): [_uuid(1)],
+            _uuid(21): [_uuid(2)],
+            _uuid(99): [],
+        }
+
+        def instance_list(model_id, params, page, page_size, order, permission_map, creator=None, case_sensitive=True):
+            keyword = ""
+            for item in params or []:
+                if item.get("field") == "inst_name":
+                    keyword = str(item.get("value") or "")
+                    break
+            if model_id == "server_room":
+                items = rooms
+            else:
+                items = list(racks.values())
+            if keyword:
+                items = [item for item in items if keyword.lower() in str(item.get("inst_name") or "").lower()]
+            start = (page - 1) * page_size
+            return items[start : start + page_size], len(items)
+
+        def association_map(model_id, inst_uuids, related_model=None):
+            mapping = room_to_racks if model_id == "server_room" else rack_to_rooms
+            return {uid: list(mapping.get(uid, [])) for uid in inst_uuids}
+
+        def query_by_uuids(inst_uuids):
+            catalog = {**{item["inst_uuid"]: item for item in rooms}, **racks}
+            return [catalog[uid] for uid in inst_uuids if uid in catalog]
+
+        monkeypatch.setattr(rack_room.InstanceManage, "instance_list", instance_list)
+        monkeypatch.setattr(rack_room.InstanceManage, "instance_association_map_by_uuids", association_map)
+        monkeypatch.setattr(rack_room.InstanceManage, "query_entity_by_uuids", query_by_uuids)
+        monkeypatch.setattr(
+            rack_room.InstanceManage,
+            "_has_topology_view_permission",
+            lambda instance, permission_map, user=None: permission_ok if permission_ok is True else permission_ok(instance),
+        )
+
+    def test_groups_racks_under_visible_rooms(self, monkeypatch):
+        self._patch_graph(monkeypatch)
+        out = rack_room.list_racks_grouped_by_room(page=1, page_size=20)
+        assert out["count"] == 2
+        assert [group["room_name"] for group in out["groups"]] == ["北京-1F", "上海-2F"]
+        assert [rack["inst_name"] for rack in out["groups"][0]["racks"]] == ["A01", "A02"]
+        assert [rack["inst_name"] for rack in out["groups"][1]["racks"]] == ["B01"]
+
+    def test_paginates_by_room_not_rack(self, monkeypatch):
+        self._patch_graph(monkeypatch)
+        out = rack_room.list_racks_grouped_by_room(page=1, page_size=1)
+        assert out["count"] == 2
+        assert len(out["groups"]) == 1
+        assert out["groups"][0]["room_name"] == "北京-1F"
+        assert [rack["inst_name"] for rack in out["groups"][0]["racks"]] == ["A01", "A02"]
+
+    def test_search_by_room_name_returns_all_racks_in_room(self, monkeypatch):
+        self._patch_graph(monkeypatch)
+        out = rack_room.list_racks_grouped_by_room(search="北京", page=1, page_size=20)
+        assert out["count"] == 1
+        assert out["groups"][0]["room_name"] == "北京-1F"
+        assert [rack["inst_name"] for rack in out["groups"][0]["racks"]] == ["A01", "A02"]
+
+    def test_search_by_rack_name_keeps_parent_room_group(self, monkeypatch):
+        self._patch_graph(monkeypatch)
+        out = rack_room.list_racks_grouped_by_room(search="A01", page=1, page_size=20)
+        assert out["count"] == 1
+        assert out["groups"][0]["room_name"] == "北京-1F"
+        assert out["groups"][0]["room_uuid"] == _uuid(1)
+        names = [rack["inst_name"] for rack in out["groups"][0]["racks"]]
+        assert "A01" in names
+
+    def test_unassociated_rack_search_uses_null_room(self, monkeypatch):
+        self._patch_graph(monkeypatch)
+        out = rack_room.list_racks_grouped_by_room(search="Z99", page=1, page_size=20)
+        assert out["count"] == 1
+        assert out["groups"][0]["room_uuid"] is None
+        assert [rack["inst_name"] for rack in out["groups"][0]["racks"]] == ["Z99"]
+
+    def test_hides_racks_without_view_permission(self, monkeypatch):
+        self._patch_graph(
+            monkeypatch,
+            permission_ok=lambda instance: instance.get("inst_name") != "A02",
+        )
+        out = rack_room.list_racks_grouped_by_room(page=1, page_size=20)
+        assert [rack["inst_name"] for rack in out["groups"][0]["racks"]] == ["A01"]
+
+    def test_rejects_unbounded_page_size(self, monkeypatch):
+        self._patch_graph(monkeypatch)
+        with pytest.raises(ValueError, match="page_size"):
+            rack_room.list_racks_grouped_by_room(page=1, page_size=101)

@@ -66,6 +66,16 @@ if (!/<RoomFloorPlan[\s\S]*?onRackSelect\s*=/.test(hostSrc)) {
   failures.push('[ViewCanvasHost.tsx] RoomFloorPlan missing onRackSelect wiring');
 }
 
+if (!/items-end/.test(hostSrc)) {
+  failures.push('[ViewCanvasHost.tsx] multi-rack compare must bottom-align cabinets');
+}
+if (!/overflow-x-auto/.test(hostSrc)) {
+  failures.push('[ViewCanvasHost.tsx] multi-rack compare must scroll horizontally');
+}
+if (!/focuses/.test(hostSrc)) {
+  failures.push('[ViewCanvasHost.tsx] missing focuses prop for rack compare');
+}
+
 if (!/onRoomRackDrill/.test(hostSrc)) {
   failures.push('[ViewCanvasHost.tsx] missing onRoomRackDrill prop wiring');
 }
@@ -84,6 +94,30 @@ if (!/onPopupScroll/.test(pickerSrc)) {
 }
 if (!/SEARCH_PAGE_SIZE/.test(pickerSrc)) {
   failures.push('[ViewInstancePicker.tsx] missing paged instance search');
+}
+if (!/mode=\{allowMultiple \? 'multiple' : undefined\}/.test(pickerSrc)) {
+  failures.push('[ViewInstancePicker.tsx] rack picker should allow multi-select');
+}
+if (!/viewAllowsMultiSelect/.test(pickerSrc)) {
+  failures.push('[ViewInstancePicker.tsx] missing viewAllowsMultiSelect gate');
+}
+if (!/getRacksGroupedByRoom/.test(pickerSrc)) {
+  failures.push('[ViewInstancePicker.tsx] rack picker should load racks grouped by room');
+}
+if (!/groupByRoom/.test(pickerSrc)) {
+  failures.push('[ViewInstancePicker.tsx] missing groupByRoom gate for rack mode');
+}
+if (!/optionLabelProp=\{groupByRoom \? 'selectedLabel' : 'label'\}/.test(pickerSrc)) {
+  failures.push('[ViewInstancePicker.tsx] grouped rack tags should show room + rack name');
+}
+if (!/rackGroupsToSelectOptions/.test(pickerSrc)) {
+  failures.push('[ViewInstancePicker.tsx] missing rackGroupsToSelectOptions wiring');
+}
+
+const apiPath = path.join(webRoot, 'src/app/cmdb/api/instance.ts');
+const apiSrc = fs.readFileSync(apiPath, 'utf8');
+if (!/racks_grouped_by_room/.test(apiSrc)) {
+  failures.push('[instance.ts] missing racks_grouped_by_room API');
 }
 
 const shellPath = path.join(

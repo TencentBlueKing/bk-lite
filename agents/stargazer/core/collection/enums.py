@@ -30,6 +30,17 @@ class PreflightStatus(str, Enum):
     UNKNOWN = "unknown"
 
 
+class FailureStage(str, Enum):
+    """单目标失败的稳定归因；error_code 只表达具体原因。"""
+
+    OUTBOUND_POLICY = "outbound_policy"
+    IP_PRECHECK = "ip_precheck"
+    ACCESS_PROBE = "access_probe"
+    CREDENTIAL = "credential"
+    COLLECTION = "collection"
+    FRAMEWORK = "framework"
+
+
 class AccessProbeStatus(str, Enum):
     READY = "ready"
     # 插件未声明廉价检查；运行时跳过 AccessProbe，以 collect 作为 CredentialAttempt

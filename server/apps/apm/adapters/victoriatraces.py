@@ -12,9 +12,9 @@ import requests
 from apps.apm.adapters.errors import TelemetryStoreUnavailable
 from apps.apm.services.contracts import (
     DeploymentReleaseQuery,
+    InferredDeploymentRelease,
     InstanceActivity,
     InstanceActivityQuery,
-    InferredDeploymentRelease,
     MetricDataState,
     ServiceDependency,
     ServiceEndpointRed,
@@ -28,12 +28,15 @@ from apps.apm.services.contracts import (
     SpanSearchQuery,
     SpanSummary,
     TopologyDependencyQuery,
+    TopologySampleQuery,
+    TopologyTraceSample,
     TraceDetail,
     TracePage,
     TraceSearchQuery,
     TraceSummary,
 )
 from apps.apm.services.identity import normalize_identity
+from apps.core.logger import apm_logger as logger
 
 MAX_QUERY_WINDOW = timedelta(days=35)
 MAX_TOPOLOGY_WINDOW = timedelta(days=7)
@@ -43,6 +46,17 @@ MAX_UNIQUE_SPANS = 1_000_000
 MAX_ACTIVITY_DIMENSIONS = 10_000
 MAX_DEPLOYMENT_RELEASES = 10_000
 MAX_DEPENDENCIES = 10_000
+MAX_TOPOLOGY_SAMPLE_TRACES = 200
+MAX_TOPOLOGY_SAMPLE_SPANS = 20_000
+# 全窗按 trace_id 分组的内存与分组数成正比；按窗口分层切片分别取样再轮转合并，
+# 既避开 VT 单次查询内存上限，也让 15m/1h/1d/7d 覆盖不同时段而不是一律取最新 200 条。
+SAMPLE_SLICE_QUARTER_HOUR = timedelta(minutes=15)
+SAMPLE_SLICE_HOUR = timedelta(hours=1)
+SAMPLE_SLICE_DAY = timedelta(days=1)
+# 天级切片里 newest 201 条 Trace 落在最近几千条 Span 里；先 first 再 stats，
+# 避免对切片内全部 Span 做 stats by (trace_id)（本机 1d 约 150 万行）。
+SAMPLE_TRACE_ID_PROBE_SPANS = 5000
+RED_EXACT_DEDUP_WINDOW = timedelta(days=1)
 MAX_RED_POINTS = 120
 MAX_TOP_ENDPOINTS = 10
 MAX_ENDPOINT_NAME_LENGTH = 256
@@ -135,6 +149,46 @@ def _validate_window(started_at: datetime, ended_at: datetime, *, maximum: timed
     return max(1, int(window.total_seconds()))
 
 
+def _sample_slice_width(window: timedelta) -> timedelta:
+    """短窗单片取最近；1h 按 15 分钟、1d 按小时、更长按天。"""
+
+    if window <= SAMPLE_SLICE_QUARTER_HOUR:
+        return window
+    if window <= SAMPLE_SLICE_HOUR:
+        return SAMPLE_SLICE_QUARTER_HOUR
+    if window <= SAMPLE_SLICE_DAY:
+        return SAMPLE_SLICE_HOUR
+    return SAMPLE_SLICE_DAY
+
+
+def _sample_slices(started_at: datetime, ended_at: datetime) -> list[tuple[datetime, datetime]]:
+    """把取样窗口按分层宽度从新到旧切片；VT 的 end 为开区间，切片间无重叠无缝隙。"""
+
+    width = _sample_slice_width(ended_at - started_at)
+    slices: list[tuple[datetime, datetime]] = []
+    cursor = ended_at
+    while cursor > started_at:
+        slice_started_at = max(started_at, cursor - width)
+        slices.append((slice_started_at, cursor))
+        cursor = slice_started_at
+    return slices
+
+
+def _topology_trace_id_query(filters: list[str], limit: int, *, slice_width: timedelta) -> str:
+    """短切片全量按 trace_id 聚合；天级切片先取最近 Span 再聚合，语义仍是切片内最新 Trace。"""
+
+    if slice_width >= SAMPLE_SLICE_DAY:
+        return (
+            f"{' '.join(filters)} | first {SAMPLE_TRACE_ID_PROBE_SPANS} by (_time desc) "
+            f"| stats by (trace_id) max(_time) as matched_at "
+            f"| sort by (matched_at) desc | limit {limit + 1}"
+        )
+    return (
+        f"{' '.join(filters)} | stats by (trace_id) max(start_time_unix_nano) as matched_at "
+        f"| sort by (matched_at) desc | limit {limit + 1}"
+    )
+
+
 def _number(value: object) -> float | None:
     try:
         parsed = float(value)
@@ -152,7 +206,9 @@ class VictoriaTracesTelemetryStore:
         *,
         session: requests.Session | None = None,
     ):
-        self.endpoint = (endpoint or os.getenv("APM_VICTORIATRACES_QUERY_ENDPOINT") or "http://127.0.0.1:10428").rstrip("/")
+        self.endpoint = (
+            endpoint or os.getenv("VICTORIATRACES_HOST") or os.getenv("APM_VICTORIATRACES_QUERY_ENDPOINT") or "http://127.0.0.1:10428"
+        ).rstrip("/")
         self.session = session or requests.Session()
         self.timeout = (3, int(os.getenv("APM_VICTORIATRACES_QUERY_TIMEOUT", "15")))
         self.verify = os.getenv("APM_VICTORIATRACES_VERIFY_TLS", "true").casefold() != "false"
@@ -212,7 +268,7 @@ class VictoriaTracesTelemetryStore:
         return TracePage(items=page_items, next_cursor=next_cursor)
 
     def _search_unscoped_traces(self, query: TraceSearchQuery) -> TracePage:
-        """空服务检索先按 trace_id 有界聚合，避免同一 Trace 跨页重复。"""
+        """空服务检索先按 trace_id 有界聚合，再一次 LogsQL 拉回 Span，避免逐条 Jaeger get_trace。"""
 
         ended_at = min(query.ended_at, _decode_cursor(query.cursor)) if query.cursor else query.ended_at
         filters = ["*"]
@@ -235,22 +291,34 @@ class VictoriaTracesTelemetryStore:
             f"| sort by (matched_at) desc | limit {query.limit + 1}"
         )
         rows = self._query_rows(logs_query, query.started_at, ended_at, limit=query.limit + 1)
-        summaries: list[tuple[datetime, TraceSummary]] = []
+        ordered_ids: list[str] = []
+        matched_at_by_id: dict[str, datetime] = {}
         for row in rows:
             trace_id = str(row.get("trace_id", "")).strip()
             matched_at_ns = _number(row.get("matched_at"))
-            if not trace_id or matched_at_ns is None:
+            if not trace_id or matched_at_ns is None or trace_id in matched_at_by_id:
                 continue
             try:
                 matched_at = datetime.fromtimestamp(matched_at_ns / 1_000_000_000, tz=UTC)
             except (OverflowError, OSError, ValueError):
                 continue
-            detail = self.get_trace(trace_id)
+            ordered_ids.append(trace_id)
+            matched_at_by_id[trace_id] = matched_at
+        traces, _omitted = self._fetch_topology_traces(
+            ordered_ids,
+            started_at=query.started_at,
+            ended_at=ended_at,
+        )
+        traces_by_id = {detail.trace_id: detail for detail in traces}
+        summaries: list[tuple[datetime, TraceSummary]] = []
+        for trace_id in ordered_ids:
+            detail = traces_by_id.get(trace_id)
             if detail is None:
                 continue
             matching_span = self._matching_span(detail, query)
-            if matching_span is not None:
-                summaries.append((matched_at, self._summary(detail, matching_span)))
+            if matching_span is None:
+                continue
+            summaries.append((matched_at_by_id[trace_id], self._summary(detail, matching_span)))
         summaries.sort(key=lambda item: (item[0], item[1].trace_id), reverse=True)
         page_pairs = summaries[: query.limit]
         page_items = tuple(summary for _, summary in page_pairs)
@@ -307,15 +375,32 @@ class VictoriaTracesTelemetryStore:
 
     def get_trace(self, trace_id: str) -> TraceDetail | None:
         payload = self._request_json(f"/select/jaeger/api/traces/{trace_id}", allow_not_found=True)
-        if payload is None:
-            return None
-        raw_traces = payload.get("data", [])
-        if not isinstance(raw_traces, list) or not raw_traces:
-            return None
-        return self._parse_trace(raw_traces[0])
+        if payload is not None:
+            raw_traces = payload.get("data", [])
+            if isinstance(raw_traces, list) and raw_traces:
+                detail = self._parse_trace(raw_traces[0])
+                if detail is not None:
+                    return detail
+        return self._get_trace_via_logsql(trace_id)
+
+    def _get_trace_via_logsql(self, trace_id: str) -> TraceDetail | None:
+        """Jaeger get-by-id 依赖延迟刷盘的 trace_id 索引；LogsQL 与列表同一条路径，能读到刚入库的 Span。"""
+
+        ended_at = datetime.now(UTC) + timedelta(minutes=1)
+        started_at = ended_at - MAX_QUERY_WINDOW
+        rows = self._query_rows(
+            f"trace_id:={_logsql_string(trace_id)} | limit {_RAW_SPAN_PARSE_LIMIT}",
+            started_at,
+            ended_at,
+            limit=_RAW_SPAN_PARSE_LIMIT,
+        )
+        return self._traces_from_span_rows(rows).get(trace_id)
 
     def service_red(self, query: ServiceMetricQuery) -> ServiceRed:
         window_seconds = _validate_window(query.started_at, query.ended_at)
+        # 精确路径按 (trace_id, span_id) 去重，内存与唯一 Span 数成正比，长时间窗会超出
+        # VT 单次查询内存上限；超过 RED_EXACT_DEDUP_WINDOW 改用不去重的流式聚合近似。
+        exact_dedup = query.ended_at - query.started_at <= RED_EXACT_DEDUP_WINDOW
         deduped = self._deduped_entry_query(
             query.service_namespace,
             query.service_name,
@@ -323,24 +408,31 @@ class VictoriaTracesTelemetryStore:
             endpoint=query.endpoint,
             version=query.version,
         )
-        aggregate = (
-            f'{self._bounded_spans(deduped)} | stats count() as requests, count() if (status_code:="2") as errors, '
+        entry_filters = self._entry_span_filters(
+            query.service_namespace,
+            query.service_name,
+            query.environment,
+            endpoint=query.endpoint,
+            version=query.version,
+        )
+        final_stats = (
+            'stats count() as requests, count() if (status_code:="2") as errors, '
             "quantile(0.95, duration) as p95, quantile(0.99, duration) as p99"
         )
+        aggregate_base = self._bounded_spans(deduped) if exact_dedup else entry_filters
+        aggregate = f"{aggregate_base} | {final_stats}"
         values = self._ungrouped_values(self._stats(aggregate, query.started_at, query.ended_at))
         requests_count = values.get("requests")
         if requests_count is None or requests_count <= 0:
             return ServiceRed(None, None, None, None)
-        self._reject_truncated_unique_spans(deduped, requests_count, query.started_at, query.ended_at)
+        if exact_dedup:
+            self._reject_truncated_unique_spans(deduped, requests_count, query.started_at, query.ended_at)
         errors_count = values.get("errors", 0.0)
         timeseries: tuple[ServiceRedPoint, ...] = ()
         endpoints: tuple[ServiceEndpointRed, ...] = ()
         if query.include_breakdown:
             step = max(15, math.ceil(window_seconds / (MAX_RED_POINTS - 1)))
-            range_aggregate = (
-                f'{deduped} | stats count() as requests, count() if (status_code:="2") as errors, '
-                "quantile(0.95, duration) as p95, quantile(0.99, duration) as p99"
-            )
+            range_aggregate = f"{deduped if exact_dedup else entry_filters} | {final_stats}"
             ranged = self._range_values(self._stats_range(range_aggregate, query.started_at, query.ended_at, step=step))
             timeseries = tuple(
                 ServiceRedPoint(
@@ -352,6 +444,31 @@ class VictoriaTracesTelemetryStore:
                 )
                 for timestamp, count in list(ranged.get("requests", {}).items())[-MAX_RED_POINTS:]
             )
+            endpoints = self._endpoint_red(
+                self._endpoint_stats_rows(query, exact_dedup=exact_dedup, entry_filters=entry_filters),
+                window_seconds,
+            )
+        return ServiceRed(
+            request_rate=requests_count / window_seconds,
+            error_rate=errors_count / requests_count,
+            p95_ms=self._nanoseconds_to_ms(values.get("p95")),
+            p99_ms=self._nanoseconds_to_ms(values.get("p99")),
+            timeseries=timeseries,
+            top_endpoints=endpoints,
+        )
+
+    def _endpoint_stats_rows(
+        self,
+        query: ServiceMetricQuery,
+        *,
+        exact_dedup: bool,
+        entry_filters: str,
+    ) -> list[dict[str, Any]]:
+        final_stats = (
+            'count() as requests, count() if (status_code:="2") as errors, '
+            "quantile(0.95, duration) as p95, quantile(0.99, duration) as p99"
+        )
+        if exact_dedup:
             endpoint_deduped = self._deduped_entry_query(
                 query.service_namespace,
                 query.service_name,
@@ -362,19 +479,21 @@ class VictoriaTracesTelemetryStore:
             )
             endpoint_query = (
                 f"{self._bounded_spans(endpoint_deduped)} "
-                '| stats by (endpoint) count() as requests, count() if (status_code:="2") as errors, '
-                "quantile(0.95, duration) as p95, quantile(0.99, duration) as p99 "
+                f"| stats by (endpoint) {final_stats} "
                 f"| sort by (requests) desc | limit {MAX_TOP_ENDPOINTS}"
             )
-            endpoints = self._endpoint_red(self._stats(endpoint_query, query.started_at, query.ended_at), window_seconds)
-        return ServiceRed(
-            request_rate=requests_count / window_seconds,
-            error_rate=errors_count / requests_count,
-            p95_ms=self._nanoseconds_to_ms(values.get("p95")),
-            p99_ms=self._nanoseconds_to_ms(values.get("p99")),
-            timeseries=timeseries,
-            top_endpoints=endpoints,
+            return self._stats(endpoint_query, query.started_at, query.ended_at)
+        endpoint_query = (
+            f"{entry_filters} | stats by (name) {final_stats} | sort by (requests) desc | limit {MAX_TOP_ENDPOINTS}"
         )
+        rows = self._stats(endpoint_query, query.started_at, query.ended_at)
+        remapped: list[dict[str, Any]] = []
+        for row in rows:
+            metric = row.get("metric")
+            if not isinstance(metric, dict):
+                continue
+            remapped.append({**row, "metric": {**metric, "endpoint": metric.get("name", "")}})
+        return remapped
 
     def slo_measurement(self, query: SloMetricQuery) -> SloMeasurement:
         window_seconds = _validate_window(query.started_at, query.ended_at)
@@ -446,7 +565,7 @@ class VictoriaTracesTelemetryStore:
             f"{_SERVICE_FIELD}:* | stats by ({_NAMESPACE_FIELD}, {_SERVICE_FIELD}, "
             f"{_ENVIRONMENT_FIELD}, {_VERSION_FIELD}) "
             "min(start_time_unix_nano) as first_seen, max(end_time_unix_nano) as last_seen "
-            f"| filter {_VERSION_FIELD}:!=\"\" "
+            f'| filter {_VERSION_FIELD}:!="" '
             f"| sort by (first_seen) desc | limit {MAX_DEPLOYMENT_RELEASES + 1}"
         )
         rows = self._query_rows(logs_query, query.started_at, query.ended_at)
@@ -479,6 +598,168 @@ class VictoriaTracesTelemetryStore:
             )
         return releases
 
+    def sample_traces(self, query: TopologySampleQuery) -> TopologyTraceSample:
+        _validate_window(query.started_at, query.ended_at, maximum=MAX_TOPOLOGY_WINDOW)
+        if query.limit < 1 or query.limit > MAX_TOPOLOGY_SAMPLE_TRACES:
+            raise ValueError(f"拓扑样本 limit 必须在 1 到 {MAX_TOPOLOGY_SAMPLE_TRACES} 之间")
+        if query.status is not None and query.status not in _STATUS_TO_CODE:
+            raise ValueError("status 仅支持 ok 或 error")
+        if query.min_duration_ms is not None and query.min_duration_ms < 0:
+            raise ValueError("min_duration_ms 不能为负数")
+        if not query.service_names:
+            return TopologyTraceSample((), False)
+
+        filters = ["*", self._service_name_filter(query.service_names)]
+        if query.environment is not None:
+            filters.append(f"{_ENVIRONMENT_FIELD}:={_logsql_string(query.environment)}")
+        if query.span_name:
+            filters.append(f"name:={_logsql_string(query.span_name)}")
+        if query.status == "error":
+            filters.append(f"status_code:={_logsql_string(_STATUS_TO_CODE[query.status])}")
+        if query.min_duration_ms is not None:
+            filters.append(f"duration:>={int(query.min_duration_ms * 1_000_000)}")
+        # 分层切片分别取样，再跨片轮转合并到 limit，避免一律取最新 Trace。
+        per_slice_ids: list[list[str]] = []
+        for slice_started_at, slice_ended_at in _sample_slices(query.started_at, query.ended_at):
+            logs_query = _topology_trace_id_query(
+                filters,
+                query.limit,
+                slice_width=slice_ended_at - slice_started_at,
+            )
+            rows = self._query_rows(logs_query, slice_started_at, slice_ended_at, limit=query.limit + 1)
+            slice_ids: list[str] = []
+            slice_seen: set[str] = set()
+            for row in rows:
+                trace_id = str(row.get("trace_id", "")).strip()
+                if not trace_id or trace_id in slice_seen:
+                    continue
+                slice_seen.add(trace_id)
+                slice_ids.append(trace_id)
+            per_slice_ids.append(slice_ids)
+        trace_ids: list[str] = []
+        seen: set[str] = set()
+        for index in range(max((len(ids) for ids in per_slice_ids), default=0)):
+            for slice_ids in per_slice_ids:
+                if index >= len(slice_ids):
+                    continue
+                trace_id = slice_ids[index]
+                if trace_id in seen:
+                    continue
+                seen.add(trace_id)
+                trace_ids.append(trace_id)
+        truncated = len(trace_ids) > query.limit
+        selected_ids = trace_ids[: query.limit]
+        traces, omitted = self._fetch_topology_traces(
+            selected_ids,
+            started_at=query.started_at,
+            ended_at=query.ended_at,
+        )
+        return TopologyTraceSample(traces=tuple(traces), truncated=truncated, omitted_trace_fetches=omitted)
+
+    def _fetch_topology_traces(
+        self,
+        trace_ids: list[str],
+        *,
+        started_at: datetime,
+        ended_at: datetime,
+    ) -> tuple[list[TraceDetail], int]:
+        """一次 LogsQL 拉回样本 Trace 的 Span，避免逐条打 Jaeger get_trace。"""
+
+        if not trace_ids:
+            return [], 0
+        quoted = ",".join(_logsql_string(trace_id) for trace_id in trace_ids)
+        logs_query = f"trace_id:in({quoted}) | limit {MAX_TOPOLOGY_SAMPLE_SPANS}"
+        try:
+            rows = self._query_rows(logs_query, started_at, ended_at, limit=MAX_TOPOLOGY_SAMPLE_SPANS)
+        except TelemetryStoreUnavailable as exc:
+            logger.warning(
+                "event=apm_topology_trace_fetch_failed failed_stage=sample_spans error_type=%s",
+                type(exc).__name__,
+            )
+            raise
+        traces_by_id = self._traces_from_span_rows(rows)
+        traces: list[TraceDetail] = []
+        omitted = 0
+        for trace_id in trace_ids:
+            detail = traces_by_id.get(trace_id)
+            if detail is None:
+                omitted += 1
+                continue
+            traces.append(detail)
+        return traces, omitted
+
+    @classmethod
+    def _traces_from_span_rows(cls, rows: list[dict[str, Any]]) -> dict[str, TraceDetail]:
+        grouped: dict[str, list[SpanDetail]] = {}
+        truncated_ids: set[str] = set()
+        for row in rows:
+            trace_id = str(row.get("trace_id", "")).strip()
+            if not trace_id:
+                continue
+            spans = grouped.setdefault(trace_id, [])
+            if len(spans) >= _RAW_SPAN_PARSE_LIMIT:
+                truncated_ids.add(trace_id)
+                continue
+            span = cls._span_detail_from_row(row)
+            if span is None:
+                continue
+            if any(item.span_id == span.span_id for item in spans):
+                continue
+            spans.append(span)
+        traces: dict[str, TraceDetail] = {}
+        for trace_id, spans in grouped.items():
+            if not spans:
+                continue
+            spans.sort(key=lambda item: (item.started_at, item.span_id))
+            root = next((item for item in spans if item.parent_span_id is None), spans[0])
+            traces[trace_id] = TraceDetail(
+                trace_id=trace_id,
+                spans=tuple(spans),
+                service_namespace=root.service_namespace,
+                service_name=root.service_name,
+                environment=root.environment,
+                instance_id=root.instance_id,
+                truncated=trace_id in truncated_ids,
+            )
+        return traces
+
+    @staticmethod
+    def _span_detail_from_row(row: dict[str, Any]) -> SpanDetail | None:
+        span_id = str(row.get("span_id", "")).strip()
+        service_name = str(row.get("resource_attr:service.name", "")).strip()
+        if not span_id or not service_name:
+            return None
+        started_raw = _number(row.get("start_time_unix_nano"))
+        if started_raw is None:
+            return None
+        try:
+            started_at = datetime.fromtimestamp(started_raw / 1_000_000_000, tz=UTC)
+        except (OverflowError, OSError, ValueError):
+            return None
+        parent_span_id = str(row.get("parent_span_id", "")).strip()
+        if not parent_span_id or set(parent_span_id) <= {"0"}:
+            parent_span_id = None
+        attributes = {key: value for key, value in row.items() if isinstance(key, str) and key.startswith(("span_attr:", "resource_attr:"))}
+        return SpanDetail(
+            span_id=span_id,
+            parent_span_id=parent_span_id,
+            name=str(row.get("name", "")),
+            started_at=started_at,
+            duration_ms=(_number(row.get("duration")) or 0.0) / 1_000_000,
+            status="error" if str(row.get("status_code", "")).strip() == "2" else "ok",
+            attributes=attributes,
+            service_namespace=str(row.get("resource_attr:service.namespace", "")),
+            service_name=service_name,
+            environment=str(row.get("resource_attr:deployment.environment", "")),
+            instance_id=str(row.get("resource_attr:service.instance.id", "")).strip() or None,
+            kind=_CODE_TO_KIND.get(str(row.get("kind", "")).strip(), "unspecified"),
+        )
+
+    @staticmethod
+    def _service_name_filter(service_names: tuple[str, ...]) -> str:
+        quoted = ",".join(_logsql_string(name) for name in service_names if name)
+        return f"{_SERVICE_FIELD}:in({quoted})"
+
     def service_dependencies(self, query: TopologyDependencyQuery) -> tuple[ServiceDependency, ...]:
         _validate_window(query.started_at, query.ended_at, maximum=MAX_TOPOLOGY_WINDOW)
         payload = self._request_json(
@@ -505,7 +786,7 @@ class VictoriaTracesTelemetryStore:
                 dependencies.append(ServiceDependency(parent, child, calls))
         return tuple(dependencies)
 
-    def _deduped_entry_query(
+    def _entry_span_filters(
         self,
         namespace: str,
         service_name: str,
@@ -513,7 +794,6 @@ class VictoriaTracesTelemetryStore:
         *,
         endpoint: str = "",
         version: str = "",
-        keep_name: bool = False,
     ) -> str:
         filters = [
             "*",
@@ -526,10 +806,23 @@ class VictoriaTracesTelemetryStore:
             filters.append(f"name:={_logsql_string(endpoint)}")
         if version:
             filters.append(f"{_VERSION_FIELD}:={_logsql_string(version)}")
+        return " ".join(filters)
+
+    def _deduped_entry_query(
+        self,
+        namespace: str,
+        service_name: str,
+        environment: str,
+        *,
+        endpoint: str = "",
+        version: str = "",
+        keep_name: bool = False,
+    ) -> str:
         fields = "max(duration) as duration, max(status_code) as status_code"
         if keep_name:
             fields += ", max(name) as endpoint"
-        return f"{' '.join(filters)} | stats by (trace_id, span_id) {fields}"
+        base = self._entry_span_filters(namespace, service_name, environment, endpoint=endpoint, version=version)
+        return f"{base} | stats by (trace_id, span_id) {fields}"
 
     @staticmethod
     def _bounded_spans(deduped_query: str) -> str:
@@ -733,6 +1026,12 @@ class VictoriaTracesTelemetryStore:
             return b"".join(chunks)
         except TelemetryStoreUnavailable:
             raise
+        except requests.HTTPError as exc:
+            status_code = exc.response.status_code if exc.response is not None else None
+            if status_code in (400, 413, 422):
+                # VT 对超出内存/复杂度上限的查询返回 4xx，与「存储不可用」是不同故障。
+                raise TelemetryStoreUnavailable("VictoriaTraces 拒绝了本次查询（超出单次查询容量），请缩小时间窗后重试") from exc
+            raise TelemetryStoreUnavailable("VictoriaTraces 查询不可用") from exc
         except (requests.RequestException, TypeError, ValueError) as exc:
             raise TelemetryStoreUnavailable("VictoriaTraces 查询不可用") from exc
         finally:

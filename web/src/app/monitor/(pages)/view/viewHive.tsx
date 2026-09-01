@@ -275,6 +275,9 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
       );
       if (tagetMerticItem) {
         const cellValue = readDisplayMetricCell(item, metricName);
+        const isEnumMetric =
+          tagetMerticItem.data_type === 'Enum' ||
+          isStringArray(tagetMerticItem.unit || '');
         return {
           name: '',
           description: (
@@ -286,9 +289,9 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
               )}`}
             </>
           ),
-          fill: queryMetric
-            ? handleHexColor(cellValue, hexColor)
-            : handleFillColor(tagetMerticItem, cellValue)
+          fill: isEnumMetric
+            ? handleFillColor(tagetMerticItem, cellValue)
+            : handleHexColor(cellValue, hexColor)
         };
       }
       return {

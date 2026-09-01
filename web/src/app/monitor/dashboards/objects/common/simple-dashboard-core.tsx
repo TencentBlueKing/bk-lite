@@ -14,6 +14,7 @@ import {
   buildInstanceSearchTokens,
   formatEnumValue,
   formatMetricValue,
+  formatSamplingRate,
   buildSearchParams,
   getLatestChartValue,
   mergeChartSeries,
@@ -47,6 +48,7 @@ import {
   getDashboardDisplayModeFromParams,
   setDashboardDisplayModeInParams
 } from '../../shared/utils/display-mode-route';
+import { CHART_COLORS } from '@/app/monitor/constants';
 
 export type SimpleMetricUnit = MetricUnit;
 
@@ -71,10 +73,12 @@ export interface SummaryFieldConfig {
   label: string;
   metric: string;
   unit?: SimpleMetricUnit;
-  formatter?: 'duration' | 'enumHealth' | 'startedAt';
+  formatter?: 'duration' | 'enumHealth' | 'startedAt' | 'samplingRate';
   enumMap?: MetricEnumMap;
   /** 详情行语义色：error→红 / warning→琥珀 / 缺省→中性蓝。仅影响缩略图与数值配色。 */
   tone?: 'error' | 'warning' | 'normal';
+  /** 为 true 时不渲染 sparkline/进度条缩略图，仅展示数值。 */
+  hideViz?: boolean;
 }
 
 export interface SummaryCardConfig {
@@ -88,7 +92,7 @@ export interface SummaryCardConfig {
   compareFavorableDirection?: CompareFavorableDirection;
   footer?: SummaryFieldConfig[];
   hideTrend?: boolean;
-  formatter?: 'duration' | 'enumHealth' | 'startedAt';
+  formatter?: 'duration' | 'enumHealth' | 'startedAt' | 'samplingRate';
   enumMap?: MetricEnumMap;
   /** 标记为运行时长卡片，启用 relaxed 布局 + 运行状态指示器 */
   isUptimeCard?: boolean;
@@ -115,13 +119,22 @@ export interface ChartConfig {
     /** 'limit' renders a dashed, dimmed ceiling line (e.g. mem_limit). Defaults to solid. */
     style?: 'solid' | 'limit';
   }>;
+  /** 保留指标维度序列（如 queue/vhost），不把多线求和成一条。 */
+  keepDimensionSeries?: boolean;
 }
 
 export interface DetailPanelConfig {
   title: string;
   subtitle: string;
   rows: SummaryFieldConfig[];
+  /** rows=标签·缩略图·数值行；tiles=网格磁贴(标签在上、数值在下)。 */
+  layout?: 'rows' | 'tiles';
+  /** @deprecated 请改用 layout: 'tiles' */
+  compact?: boolean;
 }
+
+export const isDetailTilesLayout = (panel: Pick<DetailPanelConfig, 'layout' | 'compact'>): boolean =>
+  panel.layout === 'tiles' || Boolean(panel.compact);
 
 export interface RingSegmentConfig {
   label: string;
@@ -725,11 +738,13 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
           ? { value: card.emptyValue || '--', unit: '' }
           : card.formatter === 'duration'
             ? { value: formatDuration(getLatest(card.metric)), unit: '' }
-            : healthResult
-              ? { value: healthResult.value, unit: healthResult.unit }
-              : enumResult
-                ? { value: enumResult.value, unit: enumResult.unit }
-                : formatMetricValue(getLatest(card.metric), card.unit || metricMap[card.metric]?.unit || 'none');
+            : card.formatter === 'samplingRate'
+              ? formatSamplingRate(getLatest(card.metric))
+              : healthResult
+                ? { value: healthResult.value, unit: healthResult.unit }
+                : enumResult
+                  ? { value: enumResult.value, unit: enumResult.unit }
+                  : formatMetricValue(getLatest(card.metric), card.unit || metricMap[card.metric]?.unit || 'none');
 
         const uptimeState = card.isUptimeCard
           ? !hasData
@@ -758,25 +773,73 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
       })
   ), [config.summaryCards, formatField, getLatest, getNoDataType, hasMetricData, metricMap, previousMetricMap]);
 
+  const formatDimensionLegendLabel = (
+    details: Array<{ name: string; label: string; value: string }> | undefined
+  ) => {
+    if (!details?.length) return '';
+    const queue = details.find((item) => item.name === 'queue')?.value;
+    const vhost = details.find((item) => item.name === 'vhost')?.value;
+    if (queue && vhost) return `${queue} (${vhost})`;
+    if (queue) return queue;
+    return details.map((item) => item.value).filter(Boolean).join(' / ');
+  };
+
+  const valueKeysFromChartData = (point?: ChartData) =>
+    point
+      ? Object.keys(point).filter((key) => /^value\d+$/.test(key)).sort()
+      : [];
+
   const chartPanels = useMemo<PreparedChartPanel[]>(() => (
-    config.charts.map((chart) => ({
-      chart,
-      data: mergeChartSeries(chart.series.map((item) => ({ key: item.metric, label: item.label, data: metricMap[item.metric]?.viewData || [] }))),
-      metric: buildMetricItem(metricMap[chart.metric] || config.metrics.find((metric) => metric.name === chart.metric) || config.metrics[0]),
-      unit: metricMap[chart.metric]?.unit || config.metrics.find((metric) => metric.name === chart.metric)?.unit || 'none',
-      legends: chart.series.map((item, index) => ({ label: item.label, color: item.color, primary: index === 0 })),
-      seriesStyles: chart.series.map((item, index) => {
-        const isLimit = item.style === 'limit';
+    config.charts.map((chart) => {
+      if (chart.keepDimensionSeries) {
+        const viewData = metricMap[chart.metric]?.viewData || [];
+        const latest = viewData[viewData.length - 1];
+        const valueKeys = valueKeysFromChartData(latest);
+        const legends = valueKeys.length
+          ? valueKeys.map((key, index) => ({
+            label: formatDimensionLegendLabel(latest?.details?.[key]) || chart.series[0]?.label || key,
+            color: CHART_COLORS[index % CHART_COLORS.length],
+            primary: index === 0
+          }))
+          : chart.series.map((item, index) => ({
+            label: item.label,
+            color: item.color,
+            primary: index === 0
+          }));
         return {
-          color: item.color,
-          unit: item.unit || metricMap[item.metric]?.unit,
-          fillOpacity: isLimit ? 0 : index === 0 ? 0.08 : 0.03,
-          strokeOpacity: isLimit ? 0.55 : index === 0 ? 1 : 0.72,
-          strokeWidth: isLimit ? 1.6 : index === 0 ? 2.8 : 2.2,
-          strokeDasharray: isLimit ? '6 4' : undefined
+          chart,
+          data: viewData,
+          metric: buildMetricItem(metricMap[chart.metric] || config.metrics.find((metric) => metric.name === chart.metric) || config.metrics[0]),
+          unit: metricMap[chart.metric]?.unit || config.metrics.find((metric) => metric.name === chart.metric)?.unit || 'none',
+          legends,
+          seriesStyles: legends.map((item, index) => ({
+            color: item.color,
+            unit: chart.series[0]?.unit || metricMap[chart.metric]?.unit,
+            fillOpacity: index === 0 ? 0.08 : 0.03,
+            strokeOpacity: index === 0 ? 1 : 0.72,
+            strokeWidth: index === 0 ? 2.8 : 2.2
+          }))
         };
-      })
-    }))
+      }
+      return {
+        chart,
+        data: mergeChartSeries(chart.series.map((item) => ({ key: item.metric, label: item.label, data: metricMap[item.metric]?.viewData || [] }))),
+        metric: buildMetricItem(metricMap[chart.metric] || config.metrics.find((metric) => metric.name === chart.metric) || config.metrics[0]),
+        unit: metricMap[chart.metric]?.unit || config.metrics.find((metric) => metric.name === chart.metric)?.unit || 'none',
+        legends: chart.series.map((item, index) => ({ label: item.label, color: item.color, primary: index === 0 })),
+        seriesStyles: chart.series.map((item, index) => {
+          const isLimit = item.style === 'limit';
+          return {
+            color: item.color,
+            unit: item.unit || metricMap[item.metric]?.unit,
+            fillOpacity: isLimit ? 0 : index === 0 ? 0.08 : 0.03,
+            strokeOpacity: isLimit ? 0.55 : index === 0 ? 1 : 0.72,
+            strokeWidth: isLimit ? 1.6 : index === 0 ? 2.8 : 2.2,
+            strokeDasharray: isLimit ? '6 4' : undefined
+          };
+        })
+      };
+    })
   ), [config.charts, config.metrics, metricMap]);
 
   const ringPanels = useMemo<PreparedRingPanel[]>(() => (
@@ -867,7 +930,14 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
           const series = metricMap[row.metric]?.viewData ?? [];
           const hasSeries = series.length > 0;
           let viz: DetailRowViz = 'none';
-          if (value !== '--' && !isTextual && isChartableUnit && hasSeries) {
+          if (
+            !row.hideViz
+            && value !== '--'
+            && !isTextual
+            && isChartableUnit
+            && hasSeries
+            && !isDetailTilesLayout(panel)
+          ) {
             // 实时数值统一用 sparkline 呈现趋势(含百分比——趋势比静态"满度"更有意义)。
             viz = 'spark';
           }
@@ -989,6 +1059,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     onRefresh,
     onXRangeChange,
     onInstanceChange,
-    onClusterFilterChange
+    onClusterFilterChange,
+    routeKey: config.routeKey,
   };
 }

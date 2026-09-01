@@ -1,11 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Dialog, List, Switch, Toast } from 'antd-mobile';
 import { RedoOutline } from 'antd-mobile-icons';
 import LanguageSelector from '@/components/language-selector';
 import OrganizationSwitcher from '@/components/organization-switcher';
+import MobileSafeHeader from '@/components/mobile-safe-header';
 import MobileTabShell from '@/components/mobile-tab-shell';
 import MobilePullToRefresh from '@/components/mobile-pull-to-refresh';
 import { useAuth } from '@/context/auth';
@@ -76,19 +77,11 @@ export default function ProfilePage() {
     await Promise.all(tasks);
   }, [availabilityStatus, loadAccount, refreshAvailability]);
 
-  const roles = useMemo(() => {
-    const values = (account?.role_list || []).map((role) => {
-      if (!role.app && role.name === 'admin') return t('account.superAdmin');
-      return role.app_display_name ? `${role.app_display_name} · ${role.name}` : role.name;
-    }).filter(Boolean);
-    return Array.from(new Set(values));
-  }, [account?.role_list, t]);
   const displayName = account?.display_name || userInfo?.display_name || userInfo?.username || t('account.user');
   const username = account?.username || userInfo?.username || '--';
   const domain = account?.domain || userInfo?.domain || '--';
   const showUsername = username !== '--' && username !== displayName;
   const showDomain = domain !== '--';
-  const roleSummary = roles.join(' · ');
 
   const handleLogoutClick = () => {
     void Dialog.confirm({
@@ -108,28 +101,20 @@ export default function ProfilePage() {
   return (
     <MobileTabShell activeTab="profile">
       <main className={styles.page}>
-        <h1 className={styles.pageTitle}>{t('navigation.profile')}</h1>
+        <MobileSafeHeader contentClassName={styles.pageHeader}>
+          <h1 className={styles.pageTitle}>{t('navigation.profile')}</h1>
+        </MobileSafeHeader>
         <div className={styles.scroll}>
           <MobilePullToRefresh onRefresh={handlePullRefresh}>
             <section className={styles.identity} aria-label={t('account.title')}>
               <div className={styles.avatar} aria-hidden="true">{displayName.charAt(0).toUpperCase() || 'U'}</div>
               <div className={styles.identityCopy}>
-                <h2>{displayName}</h2>
+                <div className={styles.identityTitleRow}>
+                  <h2>{displayName}</h2>
+                  {showDomain ? <span className={styles.identityDomain}>{domain}</span> : null}
+                </div>
                 {showUsername ? <p className={styles.identitySubtitle}>@{username}</p> : null}
-                {showDomain ? <p className={styles.identityDomain}>{domain}</p> : null}
                 <dl className={styles.identityFacts} aria-label={t('account.accountOverview')}>
-                  {accountStatus === 'loading' ? (
-                    <div className={styles.identityFactRow} role="status" aria-label={t('common.loading')}>
-                      <dt>{t('account.role')}</dt>
-                      <dd><span className={styles.identityFactSkeleton} /></dd>
-                    </div>
-                  ) : null}
-                  {accountStatus === 'ready' && roles.length > 0 ? (
-                    <div className={styles.identityFactRow}>
-                      <dt>{t('account.role')}</dt>
-                      <dd>{roleSummary}</dd>
-                    </div>
-                  ) : null}
                   <div className={styles.identityFactRow}>
                     <dt>{t('account.organization')}</dt>
                     <dd className={styles.identityOrgValue}>

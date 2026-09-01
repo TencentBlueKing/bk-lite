@@ -3,6 +3,34 @@ import { createElement, type ReactNode } from 'react';
 export const NETWORK_WHITELIST_REQUIRED = 'NETWORK_WHITELIST_REQUIRED';
 export const NETWORK_WHITELIST_URL = '/system-manager/settings/network-whitelist';
 
+const asNonEmptyText = (value: unknown): string =>
+  typeof value === 'string' && value.trim() ? value.trim() : '';
+
+/**
+ * Align frontend toast text with the backend envelope `{ result, message, data }`.
+ * Historical `response_error("文案")` put the string in `data` and left `message` empty.
+ */
+export const extractRequestErrorMessage = (
+  payload: unknown,
+  status?: number,
+): string => {
+  const record = payload && typeof payload === 'object'
+    ? payload as Record<string, unknown>
+    : undefined;
+  const nestedData = record?.data;
+  const nestedMessage = nestedData && typeof nestedData === 'object'
+    ? asNonEmptyText((nestedData as Record<string, unknown>).message)
+    : '';
+  return (
+    asNonEmptyText(record?.message)
+    || asNonEmptyText(nestedData)
+    || nestedMessage
+    || asNonEmptyText(record?.error)
+    || asNonEmptyText(record?.detail)
+    || (status ? `Request failed (${status})` : '')
+  );
+};
+
 interface RequestErrorPayload {
   code?: string;
   message?: string;

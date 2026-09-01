@@ -1,0 +1,570 @@
+@use '../common/simple-dashboard.module.scss';
+
+.sectionLabel {
+  margin: 2px 2px 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #eceff4;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8c95a8;
+}
+
+.dashboardSection + .sectionLabel {
+  margin-top: 8px;
+}
+
+.flowAnalysisGrid {
+  align-items: stretch;
+  --flow-table-head-height: 33px;
+  --flow-rank-row-height: 48px;
+}
+
+.flowConversationPanel,
+.flowProtocolPanel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.flowConversationBody,
+.flowProtocolBody {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding-top: 2px;
+  min-height: 0;
+}
+
+.flowProtocolBody :global(.ant-spin-nested-loading),
+.flowProtocolBody :global(.ant-spin-container) {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.flowConversationBody :global(.ant-spin-nested-loading),
+.flowConversationBody :global(.ant-spin-container) {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.flowConversationEmpty,
+.flowProtocolEmpty {
+  display: flex;
+  flex: 1;
+  min-height: 220px;
+  align-items: center;
+  justify-content: center;
+}
+
+.flowConversationTableWrap {
+  flex: 1;
+  min-height: 0;
+  overflow-x: auto;
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.flowConversationTable {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-variant-numeric: tabular-nums;
+}
+
+.flowConversationTable thead th {
+  height: var(--flow-table-head-height);
+  padding: 0 10px;
+  border-bottom: 1px solid #dbe3ef;
+  background: #f3f6fa;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.flowConversationTable tbody tr {
+  height: var(--flow-rank-row-height);
+}
+
+.flowConversationTable tbody td {
+  padding: 0 10px;
+  border-bottom: 1px solid #edf2f7;
+  font-size: 12px;
+  color: #22324a;
+  vertical-align: middle;
+}
+
+.flowColRank {
+  width: 40px;
+}
+
+.flowConversationTable tbody td.flowCellRank {
+  padding: 0 6px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.flowCellRank {
+  line-height: 0;
+}
+
+.flowConversationTable tbody tr.flowProtocolRank1 .flowProtocolRankMark {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.flowConversationTable tbody tr.flowProtocolRank4 .flowProtocolRankMark,
+.flowConversationTable tbody tr.flowProtocolRank5 .flowProtocolRankMark {
+  background: #f1f5f9;
+  color: #94a3b8;
+  font-size: 10px;
+}
+
+.flowColIp {
+  width: 18%;
+}
+
+.flowColPort {
+  width: 10%;
+}
+
+.flowColProtocol {
+  width: 12%;
+}
+
+.flowColTraffic {
+  width: 27%;
+}
+
+.flowConversationTable thead th.flowColRank {
+  padding-left: 8px;
+  padding-right: 4px;
+  text-align: center;
+}
+
+.flowConversationTable tbody td.flowCellPort {
+  padding-left: 6px;
+  padding-right: 8px;
+}
+
+.flowConversationTable thead th.flowColProtocol,
+.flowConversationTable tbody td.flowCellProtocol {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.flowConversationTable thead th.flowColTraffic,
+.flowConversationTable tbody td.flowCellTraffic {
+  padding-left: 10px;
+  padding-right: 20px;
+  text-align: right;
+}
+
+.flowConversationTable tbody tr:nth-child(even) {
+  background: #fafbfd;
+}
+
+.flowConversationTable tbody tr:hover {
+  background: #f2f7ff;
+}
+
+.flowConversationTable tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.flowConversationTable thead th.flowColPort {
+  text-align: right;
+}
+
+.flowCellIp {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.flowCellPort {
+  text-align: right;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.flowCellProtocol {
+  text-align: center;
+  white-space: nowrap;
+}
+
+.flowCellTraffic {
+  text-align: right;
+}
+
+.flowTrafficValue {
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.flowTrafficTrack {
+  display: block;
+  margin-top: 4px;
+  margin-left: auto;
+  margin-right: 2px;
+  width: 100%;
+  max-width: 96px;
+  height: 5px;
+  border-radius: 999px;
+  background: #edf3fb;
+  overflow: hidden;
+}
+
+.flowTrafficFill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+}
+
+.flowConversationNetflow .flowTrafficFill,
+.flowProtocolNetflow .flowProtocolFill {
+  background: linear-gradient(90deg, #b37feb 0%, #9254de 100%);
+}
+
+.flowConversationSflow .flowTrafficFill,
+.flowProtocolSflow .flowProtocolFill {
+  background: linear-gradient(90deg, #5cdbd3 0%, #13c2c2 100%);
+}
+
+.flowProtocolListWrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.flowProtocolListHead {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) minmax(68px, auto);
+  align-items: center;
+  height: var(--flow-table-head-height);
+  padding: 0 8px 0 6px;
+  column-gap: 12px;
+  border-bottom: 1px solid #dbe3ef;
+  background: #f3f6fa;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.flowProtocolHeadRank {
+  text-align: center;
+}
+
+.flowProtocolHeadName {
+  padding-left: 6px;
+}
+
+.flowProtocolHeadRate {
+  text-align: right;
+  padding-right: 6px;
+}
+
+.flowProtocolList {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.flowProtocolItem {
+  display: grid;
+  flex: 0 0 var(--flow-rank-row-height);
+  height: var(--flow-rank-row-height);
+  box-sizing: border-box;
+  grid-template-columns: 22px minmax(0, 1fr) minmax(68px, auto);
+  grid-template-areas:
+    'rank name rate'
+    'bar bar bar';
+  column-gap: 12px;
+  row-gap: 3px;
+  align-items: center;
+  align-content: center;
+  padding: 0 8px 0 6px;
+  border-bottom: 1px solid #edf2f7;
+}
+
+.flowProtocolItem:last-child {
+  border-bottom: none;
+}
+
+.flowProtocolRankMark {
+  grid-area: rank;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: #edf2f7;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.flowProtocolBadge {
+  grid-area: badge;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+}
+
+.flowProtocolItem .flowProtocolName {
+  grid-area: name;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 0 0 6px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+}
+
+.flowProtocolRate {
+  grid-area: rate;
+  font-size: 11px;
+  font-weight: 800;
+  color: #22324a;
+  white-space: nowrap;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  padding-right: 6px;
+}
+
+.flowProtocolTrack {
+  grid-area: bar;
+  height: 5px;
+  border-radius: 999px;
+  background: #edf3fb;
+  overflow: hidden;
+}
+
+.flowProtocolRank1 {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+
+  .flowProtocolRankMark {
+    background: #dbeafe;
+    color: #1d4ed8;
+  }
+
+  .flowProtocolRate {
+    color: #0f172a;
+  }
+}
+
+.flowProtocolRank2 {
+  background: #fafbfd;
+}
+
+.flowProtocolRank4,
+.flowProtocolRank5 {
+  opacity: 0.92;
+
+  .flowProtocolRankMark {
+    background: #f1f5f9;
+    color: #94a3b8;
+    font-size: 10px;
+  }
+
+  .flowProtocolName {
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .flowProtocolRate {
+    font-size: 10px;
+    font-weight: 700;
+    color: #64748b;
+  }
+}
+
+.flowProtocolFill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.flowProtocolTcp {
+  color: #1d4ed8;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+}
+
+.flowProtocolUdp {
+  color: #0f766e;
+  background: #ecfdf5;
+  border: 1px solid #99f6e4;
+}
+
+.flowProtocolIcmp {
+  color: #b45309;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+}
+
+.flowProtocolOther {
+  color: #475569;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+}
+
+:global(html.dark) {
+  .flowConversationTableWrap,
+  .flowProtocolListWrap {
+    border-color: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .flowProtocolListHead {
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(255, 255, 255, 0.55);
+  }
+
+  .flowProtocolItem {
+    border-bottom-color: rgba(255, 255, 255, 0.06);
+
+    .flowProtocolName {
+      background: transparent;
+      border: none;
+    }
+  }
+
+  .flowConversationTable thead th {
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(255, 255, 255, 0.55);
+  }
+
+  .flowConversationTable tbody td {
+    border-bottom-color: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.88);
+  }
+
+  .flowConversationTable tbody tr:nth-child(even) {
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .flowConversationTable tbody tr:hover {
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .flowCellPort,
+  .flowProtocolRate {
+    color: rgba(255, 255, 255, 0.62);
+  }
+
+  .flowProtocolRank1 {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.03) 100%);
+    border-color: rgba(255, 255, 255, 0.1);
+
+    .flowProtocolRankMark {
+      background: rgba(37, 99, 235, 0.25);
+      color: #93c5fd;
+    }
+
+    .flowProtocolRate {
+      color: rgba(255, 255, 255, 0.92);
+    }
+  }
+
+  .flowProtocolRank2 {
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .flowProtocolRankMark {
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.55);
+  }
+
+  .flowConversationTable tbody tr.flowProtocolRank1 .flowProtocolRankMark {
+    background: rgba(37, 99, 235, 0.25);
+    color: #93c5fd;
+  }
+
+  .flowConversationTable tbody tr.flowProtocolRank4 .flowProtocolRankMark,
+  .flowConversationTable tbody tr.flowProtocolRank5 .flowProtocolRankMark {
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.38);
+  }
+
+  .flowProtocolRank4,
+  .flowProtocolRank5 {
+    .flowProtocolRankMark {
+      background: rgba(255, 255, 255, 0.05);
+      color: rgba(255, 255, 255, 0.38);
+    }
+
+    .flowProtocolRate {
+      color: rgba(255, 255, 255, 0.55);
+    }
+  }
+
+  .flowTrafficTrack,
+  .flowProtocolTrack {
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .flowProtocolTcp {
+    color: #93c5fd;
+    background: rgba(37, 99, 235, 0.18);
+    border-color: rgba(96, 165, 250, 0.35);
+  }
+
+  .flowProtocolUdp {
+    color: #5eead4;
+    background: rgba(13, 148, 136, 0.18);
+    border-color: rgba(45, 212, 191, 0.35);
+  }
+
+  .flowProtocolIcmp {
+    color: #fcd34d;
+    background: rgba(217, 119, 6, 0.18);
+    border-color: rgba(251, 191, 36, 0.35);
+  }
+
+  .flowProtocolOther {
+    color: rgba(255, 255, 255, 0.72);
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.12);
+  }
+}
+
+:global(html.dark) .sectionLabel {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}

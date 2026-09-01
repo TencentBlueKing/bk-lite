@@ -157,7 +157,7 @@ class ApmDashboardService:
             }
 
         targets = self._metric_targets(services, ended_at)
-        red_by_key = self._load_service_red(targets, started_at, ended_at, window)
+        red_by_key = self._load_service_red(targets, started_at, ended_at)
 
         return {
             "empty": False,
@@ -231,15 +231,9 @@ class ApmDashboardService:
         targets: list[_ServiceTarget],
         started_at: datetime,
         ended_at: datetime,
-        window: str,
     ) -> dict[str, ServiceRed | None]:
         if self.metric_store is None or not targets:
             return {}
-        metric_started_at = started_at
-        if ended_at - started_at > timedelta(hours=24) and window == "7d":
-            # 现有单服务 RED 查询默认 24h 上限；7d 窗口对遥测段回退到近 24h。
-            metric_started_at = ended_at - timedelta(hours=24)
-
         results: dict[str, ServiceRed | None] = {}
 
         def _fetch(target: _ServiceTarget) -> tuple[str, ServiceRed | None]:
@@ -248,7 +242,7 @@ class ApmDashboardService:
                 service_namespace=target.namespace,
                 service_name=target.name,
                 environment=target.environment,
-                started_at=metric_started_at,
+                started_at=started_at,
                 ended_at=ended_at,
                 include_breakdown=True,
             )

@@ -10,6 +10,7 @@ export interface ApplicationResourceNode {
   model_id: string;
   hop: number;
   category: string;
+  app_topo_layer?: string;
 }
 
 export interface ApplicationResourceLink {

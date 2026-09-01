@@ -4,7 +4,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
     {
         "key": "feishu",
         "base_connection_adapter_key": "feishu.base_connection",
-        "base_connection_adapter_path": "apps.system_mgmt.providers.builtin.feishu.adapters.base_connection.FeishuBaseConnectionAdapter",
+        "base_connection_adapter_path": "adapters.base_connection.FeishuBaseConnectionAdapter",
         "name": "Feishu",
         "description": "Built-in Feishu integration provider for Phase 1.",
         "instance_templates": {
@@ -154,7 +154,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                 "name": "Login Auth",
                 "description": "Feishu login authentication capability.",
                 "adapter_key": "feishu.login_auth",
-                "adapter_path": "apps.system_mgmt.providers.builtin.feishu.adapters.login_auth.FeishuLoginAuthAdapter",
+                "adapter_path": "adapters.login_auth.FeishuLoginAuthAdapter",
                 "connection_template": [
                     {
                         "key": "login_auth_authorize_url",
@@ -185,7 +185,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                 "name": "User Sync",
                 "description": "Feishu user synchronization capability.",
                 "adapter_key": "feishu.user_sync",
-                "adapter_path": "apps.system_mgmt.providers.builtin.feishu.adapters.user_sync.FeishuUserSyncAdapter",
+                "adapter_path": "adapters.user_sync.FeishuUserSyncAdapter",
                 "connection_template": [
                     {
                         "key": "user_sync_scopes_url",
@@ -223,7 +223,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                 "name": "IM Notification",
                 "description": "Feishu per-user IM notification capability.",
                 "adapter_key": "feishu.im_notification",
-                "adapter_path": "apps.system_mgmt.providers.builtin.feishu.adapters.im_notification.FeishuIMNotificationAdapter",
+                "adapter_path": "adapters.im_notification.FeishuIMNotificationAdapter",
                 "connection_template": [
                     {
                         "key": "im_notification_users_url",
@@ -247,7 +247,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                 "name": "IM Group",
                 "description": "Feishu group collaboration capability.",
                 "adapter_key": "feishu.im_group",
-                "adapter_path": "apps.system_mgmt.providers.builtin.feishu.adapters.im_group.FeishuIMGroupAdapter",
+                "adapter_path": "adapters.im_group.FeishuIMGroupAdapter",
                 "connection_template": [],
             },
         ],

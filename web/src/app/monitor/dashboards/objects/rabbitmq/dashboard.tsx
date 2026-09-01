@@ -20,11 +20,12 @@ const SUMMARY_TITLES = ['运行时长', '节点健康', '内存使用率', '未�
 const CHART_TITLES = [
   '内存压力趋势',
   '消息存量趋势',
-  '发布速率趋势',
+  '投递速率',
   '句柄资源趋势',
   '运行队列趋势',
   'Mnesia 事务趋势'
 ];
+const QUEUE_CHART_TITLES = ['队列深度', '队列就绪', '队列未确认', '队列消费者'];
 const RING_TITLES = ['节点内存分布'];
 const DETAIL_TITLES = ['队列与资源详情'];
 
@@ -32,6 +33,7 @@ export default function RabbitMQDashboardPage() {
   const dashboard = useSimpleDashboardData(RABBITMQ_DASHBOARD_CONFIG);
   const summaryCards = useFilteredSummaryCards(dashboard.summaryCards, SUMMARY_TITLES);
   const charts = useFilteredChartPanels(dashboard.chartPanels, CHART_TITLES);
+  const queueCharts = useFilteredChartPanels(dashboard.chartPanels, QUEUE_CHART_TITLES);
   const rings = useFilteredRingPanels(dashboard.ringPanels, RING_TITLES);
   const details = useFilteredDetailPanels(dashboard.detailPanels, DETAIL_TITLES);
 
@@ -64,7 +66,7 @@ export default function RabbitMQDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <div className={styles.sectionLabel}>总览</div>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
 
           {/* R1: 内存分布环 span4 + 内存压力趋势 span8 = 12 —— 环图配同主题折线,消除中部留白 */}
@@ -108,6 +110,11 @@ export default function RabbitMQDashboardPage() {
                 styles={styles}
               />
             ) : null}
+          </FlexiblePanelSection>
+
+          <div className={styles.sectionLabel}>队列</div>
+          <FlexiblePanelSection styles={styles}>
+            {queueCharts.map((chart) => renderChart(chart, styles.span6))}
           </FlexiblePanelSection>
         </>
       }

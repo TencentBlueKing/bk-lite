@@ -3,6 +3,7 @@
   "collect_type": "snmp_planet",
   "plugin": "Switch PLANET SNMP",
   "plugin_desc": "PLANET Technology 管理型以太网交换机专用 SNMP 采集模板（PLANET-MIB，企业号 10456）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 PLANET 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）、主内存（已用 + 空闲，字节，用量按 已用/（已用+空闲）推导）、机箱温度（℃）与电源状态（经 telegraf processors.enum 归一为 1=正常/2=异常）。PLANET 紧凑机型多为无风扇被动散热设计，故风扇为 N/A。适用品牌型号——PLANET Technology 管理型交换机（GS-/SGS-/WGS- 系列，企业号 10456）。",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_planet'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

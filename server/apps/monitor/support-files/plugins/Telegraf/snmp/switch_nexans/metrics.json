@@ -3,6 +3,7 @@
   "collect_type": "snmp_nexans",
   "plugin": "Switch Nexans SNMP",
   "plugin_desc": "Nexans Advanced Networking Solutions (Nexans ANS) industrial managed switch-specific SNMP collection (NEXANS-BM-MIB, IANA PEN 266). In addition to standard IF-MIB interface metrics, it collects Nexans private OIDs for device health — chassis temperature (bmSwitchInfo infoTemperature, a dedicated scalar in degrees Celsius) and an industrial alarm-relay state used as a power-supply health proxy (infoAlarmStateM1). The alarm-relay raw codes (1=notSupported, 2=alarmOff which means OK, 3/7/8/9 and higher=alarm asserted including explicit power-supply S1/S2 faults) are normalized via telegraf processors.enum to 1=healthy / 2=fault, with notSupported treated as healthy. Nexans GigaSwitch/DualSwitch devices are fanless and expose no CPU, memory or fan OIDs, so those are not collected (N/A). Supported brands/models — Nexans ANS GigaSwitch / DualSwitch industrial managed switches.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_nexans'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

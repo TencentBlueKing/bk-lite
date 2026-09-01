@@ -161,7 +161,12 @@
       "typeKv": "键值对",
       "typeRegex": "正则提取",
       "typeRegexReplace": "正则替换",
-      "typeJson": "JSON"
+      "typeJson": "JSON",
+      "menuTitle": "提取器",
+      "createFromLog": "创建提取器",
+      "missingInstance": "这条日志没有采集实例，无法创建提取器。",
+      "instanceUnavailable": "找不到这条日志所属的采集实例，或当前团队无权编辑其提取器。",
+      "unsupportedCollectType": "当前采集类型不支持类型级提取器。"
     },
     "integration": {
       "connect": "接入",
@@ -226,6 +231,7 @@
       "sampleRateDes": "采样率，可根据网络流量调整，减少数据量。",
       "metricsets": "指标集",
       "configuration": "配置",
+      "introduction": "简介",
       "fileSystemDes": "filesystem指标集提供文件系统统计信息。每个文件系统都有一个文档。",
       "command": "命令",
       "interval": "间隔",

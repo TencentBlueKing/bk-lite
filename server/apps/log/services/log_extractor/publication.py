@@ -5,6 +5,7 @@ import traceback
 from dataclasses import dataclass
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.core.logger import log_logger as logger
@@ -110,7 +111,11 @@ def publish_generation(generation: int) -> str:
 
     rule_count = 0
     try:
-        records = list(LogExtractor.objects.filter(collect_instance__isnull=False).order_by("collect_instance_id", "sort_order", "id"))
+        records = list(
+            LogExtractor.objects.filter(Q(collect_instance__isnull=False) | Q(collect_type__isnull=False))
+            .select_related("collect_type")
+            .order_by("collect_instance_id", "collect_type_id", "sort_order", "id")
+        )
         rule_count = len(records)
         content = compile_system_vector_config(records)
         checksum = "sha256:" + hashlib.sha256(content.encode("utf-8")).hexdigest()

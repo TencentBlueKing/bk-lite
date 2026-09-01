@@ -1,3 +1,8 @@
+"""init_oid 管理命令。
+
+batch_init 每次启动都会调用 init_oid：built_in=True 的目录行会被重置为目录值。
+同一 OID 的 POST 会被 API 拒绝；用户覆盖只能 UPDATE 已有行并设 built_in=False。
+"""
 from io import StringIO
 from unittest.mock import Mock
 
@@ -19,7 +24,13 @@ def _run(*args):
 
 
 def _create_mapping(oid, *, built_in=True, model="legacy"):
-    return OidMapping.objects.create(oid=oid, model=model, brand="Legacy", device_type="switch", built_in=built_in,)
+    return OidMapping.objects.create(
+        oid=oid,
+        model=model,
+        brand="Legacy",
+        device_type="switch",
+        built_in=built_in,
+    )
 
 
 def test_default_command_syncs_catalog_into_nonempty_database():
@@ -39,7 +50,14 @@ def test_default_command_outputs_exact_five_category_summary_only(monkeypatch):
         unchanged=4,
         custom_override_oids=("1.3.6.1.4.1.9.1.20",),
         stale_builtin_oids=("1.3.6.1.4.1.9.1.30",),
-        created_entries=(OidSyncCreate(oid="1.3.6.1.4.1.9.1.10", model="new-switch", brand="Cisco", device_type="switch",),),
+        created_entries=(
+            OidSyncCreate(
+                oid="1.3.6.1.4.1.9.1.10",
+                model="new-switch",
+                brand="Cisco",
+                device_type="switch",
+            ),
+        ),
         updated_entries=(
             OidSyncUpdate(
                 oid="1.3.6.1.4.1.9.1.2",
@@ -69,7 +87,14 @@ def test_dry_run_reports_complete_diffs_without_writes(monkeypatch):
     _create_mapping(custom_oid, built_in=False, model="custom-model")
     _create_mapping(stale_oid, model="stale-model")
     entries = {
-        oid: OidCatalogEntry(oid=oid, model=model, brand=brand, device_type=device_type, source_id="test-source", verification="verified",)
+        oid: OidCatalogEntry(
+            oid=oid,
+            model=model,
+            brand=brand,
+            device_type=device_type,
+            source_id="test-source",
+            verification="verified",
+        )
         for oid, model, brand, device_type in (
             (update_oid, "new-model", "Cisco", "router"),
             (create_oid, "new-switch", "Cisco", "switch"),
@@ -104,7 +129,10 @@ def test_force_never_deletes_stale_builtin():
 
 def test_catalog_error_is_exposed_as_stable_command_error(monkeypatch):
     monkeypatch.setattr(
-        init_oid_command, "load_oid_catalog", lambda: (_ for _ in ()).throw(OidCatalogError("OID_CATALOG_INVALID")), raising=False,
+        init_oid_command,
+        "load_oid_catalog",
+        lambda: (_ for _ in ()).throw(OidCatalogError("OID_CATALOG_INVALID")),
+        raising=False,
     )
 
     with pytest.raises(CommandError, match="OID_CATALOG_INVALID"):
@@ -135,6 +163,7 @@ def test_second_run_is_idempotent():
 
 
 def test_custom_override_is_preserved_and_reported():
+    # 用户覆盖只能 UPDATE 已有行并设 built_in=False；启动期同步不得改写。
     entry = next(iter(load_oid_catalog().values()))
     custom = _create_mapping(entry.oid, built_in=False, model="custom-model")
 

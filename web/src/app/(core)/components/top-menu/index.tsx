@@ -17,6 +17,7 @@ import UserInfo from './user-info';
 import Notifications from '@/components/notifications';
 import Icon from '@/components/icon';
 import AppTopNav from './appTopNav';
+import { resolveAppDisplayName } from '@/utils/appDisplayName';
 
 const TOUR_VIEWED_KEY_PREFIX = 'tour_viewed';
 
@@ -159,7 +160,7 @@ const TopMenu: React.FC<TopMenuProps> = ({ hideMainMenu, hideBrand }) => {
             type={app.icon || app.name}
             className="text-2xl mb-1 transition-transform duration-300 transform group-hover:scale-125"
           />
-          {app.display_name || app.name}
+          {resolveAppDisplayName(app, t)}
         </div>
       ))}
     </div>

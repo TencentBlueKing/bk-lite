@@ -1,0 +1,147 @@
+"Exchange":
+  desc: >-
+    Collect MSExchange queue/OWA counters with local telegraf_windows win_perf_counters on the Exchange host, and probe OWA/EWS with http_response. Not Get-HealthReport or agentless WMI.
+  name: Exchange (Telegraf)
+monitor_object:
+  "Exchange": Exchange
+monitor_object_type:
+  Middleware: Middleware
+monitor_object_metric:
+  "Exchange":
+    exchange_active_mailbox_delivery_queue_length:
+      name: Active Mailbox Delivery Queue Length
+      desc: >-
+        MSExchangeTransport Queues active mailbox delivery queue length.
+    exchange_retry_mailbox_delivery_queue_length:
+      name: Retry Mailbox Delivery Queue Length
+      desc: >-
+        MSExchangeTransport Queues retry mailbox delivery queue length.
+    exchange_poison_queue_length:
+      name: Poison Queue Length
+      desc: >-
+        MSExchangeTransport Queues poison queue length.
+    exchange_unreachable_queue_length:
+      name: Unreachable Queue Length
+      desc: >-
+        MSExchangeTransport Queues unreachable queue length.
+    exchange_submission_queue_length:
+      name: Submission Queue Length
+      desc: >-
+        MSExchangeTransport Queues submission queue length.
+    exchange_external_active_remote_delivery_queue_length:
+      name: External Active Remote Delivery Queue Length
+      desc: >-
+        MSExchangeTransport Queues external active remote delivery queue length.
+    exchange_owa_current_unique_users:
+      name: OWA Current Unique Users
+      desc: >-
+        MSExchange OWA currently logged-on unique users.
+    exchange_owa_requests_persec:
+      name: OWA Requests
+      desc: >-
+        MSExchange OWA requests per second.
+    exchange_http_proxy_outstanding_proxy_requests:
+      name: Outstanding Proxy Requests
+      desc: >-
+        MSExchange HttpProxy outstanding proxy requests.
+    exchange_http_proxy_avg_auth_latency:
+      name: Average Authentication Latency
+      desc: >-
+        MSExchange HttpProxy average authentication latency.
+    exchange_http_proxy_requests_persec:
+      name: Proxy Requests
+      desc: >-
+        MSExchange HttpProxy proxy requests per second.
+    exchange_http_proxy_mailbox_proxy_failure_rate:
+      name: Mailbox Proxy Failure Rate
+      desc: >-
+        MSExchange HttpProxy mailbox server proxy failure rate.
+    exchange_rpc_active_user_count:
+      name: RPC Active User Count
+      desc: >-
+        MSExchange RpcClientAccess active user count.
+    exchange_rpc_requests:
+      name: RPC Requests
+      desc: >-
+        MSExchange RpcClientAccess requests currently being processed.
+    exchange_rpc_averaged_latency:
+      name: RPC Averaged Latency
+      desc: >-
+        MSExchange RpcClientAccess averaged latency.
+    exchange_rpc_user_count:
+      name: RPC User Count
+      desc: >-
+        MSExchange RpcClientAccess user count.
+    exchange_activesync_requests_persec:
+      name: ActiveSync Requests
+      desc: >-
+        MSExchange ActiveSync requests per second.
+    exchange_activesync_ping_commands_pending:
+      name: ActiveSync Ping Commands Pending
+      desc: >-
+        MSExchange ActiveSync ping commands pending.
+    exchange_availability_requests_sec:
+      name: Availability Requests
+      desc: >-
+        MSExchange Availability Service requests per second.
+    exchange_autodiscover_requests_persec:
+      name: Autodiscover Requests
+      desc: >-
+        MSExchangeAutodiscover requests per second.
+    exchange_mapihttp_active_user_count:
+      name: MAPI HTTP Active User Count
+      desc: >-
+        MSExchange MapiHttp Emsmdb active user count.
+    exchange_adaccess_ldap_timeout_errors_persec:
+      name: AD Access LDAP Timeout Errors
+      desc: >-
+        MSExchange ADAccess Processes LDAP timeout errors per second.
+    exchange_adaccess_ldap_read_time:
+      name: AD Access LDAP Read Time
+      desc: >-
+        MSExchange ADAccess Processes LDAP read time.
+    exchange_workload_active_tasks:
+      name: Workload Active Tasks
+      desc: >-
+        MSExchange WorkloadManagement Workloads active tasks.
+    exchange_workload_queued_tasks:
+      name: Workload Queued Tasks
+      desc: >-
+        MSExchange WorkloadManagement Workloads queued tasks.
+    exchange_owa_probe_result_code:
+      name: OWA Probe Result
+      desc: >-
+        Local Telegraf http_response probe of the OWA URL. 0 means the probe succeeded.
+    exchange_ews_probe_result_code:
+      name: EWS Probe Result
+      desc: >-
+        Local Telegraf http_response probe of the EWS URL. 0 means the probe succeeded.
+    exchange_owa_probe_response_time:
+      name: OWA Probe Response Time
+      desc: >-
+        OWA HTTP probe response time in seconds.
+    exchange_ews_probe_response_time:
+      name: EWS Probe Response Time
+      desc: >-
+        EWS HTTP probe response time in seconds.
+    exchange_owa_http_response_code:
+      name: OWA HTTP Status Code
+      desc: >-
+        HTTP status code returned by the OWA probe.
+    exchange_ews_http_response_code:
+      name: EWS HTTP Status Code
+      desc: >-
+        HTTP status code returned by the EWS probe.
+monitor_object_metric_group:
+  "Exchange":
+    Transport Queue: Transport Queue
+    OWA: OWA
+    HTTP Proxy: HTTP Proxy
+    RPC: RPC
+    ActiveSync: ActiveSync
+    Availability: Availability
+    Autodiscover: Autodiscover
+    MAPI: MAPI
+    AD Access: AD Access
+    Workload: Workload
+    Probe: Probe

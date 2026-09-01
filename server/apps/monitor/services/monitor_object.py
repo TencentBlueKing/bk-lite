@@ -9,6 +9,7 @@ from django.db.models.fields.json import KeyTextTransform
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import monitor_logger as logger
+from apps.core.models.maintainer_info import maintainer_kwargs
 from apps.core.utils.current_team_scope import _normalize_organization_ids
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.constants.monitor_object import MonitorObjConstants
@@ -20,6 +21,8 @@ from apps.monitor.services.host_container_asset_ip import fill_missing_host_cont
 from apps.monitor.tasks.grouping_rule import sync_instance_and_group
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.display_fields_metrics import display_field_key, extract_field_bindings, extract_metric_bindings
+from apps.monitor.utils.instance import list_reporting_status
+from apps.monitor.utils.last_sample import LAST_SAMPLE_LOOKBACK, last_sample_timestamp_query, last_sample_unix_seconds
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.monitor.utils.vm_query_batch import run_unique_vm_queries
 
@@ -92,18 +95,20 @@ class MonitorObjectService:
 
         from apps.monitor.services.metrics import Metrics
 
-        query = metric
-        if not Metrics.query_already_limited(metric):
-            query = f"limitk({STATUS_QUERY_MAX_SERIES}, {metric})"
+        query = last_sample_timestamp_query(metric)
+        if not Metrics.query_already_limited(query):
+            query = f"limitk({STATUS_QUERY_MAX_SERIES}, {query})"
 
-        metrics = VictoriaMetricsAPI().query(query, step="20m")
+        metrics = VictoriaMetricsAPI().query(query, step=LAST_SAMPLE_LOOKBACK)
         instance_map = {}
         for metric_info in metrics.get("data", {}).get("result", []):
             instance_id = str(tuple(metric_info["metric"].get(i) for i in instance_id_keys))
             if not instance_id:
                 continue
+            _time = last_sample_unix_seconds(metric_info)
+            if _time is None:
+                continue
             agent_id = metric_info.get("metric", {}).get("agent_id")
-            _time = metric_info["value"][0]
 
             if instance_id not in instance_map:
                 instance_map[instance_id] = {
@@ -168,7 +173,7 @@ class MonitorObjectService:
             conf_info["organization"] = organizations
 
             if conf_info["time"]:
-                conf_info["status"] = "normal"
+                conf_info["status"] = list_reporting_status(conf_info["time"])
             else:
                 conf_info["status"] = "unavailable"
 
@@ -591,11 +596,13 @@ class MonitorObjectService:
         return value_str.replace("\\", "\\\\").replace('"', '\\"')
 
     @staticmethod
-    def generate_monitor_instance_id(monitor_object_id, monitor_instance_name, interval):
+    def generate_monitor_instance_id(monitor_object_id, monitor_instance_name, interval, actor_context=None):
         """生成监控对象实例ID"""
         obj = MonitorInstance.objects.filter(monitor_object_id=monitor_object_id, name=monitor_instance_name).first()
         if obj:
             obj.interval = interval
+            for key, value in maintainer_kwargs(actor_context, include_created=False).items():
+                setattr(obj, key, value)
             obj.save()
             return obj.id
         else:
@@ -606,6 +613,7 @@ class MonitorObjectService:
                 name=monitor_instance_name,
                 interval=interval,
                 monitor_object_id=monitor_object_id,
+                **maintainer_kwargs(actor_context),
             )
 
             return instance_id
@@ -691,7 +699,7 @@ class MonitorObjectService:
             MonitorObject.objects.filter(id__in=target_ids).update(is_visible=is_visible)
 
     @staticmethod
-    def update_instance(instance_id, name=None, organizations=None, **extra_fields):
+    def update_instance(instance_id, name=None, organizations=None, actor_context=None, **extra_fields):
         """更新监控对象实例"""
         instance = MonitorInstance.objects.filter(id=instance_id).first()
         if not instance:
@@ -702,6 +710,8 @@ class MonitorObjectService:
         for field in ("cloud_region_id", "ip", "fallback_sampling_rate", "auto"):
             if field in extra_fields and extra_fields[field] is not None:
                 setattr(instance, field, extra_fields[field])
+        for key, value in maintainer_kwargs(actor_context, include_created=False).items():
+            setattr(instance, key, value)
         instance.save()
 
         # 更新组织信息

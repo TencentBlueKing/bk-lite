@@ -64,7 +64,10 @@ beforeEach(() => {
         started_at: '2026-08-06T02:00:00.010Z',
         duration_ms: 180,
         status: 'error',
-        attributes: { 'http.status_code': 500 },
+        attributes: {
+          'http.status_code': 500,
+          'resource_attr:deployment.environment': 'prod',
+        },
         service_namespace: 'shop',
         service_name: 'checkout',
         environment: 'prod',
@@ -88,13 +91,25 @@ describe('APM Trace 详情', () => {
     expect(await screen.findByText('服务耗时分解')).not.toBeNull();
     expect(screen.getByText('跳到首个错误')).not.toBeNull();
     expect(screen.getByText('含错误')).not.toBeNull();
+    expect(screen.getByText('Trace ID').closest('section')).toBe(screen.getByText('Span 数').closest('section'));
+    expect(screen.getByRole('radiogroup', { name: 'Trace 视图模式' }).closest('section')?.textContent).toContain('spans');
     expect((await screen.findAllByText('POST /pay')).length).toBeGreaterThan(0);
     await waitFor(() => expect(screen.getByText('http.status_code')).not.toBeNull());
 
     await user.click(screen.getByRole('radio', { name: '跨度列表' }));
     expect((await screen.findAllByText('POST /pay')).length).toBeGreaterThan(0);
 
+    await user.click(screen.getByRole('radio', { name: '火焰图' }));
+    expect(await screen.findByLabelText('checkout · POST /pay')).not.toBeNull();
+    expect(screen.getByRole('radio', { name: '火焰图' })).not.toBeNull();
+
     await user.click(screen.getByRole('button', { name: '跳到首个错误' }));
     await waitFor(() => expect(screen.getByText('http.status_code')).not.toBeNull());
+    expect(screen.getByText('resource_attr:deployment.environment')).not.toBeNull();
+
+    const attributeTable = screen.getByRole('columnheader', { name: '值' }).closest('.ant-table');
+    const columnWidths = Array.from(attributeTable?.querySelectorAll('colgroup col') ?? [])
+      .map((column) => (column as HTMLElement).style.width);
+    expect(columnWidths).toEqual(['58%', '42%']);
   });
 });

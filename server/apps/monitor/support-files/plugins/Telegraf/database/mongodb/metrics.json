@@ -1,6 +1,7 @@
 {
   "plugin": "MongoDB",
   "plugin_desc": "By collecting metrics on MongoDB read and write activities, command execution, connection counts, latency, memory usage, and network traffic, this helps optimize performance and ensure efficient and stable database operations.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='mongodb', collect_type='database'}) by (instance_id)",
   "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"host"}}],
   "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],

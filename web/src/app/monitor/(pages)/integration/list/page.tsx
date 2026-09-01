@@ -18,7 +18,10 @@ import { useTranslation } from '@/utils/i18n';
 import { getIconByObjectName, getPluginBrandIcon } from '@/app/monitor/utils/common';
 import { useRouter } from 'next/navigation';
 import { useMonitorObjectQuery } from '@/app/monitor/hooks/useMonitorObjectQuery';
-import { resolveMonitorObjectQueryId } from '@/app/monitor/utils/monitorObjectQuery';
+import {
+  isMonitorObjectTypeQueryKey,
+  resolveMonitorObjectQueryId
+} from '@/app/monitor/utils/monitorObjectQuery';
 import {
   ModalRef,
   TreeItem,
@@ -123,12 +126,7 @@ const Integration = () => {
     pluginAbortControllerRef.current?.abort();
   };
 
-  const isTypeNodeKey = (key: string) => {
-    const keyStr = String(key);
-    if (keyStr === 'all') return false;
-    // 叶子节点 key 为对象数字 id；一级分类 key 为 MonitorObjectType.id（如 database）
-    return objects.some((item) => String(item.type) === keyStr);
-  };
+  const isTypeNodeKey = (key: string) => isMonitorObjectTypeQueryKey(key);
 
   const handleObjectChange = async (id: string) => {
     const nextObjectType =

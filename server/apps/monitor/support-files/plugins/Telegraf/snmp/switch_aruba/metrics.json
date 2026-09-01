@@ -3,6 +3,7 @@
   "collect_type": "snmp_aruba",
   "plugin": "Switch Aruba SNMP",
   "plugin_desc": "Aruba-specific SNMP collection for switches (ArubaOS-CX). In addition to standard IF-MIB interface metrics, it collects ARUBAWIRED private OIDs for device health: per-module CPU and memory utilization, temperature sensors, fan and power-supply status. Aruba reports memory as a utilization percentage directly; fan/psu states are normalized to the unified 1=normal convention. Supported brands/models — Aruba / HPE ArubaOS-CX and ArubaOS-Switch (some formerly HP ProCurve; 2530/2930/3810/5400/6300/8300, etc.).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_aruba'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

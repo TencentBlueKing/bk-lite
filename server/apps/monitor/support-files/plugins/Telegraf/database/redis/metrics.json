@@ -1,6 +1,7 @@
 {
   "plugin": "Redis",
   "plugin_desc": "Used to collect key indicators of Redis performance and resource utilization.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='redis', collect_type='database'}) by (instance_id)",
   "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"host"}}],
   "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],

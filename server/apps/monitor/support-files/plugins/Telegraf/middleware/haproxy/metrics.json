@@ -1,6 +1,7 @@
 {
   "plugin": "Haproxy",
   "plugin_desc": "Real-time collection of HAProxy frontend, backend, and server runtime data based on the Telegraf haproxy input, including sessions, queues, traffic, HTTP responses, errors, server health, and latency, helping users diagnose load-balancing performance and availability issues.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='haproxy', collect_type='middleware'}) by (instance_id)",
   "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"url"}}],
   "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],

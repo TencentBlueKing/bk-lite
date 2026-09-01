@@ -3,6 +3,7 @@
   "collect_type": "snmp_juniper",
   "plugin": "Switch Juniper SNMP",
   "plugin_desc": "Juniper-specific SNMP collection for switches (Junos). In addition to standard IF-MIB interface metrics, it collects JUNIPER-MIB jnxOperating OIDs for device health: per-module CPU and memory utilization, temperature sensors, fan and power-supply status. Juniper reports memory as a utilization percentage directly; fan/psu states are normalized to the unified 1=normal convention. Supported brands/models — Juniper EX-series campus switches (EX2300/3400/4300/4600, etc., Junos).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_juniper'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

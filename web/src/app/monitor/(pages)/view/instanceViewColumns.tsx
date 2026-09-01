@@ -357,7 +357,6 @@ interface BuildInstanceViewColumnsOptions {
   queryData?: any[];
   ipFilterOptions?: string[];
   fieldFilterOptions?: Record<string, string[]>;
-  includeStatusFilters?: boolean;
   includeDimensionTooltip?: boolean;
 }
 
@@ -372,7 +371,6 @@ export const buildInstanceViewColumns = ({
   queryData,
   ipFilterOptions,
   fieldFilterOptions,
-  includeStatusFilters = true,
   includeDimensionTooltip = true
 }: BuildInstanceViewColumnsOptions): ColumnItem[] => {
   const displayColumns = buildDisplayFieldColumns({
@@ -384,7 +382,7 @@ export const buildInstanceViewColumns = ({
     t,
     fieldFilterOptions
   });
-  // 内置 IP 列紧跟基础列，与基础对象的 asset.ip 摘要列同位置；其余展示列仍排在状态列之后。
+  // 内置 IP 列紧跟基础列，与基础对象的 asset.ip 摘要列同位置；其余展示列排在上报时间之后。
   const resourceIpColumns = displayColumns.filter(
     (column) => column.role === RESOURCE_IP_ROLE
   );
@@ -401,7 +399,6 @@ export const buildInstanceViewColumns = ({
     }),
     ...resourceIpColumns,
     buildReportTimeColumn({ t, convertToLocalizedTime }),
-    buildReportingStatusColumn({ t, includeFilters: includeStatusFilters }),
     ...restDisplayColumns
   ];
 };

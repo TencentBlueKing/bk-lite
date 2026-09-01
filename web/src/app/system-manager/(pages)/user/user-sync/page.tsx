@@ -50,6 +50,7 @@ import {
 } from '@/app/system-manager/utils/userSyncPageUtils';
 import { isSilentRequestError } from '@/utils/request';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
+import { resolveIntegrationProviderIcon } from '@/app/system-manager/utils/integrationCenter';
 
 interface UserSyncEntityItem extends UserSyncSourceCardItem {
   raw: UserSyncSource;
@@ -168,7 +169,7 @@ const UserSyncPage: React.FC = () => {
         raw: source,
         name: source.name,
         description: source.description || '--',
-        providerIcon: providerKey || 'shezhi',
+        providerIcon: providerKey ? resolveIntegrationProviderIcon(providerKey) : 'shezhi',
         integrationSystemName: source.integration_instance_name || '--',
         rootGroupName: source.root_group_name || '--',
         syncedUsersText: source.latest_run ? source.latest_run.synced_user_count.toLocaleString() : '--',

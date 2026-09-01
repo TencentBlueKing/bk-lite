@@ -316,6 +316,21 @@ class TestAppPyEnterpriseWiring:
         mod = _load_app(tmp_path, monkeypatch, install_apps="license_mgmt")
         assert "apps.license_mgmt" not in mod.INSTALLED_APPS, "INSTALL_APPS=license_mgmt must not add apps.license_mgmt without enterprise footprint"
 
+    def test_explicit_install_apps_injects_system_mgmt_and_console_mgmt(self, tmp_path, monkeypatch):
+        """Explicit INSTALL_APPS may list only optional apps; always-on folders are injected."""
+        _make_apps(
+            tmp_path,
+            {
+                "opspilot": ["__init__.py"],
+                "system_mgmt": ["__init__.py"],
+                "console_mgmt": ["__init__.py"],
+            },
+        )
+        mod = _load_app(tmp_path, monkeypatch, install_apps="opspilot")
+        assert "apps.opspilot" in mod.INSTALLED_APPS
+        assert "apps.system_mgmt" in mod.INSTALLED_APPS
+        assert "apps.console_mgmt" in mod.INSTALLED_APPS
+
 
 # ---------------------------------------------------------------------------
 # extra.py enterprise wiring
@@ -410,6 +425,24 @@ class TestExtraPyEnterpriseWiring:
         assert (
             getattr(mod, "LICENSE_MGMT_CONFIG_LOADED", False) is False
         ), "license_mgmt/config.py must not be imported when there is no enterprise footprint"
+
+    def test_explicit_install_apps_injects_system_mgmt_and_console_mgmt_config(self, tmp_path, monkeypatch):
+        """Explicit INSTALL_APPS may list only optional apps; always-on config modules are still loaded."""
+        _make_apps(
+            tmp_path,
+            {
+                "opspilot": ["__init__.py"],
+                "system_mgmt": ["__init__.py"],
+                "console_mgmt": ["__init__.py"],
+            },
+        )
+        (tmp_path / "apps" / "system_mgmt" / "config.py").write_text("SYSTEM_MGMT_CONFIG_LOADED = True\n")
+        (tmp_path / "apps" / "console_mgmt" / "config.py").write_text("CONSOLE_MGMT_CONFIG_LOADED = True\n")
+
+        mod = _load_extra(tmp_path, monkeypatch, install_apps="opspilot")
+
+        assert getattr(mod, "SYSTEM_MGMT_CONFIG_LOADED", False) is True
+        assert getattr(mod, "CONSOLE_MGMT_CONFIG_LOADED", False) is True
 
     def test_auto_discovery_mode_preserved_when_footprint_present(self, tmp_path, monkeypatch):
         """When INSTALL_APPS is empty (auto-discovery), extra.py must not block normal config

@@ -3,6 +3,7 @@
   "collect_type": "snmp_bdcom",
   "plugin": "Switch BDCOM SNMP",
   "plugin_desc": "BDCOM (Shanghai Baud Data Communication) switch-specific SNMP collection (BDCOM private MIBs, IANA PEN 3320). In addition to standard IF-MIB interface metrics, it collects BDCOM private OIDs for device health — control-plane CPU utilization over the last 5 minutes (NMS-PROCESS-MIB cpmCPUTotal5min), system memory pool used and free bytes (NMS-MEMORY-POOL-MIB, mirroring the Cisco-style memory pool table) and per-card temperature (BDCOM-SYS nmscardTemperature, a dedicated typed temperature column). Memory utilization is computed from used / (used + free). BDCOM switch MIBs expose no dedicated fan-state or power-supply (PSU) state object, so fan and PSU are not collected (N/A). Supported brands/models — BDCOM managed Ethernet switches and OLT line cards.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_bdcom'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

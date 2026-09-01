@@ -1,6 +1,6 @@
 import io
 
-from django.http import JsonResponse, FileResponse
+from django.http import FileResponse, JsonResponse
 from rest_framework import status
 
 
@@ -11,6 +11,10 @@ class WebUtils:
 
     @staticmethod
     def response_error(response_data={}, error_message="", status_code=status.HTTP_400_BAD_REQUEST):
+        # 兼容 response_error("文案", status_code=404)：首位是 str 时视为 message，而不是 data。
+        if isinstance(response_data, str) and not error_message:
+            error_message = response_data
+            response_data = {}
         return JsonResponse({"data": response_data, "result": False, "message": error_message}, status=status_code)
 
     @staticmethod
@@ -26,5 +30,5 @@ class WebUtils:
         if isinstance(file, bytes):
             file = io.BytesIO(file)
         response = FileResponse(file, content_type="application/octet-stream")
-        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response

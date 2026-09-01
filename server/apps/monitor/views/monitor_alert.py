@@ -12,6 +12,7 @@ from apps.core.utils.current_team_scope import resolve_current_team_data_scope
 from apps.core.utils.permission_utils import get_instance_permissions, get_permissions_rules
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.permission import PermissionConstants
+from apps.monitor.filters.id_filters import filter_positive_int_field
 from apps.monitor.filters.monitor_alert import MonitorAlertFilter
 from apps.monitor.models import MonitorAlert, MonitorAlertMetricSnapshot, MonitorEvent, MonitorEventRawData, MonitorPolicy, PolicyInstanceBaseline
 from apps.monitor.serializers.monitor_alert import MonitorAlertSerializer, MonitorAlertUpdateSerializer
@@ -49,9 +50,7 @@ class AlertPermissionMixin:
         """
         scope = self._get_data_scope(request)
         policy_qs = (
-            MonitorPolicy.objects.filter(
-                policyorganization__organization__in=list(scope.data_team_ids)
-            )
+            MonitorPolicy.objects.filter(policyorganization__organization__in=list(scope.data_team_ids))
             .select_related("monitor_object")
             .prefetch_related("policyorganization_set")
             .distinct()
@@ -80,9 +79,7 @@ class AlertPermissionMixin:
         # policy_permissions 结构：{ object_type_id: {instance: [...], team: [...]}, "all": {...} }
         # "all" 键表示管理员级别权限（对全部对象类型生效），此时不能缩小范围。
         if "all" not in policy_permissions:
-            known_object_type_ids = [
-                int(k) for k in policy_permissions.keys() if k != "all" and str(k).isdigit()
-            ]
+            known_object_type_ids = [int(k) for k in policy_permissions.keys() if k != "all" and str(k).isdigit()]
             policy_qs = policy_qs.filter(monitor_object_id__in=known_object_type_ids)
 
         accessible_policy_ids = []
@@ -122,9 +119,7 @@ class AlertPermissionMixin:
             return {}
 
         if request.user.is_superuser:
-            return {
-                policy.id: PermissionConstants.DEFAULT_PERMISSION for policy in policies
-            }
+            return {policy.id: PermissionConstants.DEFAULT_PERMISSION for policy in policies}
 
         scope = self._get_data_scope(request)
         permissions_result = get_permissions_rules(
@@ -145,9 +140,7 @@ class AlertPermissionMixin:
         permission_map = {}
         for policy_obj in policies:
             monitor_object_id = str(policy_obj.monitor_object_id)
-            teams = {
-                org.organization for org in policy_obj.policyorganization_set.all()
-            }
+            teams = {org.organization for org in policy_obj.policyorganization_set.all()}
             permissions = get_instance_permissions(
                 monitor_object_id,
                 policy_obj.id,
@@ -190,8 +183,8 @@ class MonitorAlertViewSet(
     def list(self, request, *args, **kwargs):
         monitor_object_id = request.query_params.get("monitor_object_id", None)
         policy_qs = self.get_accessible_policy_queryset(request)
-        if monitor_object_id:
-            policy_qs = policy_qs.filter(monitor_object_id=monitor_object_id)
+        # 非法非数字 id（如分类名 Network Device）不得落入 ORM，否则 ValueError → 500
+        policy_qs = filter_positive_int_field(policy_qs, "monitor_object_id", monitor_object_id)
         policy_ids = policy_qs.values_list("id", flat=True)
 
         if not policy_ids:
@@ -269,16 +262,12 @@ class MonitorAlertViewSet(
         with transaction.atomic():
             # 权限范围先由 get_object 校验；状态转换必须锁内重读，避免扫描任务与
             # 两个手工关闭请求都基于同一个旧 new 状态重复落 lifecycle intent。
-            instance = MonitorAlert.objects.select_for_update().get(
-                pk=authorized_instance.pk
-            )
+            instance = MonitorAlert.objects.select_for_update().get(pk=authorized_instance.pk)
             # 锁等待期间组织关系、角色或策略归属都可能变化；始终以锁内时刻
             # 重新走权限过滤，禁止复用过期授权依据。
             instance = self.get_queryset().get(pk=instance.pk)
             old_status = instance.status
-            serializer = self.get_serializer(
-                instance, data=request.data, partial=partial
-            )
+            serializer = self.get_serializer(instance, data=request.data, partial=partial)
             serializer.is_valid(raise_exception=True)
             updated_data = serializer.validated_data
             if updated_data.get("status") == "closed":
@@ -350,12 +339,7 @@ class MonitorAlertViewSet(
         if alert_obj is None:
             return WebUtils.response_error("告警不存在", status_code=404)
 
-        policy_units = (
-            MonitorPolicy.objects.filter(id=alert_obj.policy_id)
-            .values("metric_unit", "calculation_unit", "threshold_unit")
-            .first()
-            or {}
-        )
+        policy_units = MonitorPolicy.objects.filter(id=alert_obj.policy_id).values("metric_unit", "calculation_unit", "threshold_unit").first() or {}
         metric_unit = policy_units.get("metric_unit") or ""
         calculation_unit = policy_units.get("calculation_unit") or ""
         threshold_unit = policy_units.get("threshold_unit") or ""
@@ -425,7 +409,6 @@ class MonitorAlertViewSet(
 
 
 class MonitorEventViewSet(AlertPermissionMixin, viewsets.ViewSet):
-
     @action(methods=["get"], detail=False, url_path="query/(?P<alert_id>[^/.]+)")
     def get_events(self, request, alert_id):
         """查询告警的事件列表 - 优化版：使用外键直接查询"""

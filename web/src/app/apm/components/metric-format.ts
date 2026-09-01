@@ -83,6 +83,53 @@ export function formatLatency(ms: number | null, unavailable = false, t?: Transl
     : formatUnitValue(formatNumber(Math.round(ms), 0), 'apm.common.millisecondsValue', '{value}ms', t);
 }
 
+export function formatCompactLatency(ms: number): string {
+  if (ms < 1) return `${ms.toFixed(2)}ms`;
+  if (ms >= 1000) return `${(ms / 1000).toFixed(2)}s`;
+  return `${Math.round(ms)}ms`;
+}
+
+export type TopologyMetricParts = {
+  total: string;
+  latency: string;
+  errors: string;
+  hasErrors: boolean;
+};
+
+export function topologyMetricParts(input: {
+  errorCount: number;
+  total: number;
+  p95_ms?: number | null;
+}): TopologyMetricParts {
+  return {
+    total: formatNumber(input.total),
+    latency: input.p95_ms == null ? '—' : formatCompactLatency(input.p95_ms),
+    errors: formatNumber(input.errorCount),
+    hasErrors: input.errorCount > 0,
+  };
+}
+
+export function formatTopologyMetricLine(input: {
+  errorCount: number;
+  total: number;
+  p95_ms?: number | null;
+}): string {
+  const parts = topologyMetricParts(input);
+  return `${parts.total} / ${parts.latency} / ${parts.errors}`;
+}
+
+export function formatTopologyEdgeMetrics(edge: {
+  sampled_calls: number;
+  error_calls: number;
+  p95_ms?: number | null;
+}): string {
+  return formatTopologyMetricLine({
+    errorCount: edge.error_calls,
+    total: edge.sampled_calls,
+    p95_ms: edge.p95_ms,
+  });
+}
+
 export function formatPerSecond(value: string, t?: Translate): string {
   return formatUnitValue(value, 'apm.common.perSecondValue', '{value}/s', t);
 }

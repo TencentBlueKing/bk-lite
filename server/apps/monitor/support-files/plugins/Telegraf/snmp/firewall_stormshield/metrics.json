@@ -3,6 +3,7 @@
   "collect_type": "snmp_stormshield",
   "plugin": "Firewall Stormshield SNMP",
   "plugin_desc": "Stormshield SNS-specific SNMP collection template for Stormshield Network Security firewalls. In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects HOST-RESOURCES CPU load, UCD-SNMP memory and STORMSHIELD-SNS-MIB private OIDs for firewall-specific state (ASQ active TCP/UDP connections and mature VPN tunnels). Supported brands/models — Stormshield SNS-series firewalls.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_stormshield'}) by (instance_id)",
   "name": "Firewall",
   "icon": "mm-firewall_防火墙",

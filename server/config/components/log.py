@@ -10,11 +10,74 @@ else:
     LOG_DIR = os.getenv("LOG_DIR", "/tmp/logs/")
     log_dir = os.path.join(os.path.join(LOG_DIR, APP_CODE))
 
-if not os.path.exists(log_dir):
-    os.makedirs(log_dir)
+DEFAULT_LOG_FILE_MAX_BYTES = 100 * 1024 * 1024
+DEFAULT_LOG_FILE_BACKUP_COUNT = 5
+DEFAULT_LOG_LEVEL = "INFO"
+ALLOWED_LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
+TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
+FALSE_VALUES = frozenset({"0", "false", "no", "off"})
 
-# 根据 DEBUG 环境变量设置日志级别
-LOG_LEVEL = "DEBUG" if DEBUG else "INFO"
+
+def parse_positive_int(raw, default, *, name):
+    if raw is None or str(raw).strip() == "":
+        return default
+    value = int(raw)
+    if value <= 0:
+        raise ValueError(f"{name} must be a positive integer")
+    return value
+
+
+def parse_bool(raw, default, *, name):
+    if raw is None or str(raw).strip() == "":
+        return default
+    value = str(raw).strip().lower()
+    if value in TRUE_VALUES:
+        return True
+    if value in FALSE_VALUES:
+        return False
+    raise ValueError(f"{name} must be a boolean")
+
+
+def parse_log_level(raw, default=DEFAULT_LOG_LEVEL):
+    if raw is None or str(raw).strip() == "":
+        return default
+    value = str(raw).strip().upper()
+    if value == "WARN":
+        value = "WARNING"
+    if value not in ALLOWED_LOG_LEVELS:
+        raise ValueError("LOG_LEVEL must be DEBUG, INFO, WARNING, ERROR or CRITICAL")
+    return value
+
+
+LOG_FILE_OUTPUT = parse_bool(os.getenv("LOG_FILE_OUTPUT"), False, name="LOG_FILE_OUTPUT")
+LOG_LEVEL = parse_log_level(os.getenv("LOG_LEVEL"))
+LOG_FILE_MAX_BYTES = parse_positive_int(
+    os.getenv("LOG_FILE_MAX_BYTES"),
+    DEFAULT_LOG_FILE_MAX_BYTES,
+    name="LOG_FILE_MAX_BYTES",
+)
+LOG_FILE_BACKUP_COUNT = parse_positive_int(
+    os.getenv("LOG_FILE_BACKUP_COUNT"),
+    DEFAULT_LOG_FILE_BACKUP_COUNT,
+    name="LOG_FILE_BACKUP_COUNT",
+)
+
+
+def rotating_file_handler(filename, **overrides):
+    config = {
+        "class": "logging.handlers.RotatingFileHandler",
+        "formatter": "verbose",
+        "filename": os.path.join(log_dir, filename),
+        "maxBytes": LOG_FILE_MAX_BYTES,
+        "backupCount": LOG_FILE_BACKUP_COUNT,
+        "encoding": "utf-8",
+    }
+    config.update(overrides)
+    if config["maxBytes"] <= 0:
+        raise ValueError("rotating file handler maxBytes must be positive")
+    if config["backupCount"] <= 0:
+        raise ValueError("rotating file handler backupCount must be positive")
+    return config
 
 # 仅用于历史日志分组规则的迁移窗口。默认空集合保持 fail-closed；上线前通过
 # audit_log_group_rule_modes 盘点并只加入已明确需要短期保留旧 OR 语义的分组 ID。
@@ -96,33 +159,58 @@ class SuppressSuccessfulSidecarAccessLogs(logging.Filter):
         return not (is_sidecar_request and status_code < 400)
 
 
-LOGGING = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "filters": {
-        "ignore_paths": {
-            "()": IgnoreSpecificPaths,
-        },
-        "suppress_successful_sidecar_access_logs": {
-            "()": SuppressSuccessfulSidecarAccessLogs,
-        },
-    },
-    "formatters": {
-        "simple": {
-            "format": "%(levelname)s [%(asctime)s] [%(name)s] [%(filename)s:%(funcName)s:%(lineno)d] %(message)s",
-            "datefmt": "%Y-%m-%d %H:%M:%S",
-        },
-        "verbose": {
-            "format": "%(levelname)s [%(asctime)s] %(pathname)s " "%(lineno)d %(funcName)s %(process)d %(thread)d " "\n \t %(message)s \n",
-            "datefmt": "%Y-%m-%d %H:%M:%S",
-        },
-    },
-    "handlers": {
+FILE_HANDLER_FILES = {
+    "root": "%s.log" % APP_CODE,
+    "db": "db.log",
+    "alert": "alert.log",
+    "cmdb": "cmdb.log",
+    "operation_analysis": "operation_analysis.log",
+    "nats": "nats.log",
+    "monitor": "monitor.log",
+    "log": "log.log",
+    "apm": "apm.log",
+    "node": "node.log",
+    "ops-console": "ops-console.log",
+    "system-manager": "system-manager.log",
+    "opspilot": "opspilot.log",
+    "job": "job.log",
+    "playground": "playground.log",
+}
+
+APP_LOGGER_FILE_HANDLERS = {
+    "app": "root",
+    "cmdb": "cmdb",
+    "operation_analysis": "operation_analysis",
+    "nats": "nats",
+    "monitor": "monitor",
+    "log": "log",
+    "apm": "apm",
+    "node": "node",
+    "ops-console": "ops-console",
+    "system-manager": "system-manager",
+    "opspilot": "opspilot",
+    "job": "job",
+    "alert": "alert",
+    "playground": "playground",
+}
+
+
+def _app_handlers(file_handler_name, *, log_file_output):
+    if log_file_output:
+        return [file_handler_name, "console"]
+    return ["console"]
+
+
+def build_logging_config(*, log_level=None, log_file_output=None):
+    log_level = LOG_LEVEL if log_level is None else log_level
+    log_file_output = LOG_FILE_OUTPUT if log_file_output is None else log_file_output
+
+    handlers = {
         "console": {
             "level": "DEBUG",
             "()": SafeConsoleHandler,
             "formatter": "simple",
-            "filters": ["ignore_paths"],  # 添加 filter
+            "filters": ["ignore_paths"],
         },
         "uvicorn_access_console": {
             "level": "INFO",
@@ -131,88 +219,14 @@ LOGGING = {
             "filters": ["suppress_successful_sidecar_access_logs"],
         },
         "null": {"level": "DEBUG", "class": "logging.NullHandler"},
-        "root": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "formatter": "verbose",
-            "filename": os.path.join(log_dir, "%s.log" % APP_CODE),
-            "encoding": "utf-8",
-        },
-        "db": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "formatter": "verbose",
-            "filename": os.path.join(log_dir, "db.log"),
-            "encoding": "utf-8",
-        },
-        "alert": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "formatter": "verbose",
-            "filename": os.path.join(log_dir, "alert.log"),
-            "maxBytes": 100 * 1024 * 1024,  # 添加文件大小限制
-            "backupCount": 5,  # 添加备份文件数量
-            "encoding": "utf-8",  # 添加编码格式
-        },
-        "cmdb": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "formatter": "verbose",
-            "filename": os.path.join(log_dir, "cmdb.log"),
-            "encoding": "utf-8",
-        },
-        "operation_analysis": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "formatter": "verbose",
-            "filename": os.path.join(log_dir, "operation_analysis.log"),
-            "encoding": "utf-8",
-        },
-        "nats": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "formatter": "verbose",
-            "filename": os.path.join(log_dir, "nats.log"),
-            "encoding": "utf-8",
-        },
-        "monitor": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "formatter": "verbose",
-            "filename": os.path.join(log_dir, "monitor.log"),
-            "encoding": "utf-8",
-        },
-        "node": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "formatter": "verbose",
-            "filename": os.path.join(log_dir, "node.log"),
-            "encoding": "utf-8",
-        },
-        "ops-console": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "formatter": "verbose",
-            "filename": os.path.join(log_dir, "ops-console.log"),
-            "encoding": "utf-8",
-        },
-        "system-manager": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "formatter": "verbose",
-            "filename": os.path.join(log_dir, "system-manager.log"),
-            "encoding": "utf-8",
-        },
-        "opspilot": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "formatter": "verbose",
-            "filename": os.path.join(log_dir, "opspilot.log"),
-            "encoding": "utf-8",
-        },
-        "job": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "formatter": "verbose",
-            "filename": os.path.join(log_dir, "job.log"),
-            "encoding": "utf-8",
-        },
-        "playground": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "formatter": "verbose",
-            "filename": os.path.join(log_dir, "playground.log"),
-            "encoding": "utf-8",
-        },
-    },
-    "loggers": {
+    }
+    if log_file_output:
+        os.makedirs(log_dir, exist_ok=True)
+        for name, filename in FILE_HANDLER_FILES.items():
+            handlers[name] = rotating_file_handler(filename)
+
+    http_client_handlers = ["root", "console"] if log_file_output else ["console"]
+    loggers = {
         "django": {"handlers": ["null"], "level": "INFO", "propagate": True},
         "django.server": {"handlers": ["console"], "level": "INFO", "propagate": True},
         "django.request": {
@@ -220,20 +234,16 @@ LOGGING = {
             "level": "ERROR",
             "propagate": True,
         },
-        "django.db.backends": {"handlers": ["db"], "level": "INFO", "propagate": True},
-        "app": {"handlers": ["root", "console"], "level": LOG_LEVEL, "propagate": True},
-        "cmdb": {"handlers": ["cmdb", "console"], "level": LOG_LEVEL, "propagate": True},
-        "operation_analysis": {"handlers": ["operation_analysis", "console"], "level": LOG_LEVEL, "propagate": True},
-        "nats": {"handlers": ["nats", "console"], "level": LOG_LEVEL, "propagate": True},
-        "monitor": {"handlers": ["monitor", "console"], "level": LOG_LEVEL, "propagate": True},
-        "node": {"handlers": ["node", "console"], "level": LOG_LEVEL, "propagate": True},
-        "ops-console": {"handlers": ["ops-console", "console"], "level": LOG_LEVEL, "propagate": True},
-        "system-manager": {"handlers": ["system-manager", "console"], "level": LOG_LEVEL, "propagate": True},
-        "opspilot": {"handlers": ["opspilot", "console"], "level": LOG_LEVEL, "propagate": True},
-        "job": {"handlers": ["job", "console"], "level": LOG_LEVEL, "propagate": True},
-        "alert": {"handlers": ["alert", "console"], "level": LOG_LEVEL, "propagate": True},
-        "celery": {"handlers": ["root"], "level": "INFO", "propagate": True},
-        "playground": {"handlers": ["playground", "console"], "level": LOG_LEVEL, "propagate": True},
+        "django.db.backends": {
+            "handlers": ["db"] if log_file_output else ["null"],
+            "level": "INFO",
+            "propagate": True,
+        },
+        "celery": {
+            "handlers": ["root"] if log_file_output else ["console"],
+            "level": log_level,
+            "propagate": True,
+        },
         "uvicorn.access": {
             "handlers": ["uvicorn_access_console"],
             "level": "INFO",
@@ -242,8 +252,41 @@ LOGGING = {
         # httpx 会在 INFO 级别输出每次成功请求:
         # HTTP Request: POST ... "HTTP/1.1 200 OK"。解析/构建调用 LLM 时会刷屏,
         # 这里仅保留 warning/error，异常仍可见。
-        "httpx": {"handlers": ["root", "console"], "level": "WARNING", "propagate": False},
-        "httpcore": {"handlers": ["root", "console"], "level": "WARNING", "propagate": False},
-        "openai": {"handlers": ["root", "console"], "level": "WARNING", "propagate": False},
-    },
-}
+        "httpx": {"handlers": http_client_handlers, "level": "WARNING", "propagate": False},
+        "httpcore": {"handlers": http_client_handlers, "level": "WARNING", "propagate": False},
+        "openai": {"handlers": http_client_handlers, "level": "WARNING", "propagate": False},
+    }
+    for logger_name, file_handler_name in APP_LOGGER_FILE_HANDLERS.items():
+        loggers[logger_name] = {
+            "handlers": _app_handlers(file_handler_name, log_file_output=log_file_output),
+            "level": log_level,
+            "propagate": True,
+        }
+
+    return {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "filters": {
+            "ignore_paths": {
+                "()": IgnoreSpecificPaths,
+            },
+            "suppress_successful_sidecar_access_logs": {
+                "()": SuppressSuccessfulSidecarAccessLogs,
+            },
+        },
+        "formatters": {
+            "simple": {
+                "format": "%(levelname)s [%(asctime)s] [%(name)s] [%(filename)s:%(funcName)s:%(lineno)d] %(message)s",
+                "datefmt": "%Y-%m-%d %H:%M:%S",
+            },
+            "verbose": {
+                "format": "%(levelname)s [%(asctime)s] %(pathname)s " "%(lineno)d %(funcName)s %(process)d %(thread)d " "\n \t %(message)s \n",
+                "datefmt": "%Y-%m-%d %H:%M:%S",
+            },
+        },
+        "handlers": handlers,
+        "loggers": loggers,
+    }
+
+
+LOGGING = build_logging_config()

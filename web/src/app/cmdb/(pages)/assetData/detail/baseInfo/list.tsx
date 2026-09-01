@@ -259,12 +259,14 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
               {item.attr_name}
-              {item.is_required && <span className={informationList.required}></span>}
-              {item.user_prompt && (
+              {item.is_required ? (
+                <span className={informationList.required}></span>
+              ) : null}
+              {item.user_prompt ? (
                 <Tooltip title={item.user_prompt}>
                   <QuestionCircleOutlined className="ml-1 text-gray-400 cursor-help" />
                 </Tooltip>
-              )}
+              ) : null}
             </div>
             {item.attr_type === 'table' && !item.isEdit && (
               <Button

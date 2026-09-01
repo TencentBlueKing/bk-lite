@@ -1,6 +1,6 @@
 """Generation-aware full rebuild for ready/enabled Wiki knowledge bases."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from django.db import transaction
 
@@ -15,7 +15,13 @@ from apps.opspilot.services.wiki.build_generation_service import (
     material_fingerprint,
     stage_ai_page,
 )
-from apps.opspilot.services.wiki.build_service import _canonical_title, _invoke_llm, _source_chunk_trace
+from apps.opspilot.services.wiki.build_service import (
+    _canonical_title,
+    _invoke_llm,
+    _source_chunk_trace,
+    generation_publish_status,
+    generation_skip_checkpoint,
+)
 from apps.opspilot.services.wiki.candidate_adapter_contract import (
     CandidateParticipant,
     DjangoKnowledgeCandidateAdapter,
@@ -44,6 +50,7 @@ class StagedRebuild:
     counts: dict
     affected_page_ids: list
     removal_actions: list
+    skipped: list = field(default_factory=list)
 
 
 def _material_snapshot_hash(material):
@@ -349,9 +356,12 @@ def _stage_rebuild_candidate(
         "unchanged": 0,
         "pending_review": 0,
     }
+    skipped = []
 
     for prepared_material in prepared["materials"]:
         material = materials_by_id[prepared_material["material_id"]]
+        for item in prepared_material.get("skipped") or []:
+            skipped.append({**item, "material_id": material.pk})
         material_trace = {
             "material_id": material.pk,
             "material_name": material.name,
@@ -619,6 +629,7 @@ def _stage_rebuild_candidate(
             counts=counts,
             affected_page_ids=affected,
             removal_actions=removal_actions,
+            skipped=skipped,
         ),
         None,
     )
@@ -706,7 +717,7 @@ def _finalize_staged_rebuild(
             GENERATION_PAGE_ACTIONS_KEY: staged.removal_actions,
             "generation_relations": relation_result,
         }
-        locked_build.errors = []
+        locked_build.errors = list(staged.skipped)
         locked_build.budget_trace = {
             "scope": "wiki_rebuild",
             "materials": [
@@ -717,8 +728,9 @@ def _finalize_staged_rebuild(
                 for item in staged.source_trace.get("materials", [])
             ],
         }
+        locked_build.checkpoint = generation_skip_checkpoint(staged.skipped)
         locked_build.stage = "done"
-        locked_build.status = "success"
+        locked_build.status = generation_publish_status(staged.skipped)
         locked_build.progress = 100
         locked_build.save(
             update_fields=[
@@ -728,6 +740,7 @@ def _finalize_staged_rebuild(
                 "maintenance",
                 "errors",
                 "budget_trace",
+                "checkpoint",
                 "stage",
                 "status",
                 "progress",

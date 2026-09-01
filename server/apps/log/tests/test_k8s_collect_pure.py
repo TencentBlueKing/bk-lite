@@ -132,7 +132,11 @@ def test_get_cloud_region_envconfig_missing_vars(mocker):
 def test_generate_install_command_builds_curl(mocker):
     inst = mocker.MagicMock(id="inst-1")
     mocker.patch("apps.log.services.k8s_collect.CollectInstance.objects.filter").return_value.first.return_value = inst
-    mocker.patch.object(K8s, "get_cloud_region_envconfig", return_value=dict(_FULL_ENV))
+    mocker.patch.object(
+        K8s,
+        "get_cloud_region_public_config",
+        return_value={"NODE_SERVER_URL": _FULL_ENV["NODE_SERVER_URL"]},
+    )
     mocker.patch.object(K8s, "generate_install_token", return_value="tok-123")
     cmd = K8s.generate_install_command("inst-1", "cr1", "harbor.internal/bklite")
     assert "curl -sSLk -X POST" in cmd

@@ -26,12 +26,12 @@ from core.collection.redis_state import RedisCredentialStateStore, RedisRunState
 from core.collection.result_publisher import BufferedResultPublisher, NatsResultPublisher
 from core.collection.runtime import CollectionRequest, CollectionRuntime, CollectionRuntimeSettings, RunLease, Submission
 from core.collection.scheduler import CollectionScheduler
-from core.collection.yaml_target_policy import apply_yaml_target_policy
+from core.collection.yaml_target_policy import apply_executor_target_policy, apply_yaml_target_policy_async
 from core.infra.event_loop_monitor import EventLoopLagMonitor
 from core.infra.nats_utils import close_shared_nats, nats_metrics_connection_stats
 from core.infra.process_resources import ProcessResourceSampler
 from core.infra.redis_client import get_redis_client
-from core.logger import logger
+from core.logger import logger, safe_exception_info, safe_log_value
 
 
 def concurrency_limit_from_env(name: str, default: int) -> int:
@@ -73,6 +73,7 @@ class CollectionApplicationSettings:
     run_deadline_seconds: float = 0.0
     max_no_response_attempts: int = 3
     publish_max_attempts: int = 2
+    publish_worker_count: int = 1
     capacity_log_interval_seconds: float = 180.0
 
     def __post_init__(self) -> None:
@@ -98,10 +99,13 @@ class CollectionApplicationSettings:
             raise ValueError("publish_total_timeout_seconds must be greater than zero")
         if self.capacity_log_interval_seconds <= 0:
             raise ValueError("capacity_log_interval_seconds must be greater than zero")
+        if self.publish_worker_count <= 0:
+            raise ValueError("publish_worker_count must be greater than zero")
 
     @classmethod
     def from_env(cls) -> CollectionApplicationSettings:
         max_active_targets = concurrency_limit_from_env("MAX_ACTIVE_TARGETS", DEFAULT_MAX_ACTIVE_TARGETS)
+        jetstream_publish_enabled = str(os.getenv("NATS_METRICS_JETSTREAM_ENABLED", "false")).strip().lower() in {"1", "true", "yes", "on"}
         topology_raw = os.getenv("NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS")
         if topology_raw is None or not str(topology_raw).strip():
             network_topology_max_active_targets = DEFAULT_NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS
@@ -127,6 +131,7 @@ class CollectionApplicationSettings:
             run_deadline_seconds=float(os.getenv("RUN_DEADLINE", "0")),
             max_no_response_attempts=int(os.getenv("MAX_NO_RESPONSE_ATTEMPTS", "3")),
             publish_max_attempts=int(os.getenv("PUBLISH_MAX_ATTEMPTS", "2")),
+            publish_worker_count=int(os.getenv("PUBLISH_WORKERS", "4") if jetstream_publish_enabled else "1"),
             capacity_log_interval_seconds=float(os.getenv("CAPACITY_LOG_INTERVAL", "180")),
         )
 
@@ -171,7 +176,12 @@ class CollectionApplication:
         self._publisher = (
             publisher
             if isinstance(publisher, BufferedResultPublisher)
-            else BufferedResultPublisher(publisher, capacity=publish_capacity, metrics=self._metrics)
+            else BufferedResultPublisher(
+                publisher,
+                capacity=publish_capacity,
+                worker_count=self.settings.publish_worker_count,
+                metrics=self._metrics,
+            )
         )
         self._execution_plan_resolver = execution_plan_resolver or ExecutionPlanResolver(
             defaults=TimeoutDefaults(
@@ -180,6 +190,7 @@ class CollectionApplication:
                 collection_seconds=self.settings.plugin_timeout_seconds,
                 publish_seconds=self.settings.publish_timeout_seconds,
             ),
+            metrics=self._metrics,
         )
         self._target_activity = TargetActivityTracker()
         scheduler_limits = tuple(
@@ -337,10 +348,22 @@ class CollectionApplication:
         )
 
     async def _execute(self, request: CollectionRequest, lease: RunLease):
-        # 一次 run 用 yaml target_policy 覆盖预检；显式 preflight_kind 仍优先
-        request = apply_yaml_target_policy(request)
         plugin = self._plugin_factory.resolve(request)
-        plan = self._execution_plan_resolver.resolve(request)
+        prepare_plugin = getattr(plugin, "prepare", None)
+        if callable(prepare_plugin):
+            await prepare_plugin(request)
+        prepared_executor_config = getattr(plugin, "prepared_executor_config", None)
+        if prepared_executor_config is None:
+            # 非配置采集插件仍按 YAML 解析策略与执行计划。
+            request = await apply_yaml_target_policy_async(request)
+            plan = self._execution_plan_resolver.resolve(request)
+        else:
+            # Enterprise Collector 加载失败时，策略与计划必须跟随最终 OSS 配置。
+            request = apply_executor_target_policy(request, prepared_executor_config)
+            plan = self._execution_plan_resolver.resolve(
+                request,
+                executor_config=prepared_executor_config,
+            )
         # 有 probe 且未显式关闭时启用廉价 AccessProbe；否则 CredentialAttempt=collect
         access_probe = None
         if callable(getattr(plugin, "probe", None)) and getattr(plugin, "supports_access_probe", True):
@@ -364,11 +387,12 @@ class CollectionApplication:
             if callable(close_plugin):
                 try:
                     await close_plugin()
-                except Exception:  # noqa: BLE001 - 清理失败不覆盖 Run 原始结果
+                except Exception as exc:  # noqa: BLE001 - 清理失败不覆盖 Run 原始结果
                     logger.exception(
-                        "event=collection_plugin_close_failed task_id=%s plugin_ref=%s",
-                        request.task_id,
-                        request.plugin_ref,
+                        "event=collection_plugin_close_failed task_id=%s plugin_ref=%s " "failed_stage=plugin_close error_type=PluginCloseFailure",
+                        safe_log_value(request.task_id),
+                        safe_log_value(request.plugin_ref),
+                        exc_info=safe_exception_info(exc),
                     )
 
     async def stats(self) -> dict:

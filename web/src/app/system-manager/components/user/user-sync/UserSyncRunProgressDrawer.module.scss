@@ -92,6 +92,14 @@
   line-height: 20px;
 }
 
+.conflictUsers {
+  color: var(--color-warning);
+  font-size: 12px;
+  line-height: 20px;
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+
 .phaseTimestamp {
   color: var(--color-text-3);
   font-size: 12px;

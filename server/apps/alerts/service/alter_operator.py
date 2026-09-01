@@ -25,10 +25,11 @@ class AlertOperator(object):
     未分派——待响应——处理中——转派——待响应——处理中——关闭
     """
 
-    def __init__(self, user, allowed_alert_ids=None):
+    def __init__(self, user, allowed_alert_ids=None, *, api_close=False):
         self.user = user
         self.status_map = dict(AlertStatus.CHOICES)
         self.allowed_alert_ids = None if allowed_alert_ids is None else {str(item) for item in allowed_alert_ids}
+        self.api_close = bool(api_close)
 
     def _is_alert_allowed(self, alert_id: str) -> bool:
         if self.allowed_alert_ids is None:
@@ -45,7 +46,9 @@ class AlertOperator(object):
         """
         logger.info(
             "[AlertOperator] 用户 %s 开始执行告警操作: action=%s, alert_id=%s",
-            self.user, action, alert_id,
+            self.user,
+            action,
+            alert_id,
         )
 
         # 查找对应的操作方法
@@ -62,13 +65,17 @@ class AlertOperator(object):
             result = func(alert_id, data)
             logger.info(
                 "[AlertOperator] 告警操作执行成功: action=%s, alert_id=%s, result=%s",
-                action, alert_id, result,
+                action,
+                alert_id,
+                result,
             )
             return result
         except Exception as e:
             logger.error(
                 "[AlertOperator] 告警操作执行失败: action=%s, alert_id=%s, error=%s",
-                action, alert_id, e,
+                action,
+                alert_id,
+                e,
                 exc_info=True,
             )
             raise
@@ -114,9 +121,7 @@ class AlertOperator(object):
                         assignment_id,
                     )
 
-            ReminderService.ensure_reminder_task(
-                alert, assignment_id=normalized_assignment_id
-            )
+            ReminderService.ensure_reminder_task(alert, assignment_id=normalized_assignment_id)
         except Exception as e:
             logger.error("[AlertOperator] 恢复提醒任务失败: %s", e, exc_info=True)
 
@@ -145,9 +150,7 @@ class AlertOperator(object):
 
             assignment = None
             if assignment_id not in (None, ""):
-                assignment = AlertAssignment.objects.filter(
-                    id=assignment_id, is_active=True
-                ).first()
+                assignment = AlertAssignment.objects.filter(id=assignment_id, is_active=True).first()
             EscalationService.reset_escalation_task(alert, assignment)
         except Exception as e:
             logger.error("[AlertOperator] 重置升级任务失败: %s", e, exc_info=True)
@@ -169,7 +172,8 @@ class AlertOperator(object):
             if alert.status != AlertStatus.UNASSIGNED:
                 logger.warning(
                     "[AlertOperator] 告警状态不符合分派条件: alert_id=%s, current_status=%s",
-                    alert_id, alert.status,
+                    alert_id,
+                    alert.status,
                 )
                 return {
                     "result": False,
@@ -185,9 +189,7 @@ class AlertOperator(object):
 
             assignee_scope_group_ids = data.get("assignee_scope_group_ids")
             if assignee_scope_group_ids is None:
-                assignee, validation_message = validate_alert_assignees(
-                    alert, assignee
-                )
+                assignee, validation_message = validate_alert_assignees(alert, assignee)
             else:
                 assignee, validation_message = validate_usernames_in_groups(
                     assignee,
@@ -232,12 +234,17 @@ class AlertOperator(object):
             else:
                 logger.warning(
                     "[AlertOperator] 分派通知无可用渠道，未发送！alert_id=%s, assignee=%s, assignment_id=%s",
-                    alert_id, assignee, assignment_id,
+                    alert_id,
+                    assignee,
+                    assignment_id,
                 )
 
             logger.info(
                 "[AlertOperator] 告警分派成功: alert_id=%s, assignee=%s, 状态变更: %s -> %s",
-                alert_id, assignee, AlertStatus.UNASSIGNED, AlertStatus.PENDING,
+                alert_id,
+                assignee,
+                AlertStatus.UNASSIGNED,
+                AlertStatus.PENDING,
             )
 
             log_data = {
@@ -246,7 +253,10 @@ class AlertOperator(object):
                 "operator": self.user,
                 "operator_object": "告警处理-分派",
                 "target_id": alert.alert_id,
-                "overview": f"告警分派成功, 处理人[{assignee}] 告警[{alert.title}]状态变更: {self.status_map[AlertStatus.UNASSIGNED]} -> {self.status_map[AlertStatus.PENDING]}",
+                "overview": (
+                    f"告警分派成功, 处理人[{assignee}] 告警[{alert.title}]"
+                    f"状态变更: {self.status_map[AlertStatus.UNASSIGNED]} -> {self.status_map[AlertStatus.PENDING]}"
+                ),
             }
             self.operator_log(log_data)
 
@@ -283,7 +293,8 @@ class AlertOperator(object):
             if alert.status != AlertStatus.PENDING:
                 logger.warning(
                     "[AlertOperator] 告警状态不符合认领条件: alert_id=%s, current_status=%s",
-                    alert_id, alert.status,
+                    alert_id,
+                    alert.status,
                 )
                 return {
                     "result": False,
@@ -295,7 +306,9 @@ class AlertOperator(object):
             if self.user not in alert.operator:
                 logger.warning(
                     "[AlertOperator] 用户无权限认领告警: alert_id=%s, user=%s, operators=%s",
-                    alert_id, self.user, alert.operator,
+                    alert_id,
+                    self.user,
+                    alert.operator,
                 )
                 return {"result": False, "message": "您没有权限认领此告警", "data": {}}
 
@@ -311,7 +324,10 @@ class AlertOperator(object):
 
             logger.info(
                 "[AlertOperator] 告警认领成功: alert_id=%s, user=%s, 状态变更: %s -> %s",
-                alert_id, self.user, AlertStatus.PENDING, AlertStatus.PROCESSING,
+                alert_id,
+                self.user,
+                AlertStatus.PENDING,
+                AlertStatus.PROCESSING,
             )
 
             # 停止相关的提醒任务
@@ -324,7 +340,10 @@ class AlertOperator(object):
                 "operator": self.user,
                 "operator_object": "告警处理-认领",
                 "target_id": alert.alert_id,
-                "overview": f"告警认领成功, 认领人[{self.user}] 告警[{alert.title}]状态变更: {self.status_map[AlertStatus.PENDING]} -> {self.status_map[AlertStatus.PROCESSING]}",
+                "overview": (
+                    f"告警认领成功, 认领人[{self.user}] 告警[{alert.title}]"
+                    f"状态变更: {self.status_map[AlertStatus.PENDING]} -> {self.status_map[AlertStatus.PROCESSING]}"
+                ),
             }
             self.operator_log(log_data)
 
@@ -358,7 +377,8 @@ class AlertOperator(object):
             if alert.status != AlertStatus.PROCESSING:
                 logger.warning(
                     "[AlertOperator] 告警状态不符合转派条件: alert_id=%s, current_status=%s",
-                    alert_id, alert.status,
+                    alert_id,
+                    alert.status,
                 )
                 return {
                     "result": False,
@@ -370,7 +390,9 @@ class AlertOperator(object):
             if self.user not in alert.operator:
                 logger.warning(
                     "[AlertOperator] 用户无权限转派告警: alert_id=%s, user=%s, operators=%s",
-                    alert_id, self.user, alert.operator,
+                    alert_id,
+                    self.user,
+                    alert.operator,
                 )
                 return {"result": False, "message": "您没有权限转派此告警", "data": {}}
 
@@ -399,7 +421,11 @@ class AlertOperator(object):
 
             logger.info(
                 "[AlertOperator] 告警转派成功: alert_id=%s, old_assignee=%s, new_assignee=%s, 状态变更: %s -> %s",
-                alert_id, old_assignee, new_assignee, AlertStatus.PROCESSING, AlertStatus.PENDING,
+                alert_id,
+                old_assignee,
+                new_assignee,
+                AlertStatus.PROCESSING,
+                AlertStatus.PENDING,
             )
 
             notify_param = self.format_notify_data(new_assignee, alert)
@@ -410,7 +436,8 @@ class AlertOperator(object):
             else:
                 logger.warning(
                     "[AlertOperator] 未找到有效的email通知参数，邮件通知失败！alert_id=%s, assignee=%s",
-                    alert_id, new_assignee,
+                    alert_id,
+                    new_assignee,
                 )
 
             assignment_id = data.get("assignment_id")
@@ -423,7 +450,10 @@ class AlertOperator(object):
                 "operator": self.user,
                 "operator_object": "告警处理-转派",
                 "target_id": alert.alert_id,
-                "overview": f"告警转派成功, 转派处理人[{new_assignee}] 告警[{alert.title}]状态变更: {self.status_map[AlertStatus.PROCESSING]} -> {self.status_map[AlertStatus.PENDING]}",
+                "overview": (
+                    f"告警转派成功, 转派处理人[{new_assignee}] 告警[{alert.title}]"
+                    f"状态变更: {self.status_map[AlertStatus.PROCESSING]} -> {self.status_map[AlertStatus.PENDING]}"
+                ),
             }
             self.operator_log(log_data)
 
@@ -441,7 +471,7 @@ class AlertOperator(object):
 
     def _close_alert(self, alert_id: str, data: dict) -> dict:
         """
-        关闭告警：处理中 -> 已关闭
+        关闭告警：默认仅处理中且须为当前处理人；API 关闭模式允许待响应/处理中且不校验处理人
         :param alert_id: 告警ID
         :param data: 附加数据（可包含关闭原因等）
         :return: 操作结果
@@ -455,11 +485,12 @@ class AlertOperator(object):
                 logger.error("[AlertOperator] 告警不存在: alert_id=%s", alert_id)
                 return {"result": False, "message": "告警不存在", "data": {}}
 
-            # 检查当前状态是否为处理中
-            if alert.status != AlertStatus.PROCESSING:
+            allowed_close_statuses = (AlertStatus.PENDING, AlertStatus.PROCESSING) if self.api_close else (AlertStatus.PROCESSING,)
+            if alert.status not in allowed_close_statuses:
                 logger.warning(
                     "[AlertOperator] 告警状态不符合关闭条件: alert_id=%s, current_status=%s",
-                    alert_id, alert.status,
+                    alert_id,
+                    alert.status,
                 )
                 return {
                     "result": False,
@@ -467,21 +498,23 @@ class AlertOperator(object):
                     "data": {},
                 }
 
-            # 检查是否有权限关闭（是否为当前处理人）
-            if self.user not in alert.operator:
+            if not self.api_close and self.user not in alert.operator:
                 logger.warning(
                     "[AlertOperator] 用户无权限关闭告警: alert_id=%s, user=%s, operators=%s",
-                    alert_id, self.user, alert.operator,
+                    alert_id,
+                    self.user,
+                    alert.operator,
                 )
                 return {"result": False, "message": "您没有权限关闭此告警", "data": {}}
 
-            # 记录关闭原因
             close_reason = data.get("reason", "告警已处理完成")
+            previous_status = alert.status
 
             # 更新告警状态
             alert.status = AlertStatus.CLOSED
             alert.operate = AlertOperate.CLOSE
             alert.updated_at = timezone.now()
+            Alert.stamp_closed_at(alert, alert.updated_at)
             alert.save()
 
             from apps.alerts.action.engine import ActionEngine
@@ -490,7 +523,11 @@ class AlertOperator(object):
 
             logger.info(
                 "[AlertOperator] 告警关闭成功: alert_id=%s, user=%s, reason=%s, 状态变更: %s -> %s",
-                alert_id, self.user, close_reason, AlertStatus.PROCESSING, AlertStatus.CLOSED,
+                alert_id,
+                self.user,
+                close_reason,
+                previous_status,
+                AlertStatus.CLOSED,
             )
 
             log_data = {
@@ -499,7 +536,7 @@ class AlertOperator(object):
                 "operator": self.user,
                 "operator_object": "告警处理-关闭",
                 "target_id": alert.alert_id,
-                "overview": f"告警关闭成功, 告警[{alert.title}]状态变更: {self.status_map[AlertStatus.PROCESSING]} -> {self.status_map[AlertStatus.CLOSED]}",
+                "overview": (f"告警关闭成功, 告警[{alert.title}]" f"状态变更: {self.status_map[previous_status]} -> {self.status_map[AlertStatus.CLOSED]}"),
             }
             self.operator_log(log_data)
 
@@ -534,7 +571,8 @@ class AlertOperator(object):
             if alert.status != AlertStatus.PROCESSING:
                 logger.warning(
                     "[AlertOperator] 告警状态不符合处理条件: alert_id=%s, current_status=%s",
-                    alert_id, alert.status,
+                    alert_id,
+                    alert.status,
                 )
                 return {
                     "result": False,
@@ -546,7 +584,9 @@ class AlertOperator(object):
             if self.user not in alert.operator:
                 logger.warning(
                     "[AlertOperator] 用户无权限处理告警: alert_id=%s, user=%s, operators=%s",
-                    alert_id, self.user, alert.operator,
+                    alert_id,
+                    self.user,
+                    alert.operator,
                 )
                 return {"result": False, "message": "您没有权限处理此告警", "data": {}}
 
@@ -564,7 +604,11 @@ class AlertOperator(object):
 
             logger.info(
                 "[AlertOperator] 告警处理成功: alert_id=%s, user=%s, note=%s, 状态变更: %s -> %s",
-                alert_id, self.user, resolve_note, AlertStatus.PROCESSING, AlertStatus.RESOLVED,
+                alert_id,
+                self.user,
+                resolve_note,
+                AlertStatus.PROCESSING,
+                AlertStatus.RESOLVED,
             )
 
             log_data = {
@@ -620,12 +664,18 @@ class AlertOperator(object):
         user_list = list(assignee)
         logger.info(
             "[AlertNotify] 分派通知构造: alert_id=%s, assignment_id=%s, team=%s, notify_channels=%s, 接收人=%s",
-            alert.alert_id, assignment.id, alert.team, channels, user_list,
+            alert.alert_id,
+            assignment.id,
+            alert.team,
+            channels,
+            user_list,
         )
         params = build_channel_params(user_list, channels, [alert], alert.alert_id)
         logger.info(
             "[AlertNotify] 分派通知构造结果: alert_id=%s, 参数数=%s, 渠道=%s",
-            alert.alert_id, len(params), [(p.get("channel_type"), p.get("channel_id")) for p in params],
+            alert.alert_id,
+            len(params),
+            [(p.get("channel_type"), p.get("channel_id")) for p in params],
         )
         return params
 

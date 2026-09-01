@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import {
@@ -68,6 +68,25 @@ const RANGE_MS: Record<MetricRange, number> = {
   '1d': 24 * 60 * 60 * 1000,
   '7d': 7 * 24 * 60 * 60 * 1000,
 };
+
+const ENDPOINT_DRAWER_WIDTH = '56%';
+const ENDPOINT_TREND_CHART_CELL_CLASS = 'flex h-64 min-w-0 max-w-full shrink-0 grow basis-64 flex-col overflow-hidden';
+const ENDPOINT_METRIC_CARD_CLASS = 'min-w-0 max-w-full grow basis-36 overflow-hidden rounded-lg px-3 py-2.5';
+
+function EndpointTrendChartCell({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className={ENDPOINT_TREND_CHART_CELL_CLASS}>
+      <Typography.Text type="secondary" className="mb-2 block shrink-0 !text-xs">{title}</Typography.Text>
+      <div className="min-h-0 min-w-0 flex-1">{children}</div>
+    </div>
+  );
+}
 
 const splitEndpoint = (value: string) => {
   const match = value.trim().match(/^([^\s]+)\s+(.+)$/);
@@ -430,7 +449,7 @@ export default function ApmEndpointsPage() {
         </ApmSurface>
       </div>
       <Drawer
-        width="min(720px, 100vw)"
+        width={ENDPOINT_DRAWER_WIDTH}
         open={Boolean(selected)}
         onClose={() => setSelected(null)}
         title={selected ? (
@@ -454,7 +473,7 @@ export default function ApmEndpointsPage() {
       >
         {selected ? (
           <div className="flex flex-col gap-4">
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="flex flex-wrap gap-3">
               {[
                 { label: t('apm.explore.throughputShort', '吞吐'), value: formatPerSecond(formatThroughput(selected.requestRate, false, t), t) },
                 {
@@ -467,7 +486,7 @@ export default function ApmEndpointsPage() {
               ].map((metric) => (
                 <SummaryMetricCard
                   key={metric.label}
-                  className="rounded-lg px-3 py-2.5"
+                  className={ENDPOINT_METRIC_CARD_CLASS}
                   label={metric.label}
                   labelClassName="!text-xs"
                   layout="vertical"
@@ -480,8 +499,8 @@ export default function ApmEndpointsPage() {
             </div>
             <div>
               <Typography.Text strong className="mb-2 block">{t('apm.explore.endpointTrend', '端点趋势')}</Typography.Text>
-              <div className="grid gap-4 lg:grid-cols-3">
-                <div className="h-64"><Typography.Text type="secondary" className="mb-2 block !text-xs">{t('apm.common.throughput', '吞吐量')}</Typography.Text>
+              <div className="flex flex-wrap gap-4" data-testid="endpoint-trend-charts">
+                <EndpointTrendChartCell title={t('apm.common.throughput', '吞吐量')}>
                 <TimeSeriesComposedChart
                   data={(endpointRed?.timeseries ?? []).map((point) => ({
                     ...point,
@@ -494,9 +513,9 @@ export default function ApmEndpointsPage() {
                   series={[{ name: t('apm.common.throughputReq', '吞吐量 req/s'), type: 'line', dataKey: 'request_rate', color: token.colorPrimary, showArea: true }]}
                   surfaceProps={{ emptyStateProps: { description: t('apm.explore.noEndpointTrend', '当前时间窗暂无端点趋势') } }}
                 />
-                </div>
-                <div className="h-64"><Typography.Text type="secondary" className="mb-2 block !text-xs">{t('apm.common.errorRate', '错误率')}</Typography.Text><TimeSeriesComposedChart data={(endpointRed?.timeseries ?? []).map((point) => ({ ...point, error_rate_percent: point.error_rate === null ? null : point.error_rate * 100 }))} xDataKey="timestamp" getXLabel={(item) => formatClockTime(String(item.timestamp), false)} xAxisBoundaryGap={false} yAxes={[{ formatter: (value) => formatPercentage(value, 1) }]} series={[{ name: t('apm.common.errorRatePercent', '错误率 %'), type: 'line', dataKey: 'error_rate_percent', color: token.colorError, showArea: true, showSymbol: true }]} surfaceProps={{ emptyStateProps: { description: t('apm.explore.noEndpointTrend', '当前时间窗暂无端点趋势') } }} /></div>
-                <div className="h-64"><Typography.Text type="secondary" className="mb-2 block !text-xs">{t('apm.common.latency', '时延')}</Typography.Text><TimeSeriesComposedChart data={(endpointRed?.timeseries ?? []).map((point) => ({ ...point }))} xDataKey="timestamp" getXLabel={(item) => formatClockTime(String(item.timestamp), false)} xAxisBoundaryGap={false} yAxes={[{ formatter: (value) => formatLatency(value, false, t) }]} series={[{ name: 'P95', type: 'line', dataKey: 'p95_ms', color: token.colorPrimary, showArea: true }, { name: 'P99', type: 'line', dataKey: 'p99_ms', color: token.colorWarning, lineType: 'dotted', showSymbol: true }]} surfaceProps={{ emptyStateProps: { description: t('apm.explore.noEndpointTrend', '当前时间窗暂无端点趋势') } }} /></div>
+                </EndpointTrendChartCell>
+                <EndpointTrendChartCell title={t('apm.common.errorRate', '错误率')}><TimeSeriesComposedChart data={(endpointRed?.timeseries ?? []).map((point) => ({ ...point, error_rate_percent: point.error_rate === null ? null : point.error_rate * 100 }))} xDataKey="timestamp" getXLabel={(item) => formatClockTime(String(item.timestamp), false)} xAxisBoundaryGap={false} yAxes={[{ formatter: (value) => formatPercentage(value, 1) }]} series={[{ name: t('apm.common.errorRatePercent', '错误率 %'), type: 'line', dataKey: 'error_rate_percent', color: token.colorError, showArea: true, showSymbol: true }]} surfaceProps={{ emptyStateProps: { description: t('apm.explore.noEndpointTrend', '当前时间窗暂无端点趋势') } }} /></EndpointTrendChartCell>
+                <EndpointTrendChartCell title={t('apm.common.latency', '时延')}><TimeSeriesComposedChart data={(endpointRed?.timeseries ?? []).map((point) => ({ ...point }))} xDataKey="timestamp" getXLabel={(item) => formatClockTime(String(item.timestamp), false)} xAxisBoundaryGap={false} yAxes={[{ formatter: (value) => formatLatency(value, false, t) }]} series={[{ name: 'P95', type: 'line', dataKey: 'p95_ms', color: token.colorPrimary, showArea: true }, { name: 'P99', type: 'line', dataKey: 'p99_ms', color: token.colorWarning, lineType: 'dotted', showSymbol: true }]} surfaceProps={{ emptyStateProps: { description: t('apm.explore.noEndpointTrend', '当前时间窗暂无端点趋势') } }} /></EndpointTrendChartCell>
               </div>
             </div>
             <div>

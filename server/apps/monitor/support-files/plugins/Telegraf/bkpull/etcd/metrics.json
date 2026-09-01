@@ -1,6 +1,7 @@
 {
   "plugin": "Etcd",
   "plugin_desc": "由 Telegraf Pull 采集器通过 Prometheus 指标端点采集 etcd 关键监控指标，覆盖集群状态、存储容量、磁盘时延、一致性提案、请求流量以及监听压缩等核心运维场景。",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='etcd', collect_type='bkpull'}) by (instance_id)",
   "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"server_url"}}],
   "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],

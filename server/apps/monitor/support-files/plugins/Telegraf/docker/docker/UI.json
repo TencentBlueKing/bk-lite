@@ -6,7 +6,7 @@
     "docker"
   ],
   "collector": "Telegraf",
-  "instance_id": "{{cloud_region}}_docker_{{endpoint}}",
+  "instance_id": "{{cloud_region}}_docker_{{ip}}_{{endpoint}}",
   "form_fields": [
     {
       "name": "endpoint",

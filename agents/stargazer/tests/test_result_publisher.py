@@ -302,6 +302,169 @@ async def test_nats_result_publisher_uses_one_metrics_batch_adapter_call():
 
 
 @pytest.mark.asyncio
+async def test_configuration_failures_record_events_without_entering_metrics_batch():
+    batches = []
+    events = []
+
+    async def publish_metrics_batch(entries):
+        batches.append(entries)
+        return {entry[2]["collection_result_id"]: None for entry in entries}
+
+    async def record_event(event):
+        events.append(event)
+
+    publisher = NatsResultPublisher(
+        metrics_publish_batch=publish_metrics_batch,
+        result_event_sink=record_event,
+    )
+    request = CollectionRequest(
+        task_id="configuration-failure-event-only",
+        plugin_ref="network.config",
+        targets=("10.10.24.1", "10.10.24.2", "10.10.24.3"),
+        params={"plugin_family": "configuration", "model_id": "network"},
+    )
+    lease = RunLease(
+        request.task_id,
+        request.digest,
+        "pod-a",
+        1,
+        999999,
+        attempt_id="attempt-a",
+    )
+
+    outcomes = await publisher.publish_batch(
+        (
+            (
+                request,
+                TargetCollectionResult(
+                    target="10.10.24.1",
+                    status="success",
+                    attempts=1,
+                    credential_id="credential-1",
+                    value="network_info value=1",
+                ),
+                lease,
+            ),
+            (
+                request,
+                TargetCollectionResult(
+                    target="10.10.24.2",
+                    status="failed",
+                    attempts=1,
+                    credential_id="credential-1",
+                    error_code="authentication_failed",
+                ),
+                lease,
+            ),
+            (
+                request,
+                TargetCollectionResult(
+                    target="10.10.24.3",
+                    status="unreachable",
+                    attempts=0,
+                    error_code="target_unreachable",
+                ),
+                lease,
+            ),
+        )
+    )
+
+    assert len(batches) == 1
+    assert len(batches[0]) == 1
+    assert batches[0][0][1] == "network_info value=1"
+    assert [(event["host"], event["status"], event["error_code"]) for event in events] == [
+        ("10.10.24.1", "success", ""),
+        ("10.10.24.2", "failed", "authentication_failed"),
+        ("10.10.24.3", "unreachable", "target_unreachable"),
+    ]
+    assert all(outcome is None for outcome in outcomes.values())
+
+
+@pytest.mark.asyncio
+async def test_configuration_failure_event_error_is_reported_as_event_failed():
+    event_attempts = 0
+
+    async def fail_result_event(_event):
+        nonlocal event_attempts
+        event_attempts += 1
+        raise ConnectionError("result event unavailable")
+
+    publisher = NatsResultPublisher(
+        metrics_publish_batch=lambda _entries: None,
+        result_event_sink=fail_result_event,
+    )
+    request = CollectionRequest(
+        task_id="configuration-failure-event-error",
+        plugin_ref="network.config",
+        targets=("10.10.24.2",),
+        params={"plugin_family": "configuration", "model_id": "network"},
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+
+    outcomes = await publisher.publish_batch(
+        (
+            (
+                request,
+                TargetCollectionResult(
+                    target="10.10.24.2",
+                    status="failed",
+                    attempts=1,
+                    credential_id="credential-1",
+                    error_code="authentication_failed",
+                ),
+                lease,
+            ),
+        )
+    )
+
+    outcome = next(iter(outcomes.values()))
+    assert outcome.status == PublishStatus.EVENT_FAILED
+    assert outcome.error_code == "result_event_record_failed"
+    assert event_attempts == 2
+
+
+@pytest.mark.asyncio
+async def test_monitor_failure_keeps_monitor_error_metric_contract():
+    batches = []
+
+    async def publish_metrics_batch(entries):
+        batches.append(entries)
+        return {entry[2]["collection_result_id"]: None for entry in entries}
+
+    publisher = NatsResultPublisher(metrics_publish_batch=publish_metrics_batch)
+    request = CollectionRequest(
+        task_id="monitor-failure-metric",
+        plugin_ref="host.monitor",
+        targets=("10.10.24.1",),
+        params={
+            "plugin_family": "monitor",
+            "monitor_type": "host",
+            "model_id": "host",
+        },
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+
+    await publisher.publish_batch(
+        (
+            (
+                request,
+                TargetCollectionResult(
+                    target="10.10.24.1",
+                    status="failed",
+                    attempts=1,
+                    error_code="monitor_failed",
+                ),
+                lease,
+            ),
+        )
+    )
+
+    assert len(batches) == 1
+    assert len(batches[0]) == 1
+    assert "monitor_collection_status" in batches[0][0][1]
+
+
+@pytest.mark.asyncio
 async def test_batch_result_id_changes_between_attempts_with_same_task_target_and_fence():
     result_ids = []
 
@@ -858,3 +1021,109 @@ async def test_callback_result_includes_fence_and_is_not_sent_as_metrics():
 
     assert callbacks[0][0]["collection_fence"] == 4
     assert callbacks[0][0]["collection_target"] == "10.10.24.2"
+
+
+@pytest.mark.asyncio
+async def test_configuration_failure_with_callback_keeps_callback_contract():
+    callbacks = []
+
+    async def publish_callback(value, params, task_id):
+        callbacks.append((value, params, task_id))
+
+    async def unexpected_metrics(*args):
+        raise AssertionError("callback result must not use metrics publisher")
+
+    publisher = NatsResultPublisher(
+        metrics_publish=unexpected_metrics,
+        callback_publish=publish_callback,
+    )
+    request = CollectionRequest(
+        task_id="callback-failure-result",
+        plugin_ref="config_file.config",
+        targets=("10.10.24.2",),
+        params={
+            "plugin_family": "configuration",
+            "callback_subject": "receive_config_file_result",
+        },
+    )
+    lease = RunLease(
+        task_id=request.task_id,
+        request_digest=request.digest,
+        owner_id="pod-a",
+        fence=4,
+        expires_at=999999,
+        attempt_id="run-attempt-1",
+    )
+
+    await publisher.publish(
+        request,
+        TargetCollectionResult(
+            target="10.10.24.2",
+            status="failed",
+            attempts=1,
+            error_code="config_file_failed",
+            value={"status": "failed"},
+        ),
+        lease,
+    )
+
+    assert len(callbacks) == 1
+    assert callbacks[0][0]["status"] == "failed"
+    assert callbacks[0][0]["collection_fence"] == 4
+
+
+@pytest.mark.asyncio
+async def test_buffered_publisher_can_run_multiple_publish_batches_concurrently():
+    release = asyncio.Event()
+
+    class ConcurrentDelegate:
+        def __init__(self):
+            self.active = 0
+            self.peak_active = 0
+
+        async def publish_batch(self, _items):
+            self.active += 1
+            self.peak_active = max(self.peak_active, self.active)
+            try:
+                await release.wait()
+            finally:
+                self.active -= 1
+
+    delegate = ConcurrentDelegate()
+    publisher = BufferedResultPublisher(
+        delegate,
+        capacity=8,
+        batch_size=1,
+        flush_interval_seconds=0.01,
+        worker_count=4,
+    )
+    request = CollectionRequest(
+        task_id="run-concurrent",
+        plugin_ref="network",
+        targets=tuple(f"10.0.0.{index}" for index in range(4)),
+        params={},
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+    receipts = [
+        await publisher.enqueue(
+            request,
+            TargetCollectionResult(
+                target=f"10.0.0.{index}",
+                status="success",
+                attempts=1,
+                value="metric 1",
+            ),
+            lease,
+        )
+        for index in range(4)
+    ]
+
+    for _ in range(100):
+        if delegate.peak_active == 4:
+            break
+        await asyncio.sleep(0.001)
+
+    assert delegate.peak_active == 4
+    release.set()
+    await asyncio.gather(*(receipt.wait() for receipt in receipts))
+    await publisher.shutdown()

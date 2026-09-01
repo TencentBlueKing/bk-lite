@@ -83,7 +83,28 @@ const REASON_TEXT_KEYS: Record<string, string> = {
   PUSH_LINKAGE_REPLACES_PULL: 'Collection.nodeMgmtSync.reason.pushLinkageReplacesPull',
 };
 
-const normalizeReasonCode = (reasonCode?: string) => (reasonCode || '').split(':', 1)[0];
+const normalizeReasonCode = (reasonCode?: string) => {
+  const raw = (reasonCode || '').trim();
+  if (!raw) {
+    return '';
+  }
+  if (REASON_TEXT_KEYS[raw]) {
+    return raw;
+  }
+  const separator = raw.indexOf(':');
+  if (separator < 0) {
+    return raw;
+  }
+  const prefix = raw.slice(0, separator);
+  if (REASON_TEXT_KEYS[prefix]) {
+    return prefix;
+  }
+  const suffix = raw.slice(separator + 1);
+  if (REASON_TEXT_KEYS[suffix]) {
+    return suffix;
+  }
+  return prefix;
+};
 
 export const getNodeMgmtSyncReasonTextKey = (reasonCode?: string) =>
   REASON_TEXT_KEYS[normalizeReasonCode(reasonCode)] || 'Collection.nodeMgmtSync.reason.unknown';

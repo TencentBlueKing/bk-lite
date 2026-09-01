@@ -22,6 +22,7 @@ interface Props {
   modelId: string;
   instUuid: string;
   embedded?: boolean;
+  compare?: boolean;
   onDeviceClick?: (d: RackDevice) => void;
 }
 
@@ -33,7 +34,7 @@ const DEV_X = INNER_X + 12;
 const DEV_W = INNER_W - 24;
 const SVG_W = FRAME_X + FRAME_W + 44;
 
-const RackElevation: React.FC<Props> = ({ modelId, instUuid, embedded, onDeviceClick }) => {
+const RackElevation: React.FC<Props> = ({ modelId, instUuid, embedded, compare, onDeviceClick }) => {
   const { t } = useTranslation();
   const { mode } = useThemeMode();
   const router = useRouter();
@@ -112,6 +113,20 @@ const RackElevation: React.FC<Props> = ({ modelId, instUuid, embedded, onDeviceC
 
   const usedU = u - data.free_u;
   const occupied = occupiedUSet(data.placed);
+  const svgId = (name: string) =>
+    `rk-${name}-${instUuid.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  const alerts = (
+    <>
+      {data.overlaps.length > 0 && (
+        <Alert className="rk-alert" banner type="error" showIcon
+          message={t('Model.rackUConflict')} />
+      )}
+      {data.unplaced.length > 0 && (
+        <Alert className="rk-alert" banner type="warning" showIcon
+          message={`${t('Model.rackUnplaced')}: ${data.unplaced.map((d) => d.inst_name).join('、')}`} />
+      )}
+    </>
+  );
 
   return (
     <div className="rk-wrap" style={{ background: isDark ? '#141820' : TECH.bg1 }}>
@@ -122,30 +137,31 @@ const RackElevation: React.FC<Props> = ({ modelId, instUuid, embedded, onDeviceC
         <span className="rk-ov-i"><b>{data.free_u}</b><i>{t('Model.rackFreeU')}</i></span>
         <span className="rk-ov-i hl"><b>{data.max_free_u}</b><i>{t('Model.rackContiguousFree')}</i></span>
       </div>
+      {compare ? alerts : null}
       <div className="rk-scroll">
         <svg width={SVG_W} height={svgH} style={{ display: 'block', margin: '0 auto' }}>
           <defs>
-            <linearGradient id="rkFrame" x1="0" y1="0" x2="1" y2="0">
+            <linearGradient id={svgId('Frame')} x1="0" y1="0" x2="1" y2="0">
               <stop offset="0" stopColor={isDark ? '#18222e' : '#eef4fb'} />
               <stop offset="0.16" stopColor={isDark ? '#202b38' : '#f6f9fd'} />
               <stop offset="0.5" stopColor={isDark ? '#273342' : '#ffffff'} />
               <stop offset="0.84" stopColor={isDark ? '#202b38' : '#f6f9fd'} />
               <stop offset="1" stopColor={isDark ? '#18222e' : '#eef4fb'} />
             </linearGradient>
-            <linearGradient id="rkRail" x1="0" y1="0" x2="1" y2="0">
+            <linearGradient id={svgId('Rail')} x1="0" y1="0" x2="1" y2="0">
               <stop offset="0" stopColor={isDark ? '#253241' : '#e3ebf5'} />
               <stop offset="0.5" stopColor={isDark ? '#151c26' : '#f8fafc'} />
               <stop offset="1" stopColor={isDark ? '#253241' : '#dce6f2'} />
             </linearGradient>
-            <linearGradient id="rkDev" x1="0" y1="0" x2="0" y2="1">
+            <linearGradient id={svgId('Dev')} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0" stopColor={isDark ? '#1b2430' : '#ffffff'} />
               <stop offset="1" stopColor={isDark ? '#151d27' : '#f8fafc'} />
             </linearGradient>
-            <linearGradient id="rkInner" x1="0" y1="0" x2="0" y2="1">
+            <linearGradient id={svgId('Inner')} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0" stopColor={isDark ? '#16202b' : '#ffffff'} />
               <stop offset="1" stopColor={isDark ? '#111821' : '#f6f9fd'} />
             </linearGradient>
-            <filter id="rkSoftShadow" x="-30%" y="-30%" width="160%" height="160%">
+            <filter id={svgId('SoftShadow')} x="-30%" y="-30%" width="160%" height="160%">
               <feDropShadow dx="0" dy={isDark ? '7' : '5'} stdDeviation={isDark ? '8' : '6'}
                 floodColor={isDark ? '#000000' : '#1f334f'} floodOpacity={isDark ? '0.20' : '0.045'} />
             </filter>
@@ -153,18 +169,18 @@ const RackElevation: React.FC<Props> = ({ modelId, instUuid, embedded, onDeviceC
 
           {/* 机柜外框 */}
           <rect x={FRAME_X - 6} y={RACK_TOP - 6} width={FRAME_W + 12} height={u * uPx + 12}
-            rx={16} fill="url(#rkFrame)" stroke={isDark ? 'rgba(148,163,184,0.13)' : 'rgba(43,63,96,0.08)'}
-            strokeWidth={0.8} filter="url(#rkSoftShadow)" />
+            rx={16} fill={`url(#${svgId('Frame')})`} stroke={isDark ? 'rgba(148,163,184,0.13)' : 'rgba(43,63,96,0.08)'}
+            strokeWidth={0.8} filter={`url(#${svgId('SoftShadow')})`} />
           <rect x={INNER_X} y={RACK_TOP - 2} width={INNER_W} height={u * uPx + 4}
-            rx={9} fill="url(#rkInner)" stroke={isDark ? 'rgba(148,163,184,0.14)' : 'rgba(43,63,96,0.09)'} strokeWidth={0.75} />
+            rx={9} fill={`url(#${svgId('Inner')})`} stroke={isDark ? 'rgba(148,163,184,0.14)' : 'rgba(43,63,96,0.09)'} strokeWidth={0.75} />
           <rect x={DEV_X} y={RACK_TOP - 7} width={DEV_W} height={2}
             rx={2} fill={isDark ? 'rgba(148,163,184,0.16)' : 'rgba(43, 63, 96, 0.10)'} />
           <rect x={DEV_X} y={RACK_TOP + u * uPx + 7} width={DEV_W} height={2}
             rx={2} fill={isDark ? 'rgba(148,163,184,0.16)' : 'rgba(43, 63, 96, 0.10)'} />
 
           {/* 立柱导轨 + U 孔 */}
-          <rect x={INNER_X} y={RACK_TOP} width={10} height={u * uPx} rx={3} fill="url(#rkRail)" opacity={0.78} />
-          <rect x={INNER_X + INNER_W - 10} y={RACK_TOP} width={10} height={u * uPx} rx={3} fill="url(#rkRail)" opacity={0.78} />
+          <rect x={INNER_X} y={RACK_TOP} width={10} height={u * uPx} rx={3} fill={`url(#${svgId('Rail')})`} opacity={0.78} />
+          <rect x={INNER_X + INNER_W - 10} y={RACK_TOP} width={10} height={u * uPx} rx={3} fill={`url(#${svgId('Rail')})`} opacity={0.78} />
           {Array.from({ length: u + 1 }).map((_, i) => (
             <line key={`line${i}`} x1={DEV_X} x2={DEV_X + DEV_W} y1={RACK_TOP + i * uPx} y2={RACK_TOP + i * uPx}
               stroke={isDark ? 'rgba(148,163,184,0.10)' : 'rgba(43,63,96,0.065)'} />
@@ -229,7 +245,7 @@ const RackElevation: React.FC<Props> = ({ modelId, instUuid, embedded, onDeviceC
               <g key={d.inst_uuid} className="rk-dev" style={{ cursor: 'pointer' }}
                 onClick={() => onDevice(d)}>
                 <rect x={dx} y={y + 1.5} width={wDev} height={h} rx={6}
-                  fill="url(#rkDev)" stroke={bad ? TECH.danger : (isDark ? 'rgba(148,163,184,0.16)' : 'rgba(23,54,106,0.15)')}
+                  fill={`url(#${svgId('Dev')})`} stroke={bad ? TECH.danger : (isDark ? 'rgba(148,163,184,0.16)' : 'rgba(23,54,106,0.15)')}
                   strokeWidth={bad ? 1.5 : 0.8} />
                 <rect x={dx + 5} y={y + 4} width={wDev - 10} height={Math.max(3, h * 0.28)} rx={5}
                   fill={isDark ? 'rgba(255,255,255,0.035)' : 'rgba(255,255,255,0.42)'} />
@@ -248,14 +264,7 @@ const RackElevation: React.FC<Props> = ({ modelId, instUuid, embedded, onDeviceC
         </svg>
       </div>
 
-      {data.overlaps.length > 0 && (
-        <Alert className="rk-alert" banner type="error" showIcon
-          message={t('Model.rackUConflict')} />
-      )}
-      {data.unplaced.length > 0 && (
-        <Alert className="rk-alert" banner type="warning" showIcon
-          message={`${t('Model.rackUnplaced')}: ${data.unplaced.map((d) => d.inst_name).join('、')}`} />
-      )}
+      {!compare ? alerts : null}
 
       <LayoutPlaceModal
         ref={placeRef}

@@ -3,6 +3,7 @@
   "collect_type": "snmp_phoenixcontact",
   "plugin": "Switch Phoenix Contact SNMP",
   "plugin_desc": "Baseline SNMP collection template for Phoenix Contact FL SWITCH industrial Ethernet switches (enterprise PEN 4346). Based on standard MIB-II / IF-MIB, it collects device uptime, 64-bit HC interface traffic, interface RX/TX error and discard rates, interface admin/operational status and bandwidth, and device-wide total traffic roll-ups. The FL SWITCH device temperature, redundant power-supply inputs (P1/P2) and alarm-contact objects live in product-family-specific private MIBs (PEN 4346) shipped inside the firmware package and are not exposed as row-filter-free pollable scalars across the GHS/MM/SMN/SMCS/EP74/2000 ranges, so CPU/memory/temperature/fan/power are N/A and not faked. Applicable to Phoenix Contact FL SWITCH industrial Ethernet switches (FL SWITCH GHS/MM/SMN/SMCS/EP74/2000 families, enterprise PEN 4346).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_phoenixcontact'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-phoenixcontact_phoenixcontact",

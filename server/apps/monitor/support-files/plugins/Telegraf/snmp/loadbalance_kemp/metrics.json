@@ -3,6 +3,7 @@
   "collect_type": "snmp_kemp",
   "plugin": "Loadbalance Kemp LoadMaster SNMP",
   "plugin_desc": "Kemp LoadMaster ADC / load balancer SNMP collection (B-100-MIB / ONE4NET, IANA PEN 12196). In addition to standard IF-MIB interface metrics, it collects Kemp private OIDs for device health and load: overall CPU utilization (cpuTotal, reported directly as a percentage) and system memory utilization (memUsedPercent, reported directly as a percentage), plus the current total number of active connections tracked by the LoadMaster (connectionTotal). Temperature/fan/power sensor OIDs are not exposed in a row-filter-free form by the LoadMaster MIB, so those are N/A. Supported brands/models — Kemp LoadMaster ADC (hardware LM-X / Virtual LoadMaster VLM / cloud; enterprise 12196).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='loadbalance', collect_type='snmp_kemp'}) by (instance_id)",
   "name": "Loadbalance",
   "icon": "mm-loadbalance_负载均衡",

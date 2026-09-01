@@ -3,6 +3,7 @@
   "collect_type": "snmp_dlink",
   "plugin": "Switch D-Link SNMP",
   "plugin_desc": "D-Link DES/DGS-specific SNMP collection for switches (EQUIPMENT-MIB, enterprise 171). In addition to standard IF-MIB interface metrics, it collects D-Link private OIDs for device health: CPU utilization, memory utilization, temperature sensors, fan and power-supply status. D-Link reports CPU and memory as utilization percentages directly; fan status is natively 1=normal and power-supply status is normalized to the unified 1=normal convention. Supported brands/models: D-Link DES / DGS series and DES-7200 (all D-Link enterprise 171; specific health OIDs vary by model).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_dlink'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

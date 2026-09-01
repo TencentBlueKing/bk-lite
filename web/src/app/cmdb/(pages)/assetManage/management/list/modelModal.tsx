@@ -7,7 +7,7 @@ import React, {
   forwardRef,
   useImperativeHandle,
 } from 'react';
-import { Input, Button, Form, message, Select } from 'antd';
+import { Input, Button, Form, message, Radio, Select } from 'antd';
 import OperateModal from '@/components/operate-modal';
 import GroupTreeSelector from '@/components/group-tree-select';
 import SelectIcon from './selectIcon';
@@ -23,6 +23,9 @@ const { Option } = Select;
 import { useTranslation } from '@/utils/i18n';
 import { useModelApi } from '@/app/cmdb/api';
 import { useUserInfoContext } from '@/context/userInfo';
+
+const APP_TOPO_LAYER_RADIO_CLASS =
+  '!me-0 flex min-h-8 min-w-0 items-center';
 
 interface ModelModalProps {
   onSuccess: (info?: unknown) => void;
@@ -52,6 +55,14 @@ const ModelModal = forwardRef<ModelModalRef, ModelModalProps>(
     });
     const [iconId, setIconId] = useState<any>('');
 
+    const isBuiltinEdit = (info: Record<string, unknown> = modelInfo) => {
+      const flag = info?.is_pre;
+      if (typeof flag === 'string') {
+        return flag.trim().toLowerCase() === 'true' || flag.trim() === '1';
+      }
+      return flag === true || flag === 1;
+    };
+
     useEffect(() => {
       if (modelVisible) {
         formRef.current?.resetFields();
@@ -61,6 +72,9 @@ const ModelModal = forwardRef<ModelModalRef, ModelModalProps>(
           formData.group = Array.isArray(formData.group)
             ? formData.group
             : [formData.group];
+        }
+        if (type === 'add' && !formData.app_topo_layer) {
+          formData.app_topo_layer = 'none';
         }
         formRef.current?.setFieldsValue(formData);
 
@@ -100,12 +114,15 @@ const ModelModal = forwardRef<ModelModalRef, ModelModalProps>(
 
         let requestParams = deepClone(params);
         if (type !== 'add') {
-          requestParams = {
-            classification_id: params.classification_id,
-            model_name: params.model_name,
-            icn: params.icn,
-            group: Array.isArray(params.group) ? params.group : [params.group],
-          };
+          requestParams = isBuiltinEdit()
+            ? { app_topo_layer: params.app_topo_layer }
+            : {
+              classification_id: params.classification_id,
+              model_name: params.model_name,
+              icn: params.icn,
+              group: Array.isArray(params.group) ? params.group : [params.group],
+              app_topo_layer: params.app_topo_layer,
+            };
         }
 
         if (type === 'add') {
@@ -143,6 +160,9 @@ const ModelModal = forwardRef<ModelModalRef, ModelModalProps>(
     };
 
     const onSelectIcon = () => {
+      if (type === 'edit' && isBuiltinEdit()) {
+        return;
+      }
       selectIconRef.current?.showModal({
         title: t('Model.selectIcon'),
         defaultIcon: iconId,
@@ -172,7 +192,11 @@ const ModelModal = forwardRef<ModelModalRef, ModelModalProps>(
         >
           <div className="flex items-center justify-center flex-col">
             <div
-              className="flex items-center justify-center cursor-pointer w-[80px] h-[80px] rounded-full border-solid border-[1px] border-[var(--color-border)]"
+              className={`flex items-center justify-center w-[80px] h-[80px] rounded-full border-solid border-[1px] border-[var(--color-border)] ${
+                type === 'edit' && isBuiltinEdit()
+                  ? 'cursor-default'
+                  : 'cursor-pointer'
+              }`}
               onClick={onSelectIcon}
             >
               <ModelIcon
@@ -220,6 +244,7 @@ const ModelModal = forwardRef<ModelModalRef, ModelModalProps>(
               rules={[{ required: true, message: t('required') }]}
             >
               <GroupTreeSelector
+                disabled={type === 'edit' && isBuiltinEdit()}
                 placeholder={t('common.selectTip')}
               />
             </Form.Item>
@@ -244,7 +269,39 @@ const ModelModal = forwardRef<ModelModalRef, ModelModalProps>(
               name="model_name"
               rules={[{ required: true, message: t('required') }]}
             >
-              <Input placeholder={t('common.inputTip')} />
+              <Input
+                disabled={type === 'edit' && isBuiltinEdit()}
+                placeholder={t('common.inputTip')}
+              />
+            </Form.Item>
+            <Form.Item<ModelItem>
+              label={t('Model.appTopoLayer')}
+              name="app_topo_layer"
+              rules={[{ required: true, message: t('required') }]}
+            >
+              <Radio.Group className="!grid w-full grid-cols-2 gap-x-8 gap-y-3">
+                <Radio value="system" className={APP_TOPO_LAYER_RADIO_CLASS}>
+                  {t('Model.appTopoLayerSystem')}
+                </Radio>
+                <Radio value="service" className={APP_TOPO_LAYER_RADIO_CLASS}>
+                  {t('Model.appTopoLayerService')}
+                </Radio>
+                <Radio value="host" className={APP_TOPO_LAYER_RADIO_CLASS}>
+                  {t('Model.appTopoLayerHost')}
+                </Radio>
+                <Radio value="appService" className={APP_TOPO_LAYER_RADIO_CLASS}>
+                  {t('Model.appTopoLayerAppService')}
+                </Radio>
+                <Radio
+                  value="infrastructure"
+                  className={APP_TOPO_LAYER_RADIO_CLASS}
+                >
+                  {t('Model.appTopoLayerInfrastructure')}
+                </Radio>
+                <Radio value="none" className={APP_TOPO_LAYER_RADIO_CLASS}>
+                  {t('Model.appTopoLayerNone')}
+                </Radio>
+              </Radio.Group>
             </Form.Item>
           </Form>
         </OperateModal>

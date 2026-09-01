@@ -20,6 +20,7 @@ const SearchTable: React.FC<SearchTableProps> = ({
   scroll,
   fields = [],
   addToQuery,
+  onCreateExtractor,
   onLoadMore
 }) => {
   const { t } = useTranslation();
@@ -111,6 +112,15 @@ const SearchTable: React.FC<SearchTableProps> = ({
               </span>
               <span>{record.collect_type || '--'}</span>
             </span>
+            {onCreateExtractor && (
+              <Button
+                type="link"
+                className="ml-3 px-0"
+                onClick={() => onCreateExtractor(record)}
+              >
+                {t('log.extractor.createFromLog')}
+              </Button>
+            )}
           </div>
         </div>
         <ul>

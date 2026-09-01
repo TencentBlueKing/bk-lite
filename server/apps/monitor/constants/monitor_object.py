@@ -19,6 +19,8 @@ class MonitorObjConstants:
                 "Consul",
                 "Etcd",
                 "Tomcat",
+                "Active Directory",
+                "Exchange",
                 "Zookeeper",
                 "ActiveMQ",
                 "MinIO",

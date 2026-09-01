@@ -6,6 +6,7 @@ from string import Template
 
 from django.core.cache import cache
 from django.core.serializers.json import DjangoJSONEncoder
+from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse
 
@@ -15,14 +16,16 @@ from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.core.utils.safe_template import build_sandboxed_env
 from apps.node_mgmt.constants.collector import CollectorConstants
 from apps.node_mgmt.constants.controller import ControllerConstants
-from apps.node_mgmt.constants.database import DatabaseConstants
+from apps.node_mgmt.constants.database import CloudRegionConstants, DatabaseConstants
 from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models.action import CollectorActionTask, CollectorActionTaskNode
+from apps.node_mgmt.models.cloud_region import CloudRegion
 from apps.node_mgmt.models.installer import ControllerTaskNode
 from apps.node_mgmt.models.sidecar import Collector, CollectorConfiguration, Node, NodeCollectorConfiguration, NodeOrganization
 from apps.node_mgmt.services.cloudregion import RegionService
 from apps.node_mgmt.services.node_host_metadata import NodeHostMetadataRenderContext
+from apps.node_mgmt.services.node_identity import assert_cloud_ip_available
 from apps.node_mgmt.services.sidecar_cache import build_configuration_etag_cache_key, invalidate_node_configuration_etags
 from apps.node_mgmt.tasks.action_task import converge_collector_action_task_for_node
 from apps.node_mgmt.tasks.installer import _matches_install_connectivity_target, converge_controller_install_connectivity_for_node
@@ -436,8 +439,7 @@ class Sidecar:
         invalid_fields = [
             field
             for field, value in node_details.items()
-            if field in Sidecar.CLIENT_REPORTED_NODE_FIELD_TYPES
-            and not isinstance(value, Sidecar.CLIENT_REPORTED_NODE_FIELD_TYPES[field])
+            if field in Sidecar.CLIENT_REPORTED_NODE_FIELD_TYPES and not isinstance(value, Sidecar.CLIENT_REPORTED_NODE_FIELD_TYPES[field])
         ]
         if invalid_fields or any(not isinstance(tag, str) for tag in node_details.get("tags", [])):
             raise ValidationAppException("node_details contains invalid field values")
@@ -499,6 +501,35 @@ class Sidecar:
                 selected_collectors[collector_obj.name] = (priority, collector_obj)
 
         return {name: collector for name, (_, collector) in selected_collectors.items()}
+
+    @staticmethod
+    def _create_sidecar_node(node_id, request_data):
+        """Create a Node only when (cloud_region, ip) is still free."""
+        lookup_cloud_region_id = request_data.get("cloud_region_id") or CloudRegionConstants.DEFAULT_CLOUD_REGION_ID
+        with transaction.atomic():
+            CloudRegion.objects.select_for_update().filter(id=lookup_cloud_region_id).first()
+            locked_self = Node.objects.select_for_update().filter(id=node_id).first()
+            if locked_self:
+                return locked_self, node_id, False
+            assert_cloud_ip_available(
+                lookup_cloud_region_id,
+                request_data.get("ip", ""),
+                lock=True,
+            )
+            return Node.objects.create(**request_data), node_id, True
+
+    @staticmethod
+    def _refresh_existing_sidecar_node(node, node_id, request_data):
+        # Existing node organization ownership is managed by the server/UI.
+        # Sidecar may heartbeat with stale group tags before sidecar.yaml is
+        # updated, so do not let those tags roll back user edits.
+        request_data.update(updated_at=datetime.now(timezone.utc).isoformat())
+        node_info = {key: val for key, val in request_data.items() if key not in ("name", "id", "cloud_region_id")}
+        if not node_info.get("cpu_architecture"):
+            node_info.pop("cpu_architecture", None)
+        updated_count = Node.objects.filter(id=node_id).update(**node_info)
+        if updated_count and request_data.get("ip", "") != node.ip:
+            invalidate_node_configuration_etags([node_id])
 
     @staticmethod
     def update_node_client(request, node_id):
@@ -599,31 +630,15 @@ class Sidecar:
         ):
             request_data.update(cpu_architecture=NodeConstants.X86_64_ARCH)
 
+        created = False
         if not node:
-            # 创建节点
-            node = Node.objects.create(**request_data)
+            node, node_id, created = Sidecar._create_sidecar_node(node_id, request_data)
+            if created:
+                Sidecar.asso_groups(node_id, tags_data.get(ControllerConstants.GROUP_TAG, []))
+                Sidecar.create_default_config(node, node_types)
 
-            # 关联组织
-            Sidecar.asso_groups(node_id, tags_data.get(ControllerConstants.GROUP_TAG, []))
-
-            # 创建默认的配置
-            Sidecar.create_default_config(node, node_types)
-
-        else:
-            # 更新时间
-            request_data.update(updated_at=datetime.now(timezone.utc).isoformat())
-
-            # 更新节点
-            node_info = {key: val for key, val in request_data.items() if key != "name"}
-            if not node_info.get("cpu_architecture"):
-                node_info.pop("cpu_architecture", None)
-            updated_count = Node.objects.filter(id=node_id).update(**node_info)
-            if updated_count and request_data.get("ip", "") != node.ip:
-                invalidate_node_configuration_etags([node_id])
-
-            # Existing node organization ownership is managed by the server/UI.
-            # Sidecar may heartbeat with stale group tags before sidecar.yaml is
-            # updated, so do not let those tags roll back user edits.
+        if not created:
+            Sidecar._refresh_existing_sidecar_node(node, node_id, request_data)
 
         # 预取相关数据，减少查询次数
         new_obj = Node.objects.prefetch_related("action_set", "collectorconfiguration_set").get(id=node_id)

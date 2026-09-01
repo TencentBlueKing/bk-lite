@@ -34,7 +34,9 @@ import Permission from '@/components/permission';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import type { TableProps, MenuProps } from 'antd';
 import TreeSelector from '@/app/log/components/tree-selector';
+import { useRouter, useSearchParams } from 'next/navigation';
 import LogExtractorDrawer from './logExtractorDrawer';
+import { consumeExtractorCreateSample } from './logExtractorLogic';
 const { confirm } = Modal;
 
 type TableRowSelection<T extends object = object> =
@@ -46,9 +48,12 @@ const Asset = () => {
     getInstanceList,
     deleteLogInstance,
     getCollectTypes,
-    getDisplayCategoryEnum
+    getDisplayCategoryEnum,
+    getLogExtractors
   } = useLogApi();
   const { t } = useTranslation();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const commonContext = useCommon();
   const authList = useRef(commonContext?.authOrganizations || []);
   const organizationList: Organization[] = authList.current;
@@ -83,6 +88,11 @@ const Asset = () => {
     name: string;
     canOperate: boolean;
   } | null>(null);
+  const [extractorAutoCreate, setExtractorAutoCreate] = useState(false);
+  const [extractorInitialSample, setExtractorInitialSample] = useState<
+    Record<string, unknown> | null
+  >(null);
+  const extractorQueryHandled = useRef<string | null>(null);
 
   const handleAssetMenuClick: MenuProps['onClick'] = (e) => {
     openInstanceModal(
@@ -245,6 +255,57 @@ const Asset = () => {
     searchText,
     objectId
   ]);
+
+  useEffect(() => {
+    const extractorId = searchParams.get('extractor');
+    if (!extractorId || isLoading) return;
+    const matched = tableData.find((row) => String(row.id) === extractorId);
+    if (extractorQueryHandled.current === extractorId) {
+      if (!matched) return;
+      setExtractorInstance((current) => {
+        if (!current || current.id !== extractorId) return current;
+        return {
+          ...current,
+          name: String(matched.name || extractorId)
+        };
+      });
+      return;
+    }
+    extractorQueryHandled.current = extractorId;
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await getLogExtractors({ collect_instance: extractorId });
+        if (cancelled) return;
+        const canOperate = list.can_operate === true;
+        const shouldCreate = searchParams.get('create') === '1';
+        if (shouldCreate && !canOperate) {
+          message.error(t('log.extractor.instanceUnavailable'));
+        }
+        setExtractorInstance({
+          id: extractorId,
+          name: String(matched?.name || extractorId),
+          canOperate
+        });
+        setExtractorAutoCreate(shouldCreate && canOperate);
+        setExtractorInitialSample(
+          shouldCreate
+            ? consumeExtractorCreateSample({
+                kind: 'instance',
+                id: extractorId
+              })
+            : null
+        );
+      } catch {
+        if (!cancelled) {
+          message.error(t('log.extractor.instanceUnavailable'));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoading, searchParams, tableData]);
 
   const viewLog = (row: TableDataItem) => {
     const queryString = new URLSearchParams([
@@ -549,7 +610,17 @@ const Asset = () => {
         <LogExtractorDrawer
           instance={extractorInstance}
           open={Boolean(extractorInstance)}
-          onClose={() => setExtractorInstance(null)}
+          autoCreate={extractorAutoCreate}
+          initialSample={extractorInitialSample}
+          onClose={() => {
+            setExtractorInstance(null);
+            setExtractorAutoCreate(false);
+            setExtractorInitialSample(null);
+            extractorQueryHandled.current = null;
+            if (searchParams.get('extractor')) {
+              router.replace('/log/integration/receive');
+            }
+          }}
         />
       </div>
     </div>

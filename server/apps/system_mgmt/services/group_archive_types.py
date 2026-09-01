@@ -65,6 +65,6 @@ def classify_archived_kind(group: Group) -> str:
 def capabilities_for_kind(kind: str) -> tuple[bool, bool]:
     if kind == KIND_LOCAL:
         return True, True
-    if kind == KIND_SYNCED_DELETED:
-        return False, True
-    return False, False
+    # 同步对账归档与删源残留：不可手工恢复；可永久删除以释放 (name, parent_id)。
+    # 永久删除后同一外部组织再出现，按新建处理，不再复用原 ID。
+    return False, True

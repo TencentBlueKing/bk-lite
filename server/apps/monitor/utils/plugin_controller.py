@@ -1,4 +1,5 @@
 import uuid
+from urllib.parse import urlsplit, urlunsplit
 
 from jinja2 import BaseLoader, DebugUndefined
 from jinja2.defaults import DEFAULT_FILTERS
@@ -33,7 +34,9 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "auth_protocol",
     "auth_type",
     "base_url",
+    "client_timeout",
     "collector",
+    "collect_queues",
     "collect_type",
     "community",
     "config_id",
@@ -44,6 +47,7 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "disk_include_fstypes",
     "enable_ifmib",
     "endpoint",
+    "ews_url",
     "expect",
     "host",
     "ifdescr_exclude",
@@ -58,6 +62,8 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "ip",
     "ip_version",
     "jmx_url",
+    "ldap_port",
+    "ldaps_port",
     "logical_instance_value",
     "metric_extensions",
     "metrics_api_version",
@@ -66,6 +72,7 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "namespace",
     "node_id",
     "os_type",
+    "owa_url",
     "password",
     "pattern",
     "plugin_id",
@@ -77,6 +84,8 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "priv_protocol",
     "process_name",
     "protocol",
+    "queue_name_exclude",
+    "queue_name_include",
     "request_body",
     "request_headers",
     "request_method",
@@ -85,6 +94,14 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "response_status_code",
     "response_string_match",
     "follow_redirects",
+    "gather_binary_logs",
+    "gather_global_variables",
+    "gather_innodb_metrics",
+    "gather_process_list",
+    "gather_replica_status",
+    "gather_slave_status",
+    "gather_table_io_waits",
+    "gather_table_lock_waits",
     "sec_level",
     "sec_name",
     "send",
@@ -145,6 +162,33 @@ def _escape_toml_context_strings(value):
     return value
 
 
+def normalize_rabbitmq_management_url(url):
+    """Collapse duplicate slashes and strip a trailing slash from a RabbitMQ Management URL.
+
+    Happy path is the Management root with no path, e.g. http://127.0.0.1:15672.
+    If a path was typed, keep it after cleanup: http://host:15672///api -> http://host:15672/api.
+    Invalid or empty values are returned as stripped text so existing UI validators remain the gate.
+    """
+    if url in (None, ""):
+        return url
+    text = str(url).strip()
+    parts = urlsplit(text)
+    if parts.scheme not in {"http", "https"} or not parts.netloc:
+        return text
+    path = parts.path or ""
+    while "//" in path:
+        path = path.replace("//", "/")
+    if path in {"", "/"}:
+        path = ""
+    else:
+        path = path.rstrip("/")
+    return urlunsplit((parts.scheme, parts.netloc, path, parts.query, parts.fragment))
+
+
+def _is_rabbitmq_collect_config(config: dict) -> bool:
+    return str(config.get("type") or config.get("instance_type") or "").lower() == "rabbitmq"
+
+
 def _normalize_template_context(context: dict) -> dict:
     normalized = {**context}
     metrics_modules = normalized.get("metrics_modules")
@@ -157,6 +201,8 @@ def _normalize_template_context(context: dict) -> dict:
     from apps.monitor.utils.snmp_interface_filters import normalize_filter_list
 
     normalized["ports"] = normalize_filter_list(normalized.get("ports"))
+    if _is_rabbitmq_collect_config(normalized) and normalized.get("url") not in (None, ""):
+        normalized["url"] = normalize_rabbitmq_management_url(normalized.get("url"))
     return normalized
 
 
@@ -325,6 +371,8 @@ class Controller:
                     }
                     if collect_type == "web":
                         _config = normalize_website_request_config(_config)
+                    if _is_rabbitmq_collect_config(_config) and _config.get("url") not in (None, ""):
+                        _config["url"] = normalize_rabbitmq_management_url(_config.get("url"))
                     configs.append(_config)
 
         return configs

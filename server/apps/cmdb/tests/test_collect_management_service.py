@@ -18,7 +18,6 @@ from apps.cmdb.collection import common as mod
 from apps.cmdb.collection.common import Management
 from apps.cmdb.constants.constants import DataCleanupStrategy
 
-
 pytestmark = pytest.mark.unit
 
 
@@ -130,6 +129,22 @@ def test_get_check_attr_map_classifies(monkeypatch):
 # --------------------------------------------------------------------------
 # format_data / contrast
 # --------------------------------------------------------------------------
+def test_coerce_collected_tag_turns_string_into_empty_list():
+    assert Management.coerce_collected_tag({"inst_name": "a"}) == {"inst_name": "a"}
+    assert Management.coerce_collected_tag({"tag": ["test:aaa"]})["tag"] == ["test:aaa"]
+    assert Management.coerce_collected_tag({"tag": ""})["tag"] == []
+    assert Management.coerce_collected_tag({"tag": "env:prod"})["tag"] == []
+
+
+def test_contrast_rewrites_string_tag_as_list_update(monkeypatch):
+    fake = FakeGraph()
+    old = [{"inst_name": "a", "tag": "", "_id": 1}]
+    new = [{"inst_name": "a", "tag": ""}]
+    m = _mgmt(monkeypatch, fake, old, new)
+    assert m.update_list[0]["tag"] == []
+    assert m.update_list[0]["_id"] == 1
+
+
 def test_contrast_classifies_add_and_update(monkeypatch):
     fake = FakeGraph()
     old = [{"inst_name": "a", "ip_addr": "10.0.0.1", "_id": 1}]
@@ -499,8 +514,51 @@ def test_setting_assos_success(monkeypatch):
     dst_list = [{"model_id": "host", "inst_name": "h1", "model_asst_id": "vm_run_host", "asst_id": "run"}]
     out = m.setting_assos(src, dst_list)
     assert len(out["success"]) == 1
+    assert out["success"][0]["src_model_id"] == "vm"
+    assert out["success"][0]["src_inst_id"] == 1
+    assert out["success"][0]["dst_model_id"] == "host"
     assert out["success"][0]["dst_inst_id"] == 11
     assert len(fake.created_edges) == 1
+    args, _kwargs = fake.created_edges[0]
+    assert args[1] == 1
+    assert args[3] == 11
+
+
+def test_setting_assos_contains_orients_parent_src_to_child_dst(monkeypatch):
+    """physcial_server_contains_nic：图边 src=父机 dst=nic，而不是 nic→父机。"""
+    fake = FakeGraph(
+        query_entity=lambda _label, c: (
+            [{"_id": 1, "inst_name": "srv-1", "model_id": "physcial_server"}],
+            1,
+        )
+    )
+    m = _mgmt(monkeypatch, fake, [], [])
+    current = {"model_id": "nic", "_id": 99, "inst_name": "aa:bb:cc:dd:ee:01"}
+    listed = [
+        {
+            "model_id": "physcial_server",
+            "inst_name": "srv-1",
+            "asst_id": "contains",
+            "model_asst_id": "physcial_server_contains_nic",
+        }
+    ]
+    out = m.setting_assos(current, listed)
+    assert len(out["success"]) == 1
+    info = out["success"][0]
+    assert info["model_asst_id"] == "physcial_server_contains_nic"
+    assert info["src_model_id"] == "physcial_server"
+    assert info["src_inst_id"] == 1
+    assert info["src_inst_name"] == "srv-1"
+    assert info["dst_model_id"] == "nic"
+    assert info["dst_inst_id"] == 99
+    assert info["dst_inst_name"] == "aa:bb:cc:dd:ee:01"
+    args, _kwargs = fake.created_edges[0]
+    # create_edge(label, a_id/src, a_label, b_id/dst, ...)
+    assert args[1] == 1
+    assert args[3] == 99
+    # 旧实现把当前 nic 当 src、父机当 dst，下列断言必须失败
+    assert args[1] != 99
+    assert args[3] != 1
 
 
 def test_setting_assos_target_not_found(monkeypatch):

@@ -263,9 +263,12 @@ const IntegrationDetailPage: React.FC = () => {
         : savedBeforeTest
           ? t('system.integrationCenter.saveAndTestSuccess')
           : t('system.integrationCenter.testSuccess');
-      const failedMessage = activeTab === 'im_group'
-        ? t('system.integrationCenter.checkGroupCapabilityFailed')
-        : t('system.integrationCenter.testFailed');
+      const unavailable = result.data.errors?.[0]?.code === 'provider.unavailable';
+      const failedMessage = unavailable
+        ? t('system.integrationCenter.providerUnavailable')
+        : activeTab === 'im_group'
+          ? t('system.integrationCenter.checkGroupCapabilityFailed')
+          : t('system.integrationCenter.testFailed');
       setLastTestResult({ ...result, result: testSucceeded });
       setLastTestedTab(activeTab);
       message[testSucceeded ? 'success' : 'error'](
@@ -405,7 +408,10 @@ const IntegrationDetailPage: React.FC = () => {
   const diagnosticFieldLabel = diagnostic?.field
     ? activeFields.find((field) => field.key === diagnostic.field)?.label || diagnostic.field
     : '';
-  const diagnosticDetail = diagnostic?.detail || diagnostic?.message || '';
+  const diagnosticDetail =
+    diagnostic?.code === 'provider.unavailable'
+      ? t('system.integrationCenter.providerUnavailable')
+      : diagnostic?.detail || diagnostic?.message || '';
 
   return (
     <div className="w-full space-y-4">

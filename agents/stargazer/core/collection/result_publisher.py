@@ -179,6 +179,7 @@ class BufferedResultPublisher:
         capacity: int,
         batch_size: int = 50,
         flush_interval_seconds: float = 0.02,
+        worker_count: int = 1,
         metrics=None,
     ) -> None:
         if capacity <= 0:
@@ -187,17 +188,21 @@ class BufferedResultPublisher:
             raise ValueError("batch_size must be greater than zero")
         if flush_interval_seconds <= 0:
             raise ValueError("flush_interval_seconds must be greater than zero")
+        if worker_count <= 0:
+            raise ValueError("worker_count must be greater than zero")
         self._delegate = delegate
         self._queue: asyncio.Queue[_BufferedPublishItem | None] = asyncio.Queue(maxsize=capacity)
         self._batch_size = int(batch_size)
         self.capacity = int(capacity)
         self._flush_interval_seconds = float(flush_interval_seconds)
         self._metrics = metrics
+        self._worker_count = int(worker_count)
+        self._writers: list[asyncio.Task] = []
         self._writer: asyncio.Task | None = None
         self._closed = False
         self._pending: set[asyncio.Future[PublishOutcome | None]] = set()
         self.peak_queue_depth = 0
-        self._current_batch_started_at = 0.0
+        self._active_batch_started_at: dict[asyncio.Task, float] = {}
 
     @property
     def queue_depth(self) -> int:
@@ -205,9 +210,10 @@ class BufferedResultPublisher:
 
     @property
     def current_batch_age_seconds(self) -> float:
-        if self._current_batch_started_at <= 0:
+        if not self._active_batch_started_at:
             return 0.0
-        return max(0.0, time.monotonic() - self._current_batch_started_at)
+        oldest = min(self._active_batch_started_at.values())
+        return max(0.0, time.monotonic() - oldest)
 
     async def enqueue(self, request, result, lease) -> FuturePublishReceipt:
         if self._closed:
@@ -240,19 +246,21 @@ class BufferedResultPublisher:
         if self._closed:
             return
         self._closed = True
-        writer = self._writer
-        if writer is None:
+        writers = tuple(self._writers)
+        if not writers:
             return
         try:
             async with asyncio.timeout(max(0.0, grace_seconds)):
-                await self._queue.put(None)
-                await writer
+                for _writer in writers:
+                    await self._queue.put(None)
+                await asyncio.gather(*writers)
         except (TimeoutError, asyncio.CancelledError):
             if self._metrics is not None:
                 self._metrics.increment("publish_shutdown_timeout_total")
-            if not writer.done():
-                writer.cancel()
-            await asyncio.gather(writer, return_exceptions=True)
+            for writer in writers:
+                if not writer.done():
+                    writer.cancel()
+            await asyncio.gather(*writers, return_exceptions=True)
             self._fail_pending(PublishShutdownError("result publisher shutdown grace expired"))
             self._discard_queued_items()
             if isinstance(asyncio.current_task(), asyncio.Task) and asyncio.current_task().cancelling():
@@ -274,8 +282,15 @@ class BufferedResultPublisher:
                 return
 
     def _ensure_writer(self) -> None:
-        if self._writer is None or self._writer.done():
-            self._writer = asyncio.create_task(self._writer_loop(), name="collection-result-publisher")
+        self._writers = [writer for writer in self._writers if not writer.done()]
+        while len(self._writers) < self._worker_count:
+            worker_index = len(self._writers)
+            writer = asyncio.create_task(
+                self._writer_loop(),
+                name=f"collection-result-publisher:{worker_index}",
+            )
+            self._writers.append(writer)
+        self._writer = self._writers[0]
 
     async def _writer_loop(self) -> None:
         while True:
@@ -310,7 +325,9 @@ class BufferedResultPublisher:
         if not batch:
             return
         flush_started = time.monotonic()
-        self._current_batch_started_at = flush_started
+        current_task = asyncio.current_task()
+        if current_task is not None:
+            self._active_batch_started_at[current_task] = flush_started
         if self._metrics is not None:
             self._metrics.increment("publish_batch_total")
             self._metrics.increment("publish_batch_items_total", len(batch))
@@ -357,7 +374,8 @@ class BufferedResultPublisher:
                 else:
                     item.completion.set_result(PublishOutcome(status=PublishStatus.CONFIRMED))
         finally:
-            self._current_batch_started_at = 0.0
+            if current_task is not None:
+                self._active_batch_started_at.pop(current_task, None)
             if self._metrics is not None:
                 self._metrics.observe("publish_flush_duration_seconds", time.monotonic() - flush_started)
 
@@ -396,7 +414,11 @@ class NatsResultPublisher:
         for item in items:
             request, result, lease = item[:3]
             attempt_state = item[3] if len(item) > 3 else None
-            if result.status == "deferred" or request.params.get("callback_subject"):
+            if (
+                result.status == "deferred"
+                or request.params.get("callback_subject")
+                or self._is_configuration_failure(request, result)
+            ):
                 non_metrics.append((request, result, lease, attempt_state))
                 continue
             result_id = build_collection_result_id(
@@ -411,7 +433,7 @@ class NatsResultPublisher:
             )
             metrics = result.value
             if not metrics or result.status not in {"success", "deferred"}:
-                metrics = self._error_metrics(request, result, params)
+                metrics = self._monitor_error_metrics(result, params)
             metrics_entries.append(({}, metrics, params, request.task_id))
             metric_events.append((request, result, lease, result_id))
             outcomes[result_id] = None
@@ -514,11 +536,21 @@ class NatsResultPublisher:
                     fence=lease.fence,
                     attempt_id=lease.attempt_id,
                 )
-                outcomes[result_id] = (
-                    outcome
-                    if isinstance(outcome, (BaseException, PublishOutcome))
-                    else None
-                )
+                if (
+                    isinstance(outcome, Exception)
+                    and self._is_configuration_failure(request, result)
+                    and not request.params.get("callback_subject")
+                ):
+                    outcomes[result_id] = PublishOutcome(
+                        status=PublishStatus.EVENT_FAILED,
+                        error_code="result_event_record_failed",
+                    )
+                else:
+                    outcomes[result_id] = (
+                        outcome
+                        if isinstance(outcome, (BaseException, PublishOutcome))
+                        else None
+                    )
         return outcomes
 
     async def publish(
@@ -557,6 +589,9 @@ class NatsResultPublisher:
             await callback_publish(payload, params, request.task_id)
             await self._record_event_with_retry(request, result, lease, result_id)
             return
+        if self._is_configuration_failure(request, result):
+            await self._record_event_with_retry(request, result, lease, result_id)
+            return
 
         metrics_publish = self._metrics_publish
         if metrics_publish is None:
@@ -565,7 +600,7 @@ class NatsResultPublisher:
             metrics_publish = publish_metrics_to_nats
         metrics = result.value
         if not metrics or result.status not in {"success", "deferred"}:
-            metrics = self._error_metrics(request, result, params)
+            metrics = self._monitor_error_metrics(result, params)
         await metrics_publish({}, metrics, params, request.task_id)
         await self._record_event_with_retry(request, result, lease, result_id)
 
@@ -721,16 +756,19 @@ class NatsResultPublisher:
         }
 
     @staticmethod
-    def _error_metrics(
-        request: CollectionRequest,
+    def _monitor_error_metrics(
         result: TargetCollectionResult,
         params: dict,
     ) -> str:
         error = RuntimeError(result.error_code or result.status)
-        if str(request.params.get("plugin_family")) == "monitor":
-            from tasks.utils.metrics_helper import generate_monitor_error_metrics
+        from tasks.utils.metrics_helper import generate_monitor_error_metrics
 
-            return generate_monitor_error_metrics(params, error)
-        from tasks.utils.metrics_helper import generate_plugin_error_metrics
+        return generate_monitor_error_metrics(params, error)
 
-        return generate_plugin_error_metrics(params, error)
+    @staticmethod
+    def _is_configuration_failure(
+        request: CollectionRequest,
+        result: TargetCollectionResult,
+    ) -> bool:
+        family = str(request.params.get("plugin_family") or "configuration")
+        return family == "configuration" and result.status in {"failed", "unreachable"}

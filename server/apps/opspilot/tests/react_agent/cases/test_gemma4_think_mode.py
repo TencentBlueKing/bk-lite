@@ -134,8 +134,8 @@ class TestGemmaOpenAIClientThinkMode:
         assert "chat_template_kwargs" not in (mock_llm.extra_body or {})
 
     @patch("apps.opspilot.metis.llm.common.llm_client_factory.ChatOpenAI")
-    def test_qwen_model_still_uses_enable_thinking_not_chat_template_kwargs(self, mock_cls):
-        """Qwen must keep using extra_body.enable_thinking (not chat_template_kwargs)."""
+    def test_qwen_model_dual_writes_enable_thinking_and_chat_template_kwargs(self, mock_cls):
+        """Qwen 双写 DashScope 顶层字段与 vLLM chat_template_kwargs。"""
         mock_llm = MagicMock()
         mock_llm.extra_body = None
         mock_cls.return_value = mock_llm
@@ -148,7 +148,7 @@ class TestGemmaOpenAIClientThinkMode:
         LLMClientFactory._create_openai_client(request, disable_stream=False)
 
         assert mock_llm.extra_body.get("enable_thinking") is True
-        assert "chat_template_kwargs" not in mock_llm.extra_body
+        assert mock_llm.extra_body["chat_template_kwargs"] == {"enable_thinking": True}
 
 
 class TestDeepSeekV4FlashThinkMode:
@@ -207,6 +207,32 @@ class TestDeepSeekV4FlashThinkMode:
         assert call_kwargs["extra_body"] == {
             "thinking": {"type": "disabled"},
             "enable_thinking": False,
+        }
+
+
+class TestQwenThinkModeDualWrite:
+    """Qwen：DashScope enable_thinking + vLLM chat_template_kwargs 双写。"""
+
+    @patch("apps.opspilot.metis.llm.common.llm_client_factory.OpenAI")
+    def test_qwen_isolated_call_dual_writes_thinking_toggles(self, mock_openai_cls):
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "ok"
+        mock_client.chat.completions.create.return_value = mock_response
+        mock_openai_cls.return_value = mock_client
+
+        request = BasicLLMRequest(
+            model="qwen3.8-27b",
+            openai_api_key="sk-test",
+            openai_api_base="http://localhost:8000/v1",
+        )
+        LLMClientFactory._invoke_isolated_openai(request, [HumanMessage(content="hi")])
+
+        call_kwargs = mock_client.chat.completions.create.call_args[1]
+        assert call_kwargs["extra_body"] == {
+            "enable_thinking": False,
+            "chat_template_kwargs": {"enable_thinking": False},
         }
 
 

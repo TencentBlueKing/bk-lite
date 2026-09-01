@@ -2,7 +2,7 @@
   "zh": [
     {
       "title": "首页",
-      "icon": "daohang-yunyingfenxishi",
+      "icon": "home",
       "url": "/job/home",
       "name": "home"
     },
@@ -92,7 +92,7 @@
   "en": [
     {
       "title": "Home",
-      "icon": "daohang-yunyingfenxishi",
+      "icon": "home",
       "url": "/job/home",
       "name": "home"
     },

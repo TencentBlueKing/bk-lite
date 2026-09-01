@@ -18,7 +18,7 @@ from apps.cmdb.services.k8s_resource_overview import K8sResourceOverviewService
 from apps.cmdb.services.model import ModelManage
 from apps.cmdb.services.model_visibility import BusinessModelVisibility
 from apps.cmdb.services.module_push import CmdbToMonitorPushService, build_cmdb_push_actor_scope
-from apps.cmdb.services.rack_room import get_rack_layout, get_room_layout
+from apps.cmdb.services.rack_room import get_rack_layout, get_room_layout, list_racks_grouped_by_room
 from apps.cmdb.services.topology_theme import get_topo_themes
 from apps.cmdb.utils.base import format_group_params, format_groups_params, get_current_team_from_request, get_organization_and_children_ids
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
@@ -1747,6 +1747,32 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             **result,
             "items": [self._transport_layout_instance(item) for item in items],
         }
+        return WebUtils.response_success(result)
+
+    @action(detail=False, methods=["get"], url_path="racks_grouped_by_room")
+    @HasPermission("asset_info-View")
+    def racks_grouped_by_room(self, request):
+        """机柜选择器：按机房分组返回可见机柜，搜索同时匹配机房名与机柜名。分页单位为机房。"""
+        try:
+            page = self._parse_positive_int(request.query_params.get("page"), "page", 1)
+            page_size = self._parse_positive_int(request.query_params.get("page_size"), "page_size", 20)
+        except ValueError as exc:
+            return WebUtils.response_error(str(exc), status_code=status.HTTP_400_BAD_REQUEST)
+        if page_size > 100:
+            return WebUtils.response_error("page_size 必须在 1 到 100 之间", status_code=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            result = list_racks_grouped_by_room(
+                room_permission_map=CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id="server_room"),
+                rack_permission_map=CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id="rack"),
+                user=request.user,
+                creator=request.user.username,
+                search=str(request.query_params.get("search") or ""),
+                page=page,
+                page_size=page_size,
+            )
+        except ValueError as exc:
+            return WebUtils.response_error(str(exc), status_code=status.HTTP_400_BAD_REQUEST)
         return WebUtils.response_success(result)
 
     @action(

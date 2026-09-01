@@ -1,9 +1,9 @@
 # -- coding: utf-8 --
 from __future__ import annotations
 
+import os
 from typing import Any
 
-from django.db.models import Q
 from rest_framework.exceptions import PermissionDenied
 
 from apps.core.utils.permission_utils import get_permission_rules
@@ -14,6 +14,7 @@ from apps.operation_analysis.schemas.import_export_schema import YAMLDocument
 class ImportExportAuthorizationService:
     APP_NAME = "operation_analysis"
     APP_PERMISSION_NAME = "ops-analysis"
+    EXPORT_DEPENDENCY_PERMISSION_MODE_ENV = "OPS_ANALYSIS_EXPORT_DEPENDENCY_PERMISSION_MODE"
     ORG_SCOPED_OBJECT_TYPES = {
         ObjectType.DASHBOARD,
         ObjectType.TOPOLOGY,
@@ -77,7 +78,15 @@ class ImportExportAuthorizationService:
         return current_team
 
     @classmethod
-    def filter_export_object_ids(cls, request, object_type: str, object_ids: list[int], current_team: int | None) -> list[int]:
+    def filter_export_object_ids(
+        cls,
+        request,
+        object_type: str,
+        object_ids: list[int],
+        current_team: int | None,
+        *,
+        allow_partial: bool = False,
+    ) -> list[int]:
         object_enum = ObjectType(object_type)
         cls.validate_current_team(request, current_team)
 
@@ -88,9 +97,63 @@ class ImportExportAuthorizationService:
         group_ids = cls._get_export_group_ids(request, current_team)
         filtered_ids = cls._filter_ids_by_org(object_enum, object_ids, current_team, group_ids)
         filtered_ids = cls._filter_ids_by_scope(request, object_enum, filtered_ids, current_team)
-        if not filtered_ids:
+        if not filtered_ids or (not allow_partial and set(filtered_ids) != set(object_ids)):
             raise PermissionDenied("无权导出所选对象或对象不存在")
         return filtered_ids
+
+    @classmethod
+    def is_legacy_export_dependency_permission_mode(cls) -> bool:
+        return os.getenv(cls.EXPORT_DEPENDENCY_PERMISSION_MODE_ENV, "enforce").strip().lower() == "legacy"
+
+    @classmethod
+    def validate_export_dependencies(
+        cls,
+        request,
+        scope_type: str,
+        object_type: str,
+        object_ids: list[int],
+        current_team: int | None,
+    ) -> tuple[set[int], set[int], dict[int, set[int]]]:
+        """校验导出闭包中的每类依赖，避免顶层授权后的隐式扩展绕过权限。"""
+        from apps.operation_analysis.services.import_export.export_service import ExportService
+
+        datasource_ids, namespace_ids, datasource_namespace_ids = ExportService.collect_export_dependencies(
+            scope_type,
+            object_type,
+            object_ids,
+            lock=True,
+        )
+        locked_root_ids = cls.filter_export_object_ids(request, object_type, object_ids, current_team)
+        if set(locked_root_ids) != set(object_ids):
+            raise PermissionDenied("导出对象的权限范围已发生变化")
+
+        if cls.is_legacy_export_dependency_permission_mode():
+            return datasource_ids, namespace_ids, datasource_namespace_ids
+
+        cls._validate_export_dependency_ids(request, ObjectType.DATASOURCE, datasource_ids, current_team)
+        cls._validate_export_dependency_ids(request, ObjectType.NAMESPACE, namespace_ids, current_team)
+        return datasource_ids, namespace_ids, datasource_namespace_ids
+
+    @classmethod
+    def _validate_export_dependency_ids(
+        cls,
+        request,
+        object_type: ObjectType,
+        object_ids: set[int],
+        current_team: int | None,
+    ) -> None:
+        if not object_ids:
+            return
+
+        ordered_ids = sorted(object_ids)
+        allowed_ids = cls.filter_export_object_ids(
+            request,
+            object_type.value,
+            ordered_ids,
+            current_team,
+        )
+        if set(allowed_ids) != object_ids:
+            raise PermissionDenied("导出依赖包含当前用户无权访问的对象")
 
     @classmethod
     def apply_precheck_permissions(
@@ -420,14 +483,21 @@ class ImportExportAuthorizationService:
         if model is not None:
             queryset = model.objects.filter(id__in=object_ids)
             if current_team is not None:
-                org_query = Q()
-                for group_id in group_ids or [current_team]:
-                    org_query |= Q(groups__contains=int(group_id))
+                required_fields = ["id", "groups"]
                 if object_type == ObjectType.DATASOURCE:
-                    from apps.operation_analysis.common.datasource_visibility import expand_datasource_org_query
-
-                    org_query = expand_datasource_org_query(org_query, include_all_builtins=False)
-                queryset = queryset.filter(org_query)
+                    required_fields.append("is_build_in")
+                target_group_ids = {int(group_id) for group_id in group_ids or [current_team]}
+                visible_ids = []
+                for instance in queryset.only(*required_fields):
+                    instance_group_ids = {int(group_id) for group_id in (getattr(instance, "groups", None) or [])}
+                    is_global_builtin = (
+                        object_type == ObjectType.DATASOURCE
+                        and bool(getattr(instance, "is_build_in", False))
+                        and not instance_group_ids
+                    )
+                    if is_global_builtin or target_group_ids.intersection(instance_group_ids):
+                        visible_ids.append(instance.id)
+                return visible_ids
             return list(queryset.values_list("id", flat=True))
 
         if object_type == ObjectType.NAMESPACE:

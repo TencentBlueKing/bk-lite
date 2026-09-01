@@ -165,6 +165,11 @@ def test_get_cloud_region_envconfig_转发(node):
     assert _last(node.client) == ("get_cloud_region_envconfig", (5,), {})
 
 
+def test_get_cloud_region_public_config_转发(node):
+    node.get_cloud_region_public_config(5)
+    assert _last(node.client) == ("get_cloud_region_public_config", (5,), {})
+
+
 def test_install_collector_组装字典(node):
     node.install_collector(3, ["n1", "n2"])
     assert _last(node.client) == ("install_collector", ({"collector_package": 3, "nodes": ["n1", "n2"]},), {})
@@ -197,3 +202,13 @@ def test_env_变量强制本地模式(monkeypatch):
     monkeypatch.setenv("IS_LOCAL_RPC", "1")
     n = NodeMgmt(is_local_client=False)
     assert n.client.path == "apps.node_mgmt.nats.node"
+
+
+def test_compare_and_swap_非本地调用返回稳定错误码(node):
+    with pytest.raises(RuntimeError) as exc_info:
+        node.compare_and_swap_child_config_content_local(1, "old", "new")
+
+    assert str(exc_info.value) == "rpc.local_client_required"
+    assert exc_info.value.code == "rpc.local_client_required"
+    assert exc_info.value.params == {}
+    assert exc_info.value.operation == "compare_and_swap_child_config_content"
