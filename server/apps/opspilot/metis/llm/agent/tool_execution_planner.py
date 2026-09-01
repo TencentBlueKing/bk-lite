@@ -86,6 +86,8 @@ _K8S_NAMESPACE_REQUIRED_TOOLS = frozenset(
         "get_resource_events_timeline",
         "describe_kubernetes_resource",
         "get_kubernetes_resource_yaml",
+        "exec_in_pod",
+        "validate_probe_configuration",
     }
 )
 
@@ -154,6 +156,7 @@ def is_context_size_error(exc: BaseException | str) -> bool:
         "maximum context",
         "context window",
         "too many tokens",
+        "llm_context_window_exceeded",
     )
     return any(needle in text for needle in needles)
 
@@ -461,6 +464,24 @@ def drop_k8s_followup_steps_after_unresolved_target(steps: Sequence[ToolExecutio
             continue
         kept.append(step)
     return kept
+
+
+def merge_replanned_pending_steps(
+    replacement: Sequence[ToolExecutionStep],
+    leftover: Sequence[ToolExecutionStep],
+) -> list[ToolExecutionStep]:
+    """重规划只替换当前失败步；原计划里尚未执行且未被覆盖的后续步继续保留。"""
+    merged = list(replacement or [])
+    covered_tools = {name for step in merged for name in (step.tools or [])}
+    covered_objectives = {step.objective for step in merged}
+    for step in leftover or []:
+        tools = set(step.tools or [])
+        if step.objective in covered_objectives:
+            continue
+        if tools and tools <= covered_tools:
+            continue
+        merged.append(step)
+    return merged
 
 
 def looks_like_attachment_file_task(user_message: str = "", agent_system_prompt: str = "") -> bool:

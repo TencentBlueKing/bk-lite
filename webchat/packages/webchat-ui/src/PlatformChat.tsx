@@ -8,6 +8,7 @@ import {
   fillUrlTemplate,
   formatSessionTime,
   isPersistedPlatformSession,
+  isPlatformDraftSession,
   isPlatformMode,
   lastSessionStorageKey,
   mergePlatformCurrentApp,
@@ -36,6 +37,7 @@ import {
   type PlatformContract,
   type PlatformSession,
   type ChatState,
+  type LlmContextUsage,
 } from '@webchat/core';
 import type { ChatProps } from './chatProps';
 import { WC } from './chrome';
@@ -478,6 +480,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
   const [currentApp, setCurrentApp] = useState<PlatformApplication | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [sessionUsage, setSessionUsage] = useState<LlmContextUsage | null>(null);
   const [messagesLoading, setMessagesLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState(false);
@@ -567,6 +570,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
         setSessions([]);
         setSessionId(null);
         setMessages([]);
+        setSessionUsage(null);
         return;
       }
       try {
@@ -610,9 +614,16 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
       if (!sessionId) {
         loadedSessionIdRef.current = null;
         setMessages([]);
+        setSessionUsage(null);
         if (!currentAppId) {
           setMessagesLoading(false);
         }
+        return;
+      }
+      if (isPlatformDraftSession(sessionId, sessions)) {
+        loadedSessionIdRef.current = sessionId;
+        setMessagesLoading(false);
+        setSessionUsage(null);
         return;
       }
       if (
@@ -628,15 +639,17 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
       }
       setMessagesLoading(true);
       try {
-        const nextMessages = await fetchPlatformMessages(platform, sessionId, requestInit);
+        const next = await fetchPlatformMessages(platform, sessionId, requestInit);
         if (!cancelled) {
           loadedSessionIdRef.current = sessionId;
-          setMessages(nextMessages);
+          setMessages(next.messages);
+          setSessionUsage(next.usage);
         }
       } catch {
         if (!cancelled) {
           loadedSessionIdRef.current = sessionId;
           setMessages([]);
+          setSessionUsage(null);
         }
       } finally {
         if (!cancelled) {
@@ -673,6 +686,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
     setDraftTitle('新会话');
     setSessionId(nextSessionId);
     setMessages([]);
+    setSessionUsage(null);
     setMessagesLoading(false);
     persistSelection(currentAppId, nextSessionId);
   }, [currentAppId, persistSelection]);
@@ -686,6 +700,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
     setDraftTitle('新会话');
     setSessionId(null);
     setMessages([]);
+    setSessionUsage(null);
     setMessagesLoading(true);
   }, [currentAppId]);
 
@@ -696,6 +711,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
     setDraftTitle('新会话');
     setSessionId(id);
     setMessages([]);
+    setSessionUsage(null);
     setMessagesLoading(
       shouldFetchPlatformMessages({
         sessionId: id,
@@ -733,6 +749,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
       setDraftTitle('新会话');
       setSessionId(nextSessionId);
       setMessages([]);
+      setSessionUsage(null);
       setMessagesLoading(false);
       persistSelection(currentAppId, nextSessionId);
     },
@@ -1031,6 +1048,8 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
                   {...chatProps}
                   sseUrl={chatUrl}
                   showHeader={false}
+                  conversationHistoryEnabled={currentApp.enableConversationHistory !== false}
+                  initialContextUsage={sessionUsage}
                   enableStorage={false}
                   apiKey={apiKey}
                   credentials={requestInit.credentials}

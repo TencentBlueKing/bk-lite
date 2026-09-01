@@ -1,5 +1,6 @@
 import uuid
 
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 from apps.core.mixinx import EncryptMixin
@@ -73,6 +74,12 @@ class LLMModel(models.Model, EncryptMixin):
     is_demo = models.BooleanField(default=False)
     # 能力无法跨厂商自动探测；False 时对话注入前丢弃图片、只留文本 caption。
     is_multimodal = models.BooleanField(default=True, verbose_name="支持多模态")
+    # 模型真实上下文窗口（input+output 合计 token），不是产品愿用额度。
+    context_window_tokens = models.PositiveIntegerField(
+        default=200_000,
+        validators=[MinValueValidator(8_000), MaxValueValidator(2_000_000)],
+        verbose_name="上下文窗口(token)",
+    )
     vendor = models.ForeignKey(
         "ModelVendor",
         on_delete=models.PROTECT,

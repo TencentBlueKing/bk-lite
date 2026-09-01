@@ -56,6 +56,7 @@ from apps.opspilot.services.builtin_tools import (
     build_builtin_redis_tool,
 )
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY, CallerIdentityError, capture_caller_identity
+from apps.opspilot.services.llm_context_budget import parse_context_window_tokens
 from apps.opspilot.services.mcp_client import MCPClient
 from apps.opspilot.services.skill_channel_service import sync_skill_channel_usage_teams
 from apps.opspilot.services.skill_package.importer import DEFAULT_SKILL_PACKAGE_ROOT, SkillPackageImporter
@@ -715,6 +716,10 @@ class LLMModelViewSet(VendorModelMixin, AuthViewSet):
             if self.loader:
                 message = message.format(validate_msg=validate_msg)
             return JsonResponse({"result": False, "message": message})
+        try:
+            context_window_tokens = parse_context_window_tokens(params.get("context_window_tokens"))
+        except ValueError as error:
+            return JsonResponse({"result": False, "message": str(error)})
         LLMModel.objects.create(
             name=params["name"],
             vendor_id=params["vendor"],
@@ -723,6 +728,8 @@ class LLMModelViewSet(VendorModelMixin, AuthViewSet):
             team=params.get("team"),
             label=params.get("label"),
             is_build_in=False,
+            is_multimodal=params.get("is_multimodal", True),
+            context_window_tokens=context_window_tokens,
         )
         response = JsonResponse({"result": True})
         log_operation(request, "create", "opspilot", f"新增模型: {params['name']}")

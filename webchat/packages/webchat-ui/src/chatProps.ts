@@ -1,4 +1,4 @@
-import type { ChatState, Message, WebChatConfig } from '@webchat/core';
+import type { ChatState, Message, WebChatConfig, LlmContextUsage } from '@webchat/core';
 
 export interface ChatProps extends WebChatConfig {
   onStateChange?: (state: ChatState) => void;
@@ -13,6 +13,8 @@ export interface ChatProps extends WebChatConfig {
   };
   showFullscreenButton?: boolean;
   showClearButton?: boolean;
+  conversationHistoryEnabled?: boolean;
+  initialContextUsage?: LlmContextUsage | null;
   showHeader?: boolean;
   apiKey?: string;
   credentials?: RequestCredentials;

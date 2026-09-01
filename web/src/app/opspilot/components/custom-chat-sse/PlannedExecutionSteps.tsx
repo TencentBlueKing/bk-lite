@@ -70,7 +70,7 @@ const PlannedExecutionSteps: React.FC<PlannedExecutionStepsProps> = ({
   if (!steps.length) return null;
 
   const toolById = new Map(toolCalls.map((tool) => [tool.id, tool]));
-  const totalSteps = Math.max(...steps.map((step) => step.total_steps), steps.length);
+  const totalSteps = Math.max(steps[steps.length - 1]?.total_steps || 0, steps.length);
   const doneCount = steps.filter((step) => step.status === 'done' || step.status === 'failed').length;
   const failedCount = steps.filter((step) => step.status === 'failed').length;
   const running = steps.find((step) => step.status === 'running');

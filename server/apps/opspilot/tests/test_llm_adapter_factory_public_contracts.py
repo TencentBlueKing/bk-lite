@@ -278,6 +278,41 @@ def test_llm_factory_public_isolated_invocation_routes_protocol(monkeypatch, pro
     assert LLMClientFactory.invoke_isolated(request, ["answer"]) == "answer"
 
 
+@pytest.mark.parametrize(
+    ("model_name", "requested", "vendor_type", "expected"),
+    [
+        ("gpt-4o", 0.2, "", 0.2),
+        ("o10", 0.2, "", 0.2),
+        ("kimi-k2", 0.2, "", 1.0),
+        ("kimi-for-coding", 0.2, "", 1.0),
+        ("kimi-for-coding-highspeed", 0.2, "", 1.0),
+        ("k3", 0.2, "", 1.0),
+        ("k3-256k", 0.2, "", 1.0),
+        ("moonshot/kimi-k2", 0.2, "", 1.0),
+        ("moonshot-v1-128k", 0.2, "", 1.0),
+        ("custom-k2", 0.2, "moonshot", 1.0),
+        ("gpt-5-mini", 0.2, "", 1.0),
+    ],
+)
+def test_resolve_gateway_temperature_for_unit_only_models(model_name, requested, vendor_type, expected):
+    from apps.opspilot.metis.llm.common.llm_client_factory import resolve_gateway_temperature
+
+    assert resolve_gateway_temperature(model_name, requested, vendor_type) == expected
+
+
+def test_isolated_openai_uses_unit_temperature_for_kimi(monkeypatch):
+    calls = {}
+    completion = SimpleNamespace(
+        create=lambda **kwargs: (calls.update(kwargs) or SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="ok"))]))
+    )
+    client = SimpleNamespace(chat=SimpleNamespace(completions=completion))
+    monkeypatch.setattr(LLMClientFactory, "_create_isolated_openai_client", lambda _request: client)
+    request = BasicLLMRequest(model="kimi-k2", temperature=0.2)
+
+    assert LLMClientFactory._invoke_isolated_openai(request, [HumanMessage(content="hello")]) == "ok"
+    assert calls["temperature"] == 1.0
+
+
 def test_isolated_openai_invocation_converts_mixed_messages(monkeypatch):
     create = pytest.MonkeyPatch()
     calls = {}

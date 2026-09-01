@@ -448,6 +448,34 @@ def test_email_content_optimizer_requests_html_output(mocker):
     assert "<p>" in result
 
 
+def test_email_content_optimizer_uses_unit_temperature_for_kimi(mocker):
+    llm_model = mocker.Mock()
+    llm_model.openai_api_base = "https://api.moonshot.cn/v1"
+    llm_model.openai_api_key = "key"
+    llm_model.model_name = "k3-256k"
+    llm_model.protocol_type = "openai"
+    llm_model.vendor_id = None
+    llm_model.vendor = None
+    filter_mock = mocker.patch("apps.opspilot.utils.chat_flow_utils.nodes.action.action.LLMModel.objects.filter")
+    filter_mock.return_value.select_related.return_value.first.return_value = llm_model
+
+    llm_client = mocker.Mock()
+    llm_client.invoke.return_value = mocker.Mock(content="<p>优化后的邮件正文</p>")
+    create_client = mocker.patch(
+        "apps.opspilot.utils.chat_flow_utils.nodes.action.action.LLMClientFactory.create_client",
+        return_value=llm_client,
+    )
+
+    optimize_email_content_with_llm(
+        model_id=8,
+        title="Daily Report",
+        content="**根因**: FailedScheduling",
+        node_id="notify_node",
+    )
+
+    assert create_client.call_args.args[0].temperature == 1.0
+
+
 @pytest.mark.parametrize(("configured_timeout", "expected_timeout"), [("17", 17), (None, 300), ("", 300)])
 def test_email_content_optimizer_resolves_agent_execute_timeout(mocker, monkeypatch, configured_timeout, expected_timeout):
     if configured_timeout is None:

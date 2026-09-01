@@ -7,7 +7,6 @@ import { DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import SelectorOperateModal from './operateModal';
 import Icon from '@/components/icon';
-import styles from './index.module.scss';
 import { SelectTool, ToolVariable } from '@/app/opspilot/types/tool';
 import { useSkillApi } from '@/app/opspilot/api/skill';
 import OperateModal from '@/components/operate-modal';
@@ -241,7 +240,10 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
       <Button onClick={openModal}>+ {t('common.add')}</Button>
       <div className="grid grid-cols-2 gap-4 mt-2 pb-2">
         {selectedTools.map((tool) => (
-          <div key={tool.id} className={`w-full rounded-md px-4 py-2 flex items-center justify-between ${styles.borderContainer}`}>
+          <div
+            key={tool.id}
+            className="flex w-full items-center justify-between rounded-md border border-[var(--color-border)] bg-[var(--color-bg-1)] px-4 py-2"
+          >
             <Tooltip title={tool.name}>
               <div className='flex items-center'>
                 <Icon className='text-xl mr-1' type={tool.icon} />
