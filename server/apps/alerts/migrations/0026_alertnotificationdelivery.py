@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-    dependencies = [("alerts", "0024_alertescalationtask_next_escalation_at")]
+    dependencies = [("alerts", "0025_alert_closed_at")]
 
     operations = [
         migrations.CreateModel(
