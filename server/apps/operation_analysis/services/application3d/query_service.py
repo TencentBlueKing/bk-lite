@@ -4,7 +4,7 @@ import base64
 import binascii
 import json
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from datetime import timezone as datetime_timezone
 from typing import Any
@@ -36,7 +36,12 @@ from apps.operation_analysis.services.application3d.errors import (
     Application3DNotFound,
     Application3DSourceFailure,
 )
-from apps.operation_analysis.services.application3d.health import aggregate_application_health, unavailable_health
+from apps.operation_analysis.services.application3d.health import (
+    aggregate_application_health,
+    no_application_health,
+    no_host_health,
+    unavailable_health,
+)
 from apps.operation_analysis.services.application3d.metric_fields import (
     collect_policy_metric_ids,
     load_metrics_by_ids,
@@ -50,7 +55,7 @@ from apps.operation_analysis.services.application3d.presenters import (
     present_alarm_list_item,
     present_application_properties,
 )
-from apps.operation_analysis.services.application3d.relations import project_application_hosts, project_application_systems
+from apps.operation_analysis.services.application3d.relations import project_application_hosts, project_system_applications
 from apps.operation_analysis.services.application3d.severity import severity_from_monitor_level
 
 
@@ -60,20 +65,27 @@ class _AlertPolicyScope(AlertPermissionMixin):
 
 @dataclass
 class _ApplicationScope:
-    """Shared Application→Host→Monitor mapping + accessible policies.
+    """Shared System→Application→Host→Monitor mapping + accessible policies.
 
-    Does not hold materialized MonitorAlert rows. Wall aggregates via DB
-    values/Count; Detail pages via scoped cursor queries.
+    Wall items are CMDB system instances. `hosts_by_app` is keyed by system uuid
+    and holds the union of hosts from child applications. Hosts with empty
+    monitor_id stay in that host union but are omitted from the monitor union.
+    Wrong-peer application_run_host edges are omitted from the host union and
+    do not fail the system. `empty_systems` have zero child applications
+    (unknown/no_application). `no_host_systems` have child applications but
+    zero legitimate hosts (unknown/no_host).
     """
 
     applications: list[dict[str, Any]]
     hosts_by_app: dict[str, list[dict[str, Any]]]
     policies: dict[int, Any]
     complete_apps: set[str]
+    empty_systems: set[str] = field(default_factory=set)
+    no_host_systems: set[str] = field(default_factory=set)
 
 
 class Application3DQueryService:
-    """Permission-aware CMDB Application → Monitor query seam."""
+    """Permission-aware CMDB System → Application → Host → Monitor query seam."""
 
     @classmethod
     def wall(cls, request, applied_filters: dict | None = None) -> dict[str, Any]:
@@ -83,7 +95,7 @@ class Application3DQueryService:
 
         selected_statuses = normalized_filters[FILTER_SYSTEM_STATUS]
         if selected_statuses:
-            applications = cls._filter_applications_by_system_status(request, applications, set(selected_statuses))
+            applications = cls._filter_systems_by_status(applications, set(selected_statuses))
 
         scope = cls._build_scope(request, applications)
         health_by_app = cls._wall_health_by_application(scope)
@@ -141,8 +153,8 @@ class Application3DQueryService:
                 },
             }
 
-        attrs = ModelManage.search_model_attr("application") or []
-        visible_fields = ApplicationResourceOverviewService._get_show_fields("application", request.user)
+        attrs = ModelManage.search_model_attr("system") or []
+        visible_fields = ApplicationResourceOverviewService._get_show_fields("system", request.user)
         return {
             "application": {
                 "id": app_id,
@@ -264,9 +276,9 @@ class Application3DQueryService:
 
     @classmethod
     def _visible_applications(cls, request) -> list[dict[str, Any]]:
-        permission_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id="application")
+        permission_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id="system")
         applications, count = InstanceManage.instance_list(
-            model_id="application",
+            model_id="system",
             params=[],
             page=1,
             page_size=APPLICATION3D_SAFETY_MAX_APPLICATIONS + 1,
@@ -286,9 +298,9 @@ class Application3DQueryService:
     def _visible_application(cls, request, application_id: str) -> dict[str, Any]:
         if not application_id:
             raise Application3DInvalidRequest("application_id 不能为空")
-        permission_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id="application")
+        permission_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id="system")
         applications, _ = InstanceManage.instance_list(
-            model_id="application",
+            model_id="system",
             params=[{"field": "inst_uuid", "type": "str=", "value": str(application_id)}],
             page=1,
             page_size=2,
@@ -298,7 +310,7 @@ class Application3DQueryService:
         )
         application = next((item for item in applications or [] if cls._instance_uuid(item) == str(application_id)), None)
         if application is None:
-            raise Application3DNotFound("应用不存在")
+            raise Application3DNotFound("应用系统不存在")
         return application
 
     @classmethod
@@ -345,37 +357,12 @@ class Application3DQueryService:
         return {FILTER_SYSTEM_STATUS: normalized}
 
     @classmethod
-    def _filter_applications_by_system_status(
+    def _filter_systems_by_status(
         cls,
-        request,
-        applications: list[dict[str, Any]],
+        systems: list[dict[str, Any]],
         selected: set[str],
     ) -> list[dict[str, Any]]:
-        app_ids = [cls._instance_uuid(item) for item in applications]
-        systems_by_app = project_application_systems(app_ids)
-        system_ids = sorted({system_id for values in systems_by_app.values() for system_id in values})
-        if not system_ids:
-            return []
-        permission_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id="system")
-        systems = []
-        for offset in range(0, len(system_ids), APPLICATION3D_ENTITY_BATCH_SIZE):
-            batch = system_ids[offset : offset + APPLICATION3D_ENTITY_BATCH_SIZE]
-            batch_systems, _ = InstanceManage.instance_list(
-                model_id="system",
-                params=[{"field": "inst_uuid", "type": "str[]", "value": batch}],
-                page=1,
-                page_size=APPLICATION3D_ENTITY_BATCH_SIZE,
-                order="",
-                permission_map=permission_map,
-                creator=request.user.username,
-            )
-            systems.extend(batch_systems or [])
-        status_by_system = {cls._instance_uuid(system): cls._status_values(system.get("status")) for system in systems or []}
-        return [
-            application
-            for application in applications
-            if any(status_by_system.get(system_id, set()) & selected for system_id in systems_by_app.get(cls._instance_uuid(application), []))
-        ]
+        return [system for system in systems if cls._status_values(system.get("status")) & selected]
 
     @staticmethod
     def _status_values(raw: Any) -> set[str]:
@@ -391,34 +378,92 @@ class Application3DQueryService:
 
     @classmethod
     def _build_scope(cls, request, applications: list[dict[str, Any]]) -> _ApplicationScope:
-        app_ids = [cls._instance_uuid(item) for item in applications]
-        if not app_ids:
-            return _ApplicationScope([], {}, {}, set())
+        system_ids = [cls._instance_uuid(item) for item in applications]
+        if not system_ids:
+            return _ApplicationScope([], {}, {}, set(), set())
         try:
-            host_ids_by_app, integrity_failures = project_application_hosts(app_ids)
+            apps_by_system = project_system_applications(system_ids)
+            empty_systems = {system_id for system_id in system_ids if not apps_by_system.get(system_id)}
+            associated_app_ids = list(dict.fromkeys(app_id for system_id in system_ids for app_id in apps_by_system.get(system_id, [])))
+            visible_app_ids = {cls._instance_uuid(item) for item in cls._visible_model_instances(request, "application", associated_app_ids)}
+            hidden_or_partial = {
+                system_id
+                for system_id in system_ids
+                if apps_by_system.get(system_id) and not set(apps_by_system[system_id]).issubset(visible_app_ids)
+            }
+
+            host_source_app_ids = list(
+                dict.fromkeys(
+                    app_id
+                    for system_id in system_ids
+                    if system_id not in empty_systems and system_id not in hidden_or_partial
+                    for app_id in apps_by_system.get(system_id, [])
+                )
+            )
+            if host_source_app_ids:
+                # Wrong-peer application_run_host edges are omitted from the host
+                # lists and do not fail the system.
+                host_ids_by_app = project_application_hosts(host_source_app_ids)
+            else:
+                host_ids_by_app = {}
             all_host_ids = sorted({host_id for host_ids in host_ids_by_app.values() for host_id in host_ids})
             visible_hosts = cls._visible_hosts(request, all_host_ids)
             visible_host_map = {cls._instance_uuid(item): item for item in visible_hosts}
-            hosts_by_app = {
-                app_id: [visible_host_map[host_id] for host_id in host_ids if host_id in visible_host_map]
-                for app_id, host_ids in host_ids_by_app.items()
+
+            hosts_by_system: dict[str, list[dict[str, Any]]] = {system_id: [] for system_id in system_ids}
+            expected_host_count: dict[str, int] = {system_id: 0 for system_id in system_ids}
+            for system_id in system_ids:
+                if system_id in empty_systems or system_id in hidden_or_partial:
+                    continue
+                child_ids = apps_by_system.get(system_id, [])
+                seen_hosts: set[str] = set()
+                ordered_hosts: list[dict[str, Any]] = []
+                for app_id in child_ids:
+                    for host_id in host_ids_by_app.get(app_id, []):
+                        if host_id in seen_hosts:
+                            continue
+                        seen_hosts.add(host_id)
+                        if host_id in visible_host_map:
+                            ordered_hosts.append(visible_host_map[host_id])
+                expected_host_count[system_id] = len(seen_hosts)
+                hosts_by_system[system_id] = ordered_hosts
+
+            # Empty/missing monitor_id means that host is unmonitored: omit it
+            # from the monitor union. Permission, hidden policy, and invisible
+            # host/application still fail the whole system. Zero mapped monitors
+            # after omitting unmapped hosts stays unavailable (not normal/0).
+            # Child apps with zero legitimate hosts are unknown/no_host, not complete.
+            no_host_systems = {
+                system_id
+                for system_id in system_ids
+                if system_id not in empty_systems and system_id not in hidden_or_partial and expected_host_count.get(system_id, 0) == 0
             }
             complete_apps = {
-                app_id
-                for app_id, expected_ids in host_ids_by_app.items()
-                if app_id not in integrity_failures
-                and len(hosts_by_app.get(app_id, [])) == len(expected_ids)
-                and all(host.get("monitor_id") not in (None, "") for host in hosts_by_app.get(app_id, []))
+                system_id
+                for system_id in system_ids
+                if system_id not in empty_systems
+                and system_id not in hidden_or_partial
+                and system_id not in no_host_systems
+                and len(hosts_by_system.get(system_id, [])) == expected_host_count.get(system_id, 0)
+                and bool(cls._mapped_monitor_ids(hosts_by_system.get(system_id, [])))
             }
 
-            monitor_ids = {str(host["monitor_id"]) for app_id in complete_apps for host in hosts_by_app.get(app_id, [])}
-            authorized_monitor_ids = cls._authorized_monitor_ids(request, monitor_ids)
-            for app_id in list(complete_apps):
-                expected_monitor_ids = {str(host["monitor_id"]) for host in hosts_by_app.get(app_id, [])}
-                if not expected_monitor_ids.issubset(authorized_monitor_ids):
-                    complete_apps.remove(app_id)
+            monitor_ids = {monitor_id for system_id in complete_apps for monitor_id in cls._mapped_monitor_ids(hosts_by_system.get(system_id, []))}
+            if not monitor_ids:
+                return _ApplicationScope(applications, hosts_by_system, {}, complete_apps, empty_systems, no_host_systems)
 
-            scoped_monitor_ids = {str(host["monitor_id"]) for app_id in complete_apps for host in hosts_by_app.get(app_id, [])}
+            authorized_monitor_ids = cls._authorized_monitor_ids(request, monitor_ids)
+            for system_id in list(complete_apps):
+                expected_monitor_ids = cls._mapped_monitor_ids(hosts_by_system.get(system_id, []))
+                if expected_monitor_ids and not expected_monitor_ids.issubset(authorized_monitor_ids):
+                    complete_apps.remove(system_id)
+
+            scoped_monitor_ids = {
+                monitor_id for system_id in complete_apps for monitor_id in cls._mapped_monitor_ids(hosts_by_system.get(system_id, []))
+            }
+            if not scoped_monitor_ids:
+                return _ApplicationScope(applications, hosts_by_system, {}, complete_apps, empty_systems, no_host_systems)
+
             # Discover referenced policies without materializing alert rows.
             referenced_policy_ids = set(
                 MonitorAlert.objects.filter(
@@ -441,15 +486,37 @@ class Application3DQueryService:
                 .distinct()
             )
             if monitors_with_hidden_policy:
-                for app_id in list(complete_apps):
-                    app_monitors = {str(host["monitor_id"]) for host in hosts_by_app.get(app_id, [])}
-                    if app_monitors & {str(item) for item in monitors_with_hidden_policy}:
-                        complete_apps.remove(app_id)
+                hidden = {str(item) for item in monitors_with_hidden_policy}
+                for system_id in list(complete_apps):
+                    system_monitors = cls._mapped_monitor_ids(hosts_by_system.get(system_id, []))
+                    if system_monitors & hidden:
+                        complete_apps.remove(system_id)
 
-            return _ApplicationScope(applications, hosts_by_app, policies, complete_apps)
+            return _ApplicationScope(applications, hosts_by_system, policies, complete_apps, empty_systems, no_host_systems)
         except Exception as exc:
             logger.exception("application3D scope query failed")
-            raise Application3DSourceFailure("应用监控数据查询失败") from exc
+            raise Application3DSourceFailure("应用系统监控数据查询失败") from exc
+
+    @classmethod
+    def _visible_model_instances(cls, request, model_id: str, inst_uuids: list[str]) -> list[dict[str, Any]]:
+        if not inst_uuids:
+            return []
+        permission_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=model_id)
+        result: list[dict[str, Any]] = []
+        ordered = list(dict.fromkeys(inst_uuids))
+        for index in range(0, len(ordered), APPLICATION3D_ENTITY_BATCH_SIZE):
+            batch = ordered[index : index + APPLICATION3D_ENTITY_BATCH_SIZE]
+            items, _ = InstanceManage.instance_list(
+                model_id=model_id,
+                params=[{"field": "inst_uuid", "type": "str[]", "value": batch}],
+                page=1,
+                page_size=APPLICATION3D_ENTITY_BATCH_SIZE,
+                order="",
+                permission_map=permission_map,
+                creator=request.user.username,
+            )
+            result.extend(items or [])
+        return result
 
     @classmethod
     def _visible_hosts(cls, request, host_ids: list[str]) -> list[dict[str, Any]]:
@@ -522,9 +589,13 @@ class Application3DQueryService:
         queryset = helper.get_accessible_policy_queryset(request).filter(id__in=policy_ids).select_related("monitor_object")
         return {policy.id: policy for policy in queryset}
 
+    @staticmethod
+    def _mapped_monitor_ids(hosts: list[dict[str, Any]]) -> set[str]:
+        return {str(host["monitor_id"]) for host in hosts if host.get("monitor_id") not in (None, "")}
+
     @classmethod
     def _monitor_ids_for_app(cls, scope: _ApplicationScope, app_id: str) -> set[str]:
-        return {str(host.get("monitor_id")) for host in scope.hosts_by_app.get(app_id, []) if host.get("monitor_id")}
+        return cls._mapped_monitor_ids(scope.hosts_by_app.get(app_id, []))
 
     @classmethod
     def _scoped_active_alerts_qs(cls, scope: _ApplicationScope, monitor_ids: set[str]) -> QuerySet:
@@ -564,17 +635,25 @@ class Application3DQueryService:
     @classmethod
     def _wall_health_by_application(cls, scope: _ApplicationScope) -> dict[str, dict[str, Any]]:
         """
-        Wall health for all Applications in scope.
+        Wall health for all Systems in scope.
 
-        Complete apps share one/few MonitorAlert aggregation queries keyed by
+        Complete systems share one/few MonitorAlert aggregation queries keyed by
         monitor_instance_id; grouped rows are distributed in memory. Shared Hosts
-        contribute to every linked Application, but each Application counts each
-        monitor at most once. Incomplete apps stay unknown/unavailable.
+        contribute to every linked System, but each System counts each
+        monitor at most once. Empty systems stay unknown/no_application.
+        Systems with child applications but zero legitimate hosts stay
+        unknown/no_host. Incomplete apps stay unknown/unavailable.
         """
         health_by_app: dict[str, dict[str, Any]] = {}
         monitors_by_complete_app: dict[str, set[str]] = {}
         for application in scope.applications:
             app_id = cls._instance_uuid(application)
+            if app_id in scope.empty_systems:
+                health_by_app[app_id] = no_application_health()
+                continue
+            if app_id in scope.no_host_systems:
+                health_by_app[app_id] = no_host_health()
+                continue
             if app_id not in scope.complete_apps:
                 health_by_app[app_id] = unavailable_health()
                 continue
@@ -595,7 +674,11 @@ class Application3DQueryService:
 
     @classmethod
     def _health_for_application(cls, scope: _ApplicationScope, app_id: str) -> dict[str, Any]:
-        """Detail/single-app health; same filter + aggregate semantics as Wall distribution."""
+        """Detail/single-system health; same filter + aggregate semantics as Wall distribution."""
+        if app_id in scope.empty_systems:
+            return no_application_health()
+        if app_id in scope.no_host_systems:
+            return no_host_health()
         if app_id not in scope.complete_apps:
             return unavailable_health()
         monitor_ids = cls._monitor_ids_for_app(scope, app_id)

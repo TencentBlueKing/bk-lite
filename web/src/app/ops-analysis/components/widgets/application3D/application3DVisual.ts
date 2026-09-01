@@ -83,7 +83,7 @@ export const resolveNeonLevel = (item: {
   };
 }): Application3DNeonLevel => {
   if (item.health.state === 'normal') return 'normal';
-  if (item.health.reason === 'unavailable') return 'remain';
+  if (item.health.state === 'unknown') return 'remain';
   const color = item.health.highestSeverity?.color || item.health.highestSeverity?.id || '';
   if (color === 'critical' || color === 'fail') return 'fatal';
   if (color === 'error' || color === 'danger') return 'error';

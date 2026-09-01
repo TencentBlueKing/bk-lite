@@ -16,7 +16,7 @@ application3D Alarm Detail 是 MonitorAlert 的场景化投影，不是 Monitor 
 
 ## Problem Statement
 
-运营分析 Screen 缺少一个以应用为业务中心、同时表达关联主机监控健康的 3D 场景。现有普通 DataSource Widget 适合消费通用数据并渲染图表，`networkStatusTopology` 则是网络领域专用的 self-fetch Scene Widget；两者都不能表达完整的 Application Wall → Focus → Application Detail 交互，也不能把 CMDB Application、`application_run_host`、Monitor 权限与 `MonitorAlert` 健康口径安全地收敛在一个后端查询接缝中。
+运营分析 Screen 缺少一个以应用系统为业务中心、同时表达关联主机监控健康的 3D 场景。现有普通 DataSource Widget 适合消费通用数据并渲染图表，`networkStatusTopology` 则是网络领域专用的 self-fetch Scene Widget；两者都不能表达完整的 Application Wall → Focus → Application Detail 交互，也不能把 CMDB System、`system_contains_application`、`application_run_host`、Monitor 权限与 `MonitorAlert` 健康口径安全地收敛在一个后端查询接缝中。
 
 旧 3D 应用墙仅作为深色背景、应用卡片、状态颜色、glow、告警 badge 和 camera intro 的 UX reference。其 API、数据基座、Babylon/Three 封装、颜色编码、参数和代码均不是本变更的输入契约。
 
@@ -60,11 +60,11 @@ Application Wall
 - Screen add/edit/view。
 - Normal Screen 与 Share Screen。
 - 真实 Three.js/WebGL 3D Application Wall。
-- 当前 actor 权限可见的全部 Application 自动上墙（无编辑期 Application 勾选）。
+- 当前 actor 权限可见的全部 **应用系统（CMDB `system`）** 自动上墙（无编辑期勾选）。
 - 连续 Wall、`system_status` filter、refresh、empty/error/unknown/stale。
 - Application selection、focus、detail、close detail、back（仅 view/share）。
-- `application_run_host` 关联 Host 的 Monitor 健康聚合。
-- 经 exact `system_contains_application` 的父 System.`status` 成员过滤（与健康投影解耦）。
+- 经 exact `system_contains_application` 的子 Application，再经 exact `application_run_host` 关联 Host 的 Monitor 健康聚合。
+- 对 System 自身 `status` 的成员过滤（与健康投影解耦；不再经 Application→父 System 跳转）。
 - Application Detail 的属性、severity statistics、active alarm browsing、alarm detail、previous/next、通知摘要和 metric snapshot trend。
 - Screen 编辑态对齐 `room3D`：无场景交互，仅预览；view/share 全交互。
 - 20/50/100/200 Application 的真实浏览器 benchmark 与 capacity 校准。
@@ -140,72 +140,86 @@ interface SceneWidgetCapability {
 
 ## Domain Invariants
 
-### Application identity
+### System identity
 
 唯一 canonical identity：
 
 ```text
-model_id = application
-id = CMDB Application.inst_uuid
+model_id = system
+id = CMDB System.inst_uuid
 ```
 
-Three object key、selection、health reconciliation、detail query、cache、Share capability 和请求去重均使用 `inst_uuid`。Application name 仅显示，禁止作为 identity 或 join key。Wire contract 不增加始终等于 `id` 的 `renderKey`。
+Three object key、selection、health reconciliation、detail query、cache、Share capability 和请求去重均使用 System `inst_uuid`。System name（`inst_name`）仅显示，禁止作为 identity 或 join key。Wire contract 保持既有 `{id, name, health}` 与请求字段 `application_id`（其值现在是 System uuid），不增加始终等于 `id` 的 `renderKey`。
 
 ### Application health resource projection
 
 第一版唯一合法 **健康** projection：
 
 ```text
-CMDB Application
-  └─ model_asst_id = application_run_host
-       └─ peer model_id = host
+CMDB System
+  └─ model_asst_id = system_contains_application
+       └─ peer model_id = application
+            └─ model_asst_id = application_run_host
+                 └─ peer model_id = host
 ```
 
 Hard invariants：
 
-- 只认 `application_run_host`。
-- 按当前 CMDB association 定义解析方向；Application 位于 src/dst 哪侧都必须以 relation metadata 判定 peer，不能假定数组方向。
-- peer 必须为 `host`；错误 peer 不纳入且视为 projection integrity failure，不能静默传播健康。
-- wrong relation、任意直接 Host association、BFS、System fallback、Module/Service 路径均不纳入健康。
-- shared Host 合法；一个 Host 的同一 `MonitorAlert` 可以影响所有通过 `application_run_host` 关联它的 Application。
-- 去重键是 Host `inst_uuid`；同一 Application 重复 relation 不得重复计算告警。
-- 零 Host（无任何合法 `application_run_host` peer）在查询完整时为 `normal` / `no_active_alarm` / `activeAlarmCount=0`，不是 `unavailable`。
+- Wall 成员是 System。健康先经 exact `system_contains_application` 得到子 Application，再只认 `application_run_host`。
+- 不存在 system→host 关联；禁止发明该边，也禁止 `Application ← System → Host` 作为缺失 `application_run_host` 的 fallback。
+- 按当前 CMDB association 定义解析方向；实体位于 src/dst 哪侧都必须以 relation metadata 判定 peer，不能假定数组方向。
+- `system_contains_application` 的 peer 必须为 `application`；错误 peer 不纳入 Application 集合。
+- `application_run_host` 的 peer 必须为 `host`；错误 peer 从 Host 列表省略，不得把整张 System 标为 `unavailable` / projection integrity failure。该子 Application 及其兄弟上其余合法 Host 仍聚合。省略后该 System 的合法 Host union 为空则 fall through 为 `unknown/no_host`。
+- wrong relation、任意直接 Host association、BFS、System→Host fallback、Module/Service 路径均不纳入健康。
+- shared Host 合法；一个 Host 的同一 `MonitorAlert` 可以影响所有通过上述路径关联它的 System。同一 System 对每个 monitor 只计一次。
+- 去重键是 Host `inst_uuid`；同一 System 下多个子 Application 指向同一 Host 时不得重复计算告警。
+- **零 Application**（无任何合法 `system_contains_application` peer）：System **仍上墙**，健康必须是 `unknown` / `no_application`，**不得** `normal`，也不得把 `no_application` 复用到零 Host。
+- **零合法 Host**（子 Application 集合非空，投影后无任何合法 `application_run_host` peer）：健康必须是 `unknown` / `no_host`，与 `no_application` 共用既有 unknown/gray 视觉。**不得** `normal` / `0`，**不得** `unavailable`（`unavailable` 只表示权限/读不完整）。混合子 Application（部分有 Host、部分没有）仍 union 并聚合存在的 Host；仅当该 System 的 Host union 为空才是 `no_host`。
+- 已存在 Host 但全部 `monitor_id` 为空/缺失：仍是 `unknown/unavailable`（零 mapped monitor），**不是** `no_host`。`no_host` 是结构上无 Host peer；省略未映射后的 unavailable 是映射问题（Host 在、无一被监控）。
 
 ### Wall membership
 
-默认 Wall 成员 = 当前 actor 权限可见的全部 Application（CMDB Application View），无编辑期勾选。
+默认 Wall 成员 = 当前 actor 权限可见的全部 System（CMDB System View），按 `inst_name` 排序，无编辑期勾选。零子 Application 的 System 仍是成员。
 
-可选 `system_status` filter 经 exact `system_contains_application` 收窄成员（见 Filters）；该路径不得用于 Host/告警健康聚合。
+可选 `system_status` filter 按 **System 自身** `status` 收窄成员（见 Filters）；该路径不得用于 Host/告警健康聚合。
 
 ### Authoritative alarm model
 
 第一版唯一 authoritative chain：
 
 ```text
-CMDB Application(inst_uuid)
+CMDB System(inst_uuid)
+→ system_contains_application
+→ permission-visible Application
 → application_run_host
 → permission-visible Host
 → Host.monitor_id
 → authorized MonitorInstance
 → authorized MonitorPolicy
 → MonitorAlert(status="new")
-→ Application-level aggregation
+→ System-level aggregation
 ```
 
 Central Alert 不参与 Wall health、severity statistics、alarm count、alarm membership、alarm detail、notification、metric trend 或 previous/next。
 
 ### Active alarm scope
 
-对某一 Application `A`，定义：
+对某一 System `S`，定义：
 
 ```text
-ScopedActiveAlerts(A, actor)
+ScopedActiveAlerts(S, actor)
 = permission-scoped MonitorAlerts
   WHERE status = "new"
   AND monitor_instance_id IN AuthorizedMonitorIds(
-        VisibleHosts(A, application_run_host, actor)
+        VisibleHosts(
+          VisibleApplications(S, system_contains_application, actor),
+          application_run_host,
+          actor
+        )
       )
 ```
+
+`AuthorizedMonitorIds` 只包含 `monitor_id` 非空的可见 Host。某一 Host 的 `monitor_id` 为 `None` 或 `""` 表示该 Host 未被监控：只从该 System 的 monitor union 省略它，不因此判定整张 System 查询失败。同一 System 下其余已映射 Host 仍按 union 去重后聚合 `MonitorAlert(status=new)`。省略后若该 System 零 mapped monitor，健康为 `unknown/unavailable`，不得 `normal` 且 `activeAlarmCount=0`，也不得标为 `no_host`（Host peer 仍存在）。权限不足、隐藏 policy、不可见子 Application、不可见 Host 仍使整张 System `unavailable`；缺 `monitor_id` 不是读失败。错误 peer 的 `application_run_host` 边已从 Host 列表省略，不使整张 System `unavailable`。
 
 Wall 和 Detail 必须由同一个 `ScopedActiveAlerts` 查询模块生成。Wall 的 `activeAlarmCount=N`、Detail severity statistics、alarm list、alarm detail membership 和 navigation collection 必须引用同一集合。禁止 Wall 使用 Host summary、Detail 再走另一套查询口径。
 
@@ -220,6 +234,8 @@ type ApplicationHealthReason =
   | 'no_active_alarm'
   | 'active_alarm'
   | 'unavailable'
+  | 'no_application'
+  | 'no_host'
   | 'stale_after_refresh_failure';
 
 // Backend internal only; MUST NOT be serialized to Normal or Share clients.
@@ -238,7 +254,11 @@ Health、Alert Severity、Alert Type 是三条正交轴：
 Health invariant（查询 scope 完整时）：
 
 ```text
-incomplete mapping/permission/aggregation → unknown / unavailable
+permission / hidden policy / invisible child application / invisible host incompleteness → unknown / unavailable
+empty/missing host monitor_id → omit that host from this system's monitor union
+after omit, zero mapped monitors remain → unknown / unavailable (not normal/0, not no_host)
+empty system (no system_contains_application edges) → unknown / no_application
+child applications exist, zero legitimate application_run_host peers after projection → unknown / no_host
 complete && activeAlarmCount == 0 → normal
 complete && activeAlarmCount > 0 → alarming
 ```
@@ -249,15 +269,21 @@ complete && activeAlarmCount > 0 → alarming
 | --- | --- | --- | --- |
 | 查询完整，任意 `status=new` MonitorAlert ≥ 1（含 only `alert_type=no_data`） | alarming | active_alarm | exact non-null；按每条 Alert 的 `level` 计入 `severityCounts` / `highestSeverity` |
 | 查询完整，无任何 active alert | normal | no_active_alarm | `0` |
-| 查询完整，且无 `application_run_host` 关联 Host（零 Host） | normal | no_active_alarm | `0` |
-| 必需 Host 缺 monitor_id / mapping 无法确认 | unknown | unavailable | `null`，不得伪造部分 count |
+| 子 Application 非空，投影后无任何合法 `application_run_host` peer（零合法 Host） | unknown | no_host | `null`，与 unavailable / no_application 相同的 count 语义；前端沿用 unknown 灰态，不新增视觉。不得 `normal/0`，不得 `unavailable` |
+| 部分子 Application 无 Host、其余子 Application 有合法 Host | — | — | 仍 union 并聚合存在的 Host；仅当该 System 的 Host union 为空才是 `no_host` |
+| System 无任何 `system_contains_application` 子 Application（关联集确实为空） | unknown | no_application | `null`，与 unavailable 相同的 count 语义；前端沿用 unknown 灰态，不新增视觉。不得把 `no_application` 复用到零 Host |
+| `application_run_host` 错误 peer（`peer model_id != host`） | — | — | 从 Host 列表省略该边，不使整张 System `unavailable`。其余合法 Host 仍聚合；省略后 Host union 为空则 fall through 为 `no_host` |
+| System 有子 Application 边，但 actor 不可见这些 Application，或可见 Host 集合不完整 | unknown | unavailable | `null` |
+| 可见 Host 的 `monitor_id` 为 `None`/`""` | — | — | 从该 System 的 monitor union 省略该 Host；其余已映射 Host 仍聚合。不是读失败，也不是 `no_host` |
+| 省略未映射 Host 后该 System 零 mapped monitor（Host peer 仍存在） | unknown | unavailable | `null`，不得 `normal` 且 `activeAlarmCount=0`，不得 `no_host` |
+| 权限不足、隐藏 MonitorPolicy、不可见 Host/子 Application | unknown | unavailable | `null`，整张 System 失败，不得只聚合其余 Host |
 | CMDB Host、MonitorInstance 或 MonitorPolicy scope 不完整 | unknown | unavailable | `null` |
 | 单个 Application 聚合无法完成 | unknown | unavailable | `null` |
 | silent refresh 失败且仍显示上次完整成功值 | 保留上次 state | stale_after_refresh_failure | 保留上次 exact count，`stale=true` |
 
 `null` 表示无法证明完整、精确的计数；`0` 只表示完整查询明确得到零条。Widget-level 功能权限拒绝使用现有 permission/error UI，不通过单张 Application card 暗示隐藏资源。
 
-Backend 可以使用 `ApplicationHealthInternalReason` 做控制流、审计和诊断，但不得把它、隐藏资源数量或可反推出隐藏资源存在性的错误文案序列化到 Normal/Share wire response。所有 per-Application mapping、permission 或局部 source completeness 问题在 wire 上统一折叠为 `unknown/unavailable`。无法生成可信 Wall 的整体 source failure 继续使用 Widget-level hard error，不伪装成某张 Application 的具体内部原因。Normal 与 Share 使用同一 presenter 和折叠规则。
+Backend 可以使用 `ApplicationHealthInternalReason` 做控制流、审计和诊断，但不得把它、隐藏资源数量或可反推出隐藏资源存在性的错误文案序列化到 Normal/Share wire response。所有 per-System mapping、permission 或局部 source completeness 问题在 wire 上统一折叠为 `unknown/unavailable`。无子 Application 的 System 使用 `unknown/no_application`（可序列化；不是内部诊断原因）。有子 Application 但零合法 Host 的 System 使用 `unknown/no_host`（可序列化；不是内部诊断原因，也不是 `unavailable`）。无法生成可信 Wall 的整体 source failure 继续使用 Widget-level hard error，不伪装成某张 System 的具体内部原因。Normal 与 Share 使用同一 presenter 和折叠规则。
 
 禁止 `unknown/no_data_alarm`。已完整查到的 no_data Alert 是真实活跃告警，health 必须是 `alarming`。
 
@@ -307,8 +333,9 @@ interface Severity {
 ```text
 Normal Scene View ─┐
                    ├─ Application3DQueryService
-Share Capability ─┘       ├─ visible Application query
-                           ├─ optional system_status via system_contains_application
+Share Capability ─┘       ├─ visible System query
+                           ├─ optional system_status on System.status
+                           ├─ exact system_contains_application projection
                            ├─ exact application_run_host projection
                            ├─ Host monitor_id mapping
                            ├─ MonitorInstance permission scope
@@ -332,7 +359,11 @@ Screen View
 ↓ Screen ownership/team permission
 application3D Scene operation
 ↓ scene capability + widget declaration
-visible CMDB Applications
+visible CMDB Systems
+↓ CMDB System View, batch
+system_contains_application
+↓ exact relation projection, batch
+visible Applications
 ↓ CMDB Application View, batch
 application_run_host
 ↓ exact relation projection, batch
@@ -353,7 +384,7 @@ Requirements：
 
 - 复用现有 CMDB topology View 与 MonitorInstance/MonitorPolicy permission helper；不得用 `skip_permission`、superuser shortcut 绕过 current team。
 - Share actor 重建后执行同一权限链。
-- partial permission 或 mapping completeness 无法证明时，不返回部分值冒充完整值。
+- partial permission、隐藏 policy、不可见 Host/子 Application 无法证明完整时，不返回部分值冒充完整值。Host `monitor_id` 为空表示该 Host 未被监控，从 monitor union 省略，不视为读失败；仅当省略后零 mapped monitor 时该 System 为 `unavailable`。
 - 不返回隐藏 Host 数量、隐藏 MonitorInstance identity 或“存在 N 个无权资源”。
 - 无权限与不存在在详情/IDOR 路径使用仓库现有统一 fail-closed 响应，禁止资源枚举。
 
@@ -362,10 +393,11 @@ Requirements：
 所有 application/detail/alarm/metric operation 必须重新验证：
 
 ```text
-Application visible
+System visible
+AND exact system_contains_application projection
 AND exact application_run_host projection
 AND Host/Monitor/Policy permission
-AND alert_id ∈ ScopedActiveAlerts(applicationId, actor)
+AND alert_id ∈ ScopedActiveAlerts(systemId, actor)
 ```
 
 禁止仅凭 `applicationId + arbitrary alertId` 读取 Alert。跨 Application alert、已关闭/恢复 alert、撤权 alert、非关联 Host alert 均 fail closed。Metric operation 还必须先完成同一 alarm membership 校验。
@@ -382,8 +414,8 @@ for Monitor → query Alerts/Policies
 
 要求：
 
-- batch visible Applications。
-- batch exact relation projection；如果底层图服务缺少批量接口，在 backend module 内做有界批次调用并设置总预算，禁止前端 fan-out。
+- batch visible Systems。
+- batch exact `system_contains_application` then `application_run_host` projection；如果底层图服务缺少批量接口，在 backend module 内做有界批次调用并设置总预算，禁止前端 fan-out。
 - batch Host entity/monitor_id lookup。
 - batch MonitorInstance permission filtering。
 - batch MonitorPolicy permission filtering。
@@ -408,6 +440,8 @@ type ApplicationHealthReason =
   | 'no_active_alarm'
   | 'active_alarm'
   | 'unavailable'
+  | 'no_application'
+  | 'no_host'
   | 'stale_after_refresh_failure';
 
 interface Severity {
@@ -449,9 +483,10 @@ Application entity
 Requirements：
 
 - backend application3D module 维护唯一、带顺序的 Application property key allowlist；Normal/Share 复用同一 allowlist 和 presenter。
-- 第一版有序 allowlist 固定为：`app_id` → `app_type` → `organization` → `operator` → `bak_operator` → `comment`。
+- 第一版有序 allowlist 固定为：`system_code` → `status` → `organization` → `operator` → `comment` → `productor` → `developer` → `tester`。
+- `inst_name` 已是卡片标题，`time_zone` 不展示；二者均不进入 allowlist。
 - 不允许“返回所有非敏感字段”、遍历全部 CMDB schema 自动出现在 UI，或让请求参数选择任意字段。
-- `id/inst_uuid` 和 Application name 已有专用 DTO 字段，不在 properties 中重复。
+- `id/inst_uuid` 和 System name 已有专用 DTO 字段，不在 properties 中重复。
 - key 不在 allowlist、调用者无字段 View 权限、字段类型被标记 sensitive/password/secret、或值无法安全 display-convert 时均省略。
 - label 和 displayValue 必须来自 CMDB metadata/display conversion；Widget 不接收 raw value、raw enum/schema 或自行格式化日期、枚举、引用、表格等字段。
 - Allowlist 中字段在具体 Application model 不存在或值为空时只省略该 property；`properties=[]` 合法。
@@ -472,7 +507,7 @@ interface ApplicationWallData {
 }
 
 interface ApplicationWallItem {
-  id: string; // Application.inst_uuid
+  id: string; // System.inst_uuid
   name: string;
   health: {
     state: ApplicationHealthState;
@@ -489,7 +524,7 @@ interface ApplicationWallItem {
 Semantics：
 
 - `items=[]` 是合法 empty wall，不是 failure。
-- `highestSeverity=null`：`unknown/unavailable`，或 `alarming` 但 scoped active alerts 仅含非空且无法映射的 level。`normal` 使用 `id=normal` 的 Severity。空 `level` 防御性按 warning。有可映射 level（含空→warning、no_data、defensive info）的 `alarming` 必须带最高 Severity。
+- `highestSeverity=null`：`unknown/unavailable`、`unknown/no_application` 或 `unknown/no_host`，或 `alarming` 但 scoped active alerts 仅含非空且无法映射的 level。`normal` 使用 `id=normal` 的 Severity。空 `level` 防御性按 warning。有可映射 level（含空→warning、no_data、defensive info）的 `alarming` 必须带最高 Severity。
 - `severityCounts=null`、`activeAlarmCount=null` 表示查询不完整，不得渲染为零。
 - `stale=true` 只允许来自同一 actor/scope/filter 的上一次完整成功 snapshot；权限撤销不能保留 stale detail。
 - `supportedCount=null` 表示 benchmark 尚未校准 hard capacity，不表示无限支持。
@@ -547,7 +582,7 @@ Semantics：
 
 - Detail health/statistics 必须与同一 Wall refresh generation 的 scope 一致；重新获取后允许反映更新的 active collection，但响应内部必须自洽。
 - `alarms.state='available'` 表示权限、mapping 和查询完整；此时 counts 必须全部精确且非 null。
-- `alarms.state='unavailable'` 不携带内部 reason、count、statistics、items 或 cursor，避免把部分结果误解为完整结果或暴露隐藏资源存在性。
+- `alarms.state='unavailable'` 不携带内部 reason、count、statistics、items 或 cursor，避免把部分结果误解为完整结果或暴露隐藏资源存在性。无子 Application 的 System、以及有子 Application 但零合法 Host 的 System，走同一 `unavailable` 告警集合（墙卡健康分别为 `unknown/no_application` 与 `unknown/no_host`），不得伪造 `available` 空列表冒充干净健康。
 - `alarms.items=[]` 且 `activeAlarmCount=0` 是合法 zero alarms，只能出现在 `available` 分支。
 - 列表分页只用于 Detail DOM alarm browser，不改变连续 Wall；cursor 必须 opaque、scope-bound，不能携带可篡改权限范围。
 - `metricName` 必须来自真实指标展示名：`query_condition.type='metric'` → `Metric.display_name`（fallback `Metric.name`）；`type='formula'` → `result_name`。**禁止**使用 `MonitorPolicy.alert_name`（告警名称/标题模板）冒充指标名；无法解析时为 `null`。
@@ -713,7 +748,7 @@ interface CapacityExceededError {
 
 ## Filters
 
-第一版唯一业务 filter：父应用系统运行状态。
+第一版唯一业务 filter：应用系统运行状态（System 自身 `status`）。
 
 ```ts
 interface ApplicationFilterDefinition {
@@ -738,23 +773,21 @@ interface ApplicationFilterDefinition {
 ### Filter projection（与健康解耦）
 
 ```text
-Visible Applications
+Visible Systems
   └─ optional filter system_status
-       └─ exact model_asst_id = system_contains_application
-            └─ peer model_id = system
-                 └─ System.status ∈ selected values
+       └─ System.status ∈ selected values
 ```
 
 Hard invariants：
 
-- 只认 `system_contains_application`；不得用其它 System↔Application 边或 BFS。
-- System 关联 **只决定 Wall 成员资格**；Host/Monitor/Alert 健康仍只走 `application_run_host`。
+- 过滤的是 Wall 成员 System 自身的 `status` 属性；不再经 `system_contains_application` 跳到父 System。
+- System 关联 **只用于健康投影**（子 Application → `application_run_host`）；`system_status` 不走关联图。
 - `appliedFilters.system_status` 未选或空数组 = 不启用该 filter，返回权限可见全集。
-- 多选为 OR：父 System.`status` ∈ 选中集即可。
-- 过滤生效时，以下 Application **排除**：无父 System、父 System 对 actor 不可见、父 System.`status` 为空。不提供「未关联系统」option。
+- 多选为 OR：System.`status` ∈ 选中集即可。
+- 过滤生效时，`status` 为空或不在选中集的 System **排除**。不提供「未设置状态」option。
 - Definition/options 由服务端基于当前 actor/share scope 与 System 模型 enum 返回，客户端不能自造 option。
 - Widget runtime 选中值是 **ephemeral**；第一版不写入 `valueConfig` / Screen 持久化默认值；重新进入页面重置为未选=全集。
-- **不接入** Screen unified filter；筛选条变更不得改变 Application 集合。
+- **不接入** Screen unified filter；筛选条变更不得改变 System 集合之外的数据源。
 - Wall request 只接受 definition 中允许的 filter IDs/value；未知、越权或篡改值返回 `invalid_request`，不忽略后扩大 scope。
 - Share operation 允许请求携带合法 `system_status`；frozen config 声明该 filter 能力存在，options 按 sharer current authorization 重算；不冻结访客的选择。
 - Filter change 表示新 Wall generation：fetch → reconcile/layout → camera fit。
@@ -907,7 +940,7 @@ Rules：
   - `error`：`alarming` 且 highestSeverity=error；badge 显示 count（同上）。
   - `warning`：`alarming` 且 highestSeverity=warning；badge 显示 count（同上）。
   - `info`：`alarming` 且 highestSeverity=info 的 defensive 信息态；badge 显示 count；文案不得为「状态未知」。
-  - `unknown`：仅 `unavailable`（无法完整计算）；badge 固定为 `--`。
+  - `unknown`：`unavailable`、`no_application` 或 `no_host`（无法完整计算 / 无子 Application / 有子 Application 但零合法 Host）；badge 固定为 `--`。三者共用既有 remain/gray，按 `state=unknown` 着色，不新增视觉 state，不为 `no_host` 发明独立胶囊。Detail/Wall 若已按 `no_application` 展示 reason 文案才跟同一模式加 locale；当前只按 state 显示「状态未知」，不新增 per-reason 文案。
 - `alarming` 但 `highestSeverity=null`（非空且无法映射的 level）：文案为「警告」，使用 warning 视觉；**不得**默认画成 critical/「严重告警」，也不得画成「状态未知」。空 `level` 在后端已按 warning 归一，卡片走正常 warning 路径。
 - no_data Alert 按自身 `level` 着色（例如 no_data + critical → critical 视觉），不得显示「状态未知」。
 - `info` 使用现有 semantic information token 的低强度视觉，不走红/黄危险级别，不新增 health enum。
@@ -1032,14 +1065,15 @@ view/share mode: application3D owns supported interaction（完整 Wall → Focu
 | permission lost | fail closed；清除受影响 detail/alarm/metric，不使用 stale retention |
 | capacity exceeded | 明确实际数/支持数，不渲染截断 Wall |
 
-任何 request failure、权限不完整或 mapping missing 都不得被解释为 normal。
+任何 request failure、权限不完整、隐藏 policy 或不可见 Host/子 Application 都不得被解释为 normal。全部 Host 均无 `monitor_id` 也不得 `normal`/`0`；部分 Host 无 `monitor_id` 时省略这些 Host 并聚合其余 mapped Host。
 
 ## Implementation Phases
 
 ### Phase 1 — Domain + Backend Contract
 
 - application3D query module/interface。
-- visible Application batch + optional `system_status` via exact `system_contains_application`。
+- visible System batch + optional `system_status` on System.status。
+- exact `system_contains_application` batch projection。
 - exact `application_run_host` batch projection。
 - Host `monitor_id` mapping。
 - MonitorInstance/MonitorPolicy permission reuse。
@@ -1047,7 +1081,7 @@ view/share mode: application3D owns supported interaction（完整 Wall → Focu
 - Wall/Detail/Alarm/Metric DTO presenters。
 - IDOR、notification summary、query-count backend tests。
 
-Exit gate：相同 scoped queryset 证明 Wall/Detail count 一致，所有 incomplete path 非 normal；System 过滤不污染健康投影。
+Exit gate：相同 scoped queryset 证明 Wall/Detail count 一致，所有 incomplete path 非 normal；无子 Application 为 `no_application`；有子 Application 但零合法 Host 为 `no_host`（不是 `normal/0`，不是 `unavailable`）；System.status 过滤不污染健康投影。
 
 ### Phase 2 — Share Capability
 
@@ -1106,12 +1140,19 @@ Phase 2 先于前端 Wall，是为了让 Normal/Share transport contract 在 UI 
 
 ### Backend matrix
 
-- 只返回 visible Applications。
-- 只解析 exact `application_run_host`；relation direction 正确。
-- wrong relation、wrong peer、BFS-reachable Host 不传播 health。
+- 只返回 visible Systems。
+- 只解析 exact `system_contains_application` 再 exact `application_run_host`；relation direction 正确。
+- 零子 Application 的 System 上墙且 `unknown/no_application`，不得 `normal` 或 `unavailable`，也不得标为 `no_host`。
+- 有子 Application 边但 actor 不可见这些 Application → `unknown/unavailable`，不是 `no_application`，也不是 `no_host`。
+- 有子 Application 但投影后零合法 Host → `unknown/no_host`，不得 `normal/0`，不得 `unavailable`，不得复用 `no_application`。
+- 混合子 Application（部分有 Host+告警、部分无 Host）仍聚合存在的 Host 告警，不是 `no_host`。
+- wrong-peer `application_run_host` 从 Host 列表省略，不使整张 System `unavailable`；兄弟子 Application 的合法 Host 仍聚合。仅剩 wrong-peer、无合法 Host → `no_host`。
+- wrong relation、wrong peer、BFS-reachable Host 不纳入 Host union / 不传播 health。
+- 禁止 `Application ← System → Host` 健康 fallback。
 - Host permission；隐藏 Host 不泄露数量。
 - internal mapping/permission/source reason 只用于 backend，Normal/Share wire 均折叠为 `unknown/unavailable`。
-- Host without monitor_id → unknown，不是 normal。
+- 全部可见 Host 均无 `monitor_id`（`None` 或 `""`）→ `unknown/unavailable`，不是 `normal` 且 `activeAlarmCount=0`，也不是 `no_host`。部分 Host 无 `monitor_id` 时从该 System 的 monitor union 省略这些 Host，仍聚合其余 mapped Host 的 `MonitorAlert(status=new)`。共享 Host 每个 System 只计一次。
+- 权限不足、隐藏 policy、不可见子 Application、不可见 Host 仍使整张 System `unavailable`，不得按缺 `monitor_id` 那样省略后继续聚合，也不得标为 `no_host`。
 - MonitorInstance permission；partial/all denied。
 - MonitorPolicy permission；scope incomplete → unknown。
 - active 仅 `status=new`；closed/recovered 不计。
@@ -1134,8 +1175,8 @@ Phase 2 先于前端 Wall，是为了让 Normal/Share transport contract 在 UI 
 - Share expiry/revoke、visitor binding、Screen declaration、sharer permission loss。
 - Share Application/Host/Monitor permission loss。
 - filter unknown/tampering/Share expansion rejection。
-- `system_status` multiple OR；未选=全集；过滤生效时排除孤儿/不可见父 System/空 status。
-- System 过滤不改变 `application_run_host` 健康口径。
+- `system_status` multiple OR；未选=全集；过滤 System 自身 `status`；非法值 400。
+- System 过滤不改变 `system_contains_application` + `application_run_host` 健康口径。
 - 不消费 Screen unified filter。
 
 ### Frontend matrix
@@ -1145,6 +1186,7 @@ Phase 2 先于前端 Wall，是为了让 Normal/Share transport contract 在 UI 
 - initializing、empty、hard error、retry。
 - silent refresh stale；permission error 不 stale-retain。
 - unknown/mapping incomplete 不显示 normal。
+- unknown/no_host 与 no_application/unavailable 共用既有 remain/gray 和「状态未知」文案，不新增视觉或 per-reason locale。
 - unknown/unavailable 不显示或记录 backend internal reason，Normal/Share 文案一致；only no_data 与 info 不得渲染「状态未知」。
 - Detail 固定展示严重/错误/警告；`severityCounts.info>0` 才动态展示提示；左侧不单独展示无数据类型统计；告警列表可保留无数据标签。
 - real WebGL Wall render；badge 99+；severity/unknown 非纯颜色表达。
@@ -1190,14 +1232,14 @@ Benchmark target 是待验证要求，不是已验证事实。测试报告必须
 ## Acceptance Gates
 
 1. `application3D` 只能在 Screen 添加，Normal/Share 完整工作，其他 surface 从 metadata 层拒绝；NST metadata 保持 Dashboard+Screen。
-2. 所有 Application identity 使用 `inst_uuid`，不存在 name-based join。
-3. 所有 health Hosts 严格来自 `application_run_host`；`system_status` 只影响 Wall 成员。
+2. 所有 System identity 使用 `inst_uuid`，不存在 name-based join；wire 仍用 `application_id` 携带该 uuid。
+3. 所有 health Hosts 严格来自 `system_contains_application` → `application_run_host`；`system_status` 只过滤 System 自身 `status`。
 4. MonitorAlert 是唯一 authoritative alarm；Central Alert 不在 contract 或查询链。
-5. Wall/Detail/Alarm navigation 使用同一 Application-scoped active MonitorAlert 集合。
-6. `0` 只来自完整查询（含零 Host）；mapping/permission/source failure 均非 normal。
+5. Wall/Detail/Alarm navigation 使用同一 System-scoped active MonitorAlert 集合。
+6. `0` 只来自完整查询（已映射 Host 上明确零 active alert）；有子 Application 但零合法 Host 为 `unknown/no_host`，不是 `normal/0`，不是 `unavailable`；permission/hidden-policy/invisible-host/source failure 均非 normal；全部 Host 未映射为 `unknown/unavailable`，不是 `normal/0`，不是 `no_host`；无子 Application 为 `unknown/no_application`。wrong-peer `application_run_host` 不使整张 System `unavailable`。
 7. `no_data` 是 alert type，按 `MonitorAlert.level` 参与 severity；only no_data 为 alarming。`info` 仅为 defensive compatibility，不得固定产品化，也不得渲染为 unknown。
 8. 前端 wire 不含 permission/mapping 等内部诊断原因，Normal/Share 只获得一致的 `unknown/unavailable`。
-9. Application properties 只来自 backend ordered allowlist（六字段）和 CMDB display conversion，不默认返回全部非敏感字段。
+9. Application properties 只来自 backend ordered allowlist（`system_code`/`status`/`organization`/`operator`/`comment`/`productor`/`developer`/`tester`）和 CMDB display conversion，不默认返回全部非敏感字段。
 10. NotificationSummary 只表达 configured/state，不暴露 users/channels，也不读取 `alert_center_notified`。
 11. Share 每次 operation 重验 session、widget declaration、filters、sharer current permission 和 IDOR；四类 scene ops 齐全。
 12. 前端无 CMDB×Monitor join 或 per-resource N+1。
@@ -1223,11 +1265,11 @@ NONE BLOCKING IMPLEMENTATION.
 
 Grill-aligned product decisions（已写入正文，此处仅作索引）：
 
-- Wall 成员：权限可见全集；第一版唯一 filter=`system_status`（ephemeral、multiple）。
+- Wall 成员：权限可见 System 全集；第一版唯一 filter=`system_status`（ephemeral、multiple，过滤自身 status）。
 - 容量：软 safety guard；benchmark 前 `supportedCount=null`。
 - 编辑态：对齐 room3D，无场景交互。
 - metadata：NST=`dashboard+screen`，application3D=`screen`；不重构 NST Share。
-- 无领域配置、不接 unified filter；Detail properties 六字段 allowlist。
+- 无领域配置、不接 unified filter；Detail properties 为 System 八字段 allowlist。
 
 Implementation-time, non-product calibration only：
 

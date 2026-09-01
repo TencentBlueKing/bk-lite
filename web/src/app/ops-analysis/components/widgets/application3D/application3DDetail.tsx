@@ -644,17 +644,15 @@ export default function Application3DDetail({
                     <h3 className="app3d-alarm-list__title">
                       {t('dashboard.application3DAlarmList')}
                     </h3>
-                    <span className="app3d-alarm-list__total">
-                      {t(
-                        'dashboard.application3DAlarmTotal',
-                        '共 {count} 条',
-                        {
-                          count: availableAlarms?.activeAlarmCount
-                            ?? detail.application.health.activeAlarmCount
-                            ?? 0,
-                        },
-                      )}
-                    </span>
+                    {availableAlarms ? (
+                      <span className="app3d-alarm-list__total">
+                        {t(
+                          'dashboard.application3DAlarmTotal',
+                          '共 {count} 条',
+                          { count: availableAlarms.activeAlarmCount },
+                        )}
+                      </span>
+                    ) : null}
                   </div>
                   {detail.alarms.state === 'unavailable' ? (
                     <Alert type="warning" showIcon message={t('dashboard.application3DAlarmsUnavailable')} />
