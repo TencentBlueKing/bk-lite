@@ -191,3 +191,11 @@ export const getClosestAncestorMenuItems = (
   const matchedMenu = findClosestAncestorMenuWithChildren(items, currentPath);
   return filterVisibleMenuItems(matchedMenu?.children);
 };
+
+/** Colored `zhishiku` is a card glyph; chrome nav uses the line-style top-menu icon. */
+export const resolveMenuIcon = (item: Pick<MenuItem, 'name' | 'icon'>): string => {
+  if (item.name === 'wiki_list') {
+    return 'zhishiku1';
+  }
+  return item.icon;
+};

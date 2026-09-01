@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Dropdown, Avatar, MenuProps, message, Checkbox, Tree, Input } from 'antd';
 import type { DataNode } from 'antd/lib/tree';
 import { usePathname, useRouter } from 'next/navigation';
@@ -7,6 +8,7 @@ import { DownOutlined, RightOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import VersionModal from './versionModal';
 import ThemeSwitcher from './themeSwitcher';
+import LayoutSwitcher, { LayoutSwitcherPanel, getLayoutPanelPosition } from './layoutSwitcher';
 import { useUserInfoContext } from '@/context/userInfo';
 import { clearAuthToken } from '@/utils/crossDomainAuth';
 import Cookies from 'js-cookie';
@@ -36,6 +38,8 @@ const UserInfo: React.FC = () => {
   const [userInfoVisible, setUserInfoVisible] = useState<boolean>(false);
   const [dropdownVisible, setDropdownVisible] = useState<boolean>(false);
   const [groupPanelVisible, setGroupPanelVisible] = useState<boolean>(false);
+  const [layoutPanelVisible, setLayoutPanelVisible] = useState<boolean>(false);
+  const [layoutPanelPos, setLayoutPanelPos] = useState({ top: 50, right: 200 });
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [consoleVersion, setConsoleVersion] = useState<string>('--');
   const [includeChildren, setIncludeChildren] = useState<boolean>(false);
@@ -89,6 +93,8 @@ const UserInfo: React.FC = () => {
   // 组面板引用，用于检测点击外部关闭
   const groupPanelRef = useRef<HTMLDivElement>(null);
   const groupMenuItemRef = useRef<HTMLDivElement>(null);
+  const layoutPanelRef = useRef<HTMLDivElement>(null);
+  const layoutMenuItemRef = useRef<HTMLDivElement>(null);
 
   // 搜索时自动展开所有节点（仅在从无搜索变为有搜索时触发）
   const prevSearchValueRef = useRef<string>('');
@@ -127,6 +133,19 @@ const UserInfo: React.FC = () => {
     Cookies.set('include_children', checked ? '1' : '0', { expires: 365 });
     refreshPage();
   }, [refreshPage]);
+
+  const toggleLayoutPanel = useCallback(() => {
+    if (layoutPanelVisible) {
+      setLayoutPanelVisible(false);
+      return;
+    }
+    const item = layoutMenuItemRef.current;
+    if (item) {
+      setLayoutPanelPos(getLayoutPanelPosition(item));
+    }
+    setGroupPanelVisible(false);
+    setLayoutPanelVisible(true);
+  }, [layoutPanelVisible]);
 
   const federatedLogout = useCallback(async () => {
     setIsLoading(true);
@@ -275,6 +294,15 @@ const UserInfo: React.FC = () => {
       },
       { type: 'divider' },
       {
+        key: 'layout',
+        label: (
+          <div ref={layoutMenuItemRef}>
+            <LayoutSwitcher onToggle={toggleLayoutPanel} />
+          </div>
+        ),
+      },
+      { type: 'divider' },
+      {
         key: 'version',
         label: (
           <div className="w-full flex justify-between items-center">
@@ -292,6 +320,7 @@ const UserInfo: React.FC = () => {
             className="w-full flex justify-between items-center"
             onClick={(e) => {
               e.stopPropagation();
+              setLayoutPanelVisible(false);
               setGroupPanelVisible(!groupPanelVisible);
             }}
           >
@@ -319,11 +348,11 @@ const UserInfo: React.FC = () => {
     ];
 
     return items;
-  }, [consoleVersion, selectedGroup, groupTree, isLoading, isSuperUser, session, groupPanelContent, groupPanelVisible, t]);
+  }, [consoleVersion, selectedGroup, groupTree, isLoading, isSuperUser, session, groupPanelContent, groupPanelVisible, toggleLayoutPanel, t]);
 
   const handleMenuClick = ({ key }: any) => {
     // 点击组选项时不关闭菜单（由 Popover 控制）
-    if (key === 'groups') {
+    if (key === 'groups' || key === 'layout') {
       return;
     }
 
@@ -333,14 +362,18 @@ const UserInfo: React.FC = () => {
 
     setDropdownVisible(false);
     setGroupPanelVisible(false);
+    setLayoutPanelVisible(false);
   };
 
   const handleOpenChange = (open: boolean) => {
-    // 如果组面板打开着，保持下拉菜单打开
-    if (groupPanelVisible && !open) {
+    if ((groupPanelVisible || layoutPanelVisible) && !open) {
       return;
     }
     setDropdownVisible(open);
+    if (!open) {
+      setGroupPanelVisible(false);
+      setLayoutPanelVisible(false);
+    }
   };
 
   return (
@@ -404,6 +437,36 @@ const UserInfo: React.FC = () => {
             {groupPanelContent}
           </div>
         </>
+      )}
+      {layoutPanelVisible && createPortal(
+        <>
+          <div
+            className="fixed inset-0 z-[1079]"
+            onClick={(e) => {
+              e.stopPropagation();
+              setLayoutPanelVisible(false);
+              setDropdownVisible(false);
+            }}
+          />
+          <div
+            ref={layoutPanelRef}
+            className="fixed z-[1080] rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] shadow-lg"
+            style={{
+              top: layoutPanelPos.top,
+              right: layoutPanelPos.right,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <LayoutSwitcherPanel
+              onApplied={() => {
+                setLayoutPanelVisible(false);
+                setDropdownVisible(false);
+                setGroupPanelVisible(false);
+              }}
+            />
+          </div>
+        </>,
+        document.body,
       )}
       <VersionModal visible={versionVisible} onClose={() => setVersionVisible(false)} />
       <UserInformation visible={userInfoVisible} onClose={() => setUserInfoVisible(false)} />
