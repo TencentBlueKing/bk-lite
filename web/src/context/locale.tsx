@@ -76,7 +76,16 @@ export const LocaleProvider = ({ children }: { children: ReactNode }) => {
       {isLoading ? (
         <Spin></Spin>
       ) : (
-        <IntlProvider locale={locale} messages={messages as any}>
+        <IntlProvider
+          locale={locale}
+          messages={messages as any}
+          onError={(err) => {
+            if ((err as { code?: string }).code === 'MISSING_TRANSLATION') {
+              return;
+            }
+            console.error(err);
+          }}
+        >
           <ConfigProvider locale={antdLocale}>{children}</ConfigProvider>
         </IntlProvider>
       )}
