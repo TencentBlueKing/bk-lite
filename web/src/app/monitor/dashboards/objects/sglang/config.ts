@@ -327,6 +327,8 @@ export const SGLANG_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       centerMetric: 'sglang_running_reqs',
       centerCaption: '运行中',
       centerUnit: 'counts',
+      // 空闲实例 gauge 常为 0；全 0 占比无业务含义，与时延等面板统一为空态。
+      emptyWhenAllZero: true,
       guide: [
         {
           label: '队列分布',
