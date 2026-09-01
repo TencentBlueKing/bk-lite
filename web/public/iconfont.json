@@ -6,6 +6,111 @@
   "description": "opspolit",
   "glyphs": [
     {
+      "icon_id": "9509959",
+      "name": "知识库",
+      "font_class": "zhishiku3",
+      "unicode": "e735",
+      "unicode_decimal": 59189
+    },
+    {
+      "icon_id": "21684637",
+      "name": "记忆",
+      "font_class": "jiyi1",
+      "unicode": "e71c",
+      "unicode_decimal": 59164
+    },
+    {
+      "icon_id": "26110554",
+      "name": "工作台",
+      "font_class": "gongzuotai",
+      "unicode": "e733",
+      "unicode_decimal": 59187
+    },
+    {
+      "icon_id": "31733979",
+      "name": "icon_超级记忆",
+      "font_class": "icon_chaojijiyi",
+      "unicode": "e734",
+      "unicode_decimal": 59188
+    },
+    {
+      "icon_id": "3213554",
+      "name": "系统集成",
+      "font_class": "default-provider",
+      "unicode": "e732",
+      "unicode_decimal": 59186
+    },
+    {
+      "icon_id": "17392725",
+      "name": "首页",
+      "font_class": "home",
+      "unicode": "e731",
+      "unicode_decimal": 59185
+    },
+    {
+      "icon_id": "12236151",
+      "name": "门户",
+      "font_class": "menhu",
+      "unicode": "e730",
+      "unicode_decimal": 59184
+    },
+    {
+      "icon_id": "12209022",
+      "name": "同步用户",
+      "font_class": "tongbuyonghu",
+      "unicode": "e72f",
+      "unicode_decimal": 59183
+    },
+    {
+      "icon_id": "6263311",
+      "name": "域名白名单",
+      "font_class": "whitelist",
+      "unicode": "e72d",
+      "unicode_decimal": 59181
+    },
+    {
+      "icon_id": "47737622",
+      "name": "记忆",
+      "font_class": "jiyi",
+      "unicode": "e72c",
+      "unicode_decimal": 59180
+    },
+    {
+      "icon_id": "13003140",
+      "name": "企业微信",
+      "font_class": "wecom",
+      "unicode": "e72a",
+      "unicode_decimal": 59178
+    },
+    {
+      "icon_id": "48056795",
+      "name": "bklite",
+      "font_class": "bklite",
+      "unicode": "e6601",
+      "unicode_decimal": 943617
+    },
+    {
+      "icon_id": "42506406",
+      "name": "外部系统管理",
+      "font_class": "waibuxitongguanli",
+      "unicode": "e729",
+      "unicode_decimal": 59177
+    },
+    {
+      "icon_id": "3814466",
+      "name": "账号密码",
+      "font_class": "zhanghaomima",
+      "unicode": "e728",
+      "unicode_decimal": 59176
+    },
+    {
+      "icon_id": "9186709",
+      "name": "微信",
+      "font_class": "wechat",
+      "unicode": "e726",
+      "unicode_decimal": 59174
+    },
+    {
       "icon_id": "8791360",
       "name": "技能培训",
       "font_class": "jinengpeixun",
@@ -60,13 +165,6 @@
       "font_class": "snmp_trap",
       "unicode": "e750",
       "unicode_decimal": 59216
-    },
-    {
-      "icon_id": "15872015",
-      "name": "首页",
-      "font_class": "shouye",
-      "unicode": "e71c",
-      "unicode_decimal": 59164
     },
     {
       "icon_id": "43810029",
@@ -1565,6 +1663,13 @@
       "font_class": "lianxiwomen1",
       "unicode": "e6d2",
       "unicode_decimal": 59090
+    },
+    {
+      "icon_id": "11086563",
+      "name": "首页",
+      "font_class": "shouye",
+      "unicode": "e63e",
+      "unicode_decimal": 58942
     },
     {
       "icon_id": "43626789",

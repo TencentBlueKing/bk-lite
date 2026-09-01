@@ -11,6 +11,8 @@ export interface Studio {
   is_pinned?: boolean;
   bot_type?: number;
   permissions?: string[];
+  created_at?: string;
+  updated_at?: string;
   [key: string]: unknown;
 }
 

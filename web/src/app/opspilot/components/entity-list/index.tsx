@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Input, message, Spin, Modal, Select, Space } from 'antd';
+import { Button, Dropdown, Input, message, Spin, Modal, Select, Space } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
-import Icon from '@/components/icon';
-import styles from '@/app/opspilot/styles/common.module.scss';
 import PermissionWrapper from '@/components/permission';
+import OpsPilotListPageHeader from '@/app/opspilot/components/opspilot-list-page-header';
+import OpsPilotCardGridSkeleton from '@/app/opspilot/components/opspilot-card-grid-skeleton';
 
 const { Search } = Input;
 
@@ -26,6 +27,8 @@ interface EntityListProps<T> {
   onCreateFromTemplate?: (itemType: string) => void;
   onTogglePin?: (item: T) => Promise<void>;
   pageSize?: number;
+  pageTitle?: string;
+  pageDescription?: string;
 }
 
 interface ApiResponse<T> {
@@ -43,7 +46,9 @@ const EntityList = <T,>({
   beforeDelete,
   onCreateFromTemplate,
   onTogglePin,
-  pageSize = 20
+  pageSize = 20,
+  pageTitle,
+  pageDescription,
 }: EntityListProps<T>) => {
   const { t } = useTranslation();
   const { get, post, patch, del } = useApiClient();
@@ -255,20 +260,112 @@ const EntityList = <T,>({
     }
   };
 
+  const openCreateBlank = () => {
+    setIsModalVisible(true);
+    setEditingItem(null);
+  };
+
+  const createAction =
+    itemTypeSingle === 'skill' && onCreateFromTemplate ? (
+      <PermissionWrapper requiredPermissions={['Add']}>
+        <Dropdown
+          menu={{
+            items: [
+              {
+                key: 'blank',
+                label: t('skill.createBlankAgent'),
+                onClick: openCreateBlank,
+              },
+              {
+                key: 'template',
+                label: t('skill.createFromTemplate'),
+                onClick: handleCreateFromTemplate,
+              },
+            ],
+          }}
+          trigger={['click']}
+        >
+          <Button type="primary" icon={<PlusOutlined />}>
+            {t('common.new')}
+          </Button>
+        </Dropdown>
+      </PermissionWrapper>
+    ) : (
+      <PermissionWrapper requiredPermissions={['Add']}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={openCreateBlank}>
+          {t('common.new')}
+        </Button>
+      </PermissionWrapper>
+    );
+
   return (
     <div className="w-full h-full">
-      <div className="flex justify-end mb-4">
-        {currentTypeOptions.length > 0 ? (
-          <Space.Compact>
-            <Select
-              mode="multiple"
-              allowClear
-              placeholder={t('common.select')}
-              className="w-40"
-              onChange={handleTypeChange}
-              options={currentTypeOptions.map(option => ({ value: option.key, label: option.title }))}
-              maxTagCount="responsive"
-            />
+      {pageTitle ? (
+        <OpsPilotListPageHeader
+          title={pageTitle}
+          description={pageDescription}
+          actions={
+            <>
+              {currentTypeOptions.length > 0 ? (
+                <Space.Compact>
+                  <Select
+                    mode="multiple"
+                    allowClear
+                    placeholder={t('common.select')}
+                    className="w-40"
+                    onChange={handleTypeChange}
+                    options={currentTypeOptions.map((option) => ({
+                      value: option.key,
+                      label: option.title,
+                    }))}
+                    maxTagCount="responsive"
+                  />
+                  <Search
+                    allowClear
+                    enterButton
+                    placeholder={`${t('common.search')}...`}
+                    className="w-60"
+                    onSearch={handleSearch}
+                  />
+                </Space.Compact>
+              ) : (
+                <Search
+                  allowClear
+                  enterButton
+                  placeholder={`${t('common.search')}...`}
+                  className="w-60"
+                  onSearch={handleSearch}
+                />
+              )}
+              {createAction}
+            </>
+          }
+        />
+      ) : (
+        <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
+          {currentTypeOptions.length > 0 ? (
+            <Space.Compact>
+              <Select
+                mode="multiple"
+                allowClear
+                placeholder={t('common.select')}
+                className="w-40"
+                onChange={handleTypeChange}
+                options={currentTypeOptions.map((option) => ({
+                  value: option.key,
+                  label: option.title,
+                }))}
+                maxTagCount="responsive"
+              />
+              <Search
+                allowClear
+                enterButton
+                placeholder={`${t('common.search')}...`}
+                className="w-60"
+                onSearch={handleSearch}
+              />
+            </Space.Compact>
+          ) : (
             <Search
               allowClear
               enterButton
@@ -276,79 +373,29 @@ const EntityList = <T,>({
               className="w-60"
               onSearch={handleSearch}
             />
-          </Space.Compact>
-        ) : (
-          <Search
-            allowClear
-            enterButton
-            placeholder={`${t('common.search')}...`}
-            className="w-60"
-            onSearch={handleSearch}
-          />
-        )}
-      </div>
-      <Spin spinning={loading}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-4">
-          {itemTypeSingle === 'skill' ? (
-            <PermissionWrapper
-              requiredPermissions={['Add']}
-              className={`shadow-md p-4 rounded-xl flex items-center justify-center cursor-pointer ${styles.addNew}`}
-            >
-              <div className="w-full h-full flex flex-col items-center justify-center min-h-37.5 pl-10">
-                <div
-                  className="w-full flex items-center justify-start cursor-pointer hover:text-(--color-primary)"
-                  onClick={() => { setIsModalVisible(true); setEditingItem(null); }}
-                >
-                  <div className="flex items-start mb-4">
-                    <Icon type="xinzeng1" className="text-xl mr-2" />
-                    <div className="text-left">{t('skill.createBlankAgent')}</div>
-                  </div>
-                </div>
-                <div
-                  className="w-full flex items-center justify-start cursor-pointer hover:text-(--color-primary)"
-                  onClick={handleCreateFromTemplate}
-                >
-                  <div className="flex items-start">
-                    <Icon type="chuangjianpushu-xianxing" className="text-xl mr-2" />
-                    <div className="text-left">{t('skill.createFromTemplate')}</div>
-                  </div>
-                </div>
-              </div>
-            </PermissionWrapper>
-          ) : (
-            <PermissionWrapper
-              requiredPermissions={['Add']}
-              className={`shadow-md p-4 rounded-xl flex items-center justify-center cursor-pointer ${styles.addNew}`}
-            >
-              <div
-                className="w-full h-full flex items-center justify-center min-h-37.5"
-                onClick={() => { setIsModalVisible(true); setEditingItem(null); }}
-              >
-                <div className="text-center">
-                  <div className='2xl'>+</div>
-                  <div className="mt-2">{t('common.addNew')}</div>
-                </div>
-              </div>
-            </PermissionWrapper>
           )}
-          {items.map((item, index) => (
-            <CardComponent
-              key={(item as any).id || index}
-              {...item}
-              index={index}
-              onMenuClick={handleMenuClick}
-            />
-          ))}
+          {createAction}
         </div>
-        <div ref={loadMoreRef} className="w-full h-6 flex items-center justify-center">
-          {loadingMore && <Spin size="small" />}
-          {/* {!hasMore && items.length > 0 && (
-            <div className="text-gray-500 text-xs py-4">
-              {t('common.noMoreData')} (共 {totalCount} 条)
-            </div>
-          )} */}
-        </div>
-      </Spin>
+      )}
+      {loading ? (
+        <OpsPilotCardGridSkeleton />
+      ) : (
+        <>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+            {items.map((item, index) => (
+              <CardComponent
+                key={(item as any).id || index}
+                {...item}
+                index={index}
+                onMenuClick={handleMenuClick}
+              />
+            ))}
+          </div>
+          <div ref={loadMoreRef} className="flex h-6 w-full items-center justify-center">
+            {loadingMore && <Spin size="small" />}
+          </div>
+        </>
+      )}
       <ModifyModalComponent
         visible={isModalVisible}
         onCancel={() => setIsModalVisible(false)}

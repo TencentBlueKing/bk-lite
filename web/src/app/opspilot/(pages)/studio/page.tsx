@@ -67,6 +67,8 @@ const StudioPage: React.FC = () => {
       CardComponent={StudioCard}
       ModifyModalComponent={StudioModifyModal}
       itemTypeSingle="studio"
+      pageTitle={t('studio.pageTitle')}
+      pageDescription={t('studio.pageDescription')}
       beforeDelete={beforeDelete}
       onTogglePin={beforePin}
     />

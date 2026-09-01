@@ -55,6 +55,8 @@ export interface ModelVendor {
     embed_model_count?: number;
     rerank_model_count?: number;
     ocr_model_count?: number;
+    created_at?: string;
+    updated_at?: string;
 }
 
 export interface ModelVendorPayload {

@@ -87,7 +87,7 @@
     },
     {
       "title": "知识库",
-      "icon": "zhishiku",
+      "icon": "zhishiku1",
       "url": "/opspilot/wiki",
       "name": "wiki_list",
       "hasDetail": true,
@@ -234,7 +234,7 @@
     },
     {
       "title": "Knowledge Base",
-      "icon": "zhishiku",
+      "icon": "zhishiku1",
       "url": "/opspilot/wiki",
       "name": "wiki_list",
       "hasDetail": true,

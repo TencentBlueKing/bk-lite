@@ -49,6 +49,9 @@ const EntityList = <T,>({
   iconRender,
   descSlot,
   showBuiltinTag = true,
+  renderCard: customRenderCard,
+  hideToolbar = false,
+  loadingContent,
 }: EntityListProps<T>) => {
   const { t } = useTranslation();
   const [searchTerm, setSearchTerm] = useState('');
@@ -194,40 +197,46 @@ const EntityList = <T,>({
 
   return (
     <div className="w-full h-full">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          {toolbarPrefix}
+      {!hideToolbar ? (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            {toolbarPrefix}
+          </div>
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+            <Space.Compact>
+              {filter && (<Select
+                size={searchSize}
+                allowClear={true}
+                placeholder={`${t('common.select')}...`}
+                mode="multiple"
+                maxTagCount="responsive"
+                className="w-[170px]"
+                options={filterOptions}
+                disabled={filterLoading}
+                loading={filterLoading}
+                onChange={handleFilter}
+              />)}
+              {search && (<Search
+                size={searchSize}
+                allowClear
+                enterButton
+                placeholder={`${t('common.search')}...`}
+                className="w-60"
+                onSearch={handleSearch}
+              />)}
+            </Space.Compact>
+            {operateSection && <>{operateSection}</>}
+          </div>
         </div>
-        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-          <Space.Compact>
-            {filter && (<Select
-              size={searchSize}
-              allowClear={true}
-              placeholder={`${t('common.select')}...`}
-              mode="multiple"
-              maxTagCount="responsive"
-              className="w-[170px]"
-              options={filterOptions}
-              disabled={filterLoading}
-              loading={filterLoading}
-              onChange={handleFilter}
-            />)}
-            {search && (<Search
-              size={searchSize}
-              allowClear
-              enterButton
-              placeholder={`${t('common.search')}...`}
-              className="w-60"
-              onSearch={handleSearch}
-            />)}
-          </Space.Compact>
-          {operateSection && <>{operateSection}</>}
-        </div>
-      </div>
+      ) : null}
       {loading ? (
-        <div className="min-h-[300px] flex items-center justify-center">
-          <Spin spinning={loading}></Spin>
-        </div>
+        loadingContent ? (
+          loadingContent
+        ) : (
+          <div className="min-h-[300px] flex items-center justify-center">
+            <Spin spinning={loading}></Spin>
+          </div>
+        )
       ) : (
         <div className="@container">
           {filteredItems.length === 0 ? (
@@ -241,7 +250,13 @@ const EntityList = <T,>({
           ) : (
             <div className="grid grid-cols-1 @sm:grid-cols-2 @md:grid-cols-3 @lg:grid-cols-4 @7xl:grid-cols-5 gap-6">
               {openModal && renderAddButton()}
-              {filteredItems.map((item) => renderCard(item))}
+              {filteredItems.map((item) =>
+                customRenderCard ? (
+                  <React.Fragment key={(item as any).id}>{customRenderCard(item)}</React.Fragment>
+                ) : (
+                  renderCard(item)
+                ),
+              )}
             </div>
           )}
         </div>

@@ -1,17 +1,13 @@
 'use client';
 
 import React from 'react';
-import { Card, Dropdown, Menu, Tag, Tooltip } from 'antd';
-import { PushpinFilled, PushpinOutlined } from '@ant-design/icons';
+import { Menu } from 'antd';
 import { useRouter } from 'next/navigation';
-import Icon from '@/components/icon';
-import Image from 'next/image';
 import { useTranslation } from '@/utils/i18n';
-import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
-import styles from '@/app/opspilot/styles/common.module.scss';
 import PermissionWrapper from '@/components/permission';
-
-const { Meta } = Card;
+import UnifiedOpsCard from '@/app/opspilot/components/unified-ops-card';
+import { formatRelativeTime, pickEntityTimestamp } from '@/app/opspilot/utils/relativeTime';
+import { pickStableIcon } from '@/app/opspilot/utils/pickStableIcon';
 
 interface EntityCardProps {
   id: string | number;
@@ -22,16 +18,19 @@ interface EntityCardProps {
   team: any[];
   online?: boolean;
   modelName?: string;
+  skillType?: string;
   skill_type?: number;
   bot_type?: number;
   botType?: string;
+  created_at?: string | null;
+  updated_at?: string | null;
   is_pinned?: boolean;
   showPinButton?: boolean;
   permissions?: string[];
   onMenuClick: (action: string, entity: any) => void;
   redirectUrl: string;
-  iconTypeMapping: [string, string];
-  // 组织行标签，默认 common.organization（"组织"）；studio 卡片传"管理组织"
+  iconTypeMapping: string[];
+  /** @deprecated Look B 使用 Owner/Team，保留以免调用方报错 */
   teamLabel?: string;
 }
 
@@ -44,59 +43,47 @@ const EntityCard: React.FC<EntityCardProps> = ({
   team,
   online,
   modelName,
+  skillType,
   skill_type,
   bot_type,
+  botType,
+  created_at,
+  updated_at,
   is_pinned,
   showPinButton = false,
   permissions,
   onMenuClick,
   redirectUrl,
   iconTypeMapping,
-  teamLabel
 }) => {
   const router = useRouter();
   const { t } = useTranslation();
 
+  const entityPayload = {
+    id,
+    name,
+    introduction,
+    created_by,
+    team_name,
+    team,
+    online,
+    skill_type,
+    bot_type,
+    is_pinned,
+  };
+
   const menu = (
-    <Menu className={`${styles.menuContainer}`}>
+    <Menu>
       <Menu.Item key={`edit-${id}`}>
-        <PermissionWrapper
-          requiredPermissions={['Edit']}
-          instPermissions={permissions}>
-          <span
-            className="block"
-            onClick={() => onMenuClick('edit', {
-              id,
-              name,
-              introduction,
-              created_by,
-              team_name,
-              team,
-              online,
-              skill_type,
-              bot_type
-            })}>
+        <PermissionWrapper requiredPermissions={['Edit']} instPermissions={permissions}>
+          <span className="block" onClick={() => onMenuClick('edit', entityPayload)}>
             {t('common.edit')}
           </span>
         </PermissionWrapper>
       </Menu.Item>
       <Menu.Item key={`delete-${id}`}>
-        <PermissionWrapper
-          requiredPermissions={['Delete']}
-          instPermissions={permissions}>
-          <span
-            className="block"
-            onClick={() => onMenuClick('delete', {
-              id,
-              name,
-              introduction,
-              created_by,
-              team_name,
-              team,
-              online,
-              skill_type,
-              bot_type
-            })}>
+        <PermissionWrapper requiredPermissions={['Delete']} instPermissions={permissions}>
+          <span className="block" onClick={() => onMenuClick('delete', entityPayload)}>
             {t('common.delete')}
           </span>
         </PermissionWrapper>
@@ -104,112 +91,61 @@ const EntityCard: React.FC<EntityCardProps> = ({
     </Menu>
   );
 
-  const getStableRandom = (seed: string | number, max: number) => {
-    const hash = seed.toString().split('').reduce((a, b) => {
-      a = ((a << 5) - a) + b.charCodeAt(0);
-      return a & a;
-    }, 0);
-    return Math.abs(hash) % max;
-  };
+  const getIconType = () => pickStableIcon(id, iconTypeMapping, name);
 
-  const getIconType = () => {
-    if (bot_type !== undefined) {
-      const botTypeMap: { [key: number]: string } = {
-        1: 'Copilot',
-        2: 'icon-192x192',
-        3: 'Chatflow'
-      };
+  // 工作台 botType（Chatflow 等）与标题下上线/下线重复，改用上线/下线作 meta tag
+  const studioStatusMeta =
+    bot_type !== undefined && online !== undefined
+      ? online
+        ? t('studio.on')
+        : t('studio.off')
+      : undefined;
 
-      return botTypeMap[bot_type] || iconTypeMapping[getStableRandom(id, iconTypeMapping.length)];
-    }
+  const meta = [
+    studioStatusMeta ?? botType,
+    skillType,
+    modelName,
+  ].filter((item): item is string => Boolean(item && String(item).trim()));
 
-    return iconTypeMapping[getStableRandom(id, iconTypeMapping.length)];
-  };
+  const teams = Array.isArray(team_name)
+    ? team_name
+    : team_name
+      ? [team_name]
+      : [];
 
-  const iconType = getIconType();
-  const avatar = getStableRandom(id + 'avatar', 2) === 0 ? '/app/banner_bg_1.jpg' : '/app/banner_bg_2.jpg';
-
-  const handlePinClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onMenuClick('pin', {
-      id,
-      name,
-      introduction,
-      created_by,
-      team_name,
-      team,
-      online,
-      skill_type,
-      bot_type,
-      is_pinned
-    });
-  };
+  const relativeUpdatedAt = formatRelativeTime(pickEntityTimestamp({ updated_at, created_at }), t);
 
   return (
-    <Card
-      className={`shadow-md cursor-pointer rounded-xl relative overflow-hidden ${styles.CommonCard}`}
+    <UnifiedOpsCard
+      name={name}
+      description={introduction}
+      icon={getIconType()}
+      status={
+        studioStatusMeta || online === undefined
+          ? undefined
+          : online
+            ? 'online'
+            : 'offline'
+      }
+      statusLabel={
+        studioStatusMeta || online === undefined
+          ? undefined
+          : online
+            ? t('studio.on')
+            : t('studio.off')
+      }
+      updatedAt={relativeUpdatedAt || undefined}
+      meta={meta}
+      pinned={is_pinned}
+      showPin={showPinButton}
+      footer="entity"
+      owner={created_by || '--'}
+      team={teams}
+      menuOverlay={menu}
       onClick={() => router.push(`${redirectUrl}?id=${id}&name=${name}&desc=${introduction}`)}
-    >
-      {showPinButton && (
-        <Tooltip title={is_pinned ? t('common.unpin') : t('common.pin')}>
-          <div
-            className="absolute top-2 left-2 z-10 cursor-pointer w-6 h-6 rounded-full flex items-center justify-center bg-[rgba(0,0,0,0.3)] hover:bg-[rgba(0,0,0,0.5)] transition-colors"
-            onClick={handlePinClick}
-          >
-            {is_pinned ? (
-              <PushpinFilled className="text-sm text-white" style={{ transform: 'rotate(-45deg)' }} />
-            ) : (
-              <PushpinOutlined className="text-sm text-white/70 hover:text-white" />
-            )}
-          </div>
-        </Tooltip>
-      )}
-      <div className="absolute top-2 right-2 z-10" onClick={(e) => e.stopPropagation()}>
-        <Dropdown overlay={menu} trigger={['click']} key={`dropdown-${id}`} placement="bottomRight">
-          <div className="cursor-pointer">
-            <Icon type="sangedian-copy" className="text-xl" />
-          </div>
-        </Dropdown>
-      </div>
-      <div className="w-full h-12.5 relative">
-        <Image alt="avatar" src={avatar} layout="fill" objectFit="cover" className="rounded-t-xl" />
-      </div>
-      <div className={`w-14 h-14 rounded-full flex justify-center items-center ${styles.iconContainer}`}>
-        <Icon type={iconType} className="text-4xl" />
-      </div>
-      <div className="p-4 relative">
-        <Meta
-          title={name}
-          description={
-            <>
-              <p className={`mt-3 mb-2 text-xs line-clamp-3 h-12.5 ${styles.desc}`}>{introduction}</p>
-              <div className="flex items-end justify-between">
-                <div className="font-normal flex items-center">
-                  {online !== undefined && (
-                    <Tag
-                      color={online ? 'green' : ''}
-                      className={`${styles.statusTag} ${online ? styles.online : styles.offline} px-1 mr-2`}>
-                      {online ? t('studio.on') : t('studio.off')}
-                    </Tag>
-                  )}
-                  {modelName !== undefined && modelName && (
-                    <Tag className="font-mini px-0.5 leading-inherit mr-2" color="blue">{modelName}</Tag>
-                  )}
-                </div>
-                <div className="flex items-end justify-end text-(--color-text-4) font-mini w-full text-right overflow-hidden">
-                  <EllipsisWithTooltip
-                    text={`${teamLabel || t('common.organization')}: ${Array.isArray(team_name) ? team_name.join(',') : '--'}`}
-                    className="overflow-hidden whitespace-nowrap text-ellipsis"
-                  />
-                </div>
-              </div>
-            </>
-          }
-        />
-      </div>
-    </Card>
+      onPinClick={() => onMenuClick('pin', entityPayload)}
+    />
   );
 };
 
 export default EntityCard;
-

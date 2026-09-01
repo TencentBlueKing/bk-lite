@@ -1,6 +1,8 @@
 {
   "wiki": {
     "title": "Knowledge Base",
+    "pageTitle": "Knowledge Base",
+    "pageDescription": "AI-built, page-centric knowledge bases reusable by agents",
     "description": "AI-built, page-centric knowledge bases reusable by agents",
     "create": "Create Knowledge Base",
     "edit": "Edit Knowledge Base",
@@ -722,6 +724,8 @@
     "empty": "No knowledge bases yet"
   },
   "studio": {
+    "pageTitle": "Workbench",
+    "pageDescription": "Manage bot apps, channel publishing, and conversation capabilities",
     "settings": {
       "selectSkills": "Select Skills",
       "enableSsl": "enable SSL",
@@ -817,6 +821,8 @@
     "edit": "Edit Studio"
   },
   "tool": {
+    "pageTitle": "Tools",
+    "pageDescription": "Manage built-in tools, skill packages, and MCP integrations",
     "text": "Text",
     "textarea": "Textarea",
     "deleteConfirm": "Are you sure you want to delete this tool?",
@@ -1178,6 +1184,8 @@
     }
   },
   "skill": {
+    "pageTitle": "Agents",
+    "pageDescription": "Configure LLMs, knowledge bases, and tools for Q&A and automation",
     "form": {
       "enableSuggest": "Enable Suggest",
       "problemOptimizationTip": "When enabled, the LLM model will optimize and process user questions to achieve more accurate query results.",
@@ -1855,6 +1863,8 @@
     "deleteConfirm": "Are you sure you want to delete this model?"
   },
   "memory": {
+    "pageTitle": "Memory",
+    "pageDescription": "Manage personal and organization memory spaces for long-term agent context",
     "title": "Memory Management",
     "spaceList": "Memory Space List",
     "createSpace": "Create Memory Space",
