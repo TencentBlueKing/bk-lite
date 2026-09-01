@@ -42,7 +42,10 @@ def test_custom_metric_resources_remain_modifiable(viewset, instance):
 def test_builtin_metric_resources_cannot_be_reordered(mocker, viewset, model):
     queryset = mocker.patch.object(model.objects, "filter").return_value
     queryset.exists.return_value = True
-    request = SimpleNamespace(data=[{"id": 1, "sort_order": 0}])
+    request = SimpleNamespace(
+        data=[{"id": 1, "sort_order": 0}],
+        user=SimpleNamespace(is_superuser=True),
+    )
 
     with pytest.raises(BaseAppException, match="只读"):
         viewset().set_order(request)

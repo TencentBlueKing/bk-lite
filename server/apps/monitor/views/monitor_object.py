@@ -93,9 +93,7 @@ def _build_org_map_for_ids(model, id_field: str, ids: list) -> dict:
     chunk_size = 2000
     for start in range(0, len(ids), chunk_size):
         chunk = ids[start : start + chunk_size]
-        for entity_id, organization in model.objects.filter(
-            **{f"{id_field}__in": chunk}
-        ).values_list(id_field, "organization"):
+        for entity_id, organization in model.objects.filter(**{f"{id_field}__in": chunk}).values_list(id_field, "organization"):
             org_map.setdefault(entity_id, set()).add(organization)
     return org_map
 
@@ -119,16 +117,10 @@ def _count_by_object_with_permissions(rows, org_map, permissions, cur_team):
 
 def _build_instance_count_map(instance_permissions, cur_team):
     """按权限统计各对象实例数，避免把完整 ORM 实例装入内存。"""
-    rows = list(
-        _build_instance_count_queryset(instance_permissions, cur_team).values_list(
-            "id", "monitor_object_id"
-        )
-    )
+    rows = list(_build_instance_count_queryset(instance_permissions, cur_team).values_list("id", "monitor_object_id"))
     if not rows:
         return {}
-    org_map = _build_org_map_for_ids(
-        MonitorInstanceOrganization, "monitor_instance_id", [row[0] for row in rows]
-    )
+    org_map = _build_org_map_for_ids(MonitorInstanceOrganization, "monitor_instance_id", [row[0] for row in rows])
     return _count_by_object_with_permissions(rows, org_map, instance_permissions, cur_team)
 
 
@@ -202,11 +194,7 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
             _name_key = f"{LanguageConstants.MONITOR_OBJECT}.{result['name']}"
             # display_type 优先级：国际化 > 类型名称 > 类型ID(英文 slug)
             i18n_type = lan.get(_type_key)
-            result["display_type"] = (
-                i18n_type
-                or (result.get("type_info") or {}).get("name")
-                or result["type"]
-            )
+            result["display_type"] = i18n_type or (result.get("type_info") or {}).get("name") or result["type"]
             # display_name 优先级：国际化 > 模型字段 display_name > name(英文 slug)
             i18n_name = lan.get(_name_key)
             result["display_name"] = i18n_name or result.get("display_name") or result["name"]
