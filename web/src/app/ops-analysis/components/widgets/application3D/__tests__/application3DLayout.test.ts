@@ -27,16 +27,26 @@ import {
 } from '../application3DCardStyle';
 
 describe('application3D layout', () => {
-  it('picks columns from viewport aspect instead of a 16-card cap', () => {
+  it('picks columns from the card count instead of a 16-card cap', () => {
     const wide = buildApplication3DLayout(16, 2);
     const tall = buildApplication3DLayout(16, 0.6);
     expect(wide.columns * wide.rows).toBeGreaterThanOrEqual(16);
     expect(tall.columns * tall.rows).toBeGreaterThanOrEqual(16);
-    expect(tall.columns).toBeLessThan(wide.columns);
     const denseWide = buildApplication3DLayout(20, 2);
     const denseTall = buildApplication3DLayout(20, 0.6);
     expect(denseWide.columns * denseWide.rows).toBeGreaterThanOrEqual(20);
     expect(denseTall.columns * denseTall.rows).toBeGreaterThanOrEqual(20);
+    expect(denseWide.columns).toBeGreaterThan(4);
+  });
+
+  it('keeps mid-size landscape walls close to square or slightly wide, not a 2-column tower', () => {
+    for (const count of [20, 22, 26]) {
+      const layout = buildApplication3DLayout(count, 1.78);
+      expect(layout.columns).toBeGreaterThanOrEqual(4);
+      expect(layout.columns).toBeGreaterThanOrEqual(layout.rows - 1);
+      expect(layout.columns / layout.rows).toBeGreaterThanOrEqual(0.7);
+      expect(layout.columns / layout.rows).toBeLessThanOrEqual(2);
+    }
   });
 
   it('lets a wide 16-card wall stay 4×4 when that matches the viewport', () => {
@@ -352,7 +362,7 @@ describe('application3D layout', () => {
     expect(CARD_TONE.critical.glow.width).toBeLessThanOrEqual(28);
     expect(CARD_TONE.warning.glow.width).toBeLessThanOrEqual(16);
     expect(CARD_TONE.unknown.edge).toContain('118, 126, 136');
-    expect(CARD_TONE.normal.edge).toContain('110, 210, 230');
+    expect(CARD_TONE.normal.edge).toContain('92, 154, 190');
     expect(CARD_GLASS.bodyCenter).toContain('16, 32, 48');
     expect(CARD_GLASS.bodyRim).toContain('8, 16, 28');
     expect(CARD_GLASS.frostAlpha).toBe(0);

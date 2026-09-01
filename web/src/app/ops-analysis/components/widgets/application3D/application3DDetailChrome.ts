@@ -9,14 +9,14 @@ import { resolveNeonLevel } from './application3DVisual';
 /** Reuse Wall card status accents; Detail only dials intensity via CSS usage. */
 export const DETAIL_STATUS_ACCENT = {
   normal: {
-    border: 'rgba(64, 210, 255, 0.72)',
-    glow: 'rgba(40, 190, 255, 0.38)',
+    border: 'rgba(80, 150, 196, 0.7)',
+    glow: 'rgba(48, 124, 172, 0.32)',
     glowWidth: 16,
-    softGlow: 'rgba(32, 150, 220, 0.16)',
+    softGlow: 'rgba(32, 96, 144, 0.18)',
     edgeWidth: 1.5,
-    dot: '#3ecbff',
-    badgeBg: 'rgba(8, 32, 52, 0.55)',
-    badgeBorder: 'rgba(64, 210, 255, 0.42)',
+    dot: '#6aa8d0',
+    badgeBg: 'rgba(8, 28, 48, 0.62)',
+    badgeBorder: 'rgba(80, 150, 196, 0.48)',
     badgeText: 'rgba(72, 228, 168, 0.96)',
   },
   critical: {

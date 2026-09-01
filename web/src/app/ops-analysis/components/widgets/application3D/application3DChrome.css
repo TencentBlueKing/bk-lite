@@ -71,12 +71,12 @@
   border-radius: 3.125% / 7.5%;
   background: var(
     --color-application3d-wall-glass-bg,
-    linear-gradient(120deg, rgba(219, 240, 252, 0.08), transparent 48%),
-    linear-gradient(180deg, rgba(32, 68, 102, 0.52) 0%, rgba(13, 40, 68, 0.48) 100%)
+    linear-gradient(120deg, rgba(206, 224, 240, 0.1), transparent 48%),
+    linear-gradient(180deg, rgba(30, 62, 94, 0.7) 0%, rgba(14, 34, 56, 0.68) 100%)
   );
   backdrop-filter: blur(10px) saturate(114%);
   -webkit-backdrop-filter: blur(10px) saturate(114%);
-  border: 1.5px solid rgba(96, 214, 232, 0.72);
+  border: 1.5px solid rgba(100, 162, 198, 0.74);
   box-shadow: none;
 }
 
@@ -86,14 +86,14 @@
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
-  background: linear-gradient(180deg, rgba(220, 242, 255, 0.06) 0%, transparent 14%);
+  background: linear-gradient(180deg, rgba(210, 226, 240, 0.08) 0%, transparent 14%);
   -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.22) 0%, #000 24%);
   mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.22) 0%, #000 24%);
   box-shadow:
-    inset 0 0 0 1px rgba(150, 230, 246, 0.32),
-    inset 0 0 10px 2px rgba(70, 196, 220, 0.4),
-    inset 0 0 18px 3px rgba(40, 160, 190, 0.16),
-    inset 0 8px 16px -2px rgba(70, 196, 220, 0.28);
+    inset 0 0 0 1px rgba(140, 184, 214, 0.34),
+    inset 0 0 10px 2px rgba(64, 128, 168, 0.4),
+    inset 0 0 18px 3px rgba(36, 86, 124, 0.2),
+    inset 0 8px 16px -2px rgba(72, 134, 172, 0.3);
 }
 
 .app3d-wall-glass::after {
@@ -104,7 +104,7 @@
   top: 1px;
   height: 2px;
   pointer-events: none;
-  background: linear-gradient(90deg, transparent, rgba(230, 248, 255, 0.26), transparent);
+  background: linear-gradient(90deg, transparent, rgba(186, 210, 230, 0.24), transparent);
 }
 
 .app3d-wall-glass-chrome {
@@ -117,19 +117,19 @@
 }
 
 .app3d-wall-glass[data-tone='normal'] {
-  border-color: rgba(96, 214, 232, 0.72);
+  border-color: rgba(100, 162, 198, 0.74);
 }
 
 .app3d-wall-glass[data-tone='normal']::before {
   box-shadow:
-    inset 0 0 0 1px rgba(150, 230, 246, 0.32),
-    inset 0 0 10px 2px rgba(70, 196, 220, 0.4),
-    inset 0 0 18px 3px rgba(40, 160, 190, 0.16),
-    inset 0 8px 16px -2px rgba(70, 196, 220, 0.28);
+    inset 0 0 0 1px rgba(140, 184, 214, 0.34),
+    inset 0 0 10px 2px rgba(64, 128, 168, 0.4),
+    inset 0 0 18px 3px rgba(36, 86, 124, 0.2),
+    inset 0 8px 16px -2px rgba(72, 134, 172, 0.3);
 }
 
 .app3d-wall-glass[data-tone='normal']::after {
-  background: linear-gradient(90deg, transparent, rgba(230, 248, 255, 0.26), transparent);
+  background: linear-gradient(90deg, transparent, rgba(186, 210, 230, 0.24), transparent);
 }
 
 .app3d-wall-glass[data-tone='info'] {
