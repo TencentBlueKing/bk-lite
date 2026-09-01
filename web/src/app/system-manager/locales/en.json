@@ -1315,7 +1315,7 @@
       "capability": {
         "userSync": "Identity Sync",
         "loginAuth": "Login Authentication",
-        "imNotification": "Notification Channel",
+        "imNotification": "IM Notification",
         "imGroup": "Group Collaboration"
       },
       "provider": {
