@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { BellOutlined } from '@ant-design/icons';
-import { Button, Grid, Space, Tag, Typography, type TableColumnsType } from 'antd';
+import { Button, Grid, Space, Tag, Typography, type TableColumnsType, type TableProps } from 'antd';
 import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import {
   formatDateTime,
@@ -40,6 +40,7 @@ export default function ServiceCatalogTable({
   onAdjustOrganization,
   onArchive,
   onRetryMetrics,
+  rowSelection,
 }: {
   rows: ServiceEnvironmentRow[];
   redMetrics: Record<string, ApmServiceRed>;
@@ -52,6 +53,7 @@ export default function ServiceCatalogTable({
   onAdjustOrganization: (serviceId: string) => void;
   onArchive: (serviceId: string) => void;
   onRetryMetrics?: () => void;
+  rowSelection?: TableProps<ServiceEnvironmentRow>['rowSelection'];
 }) {
   const { t } = useTranslation();
   const screens = Grid.useBreakpoint();
@@ -343,6 +345,7 @@ export default function ServiceCatalogTable({
       dataSource={rows}
       headerAlignment="column"
       rowKey="key"
+      rowSelection={rowSelection}
       pagination={{
         defaultPageSize: 20,
         pageSizeOptions: [10, 20, 50, 100],
