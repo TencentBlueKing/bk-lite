@@ -26,7 +26,9 @@ def _plugin_params(tmp_path, **extra):
 
 
 @pytest.mark.asyncio
-async def test_host_collect_success_does_not_log_inventory(tmp_path, monkeypatch, caplog):
+async def test_host_collect_success_does_not_log_inventory(
+    tmp_path, monkeypatch, caplog
+):
     payload = json.dumps(
         [
             {
@@ -55,7 +57,11 @@ async def test_host_collect_success_does_not_log_inventory(tmp_path, monkeypatch
     joined = "\n".join(record.getMessage() for record in caplog.records)
     assert SENTINEL_INVENTORY not in joined
     assert SENTINEL_PROC not in joined
-    info_messages = [record.getMessage() for record in caplog.records if record.levelno == logging.INFO]
+    info_messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.levelno == logging.INFO
+    ]
     assert len(info_messages) == 1
     assert "event=host_collect_completed" in info_messages[0]
     assert "host=10.0.0.1" in info_messages[0]
@@ -66,7 +72,9 @@ async def test_host_collect_success_does_not_log_inventory(tmp_path, monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_ssh_script_failure_has_one_traceback_error(tmp_path, monkeypatch, caplog):
+async def test_ssh_script_failure_has_one_traceback_error(
+    tmp_path, monkeypatch, caplog
+):
     original = RuntimeError("ssh failed")
 
     async def fake_nats_request(*_args, **_kwargs):
@@ -82,7 +90,9 @@ async def test_ssh_script_failure_has_one_traceback_error(tmp_path, monkeypatch,
 
     assert result["success"] is False
     assert result["result"]["cmdb_collect_error"] == "ssh failed"
-    error_records = [record for record in caplog.records if record.levelno == logging.ERROR]
+    error_records = [
+        record for record in caplog.records if record.levelno == logging.ERROR
+    ]
     assert len(error_records) == 1
     message = error_records[0].getMessage()
     assert "event=ssh_script_failed" in message
@@ -98,7 +108,9 @@ async def test_ssh_script_failure_has_one_traceback_error(tmp_path, monkeypatch,
 
 
 @pytest.mark.asyncio
-async def test_host_parse_failure_has_traceback_and_unchanged_return(tmp_path, monkeypatch, caplog):
+async def test_host_parse_failure_has_traceback_and_unchanged_return(
+    tmp_path, monkeypatch, caplog
+):
     async def fake_nats_request(*_args, **_kwargs):
         return {"success": True, "result": "{}"}
 
@@ -116,7 +128,9 @@ async def test_host_parse_failure_has_traceback_and_unchanged_return(tmp_path, m
         result = await plugin.list_all_resources()
 
     assert result == {"result": {"cmdb_collect_error": "parse boom"}, "success": False}
-    error_records = [record for record in caplog.records if record.levelno == logging.ERROR]
+    error_records = [
+        record for record in caplog.records if record.levelno == logging.ERROR
+    ]
     assert len(error_records) == 1
     assert "event=host_collect_failed" in error_records[0].getMessage()
     assert "failed_stage=host_parse" in error_records[0].getMessage()

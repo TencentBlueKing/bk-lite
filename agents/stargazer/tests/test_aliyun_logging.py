@@ -22,9 +22,19 @@ def test_list_buckets_failure_logs_exception_not_ak(monkeypatch, caplog, capsys)
 
     plugin.oss_client = SimpleNamespace(list_buckets_with_options=boom)
 
-    monkeypatch.setattr(aliyun_module.oss_20190517_models, "ListBucketsRequest", lambda: SimpleNamespace(max_keys=None))
-    monkeypatch.setattr(aliyun_module.oss_20190517_models, "ListBucketsHeaders", lambda: SimpleNamespace())
-    monkeypatch.setattr(aliyun_module.util_models, "RuntimeOptions", lambda: SimpleNamespace())
+    monkeypatch.setattr(
+        aliyun_module.oss_20190517_models,
+        "ListBucketsRequest",
+        lambda: SimpleNamespace(max_keys=None),
+    )
+    monkeypatch.setattr(
+        aliyun_module.oss_20190517_models,
+        "ListBucketsHeaders",
+        lambda: SimpleNamespace(),
+    )
+    monkeypatch.setattr(
+        aliyun_module.util_models, "RuntimeOptions", lambda: SimpleNamespace()
+    )
 
     test_logger = logging.getLogger("test.stargazer.aliyun_list_buckets")
     monkeypatch.setattr(aliyun_module, "logger", test_logger)
@@ -36,7 +46,9 @@ def test_list_buckets_failure_logs_exception_not_ak(monkeypatch, caplog, capsys)
     captured = capsys.readouterr()
     assert "list_buckets error" not in captured.out
     assert SENTINEL_AK not in captured.out
-    error_records = [record for record in caplog.records if record.levelno == logging.ERROR]
+    error_records = [
+        record for record in caplog.records if record.levelno == logging.ERROR
+    ]
     assert len(error_records) == 1
     message = error_records[0].getMessage()
     assert "event=aliyun_list_buckets_failed" in message

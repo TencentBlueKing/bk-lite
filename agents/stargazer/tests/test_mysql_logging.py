@@ -31,7 +31,9 @@ async def test_mysql_list_all_resources_failure_has_traceback(monkeypatch, caplo
         result = await plugin.list_all_resources()
 
     assert result == {"result": {"cmdb_collect_error": "mysql boom"}, "success": False}
-    error_records = [record for record in caplog.records if record.levelno == logging.ERROR]
+    error_records = [
+        record for record in caplog.records if record.levelno == logging.ERROR
+    ]
     assert len(error_records) == 1
     message = error_records[0].getMessage()
     assert "event=mysql_collect_failed" in message

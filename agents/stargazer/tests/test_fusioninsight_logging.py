@@ -2,7 +2,10 @@ import logging
 
 import plugins.inputs.fusioninsight.fusioninsight_info as fusioninsight_module
 import pytest
-from plugins.inputs.fusioninsight.fusioninsight_info import FusionInsightManager, handle_request
+from plugins.inputs.fusioninsight.fusioninsight_info import (
+    FusionInsightManager,
+    handle_request,
+)
 
 SENTINEL_HTTP_BODY = "SENTINEL_HTTP_BODY"
 SENTINEL_PASSWORD = "must-not-be-logged"
@@ -12,7 +15,9 @@ class _FakeResp:
     def __init__(self, status_code, text="", payload=None):
         self.status_code = status_code
         self.text = text
-        self.content = b"{}" if payload is not None else (text.encode("utf-8") if text else b"")
+        self.content = (
+            b"{}" if payload is not None else (text.encode("utf-8") if text else b"")
+        )
         self._payload = payload if payload is not None else {}
 
     def json(self):
@@ -29,13 +34,17 @@ async def test_http_500_does_not_log_body(monkeypatch, caplog):
     monkeypatch.setattr(fusioninsight_module, "logger", test_logger)
 
     with caplog.at_level(logging.DEBUG, logger=test_logger.name):
-        result = await handle_request("GET", "https://fi.example.com/web/api/v2/hosts", FakeClient())
+        result = await handle_request(
+            "GET", "https://fi.example.com/web/api/v2/hosts", FakeClient()
+        )
 
     assert result["result"] is False
     assert SENTINEL_HTTP_BODY in result["message"]
     joined = "\n".join(record.getMessage() for record in caplog.records)
     assert SENTINEL_HTTP_BODY not in joined
-    error_records = [record for record in caplog.records if record.levelno == logging.ERROR]
+    error_records = [
+        record for record in caplog.records if record.levelno == logging.ERROR
+    ]
     assert len(error_records) == 1
     message = error_records[0].getMessage()
     assert "event=fusioninsight_http_failed" in message
@@ -54,14 +63,20 @@ async def test_success_http_is_not_info(monkeypatch, caplog):
     monkeypatch.setattr(fusioninsight_module, "logger", test_logger)
 
     with caplog.at_level(logging.DEBUG, logger=test_logger.name):
-        result = await handle_request("GET", "https://fi.example.com/web/api/v2/hosts", FakeClient())
+        result = await handle_request(
+            "GET", "https://fi.example.com/web/api/v2/hosts", FakeClient()
+        )
 
     assert result["result"] is True
     assert result["data"] == {"ok": True}
     joined = "\n".join(record.getMessage() for record in caplog.records)
     assert SENTINEL_HTTP_BODY not in joined
     assert not any(record.levelno == logging.INFO for record in caplog.records)
-    debug_messages = [record.getMessage() for record in caplog.records if record.levelno == logging.DEBUG]
+    debug_messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.levelno == logging.DEBUG
+    ]
     assert any("event=fusioninsight_http_ok" in message for message in debug_messages)
 
 
@@ -90,7 +105,9 @@ async def test_list_all_resources_failure_has_one_traceback(monkeypatch, caplog)
         result = await plugin.list_all_resources()
 
     assert result == {"result": {"cmdb_collect_error": "fi boom"}, "success": False}
-    error_records = [record for record in caplog.records if record.levelno == logging.ERROR]
+    error_records = [
+        record for record in caplog.records if record.levelno == logging.ERROR
+    ]
     assert len(error_records) == 1
     message = error_records[0].getMessage()
     assert "event=fusioninsight_collect_failed" in message
