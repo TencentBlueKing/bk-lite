@@ -166,6 +166,7 @@ erDiagram
     ActionRule ||--o{ ActionExecution : defines
     Alert ||--o| ActiveAlertFingerprint : owns
     AlertOutbox }o--|| Alert : references_by_payload
+    AlertOutbox ||--o{ AlertNotificationDelivery : materializes
 
     Event {
         bigint id PK
@@ -206,6 +207,18 @@ erDiagram
         int attempts
         datetime next_retry_at
         json payload
+    }
+
+    AlertNotificationDelivery {
+        bigint id PK
+        bigint outbox_id FK
+        int position
+        string delivery_key UK
+        string channel_type
+        string channel_id
+        string status
+        int attempts
+        datetime next_retry_at
     }
 ```
 
@@ -378,6 +391,8 @@ stateDiagram-v2
 
 Outbox 保证数据库业务状态和待执行副作用同时提交。Broker 首次入队失败时记录仍保持 `pending`，周期扫描会继续投递。`idempotency_key` 防止提醒、升级、动作和自动分派因重复请求产生重复副作用。
 
+通知类型的父 Outbox 只负责把不可变的多渠道 payload 原子物化为 `AlertNotificationDelivery`，随后标记交接完成。每个渠道独立领取、退避和终态确认；成功渠道不会因其他渠道失败而重复发送。渠道任务使用 `claim_token` 防止过期 Worker 覆盖新租约结果，周期任务会重投到期 `pending` 和过期 `delivering`。代码回滚时父 Outbox 保持已交接，未完成渠道意图留在数据库等待恢复新 Worker，不会被旧 Worker 整批重发。
+
 ## 9. Action 自动处置完整链路
 
 ```mermaid
@@ -442,7 +457,7 @@ list、detail、create、update、add-alert 和 remove-alert 使用一致的团�
 ### 11.2 事务与幂等
 
 - 告警状态更新与 outbox 创建处于同一数据库事务。
-- AlertOutbox、ActionExecution 和 ActiveAlertFingerprint 使用数据库唯一约束裁决并发。
+- AlertOutbox、AlertNotificationDelivery、ActionExecution 和 ActiveAlertFingerprint 使用数据库唯一约束裁决并发。
 - 提醒次数、升级层级和对应通知意图在同一事务内推进，避免状态已更新但通知永久丢失。
 - 恢复、关闭和自动恢复终态统一释放活跃指纹租约。
 
@@ -450,7 +465,7 @@ list、detail、create、update、add-alert 和 remove-alert 使用一致的团�
 
 - 自动关闭和会话超时使用主键游标分批扫描，不一次性加载全部告警。
 - 即时告警和自动分派按配置阈值或固定批次处理。
-- Outbox 设置最大尝试次数、指数退避、重试时间和 delivering 超时恢复。
+- Outbox 与渠道级通知投递设置最大尝试次数、指数退避、重试时间和 delivering 超时恢复。
 - 接入结果和日志记录统计及标识，不记录完整敏感事件正文、凭据或大 payload。
 
 ## 12. 可观测性与排障入口
@@ -461,7 +476,7 @@ list、detail、create、update、add-alert 和 remove-alert 使用一致的团�
 | Event 是否形成 Alert | `event_id`、`external_id`、策略 ID、fingerprint |
 | 是否发生重复建警 | `ActiveAlertFingerprint.fingerprint`、关联 Alert |
 | 自动分派停在哪一步 | Alert 状态、operator、auto_assignment outbox 状态 |
-| 通知是否投递 | AlertOutbox kind、status、attempts、next_retry_at、last_error |
+| 通知是否投递 | AlertOutbox 交接状态；AlertNotificationDelivery 的 channel、status、attempts、next_retry_at、last_error |
 | 自动处置是否执行 | ActionExecution idempotency_key、status、job_task_id |
 | 恢复为何未生效 | source_id、push_source_id、external_id、team 复合键 |
 | 定时任务是否失败 | Celery 任务状态、异常日志、扫描批次和游标 |
