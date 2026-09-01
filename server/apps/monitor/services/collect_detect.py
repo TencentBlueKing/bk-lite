@@ -17,7 +17,6 @@ from apps.node_mgmt.models import Node
 from apps.node_mgmt.services.package import PackageService
 from apps.rpc.executor import Executor
 
-
 SENSITIVE_KEYS = {
     "password",
     "passwd",
@@ -84,7 +83,11 @@ class CollectDetectService:
 
         try:
             plugin = cls._get_supported_plugin(task.monitor_plugin_id)
-            instance = runtime_payload.get("instance") or {}
+            instance = dict(runtime_payload.get("instance") or {})
+            if not instance.get("instance_id"):
+                fallback_instance_id = task.instance_key or instance.get("instance_name") or instance.get("host")
+                if fallback_instance_id:
+                    instance["instance_id"] = str(fallback_instance_id)
             config_id = instance.get("config_id") or f"detect_{task.id}"
             env = cls._build_preflight_env(instance, runtime_payload.get("env") or {}, config_id)
             config_context = {
@@ -121,7 +124,7 @@ class CollectDetectService:
             task.result = result
             task.status = "success" if result["success"] else "failed"
             task.phase = "parse_output"
-            task.error_message = result["stderr"] if not result["success"] else ""
+            task.error_message = "" if result["success"] else (result["stderr"] or result.get("stdout") or "")
             task.finished_at = timezone.now()
             task.save(update_fields=["status", "phase", "result", "error_message", "finished_at", "updated_at"])
             return result
@@ -191,10 +194,14 @@ class CollectDetectService:
             .first()
         )
         if not template:
-            template = MonitorPluginConfigTemplate.objects.filter(
-                plugin=plugin,
-                file_type="toml",
-            ).order_by("id").first()
+            template = (
+                MonitorPluginConfigTemplate.objects.filter(
+                    plugin=plugin,
+                    file_type="toml",
+                )
+                .order_by("id")
+                .first()
+            )
         if not template:
             raise ValueError("未找到 Telegraf TOML 采集模板")
         return [template]

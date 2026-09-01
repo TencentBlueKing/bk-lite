@@ -374,6 +374,14 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       ...rowValues,
       instance_type: configsInfo?.instance_type
     };
+    if (!instance.instance_id) {
+      instance.instance_id =
+        record.instance_id ||
+        record.instance_name ||
+        formValues.instance_id ||
+        formValues.instance_name ||
+        (record.key as string);
+    }
     return instance;
   };
 
