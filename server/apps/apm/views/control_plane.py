@@ -56,7 +56,7 @@ from apps.apm.services import (
     DjangoTelemetryQueryService,
     NotificationChannelDirectory,
 )
-from apps.apm.services.access import current_organization_id, filter_current_organization, validate_assignable_organizations
+from apps.apm.services.access import current_organization_id, filter_current_organization, validate_assignable_organizations, visible_organization_ids
 from apps.apm.services.contracts import IngestSnippetRequest, MetricDataState, ServiceMetricQuery
 from apps.apm.services.integration_configuration import CloudRegionConfigurationError
 from apps.apm.services.probe_artifacts import LANGUAGE_PROBE_ARTIFACTS
@@ -132,10 +132,10 @@ class ApmApplicationViewSet(viewsets.GenericViewSet):
 
     def get_queryset(self) -> QuerySet[ApmApplication]:
         queryset = ApmApplication.objects.prefetch_related("organization_links").annotate(service_count=Count("services", distinct=True))
-        organization_id = current_organization_id(self.request)
-        if organization_id is None:
+        organization_ids = visible_organization_ids(self.request)
+        if not organization_ids:
             return queryset.none()
-        return queryset.filter(organization_links__organization=organization_id, is_builtin=False).distinct()
+        return queryset.filter(organization_links__organization__in=organization_ids, is_builtin=False).distinct()
 
     @HasPermission("applications-View,integration_add-View,services-View,integration_instances-View")
     def list(self, request, *args, **kwargs):
@@ -823,12 +823,12 @@ class ApmEventViewSet(viewsets.GenericViewSet):
 
     @HasPermission("events-View")
     def list(self, request, *args, **kwargs):
-        organization_id = current_organization_id(request)
-        if organization_id is None:
+        organization_ids = visible_organization_ids(request)
+        if not organization_ids:
             return Response([])
         serializer = ApmEventQuerySerializer(data=request.query_params)
         serializer.is_valid(raise_exception=True)
-        return Response(self.reader.list(organization_id=organization_id, **serializer.validated_data))
+        return Response(self.reader.list(organization_ids=organization_ids, **serializer.validated_data))
 
 
 class ApmAlertViewSet(viewsets.GenericViewSet):
@@ -836,19 +836,19 @@ class ApmAlertViewSet(viewsets.GenericViewSet):
     alert_service = DjangoApmAlertService()
 
     def get_queryset(self):
-        organization_id = current_organization_id(self.request)
-        if organization_id is None:
+        organization_ids = visible_organization_ids(self.request)
+        if not organization_ids:
             return ApmAlert.objects.none()
-        return self.alert_service.queryset(organization_id=organization_id)
+        return self.alert_service.queryset(organization_ids=organization_ids)
 
     @HasPermission("events-View")
     def list(self, request, *args, **kwargs):
-        organization_id = current_organization_id(request)
-        if organization_id is None:
+        organization_ids = visible_organization_ids(request)
+        if not organization_ids:
             return Response([])
         serializer = ApmAlertQuerySerializer(data=request.query_params)
         serializer.is_valid(raise_exception=True)
-        return Response(self.alert_service.list(organization_id=organization_id, **serializer.validated_data))
+        return Response(self.alert_service.list(organization_ids=organization_ids, **serializer.validated_data))
 
     @HasPermission("events-View")
     def retrieve(self, request, *args, **kwargs):
@@ -857,15 +857,15 @@ class ApmAlertViewSet(viewsets.GenericViewSet):
     @action(methods=("get",), detail=False)
     @HasPermission("events-View")
     def distribution(self, request, *args, **kwargs):
-        organization_id = current_organization_id(request)
-        if organization_id is None:
+        organization_ids = visible_organization_ids(request)
+        if not organization_ids:
             return Response([])
         serializer = ApmAlertQuerySerializer(data=request.query_params)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         return Response(
             self.alert_service.distribution(
-                organization_id=organization_id,
+                organization_ids=organization_ids,
                 started_at=data["started_at"],
                 ended_at=data["ended_at"],
                 status_group=data.get("status_group"),
@@ -932,10 +932,10 @@ class ApmNotificationDeliveryViewSet(viewsets.GenericViewSet):
     delivery_service = DjangoNotificationDeliveryService()
 
     def get_queryset(self):
-        organization_id = current_organization_id(self.request)
-        if organization_id is None:
+        organization_ids = visible_organization_ids(self.request)
+        if not organization_ids:
             return ApmAlertOutbox.objects.none()
-        return self.delivery_service.queryset(organization_id=organization_id)
+        return self.delivery_service.queryset(organization_ids=organization_ids)
 
     @HasPermission("events-View")
     def list(self, request, *args, **kwargs):

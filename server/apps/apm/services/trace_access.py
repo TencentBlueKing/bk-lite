@@ -53,7 +53,7 @@ class TraceAccessResolver:
     def filter_summaries(
         self,
         summaries: Iterable[TraceSummary],
-        organization_id: int,
+        organization_ids: Sequence[int],
     ) -> tuple[TraceSummary, ...]:
         items = tuple(summaries)
         allowed_instances, allowed_services = self._allowed_identities(
@@ -65,7 +65,7 @@ class TraceAccessResolver:
                 )
                 for item in items
             ),
-            organization_id,
+            organization_ids,
         )
         return tuple(
             item
@@ -84,7 +84,7 @@ class TraceAccessResolver:
     def filter_span_summaries(
         self,
         summaries: Iterable[SpanSummary],
-        organization_id: int,
+        organization_ids: Sequence[int],
     ) -> tuple[SpanSummary, ...]:
         items = tuple(summaries)
         allowed_instances, allowed_services = self._allowed_identities(
@@ -96,7 +96,7 @@ class TraceAccessResolver:
                 )
                 for item in items
             ),
-            organization_id,
+            organization_ids,
         )
         return tuple(
             item
@@ -112,7 +112,7 @@ class TraceAccessResolver:
             )
         )
 
-    def can_view_detail(self, detail: TraceDetail, organization_id: int) -> bool:
+    def can_view_detail(self, detail: TraceDetail, organization_ids: Sequence[int]) -> bool:
         identities = tuple(
             _TraceIdentity(
                 span.service_namespace,
@@ -127,15 +127,18 @@ class TraceAccessResolver:
                 detail.instance_id,
             ),
         )
-        allowed_instances, allowed_services = self._allowed_identities(identities, organization_id)
+        allowed_instances, allowed_services = self._allowed_identities(identities, organization_ids)
         return any(self._is_allowed(item, allowed_instances, allowed_services) for item in identities)
 
     @staticmethod
     def _allowed_identities(
         identities: Iterable[_TraceIdentity],
-        organization_id: int,
+        organization_ids: Sequence[int],
     ) -> tuple[set[tuple[str, str, str]], set[tuple[str, str]]]:
         items = tuple(identities)
+        allowed_ids = {int(organization_id) for organization_id in organization_ids}
+        if not allowed_ids:
+            return set(), set()
         service_names = {normalize_identity(item.service_name) for item in items if item.instance_id}
         instance_ids = {normalize_identity(item.instance_id) for item in items if item.instance_id}
         allowed_instances = {
@@ -147,7 +150,7 @@ class TraceAccessResolver:
             for instance in ApmServiceInstance.objects.select_related("service").filter(
                 service__normalized_name__in=service_names,
                 normalized_instance_id__in=instance_ids,
-                organization_links__organization=organization_id,
+                organization_links__organization__in=allowed_ids,
             )
         }
         service_names_without_instance = {normalize_identity(item.service_name) for item in items if item.instance_id is None}
@@ -155,7 +158,7 @@ class TraceAccessResolver:
             (service.normalized_namespace, service.normalized_name)
             for service in ApmService.objects.filter(
                 normalized_name__in=service_names_without_instance,
-                organization_links__organization=organization_id,
+                organization_links__organization__in=allowed_ids,
             )
         }
         return allowed_instances, allowed_services
