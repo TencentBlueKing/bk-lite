@@ -277,6 +277,37 @@ export const getPercentUnitScaleFactor = (
   return null;
 };
 
+/**
+ * 阈值单位下拉展示名：优先 unit_name；percent/percentunit 在名称未标注量纲时补全，
+ * 避免仅用 display_unit（二者皆为 %）时无法区分 0–100 与 0.0–1.0。
+ */
+export const getThresholdUnitSelectLabel = (option: {
+  unit_id: string;
+  unit_name?: string;
+  display_unit?: string;
+}): string => {
+  if (option.unit_id === 'percent') {
+    return option.unit_name?.includes('0-100')
+      ? option.unit_name
+      : 'percent (0-100)';
+  }
+  if (option.unit_id === 'percentunit') {
+    return option.unit_name?.includes('0.0-1.0')
+      ? option.unit_name
+      : 'percentunit (0.0-1.0)';
+  }
+  return option.unit_name || option.display_unit || option.unit_id;
+};
+
+/** 百分比阈值输入占位，明示量纲；其他单位不提示。 */
+export const getThresholdValuePlaceholder = (
+  thresholdUnit: string | null | undefined
+): string => {
+  if (thresholdUnit === 'percent') return '0-100';
+  if (thresholdUnit === 'percentunit') return '0.0-1.0';
+  return '';
+};
+
 /** 阈值单位在 percentunit↔percent 间切换时同步缩放数值，避免误报/漏报。 */
 export const scaleThresholdValuesForUnitChange = <T extends { value: number | null }>(
   thresholds: T[],
