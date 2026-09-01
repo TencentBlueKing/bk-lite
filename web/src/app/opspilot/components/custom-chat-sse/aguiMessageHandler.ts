@@ -61,6 +61,7 @@ import {
   unwrapCustomValue,
   tryParseJsonValue,
 } from './plannedExecutionPayload';
+import { CONTEXT_USAGE_EVENT, parseLlmContextUsage, type LlmContextUsage } from './llmContextUsage';
 import { isToolResultErrorContent } from './toolResultStatus';
 
 export { isToolResultErrorContent } from './toolResultStatus';
@@ -188,15 +189,18 @@ export class AGUIMessageHandler {
   private wikiCitations: WikiCitation[] = [];
   private plannedExecutionState: PlannedExecutionState = createPlannedExecutionState();
   private plannedExecutionStatus: PlannedExecutionStatusValue | null = null;
+  private onContextUsage?: (usage: LlmContextUsage) => void;
 
   constructor(
     botMessage: CustomChatMessage,
     updateMessages: MessageUpdateFn,
-    toolCallsRef: Map<string, ToolCallInfo>
+    toolCallsRef: Map<string, ToolCallInfo>,
+    onContextUsage?: (usage: LlmContextUsage) => void
   ) {
     this.botMessage = botMessage;
     this.updateMessages = updateMessages;
     this.toolCallsRef = toolCallsRef;
+    this.onContextUsage = onContextUsage;
 
     if (typeof window !== 'undefined') {
       initToolCallTooltips();
@@ -1091,6 +1095,11 @@ export class AGUIMessageHandler {
           this.handleSkillView(customValue as SkillViewValue);
         } else if (customName === 'wiki_citations' && customValue) {
           this.handleWikiCitations(customValue as { citations?: WikiCitation[] });
+        } else if (customName === CONTEXT_USAGE_EVENT && customValue) {
+          const usage = parseLlmContextUsage(customValue);
+          if (usage) {
+            this.onContextUsage?.(usage);
+          }
         } else if (customName === 'planned_execution_step' || plannedKind === 'step') {
           this.handlePlannedExecutionStep(customValue as PlannedExecutionStepValue);
         } else if (customName === 'planned_execution_status' || plannedKind === 'status') {

@@ -9,6 +9,7 @@ from django.db.models import F, Q
 from django.utils.timezone import now
 
 from apps.cmdb.models.operation import CmdbOperation, CmdbOperationOutbox, CmdbOperationOutboxStatus, CmdbOperationStatus
+from apps.cmdb.services.operation_outbox_dispatch import dispatch_operation_outbox
 
 
 class OperationConflict(RuntimeError):
@@ -48,6 +49,7 @@ class OperationService:
         action: str,
         target: dict,
         request_payload: dict,
+        event_context: dict | None = None,
     ) -> OperationStart:
         request_hash = cls._request_hash(action, target, request_payload)
         try:
@@ -60,6 +62,7 @@ class OperationService:
                         "action": action,
                         "target": target,
                         "request_snapshot": request_payload,
+                        "event_context": event_context or {},
                     },
                 )
         except IntegrityError:
@@ -119,6 +122,10 @@ class OperationService:
                     [CmdbOperationOutbox(operation_id=operation.id, event_type=event_type, payload=payload) for event_type, payload in events],
                     ignore_conflicts=True,
                 )
+                event_ids = tuple(
+                    str(event_id) for event_id in CmdbOperationOutbox.objects.filter(operation_id=operation.id).values_list("event_id", flat=True)
+                )
+                transaction.on_commit(lambda event_ids=event_ids: dispatch_operation_outbox(event_ids))
         operation.refresh_from_db()
         return operation.result_snapshot
 
@@ -255,6 +262,7 @@ class OperationService:
                 model_object=OPERATOR_INSTANCE,
                 message=f"{'创建' if is_create else '修改'}模型实例. 模型:{result['model_id']} 实例:{result.get('inst_name', '')}",
                 scenario=scenario,
+                attribute_snapshot=event.payload.get("attribute_snapshot"),
                 operation_event_id=event.event_id,
             )
             return
@@ -303,9 +311,9 @@ class OperationService:
         return cls.finish_outbox_success(event_id, owner_token=token)
 
     @staticmethod
-    def _events_for_operation(operation: CmdbOperation) -> list[tuple[str, dict]]:
-        payload = {}
-        if operation.action == "instance.update":
+    def events_for_operation(operation: CmdbOperation) -> list[tuple[str, dict]]:
+        payload = dict(operation.event_context or {})
+        if operation.action == "instance.update" and not payload.get("scenario"):
             payload["scenario"] = operation.request_snapshot.get("scenario")
         return [("change_record", payload), ("auto_relation", {})]
 
@@ -356,7 +364,7 @@ class OperationService:
             cls.recover_pending(
                 operation,
                 fact_finder=lambda operation_id, result=fact: result,
-                events=cls._events_for_operation(operation),
+                events=cls.events_for_operation(operation),
             )
             stats["recovered"] += 1
         return stats

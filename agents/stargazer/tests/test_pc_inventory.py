@@ -69,9 +69,7 @@ def pc_inventory():
 
 
 def test_script_path_is_limited_to_builtin_pc_scripts(pc_inventory):
-    collector = pc_inventory.PCInventoryCollector(
-        _windows_params(script_path="../../../../etc/passwd")
-    )
+    collector = pc_inventory.PCInventoryCollector(_windows_params(script_path="../../../../etc/passwd"))
 
     with pytest.raises(pc_inventory.PCInventoryError, match="SCRIPT_OUTPUT_INVALID"):
         collector._read_script()
@@ -85,9 +83,7 @@ async def test_macos_rejects_non_builtin_script_before_ssh_execution(
     ssh_plugin = Mock()
     monkeypatch.setattr(pc_inventory, "SSHPlugin", ssh_plugin)
 
-    result = await pc_inventory.PCInventoryCollector(
-        _macos_params(script_path="/etc/passwd")
-    ).list_all_resources()
+    result = await pc_inventory.PCInventoryCollector(_macos_params(script_path="/etc/passwd")).list_all_resources()
 
     assert result["success"] is False
     assert result["result"]["cmdb_collect_error"].startswith("SCRIPT_OUTPUT_INVALID")
@@ -96,12 +92,11 @@ async def test_macos_rejects_non_builtin_script_before_ssh_execution(
 
 # ---------------------------------------------------------------- 路由
 
+
 @pytest.mark.asyncio
 async def test_windows_routes_to_winrm(pc_inventory, monkeypatch):
     payload = _load_fixture("windows_complete.json")
-    mock_ansible = AsyncMock(
-        return_value={"success": True, "result": [{"host": "10.0.0.8", "stdout": json.dumps(payload)}]}
-    )
+    mock_ansible = AsyncMock(return_value={"success": True, "result": [{"host": "10.0.0.8", "stdout": json.dumps(payload)}]})
     monkeypatch.setattr(pc_inventory, "ansible_adhoc", mock_ansible)
 
     result = await pc_inventory.PCInventoryCollector(_windows_params()).list_all_resources()
@@ -119,7 +114,9 @@ async def test_windows_routes_to_winrm(pc_inventory, monkeypatch):
     sw_row = result["result"]["pc_software"][0]
     assert sw_row["inst_name"].startswith("SW-")
     assert sw_row["pc_inst_name"] == pc_row["inst_name"]
-    assert sw_row["snapshot_id"] == pc_row["snapshot_id"]
+    assert "snapshot_id" not in sw_row
+    assert "snapshot_id" not in pc_row
+    assert result["snapshot_id"]
 
 
 @pytest.mark.asyncio
@@ -150,15 +147,10 @@ async def test_unknown_os_type_rejected(pc_inventory):
 
 # ---------------------------------------------------------------- 身份规范化
 
+
 def test_build_pc_inst_name_uuid_priority(pc_inventory):
-    assert (
-        pc_inventory.build_pc_inst_name("windows", "4c4c4544-0038-5910-8058-c4c04f433632", "")
-        == "WIN-4C4C4544-0038-5910-8058-C4C04F433632"
-    )
-    assert (
-        pc_inventory.build_pc_inst_name("macos", "{00001111-2222-3333-4444-555566667777}", "")
-        == "MAC-00001111-2222-3333-4444-555566667777"
-    )
+    assert pc_inventory.build_pc_inst_name("windows", "4c4c4544-0038-5910-8058-c4c04f433632", "") == "WIN-4C4C4544-0038-5910-8058-C4C04F433632"
+    assert pc_inventory.build_pc_inst_name("macos", "{00001111-2222-3333-4444-555566667777}", "") == "MAC-00001111-2222-3333-4444-555566667777"
 
 
 @pytest.mark.parametrize(
@@ -193,30 +185,32 @@ def test_software_inst_name_stable_and_version_free(pc_inventory):
 
 # ---------------------------------------------------------------- 快照规范化与边界
 
+
 def test_normalization_marks_complete_snapshot(pc_inventory):
     payload = _load_fixture("windows_complete.json")
     normalized = pc_inventory.normalize_snapshot(payload, host="10.0.0.8")
     assert normalized["success"] is True
     pc_row = normalized["result"]["pc"][0]
-    assert pc_row["software_snapshot_status"] == "complete"
-    assert pc_row["software_expected_count"] == "1"
-    assert pc_row["software_error_count"] == "0"
+    assert normalized["snapshot_status"] == "complete"
+    assert normalized["snapshot_metadata"] == {
+        "software_expected_count": 1,
+        "software_error_count": 0,
+    }
+    assert "snapshot_id" not in pc_row
 
 
 def test_partial_snapshot_never_deletable(pc_inventory):
     payload = _load_fixture("macos_partial.json")
     normalized = pc_inventory.normalize_snapshot(payload, host="10.0.0.9")
-    pc_row = normalized["result"]["pc"][0]
-    assert pc_row["software_snapshot_status"] == "partial"
-    assert pc_row["software_error_count"] == "2"
+    assert normalized["snapshot_status"] == "partial"
+    assert normalized["snapshot_metadata"]["software_error_count"] == 2
 
 
 def test_oversize_field_degrades_snapshot(pc_inventory):
     payload = _load_fixture("windows_complete.json")
     payload["software"][0]["name"] = "x" * 2000
     normalized = pc_inventory.normalize_snapshot(payload, host="10.0.0.8")
-    pc_row = normalized["result"]["pc"][0]
-    assert pc_row["software_snapshot_status"] != "complete"
+    assert normalized["snapshot_status"] == "partial"
     assert len(normalized["result"]["pc_software"][0]["name"]) <= 1024
 
 
@@ -226,14 +220,20 @@ def test_software_overflow_degrades_snapshot(pc_inventory):
     payload["software"] = [dict(template, name=f"app-{i}") for i in range(5001)]
     payload["software_expected_count"] = 5001
     normalized = pc_inventory.normalize_snapshot(payload, host="10.0.0.8")
-    pc_row = normalized["result"]["pc"][0]
-    assert pc_row["software_snapshot_status"] != "complete"
+    assert normalized["snapshot_status"] == "partial"
     assert len(normalized["result"]["pc_software"]) <= 5000
 
 
 def test_failed_snapshot_returns_error(pc_inventory):
-    payload = {"snapshot_status": "failed", "snapshot_id": "x", "pc": [], "software": [],
-               "software_expected_count": 0, "software_error_count": 0, "error_code": "PC_IDENTITY_INVALID"}
+    payload = {
+        "snapshot_status": "failed",
+        "snapshot_id": "x",
+        "pc": [],
+        "software": [],
+        "software_expected_count": 0,
+        "software_error_count": 0,
+        "error_code": "PC_IDENTITY_INVALID",
+    }
     normalized = pc_inventory.normalize_snapshot(payload, host="10.0.0.8")
     assert normalized["success"] is False
     assert "PC_IDENTITY_INVALID" in json.dumps(normalized, ensure_ascii=False)
@@ -243,13 +243,13 @@ def test_empty_complete_snapshot_kept(pc_inventory):
     payload = _load_fixture("windows_empty.json")
     normalized = pc_inventory.normalize_snapshot(payload, host="10.0.0.8")
     assert normalized["success"] is True
-    pc_row = normalized["result"]["pc"][0]
-    assert pc_row["software_snapshot_status"] == "complete"
-    assert pc_row["software_expected_count"] == "0"
+    assert normalized["snapshot_status"] == "complete"
+    assert normalized["snapshot_metadata"]["software_expected_count"] == 0
     assert normalized["result"]["pc_software"] == []
 
 
 # ---------------------------------------------------------------- 错误映射
+
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
@@ -308,9 +308,7 @@ async def test_macos_ssh_failure_mapped(pc_inventory, monkeypatch, ssh_error, ex
 
 @pytest.mark.asyncio
 async def test_invalid_script_output_mapped(pc_inventory, monkeypatch):
-    mock_ansible = AsyncMock(
-        return_value={"success": True, "result": [{"host": "10.0.0.8", "stdout": "not-a-json"}]}
-    )
+    mock_ansible = AsyncMock(return_value={"success": True, "result": [{"host": "10.0.0.8", "stdout": "not-a-json"}]})
     monkeypatch.setattr(pc_inventory, "ansible_adhoc", mock_ansible)
     result = await pc_inventory.PCInventoryCollector(_windows_params()).list_all_resources()
     assert result["success"] is False

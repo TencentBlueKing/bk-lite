@@ -4,14 +4,8 @@ import pytest
 from django.utils.timezone import now
 
 from apps.cmdb.models.change_record import ChangeRecord
-from apps.cmdb.models.operation import (
-    CmdbOperation,
-    CmdbOperationOutbox,
-    CmdbOperationOutboxStatus,
-    CmdbOperationStatus,
-)
+from apps.cmdb.models.operation import CmdbOperation, CmdbOperationOutbox, CmdbOperationOutboxStatus, CmdbOperationStatus
 from apps.cmdb.services.operation_service import OperationService
-
 
 pytestmark = pytest.mark.django_db
 
@@ -60,6 +54,26 @@ def test_change_record_consumption_is_idempotent_after_status_reset():
     assert ChangeRecord.objects.filter(operation_event_id=event.event_id).count() == 1
     event.operation.refresh_from_db()
     assert event.operation.status == CmdbOperationStatus.COMPLETED
+
+
+def test_change_record_consumption_persists_attribute_snapshot():
+    snapshot = {
+        "version": 1,
+        "attributes": {
+            "interfaces": {
+                "attr_id": "interfaces",
+                "attr_name": "网卡",
+                "attr_type": "table",
+                "columns": [{"column_id": "mac", "column_name": "MAC", "is_row_key": True}],
+            }
+        },
+    }
+    event = _event(payload={"attribute_snapshot": snapshot})
+
+    assert OperationService.consume_outbox(event.event_id, owner_token="owner-snapshot") is True
+
+    record = ChangeRecord.objects.get(operation_event_id=event.event_id)
+    assert record.attribute_snapshot == snapshot
 
 
 def test_outbox_failure_is_retryable_without_rolling_back_graph_result(monkeypatch):

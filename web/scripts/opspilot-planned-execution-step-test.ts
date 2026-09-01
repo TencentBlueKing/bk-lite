@@ -82,6 +82,52 @@ assert.equal(lateState.currentStepIndex, null);
 lateState = attachToolCallToCurrentStep(lateState, 'tool-late');
 assert.deepEqual(lateState.steps[0].toolCallIds, ['tool-late']);
 
+// 重规划后分母跟随最新 total_steps，不再钉死在首轮计划
+let replanState = createPlannedExecutionState();
+replanState = applyPlannedExecutionStep(replanState, {
+  phase: 'start',
+  step_index: 1,
+  total_steps: 4,
+  objective: '解析告警',
+});
+replanState = applyPlannedExecutionStep(replanState, {
+  phase: 'end',
+  step_index: 1,
+  total_steps: 4,
+  objective: '解析告警',
+});
+replanState = applyPlannedExecutionStep(replanState, {
+  phase: 'start',
+  step_index: 2,
+  total_steps: 4,
+  objective: '检查节点',
+});
+replanState = applyPlannedExecutionStep(replanState, {
+  phase: 'end',
+  step_index: 2,
+  total_steps: 4,
+  objective: '检查节点',
+  status: 'failed',
+  error: 'Node不存在: k3s-worker02',
+});
+replanState = applyPlannedExecutionStep(replanState, {
+  phase: 'start',
+  step_index: 3,
+  total_steps: 5,
+  objective: '获取集群节点列表',
+});
+assert.equal(replanState.steps.length, 3);
+assert.ok(replanState.steps.every((step) => step.total_steps === 5));
+assert.equal(replanState.steps[1].status, 'failed');
+
+replanState = applyPlannedExecutionStep(replanState, {
+  phase: 'start',
+  step_index: 3,
+  total_steps: 2,
+  objective: '获取集群节点列表',
+});
+assert.ok(replanState.steps.every((step) => step.total_steps === 3));
+
 // 非法事件不破坏状态
 const unchanged = applyPlannedExecutionStep(state, null as any);
 assert.equal(unchanged.steps.length, state.steps.length);

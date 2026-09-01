@@ -121,7 +121,7 @@ class PluginExecutor:
         result = await probe()
         if not isinstance(result, AccessProbeResult):
             raise TypeError("collector probe must return AccessProbeResult")
-        logger.info(
+        logger.debug(
             "Access probe finished: status=%s error_code=%s host=%s",
             result.status.value,
             result.error_code or "-",

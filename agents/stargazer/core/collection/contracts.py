@@ -37,6 +37,7 @@ __all__ = [
     "TargetCollectionResult",
     "TargetExecutorSettings",
     "build_collection_result_id",
+    "has_publishable_metrics",
 ]
 
 
@@ -71,6 +72,17 @@ class StructuredMetricsPayload:
 
     data: Mapping[str, Any]
     error: str = ""
+    round_metadata: Mapping[str, Any] | None = None
+
+
+def has_publishable_metrics(value: Any) -> bool:
+    """判断成功结果是否包含至少一项可编码的业务指标。"""
+
+    if isinstance(value, StructuredMetricsPayload):
+        return any(bool(rows) for rows in value.data.values())
+    if isinstance(value, str):
+        return bool(value.strip())
+    return bool(value)
 
 
 @dataclass(frozen=True)
@@ -131,6 +143,7 @@ class RunSummary:
     deferred: int
     skipped: int
     publish_succeeded: int = 0
+    publish_not_applicable: int = 0
     publish_failed: int = 0
     publish_unknown: int = 0
     publish_event_failed: int = 0

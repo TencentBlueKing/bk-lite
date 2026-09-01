@@ -35,6 +35,7 @@ class NacosInfo:
         scheme = "https" if str(kwargs.get("ssl", "")).lower() in ("1", "true", "yes") else "http"
         self.base_url = f"{scheme}://{self.host}:{self.port}"
         self.auth = (self.username, self.password) if self.username else None
+        self.collection_task_id = kwargs.get("collection_task_id")
 
     def _get(self, path, params=None):
         return requests.get(
@@ -130,9 +131,13 @@ class NacosInfo:
 
             inst_data = {"result": {"nacos": [model_data]}, "success": True}
         except Exception as err:
-            import traceback
-
-            logger.error(f"nacos_info main error! {traceback.format_exc()}")
+            logger.exception(
+                "event=nacos_collect_failed host=%s task_id=%s failed_stage=%s error_type=%s",
+                self.host,
+                self.collection_task_id,
+                "list_all_resources",
+                type(err).__name__,
+            )
             inst_data = {"result": {"cmdb_collect_error": str(err)}, "success": False}
 
         return inst_data

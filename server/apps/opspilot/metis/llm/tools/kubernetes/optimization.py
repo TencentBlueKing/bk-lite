@@ -1,13 +1,14 @@
 """Kubernetes配置优化建议工具"""
 import json
 from datetime import datetime, timezone
-from typing import Dict, List
+
+from kubernetes import client
 from kubernetes.client import ApiException
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from kubernetes import client
 from loguru import logger
-from apps.opspilot.metis.llm.tools.kubernetes.utils import prepare_context, parse_resource_quantity
+
+from apps.opspilot.metis.llm.tools.kubernetes.utils import parse_resource_quantity, prepare_context
 
 
 @tool()
@@ -83,7 +84,7 @@ def check_scaling_capacity(namespace, replicas, resource_requirements=None, conf
 
             # 检查节点是否Ready
             is_ready = False
-            for condition in (node.status.conditions or []):
+            for condition in node.status.conditions or []:
                 if condition.type == "Ready" and condition.status == "True":
                     is_ready = True
                     break
@@ -93,9 +94,9 @@ def check_scaling_capacity(namespace, replicas, resource_requirements=None, conf
 
             node_name = node.metadata.name
             allocatable = node.status.allocatable or {}
-            allocatable_cpu = parse_resource_quantity(allocatable.get('cpu', '0'))
-            allocatable_memory = parse_resource_quantity(allocatable.get('memory', '0'))
-            allocatable_pods = int(allocatable.get('pods', '110'))
+            allocatable_cpu = parse_resource_quantity(allocatable.get("cpu", "0"))
+            allocatable_memory = parse_resource_quantity(allocatable.get("memory", "0"))
+            allocatable_pods = int(allocatable.get("pods", "110"))
 
             # 计算已使用的资源
             used_cpu = 0
@@ -108,8 +109,8 @@ def check_scaling_capacity(namespace, replicas, resource_requirements=None, conf
                     if pod.spec.containers:
                         for container in pod.spec.containers:
                             if container.resources and container.resources.requests:
-                                cpu_request = container.resources.requests.get('cpu', '0')
-                                memory_request = container.resources.requests.get('memory', '0')
+                                cpu_request = container.resources.requests.get("cpu", "0")
+                                memory_request = container.resources.requests.get("memory", "0")
                                 used_cpu += parse_resource_quantity(cpu_request)
                                 used_memory += parse_resource_quantity(memory_request)
 
@@ -118,32 +119,26 @@ def check_scaling_capacity(namespace, replicas, resource_requirements=None, conf
             available_memory = allocatable_memory - used_memory
             available_pods = allocatable_pods - used_pods
 
-            node_capacity.append({
-                "node_name": node_name,
-                "allocatable": {
-                    "cpu": allocatable_cpu,
-                    "memory": allocatable_memory,
-                    "pods": allocatable_pods
-                },
-                "available": {
-                    "cpu": available_cpu,
-                    "memory": available_memory,
-                    "pods": available_pods
-                },
-                "utilization": {
-                    "cpu_percent": round((used_cpu / allocatable_cpu * 100) if allocatable_cpu > 0 else 0, 2),
-                    "memory_percent": round((used_memory / allocatable_memory * 100) if allocatable_memory > 0 else 0, 2),
-                    "pods_percent": round((used_pods / allocatable_pods * 100) if allocatable_pods > 0 else 0, 2)
+            node_capacity.append(
+                {
+                    "node_name": node_name,
+                    "allocatable": {"cpu": allocatable_cpu, "memory": allocatable_memory, "pods": allocatable_pods},
+                    "available": {"cpu": available_cpu, "memory": available_memory, "pods": available_pods},
+                    "utilization": {
+                        "cpu_percent": round((used_cpu / allocatable_cpu * 100) if allocatable_cpu > 0 else 0, 2),
+                        "memory_percent": round((used_memory / allocatable_memory * 100) if allocatable_memory > 0 else 0, 2),
+                        "pods_percent": round((used_pods / allocatable_pods * 100) if allocatable_pods > 0 else 0, 2),
+                    },
                 }
-            })
+            )
 
         # 如果提供了资源需求，计算是否可以满足
         can_scale = True
         recommendations = []
 
         if resource_requirements:
-            required_cpu = parse_resource_quantity(resource_requirements.get('cpu', '0'))
-            required_memory = parse_resource_quantity(resource_requirements.get('memory', '0'))
+            required_cpu = parse_resource_quantity(resource_requirements.get("cpu", "0"))
+            required_memory = parse_resource_quantity(resource_requirements.get("memory", "0"))
 
             total_required_cpu = required_cpu * replicas
             total_required_memory = required_memory * replicas
@@ -189,7 +184,7 @@ def check_scaling_capacity(namespace, replicas, resource_requirements=None, conf
             "node_capacity": node_capacity,
             "total_nodes": len(node_capacity),
             "recommendations": recommendations,
-            "check_time": datetime.now(timezone.utc).isoformat()
+            "check_time": datetime.now(timezone.utc).isoformat(),
         }
 
         logger.info(f"容量检查完成: can_scale={can_scale}")
@@ -197,10 +192,7 @@ def check_scaling_capacity(namespace, replicas, resource_requirements=None, conf
 
     except Exception as e:
         logger.error(f"检查扩容容量失败: {str(e)}")
-        return json.dumps({
-            "error": f"检查扩容容量失败: {str(e)}",
-            "namespace": namespace
-        })
+        return json.dumps({"error": f"检查扩容容量失败: {str(e)}", "namespace": namespace})
 
 
 @tool()
@@ -276,9 +268,7 @@ def check_pod_distribution(deployment_name, namespace, config: RunnableConfig = 
                 resource_type = "StatefulSet"
                 selector = statefulset.spec.selector.match_labels
             except ApiException:
-                return json.dumps({
-                    "error": f"未找到Deployment或StatefulSet: {namespace}/{deployment_name}"
-                })
+                return json.dumps({"error": f"未找到Deployment或StatefulSet: {namespace}/{deployment_name}"})
 
         # 获取匹配的Pod
         label_selector = ",".join([f"{k}={v}" for k, v in selector.items()])
@@ -298,10 +288,7 @@ def check_pod_distribution(deployment_name, namespace, config: RunnableConfig = 
             if node_name not in node_distribution:
                 node_distribution[node_name] = []
 
-            node_distribution[node_name].append({
-                "pod_name": pod.metadata.name,
-                "status": pod.status.phase
-            })
+            node_distribution[node_name].append({"pod_name": pod.metadata.name, "status": pod.status.phase})
 
         # 分析分布均匀性
         issues = []
@@ -310,15 +297,9 @@ def check_pod_distribution(deployment_name, namespace, config: RunnableConfig = 
         node_count = len([n for n in node_distribution.keys() if n != "未调度"])
 
         if node_count == 0:
-            issues.append({
-                "severity": "critical",
-                "message": "所有Pod都未被调度"
-            })
+            issues.append({"severity": "critical", "message": "所有Pod都未被调度"})
         elif node_count == 1 and total_pods > 1:
-            issues.append({
-                "severity": "high",
-                "message": f"所有{total_pods}个Pod都运行在同一个节点上，存在单点故障风险"
-            })
+            issues.append({"severity": "high", "message": f"所有{total_pods}个Pod都运行在同一个节点上，存在单点故障风险"})
             recommendations.append("配置Pod反亲和性（podAntiAffinity）将Pod分散到不同节点")
         else:
             # 计算分布均匀性
@@ -328,10 +309,7 @@ def check_pod_distribution(deployment_name, namespace, config: RunnableConfig = 
                 min_pods = min(pods_per_node)
 
                 if max_pods - min_pods > 2:
-                    issues.append({
-                        "severity": "medium",
-                        "message": f"Pod分布不均匀：最多{max_pods}个/节点，最少{min_pods}个/节点"
-                    })
+                    issues.append({"severity": "medium", "message": f"Pod分布不均匀：最多{max_pods}个/节点，最少{min_pods}个/节点"})
                     recommendations.append("考虑使用topologySpreadConstraints实现更均匀的分布")
 
         # 检查可用区分布
@@ -349,10 +327,7 @@ def check_pod_distribution(deployment_name, namespace, config: RunnableConfig = 
                         break
 
         if len(zone_distribution) == 1 and total_pods > 1:
-            issues.append({
-                "severity": "medium",
-                "message": "所有Pod都在同一个可用区，缺乏区域容灾能力"
-            })
+            issues.append({"severity": "medium", "message": "所有Pod都在同一个可用区，缺乏区域容灾能力"})
             recommendations.append("配置跨可用区的Pod拓扑分布约束")
 
         result = {
@@ -361,16 +336,11 @@ def check_pod_distribution(deployment_name, namespace, config: RunnableConfig = 
             "namespace": namespace,
             "total_pods": total_pods,
             "running_pods": running_pods,
-            "node_distribution": {
-                node: {
-                    "pod_count": len(pods_list),
-                    "pods": pods_list
-                } for node, pods_list in node_distribution.items()
-            },
+            "node_distribution": {node: {"pod_count": len(pods_list), "pods": pods_list} for node, pods_list in node_distribution.items()},
             "zone_distribution": zone_distribution,
             "issues": issues,
             "recommendations": recommendations,
-            "distribution_score": "good" if len(issues) == 0 else "needs_improvement"
+            "distribution_score": "good" if len(issues) == 0 else "needs_improvement",
         }
 
         logger.info(f"Pod分布检查完成: {total_pods}个Pod分布在{node_count}个节点")
@@ -378,15 +348,64 @@ def check_pod_distribution(deployment_name, namespace, config: RunnableConfig = 
 
     except Exception as e:
         logger.error(f"检查Pod分布失败: {str(e)}")
-        return json.dumps({
-            "error": f"检查Pod分布失败: {str(e)}",
-            "deployment_name": deployment_name,
-            "namespace": namespace
-        })
+        return json.dumps({"error": f"检查Pod分布失败: {str(e)}", "deployment_name": deployment_name, "namespace": namespace})
+
+
+_PROBE_TYPE_ALIASES = {
+    "po": "pod",
+    "pod": "pod",
+    "deploy": "deployment",
+    "deployment": "deployment",
+    "sts": "statefulset",
+    "statefulset": "statefulset",
+}
+_PROBE_KIND_LABELS = {"pod": "Pod", "deployment": "Deployment", "statefulset": "StatefulSet"}
+
+
+def _resolve_probe_target(deployment_name, namespace, resource_type, resource_name):
+    if not namespace:
+        return None, None, {"error": "需要指定namespace"}
+    kind = (resource_type or "").strip().lower()
+    if kind:
+        kind = _PROBE_TYPE_ALIASES.get(kind)
+        if not kind:
+            return (
+                None,
+                None,
+                {
+                    "error": f"暂不支持资源类型: {resource_type}",
+                    "supported_types": ["pod", "deployment", "statefulset"],
+                },
+            )
+        name = resource_name or deployment_name
+    else:
+        kind = "deployment"
+        name = deployment_name or resource_name
+    if not name:
+        return None, None, {"error": "需要指定 resource_name 或 deployment_name"}
+    return kind, name, None
+
+
+def _read_probe_containers(kind, name, namespace):
+    if kind == "pod":
+        pod = client.CoreV1Api().read_namespaced_pod(name, namespace)
+        return list(pod.spec.containers or [])
+    apps_v1 = client.AppsV1Api()
+    if kind == "statefulset":
+        workload = apps_v1.read_namespaced_stateful_set(name, namespace)
+    else:
+        workload = apps_v1.read_namespaced_deployment(name, namespace)
+    return list(workload.spec.template.spec.containers or [])
 
 
 @tool()
-def validate_probe_configuration(deployment_name, namespace, config: RunnableConfig = None):
+def validate_probe_configuration(
+    deployment_name=None,
+    namespace=None,
+    resource_type=None,
+    resource_name=None,
+    config: RunnableConfig = None,
+):
     """
     验证健康检查探针配置，确保服务可靠性
 
@@ -410,8 +429,10 @@ def validate_probe_configuration(deployment_name, namespace, config: RunnableCon
     - Startup: 检测容器是否启动完成，用于慢启动应用
 
     Args:
-        deployment_name (str): Deployment名称（必填）
+        deployment_name (str, optional): Deployment 名称；未传 resource_type 时按 Deployment 读取
         namespace (str): 命名空间（必填）
+        resource_type (str, optional): pod / deployment / statefulset（及 po/sts 别名）
+        resource_name (str, optional): 资源名称；与 resource_type 一起使用，可替代 deployment_name
         config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
@@ -443,26 +464,25 @@ def validate_probe_configuration(deployment_name, namespace, config: RunnableCon
     - 对于慢启动应用（如Java），建议配置Startup探针
     """
     prepare_context(config)
+    kind, name, target_error = _resolve_probe_target(deployment_name, namespace, resource_type, resource_name)
+    if target_error:
+        return json.dumps(target_error, ensure_ascii=False)
 
     try:
-        apps_v1 = client.AppsV1Api()
-        logger.info(f"验证探针配置: {namespace}/{deployment_name}")
-
-        # 获取Deployment
-        deployment = apps_v1.read_namespaced_deployment(deployment_name, namespace)
+        logger.info(f"验证探针配置: {kind} {namespace}/{name}")
 
         containers_analysis = []
         issues = []
         recommendations = []
 
-        for container in (deployment.spec.template.spec.containers or []):
+        for container in _read_probe_containers(kind, name, namespace):
             container_analysis = {
                 "container_name": container.name,
                 "liveness_probe": None,
                 "readiness_probe": None,
                 "startup_probe": None,
                 "issues": [],
-                "recommendations": []
+                "recommendations": [],
             }
 
             # 分析Liveness Probe
@@ -474,7 +494,7 @@ def validate_probe_configuration(deployment_name, namespace, config: RunnableCon
                     "initial_delay_seconds": liveness.initial_delay_seconds or 0,
                     "period_seconds": liveness.period_seconds or 10,
                     "timeout_seconds": liveness.timeout_seconds or 1,
-                    "failure_threshold": liveness.failure_threshold or 3
+                    "failure_threshold": liveness.failure_threshold or 3,
                 }
 
                 # 检查配置合理性
@@ -499,7 +519,7 @@ def validate_probe_configuration(deployment_name, namespace, config: RunnableCon
                     "initial_delay_seconds": readiness.initial_delay_seconds or 0,
                     "period_seconds": readiness.period_seconds or 10,
                     "timeout_seconds": readiness.timeout_seconds or 1,
-                    "failure_threshold": readiness.failure_threshold or 3
+                    "failure_threshold": readiness.failure_threshold or 3,
                 }
             else:
                 container_analysis["readiness_probe"] = {"configured": False}
@@ -507,14 +527,14 @@ def validate_probe_configuration(deployment_name, namespace, config: RunnableCon
                 container_analysis["recommendations"].append("配置Readiness探针确保只有就绪的Pod接收流量")
 
             # 分析Startup Probe (K8S 1.16+)
-            if hasattr(container, 'startup_probe') and container.startup_probe:
+            if hasattr(container, "startup_probe") and container.startup_probe:
                 startup = container.startup_probe
                 container_analysis["startup_probe"] = {
                     "configured": True,
                     "type": _get_probe_type(startup),
                     "initial_delay_seconds": startup.initial_delay_seconds or 0,
                     "period_seconds": startup.period_seconds or 10,
-                    "failure_threshold": startup.failure_threshold or 3
+                    "failure_threshold": startup.failure_threshold or 3,
                 }
             else:
                 container_analysis["startup_probe"] = {"configured": False}
@@ -538,7 +558,9 @@ def validate_probe_configuration(deployment_name, namespace, config: RunnableCon
                 probe_score += 1
 
         result = {
-            "deployment_name": deployment_name,
+            "deployment_name": name if kind == "deployment" else deployment_name,
+            "resource_type": kind,
+            "resource_name": name,
             "namespace": namespace,
             "total_containers": len(containers_analysis),
             "containers_analysis": containers_analysis,
@@ -546,7 +568,7 @@ def validate_probe_configuration(deployment_name, namespace, config: RunnableCon
             "probe_coverage_percent": round((probe_score / total_score * 100) if total_score > 0 else 0, 2),
             "issues": issues,
             "recommendations": recommendations,
-            "overall_status": "good" if len(issues) == 0 else "needs_improvement"
+            "overall_status": "good" if len(issues) == 0 else "needs_improvement",
         }
 
         logger.info(f"探针配置验证完成: {probe_score}/{total_score}")
@@ -555,12 +577,9 @@ def validate_probe_configuration(deployment_name, namespace, config: RunnableCon
     except ApiException as e:
         logger.error(f"验证探针配置失败: {str(e)}")
         if e.status == 404:
-            return json.dumps({
-                "error": f"Deployment不存在: {namespace}/{deployment_name}"
-            })
-        return json.dumps({
-            "error": f"验证探针配置失败: {str(e)}"
-        })
+            kind_label = _PROBE_KIND_LABELS.get(kind, kind)
+            return json.dumps({"error": f"{kind_label}不存在: {namespace}/{name}"})
+        return json.dumps({"error": f"验证探针配置失败: {str(e)}"})
 
 
 def _get_probe_type(probe):
@@ -671,12 +690,7 @@ def compare_deployment_revisions(deployment_name, namespace, revision1, revision
         images2 = [c.image for c in (rs2.spec.template.spec.containers or [])]
 
         if images1 != images2:
-            differences.append({
-                "field": "container_images",
-                "revision1_value": images1,
-                "revision2_value": images2,
-                "change_type": "modified"
-            })
+            differences.append({"field": "container_images", "revision1_value": images1, "revision2_value": images2, "change_type": "modified"})
 
         # 对比环境变量
         for i, container1 in enumerate(rs1.spec.template.spec.containers or []):
@@ -687,22 +701,21 @@ def compare_deployment_revisions(deployment_name, namespace, revision1, revision
                 env2 = {e.name: e.value for e in (container2.env or []) if e.value}
 
                 if env1 != env2:
-                    differences.append({
-                        "field": f"container[{i}].env",
-                        "container_name": container1.name,
-                        "added_vars": list(set(env2.keys()) - set(env1.keys())),
-                        "removed_vars": list(set(env1.keys()) - set(env2.keys())),
-                        "modified_vars": [k for k in env1.keys() if k in env2 and env1[k] != env2[k]]
-                    })
+                    differences.append(
+                        {
+                            "field": f"container[{i}].env",
+                            "container_name": container1.name,
+                            "added_vars": list(set(env2.keys()) - set(env1.keys())),
+                            "removed_vars": list(set(env1.keys()) - set(env2.keys())),
+                            "modified_vars": [k for k in env1.keys() if k in env2 and env1[k] != env2[k]],
+                        }
+                    )
 
         # 对比副本数
         if rs1.spec.replicas != rs2.spec.replicas:
-            differences.append({
-                "field": "replicas",
-                "revision1_value": rs1.spec.replicas,
-                "revision2_value": rs2.spec.replicas,
-                "change_type": "modified"
-            })
+            differences.append(
+                {"field": "replicas", "revision1_value": rs1.spec.replicas, "revision2_value": rs2.spec.replicas, "change_type": "modified"}
+            )
 
         result = {
             "deployment_name": deployment_name,
@@ -711,17 +724,17 @@ def compare_deployment_revisions(deployment_name, namespace, revision1, revision
                 "revision1": {
                     "revision": revision1,
                     "replica_set_name": rs1.metadata.name,
-                    "creation_time": rs1.metadata.creation_timestamp.isoformat() if rs1.metadata.creation_timestamp else None
+                    "creation_time": rs1.metadata.creation_timestamp.isoformat() if rs1.metadata.creation_timestamp else None,
                 },
                 "revision2": {
                     "revision": revision2,
                     "replica_set_name": rs2.metadata.name,
-                    "creation_time": rs2.metadata.creation_timestamp.isoformat() if rs2.metadata.creation_timestamp else None
-                }
+                    "creation_time": rs2.metadata.creation_timestamp.isoformat() if rs2.metadata.creation_timestamp else None,
+                },
             },
             "differences_count": len(differences),
             "differences": differences,
-            "has_changes": len(differences) > 0
+            "has_changes": len(differences) > 0,
         }
 
         logger.info(f"版本对比完成: {len(differences)}个差异")
@@ -729,8 +742,4 @@ def compare_deployment_revisions(deployment_name, namespace, revision1, revision
 
     except Exception as e:
         logger.error(f"对比Deployment版本失败: {str(e)}")
-        return json.dumps({
-            "error": f"对比Deployment版本失败: {str(e)}",
-            "deployment_name": deployment_name,
-            "namespace": namespace
-        })
+        return json.dumps({"error": f"对比Deployment版本失败: {str(e)}", "deployment_name": deployment_name, "namespace": namespace})

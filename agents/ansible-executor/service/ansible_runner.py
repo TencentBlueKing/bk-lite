@@ -24,6 +24,11 @@ from service.runtime import current_entrypoint_command
 
 BASE_TASK_DIR = Path(os.getenv("ANSIBLE_WORK_DIR", "/tmp/ansible-executor"))
 DEFAULT_MAX_OUTPUT_BYTES = 256 * 1024
+DEFAULT_STREAM_QUEUE_SIZE = 256
+DEFAULT_STREAM_BATCH_SIZE = 16
+DEFAULT_STREAM_FLUSH_TIMEOUT = 1.0
+DEFAULT_STREAM_MAX_LINE_BYTES = 16 * 1024
+STREAM_LINE_CHUNK_MARKER = "...[实时日志超长行分段]"
 PLAYBOOK_ARCHIVE_MAX_SIZE_BYTES = 20 * 1024 * 1024
 PLAYBOOK_ARCHIVE_MAX_MEMBERS = 2000
 PLAYBOOK_ARCHIVE_MAX_MEMBER_SIZE_BYTES = 5 * 1024 * 1024
@@ -683,9 +688,7 @@ def _build_host_credentials_inventory(workspace: Path, host_credentials: list[di
     legacy_password_ssh_host_count = 0
     known_hosts_file = os.getenv(_SSH_KNOWN_HOSTS_FILE_ENV, "").strip()
     if known_hosts_file and any(
-        item.get("password")
-        and str(item.get("connection", "")).strip().lower() == "ssh"
-        and not _get_explicit_ssh_common_args(item)
+        item.get("password") and str(item.get("connection", "")).strip().lower() == "ssh" and not _get_explicit_ssh_common_args(item)
         for item in host_credentials
     ):
         _validate_known_hosts_file(known_hosts_file)
@@ -1059,8 +1062,12 @@ class LineEventStreamer:
     replacement and have their trailing ``\\r``/``\\n`` stripped.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, max_line_bytes: int = DEFAULT_STREAM_MAX_LINE_BYTES) -> None:
+        if max_line_bytes <= 0:
+            raise ValueError("max_line_bytes must be positive")
         self._buffer = bytearray()
+        self._max_line_bytes = max_line_bytes
+        self.chunked_lines = 0
 
     def feed(self, chunk: bytes) -> list[str]:
         if not chunk:
@@ -1069,6 +1076,13 @@ class LineEventStreamer:
         lines: list[str] = []
         while True:
             idx = self._buffer.find(b"\n")
+            if idx > self._max_line_bytes or (idx == -1 and len(self._buffer) > self._max_line_bytes):
+                chunk_size = self._utf8_safe_chunk_size()
+                raw_line = bytes(self._buffer[:chunk_size])
+                del self._buffer[:chunk_size]
+                lines.append(f"{self._decode_line(raw_line)}{STREAM_LINE_CHUNK_MARKER}")
+                self.chunked_lines += 1
+                continue
             if idx == -1:
                 break
             raw_line = bytes(self._buffer[:idx])
@@ -1087,28 +1101,205 @@ class LineEventStreamer:
     def _decode_line(raw_line: bytes) -> str:
         return raw_line.decode("utf-8", errors="replace").rstrip("\r\n")
 
+    def _utf8_safe_chunk_size(self) -> int:
+        """避免把有效 UTF-8 多字节字符切在实时日志分段边界。"""
+        candidate = bytes(self._buffer[: self._max_line_bytes])
+        try:
+            candidate.decode("utf-8")
+        except UnicodeDecodeError as error:
+            if error.reason == "unexpected end of data" and error.start > 0:
+                return error.start
+        return self._max_line_bytes
+
 
 StreamPublish = Callable[[str, bytes], Awaitable[None]]
 
 
-def build_stream_log_payload(execution_id: str, line: str) -> bytes:
+def build_stream_log_payload(
+    execution_id: str,
+    line: str,
+    *,
+    event_type: str | None = None,
+    dropped_lines: int = 0,
+) -> bytes:
     payload = {
         "execution_id": execution_id,
         "stream": "stdout",
         "line": line,
         "timestamp": datetime.now(UTC).isoformat(),
     }
+    if event_type:
+        payload["type"] = event_type
+    if dropped_lines:
+        payload["dropped_lines"] = dropped_lines
     return json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
+
+class BufferedStreamPublisher:
+    """有界、顺序、best-effort 的实时日志发布器。"""
+
+    _STOP = object()
+
+    def __init__(
+        self,
+        publish: StreamPublish,
+        subject: str,
+        execution_id: str,
+        *,
+        queue_size: int,
+        batch_size: int,
+    ) -> None:
+        if queue_size <= 0 or batch_size <= 0:
+            raise ValueError("stream queue_size and batch_size must be positive")
+        self._publish = publish
+        self._subject = subject
+        self._execution_id = execution_id
+        self._queue: asyncio.Queue[str | object] = asyncio.Queue(maxsize=queue_size)
+        self._batch_size = min(batch_size, queue_size)
+        self._worker: asyncio.Task | None = None
+        self._closing = False
+        self._pending_gap = 0
+        self._inflight_lines = 0
+        self.lines_dropped = 0
+        self.publish_failures = 0
+        self.flush_timed_out = False
+
+    def start(self) -> None:
+        if self._worker is None:
+            self._worker = asyncio.create_task(self._run())
+
+    def offer(self, line: str) -> None:
+        if self._closing:
+            self._record_dropped(1)
+            return
+        self.start()
+        try:
+            self._queue.put_nowait(line)
+        except asyncio.QueueFull:
+            self._record_dropped(1)
+
+    def _record_dropped(self, count: int) -> None:
+        self.lines_dropped += count
+        self._pending_gap += count
+
+    async def _publish_lines(self, lines: list[str]) -> None:
+        try:
+            await self._publish(
+                self._subject,
+                build_stream_log_payload(self._execution_id, "\n".join(lines)),
+            )
+        except Exception as publish_err:  # noqa: BLE001 - streaming is best-effort
+            self.publish_failures += 1
+            self._record_dropped(len(lines))
+            logger.warning("stream log publish failed: %s", publish_err)
+
+    async def _publish_gap(self) -> None:
+        if not self._pending_gap:
+            return
+        dropped_lines = self._pending_gap
+        self._pending_gap = 0
+        line = f"[实时日志缺口] 省略 {dropped_lines} 行；请以任务终态输出为准（终态可能截断）"
+        try:
+            await self._publish(
+                self._subject,
+                build_stream_log_payload(
+                    self._execution_id,
+                    line,
+                    event_type="gap",
+                    dropped_lines=dropped_lines,
+                ),
+            )
+        except Exception as publish_err:  # noqa: BLE001 - streaming is best-effort
+            self.publish_failures += 1
+            self._pending_gap += dropped_lines
+            logger.warning("stream log gap publish failed: %s", publish_err)
+
+    async def _run(self) -> None:
+        stop_after_batch = False
+        while not stop_after_batch:
+            item = await self._queue.get()
+            if item is self._STOP:
+                break
+
+            lines = [item]
+            while len(lines) < self._batch_size:
+                try:
+                    item = self._queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+                if item is self._STOP:
+                    stop_after_batch = True
+                    break
+                lines.append(item)
+
+            self._inflight_lines = len(lines)
+            await self._publish_lines(lines)
+            self._inflight_lines = 0
+            await self._publish_gap()
+
+        await self._publish_gap()
+
+    def _discard_queued_lines(self) -> int:
+        discarded = 0
+        while True:
+            try:
+                item = self._queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+            if item is not self._STOP:
+                discarded += 1
+        return discarded
+
+    async def close(self, timeout: float) -> dict[str, Any]:
+        if self._worker is None:
+            return self.metadata()
+        if self._closing:
+            return self.metadata()
+        self._closing = True
+
+        async def _finish() -> None:
+            await self._queue.put(self._STOP)
+            await self._worker
+
+        try:
+            await asyncio.wait_for(_finish(), timeout=max(timeout, 0.001))
+        except asyncio.TimeoutError:
+            self.flush_timed_out = True
+            self._record_dropped(self._discard_queued_lines() + self._inflight_lines)
+            self._inflight_lines = 0
+            self._worker.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await self._worker
+            logger.warning(
+                "stream log tail flush timed out: execution_id=%s dropped=%s",
+                self._execution_id,
+                self.lines_dropped,
+            )
+        except Exception as publish_err:  # noqa: BLE001 - streaming is best-effort
+            self.publish_failures += 1
+            logger.warning("stream log worker failed: %s", publish_err)
+        return self.metadata()
+
+    def metadata(self) -> dict[str, Any]:
+        return {
+            "stream_lines_dropped": self.lines_dropped,
+            "stream_publish_failures": self.publish_failures,
+            "stream_flush_timed_out": self.flush_timed_out,
+        }
 
 
 async def run_command(
     cmd: list[str],
-    timeout: int,
+    timeout: int | float,
     max_output_bytes: int = DEFAULT_MAX_OUTPUT_BYTES,
     *,
     stream_publish: StreamPublish | None = None,
     stream_log_topic: str | None = None,
     execution_id: str | None = None,
+    stream_queue_size: int = DEFAULT_STREAM_QUEUE_SIZE,
+    stream_batch_size: int = DEFAULT_STREAM_BATCH_SIZE,
+    stream_flush_timeout: float = DEFAULT_STREAM_FLUSH_TIMEOUT,
+    stream_max_line_bytes: int = DEFAULT_STREAM_MAX_LINE_BYTES,
 ) -> tuple[int, str, dict[str, Any]]:
     process_kwargs: dict[str, Any] = {}
     if os.name == "posix":
@@ -1121,15 +1312,34 @@ async def run_command(
     )
 
     streaming_enabled = bool(stream_publish and stream_log_topic and execution_id)
-    streamer = LineEventStreamer() if streaming_enabled else None
+    streamer = LineEventStreamer(max_line_bytes=stream_max_line_bytes) if streaming_enabled else None
+    stream_publisher = (
+        BufferedStreamPublisher(
+            stream_publish,
+            stream_log_topic,
+            execution_id,
+            queue_size=stream_queue_size,
+            batch_size=stream_batch_size,
+        )
+        if streaming_enabled
+        else None
+    )
+    if stream_publisher is not None:
+        stream_publisher.start()
 
-    async def _publish_line(line: str) -> None:
-        # Streaming is best-effort: a publish failure must never break the run.
-        try:
-            data = build_stream_log_payload(execution_id, line)
-            await stream_publish(stream_log_topic, data)
-        except Exception as publish_err:  # noqa: BLE001 - intentionally swallowed
-            logger.warning("stream log publish failed: %s", publish_err)
+    async def _terminate_process() -> None:
+        if proc.returncode is not None:
+            return
+        if os.name == "posix":
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(proc.pid, signal.SIGKILL)
+        else:
+            proc.kill()
+        with contextlib.suppress(asyncio.TimeoutError):
+            await asyncio.wait_for(proc.wait(), timeout=5)
+        if proc.returncode is None:
+            proc.kill()
+            await proc.wait()
 
     async def _collect_output() -> tuple[bytes, dict[str, Any]]:
         assert proc.stdout is not None
@@ -1153,44 +1363,56 @@ async def run_command(
                 truncated = True
             if streamer is not None:
                 for line in streamer.feed(chunk):
-                    await _publish_line(line)
+                    stream_publisher.offer(line)
 
         if streamer is not None:
             trailing = streamer.flush()
             if trailing is not None:
-                await _publish_line(trailing)
+                stream_publisher.offer(trailing)
 
         return b"".join(chunks), {
             "truncated": truncated,
             "output_bytes_total": total_bytes,
             "output_bytes_retained": retained_bytes,
             "output_max_bytes": max_output_bytes,
+            "stream_line_chunks": streamer.chunked_lines if streamer is not None else 0,
         }
 
+    timed_out = False
+    output_meta = {
+        "truncated": False,
+        "output_bytes_total": 0,
+        "output_bytes_retained": 0,
+        "output_max_bytes": max_output_bytes,
+        "stream_line_chunks": 0,
+    }
     try:
         stdout, output_meta = await asyncio.wait_for(_collect_output(), timeout=timeout)
         await asyncio.wait_for(proc.wait(), timeout=5)
+    except asyncio.CancelledError:
+        await asyncio.shield(_terminate_process())
+        raise
     except asyncio.TimeoutError:
-        if os.name == "posix":
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(proc.pid, signal.SIGKILL)
-        else:
-            proc.kill()
-        with contextlib.suppress(asyncio.TimeoutError):
-            await asyncio.wait_for(proc.wait(), timeout=5)
-        if proc.returncode is None:
-            proc.kill()
-            await proc.wait()
+        await _terminate_process()
         logger.error("command timed out: %s", " ".join(shlex.quote(part) for part in cmd))
+        timed_out = True
+        stdout = b""
+        output_meta = {
+            "truncated": False,
+            "output_bytes_total": 0,
+            "output_bytes_retained": 0,
+            "output_max_bytes": max_output_bytes,
+            "stream_line_chunks": streamer.chunked_lines if streamer is not None else 0,
+        }
+    finally:
+        if stream_publisher is not None:
+            output_meta.update(await stream_publisher.close(stream_flush_timeout))
+
+    if timed_out:
         return (
             124,
             "command timed out",
-            {
-                "truncated": False,
-                "output_bytes_total": 0,
-                "output_bytes_retained": 0,
-                "output_max_bytes": max_output_bytes,
-            },
+            output_meta,
         )
     output, decode_strategy = decode_command_output(stdout)
     exit_code = proc.returncode or 0

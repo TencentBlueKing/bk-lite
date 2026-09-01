@@ -518,6 +518,7 @@ class CollectModelService(object):
         create_data, is_interval, scan_cycle = cls.format_params(cls._request_payload(request, payload))
         if create_data.get("credential"):
             create_data["credential"] = CollectCredentialPoolService.normalize_pool(create_data["credential"])
+            create_data["credential"] = CollectCredentialPoolService.assign_versions([], create_data["credential"])
             CollectCredentialPoolService.validate_pool_shape(create_data["credential"])
         cls.enrich_host_cloud_snapshot_payload(create_data)
 
@@ -627,6 +628,7 @@ class CollectModelService(object):
         if update_data.get("credential"):
             old_pool = CollectCredentialPoolService.normalize_pool(instance.decrypt_credentials)
             new_pool = CollectCredentialPoolService.normalize_pool(update_data["credential"])
+            new_pool = CollectCredentialPoolService.assign_versions(old_pool, new_pool)
             CollectCredentialPoolService.validate_pool_shape(new_pool)
             update_data["credential"] = new_pool
             credential_pool_diff = CollectCredentialPoolService.diff_pool(old_pool, new_pool)

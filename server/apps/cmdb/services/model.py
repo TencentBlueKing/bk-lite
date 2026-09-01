@@ -831,6 +831,11 @@ class ModelManage(object):
         """
         创建模型属性
         """
+        if attr_info.get("attr_type") == "table":
+            from apps.cmdb.validators.field_validator import FieldValidator
+
+            FieldValidator.validate_table_option(attr_info.get("option"))
+
         with GraphClient() as ag:
             if attr_info.get("attr_type") == "tag":
                 attr_info["attr_id"] = TAG_ATTR_ID
@@ -903,6 +908,11 @@ class ModelManage(object):
         """
         更新模型属性
         """
+        if attr_info.get("attr_type") == "table":
+            from apps.cmdb.validators.field_validator import FieldValidator
+
+            FieldValidator.validate_table_option(attr_info.get("option"))
+
         ModelManage._guard_protected_model_attr(attr_info["attr_id"], "修改")
         with GraphClient() as ag:
             ModelManage._validate_attr_id(attr_info["attr_id"])

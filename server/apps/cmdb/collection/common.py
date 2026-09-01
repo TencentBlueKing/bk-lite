@@ -110,12 +110,11 @@ class Management:
                 else:
                     heartbeat_list.append(info)
 
-        authoritative_snapshot = getattr(
-            self.collect_plugin,
-            "is_authoritative_snapshot",
-            None,
-        )
-        if callable(authoritative_snapshot):
+        explicit_snapshot_complete = getattr(self.collect_plugin, "snapshot_complete", None)
+        authoritative_snapshot = getattr(self.collect_plugin, "is_authoritative_snapshot", None)
+        if explicit_snapshot_complete is not None:
+            deletion_input_complete = bool(explicit_snapshot_complete)
+        elif callable(authoritative_snapshot):
             deletion_input_complete = bool(authoritative_snapshot(self.model_id))
         else:
             deletion_input_complete = bool(new_map)

@@ -1,11 +1,5 @@
 import pytest
-
-from enterprise.plugins.inputs.winsphere.winsphere_info import (
-    MODEL_IDS,
-    WinSphereClient,
-    WinSphereError,
-    WinSphereInfo,
-)
+from enterprise.plugins.inputs.winsphere.winsphere_info import MODEL_IDS, WinSphereClient, WinSphereError, WinSphereInfo
 
 
 class FakeResponse:
@@ -374,10 +368,7 @@ def test_standard_port_group_pagination_uses_parent_scoped_identity():
 
     port_groups = client.list_standard_port_groups()
 
-    assert [
-        (item["hostId"], item["vswitchId"], item["id"])
-        for item in port_groups
-    ] == [
+    assert [(item["hostId"], item["vswitchId"], item["id"]) for item in port_groups] == [
         ("host-1", "switch-1", "pg-1"),
         ("host-1", "switch-2", "pg-1"),
     ]
@@ -401,7 +392,8 @@ def test_missing_optional_network_endpoint_is_an_empty_collection():
     assert client.optional_unavailable_paths == {"/api/compute/dvswitchs"}
 
 
-def test_required_endpoint_failure_aborts_snapshot_without_partial_result(monkeypatch):
+@pytest.mark.asyncio
+async def test_required_endpoint_failure_aborts_snapshot_without_partial_result(monkeypatch):
     collector = object.__new__(WinSphereInfo)
 
     class FailingClient:
@@ -414,10 +406,11 @@ def test_required_endpoint_failure_aborts_snapshot_without_partial_result(monkey
     collector.client = FailingClient()
 
     with pytest.raises(WinSphereError, match="clusters HTTP 503"):
-        collector.list_all_resources()
+        await collector.list_all_resources()
 
 
-def test_all_resources_without_stable_ids_fail_the_snapshot():
+@pytest.mark.asyncio
+async def test_all_resources_without_stable_ids_fail_the_snapshot():
     collector = object.__new__(WinSphereInfo)
 
     class InvalidIdentityClient:
@@ -427,10 +420,11 @@ def test_all_resources_without_stable_ids_fail_the_snapshot():
     collector.client = InvalidIdentityClient()
 
     with pytest.raises(WinSphereError, match="all winsphere_host_pool"):
-        collector.list_all_resources()
+        await collector.list_all_resources()
 
 
-def test_unified_switch_model_accepts_valid_distributed_switches_when_standard_are_invalid():
+@pytest.mark.asyncio
+async def test_unified_switch_model_accepts_valid_distributed_switches_when_standard_are_invalid():
     collector = object.__new__(WinSphereInfo)
     collector.host = "10.0.0.10"
     collector.https_port = 443
@@ -469,11 +463,9 @@ def test_unified_switch_model_accepts_valid_distributed_switches_when_standard_a
 
     collector.client = MixedSwitchClient()
 
-    result = collector.list_all_resources()["result"]
+    result = (await collector.list_all_resources())["result"]
 
-    assert [item["resource_id"] for item in result["winsphere_vswitch"]] == [
-        "distributed:dvs-1"
-    ]
+    assert [item["resource_id"] for item in result["winsphere_vswitch"]] == ["distributed:dvs-1"]
 
 
 def test_invalid_timestamp_is_not_published_as_iso_time():
@@ -493,7 +485,8 @@ def test_duplicate_resource_names_remain_distinct_by_platform_and_stable_id():
     assert resources[0]["inst_name"].startswith(collector.platform_id)
 
 
-def test_plugin_collects_eight_inventory_types_from_one_atomic_snapshot():
+@pytest.mark.asyncio
+async def test_plugin_collects_eight_inventory_types_from_one_atomic_snapshot():
     gib = 1024**3
     session = FakeSession(
         [
@@ -610,7 +603,7 @@ def test_plugin_collects_eight_inventory_types_from_one_atomic_snapshot():
         }
     )
 
-    snapshot = collector.list_all_resources()
+    snapshot = await collector.list_all_resources()
 
     assert snapshot["success"] is True
     assert snapshot["snapshot_status"] == "complete"
@@ -620,18 +613,12 @@ def test_plugin_collects_eight_inventory_types_from_one_atomic_snapshot():
     assert snapshot["snapshot_manifest"]["expected_models"] == list(MODEL_IDS)
     assert snapshot["snapshot_manifest"]["models"]["winsphere"] == {
         "count": 1,
-        "identity_hash": (
-            "0af2cbcd443771b449fe33928fc5c83ce"
-            "6e61db6ba2eef032a5eef7f51be6fe7"
-        ),
+        "identity_hash": ("0af2cbcd443771b449fe33928fc5c83ce" "6e61db6ba2eef032a5eef7f51be6fe7"),
         "authoritative": True,
     }
     assert snapshot["snapshot_manifest"]["models"]["winsphere_vswitch"] == {
         "count": 2,
-        "identity_hash": (
-            "74b082908c8afb3d074d4fb7122f248e"
-            "05f0aefcd7adcb6d95c1701c395f4399"
-        ),
+        "identity_hash": ("74b082908c8afb3d074d4fb7122f248e" "05f0aefcd7adcb6d95c1701c395f4399"),
         "authoritative": True,
     }
     assert set(snapshot["result"]) == {
@@ -646,13 +633,9 @@ def test_plugin_collects_eight_inventory_types_from_one_atomic_snapshot():
     }
     assert snapshot["result"]["winsphere_host"][0]["memory_gib"] == "128.00"
     assert snapshot["result"]["winsphere_vm"][0]["disk_size_gib"] == "50.00"
-    assert snapshot["result"]["winsphere_vm"][0]["create_time"] == (
-        "2026-07-27T12:34:56+08:00"
-    )
+    assert snapshot["result"]["winsphere_vm"][0]["create_time"] == ("2026-07-27T12:34:56+08:00")
     assert snapshot["result"]["winsphere_vm"][0]["up_time_seconds"] == "3600"
-    assert snapshot["result"]["winsphere_vm"][0]["inst_name"] == (
-        "https://10.0.0.10:443/虚拟机A[vm-1]"
-    )
+    assert snapshot["result"]["winsphere_vm"][0]["inst_name"] == ("https://10.0.0.10:443/虚拟机A[vm-1]")
     assert snapshot["result"]["winsphere_storage_pool"][0]["available_gib"] == "40.00"
 
     switches = snapshot["result"]["winsphere_vswitch"]
@@ -667,8 +650,4 @@ def test_plugin_collects_eight_inventory_types_from_one_atomic_snapshot():
         "standard:host-1:switch-1:pg-1",
         "distributed:dvs-1:dpg-1",
     ]
-    assert all(
-        item["platform_id"] == "https://10.0.0.10:443"
-        for model_items in snapshot["result"].values()
-        for item in model_items
-    )
+    assert all(item["platform_id"] == "https://10.0.0.10:443" for model_items in snapshot["result"].values() for item in model_items)

@@ -10,6 +10,7 @@ LLM_ERROR_TIMEOUT = "LLM_TIMEOUT"
 LLM_ERROR_AUTH = "LLM_AUTH"
 LLM_ERROR_RATE_LIMIT = "LLM_RATE_LIMIT"
 LLM_ERROR_BAD_REQUEST = "LLM_BAD_REQUEST"
+LLM_ERROR_BLOCKED = "LLM_BLOCKED"
 LLM_ERROR_EMPTY = "LLM_EMPTY_RESPONSE"
 LLM_ERROR_UNKNOWN = "LLM_ERROR"
 
@@ -19,6 +20,7 @@ _USER_MESSAGES = {
     LLM_ERROR_AUTH: "大模型鉴权失败，请检查 API Key / Token",
     LLM_ERROR_RATE_LIMIT: "大模型触发限流，请稍后重试",
     LLM_ERROR_BAD_REQUEST: "大模型请求被拒绝，请检查模型名与请求参数",
+    LLM_ERROR_BLOCKED: "请求被网关或 WAF 拦截，不是 API Key 无效。请确认网关允许服务端发起的流式 POST",
     LLM_ERROR_EMPTY: "大模型已连通但返回空内容",
     LLM_ERROR_UNKNOWN: "大模型调用失败",
 }
@@ -65,6 +67,15 @@ _AUTH_NEEDLES = (
     "access denied",
     "401",
     "403",
+)
+
+# WAF/CDN often returns HTTP 403 with this body; that is not an invalid API key.
+_GATEWAY_BLOCKED_NEEDLES = (
+    "your request was blocked",
+    "you have been blocked",
+    "sorry, you have been blocked",
+    "blocked by cloudflare",
+    "attention required",
 )
 
 _RATE_LIMIT_NEEDLES = (
@@ -125,7 +136,9 @@ def classify_llm_error(exc: BaseException | None) -> dict[str, Any]:
     status = _status_code(exc)
     type_name = type(exc).__name__ if exc is not None else "None"
 
-    if status in {401, 403} or any(n in text for n in _AUTH_NEEDLES):
+    if any(n in text for n in _GATEWAY_BLOCKED_NEEDLES):
+        code = LLM_ERROR_BLOCKED
+    elif status in {401, 403} or any(n in text for n in _AUTH_NEEDLES):
         code = LLM_ERROR_AUTH
     elif status == 429 or any(n in text for n in _RATE_LIMIT_NEEDLES):
         code = LLM_ERROR_RATE_LIMIT

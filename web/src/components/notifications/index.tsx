@@ -5,7 +5,6 @@ import { Badge, Popover, Tabs, Empty, Spin, Modal, Tooltip, Typography, message 
 import { BellOutlined, DeleteOutlined, CheckCircleOutlined, DownOutlined, UpOutlined } from '@ant-design/icons';
 import useApiClient, { isSilentRequestError } from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
-import { usePolling } from '@/hooks/usePolling';
 import { useClientData } from '@/context/client';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import Icon from '@/components/icon';
@@ -51,8 +50,6 @@ const Notifications = () => {
   useEffect(() => {
     fetchUnreadCount();
   }, [fetchUnreadCount]);
-
-  usePolling(fetchUnreadCount, 30000, !isSessionExpiredState());
 
   const appIconMap = new Map(
     clientData

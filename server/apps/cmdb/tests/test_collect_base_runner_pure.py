@@ -129,6 +129,21 @@ def test_build_plugin_kwargs_non_k8s_empty():
     assert c.plugin_kwargs == {}
 
 
+def test_build_plugin_kwargs_propagates_completed_round_contract():
+    t = _task(is_k8s=False, instances=[{"_id": "h1", "model_id": "host", "inst_name": "x"}])
+    t._sync_round_ts = 100
+    t._sync_round_completed_at = 160.25
+    t._sync_snapshot_complete = True
+
+    c = BaseCollect(instance_id=None, task=t)
+
+    assert c.plugin_kwargs == {
+        "round_ts": 100,
+        "round_completed_at": 160.25,
+        "snapshot_complete": True,
+    }
+
+
 # --------------------------------------------------------------------------
 # task_id / get_collect_plugin / run
 # --------------------------------------------------------------------------

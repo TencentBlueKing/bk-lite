@@ -36,6 +36,7 @@ class ServerBmcInfo:
         scheme = "https" if self.ssl else "http"
         self.base_url = f"{scheme}://{self.host}:{self.port}"
         self.auth = (self.user, self.password) if self.user else None
+        self.collection_task_id = kwargs.get("collection_task_id")
 
     def _get(self, path):
         return requests.get(
@@ -118,9 +119,13 @@ class ServerBmcInfo:
 
             inst_data = {"result": {"server_bmc": [model_data]}, "success": True}
         except Exception as err:
-            import traceback
-
-            logger.error(f"server_bmc_info main error! {traceback.format_exc()}")
+            logger.exception(
+                "event=server_bmc_collect_failed host=%s task_id=%s failed_stage=%s error_type=%s",
+                self.host,
+                self.collection_task_id,
+                "list_all_resources",
+                type(err).__name__,
+            )
             inst_data = {"result": {"cmdb_collect_error": str(err)}, "success": False}
 
         return inst_data

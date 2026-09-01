@@ -41,6 +41,7 @@ from apps.monitor.serializers.monitor_metrics import MetricGroupSerializer, Metr
 from apps.monitor.serializers.monitor_object import MonitorObjectSerializer, MonitorObjectTypeSerializer
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 from apps.monitor.serializers.plugin import MonitorPluginSerializer
+from apps.monitor.services.authorized_metric_query import AuthorizedMetricQueryError, AuthorizedMetricQueryService
 from apps.monitor.services.host_dashboard import (
     HOST_OBJECT_NAME,
     HostMetricRangeService,
@@ -51,7 +52,7 @@ from apps.monitor.services.host_dashboard import (
 )
 from apps.monitor.services.host_resource_top import HostResourceTopService, validate_metric_type
 from apps.monitor.services.interface_metrics_query import InterfaceMetricsQueryError, normalize_instance_ids, query_interface_metric_items
-from apps.monitor.services.metrics import Metrics
+from apps.monitor.services.metrics import Metrics, MetricsQueryBudgetExceeded
 from apps.monitor.services.nats_query_contract import build_vm_query_failure_result as _build_vm_query_failure_result
 from apps.monitor.services.nats_query_contract import normalize_bool
 from apps.monitor.services.nats_query_contract import normalize_dimensions as _normalize_dimensions
@@ -71,6 +72,16 @@ from apps.monitor.utils.vm_query_batch import run_unique_vm_queries
 from apps.rpc.system_mgmt import SystemMgmt
 
 _normalize_bool = normalize_bool
+
+
+def _build_query_budget_failure(exc: MetricsQueryBudgetExceeded) -> dict:
+    return {
+        "result": False,
+        "data": [],
+        "message": exc.message,
+        "code": exc.data["code"],
+        "budget": exc.data,
+    }
 
 
 def _serialize_metric_plugin(metric: Metric) -> Optional[dict]:
@@ -799,6 +810,9 @@ def query_monitor_data_by_metric(query_data: dict, *args, **kwargs):
 
     if not isinstance(instance_ids, list):
         return {"result": False, "data": [], "message": "instance_ids 必须是列表"}
+    instance_ids = list(dict.fromkeys(str(instance_id) for instance_id in instance_ids if instance_id not in (None, "")))
+    if not instance_ids:
+        return {"result": False, "data": [], "message": "instance_ids 不能为空"}
 
     user_info = kwargs.get("user_info", {})
 
@@ -829,20 +843,16 @@ def query_monitor_data_by_metric(query_data: dict, *args, **kwargs):
 
     authorized_qs = _get_authorized_instance_queryset(permission)
 
-    # 如果指定了实例ID，需要进行权限验证和过滤
-    if instance_ids:
-        # 获取有权限的实例ID
-        authorized_instances = list(
-            authorized_qs.filter(
-                id__in=instance_ids,
-                monitor_object=monitor_obj,
-                is_deleted=False,
-            ).values_list("id", flat=True)
-        )
-
-        if not authorized_instances:
-            return {"result": False, "data": [], "message": "没有权限访问指定的实例"}
-        instance_ids = authorized_instances
+    authorized_instances = list(
+        authorized_qs.filter(
+            id__in=instance_ids,
+            monitor_object=monitor_obj,
+            is_deleted=False,
+        ).values_list("id", flat=True)
+    )
+    if set(authorized_instances) != set(instance_ids):
+        return {"result": False, "data": [], "message": "没有权限访问指定的实例"}
+    instance_ids = authorized_instances
 
     authorized_instance_ids = set(
         authorized_qs.filter(monitor_object=monitor_obj, is_deleted=False).values_list(
@@ -854,6 +864,9 @@ def query_monitor_data_by_metric(query_data: dict, *args, **kwargs):
     try:
         merged_result = None
         merged_series = []
+        start_sec = int(start_time) / 1000
+        end_sec = int(end_time) / 1000
+        step_seconds = Metrics.parse_step_to_seconds(step)
         for metric, dimensions, instance_id_keys in metric_queries:
             query = _build_metric_label_query(
                 metric.query,
@@ -861,7 +874,13 @@ def query_monitor_data_by_metric(query_data: dict, *args, **kwargs):
                 dimensions=dimensions,
                 instance_id_keys=instance_id_keys,
             )
-            result = Metrics.get_metrics_range(query, start_time, end_time, step)
+            result = Metrics.get_metrics_range(
+                query,
+                start_time,
+                end_time,
+                step,
+                fill_missing=False,
+            )
             if merged_result is None:
                 merged_result = dict(result)
                 merged_data = dict(result.get("data") or {})
@@ -882,9 +901,14 @@ def query_monitor_data_by_metric(query_data: dict, *args, **kwargs):
                 enriched_metric_data["metric_id"] = metric.id
                 enriched_metric_data["monitor_plugin"] = plugin_data
                 merged_series.append(enriched_metric_data)
+            Metrics.enforce_fill_budget(start_sec, end_sec, step_seconds, merged_series)
+
+        Metrics.fill_missing_points(start_sec, end_sec, step_seconds, merged_series)
 
         return {"result": True, "data": merged_result, "message": ""}
 
+    except MetricsQueryBudgetExceeded as exc:
+        return _build_query_budget_failure(exc)
     except Exception as e:
         return {"result": False, "data": [], "message": f"查询指标数据失败: {str(e)}"}
 
@@ -1337,14 +1361,44 @@ def query_latest_interface_metrics(instance_ids=None, *args, **kwargs):
 
 
 @nats_client.register
-def mm_query_range(query: str, time_range: list, step="5m", *args, **kwargs):
+def query_metric_range_scoped(
+    monitor_object_id,
+    metric_id,
+    instance_ids: list,
+    time_range: list,
+    step="5m",
+    *args,
+    **kwargs,
+):
+    """按 NATS 请求携带的用户态执行受控指标范围查询。"""
     try:
         start_time, end_time = parse_rfc3339_range_utc(time_range)
     except ValueError as exc:
         return {"result": False, "data": [], "message": str(exc)}
-    start_time = rfc3339_to_timestamp(start_time)
-    end_time = rfc3339_to_timestamp(end_time)
-    resp = VictoriaMetricsAPI().query_range(query, start_time, end_time, step)
+    user_info = kwargs.get("user_info") or {}
+    user = _normalize_permission_user(
+        user_info.get("user"),
+        domain=user_info.get("domain"),
+    )
+    try:
+        resp = AuthorizedMetricQueryService(
+            user=user,
+            current_team=user_info.get("team"),
+            include_children=bool(user_info.get("include_children", False)),
+        ).query_range(
+            {
+                "monitor_object_id": monitor_object_id,
+                "metric_id": metric_id,
+                "instance_ids": instance_ids,
+                "start": int(rfc3339_to_timestamp(start_time)) * 1000,
+                "end": int(rfc3339_to_timestamp(end_time)) * 1000,
+                "step": step,
+            }
+        )
+    except MetricsQueryBudgetExceeded as exc:
+        return _build_query_budget_failure(exc)
+    except AuthorizedMetricQueryError as exc:
+        return {"result": False, "data": [], "message": str(exc)}
     if resp.get("status") == "success":
         _result = resp["data"]["result"]
         if _result:
@@ -1357,23 +1411,6 @@ def mm_query_range(query: str, time_range: list, step="5m", *args, **kwargs):
             data.append({"name": _value[0], "value": _value[1]})
         return {"result": True, "data": data, "message": ""}
     return _build_vm_query_failure_result(resp, "查询时间范围指标数据失败")
-
-
-@nats_client.register
-def mm_query(query: str, step="5m", *args, **kwargs):
-    resp = VictoriaMetricsAPI().query(query, step)
-    if resp.get("status") == "success":
-        _result = resp["data"]["result"]
-        if _result:
-            values = _result[0].get("value", [])
-        else:
-            values = []
-            # 格式转换给单值
-        data = []
-        if values:
-            data.append({"name": values[0], "value": values[-1]})
-        return {"result": True, "data": data, "message": ""}
-    return _build_vm_query_failure_result(resp, "查询单个指标数据失败")
 
 
 @nats_client.register

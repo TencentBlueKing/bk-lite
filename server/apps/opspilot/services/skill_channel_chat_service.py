@@ -638,12 +638,16 @@ def list_skill_conversations_for_user(*, skill_id: int, external_user_id: str) -
     return result
 
 
-def get_skill_session_messages(*, session_id: str, external_user_id: str) -> list[dict]:
-    conv = SkillConversation.objects.filter(session_id=session_id, is_active=True).select_related("channel").first()
+def _owned_skill_conversation(*, session_id: str, external_user_id: str) -> SkillConversation:
+    conv = SkillConversation.objects.filter(session_id=session_id, is_active=True).select_related("channel", "skill", "skill__llm_model").first()
     if not conv:
         raise SkillChannelChatError("会话不存在", status=404)
     if (conv.external_user_id or "") != (external_user_id or ""):
         raise SkillChannelChatError("无权查看该会话", status=403)
+    return conv
+
+
+def _serialize_session_messages(conv: SkillConversation) -> list[dict]:
     messages = []
     for msg in conv.messages.order_by("created_at", "id"):
         messages.append(
@@ -657,6 +661,15 @@ def get_skill_session_messages(*, session_id: str, external_user_id: str) -> lis
             }
         )
     return messages
+
+
+def get_skill_session_messages(*, session_id: str, external_user_id: str) -> list[dict]:
+    return _serialize_session_messages(_owned_skill_conversation(session_id=session_id, external_user_id=external_user_id))
+
+
+def get_skill_session_history(*, session_id: str, external_user_id: str) -> tuple[list[dict], SkillConversation]:
+    conv = _owned_skill_conversation(session_id=session_id, external_user_id=external_user_id)
+    return _serialize_session_messages(conv), conv
 
 
 def delete_skill_session(*, session_id: str, external_user_id: str) -> None:

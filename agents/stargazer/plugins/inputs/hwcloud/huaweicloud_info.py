@@ -5,7 +5,6 @@
 字段名严格对齐 CMDB 模型 attr-hwcloud / attr-hwcloud_ecs（不可改模型）。
 """
 import asyncio
-import traceback
 
 from sanic.log import logger
 
@@ -23,6 +22,7 @@ class HuaweiCloudManager:
         # project_id：华为云 SDK（CwHuaweicloud）构造必需；缺失时由驱动抛出
         # 明确的「项目id不可为空」错误，不臆造默认值。
         self.project_id = params.get("project_id", "") or ""
+        self.collection_task_id = params.get("collection_task_id")
 
     def _driver(self):
         kwargs = {}
@@ -288,5 +288,11 @@ class HuaweiCloudManager:
             result = self.exec_script()
             return {"result": result, "success": True}
         except Exception as err:  # noqa: BLE001
-            logger.error(f"{self.__class__.__name__} error! {traceback.format_exc()}")
+            logger.exception(
+                "event=huaweicloud_collect_failed host=%s task_id=%s failed_stage=%s error_type=%s",
+                self.endpoint,
+                self.collection_task_id,
+                "list_all_resources",
+                type(err).__name__,
+            )
             return {"result": {"cmdb_collect_error": str(err)}, "success": False}

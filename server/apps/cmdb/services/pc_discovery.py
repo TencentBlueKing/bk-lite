@@ -10,6 +10,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from apps.cmdb.collection.round_metadata import RoundMetadataProtocolError
 from apps.cmdb.constants.constants import INSTANCE, INSTANCE_ASSOCIATION, OPERATOR_INSTANCE, DataCleanupStrategy
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.models.change_record import COLLECT_AUTOMATION_CHANGE, DELETE_INST
@@ -45,7 +46,7 @@ PC_COLLECTED_FIELDS = frozenset(
 )
 
 # 采集允许写入的软件字段（与 attr-pc_software 一致）。
-# 归属只走 install_on 关联：pc_inst_name/snapshot_id 是 VM 传输标签，不落为资产字段。
+# 归属只走 install_on 关联：pc_inst_name 是稳定传输标签，snapshot_id 只存在轮次元数据中。
 SOFTWARE_COLLECTED_FIELDS = frozenset(
     {
         "inst_name",
@@ -73,7 +74,7 @@ def filter_pc_payload(raw):
 
 
 def filter_software_payload(raw):
-    """软件白名单：去掉传输标签（pc_inst_name/snapshot_id）与未知字段。"""
+    """软件白名单：去掉关联用的 pc_inst_name 与未知字段。"""
     return {key: value for key, value in (raw or {}).items() if key in SOFTWARE_COLLECTED_FIELDS}
 
 
@@ -108,24 +109,35 @@ def _metric_time(row):
         return datetime.fromtimestamp(0, tz=timezone.utc)
 
 
-def _build_snapshot(pc_row, software_rows):
-    expected_count = _to_int(pc_row.get("software_expected_count"))
-    error_count = _to_int(pc_row.get("software_error_count"))
-    status = pc_row.get("software_snapshot_status", "partial")
-    snapshot_id = pc_row.get("snapshot_id", "")
+def _metric_timestamp_ms(row):
+    try:
+        return int(round(float(row.get("_metric_time")) * 1000))
+    except (TypeError, ValueError, OSError) as exc:
+        raise RoundMetadataProtocolError("invalid_publish_timestamp") from exc
+
+
+def _build_snapshot(pc_row, software_rows, metadata):
+    details = metadata.get("details") or {}
+    expected_count = _to_int(details.get("software_expected_count"))
+    error_count = _to_int(details.get("software_error_count"))
+    status = metadata.get("snapshot_status", "partial")
+    snapshot_id = metadata.get("snapshot_id", "")
     inst_name = pc_row.get("inst_name", "")
 
     error_code = ""
-    owned_rows = [row for row in software_rows if row.get("pc_inst_name") == inst_name and row.get("snapshot_id") == snapshot_id]
+    owned_rows = [row for row in software_rows if row.get("pc_inst_name") == inst_name]
 
     seen_inst_names = set()
+    seen_software_keys = set()
     duplicated = False
     for row in owned_rows:
         sw_inst = row.get("inst_name", "")
-        if sw_inst in seen_inst_names:
+        software_key = row.get("software_key", "")
+        if not sw_inst or not software_key or sw_inst in seen_inst_names or software_key in seen_software_keys:
             duplicated = True
             break
         seen_inst_names.add(sw_inst)
+        seen_software_keys.add(software_key)
 
     if status != "complete":
         error_code = "SOFTWARE_PARTIAL"
@@ -150,28 +162,41 @@ def _build_snapshot(pc_row, software_rows):
     )
 
 
-def parse_pc_vm_rows(rows):
+def parse_pc_vm_rows(rows, metadata_by_round):
     """把 pc_info / pc_software_info 的 VM label 行解析为逐 PC 快照列表。
 
-    安全门：计数一致、错误计数为零、软件归属当前 PC、快照 ID 一致、无重复实例名；
+    安全门：计数一致、错误计数为零、软件归属当前 PC、轮次元数据完整、无重复身份；
     任一不满足都降级 partial。同一 PC 多轮快照只保留指标时间最新的一轮。
     """
+    if not isinstance(metadata_by_round, dict) or not metadata_by_round:
+        raise RoundMetadataProtocolError("metadata_missing")
     pc_rows = {}
     software_rows = {}
     for row in rows or []:
         if not isinstance(row, dict):
             continue
         if row.get("__name__") == PC_METRIC_NAME or row.get("bk_obj_id") == "pc":
-            key = (row.get("inst_name", ""), row.get("snapshot_id", ""))
-            pc_rows.setdefault(key, row)
+            round_key = (row.get("collection_target", ""), _metric_timestamp_ms(row))
+            key = (*round_key, row.get("inst_name", ""))
+            if key in pc_rows:
+                raise RoundMetadataProtocolError("duplicate_pc_root")
+            pc_rows[key] = row
         elif row.get("__name__") == PC_SOFTWARE_METRIC_NAME or row.get("bk_obj_id") == "pc_software":
-            key = (row.get("pc_inst_name", ""), row.get("snapshot_id", ""))
+            key = (
+                row.get("collection_target", ""),
+                _metric_timestamp_ms(row),
+                row.get("pc_inst_name", ""),
+            )
             software_rows.setdefault(key, []).append(row)
 
     snapshots_by_pc = {}
     for key, pc_row in pc_rows.items():
         inst_name = pc_row.get("inst_name", "")
-        snapshot = _build_snapshot(pc_row, software_rows.get(key, []))
+        round_key = key[:2]
+        metadata = metadata_by_round.get(round_key)
+        if metadata is None:
+            raise RoundMetadataProtocolError("metadata_missing")
+        snapshot = _build_snapshot(pc_row, software_rows.get(key, []), metadata)
         existing = snapshots_by_pc.get(inst_name)
         if existing is None or snapshot.collected_at > existing.collected_at:
             snapshots_by_pc[inst_name] = snapshot

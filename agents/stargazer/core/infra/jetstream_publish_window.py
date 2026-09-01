@@ -26,8 +26,8 @@ class JetStreamMessage:
 
 @dataclass(frozen=True)
 class JetStreamPublishWindowSettings:
-    max_pending_messages: int = 1024
-    max_pending_bytes: int = 128 * 1024 * 1024
+    max_pending_messages: int = 256
+    max_pending_bytes: int = 32 * 1024 * 1024
     puback_timeout_seconds: float = 30.0
     max_attempts: int = 2
     expected_stream: str = "CMDB_METRICS"
@@ -49,8 +49,12 @@ class JetStreamPublishWindowSettings:
 class JetStreamPublishWindowSnapshot:
     pending_messages: int
     pending_bytes: int
+    waiting_messages: int
+    waiting_bytes: int
     peak_pending_messages: int
     peak_pending_bytes: int
+    peak_waiting_messages: int
+    peak_waiting_bytes: int
     confirmed_total: int
     retry_total: int
     puback_timeout_total: int
@@ -96,8 +100,12 @@ class JetStreamPublishWindow:
         self._condition = asyncio.Condition()
         self._pending_messages = 0
         self._pending_bytes = 0
+        self._waiting_messages = 0
+        self._waiting_bytes = 0
         self._peak_pending_messages = 0
         self._peak_pending_bytes = 0
+        self._peak_waiting_messages = 0
+        self._peak_waiting_bytes = 0
         self._confirmed_total = 0
         self._retry_total = 0
         self._puback_timeout_total = 0
@@ -109,8 +117,12 @@ class JetStreamPublishWindow:
         return JetStreamPublishWindowSnapshot(
             pending_messages=self._pending_messages,
             pending_bytes=self._pending_bytes,
+            waiting_messages=self._waiting_messages,
+            waiting_bytes=self._waiting_bytes,
             peak_pending_messages=self._peak_pending_messages,
             peak_pending_bytes=self._peak_pending_bytes,
+            peak_waiting_messages=self._peak_waiting_messages,
+            peak_waiting_bytes=self._peak_waiting_bytes,
             confirmed_total=self._confirmed_total,
             retry_total=self._retry_total,
             puback_timeout_total=self._puback_timeout_total,
@@ -119,7 +131,7 @@ class JetStreamPublishWindow:
             puback_duration_seconds_p99=_percentile(ordered_durations, 0.99),
         )
 
-    async def publish(
+    async def publish(  # noqa: C901 - 准入、取消和 PubAck 聚合必须共享同一额度所有权
         self,
         subject: str,
         messages: Iterable[JetStreamMessage],
@@ -132,11 +144,22 @@ class JetStreamPublishWindow:
         confirmed_indices: list[int] = []
         first_error: BaseException | None = None
 
+        async def release_if_unstarted(task: asyncio.Task) -> None:
+            if bool(getattr(task, "credit_owner_started", False)):
+                return
+            if bool(getattr(task, "credit_released", False)):
+                return
+            await self._release(int(getattr(task, "payload_bytes")))
+            task.credit_released = True  # type: ignore[attr-defined]
+
         async def cancel_pending() -> None:
-            for task in pending:
+            tasks = tuple(pending)
+            for task in tasks:
                 task.cancel()
-            if pending:
-                await asyncio.gather(*pending, return_exceptions=True)
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+                for task in tasks:
+                    await release_if_unstarted(task)
                 pending.clear()
 
         async def collect_done(*, wait_for_one: bool) -> None:
@@ -162,6 +185,8 @@ class JetStreamPublishWindow:
                         first_error = error
                 else:
                     confirmed_indices.append(index)
+                finally:
+                    await release_if_unstarted(task)
 
         try:
             for index, message in enumerate(messages):
@@ -171,12 +196,20 @@ class JetStreamPublishWindow:
                     raise ValueError("message payload exceeds JetStream byte window")
                 while len(pending) >= self.settings.max_pending_messages:
                     await collect_done(wait_for_one=True)
+                await self._reserve(len(message.payload))
                 attempted_indices.append(index)
-                task = asyncio.create_task(
-                    self._publish_one(subject, message),
-                    name=f"jetstream-puback:{message.message_id[:64]}",
-                )
+                try:
+                    task = asyncio.create_task(
+                        self._publish_one(subject, message),
+                        name=f"jetstream-puback:{message.message_id[:64]}",
+                    )
+                except BaseException:
+                    await self._release(len(message.payload))
+                    raise
                 task.message_index = index  # type: ignore[attr-defined]
+                task.payload_bytes = len(message.payload)  # type: ignore[attr-defined]
+                task.credit_owner_started = False  # type: ignore[attr-defined]
+                task.credit_released = False  # type: ignore[attr-defined]
                 pending.add(task)
 
             await collect_done(wait_for_one=False)
@@ -193,51 +226,75 @@ class JetStreamPublishWindow:
 
     async def _publish_one(self, subject: str, message: JetStreamMessage) -> None:
         last_error: BaseException | None = None
-        for attempt in range(self.settings.max_attempts):
-            if attempt:
-                self._retry_total += 1
-            await self._reserve(len(message.payload))
-            attempt_started_at = time.monotonic()
-            future = None
-            try:
-                async with asyncio.timeout(self.settings.puback_timeout_seconds):
-                    jetstream = self._provider()
-                    if inspect.isawaitable(jetstream):
-                        jetstream = await jetstream
-                    future = await jetstream.publish_async(
-                        subject,
-                        message.payload,
-                        wait_stall=self.settings.puback_timeout_seconds,
-                        stream=self.settings.expected_stream,
-                        headers={"Nats-Msg-Id": message.message_id},
-                    )
-                    await asyncio.shield(future)
-            except asyncio.CancelledError:
-                if future is not None and not future.done():
-                    future.cancel()
-                raise
-            except Exception as error:
-                last_error = error
-                if isinstance(error, TimeoutError):
-                    self._puback_timeout_total += 1
-                if future is not None and not future.done():
-                    future.cancel()
-            else:
-                self._puback_durations.append(time.monotonic() - attempt_started_at)
-                self._confirmed_total += 1
-                return
-            finally:
-                await self._release(len(message.payload))
-        self._rejected_total += 1
-        assert last_error is not None
-        raise last_error
+        current_task = asyncio.current_task()
+        if current_task is not None:
+            current_task.credit_owner_started = True  # type: ignore[attr-defined]
+        try:
+            for attempt in range(self.settings.max_attempts):
+                if attempt:
+                    self._retry_total += 1
+                attempt_started_at = time.monotonic()
+                future = None
+                try:
+                    async with asyncio.timeout(self.settings.puback_timeout_seconds):
+                        jetstream = self._provider()
+                        if inspect.isawaitable(jetstream):
+                            jetstream = await jetstream
+                        future = await jetstream.publish_async(
+                            subject,
+                            message.payload,
+                            wait_stall=self.settings.puback_timeout_seconds,
+                            stream=self.settings.expected_stream,
+                            headers={"Nats-Msg-Id": message.message_id},
+                        )
+                        await asyncio.shield(future)
+                except asyncio.CancelledError:
+                    if future is not None and not future.done():
+                        future.cancel()
+                    raise
+                except Exception as error:
+                    last_error = error
+                    if isinstance(error, TimeoutError):
+                        self._puback_timeout_total += 1
+                    if future is not None and not future.done():
+                        future.cancel()
+                else:
+                    self._puback_durations.append(time.monotonic() - attempt_started_at)
+                    self._confirmed_total += 1
+                    return
+            self._rejected_total += 1
+            assert last_error is not None
+            raise last_error
+        finally:
+            await self._release(len(message.payload))
+            if current_task is not None:
+                current_task.credit_released = True  # type: ignore[attr-defined]
 
     async def _reserve(self, payload_bytes: int) -> None:
         async with self._condition:
-            await self._condition.wait_for(
-                lambda: self._pending_messages < self.settings.max_pending_messages
-                and self._pending_bytes + payload_bytes <= self.settings.max_pending_bytes
-            )
+
+            def has_capacity() -> bool:
+                return (
+                    self._pending_messages < self.settings.max_pending_messages
+                    and self._pending_bytes + payload_bytes <= self.settings.max_pending_bytes
+                )
+
+            if not has_capacity():
+                self._waiting_messages += 1
+                self._waiting_bytes += payload_bytes
+                self._peak_waiting_messages = max(
+                    self._peak_waiting_messages,
+                    self._waiting_messages,
+                )
+                self._peak_waiting_bytes = max(
+                    self._peak_waiting_bytes,
+                    self._waiting_bytes,
+                )
+                try:
+                    await self._condition.wait_for(has_capacity)
+                finally:
+                    self._waiting_messages -= 1
+                    self._waiting_bytes -= payload_bytes
             self._pending_messages += 1
             self._pending_bytes += payload_bytes
             self._peak_pending_messages = max(self._peak_pending_messages, self._pending_messages)

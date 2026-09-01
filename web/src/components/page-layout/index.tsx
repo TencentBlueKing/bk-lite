@@ -13,7 +13,7 @@ const CustomLayout: React.FC<CustomLayoutProps> = ({ topSection, leftSection, ri
       {topSection && <div>{topSection}</div>}
 
       <div
-        className={`flex w-full overflow-hidden ${topSection ? 'mt-4' : ''}`}
+        className={`flex w-full min-w-0 overflow-hidden ${topSection ? 'mt-4' : ''}`}
         style={{
           height: height || (topSection ? 'calc(100vh - 185px)' : 'calc(100vh - 105px)'),
         }}
@@ -26,7 +26,7 @@ const CustomLayout: React.FC<CustomLayoutProps> = ({ topSection, leftSection, ri
           </div>
         )}
         <div
-          className={`flex-1 h-full rounded-md overflow-hidden p-4 bg-[var(--color-bg)]`}
+          className="min-w-0 flex-1 h-full rounded-md overflow-x-auto overflow-y-hidden p-4 bg-[var(--color-bg)]"
         >
           {rightSection}
         </div>

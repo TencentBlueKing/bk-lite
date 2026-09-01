@@ -107,6 +107,7 @@
     "test:cmdb-attr-type-i18n": "pnpm exec tsx scripts/cmdb-attr-type-i18n-test.ts",
     "test:operation-log-detail": "pnpm exec tsx scripts/operation-log-detail-test.ts",
     "test:proxy-request-timeout": "pnpm exec tsx scripts/proxy-request-timeout-test.ts",
+    "test:job-execution-stream-gap": "pnpm exec tsx scripts/job-execution-stream-gap-test.ts",
     "test:session-expiry-trigger": "pnpm exec tsx scripts/session-expiry-trigger-test.ts && pnpm exec vitest run src/context/__tests__/authColdStart.test.tsx",
     "test:cmdb-relationships-imports": "node scripts/cmdb-relationships-imports-test.mjs",
     "test:cmdb-ipam-grid-height": "node scripts/cmdb-ipam-grid-height-test.mjs",

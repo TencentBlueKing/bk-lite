@@ -192,7 +192,13 @@ export const useSkillApi = () => {
     const res = await get('/opspilot/skill_channel/conversations/messages/', {
       params: { session_id: sessionId },
     });
-    return (res?.data ?? res) as any[];
+    if (Array.isArray(res)) {
+      return { messages: res, llm_context_usage: null };
+    }
+    return {
+      messages: Array.isArray(res?.messages) ? res.messages : [],
+      llm_context_usage: res?.llm_context_usage ?? null,
+    };
   };
 
   const deleteSkillSession = async (sessionId: string): Promise<void> => {

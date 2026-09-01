@@ -1,4 +1,4 @@
-from core.plugin.error_logging import log_plugin_exception, should_log_plugin_exception
+from core.plugin.error_logging import PluginExceptionLogBudget, log_plugin_exception, should_log_plugin_exception
 
 
 class RecordingLogger:
@@ -95,3 +95,19 @@ def test_plugin_exception_logging_follows_target_context_flag():
     assert should_log_plugin_exception({"_log_plugin_call_chain": True}) is True
     assert should_log_plugin_exception({"_log_plugin_call_chain": False}) is False
     assert should_log_plugin_exception({}) is False
+
+
+def test_plugin_exception_log_budget_is_shared_and_bounded():
+    budget = PluginExceptionLogBudget(limit=3)
+    params = {
+        "_log_plugin_call_chain": True,
+        "_plugin_exception_log_budget": budget,
+    }
+
+    assert [should_log_plugin_exception(params) for _ in range(5)] == [
+        True,
+        True,
+        True,
+        False,
+        False,
+    ]

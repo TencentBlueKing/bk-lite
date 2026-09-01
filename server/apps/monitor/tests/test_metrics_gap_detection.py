@@ -1,12 +1,194 @@
+import json
 from types import SimpleNamespace
 
 import pytest
 
-from apps.monitor.services.metrics import Metrics
+from apps.monitor.services.metrics import Metrics, MetricsQueryBudgetExceeded
 from apps.monitor.views.metrics_instance import MetricsInstanceViewSet
 
-
 pytestmark = pytest.mark.unit
+
+
+def test_default_range_budget_rejects_excessive_grid_before_vm_query(monkeypatch):
+    class StubVictoriaMetricsAPI:
+        def query_range(self, query, start, end, step):
+            raise AssertionError("超限请求不应访问 VictoriaMetrics")
+
+    monkeypatch.setattr("apps.monitor.services.metrics.VictoriaMetricsAPI", StubVictoriaMetricsAPI)
+
+    with pytest.raises(MetricsQueryBudgetExceeded) as raised:
+        Metrics.get_metrics_range(
+            "cpu_usage",
+            0,
+            30 * 24 * 60 * 60 * 1000,
+            "1s",
+        )
+
+    assert raised.value.STATUS_CODE == 422
+    assert raised.value.data["code"] == "MONITOR_RANGE_QUERY_BUDGET_EXCEEDED"
+    assert raised.value.data["reason"] == "points_per_series"
+
+
+def test_default_range_budget_rejects_excessive_series_before_fill(monkeypatch):
+    monkeypatch.setattr(Metrics, "RANGE_QUERY_MAX_SERIES", 2, raising=False)
+
+    class StubVictoriaMetricsAPI:
+        def query_range(self, query, start, end, step):
+            assert query == "limitk(3, cpu_usage)"
+            return {
+                "status": "success",
+                "data": {"result": [{"metric": {"id": str(index)}, "values": [[0, "1"]]} for index in range(3)]},
+            }
+
+    monkeypatch.setattr("apps.monitor.services.metrics.VictoriaMetricsAPI", StubVictoriaMetricsAPI)
+
+    with pytest.raises(MetricsQueryBudgetExceeded) as raised:
+        Metrics.get_metrics_range("cpu_usage", 0, 60000, "60s")
+
+    assert raised.value.data["reason"] == "series"
+    assert raised.value.data["actual"]["series"] == 3
+
+
+def test_default_range_budget_keeps_explicit_series_limit_within_cap(monkeypatch):
+    monkeypatch.setattr(Metrics, "RANGE_QUERY_MAX_SERIES", 2)
+    calls = []
+
+    class StubVictoriaMetricsAPI:
+        def query_range(self, query, start, end, step):
+            calls.append((query, start, end, step))
+            return {
+                "status": "success",
+                "data": {
+                    "result": [
+                        {"metric": {"id": "1"}, "values": [[0, "1"]]},
+                        {"metric": {"id": "2"}, "values": [[0, "2"]]},
+                    ]
+                },
+            }
+
+    monkeypatch.setattr("apps.monitor.services.metrics.VictoriaMetricsAPI", StubVictoriaMetricsAPI)
+
+    Metrics.get_metrics_range("topk(2, cpu_usage)", 0, 60000, "60s", fill_missing=False)
+
+    assert calls == [("topk(2, cpu_usage)", 0.0, 60.0, "60s")]
+
+
+def test_default_range_budget_rejects_total_grid_before_fill(monkeypatch):
+    monkeypatch.setattr(Metrics, "RANGE_QUERY_MAX_SERIES", 10, raising=False)
+    monkeypatch.setattr(Metrics, "RANGE_QUERY_MAX_TOTAL_POINTS", 5, raising=False)
+
+    class StubVictoriaMetricsAPI:
+        def query_range(self, query, start, end, step):
+            return {
+                "status": "success",
+                "data": {
+                    "result": [
+                        {"metric": {"id": "1"}, "values": [[0, "1"]]},
+                        {"metric": {"id": "2"}, "values": [[0, "1"]]},
+                    ]
+                },
+            }
+
+    monkeypatch.setattr("apps.monitor.services.metrics.VictoriaMetricsAPI", StubVictoriaMetricsAPI)
+    fill_called = False
+
+    def fail_if_fill_runs(*args, **kwargs):
+        nonlocal fill_called
+        fill_called = True
+
+    monkeypatch.setattr(Metrics, "fill_missing_points", staticmethod(fail_if_fill_runs))
+
+    with pytest.raises(MetricsQueryBudgetExceeded) as raised:
+        Metrics.get_metrics_range("cpu_usage", 0, 120000, "60s")
+
+    assert raised.value.data["reason"] == "total_points"
+    assert raised.value.data["actual"]["total_points"] == 6
+    assert fill_called is False
+
+
+def test_fill_missing_points_rejects_excessive_grid_before_dataframe_allocation(monkeypatch):
+    monkeypatch.setattr(Metrics, "RANGE_QUERY_MAX_TOTAL_POINTS", 5)
+    data = [
+        {"metric": {"id": "1"}, "values": [[0, "1"]]},
+        {"metric": {"id": "2"}, "values": [[0, "1"]]},
+    ]
+
+    with pytest.raises(MetricsQueryBudgetExceeded) as raised:
+        Metrics.fill_missing_points(0, 120, 60, data)
+
+    assert raised.value.data["reason"] == "total_points"
+    assert data[0]["values"] == [[0, "1"]]
+
+
+def test_metrics_range_view_returns_structured_422_for_budget_error(monkeypatch):
+    error = MetricsQueryBudgetExceeded(
+        data={
+            "code": "MONITOR_RANGE_QUERY_BUDGET_EXCEEDED",
+            "reason": "points_per_series",
+            "limits": {"points_per_series": 10000},
+            "actual": {"points_per_series": 20000},
+        }
+    )
+    monkeypatch.setattr(
+        "apps.monitor.views.metrics_instance.MetricsService.get_metrics_range",
+        lambda *args, **kwargs: (_ for _ in ()).throw(error),
+    )
+
+    response = MetricsInstanceViewSet().get_metrics_range(
+        SimpleNamespace(
+            GET={
+                "query": "cpu_usage",
+                "start": "0",
+                "end": "1200000",
+                "step": "60s",
+            }
+        )
+    )
+
+    assert response.status_code == 422
+    assert json.loads(response.content) == {
+        "data": error.data,
+        "result": False,
+        "message": "指标范围查询超过服务端预算，请缩短时间范围、减少实例或增大查询步长",
+    }
+
+
+def test_card_budget_clamps_step_before_shared_hard_budget(monkeypatch):
+    calls = []
+
+    class StubVictoriaMetricsAPI:
+        def query_range(self, query, start, end, step):
+            calls.append((query, start, end, step))
+            return {
+                "status": "success",
+                "data": {
+                    "result": [
+                        {
+                            "metric": {"instance_id": "host-1"},
+                            "values": [[0, "1"], [600, "2"]],
+                        }
+                    ]
+                },
+            }
+
+    monkeypatch.setattr("apps.monitor.services.metrics.VictoriaMetricsAPI", StubVictoriaMetricsAPI)
+
+    response = Metrics.get_metrics_range(
+        "cpu_usage",
+        0,
+        600000,
+        "1s",
+        card_budget=True,
+    )
+
+    assert calls == [("limitk(201, cpu_usage)", 0.0, 600.0, "2s")]
+    assert response["data"]["step"] == "2s"
+    assert response["data"]["step_clamped"] is True
+    assert response["data"]["series_budget"] == {
+        "truncated": False,
+        "limit": 200,
+        "applied": True,
+    }
 
 
 def test_detect_gap_intervals_finds_missing_samples_inside_coarse_step():
@@ -109,7 +291,7 @@ def test_detect_gap_intervals_keeps_overlapping_series_gaps_independent():
                     "missing_points": 5,
                 },
             ],
-        }
+        },
     ]
 
 
@@ -209,8 +391,8 @@ def test_get_metrics_range_adds_gap_metadata_when_detection_enabled(monkeypatch)
     )
 
     assert calls == [
-        ("cpu_usage", 0.0, 600.0, "1h"),
-        ("cpu_usage", 0.0, 600.0, "60s"),
+        ("limitk(2001, cpu_usage)", 0.0, 600.0, "1h"),
+        ("limitk(2001, cpu_usage)", 0.0, 600.0, "60s"),
     ]
     assert response["data"]["gap_detection"] == {"status": "ok", "limited": False}
     assert response["data"]["gaps"] == [
@@ -361,7 +543,7 @@ def test_get_metrics_range_reuses_response_when_step_matches_collection_interval
         collection_interval_seconds=60,
     )
 
-    assert calls == [("cpu_usage", 0.0, 600.0, "60s")]
+    assert calls == [("limitk(2001, cpu_usage)", 0.0, 600.0, "60s")]
     assert response["data"]["gap_detection"] == {"status": "ok", "limited": False}
     assert response["data"]["gaps"] == [
         {
@@ -419,7 +601,7 @@ def test_get_metrics_range_limits_gap_detection_when_query_would_be_too_large(mo
         max_gap_detection_points=3,
     )
 
-    assert calls == [("cpu_usage", 0.0, 600.0, "1h")]
+    assert calls == [("limitk(2001, cpu_usage)", 0.0, 600.0, "1h")]
     assert response["data"]["gaps"] == []
     assert response["data"]["gap_detection"] == {
         "status": "limited",
@@ -471,8 +653,8 @@ def test_get_metrics_range_detects_one_minute_gaps_for_thirty_day_window(monkeyp
     )
 
     assert calls == [
-        ("cpu_usage", 0.0, 2592000.0, "1h"),
-        ("cpu_usage", 0.0, 2592000.0, "60s"),
+        ("limitk(2001, cpu_usage)", 0.0, 2592000.0, "1h"),
+        ("limitk(2001, cpu_usage)", 0.0, 2592000.0, "60s"),
     ]
     assert response["data"]["gap_detection"] == {"status": "ok", "limited": False}
     assert response["data"]["gaps"] == [

@@ -29,8 +29,8 @@ OA_CREATED_BY="${OA_CREATED_BY:-admin}"
 
 OA_DASHBOARD_NAME="${OA_DASHBOARD_NAME:-MySQL-${MYSQL_INSTANCE_NAME}-趋势}"
 OA_DASHBOARD_DESC="${OA_DASHBOARD_DESC:-MySQL 自动导入趋势图}"
-OA_EXISTING_DATASOURCE_NAME="${OA_EXISTING_DATASOURCE_NAME:-查询时间范围内的指标数据}"
-OA_EXISTING_DATASOURCE_REST_API="${OA_EXISTING_DATASOURCE_REST_API:-monitor/mm_query_range}"
+OA_EXISTING_DATASOURCE_NAME="${OA_EXISTING_DATASOURCE_NAME:-受控监控指标趋势}"
+OA_EXISTING_DATASOURCE_REST_API="${OA_EXISTING_DATASOURCE_REST_API:-monitor/query_metric_range_scoped}"
 OA_DATASOURCE_KEY="${OA_DATASOURCE_KEY:-${OA_EXISTING_DATASOURCE_NAME}::${OA_EXISTING_DATASOURCE_REST_API}}"
 
 OA_WIDGET_ID="${OA_WIDGET_ID:-mysql-monitor-widget}"
@@ -58,6 +58,8 @@ MONITOR_REQUEST_YAML="${WORKDIR}/monitor-request.yaml"
 MONITOR_RESULT_YAML="${WORKDIR}/monitor-result.yaml"
 OA_IMPORT_YAML="${WORKDIR}/oa-import.yaml"
 INSTANCE_LABEL_FILE="${WORKDIR}/instance-label.txt"
+INSTANCE_ID_FILE="${WORKDIR}/instance-id.txt"
+METRIC_ID_FILE="${WORKDIR}/metric-id.txt"
 
 DJANGO_PYTHON="${DJANGO_PYTHON:-${VENV_PYTHON_DEFAULT}}"
 
@@ -239,13 +241,22 @@ parse_monitor_result() {
     cd "${SERVER_DIR}"
     RESULT_YAML="${MONITOR_RESULT_YAML}" \
     INSTANCE_LABEL_FILE="${INSTANCE_LABEL_FILE}" \
+    INSTANCE_ID_FILE="${INSTANCE_ID_FILE}" \
+    METRIC_ID_FILE="${METRIC_ID_FILE}" \
+    MYSQL_MONITOR_OBJECT_ID="${MYSQL_MONITOR_OBJECT_ID}" \
+    MYSQL_MONITOR_PLUGIN_ID="${MYSQL_MONITOR_PLUGIN_ID}" \
+    OA_QUERY_METRIC="${OA_QUERY_METRIC}" \
     "${DJANGO_PYTHON}" manage.py shell <<'PY'
 import os
 import sys
 import yaml
 
+from apps.monitor.models import Metric
+
 path = os.environ["RESULT_YAML"]
 label_out = os.environ["INSTANCE_LABEL_FILE"]
+instance_id_out = os.environ["INSTANCE_ID_FILE"]
+metric_id_out = os.environ["METRIC_ID_FILE"]
 with open(path, "r", encoding="utf-8") as f:
     data = yaml.safe_load(f) or {}
 
@@ -268,18 +279,40 @@ if not label_values:
 with open(label_out, "w", encoding="utf-8") as f:
     f.write(str(label_values[0]).strip())
 
+with open(instance_id_out, "w", encoding="utf-8") as f:
+    f.write(str(instance["instance_id"]).strip())
+
+metric_id = (
+    Metric.objects.filter(
+        monitor_object_id=int(os.environ["MYSQL_MONITOR_OBJECT_ID"]),
+        monitor_plugin_id=int(os.environ["MYSQL_MONITOR_PLUGIN_ID"]),
+        name=os.environ["OA_QUERY_METRIC"],
+    )
+    .values_list("id", flat=True)
+    .first()
+)
+if metric_id is None:
+    print("metric not found for authorized query")
+    sys.exit(1)
+with open(metric_id_out, "w", encoding="utf-8") as f:
+    f.write(str(metric_id))
+
 print(f"instance_label={label_values[0]}")
 PY
   ) || fail "monitor result validation failed"
 
 INSTANCE_LABEL="$(cat "${INSTANCE_LABEL_FILE}")"
+  INSTANCE_ID="$(cat "${INSTANCE_ID_FILE}")"
+  OA_METRIC_ID="$(cat "${METRIC_ID_FILE}")"
   assert_nonempty "${INSTANCE_LABEL}" "INSTANCE_LABEL"
+  assert_nonempty "${INSTANCE_ID}" "INSTANCE_ID"
+  assert_nonempty "${OA_METRIC_ID}" "OA_METRIC_ID"
 
   if [[ -z "${OA_QUERY_EXPR}" ]]; then
     OA_QUERY_EXPR="${OA_QUERY_METRIC}{instance_id=\"${INSTANCE_LABEL}\"}"
   fi
 
-  export OA_QUERY_EXPR
+  export OA_QUERY_EXPR INSTANCE_ID OA_METRIC_ID
   log "resolved instance label: ${INSTANCE_LABEL}"
   log "effective query expr: ${OA_QUERY_EXPR}"
 }
@@ -329,6 +362,81 @@ wait_metric_ready() {
 
 render_dashboard_yaml() {
   log "rendering operation analysis import yaml"
+  OA_VIEW_SETS_YAML="$(
+    OA_DATASOURCE_KEY="${OA_DATASOURCE_KEY}" \
+    OA_WIDGET_ID="${OA_WIDGET_ID}" \
+    OA_WIDGET_TITLE="${OA_WIDGET_TITLE}" \
+    OA_WIDGET_DESC="${OA_WIDGET_DESC}" \
+    OA_WIDGET_X="${OA_WIDGET_X}" \
+    OA_WIDGET_Y="${OA_WIDGET_Y}" \
+    OA_WIDGET_W="${OA_WIDGET_W}" \
+    OA_WIDGET_H="${OA_WIDGET_H}" \
+    OA_CHART_TYPE="${OA_CHART_TYPE}" \
+    MYSQL_MONITOR_OBJECT_ID="${MYSQL_MONITOR_OBJECT_ID}" \
+    OA_METRIC_ID="${OA_METRIC_ID}" \
+    INSTANCE_ID="${INSTANCE_ID}" \
+    OA_QUERY_TIME_RANGE="${OA_QUERY_TIME_RANGE}" \
+    OA_QUERY_STEP="${OA_QUERY_STEP}" \
+    python3 <<'PY'
+import os
+import textwrap
+import yaml
+
+widget = {
+    "i": os.environ["OA_WIDGET_ID"],
+    "x": int(os.environ["OA_WIDGET_X"]),
+    "y": int(os.environ["OA_WIDGET_Y"]),
+    "w": int(os.environ["OA_WIDGET_W"]),
+    "h": int(os.environ["OA_WIDGET_H"]),
+    "name": os.environ["OA_WIDGET_TITLE"],
+    "description": os.environ["OA_WIDGET_DESC"],
+    "valueConfig": {
+        "chartType": os.environ["OA_CHART_TYPE"],
+        "dataSource": os.environ["OA_DATASOURCE_KEY"],
+        "dataSourceParams": [
+            {
+                "name": "monitor_object_id",
+                "type": "string",
+                "value": os.environ["MYSQL_MONITOR_OBJECT_ID"],
+                "alias_name": "monitor_object_id",
+                "filterType": "params",
+            },
+            {
+                "name": "metric_id",
+                "type": "string",
+                "value": os.environ["OA_METRIC_ID"],
+                "alias_name": "metric_id",
+                "filterType": "params",
+            },
+            {
+                "name": "instance_ids",
+                "type": "string",
+                "value": [os.environ["INSTANCE_ID"]],
+                "alias_name": "instance_ids",
+                "filterType": "params",
+            },
+            {
+                "name": "time_range",
+                "type": "timeRange",
+                "value": int(os.environ["OA_QUERY_TIME_RANGE"]),
+                "alias_name": "time_range",
+                "filterType": "fixed",
+            },
+            {
+                "name": "step",
+                "type": "string",
+                "value": os.environ["OA_QUERY_STEP"],
+                "alias_name": "step",
+                "filterType": "params",
+            },
+        ],
+    },
+}
+
+print(textwrap.indent(yaml.safe_dump([widget], allow_unicode=True, sort_keys=False).rstrip(), "      "))
+PY
+  )"
+  export OA_VIEW_SETS_YAML
   render_template "${TEMPLATE_DIR}/mysql_operation_analysis_dashboard.yaml.tpl" "${OA_IMPORT_YAML}"
 }
 

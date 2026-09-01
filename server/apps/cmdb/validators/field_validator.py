@@ -40,29 +40,24 @@ CMDB 字段校验器
     FieldValidator.validate_field_by_attr("192.168.1.1", attr)
 """
 
-import re
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, Literal
 
+from apps.cmdb.constants.constants import ENUM_SELECT_MODE_SINGLE
 from apps.cmdb.constants.field_constraints import (
-    IDENTIFIER_PATTERN,
-    IDENTIFIER_ERROR_MESSAGE,
-    StringValidationType,
-    DEFAULT_STRING_CONSTRAINT,
     DEFAULT_NUMBER_CONSTRAINT,
+    DEFAULT_STRING_CONSTRAINT,
+    IDENTIFIER_ERROR_MESSAGE,
+    IDENTIFIER_PATTERN,
     MAX_CUSTOM_REGEX_LENGTH,
-    TAG_ATTR_ID,
+    TABLE_MAX_CELL_LENGTH,
+    TABLE_MAX_ROWS,
+    TAG_MAX_PAIRS,
     TAG_MODE_FREE,
     TAG_MODE_STRICT,
-    TAG_MAX_PAIRS,
-    TABLE_MAX_ROWS,
-    TABLE_MAX_CELL_LENGTH,
-)
-from apps.cmdb.constants.constants import (
-    ENUM_SELECT_MODE_SINGLE,
-    ENUM_SELECT_MODE_MULTIPLE,
-    ENUM_SELECT_MODE_DEFAULT,
+    StringValidationType,
 )
 from apps.cmdb.utils.time_util import parse_cmdb_time
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -135,9 +130,7 @@ def normalize_tag_field_option(option: dict | None) -> TagFieldConfig:
     return TagFieldConfig(mode=mode, options=normalized_options)
 
 
-def validate_tag_values(
-    values: list[str], config: TagFieldConfig
-) -> TagValidationResult:
+def validate_tag_values(values: list[str], config: TagFieldConfig) -> TagValidationResult:
     errors: list[str] = []
     if not isinstance(values, list):
         return TagValidationResult(normalized_values=[], errors=["标签值必须是数组"])
@@ -191,9 +184,7 @@ def normalize_enum_values(raw: str | list | None) -> list[str]:
     if raw is None or raw == "":
         return []
     if isinstance(raw, list):
-        return [
-            str(item).strip() for item in raw if item is not None and str(item).strip()
-        ]
+        return [str(item).strip() for item in raw if item is not None and str(item).strip()]
     if isinstance(raw, str):
         raw = raw.strip()
         if not raw:
@@ -300,9 +291,7 @@ class FieldValidator:
 
         # 合并默认约束
         constraint = {**DEFAULT_STRING_CONSTRAINT, **(constraint or {})}
-        validation_type = constraint.get(
-            "validation_type", StringValidationType.UNRESTRICTED
-        )
+        validation_type = constraint.get("validation_type", StringValidationType.UNRESTRICTED)
 
         # 无限制类型直接通过
         if validation_type == StringValidationType.UNRESTRICTED:
@@ -328,9 +317,7 @@ class FieldValidator:
 
             # 检查正则长度(防止ReDoS攻击)
             if len(custom_regex) > MAX_CUSTOM_REGEX_LENGTH:
-                raise BaseAppException(
-                    f"自定义正则表达式长度不能超过 {MAX_CUSTOM_REGEX_LENGTH} 字符"
-                )
+                raise BaseAppException(f"自定义正则表达式长度不能超过 {MAX_CUSTOM_REGEX_LENGTH} 字符")
 
             # 编译并校验正则
             try:
@@ -354,13 +341,11 @@ class FieldValidator:
             pattern = re.compile(regex)
             if not pattern.match(value):
                 # 获取类型的中文名称
-                type_name = dict(StringValidationType.CHOICES).get(
-                    validation_type, validation_type
-                )
+                type_name = dict(StringValidationType.CHOICES).get(validation_type, validation_type)
                 raise BaseAppException(f"值 '{value}' 不符合 {type_name} 格式要求")
         except re.error as e:
             logger.error(f"预定义正则编译失败 [{validation_type}]: {e}", exc_info=True)
-            raise BaseAppException(f"内部错误: 校验规则配置异常")
+            raise BaseAppException("内部错误: 校验规则配置异常")
 
     @staticmethod
     def validate_number(value: Any, constraint: Dict, attr_type: str = "int") -> None:
@@ -399,7 +384,7 @@ class FieldValidator:
                 value = float(value)
             else:
                 raise BaseAppException(f"不支持的数字类型: {attr_type}")
-        except (ValueError, TypeError) as e:
+        except (ValueError, TypeError):
             type_name = "整数" if attr_type == "int" else "浮点数"
             raise BaseAppException(f"值 '{value}' 不是有效的{type_name}")
 
@@ -460,6 +445,7 @@ class FieldValidator:
             raise BaseAppException("table 字段至少需要定义一列")
 
         column_ids = set()
+        row_key_count = 0
         for idx, col in enumerate(option):
             if not isinstance(col, dict):
                 raise BaseAppException(f"第{idx + 1}列配置必须是对象")
@@ -481,21 +467,24 @@ class FieldValidator:
 
             # 校验 column_id 格式（使用与 attr_id 相同的规则）
             if not IdentifierValidator.is_valid(column_id):
-                raise BaseAppException(
-                    f"第{idx + 1}列 column_id '{column_id}' "
-                    + IdentifierValidator.get_error_message("列ID")
-                )
+                raise BaseAppException(f"第{idx + 1}列 column_id '{column_id}' " + IdentifierValidator.get_error_message("列ID"))
 
             # 校验 column_id 唯一性
             if column_id in column_ids:
                 raise BaseAppException(f"列ID '{column_id}' 重复")
             column_ids.add(column_id)
 
+            is_row_key = col.get("is_row_key", False)
+            if not isinstance(is_row_key, bool):
+                raise BaseAppException(f"第{idx + 1}列 is_row_key 必须是布尔值")
+            if is_row_key:
+                row_key_count += 1
+                if row_key_count > 1:
+                    raise BaseAppException("table 字段最多只能设置一列为行标识")
+
             # 校验 column_type 只能是 str 或 number
             if column_type not in {"str", "number"}:
-                raise BaseAppException(
-                    f"第{idx + 1}列的 column_type 只能是 'str' 或 'number'，当前值: '{column_type}'"
-                )
+                raise BaseAppException(f"第{idx + 1}列的 column_type 只能是 'str' 或 'number'，当前值: '{column_type}'")
 
             # 校验 order 为正整数
             try:
@@ -537,34 +526,41 @@ class FieldValidator:
         elif isinstance(value, list):
             rows = value
         else:
-            raise BaseAppException(
-                f"table 字段值必须是 JSON 字符串或数组，当前类型: {type(value)}"
-            )
+            raise BaseAppException(f"table 字段值必须是 JSON 字符串或数组，当前类型: {type(value)}")
 
         if not isinstance(rows, list):
             raise BaseAppException("table 字段值解析后必须是数组")
 
         if len(rows) > TABLE_MAX_ROWS:
-            raise BaseAppException(
-                f"表格数据最多允许 {TABLE_MAX_ROWS} 行，当前 {len(rows)} 行"
-            )
+            raise BaseAppException(f"表格数据最多允许 {TABLE_MAX_ROWS} 行，当前 {len(rows)} 行")
 
         # 构建列ID到类型的映射
         column_map = {col["column_id"]: col["column_type"] for col in option}
+        row_key_column = next((col for col in option if col.get("is_row_key") is True), None)
+        row_key_values = set()
 
         # 校验每一行
         for row_idx, row in enumerate(rows):
             if not isinstance(row, dict):
-                raise BaseAppException(
-                    f"第{row_idx + 1}行数据必须是对象，当前类型: {type(row)}"
-                )
+                raise BaseAppException(f"第{row_idx + 1}行数据必须是对象，当前类型: {type(row)}")
+
+            if row_key_column:
+                row_key_id = row_key_column["column_id"]
+                row_key_value = row.get(row_key_id)
+                if row_key_value is None or str(row_key_value).strip() == "":
+                    raise BaseAppException(f"第{row_idx + 1}行的行标识 '{row_key_id}' 不能为空")
+                try:
+                    normalized_row_key = float(row_key_value) if row_key_column["column_type"] == "number" else str(row_key_value).strip()
+                except (ValueError, TypeError):
+                    raise BaseAppException(f"第{row_idx + 1}行，行标识 '{row_key_id}' 的值 '{row_key_value}' 不是有效的数字")
+                if normalized_row_key in row_key_values:
+                    raise BaseAppException(f"第{row_idx + 1}行的行标识 '{row_key_id}' 值重复")
+                row_key_values.add(normalized_row_key)
 
             # 校验行的键必须是定义的 column_id 子集
             for key in row.keys():
                 if key not in column_map:
-                    raise BaseAppException(
-                        f"第{row_idx + 1}行包含未定义的列 '{key}'，允许的列: {list(column_map.keys())}"
-                    )
+                    raise BaseAppException(f"第{row_idx + 1}行包含未定义的列 '{key}'，允许的列: {list(column_map.keys())}")
 
             # 校验 number 列的值必须可转为数值
             for col_id, col_type in column_map.items():
@@ -578,21 +574,14 @@ class FieldValidator:
                     continue
 
                 # 单元格长度校验
-                if (
-                    isinstance(cell_value, str)
-                    and len(cell_value) > TABLE_MAX_CELL_LENGTH
-                ):
-                    raise BaseAppException(
-                        f"第{row_idx + 1}行，列 '{col_id}' 的值超过最大长度 {TABLE_MAX_CELL_LENGTH}"
-                    )
+                if isinstance(cell_value, str) and len(cell_value) > TABLE_MAX_CELL_LENGTH:
+                    raise BaseAppException(f"第{row_idx + 1}行，列 '{col_id}' 的值超过最大长度 {TABLE_MAX_CELL_LENGTH}")
 
                 if col_type == "number":
                     try:
                         float(cell_value)
                     except (ValueError, TypeError):
-                        raise BaseAppException(
-                            f"第{row_idx + 1}行，列 '{col_id}' 的值 '{cell_value}' 不是有效的数字"
-                        )
+                        raise BaseAppException(f"第{row_idx + 1}行，列 '{col_id}' 的值 '{cell_value}' 不是有效的数字")
 
     @staticmethod
     def validate_organization_value(value: Any, attr_id: str = "organization") -> None:
@@ -660,9 +649,7 @@ class FieldValidator:
             public_library_id = attr.get("public_library_id")
             if public_library_id:
                 try:
-                    from apps.cmdb.services.public_enum_library import (
-                        get_library_or_raise,
-                    )
+                    from apps.cmdb.services.public_enum_library import get_library_or_raise
 
                     library = get_library_or_raise(public_library_id)
                     valid_ids = {opt.get("id") for opt in library.options}
@@ -744,9 +731,7 @@ class FieldValidator:
                     # 先校验 option 配置
                     FieldValidator.validate_table_option(option)
                     # 再校验值
-                    FieldValidator.validate_table_value(
-                        value, option, attr.get("attr_id", "table")
-                    )
+                    FieldValidator.validate_table_value(value, option, attr.get("attr_id", "table"))
 
             elif attr_type == "tag":
                 tag_config = normalize_tag_field_option(option)
@@ -759,9 +744,7 @@ class FieldValidator:
                 FieldValidator.validate_enum_value(value, attr)
 
             elif attr_type == "organization":
-                FieldValidator.validate_organization_value(
-                    value, attr.get("attr_id", "organization")
-                )
+                FieldValidator.validate_organization_value(value, attr.get("attr_id", "organization"))
 
             elif attr_type == "user":
                 FieldValidator.validate_user_value(value, attr.get("attr_id", "user"))

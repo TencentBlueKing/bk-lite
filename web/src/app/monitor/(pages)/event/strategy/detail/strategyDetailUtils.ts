@@ -6,9 +6,13 @@ import {
   UnitListItem
 } from '@/app/monitor/types';
 import { isStringArray } from '@/app/monitor/utils/common';
+import { getMonitorUnitSelectLabel } from '@/app/monitor/components/monitor-shared/unit-label';
 import { MetricExpressionMode } from './formulaExpressionUtils';
 
 export const FORMULA_DEFAULT_RESULT_UNIT = 'percent';
+
+/** 兼容策略阈值下拉与本地验证脚本。 */
+export const getThresholdUnitSelectLabel = getMonitorUnitSelectLabel;
 
 /** 组织变更后，剔除不再属于候选用户列表的已选通知人 */
 export const pruneNoticeUsers = <T extends string | number>(
@@ -277,6 +281,15 @@ export const getPercentUnitScaleFactor = (
   return null;
 };
 
+/** 百分比阈值输入占位，明示量纲；其他单位不提示。 */
+export const getThresholdValuePlaceholder = (
+  thresholdUnit: string | null | undefined
+): string => {
+  if (thresholdUnit === 'percent') return '0-100';
+  if (thresholdUnit === 'percentunit') return '0.0-1.0';
+  return '';
+};
+
 /** 阈值单位在 percentunit↔percent 间切换时同步缩放数值，避免误报/漏报。 */
 export const scaleThresholdValuesForUnitChange = <T extends { value: number | null }>(
   thresholds: T[],
@@ -304,7 +317,11 @@ export const buildMetricUnitCascaderOptions = (
       children: (group.children || [])
         .filter((item) => !INVALID_THRESHOLD_UNIT_IDS.has(item.value))
         .map((item) => ({
-          label: item.label,
+          label: getMonitorUnitSelectLabel({
+            unit_id: String(item.value),
+            unit_name: item.label,
+            display_unit: item.unit
+          }),
           value: item.value,
           children: []
         }))

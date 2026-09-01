@@ -99,25 +99,22 @@ class BaseLogClusterModel(ABC):
         
         Args:
             logs: 日志消息列表
-            ground_truth: 真实聚类标签（可选，用于监督评估）
+            ground_truth: 历史兼容参数；当前正式契约传入非 None 时必须拒绝
             prefix: 指标名称前缀（如 "train", "test", "val"）
             verbose: 是否输出详细日志
         
         Returns:
-            评估指标字典，建议包含以下指标：
+            无监督评估指标字典，建议包含以下指标：
             {
                 "num_templates": int,           # 模板数量
                 "coverage_rate": float,         # 覆盖率（解析成功率）
                 "template_diversity": float,    # 模板多样性（归一化熵）
-                # 如果提供 ground_truth，还应包含：
-                "grouping_accuracy": float,     # 分组准确率
-                "precision": float,             # 精确率
-                "recall": float,                # 召回率
-                "f1_score": float              # F1分数
+                "template_quality_score": float # 模板质量
             }
         
         Raises:
             RuntimeError: 模型未训练
+            SupervisedEvaluationUnsupported: 传入 ground_truth
         """
         pass
 

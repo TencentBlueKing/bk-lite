@@ -15,6 +15,7 @@ class ChangeRecordSerializer(serializers.ModelSerializer):
             "type",
             "before_data",
             "after_data",
+            "attribute_snapshot",
             "operator",
             "created_at",
             "model_object",

@@ -22,6 +22,7 @@ import types
 
 import pytest
 
+from apps.cmdb.collection.round_metadata import RoundMetadataProtocolError
 from apps.cmdb.constants.constants import CollectDriverTypes, CollectPluginTypes, DataCleanupStrategy
 from apps.cmdb.models.change_record import DELETE_INST, ChangeRecord
 from apps.cmdb.models.collect_model import CollectModels
@@ -69,9 +70,7 @@ def _fake_header_task(os_type):
             "winrm_transport": "ntlm",
             "winrm_cert_validation": False,
         }
-        task.decrypt_credentials = [
-            {"username": "ACME\\alice", "password": WINDOWS_PASSWORD, "port": 5986}
-        ]
+        task.decrypt_credentials = [{"username": "ACME\\alice", "password": WINDOWS_PASSWORD, "port": 5986}]
     else:
         task.params = {"os_type": "macos"}
         task.decrypt_credentials = [
@@ -107,42 +106,125 @@ def graph(monkeypatch):
 def _run_plugin(task, vm_doc):
     """跑真实 PCCollectionPlugin 的 format_data + format_metrics，返回任务级 format_data。"""
     plugin = PCCollectionPlugin(inst_name="", inst_id=f"cmdb_{task.id}", task_id=task.id)
+    metadata = vm_doc.get("_round_metadata", {})
+
+    class Reader:
+        def __init__(self, _task):
+            pass
+
+        def get_many(self, _lookups, *, model_id):
+            assert model_id == "pc"
+            return metadata
+
+    plugin.round_metadata_reader_factory = Reader
     plugin.format_data(vm_doc["data"])
     plugin.format_metrics()
     return plugin.result[PCCollectionPlugin.TASK_FORMAT_DATA_KEY]
 
 
-def _round(vm_doc, snapshot_id, ts, software_overrides=None, drop_software=False,
-           status=None, expected=None):
+def test_round_metadata_failure_stops_before_pc_graph_reconciliation(monkeypatch):
+    task = types.SimpleNamespace(
+        id=321,
+        model_id="pc",
+        instances=[{"inst_name": "pc-task"}],
+        access_point=[],
+    )
+    plugin = PCCollectionPlugin(
+        inst_name="pc-task",
+        inst_id="cmdb_321",
+        task_id=321,
+        collect_inst=task,
+    )
+    plugin.format_data(
+        {
+            "result": [
+                {
+                    "metric": {
+                        "__name__": "pc_info",
+                        "bk_obj_id": "pc",
+                        "inst_name": "WIN-AAA",
+                        "collection_target": "10.0.0.8",
+                        "collect_status": "success",
+                    },
+                    "value": [1780000000.123, "1"],
+                }
+            ]
+        }
+    )
+
+    class Reader:
+        def __init__(self, _task):
+            pass
+
+        def get_many(self, _lookups, *, model_id):
+            raise RoundMetadataProtocolError("metadata_unavailable")
+
+    reconciled = False
+
+    def apply_pc_snapshots(*_args, **_kwargs):
+        nonlocal reconciled
+        reconciled = True
+
+    plugin.round_metadata_reader_factory = Reader
+    monkeypatch.setattr(
+        "apps.cmdb.services.pc_discovery.apply_pc_snapshots",
+        apply_pc_snapshots,
+    )
+
+    with pytest.raises(RoundMetadataProtocolError, match="metadata_unavailable"):
+        plugin.format_metrics()
+
+    assert reconciled is False
+
+
+def _round(vm_doc, snapshot_id, ts, software_overrides=None, drop_software=False, status=None, expected=None):
     """从基线 VM rows 派生一轮快照：固定输入的受控变体（升级/空快照/partial）。"""
     doc = copy.deepcopy(vm_doc)
     rows = doc["data"]["result"]
+    root = next(row["metric"] for row in rows if row["metric"]["__name__"] == "pc_info")
+    target = root.get("collection_target") or root.get("host")
+    resolved_status = status or root.get("software_snapshot_status") or "complete"
+    software_row_count = sum(1 for row in rows if row["metric"]["__name__"] == "pc_software_info")
+    resolved_expected = int(
+        expected
+        if expected is not None
+        else root.get("software_expected_count")
+        if root.get("software_expected_count") is not None
+        else software_row_count
+    )
+    resolved_errors = int(root.get("software_error_count") or 0)
     for row in rows:
-        row["metric"]["snapshot_id"] = snapshot_id
+        row["metric"]["collection_target"] = target
         row["value"] = [ts, "1"]
-        if row["metric"]["__name__"] == "pc_info":
-            if status is not None:
-                row["metric"]["software_snapshot_status"] = status
-            if expected is not None:
-                row["metric"]["software_expected_count"] = str(expected)
+        for key in (
+            "snapshot_id",
+            "software_snapshot_status",
+            "software_expected_count",
+            "software_error_count",
+        ):
+            row["metric"].pop(key, None)
     if software_overrides:
         for row in rows:
             if row["metric"]["__name__"] == "pc_software_info":
                 row["metric"].update(software_overrides)
     if drop_software:
-        doc["data"]["result"] = [
-            row for row in rows if row["metric"]["__name__"] != "pc_software_info"
-        ]
+        doc["data"]["result"] = [row for row in rows if row["metric"]["__name__"] != "pc_software_info"]
+    doc["_round_metadata"] = {
+        (target, int(ts * 1000)): {
+            "snapshot_id": snapshot_id,
+            "snapshot_status": resolved_status,
+            "details": {
+                "software_expected_count": resolved_expected,
+                "software_error_count": resolved_errors,
+            },
+        }
+    }
     return doc
 
 
 def _software_of(graph, pc_inst):
     pc_id = graph.store[pc_inst]["_id"]
-    sw_ids = {
-        edge["src_inst_id"]
-        for edge in graph.edges
-        if edge["dst_inst_id"] == pc_id and edge["asst_id"] == "install_on"
-    }
+    sw_ids = {edge["src_inst_id"] for edge in graph.edges if edge["dst_inst_id"] == pc_id and edge["asst_id"] == "install_on"}
     return {name: entity for name, entity in graph.store.items() if entity.get("_id") in sw_ids}
 
 
@@ -200,23 +282,25 @@ def test_executor_stdout_matches_vm_rows_identity(load_fixture, os_type):
     # 身份由 hardware_uuid 推导，且与 executor stdout 一致
     assert pc_row["inst_name"] == expected["pc_inst_name"]
     assert pc_row["hardware_uuid"] == stdout["pc"][0]["hardware_uuid"].upper()
-    assert pc_row["snapshot_id"] == stdout["snapshot_id"]
     assert sw_row["inst_name"] == expected["software_inst_name"]
     assert sw_row["pc_inst_name"] == expected["pc_inst_name"]
-    assert sw_row["snapshot_id"] == stdout["snapshot_id"]
-    assert int(pc_row["software_expected_count"]) == stdout["software_expected_count"]
+    assert pc_row["collection_target"] == pc_row["host"]
+    assert sw_row["collection_target"] == sw_row["host"]
+    for row in (pc_row, sw_row):
+        assert "snapshot_id" not in row
+        assert "software_snapshot_status" not in row
+        assert "software_expected_count" not in row
+        assert "software_error_count" not in row
 
 
 # ---------------------------------------------- VM 查询 → 图库写入公开链路
 
 
 @pytest.mark.django_db
-def test_macos_vm_query_writes_pc_software_and_install_on(
-    load_fixture, graph, monkeypatch
-):
+def test_macos_vm_query_writes_pc_software_and_install_on(load_fixture, graph, monkeypatch):
     """PCCollectionPlugin.run 必须经真实 VM 查询封装把 macOS 快照写入图库。"""
     expected = EXPECTED["macos"]
-    vm_doc = load_fixture("pc/macos_vm_rows.json")
+    vm_doc = _round(load_fixture("pc/macos_vm_rows.json"), "mac-run", BASE_TS)
     task = _db_task()
     requests = []
 
@@ -234,9 +318,17 @@ def test_macos_vm_query_writes_pc_software_and_install_on(
 
     monkeypatch.setattr("apps.cmdb.collection.query_vm.requests.post", _post)
 
-    plugin = PCCollectionPlugin(
-        inst_name="", inst_id=f"cmdb_{task.id}", task_id=task.id
-    )
+    class Reader:
+        def __init__(self, _task):
+            pass
+
+        def get_many(self, _lookups, *, model_id):
+            assert model_id == "pc"
+            return vm_doc["_round_metadata"]
+
+    monkeypatch.setattr(PCCollectionPlugin, "round_metadata_reader_factory", Reader)
+
+    plugin = PCCollectionPlugin(inst_name="", inst_id=f"cmdb_{task.id}", task_id=task.id)
     result = plugin.run()
 
     assert result == {"pc": []}
@@ -289,8 +381,7 @@ def test_windows_pipeline_full_rounds(load_fixture, graph):
     # 第 2 轮：版本升级 → 同实例更新，不新增、不删除
     fd = _run_plugin(
         task,
-        _round(vm_doc, "win-s2", BASE_TS + 300,
-               software_overrides={"version": "128.0.6600.1"}),
+        _round(vm_doc, "win-s2", BASE_TS + 300, software_overrides={"version": "128.0.6600.1"}),
     )
     assert fd["add"] == []
     assert fd["delete"] == []
@@ -348,8 +439,7 @@ def test_macos_pipeline_add_update_partial_keeps(load_fixture, graph):
     # 第 2 轮：升级版本 → 同实例更新
     fd = _run_plugin(
         task,
-        _round(vm_doc, "mac-s2", BASE_TS + 300,
-               software_overrides={"version": "128.0.6600.1"}),
+        _round(vm_doc, "mac-s2", BASE_TS + 300, software_overrides={"version": "128.0.6600.1"}),
     )
     assert fd["delete"] == []
     assert graph.store[expected["software_inst_name"]]["version"] == "128.0.6600.1"

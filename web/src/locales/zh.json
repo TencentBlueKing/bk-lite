@@ -131,6 +131,11 @@
     "group": "组织",
     "organization": "组织",
     "theme": "主题",
+    "layout": "布局",
+    "layoutClassic": "经典",
+    "layoutClassicHint": "九宫格切应用，顶栏为当前应用菜单",
+    "layoutAppTop": "应用顶栏",
+    "layoutAppTopHint": "顶栏切应用，左侧为当前应用菜单",
     "notFound": "找不到您要查找的页面。",
     "backToHome": "返回首页",
     "noPermission": "您没有权限访问此页面",
@@ -192,7 +197,8 @@
     "sessionExpiredTitle": "登录已过期",
     "sessionExpiredDescription": "当前页面需要重新验证身份后继续操作。",
     "reloginSuccess": "登录已恢复，此前失败的操作请重新提交",
-    "portalSlogan": "AI 原生的轻量化运维平台"
+    "portalSlogan": "AI 原生的轻量化运维平台",
+    "day": "天"
   },
   "userInfo": {
     "basicInfo": "基础信息",

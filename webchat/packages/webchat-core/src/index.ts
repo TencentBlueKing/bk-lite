@@ -13,3 +13,13 @@ export { assembleAguiHistoryText, assembleAguiHistoryParts, isSilentCustomEvent 
 export { extractMessageText } from './messageContent';
 export * from './utils';
 export * from './platform';
+export {
+  CONTEXT_USAGE_EVENT,
+  contextUsagePercent,
+  formatContextTokens,
+  parseLlmContextUsage,
+  parseLlmContextUsageFromEnvelope,
+  type ContextUsageSegment,
+  type ContextUsageSegmentId,
+  type LlmContextUsage,
+} from './contextUsage';

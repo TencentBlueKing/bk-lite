@@ -22,10 +22,7 @@
           "serial_number": "SN-ABC123",
           "device_model": "OptiPlex 7010",
           "logged_in_user": "ACME\\alice",
-          "snapshot_id": "5ea76c94-3e87-4b37-a4e2-13099c3f8305",
-          "software_snapshot_status": "complete",
-          "software_expected_count": "1",
-          "software_error_count": "0"
+          "collection_target": "192.168.1.56"
         },
         "value": [
           1753200000,
@@ -41,7 +38,6 @@
           "host": "192.168.1.56",
           "inst_name": "SW-2650AFE84F84FE9B7C9B69A8A407FB3A",
           "pc_inst_name": "WIN-4C4C4544-0038-5910-8058-C4C04F433632",
-          "snapshot_id": "5ea76c94-3e87-4b37-a4e2-13099c3f8305",
           "software_key": "google chrome|google llc",
           "name": "Google Chrome",
           "version": "127.0.6533.89",
@@ -50,7 +46,8 @@
           "install_location": "C:\\Program Files\\Google\\Chrome\\Application",
           "install_date": "20260601",
           "architecture": "x64",
-          "source": "windows_registry"
+          "source": "windows_registry",
+          "collection_target": "192.168.1.56"
         },
         "value": [
           1753200000,

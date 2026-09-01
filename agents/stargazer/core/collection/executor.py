@@ -24,7 +24,7 @@ from core.collection.contracts import (
     TargetExecutorSettings,
 )
 from core.collection.credential_policy import CredentialPolicy, InMemoryCredentialStateStore
-from core.collection.enums import FailureStage
+from core.collection.enums import FailureStage, WorkloadClass
 from core.collection.execution_plan import ExecutionPlan
 from core.collection.metrics import CollectionMetrics
 from core.collection.result_delivery import PendingPublish, ResultDeliveryCoordinator
@@ -33,6 +33,7 @@ from core.collection.runtime import CollectionRequest, RunLease
 from core.collection.scheduler import CollectionScheduler
 from core.collection.target_attempt import TargetAttemptRunner, request_instance_id
 from core.logger import logger, safe_exception_info, safe_log_value
+from core.plugin.error_logging import PluginExceptionLogBudget
 
 _FAILURE_SUMMARY_SAMPLE_LIMIT = 3
 _FAILURE_SUMMARY_CODE_LIMIT = 8
@@ -138,6 +139,9 @@ class TargetCollectionExecutor:
             log_identity=_request_log_identity(request, instance_id),
             failure_log_limit=_FAILURE_SUMMARY_SAMPLE_LIMIT,
         )
+        plugin_exception_log_budget = PluginExceptionLogBudget(
+            limit=_FAILURE_SUMMARY_SAMPLE_LIMIT
+        )
 
         async def execute_index(index: int) -> PendingPublish:
             nonlocal progress_completed
@@ -159,7 +163,12 @@ class TargetCollectionExecutor:
                         safe_log_value(target, max_length=255),
                     )
                     try:
-                        result = await self._target_attempt_runner.run(request, target, lease)
+                        result = await self._target_attempt_runner.run(
+                            request,
+                            target,
+                            lease,
+                            plugin_exception_log_budget=plugin_exception_log_budget,
+                        )
                         if result.status == "success" and _is_snmp_plugin(
                             plugin_ref=request.plugin_ref,
                             plugin_name=request.params.get("plugin_name"),
@@ -186,16 +195,17 @@ class TargetCollectionExecutor:
                 raise
             except Exception as error:  # noqa: BLE001 - 单目标框架异常不得取消 Run
                 self._metrics.increment("target_execution_error_total")
-                logger.error(
-                    "event=target_execution_failed task_id=%s plugin_ref=%s "
-                    "model_id=%s target=%s failed_stage=framework error_type=%s",
-                    safe_log_value(request.task_id),
-                    safe_log_value(request.plugin_ref),
-                    safe_log_value(request.params.get("model_id") or "-"),
-                    safe_log_value(targets[index], max_length=255),
-                    type(error).__name__,
-                    exc_info=safe_exception_info(error),
-                )
+                if plugin_exception_log_budget.claim():
+                    logger.error(
+                        "event=target_execution_failed task_id=%s plugin_ref=%s "
+                        "model_id=%s target=%s failed_stage=framework error_type=%s",
+                        safe_log_value(request.task_id),
+                        safe_log_value(request.plugin_ref),
+                        safe_log_value(request.params.get("model_id") or "-"),
+                        safe_log_value(targets[index], max_length=255),
+                        type(error).__name__,
+                        exc_info=safe_exception_info(error),
+                    )
                 result = TargetCollectionResult(
                     target=target,
                     status="failed",
@@ -242,11 +252,17 @@ class TargetCollectionExecutor:
             return await delivery.enqueue(index, result)
 
         if self._scheduler is not None:
+            workload_class = (
+                WorkloadClass.NETWORK_TOPOLOGY
+                if self._plan.capacity_group == "network_topology"
+                else request.workload_class
+            )
             scheduled = await self._scheduler.execute(
                 f"{request.task_id}:{lease.fence}",
                 range(len(targets)),
                 execute_index,
-                workload=self._plan.capacity_group,
+                workload=workload_class,
+                capacity_group=self._plan.capacity_group,
             )
             pending_publishes = scheduled
             for pending in scheduled:
@@ -317,6 +333,9 @@ class TargetCollectionExecutor:
             publish_succeeded=sum(
                 status == "succeeded" for status in publish_statuses.values()
             ),
+            publish_not_applicable=sum(
+                status == "not_applicable" for status in publish_statuses.values()
+            ),
             publish_failed=sum(
                 status == "failed" for status in publish_statuses.values()
             ),
@@ -356,7 +375,7 @@ class TargetCollectionExecutor:
         publish_failures = tuple(
             (index, status, publish_error_codes.get(index) or status)
             for index, status in publish_statuses.items()
-            if status != "succeeded"
+            if status not in {"succeeded", "not_applicable"}
         )
         publish_failure_counts = Counter(error_code for _index, _status, error_code in publish_failures)
         publish_failure_codes = (
@@ -382,7 +401,7 @@ class TargetCollectionExecutor:
         log_summary(
             "event=collection_run_summary %s plugin_ref=%s model_id=%s "
             "| 任务汇总 总目标=%s 采集成功=%s 采集失败=%s 不可达=%s 延后处理=%s 跳过=%s "
-            "发布成功=%s 发布失败=%s 发布状态未知=%s 发布事件失败=%s 发布永久失败=%s "
+            "发布成功=%s 无需发布=%s 发布失败=%s 发布状态未知=%s 发布事件失败=%s 发布永久失败=%s "
             "总耗时=%sms 失败类型=%s 失败样本=%s 发布失败类型=%s 发布失败样本=%s",
             _request_log_identity(request, instance_id),
             safe_log_value(request.plugin_ref),
@@ -394,6 +413,7 @@ class TargetCollectionExecutor:
             summary.deferred,
             summary.skipped,
             summary.publish_succeeded,
+            summary.publish_not_applicable,
             summary.publish_failed,
             summary.publish_unknown,
             summary.publish_event_failed,
@@ -404,12 +424,9 @@ class TargetCollectionExecutor:
             publish_failure_codes,
             publish_failure_samples,
         )
-        publish_clean = (
-            summary.publish_failed == 0
-            and summary.publish_unknown == 0
-            and summary.publish_event_failed == 0
-            and summary.publish_permanent_failed == 0
-        )
+        from core.collection.round_complete import is_complete_round
+
+        publish_clean = is_complete_round(summary)
         if publish_clean:
             from core.collection.round_complete import publish_round_complete_marker
 

@@ -90,6 +90,7 @@ class TencentCloudManager:
         # 🆕 支持自定义endpoint（私有云场景）
         # 从host参数读取endpoint，如: cvm.private-cloud.example.com
         self.custom_endpoint = params.get("host")
+        self.collection_task_id = params.get("collection_task_id")
         self.region_id = str(params.get("region_id") or "").strip()
 
     def _call_cmq_with_retry(self, region: str, action: str, params: Dict | None = None) -> Dict:
@@ -655,9 +656,13 @@ class TencentCloudManager:
             result = self.exec_script()
             inst_data = {"result": result, "success": True}
         except Exception as err:
-            import traceback
-
-            logger.error(f"{self.__class__.__name__} main error! {traceback.format_exc()}")
+            logger.exception(
+                "event=qcloud_collect_failed host=%s task_id=%s failed_stage=%s error_type=%s",
+                self.custom_endpoint,
+                self.collection_task_id,
+                "list_all_resources",
+                type(err).__name__,
+            )
             inst_data = {"result": {"cmdb_collect_error": str(err)}, "success": False}
 
         return inst_data
@@ -670,10 +675,14 @@ class TencentCloudManager:
         try:
             self.list_regions()
             return True
-        except Exception:
-            import traceback
-
-            logger.error(f"{self.__class__.__name__} test_connection error! {traceback.format_exc()}")
+        except Exception as err:
+            logger.exception(
+                "event=qcloud_test_connection_failed host=%s task_id=%s failed_stage=%s error_type=%s",
+                self.custom_endpoint,
+                self.collection_task_id,
+                "test_connection",
+                type(err).__name__,
+            )
             return False
 
 

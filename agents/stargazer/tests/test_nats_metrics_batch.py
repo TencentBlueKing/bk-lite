@@ -11,6 +11,12 @@ from plugins.base_utils import convert_to_prometheus_format
 from tasks.utils import nats_helper
 
 
+@pytest.fixture(autouse=True)
+def _explicit_core_nats_compatibility_for_legacy_transport_tests(monkeypatch):
+    monkeypatch.setenv("NATS_METRICS_JETSTREAM_ENABLED", "false")
+    monkeypatch.setenv("NATS_METRICS_CORE_FALLBACK_ENABLED", "true")
+
+
 def _series_key(line: str) -> str:
     return line.partition(" ")[0]
 
@@ -287,27 +293,27 @@ async def test_nats_helper_performs_only_one_low_level_attempt(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_successful_metrics_publish_is_visible_at_info_level(monkeypatch):
-    info_logs = []
+async def test_successful_metrics_publish_is_debug_detail(monkeypatch):
+    debug_logs = []
 
     async def publish_lines(_subject, lines):
         return len(lines)
 
-    def capture_info(message, *args):
-        info_logs.append(message % args if args else message)
+    def capture_debug(message, *args):
+        debug_logs.append(message % args if args else message)
 
     monkeypatch.setattr(nats_helper, "nats_publish_lines", publish_lines)
-    monkeypatch.setattr(nats_helper.logger, "info", capture_info)
+    monkeypatch.setattr(nats_helper.logger, "debug", capture_debug)
 
     published = await nats_helper._publish_lines_with_retry("metrics.snmp_facts", ["line-1", "line-2"], "run-snmp-1")
 
     assert published == 2
-    assert len(info_logs) == 1
-    assert "event=nats_metrics_publish_succeeded" in info_logs[0]
-    assert "task_id=run-snmp-1" in info_logs[0]
-    assert "subject=metrics.snmp_facts" in info_logs[0]
-    assert "NATS指标推送成功" in info_logs[0]
-    assert "成功行数=2/2" in info_logs[0]
+    assert len(debug_logs) == 1
+    assert "event=nats_metrics_publish_succeeded" in debug_logs[0]
+    assert "task_id=run-snmp-1" in debug_logs[0]
+    assert "subject=metrics.snmp_facts" in debug_logs[0]
+    assert "NATS指标推送成功" in debug_logs[0]
+    assert "成功行数=2/2" in debug_logs[0]
 
 
 @pytest.mark.asyncio
@@ -322,6 +328,15 @@ async def test_nats_connection_failure_is_marked_as_not_delivered(monkeypatch):
 
     assert error.value.attempted_count_before_failure == 0
     assert error.value.delivery_detected is False
+
+
+@pytest.mark.asyncio
+async def test_metrics_transport_refuses_silent_core_nats_fallback(monkeypatch):
+    monkeypatch.setenv("NATS_METRICS_JETSTREAM_ENABLED", "false")
+    monkeypatch.setenv("NATS_METRICS_CORE_FALLBACK_ENABLED", "false")
+
+    with pytest.raises(nats_utils.MetricsJetStreamRequiredError):
+        await nats_utils.nats_publish_lines("metrics.network", ["line"])
 
 
 @pytest.mark.asyncio
@@ -376,6 +391,7 @@ async def test_metrics_jetstream_mode_waits_for_pubacks_with_stable_message_ids(
     monkeypatch.setenv("NATS_METRICS_JETSTREAM_ENABLED", "true")
     monkeypatch.setenv("NATS_JS_PUBLISH_MAX_PENDING", "4")
     monkeypatch.setenv("NATS_JS_PUBLISH_MAX_PENDING_BYTES", "1024")
+    monkeypatch.setenv("NATS_JS_STREAM_NAME", "CMDB_METRICS")
     monkeypatch.setattr(nats_utils, "get_shared_nats", get_nats)
     monkeypatch.setattr(nats_utils, "_metrics_js_window", None)
     monkeypatch.setattr(nats_utils, "_metrics_js_context", None)
@@ -564,6 +580,76 @@ async def test_shared_nats_reuses_connection_while_client_is_reconnecting(monkey
 
 
 @pytest.mark.asyncio
+async def test_metrics_readiness_requires_expected_stream_and_subject_coverage(monkeypatch):
+    class FakeJetStream:
+        def __init__(self, subjects):
+            self.subjects = subjects
+
+        async def stream_info(self, stream_name):
+            assert stream_name == "CMDB_METRICS"
+            return SimpleNamespace(config=SimpleNamespace(subjects=self.subjects))
+
+    class FakeNats:
+        is_connected = True
+
+        def __init__(self, subjects):
+            self.subjects = subjects
+
+        def jetstream(self):
+            return FakeJetStream(self.subjects)
+
+    monkeypatch.setenv("NATS_METRICS_JETSTREAM_ENABLED", "true")
+    monkeypatch.setenv("NATS_JS_STREAM_NAME", "CMDB_METRICS")
+    monkeypatch.setenv("NATS_METRIC_TOPIC", "metrics")
+
+    async def covered(_channel):
+        return FakeNats(["metrics.>"])
+
+    monkeypatch.setattr(nats_utils, "get_shared_nats", covered)
+    assert await nats_utils.metrics_transport_ready() is True
+
+    async def missing(_channel):
+        return FakeNats(["events.>"])
+
+    monkeypatch.setattr(nats_utils, "get_shared_nats", missing)
+    assert await nats_utils.metrics_transport_ready() is False
+
+
+@pytest.mark.asyncio
+async def test_metrics_connection_pending_buffer_covers_jetstream_byte_window(monkeypatch):
+    connected_options = {}
+
+    class FakeConfig:
+        servers = ["nats://nats:4222"]
+        tls_enabled = False
+        user = None
+
+        def to_connect_options(self):
+            return {"pending_size": 2 * 1024 * 1024}
+
+    class FakeNats:
+        is_connected = False
+        is_reconnecting = False
+        is_closed = True
+
+        async def connect(self, **options):
+            connected_options.update(options)
+            self.is_connected = True
+            self.is_closed = False
+
+    monkeypatch.setenv("NATS_JS_PUBLISH_MAX_PENDING_BYTES", str(32 * 1024 * 1024))
+    monkeypatch.delenv("NATS_METRICS_PENDING_SIZE_BYTES", raising=False)
+    monkeypatch.setattr(nats_utils.NATSConfig, "from_env", lambda **_kwargs: FakeConfig())
+    monkeypatch.setattr(nats_utils, "NATS", FakeNats)
+    monkeypatch.setattr(nats_utils, "_metrics_nc", None)
+    monkeypatch.setattr(nats_utils, "_metrics_connect_lock", None)
+
+    await nats_utils.get_shared_nats("metrics")
+
+    assert connected_options["pending_size"] >= 32 * 1024 * 1024
+
+
+@pytest.mark.asyncio
 async def test_metrics_and_control_publishes_use_separate_connection_channels(
     monkeypatch,
 ):
@@ -638,8 +724,12 @@ def test_nats_metrics_connection_stats_expose_connection_and_pending_bytes(monke
         "nats_metrics_pending_bytes": 1234,
         "nats_js_publish_pending_messages": 0,
         "nats_js_publish_pending_bytes": 0,
+        "nats_js_publish_waiting_messages": 0,
+        "nats_js_publish_waiting_bytes": 0,
         "nats_js_publish_pending_messages_peak": 0,
         "nats_js_publish_pending_bytes_peak": 0,
+        "nats_js_publish_waiting_messages_peak": 0,
+        "nats_js_publish_waiting_bytes_peak": 0,
         "nats_js_publish_confirmed_total": 0,
         "nats_js_puback_duration_seconds_p95": 0.0,
         "nats_js_puback_duration_seconds_p99": 0.0,
