@@ -6,6 +6,8 @@ export type ApplicationHealthReason =
   | 'no_active_alarm'
   | 'active_alarm'
   | 'unavailable'
+  | 'no_application'
+  | 'no_host'
   | 'stale_after_refresh_failure';
 
 export interface Application3DSeverity {
