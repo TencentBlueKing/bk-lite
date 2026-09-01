@@ -4,6 +4,7 @@ import {
   formatAlarmDurationSeconds,
   formatAlarmOccurredAt,
   projectTrendX,
+  resolveDetailStatus,
 } from '../application3DDetailChrome';
 
 describe('application3D detail chrome helpers', () => {
@@ -12,6 +13,23 @@ describe('application3D detail chrome helpers', () => {
     expect(formatAlarmDurationSeconds(3661)).toBe('1h 1m');
     expect(formatAlarmOccurredAt(null)).toBe('-');
     expect(formatAlarmOccurredAt('not-a-date')).toBe('-');
+  });
+
+  it('strips trailing alarm count from detail status label', () => {
+    const status = resolveDetailStatus(
+      {
+        name: 'demo',
+        health: {
+          state: 'alarming',
+          reason: 'alarm',
+          activeAlarmCount: 2,
+          highestSeverity: { id: 'warning', label: '警告', color: 'warning' },
+        },
+      },
+      (key, fallback) => (key.endsWith('_warning') ? '警告' : (fallback ?? key)),
+    );
+    expect(status.statusLabel).toBe('警告');
+    expect(status.statusLabel).not.toMatch(/\d/);
   });
 
   it('builds y ticks spanning thresholds', () => {

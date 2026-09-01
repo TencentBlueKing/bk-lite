@@ -168,7 +168,8 @@ export const resolveDetailStatus = (
   const accent = DETAIL_STATUS_ACCENT[tone];
   return {
     tone,
-    statusLabel: visual.statusLabel,
+    // Detail shows level text only; count is in the adjacent active-alarms chip.
+    statusLabel: visual.statusLabel.replace(/\s+\d+$/, ''),
     accent,
   };
 };
