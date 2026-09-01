@@ -932,12 +932,6 @@ def stream_skill_channel_chat(
         skill_prompt=params.get("skill_prompt") or "",
         chat_history=params.get("chat_history") or [],
     )
-    if not ingest_report:
-        logger.info(
-            "page_context absent: question=%s session_id=%s",
-            (persist_text or "")[:80],
-            session_id or "-",
-        )
     if ingest_report:
         log_page_context_ingest(ingest_report)
         ingest_kwargs["page_context_ingest"] = ingest_report
@@ -952,6 +946,9 @@ def stream_skill_channel_chat(
                 ingest_report.get("history_messages") or 0,
             )
             return create_error_stream_response(budget_error)
+    else:
+        # 无 page_context 是 skill channel 聊天的常见路径，只作 DEBUG 诊断，不记问句。
+        logger.debug("page_context absent: session_id=%s", session_id or "-")
     try:
         params[CALLER_IDENTITY_CONFIG_KEY] = capture_caller_identity(request, user)
     except CallerIdentityError as e:
