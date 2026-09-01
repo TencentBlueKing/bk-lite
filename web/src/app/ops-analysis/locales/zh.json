@@ -1091,6 +1091,8 @@
     "application3DMetricFailed": "指标快照加载失败",
     "application3DPreviousAlarm": "上一条",
     "application3DNextAlarm": "下一条",
+    "application3DBackToAlarmList": "返回列表",
+    "application3DCloseDetail": "关闭详情",
     "application3DNotification_not_configured": "未配置",
     "application3DNotification_pending": "待执行",
     "application3DNotification_partially_delivered": "部分送达",

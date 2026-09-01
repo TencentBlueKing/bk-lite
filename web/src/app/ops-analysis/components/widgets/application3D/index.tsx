@@ -125,6 +125,7 @@ export default function Application3D({
         onSelect: (item) => {
           if (editMode) return;
           if (selectedRef.current?.id === item.id && detailOpenRef.current) return;
+          controller.resetCamera();
           openApplicationDetailRef.current(item);
         },
       });
@@ -509,7 +510,10 @@ export default function Application3D({
             className="pointer-events-auto border-[var(--color-application3d-refresh-border)] bg-[var(--color-application3d-refresh-bg)] text-[var(--color-application3d-text)]"
             icon={<ReloadOutlined spin={refreshing} />}
             disabled={refreshing}
-            onClick={() => void fetchWall(appliedFilters, true)}
+            onClick={() => {
+              controllerRef.current?.resetCamera();
+              void fetchWall(appliedFilters, true);
+            }}
             title={t('common.refresh')}
           />
         </div>

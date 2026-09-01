@@ -1091,6 +1091,8 @@
     "application3DMetricFailed": "Metric snapshot failed to load",
     "application3DPreviousAlarm": "Previous",
     "application3DNextAlarm": "Next",
+    "application3DBackToAlarmList": "Back to list",
+    "application3DCloseDetail": "Close detail",
     "application3DNotification_not_configured": "Not configured",
     "application3DNotification_pending": "Pending",
     "application3DNotification_partially_delivered": "Partially delivered",

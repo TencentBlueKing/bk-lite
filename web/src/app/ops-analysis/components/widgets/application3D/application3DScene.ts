@@ -46,6 +46,8 @@ export interface Application3DSceneController {
   ) => void;
   resize: () => void;
   setActive: (active: boolean) => void;
+  /** Animate (or snap) the orbit camera back to the fitted wall home pose. */
+  resetCamera: () => void;
   dispose: () => void;
 }
 
@@ -802,6 +804,13 @@ export const createApplication3DScene = (
   let wallCameraPosition = new THREE.Vector3(0, 0, 20);
   const desiredCameraPosition = wallCameraPosition.clone();
   const desiredTarget = new THREE.Vector3();
+  const cameraOrbitOffset = new THREE.Vector3();
+  const cameraStartSpherical = new THREE.Spherical();
+  const cameraEndSpherical = new THREE.Spherical();
+  const cameraStartTarget = new THREE.Vector3();
+  let cameraOrbitThetaDelta = 0;
+  let cameraOrbitProgress = 0;
+  let cameraOrbitDuration = 0.55;
   let cameraAnimating = false;
   let phase: ScenePhase = 'initializing';
   let frameId: number | null = null;
@@ -963,15 +972,24 @@ export const createApplication3DScene = (
     visuals.forEach(syncReflection);
 
     if (cameraAnimating) {
-      camera.position.lerp(desiredCameraPosition, 0.12);
-      controls.target.lerp(desiredTarget, 0.14);
+      cameraOrbitProgress = Math.min(1, cameraOrbitProgress + dt / cameraOrbitDuration);
+      const t = easeInOutCubic(cameraOrbitProgress);
+      controls.target.lerpVectors(cameraStartTarget, desiredTarget, t);
+      const radius = THREE.MathUtils.lerp(cameraStartSpherical.radius, cameraEndSpherical.radius, t);
+      const phi = THREE.MathUtils.lerp(cameraStartSpherical.phi, cameraEndSpherical.phi, t);
+      const theta = cameraStartSpherical.theta + cameraOrbitThetaDelta * t;
+      camera.position.copy(controls.target).add(
+        cameraOrbitOffset.setFromSphericalCoords(radius, phi, theta),
+      );
+      camera.up.set(0, 1, 0);
       camera.lookAt(controls.target);
-      if (
-        camera.position.distanceTo(desiredCameraPosition) < 0.04 &&
-        controls.target.distanceTo(desiredTarget) < 0.04
-      ) {
+      if (cameraOrbitProgress >= 1) {
         camera.position.copy(desiredCameraPosition);
         controls.target.copy(desiredTarget);
+        camera.up.set(0, 1, 0);
+        camera.lookAt(controls.target);
+        controls.update();
+        controls.saveState();
         cameraAnimating = false;
       }
     } else if (controls.enabled) {
@@ -1341,6 +1359,62 @@ export const createApplication3DScene = (
     layoutVisuals({ playIntro, playFilter });
   };
 
+  const shortestAngleDelta = (from: number, to: number) => {
+    let delta = to - from;
+    while (delta > Math.PI) delta -= Math.PI * 2;
+    while (delta < -Math.PI) delta += Math.PI * 2;
+    return delta;
+  };
+
+  const snapCameraHome = () => {
+    camera.position.copy(wallCameraPosition);
+    controls.target.copy(wallLookTarget);
+    desiredCameraPosition.copy(wallCameraPosition);
+    desiredTarget.copy(wallLookTarget);
+    camera.up.set(0, 1, 0);
+    camera.lookAt(controls.target);
+    controls.update();
+    controls.saveState();
+    cameraAnimating = false;
+  };
+
+  const resetCamera = () => {
+    if (disposed) return;
+    desiredCameraPosition.copy(wallCameraPosition);
+    desiredTarget.copy(wallLookTarget);
+    if (
+      reducedMotion
+      || phase !== 'wall'
+      || (
+        camera.position.distanceTo(wallCameraPosition) < 0.08
+        && controls.target.distanceTo(wallLookTarget) < 0.08
+      )
+    ) {
+      snapCameraHome();
+      requestRender();
+      return;
+    }
+
+    cameraStartTarget.copy(controls.target);
+    cameraStartSpherical.setFromVector3(
+      cameraOrbitOffset.copy(camera.position).sub(controls.target),
+    );
+    cameraEndSpherical.setFromVector3(
+      cameraOrbitOffset.copy(wallCameraPosition).sub(wallLookTarget),
+    );
+    cameraOrbitThetaDelta = shortestAngleDelta(
+      cameraStartSpherical.theta,
+      cameraEndSpherical.theta,
+    );
+    // Keep the orbit radius outside the wall throughout the arc.
+    cameraStartSpherical.radius = Math.max(cameraStartSpherical.radius, wallCameraPosition.z * 0.45);
+    cameraEndSpherical.radius = Math.max(cameraEndSpherical.radius, wallCameraPosition.z * 0.45);
+    cameraOrbitProgress = 0;
+    cameraOrbitDuration = 0.55;
+    cameraAnimating = true;
+    requestRender();
+  };
+
   const pickApplicationId = (clientX: number, clientY: number) => {
     const rect = renderer.domElement.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return undefined;
@@ -1476,6 +1550,7 @@ export const createApplication3DScene = (
   return {
     reconcile,
     resize,
+    resetCamera,
     setActive: (nextActive) => {
       if (disposed || active === nextActive) return;
       active = nextActive;

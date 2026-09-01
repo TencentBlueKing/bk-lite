@@ -258,7 +258,7 @@ describe('application3D detail panels', () => {
     );
     const close = view.container.querySelector('.app3d-detail-shell > .app3d-close-cta');
     expect(close).not.toBeNull();
-    expect(close?.textContent).toContain('common.close');
+    expect(close?.textContent).toContain('dashboard.application3DCloseDetail');
   });
 
   it('shows linked host, alert type, notification execution, and real metric name in alarm detail', () => {
