@@ -95,3 +95,11 @@ def test_collect_hit_state_service_clear_by_credential_ids_removes_matching_stat
 
     assert deleted_count == 2
     assert CollectTaskCredentialHit.objects.filter(task=task).count() == 1
+
+
+def test_collect_hit_model_has_no_stargazer_runtime_projection_fields():
+    field_names = {field.name for field in CollectTaskCredentialHit._meta.fields}
+
+    assert "source" not in field_names
+    assert "credential_version" not in field_names
+    assert "projection_revision" not in field_names

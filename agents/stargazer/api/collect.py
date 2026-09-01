@@ -8,14 +8,13 @@ import uuid
 from typing import List
 
 from core.collection.application import get_collection_application
+from core.collection.enums import WorkloadClass
 from core.collection.request_builder import build_collection_request, parse_credentials_pool
 from core.collection.request_identity import build_request_task_id_from_request
 from core.collection.runtime import SubmissionStatus
-from core.infra.credential_state_cache import CredentialStateCache
 from core.logger import logger
 from plugins.base_utils import expand_ip_range
 from sanic import Blueprint, response
-from service.collect_credential_result_push_service import CollectCredentialResultPushService
 from tasks.collectors.host_collector import _escape_prometheus_label_value
 
 # 兼容旧测试/调用方私有名
@@ -40,6 +39,7 @@ async def _submit_collection_run(request, task_params: dict, model_id: str):
     collection_request = build_collection_request(
         task_id=_request_task_id(request, task_params),
         params=task_params,
+        workload_class=WorkloadClass.CONFIGURATION,
     )
     submission = await get_collection_application().submit(collection_request)
     http_status = {
@@ -144,25 +144,6 @@ def _parse_hosts(hosts_param: str) -> List[str]:
             result.append(segment)
 
     return result
-
-
-def _build_credential_results_payload(events: List[dict]) -> dict:
-    return CollectCredentialResultPushService.build_results_payload(events)
-
-
-@collect_router.get("/credential_results")
-async def get_credential_results(request):
-    raw_limit = request.args.get("limit") or 500
-    try:
-        limit = max(1, min(int(raw_limit), 2000))
-    except (TypeError, ValueError):
-        limit = 500
-
-    events = await CredentialStateCache.list_result_events(
-        since=request.args.get("since") or "",
-        limit=limit,
-    )
-    return response.json(_build_credential_results_payload(events))
 
 
 @collect_router.get("/collect_info")

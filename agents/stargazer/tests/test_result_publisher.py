@@ -1,11 +1,137 @@
 import asyncio
 
-import core.collection.result_publisher as result_publisher_module
 import core.infra.nats_utils as nats_utils
 import pytest
-from core.collection.contracts import CredentialFailureResult, PublishStatus, TargetCollectionResult, build_collection_result_id
+from core.collection.contracts import PublishStatus, StructuredMetricsPayload, TargetCollectionResult, build_collection_result_id
 from core.collection.result_publisher import BufferedResultPublisher, NatsResultPublisher, PublishShutdownError
 from core.collection.runtime import CollectionRequest, RunLease
+
+
+@pytest.mark.asyncio
+async def test_snapshot_metadata_is_persisted_before_metric_delivery():
+    events = []
+
+    class Store:
+        async def save(self, envelope):
+            events.append(("metadata", envelope))
+            return "created"
+
+    async def publish_metrics_batch(_entries):
+        events.append(("metrics", None))
+        return {}
+
+    request = CollectionRequest(
+        task_id="321",
+        plugin_ref="pc.config",
+        targets=("10.0.0.8",),
+        params={"model_id": "pc", "plugin_family": "configuration"},
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999, attempt_id="attempt-a")
+    result = TargetCollectionResult(
+        target="10.0.0.8",
+        status="success",
+        attempts=1,
+        publish_timestamp_ms=1780000000123,
+        value=StructuredMetricsPayload(
+            data={"pc": [{"inst_name": "WIN-AAA"}]},
+            round_metadata={
+                "snapshot_id": "snapshot-1",
+                "snapshot_status": "complete",
+                "details": {"software_expected_count": 0, "software_error_count": 0},
+            },
+        ),
+    )
+
+    outcomes = await NatsResultPublisher(
+        metrics_publish_batch=publish_metrics_batch,
+        round_metadata_store=Store(),
+    ).publish_batch(((request, result, lease),))
+
+    assert [event[0] for event in events] == ["metadata", "metrics"]
+    metadata = events[0][1]
+    assert metadata["collection_task_id"] == "321"
+    assert metadata["collection_target"] == "10.0.0.8"
+    assert metadata["publish_timestamp_ms"] == 1780000000123
+    assert list(outcomes.values()) == [None]
+
+
+@pytest.mark.asyncio
+async def test_snapshot_metadata_failure_prevents_metric_delivery():
+    published = False
+
+    class Store:
+        async def save(self, _envelope):
+            raise ConnectionError("redis unavailable")
+
+    async def publish_metrics_batch(_entries):
+        nonlocal published
+        published = True
+        return {}
+
+    request = CollectionRequest(
+        task_id="321",
+        plugin_ref="winsphere.config",
+        targets=("10.0.0.10",),
+        params={"model_id": "winsphere", "plugin_family": "configuration"},
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999, attempt_id="attempt-a")
+    result = TargetCollectionResult(
+        target="10.0.0.10",
+        status="success",
+        attempts=1,
+        publish_timestamp_ms=1780000000123,
+        value=StructuredMetricsPayload(
+            data={"winsphere": [{"resource_id": "platform-1"}]},
+            round_metadata={
+                "snapshot_id": "snapshot-1",
+                "snapshot_status": "complete",
+                "details": {"snapshot_manifest": {}},
+            },
+        ),
+    )
+
+    outcomes = await NatsResultPublisher(
+        metrics_publish_batch=publish_metrics_batch,
+        round_metadata_store=Store(),
+    ).publish_batch(((request, result, lease),))
+
+    assert published is False
+    assert isinstance(next(iter(outcomes.values())), ConnectionError)
+
+
+@pytest.mark.asyncio
+async def test_snapshot_models_without_round_metadata_are_rejected_before_metric_delivery():
+    published = False
+
+    async def publish_metrics_batch(_entries):
+        nonlocal published
+        published = True
+        return {}
+
+    request = CollectionRequest(
+        task_id="321",
+        plugin_ref="pc.config",
+        targets=("10.0.0.8",),
+        params={"model_id": "pc", "plugin_family": "configuration"},
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999, attempt_id="attempt-a")
+    result = TargetCollectionResult(
+        target="10.0.0.8",
+        status="success",
+        attempts=1,
+        publish_timestamp_ms=1780000000123,
+        value=StructuredMetricsPayload(data={"pc": [{"inst_name": "WIN-AAA"}]}),
+    )
+
+    outcomes = await NatsResultPublisher(
+        metrics_publish_batch=publish_metrics_batch,
+        round_metadata_store=object(),
+    ).publish_batch(((request, result, lease),))
+
+    outcome = next(iter(outcomes.values()))
+    assert published is False
+    assert outcome.status == PublishStatus.PERMANENT_FAILED
+    assert outcome.error_code == "metadata_missing"
 
 
 @pytest.mark.asyncio
@@ -151,6 +277,8 @@ async def test_queued_receipt_can_be_cancelled_before_transport_and_is_not_deliv
 
 @pytest.mark.asyncio
 async def test_receipt_cancelled_while_connecting_never_calls_nats_publish(monkeypatch):
+    monkeypatch.setenv("NATS_METRICS_JETSTREAM_ENABLED", "false")
+    monkeypatch.setenv("NATS_METRICS_CORE_FALLBACK_ENABLED", "true")
     connecting = asyncio.Event()
     release_connection = asyncio.Event()
     publish_calls = 0
@@ -302,26 +430,25 @@ async def test_nats_result_publisher_uses_one_metrics_batch_adapter_call():
 
 
 @pytest.mark.asyncio
-async def test_configuration_failures_record_events_without_entering_metrics_batch():
+async def test_ordinary_failures_do_not_enter_metrics_or_credential_adapters():
     batches = []
-    events = []
 
     async def publish_metrics_batch(entries):
         batches.append(entries)
         return {entry[2]["collection_result_id"]: None for entry in entries}
 
-    async def record_event(event):
-        events.append(event)
-
     publisher = NatsResultPublisher(
         metrics_publish_batch=publish_metrics_batch,
-        result_event_sink=record_event,
     )
     request = CollectionRequest(
         task_id="configuration-failure-event-only",
         plugin_ref="network.config",
         targets=("10.10.24.1", "10.10.24.2", "10.10.24.3"),
-        params={"plugin_family": "configuration", "model_id": "network"},
+        params={
+            "plugin_family": "configuration",
+            "model_id": "network",
+            "credential_result_subject": "receive_collect_credential_result",
+        },
     )
     lease = RunLease(
         request.task_id,
@@ -372,32 +499,25 @@ async def test_configuration_failures_record_events_without_entering_metrics_bat
     assert len(batches) == 1
     assert len(batches[0]) == 1
     assert batches[0][0][1] == "network_info value=1"
-    assert [(event["host"], event["status"], event["error_code"]) for event in events] == [
-        ("10.10.24.1", "success", ""),
-        ("10.10.24.2", "failed", "authentication_failed"),
-        ("10.10.24.3", "unreachable", "target_unreachable"),
-    ]
+    assert not hasattr(publisher, "_credential_result_publish")
+    assert not hasattr(publisher, "_result_event_sink")
     assert all(outcome is None for outcome in outcomes.values())
 
 
 @pytest.mark.asyncio
-async def test_configuration_failure_event_error_is_reported_as_event_failed():
-    event_attempts = 0
+async def test_empty_structured_success_does_not_enter_metrics_adapter():
+    batches = []
 
-    async def fail_result_event(_event):
-        nonlocal event_attempts
-        event_attempts += 1
-        raise ConnectionError("result event unavailable")
+    async def publish_metrics_batch(entries):
+        batches.append(entries)
+        return {}
 
-    publisher = NatsResultPublisher(
-        metrics_publish_batch=lambda _entries: None,
-        result_event_sink=fail_result_event,
-    )
+    publisher = NatsResultPublisher(metrics_publish_batch=publish_metrics_batch)
     request = CollectionRequest(
-        task_id="configuration-failure-event-error",
-        plugin_ref="network.config",
-        targets=("10.10.24.2",),
-        params={"plugin_family": "configuration", "model_id": "network"},
+        task_id="empty-success",
+        plugin_ref="mysql.config",
+        targets=("10.10.24.1",),
+        params={"plugin_family": "configuration", "model_id": "mysql"},
     )
     lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
 
@@ -406,25 +526,27 @@ async def test_configuration_failure_event_error_is_reported_as_event_failed():
             (
                 request,
                 TargetCollectionResult(
-                    target="10.10.24.2",
-                    status="failed",
+                    target="10.10.24.1",
+                    status="success",
                     attempts=1,
-                    credential_id="credential-1",
-                    error_code="authentication_failed",
+                    value=StructuredMetricsPayload(data={"mysql": ()}),
                 ),
                 lease,
             ),
         )
     )
 
-    outcome = next(iter(outcomes.values()))
-    assert outcome.status == PublishStatus.EVENT_FAILED
-    assert outcome.error_code == "result_event_record_failed"
-    assert event_attempts == 2
+    assert batches == []
+    assert tuple(outcomes.values()) == (None,)
+
+
+def test_legacy_result_event_adapter_is_not_part_of_publisher_interface():
+    with pytest.raises(TypeError, match="result_event_sink"):
+        NatsResultPublisher(result_event_sink=lambda _event: None)
 
 
 @pytest.mark.asyncio
-async def test_monitor_failure_keeps_monitor_error_metric_contract():
+async def test_monitor_failure_does_not_generate_error_metrics():
     batches = []
 
     async def publish_metrics_batch(entries):
@@ -459,9 +581,7 @@ async def test_monitor_failure_keeps_monitor_error_metric_contract():
         )
     )
 
-    assert len(batches) == 1
-    assert len(batches[0]) == 1
-    assert "monitor_collection_status" in batches[0][0][1]
+    assert batches == []
 
 
 @pytest.mark.asyncio
@@ -534,404 +654,6 @@ async def test_nats_batch_returns_per_target_adapter_outcomes():
     )
     assert outcomes[succeeded_id] is None
     assert isinstance(outcomes[failed_id], TimeoutError)
-
-
-@pytest.mark.asyncio
-async def test_nats_success_and_result_event_failure_are_reported_separately():
-    metrics_calls = 0
-
-    async def publish_metrics_batch(entries):
-        nonlocal metrics_calls
-        metrics_calls += 1
-        return {entry[2]["collection_result_id"]: None for entry in entries}
-
-    async def fail_result_event(_event):
-        raise ConnectionError("redis event unavailable")
-
-    publisher = NatsResultPublisher(
-        metrics_publish_batch=publish_metrics_batch,
-        result_event_sink=fail_result_event,
-    )
-    request = CollectionRequest(
-        task_id="event-failure",
-        plugin_ref="network.config",
-        targets=("10.10.24.1",),
-        params={"plugin_family": "configuration", "model_id": "network"},
-    )
-    lease = RunLease(request.task_id, request.digest, "pod-a", 3, 999999)
-    result_id = build_collection_result_id(
-        task_id=request.task_id,
-        plugin_ref=request.plugin_ref,
-        target="10.10.24.1",
-        fence=lease.fence,
-    )
-
-    outcomes = await publisher.publish_batch(
-        (
-            (
-                request,
-                TargetCollectionResult(
-                    target="10.10.24.1",
-                    status="success",
-                    attempts=1,
-                    credential_id="credential-1",
-                    value="network_info value=1",
-                ),
-                lease,
-            ),
-        )
-    )
-
-    assert outcomes[result_id].status.value == "event_failed"
-    assert outcomes[result_id].error_code == "result_event_record_failed"
-    assert metrics_calls == 1
-
-
-@pytest.mark.asyncio
-async def test_result_event_failure_logs_original_exception_context(monkeypatch):
-    logged = []
-
-    class RecordingLogger:
-        def exception(self, message, *args):
-            logged.append(message % args)
-
-    async def publish_metrics_batch(entries):
-        return {entry[2]["collection_result_id"]: None for entry in entries}
-
-    async def fail_result_event(_event):
-        raise ConnectionError("redis event unavailable")
-
-    monkeypatch.setattr(result_publisher_module, "logger", RecordingLogger(), raising=False)
-    publisher = NatsResultPublisher(
-        metrics_publish_batch=publish_metrics_batch,
-        result_event_sink=fail_result_event,
-        event_max_attempts=1,
-    )
-    request = CollectionRequest(
-        task_id="event-failure-log",
-        plugin_ref="network.config",
-        targets=("10.10.24.1",),
-        params={"plugin_family": "configuration", "model_id": "network"},
-    )
-    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999, attempt_id="attempt-a")
-
-    await publisher.publish_batch(
-        (
-            (
-                request,
-                TargetCollectionResult(target="10.10.24.1", status="success", attempts=1, value="metric 1"),
-                lease,
-            ),
-        )
-    )
-
-    assert logged == ["event=result_event_record_failed task_id=event-failure-log target=10.10.24.1 error_type=ConnectionError"]
-
-
-@pytest.mark.asyncio
-async def test_credential_result_event_declares_v2_contract():
-    events = []
-
-    async def record_event(event):
-        events.append(event)
-
-    publisher = NatsResultPublisher(result_event_sink=record_event)
-    request = CollectionRequest(
-        task_id="collect-result-event",
-        plugin_ref="mysql.config",
-        targets=("10.10.24.1",),
-    )
-    lease = RunLease(
-        task_id=request.task_id,
-        request_digest=request.digest,
-        owner_id="pod-a",
-        fence=7,
-        expires_at=999999,
-        attempt_id="run-attempt-1",
-    )
-
-    await publisher._record_event(
-        request,
-        TargetCollectionResult(
-            target="10.10.24.1",
-            status="success",
-            attempts=1,
-            credential_id="credential-1",
-        ),
-        lease,
-        "result-id",
-    )
-
-    assert len(events[0].pop("event_id")) == 64
-    assert events[0].pop("finished_at")
-    assert events == [
-        {
-            "event_version": 2,
-            "producer": "stargazer",
-            "scope_id": "collect-result-event",
-            "collect_task_id": "collect-result-event",
-            "run_id": "collect-result-event",
-            "run_attempt_id": "run-attempt-1",
-            "producer_instance": "pod-a",
-            "plugin_ref": "mysql.config",
-            "host": "10.10.24.1",
-            "credential_id": "credential-1",
-            "status": "success",
-            "error_code": "",
-            "success": True,
-            "failure_kind": "",
-            "error_message": "",
-            "attempts": 1,
-            "fence": 7,
-            "result_id": "result-id",
-            "event_index": 0,
-        }
-    ]
-
-
-@pytest.mark.asyncio
-async def test_credential_result_publishes_to_request_subject():
-    events = []
-    published = []
-
-    async def record_event(event):
-        events.append(event)
-
-    async def publish_credential(result, params, task_id):
-        published.append((dict(result), dict(params), task_id))
-
-    publisher = NatsResultPublisher(
-        result_event_sink=record_event,
-        credential_result_publish=publish_credential,
-    )
-    request = CollectionRequest(
-        task_id="scan-family-run-5",
-        plugin_ref="network.config",
-        targets=("10.10.24.1",),
-        params={
-            "collect_task_id": "5",
-            "credential_result_subject": "receive_scan_credential_result",
-        },
-    )
-    lease = RunLease(
-        task_id=request.task_id,
-        request_digest=request.digest,
-        owner_id="pod-a",
-        fence=3,
-        expires_at=999999,
-        attempt_id="run-attempt-1",
-    )
-
-    await publisher._record_event(
-        request,
-        TargetCollectionResult(
-            target="10.10.24.1",
-            status="success",
-            attempts=1,
-            credential_id="credential-1",
-        ),
-        lease,
-        "result-id",
-    )
-
-    assert len(events) == 1
-    assert len(published) == 1
-    event, params, task_id = published[0]
-    assert task_id == "scan-family-run-5"
-    assert params["credential_result_subject"] == "receive_scan_credential_result"
-    assert event["host"] == "10.10.24.1"
-    assert event["credential_id"] == "credential-1"
-    assert event["collect_task_id"] == "5"
-    assert event["status"] == "success"
-    assert event["finished_at"]
-
-
-@pytest.mark.asyncio
-async def test_credential_result_skips_nats_without_subject():
-    published = []
-
-    async def record_event(event):
-        return None
-
-    async def publish_credential(result, params, task_id):
-        published.append(task_id)
-
-    publisher = NatsResultPublisher(
-        result_event_sink=record_event,
-        credential_result_publish=publish_credential,
-    )
-    request = CollectionRequest(
-        task_id="collect-no-subject",
-        plugin_ref="mysql.config",
-        targets=("10.10.24.1",),
-        params={"collect_task_id": "12"},
-    )
-    lease = RunLease(
-        task_id=request.task_id,
-        request_digest=request.digest,
-        owner_id="pod-a",
-        fence=1,
-        expires_at=999999,
-        attempt_id="run-attempt-1",
-    )
-
-    await publisher._record_event(
-        request,
-        TargetCollectionResult(
-            target="10.10.24.1",
-            status="success",
-            attempts=1,
-            credential_id="credential-1",
-        ),
-        lease,
-        "result-id",
-    )
-
-    assert published == []
-
-
-@pytest.mark.asyncio
-async def test_credential_result_event_expands_rotated_credential_failures():
-    events = []
-
-    async def record_event(event):
-        events.append(event)
-
-    publisher = NatsResultPublisher(result_event_sink=record_event)
-    request = CollectionRequest(
-        task_id="collect-result-rotation",
-        plugin_ref="mysql.config",
-        targets=("10.10.24.1",),
-    )
-    lease = RunLease(
-        task_id=request.task_id,
-        request_digest=request.digest,
-        owner_id="pod-a",
-        fence=7,
-        expires_at=999999,
-        attempt_id="run-attempt-1",
-    )
-
-    await publisher._record_event(
-        request,
-        TargetCollectionResult(
-            target="10.10.24.1",
-            status="success",
-            attempts=3,
-            credential_id="credential-3",
-            credential_failures=(
-                CredentialFailureResult("credential-1", "unauthorized"),
-                CredentialFailureResult("credential-2", "authentication_failed"),
-            ),
-        ),
-        lease,
-        "result-id",
-    )
-
-    assert [event["credential_id"] for event in events] == [
-        "credential-1",
-        "credential-2",
-        "credential-3",
-    ]
-    assert [(event["status"], event["success"]) for event in events] == [
-        ("failed", False),
-        ("failed", False),
-        ("success", True),
-    ]
-    assert [event["failure_kind"] for event in events] == [
-        "credential",
-        "credential",
-        "",
-    ]
-    assert all(event["event_version"] == 2 for event in events)
-
-
-@pytest.mark.asyncio
-async def test_credential_result_event_ids_are_stable_across_partial_retry():
-    attempts = []
-    fail_second_once = True
-
-    async def partially_failing_sink(event):
-        nonlocal fail_second_once
-        attempts.append(event)
-        if fail_second_once and len(attempts) == 2:
-            fail_second_once = False
-            raise ConnectionError("partial write")
-
-    publisher = NatsResultPublisher(result_event_sink=partially_failing_sink)
-    request = CollectionRequest(
-        task_id="collect-result-partial-retry",
-        plugin_ref="mysql.config",
-        targets=("10.10.24.1",),
-    )
-    lease = RunLease(
-        task_id=request.task_id,
-        request_digest=request.digest,
-        owner_id="pod-a",
-        fence=7,
-        expires_at=999999,
-        attempt_id="run-attempt-1",
-    )
-    result = TargetCollectionResult(
-        target="10.10.24.1",
-        status="success",
-        attempts=3,
-        credential_id="credential-3",
-        credential_failures=(
-            CredentialFailureResult("credential-1", "unauthorized"),
-            CredentialFailureResult("credential-2", "authentication_failed"),
-        ),
-    )
-
-    with pytest.raises(ConnectionError, match="partial write"):
-        await publisher._record_event(request, result, lease, "result-id")
-    await publisher._record_event(request, result, lease, "result-id")
-
-    first_attempt_id = attempts[0]["event_id"]
-    retried_first_id = attempts[2]["event_id"]
-    assert first_attempt_id == retried_first_id
-    assert len({event["event_id"] for event in attempts[2:]}) == 3
-
-
-@pytest.mark.asyncio
-async def test_credential_result_event_omits_empty_aggregate_after_failures():
-    events = []
-
-    async def record_event(event):
-        events.append(event)
-
-    publisher = NatsResultPublisher(result_event_sink=record_event)
-    request = CollectionRequest(
-        task_id="collect-result-exhausted",
-        plugin_ref="mysql.config",
-        targets=("10.10.24.1",),
-    )
-    lease = RunLease(
-        task_id=request.task_id,
-        request_digest=request.digest,
-        owner_id="pod-a",
-        fence=7,
-        expires_at=999999,
-        attempt_id="run-attempt-1",
-    )
-
-    await publisher._record_event(
-        request,
-        TargetCollectionResult(
-            target="10.10.24.1",
-            status="failed",
-            attempts=1,
-            error_code="credentials_exhausted",
-            credential_failures=(CredentialFailureResult("credential-1", "capability_denied"),),
-        ),
-        lease,
-        "result-id",
-    )
-
-    assert len(events) == 1
-    assert events[0]["credential_id"] == "credential-1"
-    assert events[0]["error_code"] == "capability_denied"
-    assert events[0]["failure_kind"] == "credential"
 
 
 @pytest.mark.asyncio

@@ -24,6 +24,9 @@ import styles from './index.module.scss';
 import {
   AttrFieldType,
 } from '@/app/cmdb/types/assetManage';
+import { buildChangeRecordDiffRows } from './changeRecordDiff';
+import type { ChangeRecordAttributeSnapshot } from './changeRecordTypes';
+import TableFieldDiffView from './TableFieldDiffView';
 
 const { RangePicker } = DatePicker;
 
@@ -41,6 +44,7 @@ interface ChangeRecord {
   message?: string;
   before_data?: any;
   after_data?: any;
+  attribute_snapshot?: ChangeRecordAttributeSnapshot;
 }
 
 // 场景颜色（与设计稿一致）
@@ -196,11 +200,11 @@ const ChangeRecords: React.FC = () => {
      
   }, []);
 
-  // 属性 id → 中文名
+  // 属性 id → 属性定义（表格字段展示需要列配置）
   const attrFieldMap = useMemo(() => {
-    const m: Record<string, string> = {};
-    (attrList || []).forEach((a: any) => {
-      m[a.attr_id] = a.attr_name || a.attr_id;
+    const m: Record<string, AttrFieldType> = {};
+    (attrList || []).forEach((a) => {
+      m[a.attr_id] = a;
     });
     return m;
   }, [attrList]);
@@ -345,29 +349,15 @@ const ChangeRecords: React.FC = () => {
     modelList.find((m: any) => m.model_id === id)?.model_name || id;
 
   // 构建 diff 行
-  const diffRows = useMemo(() => {
-    if (!selectedRecord || selectedRecord.label !== 'instance') return [];
-    const bd = selectedRecord.before_data || {};
-    const ad = selectedRecord.after_data || {};
-    const keys = Array.from(
-      new Set([...Object.keys(ad || {}), ...Object.keys(bd || {})])
-    ).filter((k) => !k.startsWith('_'));
-    return keys.map((k) => {
-      const beforeStr = bd[k] !== undefined ? String(bd[k]) : '--';
-      const afterStr = ad[k] !== undefined ? String(ad[k]) : '--';
-      const curRaw = currentInstance[k];
-      const currentStr =
-        curRaw !== undefined && curRaw !== null ? String(curRaw) : '--';
-      return {
-        attr: attrFieldMap[k] || k,
-        before: beforeStr,
-        after: afterStr,
-        current: currentStr,
-        changed: String(bd[k] ?? '') !== String(ad[k] ?? ''),
-        currentDiff: currentStr !== afterStr,
-      };
-    });
-  }, [selectedRecord, currentInstance, attrFieldMap]);
+  const diffRows = useMemo(
+    () =>
+      buildChangeRecordDiffRows(
+        selectedRecord,
+        currentInstance,
+        attrFieldMap
+      ),
+    [selectedRecord, currentInstance, attrFieldMap]
+  );
 
   // 关系变更信息
   const relationInfo = useMemo(() => {
@@ -749,32 +739,41 @@ const ChangeRecords: React.FC = () => {
                                 </tr>
                               </thead>
                               <tbody>
-                                {diffRows.map((row, i) => (
-                                  <tr key={i}>
+                                {diffRows.map((row) => row.table ? (
+                                  <tr key={row.attrId}>
                                     <td className={styles.attrCell}>
                                       {row.attr}
                                     </td>
-                                    <td className="text-[var(--color-text-1)]">
+                                    <td colSpan={3} className="p-2">
+                                      <TableFieldDiffView diff={row.table} compact />
+                                    </td>
+                                  </tr>
+                                ) : (
+                                  <tr key={row.attrId}>
+                                    <td className={styles.attrCell}>
+                                      {row.attr}
+                                    </td>
+                                    <td className="whitespace-pre-wrap break-words text-[var(--color-text-1)]">
                                       {row.before}
                                     </td>
                                     <td>
                                       <span
-                                        className={
+                                        className={`whitespace-pre-wrap break-words ${
                                           row.changed
                                             ? 'text-[#12B76A]'
                                             : 'text-[var(--color-text-1)]'
-                                        }
+                                        }`}
                                       >
                                         {row.after}
                                       </span>
                                     </td>
                                     <td>
                                       <span
-                                        className={
+                                        className={`whitespace-pre-wrap break-words ${
                                           row.currentDiff
                                             ? 'font-medium text-[#F79009]'
                                             : 'font-normal text-[var(--color-text-1)]'
-                                        }
+                                        }`}
                                       >
                                         {row.current}
                                       </span>
@@ -836,33 +835,40 @@ const ChangeRecords: React.FC = () => {
                             </tr>
                           </thead>
                           <tbody>
-                            {diffRows.map((row, i) => (
-                              <tr key={i}>
+                            {diffRows.map((row) => row.table ? (
+                              <tr key={row.attrId}>
+                                <td className={styles.attrCell}>{row.attr}</td>
+                                <td colSpan={3} className="p-2">
+                                  <TableFieldDiffView diff={row.table} />
+                                </td>
+                              </tr>
+                            ) : (
+                              <tr key={row.attrId}>
                                 <td className={styles.attrCell}>{row.attr}</td>
                                 <td
-                                  className={
+                                  className={`whitespace-pre-wrap break-words ${
                                     row.changed
                                       ? 'text-[#F04438] line-through opacity-60'
                                       : 'text-[var(--color-text-1)]'
-                                  }
+                                  }`}
                                 >
                                   {row.before}
                                 </td>
                                 <td
-                                  className={
+                                  className={`whitespace-pre-wrap break-words ${
                                     row.changed
                                       ? 'font-medium text-[#12B76A]'
                                       : 'font-normal text-[var(--color-text-1)]'
-                                  }
+                                  }`}
                                 >
                                   {row.after}
                                 </td>
                                 <td
-                                  className={
+                                  className={`whitespace-pre-wrap break-words ${
                                     row.currentDiff
                                       ? 'font-medium text-[#F79009]'
                                       : 'font-normal text-[var(--color-text-1)]'
-                                  }
+                                  }`}
                                 >
                                   {row.current}
                                 </td>

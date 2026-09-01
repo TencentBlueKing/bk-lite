@@ -6,7 +6,7 @@
 import socket
 import time
 
-from core.plugin.error_logging import log_plugin_exception
+from core.plugin.error_logging import log_plugin_exception, should_log_plugin_exception
 from pysnmp.hlapi.asyncio import (
     CommunityData,
     ContextData,
@@ -398,7 +398,7 @@ class SnmpFacts:
 
     async def list_all_resources(self):
         """将设备与接口 SNMP 数据转换为标准格式。"""
-        logger.info(
+        logger.debug(
             "event=snmp_facts_collection_started task_id=%s plugin_ref=%s " "model_id=%s plugin_name=%s target=%s | SNMP采集开始 IP=%s",
             self.kwargs.get("collection_task_id") or "-",
             self.kwargs.get("collection_plugin_ref") or "network.config",
@@ -418,15 +418,16 @@ class SnmpFacts:
 
             inst_data = {"result": model_data, "success": True}
         except Exception as err:
-            log_plugin_exception(
-                logger,
-                error=err,
-                task_id=self.kwargs.get("collection_task_id"),
-                plugin_ref=self.kwargs.get("collection_plugin_ref") or "network.config",
-                model_id=self.kwargs.get("model_id") or "network",
-                plugin_name=self.kwargs.get("plugin_name") or "snmp_facts",
-                target=self.host,
-            )
+            if should_log_plugin_exception(self.kwargs):
+                log_plugin_exception(
+                    logger,
+                    error=err,
+                    task_id=self.kwargs.get("collection_task_id"),
+                    plugin_ref=self.kwargs.get("collection_plugin_ref") or "network.config",
+                    model_id=self.kwargs.get("model_id") or "network",
+                    plugin_name=self.kwargs.get("plugin_name") or "snmp_facts",
+                    target=self.host,
+                )
             inst_data = {"result": {"cmdb_collect_error": str(err)}, "success": False}
 
         return inst_data

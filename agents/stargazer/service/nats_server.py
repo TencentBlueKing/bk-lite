@@ -1,11 +1,40 @@
+import inspect
 from datetime import datetime, timezone
 
 import core.collection.host_remote.callback as host_remote_callback
-from core.infra.nats import get_nats, register_handler
 from core.collection.host_remote.runtime import schedule_host_remote_processing
+from core.collection.round_metadata import ROUND_METADATA_SCHEMA_VERSION, RedisRoundMetadataStore, RoundMetadataValidationError, validate_lookups
+from core.infra.nats import get_nats, register_handler
+from core.infra.redis_client import get_redis_client
 from sanic.log import logger
 from service.collection_service import CollectionService
 from service.debug.protocol_debug_service import ProtocolDebugService
+
+
+async def _round_metadata_store():
+    return RedisRoundMetadataStore(await get_redis_client())
+
+
+@register_handler(
+    "get_collection_round_metadata",
+    queue="stargazer-round-metadata",
+)
+async def get_collection_round_metadata(data):
+    """按完整轮次键精确读取快照控制元数据，不提供扫描能力。"""
+    if not isinstance(data, dict):
+        raise RoundMetadataValidationError("invalid_request")
+    if data.get("schema_version") != ROUND_METADATA_SCHEMA_VERSION:
+        raise RoundMetadataValidationError("invalid_request")
+    task_id = str(data.get("collection_task_id") or "").strip()
+    instance_id = str(data.get("instance_id") or "").strip()
+    if not task_id or instance_id != f"cmdb_{task_id}":
+        raise RoundMetadataValidationError("invalid_request")
+    lookups = validate_lookups(data.get("lookups"))
+    store = _round_metadata_store()
+    if inspect.isawaitable(store):
+        store = await store
+    items = await store.get_many(task_id, lookups)
+    return {"schema_version": ROUND_METADATA_SCHEMA_VERSION, "items": items}
 
 
 def _extract_host_remote_callback_payload(data):
@@ -104,23 +133,15 @@ async def handle_host_remote_callback(data: dict) -> dict:
     if not callback_context:
         raise RuntimeError(f"Missing Host Remote callback context for task_id={task_id}")
 
-    host_remote_callback.validate_host_remote_callback_identity(
-        payload, callback_context
-    )
-    await host_remote_callback.ensure_host_remote_callback_fence_is_current(
-        callback_context
-    )
+    host_remote_callback.validate_host_remote_callback_identity(payload, callback_context)
+    await host_remote_callback.ensure_host_remote_callback_fence_is_current(callback_context)
 
-    claim_token = await host_remote_callback.claim_host_remote_processing(
-        task_id
-    )
+    claim_token = await host_remote_callback.claim_host_remote_processing(task_id)
     if not claim_token:
         return {
             "task_id": task_id,
             "status": "duplicate_active",
-            "monitor_type": (callback_context.get("params") or {}).get(
-                "monitor_type", "host"
-            ),
+            "monitor_type": (callback_context.get("params") or {}).get("monitor_type", "host"),
             "processing_job_id": "",
         }
 
@@ -132,13 +153,9 @@ async def handle_host_remote_callback(data: dict) -> dict:
         if callback_context is None:
             raise RuntimeError("Host Remote callback context disappeared before record")
         await _clear_host_remote_running_flag_best_effort(task_id)
-        task_info = await schedule_host_remote_processing(
-            task_id, claim_token=claim_token
-        )
+        task_info = await schedule_host_remote_processing(task_id, claim_token=claim_token)
     except Exception:
-        await host_remote_callback.release_host_remote_processing_claim(
-            task_id, claim_token
-        )
+        await host_remote_callback.release_host_remote_processing_claim(task_id, claim_token)
         raise
     await host_remote_callback.mark_host_remote_processing_enqueued(
         task_id,

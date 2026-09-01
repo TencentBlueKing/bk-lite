@@ -8,7 +8,6 @@ import pytest
 from apps.cmdb.validators.field_validator import FieldValidator, IdentifierValidator
 from apps.core.exceptions.base_app_exception import BaseAppException
 
-
 # --------------------------------------------------------------------------
 # IdentifierValidator
 # --------------------------------------------------------------------------
@@ -156,10 +155,17 @@ def test_validate_table_option_bad_type():
         FieldValidator.validate_table_option(cols)
 
 
+def test_validate_table_option_rejects_multiple_row_key_columns():
+    cols = _valid_option()
+    cols[0]["is_row_key"] = True
+    cols[1]["is_row_key"] = True
+
+    with pytest.raises(BaseAppException, match="最多只能设置一列为行标识"):
+        FieldValidator.validate_table_option(cols)
+
+
 def test_validate_table_value_ok():
-    FieldValidator.validate_table_value(
-        [{"name": "disk-a", "size": 100}], _valid_option()
-    )
+    FieldValidator.validate_table_value([{"name": "disk-a", "size": 100}], _valid_option())
 
 
 def test_validate_table_value_json_string():
@@ -183,6 +189,25 @@ def test_validate_table_value_bad_number():
 
 def test_validate_table_value_empty_skips():
     FieldValidator.validate_table_value([], _valid_option())
+
+
+def test_validate_table_value_rejects_missing_row_key():
+    option = _valid_option()
+    option[0]["is_row_key"] = True
+
+    with pytest.raises(BaseAppException, match="行标识.*不能为空"):
+        FieldValidator.validate_table_value([{"name": "", "size": 1}], option)
+
+
+def test_validate_table_value_rejects_duplicate_row_key():
+    option = _valid_option()
+    option[0]["is_row_key"] = True
+
+    with pytest.raises(BaseAppException, match="行标识.*重复"):
+        FieldValidator.validate_table_value(
+            [{"name": "disk-a", "size": 1}, {"name": "disk-a", "size": 2}],
+            option,
+        )
 
 
 # --------------------------------------------------------------------------

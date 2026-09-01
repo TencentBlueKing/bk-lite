@@ -7,8 +7,8 @@ NATS 通用工具方法
 提供简洁的 NATS 请求/发布封装，无需手动管理连接。
 
 实现说明（重要）：
-    本模块维护一条**进程级共享长连接**，所有 nats_request / nats_publish
-    都复用它，而不是每次调用都新建一条 TLS 连接再关闭。
+    本模块维护两条**进程级共享长连接**：低流量 control/RPC 与 metrics
+    JetStream 各自复用一条，避免指标背压和重连占用控制面连接。
 
     为什么必须共享长连接：
         stargazer 的每个服务进程使用一个 Sanic 事件循环。遗留同步 SDK 已在
@@ -17,7 +17,7 @@ NATS 通用工具方法
         （默认 2s）后会直接 reset，表现为大量 ConnectionResetError，导致
         ansible adhoc 请求发不出去、回调收不到。
 
-        改为一条已建立的长连接后：
+        改为按通道复用已建立的长连接后：
         - 不再有“每次操作一次 TLS 握手”，握手只在启动/重连时发生一次；
         - 连接由 nats-py 在后台维护并无限自动重连；
         - 即使事件循环被阻塞数十秒，已建立的连接也不会像 2s 握手那样被打断。
@@ -30,12 +30,12 @@ import os
 import time
 from collections import deque
 from collections.abc import Callable
+from functools import partial
 from typing import Any, List, Optional, Sequence
 
 from core.infra.jetstream_publish_window import JetStreamMessage, JetStreamPublishWindow, JetStreamPublishWindowSettings, JetStreamWindowPublishError
-from core.infra.nats import NATSConfig
+from core.infra.nats import NATS, NATSConfig
 from core.logger import logger
-from nats.aio.client import Client as NATS
 
 # 进程级共享连接与连接锁
 _shared_nc: Optional[NATS] = None
@@ -75,6 +75,10 @@ class NatsLinesPublishError(RuntimeError):
         self.__cause__ = error
 
 
+class MetricsJetStreamRequiredError(RuntimeError):
+    """生产 metrics 链路禁止静默回退 Core NATS。"""
+
+
 def _get_lock(channel: str = "control") -> asyncio.Lock:
     """惰性创建锁，确保绑定到当前运行的事件循环。"""
     global _connect_lock, _metrics_connect_lock
@@ -87,37 +91,37 @@ def _get_lock(channel: str = "control") -> asyncio.Lock:
     return _connect_lock
 
 
-async def _on_error(e: Exception) -> None:
-    logger.error(f"[NATS] shared connection error: {type(e).__name__}: {e}")
+async def _on_error(channel: str, error: Exception) -> None:
+    logger.error(
+        "event=nats_connection_error channel=%s error_type=%s",
+        channel,
+        type(error).__name__,
+    )
 
 
-async def _on_disconnected() -> None:
-    logger.warning("[NATS] shared connection disconnected")
-
-
-async def _on_reconnected() -> None:
-    logger.info("[NATS] shared connection reconnected")
-
-
-async def _on_metrics_disconnected() -> None:
+async def _on_disconnected(channel: str) -> None:
     global _metrics_reconnect_started_at
-    if _metrics_reconnect_started_at is None:
+    if channel == "metrics" and _metrics_reconnect_started_at is None:
         _metrics_reconnect_started_at = time.monotonic()
-    await _on_disconnected()
+    logger.warning("event=nats_connection_disconnected channel=%s", channel)
 
 
-async def _on_metrics_reconnected() -> None:
+async def _on_reconnected(channel: str) -> None:
     global _metrics_reconnect_total, _metrics_reconnect_started_at, _metrics_reconnect_duration_seconds
-    _metrics_reconnect_total += 1
-    if _metrics_reconnect_started_at is not None:
-        _metrics_reconnect_duration_seconds = max(0.0, time.monotonic() - _metrics_reconnect_started_at)
-        _metrics_reconnect_durations.append(_metrics_reconnect_duration_seconds)
-        _metrics_reconnect_started_at = None
-    await _on_reconnected()
+    if channel == "metrics":
+        _metrics_reconnect_total += 1
+        if _metrics_reconnect_started_at is not None:
+            _metrics_reconnect_duration_seconds = max(
+                0.0,
+                time.monotonic() - _metrics_reconnect_started_at,
+            )
+            _metrics_reconnect_durations.append(_metrics_reconnect_duration_seconds)
+            _metrics_reconnect_started_at = None
+    logger.info("event=nats_connection_reconnected channel=%s", channel)
 
 
-async def _on_closed() -> None:
-    logger.warning("[NATS] shared connection closed")
+async def _on_closed(channel: str) -> None:
+    logger.warning("event=nats_connection_closed channel=%s", channel)
 
 
 async def get_shared_nats(channel: str = "control") -> NATS:
@@ -154,19 +158,30 @@ async def get_shared_nats(channel: str = "control") -> NATS:
 
         config = NATSConfig.from_env(service_name=f"stargazer-{channel}")
         options = config.to_connect_options()
+        if channel == "metrics":
+            window_bytes = int(
+                os.getenv(
+                    "NATS_JS_PUBLISH_MAX_PENDING_BYTES",
+                    str(32 * 1024 * 1024),
+                )
+            )
+            configured_pending_bytes = int(
+                os.getenv(
+                    "NATS_METRICS_PENDING_SIZE_BYTES",
+                    str(window_bytes + 1024 * 1024),
+                )
+            )
+            options["pending_size"] = max(
+                window_bytes,
+                configured_pending_bytes,
+            )
         # 长连接：无限重连，避免达到重连上限后被永久关闭
         options["max_reconnect_attempts"] = -1
         options["allow_reconnect"] = True
-        options.setdefault("error_cb", _on_error)
-        options.setdefault(
-            "disconnected_cb",
-            _on_metrics_disconnected if channel == "metrics" else _on_disconnected,
-        )
-        options.setdefault(
-            "reconnected_cb",
-            _on_metrics_reconnected if channel == "metrics" else _on_reconnected,
-        )
-        options.setdefault("closed_cb", _on_closed)
+        options.setdefault("error_cb", partial(_on_error, channel))
+        options.setdefault("disconnected_cb", partial(_on_disconnected, channel))
+        options.setdefault("reconnected_cb", partial(_on_reconnected, channel))
+        options.setdefault("closed_cb", partial(_on_closed, channel))
 
         new_nc = NATS()
         await new_nc.connect(**options)
@@ -175,8 +190,12 @@ async def get_shared_nats(channel: str = "control") -> NATS:
         else:
             _shared_nc = new_nc
         logger.info(
-            f"[NATS] shared connection established: channel={channel}, servers={config.servers}, "
-            f"tls={config.tls_enabled}, authentication_configured={bool(config.user)}"
+            "event=nats_connection_established channel=%s servers=%s tls=%s " "authentication_configured=%s pending_size_bytes=%s",
+            channel,
+            config.servers,
+            config.tls_enabled,
+            bool(config.user),
+            options.get("pending_size"),
         )
         return new_nc
 
@@ -193,7 +212,8 @@ async def close_shared_nats() -> None:
     for nc in clients:
         try:
             if not nc.is_closed:
-                await nc.drain()
+                async with asyncio.timeout(float(os.getenv("NATS_DRAIN_TIMEOUT_SECONDS", "5"))):
+                    await nc.drain()
         except Exception as e:
             logger.debug(f"[NATS] error draining shared connection: {e}")
         finally:
@@ -224,8 +244,12 @@ def nats_metrics_connection_stats() -> dict[str, float | int]:
         "nats_metrics_pending_bytes": pending_bytes,
         "nats_js_publish_pending_messages": window.pending_messages if window else 0,
         "nats_js_publish_pending_bytes": window.pending_bytes if window else 0,
+        "nats_js_publish_waiting_messages": window.waiting_messages if window else 0,
+        "nats_js_publish_waiting_bytes": window.waiting_bytes if window else 0,
         "nats_js_publish_pending_messages_peak": window.peak_pending_messages if window else 0,
         "nats_js_publish_pending_bytes_peak": window.peak_pending_bytes if window else 0,
+        "nats_js_publish_waiting_messages_peak": window.peak_waiting_messages if window else 0,
+        "nats_js_publish_waiting_bytes_peak": window.peak_waiting_bytes if window else 0,
         "nats_js_publish_confirmed_total": window.confirmed_total if window else 0,
         "nats_js_puback_duration_seconds_p95": window.puback_duration_seconds_p95 if window else 0.0,
         "nats_js_puback_duration_seconds_p99": window.puback_duration_seconds_p99 if window else 0.0,
@@ -233,6 +257,42 @@ def nats_metrics_connection_stats() -> dict[str, float | int]:
         "nats_js_publish_retry_total": window.retry_total if window else 0,
         "nats_js_publish_rejected_total": window.rejected_total if window else 0,
     }
+
+
+async def metrics_transport_ready() -> bool:
+    """验证 metrics 连接、目标 Stream 和动态指标 subject 契约。"""
+
+    if not _read_bool_env("NATS_METRICS_JETSTREAM_ENABLED", True):
+        return False
+    timeout_seconds = float(os.getenv("NATS_METRICS_READINESS_TIMEOUT", "2"))
+    try:
+        async with asyncio.timeout(timeout_seconds):
+            nc = await get_shared_nats("metrics")
+            if not nc.is_connected:
+                return False
+            stream_name = os.getenv("NATS_JS_STREAM_NAME", "CMDB_METRICS")
+            stream_info = await nc.jetstream().stream_info(stream_name)
+            subjects = tuple(getattr(stream_info.config, "subjects", ()) or ())
+            topic = str(os.getenv("NATS_METRIC_TOPIC", "metrics") or "metrics").strip(".")
+            representative_subject = f"{topic}.__stargazer_readiness__"
+            return any(_nats_subject_pattern_matches(pattern, representative_subject) for pattern in subjects)
+    except Exception:
+        return False
+
+
+def _nats_subject_pattern_matches(pattern: str, subject: str) -> bool:
+    pattern_tokens = str(pattern or "").split(".")
+    subject_tokens = str(subject or "").split(".")
+    subject_index = 0
+    for pattern_index, token in enumerate(pattern_tokens):
+        if token == ">":
+            return pattern_index == len(pattern_tokens) - 1
+        if subject_index >= len(subject_tokens):
+            return False
+        if token != "*" and token != subject_tokens[subject_index]:
+            return False
+        subject_index += 1
+    return subject_index == len(subject_tokens)
 
 
 async def nats_request(subject: str, payload: bytes, timeout: float = 30.0) -> dict:
@@ -315,13 +375,16 @@ async def nats_publish_lines(
 
     if message_ids is not None and len(message_ids) != len(lines):
         raise ValueError("message_ids length must match lines length")
-    if _read_bool_env("NATS_METRICS_JETSTREAM_ENABLED", False):
+    if _read_bool_env("NATS_METRICS_JETSTREAM_ENABLED", True):
         return await _nats_publish_lines_jetstream(
             subject,
             lines,
             before_publish=before_publish,
             message_ids=message_ids,
         )
+
+    if not _read_bool_env("NATS_METRICS_CORE_FALLBACK_ENABLED", False):
+        raise MetricsJetStreamRequiredError("metrics JetStream is disabled and Core NATS fallback is not allowed")
 
     attempted_indices: list[int] = []
     delivery_timeout = float(os.getenv("PUBLISH_DELIVERY_TIMEOUT", os.getenv("PUBLISH_TIMEOUT", "30")))
@@ -367,7 +430,7 @@ async def _get_metrics_jetstream():
     global _metrics_js_context, _metrics_js_connection
     nc = await get_shared_nats("metrics")
     if _metrics_js_context is None or _metrics_js_connection is not nc:
-        _metrics_js_context = nc.jetstream(publish_async_max_pending=int(os.getenv("NATS_JS_PUBLISH_MAX_PENDING", "1024")))
+        _metrics_js_context = nc.jetstream(publish_async_max_pending=int(os.getenv("NATS_JS_PUBLISH_MAX_PENDING", "256")))
         _metrics_js_connection = nc
     return _metrics_js_context
 
@@ -378,8 +441,8 @@ def _get_metrics_js_window() -> JetStreamPublishWindow:
         _metrics_js_window = JetStreamPublishWindow(
             _get_metrics_jetstream,
             settings=JetStreamPublishWindowSettings(
-                max_pending_messages=int(os.getenv("NATS_JS_PUBLISH_MAX_PENDING", "1024")),
-                max_pending_bytes=int(os.getenv("NATS_JS_PUBLISH_MAX_PENDING_BYTES", str(128 * 1024 * 1024))),
+                max_pending_messages=int(os.getenv("NATS_JS_PUBLISH_MAX_PENDING", "256")),
+                max_pending_bytes=int(os.getenv("NATS_JS_PUBLISH_MAX_PENDING_BYTES", str(32 * 1024 * 1024))),
                 puback_timeout_seconds=float(
                     os.getenv(
                         "NATS_JS_PUBACK_TIMEOUT",
