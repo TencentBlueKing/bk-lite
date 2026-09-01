@@ -37,7 +37,14 @@ const nextConfig = withBundleAnalyzer({
   enabled: process.env.ANALYZE === 'true',
 })({
   reactStrictMode: true,
-  allowedDevOrigins: ['bklite.weops.com'],
+  allowedDevOrigins: Array.from(new Set([
+    'bklite.weops.com',
+    '10.10.40.53',
+    ...String(process.env.NEXT_DEV_ALLOWED_ORIGINS || '')
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean),
+  ])),
   env: {
     ENTERPRISE_WEB_ROOT: enterpriseWebRoot,
   },
