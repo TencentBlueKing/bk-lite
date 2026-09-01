@@ -6,9 +6,13 @@ import {
   UnitListItem
 } from '@/app/monitor/types';
 import { isStringArray } from '@/app/monitor/utils/common';
+import { getMonitorUnitSelectLabel } from '@/app/monitor/components/monitor-shared/unit-label';
 import { MetricExpressionMode } from './formulaExpressionUtils';
 
 export const FORMULA_DEFAULT_RESULT_UNIT = 'percent';
+
+/** 兼容策略阈值下拉与本地验证脚本。 */
+export const getThresholdUnitSelectLabel = getMonitorUnitSelectLabel;
 
 /** 组织变更后，剔除不再属于候选用户列表的已选通知人 */
 export const pruneNoticeUsers = <T extends string | number>(
@@ -277,28 +281,6 @@ export const getPercentUnitScaleFactor = (
   return null;
 };
 
-/**
- * 阈值单位下拉展示名：优先 unit_name；percent/percentunit 在名称未标注量纲时补全，
- * 避免仅用 display_unit（二者皆为 %）时无法区分 0–100 与 0.0–1.0。
- */
-export const getThresholdUnitSelectLabel = (option: {
-  unit_id: string;
-  unit_name?: string;
-  display_unit?: string;
-}): string => {
-  if (option.unit_id === 'percent') {
-    return option.unit_name?.includes('0-100')
-      ? option.unit_name
-      : 'percent (0-100)';
-  }
-  if (option.unit_id === 'percentunit') {
-    return option.unit_name?.includes('0.0-1.0')
-      ? option.unit_name
-      : 'percentunit (0.0-1.0)';
-  }
-  return option.unit_name || option.display_unit || option.unit_id;
-};
-
 /** 百分比阈值输入占位，明示量纲；其他单位不提示。 */
 export const getThresholdValuePlaceholder = (
   thresholdUnit: string | null | undefined
@@ -335,7 +317,11 @@ export const buildMetricUnitCascaderOptions = (
       children: (group.children || [])
         .filter((item) => !INVALID_THRESHOLD_UNIT_IDS.has(item.value))
         .map((item) => ({
-          label: item.label,
+          label: getMonitorUnitSelectLabel({
+            unit_id: String(item.value),
+            unit_name: item.label,
+            display_unit: item.unit
+          }),
           value: item.value,
           children: []
         }))
