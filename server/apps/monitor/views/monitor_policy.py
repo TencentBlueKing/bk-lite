@@ -9,6 +9,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from apps.core.decorators.api_permission import HasPermission
 from apps.core.exceptions.base_app_exception import BaseAppException, UnauthorizedException
 from apps.core.utils.current_team_scope import resolve_current_team_data_scope, scope_permission_queryset, validate_assignable_organizations
 from apps.core.utils.permission_utils import get_permission_rules
@@ -176,6 +177,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
 
         return WebUtils.response_success(dict(count=queryset.count(), items=results))
 
+    @HasPermission("strategy_list-Add")
     def create(self, request, *args, **kwargs):
         self._ensure_target_organizations(request.data.get("organizations", []))
         request.data["created_by"] = request.user.username
@@ -191,6 +193,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
                 self.update_policy_baselines(policy_id, policy.enable_alerts)
         return response
 
+    @HasPermission("strategy_list-Edit")
     def update(self, request, *args, **kwargs):
         if kwargs.get("partial", False):
             return super().update(request, *args, **kwargs)
@@ -235,6 +238,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
 
         return response
 
+    @HasPermission("strategy_list-Edit")
     def partial_update(self, request, *args, **kwargs):
         policy = self.get_object()
         if "organizations" in request.data:
@@ -278,6 +282,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
 
         return response
 
+    @HasPermission("strategy_list-Delete")
     def destroy(self, request, *args, **kwargs):
         policy = self.get_object()
         policy_id = policy.id
@@ -579,6 +584,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         return WebUtils.response_success(data)
 
     @action(methods=["post"], detail=False, url_path="template/save")
+    @HasPermission("strategy_list-Edit")
     def save_template(self, request):
         monitor_object_id = request.data.get("monitor_object")
         plugin_id = request.data.get("plugin")
@@ -601,6 +607,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         return WebUtils.response_success(PolicyService.serialize_template(template))
 
     @action(methods=["post"], detail=False, url_path="template/import")
+    @HasPermission("strategy_list-Edit")
     def import_templates(self, request):
         upload = request.FILES.get("file")
         if upload is None:
@@ -629,6 +636,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         return response
 
     @action(methods=["post"], detail=False, url_path="template/bulk_delete")
+    @HasPermission("strategy_list-Delete")
     def bulk_delete_templates(self, request):
         keys = request.data.get("keys") or []
         if not keys:
@@ -648,6 +656,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         return WebUtils.response_success({"deleted_count": deleted_count})
 
     @action(methods=["post"], detail=False, url_path="bulk_create_from_templates")
+    @HasPermission("strategy_list-Add")
     def bulk_create_from_templates(self, request):
         monitor_object_id = request.data.get("monitor_object")
         template_keys = request.data.get("template_keys") or []
