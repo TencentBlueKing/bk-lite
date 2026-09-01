@@ -1,4 +1,4 @@
-import { apiGet } from '@/api/request';
+import { apiGet, apiPost } from '@/api/request';
 import type { MetricGroup, MetricRangeResult, MonitorInstance, MonitorMetric, MonitorObject, MonitorPlugin, MonitorRecentViewsConfig, MonitorRecentViewsResolution, PageResult } from './model';
 import type { MonitorUnitListItem } from './unit-label';
 import {
@@ -208,11 +208,26 @@ export async function listMetricDefinition(objectId: number, pluginId: number, s
   return { groups: groups.sort((a, b) => a.order - b.order), metrics: metrics.sort((a, b) => a.order - b.order) };
 }
 
-export async function queryMetricRange(query: string, unit: string, rangeMinutes: number, collectionInterval?: number | null, signal?: AbortSignal): Promise<MetricRangeResult> {
+export async function queryMetricRange(
+  monitorObjectId: number,
+  metricId: number,
+  instanceId: string,
+  unit: string,
+  rangeMinutes: number,
+  collectionInterval?: number | null,
+  signal?: AbortSignal,
+): Promise<MetricRangeResult> {
   const end = Date.now(); const start = end - rangeMinutes * 60_000;
   const step = Math.max(Math.ceil(((end - start) / 1000) / 100), collectionInterval || 0, 1);
-  const raw = record(unwrap<unknown>(await apiGet('/monitor/api/metrics_instance/query_range/', {
-    query, source_unit: unit, query_budget: 'card', start, end, step,
+  const raw = record(unwrap<unknown>(await apiPost('/monitor/api/metrics_instance/query_by_metric_range/', {
+    monitor_object_id: monitorObjectId,
+    metric_id: metricId,
+    instance_ids: [instanceId],
+    source_unit: unit,
+    card_budget: true,
+    start,
+    end,
+    step,
     ...(collectionInterval ? { detect_gaps: true, collection_interval: collectionInterval } : {}),
   }, { signal })));
   const data = record(raw.data);

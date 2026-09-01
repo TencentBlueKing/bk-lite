@@ -11,6 +11,7 @@ from apps.opspilot.models import BuildRecord, KnowledgePage, Material, MaterialV
 from apps.opspilot.serializers.wiki_serializers import BuildRecordSerializer, MaterialSerializer
 from apps.opspilot.services.wiki.embedding_service import index_version, reindex_page_chunks
 from apps.opspilot.services.wiki.index_rebuild_service import rebuild_page_indexes
+from apps.opspilot.services.wiki.material_build_queue_service import MaterialBuildQueueError, enqueue_material_builds
 from apps.opspilot.services.wiki.material_service import load_parsed_markdown
 from apps.opspilot.services.wiki.material_source_service import MaterialSourceError, source_metadata
 from apps.opspilot.services.wiki.parsed_media_service import _bare_media_locator_spans, rewrite_media_urls_for_display, sign_media_locators
@@ -270,8 +271,6 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
         async=true(前端默认):加入知识库串行构建队列,同 KB 顺序执行、跨 KB 可并发;
         async=false:同步执行(测试/脚本),不走队列。
         """
-        from apps.opspilot.services.wiki.material_build_queue_service import MaterialBuildQueueError, enqueue_material_builds
-
         material = self.get_object()
         operator = getattr(request.user, "username", "")
         source_status = material.status
@@ -303,19 +302,13 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
                     },
                     status=error.status_code,
                 )
-            except Exception as error:  # noqa: BLE001 - task broker failure
-                logger.exception(
-                    "wiki 构建入队失败 material=%s kb=%s",
-                    material.pk,
-                    material.knowledge_base_id,
-                )
+            except Exception:  # noqa: BLE001 - traceback 由 kick 持有
                 return JsonResponse(
                     {
                         "result": False,
                         "code": "task_dispatch_failed",
                         "message": "知识构建任务投递失败，请稍后重试",
                         "retryable": True,
-                        "error": str(error)[:500],
                     },
                     status=503,
                 )
@@ -360,8 +353,6 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
     @action(methods=["POST"], detail=False, url_path="batch_build")
     def batch_build(self, request):
         """批量将资料加入知识库串行构建队列。同 KB 顺序执行，跨 KB 可并发。"""
-        from apps.opspilot.services.wiki.material_build_queue_service import MaterialBuildQueueError, enqueue_material_builds
-
         try:
             kb_id = int(request.data.get("knowledge_base") or 0)
         except (TypeError, ValueError):
@@ -387,15 +378,13 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
                 },
                 status=error.status_code,
             )
-        except Exception as error:  # noqa: BLE001
-            logger.exception("wiki 批量构建入队失败 kb=%s", kb_id)
+        except Exception:  # noqa: BLE001 - traceback 由 kick 持有
             return JsonResponse(
                 {
                     "result": False,
                     "code": "task_dispatch_failed",
                     "message": "知识构建任务投递失败，请稍后重试",
                     "retryable": True,
-                    "error": str(error)[:500],
                 },
                 status=503,
             )

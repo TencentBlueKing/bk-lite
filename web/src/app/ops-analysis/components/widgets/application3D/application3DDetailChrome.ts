@@ -1,4 +1,3 @@
-import { CARD_TONE } from './application3DCardStyle';
 import {
   neonLevelToCardTone,
   resolveApplication3DCardVisual,
@@ -10,15 +9,15 @@ import { resolveNeonLevel } from './application3DVisual';
 /** Reuse Wall card status accents; Detail only dials intensity via CSS usage. */
 export const DETAIL_STATUS_ACCENT = {
   normal: {
-    border: 'rgba(206, 220, 232, 0.28)',
-    glow: 'rgba(0, 0, 0, 0)',
-    glowWidth: 0,
-    softGlow: 'rgba(0, 0, 0, 0)',
+    border: 'rgba(80, 150, 196, 0.7)',
+    glow: 'rgba(48, 124, 172, 0.32)',
+    glowWidth: 16,
+    softGlow: 'rgba(32, 96, 144, 0.18)',
     edgeWidth: 1.5,
-    dot: CARD_TONE.normal.dot,
-    badgeBg: 'rgba(28, 44, 58, 0.42)',
-    badgeBorder: 'rgba(160, 184, 210, 0.42)',
-    badgeText: 'rgba(198, 222, 218, 0.92)',
+    dot: '#6aa8d0',
+    badgeBg: 'rgba(8, 28, 48, 0.62)',
+    badgeBorder: 'rgba(80, 150, 196, 0.48)',
+    badgeText: 'rgba(72, 228, 168, 0.96)',
   },
   critical: {
     border: 'rgba(255, 92, 84, 0.92)',
@@ -70,7 +69,7 @@ export const DETAIL_STATUS_ACCENT = {
     glowWidth: 0,
     softGlow: 'rgba(0, 0, 0, 0)',
     edgeWidth: 1.5,
-    dot: CARD_TONE.unknown.dot,
+    dot: '#8b97a8',
     badgeBg: 'rgba(40, 50, 64, 0.45)',
     badgeBorder: 'rgba(140, 156, 176, 0.55)',
     badgeText: 'rgba(198, 208, 220, 0.92)',
@@ -123,8 +122,8 @@ export const SEVERITY_BADGE: Record<
   },
 };
 
-const BASIC_KEYS = new Set(['app_id', 'app_type', 'organization']);
-const MAINTAIN_KEYS = new Set(['operator', 'bak_operator']);
+const BASIC_KEYS = new Set(['app_id', 'app_type', 'organization', 'system_code', 'status']);
+const MAINTAIN_KEYS = new Set(['operator', 'bak_operator', 'productor', 'developer', 'tester']);
 const DESCRIPTION_KEYS = new Set(['comment']);
 
 export interface DetailProperty { key: string; label: string; displayValue: string }
@@ -169,21 +168,9 @@ export const resolveDetailStatus = (
   const accent = DETAIL_STATUS_ACCENT[tone];
   return {
     tone,
-    statusLabel: visual.statusLabel,
+    // Detail shows level text only; count is in the adjacent active-alarms chip.
+    statusLabel: visual.statusLabel.replace(/\s+\d+$/, ''),
     accent,
-    leftPanelStyle: {
-      border: `${accent.edgeWidth}px solid ${accent.border}`,
-      boxShadow:
-        accent.glowWidth > 0
-          ? [
-              `0 0 0 1px ${accent.border}`,
-              `0 0 ${Math.round(accent.glowWidth * 0.55)}px ${accent.glow}`,
-              `0 0 ${accent.glowWidth + 10}px ${accent.softGlow}`,
-              'var(--color-application3d-detail-glass-highlight)',
-              'var(--color-application3d-detail-glass-shadow)',
-          ].join(', ')
-          : '0 0 0 1px rgba(160, 180, 204, 0.12), var(--color-application3d-detail-glass-highlight), var(--color-application3d-detail-glass-shadow)',
-    } as const,
   };
 };
 

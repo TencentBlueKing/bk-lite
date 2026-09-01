@@ -3,6 +3,7 @@
   "collect_type": "snmp_snr",
   "plugin": "Switch SNR SNMP",
   "plugin_desc": "SNR (NAG) switch-specific SNMP collection (NAG-MIB, IANA PEN 40418). In addition to standard IF-MIB interface metrics, it collects SNR private OIDs for device health: per-slot CPU utilization (sysCpuUsage), system memory (total/used), chassis temperature (sysTemperature, dedicated typed column) and fan state (sysFanStatus). Fan raw codes (0=Normal, 1=Abnormal) are normalized via telegraf processors.enum to 1=healthy / 2=fault. Memory utilization is computed from used/total. NAG-MIB exposes no dedicated power-supply (PSU) state object, so PSU is not collected (N/A). Supported brands/models — SNR (NAG) managed switches.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_snr'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

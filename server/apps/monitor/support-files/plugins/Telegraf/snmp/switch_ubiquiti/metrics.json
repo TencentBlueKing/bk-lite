@@ -3,6 +3,7 @@
   "collect_type": "snmp_ubiquiti",
   "plugin": "Switch Ubiquiti SNMP",
   "plugin_desc": "Ubiquiti EdgeSwitch-specific SNMP collection (EdgeSwitch-SWITCHING-MIB + EdgeSwitch-BOXSERVICES-PRIVATE-MIB, IANA PEN 4413, Broadcom FASTPATH). In addition to standard IF-MIB interface metrics, it collects EdgeSwitch private OIDs for device health: system memory (available/free, KB), chassis temperature (boxServicesTempSensorTemperature) and fan state (boxServicesFanItemState). Fan raw codes are normalized via telegraf processors.enum to 1=healthy / 2=fault. Memory utilization is computed from (total-free)/total. CPU is exposed only as a per-process table (agentSwitchCpuProcessTable) with no aggregate device-CPU scalar, which telegraf inputs.snmp cannot reduce, so CPU is not collected (N/A); the BOXSERVICES MIB has no power-supply state object, so PSU is also N/A. Applies to EdgeSwitch/UniFi-Switch (the wired switch line); airOS/UniFi wireless APs are a different object and out of scope. Supported brands/models — Ubiquiti EdgeSwitch (ES series).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_ubiquiti'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

@@ -3,6 +3,7 @@
   "collect_type": "snmp_yamaha",
   "plugin": "Switch Yamaha SNMP",
   "plugin_desc": "Yamaha SWX-series switch SNMP collection (YAMAHA-SWHUB-MIB, IANA PEN 1182). In addition to standard IF-MIB interface metrics, it collects Yamaha private OIDs for device health: 1-minute average CPU utilization (yshCpuUtil1min) and memory utilization (yshMemoryUtil), both reported directly as percentages. The SWX-series exposes no temperature/fan/power SNMP sensors, so those are N/A. Supported brands/models — Yamaha SWX-series L2/L2+ switches (SWX2200 / SWX2300 / SWX3100 etc.; enterprise 1182). Yamaha RTX routers are not covered (no public SNMP health template).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_yamaha'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

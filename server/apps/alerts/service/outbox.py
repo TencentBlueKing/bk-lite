@@ -36,24 +36,6 @@ def _schedule_delivery(record_id: int) -> None:
 def _deliver_payload(kind: str, payload: dict, *, delivery_claim=None) -> None:
     if outbox_handlers.deliver(kind, payload, delivery_claim=delivery_claim):
         return
-    if kind == "notification":
-        from apps.alerts.constants.constants import NotifyResultStatus
-        from apps.alerts.service.notify_service import NotifyResultService
-        from apps.alerts.tasks import sync_notify
-
-        params = payload.get("params") or []
-        results = sync_notify(params)
-        if (
-            params
-            and isinstance(results, list)
-            and len(results) == len(params)
-            and all(
-                NotifyResultService.classify_notify_result(result) == NotifyResultStatus.FAILED
-                for result in results
-            )
-        ):
-            raise RuntimeError("all notification channels failed")
-        return
     if kind == "action":
         from apps.alerts.tasks.action_tasks import process_alert_actions
 
@@ -117,14 +99,31 @@ def deliver_outbox_record(record_id: int) -> bool:
         return False
 
     try:
-        _deliver_payload(
-            kind,
-            payload,
-            delivery_claim={
-                "record_id": record_id,
-                "generation": claim_generation,
-            },
-        )
+        notification_delivery_ids = []
+        if kind == "notification":
+            handled = outbox_handlers.deliver(
+                kind,
+                payload,
+                delivery_claim={
+                    "record_id": record_id,
+                    "generation": claim_generation,
+                },
+            )
+            if not handled:
+                from apps.alerts.service.notification_delivery import (
+                    ensure_notification_deliveries,
+                )
+
+                notification_delivery_ids = ensure_notification_deliveries(record_id)
+        else:
+            _deliver_payload(
+                kind,
+                payload,
+                delivery_claim={
+                    "record_id": record_id,
+                    "generation": claim_generation,
+                },
+            )
     except Exception as exc:
         next_status = (
             AlertOutbox.Status.FAILED
@@ -160,4 +159,10 @@ def deliver_outbox_record(record_id: int) -> bool:
         next_retry_at=None,
         updated_at=delivered_at,
     )
+    if finalized and kind == "notification":
+        from apps.alerts.service.notification_delivery import (
+            schedule_notification_deliveries,
+        )
+
+        schedule_notification_deliveries(notification_delivery_ids)
     return bool(finalized)

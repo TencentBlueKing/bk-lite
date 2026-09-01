@@ -4,6 +4,7 @@ import {
   UnitListItem,
   UserItem,
 } from '@/app/monitor/types';
+import { getMonitorUnitSelectLabel } from '@/app/monitor/components/monitor-shared/unit-label';
 
 interface LoadState {
   requestLoading: boolean;
@@ -42,7 +43,7 @@ export const buildGroupedUnitList = (units: UnitListItem[]): GroupedUnitList[] =
       }
       acc[item.category].push({
         ...item,
-        label: item.unit_name,
+        label: getMonitorUnitSelectLabel(item),
         value: item.unit_id,
         unit: item.display_unit,
       });

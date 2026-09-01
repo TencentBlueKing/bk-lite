@@ -3,6 +3,7 @@
   "collect_type": "snmp_sonicwall",
   "plugin": "Firewall SonicWall SNMP",
   "plugin_desc": "SonicWall-specific SNMP collection template for SonicOS firewalls. In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects SONICWALL-FIREWALL-IP-STATISTICS-MIB private OIDs for device health (CPU and RAM utilization) and firewall-specific state (current and maximum connection-cache entries and NAT translation count). Sourced from LibreNMS SonicWall support and the SONICWALL-FIREWALL-IP-STATISTICS-MIB. Supported brands/models — SonicWall TZ/NSa-series firewalls (SonicOS).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_sonicwall'}) by (instance_id)",
   "name": "Firewall",
   "icon": "mm-firewall_防火墙",

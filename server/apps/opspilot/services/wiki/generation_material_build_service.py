@@ -19,7 +19,10 @@ from apps.opspilot.services.wiki.build_service import (
     _source_chunk_trace,
     _source_chunks_with_offsets,
     _source_locator_for_page,
+    as_material_page_generation,
     generate_material_pages_with_budget,
+    generation_publish_status,
+    generation_skip_checkpoint,
     material_source_metadata,
     prepare_page_data_with_contact_facts,
     published_pages_missing_contact_facts,
@@ -27,6 +30,7 @@ from apps.opspilot.services.wiki.build_service import (
 from apps.opspilot.services.wiki.conflict_candidate_routing_service import route_material_conflicts
 from apps.opspilot.services.wiki.directory_assignment_service import resolve_page_directory
 from apps.opspilot.services.wiki.generation_wikilink_enrichment_service import apply_generation_wikilink_trace, enrich_generation_pages_wikilinks
+from apps.opspilot.services.wiki.material_build_queue_service import MaterialBuildCancelled
 from apps.opspilot.services.wiki.material_service import load_parsed_markdown
 from apps.opspilot.services.wiki.title_service import title_alias_terms_for_enrichment as _title_alias_terms_for_enrichment
 from apps.opspilot.services.wiki.title_service import title_identity_key
@@ -143,15 +147,19 @@ def build_material_with_generation(
         text = (load_parsed_markdown(material) or material.ai_summary or material.text_content or "").strip()
         source_chunks = _source_chunks_with_offsets(text)
         source_metadata = material_source_metadata(material)
-        pages_data = generate_material_pages_with_budget(
-            knowledge_base,
-            text,
-            llm_model_id,
-            budget=budget,
-            structure_revision=revision,
-            classification_root_id=classification_root_id,
-            source_metadata=source_metadata,
+        generation = as_material_page_generation(
+            generate_material_pages_with_budget(
+                knowledge_base,
+                text,
+                llm_model_id,
+                budget=budget,
+                structure_revision=revision,
+                classification_root_id=classification_root_id,
+                source_metadata=source_metadata,
+            )
         )
+        pages_data = generation.pages
+        skipped = list(generation.skipped)
         conflict_routing = route_material_conflicts(
             context.candidate_generation_id,
             pages_data,
@@ -378,6 +386,8 @@ def build_material_with_generation(
                 pk=build.pk,
                 knowledge_base=locked_kb,
             )
+            if locked_build.status == "cancelled":
+                raise MaterialBuildCancelled()
             locked_material = Material.objects.select_for_update().get(pk=material.pk, knowledge_base=locked_kb)
             locked_source_fingerprints = [material_fingerprint(locked_material)]
             _validate_frozen_generation_identity(
@@ -405,11 +415,11 @@ def build_material_with_generation(
                 **(locked_build.maintenance or {}),
                 "generation_relations": relation_result,
             }
-            locked_build.errors = []
+            locked_build.errors = list(skipped)
             locked_build.budget_trace = budget.trace()
-            locked_build.checkpoint = {}
+            locked_build.checkpoint = generation_skip_checkpoint(skipped)
             locked_build.stage = "done"
-            locked_build.status = "success"
+            locked_build.status = generation_publish_status(skipped)
             locked_build.progress = 100
             locked_build.save(
                 update_fields=[
@@ -430,6 +440,9 @@ def build_material_with_generation(
             locked_material.save(update_fields=["status", "updated_at"])
             published_build = locked_build
 
+        build.refresh_from_db()
+        if build.status == "cancelled":
+            raise MaterialBuildCancelled()
         finalize_build_generation(
             context,
             build_record=build,
@@ -444,10 +457,31 @@ def build_material_with_generation(
             material=material,
             build=published_build or build,
             budget=budget,
-            status="success",
+            status=generation_publish_status(skipped),
             llm_model_id=llm_model_id,
         )
         return published_build or build
+    except MaterialBuildCancelled:
+        if context is not None:
+            fail_build_generation(
+                context,
+                build_record=None,
+                code="material_build_cancelled",
+                error="构建已取消",
+            )
+        logger.info(
+            "wiki material build discarded cancelled record=%s material=%s",
+            getattr(build, "pk", None),
+            getattr(material, "pk", None),
+        )
+        _log_material_build_token_usage(
+            material=material,
+            build=build,
+            budget=budget,
+            status="cancelled",
+            llm_model_id=llm_model_id,
+        )
+        raise
     except Exception as exc:
         is_budget_error = isinstance(exc, WikiBudgetExceeded)
         if context is not None:
@@ -458,6 +492,13 @@ def build_material_with_generation(
                 error=exc,
             )
         build.refresh_from_db()
+        if build.status == "cancelled":
+            logger.info(
+                "wiki material build discarded cancelled record=%s material=%s",
+                build.pk,
+                getattr(material, "pk", None),
+            )
+            raise MaterialBuildCancelled() from exc
         if is_budget_error:
             build.stage = "budget_exhausted"
             build.status = "budget_exhausted"

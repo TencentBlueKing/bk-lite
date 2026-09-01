@@ -15,6 +15,8 @@ from apps.monitor.models import CollectConfig, Metric, MonitorInstance, MonitorI
 from apps.monitor.services.host_container_asset_ip import fill_missing_host_container_asset_ips
 from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.utils.dimension import parse_instance_id
+from apps.monitor.utils.instance import list_reporting_status
+from apps.monitor.utils.last_sample import LAST_SAMPLE_LOOKBACK, last_sample_timestamp_query, last_sample_unix_seconds
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.rpc.node_mgmt import NodeMgmt
 
@@ -292,6 +294,7 @@ class InstanceSearch:
                 continue
             obj = objs_map[instance_id]
             item = dict(**metric["metric"])
+            last_sample = last_sample_unix_seconds(metric)
             item.update(
                 instance_id=instance_id,
                 instance_id_values=list(parse_instance_id(instance_id)),
@@ -299,7 +302,7 @@ class InstanceSearch:
                 interval=obj.interval,
                 ip=obj.ip,
                 summary_facts=obj.summary_facts,
-                time=metric["value"][0],
+                time=last_sample or "",
                 value=metric["value"][1],
             )
             items.append(item)
@@ -868,14 +871,18 @@ class InstanceSearch:
 
     @staticmethod
     def apply_status_filter_to_qs(qs, instance_map, status_raw):
-        """按上报状态过滤 QuerySet：normal=有指标时间，unavailable=无。"""
+        """按上报状态过滤 QuerySet：normal=最近上报仍在窗口内，unavailable=已过期或无时间。"""
         statuses = InstanceSearch.normalize_csv_values(status_raw) & {
             "normal",
             "unavailable",
         }
         if not statuses or statuses == {"normal", "unavailable"}:
             return qs
-        normal_ids = set((instance_map or {}).keys())
+        normal_ids = {
+            instance_id
+            for instance_id, info in (instance_map or {}).items()
+            if list_reporting_status((info or {}).get("time")) == "normal"
+        }
         if statuses == {"normal"}:
             return qs.filter(id__in=normal_ids)
         if statuses == {"unavailable"}:
@@ -892,9 +899,9 @@ class InstanceSearch:
         if not statuses or statuses == {"normal", "unavailable"}:
             return items
         if statuses == {"normal"}:
-            return [item for item in items if item.get("time")]
+            return [item for item in items if list_reporting_status(item.get("time")) == "normal"]
         if statuses == {"unavailable"}:
-            return [item for item in items if not item.get("time")]
+            return [item for item in items if list_reporting_status(item.get("time")) != "normal"]
         return items
 
     @staticmethod
@@ -999,14 +1006,21 @@ class InstanceSearch:
     def get_plugin_normal_status_map(self, instance_id_keys, query):
         if not query or not str(query).strip():
             return {}
-        resp = VictoriaMetricsAPI().query(query, step="20m")
+        resp = VictoriaMetricsAPI().query(last_sample_timestamp_query(query), step=LAST_SAMPLE_LOOKBACK)
         metrics = resp.get("data", {}).get("result", [])
         status_map = {}
         for metric in metrics:
             instance_id = str(tuple(metric["metric"].get(i) for i in instance_id_keys))
-            iso_time = datetime.fromtimestamp(metric["value"][0], tz=timezone.utc).isoformat()
-            status_map[instance_id] = iso_time
-        return status_map
+            last_sample = last_sample_unix_seconds(metric)
+            if last_sample is None:
+                continue
+            current = status_map.get(instance_id)
+            if current is None or last_sample > current[0]:
+                status_map[instance_id] = (
+                    last_sample,
+                    datetime.fromtimestamp(last_sample, tz=timezone.utc).isoformat(),
+                )
+        return {instance_id: iso_time for instance_id, (_, iso_time) in status_map.items()}
 
     def get_vm_metrics(self):
         query = self.obj_metric_map.get("default_metric")
@@ -1027,7 +1041,7 @@ class InstanceSearch:
                 query = query.replace("}", f",{params_str}}}", 1)
             else:
                 query = f"{query}{{{params_str}}}"
-        metrics = VictoriaMetricsAPI().query(query, step="20m")
+        metrics = VictoriaMetricsAPI().query(last_sample_timestamp_query(query), step=LAST_SAMPLE_LOOKBACK)
         return metrics.get("data", {}).get("result", [])
 
     @staticmethod

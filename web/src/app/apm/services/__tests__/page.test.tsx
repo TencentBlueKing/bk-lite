@@ -1,6 +1,7 @@
 import React from 'react';
 import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { Modal } from 'antd';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
@@ -14,6 +15,7 @@ const api = {
   getServiceRed: vi.fn(),
   getServices: vi.fn(),
   getSlos: vi.fn(),
+  getTopology: vi.fn(),
   setServiceArchived: vi.fn(),
   setServiceOrganizations: vi.fn(),
   isLoading: false,
@@ -218,6 +220,22 @@ describe('APM 服务目录应用视角', () => {
     expect(card.contains(alertLink)).toBe(false);
     expect(alertLink.getAttribute('href')).toBe('/apm/events/alerts?service=bklite-server');
   });
+
+  it('选择 7d 窗口仍查询 RED 而不是让全部 KPI 失败', async () => {
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmServicesPage />);
+    await waitFor(() => expect(api.getServiceRed).toHaveBeenCalled());
+    api.getServiceRed.mockClear();
+
+    await user.click(screen.getByRole('radio', { name: '7d' }).closest('label')!);
+
+    await waitFor(() => expect(api.getServiceRed).toHaveBeenCalled());
+    const startedAt = api.getServiceRed.mock.calls[0][2] as string;
+    const endedAt = api.getServiceRed.mock.calls[0][3] as string;
+    expect(new Date(endedAt).getTime() - new Date(startedAt).getTime()).toBeGreaterThan(6 * 24 * 60 * 60 * 1000);
+    expect(screen.queryByText('RED 指标查询失败')).toBeNull();
+    expect(api.getTopology).not.toHaveBeenCalled();
+  });
 });
 
 describe('APM 服务目录服务视角与归档', () => {
@@ -300,4 +318,42 @@ describe('APM 服务目录服务视角与归档', () => {
     expect(screen.getByText('legacy-server')).not.toBeNull();
     expect(screen.getByText('手动归档')).not.toBeNull();
   });
+
+  it('勾选多个服务后可批量归档', async () => {
+    const checkout = {
+      ...serviceWithEnv,
+      id: 'service-checkout',
+      name: 'checkout-service',
+      language: 'go',
+    };
+    api.getServices.mockResolvedValue([serviceWithEnv, checkout, archivedService]);
+    api.setServiceArchived.mockResolvedValue({});
+    const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
+      void Promise.resolve(config.onOk?.());
+      return { destroy: vi.fn(), update: vi.fn() } as ReturnType<typeof Modal.confirm>;
+    });
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmServicesPage />);
+
+    const servicePerspective = await screen.findByRole('radio', { name: '服务' });
+    await user.click(servicePerspective.closest('label')!);
+    await screen.findByText('bklite-server');
+    await screen.findByText('checkout-service');
+    expect((screen.getByRole('button', { name: '批量操作' }) as HTMLButtonElement).disabled).toBe(true);
+
+    const checkboxes = screen.getAllByRole('checkbox');
+    await user.click(checkboxes[0]);
+    const batchButton = screen.getByRole('button', { name: '批量操作' }) as HTMLButtonElement;
+    expect(batchButton.disabled).toBe(false);
+    await user.click(batchButton);
+    await user.click(await screen.findByRole('menuitem', { name: '归档' }));
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(String(confirmSpy.mock.calls[0][0].title)).toContain('2');
+    await waitFor(() => {
+      expect(api.setServiceArchived).toHaveBeenCalledTimes(2);
+    });
+    expect(api.setServiceArchived).toHaveBeenCalledWith('service-bklite', true);
+    expect(api.setServiceArchived).toHaveBeenCalledWith('service-checkout', true);
+    confirmSpy.mockRestore();
+  }, 15_000);
 });

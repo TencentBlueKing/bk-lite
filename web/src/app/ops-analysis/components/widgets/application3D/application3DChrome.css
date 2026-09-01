@@ -1,8 +1,4 @@
-@keyframes app3d-action-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
+/* application3D overlay chrome — kept as a real stylesheet, not Tailwind source. */
 @keyframes app3d-toolbar-in {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -27,98 +23,193 @@
   animation: app3d-toolbar-in 180ms ease-out;
 }
 
-.app3d-detail-cta,
-.app3d-detail-cta.ant-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  flex-shrink: 0;
-  width: max(62%, 9.5rem);
-  min-width: max-content;
-  height: 40px;
-  padding: 0 22px;
-  border: 1px solid var(--color-application3d-detail-cta-border);
-  border-radius: 12px;
-  color: var(--color-application3d-detail-cta-text);
+.screen-tech-canvas .app3d-wall-loading .ant-spin,
+.screen-tech-canvas .app3d-wall-loading .ant-spin-dot,
+.screen-tech-canvas .app3d-wall-loading .ant-spin-dot-holder,
+.screen-tech-canvas .app3d-wall-loading .ant-spin-dot-spin,
+.app3d-wall-loading .ant-spin,
+.app3d-wall-loading .ant-spin-dot,
+.app3d-wall-loading .ant-spin-dot-holder,
+.app3d-wall-loading .ant-spin-dot-spin {
+  width: 32px !important;
+  height: 32px !important;
+  font-size: 32px !important;
+}
+
+.app3d-wall-loading__text {
+  color: var(--color-application3d-text);
   font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  line-height: 1;
-  background: var(--color-application3d-detail-cta-bg);
-  box-shadow: var(--color-application3d-detail-cta-shadow);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  white-space: nowrap;
-  cursor: pointer;
-  animation: app3d-action-in 180ms ease-out both;
-  transition: background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, transform 0.1s ease;
-}
-
-.app3d-detail-cta:hover,
-.app3d-detail-cta.ant-btn:hover {
-  color: var(--color-application3d-detail-cta-text);
-  transform: translateY(-1px);
-  border-color: var(--color-application3d-detail-cta-hover-border);
-  background: var(--color-application3d-detail-cta-hover-bg);
-  box-shadow: var(--color-application3d-detail-cta-hover-shadow);
-}
-
-.app3d-detail-cta:active,
-.app3d-detail-cta.ant-btn:active {
-  transform: scale(0.98);
-}
-
-.app3d-detail-cta:focus-visible,
-.app3d-detail-cta.ant-btn:focus-visible {
-  outline: 2px solid var(--color-application3d-detail-cta-focus);
-  outline-offset: 3px;
-}
-
-.app3d-back-cta,
-.app3d-back-cta.ant-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  flex-shrink: 0;
-  width: max(52%, 10.5rem);
-  min-width: max-content;
-  height: 32px;
-  padding: 0 16px;
-  gap: 8px;
-  border: 1px solid var(--color-application3d-back-cta-border);
-  border-radius: 9px;
-  color: var(--color-application3d-back-cta-text);
-  font-size: 13px;
   font-weight: 500;
-  line-height: 1;
-  background: var(--color-application3d-back-cta-bg);
-  box-shadow: var(--color-application3d-back-cta-shadow);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  letter-spacing: 0.04em;
+  line-height: 1.4;
   white-space: nowrap;
-  cursor: pointer;
-  animation: app3d-action-in 200ms ease-out 50ms both;
-  transition: background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, transform 0.1s ease;
 }
 
-.app3d-back-cta:hover,
-.app3d-back-cta.ant-btn:hover {
-  border-color: var(--color-application3d-back-cta-hover-border);
-  background: var(--color-application3d-back-cta-hover-bg);
-  color: var(--color-application3d-back-cta-hover-text);
+.app3d-wall-glass-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
 }
 
-.app3d-back-cta:active,
-.app3d-back-cta.ant-btn:active {
-  transform: scale(0.99);
+.app3d-wall-glass-frost {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
 
-.app3d-back-cta:focus-visible,
-.app3d-back-cta.ant-btn:focus-visible {
-  outline: 2px solid var(--color-application3d-back-cta-focus);
-  outline-offset: 3px;
+.app3d-wall-glass {
+  position: absolute;
+  left: 0;
+  top: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  pointer-events: none;
+  border-radius: 3.125% / 7.5%;
+  background: var(
+    --color-application3d-wall-glass-bg,
+    linear-gradient(120deg, rgba(206, 224, 240, 0.1), transparent 48%),
+    linear-gradient(180deg, rgba(30, 62, 94, 0.7) 0%, rgba(14, 34, 56, 0.68) 100%)
+  );
+  backdrop-filter: blur(10px) saturate(114%);
+  -webkit-backdrop-filter: blur(10px) saturate(114%);
+  border: 1.5px solid rgba(100, 162, 198, 0.74);
+  box-shadow: none;
+}
+
+.app3d-wall-glass::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(210, 226, 240, 0.08) 0%, transparent 14%);
+  -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.22) 0%, #000 24%);
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.22) 0%, #000 24%);
+  box-shadow:
+    inset 0 0 0 1px rgba(140, 184, 214, 0.34),
+    inset 0 0 10px 2px rgba(64, 128, 168, 0.4),
+    inset 0 0 18px 3px rgba(36, 86, 124, 0.2),
+    inset 0 8px 16px -2px rgba(72, 134, 172, 0.3);
+}
+
+.app3d-wall-glass::after {
+  content: '';
+  position: absolute;
+  left: 7%;
+  right: 7%;
+  top: 1px;
+  height: 2px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(186, 210, 230, 0.24), transparent);
+}
+
+.app3d-wall-glass-chrome {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+.app3d-wall-glass[data-tone='normal'] {
+  border-color: rgba(100, 162, 198, 0.74);
+}
+
+.app3d-wall-glass[data-tone='normal']::before {
+  box-shadow:
+    inset 0 0 0 1px rgba(140, 184, 214, 0.34),
+    inset 0 0 10px 2px rgba(64, 128, 168, 0.4),
+    inset 0 0 18px 3px rgba(36, 86, 124, 0.2),
+    inset 0 8px 16px -2px rgba(72, 134, 172, 0.3);
+}
+
+.app3d-wall-glass[data-tone='normal']::after {
+  background: linear-gradient(90deg, transparent, rgba(186, 210, 230, 0.24), transparent);
+}
+
+.app3d-wall-glass[data-tone='info'] {
+  border-color: rgba(110, 186, 230, 0.7);
+}
+
+.app3d-wall-glass[data-tone='info']::before {
+  box-shadow:
+    inset 0 0 0 1px rgba(160, 214, 246, 0.28),
+    inset 0 0 9px 2px rgba(80, 170, 220, 0.34),
+    inset 0 0 16px 3px rgba(40, 130, 180, 0.14),
+    inset 0 8px 14px -2px rgba(80, 170, 220, 0.24);
+}
+
+.app3d-wall-glass[data-tone='info']::after {
+  background: linear-gradient(90deg, transparent, rgba(210, 232, 250, 0.22), transparent);
+}
+
+.app3d-wall-glass[data-tone='warning'] {
+  border-color: rgba(255, 168, 64, 0.86);
+}
+
+.app3d-wall-glass[data-tone='warning']::before {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 200, 120, 0.38),
+    inset 0 0 11px 2px rgba(255, 160, 56, 0.46),
+    inset 0 0 20px 3px rgba(220, 110, 24, 0.18),
+    inset 0 8px 16px -2px rgba(255, 160, 56, 0.32);
+}
+
+.app3d-wall-glass[data-tone='warning']::after {
+  background: linear-gradient(90deg, transparent, rgba(255, 226, 186, 0.26), transparent);
+}
+
+.app3d-wall-glass[data-tone='error'] {
+  border-color: rgba(255, 96, 82, 0.88);
+}
+
+.app3d-wall-glass[data-tone='error']::before {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 170, 160, 0.38),
+    inset 0 0 11px 2px rgba(255, 80, 64, 0.48),
+    inset 0 0 20px 3px rgba(200, 36, 24, 0.18),
+    inset 0 8px 16px -2px rgba(255, 80, 64, 0.32);
+}
+
+.app3d-wall-glass[data-tone='error']::after {
+  background: linear-gradient(90deg, transparent, rgba(255, 214, 206, 0.24), transparent);
+}
+
+.app3d-wall-glass[data-tone='critical'] {
+  border-color: rgba(255, 82, 72, 0.9);
+}
+
+.app3d-wall-glass[data-tone='critical']::before {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 160, 150, 0.42),
+    inset 0 0 12px 2px rgba(255, 70, 58, 0.5),
+    inset 0 0 22px 3px rgba(190, 28, 20, 0.2),
+    inset 0 8px 18px -2px rgba(255, 70, 58, 0.34);
+}
+
+.app3d-wall-glass[data-tone='critical']::after {
+  background: linear-gradient(90deg, transparent, rgba(255, 208, 200, 0.24), transparent);
+}
+
+.app3d-wall-glass[data-tone='unknown'] {
+  border-color: rgba(160, 170, 182, 0.58);
+}
+
+.app3d-wall-glass[data-tone='unknown']::before {
+  box-shadow:
+    inset 0 0 0 1px rgba(200, 208, 218, 0.22),
+    inset 0 0 8px 1px rgba(140, 150, 164, 0.26),
+    inset 0 0 14px 2px rgba(40, 48, 58, 0.12),
+    inset 0 6px 12px -2px rgba(140, 150, 164, 0.18);
+}
+
+.app3d-wall-glass[data-tone='unknown']::after {
+  background: linear-gradient(90deg, transparent, rgba(214, 220, 228, 0.18), transparent);
 }
 
 .app3d-close-cta,
@@ -166,7 +257,7 @@
 
 .app3d-close-cta:focus-visible,
 .app3d-close-cta.ant-btn:focus-visible {
-  outline: 2px solid var(--color-application3d-back-cta-focus);
+  outline: 2px solid var(--color-application3d-close-cta-focus);
   outline-offset: 3px;
 }
 
@@ -197,11 +288,28 @@
   transform: none;
 }
 
+.app3d-detail-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  background: var(--color-application3d-detail-mask);
+}
+
 .app3d-detail-shell {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 12%;
+  z-index: 50;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 22px;
+  gap: 18px;
+  margin: 0 auto;
+  width: 84%;
+  max-width: 1480px;
+  height: 70%;
+  color: var(--color-application3d-text);
 }
 
 .app3d-detail-panels {
@@ -215,9 +323,11 @@
 .app3d-biz-panel,
 .app3d-alarm-panel {
   border-radius: 18px;
+  border: 1.5px solid var(--color-application3d-detail-right-border);
   background: var(--color-application3d-detail-glass-bg);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
+  box-shadow: var(--color-application3d-detail-right-shadow);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
 }
 
 .app3d-biz-panel {
@@ -243,19 +353,115 @@
   width: calc(62% - 20px);
   height: 100%;
   opacity: 0;
-  border: 1.5px solid var(--color-application3d-detail-right-border);
-  box-shadow: var(--color-application3d-detail-right-shadow);
   animation: app3d-move-right 1s 1.1s forwards;
+}
+
+.app3d-alarm-detail-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 1.2fr);
+  gap: 14px 16px;
+  align-items: stretch;
+}
+
+.app3d-alarm-detail-fields,
+.app3d-alarm-detail-trend-card {
+  box-sizing: border-box;
+  height: 100%;
+  min-height: 12rem;
+  border-radius: 12px;
+  border: 1px solid var(--color-application3d-detail-stat-border);
+  background: var(--color-application3d-detail-stat-bg);
+}
+
+.app3d-alarm-detail-fields {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-evenly;
+  gap: 4px;
+  padding: 16px 18px;
+}
+
+.app3d-alarm-detail-fields .app3d-detail-field {
+  grid-template-columns: minmax(5.5rem, 6.5rem) minmax(0, 1fr);
+  gap: 8px 14px;
+  padding: 7px 0;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.app3d-alarm-detail-trend-title {
+  margin: 0 0 10px;
+  color: var(--color-application3d-text-subtle);
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+}
+
+.app3d-alarm-detail-trend-card {
+  padding: 14px 14px 12px;
+}
+
+.app3d-alarm-nav {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 4px;
+}
+
+.app3d-alarm-nav .app3d-close-cta {
+  min-width: 7.5rem;
+}
+
+@media (max-width: 900px) {
+  .app3d-alarm-detail-split {
+    grid-template-columns: 1fr;
+  }
+
+  .app3d-alarm-detail-fields,
+  .app3d-alarm-detail-trend-card {
+    height: auto;
+  }
+}
+
+.app3d-detail-title {
+  margin: 0;
+  color: var(--color-application3d-text);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+}
+
+.app3d-biz-header {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.app3d-alarm-list__title {
+  margin: 0;
+  color: var(--color-application3d-text);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+}
+
+.app3d-alarm-list__total {
+  color: var(--color-application3d-text-muted);
+  font-size: 12px;
+  line-height: 1.3;
 }
 
 .app3d-status-badge {
   display: inline-flex;
   align-items: center;
   max-width: 100%;
-  padding: 5px 12px;
+  padding: 4px 10px;
   border-radius: 6px;
   border: 1px solid transparent;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 650;
   letter-spacing: 0.02em;
   line-height: 1.2;
@@ -266,12 +472,12 @@
 .app3d-count-chip {
   display: inline-flex;
   align-items: center;
-  padding: 5px 12px;
+  padding: 4px 10px;
   border-radius: 7px;
   border: 1px solid rgba(160, 184, 210, 0.28);
   background: rgba(10, 18, 30, 0.55);
   color: rgba(210, 222, 236, 0.88);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 550;
   line-height: 1.2;
 }
@@ -279,9 +485,9 @@
 .app3d-stat-cell {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
-  padding: 12px 14px;
+  padding: 10px 12px;
   border-radius: 12px;
   border: 1px solid var(--color-application3d-detail-stat-border);
   background: var(--color-application3d-detail-stat-bg);
@@ -293,7 +499,7 @@
   align-items: center;
   gap: 7px;
   color: var(--color-application3d-text-muted);
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.2;
 }
 
@@ -307,22 +513,23 @@
 
 .app3d-stat-cell__value {
   color: var(--color-application3d-text);
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 700;
   line-height: 1.1;
   letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
 }
 
 .app3d-detail-section + .app3d-detail-section {
-  margin-top: 18px;
-  padding-top: 16px;
+  margin-top: 14px;
+  padding-top: 12px;
   border-top: 1px solid var(--color-application3d-detail-separator);
 }
 
 .app3d-detail-section__title {
-  margin: 0 0 12px;
+  margin: 0 0 10px;
   color: rgba(210, 222, 236, 0.82);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 650;
   letter-spacing: 0.02em;
 }
@@ -330,10 +537,10 @@
 .app3d-detail-field {
   display: grid;
   grid-template-columns: minmax(5rem, 7.5rem) minmax(0, 1fr);
-  gap: 10px 14px;
+  gap: 8px 12px;
   align-items: start;
-  padding: 6px 0;
-  font-size: 14px;
+  padding: 5px 0;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -351,14 +558,34 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 14px;
-  padding: 14px 16px;
-  margin-bottom: 12px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
   border-radius: 14px;
   border: 1px solid var(--color-application3d-detail-row-border);
   background: var(--color-application3d-detail-row-bg);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
   cursor: pointer;
   transition: background 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+}
+
+.app3d-alarm-row[data-severity='critical'] {
+  border-color: var(--color-application3d-alarm-row-critical-border);
+  background: var(--color-application3d-alarm-row-critical-bg);
+}
+
+.app3d-alarm-row[data-severity='error'] {
+  border-color: var(--color-application3d-alarm-row-error-border);
+  background: var(--color-application3d-alarm-row-error-bg);
+}
+
+.app3d-alarm-row[data-severity='warning'] {
+  border-color: var(--color-application3d-alarm-row-warning-border);
+  background: var(--color-application3d-alarm-row-warning-bg);
+}
+
+.app3d-alarm-row[data-severity='info'] {
+  border-color: var(--color-application3d-alarm-row-info-border);
+  background: var(--color-application3d-alarm-row-info-bg);
 }
 
 .app3d-alarm-row:hover {
@@ -369,6 +596,26 @@
     0 0 12px rgba(120, 160, 200, 0.08);
 }
 
+.app3d-alarm-row[data-severity='critical']:hover {
+  border-color: var(--color-application3d-alarm-row-critical-hover-border);
+  background: var(--color-application3d-alarm-row-critical-bg);
+}
+
+.app3d-alarm-row[data-severity='error']:hover {
+  border-color: var(--color-application3d-alarm-row-error-hover-border);
+  background: var(--color-application3d-alarm-row-error-bg);
+}
+
+.app3d-alarm-row[data-severity='warning']:hover {
+  border-color: var(--color-application3d-alarm-row-warning-hover-border);
+  background: var(--color-application3d-alarm-row-warning-bg);
+}
+
+.app3d-alarm-row[data-severity='info']:hover {
+  border-color: var(--color-application3d-alarm-row-info-hover-border);
+  background: var(--color-application3d-alarm-row-info-bg);
+}
+
 .app3d-alarm-row__title {
   color: var(--color-application3d-text);
   font-size: 15px;
@@ -377,7 +624,7 @@
 }
 
 .app3d-alarm-row__meta {
-  margin-top: 5px;
+  margin-top: 4px;
   color: var(--color-application3d-text-muted);
   font-size: 13px;
   line-height: 1.4;
@@ -391,7 +638,7 @@
   padding: 4px 10px;
   border-radius: 6px;
   border: 1px solid transparent;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 650;
   line-height: 1.2;
   white-space: nowrap;
@@ -407,10 +654,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .app3d-detail-cta,
-  .app3d-detail-cta.ant-btn,
-  .app3d-back-cta,
-  .app3d-back-cta.ant-btn,
   .app3d-close-cta,
   .app3d-close-cta.ant-btn {
     animation: none;

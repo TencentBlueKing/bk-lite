@@ -864,6 +864,7 @@ def test_resolve_k8s_target_from_alert_marks_missing_data_when_unresolved():
     assert payload["resource_type"] is None
     assert "resource identifier" in payload["reason"]
     assert "resource_type_or_name" in payload["missing_data"]
+    assert payload["conclusive"] is True
 
 
 def test_resolve_k8s_target_from_alert_reads_flattened_pod_name():
@@ -892,6 +893,79 @@ def test_resolve_k8s_target_from_alert_reads_flattened_pod_name():
     assert payload["resolved"] is True
     assert payload["pod_name"] == "pod1005"
     assert payload["namespace"] == "prod"
+
+
+def test_resolve_k8s_target_from_alert_reads_flattened_kind_and_name():
+    from unittest.mock import patch
+
+    from apps.opspilot.metis.llm.tools.kubernetes.data_collection import resolve_k8s_target_from_alert
+
+    alert = {
+        "cluster": "bk-lite-k3s",
+        "kind": "Pod",
+        "name": "server-69bf94649c-b8szc",
+        "alert_type": "Unhealthy",
+        "detail": "Startup probe failed: dial tcp 10.42.2.147:8000: connect: connection refused",
+        "alert_time": "2026-08-28 10:09:01",
+        "namespace": None,
+    }
+    pods_json = json.dumps([{"name": "server-69bf94649c-b8szc", "namespace": "bklite", "phase": "Running"}])
+    with patch("apps.opspilot.metis.llm.tools.kubernetes.resources.list_kubernetes_pods") as list_pods, patch(
+        "apps.opspilot.metis.llm.tools.kubernetes.resources.list_kubernetes_events"
+    ) as list_events:
+        list_pods.invoke.return_value = pods_json
+        list_events.invoke.return_value = json.dumps([])
+        result = resolve_k8s_target_from_alert.invoke({"normalized_alert": alert})
+
+    payload = json.loads(result)
+    assert payload["resolved"] is True
+    assert payload["resource_type"] == "pod"
+    assert payload["resource_name"] == "server-69bf94649c-b8szc"
+    assert payload["pod_name"] == "server-69bf94649c-b8szc"
+    assert payload["namespace"] == "bklite"
+    list_pods.invoke.assert_called_once()
+
+
+def test_resolve_k8s_target_from_alert_marks_lookup_exhausted_when_pod_gone():
+    from unittest.mock import patch
+
+    from apps.opspilot.metis.llm.tools.kubernetes.data_collection import resolve_k8s_target_from_alert
+
+    alert = {
+        "cluster": "bk-lite-k3s",
+        "kind": "Pod",
+        "name": "server-69bf94649c-b8szc",
+        "namespace": None,
+        "detail": "Startup probe failed: connection refused",
+    }
+    config = {"configurable": {}}
+    with patch("apps.opspilot.metis.llm.tools.kubernetes.resources.list_kubernetes_pods") as list_pods, patch(
+        "apps.opspilot.metis.llm.tools.kubernetes.resources.list_kubernetes_events"
+    ) as list_events:
+        list_pods.invoke.return_value = json.dumps([])
+        list_events.invoke.return_value = json.dumps([])
+        first = json.loads(resolve_k8s_target_from_alert.invoke({"normalized_alert": alert}, config=config))
+        second = json.loads(resolve_k8s_target_from_alert.invoke({"normalized_alert": alert}, config=config))
+
+    assert first["resolved"] is False
+    assert first["lookup_exhausted"] is True
+    assert first["conclusive"] is True
+    assert first["resource_name"] == "server-69bf94649c-b8szc"
+    assert first["namespace"] is None
+    assert "namespace" in first["missing_data"]
+    assert second == first
+    list_pods.invoke.assert_called_once()
+    list_events.invoke.assert_called_once()
+
+
+def test_resolve_k8s_target_from_alert_ignores_non_object_title_name():
+    from apps.opspilot.metis.llm.tools.kubernetes.data_collection import resolve_k8s_target_from_alert
+
+    result = resolve_k8s_target_from_alert.invoke({"normalized_alert": {"name": "Unhealthy", "cluster": "prod-a"}})
+    payload = json.loads(result)
+    assert payload["resolved"] is False
+    assert payload["conclusive"] is True
+    assert "resource_type_or_name" in payload["missing_data"]
 
 
 def test_resolve_k8s_target_from_alert_surfaces_kubeconfig_error():
@@ -990,6 +1064,8 @@ def test_apply_namespace_lookup_reports_multiple_candidates():
     assert updated["resolved"] is False
     assert updated["namespace_candidates"] == ["ns-a", "ns-b"]
     assert "namespace" in updated["missing_data"]
+    assert updated["lookup_exhausted"] is True
+    assert updated["conclusive"] is True
 
 
 def test_build_incident_evidence_package_wraps_uniform_evidence_blocks():

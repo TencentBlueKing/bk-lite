@@ -1966,10 +1966,10 @@ screens:
   other: {}
   view_sets:
     items:
-    - h: 1080
+    - h: 1000
       w: 1920
       x: 0
-      y: 0
+      y: 80
       id: builtin-room3d-main
       type: widget
       title: 3D机房
@@ -1989,9 +1989,9 @@ screens:
         key: tech-grid
         type: builtIn
     decorations:
-      title: 3D机房大屏
-      showClock: false
-      showTitle: false
+      title: 机柜全景
+      showClock: true
+      showTitle: true
   refs:
     datasource_keys:
     - CMDB 3D机房布局::cmdb/get_room3d_layout
@@ -2025,9 +2025,9 @@ screens:
         key: tech-grid
         type: builtIn
     decorations:
-      title: 3D应用
-      showClock: false
-      showTitle: false
+      title: 全景应用墙
+      showClock: true
+      showTitle: true
   refs:
     datasource_keys: []
     namespace_keys: []

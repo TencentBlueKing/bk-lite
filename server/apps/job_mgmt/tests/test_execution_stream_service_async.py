@@ -13,11 +13,12 @@ pytestmark = pytest.mark.unit
 def _collect(async_gen):
     async def _run():
         return [chunk async for chunk in async_gen]
+
     return asyncio.run(_run())
 
 
 def _payloads(chunks):
-    return [json.loads(c[len("data: "):].strip()) for c in chunks if c.startswith("data: ") and "[DONE]" not in c]
+    return [json.loads(c[len("data: ") :].strip()) for c in chunks if c.startswith("data: ") and "[DONE]" not in c]
 
 
 def test_publish_done_sentinel_publishes_expected_payload():
@@ -49,12 +50,14 @@ async def _fake_source(items):
 
 
 def test_stream_events_replays_then_live_then_stops_on_all_done():
-    source = _fake_source([
-        {"target_key": "a", "stream": "stdout", "line": "hist-1"},
-        {"target_key": "a", "stream": "stdout", "line": "live-1"},
-        {"target_key": "a", "type": svc.DONE_TYPE, "status": "success"},
-        {"target_key": "a", "stream": "stdout", "line": "SHOULD-NOT-APPEAR"},
-    ])
+    source = _fake_source(
+        [
+            {"target_key": "a", "stream": "stdout", "line": "hist-1"},
+            {"target_key": "a", "stream": "stdout", "line": "live-1"},
+            {"target_key": "a", "type": svc.DONE_TYPE, "status": "success"},
+            {"target_key": "a", "stream": "stdout", "line": "SHOULD-NOT-APPEAR"},
+        ]
+    )
     gen = svc.stream_execution_events(1, ["a"], message_source=source)
     chunks = _collect(gen)
 
@@ -83,6 +86,21 @@ def test_stream_events_handles_source_error_gracefully():
     payloads = _payloads(chunks)
     assert any(p.get("type") == "error" for p in payloads)
     assert chunks[-1] == "data: [DONE]\n\n"
+
+
+def test_stream_events_preserves_visible_gap_payload():
+    gap = {
+        "target_key": "a",
+        "stream": "stdout",
+        "line": "[实时日志缺口] 省略 12 行",
+        "type": "gap",
+        "dropped_lines": 12,
+    }
+    source = _fake_source([gap, {"target_key": "a", "type": svc.DONE_TYPE, "status": "success"}])
+
+    chunks = _collect(svc.stream_execution_events(1, ["a"], message_source=source))
+
+    assert gap in _payloads(chunks)
 
 
 def test_stream_events_uses_default_source_when_none(monkeypatch):

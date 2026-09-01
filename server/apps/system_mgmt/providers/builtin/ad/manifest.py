@@ -5,7 +5,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
     {
         "key": "ad",
         "base_connection_adapter_key": "ad.base_connection",
-        "base_connection_adapter_path": "apps.system_mgmt.providers.builtin.ad.adapters.base_connection.ADBaseConnectionAdapter",
+        "base_connection_adapter_path": "adapters.base_connection.ADBaseConnectionAdapter",
         "name": "Active Directory",
         "description": "Built-in Active Directory integration provider for login auth and user sync.",
         "instance_templates": {
@@ -177,7 +177,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                 "name": "Login Auth",
                 "description": "Active Directory login authentication capability.",
                 "adapter_key": "ad.login_auth",
-                "adapter_path": "apps.system_mgmt.providers.builtin.ad.adapters.login_auth.ADLoginAuthAdapter",
+                "adapter_path": "adapters.login_auth.ADLoginAuthAdapter",
                 "connection_template": [
                     {
                         "key": "base_dn",
@@ -209,7 +209,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                 "name": "User Sync",
                 "description": "Active Directory user synchronization capability.",
                 "adapter_key": "ad.user_sync",
-                "adapter_path": "apps.system_mgmt.providers.builtin.ad.adapters.user_sync.ADUserSyncAdapter",
+                "adapter_path": "adapters.user_sync.ADUserSyncAdapter",
                 "connection_template": [],
                 "business_template": "user_sync_form",
             },

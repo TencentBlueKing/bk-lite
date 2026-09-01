@@ -91,15 +91,14 @@ def test_validate_sheet_authority_wrong():
 
 def test_is_empty_auto_rule_sheet_row_empty():
     assert ModelManage._is_empty_auto_rule_sheet_row({}) is True
-    assert ModelManage._is_empty_auto_rule_sheet_row(
-        {"src_model_id": " ", "dst_model_id": "", "asst_id": None, "auto_relation_rule": ""}
-    ) is True
+    assert ModelManage._is_empty_auto_rule_sheet_row({"src_model_id": " ", "dst_model_id": "", "asst_id": None, "auto_relation_rule": ""}) is True
 
 
 def test_is_empty_auto_rule_sheet_row_nonempty():
-    assert ModelManage._is_empty_auto_rule_sheet_row(
-        {"src_model_id": "host", "dst_model_id": "sw", "asst_id": "conn", "auto_relation_rule": ""}
-    ) is False
+    assert (
+        ModelManage._is_empty_auto_rule_sheet_row({"src_model_id": "host", "dst_model_id": "sw", "asst_id": "conn", "auto_relation_rule": ""})
+        is False
+    )
 
 
 # --------------------------------------------------------------------------
@@ -124,7 +123,9 @@ def test_import_auto_rule_sets_wrong_sheet_raises():
     payload = {"rules": [{"match_pairs": [{"src_field_id": "ip", "dst_field_id": "ip"}]}]}
     rows = [
         {
-            "src_model_id": "host", "dst_model_id": "sw", "asst_id": "conn",
+            "src_model_id": "host",
+            "dst_model_id": "sw",
+            "asst_id": "conn",
             "auto_relation_rule": json.dumps(payload),
         }
     ]
@@ -137,10 +138,8 @@ def test_import_auto_rule_sets_wrong_sheet_raises():
 def test_import_auto_rule_sets_duplicate_raises():
     payload = {"rules": [{"match_pairs": [{"src_field_id": "ip", "dst_field_id": "ip"}]}]}
     rows = [
-        {"src_model_id": "host", "dst_model_id": "sw", "asst_id": "conn",
-         "auto_relation_rule": json.dumps(payload)},
-        {"src_model_id": "host", "dst_model_id": "sw", "asst_id": "conn",
-         "auto_relation_rule": json.dumps(payload)},
+        {"src_model_id": "host", "dst_model_id": "sw", "asst_id": "conn", "auto_relation_rule": json.dumps(payload)},
+        {"src_model_id": "host", "dst_model_id": "sw", "asst_id": "conn", "auto_relation_rule": json.dumps(payload)},
     ]
     with pytest.raises(BaseAppException):
         ModelManage._import_auto_relation_rule_sets_from_asso_sheets({"asso-host": rows})
@@ -164,8 +163,7 @@ def test_import_auto_rule_sets_ok(fake_graph, monkeypatch):
     fg = fake_graph(MODULE)
     payload = {"rules": [{"match_pairs": [{"src_field_id": "ip", "dst_field_id": "ip", "matching_rule": "exact"}]}]}
     rows = [
-        {"src_model_id": "host", "dst_model_id": "sw", "asst_id": "conn",
-         "auto_relation_rule": json.dumps(payload)},
+        {"src_model_id": "host", "dst_model_id": "sw", "asst_id": "conn", "auto_relation_rule": json.dumps(payload)},
     ]
     ModelManage._import_auto_relation_rule_sets_from_asso_sheets({"asso-host": rows})
     # 导入成功后应触发 set_edge_properties 写回规则
@@ -179,9 +177,7 @@ def test_import_auto_rule_sets_ok(fake_graph, monkeypatch):
 
 @pytest.mark.django_db
 def test_replace_auto_relation_no_assoc(monkeypatch):
-    monkeypatch.setattr(
-        f"{MODULE}.ModelManage.model_association_info_search", lambda mid: {}
-    )
+    monkeypatch.setattr(f"{MODULE}.ModelManage.model_association_info_search", lambda mid: {})
     with pytest.raises(BaseAppException):
         ModelManage.replace_model_auto_relation_rule_set("host", "x", {"rules": []})
 
@@ -209,14 +205,15 @@ def test_export_model_config_minimal(monkeypatch):
     )
     monkeypatch.setattr(
         f"{MODULE}.ModelManage.search_model",
-        lambda language="en": [{"model_id": "host", "model_name": "主机",
-                                "icn": "icon", "classification_id": "net", "attrs": "[]"}],
+        lambda language="en": [{"model_id": "host", "model_name": "主机", "icn": "icon", "classification_id": "net", "attrs": "[]"}],
     )
     monkeypatch.setattr(
-        f"{MODULE}.ModelManage.model_association_search", lambda mid, **kwargs: [],
+        f"{MODULE}.ModelManage.model_association_search",
+        lambda mid, **kwargs: [],
     )
     monkeypatch.setattr(
-        "apps.cmdb.services.public_enum_library.list_libraries", lambda: [],
+        "apps.cmdb.services.public_enum_library.list_libraries",
+        lambda: [],
     )
     # build_unique_rule_context 内部用 search_model_info
     monkeypatch.setattr(
@@ -229,12 +226,41 @@ def test_export_model_config_minimal(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_export_model_config_includes_app_topo_layer(monkeypatch):
+    monkeypatch.setattr(
+        f"{MODULE}.ClassificationManage.search_model_classification",
+        lambda language="en": [{"classification_id": "net", "classification_name": "网络"}],
+    )
+    monkeypatch.setattr(
+        f"{MODULE}.ModelManage.search_model",
+        lambda language="en": [
+            {
+                "model_id": "host",
+                "model_name": "主机",
+                "icn": "icon",
+                "classification_id": "net",
+                "app_topo_layer": "host",
+                "attrs": "[]",
+            }
+        ],
+    )
+    monkeypatch.setattr(f"{MODULE}.ModelManage.model_association_search", lambda mid, **kwargs: [])
+    monkeypatch.setattr("apps.cmdb.services.public_enum_library.list_libraries", lambda: [])
+    monkeypatch.setattr(
+        f"{MODULE}.ModelManage.search_model_info",
+        lambda mid: {"model_id": mid, "attrs": "[]", "unique_rules": "[]", "_id": 1},
+    )
+    sheets = _read_export(ModelManage.export_model_config(language="zh-Hans"))
+    assert sheets["models"][0][4] == "应用拓扑层级"
+    assert sheets["models"][1][4] == "app_topo_layer"
+    assert sheets["models"][2][4] == "host"
+
+
+@pytest.mark.django_db
 def test_export_model_config_with_attrs_and_assoc(monkeypatch):
     attrs = [
-        {"attr_id": "inst_name", "attr_name": "名称", "attr_type": "str",
-         "is_required": True, "editable": True, "is_only": True},
-        {"attr_id": "status", "attr_name": "状态", "attr_type": "enum",
-         "enum_rule_type": "custom", "option": [{"id": "1", "name": "运行"}]},
+        {"attr_id": "inst_name", "attr_name": "名称", "attr_type": "str", "is_required": True, "editable": True, "is_only": True},
+        {"attr_id": "status", "attr_name": "状态", "attr_type": "enum", "enum_rule_type": "custom", "option": [{"id": "1", "name": "运行"}]},
     ]
     monkeypatch.setattr(
         f"{MODULE}.ClassificationManage.search_model_classification",
@@ -242,18 +268,15 @@ def test_export_model_config_with_attrs_and_assoc(monkeypatch):
     )
     monkeypatch.setattr(
         f"{MODULE}.ModelManage.search_model",
-        lambda language="en": [{"model_id": "host", "attrs": json.dumps(attrs),
-                                "model_name": "主机", "icn": "icon", "classification_id": "net"}],
+        lambda language="en": [{"model_id": "host", "attrs": json.dumps(attrs), "model_name": "主机", "icn": "icon", "classification_id": "net"}],
     )
     monkeypatch.setattr(
         f"{MODULE}.ModelManage.model_association_search",
-        lambda mid, **kwargs: [{"src_model_id": "host", "dst_model_id": "sw", "asst_id": "conn",
-                      "mapping": "1:n"}],
+        lambda mid, **kwargs: [{"src_model_id": "host", "dst_model_id": "sw", "asst_id": "conn", "mapping": "1:n"}],
     )
     monkeypatch.setattr(
         "apps.cmdb.services.public_enum_library.list_libraries",
-        lambda: [{"library_id": "lib_1", "name": "状态库", "team": [1],
-                  "options": [{"id": "1", "name": "运行"}]}],
+        lambda: [{"library_id": "lib_1", "name": "状态库", "team": [1], "options": [{"id": "1", "name": "运行"}]}],
     )
     monkeypatch.setattr(
         f"{MODULE}.ModelManage.search_model_info",
@@ -269,20 +292,13 @@ def test_replace_auto_relation_ok(fake_graph, monkeypatch):
         f"{MODULE}.ModelManage.model_association_info_search",
         lambda mid: {"_id": 1, "src_model_id": "host", "dst_model_id": "sw"},
     )
-    monkeypatch.setattr(
-        f"{MODULE}.ModelManage._get_model_attrs_for_auto_rule", lambda mid: _STR_ATTRS
-    )
+    monkeypatch.setattr(f"{MODULE}.ModelManage._get_model_attrs_for_auto_rule", lambda mid: _STR_ATTRS)
     monkeypatch.setattr(
         "apps.cmdb.services.auto_relation_reconcile.schedule_rule_auto_relation_full_sync",
         lambda ids: None,
     )
     fake_graph(MODULE)
-    payload = {
-        "rules": [
-            {"rule_id": "r1",
-             "match_pairs": [{"src_field_id": "ip", "dst_field_id": "ip", "matching_rule": "exact"}]}
-        ]
-    }
+    payload = {"rules": [{"rule_id": "r1", "match_pairs": [{"src_field_id": "ip", "dst_field_id": "ip", "matching_rule": "exact"}]}]}
     result = ModelManage.replace_model_auto_relation_rule_set("host", "x", payload, username="admin")
     assert len(result.rules) == 1
 
@@ -295,6 +311,7 @@ def test_replace_auto_relation_ok(fake_graph, monkeypatch):
 def _read_export(stream):
     """把导出的 xlsx 字节流读回 {sheet_title: [rows...]}。"""
     from io import BytesIO
+
     from openpyxl import load_workbook
 
     wb = load_workbook(BytesIO(stream.read()))
@@ -308,10 +325,8 @@ def _setup_two_models(monkeypatch):
         {"classification_id": "net2", "classification_name": "网络2"},
     ]
     models = [
-        {"model_id": "host", "model_name": "主机", "icn": "i1",
-         "classification_id": "net", "attrs": "[]"},
-        {"model_id": "sw", "model_name": "交换机", "icn": "i2",
-         "classification_id": "net2", "attrs": "[]"},
+        {"model_id": "host", "model_name": "主机", "icn": "i1", "classification_id": "net", "attrs": "[]"},
+        {"model_id": "sw", "model_name": "交换机", "icn": "i2", "classification_id": "net2", "attrs": "[]"},
     ]
     monkeypatch.setattr(
         f"{MODULE}.ClassificationManage.search_model_classification",
@@ -320,11 +335,11 @@ def _setup_two_models(monkeypatch):
     monkeypatch.setattr(f"{MODULE}.ModelManage.search_model", lambda language="en": models)
     monkeypatch.setattr(
         f"{MODULE}.ModelManage.model_association_search",
-        lambda mid, **kwargs: [{"src_model_id": "host", "dst_model_id": "sw",
-                      "asst_id": "conn", "mapping": "1:n"}] if mid == "host" else [],
+        lambda mid, **kwargs: [{"src_model_id": "host", "dst_model_id": "sw", "asst_id": "conn", "mapping": "1:n"}] if mid == "host" else [],
     )
-    monkeypatch.setattr("apps.cmdb.services.public_enum_library.list_libraries",
-                        lambda: [{"library_id": "lib_1", "name": "库", "team": [1], "options": []}])
+    monkeypatch.setattr(
+        "apps.cmdb.services.public_enum_library.list_libraries", lambda: [{"library_id": "lib_1", "name": "库", "team": [1], "options": []}]
+    )
     monkeypatch.setattr(
         f"{MODULE}.ModelManage.search_model_info",
         lambda mid: {"model_id": mid, "attrs": "[]", "unique_rules": "[]", "_id": 1},

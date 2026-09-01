@@ -5,7 +5,7 @@
     {
       "name": "节点存活状态",
       "alert_name": "RabbitMQ节点 ${resource_name} 服务中断",
-      "description": "监测节点持续运行时间，异常重启会导致连接中断。需检查服务日志和主机资源。",
+      "description": "监测节点持续运行时间（秒）。Management API 的 uptime 为毫秒，策略已换算为秒；异常重启会导致连接中断。",
       "metric_name": "rabbitmq_node_uptime",
       "algorithm": "last_over_time",
       "threshold": [
@@ -18,29 +18,19 @@
       "group_algorithm": "avg"
     },
     {
-      "name": "磁盘空间告警",
-      "alert_name": "RabbitMQ节点 ${resource_name} 磁盘将满",
-      "description": "监控剩余磁盘空间，写满会导致消息持久化失败。需清理队列或扩容存储。",
-      "metric_name": "rabbitmq_node_disk_free",
-      "algorithm": "min_over_time",
+      "name": "磁盘告警",
+      "alert_name": "RabbitMQ节点 ${resource_name} 磁盘告警",
+      "description": "使用节点 disk_free_alarm。RabbitMQ 在剩余磁盘低于自身限制时置位，写满会导致消息持久化失败。",
+      "metric_name": "rabbitmq_node_disk_free_alarm",
+      "algorithm": "last_over_time",
       "threshold": [
         {
           "level": "critical",
-          "value": 5,
-          "method": "<="
-        },
-        {
-          "level": "error",
-          "value": 10,
-          "method": "<="
-        },
-        {
-          "level": "warning",
-          "value": 20,
-          "method": "<="
+          "value": 1,
+          "method": ">="
         }
       ],
-      "group_algorithm": "min"
+      "group_algorithm": "max"
     },
     {
       "name": "就绪消息堆积",
@@ -93,29 +83,19 @@
       "group_algorithm": "max"
     },
     {
-      "name": "内存压力预警",
-      "alert_name": "RabbitMQ节点 ${resource_name} GC压力",
-      "description": "检测内存使用与限制的比例，接近阈值会触发流控。",
-      "metric_name": "rabbitmq_fd_usage_ratio",
-      "algorithm": "avg_over_time",
+      "name": "内存告警",
+      "alert_name": "RabbitMQ节点 ${resource_name} 内存告警",
+      "description": "使用节点 mem_alarm。接近内存限制时 RabbitMQ 会触发流控并阻塞生产者。",
+      "metric_name": "rabbitmq_node_mem_alarm",
+      "algorithm": "last_over_time",
       "threshold": [
         {
           "level": "critical",
-          "value": 90,
-          "method": ">="
-        },
-        {
-          "level": "error",
-          "value": 80,
-          "method": ">="
-        },
-        {
-          "level": "warning",
-          "value": 70,
+          "value": 1,
           "method": ">="
         }
       ],
-      "group_algorithm": "avg"
+      "group_algorithm": "max"
     }
   ]
 }

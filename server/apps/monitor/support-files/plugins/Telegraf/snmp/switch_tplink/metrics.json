@@ -3,6 +3,7 @@
   "collect_type": "snmp_tplink",
   "plugin": "Switch TP-Link SNMP",
   "plugin_desc": "TP-Link (JetStream)-specific SNMP collection for switches (TPLINK private MIB, enterprise 11863). In addition to standard IF-MIB interface metrics, it collects TP-Link private OIDs for device health: CPU and memory utilization, both reported directly as percentages. TP-Link SMB switches expose no temperature/fan/power-supply sensors, so those health items are not collected (N/A). Supported brands/models — TP-Link JetStream managed switches (T1500/T1600/T2600 series, etc.).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_tplink'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

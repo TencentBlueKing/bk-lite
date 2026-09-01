@@ -1,6 +1,7 @@
 {
   "plugin": "RabbitMQ",
   "plugin_desc": "Used for monitoring RabbitMQ's runtime status, resource usage, message flow, and queue health.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='rabbitmq', collect_type='middleware'}) by (instance_id)",
   "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"url"}}],
   "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
@@ -21,8 +22,8 @@
       "data_type": "Number",
       "unit": "s",
       "dimensions": [{"name": "node", "description": "节点"}],
-      "description": "Uptime of RabbitMQ node since startup, reflecting node stability",
-      "query": "rabbitmq_node_uptime{__$labels__}"
+      "description": "Uptime of RabbitMQ node since startup in seconds (Management API reports milliseconds)",
+      "query": "rabbitmq_node_uptime{__$labels__} / 1000"
     },
     {
       "metric_group": "Base",
@@ -125,6 +126,28 @@
     },
     {
       "metric_group": "Performance",
+      "name": "rabbitmq_overview_messages_delivered_rate",
+      "display_name": "Message Deliver Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Rate of messages delivered to consumers",
+      "query": "rate(rabbitmq_overview_messages_delivered{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Performance",
+      "name": "rabbitmq_overview_messages_acked_rate",
+      "display_name": "Message Ack Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Rate of messages acknowledged by consumers",
+      "query": "rate(rabbitmq_overview_messages_acked{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Performance",
       "name": "rabbitmq_node_run_queue",
       "display_name": "Run Queue",
       "instance_id_keys": ["instance_id"],
@@ -194,11 +217,22 @@
       "name": "rabbitmq_node_disk_free_alarm",
       "display_name": "Disk Space Alarm",
       "instance_id_keys": ["instance_id"],
-      "data_type": "Number",
-      "unit": "none",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"告警\",\"id\":1,\"color\":\"#ff4d4f\"}]",
       "dimensions": [{"name": "node", "description": "节点"}],
       "description": "Whether disk space usage triggers alarm, 1 indicates alarm, 0 indicates normal",
       "query": "rabbitmq_node_disk_free_alarm{__$labels__}"
+    },
+    {
+      "metric_group": "Resource",
+      "name": "rabbitmq_node_disk_free_limit",
+      "display_name": "Disk Free Limit",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [{"name": "node", "description": "节点"}],
+      "description": "Disk free limit that triggers RabbitMQ disk alarm",
+      "query": "rabbitmq_node_disk_free_limit{__$labels__}"
     },
     {
       "metric_group": "Resource",
@@ -213,6 +247,17 @@
     },
     {
       "metric_group": "Resource",
+      "name": "rabbitmq_node_fd_total",
+      "display_name": "File Descriptors Limit",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [{"name": "node", "description": "节点"}],
+      "description": "File descriptor limit for RabbitMQ node",
+      "query": "rabbitmq_node_fd_total{__$labels__}"
+    },
+    {
+      "metric_group": "Resource",
       "name": "rabbitmq_node_sockets_used",
       "display_name": "Sockets Used",
       "instance_id_keys": ["instance_id"],
@@ -224,6 +269,17 @@
     },
     {
       "metric_group": "Resource",
+      "name": "rabbitmq_node_sockets_total",
+      "display_name": "Sockets Limit",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [{"name": "node", "description": "节点"}],
+      "description": "Socket limit for RabbitMQ node",
+      "query": "rabbitmq_node_sockets_total{__$labels__}"
+    },
+    {
+      "metric_group": "Resource",
       "name": "rabbitmq_node_proc_used",
       "display_name": "Processes Used",
       "instance_id_keys": ["instance_id"],
@@ -232,6 +288,83 @@
       "dimensions": [{"name": "node", "description": "节点"}],
       "description": "Number of Erlang processes currently used by RabbitMQ node, reflecting system process load",
       "query": "rabbitmq_node_proc_used{__$labels__}"
+    },
+    {
+      "metric_group": "Resource",
+      "name": "rabbitmq_node_proc_total",
+      "display_name": "Processes Limit",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [{"name": "node", "description": "节点"}],
+      "description": "Erlang process limit for RabbitMQ node",
+      "query": "rabbitmq_node_proc_total{__$labels__}"
+    },
+    {
+      "metric_group": "Queue",
+      "name": "rabbitmq_queue_messages",
+      "display_name": "Queue Depth",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [{"name": "queue", "description": "队列"}, {"name": "vhost", "description": "vhost"}],
+      "description": "Total messages in a queue, reflecting queue depth",
+      "query": "sum by (queue, vhost) (rabbitmq_queue_messages{__$labels__})"
+    },
+    {
+      "metric_group": "Queue",
+      "name": "rabbitmq_queue_messages_ready",
+      "display_name": "Queue Ready Messages",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [{"name": "queue", "description": "队列"}, {"name": "vhost", "description": "vhost"}],
+      "description": "Ready messages waiting for delivery in a queue",
+      "query": "sum by (queue, vhost) (rabbitmq_queue_messages_ready{__$labels__})"
+    },
+    {
+      "metric_group": "Queue",
+      "name": "rabbitmq_queue_messages_unack",
+      "display_name": "Queue Unacked Messages",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [{"name": "queue", "description": "队列"}, {"name": "vhost", "description": "vhost"}],
+      "description": "Delivered but unacknowledged messages in a queue",
+      "query": "sum by (queue, vhost) (rabbitmq_queue_messages_unack{__$labels__})"
+    },
+    {
+      "metric_group": "Queue",
+      "name": "rabbitmq_queue_consumers",
+      "display_name": "Queue Consumers",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [{"name": "queue", "description": "队列"}, {"name": "vhost", "description": "vhost"}],
+      "description": "Number of consumers on a queue",
+      "query": "sum by (queue, vhost) (rabbitmq_queue_consumers{__$labels__})"
+    },
+    {
+      "metric_group": "Queue",
+      "name": "rabbitmq_queue_consumer_utilisation",
+      "display_name": "Queue Consumer Utilisation",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [{"name": "queue", "description": "队列"}, {"name": "vhost", "description": "vhost"}],
+      "description": "Fraction of time the queue can deliver to consumers, as a percentage",
+      "query": "100 * max by (queue, vhost) (rabbitmq_queue_consumer_utilisation{__$labels__})"
+    },
+    {
+      "metric_group": "Queue",
+      "name": "rabbitmq_queue_memory",
+      "display_name": "Queue Memory",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [{"name": "queue", "description": "队列"}, {"name": "vhost", "description": "vhost"}],
+      "description": "Memory used by a queue",
+      "query": "sum by (queue, vhost) (rabbitmq_queue_memory{__$labels__})"
     }
   ]
 }

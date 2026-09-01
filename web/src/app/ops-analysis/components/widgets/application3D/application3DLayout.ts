@@ -1,5 +1,4 @@
 import {
-  CARD_ASPECT,
   CARD_GAP,
   CARD_WORLD_HEIGHT,
   CARD_WORLD_WIDTH,
@@ -10,7 +9,7 @@ import {
 export interface Application3DLayout {
   columns: number;
   rows: number;
-  /** Number of cards in each row; the final row is centered independently. */
+  /** Cards per row; a short last row stays left-aligned to the wall. */
   rowCardCounts: number[];
   cardWidth: number;
   cardHeight: number;
@@ -26,7 +25,7 @@ export type Application3DCardTone = 'normal' | 'critical' | 'error' | 'warning' 
 export type Application3DTranslate = (id: string, defaultMessage?: string) => string;
 
 export interface Application3DCardVisual {
-  /** Short wall title (common demo prefix stripped when present). */
+  /** Wall card title; demo data may keep a 本地演示- prefix. */
   title: string;
   /** Human-readable status line; not color-only. */
   statusLabel: string;
@@ -38,51 +37,88 @@ export interface Application3DCardVisual {
   badgeText: string;
 }
 
-const DEMO_NAME_PREFIX = '本地演示-';
-
 /** Fallback translator keeps Chinese defaults when callers omit locale. */
 export const defaultApplication3DTranslate: Application3DTranslate = (
   _id,
   defaultMessage = '',
 ) => defaultMessage;
 
+/** Landscape walls prefer a square-to-slightly-wide card grid, not a 2×N tower. */
+const TARGET_GRID_ASPECT_WIDE = 1.2;
+const TARGET_GRID_ASPECT_TALL = 0.85;
+
+const scoreColumnCandidate = (
+  count: number,
+  columns: number,
+  viewportAspect: number,
+): number => {
+  const rows = Math.ceil(count / columns);
+  const lastRowCount = count - (rows - 1) * columns;
+  const incomplete = rows > 1 && lastRowCount !== columns;
+  const shortfall = incomplete ? (columns - lastRowCount) / columns : 0;
+  const orphan =
+    incomplete && lastRowCount <= Math.max(1, Math.floor(columns / 3)) ? 0.45 : 0;
+  const targetGridAspect =
+    viewportAspect >= 1.05 ? TARGET_GRID_ASPECT_WIDE : TARGET_GRID_ASPECT_TALL;
+  const gridAspect = columns / Math.max(rows, 1);
+  const aspectCost = Math.abs(Math.log(gridAspect / targetGridAspect));
+  const towerCost = rows > columns ? (rows / columns - 1) * 1.35 : 0;
+  const incompleteCost = incomplete ? 0.28 + shortfall * 0.55 : 0;
+  return aspectCost + incompleteCost + orphan + towerCost;
+};
+
+const collectColumnCandidates = (count: number, ideal: number): number[] => {
+  const lo = Math.max(1, Math.floor(ideal) - 5);
+  const hi = Math.min(count, Math.ceil(ideal) + 6);
+  const candidates = new Set<number>();
+  for (let columns = lo; columns <= hi; columns += 1) candidates.add(columns);
+  for (let columns = 1; columns <= count; columns += 1) {
+    if (count % columns === 0 && Math.abs(columns - ideal) <= 8) {
+      candidates.add(columns);
+    }
+  }
+  return [...candidates];
+};
+
+/** Prefer a square or slightly wide card grid; a short last row beats a 2-column tower. */
+export const resolveApplication3DColumns = (
+  count: number,
+  viewportAspect: number,
+): number => {
+  const safeCount = Math.max(0, Math.floor(count));
+  const safeAspect = Math.max(viewportAspect, 0.1);
+  if (!safeCount) return 1;
+  const targetGridAspect =
+    safeAspect >= 1.05 ? TARGET_GRID_ASPECT_WIDE : TARGET_GRID_ASPECT_TALL;
+  const ideal = Math.sqrt(safeCount * targetGridAspect);
+  return collectColumnCandidates(safeCount, ideal)
+    .reduce((best, candidate) => {
+      const score = scoreColumnCandidate(safeCount, candidate, safeAspect);
+      return !best || score < best.score ? { columns: candidate, score } : best;
+    }, null as { columns: number; score: number } | null)?.columns || 1;
+};
+
+const resolveCardDensity = (count: number): number => {
+  if (count <= 16) return 1;
+  if (count <= 24) return 0.82;
+  if (count <= 48) return 0.64;
+  if (count <= 80) return 0.5;
+  return 0.4;
+};
+
 export const buildApplication3DLayout = (
   count: number,
   viewportAspect: number,
 ): Application3DLayout => {
   const safeCount = Math.max(0, Math.floor(count));
-  const safeAspect = Math.max(viewportAspect, 0.1);
-  const idealColumns = Math.sqrt((safeCount * safeAspect) / CARD_ASPECT);
-  const minColumns = Math.max(1, Math.floor(idealColumns) - 2);
-  const maxColumns = Math.min(safeCount || 1, Math.ceil(idealColumns) + 2);
-  const columns = safeCount
-    ? Array.from({ length: maxColumns - minColumns + 1 }, (_, index) => minColumns + index)
-      .reduce((best, candidate) => {
-        const candidateRows = Math.ceil(safeCount / candidate);
-        const lastRowCount = safeCount - (candidateRows - 1) * candidate;
-        const candidateWidth = candidate * CARD_WORLD_WIDTH + (candidate - 1) * CARD_GAP;
-        const candidateHeight =
-          candidateRows * CARD_WORLD_HEIGHT + (candidateRows - 1) * CARD_GAP;
-        const aspectCost = Math.abs(Math.log((candidateWidth / candidateHeight) / safeAspect));
-        const raggednessCost = candidateRows > 1 ? (candidate - lastRowCount) / candidate : 0;
-        const score = aspectCost * 1.2 + raggednessCost * 0.4;
-        return !best || score < best.score ? { columns: candidate, score } : best;
-      }, null as { columns: number; score: number } | null)?.columns || 1
-    : 1;
-  const rows = Math.max(1, Math.ceil(safeCount / columns));
+  const columns = resolveApplication3DColumns(safeCount, viewportAspect);
+  const rows = Math.max(1, Math.ceil(safeCount / columns) || 1);
   const finalRowCount = safeCount - (rows - 1) * columns;
   const rowCardCounts = Array.from(
     { length: rows },
     (_, row) => (row === rows - 1 ? Math.max(finalRowCount, 0) : columns),
   );
-  // Few cards → larger; many cards → smaller. Overall slightly below legacy 3×4.
-  const density =
-    safeCount <= 6 ? 0.92 :
-    safeCount <= 12 ? 0.78 :
-    safeCount <= 24 ? 0.64 :
-    safeCount <= 48 ? 0.52 :
-    safeCount <= 80 ? 0.44 :
-    0.38;
+  const density = resolveCardDensity(safeCount);
   const cardWidth = CARD_WORLD_WIDTH * density;
   const cardHeight = CARD_WORLD_HEIGHT * density;
   const gapX = CARD_GAP * density;
@@ -101,8 +137,13 @@ export const buildApplication3DLayout = (
 };
 
 /** Default wall occupies this fraction of the tighter viewport axis. */
-export const WALL_VIEW_COVERAGE = 0.68;
-export const APPLICATION3D_CAMERA_FOV = 42;
+export const WALL_VIEW_COVERAGE = 0.80;
+export const APPLICATION3D_CAMERA_FOV = 34;
+/** Pad only 1-card walls; 2×2 and larger frame the actual wall so cards stay readable. */
+export const REFERENCE_WALL_WIDTH = 2 * CARD_WORLD_WIDTH + CARD_GAP;
+export const REFERENCE_WALL_HEIGHT = 2 * CARD_WORLD_HEIGHT + CARD_GAP;
+/** Keep a slight elevation so the floor stays visible without shrinking side cards. */
+export const WALL_CAMERA_HEIGHT_FACTOR = 0.04;
 
 export const fitApplication3DCameraDistance = (
   wallWidth: number,
@@ -113,9 +154,11 @@ export const fitApplication3DCameraDistance = (
 ): number => {
   const halfFov = ((fovDeg * Math.PI) / 180) / 2;
   const tan = Math.tan(halfFov);
-  const distanceForHeight = wallHeight / (2 * tan);
+  const framedWidth = Math.max(wallWidth, REFERENCE_WALL_WIDTH);
+  const framedHeight = Math.max(wallHeight, REFERENCE_WALL_HEIGHT);
+  const distanceForHeight = framedHeight / (2 * tan);
   const distanceForWidth =
-    wallWidth / (2 * tan * Math.max(viewportAspect, 0.1));
+    framedWidth / (2 * tan * Math.max(viewportAspect, 0.1));
   return Math.max(distanceForHeight, distanceForWidth) / Math.max(coverage, 0.2);
 };
 
@@ -127,13 +170,7 @@ export const formatApplicationAlarmBadge = (count: number | null): string => {
   return String(Math.max(0, Math.floor(count)));
 };
 
-export const formatApplication3DCardTitle = (name: string): string => {
-  const trimmed = name.trim();
-  if (trimmed.startsWith(DEMO_NAME_PREFIX) && trimmed.length > DEMO_NAME_PREFIX.length) {
-    return trimmed.slice(DEMO_NAME_PREFIX.length);
-  }
-  return trimmed;
-};
+export const formatApplication3DCardTitle = (name: string): string => name.trim();
 
 export const neonLevelToCardTone = (level: Application3DNeonLevel): Application3DCardTone => {
   if (level === 'fatal') return 'critical';
@@ -141,14 +178,11 @@ export const neonLevelToCardTone = (level: Application3DNeonLevel): Application3
   return level;
 };
 
-/** Alert count badge is only for a real positive alarming count, never 0 / ?. */
-export const shouldShowApplication3DAlertBadge = (health: {
+/** Corner count chips are unused; status lives in the tag. */
+export const shouldShowApplication3DAlertBadge = (_health: {
   state: string;
   activeAlarmCount: number | null;
-}): boolean => {
-  if (health.state === 'normal' || health.state === 'unknown') return false;
-  return typeof health.activeAlarmCount === 'number' && health.activeAlarmCount > 0;
-};
+}): boolean => false;
 
 export const resolveApplication3DBadge = (
   health: {
@@ -158,15 +192,12 @@ export const resolveApplication3DBadge = (
   tone: Application3DCardTone,
 ): { showBadge: boolean; badgeText: string } => {
   if (tone === 'unknown') {
-    return { showBadge: true, badgeText: UNKNOWN_STATUS_BADGE };
+    return { showBadge: false, badgeText: UNKNOWN_STATUS_BADGE };
   }
-  if (shouldShowApplication3DAlertBadge(health)) {
-    return {
-      showBadge: true,
-      badgeText: formatApplicationAlarmBadge(health.activeAlarmCount),
-    };
-  }
-  return { showBadge: false, badgeText: '' };
+  return {
+    showBadge: false,
+    badgeText: formatApplicationAlarmBadge(health.activeAlarmCount ?? 0),
+  };
 };
 
 const cardStatusLabel = (
@@ -180,14 +211,14 @@ const cardStatusLabel = (
   t: Application3DTranslate,
 ): string => {
   if (item.health.state === 'normal') {
-    return t('dashboard.application3DStatus_normal', '无活跃告警');
+    return t('dashboard.application3DStatus_normal', '运行正常');
   }
   // Active alerts with empty/unmapped level: treat as warning (not critical/unknown).
   if (item.health.state === 'alarming' && !item.health.highestSeverity) {
     return t('dashboard.application3DStatus_warning', '警告');
   }
   if (tone === 'critical') return t('dashboard.application3DStatus_critical', '严重告警');
-  if (tone === 'error') return t('dashboard.application3DStatus_error', '错误告警');
+  if (tone === 'error') return t('dashboard.application3DStatus_error', '错误');
   if (tone === 'warning') return t('dashboard.application3DStatus_warning', '警告');
   if (tone === 'info') return t('dashboard.application3DStatus_info', '提示');
   return t('dashboard.application3DStatus_unknown', '状态未知');
@@ -195,7 +226,8 @@ const cardStatusLabel = (
 
 /**
  * Resolve Wall card chrome from health DTO.
- * Uses highestSeverity / reason so alarming cards are not collapsed into one look.
+ * Unknown reasons (unavailable / no_application / no_host) share state=unknown.
+ * Alarming cards use highestSeverity so they are not collapsed into one look.
  */
 export const resolveApplication3DCardVisual = (
   item: {
@@ -212,14 +244,20 @@ export const resolveApplication3DCardVisual = (
   const { health } = item;
   const neonLevel = resolveNeonLevel(item);
   const cardTone = neonLevelToCardTone(neonLevel);
-  const { showBadge, badgeText } = resolveApplication3DBadge(health, cardTone);
+  const { badgeText } = resolveApplication3DBadge(health, cardTone);
+  const baseLabel = cardStatusLabel(item, cardTone, t);
+  const counted =
+    cardTone !== 'normal' &&
+    cardTone !== 'unknown' &&
+    /^\d+$/.test(badgeText) &&
+    badgeText !== '0';
 
   return {
     title: formatApplication3DCardTitle(item.name),
-    statusLabel: cardStatusLabel(item, cardTone, t),
+    statusLabel: counted ? `${baseLabel} ${badgeText}` : baseLabel,
     neonLevel,
     cardTone,
-    showBadge,
+    showBadge: false,
     badgeText,
   };
 };

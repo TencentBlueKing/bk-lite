@@ -48,6 +48,7 @@ import {
   getDashboardDisplayModeFromParams,
   setDashboardDisplayModeInParams
 } from '../../shared/utils/display-mode-route';
+import { CHART_COLORS } from '@/app/monitor/constants';
 
 export type SimpleMetricUnit = MetricUnit;
 
@@ -118,6 +119,8 @@ export interface ChartConfig {
     /** 'limit' renders a dashed, dimmed ceiling line (e.g. mem_limit). Defaults to solid. */
     style?: 'solid' | 'limit';
   }>;
+  /** 保留指标维度序列（如 queue/vhost），不把多线求和成一条。 */
+  keepDimensionSeries?: boolean;
 }
 
 export interface DetailPanelConfig {
@@ -770,25 +773,73 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
       })
   ), [config.summaryCards, formatField, getLatest, getNoDataType, hasMetricData, metricMap, previousMetricMap]);
 
+  const formatDimensionLegendLabel = (
+    details: Array<{ name: string; label: string; value: string }> | undefined
+  ) => {
+    if (!details?.length) return '';
+    const queue = details.find((item) => item.name === 'queue')?.value;
+    const vhost = details.find((item) => item.name === 'vhost')?.value;
+    if (queue && vhost) return `${queue} (${vhost})`;
+    if (queue) return queue;
+    return details.map((item) => item.value).filter(Boolean).join(' / ');
+  };
+
+  const valueKeysFromChartData = (point?: ChartData) =>
+    point
+      ? Object.keys(point).filter((key) => /^value\d+$/.test(key)).sort()
+      : [];
+
   const chartPanels = useMemo<PreparedChartPanel[]>(() => (
-    config.charts.map((chart) => ({
-      chart,
-      data: mergeChartSeries(chart.series.map((item) => ({ key: item.metric, label: item.label, data: metricMap[item.metric]?.viewData || [] }))),
-      metric: buildMetricItem(metricMap[chart.metric] || config.metrics.find((metric) => metric.name === chart.metric) || config.metrics[0]),
-      unit: metricMap[chart.metric]?.unit || config.metrics.find((metric) => metric.name === chart.metric)?.unit || 'none',
-      legends: chart.series.map((item, index) => ({ label: item.label, color: item.color, primary: index === 0 })),
-      seriesStyles: chart.series.map((item, index) => {
-        const isLimit = item.style === 'limit';
+    config.charts.map((chart) => {
+      if (chart.keepDimensionSeries) {
+        const viewData = metricMap[chart.metric]?.viewData || [];
+        const latest = viewData[viewData.length - 1];
+        const valueKeys = valueKeysFromChartData(latest);
+        const legends = valueKeys.length
+          ? valueKeys.map((key, index) => ({
+            label: formatDimensionLegendLabel(latest?.details?.[key]) || chart.series[0]?.label || key,
+            color: CHART_COLORS[index % CHART_COLORS.length],
+            primary: index === 0
+          }))
+          : chart.series.map((item, index) => ({
+            label: item.label,
+            color: item.color,
+            primary: index === 0
+          }));
         return {
-          color: item.color,
-          unit: item.unit || metricMap[item.metric]?.unit,
-          fillOpacity: isLimit ? 0 : index === 0 ? 0.08 : 0.03,
-          strokeOpacity: isLimit ? 0.55 : index === 0 ? 1 : 0.72,
-          strokeWidth: isLimit ? 1.6 : index === 0 ? 2.8 : 2.2,
-          strokeDasharray: isLimit ? '6 4' : undefined
+          chart,
+          data: viewData,
+          metric: buildMetricItem(metricMap[chart.metric] || config.metrics.find((metric) => metric.name === chart.metric) || config.metrics[0]),
+          unit: metricMap[chart.metric]?.unit || config.metrics.find((metric) => metric.name === chart.metric)?.unit || 'none',
+          legends,
+          seriesStyles: legends.map((item, index) => ({
+            color: item.color,
+            unit: chart.series[0]?.unit || metricMap[chart.metric]?.unit,
+            fillOpacity: index === 0 ? 0.08 : 0.03,
+            strokeOpacity: index === 0 ? 1 : 0.72,
+            strokeWidth: index === 0 ? 2.8 : 2.2
+          }))
         };
-      })
-    }))
+      }
+      return {
+        chart,
+        data: mergeChartSeries(chart.series.map((item) => ({ key: item.metric, label: item.label, data: metricMap[item.metric]?.viewData || [] }))),
+        metric: buildMetricItem(metricMap[chart.metric] || config.metrics.find((metric) => metric.name === chart.metric) || config.metrics[0]),
+        unit: metricMap[chart.metric]?.unit || config.metrics.find((metric) => metric.name === chart.metric)?.unit || 'none',
+        legends: chart.series.map((item, index) => ({ label: item.label, color: item.color, primary: index === 0 })),
+        seriesStyles: chart.series.map((item, index) => {
+          const isLimit = item.style === 'limit';
+          return {
+            color: item.color,
+            unit: item.unit || metricMap[item.metric]?.unit,
+            fillOpacity: isLimit ? 0 : index === 0 ? 0.08 : 0.03,
+            strokeOpacity: isLimit ? 0.55 : index === 0 ? 1 : 0.72,
+            strokeWidth: isLimit ? 1.6 : index === 0 ? 2.8 : 2.2,
+            strokeDasharray: isLimit ? '6 4' : undefined
+          };
+        })
+      };
+    })
   ), [config.charts, config.metrics, metricMap]);
 
   const ringPanels = useMemo<PreparedRingPanel[]>(() => (

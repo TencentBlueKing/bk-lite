@@ -13,13 +13,16 @@ SYSTEM_CONTAINS_APPLICATION_ASST = "system_contains_application"
 
 FILTER_SYSTEM_STATUS = "system_status"
 
+# System model fields. inst_name is the card title; time_zone is omitted.
 PROPERTY_ALLOWLIST: tuple[str, ...] = (
-    "app_id",
-    "app_type",
+    "system_code",
+    "status",
     "organization",
     "operator",
-    "bak_operator",
     "comment",
+    "productor",
+    "developer",
+    "tester",
 )
 
 SEVERITY_TABLE: dict[str, dict] = {

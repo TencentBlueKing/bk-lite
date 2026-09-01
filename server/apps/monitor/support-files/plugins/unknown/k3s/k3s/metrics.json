@@ -78,10 +78,10 @@
           "display_name": "Pod Status",
           "instance_id_keys": ["instance_id", "pod"],
           "data_type": "Enum",
-          "unit": "[{\"name\":\"未运行\",\"id\":0,\"color\":\"#faad14\"},{\"name\":\"运行中\",\"id\":1,\"color\":\"#1ac44a\"}]",
+          "unit": "[{\"name\":\"Pending\",\"id\":0,\"color\":\"#faad14\"},{\"name\":\"Running\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"Succeeded\",\"id\":2,\"color\":\"#8c8c8c\"},{\"name\":\"Failed\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"Unknown\",\"id\":4,\"color\":\"#bfbfbf\"}]",
           "dimensions": [],
-          "description": "Indicates the current lifecycle phase of a Pod. This metric is used to quickly assess Pod health.",
-          "query": "prometheus_remote_write_kube_pod_status_phase{instance_type=\"k3s\",phase=\"Running\",__$labels__}"
+          "description": "Pod lifecycle phase remapped from kube_pod_status_phase labels: 0 Pending, 1 Running, 2 Succeeded, 3 Failed, 4 Unknown. Every Pod emits one value.",
+          "query": "max by (instance_id, pod) (\n  (prometheus_remote_write_kube_pod_status_phase{instance_type=\"k3s\",phase=\"Pending\",__$labels__} == 1) * 0\n  or (prometheus_remote_write_kube_pod_status_phase{instance_type=\"k3s\",phase=\"Running\",__$labels__} == 1) * 1\n  or (prometheus_remote_write_kube_pod_status_phase{instance_type=\"k3s\",phase=\"Succeeded\",__$labels__} == 1) * 2\n  or (prometheus_remote_write_kube_pod_status_phase{instance_type=\"k3s\",phase=\"Failed\",__$labels__} == 1) * 3\n  or (prometheus_remote_write_kube_pod_status_phase{instance_type=\"k3s\",phase=\"Unknown\",__$labels__} == 1) * 4\n)"
         },
         {
           "metric_group": "Status",

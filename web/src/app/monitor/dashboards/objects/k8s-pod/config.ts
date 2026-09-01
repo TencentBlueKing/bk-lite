@@ -1,9 +1,21 @@
 import type { SimpleDashboardConfig } from '../common/simple-dashboard-core';
 
 const POD_PHASE_ENUM = {
-  0: { label: '未运行', color: '#faad14' },
-  1: { label: '运行中', color: '#27c274' }
+  0: { label: 'Pending', color: '#faad14' },
+  1: { label: 'Running', color: '#1ac44a' },
+  2: { label: 'Succeeded', color: '#8c8c8c' },
+  3: { label: 'Failed', color: '#ff4d4f' },
+  4: { label: 'Unknown', color: '#bfbfbf' }
 };
+
+const POD_STATUS_PHASE_QUERY =
+  'max by (instance_id, pod) (' +
+  '(prometheus_remote_write_kube_pod_status_phase{instance_type="k8s",phase="Pending",__$labels__} == 1) * 0' +
+  ' or (prometheus_remote_write_kube_pod_status_phase{instance_type="k8s",phase="Running",__$labels__} == 1) * 1' +
+  ' or (prometheus_remote_write_kube_pod_status_phase{instance_type="k8s",phase="Succeeded",__$labels__} == 1) * 2' +
+  ' or (prometheus_remote_write_kube_pod_status_phase{instance_type="k8s",phase="Failed",__$labels__} == 1) * 3' +
+  ' or (prometheus_remote_write_kube_pod_status_phase{instance_type="k8s",phase="Unknown",__$labels__} == 1) * 4' +
+  ')';
 
 export const POD_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   routeKey: 'k8s-pod',
@@ -18,10 +30,10 @@ export const POD_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       name: 'pod_status_phase',
       display_name: 'Pod 状态',
-      description: 'Pod 当前生命周期阶段(0 未运行 / 1 运行中),用于快速判断 Pod 健康。',
+      description: 'Pod 生命周期阶段：0 Pending / 1 Running / 2 Succeeded / 3 Failed / 4 Unknown。',
       unit: 'none',
-      query: 'prometheus_remote_write_kube_pod_status_phase{instance_type="k8s",phase="Running",__$labels__}',
-      color: '#27c274'
+      query: POD_STATUS_PHASE_QUERY,
+      color: '#1ac44a'
     },
     {
       name: 'pod_container_restarts_total',
@@ -92,10 +104,10 @@ export const POD_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   summaryCards: [
     {
       title: 'Pod 状态',
-      guide: [{ label: 'Pod 状态', detail: '未运行时优先查调度失败、镜像拉取、CrashLoop 与探针失败。' }],
+      guide: [{ label: 'Pod 状态', detail: 'Pending 查调度/镜像；Failed 查退出与 CrashLoop；Succeeded 为 Job 正常结束；Unknown 查节点失联。' }],
       metric: 'pod_status_phase',
       unit: 'none',
-      color: '#27c274',
+      color: '#1ac44a',
       icon: 'health',
       enumMap: POD_PHASE_ENUM
     },

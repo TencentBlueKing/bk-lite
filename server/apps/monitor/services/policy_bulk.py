@@ -37,6 +37,18 @@ def normalize_default_calculation_unit(metric_unit: str) -> str:
     return normalized_unit if UnitConverter.is_known_unit(normalized_unit) else ""
 
 
+def normalize_stored_metric_unit(metric_unit: str, data_type: str = "") -> str:
+    """策略表 metric_unit 只存短单位名；Enum/JSON 枚举定义留在 Metric.unit。"""
+    unit = (metric_unit or "").strip()
+    if not unit or unit in ("none", "short"):
+        return ""
+    if data_type == "Enum" or unit.startswith("["):
+        return ""
+    if len(unit) > 50:
+        return ""
+    return unit
+
+
 def _merge_asset_organizations(assets: list[dict[str, Any]]) -> list[Any]:
     organizations: list[Any] = []
     seen = set()
@@ -108,7 +120,10 @@ def build_bulk_policy_payloads(
     policy_names = build_distinct_policy_names(templates, name_prefix)
     for template, policy_name in zip(templates, policy_names):
         group_algorithm, algorithm = normalize_template_algorithms(template)
-        metric_unit = template.get("metric_unit") or ""
+        metric_unit = normalize_stored_metric_unit(
+            template.get("metric_unit") or "",
+            str(template.get("data_type") or ""),
+        )
         default_calculation_unit = normalize_default_calculation_unit(metric_unit)
         group_by = config.get("group_by") or template.get("group_by") or ["instance_id"]
         template_name = template.get("name") or template.get("metric_name") or ""
@@ -119,7 +134,8 @@ def build_bulk_policy_payloads(
             "monitor_object": monitor_object_id,
             "organizations": organizations,
             "collect_type": template.get("collect_type"),
-            "query_condition": template.get("query_condition") or {
+            "query_condition": template.get("query_condition")
+            or {
                 "type": "metric",
                 "metric_id": template.get("metric_id"),
                 "filter": template.get("filter") or [],

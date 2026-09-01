@@ -3,6 +3,7 @@
   "collect_type": "snmp_kerio",
   "plugin": "Firewall Kerio Control SNMP",
   "plugin_desc": "Kerio Control-specific SNMP collection template for GFI Kerio Control UTM firewalls. In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects the Kerio Control private MIB OID (KERIO-CONTROL-SNMP-MIB, IANA PEN 17028) for the current number of active connections. CPU/memory and temperature/fan/power sensors are not exposed in a row-filter-free scalar form by the Kerio Control MIB (software UTM appliance), so those are N/A. Supported brands/models — GFI Kerio Control UTM firewall / VPN gateway (enterprise 17028).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_kerio'}) by (instance_id)",
   "name": "Firewall",
   "icon": "mm-firewall_防火墙",

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { RedoOutline } from 'antd-mobile-icons';
 import { buildSeriesPath, buildSeriesSinglePoint } from './metric-chart-utils';
-import { buildMetricQuery, metricSeriesPoints, type MonitorMetric } from './model';
+import { metricSeriesPoints, type MonitorMetric } from './model';
 import { getMonitorUnitList, queryMetricRange } from './adapter';
 import { resolveMonitorUnitLabel } from './unit-label';
 import { useTranslation } from '@/utils/i18n';
@@ -11,13 +11,14 @@ import styles from './monitor.module.css';
 
 interface Props {
   metric: MonitorMetric;
-  idValues: string[];
+  monitorObjectId: number;
+  instanceId: string;
   rangeMinutes: number;
   interval: number | null;
   onOpen?: () => void;
 }
 
-export default function MetricCard({ metric, idValues, rangeMinutes, interval, onOpen }: Props) {
+export default function MetricCard({ metric, monitorObjectId, instanceId, rangeMinutes, interval, onOpen }: Props) {
   const { t } = useTranslation();
   const ref = useRef<HTMLElement>(null);
   const [visible, setVisible] = useState(false);
@@ -55,7 +56,7 @@ export default function MetricCard({ metric, idValues, rangeMinutes, interval, o
     if (!visible) return;
     const controller = new AbortController();
     setStatus('loading');
-    queryMetricRange(buildMetricQuery(metric, idValues), metric.unit, rangeMinutes, interval, controller.signal)
+    queryMetricRange(monitorObjectId, metric.id, instanceId, metric.unit, rangeMinutes, interval, controller.signal)
       .then((result) => {
         if (controller.signal.aborted) return;
         setSeries(metricSeriesPoints(result));
@@ -67,7 +68,7 @@ export default function MetricCard({ metric, idValues, rangeMinutes, interval, o
         if (error instanceof Error && error.name !== 'AbortError') setStatus('error');
       });
     return () => controller.abort();
-  }, [idValues, interval, metric, rangeMinutes, retryToken, visible]);
+  }, [instanceId, interval, metric, monitorObjectId, rangeMinutes, retryToken, visible]);
 
   // Match Web overview / sheet: resolve from unitList by unit_id; do not pass query echo as displayUnit.
   const unitLabel = useMemo(

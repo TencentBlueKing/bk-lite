@@ -10,12 +10,12 @@ for (const locale of ['zh', 'en']) {
   const names = (views.children || []).map((c: { name: string }) => c.name);
   assert.deepEqual(names, [
     'asset_views_overview',
-    'asset_views_scene',
     'asset_views_application',
     'asset_views_k8s',
     'asset_views_network',
     'asset_views_ip',
     'asset_views_rack_room',
+    'asset_views_scene',
   ]);
   const tagView = (views.children || []).find((c: { name: string }) => c.name === 'asset_views_scene');
   assert.equal(
@@ -26,12 +26,12 @@ for (const locale of ['zh', 'en']) {
   const urls = (views.children || []).map((c: { url: string }) => c.url);
   assert.deepEqual(urls, [
     '/cmdb/assetOverview',
-    '/cmdb/views/scene',
     '/cmdb/views/application',
     '/cmdb/views/k8s',
     '/cmdb/views/network',
     '/cmdb/views/ip',
     '/cmdb/views/rack-room',
+    '/cmdb/views/scene',
   ]);
   for (const child of views.children) {
     assert.equal(child.withParentPermission, true);

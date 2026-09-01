@@ -24,6 +24,15 @@ from apps.cmdb.constants.constants import CollectPluginTypes
 from apps.cmdb.models import CollectModels, OidMapping
 from apps.core.logger import cmdb_logger as logger
 
+# sysObjectID 文本企业前缀展开为 1.3.6.1.4.1.<enterprise>...
+_SNMP_ENTERPRISE_PREFIXES = (
+    "SNMPv2-SMI::enterprises.",
+    "enterprises.",
+)
+_NUMERIC_ENTERPRISE_ROOT = "1.3.6.1.4.1"
+# 最短可作前缀命中的弧数：1.3.6.1.4.1.<enterprise>。禁止用 1.3.6.1.4.1 兜底。
+_MIN_PREFIX_ARCS = 7
+
 
 class CollectNetworkMetrics(CollectBase):
     ROOT = "root"  # 根oid
@@ -65,6 +74,8 @@ class CollectNetworkMetrics(CollectBase):
 
     @staticmethod
     def get_oid_map():
+        # 启动期 init_oid 会把 built_in=True 重置为目录值；同一 OID 的 POST 会被 API 拒绝。
+        # 用户覆盖只能 UPDATE 已有行并设 built_in=False，匹配时精确命中该行。
         result = OidMapping._default_manager.all().values("model", "oid", "brand", "device_type", "built_in")
         return {i["oid"]: i for i in result}
 
@@ -77,6 +88,44 @@ class CollectNetworkMetrics(CollectBase):
             "device_type": "switch",
             "built_in": False,
         }
+
+    @staticmethod
+    def normalize_sysobjectid(sysobjectid):
+        """规范化采集到的 sysObjectID：去空白、去前导点、展开 enterprises 文本前缀。"""
+        oid = (sysobjectid or "").strip().lstrip(".")
+        for prefix in _SNMP_ENTERPRISE_PREFIXES:
+            if oid.startswith(prefix):
+                return "{}.{}".format(_NUMERIC_ENTERPRISE_ROOT, oid[len(prefix) :])
+        return oid
+
+    @staticmethod
+    def oid_arc_count(oid):
+        if not oid:
+            return 0
+        return oid.count(".") + 1
+
+    @classmethod
+    def resolve_oid_mapping(cls, sysobjectid, oid_map=None):
+        """精确命中优先；否则按 OID 弧数取最长前缀（最短 7 弧）。"""
+        if oid_map is None:
+            oid_map = cls.get_oid_map()
+        oid = cls.normalize_sysobjectid(sysobjectid)
+        exact = oid_map.get(oid)
+        if exact:
+            return exact
+        best_row = None
+        best_arcs = 0
+        for key, row in oid_map.items():
+            if not key or not (oid == key or oid.startswith(key + ".")):
+                continue
+            arcs = cls.oid_arc_count(key)
+            if arcs < _MIN_PREFIX_ARCS or arcs <= best_arcs:
+                continue
+            best_row = row
+            best_arcs = arcs
+        if best_row is not None:
+            return best_row
+        return cls.get_default_oid_map(oid)
 
     @staticmethod
     def set_inst_name(*args, **kwargs):
@@ -124,10 +173,9 @@ class CollectNetworkMetrics(CollectBase):
         for index_data in data["result"]:
             metric_name = index_data["metric"]["__name__"]
             if "sysobjectid" in index_data["metric"]:
-                oid = index_data["metric"]["sysobjectid"]
-                oid_data = self.oid_map.get(oid, "")
-                if not oid_data:
-                    oid_data = self.get_default_oid_map(oid)
+                oid = self.normalize_sysobjectid(index_data["metric"]["sysobjectid"])
+                oid_data = self.resolve_oid_mapping(oid, self.oid_map)
+                if oid_data.get("brand") == "未知":
                     logger.info("==OID does not exist, use default mapping OID={}==".format(oid))
                 index_data["metric"].update(oid_data)
 

@@ -22,18 +22,9 @@ def create_error_stream_response(error_message):
     放在此处而非 LLMViewSet 上，避免仅为使用该静态辅助方法就被迫导入整个
     LLMViewSet（及其大量依赖）。LLMViewSet 仍保留同名静态方法委托到此函数。
     """
+    from apps.opspilot.utils.stream_common import make_sse_error_response
 
-    async def error_generator():
-        error_data = {"result": False, "message": error_message, "error": True}
-        yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
-        yield "data: [DONE]\n\n"
-
-    response = StreamingHttpResponse(error_generator(), content_type="text/event-stream")
-    response["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    response["X-Accel-Buffering"] = "no"  # Nginx
-    response["Access-Control-Allow-Origin"] = "*"
-    response["Access-Control-Allow-Headers"] = "Cache-Control"
-    return response
+    return make_sse_error_response(error_message)
 
 
 def generate_stream_error(message):

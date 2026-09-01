@@ -3,6 +3,7 @@
   "collect_type": "snmp_genua",
   "plugin": "Firewall genua SNMP",
   "plugin_desc": "genua（德国 genua GmbH）高安全应用层防火墙专用 SNMP 采集模板（GENUA-MIB，企业号 3717）。除标准 IF-MIB 接口指标与 64 位 HC 流量计数外，额外采集 genua 私有 OID 的设备健康（整机 CPU 使用率与内存使用率，均为设备直接上报的百分比）与防火墙负载（当前活动连接数，对应 pf 状态表条目）。genua 为运行于强固化 OpenBSD/Linux 基座的软件型高安全防火墙，其私有 MIB 未以无需行级过滤的标量形式暴露温度/风扇/电源传感器，故为 N/A。适用品牌型号——genua genugate / genuscreen 高安全应用层防火墙（德国，企业号 3717）。",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_genua'}) by (instance_id)",
   "name": "Firewall",
   "icon": "mm-firewall_防火墙",

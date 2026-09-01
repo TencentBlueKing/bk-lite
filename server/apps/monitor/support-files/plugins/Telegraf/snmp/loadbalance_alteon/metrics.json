@@ -3,6 +3,7 @@
   "collect_type": "snmp_alteon",
   "plugin": "Loadbalance Radware Alteon SNMP",
   "plugin_desc": "Radware Alteon application switch / load balancer SNMP collection (ALTEON-CHEETAH-SWITCH-MIB, IANA PEN 1872). Beyond standard IF-MIB interface metrics, it collects Alteon private OIDs for device health: management-processor CPU utilization (mpCpuStatsUtil1Second, reported directly as a percentage) and main memory (mpMemStatsTotal/mpMemStatsFree in bytes, from which usage % is derived). The CHEETAH MIB does not expose a scalar connection/session count or temperature/fan/power, so those are N/A. Supported brands/models — Radware Alteon ADC / application switches running AlteonOS (Alteon 4408/5208/6420/8420/9800 and VA virtual appliances; enterprise 1872).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='loadbalance', collect_type='snmp_alteon'}) by (instance_id)",
   "name": "Loadbalance",
   "icon": "mm-loadbalance_负载均衡",

@@ -1,3 +1,6 @@
+'use client';
+
+import React from 'react';
 import { createThemeCss } from './css-adapter';
 import { defaultTheme } from './defaults';
 

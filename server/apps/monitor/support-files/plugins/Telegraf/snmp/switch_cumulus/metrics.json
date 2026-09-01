@@ -3,6 +3,7 @@
   "collect_type": "snmp_cumulus",
   "plugin": "Switch Cumulus SNMP",
   "plugin_desc": "NVIDIA Cumulus Linux 开放网络交换机专用 SNMP 采集模板（基于标准 NET-SNMP，含 HOST-RESOURCES-MIB / UCD-SNMP-MIB / LM-SENSORS-MIB）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Cumulus Linux 健康指标：CPU 使用率（HOST-RESOURCES hrProcessorLoad 多核均值）、主内存（总量 + 空闲，字节，用量按 (总量-空闲)/总量 推导）与机箱温度（LM-SENSORS 温度传感器，℃）。Cumulus Linux 以软件 NOS 运行于白盒交换机硬件，标准 NET-SNMP 未以无需行级过滤的标量形式暴露独立风扇与电源状态 OID，故风扇与电源为 N/A。适用品牌型号——NVIDIA / Cumulus Linux 白盒交换机（Cumulus Linux NOS，基于标准 NET-SNMP）。",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_cumulus'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

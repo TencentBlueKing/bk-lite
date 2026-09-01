@@ -9,11 +9,63 @@ StreamingHttpResponse 外壳，以及在流结束后从已累积内容中“读�
 不会修改或新增任何流式事件。AGUI_SKIP_TYPES 由宿主类（ChatFlowEngine）提供。
 """
 import json
-from typing import Any, List
+from typing import Any, List, Optional
 
 from django.http import StreamingHttpResponse
 
 from apps.core.logger import opspilot_logger as logger
+
+_SSE_ACCUMULATE_SKIP_TYPES = frozenset(
+    {
+        "TOOL_CALL_START",
+        "TOOL_CALL_ARGS",
+        "TOOL_CALL_END",
+        "TOOL_CALL_RESULT",
+        "RUN_STARTED",
+        "RUN_FINISHED",
+        "RUN_ERROR",
+        "TEXT_MESSAGE_START",
+        "TEXT_MESSAGE_END",
+    }
+)
+
+
+def should_accumulate_sse_payload(data: Any) -> bool:
+    """Return True when parsed SSE JSON should be kept for final-message extraction."""
+    if not isinstance(data, dict):
+        return False
+
+    data_type = data.get("type", "")
+    if data_type in _SSE_ACCUMULATE_SKIP_TYPES:
+        return False
+    if data_type == "TEXT_MESSAGE_CONTENT":
+        return True
+    if data_type == "CUSTOM" and data.get("name") == "browser_step_progress":
+        return True
+    if data.get("object") == "chat.completion.chunk" or "choices" in data:
+        return True
+    if not data_type and data.get("object") in ("message", "content", "text"):
+        return True
+    if not data_type:
+        for key in ("content", "message", "text", "delta"):
+            value = data.get(key)
+            if isinstance(value, str) and value:
+                return True
+    return False
+
+
+def parse_sse_chunk_for_accumulation(chunk: str) -> Optional[dict]:
+    """Parse an SSE chunk only when it contributes to final message / browser steps."""
+    if not chunk.startswith("data: "):
+        return None
+    data_str = chunk[6:].strip()
+    if not data_str or data_str == "[DONE]":
+        return None
+    try:
+        data_json = json.loads(data_str)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    return data_json if should_accumulate_sse_payload(data_json) else None
 
 
 class SSEResponderMixin:
@@ -24,17 +76,18 @@ class SSEResponderMixin:
 
     def _create_sse_stream_response(self, generate_stream) -> StreamingHttpResponse:
         """创建 SSE 响应"""
-        response = StreamingHttpResponse(generate_stream(), content_type="text/event-stream")
-        response["Cache-Control"] = "no-cache, no-store, must-revalidate"
-        response["X-Accel-Buffering"] = "no"
-        response["Pragma"] = "no-cache"
-        response["Expires"] = "0"
-        response["Access-Control-Allow-Origin"] = "*"
-        response["Access-Control-Allow-Headers"] = "Cache-Control"
-        response["X-Execution-ID"] = self.execution_id
-        response["Access-Control-Expose-Headers"] = "X-Execution-ID"
-        response["Transfer-Encoding"] = "chunked"
-        return response
+        from apps.opspilot.utils.stream_common import make_sse_response
+
+        return make_sse_response(
+            generate_stream,
+            extra_headers={
+                "Pragma": "no-cache",
+                "Expires": "0",
+                "X-Execution-ID": self.execution_id,
+                "Access-Control-Expose-Headers": "X-Execution-ID",
+                "Transfer-Encoding": "chunked",
+            },
+        )
 
     def _create_error_response(self, error_message: str):
         """创建错误的 StreamingHttpResponse"""

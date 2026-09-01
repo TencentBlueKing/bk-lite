@@ -8,8 +8,15 @@ from apps.core.logger import cmdb_logger as logger
 class Command(BaseCommand):
     help = "初始化模型"
 
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--sync-app-topo-layer",
+            action="store_true",
+            help="用种子表覆盖已有模型的应用拓扑层级（一次性对齐当前内置分层，默认不覆盖）",
+        )
+
     def handle(self, *args, **options):
-        migrator = ModelMigrate()
+        migrator = ModelMigrate(sync_app_topo_layer=bool(options.get("sync_app_topo_layer")))
 
         # 模型初始化
         logger.info("初始化模型！")

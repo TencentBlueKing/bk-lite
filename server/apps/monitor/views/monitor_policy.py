@@ -9,6 +9,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from apps.core.decorators.api_permission import HasPermission
 from apps.core.exceptions.base_app_exception import BaseAppException, UnauthorizedException
 from apps.core.utils.current_team_scope import resolve_current_team_data_scope, scope_permission_queryset, validate_assignable_organizations
 from apps.core.utils.permission_utils import get_permission_rules
@@ -18,6 +19,7 @@ from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.alert_policy import AlertConstants
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.constants.permission import PermissionConstants
+from apps.monitor.filters.id_filters import filter_positive_int_field
 from apps.monitor.filters.monitor_policy import MonitorPolicyFilter
 from apps.monitor.models import MonitorAlert, MonitorObject, PolicyOrganization, PolicyTemplate
 from apps.monitor.models.monitor_policy import MonitorPolicy
@@ -26,7 +28,7 @@ from apps.monitor.services.alert_lifecycle_notify import NOTIFY_SCOPE_ALERT_CENT
 from apps.monitor.services.node_mgmt import InstanceConfigService
 from apps.monitor.services.policy import PolicyService
 from apps.monitor.services.policy_baseline import PolicyBaselineService
-from apps.monitor.services.policy_bulk import build_bulk_policy_payloads
+from apps.monitor.services.policy_bulk import build_bulk_policy_payloads, normalize_stored_metric_unit
 from apps.monitor.services.policy_preview import PolicyPreviewService
 from apps.monitor.utils.pagination import parse_page_params
 from config.drf.pagination import CustomPageNumberPagination
@@ -124,8 +126,8 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
             return queryset
 
         monitor_object_id = self._get_monitor_object_id()
-        if monitor_object_id not in (None, ""):
-            queryset = queryset.filter(monitor_object_id=monitor_object_id)
+        # 非法非数字 id（如分类名 Network Device）不得落入 ORM，否则 ValueError → 500
+        queryset = filter_positive_int_field(queryset, "monitor_object_id", monitor_object_id)
 
         scope = self._get_data_scope()
         permission = self._get_effective_permission(monitor_object_id)
@@ -175,6 +177,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
 
         return WebUtils.response_success(dict(count=queryset.count(), items=results))
 
+    @HasPermission("strategy_list-Add")
     def create(self, request, *args, **kwargs):
         self._ensure_target_organizations(request.data.get("organizations", []))
         request.data["created_by"] = request.user.username
@@ -190,6 +193,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
                 self.update_policy_baselines(policy_id, policy.enable_alerts)
         return response
 
+    @HasPermission("strategy_list-Edit")
     def update(self, request, *args, **kwargs):
         if kwargs.get("partial", False):
             return super().update(request, *args, **kwargs)
@@ -234,6 +238,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
 
         return response
 
+    @HasPermission("strategy_list-Edit")
     def partial_update(self, request, *args, **kwargs):
         policy = self.get_object()
         if "organizations" in request.data:
@@ -277,6 +282,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
 
         return response
 
+    @HasPermission("strategy_list-Delete")
     def destroy(self, request, *args, **kwargs):
         policy = self.get_object()
         policy_id = policy.id
@@ -578,6 +584,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         return WebUtils.response_success(data)
 
     @action(methods=["post"], detail=False, url_path="template/save")
+    @HasPermission("strategy_list-Edit")
     def save_template(self, request):
         monitor_object_id = request.data.get("monitor_object")
         plugin_id = request.data.get("plugin")
@@ -600,6 +607,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         return WebUtils.response_success(PolicyService.serialize_template(template))
 
     @action(methods=["post"], detail=False, url_path="template/import")
+    @HasPermission("strategy_list-Edit")
     def import_templates(self, request):
         upload = request.FILES.get("file")
         if upload is None:
@@ -628,6 +636,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         return response
 
     @action(methods=["post"], detail=False, url_path="template/bulk_delete")
+    @HasPermission("strategy_list-Delete")
     def bulk_delete_templates(self, request):
         keys = request.data.get("keys") or []
         if not keys:
@@ -647,6 +656,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         return WebUtils.response_success({"deleted_count": deleted_count})
 
     @action(methods=["post"], detail=False, url_path="bulk_create_from_templates")
+    @HasPermission("strategy_list-Add")
     def bulk_create_from_templates(self, request):
         monitor_object_id = request.data.get("monitor_object")
         template_keys = request.data.get("template_keys") or []
@@ -826,7 +836,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
                 {
                     **template,
                     "metric_id": metric.id,
-                    "metric_unit": "" if metric.unit in ("none", "short") else metric.unit,
+                    "metric_unit": normalize_stored_metric_unit(metric.unit, getattr(metric, "data_type", "") or ""),
                     "collect_type": collect_type or metric.monitor_plugin_id,
                 }
             )

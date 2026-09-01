@@ -248,6 +248,41 @@ monitor_object_metric:
     mysql_variables_innodb_buffer_pool_size:
       name: InnoDB Buffer Pool Size Setting
       desc: Configured innodb_buffer_pool_size used as the cache capacity baseline
+    mysql_binary_files_count:
+      name: Binary Log Files Count
+      desc: Number of binary log files from SHOW BINARY LOGS; enable Binary Log under
+        advanced collection options
+    mysql_binary_size_bytes:
+      name: Binary Log Total Size
+      desc: Total size of binary log files from SHOW BINARY LOGS; enable Binary Log under
+        advanced collection options
+    mysql_table_io_waits_fetch_rate:
+      name: Table IO Wait Fetch Rate
+      desc: Instance-wide rate of table IO wait fetch events; enable Table IO Waits
+    mysql_table_io_waits_insert_rate:
+      name: Table IO Wait Insert Rate
+      desc: Instance-wide rate of table IO wait insert events; enable Table IO Waits
+    mysql_table_io_waits_update_rate:
+      name: Table IO Wait Update Rate
+      desc: Instance-wide rate of table IO wait update events; enable Table IO Waits
+    mysql_table_io_waits_delete_rate:
+      name: Table IO Wait Delete Rate
+      desc: Instance-wide rate of table IO wait delete events; enable Table IO Waits
+    mysql_table_io_waits_seconds_rate:
+      name: Table IO Wait Time Rate
+      desc: Instance-wide rate of table IO wait time across operations; enable Table
+        IO Waits
+    mysql_table_lock_waits_read_rate:
+      name: Table SQL Lock Wait Read Rate
+      desc: Instance-wide rate of SQL table lock wait read events; enable Table Lock
+        Waits
+    mysql_table_lock_waits_write_rate:
+      name: Table SQL Lock Wait Write Rate
+      desc: Instance-wide rate of SQL table lock wait write events; enable Table Lock
+        Waits
+    mysql_table_lock_waits_seconds_rate:
+      name: Table SQL Lock Wait Time Rate
+      desc: Instance-wide rate of SQL table lock wait time; enable Table Lock Waits
 monitor_object_metric_group:
   Mysql:
     Base: Base
@@ -259,3 +294,6 @@ monitor_object_metric_group:
     KeyCache: Key Cache
     TempTable: Temporary Tables
     Replication: Replication
+    BinaryLog: Binary Log
+    TableIOWait: Table IO Wait
+    TableLockWait: Table Lock Wait

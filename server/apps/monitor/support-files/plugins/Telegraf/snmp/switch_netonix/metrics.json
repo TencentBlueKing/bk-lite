@@ -3,6 +3,7 @@
   "collect_type": "snmp_netonix",
   "plugin": "Switch Netonix SNMP",
   "plugin_desc": "Netonix WISP 交换机专用 SNMP 采集（NETONIX-SWITCH-MIB，IANA 私有企业号 46242）。在标准 IF-MIB 接口指标之外，额外采集 Netonix 私有 OID 的机箱温度（NETONIX-SWITCH-MIB temp，专用温度表，°C）。NETONIX-SWITCH-MIB 不提供 CPU/内存 OID；风扇为转速（RPM）而非状态枚举、PoE 为端口级状态，均不属于设备级健康状态，故本插件仅采集温度（其余维度 N/A）。适用品牌型号——Netonix WISP Switch 系列 PoE 交换机。",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_netonix'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

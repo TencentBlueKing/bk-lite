@@ -15,6 +15,24 @@ from apps.core.utils.serializers import AuthSerializer
 from apps.system_mgmt.models.user import User
 
 
+def _format_alert_duration(total_seconds: int) -> str:
+    days = total_seconds // 86400
+    hours = (total_seconds % 86400) // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+
+    result = ""
+    if days > 0:
+        result += f"{days}d "
+    if hours > 0:
+        result += f"{hours}h "
+    if minutes > 0:
+        result += f"{minutes}m "
+    if seconds > 0 or result == "":
+        result += f"{seconds}s"
+    return result
+
+
 class AlertModelSerializer(AuthSerializer):
     """
     Serializer for Alert model.
@@ -32,6 +50,7 @@ class AlertModelSerializer(AuthSerializer):
     updated_at = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True)
     first_event_time = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True)
     last_event_time = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True)
+    closed_at = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True, allow_null=True)
     incident_name = serializers.SerializerMethodField()
     notify_status = serializers.SerializerMethodField()
     notify_total = serializers.SerializerMethodField()
@@ -58,6 +77,7 @@ class AlertModelSerializer(AuthSerializer):
             # "events": {"write_only": True},  # events 字段只读
             "created_at": {"read_only": True},
             "updated_at": {"read_only": True},
+            "closed_at": {"read_only": True},
             # "operator": {"write_only": True},
             "labels": {"write_only": True},
         }
@@ -164,35 +184,21 @@ class AlertModelSerializer(AuthSerializer):
 
     @staticmethod
     def get_duration(obj):
-        """
-        当前时间- 创建时间
-        """
-        if not obj.created_at or obj.status not in AlertStatus.ACTIVATE_STATUS:
+        """初次事件时间到关闭时间；未关闭则到当前时间。"""
+        start_at = getattr(obj, "first_event_time", None) or getattr(obj, "created_at", None)
+        if not start_at:
             return "--"
 
-        # 计算持续时间
-        now = timezone.now()
-        duration = now - obj.created_at
-        total_seconds = int(duration.total_seconds())
+        closed_at = getattr(obj, "closed_at", None)
+        if closed_at:
+            end_at = closed_at
+        elif obj.status in AlertStatus.ACTIVATE_STATUS or obj.status == AlertStatus.RESOLVED:
+            end_at = timezone.now()
+        else:
+            return "--"
 
-        # 计算各个时间单位
-        days = total_seconds // 86400
-        hours = (total_seconds % 86400) // 3600
-        minutes = (total_seconds % 3600) // 60
-        seconds = total_seconds % 60
-
-        # 构建格式化字符串
-        result = ""
-        if days > 0:
-            result += f"{days}d "
-        if hours > 0:
-            result += f"{hours}h "
-        if minutes > 0:
-            result += f"{minutes}m "
-        if seconds > 0 or result == "":
-            result += f"{seconds}s"
-
-        return result
+        total_seconds = int((end_at - start_at).total_seconds())
+        return _format_alert_duration(max(total_seconds, 0))
 
     @staticmethod
     def get_event_count(obj):

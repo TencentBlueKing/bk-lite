@@ -44,6 +44,7 @@ class VmwareManage(object):
         self.nb_backup_policy_field = params.get(
             "nb_backup_policy_field", "NB_BACKUP_POLICY"
         )
+        self.collection_task_id = params.get("collection_task_id")
 
     def test_connection(self):
         """
@@ -639,10 +640,12 @@ class VmwareManage(object):
             result = self.service()
             inst_data = {"result": result, "success": True}
         except Exception as err:
-            import traceback
-
-            logger.error(
-                f"vmware_info list_all_resources error! {traceback.format_exc()}"
+            logger.exception(
+                "event=vmware_collect_failed host=%s task_id=%s failed_stage=%s error_type=%s",
+                self.host,
+                self.collection_task_id,
+                "list_all_resources",
+                type(err).__name__,
             )
             error = str(err)
             error = error.replace("=", "-").replace("\n", " ")

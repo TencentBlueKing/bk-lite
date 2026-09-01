@@ -543,7 +543,7 @@ def test_monitor_instance_list_add_metrics_escapes_flow_instance_regex_for_promq
     class StubVictoriaMetricsAPI:
         def query(self, query, step="20m"):
             captured_queries.append(query)
-            if query == monitor_object.default_metric:
+            if "tlast_over_time" in query and "instance_type='switch'" in query:
                 return {
                     "data": {
                         "result": [
@@ -552,7 +552,7 @@ def test_monitor_instance_list_add_metrics_escapes_flow_instance_regex_for_promq
                                     "instance_id": logical_id,
                                     "agent_id": "172.18.0.19-1",
                                 },
-                                "value": [1781234567, "1"],
+                                "value": [1781234567, "1781234500"],
                             }
                         ]
                     }

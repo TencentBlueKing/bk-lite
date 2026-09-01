@@ -47,7 +47,7 @@ monitor_object_metric:
       desc: Pod metadata from kube_pod_info, used as the carrier metric for the IP display column.
     pod_status_phase:
       name: Pod Phase
-      desc: Current lifecycle phase of the Pod.
+      desc: Lifecycle phase: 0 Pending / 1 Running / 2 Succeeded / 3 Failed / 4 Unknown.
     pod_container_restarts_total:
       name: Container Restart Count
       desc: Total number of container restarts in the Pod since startup.

@@ -97,10 +97,10 @@ const hostParams = buildSearchQueryParams({
   timeRange: { timeRange: [100000, 460000], originValue: 0 },
 });
 
-assert.equal(
-  hostParams.query,
-  '100 - cpu_usage_idle{cpu="cpu-total", instance_type="os", instance_id=~"MTVmOTFiYTM5ODZk"}'
-);
+assert.equal(hostParams.query, undefined);
+assert.equal(hostParams.monitor_object_id, 8);
+assert.equal(hostParams.metric_id, 125);
+assert.deepEqual(hostParams.instance_ids, [hostInstance.instance_id]);
 assert.equal(hostParams.source_unit, 'percent');
 assert.equal(hostParams.start, 100000);
 assert.equal(hostParams.end, 460000);
@@ -122,10 +122,10 @@ const remoteParams = buildSearchQueryParams({
   timeRange: { timeRange: [100000, 460000], originValue: 0 },
 });
 
-assert.equal(
-  remoteParams.query,
-  'host_cpu_usage_percent_gauge{instance_type="os", instance_id=~"MTVmOTFiYTM5ODZk"}'
-);
+assert.equal(remoteParams.query, undefined);
+assert.equal(remoteParams.monitor_object_id, 8);
+assert.equal(remoteParams.metric_id, 494);
+assert.deepEqual(remoteParams.instance_ids, [hostInstance.instance_id]);
 
 assert.deepEqual(buildSearchTimeQueryParams({ timeRange: [], originValue: 15 }), {
   origin: '15',

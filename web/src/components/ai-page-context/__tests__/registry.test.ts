@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { captionFromOption } from '@/components/chart-snapshot';
 import { matchPilots } from '../pilots';
 import { createPageContextRegistry, mergePageContexts } from '../registry';
-import type { AiPageContextPilot } from '../types';
+import { PAGE_CONTEXT_PROVIDER_TIMEOUT_MS, type AiPageContextPilot } from '../types';
 
 describe('ai-page-context registry', () => {
   afterEach(() => {
@@ -145,6 +145,91 @@ describe('ai-page-context registry', () => {
     expect(merged.sections?.some((section) => section.id === 'high')).toBe(true);
     expect(merged.sections?.some((section) => section.id === 'low')).toBe(false);
     expect(merged.images).toHaveLength(6);
+  });
+
+  it('keeps a 2s global deadline instead of the dashboard screenshot budget', () => {
+    expect(PAGE_CONTEXT_PROVIDER_TIMEOUT_MS).toBe(2000);
+  });
+
+  it('falls back to getTextContext when screenshots time out', async () => {
+    vi.useFakeTimers();
+    const registry = createPageContextRegistry({
+      getPathname: () => '/x',
+      timeoutMs: 20,
+      pilots: [
+        {
+          test: () => true,
+          load: async () => ({
+            getMessage: () => ({ title: 'k', currentTime: 't1' }),
+            getContext: () => new Promise(() => undefined),
+            getTextContext: () => ({
+              sections: [{ id: 'kpi', label: '时间筛选', content: '磁盘使用率: 82.9%', priority: 9 }],
+            }),
+          }),
+        },
+      ],
+    });
+    const pending = registry.collect();
+    await vi.advanceTimersByTimeAsync(30);
+    const snapshot = await pending;
+    expect(snapshot?.sections?.[0].content).toContain('磁盘使用率: 82.9%');
+  });
+
+  it('times out empty-message getContext with the shared deadline', async () => {
+    vi.useFakeTimers();
+    const registry = createPageContextRegistry({
+      getPathname: () => '/x',
+      timeoutMs: 20,
+      pilots: [
+        {
+          test: () => true,
+          load: async () => ({
+            getMessage: () => ({ title: '' }),
+            getContext: () => new Promise(() => undefined),
+          }),
+        },
+      ],
+    });
+    const pending = registry.collect();
+    await vi.advanceTimersByTimeAsync(30);
+    await expect(pending).resolves.toBeNull();
+  });
+
+  it('times out hanging pilot.load with the shared deadline', async () => {
+    vi.useFakeTimers();
+    const registry = createPageContextRegistry({
+      getPathname: () => '/x',
+      timeoutMs: 20,
+      pilots: [
+        {
+          test: () => true,
+          load: () => new Promise(() => undefined),
+        },
+      ],
+    });
+    const pending = registry.collect();
+    await vi.advanceTimersByTimeAsync(30);
+    await expect(pending).resolves.toBeNull();
+  });
+
+  it('does not wait past the deadline when a pilot has no getTextContext', async () => {
+    vi.useFakeTimers();
+    const registry = createPageContextRegistry({
+      getPathname: () => '/x',
+      timeoutMs: 20,
+      pilots: [
+        {
+          test: () => true,
+          load: async () => ({
+            getMessage: () => ({ title: 'k', currentTime: 't1' }),
+            getContext: () => new Promise(() => undefined),
+          }),
+        },
+      ],
+    });
+    const pending = registry.collect();
+    await vi.advanceTimersByTimeAsync(30);
+    await expect(pending).resolves.toBeNull();
   });
 
   it('skips timed-out providers and still returns other sources', async () => {

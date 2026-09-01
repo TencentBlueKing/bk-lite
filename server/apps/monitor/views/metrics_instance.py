@@ -3,19 +3,78 @@ from typing import Optional
 from rest_framework import viewsets
 from rest_framework.decorators import action
 
-from apps.core.exceptions.base_app_exception import BaseAppException, UnauthorizedException
+from apps.core.exceptions.base_app_exception import BaseAppException, UnauthorizedException, ValidationAppException
 from apps.core.logger import monitor_logger as logger
 from apps.core.utils.permission_utils import get_permission_rules, permission_filter
+from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.models import MonitorInstance
 from apps.monitor.models.monitor_metrics import Metric
+from apps.monitor.services.authorized_metric_query import AuthorizedMetricQueryError, AuthorizedMetricQueryService
 from apps.monitor.services.metrics import Metrics as MetricsService
+from apps.monitor.services.metrics import MetricsQueryBudgetExceeded
 from apps.monitor.utils.unit_converter import UnitConverter
-from apps.core.utils.team_utils import get_current_team
 
 
 class MetricsInstanceViewSet(viewsets.ViewSet):
+    @staticmethod
+    def _authorized_query_service(request):
+        current_team = get_current_team(request)
+        if current_team in (None, ""):
+            raise BaseAppException("current_team is required")
+        return AuthorizedMetricQueryService(
+            user=request.user,
+            current_team=current_team,
+            include_children=request.COOKIES.get("include_children", "0") == "1",
+        )
+
+    @staticmethod
+    def _raise_authorized_query_error(exc: AuthorizedMetricQueryError):
+        if exc.code in {"monitor_instance_forbidden", "query_identity_required"}:
+            raise UnauthorizedException(str(exc))
+        raise ValidationAppException(str(exc))
+
+    @action(methods=["post"], detail=False, url_path="query_by_metric_range")
+    def query_by_metric_range(self, request):
+        """按当前用户实例权限执行服务端指标模板的范围查询。"""
+        try:
+            data = self._authorized_query_service(request).query_range(request.data)
+        except AuthorizedMetricQueryError as exc:
+            self._raise_authorized_query_error(exc)
+
+        source_unit = request.data.get("source_unit")
+        target_unit = request.data.get("unit")
+        auto_convert = request.data.get("auto_convert_unit", True)
+        if isinstance(auto_convert, str):
+            auto_convert = auto_convert.lower() == "true"
+        if source_unit:
+            if target_unit:
+                data = self._apply_unit_conversion(data, source_unit, target_unit)
+            elif auto_convert:
+                data = self._apply_unit_conversion(data, source_unit)
+        return WebUtils.response_success(data)
+
+    @action(methods=["post"], detail=False, url_path="query_by_metric")
+    def query_by_metric(self, request):
+        """按当前用户实例权限执行服务端指标模板的即时查询。"""
+        try:
+            data = self._authorized_query_service(request).query_instant(request.data)
+        except AuthorizedMetricQueryError as exc:
+            self._raise_authorized_query_error(exc)
+
+        source_unit = request.data.get("source_unit")
+        target_unit = request.data.get("unit")
+        auto_convert = request.data.get("auto_convert_unit", True)
+        if isinstance(auto_convert, str):
+            auto_convert = auto_convert.lower() == "true"
+        if source_unit:
+            if target_unit:
+                data = self._apply_unit_conversion(data, source_unit, target_unit)
+            elif auto_convert:
+                data = self._apply_unit_conversion(data, source_unit)
+        return WebUtils.response_success(data)
+
     @action(methods=["get"], detail=False, url_path="query")
     def get_metrics(self, request):
         """
@@ -107,15 +166,22 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
         except ValueError as e:
             raise BaseAppException(f"invalid step: {e}")
 
-        data = MetricsService.get_metrics_range(
-            query,
-            start,
-            end,
-            step,
-            detect_gaps=detect_gaps,
-            collection_interval_seconds=collection_interval,
-            card_budget=query_budget == "card",
-        )
+        try:
+            data = MetricsService.get_metrics_range(
+                query,
+                start,
+                end,
+                step,
+                detect_gaps=detect_gaps,
+                collection_interval_seconds=collection_interval,
+                card_budget=query_budget == "card",
+            )
+        except MetricsQueryBudgetExceeded as exc:
+            return WebUtils.response_error(
+                response_data=exc.data,
+                error_message=exc.message,
+                status_code=exc.STATUS_CODE,
+            )
 
         if source_unit:
             if target_unit:

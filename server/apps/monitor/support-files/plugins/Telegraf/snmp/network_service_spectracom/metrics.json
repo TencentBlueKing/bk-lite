@@ -3,6 +3,7 @@
   "collect_type": "snmp_spectracom",
   "plugin": "NetworkService Spectracom SNMP",
   "plugin_desc": "Spectracom SecureSync and NetClock time-server SNMP collection for appliances under Spectracom PEN 18837. The shared SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. This child template adds confirmed xSync and NTP status scalars for synchronization, DC power, alarm state, NTP mode and stratum. Temperature and hot-swap objects are not collected in this pass because their numeric leaf OIDs were not fully verified.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_spectracom'}) by (instance_id)",
   "name": "NetworkService",
   "icon": "mm-network_service_网络服务",

@@ -1,4 +1,5 @@
-from datetime import datetime, timezone as dt_tz
+from datetime import datetime
+from datetime import timezone as dt_tz
 from types import SimpleNamespace
 
 import pytest
@@ -18,6 +19,11 @@ def test_parse_pagination_defaults_and_cap():
     assert parse_pagination({}) == (1, 20)
     assert parse_pagination({"page": "2", "page_size": "50"}) == (2, 50)
     assert parse_pagination({"page_size": "999"}) == (1, 100)
+
+
+def test_parse_pagination_gateway_cap():
+    assert parse_pagination({"page_size": "500"}, max_page_size=500) == (1, 500)
+    assert parse_pagination({"page_size": "999"}, max_page_size=500) == (1, 500)
 
 
 def test_parse_pagination_rejects_invalid():
@@ -56,6 +62,7 @@ def test_serialize_alert_hides_db_id_and_events():
         dimensions={},
         first_event_time=datetime(2026, 8, 1, 12, 0, tzinfo=dt_tz.utc),
         last_event_time=datetime(2026, 8, 1, 12, 5, tzinfo=dt_tz.utc),
+        closed_at=None,
         created_at=datetime(2026, 8, 1, 12, 0, tzinfo=dt_tz.utc),
         updated_at=datetime(2026, 8, 1, 12, 5, tzinfo=dt_tz.utc),
         labels={"k": "v"},
@@ -66,6 +73,7 @@ def test_serialize_alert_hides_db_id_and_events():
     listed = serialize_alert(alert, detail=False)
     assert listed["alert_id"] == "ALERT-1"
     assert listed["event_count"] == 3
+    assert listed["closed_at"] is None
     assert "id" not in listed
     assert "events" not in listed
     assert "labels" not in listed

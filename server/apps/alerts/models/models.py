@@ -150,6 +150,13 @@ class Alert(models.Model):
     enrichment = JSONField(default=dict, help_text="丰富数据，按来源命名空间分区")
     first_event_time = models.DateTimeField(null=True, blank=True, help_text="首次事件时间")
     last_event_time = models.DateTimeField(null=True, blank=True, help_text="最近事件时间")
+    closed_at = models.DateTimeField(
+        "关闭时间",
+        blank=True,
+        null=True,
+        db_index=True,
+        help_text="自动关闭、手动关闭、自动恢复或接口关闭的时间",
+    )
     item = models.CharField(max_length=128, null=True, blank=True, db_index=True, help_text="事件指标")
     resource_id = models.CharField(max_length=128, null=True, blank=True, db_index=True, help_text="资源唯一ID")
     resource_name = models.CharField(max_length=128, null=True, blank=True, help_text="资源名称")
@@ -197,6 +204,13 @@ class Alert(models.Model):
 
     def __str__(self):
         return f"{self.alert_id} - {self.title} ({self.status})"
+
+    @staticmethod
+    def stamp_closed_at(alert, closed_at=None):
+        """首次关闭或自动恢复时写入关闭时间，之后不再覆盖。"""
+        if getattr(alert, "closed_at", None) is None:
+            alert.closed_at = closed_at or django_timezone.now()
+        return alert.closed_at
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)

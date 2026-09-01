@@ -16,9 +16,16 @@ from apps.alerts.models.outbox import AlertOutbox
 
 def _session_alert(alert_id="A1", session_status=SessionStatus.OBSERVING, end_minutes=-5, rule_id="1"):
     return Alert.objects.create(
-        alert_id=alert_id, level="0", title="t", content="c", fingerprint="fp" + alert_id,
-        status=AlertStatus.UNASSIGNED, is_session_alert=True, session_status=session_status,
-        session_end_time=timezone.now() + timedelta(minutes=end_minutes), rule_id=rule_id,
+        alert_id=alert_id,
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp" + alert_id,
+        status=AlertStatus.UNASSIGNED,
+        is_session_alert=True,
+        session_status=session_status,
+        session_end_time=timezone.now() + timedelta(minutes=end_minutes),
+        rule_id=rule_id,
     )
 
 
@@ -76,7 +83,8 @@ def test_confirm_observing_alerts_by_strategy():
 
 @pytest.mark.django_db
 def test_strategy_confirmation_rolls_back_when_assignment_intent_cannot_persist(
-    mocker, django_capture_on_commit_callbacks,
+    mocker,
+    django_capture_on_commit_callbacks,
 ):
     """批量确认与分派意图也必须原子提交，失败时不能遗留 CONFIRMED。"""
     _session_alert("A1", rule_id="42")
@@ -90,11 +98,7 @@ def test_strategy_confirmation_rolls_back_when_assignment_intent_cannot_persist(
         with django_capture_on_commit_callbacks(execute=True):
             TimeoutChecker.confirm_observing_alerts_by_strategy(42)
 
-    assert set(
-        Alert.objects.filter(rule_id="42").values_list(
-            "session_status", flat=True
-        )
-    ) == {SessionStatus.OBSERVING}
+    assert set(Alert.objects.filter(rule_id="42").values_list("session_status", flat=True)) == {SessionStatus.OBSERVING}
     assert not AlertOutbox.objects.exists()
 
 
@@ -106,6 +110,7 @@ def test_close_observing_session_alerts_by_strategy():
     alert = Alert.objects.get(alert_id="A1")
     assert alert.status == AlertStatus.CLOSED
     assert alert.session_status == SessionStatus.RECOVERED
+    assert alert.closed_at is not None
 
 
 @pytest.mark.django_db

@@ -1,5 +1,6 @@
 'use client';
 
+import './application3DChrome.css';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Button, Empty, Select, Spin } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
@@ -15,7 +16,7 @@ import type {
   Application3DWallItem,
 } from '@/app/ops-analysis/types/sceneWidget';
 import type { ScreenRenderContext } from '@/app/ops-analysis/types/dashBoard';
-import type { Application3DFocusChromeLayout, Application3DSceneController } from './application3DScene';
+import type { Application3DSceneController } from './application3DScene';
 import Application3DDetail from './application3DDetail';
 
 interface Application3DProps {
@@ -76,7 +77,6 @@ export default function Application3D({
   const [error, setError] = useState('');
   const [refreshWarning, setRefreshWarning] = useState('');
   const [selected, setSelected] = useState<Application3DWallItem | null>(null);
-  const [focusReady, setFocusReady] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detail, setDetail] = useState<Application3DDetailData | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -89,14 +89,15 @@ export default function Application3D({
   const [metric, setMetric] = useState<Application3DMetricSeriesResult | null>(null);
   const [metricLoading, setMetricLoading] = useState(false);
   const [toolbarEntered, setToolbarEntered] = useState(false);
-  const [focusChromeLayout, setFocusChromeLayout] = useState<Application3DFocusChromeLayout | null>(null);
   const allowedOnSurface = screenRenderContext?.enabled === true;
   const wallMotionRef = useRef<'intro' | 'filter' | 'none'>('intro');
   const wallRef = useRef(wall);
   const selectedRef = useRef(selected);
-  const clearSelectionRef = useRef<() => void>(() => undefined);
+  const detailOpenRef = useRef(detailOpen);
+  const openApplicationDetailRef = useRef<(item: Application3DWallItem) => void>(() => undefined);
   wallRef.current = wall;
   selectedRef.current = selected;
+  detailOpenRef.current = detailOpen;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -123,32 +124,9 @@ export default function Application3D({
         translate: (id, defaultMessage) => translateRef.current(id, defaultMessage),
         onSelect: (item) => {
           if (editMode) return;
-          if (selectedRef.current?.id === item.id) {
-            return;
-          }
-          detailGenerationRef.current += 1;
-          detailAbortRef.current?.abort();
-          metricAbortRef.current?.abort();
-          setFocusReady(false);
-          setSelected(item);
-          setDetailOpen(false);
-          setDetail(null);
-          setDetailLoading(false);
-          setDetailError('');
-          setAlarmDetail(null);
-          setAlarmLoading(false);
-          setAlarmError('');
-          setMetric(null);
-          setMetricLoading(false);
-          controllerRef.current?.focus(item.id);
-        },
-        onFocusSettled: (item) => {
-          if (editMode || selectedRef.current?.id !== item.id) return;
-          setFocusReady(true);
-        },
-        onBackground: () => {
-          if (editMode || !selectedRef.current) return;
-          clearSelectionRef.current();
+          if (selectedRef.current?.id === item.id && detailOpenRef.current) return;
+          controller.resetCamera();
+          openApplicationDetailRef.current(item);
         },
       });
       controllerRef.current = controller;
@@ -218,8 +196,9 @@ export default function Application3D({
     detailGenerationRef.current += 1;
     detailAbortRef.current?.abort();
     metricAbortRef.current?.abort();
+    selectedRef.current = null;
+    detailOpenRef.current = false;
     setSelected(null);
-    setFocusReady(false);
     setDetailOpen(false);
     setDetail(null);
     setDetailError('');
@@ -230,9 +209,7 @@ export default function Application3D({
     lastAlarmIdRef.current = null;
     setMetric(null);
     setMetricLoading(false);
-    controllerRef.current?.restoreWall();
   }, []);
-  clearSelectionRef.current = clearSelection;
 
   const fetchWall = useCallback(async (filters: Record<string, string[]>, silent = false) => {
     const generation = ++wallGenerationRef.current;
@@ -299,29 +276,6 @@ export default function Application3D({
     if (wall && !loading) setToolbarEntered(true);
   }, [wall, loading]);
 
-  useLayoutEffect(() => {
-    if (!focusReady || !selected) {
-      setFocusChromeLayout(null);
-      return undefined;
-    }
-    const readLayout = () => {
-      setFocusChromeLayout(controllerRef.current?.getFocusChromeLayout?.() ?? null);
-    };
-    readLayout();
-    const frame = window.requestAnimationFrame(readLayout);
-    const mountNode = mountRef.current;
-    const observer = typeof ResizeObserver !== 'undefined' && mountNode
-      ? new ResizeObserver(readLayout)
-      : null;
-    observer?.observe(mountNode);
-    window.addEventListener('resize', readLayout);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      observer?.disconnect();
-      window.removeEventListener('resize', readLayout);
-    };
-  }, [focusReady, selected, screenRenderContext?.fitScale]);
-
   const filterDefinitions = wall?.filters ?? [];
   const handleFilterChange = (filterId: string, values: string[]) => {
     const next = { ...appliedFilters, [filterId]: values };
@@ -331,23 +285,26 @@ export default function Application3D({
     void fetchWall(next);
   };
 
-  const loadDetail = useCallback(async () => {
-    if (!selected) return;
+  const loadDetail = useCallback(async (item: Application3DWallItem) => {
     const generation = ++detailGenerationRef.current;
     detailAbortRef.current?.abort();
     metricAbortRef.current?.abort();
     const abortController = new AbortController();
     detailAbortRef.current = abortController;
+    selectedRef.current = item;
+    detailOpenRef.current = true;
+    setSelected(item);
     setDetailOpen(true);
-    setFocusReady(false);
     setDetailLoading(true);
     setDetailError('');
     setAlarmError('');
     setAlarmDetail(null);
+    setAlarmLoading(false);
+    lastAlarmIdRef.current = null;
     setMetric(null);
-    controllerRef.current?.restoreWall();
+    setMetricLoading(false);
     try {
-      const result = await getApplicationDetail(selected.id, undefined, abortController.signal);
+      const result = await getApplicationDetail(item.id, undefined, abortController.signal);
       if (!mountedRef.current || generation !== detailGenerationRef.current) return;
       setDetail(result);
     } catch (requestError) {
@@ -365,7 +322,8 @@ export default function Application3D({
         setDetailLoading(false);
       }
     }
-  }, [clearSelection, getApplicationDetail, selected, t]);
+  }, [clearSelection, getApplicationDetail, t]);
+  openApplicationDetailRef.current = loadDetail;
 
   const loadMoreAlarms = useCallback(async () => {
     if (!selected || detail?.alarms.state !== 'available' || !detail.alarms.page.nextCursor) return;
@@ -509,7 +467,7 @@ export default function Application3D({
   );
 
   return (
-    <div className="relative h-full min-h-48 w-full overflow-hidden bg-transparent text-[var(--color-application3d-text)]">
+    <div className="relative h-full min-h-48 w-full overflow-hidden bg-[var(--screen-canvas-bg,#0c2138)] text-[var(--color-application3d-text)]">
       <div
         ref={mountRef}
         className="absolute inset-0 z-0 [&>canvas]:relative [&>canvas]:z-0 [&>canvas]:block [&>canvas]:h-full [&>canvas]:w-full"
@@ -522,8 +480,11 @@ export default function Application3D({
       )}
       {/* Full-screen status layers stay below chrome so filter Select stays clickable. */}
       {loading && (
-        <div className="pointer-events-none absolute inset-0 z-[5] flex items-center justify-center bg-[var(--color-application3d-loading-overlay)]">
-          <Spin tip={t('dashboard.application3DLoading')} />
+        <div className="app3d-wall-loading pointer-events-none absolute inset-0 z-[5] flex flex-col items-center justify-center gap-3 bg-[var(--color-application3d-loading-overlay)]">
+          <Spin size="large" />
+          <span className="app3d-wall-loading__text">
+            {t('dashboard.application3DLoading')}
+          </span>
         </div>
       )}
       {error && !loading && (
@@ -549,7 +510,10 @@ export default function Application3D({
             className="pointer-events-auto border-[var(--color-application3d-refresh-border)] bg-[var(--color-application3d-refresh-bg)] text-[var(--color-application3d-text)]"
             icon={<ReloadOutlined spin={refreshing} />}
             disabled={refreshing}
-            onClick={() => void fetchWall(appliedFilters, true)}
+            onClick={() => {
+              controllerRef.current?.resetCamera();
+              void fetchWall(appliedFilters, true);
+            }}
             title={t('common.refresh')}
           />
         </div>
@@ -561,48 +525,6 @@ export default function Application3D({
           showIcon
           message={refreshWarning}
         />
-      )}
-      {selected && focusReady && !editMode && !detailOpen && (
-        <div className="pointer-events-none absolute inset-0 z-20">
-          <div
-            key={selected.id}
-            className={
-              focusChromeLayout
-                ? 'pointer-events-auto absolute flex flex-col items-center gap-3'
-                : 'pointer-events-auto absolute left-1/2 top-[58%] flex w-max min-w-[11.5rem] max-w-full -translate-x-1/2 flex-col items-center gap-3'
-            }
-            style={
-              focusChromeLayout
-                ? {
-                  left: focusChromeLayout.centerX,
-                  top: focusChromeLayout.bottom + 22,
-                  width: 'max-content',
-                  minWidth: focusChromeLayout.width,
-                  maxWidth: '100%',
-                  transform: 'translateX(-50%)',
-                }
-                : undefined
-            }
-          >
-            <button
-              type="button"
-              className="app3d-detail-cta"
-              onClick={() => void loadDetail()}
-            >
-              {t('dashboard.application3DOpenDetail')}
-              <span aria-hidden="true" className="ml-2 font-normal opacity-80">→</span>
-            </button>
-            <button
-              type="button"
-              className="app3d-back-cta"
-              onClick={clearSelection}
-              title={t('dashboard.application3DBackWall')}
-            >
-              <span aria-hidden="true">←</span>
-              {t('dashboard.application3DBackWall')}
-            </button>
-          </div>
-        </div>
       )}
       {detailOpen && selected && !editMode && (
         <Application3DDetail
@@ -618,7 +540,7 @@ export default function Application3D({
           alarmError={alarmError}
           onClose={clearSelection}
           onRetry={() => {
-            void loadDetail();
+            if (selected) void loadDetail(selected);
           }}
           onRetryAlarm={() => {
             if (lastAlarmIdRef.current) void loadAlarm(lastAlarmIdRef.current);

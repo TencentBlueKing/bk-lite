@@ -3,6 +3,7 @@
   "collect_type": "snmp_sangfor",
   "plugin": "Firewall Sangfor SNMP",
   "plugin_desc": "Sangfor-specific SNMP collection template for Sangfor NGAF next-generation firewalls. In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects Sangfor private MIB OIDs (IANA PEN 35047) for device health (overall CPU and memory utilization, both reported directly as percentages) and firewall load (current concurrent sessions). Temperature/fan/power sensor OIDs are not exposed in a row-filter-free scalar form by the Sangfor MIB, so those are N/A. Supported brands/models — Sangfor NGAF next-generation application firewall (enterprise 35047).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_sangfor'}) by (instance_id)",
   "name": "Firewall",
   "icon": "mm-firewall_防火墙",

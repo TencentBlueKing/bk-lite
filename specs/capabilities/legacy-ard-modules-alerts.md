@@ -21,7 +21,7 @@
 | ActionRule / ActionExecution | `models/action.py:8,29` | 告警动作规则与执行记录，承载动作匹配、执行状态与回调链路 |
 
 ## 3. 接口【已实现/已存在】
-所有 ViewSet 路由组均以 `router.register(r"api/<name>", ...)` 注册（urls.py:35-55），故完整路径统一带 `api/` 段，例如 `api/v1/alerts/api/alert_source/`。路由组：`api/alert_source`/`api/alerts`/`api/events`/`api/level`/`api/settings`/`api/assignment`/`api/shield`/`api/enrichment`/`api/incident`(+`/(?P<incident_pk>\d+)/updates`)/`api/alarm_strategy`/`api/log`/`api/action_rule`/`api/action_execution`；开放端点 `open_api/k8s` 与 `api/open/alerts*`（列表/详情/事件/动作/批量动作，urls.py:45-54）。企业扩展经 `alert_extension_routes` 挂载，不是独立 app。
+所有 ViewSet 路由组均以 `router.register(r"api/<name>", ...)` 注册（urls.py:35-55），故完整路径统一带 `api/` 段，例如 `api/v1/alerts/api/alert_source/`。路由组：`api/alert_source`/`api/alerts`/`api/events`/`api/level`/`api/settings`/`api/assignment`/`api/shield`/`api/enrichment`/`api/incident`(+`/(?P<incident_pk>\d+)/updates`)/`api/alarm_strategy`/`api/log`/`api/action_rule`/`api/action_execution`；开放端点 `open_api/k8s` 与 `api/open/alerts*`（列表/详情/事件/动作/批量动作，urls.py:45-54）。告警 OpenAPI 已经 `@openapi_expose` 注册到统一网关 `/openapi/v1/alerts/*`（list/detail/events/assign/acknowledge/reassign/close/batch-action），锚点为业务 `alert_id`。企业扩展经 `alert_extension_routes` 挂载，不是独立 app。
 path 端点（urls.py:57-63）：`api/test/`（request_test，receiver.py:107）、`api/receiver_data/`（receiver_data）、`api/source/<str:source_id>/webhook/`（receiver_source_data）、`api/action_callback/`（作业回调入口）、`api/action_job/scripts/` 与 `api/action_job/scripts/<int:script_id>/`（代理 job_mgmt 脚本列表与详情）。完整路径分别为 `api/v1/alerts/api/test/`、`api/v1/alerts/api/action_callback/` 等。
 
 ## 4. 接入与富化【已实现/已存在】

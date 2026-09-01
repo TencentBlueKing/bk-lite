@@ -7,8 +7,6 @@ import type { ScreenRenderContext } from '@/app/ops-analysis/types/dashBoard';
 
 interface SceneCallbacks {
   onSelect: (item: Application3DWallItem) => void;
-  onFocusSettled?: (item: Application3DWallItem) => void;
-  onBackground?: () => void;
 }
 
 const mocks = vi.hoisted(() => ({
@@ -17,8 +15,8 @@ const mocks = vi.hoisted(() => ({
   getAlarmDetail: vi.fn(),
   getMetric: vi.fn(),
   setActive: vi.fn(),
-  restoreWall: vi.fn(),
   reconcile: vi.fn(),
+  resetCamera: vi.fn(),
   sceneCallbacks: null as SceneCallbacks | null,
 }));
 
@@ -38,12 +36,10 @@ vi.mock('../application3DScene', () => ({
     mocks.sceneCallbacks = options;
     return {
       reconcile: mocks.reconcile,
-      focus: vi.fn(),
-      restoreWall: mocks.restoreWall,
       resize: vi.fn(),
-      getFocusChromeLayout: vi.fn(() => null),
       dispose: vi.fn(),
       setActive: mocks.setActive,
+      resetCamera: mocks.resetCamera,
     };
   },
 }));
@@ -127,42 +123,32 @@ describe('application3D runtimeActive contract', () => {
   });
 });
 
-describe('application3D focus chrome', () => {
-  it('shows detail and back only after the focused card settles, and background click restores the wall', async () => {
+describe('application3D application detail', () => {
+  it('opens application detail immediately on card select', async () => {
     mocks.getWall.mockResolvedValue({
       ...wall,
       items: [wallItem],
       capacity: { actualCount: 1, supportedCount: null },
     });
+    mocks.getApplicationDetail.mockImplementation(() => new Promise(() => undefined));
     render(<Application3D refreshKey="0" runtimeActive screenRenderContext={context} />);
 
     await waitFor(() => expect(mocks.sceneCallbacks).not.toBeNull());
-    expect(screen.queryByRole('button', { name: /application3DOpenDetail/ })).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
 
     act(() => {
       mocks.sceneCallbacks?.onSelect(wallItem);
     });
+    expect(mocks.resetCamera).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('dialog')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /application3DOpenDetail/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /application3DBackWall/ })).toBeNull();
-
-    act(() => {
-      mocks.sceneCallbacks?.onFocusSettled?.(wallItem);
-    });
-    expect(screen.getByRole('button', { name: /application3DOpenDetail/ })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /application3DBackWall/ })).toBeTruthy();
-    expect(document.querySelector('.app3d-detail-cta-frame')).toBeNull();
-    expect(document.querySelector('.app3d-detail-cta-mark')).toBeNull();
-    expect(document.querySelector('.app3d-detail-cta')).toBeTruthy();
-    expect(document.querySelector('.app3d-back-cta')).toBeTruthy();
-
-    act(() => {
-      mocks.sceneCallbacks?.onBackground?.();
-    });
-    expect(screen.queryByRole('button', { name: /application3DOpenDetail/ })).toBeNull();
-    expect(mocks.restoreWall).toHaveBeenCalled();
+    expect(document.querySelector('.app3d-detail-cta')).toBeNull();
+    expect(document.querySelector('.app3d-back-cta')).toBeNull();
+    expect(mocks.getApplicationDetail).toHaveBeenCalledWith('app-1', undefined, expect.any(AbortSignal));
   });
 
-  it('sends the focused card home when opening application detail', async () => {
+  it('does not refetch the same application while its detail is already open', async () => {
     mocks.getWall.mockResolvedValue({
       ...wall,
       items: [wallItem],
@@ -176,12 +162,10 @@ describe('application3D focus chrome', () => {
       mocks.sceneCallbacks?.onSelect(wallItem);
     });
     act(() => {
-      mocks.sceneCallbacks?.onFocusSettled?.(wallItem);
+      mocks.sceneCallbacks?.onSelect(wallItem);
     });
-    fireEvent.click(screen.getByRole('button', { name: /application3DOpenDetail/ }));
-
-    expect(mocks.restoreWall).toHaveBeenCalled();
-    expect(screen.queryByRole('button', { name: /application3DOpenDetail/ })).toBeNull();
+    expect(mocks.resetCamera).toHaveBeenCalledTimes(1);
+    expect(mocks.getApplicationDetail).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('dialog')).toBeTruthy();
   });
 });
@@ -205,6 +189,7 @@ describe('application3D wall motion triggers', () => {
       refreshedAt: '2026-08-26T00:01:00Z',
     });
     fireEvent.click(screen.getByTitle('common.refresh'));
+    expect(mocks.resetCamera).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(mocks.getWall).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(mocks.reconcile).toHaveBeenCalled());
     expect(mocks.reconcile.mock.calls.every((call) => call[1]?.playIntro === true)).toBe(false);

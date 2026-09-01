@@ -85,6 +85,13 @@ class TestGetInstallAppsLicense:
             result = get_install_apps()
         assert "license_mgmt" not in result, "get_install_apps() must discard explicit license_mgmt when there is no enterprise footprint"
 
+    def test_explicit_install_apps_injects_system_mgmt_and_console_mgmt(self, monkeypatch):
+        status = EnterpriseFootprintStatus(enterprise_apps=[], license_mgmt_present=False)
+        monkeypatch.setenv("INSTALL_APPS", "opspilot")
+        with patch(_DETECTOR_PATH, return_value=status):
+            result = get_install_apps()
+        assert result == {"opspilot", "system_mgmt", "console_mgmt"}
+
 
 class TestCommandHandleEnterpriseFootprintPropagation:
     """Regression: Command.handle() must propagate EnterpriseFootprintError, not swallow it."""

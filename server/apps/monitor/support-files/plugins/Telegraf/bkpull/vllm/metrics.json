@@ -1,6 +1,7 @@
 {
   "plugin": "VLLM",
   "plugin_desc": "由 Telegraf Pull 采集器通过 Prometheus 指标端点采集 vLLM 推理服务关键监控指标，覆盖请求队列、KV 缓存占用、Token 吞吐与时延等核心运维场景。",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='vllm', collect_type='bkpull'}) by (instance_id)",
   "instance_fact_bindings": [
     {
@@ -154,7 +155,7 @@
       "unit": "s",
       "dimensions": [],
       "description": "最近 5 分钟 Time-to-First-Token（TTFT）P99。",
-      "query": "histogram_quantile(0.99, sum(rate((label_replace({__name__=~\"vllm:time_to_first_token_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:time_to_first_token_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:time_to_first_token_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.99, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:time_to_first_token_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:time_to_first_token_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:time_to_first_token_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "时延",
@@ -167,7 +168,7 @@
       "unit": "s",
       "dimensions": [],
       "description": "最近 5 分钟端到端请求时延 P99。",
-      "query": "histogram_quantile(0.99, sum(rate((label_replace({__name__=~\"vllm:e2e_request_latency_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:e2e_request_latency_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:e2e_request_latency_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.99, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:e2e_request_latency_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:e2e_request_latency_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:e2e_request_latency_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "请求结果",
@@ -193,7 +194,7 @@
       "unit": "s",
       "dimensions": [],
       "description": "最近 5 分钟 TTFT P50。",
-      "query": "histogram_quantile(0.50, sum(rate((label_replace({__name__=~\"vllm:time_to_first_token_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:time_to_first_token_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:time_to_first_token_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.50, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:time_to_first_token_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:time_to_first_token_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:time_to_first_token_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "时延",
@@ -206,7 +207,7 @@
       "unit": "s",
       "dimensions": [],
       "description": "最近 5 分钟 TTFT P90。",
-      "query": "histogram_quantile(0.90, sum(rate((label_replace({__name__=~\"vllm:time_to_first_token_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:time_to_first_token_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:time_to_first_token_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.90, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:time_to_first_token_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:time_to_first_token_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:time_to_first_token_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "时延",
@@ -219,7 +220,7 @@
       "unit": "s",
       "dimensions": [],
       "description": "最近 5 分钟 TTFT P95。",
-      "query": "histogram_quantile(0.95, sum(rate((label_replace({__name__=~\"vllm:time_to_first_token_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:time_to_first_token_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:time_to_first_token_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.95, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:time_to_first_token_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:time_to_first_token_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:time_to_first_token_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "时延",
@@ -245,7 +246,7 @@
       "unit": "s",
       "dimensions": [],
       "description": "最近 5 分钟端到端请求时延 P50。",
-      "query": "histogram_quantile(0.50, sum(rate((label_replace({__name__=~\"vllm:e2e_request_latency_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:e2e_request_latency_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:e2e_request_latency_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.50, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:e2e_request_latency_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:e2e_request_latency_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:e2e_request_latency_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "时延",
@@ -258,7 +259,7 @@
       "unit": "s",
       "dimensions": [],
       "description": "最近 5 分钟端到端请求时延 P90。",
-      "query": "histogram_quantile(0.90, sum(rate((label_replace({__name__=~\"vllm:e2e_request_latency_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:e2e_request_latency_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:e2e_request_latency_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.90, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:e2e_request_latency_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:e2e_request_latency_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:e2e_request_latency_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "时延",
@@ -271,7 +272,7 @@
       "unit": "s",
       "dimensions": [],
       "description": "最近 5 分钟端到端请求时延 P95。",
-      "query": "histogram_quantile(0.95, sum(rate((label_replace({__name__=~\"vllm:e2e_request_latency_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:e2e_request_latency_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:e2e_request_latency_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.95, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:e2e_request_latency_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:e2e_request_latency_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:e2e_request_latency_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "时延",
@@ -297,7 +298,7 @@
       "unit": "s",
       "dimensions": [],
       "description": "最近 5 分钟 Inter-Token Latency（ITL）P50。",
-      "query": "histogram_quantile(0.50, sum(rate((label_replace({__name__=~\"vllm:inter_token_latency_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:inter_token_latency_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:inter_token_latency_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.50, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:inter_token_latency_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:inter_token_latency_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:inter_token_latency_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "时延",
@@ -310,7 +311,7 @@
       "unit": "s",
       "dimensions": [],
       "description": "最近 5 分钟 Inter-Token Latency（ITL）P90。",
-      "query": "histogram_quantile(0.90, sum(rate((label_replace({__name__=~\"vllm:inter_token_latency_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:inter_token_latency_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:inter_token_latency_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.90, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:inter_token_latency_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:inter_token_latency_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:inter_token_latency_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "时延",
@@ -323,7 +324,7 @@
       "unit": "s",
       "dimensions": [],
       "description": "最近 5 分钟 Inter-Token Latency（ITL）P95。",
-      "query": "histogram_quantile(0.95, sum(rate((label_replace({__name__=~\"vllm:inter_token_latency_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:inter_token_latency_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:inter_token_latency_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.95, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:inter_token_latency_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:inter_token_latency_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:inter_token_latency_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "时延",
@@ -336,7 +337,7 @@
       "unit": "s",
       "dimensions": [],
       "description": "最近 5 分钟 Inter-Token Latency（ITL）P99。",
-      "query": "histogram_quantile(0.99, sum(rate((label_replace({__name__=~\"vllm:inter_token_latency_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:inter_token_latency_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:inter_token_latency_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.99, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:inter_token_latency_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:inter_token_latency_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:inter_token_latency_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "时延",
@@ -362,7 +363,7 @@
       "unit": "s",
       "dimensions": [],
       "description": "最近 5 分钟请求排队时延 P50。",
-      "query": "histogram_quantile(0.50, sum(rate((label_replace({__name__=~\"vllm:request_queue_time_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:request_queue_time_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:request_queue_time_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.50, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_queue_time_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_queue_time_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:request_queue_time_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "时延",
@@ -375,7 +376,7 @@
       "unit": "s",
       "dimensions": [],
       "description": "最近 5 分钟请求排队时延 P90。",
-      "query": "histogram_quantile(0.90, sum(rate((label_replace({__name__=~\"vllm:request_queue_time_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:request_queue_time_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:request_queue_time_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.90, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_queue_time_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_queue_time_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:request_queue_time_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "时延",
@@ -388,7 +389,7 @@
       "unit": "s",
       "dimensions": [],
       "description": "最近 5 分钟请求排队时延 P95。",
-      "query": "histogram_quantile(0.95, sum(rate((label_replace({__name__=~\"vllm:request_queue_time_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:request_queue_time_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:request_queue_time_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.95, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_queue_time_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_queue_time_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:request_queue_time_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "时延",
@@ -401,7 +402,7 @@
       "unit": "s",
       "dimensions": [],
       "description": "最近 5 分钟请求排队时延 P99。",
-      "query": "histogram_quantile(0.99, sum(rate((label_replace({__name__=~\"vllm:request_queue_time_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:request_queue_time_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:request_queue_time_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.99, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_queue_time_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_queue_time_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:request_queue_time_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "时延",
@@ -427,7 +428,7 @@
       "unit": "s",
       "dimensions": [],
       "description": "最近 5 分钟 Prefill 时延 P50。",
-      "query": "histogram_quantile(0.50, sum(rate((label_replace({__name__=~\"vllm:request_prefill_time_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:request_prefill_time_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:request_prefill_time_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.50, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_prefill_time_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_prefill_time_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:request_prefill_time_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "时延",
@@ -440,7 +441,7 @@
       "unit": "s",
       "dimensions": [],
       "description": "最近 5 分钟 Prefill 时延 P90。",
-      "query": "histogram_quantile(0.90, sum(rate((label_replace({__name__=~\"vllm:request_prefill_time_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:request_prefill_time_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:request_prefill_time_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.90, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_prefill_time_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_prefill_time_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:request_prefill_time_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "时延",
@@ -453,7 +454,7 @@
       "unit": "s",
       "dimensions": [],
       "description": "最近 5 分钟 Prefill 时延 P95。",
-      "query": "histogram_quantile(0.95, sum(rate((label_replace({__name__=~\"vllm:request_prefill_time_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:request_prefill_time_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:request_prefill_time_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.95, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_prefill_time_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_prefill_time_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:request_prefill_time_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "时延",
@@ -466,7 +467,7 @@
       "unit": "s",
       "dimensions": [],
       "description": "最近 5 分钟 Prefill 时延 P99。",
-      "query": "histogram_quantile(0.99, sum(rate((label_replace({__name__=~\"vllm:request_prefill_time_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:request_prefill_time_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:request_prefill_time_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.99, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_prefill_time_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_prefill_time_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:request_prefill_time_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "时延",
@@ -492,7 +493,7 @@
       "unit": "s",
       "dimensions": [],
       "description": "最近 5 分钟 Decode 时延 P50。",
-      "query": "histogram_quantile(0.50, sum(rate((label_replace({__name__=~\"vllm:request_decode_time_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:request_decode_time_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:request_decode_time_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.50, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_decode_time_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_decode_time_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:request_decode_time_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "时延",
@@ -505,7 +506,7 @@
       "unit": "s",
       "dimensions": [],
       "description": "最近 5 分钟 Decode 时延 P90。",
-      "query": "histogram_quantile(0.90, sum(rate((label_replace({__name__=~\"vllm:request_decode_time_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:request_decode_time_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:request_decode_time_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.90, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_decode_time_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_decode_time_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:request_decode_time_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "时延",
@@ -518,7 +519,7 @@
       "unit": "s",
       "dimensions": [],
       "description": "最近 5 分钟 Decode 时延 P95。",
-      "query": "histogram_quantile(0.95, sum(rate((label_replace({__name__=~\"vllm:request_decode_time_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:request_decode_time_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:request_decode_time_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.95, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_decode_time_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_decode_time_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:request_decode_time_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "时延",
@@ -531,7 +532,7 @@
       "unit": "s",
       "dimensions": [],
       "description": "最近 5 分钟 Decode 时延 P99。",
-      "query": "histogram_quantile(0.99, sum(rate((label_replace({__name__=~\"vllm:request_decode_time_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:request_decode_time_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:request_decode_time_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.99, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_decode_time_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_decode_time_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:request_decode_time_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "时延",
@@ -570,7 +571,7 @@
       "unit": "counts",
       "dimensions": [],
       "description": "最近 5 分钟请求 prompt token 数 P50。",
-      "query": "histogram_quantile(0.50, sum(rate((label_replace({__name__=~\"vllm:request_prompt_tokens_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:request_prompt_tokens_(.+)\"))[5m:]) or label_replace(rate(vllm:request_prompt_tokens_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.50, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_prompt_tokens_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_prompt_tokens_(.+)\") or label_replace(rate({__name__=\"vllm:request_prompt_tokens_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "Token分布",
@@ -583,7 +584,7 @@
       "unit": "counts",
       "dimensions": [],
       "description": "最近 5 分钟请求 prompt token 数 P90。",
-      "query": "histogram_quantile(0.90, sum(rate((label_replace({__name__=~\"vllm:request_prompt_tokens_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:request_prompt_tokens_(.+)\"))[5m:]) or label_replace(rate(vllm:request_prompt_tokens_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.90, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_prompt_tokens_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_prompt_tokens_(.+)\") or label_replace(rate({__name__=\"vllm:request_prompt_tokens_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "Token分布",
@@ -596,7 +597,7 @@
       "unit": "counts",
       "dimensions": [],
       "description": "最近 5 分钟请求 prompt token 数 P99。",
-      "query": "histogram_quantile(0.99, sum(rate((label_replace({__name__=~\"vllm:request_prompt_tokens_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:request_prompt_tokens_(.+)\"))[5m:]) or label_replace(rate(vllm:request_prompt_tokens_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.99, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_prompt_tokens_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_prompt_tokens_(.+)\") or label_replace(rate({__name__=\"vllm:request_prompt_tokens_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "Token分布",
@@ -622,7 +623,7 @@
       "unit": "counts",
       "dimensions": [],
       "description": "最近 5 分钟请求生成 token 数 P50。",
-      "query": "histogram_quantile(0.50, sum(rate((label_replace({__name__=~\"vllm:request_generation_tokens_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:request_generation_tokens_(.+)\"))[5m:]) or label_replace(rate(vllm:request_generation_tokens_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.50, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_generation_tokens_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_generation_tokens_(.+)\") or label_replace(rate({__name__=\"vllm:request_generation_tokens_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "Token分布",
@@ -635,7 +636,7 @@
       "unit": "counts",
       "dimensions": [],
       "description": "最近 5 分钟请求生成 token 数 P90。",
-      "query": "histogram_quantile(0.90, sum(rate((label_replace({__name__=~\"vllm:request_generation_tokens_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:request_generation_tokens_(.+)\"))[5m:]) or label_replace(rate(vllm:request_generation_tokens_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.90, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_generation_tokens_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_generation_tokens_(.+)\") or label_replace(rate({__name__=\"vllm:request_generation_tokens_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "Token分布",
@@ -648,7 +649,7 @@
       "unit": "counts",
       "dimensions": [],
       "description": "最近 5 分钟请求生成 token 数 P99。",
-      "query": "histogram_quantile(0.99, sum(rate((label_replace({__name__=~\"vllm:request_generation_tokens_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:request_generation_tokens_(.+)\"))[5m:]) or label_replace(rate(vllm:request_generation_tokens_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.99, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_generation_tokens_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_generation_tokens_(.+)\") or label_replace(rate({__name__=\"vllm:request_generation_tokens_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "Token分布",

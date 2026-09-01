@@ -496,7 +496,11 @@ test('监控请求始终带 objectId 且指标按视口懒加载', async () => {
   assert.match(adapter, /monitor_instance\/\$\{objectId\}\/list/);
   assert.match(adapter, /add_metrics:\s*true/);
   assert.match(adapter, /effective_plugins/);
-  assert.match(adapter, /metrics_instance\/query_range/);
+  assert.match(adapter, /metrics_instance\/query_by_metric_range/);
+  assert.match(adapter, /monitor_object_id:\s*monitorObjectId/);
+  assert.match(adapter, /metric_id:\s*metricId/);
+  assert.match(adapter, /instance_ids:\s*\[instanceId\]/);
+  assert.doesNotMatch(adapter, /metrics_instance\/query_range/);
   assert.match(card, /IntersectionObserver/);
   assert.doesNotMatch(panel, /localStorage/);
 });

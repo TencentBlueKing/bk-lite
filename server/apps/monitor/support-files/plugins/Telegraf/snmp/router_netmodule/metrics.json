@@ -3,6 +3,7 @@
   "collect_type": "snmp_netmodule",
   "plugin": "Router NetModule SNMP",
   "plugin_desc": "NetModule industrial 4G/5G LTE router-specific SNMP collection (NB-MIB, IANA PEN 31496). In addition to standard IF-MIB interface metrics, it collects the NetModule private system temperature object (systemTemperature), whose raw value carries a tenths-of-a-degree display hint and is divided by 10 to obtain degrees Celsius. The NB-MIB exposes no CPU, memory, fan or power/voltage objects (NB/NG-series are fanless industrial routers). NetModule routers run embedded Linux with net-snmp, but whether HOST-RESOURCES / UCD CPU and memory OIDs are enabled is firmware-dependent and unverified, so CPU and memory are not collected here (N/A); the plugin collects system temperature plus standard IF-MIB (including 64-bit HC) interface metrics. CPU, memory, fan and power are N/A. Supported brands/models — NetModule NB/NG-series industrial 4G/5G LTE routers (IANA PEN 31496).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_netmodule'}) by (instance_id)",
   "name": "Router",
   "icon": "mm-router_路由器",

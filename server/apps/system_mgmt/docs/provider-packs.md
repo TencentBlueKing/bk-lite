@@ -9,7 +9,7 @@
 1. **运行期约定**：业务代码如何执行登录 / 同步 / 通知 / 拉群（见「运行期约定」）。包作者与测试应稳定在这一层。
 2. **打包与发现**：目录长什么样、Loader 扫哪里、单包失败如何隔离。这是发现期体检，不是业务调用点。
 
-本文 **不覆盖**：上传 ZIP、待应用、滚动重启、相对 `adapter:` 入口、插件管理面。客户自研在不上传的前提下，用源码/挂载目录投放，见「包放置位置」。
+本文 **不覆盖**：上传 ZIP、待应用、滚动重启、插件管理面。新类型在上传通道落地前，只放进 `builtin/` 后发镜像。
 
 ## 信任模型
 
@@ -60,30 +60,26 @@ im_group
 注册表不变量（实现时遵守；Loader 目前不全部强制）：
 
 - 包目录名、`PROVIDER_MANIFEST.key`、内置四家的 `provider_key` 三者一致。内置固定为 `feishu` / `wechat` / `wecom` / `ad`。
-- `adapter_key` 与 `base_connection_adapter_key` 以 `{provider_key}.` 为前缀（如 `wecom.login_auth`）。注册表按这些 key **全局**唯一；冲突时 **跳过该包**，已成功的包保留。
-- `adapter_path` / `base_connection_adapter_path` 是 **Python 绝对导入路径**。内置例：`apps.system_mgmt.providers.builtin.wecom.adapters.login_auth.WeComLoginAuthAdapter`。自研把 `builtin.wecom` 换成 `custom.<自己的目录名>`。不要相对 `adapter:`（那是上传加载器的事）。
+- `adapter_key` 与 `base_connection_adapter_key` 必须以 `{manifest.key}.` 为前缀（如 `wecom.login_auth`）。Loader 强制该前缀；违规时 **跳过该包**，已成功的包保留。注册表按这些 key **全局**唯一。
+- 有包目录时，`adapter_path` / `base_connection_adapter_path` 是 **包内相对路径**。Loader 拼上该包模块前缀再 `import_string`。内置例：`adapters.login_auth.WeComLoginAuthAdapter`，对应模块 `apps.system_mgmt.providers.builtin.wecom`。禁止在有目录的包里写死本包绝对模块路径。测试里无包目录的假 Manifest 仍可写绝对导入。
 
 ## 包放置位置
 
-Loader 按目录扫描，有两个扫描根。包必须是对应根下可导入的 Python 包。先加载内置，再加载自研。
+Loader 只扫描内置根。包必须是该根下可导入的 Python 包。`system_mgmt.ready()` 不主动扫包；注册表读路径懒加载。
 
 | 来源 | 扫描根 | 导入前缀 |
 |---|---|---|
 | 产品内置（飞书 / 微信 / 企微 / AD） | `providers/builtin/`（`BUILTIN_PROVIDER_ROOT`） | `apps.system_mgmt.providers.builtin.<目录名>` |
-| 客户自研（非上传） | `providers/custom/`（`CUSTOM_PROVIDER_ROOT`） | `apps.system_mgmt.providers.custom.<目录名>` |
 | 跨包工具 | `providers/common/`，不是 Provider 包 | — |
 | 上传安装的包 | 不在本文 | — |
 
 | 来源 | 放哪 |
 |---|---|
 | 产品内置 | `providers/builtin/{feishu,wechat,wecom,ad}/`。目录名与 key 固定。不要改名，不要把自研逻辑写进这四家。 |
-| 客户自研 | `providers/custom/<provider_key>/`，目录结构与内置相同。`<key>` 不得使用内置目录名（`feishu` / `wechat` / `wecom` / `ad`），也不得与已注册 Provider 冲突。进程重启后出现在「添加集成」。 |
 | 跨包工具 | 只放 `providers/common/`，且仅当 **至少两个包** 共用。现在 `common/` 几乎为空；AD 专用 LDAP 放在 AD 包内。 |
-| 上传安装的包 | 不在本文。不要为此在 `builtin/` 或 `custom/` 预留 ZIP 空壳。 |
+| 上传安装的包 | 不在本文。不要为此在 `builtin/` 预留 ZIP 空壳，也不要恢复 `providers/custom/` 扫描。 |
 
-不要把任何 Provider 包放到 `providers/common/`，也不要恢复顶层 `providers/adapters/`。不要把自研包放进 `builtin/`。
-
-`custom/` 在产品仓库里只保留空包（`__init__.py`）。现场包通过部署树、fork 或把数据卷挂到该目录投放；镜像升级会覆盖未挂载的目录，生产应挂载或在升级后重新放入。`custom/` 不存在时视为没有自研包，不因此失败。缺少 `builtin/` 仍是平台缺陷，加载失败。
+不要把任何 Provider 包放到 `providers/common/`，也不要恢复顶层 `providers/adapters/`。缺少 `builtin/` 仍是平台缺陷，加载失败。
 
 ### 单包失败隔离
 
@@ -100,7 +96,7 @@ Loader 按目录扫描，有两个扫描根。包必须是对应根下可导入�
 每个包导出 `PROVIDER_MANIFEST`。
 
 ```text
-providers/{builtin|custom}/<key>/
+providers/builtin/<key>/
   __init__.py                 # 导出 PROVIDER_MANIFEST
   manifest.py                 # Python Manifest
   language/
@@ -149,7 +145,7 @@ providers/{builtin|custom}/<key>/
 
 | 模块 | 角色 |
 |---|---|
-| `loader.py` | 扫描 `builtin/` 与 `custom/`、校验布局、导入 Manifest、注册 Provider 与 Adapter。单包失败跳过并记 ERROR，不得清空已成功的包。 |
+| `loader.py` | 扫描 `builtin/`、校验布局、把相对 adapter 路径拼到包模块前缀再取类、注册 Provider 与 Adapter。单包失败跳过并记 ERROR，不得清空已成功的包。 |
 | `registry.py` | 进程内 Provider / Adapter 注册表。读路径经 Loader 锁懒加载。 |
 | `schemas.py` | Manifest 与模板字段契约。`pack_i18n` 不对外序列化。 |
 | `base.py` | 能力基类。包实现继承这里。 |
@@ -158,7 +154,6 @@ providers/{builtin|custom}/<key>/
 | `log.py` | **包侧** 日志入口。Adapter / `client.py` / `base.py` 只从这里 `import logger`。底层接到 `system_mgmt_logger`。不要在包内 `import apps.core.logger`。 |
 | `common/` | 跨包工具（两个以上包才用）。 |
 | `builtin/` | 第一方包扫描根（`BUILTIN_PROVIDER_ROOT`）。 |
-| `custom/` | 客户自研扫描根（`CUSTOM_PROVIDER_ROOT`）。 |
 
 宿主（`loader.py`、`runtime.py`、view/serializer）继续 `from apps.core.logger import system_mgmt_logger as logger`。
 
@@ -172,8 +167,8 @@ providers/{builtin|custom}/<key>/
 
 ## 验收
 
-- `builtin/` 与 `custom/` 下每个子目录（跳过 `__pycache__`）按各自导入前缀加载；缺 `client.py` 或 `base_connection.py` 时 **该包** 失败并被跳过。
-- 内置四家按原 key 注册。语言文件缺失只跳过该包，其它包仍在注册表中。
-- 自研包放在 `providers/custom/<key>/`，不得占用内置目录名；与已注册 key 冲突时跳过自研包。
+- `builtin/` 下每个子目录（跳过 `__pycache__`）按内置导入前缀加载；缺 `client.py` 或 `base_connection.py` 时 **该包** 失败并被跳过。
+- 内置四家按原 key 注册，manifest 使用包内相对 adapter 路径。语言文件缺失只跳过该包，其它包仍在注册表中。
+- 不再扫描 `providers/custom/`。
 - 包内 Python 源文件不出现 `from apps.core.logger import`。
 - 已有实例的测试连接、登录、同步、通知、拉群仍只经 Runtime 具名 operation，不因包布局变化而改契约。

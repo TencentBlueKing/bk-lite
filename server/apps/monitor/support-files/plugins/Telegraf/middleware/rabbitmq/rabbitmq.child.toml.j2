@@ -4,6 +4,16 @@
     username = "{{ username }}"
     password = "${PASSWORD__{{ config_id }}}"
     interval = "{{ interval }}s"
+{% if collect_queues | default(false, true) and queue_name_include and (queue_name_include | to_toml_str_array) != '[]' %}
+    metric_include = ["overview", "node", "queue"]
+    queue_name_include = {{ queue_name_include | to_toml_str_array }}
+{% if queue_name_exclude %}
+    queue_name_exclude = {{ queue_name_exclude | to_toml_str_array }}
+{% endif %}
+    client_timeout = "{{ client_timeout | default(20) }}s"
+{% else %}
+    metric_include = ["overview", "node"]
+{% endif %}
     [inputs.rabbitmq.tags]
         instance_id = "{{ instance_id }}"
         instance_type = "{{ instance_type }}"

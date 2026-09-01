@@ -130,6 +130,9 @@ export const formatMetricValue = (value: number, unit: MetricUnit): { value: str
   }
 
   if (unit === 'percent') return { value: value.toFixed(1), unit: '%' };
+  if (unit === 'percentunit') {
+    return { value: (value * 100).toFixed(1), unit: '%' };
+  }
   if (unit === 'msps') return { value: value >= 100 ? value.toFixed(0) : value.toFixed(1), unit: 'ms/s' };
   if (unit === 'cps') return formatCountRate(value);
   if (COUNT_UNITS.includes(unit)) return formatAutoScaled(value, unit, COUNT_UNITS, COUNT_LABELS, 1000);

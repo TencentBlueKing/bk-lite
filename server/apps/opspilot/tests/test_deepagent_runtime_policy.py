@@ -847,6 +847,19 @@ def test_enforce_k8s_namespace_lookup_first_prepends_resolve_step():
     ]
 
 
+def test_drop_k8s_followup_steps_after_unresolved_target():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import ToolExecutionStep, drop_k8s_followup_steps_after_unresolved_target
+
+    kept = drop_k8s_followup_steps_after_unresolved_target(
+        [
+            ToolExecutionStep(objective="诊断", tools=["diagnose_kubernetes_pod_issues"]),
+            ToolExecutionStep(objective="反查", tools=["resolve_k8s_target_from_alert"]),
+            ToolExecutionStep(objective="写报告", tools=["generate_attachment_file"]),
+        ]
+    )
+    assert [step.tools for step in kept] == [["generate_attachment_file"]]
+
+
 @pytest.mark.asyncio
 async def test_planner_normalize_hard_enforces_namespace_lookup():
     tools = [

@@ -6,15 +6,13 @@ SSH 脚本执行器插件
 
 import asyncio
 import json
-import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, List
 
 from core.collection.contracts import AccessProbeResult, AccessProbeStatus
 from core.infra.nats_utils import nats_request
-
-logger = logging.getLogger("stargazer.ssh_plugin")
+from core.logger import logger
 
 
 class SSHPlugin:
@@ -60,6 +58,7 @@ class SSHPlugin:
         self.probe_timeout = self._coerce_positive_float(params.get("timeout"), default=5.0)
         self.node_info = params.get("node_info", {})
         self.model_id = params.get("model_id")
+        self.collection_task_id = params.get("collection_task_id") or params.get("task_id") or ""
 
         # NATS 请求超时 = 脚本执行超时 × 最大并发数
         # 原因：nats-executor 串行处理请求，排在队列后面的任务需要等待前面的任务完成
@@ -145,7 +144,13 @@ class SSHPlugin:
         if host_innerip:
             content = content.replace("{{bk_host_innerip}}", host_innerip)
 
-        logger.info(f"📖 Script loaded from {path}: {len(content)} bytes")
+        logger.debug(
+            "event=ssh_script_loaded bytes=%s host=%s model_id=%s task_id=%s",
+            len(content),
+            self.host,
+            self.model_id,
+            self.collection_task_id,
+        )
         return content
 
     def _build_exec_params(self, script_content: str) -> Dict[str, Any]:
@@ -176,7 +181,13 @@ class SSHPlugin:
             # 本地执行时指定脚本类型
             shell_type = self._get_shell_type()
             exec_params["shell"] = shell_type
-            logger.info(f"🔧 Local execution: shell type={shell_type}")
+            logger.debug(
+                "event=ssh_local_execution shell=%s host=%s model_id=%s task_id=%s",
+                shell_type,
+                self.host,
+                self.model_id,
+                self.collection_task_id,
+            )
 
         return exec_params
 
@@ -273,7 +284,13 @@ class SSHPlugin:
             else:
                 subject = f"{execution_mode}.execute.{self.node_id}"
 
-            logger.info(f"🚀 Executing script via NATS: mode={execution_mode}, subject={subject}")
+            logger.debug(
+                "event=ssh_script_execute mode=%s host=%s model_id=%s task_id=%s",
+                execution_mode,
+                self.host,
+                self.model_id,
+                self.collection_task_id,
+            )
 
             # 4. 通过 NATS 执行
             payload = json.dumps({"args": [exec_params], "kwargs": {}}).encode()
@@ -290,6 +307,13 @@ class SSHPlugin:
                     }
                 else:
                     result = {"result": {}, "success": True}
+                logger.info(
+                    "event=ssh_script_completed success=%s host=%s model_id=%s task_id=%s",
+                    True,
+                    self.host,
+                    self.model_id,
+                    self.collection_task_id,
+                )
             else:
                 # nats-executor 的错误信息在 "error" 字段，"result" 字段是命令输出（探测失败时为空）
                 error_msg = response.get("error") or response.get("result") or "Unknown error"
@@ -297,12 +321,24 @@ class SSHPlugin:
                     "result": {"cmdb_collect_error": error_msg},
                     "success": False,
                 }
-            logger.info(f"✅ Script execution completed: success={response.get('success')}")
+                logger.warning(
+                    "event=ssh_script_completed success=%s host=%s model_id=%s task_id=%s failed_stage=%s",
+                    False,
+                    self.host,
+                    self.model_id,
+                    self.collection_task_id,
+                    "nats_execute",
+                )
             return result
         except Exception as e:
-            import traceback
-
-            logger.error(f"❌ SSHPlugin execution failed: {traceback.format_exc()}")
+            logger.exception(
+                "event=ssh_script_failed host=%s model_id=%s task_id=%s failed_stage=%s error_type=%s",
+                self.host,
+                self.model_id,
+                self.collection_task_id,
+                "ssh_script_execute",
+                type(e).__name__,
+            )
             return {"result": {"cmdb_collect_error": str(e)}, "success": False}
 
 

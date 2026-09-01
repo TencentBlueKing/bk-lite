@@ -3,6 +3,7 @@
   "collect_type": "snmp_alliedtelesis",
   "plugin": "Switch Allied Telesis SNMP",
   "plugin_desc": "Allied Telesis AlliedWare Plus (AW+) switch SNMP collection (AT-SYSINFO-MIB / AT-ENVMONv2-MIB, IANA PEN 207). Beyond standard IF-MIB interface metrics, it collects Allied Telesis private OIDs for device health: per-stack-member CPU utilisation (cpuUtilisationStackAvgLastMinute, averaged), chassis temperature sensors (atEnvMonv2TemperatureCurrent, max), and fan and power-supply status, normalised to 1=normal / 2=abnormal. AlliedWare Plus does not expose a standard memory-utilisation OID, so memory is N/A. Supported brands/models — Allied Telesis AlliedWare Plus switches (x-series / IE-series / SwitchBlade running AW+; enterprise 207).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_alliedtelesis'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-router_路由器",

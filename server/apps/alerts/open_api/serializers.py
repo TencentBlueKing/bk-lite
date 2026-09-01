@@ -26,13 +26,13 @@ def _parse_positive_int(value, *, field_name: str, default=None, max_value=None)
     return parsed
 
 
-def parse_pagination(query_params) -> tuple[int, int]:
+def parse_pagination(query_params, *, max_page_size=100) -> tuple[int, int]:
     page = _parse_positive_int(query_params.get("page"), field_name="page", default=1)
     page_size = _parse_positive_int(
         query_params.get("page_size"),
         field_name="page_size",
         default=20,
-        max_value=100,
+        max_value=max_page_size,
     )
     return page, page_size
 
@@ -78,6 +78,7 @@ def serialize_alert(alert, *, detail: bool = False) -> dict:
         "dimensions": alert.dimensions or {},
         "first_event_time": _format_datetime(alert.first_event_time),
         "last_event_time": _format_datetime(alert.last_event_time),
+        "closed_at": _format_datetime(getattr(alert, "closed_at", None)),
         "created_at": _format_datetime(alert.created_at),
         "updated_at": _format_datetime(alert.updated_at),
         "event_count": _get_event_count(alert),

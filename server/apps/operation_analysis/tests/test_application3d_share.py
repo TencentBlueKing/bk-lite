@@ -22,10 +22,10 @@ APP_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 
 def _attrs():
     return [
-        {"attr_id": "app_id", "attr_name": "ID", "attr_type": "str"},
-        {"attr_id": "operator", "attr_name": "Operator", "attr_type": "str"},
-        {"attr_id": "bak_operator", "attr_name": "Backup", "attr_type": "password"},
-        {"attr_id": "comment", "attr_name": "Comment", "attr_type": "str"},
+        {"attr_id": "system_code", "attr_name": "系统编号", "attr_type": "str"},
+        {"attr_id": "operator", "attr_name": "运维人员", "attr_type": "str"},
+        {"attr_id": "comment", "attr_name": "系统描述", "attr_type": "str"},
+        {"attr_id": "productor", "attr_name": "产品人员", "attr_type": "password"},
         {"attr_id": "secret_token", "attr_name": "Secret", "attr_type": "str"},
     ]
 
@@ -33,12 +33,12 @@ def _attrs():
 def _application_payload():
     return {
         "inst_uuid": APP_A,
-        "inst_name": "app",
-        "model_id": "application",
-        "app_id": "A-1",
+        "inst_name": "sys",
+        "model_id": "system",
+        "system_code": "SYS-1",
         "operator": "hidden-user",
-        "bak_operator": "sensitive-user",
         "comment": "visible-comment",
+        "productor": "sensitive-user",
         "secret_token": "must-not-leak",
     }
 
@@ -47,9 +47,9 @@ def test_presenter_omits_missing_field_permission_sensitive_and_secret_token():
     properties = present_application_properties(
         _application_payload(),
         _attrs(),
-        visible_fields={"app_id", "bak_operator", "comment", "secret_token"},
+        visible_fields={"system_code", "productor", "comment", "secret_token"},
     )
-    assert [item["key"] for item in properties] == ["app_id", "comment"]
+    assert [item["key"] for item in properties] == ["system_code", "comment"]
 
 
 def test_share_application_detail_delegates_with_sharer_not_visitor(monkeypatch):
@@ -204,7 +204,8 @@ def test_application_detail_with_sharer_identity_applies_field_permissions(monke
 
     def show_fields(model_id, user):
         seen_users.append(user.username)
-        return ["app_id", "bak_operator", "comment", "secret_token"]
+        assert model_id == "system"
+        return ["system_code", "productor", "comment", "secret_token"]
 
     monkeypatch.setattr(
         "apps.operation_analysis.services.application3d.query_service.ApplicationResourceOverviewService._get_show_fields",
@@ -214,10 +215,10 @@ def test_application_detail_with_sharer_identity_applies_field_permissions(monke
     result = Application3DQueryService.application_detail(request, APP_A)
 
     assert seen_users == ["sharer-alice"]
-    assert [item["key"] for item in result["application"]["properties"]] == ["app_id", "comment"]
+    assert [item["key"] for item in result["application"]["properties"]] == ["system_code", "comment"]
     assert "secret_token" not in {item["key"] for item in result["application"]["properties"]}
     assert "operator" not in {item["key"] for item in result["application"]["properties"]}
-    assert "bak_operator" not in {item["key"] for item in result["application"]["properties"]}
+    assert "productor" not in {item["key"] for item in result["application"]["properties"]}
 
 
 def test_share_and_normal_no_data_critical_uses_same_alarming_health(monkeypatch):

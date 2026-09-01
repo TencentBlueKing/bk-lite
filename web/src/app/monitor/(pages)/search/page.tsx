@@ -35,7 +35,7 @@ import {
 import { parseSearchTimeQueryParams } from '@/app/monitor/utils/searchTimeQuery';
 
 const SearchView: React.FC = () => {
-  const { get } = useApiClient();
+  const { post } = useApiClient();
   const { t } = useTranslation();
   const { findUnitNameById } = useUnitTransform();
   const searchParams = useSearchParams();
@@ -141,10 +141,10 @@ const SearchView: React.FC = () => {
           instances,
           timeRange: _timeRange
         });
-        const responseData = await get(
-          '/monitor/api/metrics_instance/query_range/',
+        const responseData = await post(
+          '/monitor/api/metrics_instance/query_by_metric_range/',
+          params,
           {
-            params,
             signal: abortController.signal
           }
         );

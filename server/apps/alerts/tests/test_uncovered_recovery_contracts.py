@@ -7,7 +7,6 @@ import pytest
 from apps.alerts.aggregation.recovery import auto_closer
 from apps.alerts.constants.constants import AlertStatus, EventAction
 
-
 pytestmark = pytest.mark.unit
 
 
@@ -71,6 +70,6 @@ def test_auto_closer_skips_unidentifiable_events_and_closes_all_matches(
         AlertStatus.AUTO_CLOSE,
     ]
     assert saved == [
-        ("A-1", {"update_fields": ["status", "updated_at"]}),
-        ("A-2", {"update_fields": ["status", "updated_at"]}),
+        ("A-1", {"update_fields": ["status", "updated_at", "closed_at"]}),
+        ("A-2", {"update_fields": ["status", "updated_at", "closed_at"]}),
     ]

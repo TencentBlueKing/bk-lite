@@ -1,6 +1,7 @@
 {
   "plugin": "SGLang",
   "plugin_desc": "由 Telegraf Pull 采集器通过 Prometheus 指标端点采集 SGLang 推理服务关键监控指标，覆盖运行/排队请求、Token 吞吐、缓存命中与时延等核心运维场景。",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='sglang', collect_type='bkpull'}) by (instance_id)",
   "instance_fact_bindings": [
     {
@@ -180,7 +181,7 @@
       "unit": "s",
       "dimensions": [],
       "description": "最近 5 分钟 TTFT P99。",
-      "query": "histogram_quantile(0.99, sum(rate((label_replace({__name__=~\"sglang:time_to_first_token_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"sglang:time_to_first_token_seconds_(.+)\"))[5m:]) or label_replace(rate(sglang:time_to_first_token_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.99, sum by (instance_id, le) (label_replace(rate({__name__=~\"sglang:time_to_first_token_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"sglang:time_to_first_token_seconds_(.+)\") or label_replace(rate({__name__=\"sglang:time_to_first_token_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "时延",
@@ -193,7 +194,7 @@
       "unit": "s",
       "dimensions": [],
       "description": "最近 5 分钟端到端请求时延 P99。",
-      "query": "histogram_quantile(0.99, sum(rate((label_replace({__name__=~\"sglang:e2e_request_latency_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"sglang:e2e_request_latency_seconds_(.+)\"))[5m:]) or label_replace(rate(sglang:e2e_request_latency_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.99, sum by (instance_id, le) (label_replace(rate({__name__=~\"sglang:e2e_request_latency_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"sglang:e2e_request_latency_seconds_(.+)\") or label_replace(rate({__name__=\"sglang:e2e_request_latency_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "时延",
@@ -206,7 +207,7 @@
       "unit": "s",
       "dimensions": [],
       "description": "最近 5 分钟 TTFT P50。",
-      "query": "histogram_quantile(0.50, sum(rate((label_replace({__name__=~\"sglang:time_to_first_token_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"sglang:time_to_first_token_seconds_(.+)\"))[5m:]) or label_replace(rate(sglang:time_to_first_token_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.50, sum by (instance_id, le) (label_replace(rate({__name__=~\"sglang:time_to_first_token_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"sglang:time_to_first_token_seconds_(.+)\") or label_replace(rate({__name__=\"sglang:time_to_first_token_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "时延",
@@ -219,7 +220,7 @@
       "unit": "s",
       "dimensions": [],
       "description": "最近 5 分钟 TTFT P90。",
-      "query": "histogram_quantile(0.90, sum(rate((label_replace({__name__=~\"sglang:time_to_first_token_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"sglang:time_to_first_token_seconds_(.+)\"))[5m:]) or label_replace(rate(sglang:time_to_first_token_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.90, sum by (instance_id, le) (label_replace(rate({__name__=~\"sglang:time_to_first_token_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"sglang:time_to_first_token_seconds_(.+)\") or label_replace(rate({__name__=\"sglang:time_to_first_token_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "时延",
@@ -245,7 +246,7 @@
       "unit": "s",
       "dimensions": [],
       "description": "最近 5 分钟端到端请求时延 P50。",
-      "query": "histogram_quantile(0.50, sum(rate((label_replace({__name__=~\"sglang:e2e_request_latency_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"sglang:e2e_request_latency_seconds_(.+)\"))[5m:]) or label_replace(rate(sglang:e2e_request_latency_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.50, sum by (instance_id, le) (label_replace(rate({__name__=~\"sglang:e2e_request_latency_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"sglang:e2e_request_latency_seconds_(.+)\") or label_replace(rate({__name__=\"sglang:e2e_request_latency_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "时延",
@@ -258,7 +259,7 @@
       "unit": "s",
       "dimensions": [],
       "description": "最近 5 分钟端到端请求时延 P90。",
-      "query": "histogram_quantile(0.90, sum(rate((label_replace({__name__=~\"sglang:e2e_request_latency_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"sglang:e2e_request_latency_seconds_(.+)\"))[5m:]) or label_replace(rate(sglang:e2e_request_latency_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+      "query": "histogram_quantile(0.90, sum by (instance_id, le) (label_replace(rate({__name__=~\"sglang:e2e_request_latency_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"sglang:e2e_request_latency_seconds_(.+)\") or label_replace(rate({__name__=\"sglang:e2e_request_latency_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
       "metric_group": "时延",

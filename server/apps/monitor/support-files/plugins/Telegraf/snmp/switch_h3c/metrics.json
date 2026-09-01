@@ -3,6 +3,7 @@
   "collect_type": "snmp_h3c",
   "plugin": "Switch H3C SNMP",
   "plugin_desc": "H3C / HPE Comware switch-specific SNMP collection (HH3C-ENTITY-EXT-MIB, IANA PEN 25506). In addition to standard IF-MIB interface metrics, it collects H3C private OIDs for device health: per-entity CPU utilization (hh3cEntityExtCpuUsage) and memory utilization (hh3cEntityExtMemUsage). Both are reported per physical entity where most entities return 0 and the CPU/memory-bearing board carries the real value, so device-level CPU/memory are taken as the maximum across entities. Temperature is not collected because all entities report 0 for hh3cEntityExtTemperature on Comware; fan and power-supply state live in ENTITY-MIB with per-row entPhysicalClass filtering that telegraf inputs.snmp cannot do, so those are N/A. Supported brands/models — H3C S-series Comware switches (S5100/S5500/S5800, etc.).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_h3c'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

@@ -3,6 +3,7 @@
   "collect_type": "snmp_moxa",
   "plugin": "Switch Moxa SNMP",
   "plugin_desc": "Moxa 工业以太网交换机专用 SNMP 采集模板（MOXA-MIB，企业号 8691）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Moxa 私有 OID 的设备健康指标：机箱温度（℃）以及双路电源输入状态（经 telegraf processors.enum 归一为 1=正常/2=异常）。Moxa 工业交换机多为无风扇被动散热设计且私有 MIB 未以无需行级过滤的标量形式暴露 CPU/内存负载，故 CPU/内存/风扇为 N/A。适用品牌型号——Moxa 工业网管交换机（EDS / IKS / ICS / SDS 系列，企业号 8691）。",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_moxa'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",
