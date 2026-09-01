@@ -1,11 +1,27 @@
+from types import SimpleNamespace
+
 import pytest
+from django.test import RequestFactory
 
 from apps.system_mgmt.models import Channel, ChannelChoices
 from apps.system_mgmt.serializers import ChannelSerializer
 
 
+def _request_with_locale(locale):
+    request = RequestFactory().post("/system_mgmt/api/")
+    request.user = SimpleNamespace(locale=locale)
+    return request
+
+
 @pytest.mark.django_db
-def test_event_publish_channel_rejects_duplicate_subject_key():
+@pytest.mark.parametrize(
+    ("locale", "expected"),
+    [
+        ("en", "notification topic identifier is already in use"),
+        ("zh-Hans", "通知主题标识已被使用"),
+    ],
+)
+def test_event_publish_channel_rejects_duplicate_subject_key(locale, expected):
     Channel.objects.create(
         name="existing-event-publish",
         channel_type=ChannelChoices.NATS,
@@ -21,11 +37,12 @@ def test_event_publish_channel_rejects_duplicate_subject_key():
             "description": "Duplicate event publish channel",
             "team": [],
             "config": {"nats_mode": "event_publish", "subject_key": "customer-alerts"},
-        }
+        },
+        context={"request": _request_with_locale(locale)},
     )
 
     assert serializer.is_valid() is False
-    assert serializer.errors["config"]["subject_key"] == "notification topic identifier is already in use"
+    assert serializer.errors["config"]["subject_key"] == expected
 
 
 @pytest.mark.django_db
