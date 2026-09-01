@@ -20,6 +20,7 @@ export interface ProfessionalDashboardRegistryItem extends ProfessionalDashboard
 export type MetricUnit =
   | 'none'
   | 'percent'
+  | 'percentunit'
   | 'counts'
   | 'thousand'
   | 'million'

@@ -117,6 +117,9 @@ export const formatMetricValue = (value: number, unit: MetricUnit): { value: str
   const normalizedUnit = unit === 'Bps' ? 'byteps' : unit;
 
   if (normalizedUnit === 'percent') return { value: value.toFixed(1), unit: '%' };
+  if (normalizedUnit === 'percentunit') {
+    return { value: (value * 100).toFixed(1), unit: '%' };
+  }
   if (normalizedUnit === 'msps') return { value: value >= 100 ? value.toFixed(0) : value.toFixed(1), unit: 'ms/s' };
   if (normalizedUnit === 'cps' || normalizedUnit === 'pps') return formatCountRate(value);
   if (normalizedUnit === 'tpm') return { value: formatScaledValue(value), unit: 'tpm' };

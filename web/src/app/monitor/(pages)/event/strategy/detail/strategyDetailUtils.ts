@@ -266,6 +266,31 @@ export const resolveThresholdUnit = ({
 
 export const getThresholdUnitOnCalculationUnitChange = resolveThresholdUnit;
 
+/** percentunit(0–1) ↔ percent(0–100) 切换时的数值缩放因子；其他单位对返回 null。 */
+export const getPercentUnitScaleFactor = (
+  fromUnit: string | null | undefined,
+  toUnit: string | null | undefined
+): number | null => {
+  if (!fromUnit || !toUnit || fromUnit === toUnit) return null;
+  if (fromUnit === 'percentunit' && toUnit === 'percent') return 100;
+  if (fromUnit === 'percent' && toUnit === 'percentunit') return 0.01;
+  return null;
+};
+
+/** 阈值单位在 percentunit↔percent 间切换时同步缩放数值，避免误报/漏报。 */
+export const scaleThresholdValuesForUnitChange = <T extends { value: number | null }>(
+  thresholds: T[],
+  fromUnit: string | null | undefined,
+  toUnit: string | null | undefined
+): T[] => {
+  const factor = getPercentUnitScaleFactor(fromUnit, toUnit);
+  if (factor == null) return thresholds;
+  return thresholds.map((item) => ({
+    ...item,
+    value: item.value == null ? null : item.value * factor
+  }));
+};
+
 // 把 groupedUnitList (按 category 分组) 转为 Cascader 选项;
 // 一级 value = category 名,二级 value = unit_id,二级为叶子节点需 children=[] 以满足 CascaderItem 递归类型。
 // 单位表规模小 (<100),即便 O(N×M) 也可接受。
