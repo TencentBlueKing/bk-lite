@@ -866,6 +866,10 @@ def test_build_task_result_keeps_structured_results_when_output_is_truncated(mon
             "output_bytes_total": 1024,
             "output_bytes_retained": 32,
             "output_max_bytes": 32,
+            "stream_lines_dropped": 17,
+            "stream_publish_failures": 2,
+            "stream_flush_timed_out": True,
+            "stream_line_chunks": 3,
         },
         "",
     )
@@ -876,6 +880,10 @@ def test_build_task_result_keeps_structured_results_when_output_is_truncated(mon
     assert result["result_summary"]["output_bytes_total"] == 1024
     assert result["result_summary"]["output_bytes_retained"] == 32
     assert result["result_summary"]["output_max_bytes"] == 32
+    assert result["result_summary"]["stream_lines_dropped"] == 17
+    assert result["result_summary"]["stream_publish_failures"] == 2
+    assert result["result_summary"]["stream_flush_timed_out"] is True
+    assert result["result_summary"]["stream_line_chunks"] == 3
 
 
 class RecordingNATSClient(DummyNATSClient):

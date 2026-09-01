@@ -2,28 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-/**
- * 单个目标的实时输出累积结果。
- * key 为后端 target_key（node_id 或 target_id 字符串）。
- */
-export interface TargetLiveOutput {
-  stdout: string;
-  stderr: string;
-  status?: string;
-  done: boolean;
-}
-
-export type LiveOutputMap = Record<string, TargetLiveOutput>;
-
-interface StreamEventPayload {
-  execution_id?: string;
-  target_key?: string;
-  stream?: 'stdout' | 'stderr';
-  line?: string;
-  type?: string; // 'done' | 'error' | 'history' | undefined(实时行)
-  status?: string;
-  message?: string;
-}
+import {
+  applyExecutionStreamEvent,
+  type LiveOutputMap,
+  type StreamEventPayload,
+} from './executionStreamState';
 
 interface UseExecutionStreamArgs {
   executionId: number | null;
@@ -31,15 +14,6 @@ interface UseExecutionStreamArgs {
   token: string | null;
   /** 所有目标都收到 done（或流自然结束）时回调，用于拉取权威最终结果。 */
   onAllDone?: () => void;
-}
-
-// 单个目标输出上限，防止超长脚本把内存撑爆（保留尾部）。
-const MAX_CHARS_PER_TARGET = 500_000;
-
-function appendCapped(prev: string, chunk: string): string {
-  const next = prev + chunk;
-  if (next.length <= MAX_CHARS_PER_TARGET) return next;
-  return next.slice(next.length - MAX_CHARS_PER_TARGET);
 }
 
 /**
@@ -64,24 +38,7 @@ export function useExecutionStream({
   onAllDoneRef.current = onAllDone;
 
   const applyEvent = useCallback((payload: StreamEventPayload) => {
-    const targetKey = payload.target_key;
-    if (!targetKey) return;
-    setLiveOutput((prev) => {
-      const cur: TargetLiveOutput = prev[targetKey] || { stdout: '', stderr: '', done: false };
-      const next: TargetLiveOutput = { ...cur };
-      if (payload.type === 'done') {
-        next.done = true;
-        if (payload.status) next.status = payload.status;
-      } else if (payload.line != null) {
-        const chunk = payload.line + '\n';
-        if (payload.stream === 'stderr') {
-          next.stderr = appendCapped(cur.stderr, chunk);
-        } else {
-          next.stdout = appendCapped(cur.stdout, chunk);
-        }
-      }
-      return { ...prev, [targetKey]: next };
-    });
+    setLiveOutput((prev) => applyExecutionStreamEvent(prev, payload));
   }, []);
 
   useEffect(() => {

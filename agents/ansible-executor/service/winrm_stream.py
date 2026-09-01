@@ -9,8 +9,17 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from core.config import logger
-from service.ansible_runner import DEFAULT_MAX_OUTPUT_BYTES, LineEventStreamer, StreamPublish, build_stream_log_payload, decode_command_output
+from service.ansible_runner import (
+    DEFAULT_MAX_OUTPUT_BYTES,
+    DEFAULT_STREAM_BATCH_SIZE,
+    DEFAULT_STREAM_FLUSH_TIMEOUT,
+    DEFAULT_STREAM_MAX_LINE_BYTES,
+    DEFAULT_STREAM_QUEUE_SIZE,
+    BufferedStreamPublisher,
+    LineEventStreamer,
+    StreamPublish,
+    decode_command_output,
+)
 from winrm.exceptions import WinRMOperationTimeoutError
 from winrm.protocol import Protocol
 
@@ -155,6 +164,10 @@ async def run_winrm_stream(
     execution_id: str,
     max_output_bytes: int = DEFAULT_MAX_OUTPUT_BYTES,
     protocol_factory: ProtocolFactory = _build_protocol,
+    stream_queue_size: int = DEFAULT_STREAM_QUEUE_SIZE,
+    stream_batch_size: int = DEFAULT_STREAM_BATCH_SIZE,
+    stream_flush_timeout: float = DEFAULT_STREAM_FLUSH_TIMEOUT,
+    stream_max_line_bytes: int = DEFAULT_STREAM_MAX_LINE_BYTES,
 ) -> tuple[int, str, dict[str, Any]]:
     """为每个 Windows 目标建立一个 WinRM shell，在同一会话中持续接收输出。"""
     if not host_credentials:
@@ -162,18 +175,29 @@ async def run_winrm_stream(
     command, arguments = _build_command(script_content, script_type)
     loop = asyncio.get_running_loop()
     queue: asyncio.Queue[_ThreadEvent] = asyncio.Queue(maxsize=max(4, len(host_credentials) * 2))
-    states = [_HostState(host=str(item.get("host") or "")) for item in host_credentials]
+    states = [
+        _HostState(
+            host=str(item.get("host") or ""),
+            streamer=LineEventStreamer(max_line_bytes=stream_max_line_bytes),
+        )
+        for item in host_credentials
+    ]
     retained_bytes = 0
     truncated = False
+    stream_publisher = BufferedStreamPublisher(
+        stream_publish,
+        stream_log_topic,
+        execution_id,
+        queue_size=stream_queue_size,
+        batch_size=stream_batch_size,
+    )
+    stream_publisher.start()
 
     def emit(event: _ThreadEvent) -> None:
         asyncio.run_coroutine_threadsafe(queue.put(event), loop).result()
 
     async def publish_line(line: str) -> None:
-        try:
-            await stream_publish(stream_log_topic, build_stream_log_payload(execution_id, line))
-        except Exception as error:  # noqa: BLE001 - 日志发布是 best effort
-            logger.warning("WinRM stream log publish failed: %s", error)
+        stream_publisher.offer(line)
 
     workers = [
         asyncio.create_task(
@@ -191,30 +215,34 @@ async def run_winrm_stream(
         for index, credential in enumerate(host_credentials)
     ]
     completed = 0
-    while completed < len(states):
-        event = await queue.get()
-        state = states[event.index]
-        if event.kind == "done":
-            state.exit_code = event.exit_code
-            trailing = state.streamer.flush()
-            if trailing is not None:
-                await publish_line(trailing)
-            completed += 1
-            continue
+    stream_meta: dict[str, Any] = {}
+    try:
+        while completed < len(states):
+            event = await queue.get()
+            state = states[event.index]
+            if event.kind == "done":
+                state.exit_code = event.exit_code
+                trailing = state.streamer.flush()
+                if trailing is not None:
+                    await publish_line(trailing)
+                completed += 1
+                continue
 
-        state.total_bytes += len(event.chunk)
-        remaining = max_output_bytes - retained_bytes
-        kept = b""
-        if remaining > 0:
-            kept = event.chunk[:remaining]
-            state.retained.extend(kept)
-            retained_bytes += len(kept)
-        if len(event.chunk) > max(remaining, 0):
-            truncated = True
-        for line in state.streamer.feed(kept):
-            await publish_line(line)
+            state.total_bytes += len(event.chunk)
+            remaining = max_output_bytes - retained_bytes
+            kept = b""
+            if remaining > 0:
+                kept = event.chunk[:remaining]
+                state.retained.extend(kept)
+                retained_bytes += len(kept)
+            if len(event.chunk) > max(remaining, 0):
+                truncated = True
+            for line in state.streamer.feed(event.chunk):
+                await publish_line(line)
 
-    await asyncio.gather(*workers)
+        await asyncio.gather(*workers)
+    finally:
+        stream_meta = await stream_publisher.close(stream_flush_timeout)
     output_parts = []
     for state in states:
         raw_status = "CHANGED" if state.exit_code == 0 else "FAILED"
@@ -231,5 +259,7 @@ async def run_winrm_stream(
             "output_bytes_total": total_bytes,
             "output_bytes_retained": retained_bytes,
             "output_max_bytes": max_output_bytes,
+            "stream_line_chunks": sum(state.streamer.chunked_lines for state in states),
+            **stream_meta,
         },
     )
