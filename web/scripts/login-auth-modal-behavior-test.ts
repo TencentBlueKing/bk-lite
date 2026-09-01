@@ -106,7 +106,8 @@ assert.equal(
 );
 assert.equal(resolveLoginAuthDefaultIcon('feishu'), 'feishu');
 assert.equal(resolveLoginAuthDefaultIcon('wechat'), 'wechat');
-assert.equal(resolveLoginAuthDefaultIcon('unknown'), '');
+assert.equal(resolveLoginAuthDefaultIcon('feishudemo'), 'default-provider');
+assert.equal(resolveLoginAuthDefaultIcon('unknown'), 'default-provider');
 assert.equal(
   resolveLoginAuthDefaultExternalField({
     title: 'Login Auth',

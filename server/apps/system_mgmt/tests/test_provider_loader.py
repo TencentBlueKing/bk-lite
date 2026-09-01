@@ -45,7 +45,6 @@ def test_adapter_registry_get_lazily_loads_builtin_providers():
 
 def test_builtin_provider_loading_is_thread_safe(monkeypatch):
     monkeypatch.setattr(loader, "discover_builtin_provider_packs", lambda: (("fake.provider", None),))
-    monkeypatch.setattr(loader, "discover_custom_provider_packs", lambda: ())
 
     import_count = 0
     import_count_lock = Lock()
@@ -105,7 +104,6 @@ def test_provider_loading_keeps_healthy_packs_when_one_pack_fails(monkeypatch):
         "discover_builtin_provider_packs",
         lambda: (("fake.good", None), ("fake.bad", None)),
     )
-    monkeypatch.setattr(loader, "discover_custom_provider_packs", lambda: ())
 
     fake_manifest = {
         "key": "fake",
@@ -187,12 +185,6 @@ def test_validate_pack_layout_requires_base_connection(tmp_path):
         loader.validate_pack_layout(pack)
 
 
-def test_discover_custom_provider_packs_ignores_missing_root(tmp_path):
-    packs = loader.discover_custom_provider_packs(tmp_path / "missing")
-
-    assert packs == []
-
-
 def test_builtin_packs_all_have_required_adapter_modules():
     packs = loader.discover_builtin_provider_packs()
 
@@ -212,7 +204,6 @@ def test_builtin_pack_code_logs_through_provider_sdk():
     offenders = []
     scan_roots = [
         loader.BUILTIN_PROVIDER_ROOT,
-        loader.CUSTOM_PROVIDER_ROOT,
         loader.BUILTIN_PROVIDER_ROOT.parent / "base.py",
     ]
     for root in scan_roots:
@@ -238,7 +229,6 @@ def test_missing_language_file_skips_that_pack_only(monkeypatch, tmp_path):
         "discover_builtin_provider_packs",
         lambda: (("apps.system_mgmt.providers.builtin.feishu", pack),),
     )
-    monkeypatch.setattr(loader, "discover_custom_provider_packs", lambda: ())
 
     loader.load_builtin_providers()
 
@@ -247,30 +237,163 @@ def test_missing_language_file_skips_that_pack_only(monkeypatch, tmp_path):
     assert capability_adapter_registry._adapters == {}
 
 
-def test_custom_pack_is_loaded_after_builtin_packs(monkeypatch):
-    monkeypatch.setattr(
-        loader,
-        "discover_builtin_provider_packs",
-        lambda: (("fake.builtin", None),),
-    )
-    monkeypatch.setattr(
-        loader,
-        "discover_custom_provider_packs",
-        lambda: (("fake.custom", None),),
-    )
+def test_load_builtin_providers_only_scans_builtin_root(monkeypatch):
+    scanned_roots = []
+    original = loader.discover_provider_packs
 
-    def import_module_by_path(module_path):
-        key = "acme" if module_path == "fake.custom" else "fake"
-        return SimpleNamespace(
+    def tracking_discover(root, import_prefix, *, required=True):
+        scanned_roots.append(root)
+        return original(root, import_prefix, required=required)
+
+    monkeypatch.setattr(loader, "discover_provider_packs", tracking_discover)
+
+    loader.load_builtin_providers()
+
+    assert scanned_roots == [loader.BUILTIN_PROVIDER_ROOT]
+    assert not hasattr(loader, "discover_custom_provider_packs")
+    assert not hasattr(loader, "CUSTOM_PROVIDER_ROOT")
+
+
+def test_pack_directory_resolves_relative_adapter_paths(monkeypatch, tmp_path):
+    pack = tmp_path / "acme"
+    pack.mkdir()
+    (pack / "__init__.py").write_text("")
+    (pack / "adapters").mkdir()
+    (pack / "adapters" / "client.py").write_text("")
+    (pack / "adapters" / "base_connection.py").write_text("")
+
+    imported_paths = []
+
+    monkeypatch.setattr(loader, "discover_builtin_provider_packs", lambda: (("pack.acme", pack),))
+    monkeypatch.setattr(
+        loader,
+        "import_module",
+        lambda _: SimpleNamespace(
             PROVIDER_MANIFEST={
-                "key": key,
-                "name": key,
+                "key": "acme",
+                "name": "Acme",
+                "base_connection_adapter_key": "acme.base_connection",
+                "base_connection_adapter_path": "adapters.base_connection.AcmeBaseConnectionAdapter",
                 "capabilities": [
                     {
                         "key": "login_auth",
                         "name": "登录认证",
-                        "adapter_key": f"{key}.login_auth",
-                        "adapter_path": f"{key}.Adapter",
+                        "adapter_key": "acme.login_auth",
+                        "adapter_path": "adapters.login_auth.AcmeLoginAuthAdapter",
+                    }
+                ],
+            }
+        ),
+    )
+    monkeypatch.setattr(loader, "load_language_catalog", lambda _: {"en": {"description": "Acme"}})
+
+    def capture_import_string(dotted_path):
+        imported_paths.append(dotted_path)
+        return type(dotted_path.rsplit(".", 1)[-1], (), {})
+
+    monkeypatch.setattr(loader, "import_string", capture_import_string)
+
+    loader.load_builtin_providers()
+
+    manifest = provider_registry.get("acme")
+    assert manifest.capabilities[0].adapter_path == "adapters.login_auth.AcmeLoginAuthAdapter"
+    assert manifest.base_connection_adapter_path == "adapters.base_connection.AcmeBaseConnectionAdapter"
+    assert imported_paths == [
+        "pack.acme.adapters.login_auth.AcmeLoginAuthAdapter",
+        "pack.acme.adapters.base_connection.AcmeBaseConnectionAdapter",
+    ]
+
+
+def test_pack_directory_rejects_absolute_adapter_path_and_keeps_other_packs(monkeypatch, tmp_path):
+    good_pack = tmp_path / "good"
+    bad_pack = tmp_path / "bad"
+    for pack in (good_pack, bad_pack):
+        pack.mkdir()
+        (pack / "__init__.py").write_text("")
+        (pack / "adapters").mkdir()
+        (pack / "adapters" / "client.py").write_text("")
+        (pack / "adapters" / "base_connection.py").write_text("")
+
+    monkeypatch.setattr(
+        loader,
+        "discover_builtin_provider_packs",
+        lambda: (("pack.good", good_pack), ("pack.bad", bad_pack)),
+    )
+
+    def import_module_by_path(module_path):
+        if module_path == "pack.good":
+            return SimpleNamespace(
+                PROVIDER_MANIFEST={
+                    "key": "good",
+                    "name": "Good",
+                    "capabilities": [
+                        {
+                            "key": "login_auth",
+                            "name": "登录认证",
+                            "adapter_key": "good.login_auth",
+                            "adapter_path": "adapters.login_auth.GoodAdapter",
+                        }
+                    ],
+                }
+            )
+        return SimpleNamespace(
+            PROVIDER_MANIFEST={
+                "key": "bad",
+                "name": "Bad",
+                "capabilities": [
+                    {
+                        "key": "login_auth",
+                        "name": "登录认证",
+                        "adapter_key": "bad.login_auth",
+                        "adapter_path": "pack.bad.adapters.login_auth.BadAdapter",
+                    }
+                ],
+            }
+        )
+
+    monkeypatch.setattr(loader, "import_module", import_module_by_path)
+    monkeypatch.setattr(loader, "load_language_catalog", lambda _: {"en": {"description": "ok"}})
+    monkeypatch.setattr(loader, "import_string", lambda _: object)
+
+    loader.load_builtin_providers()
+
+    assert set(provider_registry._providers) == {"good"}
+    assert set(capability_adapter_registry._adapters) == {"good.login_auth"}
+
+
+def test_adapter_key_must_use_manifest_key_prefix(monkeypatch):
+    monkeypatch.setattr(
+        loader,
+        "discover_builtin_provider_packs",
+        lambda: (("fake.good", None), ("fake.bad", None)),
+    )
+
+    def import_module_by_path(module_path):
+        if module_path == "fake.good":
+            return SimpleNamespace(
+                PROVIDER_MANIFEST={
+                    "key": "good",
+                    "name": "Good",
+                    "capabilities": [
+                        {
+                            "key": "login_auth",
+                            "name": "登录认证",
+                            "adapter_key": "good.login_auth",
+                            "adapter_path": "good.Adapter",
+                        }
+                    ],
+                }
+            )
+        return SimpleNamespace(
+            PROVIDER_MANIFEST={
+                "key": "bad",
+                "name": "Bad",
+                "capabilities": [
+                    {
+                        "key": "login_auth",
+                        "name": "登录认证",
+                        "adapter_key": "other.login_auth",
+                        "adapter_path": "other.Adapter",
                     }
                 ],
             }
@@ -281,39 +404,56 @@ def test_custom_pack_is_loaded_after_builtin_packs(monkeypatch):
 
     loader.load_builtin_providers()
 
-    assert {manifest.key for manifest in provider_registry.list()} == {"fake", "acme"}
+    assert set(provider_registry._providers) == {"good"}
+    assert set(capability_adapter_registry._adapters) == {"good.login_auth"}
 
 
-def test_custom_pack_cannot_reuse_builtin_directory_key(monkeypatch, tmp_path):
-    builtin_dir = tmp_path / "wecom"
-    builtin_dir.mkdir()
-    (builtin_dir / "__init__.py").write_text("")
-    (builtin_dir / "adapters").mkdir()
-    (builtin_dir / "adapters" / "client.py").write_text("")
-    (builtin_dir / "adapters" / "base_connection.py").write_text("")
-
+def test_manifest_without_pack_directory_keeps_absolute_import_path(monkeypatch):
+    monkeypatch.setattr(loader, "discover_builtin_provider_packs", lambda: (("fake.provider", None),))
+    imported_paths = []
     monkeypatch.setattr(
         loader,
-        "discover_builtin_provider_packs",
-        lambda: (("fake.broken", builtin_dir),),
-    )
-    monkeypatch.setattr(
-        loader,
-        "discover_custom_provider_packs",
-        lambda: (("fake.custom", None),),
+        "import_module",
+        lambda _: SimpleNamespace(
+            PROVIDER_MANIFEST={
+                "key": "fake",
+                "name": "Fake",
+                "capabilities": [
+                    {
+                        "key": "login_auth",
+                        "name": "登录认证",
+                        "adapter_key": "fake.login_auth",
+                        "adapter_path": "apps.elsewhere.FakeAdapter",
+                    }
+                ],
+            }
+        ),
     )
 
-    def import_module_by_path(module_path):
-        if module_path == "fake.broken":
-            raise RuntimeError("builtin pack import failed")
-        return SimpleNamespace(PROVIDER_MANIFEST={"key": "wecom", "name": "WeCom"})
+    def capture_import_string(dotted_path):
+        imported_paths.append(dotted_path)
+        return object
 
-    monkeypatch.setattr(loader, "import_module", import_module_by_path)
-    monkeypatch.setattr(loader, "import_string", lambda _: object)
+    monkeypatch.setattr(loader, "import_string", capture_import_string)
 
     loader.load_builtin_providers()
 
-    assert provider_registry._providers == {}
+    assert imported_paths == ["apps.elsewhere.FakeAdapter"]
+    assert provider_registry.get("fake").capabilities[0].adapter_path == "apps.elsewhere.FakeAdapter"
+
+
+def test_builtin_manifests_keep_pack_relative_adapter_paths():
+    loader.load_builtin_providers()
+
+    for key in ("ad", "feishu", "wechat", "wecom"):
+        manifest = provider_registry.get(key)
+        assert manifest.base_connection_adapter_path.startswith("adapters.")
+        assert not manifest.base_connection_adapter_path.startswith("apps.")
+        for capability in manifest.capabilities:
+            assert capability.adapter_path.startswith("adapters.")
+            assert not capability.adapter_path.startswith("apps.")
+            assert capability.adapter_key.startswith(f"{key}.")
+        assert capability_adapter_registry.get(f"{key}.base_connection") is not None
 
 
 def test_builtin_language_catalog_is_required_for_successful_load():

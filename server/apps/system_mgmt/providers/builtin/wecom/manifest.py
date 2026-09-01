@@ -5,7 +5,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
     {
         "key": "wecom",
         "base_connection_adapter_key": "wecom.base_connection",
-        "base_connection_adapter_path": "apps.system_mgmt.providers.builtin.wecom.adapters.base_connection.WeComBaseConnectionAdapter",
+        "base_connection_adapter_path": "adapters.base_connection.WeComBaseConnectionAdapter",
         "name": "WeCom",
         "description": "Built-in WeCom integration provider.",
         "instance_templates": {
@@ -147,7 +147,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                 "name": "Login Auth",
                 "description": "WeCom QR login.",
                 "adapter_key": "wecom.login_auth",
-                "adapter_path": "apps.system_mgmt.providers.builtin.wecom.adapters.login_auth.WeComLoginAuthAdapter",
+                "adapter_path": "adapters.login_auth.WeComLoginAuthAdapter",
                 "connection_template": [
                     {
                         "key": "login_auth_authorize_url",
@@ -173,7 +173,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                 "name": "User Sync",
                 "description": "WeCom user synchronization.",
                 "adapter_key": "wecom.user_sync",
-                "adapter_path": "apps.system_mgmt.providers.builtin.wecom.adapters.user_sync.WeComUserSyncAdapter",
+                "adapter_path": "adapters.user_sync.WeComUserSyncAdapter",
                 "connection_template": [
                     {
                         "key": "user_sync_departments_url",
@@ -199,7 +199,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                 "name": "IM Notification",
                 "description": "WeCom application notification.",
                 "adapter_key": "wecom.im_notification",
-                "adapter_path": "apps.system_mgmt.providers.builtin.wecom.adapters.im_notification.WeComIMNotificationAdapter",
+                "adapter_path": "adapters.im_notification.WeComIMNotificationAdapter",
                 "connection_template": [
                     {
                         "key": "im_notification_users_url",
@@ -225,7 +225,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                 "name": "IM Group",
                 "description": "WeCom internal application chat capability.",
                 "adapter_key": "wecom.im_group",
-                "adapter_path": "apps.system_mgmt.providers.builtin.wecom.adapters.im_group.WeComIMGroupAdapter",
+                "adapter_path": "adapters.im_group.WeComIMGroupAdapter",
                 "connection_template": [],
             },
         ],
