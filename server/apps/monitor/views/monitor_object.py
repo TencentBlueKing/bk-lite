@@ -3,24 +3,17 @@ from django.db.models import Count, Q
 from rest_framework import viewsets
 from rest_framework.decorators import action
 
+from apps.core.decorators.api_permission import HasPermission
 from apps.core.exceptions.base_app_exception import ValidationAppException
-from apps.core.logger import monitor_logger as logger
 from apps.core.user_habit import column_preference_habit_key
 from apps.core.utils.loader import LanguageLoader
-from apps.core.utils.permission_utils import (
-    get_permissions_rules,
-    check_instance_permission,
-)
+from apps.core.utils.permission_utils import check_instance_permission, get_permissions_rules
+from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.language import LanguageConstants
 from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.filters.monitor_object import MonitorObjectFilter
-from apps.monitor.models import (
-    MonitorInstance,
-    MonitorInstanceOrganization,
-    MonitorPolicy,
-    PolicyOrganization,
-)
+from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorPolicy, PolicyOrganization
 from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectType
 from apps.monitor.models.user_habit import UserHabit
 from apps.monitor.serializers.monitor_object import MonitorObjectSerializer, MonitorObjectTypeSerializer
@@ -30,7 +23,6 @@ from apps.monitor.services.monitor_object_cleanup import MonitorObjectCleanupPol
 from apps.monitor.utils.display_fields import build_display_column_key, validate_display_fields
 from apps.monitor.utils.instance_id_keys import resolve_monitor_object_instance_id_keys
 from config.drf.pagination import CustomPageNumberPagination
-from apps.core.utils.team_utils import get_current_team
 
 MAX_CANDIDATE_TEAM_ID = 2_147_483_647
 MAX_CANDIDATE_TEAM_ID_TEXT = str(MAX_CANDIDATE_TEAM_ID)
@@ -101,9 +93,7 @@ def _build_org_map_for_ids(model, id_field: str, ids: list) -> dict:
     chunk_size = 2000
     for start in range(0, len(ids), chunk_size):
         chunk = ids[start : start + chunk_size]
-        for entity_id, organization in model.objects.filter(
-            **{f"{id_field}__in": chunk}
-        ).values_list(id_field, "organization"):
+        for entity_id, organization in model.objects.filter(**{f"{id_field}__in": chunk}).values_list(id_field, "organization"):
             org_map.setdefault(entity_id, set()).add(organization)
     return org_map
 
@@ -127,16 +117,10 @@ def _count_by_object_with_permissions(rows, org_map, permissions, cur_team):
 
 def _build_instance_count_map(instance_permissions, cur_team):
     """按权限统计各对象实例数，避免把完整 ORM 实例装入内存。"""
-    rows = list(
-        _build_instance_count_queryset(instance_permissions, cur_team).values_list(
-            "id", "monitor_object_id"
-        )
-    )
+    rows = list(_build_instance_count_queryset(instance_permissions, cur_team).values_list("id", "monitor_object_id"))
     if not rows:
         return {}
-    org_map = _build_org_map_for_ids(
-        MonitorInstanceOrganization, "monitor_instance_id", [row[0] for row in rows]
-    )
+    org_map = _build_org_map_for_ids(MonitorInstanceOrganization, "monitor_instance_id", [row[0] for row in rows])
     return _count_by_object_with_permissions(rows, org_map, instance_permissions, cur_team)
 
 
@@ -210,11 +194,7 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
             _name_key = f"{LanguageConstants.MONITOR_OBJECT}.{result['name']}"
             # display_type 优先级：国际化 > 类型名称 > 类型ID(英文 slug)
             i18n_type = lan.get(_type_key)
-            result["display_type"] = (
-                i18n_type
-                or (result.get("type_info") or {}).get("name")
-                or result["type"]
-            )
+            result["display_type"] = i18n_type or (result.get("type_info") or {}).get("name") or result["type"]
             # display_name 优先级：国际化 > 模型字段 display_name > name(英文 slug)
             i18n_name = lan.get(_name_key)
             result["display_name"] = i18n_name or result.get("display_name") or result["name"]
@@ -273,11 +253,13 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
         return WebUtils.response_success(results)
 
     @action(methods=["post"], detail=False, url_path="order")
+    @HasPermission("object-Edit")
     def order(self, request):
         MonitorObjectService.set_object_order(request.data)
         return WebUtils.response_success()
 
     @action(methods=["post"], detail=True, url_path="visibility")
+    @HasPermission("object-Edit")
     def visibility(self, request, pk=None):
         """切换对象可见性，同时级联到子对象。"""
         obj = self.get_object()
@@ -288,6 +270,7 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
         return WebUtils.response_success()
 
     @action(methods=["post"], detail=True, url_path="display_fields")
+    @HasPermission("object-Edit")
     def display_fields(self, request, pk=None):
         """保存对象的视图列表展示列配置（用户自定义后 re-seed 不再覆盖）"""
         obj = self.get_object()
@@ -300,6 +283,7 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
         obj.save(update_fields=["display_fields", "display_fields_customized"])
         return WebUtils.response_success(normalized)
 
+    @HasPermission("object-Delete")
     def destroy(self, request, *args, **kwargs):
         """内置对象的定义与生命周期受保护，运行配置使用独立 action 管理。"""
         instance = self.get_object()
@@ -344,6 +328,7 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
             fixed_field_keys = []
         return {"field_keys": field_keys, "fixed_field_keys": fixed_field_keys}
 
+    @HasPermission("object-Add")
     def create(self, request, *args, **kwargs):
         """创建监控对象，支持同时创建子对象"""
         data = request.data
@@ -400,6 +385,7 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
 
         return WebUtils.response_success(serializer.data)
 
+    @HasPermission("object-Edit")
     def update(self, request, *args, **kwargs):
         """更新监控对象，支持更新/新增子对象"""
         partial = kwargs.pop("partial", False)
@@ -507,6 +493,10 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
 
         return WebUtils.response_success(self.get_serializer(instance).data)
 
+    @HasPermission("object-Edit")
+    def partial_update(self, request, *args, **kwargs):
+        return super().partial_update(request, *args, **kwargs)
+
 
 class MonitorObjectTypeViewSet(viewsets.ModelViewSet):
     """监控对象类型视图"""
@@ -514,6 +504,22 @@ class MonitorObjectTypeViewSet(viewsets.ModelViewSet):
     queryset = MonitorObjectType.objects.all()
     serializer_class = MonitorObjectTypeSerializer
     pagination_class = None  # 不分页
+
+    @HasPermission("object-Add")
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    @HasPermission("object-Edit")
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+    @HasPermission("object-Edit")
+    def partial_update(self, request, *args, **kwargs):
+        return super().partial_update(request, *args, **kwargs)
+
+    @HasPermission("object-Delete")
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
 
     def list(self, request, *args, **kwargs):
         # 排除 id 为 'all' 的类型

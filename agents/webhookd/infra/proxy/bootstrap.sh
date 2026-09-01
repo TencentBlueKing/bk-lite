@@ -18,7 +18,10 @@ retry() {
     local elapsed=0
     while ! "$@" 2>/dev/null; do
         elapsed=$((elapsed + interval))
-        [ $elapsed -ge $max ] && return 1
+        if [ $elapsed -ge $max ]; then
+            "$@" || true
+            return 1
+        fi
         info "$desc... (${elapsed}s/${max}s)"
         sleep $interval
     done
@@ -30,7 +33,7 @@ nats_cmd() {
         -v "$PWD/conf/certs/ca.crt:/tmp/nats/ca.crt" \
         bk-lite.tencentcloudcr.com/bklite/natsio/nats-box \
         nats -s tls://nats:4222 \
-        --user admin --password "${NATS_ADMIN_PASSWORD}" \
+        --user "${NATS_ADMIN_USERNAME}" --password "${NATS_ADMIN_PASSWORD}" \
         --tlsca /tmp/nats/ca.crt "$@"
 }
 
@@ -84,7 +87,7 @@ if ! nats_cmd stream info OBJ_bklite &>/dev/null; then
         -v "$PWD/conf/nats/jetstream.json:/tmp/nats/jetstream.json" \
         bk-lite.tencentcloudcr.com/bklite/natsio/nats-box \
         nats -s tls://nats:4222 \
-        --user admin --password "${NATS_ADMIN_PASSWORD}" \
+        --user "${NATS_ADMIN_USERNAME}" --password "${NATS_ADMIN_PASSWORD}" \
         --tlsca /tmp/nats/ca.crt \
         stream add --config /tmp/nats/jetstream.json \
     || err "Failed to create JetStream stream"

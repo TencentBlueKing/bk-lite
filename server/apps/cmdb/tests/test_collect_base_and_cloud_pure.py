@@ -8,11 +8,8 @@ check_metrics 断言。aliyun/qcloud：inst_name 拼接、belong 关联、check_
 import time
 from types import SimpleNamespace
 
-import pytest
-
 from apps.cmdb.collection.collect_plugin.base import CollectBase
 from apps.cmdb.collection.collect_util import timestamp_gt_one_day_ago
-
 
 # --------------------------------------------------------------------------
 # collect_util
@@ -108,9 +105,7 @@ def test_collect_base_convert_datetime_invalid():
 def test_collect_base_run_orchestration(monkeypatch):
     r = _dummy(monkeypatch)
     # query_data 走 Collection().query，mock 成返回固定结构
-    monkeypatch.setattr(
-        r, "query_data", lambda: {"result": [{"metric": {}, "value": [1, "1"]}]}
-    )
+    monkeypatch.setattr(r, "query_data", lambda: {"result": [{"metric": {}, "value": [1, "1"]}]})
     out = r.run()
     assert out["formatted"] is True
     assert r.raw_data == [{"metric": {}, "value": [1, "1"]}]
@@ -161,6 +156,39 @@ def test_collect_base_query_data(monkeypatch):
     out = r.query_data()
     assert out == {"result": [1, 2, 3]}
     assert "instance_id='cmdb_42'" in captured["sql"]
+
+
+def test_collect_base_query_data_uses_completed_round_bounds(monkeypatch):
+    runner = _DummyCollect(
+        inst_name="h1",
+        inst_id=1,
+        task_id=42,
+        round_ts=1_700_000_100,
+        round_completed_at=1_700_000_200,
+    )
+    captured = {}
+
+    class _FakeCollection:
+        def query(self, sql, **kwargs):
+            captured["sql"] = sql
+            captured["kwargs"] = kwargs
+            return {"data": {"result": []}}
+
+    monkeypatch.setattr("apps.cmdb.collection.collect_plugin.base.Collection", lambda: _FakeCollection())
+
+    assert runner.query_data() == {"result": []}
+    assert captured["kwargs"] == {
+        "min_timestamp": 1_700_000_100,
+        "max_timestamp": 1_700_000_200,
+    }
+
+
+def test_collect_base_keeps_explicit_snapshot_completeness():
+    complete = _DummyCollect(inst_name="h1", inst_id=1, task_id=42, snapshot_complete=True)
+    partial = _DummyCollect(inst_name="h1", inst_id=1, task_id=42, snapshot_complete=False)
+
+    assert complete.snapshot_complete is True
+    assert partial.snapshot_complete is False
 
 
 # --------------------------------------------------------------------------

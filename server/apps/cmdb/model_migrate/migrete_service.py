@@ -293,14 +293,15 @@ class ModelMigrate:
             except (ValueError, TypeError):
                 continue
 
-            result.append(
-                {
-                    "column_id": str(column_id),
-                    "column_name": str(column_name),
-                    "column_type": str(column_type),
-                    "order": order_int,
-                }
-            )
+            column = {
+                "column_id": str(column_id),
+                "column_name": str(column_name),
+                "column_type": str(column_type),
+                "order": order_int,
+            }
+            if col.get("is_row_key") is True:
+                column["is_row_key"] = True
+            result.append(column)
 
         return result
 

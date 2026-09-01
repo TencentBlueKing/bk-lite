@@ -31,7 +31,7 @@ Markdown 不复制维护运行时颜色值。修改品牌色或主题值时先�
 
 日常改 UI **不要默认通读本文全文**。可执行短清单在根目录 `CLAUDE.md` / `AGENTS.md` →「Web UI 硬约束」（会话常驻）。
 
-**仅当**新建视觉组件、改 token/设计语义、组件治理大迁移、设计走查，或短规则不够用时，再分段阅读本文相关章节（优先 **Layout & Styling**、**Do's and Don'ts**）和 `COMPONENT_GOVERNANCE.md`。
+**仅当**新建视觉组件、改 token/设计语义、组件治理大迁移、设计走查，或短规则不够用时，再分段阅读本文相关章节（优先 **Layout & Styling**、**Do's and Don'ts**）和 `COMPONENT_GOVERNANCE.md`。做**实体网格列表页**（统一卡、页头、骨架、新建文案）时，另读 **Components → Entity List Cards**。
 
 ### Code Agent / 开发者开始写 UI 前
 
@@ -230,6 +230,62 @@ BK-Lite Web 已启用 Tailwind。**布局、间距、对齐的默认且优先表
 - **Nesting:** 禁止卡片套卡片。需要分组时用标题、分割线、表格分组或背景色阶。
 - **新增前提:** 新卡片必须先说明现有 Card/primitive 为什么无法承载；不能因为局部间距或颜色不同就复制一个新卡片组件。
 
+### Entity List Cards（统一实体列表卡）
+
+控制台里「网格实体卡」类列表页（工作台、智能体、知识库、工具、记忆、供应商等）统一走同一套解剖与页壳，便于跨模块继用。OpsPilot 为首个完整落地；新模块或旧列表改造按本节执行，不要再发明平行卡片壳。
+
+**参考实现（OpsPilot，app-local）：**
+
+| 能力 | 路径 |
+| --- | --- |
+| 统一卡 | `web/src/app/opspilot/components/unified-ops-card` |
+| 列表页头 | `web/src/app/opspilot/components/opspilot-list-page-header` |
+| 加载骨架 | `web/src/app/opspilot/components/opspilot-card-grid-skeleton` |
+| 相对时间 | `web/src/app/opspilot/utils/relativeTime`（`updated_at` 优先，否则 `created_at`） |
+
+第二个及以上真实 app 接入同一抽象后，再按 `COMPONENT_GOVERNANCE.md` 升到 `src/components` 并补 Storybook；升 shared 前禁止在别的 app 复制一份平行实现。
+
+#### 卡片解剖（Look B）
+
+自上而下固定为：
+
+1. **头行：** 左上图标（`40×40`、圆角 `md`、底 `fill-1`）+ 标题（`15px` / semibold / `leading-snug`，单行省略 + tooltip）+ 右上置顶（可选）与更多菜单。
+2. **副行（标题下）：** 有状态点 / 相对时间时渲染，并与图标顶对齐；**无内容时不占位**，标题与 `40×40` 图标垂直居中。类型 tag 不要塞进这一行。
+3. **描述：** 最多两行，辅助色，无内容用 `--`。
+4. **Meta tags（描述下，固定 `min-h-5`）：** 能力/类型/模型等短标签；可空。状态类 tag（上线/下线）**字重正常（400）**。与副行分工：副行 = 状态点/时间，meta = 类型标签。
+5. **底栏：** 默认 `Owner · 名称` 左、`Team · 名称`（多团队 `+N`）右；供应商类可用「模型数 + Switch」。分割线用 `fill-2`。
+
+- 卡片 `min-h` 与 `h-full` 保证同排等高；meta 行保留 `min-h`。副行有无内容时卡头高度可不同，由下方弹性区消化。
+- 颜色、边框、hover 洗色一律语义 token；禁止硬编码主题色。
+- 图标用项目 iconfont `type`；模块内轮换图标池时用业务域图标，不要把别的模块图标集硬搬过来。
+
+#### 列表页壳
+
+- **页头一行：** 左标题 + 短描述，右搜索 / 刷新 / 主操作同一行（可 `flex-wrap`）。参考 `OpsPilotListPageHeader`。
+- **主新建按钮：** 文案统一为「新建」（`common.new`），`type="primary"` + `PlusOutlined`。弹窗标题仍可用「添加…」；导入类动作保留「导入…」等专名，不硬改成「新建」。
+- **入口位置：** 新建在工具条主按钮，不在网格里塞「新增」空卡（除非产品明确要求）。
+- **筛选 / 视图切换：** 放在页头下方或工具条旁，保持与卡网格的 `gap` 节奏。
+
+#### 加载 / 刷新 / 空态
+
+- **首次加载与整表刷新：** 用与卡片同解剖的**网格骨架屏**，不要用 `Spin` 罩住旧卡片。
+- **分页加载更多：** 底部小 `Spin` 即可，不必整页骨架。
+- **空态：** `Empty` / `CompactEmptyState` + 一句说明；有新建权限时给出主操作入口。
+- **错误：** toast 或页内错误 + 可重试；失败时不要假骨架假装有数据。
+
+#### 时间展示
+
+- 接口有 `updated_at` 或 `created_at` 时，在标题下状态行展示相对时间（优先修改时间）。
+- 没有时间字段则不展示、不造假；**不要为了列表展示单独改库表加字段**，除非产品明确要求并走正常迁移。
+
+#### Named Rules
+
+**The One List Card Rule.** 同一产品面的实体网格只保留一套卡片解剖；新列表复用或升 shared，不平行发明第二套头图+标签+底栏布局。
+
+**The Refresh Skeleton Rule.** 列表整页 loading/refresh 用骨架网格，不用遮罩 Spin 盖住旧数据。
+
+**The New Not Add Rule.** 列表页主创建按钮文案用「新建」；「添加」留给弹窗标题或表单项内追加行。
+
 ### Inputs / Fields
 - **Style:** 使用 AntD 表单控件，桌面最小高度 `40px`，移动/触摸场景目标热区不低于 `44px`。
 - **Focus:** 使用 `var(--color-primary)` 或 AntD 默认 focus ring，必须可见。
@@ -282,6 +338,7 @@ BK-Lite Web 已启用 Tailwind。**布局、间距、对齐的默认且优先表
 - **Do** 给 loading、empty、error、permission denied、readonly 状态写清楚下一步。
 - **Do** 让中文、英文、长资源名、命令、路径、emoji 都能安全换行或省略。
 - **Do** 保持产品界面轻量、智能、友好：让操作更清楚，而不是让界面更热闹。
+- **Do** 实体网格列表复用「Entity List Cards」解剖与页壳；整页刷新用卡片骨架，主按钮用「新建」。
 - **Do** 治理/功能改动触及的布局区块，把可替换的行内 flex/间距改为 `className`。
 
 ### Don't:
@@ -294,6 +351,7 @@ BK-Lite Web 已启用 Tailwind。**布局、间距、对齐的默认且优先表
 - **Don't** 用 `bg-white`、`text-black`、固定浅灰边框等只适用于单一主题的样式代替语义 token。
 - **Don't** 新增大段行内布局对象（`style={{ display:'flex', gap, padding, width... }}`）替代 Tailwind/`className`。
 - **Don't** 复制已有组件只为改变颜色、圆角、边框或间距；优先复用现有 variant 或补一个稳定 variant。
+- **Don't** 为实体列表另起一套卡片壳或用 Spin 罩住旧卡冒充刷新；没有时间字段时不要为展示去改后端加列。
 - **Don't** 用 placeholder 当 label，不要只靠 toast 汇总表单错误。
 - **Don't** 把 `div onClick` 当按钮。可点击就用 `button`、AntD Button、链接或正确 ARIA 语义。
 - **Don't** 给卡片、输入框、面板使用 `32px+` 大圆角。

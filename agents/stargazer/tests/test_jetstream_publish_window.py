@@ -40,6 +40,58 @@ class RecordingJetStream:
 
 
 @pytest.mark.asyncio
+async def test_global_window_limits_created_puback_tasks_across_concurrent_callers():
+    started = asyncio.Event()
+
+    class NeverAckJetStream:
+        def __init__(self) -> None:
+            self.in_flight = 0
+
+        async def publish_async(self, *_args, **_kwargs):
+            self.in_flight += 1
+            if self.in_flight == 4:
+                started.set()
+            return asyncio.get_running_loop().create_future()
+
+    jetstream = NeverAckJetStream()
+    window = JetStreamPublishWindow(
+        lambda: jetstream,
+        settings=JetStreamPublishWindowSettings(
+            max_pending_messages=4,
+            max_pending_bytes=1024,
+            puback_timeout_seconds=30,
+            max_attempts=1,
+        ),
+    )
+    callers = tuple(
+        asyncio.create_task(
+            window.publish(
+                "metrics.network",
+                tuple(JetStreamMessage(payload=b"line", message_id=f"caller-{caller}-message-{index}") for index in range(4)),
+            )
+        )
+        for caller in range(4)
+    )
+    await asyncio.wait_for(started.wait(), timeout=1)
+    await asyncio.sleep(0)
+
+    puback_tasks = tuple(
+        task
+        for task in asyncio.all_tasks()
+        if task is not asyncio.current_task() and not task.done() and task.get_name().startswith("jetstream-puback:")
+    )
+
+    assert len(puback_tasks) == 4
+    assert window.snapshot().pending_messages == 4
+
+    for caller in callers:
+        caller.cancel()
+    await asyncio.gather(*callers, return_exceptions=True)
+    assert window.snapshot().pending_messages == 0
+    assert window.snapshot().pending_bytes == 0
+
+
+@pytest.mark.asyncio
 async def test_5000_network_results_publish_concurrently_with_bounded_memory():
     jetstream = RecordingJetStream(ack_delay_seconds=0.0005)
     window = JetStreamPublishWindow(

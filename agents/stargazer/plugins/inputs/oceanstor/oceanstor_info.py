@@ -34,6 +34,7 @@ class OceanStorManager:
         self.token = None
         self.device_id = None
         self._client: httpx.AsyncClient | None = None
+        self.collection_task_id = params.get("collection_task_id")
 
     def _headers(self):
         h = {"Content-Type": "application/json"}
@@ -132,9 +133,13 @@ class OceanStorManager:
             }
             return {"result": result, "success": True}
         except Exception as err:  # noqa
-            import traceback
-
-            logger.error(f"oceanstor_info main error! {traceback.format_exc()}")
+            logger.exception(
+                "event=oceanstor_collect_failed host=%s task_id=%s failed_stage=%s error_type=%s",
+                self.host,
+                self.collection_task_id,
+                "list_all_resources",
+                type(err).__name__,
+            )
             return {"result": {"cmdb_collect_error": str(err)}, "success": False}
         finally:
             await self.logout()

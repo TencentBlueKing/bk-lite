@@ -12,6 +12,7 @@ export interface PlatformApplication {
   skillId?: string;
   /** 所属智能体名称，用于跨智能体同名渠道消歧 */
   skillName?: string;
+  enableConversationHistory?: boolean;
 }
 
 export interface PlatformSession {
@@ -76,7 +77,7 @@ export function asRecordList(payload: unknown): Record<string, unknown>[] {
     return payload.filter(isRecord);
   }
   if (isRecord(payload)) {
-    for (const key of ['results', 'items', 'data'] as const) {
+    for (const key of ['results', 'items', 'data', 'messages'] as const) {
       const nested = payload[key];
       if (Array.isArray(nested)) {
         return nested.filter(isRecord);
@@ -98,7 +99,14 @@ export function mapPlatformApplications(rows: Record<string, unknown>[]): Platfo
       const skillName = String(item.skill_name ?? '').trim() || undefined;
       const skillId =
         item.skill_id === undefined || item.skill_id === null ? undefined : String(item.skill_id);
-      return { id, channelName, channelId, skillId, skillName };
+      return {
+        id,
+        channelName,
+        channelId,
+        skillId,
+        skillName,
+        enableConversationHistory: item.enable_conversation_history !== false,
+      };
     })
     .filter((item) => item.id && item.channelId);
 
@@ -120,6 +128,7 @@ export function mapPlatformApplications(rows: Record<string, unknown>[]): Platfo
       channelId: item.channelId,
       skillId: item.skillId,
       skillName: item.skillName,
+      enableConversationHistory: item.enableConversationHistory,
     };
   });
 

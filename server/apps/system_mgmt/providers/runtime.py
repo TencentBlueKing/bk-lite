@@ -16,6 +16,7 @@ _PLATFORM_INTERNAL_CODES = frozenset(
         "provider.invalid_response",
         "provider.not_implemented",
         "provider.operation_not_implemented",
+        "provider.unavailable",
     }
 )
 
@@ -123,6 +124,23 @@ class RuntimeApplicationService:
             raise ValueError(f"Unknown provider '{provider_key}'")
         return manifest
 
+    def _provider_unavailable_result(self, provider_key: str, *, error_type: str):
+        logger.warning(
+            "event=provider_unavailable pack_key=%s failed_stage=test_connection error_type=%s",
+            provider_key,
+            error_type,
+        )
+        return CapabilityExecutionResult.failed_result(
+            "Provider is unavailable",
+            code="provider.unavailable",
+            payload={
+                "provider_key": provider_key,
+                "instance_status": "verification_failed",
+                "capability_status": {},
+                "capability_results": {},
+            },
+        )
+
     def get_adapter_class(self, provider_key: str, capability_key: str):
         manifest = self.get_provider_manifest(provider_key)
         capability = manifest.get_capability(capability_key)
@@ -147,13 +165,16 @@ class RuntimeApplicationService:
         raise ValueError(f"Adapter '{adapter_cls.__name__}' returned unsupported result type '{type(result)}'")
 
     def test_connection(self, instance, capability_key: str | None = None):
-        manifest = self.get_provider_manifest(instance.provider_key)
+        provider_key = getattr(instance, "provider_key", "")
+        manifest = self.provider_registry.get(provider_key)
+        if manifest is None:
+            return self._provider_unavailable_result(provider_key, error_type="unregistered")
         runtime_config = instance.get_runtime_config()
         base_adapter_key = getattr(manifest, "base_connection_adapter_key", "")
         if not capability_key and base_adapter_key:
             adapter_cls = self.adapter_registry.get(base_adapter_key)
             if adapter_cls is None:
-                raise ValueError(f"Base connection adapter '{base_adapter_key}' is not registered")
+                return self._provider_unavailable_result(provider_key, error_type="adapter_unregistered")
             result = adapter_cls.test_connection(
                 config=runtime_config,
                 provider_key=manifest.key,
@@ -184,16 +205,19 @@ class RuntimeApplicationService:
         if capability_key:
             capability = manifest.get_capability(capability_key)
             if capability is None:
-                raise ValueError(f"Provider '{manifest.key}' does not declare capability '{capability_key}'")
+                return self._provider_unavailable_result(provider_key, error_type="capability_unregistered")
             capabilities = [capability]
 
         for capability in capabilities:
-            result = self.execute(
-                provider_key=manifest.key,
-                capability_key=capability.key,
-                operation="test_connection",
-                config=runtime_config,
-            )
+            try:
+                result = self.execute(
+                    provider_key=manifest.key,
+                    capability_key=capability.key,
+                    operation="test_connection",
+                    config=runtime_config,
+                )
+            except ValueError:
+                return self._provider_unavailable_result(provider_key, error_type="adapter_unregistered")
             capability_results[capability.key] = result.to_dict()
             capability_status[capability.key] = "ready" if result.success else "verification_failed"
             all_success = all_success and result.success

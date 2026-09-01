@@ -60,9 +60,7 @@ class CollectHitStateService:
                 object_key=object_key,
                 credential_id=credential_id,
             )
-            if not CollectHitStateService._accept_event(
-                state, event_id, now, result_id, event_index
-            ):
+            if not CollectHitStateService._accept_event(state, event_id, now, result_id, event_index):
                 return False
             state.status = CollectTaskCredentialHit.STATUS_SUCCESS
             state.consecutive_failures = 0
@@ -105,9 +103,7 @@ class CollectHitStateService:
                 object_key=object_key,
                 credential_id=credential_id,
             )
-            if not CollectHitStateService._accept_event(
-                state, event_id, now, result_id, event_index
-            ):
+            if not CollectHitStateService._accept_event(state, event_id, now, result_id, event_index):
                 return False
             state.object_snapshot = snapshot or {}
             state.last_failure_at = now
@@ -139,12 +135,7 @@ class CollectHitStateService:
             event_index = -1
         if state.last_result_at and event_at < state.last_result_at:
             return False
-        if (
-            state.last_result_at == event_at
-            and result_id
-            and result_id == state.last_result_id
-            and event_index <= state.last_result_event_index
-        ):
+        if state.last_result_at == event_at and result_id and result_id == state.last_result_id and event_index <= state.last_result_event_index:
             return False
         if event_id:
             state.recent_result_event_ids = (recent_ids + [event_id])[-64:]
@@ -184,11 +175,7 @@ class CollectHitStateService:
             normalized_index = int(event_index)
         except (TypeError, ValueError):
             normalized_index = -1
-        return (
-            bool(result_id)
-            and str(result_id) == current.last_result_id
-            and normalized_index > current.last_result_event_index
-        )
+        return bool(result_id) and str(result_id) == current.last_result_id and normalized_index > current.last_result_event_index
 
     @staticmethod
     def clear_by_credential_ids(task_id, credential_ids):

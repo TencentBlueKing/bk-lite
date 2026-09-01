@@ -249,7 +249,8 @@ def test_event_view_uses_current_organization_and_apm_reader(apm_api_client, moc
     assert response.status_code == 200
     assert response.data == [event]
     call = reader.list.call_args.kwargs
-    assert call["organization_id"] == 10
+    assert set(call["organization_ids"]) == {10}
+    assert "organization_id" not in call
     assert call["action"] == "triggered"
     assert call["severity"] == "error"
     assert call["limit"] == 20

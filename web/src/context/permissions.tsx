@@ -1,8 +1,15 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
+import { usePathname } from 'next/navigation';
 import useApiClient from '@/utils/request';
 import { useMenus } from '@/context/menus';
 import { MenuItem } from '@/types/index';
-import { getClientIdFromRoute, mapClientName } from '@/utils/route';
+import { createLatestRequestGuard } from '@/context/latestRequestGuard';
+import {
+  getClientIdFromRoute,
+  isAppClientMenuRoute,
+  isWaitingForClientMenus,
+  mapClientName,
+} from '@/utils/route';
 import { isSessionExpiredState } from '@/utils/sessionExpiry';
 import { hasRoutePermission } from '@/context/permission-path';
 
@@ -27,11 +34,16 @@ const PermissionsContext = createContext<PermissionsContextValue>({
 });
 
 export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
+  const pathname = usePathname();
+  const routeClientId = getClientIdFromRoute(pathname);
+  const shouldFetchAppMenus = isAppClientMenuRoute(pathname);
   const { configMenus, loading: menuLoading } = useMenus();
   const { get, isLoading: apiLoading } = useApiClient();
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [permissions, setPermissions] = useState<Permissions>(defaultPermissions);
   const [loading, setLoading] = useState(true);
+  const [menuClientId, setMenuClientId] = useState<string | null>(null);
+  const [requestGuard] = useState(createLatestRequestGuard);
 
   const extractPermissions = (
     menus: MenuItem[],
@@ -148,10 +160,15 @@ export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
+    if (!shouldFetchAppMenus) {
+      setLoading(false);
+      return;
+    }
+
     if (!apiLoading && !menuLoading) {
+      const requestId = requestGuard.begin();
       setLoading(true);
       try {
-        const routeClientId = getClientIdFromRoute();
         const clientName = mapClientName(routeClientId);
         let allMenuData: MenuItem[] = [];
         let menusToFilter: MenuItem[] = configMenus;
@@ -176,19 +193,26 @@ export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
         const permissionMap = collectPermissionOperations(allMenuData);
         const filteredMenus = filterMenusByPermission(permissionMap, menusToFilter, routeClientId);
         const parsedPermissions = extractPermissions(filteredMenus);
-        setMenuItems(filteredMenus);
-        setPermissions(parsedPermissions);
-        setLoading(false);
+        requestGuard.commitIfCurrent(requestId, () => {
+          setMenuItems(filteredMenus);
+          setPermissions(parsedPermissions);
+          setMenuClientId(routeClientId);
+          setLoading(false);
+        });
       } catch (err) {
         console.error('Failed to fetch menus:', err);
-        setLoading(false);
+        requestGuard.commitIfCurrent(requestId, () => {
+          setMenuClientId(routeClientId);
+          setLoading(false);
+        });
       }
     }
-  }, [get, apiLoading, menuLoading, configMenus]);
+  }, [get, apiLoading, menuLoading, configMenus, routeClientId, shouldFetchAppMenus, requestGuard]);
 
   useEffect(() => {
     fetchMenus();
-  }, [apiLoading, menuLoading]);
+    return () => requestGuard.invalidate();
+  }, [fetchMenus, requestGuard]);
 
   const hasPermission = useCallback(
     (url: string) => {
@@ -197,8 +221,19 @@ export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
     [permissions]
   );
 
+  const waitingForClientMenus = isWaitingForClientMenus(pathname, menuClientId);
+  const value = useMemo(
+    () => ({
+      menus: menuItems,
+      permissions,
+      loading: loading || waitingForClientMenus,
+      hasPermission,
+    }),
+    [menuItems, permissions, loading, waitingForClientMenus, hasPermission],
+  );
+
   return (
-    <PermissionsContext.Provider value={{ menus: menuItems, permissions, loading, hasPermission }}>
+    <PermissionsContext.Provider value={value}>
       {children}
     </PermissionsContext.Provider>
   );

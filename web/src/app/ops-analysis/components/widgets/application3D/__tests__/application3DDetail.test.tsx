@@ -228,6 +228,41 @@ describe('application3D detail panels', () => {
     expect(view.container.querySelector('.app3d-severity-badge')).not.toBeNull();
   });
 
+  it('does not render a zero alarm total when the collection is unavailable', () => {
+    const unknownHealth: Application3DHealth = {
+      state: 'unknown',
+      reason: 'no_host',
+      activeAlarmCount: null,
+      severityCounts: null,
+      noDataAlarmCount: null,
+      highestSeverity: null,
+      stale: false,
+    };
+    const unavailableDetail: Application3DDetailData = {
+      application: {
+        id: 'sys-1',
+        name: '财务结算平台',
+        health: unknownHealth,
+        properties: [{ key: 'system_code', label: '系统编码', displayValue: 'SYS-1' }],
+      },
+      alarms: { state: 'unavailable' },
+      refreshedAt: '2026-08-26T00:00:00Z',
+    };
+    const view = render(
+      <Application3DDetail
+        selected={{ id: 'sys-1', name: '财务结算平台', health: unknownHealth }}
+        detail={unavailableDetail}
+        loading={false}
+        {...panelHandlers}
+      />,
+    );
+
+    expect(view.container.querySelector('.app3d-alarm-list__total')).toBeNull();
+    expect(view.container.textContent).toContain('dashboard.application3DAlarmsUnavailable');
+    expect(view.container.querySelector('.app3d-count-chip')?.textContent).toContain('-');
+    expect(view.container.textContent).not.toContain('共 0 条');
+  });
+
   it('keeps left panel border uncolored for no_data critical while detail is loading', () => {
     const noDataSelected: Application3DWallItem = {
       ...selected,
@@ -258,7 +293,7 @@ describe('application3D detail panels', () => {
     );
     const close = view.container.querySelector('.app3d-detail-shell > .app3d-close-cta');
     expect(close).not.toBeNull();
-    expect(close?.textContent).toContain('common.close');
+    expect(close?.textContent).toContain('dashboard.application3DCloseDetail');
   });
 
   it('shows linked host, alert type, notification execution, and real metric name in alarm detail', () => {

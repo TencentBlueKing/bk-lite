@@ -22,6 +22,7 @@ class InfluxdbInfo:
         self.timeout = 10  # 请求超时硬编码；表单 timeout 由框架作单对象预算
         scheme = "https" if self.ssl else "http"
         self.base_url = f"{scheme}://{self.host}:{self.port}"
+        self.collection_task_id = kwargs.get("collection_task_id")
 
     def _client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(
@@ -184,7 +185,11 @@ class InfluxdbInfo:
                     )
                 return {"result": {"influxdb": rows}, "success": True}
         except Exception as err:  # noqa
-            import traceback
-
-            logger.error(f"influxdb_info main error! {traceback.format_exc()}")
+            logger.exception(
+                "event=influxdb_collect_failed host=%s task_id=%s failed_stage=%s error_type=%s",
+                self.host,
+                self.collection_task_id,
+                "list_all_resources",
+                type(err).__name__,
+            )
             return {"result": {"cmdb_collect_error": str(err)}, "success": False}

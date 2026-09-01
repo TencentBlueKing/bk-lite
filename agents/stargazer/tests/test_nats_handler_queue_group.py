@@ -41,14 +41,19 @@ def test_every_handler_declares_queue_group(handler_name, decorator):
 
 
 def test_queue_group_matches_its_own_subject():
-    """队列组名必须由本 handler 的 subject 推导，避免串到别的 handler 组里。"""
+    """用 _handler_queue() 时，传入的必须是本 handler 自己的 subject。
+
+    直接写字面量队列组名同样合法：NATS 的队列组按 (subject, queue) 二元组划分，
+    subject 不同的 handler 即使队列组重名也各自成组，不会互相抢消息。因此这里
+    只校验辅助函数的用法，"是否声明了 queue"由上面的用例统一覆盖。
+    """
     for handler_name, decorator in _register_handler_calls():
         subject_arg = decorator.args[0]
-        if not isinstance(subject_arg, ast.Constant):
-            continue  # host_remote.callback 用模块常量，由其自身的 queue 辅助函数保证
         queue_arg = next(kw.value for kw in decorator.keywords if kw.arg == "queue")
-        assert isinstance(queue_arg, ast.Call), f"{handler_name} 的 queue 应由 _handler_queue 推导"
-        assert queue_arg.func.id == "_handler_queue"
+        if not isinstance(subject_arg, ast.Constant) or not isinstance(queue_arg, ast.Call):
+            continue  # subject 用模块常量、或 queue 是字面量/自带辅助函数时无法静态比对
+        if getattr(queue_arg.func, "id", None) != "_handler_queue":
+            continue  # 其它辅助函数自行保证命名
         assert queue_arg.args[0].value == subject_arg.value, f"{handler_name} 的队列组名与自身 subject 不一致"
 
 

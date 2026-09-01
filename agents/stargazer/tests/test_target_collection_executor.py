@@ -47,12 +47,54 @@ class RecordingPlugin:
         return CollectOutcome(status=CollectOutcomeStatus.SUCCESS, value={"ok": True})
 
 
+class EmptySuccessPlugin:
+    async def collect(self, target, credential, context):
+        return CollectOutcome(status=CollectOutcomeStatus.SUCCESS, value={})
+
+
 class RecordingPublisher:
     def __init__(self):
         self.results = []
 
     async def publish(self, request, result, lease):
         self.results.append((request, result, lease))
+
+
+@pytest.mark.asyncio
+async def test_empty_successful_snapshot_does_not_publish_completion_marker(monkeypatch):
+    marker_calls = []
+
+    async def record_marker(request, round_ts):
+        marker_calls.append((request.task_id, round_ts))
+        return True
+
+    monkeypatch.setattr(
+        "core.collection.round_complete.publish_round_complete_marker",
+        record_marker,
+    )
+    publisher = RecordingPublisher()
+    request = CollectionRequest(
+        task_id="empty-complete",
+        plugin_ref="network.config",
+        targets=("10.10.24.1",),
+        credentials=({"credential_id": "c1"},),
+        params={"model_id": "network", "collect_task_id": 7},
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+    executor = TargetCollectionExecutor(
+        preflight=ReachablePreflight(),
+        plugin=EmptySuccessPlugin(),
+        publisher=publisher,
+        settings=TargetExecutorSettings(max_active_targets=1, target_task_window=1),
+    )
+
+    summary = await executor.execute(request, lease)
+
+    assert summary.collection_succeeded == 1
+    assert summary.publish_succeeded == 0
+    assert summary.publish_not_applicable == 1
+    assert publisher.results == []
+    assert marker_calls == []
 
 
 class OneTargetFailingPublisher:
@@ -370,11 +412,7 @@ async def test_ip_precheck_failures_use_one_bounded_safe_sample_log(monkeypatch)
     assert not any("event=ip_precheck_failed" in message for message in rendered)
     assert all("precheck-secret-sentinel" not in message for message in rendered)
     assert summary.unreachable == 2
-    assert [result.error_code for _, result, _ in publisher.results] == [
-        "tcp_connect_failed",
-        "tcp_connect_failed",
-    ]
-    assert publisher.results[0][1].target == "10.10.69.21\r\nforged=true"
+    assert publisher.results == []
 
 
 @pytest.mark.asyncio
@@ -471,7 +509,7 @@ async def test_plugin_failure_has_central_searchable_log_without_secret(monkeypa
 
 
 @pytest.mark.asyncio
-async def test_plugin_exception_call_chains_include_every_failed_target(monkeypatch):
+async def test_plugin_exception_call_chains_are_bounded_per_run(monkeypatch):
     error_logs = []
 
     def capture_error(message, *args):
@@ -501,10 +539,10 @@ async def test_plugin_exception_call_chains_include_every_failed_target(monkeypa
 
     call_chains = [item for item in error_logs if "event=plugin_exception" in item]
     assert summary.failed == 10
-    assert len(call_chains) == 10
+    assert len(call_chains) == 3
     assert all("plugin_name=snmp_facts" in item for item in call_chains)
     assert all("error_message=SNMP authorization failure" in item for item in call_chains)
-    assert {item.split("target=", 1)[1].split(" ", 1)[0] for item in call_chains} == {f"10.10.69.{index}" for index in range(10)}
+    assert len({item.split("target=", 1)[1].split(" ", 1)[0] for item in call_chains}) == 3
 
 
 @pytest.mark.asyncio
@@ -700,11 +738,7 @@ async def test_unexpected_target_failure_owns_safe_traceback_without_cancelling_
 
     assert summary.collection_failed == 1
     assert summary.collection_succeeded == 1
-    assert [item[1].target for item in publisher.results] == [
-        "10.10.24.1",
-        "10.10.24.2",
-    ]
-    assert publisher.results[0][1].error_code == "target_execution_error"
+    assert [item[1].target for item in publisher.results] == ["10.10.24.2"]
     assert len(error_calls) == 1
     template, args, kwargs = error_calls[0]
     assert template.startswith("event=target_execution_failed")
@@ -777,7 +811,11 @@ class NoResponseThenReadyProbe:
 
 
 class AlwaysNoResponseProbe:
+    def __init__(self):
+        self.calls = []
+
     async def probe(self, target, credential, context, *, timeout_seconds):
+        self.calls.append((target, credential["credential_id"]))
         return AccessProbeResult(
             status=AccessProbeStatus.NO_RESPONSE,
             error_code="protocol_no_response",
@@ -785,7 +823,11 @@ class AlwaysNoResponseProbe:
 
 
 class TargetUnreachableAccessProbe:
+    def __init__(self):
+        self.calls = []
+
     async def probe(self, target, credential, context, *, timeout_seconds):
+        self.calls.append((target, credential["credential_id"]))
         return AccessProbeResult(
             status=AccessProbeStatus.TARGET_UNREACHABLE,
             error_code="target_unreachable",
@@ -798,7 +840,11 @@ class MustNotCollectPlugin:
 
 
 class BrokenAccessProbe:
+    def __init__(self):
+        self.calls = []
+
     async def probe(self, target, credential, context, *, timeout_seconds):
+        self.calls.append((target, credential["credential_id"]))
         raise RuntimeError("secret-do-not-publish")
 
 
@@ -813,8 +859,10 @@ class FixedAccessProbe:
     def __init__(self, status, error_code):
         self.status = status
         self.error_code = error_code
+        self.calls = []
 
     async def probe(self, target, credential, context, *, timeout_seconds):
+        self.calls.append((target, credential["credential_id"]))
         return AccessProbeResult(
             status=self.status,
             error_code=self.error_code,
@@ -880,9 +928,7 @@ async def test_unreachable_target_is_filtered_before_any_credential_attempt():
     assert summary.unreachable == 1
     assert summary.succeeded == 0
     assert plugin.calls == []
-    assert len(publisher.results) == 1
-    assert publisher.results[0][1].status == "unreachable"
-    assert publisher.results[0][1].attempts == 0
+    assert publisher.results == []
 
 
 @pytest.mark.asyncio
@@ -1096,8 +1142,8 @@ async def test_protocol_no_response_stops_after_default_attempt_limit():
     summary = await executor.execute(request, lease)
 
     assert summary.failed == 1
-    assert publisher.results[0][1].attempts == 3
-    assert publisher.results[0][1].error_code == "no_response_attempt_limit"
+    assert len(probe.calls) == 3
+    assert publisher.results == []
     assert plugin.calls == []
 
 
@@ -1147,7 +1193,7 @@ async def test_single_snmp_no_response_is_visible_as_timeout_without_plugin_trac
     summary = await executor.execute(request, lease)
 
     assert summary.failed == 1
-    assert publisher.results[0][1].error_code == "protocol_no_response"
+    assert publisher.results == []
     samples = [item for item in info_logs if "event=collection_failure_samples" in item]
     target_failures = [item for item in warning_logs if "event=target_collection_failed" in item]
     run_summaries = [item for item in warning_logs if "event=collection_run_summary" in item]
@@ -1274,9 +1320,10 @@ async def test_publish_failures_are_sampled_and_aggregated(monkeypatch):
 @pytest.mark.asyncio
 async def test_access_probe_target_unreachable_stops_credential_rotation():
     publisher = RecordingPublisher()
+    probe = TargetUnreachableAccessProbe()
     executor = TargetCollectionExecutor(
         preflight=ReachablePreflight(),
-        access_probe=TargetUnreachableAccessProbe(),
+        access_probe=probe,
         plugin=MustNotCollectPlugin(),
         publisher=publisher,
         settings=TargetExecutorSettings(max_active_targets=1, target_task_window=1),
@@ -1302,26 +1349,24 @@ async def test_access_probe_target_unreachable_stops_credential_rotation():
     summary = await executor.execute(request, lease)
 
     assert summary.unreachable == 1
-    assert publisher.results[0][1].status == "unreachable"
-    assert publisher.results[0][1].attempts == 1
-    assert publisher.results[0][1].credential_id == "credential-1"
-    assert publisher.results[0][1].error_code == "target_unreachable"
-    assert publisher.results[0][1].failed_stage == FailureStage.ACCESS_PROBE
+    assert probe.calls == [("10.10.24.1", "credential-1")]
+    assert publisher.results == []
 
 
 @pytest.mark.asyncio
 async def test_collect_unreachable_keeps_selected_credential_identity():
     publisher = RecordingPublisher()
+    plugin = ScriptedPlugin(
+        [
+            CollectOutcome(
+                status=CollectOutcomeStatus.UNREACHABLE,
+                error_code="target_unreachable",
+            )
+        ]
+    )
     executor = TargetCollectionExecutor(
         preflight=ReachablePreflight(),
-        plugin=ScriptedPlugin(
-            [
-                CollectOutcome(
-                    status=CollectOutcomeStatus.UNREACHABLE,
-                    error_code="target_unreachable",
-                )
-            ]
-        ),
+        plugin=plugin,
         publisher=publisher,
         settings=TargetExecutorSettings(max_active_targets=1, target_task_window=1),
     )
@@ -1342,8 +1387,8 @@ async def test_collect_unreachable_keeps_selected_credential_identity():
     summary = await executor.execute(request, lease)
 
     assert summary.unreachable == 1
-    assert publisher.results[0][1].credential_id == "credential-1"
-    assert publisher.results[0][1].failed_stage == FailureStage.COLLECTION
+    assert plugin.calls == [("10.10.24.1", "credential-1")]
+    assert publisher.results == []
 
 
 @pytest.mark.asyncio
@@ -1401,9 +1446,10 @@ async def test_access_probe_exception_fails_only_current_target(monkeypatch):
 
     monkeypatch.setattr("core.collection.executor.logger.error", capture_error)
     publisher = RecordingPublisher()
+    probe = BrokenAccessProbe()
     executor = TargetCollectionExecutor(
         preflight=ReachablePreflight(),
-        access_probe=BrokenAccessProbe(),
+        access_probe=probe,
         plugin=MustNotCollectPlugin(),
         publisher=publisher,
         settings=TargetExecutorSettings(max_active_targets=1, target_task_window=1),
@@ -1430,8 +1476,8 @@ async def test_access_probe_exception_fails_only_current_target(monkeypatch):
     summary = await executor.execute(request, lease)
 
     assert summary.failed == 1
-    assert publisher.results[0][1].error_code == "access_probe_error"
-    assert "secret-do-not-publish" not in publisher.results[0][1].error_code
+    assert probe.calls == [("10.10.24.1", "credential-1")]
+    assert publisher.results == []
     assert len(error_logs) == 1
     assert "event=plugin_exception" in error_logs[0]
     assert "plugin_ref=mysql.config" in error_logs[0]
@@ -1496,9 +1542,10 @@ async def test_access_probe_timeout_rotates_to_next_credential():
 )
 async def test_target_scoped_access_probe_result_stops_credential_rotation(probe_status, error_code, result_status):
     publisher = RecordingPublisher()
+    probe = FixedAccessProbe(probe_status, error_code)
     executor = TargetCollectionExecutor(
         preflight=ReachablePreflight(),
-        access_probe=FixedAccessProbe(probe_status, error_code),
+        access_probe=probe,
         plugin=MustNotCollectPlugin(),
         publisher=publisher,
         settings=TargetExecutorSettings(max_active_targets=1, target_task_window=1),
@@ -1521,12 +1568,12 @@ async def test_target_scoped_access_probe_result_stops_credential_rotation(probe
         expires_at=999999,
     )
 
-    await executor.execute(request, lease)
+    summary = await executor.execute(request, lease)
 
-    result = publisher.results[0][1]
-    assert result.status == result_status
-    assert result.attempts == 1
-    assert result.error_code == error_code
+    assert probe.calls == [("api.example.test", "credential-1")]
+    assert publisher.results == []
+    assert summary.deferred == (1 if result_status == "deferred" else 0)
+    assert summary.collection_failed == (1 if result_status == "failed" else 0)
 
 
 @pytest.mark.asyncio
@@ -1565,10 +1612,7 @@ async def test_capability_denied_probe_cools_credential_without_collecting():
     summary = await executor.execute(request, lease)
 
     assert summary.failed == 1
-    assert publisher.results[0][1].error_code == "credentials_exhausted"
-    assert [(failure.credential_id, failure.error_code) for failure in publisher.results[0][1].credential_failures] == [
-        ("credential-1", "capability_denied")
-    ]
+    assert publisher.results == []
     assert await credential_policy.eligible_credentials(request, "10.10.24.1") == ()
 
 
@@ -1642,7 +1686,8 @@ async def test_collection_timeout_records_bounded_overshoot():
     await executor.execute(request, lease)
 
     snapshot = metrics.snapshot()
-    assert publisher.results[0][1].error_code == "plugin_timeout"
+    assert publisher.results == []
+    assert snapshot["plugin_timeout_total"] == 1
     assert 0 <= snapshot["timeout_overshoot_seconds_p99"] < 0.1
 
 
@@ -1687,8 +1732,7 @@ async def test_target_without_matching_credential_has_stable_error(monkeypatch):
     summary = await executor.execute(request, lease)
 
     assert summary.failed == 1
-    assert publisher.results[0][1].attempts == 0
-    assert publisher.results[0][1].error_code == "no_matching_credential"
+    assert publisher.results == []
     target_failures = [item for item in warning_logs if "event=target_collection_failed" in item]
     samples = [item for item in info_logs if "event=collection_failure_samples" in item]
     assert target_failures == []
@@ -1869,17 +1913,13 @@ async def test_publish_succeeds_on_second_attempt():
 
 
 @pytest.mark.asyncio
-async def test_result_event_failure_does_not_turn_confirmed_nats_publish_into_unknown():
+async def test_confirmed_metrics_publish_has_no_credential_event_phase():
     async def publish_metrics_batch(entries):
         return {entry[2]["collection_result_id"]: None for entry in entries}
-
-    async def fail_result_event(_event):
-        raise ConnectionError("redis unavailable")
 
     publisher = BufferedResultPublisher(
         NatsResultPublisher(
             metrics_publish_batch=publish_metrics_batch,
-            result_event_sink=fail_result_event,
         ),
         capacity=1,
         batch_size=1,
@@ -1903,9 +1943,10 @@ async def test_result_event_failure_does_not_turn_confirmed_nats_publish_into_un
     summary = await executor.execute(request, lease)
     await publisher.shutdown()
 
-    assert summary.publish_event_failed == 1
+    assert summary.publish_succeeded == 1
+    assert summary.publish_event_failed == 0
     assert summary.publish_unknown == 0
-    assert summary.has_errors is True
+    assert summary.has_errors is False
 
 
 @pytest.mark.asyncio
@@ -2042,7 +2083,9 @@ async def test_configuration_failure_does_not_enter_metrics_retry():
     summary = await executor.execute(request, lease)
     await publisher.shutdown()
 
-    assert summary.publish_succeeded == 1
+    assert summary.publish_succeeded == 0
+    assert summary.publish_failed == 0
+    assert summary.publish_unknown == 0
     assert payloads == []
 
 
@@ -2224,8 +2267,5 @@ async def test_credential_state_redis_error_fails_only_that_target():
     assert summary.failed == 2
     assert summary.succeeded == 0
     assert plugin.calls == []
-    assert [result[1].error_code for result in publisher.results] == [
-        "credential_state_unavailable",
-        "credential_state_unavailable",
-    ]
+    assert publisher.results == []
     assert metrics.snapshot()["credential_state_redis_error_total"] == 2

@@ -23,6 +23,7 @@ from core.collection.metrics import CollectionMetrics
 from core.collection.runtime import CollectionRequest, RunLease
 from core.infra.redis_client import is_credential_state_redis_error
 from core.logger import logger, safe_log_value
+from core.plugin.error_logging import PluginExceptionLogBudget
 
 
 class TargetAttemptRunner:
@@ -57,6 +58,8 @@ class TargetAttemptRunner:
         request: CollectionRequest,
         target: str,
         lease: RunLease,
+        *,
+        plugin_exception_log_budget: PluginExceptionLogBudget | None = None,
     ) -> TargetCollectionResult:
         started_at = time.monotonic()
         return await self._execute_target(
@@ -64,6 +67,7 @@ class TargetAttemptRunner:
             target,
             lease,
             target_started_at=started_at,
+            plugin_exception_log_budget=plugin_exception_log_budget,
         )
 
     async def _execute_target(
@@ -73,6 +77,7 @@ class TargetAttemptRunner:
         lease: RunLease,
         *,
         target_started_at: float,
+        plugin_exception_log_budget: PluginExceptionLogBudget | None,
     ) -> TargetCollectionResult:
         preflight = await self._run_preflight(request, target)
         if preflight.status == PreflightStatus.UNREACHABLE:
@@ -100,6 +105,8 @@ class TargetAttemptRunner:
 
         context_params = dict(request.params)
         context_params["_log_plugin_call_chain"] = True
+        if plugin_exception_log_budget is not None:
+            context_params["_plugin_exception_log_budget"] = plugin_exception_log_budget
         if preflight.connect_host:
             context_params["_validated_connect_host"] = preflight.connect_host
         context = TargetCollectionContext(

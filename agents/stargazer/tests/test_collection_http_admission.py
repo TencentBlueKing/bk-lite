@@ -1,9 +1,11 @@
+import json
 from types import SimpleNamespace
 
 import api.collect as collect_api
 import api.health as health_api
 import api.monitor as monitor_api
 import pytest
+from core.collection.enums import WorkloadClass
 from core.collection.request_identity import build_request_task_id
 from core.collection.runtime import Submission, SubmissionStatus
 from core.collection.yaml_target_policy import apply_yaml_target_policy
@@ -76,6 +78,7 @@ async def test_configuration_http_maps_runtime_admission_status(monkeypatch, sub
     assert app.requests[0].task_id == expected_task_id
     assert app.requests[0].task_id != "caller-old-id"
     assert app.requests[0].targets == ("10.10.24.1", "10.10.24.2")
+    assert app.requests[0].workload_class is WorkloadClass.CONFIGURATION
 
 
 @pytest.mark.asyncio
@@ -175,6 +178,7 @@ async def test_monitor_http_uses_request_fingerprint_as_task_id(monkeypatch):
         "http_status": 202,
     }
     assert app.requests[0].plugin_ref == "windows_wmi.monitor"
+    assert app.requests[0].workload_class is WorkloadClass.MONITORING
     assert app.requests[0].task_id != "monitor-task-1"
 
 
@@ -322,6 +326,12 @@ async def test_health_metrics_expose_capacity_and_event_loop_lag(monkeypatch):
                 "job_node_info_lookup_rpc_total": 1,
                 "job_node_info_lookup_found_total": 140,
                 "job_node_info_lookup_duration_seconds_p99": 0.085,
+                "workload_configuration_active": 100,
+                "workload_configuration_pending": 40,
+                "workload_configuration_borrowed": 20,
+                "capacity_group_snmp_active": 80,
+                "capacity_group_snmp_pending": 15,
+                "capacity_group_snmp_limit": 100,
             }
 
     monkeypatch.setattr(
@@ -353,3 +363,43 @@ async def test_health_metrics_expose_capacity_and_event_loop_lag(monkeypatch):
     assert "stargazer_collection_job_node_info_lookup_found_total 140" in body
     assert "stargazer_collection_job_node_info_lookup_duration_seconds_p99 0.085" in body
     assert 'stargazer_collection_execution_mode_success_total{execution_mode="async"} 119' in body
+    assert 'stargazer_scheduler_active_targets{workload_class="configuration"} 100' in body
+    assert 'stargazer_scheduler_pending_targets{workload_class="configuration"} 40' in body
+    assert 'stargazer_scheduler_borrowed_slots{workload_class="configuration"} 20' in body
+    assert 'stargazer_capacity_group_active_targets{capacity_group="snmp"} 80' in body
+    assert 'stargazer_capacity_group_pending_targets{capacity_group="snmp"} 15' in body
+    assert 'stargazer_capacity_group_limit{capacity_group="snmp"} 100' in body
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("redis_ready", "metrics_ready", "expected_status"),
+    ((True, True, 200), (True, False, 503), (False, True, 503)),
+)
+async def test_readiness_requires_redis_and_metrics_transport(
+    monkeypatch,
+    redis_ready,
+    metrics_ready,
+    expected_status,
+):
+    class RuntimeApplication:
+        async def readiness(self):
+            return {
+                "redis": redis_ready,
+                "metrics_jetstream": metrics_ready,
+                "nats_subscriber": True,
+            }
+
+    monkeypatch.setattr(
+        health_api,
+        "get_collection_application",
+        lambda: RuntimeApplication(),
+    )
+
+    result = await health_api.readiness_check(_request())
+    payload = json.loads(result.body)
+
+    assert result.status == expected_status
+    assert payload["ready"] is (expected_status == 200)
+    assert payload["checks"]["metrics_jetstream"] == ("connected" if metrics_ready else "disconnected")
+    assert payload["checks"]["nats_subscriber"] == "connected"

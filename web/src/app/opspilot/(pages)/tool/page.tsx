@@ -1,6 +1,7 @@
 'use client';
-import React, { useState, useEffect } from 'react';
-import { Form, message, Button, Menu, Modal, Drawer, Switch, Tooltip, Segmented,  Upload, Skeleton } from 'antd';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Form, message, Button, Menu, Modal, Drawer, Switch, Tooltip, Segmented, Upload, Input, Select } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
 import CompactEmptyState from '@/components/compact-empty-state';
 import type { UploadFile } from 'antd/es/upload/interface';
 import { Store } from 'antd/lib/form/interface';
@@ -9,8 +10,6 @@ import EntityList from '@/components/entity-list';
 import DynamicForm from '@/components/dynamic-form';
 import OperateModal from '@/components/operate-modal';
 import GroupTreeSelect from '@/components/group-tree-select';
-import SearchActionBar from '@/components/search-action-bar';
-import FilterToolbar from '@/components/filter-toolbar';
 import { useUserInfoContext } from '@/context/userInfo';
 import { Tool, TagOption, ToolPayload } from '@/app/opspilot/types/tool';
 import PermissionWrapper from "@/components/permission";
@@ -22,6 +21,10 @@ import VariableList from '@/app/opspilot/components/tool/variableList';
 import UrlInputWithButton from '@/app/opspilot/components/tool/urlInputWithButton';
 import SkillPackageDetailDrawer from '@/app/opspilot/components/tool/SkillPackageDetailDrawer';
 import Icon from '@/components/icon';
+import UnifiedOpsCard from '@/app/opspilot/components/unified-ops-card';
+import OpsPilotListPageHeader from '@/app/opspilot/components/opspilot-list-page-header';
+import OpsPilotCardGridSkeleton from '@/app/opspilot/components/opspilot-card-grid-skeleton';
+import { formatRelativeTime, pickEntityTimestamp } from '@/app/opspilot/utils/relativeTime';
 
 const ToolListPage: React.FC = () => {
   const { useForm } = Form;
@@ -44,7 +47,7 @@ const ToolListPage: React.FC = () => {
   const [skillAssets, setSkillAssets] = useState<SkillPackage[]>([]);
   const [skillAssetsLoading, setSkillAssetsLoading] = useState<boolean>(false);
   const [skillSearchKeyword, setSkillSearchKeyword] = useState('');
-  const [hoveredSkillAssetKey, setHoveredSkillAssetKey] = useState<string | null>(null);
+  const [toolSearchKeyword, setToolSearchKeyword] = useState('');
   const [selectedSkillAssetForDetail, setSelectedSkillAssetForDetail] = useState<SkillPackage | null>(null);
   const [isImportSkillModalVisible, setIsImportSkillModalVisible] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -489,119 +492,95 @@ const ToolListPage: React.FC = () => {
     />
   );
 
-  const renderSkillAssetControls = () => (
-    <SearchActionBar
-      spacing="flush"
-      searchClassName="!w-60"
-      searchProps={{
-        value: skillSearchKeyword,
-        onChange: (event) => setSkillSearchKeyword(event.target.value),
-        onSearch: setSkillSearchKeyword,
-        placeholder: '搜索技能名称或说明',
-        allowClear: true,
-        enterButton: true,
-        size: 'middle',
+  const displayedTools = useMemo(() => {
+    const base =
+      assetView === 'builtin'
+        ? toolData.filter((tool) => tool.is_build_in)
+        : filteredToolData;
+    const keyword = toolSearchKeyword.trim().toLowerCase();
+    if (!keyword) return base;
+    return base.filter((tool) =>
+      (tool.display_name || tool.name || '').toLowerCase().includes(keyword)
+      || (tool.description || '').toLowerCase().includes(keyword),
+    );
+  }, [assetView, toolData, filteredToolData, toolSearchKeyword]);
+
+  const headerSearch = (
+    <Input.Search
+      allowClear
+      enterButton
+      className="w-60"
+      placeholder={
+        assetView === 'skills'
+          ? '搜索技能名称或说明'
+          : `${t('common.search')}...`
+      }
+      value={assetView === 'skills' ? skillSearchKeyword : toolSearchKeyword}
+      onChange={(event) => {
+        const value = event.target.value;
+        if (assetView === 'skills') setSkillSearchKeyword(value);
+        else setToolSearchKeyword(value);
       }}
-      actions={<Button onClick={() => setIsImportSkillModalVisible(true)}>导入技能包</Button>}
+      onSearch={(value) => {
+        if (assetView === 'skills') setSkillSearchKeyword(value);
+        else setToolSearchKeyword(value);
+      }}
     />
   );
 
-  const renderSkillAssetToolbar = () => (
-    <FilterToolbar align="between" spacing="default" className="w-full" contentClassName="w-full">
-      <div className="flex min-w-0 items-center gap-2">
-        {renderAssetSwitcher()}
-      </div>
-      {renderSkillAssetControls()}
-    </FilterToolbar>
-  );
-
-  const renderSkillAssetSkeleton = () => (
-    <div className="grid w-full grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-6">
-      {Array.from({ length: 6 }).map((_, index) => (
-        <div
-          key={index}
-          className="flex h-[168px] flex-col rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-4 shadow-md"
-        >
-          <div className="flex items-center gap-3">
-            <Skeleton.Avatar active size={48} shape="square" />
-            <div className="min-w-0 flex-1">
-              <Skeleton.Input active size="small" className="!w-40" />
-              <div className="mt-2">
-                <Skeleton.Input active size="small" className="!w-24" />
-              </div>
-            </div>
-          </div>
-          <div className="mt-4">
-            <Skeleton active title={false} paragraph={{ rows: 3, width: ['100%', '92%', '70%'] }} />
-          </div>
-        </div>
-      ))}
-    </div>
+  const headerActions = (
+    <>
+      {headerSearch}
+      {assetView === 'mcp' ? (
+        <PermissionWrapper requiredPermissions={['Add']}>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => showModal(null)}>
+            {t('common.new')}
+          </Button>
+        </PermissionWrapper>
+      ) : null}
+      {assetView === 'skills' ? (
+        <Button type="primary" onClick={() => setIsImportSkillModalVisible(true)}>
+          导入技能包
+        </Button>
+      ) : null}
+    </>
   );
 
   const renderSkillAssetView = () => (
     <div className="w-full" aria-label="技能资产">
-      {renderSkillAssetToolbar()}
-      {skillAssetsLoading ? renderSkillAssetSkeleton() : filteredSkillAssets.length ? (
+      <div className="mb-4">{renderAssetSwitcher()}</div>
+      {skillAssetsLoading ? (
+        <OpsPilotCardGridSkeleton count={6} />
+      ) : filteredSkillAssets.length ? (
         <div className="grid w-full grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-6">
           {filteredSkillAssets.map((asset) => {
             const skillAssetKey = `${asset.package_id}:${asset.version}`;
             const canDeleteSkillAsset = asset.source_type !== 'builtin';
+            const deleteMenu = canDeleteSkillAsset ? (
+              <Menu>
+                <Menu.Item key="delete" danger>
+                  <span
+                    className="block"
+                    onClick={() => handleDeleteSkillAsset(asset)}
+                  >
+                    删除
+                  </span>
+                </Menu.Item>
+              </Menu>
+            ) : undefined;
 
             return (
-              <div
+              <UnifiedOpsCard
                 key={skillAssetKey}
-                className="p-4 rounded-xl relative shadow-md flex h-[168px] cursor-pointer flex-col border border-[var(--color-border)] bg-[var(--color-bg)] transition-all hover:border-[var(--color-primary)] hover:shadow-lg"
-                role="button"
-                tabIndex={0}
+                name={asset.name}
+                description={asset.description || ''}
+                icon="jinengpeixun"
+                updatedAt={formatRelativeTime(pickEntityTimestamp(asset), t) || undefined}
+                meta={[asset.category, asset.version].filter(Boolean) as string[]}
+                footer="none"
+                menuOverlay={deleteMenu}
                 onClick={() => setSelectedSkillAssetForDetail(asset)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    setSelectedSkillAssetForDetail(asset);
-                  }
-                }}
-                onMouseEnter={() => setHoveredSkillAssetKey(skillAssetKey)}
-                onMouseLeave={() => setHoveredSkillAssetKey((current) => (current === skillAssetKey ? null : current))}
-              >
-                <div className="relative flex items-center pr-8">
-                  <div className="shrink-0">
-                    <Icon type="jinengpeixun" className="text-4xl" />
-                  </div>
-                  <div className="ml-3 min-w-0">
-                    <h3 className="truncate text-sm font-semibold text-[var(--color-text-1)]">{asset.name}</h3>
-                    <div className="mt-1 truncate text-xs text-[var(--color-text-3)]">{asset.category}</div>
-                  </div>
-                  {canDeleteSkillAsset && hoveredSkillAssetKey === skillAssetKey && (
-                    <Tooltip title="删除">
-                      <Button
-                        type="text"
-                        danger
-                        size="small"
-                        className="absolute right-0 top-1/2 -translate-y-1/2"
-                        icon={<Icon type="shanchu" className="text-base" />}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleDeleteSkillAsset(asset);
-                        }}
-                        onKeyDown={(event) => {
-                          event.stopPropagation();
-                        }}
-                      />
-                    </Tooltip>
-                  )}
-                </div>
-                <p
-                  className="mt-3 max-h-[72px] overflow-hidden text-sm leading-6 text-[var(--color-text-3)]"
-                  style={{
-                    display: '-webkit-box',
-                    WebkitBoxOrient: 'vertical',
-                    WebkitLineClamp: 3,
-                  }}
-                >
-                  {asset.description}
-                </p>
-              </div>
+              />
             );
           })}
         </div>
@@ -613,32 +592,85 @@ const ToolListPage: React.FC = () => {
 
   return (
     <div className="w-full h-full">
+      <OpsPilotListPageHeader
+        title={t('tool.pageTitle')}
+        description={t('tool.pageDescription')}
+        actions={headerActions}
+      />
       {assetView === 'skills' ? renderSkillAssetView() : (
-        <EntityList<Tool>
-          data={assetView === 'builtin' ? toolData.filter((tool) => tool.is_build_in) : filteredToolData}
-          nameField="display_name"
-          showBuiltinTag={false}
-          loading={loading}
-          menuActions={assetView === 'mcp' ? menuActions : undefined}
-          singleActionType="button"
-          singleAction={assetView === 'builtin' ? () => ({
-            text: t('common.edit'),
-            onClick: showModal,
-          }) : undefined}
-          operateSection={assetView === 'mcp' ? (
-            <PermissionWrapper requiredPermissions={['Add']}>
-              <Button type="primary" className="ml-2" onClick={() => showModal(null)}>
-                {t('common.add')}
-              </Button>
-            </PermissionWrapper>
-          ) : undefined}
-          filter={assetView === 'mcp'}
-          filterLoading={loading}
-          filterOptions={allTags}
-          toolbarPrefix={renderAssetSwitcher()}
-          changeFilter={changeFilter}
-          onCardClick={handleCardClick}
-        />
+        <>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            {renderAssetSwitcher()}
+            {assetView === 'mcp' ? (
+              <Select
+                allowClear
+                mode="multiple"
+                maxTagCount="responsive"
+                className="w-[170px]"
+                placeholder={`${t('common.select')}...`}
+                options={allTags}
+                disabled={loading}
+                loading={loading}
+                onChange={changeFilter}
+              />
+            ) : null}
+          </div>
+          <EntityList<Tool>
+            data={displayedTools}
+            nameField="display_name"
+            showBuiltinTag={false}
+            loading={loading}
+            loadingContent={<OpsPilotCardGridSkeleton />}
+            search={false}
+            hideToolbar
+            menuActions={assetView === 'mcp' ? menuActions : undefined}
+            singleActionType="button"
+            singleAction={assetView === 'builtin' ? () => ({
+              text: t('common.edit'),
+              onClick: showModal,
+            }) : undefined}
+            onCardClick={handleCardClick}
+            renderCard={(tool) => {
+              const title = tool.display_name || tool.name;
+              const meta = [
+                ...(tool.tagList || []),
+                tool.is_build_in ? t('common.builtin') : t('common.externalApp'),
+              ].filter(Boolean);
+              const menu =
+                assetView === 'mcp'
+                  ? menuActions(tool)
+                  : assetView === 'builtin'
+                    ? (
+                      <Menu className={`${styles.menuContainer}`}>
+                        <Menu.Item key="edit">
+                          <PermissionWrapper
+                            requiredPermissions={['Edit']}
+                            instPermissions={tool.permissions}
+                          >
+                            <span className="block w-full" onClick={() => showModal(tool)}>
+                              {t('common.edit')}
+                            </span>
+                          </PermissionWrapper>
+                        </Menu.Item>
+                      </Menu>
+                    )
+                    : undefined;
+
+              return (
+                <UnifiedOpsCard
+                  name={title}
+                  description={tool.description || ''}
+                  icon={tool.icon || 'gongjuji'}
+                  updatedAt={formatRelativeTime(pickEntityTimestamp(tool), t) || undefined}
+                  meta={meta}
+                  footer="none"
+                  menuOverlay={menu}
+                  onClick={() => handleCardClick(tool)}
+                />
+              );
+            }}
+          />
+        </>
       )}
       <OperateModal
         title={selectedTool ? `${t('common.edit')}` : `${t('common.add')}`}

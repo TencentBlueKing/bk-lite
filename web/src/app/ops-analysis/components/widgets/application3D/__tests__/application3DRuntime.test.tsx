@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   getMetric: vi.fn(),
   setActive: vi.fn(),
   reconcile: vi.fn(),
+  resetCamera: vi.fn(),
   sceneCallbacks: null as SceneCallbacks | null,
 }));
 
@@ -38,6 +39,7 @@ vi.mock('../application3DScene', () => ({
       resize: vi.fn(),
       dispose: vi.fn(),
       setActive: mocks.setActive,
+      resetCamera: mocks.resetCamera,
     };
   },
 }));
@@ -137,6 +139,7 @@ describe('application3D application detail', () => {
     act(() => {
       mocks.sceneCallbacks?.onSelect(wallItem);
     });
+    expect(mocks.resetCamera).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('dialog')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /application3DOpenDetail/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /application3DBackWall/ })).toBeNull();
@@ -161,6 +164,7 @@ describe('application3D application detail', () => {
     act(() => {
       mocks.sceneCallbacks?.onSelect(wallItem);
     });
+    expect(mocks.resetCamera).toHaveBeenCalledTimes(1);
     expect(mocks.getApplicationDetail).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('dialog')).toBeTruthy();
   });
@@ -185,6 +189,7 @@ describe('application3D wall motion triggers', () => {
       refreshedAt: '2026-08-26T00:01:00Z',
     });
     fireEvent.click(screen.getByTitle('common.refresh'));
+    expect(mocks.resetCamera).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(mocks.getWall).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(mocks.reconcile).toHaveBeenCalled());
     expect(mocks.reconcile.mock.calls.every((call) => call[1]?.playIntro === true)).toBe(false);

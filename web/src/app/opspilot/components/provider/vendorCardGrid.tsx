@@ -1,14 +1,15 @@
+'use client';
+
 import React, { useState } from 'react';
-import { Modal, Switch, Tag, Tooltip, message } from 'antd';
+import { Menu, Modal, message } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
-import Image from 'next/image';
-import { DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { VENDOR_ICON_MAP, VENDOR_LABEL_MAP } from '@/app/opspilot/constants/provider';
 import type { ModelVendor } from '@/app/opspilot/types/provider';
 import { useProviderApi } from '@/app/opspilot/api/provider';
 import { ProviderGridSkeleton } from '@/app/opspilot/components/provider/skeleton';
-import { useThemeMode } from '@/theme';
+import UnifiedOpsCard from '@/app/opspilot/components/unified-ops-card';
+import { formatRelativeTime, pickEntityTimestamp } from '@/app/opspilot/utils/relativeTime';
 
 interface VendorCardGridProps {
   vendors: ModelVendor[];
@@ -28,10 +29,8 @@ const VendorCardGrid: React.FC<VendorCardGridProps> = ({
   onChange,
 }) => {
   const { t } = useTranslation();
-  const { mode } = useThemeMode();
   const { patchVendor } = useProviderApi();
   const [switchLoadingId, setSwitchLoadingId] = useState<number | null>(null);
-  const isDark = mode === 'dark';
 
   const getModelCount = (vendor: ModelVendor) => {
     if (typeof vendor.model_count === 'number') {
@@ -50,7 +49,6 @@ const VendorCardGrid: React.FC<VendorCardGridProps> = ({
     if (vendor.description?.trim()) {
       return vendor.description.trim();
     }
-
     return '';
   };
 
@@ -88,90 +86,37 @@ const VendorCardGrid: React.FC<VendorCardGridProps> = ({
       {vendors.map((vendor) => {
         const totalModels = getModelCount(vendor);
         const description = getVendorDescription(vendor);
+        const menu = (
+          <Menu>
+            <Menu.Item key={`edit-${vendor.id}`}>
+              <span className="block" onClick={() => onEdit(vendor)}>
+                {t('common.edit')}
+              </span>
+            </Menu.Item>
+            <Menu.Item key={`delete-${vendor.id}`}>
+              <span className="block" onClick={() => showDeleteConfirm(vendor)}>
+                {t('common.delete')}
+              </span>
+            </Menu.Item>
+          </Menu>
+        );
 
         return (
-          <div
+          <UnifiedOpsCard
             key={vendor.id}
-            className="group relative flex min-h-42 cursor-pointer flex-col overflow-hidden rounded-xl bg-(--color-bg) p-4 shadow-md transition-all duration-300 hover:-translate-y-0.5"
+            name={vendor.name}
+            description={description}
+            vendorIcon={VENDOR_ICON_MAP[vendor.vendor_type]}
+            updatedAt={formatRelativeTime(pickEntityTimestamp(vendor), t) || undefined}
+            meta={[VENDOR_LABEL_MAP[vendor.vendor_type]].filter(Boolean)}
+            footer="provider"
+            modelCount={totalModels}
+            enabled={vendor.enabled}
+            switchLoading={switchLoadingId === vendor.id}
+            menuOverlay={menu}
             onClick={() => onOpen(vendor)}
-          >
-            <div
-              className="pointer-events-none absolute inset-x-0 top-0 h-22"
-              style={{
-                background: isDark
-                  ? 'linear-gradient(180deg, rgba(21, 90, 239, 0.14) 0%, transparent 100%)'
-                  : 'linear-gradient(180deg, rgba(239, 246, 255, 0.95) 0%, transparent 100%)',
-              }}
-            />
-
-            <div className="relative flex items-start justify-between gap-3">
-              <div className="flex min-w-0 items-start gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-(--color-fill-1)">
-                  <Image
-                    src={`/app/models/${VENDOR_ICON_MAP[vendor.vendor_type]}.svg`}
-                    alt={vendor.name}
-                    width={24}
-                    height={24}
-                    className="object-contain"
-                  />
-                </div>
-
-                <div className="min-w-0 flex-1 pt-0.5">
-                  <div className="truncate text-sm font-semibold text-(--color-text-1)">{vendor.name}</div>
-                  <Tag
-                    color="blue"
-                    className="mt-1 rounded-full px-2 py-0 text-[10px] font-medium leading-4.5"
-                  >
-                    {VENDOR_LABEL_MAP[vendor.vendor_type]}
-                  </Tag>
-                </div>
-              </div>
-
-              <div
-                className="flex items-center gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <button
-                  type="button"
-                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-transparent text-(--color-text-3) transition-all duration-200 hover:bg-(--color-fill-1) hover:text-(--color-primary)"
-                  onClick={() => onEdit(vendor)}
-                >
-                  <EditOutlined />
-                </button>
-
-                <button
-                  type="button"
-                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-transparent text-(--color-text-3) transition-all duration-200 hover:bg-(--color-fill-1) hover:text-(--color-primary)"
-                  onClick={() => showDeleteConfirm(vendor)}
-                >
-                  <DeleteOutlined />
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-3 h-5 text-xs text-(--color-text-3)">
-              {description && (
-                <span className="line-clamp-1">{description}</span>
-              )}
-            </div>
-
-            <div className="mt-auto pt-4">
-              <div className="flex items-center justify-between gap-4">
-                <div className="text-xs text-(--color-text-4)">{totalModels} 个模型</div>
-
-                <div onClick={(event) => event.stopPropagation()}>
-                  <Tooltip title={vendor.enabled ? t('common.enable') : t('common.disable')}>
-                    <Switch
-                      size="small"
-                      checked={vendor.enabled}
-                      loading={switchLoadingId === vendor.id}
-                      onChange={(checked) => handleToggleEnabled(vendor, checked)}
-                    />
-                  </Tooltip>
-                </div>
-              </div>
-            </div>
-          </div>
+            onEnabledChange={(checked) => handleToggleEnabled(vendor, checked)}
+          />
         );
       })}
     </div>

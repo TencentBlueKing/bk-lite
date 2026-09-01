@@ -1,11 +1,6 @@
 import pytest
-
+from core.collection.credential_policy import CredentialPolicy, CredentialScope, InMemoryCredentialStateStore
 from core.collection.runtime import CollectionRequest
-from core.collection.credential_policy import (
-    CredentialPolicy,
-    CredentialScope,
-    InMemoryCredentialStateStore,
-)
 
 
 @pytest.mark.asyncio
@@ -48,6 +43,29 @@ async def test_success_clears_only_current_credential_failure_and_keeps_others_c
 
 
 @pytest.mark.asyncio
+async def test_versioned_success_credential_is_prioritized_next_round():
+    store = InMemoryCredentialStateStore()
+    policy = CredentialPolicy(store=store)
+    request = CollectionRequest(
+        task_id="versioned-affinity",
+        plugin_ref="mysql.config",
+        targets=("10.10.24.1",),
+        credentials=(
+            {"credential_id": "credential-1", "credential_version": 1},
+            {"credential_id": "credential-2", "credential_version": 3},
+        ),
+    )
+
+    await policy.record_success(request, "10.10.24.1", request.credentials[1])
+
+    eligible = await policy.eligible_credentials(request, "10.10.24.1")
+    assert [(item["credential_id"], item["credential_version"]) for item in eligible] == [
+        ("credential-2", 3),
+        ("credential-1", 1),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_auth_failure_uses_s1_cooldown_gradient():
     now = 1_000.0
     store = InMemoryCredentialStateStore()
@@ -77,9 +95,7 @@ async def test_auth_failure_uses_s1_cooldown_gradient():
         (4, 24 * 3600),
     )
     for level, cooldown in expected:
-        await policy.record_auth_failure(
-            request, "10.10.24.1", credential, error_code="unauthorized"
-        )
+        await policy.record_auth_failure(request, "10.10.24.1", credential, error_code="unauthorized")
         failure = await store.get_failure(scope, "credential-1")
         assert failure is not None
         assert failure.cooldown_level == level
@@ -123,9 +139,7 @@ async def test_cooled_credential_skip_is_logged(monkeypatch):
     def capture(message, *args):
         logged.append(message % args if args else message)
 
-    monkeypatch.setattr(
-        "core.collection.credential_policy.logger.info", capture
-    )
+    monkeypatch.setattr("core.collection.credential_policy.logger.debug", capture)
     now = 1_000.0
     store = InMemoryCredentialStateStore()
     policy = CredentialPolicy(

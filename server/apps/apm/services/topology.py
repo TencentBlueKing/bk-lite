@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import datetime, timedelta
 from math import ceil
 
@@ -76,6 +77,36 @@ def _error_rate(error_count: int, total: int) -> float | None:
     if total <= 0:
         return None
     return error_count / total
+
+
+def _with_outbound_error_metrics(
+    nodes: tuple[TopologyNode, ...],
+    edges: tuple[TopologyEdge, ...],
+) -> tuple[TopologyNode, ...]:
+    """插桩服务的异常数只统计它调下游的失败，避免整条 Trace 冒泡重复计数。"""
+
+    outbound_errors: dict[str, int] = defaultdict(int)
+    outbound_calls: dict[str, int] = defaultdict(int)
+    for edge in edges:
+        outbound_errors[edge.source] += edge.error_calls
+        outbound_calls[edge.source] += edge.sampled_calls
+    rewritten: list[TopologyNode] = []
+    for node in nodes:
+        if node.kind != INSTRUMENTED:
+            rewritten.append(node)
+            continue
+        errors = outbound_errors.get(node.id, 0)
+        total = outbound_calls.get(node.id, 0)
+        error_rate = _error_rate(errors, total) if total else 0.0
+        rewritten.append(
+            replace(
+                node,
+                error_spans=errors,
+                error_rate=error_rate,
+                health=health_from_error_rate(error_rate),
+            )
+        )
+    return tuple(rewritten)
 
 
 def _span_matches_slice(
@@ -263,6 +294,12 @@ class DjangoApmTopologyService:
             if contributed:
                 contributing_traces += 1
 
+        edges = tuple(
+            sorted(
+                (self._edge(source, target, bucket) for (source, target), bucket in edge_metrics.items() if bucket.count),
+                key=lambda edge: (edge.source, edge.target),
+            )
+        )
         nodes = tuple(
             sorted(
                 (
@@ -285,12 +322,7 @@ class DjangoApmTopologyService:
                 key=lambda node: (node.kind, node.service_name, node.id),
             )
         )
-        edges = tuple(
-            sorted(
-                (self._edge(source, target, bucket) for (source, target), bucket in edge_metrics.items() if bucket.count),
-                key=lambda edge: (edge.source, edge.target),
-            )
-        )
+        nodes = _with_outbound_error_metrics(nodes, edges)
         diagnostics: list[str] = []
         if sample.omitted_trace_fetches:
             diagnostics.append(f"omitted_trace_fetches:{sample.omitted_trace_fetches}")

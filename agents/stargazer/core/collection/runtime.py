@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import Any, Awaitable, Callable, Mapping, Protocol, Sequence
 
 from core.collection.constants import SECRET_KEYS
-from core.collection.enums import LeaseAcquireStatus, RunStatus, SubmissionStatus
+from core.collection.enums import LeaseAcquireStatus, RunStatus, SubmissionStatus, WorkloadClass
 from core.logger import logger, safe_log_value
 
 # 兼容：历史调用方从 runtime 导入枚举
@@ -37,6 +37,7 @@ class CollectionRequest:
     targets: tuple[str, ...]
     credentials: tuple[Mapping[str, Any], ...] = ()
     params: Mapping[str, Any] = field(default_factory=dict)
+    workload_class: WorkloadClass = WorkloadClass.CONFIGURATION
 
     def __post_init__(self) -> None:
         if not str(self.task_id).strip():
@@ -45,6 +46,8 @@ class CollectionRequest:
             raise ValueError("plugin_ref is required")
         if not self.targets:
             raise ValueError("at least one target is required")
+        if not isinstance(self.workload_class, WorkloadClass):
+            object.__setattr__(self, "workload_class", WorkloadClass(self.workload_class))
 
     @property
     def ip_precheck_enabled(self) -> bool:
@@ -69,6 +72,7 @@ class CollectionRequest:
             "targets": list(self.targets),
             "credentials": credential_refs,
             "params": _redact_secrets(self.params),
+            "workload_class": self.workload_class.value,
         }
         payload = json.dumps(
             canonical,

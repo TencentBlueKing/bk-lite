@@ -73,8 +73,7 @@ export function resolveLoginAuthDefaultIcon(providerKey?: string | null): string
     return '';
   }
 
-  const icon = resolveIntegrationProviderIcon(providerKey);
-  return icon === 'jicheng' ? '' : icon;
+  return resolveIntegrationProviderIcon(providerKey);
 }
 
 export function resolveLoginAuthTemplate(

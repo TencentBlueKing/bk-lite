@@ -110,8 +110,8 @@ html.dark {
   --color-application3d-metric-fill: rgba(62, 203, 255, 0.16);
   --color-application3d-metric-marker: #ff4d4f;
   --color-application3d-wall-glass-bg:
-    linear-gradient(120deg, rgba(219, 240, 252, 0.08), transparent 48%),
-    linear-gradient(180deg, rgba(32, 68, 102, 0.52) 0%, rgba(13, 40, 68, 0.48) 100%);
+    linear-gradient(120deg, rgba(206, 224, 240, 0.1), transparent 48%),
+    linear-gradient(180deg, rgba(30, 62, 94, 0.7) 0%, rgba(14, 34, 56, 0.68) 100%);
   --color-application3d-close-cta-focus: rgba(186, 200, 216, 0.4);
   --color-application3d-panel-normal-gradient: linear-gradient(180deg, #064790 0%, #062d5a 100%);
   --color-application3d-panel-normal-border: rgba(52, 158, 255, 0.8);

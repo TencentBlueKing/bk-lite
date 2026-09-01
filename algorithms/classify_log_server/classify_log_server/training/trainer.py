@@ -9,6 +9,7 @@ import mlflow
 
 from .config.loader import TrainingConfig
 from .data_loader import LogDataLoader
+from .evaluation_contract import EVALUATION_CONTRACT_VERSION
 from .mlflow_utils import MLFlowUtils
 from .models.base import ModelRegistry
 from .models import SpellModel  # 导入具体模型以触发注册
@@ -110,9 +111,7 @@ class UniversalTrainer:
                     # 合并train+val评估最终训练数据
                     final_train_data = train_data + val_data
                     logger.info("评估最终训练数据拟合度（train+val样本内评估）...")
-                    final_train_metrics = self.model.evaluate(
-                        final_train_data, ground_truth=None
-                    )
+                    final_train_metrics = self.model.evaluate(final_train_data)
                     # 使用 MLFlowUtils 批量记录（自动过滤）
                     MLFlowUtils.log_metrics_batch(
                         final_train_metrics, prefix="final_train_"
@@ -133,7 +132,7 @@ class UniversalTrainer:
                 else:
                     # 无验证集，只评估训练集
                     logger.info("评估训练集拟合度（样本内评估）...")
-                    train_metrics = self.model.evaluate(train_data, ground_truth=None)
+                    train_metrics = self.model.evaluate(train_data)
                     # 使用 MLFlowUtils 批量记录
                     MLFlowUtils.log_metrics_batch(train_metrics, prefix="train_")
                     # 只输出数值统计指标到日志
@@ -148,7 +147,7 @@ class UniversalTrainer:
                 test_metrics = {}
                 if test_data:
                     logger.info("评估测试集...")
-                    test_metrics = self.model.evaluate(test_data, ground_truth=None)
+                    test_metrics = self.model.evaluate(test_data)
                     # 使用 MLFlowUtils 批量记录
                     MLFlowUtils.log_metrics_batch(test_metrics, prefix="test_")
                     # 只输出数值统计指标到日志
@@ -213,6 +212,7 @@ class UniversalTrainer:
                     "num_templates": self.model.get_num_templates(),
                     "run_id": run.info.run_id,
                     "best_params": best_params,
+                    "evaluation_contract_version": EVALUATION_CONTRACT_VERSION,
                 }
 
                 # 过滤测试集指标，只输出数值统计
@@ -381,6 +381,7 @@ class UniversalTrainer:
 
         # 递归展平嵌套配置（支持任意深度）
         flat_config = MLFlowUtils.flatten_dict(config_dict)
+        flat_config["evaluation_contract_version"] = EVALUATION_CONTRACT_VERSION
 
         MLFlowUtils.log_params_batch(flat_config)
         logger.debug(f"配置已记录到 MLflow，共 {len(flat_config)} 个参数")

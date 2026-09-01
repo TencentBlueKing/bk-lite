@@ -8,6 +8,7 @@ from apps.core.utils.team_utils import get_current_team
 from apps.opspilot.enum import SkillChannelChoices
 from apps.opspilot.models import SkillChannel
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY, CallerIdentityError, capture_caller_identity, mark_api_secret_identity
+from apps.opspilot.services.session_context_usage import summarize_skill_session_usage
 from apps.opspilot.services.skill_channel_chat_service import (
     EMBEDDED,
     PLATFORM_OR_WEB,
@@ -17,7 +18,7 @@ from apps.opspilot.services.skill_channel_chat_service import (
     build_skill_chat_params,
     delete_skill_session,
     get_enabled_channel,
-    get_skill_session_messages,
+    get_skill_session_history,
     list_skill_conversations_for_user,
     normalize_client_chat_history,
     saas_external_user_id,
@@ -33,8 +34,8 @@ from apps.opspilot.services.skill_channel_service import (
 )
 from apps.opspilot.utils.agui_chat import stream_agui_chat
 from apps.opspilot.utils.sse_chat import create_error_stream_response
-
 from apps.opspilot.views.chat_flow import parse_json_body
+
 
 def _serialize_saas_skill_channels(qs):
     return [
@@ -47,6 +48,7 @@ def _serialize_saas_skill_channels(qs):
             "introduction": getattr(ch.skill, "introduction", "") or "",
             "app_name": ch.name or (ch.skill.name if ch.skill_id else ""),
             "app_description": getattr(ch.skill, "introduction", "") or "",
+            "enable_conversation_history": bool(getattr(ch.skill, "enable_conversation_history", False)),
         }
         for ch in qs
     ]
@@ -79,6 +81,7 @@ def _serialize_published_web_skills(skills):
             "name": skill.name,
             "introduction": getattr(skill, "introduction", "") or "",
             "conversation_window_size": skill.conversation_window_size,
+            "enable_conversation_history": bool(getattr(skill, "enable_conversation_history", False)),
         }
         for skill in skills
     ]
@@ -170,10 +173,18 @@ def list_skill_channel_session_messages(request):
     if not session_id:
         return JsonResponse({"result": False, "message": "session_id 必填"}, status=400)
     try:
-        data = get_skill_session_messages(session_id=session_id, external_user_id=saas_external_user_id(request.user))
+        messages, conversation = get_skill_session_history(session_id=session_id, external_user_id=saas_external_user_id(request.user))
     except SkillChannelChatError as e:
         return JsonResponse({"result": False, "message": e.message}, status=e.status)
-    return JsonResponse({"result": True, "data": data})
+    return JsonResponse(
+        {
+            "result": True,
+            "data": {
+                "messages": messages,
+                "llm_context_usage": summarize_skill_session_usage(conversation),
+            },
+        }
+    )
 
 
 def delete_skill_channel_session(request):
@@ -288,8 +299,6 @@ def execute_skill_channel_im(request, channel_id, channel_type):
         from apps.opspilot.services.skill_channel_dingtalk import SkillChannelDingtalkUtils
 
         return SkillChannelDingtalkUtils(channel_id).handle_request(request)
-
-    from apps.opspilot.models import SkillChannel
 
     channel = SkillChannel.objects.filter(id=channel_id, channel_type=channel_type).first()
     if not channel or not channel.enabled:

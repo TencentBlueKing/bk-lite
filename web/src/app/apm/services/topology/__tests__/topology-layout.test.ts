@@ -5,11 +5,13 @@ import { describe, expect, it } from 'vitest';
 import type { ApmTopologyEdge, ApmTopologyGraph, ApmTopologyNode } from '@/app/apm/types';
 import {
   buildTopologyEdgeGeometry,
+  filterAnomalousTopology,
   filterTopologyByKeyword,
   focusApplicationTopology,
   isolateTopologyNeighborhood,
   layoutForceTopology,
   layoutLayeredTopology,
+  topologyCardsOverlap,
   TOPOLOGY_CANVAS_SIZE,
   topologyEntryPillWidth,
   topologyNodeNameWidth,
@@ -77,6 +79,16 @@ describe('APM 服务拓扑布局', () => {
       expect(item.y).toBeGreaterThanOrEqual(90);
       expect(item.y).toBeLessThanOrEqual(540);
     });
+    expect(topologyCardsOverlap(result)).toBe(false);
+  });
+
+  it('同层多个服务卡片不重叠，即使超出默认视口', async () => {
+    const root = node('root');
+    const siblings = ['a', 'b', 'c', 'd', 'e', 'f'].map((id) => node(id));
+    const result = await layoutLayeredTopology([root, ...siblings], siblings.map((item) => edge('root', item.id)));
+    const childXs = result.filter((item) => item.id !== 'root').map((item) => item.x);
+    expect(Math.max(...childXs) - Math.min(...childXs)).toBeGreaterThan(TOPOLOGY_CANVAS_SIZE.width / 2);
+    expect(topologyCardsOverlap(result)).toBe(false);
   });
 });
 
@@ -131,12 +143,7 @@ describe('APM 服务拓扑力导向稳定性', () => {
     expect(inventory?.y).toBeLessThan(inferred?.y ?? 0);
     expect(distance(entry, storefront)).toBeLessThan(distance(entry, inferred));
     expect(distance(inferred, inventory)).toBeLessThan(distance(inferred, entry));
-    result.forEach((item) => {
-      expect(item.x).toBeGreaterThanOrEqual(96);
-      expect(item.x).toBeLessThanOrEqual(TOPOLOGY_CANVAS_SIZE.width - 96);
-      expect(item.y).toBeGreaterThanOrEqual(52);
-      expect(item.y).toBeLessThanOrEqual(TOPOLOGY_CANVAS_SIZE.height - 52);
-    });
+    expect(topologyCardsOverlap(result)).toBe(false);
     expect(Math.abs((entry?.x ?? 0) - (storefront?.x ?? 0))).toBeLessThan(TOPOLOGY_CANVAS_SIZE.width / 2);
     expect(Math.abs((inferred?.x ?? 0) - (inventory?.x ?? 0))).toBeLessThan(TOPOLOGY_CANVAS_SIZE.width / 2);
   });
@@ -297,12 +304,25 @@ describe('APM 服务拓扑调查过滤', () => {
     expect(filtered.nodes.map((item) => item.id)).toEqual(['demo-payment']);
     expect(filtered.edges).toEqual([]);
   });
+
+  it('只看异常只保留失败调用及其两端服务', () => {
+    const filtered = filterAnomalousTopology(
+      demoNodes,
+      [
+        { ...edge('demo-storefront', 'demo-catalog'), error_calls: 2 },
+        edge('demo-storefront', 'demo-orders'),
+        edge('demo-catalog', 'demo-inventory'),
+      ],
+    );
+    expect(filtered.nodes.map((item) => item.id).sort()).toEqual(['demo-catalog', 'demo-storefront']);
+    expect(filtered.edges.map((item) => `${item.source}>${item.target}`)).toEqual(['demo-storefront>demo-catalog']);
+  });
 });
 
 describe('APM 服务拓扑节点标签', () => {
   it('推断节点为角标和健康点预留名称宽度', () => {
     expect(topologyNodeNameWidth(148, false)).toBeGreaterThan(topologyNodeNameWidth(148, true));
-    expect(topologyNodeNameWidth(148, true)).toBe(148 - 30 - 22 - 28);
+    expect(topologyNodeNameWidth(148, true)).toBe(148 - 40 - 22 - 28);
   });
 
   it('超长服务名在可用宽度内截断并保留省略号', () => {

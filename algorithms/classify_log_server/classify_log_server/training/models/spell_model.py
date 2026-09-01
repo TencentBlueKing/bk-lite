@@ -1,13 +1,13 @@
 """用于日志聚类的 Spell 模型实现。"""
 
-from typing import Any, Dict, List, Optional, Tuple, Set
+from typing import Any, Dict, List, Optional, Set
 from collections import Counter, defaultdict
-from datetime import datetime
 import time
 
 import mlflow
 from loguru import logger
 
+from ..evaluation_contract import require_unsupervised_evaluation
 from .base import BaseLogClusterModel, ModelRegistry
 
 
@@ -304,7 +304,7 @@ class SpellModel(BaseLogClusterModel):
         
         Args:
             logs: 日志消息列表
-            ground_truth: 真实聚类标签（可选，用于监督评估）
+            ground_truth: 历史兼容参数；当前正式契约不支持监督评估
             prefix: 指标名称前缀（如 "train", "test", "val"）
             verbose: 是否输出详细日志
         
@@ -314,15 +314,12 @@ class SpellModel(BaseLogClusterModel):
             - coverage_rate: 覆盖率（解析成功率）
             - template_diversity: 模板多样性（归一化熵）
             - template_quality_score: 模板质量得分（如果有模板）
-            - grouping_accuracy: 分组准确率（如果有 ground_truth）
-            - precision: 精确率（如果有 ground_truth）
-            - recall: 召回率（如果有 ground_truth）
-            - f1_score: F1分数（如果有 ground_truth）
         
         Raises:
             RuntimeError: 模型未训练
         """
         self._check_fitted()
+        require_unsupervised_evaluation(ground_truth)
 
         if verbose:
             eval_mode = prefix if prefix else "default"
@@ -365,37 +362,10 @@ class SpellModel(BaseLogClusterModel):
         if self.templates:
             metrics["template_quality_score"] = self._compute_template_quality()
 
-        # 2. 计算监督指标（如果提供真实标签）
-        if ground_truth is not None:
-            # 分组准确率（GA）
-            if len(predictions) != len(ground_truth):
-                raise ValueError("预测结果和真实标签长度必须相同")
-            
-            correct = sum(1 for p, g in zip(predictions, ground_truth) if p == g)
-            metrics["grouping_accuracy"] = correct / len(predictions) if predictions else 0.0
-
-            # 解析准确率（PA）
-            # PA 通常通过比较预测模板和真实模板来计算
-            # 这里为简化，使用与 GA 相同的值（可进一步优化）
-            metrics["parsing_accuracy"] = metrics["grouping_accuracy"]
-
-            # 精确率和召回率
-            precision, recall = self._compute_precision_recall(predictions, ground_truth)
-            metrics["precision"] = precision
-            metrics["recall"] = recall
-            
-            # F1 分数
-            if precision + recall > 0:
-                metrics["f1_score"] = 2 * (precision * recall) / (precision + recall)
-            else:
-                metrics["f1_score"] = 0.0
-
-        # 3. 存储内部数据（用于后续分析）
+        # 2. 存储内部数据（用于后续分析）
         metrics['_predictions'] = predictions
-        if ground_truth is not None:
-            metrics['_ground_truth'] = ground_truth
 
-        # 4. 应用前缀（如果提供）
+        # 3. 应用前缀（如果提供）
         if prefix:
             metrics = {f"{prefix}_{k}" if not k.startswith('_') else k: v 
                        for k, v in metrics.items()}
@@ -406,52 +376,6 @@ class SpellModel(BaseLogClusterModel):
             logger.info(f"评估结果: {key_metrics}")
 
         return metrics
-
-    def _compute_precision_recall(
-        self, predictions: List[int], ground_truth: List[int]
-    ) -> tuple[float, float]:
-        """计算聚类的精确率和召回率
-        
-        Args:
-            predictions: 预测的聚类 ID
-            ground_truth: 真实聚类 ID
-        
-        Returns:
-            (精确率, 召回率) 元组
-        """
-        from collections import defaultdict
-
-        # 构建聚类映射
-        pred_clusters = defaultdict(set)
-        true_clusters = defaultdict(set)
-
-        for i, (p, g) in enumerate(zip(predictions, ground_truth)):
-            pred_clusters[p].add(i)
-            true_clusters[g].add(i)
-
-        # 计算真正例（TP）
-        tp = 0
-        for cluster in pred_clusters.values():
-            # 计算同一预测聚类中的配对数
-            for i in cluster:
-                for j in cluster:
-                    if i < j and ground_truth[i] == ground_truth[j]:
-                        tp += 1
-
-        # 预测聚类中的总配对数
-        pred_pairs = sum(
-            len(cluster) * (len(cluster) - 1) // 2 for cluster in pred_clusters.values()
-        )
-
-        # 真实聚类中的总配对数
-        true_pairs = sum(
-            len(cluster) * (len(cluster) - 1) // 2 for cluster in true_clusters.values()
-        )
-
-        precision = tp / pred_pairs if pred_pairs > 0 else 0.0
-        recall = tp / true_pairs if true_pairs > 0 else 0.0
-
-        return precision, recall
 
     def _compute_template_quality(self) -> float:
         """计算平均模板质量得分
@@ -855,7 +779,7 @@ class SpellModel(BaseLogClusterModel):
                 temp_model.fit(train_data, verbose=False, log_to_mlflow=False)
                 
                 # 验证集评估
-                val_metrics = temp_model.evaluate(val_data, ground_truth=None, verbose=False)
+                val_metrics = temp_model.evaluate(val_data, verbose=False)
                 
                 # 获取优化目标分数（越大越好，所以用负数作为 loss）
                 score = val_metrics.get(metric, val_metrics.get('template_quality_score', 0))

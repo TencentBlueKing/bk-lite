@@ -4,7 +4,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
     {
         "key": "wechat",
         "base_connection_adapter_key": "wechat.base_connection",
-        "base_connection_adapter_path": "apps.system_mgmt.providers.builtin.wechat.adapters.base_connection.WechatBaseConnectionAdapter",
+        "base_connection_adapter_path": "adapters.base_connection.WechatBaseConnectionAdapter",
         "name": "WeChat",
         "description": "Built-in WeChat integration provider for login auth.",
         "instance_templates": {
@@ -64,7 +64,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                 "name": "Login Auth",
                 "description": "WeChat login authentication capability.",
                 "adapter_key": "wechat.login_auth",
-                "adapter_path": "apps.system_mgmt.providers.builtin.wechat.adapters.login_auth.WechatLoginAuthAdapter",
+                "adapter_path": "adapters.login_auth.WechatLoginAuthAdapter",
                 "connection_template": [
                     {
                         "key": "login_auth_authorize_url",

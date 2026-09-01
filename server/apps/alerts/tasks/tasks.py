@@ -38,6 +38,39 @@ def deliver_alert_outbox(record_id):
     return deliver_outbox_record(record_id)
 
 
+@shared_task(max_retries=0)
+def deliver_alert_notification_channel(delivery_id):
+    from apps.alerts.service.notification_delivery import deliver_notification_channel
+
+    return deliver_notification_channel(delivery_id, notify_func=sync_notify)
+
+
+@shared_task
+def dispatch_pending_alert_notification_deliveries():
+    from apps.alerts.models.outbox import AlertNotificationDelivery
+    from apps.alerts.service.notification_delivery import DELIVERY_DISPATCH_BATCH_SIZE, DELIVERY_LEASE_TIMEOUT, schedule_notification_delivery
+
+    now = timezone.now()
+    stale_before = now - DELIVERY_LEASE_TIMEOUT
+    delivery_ids = list(
+        AlertNotificationDelivery.objects.filter(
+            (
+                Q(status=AlertNotificationDelivery.Status.PENDING)
+                | Q(
+                    status=AlertNotificationDelivery.Status.DELIVERING,
+                    updated_at__lte=stale_before,
+                )
+            ),
+            Q(next_retry_at__isnull=True) | Q(next_retry_at__lte=now),
+        )
+        .order_by("pk")
+        .values_list("pk", flat=True)[:DELIVERY_DISPATCH_BATCH_SIZE]
+    )
+    for delivery_id in delivery_ids:
+        schedule_notification_delivery(delivery_id)
+    return {"scheduled": len(delivery_ids)}
+
+
 @shared_task
 def dispatch_pending_alert_outbox():
     from apps.alerts.extensions.outbox import outbox_handlers

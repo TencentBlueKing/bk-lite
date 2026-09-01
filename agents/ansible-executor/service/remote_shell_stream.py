@@ -14,10 +14,14 @@ from typing import Any
 
 from core.config import logger
 from service.ansible_runner import (
+    DEFAULT_STREAM_BATCH_SIZE,
+    DEFAULT_STREAM_FLUSH_TIMEOUT,
+    DEFAULT_STREAM_MAX_LINE_BYTES,
+    DEFAULT_STREAM_QUEUE_SIZE,
     DEFAULT_MAX_OUTPUT_BYTES,
+    BufferedStreamPublisher,
     LineEventStreamer,
     StreamPublish,
-    build_stream_log_payload,
     parse_ansible_output_per_host,
     run_command,
 )
@@ -192,6 +196,10 @@ async def run_remote_shell_stream(
     poll_interval: float = 1.0,
     command_runner: CommandRunner = run_command,
     sleep: Sleep = asyncio.sleep,
+    stream_queue_size: int = DEFAULT_STREAM_QUEUE_SIZE,
+    stream_batch_size: int = DEFAULT_STREAM_BATCH_SIZE,
+    stream_flush_timeout: float = DEFAULT_STREAM_FLUSH_TIMEOUT,
+    stream_max_line_bytes: int = DEFAULT_STREAM_MAX_LINE_BYTES,
 ) -> tuple[int, str, dict[str, Any]]:
     """后台执行 Linux 远端脚本，并通过短 Ansible 轮询实时发布新增日志行。"""
     start_args, poll_args, stop_args, remote_dir = _build_remote_commands(
@@ -206,12 +214,18 @@ async def run_remote_shell_stream(
     states: dict[str, _HostState] = {}
     retained_bytes = 0
     truncated = False
+    stream_publisher = BufferedStreamPublisher(
+        stream_publish,
+        stream_log_topic,
+        execution_id,
+        queue_size=stream_queue_size,
+        batch_size=stream_batch_size,
+    )
+    stream_publisher.start()
+    stream_meta: dict[str, Any] = {}
 
     async def publish_line(line: str) -> None:
-        try:
-            await stream_publish(stream_log_topic, build_stream_log_payload(execution_id, line))
-        except Exception as error:  # noqa: BLE001 - 流式日志是 best effort，不影响任务结果
-            logger.warning("remote stream log publish failed: %s", error)
+        stream_publisher.offer(line)
 
     async def append_chunk(state: _HostState, chunk: bytes) -> None:
         nonlocal retained_bytes, truncated
@@ -232,13 +246,14 @@ async def run_remote_shell_stream(
         start_results = parse_ansible_output_per_host(start_output)
         for result in start_results:
             host = str(result.get("host", ""))
-            state = _HostState(host=host)
+            state = _HostState(host=host, streamer=LineEventStreamer(max_line_bytes=stream_max_line_bytes))
             if result.get("status") != "success" or _STARTED_MARKER not in str(result.get("stdout", "")):
                 state.running = False
                 state.exit_code = int(result.get("exit_code") or 1)
                 await append_chunk(state, str(result.get("stderr") or result.get("stdout") or "start failed").encode("utf-8"))
             states[host] = state
         if not states:
+            stream_meta = await stream_publisher.close(stream_flush_timeout)
             return (
                 start_code or 1,
                 start_output,
@@ -247,6 +262,8 @@ async def run_remote_shell_stream(
                     "output_bytes_total": len(start_output.encode("utf-8")),
                     "output_bytes_retained": len(start_output.encode("utf-8")),
                     "output_max_bytes": max_output_bytes,
+                    "stream_line_chunks": 0,
+                    **stream_meta,
                 },
             )
 
@@ -290,6 +307,7 @@ async def run_remote_shell_stream(
     finally:
         with contextlib.suppress(Exception):
             await command_runner(stop_command, min(timeout, 30))
+        stream_meta = await stream_publisher.close(stream_flush_timeout)
         logger.info("remote stream workspace cleaned: %s", remote_dir)
 
     output_parts: list[str] = []
@@ -310,5 +328,7 @@ async def run_remote_shell_stream(
             "output_bytes_total": total_bytes,
             "output_bytes_retained": retained_bytes,
             "output_max_bytes": max_output_bytes,
+            "stream_line_chunks": sum(state.streamer.chunked_lines for state in states.values()),
+            **stream_meta,
         },
     )

@@ -1,6 +1,11 @@
 from types import SimpleNamespace
 
-from apps.operation_analysis.services.application3d.health import aggregate_application_health, unavailable_health
+from apps.operation_analysis.services.application3d.health import (
+    aggregate_application_health,
+    no_application_health,
+    no_host_health,
+    unavailable_health,
+)
 from apps.operation_analysis.services.application3d.notifications import summarize_notification
 from apps.operation_analysis.services.application3d.presenters import present_alarm_list_item
 from apps.operation_analysis.services.application3d.severity import severity_from_monitor_level
@@ -163,6 +168,29 @@ def test_unavailable_health_uses_null_counts():
     assert health["activeAlarmCount"] is None
     assert health["severityCounts"] is None
     assert health["highestSeverity"] is None
+
+
+def test_no_application_health_uses_null_counts_and_distinct_reason():
+    health = no_application_health()
+    assert health["state"] == "unknown"
+    assert health["reason"] == "no_application"
+    assert health["reason"] != "unavailable"
+    assert health["activeAlarmCount"] is None
+    assert health["severityCounts"] is None
+    assert health["noDataAlarmCount"] is None
+    assert health["highestSeverity"] is None
+
+
+def test_no_host_health_uses_null_counts_and_is_not_unavailable_or_no_application():
+    health = no_host_health()
+    assert health["state"] == "unknown"
+    assert health["reason"] == "no_host"
+    assert health["activeAlarmCount"] is None
+    assert health["severityCounts"] is None
+    assert health["noDataAlarmCount"] is None
+    assert health["highestSeverity"] is None
+    assert health != no_application_health()
+    assert health != unavailable_health()
 
 
 def test_no_data_critical_aligns_with_monitor_max_level():

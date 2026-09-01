@@ -298,22 +298,21 @@ const LoginAuthPage: React.FC = () => {
     const template = resolveLoginAuthTemplate(instanceId, availableInstances, providers);
     const nextIcon = resolveLoginAuthDefaultIcon(providerKey);
     const nextExternalField = resolveLoginAuthDefaultExternalField(template);
-    setSelectedIcon(nextIcon);
-    form.setFieldValue('icon', nextIcon);
-    form.setFieldValue('external_field', nextExternalField);
-
     // 微信登录认证默认开启"未匹配时创建用户",首次登录创建组织弹窗
     // (init_user_set) 所需的 OpsPilotGuest 组由后端 fallback 兜底,
     // 前端不再自动填充,UI 也不展示默认组名输入框。
-    if (providerKey === 'wechat') {
-      setUnmatchedAction('create');
-      form.setFieldValue('unmatched_user_action', 'create');
-      form.setFieldValue('default_group_name', '');
-    } else {
-      setUnmatchedAction('deny');
-      form.setFieldValue('unmatched_user_action', 'deny');
-      form.setFieldValue('default_group_name', '');
-    }
+    const nextUnmatchedAction = providerKey === 'wechat' ? 'create' : 'deny';
+    setSelectedIcon(nextIcon);
+    setUnmatchedAction(nextUnmatchedAction);
+    // Select onChange 同步写其它 Form 字段会触发 antd「circular references」警告
+    queueMicrotask(() => {
+      form.setFieldValue('icon', nextIcon);
+      form.setFieldValue('external_field', nextExternalField);
+      form.setFieldValue('unmatched_user_action', nextUnmatchedAction);
+      if (nextUnmatchedAction !== 'create') {
+        form.setFieldValue('default_group_name', '');
+      }
+    });
   };
 
   const handleUnmatchedActionChange = (value: string) => {

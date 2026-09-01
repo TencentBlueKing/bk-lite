@@ -1,7 +1,6 @@
 'use client';
 
 import { Alert, Button, Empty, Spin } from 'antd';
-import { CloseOutlined } from '@ant-design/icons';
 import { useMemo, useState } from 'react';
 import { useTranslation } from '@/utils/i18n';
 import type {
@@ -46,9 +45,9 @@ interface Application3DDetailProps {
   onLoadMoreAlarms: () => void;
 }
 
-const TREND_WIDTH = 320;
-const TREND_HEIGHT = 140;
-const TREND_PAD = { left: 36, right: 48, top: 10, bottom: 24 };
+const TREND_WIDTH = 480;
+const TREND_HEIGHT = 176;
+const TREND_PAD = { left: 38, right: 52, top: 12, bottom: 26 };
 
 const MetricTrend = ({ metric }: { metric: Application3DMetricSeriesResult }) => {
   const { t } = useTranslation();
@@ -108,7 +107,7 @@ const MetricTrend = ({ metric }: { metric: Application3DMetricSeriesResult }) =>
   return (
     <svg
       viewBox={`0 0 ${TREND_WIDTH} ${TREND_HEIGHT}`}
-      className="h-36 w-full"
+      className="block h-full min-h-[12rem] w-full"
       role="img"
       data-testid="app3d-metric-trend"
     >
@@ -129,7 +128,7 @@ const MetricTrend = ({ metric }: { metric: Application3DMetricSeriesResult }) =>
               y={y + 3}
               textAnchor="end"
               fill="rgba(186, 200, 214, 0.78)"
-              fontSize="9"
+              fontSize="10"
             >
               {Number.isInteger(tick) ? String(tick) : tick.toFixed(1)}
             </text>
@@ -145,7 +144,7 @@ const MetricTrend = ({ metric }: { metric: Application3DMetricSeriesResult }) =>
             y={TREND_HEIGHT - 6}
             textAnchor="middle"
             fill="rgba(186, 200, 214, 0.78)"
-            fontSize="9"
+            fontSize="10"
           >
             {formatTrendAxisTime(tick)}
           </text>
@@ -179,7 +178,7 @@ const MetricTrend = ({ metric }: { metric: Application3DMetricSeriesResult }) =>
               x={plotLeft + plotWidth + 4}
               y={y + 3}
               fill="var(--color-application3d-metric-marker)"
-              fontSize="9"
+              fontSize="10"
               data-testid="app3d-threshold-label"
             >
               {label}
@@ -351,9 +350,6 @@ export default function Application3DDetail({
   const alarmCount =
     detail?.application.health.activeAlarmCount
     ?? selected.health.activeAlarmCount;
-  const alarmOpen = Boolean(alarmDetail || alarmLoading || alarmError);
-  const severityCounts = availableAlarms?.severityCounts
-    ?? selected.health.severityCounts;
 
   return (
     <>
@@ -369,7 +365,7 @@ export default function Application3DDetail({
       >
         <div className="app3d-detail-panels min-h-0 flex-1">
           <div
-            className={`app3d-biz-panel z-[52] flex h-full flex-col overflow-hidden [perspective:500px]${leftPanelSettled ? ' is-settled' : ''}${alarmOpen ? ' is-alarm-open hidden' : ''}`}
+            className={`app3d-biz-panel z-[52] flex h-full flex-col overflow-hidden [perspective:500px]${leftPanelSettled ? ' is-settled' : ''}`}
             data-status-tone={status.tone}
             onAnimationEnd={(event) => {
               if (event.animationName === 'app3d-move-left') {
@@ -378,20 +374,22 @@ export default function Application3DDetail({
             }}
           >
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto [overflow-anchor:none] px-6 pt-6 pb-4">
-              <h2 className="app3d-detail-title">
-                {detail?.application.name || selected.name}
-              </h2>
+              <div className="app3d-biz-header">
+                <h2 className="app3d-detail-title">
+                  {detail?.application.name || selected.name}
+                </h2>
 
-              <div className="flex flex-wrap items-center gap-2.5">
-                <StatusBadge
-                  label={status.statusLabel}
-                  badgeBg={status.accent.badgeBg}
-                  badgeBorder={status.accent.badgeBorder}
-                  badgeText={status.accent.badgeText}
-                />
-                <span className="app3d-count-chip">
-                  {`${t('dashboard.application3DActiveAlarms')}: ${alarmCount ?? '-'}`}
-                </span>
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <StatusBadge
+                    label={status.statusLabel}
+                    badgeBg={status.accent.badgeBg}
+                    badgeBorder={status.accent.badgeBorder}
+                    badgeText={status.accent.badgeText}
+                  />
+                  <span className="app3d-count-chip">
+                    {`${t('dashboard.application3DActiveAlarms')}: ${alarmCount ?? '-'}`}
+                  </span>
+                </div>
               </div>
 
               {loading && !detail && (
@@ -461,21 +459,8 @@ export default function Application3DDetail({
             </div>
           </div>
 
-          <div className={`app3d-alarm-panel z-[51] flex flex-col overflow-hidden${alarmOpen ? ' app3d-alarm-modal' : ''}`}>
-            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-              {alarmOpen && (
-                <div className="app3d-alarm-modal__head px-0 pt-0">
-                  <h2 className="app3d-alarm-modal__title">{t('dashboard.application3DAlarmDetail')}</h2>
-                  <button
-                    type="button"
-                    className="app3d-alarm-modal__close"
-                    onClick={onCloseAlarm}
-                    aria-label={t('common.close')}
-                  >
-                    <CloseOutlined />
-                  </button>
-                </div>
-              )}
+          <div className="app3d-alarm-panel z-[51] flex flex-col overflow-hidden">
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 py-5">
               {(loading || alarmLoading) && (
                 <div className="flex h-full items-center justify-center"><Spin /></div>
               )}
@@ -488,144 +473,146 @@ export default function Application3DDetail({
                 />
               )}
               {!loading && !alarmLoading && !alarmError && alarmDetail && (
-                <div className="space-y-4">
-                  <div className="flex items-start justify-between gap-3">
+                <div className="flex min-h-full flex-col gap-4">
+                  <div className="flex shrink-0 items-center justify-between gap-3">
+                    <strong className="text-[17px] font-semibold tracking-wide">
+                      {t('dashboard.application3DAlarmDetail')}
+                    </strong>
+                    <Button size="small" className="app3d-close-cta !h-8 !min-w-0" onClick={onCloseAlarm}>
+                      {t('dashboard.application3DBackToAlarmList')}
+                    </Button>
+                  </div>
+                  <div className="app3d-alarm-row !mb-0 shrink-0 !cursor-default hover:!bg-[var(--color-application3d-detail-row-bg)]">
                     <div className="min-w-0 flex-1">
                       <div className="app3d-alarm-row__title">{alarmDetail.alarm.content}</div>
+                      <div className="app3d-alarm-row__meta">
+                        {`${alarmDetail.alarm.resource.name} · ${alarmDetail.alarm.policy.name}`}
+                      </div>
                     </div>
-                    <div className="flex shrink-0 flex-col items-end gap-2">
-                      <SeverityBadge
-                        severity={alarmDetail.alarm.severity}
-                        label={
-                          alarmDetail.alarm.severity
-                            ? t(
-                                `dashboard.application3DSeverity_${alarmDetail.alarm.severity.id}`,
-                                alarmDetail.alarm.severity.label,
-                            )
-                            : '-'
-                        }
-                      />
-                      {severityCounts && (
-                        <div className="app3d-alarm-modal__counts">
-                          {(['critical', 'error', 'warning'] as const).map((severity) => (
-                            <span
-                              key={severity}
-                              className="app3d-alarm-count"
-                              style={{ color: SEVERITY_DOT[severity] }}
-                            >
-                              {t(`dashboard.application3DSeverity_${severity}`)} {severityCounts[severity]}
-                            </span>
-                          ))}
+                    <SeverityBadge
+                      severity={alarmDetail.alarm.severity}
+                      label={
+                        alarmDetail.alarm.severity
+                          ? t(
+                              `dashboard.application3DSeverity_${alarmDetail.alarm.severity.id}`,
+                              alarmDetail.alarm.severity.label,
+                          )
+                          : '-'
+                      }
+                    />
+                  </div>
+                  <div className="app3d-alarm-detail-split min-h-0 flex-1">
+                    <div className="app3d-alarm-detail-fields">
+                      {[
+                        {
+                          key: 'resource',
+                          label: t('dashboard.application3DResource'),
+                          value: alarmDetail.alarm.resource.name,
+                        },
+                        {
+                          key: 'alertType',
+                          label: t('dashboard.application3DAlertType'),
+                          value: t(`dashboard.application3DAlertType_${alarmDetail.alarm.alertType}`),
+                        },
+                        {
+                          key: 'occurredAt',
+                          label: t('dashboard.application3DOccurredAt'),
+                          value: formatAlarmOccurredAt(alarmDetail.alarm.occurredAt),
+                        },
+                        {
+                          key: 'duration',
+                          label: t('dashboard.application3DDuration'),
+                          value: formatAlarmDurationSeconds(alarmDetail.alarm.durationSeconds),
+                        },
+                        {
+                          key: 'policy',
+                          label: t('dashboard.application3DPolicy'),
+                          value: alarmDetail.alarm.policy.name,
+                        },
+                        ...(alarmDetail.alarm.metric.name
+                          ? [{
+                            key: 'metric',
+                            label: t('dashboard.application3DMetric'),
+                            value: alarmDetail.alarm.metric.name,
+                          }]
+                          : []),
+                        {
+                          key: 'notification',
+                          label: t('dashboard.application3DNotification'),
+                          value: `${alarmDetail.alarm.notification.configured
+                            ? t('dashboard.application3DNotificationConfigured')
+                            : t('dashboard.application3DNotificationNotConfigured')} · ${t(
+                            `dashboard.application3DNotification_${alarmDetail.alarm.notification.state}`,
+                            )}`,
+                        },
+                      ].map((row) => (
+                        <div key={row.key} className="app3d-detail-field">
+                          <span className="app3d-detail-field__label">{row.label}</span>
+                          <span className="app3d-detail-field__value">{row.value}</span>
+                        </div>
+                      ))}
+                      {(alarmDetail.alarm.dimensions ?? []).length > 0 && (
+                        <div className="app3d-detail-field !block" data-testid="app3d-dimensions">
+                          <div className="app3d-detail-field__label mb-1">
+                            {t('dashboard.application3DDimensions')}
+                          </div>
+                          <div className="space-y-1">
+                            {(alarmDetail.alarm.dimensions ?? []).map((dimension) => (
+                              <div
+                                key={dimension.key}
+                                className="flex justify-between gap-3 text-[14px] text-[rgba(220,230,240,0.9)]"
+                              >
+                                <span className="text-[rgba(180,196,212,0.8)]">{dimension.label}</span>
+                                <span>{dimension.displayValue}</span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
-                      <div className="text-xs text-[var(--color-application3d-text-muted)]">
-                        {`${
-                          detail?.application.properties.find((item) => item.key === 'app_id')?.displayValue
-                          || detail?.application.id
-                          || selected.id
-                        } · ${t('dashboard.application3DSectionBasic', '业务应用')}`}
-                      </div>
                     </div>
-                  </div>
-                  <div className="app3d-alarm-modal__body">
-                  <div className="space-y-2 rounded-[12px] border border-[var(--color-application3d-detail-stat-border)] bg-[var(--color-application3d-detail-stat-bg)] px-4 py-3">
-                    {[
-                      {
-                        key: 'resource',
-                        label: t('dashboard.application3DResource'),
-                        value: alarmDetail.alarm.resource.name,
-                      },
-                      {
-                        key: 'alertType',
-                        label: t('dashboard.application3DAlertType'),
-                        value: t(`dashboard.application3DAlertType_${alarmDetail.alarm.alertType}`),
-                      },
-                      {
-                        key: 'occurredAt',
-                        label: t('dashboard.application3DOccurredAt'),
-                        value: formatAlarmOccurredAt(alarmDetail.alarm.occurredAt),
-                      },
-                      {
-                        key: 'duration',
-                        label: t('dashboard.application3DDuration'),
-                        value: formatAlarmDurationSeconds(alarmDetail.alarm.durationSeconds),
-                      },
-                      {
-                        key: 'policy',
-                        label: t('dashboard.application3DPolicy'),
-                        value: alarmDetail.alarm.policy.name,
-                      },
-                      ...(alarmDetail.alarm.metric.name
-                        ? [{
-                          key: 'metric',
-                          label: t('dashboard.application3DMetric'),
-                          value: alarmDetail.alarm.metric.name,
-                        }]
-                        : []),
-                      {
-                        key: 'notification',
-                        label: t('dashboard.application3DNotification'),
-                        value: `${alarmDetail.alarm.notification.configured
-                          ? t('dashboard.application3DNotificationConfigured')
-                          : t('dashboard.application3DNotificationNotConfigured')} / ${t(
-                          `dashboard.application3DNotification_${alarmDetail.alarm.notification.state}`,
-                          )}`,
-                      },
-                    ].map((row) => (
-                      <div key={row.key} className="app3d-detail-field">
-                        <span className="app3d-detail-field__label">{row.label}</span>
-                        <span className="app3d-detail-field__value">{row.value}</span>
+                    <section className="app3d-alarm-detail-split__trend flex min-h-0 min-w-0 flex-col">
+                      <div className="app3d-alarm-detail-trend-title">
+                        {t('dashboard.application3DMetricTrend')}
                       </div>
-                    ))}
-                    {(alarmDetail.alarm.dimensions ?? []).length > 0 && (
-                      <div className="app3d-detail-field !block" data-testid="app3d-dimensions">
-                        <div className="app3d-detail-field__label mb-1">
-                          {t('dashboard.application3DDimensions')}
+                      {metricLoading ? (
+                        <div className="app3d-alarm-detail-trend-card flex flex-1 items-center justify-center">
+                          <Spin size="small" />
                         </div>
-                        <div className="space-y-1">
-                          {(alarmDetail.alarm.dimensions ?? []).map((dimension) => (
-                            <div
-                              key={dimension.key}
-                              className="flex justify-between gap-3 text-[13px] text-[rgba(220,230,240,0.9)]"
-                            >
-                              <span className="text-[rgba(180,196,212,0.8)]">{dimension.label}</span>
-                              <span>{dimension.displayValue}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <section>
-                    <div className="mb-2 text-sm font-medium text-[var(--color-application3d-text-subtle)]">
-                      {t('dashboard.application3DMetricTrend')}
-                    </div>
-                    {metricLoading ? <Spin size="small" /> : metric?.state === 'available' ? (
-                      <>
-                        <MetricTrend metric={{ ...metric, thresholds: metric.thresholds ?? [] }} />
-                        {metric.series?.[0]?.name ? (
-                          <div
-                            className="text-xs text-[var(--color-application3d-text-muted)]"
-                            data-testid="app3d-metric-legend"
-                          >
-                            {metric.series[0].unit
-                              ? `${metric.series[0].name} (${metric.series[0].unit})`
-                              : metric.series[0].name}
+                      ) : metric?.state === 'available' ? (
+                        <div className="app3d-alarm-detail-trend-card flex min-h-0 flex-1 flex-col">
+                          <div className="min-h-0 flex-1">
+                            <MetricTrend metric={{ ...metric, thresholds: metric.thresholds ?? [] }} />
                           </div>
-                        ) : null}
-                      </>
-                    ) : metric?.state === 'no_snapshot' ? (
-                      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('dashboard.application3DNoMetric')} />
-                    ) : (
-                      <Alert
-                        type="warning"
-                        message={t('dashboard.application3DMetricFailed')}
-                        action={<Button size="small" onClick={onRetryMetric}>{t('common.retry')}</Button>}
-                      />
-                    )}
-                  </section>
+                          {metric.series?.[0]?.name ? (
+                            <div
+                              className="mt-2 shrink-0 text-[13px] text-[var(--color-application3d-text-muted)]"
+                              data-testid="app3d-metric-legend"
+                            >
+                              {metric.series[0].unit
+                                ? `${metric.series[0].name} (${metric.series[0].unit})`
+                                : metric.series[0].name}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : metric?.state === 'no_snapshot' ? (
+                        <div className="app3d-alarm-detail-trend-card flex flex-1 items-center justify-center">
+                          <Empty
+                            image={Empty.PRESENTED_IMAGE_SIMPLE}
+                            description={t('dashboard.application3DNoMetric')}
+                          />
+                        </div>
+                      ) : (
+                        <div className="app3d-alarm-detail-trend-card flex flex-1 items-center justify-center">
+                          <Alert
+                            type="warning"
+                            message={t('dashboard.application3DMetricFailed')}
+                            action={<Button size="small" onClick={onRetryMetric}>{t('common.retry')}</Button>}
+                          />
+                        </div>
+                      )}
+                    </section>
                   </div>
-                  <div className="app3d-alarm-nav">
+                  <div className="app3d-alarm-nav mt-auto shrink-0">
                     <Button
                       className="app3d-close-cta"
                       disabled={!alarmDetail.navigation.previousAlarmId}
@@ -635,7 +622,7 @@ export default function Application3DDetail({
                         }
                       }}
                     >
-                      {`< ${t('dashboard.application3DPreviousAlarm')}`}
+                      {t('dashboard.application3DPreviousAlarm')}
                     </Button>
                     <Button
                       className="app3d-close-cta"
@@ -646,36 +633,36 @@ export default function Application3DDetail({
                         }
                       }}
                     >
-                      {`${t('dashboard.application3DNextAlarm')} >`}
+                      {t('dashboard.application3DNextAlarm')}
                     </Button>
                   </div>
                 </div>
               )}
               {!loading && !alarmLoading && !alarmError && detail && !alarmDetail && (
-                <section>
-                  <div className="mb-4 flex items-end justify-between gap-3">
+                <section className="flex min-h-full flex-1 flex-col">
+                  <div className="mb-5 flex shrink-0 items-end justify-between gap-3">
                     <h3 className="app3d-alarm-list__title">
                       {t('dashboard.application3DAlarmList')}
                     </h3>
-                    <span className="app3d-alarm-list__total">
-                      {t(
-                        'dashboard.application3DAlarmTotal',
-                        '共 {count} 条',
-                        {
-                          count: availableAlarms?.activeAlarmCount
-                            ?? detail.application.health.activeAlarmCount
-                            ?? 0,
-                        },
-                      )}
-                    </span>
+                    {availableAlarms ? (
+                      <span className="app3d-alarm-list__total">
+                        {t(
+                          'dashboard.application3DAlarmTotal',
+                          '共 {count} 条',
+                          { count: availableAlarms.activeAlarmCount },
+                        )}
+                      </span>
+                    ) : null}
                   </div>
                   {detail.alarms.state === 'unavailable' ? (
                     <Alert type="warning" showIcon message={t('dashboard.application3DAlarmsUnavailable')} />
                   ) : detail.alarms.items.length === 0 ? (
-                    <Empty
-                      image={Empty.PRESENTED_IMAGE_SIMPLE}
-                      description={t('dashboard.application3DNoAlarms')}
-                    />
+                    <div className="flex min-h-0 flex-1 items-center justify-center py-8">
+                      <Empty
+                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        description={t('dashboard.application3DNoAlarms')}
+                      />
+                    </div>
                   ) : (
                     <div>
                       {detail.alarms.items.map((alarm) => (
@@ -731,11 +718,9 @@ export default function Application3DDetail({
           </div>
         </div>
 
-        {!alarmOpen && (
-          <button type="button" className="app3d-close-cta" onClick={onClose}>
-            {t('common.close')}
-          </button>
-        )}
+        <button type="button" className="app3d-close-cta" onClick={onClose}>
+          {t('dashboard.application3DCloseDetail')}
+        </button>
       </div>
     </>
   );

@@ -3,6 +3,7 @@
 覆盖 Monitor（permission/NATS 形态）与 MonitorOperationAnaRpc（OperationAnalysisRpc）
 两个客户端的方法名 + 参数转发契约。替换 self.client 为记录器，不触达真实 NATS。
 """
+
 import pydantic.root_model  # noqa
 import pytest
 
@@ -152,16 +153,6 @@ def test_query_monitor_data_by_metric(ana_rpc):
     qd = {"metric": "cpu"}
     ana_rpc.query_monitor_data_by_metric(qd)
     assert _last(ana_rpc.client) == ("query_monitor_data_by_metric", (), {"query_data": qd})
-
-
-def test_query_range_默认step(ana_rpc):
-    ana_rpc.query_range("up", "1h")
-    assert _last(ana_rpc.client) == ("mm_query_range", (), {"query": "up", "time_range": "1h", "step": "5m"})
-
-
-def test_query_默认step(ana_rpc):
-    ana_rpc.query("up")
-    assert _last(ana_rpc.client) == ("mm_query", (), {"query": "up", "step": "5m"})
 
 
 def test_query_monitor_alert_segments(ana_rpc):

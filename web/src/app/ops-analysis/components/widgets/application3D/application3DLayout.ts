@@ -1,5 +1,4 @@
 import {
-  CARD_ASPECT,
   CARD_GAP,
   CARD_WORLD_HEIGHT,
   CARD_WORLD_WIDTH,
@@ -44,6 +43,10 @@ export const defaultApplication3DTranslate: Application3DTranslate = (
   defaultMessage = '',
 ) => defaultMessage;
 
+/** Landscape walls prefer a square-to-slightly-wide card grid, not a 2×N tower. */
+const TARGET_GRID_ASPECT_WIDE = 1.2;
+const TARGET_GRID_ASPECT_TALL = 0.85;
+
 const scoreColumnCandidate = (
   count: number,
   columns: number,
@@ -51,31 +54,33 @@ const scoreColumnCandidate = (
 ): number => {
   const rows = Math.ceil(count / columns);
   const lastRowCount = count - (rows - 1) * columns;
-  const width = columns * CARD_WORLD_WIDTH + (columns - 1) * CARD_GAP;
-  const height = rows * CARD_WORLD_HEIGHT + (rows - 1) * CARD_GAP;
-  const aspectCost = Math.abs(Math.log((width / Math.max(height, 0.01)) / viewportAspect));
   const incomplete = rows > 1 && lastRowCount !== columns;
   const shortfall = incomplete ? (columns - lastRowCount) / columns : 0;
   const orphan =
-    incomplete && lastRowCount <= Math.max(1, Math.floor(columns / 3)) ? 1.2 : 0;
-  const stackCost = viewportAspect >= 1.15 && columns < rows ? 0.55 : 0;
-  return aspectCost + (incomplete ? 1.6 : 0) + shortfall * 1.8 + orphan + stackCost;
+    incomplete && lastRowCount <= Math.max(1, Math.floor(columns / 3)) ? 0.45 : 0;
+  const targetGridAspect =
+    viewportAspect >= 1.05 ? TARGET_GRID_ASPECT_WIDE : TARGET_GRID_ASPECT_TALL;
+  const gridAspect = columns / Math.max(rows, 1);
+  const aspectCost = Math.abs(Math.log(gridAspect / targetGridAspect));
+  const towerCost = rows > columns ? (rows / columns - 1) * 1.35 : 0;
+  const incompleteCost = incomplete ? 0.28 + shortfall * 0.55 : 0;
+  return aspectCost + incompleteCost + orphan + towerCost;
 };
 
 const collectColumnCandidates = (count: number, ideal: number): number[] => {
-  const lo = Math.max(1, Math.floor(ideal) - 4);
-  const hi = Math.min(count, Math.ceil(ideal) + 4);
+  const lo = Math.max(1, Math.floor(ideal) - 5);
+  const hi = Math.min(count, Math.ceil(ideal) + 6);
   const candidates = new Set<number>();
   for (let columns = lo; columns <= hi; columns += 1) candidates.add(columns);
   for (let columns = 1; columns <= count; columns += 1) {
-    if (count % columns === 0 && Math.abs(columns - ideal) <= 6) {
+    if (count % columns === 0 && Math.abs(columns - ideal) <= 8) {
       candidates.add(columns);
     }
   }
   return [...candidates];
 };
 
-/** Prefer even rows; fall back to a short last row only when count is not a rectangle. */
+/** Prefer a square or slightly wide card grid; a short last row beats a 2-column tower. */
 export const resolveApplication3DColumns = (
   count: number,
   viewportAspect: number,
@@ -83,7 +88,9 @@ export const resolveApplication3DColumns = (
   const safeCount = Math.max(0, Math.floor(count));
   const safeAspect = Math.max(viewportAspect, 0.1);
   if (!safeCount) return 1;
-  const ideal = Math.sqrt((safeCount * safeAspect) / CARD_ASPECT);
+  const targetGridAspect =
+    safeAspect >= 1.05 ? TARGET_GRID_ASPECT_WIDE : TARGET_GRID_ASPECT_TALL;
+  const ideal = Math.sqrt(safeCount * targetGridAspect);
   return collectColumnCandidates(safeCount, ideal)
     .reduce((best, candidate) => {
       const score = scoreColumnCandidate(safeCount, candidate, safeAspect);
@@ -130,7 +137,7 @@ export const buildApplication3DLayout = (
 };
 
 /** Default wall occupies this fraction of the tighter viewport axis. */
-export const WALL_VIEW_COVERAGE = 0.68;
+export const WALL_VIEW_COVERAGE = 0.80;
 export const APPLICATION3D_CAMERA_FOV = 34;
 /** Pad only 1-card walls; 2×2 and larger frame the actual wall so cards stay readable. */
 export const REFERENCE_WALL_WIDTH = 2 * CARD_WORLD_WIDTH + CARD_GAP;
@@ -219,7 +226,8 @@ const cardStatusLabel = (
 
 /**
  * Resolve Wall card chrome from health DTO.
- * Uses highestSeverity / reason so alarming cards are not collapsed into one look.
+ * Unknown reasons (unavailable / no_application / no_host) share state=unknown.
+ * Alarming cards use highestSeverity so they are not collapsed into one look.
  */
 export const resolveApplication3DCardVisual = (
   item: {

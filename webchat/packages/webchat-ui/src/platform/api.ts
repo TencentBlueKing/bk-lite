@@ -5,6 +5,8 @@ import {
   mapPlatformApplications,
   mapPlatformMessages,
   mapPlatformSessions,
+  parseLlmContextUsageFromEnvelope,
+  type LlmContextUsage,
   type PlatformApplication,
   type PlatformContract,
   type PlatformSession,
@@ -80,10 +82,13 @@ export async function fetchPlatformMessages(
   contract: PlatformContract,
   sessionId: string,
   init: PlatformRequestInit
-): Promise<Message[]> {
+): Promise<{ messages: Message[]; usage: LlmContextUsage | null }> {
   const url = fillUrlTemplate(contract.messagesUrl, { sessionId });
   const payload = await fetchPlatformJson(url, init);
-  return mapPlatformMessages(asRecordList(payload));
+  return {
+    messages: mapPlatformMessages(asRecordList(payload)),
+    usage: parseLlmContextUsageFromEnvelope(payload),
+  };
 }
 
 export async function deletePlatformSession(

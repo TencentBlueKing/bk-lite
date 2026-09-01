@@ -166,6 +166,13 @@ class TestModelMigrateParsing:
         out = m._parse_table_option(cols)
         assert out == [{"column_id": "a", "column_name": "A", "column_type": "str", "order": 1}]
 
+    def test_parse_table_option_preserves_row_key(self, monkeypatch):
+        m = self._make(monkeypatch)
+
+        out = m._parse_table_option([{"column_id": "mac", "column_name": "MAC", "column_type": "str", "order": "1", "is_row_key": True}])
+
+        assert out == [{"column_id": "mac", "column_name": "MAC", "column_type": "str", "order": 1, "is_row_key": True}]
+
     def test_normalize_attr_enum_options_dup_id_raises(self, monkeypatch):
         m = self._make(monkeypatch)
         with pytest.raises(BaseAppException):

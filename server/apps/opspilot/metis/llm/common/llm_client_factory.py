@@ -8,12 +8,49 @@ from langchain_anthropic import ChatAnthropic
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
-from openai import OpenAI
+from openai import OpenAI, omit
 
 from apps.core.utils.ssrf_validator import SSRFValidator
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common.anthropic_capabilities import build_anthropic_runtime_capabilities
 from apps.opspilot.metis.llm.common.anthropic_compatible_adapter import AnthropicCompatibleChatClient, normalize_anthropic_compatible_api_base
+
+# Vendor test uses requests GET /models; chat uses the OpenAI Python SDK
+# (User-Agent OpenAI/Python + X-Stainless-*). Some reverse proxies return
+# 403 "Your request was blocked" for the SDK while curl/Postman still work.
+_OPENAI_COMPAT_USER_AGENT = "curl/8.7.1"
+_OPENAI_SDK_STAINLESS_HEADER_NAMES = (
+    "X-Stainless-Lang",
+    "X-Stainless-Package-Version",
+    "X-Stainless-OS",
+    "X-Stainless-Arch",
+    "X-Stainless-Runtime",
+    "X-Stainless-Runtime-Version",
+    "X-Stainless-Async",
+)
+
+
+def openai_compat_user_agent_headers() -> dict[str, str]:
+    """Public ChatOpenAI headers. Values must be str; langchain rejects omit."""
+    return {"User-Agent": _OPENAI_COMPAT_USER_AGENT}
+
+
+def openai_compat_sdk_headers() -> dict:
+    """Native OpenAI() headers: curl UA and drop SDK fingerprint headers."""
+    return {
+        "User-Agent": _OPENAI_COMPAT_USER_AGENT,
+        **{name: omit for name in _OPENAI_SDK_STAINLESS_HEADER_NAMES},
+    }
+
+
+def _attach_openai_compat_sdk_headers(llm) -> None:
+    """ChatOpenAI cannot take omit in default_headers; patch the wrapped clients."""
+    headers = openai_compat_sdk_headers()
+    for attr in ("root_client", "root_async_client"):
+        client = getattr(llm, attr, None)
+        if client is None or not hasattr(client, "_custom_headers"):
+            continue
+        client._custom_headers = {**client._custom_headers, **headers}
 
 
 def _build_openai_thinking_extra_body(model: str, show_think: bool) -> dict:
@@ -163,6 +200,33 @@ def _normalize_message_content(content) -> str:
     return str(content)
 
 
+# 部分推理/新一代模型网关只接受 temperature=1。
+_FIXED_UNIT_TEMPERATURE_PREFIXES = ("gpt-5", "o1", "o3", "o4-mini", "kimi", "moonshot", "k3")
+
+
+def _normalize_llm_model_id(model_name: str) -> str:
+    name = str(model_name or "").strip().lower()
+    if "/" in name:
+        name = name.rsplit("/", 1)[-1]
+    return name
+
+
+def resolve_gateway_temperature(model_name: str, requested: float, vendor_type: str = "") -> float:
+    """Keep the requested temperature unless the gateway only accepts 1."""
+    name = _normalize_llm_model_id(model_name)
+    vendor = str(vendor_type or "").strip().lower()
+    if vendor in {"kimi", "moonshot"}:
+        return 1.0
+    for prefix in _FIXED_UNIT_TEMPERATURE_PREFIXES:
+        if name == prefix or name.startswith(f"{prefix}-") or name.startswith(f"{prefix}."):
+            return 1.0
+    return requested
+
+
+def _request_temperature(request: BasicLLMRequest) -> float:
+    return resolve_gateway_temperature(request.model, request.temperature, getattr(request, "vendor_type", ""))
+
+
 def _is_unsupported_response_format_error(exc) -> bool:
     """Detect providers/gateways that reject OpenAI response_format."""
     text = str(exc or "").casefold()
@@ -244,11 +308,13 @@ class LLMClientFactory:
             model=request.model,
             base_url=base_url,
             api_key=request.openai_api_key,
-            temperature=request.temperature,
+            temperature=_request_temperature(request),
             max_tokens=request.max_output_tokens or None,
             disable_streaming=disable_stream,
             timeout=LLMClientFactory._resolve_timeout(request, timeout=timeout),
+            default_headers=openai_compat_user_agent_headers(),
         )
+        _attach_openai_compat_sdk_headers(llm)
 
         if llm.extra_body is None:
             llm.extra_body = {}
@@ -283,7 +349,7 @@ class LLMClientFactory:
             model=request.model,
             anthropic_api_url=base_url,
             api_key=request.openai_api_key,
-            temperature=request.temperature,
+            temperature=_request_temperature(request),
             max_tokens=request.max_output_tokens or 4096,
             disable_streaming=disable_stream,
             timeout=LLMClientFactory._resolve_timeout(request, timeout=timeout),
@@ -316,7 +382,7 @@ class LLMClientFactory:
             model=request.model,
             api_key=request.openai_api_key,
             api_base=base_url,
-            temperature=request.temperature,
+            temperature=_request_temperature(request),
             max_tokens=request.max_output_tokens or 4096,
             disable_streaming=disable_stream,
             timeout=LLMClientFactory._resolve_timeout(request, timeout=timeout),
@@ -347,6 +413,7 @@ class LLMClientFactory:
         kwargs = {
             "api_key": request.openai_api_key,
             "timeout": LLMClientFactory._resolve_timeout(request),
+            "default_headers": openai_compat_sdk_headers(),
         }
         if request.openai_api_base:
             # SSRF 防护：验证 API base URL（宽松模式，允许内网 LLM 服务）
@@ -418,7 +485,7 @@ class LLMClientFactory:
         call_kwargs = {
             "model": request.model,
             "messages": openai_messages,
-            "temperature": request.temperature,
+            "temperature": _request_temperature(request),
         }
         if request.max_output_tokens > 0:
             call_kwargs["max_tokens"] = request.max_output_tokens
@@ -490,7 +557,7 @@ class LLMClientFactory:
         call_kwargs = {
             "model": request.model,
             "messages": anthropic_messages,
-            "temperature": request.temperature,
+            "temperature": _request_temperature(request),
             "max_tokens": request.max_output_tokens or 4096,  # Anthropic 要求必须指定 max_tokens
         }
 
@@ -549,7 +616,7 @@ class LLMClientFactory:
         call_kwargs = {
             "model": request.model,
             "messages": openai_messages,
-            "temperature": request.temperature,
+            "temperature": _request_temperature(request),
             "stream": True,
         }
         if request.max_output_tokens > 0:
@@ -628,7 +695,7 @@ class LLMClientFactory:
         call_kwargs = {
             "model": request.model,
             "messages": anthropic_messages,
-            "temperature": request.temperature,
+            "temperature": _request_temperature(request),
             "max_tokens": request.max_output_tokens or 4096,
         }
         if system_message:

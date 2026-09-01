@@ -72,6 +72,8 @@ class ExtraConfig(BaseModel):
     skill_id: Optional[Any] = None
     skill_package_params_overlay: Optional[Dict[str, Any]] = None
     current_image_data: List[str] = Field(default_factory=list)
+    input_working_tokens: Optional[int] = None
+    context_window_tokens: Optional[int] = None
 
     # 多实例强制选择
     instance_name: Optional[str] = None
@@ -474,6 +476,6 @@ class BasicLLMRequest(BaseModel):
 
     # 上下文 Compaction 配置
     compaction_enabled: bool = Field(default=True, description="是否启用上下文压缩")
-    compaction_max_token_threshold: int = Field(default=80000, description="触发压缩的 token 阈值")
+    compaction_max_token_threshold: int = Field(default=0, description="触发压缩的 token 阈值；0 表示未注入模型派生值时不按旧 80k 独立上限压缩")
     compaction_keep_recent_messages: int = Field(default=12, description="压缩时保留最近的消息数量")
     compaction_summary_max_tokens: int = Field(default=2000, description="摘要的最大 token 数")

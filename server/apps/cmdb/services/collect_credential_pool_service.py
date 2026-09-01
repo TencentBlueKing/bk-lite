@@ -28,6 +28,7 @@ class CollectCredentialPoolService:
                 raise BaseAppException("采集凭据格式错误！")
             normalized_item = copy.deepcopy(item)
             normalized_item.setdefault("credential_id", cls._new_credential_id())
+            normalized_item.setdefault("credential_version", 1)
             normalized_pool.append(normalized_item)
         return normalized_pool
 
@@ -51,7 +52,7 @@ class CollectCredentialPoolService:
 
         expected_keys = None
         for item in pool:
-            item_keys = set(item.keys()) - {"credential_id"}
+            item_keys = set(item.keys()) - {"credential_id", "credential_version"}
             if expected_keys is None:
                 expected_keys = item_keys
                 continue
@@ -81,12 +82,12 @@ class CollectCredentialPoolService:
     def diff_pool(old_pool, new_pool):
         """返回 (added_ids, removed_ids, edited_ids)，排序变化不算编辑。"""
         old_map = {
-            item.get("credential_id"): {k: v for k, v in item.items() if k != "credential_id"}
+            item.get("credential_id"): {k: v for k, v in item.items() if k not in {"credential_id", "credential_version"}}
             for item in old_pool
             if isinstance(item, dict) and item.get("credential_id")
         }
         new_map = {
-            item.get("credential_id"): {k: v for k, v in item.items() if k != "credential_id"}
+            item.get("credential_id"): {k: v for k, v in item.items() if k not in {"credential_id", "credential_version"}}
             for item in new_pool
             if isinstance(item, dict) and item.get("credential_id")
         }
@@ -96,12 +97,29 @@ class CollectCredentialPoolService:
 
         added_ids = sorted(new_ids - old_ids)
         removed_ids = sorted(old_ids - new_ids)
-        edited_ids = sorted(
-            credential_id
-            for credential_id in (old_ids & new_ids)
-            if old_map[credential_id] != new_map[credential_id]
-        )
+        edited_ids = sorted(credential_id for credential_id in (old_ids & new_ids) if old_map[credential_id] != new_map[credential_id])
         return added_ids, removed_ids, edited_ids
+
+    @classmethod
+    def assign_versions(cls, old_pool, new_pool):
+        """凭据内容编辑只递增该凭据版本；新增/重排不清空其他凭据状态。"""
+
+        old_normalized = cls.normalize_pool(old_pool)
+        old_map = {item["credential_id"]: item for item in old_normalized}
+        _added, _removed, edited = cls.diff_pool(old_normalized, new_pool)
+        edited_ids = set(edited)
+        versioned = []
+        for item in new_pool:
+            current = copy.deepcopy(item)
+            old = old_map.get(current.get("credential_id"))
+            if old is None:
+                current["credential_version"] = 1
+            elif current.get("credential_id") in edited_ids:
+                current["credential_version"] = int(old.get("credential_version") or 1) + 1
+            else:
+                current["credential_version"] = int(old.get("credential_version") or 1)
+            versioned.append(current)
+        return versioned
 
     @classmethod
     def flatten_pool_to_primary(cls, raw_credential):
@@ -111,6 +129,7 @@ class CollectCredentialPoolService:
             return {}
         primary = copy.deepcopy(pool[0])
         primary.pop("credential_id", None)
+        primary.pop("credential_version", None)
         return primary
 
     @staticmethod

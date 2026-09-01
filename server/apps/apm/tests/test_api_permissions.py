@@ -516,6 +516,37 @@ def test_integration_config_reports_region_directory_unavailable(apm_api_client)
     assert "rpc timeout" not in str(response.data)
 
 
+def test_integration_config_hides_probe_download_rpc_failures_from_clients(apm_api_client):
+    create_application("shop", (10,))
+    region = Mock()
+    region.cloud_region_list.return_value = [{"id": 7, "name": "华东一区"}]
+    region.get_cloud_region_proxy_address.return_value = "apm-east.example.com"
+    region.get_cloud_region_public_config.side_effect = TimeoutError(
+        "nats: no responders available for request"
+    )
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr("apps.apm.views.control_plane.NodeMgmt", lambda: region)
+        response = apm_api_client.post(
+            "/api/v1/apm/integration-config/",
+            {
+                "application_id": "shop",
+                "cloud_region_id": 7,
+                "language": "python",
+                "runtime": "host",
+                "service_name": "api",
+                "environment": "prod",
+            },
+            format="json",
+        )
+
+    assert response.status_code == 503
+    assert response.data["code"] == "cloud_region_unavailable"
+    assert response.data["detail"] == "云区域配置暂时不可用，请稍后重试。"
+    assert "nats" not in str(response.data).lower()
+    assert "no responders" not in str(response.data).lower()
+
+
 def test_integration_config_rejects_client_endpoint_and_invalid_region_proxy_address(apm_api_client):
     create_application("shop", (10,))
     region = Mock()
@@ -640,3 +671,77 @@ def test_service_archive_and_catalog_organization_actions_remain_real_but_instan
     assert archived_instance.status_code == 404
     assert apm_api_client.post(f"/api/v1/apm/services/{discovered.service.id}/restore/").status_code == 200
     assert apm_api_client.post(f"/api/v1/apm/instances/{discovered.instance.id}/restore/").status_code == 404
+
+
+def _bind_virtual_organizations(user, *groups):
+    extra = [{"id": group.id, "name": group.name} for group in groups]
+    user.group_list = list(user.group_list) + extra
+
+
+def test_virtual_and_guest_assets_are_visible_under_other_organizations(apm_api_client, apm_user):
+    from apps.system_mgmt.models import Group
+
+    virtual, _ = Group.objects.get_or_create(name="虚拟团队", parent_id=0, defaults={"is_virtual": True})
+    guest, _ = Group.objects.get_or_create(name="OpsPilotGuest", parent_id=0, defaults={"is_virtual": True})
+    custom = Group.objects.create(name="apm-virtual-project", parent_id=virtual.id, is_virtual=True)
+    _bind_virtual_organizations(apm_user, virtual, guest, custom)
+
+    create_application("shop", (10,))
+    create_application("virtual-app", (virtual.id,))
+    create_application("guest-app", (guest.id,))
+    create_application("custom-virtual-app", (custom.id,))
+    create_application("billing", (20,))
+
+    listed = apm_api_client.get("/api/v1/apm/applications/")
+    assert listed.status_code == 200
+    assert {item["application_id"] for item in listed.data} == {
+        "shop",
+        "virtual-app",
+        "guest-app",
+        "custom-virtual-app",
+    }
+
+    catalog = DjangoTelemetryCatalogService()
+    visible = catalog.discover(CatalogDiscovery("shop", "checkout", "pod-a", "prod"))
+    virtual_row = catalog.discover(CatalogDiscovery("virtual-app", "api", "pod-v", "prod"))
+    guest_row = catalog.discover(CatalogDiscovery("guest-app", "api", "pod-g", "prod"))
+    custom_row = catalog.discover(CatalogDiscovery("custom-virtual-app", "api", "pod-c", "prod"))
+    hidden = catalog.discover(CatalogDiscovery("billing", "invoice", "pod-b", "prod"))
+
+    services = apm_api_client.get("/api/v1/apm/services/")
+    instances = apm_api_client.get("/api/v1/apm/instances/")
+    service_ids = {item["id"] for item in services.data}
+    instance_ids = {item["id"] for item in instances.data}
+
+    assert service_ids == {
+        str(visible.service.id),
+        str(virtual_row.service.id),
+        str(guest_row.service.id),
+        str(custom_row.service.id),
+    }
+    assert instance_ids == {
+        str(visible.instance.id),
+        str(virtual_row.instance.id),
+        str(guest_row.instance.id),
+        str(custom_row.instance.id),
+    }
+    assert apm_api_client.get(f"/api/v1/apm/services/{hidden.service.id}/").status_code == 404
+    hidden_app = ApmApplication.objects.get(application_id="billing")
+    virtual_app = ApmApplication.objects.get(application_id="virtual-app")
+    assert apm_api_client.get(f"/api/v1/apm/applications/{hidden_app.id}/").status_code == 404
+    assert apm_api_client.get(f"/api/v1/apm/applications/{virtual_app.id}/").status_code == 200
+
+
+def test_virtual_assets_stay_hidden_without_virtual_organization_permission(apm_api_client):
+    from apps.system_mgmt.models import Group
+
+    virtual, _ = Group.objects.get_or_create(name="虚拟团队", parent_id=0, defaults={"is_virtual": True})
+    guest, _ = Group.objects.get_or_create(name="OpsPilotGuest", parent_id=0, defaults={"is_virtual": True})
+    create_application("shop", (10,))
+    create_application("virtual-app", (virtual.id,))
+    create_application("guest-app", (guest.id,))
+
+    listed = apm_api_client.get("/api/v1/apm/applications/")
+    assert listed.status_code == 200
+    assert {item["application_id"] for item in listed.data} == {"shop"}
+

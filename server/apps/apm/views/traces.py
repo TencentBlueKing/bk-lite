@@ -12,7 +12,7 @@ from apps.apm.adapters.victoriatraces import _encode_cursor
 from apps.apm.renderers import ApmRenderer
 from apps.apm.serializers import TraceSearchSerializer
 from apps.apm.services import DjangoTelemetryQueryService
-from apps.apm.services.access import current_organization_id
+from apps.apm.services.access import visible_organization_ids
 from apps.apm.services.contracts import SpanDetail, TraceDetail, TraceSearchQuery, TraceSummary
 from apps.apm.services.trace_access import TraceAccessResolver, collect_visible_page
 from apps.core.decorators.api_permission import HasPermission
@@ -74,8 +74,8 @@ class ApmTraceViewSet(viewsets.ViewSet):
 
     @HasPermission("traces-View")
     def list(self, request):
-        organization_id = current_organization_id(request)
-        if organization_id is None:
+        organization_ids = visible_organization_ids(request)
+        if not organization_ids:
             return Response({"items": [], "next_cursor": None})
         serializer = TraceSearchSerializer(data=request.query_params)
         if not serializer.is_valid():
@@ -107,7 +107,7 @@ class ApmTraceViewSet(viewsets.ViewSet):
         try:
             visible, next_cursor = collect_visible_page(
                 fetch_page=fetch_page,
-                filter_items=lambda items: self.access.filter_summaries(items, organization_id),
+                filter_items=lambda items: self.access.filter_summaries(items, organization_ids),
                 cursor=query.cursor,
                 limit=query.limit,
                 encode_cursor=lambda item: _encode_cursor(item.started_at),
@@ -135,7 +135,7 @@ class ApmTraceViewSet(viewsets.ViewSet):
                 {"detail": str(exc), "code": "telemetry_unavailable"},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
-        organization_id = current_organization_id(request)
-        if detail is None or organization_id is None or not self.access.can_view_detail(detail, organization_id):
+        organization_ids = visible_organization_ids(request)
+        if detail is None or not organization_ids or not self.access.can_view_detail(detail, organization_ids):
             raise Http404
         return Response(_detail_data(detail))

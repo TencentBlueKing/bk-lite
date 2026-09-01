@@ -30,6 +30,7 @@ export interface Model {
     embed_config?: ModelConfig;
     rerank_config?: ModelConfig;
     ocr_config?: ModelConfig;
+    context_window_tokens?: number;
     permissions?: string[];
     // 新增分组相关字段
     group_id?: string;
@@ -55,6 +56,8 @@ export interface ModelVendor {
     embed_model_count?: number;
     rerank_model_count?: number;
     ocr_model_count?: number;
+    created_at?: string;
+    updated_at?: string;
 }
 
 export interface ModelVendorPayload {

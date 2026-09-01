@@ -16,6 +16,8 @@ def aggregate_application_health(alerts: Iterable[dict[str, Any]]) -> dict[str, 
     `alert_type` and `level` are orthogonal: no_data alerts still contribute
     their MonitorAlert.level to severityCounts / highestSeverity.
     Incomplete mapping/permission paths must not call this — return unavailable instead.
+    Empty systems (no system_contains_application edges) use no_application_health.
+    Child apps with zero legitimate hosts use no_host_health.
     """
     severity_counts = empty_severity_counts()
     no_data_count = 0
@@ -61,13 +63,27 @@ def aggregate_application_health(alerts: Iterable[dict[str, Any]]) -> dict[str, 
     }
 
 
-def unavailable_health() -> dict[str, Any]:
+def _unknown_health(reason: str) -> dict[str, Any]:
     return {
         "state": "unknown",
-        "reason": "unavailable",
+        "reason": reason,
         "activeAlarmCount": None,
         "severityCounts": None,
         "noDataAlarmCount": None,
         "highestSeverity": None,
         "stale": False,
     }
+
+
+def unavailable_health() -> dict[str, Any]:
+    return _unknown_health("unavailable")
+
+
+def no_application_health() -> dict[str, Any]:
+    """System has zero exact system_contains_application edges to application."""
+    return _unknown_health("no_application")
+
+
+def no_host_health() -> dict[str, Any]:
+    """System has child applications but zero legitimate application_run_host peers."""
+    return _unknown_health("no_host")

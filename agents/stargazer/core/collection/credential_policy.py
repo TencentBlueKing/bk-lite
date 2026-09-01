@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import random
 import time
 from dataclasses import dataclass
@@ -28,35 +29,64 @@ class CredentialFailure:
     next_retry_at: float
 
 
+def credential_state_identity(credential: Mapping[str, Any]) -> str:
+    """凭据运行时身份；版本变化只使该凭据的旧冷冻/亲和失效。"""
+
+    credential_id = str(credential.get("credential_id") or "")
+    credential_version = credential.get("credential_version")
+    if credential_version in (None, ""):
+        return credential_id
+    return json.dumps(
+        {"credential_id": credential_id, "credential_version": credential_version},
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+
+
+def parse_credential_state_identity(identity: str) -> tuple[str, str]:
+    try:
+        payload = json.loads(identity)
+    except (TypeError, json.JSONDecodeError):
+        return str(identity or ""), ""
+    if not isinstance(payload, dict):
+        return str(identity or ""), ""
+    return (
+        str(payload.get("credential_id") or ""),
+        str(payload.get("credential_version") or ""),
+    )
+
+
 class CredentialStateStore(Protocol):
-    async def get_success(self, scope: CredentialScope) -> str: ...
+    async def get_success(self, scope: CredentialScope) -> str:
+        ...
 
     async def load_target_state(
         self,
         scope: CredentialScope,
         credential_ids: tuple[str, ...] | list[str],
-    ) -> tuple[str, dict[str, CredentialFailure | None]]: ...
+    ) -> tuple[str, dict[str, CredentialFailure | None]]:
+        ...
 
-    async def set_success(
-        self, scope: CredentialScope, credential_id: str
-    ) -> None: ...
+    async def set_success(self, scope: CredentialScope, credential_id: str) -> None:
+        ...
 
-    async def get_failure(
-        self, scope: CredentialScope, credential_id: str
-    ) -> CredentialFailure | None: ...
+    async def get_failure(self, scope: CredentialScope, credential_id: str) -> CredentialFailure | None:
+        ...
 
     async def set_failure(
         self,
         scope: CredentialScope,
         credential_id: str,
         failure: CredentialFailure,
-    ) -> None: ...
+    ) -> None:
+        ...
 
-    async def clear_failure(
-        self, scope: CredentialScope, credential_id: str
-    ) -> None: ...
+    async def clear_failure(self, scope: CredentialScope, credential_id: str) -> None:
+        ...
 
-    async def clear_scope_failures(self, scope: CredentialScope) -> None: ...
+    async def clear_scope_failures(self, scope: CredentialScope) -> None:
+        ...
 
 
 class CredentialPolicy:
@@ -79,30 +109,24 @@ class CredentialPolicy:
         self._now = now
         self._jitter = jitter
 
-    async def eligible_credentials(
-        self, request: CollectionRequest, target: str
-    ) -> tuple[Mapping[str, Any], ...]:
+    async def eligible_credentials(self, request: CollectionRequest, target: str) -> tuple[Mapping[str, Any], ...]:
         credentials = self.matching_credentials(request, target)
         scope = self._scope(request, target)
-        credential_ids = tuple(
-            str(credential.get("credential_id") or "")
-            for credential in credentials
-        )
-        success_id, failures = await self._store.load_target_state(
-            scope, credential_ids
-        )
+        credential_ids = tuple(credential_state_identity(credential) for credential in credentials)
+        success_id, failures = await self._store.load_target_state(scope, credential_ids)
         eligible = []
         now = self._now()
         for credential, credential_id in zip(credentials, credential_ids):
             failure = failures.get(credential_id)
             if failure and failure.next_retry_at > now:
-                logger.info(
+                public_credential_id, _version = parse_credential_state_identity(credential_id)
+                logger.debug(
                     "⏸️ event=credential_cooldown_skipped task_id=%s target=%s "
                     "credential_id=%s cooldown_level=%s next_retry_at=%s "
                     "error_code=%s",
                     request.task_id,
                     target,
-                    credential_id or "-",
+                    public_credential_id or "-",
                     failure.cooldown_level,
                     failure.next_retry_at,
                     failure.error_code,
@@ -110,39 +134,18 @@ class CredentialPolicy:
                 continue
             eligible.append(credential)
         if success_id:
-            eligible.sort(
-                key=lambda credential: (
-                    str(credential.get("credential_id") or "") != success_id
-                )
-            )
+            eligible.sort(key=lambda credential: (credential_state_identity(credential) != success_id))
         return tuple(eligible)
 
-    def matching_credentials(
-        self, request: CollectionRequest, target: str
-    ) -> tuple[Mapping[str, Any], ...]:
-        return tuple(
-            credential
-            for credential in tuple(request.credentials) or ({},)
-            if self._matches_target(credential, target)
-        )
+    def matching_credentials(self, request: CollectionRequest, target: str) -> tuple[Mapping[str, Any], ...]:
+        return tuple(credential for credential in tuple(request.credentials) or ({},) if self._matches_target(credential, target))
 
-    async def next_retry_at(
-        self, request: CollectionRequest, target: str
-    ) -> float | None:
+    async def next_retry_at(self, request: CollectionRequest, target: str) -> float | None:
         scope = self._scope(request, target)
         credentials = self.matching_credentials(request, target)
-        credential_ids = tuple(
-            str(credential.get("credential_id") or "")
-            for credential in credentials
-        )
-        _success_id, failures = await self._store.load_target_state(
-            scope, credential_ids
-        )
-        retry_times = [
-            failure.next_retry_at
-            for failure in failures.values()
-            if failure and failure.next_retry_at > self._now()
-        ]
+        credential_ids = tuple(credential_state_identity(credential) for credential in credentials)
+        _success_id, failures = await self._store.load_target_state(scope, credential_ids)
+        retry_times = [failure.next_retry_at for failure in failures.values() if failure and failure.next_retry_at > self._now()]
         return min(retry_times) if retry_times else None
 
     async def record_success(
@@ -151,12 +154,11 @@ class CredentialPolicy:
         target: str,
         credential: Mapping[str, Any],
     ) -> None:
-        credential_id = str(credential.get("credential_id") or "")
+        credential_id = credential_state_identity(credential)
         if not credential_id:
             return
         scope = self._scope(request, target)
         await self._store.set_success(scope, credential_id)
-        await self._store.clear_failure(scope, credential_id)
 
     async def record_auth_failure(
         self,
@@ -166,7 +168,7 @@ class CredentialPolicy:
         *,
         error_code: str,
     ) -> None:
-        credential_id = str(credential.get("credential_id") or "")
+        credential_id = credential_state_identity(credential)
         if not credential_id:
             return
         scope = self._scope(request, target)
@@ -186,13 +188,13 @@ class CredentialPolicy:
                 next_retry_at=next_retry_at,
             ),
         )
-        logger.info(
+        logger.debug(
             "🧊 event=credential_frozen task_id=%s target=%s credential_id=%s "
             "cooldown_level=%s consecutive_failures=%s next_retry_at=%s "
             "error_code=%s",
             request.task_id,
             target,
-            credential_id,
+            parse_credential_state_identity(credential_id)[0],
             level,
             consecutive,
             next_retry_at,
@@ -200,12 +202,8 @@ class CredentialPolicy:
         )
 
     @staticmethod
-    def _matches_target(
-        credential: Mapping[str, Any], target: str
-    ) -> bool:
-        bound_target = str(
-            credential.get("target_host") or credential.get("host") or ""
-        ).strip()
+    def _matches_target(credential: Mapping[str, Any], target: str) -> bool:
+        bound_target = str(credential.get("target_host") or credential.get("host") or "").strip()
         return not bound_target or bound_target == target
 
     @staticmethod
@@ -214,9 +212,7 @@ class CredentialPolicy:
             scope_id=str(request.params.get("scope_id") or "default"),
             plugin_ref=request.plugin_ref,
             target_id=target,
-            credential_set_version=str(
-                request.params.get("credential_set_version") or "default"
-            ),
+            credential_set_version=str(request.params.get("credential_set_version") or "default"),
         )
 
 
@@ -237,23 +233,15 @@ class InMemoryCredentialStateStore:
     ) -> tuple[str, dict[str, CredentialFailure | None]]:
         async with self._lock:
             success_id = self._success.get(scope, "")
-            failures = {
-                str(credential_id or ""): self._failures.get(
-                    (scope, str(credential_id or ""))
-                )
-                for credential_id in credential_ids
-            }
+            failures = {str(credential_id or ""): self._failures.get((scope, str(credential_id or ""))) for credential_id in credential_ids}
             return success_id, failures
 
-    async def set_success(
-        self, scope: CredentialScope, credential_id: str
-    ) -> None:
+    async def set_success(self, scope: CredentialScope, credential_id: str) -> None:
         async with self._lock:
             self._success[scope] = credential_id
+            self._failures.pop((scope, credential_id), None)
 
-    async def get_failure(
-        self, scope: CredentialScope, credential_id: str
-    ) -> CredentialFailure | None:
+    async def get_failure(self, scope: CredentialScope, credential_id: str) -> CredentialFailure | None:
         async with self._lock:
             return self._failures.get((scope, credential_id))
 
@@ -266,9 +254,7 @@ class InMemoryCredentialStateStore:
         async with self._lock:
             self._failures[(scope, credential_id)] = failure
 
-    async def clear_failure(
-        self, scope: CredentialScope, credential_id: str
-    ) -> None:
+    async def clear_failure(self, scope: CredentialScope, credential_id: str) -> None:
         async with self._lock:
             self._failures.pop((scope, credential_id), None)
 

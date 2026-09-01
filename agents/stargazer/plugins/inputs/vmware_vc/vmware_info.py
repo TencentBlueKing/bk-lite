@@ -7,11 +7,10 @@ import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from core.decorator import timer
 from pyVim.connect import Disconnect, SmartConnect
 from pyVmomi import vim
 from sanic.log import logger
-
-from core.decorator import timer
 
 
 class VmwareManage(object):
@@ -29,21 +28,16 @@ class VmwareManage(object):
         CA 可信（或已导入）
         否则直接连接失败
         """
-        self.ssl_verify = (
-            params.get("ssl", "false") == "true"
-        )  # 要不要严格检查 vCenter 的 HTTPS 证书是不是合法的
+        self.ssl_verify = params.get("ssl", "false") == "true"  # 要不要严格检查 vCenter 的 HTTPS 证书是不是合法的
         self.si = None
         self.content = None
 
         # disk detail enabled by default (issue #1104)
-        self.collect_disk_detail = (
-            str(params.get("collect_disk_detail", "true")).lower() == "true"
-        )
+        self.collect_disk_detail = str(params.get("collect_disk_detail", "true")).lower() == "true"
         # NB custom fields (can be overridden by params)
         self.nb_last_backup_field = params.get("nb_last_backup_field", "NB_LAST_BACKUP")
-        self.nb_backup_policy_field = params.get(
-            "nb_backup_policy_field", "NB_BACKUP_POLICY"
-        )
+        self.nb_backup_policy_field = params.get("nb_backup_policy_field", "NB_BACKUP_POLICY")
+        self.collection_task_id = params.get("collection_task_id")
 
     def test_connection(self):
         """
@@ -62,10 +56,7 @@ class VmwareManage(object):
 
     def _probe_sync(self):
         """最小连接探测：建立 vCenter 会话后立即断开。"""
-        from core.collection.contracts import (
-            AccessProbeResult,
-            AccessProbeStatus,
-        )
+        from core.collection.contracts import AccessProbeResult, AccessProbeStatus
 
         try:
             self.connect_vc()
@@ -112,13 +103,9 @@ class VmwareManage(object):
 
     def get_all_objs(self, obj_type, folder=None):
         if folder is None:
-            container = self.content.viewManager.CreateContainerView(
-                self.content.rootFolder, obj_type, True
-            )
+            container = self.content.viewManager.CreateContainerView(self.content.rootFolder, obj_type, True)
         else:
-            container = self.content.viewManager.CreateContainerView(
-                folder, obj_type, True
-            )
+            container = self.content.viewManager.CreateContainerView(folder, obj_type, True)
         return container.view
 
     def connect_vc(self):
@@ -140,9 +127,7 @@ class VmwareManage(object):
             self.si = si
             logger.error(f"SmartConnect time cost: {time.time() - a}")
             if not si:
-                raise RuntimeError(
-                    "Unable to establish a pyVmomi connection. Could you please double-check the address, username, or password?"
-                )
+                raise RuntimeError("Unable to establish a pyVmomi connection. Could you please double-check the address, username, or password?")
             self.content = si.RetrieveContent()
             logger.error(f"RetrieveContent time cost: {time.time() - a}")
         except Exception as err:
@@ -165,9 +150,7 @@ class VmwareManage(object):
                         if host.summary and host.summary.managementServerIp:
                             ip_addr = host.summary.managementServerIp
                         else:
-                            logger.warning(
-                                "Host config or network is None and no managementServerIp found"
-                            )
+                            logger.warning("Host config or network is None and no managementServerIp found")
                 except Exception as err:
                     logger.error(f"get_hosts host ip_add error! {err}")
 
@@ -175,17 +158,13 @@ class VmwareManage(object):
                 try:
                     esxi_version = host.config.product.version
                 except Exception as err:
-                    logger.error(
-                        f"get_hosts host.config.product.version host esxi_version error! {err}"
-                    )
+                    logger.error(f"get_hosts host.config.product.version host esxi_version error! {err}")
 
                 if not esxi_version:
                     try:
                         esxi_version = host.summary.config.product.version
                     except Exception as err:
-                        logger.error(
-                            f"get_hosts host.summary.config.product host esxi_version error! {err}"
-                        )
+                        logger.error(f"get_hosts host.summary.config.product host esxi_version error! {err}")
 
                 memory_total = host.hardware.memorySize // 1024 // 1024
 
@@ -246,12 +225,8 @@ class VmwareManage(object):
     @staticmethod
     def _get_disk_type(backing: Any) -> str:
         try:
-            raw_type_1 = getattr(
-                vim.vm.device.VirtualDisk, "RawDiskMappingVer1BackingInfo", None
-            )
-            raw_type_2 = getattr(
-                vim.vm.device.VirtualDisk, "RawDiskMappingVer2BackingInfo", None
-            )
+            raw_type_1 = getattr(vim.vm.device.VirtualDisk, "RawDiskMappingVer1BackingInfo", None)
+            raw_type_2 = getattr(vim.vm.device.VirtualDisk, "RawDiskMappingVer2BackingInfo", None)
             raw_types = tuple(t for t in (raw_type_1, raw_type_2) if t is not None)
             if raw_types and isinstance(backing, raw_types):
                 return "raw"
@@ -295,18 +270,14 @@ class VmwareManage(object):
                 continue
         return result
 
-    def _get_vm_disks(self, vm) -> List[Dict[str, Any]]:
+    def _get_vm_disks(self, vm) -> List[Dict[str, Any]]:  # noqa: C901
         if not self.collect_disk_detail:
             return []
 
         used_bytes_by_disk_key: Dict[int, int] = {}
         try:
             layout = getattr(vm, "layoutEx", None)
-            if (
-                layout
-                and getattr(layout, "file", None)
-                and getattr(layout, "disk", None)
-            ):
+            if layout and getattr(layout, "file", None) and getattr(layout, "disk", None):
                 file_size_by_key: Dict[int, int] = {}
                 for f in layout.file:
                     try:
@@ -320,9 +291,7 @@ class VmwareManage(object):
                         for chain in getattr(d, "chain", None) or []:
                             for fk in getattr(chain, "fileKey", None) or []:
                                 file_keys.append(int(fk))
-                        used_bytes_by_disk_key[int(d.key)] = sum(
-                            file_size_by_key.get(k, 0) for k in file_keys
-                        )
+                        used_bytes_by_disk_key[int(d.key)] = sum(file_size_by_key.get(k, 0) for k in file_keys)
                     except Exception:
                         continue
         except Exception:
@@ -382,9 +351,7 @@ class VmwareManage(object):
                 {
                     "disk_id": disk_key,
                     "provisioned_gb": self._bytes_to_gb(provisioned_bytes),
-                    "used_gb": None
-                    if used_bytes is None
-                    else self._bytes_to_gb(used_bytes),
+                    "used_gb": None if used_bytes is None else self._bytes_to_gb(used_bytes),
                     "disk_type": self._get_disk_type(backing),
                     "datastore": datastore_name,
                 }
@@ -431,12 +398,8 @@ class VmwareManage(object):
                         "last_backup": "",
                         "backup_policy": "",
                         "data_disks": "[]",
-                        "power_state": self._safe_str(
-                            self._get_vm_prop(vm, ("summary", "runtime", "powerState"))
-                        ),
-                        "connection_state": self._safe_str(
-                            self._get_vm_prop(vm, ("runtime", "connectionState"))
-                        ),
+                        "power_state": self._safe_str(self._get_vm_prop(vm, ("summary", "runtime", "powerState"))),
+                        "connection_state": self._safe_str(self._get_vm_prop(vm, ("runtime", "connectionState"))),
                         "is_template": "false",
                     }
 
@@ -444,10 +407,7 @@ class VmwareManage(object):
                     if vmnet:
                         net_dict = {}
                         for device in vmnet:
-                            mac_address = (
-                                self._safe_str(getattr(device, "macAddress", ""))
-                                or "unknown"
-                            )
+                            mac_address = self._safe_str(getattr(device, "macAddress", "")) or "unknown"
                             net_dict[mac_address] = {"ipv4": [], "ipv6": []}
                             for ip_addr in getattr(device, "ipAddress", None) or []:
                                 if "::" in ip_addr:
@@ -468,89 +428,53 @@ class VmwareManage(object):
 
                     host = self._get_vm_prop(vm, ("summary", "runtime", "host"))
                     if host:
-                        vm_dict["vmware_esxi"] = self._safe_str(
-                            getattr(host, "_moId", "")
-                        )
+                        vm_dict["vmware_esxi"] = self._safe_str(getattr(host, "_moId", ""))
                         host_parent = getattr(host, "parent", None)
                         if isinstance(host_parent, vim.ClusterComputeResource):
-                            vm_dict["cluster"] = self._safe_str(
-                                getattr(host_parent, "name", "")
-                            )
+                            vm_dict["cluster"] = self._safe_str(getattr(host_parent, "name", ""))
 
                     vm_dict["vmware_ds"] = ",".join(
                         self._safe_str(getattr(datastore, "_moId", ""))
                         for datastore in (getattr(vm, "datastore", None) or [])
                         if getattr(datastore, "_moId", None)
                     )
-                    vm_dict["vcpus"] = (
-                        self._get_vm_prop(vm, ("summary", "config", "numCpu")) or ""
-                    )
-                    vm_dict["os_name"] = self._safe_str(
-                        self._get_vm_prop(vm, ("summary", "config", "guestFullName"))
-                    )
-                    vm_dict["memory"] = (
-                        self._get_vm_prop(vm, ("summary", "config", "memorySizeMB"))
-                        or ""
-                    )
+                    vm_dict["vcpus"] = self._get_vm_prop(vm, ("summary", "config", "numCpu")) or ""
+                    vm_dict["os_name"] = self._safe_str(self._get_vm_prop(vm, ("summary", "config", "guestFullName")))
+                    vm_dict["memory"] = self._get_vm_prop(vm, ("summary", "config", "memorySizeMB")) or ""
 
-                    vm_dict["annotation"] = self._safe_str(
-                        self._get_vm_prop(vm, ("summary", "config", "annotation"))
-                    )
+                    vm_dict["annotation"] = self._safe_str(self._get_vm_prop(vm, ("summary", "config", "annotation")))
 
-                    uptime = self._get_vm_prop(
-                        vm, ("summary", "quickStats", "uptimeSeconds")
-                    )
+                    uptime = self._get_vm_prop(vm, ("summary", "quickStats", "uptimeSeconds"))
+                    # TODO(cardinality): uptime_seconds 是正式 CMDB 字段但每轮变化，当前作为
+                    # vmware_vm_info 标签会产生新时序；待 VMware 配置采集迁出指标标签后治理。
                     try:
-                        vm_dict["uptime_seconds"] = (
-                            "0" if uptime in (None, "") else str(int(uptime))
-                        )
+                        vm_dict["uptime_seconds"] = "0" if uptime in (None, "") else str(int(uptime))
                     except Exception:
                         vm_dict["uptime_seconds"] = "0"
 
-                    vm_dict["tools_version"] = self._safe_str(
-                        self._get_vm_prop(vm, ("guest", "toolsVersion"))
-                    )
-                    vm_dict["tools_status"] = self._safe_str(
-                        self._get_vm_prop(vm, ("guest", "toolsStatus"))
-                    )
-                    vm_dict["tools_running_status"] = self._safe_str(
-                        self._get_vm_prop(vm, ("guest", "toolsRunningStatus"))
-                    )
-                    vm_dict["last_boot"] = self._dt_to_iso(
-                        self._get_vm_prop(vm, ("runtime", "bootTime"))
-                    )
-                    vm_dict["creation_date"] = self._dt_to_iso(
-                        self._get_vm_prop(vm, ("config", "createDate"))
-                    )
+                    vm_dict["tools_version"] = self._safe_str(self._get_vm_prop(vm, ("guest", "toolsVersion")))
+                    vm_dict["tools_status"] = self._safe_str(self._get_vm_prop(vm, ("guest", "toolsStatus")))
+                    vm_dict["tools_running_status"] = self._safe_str(self._get_vm_prop(vm, ("guest", "toolsRunningStatus")))
+                    vm_dict["last_boot"] = self._dt_to_iso(self._get_vm_prop(vm, ("runtime", "bootTime")))
+                    vm_dict["creation_date"] = self._dt_to_iso(self._get_vm_prop(vm, ("config", "createDate")))
 
                     custom_fields = self._get_custom_field_values(vm)
-                    vm_dict["last_backup"] = self._safe_str(
-                        custom_fields.get(self.nb_last_backup_field, "")
-                    )
-                    vm_dict["backup_policy"] = self._safe_str(
-                        custom_fields.get(self.nb_backup_policy_field, "")
-                    )
+                    vm_dict["last_backup"] = self._safe_str(custom_fields.get(self.nb_last_backup_field, ""))
+                    vm_dict["backup_policy"] = self._safe_str(custom_fields.get(self.nb_backup_policy_field, ""))
 
                     try:
                         disks = self._get_vm_disks(vm)
-                        vm_dict["data_disks"] = json.dumps(
-                            disks, ensure_ascii=False, separators=(",", ":")
-                        )
+                        vm_dict["data_disks"] = json.dumps(disks, ensure_ascii=False, separators=(",", ":"))
                     except Exception as err:
-                        logger.error(
-                            f"get_vms build disk detail error for {vm_name}[{vm_moid}]! {err}"
-                        )
+                        logger.error(f"get_vms build disk detail error for {vm_name}[{vm_moid}]! {err}")
 
                     result.append(vm_dict)
                 except Exception as err:
                     failed_vms += 1
-                    logger.exception(
-                        f"get_vms skip vm due to error: {vm_name}[{vm_moid}] err={err}"
-                    )
+                    logger.exception(f"get_vms skip vm due to error: {vm_name}[{vm_moid}] err={err}")
 
             logger.info(
-                f"get_vms summary: total={total_vms}, collected={len(result)}, "
-                f"skipped_templates={skipped_templates}, failed={failed_vms}"
+                f"get_vms summary: total={total_vms}, collected={len(result)}, " f"skipped_templates={skipped_templates}, failed={failed_vms}"
             )
 
         except Exception as err:
@@ -560,9 +484,7 @@ class VmwareManage(object):
 
     def get_datastore(self):
         result = []
-        cluster_list = self.content.viewManager.CreateContainerView(
-            self.content.rootFolder, [vim.ComputeResource], True
-        ).view
+        cluster_list = self.content.viewManager.CreateContainerView(self.content.rootFolder, [vim.ComputeResource], True).view
         for cluster in cluster_list:
             result.append({"name": cluster.name, "moid": cluster._moId})
         return result
@@ -589,14 +511,8 @@ class VmwareManage(object):
                             # "inst_name": datastore.summary.name,
                             "inst_name": f"{datastore.summary.name}[{datastore._moId}]",
                             "system_type": datastore.summary.type,
-                            "storage": datastore.summary.capacity
-                            // 1024
-                            // 1024
-                            // 1024,
-                            "vmware_esxi": ",".join(
-                                host.key._moId
-                                for host in datastore.summary.datastore.host
-                            ),
+                            "storage": datastore.summary.capacity // 1024 // 1024 // 1024,
+                            "vmware_esxi": ",".join(host.key._moId for host in datastore.summary.datastore.host),
                         }
                     )
                 datacenters_list.append(datacenter_dict)
@@ -639,10 +555,12 @@ class VmwareManage(object):
             result = self.service()
             inst_data = {"result": result, "success": True}
         except Exception as err:
-            import traceback
-
-            logger.error(
-                f"vmware_info list_all_resources error! {traceback.format_exc()}"
+            logger.exception(
+                "event=vmware_collect_failed host=%s task_id=%s failed_stage=%s error_type=%s",
+                self.host,
+                self.collection_task_id,
+                "list_all_resources",
+                type(err).__name__,
             )
             error = str(err)
             error = error.replace("=", "-").replace("\n", " ")

@@ -375,12 +375,26 @@ class VictoriaTracesTelemetryStore:
 
     def get_trace(self, trace_id: str) -> TraceDetail | None:
         payload = self._request_json(f"/select/jaeger/api/traces/{trace_id}", allow_not_found=True)
-        if payload is None:
-            return None
-        raw_traces = payload.get("data", [])
-        if not isinstance(raw_traces, list) or not raw_traces:
-            return None
-        return self._parse_trace(raw_traces[0])
+        if payload is not None:
+            raw_traces = payload.get("data", [])
+            if isinstance(raw_traces, list) and raw_traces:
+                detail = self._parse_trace(raw_traces[0])
+                if detail is not None:
+                    return detail
+        return self._get_trace_via_logsql(trace_id)
+
+    def _get_trace_via_logsql(self, trace_id: str) -> TraceDetail | None:
+        """Jaeger get-by-id 依赖延迟刷盘的 trace_id 索引；LogsQL 与列表同一条路径，能读到刚入库的 Span。"""
+
+        ended_at = datetime.now(UTC) + timedelta(minutes=1)
+        started_at = ended_at - MAX_QUERY_WINDOW
+        rows = self._query_rows(
+            f"trace_id:={_logsql_string(trace_id)} | limit {_RAW_SPAN_PARSE_LIMIT}",
+            started_at,
+            ended_at,
+            limit=_RAW_SPAN_PARSE_LIMIT,
+        )
+        return self._traces_from_span_rows(rows).get(trace_id)
 
     def service_red(self, query: ServiceMetricQuery) -> ServiceRed:
         window_seconds = _validate_window(query.started_at, query.ended_at)

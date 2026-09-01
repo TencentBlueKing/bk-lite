@@ -100,6 +100,8 @@ export function getCreateModalFooterMode(input: {
 }
 
 
+export const DEFAULT_INTEGRATION_PROVIDER_ICON = 'default-provider';
+
 export function resolveIntegrationProviderIcon(providerKey: string) {
   const providerIconMap: Record<string, string> = {
     feishu: 'feishu',
@@ -111,7 +113,7 @@ export function resolveIntegrationProviderIcon(providerKey: string) {
     wechat: 'wechat',
     wecom: 'wecom',
   };
-  return providerIconMap[providerKey] || 'jicheng';
+  return providerIconMap[providerKey] || DEFAULT_INTEGRATION_PROVIDER_ICON;
 }
 
 export function filterIntegrationInstancesByName<T extends { name: string }>(

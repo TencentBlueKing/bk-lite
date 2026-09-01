@@ -1,6 +1,6 @@
 # Stargazer 指标标签基数治理
 
-Status: phase-1-done
+Status: phase-1-done-phase-2-implemented-awaiting-deployment-validation
 
 ## 背景
 
@@ -13,7 +13,7 @@ Stargazer 当前把部分采集运行身份写入 VictoriaMetrics 标签。运�
 
 - 指标标签只表达稳定资源身份或有限枚举；
 - 运行身份保留在 NATS 参数、消息幂等键、采集事件和日志中；
-- 配置快照身份及完整对象数据在第二阶段迁往快照载荷，不永久豁免为指标标签。
+- 配置快照身份和完整性元数据在第二阶段迁往 Redis + NATS 旁路；完整资产行继续存于 VM。
 
 ## 基数不变量
 
@@ -98,30 +98,33 @@ series != resources * metrics * collection_runs
 暂时保留 `snapshot_id`，因为 PC 软件归属、WinSphere manifest 校验和破坏性差集对账依赖
 完整快照身份。第一阶段不得为了降低基数而弱化快照完整性或删除安全门。
 
-## 第二阶段：配置快照迁移
+## 第二阶段：PC/WinSphere 快照元数据迁移
+
+本阶段详细实施方案见
+[`metric-label-cardinality-phase-2-design.md`](metric-label-cardinality-phase-2-design.md)。已实施方案不迁移
+完整资产数据：PC/WinSphere 资产行继续保留在 VictoriaMetrics，仅把 `snapshot_id`、status、count
+和 WinSphere manifest 等小型轮次元数据写入 Stargazer 自身 Redis，并由 CMDB 通过 NATS 精确查询。
+CMDB 不直接连接 Stargazer Redis，也不要求两个服务共享 Redis。
 
 `snapshot_id` 每轮变化，不是长期可接受的指标标签。结构化配置采集当前还把对象的全部非空
-标量属性编码为 tag；任何版本、容量、状态或描述变化都会形成新 series。因此第二阶段需要
-建立配置快照接口，例如：
+标量属性编码为 tag；任何版本、容量、状态或描述变化都会形成新 series。本阶段只治理以下快照标签：
 
 ```text
-InventorySnapshotEnvelope
-  snapshot_id
-  snapshot_status
-  snapshot_manifest
-  chunk_index / chunk_count
-  records[]
+PC: snapshot_id / software_snapshot_status / software_expected_count / software_error_count
+PC software: snapshot_id
+WinSphere: snapshot_id / snapshot_status / snapshot_manifest
 ```
 
-快照经版本化 NATS 消息或专用暂存存储传输，Server 按 `snapshot_id` 聚合完整批次并在完整性
-确认后对账。迁移完成后：
+完整资产行继续由 VM 承载，并以同一目标结果共享的 sample timestamp 归属轮次；Server 取得小型元数据并
+验证完整性后才允许差集删除。迁移完成后：
 
-- VictoriaMetrics 只保存数值监控指标和稳定标签；
-- `snapshot_id`、manifest 和完整资产属性退出指标标签；
-- 各模型使用显式 identity/bounded label 白名单，不再自动把任意标量属性变成 tag。
+- 上述 snapshot 元数据退出指标标签；
+- PC 软件清单和 WinSphere 八模型资产行仍保留在 VictoriaMetrics；
+- 元数据缺失、过期、RPC 失败、计数或 hash 不一致时 fail closed，不删除资产且不前移轮次游标。
 
-该阶段涉及跨服务协议和破坏性差集安全，必须支持混合版本、明确发布顺序与回滚路径，并覆盖
-完整、部分、重复、乱序和旧版本消息。
+VMware `uptime_seconds`、其他动态业务属性以及 `0`/`False` 数据正确性问题不并入本次实施，后续独立治理。
+本次功能当前无使用方，采用暂停相关任务后的硬切换，不双写、不双读、不回填历史数据；发布和回滚步骤
+见详细实施文档。
 
 ## 验证
 
@@ -133,7 +136,7 @@ InventorySnapshotEnvelope
 4. 两个不同 attempt 生成相同的轮次完成 marker series key；
 5. Server 能从不带 attempt 标签的新标记选择最新 `round_ts`；
 6. Server 能兼容读取保留 attempt 标签的历史标记；
-7. PC 与 WinSphere 的现有 `snapshot_id` 契约测试继续通过。
+7. PC 与 WinSphere 的 snapshot 完整性契约改由轮次元数据测试锁定，VM 行不再包含 snapshot 标签。
 
 ## 上线与回滚
 
@@ -150,3 +153,13 @@ InventorySnapshotEnvelope
 - Server 网络双通道、拓扑重放与轮次守门：32 passed；
 - 变更 Python 文件通过 Black 检查、Flake8（150 列）和 `git diff --check`；
 - `snapshot_id`、`snapshot_manifest` 及现有配置快照处理未修改。
+
+## 第二阶段代码验证（2026-08-31）
+
+- PC/WinSphere snapshot 标签已从新生成的 VM 资产行移除；
+- 快照控制元数据已迁入 Stargazer Redis，Server 通过 NATS 完整键批量查询；
+- PC 和 WinSphere 在元数据缺失、超时或完整性错误时，均在图对账副作用前 fail closed；
+- 企业版 Stargazer 权威源已同步生产者改动，WinSphere 已对齐异步 Collector 合同和结构化
+  `winsphere_*_info` 指标名；
+- 跨仓库完整流程已覆盖 PC 三轮安全删除和 WinSphere 八模型连续两轮 series 稳定；
+- 代码定向测试已通过，生产灰度、VM series 数和 Redis/NATS 运行指标仍需按详细实施文档验收。

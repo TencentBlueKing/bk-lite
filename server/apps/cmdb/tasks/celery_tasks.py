@@ -21,11 +21,15 @@ from apps.cmdb.collection.round_sync import (
     GATE_PAGE_SIZE,
     LAST_SYNCED_ROUND_KEY,
     ORPHAN_BEAT_PURGE_LIMIT,
+    SNAPSHOT_CONTRACT_LABEL,
     SYNC_BEAT_NAME_PREFIX,
+    cap_completed_round_lookback_seconds,
     cmdb_instance_id,
+    completed_round_lookback_seconds,
     decide_gate_action,
     get_last_synced_round,
-    has_instance_vm_data,
+    query_instance_ids_with_vm_data,
+    query_latest_completed_rounds,
     query_latest_round_ts,
     uses_vm_reconciliation,
 )
@@ -36,6 +40,7 @@ from apps.cmdb.services.collect_tool_service import CollectToolService
 from apps.cmdb.services.subscription_task import SubscriptionTaskService
 from apps.cmdb.tasks.node_mgmt_sync import run_collect, run_sync
 from apps.core.logger import cmdb_logger as logger
+from apps.core.logger import safe_exception_info
 from apps.core.utils.celery_utils import CeleryUtils
 
 _COLLECT_TERMINAL_STATUSES = (
@@ -480,7 +485,16 @@ def trigger_first_collection(self, task_id, expected_fingerprint, reason):
 
 
 @shared_task(bind=True)
-def sync_collect_task(self, instance_id, execution_id=None, node_config_id=None, node_config_version=None, sync_round_ts=None):  # noqa: C901
+def sync_collect_task(  # noqa: C901
+    self,
+    instance_id,
+    execution_id=None,
+    node_config_id=None,
+    node_config_version=None,
+    sync_round_ts=None,
+    sync_round_completed_at=None,
+    sync_snapshot_complete=None,
+):
     """
     同步采集任务
     """
@@ -509,6 +523,8 @@ def sync_collect_task(self, instance_id, execution_id=None, node_config_id=None,
     execution_id = instance.task_id
     claim_token = instance.claim_token
     resolved_round_ts = None
+    resolved_round_completed_at = None
+    resolved_snapshot_complete = None
     if sync_round_ts not in (None, ""):
         try:
             resolved_round_ts = int(sync_round_ts)
@@ -521,6 +537,20 @@ def sync_collect_task(self, instance_id, execution_id=None, node_config_id=None,
             resolved_round_ts = None
     if resolved_round_ts is not None:
         instance._sync_round_ts = resolved_round_ts
+        try:
+            resolved_round_completed_at = float(sync_round_completed_at)
+        except (TypeError, ValueError):
+            resolved_round_completed_at = None
+        if resolved_round_completed_at is not None and resolved_round_completed_at >= resolved_round_ts:
+            instance._sync_round_completed_at = resolved_round_completed_at
+    if isinstance(sync_snapshot_complete, bool):
+        resolved_snapshot_complete = bool(
+            sync_snapshot_complete
+            and resolved_round_ts is not None
+            and resolved_round_completed_at is not None
+            and resolved_round_completed_at >= resolved_round_ts
+        )
+        instance._sync_snapshot_complete = resolved_snapshot_complete
     logger.info(
         "event=collect_task_execution_started task_id=%s execution_id=%s",
         instance_id,
@@ -647,6 +677,7 @@ def sync_collect_task(self, instance_id, execution_id=None, node_config_id=None,
             instance_id=instance_id,
             exec_status=instance.exec_status,
             sync_round_ts=resolved_round_ts,
+            snapshot_complete=resolved_snapshot_complete,
             prev_synced_round=prev_synced_round,
         )
         update_values = {
@@ -731,6 +762,7 @@ def _apply_last_synced_round(
     instance_id,
     exec_status,
     sync_round_ts,
+    snapshot_complete,
     prev_synced_round,
 ):
     """成功对账后写入游标；失败时保留旧游标。手动路径无 sync_round_ts 时从标记刷新。"""
@@ -740,7 +772,7 @@ def _apply_last_synced_round(
     )
     if exec_status in success_statuses:
         round_to_store = sync_round_ts
-        if round_to_store is None:
+        if round_to_store is None and snapshot_complete is not False:
             round_to_store = query_latest_round_ts(cmdb_instance_id(instance_id))
         if round_to_store is not None:
             collect_digest[LAST_SYNCED_ROUND_KEY] = int(round_to_store)
@@ -770,10 +802,20 @@ def _purge_legacy_vm_sync_beats(limit: int = ORPHAN_BEAT_PURGE_LIMIT) -> int:
     return purged
 
 
-@shared_task
+def _log_round_gate_marker_query_failure(error: BaseException, *, failed_stage: str, rows: int) -> None:
+    logger.error(
+        "event=round_gate_marker_query_failed failed_stage=%s rows=%s error_type=%s",
+        failed_stage,
+        rows,
+        type(error).__name__,
+        exc_info=safe_exception_info(error),
+    )
+
+
+@shared_task(soft_time_limit=240, time_limit=270)
 def sync_collect_tasks_gate():
     """全局 5 分钟守门：仅在出现新完整轮次时触发对账。"""
-    from apps.cmdb.models.collect_model import COLLECTION_ROLE_DEVICE
+    from apps.cmdb.models.collect_model import COLLECTION_ROLE_DEVICE, COLLECTION_ROLE_TOPOLOGY, normalize_topology_contract
     from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
     from apps.cmdb.services.topology_replay_service import maybe_replay_topology_from_gate
 
@@ -783,32 +825,163 @@ def sync_collect_tasks_gate():
     dispatched = 0
     skipped = 0
     topo_replayed = 0
+    retention_limited = 0
+    vm_query_failed = 0
+    topology_query_failed = 0
     after_id = 0
     while True:
         page = list(
             CollectModels._default_manager.filter(id__gt=after_id)
-            .exclude(task_type=CollectPluginTypes.CONFIG_FILE)
+            .exclude(task_type__in=(CollectPluginTypes.CONFIG_FILE, CollectPluginTypes.K8S))
             .exclude(
                 is_system=True,
                 system_code__startswith=NodeMgmtSyncService.SYSTEM_TASK_PREFIX,
             )  # NodeMgmtSync 认领 child execution；守门重派会冲掉 task_id
             .order_by("id")
-            .values("id", "exec_status", "collect_digest", "params", "model_id", "task_type")[:GATE_PAGE_SIZE]
+            .values(
+                "id",
+                "exec_status",
+                "collect_digest",
+                "params",
+                "model_id",
+                "task_type",
+                "is_interval",
+                "cycle_value_type",
+                "cycle_value",
+            )[:GATE_PAGE_SIZE]
         )
         if not page:
             break
+        completed_rounds = {}
+        topology_rounds = {}
+        compat_data_instance_ids = set()
+        marker_query_failed_ids = set()
+        eligible_rows = [row for row in page if row["exec_status"] != CollectRunStatusType.RUNNING]
+        if eligible_rows:
+            requested_lookbacks = {
+                row["id"]: completed_round_lookback_seconds(
+                    is_interval=bool(row.get("is_interval")),
+                    cycle_value_type=row.get("cycle_value_type"),
+                    cycle_value=row.get("cycle_value"),
+                )
+                for row in eligible_rows
+            }
+            retention_limited += sum(cap_completed_round_lookback_seconds(value)[1] for value in requested_lookbacks.values())
+            capped_lookbacks = {row_id: cap_completed_round_lookback_seconds(value)[0] for row_id, value in requested_lookbacks.items()}
+            marker_lookback = max(capped_lookbacks.values())
+            instance_ids = [cmdb_instance_id(row["id"]) for row in eligible_rows]
+            marker_evaluation_time = time.time()
+            minimum_completed_at_by_instance = {
+                cmdb_instance_id(row_id): marker_evaluation_time - lookback for row_id, lookback in capped_lookbacks.items()
+            }
+            try:
+                completed_rounds = query_latest_completed_rounds(
+                    instance_ids,
+                    collection_role=COLLECTION_ROLE_DEVICE,
+                    lookback_seconds=marker_lookback,
+                    minimum_completed_at_by_instance=minimum_completed_at_by_instance,
+                )
+            except Exception as exc:  # noqa: BLE001 - 页级故障隔离，下一轮 Gate 自动重试
+                marker_query_failed_ids.update(instance_ids)
+                _log_round_gate_marker_query_failure(
+                    exc,
+                    failed_stage="device_marker_query",
+                    rows=len(instance_ids),
+                )
+            else:
+                legacy_ids = [instance_id for instance_id in instance_ids if instance_id not in completed_rounds]
+                if legacy_ids:
+                    try:
+                        # collection_role='' 只兼容旧无 role 标记，不混入新拓扑通道标记。
+                        completed_rounds.update(
+                            query_latest_completed_rounds(
+                                legacy_ids,
+                                collection_role="",
+                                lookback_seconds=marker_lookback,
+                                minimum_completed_at_by_instance=minimum_completed_at_by_instance,
+                            )
+                        )
+                    except Exception as exc:  # noqa: BLE001 - 已取得的新标记仍可继续处理
+                        marker_query_failed_ids.update(legacy_ids)
+                        _log_round_gate_marker_query_failure(
+                            exc,
+                            failed_stage="legacy_marker_query",
+                            rows=len(legacy_ids),
+                        )
+            compat_probe_ids = [
+                cmdb_instance_id(row["id"])
+                for row in eligible_rows
+                if cmdb_instance_id(row["id"]) not in completed_rounds
+                and cmdb_instance_id(row["id"]) not in marker_query_failed_ids
+                and get_last_synced_round(row.get("collect_digest")) is None
+            ]
+            if compat_probe_ids:
+                try:
+                    compat_data_instance_ids = query_instance_ids_with_vm_data(compat_probe_ids)
+                except Exception as exc:  # noqa: BLE001 - 兼容探测失败时不得误判为无数据
+                    marker_query_failed_ids.update(compat_probe_ids)
+                    _log_round_gate_marker_query_failure(
+                        exc,
+                        failed_stage="compat_data_query",
+                        rows=len(compat_probe_ids),
+                    )
+            vm_query_failed += len(marker_query_failed_ids)
+            topology_rows = [
+                row
+                for row in eligible_rows
+                if (row.get("model_id") == "network" or row.get("task_type") == CollectPluginTypes.SNMP)
+                and normalize_topology_contract(row.get("params") or {}).get("has_network_topo")
+            ]
+            if topology_rows:
+                topology_lookbacks = {}
+                for row in topology_rows:
+                    topology_contract = normalize_topology_contract(
+                        row.get("params") or {},
+                        device_cycle_minutes=(row.get("cycle_value") if row.get("cycle_value_type") == "cycle" else None),
+                    )
+                    requested = completed_round_lookback_seconds(
+                        is_interval=True,
+                        cycle_value_type="cycle",
+                        cycle_value=topology_contract.get("topology_interval_minutes"),
+                    )
+                    topology_lookbacks[row["id"]] = cap_completed_round_lookback_seconds(requested)[0]
+                    retention_limited += int(cap_completed_round_lookback_seconds(requested)[1])
+                topology_instance_ids = [cmdb_instance_id(row["id"]) for row in topology_rows]
+                topology_marker_lookback = max(topology_lookbacks.values())
+                topology_minimum_completed_at = {
+                    cmdb_instance_id(row_id): marker_evaluation_time - lookback for row_id, lookback in topology_lookbacks.items()
+                }
+                try:
+                    topology_rounds = query_latest_completed_rounds(
+                        topology_instance_ids,
+                        collection_role=COLLECTION_ROLE_TOPOLOGY,
+                        lookback_seconds=topology_marker_lookback,
+                        minimum_completed_at_by_instance=topology_minimum_completed_at,
+                    )
+                except Exception as exc:  # noqa: BLE001 - 拓扑失败不阻断设备对账
+                    topology_query_failed += len(topology_instance_ids)
+                    _log_round_gate_marker_query_failure(
+                        exc,
+                        failed_stage="topology_marker_query",
+                        rows=len(topology_instance_ids),
+                    )
+
         for row in page:
             scanned += 1
             task_id = row["id"]
+            if row["exec_status"] == CollectRunStatusType.RUNNING:
+                skipped += 1
+                logger.debug("[RoundGate] 跳过运行中任务 task_id=%s action=skip_running", task_id)
+                continue
             instance_id = cmdb_instance_id(task_id)
+            if instance_id in marker_query_failed_ids:
+                skipped += 1
+                logger.debug("[RoundGate] 跳过标记查询失败任务 task_id=%s", task_id)
+                continue
             last_synced = get_last_synced_round(row.get("collect_digest"))
-            # 设备通道优先按 collection_role=device 取标记；兼容旧无 role 标记。
-            round_ts = query_latest_round_ts(instance_id, collection_role=COLLECTION_ROLE_DEVICE)
-            if round_ts is None:
-                round_ts = query_latest_round_ts(instance_id)
-            has_data = False
-            if round_ts is None and last_synced is None:
-                has_data = has_instance_vm_data(instance_id)
+            completed_round = completed_rounds.get(instance_id)
+            round_ts = completed_round.started_at if completed_round is not None else None
+            has_data = instance_id in compat_data_instance_ids
             action = decide_gate_action(
                 exec_status=row["exec_status"],
                 round_ts=round_ts,
@@ -816,7 +989,12 @@ def sync_collect_tasks_gate():
                 has_vm_data=has_data,
             )
             if action == "sync_round":
-                sync_collect_task.delay(task_id, sync_round_ts=round_ts)
+                sync_collect_task.delay(
+                    task_id,
+                    sync_round_ts=round_ts,
+                    sync_round_completed_at=completed_round.completed_at,
+                    sync_snapshot_complete=completed_round.snapshot_complete,
+                )
                 dispatched += 1
                 logger.info(
                     "[RoundGate] 派发轮次对账 task_id=%s round_ts=%s last_synced=%s",
@@ -825,7 +1003,8 @@ def sync_collect_tasks_gate():
                     last_synced,
                 )
             elif action == "sync_compat":
-                sync_collect_task.delay(task_id)
+                # 无完成标记只能证明“有数据”，不能证明快照完整；兼容轮次禁止差集删除。
+                sync_collect_task.delay(task_id, sync_snapshot_complete=False)
                 dispatched += 1
                 logger.info("[RoundGate] 兼容回退对账 task_id=%s", task_id)
             else:
@@ -839,19 +1018,38 @@ def sync_collect_tasks_gate():
                 )
 
             if row.get("model_id") == "network" or row.get("task_type") == CollectPluginTypes.SNMP:
-                topo_status = maybe_replay_topology_from_gate(task_id, row.get("params"), row.get("collect_digest"))
+                topology_round = topology_rounds.get(instance_id)
+                topology_marker = None
+                if topology_round is not None:
+                    topology_marker = {
+                        "round_ts": topology_round.started_at,
+                        "round_completed_at": topology_round.completed_at,
+                        "channel_config_version": topology_round.labels.get("channel_config_version", ""),
+                        SNAPSHOT_CONTRACT_LABEL: topology_round.labels.get(SNAPSHOT_CONTRACT_LABEL),
+                    }
+                topo_status = maybe_replay_topology_from_gate(
+                    task_id,
+                    row.get("params"),
+                    row.get("collect_digest"),
+                    marker=topology_marker,
+                )
                 if topo_status == "played":
                     topo_replayed += 1
         after_id = page[-1]["id"]
         if len(page) < GATE_PAGE_SIZE:
             break
     logger.info(
-        "[RoundGate] 守门扫描完成 scanned=%s dispatched=%s skipped=%s " "topo_replayed=%s purged_beats=%s",
+        "[RoundGate] 守门扫描完成 scanned=%s dispatched=%s skipped=%s "
+        "topo_replayed=%s purged_beats=%s retention_limited=%s vm_query_failed=%s "
+        "topology_query_failed=%s",
         scanned,
         dispatched,
         skipped,
         topo_replayed,
         purged,
+        retention_limited,
+        vm_query_failed,
+        topology_query_failed,
     )
     return {
         "scanned": scanned,
@@ -859,6 +1057,9 @@ def sync_collect_tasks_gate():
         "skipped": skipped,
         "topo_replayed": topo_replayed,
         "purged_beats": purged,
+        "retention_limited": retention_limited,
+        "vm_query_failed": vm_query_failed,
+        "topology_query_failed": topology_query_failed,
     }
 
 
@@ -885,16 +1086,6 @@ def sync_periodic_update_task_status():
         "[CollectTask] 周期巡检超时采集任务完成，超时任务数 rows=%s",
         timeout_count,
     )
-
-
-@shared_task
-def sync_collect_credential_results_task():
-    logger.info("Skip legacy credential pull task because CMDB now receives Stargazer pushes via NATS")
-    return {
-        "result": True,
-        "skipped": True,
-        "message": "collect credential results are received via NATS push",
-    }
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=5, soft_time_limit=240, time_limit=300)
@@ -1143,6 +1334,13 @@ def reconcile_cmdb_operations_task() -> dict:
     }
     logger.info("[CmdbOperation] 周期补偿完成: %s", result)
     return result
+
+
+@shared_task
+def consume_cmdb_operation_outbox(event_id: str) -> bool:
+    from apps.cmdb.services.operation_service import OperationService
+
+    return OperationService.consume_outbox(event_id)
 
 
 @shared_task

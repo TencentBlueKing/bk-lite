@@ -1,9 +1,7 @@
 # -*- coding: utf-8 -*-
-import json
 from typing import Any, Dict, List
 
-from sanic.log import logger
-
+from core.logger import logger
 from plugins.script_executor import SSHPlugin
 
 
@@ -11,9 +9,13 @@ class HostInfo(SSHPlugin):
 
     async def list_all_resources(self, need_raw=False) -> Dict[str, Any]:
         try:
-            logger.info(" start collect host info! host={} model_id={}".format(self.host, self.model_id))
+            logger.debug(
+                "event=host_collect_started host=%s model_id=%s task_id=%s",
+                self.host,
+                self.model_id,
+                self.collection_task_id,
+            )
             data = await super().list_all_resources(need_raw=True)
-            # logger.info(" start collect host info data={}, host={}, model_id={}".format(data, self.host, self.model_id))
 
             if need_raw:
                 return data
@@ -54,9 +56,23 @@ class HostInfo(SSHPlugin):
             result = {self.model_id: host_items}
             if host_proc_items:
                 result["host_proc_usage"] = host_proc_items
-            logger.info("data = {}, host={}, model_id={}".format(result, self.host, self.model_id))
+            logger.info(
+                "event=host_collect_completed success=%s host=%s model_id=%s task_id=%s host_count=%s proc_count=%s",
+                True,
+                self.host,
+                self.model_id,
+                self.collection_task_id,
+                len(host_items),
+                len(host_proc_items),
+            )
             return {"success": True, "result": result}
         except Exception as err:
-            import traceback
-            logger.error(f"{self.__class__.__name__} main error! {traceback.format_exc()}")
+            logger.exception(
+                "event=host_collect_failed host=%s model_id=%s task_id=%s failed_stage=%s error_type=%s",
+                self.host,
+                self.model_id,
+                self.collection_task_id,
+                "host_parse",
+                type(err).__name__,
+            )
             return {"result": {"cmdb_collect_error": str(err)}, "success": False}

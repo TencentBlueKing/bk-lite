@@ -37,9 +37,14 @@ class PhyscialServerInfo(SSHPlugin):
             else:
                 result = {"success": True, "result": {model_id: [{}]}}
         except Exception as err:
-            import traceback
-
-            logger.error(f"{self.__class__.__name__} main error! {traceback.format_exc()}")
+            logger.exception(
+                "event=physcial_server_collect_failed host=%s model_id=%s task_id=%s failed_stage=%s error_type=%s",
+                self.host,
+                self.model_id,
+                self.collection_task_id,
+                "list_all_resources",
+                type(err).__name__,
+            )
             result = {"result": {"cmdb_collect_error": str(err)}, "success": False}
         return result
 

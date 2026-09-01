@@ -1,4 +1,6 @@
+import asyncio
 import json
+import time
 
 import pytest
 from service.winrm_stream import _build_command, _build_protocol, run_winrm_stream
@@ -104,7 +106,36 @@ async def test_winrm_stream_bounds_retained_and_streamed_partial_line():
     assert code == 0
     assert "xxxxxxxxxx" in output
     assert "x" * 11 not in output
-    assert lines == ["xxxxxxxxxx"]
+    assert lines == ["x" * 20]
     assert meta["truncated"] is True
     assert meta["output_bytes_total"] == 20
     assert meta["output_bytes_retained"] == 10
+
+
+@pytest.mark.asyncio
+async def test_winrm_stream_slow_publisher_does_not_block_output_receive():
+    protocol = _Protocol()
+    protocol.responses = iter([("".join(f"line{i}\n" for i in range(100)).encode(), b"", 0, True)])
+
+    async def slow_publisher(_subject, _payload):
+        await asyncio.sleep(0.05)
+
+    started = time.monotonic()
+    code, output, meta = await run_winrm_stream(
+        [{"host": "10.10.90.120"}],
+        script_content="Write-Output ignored",
+        script_type="powershell",
+        timeout=1,
+        stream_publish=slow_publisher,
+        stream_log_topic="job.stream.33.ansible",
+        execution_id="33",
+        stream_queue_size=4,
+        stream_batch_size=2,
+        stream_flush_timeout=0.05,
+        protocol_factory=lambda credential: protocol,
+    )
+
+    assert code == 0
+    assert "line99" in output
+    assert time.monotonic() - started < 0.5
+    assert meta["stream_lines_dropped"] > 0

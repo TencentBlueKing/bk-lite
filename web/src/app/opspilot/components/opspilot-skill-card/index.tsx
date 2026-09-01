@@ -1,7 +1,6 @@
 'use client';
 
 import React from 'react';
-import { useTranslation } from '@/utils/i18n';
 import EntityCard from '@/app/opspilot/components/opspilot-entity-card';
 import type { OpsPilotSkillCardRecord } from '@/app/opspilot/components/opspilot-cards';
 
@@ -10,18 +9,23 @@ interface StudioCardProps extends OpsPilotSkillCardRecord {
   onMenuClick: (action: string, studio: OpsPilotSkillCardRecord) => void;
 }
 
-const StudioCard: React.FC<StudioCardProps> = (props) => {
-  const { t } = useTranslation();
-  const { id, name, introduction, created_by, team_name, team, llm_model_name, skill_type, is_pinned, permissions, onMenuClick } = props;
-  const iconTypeMapping: [string, string] = ['jiqirenjiaohukapian', 'jiqiren'];
-
-  const skillTypeMapping = {
-    2: t('skill.form.qaTag'),
-    1: t('skill.form.toolsTag'),
-    3: t('skill.form.planTag'),
-    4: t('skill.form.complexTag')
-  };
-  const skillType = skillTypeMapping[skill_type as keyof typeof skillTypeMapping] || 'Unknown';
+const SkillCard: React.FC<StudioCardProps> = (props) => {
+  const {
+    id,
+    name,
+    introduction,
+    created_by,
+    team_name,
+    team,
+    llm_model_name,
+    skill_type,
+    created_at,
+    updated_at,
+    is_pinned,
+    permissions,
+    onMenuClick,
+  } = props;
+  const iconTypeMapping = ['jiqirenjiaohukapian', 'jiqiren', 'jiqiren1', 'jiqiren2'];
 
   return (
     <EntityCard
@@ -33,7 +37,8 @@ const StudioCard: React.FC<StudioCardProps> = (props) => {
       team={team}
       modelName={llm_model_name as string}
       skill_type={skill_type as number}
-      skillType={skillType}
+      created_at={typeof created_at === 'string' ? created_at : undefined}
+      updated_at={typeof updated_at === 'string' ? updated_at : undefined}
       is_pinned={is_pinned}
       showPinButton={true}
       permissions={permissions}
@@ -44,4 +49,4 @@ const StudioCard: React.FC<StudioCardProps> = (props) => {
   );
 };
 
-export default StudioCard;
+export default SkillCard;

@@ -46,6 +46,8 @@ export interface Application3DSceneController {
   ) => void;
   resize: () => void;
   setActive: (active: boolean) => void;
+  /** Animate (or snap) the orbit camera back to the fitted wall home pose. */
+  resetCamera: () => void;
   dispose: () => void;
 }
 
@@ -235,6 +237,7 @@ const createFloorGlowMaterial = (tint: number) =>
   });
 
 const FLOOR_HOVER_GAP = 0.38;
+const CARD_REFLECTION_OPACITY = 0.40;
 
 const createCardReflectionMaterial = (map: THREE.CanvasTexture, tint: number) =>
   new THREE.ShaderMaterial({
@@ -244,7 +247,7 @@ const createCardReflectionMaterial = (map: THREE.CanvasTexture, tint: number) =>
     toneMapped: false,
     uniforms: {
       uMap: { value: map },
-      uOpacity: { value: 0.42 },
+      uOpacity: { value: CARD_REFLECTION_OPACITY },
       uTint: { value: new THREE.Color(tint) },
     },
     vertexShader: `
@@ -262,15 +265,15 @@ const createCardReflectionMaterial = (map: THREE.CanvasTexture, tint: number) =>
       void main() {
         vec2 uv = vec2(vUv.x, 1.0 - vUv.y);
         vec4 tex = texture2D(uMap, uv);
-        float fade = pow(clamp(vUv.y, 0.0, 1.0), 0.9);
+        float fade = pow(clamp(vUv.y, 0.0, 1.0), 1.35);
         vec3 glass = vec3(0.11, 0.24, 0.38);
         vec3 color = mix(glass * mix(vec3(1.0), uTint, 0.2), tex.rgb, tex.a);
         float edge = min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y));
         float rim = 1.0 - smoothstep(0.008, 0.026, edge);
         vec3 rimColor = mix(uTint, vec3(0.7, 0.9, 1.0), 0.4);
-        color = mix(color, rimColor, rim * 0.32);
-        float alpha = mix(0.28, max(0.28, tex.a * 0.68), tex.a);
-        alpha = max(alpha, rim * 0.26);
+        color = mix(color, rimColor, rim * 0.22);
+        float alpha = mix(0.16, max(0.16, tex.a * 0.48), tex.a);
+        alpha = max(alpha, rim * 0.16);
         gl_FragColor = vec4(color, alpha * fade * uOpacity);
       }
     `,
@@ -449,7 +452,7 @@ export const createApplication3DScene = (
   renderer.setClearColor(0x0c2138, 0);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.0;
+  renderer.toneMappingExposure = 1.06;
   renderer.domElement.style.display = 'block';
   renderer.domElement.style.width = '100%';
   renderer.domElement.style.height = '100%';
@@ -574,8 +577,8 @@ export const createApplication3DScene = (
   const textureLoader = new THREE.TextureLoader();
 
   // Legacy: HemisphericLight(direction 5,5,-9).
-  scene.add(new THREE.HemisphereLight(0x8aa0b4, 0x061018, 0.22));
-  const hemiKey = new THREE.DirectionalLight(0xd0dce8, 0.08);
+  scene.add(new THREE.HemisphereLight(0x8aa0b4, 0x061018, 0.28));
+  const hemiKey = new THREE.DirectionalLight(0xd0dce8, 0.11);
   hemiKey.position.set(5, 5, 9);
   scene.add(hemiKey);
 
@@ -624,11 +627,11 @@ export const createApplication3DScene = (
         vec3 viewDir = normalize(uCamera - vWorld);
         float facing = mix(0.55, 1.0, smoothstep(0.008, 0.14, abs(viewDir.y)));
         float fine = lineGrid(xz, 1.15, 0.0048);
-        float coarse = lineGrid(xz, 4.6, 0.01);
-        float line = max(fine * 0.42, coarse * 0.88);
-        vec3 color = uColor * mix(0.78, 1.12, coarse);
-        float wash = (1.0 - line) * fade * facing * 0.07;
-        float alpha = max(line * fade * facing * 0.82, wash);
+        float coarse = lineGrid(xz, 4.6, 0.0076);
+        float line = max(fine * 0.34, coarse * 0.46);
+        vec3 color = uColor * mix(0.82, 0.98, coarse);
+        float wash = (1.0 - line) * fade * facing * 0.055;
+        float alpha = max(line * fade * facing * 0.66, wash);
         gl_FragColor = vec4(color, alpha);
       }
     `,
@@ -638,8 +641,8 @@ export const createApplication3DScene = (
     depthWrite: false,
     toneMapped: false,
     uniforms: {
-      uBase: { value: new THREE.Color(0x031018) },
-      uSpec: { value: new THREE.Color(0x1e4a64) },
+      uBase: { value: new THREE.Color(0x071c2e) },
+      uSpec: { value: new THREE.Color(0x276080) },
       uCamera: { value: new THREE.Vector3() },
     },
     vertexShader: `
@@ -717,7 +720,7 @@ export const createApplication3DScene = (
     const onWall = phase === 'wall' || phase === 'initializing';
     visual.reflection.visible = onWall && visual.isBottomRow;
     visual.reflection.position.set(0, -1 - FLOOR_HOVER_GAP * 2, 0.5);
-    visual.reflectionMaterial.uniforms.uOpacity.value = 0.42 * visual.glassOpacity;
+    visual.reflectionMaterial.uniforms.uOpacity.value = CARD_REFLECTION_OPACITY * visual.glassOpacity;
     visual.floorGlow.visible = false;
   };
 
@@ -802,6 +805,13 @@ export const createApplication3DScene = (
   let wallCameraPosition = new THREE.Vector3(0, 0, 20);
   const desiredCameraPosition = wallCameraPosition.clone();
   const desiredTarget = new THREE.Vector3();
+  const cameraOrbitOffset = new THREE.Vector3();
+  const cameraStartSpherical = new THREE.Spherical();
+  const cameraEndSpherical = new THREE.Spherical();
+  const cameraStartTarget = new THREE.Vector3();
+  let cameraOrbitThetaDelta = 0;
+  let cameraOrbitProgress = 0;
+  let cameraOrbitDuration = 0.55;
   let cameraAnimating = false;
   let phase: ScenePhase = 'initializing';
   let frameId: number | null = null;
@@ -963,15 +973,24 @@ export const createApplication3DScene = (
     visuals.forEach(syncReflection);
 
     if (cameraAnimating) {
-      camera.position.lerp(desiredCameraPosition, 0.12);
-      controls.target.lerp(desiredTarget, 0.14);
+      cameraOrbitProgress = Math.min(1, cameraOrbitProgress + dt / cameraOrbitDuration);
+      const t = easeInOutCubic(cameraOrbitProgress);
+      controls.target.lerpVectors(cameraStartTarget, desiredTarget, t);
+      const radius = THREE.MathUtils.lerp(cameraStartSpherical.radius, cameraEndSpherical.radius, t);
+      const phi = THREE.MathUtils.lerp(cameraStartSpherical.phi, cameraEndSpherical.phi, t);
+      const theta = cameraStartSpherical.theta + cameraOrbitThetaDelta * t;
+      camera.position.copy(controls.target).add(
+        cameraOrbitOffset.setFromSphericalCoords(radius, phi, theta),
+      );
+      camera.up.set(0, 1, 0);
       camera.lookAt(controls.target);
-      if (
-        camera.position.distanceTo(desiredCameraPosition) < 0.04 &&
-        controls.target.distanceTo(desiredTarget) < 0.04
-      ) {
+      if (cameraOrbitProgress >= 1) {
         camera.position.copy(desiredCameraPosition);
         controls.target.copy(desiredTarget);
+        camera.up.set(0, 1, 0);
+        camera.lookAt(controls.target);
+        controls.update();
+        controls.saveState();
         cameraAnimating = false;
       }
     } else if (controls.enabled) {
@@ -1341,6 +1360,62 @@ export const createApplication3DScene = (
     layoutVisuals({ playIntro, playFilter });
   };
 
+  const shortestAngleDelta = (from: number, to: number) => {
+    let delta = to - from;
+    while (delta > Math.PI) delta -= Math.PI * 2;
+    while (delta < -Math.PI) delta += Math.PI * 2;
+    return delta;
+  };
+
+  const snapCameraHome = () => {
+    camera.position.copy(wallCameraPosition);
+    controls.target.copy(wallLookTarget);
+    desiredCameraPosition.copy(wallCameraPosition);
+    desiredTarget.copy(wallLookTarget);
+    camera.up.set(0, 1, 0);
+    camera.lookAt(controls.target);
+    controls.update();
+    controls.saveState();
+    cameraAnimating = false;
+  };
+
+  const resetCamera = () => {
+    if (disposed) return;
+    desiredCameraPosition.copy(wallCameraPosition);
+    desiredTarget.copy(wallLookTarget);
+    if (
+      reducedMotion
+      || phase !== 'wall'
+      || (
+        camera.position.distanceTo(wallCameraPosition) < 0.08
+        && controls.target.distanceTo(wallLookTarget) < 0.08
+      )
+    ) {
+      snapCameraHome();
+      requestRender();
+      return;
+    }
+
+    cameraStartTarget.copy(controls.target);
+    cameraStartSpherical.setFromVector3(
+      cameraOrbitOffset.copy(camera.position).sub(controls.target),
+    );
+    cameraEndSpherical.setFromVector3(
+      cameraOrbitOffset.copy(wallCameraPosition).sub(wallLookTarget),
+    );
+    cameraOrbitThetaDelta = shortestAngleDelta(
+      cameraStartSpherical.theta,
+      cameraEndSpherical.theta,
+    );
+    // Keep the orbit radius outside the wall throughout the arc.
+    cameraStartSpherical.radius = Math.max(cameraStartSpherical.radius, wallCameraPosition.z * 0.45);
+    cameraEndSpherical.radius = Math.max(cameraEndSpherical.radius, wallCameraPosition.z * 0.45);
+    cameraOrbitProgress = 0;
+    cameraOrbitDuration = 0.55;
+    cameraAnimating = true;
+    requestRender();
+  };
+
   const pickApplicationId = (clientX: number, clientY: number) => {
     const rect = renderer.domElement.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return undefined;
@@ -1476,6 +1551,7 @@ export const createApplication3DScene = (
   return {
     reconcile,
     resize,
+    resetCamera,
     setActive: (nextActive) => {
       if (disposed || active === nextActive) return;
       active = nextActive;

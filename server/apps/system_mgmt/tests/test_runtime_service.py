@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+import logging
 
 from urllib.parse import parse_qs, urlparse
 
@@ -138,6 +139,30 @@ def test_runtime_application_service_can_test_single_capability():
 
     assert result.success is True
     assert result.payload["capability_status"] == {"user_sync": "ready"}
+
+
+def test_runtime_test_connection_returns_provider_unavailable_when_unregistered(caplog):
+    instance = SimpleNamespace(id=9, name="gone", provider_key="missing", get_runtime_config=lambda: {})
+    service = RuntimeApplicationService()
+    service.provider_registry = FakeProviderRegistry(SimpleNamespace(key="demo", capabilities=[]))
+
+    with caplog.at_level(logging.WARNING, logger="system-manager"):
+        result = service.test_connection(instance)
+
+    assert result.success is False
+    assert result.errors[0].code == "provider.unavailable"
+    assert "unavailable" in result.summary.lower()
+    assert "Unknown provider" not in result.summary
+    records = [
+        record
+        for record in caplog.records
+        if record.name == "system-manager" and "provider_unavailable" in record.msg
+    ]
+    assert len(records) == 1
+    record = records[0]
+    assert record.msg == "event=provider_unavailable pack_key=%s failed_stage=test_connection error_type=%s"
+    assert record.args == ("missing", "unregistered")
+    assert "Unknown provider" not in record.getMessage()
 
 
 def _test_connection_runtime_with_results(results):

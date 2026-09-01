@@ -34,3 +34,11 @@ class Stargazer(object):
         nats_timeout = timeout + 5
         return_data = self.client.request(handler, _timeout=nats_timeout, **payload)
         return return_data
+
+    def get_collection_round_metadata(self, payload: dict, timeout: int = 3) -> dict:
+        """按完整轮次键批量读取 Stargazer 快照控制元数据。"""
+        return self.client.request(
+            "get_collection_round_metadata",
+            _timeout=timeout,
+            **payload,
+        )

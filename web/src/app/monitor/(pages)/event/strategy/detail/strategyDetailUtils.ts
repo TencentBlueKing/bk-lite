@@ -6,9 +6,13 @@ import {
   UnitListItem
 } from '@/app/monitor/types';
 import { isStringArray } from '@/app/monitor/utils/common';
+import { getMonitorUnitSelectLabel } from '@/app/monitor/components/monitor-shared/unit-label';
 import { MetricExpressionMode } from './formulaExpressionUtils';
 
 export const FORMULA_DEFAULT_RESULT_UNIT = 'percent';
+
+/** 兼容策略阈值下拉与本地验证脚本。 */
+export const getThresholdUnitSelectLabel = getMonitorUnitSelectLabel;
 
 /** 组织变更后，剔除不再属于候选用户列表的已选通知人 */
 export const pruneNoticeUsers = <T extends string | number>(
@@ -266,6 +270,40 @@ export const resolveThresholdUnit = ({
 
 export const getThresholdUnitOnCalculationUnitChange = resolveThresholdUnit;
 
+/** percentunit(0–1) ↔ percent(0–100) 切换时的数值缩放因子；其他单位对返回 null。 */
+export const getPercentUnitScaleFactor = (
+  fromUnit: string | null | undefined,
+  toUnit: string | null | undefined
+): number | null => {
+  if (!fromUnit || !toUnit || fromUnit === toUnit) return null;
+  if (fromUnit === 'percentunit' && toUnit === 'percent') return 100;
+  if (fromUnit === 'percent' && toUnit === 'percentunit') return 0.01;
+  return null;
+};
+
+/** 百分比阈值输入占位，明示量纲；其他单位不提示。 */
+export const getThresholdValuePlaceholder = (
+  thresholdUnit: string | null | undefined
+): string => {
+  if (thresholdUnit === 'percent') return '0-100';
+  if (thresholdUnit === 'percentunit') return '0.0-1.0';
+  return '';
+};
+
+/** 阈值单位在 percentunit↔percent 间切换时同步缩放数值，避免误报/漏报。 */
+export const scaleThresholdValuesForUnitChange = <T extends { value: number | null }>(
+  thresholds: T[],
+  fromUnit: string | null | undefined,
+  toUnit: string | null | undefined
+): T[] => {
+  const factor = getPercentUnitScaleFactor(fromUnit, toUnit);
+  if (factor == null) return thresholds;
+  return thresholds.map((item) => ({
+    ...item,
+    value: item.value == null ? null : item.value * factor
+  }));
+};
+
 // 把 groupedUnitList (按 category 分组) 转为 Cascader 选项;
 // 一级 value = category 名,二级 value = unit_id,二级为叶子节点需 children=[] 以满足 CascaderItem 递归类型。
 // 单位表规模小 (<100),即便 O(N×M) 也可接受。
@@ -279,7 +317,11 @@ export const buildMetricUnitCascaderOptions = (
       children: (group.children || [])
         .filter((item) => !INVALID_THRESHOLD_UNIT_IDS.has(item.value))
         .map((item) => ({
-          label: item.label,
+          label: getMonitorUnitSelectLabel({
+            unit_id: String(item.value),
+            unit_name: item.label,
+            display_unit: item.unit
+          }),
           value: item.value,
           children: []
         }))

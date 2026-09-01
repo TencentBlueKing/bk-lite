@@ -3,12 +3,14 @@ from types import SimpleNamespace
 import pytest
 
 from apps.cmdb.services.instance import InstanceManage
-from apps.operation_analysis.services.application3d.errors import Application3DCapacityExceeded, Application3DNotFound
+from apps.operation_analysis.services.application3d.errors import Application3DCapacityExceeded, Application3DInvalidRequest, Application3DNotFound
 from apps.operation_analysis.services.application3d.query_service import Application3DQueryService, _ApplicationScope
 
 APP_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 APP_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+APP_C = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
 SYSTEM_A = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+SYSTEM_B = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
 
 
 def _request(data=None):
@@ -32,16 +34,26 @@ def _alert(index):
     )
 
 
-def _application(app_id, name):
-    return {"inst_uuid": app_id, "inst_name": name, "model_id": "application"}
+def _system(system_id, name, **fields):
+    payload = {"inst_uuid": system_id, "inst_name": name, "model_id": "system"}
+    payload.update(fields)
+    return payload
 
 
-def _scope(applications, *, complete_apps=None, policies=None, hosts_by_app=None):
+def _application(app_id, name, **fields):
+    payload = {"inst_uuid": app_id, "inst_name": name, "model_id": "application"}
+    payload.update(fields)
+    return payload
+
+
+def _scope(applications, *, complete_apps=None, policies=None, hosts_by_app=None, empty_systems=None, no_host_systems=None):
     return _ApplicationScope(
         applications=applications,
         hosts_by_app=hosts_by_app if hosts_by_app is not None else {item["inst_uuid"]: [] for item in applications},
         policies=policies or {},
         complete_apps=set(complete_apps if complete_apps is not None else [item["inst_uuid"] for item in applications]),
+        empty_systems=set(empty_systems or []),
+        no_host_systems=set(no_host_systems or []),
     )
 
 
@@ -71,42 +83,12 @@ def test_wall_empty(monkeypatch):
     assert result["appliedFilters"] == {"system_status": []}
 
 
-def test_system_status_filter_excludes_orphan(monkeypatch):
-    applications = [_application(APP_A, "associated"), _application(APP_B, "orphan")]
-    monkeypatch.setattr(Application3DQueryService, "_filter_definition", classmethod(lambda cls: _filter_definition()))
-    monkeypatch.setattr(Application3DQueryService, "_visible_applications", classmethod(lambda cls, request: applications))
-    monkeypatch.setattr(
-        "apps.operation_analysis.services.application3d.query_service.project_application_systems",
-        lambda app_ids: {APP_A: [SYSTEM_A], APP_B: []},
-    )
-    monkeypatch.setattr(
-        "apps.operation_analysis.services.application3d.query_service.CmdbRulesFormatUtil.format_user_groups_permissions",
-        lambda **kwargs: {},
-    )
-
-    def instance_list(**kwargs):
-        assert kwargs["model_id"] == "system"
-        return ([{"inst_uuid": SYSTEM_A, "inst_name": "system", "status": "running"}], 1)
-
-    monkeypatch.setattr(InstanceManage, "instance_list", instance_list)
-    monkeypatch.setattr(
-        Application3DQueryService,
-        "_build_scope",
-        classmethod(lambda cls, request, apps: _scope(apps)),
-    )
-
-    result = Application3DQueryService.wall(
-        _request(),
-        applied_filters={"system_status": ["running"]},
-    )
-
-    assert [item["id"] for item in result["items"]] == [APP_A]
-
-
-def test_system_status_filter_matches_cmdb_enum_list(monkeypatch):
-    """Live CMDB stores single-select enum as list, e.g. status=['1']."""
-    applications = [_application(APP_A, "online-app"), _application(APP_B, "testing-app")]
-    system_b = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+def test_system_status_filter_uses_system_own_status(monkeypatch):
+    systems = [
+        _system(SYSTEM_A, "online", status=["1"]),
+        _system(SYSTEM_B, "testing", status=["2"]),
+        _system(APP_A, "unset"),
+    ]
     monkeypatch.setattr(
         Application3DQueryService,
         "_filter_definition",
@@ -127,27 +109,7 @@ def test_system_status_filter_matches_cmdb_enum_list(monkeypatch):
             )
         ),
     )
-    monkeypatch.setattr(Application3DQueryService, "_visible_applications", classmethod(lambda cls, request: applications))
-    monkeypatch.setattr(
-        "apps.operation_analysis.services.application3d.query_service.project_application_systems",
-        lambda app_ids: {APP_A: [SYSTEM_A], APP_B: [system_b]},
-    )
-    monkeypatch.setattr(
-        "apps.operation_analysis.services.application3d.query_service.CmdbRulesFormatUtil.format_user_groups_permissions",
-        lambda **kwargs: {},
-    )
-
-    def instance_list(**kwargs):
-        assert kwargs["model_id"] == "system"
-        return (
-            [
-                {"inst_uuid": SYSTEM_A, "inst_name": "sys-online", "status": ["1"]},
-                {"inst_uuid": system_b, "inst_name": "sys-testing", "status": ["2"]},
-            ],
-            2,
-        )
-
-    monkeypatch.setattr(InstanceManage, "instance_list", instance_list)
+    monkeypatch.setattr(Application3DQueryService, "_visible_applications", classmethod(lambda cls, request: systems))
     monkeypatch.setattr(
         Application3DQueryService,
         "_build_scope",
@@ -159,13 +121,57 @@ def test_system_status_filter_matches_cmdb_enum_list(monkeypatch):
         applied_filters={"system_status": ["1"]},
     )
 
-    assert [item["id"] for item in result["items"]] == [APP_A]
+    assert [item["id"] for item in result["items"]] == [SYSTEM_A]
 
 
-def test_zero_hosts_is_normal(monkeypatch):
-    applications = [_application(APP_A, "empty")]
+def test_system_status_filter_matches_cmdb_enum_list(monkeypatch):
+    """Live CMDB stores single-select enum as list, e.g. status=['1']."""
+    systems = [
+        _system(SYSTEM_A, "sys-online", status=["1"]),
+        _system(SYSTEM_B, "sys-testing", status=["2"]),
+    ]
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_filter_definition",
+        classmethod(
+            lambda cls: (
+                [
+                    {
+                        "id": "system_status",
+                        "label": "运行状态",
+                        "type": "multiple",
+                        "options": [
+                            {"value": "1", "label": "已上线"},
+                            {"value": "2", "label": "测试中"},
+                        ],
+                    }
+                ],
+                {"1", "2"},
+            )
+        ),
+    )
+    monkeypatch.setattr(Application3DQueryService, "_visible_applications", classmethod(lambda cls, request: systems))
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_build_scope",
+        classmethod(lambda cls, request, apps: _scope(apps)),
+    )
+
+    result = Application3DQueryService.wall(
+        _request(),
+        applied_filters={"system_status": ["1"]},
+    )
+
+    assert [item["id"] for item in result["items"]] == [SYSTEM_A]
+
+
+def test_unset_system_status_returns_all_visible_systems(monkeypatch):
+    systems = [
+        _system(SYSTEM_A, "online", status=["1"]),
+        _system(SYSTEM_B, "testing", status=["2"]),
+    ]
     monkeypatch.setattr(Application3DQueryService, "_filter_definition", classmethod(lambda cls: _filter_definition()))
-    monkeypatch.setattr(Application3DQueryService, "_visible_applications", classmethod(lambda cls, request: applications))
+    monkeypatch.setattr(Application3DQueryService, "_visible_applications", classmethod(lambda cls, request: systems))
     monkeypatch.setattr(
         Application3DQueryService,
         "_build_scope",
@@ -174,8 +180,67 @@ def test_zero_hosts_is_normal(monkeypatch):
 
     result = Application3DQueryService.wall(_request())
 
-    assert result["items"][0]["health"]["state"] == "normal"
-    assert result["items"][0]["health"]["activeAlarmCount"] == 0
+    assert [item["id"] for item in result["items"]] == [SYSTEM_A, SYSTEM_B]
+    assert result["appliedFilters"] == {"system_status": []}
+
+
+def test_system_status_invalid_value_is_rejected(monkeypatch):
+    monkeypatch.setattr(Application3DQueryService, "_filter_definition", classmethod(lambda cls: _filter_definition()))
+    monkeypatch.setattr(Application3DQueryService, "_visible_applications", classmethod(lambda cls, request: []))
+
+    with pytest.raises(Application3DInvalidRequest, match="system_status 包含非法值"):
+        Application3DQueryService.wall(_request(), applied_filters={"system_status": ["not-an-option"]})
+
+
+def test_empty_system_wall_and_detail_are_unknown_no_application(monkeypatch):
+    systems = [_system(SYSTEM_A, "empty")]
+    scope = _scope(systems, complete_apps=[], empty_systems=[SYSTEM_A])
+    monkeypatch.setattr(Application3DQueryService, "_filter_definition", classmethod(lambda cls: _filter_definition()))
+    monkeypatch.setattr(Application3DQueryService, "_visible_applications", classmethod(lambda cls, request: systems))
+    monkeypatch.setattr(Application3DQueryService, "_build_scope", classmethod(lambda cls, request, apps: scope))
+    monkeypatch.setattr(Application3DQueryService, "_visible_application", classmethod(lambda cls, request, application_id: systems[0]))
+    monkeypatch.setattr("apps.operation_analysis.services.application3d.query_service.ModelManage.search_model_attr", lambda model_id: [])
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.ApplicationResourceOverviewService._get_show_fields",
+        lambda model_id, user: None,
+    )
+
+    wall_item = Application3DQueryService.wall(_request())["items"][0]
+    detail = Application3DQueryService.application_detail(_request(), SYSTEM_A)
+
+    for health in (wall_item["health"], detail["application"]["health"]):
+        assert health["state"] == "unknown"
+        assert health["reason"] == "no_application"
+        assert health["activeAlarmCount"] is None
+        assert health["severityCounts"] is None
+        assert health["noDataAlarmCount"] is None
+        assert health["highestSeverity"] is None
+    assert detail["alarms"] == {"state": "unavailable"}
+
+
+def test_zero_hosts_is_unknown_no_host(monkeypatch):
+    systems = [_system(SYSTEM_A, "apps-no-hosts")]
+    scope = _scope(systems, complete_apps=[], no_host_systems=[SYSTEM_A])
+    monkeypatch.setattr(Application3DQueryService, "_filter_definition", classmethod(lambda cls: _filter_definition()))
+    monkeypatch.setattr(Application3DQueryService, "_visible_applications", classmethod(lambda cls, request: systems))
+    monkeypatch.setattr(Application3DQueryService, "_build_scope", classmethod(lambda cls, request, apps: scope))
+    monkeypatch.setattr(Application3DQueryService, "_visible_application", classmethod(lambda cls, request, application_id: systems[0]))
+    monkeypatch.setattr("apps.operation_analysis.services.application3d.query_service.ModelManage.search_model_attr", lambda model_id: [])
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.ApplicationResourceOverviewService._get_show_fields",
+        lambda model_id, user: None,
+    )
+
+    wall_item = Application3DQueryService.wall(_request())["items"][0]
+    detail = Application3DQueryService.application_detail(_request(), SYSTEM_A)
+
+    for health in (wall_item["health"], detail["application"]["health"]):
+        assert health["state"] == "unknown"
+        assert health["reason"] == "no_host"
+        assert health["reason"] != "unavailable"
+        assert health["reason"] != "no_application"
+        assert health["activeAlarmCount"] is None
+    assert detail["alarms"] == {"state": "unavailable"}
 
 
 def test_active_alert_aggregation(monkeypatch):
@@ -893,49 +958,94 @@ def test_adjacent_scoped_alert_ids_returns_immediate_neighbors(monkeypatch):
 
 
 def test_capacity_exceeded_is_not_truncated(monkeypatch):
+    seen = {}
     monkeypatch.setattr(
         "apps.operation_analysis.services.application3d.query_service.CmdbRulesFormatUtil.format_user_groups_permissions",
         lambda **kwargs: {},
     )
-    monkeypatch.setattr(
-        InstanceManage,
-        "instance_list",
-        lambda **kwargs: ([], 501),
-    )
+
+    def instance_list(**kwargs):
+        seen.update(kwargs)
+        return ([], 501)
+
+    monkeypatch.setattr(InstanceManage, "instance_list", instance_list)
 
     with pytest.raises(Application3DCapacityExceeded) as exc_info:
         Application3DQueryService._visible_applications(_request())
 
+    assert seen["model_id"] == "system"
+    assert seen["order"] == "inst_name"
     assert exc_info.value.extra == {"actualCount": 501, "supportedCount": 500}
 
 
+def test_visible_application_queries_system_model(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.CmdbRulesFormatUtil.format_user_groups_permissions",
+        lambda **kwargs: {},
+    )
+
+    def instance_list(**kwargs):
+        seen.update(kwargs)
+        return ([_system(SYSTEM_A, "sys")], 1)
+
+    monkeypatch.setattr(InstanceManage, "instance_list", instance_list)
+
+    result = Application3DQueryService._visible_application(_request(), SYSTEM_A)
+
+    assert seen["model_id"] == "system"
+    assert result["inst_uuid"] == SYSTEM_A
+
+
 def test_application_detail_uses_cmdb_visible_fields_and_keeps_allowlist(monkeypatch):
-    application = {
-        **_application(APP_A, "app"),
-        "app_id": "A-1",
+    system = {
+        **_system(SYSTEM_A, "sys"),
+        "system_code": "SYS-1",
+        "status": "1",
+        "organization": "ops",
         "operator": "hidden-user",
-        "bak_operator": "sensitive-user",
         "comment": "visible-comment",
+        "productor": "pm",
+        "developer": "dev",
+        "tester": "qa",
+        "inst_name": "sys",
+        "time_zone": "Asia/Shanghai",
         "secret_token": "must-not-leak",
     }
     attrs = [
-        {"attr_id": "app_id", "attr_name": "ID", "attr_type": "str"},
-        {"attr_id": "operator", "attr_name": "Operator", "attr_type": "str"},
-        {"attr_id": "bak_operator", "attr_name": "Backup", "attr_type": "password"},
-        {"attr_id": "comment", "attr_name": "Comment", "attr_type": "str"},
+        {"attr_id": "system_code", "attr_name": "系统编号", "attr_type": "str"},
+        {"attr_id": "status", "attr_name": "运行状态", "attr_type": "str"},
+        {"attr_id": "organization", "attr_name": "组织", "attr_type": "str"},
+        {"attr_id": "operator", "attr_name": "运维人员", "attr_type": "str"},
+        {"attr_id": "comment", "attr_name": "系统描述", "attr_type": "str"},
+        {"attr_id": "productor", "attr_name": "产品人员", "attr_type": "str"},
+        {"attr_id": "developer", "attr_name": "开发人员", "attr_type": "str"},
+        {"attr_id": "tester", "attr_name": "测试人员", "attr_type": "str"},
+        {"attr_id": "inst_name", "attr_name": "系统名称", "attr_type": "str"},
+        {"attr_id": "time_zone", "attr_name": "时区", "attr_type": "str"},
         {"attr_id": "secret_token", "attr_name": "Secret", "attr_type": "str"},
     ]
-    monkeypatch.setattr(Application3DQueryService, "_visible_application", classmethod(lambda cls, request, application_id: application))
+    seen_models = []
+    monkeypatch.setattr(Application3DQueryService, "_visible_application", classmethod(lambda cls, request, application_id: system))
     monkeypatch.setattr(Application3DQueryService, "_build_scope", classmethod(lambda cls, request, apps: _scope(apps)))
-    monkeypatch.setattr("apps.operation_analysis.services.application3d.query_service.ModelManage.search_model_attr", lambda model_id: attrs)
+
+    def search_model_attr(model_id):
+        seen_models.append(model_id)
+        return attrs
+
+    monkeypatch.setattr("apps.operation_analysis.services.application3d.query_service.ModelManage.search_model_attr", search_model_attr)
     monkeypatch.setattr(
         "apps.operation_analysis.services.application3d.query_service.ApplicationResourceOverviewService._get_show_fields",
-        lambda model_id, user: ["app_id", "bak_operator", "comment", "secret_token"],
+        lambda model_id, user: ["system_code", "status", "comment", "productor", "secret_token", "inst_name", "time_zone"],
     )
 
-    result = Application3DQueryService.application_detail(_request(), APP_A)
+    result = Application3DQueryService.application_detail(_request(), SYSTEM_A)
 
-    assert [item["key"] for item in result["application"]["properties"]] == ["app_id", "comment"]
+    assert seen_models == ["system"]
+    assert [item["key"] for item in result["application"]["properties"]] == ["system_code", "status", "comment", "productor"]
+    assert "inst_name" not in {item["key"] for item in result["application"]["properties"]}
+    assert "time_zone" not in {item["key"] for item in result["application"]["properties"]}
+    assert "operator" not in {item["key"] for item in result["application"]["properties"]}
 
 
 def test_application_detail_cursor_returns_second_page_without_duplicates(monkeypatch):
@@ -1082,3 +1192,505 @@ def test_accessible_policies_queries_only_referenced_ids(monkeypatch):
     result = Application3DQueryService._accessible_policies(_request(), {7, 9})
 
     assert set(result) == {7}
+
+
+def _stub_empty_alert_qs(monkeypatch):
+    class _EmptyQS:
+        def filter(self, **kwargs):
+            return self
+
+        def exclude(self, **kwargs):
+            return self
+
+        def values_list(self, *args, **kwargs):
+            return self
+
+        def distinct(self):
+            return []
+
+    empty = _EmptyQS()
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.MonitorAlert.objects",
+        SimpleNamespace(filter=lambda **kwargs: empty, none=lambda: empty),
+    )
+
+
+def test_build_scope_empty_system_is_no_application_not_normal(monkeypatch):
+    systems = [_system(SYSTEM_A, "empty")]
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.project_system_applications",
+        lambda system_ids: {SYSTEM_A: []},
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.project_application_hosts",
+        lambda app_ids: (_ for _ in ()).throw(AssertionError("empty systems must not project application_run_host")),
+    )
+
+    scope = Application3DQueryService._build_scope(_request(), systems)
+
+    assert scope.empty_systems == {SYSTEM_A}
+    assert SYSTEM_A not in scope.complete_apps
+    assert SYSTEM_A not in scope.no_host_systems
+    assert scope.hosts_by_app[SYSTEM_A] == []
+
+
+def test_build_scope_hidden_child_applications_are_unavailable(monkeypatch):
+    systems = [_system(SYSTEM_A, "partial")]
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.project_system_applications",
+        lambda system_ids: {SYSTEM_A: [APP_A, APP_B]},
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_visible_model_instances",
+        classmethod(lambda cls, request, model_id, inst_uuids: [_application(APP_A, "visible")]),
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.project_application_hosts",
+        lambda app_ids: (_ for _ in ()).throw(AssertionError("hidden child applications must not project hosts")),
+    )
+
+    scope = Application3DQueryService._build_scope(_request(), systems)
+
+    assert SYSTEM_A not in scope.empty_systems
+    assert SYSTEM_A not in scope.complete_apps
+    assert SYSTEM_A not in scope.no_host_systems
+    health = Application3DQueryService._health_for_application(scope, SYSTEM_A)
+    assert health["reason"] == "unavailable"
+    assert health["reason"] != "no_host"
+    assert health["state"] == "unknown"
+
+
+def test_build_scope_unions_child_hosts_and_dedupes_shared_monitor(monkeypatch):
+    systems = [_system(SYSTEM_A, "union")]
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.project_system_applications",
+        lambda system_ids: {SYSTEM_A: [APP_A, APP_B]},
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_visible_model_instances",
+        classmethod(
+            lambda cls, request, model_id, inst_uuids: [
+                _application(APP_A, "app-a"),
+                _application(APP_B, "app-b"),
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.project_application_hosts",
+        lambda app_ids: {APP_A: ["host-1"], APP_B: ["host-1", "host-2"]},
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_visible_hosts",
+        classmethod(
+            lambda cls, request, host_ids: [
+                {"inst_uuid": "host-1", "monitor_id": "monitor-shared"},
+                {"inst_uuid": "host-2", "monitor_id": "monitor-2"},
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_authorized_monitor_ids",
+        classmethod(lambda cls, request, candidate_ids: set(candidate_ids)),
+    )
+    _stub_empty_alert_qs(monkeypatch)
+
+    scope = Application3DQueryService._build_scope(_request(), systems)
+
+    assert SYSTEM_A in scope.complete_apps
+    assert SYSTEM_A not in scope.empty_systems
+    assert [host["inst_uuid"] for host in scope.hosts_by_app[SYSTEM_A]] == ["host-1", "host-2"]
+    assert Application3DQueryService._monitor_ids_for_app(scope, SYSTEM_A) == {"monitor-shared", "monitor-2"}
+
+
+def test_build_scope_zero_host_child_applications_are_no_host(monkeypatch):
+    systems = [_system(SYSTEM_A, "apps-no-hosts")]
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.project_system_applications",
+        lambda system_ids: {SYSTEM_A: [APP_A]},
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_visible_model_instances",
+        classmethod(lambda cls, request, model_id, inst_uuids: [_application(APP_A, "empty-app")]),
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.project_application_hosts",
+        lambda app_ids: {APP_A: []},
+    )
+
+    scope = Application3DQueryService._build_scope(_request(), systems)
+
+    assert SYSTEM_A not in scope.complete_apps
+    assert SYSTEM_A not in scope.empty_systems
+    assert scope.no_host_systems == {SYSTEM_A}
+    health = Application3DQueryService._health_for_application(scope, SYSTEM_A)
+    assert health["state"] == "unknown"
+    assert health["reason"] == "no_host"
+    assert health["activeAlarmCount"] is None
+    assert health["reason"] != "unavailable"
+    assert health["reason"] != "no_application"
+    assert not (health["state"] == "normal" and health["activeAlarmCount"] == 0)
+
+
+class _AlertQuery:
+    """In-memory MonitorAlert queryset stand-in for scope + health aggregation tests."""
+
+    def __init__(self, rows):
+        self._rows = list(rows)
+
+    def filter(self, **kwargs):
+        rows = self._rows
+        if "status" in kwargs:
+            rows = [row for row in rows if row.get("status", "new") == kwargs["status"]]
+        if "monitor_instance_id__in" in kwargs:
+            allowed = set(kwargs["monitor_instance_id__in"])
+            rows = [row for row in rows if row["monitor_instance_id"] in allowed]
+        if "policy_id__in" in kwargs:
+            allowed = set(kwargs["policy_id__in"])
+            rows = [row for row in rows if row["policy_id"] in allowed]
+        return _AlertQuery(rows)
+
+    def exclude(self, **kwargs):
+        rows = self._rows
+        if "policy_id__in" in kwargs:
+            denied = set(kwargs["policy_id__in"])
+            rows = [row for row in rows if row["policy_id"] not in denied]
+        return _AlertQuery(rows)
+
+    def values_list(self, field, flat=False):
+        return _AlertValues([row[field] for row in self._rows])
+
+    def values(self, *fields):
+        return _AlertGrouped(self._rows, fields)
+
+    def distinct(self):
+        return list(dict.fromkeys(self._rows))
+
+
+class _AlertValues:
+    def __init__(self, values):
+        self._values = list(values)
+
+    def distinct(self):
+        return list(dict.fromkeys(self._values))
+
+
+class _AlertGrouped:
+    def __init__(self, rows, fields):
+        self._rows = list(rows)
+        self._fields = fields
+
+    def annotate(self, **kwargs):
+        grouped: dict[tuple, int] = {}
+        for row in self._rows:
+            key = tuple(row[field] for field in self._fields)
+            grouped[key] = grouped.get(key, 0) + 1
+        return [{**dict(zip(self._fields, key)), "count": count} for key, count in grouped.items()]
+
+
+def _stub_monitor_alerts(monkeypatch, rows):
+    table = _AlertQuery(rows)
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.MonitorAlert.objects",
+        SimpleNamespace(filter=table.filter, none=lambda: _AlertQuery([])),
+    )
+
+
+def _patch_system_host_graph(
+    monkeypatch,
+    *,
+    child_apps,
+    hosts_by_app,
+    visible_hosts,
+    authorized_monitor_ids=None,
+    accessible_policy_ids="all",
+):
+    app_ids = [app["inst_uuid"] for app in child_apps]
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.project_system_applications",
+        lambda system_ids: {SYSTEM_A: app_ids},
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_visible_model_instances",
+        classmethod(lambda cls, request, model_id, inst_uuids: list(child_apps)),
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.project_application_hosts",
+        lambda ids: hosts_by_app,
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_visible_hosts",
+        classmethod(lambda cls, request, host_ids: list(visible_hosts)),
+    )
+    allowed = authorized_monitor_ids
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_authorized_monitor_ids",
+        classmethod(
+            lambda cls, request, candidate_ids, permitted=allowed: set(candidate_ids) if permitted is None else set(permitted) & set(candidate_ids)
+        ),
+    )
+
+    def _policies(request, policy_ids, permitted=accessible_policy_ids):
+        selected = set(policy_ids) if permitted == "all" else set(permitted) & set(policy_ids)
+        return {pid: SimpleNamespace(id=pid) for pid in selected}
+
+    monkeypatch.setattr(Application3DQueryService, "_accessible_policies", staticmethod(_policies))
+
+
+def _finance_settlement_children():
+    return [
+        _application(APP_A, "结算中心"),
+        _application(APP_B, "对账服务"),
+        _application(APP_C, "财务任务调度"),
+    ]
+
+
+def _finance_settlement_hosts_by_app():
+    return {APP_A: ["host-07"], APP_B: ["host-07"], APP_C: ["host-08"]}
+
+
+def test_build_scope_mixed_mapped_and_unmapped_hosts_aggregates_mapped_alerts(monkeypatch):
+    systems = [_system(SYSTEM_A, "财务结算平台")]
+    _patch_system_host_graph(
+        monkeypatch,
+        child_apps=_finance_settlement_children(),
+        hosts_by_app=_finance_settlement_hosts_by_app(),
+        visible_hosts=[
+            {"inst_uuid": "host-07", "monitor_id": "app3d-demo-host-07"},
+            {"inst_uuid": "host-08", "monitor_id": ""},
+        ],
+    )
+    _stub_monitor_alerts(
+        monkeypatch,
+        [
+            {"monitor_instance_id": "app3d-demo-host-07", "policy_id": 1, "alert_type": "alert", "level": "critical", "status": "new"},
+            {"monitor_instance_id": "app3d-demo-host-07", "policy_id": 1, "alert_type": "alert", "level": "error", "status": "new"},
+        ],
+    )
+    monkeypatch.setattr(Application3DQueryService, "_filter_definition", classmethod(lambda cls: _filter_definition()))
+    monkeypatch.setattr(Application3DQueryService, "_visible_applications", classmethod(lambda cls, request: systems))
+
+    scope = Application3DQueryService._build_scope(_request(), systems)
+    result = Application3DQueryService.wall(_request())
+
+    assert SYSTEM_A in scope.complete_apps
+    assert Application3DQueryService._monitor_ids_for_app(scope, SYSTEM_A) == {"app3d-demo-host-07"}
+    assert [host["inst_uuid"] for host in scope.hosts_by_app[SYSTEM_A]] == ["host-07", "host-08"]
+    health = result["items"][0]["health"]
+    assert health["state"] == "alarming"
+    assert health["reason"] == "active_alarm"
+    assert health["activeAlarmCount"] == 2
+    assert health["severityCounts"]["critical"] == 1
+    assert health["severityCounts"]["error"] == 1
+
+
+def test_build_scope_all_unmapped_hosts_stay_unavailable_not_normal(monkeypatch):
+    systems = [_system(SYSTEM_A, "财务结算平台")]
+    _patch_system_host_graph(
+        monkeypatch,
+        child_apps=_finance_settlement_children(),
+        hosts_by_app=_finance_settlement_hosts_by_app(),
+        visible_hosts=[
+            {"inst_uuid": "host-07", "monitor_id": None},
+            {"inst_uuid": "host-08", "monitor_id": ""},
+        ],
+    )
+    monkeypatch.setattr(Application3DQueryService, "_filter_definition", classmethod(lambda cls: _filter_definition()))
+    monkeypatch.setattr(Application3DQueryService, "_visible_applications", classmethod(lambda cls, request: systems))
+
+    scope = Application3DQueryService._build_scope(_request(), systems)
+    health = Application3DQueryService.wall(_request())["items"][0]["health"]
+
+    assert SYSTEM_A not in scope.complete_apps
+    assert SYSTEM_A not in scope.empty_systems
+    assert health["state"] == "unknown"
+    assert health["reason"] == "unavailable"
+    assert health["activeAlarmCount"] is None
+    assert health["reason"] != "no_application"
+    assert health["reason"] != "no_host"
+    assert SYSTEM_A not in scope.no_host_systems
+    assert not (health["state"] == "normal" and health["activeAlarmCount"] == 0)
+
+
+def test_build_scope_hidden_policy_on_mapped_host_still_unavailable(monkeypatch):
+    systems = [_system(SYSTEM_A, "财务结算平台")]
+    _patch_system_host_graph(
+        monkeypatch,
+        child_apps=_finance_settlement_children() + [_application("ffffffff-ffff-4fff-8fff-ffffffffffff", "报表服务")],
+        hosts_by_app={
+            APP_A: ["host-07"],
+            APP_B: ["host-07"],
+            APP_C: ["host-08"],
+            "ffffffff-ffff-4fff-8fff-ffffffffffff": ["host-09"],
+        },
+        visible_hosts=[
+            {"inst_uuid": "host-07", "monitor_id": "app3d-demo-host-07"},
+            {"inst_uuid": "host-08", "monitor_id": ""},
+            {"inst_uuid": "host-09", "monitor_id": "app3d-demo-host-09"},
+        ],
+        accessible_policy_ids={2},
+    )
+    _stub_monitor_alerts(
+        monkeypatch,
+        [
+            {"monitor_instance_id": "app3d-demo-host-07", "policy_id": 1, "alert_type": "alert", "level": "critical", "status": "new"},
+            {"monitor_instance_id": "app3d-demo-host-09", "policy_id": 2, "alert_type": "alert", "level": "warning", "status": "new"},
+        ],
+    )
+
+    scope = Application3DQueryService._build_scope(_request(), systems)
+    health = Application3DQueryService._health_for_application(scope, SYSTEM_A)
+
+    assert SYSTEM_A not in scope.complete_apps
+    assert SYSTEM_A not in scope.no_host_systems
+    assert health["reason"] == "unavailable"
+    assert health["reason"] != "no_host"
+    assert health["state"] == "unknown"
+    assert health["activeAlarmCount"] is None
+
+
+def test_build_scope_unauthorized_mapped_monitor_still_unavailable(monkeypatch):
+    systems = [_system(SYSTEM_A, "财务结算平台")]
+    _patch_system_host_graph(
+        monkeypatch,
+        child_apps=_finance_settlement_children() + [_application("ffffffff-ffff-4fff-8fff-ffffffffffff", "报表服务")],
+        hosts_by_app={
+            APP_A: ["host-07"],
+            APP_B: ["host-07"],
+            APP_C: ["host-08"],
+            "ffffffff-ffff-4fff-8fff-ffffffffffff": ["host-09"],
+        },
+        visible_hosts=[
+            {"inst_uuid": "host-07", "monitor_id": "app3d-demo-host-07"},
+            {"inst_uuid": "host-08", "monitor_id": ""},
+            {"inst_uuid": "host-09", "monitor_id": "app3d-demo-host-09"},
+        ],
+        authorized_monitor_ids={"app3d-demo-host-09"},
+    )
+    _stub_empty_alert_qs(monkeypatch)
+
+    scope = Application3DQueryService._build_scope(_request(), systems)
+    health = Application3DQueryService._health_for_application(scope, SYSTEM_A)
+
+    assert SYSTEM_A not in scope.complete_apps
+    assert SYSTEM_A not in scope.no_host_systems
+    assert health["reason"] == "unavailable"
+    assert health["reason"] != "no_host"
+    assert health["activeAlarmCount"] is None
+
+
+def test_build_scope_invisible_host_still_unavailable(monkeypatch):
+    systems = [_system(SYSTEM_A, "财务结算平台")]
+    _patch_system_host_graph(
+        monkeypatch,
+        child_apps=_finance_settlement_children(),
+        hosts_by_app=_finance_settlement_hosts_by_app(),
+        visible_hosts=[{"inst_uuid": "host-07", "monitor_id": "app3d-demo-host-07"}],
+    )
+    _stub_empty_alert_qs(monkeypatch)
+
+    scope = Application3DQueryService._build_scope(_request(), systems)
+    health = Application3DQueryService._health_for_application(scope, SYSTEM_A)
+
+    assert SYSTEM_A not in scope.complete_apps
+    assert SYSTEM_A not in scope.no_host_systems
+    assert health["reason"] == "unavailable"
+    assert health["reason"] != "no_host"
+    assert health["activeAlarmCount"] is None
+
+
+def test_build_scope_mixed_children_union_hosts_that_exist(monkeypatch):
+    systems = [_system(SYSTEM_A, "财务结算平台")]
+    _patch_system_host_graph(
+        monkeypatch,
+        child_apps=_finance_settlement_children(),
+        hosts_by_app={APP_A: ["host-07"], APP_B: ["host-07"], APP_C: []},
+        visible_hosts=[{"inst_uuid": "host-07", "monitor_id": "app3d-demo-host-07"}],
+    )
+    _stub_monitor_alerts(
+        monkeypatch,
+        [
+            {
+                "monitor_instance_id": "app3d-demo-host-07",
+                "policy_id": 1,
+                "alert_type": "alert",
+                "level": "critical",
+                "status": "new",
+            }
+        ],
+    )
+    monkeypatch.setattr(Application3DQueryService, "_filter_definition", classmethod(lambda cls: _filter_definition()))
+    monkeypatch.setattr(Application3DQueryService, "_visible_applications", classmethod(lambda cls, request: systems))
+
+    scope = Application3DQueryService._build_scope(_request(), systems)
+    health = Application3DQueryService.wall(_request())["items"][0]["health"]
+
+    assert SYSTEM_A in scope.complete_apps
+    assert SYSTEM_A not in scope.no_host_systems
+    assert health["state"] == "alarming"
+    assert health["reason"] == "active_alarm"
+    assert health["activeAlarmCount"] == 1
+    assert health["severityCounts"]["critical"] == 1
+
+
+def test_build_scope_wrong_peer_does_not_fail_whole_system(monkeypatch):
+    systems = [_system(SYSTEM_A, "财务结算平台")]
+    _patch_system_host_graph(
+        monkeypatch,
+        child_apps=_finance_settlement_children(),
+        hosts_by_app={APP_A: ["host-07"], APP_B: [], APP_C: ["host-07"]},
+        visible_hosts=[{"inst_uuid": "host-07", "monitor_id": "app3d-demo-host-07"}],
+    )
+    _stub_monitor_alerts(
+        monkeypatch,
+        [
+            {
+                "monitor_instance_id": "app3d-demo-host-07",
+                "policy_id": 1,
+                "alert_type": "alert",
+                "level": "critical",
+                "status": "new",
+            }
+        ],
+    )
+    monkeypatch.setattr(Application3DQueryService, "_filter_definition", classmethod(lambda cls: _filter_definition()))
+    monkeypatch.setattr(Application3DQueryService, "_visible_applications", classmethod(lambda cls, request: systems))
+
+    scope = Application3DQueryService._build_scope(_request(), systems)
+    health = Application3DQueryService.wall(_request())["items"][0]["health"]
+
+    assert SYSTEM_A in scope.complete_apps
+    assert SYSTEM_A not in scope.no_host_systems
+    assert health["state"] == "alarming"
+    assert health["reason"] == "active_alarm"
+    assert health["reason"] != "unavailable"
+    assert health["activeAlarmCount"] == 1
+    assert health["severityCounts"]["critical"] == 1
+
+
+def test_build_scope_only_wrong_peer_edges_are_no_host(monkeypatch):
+    systems = [_system(SYSTEM_A, "财务结算平台")]
+    _patch_system_host_graph(
+        monkeypatch,
+        child_apps=[_application(APP_A, "结算中心")],
+        hosts_by_app={APP_A: []},
+        visible_hosts=[],
+    )
+
+    scope = Application3DQueryService._build_scope(_request(), systems)
+    health = Application3DQueryService._health_for_application(scope, SYSTEM_A)
+
+    assert scope.no_host_systems == {SYSTEM_A}
+    assert SYSTEM_A not in scope.complete_apps
+    assert SYSTEM_A not in scope.empty_systems
+    assert health["state"] == "unknown"
+    assert health["reason"] == "no_host"
+    assert health["reason"] != "unavailable"
+    assert health["activeAlarmCount"] is None

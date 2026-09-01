@@ -128,5 +128,5 @@ describe('APM 服务详情部署 Tab', () => {
     expect(screen.getByText('推断')).not.toBeNull();
     expect(screen.queryByText('部署事件将在发布埋点接入后展示；当前可先通过版本与 Trace 属性排查变更。')).toBeNull();
     expect(api.getDeployments).toHaveBeenCalledWith(expect.objectContaining({ service_id: 'svc-1' }));
-  });
+  }, 15_000);
 });

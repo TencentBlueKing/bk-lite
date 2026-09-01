@@ -14,10 +14,9 @@ import json
 import sys
 from unittest.mock import MagicMock, patch
 
+import oracledb  # noqa: E402
 import pydantic.root_model  # noqa
 import pytest
-
-import oracledb  # noqa: E402
 
 sys.modules["oracledb"] = oracledb  # 防御性重绑, 抵御其他测试文件的 sys.modules 污染
 
@@ -140,11 +139,13 @@ class TestOracleDiagnostics:
         sess_rows = [("ACTIVE", 60), ("INACTIVE", 35)]  # total 95 / 100 = 95%
         user_desc = _desc("USERNAME", "CNT")
         user_rows = [("APP", 50), ("RPT", 45)]
-        fc = FakeConn([
-            ("v$parameter", (param_desc, param_rows)),
-            ("GROUP BY status", (sess_desc, sess_rows)),
-            ("WHERE username IS NOT NULL", (user_desc, user_rows)),
-        ])
+        fc = FakeConn(
+            [
+                ("v$parameter", (param_desc, param_rows)),
+                ("GROUP BY status", (sess_desc, sess_rows)),
+                ("WHERE username IS NOT NULL", (user_desc, user_rows)),
+            ]
+        )
         with _patch(diag, fc):
             out = json.loads(diag.diagnose_connection_issues.invoke({"config": CONFIG}))
         assert out["max_sessions"] == 100
@@ -155,22 +156,38 @@ class TestOracleDiagnostics:
         assert any("90%" in w for w in out["warnings"])
 
     def test_health_check_full_score_path(self):
-        inst = (_desc("INSTANCE_NAME", "HOST_NAME", "VERSION", "STATUS", "DATABASE_STATUS", "STARTUP_TIME"),
-                [("ORCL", "h", "19c", "OPEN", "ACTIVE", "2024")])
-        ts = (_desc("TABLESPACE_NAME", "TOTAL_BYTES", "FREE_BYTES", "USED_BYTES", "USAGE_PCT"),
-              [("USERS", 1000, 100, 900, 90.0)])  # >85 -> warning -5
+        inst = (
+            _desc("INSTANCE_NAME", "HOST_NAME", "VERSION", "STATUS", "DATABASE_STATUS", "STARTUP_TIME"),
+            [("ORCL", "h", "19c", "OPEN", "ACTIVE", "2024")],
+        )
+        ts = (
+            _desc("TABLESPACE_NAME", "TOTAL_BYTES", "FREE_BYTES", "USED_BYTES", "USAGE_PCT"),
+            [("USERS", 1000, 100, 900, 90.0)],
+        )  # >85 -> warning -5
         sess = (_desc("TOTAL_SESSIONS", "ACTIVE_SESSIONS"), [(50, 10)])
-        limit = (_desc("VALUE",), [("170",)])
+        limit = (
+            _desc(
+                "VALUE",
+            ),
+            [("170",)],
+        )
         cache = (_desc("LOGICAL_READS", "PHYSICAL_READS"), [(1000, 100)])  # hit 90% <95 -> -15
-        invalid = (_desc("INVALID_COUNT",), [(2,)])  # >0 -> -5
-        fc = FakeConn([
-            ("v$instance", inst),
-            ("dba_data_files", ts),
-            ("CASE WHEN status = 'ACTIVE'", sess),
-            ("name = 'sessions'", limit),
-            ("v$sysstat", cache),
-            ("dba_objects", invalid),
-        ])
+        invalid = (
+            _desc(
+                "INVALID_COUNT",
+            ),
+            [(2,)],
+        )  # >0 -> -5
+        fc = FakeConn(
+            [
+                ("v$instance", inst),
+                ("dba_data_files", ts),
+                ("CASE WHEN status = 'ACTIVE'", sess),
+                ("name = 'sessions'", limit),
+                ("v$sysstat", cache),
+                ("dba_objects", invalid),
+            ]
+        )
         with _patch(diag, fc):
             out = json.loads(diag.check_database_health.invoke({"config": CONFIG}))
         # 100 -5(ts) -15(cache) -5(invalid) = 75 -> warning
@@ -181,17 +198,36 @@ class TestOracleDiagnostics:
         assert out["checks"]["buffer_cache"]["hit_ratio"] == 90.0
 
     def test_health_check_instance_not_open(self):
-        inst = (_desc("INSTANCE_NAME", "HOST_NAME", "VERSION", "STATUS", "DATABASE_STATUS", "STARTUP_TIME"),
-                [("ORCL", "h", "19c", "MOUNTED", "ACTIVE", "2024")])
-        empty = ([], [])
-        fc = FakeConn([
-            ("v$instance", inst),
-            ("dba_data_files", ([], [])),
-            ("CASE WHEN status = 'ACTIVE'", (_desc("TOTAL_SESSIONS", "ACTIVE_SESSIONS"), [(1, 0)])),
-            ("name = 'sessions'", (_desc("VALUE",), [("170",)])),
-            ("v$sysstat", (_desc("LOGICAL_READS", "PHYSICAL_READS"), [(100, 0)])),
-            ("dba_objects", (_desc("INVALID_COUNT",), [(0,)])),
-        ])
+        inst = (
+            _desc("INSTANCE_NAME", "HOST_NAME", "VERSION", "STATUS", "DATABASE_STATUS", "STARTUP_TIME"),
+            [("ORCL", "h", "19c", "MOUNTED", "ACTIVE", "2024")],
+        )
+        fc = FakeConn(
+            [
+                ("v$instance", inst),
+                ("dba_data_files", ([], [])),
+                ("CASE WHEN status = 'ACTIVE'", (_desc("TOTAL_SESSIONS", "ACTIVE_SESSIONS"), [(1, 0)])),
+                (
+                    "name = 'sessions'",
+                    (
+                        _desc(
+                            "VALUE",
+                        ),
+                        [("170",)],
+                    ),
+                ),
+                ("v$sysstat", (_desc("LOGICAL_READS", "PHYSICAL_READS"), [(100, 0)])),
+                (
+                    "dba_objects",
+                    (
+                        _desc(
+                            "INVALID_COUNT",
+                        ),
+                        [(0,)],
+                    ),
+                ),
+            ]
+        )
         with _patch(diag, fc):
             out = json.loads(diag.check_database_health.invoke({"config": CONFIG}))
         assert out["checks"]["instance"]["status"] == "critical"
@@ -199,10 +235,14 @@ class TestOracleDiagnostics:
         assert out["health_score"] == 70  # -30
 
     def test_dataguard_standby_with_lag(self):
-        role = (_desc("DATABASE_ROLE", "PROTECTION_MODE", "PROTECTION_LEVEL", "SWITCHOVER_STATUS", "DATAGUARD_BROKER"),
-                [("PHYSICAL STANDBY", "MAX PERFORMANCE", "MAX PERFORMANCE", "NOT ALLOWED", "ENABLED")])
-        dg = (_desc("NAME", "VALUE", "TIME_COMPUTED", "DATUM_TIME"),
-              [("transport lag", "+00 00:00:05", "t", "d"), ("apply lag", "+00 00:00:10", "t", "d")])
+        role = (
+            _desc("DATABASE_ROLE", "PROTECTION_MODE", "PROTECTION_LEVEL", "SWITCHOVER_STATUS", "DATAGUARD_BROKER"),
+            [("PHYSICAL STANDBY", "MAX PERFORMANCE", "MAX PERFORMANCE", "NOT ALLOWED", "ENABLED")],
+        )
+        dg = (
+            _desc("NAME", "VALUE", "TIME_COMPUTED", "DATUM_TIME"),
+            [("transport lag", "+00 00:00:05", "t", "d"), ("apply lag", "+00 00:00:10", "t", "d")],
+        )
         fc = FakeConn([("v$database", role), ("v$dataguard_stats", dg)])
         with _patch(diag, fc):
             out = json.loads(diag.check_dataguard_status.invoke({"config": CONFIG}))
@@ -211,10 +251,14 @@ class TestOracleDiagnostics:
         assert out["dg_configured"] is True
 
     def test_dataguard_primary_with_destinations(self):
-        role = (_desc("DATABASE_ROLE", "PROTECTION_MODE", "PROTECTION_LEVEL", "SWITCHOVER_STATUS", "DATAGUARD_BROKER"),
-                [("PRIMARY", "MAX PERFORMANCE", "MAX PERFORMANCE", "TO STANDBY", "ENABLED")])
-        dest = (_desc("DEST_ID", "DEST_NAME", "STATUS", "TYPE", "ERROR", "ARCHIVED_SEQ#", "APPLIED_SEQ#", "GAP_STATUS"),
-                [(2, "LOG_ARCHIVE_DEST_2", "ERROR", "PHYSICAL", "ORA-16401", 100, 95, "NO GAP")])
+        role = (
+            _desc("DATABASE_ROLE", "PROTECTION_MODE", "PROTECTION_LEVEL", "SWITCHOVER_STATUS", "DATAGUARD_BROKER"),
+            [("PRIMARY", "MAX PERFORMANCE", "MAX PERFORMANCE", "TO STANDBY", "ENABLED")],
+        )
+        dest = (
+            _desc("DEST_ID", "DEST_NAME", "STATUS", "TYPE", "ERROR", "ARCHIVED_SEQ#", "APPLIED_SEQ#", "GAP_STATUS"),
+            [(2, "LOG_ARCHIVE_DEST_2", "ERROR", "PHYSICAL", "ORA-16401", 100, 95, "NO GAP")],
+        )
         fc = FakeConn([("v$database", role), ("v$archive_dest_status", dest)])
         with _patch(diag, fc):
             out = json.loads(diag.check_dataguard_status.invoke({"config": CONFIG}))
@@ -228,13 +272,181 @@ class TestOracleDiagnostics:
             out = json.loads(diag.check_dataguard_status.invoke({"config": CONFIG}))
         assert out["error"] == "无法查询v$database"
 
+    def test_connection_issues_eighty_percent_warning_and_outer_error(self):
+        param_desc = _desc("NAME", "VALUE")
+        param_rows = [("processes", "150"), ("sessions", "100")]
+        sess_desc = _desc("STATUS", "CNT")
+        sess_rows = [("ACTIVE", 50), ("INACTIVE", 35)]  # 85 / 100
+        user_desc = _desc("USERNAME", "CNT")
+        fc = FakeConn(
+            [
+                ("v$parameter", (param_desc, param_rows)),
+                ("GROUP BY status", (sess_desc, sess_rows)),
+                ("WHERE username IS NOT NULL", (user_desc, [("APP", 85)])),
+            ]
+        )
+        with _patch(diag, fc):
+            out = json.loads(diag.diagnose_connection_issues.invoke({"config": CONFIG}))
+        assert out["session_usage_percent"] == 85.0
+        assert out["warnings"] == ["会话数使用率超过80%，建议关注连接增长趋势"]
+
+        boom = MagicMock()
+        boom.cursor.side_effect = OracleError("ORA-01031")
+        with _patch(diag, boom):
+            out = json.loads(diag.diagnose_connection_issues.invoke({"config": CONFIG}))
+        assert "ORA-01031" in out["error"]
+        boom.close.assert_called_once()
+
+    def test_lock_conflicts_outer_error(self):
+        boom = MagicMock()
+        boom.cursor.side_effect = OracleError("ORA-00942")
+        with _patch(diag, boom):
+            out = json.loads(diag.diagnose_lock_conflicts.invoke({"config": CONFIG}))
+        assert "ORA-00942" in out["error"]
+        boom.close.assert_called_once()
+
+    def test_health_check_inner_errors_session_bands_and_outer_error(self):
+        fc = FakeConn(
+            [
+                ("v$instance", OracleError("inst-fail")),
+                ("dba_data_files", OracleError("ts-fail")),
+                ("CASE WHEN status = 'ACTIVE'", OracleError("sess-fail")),
+                ("v$sysstat", OracleError("cache-fail")),
+                ("dba_objects", OracleError("inv-fail")),
+            ]
+        )
+        with _patch(diag, fc):
+            out = json.loads(diag.check_database_health.invoke({"config": CONFIG}))
+        assert out["health_status"] == "healthy"
+        assert out["health_score"] == 100
+        assert out["checks"]["instance"]["status"] == "error"
+        assert "inst-fail" in out["checks"]["instance"]["error"]
+        assert out["checks"]["tablespace"]["status"] == "error"
+        assert "ts-fail" in out["checks"]["tablespace"]["error"]
+        assert out["checks"]["sessions"]["status"] == "error"
+        assert "sess-fail" in out["checks"]["sessions"]["error"]
+        assert out["checks"]["buffer_cache"]["status"] == "error"
+        assert "cache-fail" in out["checks"]["buffer_cache"]["error"]
+        assert out["checks"]["invalid_objects"]["status"] == "error"
+        assert "inv-fail" in out["checks"]["invalid_objects"]["error"]
+
+        inst = (
+            _desc("INSTANCE_NAME", "HOST_NAME", "VERSION", "STATUS", "DATABASE_STATUS", "STARTUP_TIME"),
+            [("ORCL", "h", "19c", "MOUNTED", "ACTIVE", "2024")],
+        )
+        sess = (_desc("TOTAL_SESSIONS", "ACTIVE_SESSIONS"), [(95, 10)])
+        limit = (
+            _desc(
+                "VALUE",
+            ),
+            [("100",)],
+        )
+        cache = (_desc("LOGICAL_READS", "PHYSICAL_READS"), [(100, 0)])
+        invalid = (
+            _desc(
+                "INVALID_COUNT",
+            ),
+            [(0,)],
+        )
+        fc = FakeConn(
+            [
+                ("v$instance", inst),
+                ("dba_data_files", ([], [])),
+                ("CASE WHEN status = 'ACTIVE'", sess),
+                ("name = 'sessions'", limit),
+                ("v$sysstat", cache),
+                ("dba_objects", invalid),
+            ]
+        )
+        with _patch(diag, fc):
+            out = json.loads(diag.check_database_health.invoke({"config": CONFIG}))
+        assert out["checks"]["sessions"]["usage_percent"] == 95.0
+        assert out["checks"]["sessions"]["status"] == "critical"
+        assert any("会话数使用率 95.0%，已接近上限" in i for i in out["issues"])
+        assert out["health_score"] == 50  # -30 instance -20 sessions
+        assert out["health_status"] == "critical"
+
+        sess80 = (_desc("TOTAL_SESSIONS", "ACTIVE_SESSIONS"), [(85, 10)])
+        fc = FakeConn(
+            [
+                (
+                    "v$instance",
+                    (
+                        _desc("INSTANCE_NAME", "HOST_NAME", "VERSION", "STATUS", "DATABASE_STATUS", "STARTUP_TIME"),
+                        [("ORCL", "h", "19c", "OPEN", "ACTIVE", "2024")],
+                    ),
+                ),
+                ("dba_data_files", ([], [])),
+                ("CASE WHEN status = 'ACTIVE'", sess80),
+                ("name = 'sessions'", limit),
+                ("v$sysstat", cache),
+                ("dba_objects", invalid),
+            ]
+        )
+        with _patch(diag, fc):
+            out = json.loads(diag.check_database_health.invoke({"config": CONFIG}))
+        assert out["checks"]["sessions"]["status"] == "warning"
+        assert out["issues"] == ["会话数使用率 85.0%"]
+        assert out["health_score"] == 90
+
+    def test_dataguard_stats_error_primary_empty_dest_other_role_and_outer_error(self):
+        role = (
+            _desc("DATABASE_ROLE", "PROTECTION_MODE", "PROTECTION_LEVEL", "SWITCHOVER_STATUS", "DATAGUARD_BROKER"),
+            [("PHYSICAL STANDBY", "MAX PERFORMANCE", "MAX PERFORMANCE", "NOT ALLOWED", "ENABLED")],
+        )
+        fc = FakeConn([("v$database", role), ("v$dataguard_stats", OracleError("ORA-00942"))])
+        with _patch(diag, fc):
+            out = json.loads(diag.check_dataguard_status.invoke({"config": CONFIG}))
+        assert out["dataguard_stats_error"] == "ORA-00942"
+        assert out["dg_configured"] is False
+
+        primary = (
+            _desc("DATABASE_ROLE", "PROTECTION_MODE", "PROTECTION_LEVEL", "SWITCHOVER_STATUS", "DATAGUARD_BROKER"),
+            [("PRIMARY", "MAX PERFORMANCE", "MAX PERFORMANCE", "TO STANDBY", "ENABLED")],
+        )
+        fc = FakeConn([("v$database", primary), ("v$archive_dest_status", ([], []))])
+        with _patch(diag, fc):
+            out = json.loads(diag.check_dataguard_status.invoke({"config": CONFIG}))
+        assert out["archive_destinations"] == []
+        assert out["dg_configured"] is False
+        assert out["message"] == "未发现远程归档目的地，可能未配置Data Guard"
+
+        fc = FakeConn([("v$database", primary), ("v$archive_dest_status", OracleError("ORA-01031"))])
+        with _patch(diag, fc):
+            out = json.loads(diag.check_dataguard_status.invoke({"config": CONFIG}))
+        assert out["archive_dest_error"] == "ORA-01031"
+        assert out["dg_configured"] is False
+        assert out["message"] == "无法查询归档目的地状态，可能未配置Data Guard"
+
+        other = (
+            _desc("DATABASE_ROLE", "PROTECTION_MODE", "PROTECTION_LEVEL", "SWITCHOVER_STATUS", "DATAGUARD_BROKER"),
+            [("FAR SYNC", "MAX PERFORMANCE", "MAX PERFORMANCE", "NOT ALLOWED", "DISABLED")],
+        )
+        fc = FakeConn([("v$database", other)])
+        with _patch(diag, fc):
+            out = json.loads(diag.check_dataguard_status.invoke({"config": CONFIG}))
+        assert out["dg_configured"] is False
+        assert out["message"] == "数据库角色为 FAR SYNC，非标准的PRIMARY/STANDBY角色"
+
+        boom = MagicMock()
+        boom.cursor.side_effect = OracleError("ORA-03114")
+        with _patch(diag, boom):
+            out = json.loads(diag.check_dataguard_status.invoke({"config": CONFIG}))
+        assert "ORA-03114" in out["error"]
+        boom.close.assert_called_once()
+
 
 # ============================ resources ============================
 class TestOracleResources:
     def test_current_database_info(self):
         db = (_desc("NAME", "DB_UNIQUE_NAME", "OPEN_MODE", "LOG_MODE"), [("ORCL", "ORCL", "READ WRITE", "ARCHIVELOG")])
         inst = (_desc("INSTANCE_NAME", "HOST_NAME", "STATUS", "STARTUP_TIME"), [("orcl1", "h", "OPEN", "2024")])
-        ver = (_desc("BANNER",), [("Oracle Database 19c",)])
+        ver = (
+            _desc(
+                "BANNER",
+            ),
+            [("Oracle Database 19c",)],
+        )
         fc = FakeConn([("v$database", db), ("v$instance", inst), ("v$version", ver)])
         with _patch(res, fc):
             out = json.loads(res.get_current_database_info.invoke({"config": CONFIG}))
@@ -271,8 +483,7 @@ class TestOracleResources:
         assert out["tables"][0]["size"] == "0.00 B"
 
     def test_list_indexes(self):
-        desc = _desc("OWNER", "INDEX_NAME", "TABLE_NAME", "INDEX_TYPE", "UNIQUENESS", "STATUS", "NUM_ROWS",
-                     "COLUMN_NAME", "COLUMN_POSITION")
+        desc = _desc("OWNER", "INDEX_NAME", "TABLE_NAME", "INDEX_TYPE", "UNIQUENESS", "STATUS", "NUM_ROWS", "COLUMN_NAME", "COLUMN_POSITION")
         rows = [("APP", "IDX1", "T", "NORMAL", "UNIQUE", "VALID", 100, "ID", 1)]
         fc = FakeConn([("all_indexes", (desc, rows))])
         with _patch(res, fc):
@@ -281,8 +492,7 @@ class TestOracleResources:
         assert out["indexes"][0]["index_name"] == "IDX1"
 
     def test_get_table_structure_with_schema(self):
-        col_desc = _desc("COLUMN_NAME", "DATA_TYPE", "DATA_LENGTH", "DATA_PRECISION", "DATA_SCALE", "NULLABLE",
-                         "DATA_DEFAULT", "COLUMN_ID")
+        col_desc = _desc("COLUMN_NAME", "DATA_TYPE", "DATA_LENGTH", "DATA_PRECISION", "DATA_SCALE", "NULLABLE", "DATA_DEFAULT", "COLUMN_ID")
         col_rows = [("ID", "NUMBER", 22, 10, 0, "N", None, 1)]
         con_desc = _desc("CONSTRAINT_NAME", "CONSTRAINT_TYPE", "STATUS", "COLUMN_NAME", "POSITION")
         con_rows = [("PK_T", "P", "ENABLED", "ID", 1)]
@@ -294,8 +504,7 @@ class TestOracleResources:
         assert out["constraints"][0]["constraint_type"] == "P"
 
     def test_get_table_structure_current_user(self):
-        col_desc = _desc("COLUMN_NAME", "DATA_TYPE", "DATA_LENGTH", "DATA_PRECISION", "DATA_SCALE", "NULLABLE",
-                         "DATA_DEFAULT", "COLUMN_ID")
+        col_desc = _desc("COLUMN_NAME", "DATA_TYPE", "DATA_LENGTH", "DATA_PRECISION", "DATA_SCALE", "NULLABLE", "DATA_DEFAULT", "COLUMN_ID")
         col_rows = [("NAME", "VARCHAR2", 100, None, None, "Y", "'x'", 2)]
         fc = FakeConn([("user_tab_columns", (col_desc, col_rows)), ("user_constraints", ([], []))])
         with _patch(res, fc):
@@ -315,8 +524,20 @@ class TestOracleResources:
         assert out["users"][0]["granted_roles"] == ["CONNECT", "RESOURCE"]
 
     def test_list_users_permission_fallback(self):
-        fc = FakeConn([("dba_users", OracleError("ORA-00942")),
-                       ("FROM DUAL", (_desc("USERNAME",), [("SCOTT",)]))])
+        fc = FakeConn(
+            [
+                ("dba_users", OracleError("ORA-00942")),
+                (
+                    "FROM DUAL",
+                    (
+                        _desc(
+                            "USERNAME",
+                        ),
+                        [("SCOTT",)],
+                    ),
+                ),
+            ]
+        )
         with _patch(res, fc):
             out = json.loads(res.list_oracle_users.invoke({"config": CONFIG}))
         assert "权限不足" in out["error"]
@@ -324,8 +545,7 @@ class TestOracleResources:
 
     def test_get_database_config_formats_sizes(self):
         desc = _desc("NAME", "VALUE", "DISPLAY_VALUE", "DESCRIPTION")
-        rows = [("sga_target", str(2 * 1024 ** 3), "2G", "SGA target"),
-                ("optimizer_mode", "ALL_ROWS", "ALL_ROWS", "optimizer")]
+        rows = [("sga_target", str(2 * 1024**3), "2G", "SGA target"), ("optimizer_mode", "ALL_ROWS", "ALL_ROWS", "optimizer")]
         fc = FakeConn([("v$parameter", (desc, rows))])
         with _patch(res, fc):
             out = json.loads(res.get_database_config.invoke({"config": CONFIG}))
@@ -374,8 +594,7 @@ class TestOracleConnection:
         assert out["service_name"] == "ORCL"
 
     def test_create_connection_makes_dsn(self):
-        with patch.object(conn.oracledb, "makedsn", return_value="DSN") as mk, \
-             patch.object(conn.oracledb, "connect", return_value=MagicMock()) as cn:
+        with patch.object(conn.oracledb, "makedsn", return_value="DSN") as mk, patch.object(conn.oracledb, "connect", return_value=MagicMock()) as cn:
             conn._create_oracle_connection({"host": "h", "port": 1521, "service_name": "S", "user": "u", "password": "p"})
         mk.assert_called_once_with("h", 1521, service_name="S")
         assert cn.call_args.kwargs["dsn"] == "DSN"
@@ -405,15 +624,13 @@ class TestOracleConnection:
         assert a.build_from_flat_config({"host": "fh"})["host"] == "fh"
 
     def test_build_normalized_multi(self):
-        cfg = {"configurable": {"oracle_instances": json.dumps([
-            {"id": "a", "name": "A", "host": "ha"}, {"id": "b", "name": "B", "host": "hb"}])}}
+        cfg = {"configurable": {"oracle_instances": json.dumps([{"id": "a", "name": "A", "host": "ha"}, {"id": "b", "name": "B", "host": "hb"}])}}
         n = conn.build_oracle_normalized_from_runnable(cfg)
         assert n["mode"] == "multi"
         assert len(n["items"]) == 2
 
     def test_build_normalized_single_select(self):
-        cfg = {"configurable": {"oracle_instances": json.dumps([
-            {"id": "a", "name": "A", "host": "ha"}, {"id": "b", "name": "B", "host": "hb"}])}}
+        cfg = {"configurable": {"oracle_instances": json.dumps([{"id": "a", "name": "A", "host": "ha"}, {"id": "b", "name": "B", "host": "hb"}])}}
         n = conn.build_oracle_normalized_from_runnable(cfg, instance_id="a")
         assert n["mode"] == "single"
         assert n["items"][0]["name"] == "A"
@@ -439,9 +656,10 @@ class TestOracleConnection:
             conn.test_oracle_instance({"host": ""})
 
     def test_instances_prompt(self):
-        cfg = {"oracle_instances": json.dumps([
-            {"id": "a", "name": "A", "host": "ha"}, {"id": "b", "name": "B", "host": "hb"}]),
-            "oracle_default_instance_id": "b"}
+        cfg = {
+            "oracle_instances": json.dumps([{"id": "a", "name": "A", "host": "ha"}, {"id": "b", "name": "B", "host": "hb"}]),
+            "oracle_default_instance_id": "b",
+        }
         prompt = conn.get_oracle_instances_prompt(cfg)
         assert "A, B" in prompt
         assert "「B」" in prompt

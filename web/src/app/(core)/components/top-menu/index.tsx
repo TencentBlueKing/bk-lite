@@ -8,33 +8,32 @@ import { usePermissions } from '@/context/permissions';
 import { useClientData } from '@/context/client';
 import { useUserInfoContext } from '@/context/userInfo';
 import { usePortalBranding } from '@/hooks/usePortalBranding';
-import { findMatchedMenuPath } from '@/utils/menuHelpers';
+import { findMatchedMenuPath, resolveMenuIcon } from '@/utils/menuHelpers';
+import { APP_TOP_SIDE_RAIL_WIDTH_PX, useConsoleLayout } from '@/console-layout';
 import styles from './index.module.scss';
 import type { TourProps } from 'antd';
 import { TourItem, MenuItem, ClientData } from '@/types/index';
 import UserInfo from './user-info';
 import Notifications from '@/components/notifications';
 import Icon from '@/components/icon';
+import AppTopNav from './appTopNav';
 import { resolveAppDisplayName } from '@/utils/appDisplayName';
 
 const TOUR_VIEWED_KEY_PREFIX = 'tour_viewed';
 
-const resolveMenuIcon = (item: MenuItem) => {
-  if (item.name === 'wiki_list') return 'zhishiku1';
-  return item.icon;
-};
-
 interface TopMenuProps {
   hideMainMenu?: boolean;
+  hideBrand?: boolean;
 }
 
-const TopMenu: React.FC<TopMenuProps> = ({ hideMainMenu }) => {
+const TopMenu: React.FC<TopMenuProps> = ({ hideMainMenu, hideBrand }) => {
   const { t } = useTranslation();
   const { menus: menuItems } = usePermissions();
   const pathname = usePathname();
   const { clientData, appConfigList, loading, appConfigLoading } = useClientData();
   const { userId } = useUserInfoContext();
   const { portalName, logoUrl } = usePortalBranding();
+  const { layout: chromeLayout } = useConsoleLayout();
   const [tourOpen, setTourOpen] = useState(false);
   const [tourStep, setTourStep] = useState<TourProps['steps']>([]);
   const [currentStep, setCurrentStep] = useState(0);
@@ -139,13 +138,19 @@ const TopMenu: React.FC<TopMenuProps> = ({ hideMainMenu }) => {
     window.open('https://github.com/TencentBlueKing/bk-lite', '_blank');
   };
 
+  const apps = appConfigList.length > 0 ? appConfigList : clientData;
+  const showBrand = !hideBrand;
+  const showAppSwitcher = chromeLayout === 'classic';
+  const showAppTopNav = chromeLayout === 'app-top';
+  const appTopBrandGrid = showAppTopNav && showBrand;
+
   const renderContent = (loading || appConfigLoading) ? (
     <div className="flex justify-center items-center h-32">
       <Spin />
     </div>
   ) : (
     <div className="grid grid-cols-4 gap-4 max-h-[420px] overflow-auto">
-      {(appConfigList.length > 0 ? appConfigList : clientData).map((app: ClientData) => (
+      {(apps).map((app: ClientData) => (
         <div
           key={app.name}
           className={`group flex flex-col items-center p-4 rounded-sm cursor-pointer ${styles.navApp}`}
@@ -163,18 +168,46 @@ const TopMenu: React.FC<TopMenuProps> = ({ hideMainMenu }) => {
 
   return (
     <div className="relative z-30 h-[56px] w-full shrink-0 grow-0">
-      <div className="grid h-full w-full grid-cols-[1fr_auto_1fr] items-center px-4">
-        <div className="z-10 flex items-center justify-self-start space-x-2">
+      <div
+        className={`grid h-full w-full items-center ${
+          appTopBrandGrid
+            ? ''
+            : showAppTopNav
+              ? 'grid-cols-[minmax(0,1fr)_auto] px-4'
+              : 'grid-cols-[1fr_auto_1fr] px-4'
+        }`}
+        style={
+          appTopBrandGrid
+            ? { gridTemplateColumns: `${APP_TOP_SIDE_RAIL_WIDTH_PX}px minmax(0,1fr) auto` }
+            : undefined
+        }
+      >
+        {showBrand && (
+        <div
+          data-testid={showAppTopNav ? 'app-top-brand' : undefined}
+          className={
+            showAppTopNav
+              ? 'z-10 flex h-full items-center space-x-2 px-4'
+              : 'z-10 flex items-center justify-self-start space-x-2'
+          }
+          style={showAppTopNav ? { width: APP_TOP_SIDE_RAIL_WIDTH_PX } : undefined}
+        >
           <img src={logoUrl} className="block h-10 w-auto object-contain" alt="logo" />
           <div className="font-medium">{portalName}</div>
-          <Popover content={renderContent} title={t('common.appList')} trigger="hover">
-            <div className={`flex cursor-pointer items-center justify-center rounded-[10px] px-3 py-2 ${styles.nav}`}>
-              <Icon type="caidandaohang" className="mr-1" />
-              <CaretDownFilled className={`text-sm ${styles.icons}`} />
-            </div>
-          </Popover>
+          {showAppSwitcher && (
+            <Popover content={renderContent} title={t('common.appList')} trigger="hover">
+              <div className={`flex cursor-pointer items-center justify-center rounded-[10px] px-3 py-2 ${styles.nav}`}>
+                <Icon type="caidandaohang" className="mr-1" />
+                <CaretDownFilled className={`text-sm ${styles.icons}`} />
+              </div>
+            </Popover>
+          )}
         </div>
-        {!hideMainMenu ? (
+        )}
+        <div className={showAppTopNav ? `z-10 min-w-0 w-full ${appTopBrandGrid ? 'pl-4' : ''}` : 'z-10'}>
+          {showAppTopNav ? (
+            <AppTopNav apps={apps} pathname={pathname} />
+          ) : !hideMainMenu ? (
           <div
             className="z-10 flex items-center justify-self-center space-x-4 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
             style={{ whiteSpace: 'nowrap' }}
@@ -200,11 +233,12 @@ const TopMenu: React.FC<TopMenuProps> = ({ hideMainMenu }) => {
                   </Link>
                 );
               })}
-          </div>
-        ) : (
-          <div />
-        )}
-        <div className="z-10 flex flex-shrink-0 items-center justify-self-end gap-4">
+            </div>
+          ) : (
+            <div />
+          )}
+        </div>
+        <div className={`z-10 flex flex-shrink-0 items-center justify-self-end gap-4 ${appTopBrandGrid ? 'pr-4' : ''}`}>
           <Notifications />
           {hasViewedTour && (
             <Tooltip title={t('common.officialDocument')}>

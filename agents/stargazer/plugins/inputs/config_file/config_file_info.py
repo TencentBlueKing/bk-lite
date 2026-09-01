@@ -37,9 +37,14 @@ class ConfigFileInfo(SSHPlugin):
             payload = self._parse_collect_output(response.get("result", ""))
             return {"success": True, "result": self._build_callback_payload(payload)}
         except Exception as err:
-            import traceback
-
-            logger.error(f"{self.__class__.__name__} main error! {traceback.format_exc()}")
+            logger.exception(
+                "event=config_file_collect_failed host=%s model_id=%s task_id=%s failed_stage=%s error_type=%s",
+                self.host,
+                self.model_id,
+                self.collection_task_id,
+                "list_all_resources",
+                type(err).__name__,
+            )
             return {"result": {"cmdb_collect_error": str(err)}, "success": False}
 
     def _render_script(self, script_content: str, config_file_path: str) -> str:

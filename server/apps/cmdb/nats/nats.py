@@ -43,7 +43,6 @@ from apps.cmdb.models.config_file_version import ConfigFileVersion, ConfigFileVe
 from apps.cmdb.openapi_serializers import CmdbModuleDataQuerySerializer
 from apps.cmdb.services import rack_room
 from apps.cmdb.services.classification import ClassificationManage
-from apps.cmdb.services.collect_credential_result_service import CollectCredentialResultService
 from apps.cmdb.services.config_file_service import ConfigFileService
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.model import ModelManage
@@ -1074,60 +1073,8 @@ def create_manual_config_files(params):
 
 
 @nats_client.register
-def receive_collect_credential_result(data: dict):
-    """接收 Stargazer 推送的单条或批量凭据执行结果并回写命中状态。"""
-    payload = data or {}
-    events = payload.get("events") if isinstance(payload, dict) else None
-
-    if not isinstance(payload, dict):
-        logger.warning(
-            "Received invalid collect credential result event, type=%s",
-            type(payload).__name__,
-        )
-        return CollectCredentialResultService.process_result(payload, parse_datetime=_parse_nats_datetime)
-
-    if isinstance(events, list):
-        logger.info(
-            "Received pushed collect credential result batch, count=%s next_since=%s",
-            len(events),
-            payload.get("next_since") or "",
-        )
-    else:
-        status = payload.get("status")
-        if not status:
-            status = "success" if bool(payload.get("success")) else "failed"
-        logger.info(
-            "Received pushed collect credential result event, task_id=%s host=%s credential_id=%s status=%s",
-            payload.get("collect_task_id") or payload.get("task_id") or "",
-            payload.get("host") or "",
-            payload.get("credential_id") or "",
-            status,
-        )
-
-    result = CollectCredentialResultService.process_batch(payload, parse_datetime=_parse_nats_datetime)
-
-    if isinstance(events, list):
-        logger.info(
-            "Processed pushed collect credential result batch, processed=%s failed=%s next_since=%s",
-            result.get("processed", 0),
-            result.get("failed", 0),
-            result.get("next_since") or "",
-        )
-    else:
-        logger.info(
-            "Processed pushed collect credential result event, result=%s task_id=%s object_key=%s credential_id=%s",
-            result.get("result", False),
-            result.get("task_id") or "",
-            result.get("object_key") or "",
-            result.get("credential_id") or "",
-        )
-
-    return result
-
-
-@nats_client.register
 def receive_scan_credential_result(data: dict):
-    """接收扫描一枪的凭据结果；与采集 receive_collect_credential_result 隔离。"""
+    """接收扫描一枪的凭据结果；不属于 Stargazer 采集状态投影。"""
     from apps.cmdb.services.scan_credential_result_service import ScanCredentialResultService
 
     payload = data or {}
