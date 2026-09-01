@@ -10,9 +10,9 @@ import {
 } from '@/app/monitor/constants/event';
 import { cloneDeep } from 'lodash';
 import {
-  getThresholdUnitSelectLabel,
   getThresholdValuePlaceholder
 } from './strategyDetailUtils';
+import { getMonitorUnitSelectLabel } from '@/app/monitor/components/monitor-shared/unit-label';
 
 const { Option } = Select;
 
@@ -109,7 +109,7 @@ const ThresholdList: React.FC<ThresholdListProps> = ({
               );
             }}
             options={unitOptions.map((option) => ({
-              label: getThresholdUnitSelectLabel(option),
+              label: getMonitorUnitSelectLabel(option),
               value: option.unit_id
             }))}
             onChange={handleThresholdUnitChange}
