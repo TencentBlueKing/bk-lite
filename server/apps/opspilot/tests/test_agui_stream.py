@@ -3,10 +3,10 @@ import json
 from types import SimpleNamespace
 
 import pytest
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.types import Overwrite
 
-from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
+from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest, ChatHistory
 from apps.opspilot.metis.llm.chain.graph import BasicGraph
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
 
@@ -1566,6 +1566,176 @@ def test_chain_end_emits_plain_ai_text_without_tools(monkeypatch):
     payloads = asyncio.run(_collect())
     text = "".join(p["delta"] for p in payloads if p["type"] == "TEXT_MESSAGE_CONTENT")
     assert text == "你好！有什么可以帮你的？"
+
+
+def test_chain_end_does_not_replay_previous_turn_when_history_ends_with_user(monkeypatch):
+    """新一轮 on_chain_end 常带完整历史且以当前 HumanMessage 结尾。
+
+    追问「现在呢」（尤其带 page_context）时，prepare/compaction 子链结束会把
+    上一轮助手正文当成 latest_plain_ai。旧逻辑会在真实流式到达前整段重放，
+    前端先闪旧回答再被新 messageId 替换。
+    """
+
+    async def _never_interrupted(_execution_id):
+        return False
+
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.chain.graph.is_interrupt_requested_async",
+        _never_interrupted,
+    )
+
+    previous_answer = "根据磁盘吞吐趋势，当前使用率 82.9%，暂不需要加磁盘。"
+    current_answer = "根据当前页面快照（最近12小时），磁盘使用率仍为 82.9%。"
+    graph = _FakeBasicGraph(
+        [
+            {
+                "event": "on_chain_end",
+                "data": {
+                    "output": {
+                        "messages": [
+                            HumanMessage(content="什么时候需要加磁盘"),
+                            AIMessage(content=previous_answer),
+                            HumanMessage(
+                                content=[
+                                    {"type": "text", "text": "现在呢"},
+                                    {
+                                        "type": "text",
+                                        "text": "<current_page>磁盘使用率: 82.9%</current_page>",
+                                    },
+                                ]
+                            ),
+                        ]
+                    }
+                },
+            },
+            {
+                "event": "on_chat_model_stream",
+                "data": {
+                    "chunk": SimpleNamespace(
+                        content=current_answer,
+                        tool_call_chunks=[],
+                        additional_kwargs={},
+                        response_metadata={},
+                    )
+                },
+            },
+            {
+                "event": "on_chat_model_end",
+                "data": {
+                    "output": SimpleNamespace(
+                        content=current_answer,
+                        tool_calls=[],
+                    )
+                },
+            },
+        ]
+    )
+    request = BasicLLMRequest(
+        thread_id="thread-no-history-replay",
+        extra_config={},
+        chat_history=[
+            ChatHistory(event="user", message="什么时候需要加磁盘"),
+            ChatHistory(event="bot", message=previous_answer),
+        ],
+    )
+
+    async def _collect():
+        return _parse_sse_payloads([line async for line in graph.agui_stream(request)])
+
+    payloads = asyncio.run(_collect())
+    text_starts = [p for p in payloads if p["type"] == "TEXT_MESSAGE_START"]
+    text = "".join(p["delta"] for p in payloads if p["type"] == "TEXT_MESSAGE_CONTENT")
+
+    assert previous_answer not in text
+    assert current_answer in text
+    assert len(text_starts) == 1
+
+
+def test_chain_end_does_not_replay_add_chat_history_node(monkeypatch):
+    """skill_channel chat 图顺序是 history → user_message。
+
+    add_chat_history_node 结束时 last=上一轮助手，「仅当 last 是 AI 才当轻量直答」
+    仍会把旧正文整段推出去，前端先闪旧文，等模型流式到了再 TEXT_MESSAGE_START。
+    """
+
+    async def _never_interrupted(_execution_id):
+        return False
+
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.chain.graph.is_interrupt_requested_async",
+        _never_interrupted,
+    )
+
+    previous_answer = "根据磁盘吞吐趋势，当前使用率 82.9%，暂不需要加磁盘。"
+    current_answer = "根据当前页面快照（最近12小时），磁盘使用率仍为 82.9%。"
+    graph = _FakeBasicGraph(
+        [
+            {
+                "event": "on_chain_end",
+                "name": "add_chat_history_node",
+                "data": {
+                    "output": {
+                        "messages": [
+                            HumanMessage(content="什么时候需要加磁盘"),
+                            AIMessage(content=previous_answer),
+                        ]
+                    }
+                },
+            },
+            {
+                "event": "on_chain_end",
+                "name": "user_message_node",
+                "data": {
+                    "output": {
+                        "messages": [
+                            HumanMessage(content="什么时候需要加磁盘"),
+                            AIMessage(content=previous_answer),
+                            HumanMessage(content="现在呢"),
+                        ]
+                    }
+                },
+            },
+            {
+                "event": "on_chat_model_stream",
+                "data": {
+                    "chunk": SimpleNamespace(
+                        content=current_answer,
+                        tool_call_chunks=[],
+                        additional_kwargs={},
+                        response_metadata={},
+                    )
+                },
+            },
+            {
+                "event": "on_chat_model_end",
+                "data": {
+                    "output": SimpleNamespace(
+                        content=current_answer,
+                        tool_calls=[],
+                    )
+                },
+            },
+        ]
+    )
+    request = BasicLLMRequest(
+        thread_id="thread-history-node-replay",
+        extra_config={},
+        chat_history=[
+            ChatHistory(event="user", message="什么时候需要加磁盘"),
+            ChatHistory(event="bot", message=previous_answer),
+        ],
+    )
+
+    async def _collect():
+        return _parse_sse_payloads([line async for line in graph.agui_stream(request)])
+
+    payloads = asyncio.run(_collect())
+    text_starts = [p for p in payloads if p["type"] == "TEXT_MESSAGE_START"]
+    text = "".join(p["delta"] for p in payloads if p["type"] == "TEXT_MESSAGE_CONTENT")
+
+    assert previous_answer not in text
+    assert current_answer in text
+    assert len(text_starts) == 1
 
 
 def test_agui_stream_surfaces_node_llm_failure_as_run_error(monkeypatch):
