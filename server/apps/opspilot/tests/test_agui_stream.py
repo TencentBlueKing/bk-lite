@@ -1738,6 +1738,96 @@ def test_chain_end_does_not_replay_add_chat_history_node(monkeypatch):
     assert len(text_starts) == 1
 
 
+def test_agui_stream_emits_current_turn_identical_to_history_bot_text(monkeypatch):
+    """历史助手短句不得种子本轮去重指纹。
+
+    上一轮 bot 已说过「好的」时，本轮 on_chat_model_end 再给出「好的」仍必须
+    发出一组 TEXT_MESSAGE_*；否则短重复回答会被静默丢掉。
+    """
+
+    async def _never_interrupted(_execution_id):
+        return False
+
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.chain.graph.is_interrupt_requested_async",
+        _never_interrupted,
+    )
+
+    graph = _FakeBasicGraph(
+        [
+            {
+                "event": "on_chat_model_end",
+                "data": {
+                    "output": SimpleNamespace(content="好的", tool_calls=[]),
+                },
+            },
+        ]
+    )
+    request = BasicLLMRequest(
+        thread_id="thread-same-short-as-history",
+        extra_config={"show_think": False},
+        chat_history=[
+            ChatHistory(event="user", message="可以吗"),
+            ChatHistory(event="bot", message="好的"),
+        ],
+    )
+
+    async def _collect():
+        return _parse_sse_payloads([line async for line in graph.agui_stream(request)])
+
+    payloads = asyncio.run(_collect())
+    types = [p["type"] for p in payloads]
+    text_deltas = [p["delta"] for p in payloads if p["type"] == "TEXT_MESSAGE_CONTENT"]
+
+    assert types.count("TEXT_MESSAGE_START") == 1
+    assert types.count("TEXT_MESSAGE_END") == 1
+    assert "".join(text_deltas) == "好的"
+
+
+def test_agui_stream_warns_empty_response_even_when_history_has_bot_text(monkeypatch):
+    """历史助手正文不得掩盖本轮空响应告警。"""
+
+    async def _never_interrupted(_execution_id):
+        return False
+
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.chain.graph.is_interrupt_requested_async",
+        _never_interrupted,
+    )
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.chain.graph.logger.warning",
+        lambda msg, *args, **_kwargs: warnings.append(msg if not args else msg % args),
+    )
+
+    graph = _FakeBasicGraph(
+        [
+            {
+                "event": "on_chat_model_end",
+                "data": {
+                    "output": SimpleNamespace(content="", tool_calls=[]),
+                },
+            },
+        ]
+    )
+    request = BasicLLMRequest(
+        thread_id="thread-empty-with-history",
+        extra_config={"show_think": False},
+        chat_history=[
+            ChatHistory(event="bot", message="好的"),
+        ],
+    )
+
+    async def _collect():
+        return _parse_sse_payloads([line async for line in graph.agui_stream(request)])
+
+    payloads = asyncio.run(_collect())
+    types = [p["type"] for p in payloads]
+
+    assert "TEXT_MESSAGE_CONTENT" not in types
+    assert any("LLM 调用完成但返回空内容" in msg for msg in warnings)
+
+
 def test_agui_stream_surfaces_node_llm_failure_as_run_error(monkeypatch):
     """节点内 LLM 失败不得被 _merge_async_streams 吞掉。
 
