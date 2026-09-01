@@ -9,7 +9,7 @@ from apps.apm.adapters import TelemetryStoreUnavailable, VictoriaTracesTelemetry
 from apps.apm.renderers import ApmRenderer
 from apps.apm.serializers import IssueSearchSerializer
 from apps.apm.services import DjangoTelemetryIssueService, DjangoTelemetryQueryService
-from apps.apm.services.access import current_organization_id
+from apps.apm.services.access import visible_organization_ids
 from apps.apm.services.contracts import IssueSearchQuery
 from apps.apm.services.trace_access import TraceAccessResolver
 from apps.core.decorators.api_permission import HasPermission
@@ -27,8 +27,8 @@ class ApmIssueViewSet(viewsets.ViewSet):
 
     @HasPermission("traces-View")
     def list(self, request):
-        organization_id = current_organization_id(request)
-        if organization_id is None:
+        organization_ids = visible_organization_ids(request)
+        if not organization_ids:
             return Response({"items": [], "next_cursor": None, "truncated": False})
         serializer = IssueSearchSerializer(data=request.query_params)
         if not serializer.is_valid():
@@ -49,7 +49,7 @@ class ApmIssueViewSet(viewsets.ViewSet):
         query_service = self._query_service()
         try:
             page = query_service.search_spans(query.span_query())
-            visible = self.access.filter_span_summaries(page.items, organization_id)
+            visible = self.access.filter_span_summaries(page.items, organization_ids)
             issues = DjangoTelemetryIssueService(query_service).project(visible, next_cursor=page.next_cursor)
         except ValueError as exc:
             return Response({"code": "invalid_query", "detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)

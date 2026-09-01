@@ -2,6 +2,9 @@ from django.db.models import QuerySet
 
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.user_group import normalize_user_group_ids
+from apps.core.utils.virtual_organizations import authorized_virtual_organization_ids
+
+_REQUEST_VISIBLE_ORGANIZATION_IDS = "_apm_visible_organization_ids"
 
 
 def current_organization_id(request) -> int | None:
@@ -18,6 +21,20 @@ def current_organization_id(request) -> int | None:
     return organization_id if organization_id in authorized_ids else None
 
 
+def visible_organization_ids(request) -> frozenset[int]:
+    cached = getattr(request, _REQUEST_VISIBLE_ORGANIZATION_IDS, None)
+    if cached is not None:
+        return cached
+
+    current_id = current_organization_id(request)
+    if current_id is None:
+        result = frozenset()
+    else:
+        result = frozenset({current_id} | authorized_virtual_organization_ids(request.user))
+    setattr(request, _REQUEST_VISIBLE_ORGANIZATION_IDS, result)
+    return result
+
+
 def assignable_organization_ids(request) -> set[int]:
     if getattr(request.user, "is_superuser", False):
         return set()
@@ -25,10 +42,10 @@ def assignable_organization_ids(request) -> set[int]:
 
 
 def filter_current_organization(queryset: QuerySet, request, relation: str) -> QuerySet:
-    organization_id = current_organization_id(request)
-    if organization_id is None:
+    organization_ids = visible_organization_ids(request)
+    if not organization_ids:
         return queryset.none()
-    return queryset.filter(**{f"{relation}__organization": organization_id}).distinct()
+    return queryset.filter(**{f"{relation}__organization__in": organization_ids}).distinct()
 
 
 def validate_assignable_organizations(request, organization_ids: list[int]) -> None:

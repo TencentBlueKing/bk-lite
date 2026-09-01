@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from apps.apm.adapters import VictoriaTracesTelemetryStore
 from apps.apm.renderers import ApmRenderer
 from apps.apm.serializers import ApmDashboardQuerySerializer
-from apps.apm.services.access import current_organization_id
+from apps.apm.services.access import visible_organization_ids
 from apps.apm.services.dashboard import ApmDashboardService
 from apps.core.decorators.api_permission import HasPermission
 
@@ -14,8 +14,8 @@ class ApmDashboardViewSet(viewsets.ViewSet):
 
     @HasPermission("home-View,services-View")
     def list(self, request, *args, **kwargs):
-        organization_id = current_organization_id(request)
-        if organization_id is None:
+        organization_ids = visible_organization_ids(request)
+        if not organization_ids:
             return Response(
                 {
                     "empty": True,
@@ -38,7 +38,7 @@ class ApmDashboardViewSet(viewsets.ViewSet):
         service = ApmDashboardService(metric_store=VictoriaTracesTelemetryStore())
         return Response(
             service.build(
-                organization_id=organization_id,
+                organization_ids=organization_ids,
                 window=serializer.validated_data["window"],
             )
         )

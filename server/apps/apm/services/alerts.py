@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime, timedelta
 
 from django.db import transaction
@@ -14,18 +15,20 @@ from apps.core.utils.viewset_utils import build_json_membership_query
 
 class DjangoApmAlertService:
     @staticmethod
-    def queryset(*, organization_id: int) -> QuerySet[ApmAlert]:
+    def queryset(*, organization_id: int | None = None, organization_ids: Sequence[int] | None = None) -> QuerySet[ApmAlert]:
         queryset = ApmAlert.objects.select_related("policy", "service").prefetch_related(
             "events",
             "events__outbox_entries",
             "snapshots",
         )
-        return queryset.filter(build_json_membership_query(queryset, "organizations", [organization_id]))
+        ids = list(organization_ids) if organization_ids is not None else [organization_id]
+        return queryset.filter(build_json_membership_query(queryset, "organizations", ids))
 
     def list(
         self,
         *,
-        organization_id: int,
+        organization_id: int | None = None,
+        organization_ids: Sequence[int] | None = None,
         started_at: datetime,
         ended_at: datetime,
         status: str | None = None,
@@ -36,7 +39,7 @@ class DjangoApmAlertService:
         keyword: str = "",
         limit: int = 50,
     ) -> list[dict]:
-        queryset = self.queryset(organization_id=organization_id).filter(
+        queryset = self.queryset(organization_id=organization_id, organization_ids=organization_ids).filter(
             last_event_at__gte=started_at,
             last_event_at__lte=ended_at,
         )
@@ -67,7 +70,8 @@ class DjangoApmAlertService:
     def distribution(
         self,
         *,
-        organization_id: int,
+        organization_id: int | None = None,
+        organization_ids: Sequence[int] | None = None,
         started_at: datetime,
         ended_at: datetime,
         status_group: str | None = None,
@@ -79,8 +83,9 @@ class DjangoApmAlertService:
             event_queryset = event_queryset.filter(
                 alert__status__in=(ApmAlert.Status.RECOVERED, ApmAlert.Status.CLOSED)
             )
+        ids = list(organization_ids) if organization_ids is not None else [organization_id]
         rows = (
-            event_queryset.filter(build_json_membership_query(event_queryset, "organizations", [organization_id]))
+            event_queryset.filter(build_json_membership_query(event_queryset, "organizations", ids))
             .filter(occurred_at__gte=started_at, occurred_at__lte=ended_at)
             .annotate(bucket=TruncHour("occurred_at"))
             .values("bucket", "severity")

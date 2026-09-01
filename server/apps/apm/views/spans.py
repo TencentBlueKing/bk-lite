@@ -10,7 +10,7 @@ from apps.apm.adapters.victoriatraces import _encode_cursor
 from apps.apm.renderers import ApmRenderer
 from apps.apm.serializers import SpanSearchSerializer
 from apps.apm.services import DjangoTelemetryQueryService
-from apps.apm.services.access import current_organization_id
+from apps.apm.services.access import visible_organization_ids
 from apps.apm.services.contracts import SpanSearchQuery, SpanSummary
 from apps.apm.services.trace_access import TraceAccessResolver, collect_visible_page
 from apps.core.decorators.api_permission import HasPermission
@@ -44,8 +44,8 @@ class ApmSpanViewSet(viewsets.ViewSet):
 
     @HasPermission("traces-View")
     def list(self, request):
-        organization_id = current_organization_id(request)
-        if organization_id is None:
+        organization_ids = visible_organization_ids(request)
+        if not organization_ids:
             return Response({"items": [], "next_cursor": None})
         serializer = SpanSearchSerializer(data=request.query_params)
         if not serializer.is_valid():
@@ -78,7 +78,7 @@ class ApmSpanViewSet(viewsets.ViewSet):
         try:
             visible, next_cursor = collect_visible_page(
                 fetch_page=fetch_page,
-                filter_items=lambda items: self.access.filter_span_summaries(items, organization_id),
+                filter_items=lambda items: self.access.filter_span_summaries(items, organization_ids),
                 cursor=query.cursor,
                 limit=query.limit,
                 encode_cursor=lambda item: _encode_cursor(item.started_at),
