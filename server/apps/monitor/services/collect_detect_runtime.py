@@ -104,16 +104,18 @@ def sanitize_execution_result(raw_result, sensitive_values=None, output_limit=DE
     exit_code = raw_result.get("exit_code")
     if exit_code is None:
         exit_code = 0 if success else 1
-    elif exit_code == 0:
-        success = True
     else:
-        success = False
+        try:
+            exit_code = int(exit_code)
+        except (TypeError, ValueError):
+            exit_code = 0 if success else 1
+        success = exit_code == 0
 
     return {
         "success": success,
         "stdout": stdout,
         "stderr": stderr,
-        "exit_code": int(exit_code),
+        "exit_code": exit_code,
         "code": raw_result.get("code", ""),
         "stdout_truncated": stdout_truncated,
         "stderr_truncated": stderr_truncated,
