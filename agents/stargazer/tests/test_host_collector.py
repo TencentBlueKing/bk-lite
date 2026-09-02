@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from tasks.collectors.host_collector import (  # noqa: E402
     HOST_REMOTE_CALLBACK_REQUEST_TIMEOUT,
     LINUX_SCRIPT_WRAPPER_EOF,
+    LINUX_SCRIPT_WRAPPER_PREFIX,
     SCRIPTS_DIR,
     VALID_MODULES,
     HostCollector,
@@ -300,8 +301,10 @@ class TestBuildScript:
     def test_linux_script_is_wrapped_with_bash_heredoc(self):
         script = build_script("linux", ["cpu"])
 
-        assert script.startswith(f"bash <<'{LINUX_SCRIPT_WRAPPER_EOF}'\n")
+        assert script.startswith(f"{LINUX_SCRIPT_WRAPPER_PREFIX} <<'{LINUX_SCRIPT_WRAPPER_EOF}'\n")
         assert script.endswith(f"{LINUX_SCRIPT_WRAPPER_EOF}\n")
+        assert "--noprofile --norc" in script
+        assert "LC_ALL=C" in script
 
     def test_windows_all_modules(self):
         script = build_script("windows", ["cpu", "mem", "disk", "net"])
@@ -337,7 +340,9 @@ class TestBuildScript:
         script = build_script("linux", ["disk"])
 
         assert "json_escape()" in script
-        assert "python3 -c" in script
+        assert "python3 -c" not in script
+        assert "awk" in script
+        assert "set +e" in script
 
     def test_linux_disk_and_net_scripts_escape_string_fields(self):
         disk_script = build_script("linux", ["disk"])
@@ -387,6 +392,49 @@ exit 1
         assert payload["disk"][0]["inodes_used_percent"] == 0
         assert payload["disk"][0]["path"] == "/"
         assert payload["disk"][0]["fstype"] == "ext4"
+
+    def test_linux_disk_script_escapes_mount_without_python3(self, tmp_path):
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        fake_df = bin_dir / "df"
+        fake_df.write_text(
+            """#!/bin/sh
+if [ "$1" = "-PT" ] && [ "$2" = "-B1" ]; then
+  cat <<'DATA'
+Filesystem Type 1B-blocks Used Available Capacity Mounted on
+/dev/sda1 ext4 100 50 50 50% /data/we"ird
+DATA
+  exit 0
+fi
+if [ "$1" = "-Pi" ]; then
+  cat <<'DATA'
+Filesystem Inodes IUsed IFree IUse% Mounted on
+/dev/sda1 100 50 50 10% /data/we"ird
+DATA
+  exit 0
+fi
+exit 1
+""",
+            encoding="utf-8",
+        )
+        fake_df.chmod(0o755)
+        fake_python = bin_dir / "python3"
+        fake_python.write_text("#!/bin/sh\necho 'python3 should not be called' >&2\nexit 127\n", encoding="utf-8")
+        fake_python.chmod(0o755)
+        env = {**os.environ, "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"}
+
+        result = subprocess.run(
+            ["bash", "-c", build_script("linux", ["disk"], monitor_type="host")],
+            check=True,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+
+        assert "python3 should not be called" not in result.stderr
+        payload = json.loads(result.stdout)
+        assert payload["disk"][0]["mount"] == '/data/we"ird'
+        assert payload["disk"][0]["path"] == '/data/we"ird'
 
     def test_monitor_disk_metadata_is_isolated_from_generic_host_script(self):
         generic_script = build_script("linux", ["disk"])
@@ -858,6 +906,48 @@ class TestHostCollectorExtractStdout:
         }
 
         with pytest.raises(RuntimeError, match="missing expected host 10.0.0.1"):
+            self.collector.process_adhoc_result(result)
+
+    def test_locale_warning_prefix_still_parses_complete_json(self):
+        result = {
+            "success": True,
+            "result": {
+                "contacted": {
+                    "10.0.0.1": {
+                        "stdout": (
+                            "/etc/profile.d/lang.sh: line 19: warning: setlocale: "
+                            "LC_CTYPE: cannot change locale (C.UTF-8)\n"
+                            '{"cpu":{"usage_percent":25.0,"core_count":4,"load_1m":0.5,"load_5m":0.3,"load_15m":0.1}}\n'
+                        ),
+                        "rc": 0,
+                    }
+                }
+            },
+        }
+
+        metrics = self.collector.process_adhoc_result(result)
+
+        assert "host_cpu_usage_percent" in metrics
+        assert "25.0" in metrics
+
+    def test_incomplete_json_after_locale_warning_reports_unclosed(self):
+        result = {
+            "success": True,
+            "result": {
+                "contacted": {
+                    "10.0.0.1": {
+                        "stdout": (
+                            "/etc/profile.d/lang.sh: line 19: warning: setlocale: "
+                            "LC_CTYPE: cannot change locale (C.UTF-8)\n"
+                            '{\n"cpu":{"usage_percent":1.26}\n,\n"mem":{"total_bytes":8200810496'
+                        ),
+                        "rc": 0,
+                    }
+                }
+            },
+        }
+
+        with pytest.raises(RuntimeError, match="incomplete JSON"):
             self.collector.process_adhoc_result(result)
 
     def test_empty_result(self):
@@ -1940,7 +2030,9 @@ class TestHostCollectorCollect:
         await collector.collect()
 
         call_kwargs = mock_adhoc.call_args[1]
-        assert call_kwargs["module_args"].startswith(f"bash <<'{LINUX_SCRIPT_WRAPPER_EOF}'\n")
+        assert call_kwargs["module_args"].startswith(
+            f"{LINUX_SCRIPT_WRAPPER_PREFIX} <<'{LINUX_SCRIPT_WRAPPER_EOF}'\n"
+        )
 
     @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_default_modules_when_invalid(self, mock_adhoc):
