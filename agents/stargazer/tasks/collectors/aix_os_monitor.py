@@ -295,8 +295,7 @@ def parse_aix_metrics_to_prometheus(
                 continue
             mount = disk.get("mount", "unknown")
             path = disk.get("path") or mount
-            fstype = disk.get("fstype") or ""
-            disk_labels = f"{base_labels},{_format_prometheus_labels(mount=mount, path=path, fstype=fstype)}"
+            disk_labels = f"{base_labels},{_format_prometheus_labels(mount=mount, path=path)}"
             used = _as_float(disk.get("used_bytes", 0))
             free = _as_float(_metric_value(disk, "free_bytes", "available_bytes", default=0))
             total = _as_float(disk.get("total_bytes", 0))

@@ -1,6 +1,6 @@
 Host AIX:
   name: 主机 AIX
-  desc: 通过 AIX 系统命令采集主机操作系统指标；命令不存在则跳过。版本由 oslevel -r 读取（例如 7100-00）。官方测过 7.2/7.3；实际按系统命令是否存在采集，缺了跳过。本机采集会在目标主机上准备采集后，由 Linux 采集节点按间隔取数。
+  desc: 通过 AIX 系统命令采集主机操作系统指标；命令不存在则跳过。版本由 oslevel -r 读取（例如 7100-00）。本机采集会在目标主机上准备采集后，由 Linux 采集节点按间隔取数。
 monitor_object:
   Host: 主机
 monitor_object_type:
@@ -36,13 +36,13 @@ monitor_object_metric:
       desc: 表示磁盘单位时间内写入的数据量，用于评估磁盘写入吞吐能力。
     diskio_write_bytes_total:
       name: 磁盘写入字节数
-      desc: 表示 iostat 第二次报告的磁盘写入字节数（间隔采样，不是开机累计）。
+      desc: 该设备的磁盘写入字节数。速率用 1 秒间隔采样；7.1 空闲间隔回退时可能来自此前非空闲报告。
     diskio_read_bytes_rate:
       name: 磁盘读出速率
       desc: 表示磁盘单位时间内读取的数据量，用于评估磁盘读取吞吐能力。
     diskio_read_bytes_total:
       name: 磁盘读取字节数
-      desc: 表示 iostat 第二次报告的磁盘读取字节数（间隔采样，不是开机累计）。
+      desc: 该设备的磁盘读取字节数。速率用 1 秒间隔采样；7.1 空闲间隔回退时可能来自此前非空闲报告。
     disk_tm_act:
       name: 磁盘 tm_act
       desc: 表示 AIX iostat 的 % tm_act，即磁盘处于活动状态的时间占比。这是 AIX 磁盘忙碌指标，不是 Linux %util。
