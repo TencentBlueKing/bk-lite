@@ -76,7 +76,11 @@ def wrap_ksh_resident_run() -> str:
 
 
 def wrap_ksh_resident_probe() -> str:
-    return "/usr/bin/ksh -c '" f"if test -x {AIX_RESIDENT_PATH}; then printf {AIX_PROBE_PRESENT}; " f"else printf {AIX_PROBE_ABSENT}; fi'\n"
+    return (
+        "/usr/bin/ksh -c '"
+        f"if test -x {AIX_RESIDENT_PATH} && test -x {AIX_KEEPER_PATH}; "
+        f"then printf {AIX_PROBE_PRESENT}; else printf {AIX_PROBE_ABSENT}; fi'\n"
+    )
 
 
 def aix_config_type(params: dict[str, Any] | None) -> str:
@@ -110,6 +114,11 @@ def wrap_ksh_install(script_body: str | None = None) -> str:
         "  if /usr/bin/whence mkssys >/dev/null 2>&1; then",
         f"    if /usr/bin/lssrc -s {AIX_SRC_NAME} >/dev/null 2>&1; then",
         "      _src_ok=1",
+        f"      _src_line=`/usr/bin/lssrc -S -s {AIX_SRC_NAME} 2>/dev/null`",
+        '      case "${_src_line}" in',
+        f"        *{AIX_KEEPER_PATH}*) : ;;",
+        (f"        *) /usr/bin/chssys -s {AIX_SRC_NAME} -p /usr/bin/ksh " f"-a {AIX_KEEPER_PATH} >/dev/null 2>&1 ;;"),
+        "      esac",
         (f"    elif /usr/bin/mkssys -s {AIX_SRC_NAME} -p /usr/bin/ksh " f"-a {AIX_KEEPER_PATH} -u 0 -S -n 15 -f 9 -R >/dev/null 2>&1; then"),
         "      _src_ok=1",
         "    fi",
