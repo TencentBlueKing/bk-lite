@@ -170,6 +170,92 @@ def test_share_application_detail_rejects_when_widget_not_declared(monkeypatch):
     assert response.status_code == 403
 
 
+def test_share_architecture_delegates_with_sharer_not_visitor(monkeypatch):
+    captured = {}
+    sharer = SimpleNamespace(
+        username="sharer-alice",
+        is_superuser=False,
+        is_authenticated=True,
+        pk=9,
+        id=9,
+    )
+    visitor = SimpleNamespace(
+        username="visitor-bob",
+        is_superuser=False,
+        is_authenticated=True,
+        pk=2,
+        id=2,
+    )
+    principal = SimpleNamespace(
+        resource_type="screen",
+        resource=SimpleNamespace(
+            view_sets={
+                "items": [
+                    {
+                        "valueConfig": {
+                            "chartType": "application3D",
+                            "sceneWidgetType": "application3D",
+                        }
+                    }
+                ]
+            }
+        ),
+        space_id=42,
+        user=sharer,
+    )
+
+    monkeypatch.setattr(
+        "apps.operation_analysis.views.share_view.resolve_session",
+        lambda **kwargs: principal,
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.views.share_view._delegated_sharer_user",
+        lambda user: user,
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.views.share_view.log_share_access",
+        lambda *args, **kwargs: None,
+    )
+
+    def fake_as_view(actions):
+        assert actions == {"post": "application3d_architecture"}
+
+        def view(request):
+            user = getattr(request, "user", None) or getattr(request, "_force_auth_user", None)
+            captured["username"] = getattr(user, "username", None)
+            captured["team"] = request.COOKIES.get("current_team")
+            data = getattr(request, "data", None)
+            if not isinstance(data, dict):
+                try:
+                    data = json.loads(request.body.decode() or "{}")
+                except (TypeError, ValueError, UnicodeDecodeError):
+                    data = {}
+            captured["application_id"] = data.get("application_id") or data.get("applicationId")
+            return Response({"ok": True})
+
+        return view
+
+    monkeypatch.setattr(
+        "apps.operation_analysis.views.scene_widget_view.SceneWidgetViewSet.as_view",
+        fake_as_view,
+    )
+
+    factory = APIRequestFactory()
+    request = factory.post(
+        "/share/",
+        {"application_id": APP_A},
+        format="json",
+    )
+    force_authenticate(request, user=visitor)
+    view = DashboardShareAccessViewSet.as_view({"post": "application3d_architecture"})
+    response = view(request, session_id="session-1")
+
+    assert response.status_code == 200
+    assert captured["username"] == "sharer-alice"
+    assert captured["team"] == "42"
+    assert captured["application_id"] == APP_A
+
+
 def test_application_detail_with_sharer_identity_applies_field_permissions(monkeypatch):
     """Same QueryService path Share delegates into: sharer show_fields gate properties."""
     application = _application_payload()
