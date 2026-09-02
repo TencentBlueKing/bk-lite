@@ -16,7 +16,7 @@ def _discover(*, organization_ids, instance_id, application_id):
     return DjangoTelemetryCatalogService().discover(CatalogDiscovery(application_id, "checkout", instance_id, "production"))
 
 
-def _span(trace_id, span_id, application_id, instance_id, now, *, status="ok", name="POST /checkout"):
+def _span(trace_id, span_id, application_id, instance_id, now, *, status="ok", name="POST /checkout", kind="server"):
     return SpanSummary(
         trace_id=trace_id,
         span_id=span_id,
@@ -28,7 +28,7 @@ def _span(trace_id, span_id, application_id, instance_id, now, *, status="ok", n
         instance_id=instance_id,
         status=status,
         name=name,
-        kind="server",
+        kind=kind,
         http_method="POST",
         http_status_code="200",
     )
@@ -138,3 +138,28 @@ def test_memory_span_store_filters_controlled_fields():
         )
     )
     assert [item.span_id for item in page.items] == ["1" * 16]
+
+
+def test_memory_span_store_filters_entry_kinds():
+    now = timezone.now()
+    store = InMemoryTraceStore(
+        spans=[
+            _span("a" * 32, "1" * 16, "shop", "pod-a", now, status="error", name="POST /pay", kind="server"),
+            _span("b" * 32, "2" * 16, "shop", "pod-a", now, status="error", name="SEND notify", kind="client"),
+            _span("c" * 32, "3" * 16, "shop", "pod-a", now, status="error", name="consume jobs", kind="consumer"),
+        ]
+    )
+    from apps.apm.services.contracts import SpanSearchQuery
+
+    page = store.search_spans(
+        SpanSearchQuery(
+            started_at=now - timedelta(hours=1),
+            ended_at=now + timedelta(minutes=1),
+            service_name="checkout",
+            status="error",
+            kinds=("server", "consumer"),
+            limit=10,
+        )
+    )
+
+    assert [item.span_id for item in page.items] == ["3" * 16, "1" * 16]

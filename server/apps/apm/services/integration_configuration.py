@@ -8,6 +8,7 @@ from django.core.validators import URLValidator
 
 from apps.apm.services.contracts import IngestSnippet, IngestSnippetRequest
 from apps.apm.services.probe_artifacts import (
+    DOTNET_AUTO_ARTIFACT_NAME,
     GO_SDK_ARTIFACT_NAME,
     JAVA_AGENT_ARTIFACT_NAME,
     LANGUAGE_PROBE_ARTIFACTS,
@@ -159,10 +160,54 @@ _RUNTIME_PROFILES = {
 }
 
 
+_DOTNET_SUPPORT_NOTE = (
+    "仅支持 Linux x86_64 glibc（Ubuntu / Debian / CentOS 及同类容器镜像）；不支持 Alpine、ARM64、Windows。"
+)
+_DOTNET_PROFILER_CLSID = "{918728DD-259F-4A6A-AC2B-B85E1B658318}"
+_DOTNET_CONTAINER_HOME = "/otel-dotnet-auto"
+
+
 def _otel_resource_value(value: str) -> str:
     """按 OTEL_RESOURCE_ATTRIBUTES 语法编码值；Shell literal 由调用方另行处理。"""
 
     return quote(value, safe="-._~")
+
+
+def _dotnet_traces_only_environment() -> dict[str, str]:
+    return {
+        "OTEL_METRICS_EXPORTER": "none",
+        "OTEL_LOGS_EXPORTER": "none",
+    }
+
+
+def _dotnet_clr_environment(home: str) -> dict[str, str]:
+    return {
+        "OTEL_DOTNET_AUTO_HOME": home,
+        "CORECLR_ENABLE_PROFILING": "1",
+        "CORECLR_PROFILER": _DOTNET_PROFILER_CLSID,
+        "CORECLR_PROFILER_PATH": f"{home}/linux-x64/OpenTelemetry.AutoInstrumentation.Native.so",
+        "DOTNET_STARTUP_HOOKS": f"{home}/net/OpenTelemetry.AutoInstrumentation.StartupHook.dll",
+        "DOTNET_ADDITIONAL_DEPS": f"{home}/AdditionalDeps",
+        "DOTNET_SHARED_STORE": f"{home}/store",
+    }
+
+
+def _dotnet_host_clr_exports() -> tuple[str, ...]:
+    lines = ['export OTEL_DOTNET_AUTO_HOME="$HOME/.otel-dotnet-auto"', '. "$OTEL_DOTNET_AUTO_HOME/instrument.sh"']
+    for key, value in _dotnet_clr_environment("$OTEL_DOTNET_AUTO_HOME").items():
+        if key == "OTEL_DOTNET_AUTO_HOME":
+            continue
+        if key == "CORECLR_PROFILER":
+            lines.append(f"export {key}={shlex.quote(value)}")
+        else:
+            lines.append(f'export {key}="{value}"')
+    return tuple(lines)
+
+
+def _with_dotnet_support_note(language: str, code: str) -> str:
+    if language != "dotnet":
+        return code
+    return f"# {_DOTNET_SUPPORT_NOTE}\n{code}"
 
 
 def _kubernetes_snippet(language: str, environment: dict[str, str], probe_download_url: str) -> str:
@@ -173,10 +218,12 @@ def _kubernetes_snippet(language: str, environment: dict[str, str], probe_downlo
         "nodejs": f"应用镜像需预装 @opentelemetry/auto-instrumentations-node。离线包：{probe_download_url}",
         "java": f"应用镜像需包含 /opt/opentelemetry-javaagent.jar。离线包：{probe_download_url}",
         "go": f"Go 无通用自动探针；应用二进制需先完成 OpenTelemetry Go SDK 初始化。离线包：{probe_download_url}",
+        "dotnet": f"应用镜像需包含 {_DOTNET_CONTAINER_HOME}，并使用 dotnet App.dll 启动。离线包：{probe_download_url}",
     }
     runtime_environment = {
         "nodejs": {"NODE_OPTIONS": "--require @opentelemetry/auto-instrumentations-node/register"},
         "java": {"JAVA_TOOL_OPTIONS": "-javaagent:/opt/opentelemetry-javaagent.jar"},
+        "dotnet": _dotnet_clr_environment(_DOTNET_CONTAINER_HOME),
     }.get(language, {})
     kubernetes_environment = {
         **environment,
@@ -265,6 +312,15 @@ def _host_install_commands(language: str, probe_download_url: str) -> str:
                 "go mod download go.opentelemetry.io/otel go.opentelemetry.io/otel/sdk go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp",
             )
         )
+    if language == "dotnet":
+        return "\n".join(
+            (
+                _curl_download(probe_download_url, DOTNET_AUTO_ARTIFACT_NAME),
+                'mkdir -p "$HOME/.otel-dotnet-auto"',
+                f'unzip -o -q {DOTNET_AUTO_ARTIFACT_NAME} -d "$HOME/.otel-dotnet-auto"',
+                *_dotnet_host_clr_exports(),
+            )
+        )
     return "# Install the selected OpenTelemetry SDK."
 
 
@@ -303,6 +359,14 @@ def _docker_install_commands(language: str, probe_download_url: str) -> str:
                 "mkdir -p /opt/otel-go-sdk",
                 f"unzip -o -q /tmp/{GO_SDK_ARTIFACT_NAME} -d /opt/otel-go-sdk",
                 "GOPROXY=file:///opt/otel-go-sdk GOSUMDB=off go mod download go.opentelemetry.io/otel go.opentelemetry.io/otel/sdk go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp",
+            )
+        )
+    if language == "dotnet":
+        return " && ".join(
+            (
+                f"RUN curl --fail --silent --show-error --location {quoted_url} --output /tmp/{DOTNET_AUTO_ARTIFACT_NAME}",
+                f"mkdir -p {_DOTNET_CONTAINER_HOME}",
+                f"unzip -o -q /tmp/{DOTNET_AUTO_ARTIFACT_NAME} -d {_DOTNET_CONTAINER_HOME}",
             )
         )
     return "# Install the selected OpenTelemetry SDK in the image."
@@ -477,6 +541,8 @@ class DjangoIntegrationConfigurationService:
             "OTEL_PROPAGATORS": "tracecontext,baggage",
             "OTEL_RESOURCE_ATTRIBUTES": resource,
         }
+        if request.language == "dotnet":
+            environment.update(_dotnet_traces_only_environment())
         install_commands = {
             language: _host_install_commands(language, request.probe_download_url)
             for language in LANGUAGE_PROBE_ARTIFACTS
@@ -486,6 +552,7 @@ class DjangoIntegrationConfigurationService:
             "nodejs": "node --require @opentelemetry/auto-instrumentations-node/register app.js",
             "java": "java -javaagent:./opentelemetry-javaagent.jar -jar app.jar",
             "go": _GO_SDK_GUIDE,
+            "dotnet": "dotnet App.dll",
         }
 
         if request.runtime == "kubernetes":
@@ -500,10 +567,12 @@ class DjangoIntegrationConfigurationService:
                 "nodejs": "node app.js",
                 "java": "java -jar app.jar",
                 "go": "./app",
+                "dotnet": "dotnet App.dll",
             }
             runtime_environment = {
                 "nodejs": {"NODE_OPTIONS": "--require @opentelemetry/auto-instrumentations-node/register"},
                 "java": {"JAVA_TOOL_OPTIONS": "-javaagent:/opt/opentelemetry-javaagent.jar"},
+                "dotnet": _dotnet_clr_environment(_DOTNET_CONTAINER_HOME),
             }.get(request.language, {})
             docker_environment = [
                 f"  -e {key}={shlex.quote(value)} \\" + "\n"
@@ -553,4 +622,4 @@ class DjangoIntegrationConfigurationService:
                     start_commands.get(request.language, "# Start the instrumented application."),
                 )
             )
-        return IngestSnippet(environment=environment, code=code)
+        return IngestSnippet(environment=environment, code=_with_dotnet_support_note(request.language, code))

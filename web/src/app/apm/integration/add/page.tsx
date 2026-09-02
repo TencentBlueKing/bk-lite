@@ -47,7 +47,7 @@ const INTEGRATION_GROUPS: { key: string; title: string; icon: ReactNode; methods
       { key: 'nodejs', title: 'Node.js', icon: <JavaScriptOutlined aria-hidden="true" />, language: 'nodejs', available: true },
       { key: 'java', title: 'Java', icon: <CoffeeOutlined aria-hidden="true" />, language: 'java', available: true },
       { key: 'python', title: 'Python', icon: <PythonOutlined aria-hidden="true" />, language: 'python', available: true },
-      { key: 'dotnet', title: '.NET', icon: <DotNetOutlined aria-hidden="true" />, available: false },
+      { key: 'dotnet', title: '.NET', icon: <DotNetOutlined aria-hidden="true" />, language: 'dotnet', available: true },
       { key: 'go', title: 'Go', icon: <CodeOutlined aria-hidden="true" />, language: 'go', available: true },
     ],
   },
@@ -167,7 +167,7 @@ export default function ApmIntegrationAddPage() {
         description: t('apm.integration.pythonDesc', '自动探针接入，支持 Django / Flask / FastAPI'),
       },
       dotnet: {
-        description: t('apm.integration.dotnetDesc', '基于 OpenTelemetry .NET 自动探针'),
+        description: t('apm.integration.dotnetDesc', '自动探针接入，仅支持 Linux x86_64 glibc（Ubuntu / Debian / CentOS 及同类镜像）；不支持 Alpine、ARM64、Windows'),
       },
       go: {
         description: t('apm.integration.goDesc', '手动初始化 OpenTelemetry Go SDK，生成完整 Provider 示例'),

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -56,6 +56,7 @@ import type {
   ApmDeploymentEvent,
   ApmService,
   ApmServiceEndpointRed,
+  ApmServiceErrorBreakdown,
   ApmServiceRed,
   ApmSlo,
   ApmTopologyEdge,
@@ -63,6 +64,7 @@ import type {
   ApmTraceSummary,
 } from '@/app/apm/types';
 import { isInferredTopologyNode } from '@/app/apm/services/topology/topology-layout';
+import ServiceErrorTab from '@/app/apm/services/[serviceId]/error-tab';
 import SummaryMetricCard from '@/components/summary-metric-card';
 import Permission from '@/components/permission';
 import TimeSeriesComposedChart from '@/components/time-series-composed-chart';
@@ -121,6 +123,7 @@ export default function ApmServiceDetailPage() {
   const {
     getService,
     getServiceRed,
+    getServiceErrorBreakdown,
     getTraces,
     getTopology,
     getSlos,
@@ -139,12 +142,21 @@ export default function ApmServiceDetailPage() {
   const [metricState, setMetricState] = useState<PageState>('loading');
   const [traces, setTraces] = useState<ApmTraceSummary[]>([]);
   const [tracesState, setTracesState] = useState<PageState>('loading');
+  const [errorBreakdown, setErrorBreakdown] = useState<ApmServiceErrorBreakdown>();
+  const [errorsState, setErrorsState] = useState<PageState>('loading');
   const [upstream, setUpstream] = useState<{ node: ApmTopologyNode; edge: ApmTopologyEdge }[]>([]);
   const [downstream, setDownstream] = useState<{ node: ApmTopologyNode; edge: ApmTopologyEdge }[]>([]);
   const [serviceSlos, setServiceSlos] = useState<ApmSlo[]>([]);
   const [deployments, setDeployments] = useState<ApmDeploymentEvent[]>([]);
   const [deploymentsState, setDeploymentsState] = useState<PageState>('loading');
   const [refreshKey, setRefreshKey] = useState(0);
+  const queryWindow = useMemo(() => {
+    const endedAt = new Date().toISOString();
+    return {
+      endedAt,
+      startedAt: new Date(new Date(endedAt).getTime() - RANGE_MS[timeRange]).toISOString(),
+    };
+  }, [refreshKey, timeRange]);
 
   useEffect(() => {
     if (authLoading || !params.serviceId) return;
@@ -175,8 +187,7 @@ export default function ApmServiceDetailPage() {
     }
     let active = true;
     setMetricState('loading');
-    const endedAt = new Date().toISOString();
-    const startedAt = new Date(new Date(endedAt).getTime() - RANGE_MS[timeRange]).toISOString();
+    const { startedAt, endedAt } = queryWindow;
     getServiceRed(service.id, environment, startedAt, endedAt)
       .then((value) => {
         if (!active) return;
@@ -189,7 +200,7 @@ export default function ApmServiceDetailPage() {
     return () => {
       active = false;
     };
-  }, [environment, getServiceRed, refreshKey, service, timeRange]);
+  }, [environment, getServiceRed, queryWindow, service]);
 
   useEffect(() => {
     if (!service || environment === undefined || authLoading) return;
@@ -276,6 +287,27 @@ export default function ApmServiceDetailPage() {
     };
   }, [activeTab, authLoading, getDeployments, params.serviceId, refreshKey]);
 
+  const loadErrorBreakdown = useCallback(() => {
+    if (!service || environment === undefined || authLoading) return;
+    setErrorsState('loading');
+    void getServiceErrorBreakdown(service.id, {
+      environment,
+      started_at: queryWindow.startedAt,
+      ended_at: queryWindow.endedAt,
+      sample_limit: 20,
+    })
+      .then((result) => {
+        setErrorBreakdown(result);
+        setErrorsState('ready');
+      })
+      .catch((error) => setErrorsState(catalogErrorKind(error)));
+  }, [authLoading, environment, getServiceErrorBreakdown, queryWindow, service]);
+
+  useEffect(() => {
+    if (activeTab !== 'errors') return;
+    loadErrorBreakdown();
+  }, [activeTab, loadErrorBreakdown, refreshKey]);
+
   const exploreHref = service && red
     ? `/apm/explore/traces?${new URLSearchParams({
       service_namespace: service.namespace,
@@ -285,6 +317,15 @@ export default function ApmServiceDetailPage() {
       ended_at: red.ended_at,
     }).toString()}`
     : '/apm/explore/traces';
+
+  const errorsExploreHref = service
+    ? `/apm/explore/errors?${new URLSearchParams({
+      service_namespace: service.namespace,
+      service_name: service.name,
+      ...(environment ? { environment } : {}),
+      window: timeRange,
+    }).toString()}`
+    : '/apm/explore/errors';
 
   const chartData = useMemo<RedChartPoint[]>(
     () => (red?.timeseries ?? []).map((point) => ({
@@ -302,11 +343,6 @@ export default function ApmServiceDetailPage() {
     const maxRate = Math.max(...items.map((item) => item.request_rate), 1);
     return items.map((item) => ({ ...item, ratio: Math.round((item.request_rate / maxRate) * 100) }));
   }, [red]);
-
-  const errorTraces = useMemo(
-    () => traces.filter((item) => item.status === 'error'),
-    [traces]
-  );
 
   const health = deriveHealth(service?.status ?? 'silent', red?.error_rate ?? null);
 
@@ -759,52 +795,16 @@ export default function ApmServiceDetailPage() {
               },
               {
                 key: 'errors',
-                label: errorTraces.length
-                  ? t('apm.serviceDetail.errorsWithCount', '错误 ({count})', { count: errorTraces.length })
-                  : t('apm.serviceDetail.errors', '错误'),
-                children: errorTraces.length ? (
-                  <div className="flex flex-col gap-3">
-                    {errorTraces.map((item) => (
-                      <ApmSurface key={item.trace_id} padding="compact">
-                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                          <div className="min-w-0">
-                            <Space size={8} wrap>
-                              <Typography.Text strong className="!text-sm">{item.root_span_name}</Typography.Text>
-                              <Tag bordered={false} color="error">{t('apm.severity.error', '错误')}</Tag>
-                              <Typography.Text type="secondary" className="!text-xs">
-                                {item.service_name} · {item.environment || t('apm.common.unset', '未设置')}
-                              </Typography.Text>
-                            </Space>
-                            <div className="mt-2">
-                              <Link
-                                href={`/apm/explore/traces/${item.trace_id}`}
-                                className="text-xs text-[var(--color-primary)]"
-                              >
-                                {t('apm.explore.viewSampleTrace', '查看样本 Trace →')}
-                              </Link>
-                            </div>
-                          </div>
-                          <Space size={24}>
-                            <div className="text-center">
-                              <Typography.Text type="secondary" className="!text-xs">{t('apm.explore.spanCount', '跨度数')}</Typography.Text>
-                              <div className="text-sm font-semibold tabular-nums text-[var(--color-fail)]">{item.span_count}</div>
-                            </div>
-                            <div className="text-center">
-                              <Typography.Text type="secondary" className="!text-xs">{t('apm.common.latency', '耗时')}</Typography.Text>
-                              <div className="text-sm font-semibold tabular-nums">{formatLatency(item.duration_ms, false, t)}</div>
-                            </div>
-                            <div className="text-center">
-                              <Typography.Text type="secondary" className="!text-xs">{t('apm.explore.lastSeen', '最近出现')}</Typography.Text>
-                              <div className="text-sm tabular-nums">{formatRelativeTime(item.started_at, t)}</div>
-                            </div>
-                          </Space>
-                        </div>
-                      </ApmSurface>
-                    ))}
-                  </div>
-                ) : (
-                  <ApmSurface className="py-16 text-center">
-                    <CompactEmptyState description={t('apm.serviceDetail.noErrorTraces', '当前时间窗暂无错误 Trace')} />
+                label: t('apm.serviceDetail.errors', '错误'),
+                children: (
+                  <ApmSurface>
+                    <ServiceErrorTab
+                      breakdown={errorBreakdown}
+                      state={errorsState}
+                      chartData={chartData}
+                      exploreHref={errorsExploreHref}
+                      onRetry={loadErrorBreakdown}
+                    />
                   </ApmSurface>
                 ),
               },

@@ -10,6 +10,7 @@ from apps.apm.adapters import TelemetryStoreUnavailable, VictoriaTracesTelemetry
 from apps.apm.services.contracts import (
     InstanceActivityQuery,
     MetricDataState,
+    ServiceErrorBreakdownQuery,
     ServiceMetricQuery,
     SloMetricQuery,
     TopologyDependencyQuery,
@@ -316,6 +317,8 @@ def test_red_uses_deduplicated_trace_span_aggregation_and_escapes_filters():
 
     assert red.request_rate == pytest.approx(0.1)
     assert red.error_rate == pytest.approx(1 / 3)
+    assert red.request_count == 6
+    assert red.error_count == 2
     assert red.p95_ms == 100
     assert red.p99_ms == 250
     params = session.get.call_args.kwargs["params"]
@@ -544,6 +547,32 @@ def test_search_spans_builds_controlled_logsql_and_maps_rows():
     assert session.get.call_args.kwargs["params"]["limit"] == 21
 
 
+def test_search_spans_filters_entry_kinds_like_red_metrics():
+    now = timezone.now()
+    session = Mock()
+    session.get.return_value = _response({}, raw=b"")
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+
+    from apps.apm.services.contracts import SpanSearchQuery
+
+    store.search_spans(
+        SpanSearchQuery(
+            started_at=now - timedelta(hours=1),
+            ended_at=now,
+            service_name="etl-worker",
+            environment="production",
+            status="error",
+            kinds=("server", "consumer"),
+            limit=20,
+        )
+    )
+
+    query = session.get.call_args.kwargs["params"]["query"]
+    assert 'kind:in("2","5")' in query
+    assert 'status_code:="2"' in query
+    assert 'kind:="' not in query
+
+
 def _sample_id_row(trace_id, now):
     return json.dumps({"trace_id": trace_id, "matched_at": str(int(now.timestamp() * 1_000_000_000))})
 
@@ -757,3 +786,201 @@ def test_vt_client_side_rejection_maps_to_capacity_hint_not_unavailable():
 
     with pytest.raises(TelemetryStoreUnavailable, match="超出单次查询容量"):
         store.service_red(ServiceMetricQuery("shop", "checkout", "prod", now - timedelta(minutes=1), now))
+
+
+def _error_breakdown_session(*, red, endpoints, types, samples, recent):
+    session = Mock()
+
+    def get(url, **kwargs):
+        query = str(kwargs.get("params", {}).get("query", ""))
+        if url.endswith("/select/logsql/stats_query"):
+            if "stats by (endpoint)" in query or "stats by (name)" in query:
+                return _response(endpoints)
+            return _response(red)
+        if "stats by (kind" in query:
+            return _ndjson(*types)
+        if 'kind:in("2","5")' in query and "status_code:=\"2\"" in query:
+            return _ndjson(*recent)
+        return _ndjson(*samples)
+
+    session.get.side_effect = get
+    return session
+
+
+def _ndjson(*rows):
+    body = "\n".join(json.dumps(row) for row in rows)
+    return _response({}, raw=body.encode())
+
+
+def _grouped_vector(groups):
+    result = []
+    timestamp = 1_785_888_000
+    for labels, values in groups:
+        for name, value in values.items():
+            result.append({"metric": {"__name__": name, **labels}, "value": [timestamp, str(value)]})
+    return {"status": "success", "data": {"resultType": "vector", "result": result}}
+
+
+def test_error_breakdown_coalesces_exception_over_error_type_and_merges_kinds():
+    now = timezone.now()
+    start_ns = str(int(now.timestamp() * 1_000_000_000))
+    session = _error_breakdown_session(
+        red=_vector(requests=10, errors=4, p95=100_000_000, p99=250_000_000),
+        endpoints=_grouped_vector(
+            [
+                ({"endpoint": "POST /checkout"}, {"requests": 8, "errors": 3}),
+                ({"endpoint": "GET /products"}, {"requests": 2, "errors": 1}),
+            ]
+        ),
+        types=[
+            {
+                "c": "50",
+                "kind": "3",
+                "event:event_attr:exception.type:0": "",
+                "span_attr:error.type": "payment_declined",
+                "status_message": "payment_declined",
+                "span_attr:http.response.status_code": "500",
+                "last_seen": now.isoformat(),
+            },
+            {
+                "c": "10",
+                "kind": "2",
+                "event:event_attr:exception.type:0": "",
+                "span_attr:error.type": "payment_declined",
+                "status_message": "payment_declined",
+                "span_attr:http.response.status_code": "502",
+                "last_seen": now.isoformat(),
+            },
+            {
+                "c": "4",
+                "kind": "2",
+                "event:event_attr:exception.type:0": "BrokenPipeError",
+                "span_attr:error.type": "server_error",
+                "status_message": "server_error",
+                "span_attr:http.response.status_code": "502",
+                "event:event_attr:exception.message:0": "[Errno 32] Broken pipe",
+                "last_seen": now.isoformat(),
+            },
+            {
+                "c": "3",
+                "kind": "3",
+                "event:event_attr:exception.type:0": "",
+                "span_attr:error.type": "",
+                "status_message": "upstream timeout",
+                "span_attr:http.response.status_code": "502",
+                "last_seen": now.isoformat(),
+            },
+            {
+                "c": "2",
+                "kind": "1",
+                "event:event_attr:exception.type:0": "",
+                "span_attr:error.type": "",
+                "status_message": "",
+                "span_attr:http.response.status_code": "502",
+                "last_seen": now.isoformat(),
+            },
+            {
+                "c": "1",
+                "kind": "1",
+                "event:event_attr:exception.type:0": "",
+                "span_attr:error.type": "",
+                "status_message": "",
+                "span_attr:http.response.status_code": "404",
+                "last_seen": now.isoformat(),
+            },
+        ],
+        samples=[_span_row("a" * 32, "1" * 16, now, name="POST /orders")],
+        recent=[_span_row("b" * 32, "2" * 16, now, name="POST /checkout")],
+    )
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+    result = store.service_error_breakdown(
+        ServiceErrorBreakdownQuery("shop", "checkout", "prod", now - timedelta(minutes=1), now, sample_limit=20)
+    )
+
+    assert result.request_count == 10
+    assert result.error_count == 4
+    assert result.failed_endpoints[0].endpoint == "POST /checkout"
+    assert result.failed_endpoints[0].error_count == 3
+    assert result.failed_endpoints[1].error_count == 1
+    assert result.other_error_count == 0
+    types = {item.error_type: item for item in result.error_types}
+    assert types["payment_declined"].count == 60
+    assert types["payment_declined"].location == "downstream"
+    assert types["BrokenPipeError"].count == 4
+    assert types["BrokenPipeError"].location == "entry"
+    assert types["BrokenPipeError"].message == "[Errno 32] Broken pipe"
+    assert types["upstream timeout"].count == 3
+    assert types["upstream timeout"].location == "downstream"
+    assert types["HTTP 502"].count == 2
+    assert types["HTTP 502"].location == "internal"
+    assert types["未携带错误信息"].count == 1
+    assert result.recent_failures[0].trace_id == "b" * 32
+    queries = [call.kwargs["params"]["query"] for call in session.get.call_args_list]
+    assert any("stats by (endpoint)" in query and "kind:in(\"2\",\"5\")" in query for query in queries)
+    assert any("`event:event_attr:exception.type:0`" in query and "`span_attr:error.type`" in query for query in queries)
+    assert any("`event:event_attr:exception.message:0`" in query for query in queries if "stats by (kind" in query)
+    assert any('shop' in query and "status_code:=\"2\"" in query and "kind:in" not in query.split("stats by")[0] for query in queries if "stats by (kind" in query)
+    payment_query = next(query for query in queries if "payment_declined" in query and "sort by (_time)" in query)
+    assert "not `event:event_attr:exception.type:0`:*" in payment_query
+    assert "not `span_attr:error.type`:*" in payment_query
+    http_query = next(query for query in queries if '`span_attr:http.response.status_code`:="502"' in query and "sort by (_time)" in query)
+    assert "not `event:event_attr:exception.type:0`:*" in http_query
+    assert "not status_message:*" in http_query
+    unattributed_query = next(query for query in queries if ':~"^5"' in query and "sort by (_time)" in query)
+    assert "not `span_attr:http.response.status_code`:~\"^5\"" in unattributed_query
+
+
+def test_error_breakdown_failed_endpoints_remainder_matches_entry_error_count():
+    now = timezone.now()
+    session = _error_breakdown_session(
+        red=_vector(requests=100, errors=40, p95=1, p99=2),
+        endpoints=_grouped_vector(
+            [
+                ({"endpoint": "POST /a"}, {"requests": 50, "errors": 20}),
+                ({"endpoint": "POST /b"}, {"requests": 30, "errors": 10}),
+            ]
+        ),
+        types=[],
+        samples=[],
+        recent=[],
+    )
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+
+    result = store.service_error_breakdown(
+        ServiceErrorBreakdownQuery("shop", "checkout", "prod", now - timedelta(minutes=1), now)
+    )
+
+    assert sum(item.error_count for item in result.failed_endpoints) + result.other_error_count == 40
+    assert result.other_error_count == 10
+
+
+def test_error_breakdown_escapes_service_filters_and_returns_no_data_without_entry_requests():
+    now = timezone.now()
+    session = Mock()
+    session.get.return_value = _response(_vector())
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+
+    empty = store.service_error_breakdown(
+        ServiceErrorBreakdownQuery('shop" | stats count() as forged', "checkout", "prod", now - timedelta(minutes=1), now)
+    )
+
+    assert empty.data_state == MetricDataState.NO_DATA
+    assert empty.failed_endpoints == ()
+    query = session.get.call_args.kwargs["params"]["query"]
+    assert 'shop\\" | stats count() as forged' in query
+
+
+def test_error_breakdown_maps_upstream_failure_to_store_unavailable():
+    now = timezone.now()
+    session = Mock()
+    failed = Mock()
+    failed.status_code = 500
+    failed.headers = {}
+    failed.raise_for_status.side_effect = requests.HTTPError("500", response=failed)
+    session.get.return_value = failed
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+
+    with pytest.raises(TelemetryStoreUnavailable, match="查询不可用"):
+        store.service_error_breakdown(
+            ServiceErrorBreakdownQuery("shop", "checkout", "prod", now - timedelta(minutes=1), now)
+        )

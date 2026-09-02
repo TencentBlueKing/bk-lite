@@ -9,6 +9,7 @@ const read = (path: string) => readFileSync(join(webRoot, path), 'utf8');
 const traces = read('src/app/apm/explore/traces/page.tsx');
 const endpoints = read('src/app/apm/explore/endpoints/page.tsx');
 const errors = read('src/app/apm/explore/errors/page.tsx');
+const issueList = read('src/app/apm/components/issue-list.tsx');
 const traceDetail = read('src/app/apm/explore/traces/[traceId]/page.tsx');
 const legacyTraces = read('src/app/apm/traces/page.tsx');
 
@@ -37,17 +38,20 @@ assert.match(endpoints, /部分服务的端点指标查询失败/, '端点列表
 assert.match(endpoints, /Drawer/, '端点列表必须提供详情抽屉下钻');
 assert.match(endpoints, /样本调用链/, '端点详情必须提供样本 Trace');
 assert.match(errors, /getIssues\(/, '错误页必须来自真实 Issue 查询');
-assert.match(errors, /sample_traces/, '错误页必须展示样本调用链');
+assert.match(errors, /ApmIssueList/, '错误页必须复用 Issue 卡片而不是就地渲染');
+assert.match(errors, /service_namespace/, '错误分析必须能承接服务详情带来的服务筛选');
+assert.doesNotMatch(errors, /entry_only/, '探索错误分析必须保留全量 Error Span，不得按入口 Span 收窄');
 assert.doesNotMatch(errors, /Issue 自动聚类将在数据能力就绪后接入|当前版本按错误调用链展示/, '错误页不得堆叠能力规划说明');
-assert.match(errors, /完整堆栈与分布/, '错误页应保留完整堆栈与分布折叠区');
-assert.doesNotMatch(errors, /justify-between/, '样本调用链耗时必须紧挨名称，不得拉到行尾');
+assert.match(issueList, /sample_traces/, '错误页必须展示样本调用链');
+assert.match(issueList, /完整堆栈与分布/, '错误页应保留完整堆栈与分布折叠区');
+assert.doesNotMatch(issueList, /justify-between/, '样本调用链耗时必须紧挨名称，不得拉到行尾');
 assert.match(traceDetail, /跳到首个错误/, 'Trace 详情必须支持跳到首个错误 Span');
 assert.match(traceDetail, /服务耗时分解/, 'Trace 详情必须展示服务耗时分解');
 assert.match(traceDetail, /跨度列表/, 'Trace 详情必须支持跨度列表视图');
 assert.match(traceDetail, /火焰图/, 'Trace 详情必须支持火焰图视图');
 assert.match(legacyTraces, /\/apm\/explore\/traces/, '旧 /apm/traces 必须兼容跳转到探索目录');
 
-for (const source of [endpoints, errors, traces, traceDetail]) {
+for (const source of [endpoints, errors, issueList, traces, traceDetail]) {
   assert.doesNotMatch(source, /(?:stories|fixtures?)\//i, '探索生产页面不得导入 Story/fixture');
 }
 

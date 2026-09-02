@@ -2,6 +2,8 @@ from datetime import timedelta
 
 from apps.apm.services.contracts import (
     MetricStore,
+    ServiceErrorBreakdown,
+    ServiceErrorBreakdownQuery,
     ServiceMetricQuery,
     ServiceRed,
     SpanPage,
@@ -38,6 +40,23 @@ class DjangoTelemetryQueryService:
             raise RuntimeError("MetricStore 未配置")
         return self.metric_store.service_red(query)
 
+    def service_error_breakdown(self, query: ServiceErrorBreakdownQuery) -> ServiceErrorBreakdown:
+        if query.ended_at <= query.started_at:
+            raise ValueError("查询结束时间必须晚于开始时间")
+        if query.ended_at - query.started_at > MAX_METRIC_WINDOW:
+            raise ValueError("错误构成查询时间窗不能超过 7 天")
+        if not query.service_name.strip():
+            raise ValueError("service.name 不能为空")
+        if query.sample_limit < 1 or query.sample_limit > 50:
+            raise ValueError("sample_limit 必须在 1 到 50 之间")
+        store = self.trace_store if self.trace_store is not None else self.metric_store
+        if store is None:
+            raise RuntimeError("TelemetryStore 未配置")
+        breakdown = getattr(store, "service_error_breakdown", None)
+        if breakdown is None:
+            raise RuntimeError("TelemetryStore 未配置")
+        return breakdown(query)
+
     def search_traces(self, query: TraceSearchQuery) -> TracePage:
         self._validate_trace_window(query.started_at, query.ended_at)
         if query.service_name is not None and not query.service_name.strip():
@@ -57,8 +76,7 @@ class DjangoTelemetryQueryService:
         if query.limit < 1 or query.limit > MAX_TRACE_PAGE_SIZE:
             raise ValueError("Span 每页数量必须在 1 到 100 之间")
         self._validate_status(query.status)
-        if query.kind is not None and query.kind not in _VALID_KINDS:
-            raise ValueError("Span kind 仅支持 internal、server、client、producer、consumer")
+        self._validate_kinds(query.kind, query.kinds)
         self._validate_duration_bounds(query.min_duration_ms, query.max_duration_ms)
         if self.trace_store is None:
             raise RuntimeError("TraceStore 未配置")
@@ -81,6 +99,17 @@ class DjangoTelemetryQueryService:
     def _validate_status(status: str | None) -> None:
         if status is not None and status not in _VALID_STATUSES:
             raise ValueError("status 仅支持 ok 或 error")
+
+    @staticmethod
+    def _validate_kinds(kind: str | None, kinds: tuple[str, ...] | None) -> None:
+        if kind is not None and kinds is not None:
+            raise ValueError("kind 与 kinds 不能同时指定")
+        if kind is not None and kind not in _VALID_KINDS:
+            raise ValueError("Span kind 仅支持 internal、server、client、producer、consumer")
+        if kinds is None:
+            return
+        if not kinds or any(item not in _VALID_KINDS for item in kinds):
+            raise ValueError("Span kind 仅支持 internal、server、client、producer、consumer")
 
     @staticmethod
     def _validate_duration_bounds(min_duration_ms: float | None, max_duration_ms: float | None) -> None:

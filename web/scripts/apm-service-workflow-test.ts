@@ -42,10 +42,22 @@ assert.match(servicesPage, /router\.replace/, '服务目录筛选与视角必须
 assert.match(servicesPage, /\/apm\/events\/alerts\?service=/, '活跃告警必须下钻到告警页并携带服务筛选');
 
 const serviceDetail = readFileSync(join(webRoot, 'src/app/apm/services/[serviceId]/page.tsx'), 'utf8');
+const serviceErrorTab = readFileSync(join(webRoot, 'src/app/apm/services/[serviceId]/error-tab.tsx'), 'utf8');
 assert.match(serviceDetail, /activeKey=\{activeTab\}/, '服务详情 Tabs 必须真正切换内容而不是仅跳转');
 assert.match(serviceDetail, /key: 'traces'/, '服务详情必须内嵌调用链 Tab');
 assert.match(serviceDetail, /key: 'errors'/, '服务详情必须内嵌错误 Tab');
 assert.match(serviceDetail, /getTraces/, '服务详情调用链 Tab 必须读取真实 Trace');
+assert.match(serviceDetail, /getServiceErrorBreakdown/, '服务详情错误 Tab 必须读取错误构成聚合');
+assert.match(serviceErrorTab, /errorRateReconcile/, '服务详情错误 Tab 必须展示入口请求/失败次数/错误率');
+assert.match(serviceErrorTab, /failedEndpoints/, '服务详情错误 Tab 必须展示失败端点');
+assert.match(serviceErrorTab, /errorReasons/, '服务详情错误 Tab 必须展示错误原因');
+assert.match(serviceErrorTab, /explore\/errors|exploreHref/, '服务详情错误 Tab 必须下钻到错误分析');
+assert.doesNotMatch(serviceDetail, /getIssues/, '服务详情错误 Tab 不得再拉 Issue 列表');
+assert.doesNotMatch(serviceDetail + serviceErrorTab, /sampleShare/, '服务详情不得把样本占比装成全窗构成');
+assert.doesNotMatch(serviceDetail, /entry_only/, '服务详情错误 Tab 不得再按入口 Issue 查询');
+assert.doesNotMatch(serviceDetail, /errorsWithCount/, '服务详情错误 Tab 不得用 Issue 种类冒充错误条数');
+assert.doesNotMatch(serviceDetail, /issuesNextCursor/, '服务详情错误 Tab 不得按 Span 翻页');
+assert.doesNotMatch(serviceDetail, /traces\.filter\(\(item\) => item\.status === 'error'\)/, '服务详情错误 Tab 不得从调用链样本里筛选错误');
 assert.match(serviceDetail, /getTopology/, '服务详情依赖关系必须读取真实拓扑');
 assert.match(serviceDetail, /getDeployments/, '服务详情部署 Tab 必须读取物化部署事件');
 assert.doesNotMatch(serviceDetail, /部署事件将在发布埋点接入后展示/, '部署 Tab 不得继续使用埋点占位文案');

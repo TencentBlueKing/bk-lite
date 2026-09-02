@@ -395,6 +395,7 @@ def test_integration_config_java_snippet_uses_the_system_probe_download_address(
         ("python", "opentelemetry-python-wheels.tar.gz", "pypi.org"),
         ("nodejs", "opentelemetry-js-auto.tgz", "npmjs"),
         ("go", "opentelemetry-go-sdk.zip", "go get "),
+        ("dotnet", "opentelemetry-dotnet-auto-linux-glibc-x64.zip", "nuget.org"),
     ],
 )
 def test_integration_config_snippets_use_system_probe_download_addresses(

@@ -1,12 +1,12 @@
 # APM 探针制品发布 Runbook
 
 本文面向负责 BK-Lite 构建、镜像发布和环境初始化的运维同学，说明本版本
-可用的 Java / Python / Node.js / Go 接入脚本改为系统内下载后，发布流水线
+可用的 Java / Python / Node.js / Go / .NET 接入脚本改为系统内下载后，发布流水线
 必须归档的离线包和对象存储初始化步骤。
 
 ## 1. 变更摘要
 
-四类接入脚本都不再访问 GitHub、PyPI、npm 或 Go module 公网源。目标主机改为
+五类接入脚本都不再访问 GitHub、PyPI、npm、NuGet 或 Go module 公网源。目标主机改为
 从本系统下载对应离线包：
 
 ```text
@@ -23,8 +23,10 @@
 | Python | `opentelemetry-python-wheels.tar.gz` | `apm/probe/python/opentelemetry-python-wheels.tar.gz` | `opentelemetry-distro[otlp]` 及常见 instrumentation 的 wheelhouse |
 | Node.js | `opentelemetry-js-auto.tgz` | `apm/probe/nodejs/opentelemetry-js-auto.tgz` | `@opentelemetry/auto-instrumentations-node` 的离线包（含依赖） |
 | Go | `opentelemetry-go-sdk.zip` | `apm/probe/go/opentelemetry-go-sdk.zip` | Go module proxy 目录树，至少含 otel / sdk / otlptracehttp 及其依赖 |
+| .NET | `opentelemetry-dotnet-auto-linux-glibc-x64.zip` | `apm/probe/dotnet/opentelemetry-dotnet-auto-linux-glibc-x64.zip` | 官方 `opentelemetry-dotnet-instrumentation-linux-glibc-x64.zip` 原文件；仅 Linux x86_64 glibc |
 
-四类都要初始化。缺任意一个，对应语言的接入脚本 `curl --fail` 会失败。
+五类都要初始化。缺任意一个，对应语言的接入脚本 `curl --fail` 会失败。
+.NET 第一版不支持 Alpine / musl、ARM64、Windows；不要合并多份官方 zip。
 
 首版 Java 对象 key `apm/probe/opentelemetry-javaagent.jar` 仅下载兼容；新上传
 只写 `apm/probe/java/opentelemetry-javaagent.jar`。
@@ -33,13 +35,13 @@
 
 发布流水线必须完成以下三项，缺少任意一项都不能开放对应语言的接入指引：
 
-1. 归档上表四份**固定版本**离线包（禁止依赖 GitHub / PyPI / npm `latest`）。
+1. 归档上表五份**固定版本**离线包（禁止依赖 GitHub / PyPI / npm / NuGet `latest`）。
 2. 在部署准备期、NATS 已可用的环境中，对每个制品执行一次 `apm_probe_init`。
 3. 确认各云区域 `NODE_SERVER_URL` 已配置，且目标主机能访问该地址的 8011
    （或实际 Server HTTP 端口）。
 
-建议顺序：归档四份离线包 → 发布 Server → NATS 就绪后执行四次 `apm_probe_init`
-→ 验收四个下载地址。该初始化是**部署准备期**步骤，失败应终止发布流水线并
+建议顺序：归档五份离线包 → 发布 Server → NATS 就绪后执行五次 `apm_probe_init`
+→ 验收五个下载地址。该初始化是**部署准备期**步骤，失败应终止发布流水线并
 保留原始错误。
 
 禁止把 `apm_probe_init` 放进 Server 容器 `startup.sh` 或 `batch_init`。制品缺失
@@ -48,7 +50,7 @@
 
 ## 3. 构建并归档产物
 
-四份制品都必须固定版本，记录字节数和 SHA-256，不提交 Git，并至少保留上一版本
+五份制品都必须固定版本，记录字节数和 SHA-256，不提交 Git，并至少保留上一版本
 供回滚。内网无法访问公网时，由构建环境一次性拉取后作为流水线制品传递。
 
 本版本钉死的探针号（与 Collector `0.153.0` 无关；发布时若流水线归档不同，以归档为准）：
@@ -59,6 +61,7 @@
 | Python | `opentelemetry-python-wheels.tar.gz` | `opentelemetry-distro[otlp]==0.65b0`，配套 SDK **1.44.0** |
 | Node.js | `opentelemetry-js-auto.tgz` | `@opentelemetry/auto-instrumentations-node@0.79.0` |
 | Go | `opentelemetry-go-sdk.zip` | `go.opentelemetry.io/otel` **v1.46.0**（contrib 取同期模块） |
+| .NET | `opentelemetry-dotnet-auto-linux-glibc-x64.zip` | `opentelemetry-dotnet-instrumentation` **v1.16.0**（官方 `opentelemetry-dotnet-instrumentation-linux-glibc-x64.zip`） |
 
 ### Java
 
@@ -113,6 +116,24 @@ go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp
 不再执行 `go get`。归档文件名必须是 `opentelemetry-go-sdk.zip`。模块版本钉
 `go.opentelemetry.io/otel@v1.46.0` 及同期 `opentelemetry-go-contrib`，禁止不钉版本的 `go get`。
 
+### .NET
+
+从官方 Release 下载 **v1.16.0** 的 `opentelemetry-dotnet-instrumentation-linux-glibc-x64.zip`，原文件归档并改名为制品名：
+
+```text
+https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation/releases/download/v1.16.0/opentelemetry-dotnet-instrumentation-linux-glibc-x64.zip
+```
+
+```bash
+curl --fail --silent --show-error --location \
+  --output opentelemetry-dotnet-auto-linux-glibc-x64.zip \
+  https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation/releases/download/v1.16.0/opentelemetry-dotnet-instrumentation-linux-glibc-x64.zip
+```
+
+文件名必须是 `opentelemetry-dotnet-auto-linux-glibc-x64.zip`。禁止把 glibc / musl /
+多架构 zip 打成集合包，禁止使用 `otel-dotnet-auto-install.sh`（会联网选型）。
+zip 内应含 `instrument.sh` 与 `linux-x64/OpenTelemetry.AutoInstrumentation.Native.so`。
+
 ## 4. 初始化对象存储
 
 在具备正式环境配置、且能连接该环境 NATS 的 Server 运行环境中，对每个制品执行：
@@ -133,9 +154,13 @@ python manage.py apm_probe_init \
 python manage.py apm_probe_init \
   --artifact opentelemetry-go-sdk.zip \
   --file_path /path/to/opentelemetry-go-sdk.zip
+
+python manage.py apm_probe_init \
+  --artifact opentelemetry-dotnet-auto-linux-glibc-x64.zip \
+  --file_path /path/to/opentelemetry-dotnet-auto-linux-glibc-x64.zip
 ```
 
-本地开发可用 `uv run python manage.py ...`。`--artifact` 只接受上表四个名字。
+本地开发可用 `uv run python manage.py ...`。`--artifact` 只接受上表五个名字。
 命令覆盖同名对象，可重复执行。
 
 ```text
@@ -153,7 +178,7 @@ NATS 连接超时的排查顺序与节点管理包初始化相同，见
 ## 5. 下载地址与云区域配置
 
 接入脚本里的下载前缀来自云区域环境变量 `NODE_SERVER_URL`，与节点安装命令同源。
-四类接入配置生成时都会读取该值；缺失或格式非法时，接入页返回
+五类接入配置生成时都会读取该值；缺失或格式非法时，接入页返回
 `probe_download_unavailable`，不会回退公网。
 
 示例（`NODE_SERVER_URL=http://10.10.10.1:8011`）：
@@ -163,6 +188,7 @@ http://10.10.10.1:8011/api/v1/apm/open_api/probe/download/opentelemetry-javaagen
 http://10.10.10.1:8011/api/v1/apm/open_api/probe/download/opentelemetry-python-wheels.tar.gz
 http://10.10.10.1:8011/api/v1/apm/open_api/probe/download/opentelemetry-js-auto.tgz
 http://10.10.10.1:8011/api/v1/apm/open_api/probe/download/opentelemetry-go-sdk.zip
+http://10.10.10.1:8011/api/v1/apm/open_api/probe/download/opentelemetry-dotnet-auto-linux-glibc-x64.zip
 ```
 
 注意：
@@ -170,19 +196,20 @@ http://10.10.10.1:8011/api/v1/apm/open_api/probe/download/opentelemetry-go-sdk.z
 - OTLP 上报地址仍是 `http://<receiver_host>:4318`，与探针下载地址不是同一个端口。
 - 下载接口免登录，但只允许白名单文件名。
 - 目标主机（以及 docker 构建环境）必须能访问 `NODE_SERVER_URL`，不再需要访问
-  GitHub / PyPI / npm / proxy.golang.org。
+  GitHub / PyPI / npm / NuGet / proxy.golang.org。
 - Kubernetes 脚本不在集群内 curl；注释里会带上同一下载地址，供制作应用镜像。
 
 ## 6. 验收
 
-对四个制品分别执行：
+对五个制品分别执行：
 
 ```bash
 for artifact in \
   opentelemetry-javaagent.jar \
   opentelemetry-python-wheels.tar.gz \
   opentelemetry-js-auto.tgz \
-  opentelemetry-go-sdk.zip
+  opentelemetry-go-sdk.zip \
+  opentelemetry-dotnet-auto-linux-glibc-x64.zip
 do
   curl --fail --silent --show-error --location \
     --output "/tmp/${artifact}" \
@@ -192,9 +219,9 @@ do
 done
 ```
 
-摘要必须与发布记录一致。再在 APM 接入页分别选择 Java / Python / Node.js / Go
+摘要必须与发布记录一致。再在 APM 接入页分别选择 Java / Python / Node.js / Go / .NET
 的 host 或 docker，确认生成脚本中的 curl 地址是上述系统内 URL，且不含
-`github.com`、`pypi.org`、`npmjs`、`go get`。
+`github.com`、`pypi.org`、`npmjs`、`nuget.org`、`go get`。
 
 ## 7. 常见失败与定位
 
@@ -209,6 +236,7 @@ done
 | Python `pip install --no-index` 失败 | wheelhouse 是否含 distro[otlp] 及 bootstrap 列出的 instrumentation |
 | Node `npm install --offline` 失败 | tgz 是否带齐依赖，而不是只有主包 |
 | Go `go mod download` 失败 | zip 是否为 GOPROXY file 目录树，且含传递依赖 |
+| .NET 启动找不到 Profiler | 归档是否为官方 `opentelemetry-dotnet-instrumentation-linux-glibc-x64.zip`；目标是否为 glibc x86_64，而不是 Alpine / ARM64 |
 
 ## 8. 回滚
 

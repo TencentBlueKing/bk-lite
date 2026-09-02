@@ -45,6 +45,7 @@ class ApmIssueViewSet(viewsets.ViewSet):
             environment=data.get("environment"),
             cursor=data.get("cursor"),
             limit=data["limit"],
+            entry_only=data.get("entry_only", False),
         )
         query_service = self._query_service()
         try:
