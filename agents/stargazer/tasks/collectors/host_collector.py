@@ -37,6 +37,7 @@ MONITOR_SCRIPTS_DIR = Path(__file__).parent / "monitor_scripts"
 VALID_MODULES = {"cpu", "mem", "disk", "net", "diskio", "processes", "system"}
 HOST_REMOTE_CALLBACK_REQUEST_TIMEOUT = 60
 LINUX_SCRIPT_WRAPPER_EOF = "STARGAZER_HOST_COLLECT_EOF"
+LINUX_SCRIPT_WRAPPER_PREFIX = "LC_ALL=C LANG=C bash --noprofile --norc"
 
 
 def build_script(os_type: str, modules: List[str], monitor_type: str | None = None) -> str:
@@ -57,7 +58,11 @@ def build_script(os_type: str, modules: List[str], monitor_type: str | None = No
     body = "\n".join(parts)
 
     if os_type == "linux":
-        body = f"bash <<'{LINUX_SCRIPT_WRAPPER_EOF}'\n" f"{body}\n" f"{LINUX_SCRIPT_WRAPPER_EOF}\n"
+        body = (
+            f"{LINUX_SCRIPT_WRAPPER_PREFIX} <<'{LINUX_SCRIPT_WRAPPER_EOF}'\n"
+            f"{body}\n"
+            f"{LINUX_SCRIPT_WRAPPER_EOF}\n"
+        )
 
     return body
 
@@ -107,6 +112,25 @@ def _extract_json_payload(stdout: str) -> str:
                 return candidate
 
     return stdout
+
+
+def _metrics_json_failure_message(host: str, stdout: str, err: json.JSONDecodeError) -> str:
+    opening = stdout.find("{")
+    unclosed = opening >= 0 and _extract_json_payload(stdout) == stdout
+    logger.error(
+        "[Host Collector] JSON parse failed for %s: %s. stdout_len=%s unclosed=%s preview=%s",
+        host,
+        err,
+        len(stdout),
+        unclosed,
+        stdout[:500],
+    )
+    if unclosed:
+        return (
+            f"Failed to parse metrics JSON from {host}: incomplete JSON "
+            f"(stdout_len={len(stdout)}, unclosed=true)"
+        )
+    return f"Failed to parse metrics JSON from {host}: {err}"
 
 
 def _escape_prometheus_label_value(value: Any) -> str:
@@ -398,11 +422,9 @@ class HostCollector(BaseCollector):
                 try:
                     metrics_data = json.loads(extracted_payload)
                 except json.JSONDecodeError:
-                    logger.error(f"[Host Collector] JSON parse failed for {host}: {e}. " f"stdout preview: {stdout[:500]}")
-                    raise RuntimeError(f"Failed to parse metrics JSON from {host}: {e}") from e
+                    raise RuntimeError(_metrics_json_failure_message(host, cleaned_stdout, e)) from e
             else:
-                logger.error(f"[Host Collector] JSON parse failed for {host}: {e}. " f"stdout preview: {stdout[:500]}")
-                raise RuntimeError(f"Failed to parse metrics JSON from {host}: {e}") from e
+                raise RuntimeError(_metrics_json_failure_message(host, cleaned_stdout, e)) from e
 
         instance_id = self.params.get("tags", {}).get("instance_id", host)
         callback_timestamp = self.params.get("callback_timestamp")
