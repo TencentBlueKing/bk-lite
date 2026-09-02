@@ -1,14 +1,14 @@
 # Host AIX Remote
 
-The monitor object is **Host**. This plugin remotely collects AIX 7.2 / 7.3 OS metrics on each interval. It does not leave a resident install on the target host.
+This is **remote AIX OS monitoring** on the Host object, for AIX 7.2 / 7.3. Each interval the collect node connects to AIX and pulls metrics. It does not leave a long-running install on the target host.
 
 What is collected: CPU (including LPAR entitled capacity), memory and paging, load 1 / 5 / 15, processes and AIX process states, disk capacity / inodes / IO / busy, NICs, uptime, and svmon categories.
 
 ## How to use
 
 1. Pick a collect node that can reach the AIX host.
-2. Fill in host IP, username, SSH authentication, and interval.
-3. Save, wait one interval, then view data on the Host object.
+2. Fill in host IP, username, SSH authentication (password or key), and interval.
+3. Save, wait one interval, and view data on Host.
 
 ## Form fields
 
