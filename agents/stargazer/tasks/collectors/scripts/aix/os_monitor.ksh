@@ -267,12 +267,8 @@ if [ -n "${SVMON_OUT}" ]; then
       pers = $4 + 0
       clnt = $5 + 0
     }
-    $1 == "pin" && NF >= 4 {
-      pin = $2 + 0
-    }
     /^memory/ {
-      # pin column on memory line as fallback
-      if (pin == 0 && NF >= 5) pin = $5 + 0
+      if (NF >= 5) pin = $5 + 0
     }
     END {
       printf "%.0f %.0f %.0f %.0f", work*pz, pers*pz, clnt*pz, pin*pz
