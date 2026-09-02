@@ -6,6 +6,7 @@ from core.collection.host_remote.runtime import register_host_remote_runtime
 from core.config import YamlConfig
 from core.infra.nats import initialize_nats
 from core.infra.redis_client import register_redis_lifecycle
+from core.infra.snmp_engine_pool import register_snmp_engine_lifecycle
 from dotenv import load_dotenv
 from sanic import Sanic
 
@@ -22,6 +23,7 @@ service_name = f"{nats_instance_id}_stargazer"
 nats = initialize_nats(app, service_name=service_name)
 
 register_redis_lifecycle(app)
+register_snmp_engine_lifecycle(app)
 initialize_collection_application(app)
 register_host_remote_runtime(app)
 

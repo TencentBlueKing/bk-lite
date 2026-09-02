@@ -1,6 +1,33 @@
+import asyncio
+
 import pytest
 from core.collection.contracts import AccessProbeStatus
+from core.infra import snmp_engine_pool
 from plugins.inputs.network.snmp_facts import SnmpFacts
+
+
+@pytest.fixture(autouse=True)
+def _fake_shared_engines(monkeypatch):
+    """探测测试不需要真实 pysnmp engine：用假工厂替换共享池，并在用例前后清空池。"""
+
+    engines = []
+
+    class FakeDispatcher:
+        def __init__(self):
+            self.closed = 0
+
+        def closeDispatcher(self):
+            self.closed += 1
+
+    class FakeEngine:
+        def __init__(self):
+            self.transportDispatcher = FakeDispatcher()
+            engines.append(self)
+
+    snmp_engine_pool.reset_snmp_engine_pool()
+    monkeypatch.setattr(snmp_engine_pool, "create_snmp_engine", FakeEngine)
+    yield engines
+    snmp_engine_pool.reset_snmp_engine_pool()
 
 
 def _make_facts(**overrides):
@@ -81,6 +108,71 @@ async def test_snmp_probe_is_native_async(monkeypatch):
     monkeypatch.setattr("plugins.inputs.network.snmp_facts.getCmd", fake_get_cmd)
     result = await facts.probe()
     assert result.status == AccessProbeStatus.READY
+
+
+@pytest.mark.asyncio
+async def test_snmp_probe_sdk_exception_maps_to_probe_error_and_releases_engine(monkeypatch, _fake_shared_engines):
+    facts = _make_facts()
+
+    async def broken_get_cmd(*_args, **_kwargs):
+        raise RuntimeError("community=must-not-leak")
+
+    monkeypatch.setattr("plugins.inputs.network.snmp_facts.getCmd", broken_get_cmd)
+    result = await facts.probe()
+    assert result.status == AccessProbeStatus.NO_RESPONSE
+    assert result.error_code == "snmp_probe_error"
+    assert len(_fake_shared_engines) == 1
+    assert _fake_shared_engines[0].transportDispatcher.closed == 0
+    assert snmp_engine_pool.snmp_engine_pool_snapshot()["engines"][0]["in_flight"] == 0
+
+
+@pytest.mark.asyncio
+async def test_snmp_probe_and_collect_reuse_one_engine_instance_in_process(monkeypatch, _fake_shared_engines):
+    """同一进程内多次 probe/collect（不同目标）共用同一个 engine 实例，且不按目标关闭。"""
+
+    io_engines = []
+
+    class FakeOid:
+        def __init__(self, text):
+            self._text = text
+
+        def prettyPrint(self):
+            return self._text
+
+    class FakeVal:
+        def __init__(self, text):
+            self._text = text
+            self._value = text.encode()
+
+        def prettyPrint(self):
+            return self._text
+
+    async def fake_get_cmd(engine, *_args, **_kwargs):
+        io_engines.append(engine)
+        await asyncio.sleep(0.005)
+        return (None, 0, 0, [(FakeOid("1.3.6.1.2.1.1.5.0"), FakeVal("switch-a"))])
+
+    async def fake_next_cmd(engine, *_args, **_kwargs):
+        io_engines.append(engine)
+        return (None, 0, 0, [])
+
+    monkeypatch.setattr("plugins.inputs.network.snmp_facts.getCmd", fake_get_cmd)
+    monkeypatch.setattr("plugins.inputs.network.snmp_facts.nextCmd", fake_next_cmd)
+
+    probes = [_make_facts(host=f"127.0.0.{index}").probe() for index in range(1, 5)]
+    collects = [_make_facts(host=f"127.0.0.{index}").collect() for index in range(1, 5)]
+    results = await asyncio.gather(*probes, *collects)
+
+    assert all(result.status == AccessProbeStatus.READY for result in results[:4])
+    assert all(result["system"]["sysname"] == "switch-a" for result in results[4:])
+    assert len(_fake_shared_engines) == 1
+    assert {id(engine) for engine in io_engines} == {id(_fake_shared_engines[0])}
+    assert _fake_shared_engines[0].transportDispatcher.closed == 0
+    snapshot = snmp_engine_pool.snmp_engine_pool_snapshot()
+    assert snapshot["active_engines"] == 1
+    assert snapshot["engines"][0]["in_flight"] == 0
+    assert snapshot["engines"][0]["acquisitions"] == 8
+    assert snapshot["engines"][0]["distinct_targets"] == 4
 
 
 @pytest.mark.asyncio
