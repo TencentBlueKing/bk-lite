@@ -8,6 +8,7 @@ import { useProviderApi } from '@/app/opspilot/api/provider';
 import { isSilentRequestError } from '@/utils/request';
 import VendorCardGrid from '@/app/opspilot/components/provider/vendorCardGrid';
 import VendorModal from '@/app/opspilot/components/provider/vendorModal';
+import OpsPilotListPageHeader from '@/app/opspilot/components/opspilot-list-page-header';
 import { useTranslation } from '@/utils/i18n';
 import type { ModelVendor, ModelVendorPayload } from '@/app/opspilot/types/provider';
 import { VENDOR_LABEL_MAP } from '@/app/opspilot/constants/provider';
@@ -134,32 +135,27 @@ const ProviderPage: React.FC = () => {
 
   return (
     <div className="min-h-full w-full rounded-3xl">
-      <div className="mb-4 flex w-full flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0 flex-1">
-          <div className="text-[16px] font-semibold leading-tight" style={{ color: 'var(--color-text-1)' }}>
-            {t('provider.vendor.pageTitle')}
-          </div>
-          <div className="mt-1.5 text-[11px]" style={{ color: 'var(--color-text-3)' }}>
-            {t('provider.vendor.pageDescription')}
-          </div>
-        </div>
-
-        <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center lg:ml-auto lg:w-auto">
-          <Search
-            allowClear
-            enterButton
-            value={searchValue}
-            placeholder={t('provider.vendor.searchPlaceholder')}
-            className="w-full sm:w-72 lg:w-80"
-            onChange={(event) => setSearchValue(event.target.value)}
-            onSearch={handleSearch}
-          />
-          <Button icon={<ReloadOutlined />} onClick={handleRefresh} aria-label={t('common.refresh')} />
-          <Button type="primary" icon={<PlusOutlined />} onClick={openAddModal}>
-            {t('provider.vendor.addButton')}
-          </Button>
-        </div>
-      </div>
+      <OpsPilotListPageHeader
+        title={t('provider.vendor.pageTitle')}
+        description={t('provider.vendor.pageDescription')}
+        actions={
+          <>
+            <Search
+              allowClear
+              enterButton
+              value={searchValue}
+              placeholder={t('provider.vendor.searchPlaceholder')}
+              className="w-full sm:w-72 lg:w-80"
+              onChange={(event) => setSearchValue(event.target.value)}
+              onSearch={handleSearch}
+            />
+            <Button icon={<ReloadOutlined />} onClick={handleRefresh} aria-label={t('common.refresh')} />
+            <Button type="primary" icon={<PlusOutlined />} onClick={openAddModal}>
+              {t('common.new')}
+            </Button>
+          </>
+        }
+      />
 
       <VendorCardGrid
         vendors={displayedVendors}

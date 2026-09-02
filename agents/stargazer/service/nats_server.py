@@ -11,6 +11,16 @@ from service.collection_service import CollectionService
 from service.debug.protocol_debug_service import ProtocolDebugService
 
 
+def _handler_queue(handler_name: str) -> str:
+    """队列组名沿用完整 subject，与 host_remote.callback 的既有惯例一致。
+
+    多 Sanic worker 下每个 worker 进程都会执行 before_server_start 并各订阅一次；
+    NATS 对没有队列组的订阅是广播语义，同一请求会被每个 worker 重复执行一遍
+    （debug_snmp / debug_ipmi 会因此对目标设备重复探测），而发起方只取第一个响应。
+    """
+    return f"{host_remote_callback.get_stargazer_service_name()}.{handler_name}"
+
+
 async def _round_metadata_store():
     return RedisRoundMetadataStore(await get_redis_client())
 
@@ -72,7 +82,7 @@ async def _clear_host_remote_running_flag_best_effort(task_id: str) -> None:
         )
 
 
-@register_handler("list_regions")
+@register_handler("list_regions", queue=_handler_queue("list_regions"))
 async def list_regions(data):
     """处理 list_regions 请求"""
     logger.debug(f"list_regions received: {data}")
@@ -81,14 +91,14 @@ async def list_regions(data):
     return {"regions": regions}
 
 
-@register_handler("test_connection")
+@register_handler("test_connection", queue=_handler_queue("test_connection"))
 async def test_connection(data):
     """测试连接"""
     logger.info(f"test_connection received: {data}")
     return {"result": True, "data": data}
 
 
-@register_handler("health_check")
+@register_handler("health_check", queue=_handler_queue("health_check"))
 async def health_check(data):
     return {
         "status": "ok",
@@ -97,7 +107,7 @@ async def health_check(data):
     }
 
 
-@register_handler("debug_snmp")
+@register_handler("debug_snmp", queue=_handler_queue("debug_snmp"))
 async def debug_snmp(data: dict) -> dict:
     """
     接收 CMDB 的 SNMP 诊断请求。
@@ -108,7 +118,7 @@ async def debug_snmp(data: dict) -> dict:
     return await ProtocolDebugService(data).execute()
 
 
-@register_handler("debug_ipmi")
+@register_handler("debug_ipmi", queue=_handler_queue("debug_ipmi"))
 async def debug_ipmi(data: dict) -> dict:
     """
     接收 CMDB 的 IPMI 诊断请求。

@@ -127,7 +127,7 @@ class PasswordValidator:
         return True, ""
 
     @classmethod
-    def get_password_policy_description(cls) -> str:
+    def get_password_policy_description(cls, locale: str = "zh-Hans") -> str:
         """
         获取密码策略描述文本
 
@@ -138,9 +138,20 @@ class PasswordValidator:
         min_length = config["min_length"]
         max_length = config["max_length"]
         required_types = config["required_char_types"]
+        loader = LanguageLoader(app="system_mgmt", default_lang=locale or "zh-Hans")
 
-        # 构建字符类型要求描述
-        type_names = [cls.CHAR_TYPE_NAMES.get(t, t) for t in required_types if t in cls.CHAR_TYPE_NAMES]
-        type_desc = f"必须包含：{', '.join(type_names)}" if type_names else "无特殊要求"
+        type_names = [
+            loader.get(f"password.char_type_{char_type}", cls.CHAR_TYPE_NAMES.get(char_type, char_type))
+            for char_type in required_types
+            if char_type in cls.CHAR_TYPE_NAMES
+        ]
+        type_desc = (
+            loader.get("password.policy_must_contain", "必须包含：{types}").format(types=", ".join(type_names))
+            if type_names
+            else loader.get("password.policy_no_special_requirement", "无特殊要求")
+        )
 
-        return f"密码策略要求：\n" f"1. 长度为 {min_length}-{max_length} 个字符\n" f"2. {type_desc}\n" f"3. 特殊符号包括：!@#$%^&*()_+-=[]{{}};\\'\"\\|,.<>?/~`"
+        return loader.get(
+            "password.policy_description",
+            "密码策略要求：\n1. 长度为 {min_length}-{max_length} 个字符\n2. {type_desc}\n3. 特殊符号包括：!@#$%^&*()_+-=[]{{}};\\'\"\\|,.<>?/~`",
+        ).format(min_length=min_length, max_length=max_length, type_desc=type_desc)

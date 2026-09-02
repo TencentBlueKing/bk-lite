@@ -55,6 +55,8 @@ export interface Tool {
   permissions?: string[];
   enable_auth?: boolean;
   auth_token?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface FormValues {
