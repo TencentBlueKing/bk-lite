@@ -18,7 +18,6 @@ import { ViewDetailProps } from '@/app/monitor/types/view';
 import { SearchParams } from '@/app/monitor/types/search';
 import { useTranslation } from '@/utils/i18n';
 import {
-  mergeViewQueryKeyValues,
   renderChart,
   getRecentTimeRange
 } from '@/app/monitor/utils/common';
@@ -33,8 +32,7 @@ import {
   useMetricSelectOptions,
 } from '@/app/monitor/components/metricSelectOptions';
 import { buildSearchTimeQueryParams } from '@/app/monitor/utils/searchTimeQuery';
-import { buildHostProcessLabelPairs,
-  isHostMonitorObject,
+import { isHostMonitorObject,
   isHostProcessMetricsTab,
   resolveHostProcessMetricsTarget,
   resolveProcessNameFromInstance,
@@ -145,7 +143,7 @@ const MetricViews: React.FC<ViewDetailProps> = ({
     getMetricsGroup,
     getInstanceList
   } = useMonitorApi();
-  const { get } = useApiClient();
+  const { post } = useApiClient();
   const { t } = useTranslation();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const metricSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -284,7 +282,6 @@ const MetricViews: React.FC<ViewDetailProps> = ({
       active = false;
     };
     // getInstanceList 来自 hook，身份不稳定；仅随主机/进程对象/页签变化重载。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isProcessMetricsView, processObjectId, hostLogicalId]);
 
   useEffect(() => {
@@ -543,21 +540,23 @@ const MetricViews: React.FC<ViewDetailProps> = ({
     setVisibleMetricIds(new Set());
   };
 
-  const getParams = (item: MetricItem, ids: string[]) => {
-    const labelKeys = resolveQueryInstanceIdKeys(item.instance_id_keys || []);
-    const labelPairs = isProcessMetricsView
-      ? buildHostProcessLabelPairs(hostLogicalId || ids[0] || '', processFilterNames)
-      : [{ keys: labelKeys, values: ids }];
+  const getParams = (item: MetricItem) => {
     const params: SearchParams = {
-      // 卡片统一用完整 query + 通用序列预算；不再走 per-metric view_query。
-      query: (item.query || '').replace(
-        /__\$labels__/g,
-        mergeViewQueryKeyValues(labelPairs)
-      ),
+      monitor_object_id: isProcessMetricsView ? processObjectId : monitorObjectId,
+      metric_id: item.id,
+      instance_ids: isProcessMetricsView ? undefined : [String(instanceId)],
+      scope: isProcessMetricsView
+        ? {
+          type: 'host_process',
+          host_monitor_object_id: monitorObjectId,
+          host_instance_id: instanceId,
+          process_names: processFilterNames,
+        }
+        : undefined,
       source_unit: item.unit || ''
     };
-    // 完整明细仍由搜索页查询（不带 query_budget）。
-    params.query_budget = 'card';
+    // 完整明细仍由搜索页查询（不带 card_budget）。
+    params.card_budget = true;
     const recentTimeRange = getRecentTimeRange(activeTimeValues);
     const startTime = recentTimeRange.at(0);
     const endTime = recentTimeRange.at(1);
@@ -609,11 +608,12 @@ const MetricViews: React.FC<ViewDetailProps> = ({
     activeRequestsRef.current.set(metric.id, abortController);
     let response;
     try {
-      const params = getParams(metric, idValues);
-      response = await get(`/monitor/api/metrics_instance/query_range/`, {
+      const params = getParams(metric);
+      response = await post(
+        `/monitor/api/metrics_instance/query_by_metric_range/`,
         params,
-        signal: abortController.signal
-      });
+        { signal: abortController.signal },
+      );
     } catch (error: any) {
       if (error.name === 'AbortError') {
         return;

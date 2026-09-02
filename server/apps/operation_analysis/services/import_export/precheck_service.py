@@ -400,17 +400,8 @@ class PrecheckService:
 
     @staticmethod
     def check_datasource_security(doc: YAMLDocument) -> list[dict]:
-        """在提交导入前拒绝没有可兼容存量记录的监控裸查询数据源。"""
+        """在提交导入前拒绝所有已退役的监控裸查询数据源。"""
         raw_items = [item for item in doc.datasources if is_legacy_raw_monitor_query(source_type=item.source_type, rest_api=item.rest_api)]
-        if not raw_items:
-            return []
-
-        existing_keys = set(
-            DataSourceAPIModel.objects.filter(
-                name__in={item.name for item in raw_items},
-                rest_api__in={item.rest_api for item in raw_items},
-            ).values_list("name", "rest_api")
-        )
         return [
             {
                 "code": ImportExportErrorCode.YAML_SCHEMA_INVALID,
@@ -419,7 +410,6 @@ class PrecheckService:
                 "object_type": ObjectType.DATASOURCE.value,
             }
             for item in raw_items
-            if (item.name, item.rest_api) not in existing_keys
         ]
 
     @classmethod

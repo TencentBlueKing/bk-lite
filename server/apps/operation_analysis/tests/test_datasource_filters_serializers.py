@@ -180,7 +180,7 @@ def test_datasource_serializer_rejects_new_raw_monitor_query_routes(authenticate
     )
 
     assert not serializer.is_valid()
-    assert serializer.errors["rest_api"] == ["该监控裸查询接口已停止新增，仅保留存量数据源兼容"]
+    assert serializer.errors["rest_api"] == ["该监控裸查询接口已退役，禁止继续使用"]
 
 
 @pytest.mark.django_db
@@ -195,11 +195,11 @@ def test_datasource_serializer_rejects_raw_monitor_query_with_default_source_typ
     )
 
     assert not serializer.is_valid()
-    assert serializer.errors["rest_api"] == ["该监控裸查询接口已停止新增，仅保留存量数据源兼容"]
+    assert serializer.errors["rest_api"] == ["该监控裸查询接口已退役，禁止继续使用"]
 
 
 @pytest.mark.django_db
-def test_datasource_serializer_preserves_existing_raw_monitor_query_route(authenticated_user):
+def test_datasource_serializer_rejects_existing_raw_monitor_query_route(authenticated_user):
     from apps.operation_analysis.serializers.datasource_serializers import DataSourceAPIModelSerializer
 
     datasource = DataSourceAPIModel.objects.create(
@@ -214,6 +214,28 @@ def test_datasource_serializer_preserves_existing_raw_monitor_query_route(authen
         datasource,
         context={"request": _serializer_request(authenticated_user)},
         data=_nats_datasource_payload(name="历史监控查询", rest_api="monitor/mm_query_range"),
+    )
+
+    assert not serializer.is_valid()
+    assert serializer.errors["rest_api"] == ["该监控裸查询接口已退役，禁止继续使用"]
+
+
+@pytest.mark.django_db
+def test_datasource_serializer_allows_migrating_existing_raw_route(authenticated_user):
+    from apps.operation_analysis.serializers.datasource_serializers import DataSourceAPIModelSerializer
+
+    datasource = DataSourceAPIModel.objects.create(
+        name="历史监控查询",
+        rest_api="monitor/mm_query_range",
+        source_type="nats",
+        groups=[1],
+        created_by="system",
+        updated_by="system",
+    )
+    serializer = DataSourceAPIModelSerializer(
+        datasource,
+        context={"request": _serializer_request(authenticated_user)},
+        data=_nats_datasource_payload(name="历史监控查询", rest_api="monitor/get_host_metric_range"),
     )
 
     assert serializer.is_valid(), serializer.errors

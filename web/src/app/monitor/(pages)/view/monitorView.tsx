@@ -16,10 +16,7 @@ import {
 import { ViewModalProps } from '@/app/monitor/types/view';
 import { SearchParams } from '@/app/monitor/types/search';
 import { useTranslation } from '@/utils/i18n';
-import {
-  mergeViewQueryKeyValues,
-  renderChart,
-} from '@/app/monitor/utils/common';
+import { renderChart } from '@/app/monitor/utils/common';
 import { calculateQueryStep } from '@/app/monitor/utils/queryStep';
 import { attachGapIntervals, buildGapDetectionParams } from '@/app/monitor/utils/gapIntervals';
 import dayjs, { Dayjs } from 'dayjs';
@@ -32,7 +29,6 @@ import {
 } from '@/app/monitor/components/metricSelectOptions';
 import { buildSearchTimeQueryParams } from '@/app/monitor/utils/searchTimeQuery';
 import {
-  buildHostProcessLabelPairs,
   isHostMonitorObject,
   isHostProcessMetricsTab,
   resolveHostProcessMetricsTarget,
@@ -47,7 +43,7 @@ const MonitorView: React.FC<ViewModalProps> = ({
   form = INIT_VIEW_MODAL_FORM,
 }) => {
   const { isLoading } = useApiClient();
-  const { get } = useApiClient();
+  const { post } = useApiClient();
   const { getMetricsGroup, getMonitorMetrics, getMonitorObject, getMonitorPlugin, getInstanceList } =
     useMonitorApi();
   const { t } = useTranslation();
@@ -256,7 +252,6 @@ const MonitorView: React.FC<ViewModalProps> = ({
     return () => {
       active = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isProcessMetricsView, processObjectId, hostLogicalId]);
 
   const onTabChange = (val: string) => {
@@ -373,22 +368,23 @@ const MonitorView: React.FC<ViewModalProps> = ({
     setVisibleMetricIds(new Set());
   };
 
-  const getParams = (item: MetricItem, ids: string[]) => {
-    const labelKeys = isHostProcessMetricsTab(activeTab)
-      ? ['instance_id']
-      : item.instance_id_keys || [];
-    const labelPairs = isHostProcessMetricsTab(activeTab)
-      ? buildHostProcessLabelPairs(hostLogicalId || ids[0] || '', processFilterNames)
-      : [{ keys: labelKeys, values: ids }];
+  const getParams = (item: MetricItem) => {
+    const processView = isHostProcessMetricsTab(activeTab);
     const params: SearchParams = {
-      // 卡片统一用完整 query + 通用序列预算；不再走 per-metric view_query。
-      query: (item.query || '').replace(
-        /__\$labels__/g,
-        mergeViewQueryKeyValues(labelPairs)
-      ),
+      monitor_object_id: processView ? processObjectId : monitorObject,
+      metric_id: item.id,
+      instance_ids: processView ? undefined : [String(form.instance_id)],
+      scope: processView
+        ? {
+          type: 'host_process',
+          host_monitor_object_id: monitorObject,
+          host_instance_id: form.instance_id,
+          process_names: processFilterNames,
+        }
+        : undefined,
       source_unit: item.unit || '',
     };
-    params.query_budget = 'card';
+    params.card_budget = true;
     const queryWindow = activeQueryWindowRef.current;
     if (queryWindow) {
       params.start = queryWindow.startMs;
@@ -440,11 +436,12 @@ const MonitorView: React.FC<ViewModalProps> = ({
     activeRequestsRef.current.set(metric.id, abortController);
     let response;
     try {
-      const params = getParams(metric, form?.instance_id_values || []);
-      response = await get(`/monitor/api/metrics_instance/query_range/`, {
+      const params = getParams(metric);
+      response = await post(
+        `/monitor/api/metrics_instance/query_by_metric_range/`,
         params,
-        signal: abortController.signal,
-      });
+        { signal: abortController.signal },
+      );
     } catch (error: any) {
       if (error.name === 'AbortError') {
         return;

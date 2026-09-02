@@ -1,6 +1,7 @@
 import json
 
 import pytest
+from django.urls import Resolver404, resolve
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.core.exceptions.base_app_exception import UnauthorizedException
@@ -10,9 +11,9 @@ from apps.monitor.views.metrics_instance import MetricsInstanceViewSet
 pytestmark = pytest.mark.django_db
 
 
-def _setup_query_contract():
+def _setup_query_contract(*, object_name="AuthorizedViewObject"):
     monitor_object = MonitorObject.objects.create(
-        name="AuthorizedViewObject",
+        name=object_name,
         level="base",
         instance_id_keys=["instance_id"],
     )
@@ -119,3 +120,46 @@ def test_authorized_range_view_rejects_mixed_scope_without_vm_call(authenticated
         )
 
     vm_query.assert_not_called()
+
+
+def test_authorized_range_view_executes_registered_dashboard_capability(authenticated_user, mocker):
+    monitor_object, _, allowed, _ = _setup_query_contract(object_name="Website")
+    mocker.patch(
+        "apps.monitor.services.authorized_metric_query.get_permission_rules",
+        return_value={"data": "permission"},
+    )
+    mocker.patch(
+        "apps.monitor.services.authorized_metric_query.permission_filter",
+        side_effect=lambda model, permission, **kwargs: model.objects.filter(id=allowed.id),
+    )
+    vm_query = mocker.patch(
+        "apps.monitor.services.authorized_metric_query.Metrics.get_metrics_range",
+        return_value={"status": "success", "data": {"result": []}},
+    )
+    view = MetricsInstanceViewSet.as_view({"post": "query_by_metric_range"})
+
+    response = view(
+        _request(
+            authenticated_user,
+            {
+                "monitor_object_id": monitor_object.id,
+                "capability_id": "dashboard:v1:0a6a83ef",
+                "instance_ids": [allowed.id],
+                "start": 1000,
+                "end": 61000,
+                "step": "60s",
+            },
+        )
+    )
+
+    assert response.status_code == 200
+    assert json.loads(response.content)["result"] is True
+    query = vm_query.call_args.args[0]
+    assert "http_response_result_code" in query
+    assert 'instance_id=~"allowed\\\\-view\\\\-host"' in query
+
+
+@pytest.mark.parametrize("action", ["query", "query_range"])
+def test_raw_promql_rest_actions_are_not_registered(action):
+    with pytest.raises(Resolver404):
+        resolve(f"/api/v1/monitor/api/metrics_instance/{action}/")

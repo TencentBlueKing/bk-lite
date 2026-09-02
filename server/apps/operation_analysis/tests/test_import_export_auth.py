@@ -148,9 +148,7 @@ def _permission_rules_for_export(*, dashboard_id: int, datasource_ids: list[int]
 
 @pytest.mark.unit
 def test_export_request_rejects_unbounded_object_id_list():
-    serializer = ExportRequestSerializer(
-        data={"object_type": "dashboard", "object_ids": list(range(1, ExportRequestSerializer.MAX_OBJECT_IDS + 2))}
-    )
+    serializer = ExportRequestSerializer(data={"object_type": "dashboard", "object_ids": list(range(1, ExportRequestSerializer.MAX_OBJECT_IDS + 2))})
 
     assert not serializer.is_valid()
     assert "object_ids" in serializer.errors
@@ -442,10 +440,8 @@ def test_precheck_drops_overwrite_when_user_lacks_overwrite_permission(authentic
 
 
 @pytest.mark.django_db
-def test_backend_precheck_does_not_readd_rename_for_existing_raw_monitor_query(authenticated_user, monkeypatch):
-    authenticated_user.permission = {
-        "ops-analysis": {"data_source-View", "data_source-Add", "data_source-Edit"}
-    }
+def test_backend_precheck_rejects_existing_raw_monitor_query(authenticated_user, monkeypatch):
+    authenticated_user.permission = {"ops-analysis": {"data_source-View", "data_source-Add", "data_source-Edit"}}
     existing = DataSourceAPIModel.objects.create(
         name="legacy-raw-query",
         rest_api="monitor/mm_query",
@@ -472,8 +468,8 @@ def test_backend_precheck_does_not_readd_rename_for_existing_raw_monitor_query(a
     payload = _unwrap_payload(json.loads(response.rendered_content))
 
     assert response.status_code == status.HTTP_200_OK
-    assert payload["valid"] is True
-    assert payload["conflicts"][0]["suggested_actions"] == ["overwrite", "skip"]
+    assert payload["valid"] is False
+    assert payload["errors"][0]["message"] == "该监控裸查询接口已退役，禁止继续使用"
 
 
 @pytest.mark.django_db
@@ -763,9 +759,7 @@ def test_backend_legacy_export_rechecks_root_after_competing_transaction(authent
         with ThreadPoolExecutor(max_workers=1) as executor:
             return executor.submit(execute).result(timeout=5)
 
-    dashboard_id = run_committed(
-        lambda: Dashboard.objects.create(name="permission-race-dashboard", groups=[1], view_sets=[]).id
-    )
+    dashboard_id = run_committed(lambda: Dashboard.objects.create(name="permission-race-dashboard", groups=[1], view_sets=[]).id)
     monkeypatch.setattr(
         "apps.operation_analysis.services.import_export.authorization_service.get_permission_rules",
         lambda user, current_team, app_name, permission_key, include_children=False: {

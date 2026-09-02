@@ -24,7 +24,6 @@ import {
 import { useTranslation } from '@/utils/i18n';
 import {
   calculateMetrics,
-  mergeViewQueryKeyValues,
   renderChart,
   getRecentTimeRange
 } from '@/app/monitor/utils/common';
@@ -136,19 +135,15 @@ const Overview: React.FC<ViewDetailProps> = ({
 
   const getParams = (item: MetricItem) => {
     const params: SearchParams = {
-      // 卡片统一用完整 query + 通用序列预算；不再走 per-metric view_query。
-      query: (item.query || '').replace(
-        /__\$labels__/g,
-        mergeViewQueryKeyValues([
-          { keys: item.instance_id_keys || [], values: idValues }
-        ])
-      ),
+      monitor_object_id: monitorObjectId,
+      metric_id: item.id,
+      instance_ids: [String(instanceId)],
       source_unit: item.unit || '',
       // 概览卡按指标声明单位格式化，禁止服务端自动换算（否则 ms/bytes/counts 被缩放过后再按原单位展示）。
       auto_convert_unit: false
     };
     // Overview 指标卡与详情指标 Tab 共用 card budget，避免大基数全量打满。
-    params.query_budget = 'card';
+    params.card_budget = true;
     const recentTimeRange = getRecentTimeRange(timeValues);
     const startTime = recentTimeRange.at(0);
     const endTime = recentTimeRange.at(1);

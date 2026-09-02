@@ -66,7 +66,10 @@ export default function MssqlDashboardPage() {
     runWithConcurrency(MSSQL_TOP_DB_QUERIES, TOP_DB_CONCURRENCY, async (q) =>
       // autoConvert=false:禁用服务端单位自动换算,否则会与前端 formatMetricValue 双重换算
       //(如 ms 被后端先换成 hour,前端再按 ms 格式化,量级错乱)。见 postgresql 同因。
-      getInstanceQuery(buildSearchParams(q.query, q.unit, idValues, instanceIdKeys, timeValues, undefined, false, currentInstanceInterval))
+      getInstanceQuery(buildSearchParams(q.query, q.unit, idValues, instanceIdKeys, timeValues, undefined, false, currentInstanceInterval, {
+        monitorObjectId: dashboard.monitorObjectId,
+        instanceId: dashboard.instanceId,
+      }))
         .then((res: any) => [q.key, topDbBars(res, q.unit, q.color)] as const)
         .catch(() => [q.key, [] as BarItem[]] as const)
     ).then((entries) => {
@@ -78,7 +81,6 @@ export default function MssqlDashboardPage() {
       active = false;
     };
     // loadTick 随核心盘每次加载(含自动刷新)递增,使 TopN 与核心盘同步刷新。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentInstanceInterval, idValuesKey, timeKey, isDashboardMode, instanceIdKeys, getInstanceQuery, loadTick]);
 
   return (
