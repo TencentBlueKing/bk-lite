@@ -1,6 +1,6 @@
 Host AIX Remote:
   name: 主机 AIX 远程采集
-  desc: 由 Linux 采集节点通过 SSH 以 /usr/bin/ksh -c 在 AIX 上执行系统命令，采集操作系统指标；命令不存在则跳过。版本由 oslevel -r 读取（例如 7100-00）。
+  desc: 由 Linux 采集节点通过 SSH 以 /usr/bin/ksh -c 在 AIX 上执行系统命令，采集操作系统指标；命令不存在则跳过。版本由 oslevel -r 读取（例如 7100-00）。官方测过 7.2/7.3；实际按系统命令是否存在采集，缺了跳过。
 monitor_object:
   Host: 主机
 monitor_object_type:
@@ -55,6 +55,15 @@ monitor_object_metric:
     disk_used_percent:
       name: 磁盘使用率
       desc: 表示磁盘已使用空间占总容量的比例，是磁盘容量监控的核心指标。
+    disk_inodes_used_percent:
+      name: Inode使用率
+      desc: 表示文件系统 inode 的使用比例，用于容量与 inode 监控。
+    disk_iused:
+      name: 已用 inode
+      desc: 表示已使用的 inode 个数，与容量一起用于文件系统监控。
+    disk_ifree:
+      name: 空闲 inode
+      desc: 表示剩余可用的 inode 个数，与容量一起用于文件系统监控。
     mem_total:
       name: 内存总量
       desc: 表示系统可使用的物理内存总容量，是内存资源评估的基础指标。

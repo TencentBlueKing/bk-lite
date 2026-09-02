@@ -247,6 +247,9 @@ def parse_aix_metrics_to_prometheus(
             _append_gauge(lines, "disk_free", disk_labels, free, timestamp, "Disk free bytes")
             _append_gauge(lines, "disk_used_percent", disk_labels, disk.get("used_percent", 0), timestamp, "Disk used percent")
             _append_gauge(lines, "host_disk_used_percent", disk_labels, disk.get("used_percent", 0), timestamp, "Disk used percent")
+            _append_gauge(lines, "disk_inodes_used_percent", disk_labels, disk.get("inodes_used_percent", 0), timestamp, "Disk inode used percent")
+            _append_gauge(lines, "disk_iused", disk_labels, disk.get("iused", 0), timestamp, "Used inode count")
+            _append_gauge(lines, "disk_ifree", disk_labels, disk.get("ifree", 0), timestamp, "Free inode count")
 
     nets = data.get("net")
     if isinstance(nets, list):

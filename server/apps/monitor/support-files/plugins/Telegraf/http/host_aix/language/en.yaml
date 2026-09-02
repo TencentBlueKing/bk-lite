@@ -1,6 +1,6 @@
 Host AIX:
   name: Host AIX
-  desc: AIX OS monitoring via system commands; missing commands are skipped. OS level comes from oslevel -r (for example 7100-00). Local collection prepares the AIX host, then a Linux collect node pulls metrics on the interval.
+  desc: AIX OS monitoring via system commands; missing commands are skipped. OS level comes from oslevel -r (for example 7100-00). Officially tested on 7.2/7.3; collection follows whichever system commands exist and skips missing ones. Local collection prepares the AIX host, then a Linux collect node pulls metrics on the interval.
 monitor_object:
   Host: Host
 monitor_object_type:
@@ -55,6 +55,15 @@ monitor_object_metric:
     disk_used_percent:
       name: Disk Usage
       desc: Represents the percentage of disk space that has been consumed, a core metric for disk capacity monitoring.
+    disk_inodes_used_percent:
+      name: Inode Usage
+      desc: Filesystem inode usage percentage, used with capacity for disk monitoring.
+    disk_iused:
+      name: Used inodes
+      desc: Number of used inodes, used with capacity for filesystem monitoring.
+    disk_ifree:
+      name: Free inodes
+      desc: Number of free inodes, used with capacity for filesystem monitoring.
     mem_total:
       name: Total Memory
       desc: Represents the total amount of physical memory available on the system, serving as a baseline for memory evaluation.

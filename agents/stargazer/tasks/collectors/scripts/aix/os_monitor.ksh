@@ -312,36 +312,33 @@ if [ -n "${LSPS_OUT}" ]; then
   [ -n "$2" ] && SWAP_FREE=$2
 fi
 
-# --- df -kP POSIX: 1024-blocks Used Available Capacity Mounted on. No inodes. ---
+# --- df: capacity + inodes. Skip if missing. ---
 DISK_JSON=$(
-  DF_KP=$(_run df -kP)
-  printf '%s\n' "${DF_KP}" | awk '
+  DF_OUT=$(_run df -kP -F '%u %f %z %l %n %p %m')
+  printf '%s\n' "${DF_OUT}" | awk '
     BEGIN { first=1; print "[" }
     $1 == "Filesystem" { next }
     $NF == "on" { next }
-    $1 ~ /^(procfs|proc|nfs|nfs3|nfs4|autofs|namefs|cdrom|iso9660|ahafs)$/ { next }
-    $NF ~ /^\/proc/ { next }
-    NF >= 6 {
-      cap_col=0
-      for (i=1; i<=NF; i++) {
-        if ($i ~ /%$/) { cap_col=i; break }
-      }
-      if (cap_col < 4) next
-      fs=$1
-      total=$(cap_col-3) * 1024
-      usedb=$(cap_col-2) * 1024
-      freeb=$(cap_col-1) * 1024
-      usedpct=$cap_col
-      gsub(/%/, "", usedpct)
+    $1 ~ /^(procfs|proc|nfs|nfs3|nfs4|autofs|namefs|cdrom|iso9660|ahafs|Used|used)$/ { next }
+    NF >= 7 {
       mount=$NF
-      if (mount == "/proc" || mount == "/ahafs") next
+      if (mount == "/proc" || mount == "/ahafs" || mount == "on") next
+      if ($1 ~ /^[0-9]/) {
+        usedkb=$1+0; freekb=$2+0; sizekb=$3+0; iused=$4+0; ifree=$5+0; pct=$6
+      } else if ($1 ~ /^(procfs|proc|nfs|nfs3|nfs4|autofs|namefs|cdrom|iso9660|ahafs)$/) {
+        next
+      } else {
+        usedkb=$2+0; freekb=$3+0; sizekb=$4+0; iused=$5+0; ifree=$6+0; pct=$7
+      }
+      gsub(/%/, "", pct)
+      ipct=0
+      if (iused+ifree > 0) ipct = iused * 100 / (iused+ifree)
+      if (mount ~ /^\/proc/) next
       if (!first) printf ","
       first=0
-      gsub(/\\/, "\\\\", fs)
-      gsub(/"/, "\\\"", fs)
       gsub(/\\/, "\\\\", mount)
       gsub(/"/, "\\\"", mount)
-      printf "{\"mount\":\"%s\",\"path\":\"%s\",\"fstype\":\"\",\"total_bytes\":%.0f,\"used_bytes\":%.0f,\"free_bytes\":%.0f,\"used_percent\":%.2f}", mount, mount, total, usedb, freeb, usedpct+0
+      printf "{\"mount\":\"%s\",\"path\":\"%s\",\"fstype\":\"\",\"total_bytes\":%.0f,\"used_bytes\":%.0f,\"free_bytes\":%.0f,\"used_percent\":%.2f,\"inodes_used_percent\":%.2f,\"iused\":%.0f,\"ifree\":%.0f}", mount, mount, sizekb*1024, usedkb*1024, freekb*1024, pct+0, ipct+0, iused+0, ifree+0
     }
     END { print "]" }
   '
