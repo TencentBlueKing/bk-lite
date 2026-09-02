@@ -235,7 +235,7 @@ describe('APM 服务详情错误 Tab', () => {
     expect(screen.getByText('调下游')).not.toBeNull();
     expect(screen.queryByText(/占失败样本/)).toBeNull();
     expect(screen.queryByText('SpanError')).toBeNull();
-    expect(screen.getByRole('link', { name: 'POST /orders' }).getAttribute('href')).toBe(`/apm/explore/traces/${'a'.repeat(32)}`);
+    expect(screen.getByRole('link', { name: /POST \/orders/ }).getAttribute('href')).toBe(`/apm/explore/traces/${'a'.repeat(32)}`);
     expect(screen.getByRole('link', { name: '在错误分析中打开' }).getAttribute('href')).toContain('/apm/explore/errors');
     expect(api.getServiceErrorBreakdown).toHaveBeenCalledWith('svc-1', expect.objectContaining({
       environment: 'production',
