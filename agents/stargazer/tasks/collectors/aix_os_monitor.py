@@ -182,11 +182,23 @@ def _append_aix_diskio(lines: list[str], diskios: Any, base_labels: str, timesta
             continue
         device = diskio.get("device", "unknown")
         diskio_labels = f"{base_labels},{_format_prometheus_labels(device=device)}"
+        if "read_bytes_interval" in diskio:
+            interval_r = diskio.get("read_bytes_interval", 0)
+            total_r = diskio.get("read_bytes", 0)
+        else:
+            interval_r = diskio.get("read_bytes", 0)
+            total_r = diskio.get("read_bytes_total") if "read_bytes_total" in diskio else None
+        if "write_bytes_interval" in diskio:
+            interval_w = diskio.get("write_bytes_interval", 0)
+            total_w = diskio.get("write_bytes", 0)
+        else:
+            interval_w = diskio.get("write_bytes", 0)
+            total_w = diskio.get("write_bytes_total") if "write_bytes_total" in diskio else None
         _append_gauge(
             lines,
             "diskio_read_bytes",
             diskio_labels,
-            diskio.get("read_bytes", 0),
+            interval_r,
             timestamp,
             "Disk read bytes from iostat interval sample",
         )
@@ -194,25 +206,25 @@ def _append_aix_diskio(lines: list[str], diskios: Any, base_labels: str, timesta
             lines,
             "diskio_write_bytes",
             diskio_labels,
-            diskio.get("write_bytes", 0),
+            interval_w,
             timestamp,
             "Disk write bytes from iostat interval sample",
         )
-        if "read_bytes_total" in diskio:
+        if total_r is not None:
             _append_gauge(
                 lines,
                 "diskio_read_bytes_total",
                 diskio_labels,
-                diskio.get("read_bytes_total", 0),
+                total_r,
                 timestamp,
                 "Disk read bytes counter from iostat since-boot report",
             )
-        if "write_bytes_total" in diskio:
+        if total_w is not None:
             _append_gauge(
                 lines,
                 "diskio_write_bytes_total",
                 diskio_labels,
-                diskio.get("write_bytes_total", 0),
+                total_w,
                 timestamp,
                 "Disk write bytes counter from iostat since-boot report",
             )

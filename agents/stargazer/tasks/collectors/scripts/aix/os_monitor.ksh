@@ -57,7 +57,9 @@ if [ -n "${PAGESIZE_OUT}" ]; then
 fi
 
 # oslevel -r prefix (7100/7200/7300) selects parse branches. Not a form field.
+# 7.1 field evidence used oslevel -s 7100-00-10-1334; -r empty still reads -s.
 OSLEVEL_RAW=$(_run oslevel -r)
+[ -z "${OSLEVEL_RAW}" ] && OSLEVEL_RAW=$(_run oslevel -s)
 AIX_REL=$(printf '%s\n' "${OSLEVEL_RAW}" | awk '{ print substr($1, 1, 4)+0 }')
 [ -z "${AIX_REL}" ] && AIX_REL=0
 
@@ -453,7 +455,7 @@ if [ "${AIX_REL}" = "7100" ] && [ "${_DF_HAS_MOUNT}" != "1" ]; then
       }
       function skip_fs(m, fs) {
         if (m=="on" || m=="/proc" || m=="/ahafs" || m ~ /^\/proc/ || m ~ /^\/ahafs/) return 1
-        if (fs ~ /^(procfs|proc|nfs|nfs3|nfs4|autofs|namefs|cdrom|iso9660|ahafs)$/) return 1
+        if (fs ~ /^(procfs|proc|autofs|namefs|cdrom|iso9660|ahafs)$/) return 1
         if (fs=="/proc" || fs=="/ahafs") return 1
         return 0
       }
@@ -471,9 +473,18 @@ if [ "${AIX_REL}" = "7100" ] && [ "${_DF_HAS_MOUNT}" != "1" ]; then
         freekb=num_at(free_c)
         allockb=num_at(alloc_c)
         pct=num_at(pct_c)
+        if (used_c==0 && free_c==0 && alloc_c==0 && NF>=6 && $2+0>0) {
+          allockb=$2+0
+          usedkb=$3+0
+          freekb=$4+0
+          pct=$5
+          gsub(/%/, "", pct)
+          pct+=0
+        }
         if (usedkb<=0 && allockb>0) usedkb=allockb-freekb
         if (usedkb<0) usedkb=0
         if (allockb<=0) allockb=usedkb+freekb
+        if (allockb<=0 && usedkb<=0 && freekb<=0) next
         if (pct==0 && allockb>0) pct=usedkb*100/allockb
         if (!(mount in seenm)) { seenm[mount]=1; order[++nm]=mount }
         ukb[mount]=usedkb
@@ -514,8 +525,9 @@ fi
 [ -z "${DISK_JSON}" ] && DISK_JSON='[]'
 
 # --- iostat: header names. Interval sample by default.
-# 7100 only: if that sample is all zeros, keep interval KB for rates and take
-# tm_act plus since-boot KB counters from an earlier report. ---
+# 7100 only: if that sample is all zeros, JSON keeps the earlier report's
+# tm_act and KB (same shape as 7.1 field v2). Interval KB goes in *_interval
+# for rate series only. ---
 DISKIO_JSON=$(
   IO_OUT=$(_run iostat -d 1 2)
   printf '%s\n' "${IO_OUT}" | awk -v aixrel="${AIX_REL}" '
@@ -594,13 +606,15 @@ DISKIO_JSON=$(
         }
       }
       printf "["
-      if (ival>0) {
-        for (i=1; i<=n[ival]; i++) {
-          d=order[ival, i]
+      src=ival
+      if (cum && use_tm>0) src=use_tm
+      if (src>0) {
+        for (i=1; i<=n[src]; i++) {
+          d=order[src, i]
           if (i>1) printf ","
           tm=tma[use_tm, d]+0
           if (cum) {
-            printf "{\"device\":\"%s\",\"read_bytes\":%.0f,\"write_bytes\":%.0f,\"tm_act\":%.2f,\"read_bytes_total\":%.0f,\"write_bytes_total\":%.0f}", d, rkb[ival, d]*1024, wkb[ival, d]*1024, tm, rkb[use_tm, d]*1024, wkb[use_tm, d]*1024
+            printf "{\"device\":\"%s\",\"read_bytes\":%.0f,\"write_bytes\":%.0f,\"tm_act\":%.2f,\"read_bytes_interval\":%.0f,\"write_bytes_interval\":%.0f}", d, rkb[use_tm, d]*1024, wkb[use_tm, d]*1024, tm, rkb[ival, d]*1024, wkb[ival, d]*1024
           } else {
             printf "{\"device\":\"%s\",\"read_bytes\":%.0f,\"write_bytes\":%.0f,\"tm_act\":%.2f}", d, rkb[ival, d]*1024, wkb[ival, d]*1024, tm
           }
