@@ -39,6 +39,7 @@ from apps.apm.serializers import (
     NotificationDeliveryRetrySerializer,
     NotificationRecipientQuerySerializer,
     OrganizationAssignmentSerializer,
+    ServiceErrorBreakdownQuerySerializer,
     ServiceMetricQuerySerializer,
 )
 from apps.apm.services import (
@@ -57,7 +58,7 @@ from apps.apm.services import (
     NotificationChannelDirectory,
 )
 from apps.apm.services.access import current_organization_id, filter_current_organization, validate_assignable_organizations, visible_organization_ids
-from apps.apm.services.contracts import IngestSnippetRequest, MetricDataState, ServiceMetricQuery
+from apps.apm.services.contracts import IngestSnippetRequest, MetricDataState, ServiceErrorBreakdownQuery, ServiceMetricQuery
 from apps.apm.services.integration_configuration import CloudRegionConfigurationError
 from apps.apm.services.probe_artifacts import LANGUAGE_PROBE_ARTIFACTS
 from apps.apm.services.status import ACTIVE_WINDOW, ARCHIVE_WINDOW
@@ -409,6 +410,83 @@ class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
                     }
                     for endpoint in red.top_endpoints
                 ],
+            }
+        )
+
+    @action(methods=("get",), detail=True, url_path="error-breakdown")
+    @HasPermission("services-View")
+    def error_breakdown(self, request, *args, **kwargs):
+        service = self.get_object()
+        serializer = ServiceErrorBreakdownQuerySerializer(data=request.query_params)
+        if not serializer.is_valid():
+            return Response(
+                {"code": "invalid_query", "detail": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        data = serializer.validated_data
+        query = ServiceErrorBreakdownQuery(
+            service_namespace=service.namespace,
+            service_name=service.name,
+            environment=data["environment"],
+            started_at=data["started_at"],
+            ended_at=data["ended_at"],
+            sample_limit=data["sample_limit"],
+        )
+        store = VictoriaTracesTelemetryStore()
+        try:
+            breakdown = DjangoTelemetryQueryService(metric_store=store, trace_store=store).service_error_breakdown(query)
+        except ValueError as exc:
+            return Response(
+                {"code": "invalid_query", "detail": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except TelemetryStoreUnavailable as exc:
+            return Response(
+                {"detail": str(exc), "code": "telemetry_unavailable"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        from apps.apm.views.spans import _span_summary_data
+
+        return Response(
+            {
+                "service_id": str(service.id),
+                "environment": data["environment"],
+                "started_at": data["started_at"],
+                "ended_at": data["ended_at"],
+                "data_state": str(breakdown.data_state),
+                "request_count": breakdown.request_count,
+                "error_count": breakdown.error_count,
+                "error_rate": breakdown.error_rate,
+                "failed_endpoints": [
+                    {
+                        "endpoint": item.endpoint,
+                        "error_count": item.error_count,
+                        "request_count": item.request_count,
+                        "error_rate": item.error_rate,
+                    }
+                    for item in breakdown.failed_endpoints
+                ],
+                "other_error_count": breakdown.other_error_count,
+                "error_types": [
+                    {
+                        "error_type": item.error_type,
+                        "message": item.message,
+                        "count": item.count,
+                        "location": item.location,
+                        "last_seen_at": item.last_seen_at,
+                        "sample_traces": [
+                            {
+                                "trace_id": sample.trace_id,
+                                "span_id": sample.span_id,
+                                "endpoint": sample.endpoint,
+                                "started_at": sample.started_at,
+                            }
+                            for sample in item.sample_traces
+                        ],
+                    }
+                    for item in breakdown.error_types
+                ],
+                "recent_failures": [_span_summary_data(item) for item in breakdown.recent_failures],
             }
         )
 

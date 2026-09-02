@@ -127,6 +127,10 @@ class SpanSummary:
     kind: str
     http_method: str | None = None
     http_status_code: str | None = None
+    exception_type: str | None = None
+    exception_message: str | None = None
+    span_error_type: str | None = None
+    status_message: str | None = None
 
 
 @dataclass(frozen=True)
@@ -373,6 +377,54 @@ class ServiceRed:
 
 
 @dataclass(frozen=True)
+class ServiceErrorBreakdownQuery:
+    service_namespace: str
+    service_name: str
+    environment: str
+    started_at: datetime
+    ended_at: datetime
+    sample_limit: int = 20
+
+
+@dataclass(frozen=True)
+class ServiceFailedEndpoint:
+    endpoint: str
+    error_count: int
+    request_count: int
+    error_rate: float | None
+
+
+@dataclass(frozen=True)
+class ServiceErrorSampleTrace:
+    trace_id: str
+    span_id: str
+    endpoint: str
+    started_at: datetime
+
+
+@dataclass(frozen=True)
+class ServiceErrorType:
+    error_type: str
+    message: str
+    count: int
+    location: str
+    last_seen_at: datetime
+    sample_traces: tuple[ServiceErrorSampleTrace, ...] = ()
+
+
+@dataclass(frozen=True)
+class ServiceErrorBreakdown:
+    request_count: int | None
+    error_count: int | None
+    error_rate: float | None
+    data_state: MetricDataState
+    failed_endpoints: tuple[ServiceFailedEndpoint, ...] = ()
+    other_error_count: int = 0
+    error_types: tuple[ServiceErrorType, ...] = ()
+    recent_failures: tuple[SpanSummary, ...] = ()
+
+
+@dataclass(frozen=True)
 class SloMetricQuery:
     service_namespace: str
     service_name: str
@@ -504,6 +556,9 @@ class TraceStore(Protocol):
     def get_trace(self, trace_id: str) -> TraceDetail | None:
         ...
 
+    def service_error_breakdown(self, query: ServiceErrorBreakdownQuery) -> ServiceErrorBreakdown:
+        ...
+
 
 class MetricStore(Protocol):
     def service_red(self, query: ServiceMetricQuery) -> ServiceRed:
@@ -581,6 +636,9 @@ class TelemetryQueryService(Protocol):
         ...
 
     def get_trace(self, trace_id: str) -> TraceDetail | None:
+        ...
+
+    def service_error_breakdown(self, query: ServiceErrorBreakdownQuery) -> ServiceErrorBreakdown:
         ...
 
 

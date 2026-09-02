@@ -2,6 +2,8 @@ from datetime import timedelta
 
 from apps.apm.services.contracts import (
     MetricStore,
+    ServiceErrorBreakdown,
+    ServiceErrorBreakdownQuery,
     ServiceMetricQuery,
     ServiceRed,
     SpanPage,
@@ -37,6 +39,23 @@ class DjangoTelemetryQueryService:
         if self.metric_store is None:
             raise RuntimeError("MetricStore 未配置")
         return self.metric_store.service_red(query)
+
+    def service_error_breakdown(self, query: ServiceErrorBreakdownQuery) -> ServiceErrorBreakdown:
+        if query.ended_at <= query.started_at:
+            raise ValueError("查询结束时间必须晚于开始时间")
+        if query.ended_at - query.started_at > MAX_METRIC_WINDOW:
+            raise ValueError("错误构成查询时间窗不能超过 7 天")
+        if not query.service_name.strip():
+            raise ValueError("service.name 不能为空")
+        if query.sample_limit < 1 or query.sample_limit > 50:
+            raise ValueError("sample_limit 必须在 1 到 50 之间")
+        store = self.trace_store if self.trace_store is not None else self.metric_store
+        if store is None:
+            raise RuntimeError("TelemetryStore 未配置")
+        breakdown = getattr(store, "service_error_breakdown", None)
+        if breakdown is None:
+            raise RuntimeError("TelemetryStore 未配置")
+        return breakdown(query)
 
     def search_traces(self, query: TraceSearchQuery) -> TracePage:
         self._validate_trace_window(query.started_at, query.ended_at)

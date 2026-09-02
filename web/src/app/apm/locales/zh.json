@@ -276,8 +276,7 @@
       "emptyPage": "当前游标页没有可见 Issue，可继续加载更早样本。",
       "occurrences": "{count} 次",
       "affectedTraces": "{count} 条 Trace",
-      "empty": "当前权限和时间窗内没有错误 Issue。",
-      "sampleShare": "{count} 次 · 占失败样本 {percent}%"
+      "empty": "当前权限和时间窗内没有错误 Issue。"
     },
     "trace": {
       "title": "Trace 详情",
@@ -700,6 +699,24 @@
       "errorSamplesMissing": "错误率有样本但错误列表未返回，可重试",
       "errorRateReconcile": "本窗 {requests} 次入口请求 · {errors} 次失败 · 错误率 {rate}",
       "openErrorExplore": "在错误分析中打开",
+      "failedEndpoints": "失败端点",
+      "errorReasons": "错误原因",
+      "errorReasonHint": "按错误类型统计，一次失败请求可能对应多个错误",
+      "recentFailures": "最近 {count} 条",
+      "noEntryRequests": "本窗无入口请求",
+      "noFailures": "本窗无失败请求",
+      "otherErrors": "其他 {count} 次",
+      "failureCount": "失败次数",
+      "requestCount": "请求次数",
+      "errorType": "类型",
+      "errorLocation": "发生位置",
+      "occurrenceCount": "次数",
+      "clearEndpointFilter": "清除端点筛选",
+      "location": {
+        "entry": "入口",
+        "downstream": "调下游",
+        "internal": "内部"
+      },
       "runtime": "运行时",
       "deploy": "部署",
       "target": "目标",

@@ -164,30 +164,6 @@ def test_issue_service_keeps_error_span_when_trace_detail_is_missing():
     assert issue.sample_traces[0].trace_id == summary.trace_id
 
 
-def test_issue_service_merges_unattributed_fallback_into_the_dominant_issue():
-    now = timezone.now()
-    attributed = _error_span(now, trace_id="a" * 32, span_id="1" * 16)
-    fallback = _error_span(now - timedelta(seconds=1), trace_id="b" * 32, span_id="2" * 16)
-    store = InMemoryTraceStore(
-        spans=(attributed, fallback),
-        details=(_trace(now, attributed, message="server_error", version="v2"),),
-    )
-    query_service = DjangoTelemetryQueryService(trace_store=store)
-    page = query_service.search_spans(
-        IssueSearchQuery(now - timedelta(hours=1), now + timedelta(seconds=1), limit=50).span_query()
-    )
-
-    result = DjangoTelemetryIssueService(query_service).project(page.items, next_cursor=None)
-
-    assert len(result.items) == 1
-    issue = result.items[0]
-    assert issue.exception_type == "PaymentDeclinedError"
-    assert issue.message == "server_error"
-    assert issue.occurrences == 2
-    assert issue.affected_traces == 2
-    assert {sample.trace_id for sample in issue.sample_traces} == {attributed.trace_id, fallback.trace_id}
-
-
 @pytest.mark.parametrize("params", [{"limit": 101}, {"status": "ok"}, {"started_at": "bad"}])
 def test_issue_api_rejects_unbounded_or_client_controlled_error_queries(apm_api_client, params):
     response = apm_api_client.get("/api/v1/apm/issues/", params)

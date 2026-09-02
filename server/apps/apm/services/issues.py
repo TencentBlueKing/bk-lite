@@ -54,40 +54,6 @@ def _key_frame(stacktrace: str) -> str:
     return next((line for line in lines[1:] if " at " in f" {line} "), lines[-1] if lines else "")
 
 
-def _is_unattributed(occurrence: _IssueOccurrence) -> bool:
-    return (
-        occurrence.exception_type == "SpanError"
-        and occurrence.message == _UNATTRIBUTED_MESSAGE
-        and not occurrence.stacktrace
-    )
-
-
-def _merge_unattributed(groups: dict[str, list[_IssueOccurrence]]) -> dict[str, list[_IssueOccurrence]]:
-    """get_trace 失败时的兜底卡并入同服务最大的已归因 Issue，避免同一种失败拆成两张。"""
-    merged = {fingerprint: list(items) for fingerprint, items in groups.items()}
-    attributed_by_service: dict[tuple[str, str], list[str]] = {}
-    unattributed: list[str] = []
-    for fingerprint, items in merged.items():
-        service = (items[0].summary.service_namespace, items[0].summary.service_name)
-        if items and all(_is_unattributed(item) for item in items):
-            unattributed.append(fingerprint)
-        else:
-            attributed_by_service.setdefault(service, []).append(fingerprint)
-    for fingerprint in unattributed:
-        items = merged[fingerprint]
-        service = (items[0].summary.service_namespace, items[0].summary.service_name)
-        candidates = attributed_by_service.get(service, [])
-        if not candidates:
-            continue
-        target = max(
-            candidates,
-            key=lambda key: (len(merged[key]), -max(item.summary.started_at.timestamp() for item in merged[key])),
-        )
-        merged[target].extend(items)
-        del merged[fingerprint]
-    return merged
-
-
 def _fingerprint(occurrence: _IssueOccurrence) -> str:
     identity = (
         occurrence.summary.service_namespace,
@@ -126,7 +92,6 @@ class DjangoTelemetryIssueService:
         groups: dict[str, list[_IssueOccurrence]] = {}
         for occurrence in occurrences:
             groups.setdefault(_fingerprint(occurrence), []).append(occurrence)
-        groups = _merge_unattributed(groups)
 
         issues = tuple(
             self._projection(fingerprint, group)

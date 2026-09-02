@@ -279,6 +279,27 @@ class ServiceMetricQuerySerializer(serializers.Serializer):
         return attrs
 
 
+class ServiceErrorBreakdownQuerySerializer(serializers.Serializer):
+    environment = serializers.CharField(max_length=256, allow_blank=True)
+    started_at = serializers.DateTimeField(required=False)
+    ended_at = serializers.DateTimeField(required=False)
+    sample_limit = serializers.IntegerField(min_value=1, max_value=50, default=20)
+
+    def validate(self, attrs):
+        unsupported = sorted(set(self.initial_data) - set(self.fields))
+        if unsupported:
+            raise serializers.ValidationError(f"不支持的错误构成查询参数: {', '.join(unsupported)}")
+        ended_at = attrs.get("ended_at") or timezone.now()
+        started_at = attrs.get("started_at") or ended_at - timedelta(hours=1)
+        if ended_at <= started_at:
+            raise serializers.ValidationError("查询结束时间必须晚于开始时间")
+        if ended_at - started_at > MAX_METRIC_WINDOW:
+            raise serializers.ValidationError("错误构成查询时间窗不能超过 7 天")
+        attrs["started_at"] = started_at
+        attrs["ended_at"] = ended_at
+        return attrs
+
+
 class TraceSearchSerializer(serializers.Serializer):
     service_namespace = serializers.CharField(max_length=256, required=False, allow_blank=True)
     service_name = serializers.CharField(max_length=256, required=False, allow_blank=False)

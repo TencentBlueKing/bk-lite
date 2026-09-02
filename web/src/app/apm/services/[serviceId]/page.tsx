@@ -39,7 +39,6 @@ import CatalogState, {
 import { DEPLOYMENT_LOOKBACK_MS, DEPLOYMENT_STATUS_META } from '@/app/apm/components/deployment-status';
 import HealthDot from '@/app/apm/components/health-dot';
 import { StatusPill } from '@/app/apm/components/home/section-card';
-import ApmIssueList from '@/app/apm/components/issue-list';
 import {
   deriveHealth,
   formatClockTime,
@@ -55,9 +54,9 @@ import {
 } from '@/app/apm/components/metric-format';
 import type {
   ApmDeploymentEvent,
-  ApmIssue,
   ApmService,
   ApmServiceEndpointRed,
+  ApmServiceErrorBreakdown,
   ApmServiceRed,
   ApmSlo,
   ApmTopologyEdge,
@@ -65,6 +64,7 @@ import type {
   ApmTraceSummary,
 } from '@/app/apm/types';
 import { isInferredTopologyNode } from '@/app/apm/services/topology/topology-layout';
+import ServiceErrorTab from '@/app/apm/services/[serviceId]/error-tab';
 import SummaryMetricCard from '@/components/summary-metric-card';
 import Permission from '@/components/permission';
 import TimeSeriesComposedChart from '@/components/time-series-composed-chart';
@@ -123,8 +123,8 @@ export default function ApmServiceDetailPage() {
   const {
     getService,
     getServiceRed,
+    getServiceErrorBreakdown,
     getTraces,
-    getIssues,
     getTopology,
     getSlos,
     getDeployments,
@@ -142,14 +142,21 @@ export default function ApmServiceDetailPage() {
   const [metricState, setMetricState] = useState<PageState>('loading');
   const [traces, setTraces] = useState<ApmTraceSummary[]>([]);
   const [tracesState, setTracesState] = useState<PageState>('loading');
-  const [issues, setIssues] = useState<ApmIssue[]>([]);
-  const [issuesState, setIssuesState] = useState<PageState>('loading');
+  const [errorBreakdown, setErrorBreakdown] = useState<ApmServiceErrorBreakdown>();
+  const [errorsState, setErrorsState] = useState<PageState>('loading');
   const [upstream, setUpstream] = useState<{ node: ApmTopologyNode; edge: ApmTopologyEdge }[]>([]);
   const [downstream, setDownstream] = useState<{ node: ApmTopologyNode; edge: ApmTopologyEdge }[]>([]);
   const [serviceSlos, setServiceSlos] = useState<ApmSlo[]>([]);
   const [deployments, setDeployments] = useState<ApmDeploymentEvent[]>([]);
   const [deploymentsState, setDeploymentsState] = useState<PageState>('loading');
   const [refreshKey, setRefreshKey] = useState(0);
+  const queryWindow = useMemo(() => {
+    const endedAt = new Date().toISOString();
+    return {
+      endedAt,
+      startedAt: new Date(new Date(endedAt).getTime() - RANGE_MS[timeRange]).toISOString(),
+    };
+  }, [refreshKey, timeRange]);
 
   useEffect(() => {
     if (authLoading || !params.serviceId) return;
@@ -180,8 +187,7 @@ export default function ApmServiceDetailPage() {
     }
     let active = true;
     setMetricState('loading');
-    const endedAt = new Date().toISOString();
-    const startedAt = new Date(new Date(endedAt).getTime() - RANGE_MS[timeRange]).toISOString();
+    const { startedAt, endedAt } = queryWindow;
     getServiceRed(service.id, environment, startedAt, endedAt)
       .then((value) => {
         if (!active) return;
@@ -194,7 +200,7 @@ export default function ApmServiceDetailPage() {
     return () => {
       active = false;
     };
-  }, [environment, getServiceRed, refreshKey, service, timeRange]);
+  }, [environment, getServiceRed, queryWindow, service]);
 
   useEffect(() => {
     if (!service || environment === undefined || authLoading) return;
@@ -281,31 +287,26 @@ export default function ApmServiceDetailPage() {
     };
   }, [activeTab, authLoading, getDeployments, params.serviceId, refreshKey]);
 
-  const loadIssues = useCallback(() => {
+  const loadErrorBreakdown = useCallback(() => {
     if (!service || environment === undefined || authLoading) return;
-    setIssuesState('loading');
-    const endedAt = new Date().toISOString();
-    const startedAt = new Date(new Date(endedAt).getTime() - RANGE_MS[timeRange]).toISOString();
-    void getIssues({
-      service_namespace: service.namespace,
-      service_name: service.name,
+    setErrorsState('loading');
+    void getServiceErrorBreakdown(service.id, {
       environment,
-      started_at: startedAt,
-      ended_at: endedAt,
-      limit: 50,
-      entry_only: true,
+      started_at: queryWindow.startedAt,
+      ended_at: queryWindow.endedAt,
+      sample_limit: 20,
     })
-      .then((page) => {
-        setIssues(page.items);
-        setIssuesState(page.items.length ? 'ready' : 'empty');
+      .then((result) => {
+        setErrorBreakdown(result);
+        setErrorsState('ready');
       })
-      .catch((error) => setIssuesState(catalogErrorKind(error)));
-  }, [authLoading, environment, getIssues, service, timeRange]);
+      .catch((error) => setErrorsState(catalogErrorKind(error)));
+  }, [authLoading, environment, getServiceErrorBreakdown, queryWindow, service]);
 
   useEffect(() => {
     if (activeTab !== 'errors') return;
-    loadIssues();
-  }, [activeTab, loadIssues, refreshKey]);
+    loadErrorBreakdown();
+  }, [activeTab, loadErrorBreakdown, refreshKey]);
 
   const exploreHref = service && red
     ? `/apm/explore/traces?${new URLSearchParams({
@@ -797,52 +798,13 @@ export default function ApmServiceDetailPage() {
                 label: t('apm.serviceDetail.errors', '错误'),
                 children: (
                   <ApmSurface>
-                    {issuesState === 'ready' ? (
-                      <div className="flex flex-col gap-4">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          {red?.request_count != null && red.error_count != null ? (
-                            <Typography.Text type="secondary" className="!text-xs">
-                              {t('apm.serviceDetail.errorRateReconcile', '本窗 {requests} 次入口请求 · {errors} 次失败 · 错误率 {rate}', {
-                                requests: formatNumber(red.request_count),
-                                errors: formatNumber(red.error_count),
-                                rate: formatErrorRate(red.error_rate, false, t),
-                              })}
-                            </Typography.Text>
-                          ) : <span />}
-                          <Link href={errorsExploreHref}>
-                            <Button type="link" size="small">{t('apm.serviceDetail.openErrorExplore', '在错误分析中打开')}</Button>
-                          </Link>
-                        </div>
-                        {issues.length ? (
-                          <ApmIssueList items={issues} showService={false} sampleShare />
-                        ) : (
-                          <CatalogState
-                            kind="empty"
-                            description={
-                              (red?.error_rate ?? 0) > 0
-                                ? t('apm.serviceDetail.errorSamplesMissing', '错误率有样本但错误列表未返回，可重试')
-                                : t('apm.serviceDetail.noErrorIssues', '当前时间窗没有入口错误')
-                            }
-                            onRetry={(red?.error_rate ?? 0) > 0 ? () => loadIssues() : undefined}
-                          />
-                        )}
-                      </div>
-                    ) : issuesState === 'empty' ? (
-                      <CatalogState
-                        kind="empty"
-                        description={
-                          (red?.error_rate ?? 0) > 0
-                            ? t('apm.serviceDetail.errorSamplesMissing', '错误率有样本但错误列表未返回，可重试')
-                            : t('apm.serviceDetail.noErrorIssues', '当前时间窗没有入口错误')
-                        }
-                        onRetry={(red?.error_rate ?? 0) > 0 ? () => loadIssues() : undefined}
-                      />
-                    ) : (
-                      <CatalogState
-                        kind={issuesState}
-                        onRetry={issuesState === 'forbidden' ? undefined : () => loadIssues()}
-                      />
-                    )}
+                    <ServiceErrorTab
+                      breakdown={errorBreakdown}
+                      state={errorsState}
+                      chartData={chartData}
+                      exploreHref={errorsExploreHref}
+                      onRetry={loadErrorBreakdown}
+                    />
                   </ApmSurface>
                 ),
               },

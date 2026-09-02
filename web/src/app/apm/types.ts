@@ -75,6 +75,46 @@ export interface ApmServiceEndpointRed {
   p99_ms: number | null;
 }
 
+export type ApmErrorLocation = 'entry' | 'downstream' | 'internal';
+
+export interface ApmFailedEndpoint {
+  endpoint: string;
+  error_count: number;
+  request_count: number;
+  error_rate: number | null;
+}
+
+export interface ApmErrorSampleTrace {
+  trace_id: string;
+  span_id: string;
+  endpoint: string;
+  started_at: string;
+}
+
+export interface ApmServiceErrorType {
+  error_type: string;
+  message: string;
+  count: number;
+  location: ApmErrorLocation;
+  last_seen_at: string;
+  sample_traces: ApmErrorSampleTrace[];
+}
+
+export interface ApmServiceErrorBreakdown {
+  service_id: string;
+  environment: string;
+  started_at: string;
+  ended_at: string;
+  data_state: 'available' | 'no_data';
+  request_count: number | null;
+  error_count: number | null;
+  error_rate: number | null;
+  failed_endpoints: ApmFailedEndpoint[];
+  other_error_count: number;
+  error_types: ApmServiceErrorType[];
+  recent_failures: ApmSpanSummary[];
+}
+
 export type ApmSliType = 'availability' | 'latency_p95' | 'latency_p99';
 export type ApmSloEvaluationWindow = 'rolling7d' | 'rolling30d' | 'calendarMonth';
 export type ApmMetricDataState = 'available' | 'no_data' | 'unavailable';
