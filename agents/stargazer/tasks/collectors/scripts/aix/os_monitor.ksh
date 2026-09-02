@@ -317,10 +317,8 @@ if [ -n "${LSPS_OUT}" ]; then
   [ -n "$2" ] && SWAP_FREE=$2
 fi
 
-# --- df: capacity + inodes. Skip if missing.
-# -F letters: used, free, %used, iused, ifree, %iused, mount.
-# AIX may still print filesystem and allocated (1024-blocks) beside -F fields.
-# Parse by header names / those meanings. Never treat %used as bytes. ---
+# --- df: IBM -F header parse on all levels. Never treat %used as bytes.
+# 7100 only: if -F yields no mounts, df -kP capacity + df -i inodes. ---
 DF_OUT=""
 if _have df; then
   DF_OUT=$(df -kP -F '%u %f %z %l %n %p %m' 2>/dev/null)
@@ -409,10 +407,115 @@ DISK_JSON=$(
     END { print "]" }
   '
 )
+_DF_HAS_MOUNT=$(printf '%s' "${DISK_JSON}" | awk 'index($0, "\"mount\"") { print 1; exit }')
+if [ "${AIX_REL}" = "7100" ] && [ "${_DF_HAS_MOUNT}" != "1" ]; then
+  DF_KP=""
+  DF_I=""
+  if _have df; then
+    DF_KP=$(df -kP 2>/dev/null)
+    DF_I=$(df -i 2>/dev/null)
+  fi
+  DISK_JSON=$(
+    {
+      printf '%s\n' '---KP---'
+      printf '%s\n' "${DF_KP}"
+      printf '%s\n' '---IN---'
+      printf '%s\n' "${DF_I}"
+    } | awk '
+      function reset_cols() {
+        used_c=0; free_c=0; pct_c=0; iused_c=0; ifree_c=0; ipct_c=0; alloc_c=0
+      }
+      function is_header(    i, t) {
+        for (i=1; i<=NF; i++) {
+          t=tolower($i)
+          if (t=="filesystem" || t=="allocated" || t=="1024-blocks" || t=="512-blocks" || t=="%used" || t=="iused" || t=="%iused" || t=="ifree" || t=="mounted" || t=="capacity" || t=="available" || t=="inodes") return 1
+        }
+        return 0
+      }
+      function map_header(    i, t) {
+        reset_cols()
+        for (i=1; i<=NF; i++) {
+          t=tolower($i)
+          if (t=="1024-blocks" || t=="512-blocks" || t=="allocated") alloc_c=i
+          else if (t=="%used" || t=="capacity" || t=="use%") pct_c=i
+          else if (t=="%iused") ipct_c=i
+          else if (t=="used") used_c=i
+          else if (t=="free" || t=="available") free_c=i
+          else if (t=="iused") iused_c=i
+          else if (t=="ifree") ifree_c=i
+        }
+      }
+      function num_at(c,    s) {
+        if (c<1 || c>NF) return 0
+        s=$c
+        gsub(/%/, "", s)
+        return s+0
+      }
+      function skip_fs(m, fs) {
+        if (m=="on" || m=="/proc" || m=="/ahafs" || m ~ /^\/proc/ || m ~ /^\/ahafs/) return 1
+        if (fs ~ /^(procfs|proc|nfs|nfs3|nfs4|autofs|namefs|cdrom|iso9660|ahafs)$/) return 1
+        if (fs=="/proc" || fs=="/ahafs") return 1
+        return 0
+      }
+      BEGIN { mode=""; nm=0 }
+      $0=="---KP---" { mode="kp"; reset_cols(); next }
+      $0=="---IN---" { mode="in"; reset_cols(); next }
+      NF==0 { next }
+      is_header() { map_header(); next }
+      $NF=="on" { next }
+      mode=="kp" {
+        mount=$NF
+        fs=$1
+        if (skip_fs(mount, fs)) next
+        usedkb=num_at(used_c)
+        freekb=num_at(free_c)
+        allockb=num_at(alloc_c)
+        pct=num_at(pct_c)
+        if (usedkb<=0 && allockb>0) usedkb=allockb-freekb
+        if (usedkb<0) usedkb=0
+        if (allockb<=0) allockb=usedkb+freekb
+        if (pct==0 && allockb>0) pct=usedkb*100/allockb
+        if (!(mount in seenm)) { seenm[mount]=1; order[++nm]=mount }
+        ukb[mount]=usedkb
+        fkb[mount]=freekb
+        akb[mount]=allockb
+        pc[mount]=pct
+        next
+      }
+      mode=="in" {
+        mount=$NF
+        fs=$1
+        if (skip_fs(mount, fs)) next
+        iu=num_at(iused_c)
+        ifr=num_at(ifree_c)
+        ip=num_at(ipct_c)
+        if (ifr==0 && ip>0 && ip<100 && iu>0) ifr=int(iu*(100-ip)/ip+0.5)
+        if (ip==0 && (iu+ifr)>0) ip=iu*100/(iu+ifr)
+        iu_m[mount]=iu
+        ifr_m[mount]=ifr
+        ip_m[mount]=ip
+        next
+      }
+      END {
+        printf "["
+        for (i=1; i<=nm; i++) {
+          m=order[i]
+          if (i>1) printf ","
+          mm=m
+          gsub(/\\/, "\\\\", mm)
+          gsub(/"/, "\\\"", mm)
+          printf "{\"mount\":\"%s\",\"path\":\"%s\",\"fstype\":\"\",\"total_bytes\":%.0f,\"used_bytes\":%.0f,\"free_bytes\":%.0f,\"used_percent\":%.2f,\"inodes_used_percent\":%.2f,\"iused\":%.0f,\"ifree\":%.0f}", mm, mm, akb[m]*1024, ukb[m]*1024, fkb[m]*1024, pc[m]+0, ip_m[m]+0, iu_m[m]+0, ifr_m[m]+0
+        }
+        printf "]"
+      }
+    '
+  )
+fi
 [ -z "${DISK_JSON}" ] && DISK_JSON='[]'
 
 # --- iostat: header names. Interval sample by default.
-# 7100 only: if that sample is all zeros, use an earlier report that has values. ---
+# 7100 only: if that sample is all zeros, keep interval KB for rates and take
+# tm_act plus since-boot KB counters from an earlier report. ---
 DISKIO_JSON=$(
   IO_OUT=$(_run iostat -d 1 2)
   printf '%s\n' "${IO_OUT}" | awk -v aixrel="${AIX_REL}" '
@@ -481,19 +584,26 @@ DISKIO_JSON=$(
       if (write_c>0) wkb[pass, dev]=$(write_c)+0
     }
     END {
-      use=0
-      for (p=1; p<=pass; p++) if (n[p]>0) use=p
-      if (aixrel==7100 && use>0 && report_idle(use)) {
-        for (p=use-1; p>=1; p--) {
-          if (n[p]>0 && !report_idle(p)) { use=p; break }
+      ival=0
+      for (p=1; p<=pass; p++) if (n[p]>0) ival=p
+      use_tm=ival
+      cum=0
+      if (aixrel==7100 && ival>0 && report_idle(ival)) {
+        for (p=ival-1; p>=1; p--) {
+          if (n[p]>0 && !report_idle(p)) { use_tm=p; cum=1; break }
         }
       }
       printf "["
-      if (use>0) {
-        for (i=1; i<=n[use]; i++) {
-          d=order[use, i]
+      if (ival>0) {
+        for (i=1; i<=n[ival]; i++) {
+          d=order[ival, i]
           if (i>1) printf ","
-          printf "{\"device\":\"%s\",\"read_bytes\":%.0f,\"write_bytes\":%.0f,\"tm_act\":%.2f}", d, rkb[use, d]*1024, wkb[use, d]*1024, tma[use, d]+0
+          tm=tma[use_tm, d]+0
+          if (cum) {
+            printf "{\"device\":\"%s\",\"read_bytes\":%.0f,\"write_bytes\":%.0f,\"tm_act\":%.2f,\"read_bytes_total\":%.0f,\"write_bytes_total\":%.0f}", d, rkb[ival, d]*1024, wkb[ival, d]*1024, tm, rkb[use_tm, d]*1024, wkb[use_tm, d]*1024
+          } else {
+            printf "{\"device\":\"%s\",\"read_bytes\":%.0f,\"write_bytes\":%.0f,\"tm_act\":%.2f}", d, rkb[ival, d]*1024, wkb[ival, d]*1024, tm
+          }
         }
       }
       printf "]"
