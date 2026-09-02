@@ -241,7 +241,7 @@ class SystemSettingsViewSet(viewsets.ModelViewSet):
         # 转换为字典格式
         settings_dict = {item["key"]: item["value"] for item in password_settings}
 
-        # 添加密码策略描述
-        policy_description = PasswordValidator.get_password_policy_description()
+        locale = getattr(getattr(request, "user", None), "locale", "zh-Hans") or "zh-Hans"
+        policy_description = PasswordValidator.get_password_policy_description(locale=locale)
 
         return JsonResponse({"result": True, "data": {"settings": settings_dict, "policy_description": policy_description}})

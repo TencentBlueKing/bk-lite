@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 
+import { readFileSync } from 'node:fs';
 import {
   collectIntegrationCapabilityFilterOptions,
   filterIntegrationProvidersByQuery,
@@ -9,11 +10,16 @@ const t = (key: string, fallback?: string) => {
   const labels: Record<string, string> = {
     'system.integrationCenter.capability.userSync': '用户同步',
     'system.integrationCenter.capability.loginAuth': '登录认证',
-    'system.integrationCenter.capability.imNotification': '通知渠道',
+    'system.integrationCenter.capability.imNotification': 'IM通知',
     'system.integrationCenter.capability.imGroup': '群协作',
   };
   return labels[key] || fallback || key;
 };
+const zh = JSON.parse(readFileSync(new URL('../src/app/system-manager/locales/zh.json', import.meta.url), 'utf8'));
+const en = JSON.parse(readFileSync(new URL('../src/app/system-manager/locales/en.json', import.meta.url), 'utf8'));
+
+assert.equal(zh.system.integrationCenter.capability.imNotification, 'IM通知');
+assert.equal(en.system.integrationCenter.capability.imNotification, 'IM Notification');
 
 const providers = [
   {
