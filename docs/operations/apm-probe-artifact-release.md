@@ -23,7 +23,7 @@
 | Python | `opentelemetry-python-wheels.tar.gz` | `apm/probe/python/opentelemetry-python-wheels.tar.gz` | `opentelemetry-distro[otlp]` 及常见 instrumentation 的 wheelhouse |
 | Node.js | `opentelemetry-js-auto.tgz` | `apm/probe/nodejs/opentelemetry-js-auto.tgz` | `@opentelemetry/auto-instrumentations-node` 的离线包（含依赖） |
 | Go | `opentelemetry-go-sdk.zip` | `apm/probe/go/opentelemetry-go-sdk.zip` | Go module proxy 目录树，至少含 otel / sdk / otlptracehttp 及其依赖 |
-| .NET | `opentelemetry-dotnet-auto-linux-glibc-x64.zip` | `apm/probe/dotnet/opentelemetry-dotnet-auto-linux-glibc-x64.zip` | 官方 `linux-glibc-x64.zip` 原文件；仅 Linux x86_64 glibc |
+| .NET | `opentelemetry-dotnet-auto-linux-glibc-x64.zip` | `apm/probe/dotnet/opentelemetry-dotnet-auto-linux-glibc-x64.zip` | 官方 `opentelemetry-dotnet-instrumentation-linux-glibc-x64.zip` 原文件；仅 Linux x86_64 glibc |
 
 五类都要初始化。缺任意一个，对应语言的接入脚本 `curl --fail` 会失败。
 .NET 第一版不支持 Alpine / musl、ARM64、Windows；不要合并多份官方 zip。
@@ -61,7 +61,7 @@
 | Python | `opentelemetry-python-wheels.tar.gz` | `opentelemetry-distro[otlp]==0.65b0`，配套 SDK **1.44.0** |
 | Node.js | `opentelemetry-js-auto.tgz` | `@opentelemetry/auto-instrumentations-node@0.79.0` |
 | Go | `opentelemetry-go-sdk.zip` | `go.opentelemetry.io/otel` **v1.46.0**（contrib 取同期模块） |
-| .NET | `opentelemetry-dotnet-auto-linux-glibc-x64.zip` | `opentelemetry-dotnet-instrumentation` **v1.16.0**（官方 `linux-glibc-x64.zip`） |
+| .NET | `opentelemetry-dotnet-auto-linux-glibc-x64.zip` | `opentelemetry-dotnet-instrumentation` **v1.16.0**（官方 `opentelemetry-dotnet-instrumentation-linux-glibc-x64.zip`） |
 
 ### Java
 
@@ -118,16 +118,16 @@ go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp
 
 ### .NET
 
-从官方 Release 下载 **v1.16.0** 的 `linux-glibc-x64.zip`，原文件归档并改名为制品名：
+从官方 Release 下载 **v1.16.0** 的 `opentelemetry-dotnet-instrumentation-linux-glibc-x64.zip`，原文件归档并改名为制品名：
 
 ```text
-https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation/releases/download/v1.16.0/linux-glibc-x64.zip
+https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation/releases/download/v1.16.0/opentelemetry-dotnet-instrumentation-linux-glibc-x64.zip
 ```
 
 ```bash
 curl --fail --silent --show-error --location \
   --output opentelemetry-dotnet-auto-linux-glibc-x64.zip \
-  https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation/releases/download/v1.16.0/linux-glibc-x64.zip
+  https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation/releases/download/v1.16.0/opentelemetry-dotnet-instrumentation-linux-glibc-x64.zip
 ```
 
 文件名必须是 `opentelemetry-dotnet-auto-linux-glibc-x64.zip`。禁止把 glibc / musl /
@@ -236,7 +236,7 @@ done
 | Python `pip install --no-index` 失败 | wheelhouse 是否含 distro[otlp] 及 bootstrap 列出的 instrumentation |
 | Node `npm install --offline` 失败 | tgz 是否带齐依赖，而不是只有主包 |
 | Go `go mod download` 失败 | zip 是否为 GOPROXY file 目录树，且含传递依赖 |
-| .NET 启动找不到 Profiler | 归档是否为官方 `linux-glibc-x64.zip`；目标是否为 glibc x86_64，而不是 Alpine / ARM64 |
+| .NET 启动找不到 Profiler | 归档是否为官方 `opentelemetry-dotnet-instrumentation-linux-glibc-x64.zip`；目标是否为 glibc x86_64，而不是 Alpine / ARM64 |
 
 ## 8. 回滚
 

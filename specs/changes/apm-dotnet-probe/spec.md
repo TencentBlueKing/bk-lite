@@ -29,7 +29,7 @@ GitHub 下 OpenTelemetry .NET 自动探针、自己拼环境变量，而目标�
 Kubernetes）共用同一份文件。
 
 支持范围明确收窄为 **Linux x86_64 + glibc**（Ubuntu / Debian / CentOS / RHEL 类主机，以及
-以这些发行版为基础镜像的容器）。制品直接归档官方 `linux-glibc-x64.zip`，不重打包、不合集。
+以这些发行版为基础镜像的容器）。制品直接归档官方 `opentelemetry-dotnet-instrumentation-linux-glibc-x64.zip`，不重打包、不合集。
 Alpine（musl）、ARM64、Windows / IIS、macOS 与 .NET Framework 均不在第一版内，在接入
 页文案里明写，不做选项。
 
@@ -56,7 +56,7 @@ Alpine（musl）、ARM64、Windows / IIS、macOS 与 .NET Framework 均不在第
 
 - 平台：仅 Linux x86_64 glibc。不支持 Alpine / musl、ARM64、Windows、macOS、.NET Framework。
 - 运行时：现代 .NET（.NET 8 及以上，以上游 v1.16.0 声明的支持矩阵为准）。
-- 上游版本钉死 `opentelemetry-dotnet-instrumentation` **v1.16.0**，归档官方 `linux-glibc-x64.zip`
+- 上游版本钉死 `opentelemetry-dotnet-instrumentation` **v1.16.0**，归档官方 `opentelemetry-dotnet-instrumentation-linux-glibc-x64.zip`
   原文件。禁止自行合并多份 zip，禁止依赖 `latest`。
 - 信号范围与其他语言一致：traces-only。片段把 metrics / logs 导出器关闭，避免探针默认向
   4318 推送 metrics / logs 被区域采集器拒收或产生噪音。
@@ -101,7 +101,7 @@ Alpine（musl）、ARM64、Windows / IIS、macOS 与 .NET Framework 均不在第
 ### 文档
 
 - 发布 Runbook 制品表、钉死版本表、归档步骤、初始化命令、验收地址各补 .NET 一行；来源为官方
-  Release 的 `linux-glibc-x64.zip`，归档时改名为制品名并记录字节数与 SHA-256。
+  Release 的 `opentelemetry-dotnet-instrumentation-linux-glibc-x64.zip`，归档时改名为制品名并记录字节数与 SHA-256。
 - APM 产品决策文档的探针版本表补 .NET v1.16.0。
 - 功能清单「接入指引」支持语言补 .NET（标注 Linux x86_64 glibc）。
 
