@@ -9,8 +9,10 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Sanic 进程数：每进程独立 GIL，用于绕开单进程 CPU 天花板；可在运行时用 -e 覆盖
-ENV SANIC_WORKERS=4
+# Sanic 进程数，默认 1。采集 Run 绑定在接收请求的进程内不跨进程，且每个进程各持一份
+# MAX_ACTIVE_TARGETS：调大只能分摊多个独立 Run，容器总并发会按倍数放大。确认容器
+# 并发口径后再用 -e SANIC_WORKERS=N 显式放开。
+ENV SANIC_WORKERS=1
 
 WORKDIR /app
 
