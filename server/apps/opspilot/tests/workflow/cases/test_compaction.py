@@ -6,12 +6,16 @@ module correctly compresses historical messages into a summary while
 preserving SystemMessages, recent messages, and tool_call/tool_result pairs.
 """
 
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from apps.opspilot.metis.llm.chain.compaction import (
+    COMPACTION_DONE_LOG,
+    COMPACTION_SKIP_LOG,
+    COMPACTION_START_LOG,
     CompactionConfig,
     _find_safe_split_point,
     _format_messages_for_summary,
@@ -230,6 +234,99 @@ class TestCompactMessages:
         result = await compact_messages(msgs, AsyncMock(), config)
         assert result is msgs
 
+    async def test_extra_tokens_can_trigger_compaction(self):
+        system_msg = SystemMessage(content="You are helpful.")
+        history = []
+        for i in range(4):
+            history.append(HumanMessage(content=f"Question {i}"))
+            history.append(AIMessage(content=f"Answer {i}"))
+        all_msgs = [system_msg] + history
+        message_tokens = count_message_tokens(all_msgs, "gpt-4o")
+        config = CompactionConfig(
+            max_token_threshold=message_tokens,
+            keep_recent_messages=2,
+            summary_max_tokens=50,
+        )
+        mock_llm = AsyncMock()
+        mock_llm.ainvoke.return_value = MagicMock(content="Prior turns summarized.")
+
+        skipped = await compact_messages(all_msgs, mock_llm, config, extra_tokens=0)
+        assert skipped is all_msgs
+        mock_llm.ainvoke.assert_not_called()
+
+        with patch("apps.opspilot.metis.llm.chain.compaction.TemplateLoader.render_template", return_value="Summarize..."):
+            compacted = await compact_messages(all_msgs, mock_llm, config, extra_tokens=message_tokens + 8)
+
+        assert compacted is not all_msgs
+        mock_llm.ainvoke.assert_called_once()
+        assert isinstance(compacted[1], HumanMessage)
+        assert "摘要" in compacted[1].content or "summar" in compacted[1].content.lower()
+
+    async def test_skip_and_done_logs_include_packet_and_extra_tokens(self, caplog):
+        sentinel = "SECRET_PAYLOAD_SHOULD_NOT_APPEAR"
+        short = [HumanMessage(content=sentinel)]
+        config = CompactionConfig(max_token_threshold=80_000)
+        caplog.set_level(logging.DEBUG, logger="opspilot")
+        await compact_messages(short, AsyncMock(), config, extra_tokens=9)
+        skips = [record for record in caplog.records if record.msg == COMPACTION_SKIP_LOG]
+        assert len(skips) == 1
+        assert skips[0].args == (skips[0].args[0], 80_000, 9, "below_threshold")
+        assert skips[0].args[2] == 9
+        rendered_skip = skips[0].getMessage()
+        assert "9" in rendered_skip
+        assert sentinel not in rendered_skip
+
+        few = [
+            SystemMessage(content="s"),
+            HumanMessage(content="a"),
+            AIMessage(content="b"),
+        ]
+        caplog.clear()
+        await compact_messages(
+            few,
+            AsyncMock(),
+            CompactionConfig(max_token_threshold=1, keep_recent_messages=12),
+            extra_tokens=3,
+        )
+        split_skips = [record for record in caplog.records if record.msg == COMPACTION_SKIP_LOG]
+        assert len(split_skips) == 1
+        assert split_skips[0].args[2] == 3
+        assert split_skips[0].args[3] == "split_zero"
+        assert split_skips[0].args[1] == 1
+
+        system_msg = SystemMessage(content="You are helpful.")
+        history = []
+        for index in range(4):
+            history.append(HumanMessage(content=f"Question {index}"))
+            history.append(AIMessage(content=f"Answer {index}"))
+        all_msgs = [system_msg] + history
+        message_tokens = count_message_tokens(all_msgs, "gpt-4o")
+        force_config = CompactionConfig(
+            max_token_threshold=message_tokens,
+            keep_recent_messages=2,
+            summary_max_tokens=50,
+        )
+        mock_llm = AsyncMock()
+        mock_llm.ainvoke.return_value = MagicMock(content="Prior turns summarized.")
+        caplog.clear()
+        caplog.set_level(logging.INFO, logger="opspilot")
+        extra = 11
+        with patch("apps.opspilot.metis.llm.chain.compaction.TemplateLoader.render_template", return_value="Summarize..."):
+            compacted = await compact_messages(all_msgs, mock_llm, force_config, extra_tokens=extra)
+        starts = [record for record in caplog.records if record.msg == COMPACTION_START_LOG]
+        dones = [record for record in caplog.records if record.msg == COMPACTION_DONE_LOG]
+        assert len(starts) == 1
+        assert starts[0].args[2] == extra
+        assert starts[0].args[3] == 2
+        assert starts[0].msg == COMPACTION_START_LOG
+        assert len(dones) == 1
+        assert dones[0].args[0] == message_tokens + extra
+        assert dones[0].args[1] == count_message_tokens(compacted, "gpt-4o") + extra
+        assert dones[0].args[2] == extra
+        rendered = dones[0].getMessage()
+        assert str(extra) in rendered
+        assert "Prior turns summarized." not in rendered
+
     async def test_above_threshold_triggers_compaction(self):
         # Build messages that exceed threshold
         system_msg = SystemMessage(content="You are helpful.")
@@ -345,4 +442,4 @@ class TestCompactionIntegration:
         result_tokens = count_message_tokens(result)
         assert result_tokens < original_tokens, f"Compaction should reduce tokens: {original_tokens} -> {result_tokens}"
         # At least 50% compression on this large input
-        assert result_tokens < original_tokens * 0.5, f"Expected >50% compression, got {(1 - result_tokens/original_tokens)*100:.1f}%"
+        assert result_tokens < original_tokens * 0.5, f"Expected >50% compression, got {(1 - result_tokens / original_tokens) * 100:.1f}%"

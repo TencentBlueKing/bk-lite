@@ -56,11 +56,17 @@ STARGAZER_MONITOR_AUTH_PREVIOUS_TOKEN=<previous-token>
 
 ```bash
 MAX_ACTIVE_RUNS=16
-# 配置采集目标并发；设为 0 表示不限制（尽快打满机器、靠监控扩容）
-MAX_ACTIVE_TARGETS=250
-# 网络拓扑基础配额；普通采集完全空闲时可借用普通容量的一半
-NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS=50
-TARGET_TASK_WINDOW=250
+MAX_ACTIVE_TARGETS=160
+CONFIGURATION_MAX_ACTIVE_TARGETS=100
+MONITORING_MAX_ACTIVE_TARGETS=30
+NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS=30
+TARGET_TASK_WINDOW=160
+SNMP_MAX_IN_FLIGHT=100
+SNMP_ENGINE_MAX_TARGETS=2000
+SNMP_ENGINE_IDLE_SECONDS=300
+SYNC_SDK_MAX_IN_FLIGHT=16
+REMOTE_JOB_MAX_IN_FLIGHT=20
+DEFAULT_ASYNC_MAX_IN_FLIGHT=160
 REDIS_MAX_CONNECTIONS=2560
 REDIS_POOL_TIMEOUT=2
 # 默认 RESP2，兼容不支持 HELLO 的旧 Redis / 代理；仅在确认服务端支持 RESP3 时设为 3
@@ -80,27 +86,26 @@ OUTBOUND_ALLOWED_CIDRS=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
 OUTBOUND_ALLOWED_DOMAINS=
 ```
 
-这些值都是部署参数。未设置时默认 `MAX_ACTIVE_TARGETS=250`、
-`NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS=50`、`TARGET_TASK_WINDOW=250`。这些参数是单 Pod、跨所有运行
-共享的配置采集目标并发与任务窗口；
-全局调度器在 Run 之间 round-robin，单个大 Run 不再预占 worker。需要临时去掉目标并发上限时：
-
-```bash
-MAX_ACTIVE_TARGETS=0
-TARGET_TASK_WINDOW=0
-```
-
-网络拓扑使用共享目标池，`NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS` 是普通采集存在时的基础配额。
-当普通目标既未运行也未排队时，拓扑最多再借用普通容量的一半：动态上限为
-`基础配额 + floor((全局目标容量 - 基础配额) / 2)`。因此默认 `250/50` 下拓扑可临时运行到 150；
-普通任务到达后立即停止派发超出基础配额的新拓扑目标，但不会抢占已经运行的目标，空出的全局槽位
-优先回流普通采集。若同时把 `MAX_ACTIVE_TARGETS` 和 `TARGET_TASK_WINDOW` 设为 `0`，由于全局容量
-不再有可计算的有限边界，拓扑借槽关闭并保持基础配额。
+这些值是单 Pod、跨所有 Run 共享的容量。三类软配额必须为正整数，但不要求总和等于 160；
+三类同时积压时按 `100/30/30` 调度，某类无排队目标时，其他类可借满 160。新类别到达后不抢占
+在途目标，而是优先获得后续释放的槽位。`SNMP_MAX_IN_FLIGHT`、`SYNC_SDK_MAX_IN_FLIGHT`
+和 `REMOTE_JOB_MAX_IN_FLIGHT` 是第二维技术资源边界；两维都有容量时才创建目标 Task。配置非法时启动失败，
+不再支持用 `0` 隐式关闭边界。
 
 `MAX_ACTIVE_RUNS` 仍保留 run 级准入；满了返回 busy/429。
 
+SNMP 采集在每个 worker 进程内按凭据作用域共享 pysnmp `SnmpEngine`（v1/v2c 共用一个，
+v3 按用户名与密钥组合各一个），不再为每个目标新建 engine：pysnmp 每个 engine 首次解析 OID
+都会用 PLY 重算 SMI 语法表（连同 MIB 模块约 2 MiB、约 50 ms 纯 Python CPU），100 并发一批
+就阻塞事件循环数秒；uvloop 的 sendto 地址缓存（2048 项 LRU）还会经 pysnmp 传输地址对象拖住
+已关闭 engine 的整棵 MIB 树，这是大规模 SNMP 轮次内存不回落与 CPU 饱和的根因（builder 实测
+800 个不可达目标：修复前 RSS 73→1747 MiB、事件循环 P99 延迟最高 7.3 s；修复后 73→115 MiB、
+P99 延迟 ≤25 ms）。`SNMP_ENGINE_MAX_TARGETS` 限制单个 engine 服务过的不同目标地址数
+（每个目标在 pysnmp LCD 中约占 20 KiB），达到后新目标换用新 engine、旧 engine 排空在途请求后关闭；
+`SNMP_ENGINE_IDLE_SECONDS` 是 engine 空闲多久后释放 dispatcher。两者必须为正数，否则启动失败。
+
 `REDIS_MAX_CONNECTIONS` 应不小于目标并发并留租约余量（推荐
-`≳ MAX_ACTIVE_TARGETS`；目标不限制时按机器与 Redis `maxclients` 自行抬高）。多 Pod 时还要保证
+`≳ MAX_ACTIVE_TARGETS`，并按实际辅助请求留出余量）。多 Pod 时还要保证
 `单池峰值 × Pod 数 < Redis maxclients`。池满时会有限等待
 `REDIS_POOL_TIMEOUT` 秒，而不是立刻 `MaxConnectionsError` 打崩整轮 run。
 
@@ -133,7 +138,7 @@ TARGET_TASK_WINDOW=0
 ## 健康与观测
 
 - `/api/health/`：进程存活；
-- `/api/health/ready`：Redis 与统一运行时就绪；
+- `/api/health/ready`：Redis、NATS subscriber，以及 metrics 专用连接、目标 Stream 和 subject 覆盖契约就绪；
 - `/api/health/stats`：活动运行、并发配置和事件循环延迟；
 - `/api/health/metrics`：Prometheus 格式的运行时指标。
 
@@ -142,7 +147,7 @@ TARGET_TASK_WINDOW=0
 正文。
 
 运行时默认每 3 分钟输出一次 `event=collection_capacity`，专门记录
-`MAX_ACTIVE_TARGETS`（默认 250）全局异步目标槽位的已用、剩余、利用率和峰值，同时包含待调度
+`MAX_ACTIVE_TARGETS`（默认 160）全局异步目标槽位的已用、剩余、利用率和峰值，同时包含待调度
 目标/Run、发布队列利用率、事件循环 lag、进程 CPU/RSS/线程/FD，以及 cgroup CPU 限额、内存
 利用率和 CPU throttling 增量。可通过 `CAPACITY_LOG_INTERVAL` 调整周期；该日志用于压测后判断
 是否调整 `MAX_ACTIVE_TARGETS`，不代表线程池并发。若 lag P99 持续超过 1 秒、CPU 限额利用率或

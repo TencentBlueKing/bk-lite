@@ -1315,7 +1315,7 @@
       "capability": {
         "userSync": "Identity Sync",
         "loginAuth": "Login Authentication",
-        "imNotification": "Notification Channel",
+        "imNotification": "IM Notification",
         "imGroup": "Group Collaboration"
       },
       "provider": {
@@ -1403,7 +1403,8 @@
         "loadFailed": "Load failed",
         "loadFailedReason": "Reason: {errorType}",
         "builtinNoActions": "Built-in types cannot be replaced or uninstalled"
-      }
+      },
+      "createInstanceDesc": "Select a type from the list of connected integrated systems to create an instance of the integrated system"
     }
   }
 }

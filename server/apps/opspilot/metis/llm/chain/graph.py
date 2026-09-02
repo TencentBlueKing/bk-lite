@@ -1059,9 +1059,10 @@ class BasicGraph(ABC):
     ) -> tuple[list[str], bool, Optional[AIMessage]]:
         """遍历 messages，补齐缺失的工具 START，并回填 RESULT。
 
-        返回的 AIMessage 优先取「工具结果之后」的最终回答；若本轮无工具
-        （轻量直答寒暄），则回退为最后一条带正文的 AIMessage，避免 chain_end
-        丢弃纯文本导致前端空白。
+        返回的 AIMessage 优先取「工具结果之后」的最终回答。无工具时只在
+        **当前列表以该 AIMessage 结尾** 时回退为轻量直答正文；历史加载 /
+        prepare 子链结束时列表以 HumanMessage 结尾，不得把上一轮助手回复
+        当成本轮输出。
         """
         events: list[str] = []
         emitted_tool_result = False
@@ -1127,7 +1128,9 @@ class BasicGraph(ABC):
             latest_ai_message_after_tool_result = None
 
         if latest_ai_message_after_tool_result is None and not emitted_tool_result:
-            latest_ai_message_after_tool_result = latest_plain_ai_message
+            last_message = messages[-1] if messages else None
+            if last_message is latest_plain_ai_message:
+                latest_ai_message_after_tool_result = latest_plain_ai_message
 
         return events, emitted_tool_result, latest_ai_message_after_tool_result
 
@@ -1369,7 +1372,11 @@ class BasicGraph(ABC):
         # 任何源 emit 过这份文本后,后续 chain_end 再遇到相同内容就跳过。
         # 注意:长文会被拆成多段 delta,必须同时登记「全文」指纹,否则 chain_end
         # 用整段 content 比对会落空,前端就会看到同一段回答出现两次。
+        # 指纹只登记本轮实际发出的正文，不得预填历史助手文本：否则本轮短句
+        # 若与上一轮相同（如「好的」）会被静默丢掉。历史重放靠节点名 /
+        # last_message is latest_plain_ai_message 拦截。
         emitted_text_signatures: set[str] = set()
+        emitted_any_text_this_run = False
         show_think = bool((request.extra_config or {}).get("show_think", True))
         execution_id = (request.extra_config or {}).get("execution_id") or request.thread_id
         if not isinstance(token_usage_accumulator, TokenUsageAccumulator):
@@ -1515,7 +1522,8 @@ class BasicGraph(ABC):
                             )
                             for ev in live_events:
                                 yield ev
-                            _record_emitted_text_signatures(live_events, emitted_text_signatures)
+                            if _record_emitted_text_signatures(live_events, emitted_text_signatures):
+                                emitted_any_text_this_run = True
                             live_turn_emitted_text += pending_turn_text
                             pending_turn_text = ""
                             turn_text_live = True
@@ -1587,11 +1595,13 @@ class BasicGraph(ABC):
                             )
                             for ev in live_events:
                                 yield ev
-                            _record_emitted_text_signatures(live_events, emitted_text_signatures)
+                            if _record_emitted_text_signatures(live_events, emitted_text_signatures):
+                                emitted_any_text_this_run = True
                             live_turn_emitted_text += pending_turn_text
                             pending_turn_text = ""
                         if live_turn_emitted_text:
                             emitted_text_signatures.add(live_turn_emitted_text)
+                            emitted_any_text_this_run = True
                         if message_started and current_message_id is not None:
                             yield encoder.encode(
                                 TextMessageEndEvent(
@@ -1628,7 +1638,8 @@ class BasicGraph(ABC):
                     )
                     # 收集本轮 chat_model_end 实际 emit 的文本指纹(含拆段后的全文),
                     # 后续 on_chain_end 若再 emit 相同内容会基于此集合去重。
-                    _record_emitted_text_signatures(chat_model_end_events, emitted_text_signatures)
+                    if _record_emitted_text_signatures(chat_model_end_events, emitted_text_signatures):
+                        emitted_any_text_this_run = True
                     for ev in chat_model_end_events:
                         yield ev
                     pending_turn_text = ""
@@ -1640,16 +1651,26 @@ class BasicGraph(ABC):
                     tool_result_seen_since_model_end = False
 
                 elif event_type == "on_chain_end":
-                    # DeepAgent 父/子图会多次触发 on_chain_end,output.messages 都带同一份
-                    # 最终 AI 文本。先用已发过的文本指纹去重,避免重复 emit 整段回答。
-                    chain_events = self._handle_chain_end_messages_dedup(
-                        event_data,
-                        encoder,
-                        current_tool_calls,
-                        emitted_text_signatures,
-                    )
+                    # add_chat_history_node 结束时 last=上一轮助手，不得当成本轮直答。
+                    # 仍回填 ToolMessage（若有），但不 emit 文本。
+                    if str(event.get("name") or "") == "add_chat_history_node":
+                        chain_events = self._handle_chain_end_tool_results_only(
+                            event_data,
+                            encoder,
+                            current_tool_calls,
+                        )
+                    else:
+                        # DeepAgent 父/子图会多次触发 on_chain_end,output.messages 都带同一份
+                        # 最终 AI 文本。先用已发过的文本指纹去重,避免重复 emit 整段回答。
+                        chain_events = self._handle_chain_end_messages_dedup(
+                            event_data,
+                            encoder,
+                            current_tool_calls,
+                            emitted_text_signatures,
+                        )
                     # 把本次 chain_end emit 的文本也加入指纹(含拆段全文),防止后续 chain_end 再发一遍
-                    _record_emitted_text_signatures(chain_events, emitted_text_signatures)
+                    if _record_emitted_text_signatures(chain_events, emitted_text_signatures):
+                        emitted_any_text_this_run = True
                     for ev in chain_events:
                         yield ev
 
@@ -1717,7 +1738,7 @@ class BasicGraph(ABC):
                     )
                 )
 
-            if not emitted_text_signatures and not message_started:
+            if not emitted_any_text_this_run and not message_started:
                 llm_calls = int(getattr(token_usage_accumulator, "call_count", 0) or 0) if token_usage_accumulator else 0
                 logger.warning(
                     format_llm_empty_response_log(

@@ -1,10 +1,8 @@
 import asyncio
-import json
 import secrets
 import shutil
 import subprocess
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -15,11 +13,9 @@ from core.collection.credential_policy import CredentialPolicy
 from core.collection.host_remote import callback as callback_state
 from core.collection.redis_state import RedisCredentialStateStore, RedisRunStateStore
 from core.collection.runtime import CollectionRequest, LeaseAcquireStatus, RunStatus
-from core.infra.credential_state_cache import CredentialStateCache
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 from redis.exceptions import ConnectionError as RedisConnectionError
-from redis.exceptions import ResponseError
 
 
 def _stop_redis(process):
@@ -248,182 +244,6 @@ async def test_callback_record_removes_consumed_token_from_redis(
 
 
 @pytest.mark.asyncio
-async def test_result_event_redis_write_is_retryable_and_cursor_keeps_same_millisecond(redis_client, monkeypatch):
-    async def get_client():
-        return redis_client
-
-    monkeypatch.setattr(
-        CredentialStateCache,
-        "_get_or_create_pool",
-        classmethod(lambda _cls: get_client()),
-    )
-    stream_key = CredentialStateCache._event_stream_key()
-    failed_event_id = "event-failed-once"
-    await redis_client.set(stream_key, "wrong-type")
-
-    with pytest.raises(ResponseError):
-        await CredentialStateCache.append_result_event(
-            {
-                "event_id": failed_event_id,
-                "finished_at": "2026-08-14T00:00:00.123+00:00",
-            }
-        )
-
-    assert not await redis_client.exists(CredentialStateCache._event_dedupe_key(failed_event_id))
-    await redis_client.delete(stream_key)
-    for event_id in ("event-001", "event-002", "event-003"):
-        await CredentialStateCache.append_result_event(
-            {
-                "event_id": event_id,
-                "finished_at": "2026-08-14T00:00:00.123+00:00",
-            }
-        )
-    await CredentialStateCache.append_result_event(
-        {
-            "event_id": failed_event_id,
-            "finished_at": "2026-08-14T00:00:00.123+00:00",
-        }
-    )
-
-    first_page = await CredentialStateCache.list_result_events(limit=2)
-    first_cursor = CredentialStateCache.event_cursor(first_page[-1])
-    second_page = await CredentialStateCache.list_result_events(since=first_cursor, limit=2)
-    legacy_cursor_page = await CredentialStateCache.list_result_events(since="2026-08-14T00:00:00.123+00:00", limit=10)
-
-    assert [event["event_id"] for event in first_page] == [
-        "event-001",
-        "event-002",
-    ]
-    assert [event["event_id"] for event in second_page] == [
-        "event-003",
-        failed_event_id,
-    ]
-    assert len(legacy_cursor_page) == 4
-    assert all(CredentialStateCache._STREAM_CURSOR_FIELD in event for event in first_page + second_page)
-    await CredentialStateCache.set_push_cursor(first_cursor)
-    assert await CredentialStateCache.get_push_cursor() == first_cursor
-    legacy_cursor = await redis_client.get(CredentialStateCache._push_cursor_key())
-    if isinstance(legacy_cursor, bytes):
-        legacy_cursor = legacy_cursor.decode()
-    assert legacy_cursor == first_page[-1]["finished_at"]
-    assert CredentialStateCache._event_score(legacy_cursor) > 0
-    legacy_raw_page = await redis_client.zrangebyscore(
-        stream_key,
-        min=f"({CredentialStateCache._event_score(legacy_cursor)}",
-        max="+inf",
-        start=0,
-        num=2,
-    )
-    assert [CredentialStateCache._decode_event_member(item)["event_id"] for item in legacy_raw_page] == ["event-003", failed_event_id]
-    assert await redis_client.exists(CredentialStateCache._event_dedupe_key(failed_event_id))
-
-
-@pytest.mark.asyncio
-async def test_concurrent_result_events_commit_before_cursor_can_advance(redis_client, monkeypatch):
-    class CrossPodRedis:
-        def __init__(self, client):
-            self.client = client
-            self.cas_conflicts = 0
-
-        def __getattr__(self, name):
-            return getattr(self.client, name)
-
-        async def eval(self, script, numkeys, *args):
-            result = await self.client.eval(script, numkeys, *args)
-            if numkeys == 3 and int(result) == -1:
-                self.cas_conflicts += 1
-            return result
-
-    cross_pod_redis = CrossPodRedis(redis_client)
-
-    async def get_client():
-        return cross_pod_redis
-
-    monkeypatch.setattr(
-        CredentialStateCache,
-        "_get_or_create_pool",
-        classmethod(lambda _cls: get_client()),
-    )
-    observed_at = "2026-08-14T00:00:00.123+00:00"
-    event_ids = [f"concurrent-event-{index:03d}" for index in range(64)]
-
-    await asyncio.gather(
-        *(
-            # 各调用模拟独立 Pod，不共享进程内锁，只由 Redis CAS 协调。
-            CredentialStateCache._append_result_event({"event_id": event_id, "finished_at": observed_at})
-            for event_id in event_ids
-        )
-    )
-
-    # 直接按回滚后的旧排他时间游标逐页读取，所有并发提交均可达。
-    legacy_cursor = ""
-    observed_ids = []
-    while True:
-        minimum = f"({CredentialStateCache._event_score(legacy_cursor)}" if legacy_cursor else "-inf"
-        raw_page = await redis_client.zrangebyscore(
-            CredentialStateCache._event_stream_key(),
-            min=minimum,
-            max="+inf",
-            start=0,
-            num=7,
-        )
-        if not raw_page:
-            break
-        page = [CredentialStateCache._decode_event_member(item) for item in raw_page]
-        observed_ids.extend(event["event_id"] for event in page)
-        legacy_cursor = page[-1]["finished_at"]
-
-    assert set(observed_ids) == set(event_ids)
-    assert len(observed_ids) == len(event_ids)
-    assert cross_pod_redis.cas_conflicts > 0
-
-
-@pytest.mark.asyncio
-async def test_rollback_cursor_keeps_old_writer_events_reachable(redis_client, monkeypatch):
-    async def get_client():
-        return redis_client
-
-    monkeypatch.setattr(
-        CredentialStateCache,
-        "_get_or_create_pool",
-        classmethod(lambda _cls: get_client()),
-    )
-    observed_at = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
-    for index in range(64):
-        await CredentialStateCache.append_result_event(
-            {
-                "event_id": f"new-writer-{index:03d}",
-                "finished_at": observed_at,
-            }
-        )
-    new_events = await CredentialStateCache.list_result_events(limit=64)
-    await CredentialStateCache.set_push_cursor(CredentialStateCache.event_cursor(new_events[-1]))
-
-    legacy_cursor = await redis_client.get(CredentialStateCache._push_cursor_key())
-    old_writer_finished_at = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
-    old_writer_event = json.dumps(
-        {
-            "event_id": "old-writer-after-rollback",
-            "finished_at": old_writer_finished_at,
-        },
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    await redis_client.zadd(
-        CredentialStateCache._event_stream_key(),
-        {old_writer_event: CredentialStateCache._event_score(old_writer_finished_at)},
-    )
-
-    assert CredentialStateCache._event_score(legacy_cursor) < (CredentialStateCache._event_score(old_writer_finished_at))
-    rollback_page = await redis_client.zrangebyscore(
-        CredentialStateCache._event_stream_key(),
-        min=f"({CredentialStateCache._event_score(legacy_cursor)}",
-        max="+inf",
-    )
-    assert "old-writer-after-rollback" in {CredentialStateCache._decode_event_member(item)["event_id"] for item in rollback_page}
-
-
-@pytest.mark.asyncio
 async def test_heartbeat_extends_only_the_current_fenced_lease(redis_client):
     first_store = RedisRunStateStore(redis_client, key_prefix="test:heartbeat")
     second_store = RedisRunStateStore(redis_client, key_prefix="test:heartbeat")
@@ -492,10 +312,42 @@ async def test_credential_affinity_and_cooldown_are_shared_without_storing_secre
         "credential-2",
     ]
     keys = await redis_client.keys("test:credential:*")
-    stored_values = [str(await redis_client.get(key) or "") for key in keys]
+    stored_values = [str(await redis_client.dump(key) or "") for key in keys]
     stored = " ".join(stored_values)
     assert "do-not-store-one" not in stored
     assert "do-not-store-two" not in stored
+
+
+@pytest.mark.asyncio
+async def test_credential_version_change_invalidates_only_edited_credential_state(redis_client):
+    store = RedisCredentialStateStore(redis_client, key_prefix="test:credential-version")
+    policy = CredentialPolicy(store=store, jitter=lambda _start, _end: 0)
+    v1 = {"credential_id": "credential-1", "credential_version": 1}
+    v2 = {"credential_id": "credential-1", "credential_version": 2}
+    request_v1 = CollectionRequest(
+        task_id="collect-version-v1",
+        plugin_ref="mysql.config",
+        targets=("10.10.24.1",),
+        credentials=(v1,),
+        params={"scope_id": "task-131", "credential_set_version": "epoch-1"},
+    )
+    request_v2 = CollectionRequest(
+        task_id="collect-version-v2",
+        plugin_ref="mysql.config",
+        targets=("10.10.24.1",),
+        credentials=(v2,),
+        params={"scope_id": "task-131", "credential_set_version": "epoch-1"},
+    )
+
+    await policy.record_auth_failure(
+        request_v1,
+        "10.10.24.1",
+        v1,
+        error_code="unauthorized",
+    )
+
+    assert await policy.eligible_credentials(request_v1, "10.10.24.1") == ()
+    assert await policy.eligible_credentials(request_v2, "10.10.24.1") == (v2,)
 
 
 @pytest.mark.asyncio

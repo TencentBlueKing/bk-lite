@@ -689,8 +689,8 @@ async def test_snmp_256_target_timeout_load_through_http_redis_runtime_and_nats(
         owner_id="pod-snmp-load",
         settings=CollectionApplicationSettings(
             max_active_runs=1,
-            max_active_targets=200,
-            target_task_window=200,
+            max_active_targets=160,
+            target_task_window=160,
             connect_timeout_seconds=5,
             plugin_timeout_seconds=5,
             lease_ttl_seconds=30,
@@ -769,7 +769,7 @@ async def test_snmp_256_target_timeout_load_through_http_redis_runtime_and_nats(
     assert finished is True
     assert plugin.calls == 256
     assert plugin.credential_mismatches == 0
-    assert plugin.peak == 200
+    assert plugin.peak == 160
     assert metrics_published == 0
     assert 9.5 <= wall_seconds < 20
     assert max(lag_samples, default=0) < 0.2
@@ -786,7 +786,7 @@ async def test_snmp_256_target_timeout_load_through_http_redis_runtime_and_nats(
         "snmp_port": 161,
         "community": "***",
         "timeout_seconds": 5,
-        "target_concurrency": 200,
+        "target_concurrency": 160,
         "wall_seconds": round(wall_seconds, 3),
         "cpu_seconds": round(cpu_seconds, 3),
         "process_cpu_percent_of_one_core": round(cpu_seconds / wall_seconds * 100, 2),
@@ -841,8 +841,8 @@ async def test_host_150_target_timeout_load_through_http_redis_runtime_and_nats(
         owner_id="pod-host-load",
         settings=CollectionApplicationSettings(
             max_active_runs=1,
-            max_active_targets=200,
-            target_task_window=200,
+            max_active_targets=160,
+            target_task_window=160,
             connect_timeout_seconds=5,
             plugin_timeout_seconds=5,
             lease_ttl_seconds=30,
@@ -923,7 +923,7 @@ async def test_host_150_target_timeout_load_through_http_redis_runtime_and_nats(
     assert finished is True
     assert plugin.calls == target_count
     assert plugin.credential_mismatches == 0
-    assert plugin.peak == min(target_count, 200)
+    assert plugin.peak == min(target_count, 160)
     assert metrics_published == 0
     assert 4.5 <= wall_seconds < 15
     assert max(lag_samples, default=0) < 0.2
@@ -950,7 +950,7 @@ async def test_host_150_target_timeout_load_through_http_redis_runtime_and_nats(
         "password": "***",
         "port": 22,
         "timeout_seconds": 5,
-        "target_concurrency": 200,
+        "target_concurrency": 160,
         "wall_seconds": round(wall_seconds, 3),
         "cpu_seconds": round(cpu_seconds, 3),
         "process_cpu_percent_of_one_core": round(cpu_seconds / wall_seconds * 100, 2),
@@ -1009,8 +1009,8 @@ async def test_snmp_mixed_real_targets_and_mock_subnet_through_full_runtime(redi
         owner_id="pod-snmp-mixed-load",
         settings=CollectionApplicationSettings(
             max_active_runs=1,
-            max_active_targets=200,
-            target_task_window=200,
+            max_active_targets=160,
+            target_task_window=160,
             connect_timeout_seconds=5,
             # 允许真实目标保留 timeout=20/retries=3；外层只作安全兜底。
             plugin_timeout_seconds=30,
@@ -1108,7 +1108,7 @@ async def test_snmp_mixed_real_targets_and_mock_subnet_through_full_runtime(redi
     assert finished is True
     assert plugin.mock_calls == 252
     assert set(plugin.real_results) == {str(item["host"]) for item in real_targets}
-    assert plugin.peak == 200
+    assert plugin.peak == 160
     assert published == 256
 
     redis_memory = await redis_client.info("memory")
@@ -1132,7 +1132,7 @@ async def test_snmp_mixed_real_targets_and_mock_subnet_through_full_runtime(redi
         "communities": "***",
         "mock_timeout_seconds": 5,
         "runtime_safety_timeout_seconds": 30,
-        "target_concurrency": 200,
+        "target_concurrency": 160,
         "wall_seconds": round(wall_seconds, 3),
         "cpu_seconds": round(cpu_seconds, 3),
         "process_cpu_percent_of_one_core": round(cpu_seconds / wall_seconds * 100, 2),

@@ -92,6 +92,7 @@ from common.cmp.cloud_apis.constant import CloudType
 from common.cmp.cloud_apis.resource_apis.cw_aliyun import RESOURCE_MAP
 from common.cmp.cloud_apis.resource_apis.resource_format.common.base_format import get_format_method
 from common.cmp.utils import set_dir_size
+from core.logger import logger
 from plugins.base_utils import ts_to_dts, utc_to_dts
 from six.moves import range
 from Tea.core import TeaCore
@@ -195,6 +196,7 @@ class CwAliyun(object):
         # 🆕 支持自定义endpoint（私有云场景）
         # 从host参数读取endpoint，如: ecs.private-cloud.example.com
         self.custom_endpoint = params.get("host")
+        self.collection_task_id = params.get("collection_task_id")
 
         for k, v in kwargs.items():
             setattr(self, k, v)
@@ -239,6 +241,7 @@ class CwAliyun(object):
             auth=self.auth,
             auth_config=self.auth_config,
             custom_endpoint=self.custom_endpoint,
+            collection_task_id=self.collection_task_id,
         )
 
     async def list_all_resources(self, **kwargs):
@@ -251,7 +254,7 @@ class Aliyun(object):
     阿里云接口类。使用阿里云开发者工具套件（SDK），并进行封装，访问阿里云服务
     """
 
-    def __init__(self, aliyun_client, name, region, auth, auth_config, custom_endpoint=None):
+    def __init__(self, aliyun_client, name, region, auth, auth_config, custom_endpoint=None, collection_task_id=None):
         """
         初始化方法
         :param aliyun_client:
@@ -266,6 +269,7 @@ class Aliyun(object):
         self.cloud_type = CloudType.ALIYUN.value
         self.auth_config = auth_config
         self.custom_endpoint = custom_endpoint
+        self.collection_task_id = collection_task_id
 
         # 如果有自定义endpoint，优先使用自定义endpoint
         domain_config = copy.deepcopy(auth_config)
@@ -370,7 +374,14 @@ class Aliyun(object):
         try:
             ali_result = self._get_result(request, True)
         except Exception as e:
-            print("获取阿里云{}调用接口失败{}".format(resource, e))
+            logger.exception(
+                "event=aliyun_list_request_failed resource=%s host=%s region=%s task_id=%s error_type=%s",
+                resource,
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "message": str(e)}
 
         data = self._format_resource_result(resource, ali_result)
@@ -399,7 +410,14 @@ class Aliyun(object):
                 ali_res = self._get_result(request, True)
                 ali_response[key1][key2].extend(ali_res[key1][key2])
         except Exception as e:
-            print("获取阿里云资源{}调用接口失败{}".format(resource, e))
+            logger.exception(
+                "event=aliyun_list_request_failed resource=%s host=%s region=%s task_id=%s error_type=%s",
+                resource,
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "message": str(e)}
         data = self._format_resource_result(resource, ali_response)
         return {"result": True, "data": data}
@@ -419,7 +437,14 @@ class Aliyun(object):
                 ali_res = self._get_result_c(request, True)
                 ali_response[key1][key2].extend(ali_res[key1][key2])
         except Exception as e:
-            print("获取阿里云资源{}调用接口失败{}".format(resource, e))
+            logger.exception(
+                "event=aliyun_list_request_failed resource=%s host=%s region=%s task_id=%s error_type=%s",
+                resource,
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "message": str(e)}
         data = self._format_resource_result(resource, ali_response)
         return {"result": True, "data": data}
@@ -829,7 +854,13 @@ class Aliyun(object):
                 scroll_domain_list_request.scroll_id = scroll_id
             return {"result": True, "data": all_domain_list}
         except Exception as e:
-            print("list_domains error")
+            logger.exception(
+                "event=aliyun_list_domains_failed host=%s region=%s task_id=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "message": repr(e)}
 
     def get_domain_parsing(self, domain_name, **kwargs):
@@ -852,7 +883,13 @@ class Aliyun(object):
                 describe_domain_records_request.page_number += 1
             return domain_records
         except Exception as e:
-            print("get_domain_parsing error")
+            logger.exception(
+                "event=aliyun_get_domain_parsing_failed host=%s region=%s task_id=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             raise e
 
     def list_parsings(self, domains=None, **kwargs):
@@ -874,8 +911,14 @@ class Aliyun(object):
                     domain_parsing["DomainId"] = domain_id
                     domain_parsing["Remark"] = domain_parsing.get("Remark", "")
                 parsings.extend(domain_parsings)
-            except Exception:
-                print("get_domain_parsing error")
+            except Exception as e:
+                logger.exception(
+                    "event=aliyun_list_parsings_failed host=%s region=%s task_id=%s error_type=%s",
+                    self.custom_endpoint,
+                    self.RegionId,
+                    self.collection_task_id,
+                    type(e).__name__,
+                )
                 return {"result": False, "message": "get_domain_parsing error"}
 
         return {"result": True, "data": parsings}
@@ -892,7 +935,13 @@ class Aliyun(object):
             result = [result]
             return {"result": True, "data": result}
         except Exception as e:
-            print("list_cdn error")
+            logger.exception(
+                "event=aliyun_list_cdn_failed host=%s region=%s task_id=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "message": repr(e)}
 
     def list_waf(self, **kwargs):
@@ -907,7 +956,13 @@ class Aliyun(object):
                 return {"result": True, "data": result}
             return {"result": True, "data": []}
         except Exception as e:
-            print("list_waf error")
+            logger.exception(
+                "event=aliyun_list_waf_failed host=%s region=%s task_id=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "message": repr(e)}
 
     def list_cas(self, **kwargs):
@@ -932,7 +987,13 @@ class Aliyun(object):
 
             return {"result": True, "data": cas}
         except Exception as e:
-            print("list_cas error")
+            logger.exception(
+                "event=aliyun_list_cas_failed host=%s region=%s task_id=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "message": repr(e)}
 
     def list_buckets(self, **kwargs):
@@ -956,9 +1017,13 @@ class Aliyun(object):
                 bucket.update(result.get("Bucket", {}))
             return {"result": True, "data": buckets}
         except Exception as e:
-            import traceback
-
-            print("list_buckets error. error={}".format(traceback.format_exc()))
+            logger.exception(
+                "event=aliyun_list_buckets_failed host=%s region=%s task_id=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "message": repr(e)}
 
     def list_rds(self, **kwargs):
@@ -986,9 +1051,13 @@ class Aliyun(object):
                 describe_db_instances_request.page_number += 1
             return {"result": True, "data": rds_instances}
         except Exception as e:
-            import traceback
-
-            print("list_rds error. error={}".format(traceback.format_exc()))
+            logger.exception(
+                "event=aliyun_list_rds_failed host=%s region=%s task_id=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "message": repr(e)}
 
     def list_redis(self):
@@ -1012,9 +1081,13 @@ class Aliyun(object):
                 describe_instances_request.page_number += 1
             return {"result": True, "data": redis_instances}
         except Exception as e:
-            import traceback
-
-            print("list_redis error. error={}".format(traceback.format_exc()))
+            logger.exception(
+                "event=aliyun_list_redis_failed host=%s region=%s task_id=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "message": repr(e)}
 
     def list_mongodb(self):
@@ -1047,9 +1120,13 @@ serverless"""
                     describe_db_instances_request.page_number += 1
             return {"result": True, "data": mongodb_instances}
         except Exception as e:
-            import traceback
-
-            print("list_mongodb error. error={}".format(traceback.format_exc()))
+            logger.exception(
+                "event=aliyun_list_mongodb_failed host=%s region=%s task_id=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "message": repr(e)}
 
     def list_kafka(self):
@@ -1065,7 +1142,13 @@ serverless"""
             kafka_instances = result.get("InstanceList", {}).get("InstanceVO", [])
             return {"result": True, "data": kafka_instances}
         except Exception as e:
-            print("list_kafka error. error={}".format(e))
+            logger.exception(
+                "event=aliyun_list_kafka_failed host=%s region=%s task_id=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "message": repr(e)}
 
     def list_kafka_consumer_group(self, **kwargs):
@@ -1098,7 +1181,13 @@ serverless"""
                     get_consumer_group_list_request.current_page += 1
             return {"result": True, "data": kafka_consumer_groups}
         except Exception as e:
-            print("list_kafka_consumer_group error")
+            logger.exception(
+                "event=aliyun_list_kafka_consumer_group_failed host=%s region=%s task_id=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "message": repr(e)}
 
     def get_kafka_topic_subscribe_status(self, instance_id, topic):
@@ -1117,7 +1206,13 @@ serverless"""
 
             return {"result": True, "data": {topic: consumer_groups}}
         except Exception as e:
-            print("get_kafka_topic_subscribe_status error")
+            logger.exception(
+                "event=aliyun_get_kafka_topic_subscribe_status_failed host=%s region=%s task_id=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "message": repr(e)}
 
     def list_kafka_topic(self, **kwargs):
@@ -1168,7 +1263,13 @@ serverless"""
                 kafka_topic["ConsumerGroups"] = topic_group_map.get(topic, [])
             return {"result": True, "data": kafka_topics}
         except Exception as e:
-            print("list_kafka_topic error")
+            logger.exception(
+                "event=aliyun_list_kafka_topic_failed host=%s region=%s task_id=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "message": repr(e)}
 
     def list_clb(self, **kwargs):
@@ -1195,9 +1296,13 @@ serverless"""
                 describe_load_balancers_request.page_number += 1
             return {"result": True, "data": clb_instances}
         except Exception as e:
-            import traceback
-
-            print("list_slb error. error={}".format(traceback.format_exc()))
+            logger.exception(
+                "event=aliyun_list_clb_failed host=%s region=%s task_id=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "message": repr(e)}
 
     def list_k8s_clusters(self):
@@ -1224,7 +1329,13 @@ serverless"""
                 describe_clusters_request.page_number += 1
             return {"result": True, "data": k8s_clusters}
         except Exception as e:
-            print("list_k8s_clusters error")
+            logger.exception(
+                "event=aliyun_list_k8s_clusters_failed host=%s region=%s task_id=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "message": repr(e)}
 
     def list_eips(self):
@@ -1251,7 +1362,13 @@ serverless"""
                 describe_eip_addresses_request.page_number += 1
             return {"result": True, "data": eips}
         except Exception as e:
-            print("list_eips error")
+            logger.exception(
+                "event=aliyun_list_eips_failed host=%s region=%s task_id=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "message": repr(e)}
 
     def list_mse_clusters(self):
@@ -1278,7 +1395,13 @@ serverless"""
                 list_clusters_request.page_num += 1
             return {"result": True, "data": mse_clusters}
         except Exception as e:
-            print("list_mse_clusters error")
+            logger.exception(
+                "event=aliyun_list_mse_clusters_failed host=%s region=%s task_id=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "message": repr(e)}
 
     def list_mse_namespaces(self, **kwargs):
@@ -1309,7 +1432,13 @@ serverless"""
 
             return {"result": True, "data": mse_namespaces}
         except Exception as e:
-            print("list_mse_namespace error")
+            logger.exception(
+                "event=aliyun_list_mse_namespaces_failed host=%s region=%s task_id=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "message": repr(e)}
 
     def list_mse_service(self, **kwargs):
@@ -1347,7 +1476,13 @@ serverless"""
                     list_mse_service_request.page_num += 1
             return {"result": True, "data": mse_services}
         except Exception as e:
-            print("list_mse_service error")
+            logger.exception(
+                "event=aliyun_list_mse_service_failed host=%s region=%s task_id=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "message": repr(e)}
 
     def list_mse_inst(self, **kwargs):
@@ -1388,7 +1523,13 @@ serverless"""
                     list_mse_inst_request.page_num += 1
             return {"result": True, "data": mse_insts}
         except Exception as e:
-            print("list_mse_inst error")
+            logger.exception(
+                "event=aliyun_list_mse_inst_failed host=%s region=%s task_id=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "message": repr(e)}
 
     def list_albs(self, **kwargs):
@@ -1415,7 +1556,13 @@ serverless"""
                 list_load_balancers_request.page_number += 1
             return {"result": True, "data": alb_instances}
         except Exception as e:
-            print("list_alb error")
+            logger.exception(
+                "event=aliyun_list_albs_failed host=%s region=%s task_id=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "message": repr(e)}
 
     def list_nas(self, **kwargs):
@@ -1440,7 +1587,13 @@ serverless"""
                 describe_file_systems_request.page_number += 1
             return {"result": True, "data": nas_instances}
         except Exception as e:
-            print("list_nas error")
+            logger.exception(
+                "event=aliyun_list_nas_failed host=%s region=%s task_id=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "message": repr(e)}
 
     async def list_all_resources(self, **kwargs):
@@ -1459,6 +1612,14 @@ serverless"""
             except Exception as e:
                 import traceback
 
+                logger.exception(
+                    "event=aliyun_handle_resource_failed resource=%s host=%s region=%s task_id=%s error_type=%s",
+                    resource_name,
+                    self.custom_endpoint,
+                    self.RegionId,
+                    self.collection_task_id,
+                    type(e).__name__,
+                )
                 return {resource_name: {"cmdb_collect_error": str(e) + "\n" + traceback.format_exc()}}
 
         try:
@@ -1505,11 +1666,14 @@ serverless"""
             format_data = self.format_aliyun_data(data)
             result_data = {"result": format_data, "success": True}
         except Exception as err:
-            import traceback
-
-            from sanic.log import logger
-
-            logger.error("aliyun_list_all_resources_error: {}".format(traceback.format_exc()))
+            logger.exception(
+                "event=aliyun_collect_failed host=%s region=%s task_id=%s failed_stage=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                "list_all_resources",
+                type(err).__name__,
+            )
             result_data = {"result": {"cmdb_collect_error": str(err)}, "success": False}
 
         return result_data
@@ -1954,7 +2118,13 @@ serverless"""
             request.set_ResourceType(kwargs["ResourceType"])
             request = set_optional_params(request, list_optional_params, kwargs)
         except Exception as e:
-            print("list_tag_resource")
+            logger.exception(
+                "event=aliyun_list_resource_tags_failed host=%s region=%s task_id=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "message": str(e)}
         return self._handle_list_request("tag", request)
 
@@ -2176,7 +2346,13 @@ serverless"""
                         result["data"][index]["port"] = ret["data"]["ListenerPortsAndProtocal"].get("ListenerPortAndProtocal", [])
             return result
         except Exception as e:
-            print("list_load_balancer failed")
+            logger.exception(
+                "event=aliyun_list_load_balancers_failed host=%s region=%s task_id=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "message": str(e)}
 
     def get_load_balancer_detail(self, **kwargs):
@@ -2215,7 +2391,13 @@ serverless"""
             data = self._format_resource_result("server_certificate", ali_result)
             return {"result": True, "data": data}
         except Exception as e:
-            print("list_server_certificates failed")
+            logger.exception(
+                "event=aliyun_list_server_certificates_failed host=%s region=%s task_id=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "message": str(e)}
 
     def list_vserver_groups(self, load_balancer_id, **kwargs):
@@ -2243,7 +2425,13 @@ serverless"""
                         item["load_balancer"] = ret["data"].get("LoadBalancerId", "")
             return {"result": True, "data": data}
         except Exception as e:
-            print("list_vserver_groups failed")
+            logger.exception(
+                "event=aliyun_list_vserver_groups_failed host=%s region=%s task_id=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "message": str(e)}
 
     def get_vserver_group(self, **kwargs):
@@ -2467,7 +2655,13 @@ serverless"""
             request = self._set_common_request_params(action_name, list_optional_params, **kwargs)
             return self.__handle_list_request_with_next_token_c("listener", request)
         except Exception as e:
-            print("start_listener failed")
+            logger.exception(
+                "event=aliyun_list_listeners_failed host=%s region=%s task_id=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "message": str(e)}
 
     def _set_common_request_params(self, action_name, list_optional_params, **kwargs):
@@ -2678,7 +2872,13 @@ serverless"""
             ali_result.extend(object_list.prefix_list)
             return {"result": True, "data": ali_result}
         except Exception as e:
-            print("list_object fail")
+            logger.exception(
+                "event=aliyun_list_object_failed host=%s region=%s task_id=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "message": str(e)}
 
     def list_bucket_file(self, bucket_name, location):
@@ -2703,7 +2903,13 @@ serverless"""
             ali_result = [format_func(item, bucket=bucket_name, location=location) for item in object_lists]
             return {"result": True, "data": ali_result}
         except Exception as e:
-            print("list_object fail")
+            logger.exception(
+                "event=aliyun_list_bucket_file_failed host=%s region=%s task_id=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "message": str(e)}
 
     def list_file_system(self, ids=None, **kwargs):
@@ -2932,7 +3138,13 @@ serverless"""
             kwargs["list_optional_params"] = list_optional_params
             return self._handle_list_request_with_next_token("route_entry", request, **kwargs)
         except Exception as e:
-            print("describe_route_entry_list")
+            logger.exception(
+                "event=aliyun_list_route_entry_failed host=%s region=%s task_id=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "data": [], "message": str(e)}
 
     #  ------------------弹性公网ip--------------------------------
@@ -3011,7 +3223,13 @@ serverless"""
         try:
             ali_result = self._get_result(request, True)
         except Exception as e:
-            print("获取阿里云{}调用接口失败{}".format("security_group_rule", e))
+            logger.exception(
+                "event=aliyun_list_security_group_rules_failed host=%s region=%s task_id=%s error_type=%s",
+                self.custom_endpoint,
+                self.RegionId,
+                self.collection_task_id,
+                type(e).__name__,
+            )
             return {"result": False, "message": str(e)}
 
         copy_ali_result = copy.deepcopy(ali_result)

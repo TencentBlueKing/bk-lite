@@ -1,6 +1,8 @@
 {
   "wiki": {
     "title": "Knowledge Base",
+    "pageTitle": "Knowledge Base",
+    "pageDescription": "AI-built, page-centric knowledge bases reusable by agents",
     "description": "AI-built, page-centric knowledge bases reusable by agents",
     "create": "Create Knowledge Base",
     "edit": "Edit Knowledge Base",
@@ -722,6 +724,8 @@
     "empty": "No knowledge bases yet"
   },
   "studio": {
+    "pageTitle": "Workbench",
+    "pageDescription": "Manage bot apps, channel publishing, and conversation capabilities",
     "settings": {
       "selectSkills": "Select Skills",
       "enableSsl": "enable SSL",
@@ -817,6 +821,8 @@
     "edit": "Edit Studio"
   },
   "tool": {
+    "pageTitle": "Tools",
+    "pageDescription": "Manage built-in tools, skill packages, and MCP integrations",
     "text": "Text",
     "textarea": "Textarea",
     "deleteConfirm": "Are you sure you want to delete this tool?",
@@ -1109,6 +1115,22 @@
     "onlyImageAllowed": "Only image files are allowed",
     "imageTooLarge": "Image size cannot exceed 5MB",
     "uploadImage": "Upload Image",
+    "contextUsage": {
+      "title": "Context usage",
+      "packetHint": "The next packet sent to the model",
+      "waitingHint": "Send a message to see how much of the input working budget the next model packet uses.",
+      "used": "used",
+      "about": "~",
+      "system": "System prompt",
+      "tools": "Tool definitions",
+      "skills": "Skill packages",
+      "wiki": "Wiki inject",
+      "summary": "Summarized conversation",
+      "conversation": "Conversation",
+      "budgetHint": "Denominator is the input working budget (model window {window}). Compaction starts around {compact}.",
+      "compactedHint": "Visible history stays; older turns in the model packet were replaced by a summary.",
+      "nearCapHint": "Close to the input working budget. Longer turns will compact further; the current question is not truncated."
+    },
     "approvalRequired": "Approval Required",
     "approvalToolName": "Action",
     "approvalToolArgs": "Details",
@@ -1178,6 +1200,8 @@
     }
   },
   "skill": {
+    "pageTitle": "Agents",
+    "pageDescription": "Configure LLMs, knowledge bases, and tools for Q&A and automation",
     "form": {
       "enableSuggest": "Enable Suggest",
       "problemOptimizationTip": "When enabled, the LLM model will optimize and process user questions to achieve more accurate query results.",
@@ -1824,6 +1848,10 @@
       "enabled": "Enabled",
       "multimodal": "Multimodal",
       "multimodalHint": "When off, page-context chat drops images and keeps text captions only",
+      "contextWindow": "Context window",
+      "contextWindowHint": "True model context size (input + output). K means thousand tokens, M means million tokens.",
+      "contextWindowRequired": "Please enter the context window",
+      "contextWindowRange": "Converted value must be between 8K and 2M",
       "deleteConfirmContent": "Deleting will remove model \"{name}\".",
       "deleteConfirmTitle": "Confirm Deletion",
       "sync": "Sync Models",
@@ -1855,6 +1883,8 @@
     "deleteConfirm": "Are you sure you want to delete this model?"
   },
   "memory": {
+    "pageTitle": "Memory",
+    "pageDescription": "Manage personal and organization memory spaces for long-term agent context",
     "title": "Memory Management",
     "spaceList": "Memory Space List",
     "createSpace": "Create Memory Space",
@@ -1933,5 +1963,20 @@
     "baseUrl": "API URL",
     "baseUrlPlaceholder": "Enter API URL (optional)",
     "storageTypeCannotChange": "Storage type cannot be changed after creation"
+  },
+  "unifiedCard": {
+    "owner": "Owner",
+    "team": "Team",
+    "modelCount": "{count} models",
+    "enableAria": "Enable {name}",
+    "moreActions": "More actions",
+    "status": {
+      "online": "Online",
+      "offline": "Offline",
+      "ready": "Ready",
+      "building": "Building",
+      "enabled": "Enabled",
+      "disabled": "Disabled"
+    }
   }
 }

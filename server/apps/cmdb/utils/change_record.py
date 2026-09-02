@@ -1,6 +1,6 @@
 from django.db import transaction
 
-from apps.cmdb.constants.constants import OPERATOR_INSTANCE
+from apps.cmdb.constants.constants import INSTANCE, OPERATOR_INSTANCE
 from apps.cmdb.models.change_record import (
     COLLECT_AUTOMATION_CHANGE,
     CREATE_INST,
@@ -32,6 +32,16 @@ _TYPE_ACTION_MAP = {
 
 def _resolve_inst_uuid(inst_uuid=None, before_data=None, after_data=None):
     return inst_uuid or (after_data or {}).get("inst_uuid") or (before_data or {}).get("inst_uuid") or None
+
+
+def _table_candidate_fields(data: dict | None) -> set[str]:
+    fields = set()
+    for key, value in (data or {}).items():
+        if isinstance(value, list) and any(isinstance(item, dict) for item in value):
+            fields.add(key)
+        elif isinstance(value, str) and value.lstrip().startswith("[{"):
+            fields.add(key)
+    return fields
 
 
 def _build_mirror_payload(*, inst_id, model_id, _type, operator, scenario, message="", model_object="", before_data=None, after_data=None):
@@ -88,8 +98,15 @@ def create_change_record(
     scenario=ORDINARY_ATTRIBUTE_CHANGE,
     operation_event_id=None,
     inst_uuid=None,
+    attribute_snapshot=None,
 ):
     """创建实例变更记录"""
+    if label == INSTANCE and not attribute_snapshot and model_id:
+        attr_ids = _table_candidate_fields(before_data) | _table_candidate_fields(after_data)
+        if attr_ids:
+            from apps.cmdb.services.change_record_snapshot import load_attribute_snapshot
+
+            attribute_snapshot = load_attribute_snapshot(model_id, attr_ids)
     resolved_uuid = _resolve_inst_uuid(inst_uuid, before_data, after_data)
     change_data = {"operator": operator, "scenario": scenario, "inst_uuid": resolved_uuid}
     if before_data:
@@ -100,6 +117,8 @@ def create_change_record(
         change_data["message"] = message
     if model_object:
         change_data["model_object"] = model_object
+    if attribute_snapshot:
+        change_data["attribute_snapshot"] = attribute_snapshot
     if operation_event_id:
         _record, created = ChangeRecord.objects.get_or_create(
             operation_event_id=operation_event_id,
@@ -143,6 +162,20 @@ def batch_create_change_record(label, _type, change_records, operator="", scenar
             ),
         )
         normalized_records.append(record)
+    if label == INSTANCE:
+        from apps.cmdb.services.change_record_snapshot import load_attribute_snapshot
+
+        fields_by_model: dict[str, set[str]] = {}
+        for record in normalized_records:
+            if record.get("attribute_snapshot") or not record.get("model_id"):
+                continue
+            attr_ids = _table_candidate_fields(record.get("before_data")) | _table_candidate_fields(record.get("after_data"))
+            if attr_ids:
+                fields_by_model.setdefault(record["model_id"], set()).update(attr_ids)
+        snapshots = {model_id: load_attribute_snapshot(model_id, attr_ids) for model_id, attr_ids in fields_by_model.items()}
+        for record in normalized_records:
+            if not record.get("attribute_snapshot") and record.get("model_id") in snapshots:
+                record["attribute_snapshot"] = snapshots[record["model_id"]]
     batch_change_data = [ChangeRecord(label=label, type=_type, operator=operator, scenario=scenario, **record) for record in normalized_records]
     ChangeRecord.objects.bulk_create(batch_change_data)
     if scenario in _MIRROR_SCENARIOS:

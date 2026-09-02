@@ -38,30 +38,30 @@ from .enrichment import EnrichmentRule  # noqa: F401
 # 动作规则与执行记录
 from .action import ActionRule, ActionExecution  # noqa: F401
 from .active_fingerprint import ActiveAlertFingerprint  # noqa: F401
-from .outbox import AlertOutbox  # noqa: F401
+from .outbox import AlertNotificationDelivery, AlertOutbox  # noqa: F401
 from .install_token import K8sInstallToken  # noqa: F401
 
 __all__ = [
     # 告警源
     "AlertSource",
-    
+
     # 事件和告警
     "Event",
     "Alert",
     "Incident",
     "IncidentUpdate",
     "Level",
-    
+
     # 告警操作相关
     "AlertAssignment",
     "AlertShield",
     "AlertReminderTask",
     "AlarmStrategy",
     "NotifyResult",
-    
+
     # 系统设置
     "SystemSetting",
-    
+
     # 操作日志
     "OperatorLog",
 
@@ -73,5 +73,6 @@ __all__ = [
     "ActionExecution",
     "ActiveAlertFingerprint",
     "AlertOutbox",
+    "AlertNotificationDelivery",
     "K8sInstallToken",
 ]

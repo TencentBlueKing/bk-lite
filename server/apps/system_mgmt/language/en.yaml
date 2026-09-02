@@ -101,6 +101,17 @@ error:
   user_ids_list_required: user_ids must be a non-empty list
   invalid_user_status_action: Action must be one of enable, disable, or unlock
   invalid_user_ids: 'Invalid user IDs: {ids}'
+  import_users_empty: No users available to import
+  import_users_limit: You can import at most 500 users at a time
+  import_users_invalid_row: Invalid data format
+  import_users_missing_fields: Required fields are missing
+  import_users_username_exists: Username already exists
+  import_users_invalid_email: Invalid email format
+  import_users_create_failed: Failed to create user
+  nats_config_must_be_object: NATS config must be an object
+  nats_supports_notify_person_boolean: must be a boolean
+  nats_mode_unsupported: unsupported NATS extension mode
+  nats_subject_key_in_use: notification topic identifier is already in use
   synced_users_delete_forbidden: Synced users cannot be deleted directly. Please delete them from the user sync source.
   synced_group_child_creation_forbidden: Synced groups cannot have manually created child groups
   cannot_create_under_archived_group: Cannot create a group under an archived organization
@@ -127,6 +138,9 @@ password:
   char_type_lowercase: lowercase letter
   char_type_digit: number
   char_type_special: special character
+  policy_must_contain: 'Must contain: {types}'
+  policy_no_special_requirement: No special requirements
+  policy_description: "Password policy:\n1. Length must be {min_length}-{max_length} characters\n2. {type_desc}\n3. Special characters include: !@#$%^&*()_+-=[]{{}};\\'\"\\|,.<>?/~`"
 login:
   incorrect_password_with_attempts: Username or password is incorrect. {attempts}
     attempts remaining.

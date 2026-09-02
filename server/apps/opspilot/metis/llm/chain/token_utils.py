@@ -5,7 +5,10 @@
 copy-paste 的 encoding_for_model / cl100k_base 回退代码。
 """
 
-from typing import List
+from __future__ import annotations
+
+import json
+from typing import Any, Iterable
 
 import tiktoken
 from langchain_core.messages import BaseMessage
@@ -25,7 +28,7 @@ def count_text_tokens(text: str, model: str = "gpt-4o") -> int:
     return len(encoding.encode(text))
 
 
-def count_message_tokens(messages: List[BaseMessage], model: str = "gpt-4o") -> int:
+def count_message_tokens(messages: list[BaseMessage], model: str = "gpt-4o") -> int:
     """
     计算消息列表的总 token 数量。
 
@@ -58,3 +61,47 @@ def count_message_tokens(messages: List[BaseMessage], model: str = "gpt-4o") -> 
                 total_tokens += len(encoding.encode(tc.get("name", "")))
 
     return total_tokens
+
+
+def _tool_schema_payload(tool: Any) -> dict:
+    if isinstance(tool, dict):
+        return tool
+    payload: dict[str, Any] = {
+        "name": str(getattr(tool, "name", "") or ""),
+        "description": str(getattr(tool, "description", "") or ""),
+    }
+    args_schema = getattr(tool, "args_schema", None)
+    if args_schema is not None:
+        if hasattr(args_schema, "model_json_schema"):
+            payload["parameters"] = args_schema.model_json_schema()
+        elif hasattr(args_schema, "schema"):
+            payload["parameters"] = args_schema.schema()
+        elif isinstance(args_schema, dict):
+            payload["parameters"] = args_schema
+    elif isinstance(getattr(tool, "args", None), dict):
+        payload["parameters"] = tool.args
+    return payload
+
+
+def serialize_tool_schema(tool: Any) -> str:
+    """Serialize a tool definition the way a chat-completions request would see it."""
+    return json.dumps(_tool_schema_payload(tool), ensure_ascii=False, sort_keys=True, default=str)
+
+
+def count_tool_schema_tokens(tools: Iterable[Any] | None, model: str = "gpt-4o") -> int:
+    """Count tokens of full tool schemas (name, description, parameters), not just names."""
+    if not tools:
+        return 0
+    parts = [serialize_tool_schema(tool) for tool in tools]
+    if not parts:
+        return 0
+    return count_text_tokens("\n".join(parts), model)
+
+
+def count_llm_request_tokens(
+    messages: list[BaseMessage],
+    tools: Iterable[Any] | None = None,
+    model: str = "gpt-4o",
+) -> int:
+    """Count the next model request: messages plus visible tool schemas."""
+    return count_message_tokens(messages, model) + count_tool_schema_tokens(tools, model)

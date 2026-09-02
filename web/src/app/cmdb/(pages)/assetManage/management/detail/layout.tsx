@@ -67,10 +67,13 @@ const AboutLayout = ({ children }: { children: React.ReactNode }) => {
   const onSuccess = async (info: any) => {
     const params = new URLSearchParams({
       icn: info.icn || modelDetail.icn || '',
-      model_name: info.model_name,
-      model_id: info.model_id,
-      classification_id: info.classification_id,
-      is_pre: info.is_pre || searchParams.get('is_pre') || 'false',
+      model_name: info.model_name || modelDetail.model_name || '',
+      model_id: info.model_id || modelId,
+      classification_id:
+        info.classification_id || modelDetail.classification_id || '',
+      is_pre: String(
+        info.is_pre ?? searchParams.get('is_pre') ?? modelDetail.is_pre ?? 'false'
+      ),
     }).toString();
     router.replace(`/cmdb/assetManage/management/detail/attributes?${params}`);
     fetchModelDetail();
@@ -202,40 +205,40 @@ const AboutLayout = ({ children }: { children: React.ReactNode }) => {
                   {modelDetail.model_name || ''}
                 </div>
                 <div className="flex items-center gap-[14px] ml-[24px]">
+                  <PermissionWrapper
+                    requiredPermissions={['Edit Model']}
+                    instPermissions={modelDetail.permission || []}
+                  >
+                    <EditTwoTone
+                      className="edit text-[14px] cursor-pointer"
+                      onClick={() =>
+                        shoModelModal('edit', {
+                          model_name: modelDetail.model_name || '',
+                          model_id: modelId,
+                          classification_id:
+                            modelDetail.classification_id || '',
+                          icn: modelDetail.icn || '',
+                          group: modelDetail.group,
+                          app_topo_layer: modelDetail.app_topo_layer,
+                          is_pre: modelDetail.is_pre,
+                        })
+                      }
+                    />
+                  </PermissionWrapper>
                   {!isPre && (
-                    <>
-                      <PermissionWrapper
-                        requiredPermissions={['Edit Model']}
-                        instPermissions={modelDetail.permission || []}
-                      >
-                        <EditTwoTone
-                          className="edit text-[14px] cursor-pointer"
-                          onClick={() =>
-                            shoModelModal('edit', {
-                              model_name: modelDetail.model_name || '',
-                              model_id: modelId,
-                              classification_id:
-                                modelDetail.classification_id || '',
-                              icn: modelDetail.icn || '',
-                              group: modelDetail.group,
-                            })
-                          }
-                        />
-                      </PermissionWrapper>
-                      <PermissionWrapper
-                        requiredPermissions={['Delete Model']}
-                        instPermissions={modelDetail.permission || []}
-                      >
-                        <DeleteTwoTone
-                          className="delete text-[14px] cursor-pointer"
-                          onClick={() =>
-                            showDeleteConfirm({
-                              model_id: modelId,
-                            })
-                          }
-                        />
-                      </PermissionWrapper>
-                    </>
+                    <PermissionWrapper
+                      requiredPermissions={['Delete Model']}
+                      instPermissions={modelDetail.permission || []}
+                    >
+                      <DeleteTwoTone
+                        className="delete text-[14px] cursor-pointer"
+                        onClick={() =>
+                          showDeleteConfirm({
+                            model_id: modelId,
+                          })
+                        }
+                      />
+                    </PermissionWrapper>
                   )}
                   <PermissionWrapper
                     requiredPermissions={['Add Model']}

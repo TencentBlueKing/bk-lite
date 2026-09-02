@@ -1,4 +1,7 @@
 import type { SimpleDashboardConfig } from '../common/simple-dashboard-core';
+import { telegrafHistogramQuantile } from '../../shared/utils/telegrafHistogram';
+
+const histQuantile = (base: string, quantile: string) => telegrafHistogramQuantile(base, quantile);
 
 export const SGLANG_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   routeKey: 'sglang',
@@ -71,7 +74,7 @@ export const SGLANG_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '最近 5 分钟 TTFT P99。',
       unit: 's',
       query:
-        'histogram_quantile(0.99, sum(rate((label_replace({__name__=~"sglang:time_to_first_token_seconds_[0-9.]+", __$labels__}, "le", "$1", "__name__", "sglang:time_to_first_token_seconds_(.+)"))[5m:]) or label_replace(rate(sglang:time_to_first_token_seconds_count{__$labels__}[5m]), "le", "+Inf", "__name__", ".*")) by (le))',
+        histQuantile('sglang:time_to_first_token_seconds', '0.99'),
       color: '#597ef7'
     },
     {
@@ -80,7 +83,7 @@ export const SGLANG_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '最近 5 分钟端到端请求时延 P99。',
       unit: 's',
       query:
-        'histogram_quantile(0.99, sum(rate((label_replace({__name__=~"sglang:e2e_request_latency_seconds_[0-9.]+", __$labels__}, "le", "$1", "__name__", "sglang:e2e_request_latency_seconds_(.+)"))[5m:]) or label_replace(rate(sglang:e2e_request_latency_seconds_count{__$labels__}[5m]), "le", "+Inf", "__name__", ".*")) by (le))',
+        histQuantile('sglang:e2e_request_latency_seconds', '0.99'),
       color: '#ff4d4f'
     },
     {
@@ -89,7 +92,7 @@ export const SGLANG_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '最近 5 分钟 TTFT P50。',
       unit: 's',
       query:
-        'histogram_quantile(0.50, sum(rate((label_replace({__name__=~"sglang:time_to_first_token_seconds_[0-9.]+", __$labels__}, "le", "$1", "__name__", "sglang:time_to_first_token_seconds_(.+)"))[5m:]) or label_replace(rate(sglang:time_to_first_token_seconds_count{__$labels__}[5m]), "le", "+Inf", "__name__", ".*")) by (le))',
+        histQuantile('sglang:time_to_first_token_seconds', '0.50'),
       color: '#91caff'
     },
     {
@@ -98,7 +101,7 @@ export const SGLANG_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '最近 5 分钟 TTFT P90。',
       unit: 's',
       query:
-        'histogram_quantile(0.90, sum(rate((label_replace({__name__=~"sglang:time_to_first_token_seconds_[0-9.]+", __$labels__}, "le", "$1", "__name__", "sglang:time_to_first_token_seconds_(.+)"))[5m:]) or label_replace(rate(sglang:time_to_first_token_seconds_count{__$labels__}[5m]), "le", "+Inf", "__name__", ".*")) by (le))',
+        histQuantile('sglang:time_to_first_token_seconds', '0.90'),
       color: '#4096ff'
     },
     {
@@ -116,7 +119,7 @@ export const SGLANG_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '最近 5 分钟端到端请求时延 P50。',
       unit: 's',
       query:
-        'histogram_quantile(0.50, sum(rate((label_replace({__name__=~"sglang:e2e_request_latency_seconds_[0-9.]+", __$labels__}, "le", "$1", "__name__", "sglang:e2e_request_latency_seconds_(.+)"))[5m:]) or label_replace(rate(sglang:e2e_request_latency_seconds_count{__$labels__}[5m]), "le", "+Inf", "__name__", ".*")) by (le))',
+        histQuantile('sglang:e2e_request_latency_seconds', '0.50'),
       color: '#ffa39e'
     },
     {
@@ -125,7 +128,7 @@ export const SGLANG_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '最近 5 分钟端到端请求时延 P90。',
       unit: 's',
       query:
-        'histogram_quantile(0.90, sum(rate((label_replace({__name__=~"sglang:e2e_request_latency_seconds_[0-9.]+", __$labels__}, "le", "$1", "__name__", "sglang:e2e_request_latency_seconds_(.+)"))[5m:]) or label_replace(rate(sglang:e2e_request_latency_seconds_count{__$labels__}[5m]), "le", "+Inf", "__name__", ".*")) by (le))',
+        histQuantile('sglang:e2e_request_latency_seconds', '0.90'),
       color: '#ff7875'
     },
     {
@@ -324,6 +327,8 @@ export const SGLANG_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       centerMetric: 'sglang_running_reqs',
       centerCaption: '运行中',
       centerUnit: 'counts',
+      // 空闲实例 gauge 常为 0；全 0 占比无业务含义，与时延等面板统一为空态。
+      emptyWhenAllZero: true,
       guide: [
         {
           label: '队列分布',

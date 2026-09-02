@@ -26,6 +26,7 @@ class TdsqlInfo:
         self.password = kwargs.get("password", "")
         self.charset = kwargs.get("charset", "utf8mb4")
         self.timeout = 10  # 连接超时硬编码；表单 timeout 由框架作单对象预算
+        self.collection_task_id = kwargs.get("collection_task_id")
 
     def _connect(self):
         if pymysql is None:
@@ -95,9 +96,13 @@ class TdsqlInfo:
 
             inst_data = {"result": {"tdsql": [model_data]}, "success": True}
         except Exception as err:
-            import traceback
-
-            logger.error(f"tdsql_info main error! {traceback.format_exc()}")
+            logger.exception(
+                "event=tdsql_collect_failed host=%s task_id=%s failed_stage=%s error_type=%s",
+                self.host,
+                self.collection_task_id,
+                "list_all_resources",
+                type(err).__name__,
+            )
             inst_data = {"result": {"cmdb_collect_error": str(err)}, "success": False}
 
         return inst_data

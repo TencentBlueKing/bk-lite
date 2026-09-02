@@ -3,6 +3,8 @@ from types import SimpleNamespace
 import pytest
 
 from apps.node_mgmt.constants.installer import InstallerConstants
+from apps.node_mgmt.models.cloud_region import CloudRegion
+from apps.node_mgmt.models.installer import ControllerTask, ControllerTaskNode
 from apps.node_mgmt.tasks import installer as installer_tasks
 from apps.node_mgmt.tasks.installer import _handle_step_exception
 from apps.node_mgmt.utils.installer_schema import build_installer_event_record, normalize_failure
@@ -20,9 +22,7 @@ class _DummyNode:
 
 class _InstallNode(_DummyNode):
     def __init__(self, password="", private_key="", passphrase=""):
-        super().__init__(
-            result={InstallerConstants.EXECUTION_PHASE_KEY: InstallerConstants.EXECUTION_PHASE_BOOTSTRAP_RUNNING}
-        )
+        super().__init__(result={InstallerConstants.EXECUTION_PHASE_KEY: InstallerConstants.EXECUTION_PHASE_BOOTSTRAP_RUNNING})
         self.password = password
         self.private_key = private_key
         self.passphrase = passphrase
@@ -37,6 +37,41 @@ class _FailingCryptor:
         return "decoded-value"
 
 
+@pytest.mark.django_db
+def test_uninstall_controller_without_credentials_records_exact_failure(monkeypatch):
+    region = CloudRegion.objects.create(name="uninstall-no-credentials")
+    task = ControllerTask.objects.create(cloud_region=region, type="uninstall", status="pending")
+    node = ControllerTaskNode.objects.create(
+        task=task,
+        ip="10.1.1.1",
+        os="linux",
+        port=22,
+        username="root",
+        password="",
+        private_key="",
+        status="waiting",
+        result={},
+    )
+    monkeypatch.setattr(installer_tasks, "AESCryptor", lambda: SimpleNamespace())
+    monkeypatch.setattr(
+        installer_tasks,
+        "exec_command_to_remote",
+        lambda *args, **kwargs: pytest.fail("无凭据时不应执行远程命令"),
+    )
+
+    installer_tasks.uninstall_controller(task.id)
+
+    task.refresh_from_db()
+    node.refresh_from_db()
+    assert task.status == "finished"
+    assert node.status == "error"
+    assert node.result["steps"][0]["action"] == "credential_check"
+    assert node.result["steps"][0]["status"] == "error"
+    assert node.result["steps"][0]["message"] == ("Windows requires a password; Linux requires a password or private key.")
+    assert node.result["final_message"] == "Credential validation failed"
+    assert node.result["overall_status"] == "error"
+
+
 @pytest.mark.parametrize(
     ("password", "private_key", "passphrase"),
     [
@@ -45,9 +80,7 @@ class _FailingCryptor:
         ("", "valid-ciphertext", "invalid-ciphertext"),
     ],
 )
-def test_install_controller_on_nodes_converges_credential_decryption_failure(
-    monkeypatch, password, private_key, passphrase
-):
+def test_install_controller_on_nodes_converges_credential_decryption_failure(monkeypatch, password, private_key, passphrase):
     node = _InstallNode(password=password, private_key=private_key, passphrase=passphrase)
     dispatch_calls = []
     monkeypatch.setattr(installer_tasks, "AESCryptor", _FailingCryptor)

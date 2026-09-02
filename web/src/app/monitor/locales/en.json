@@ -127,7 +127,7 @@
       "avg": "AVG",
       "alertConditions": "Alert Conditions",
       "alertThreshold": "Alert Threshold",
-      "thresholdUnitHelp": "The threshold unit is used for input and display. Thresholds are converted to the calculation unit for evaluation, and only units of the same dimension are available.",
+      "thresholdUnitHelp": "The threshold unit is used for input and display. Thresholds are converted to the calculation unit for evaluation, and only units of the same dimension are available. For percentages: percent is 0–100 and percentunit is 0.0–1.0; enter values in the selected scale.",
       "metricPreview": "Metric Preview",
       "noDataAlertName": "No Data Alert Name",
       "noDataAlertLevel": "No Data Alert",

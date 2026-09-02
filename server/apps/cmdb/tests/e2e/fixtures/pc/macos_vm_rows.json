@@ -22,10 +22,7 @@
           "serial_number": "C02XL0AAJHD3",
           "device_model": "MacBookPro18,3",
           "logged_in_user": "designer",
-          "snapshot_id": "a1b2c3d4-5e6f-4789-8abc-def012345678",
-          "software_snapshot_status": "complete",
-          "software_expected_count": "1",
-          "software_error_count": "0"
+          "collection_target": "192.168.1.88"
         },
         "value": [
           1753200000,
@@ -41,7 +38,6 @@
           "host": "192.168.1.88",
           "inst_name": "SW-0B22C66586805CD4A2F1F2A669501741",
           "pc_inst_name": "MAC-00001111-2222-3333-4444-555566667777",
-          "snapshot_id": "a1b2c3d4-5e6f-4789-8abc-def012345678",
           "software_key": "com.google.chrome",
           "name": "Google Chrome",
           "version": "127.0.6533.89",
@@ -50,7 +46,8 @@
           "install_location": "/Applications/Google Chrome.app",
           "install_date": "2026-06-01",
           "architecture": "universal",
-          "source": "macos_application"
+          "source": "macos_application",
+          "collection_target": "192.168.1.88"
         },
         "value": [
           1753200000,

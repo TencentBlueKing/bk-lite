@@ -1,6 +1,8 @@
 {
   "wiki": {
     "title": "知识库",
+    "pageTitle": "知识库",
+    "pageDescription": "由 AI 持续构建、以页面为中心、可被多个智能体复用的知识库",
     "description": "由 AI 持续构建、以页面为中心、可被多个智能体复用的知识库",
     "create": "新建知识库",
     "edit": "编辑知识库",
@@ -729,6 +731,8 @@
     "empty": "暂无知识库"
   },
   "studio": {
+    "pageTitle": "工作台",
+    "pageDescription": "管理机器人应用，配置渠道发布与对话能力",
     "settings": {
       "selectSkills": "选择智能体",
       "enableSsl": "启用 SSL",
@@ -824,6 +828,8 @@
     "edit": "编辑工作室"
   },
   "tool": {
+    "pageTitle": "工具",
+    "pageDescription": "管理内置工具、技能包与 MCP 接入",
     "text": "文本",
     "textarea": "文本域",
     "deleteConfirm": "你确定要删除此工具吗？",
@@ -1116,6 +1122,22 @@
     "onlyImageAllowed": "只能上传图片文件",
     "imageTooLarge": "图片大小不能超过 5MB",
     "uploadImage": "上传图片",
+    "contextUsage": {
+      "title": "上下文用量",
+      "packetHint": "下一次发给模型的包",
+      "waitingHint": "发一条消息后，这里会显示下一次发给模型的包占了多少输入工作预算。",
+      "used": "已用",
+      "about": "约",
+      "system": "系统提示",
+      "tools": "工具定义",
+      "skills": "技能包",
+      "wiki": "Wiki 注入",
+      "summary": "已压缩摘要",
+      "conversation": "对话",
+      "budgetHint": "分母是输入工作预算（模型窗口 {window}）。压缩线约 {compact}。",
+      "compactedHint": "界面上的历史还在；发给模型的包里，更早的轮次已收成摘要。",
+      "nearCapHint": "接近输入工作预算。再变长会继续压缩；系统提示和本轮问题放不下时才会失败。"
+    },
     "approvalRequired": "需要审批",
     "approvalToolName": "操作",
     "approvalToolArgs": "详情",
@@ -1185,6 +1207,8 @@
     }
   },
   "skill": {
+    "pageTitle": "智能体",
+    "pageDescription": "配置 LLM、知识库与工具，编排问答与自动化能力",
     "form": {
       "enableSuggest": "启用问题建议",
       "problemOptimizationTip": "开启后，LLM大模型会对用户提问的问题进行优化加工，以便查询更为精确的结果",
@@ -1831,6 +1855,10 @@
       "enabled": "启停",
       "multimodal": "支持多模态",
       "multimodalHint": "关闭后，页面上下文对话将不传截图，仅保留文字说明",
+      "contextWindow": "上下文窗口",
+      "contextWindowHint": "模型真实上下文容量（输入+输出合计）。K 为千 token，M 为百万 token。",
+      "contextWindowRequired": "请输入上下文窗口",
+      "contextWindowRange": "换算后须在 8K～2M 之间",
       "deleteConfirmContent": "删除后将移除模型“{name}”，请谨慎操作。",
       "deleteConfirmTitle": "删除二次确认",
       "sync": "同步模型",
@@ -1862,6 +1890,8 @@
     "deleteConfirm": "你确定要删除此模型吗？"
   },
   "memory": {
+    "pageTitle": "记忆",
+    "pageDescription": "管理个人与组织记忆空间，支撑智能体长期上下文",
     "title": "记忆",
     "spaceList": "记忆空间列表",
     "createSpace": "新建记忆空间",
@@ -1940,5 +1970,20 @@
     "baseUrl": "API 地址",
     "baseUrlPlaceholder": "请输入 API 地址（可选）",
     "storageTypeCannotChange": "存储类型创建后不可更改"
+  },
+  "unifiedCard": {
+    "owner": "所有者",
+    "team": "团队",
+    "modelCount": "{count} 个模型",
+    "enableAria": "{name} 启用",
+    "moreActions": "更多操作",
+    "status": {
+      "online": "上线",
+      "offline": "下线",
+      "ready": "就绪",
+      "building": "构建中",
+      "enabled": "启用",
+      "disabled": "停用"
+    }
   }
 }

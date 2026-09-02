@@ -1,33 +1,60 @@
-// Extract client_id from current route (client-side only)
-export const getClientIdFromRoute = (): string => {
-  // Only works on client-side
-  if (typeof window === 'undefined') {
-    return 'ops-console'; // Default fallback for SSR
-  }
-  
-  const pathname = window.location.pathname;
+const DEFAULT_CLIENT_ID = 'ops-console';
+
+/** Portal landing after sign-in and for the `/` route. */
+export const PORTAL_HOME_PATH = '/ops-console/home';
+
+const clientIdFromPathname = (pathname: string): string => {
   const pathSegments = pathname.split('/').filter(Boolean);
-  
-  // If it's auth/signin route, return default client_id
+
   if (pathSegments.length > 0 && pathSegments[0] === 'auth') {
-    return 'ops-console';
+    return DEFAULT_CLIENT_ID;
   }
-  
-  // Route format: /opspilot/xxx or /client-name/xxx - take the first segment as client_id
+
   if (pathSegments.length > 0) {
     return pathSegments[0];
   }
-  
-  return 'ops-console';
+
+  return DEFAULT_CLIENT_ID;
 };
 
-// Map route-based client_id to actual client name
+export const getClientIdFromRoute = (pathname?: string | null): string => {
+  const resolved = pathname === undefined
+    ? (typeof window === 'undefined' ? '' : window.location.pathname)
+    : pathname || '';
+
+  if (!resolved) {
+    return DEFAULT_CLIENT_ID;
+  }
+
+  return clientIdFromPathname(resolved);
+};
+
+export const isAppClientMenuRoute = (pathname: string | null | undefined): boolean => {
+  if (!pathname || pathname === '/') {
+    return false;
+  }
+  return !(
+    pathname.startsWith('/auth/')
+    || pathname === '/no-permission'
+    || pathname === '/no-found'
+  );
+};
+
+export const isWaitingForClientMenus = (
+  pathname: string | null | undefined,
+  menuClientId: string | null,
+): boolean => {
+  if (!isAppClientMenuRoute(pathname)) {
+    return false;
+  }
+  return menuClientId !== getClientIdFromRoute(pathname);
+};
+
 export const mapClientName = (routeClientId: string): string => {
   const clientNameMap: { [key: string]: string } = {
     'node-manager': 'node',
     'patch-manager': 'patch',
-    // Add more mappings here if needed
   };
-  
+
   return clientNameMap[routeClientId] || routeClientId;
 };

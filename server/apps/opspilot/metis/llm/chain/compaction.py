@@ -21,12 +21,17 @@ from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.chain.token_utils import count_message_tokens
 from apps.opspilot.metis.utils.template_loader import TemplateLoader
 
+COMPACTION_SKIP_LOG = "event=llm_compaction_skip packet_tokens=%s threshold=%s extra_tokens=%s reason=%s"
+COMPACTION_START_LOG = "event=llm_compaction_start packet_tokens=%s threshold=%s extra_tokens=%s keep_recent=%s"
+COMPACTION_DONE_LOG = "event=llm_compaction_done packet_tokens=%s result_tokens=%s extra_tokens=%s"
+SUMMARY_HUMAN_PREFIX = "[以下是之前对话的摘要，用于保持上下文连贯性]\n\n"
+
 
 class CompactionConfig(BaseModel):
     """Compaction 配置"""
 
     enabled: bool = Field(default=True, description="是否启用上下文压缩")
-    max_token_threshold: int = Field(default=80000, description="触发压缩的 token 阈值")
+    max_token_threshold: int = Field(default=0, description="触发压缩的 token 阈值；0 表示未注入模型派生值时不压缩")
     keep_recent_messages: int = Field(default=12, description="保留最近的消息数量（确保 tool_call 配对完整）")
     summary_max_tokens: int = Field(default=2000, description="摘要的最大 token 数")
 
@@ -67,6 +72,18 @@ def _find_safe_split_point(messages: List[BaseMessage], keep_recent: int) -> int
                 split_idx -= 1
 
     return split_idx
+
+
+def _summary_human_message(summary: str) -> HumanMessage:
+    return HumanMessage(content=f"{SUMMARY_HUMAN_PREFIX}{summary}")
+
+
+def _last_human_index(messages: List[BaseMessage]) -> int:
+    last_idx = -1
+    for index, message in enumerate(messages):
+        if isinstance(message, HumanMessage):
+            last_idx = index
+    return last_idx
 
 
 def _format_messages_for_summary(messages: List[BaseMessage]) -> str:
@@ -140,6 +157,8 @@ async def compact_messages(
     llm: ChatOpenAI,
     config: Optional[CompactionConfig] = None,
     model_name: str = "gpt-4o",
+    extra_tokens: int = 0,
+    force: bool = False,
 ) -> List[BaseMessage]:
     """
     检测消息 token 总量，超过阈值时压缩中间消息为摘要。
@@ -151,6 +170,8 @@ async def compact_messages(
         llm: LLM 客户端（用于生成摘要，应为 isolated 模式）
         config: Compaction 配置，None 时使用默认配置
         model_name: 用于 token 计算的模型名称
+        extra_tokens: 额外计入阈值的 token（如本轮工具 Schema）
+        force: 忽略阈值，只要有可压历史就压缩（供应商超窗重试）
 
     Returns:
         压缩后的消息列表（可能与原列表相同，如果不需要压缩）
@@ -161,48 +182,70 @@ async def compact_messages(
     if not config.enabled:
         return messages
 
-    # 计算当前 token 总量
-    total_tokens = count_message_tokens(messages, model_name)
+    extra = max(int(extra_tokens or 0), 0)
+    packet_tokens = count_message_tokens(messages, model_name) + extra
+    threshold = config.max_token_threshold
 
-    if total_tokens <= config.max_token_threshold:
-        logger.debug(f"Compaction: token 数 {total_tokens} 未超阈值 {config.max_token_threshold}，跳过压缩")
+    if not force and packet_tokens <= threshold:
+        logger.debug(COMPACTION_SKIP_LOG, packet_tokens, threshold, extra, "below_threshold")
         return messages
 
-    logger.info(f"Compaction: token 数 {total_tokens} 超过阈值 {config.max_token_threshold}，" f"开始压缩（保留最近 {config.keep_recent_messages} 条消息）")
-
-    # 分离 system messages 和非 system messages
     system_msgs = [m for m in messages if isinstance(m, SystemMessage)]
     non_system_msgs = [m for m in messages if not isinstance(m, SystemMessage)]
 
     if not non_system_msgs:
+        logger.debug(COMPACTION_SKIP_LOG, packet_tokens, threshold, extra, "no_history")
         return messages
 
-    # 找到安全的分割点
     split_idx = _find_safe_split_point(non_system_msgs, config.keep_recent_messages)
-
-    if split_idx == 0:
-        logger.debug("Compaction: 无需压缩（分割点为 0）")
-        return messages
-
     to_compress = non_system_msgs[:split_idx]
     to_keep = non_system_msgs[split_idx:]
 
-    if not to_compress:
+    if split_idx == 0 or not to_compress:
+        logger.debug(COMPACTION_SKIP_LOG, packet_tokens, threshold, extra, "split_zero")
         return messages
 
-    logger.info(f"Compaction: 压缩 {len(to_compress)} 条消息，保留 {len(to_keep)} 条最近消息")
+    logger.info(COMPACTION_START_LOG, packet_tokens, threshold, extra, config.keep_recent_messages)
 
-    # 生成摘要
     summary = await generate_summary(to_compress, llm, config.summary_max_tokens)
+    compacted = system_msgs + [_summary_human_message(summary)] + to_keep
+    result_tokens = count_message_tokens(compacted, model_name) + extra
+    logger.info(COMPACTION_DONE_LOG, packet_tokens, result_tokens, extra)
 
-    # 构造摘要消息（使用 HumanMessage 而非 SystemMessage，避免某些模型要求 SystemMessage 必须在最前面）
+    return compacted
 
-    summary_msg = HumanMessage(content=f"[以下是之前对话的摘要，用于保持上下文连贯性]\n\n{summary}")
 
-    # 重新组装消息列表
-    compacted = system_msgs + [summary_msg] + to_keep
+async def compact_leaving_current_user(
+    messages: List[BaseMessage],
+    llm: ChatOpenAI,
+    config: Optional[CompactionConfig] = None,
+    model_name: str = "gpt-4o",
+    extra_tokens: int = 0,
+) -> List[BaseMessage]:
+    """Replace non-system history except the current user (and any suffix) with one summary."""
+    if config is None:
+        config = CompactionConfig()
+    if not config.enabled:
+        return messages
 
-    new_token_count = count_message_tokens(compacted, model_name)
-    logger.info(f"Compaction 完成: {total_tokens} tokens -> {new_token_count} tokens " f"(压缩率 {(1 - new_token_count / total_tokens) * 100:.1f}%)")
+    extra = max(int(extra_tokens or 0), 0)
+    packet_tokens = count_message_tokens(messages, model_name) + extra
+    threshold = config.max_token_threshold
+    system_msgs = [m for m in messages if isinstance(m, SystemMessage)]
+    last_idx = _last_human_index(messages)
+    if last_idx < 0:
+        logger.debug(COMPACTION_SKIP_LOG, packet_tokens, threshold, extra, "no_history")
+        return messages
 
+    current = messages[last_idx]
+    to_compress = [message for index, message in enumerate(messages) if index != last_idx and not isinstance(message, SystemMessage)]
+    if not to_compress:
+        logger.debug(COMPACTION_SKIP_LOG, packet_tokens, threshold, extra, "no_history")
+        return messages
+
+    logger.info(COMPACTION_START_LOG, packet_tokens, threshold, extra, 1)
+    summary = await generate_summary(to_compress, llm, config.summary_max_tokens)
+    compacted = system_msgs + [_summary_human_message(summary)] + [current] + list(messages[last_idx + 1 :])
+    result_tokens = count_message_tokens(compacted, model_name) + extra
+    logger.info(COMPACTION_DONE_LOG, packet_tokens, result_tokens, extra)
     return compacted

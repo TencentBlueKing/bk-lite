@@ -2,6 +2,11 @@
 
 Status: approved for implementation (2026-08-28)
 
+> 2026-09-01 更新：生产参数、回滚策略和全局准入实现以
+> `success-only-nats-and-elastic-concurrency-plan-2026-09-01.md` §20.1 与
+> `jetstream-production-deployment-guide-2026-08-28.md` 为准。历史的 1024/128 MiB 和 Core NATS
+> fallback 不再是当前生产方案。
+
 ## 1. 结论与边界
 
 结果发布从“内存结果队列 + 单 writer + Core NATS flush”升级为：

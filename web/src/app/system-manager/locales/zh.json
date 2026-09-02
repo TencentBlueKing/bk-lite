@@ -1315,7 +1315,7 @@
       "capability": {
         "userSync": "用户同步",
         "loginAuth": "登录认证",
-        "imNotification": "通知渠道",
+        "imNotification": "IM应用通知",
         "imGroup": "群协作"
       },
       "provider": {
@@ -1403,7 +1403,8 @@
         "loadFailed": "加载失败",
         "loadFailedReason": "原因：{errorType}",
         "builtinNoActions": "内置类型不可更换或卸载"
-      }
+      },
+      "createInstanceDesc": "从已接入的集成系统类型中选择一个类型创建集成系统实例"
     }
   }
 }

@@ -1,7 +1,8 @@
+import hashlib
+
 from django.db import transaction
 
 from apps.cmdb.models.scan_model import ScanExecution, ScanFamilyRun, ScanHit
-from apps.cmdb.services.collect_credential_result_service import CollectCredentialResultService
 from apps.core.logger import cmdb_logger as logger
 
 _STATUS_MAP = {
@@ -10,6 +11,115 @@ _STATUS_MAP = {
     "unreachable": ScanHit.STATUS_UNREACHABLE,
 }
 _EMPTY_CREDENTIAL_IDS = frozenset({"", "-", "null", "none", "nil"})
+_EVENT_VERSION = "2"
+_MODERN_STATUSES = frozenset({"success", "failed", "unreachable", "deferred"})
+_CREDENTIAL_FAILURE_ERROR_CODES = frozenset(
+    {
+        "auth_failed",
+        "authentication_failed",
+        "capability_denied",
+        "snmp_error_status",
+        "snmp_authorization_failed",
+        "unauthorized",
+    }
+)
+
+
+def _validate_v2_identity(data: dict) -> str:
+    required = (
+        "collect_task_id",
+        "event_id",
+        "event_index",
+        "finished_at",
+        "plugin_ref",
+        "producer_instance",
+        "result_id",
+        "run_attempt_id",
+        "run_id",
+    )
+    missing = [key for key in required if data.get(key) in (None, "")]
+    if missing:
+        return "v2 identity fields are required: " + ", ".join(missing)
+    if data.get("producer") != "stargazer":
+        return "unsupported producer"
+    if str(data.get("scope_id") or "") != str(data.get("collect_task_id")):
+        return "scope_id conflicts with collect_task_id"
+    try:
+        fence = int(data.get("fence"))
+        event_index = int(data.get("event_index"))
+    except (TypeError, ValueError):
+        return "fence and event_index must be integers"
+    if fence <= 0 or event_index < 0:
+        return "fence must be positive and event_index must be non-negative"
+    result_identity = "\0".join(
+        (
+            str(data.get("run_id")),
+            str(data.get("plugin_ref")),
+            str(data.get("host")),
+            str(fence),
+            str(data.get("run_attempt_id")),
+        )
+    )
+    expected_result_id = hashlib.sha256(result_identity.encode("utf-8")).hexdigest()
+    if str(data.get("result_id")) != expected_result_id:
+        return "result_id conflicts with run identity"
+    event_identity = "\0".join(
+        (
+            expected_result_id,
+            str(event_index),
+            str(data.get("credential_id") or ""),
+            str(data.get("status") or ""),
+            str(data.get("error_code") or ""),
+        )
+    )
+    expected_event_id = hashlib.sha256(event_identity.encode("utf-8")).hexdigest()
+    if str(data.get("event_id")) != expected_event_id:
+        return "event_id conflicts with event identity"
+    return ""
+
+
+def _normalize_scan_outcome(data: dict):
+    event_version = data.get("event_version")
+    if event_version is not None and str(event_version) != _EVENT_VERSION:
+        return None, f"unsupported event_version: {event_version}"
+    if event_version is not None and "status" not in data:
+        return None, f"status is required for event_version: {event_version}"
+    if event_version is not None:
+        identity_error = _validate_v2_identity(data)
+        if identity_error:
+            return None, identity_error
+    if "status" not in data:
+        if "success" not in data:
+            return None, "status or success is required"
+        return {
+            "success": bool(data.get("success")),
+            "failure_kind": data.get("failure_kind") or "task",
+            "error_message": data.get("error_message") or "",
+        }, ""
+
+    status = str(data.get("status") or "").strip().lower()
+    if status not in _MODERN_STATUSES:
+        return None, f"unsupported status: {status or '<empty>'}"
+    success = status == "success"
+    if "success" in data and bool(data.get("success")) != success:
+        return None, "status conflicts with success"
+    error_code = str(data.get("error_code") or "").strip()
+    if success and error_code:
+        return None, "status conflicts with error_code"
+    if status in {"deferred", "unreachable"} and error_code in _CREDENTIAL_FAILURE_ERROR_CODES:
+        return None, "status conflicts with error_code"
+    failure_kind = "credential" if status == "failed" and error_code in _CREDENTIAL_FAILURE_ERROR_CODES else "task"
+    if success:
+        failure_kind = ""
+        if data.get("failure_kind") or data.get("error_message"):
+            return None, "success conflicts with failure fields"
+    elif "failure_kind" in data and (data.get("failure_kind") or "task") != failure_kind:
+        return None, "error_code conflicts with failure_kind"
+    return {
+        "success": success,
+        "failure_kind": failure_kind,
+        "error_message": str(data.get("error_message") or error_code),
+    }, ""
 
 
 class ScanCredentialResultService:
@@ -68,7 +178,7 @@ class ScanCredentialResultService:
         if family_run is None:
             return {"result": False, "message": "collect_task_id does not exist"}
 
-        outcome, error = CollectCredentialResultService._normalize_outcome(data)
+        outcome, error = _normalize_scan_outcome(data)
         if error:
             if wants_success:
                 return {"result": False, "message": error}

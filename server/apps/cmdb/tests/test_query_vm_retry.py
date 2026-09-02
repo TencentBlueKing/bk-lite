@@ -48,9 +48,7 @@ def test_query_applies_time_range_to_entire_union_expression():
     with mock.patch(f"{MODULE}.requests.post", return_value=_ok_response()) as post:
         Collection().query("metric_a or metric_b", retries=1)
 
-    assert post.call_args.kwargs["data"]["query"] == (
-        "last_over_time((metric_a or metric_b)[1h:])"
-    )
+    assert post.call_args.kwargs["data"]["query"] == ("last_over_time((metric_a or metric_b)[1h:])")
 
 
 def test_query_retries_on_5xx_then_succeeds():
@@ -85,3 +83,9 @@ def test_query_does_not_retry_on_4xx():
 
     # 4xx 是请求本身问题，重试无意义，应只调用一次
     assert post.call_count == 1
+
+
+def test_collection_normalizes_trailing_slash_in_vm_host(monkeypatch):
+    monkeypatch.setattr("apps.cmdb.collection.query_vm.VICTORIAMETRICS_HOST", "http://10.10.41.149:8428/")
+
+    assert Collection().url == "http://10.10.41.149:8428/prometheus/api/v1/query"

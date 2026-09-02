@@ -3,8 +3,12 @@ import pytest
 
 def _kb(name="kb"):
     from apps.opspilot.models import WikiKnowledgeBase
+    from apps.opspilot.services.wiki.structure_service import bootstrap_knowledge_base
 
-    return WikiKnowledgeBase.objects.create(name=name, team=[1])
+    kb = WikiKnowledgeBase.objects.create(name=name, team=[1], purpose_md="# Purpose", schema_md="# Schema")
+    bootstrap_knowledge_base(kb, operator="u")
+    kb.refresh_from_db()
+    return kb
 
 
 def _page(kb, title, body):
@@ -83,18 +87,51 @@ def test_build_context_expands_one_hop_graph_neighbors():
 
 @pytest.mark.django_db
 def test_build_context_respects_token_budget():
+    from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded
     from apps.opspilot.services.wiki.wiki_context_service import build_context
 
     kb = _kb()
     _page(kb, "重启主流程", "重启服务 " + "先摘流量再重启 " * 20)
     _page(kb, "重启补充说明", "重启服务 " + "观察指标确认恢复 " * 20)
 
-    out = build_context([kb.id], "重启服务", top_k=5, token_budget=32)
+    with pytest.raises(WikiBudgetExceeded) as exc:
+        build_context([kb.id], "重启服务", top_k=5, token_budget=32)
 
-    assert len(out["citations"]) == 1
-    assert out["budget"]["token_budget"] == 32
-    assert out["budget"]["used_tokens"] <= 32
-    assert out["budget"]["truncated"] is True
+    details = exc.value.details
+    assert details["truncated"] is True
+    assert details["token_budget"] == 32
+    assert details["used_tokens"] <= 32
+
+
+@pytest.mark.django_db
+def test_build_context_uses_derived_knowledge_budget_not_legacy_8k():
+    from apps.opspilot.models import LLMModel
+    from apps.opspilot.services.wiki.wiki_context_service import build_context
+
+    kb = _kb()
+    _page(kb, "重启主流程", "重启服务")
+    model = LLMModel.objects.create(name="qa-window", model="gpt-4")
+
+    out = build_context([kb.id], "重启服务", top_k=5, llm_model_id=model.pk, graph_hops=0)
+
+    assert out["budget"]["configured_token_budget"] == 27_900
+    assert out["budget"]["effective_token_budget"] == 27_900
+    assert out["budget"]["token_budget"] <= 27_900
+
+
+@pytest.mark.django_db
+def test_build_context_requested_budget_cannot_exceed_derived_cap():
+    from apps.opspilot.models import LLMModel
+    from apps.opspilot.services.wiki.wiki_context_service import build_context
+
+    kb = _kb()
+    _page(kb, "重启主流程", "重启服务")
+    model = LLMModel.objects.create(name="qa-window-cap", model="gpt-4")
+
+    out = build_context([kb.id], "重启服务", top_k=5, token_budget=999_999, llm_model_id=model.pk, graph_hops=0)
+
+    assert out["budget"]["effective_token_budget"] == 27_900
+    assert out["budget"]["token_budget"] <= 27_900
 
 
 @pytest.mark.django_db

@@ -30,6 +30,7 @@ class CmdbOperation(TimeInfo):
     action = models.CharField(max_length=64)
     target = models.JSONField(default=dict, blank=True)
     request_snapshot = models.JSONField(default=dict, blank=True)
+    event_context = models.JSONField(default=dict, blank=True)
     result_snapshot = models.JSONField(default=dict, blank=True)
     status = models.CharField(
         max_length=32,

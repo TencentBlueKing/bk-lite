@@ -48,13 +48,15 @@ async def readiness_check(request):
     all_ready = True
 
     try:
-        stats = await get_collection_application().stats()
+        application = get_collection_application()
+        readiness = await application.readiness()
         checks["collection_runtime"] = "healthy"
-        checks["redis"] = "connected" if stats["healthy"] else "disconnected"
-        if not stats["healthy"]:
-            all_ready = False
-    except Exception as e:
-        checks["collection_runtime"] = f"error: {str(e)}"
+        checks["redis"] = "connected" if readiness["redis"] else "disconnected"
+        checks["metrics_jetstream"] = "connected" if readiness["metrics_jetstream"] else "disconnected"
+        checks["nats_subscriber"] = "connected" if readiness["nats_subscriber"] else "disconnected"
+        all_ready = all(readiness.values())
+    except Exception:
+        checks["collection_runtime"] = "unavailable"
         all_ready = False
 
     status_code = 200 if all_ready else 503
@@ -198,6 +200,34 @@ stargazer_redis_pool_exhaustion_total {stats.get("redis_pool_exhaustion_total", 
 # TYPE stargazer_collection_credential_state_redis_error_total counter
 stargazer_collection_credential_state_redis_error_total {stats.get("credential_state_redis_error_total", 0)}
 """
+        prometheus_text += (
+            "# TYPE stargazer_scheduler_active_targets gauge\n"
+            "# TYPE stargazer_scheduler_pending_targets gauge\n"
+            "# TYPE stargazer_scheduler_borrowed_slots gauge\n"
+        )
+        for workload in ("configuration", "monitoring", "network_topology"):
+            prometheus_text += (
+                f'stargazer_scheduler_active_targets{{workload_class="{workload}"}} '
+                f'{stats.get(f"workload_{workload}_active", 0)}\n'
+                f'stargazer_scheduler_pending_targets{{workload_class="{workload}"}} '
+                f'{stats.get(f"workload_{workload}_pending", 0)}\n'
+                f'stargazer_scheduler_borrowed_slots{{workload_class="{workload}"}} '
+                f'{stats.get(f"workload_{workload}_borrowed", 0)}\n'
+            )
+        prometheus_text += (
+            "# TYPE stargazer_capacity_group_active_targets gauge\n"
+            "# TYPE stargazer_capacity_group_pending_targets gauge\n"
+            "# TYPE stargazer_capacity_group_limit gauge\n"
+        )
+        for capacity_group in ("snmp", "sync_sdk", "remote_job", "default"):
+            prometheus_text += (
+                f'stargazer_capacity_group_active_targets{{capacity_group="{capacity_group}"}} '
+                f'{stats.get(f"capacity_group_{capacity_group}_active", 0)}\n'
+                f'stargazer_capacity_group_pending_targets{{capacity_group="{capacity_group}"}} '
+                f'{stats.get(f"capacity_group_{capacity_group}_pending", 0)}\n'
+                f'stargazer_capacity_group_limit{{capacity_group="{capacity_group}"}} '
+                f'{stats.get(f"capacity_group_{capacity_group}_limit", 0)}\n'
+            )
         bounded_metric_keys = (
             "target_worker_tasks_peak",
             "pending_targets",
@@ -258,8 +288,12 @@ stargazer_collection_credential_state_redis_error_total {stats.get("credential_s
             "nats_metrics_pending_bytes",
             "nats_js_publish_pending_messages",
             "nats_js_publish_pending_bytes",
+            "nats_js_publish_waiting_messages",
+            "nats_js_publish_waiting_bytes",
             "nats_js_publish_pending_messages_peak",
             "nats_js_publish_pending_bytes_peak",
+            "nats_js_publish_waiting_messages_peak",
+            "nats_js_publish_waiting_bytes_peak",
             "nats_js_publish_confirmed_total",
             "nats_js_puback_duration_seconds_p95",
             "nats_js_puback_duration_seconds_p99",

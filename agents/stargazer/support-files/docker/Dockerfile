@@ -9,6 +9,9 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# Sanic 进程数：每进程独立 GIL，用于绕开单进程 CPU 天花板；可在运行时用 -e 覆盖
+ENV SANIC_WORKERS=4
+
 WORKDIR /app
 
 ADD . .

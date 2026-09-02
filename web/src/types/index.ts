@@ -127,6 +127,12 @@ export interface EntityListProps<T> {
   onSearch?: (value: string) => void;
   onCardClick?: (item: T) => void;
   changeFilter?: (value: string[]) => void;
+  /** 自定义卡片渲染；传入后覆盖默认卡片壳（OpsPilot Look B 等） */
+  renderCard?: (item: T) => React.ReactNode;
+  /** 隐藏顶部工具条（由页面页头自行承载搜索/新建时使用） */
+  hideToolbar?: boolean;
+  /** 加载态自定义内容（如骨架屏）；未传则沿用居中 Spin */
+  loadingContent?: React.ReactNode;
 }
 
 export interface TimeSelectorRef {

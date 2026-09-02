@@ -73,6 +73,22 @@ def test_builder_requires_stable_caller_task_id():
         )
 
 
+def test_builder_normalizes_empty_credential_scope_fields():
+    request = build_collection_request(
+        task_id="credential-scope",
+        params={
+            "model_id": "mysql",
+            "host": "10.10.24.1",
+            "scope_id": "",
+            "collect_task_id": "131",
+            "credential_set_version": "",
+        },
+    )
+
+    assert request.params["scope_id"] == "131"
+    assert request.params["credential_set_version"] == "default"
+
+
 def test_monitor_builder_uses_the_same_request_contract():
     request = build_collection_request(
         task_id="monitor-001",

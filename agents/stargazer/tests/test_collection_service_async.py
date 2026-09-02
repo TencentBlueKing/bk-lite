@@ -215,6 +215,88 @@ async def test_collection_service_uses_registered_protocol_probe():
     assert result.status == AccessProbeStatus.READY
 
 
+def test_pc_snapshot_control_fields_are_separated_from_metric_labels():
+    service = CollectionService(
+        {
+            "plugin_name": "pc_info",
+            "model_id": "pc",
+            "executor_type": "job",
+            "host": "10.0.0.8",
+        }
+    )
+    raw = {
+        "success": True,
+        "snapshot_id": "snapshot-1",
+        "snapshot_status": "complete",
+        "snapshot_metadata": {
+            "software_expected_count": 1,
+            "software_error_count": 0,
+        },
+        "result": {
+            "pc": [{"inst_name": "WIN-AAA"}],
+            "pc_software": [
+                {
+                    "inst_name": "SW-001",
+                    "pc_inst_name": "WIN-AAA",
+                    "snapshot_id": "snapshot-1",
+                }
+            ],
+        },
+    }
+
+    processed = service._process_result(raw)
+    metadata = service._extract_round_metadata(raw)
+
+    assert metadata == {
+        "snapshot_id": "snapshot-1",
+        "snapshot_status": "complete",
+        "details": {"software_expected_count": 1, "software_error_count": 0},
+    }
+    assert "snapshot_id" not in processed["pc"][0]
+    assert "snapshot_id" not in processed["pc_software"][0]
+    assert "software_snapshot_status" not in processed["pc"][0]
+    assert "software_expected_count" not in processed["pc"][0]
+    assert "software_error_count" not in processed["pc"][0]
+
+
+def test_winsphere_snapshot_manifest_is_separated_from_metric_labels():
+    service = CollectionService(
+        {
+            "plugin_name": "winsphere_info",
+            "model_id": "winsphere",
+            "executor_type": "protocol",
+            "host": "10.0.0.10",
+        }
+    )
+    manifest = {
+        "schema_version": 1,
+        "snapshot_id": "snapshot-1",
+        "expected_models": ["winsphere"],
+        "models": {
+            "winsphere": {
+                "count": 1,
+                "identity_hash": "abc",
+                "authoritative": True,
+            }
+        },
+    }
+    raw = {
+        "success": True,
+        "snapshot_id": "snapshot-1",
+        "snapshot_status": "complete",
+        "snapshot_manifest": manifest,
+        "result": {"winsphere": [{"resource_id": "platform-1"}]},
+    }
+
+    processed = service._process_result(raw)
+    metadata = service._extract_round_metadata(raw)
+
+    assert metadata["details"] == {"snapshot_manifest": manifest}
+    assert "snapshot_id" not in processed["winsphere"][0]
+    assert "snapshot_status" not in processed["winsphere"][0]
+    assert "snapshot_manifest" not in processed["winsphere"][0]
+
+
 @pytest.mark.asyncio
 async def test_config_resolution_does_not_stall_event_loop():
     """首次读取 plugin.yml 是文件 IO，不应阻塞 Sanic 事件循环。"""

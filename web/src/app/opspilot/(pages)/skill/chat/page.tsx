@@ -5,6 +5,7 @@ import { Button, Dropdown, List, Popconfirm, Skeleton, Tag } from 'antd';
 import type { MenuProps } from 'antd';
 import CustomChatSSE from '@/app/opspilot/components/custom-chat-sse';
 import { processHistoryMessageWithExtras } from '@/app/opspilot/components/custom-chat-sse/historyMessageProcessor';
+import { parseLlmContextUsage, type LlmContextUsage } from '@/app/opspilot/components/custom-chat-sse/llmContextUsage';
 import Icon from '@/components/icon';
 import { useSkillApi } from '@/app/opspilot/api/skill';
 
@@ -16,6 +17,7 @@ interface WebChatChannel {
   app_description?: string;
   introduction?: string;
   icon?: string;
+  enable_conversation_history?: boolean;
 };
 
 interface SkillChatSession {
@@ -68,6 +70,7 @@ const mapWebChatChannels = (data: any[]): WebChatChannel[] => {
       app_description: item.introduction || item.app_description || '',
       introduction: item.introduction || '',
       icon: 'duihuazhinengti',
+      enable_conversation_history: item.enable_conversation_history !== false,
     };
   });
 };
@@ -85,6 +88,7 @@ const SkillWebChatPage: React.FC = () => {
   const [chatKey, setChatKey] = useState(0);
   const [chatLoading, setChatLoading] = useState(false);
   const [initialMessages, setInitialMessages] = useState<any[]>([]);
+  const [initialContextUsage, setInitialContextUsage] = useState<LlmContextUsage | null>(null);
   const chatLoadingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -118,12 +122,14 @@ const SkillWebChatPage: React.FC = () => {
         setSessionId(null);
         setSelectedItem('');
         setInitialMessages([]);
+        setInitialContextUsage(null);
         return;
       }
       setFunctionLoading(true);
       setSessionId(null);
       setSelectedItem('');
       setInitialMessages([]);
+      setInitialContextUsage(null);
       try {
         const sessions = await fetchSkillConversations(currentAgent.id);
         setFunctionList(
@@ -158,6 +164,7 @@ const SkillWebChatPage: React.FC = () => {
       setSessionId(newId);
       setSelectedItem(newId);
       setInitialMessages([]);
+      setInitialContextUsage(null);
       setChatKey((k) => k + 1);
     }
   }, [functionList]);
@@ -185,13 +192,14 @@ const SkillWebChatPage: React.FC = () => {
     setSessionId(id);
     if (!session?.persisted) {
       setInitialMessages([]);
+      setInitialContextUsage(null);
       if (chatLoadingTimerRef.current) clearTimeout(chatLoadingTimerRef.current);
       chatLoadingTimerRef.current = setTimeout(() => setChatLoading(false), 300);
       return;
     }
     try {
-      const data = await fetchSkillSessionMessages(id);
-      const messages = (data || []).map((row: any) => {
+      const payload = await fetchSkillSessionMessages(id);
+      const messages = (payload.messages || []).map((row: any) => {
         const role = row.conversation_role === 'user' ? 'user' : 'bot';
         const processed = processHistoryMessageWithExtras(row.conversation_content, role);
         return {
@@ -216,8 +224,10 @@ const SkillWebChatPage: React.FC = () => {
         };
       });
       setInitialMessages(messages);
+      setInitialContextUsage(parseLlmContextUsage(payload.llm_context_usage));
     } catch {
       setInitialMessages([]);
+      setInitialContextUsage(null);
     } finally {
       if (chatLoadingTimerRef.current) clearTimeout(chatLoadingTimerRef.current);
       chatLoadingTimerRef.current = setTimeout(() => setChatLoading(false), 400);
@@ -240,6 +250,7 @@ const SkillWebChatPage: React.FC = () => {
     setSessionId(newId);
     setSelectedItem(newId);
     setInitialMessages([]);
+    setInitialContextUsage(null);
     if (chatLoadingTimerRef.current) clearTimeout(chatLoadingTimerRef.current);
     chatLoadingTimerRef.current = setTimeout(() => setChatLoading(false), 300);
   };
@@ -255,6 +266,7 @@ const SkillWebChatPage: React.FC = () => {
         setSelectedItem('');
         setSessionId(null);
         setInitialMessages([]);
+        setInitialContextUsage(null);
         setChatKey((k) => k + 1);
       }
     } catch (error) {
@@ -401,7 +413,9 @@ const SkillWebChatPage: React.FC = () => {
             showHeader={false}
             requirePermission={false}
             initialMessages={initialMessages}
+            initialContextUsage={initialContextUsage}
             removePendingBotMessageOnCancel={true}
+            conversationHistoryEnabled={currentAgent?.enable_conversation_history !== false}
           />
         )}
       </div>

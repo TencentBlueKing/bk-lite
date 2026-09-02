@@ -84,6 +84,7 @@ from apps.opspilot.metis.llm.chain.lc_patches import (  # noqa: E402,F401
     _patched_get_request_payload,
     merge_openai_payload_system_messages,
 )
+from apps.opspilot.metis.llm.chain.prepare_llm_context import prepare_messages_for_llm
 from apps.opspilot.metis.llm.chain.skill_sandbox import (  # noqa: E402,F401
     SkillSandboxMixin,
     _build_skill_backend_and_sources,
@@ -220,6 +221,17 @@ class BasicNode:
             BaseChatModel客户端实例 (ChatOpenAI 或 ChatAnthropic)
         """
         return LLMClientFactory.create_client(request, disable_stream=disable_stream, isolated=isolated)
+
+    async def _prepare_messages_for_llm(self, messages, graph_request, *, tools=None):
+        if graph_request is None:
+            return list(messages or [])
+        isolated_llm = self.get_llm_client(graph_request, disable_stream=True, isolated=True)
+        return await prepare_messages_for_llm(
+            list(messages or []),
+            request=graph_request,
+            isolated_llm=isolated_llm,
+            tools=tools,
+        )
 
     def prompt_message_node(self, state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
         system_message_prompt = TemplateLoader.render_template(
@@ -2246,6 +2258,7 @@ class ToolsNodes(
             # 图前置节点已写入 SystemMessage，再前置 light_system 会变成
             # [system, system, user...]，触发 400 "System message must be at the beginning."
             light_messages = normalize_messages_for_llm([SystemMessage(content=light_system), *list(original_messages or [])])
+            light_messages = await self._prepare_messages_for_llm(light_messages, graph_request)
             response: AIMessage | None = None
             astream = getattr(llm, "astream", None)
             if callable(astream):
@@ -2319,6 +2332,7 @@ class ToolsNodes(
                 is_context_size_error,
                 is_non_replanable_tool_failure,
                 is_tool_result_failure,
+                merge_replanned_pending_steps,
             )
             from apps.opspilot.metis.llm.tools.kubernetes.data_collection import k8s_target_lookup_exhausted_from_messages
 
@@ -2332,8 +2346,12 @@ class ToolsNodes(
 
             llm = self.get_llm_client(graph_request)
             if getattr(graph_request, "max_model_calls", 0) == 1:
-                response = await llm.ainvoke(
+                prepared = await self._prepare_messages_for_llm(
                     normalize_messages_for_llm([SystemMessage(content=final_system_prompt), *list(state.get("messages") or [])]),
+                    graph_request,
+                )
+                response = await llm.ainvoke(
+                    prepared,
                     config=config,
                 )
                 return {"messages": [response]}
@@ -2372,7 +2390,7 @@ class ToolsNodes(
                     llm=llm,
                     registered_tools=registered_tools,
                     final_system_prompt=final_system_prompt,
-                    runtime_middleware=self._build_legacy_deep_agent_middleware(token_usage_accumulator),
+                    runtime_middleware=self._build_legacy_deep_agent_middleware(token_usage_accumulator, graph_request),
                     backend=backend,
                     skill_sources=skill_sources,
                     interrupt_on=interrupt_on,
@@ -2390,7 +2408,11 @@ class ToolsNodes(
                     },
                 }
                 try:
-                    deep_input_messages = without_system_messages(original_messages)
+                    deep_input_messages = await self._prepare_messages_for_llm(
+                        without_system_messages(original_messages),
+                        graph_request,
+                        tools=registered_tools,
+                    )
                     result = await deep_agent.ainvoke({"messages": deep_input_messages}, config=deep_config)
                 except Exception as _await_exc:
                     try:
@@ -2400,7 +2422,10 @@ class ToolsNodes(
                             "并给出可执行的替代方案(例如改用白名单内的命令 uvx / python -m,"
                             "或换其他可用工具)。不要再尝试调同样的命令。"
                         )
-                        fallback_messages = original_messages + [HumanMessage(content=err_prompt)]
+                        fallback_messages = await self._prepare_messages_for_llm(
+                            original_messages + [HumanMessage(content=err_prompt)],
+                            graph_request,
+                        )
                         fallback_response = await llm.ainvoke(fallback_messages, config=config)
                         fallback_text = str(getattr(fallback_response, "content", "") or "").strip()
                         if not fallback_text:
@@ -2745,6 +2770,56 @@ class ToolsNodes(
                     step_finished = False
                     replanned = False
 
+                    async def _replan_remaining(failure_text: str, extra_messages: List[BaseMessage] | None = None) -> None:
+                        nonlocal pending_steps, total_steps, replan_count, replanned, step_finished, agent_state
+                        leftover_steps = list(pending_steps)
+                        replan_count += 1
+                        await _emit_planned_execution_status("replanning", replan_count=replan_count)
+                        replacement = await planner.plan(
+                            planning_question,
+                            tools,
+                            completed_steps=completed_steps,
+                            failure=failure_text,
+                            skill_packages=skill_packages,
+                            config=config,
+                            agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
+                        )
+                        _ensure_skill_runtime_for_plan(replacement)
+                        pending_steps = merge_replanned_pending_steps(replacement.steps, leftover_steps)
+                        completed_steps.append(
+                            CompletedExecutionStep(
+                                objective=step.objective,
+                                result=_step_summary(extra_messages or []) or failure_text[:400],
+                            )
+                        )
+                        await _emit_step_boundary(
+                            "planned_execution_step",
+                            {
+                                "phase": "end",
+                                "step_index": step_index,
+                                "total_steps": total_steps,
+                                "objective": step.objective,
+                                "tools": list(step.tools),
+                                "status": "failed",
+                                "error": failure_text[:800],
+                            },
+                        )
+                        total_steps = len(completed_steps) + len(pending_steps)
+                        await _emit_planned_execution_status(
+                            "planned",
+                            step_count=total_steps,
+                            replan_count=replan_count,
+                        )
+                        logger.warning(
+                            "DeepAgent 当前步骤已重规划并保留未覆盖后续步: count=%s, failure=%s, steps=%s",
+                            replan_count,
+                            failure_text,
+                            [item.objective for item in pending_steps],
+                        )
+                        agent_state = _compact_agent_state_with_summaries(overflow=False)
+                        replanned = True
+                        step_finished = True
+
                     def _non_replanable_status(failure_text: str) -> str:
                         kind = classify_tool_failure_kind(failure_text)
                         if kind == TOOL_FAILURE_AUTHZ:
@@ -2785,6 +2860,11 @@ class ToolsNodes(
 
                     while not step_finished:
                         try:
+                            step_payload["messages"] = await self._prepare_messages_for_llm(
+                                list(step_payload.get("messages") or []),
+                                graph_request,
+                                tools=active_tools,
+                            )
                             step_result = await deep_agent.ainvoke(
                                 step_payload,
                                 config=deep_config,
@@ -2822,33 +2902,7 @@ class ToolsNodes(
                                 break
                             if replan_count >= 2:
                                 raise
-                            replan_count += 1
-                            await _emit_planned_execution_status("replanning", replan_count=replan_count)
-                            replacement = await planner.plan(
-                                planning_question,
-                                tools,
-                                completed_steps=completed_steps,
-                                failure=failure,
-                                skill_packages=skill_packages,
-                                config=config,
-                                agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
-                            )
-                            _ensure_skill_runtime_for_plan(replacement)
-                            pending_steps = list(replacement.steps)
-                            total_steps = len(completed_steps) + len(pending_steps)
-                            await _emit_planned_execution_status(
-                                "planned",
-                                step_count=len(pending_steps),
-                                replan_count=replan_count,
-                            )
-                            logger.warning(
-                                "DeepAgent 当前及后续步骤已重规划: count=%s, failure=%s, steps=%s",
-                                replan_count,
-                                failure,
-                                [item.objective for item in pending_steps],
-                            )
-                            replanned = True
-                            step_finished = True
+                            await _replan_remaining(failure)
                             break
 
                         result_messages = list(step_result.get("messages") or [])
@@ -2958,34 +3012,7 @@ class ToolsNodes(
                                 break
                             if replan_count >= 2:
                                 raise ToolPlanningError(failure)
-                            replan_count += 1
-                            await _emit_planned_execution_status("replanning", replan_count=replan_count)
-                            replacement = await planner.plan(
-                                planning_question,
-                                tools,
-                                completed_steps=completed_steps,
-                                failure=failure,
-                                skill_packages=skill_packages,
-                                config=config,
-                                agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
-                            )
-                            _ensure_skill_runtime_for_plan(replacement)
-                            pending_steps = list(replacement.steps)
-                            total_steps = len(completed_steps) + len(pending_steps)
-                            await _emit_planned_execution_status(
-                                "planned",
-                                step_count=len(pending_steps),
-                                replan_count=replan_count,
-                            )
-                            logger.warning(
-                                "DeepAgent 当前及后续步骤已重规划: count=%s, failure=%s, steps=%s",
-                                replan_count,
-                                failure,
-                                [item.objective for item in pending_steps],
-                            )
-                            agent_state = _compact_agent_state_with_summaries(overflow=False)
-                            replanned = True
-                            step_finished = True
+                            await _replan_remaining(failure, extra_messages=step_messages)
                             break
 
                         _collect_output_messages(step_messages)
@@ -3051,6 +3078,10 @@ class ToolsNodes(
                         **agent_state,
                         "messages": list(agent_state.get("messages") or []) + [final_message],
                     }
+                    final_payload["messages"] = await self._prepare_messages_for_llm(
+                        list(final_payload.get("messages") or []),
+                        graph_request,
+                    )
                     result = await deep_agent.ainvoke(
                         final_payload,
                         config=deep_config,
@@ -3074,7 +3105,10 @@ class ToolsNodes(
                         "并给出可执行的替代方案(例如改用白名单内的命令 uvx / python -m,"
                         "或换其他可用工具)。不要再尝试调同样的命令。"
                     )
-                    fallback_messages = original_messages + [HumanMessage(content=err_prompt)]
+                    fallback_messages = await self._prepare_messages_for_llm(
+                        original_messages + [HumanMessage(content=err_prompt)],
+                        graph_request,
+                    )
                     fallback_response = await llm.ainvoke(fallback_messages, config=config)
                     fallback_text = str(getattr(fallback_response, "content", "") or "").strip()
                     if not fallback_text:

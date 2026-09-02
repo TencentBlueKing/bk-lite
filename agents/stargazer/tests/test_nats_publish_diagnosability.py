@@ -48,33 +48,5 @@ async def test_callback_publish_failure_has_one_error_owner_with_traceback(monke
     assert error_records[0].exc_info is not None
 
 
-@pytest.mark.asyncio
-async def test_credential_result_publish_failure_has_one_error_owner_with_traceback(monkeypatch, caplog):
-    original_error = ConnectionError("nats unavailable")
-
-    async def get_failing_nats(_channel):
-        return _FailingNats(original_error)
-
-    test_logger = logging.getLogger("test.stargazer.credential_result_publish")
-    monkeypatch.setattr(nats_utils, "get_shared_nats", get_failing_nats)
-    monkeypatch.setattr(nats_utils, "logger", test_logger)
-    monkeypatch.setattr(nats_helper, "logger", test_logger)
-
-    with caplog.at_level(logging.ERROR, logger=test_logger.name):
-        with pytest.raises(ConnectionError, match="nats unavailable") as caught:
-            await nats_helper.publish_credential_result_to_nats(
-                {"credential": "must-not-be-logged"},
-                {"credential_result_subject": "receive_collect_credential_result"},
-                "run-2",
-            )
-
-    assert caught.value is original_error
-    error_records = [record for record in caplog.records if record.levelno == logging.ERROR]
-    assert len(error_records) == 1
-    assert "event=credential_result_publish_failed" in error_records[0].getMessage()
-    assert "task_id=run-2" in error_records[0].getMessage()
-    assert "subject=bklite.receive_collect_credential_result" in error_records[0].getMessage()
-    assert "failed_stage=credential_result_publish" in error_records[0].getMessage()
-    assert "error_type=ConnectionError" in error_records[0].getMessage()
-    assert "must-not-be-logged" not in error_records[0].getMessage()
-    assert error_records[0].exc_info is not None
+def test_credential_result_nats_helper_is_removed():
+    assert not hasattr(nats_helper, "publish_credential_result_to_nats")

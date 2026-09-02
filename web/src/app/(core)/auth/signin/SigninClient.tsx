@@ -31,6 +31,7 @@ import {
   resolveThirdLoginFlag
 } from "@/utils/authRedirect";
 import type { LoginAuthLoginResult } from "./login-auth/types";
+import { PORTAL_HOME_PATH } from "@/utils/route";
 
 interface SigninClientProps {
   searchParams?: {
@@ -78,7 +79,7 @@ export default function SigninClient({
   mode = 'page',
   onAuthenticated,
 }: SigninClientProps) {
-  const callbackUrl = searchParams?.callbackUrl || "/";
+  const callbackUrl = searchParams?.callbackUrl || PORTAL_HOME_PATH;
   const error = searchParams?.error || "";
   const third_login = searchParams?.third_login;
   const thirdLogin = searchParams?.thirdLogin;
@@ -179,7 +180,7 @@ export default function SigninClient({
 
   const loginAuthValidation = useLoginAuthValidation({
     enabled: authStep === 'login',
-    callbackUrl: callbackUrl || '/',
+    callbackUrl: callbackUrl || PORTAL_HOME_PATH,
     legacyThirdLoginCode: thirdLoginCode,
     messages: loginAuthValidationMessages,
     onOtpRequired: applyOtpLoginResult,
@@ -331,7 +332,7 @@ export default function SigninClient({
         password: nextPassword ?? password,
         skipValidation: 'true',
         userData: JSON.stringify(userDataForAuth),
-        callbackUrl: callbackUrl || "/",
+        callbackUrl: callbackUrl || PORTAL_HOME_PATH,
       }) as SignInResponse | undefined;
 
       if (result?.error) {
@@ -351,7 +352,7 @@ export default function SigninClient({
             legacyThirdLoginCode,
           )
           : buildThirdLoginCallbackUrl(
-            userData.redirect_url || callbackUrl || "/",
+            userData.redirect_url || callbackUrl || PORTAL_HOME_PATH,
             userData.token,
             thirdLoginFlag,
           );

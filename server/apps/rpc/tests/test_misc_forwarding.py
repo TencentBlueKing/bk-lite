@@ -555,6 +555,29 @@ def test_stargazer_health_check_custom_timeout(stargazer):
     )
 
 
+def test_stargazer_round_metadata_query_forwards_payload_and_timeout(stargazer):
+    payload = {
+        "schema_version": 1,
+        "collection_task_id": "321",
+        "instance_id": "cmdb_321",
+        "lookups": [
+            {
+                "collection_target": "10.0.0.8",
+                "publish_timestamp_ms": 1780000000123,
+            }
+        ],
+    }
+
+    stargazer.get_collection_round_metadata(payload, timeout=3)
+
+    assert _last(stargazer.client) == (
+        "request",
+        "get_collection_round_metadata",
+        (),
+        {"_timeout": 3, **payload},
+    )
+
+
 def test_stargazer_collection_tool_debug_default_protocol(stargazer):
     stargazer.collection_tool_debug({"host": "h"}, timeout=10)
     # protocol 默认 snmp -> handler debug_snmp, nats_timeout = 10 + 5

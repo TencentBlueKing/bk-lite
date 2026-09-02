@@ -1,8 +1,8 @@
 import type { SimpleDashboardConfig } from '../common/simple-dashboard-core';
+import { telegrafHistogramQuantile } from '../../shared/utils/telegrafHistogram';
 
 /** Telegraf histogram bucket query; group by instance_id only (one scrape URL = one instance). */
-const histQuantile = (base: string, quantile: string) =>
-  `histogram_quantile(${quantile}, sum(rate((label_replace({__name__=~"${base}_[0-9.]+", __$labels__}, "le", "$1", "__name__", "${base}_(.+)"))[5m:]) or label_replace(rate(${base}_count{__$labels__}[5m]), "le", "+Inf", "__name__", ".*")) by (instance_id, le))`;
+const histQuantile = (base: string, quantile: string) => telegrafHistogramQuantile(base, quantile);
 
 export const VLLM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   routeKey: 'vllm',
@@ -480,6 +480,8 @@ export const VLLM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       centerMetric: 'vllm_requests_running',
       centerCaption: '运行中',
       centerUnit: 'counts',
+      // 空闲实例 gauge 常为 0；全 0 占比无业务含义，与时延等面板统一为空态。
+      emptyWhenAllZero: true,
       guide: [
         {
           label: '队列分布',

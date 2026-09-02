@@ -26,6 +26,7 @@ class HighgoInfo:
         self.password = kwargs.get("password", "")
         self.database = kwargs.get("database", "highgo")
         self.timeout = 10  # 连接超时硬编码；表单 timeout 由框架作单对象预算
+        self.collection_task_id = kwargs.get("collection_task_id")
 
     def _connect(self, dbname=None):
         if psycopg2 is None:
@@ -91,9 +92,13 @@ class HighgoInfo:
 
             inst_data = {"result": {"highgo": [model_data]}, "success": True}
         except Exception as err:
-            import traceback
-
-            logger.error(f"highgo_info main error! {traceback.format_exc()}")
+            logger.exception(
+                "event=highgo_collect_failed host=%s task_id=%s failed_stage=%s error_type=%s",
+                self.host,
+                self.collection_task_id,
+                "list_all_resources",
+                type(err).__name__,
+            )
             inst_data = {"result": {"cmdb_collect_error": str(err)}, "success": False}
 
         return inst_data

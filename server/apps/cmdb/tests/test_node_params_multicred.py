@@ -57,7 +57,9 @@ def test_base_node_params_pushes_credentials_pool_to_stargazer_headers():
     headers = node.custom_headers()
 
     assert headers["cmdbcollect_task_id"] == "92"
-    assert headers["cmdbcredential_result_subject"] == "receive_collect_credential_result"
+    assert headers["cmdbscope_id"] == "92"
+    assert headers["cmdbcredential_set_version"] == "v1"
+    assert "cmdbcredential_result_subject" not in headers
     assert "cmdbcredentials_pool" not in headers
     assert headers["cmdbcredential_count"] == "2"
     assert "cmdbpassword" not in headers

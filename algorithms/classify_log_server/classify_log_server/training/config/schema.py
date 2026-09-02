@@ -7,6 +7,8 @@ Configuration values should be stored in external JSON files.
 
 from typing import List
 
+from ..evaluation_contract import UNSUPERVISED_METRICS
+
 # Supported model types
 SUPPORTED_MODELS: List[str] = [
     "Spell",
@@ -15,9 +17,4 @@ SUPPORTED_MODELS: List[str] = [
 
 
 # Supported optimization metrics
-SUPPORTED_METRICS: List[str] = [
-    "template_quality_score",
-    "coverage_rate",
-    "template_diversity",
-    "num_templates",
-]
+SUPPORTED_METRICS: List[str] = list(UNSUPERVISED_METRICS)

@@ -1,13 +1,15 @@
 version: 1
 
+# 真实验证前请在安全的本地副本中替换下方环境占位符，禁止提交实际凭据。
+
 defaults:
   group_ids: [1]
   interval: 10
   oa:
     enabled: false
     target_directory_id: 1
-    datasource_name: "查询时间范围内的指标数据"
-    datasource_rest_api: "monitor/mm_query_range"
+    datasource_name: "受控监控指标趋势"
+    datasource_rest_api: "monitor/query_metric_range_scoped"
     created_by: "admin"
 
 registrations:
@@ -72,7 +74,7 @@ registrations:
           enabled: true
           auth_type: password
           username: root
-          password: CW@roger1117!@#
+          password: "${MONITOR_MANIFEST_SSH_PASSWORD}"
           port: 22
           os: linux
           cpu_architecture: x86_64
@@ -106,5 +108,5 @@ registrations:
         host: 10.11.24.61
         port: 3306
         username: root
-        ENV_PASSWORD: "EmTmZ2l48qbt"
+        ENV_PASSWORD: "${MONITOR_MANIFEST_MYSQL_PASSWORD}"
         node_ip: 10.11.27.147

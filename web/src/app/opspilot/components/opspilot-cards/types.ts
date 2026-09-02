@@ -9,6 +9,8 @@ export interface OpsPilotStudioCardRecord {
   is_pinned?: boolean;
   bot_type?: number;
   permissions?: string[];
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface OpsPilotSkillCardRecord {
@@ -23,6 +25,8 @@ export interface OpsPilotSkillCardRecord {
   skill_type?: number;
   is_template?: boolean;
   llm_model_name?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface OpsPilotApprovalRequest {

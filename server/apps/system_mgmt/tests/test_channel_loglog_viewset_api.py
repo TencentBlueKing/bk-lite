@@ -5,10 +5,11 @@
 from unittest.mock import patch
 
 import pytest
-from rest_framework.test import APIClient
+from rest_framework.test import APIClient, APIRequestFactory, force_authenticate
 
 from apps.system_mgmt.models import Channel, UserLoginLog
 from apps.system_mgmt.models.channel import ChannelChoices
+from apps.system_mgmt.viewset.user_login_log_viewset import UserLoginLogViewSet
 
 pytestmark = pytest.mark.django_db
 
@@ -228,3 +229,22 @@ def test_user_login_log_export_excel(super_client):
     resp = super_client.post(f"{V}/user_login_log/export_excel/", {"selected_ids": []}, format="json")
     assert resp.status_code == 200
     assert "spreadsheetml" in resp["Content-Type"]
+
+
+def test_user_login_log_export_excel_rejects_invalid_filters(super_client):
+    from apps.base.models import User as BaseUser
+
+    request = APIRequestFactory().post(
+        "/user_login_log/export_excel/",
+        {"login_time_start": "not-a-datetime"},
+        format="json",
+    )
+    request.COOKIES["current_team"] = "1"
+    force_authenticate(request, user=BaseUser.objects.get(username="chadmin"))
+
+    response = UserLoginLogViewSet.as_view({"post": "export_excel"})(request)
+
+    assert response.status_code == 400
+    assert response.data["message"] == "Invalid filter parameters"
+    assert list(response.data["errors"]) == ["login_time_start"]
+    assert [str(error) for error in response.data["errors"]["login_time_start"]] == ["Enter a valid date/time."]

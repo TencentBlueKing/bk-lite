@@ -31,9 +31,9 @@
 | `kingbase` | 是 | 继承 `PostgresqlInfo`，使用 `psycopg.AsyncConnection` | PostgreSQL 兼容协议 |
 | `mssql` | 否（线程型 await） | `aioodbc` | 调用方使用 `await`，但 aioodbc 底层通过线程执行 ODBC，按 `sync` 管理 |
 | `mysql` | 是 | `aiomysql.connect()`、异步 cursor | protocol 为异步；同插件 job executor 为远程异步 |
-| `network` | 是 | `pysnmp.hlapi.asyncio.getCmd/nextCmd` | SNMP GET/Walk 直接 `await`，结束时关闭 dispatcher |
+| `network` | 是 | `pysnmp.hlapi.asyncio.getCmd/nextCmd` | SNMP GET/Walk 直接 `await`；`SnmpEngine` 由 `core.infra.snmp_engine_pool` 按凭据作用域进程级共享，空闲或进程退出时才关闭 dispatcher |
 | `network_config_file` | 是 | `scrapli.AsyncScrapli` + `asyncssh` transport | 原 Netmiko 整轮线程包装已移除；保持 host key 严格校验 |
-| `network_topo` | 是 | `pysnmp.hlapi.asyncio.getCmd/nextCmd/bulkCmd` | SNMP 拓扑采集和 fallback 均直接 `await` |
+| `network_topo` | 是 | `pysnmp.hlapi.asyncio.getCmd/nextCmd/bulkCmd` | SNMP 拓扑采集和 fallback 均直接 `await`，与 `network` 共用同一个共享 `SnmpEngine` 池 |
 | `oceanstor` | 是 | `httpx.AsyncClient` | 登录、分页采集和登出均直接 `await` |
 | `opengauss` | 是 | 继承 `PostgresqlInfo`，使用 `psycopg.AsyncConnection` | PostgreSQL 兼容协议 |
 | `oracle` | 是 | `oracledb.connect_async()` | 仅 Oracle Thin async 模式属于原生异步 |

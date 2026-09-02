@@ -4,7 +4,7 @@
 # @Author: windyzhao
 
 try:
-    from pysnmp.hlapi.asyncio import CommunityData, ContextData, ObjectIdentity, ObjectType, SnmpEngine, UdpTransportTarget, UsmUserData
+    from pysnmp.hlapi.asyncio import CommunityData, ContextData, ObjectIdentity, ObjectType, UdpTransportTarget, UsmUserData
     from pysnmp.hlapi.asyncio import bulkCmd as hlapi_bulk_cmd
     from pysnmp.hlapi.asyncio import getCmd as hlapi_get_cmd
     from pysnmp.hlapi.asyncio import nextCmd as hlapi_next_cmd
@@ -17,7 +17,7 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - exercised in environments without optional snmp deps
     _PYSNMP_AVAILABLE = False
     CommunityData = ContextData = ObjectIdentity = ObjectType = None  # type: ignore
-    SnmpEngine = UdpTransportTarget = UsmUserData = None  # type: ignore
+    UdpTransportTarget = UsmUserData = None  # type: ignore
     hlapi_bulk_cmd = hlapi_get_cmd = hlapi_next_cmd = None  # type: ignore
     usmAesCfb128Protocol = usmDESPrivProtocol = None  # type: ignore
     usmHMACMD5AuthProtocol = usmHMACSHAAuthProtocol = None  # type: ignore
@@ -29,6 +29,7 @@ except ModuleNotFoundError:  # pragma: no cover - exercised in environments with
         pass
 
 
+from core.infra.snmp_engine_pool import shared_snmp_engine
 from plugins.inputs.network_topo.protocol_oids import PROTOCOL_OID_GROUPS, flatten_oid_registry, get_oid_meta
 from plugins.inputs.network_topo.protocol_oids import get_root_oid as lookup_root_oid
 from plugins.inputs.network_topo.topology_facts import build_topology_fact as build_protocol_topology_fact
@@ -137,13 +138,6 @@ def _as_object_types(oids):
 
 def _is_ended_value(val) -> bool:
     return val is endOfMibView or isinstance(val, EndOfMibView)
-
-
-def _close_snmp_engine(engine) -> None:
-    dispatcher = getattr(engine, "transportDispatcher", None)
-    close = getattr(dispatcher, "closeDispatcher", None)
-    if callable(close):
-        close()
 
 
 class SnmpAuth(object):
@@ -264,6 +258,7 @@ class SnmpTopo:
         )
         self.auth = self.snmp_auth_obj.auth()
         self.transport_opts = self.snmp_auth_obj.get_transport_opts()
+        self.collection_task_id = kwargs.get("collection_task_id")
 
     def _transport_target(self):
         return UdpTransportTarget(
@@ -271,6 +266,10 @@ class SnmpTopo:
             timeout=self.transport_opts["timeout"],
             retries=self.transport_opts["retries"],
         )
+
+    def _shared_engine(self):
+        # 与 network 配置采集共用进程级 SnmpEngine 池，不再每目标新建 engine。
+        return shared_snmp_engine(self.auth, target=(self.host, self.snmp_port))
 
     @classmethod
     def _normalize_protocols(cls, enabled_protocols=None, allowed_protocols=None):
@@ -343,11 +342,8 @@ class SnmpTopo:
         return result
 
     async def _bulk_walk_all(self):
-        engine = SnmpEngine()
-        try:
+        async with self._shared_engine() as engine:
             return await self._bulk_walk_all_with_engine(engine)
-        finally:
-            _close_snmp_engine(engine)
 
     async def _bulk_walk_all_with_engine(self, engine):
         """
@@ -437,15 +433,12 @@ class SnmpTopo:
         return get_oid_meta(root_oid).get("ifindex_type") == "scalar"
 
     async def _next_walk_oid(self, oid, *, ignore_non_increasing_oid=True):
-        engine = SnmpEngine()
-        try:
+        async with self._shared_engine() as engine:
             return await self._next_walk_oid_with_engine(
                 oid,
                 engine,
                 ignore_non_increasing_oid=ignore_non_increasing_oid,
             )
-        finally:
-            _close_snmp_engine(engine)
 
     async def _next_walk_oid_with_engine(self, oid, engine, *, ignore_non_increasing_oid=True):
         target = self._transport_target()
@@ -520,8 +513,7 @@ class SnmpTopo:
         return FallbackOidResult(records=self._format_result(varBindTable, [oid]))
 
     async def _get_scalar_oid(self, oid):
-        engine = SnmpEngine()
-        try:
+        async with self._shared_engine() as engine:
             errorIndication, errorStatus, errorIndex, varBinds = await hlapi_get_cmd(
                 engine,
                 self.auth,
@@ -530,8 +522,6 @@ class SnmpTopo:
                 *self._format_oids([f"{oid}.0"]),
                 lookupMib=False,
             )
-        finally:
-            _close_snmp_engine(engine)
         if errorIndication:
             if self._is_retryable_fallback_error(errorIndication):
                 return FallbackOidResult(records=[], skipped=True)
@@ -748,9 +738,13 @@ class SnmpTopo:
             model_data = {"network_topo": snmp_data}
             inst_data = {"result": model_data, "success": True}
         except Exception as err:
-            import traceback
-
-            logger.error(f"snmp_topo collect error! {traceback.format_exc()}")
+            logger.exception(
+                "event=snmp_topo_collect_failed host=%s task_id=%s failed_stage=%s error_type=%s",
+                self.host,
+                self.collection_task_id,
+                "list_all_resources",
+                type(err).__name__,
+            )
             inst_data = {"result": {"cmdb_collect_error": str(err)}, "success": False}
 
         return inst_data

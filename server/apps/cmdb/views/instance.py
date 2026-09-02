@@ -453,12 +453,17 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         allowed_org_ids = self._get_allowed_org_ids(request)
         idempotency_key = request.headers.get("Idempotency-Key") or uuid.uuid4().hex
         try:
+            from apps.cmdb.services.change_record_snapshot import load_attribute_snapshot
+
             started = OperationService.start(
                 operator=request.user.username,
                 idempotency_key=idempotency_key,
                 action="instance.create",
                 target={"model_id": model_id},
                 request_payload=instance_info,
+                event_context={
+                    "attribute_snapshot": load_attribute_snapshot(model_id, instance_info.keys()),
+                },
             )
             inst = OperationService.execute_graph(
                 started.operation,
@@ -471,7 +476,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                     operation_id=operation_id,
                     schedule_post_actions=False,
                 ),
-                events=[("change_record", {}), ("auto_relation", {})],
+                events=OperationService.events_for_operation(started.operation),
             )
         except OperationConflict as exc:
             return WebUtils.response_error(str(exc), status_code=status.HTTP_409_CONFLICT)
@@ -609,12 +614,19 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
         idempotency_key = request.headers.get("Idempotency-Key") or uuid.uuid4().hex
         try:
+            from apps.cmdb.services.change_record_snapshot import load_attribute_snapshot
+
             started = OperationService.start(
                 operator=request.user.username,
                 idempotency_key=idempotency_key,
                 action="instance.update",
                 target={"model_id": instance["model_id"], "inst_uuid": pk},
                 request_payload={"update_attr": update_attr, "scenario": scenario},
+                event_context={
+                    "before_data": instance,
+                    "scenario": scenario,
+                    "attribute_snapshot": load_attribute_snapshot(instance["model_id"], update_attr.keys()),
+                },
             )
             inst = OperationService.execute_graph(
                 started.operation,
@@ -630,10 +642,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                     operation_id=operation_id,
                     schedule_post_actions=False,
                 ),
-                events=[
-                    ("change_record", {"before_data": instance, "scenario": scenario}),
-                    ("auto_relation", {}),
-                ],
+                events=OperationService.events_for_operation(started.operation),
             )
         except OperationConflict as exc:
             return WebUtils.response_error(str(exc), status_code=status.HTTP_409_CONFLICT)

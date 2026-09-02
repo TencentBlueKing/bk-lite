@@ -15,7 +15,7 @@ from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.safe_requests import safe_delete, safe_get, safe_patch, safe_post, safe_put
 from apps.core.utils.safe_template import TemplateSecurityError, safe_render
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
-from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
+from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory, resolve_gateway_temperature
 from apps.opspilot.models import LLMModel, WorkflowAttachmentAsset
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
 from apps.rpc.system_mgmt import SystemMgmt
@@ -33,7 +33,7 @@ def optimize_email_content_with_llm(*, model_id: int, title: str, content: str, 
         model=llm_model.model_name,
         protocol_type=llm_model.protocol_type,
         vendor_type=llm_model.vendor.vendor_type if llm_model.vendor_id else "",
-        temperature=0.2,
+        temperature=resolve_gateway_temperature(llm_model.model_name, 0.2),
         system_message_prompt=(
             "你是邮件正文格式化助手。请将用户提供的邮件正文整理成适合直接发送的 HTML 邮件正文。"
             "要求：保留全部事实信息，不新增未提供的信息；结构清晰、语气专业；"

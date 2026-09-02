@@ -14,18 +14,34 @@ class DeepAgentAssemblyMixin:
         """approval_config -> deepagents interrupt_on（人工审批 HITL）。
 
         approval_config.tools 为空且启用 = 对所有业务工具审批（排除 deepagents 内置工具）。
+        启用时还会并入 metadata.approval.required 的工具（如 exec_in_pod）。
+        审批关闭时不并入，避免 RCA 诊断命令被无条件 HITL。
         """
         approval = getattr(graph_request, "approval_config", None)
         if not approval or not getattr(approval, "enabled", False):
             return None
         named = list(getattr(approval, "tools", None) or [])
+        required_meta = self._approval_required_tool_names(tools)
         if named:
-            target_names = named
+            target_names = list(dict.fromkeys([*named, *required_meta]))
         else:
             target_names = [t.name for t in (tools or []) if getattr(t, "name", None) and t.name not in self.DEEPAGENT_BUILTIN_TOOL_NAMES]
         if not target_names:
             return None
         return {name: True for name in target_names}
+
+    @staticmethod
+    def _approval_required_tool_names(tools) -> list[str]:
+        names = []
+        for item in tools or []:
+            name = getattr(item, "name", None)
+            meta = getattr(item, "metadata", None)
+            if not name or not isinstance(meta, dict):
+                continue
+            approval_meta = meta.get("approval")
+            if isinstance(approval_meta, dict) and approval_meta.get("required"):
+                names.append(name)
+        return names
 
     @staticmethod
     def _should_use_lightweight_direct_reply(tools, skill_sources) -> bool:
@@ -147,12 +163,13 @@ class DeepAgentAssemblyMixin:
         "但可用工具查到的定位信息（例如缺 namespace 时先反查 Pod/Events）禁止直接问用户。"
     )
 
-    @staticmethod
-    def _build_legacy_deep_agent_middleware(token_usage_accumulator) -> list:
+    def _build_legacy_deep_agent_middleware(self, token_usage_accumulator, graph_request) -> list:
         from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
+        from apps.opspilot.metis.llm.middleware.context_window import ContextWindowMiddleware
         from apps.opspilot.metis.llm.middleware.token_usage import TokenUsageTrackingMiddleware
 
-        legacy_middleware = []
+        isolated_llm = self.get_llm_client(graph_request, disable_stream=True, isolated=True)
+        legacy_middleware = [ContextWindowMiddleware(graph_request=graph_request, isolated_llm=isolated_llm)]
         if isinstance(token_usage_accumulator, TokenUsageAccumulator):
             legacy_middleware.append(TokenUsageTrackingMiddleware(token_usage_accumulator))
         return legacy_middleware
@@ -189,6 +206,7 @@ class DeepAgentAssemblyMixin:
         token_usage_accumulator,
     ):
         from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
+        from apps.opspilot.metis.llm.middleware.context_window import ContextWindowMiddleware
         from apps.opspilot.metis.llm.middleware.planned_execution_limits import (
             PlannedExecutionLimitMiddleware,
             get_planned_execution_run_model_call_limit,
@@ -218,11 +236,13 @@ class DeepAgentAssemblyMixin:
             accumulator=(token_usage_accumulator if isinstance(token_usage_accumulator, TokenUsageAccumulator) else None),
         )
         skill_guard = SkillExecutionGuardMiddleware(enabled=skills_only_plan)
+        isolated_llm = self.get_llm_client(graph_request, disable_stream=True, isolated=True)
         runtime_middleware = [
             visibility_middleware,
             skill_guard,
             ToolExceptionAsResultMiddleware(),
             ToolResultCompactionMiddleware(),
+            ContextWindowMiddleware(graph_request=graph_request, isolated_llm=isolated_llm),
             limit_middleware,
         ]
         if isinstance(token_usage_accumulator, TokenUsageAccumulator):
