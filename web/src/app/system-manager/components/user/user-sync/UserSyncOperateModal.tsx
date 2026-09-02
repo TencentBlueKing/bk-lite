@@ -227,6 +227,19 @@ const UserSyncOperateModal: React.FC<UserSyncOperateModalProps> = ({
     [availableInstances, t],
   );
 
+  const stepSurfaceClassName = (active: boolean) =>
+    `rounded-2xl border px-4 py-3 text-left transition ${
+      active
+        ? 'border-[var(--color-primary)] bg-[var(--color-primary-bg-active)]'
+        : 'border-[var(--color-border)] bg-[var(--color-bg)]'
+    }`;
+  const stepIndexClassName = (active: boolean) =>
+    `flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px] ${
+      active
+        ? 'bg-[var(--color-primary)] text-[var(--color-primary-foreground)]'
+        : 'bg-[var(--color-fill-2)] text-[var(--color-text-2)]'
+    }`;
+
   return (
     <OperateModal
       title={t('system.user.userSyncPage.addSource')}
@@ -243,19 +256,15 @@ const UserSyncOperateModal: React.FC<UserSyncOperateModalProps> = ({
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <button
           type="button"
-          className={`rounded-2xl border px-4 py-3 text-left transition ${currentStep === 1 ? 'border-[var(--color-primary)] bg-emerald-50' : 'border-[var(--color-border)] bg-white'
-            }`}
+          className={stepSurfaceClassName(currentStep === 1)}
           onClick={() => setCurrentStep(1)}
         >
           <div className="flex items-center gap-3">
-            <div
-              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px] ${currentStep === 1 ? 'bg-[var(--color-primary)] text-white' : 'bg-slate-100 text-[var(--color-text-2)]'
-                }`}
-            >
+            <div className={stepIndexClassName(currentStep === 1)}>
               1
             </div>
             <div className="flex min-h-7 flex-col justify-center">
-              <div className="text-[15px] font-semibold">{t('system.user.userSyncPage.basicConfig')}</div>
+              <div className="text-[15px] font-semibold text-[var(--color-text-1)]">{t('system.user.userSyncPage.basicConfig')}</div>
               <div className="mt-1 text-[12px] text-[var(--color-text-3)]">
                 {t('system.user.userSyncPage.basicConfigDesc')}
               </div>
@@ -265,8 +274,7 @@ const UserSyncOperateModal: React.FC<UserSyncOperateModalProps> = ({
 
         <button
           type="button"
-          className={`rounded-2xl border px-4 py-3 text-left transition ${currentStep === 2 ? 'border-[var(--color-primary)] bg-blue-50' : 'border-[var(--color-border)] bg-white'
-            }`}
+          className={stepSurfaceClassName(currentStep === 2)}
           onClick={() => {
             if (currentStep === 1) {
               handleNextStep();
@@ -276,14 +284,11 @@ const UserSyncOperateModal: React.FC<UserSyncOperateModalProps> = ({
           }}
         >
           <div className="flex items-center gap-3">
-            <div
-              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px] ${currentStep === 2 ? 'bg-[var(--color-primary)] text-white' : 'bg-slate-100 text-[var(--color-text-2)]'
-                }`}
-            >
+            <div className={stepIndexClassName(currentStep === 2)}>
               2
             </div>
             <div className="flex min-h-7 flex-col justify-center">
-              <div className="text-[15px] font-semibold">{t('system.user.userSyncPage.accessConfig')}</div>
+              <div className="text-[15px] font-semibold text-[var(--color-text-1)]">{t('system.user.userSyncPage.accessConfig')}</div>
               <div className="mt-1 text-[12px] text-[var(--color-text-3)]">
                 {t('system.user.userSyncPage.accessConfigDesc')}
               </div>
@@ -292,11 +297,11 @@ const UserSyncOperateModal: React.FC<UserSyncOperateModalProps> = ({
         </button>
       </div>
 
-      <div className="mt-5 rounded-[22px] border border-[var(--color-border)] bg-white px-5 py-5">
+      <div className="mt-5 rounded-[22px] border border-[var(--color-border)] bg-[var(--color-bg)] px-5 py-5">
         <Form form={form} layout="vertical">
           {currentStep === 1 ? (
             <>
-              <div className="mb-4 text-[18px] font-semibold">{t('system.user.userSyncPage.basicConfig')}</div>
+              <div className="mb-4 text-[18px] font-semibold text-[var(--color-text-1)]">{t('system.user.userSyncPage.basicConfig')}</div>
               <Form.Item
                 name="name"
                 label={t('common.name')}
