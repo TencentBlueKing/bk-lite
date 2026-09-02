@@ -553,6 +553,7 @@ const AlarmFamilyOverview = () => {
           dataSource={[
             {
               id: 'evt-1',
+              received_at: '2026-07-13T10:00:12Z',
               start_time: '2026-07-13T10:00:00Z',
               source_name: 'prometheus-cluster',
               title: 'CPU spike on node-1',
@@ -568,6 +569,7 @@ const AlarmFamilyOverview = () => {
             },
             {
               id: 'evt-2',
+              received_at: '2026-07-13T10:15:08Z',
               start_time: '2026-07-13T10:15:00Z',
               source_name: 'cloudwatch-rds',
               title: 'DB connections high',
