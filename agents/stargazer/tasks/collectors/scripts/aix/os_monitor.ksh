@@ -406,28 +406,74 @@ DISK_JSON=$(
 )
 [ -z "${DISK_JSON}" ] && DISK_JSON='[]'
 
-# --- iostat: second report only (interval sample, not since-boot) ---
+# --- iostat: header names; last report is the interval sample when two exist ---
 DISKIO_JSON=$(
   IO_OUT=$(_run iostat -d 1 2)
   printf '%s\n' "${IO_OUT}" | awk '
-    BEGIN { n=0; pass=0 }
-    /^Disks:/ { pass++; next }
-    pass==2 && $1 !~ /^Disks:/ && NF>=6 && $1 !~ /^[0-9]/ && $1 != "tty:" && $1 != "cpu" {
+    function io_header(    i, tok, nxt, low, col) {
+      tm_c=0; read_c=0; write_c=0
+      col=0
+      i=1
+      while (i<=NF) {
+        tok=$i
+        low=tolower(tok)
+        if (tok=="%" && i<NF) {
+          nxt=tolower($(i+1))
+          if (nxt=="tm_act" || nxt=="tmact") {
+            tok="%tm_act"
+            low="tm_act"
+            i++
+          }
+        }
+        col++
+        gsub(/:/, "", low)
+        gsub(/%/, "", low)
+        if (low=="tm_act" || low=="tmact") tm_c=col
+        else if (low=="kb_read" || low=="kbread" || low=="bread") read_c=col
+        else if (low=="kb_wrtn" || low=="kbwrtn" || low=="bwrtn" || low=="kb_write" || low=="kbwrite") write_c=col
+        i++
+      }
+    }
+    function is_io_hdr() {
+      if ($0 ~ /^[ \t]*Disks:/) return 1
+      if ($0 ~ /tm_act/ && $0 ~ /Kb_read|kb_read|bread|Kb_wrtn|kb_wrtn/) return 1
+      return 0
+    }
+    BEGIN { pass=0 }
+    NF==0 { next }
+    is_io_hdr() {
+      if ($0 ~ /^[ \t]*Disks:/ || pass==0) pass++
+      io_header()
+      next
+    }
+    pass>0 && $1 ~ /^[A-Za-z][A-Za-z0-9_]*$/ {
       dev=$1
-      if (dev == "Name") next
-      if (dev in seen) next
-      seen[dev]=1
-      order[++n]=dev
-      tm_act[dev]=$2 + 0
-      read_b[dev]=$5 * 1024
-      write_b[dev]=$6 * 1024
+      if (dev=="Name" || dev=="tty:" || dev=="cpu" || dev=="avg-cpu:" || dev=="System" || dev=="History" || dev=="Tin") next
+      if (dev ~ /^(Disks|Kbps|tps)$/) next
+      need=tm_c
+      if (read_c>need) need=read_c
+      if (write_c>need) need=write_c
+      if (need>0 && NF<need) next
+      key=pass SUBSEP dev
+      if (!(key in seenp)) {
+        seenp[key]=1
+        n[pass]++
+        order[pass, n[pass]]=dev
+      }
+      if (tm_c>0) tma[pass, dev]=$(tm_c)+0
+      if (read_c>0) rkb[pass, dev]=$(read_c)+0
+      if (write_c>0) wkb[pass, dev]=$(write_c)+0
     }
     END {
+      use=0
+      for (p=1; p<=pass; p++) if (n[p]>0) use=p
       printf "["
-      for (i=1; i<=n; i++) {
-        d=order[i]
-        if (i>1) printf ","
-        printf "{\"device\":\"%s\",\"read_bytes\":%.0f,\"write_bytes\":%.0f,\"tm_act\":%.2f}", d, read_b[d]+0, write_b[d]+0, tm_act[d]+0
+      if (use>0) {
+        for (i=1; i<=n[use]; i++) {
+          d=order[use, i]
+          if (i>1) printf ","
+          printf "{\"device\":\"%s\",\"read_bytes\":%.0f,\"write_bytes\":%.0f,\"tm_act\":%.2f}", d, rkb[use, d]*1024, wkb[use, d]*1024, tma[use, d]+0
+        }
       }
       printf "]"
     }
@@ -435,61 +481,71 @@ DISKIO_JSON=$(
 )
 [ -z "${DISKIO_JSON}" ] && DISKIO_JSON='[]'
 
-# --- network: netstat -v bytes/errors + ifconfig interface list ---
+# --- network: netstat -v + ifconfig -a via stdin segments; never awk -v the blob ---
 NET_JSON=$(
-  NSV=$(_run netstat -v)
-  IFC=$(_run ifconfig -a)
-  awk -v nsv="${NSV}" -v ifc="${IFC}" '
-    BEGIN {
-      n=0
-      nlines = split(nsv, lines, "\n")
-      iface=""
-      for (i = 1; i <= nlines; i++) {
-        line=lines[i]
-        if (match(line, /\(([a-zA-Z0-9]+[0-9]*)\)/)) {
-          iface=substr(line, RSTART+1, RLENGTH-2)
-        }
-        if (iface == "" || iface == "lo" || iface == "lo0") continue
-        if (match(line, /Bytes received:[ \t]*[0-9]+/)) {
-          s=substr(line, RSTART, RLENGTH)
-          gsub(/[^0-9]/, "", s)
-          rxb[iface]=s + 0
-          if (!(iface in seen)) { seen[iface]=1; order[++n]=iface }
-        }
-        if (match(line, /Bytes transmitted:[ \t]*[0-9]+/)) {
-          s=substr(line, RSTART, RLENGTH)
-          gsub(/[^0-9]/, "", s)
-          txb[iface]=s + 0
-          if (!(iface in seen)) { seen[iface]=1; order[++n]=iface }
-        }
-        if (match(line, /Receive Errors:[ \t]*[0-9]+/)) {
-          s=substr(line, RSTART, RLENGTH)
-          gsub(/[^0-9]/, "", s)
-          rxerr[iface]=s + 0
-          if (!(iface in seen)) { seen[iface]=1; order[++n]=iface }
-        }
-        if (match(line, /Transmit Errors:[ \t]*[0-9]+/)) {
-          s=substr(line, RSTART, RLENGTH)
-          gsub(/[^0-9]/, "", s)
-          txerr[iface]=s + 0
-          if (!(iface in seen)) { seen[iface]=1; order[++n]=iface }
-        }
+  {
+    printf '%s\n' '---NSV---'
+    _run netstat -v
+    printf '%s\n' '---IFC---'
+    _run ifconfig -a
+  } | awk '
+    function note(ifn) {
+      if (ifn=="" || ifn=="lo" || ifn=="lo0") return
+      if (!(ifn in seen)) { seen[ifn]=1; order[++n]=ifn }
+    }
+    function take_num(re,    s) {
+      if (!match($0, re)) return 0
+      s=substr($0, RSTART, RLENGTH)
+      gsub(/[^0-9]/, "", s)
+      return s+0
+    }
+    BEGIN { mode=""; iface=""; n=0 }
+    $0=="---NSV---" { mode="nsv"; iface=""; next }
+    $0=="---IFC---" { mode="ifc"; iface=""; next }
+    mode=="nsv" {
+      if (tolower($0) ~ /statistics/ && match($0, /\(([A-Za-z]+[0-9]+)\)/)) {
+        iface=substr($0, RSTART+1, RLENGTH-2)
+        note(iface)
+        next
       }
-      flines_n = split(ifc, flines, "\n")
-      iface=""
-      for (i = 1; i <= flines_n; i++) {
-        line=flines[i]
-        if (match(line, /^[a-zA-Z][a-zA-Z0-9]*:/)) {
-          iface=substr(line, 1, index(line, ":")-1)
-          if (iface == "lo" || iface == "lo0") { iface=""; continue }
-          if (!(iface in seen)) { seen[iface]=1; order[++n]=iface }
-        }
-        if (iface != "" && match(line, /bytes:[ \t]*[0-9]+/)) {
-          s=substr(line, RSTART, RLENGTH)
-          gsub(/[^0-9]/, "", s)
-          if (!(iface in rxb)) rxb[iface]=s + 0
-        }
+      if (iface=="") next
+      if (match($0, /Bytes received:[ \t]*[0-9]+/)) {
+        rxb[iface]=take_num("Bytes received:[ \t]*[0-9]+")
+        note(iface)
       }
+      if (match($0, /Bytes transmitted:[ \t]*[0-9]+/)) {
+        txb[iface]=take_num("Bytes transmitted:[ \t]*[0-9]+")
+        note(iface)
+      }
+      if (match($0, /Receive Errors:[ \t]*[0-9]+/)) {
+        rxerr[iface]=take_num("Receive Errors:[ \t]*[0-9]+")
+        note(iface)
+      }
+      if (match($0, /Transmit Errors:[ \t]*[0-9]+/)) {
+        txerr[iface]=take_num("Transmit Errors:[ \t]*[0-9]+")
+        note(iface)
+      }
+      if ($1=="Bytes:" && NF>=4) {
+        txb[iface]=$2+0
+        if ($3=="Bytes:") rxb[iface]=$4+0
+        else if ($3 ~ /^[0-9]/) rxb[iface]=$3+0
+        note(iface)
+      }
+      next
+    }
+    mode=="ifc" {
+      if (match($0, /^[A-Za-z][A-Za-z0-9]*:/)) {
+        iface=substr($0, 1, index($0, ":")-1)
+        note(iface)
+        next
+      }
+      if (iface!="" && match($0, /bytes:[ \t]*[0-9]+/) && !(iface in rxb)) {
+        rxb[iface]=take_num("bytes:[ \t]*[0-9]+")
+        note(iface)
+      }
+      next
+    }
+    END {
       printf "["
       for (i=1; i<=n; i++) {
         d=order[i]
