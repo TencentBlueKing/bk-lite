@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Button, Form, Input } from 'antd';
+import { Button, Form, Input, Typography } from 'antd';
 
 import EntityList from '@/components/entity-list';
 import Icon from '@/components/icon';
@@ -36,6 +36,8 @@ interface CreateIntegrationInstanceModalProps {
     continueConfigure: boolean;
   }) => Promise<void>;
 }
+
+const { Text } = Typography;
 
 const CreateIntegrationInstanceModal: React.FC<CreateIntegrationInstanceModalProps> = ({
   open,
@@ -154,9 +156,18 @@ const CreateIntegrationInstanceModal: React.FC<CreateIntegrationInstanceModalPro
 
   const footer = (<div className="flex justify-end gap-2">{mode === 'edit' ? editFooter : createFooter}</div>);
 
+  const titleContent = (
+    <div className='pr-7'>
+      <span className='block text-(--color-text-1) text-base font-semibold leading-5.5'>
+        {mode === 'edit' ? t('common.edit') : t('system.integrationCenter.createInstanceTitle')}
+      </span>
+      <Text className='block mt-1 text-(--color-text-3) text-xs font-normal leading-4.5'>{t('system.integrationCenter.createInstanceDesc')}</Text>
+    </div>
+  )
+
   return (
     <OperateModal
-      title={mode === 'edit' ? t('common.edit') : t('system.integrationCenter.createInstanceTitle')}
+      title={titleContent}
       open={open}
       onCancel={onClose}
       width={mode === 'edit' ? 760 : step === 'provider' ? 1080 : 760}

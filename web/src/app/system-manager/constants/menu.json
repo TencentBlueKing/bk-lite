@@ -223,13 +223,15 @@
           "title": "Settings",
           "icon": "shezhi",
           "name": "channel_setting",
-          "url": "/system-manager/channel/detail/settings"
+          "url": "/system-manager/channel/detail/settings",
+          "isNotMenuItem": true
         },
         {
           "title": "IM Notification",
           "icon": "qiwei2",
           "name": "im_notification",
-          "url": "/system-manager/channel/im-notification"
+          "url": "/system-manager/channel/im-notification",
+          "isNotMenuItem": true
         }
       ]
     },
