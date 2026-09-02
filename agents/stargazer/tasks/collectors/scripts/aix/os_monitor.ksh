@@ -307,9 +307,26 @@ fi
 
 # --- df capacity + inodes ---
 DISK_JSON=$(
-  DF_OUT=$(_run df -k)
-  printf '%s\n' "${DF_OUT}" | awk '
-    BEGIN { first=1; print "[" }
+  DF_K=$(_run df -k)
+  DF_I=$(_run df -i)
+  printf '%s\n' "${DF_K}" | awk -v dfi="${DF_I}" '
+    BEGIN {
+      first=1
+      print "["
+      n = split(dfi, lines, "\n")
+      for (i = 1; i <= n; i++) {
+        line = lines[i]
+        nf = split(line, f)
+        if (nf < 6) continue
+        if (f[1] == "Filesystem" || f[nf] == "on") continue
+        m = f[nf]
+        inode_iused[m] = f[3] + 0
+        inode_ifree[m] = f[4] + 0
+        ip = f[5]
+        gsub(/%/, "", ip)
+        inode_ipct[m] = ip + 0
+      }
+    }
     NR == 1 { next }
     $1 ~ /^(procfs|proc|nfs|nfs3|nfs4|autofs|namefs|cdrom|iso9660|ahafs)$/ { next }
     $NF ~ /^\/proc/ { next }
@@ -326,13 +343,22 @@ DISK_JSON=$(
       if (mount == "/proc" || mount == "/ahafs") next
       used = total - freeb
       if (used < 0) used = 0
+      if (mount in inode_iused) {
+        iused = inode_iused[mount]
+        ifree = inode_ifree[mount]
+        if (mount in inode_ipct) ipct = inode_ipct[mount]
+      } else {
+        if (ipct + 0 >= 100) ifree = 0
+        else if (ipct + 0 <= 0) ifree = 0
+        else ifree = int(iused * (100 - ipct) / ipct)
+      }
       if (!first) printf ","
       first=0
       gsub(/\\/, "\\\\", fs)
       gsub(/"/, "\\\"", fs)
       gsub(/\\/, "\\\\", mount)
       gsub(/"/, "\\\"", mount)
-      printf "{\"mount\":\"%s\",\"path\":\"%s\",\"fstype\":\"\",\"total_bytes\":%.0f,\"used_bytes\":%.0f,\"free_bytes\":%.0f,\"used_percent\":%.2f,\"inodes_used_percent\":%.2f}", mount, mount, total, used, freeb, usedpct+0, ipct+0
+      printf "{\"mount\":\"%s\",\"path\":\"%s\",\"fstype\":\"\",\"total_bytes\":%.0f,\"used_bytes\":%.0f,\"free_bytes\":%.0f,\"used_percent\":%.2f,\"inodes_used_percent\":%.2f,\"iused\":%.0f,\"ifree\":%.0f}", mount, mount, total, used, freeb, usedpct+0, ipct+0, iused+0, ifree+0
     }
     END { print "]" }
   '

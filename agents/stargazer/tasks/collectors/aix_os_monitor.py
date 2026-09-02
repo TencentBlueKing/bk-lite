@@ -30,15 +30,33 @@ def _append_gauge(lines: list[str], name: str, labels: str, value: Any, timestam
 
 AIX_SCRIPT_PATH = Path(__file__).parent / "scripts" / "aix" / "os_monitor.ksh"
 AIX_RESIDENT_PATH = "/opt/bk-lite/aix/os_monitor.ksh"
+AIX_KEEPER_PATH = "/opt/bk-lite/aix/os_monitor_src.ksh"
 AIX_RESIDENT_DIR = "/opt/bk-lite/aix"
+AIX_INSTALL_LOCK = "/opt/bk-lite/aix/.install.lock"
 AIX_SRC_NAME = "bklite_osmon"
+AIX_LOCAL_CONFIG_TYPE = "host_aix"
+AIX_REMOTE_CONFIG_TYPE = "host_aix_remote"
 AIX_CRON_BEGIN = "# BEGIN BK-LITE OS MONITOR"
 AIX_CRON_END = "# END BK-LITE OS MONITOR"
 AIX_COLLECT_EOF = "STARGAZER_AIX_COLLECT_EOF"
 AIX_INSTALL_EOF = "STARGAZER_AIX_INSTALL_EOF"
 AIX_SCRIPT_EOF = "STARGAZER_AIX_SCRIPT_BODY"
+AIX_KEEPER_EOF = "STARGAZER_AIX_KEEPER_BODY"
 AIX_KSH_C_PREFIX = "/usr/bin/ksh -c '. /dev/stdin'"
-AIX_MONITOR_TYPES = frozenset({"host_aix", "host_aix_remote"})
+AIX_PROBE_PRESENT = "bklite_aix_os_monitor_present"
+AIX_PROBE_ABSENT = "bklite_aix_os_monitor_absent"
+AIX_KEEPER_BODY = "\n".join(
+    [
+        "#!/usr/bin/ksh",
+        "# SRC residency keeper. Does not scrape; collection SSH-runs os_monitor.ksh.",
+        "trap 'exit 0' TERM INT",
+        "while true",
+        "do",
+        "  /usr/bin/sleep 3600",
+        "done",
+        "",
+    ]
+)
 
 FILE_TRANSFER_TIMEOUT = int(os.getenv("FILE_TRANSFER_TIMEOUT", "1800"))
 COMMAND_EXECUTE_TIMEOUT = int(os.getenv("COMMAND_EXECUTE_TIMEOUT", "900"))
@@ -57,45 +75,82 @@ def wrap_ksh_resident_run() -> str:
     return f"/usr/bin/ksh -c '{AIX_RESIDENT_PATH}'\n"
 
 
+def wrap_ksh_resident_probe() -> str:
+    return "/usr/bin/ksh -c '" f"if test -x {AIX_RESIDENT_PATH}; then printf {AIX_PROBE_PRESENT}; " f"else printf {AIX_PROBE_ABSENT}; fi'\n"
+
+
+def aix_config_type(params: dict[str, Any] | None) -> str:
+    data = params or {}
+    tags = data.get("tags") if isinstance(data.get("tags"), dict) else {}
+    return str(tags.get("config_type") or data.get("config_type") or "").strip().lower()
+
+
+def is_aix_local_residency(params: dict[str, Any] | None) -> bool:
+    data = params or {}
+    os_type = str(data.get("os_type") or "").strip().lower()
+    return os_type == "aix" and aix_config_type(data) == AIX_LOCAL_CONFIG_TYPE
+
+
 def wrap_ksh_install(script_body: str | None = None) -> str:
     body = script_body if script_body is not None else load_aix_monitor_script()
-    cron_filter = (
-        "    BEGIN { skip=0 }\n"
-        f'    $0 == "{AIX_CRON_BEGIN}" {{ skip=1; next }}\n'
-        f'    $0 == "{AIX_CRON_END}" {{ skip=0; next }}\n'
-        "    skip==0 { print }"
-    )
     install_lines = [
         "umask 022",
         f"/usr/bin/mkdir -p {AIX_RESIDENT_DIR}",
-        f"cat > {AIX_RESIDENT_PATH} <<'{AIX_SCRIPT_EOF}'",
+        f"if /usr/bin/mkdir {AIX_INSTALL_LOCK} 2>/dev/null; then",
+        f"  trap '/usr/bin/rmdir {AIX_INSTALL_LOCK} >/dev/null 2>&1' 0",
+        f"  cat > {AIX_RESIDENT_PATH} <<'{AIX_SCRIPT_EOF}'",
         body.rstrip(),
         AIX_SCRIPT_EOF,
-        f"/usr/bin/chmod 755 {AIX_RESIDENT_PATH}",
-        "",
-        "_src_ok=0",
-        "if /usr/bin/whence mkssys >/dev/null 2>&1; then",
-        f"  if /usr/bin/lssrc -s {AIX_SRC_NAME} >/dev/null 2>&1; then",
-        f"    /usr/bin/chssys -s {AIX_SRC_NAME} -p /usr/bin/ksh -a {AIX_RESIDENT_PATH} >/dev/null 2>&1",
-        "    _src_ok=1",
-        f"  elif /usr/bin/mkssys -s {AIX_SRC_NAME} -p /usr/bin/ksh -a {AIX_RESIDENT_PATH} -u 0 -S -n 15 -f 9 -R >/dev/null 2>&1; then",
-        "    _src_ok=1",
+        f"  /usr/bin/chmod 755 {AIX_RESIDENT_PATH}",
+        f"  cat > {AIX_KEEPER_PATH} <<'{AIX_KEEPER_EOF}'",
+        AIX_KEEPER_BODY.rstrip(),
+        AIX_KEEPER_EOF,
+        f"  /usr/bin/chmod 755 {AIX_KEEPER_PATH}",
+        "  _src_ok=0",
+        "  if /usr/bin/whence mkssys >/dev/null 2>&1; then",
+        f"    if /usr/bin/lssrc -s {AIX_SRC_NAME} >/dev/null 2>&1; then",
+        "      _src_ok=1",
+        (f"    elif /usr/bin/mkssys -s {AIX_SRC_NAME} -p /usr/bin/ksh " f"-a {AIX_KEEPER_PATH} -u 0 -S -n 15 -f 9 -R >/dev/null 2>&1; then"),
+        "      _src_ok=1",
+        "    fi",
+        '    if [ "${_src_ok}" -eq 1 ]; then',
+        f"      _src_out=`/usr/bin/lssrc -s {AIX_SRC_NAME} 2>/dev/null`",
+        "      if printf '%s\\n' \"${_src_out}\" | /usr/bin/grep -q inoperative; then",
+        f"        /usr/bin/startsrc -s {AIX_SRC_NAME} >/dev/null 2>&1",
+        "      elif printf '%s\\n' \"${_src_out}\" | /usr/bin/grep -q active; then",
+        "        :",
+        "      else",
+        f"        /usr/bin/startsrc -s {AIX_SRC_NAME} >/dev/null 2>&1",
+        "      fi",
+        "    fi",
         "  fi",
+        '  if [ "${_src_ok}" -eq 0 ]; then',
+        "    _cron_old=`/usr/bin/crontab -l 2>/dev/null`",
+        f"    if printf '%s\\n' \"${{_cron_old}}\" | /usr/bin/grep -F '{AIX_CRON_BEGIN}' >/dev/null 2>&1; then",
+        "      :",
+        "    else",
+        "      {",
+        "        printf '%s\\n' \"${_cron_old}\"",
+        f"        printf '%s\\n' \"{AIX_CRON_BEGIN}\"",
+        f"        printf '%s\\n' \"@reboot /usr/bin/ksh -c '{AIX_KEEPER_PATH}'\"",
+        f"        printf '%s\\n' \"{AIX_CRON_END}\"",
+        "      } | /usr/bin/crontab - >/dev/null 2>&1",
+        "    fi",
+        "  fi",
+        "  printf '%s\\n' \"bklite_aix_os_monitor_installed\"",
+        "else",
+        "  _n=0",
+        '  while [ "${_n}" -lt 90 ]; do',
+        f"    if test -x {AIX_RESIDENT_PATH}; then",
+        "      printf '%s\\n' \"bklite_aix_os_monitor_installed\"",
+        "      exit 0",
+        "    fi",
+        "    /usr/bin/sleep 1",
+        "    _n=$((_n + 1))",
+        "  done",
+        "  printf '%s\\n' \"bklite_aix_os_monitor_install_lock_timeout\"",
+        "  exit 1",
         "fi",
-        "",
-        'if [ "${_src_ok}" -eq 0 ]; then',
-        "  _cron_old=`/usr/bin/crontab -l 2>/dev/null`",
-        "  _cron_new=`printf '%s\\n' \"${_cron_old}\" | /usr/bin/awk '",
-        cron_filter,
-        "  '`",
-        "  {",
-        "    printf '%s\\n' \"${_cron_new}\"",
-        f"    printf '%s\\n' \"{AIX_CRON_BEGIN}\"",
-        f"    printf '%s\\n' \"0 0 * * * /usr/bin/ksh -c 'test -x {AIX_RESIDENT_PATH}'\"",
-        f"    printf '%s\\n' \"{AIX_CRON_END}\"",
-        "  } | /usr/bin/crontab - >/dev/null 2>&1",
-        "fi",
-        "printf '%s\\n' \"bklite_aix_os_monitor_installed\"",
     ]
     install = "\n".join(install_lines)
     return f"{AIX_KSH_C_PREFIX} <<'{AIX_INSTALL_EOF}'\n{install}\n{AIX_INSTALL_EOF}\n"
@@ -175,6 +230,8 @@ def parse_aix_metrics_to_prometheus(
             _append_gauge(lines, "disk_used_percent", disk_labels, disk.get("used_percent", 0), timestamp, "Disk used percent")
             _append_gauge(lines, "host_disk_used_percent", disk_labels, disk.get("used_percent", 0), timestamp, "Disk used percent")
             _append_gauge(lines, "disk_inodes_used_percent", disk_labels, disk.get("inodes_used_percent", 0), timestamp, "Disk inode used percent")
+            _append_gauge(lines, "disk_iused", disk_labels, disk.get("iused", 0), timestamp, "AIX df iused inode count")
+            _append_gauge(lines, "disk_ifree", disk_labels, disk.get("ifree", 0), timestamp, "AIX df ifree inode count")
 
     nets = data.get("net")
     if isinstance(nets, list):

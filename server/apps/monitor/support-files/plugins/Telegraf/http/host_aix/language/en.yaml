@@ -58,6 +58,12 @@ monitor_object_metric:
     disk_inodes_used_percent:
       name: Inode Usage
       desc: Represents the percentage of inode usage in a filesystem, helping prevent failures caused by inode exhaustion.
+    disk_iused:
+      name: iused
+      desc: AIX df iused, the number of used inodes on the filesystem.
+    disk_ifree:
+      name: ifree
+      desc: AIX df ifree, the number of free inodes on the filesystem.
     mem_total:
       name: Total Memory
       desc: Represents the total amount of physical memory available on the system, serving as a baseline for memory evaluation.

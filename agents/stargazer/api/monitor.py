@@ -375,7 +375,7 @@ async def host_metrics(request):
     private_key_content = request.headers.get("private_key_content", "")
     private_key_passphrase = request.headers.get("private_key_passphrase", "")
     credential_encoding = request.headers.get("credential_encoding", "url")
-    port = request.headers.get("port", "22" if os_type == "linux" else "5986")
+    port = request.headers.get("port", "5986" if str(os_type or "").strip().lower() == "windows" else "22")
     metrics_modules = request.headers.get("metrics_modules", "cpu,mem,disk,diskio,net,processes,system")
     disk_include_fstypes = request.headers.get("disk_include_fstypes", "")
     disk_exclude_fstypes = request.headers.get(
@@ -459,7 +459,7 @@ async def host_metrics(request):
     )
 
 
-def _aix_os_monitor_params(request, *, monitor_type: str, config_type: str) -> dict:
+def _aix_os_monitor_params(request, *, config_type: str) -> dict:
     host = request.headers.get("host")
     username = request.headers.get("username")
     password = request.headers.get("password")
@@ -478,9 +478,9 @@ def _aix_os_monitor_params(request, *, monitor_type: str, config_type: str) -> d
         raise ValueError("missing required headers: host, username, password")
     if not ansible_node_id:
         raise ValueError("missing ansible_node_id header")
-    logger.info("event=aix_os_monitor_request host=%s monitor_type=%s", host, monitor_type)
+    logger.info("event=aix_os_monitor_request host=%s config_type=%s monitor_type=host", host, config_type)
     return {
-        "monitor_type": monitor_type,
+        "monitor_type": "host",
         "host": host,
         "os_type": "aix",
         "username": username,
@@ -505,12 +505,12 @@ def _aix_os_monitor_params(request, *, monitor_type: str, config_type: str) -> d
 @monitor_router.get("/host_aix_remote/metrics")
 async def host_aix_remote_metrics(request):
     try:
-        params = _aix_os_monitor_params(request, monitor_type="host_aix_remote", config_type="host_aix_remote")
+        params = _aix_os_monitor_params(request, config_type="host_aix_remote")
     except ValueError as error:
-        return _monitor_error_response("host_aix_remote", str(error), status=400, host=request.headers.get("host"))
+        return _monitor_error_response("host", str(error), status=400, host=request.headers.get("host"))
     return await _run_monitor_handler(
         request,
-        monitor_type="host_aix_remote",
+        monitor_type="host",
         build_params=lambda _req: params,
         accept_labels=lambda task_params: {"host": task_params.get("host")},
         error_labels=lambda: {"host": request.headers.get("host")},
@@ -521,12 +521,12 @@ async def host_aix_remote_metrics(request):
 @monitor_router.get("/host_aix/metrics")
 async def host_aix_metrics(request):
     try:
-        params = _aix_os_monitor_params(request, monitor_type="host_aix", config_type="host_aix")
+        params = _aix_os_monitor_params(request, config_type="host_aix")
     except ValueError as error:
-        return _monitor_error_response("host_aix", str(error), status=400, host=request.headers.get("host"))
+        return _monitor_error_response("host", str(error), status=400, host=request.headers.get("host"))
     return await _run_monitor_handler(
         request,
-        monitor_type="host_aix",
+        monitor_type="host",
         build_params=lambda _req: params,
         accept_labels=lambda task_params: {"host": task_params.get("host")},
         error_labels=lambda: {"host": request.headers.get("host")},

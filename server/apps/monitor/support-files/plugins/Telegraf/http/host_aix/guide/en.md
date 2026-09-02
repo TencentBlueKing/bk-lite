@@ -1,6 +1,6 @@
 # AIX Host Collection Guide (resident ksh)
 
-The platform installs the **same original ksh** onto the AIX host (SRC subsystem `bklite_osmon` when available, otherwise a tagged crontab), then a **Linux collect node** SSH-runs `/usr/bin/ksh -c '/opt/bk-lite/aix/os_monitor.ksh'`. AIX is not a bk-lite Node. Do not install Telegraf or node_exporter on AIX, and do not open `:9100`. You do not install Splunk Add-on.
+The platform installs the **same original ksh** onto the AIX host on first collect (SRC subsystem `bklite_osmon` via `mkssys` + `startsrc` of a keeper; if SRC is unavailable, a tagged `@reboot` crontab is written only when those markers are missing). A **Linux collect node** then SSH-runs `/usr/bin/ksh -c '/opt/bk-lite/aix/os_monitor.ksh'`. Later scrapes **only execute the installed script**; they do not reinstall or rewrite crontab. AIX is not a bk-lite Node. Do not install Telegraf or node_exporter on AIX, and do not open `:9100`. You do not install Splunk Add-on.
 
 Re-saving an instance **updates the existing child config**; it does not stack a new uuid.
 
@@ -15,7 +15,7 @@ Re-saving an instance **updates the existing child config**; it does not stack a
 
 1. Pick a Linux collect node that can reach the AIX host.
 2. Fill in host IP, username (default `root`), SSH authentication (password or SSH key), and interval (default 60 seconds).
-3. After save, the platform installs ksh at `/opt/bk-lite/aix/os_monitor.ksh` and SSH-runs it on the collection interval.
+3. After save, the first collect installs ksh at `/opt/bk-lite/aix/os_monitor.ksh` and `startsrc` the SRC keeper when available. Later intervals only SSH-run that script.
 
 ## Form fields
 
@@ -31,6 +31,6 @@ Re-saving an instance **updates the existing child config**; it does not stack a
 
 ## After onboarding
 
-Confirm `/opt/bk-lite/aix/os_monitor.ksh` exists on AIX, then query `cpu_usage_total`, `mem_used_percent`, and `disk_used_percent` after one interval. The Host dashboard is reused.
+Confirm `/opt/bk-lite/aix/os_monitor.ksh` exists on AIX, SRC `bklite_osmon` is active (or crontab markers exist), then query `cpu_usage_total`, `mem_used_percent`, `disk_used_percent`, `disk_iused`, and `disk_ifree` after one interval. The Host dashboard is reused.
 
 After deploy, run `plugin_init` (or `batch_init`) so the plugin definition is imported.

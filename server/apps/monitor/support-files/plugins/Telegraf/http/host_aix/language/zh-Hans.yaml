@@ -58,6 +58,12 @@ monitor_object_metric:
     disk_inodes_used_percent:
       name: Inode使用率
       desc: 表示文件系统 Inode 的使用比例，用于防范因 Inode 耗尽导致的文件创建失败问题。
+    disk_iused:
+      name: iused
+      desc: 表示 AIX df 的 iused，即文件系统已使用的 inode 个数。
+    disk_ifree:
+      name: ifree
+      desc: 表示 AIX df 的 ifree，即文件系统剩余可用的 inode 个数。
     mem_total:
       name: 内存总量
       desc: 表示系统可使用的物理内存总容量，是内存资源评估的基础指标。
