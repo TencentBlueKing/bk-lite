@@ -529,9 +529,9 @@ class UserViewSet(ViewSetUtils):
         rows = request.data.get("users")
         file_name = str(request.data.get("file_name") or "")
         if not isinstance(rows, list) or not rows:
-            return JsonResponse({"result": False, "message": "没有可导入的用户数据"}, status=400)
+            return JsonResponse({"result": False, "message": loader.get("error.import_users_empty")}, status=400)
         if len(rows) > 500:
-            return JsonResponse({"result": False, "message": "单次最多导入 500 名用户"}, status=400)
+            return JsonResponse({"result": False, "message": loader.get("error.import_users_limit")}, status=400)
 
         group_error = _validate_selected_groups([group_id], loader)
         if group_error:
@@ -553,7 +553,7 @@ class UserViewSet(ViewSetUtils):
         initial_password_enabled = settings.get("user_create_initial_password_enabled") == "1"
         initial_password_hash = settings.get("user_create_initial_password_hash", "")
         if initial_password_enabled and not initial_password_hash:
-            return JsonResponse({"result": False, "message": "本地用户初始密码未配置"}, status=400)
+            return JsonResponse({"result": False, "message": loader.get("error.initial_password_not_configured")}, status=400)
 
         failures = []
         successful_usernames = set()
@@ -562,18 +562,18 @@ class UserViewSet(ViewSetUtils):
             username = str(row.get("username", "")).strip() if isinstance(row, dict) else ""
             failure = None
             if not isinstance(row, dict):
-                failure = "数据格式不正确"
+                failure = loader.get("error.import_users_invalid_row")
             elif not all(str(row.get(field, "")).strip() for field in ("username", "lastName", "email")):
-                failure = "缺少必填字段"
+                failure = loader.get("error.import_users_missing_fields")
             elif username in successful_usernames or User.objects.filter(username=username, domain="domain.com").exists():
-                failure = "用户名已存在"
+                failure = loader.get("error.import_users_username_exists")
             elif not self._is_valid_phone(row.get("phone", "")):
-                failure = "手机号格式不正确"
+                failure = loader.get("error.invalid_phone")
             else:
                 try:
                     validate_email(str(row["email"]).strip())
                 except ValidationError:
-                    failure = "邮箱格式不正确"
+                    failure = loader.get("error.import_users_invalid_email")
 
             if failure:
                 failures.append({"row_number": row_number, "username": username, "message": failure})
@@ -593,7 +593,7 @@ class UserViewSet(ViewSetUtils):
                 successful_usernames.add(username)
             except Exception:
                 logger.exception("用户导入失败 username=%s", username)
-                failures.append({"row_number": row_number, "username": username, "message": "创建用户失败"})
+                failures.append({"row_number": row_number, "username": username, "message": loader.get("error.import_users_create_failed")})
 
         result = {
             "total_count": len(rows),

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 
 from apps.apm.models import ApmEvent
@@ -13,7 +14,8 @@ class DjangoApmEventReader:
     def list(
         self,
         *,
-        organization_id: int,
+        organization_id: int | None = None,
+        organization_ids: Sequence[int] | None = None,
         started_at: datetime,
         ended_at: datetime,
         action: str | None = None,
@@ -28,7 +30,8 @@ class DjangoApmEventReader:
                 occurred_at__lte=ended_at,
             )
         )
-        queryset = queryset.filter(build_json_membership_query(queryset, "organizations", [organization_id]))
+        ids = list(organization_ids) if organization_ids is not None else [organization_id]
+        queryset = queryset.filter(build_json_membership_query(queryset, "organizations", ids))
         if action:
             queryset = queryset.filter(action=action)
         if severity:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from django.db import transaction
 from django.db.models import QuerySet
 
@@ -12,10 +14,11 @@ class DeliveryStateConflict(RuntimeError):
 
 
 class DjangoNotificationDeliveryService:
-    def queryset(self, *, organization_id: int) -> QuerySet[ApmAlertOutbox]:
+    def queryset(self, *, organization_id: int | None = None, organization_ids: Sequence[int] | None = None) -> QuerySet[ApmAlertOutbox]:
         queryset = ApmAlertOutbox.objects.select_related("event", "event__alert")
+        ids = list(organization_ids) if organization_ids is not None else [organization_id]
         return queryset.filter(
-            build_json_membership_query(queryset, "event__organizations", [organization_id])
+            build_json_membership_query(queryset, "event__organizations", ids)
         )
 
     @staticmethod
