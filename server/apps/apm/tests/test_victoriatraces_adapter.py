@@ -316,6 +316,8 @@ def test_red_uses_deduplicated_trace_span_aggregation_and_escapes_filters():
 
     assert red.request_rate == pytest.approx(0.1)
     assert red.error_rate == pytest.approx(1 / 3)
+    assert red.request_count == 6
+    assert red.error_count == 2
     assert red.p95_ms == 100
     assert red.p99_ms == 250
     params = session.get.call_args.kwargs["params"]

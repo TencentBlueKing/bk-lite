@@ -144,6 +144,8 @@ describe('APM 服务详情错误 Tab', () => {
       error_rate: 0.0279,
       p95_ms: 1290,
       p99_ms: 3590,
+      request_count: 3588,
+      error_count: 100,
       timeseries: [],
       top_endpoints: [],
     });
@@ -183,8 +185,8 @@ describe('APM 服务详情错误 Tab', () => {
           duration_ms: 120,
         }],
       }],
-      next_cursor: null,
-      truncated: false,
+      next_cursor: 'older-page',
+      truncated: true,
     });
     const user = userEvent.setup();
     renderWithApmIntl(<ApmServiceDetailPage />);
@@ -196,6 +198,12 @@ describe('APM 服务详情错误 Tab', () => {
 
     expect(await screen.findByText('PaymentError')).not.toBeNull();
     expect(screen.getByText('card declined')).not.toBeNull();
+    expect(screen.getByText((content) => content.includes('次入口请求') && content.includes('次失败'))).not.toBeNull();
+    expect(screen.getByText(/占失败样本/)).not.toBeNull();
+    expect(screen.queryByRole('tab', { name: '错误 (1)' })).toBeNull();
+    expect(screen.getByRole('tab', { name: '错误' })).not.toBeNull();
+    expect(screen.queryByText('加载更多')).toBeNull();
+    expect(screen.getByRole('link', { name: '在错误分析中打开' }).getAttribute('href')).toContain('/apm/explore/errors');
     expect(screen.queryByText('当前时间窗暂无错误 Trace')).toBeNull();
     expect(api.getIssues).toHaveBeenCalledWith(expect.objectContaining({
       service_namespace: 'shop',

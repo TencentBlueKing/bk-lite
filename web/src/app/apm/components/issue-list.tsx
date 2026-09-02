@@ -71,11 +71,14 @@ function IssueDetails({ issue }: { issue: ApmIssue }) {
 export default function ApmIssueList({
   items,
   showService = true,
+  sampleShare = false,
 }: {
   items: ApmIssue[];
   showService?: boolean;
+  sampleShare?: boolean;
 }) {
   const { t } = useTranslation();
+  const sampleTotal = items.reduce((sum, issue) => sum + issue.occurrences, 0);
   return (
     <div className="divide-y divide-[var(--color-border)]">
       {items.map((issue) => (
@@ -83,7 +86,14 @@ export default function ApmIssueList({
           <div className="flex min-w-0 flex-col gap-1">
             <div className="flex flex-wrap items-center gap-2">
               <Typography.Text strong className="!text-base">{issue.exception_type}</Typography.Text>
-              <Tag color="error">{t('apm.errors.occurrences', '{count} 次', { count: issue.occurrences })}</Tag>
+              <Tag color="error">
+                {sampleShare && sampleTotal
+                  ? t('apm.errors.sampleShare', '{count} 次 · 占失败样本 {percent}%', {
+                    count: issue.occurrences,
+                    percent: Math.round((issue.occurrences / sampleTotal) * 100),
+                  })
+                  : t('apm.errors.occurrences', '{count} 次', { count: issue.occurrences })}
+              </Tag>
               <Tag>{t('apm.errors.affectedTraces', '{count} 条 Trace', { count: issue.affected_traces })}</Tag>
               <Typography.Text type="secondary" className="!text-xs">{formatRelativeTime(issue.last_seen_at, t)}</Typography.Text>
             </div>

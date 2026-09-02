@@ -387,6 +387,8 @@ class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
                 "error_rate": red.error_rate,
                 "p95_ms": red.p95_ms,
                 "p99_ms": red.p99_ms,
+                "request_count": red.request_count,
+                "error_count": red.error_count,
                 "timeseries": [
                     {
                         "timestamp": point.timestamp,

@@ -18,6 +18,7 @@ from apps.apm.services.contracts import (
 from apps.apm.services.query import DjangoTelemetryQueryService
 
 MAX_SAMPLE_TRACES = 5
+_UNATTRIBUTED_MESSAGE = "OTel Span status=Error"
 _UUID_RE = re.compile(r"\b[0-9a-f]{8}-[0-9a-f-]{27,}\b", re.IGNORECASE)
 _HEX_RE = re.compile(r"\b(?:0x)?[0-9a-f]{12,}\b", re.IGNORECASE)
 _NUMBER_RE = re.compile(r"\b\d+(?:\.\d+)?\b")
@@ -51,6 +52,40 @@ def _message_skeleton(message: str) -> str:
 def _key_frame(stacktrace: str) -> str:
     lines = [line.strip() for line in stacktrace.splitlines() if line.strip()]
     return next((line for line in lines[1:] if " at " in f" {line} "), lines[-1] if lines else "")
+
+
+def _is_unattributed(occurrence: _IssueOccurrence) -> bool:
+    return (
+        occurrence.exception_type == "SpanError"
+        and occurrence.message == _UNATTRIBUTED_MESSAGE
+        and not occurrence.stacktrace
+    )
+
+
+def _merge_unattributed(groups: dict[str, list[_IssueOccurrence]]) -> dict[str, list[_IssueOccurrence]]:
+    """get_trace 失败时的兜底卡并入同服务最大的已归因 Issue，避免同一种失败拆成两张。"""
+    merged = {fingerprint: list(items) for fingerprint, items in groups.items()}
+    attributed_by_service: dict[tuple[str, str], list[str]] = {}
+    unattributed: list[str] = []
+    for fingerprint, items in merged.items():
+        service = (items[0].summary.service_namespace, items[0].summary.service_name)
+        if items and all(_is_unattributed(item) for item in items):
+            unattributed.append(fingerprint)
+        else:
+            attributed_by_service.setdefault(service, []).append(fingerprint)
+    for fingerprint in unattributed:
+        items = merged[fingerprint]
+        service = (items[0].summary.service_namespace, items[0].summary.service_name)
+        candidates = attributed_by_service.get(service, [])
+        if not candidates:
+            continue
+        target = max(
+            candidates,
+            key=lambda key: (len(merged[key]), -max(item.summary.started_at.timestamp() for item in merged[key])),
+        )
+        merged[target].extend(items)
+        del merged[fingerprint]
+    return merged
 
 
 def _fingerprint(occurrence: _IssueOccurrence) -> str:
@@ -91,6 +126,7 @@ class DjangoTelemetryIssueService:
         groups: dict[str, list[_IssueOccurrence]] = {}
         for occurrence in occurrences:
             groups.setdefault(_fingerprint(occurrence), []).append(occurrence)
+        groups = _merge_unattributed(groups)
 
         issues = tuple(
             self._projection(fingerprint, group)
@@ -122,7 +158,7 @@ class DjangoTelemetryIssueService:
                 "otel.status_description",
                 "status.message",
             )
-            or "OTel Span status=Error"
+            or _UNATTRIBUTED_MESSAGE
         )
         stacktrace = _text(
             attributes,

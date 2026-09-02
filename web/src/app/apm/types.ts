@@ -53,6 +53,8 @@ export interface ApmServiceRed {
   error_rate: number | null;
   p95_ms: number | null;
   p99_ms: number | null;
+  request_count: number | null;
+  error_count: number | null;
   timeseries: ApmServiceRedPoint[];
   top_endpoints: ApmServiceEndpointRed[];
 }

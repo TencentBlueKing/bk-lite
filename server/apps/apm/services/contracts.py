@@ -368,6 +368,8 @@ class ServiceRed:
     p99_ms: float | None
     timeseries: tuple[ServiceRedPoint, ...] = ()
     top_endpoints: tuple[ServiceEndpointRed, ...] = ()
+    request_count: int | None = None
+    error_count: int | None = None
 
 
 @dataclass(frozen=True)

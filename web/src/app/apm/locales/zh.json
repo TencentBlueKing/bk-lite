@@ -276,7 +276,8 @@
       "emptyPage": "当前游标页没有可见 Issue，可继续加载更早样本。",
       "occurrences": "{count} 次",
       "affectedTraces": "{count} 条 Trace",
-      "empty": "当前权限和时间窗内没有错误 Issue。"
+      "empty": "当前权限和时间窗内没有错误 Issue。",
+      "sampleShare": "{count} 次 · 占失败样本 {percent}%"
     },
     "trace": {
       "title": "Trace 详情",
@@ -697,6 +698,8 @@
       "noErrorTraces": "当前时间窗暂无错误 Trace",
       "noErrorIssues": "当前时间窗没有入口错误",
       "errorSamplesMissing": "错误率有样本但错误列表未返回，可重试",
+      "errorRateReconcile": "本窗 {requests} 次入口请求 · {errors} 次失败 · 错误率 {rate}",
+      "openErrorExplore": "在错误分析中打开",
       "runtime": "运行时",
       "deploy": "部署",
       "target": "目标",
@@ -723,7 +726,6 @@
       "manage": "管理",
       "configureSlo": "去配置 SLO",
       "dependencyMeta": "{calls}/窗 · Pavg {duration} · 错误 {errors}",
-      "errorsWithCount": "错误 ({count})",
       "ownerApplication": "所属应用",
       "endpointMeta": "{throughput} · P99 {latency}"
     },

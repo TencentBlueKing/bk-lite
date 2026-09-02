@@ -144,8 +144,6 @@ export default function ApmServiceDetailPage() {
   const [tracesState, setTracesState] = useState<PageState>('loading');
   const [issues, setIssues] = useState<ApmIssue[]>([]);
   const [issuesState, setIssuesState] = useState<PageState>('loading');
-  const [issuesNextCursor, setIssuesNextCursor] = useState<string | null>(null);
-  const [issuesLoadingMore, setIssuesLoadingMore] = useState(false);
   const [upstream, setUpstream] = useState<{ node: ApmTopologyNode; edge: ApmTopologyEdge }[]>([]);
   const [downstream, setDownstream] = useState<{ node: ApmTopologyNode; edge: ApmTopologyEdge }[]>([]);
   const [serviceSlos, setServiceSlos] = useState<ApmSlo[]>([]);
@@ -283,9 +281,9 @@ export default function ApmServiceDetailPage() {
     };
   }, [activeTab, authLoading, getDeployments, params.serviceId, refreshKey]);
 
-  const loadIssues = useCallback((cursor?: string) => {
+  const loadIssues = useCallback(() => {
     if (!service || environment === undefined || authLoading) return;
-    if (cursor) setIssuesLoadingMore(true); else setIssuesState('loading');
+    setIssuesState('loading');
     const endedAt = new Date().toISOString();
     const startedAt = new Date(new Date(endedAt).getTime() - RANGE_MS[timeRange]).toISOString();
     void getIssues({
@@ -294,17 +292,14 @@ export default function ApmServiceDetailPage() {
       environment,
       started_at: startedAt,
       ended_at: endedAt,
-      cursor,
       limit: 50,
       entry_only: true,
     })
       .then((page) => {
-        setIssues((current) => (cursor ? [...current, ...page.items] : page.items));
-        setIssuesNextCursor(page.next_cursor);
-        setIssuesState(page.items.length || cursor || page.next_cursor ? 'ready' : 'empty');
+        setIssues(page.items);
+        setIssuesState(page.items.length ? 'ready' : 'empty');
       })
-      .catch((error) => setIssuesState(catalogErrorKind(error)))
-      .finally(() => setIssuesLoadingMore(false));
+      .catch((error) => setIssuesState(catalogErrorKind(error)));
   }, [authLoading, environment, getIssues, service, timeRange]);
 
   useEffect(() => {
@@ -321,6 +316,15 @@ export default function ApmServiceDetailPage() {
       ended_at: red.ended_at,
     }).toString()}`
     : '/apm/explore/traces';
+
+  const errorsExploreHref = service
+    ? `/apm/explore/errors?${new URLSearchParams({
+      service_namespace: service.namespace,
+      service_name: service.name,
+      ...(environment ? { environment } : {}),
+      window: timeRange,
+    }).toString()}`
+    : '/apm/explore/errors';
 
   const chartData = useMemo<RedChartPoint[]>(
     () => (red?.timeseries ?? []).map((point) => ({
@@ -790,33 +794,38 @@ export default function ApmServiceDetailPage() {
               },
               {
                 key: 'errors',
-                label: issues.length
-                  ? t('apm.serviceDetail.errorsWithCount', '错误 ({count})', { count: issues.length })
-                  : t('apm.serviceDetail.errors', '错误'),
+                label: t('apm.serviceDetail.errors', '错误'),
                 children: (
                   <ApmSurface>
                     {issuesState === 'ready' ? (
                       <div className="flex flex-col gap-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          {red?.request_count != null && red.error_count != null ? (
+                            <Typography.Text type="secondary" className="!text-xs">
+                              {t('apm.serviceDetail.errorRateReconcile', '本窗 {requests} 次入口请求 · {errors} 次失败 · 错误率 {rate}', {
+                                requests: formatNumber(red.request_count),
+                                errors: formatNumber(red.error_count),
+                                rate: formatErrorRate(red.error_rate, false, t),
+                              })}
+                            </Typography.Text>
+                          ) : <span />}
+                          <Link href={errorsExploreHref}>
+                            <Button type="link" size="small">{t('apm.serviceDetail.openErrorExplore', '在错误分析中打开')}</Button>
+                          </Link>
+                        </div>
                         {issues.length ? (
-                          <ApmIssueList items={issues} showService={false} />
+                          <ApmIssueList items={issues} showService={false} sampleShare />
                         ) : (
                           <CatalogState
                             kind="empty"
                             description={
-                              (red?.error_rate ?? 0) > 0 && !issuesNextCursor
+                              (red?.error_rate ?? 0) > 0
                                 ? t('apm.serviceDetail.errorSamplesMissing', '错误率有样本但错误列表未返回，可重试')
-                                : issuesNextCursor
-                                  ? t('apm.errors.emptyPage', '当前游标页没有可见 Issue，可继续加载更早样本。')
-                                  : t('apm.serviceDetail.noErrorIssues', '当前时间窗没有入口错误')
+                                : t('apm.serviceDetail.noErrorIssues', '当前时间窗没有入口错误')
                             }
-                            onRetry={(red?.error_rate ?? 0) > 0 && !issuesNextCursor ? () => loadIssues() : undefined}
+                            onRetry={(red?.error_rate ?? 0) > 0 ? () => loadIssues() : undefined}
                           />
                         )}
-                        {issuesNextCursor ? (
-                          <Button loading={issuesLoadingMore} onClick={() => loadIssues(issuesNextCursor)}>
-                            {t('apm.common.loadMore', '加载更多')}
-                          </Button>
-                        ) : null}
                       </div>
                     ) : issuesState === 'empty' ? (
                       <CatalogState

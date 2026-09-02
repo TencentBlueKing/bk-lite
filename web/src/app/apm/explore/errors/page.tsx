@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Alert, Button, Select } from 'antd';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
@@ -13,14 +14,23 @@ import { useTranslation } from '@/utils/i18n';
 type PageState = CatalogStateKind | 'ready';
 type TimeRange = '15m' | '1h' | '4h' | '1d' | '7d';
 const RANGE_MS: Record<TimeRange, number> = { '15m': 900000, '1h': 3600000, '4h': 14400000, '1d': 86400000, '7d': 604800000 };
+const TIME_RANGES = Object.keys(RANGE_MS) as TimeRange[];
+
+function isTimeRange(value: string | null): value is TimeRange {
+  return TIME_RANGES.includes(value as TimeRange);
+}
 
 export default function ApmErrorsPage() {
   const { t } = useTranslation();
+  const searchParams = useSearchParams();
   const { getIssues, getServices, isLoading: authLoading } = useApmApi();
   const [services, setServices] = useState<ApmService[]>([]);
   const [serviceId, setServiceId] = useState<string>();
-  const [environment, setEnvironment] = useState<string>();
-  const [timeRange, setTimeRange] = useState<TimeRange>('1h');
+  const [environment, setEnvironment] = useState<string | undefined>(searchParams.get('environment') || undefined);
+  const [timeRange, setTimeRange] = useState<TimeRange>(() => {
+    const value = searchParams.get('window');
+    return isTimeRange(value) ? value : '1h';
+  });
   const [items, setItems] = useState<ApmIssue[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [truncated, setTruncated] = useState(false);
@@ -30,6 +40,13 @@ export default function ApmErrorsPage() {
   useEffect(() => {
     if (!authLoading) void getServices().then(setServices).catch(() => setServices([]));
   }, [authLoading, getServices]);
+  useEffect(() => {
+    const namespace = searchParams.get('service_namespace');
+    const name = searchParams.get('service_name');
+    if (!namespace || !name) return;
+    const found = services.find((service) => service.namespace === namespace && service.name === name);
+    if (found) setServiceId(found.id);
+  }, [searchParams, services]);
   const environments = useMemo(() => Array.from(new Set(services.flatMap((service) => service.environment_views.map((view) => view.environment)))).sort(), [services]);
   const selectedService = useMemo(() => services.find((service) => service.id === serviceId), [serviceId, services]);
   const load = useCallback((cursor?: string) => {

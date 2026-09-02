@@ -443,7 +443,7 @@ class VictoriaTracesTelemetryStore:
             return ServiceRed(None, None, None, None)
         if exact_dedup:
             self._reject_truncated_unique_spans(deduped, requests_count, query.started_at, query.ended_at)
-        errors_count = values.get("errors", 0.0)
+        errors_count = values.get("errors", 0.0) or 0.0
         timeseries: tuple[ServiceRedPoint, ...] = ()
         endpoints: tuple[ServiceEndpointRed, ...] = ()
         if query.include_breakdown:
@@ -471,6 +471,8 @@ class VictoriaTracesTelemetryStore:
             p99_ms=self._nanoseconds_to_ms(values.get("p99")),
             timeseries=timeseries,
             top_endpoints=endpoints,
+            request_count=int(requests_count),
+            error_count=int(errors_count),
         )
 
     def _endpoint_stats_rows(

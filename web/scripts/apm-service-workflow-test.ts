@@ -48,6 +48,11 @@ assert.match(serviceDetail, /key: 'errors'/, '服务详情必须内嵌错误 Tab
 assert.match(serviceDetail, /getTraces/, '服务详情调用链 Tab 必须读取真实 Trace');
 assert.match(serviceDetail, /getIssues/, '服务详情错误 Tab 必须读取与错误率对齐的 Issue');
 assert.match(serviceDetail, /entry_only:\s*true/, '服务详情错误 Tab 必须只取入口 ERROR Span');
+assert.match(serviceDetail, /errorRateReconcile/, '服务详情错误 Tab 必须用 RED 请求/失败次数对账错误率');
+assert.match(serviceDetail, /explore\/errors/, '服务详情错误 Tab 必须下钻到错误分析');
+assert.match(serviceDetail, /sampleShare/, '服务详情错误次数必须标明是失败样本构成');
+assert.doesNotMatch(serviceDetail, /errorsWithCount/, '服务详情错误 Tab 不得用 Issue 种类冒充错误条数');
+assert.doesNotMatch(serviceDetail, /issuesNextCursor/, '服务详情错误 Tab 不得按 Span 翻页');
 assert.doesNotMatch(serviceDetail, /traces\.filter\(\(item\) => item\.status === 'error'\)/, '服务详情错误 Tab 不得从调用链样本里筛选错误');
 assert.match(serviceDetail, /getTopology/, '服务详情依赖关系必须读取真实拓扑');
 assert.match(serviceDetail, /getDeployments/, '服务详情部署 Tab 必须读取物化部署事件');

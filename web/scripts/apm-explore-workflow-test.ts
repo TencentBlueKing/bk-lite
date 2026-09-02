@@ -39,6 +39,7 @@ assert.match(endpoints, /Drawer/, '端点列表必须提供详情抽屉下钻');
 assert.match(endpoints, /样本调用链/, '端点详情必须提供样本 Trace');
 assert.match(errors, /getIssues\(/, '错误页必须来自真实 Issue 查询');
 assert.match(errors, /ApmIssueList/, '错误页必须复用 Issue 卡片而不是就地渲染');
+assert.match(errors, /service_namespace/, '错误分析必须能承接服务详情带来的服务筛选');
 assert.doesNotMatch(errors, /entry_only/, '探索错误分析必须保留全量 Error Span，不得按入口 Span 收窄');
 assert.doesNotMatch(errors, /Issue 自动聚类将在数据能力就绪后接入|当前版本按错误调用链展示/, '错误页不得堆叠能力规划说明');
 assert.match(issueList, /sample_traces/, '错误页必须展示样本调用链');
