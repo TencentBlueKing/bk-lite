@@ -151,7 +151,7 @@ class MonitorCollectionPlugin:
         timeout_seconds: float,
     ) -> AccessProbeResult:
         monitor_type = str(context.params.get("monitor_type") or "")
-        if monitor_type == "host":
+        if monitor_type in {"host", "host_aix", "host_aix_remote"}:
             # 到目标 SSH Attempt 由 Responder 负责；此处不伪造 UNKNOWN→采集
             return AccessProbeResult(status=AccessProbeStatus.NOT_SUPPORTED)
         factory = self._collector_factories.get(monitor_type)
@@ -179,7 +179,7 @@ class MonitorCollectionPlugin:
         context: TargetCollectionContext,
     ) -> CollectOutcome:
         monitor_type = str(context.params.get("monitor_type") or "")
-        if monitor_type == "host":
+        if monitor_type in {"host", "host_aix", "host_aix_remote"}:
             return await self._collect_host_remote(target, credential, context)
         factory = self._collector_factories.get(monitor_type)
         if factory is None:
@@ -369,7 +369,7 @@ def _load_monitor_collector(monitor_type: str):
         from tasks.collectors.host_wmi_collector import WindowsWmiCollector
 
         return WindowsWmiCollector
-    if monitor_type == "host":
+    if monitor_type in {"host", "host_aix", "host_aix_remote"}:
         from tasks.collectors.host_collector import HostCollector
 
         return HostCollector

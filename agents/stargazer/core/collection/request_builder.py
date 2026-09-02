@@ -185,7 +185,7 @@ def _apply_preflight_defaults(params: dict[str, Any], plugin_name: str, family: 
             params["preflight_kind"] = "remote"
             params.setdefault("port", 22)
         return
-    if plugin_name in {"host", "network_config_file"}:
+    if plugin_name in {"host", "host_aix", "host_aix_remote", "network_config_file"}:
         params["preflight_kind"] = "remote"
         params.setdefault("port", 22)
         return
