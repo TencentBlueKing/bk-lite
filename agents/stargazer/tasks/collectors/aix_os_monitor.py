@@ -240,9 +240,13 @@ def parse_aix_metrics_to_prometheus(
             path = disk.get("path") or mount
             fstype = disk.get("fstype") or ""
             disk_labels = f"{base_labels},{_format_prometheus_labels(mount=mount, path=path, fstype=fstype)}"
-            total = disk.get("total_bytes", 0)
-            used = disk.get("used_bytes", 0)
-            free = _metric_value(disk, "free_bytes", "available_bytes", default=max(_as_float(total) - _as_float(used), 0))
+            used = _as_float(disk.get("used_bytes", 0))
+            free = _as_float(_metric_value(disk, "free_bytes", "available_bytes", default=0))
+            total = _as_float(disk.get("total_bytes", 0))
+            if total <= 0:
+                total = used + free
+            if free <= 0 and total > used:
+                free = total - used
             _append_gauge(lines, "disk_total", disk_labels, total, timestamp, "Disk total bytes")
             _append_gauge(lines, "disk_free", disk_labels, free, timestamp, "Disk free bytes")
             _append_gauge(lines, "disk_used_percent", disk_labels, disk.get("used_percent", 0), timestamp, "Disk used percent")

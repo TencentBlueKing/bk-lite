@@ -312,33 +312,94 @@ if [ -n "${LSPS_OUT}" ]; then
   [ -n "$2" ] && SWAP_FREE=$2
 fi
 
-# --- df: capacity + inodes. Skip if missing. ---
+# --- df: capacity + inodes. Skip if missing.
+# -F letters: used, free, %used, iused, ifree, %iused, mount.
+# AIX may still print filesystem and allocated (1024-blocks) beside -F fields.
+# Parse by header names / those meanings. Never treat %used as bytes. ---
+DF_OUT=""
+if _have df; then
+  DF_OUT=$(df -kP -F '%u %f %z %l %n %p %m' 2>/dev/null)
+fi
 DISK_JSON=$(
-  DF_OUT=$(_run df -kP -F '%u %f %z %l %n %p %m')
   printf '%s\n' "${DF_OUT}" | awk '
-    BEGIN { first=1; print "[" }
-    $1 == "Filesystem" { next }
-    $NF == "on" { next }
-    $1 ~ /^(procfs|proc|nfs|nfs3|nfs4|autofs|namefs|cdrom|iso9660|ahafs|Used|used)$/ { next }
-    NF >= 7 {
-      mount=$NF
-      if (mount == "/proc" || mount == "/ahafs" || mount == "on") next
-      if ($1 ~ /^[0-9]/) {
-        usedkb=$1+0; freekb=$2+0; sizekb=$3+0; iused=$4+0; ifree=$5+0; pct=$6
-      } else if ($1 ~ /^(procfs|proc|nfs|nfs3|nfs4|autofs|namefs|cdrom|iso9660|ahafs)$/) {
-        next
-      } else {
-        usedkb=$2+0; freekb=$3+0; sizekb=$4+0; iused=$5+0; ifree=$6+0; pct=$7
+    function reset_cols() {
+      used_c=0; free_c=0; pct_c=0; iused_c=0; ifree_c=0; ipct_c=0; alloc_c=0
+    }
+    function is_header(    i, t) {
+      for (i=1; i<=NF; i++) {
+        t=tolower($i)
+        if (t=="filesystem" || t=="allocated" || t=="1024-blocks" || t=="512-blocks" || t=="%used" || t=="iused" || t=="%iused" || t=="ifree" || t=="mounted" || t=="capacity") return 1
       }
-      gsub(/%/, "", pct)
-      ipct=0
-      if (iused+ifree > 0) ipct = iused * 100 / (iused+ifree)
-      if (mount ~ /^\/proc/) next
+      return 0
+    }
+    function map_header(    i, t) {
+      reset_cols()
+      for (i=1; i<=NF; i++) {
+        t=tolower($i)
+        if (t=="1024-blocks" || t=="512-blocks" || t=="allocated") alloc_c=i
+        else if (t=="%used" || t=="capacity" || t=="use%") pct_c=i
+        else if (t=="%iused") ipct_c=i
+        else if (t=="used") used_c=i
+        else if (t=="free" || t=="available") free_c=i
+        else if (t=="iused") iused_c=i
+        else if (t=="ifree") ifree_c=i
+      }
+    }
+    function num_at(c,    s) {
+      if (c<1 || c>NF) return 0
+      s=$c
+      gsub(/%/, "", s)
+      return s+0
+    }
+    function skip_fs(m, fs) {
+      if (m=="on" || m=="/proc" || m=="/ahafs" || m ~ /^\/proc/ || m ~ /^\/ahafs/) return 1
+      if (fs ~ /^(procfs|proc|nfs|nfs3|nfs4|autofs|namefs|cdrom|iso9660|ahafs)$/) return 1
+      if (fs=="/proc" || fs=="/ahafs") return 1
+      return 0
+    }
+    BEGIN { first=1; have_hdr=0; print "[" }
+    NF==0 { next }
+    is_header() { map_header(); have_hdr=1; next }
+    $NF=="on" { next }
+    {
+      mount=$NF
+      fs=$1
+      if (skip_fs(mount, fs)) next
+      usedkb=0; freekb=0; allockb=0; iused=0; ifree=0; pct=0; ipct=0
+      mapped=0
+      if (have_hdr && used_c>0 && free_c>0) {
+        usedkb=num_at(used_c)
+        freekb=num_at(free_c)
+        if (pct_c>0) pct=num_at(pct_c)
+        if (iused_c>0) iused=num_at(iused_c)
+        if (ifree_c>0) ifree=num_at(ifree_c)
+        if (ipct_c>0) ipct=num_at(ipct_c)
+        if (alloc_c>0) allockb=num_at(alloc_c)
+        mapped=1
+      }
+      if (!mapped && $1 ~ /^[0-9]/ && NF>=7) {
+        usedkb=$1+0; freekb=$2+0; pct=$3; iused=$4+0; ifree=$5+0; ipct=$6
+        gsub(/%/, "", pct); gsub(/%/, "", ipct); pct+=0; ipct+=0
+        mapped=1
+      }
+      if (!mapped && NF>=9) {
+        allockb=$2+0; usedkb=$3+0; freekb=$4+0; pct=$5; iused=$6+0; ifree=$7+0; ipct=$8
+        gsub(/%/, "", pct); gsub(/%/, "", ipct); pct+=0; ipct+=0
+        mapped=1
+      }
+      if (!mapped && NF==8 && $1 !~ /^[0-9]/) {
+        usedkb=$2+0; freekb=$3+0; pct=$4; iused=$5+0; ifree=$6+0; ipct=$7
+        gsub(/%/, "", pct); gsub(/%/, "", ipct); pct+=0; ipct+=0
+        mapped=1
+      }
+      if (!mapped) next
+      if (allockb<=0) allockb=usedkb+freekb
+      if (ipct==0 && (iused+ifree)>0) ipct=iused*100/(iused+ifree)
       if (!first) printf ","
       first=0
       gsub(/\\/, "\\\\", mount)
       gsub(/"/, "\\\"", mount)
-      printf "{\"mount\":\"%s\",\"path\":\"%s\",\"fstype\":\"\",\"total_bytes\":%.0f,\"used_bytes\":%.0f,\"free_bytes\":%.0f,\"used_percent\":%.2f,\"inodes_used_percent\":%.2f,\"iused\":%.0f,\"ifree\":%.0f}", mount, mount, sizekb*1024, usedkb*1024, freekb*1024, pct+0, ipct+0, iused+0, ifree+0
+      printf "{\"mount\":\"%s\",\"path\":\"%s\",\"fstype\":\"\",\"total_bytes\":%.0f,\"used_bytes\":%.0f,\"free_bytes\":%.0f,\"used_percent\":%.2f,\"inodes_used_percent\":%.2f,\"iused\":%.0f,\"ifree\":%.0f}", mount, mount, allockb*1024, usedkb*1024, freekb*1024, pct+0, ipct+0, iused+0, ifree+0
     }
     END { print "]" }
   '
