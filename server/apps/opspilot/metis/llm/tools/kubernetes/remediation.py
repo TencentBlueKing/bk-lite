@@ -11,7 +11,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from loguru import logger
 
-from apps.opspilot.metis.llm.tools.kubernetes.utils import prepare_context
+from apps.opspilot.metis.llm.tools.kubernetes.utils import coerce_bool, coerce_int, prepare_context
 
 
 def _log_operation(operation: str, namespace: str, resource_type: str, resource_name: str):
@@ -100,6 +100,8 @@ def restart_pod(
             "ungated": True,
         },
     )
+    wait_for_ready = coerce_bool(wait_for_ready, True)
+    timeout = coerce_int(timeout, 60, lo=1, hi=600)
     prepare_context(config)
 
     try:
@@ -244,6 +246,10 @@ def scale_deployment(deployment_name: str, namespace: str, replicas: int, config
     - 缩容：建议逐步缩容，观察服务影响
     - 生产环境：谨慎缩容到0副本（会导致服务完全下线）
     """
+    try:
+        replicas = coerce_int(replicas, lo=0, hi=10000)
+    except ValueError:
+        return json.dumps({"success": False, "error": "replicas 必须是整数", "resource_name": deployment_name, "namespace": namespace})
     # TODO(security F022): gate behind human approval + namespace allow-list
     logger.warning(
         "UNGATED destructive K8S operation",
@@ -464,6 +470,10 @@ def rollback_deployment(deployment_name: str, namespace: str, revision: Optional
     - 生产环境回滚建议先在测试环境验证
     - 回滚后观察服务状态，确认问题已解决
     """
+    try:
+        revision = coerce_int(revision, lo=1, hi=10_000_000, allow_none=True)
+    except ValueError:
+        return json.dumps({"success": False, "error": "revision 必须是整数", "deployment_name": deployment_name, "namespace": namespace})
     # TODO(security F022): gate behind human approval + namespace allow-list
     logger.warning(
         "UNGATED destructive K8S operation",
@@ -673,7 +683,7 @@ def delete_kubernetes_resource(
 
 
 @tool()
-def wait_for_pod_ready(pod_name, namespace, timeout=60, config: RunnableConfig = None):
+def wait_for_pod_ready(pod_name, namespace, timeout: int = 60, config: RunnableConfig = None):
     """
     等待Pod就绪，验证操作成功
 
@@ -717,6 +727,7 @@ def wait_for_pod_ready(pod_name, namespace, timeout=60, config: RunnableConfig =
     - 超时不代表Pod永远不会就绪，只是超过等待时间
     """
     prepare_context(config)
+    timeout = coerce_int(timeout, 60, lo=1, hi=600)
 
     try:
         core_v1 = client.CoreV1Api()

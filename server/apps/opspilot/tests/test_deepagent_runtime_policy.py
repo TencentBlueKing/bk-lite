@@ -1,4 +1,8 @@
+import io
 import json
+import logging
+import traceback
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
@@ -6,10 +10,26 @@ from langchain.agents.middleware import ModelRequest, ModelResponse
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 
+from apps.core.logger import SafeLogException, opspilot_logger
 from apps.opspilot.metis.llm.agent.tool_execution_planner import CompletedExecutionStep, ToolExecutionPlanner
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
 from apps.opspilot.metis.llm.middleware.token_usage import TokenUsageTrackingMiddleware
 from apps.opspilot.metis.llm.middleware.tool_runtime import SkillExecutionGuardMiddleware, ToolVisibilityMiddleware
+
+_TOOL_SECRET_SENTINEL = "kubeconfig-hunter2-not-for-logs"
+
+
+@contextmanager
+def _capture_opspilot_formatted_logs():
+    output = io.StringIO()
+    handler = logging.StreamHandler(output)
+    handler.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
+    opspilot_logger.addHandler(handler)
+    try:
+        yield output
+    finally:
+        opspilot_logger.removeHandler(handler)
+
 
 pytestmark = pytest.mark.unit
 
@@ -239,6 +259,56 @@ def test_tool_exception_middleware_returns_error_tool_message():
     assert result.tool_call_id == "c1"
     assert "无法加载 Kubernetes 配置" in result.content
     assert "Invalid base64" in result.content
+
+
+def test_tool_exception_middleware_logs_once_without_exception_payload(caplog):
+    from apps.opspilot.metis.llm.middleware.tool_runtime import ToolExceptionAsResultMiddleware
+
+    middleware = ToolExceptionAsResultMiddleware()
+    original = TypeError(f"cannot pickle '_thread.lock' object {_TOOL_SECRET_SENTINEL}")
+
+    def boom(_req):
+        raise original
+
+    req = SimpleNamespace(tool_call={"name": "resolve_k8s_target_from_alert", "id": "c1", "args": {}})
+    caplog.set_level(logging.ERROR, logger="opspilot")
+    with _capture_opspilot_formatted_logs() as output:
+        result = middleware.wrap_tool_call(req, boom)
+    rendered = output.getvalue()
+
+    assert isinstance(result, ToolMessage)
+    assert result.status == "error"
+    assert result.tool_call_id == "c1"
+    assert result.name == "resolve_k8s_target_from_alert"
+    assert _TOOL_SECRET_SENTINEL in result.content
+    owned = [
+        rec
+        for rec in caplog.records
+        if rec.name == "opspilot"
+        and rec.levelno == logging.ERROR
+        and rec.exc_info
+        and rec.msg == "event=agent_tool_failed failed_stage=tool_call error_type=%s tool_name=%s"
+    ]
+    assert len(owned) == 1
+    rec = owned[0]
+    assert rec.args == ("TypeError", "resolve_k8s_target_from_alert")
+    message = rec.getMessage()
+    assert "failed_stage=tool_call" in message
+    assert "error_type=TypeError" in message
+    assert "tool_name=resolve_k8s_target_from_alert" in message
+    assert rec.exc_info[0] is SafeLogException
+    assert rec.exc_info[1] is not original
+    assert rec.exc_info[2] is original.__traceback__
+    assert str(rec.exc_info[1]) == "TypeError"
+    assert str(original) == f"cannot pickle '_thread.lock' object {_TOOL_SECRET_SENTINEL}"
+    frame_names = [frame.name for frame in traceback.extract_tb(rec.exc_info[2])]
+    assert "boom" in frame_names
+    assert _TOOL_SECRET_SENTINEL not in message
+    assert "Traceback" in rendered
+    assert "boom" in rendered
+    assert _TOOL_SECRET_SENTINEL not in rendered
+    traceback_errors = [r for r in caplog.records if r.name == "opspilot" and r.levelno >= logging.ERROR and r.exc_info]
+    assert traceback_errors == owned
 
 
 def test_dynamic_tool_visibility_exposes_step_tools_plus_always_on_fs():
@@ -481,7 +551,67 @@ async def test_planner_catalog_prepends_k8s_namespace_lookup_hint():
     prompt = "\n".join(str(message.content) for message in llm.messages)
     assert "缺 namespace" in prompt or "反查" in prompt
     assert "diagnose_kubernetes_pod_issues" in prompt
-    assert plan.steps[0].tools[0] == "resolve_k8s_target_from_alert"
+    assert "禁止用 list_kubernetes_pods" in prompt
+    assert "namespace 留空" not in prompt
+    assert "只需规划 resolve_k8s_target_from_alert" not in prompt
+    assert "不要只规划反查就结束" in prompt
+    assert plan.steps[0].tools == ["resolve_k8s_target_from_alert"]
+
+
+@pytest.mark.asyncio
+async def test_planner_task_prompt_includes_agent_system_prompt():
+    tools = [
+        _tool("resolve_k8s_target_from_alert", "从告警解析目标"),
+        _tool("diagnose_kubernetes_pod_issues", "诊断 Pod"),
+        _tool("get_kubernetes_pod_logs", "查日志"),
+    ]
+
+    class FakeLLM:
+        def __init__(self):
+            self.messages = None
+
+        async def ainvoke(self, messages, config=None):
+            self.messages = messages
+            return AIMessage(
+                content=json.dumps(
+                    {
+                        "goal": "复盘告警",
+                        "steps": [
+                            {"objective": "反查命名空间", "tools": ["resolve_k8s_target_from_alert"]},
+                            {"objective": "取证诊断", "tools": ["diagnose_kubernetes_pod_issues", "get_kubernetes_pod_logs"]},
+                        ],
+                    },
+                    ensure_ascii=False,
+                )
+            )
+
+    llm = FakeLLM()
+    plan = await ToolExecutionPlanner(llm).plan(
+        "告警：Unhealthy（kubernetes，minikube，kube-scheduler-minikube）",
+        tools,
+        agent_system_prompt=("你是 Kubernetes 集群 RCA 助手。目标是证据闭环。" "单次任务：解析告警 → 有界反查 → 仅对象仍在时按需取证 → 写报告。" "【附件生成强制规则】这段模板不应进入规划器任务说明。"),
+    )
+    prompt = "\n".join(str(message.content) for message in llm.messages)
+    assert "助手任务说明" in prompt
+    assert "有界反查" in prompt
+    assert "按需取证" in prompt
+    assert "规划须对齐「助手任务说明」" in prompt
+    assert "附件生成强制规则" not in prompt
+    assert [step.tools for step in plan.steps] == [
+        ["resolve_k8s_target_from_alert"],
+        ["diagnose_kubernetes_pod_issues", "get_kubernetes_pod_logs"],
+    ]
+
+
+def test_agent_task_brief_strips_attachment_rule_and_truncates():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import _agent_task_brief
+
+    brief = _agent_task_brief("角色说明：取证后写报告\n【附件生成强制规则】这段是模板")
+    assert "取证后写报告" in brief
+    assert "附件生成强制规则" not in brief
+    truncated = _agent_task_brief("目标" + ("取证" * 2000), limit=40)
+    assert len(truncated) <= 41
+    assert truncated.endswith("…")
 
 
 @pytest.mark.asyncio
@@ -698,6 +828,31 @@ def test_classify_tool_failure_kind_separates_auth_from_retryable():
     assert unrecoverable_skill_result_hint('{"ok":false,"error":{"code":6,"message":"Cannot reach"}}') is None
 
 
+def test_resolve_planned_execution_compact_limits_scales_with_working_budget():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import (
+        planned_execution_compact_limits_for_request,
+        resolve_planned_execution_compact_limits,
+    )
+
+    assert resolve_planned_execution_compact_limits() == (1500, 1000)
+    assert resolve_planned_execution_compact_limits(input_working_tokens=None) == (1500, 1000)
+    assert resolve_planned_execution_compact_limits(input_working_tokens=0) == (1500, 1000)
+    assert resolve_planned_execution_compact_limits(input_working_tokens=6800) == (1500, 1000)
+
+    tool_chars, ai_chars = resolve_planned_execution_compact_limits(input_working_tokens=186_000)
+    assert tool_chars == 37_200
+    assert ai_chars == 27_352
+    assert tool_chars > 1500
+    assert ai_chars > 1000
+
+    request = SimpleNamespace(
+        extra_config={"input_working_tokens": 186_000},
+        message_trim_config={"max_single_message_tokens": 37_200},
+    )
+    assert planned_execution_compact_limits_for_request(request) == (37_200, 27_352)
+    assert planned_execution_compact_limits_for_request(SimpleNamespace(extra_config={})) == (1500, 1000)
+
+
 def test_compact_planned_execution_messages_truncates_tool_and_ai_text():
     from langchain_core.messages import AIMessage, ToolMessage
 
@@ -842,6 +997,53 @@ def test_enforce_k8s_namespace_lookup_first_prepends_resolve_step():
     )
     assert [step.tools for step in fixed_mid.steps] == [
         ["current_time"],
+        ["resolve_k8s_target_from_alert"],
+        ["diagnose_kubernetes_pod_issues"],
+    ]
+
+
+def test_enforce_k8s_namespace_lookup_strips_cluster_wide_scans():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import ToolExecutionPlan, ToolExecutionStep, enforce_k8s_namespace_lookup_first
+
+    packed = ToolExecutionPlan(
+        goal="RCA",
+        steps=[
+            ToolExecutionStep(
+                objective="定位 Pod",
+                tools=["resolve_k8s_target_from_alert", "list_kubernetes_pods", "list_kubernetes_events"],
+            )
+        ],
+    )
+    fixed_packed = enforce_k8s_namespace_lookup_first(
+        packed,
+        {
+            "resolve_k8s_target_from_alert",
+            "list_kubernetes_pods",
+            "list_kubernetes_events",
+            "diagnose_kubernetes_pod_issues",
+        },
+        max_steps=4,
+    )
+    assert [step.tools for step in fixed_packed.steps] == [["resolve_k8s_target_from_alert"]]
+
+    scanned = ToolExecutionPlan(
+        goal="RCA",
+        steps=[
+            ToolExecutionStep(objective="扫全集群", tools=["list_kubernetes_pods", "list_kubernetes_events"]),
+            ToolExecutionStep(objective="诊断 Pod", tools=["diagnose_kubernetes_pod_issues"]),
+        ],
+    )
+    fixed_scanned = enforce_k8s_namespace_lookup_first(
+        scanned,
+        {
+            "resolve_k8s_target_from_alert",
+            "list_kubernetes_pods",
+            "list_kubernetes_events",
+            "diagnose_kubernetes_pod_issues",
+        },
+        max_steps=4,
+    )
+    assert [step.tools for step in fixed_scanned.steps] == [
         ["resolve_k8s_target_from_alert"],
         ["diagnose_kubernetes_pod_issues"],
     ]

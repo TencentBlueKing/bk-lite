@@ -7,7 +7,8 @@ from kubernetes.client import ApiException
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
-from apps.opspilot.metis.llm.tools.kubernetes.utils import format_bytes, parse_resource_quantity, prepare_context
+from apps.opspilot.metis.llm.tools.kubernetes.instance_scope import prepare_point_instance, run_scan_tool
+from apps.opspilot.metis.llm.tools.kubernetes.utils import coerce_int, format_bytes, parse_resource_quantity, prepare_context
 
 _EVENT_TIME_MIN = datetime.min.replace(tzinfo=timezone.utc)
 
@@ -22,7 +23,7 @@ def _event_sort_time(event):
 
 
 @tool()
-def get_failed_kubernetes_pods(config: RunnableConfig = None):
+def get_failed_kubernetes_pods(instance_name=None, config: RunnableConfig = None):
     """
     发现集群中所有失败或异常的Pod
 
@@ -65,6 +66,10 @@ def get_failed_kubernetes_pods(config: RunnableConfig = None):
     - 分析镜像问题 → 检查imageRegistry配置和Secret
     - 需要恢复服务 → 使用 restart_pod 或 delete_kubernetes_resource
     """
+    return run_scan_tool(config, instance_name, _get_failed_kubernetes_pods_on_instance)
+
+
+def _get_failed_kubernetes_pods_on_instance(config: RunnableConfig = None):
     prepare_context(config)
     try:
         core_v1 = client.CoreV1Api()
@@ -170,7 +175,7 @@ def _not_ready_pod_record(pod) -> dict:
 
 
 @tool()
-def get_not_ready_kubernetes_pods(namespace=None, config: RunnableConfig = None):
+def get_not_ready_kubernetes_pods(namespace=None, instance_name=None, config: RunnableConfig = None):
     """
     发现 Running 但未就绪的 Pod（Readiness 失败入口）
 
@@ -185,8 +190,13 @@ def get_not_ready_kubernetes_pods(namespace=None, config: RunnableConfig = None)
 
     Args:
         namespace (str, optional): 命名空间；省略则扫描全部命名空间
+        instance_name (str, optional): 多实例时指定集群；省略则扫描全部已配置实例
         config (RunnableConfig): 工具配置（自动传递）
     """
+    return run_scan_tool(config, instance_name, lambda bound: _get_not_ready_kubernetes_pods_on_instance(namespace, bound))
+
+
+def _get_not_ready_kubernetes_pods_on_instance(namespace, config: RunnableConfig = None):
     prepare_context(config)
     try:
         core_v1 = client.CoreV1Api()
@@ -207,7 +217,7 @@ def get_not_ready_kubernetes_pods(namespace=None, config: RunnableConfig = None)
 
 
 @tool()
-def get_pending_kubernetes_pods(config: RunnableConfig = None):
+def get_pending_kubernetes_pods(instance_name=None, config: RunnableConfig = None):
     """
     发现无法调度或启动的Pending状态Pod
 
@@ -248,6 +258,10 @@ def get_pending_kubernetes_pods(config: RunnableConfig = None):
     - 检查节点状态 → 使用 diagnose_node_issues
     - 存储问题 → 使用 check_kubernetes_persistent_volumes
     """
+    return run_scan_tool(config, instance_name, _get_pending_kubernetes_pods_on_instance)
+
+
+def _get_pending_kubernetes_pods_on_instance(config: RunnableConfig = None):
     prepare_context(config)
     try:
         core_v1 = client.CoreV1Api()
@@ -293,7 +307,7 @@ def get_pending_kubernetes_pods(config: RunnableConfig = None):
 
 
 @tool()
-def get_high_restart_kubernetes_pods(restart_threshold: int = 5, config: RunnableConfig = None):
+def get_high_restart_kubernetes_pods(restart_threshold: int = 5, instance_name=None, config: RunnableConfig = None):
     """
     发现频繁重启的不稳定Pod
 
@@ -343,6 +357,11 @@ def get_high_restart_kubernetes_pods(restart_threshold: int = 5, config: Runnabl
     - 查看完整事件历史 → 使用 get_resource_events_timeline
     - 查看容器日志 → 使用 get_kubernetes_pod_logs
     """
+    restart_threshold = coerce_int(restart_threshold, 5, lo=0, hi=10000)
+    return run_scan_tool(config, instance_name, lambda bound: _get_high_restart_kubernetes_pods_on_instance(restart_threshold, bound))
+
+
+def _get_high_restart_kubernetes_pods_on_instance(restart_threshold, config: RunnableConfig = None):
     prepare_context(config)
     try:
         core_v1 = client.CoreV1Api()
@@ -645,7 +664,7 @@ def get_kubernetes_orphaned_resources(config: RunnableConfig = None):
 
 
 @tool()
-def diagnose_kubernetes_pod_issues(namespace, pod_name, config: RunnableConfig = None):  # noqa: C901
+def diagnose_kubernetes_pod_issues(namespace, pod_name, instance_name=None, config: RunnableConfig = None):  # noqa: C901
     """
     深度诊断单个Pod的所有问题 - 一站式故障排查
 
@@ -696,6 +715,9 @@ def diagnose_kubernetes_pod_issues(namespace, pod_name, config: RunnableConfig =
     - 需要重启恢复 → 使用 restart_pod
     - 卷挂载问题 → 使用 check_kubernetes_persistent_volumes
     """
+    config, instance_error = prepare_point_instance(config, instance_name)
+    if instance_error:
+        return instance_error
     prepare_context(config)
     try:
         core_v1 = client.CoreV1Api()

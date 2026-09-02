@@ -10,7 +10,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from loguru import logger
 
-from apps.opspilot.metis.llm.tools.kubernetes.utils import prepare_context
+from apps.opspilot.metis.llm.tools.kubernetes.utils import coerce_bool, prepare_context
 
 
 def _log_operation(operation: str, namespace: str, resource_type: str, count: int):
@@ -28,7 +28,7 @@ def _log_operation(operation: str, namespace: str, resource_type: str, count: in
 
 
 @tool()
-def batch_restart_pods(namespace, label_selector=None, pod_names=None, wait_for_ready=False, config: RunnableConfig = None):
+def batch_restart_pods(namespace, label_selector=None, pod_names=None, wait_for_ready: bool = False, config: RunnableConfig = None):
     """
     批量重启Pod，提升运维效率
 
@@ -93,6 +93,7 @@ def batch_restart_pods(namespace, label_selector=None, pod_names=None, wait_for_
     ```
     """
     prepare_context(config)
+    wait_for_ready = coerce_bool(wait_for_ready, False)
 
     try:
         core_v1 = client.CoreV1Api()
@@ -391,7 +392,7 @@ def find_configmap_consumers(configmap_name, namespace, config: RunnableConfig =
 
 
 @tool()
-def cleanup_failed_pods(namespace=None, include_evicted=True, config: RunnableConfig = None):
+def cleanup_failed_pods(namespace=None, include_evicted: bool = True, config: RunnableConfig = None):
     """
     批量清理失败的Pod，释放资源
 
@@ -457,6 +458,7 @@ def cleanup_failed_pods(namespace=None, include_evicted=True, config: RunnableCo
     ```
     """
     prepare_context(config)
+    include_evicted = coerce_bool(include_evicted, True)
 
     try:
         core_v1 = client.CoreV1Api()

@@ -3060,9 +3060,11 @@ class ToolsNodes(
                         "当前没有可用工具，不要继续调用工具；"
                         "请用一两句告知用户查看上方报告与修复建议，不要重复 Markdown 表格或声称数据被截断。"
                     )
-                elif len(completed_steps) == 1 and self._planned_step_already_answered(collected_output_messages):
-                    # 单步已经把答案写进正文（技能表 / 工具一两句话）。
-                    # 再跑总结轮会换个说法复述，用户看到两份结果。
+                elif self._should_skip_planned_summary(
+                    collected_output_messages,
+                    completed_step_count=len(completed_steps),
+                ):
+                    # 步骤正文已经给过表格或完整答案。再跑总结轮会换个说法复述。
                     result = {"messages": list(agent_state.get("messages") or [])}
                     final_message = None
                 else:
@@ -3071,7 +3073,7 @@ class ToolsNodes(
                         f"已完成步骤及结果：\n{completed_text}\n\n"
                         "现在向用户给出最终答案。当前没有可用工具，不要继续调用工具；"
                         "请基于已有证据直接总结结论、依据和下一步建议。"
-                        "用户已经看过步骤里的表格或清单时，不要再输出表格、不要重复名单，最多补一两句。"
+                        "禁止再输出 Markdown 表格或重复名单；用户若已看过步骤结果，最多补一两句。"
                     )
                 if final_message is not None:
                     final_payload = {
