@@ -1,3 +1,5 @@
+import { PORTAL_HOME_PATH } from '@/utils/route';
+
 export const AUTH_POPUP_SUCCESS_MESSAGE = 'bk-lite-auth-popup-success';
 export const LOGIN_AUTH_RESULT_RETURN_MESSAGE = 'bk-lite-login-auth-result-return';
 export const SIGNIN_WINDOW_NAME = 'bk-lite-signin';
@@ -55,7 +57,7 @@ function isSameOriginUrl(targetUrl: string, knownOrigin?: string): boolean {
 }
 
 export function toSafeRelativeCallbackUrl(callbackUrl?: string, currentOrigin?: string): string {
-  const targetUrl = callbackUrl || '/';
+  const targetUrl = callbackUrl || PORTAL_HOME_PATH;
   const isProtocolRelative = targetUrl.startsWith('//');
 
   if (targetUrl.startsWith('/') && !isProtocolRelative) {
@@ -63,18 +65,18 @@ export function toSafeRelativeCallbackUrl(callbackUrl?: string, currentOrigin?: 
   }
 
   if (isProtocolRelative) {
-    return '/';
+    return PORTAL_HOME_PATH;
   }
 
   try {
     const parsed = new URL(targetUrl);
     if (!isSameOriginUrl(targetUrl, currentOrigin)) {
-      return '/';
+      return PORTAL_HOME_PATH;
     }
 
-    return `${parsed.pathname}${parsed.search}${parsed.hash}` || '/';
+    return `${parsed.pathname}${parsed.search}${parsed.hash}` || PORTAL_HOME_PATH;
   } catch {
-    return '/';
+    return PORTAL_HOME_PATH;
   }
 }
 
@@ -84,7 +86,7 @@ export function buildThirdLoginCallbackUrl(
   thirdLogin?: string | boolean | null,
   currentOrigin?: string,
 ): string {
-  const targetUrl = callbackUrl || '/';
+  const targetUrl = callbackUrl || PORTAL_HOME_PATH;
 
   if (!isThirdLoginFlagEnabled(thirdLogin) || !token) {
     return targetUrl;
@@ -106,11 +108,11 @@ export function buildThirdLoginCallbackUrl(
     // the auth token to an attacker-controlled server.
     if (isProtocolRelative || !isSameOriginUrl(targetUrl, currentOrigin)) {
       console.warn(
-        'buildThirdLoginCallbackUrl: cross-origin callbackUrl rejected, falling back to "/"',
+        `buildThirdLoginCallbackUrl: cross-origin callbackUrl rejected, falling back to "${PORTAL_HOME_PATH}"`,
         // Log only the origin portion to avoid echoing attacker-controlled path/query into logs.
         (() => { try { return new URL(targetUrl).origin; } catch { return '[invalid URL]'; } })(),
       );
-      return '/';
+      return PORTAL_HOME_PATH;
     }
 
     const url = new URL(targetUrl);
@@ -118,7 +120,7 @@ export function buildThirdLoginCallbackUrl(
     return url.toString();
   } catch (error) {
     console.error('Failed to build third login callback URL:', error);
-    return '/';
+    return PORTAL_HOME_PATH;
   }
 }
 
@@ -128,20 +130,20 @@ export function buildLegacyThirdLoginCallbackUrl(
   thirdLoginCode?: string,
 ): string {
   if (!callbackUrl || !token || !thirdLoginCode) {
-    return '/';
+    return PORTAL_HOME_PATH;
   }
 
   try {
     const url = new URL(callbackUrl);
     if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-      return '/';
+      return PORTAL_HOME_PATH;
     }
 
     url.searchParams.set('third_login_code', thirdLoginCode);
     url.searchParams.set('token', token);
     return url.toString();
   } catch {
-    return '/';
+    return PORTAL_HOME_PATH;
   }
 }
 
@@ -167,7 +169,7 @@ export function buildOauthCallbackBridgeUrl(
   thirdLogin?: string | boolean | null,
   provider?: string | null,
 ): string {
-  const targetUrl = callbackUrl || '/';
+  const targetUrl = callbackUrl || PORTAL_HOME_PATH;
 
   if (!isThirdLoginFlagEnabled(thirdLogin)) {
     return targetUrl;
@@ -190,7 +192,7 @@ export function buildPopupSigninUrl(options?: {
   thirdLogin?: string | boolean | null;
   provider?: string | null;
 }): string {
-  const targetUrl = options?.callbackUrl || '/';
+  const targetUrl = options?.callbackUrl || PORTAL_HOME_PATH;
   const searchParams = new URLSearchParams({
     callbackUrl: targetUrl,
     popup: 'true',
@@ -211,7 +213,7 @@ export function buildWechatPopupUrl(options?: {
   callbackUrl?: string;
   thirdLogin?: string | boolean | null;
 }): string {
-  const targetUrl = options?.callbackUrl || '/';
+  const targetUrl = options?.callbackUrl || PORTAL_HOME_PATH;
   const searchParams = new URLSearchParams({
     callbackUrl: targetUrl,
   });
