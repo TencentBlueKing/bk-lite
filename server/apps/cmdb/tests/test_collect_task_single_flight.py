@@ -1,7 +1,6 @@
 """CMDB 采集任务单任务互斥测试。"""
 
 import pydantic.root_model  # noqa: F401
-
 import pytest
 from django.utils.timezone import now
 
@@ -82,10 +81,6 @@ def test_manual_execution_token_can_be_claimed_by_worker(monkeypatch):
         exec_time=now(),
         task_id="execution-A",
     )
-    monkeypatch.setattr(
-        "apps.cmdb.services.collect_dispatch_service.CollectDispatchService.should_dispatch",
-        staticmethod(lambda instance: False),
-    )
 
     class FakeCollect:
         def __init__(self, task):
@@ -142,6 +137,29 @@ def test_manual_exec_atomically_claims_and_dispatches_execution_token(
     assert task.format_data == {}
     assert task.collect_digest == {}
     delay.assert_called_once_with(task.id, task.task_id, None, None)
+
+
+@pytest.mark.django_db
+def test_config_file_task_rejects_manual_execution(mocker):
+    task = create_collect_task(
+        task_type=CollectPluginTypes.CONFIG_FILE,
+        model_id="config_file",
+        driver_type="job",
+    )
+    response_error = mocker.patch(
+        "apps.cmdb.services.collect_service.WebUtils.response_error",
+        return_value={"blocked": True},
+    )
+    delay = mocker.patch("apps.cmdb.services.collect_service.sync_collect_task.delay")
+
+    result = CollectModelService.exec_task(task, operator="tester")
+
+    assert result == {"blocked": True}
+    response_error.assert_called_once_with(
+        error_message="配置文件采集仅支持周期执行",
+        status_code=400,
+    )
+    delay.assert_not_called()
 
 
 @pytest.mark.django_db

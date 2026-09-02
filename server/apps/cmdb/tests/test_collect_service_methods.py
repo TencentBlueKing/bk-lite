@@ -155,7 +155,7 @@ class TestPrimitives:
 
     def test_should_register_sync_beat(self):
         assert not CollectModelService.should_register_sync_beat(fake_instance(task_type=CollectPluginTypes.HOST))
-        assert CollectModelService.should_register_sync_beat(fake_instance(task_type=CollectPluginTypes.CONFIG_FILE))
+        assert not CollectModelService.should_register_sync_beat(fake_instance(task_type=CollectPluginTypes.CONFIG_FILE))
         assert CollectModelService.should_register_sync_beat(fake_instance(task_type=CollectPluginTypes.K8S))
 
 
@@ -773,7 +773,7 @@ class TestCollectCrudSideEffects:
         delete_task.assert_called_once()
         push_node_params.assert_called_once_with(instance)
 
-    def test_create_config_file_仍注册按任务beat(self, mocker):
+    def test_create_config_file_仅下发telegraf配置并清理遗留beat(self, mocker):
         callbacks = patch_transaction_callbacks(mocker)
         instance = collect_instance(task_type=CollectPluginTypes.CONFIG_FILE, model_id="config_file")
         view = FakeCollectView(instance)
@@ -781,12 +781,16 @@ class TestCollectCrudSideEffects:
         mocker.patch.object(CollectModelService, "enrich_host_cloud_snapshot_payload", return_value=False)
         mocker.patch("apps.cmdb.services.collect_service.create_change_record")
         create_task = mocker.patch("apps.cmdb.services.collect_service.CeleryUtils.create_or_update_periodic_task")
-        mocker.patch.object(CollectModelService, "push_butch_node_params")
-        mocker.patch.object(CollectModelService, "schedule_delayed_sync_if_needed")
+        delete_task = mocker.patch("apps.cmdb.services.collect_service.CeleryUtils.delete_periodic_task")
+        push_node_params = mocker.patch.object(CollectModelService, "push_butch_node_params")
+        delayed_sync = mocker.patch.object(CollectModelService, "schedule_delayed_sync_if_needed")
 
         assert CollectModelService.create(request, view) == instance.id
         callbacks[0]()
-        create_task.assert_called_once()
+        create_task.assert_not_called()
+        delete_task.assert_called_once_with(f"sync_collect_task_{instance.id}")
+        push_node_params.assert_called_once_with(instance)
+        delayed_sync.assert_not_called()
 
     def test_update_事务内后续失败不提前同步外部副作用(self, mocker):
         patch_transaction_callbacks(mocker)

@@ -1,10 +1,11 @@
 # -- coding: utf-8 --
 
 from apps.cmdb.node_configs.base import BaseNodeParams
+from apps.cmdb.node_configs.config_artifact import ConfigArtifactNodeParamsMixin
 from apps.cmdb.node_configs.ssh.base import SSHNodeParamsMixin
 
 
-class ConfigFileNodeParams(SSHNodeParamsMixin, BaseNodeParams):
+class ConfigFileNodeParams(ConfigArtifactNodeParamsMixin, SSHNodeParamsMixin, BaseNodeParams):
     supported_model_id = "config_file"
     plugin_name = "config_file_info"
     interval = 10 * 60
@@ -32,36 +33,19 @@ class ConfigFileNodeParams(SSHNodeParamsMixin, BaseNodeParams):
             return ""
         return host_str.split("[", 1)[0].strip()
 
-    @staticmethod
-    def _get_instance_uuid(instance):
-        if not isinstance(instance, dict):
-            return ""
-        return str(instance.get("inst_uuid") or "")
-
-    def _get_single_target_instance(self):
-        instances = self.instance.instances or []
-        if len(instances) != 1:
-            return {}
-        target_instance = instances[0]
-        return target_instance if isinstance(target_instance, dict) else {}
-
     def get_hosts(self):
-        if self.instance.instances:
-            hosts = ",".join(filter(None, (self._get_instance_host(instance) for instance in self.instance.instances)))
-        else:
-            hosts = self.instance.ip_range
-        return "hosts", hosts
+        target = self._current_target_instance()
+        return "hosts", self._get_instance_host(target)
 
     def set_credential(self, *args, **kwargs):
         credential_data = super().set_credential(*args, **kwargs)
         params = self.instance.params or {}
-        target_instance = self._get_single_target_instance()
+        target_instance = self._current_target_instance()
         target_host = self._get_instance_host(target_instance)
         credential_data.update(
             {
                 "config_file_path": params.get("config_file_path", ""),
                 "collect_task_id": self.instance.id,
-                "execution_id": self.instance.task_id,
                 "target_model_id": target_instance.get("model_id") or params.get("target_model_id") or "host",
                 "callback_subject": "receive_config_file_result",
                 "protocol_version": "2",
@@ -70,7 +54,7 @@ class ConfigFileNodeParams(SSHNodeParamsMixin, BaseNodeParams):
         if target_instance:
             credential_data.update(
                 {
-                    "target_instance_uuid": self._get_instance_uuid(target_instance),
+                    "target_instance_uuid": self._target_uuid(target_instance),
                     "connect_ip": self._get_connect_ip(target_host),
                 }
             )

@@ -120,7 +120,7 @@
 `tasks/celery_tasks.py` 注册 14 个 `@shared_task`：
 | 任务 | 行号 | 作用 |
 |------|------|------|
-| `sync_collect_task` | :38 | 执行单次采集，分发到 `CollectDispatchService`/协议采集，更新状态并触发订阅通知 |
+| `sync_collect_task` | :38 | 执行非配置文件单次采集并更新状态；配置文件任务由 Telegraf 周期触发并在此早返 |
 | `sync_periodic_update_task_status` | :202 | 周期巡检并更新采集任务状态 |
 | `sync_collect_credential_results_task` | :232 | 同步凭据探测结果 |
 | `sync_cmdb_display_fields_task` | :242 | 同步实例展示字段配置 |

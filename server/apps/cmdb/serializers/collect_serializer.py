@@ -562,6 +562,9 @@ class CollectModelSerializer(AuthSerializer):
                     attrs["params"] = self._normalize_topology_params(params)
             return attrs
 
+        if not self._get_attr_or_instance_value(attrs, "is_interval"):
+            raise serializers.ValidationError({"scan_cycle": "配置文件采集仅支持周期执行"})
+
         if model_id == "network_config_file":
             params = dict(self._get_effective_params(attrs) or {})
             raw_instances = attrs.get("instances")

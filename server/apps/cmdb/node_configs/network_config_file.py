@@ -1,8 +1,9 @@
 from apps.cmdb.node_configs.base import BaseNodeParams
+from apps.cmdb.node_configs.config_artifact import ConfigArtifactNodeParamsMixin
 from apps.cmdb.services.network_config_file_policy import normalize_network_config_instance
 
 
-class NetworkConfigFileNodeParams(BaseNodeParams):
+class NetworkConfigFileNodeParams(ConfigArtifactNodeParamsMixin, BaseNodeParams):
     supported_model_id = "network_config_file"
     supported_driver_type = "protocol"
     plugin_name = "network_config_file_info"
@@ -12,22 +13,13 @@ class NetworkConfigFileNodeParams(BaseNodeParams):
         super().__init__(*args, **kwargs)
         self.executor_type = "protocol"
 
-    def _single_instance(self):
-        instances = self.instance.instances or []
-        return instances[0] if instances and isinstance(instances[0], dict) else {}
-
     def _target_instance(self):
         # P2-2.1: 改用 normalize(只规范化,不再二次校验;serializer 已校验)
-        return normalize_network_config_instance(self._single_instance())
+        return normalize_network_config_instance(self._current_target_instance())
 
     def get_hosts(self):
-        # P2-2.2: get_hosts 只需要 host 字段,不需要 device_type。
-        # 跳过 normalize 直接抽 host,避免 N 个 instance 重复 N 次 resolve_device_type
-        # (set_credential 仍会调 _target_instance 走一次完整 normalize)。
-        if not (self.instance.instances or []):
-            return "hosts", ""
-        hosts = ",".join((inst.get("ip_addr") or inst.get("host") or "").strip() for inst in self.instance.instances if isinstance(inst, dict))
-        return "hosts", hosts
+        target = self._current_target_instance()
+        return "hosts", (target.get("ip_addr") or target.get("host") or "").strip()
 
     def _secret_env_name(self, field_name):
         return f"PASSWORD_{field_name}_{self._instance_id}"

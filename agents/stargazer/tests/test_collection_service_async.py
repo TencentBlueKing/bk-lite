@@ -13,6 +13,82 @@ from core.plugin.yaml_reader import ExecutorConfig, ResolvedExecutorConfig
 from service.collection_service import CollectionService
 
 
+def test_config_callback_file_path_supports_host_and_network_targets():
+    host_service = CollectionService.__new__(CollectionService)
+    host_service.params = {"config_file_path": "/etc/nginx/nginx.conf"}
+    network_service = CollectionService.__new__(CollectionService)
+    network_service.params = {"config_name": "running-config"}
+
+    assert host_service._get_callback_file_path() == "/etc/nginx/nginx.conf"
+    assert network_service._get_callback_file_path() == "network://running-config"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("plugin_name", "model_id", "extra_params", "expected_path", "expected_name"),
+    [
+        (
+            "config_file_info",
+            "config_file",
+            {"config_file_path": "/etc/nginx/nginx.conf"},
+            "/etc/nginx/nginx.conf",
+            "nginx.conf",
+        ),
+        (
+            "network_config_file_info",
+            "network_config_file",
+            {"config_name": "running-config"},
+            "network://running-config",
+            "running-config",
+        ),
+    ],
+)
+async def test_config_collection_failure_builds_typed_nats_callback_without_execution_id(
+    plugin_name,
+    model_id,
+    extra_params,
+    expected_path,
+    expected_name,
+):
+    class FailedExecutor:
+        async def execute(self):
+            return {"success": False, "result": {"cmdb_collect_error": "connection failed"}}
+
+    service = CollectionService(
+        {
+            "plugin_name": plugin_name,
+            "model_id": model_id,
+            "executor_type": "protocol",
+            "host": "10.0.0.8",
+            "collect_task_id": 42,
+            "target_model_id": "host" if model_id == "config_file" else "network",
+            "target_instance_uuid": "123e4567-e89b-42d3-a456-426614174000",
+            "protocol_version": "2",
+            "callback_subject": "receive_config_file_result",
+            **extra_params,
+        },
+        prepared_executor_factory=lambda _params: FailedExecutor(),
+    )
+
+    result = await service.collect()
+
+    assert result == {
+        "collect_task_id": 42,
+        "protocol_version": "2",
+        "instance_uuid": "123e4567-e89b-42d3-a456-426614174000",
+        "instance_name": "10.0.0.8",
+        "model_id": "host" if model_id == "config_file" else "network",
+        "file_path": expected_path,
+        "file_name": expected_name,
+        "version": "",
+        "status": "error",
+        "size": 0,
+        "error": "connection failed",
+        "content_base64": "",
+    }
+    assert "execution_id" not in result
+
+
 @pytest.mark.asyncio
 async def test_enterprise_load_fallback_drives_final_application_policy_and_plan(monkeypatch):
     enterprise_config = ExecutorConfig(

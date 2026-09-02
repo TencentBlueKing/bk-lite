@@ -35,7 +35,6 @@ from apps.cmdb.collection.round_sync import (
 )
 from apps.cmdb.constants.constants import CollectPluginTypes, CollectRunStatusType
 from apps.cmdb.models.collect_model import CollectModels
-from apps.cmdb.services.collect_dispatch_service import CollectDispatchService
 from apps.cmdb.services.collect_tool_service import CollectToolService
 from apps.cmdb.services.subscription_task import SubscriptionTaskService
 from apps.cmdb.tasks.node_mgmt_sync import run_collect, run_sync
@@ -498,6 +497,11 @@ def sync_collect_task(  # noqa: C901
     """
     同步采集任务
     """
+    task_type = CollectModels._default_manager.filter(id=instance_id).values_list("task_type", flat=True).first()
+    if task_type == CollectPluginTypes.CONFIG_FILE:
+        logger.info("[CollectTask] 配置文件任务由 Telegraf 周期调度，跳过 Server 执行 task_id=%s", instance_id)
+        return {"status": "telegraf_managed", "task_id": instance_id}
+
     run_started_at = time.monotonic()
     start_time = now()
     execution_id = execution_id or self.request.id or str(uuid4())
@@ -562,26 +566,18 @@ def sync_collect_task(  # noqa: C901
     exec_traceback_excerpt = ""
     exec_traceback_location = ""
     task_exec_status = CollectRunStatusType.SUCCESS
-    config_file_pending = False
     failed_stage = "-"
     result_persisted = False
     try:
         CollectModelService.repair_host_cloud_snapshot(instance)
-        if CollectDispatchService.should_dispatch(instance):
-            result, format_data = CollectDispatchService.execute_task(instance)
+        if instance.is_job:
+            collect = JobCollect(task=instance)
+            result, format_data = collect.main()
         else:
-            if instance.is_job:
-                collect = JobCollect(task=instance)
-                result, format_data = collect.main()
-            else:
-                collect = ProtocolCollect(task=instance)
-                result, format_data = collect.main()
+            collect = ProtocolCollect(task=instance)
+            result, format_data = collect.main()
 
-        config_file_pending = instance.task_type == CollectPluginTypes.CONFIG_FILE and (result.get("config_file") or {}).get("status") == "pending"
-        if config_file_pending:
-            instance.exec_status = CollectRunStatusType.RUNNING
-        else:
-            instance.exec_status = CollectRunStatusType.SUCCESS
+        instance.exec_status = CollectRunStatusType.SUCCESS
 
     except Exception as err:
         import traceback
@@ -636,8 +632,6 @@ def sync_collect_task(  # noqa: C901
             collect_digest["message"] = exec_error_message
             if exec_traceback_excerpt:
                 collect_digest["traceback"] = exec_traceback_excerpt
-        elif config_file_pending:
-            collect_digest["message"] = "配置文件采集已触发，等待回传中"
         elif len(raw_data) == 0 and not pc_summary and not (collect_digest.get("raw_host", 0) or collect_digest.get("raw_process", 0)):
             collect_digest["message"] = "未发现任何有效数据，请检查采集目标连通性、凭据与采集范围配置"
             instance.exec_status = CollectRunStatusType.ERROR
@@ -744,14 +738,12 @@ def sync_collect_task(  # noqa: C901
     terminal_status = CollectRunStatusType.ERROR if failed_stage == "result_persistence" else instance.exec_status
     log_terminal = logger.warning if terminal_status in _COLLECT_WARNING_LOG_STATUSES else logger.info
     log_terminal(
-        "event=collect_task_execution_finished task_id=%s execution_id=%s "
-        "status=%s failed_stage=%s result_persisted=%s callback_pending=%s duration_ms=%.2f",
+        "event=collect_task_execution_finished task_id=%s execution_id=%s " "status=%s failed_stage=%s result_persisted=%s duration_ms=%.2f",
         instance_id,
         execution_id,
         _COLLECT_STATUS_LOG_NAMES.get(terminal_status, str(terminal_status)),
         failed_stage,
         result_persisted,
-        config_file_pending,
         (time.monotonic() - run_started_at) * 1000,
     )
 
@@ -782,7 +774,7 @@ def _apply_last_synced_round(
 
 
 def _purge_legacy_vm_sync_beats(limit: int = ORPHAN_BEAT_PURGE_LIMIT) -> int:
-    """运行期幂等清理 VM 对账任务残留的按任务 beat（不在启动期执行）。"""
+    """运行期幂等清理 VM 对账和 Telegraf 配置采集残留的按任务 beat。"""
     from django_celery_beat.models import PeriodicTask
 
     purged = 0
@@ -794,8 +786,7 @@ def _purge_legacy_vm_sync_beats(limit: int = ORPHAN_BEAT_PURGE_LIMIT) -> int:
         except (TypeError, ValueError):
             continue
         task_type = CollectModels._default_manager.filter(id=task_id).values_list("task_type", flat=True).first()
-        # 任务已删除，或仍为 VM 对账类型：清理旧 beat。
-        if task_type is None or uses_vm_reconciliation(task_type):
+        if task_type in (None, CollectPluginTypes.CONFIG_FILE) or uses_vm_reconciliation(task_type):
             CeleryUtils.delete_periodic_task(name)
             purged += 1
             logger.info("[RoundGate] 清理遗留对账 beat name=%s beat_id=%s", name, beat_id)

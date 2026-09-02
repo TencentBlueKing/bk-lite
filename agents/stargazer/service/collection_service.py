@@ -64,6 +64,7 @@ class CollectionService:
         self.model_id = self.params["model_id"]
         self.host = self.params.get("host")  # 可能为None（云采集）
         self._prepared_executor_factory = prepared_executor_factory
+        self._executor = None
 
     @classmethod
     async def prepare(
@@ -120,6 +121,13 @@ class CollectionService:
     def _get_callback_model_id(self) -> str:
         return str(self.params.get("target_model_id") or self.params.get("model_id") or "host")
 
+    def _get_callback_file_path(self) -> str:
+        file_path = str(self.params.get("config_file_path") or "").strip()
+        if file_path:
+            return file_path
+        config_name = str(self.params.get("config_name") or "").strip()
+        return f"network://{config_name}" if config_name else ""
+
     @staticmethod
     def _extract_file_name(file_path: str) -> str:
         normalized_path = str(file_path or "").strip()
@@ -150,7 +158,9 @@ class CollectionService:
                 executor_type,
             )
 
-            if self._prepared_executor_factory is not None:
+            if self._executor is not None:
+                executor = self._executor
+            elif self._prepared_executor_factory is not None:
                 executor = self._prepared_executor_factory(self.params)
             else:
                 prefer_enterprise = self._get_bool_param(self.params, "prefer_enterprise", True)
@@ -173,22 +183,23 @@ class CollectionService:
                     fallback_executor_config=resolved_executor.fallback_executor_config,
                     strict_enterprise=strict_enterprise,
                 )
+            self._executor = executor
             result = await executor.execute()
 
             if self.params.get("callback_subject"):
+                callback_file_path = self._get_callback_file_path()
                 return (
                     result.get("result", {})
                     if result.get("success")
                     else (
                         {
                             "collect_task_id": self.params.get("collect_task_id"),
-                            "execution_id": self.params.get("execution_id"),
                             "protocol_version": self.params.get("protocol_version"),
                             "instance_uuid": self._get_callback_instance_uuid(),
                             "instance_name": self._get_callback_instance_name(),
                             "model_id": self._get_callback_model_id(),
-                            "file_path": self.params.get("config_file_path", ""),
-                            "file_name": self._extract_file_name(self.params.get("config_file_path", "")),
+                            "file_path": callback_file_path,
+                            "file_name": self._extract_file_name(callback_file_path),
                             "version": "",
                             "status": "error",
                             "size": 0,
@@ -204,8 +215,8 @@ class CollectionService:
                             "execution_id": self.params.get("execution_id"),
                             "instance_id": self.params.get("instance_id") or self.host or "",
                             "model_id": self.params.get("target_model_id") or self.params.get("model_id"),
-                            "file_path": self.params.get("config_file_path", ""),
-                            "file_name": self._extract_file_name(self.params.get("config_file_path", "")),
+                            "file_path": callback_file_path,
+                            "file_name": self._extract_file_name(callback_file_path),
                             "version": "",
                             "status": "error",
                             "size": 0,
@@ -257,8 +268,11 @@ class CollectionService:
 
     async def probe(self) -> AccessProbeResult:
         """通过当前解析出的协议 Adapter 执行最小凭据感知预检。"""
+        if self._executor is not None:
+            return await self._executor.probe()
         if self._prepared_executor_factory is not None:
-            return await self._prepared_executor_factory(self.params).probe()
+            self._executor = self._prepared_executor_factory(self.params)
+            return await self._executor.probe()
         executor_type = self.params["executor_type"]
         prefer_enterprise = self._get_bool_param(self.params, "prefer_enterprise", True)
         strict_enterprise = self._get_bool_param(self.params, "strict_enterprise", False)
@@ -267,7 +281,7 @@ class CollectionService:
             executor_type,
             prefer_enterprise=prefer_enterprise,
         )
-        executor = PluginExecutor(
+        self._executor = PluginExecutor(
             self.model_id,
             resolved_executor.executor_config,
             self.params,
@@ -275,7 +289,7 @@ class CollectionService:
             fallback_executor_config=resolved_executor.fallback_executor_config,
             strict_enterprise=strict_enterprise,
         )
-        return await executor.probe()
+        return await self._executor.probe()
 
     def _format_result(self, result: Dict[str, Any]) -> str:
         """在线程中完成可能随结果规模增长的转换，保持事件循环只负责编排。"""

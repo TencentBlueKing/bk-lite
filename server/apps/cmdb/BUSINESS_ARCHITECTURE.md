@@ -347,7 +347,6 @@ sequenceDiagram
     participant Service as CollectModelService
     participant DB as CollectModels
     participant Celery as Celery Worker
-    participant Dispatch as CollectDispatchService
     participant Agent as Stargazer / NodeMgmt
     participant Plugin as Collection Plugin
     participant Merge as Management / InstanceManage
@@ -359,12 +358,9 @@ sequenceDiagram
     Service->>DB: 保存任务和组织范围
     Service-->>Celery: 事务提交后派发 execution_id
     Celery->>DB: 条件抢占 NOT_START/终态到 RUNNING
-    Celery->>Dispatch: 解析目标与凭据池
-    Dispatch->>Agent: 按目标和凭据分批下发
+    Celery->>Agent: 按任务类型进入 JobCollect 或 ProtocolCollect
     Agent-->>Plugin: 执行主机 / DB / 中间件 / 网络 / K8s / 云采集
-    Plugin-->>Dispatch: 返回原始数据或回调
-    Dispatch->>Dispatch: 区分凭据失败与任务失败并尝试下一凭据
-    Dispatch-->>Celery: 汇总有效结果
+    Plugin-->>Celery: 返回原始数据
     Celery->>Merge: 格式化 add/update/delete/association
     Merge->>Graph: 有界批量写入实例和关系
     Merge->>Audit: 批量生成变更记录或镜像 Outbox
@@ -376,7 +372,7 @@ sequenceDiagram
 
 - 创建/更新任务后的外部同步使用 `transaction.on_commit`，避免数据库回滚后遗留幽灵任务。
 - 同一任务通过数据库条件更新抢占执行权，重复触发不会并发覆盖。
-- 多凭据派发记录目标与凭据命中状态；凭据错误允许换凭据，业务错误不会盲目重试全部凭据。
+- 多凭据选择与重试在 Stargazer 单次运行内部完成，CMDB 不再执行逐目标凭据派发。
 - 格式化结果统一为 `add`、`update`、`delete`、`association`，再进入 CMDB 合并链路。
 - 周期巡检每 5 分钟检查超时任务，且以 execution ID 防止旧 Worker 覆盖新执行。
 
@@ -384,26 +380,31 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    actor User as 运维人员
-    participant Task as 配置采集任务
+    participant Task as CMDB 配置采集任务
+    participant Node as NodeMgmt / Sidecar
+    participant Telegraf as Telegraf
     participant Agent as Stargazer
-    participant API as ConfigFileService
+    participant NATS as Core NATS callback
+    participant API as CMDB ConfigFileService
     participant Temp as MinIO 临时对象
     participant DB as ConfigFileVersion
     participant Commit as transaction.on_commit
     participant Formal as MinIO 正式对象
     participant Recover as 周期补偿任务
 
-    User->>Task: 发起配置文件采集
-    Task->>Agent: 下发文件路径、目标和 execution_id
-    Agent-->>API: 回传状态、版本、正文和 execution_id
-    API->>API: 校验任务代次、实例归属和业务键
+    Task->>Node: 每个目标下发一份 ChildConfig
+    Node->>Telegraf: 合并并加载周期配置
+    Telegraf->>Agent: 按 interval 请求异步采集入口
+    Agent->>Agent: 主机读文件或网络设备执行只读命令
+    Agent-->>NATS: 回传状态、目标 UUID、版本和正文
+    NATS-->>API: receive_config_file_result
+    API->>API: 校验协议、实例归属和目标最新版本
     API->>Temp: 写入临时对象
     API->>DB: 创建 PENDING 元数据
     DB-->>Commit: 注册提交后发布
     Commit->>Formal: 将临时正文发布到正式键
     Commit->>DB: 更新 READY 并清理临时键
-    DB-->>User: 提供版本列表、正文和同文件 diff
+    DB-->>Task: 更新各目标最新结果滚动汇总
 
     Commit--xFormal: 发布失败
     Commit->>DB: 标记 ERROR 并保留可恢复信息
@@ -427,7 +428,7 @@ stateDiagram-v2
 
 关键约束：
 
-- 自动采集版本以 `(collect_task, instance_id, version)` 为业务唯一键。
+- 自动采集版本以 `(collect_task, instance_id, version)` 为业务唯一键；周期链路不依赖 Celery execution ID。
 - 同业务键、同正文是幂等重投；同业务键、不同正文是协议冲突，不覆盖旧数据。
 - 正文读取和 diff 必须分别校验两个版本所属实例的读取权限，并拒绝跨实例或跨文件比较。
 

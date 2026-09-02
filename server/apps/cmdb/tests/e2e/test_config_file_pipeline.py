@@ -12,12 +12,19 @@
   - 通过 NATS 直接推送 → CMDB 收到回调
   - 内容 base64 编码后落 MinIO（本测试用 process_collect_result 的早返分支）
 """
+import base64
+import hashlib
+
 import jsonschema
 import pytest
+import tomllib
 
+from apps.cmdb.models.collect_model import CollectModels
+from apps.cmdb.models.config_file_version import ConfigFileContentStatus, ConfigFileVersion, ConfigFileVersionStatus
+from apps.cmdb.node_configs.config_factory import NodeParamsFactory
+from apps.cmdb.services.config_file_content_lifecycle import ConfigFileContentLifecycle
 from apps.cmdb.services.config_file_service import ConfigFileService
 from apps.core.exceptions.base_app_exception import BaseAppException
-
 
 # ============================================================================
 # 段 2: NATS payload 契约校验
@@ -112,6 +119,141 @@ def test_nats_handler_marks_business_failure_when_service_returns_error(monkeypa
     }
 
 
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("model_id", "driver_type", "params", "instance", "credential", "expected_plugin", "expected_file_path"),
+    [
+        (
+            "config_file",
+            "job",
+            {"config_file_path": "/etc/nginx/nginx.conf"},
+            {
+                "_id": "101",
+                "inst_uuid": "123e4567-e89b-42d3-a456-426614174000",
+                "model_id": "host",
+                "inst_name": "10.0.0.8",
+                "ip_addr": "10.0.0.8",
+            },
+            {"username": "readonly", "password": "test-secret", "port": 22},
+            "config_file_info",
+            "/etc/nginx/nginx.conf",
+        ),
+        (
+            "network_config_file",
+            "protocol",
+            {"config_name": "running-config", "commands": "show running-config"},
+            {
+                "_id": "102",
+                "inst_uuid": "223e4567-e89b-42d3-a456-426614174000",
+                "model_id": "switch",
+                "inst_name": "switch-01",
+                "ip_addr": "10.0.0.9",
+                "brand": "Cisco",
+            },
+            {"username": "readonly", "password": "test-secret", "port": 22},
+            "network_config_file_info",
+            "network://running-config",
+        ),
+    ],
+    ids=["host", "network"],
+)
+def test_cmdb_child_config_to_nats_handler_to_version_storage_chain(
+    monkeypatch,
+    django_capture_on_commit_callbacks,
+    model_id,
+    driver_type,
+    params,
+    instance,
+    credential,
+    expected_plugin,
+    expected_file_path,
+):
+    from apps.cmdb.nats import nats as cmdb_nats
+
+    task = CollectModels.objects.create(
+        name=f"{model_id}-chain",
+        task_type="config_file",
+        model_id=model_id,
+        driver_type=driver_type,
+        is_interval=True,
+        cycle_value_type="cycle",
+        cycle_value="5",
+        instances=[instance],
+        params=params,
+        access_point=[{"id": 9}],
+        credential=[credential],
+        timeout=60,
+    )
+
+    child_configs = NodeParamsFactory.get_node_params(task).main()
+
+    assert len(child_configs) == 1
+    rendered = tomllib.loads(child_configs[0]["content"])
+    telegraf_input = rendered["inputs"]["prometheus"][0]
+    headers = telegraf_input["http_headers"]
+    assert telegraf_input["namedrop"] == ["collection_request_accepted"]
+    assert headers["cmdbplugin_name"] == expected_plugin
+    assert headers["cmdbcallback_subject"] == "receive_config_file_result"
+    assert headers["cmdbprotocol_version"] == "2"
+    assert "cmdbexecution_id" not in headers
+
+    content = f"collected configuration for {instance['inst_uuid']}"
+    callback_payload = {
+        "collect_task_id": int(headers["cmdbcollect_task_id"]),
+        "protocol_version": headers["cmdbprotocol_version"],
+        "instance_uuid": headers["cmdbtarget_instance_uuid"],
+        "instance_name": instance["inst_name"],
+        "model_id": headers["cmdbtarget_model_id"],
+        "file_path": expected_file_path,
+        "file_name": expected_file_path.rsplit("/", 1)[-1],
+        "version": "1700000000000",
+        "status": "success",
+        "size": len(content.encode()),
+        "error": "",
+        "content_base64": base64.b64encode(content.encode()).decode(),
+    }
+    monkeypatch.setattr(
+        ConfigFileContentLifecycle,
+        "stage_content",
+        staticmethod(lambda _content: "tmp/config-file/chain.txt"),
+    )
+    monkeypatch.setattr(
+        ConfigFileContentLifecycle,
+        "publish_version",
+        staticmethod(
+            lambda version_id: bool(
+                ConfigFileVersion.objects.filter(id=version_id).update(
+                    content_status=ConfigFileContentStatus.READY,
+                    temp_content_key="",
+                )
+            )
+        ),
+    )
+
+    with django_capture_on_commit_callbacks(execute=True):
+        response = cmdb_nats.receive_config_file_result(callback_payload)
+
+    assert response == {
+        "result": True,
+        "processed": True,
+        "error": "",
+        "changed": True,
+        "task_updated": True,
+    }
+    latest = ConfigFileService.get_latest_version(
+        task.id,
+        instance["inst_uuid"],
+        expected_file_path,
+    )
+    assert latest is not None
+    assert latest.status == ConfigFileVersionStatus.SUCCESS
+    assert latest.content_status == ConfigFileContentStatus.READY
+    assert latest.content_hash == hashlib.sha256(content.encode()).hexdigest()
+    task.refresh_from_db()
+    assert task.collect_data["config_file"]["status"] == "success"
+    assert task.collect_data["config_file"]["success_count"] == 1
+
+
 # ============================================================================
 # 漂移检测：payload 字段类型错了
 # ============================================================================
@@ -119,7 +261,11 @@ def test_nats_handler_marks_business_failure_when_service_returns_error(monkeypa
 
 def test_drift_detection_invalid_status(load_schema):
     bad = {
-        "collect_task_id": 1, "model_id": "host", "file_path": "/x",
+        "collect_task_id": 1,
+        "protocol_version": "2",
+        "instance_uuid": "123e4567-e89b-42d3-a456-426614174000",
+        "model_id": "host",
+        "file_path": "/x",
         "status": "weird_status",  # ← 不在 enum
     }
     schema = load_schema("config_file/02_nats_payload.schema.json")
