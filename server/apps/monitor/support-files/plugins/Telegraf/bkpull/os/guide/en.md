@@ -8,7 +8,7 @@ The platform installs official `node_exporter` on the target AIX host. A Linux c
 - The collector node must be Linux and must be able to reach port `9100` on the target host.
 - On save, the platform uses the collector node to SSH (default port `22`), copy official `node_exporter` 1.12.1 (aix-ppc64) to `/opt/bklite/node_exporter`, and start it with SRC as root on `0.0.0.0:9100`.
 - The SSH account needs write access to the install directory and permission to run `mkssys` / `startsrc` / `stopsrc`. `root` is recommended.
-- The SRC subsystem name is `node_exporter`. If the subsystem already exists, the platform does not run `mkssys` again. An upgrade stops the subsystem, replaces the binary, then starts it.
+- The SRC subsystem name is `node_exporter`. If the subsystem already exists, the platform does not run `mkssys` again. An upgrade stops the subsystem, replaces the binary, updates the listen address with `chssys`, then starts it.
 
 ## Setup Steps
 

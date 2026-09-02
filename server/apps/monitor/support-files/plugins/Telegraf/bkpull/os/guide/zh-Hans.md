@@ -8,7 +8,7 @@
 - 采集节点必须是 Linux 节点，且能访问目标主机的 `9100` 端口。
 - 保存配置时，平台通过采集节点 SSH（默认 `22`）把官方 `node_exporter` 1.12.1（aix-ppc64）复制到 `/opt/bklite/node_exporter`，并用 SRC 以 root 启动，监听 `0.0.0.0:9100`。
 - SSH 账号需要有安装目录写入、`mkssys` / `startsrc` / `stopsrc` 权限；推荐使用 `root`。
-- SRC 子系统名固定为 `node_exporter`。子系统已存在时不会重复 `mkssys`，升级会先停止再替换二进制后启动。
+- SRC 子系统名固定为 `node_exporter`。子系统已存在时不会重复 `mkssys`，升级会先停止再替换二进制，并用 `chssys` 更新监听地址后启动。
 
 ## 接入步骤
 
