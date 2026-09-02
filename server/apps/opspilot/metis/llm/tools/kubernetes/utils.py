@@ -2,6 +2,7 @@
 
 import base64
 import io
+import math
 import os
 import threading
 
@@ -303,8 +304,11 @@ def coerce_int(value, default=None, *, lo=None, hi=None, allow_none=False):
         parsed = int(default)
     else:
         try:
-            parsed = int(float(str(value).strip()))
-        except (TypeError, ValueError) as exc:
+            as_float = float(str(value).strip())
+            if not math.isfinite(as_float):
+                raise ValueError("non-finite number")
+            parsed = int(as_float)
+        except (TypeError, ValueError, OverflowError) as exc:
             if default is not None:
                 parsed = int(default)
             else:

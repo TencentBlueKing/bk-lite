@@ -1066,6 +1066,8 @@ def test_infer_kube_system_namespace_for_control_plane_static_pods():
     assert _infer_kube_system_namespace("kube-proxy-minikube") == "kube-system"
     assert _infer_kube_system_namespace("nacos-0") is None
     assert _infer_kube_system_namespace("kube-scheduler-minikube", "deployment") is None
+    assert _infer_kube_system_namespace("kube-proxy-exporter") is None
+    assert _infer_kube_system_namespace("kube-proxy-metrics") is None
 
 
 def test_lookup_namespaces_by_resource_name_uses_name_field_selector(mocker):
@@ -1087,6 +1089,29 @@ def test_lookup_namespaces_by_resource_name_uses_name_field_selector(mocker):
     assert events == []
     core.list_pod_for_all_namespaces.assert_called_once_with(field_selector="metadata.name=nacos-0")
     core.list_event_for_all_namespaces.assert_not_called()
+
+
+def test_lookup_namespaces_accepts_dns1123_subdomain_and_rejects_invalid(mocker):
+    from types import SimpleNamespace
+
+    from apps.opspilot.metis.llm.tools.kubernetes import data_collection as dc
+
+    mocker.patch.object(dc, "prepare_context")
+    core = mocker.MagicMock()
+    mocker.patch.object(dc.client, "CoreV1Api", return_value=core)
+    core.list_pod_for_all_namespaces.return_value = SimpleNamespace(items=[])
+    core.list_event_for_all_namespaces.return_value = SimpleNamespace(items=[])
+
+    pods, events, error = dc._lookup_namespaces_by_resource_name("kube-scheduler-node.example.com", {})
+    assert error is None
+    assert pods == []
+    core.list_pod_for_all_namespaces.assert_called_once_with(field_selector="metadata.name=kube-scheduler-node.example.com")
+
+    pods, events, error = dc._lookup_namespaces_by_resource_name("NOT VALID!!", {})
+    assert pods == []
+    assert events == []
+    assert "DNS-1123" in error
+    assert core.list_pod_for_all_namespaces.call_count == 1
 
 
 def test_lookup_namespaces_by_resource_name_falls_back_to_events(mocker):

@@ -13,7 +13,7 @@ from apps.opspilot.metis.llm.tools.kubernetes.utils import coerce_int, parse_res
 
 
 @tool()
-def check_scaling_capacity(namespace, replicas: int, resource_requirements=None, config: RunnableConfig = None):
+def check_scaling_capacity(namespace, replicas: int, resource_requirements=None, instance_name=None, config: RunnableConfig = None):
     """
     扩容前的容量校验，避免资源不足导致Pending
 
@@ -37,6 +37,7 @@ def check_scaling_capacity(namespace, replicas: int, resource_requirements=None,
             格式: {"cpu": "100m", "memory": "128Mi"}
             - 如果提供：精确计算CPU和内存是否满足
             - 如果不提供：只检查Pod数量容量，强烈建议补充
+        instance_name (str, optional): 多实例时必须指定集群
         config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
@@ -66,6 +67,9 @@ def check_scaling_capacity(namespace, replicas: int, resource_requirements=None,
     - 不考虑节点亲和性、污点等高级调度策略
     - 实际调度结果可能因调度器策略而异
     """
+    config, err = prepare_point_instance(config, instance_name)
+    if err:
+        return err
     try:
         replicas = coerce_int(replicas, lo=0, hi=10000)
     except ValueError:
@@ -591,6 +595,31 @@ def _probe_action_field(action, *names):
     return None
 
 
+def _json_safe_probe_value(value):
+    """探针 port/command 可能是 IntOrString 或 mock，转成 json.dumps 可接受的类型。"""
+    if value is None or isinstance(value, (str, int, bool)):
+        return value
+    if isinstance(value, float):
+        return value if value == value and value not in (float("inf"), float("-inf")) else str(value)
+    if isinstance(value, (list, tuple)):
+        return [_json_safe_probe_value(item) for item in value]
+    int_val = getattr(value, "int_val", None)
+    if int_val is None:
+        int_val = getattr(value, "int", None)
+    str_val = getattr(value, "str_val", None)
+    if str_val is None:
+        str_val = getattr(value, "str", None)
+    if isinstance(int_val, int) and not isinstance(int_val, bool):
+        return int_val
+    if isinstance(str_val, str) and str_val:
+        return str_val
+    try:
+        json.dumps(value)
+        return value
+    except (TypeError, ValueError, OverflowError):
+        return str(value)
+
+
 def _serialize_probe(probe) -> dict:
     """序列化探针；http_get 等可能是不完整 mock，一律 getattr。"""
     payload = {
@@ -609,30 +638,30 @@ def _serialize_probe(probe) -> dict:
     if http_get:
         payload["http_get"] = {
             "path": _probe_action_field(http_get, "path"),
-            "port": _probe_action_field(http_get, "port"),
+            "port": _json_safe_probe_value(_probe_action_field(http_get, "port")),
             "scheme": _probe_action_field(http_get, "scheme"),
             "host": _probe_action_field(http_get, "host"),
         }
     tcp_socket = getattr(probe, "tcp_socket", None)
     if tcp_socket:
         payload["tcp_socket"] = {
-            "port": _probe_action_field(tcp_socket, "port"),
+            "port": _json_safe_probe_value(_probe_action_field(tcp_socket, "port")),
             "host": _probe_action_field(tcp_socket, "host"),
         }
     exec_action = getattr(probe, "_exec", None)
     if exec_action:
-        payload["exec_command"] = _probe_action_field(exec_action, "command")
+        payload["exec_command"] = _json_safe_probe_value(_probe_action_field(exec_action, "command"))
     grpc = getattr(probe, "grpc", None)
     if grpc:
         payload["grpc"] = {
-            "port": _probe_action_field(grpc, "port"),
+            "port": _json_safe_probe_value(_probe_action_field(grpc, "port")),
             "service": _probe_action_field(grpc, "service"),
         }
     return payload
 
 
 @tool()
-def compare_deployment_revisions(deployment_name, namespace, revision1: int, revision2: int, config: RunnableConfig = None):
+def compare_deployment_revisions(deployment_name, namespace, revision1: int, revision2: int, instance_name=None, config: RunnableConfig = None):
     """
     对比Deployment版本差异，理解变更内容
 
@@ -656,6 +685,7 @@ def compare_deployment_revisions(deployment_name, namespace, revision1: int, rev
         revision1 (int): 第一个版本号（必填）
         revision2 (int): 第二个版本号（必填）
             提示：使用 get_deployment_revision_history 查看可用版本
+        instance_name (str, optional): 多实例时必须指定集群
         config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
@@ -689,6 +719,9 @@ def compare_deployment_revisions(deployment_name, namespace, revision1: int, rev
     步骤4: 建议回滚到rev2
     ```
     """
+    config, err = prepare_point_instance(config, instance_name)
+    if err:
+        return err
     try:
         revision1 = coerce_int(revision1, lo=1, hi=10_000_000)
         revision2 = coerce_int(revision2, lo=1, hi=10_000_000)

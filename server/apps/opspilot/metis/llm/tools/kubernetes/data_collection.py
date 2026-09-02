@@ -251,6 +251,17 @@ _KUBE_SYSTEM_STATIC_POD_PREFIXES = (
     "kube-controller-manager-",
     "kube-proxy-",
 )
+# kube-proxy-exporter 等监控组件不是控制面静态 Pod。
+_KUBE_SYSTEM_NON_NODE_NAME_TOKENS = frozenset(
+    {
+        "exporter",
+        "metrics",
+        "operator",
+        "sidecar",
+        "prometheus",
+        "grafana",
+    }
+)
 
 
 def _copy_label(labels: dict, key: str, *values) -> None:
@@ -311,7 +322,7 @@ def _extract_labels(alert):
 
 _PAREN_GROUP_RE = re.compile(r"[（(]([^）)]+)[）)]")
 _POD_LIKE_NAME_RE = re.compile(r"\b([a-z0-9](?:[-a-z0-9]*[a-z0-9])?(?:-[a-f0-9]{5,10}){1,2})\b", re.IGNORECASE)
-_DNS1123_HYPHEN_NAME_RE = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", re.IGNORECASE)
+_DNS1123_HYPHEN_NAME_RE = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$", re.IGNORECASE)
 _NOTIFICATION_TITLE_RE = re.compile(r"告警[：:]\s*(.+?)(?:\n|$)")
 _NOTIFICATION_CONTENT_RE = re.compile(r"内容[：:]\s*(.+?)(?:\n|$)")
 _NOTIFICATION_TIME_RE = re.compile(r"告警时间[：:]*\s*(.+?)(?:\n|$)")
@@ -535,7 +546,15 @@ def _infer_kube_system_namespace(resource_name, resource_type=None) -> str | Non
         return None
     if name in _KUBE_SYSTEM_STATIC_POD_NAMES:
         return "kube-system"
-    if any(name.startswith(prefix) for prefix in _KUBE_SYSTEM_STATIC_POD_PREFIXES):
+    for prefix in _KUBE_SYSTEM_STATIC_POD_PREFIXES:
+        if not name.startswith(prefix):
+            continue
+        remainder = name[len(prefix) :]
+        if not remainder:
+            continue
+        tokens = remainder.replace(".", "-").split("-")
+        if any(token in _KUBE_SYSTEM_NON_NODE_NAME_TOKENS for token in tokens):
+            return None
         return "kube-system"
     return None
 
@@ -543,8 +562,10 @@ def _infer_kube_system_namespace(resource_name, resource_type=None) -> str | Non
 def _lookup_namespaces_by_resource_name(resource_name: str, config: RunnableConfig = None) -> tuple[list, list, str | None]:
     """按对象名定点反查 namespace，禁止 list 全集群 Pod/Events。"""
     name = str(resource_name or "").strip()
-    if not name or not _DNS1123_HYPHEN_NAME_RE.fullmatch(name):
+    if not name:
         return [], [], None
+    if not _DNS1123_HYPHEN_NAME_RE.fullmatch(name):
+        return [], [], f"资源名不符合 DNS-1123 subdomain: {name}"
     try:
         prepare_context(config)
         core_v1 = client.CoreV1Api()

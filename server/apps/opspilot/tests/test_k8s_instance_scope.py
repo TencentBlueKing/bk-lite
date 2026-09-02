@@ -412,3 +412,214 @@ def test_list_pods_fanout_uses_scan_wrapper(mocker):
     assert "conn refused" in by_cluster["bk-lite-k3s"]["error"]
     assert by_cluster["onedc_k8s_cluster"]["items"][0]["name"] == "nacos-0"
     assert set(seen) == {"bk-lite-k3s", "onedc_k8s_cluster"}
+
+
+def _assert_requires_instance_name(payload):
+    assert "请指定 instance_name" in payload["error"]
+
+
+def test_restart_pod_multi_requires_instance_name():
+    from apps.opspilot.metis.llm.tools.kubernetes.remediation import restart_pod
+
+    config, _ = _multi_config()
+    out = json.loads(restart_pod.invoke({"pod_name": "p", "namespace": "default", "wait_for_ready": False}, config=config))
+    _assert_requires_instance_name(out)
+
+
+def test_scale_deployment_multi_requires_instance_name():
+    from apps.opspilot.metis.llm.tools.kubernetes.remediation import scale_deployment
+
+    config, _ = _multi_config()
+    out = json.loads(scale_deployment.invoke({"deployment_name": "d", "namespace": "default", "replicas": 2}, config=config))
+    _assert_requires_instance_name(out)
+
+
+def test_batch_restart_pods_multi_requires_instance_name():
+    from apps.opspilot.metis.llm.tools.kubernetes.batch_operations import batch_restart_pods
+
+    config, _ = _multi_config()
+    out = json.loads(batch_restart_pods.invoke({"namespace": "default", "pod_names": ["p"]}, config=config))
+    _assert_requires_instance_name(out)
+
+
+def test_diagnose_pending_pod_issues_multi_requires_instance_name():
+    from apps.opspilot.metis.llm.tools.kubernetes.diagnostics_advanced import diagnose_pending_pod_issues
+
+    config, _ = _multi_config()
+    out = json.loads(diagnose_pending_pod_issues.invoke({"pod_name": "p", "namespace": "default"}, config=config))
+    _assert_requires_instance_name(out)
+
+
+def test_restart_pod_explicit_instance_binds_only_target(mocker):
+    from kubernetes.client import ApiException
+
+    from apps.opspilot.metis.llm.tools.kubernetes import remediation as r
+
+    config, _ = _multi_config()
+    seen = []
+
+    def _prep(cfg):
+        seen.append(cfg["configurable"]["instance_name"])
+
+    mocker.patch.object(r, "prepare_context", side_effect=_prep)
+    core = mocker.MagicMock()
+    mocker.patch.object(r.client, "CoreV1Api", return_value=core)
+    core.read_namespaced_pod.side_effect = ApiException(status=404)
+
+    out = json.loads(
+        r.restart_pod.invoke(
+            {"pod_name": "p", "namespace": "default", "wait_for_ready": False, "instance_name": "onedc_k8s_cluster"},
+            config=config,
+        )
+    )
+    assert "Pod不存在" in out["error"]
+    assert seen == ["onedc_k8s_cluster"]
+
+
+def test_scale_deployment_explicit_instance_binds_only_target(mocker):
+    from kubernetes.client import ApiException
+
+    from apps.opspilot.metis.llm.tools.kubernetes import remediation as r
+
+    config, _ = _multi_config()
+    seen = []
+
+    def _prep(cfg):
+        seen.append(cfg["configurable"]["instance_name"])
+
+    mocker.patch.object(r, "prepare_context", side_effect=_prep)
+    apps = mocker.MagicMock()
+    mocker.patch.object(r.client, "AppsV1Api", return_value=apps)
+    apps.read_namespaced_deployment.side_effect = ApiException(status=404)
+    apps.read_namespaced_stateful_set.side_effect = ApiException(status=404)
+
+    out = json.loads(
+        r.scale_deployment.invoke(
+            {"deployment_name": "d", "namespace": "default", "replicas": 2, "instance_name": "onedc_k8s_cluster"},
+            config=config,
+        )
+    )
+    assert seen == ["onedc_k8s_cluster"]
+    assert out.get("error") or out.get("success") is False
+
+
+def test_batch_restart_pods_explicit_instance_binds_only_target(mocker):
+    from apps.opspilot.metis.llm.tools.kubernetes import batch_operations as b
+
+    config, _ = _multi_config()
+    seen = []
+
+    def _prep(cfg):
+        seen.append(cfg["configurable"]["instance_name"])
+
+    mocker.patch.object(b, "prepare_context", side_effect=_prep)
+    core = mocker.MagicMock()
+    mocker.patch.object(b.client, "CoreV1Api", return_value=core)
+    core.read_namespaced_pod.side_effect = Exception("missing")
+
+    out = json.loads(
+        b.batch_restart_pods.invoke(
+            {"namespace": "default", "pod_names": ["p"], "instance_name": "onedc_k8s_cluster"},
+            config=config,
+        )
+    )
+    assert seen == ["onedc_k8s_cluster"]
+    assert "error" in out or "failed_pods" in out
+
+
+def test_diagnose_pending_explicit_instance_binds_only_target(mocker):
+    from kubernetes.client import ApiException
+
+    from apps.opspilot.metis.llm.tools.kubernetes import diagnostics_advanced as da
+
+    config, _ = _multi_config()
+    seen = []
+
+    def _prep(cfg):
+        seen.append(cfg["configurable"]["instance_name"])
+
+    mocker.patch.object(da, "prepare_context", side_effect=_prep)
+    core = mocker.MagicMock()
+    mocker.patch.object(da.client, "CoreV1Api", return_value=core)
+    core.read_namespaced_pod.side_effect = ApiException(status=404)
+
+    out = json.loads(
+        da.diagnose_pending_pod_issues.invoke(
+            {"pod_name": "p", "namespace": "default", "instance_name": "onedc_k8s_cluster"},
+            config=config,
+        )
+    )
+    assert "Pod不存在" in out["error"]
+    assert seen == ["onedc_k8s_cluster"]
+
+
+def test_list_events_fanout_uses_scan_wrapper(mocker):
+    from apps.opspilot.metis.llm.tools.kubernetes import resources as res
+
+    config, _ = _multi_config()
+    seen = []
+
+    def _fake(namespace, bound_config):
+        seen.append(bound_config["configurable"]["instance_name"])
+        if bound_config["configurable"]["instance_name"] == "bk-lite-k3s":
+            raise RuntimeError("conn refused")
+        return json.dumps([{"type": "Warning", "reason": "BackOff"}])
+
+    mocker.patch.object(res, "_list_kubernetes_events_on_instance", side_effect=_fake)
+    out = json.loads(res.list_kubernetes_events.invoke({}, config=config))
+    assert out["mode"] == "multi_instance"
+    by_cluster = {item["cluster"]: item for item in out["instances"]}
+    assert "conn refused" in by_cluster["bk-lite-k3s"]["error"]
+    assert by_cluster["onedc_k8s_cluster"]["items"][0]["reason"] == "BackOff"
+    assert set(seen) == {"bk-lite-k3s", "onedc_k8s_cluster"}
+
+
+def test_cleanup_failed_pods_multi_requires_instance_name():
+    from apps.opspilot.metis.llm.tools.kubernetes.batch_operations import cleanup_failed_pods
+
+    config, _ = _multi_config()
+    out = json.loads(cleanup_failed_pods.invoke({}, config=config))
+    _assert_requires_instance_name(out)
+
+
+def test_rollback_and_wait_and_delete_multi_require_instance_name():
+    from apps.opspilot.metis.llm.tools.kubernetes.remediation import delete_kubernetes_resource, rollback_deployment, wait_for_pod_ready
+
+    config, _ = _multi_config()
+    _assert_requires_instance_name(json.loads(rollback_deployment.invoke({"deployment_name": "d", "namespace": "ns"}, config=config)))
+    _assert_requires_instance_name(json.loads(wait_for_pod_ready.invoke({"pod_name": "p", "namespace": "ns"}, config=config)))
+    _assert_requires_instance_name(
+        json.loads(delete_kubernetes_resource.invoke({"resource_type": "pod", "resource_name": "p", "namespace": "ns"}, config=config))
+    )
+
+
+def test_pending_trace_scaling_compare_multi_require_instance_name():
+    from apps.opspilot.metis.llm.tools.kubernetes.optimization import check_scaling_capacity, compare_deployment_revisions
+    from apps.opspilot.metis.llm.tools.kubernetes.tracing import trace_service_chain
+
+    config, _ = _multi_config()
+    _assert_requires_instance_name(json.loads(trace_service_chain.invoke({"service_name": "svc", "namespace": "ns"}, config=config)))
+    _assert_requires_instance_name(json.loads(check_scaling_capacity.invoke({"namespace": "ns", "replicas": 2}, config=config)))
+    _assert_requires_instance_name(
+        json.loads(compare_deployment_revisions.invoke({"deployment_name": "d", "namespace": "ns", "revision1": 1, "revision2": 2}, config=config))
+    )
+
+
+def test_list_deployments_fanout_uses_scan_wrapper(mocker):
+    from apps.opspilot.metis.llm.tools.kubernetes import resources as res
+
+    config, _ = _multi_config()
+    seen = []
+
+    def _fake(namespace, limit, offset, bound_config):
+        seen.append(bound_config["configurable"]["instance_name"])
+        return json.dumps(
+            {"items": [{"name": bound_config["configurable"]["instance_name"]}], "total": 1, "returned": 1, "offset": 0, "has_more": False}
+        )
+
+    mocker.patch.object(res, "_list_kubernetes_deployments_on_instance", side_effect=_fake)
+    out = json.loads(res.list_kubernetes_deployments.invoke({}, config=config))
+    assert out["mode"] == "multi_instance"
+    by_cluster = {item["cluster"]: item for item in out["instances"]}
+    assert by_cluster["bk-lite-k3s"]["items"][0]["name"] == "bk-lite-k3s"
+    assert set(seen) == {"bk-lite-k3s", "onedc_k8s_cluster"}

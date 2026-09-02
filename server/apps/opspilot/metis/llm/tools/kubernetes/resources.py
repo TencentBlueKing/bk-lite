@@ -206,7 +206,7 @@ def list_kubernetes_nodes(config: RunnableConfig):
 
 
 @tool()
-def list_kubernetes_deployments(namespace=None, limit: int = 30, offset: int = 0, config: RunnableConfig = None):
+def list_kubernetes_deployments(namespace=None, limit: int = 30, offset: int = 0, instance_name=None, config: RunnableConfig = None):
     """
     List deployments with optional namespace filter and pagination.
 
@@ -214,14 +214,23 @@ def list_kubernetes_deployments(namespace=None, limit: int = 30, offset: int = 0
         namespace (str, optional): Namespace to filter. If None, returns all namespaces.
         limit (int, optional): Maximum number of deployments to return (default 30, max 50).
         offset (int, optional): Number of deployments to skip for pagination (default 0).
+        instance_name (str, optional): 多实例时指定集群；省略则扫描全部已配置实例
         config (RunnableConfig): Configuration for the tool.
 
     Returns:
         JSON with fields: items (list), total (int), returned (int), offset (int), has_more (bool).
     """
-    prepare_context(config)
     limit = coerce_int(limit, 30, lo=1, hi=50)
     offset = coerce_int(offset, 0, lo=0, hi=1_000_000)
+
+    def _run(bound_config):
+        return _list_kubernetes_deployments_on_instance(namespace, limit, offset, bound_config)
+
+    return run_scan_tool(config, instance_name, _run)
+
+
+def _list_kubernetes_deployments_on_instance(namespace, limit, offset, config: RunnableConfig = None):
+    prepare_context(config)
 
     apps_v1 = client.AppsV1Api()
     try:
@@ -339,13 +348,14 @@ def list_kubernetes_services(namespace=None, config: RunnableConfig = None):
 
 
 @tool()
-def list_kubernetes_events(namespace=None, config: RunnableConfig = None):
+def list_kubernetes_events(namespace=None, instance_name=None, config: RunnableConfig = None):
     """
     List events with optional namespace filter
 
     Args:
         namespace (str, optional): The namespace to filter events by.
             If None, events from all namespaces will be returned. Defaults to None.
+        instance_name (str, optional): 多实例时指定集群；省略则扫描全部已配置实例
         config (RunnableConfig): Configuration for the tool.
 
     Returns:
@@ -359,6 +369,14 @@ def list_kubernetes_events(namespace=None, config: RunnableConfig = None):
             - first_time (str): Timestamp when event first occurred
             - last_time (str): Timestamp when event last occurred
     """
+
+    def _run(bound_config):
+        return _list_kubernetes_events_on_instance(namespace, bound_config)
+
+    return run_scan_tool(config, instance_name, _run)
+
+
+def _list_kubernetes_events_on_instance(namespace, config: RunnableConfig = None):
     prepare_context(config)
     try:
         core_v1 = client.CoreV1Api()

@@ -252,6 +252,24 @@ class TestValidateProbes:
         assert out["http_get"]["path"] is None
         assert out["type"] == "httpGet"
 
+    def test_nonstandard_port_is_json_safe_and_keeps_path(self):
+        probe = SimpleNamespace(
+            http_get=SimpleNamespace(path="/readyz", port=object(), scheme="HTTP", host=None),
+            tcp_socket=None,
+            _exec=SimpleNamespace(command=object()),
+            grpc=None,
+            initial_delay_seconds=5,
+            period_seconds=10,
+            timeout_seconds=1,
+            failure_threshold=3,
+        )
+        out = o._serialize_probe(probe)
+        dumped = json.dumps(out)
+        assert "/readyz" in dumped
+        assert out["http_get"]["path"] == "/readyz"
+        parsed = json.loads(dumped)
+        assert parsed["http_get"]["path"] == "/readyz"
+
     def test_missing_probes_and_bad_delay(self, apis):
         _, apps = apis
         container = _container(liveness=_probe(delay=0), readiness=None)
