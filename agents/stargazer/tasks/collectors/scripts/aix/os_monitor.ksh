@@ -406,7 +406,8 @@ DISK_JSON=$(
 )
 [ -z "${DISK_JSON}" ] && DISK_JSON='[]'
 
-# --- iostat: header names; last report is the interval sample when two exist ---
+# --- iostat: header names. Prefer the interval report when it has activity;
+# if that sample is all zeros, use an earlier report that has values. ---
 DISKIO_JSON=$(
   IO_OUT=$(_run iostat -d 1 2)
   printf '%s\n' "${IO_OUT}" | awk '
@@ -439,6 +440,16 @@ DISKIO_JSON=$(
       if ($0 ~ /tm_act/ && $0 ~ /Kb_read|kb_read|bread|Kb_wrtn|kb_wrtn/) return 1
       return 0
     }
+    function report_idle(p,    i, d) {
+      if (n[p]<1) return 1
+      for (i=1; i<=n[p]; i++) {
+        d=order[p, i]
+        if ((tma[p, d]+0)!=0) return 0
+        if ((rkb[p, d]+0)!=0) return 0
+        if ((wkb[p, d]+0)!=0) return 0
+      }
+      return 1
+    }
     BEGIN { pass=0 }
     NF==0 { next }
     is_io_hdr() {
@@ -467,6 +478,11 @@ DISKIO_JSON=$(
     END {
       use=0
       for (p=1; p<=pass; p++) if (n[p]>0) use=p
+      if (use>0 && report_idle(use)) {
+        for (p=use-1; p>=1; p--) {
+          if (n[p]>0 && !report_idle(p)) { use=p; break }
+        }
+      }
       printf "["
       if (use>0) {
         for (i=1; i<=n[use]; i++) {
