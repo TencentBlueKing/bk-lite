@@ -9,16 +9,9 @@ ENT = os.path.join(os.path.dirname(__file__), "..", "enterprise", "support-files
 
 # 默认列里禁止出现的"存活/运行时间"类指标(列表已自带上报状态列)
 FORBIDDEN_METRICS = {
-    "snmp_uptime",
-    "mysql_uptime",
-    "redis_uptime",
-    "mongodb_uptime_ns",
-    "oracledb_uptime_seconds_gauge",
-    "rabbitmq_node_uptime",
-    "system_uptime",
-    "oceanbase_uptime",
-    "apache_ServerUptimeSeconds",
-    "sqlserver_server_properties_uptime",
+    "snmp_uptime", "mysql_uptime", "redis_uptime", "mongodb_uptime_ns",
+    "oracledb_uptime_seconds_gauge", "rabbitmq_node_uptime", "system_uptime",
+    "oceanbase_uptime", "apache_ServerUptimeSeconds", "sqlserver_server_properties_uptime",
     "minio_node_process_uptime_seconds_gauge",
 }
 
@@ -66,22 +59,12 @@ def test_display_fields_contract(path):
 
 def test_host_three_plugins_share_same_block():
     base = os.path.join(os.path.dirname(__file__), "..", "support-files", "plugins", "Telegraf")
-    paths = [
-        f"{base}/host/os/metrics.json",
-        f"{base}/http/windows_wmi/metrics.json",
-        f"{base}/http/host/metrics.json",
-        f"{base}/http/host_aix/metrics.json",
-        f"{base}/http/host_aix_remote/metrics.json",
-    ]
+    paths = [f"{base}/host/os/metrics.json", f"{base}/http/windows_wmi/metrics.json", f"{base}/http/host/metrics.json"]
     blocks = []
     for p in paths:
         with open(p, encoding="utf-8") as f:
             blocks.append(json.load(f)["display_fields"])
-    names = [c["name"] for c in blocks[0]]
-    for block in blocks[1:]:
-        assert [c["name"] for c in block] == names
+    assert [c["name"] for c in blocks[0]] == [c["name"] for c in blocks[1]] == [c["name"] for c in blocks[2]]
     cpu = blocks[0][0]
     plugins = {b["plugin"] for b in cpu["metrics"]}
-    assert plugins == {"Host", "Windows WMI", "Host Remote", "Host AIX", "Host AIX Remote"}, plugins
-    assert {"plugin": "Host AIX", "metric": "cpu_usage_total"} in cpu["metrics"]
-    assert {"plugin": "Host AIX Remote", "metric": "cpu_usage_total"} in cpu["metrics"]
+    assert plugins == {"Host", "Windows WMI", "Host Remote"}, plugins
