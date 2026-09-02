@@ -1,6 +1,6 @@
 Host AIX Remote:
   name: Host AIX Remote
-  desc: A Linux collect node SSH-runs system commands on AIX with /usr/bin/ksh -c. Missing commands are skipped. OS level comes from oslevel -r (for example 7100-00).
+  desc: This release is remote-only. A Linux collect node SSH-runs system commands on AIX with /usr/bin/ksh -c. AIX cannot run sidecar/nats-executor as an onboarded node, so there is no local plugin and SSH is not presented as local collection. Missing commands are skipped. OS level comes from oslevel -r (for example 7100-00).
 monitor_object:
   Host: Host
 monitor_object_type:

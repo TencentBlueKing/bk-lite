@@ -14,8 +14,8 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: 'CPU 使用率',
       description: '主机 CPU 总体使用率。',
       unit: 'percent',
-      // ①Telegraf host: 100-空闲；②HTTP Remote: host_cpu_usage_percent_gauge；③Windows WMI；④Host AIX / Host AIX Remote: cpu_usage_total_gauge。
-      query: '(100 - cpu_usage_idle{cpu="cpu-total", instance_type="os", __$labels__}) or host_cpu_usage_percent_gauge{instance_type="os", __$labels__} or cpu_usage_total_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} or cpu_usage_total_gauge{instance_type="os", config_type=~"host_aix|host_aix_remote", __$labels__}',
+      // ①Telegraf host: 100-空闲；②HTTP Remote: host_cpu_usage_percent_gauge；③Windows WMI；④Host AIX Remote: cpu_usage_total_gauge。
+      query: '(100 - cpu_usage_idle{cpu="cpu-total", instance_type="os", __$labels__}) or host_cpu_usage_percent_gauge{instance_type="os", __$labels__} or cpu_usage_total_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} or cpu_usage_total_gauge{instance_type="os", config_type="host_aix_remote", __$labels__}',
       color: '#2f6bff'
     },
     {
@@ -161,7 +161,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '磁盘读吞吐',
       description: '主机所有磁盘设备读取字节速率合计。计算窗口与时间选择器一致。',
       unit: 'byteps',
-      query: 'sum by (instance_id) (rate(diskio_read_bytes{instance_type="os", __$labels__}[__$window__]) or rate(diskio_read_bytes_total_gauge{instance_type="os", config_type!~"host_aix.*", __$labels__}[__$window__]) or rate(diskio_read_bytes_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__]) or diskio_read_bytes_gauge{instance_type="os", config_type=~"host_aix|host_aix_remote", __$labels__})',
+      query: 'sum by (instance_id) (rate(diskio_read_bytes{instance_type="os", __$labels__}[__$window__]) or rate(diskio_read_bytes_total_gauge{instance_type="os", config_type!~"host_aix.*", __$labels__}[__$window__]) or rate(diskio_read_bytes_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__]) or diskio_read_bytes_gauge{instance_type="os", config_type="host_aix_remote", __$labels__})',
       color: '#13c2c2'
     },
     {
@@ -169,7 +169,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '磁盘写吞吐',
       description: '主机所有磁盘设备写入字节速率合计。计算窗口与时间选择器一致。',
       unit: 'byteps',
-      query: 'sum by (instance_id) (rate(diskio_write_bytes{instance_type="os", __$labels__}[__$window__]) or rate(diskio_write_bytes_total_gauge{instance_type="os", config_type!~"host_aix.*", __$labels__}[__$window__]) or rate(diskio_write_bytes_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__]) or diskio_write_bytes_gauge{instance_type="os", config_type=~"host_aix|host_aix_remote", __$labels__})',
+      query: 'sum by (instance_id) (rate(diskio_write_bytes{instance_type="os", __$labels__}[__$window__]) or rate(diskio_write_bytes_total_gauge{instance_type="os", config_type!~"host_aix.*", __$labels__}[__$window__]) or rate(diskio_write_bytes_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__]) or diskio_write_bytes_gauge{instance_type="os", config_type="host_aix_remote", __$labels__})',
       color: '#ff8a1f'
     }
   ],

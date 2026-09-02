@@ -1,6 +1,6 @@
 {
   "plugin": "Host AIX Remote",
-  "plugin_desc": "AIX OS monitoring via system commands on the Host object. A Linux collect node SSH-runs ksh on the AIX host each interval. Missing commands are skipped. OS level comes from oslevel -r (for example 7100-00).",
+  "plugin_desc": "AIX OS monitoring via SSH from a Linux collect node. This release is remote-only: AIX cannot run sidecar/nats-executor, so there is no onboarded-node local plugin. Missing commands are skipped. OS level comes from oslevel -r (for example 7100-00).",
   "status_query": "any({instance_type='os', collect_type='http', config_type='host_aix_remote'}) by (instance_id)",
   "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"host","required":true}}],
   "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
@@ -10,16 +10,16 @@
   "name": "Host",
   "icon": "mm-host_主机",
   "type": "OS",
-  "description": "AIX OS monitoring via SSH ksh from a Linux collect node",
+  "description": "Remote-only AIX OS monitoring via SSH ksh from a Linux collect node",
   "default_metric": "any({instance_type='os'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": ["cpu_usage_total", "mem_used_percent", "disk_used_percent"],
   "display_fields": [
-    {"name":"CPU使用率","sort_order":0,"metrics":[{"plugin":"Host","metric":"cpu_usage_total"},{"plugin":"Windows WMI","metric":"cpu_usage_total"},{"plugin":"Host Remote","metric":"cpu_usage_total"},{"plugin":"Host AIX","metric":"cpu_usage_total"},{"plugin":"Host AIX Remote","metric":"cpu_usage_total"}]},
-    {"name":"内存使用率","sort_order":1,"metrics":[{"plugin":"Host","metric":"mem_used_percent"},{"plugin":"Windows WMI","metric":"mem_used_percent"},{"plugin":"Host Remote","metric":"mem_used_percent"},{"plugin":"Host AIX","metric":"mem_used_percent"},{"plugin":"Host AIX Remote","metric":"mem_used_percent"}]},
-    {"name":"磁盘使用率","sort_order":2,"metrics":[{"plugin":"Host","metric":"disk_used_percent"},{"plugin":"Windows WMI","metric":"disk_used_percent"},{"plugin":"Host Remote","metric":"disk_used_percent"},{"plugin":"Host AIX","metric":"disk_used_percent"},{"plugin":"Host AIX Remote","metric":"disk_used_percent"}]},
-    {"name":"网络入向吞吐","sort_order":3,"metrics":[{"plugin":"Host","metric":"net_bytes_recv_rate"},{"plugin":"Windows WMI","metric":"net_bytes_recv_rate"},{"plugin":"Host Remote","metric":"net_bytes_recv_rate"},{"plugin":"Host AIX","metric":"net_bytes_recv_rate"},{"plugin":"Host AIX Remote","metric":"net_bytes_recv_rate"}]},
-    {"name":"磁盘IO使用率","sort_order":4,"metrics":[{"plugin":"Host","metric":"diskio_io_util"},{"plugin":"Windows WMI","metric":"diskio_io_util"},{"plugin":"Host AIX","metric":"disk_tm_act"},{"plugin":"Host AIX Remote","metric":"disk_tm_act"}]}
+    {"name":"CPU使用率","sort_order":0,"metrics":[{"plugin":"Host","metric":"cpu_usage_total"},{"plugin":"Windows WMI","metric":"cpu_usage_total"},{"plugin":"Host Remote","metric":"cpu_usage_total"},{"plugin":"Host AIX Remote","metric":"cpu_usage_total"}]},
+    {"name":"内存使用率","sort_order":1,"metrics":[{"plugin":"Host","metric":"mem_used_percent"},{"plugin":"Windows WMI","metric":"mem_used_percent"},{"plugin":"Host Remote","metric":"mem_used_percent"},{"plugin":"Host AIX Remote","metric":"mem_used_percent"}]},
+    {"name":"磁盘使用率","sort_order":2,"metrics":[{"plugin":"Host","metric":"disk_used_percent"},{"plugin":"Windows WMI","metric":"disk_used_percent"},{"plugin":"Host Remote","metric":"disk_used_percent"},{"plugin":"Host AIX Remote","metric":"disk_used_percent"}]},
+    {"name":"网络入向吞吐","sort_order":3,"metrics":[{"plugin":"Host","metric":"net_bytes_recv_rate"},{"plugin":"Windows WMI","metric":"net_bytes_recv_rate"},{"plugin":"Host Remote","metric":"net_bytes_recv_rate"},{"plugin":"Host AIX Remote","metric":"net_bytes_recv_rate"}]},
+    {"name":"磁盘IO使用率","sort_order":4,"metrics":[{"plugin":"Host","metric":"diskio_io_util"},{"plugin":"Windows WMI","metric":"diskio_io_util"},{"plugin":"Host AIX Remote","metric":"disk_tm_act"}]}
   ],
   "metrics": [
     {"metric_group":"CPU","name":"cpu_usage_total","query":"cpu_usage_total_gauge{instance_type=\"os\", config_type=\"host_aix_remote\", __$labels__}","display_name":"CPU Usage","data_type":"Number","unit":"%","dimensions":[],"instance_id_keys":["instance_id"],"description":"AIX CPU usage from mpstat (user + sys + iowait)"},

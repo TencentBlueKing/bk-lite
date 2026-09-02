@@ -516,19 +516,3 @@ async def host_aix_remote_metrics(request):
         error_labels=lambda: {"host": request.headers.get("host")},
         log_name="HostAIXRemote",
     )
-
-
-@monitor_router.get("/host_aix/metrics")
-async def host_aix_metrics(request):
-    try:
-        params = _aix_os_monitor_params(request, config_type="host_aix")
-    except ValueError as error:
-        return _monitor_error_response("host", str(error), status=400, host=request.headers.get("host"))
-    return await _run_monitor_handler(
-        request,
-        monitor_type="host",
-        build_params=lambda _req: params,
-        accept_labels=lambda task_params: {"host": task_params.get("host")},
-        error_labels=lambda: {"host": request.headers.get("host")},
-        log_name="HostAIX",
-    )

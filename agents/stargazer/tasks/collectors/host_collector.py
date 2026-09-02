@@ -39,7 +39,6 @@ HOST_REMOTE_CALLBACK_REQUEST_TIMEOUT = 60
 LINUX_SCRIPT_WRAPPER_EOF = "STARGAZER_HOST_COLLECT_EOF"
 LINUX_SCRIPT_WRAPPER_PREFIX = "LC_ALL=C LANG=C bash --noprofile --norc"
 SUPPORTED_OS_TYPES = {"linux", "windows", "aix"}
-_AIX_RESIDENT_READY: set[tuple[str, str]] = set()
 
 
 def build_script(
@@ -50,10 +49,8 @@ def build_script(
 ) -> str:
     os_type = str(os_type or "").strip().lower()
     if os_type == "aix":
-        from .aix_os_monitor import AIX_LOCAL_CONFIG_TYPE, wrap_ksh_collect, wrap_ksh_resident_run
+        from .aix_os_monitor import wrap_ksh_collect
 
-        if str(config_type or "").strip().lower() == AIX_LOCAL_CONFIG_TYPE:
-            return wrap_ksh_resident_run()
         return wrap_ksh_collect()
     if os_type not in {"linux", "windows"}:
         raise ValueError(f"unsupported os_type: {os_type}")
@@ -103,19 +100,6 @@ def _adhoc_stdout_preview(result: Dict[str, Any]) -> str:
                     chunks.append(str(host_data.get("stdout") or ""))
             return "\n".join(chunks)
     return ""
-
-
-def _aix_resident_probe_status(result: Dict[str, Any]) -> str:
-    from .aix_os_monitor import AIX_PROBE_ABSENT, AIX_PROBE_PRESENT
-
-    stdout = _adhoc_stdout_preview(result)
-    if AIX_PROBE_PRESENT in stdout:
-        return "present"
-    if AIX_PROBE_ABSENT in stdout:
-        return "absent"
-    if result.get("success"):
-        return "absent"
-    return "failed"
 
 
 def _extract_json_payload(stdout: str) -> str:
@@ -371,13 +355,10 @@ class HostCollector(BaseCollector):
 
         logger.info("[Host Collector] host=%s, os=%s, modules=%s", host, os_type, modules)
 
-        from .aix_os_monitor import aix_config_type
-
         script = build_script(
             os_type,
             modules,
             monitor_type=self.params.get("monitor_type"),
-            config_type=aix_config_type(self.params) if os_type == "aix" else None,
         )
 
         connection = "ssh" if ssh_like else "winrm"
@@ -447,77 +428,10 @@ class HostCollector(BaseCollector):
             task_id=task_id,
         )
 
-    async def _ensure_aix_resident(self, config: Dict[str, Any], task_id: str | None) -> Dict[str, Any] | None:
-        from core.infra.ansible_rpc import ansible_adhoc
-
-        from .aix_os_monitor import FILE_TRANSFER_TIMEOUT, wrap_ksh_install, wrap_ksh_resident_probe
-
-        cache_key = (str(config["host"]), str(config["ansible_node_id"]))
-        if cache_key in _AIX_RESIDENT_READY:
-            return None
-        probe_result = await ansible_adhoc(
-            ansible_node_id=config["ansible_node_id"],
-            host_credentials=config["host_credentials"],
-            module=config["module"],
-            module_args=wrap_ksh_resident_probe(),
-            execute_timeout=min(int(config["execute_timeout"]), 60),
-            task_id=(f"{task_id}-probe" if task_id else None),
-        )
-        status = _aix_resident_probe_status(probe_result)
-        if status == "present":
-            _AIX_RESIDENT_READY.add(cache_key)
-            logger.info(
-                "event=aix_os_monitor_resident_ready host=%s ansible_node_id=%s",
-                config["host"],
-                config["ansible_node_id"],
-            )
-            return None
-        if status == "failed":
-            logger.error(
-                "event=aix_os_monitor_probe_failed host=%s failed_stage=resident_probe error_type=%s",
-                config["host"],
-                type(probe_result.get("error") or probe_result.get("message") or "probe_failed").__name__,
-            )
-            return probe_result
-        logger.info(
-            "event=aix_os_monitor_install_started host=%s ansible_node_id=%s",
-            config["host"],
-            config["ansible_node_id"],
-        )
-        install_result = await ansible_adhoc(
-            ansible_node_id=config["ansible_node_id"],
-            host_credentials=config["host_credentials"],
-            module=config["module"],
-            module_args=wrap_ksh_install(),
-            execute_timeout=FILE_TRANSFER_TIMEOUT,
-            task_id=(f"{task_id}-install" if task_id else None),
-        )
-        if not install_result.get("success"):
-            error_msg = install_result.get("error") or install_result.get("message") or "AIX script install failed"
-            logger.error(
-                "event=aix_os_monitor_install_failed host=%s failed_stage=file_transfer error_type=%s",
-                config["host"],
-                type(error_msg).__name__,
-            )
-            return install_result
-        _AIX_RESIDENT_READY.add(cache_key)
-        logger.info(
-            "event=aix_os_monitor_install_completed host=%s ansible_node_id=%s",
-            config["host"],
-            config["ansible_node_id"],
-        )
-        return None
-
     async def _execute_collection(self, callback: Dict[str, Any] | None = None, task_id: str | None = None) -> Dict[str, Any]:
         from core.infra.ansible_rpc import ansible_adhoc
 
-        from .aix_os_monitor import is_aix_local_residency
-
         config = await asyncio.to_thread(self._resolve_execution_config)
-        if is_aix_local_residency(self.params):
-            install_result = await self._ensure_aix_resident(config, task_id)
-            if install_result is not None:
-                return install_result
         return await ansible_adhoc(
             ansible_node_id=config["ansible_node_id"],
             host_credentials=config["host_credentials"],
