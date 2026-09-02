@@ -10,6 +10,7 @@ const api = {
   getService: vi.fn(),
   getServiceRed: vi.fn(),
   getTraces: vi.fn(),
+  getIssues: vi.fn(),
   getTopology: vi.fn(),
   getSlos: vi.fn(),
   getDeployments: vi.fn(),
@@ -87,6 +88,7 @@ beforeEach(() => {
     top_endpoints: [],
   });
   api.getTraces.mockResolvedValue({ items: [] });
+  api.getIssues.mockResolvedValue({ items: [], next_cursor: null, truncated: false });
   api.getTopology.mockResolvedValue({ nodes: [], edges: [] });
   api.getSlos.mockResolvedValue([]);
   api.getDeployments.mockResolvedValue({
@@ -128,5 +130,79 @@ describe('APM 服务详情部署 Tab', () => {
     expect(screen.getByText('推断')).not.toBeNull();
     expect(screen.queryByText('部署事件将在发布埋点接入后展示；当前可先通过版本与 Trace 属性排查变更。')).toBeNull();
     expect(api.getDeployments).toHaveBeenCalledWith(expect.objectContaining({ service_id: 'svc-1' }));
+  }, 15_000);
+});
+
+describe('APM 服务详情错误 Tab', () => {
+  it('按入口 ERROR Span 拉 Issue，不依赖最近调用链是否抽到错误', async () => {
+    api.getServiceRed.mockResolvedValue({
+      service_id: 'svc-1',
+      environment: 'production',
+      started_at: '2026-08-24T00:00:00Z',
+      ended_at: '2026-08-24T01:00:00Z',
+      request_rate: 0.1,
+      error_rate: 0.0279,
+      p95_ms: 1290,
+      p99_ms: 3590,
+      timeseries: [],
+      top_endpoints: [],
+    });
+    api.getTraces.mockResolvedValue({
+      items: [{
+        trace_id: 'ok-trace',
+        started_at: '2026-08-24T00:50:00Z',
+        duration_ms: 80,
+        service_namespace: 'shop',
+        service_name: 'checkout',
+        environment: 'production',
+        instance_id: 'pod-a',
+        status: 'ok',
+        root_span_name: 'POST /checkout',
+        span_count: 3,
+      }],
+    });
+    api.getIssues.mockResolvedValue({
+      items: [{
+        fingerprint: 'issue-1',
+        exception_type: 'PaymentError',
+        message: 'card declined',
+        stacktrace: 'PaymentError\n at charge(payment.py:42)',
+        service_namespace: 'shop',
+        service_name: 'checkout',
+        environment: 'production',
+        occurrences: 10,
+        affected_traces: 10,
+        last_seen_at: '2026-08-24T00:50:00Z',
+        version_distribution: [{ value: 'v2', count: 10, percent: 100 }],
+        endpoint_distribution: [{ value: 'POST /checkout', count: 10, percent: 100 }],
+        sample_traces: [{
+          trace_id: 'a'.repeat(32),
+          span_id: '1'.repeat(16),
+          endpoint: 'POST /checkout',
+          started_at: '2026-08-24T00:50:00Z',
+          duration_ms: 120,
+        }],
+      }],
+      next_cursor: null,
+      truncated: false,
+    });
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmServiceDetailPage />);
+
+    expect(await screen.findByText('checkout')).not.toBeNull();
+    expect(api.getIssues).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('tab', { name: '错误' }));
+
+    expect(await screen.findByText('PaymentError')).not.toBeNull();
+    expect(screen.getByText('card declined')).not.toBeNull();
+    expect(screen.queryByText('当前时间窗暂无错误 Trace')).toBeNull();
+    expect(api.getIssues).toHaveBeenCalledWith(expect.objectContaining({
+      service_namespace: 'shop',
+      service_name: 'checkout',
+      environment: 'production',
+      entry_only: true,
+      limit: 50,
+    }));
   }, 15_000);
 });

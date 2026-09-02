@@ -91,6 +91,9 @@ class TraceSummary:
     span_count: int = 0
 
 
+ENTRY_SPAN_KINDS = ("server", "consumer")
+
+
 @dataclass(frozen=True)
 class SpanSearchQuery:
     started_at: datetime
@@ -102,6 +105,7 @@ class SpanSearchQuery:
     span_name: str | None = None
     status: str | None = None
     kind: str | None = None
+    kinds: tuple[str, ...] | None = None
     min_duration_ms: float | None = None
     max_duration_ms: float | None = None
     cursor: str | None = None
@@ -140,6 +144,7 @@ class IssueSearchQuery:
     environment: str | None = None
     cursor: str | None = None
     limit: int = 50
+    entry_only: bool = False
 
     def span_query(self) -> SpanSearchQuery:
         return SpanSearchQuery(
@@ -149,6 +154,7 @@ class IssueSearchQuery:
             service_name=self.service_name,
             environment=self.environment,
             status="error",
+            kinds=ENTRY_SPAN_KINDS if self.entry_only else None,
             cursor=self.cursor,
             limit=self.limit,
         )

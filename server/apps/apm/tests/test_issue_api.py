@@ -106,11 +106,62 @@ def test_issue_api_defaults_to_all_visible_services_and_keeps_cursor_bound(apm_a
     assert called_query.service_name is None
     assert called_query.environment is None
     assert called_query.status == "error"
+    assert called_query.kind is None
+    assert called_query.kinds is None
     assert called_query.limit == 50
     assert response.data["next_cursor"] == "next-page"
     assert response.data["truncated"] is True
     assert len(response.data["items"]) == 1
     assert response.data["items"][0]["service_namespace"] == "shop"
+
+
+def test_issue_api_entry_only_scopes_to_server_and_consumer_error_spans(apm_api_client, mocker):
+    now = timezone.now()
+    create_application("shop", (10,))
+    catalog = DjangoTelemetryCatalogService()
+    catalog.discover(CatalogDiscovery("shop", "checkout", "pod-a", "production", seen_at=now))
+    query_service = mocker.Mock()
+    query_service.search_spans.return_value = SpanPage((_error_span(now),), None)
+    query_service.get_trace.return_value = _trace(now, _error_span(now))
+    mocker.patch("apps.apm.views.issues.ApmIssueViewSet._query_service", return_value=query_service)
+
+    response = apm_api_client.get(
+        "/api/v1/apm/issues/",
+        {
+            "service_namespace": "shop",
+            "service_name": "checkout",
+            "environment": "production",
+            "entry_only": True,
+        },
+    )
+
+    assert response.status_code == 200
+    called_query = query_service.search_spans.call_args.args[0]
+    assert called_query.status == "error"
+    assert called_query.kind is None
+    assert called_query.kinds == ("server", "consumer")
+    assert called_query.service_name == "checkout"
+    assert called_query.environment == "production"
+
+
+def test_issue_service_keeps_error_span_when_trace_detail_is_missing():
+    now = timezone.now()
+    summary = _error_span(now)
+    store = InMemoryTraceStore(spans=(summary,))
+    query_service = DjangoTelemetryQueryService(trace_store=store)
+    page = query_service.search_spans(
+        IssueSearchQuery(now - timedelta(hours=1), now + timedelta(seconds=1), limit=50).span_query()
+    )
+
+    result = DjangoTelemetryIssueService(query_service).project(page.items, next_cursor=None)
+
+    assert len(result.items) == 1
+    issue = result.items[0]
+    assert issue.exception_type == "SpanError"
+    assert issue.message == "OTel Span status=Error"
+    assert issue.occurrences == 1
+    assert issue.affected_traces == 1
+    assert issue.sample_traces[0].trace_id == summary.trace_id
 
 
 @pytest.mark.parametrize("params", [{"limit": 101}, {"status": "ok"}, {"started_at": "bad"}])

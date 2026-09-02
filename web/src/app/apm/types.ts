@@ -471,6 +471,7 @@ export interface ApmIssueSearchParams {
   ended_at?: string;
   cursor?: string;
   limit?: number;
+  entry_only?: boolean;
 }
 
 export interface ApmSpanSearchParams {

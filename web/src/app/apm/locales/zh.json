@@ -695,6 +695,8 @@
       "noTraces": "当前时间窗暂无调用链样本。",
       "errors": "错误",
       "noErrorTraces": "当前时间窗暂无错误 Trace",
+      "noErrorIssues": "当前时间窗没有入口错误",
+      "errorSamplesMissing": "错误率有样本但错误列表未返回，可重试",
       "runtime": "运行时",
       "deploy": "部署",
       "target": "目标",

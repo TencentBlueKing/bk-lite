@@ -353,6 +353,7 @@ class IssueSearchSerializer(serializers.Serializer):
     ended_at = serializers.DateTimeField(required=False)
     cursor = serializers.CharField(max_length=512, required=False)
     limit = serializers.IntegerField(min_value=1, max_value=100, default=50)
+    entry_only = serializers.BooleanField(required=False, default=False)
 
     def validate(self, attrs):
         unsupported = sorted(set(self.initial_data) - set(self.fields))

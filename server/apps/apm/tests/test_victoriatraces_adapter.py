@@ -544,6 +544,32 @@ def test_search_spans_builds_controlled_logsql_and_maps_rows():
     assert session.get.call_args.kwargs["params"]["limit"] == 21
 
 
+def test_search_spans_filters_entry_kinds_like_red_metrics():
+    now = timezone.now()
+    session = Mock()
+    session.get.return_value = _response({}, raw=b"")
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+
+    from apps.apm.services.contracts import SpanSearchQuery
+
+    store.search_spans(
+        SpanSearchQuery(
+            started_at=now - timedelta(hours=1),
+            ended_at=now,
+            service_name="etl-worker",
+            environment="production",
+            status="error",
+            kinds=("server", "consumer"),
+            limit=20,
+        )
+    )
+
+    query = session.get.call_args.kwargs["params"]["query"]
+    assert 'kind:in("2","5")' in query
+    assert 'status_code:="2"' in query
+    assert 'kind:="' not in query
+
+
 def _sample_id_row(trace_id, now):
     return json.dumps({"trace_id": trace_id, "matched_at": str(int(now.timestamp() * 1_000_000_000))})
 

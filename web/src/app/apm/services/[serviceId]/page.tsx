@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -39,6 +39,7 @@ import CatalogState, {
 import { DEPLOYMENT_LOOKBACK_MS, DEPLOYMENT_STATUS_META } from '@/app/apm/components/deployment-status';
 import HealthDot from '@/app/apm/components/health-dot';
 import { StatusPill } from '@/app/apm/components/home/section-card';
+import ApmIssueList from '@/app/apm/components/issue-list';
 import {
   deriveHealth,
   formatClockTime,
@@ -54,6 +55,7 @@ import {
 } from '@/app/apm/components/metric-format';
 import type {
   ApmDeploymentEvent,
+  ApmIssue,
   ApmService,
   ApmServiceEndpointRed,
   ApmServiceRed,
@@ -122,6 +124,7 @@ export default function ApmServiceDetailPage() {
     getService,
     getServiceRed,
     getTraces,
+    getIssues,
     getTopology,
     getSlos,
     getDeployments,
@@ -139,6 +142,10 @@ export default function ApmServiceDetailPage() {
   const [metricState, setMetricState] = useState<PageState>('loading');
   const [traces, setTraces] = useState<ApmTraceSummary[]>([]);
   const [tracesState, setTracesState] = useState<PageState>('loading');
+  const [issues, setIssues] = useState<ApmIssue[]>([]);
+  const [issuesState, setIssuesState] = useState<PageState>('loading');
+  const [issuesNextCursor, setIssuesNextCursor] = useState<string | null>(null);
+  const [issuesLoadingMore, setIssuesLoadingMore] = useState(false);
   const [upstream, setUpstream] = useState<{ node: ApmTopologyNode; edge: ApmTopologyEdge }[]>([]);
   const [downstream, setDownstream] = useState<{ node: ApmTopologyNode; edge: ApmTopologyEdge }[]>([]);
   const [serviceSlos, setServiceSlos] = useState<ApmSlo[]>([]);
@@ -276,6 +283,35 @@ export default function ApmServiceDetailPage() {
     };
   }, [activeTab, authLoading, getDeployments, params.serviceId, refreshKey]);
 
+  const loadIssues = useCallback((cursor?: string) => {
+    if (!service || environment === undefined || authLoading) return;
+    if (cursor) setIssuesLoadingMore(true); else setIssuesState('loading');
+    const endedAt = new Date().toISOString();
+    const startedAt = new Date(new Date(endedAt).getTime() - RANGE_MS[timeRange]).toISOString();
+    void getIssues({
+      service_namespace: service.namespace,
+      service_name: service.name,
+      environment,
+      started_at: startedAt,
+      ended_at: endedAt,
+      cursor,
+      limit: 50,
+      entry_only: true,
+    })
+      .then((page) => {
+        setIssues((current) => (cursor ? [...current, ...page.items] : page.items));
+        setIssuesNextCursor(page.next_cursor);
+        setIssuesState(page.items.length || cursor || page.next_cursor ? 'ready' : 'empty');
+      })
+      .catch((error) => setIssuesState(catalogErrorKind(error)))
+      .finally(() => setIssuesLoadingMore(false));
+  }, [authLoading, environment, getIssues, service, timeRange]);
+
+  useEffect(() => {
+    if (activeTab !== 'errors') return;
+    loadIssues();
+  }, [activeTab, loadIssues, refreshKey]);
+
   const exploreHref = service && red
     ? `/apm/explore/traces?${new URLSearchParams({
       service_namespace: service.namespace,
@@ -302,11 +338,6 @@ export default function ApmServiceDetailPage() {
     const maxRate = Math.max(...items.map((item) => item.request_rate), 1);
     return items.map((item) => ({ ...item, ratio: Math.round((item.request_rate / maxRate) * 100) }));
   }, [red]);
-
-  const errorTraces = useMemo(
-    () => traces.filter((item) => item.status === 'error'),
-    [traces]
-  );
 
   const health = deriveHealth(service?.status ?? 'silent', red?.error_rate ?? null);
 
@@ -759,52 +790,50 @@ export default function ApmServiceDetailPage() {
               },
               {
                 key: 'errors',
-                label: errorTraces.length
-                  ? t('apm.serviceDetail.errorsWithCount', '错误 ({count})', { count: errorTraces.length })
+                label: issues.length
+                  ? t('apm.serviceDetail.errorsWithCount', '错误 ({count})', { count: issues.length })
                   : t('apm.serviceDetail.errors', '错误'),
-                children: errorTraces.length ? (
-                  <div className="flex flex-col gap-3">
-                    {errorTraces.map((item) => (
-                      <ApmSurface key={item.trace_id} padding="compact">
-                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                          <div className="min-w-0">
-                            <Space size={8} wrap>
-                              <Typography.Text strong className="!text-sm">{item.root_span_name}</Typography.Text>
-                              <Tag bordered={false} color="error">{t('apm.severity.error', '错误')}</Tag>
-                              <Typography.Text type="secondary" className="!text-xs">
-                                {item.service_name} · {item.environment || t('apm.common.unset', '未设置')}
-                              </Typography.Text>
-                            </Space>
-                            <div className="mt-2">
-                              <Link
-                                href={`/apm/explore/traces/${item.trace_id}`}
-                                className="text-xs text-[var(--color-primary)]"
-                              >
-                                {t('apm.explore.viewSampleTrace', '查看样本 Trace →')}
-                              </Link>
-                            </div>
-                          </div>
-                          <Space size={24}>
-                            <div className="text-center">
-                              <Typography.Text type="secondary" className="!text-xs">{t('apm.explore.spanCount', '跨度数')}</Typography.Text>
-                              <div className="text-sm font-semibold tabular-nums text-[var(--color-fail)]">{item.span_count}</div>
-                            </div>
-                            <div className="text-center">
-                              <Typography.Text type="secondary" className="!text-xs">{t('apm.common.latency', '耗时')}</Typography.Text>
-                              <div className="text-sm font-semibold tabular-nums">{formatLatency(item.duration_ms, false, t)}</div>
-                            </div>
-                            <div className="text-center">
-                              <Typography.Text type="secondary" className="!text-xs">{t('apm.explore.lastSeen', '最近出现')}</Typography.Text>
-                              <div className="text-sm tabular-nums">{formatRelativeTime(item.started_at, t)}</div>
-                            </div>
-                          </Space>
-                        </div>
-                      </ApmSurface>
-                    ))}
-                  </div>
-                ) : (
-                  <ApmSurface className="py-16 text-center">
-                    <CompactEmptyState description={t('apm.serviceDetail.noErrorTraces', '当前时间窗暂无错误 Trace')} />
+                children: (
+                  <ApmSurface>
+                    {issuesState === 'ready' ? (
+                      <div className="flex flex-col gap-4">
+                        {issues.length ? (
+                          <ApmIssueList items={issues} showService={false} />
+                        ) : (
+                          <CatalogState
+                            kind="empty"
+                            description={
+                              (red?.error_rate ?? 0) > 0 && !issuesNextCursor
+                                ? t('apm.serviceDetail.errorSamplesMissing', '错误率有样本但错误列表未返回，可重试')
+                                : issuesNextCursor
+                                  ? t('apm.errors.emptyPage', '当前游标页没有可见 Issue，可继续加载更早样本。')
+                                  : t('apm.serviceDetail.noErrorIssues', '当前时间窗没有入口错误')
+                            }
+                            onRetry={(red?.error_rate ?? 0) > 0 && !issuesNextCursor ? () => loadIssues() : undefined}
+                          />
+                        )}
+                        {issuesNextCursor ? (
+                          <Button loading={issuesLoadingMore} onClick={() => loadIssues(issuesNextCursor)}>
+                            {t('apm.common.loadMore', '加载更多')}
+                          </Button>
+                        ) : null}
+                      </div>
+                    ) : issuesState === 'empty' ? (
+                      <CatalogState
+                        kind="empty"
+                        description={
+                          (red?.error_rate ?? 0) > 0
+                            ? t('apm.serviceDetail.errorSamplesMissing', '错误率有样本但错误列表未返回，可重试')
+                            : t('apm.serviceDetail.noErrorIssues', '当前时间窗没有入口错误')
+                        }
+                        onRetry={(red?.error_rate ?? 0) > 0 ? () => loadIssues() : undefined}
+                      />
+                    ) : (
+                      <CatalogState
+                        kind={issuesState}
+                        onRetry={issuesState === 'forbidden' ? undefined : () => loadIssues()}
+                      />
+                    )}
                   </ApmSurface>
                 ),
               },

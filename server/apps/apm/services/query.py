@@ -57,8 +57,7 @@ class DjangoTelemetryQueryService:
         if query.limit < 1 or query.limit > MAX_TRACE_PAGE_SIZE:
             raise ValueError("Span 每页数量必须在 1 到 100 之间")
         self._validate_status(query.status)
-        if query.kind is not None and query.kind not in _VALID_KINDS:
-            raise ValueError("Span kind 仅支持 internal、server、client、producer、consumer")
+        self._validate_kinds(query.kind, query.kinds)
         self._validate_duration_bounds(query.min_duration_ms, query.max_duration_ms)
         if self.trace_store is None:
             raise RuntimeError("TraceStore 未配置")
@@ -81,6 +80,17 @@ class DjangoTelemetryQueryService:
     def _validate_status(status: str | None) -> None:
         if status is not None and status not in _VALID_STATUSES:
             raise ValueError("status 仅支持 ok 或 error")
+
+    @staticmethod
+    def _validate_kinds(kind: str | None, kinds: tuple[str, ...] | None) -> None:
+        if kind is not None and kinds is not None:
+            raise ValueError("kind 与 kinds 不能同时指定")
+        if kind is not None and kind not in _VALID_KINDS:
+            raise ValueError("Span kind 仅支持 internal、server、client、producer、consumer")
+        if kinds is None:
+            return
+        if not kinds or any(item not in _VALID_KINDS for item in kinds):
+            raise ValueError("Span kind 仅支持 internal、server、client、producer、consumer")
 
     @staticmethod
     def _validate_duration_bounds(min_duration_ms: float | None, max_duration_ms: float | None) -> None:

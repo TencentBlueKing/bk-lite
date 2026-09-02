@@ -140,6 +140,23 @@ def _logsql_string(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
+def _span_kind_filter(kind: str | None, kinds: tuple[str, ...] | None) -> str | None:
+    if kind is not None and kinds is not None:
+        raise ValueError("kind 与 kinds 不能同时指定")
+    if kind is not None:
+        if kind not in _KIND_TO_CODE:
+            raise ValueError("Span kind 无效")
+        return f"kind:={_logsql_string(_KIND_TO_CODE[kind])}"
+    if not kinds:
+        return None
+    codes: list[str] = []
+    for item in kinds:
+        if item not in _KIND_TO_CODE:
+            raise ValueError("Span kind 无效")
+        codes.append(_logsql_string(_KIND_TO_CODE[item]))
+    return f"kind:in({','.join(codes)})"
+
+
 def _validate_window(started_at: datetime, ended_at: datetime, *, maximum: timedelta = MAX_QUERY_WINDOW) -> int:
     if ended_at <= started_at:
         raise ValueError("查询结束时间必须晚于开始时间")
@@ -331,8 +348,7 @@ class VictoriaTracesTelemetryStore:
             raise ValueError(f"Span 查询 limit 必须在 1 到 {_MAX_SPAN_SEARCH_LIMIT} 之间")
         if query.status is not None and query.status not in _STATUS_TO_CODE:
             raise ValueError("status 仅支持 ok 或 error")
-        if query.kind is not None and query.kind not in _KIND_TO_CODE:
-            raise ValueError("Span kind 无效")
+        kind_filter = _span_kind_filter(query.kind, query.kinds)
         if query.min_duration_ms is not None and query.min_duration_ms < 0:
             raise ValueError("min_duration_ms 不能为负数")
         if query.max_duration_ms is not None and query.max_duration_ms < 0:
@@ -354,8 +370,8 @@ class VictoriaTracesTelemetryStore:
             filters.append(f"name:={_logsql_string(query.span_name)}")
         if query.status is not None:
             filters.append(f"status_code:={_logsql_string(_STATUS_TO_CODE[query.status])}")
-        if query.kind is not None:
-            filters.append(f"kind:={_logsql_string(_KIND_TO_CODE[query.kind])}")
+        if kind_filter is not None:
+            filters.append(kind_filter)
         if query.min_duration_ms is not None:
             filters.append(f"duration:>={int(query.min_duration_ms * 1_000_000)}")
         if query.max_duration_ms is not None:

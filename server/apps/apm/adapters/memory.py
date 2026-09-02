@@ -89,6 +89,7 @@ class InMemoryTraceStore:
             and (query.span_name is None or item.name == query.span_name)
             and (query.status is None or item.status == query.status)
             and (query.kind is None or item.kind == query.kind)
+            and (query.kinds is None or item.kind in query.kinds)
             and (query.min_duration_ms is None or item.duration_ms >= query.min_duration_ms)
             and (query.max_duration_ms is None or item.duration_ms <= query.max_duration_ms)
         ]

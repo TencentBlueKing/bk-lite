@@ -695,6 +695,8 @@
       "noTraces": "No trace samples in the current time window.",
       "errors": "Errors",
       "noErrorTraces": "No error Traces in the current time window",
+      "noErrorIssues": "No entry-span errors in the current time window",
+      "errorSamplesMissing": "Error rate has samples but the error list did not return. You can retry.",
       "runtime": "Runtime",
       "deploy": "Deploy",
       "target": "Target",
