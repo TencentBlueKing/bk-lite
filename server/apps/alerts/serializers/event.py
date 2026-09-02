@@ -17,6 +17,7 @@ class EventModelSerializer(AuthSerializer):
     # 格式化时间字段
     start_time = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True)
     end_time = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True)
+    received_at = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True)
     source_name = serializers.SerializerMethodField()
 
     class Meta:
@@ -26,6 +27,7 @@ class EventModelSerializer(AuthSerializer):
             # "events": {"write_only": True},  # events 字段只读
             "start_time": {"read_only": True},
             "end_time": {"read_only": True},
+            "received_at": {"read_only": True},
             "labels": {"write_only": True},
             # "raw_data": {"write_only": True},
         }
