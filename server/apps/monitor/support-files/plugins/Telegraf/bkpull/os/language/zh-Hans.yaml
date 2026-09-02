@@ -1,0 +1,132 @@
+Host AIX:
+  desc: 平台将官方 node_exporter 安装到 AIX 主机，由 Linux 采集节点通过 Prometheus 拉取 CPU、内存、磁盘、网络和 LPAR 指标。
+  name: 主机 AIX（Telegraf）
+monitor_object:
+  Host: 主机
+monitor_object_type:
+  OS: 操作系统
+monitor_object_metric:
+  Host:
+    cpu_usage_total:
+      name: CPU使用率
+      desc: 反映主机整体 CPU 的使用情况，表示非空闲时间在总 CPU 时间中的占比，用于衡量系统的整体计算压力。持续高位通常意味着 CPU 资源成为系统瓶颈。
+    cpu_usage_core:
+      name: CPU单核使用率
+      desc: 描述单个 CPU 核心的使用情况，用于分析 CPU 负载在各核心间的分布，帮助识别负载不均或热点核心问题。
+    cpu_usage_iowait_total:
+      name: CPU等待IO占比
+      desc: 表示 CPU 因等待 I/O 操作完成而处于空闲状态的时间占比，主要用于判断系统是否受限于磁盘或其他 I/O 性能。
+    cpu_usage_system_total:
+      name: CPU系统占用率
+      desc: 表示 CPU 在内核态执行操作系统相关任务所占用的时间比例，异常升高可能与系统调用频繁或内核开销增加有关。
+    cpu_usage_user_total:
+      name: CPU用户占用率
+      desc: 表示 CPU 在用户态执行应用程序逻辑所消耗的时间占比，通常用于衡量业务程序对 CPU 的消耗程度。
+    system_load1:
+      name: 1分钟平均负载
+      desc: 表示系统在最近 1 分钟内的平均运行负载，主要用于观察系统的瞬时压力变化。
+    system_load5:
+      name: 5分钟平均负载
+      desc: 表示系统在最近 5 分钟内的平均运行负载，用于分析系统负载的短期趋势。
+    system_load15:
+      name: 15分钟平均负载
+      desc: 表示系统在最近 15 分钟内的平均运行负载，用于评估系统负载的长期稳定性。
+    disk_write_latency:
+      name: 磁盘写入延迟
+      desc: 表示单次磁盘写入操作的平均耗时，用于分析磁盘写入性能及响应能力。
+    disk_read_latency:
+      name: 磁盘读出延迟
+      desc: 表示单次磁盘读取操作的平均耗时，用于分析磁盘读取性能和访问延迟。
+    disk_total:
+      name: 磁盘总空间
+      desc: 表示磁盘或文件系统的总容量，用于容量规划与资源管理。
+    disk_free:
+      name: 磁盘剩余空间
+      desc: 表示磁盘或文件系统当前可用的剩余容量，用于监控磁盘空间风险。
+    disk_used_percent:
+      name: 磁盘使用率
+      desc: 表示磁盘已使用空间占总容量的比例，是磁盘容量监控的核心指标。
+    disk_inodes_used_percent:
+      name: Inode使用率
+      desc: 表示文件系统 Inode 的使用比例，用于防范因 Inode 耗尽导致的文件创建失败问题。
+    mem_total:
+      name: 内存总量
+      desc: 表示系统可使用的物理内存总容量，是内存资源评估的基础指标。
+    mem_available:
+      name: 可用内存
+      desc: 表示系统在不触发明显性能下降的情况下，可分配给应用使用的内存容量。
+    mem_used_percent:
+      name: 内存使用率
+      desc: 表示已使用内存占总内存的比例，用于评估系统的内存压力水平。
+    mem_swap_free:
+      name: 空闲交换内存
+      desc: 表示当前剩余可用的交换内存空间，用于监控内存紧张情况下的缓冲能力。
+    net_packets_recv_rate:
+      name: 网络接收包速率
+      desc: 表示网络接口单位时间内接收的数据包数量，用于衡量网络包级流量情况。
+    net_packets_recv_total:
+      name: 网络接收包数
+      desc: 表示网络接口累计接收的数据包数量，用于分析网络接收流量规模。
+    net_packets_sent_rate:
+      name: 网络发送包速率
+      desc: 表示网络接口单位时间内发送的数据包数量。
+    net_packets_sent_total:
+      name: 网络发送包数
+      desc: 表示网络接口累计发送的数据包数量，用于分析网络发送流量规模。
+    net_bytes_recv_rate:
+      name: 网络接收吞吐速率
+      desc: 表示网络接口单位时间内接收的数据量，用于评估网络接收带宽使用情况。
+    net_bytes_sent_rate:
+      name: 网络发送吞吐速率
+      desc: 表示网络接口单位时间内发送的数据量，用于评估网络发送带宽使用情况。
+    net_err_in_rate:
+      name: 网络接收错误包速率
+      desc: 表示网络接口单位时间内接收到的错误数据包数量，用于监控网络质量。
+    net_err_out_rate:
+      name: 网络发送错误包速率
+      desc: 表示网络接口单位时间内发送失败的错误数据包数量。
+    net_drop_in_rate:
+      name: 网络接收丢包速率
+      desc: 表示网络接口单位时间内被丢弃的接收数据包数量，用于评估网络拥塞或异常情况。
+    net_drop_in_total:
+      name: 网络接收丢包数
+      desc: 表示网络接口累计丢弃的接收数据包数量，用于定位链路拥塞、缓冲区不足或驱动异常。
+    net_drop_out_rate:
+      name: 网络发送丢包速率
+      desc: 表示网络接口单位时间内被丢弃的发送数据包数量。
+    net_drop_out_total:
+      name: 网络发送丢包数
+      desc: 表示网络接口累计丢弃的发送数据包数量，用于辅助排查网络发送路径异常。
+    lpar_entitled_capacity:
+      name: 授权容量
+      desc: LPAR 当前授权容量。
+    lpar_memory_online:
+      name: 在线内存
+      desc: LPAR 当前在线内存。
+    lpar_memory_max:
+      name: 最大内存
+      desc: LPAR 可配置的最大内存。
+    lpar_cpus_online:
+      name: 在线CPU数
+      desc: LPAR 当前在线 CPU 数。
+    lpar_smt_threads:
+      name: SMT线程数
+      desc: LPAR 当前 SMT 线程数。
+    lpar_power_save:
+      name: 节能模式
+      desc: LPAR 当前节能模式。
+    lpar_physical_cpu_seconds:
+      name: 物理CPU秒
+      desc: LPAR 消耗的物理 CPU 秒。
+    lpar_run_queue:
+      name: 运行队列长度
+      desc: LPAR 当前运行队列长度。
+monitor_object_metric_group:
+  Host:
+    CPU: CPU
+    System: 系统
+    Disk IO: 磁盘 IO
+    Disk: 磁盘
+    Memory: 内存
+    Net: 网络
+    LPAR: LPAR

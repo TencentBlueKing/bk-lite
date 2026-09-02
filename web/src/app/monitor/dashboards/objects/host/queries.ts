@@ -22,8 +22,8 @@ export const HOST_TOP_QUERIES: HostTopQuery[] = [
     title: '磁盘使用率 Top',
     unit: 'percent',
     color: '#faad14',
-    labelKeys: ['path', 'device'],
-    query: `topk(${HOST_DISK_TOP_N}, max by (path, device) (disk_used_percent{instance_type="os", __$labels__} or host_disk_used_percent_gauge{instance_type="os", __$labels__} or disk_used_percent_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}))`,
+    labelKeys: ['path', 'device', 'mountpoint'],
+    query: `topk(${HOST_DISK_TOP_N}, max by (path, device, mountpoint) (disk_used_percent{instance_type="os", __$labels__} or host_disk_used_percent_gauge{instance_type="os", __$labels__} or disk_used_percent_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} or (100 * (1 - node_filesystem_free_bytes_gauge{instance_type="os", config_type="aix", __$labels__} / node_filesystem_size_bytes_gauge{instance_type="os", config_type="aix", __$labels__}))))`,
     guide: [{ label: '磁盘排行', detail: '按挂载点/设备使用率最高排序，定位最满分区。' }]
   }
 ];

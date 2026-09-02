@@ -15,7 +15,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '主机 CPU 总体使用率。',
       unit: 'percent',
       // ①Telegraf host: 100-空闲；②HTTP Remote: host_cpu_usage_percent_gauge；③Windows WMI。
-      query: '(100 - cpu_usage_idle{cpu="cpu-total", instance_type="os", __$labels__}) or host_cpu_usage_percent_gauge{instance_type="os", __$labels__} or cpu_usage_total_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}',
+      query: '(100 - cpu_usage_idle{cpu="cpu-total", instance_type="os", __$labels__}) or host_cpu_usage_percent_gauge{instance_type="os", __$labels__} or cpu_usage_total_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} or (100 * (1 - sum by (instance_id) (rate(node_cpu_seconds_total_counter{mode="idle", instance_type="os", config_type="aix", __$labels__}[5m])) / sum by (instance_id) (rate(node_cpu_seconds_total_counter{instance_type="os", config_type="aix", __$labels__}[5m]))))',
       color: '#2f6bff'
     },
     {
@@ -23,7 +23,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '用户态 CPU 占比',
       description: 'CPU 在用户态消耗的时间占比（Linux/部分远程采集；Windows WMI 可能无此分解）。',
       unit: 'percent',
-      query: 'cpu_usage_user{cpu="cpu-total", instance_type="os", __$labels__} or cpu_usage_user_total_gauge{instance_type="os", __$labels__}',
+      query: 'cpu_usage_user{cpu="cpu-total", instance_type="os", __$labels__} or cpu_usage_user_total_gauge{instance_type="os", __$labels__} or (100 * sum by (instance_id) (rate(node_cpu_seconds_total_counter{mode="user", instance_type="os", config_type="aix", __$labels__}[5m])) / sum by (instance_id) (rate(node_cpu_seconds_total_counter{instance_type="os", config_type="aix", __$labels__}[5m])))',
       color: '#13c2c2'
     },
     {
@@ -31,7 +31,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '内核态 CPU 占比',
       description: 'CPU 在内核态消耗的时间占比（Linux/部分远程采集；Windows WMI 可能无此分解）。',
       unit: 'percent',
-      query: 'cpu_usage_system{cpu="cpu-total", instance_type="os", __$labels__} or cpu_usage_system_total_gauge{instance_type="os", __$labels__}',
+      query: 'cpu_usage_system{cpu="cpu-total", instance_type="os", __$labels__} or cpu_usage_system_total_gauge{instance_type="os", __$labels__} or (100 * sum by (instance_id) (rate(node_cpu_seconds_total_counter{mode="system", instance_type="os", config_type="aix", __$labels__}[5m])) / sum by (instance_id) (rate(node_cpu_seconds_total_counter{instance_type="os", config_type="aix", __$labels__}[5m])))',
       color: '#597ef7'
     },
     {
@@ -39,7 +39,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: 'I/O Wait 占比',
       description: 'CPU 等待 I/O 的时间占比（主要适用于 Linux；Windows 通常无对等语义）。',
       unit: 'percent',
-      query: 'cpu_usage_iowait{cpu="cpu-total", instance_type="os", __$labels__} or cpu_usage_iowait_total_gauge{instance_type="os", __$labels__}',
+      query: 'cpu_usage_iowait{cpu="cpu-total", instance_type="os", __$labels__} or cpu_usage_iowait_total_gauge{instance_type="os", __$labels__} or (100 * sum by (instance_id) (rate(node_cpu_seconds_total_counter{mode="wait", instance_type="os", config_type="aix", __$labels__}[5m])) / sum by (instance_id) (rate(node_cpu_seconds_total_counter{instance_type="os", config_type="aix", __$labels__}[5m])))',
       color: '#ff8a1f'
     },
     {
@@ -55,7 +55,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '1 分钟负载',
       description: '主机最近 1 分钟平均负载。',
       unit: 'none',
-      query: 'system_load1{instance_type="os", __$labels__} or system_load1_gauge{instance_type="os", __$labels__} or host_cpu_load_1m_gauge{instance_type="os", __$labels__} or system_load1_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}',
+      query: 'system_load1{instance_type="os", __$labels__} or system_load1_gauge{instance_type="os", __$labels__} or host_cpu_load_1m_gauge{instance_type="os", __$labels__} or system_load1_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} or node_load1_gauge{instance_type="os", config_type="aix", __$labels__}',
       color: '#27c274'
     },
     {
@@ -63,7 +63,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '5 分钟负载',
       description: '主机最近 5 分钟平均负载。',
       unit: 'none',
-      query: 'system_load5{instance_type="os", __$labels__} or system_load5_gauge{instance_type="os", __$labels__} or host_cpu_load_5m_gauge{instance_type="os", __$labels__} or system_load5_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}',
+      query: 'system_load5{instance_type="os", __$labels__} or system_load5_gauge{instance_type="os", __$labels__} or host_cpu_load_5m_gauge{instance_type="os", __$labels__} or system_load5_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} or node_load5_gauge{instance_type="os", config_type="aix", __$labels__}',
       color: '#13c2c2'
     },
     {
@@ -71,7 +71,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '15 分钟负载',
       description: '主机最近 15 分钟平均负载。',
       unit: 'none',
-      query: 'system_load15{instance_type="os", __$labels__} or system_load15_gauge{instance_type="os", __$labels__} or host_cpu_load_15m_gauge{instance_type="os", __$labels__} or system_load15_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}',
+      query: 'system_load15{instance_type="os", __$labels__} or system_load15_gauge{instance_type="os", __$labels__} or host_cpu_load_15m_gauge{instance_type="os", __$labels__} or system_load15_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} or node_load15_gauge{instance_type="os", config_type="aix", __$labels__}',
       color: '#597ef7'
     },
     {
@@ -88,7 +88,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '内存使用率',
       description: '主机内存使用率。',
       unit: 'percent',
-      query: 'mem_used_percent{instance_type="os", __$labels__} or host_mem_used_percent_gauge{instance_type="os", __$labels__} or mem_used_percent_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}',
+      query: 'mem_used_percent{instance_type="os", __$labels__} or host_mem_used_percent_gauge{instance_type="os", __$labels__} or mem_used_percent_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} or (100 * (1 - node_memory_available_bytes_gauge{instance_type="os", config_type="aix", __$labels__} / node_memory_total_bytes_gauge{instance_type="os", config_type="aix", __$labels__}))',
       color: '#27c274'
     },
     {
@@ -97,7 +97,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '主机各挂载点磁盘使用率中的最大值（最满分区）。',
       unit: 'percent',
       // ①Telegraf host 按挂载点；②HTTP Remote；③Windows WMI。取 max 作为主机级容量压力信号。
-      query: 'max by (instance_id) (disk_used_percent{instance_type="os", __$labels__} or host_disk_used_percent_gauge{instance_type="os", __$labels__} or disk_used_percent_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__})',
+      query: 'max by (instance_id) (disk_used_percent{instance_type="os", __$labels__} or host_disk_used_percent_gauge{instance_type="os", __$labels__} or disk_used_percent_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} or (100 * (1 - node_filesystem_free_bytes_gauge{instance_type="os", config_type="aix", __$labels__} / node_filesystem_size_bytes_gauge{instance_type="os", config_type="aix", __$labels__})))',
       color: '#faad14'
     },
     {
@@ -105,7 +105,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '可用内存',
       description: '主机当前可用内存。',
       unit: 'bytes',
-      query: 'mem_available{instance_type="os", __$labels__} or host_mem_available_bytes_gauge{instance_type="os", __$labels__} or mem_available_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}',
+      query: 'mem_available{instance_type="os", __$labels__} or host_mem_available_bytes_gauge{instance_type="os", __$labels__} or mem_available_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} or node_memory_available_bytes_gauge{instance_type="os", config_type="aix", __$labels__}',
       color: '#13c2c2'
     },
     {
@@ -129,7 +129,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '网络入流量',
       description: '主机所有网卡接收字节速率合计。计算窗口与时间选择器一致。',
       unit: 'byteps',
-      query: 'sum by (instance_id) (rate(net_bytes_recv{instance_type="os", __$labels__}[__$window__]) or rate(net_bytes_recv_gauge{instance_type="os", __$labels__}[__$window__]) or rate(net_bytes_recv_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__]))',
+      query: 'sum by (instance_id) (rate(net_bytes_recv{instance_type="os", __$labels__}[__$window__]) or rate(net_bytes_recv_gauge{instance_type="os", __$labels__}[__$window__]) or rate(net_bytes_recv_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__]) or rate(node_network_receive_bytes_total_counter{instance_type="os", config_type="aix", __$labels__}[__$window__]))',
       color: '#2f6bff'
     },
     {
@@ -137,7 +137,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '网络出流量',
       description: '主机所有网卡发送字节速率合计。计算窗口与时间选择器一致。',
       unit: 'byteps',
-      query: 'sum by (instance_id) (rate(net_bytes_sent{instance_type="os", __$labels__}[__$window__]) or rate(net_bytes_sent_gauge{instance_type="os", __$labels__}[__$window__]) or rate(net_bytes_sent_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__]))',
+      query: 'sum by (instance_id) (rate(net_bytes_sent{instance_type="os", __$labels__}[__$window__]) or rate(net_bytes_sent_gauge{instance_type="os", __$labels__}[__$window__]) or rate(net_bytes_sent_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__]) or rate(node_network_transmit_bytes_total_counter{instance_type="os", config_type="aix", __$labels__}[__$window__]))',
       color: '#27c274'
     },
     {
@@ -145,7 +145,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '网络接收错误速率',
       description: '主机所有网卡接收错误包速率合计。计算窗口与时间选择器一致。',
       unit: 'cps',
-      query: 'sum by (instance_id) (rate(net_err_in{instance_type="os", __$labels__}[__$window__]) or rate(net_err_in_gauge{instance_type="os", __$labels__}[__$window__]) or rate(net_err_in_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__]))',
+      query: 'sum by (instance_id) (rate(net_err_in{instance_type="os", __$labels__}[__$window__]) or rate(net_err_in_gauge{instance_type="os", __$labels__}[__$window__]) or rate(net_err_in_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__]) or rate(node_network_receive_errors_total_counter{instance_type="os", config_type="aix", __$labels__}[__$window__]))',
       color: '#ff8a1f'
     },
     {
@@ -153,7 +153,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '网络发送错误速率',
       description: '主机所有网卡发送错误包速率合计。计算窗口与时间选择器一致。',
       unit: 'cps',
-      query: 'sum by (instance_id) (rate(net_err_out{instance_type="os", __$labels__}[__$window__]) or rate(net_err_out_gauge{instance_type="os", __$labels__}[__$window__]) or rate(net_err_out_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__]))',
+      query: 'sum by (instance_id) (rate(net_err_out{instance_type="os", __$labels__}[__$window__]) or rate(net_err_out_gauge{instance_type="os", __$labels__}[__$window__]) or rate(net_err_out_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__]) or rate(node_network_transmit_errors_total_counter{instance_type="os", config_type="aix", __$labels__}[__$window__]))',
       color: '#8a5cff'
     },
     {

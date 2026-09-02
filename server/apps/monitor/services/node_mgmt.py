@@ -17,6 +17,7 @@ from apps.monitor.models import (
     MonitorObjectOrganizationRule,
     MonitorPlugin,
 )
+from apps.monitor.services.aix_node_exporter import AixNodeExporterService
 from apps.monitor.services.host_deployment import HostDeploymentStatus
 from apps.monitor.services.instance_facts import InstanceFactResolver
 from apps.monitor.services.website_config import validate_rendered_website_config
@@ -980,6 +981,7 @@ class InstanceConfigService:
                 processed_instance_ids = [
                     str(instance["instance_id"]) for instance in new_instances + existing_instances if instance.get("instance_id") not in (None, "")
                 ]
+                AixNodeExporterService.maybe_schedule_after_create(plugin, sanitized_data)
 
                 # ✅ 所有操作成功，事务自动提交
 
@@ -1075,6 +1077,7 @@ class InstanceConfigService:
 
             # 表单把 disk_*_fstypes 写在 content.config；Telegraf inputs.* 不认，必须挪回 starlark。
             child_info["content"] = sync_disk_fstype_filters_on_writeback(child_info.get("content"))
+            previous_child_content = AixNodeExporterService.capture_previous_child_content(config_obj, child_info)
             content = ConfigFormat.json_to_toml(child_info["content"]) if child_info else None
             if ifmib_capable and content is not None:
                 from apps.monitor.utils.snmp_interface_template import (
@@ -1091,3 +1094,4 @@ class InstanceConfigService:
                 content = restore_managed_ifmib_markers(content)
                 content = preserve_closed_ifmib_markers(content, child_info.get("content"))
             NodeMgmt().update_child_config_content(child_info["id"], content, env_config)
+            AixNodeExporterService.maybe_schedule_after_update(config_obj, {**child_info, "content": content}, previous_child_content)

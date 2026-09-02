@@ -1,0 +1,229 @@
+{
+  "object_name": "Host",
+  "instance_type": "os",
+  "collect_type": "bkpull",
+  "config_type": [
+    "aix"
+  ],
+  "collector": "Telegraf",
+  "instance_id": "{{cloud_region}}_{{instance_type}}_{{host}}",
+  "form_fields": [
+    {
+      "name": "host",
+      "label": "目标主机IP",
+      "type": "input",
+      "required": true,
+      "visible_in": "edit",
+      "editable": false,
+      "description": "目标主机的IP地址",
+      "widget_props": {
+        "placeholder": "10.0.0.1"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.urls[0]",
+        "to_form": {
+          "regex": "^https?://([^:/]+)"
+        }
+      },
+      "label_en": "Target Host IP"
+    },
+    {
+      "name": "username",
+      "label": "用户名",
+      "type": "input",
+      "required": true,
+      "editable": false,
+      "default_value": "root",
+      "description": "SSH/WinRM 登录用户名",
+      "widget_props": {
+        "placeholder": "root / Administrator"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.env_config.USERNAME__{{config_id}}"
+      },
+      "label_en": "Username"
+    },
+    {
+      "name": "auth_type",
+      "label": "Linux认证方式",
+      "type": "select",
+      "required": false,
+      "default_value": "password",
+      "description": "Linux SSH 认证方式。Windows 始终使用 WinRM 密码认证。",
+      "widget_props": {
+        "options": [
+          {
+            "label": "密码",
+            "value": "password",
+            "label_en": "Password"
+          },
+          {
+            "label": "SSH密钥",
+            "value": "private_key",
+            "label_en": "SSH Key"
+          }
+        ]
+      },
+      "transform_on_edit": {
+        "origin_path": "child.env_config.AUTH_TYPE__{{config_id}}"
+      },
+      "label_en": "Linux Authentication"
+    },
+    {
+      "name": "ENV_PASSWORD",
+      "label": "密码",
+      "type": "password",
+      "required": true,
+      "editable": false,
+      "encrypted": true,
+      "description": "SSH/WinRM 登录密码",
+      "widget_props": {
+        "placeholder": "密码",
+        "placeholder_en": "Password"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.env_config.PASSWORD__{{config_id}}"
+      },
+      "label_en": "Password"
+    },
+    {
+      "name": "private_key_content",
+      "label": "SSH私钥",
+      "type": "password",
+      "required": false,
+      "editable": false,
+      "encrypted": true,
+      "description": "Linux SSH 私钥内容，仅认证方式为 SSH密钥 时使用",
+      "widget_props": {
+        "placeholder": "-----BEGIN OPENSSH PRIVATE KEY-----"
+      },
+      "dependency": {
+        "field": "auth_type",
+        "value": "private_key"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.env_config.PRIVATE_KEY_CONTENT__{{config_id}}"
+      },
+      "label_en": "SSH Private Key"
+    },
+    {
+      "name": "private_key_passphrase",
+      "label": "SSH私钥口令",
+      "type": "password",
+      "required": false,
+      "editable": false,
+      "encrypted": true,
+      "description": "Linux SSH 私钥口令，可为空",
+      "widget_props": {
+        "placeholder": "私钥口令"
+      },
+      "dependency": {
+        "field": "auth_type",
+        "value": "private_key"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.env_config.PRIVATE_KEY_PASSPHRASE__{{config_id}}"
+      },
+      "label_en": "SSH Private Key Passphrase"
+    },
+    {
+      "name": "port",
+      "label": "端口",
+      "type": "input",
+      "required": false,
+      "default_value": "9100",
+      "description": "node_exporter 监听和拉取端口，默认 9100。SSH 固定使用 22。",
+      "widget_props": {
+        "placeholder": "9100"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.urls[0]",
+        "to_form": {
+          "regex": "^https?://[^:/]+:(\\d+)"
+        }
+      },
+      "label_en": "Port",
+      "description_en": "node_exporter listen and scrape port, default 9100. SSH always uses 22."
+    },
+    {
+      "name": "interval",
+      "label": "采集间隔",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 60,
+      "description": "监控数据的采集时间间隔（单位：秒）",
+      "widget_props": {
+        "min": 10,
+        "precision": 0,
+        "placeholder": "60",
+        "addonAfter": "s"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.interval",
+        "to_form": {
+          "regex": "^(\\d+)s$"
+        },
+        "to_api": {
+          "suffix": "s"
+        }
+      },
+      "label_en": "Collection Interval",
+      "description_en": "Collection time interval (unit: seconds)"
+    }
+  ],
+  "table_columns": [
+    {
+      "name": "node_ids",
+      "label": "节点",
+      "type": "select",
+      "required": true,
+      "widget_props": {
+        "placeholder": "请选择节点",
+        "placeholder_en": "Please select node"
+      },
+      "enable_row_filter": false,
+      "label_en": "Node"
+    },
+    {
+      "name": "host",
+      "label": "目标主机IP",
+      "type": "input",
+      "required": true,
+      "widget_props": {
+        "placeholder": "10.0.0.1"
+      },
+      "change_handler": {
+        "type": "simple",
+        "source_fields": [
+          "host"
+        ],
+        "target_field": "instance_name"
+      },
+      "label_en": "Target Host IP"
+    },
+    {
+      "name": "instance_name",
+      "label": "实例名称",
+      "type": "input",
+      "required": true,
+      "widget_props": {
+        "placeholder": "实例名称",
+        "disabled": false,
+        "placeholder_en": "Instance Name"
+      },
+      "label_en": "Instance Name"
+    },
+    {
+      "name": "group_ids",
+      "label": "组",
+      "type": "group_select",
+      "required": false,
+      "widget_props": {
+        "placeholder": "请选择组",
+        "placeholder_en": "Please select group"
+      },
+      "label_en": "Group"
+    }
+  ],
+  "extra_edit_fields": {}
+}

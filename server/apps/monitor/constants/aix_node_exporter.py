@@ -1,0 +1,23 @@
+PLUGIN_NAME = "Host AIX"
+COLLECT_TYPE = "bkpull"
+CONFIG_TYPE = "aix"
+OBJECT_NAME = "Host"
+
+PACKAGE_OS = "aix"
+PACKAGE_ARCH = "ppc64"
+PACKAGE_OBJECT = "node_exporter"
+PACKAGE_VERSION = "1.12.1"
+PACKAGE_NAME = "node_exporter-1.12.1.aix-ppc64.tar.gz"
+PACKAGE_SHA256 = "de61db51f5c428668d3d886ca6fec297b2518f24c2ccb31e8e26c5ad794aa5ee"
+VENDOR_FILE_PATH = f"{PACKAGE_OS}/{PACKAGE_ARCH}/{PACKAGE_OBJECT}/{PACKAGE_VERSION}/{PACKAGE_NAME}"
+
+INSTALL_DIR = "/opt/bklite/node_exporter"
+REMOTE_PACKAGE_DIR = "/tmp"
+SRC_NAME = "node_exporter"
+LISTEN_ADDRESS = "0.0.0.0"
+DEFAULT_SCRAPE_PORT = 9100
+SSH_PORT = 22
+DEFAULT_USERNAME = "root"
+
+EXTRACTED_DIR_NAME = "node_exporter-1.12.1.aix-ppc64"
+BINARY_NAME = "node_exporter"
