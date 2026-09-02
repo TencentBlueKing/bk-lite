@@ -1694,3 +1694,126 @@ def test_build_scope_only_wrong_peer_edges_are_no_host(monkeypatch):
     assert health["reason"] == "no_host"
     assert health["reason"] != "unavailable"
     assert health["activeAlarmCount"] is None
+
+
+def test_architecture_request_uses_system_uuid_and_dedupes_shared_host(monkeypatch):
+    systems = [_system(SYSTEM_A, "union")]
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_visible_application",
+        classmethod(
+            lambda cls, request, application_id: systems[0] if application_id == SYSTEM_A else (_ for _ in ()).throw(Application3DNotFound("应用系统不存在"))
+        ),
+    )
+    _patch_system_host_graph(
+        monkeypatch,
+        child_apps=[_application(APP_A, "app-a"), _application(APP_B, "app-b")],
+        hosts_by_app={APP_A: ["host-1"], APP_B: ["host-1", "host-2"]},
+        visible_hosts=[
+            {"inst_uuid": "host-1", "inst_name": "shared", "monitor_id": "monitor-shared"},
+            {"inst_uuid": "host-2", "inst_name": "only-b", "monitor_id": "monitor-2"},
+        ],
+    )
+    _stub_empty_alert_qs(monkeypatch)
+
+    result = Application3DQueryService.architecture(_request(), SYSTEM_A)
+
+    assert result["systemId"] == SYSTEM_A
+    assert [node["id"] for node in result["nodes"] if node["kind"] == "system"] == [SYSTEM_A]
+    assert [node["id"] for node in result["nodes"] if node["kind"] == "application"] == [APP_A, APP_B]
+    assert [node["id"] for node in result["nodes"] if node["kind"] == "host"] == ["host-1", "host-2"]
+    shared_edges = [
+        (edge["sourceId"], edge["targetId"])
+        for edge in result["edges"]
+        if edge["targetId"] == "host-1" and edge["relation"] == "application_run_host"
+    ]
+    assert set(shared_edges) == {(APP_A, "host-1"), (APP_B, "host-1")}
+    assert not any(edge["sourceId"] == SYSTEM_A and edge["targetId"].startswith("host-") for edge in result["edges"])
+
+
+def test_architecture_empty_system_is_root_without_fake_children(monkeypatch):
+    systems = [_system(SYSTEM_A, "empty")]
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_visible_application",
+        classmethod(lambda cls, request, application_id: systems[0]),
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.project_system_applications",
+        lambda system_ids: {SYSTEM_A: []},
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.project_application_hosts",
+        lambda app_ids: (_ for _ in ()).throw(AssertionError("empty systems must not project application_run_host")),
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_visible_model_instances",
+        classmethod(lambda cls, request, model_id, inst_uuids: []),
+    )
+
+    result = Application3DQueryService.architecture(_request(), SYSTEM_A)
+
+    assert [node["id"] for node in result["nodes"]] == [SYSTEM_A]
+    assert result["nodes"][0]["kind"] == "system"
+    assert result["nodes"][0]["health"]["reason"] == "no_application"
+    assert result["nodes"][0]["health"]["state"] != "normal"
+    assert result["edges"] == []
+
+
+def test_architecture_no_host_keeps_apps_without_host_nodes(monkeypatch):
+    systems = [_system(SYSTEM_A, "apps-no-hosts")]
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_visible_application",
+        classmethod(lambda cls, request, application_id: systems[0]),
+    )
+    _patch_system_host_graph(
+        monkeypatch,
+        child_apps=[_application(APP_A, "empty-app"), _application(APP_B, "isolated-app")],
+        hosts_by_app={APP_A: [], APP_B: []},
+        visible_hosts=[],
+    )
+
+    result = Application3DQueryService.architecture(_request(), SYSTEM_A)
+
+    assert [node["kind"] for node in result["nodes"]] == ["system", "application", "application"]
+    assert [node["id"] for node in result["nodes"]] == [SYSTEM_A, APP_A, APP_B]
+    assert {edge["relation"] for edge in result["edges"]} == {"system_contains_application"}
+    assert result["nodes"][0]["health"]["reason"] == "no_host"
+    assert result["nodes"][0]["health"]["state"] != "normal"
+
+
+def test_architecture_omits_invisible_apps_and_hosts(monkeypatch):
+    systems = [_system(SYSTEM_A, "partial")]
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_visible_application",
+        classmethod(lambda cls, request, application_id: systems[0]),
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.project_system_applications",
+        lambda system_ids: {SYSTEM_A: [APP_A, APP_B]},
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_visible_model_instances",
+        classmethod(lambda cls, request, model_id, inst_uuids: [_application(APP_A, "visible")]),
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.project_application_hosts",
+        lambda app_ids: {app_id: ["host-visible", "host-hidden"] for app_id in app_ids},
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_visible_hosts",
+        classmethod(lambda cls, request, host_ids: [{"inst_uuid": "host-visible", "inst_name": "可见主机", "monitor_id": "m1"}]),
+    )
+
+    result = Application3DQueryService.architecture(_request(), SYSTEM_A)
+
+    ids = {node["id"] for node in result["nodes"]}
+    assert ids == {SYSTEM_A, APP_A, "host-visible"}
+    assert APP_B not in ids
+    assert "host-hidden" not in ids
+    assert result["nodes"][0]["health"]["reason"] == "unavailable"

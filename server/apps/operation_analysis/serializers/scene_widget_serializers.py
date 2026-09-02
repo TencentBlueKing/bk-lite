@@ -54,6 +54,10 @@ class Application3DApplicationDetailRequestSerializer(_Application3DStrictSerial
     cursor = serializers.CharField(required=False, allow_blank=False, max_length=512)
 
 
+class Application3DArchitectureRequestSerializer(_Application3DStrictSerializer):
+    application_id = serializers.UUIDField()
+
+
 class Application3DAlarmDetailRequestSerializer(_Application3DStrictSerializer):
     application_id = serializers.UUIDField()
     alarm_id = serializers.CharField(allow_blank=False, max_length=100)

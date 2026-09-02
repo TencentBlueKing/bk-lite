@@ -23,6 +23,10 @@
   animation: app3d-toolbar-in 180ms ease-out;
 }
 
+.app3d-focus-actions {
+  padding: 0 16px;
+}
+
 .screen-tech-canvas .app3d-wall-loading .ant-spin,
 .screen-tech-canvas .app3d-wall-loading .ant-spin-dot,
 .screen-tech-canvas .app3d-wall-loading .ant-spin-dot-holder,
