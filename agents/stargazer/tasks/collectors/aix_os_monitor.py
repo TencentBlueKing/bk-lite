@@ -190,8 +190,17 @@ def parse_aix_metrics_to_prometheus(
 
     cpu = data.get("cpu") if isinstance(data.get("cpu"), dict) else {}
     if cpu:
-        _append_gauge(lines, "host_cpu_usage_percent", base_labels, cpu.get("usage_percent", 0), timestamp, "CPU usage percentage")
-        _append_gauge(lines, "cpu_usage_total", base_labels, cpu.get("usage_percent", 0), timestamp, "CPU usage percentage")
+        user = _as_float(cpu.get("usage_user_percent"))
+        system = _as_float(cpu.get("usage_system_percent"))
+        iowait = _as_float(cpu.get("usage_iowait_percent"))
+        usage_total = user + system + iowait
+        if usage_total <= 0:
+            usage_total = _as_float(cpu.get("usage_percent"))
+        if usage_total < 0:
+            usage_total = 0.0
+        if usage_total > 100:
+            usage_total = 100.0
+        _append_gauge(lines, "cpu_usage_total", base_labels, usage_total, timestamp, "CPU usage percentage (user+sys+iowait)")
         _append_gauge(lines, "cpu_usage_user_total", base_labels, cpu.get("usage_user_percent", 0), timestamp, "CPU user usage percentage")
         _append_gauge(lines, "cpu_usage_system_total", base_labels, cpu.get("usage_system_percent", 0), timestamp, "CPU system usage percentage")
         _append_gauge(lines, "cpu_usage_iowait_total", base_labels, cpu.get("usage_iowait_percent", 0), timestamp, "CPU iowait usage percentage")
@@ -238,9 +247,6 @@ def parse_aix_metrics_to_prometheus(
             _append_gauge(lines, "disk_free", disk_labels, free, timestamp, "Disk free bytes")
             _append_gauge(lines, "disk_used_percent", disk_labels, disk.get("used_percent", 0), timestamp, "Disk used percent")
             _append_gauge(lines, "host_disk_used_percent", disk_labels, disk.get("used_percent", 0), timestamp, "Disk used percent")
-            _append_gauge(lines, "disk_inodes_used_percent", disk_labels, disk.get("inodes_used_percent", 0), timestamp, "Disk inode used percent")
-            _append_gauge(lines, "disk_iused", disk_labels, disk.get("iused", 0), timestamp, "AIX df iused inode count")
-            _append_gauge(lines, "disk_ifree", disk_labels, disk.get("ifree", 0), timestamp, "AIX df ifree inode count")
 
     nets = data.get("net")
     if isinstance(nets, list):
@@ -261,8 +267,17 @@ def parse_aix_metrics_to_prometheus(
                 continue
             device = diskio.get("device", "unknown")
             diskio_labels = f"{base_labels},{_format_prometheus_labels(device=device)}"
-            _append_gauge(lines, "diskio_read_bytes_total", diskio_labels, diskio.get("read_bytes", 0), timestamp, "Disk read bytes counter")
-            _append_gauge(lines, "diskio_write_bytes_total", diskio_labels, diskio.get("write_bytes", 0), timestamp, "Disk write bytes counter")
+            _append_gauge(
+                lines, "diskio_read_bytes_total", diskio_labels, diskio.get("read_bytes", 0), timestamp, "Disk read bytes from iostat second report"
+            )
+            _append_gauge(
+                lines,
+                "diskio_write_bytes_total",
+                diskio_labels,
+                diskio.get("write_bytes", 0),
+                timestamp,
+                "Disk write bytes from iostat second report",
+            )
             _append_gauge(lines, "disk_tm_act", diskio_labels, diskio.get("tm_act", 0), timestamp, "AIX disk tm_act busy percent")
 
     processes = data.get("processes") if isinstance(data.get("processes"), dict) else {}

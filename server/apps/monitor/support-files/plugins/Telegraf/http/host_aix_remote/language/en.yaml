@@ -1,6 +1,6 @@
 Host AIX Remote:
   name: Host AIX Remote
-  desc: A Linux collect node SSH-runs the platform ksh with /usr/bin/ksh -c to collect AIX 7.2/7.3 host metrics. Do not install Splunk TA, node_exporter, or Telegraf on AIX.
+  desc: A Linux collect node SSH-runs system commands on AIX with /usr/bin/ksh -c. Missing commands are skipped. OS level comes from oslevel -r (for example 7100-00).
 monitor_object:
   Host: Host
 monitor_object_type:
@@ -9,7 +9,7 @@ monitor_object_metric:
   Host:
     cpu_usage_total:
       name: CPU Usage
-      desc: Reflects the overall CPU utilization of the host, representing the proportion of non-idle CPU time. Sustained high values usually indicate CPU resource pressure or bottlenecks.
+      desc: AIX CPU usage as mpstat user + sys + iowait.
     cpu_usage_iowait_total:
       name: CPU IOWait Rate
       desc: Indicates the proportion of CPU time spent waiting for I/O operations to complete, commonly used to identify disk or I/O performance constraints.
@@ -36,13 +36,13 @@ monitor_object_metric:
       desc: Indicates the amount of data written to disk per unit time, used to evaluate disk write throughput.
     diskio_write_bytes_total:
       name: Disk Written Bytes
-      desc: Represents the cumulative number of bytes written by the disk device, useful for analyzing write traffic volume.
+      desc: Disk write bytes from the iostat second report (interval sample, not since-boot).
     diskio_read_bytes_rate:
       name: Disk Read Rate
       desc: Indicates the amount of data read from disk per unit time, used to evaluate disk read throughput.
     diskio_read_bytes_total:
       name: Disk Read Bytes
-      desc: Represents the cumulative number of bytes read by the disk device, useful for analyzing read traffic volume.
+      desc: Disk read bytes from the iostat second report (interval sample, not since-boot).
     disk_tm_act:
       name: Disk tm_act
       desc: AIX iostat % tm_act, the share of time the disk was active. This is AIX disk busy, not Linux %util.
@@ -55,15 +55,6 @@ monitor_object_metric:
     disk_used_percent:
       name: Disk Usage
       desc: Represents the percentage of disk space that has been consumed, a core metric for disk capacity monitoring.
-    disk_inodes_used_percent:
-      name: Inode Usage
-      desc: Represents the percentage of inode usage in a filesystem, helping prevent failures caused by inode exhaustion.
-    disk_iused:
-      name: iused
-      desc: AIX df iused, the number of used inodes on the filesystem.
-    disk_ifree:
-      name: ifree
-      desc: AIX df ifree, the number of free inodes on the filesystem.
     mem_total:
       name: Total Memory
       desc: Represents the total amount of physical memory available on the system, serving as a baseline for memory evaluation.
