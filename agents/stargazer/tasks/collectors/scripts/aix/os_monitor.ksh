@@ -56,6 +56,11 @@ if [ -n "${PAGESIZE_OUT}" ]; then
   esac
 fi
 
+# oslevel -r prefix (7100/7200/7300) selects parse branches. Not a form field.
+OSLEVEL_RAW=$(_run oslevel -r)
+AIX_REL=$(printf '%s\n' "${OSLEVEL_RAW}" | awk '{ print substr($1, 1, 4)+0 }')
+[ -z "${AIX_REL}" ] && AIX_REL=0
+
 # --- uptime: load1/5/15 and seconds since boot ---
 LOAD1=0
 LOAD5=0
@@ -406,11 +411,11 @@ DISK_JSON=$(
 )
 [ -z "${DISK_JSON}" ] && DISK_JSON='[]'
 
-# --- iostat: header names. Prefer the interval report when it has activity;
-# if that sample is all zeros, use an earlier report that has values. ---
+# --- iostat: header names. Interval sample by default.
+# 7100 only: if that sample is all zeros, use an earlier report that has values. ---
 DISKIO_JSON=$(
   IO_OUT=$(_run iostat -d 1 2)
-  printf '%s\n' "${IO_OUT}" | awk '
+  printf '%s\n' "${IO_OUT}" | awk -v aixrel="${AIX_REL}" '
     function io_header(    i, tok, nxt, low, col) {
       tm_c=0; read_c=0; write_c=0
       col=0
@@ -478,7 +483,7 @@ DISKIO_JSON=$(
     END {
       use=0
       for (p=1; p<=pass; p++) if (n[p]>0) use=p
-      if (use>0 && report_idle(use)) {
+      if (aixrel==7100 && use>0 && report_idle(use)) {
         for (p=use-1; p>=1; p--) {
           if (n[p]>0 && !report_idle(p)) { use=p; break }
         }
@@ -604,8 +609,7 @@ if [ -x /usr/sysv/bin/ps ]; then
   fi
 fi
 
-OSLEVEL=$(_run oslevel -r)
-OSLEVEL=$(_json_str "${OSLEVEL}")
+OSLEVEL=$(_json_str "${OSLEVEL_RAW}")
 
 printf '{'
 printf '"oslevel":"%s",' "${OSLEVEL}"
