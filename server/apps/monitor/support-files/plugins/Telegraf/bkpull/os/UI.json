@@ -45,11 +45,11 @@
     },
     {
       "name": "auth_type",
-      "label": "Linux认证方式",
+      "label": "SSH认证方式",
       "type": "select",
       "required": false,
       "default_value": "password",
-      "description": "Linux SSH 认证方式。",
+      "description": "SSH 认证方式。",
       "widget_props": {
         "options": [
           {
@@ -67,7 +67,7 @@
       "transform_on_edit": {
         "origin_path": "child.env_config.AUTH_TYPE__{{config_id}}"
       },
-      "label_en": "Linux Authentication"
+      "label_en": "SSH Authentication"
     },
     {
       "name": "ENV_PASSWORD",

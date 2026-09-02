@@ -29,7 +29,7 @@ The platform installs official `node_exporter` on the target AIX host. A Linux c
 | Target Host IP | Yes | none | AIX host address. The Linux collector scrapes `http://<IP>:<port>/metrics`. |
 | Instance Name | Yes | none | Display name in the platform. It can start from the target host IP and then be edited. |
 | Username | Yes | `root` | SSH login username. It is used only for install and detect, and is not written into the scrape config. |
-| Linux Authentication | No | Password | Linux SSH authentication method. |
+| SSH Authentication | No | Password | SSH authentication method. |
 | Password | Yes | none | SSH login password |
 | SSH Private Key | No | none | Linux SSH private key content, used only when authentication is SSH Key |
 | SSH Private Key Passphrase | No | none | Linux SSH private key passphrase, may be empty |
