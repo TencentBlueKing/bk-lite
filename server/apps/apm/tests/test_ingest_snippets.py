@@ -17,6 +17,7 @@ _PROBE_DOWNLOAD_URLS = {
     "python": "http://bklite.example.com:8011/api/v1/apm/open_api/probe/download/opentelemetry-python-wheels.tar.gz",
     "nodejs": "http://bklite.example.com:8011/api/v1/apm/open_api/probe/download/opentelemetry-js-auto.tgz",
     "go": "http://bklite.example.com:8011/api/v1/apm/open_api/probe/download/opentelemetry-go-sdk.zip",
+    "dotnet": "http://bklite.example.com:8011/api/v1/apm/open_api/probe/download/opentelemetry-dotnet-auto-linux-glibc-x64.zip",
 }
 
 
@@ -201,6 +202,7 @@ def test_explicit_instance_identity_fails_closed_outside_the_safe_boundary(inval
         ("nodejs", "npm install --offline --save ./opentelemetry-js-auto.tgz", "node --require"),
         ("java", "curl --fail --silent --show-error --location", "java -javaagent:./opentelemetry-javaagent.jar"),
         ("go", 'export GOPROXY="file://$(pwd)/.otel-go-sdk"', "Go 无通用零代码探针"),
+        ("dotnet", ". \"$OTEL_DOTNET_AUTO_HOME/instrument.sh\"", "dotnet App.dll"),
     ],
 )
 def test_host_snippet_installs_or_bootstraps_the_selected_sdk(language, expected_install, expected_start):
@@ -223,12 +225,13 @@ def test_host_snippet_installs_or_bootstraps_the_selected_sdk(language, expected
     assert "npmjs" not in snippet.code
     assert "github.com" not in snippet.code
     assert "go get " not in snippet.code
+    assert "nuget.org" not in snippet.code
     assert "# 1. 安装探针" in snippet.code
     assert "# 2. 配置上报" in snippet.code
     assert "# 3. 启动应用" in snippet.code
 
 
-@pytest.mark.parametrize("language", ["python", "nodejs", "java", "go"])
+@pytest.mark.parametrize("language", ["python", "nodejs", "java", "go", "dotnet"])
 @pytest.mark.parametrize("runtime", ["host", "docker"])
 def test_snippet_downloads_probe_from_the_system_address_instead_of_the_public_internet(language, runtime):
     snippet = DjangoIntegrationConfigurationService().render_snippet(
@@ -248,10 +251,11 @@ def test_snippet_downloads_probe_from_the_system_address_instead_of_the_public_i
     assert "pypi.org" not in snippet.code
     assert "npmjs" not in snippet.code
     assert "go get " not in snippet.code
+    assert "nuget.org" not in snippet.code
     assert subprocess.run(["sh", "-n"], input=snippet.code, text=True, capture_output=True).returncode == 0
 
 
-@pytest.mark.parametrize("language", ["python", "nodejs", "java", "go"])
+@pytest.mark.parametrize("language", ["python", "nodejs", "java", "go", "dotnet"])
 @pytest.mark.parametrize("runtime", ["host", "docker", "kubernetes", "other"])
 def test_snippet_fails_closed_without_a_resolved_system_download_address(language, runtime):
     with pytest.raises(ValueError, match="probe_download_url"):
@@ -275,6 +279,7 @@ def test_snippet_fails_closed_without_a_resolved_system_download_address(languag
         ("python", "opentelemetry-python-wheels.tar.gz"),
         ("nodejs", "opentelemetry-js-auto.tgz"),
         ("go", "opentelemetry-go-sdk.zip"),
+        ("dotnet", "opentelemetry-dotnet-auto-linux-glibc-x64.zip"),
     ],
 )
 def test_resolve_region_builds_the_probe_download_url_from_node_server_url(language, artifact_name):
@@ -400,6 +405,53 @@ def test_go_snippet_is_an_explicit_manual_sdk_guide_with_complete_provider_setup
     assert "defer tracerProvider.Shutdown" in snippet.code
     assert "Initialize the OpenTelemetry Go SDK" not in snippet.code
     assert subprocess.run(["sh", "-n"], input=snippet.code, text=True, capture_output=True).returncode == 0
+
+
+@pytest.mark.parametrize("runtime", ["host", "docker", "kubernetes"])
+def test_dotnet_snippet_uses_the_glibc_x64_auto_probe_and_keeps_traces_only(runtime):
+    snippet = DjangoIntegrationConfigurationService().render_snippet(
+        _request(
+            language="dotnet",
+            runtime=runtime,
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="1.0",
+            environment="production",
+        )
+    )
+
+    assert _PROBE_DOWNLOAD_URLS["dotnet"] in snippet.code
+    assert "仅支持 Linux x86_64 glibc（Ubuntu / Debian / CentOS 及同类容器镜像）；不支持 Alpine、ARM64、Windows" in snippet.code
+    assert "CORECLR_PROFILER_PATH" in snippet.code
+    assert "linux-x64/OpenTelemetry.AutoInstrumentation.Native.so" in snippet.code
+    assert "DOTNET_ADDITIONAL_DEPS" in snippet.code
+    assert "DOTNET_SHARED_STORE" in snippet.code
+    assert "dotnet App.dll" in snippet.code
+    assert "OTEL_METRICS_EXPORTER" in snippet.code
+    assert "OTEL_LOGS_EXPORTER" in snippet.code
+    assert snippet.environment["OTEL_METRICS_EXPORTER"] == "none"
+    assert snippet.environment["OTEL_LOGS_EXPORTER"] == "none"
+    assert "github.com" not in snippet.code
+    assert "nuget.org" not in snippet.code
+    assert "otel-dotnet-auto-install.sh" not in snippet.code
+    if runtime == "host":
+        assert ". \"$OTEL_DOTNET_AUTO_HOME/instrument.sh\"" in snippet.code
+        assert subprocess.run(["sh", "-n"], input=snippet.code, text=True, capture_output=True).returncode == 0
+    if runtime == "docker":
+        assert "/otel-dotnet-auto" in snippet.code
+        assert subprocess.run(["sh", "-n"], input=snippet.code, text=True, capture_output=True).returncode == 0
+    if runtime == "kubernetes":
+        manifest = yaml.safe_load(snippet.code)
+        container = manifest["spec"]["template"]["spec"]["containers"][0]
+        environment = {item["name"]: item["value"] for item in container["env"] if "value" in item}
+        assert environment["CORECLR_PROFILER_PATH"] == (
+            "/otel-dotnet-auto/linux-x64/OpenTelemetry.AutoInstrumentation.Native.so"
+        )
+        assert environment["DOTNET_ADDITIONAL_DEPS"] == "/otel-dotnet-auto/AdditionalDeps"
+        assert environment["DOTNET_SHARED_STORE"] == "/otel-dotnet-auto/store"
+        assert environment["OTEL_METRICS_EXPORTER"] == "none"
+        assert environment["OTEL_LOGS_EXPORTER"] == "none"
 
 
 @pytest.mark.parametrize("runtime", ["host", "docker"])

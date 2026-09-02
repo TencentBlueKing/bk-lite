@@ -293,7 +293,7 @@ export interface ApmApplicationInput {
 export interface ApmIngestSnippetInput {
   application_id: string;
   cloud_region_id: number;
-  language: 'python' | 'nodejs' | 'java' | 'go';
+  language: 'python' | 'nodejs' | 'java' | 'go' | 'dotnet';
   runtime: 'kubernetes' | 'docker' | 'host' | 'other';
   service_name: string;
   service_version?: string;

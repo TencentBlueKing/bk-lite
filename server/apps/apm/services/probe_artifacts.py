@@ -1,6 +1,6 @@
 """APM 探针制品的系统内存储与下载。
 
-本版本可用的 Java / Python / Node.js / Go 接入脚本都从本系统下载离线包，
+本版本可用的 Java / Python / Node.js / Go / .NET 接入脚本都从本系统下载离线包，
 由部署期 `apm_probe_init` 灌入 NATS JetStream Object Store，避免目标主机
 依赖公网。
 """
@@ -18,6 +18,7 @@ JAVA_AGENT_ARTIFACT_NAME = "opentelemetry-javaagent.jar"
 PYTHON_WHEELS_ARTIFACT_NAME = "opentelemetry-python-wheels.tar.gz"
 NODEJS_AUTO_ARTIFACT_NAME = "opentelemetry-js-auto.tgz"
 GO_SDK_ARTIFACT_NAME = "opentelemetry-go-sdk.zip"
+DOTNET_AUTO_ARTIFACT_NAME = "opentelemetry-dotnet-auto-linux-glibc-x64.zip"
 
 # 允许对外下载的探针制品白名单；下载接口只接受这里列出的名字，
 # 不接受任意对象 key。
@@ -26,6 +27,7 @@ PROBE_ARTIFACT_OBJECT_KEYS = {
     PYTHON_WHEELS_ARTIFACT_NAME: "apm/probe/python/opentelemetry-python-wheels.tar.gz",
     NODEJS_AUTO_ARTIFACT_NAME: "apm/probe/nodejs/opentelemetry-js-auto.tgz",
     GO_SDK_ARTIFACT_NAME: "apm/probe/go/opentelemetry-go-sdk.zip",
+    DOTNET_AUTO_ARTIFACT_NAME: "apm/probe/dotnet/opentelemetry-dotnet-auto-linux-glibc-x64.zip",
 }
 
 LANGUAGE_PROBE_ARTIFACTS = {
@@ -33,6 +35,7 @@ LANGUAGE_PROBE_ARTIFACTS = {
     "python": PYTHON_WHEELS_ARTIFACT_NAME,
     "nodejs": NODEJS_AUTO_ARTIFACT_NAME,
     "go": GO_SDK_ARTIFACT_NAME,
+    "dotnet": DOTNET_AUTO_ARTIFACT_NAME,
 }
 
 # 首版 Java 对象 key，下载时兼容，上传只写新路径。

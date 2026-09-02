@@ -945,7 +945,7 @@
       "nodejsDesc": "Zero-code auto-instrumentation for Express / Nest / Koa / Fastify",
       "javaDesc": "Java Agent bytecode injection for Spring / Dubbo / gRPC",
       "pythonDesc": "Auto-instrumentation for Django / Flask / FastAPI",
-      "dotnetDesc": "Based on OpenTelemetry .NET auto-instrumentation",
+      "dotnetDesc": "Auto-instrumentation for Linux x86_64 glibc (Ubuntu / Debian / CentOS and matching images); Alpine, ARM64, and Windows are not supported",
       "goDesc": "Manually initialize the OpenTelemetry Go SDK and generate a complete Provider example",
       "otelDesc": "Reuse a self-hosted Collector and forward traces to the platform OTLP endpoint",
       "ebpfDesc": "Capture service traces from kernel space without changing application code",

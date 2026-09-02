@@ -48,7 +48,7 @@ class ApplicationMutationSerializer(OrganizationAssignmentSerializer):
 class IngestSnippetSerializer(serializers.Serializer):
     application_id = serializers.CharField(max_length=128)
     cloud_region_id = serializers.IntegerField(min_value=1)
-    language = serializers.ChoiceField(choices=("python", "nodejs", "java", "go"))
+    language = serializers.ChoiceField(choices=("python", "nodejs", "java", "go", "dotnet"))
     runtime = serializers.ChoiceField(choices=("kubernetes", "docker", "host", "other"))
     endpoint = serializers.CharField(max_length=512, required=False, write_only=True)
     service_name = serializers.CharField(max_length=256)

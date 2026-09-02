@@ -19,7 +19,7 @@ class IngestSnippetRequest:
     service_name: str
     service_version: str
     environment: str
-    # 本版本四类接入都需要的离线包下载地址，由服务器根据云区域
+    # 本版本五类接入都需要的离线包下载地址，由服务器根据云区域
     # NODE_SERVER_URL 解析，指向本系统的免登录下载接口。
     probe_download_url: str = ""
 
