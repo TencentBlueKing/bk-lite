@@ -4,10 +4,11 @@
  * OpsPilot Look B 统一列表卡 — 与 Storybook UnifiedOpsCard 解剖一致。
  */
 
-import React, { useState, type ReactNode } from 'react';
+import React, { useMemo, useState, type ReactNode } from 'react';
 import { Dropdown, Switch, Tooltip, Typography } from 'antd';
 import { MoreOutlined, PushpinFilled, PushpinOutlined } from '@ant-design/icons';
 import Icon from '@/components/icon';
+import { useTranslation } from '@/utils/i18n';
 
 const { Paragraph } = Typography;
 
@@ -158,16 +159,16 @@ function StatusPill({
   );
 }
 
-const STATUS_DEFAULT: Record<
+const STATUS_META: Record<
   UnifiedOpsCardStatus,
-  { label: string; tone: 'ok' | 'mute' | 'run' | 'warn' }
+  { messageId: string; tone: 'ok' | 'mute' | 'run' | 'warn' }
 > = {
-  online: { label: 'Online', tone: 'ok' },
-  offline: { label: 'Offline', tone: 'mute' },
-  ready: { label: '就绪', tone: 'ok' },
-  building: { label: '构建中', tone: 'run' },
-  enabled: { label: '启用', tone: 'ok' },
-  disabled: { label: '停用', tone: 'mute' },
+  online: { messageId: 'unifiedCard.status.online', tone: 'ok' },
+  offline: { messageId: 'unifiedCard.status.offline', tone: 'mute' },
+  ready: { messageId: 'unifiedCard.status.ready', tone: 'ok' },
+  building: { messageId: 'unifiedCard.status.building', tone: 'run' },
+  enabled: { messageId: 'unifiedCard.status.enabled', tone: 'ok' },
+  disabled: { messageId: 'unifiedCard.status.disabled', tone: 'mute' },
 };
 
 export default function UnifiedOpsCard({
@@ -194,10 +195,17 @@ export default function UnifiedOpsCard({
   onEnabledChange,
   className = '',
 }: UnifiedOpsCardProps) {
+  const { t } = useTranslation();
   const [hover, setHover] = useState(false);
   const teamLabel = formatTeamLabel(team);
-  const st = status ? STATUS_DEFAULT[status] : null;
-  const hasSubline = Boolean(st || updatedAt);
+  const st = status ? STATUS_META[status] : null;
+  const statusText = useMemo(() => {
+    if (!st) {
+      return undefined;
+    }
+    return statusLabel ?? t(st.messageId);
+  }, [st, statusLabel, t]);
+  const hasSubline = Boolean(statusText || updatedAt);
   const wash = hover
     ? 'linear-gradient(180deg, color-mix(in srgb, var(--color-primary) 6%, var(--color-bg-hover)) 0%, var(--color-bg-hover) 48%)'
     : 'linear-gradient(180deg, color-mix(in srgb, var(--color-primary) 4%, var(--color-bg)) 0%, var(--color-bg) 42%)';
@@ -254,8 +262,8 @@ export default function UnifiedOpsCard({
             </Tooltip>
             {hasSubline ? (
               <div className="mt-1 flex min-h-5 min-w-0 items-center gap-2">
-                {st ? (
-                  <StatusPill tone={st.tone} label={statusLabel ?? st.label} />
+                {st && statusText ? (
+                  <StatusPill tone={st.tone} label={statusText} />
                 ) : null}
                 {updatedAt ? (
                   <span className="truncate text-xs leading-5 text-[var(--color-text-3)]">
@@ -269,10 +277,10 @@ export default function UnifiedOpsCard({
 
         <div className="flex shrink-0 gap-0.5" onClick={(e) => e.stopPropagation()}>
           {showPin ? (
-            <Tooltip title={pinned ? '取消置顶' : '置顶'}>
+            <Tooltip title={pinned ? t('common.unpin') : t('common.pin')}>
               <button
                 type="button"
-                aria-label={pinned ? '取消置顶' : '置顶'}
+                aria-label={pinned ? t('common.unpin') : t('common.pin')}
                 className="grid h-7 w-7 place-items-center rounded-md border-0 bg-transparent"
                 style={{ color: pinned ? 'var(--color-primary)' : 'var(--color-text-4)' }}
                 onClick={(e) => {
@@ -292,7 +300,7 @@ export default function UnifiedOpsCard({
             <Dropdown overlay={menuOverlay as React.ReactElement} trigger={['click']} placement="bottomRight">
               <button
                 type="button"
-                aria-label="更多操作"
+                aria-label={t('unifiedCard.moreActions')}
                 className="grid h-7 w-7 place-items-center rounded-md border-0 text-[var(--color-text-3)]"
                 style={{ background: hover ? 'var(--color-fill-1)' : 'transparent' }}
                 onClick={(e) => e.stopPropagation()}
@@ -335,13 +343,15 @@ export default function UnifiedOpsCard({
           <div className="mt-auto flex items-center justify-between gap-3 border-t border-[var(--color-fill-2)] pt-2.5 text-xs text-[var(--color-text-3)]">
             {footer === 'provider' ? (
               <>
-                <span className="text-[var(--color-text-4)]">{modelCount ?? 0} 个模型</span>
+                <span className="text-[var(--color-text-4)]">
+                  {t('unifiedCard.modelCount', undefined, { count: modelCount ?? 0 })}
+                </span>
                 <span onClick={(e) => e.stopPropagation()}>
                   <Switch
                     size="small"
                     checked={enabled ?? false}
                     loading={switchLoading}
-                    aria-label={`${name} 启用`}
+                    aria-label={t('unifiedCard.enableAria', undefined, { name })}
                     onChange={(checked) => onEnabledChange?.(checked)}
                   />
                 </span>
@@ -349,7 +359,7 @@ export default function UnifiedOpsCard({
             ) : footer === 'memory' ? (
               <>
                 <div className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
-                  <span className="text-[var(--color-text-4)]">Owner</span>
+                  <span className="text-[var(--color-text-4)]">{t('unifiedCard.owner')}</span>
                   <span className="mx-1.5 text-[var(--color-text-4)]">·</span>
                   <span className="text-[var(--color-text-2)]">{owner}</span>
                 </div>
@@ -360,13 +370,13 @@ export default function UnifiedOpsCard({
             ) : (
               <>
                 <div className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
-                  <span className="text-[var(--color-text-4)]">Owner</span>
+                  <span className="text-[var(--color-text-4)]">{t('unifiedCard.owner')}</span>
                   <span className="mx-1.5 text-[var(--color-text-4)]">·</span>
                   <span className="text-[var(--color-text-2)]">{owner || '--'}</span>
                 </div>
                 <Tooltip title={teamLabel.full}>
                   <div className="inline-flex max-w-[62%] min-w-0 items-center justify-end gap-1.5">
-                    <span className="shrink-0 text-[var(--color-text-4)]">Team</span>
+                    <span className="shrink-0 text-[var(--color-text-4)]">{t('unifiedCard.team')}</span>
                     <span className="shrink-0 text-[var(--color-text-4)]">·</span>
                     <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[var(--color-text-2)]">
                       {teamLabel.primary}

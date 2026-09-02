@@ -4,9 +4,14 @@ import {
   getClientIdFromRoute,
   isAppClientMenuRoute,
   isWaitingForClientMenus,
+  PORTAL_HOME_PATH,
 } from '@/utils/route';
 
 describe('app client route', () => {
+  it('exposes the portal landing path', () => {
+    expect(PORTAL_HOME_PATH).toBe('/ops-console/home');
+  });
+
   it('reads the first path segment as the client id', () => {
     expect(getClientIdFromRoute('/system-manager/user')).toBe('system-manager');
     expect(getClientIdFromRoute('/cmdb/assetOverview')).toBe('cmdb');

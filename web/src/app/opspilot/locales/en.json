@@ -1963,5 +1963,20 @@
     "baseUrl": "API URL",
     "baseUrlPlaceholder": "Enter API URL (optional)",
     "storageTypeCannotChange": "Storage type cannot be changed after creation"
+  },
+  "unifiedCard": {
+    "owner": "Owner",
+    "team": "Team",
+    "modelCount": "{count} models",
+    "enableAria": "Enable {name}",
+    "moreActions": "More actions",
+    "status": {
+      "online": "Online",
+      "offline": "Offline",
+      "ready": "Ready",
+      "building": "Building",
+      "enabled": "Enabled",
+      "disabled": "Disabled"
+    }
   }
 }
