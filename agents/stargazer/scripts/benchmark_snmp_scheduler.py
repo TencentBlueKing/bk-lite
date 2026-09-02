@@ -12,6 +12,7 @@ from dataclasses import asdict, dataclass
 
 from core.collection.metrics import CollectionMetrics
 from core.collection.scheduler import CollectionScheduler
+from core.infra import snmp_engine_pool
 from plugins.inputs.network import snmp_facts
 
 
@@ -93,8 +94,9 @@ async def run_benchmark(
     collector_metrics = _MetricSink()
     scheduler = CollectionScheduler(max_in_flight=concurrency, metrics=scheduler_metrics)
 
-    real_engine = snmp_facts.SnmpEngine
-    real_close = snmp_facts._close_snmp_engine
+    # 共享 engine 池：peak_live_snmp_engines 现在统计的是池内 engine，而非每目标 engine。
+    real_engine = snmp_engine_pool.create_snmp_engine
+    real_close = snmp_engine_pool.close_snmp_engine
     real_get = snmp_facts.getCmd
     live_engines = 0
     peak_live_engines = 0
@@ -119,8 +121,8 @@ async def run_benchmark(
     async def never_respond(*_args, **_kwargs):
         await asyncio.Future()
 
-    snmp_facts.SnmpEngine = instrumented_engine
-    snmp_facts._close_snmp_engine = instrumented_close
+    snmp_engine_pool.create_snmp_engine = instrumented_engine
+    snmp_engine_pool.close_snmp_engine = instrumented_close
     snmp_facts.getCmd = never_respond
 
     timeout_overshoots: list[float] = []
@@ -187,8 +189,9 @@ async def run_benchmark(
             await scheduler.shutdown()
         finally:
             loop.set_exception_handler(previous_exception_handler)
-            snmp_facts.SnmpEngine = real_engine
-            snmp_facts._close_snmp_engine = real_close
+            snmp_engine_pool.close_shared_snmp_engines(reason="benchmark_finished")
+            snmp_engine_pool.create_snmp_engine = real_engine
+            snmp_engine_pool.close_snmp_engine = real_close
             snmp_facts.getCmd = real_get
 
     snapshot = scheduler_metrics.snapshot()

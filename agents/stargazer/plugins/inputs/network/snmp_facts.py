@@ -6,13 +6,13 @@
 import socket
 import time
 
+from core.infra.snmp_engine_pool import shared_snmp_engine
 from core.plugin.error_logging import log_plugin_exception, should_log_plugin_exception
 from pysnmp.hlapi.asyncio import (
     CommunityData,
     ContextData,
     ObjectIdentity,
     ObjectType,
-    SnmpEngine,
     UdpTransportTarget,
     UsmUserData,
     getCmd,
@@ -67,13 +67,6 @@ def _is_prefix_of(root: str, oid) -> bool:
 
 def _as_object_types(oids):
     return [ObjectType(ObjectIdentity(str(oid).lstrip("."))) for oid in oids]
-
-
-def _close_snmp_engine(engine) -> None:
-    dispatcher = getattr(engine, "transportDispatcher", None)
-    close = getattr(dispatcher, "closeDispatcher", None)
-    if callable(close):
-        close()
 
 
 class SnmpFacts:
@@ -235,7 +228,6 @@ class SnmpFacts:
         collect_started_at = time.monotonic()
         probe_timeout = min(self.timeout, 10)
         snmp_auth = self._get_snmp_auth()
-        engine = SnmpEngine()
         context = ContextData()
 
         # 定义 OID
@@ -248,8 +240,9 @@ class SnmpFacts:
             "interfaces": [],  # 确保 interfaces 是一个列表
         }
 
-        try:
-            # 系统 GET 与接口 WALK 共用目标级 Engine，避免重复初始化。
+        # 系统 GET 与接口 WALK 共用进程级共享 Engine（见 core.infra.snmp_engine_pool），
+        # 上下文退出只归还引用，不关闭 dispatcher。
+        async with shared_snmp_engine(snmp_auth, target=(self.host, self.snmp_port)) as engine:
             try:
                 observe = getattr(self._runtime_metrics, "observe", None)
                 if callable(observe):
@@ -342,32 +335,29 @@ class SnmpFacts:
                 raise RuntimeError(f"Error during SNMP interface information collection: {str(e)}")
 
             return results
-        finally:
-            _close_snmp_engine(engine)
 
     async def probe(self):
         """最小只读 SNMP GET（sysName），用于 CredentialAttempt。"""
         from core.collection.contracts import AccessProbeResult, AccessProbeStatus
 
         oid = DefineOid(dotprefix=True)
+        snmp_auth = self._get_snmp_auth()
         # access_probe：固定 10 秒超时、重试 1 次（与正式采集 timeout 解耦）
-        engine = SnmpEngine()
-        try:
-            error_indication, error_status, _error_index, var_binds = await getCmd(
-                engine,
-                self._get_snmp_auth(),
-                self._transport_target(timeout=10, retries=1),
-                ContextData(),
-                ObjectType(ObjectIdentity(oid.sysName.lstrip("."))),
-                lookupMib=False,
-            )
-        except Exception:  # noqa: BLE001 - 不把 SDK 异常正文写入结果
-            return AccessProbeResult(
-                status=AccessProbeStatus.NO_RESPONSE,
-                error_code="snmp_probe_error",
-            )
-        finally:
-            _close_snmp_engine(engine)
+        async with shared_snmp_engine(snmp_auth, target=(self.host, self.snmp_port)) as engine:
+            try:
+                error_indication, error_status, _error_index, var_binds = await getCmd(
+                    engine,
+                    snmp_auth,
+                    self._transport_target(timeout=10, retries=1),
+                    ContextData(),
+                    ObjectType(ObjectIdentity(oid.sysName.lstrip("."))),
+                    lookupMib=False,
+                )
+            except Exception:  # noqa: BLE001 - 不把 SDK 异常正文写入结果
+                return AccessProbeResult(
+                    status=AccessProbeStatus.NO_RESPONSE,
+                    error_code="snmp_probe_error",
+                )
         if error_indication:
             indication = str(error_indication).lower()
             if "timeout" in indication or "no response" in indication:
