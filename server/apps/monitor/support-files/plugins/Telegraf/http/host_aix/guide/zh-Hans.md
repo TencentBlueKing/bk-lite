@@ -1,36 +1,25 @@
-# AIX 主机采集接入指南（驻留 ksh）
+# Host AIX
 
-本插件由平台把 **同一份原始 ksh** 安装到 AIX 主机（首次 `mkssys` 注册 SRC 子系统 `bklite_osmon` 并 `startsrc` 常驻 keeper；无 SRC 时仅在 crontab 尚无标记时写入 `@reboot` keeper），再由 **Linux 采集节点** SSH 执行 `/usr/bin/ksh -c '/opt/bk-lite/aix/os_monitor.ksh'`。后续 scrape **只执行已安装脚本**，不会每次重装或改写 crontab。AIX 不是 bk-lite Node，不要在 AIX 上安装 Telegraf、node_exporter 或开放 `:9100`。用户不必安装 Splunk Add-on。
+监控对象是 **Host**。本插件采集 AIX 7.2 / 7.3 操作系统指标：第一次保存后会在目标主机上安装并保持采集可用，之后按间隔取数。
 
-重新保存实例会 **更新已有子配置**，不会再堆一个新的 uuid。
+采集内容：CPU（含 LPAR 授权容量）、内存与 paging、1 / 5 / 15 分钟负载、进程与 AIX 进程状态、磁盘容量 / inode / 读写 / 忙碌、网卡、运行时长、svmon 分类。
 
-## 前置要求
+## 接入
 
-- 采集节点能 SSH 访问目标 AIX 主机（默认端口 22），并有权限写入 `/opt/bk-lite/aix/`。
-- 目标为 AIX 7.2 或 7.3（POWER8+）。脚本自动跳过缺失命令，不要按 5.x/6.x 使用。
-- 监控账号需要执行：`uptime`、`vmstat`、`svmon`、`lsps`、`mpstat`、`lparstat`、`df`、`iostat`、`ps`、`ifconfig`、`netstat`、`oslevel`。SRC 安装还需要 `mkssys`/`lssrc`；否则回退 cron。
-- 防火墙只需放行 SSH，不要为 `:9100` 开口。
+1. 选择一台能访问该 AIX 的采集节点。
+2. 填写目标主机 IP、用户名、SSH 认证方式和采集间隔。
+3. 保存后等待一个采集周期，在 Host 对象查看数据。
 
-## 接入步骤
+## 表单字段
 
-1. 选择一台能访问该 AIX 的 Linux 采集节点。
-2. 填写主机 IP、用户名（默认 `root`）、SSH 认证方式（密码或 SSH 密钥）和采集间隔（默认 60 秒）。
-3. 保存后平台会把 ksh 安装到 `/opt/bk-lite/aix/os_monitor.ksh`，注册并 `startsrc` SRC keeper（若可用）。之后每个采集周期只 SSH 执行该脚本，不会再次 SCP 或改 crontab。
-
-## 页面字段说明
-
-| 页面字段 | 是否必填 | 说明 |
+| 字段 | 必填 | 说明 |
 | --- | --- | --- |
-| 目标主机IP | 是 | AIX 主机地址。 |
-| 用户名 | 是 | SSH 用户，默认 `root`。 |
+| 目标主机IP | 是 | AIX 地址。 |
+| 用户名 | 是 | 默认 `root`。 |
 | SSH认证方式 | 是 | 密码或 SSH 密钥。 |
-| 密码 / SSH私钥 | 视认证方式 | 凭据加密保存，日志不会打印私钥。 |
-| 端口 | 否 | SSH 端口，默认 22。 |
+| 密码 / SSH私钥 | 视认证方式 | 密码认证填密码；密钥认证填私钥，口令可空。 |
+| 端口 | 否 | 默认 22。 |
 | 采集间隔 | 是 | 默认 60 秒。 |
-| 节点 | 是 | 执行 SSH 与文件下发的 Linux 采集节点。 |
+| 节点 | 是 | 执行采集的节点。 |
 
-## 接入后验证
-
-确认 AIX 上存在 `/opt/bk-lite/aix/os_monitor.ksh`，SRC 子系统 `bklite_osmon` 为 active（或 crontab 已有标记），并在一个采集周期后查询 `cpu_usage_total`、`mem_used_percent`、`disk_used_percent`、`disk_iused`、`disk_ifree`。仪表盘复用主机（Host）仪表盘。
-
-部署后请在控制台执行 `plugin_init`（或 `batch_init`）导入本插件定义。
+适用 AIX 7.2 / 7.3。部署后若控制台还没有本插件，执行 `plugin_init`。
