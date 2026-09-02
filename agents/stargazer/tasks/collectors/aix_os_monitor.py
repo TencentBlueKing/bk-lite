@@ -174,6 +174,51 @@ def _as_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
+def _append_aix_diskio(lines: list[str], diskios: Any, base_labels: str, timestamp: int) -> None:
+    if not isinstance(diskios, list):
+        return
+    for diskio in diskios:
+        if not isinstance(diskio, dict):
+            continue
+        device = diskio.get("device", "unknown")
+        diskio_labels = f"{base_labels},{_format_prometheus_labels(device=device)}"
+        _append_gauge(
+            lines,
+            "diskio_read_bytes",
+            diskio_labels,
+            diskio.get("read_bytes", 0),
+            timestamp,
+            "Disk read bytes from iostat interval sample",
+        )
+        _append_gauge(
+            lines,
+            "diskio_write_bytes",
+            diskio_labels,
+            diskio.get("write_bytes", 0),
+            timestamp,
+            "Disk write bytes from iostat interval sample",
+        )
+        if "read_bytes_total" in diskio:
+            _append_gauge(
+                lines,
+                "diskio_read_bytes_total",
+                diskio_labels,
+                diskio.get("read_bytes_total", 0),
+                timestamp,
+                "Disk read bytes counter from iostat since-boot report",
+            )
+        if "write_bytes_total" in diskio:
+            _append_gauge(
+                lines,
+                "diskio_write_bytes_total",
+                diskio_labels,
+                diskio.get("write_bytes_total", 0),
+                timestamp,
+                "Disk write bytes counter from iostat since-boot report",
+            )
+        _append_gauge(lines, "disk_tm_act", diskio_labels, diskio.get("tm_act", 0), timestamp, "AIX disk tm_act busy percent")
+
+
 def parse_aix_metrics_to_prometheus(
     data: dict[str, Any],
     instance_id: str,
@@ -267,25 +312,7 @@ def parse_aix_metrics_to_prometheus(
             _append_gauge(lines, "net_err_in", net_labels, net.get("rx_errors", 0), timestamp, "Network receive errors counter")
             _append_gauge(lines, "net_err_out", net_labels, net.get("tx_errors", 0), timestamp, "Network transmit errors counter")
 
-    diskios = data.get("diskio")
-    if isinstance(diskios, list):
-        for diskio in diskios:
-            if not isinstance(diskio, dict):
-                continue
-            device = diskio.get("device", "unknown")
-            diskio_labels = f"{base_labels},{_format_prometheus_labels(device=device)}"
-            _append_gauge(
-                lines, "diskio_read_bytes_total", diskio_labels, diskio.get("read_bytes", 0), timestamp, "Disk read bytes from iostat second report"
-            )
-            _append_gauge(
-                lines,
-                "diskio_write_bytes_total",
-                diskio_labels,
-                diskio.get("write_bytes", 0),
-                timestamp,
-                "Disk write bytes from iostat second report",
-            )
-            _append_gauge(lines, "disk_tm_act", diskio_labels, diskio.get("tm_act", 0), timestamp, "AIX disk tm_act busy percent")
+    _append_aix_diskio(lines, data.get("diskio"), base_labels, timestamp)
 
     processes = data.get("processes") if isinstance(data.get("processes"), dict) else {}
     states = processes.get("states") if isinstance(processes.get("states"), dict) else {}
