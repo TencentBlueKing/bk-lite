@@ -10,6 +10,13 @@ PACKAGE_VERSION = "1.12.1"
 PACKAGE_NAME = "node_exporter-1.12.1.aix-ppc64.tar.gz"
 PACKAGE_SHA256 = "de61db51f5c428668d3d886ca6fec297b2518f24c2ccb31e8e26c5ad794aa5ee"
 VENDOR_FILE_PATH = f"{PACKAGE_OS}/{PACKAGE_ARCH}/{PACKAGE_OBJECT}/{PACKAGE_VERSION}/{PACKAGE_NAME}"
+PACKAGE_MISSING_MESSAGE = (
+    "AIX node_exporter package is not in object storage. "
+    "Upload official node_exporter-1.12.1.aix-ppc64.tar.gz to "
+    "aix/ppc64/node_exporter/1.12.1/ "
+    "(sha256 de61db51f5c428668d3d886ca6fec297b2518f24c2ccb31e8e26c5ad794aa5ee). "
+    "Do not download it from GitHub or any other external source."
+)
 
 INSTALL_DIR = "/opt/bklite/node_exporter"
 REMOTE_PACKAGE_DIR = "/tmp"

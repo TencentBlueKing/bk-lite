@@ -16,6 +16,7 @@ from apps.monitor.constants.aix_node_exporter import (
     INSTALL_DIR,
     LISTEN_ADDRESS,
     PACKAGE_ARCH,
+    PACKAGE_MISSING_MESSAGE,
     PACKAGE_NAME,
     PACKAGE_OBJECT,
     PACKAGE_OS,
@@ -69,23 +70,31 @@ class AixNodeExporterService:
         ).first()
         if package is None:
             logger.warning(
-                "event=aix_node_exporter_package_row_missing os=%s arch=%s object=%s version=%s fallback_path=%s",
+                "event=aix_node_exporter_package_row_missing os=%s arch=%s object=%s version=%s vendor_path=%s",
                 PACKAGE_OS,
                 PACKAGE_ARCH,
                 PACKAGE_OBJECT,
                 PACKAGE_VERSION,
                 VENDOR_FILE_PATH,
             )
-            return VENDOR_FILE_PATH
+            raise AixNodeExporterError(
+                PACKAGE_MISSING_MESSAGE,
+                failed_stage="resolve_package",
+                error_type="PackageMissing",
+            )
         try:
             return PackageService.resolve_existing_file_path(package)
         except Exception as exc:
             logger.warning(
-                "event=aix_node_exporter_package_path_fallback failed_stage=resolve_package error_type=%s fallback_path=%s",
+                "event=aix_node_exporter_package_lookup_failed failed_stage=resolve_package error_type=%s vendor_path=%s",
                 type(exc).__name__,
                 VENDOR_FILE_PATH,
             )
-            return VENDOR_FILE_PATH
+            raise AixNodeExporterError(
+                PACKAGE_MISSING_MESSAGE,
+                failed_stage="resolve_package",
+                error_type="PackageMissing",
+            ) from exc
 
     @classmethod
     def build_install_script(cls, *, scrape_port=DEFAULT_SCRAPE_PORT, skip_copy=False):
@@ -196,9 +205,9 @@ class AixNodeExporterService:
         )
         if not _executor_ok(result):
             raise AixNodeExporterError(
-                "copy node_exporter package failed",
+                PACKAGE_MISSING_MESSAGE,
                 failed_stage="copy",
-                error_type="CopyFailed",
+                error_type="PackageMissing",
             )
         return result
 
@@ -216,6 +225,13 @@ class AixNodeExporterService:
             passphrase=passphrase,
         )
         if not _executor_ok(result):
+            stderr = str(result.get("stderr") or "") if isinstance(result, dict) else ""
+            if "checksum mismatch" in stderr or "package missing" in stderr:
+                raise AixNodeExporterError(
+                    PACKAGE_MISSING_MESSAGE,
+                    failed_stage="start",
+                    error_type="PackageMissing",
+                )
             raise AixNodeExporterError(
                 "start node_exporter failed",
                 failed_stage="start",

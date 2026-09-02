@@ -5,7 +5,8 @@ The platform installs official `node_exporter` on the target AIX host. A Linux c
 ## Prerequisites
 
 - The target host is AIX 7.2 / 7.3 on POWER8 or later `ppc64`.
-- The collector node must be Linux and must be able to reach port `9100` on the target host.
+- The Linux collect node (Telegraf scrape) must be able to reach the AIX host on TCP 9100 (node_exporter).
+- If 9100 is blocked by a firewall, copy/start can succeed while scrape/metrics fail.
 - On save, the platform uses the collector node to SSH (default port `22`), copy official `node_exporter` 1.12.1 (aix-ppc64) to `/opt/bklite/node_exporter`, and start it with SRC as root on `0.0.0.0:9100`.
 - The SSH account needs write access to the install directory and permission to run `mkssys` / `startsrc` / `stopsrc`. `root` is recommended.
 - The SRC subsystem name is `node_exporter`. If the subsystem already exists, the platform does not run `mkssys` again. An upgrade stops the subsystem, replaces the binary, updates the listen address with `chssys`, then starts it.
@@ -29,7 +30,7 @@ The platform installs official `node_exporter` on the target AIX host. A Linux c
 | Instance Name | Yes | none | Display name in the platform. It can start from the target host IP and then be edited. |
 | Username | Yes | `root` | SSH login username. It is used only for install and detect, and is not written into the scrape config. |
 | Linux Authentication | No | Password | Linux SSH authentication method. |
-| Password | Yes | none | SSH/WinRM login password |
+| Password | Yes | none | SSH login password |
 | SSH Private Key | No | none | Linux SSH private key content, used only when authentication is SSH Key |
 | SSH Private Key Passphrase | No | none | Linux SSH private key passphrase, may be empty |
 | Port | No | `9100` | `node_exporter` listen and scrape port, not the SSH port. SSH always uses `22`. |
@@ -46,7 +47,7 @@ The platform installs official `node_exporter` on the target AIX host. A Linux c
 
 ### Save succeeds but no metrics appear
 
-Confirm the Linux collector can reach AIX port `9100`, and that `plugin_init` has run. The scrape config must not contain an SSH username or password.
+Confirm the Linux collect node can reach AIX TCP 9100 (not blocked by firewall), and that `plugin_init` has run. The scrape config must not contain an SSH username or password. If copy/start succeeded but scrape failed, check the firewall from the collect node to AIX:9100 first.
 
 ### SRC fails to start
 
