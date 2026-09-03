@@ -25,9 +25,9 @@ const TypeExtractorPage = () => {
     () =>
       createRequested.current && collectTypeName
         ? consumeExtractorCreateSample({
-            kind: 'type',
-            id: collectTypeName
-          })
+          kind: 'type',
+          id: collectTypeName
+        })
         : null,
     [collectTypeName]
   );

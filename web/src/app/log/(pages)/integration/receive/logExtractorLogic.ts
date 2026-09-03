@@ -11,7 +11,7 @@ export type ExtractorCreateTarget =
   | { kind: 'instance'; instanceId: string }
   | { kind: 'unavailable'; reason: 'missing_instance' };
 
-export type CollectTypeLinkFields = {
+export interface CollectTypeLinkFields {
   id?: unknown;
   name: string;
   collector?: unknown;
@@ -19,7 +19,7 @@ export type CollectTypeLinkFields = {
   display_name?: unknown;
   description?: unknown;
   display_description?: unknown;
-};
+}
 
 export const isTypeScopedCollectType = (
   value: unknown

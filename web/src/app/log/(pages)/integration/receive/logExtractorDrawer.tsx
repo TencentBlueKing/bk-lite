@@ -166,15 +166,15 @@ const LogExtractorDrawer = ({
   const instanceId = instanceProp?.id;
   const instance = collectType
     ? {
-        id: collectType.name,
-        name: collectType.displayName,
-        canOperate: serverCanOperate ?? collectType.canOperate
-      }
+      id: collectType.name,
+      name: collectType.displayName,
+      canOperate: serverCanOperate ?? collectType.canOperate
+    }
     : instanceProp
       ? {
-          ...instanceProp,
-          canOperate: serverCanOperate ?? instanceProp.canOperate
-        }
+        ...instanceProp,
+        canOperate: serverCanOperate ?? instanceProp.canOperate
+      }
       : null;
   const scopeQuery = useMemo<LogExtractorScopeQuery | null>(() => {
     if (collectTypeName) return { collect_type: collectTypeName };

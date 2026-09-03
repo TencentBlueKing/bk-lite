@@ -167,9 +167,9 @@ const TopMenu: React.FC<TopMenuProps> = ({ hideMainMenu, hideBrand }) => {
   );
 
   return (
-    <div className="relative z-30 h-[56px] w-full shrink-0 grow-0">
+    <div className="relative z-30 h-[104px] w-full shrink-0 grow-0 sm:h-[56px]">
       <div
-        className={`grid h-full w-full items-center ${
+        className={`grid h-[56px] w-full items-center ${
           appTopBrandGrid
             ? ''
             : showAppTopNav
@@ -192,8 +192,8 @@ const TopMenu: React.FC<TopMenuProps> = ({ hideMainMenu, hideBrand }) => {
           }
           style={showAppTopNav ? { width: APP_TOP_SIDE_RAIL_WIDTH_PX } : undefined}
         >
-          <img src={logoUrl} className="block h-10 w-auto object-contain" alt="logo" />
-          <div className="font-medium">{portalName}</div>
+          <img src={logoUrl} className="block h-8 w-auto object-contain sm:h-10" alt="logo" />
+          <div className="hidden font-medium sm:block">{portalName}</div>
           {showAppSwitcher && (
             <Popover content={renderContent} title={t('common.appList')} trigger="hover">
               <div className={`flex cursor-pointer items-center justify-center rounded-[10px] px-3 py-2 ${styles.nav}`}>
@@ -204,12 +204,14 @@ const TopMenu: React.FC<TopMenuProps> = ({ hideMainMenu, hideBrand }) => {
           )}
         </div>
         )}
-        <div className={showAppTopNav ? `z-10 min-w-0 w-full ${appTopBrandGrid ? 'pl-4' : ''}` : 'z-10'}>
+        <div className={showAppTopNav
+          ? `z-10 min-w-0 w-full ${appTopBrandGrid ? 'pl-4' : ''}`
+          : 'absolute inset-x-0 bottom-0 z-10 overflow-x-hidden px-2 sm:bottom-auto sm:top-1/2 sm:-translate-y-1/2'}>
           {showAppTopNav ? (
             <AppTopNav apps={apps} pathname={pathname} />
           ) : !hideMainMenu ? (
           <div
-            className="z-10 flex items-center justify-self-center space-x-4 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+            className="mx-auto flex w-fit max-w-full items-center space-x-4 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
             style={{ whiteSpace: 'nowrap' }}
           >
             {menuItems
@@ -238,7 +240,7 @@ const TopMenu: React.FC<TopMenuProps> = ({ hideMainMenu, hideBrand }) => {
             <div />
           )}
         </div>
-        <div className={`z-10 flex flex-shrink-0 items-center justify-self-end gap-4 ${appTopBrandGrid ? 'pr-4' : ''}`}>
+        <div className={`z-10 flex flex-shrink-0 items-center justify-self-end gap-2 sm:gap-4 ${appTopBrandGrid ? 'pr-4' : 'col-start-3'}`}>
           <Notifications />
           {hasViewedTour && (
             <Tooltip title={t('common.officialDocument')}>
