@@ -1481,8 +1481,8 @@ def test_select_visible_planned_messages_keeps_last_prose_over_earlier_table():
     visible = ToolsNodes._select_visible_planned_messages(messages, summary_ran=False)
     ai = [item for item in visible if getattr(item, "type", "") == "ai" and not getattr(item, "tool_calls", None)]
     assert len(ai) == 1
-    assert "今天 0 次" in str(ai[0].content)
-    assert "累计重启" not in str(ai[0].content)
+    assert str(ai[0].content) == later
+    assert "| Pod |" not in str(ai[0].content)
     assert sum(1 for item in visible if getattr(item, "type", "") == "tool") == 2
 
 
