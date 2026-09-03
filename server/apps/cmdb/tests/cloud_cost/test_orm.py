@@ -1,211 +1,150 @@
-# -*- coding: utf-8 -*-
-"""cloud_cost.orm 单元测试。
+"""云成本权限查询入口与参数化计划测试。"""
 
-策略:mock 图层(InstanceManage)+ 短路 _perm,不写真实 FalkorDB(图写不回滚,会污染 cmdb_graph)。
-验证:参数拼装(真实字段名 object_type/applicant)、bill→log 关联反哺 _bill_id、权限短路。
-"""
+from datetime import date
+
 import pytest
 
 from apps.cmdb.services.cloud_cost import orm
-
-
-@pytest.fixture
-def patch_perm(monkeypatch):
-    """让 _perm 返回一个非 None 的假 permission_map,跳过真实 User/team 依赖。"""
-    monkeypatch.setattr(orm, "_perm", lambda user_info, model_id: {"fake": True})
-
-
-class FakeInstanceManage:
-    """记录 instance_list 调用,并按 model_id 返回预置数据。"""
-
-    def __init__(self, list_returns=None, assoc_return=None):
-        # list_returns: {model_id: (list, count)}
-        self.list_returns = list_returns or {}
-        self.assoc_return = assoc_return or {}
-        self.list_calls = []
-        self.assoc_calls = []
-
-    def instance_list(self, model_id, params, page, page_size, order, permission_map, creator="", case_sensitive=False):
-        self.list_calls.append({"model_id": model_id, "params": params, "case_sensitive": case_sensitive})
-        return self.list_returns.get(model_id, ([], 0))
-
-    def instance_association_map(self, model_id, inst_ids, related_model=None):
-        self.assoc_calls.append({"model_id": model_id, "inst_ids": inst_ids, "related_model": related_model})
-        return self.assoc_return
-
-
-def _install(monkeypatch, fake):
-    # instance_list / instance_association_map 是 staticmethod,直接替换为 fake 的绑定方法
-    monkeypatch.setattr(orm.InstanceManage, "instance_list", fake.instance_list)
-    monkeypatch.setattr(orm.InstanceManage, "instance_association_map", fake.instance_association_map)
+from apps.cmdb.services.cloud_cost.query import CloudCostQueryPlan, compile_cloud_cost_query
 
 
 USER = {"team": 1, "user": "tester"}
+PERMISSION = {1: {"inst_names": []}}
 
 
-# ---------- query_bills_by_filter ----------
-
-def test_bills_no_filter_empty_params(monkeypatch, patch_perm):
-    fake = FakeInstanceManage(list_returns={"resource_bill": ([{"_id": 1}], 1)})
-    _install(monkeypatch, fake)
-    bills, total = orm.query_bills_by_filter(USER)
-    assert total == 1
-    assert fake.list_calls[0]["model_id"] == "resource_bill"
-    assert fake.list_calls[0]["params"] == []
-
-
-def test_bills_inst_type_maps_to_object_type(monkeypatch, patch_perm):
-    fake = FakeInstanceManage(list_returns={"resource_bill": ([], 0)})
-    _install(monkeypatch, fake)
-    orm.query_bills_by_filter(USER, inst_type="database")
-    params = fake.list_calls[0]["params"]
-    assert {"field": "object_type", "type": "str*", "value": "database"} in params
+def _plan(kind="summary", **overrides):
+    values = {
+        "kind": kind,
+        "bill_permission_map": PERMISSION,
+        "log_permission_map": PERMISSION,
+    }
+    values.update(overrides)
+    return CloudCostQueryPlan(**values)
 
 
-def test_bills_applying_user_maps_to_applicant(monkeypatch, patch_perm):
-    fake = FakeInstanceManage(list_returns={"resource_bill": ([], 0)})
-    _install(monkeypatch, fake)
-    orm.query_bills_by_filter(USER, applying_user="alice")
-    params = fake.list_calls[0]["params"]
-    assert {"field": "applicant", "type": "str*", "value": "alice"} in params
+def test_summary_plan_has_no_row_cap_and_deduplicates_association_pairs():
+    compiled = compile_cloud_cost_query(_plan())
+
+    assert "WITH DISTINCT bill, log" in compiled.statement
+    assert "sum(toFloat(log.total_cost))" in compiled.statement
+    assert "LIMIT" not in compiled.statement
+    assert 100000 not in compiled.params.values()
 
 
-def test_bills_user_department_kept(monkeypatch, patch_perm):
-    fake = FakeInstanceManage(list_returns={"resource_bill": ([], 0)})
-    _install(monkeypatch, fake)
-    orm.query_bills_by_filter(USER, user_department="研发部")
-    params = fake.list_calls[0]["params"]
-    assert {"field": "user_department", "type": "str*", "value": "研发部"} in params
-
-
-def test_bills_ignores_billing_period_with_warning(monkeypatch, patch_perm, caplog):
-    from datetime import date
-    fake = FakeInstanceManage(list_returns={"resource_bill": ([], 0)})
-    _install(monkeypatch, fake)
-    with caplog.at_level("WARNING"):
-        orm.query_bills_by_filter(USER, billing_period=(date(2026, 6, 1), date(2026, 6, 30)))
-    assert "billing_period" in caplog.text
-    # billing_period 不应出现在 bill 查询 params 里
-    assert all(p.get("field") != "billing_date" for p in fake.list_calls[0]["params"])
-
-
-def test_bills_permission_none_short_circuits(monkeypatch):
-    monkeypatch.setattr(orm, "_perm", lambda user_info, model_id: None)
-    fake = FakeInstanceManage()
-    _install(monkeypatch, fake)
-    bills, total = orm.query_bills_by_filter(USER, inst_type="database")
-    assert (bills, total) == ([], 0)
-    assert fake.list_calls == []  # 无权限时不查库
-
-
-# ---------- query_logs_by_filter ----------
-
-def test_logs_always_resolve_via_bill_with_time_param(monkeypatch, patch_perm):
-    """无 bill 维度也要经 bill 解析归属,并带 billing_date time 过滤 + 反哺 _bill_id。"""
-    from datetime import date
-    fake = FakeInstanceManage(
-        list_returns={
-            "resource_bill": ([{"_id": 1}], 1),
-            "transaction_log": ([{"_id": 104}], 1),
-        },
-        assoc_return={1: [104]},
+def test_plan_parameterizes_filters_and_both_permission_scopes():
+    injection = "db') RETURN bill //"
+    compiled = compile_cloud_cost_query(
+        _plan(
+            inst_type=injection,
+            user_department="研发",
+            applying_user="alice",
+            billing_period=(date(2026, 6, 1), date(2026, 6, 30)),
+        ),
     )
-    _install(monkeypatch, fake)
-    logs, total = orm.query_logs_by_filter(USER, billing_period=(date(2026, 6, 1), date(2026, 6, 30)))
-    assert total == 1
-    log_call = [c for c in fake.list_calls if c["model_id"] == "transaction_log"][0]
-    assert {"field": "billing_date", "type": "time", "start": "2026-06-01", "end": "2026-06-30"} in log_call["params"]
-    assert logs[0]["_bill_id"] == 1  # 无筛选也反哺 _bill_id
+
+    assert injection not in compiled.statement
+    assert injection in compiled.params.values()
+    assert "bill.organization" in compiled.statement
+    assert "log.organization" in compiled.statement
+    assert "bill.inst_name" not in compiled.statement
+    assert "log.billing_date >=" in compiled.statement
 
 
-def test_logs_bill_dim_path_backfills_bill_id(monkeypatch, patch_perm):
-    """bill 维度:先筛 bill → 关联出 log → 查 log → 反哺 _bill_id。"""
-    fake = FakeInstanceManage(
-        list_returns={
-            "resource_bill": ([{"_id": 275}, {"_id": 276}], 2),
-            "transaction_log": ([{"_id": 287}, {"_id": 284}], 2),
-        },
-        assoc_return={275: [287, 288, 289], 276: [284, 285, 286]},
+def test_plan_applies_instance_name_permission_inside_each_org_scope():
+    scoped = {1: {"inst_names": ["allowed-bill"]}}
+    compiled = compile_cloud_cost_query(
+        _plan(bill_permission_map=scoped, log_permission_map={2: {"inst_names": ["allowed-log"]}}),
     )
-    _install(monkeypatch, fake)
-    logs, total = orm.query_logs_by_filter(USER, user_department="研发部")
-    # 关联被调用,且用 bill_ids
-    assert fake.assoc_calls[0]["inst_ids"] == [275, 276]
-    assert fake.assoc_calls[0]["related_model"] == "transaction_log"
-    # log 查询用 id[] 过滤
-    log_call = [c for c in fake.list_calls if c["model_id"] == "transaction_log"][0]
-    id_param = [p for p in log_call["params"] if p["type"] == "id[]"][0]
-    assert set(id_param["value"]) == {284, 285, 286, 287, 288, 289}
-    # _bill_id 反哺正确
-    by_id = {lg["_id"]: lg["_bill_id"] for lg in logs}
-    assert by_id[287] == 275
-    assert by_id[284] == 276
+
+    assert "bill.inst_name IN" in compiled.statement
+    assert "log.inst_name IN" in compiled.statement
+    assert ["allowed-bill"] in compiled.params.values()
+    assert ["allowed-log"] in compiled.params.values()
 
 
-def test_logs_bill_dim_no_bill_match_returns_empty(monkeypatch, patch_perm):
-    fake = FakeInstanceManage(list_returns={"resource_bill": ([], 0)})
-    _install(monkeypatch, fake)
-    logs, total = orm.query_logs_by_filter(USER, user_department="不存在的部门")
-    assert (logs, total) == ([], 0)
-    # 没查到 bill 就不应发起关联/log 查询
-    assert fake.assoc_calls == []
+def test_distribution_rejects_unregistered_group_field():
+    with pytest.raises(ValueError, match="unsupported cloud cost group field"):
+        compile_cloud_cost_query(_plan("distribution", group_field="name) RETURN bill"))
 
 
-def test_logs_permission_none_short_circuits(monkeypatch):
-    monkeypatch.setattr(orm, "_perm", lambda user_info, model_id: None)
-    fake = FakeInstanceManage()
-    _install(monkeypatch, fake)
-    assert orm.query_logs_by_filter(USER, billing_period=None) == ([], 0)
-    assert fake.list_calls == []
-
-
-# ---------- query_bills_by_object_ids ----------
-
-def test_bills_by_object_ids(monkeypatch, patch_perm):
-    fake = FakeInstanceManage(list_returns={"resource_bill": ([{"_id": 1}, {"_id": 2}], 2)})
-    _install(monkeypatch, fake)
-    bills, total = orm.query_bills_by_object_ids(USER, [1, 2])
-    assert total == 2
-    id_param = [p for p in fake.list_calls[0]["params"] if p["type"] == "id[]"][0]
-    assert id_param["value"] == [1, 2]
-
-
-def test_bills_by_object_ids_empty():
-    assert orm.query_bills_by_object_ids(USER, []) == ([], 0)
-
-
-# ---------- 模糊筛选透传 ----------
-
-def test_query_bills_forwards_case_insensitive(monkeypatch, patch_perm):
-    """三个 bill 维度筛选(inst_type / user_department / applying_user)在拼装成
-    str* 类型后,调用 InstanceManage.instance_list 时必须透传 case_sensitive=False,
-    以保证子串匹配的大小写不敏感语义(参见 format_str_like_params)。
-    """
-    fake = FakeInstanceManage(list_returns={"resource_bill": ([], 0)})
-    _install(monkeypatch, fake)
-    orm.query_bills_by_filter(
-        USER, inst_type="db", user_department="研", applying_user="al"
+def test_detail_plan_returns_exact_total_and_page_from_one_snapshot():
+    compiled = compile_cloud_cost_query(
+        _plan(
+            "bill_detail",
+            page=3,
+            page_size=20,
+            sort_field="department",
+            sort_order="asc",
+        ),
     )
-    call = fake.list_calls[0]
-    assert call["case_sensitive"] is False
-    # 三个维度都按 str* 输出,且 case_sensitive 由 instance_list 透传,
-    # 不在 params 自身里(透传点位于 instance_list 默认参数)
-    types = {p["type"] for p in call["params"]}
-    assert "str*" in types
-    assert "str=" not in types
+
+    assert "ORDER BY item.department ASC, item.bill_key ASC" in compiled.statement
+    assert "WITH collect(item) AS items" in compiled.statement
+    assert "RETURN size(items) AS total, items[$skip..$end] AS items" in compiled.statement
+    assert compiled.params["skip"] == 40
+    assert compiled.params["end"] == 60
 
 
-def test_query_logs_forwards_case_insensitive(monkeypatch, patch_perm):
-    """log 查询(经 bill 解析)同样需要 case_sensitive=False。"""
-    from datetime import date
-    fake = FakeInstanceManage(
-        list_returns={
-            "resource_bill": ([{"_id": 1}], 1),
-            "transaction_log": ([{"_id": 101}], 1),
-        },
-        assoc_return={1: [101]},
+@pytest.mark.parametrize(
+    ("sort_field", "expression"),
+    [
+        ("total_cost_incurred", "item.total_cost"),
+        ("instance_name", "item.instance_name"),
+        ("department", "item.department"),
+    ],
+)
+def test_detail_plan_supports_registered_global_sort_fields(sort_field, expression):
+    compiled = compile_cloud_cost_query(
+        _plan("bill_detail", sort_field=sort_field, sort_order="desc"),
     )
-    _install(monkeypatch, fake)
-    orm.query_logs_by_filter(USER, inst_type="db", billing_period=(date(2026, 6, 1), date(2026, 6, 30)))
-    # bill + log 两条调用都要传 case_sensitive=False
-    assert all(c["case_sensitive"] is False for c in fake.list_calls)
+
+    assert f"ORDER BY {expression} DESC, item.bill_key ASC" in compiled.statement
+
+
+def test_detail_rejects_unregistered_sort_field_and_order():
+    with pytest.raises(ValueError, match="unsupported cloud cost sort field"):
+        compile_cloud_cost_query(_plan("bill_detail", sort_field="bill.foo"))
+    with pytest.raises(ValueError, match="unsupported cloud cost sort order"):
+        compile_cloud_cost_query(_plan("bill_detail", sort_order="sideways"))
+
+
+def test_plan_uses_one_common_cypher_contract_for_both_graph_adapters():
+    compiled = compile_cloud_cost_query(_plan())
+
+    assert "coalesce(bill.organization, [])" in compiled.statement
+    assert "coalesce(log.organization, [])" in compiled.statement
+    assert "typeof(" not in compiled.statement
+    assert "valueType(" not in compiled.statement
+    assert "elementId(" not in compiled.statement
+
+
+def test_query_summary_fails_closed_when_either_model_permission_is_missing(monkeypatch):
+    permissions = iter((PERMISSION, None))
+    monkeypatch.setattr(orm, "_perm", lambda *args, **kwargs: next(permissions))
+    monkeypatch.setattr(orm, "_execute", lambda plan: pytest.fail("graph query must not execute"))
+
+    assert orm.query_summary(USER) == {}
+
+
+def test_query_summary_passes_normalized_plan_to_graph(monkeypatch):
+    monkeypatch.setattr(orm, "_perm", lambda *args, **kwargs: PERMISSION)
+    captured = []
+    monkeypatch.setattr(
+        orm,
+        "_execute",
+        lambda plan: captured.append(plan) or [{"total_cost": 100001.0, "instance_count": 100001}],
+    )
+
+    result = orm.query_summary(USER, inst_type="database")
+
+    assert result["total_cost"] == 100001.0
+    assert captured[0].kind == "summary"
+    assert captured[0].inst_type == "database"
+    assert captured[0].bill_permission_map == PERMISSION
+    assert captured[0].log_permission_map == PERMISSION
+
+
+def test_query_bill_detail_empty_permission_preserves_response_shape(monkeypatch):
+    monkeypatch.setattr(orm, "_perm", lambda *args, **kwargs: None)
+
+    assert orm.query_bill_detail(USER, page=2, page_size=10) == {"total": 0, "items": []}

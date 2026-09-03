@@ -3,7 +3,7 @@ import os
 from typing import List, Union
 
 from dotenv import load_dotenv
-from neo4j import GraphDatabase
+from neo4j import GraphDatabase, Query
 from neo4j.graph import Path
 
 from apps.cmdb.constants.constants import INSTANCE, ModelConstraintKey
@@ -424,6 +424,14 @@ class Neo4jClient:
 
         objs = self.session.run(sql_str, **query_params)
         return self.entity_to_list(objs), count
+
+    def query_cloud_cost(self, plan):
+        """执行云成本只读查询计划并返回稳定的字典行。"""
+        from apps.cmdb.services.cloud_cost.query import CLOUD_COST_QUERY_TIMEOUT_SECONDS, compile_cloud_cost_query
+
+        compiled = compile_cloud_cost_query(plan)
+        query = Query(compiled.statement, timeout=CLOUD_COST_QUERY_TIMEOUT_SECONDS)
+        return [dict(record) for record in self.session.run(query, **compiled.params)]
 
     def query_entity_by_id(self, id: int):
         """

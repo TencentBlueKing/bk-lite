@@ -45,23 +45,10 @@ def test_distribution_by_user(stub_orm):
 def test_distribution_instance_count_deduplicates_object_across_bills(monkeypatch):
     from apps.cmdb.services.cloud_cost import orm
 
-    bills = [
-        {"_id": 1, "object_type": "database", "object_id": "shared-resource"},
-        {"_id": 2, "object_type": "database", "object_id": "shared-resource"},
-    ]
-    logs = [
-        {"_bill_id": 1, "object_id": "shared-resource", "total_cost": "10.00"},
-        {"_bill_id": 2, "object_id": "shared-resource", "total_cost": "20.00"},
-    ]
     monkeypatch.setattr(
         orm,
-        "query_bills_by_filter",
-        lambda *args, **kwargs: (bills, len(bills)),
-    )
-    monkeypatch.setattr(
-        orm,
-        "query_logs_by_filter",
-        lambda *args, **kwargs: (logs, len(logs)),
+        "query_distribution",
+        lambda *args, **kwargs: [{"key": "database", "total_cost": "30.00", "instance_count": 1}],
     )
 
     groups = _rows_by_key(

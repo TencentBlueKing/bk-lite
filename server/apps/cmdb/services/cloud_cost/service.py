@@ -2,12 +2,12 @@
 """
 云资源成本分析 Service 层。
 
-3 个 widget 共用同一份流水集合(由 orm 层提供),确保:
+3 个 widget 共用同一权限感知的图查询语义,确保:
   summary.total_cost == sum(distribution[].total_cost) == sum(instance_list.items.total_cost_incurred)
 
 字段名对齐 2026-07-10 真实环境实测:
   bill: object_type / user_department / applicant / object_name / resource_unit_price
-  log:  billing_date / total_cost(+ orm 反哺的 _bill_id)
+  log:  billing_date / total_cost
 """
 from datetime import date, timedelta
 from decimal import Decimal
@@ -16,6 +16,7 @@ from apps.cmdb.services.cloud_cost import orm
 
 _TWO = Decimal("0.01")
 _ONE = Decimal("0.1")
+_MAX_DETAIL_PAGE_SIZE = 1000
 
 
 def _to_decimal(value) -> Decimal:
@@ -25,16 +26,14 @@ def _to_decimal(value) -> Decimal:
         return Decimal("0")
 
 
-def _sum_cost(logs) -> Decimal:
-    return sum((_to_decimal(lg.get("total_cost")) for lg in logs), Decimal("0"))
-
-
-def _log_span_days(logs) -> int:
-    """窗口内 log 的最早~最晚 billing_date 跨度天数(闭区间)。空集 → 0。"""
-    if not logs:
+def _span_days(start, end) -> int:
+    """两个 ISO 日期之间的闭区间天数；缺失或非法值返回 0。"""
+    if not start or not end:
         return 0
-    dates = [date.fromisoformat(lg["billing_date"]) for lg in logs]
-    return (max(dates) - min(dates)).days + 1
+    try:
+        return (date.fromisoformat(str(end)) - date.fromisoformat(str(start))).days + 1
+    except (TypeError, ValueError):
+        return 0
 
 
 class CloudCostService:
@@ -73,27 +72,27 @@ class CloudCostService:
                 "mom_change_pct": Decimal | None, # 同环比(±0.1)
             }
         """
-        current_logs, _ = orm.query_logs_by_filter(
+        current = orm.query_summary(
             user_info, inst_type=inst_type, user_department=user_department,
             applying_user=applying_user, billing_period=billing_period,
         )
-        total_cost = _sum_cost(current_logs)
-        instance_count = len({lg.get("object_id") for lg in current_logs})
+        total_cost = _to_decimal(current.get("total_cost"))
+        instance_count = int(current.get("instance_count") or 0)
 
         if billing_period:
             days = (billing_period[1] - billing_period[0]).days + 1
         else:
-            days = _log_span_days(current_logs)
+            days = _span_days(current.get("min_billing_date"), current.get("max_billing_date"))
         avg_daily = (total_cost / Decimal(days)).quantize(_TWO) if days > 0 else Decimal("0")
 
         mom_pct = None
         if billing_period:
             prev_period = CloudCostService._shift_period(billing_period, days)
-            prev_logs, _ = orm.query_logs_by_filter(
+            previous = orm.query_summary(
                 user_info, inst_type=inst_type, user_department=user_department,
                 applying_user=applying_user, billing_period=prev_period,
             )
-            mom_pct = CloudCostService._compute_mom_pct(total_cost, _sum_cost(prev_logs))
+            mom_pct = CloudCostService._compute_mom_pct(total_cost, _to_decimal(previous.get("total_cost")))
 
         return {
             "total_cost": total_cost.quantize(_TWO),
@@ -126,51 +125,27 @@ class CloudCostService:
         if field is None:
             raise ValueError(f"unsupported group_by: {group_by}")
 
-        logs, _ = orm.query_logs_by_filter(
+        rows = orm.query_distribution(
             user_info, inst_type=inst_type, user_department=user_department,
             applying_user=applying_user, billing_period=billing_period,
+            group_field=field,
         )
-        bills, _ = orm.query_bills_by_filter(
-            user_info, inst_type=inst_type, user_department=user_department,
-            applying_user=applying_user,
-        )
-        bill_group = {b["_id"]: b.get(field) for b in bills}
-        bill_instance = {
-            b["_id"]: (
-                b.get("object_id")
-                if b.get("object_id") not in (None, "")
-                else ("bill", b["_id"])
-            )
-            for b in bills
-        }
-
-        group_total = {}
-        group_insts = {}
-        for lg in logs:
-            key = bill_group.get(lg.get("_bill_id"))
-            if key is None:
-                continue  # 关联丢失,跳过
-            group_total[key] = group_total.get(key, Decimal("0")) + _to_decimal(lg.get("total_cost"))
-            group_insts.setdefault(key, set()).add(bill_instance[lg.get("_bill_id")])
-
-        grand_total = sum(group_total.values(), Decimal("0"))
+        grand_total = sum((_to_decimal(row.get("total_cost")) for row in rows), Decimal("0"))
         groups = []
-        for key, total in group_total.items():
+        for row in rows:
+            key = row.get("key")
+            total = _to_decimal(row.get("total_cost"))
             pct = (total / grand_total * Decimal("100")).quantize(_TWO) if grand_total else Decimal("0")
             groups.append({
                 "key": str(key),
                 "total_cost": float(total.quantize(_TWO)),
-                "instance_count": len(group_insts[key]),
+                "instance_count": int(row.get("instance_count") or 0),
                 "pct": float(pct),
             })
         groups.sort(key=lambda row: row["total_cost"], reverse=True)
         return groups
 
-    _SORT_KEY = {
-        "total_cost_incurred": lambda i: i["total_cost_incurred"],
-        "instance_name": lambda i: i["instance_name"],
-        "department": lambda i: i["department"],
-    }
+    _SORT_FIELDS = frozenset({"total_cost_incurred", "instance_name", "department"})
 
     @staticmethod
     def instance_list(user_info, *, inst_type=None, user_department=None,
@@ -197,68 +172,47 @@ class CloudCostService:
           - 字段名:inst_id→object_id, instance_type→object_type,
             total_cost→total_cost_incurred
 
-        分页在 service 层做。
+        聚合、稳定排序、精确总数和页切片由一次图查询完成；
+        service 只做金额与展示字段格式化。
 
         Returns:
             {"total": int, "page": int, "page_size": int, "items": [...]}
         """
-        logs, _ = orm.query_logs_by_filter(
+        page = int(page)
+        page_size = int(page_size)
+        if page < 1:
+            raise ValueError("page must be >= 1")
+        if page_size < 1 or page_size > _MAX_DETAIL_PAGE_SIZE:
+            raise ValueError(f"page_size must be between 1 and {_MAX_DETAIL_PAGE_SIZE}")
+        sort_by = sort_by if sort_by in CloudCostService._SORT_FIELDS else "total_cost_incurred"
+        order = "desc" if order == "desc" else "asc"
+        result = orm.query_bill_detail(
             user_info, inst_type=inst_type, user_department=user_department,
             applying_user=applying_user, billing_period=billing_period,
+            page=page, page_size=page_size, sort_field=sort_by, sort_order=order,
         )
-        bills, _ = orm.query_bills_by_filter(
-            user_info, inst_type=inst_type, user_department=user_department,
-            applying_user=applying_user,
-        )
-
-        # 按 bill 聚合:cost / log 日期(用于无窗口时算单价分母)
-        # object_id 直接从 bill 读(不再从 log 反查),真实 schema 里 bill 自带此字段。
-        bill_cost = {}        # bill_id → Decimal
-        bill_log_dates = {}   # bill_id → list[date]
-        for lg in logs:
-            bid = lg.get("_bill_id")
-            if bid is None:
-                continue
-            bill_cost[bid] = bill_cost.get(bid, Decimal("0")) + _to_decimal(lg.get("total_cost"))
-            bill_log_dates.setdefault(bid, []).append(date.fromisoformat(lg["billing_date"]))
-
         items = []
-        for b in bills:
-            bid = b["_id"]
-            cost = bill_cost.get(bid, Decimal("0"))
-            if cost == 0:
-                # 筛选条件下 log=0 的 bill 或 log 累加 cost=0 的 bill 都不入表
-                continue
-
-            # 单价分母:有窗口=日历天数;无窗口=此 bill 的 log 跨度天数
+        for row in result.get("items") or []:
+            cost = _to_decimal(row.get("total_cost"))
             if billing_period:
                 days = (billing_period[1] - billing_period[0]).days + 1
             else:
-                dates = bill_log_dates.get(bid, [])
-                days = (max(dates) - min(dates)).days + 1 if dates else 0
+                days = _span_days(row.get("min_billing_date"), row.get("max_billing_date"))
             unit_price = (cost / Decimal(days)).quantize(_TWO) if days > 0 else Decimal("0")
 
             items.append({
-                "object_id": b.get("object_id", ""),
-                "instance_name": b.get("inst_name", ""),
-                "object_type": b.get("object_type", ""),
-                "object_name": b.get("object_name", ""),
-                "department": b.get("user_department", ""),
-                "user": b.get("applicant", ""),
+                "object_id": row.get("object_id", ""),
+                "instance_name": row.get("instance_name", ""),
+                "object_type": row.get("object_type", ""),
+                "object_name": row.get("object_name", ""),
+                "department": row.get("department", ""),
+                "user": row.get("user", ""),
                 "total_cost_incurred": cost.quantize(_TWO),
                 "unit_price": unit_price,
             })
-
-        sort_key = CloudCostService._SORT_KEY.get(
-            sort_by, CloudCostService._SORT_KEY["total_cost_incurred"]
-        )
-        items.sort(key=sort_key, reverse=(order == "desc"))
-
-        total = len(items)
-        start = (page - 1) * page_size
         return {
-            "total": total,
+            "total": int(result.get("total") or 0),
             "page": page,
             "page_size": page_size,
-            "items": items[start:start + page_size],
+            "items": items,
         }

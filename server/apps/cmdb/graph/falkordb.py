@@ -148,7 +148,7 @@ class FalkorDBClient:
         # self.close()
         pass
 
-    def _execute_query(self, query: str, params: dict = None):
+    def _execute_query(self, query: str, params: dict = None, timeout: int | None = None):
         """
         统一的查询执行方法，支持参数化查询
 
@@ -173,10 +173,10 @@ class FalkorDBClient:
                 raise RuntimeError("FalkorDB connection is not available")
 
             # 根据是否有参数选择调用方式
-            if params:
-                result = self._graph.query(query, params=params)
-            else:
-                result = self._graph.query(query)
+            query_kwargs = {"params": params} if params else {}
+            if timeout is not None:
+                query_kwargs["timeout"] = timeout
+            result = self._graph.query(query, **query_kwargs)
 
             execution_time = (time.time() - start_time) * 1000  # 转换为毫秒
             logger.debug(f"[CQL Result] 查询成功，耗时: {execution_time:.2f}ms")
@@ -845,6 +845,23 @@ class FalkorDBClient:
 
         objs = self._execute_query(sql_str, params=query_params if self.ENABLE_PARAMETERIZATION else None)
         return self.entity_to_list(objs), count
+
+    def query_cloud_cost(self, plan):
+        """执行云成本只读查询计划并返回稳定的字典行。"""
+        from apps.cmdb.services.cloud_cost.query import CLOUD_COST_QUERY_TIMEOUT_SECONDS, compile_cloud_cost_query
+
+        compiled = compile_cloud_cost_query(plan)
+        result = self._execute_query(
+            compiled.statement,
+            params=compiled.params,
+            timeout=CLOUD_COST_QUERY_TIMEOUT_SECONDS * 1000,
+        )
+        formatted = FormatDBResult(result)
+        headers = [
+            header[1] if isinstance(header, (list, tuple)) and len(header) > 1 else header
+            for header in result.header
+        ]
+        return [dict(zip(headers, record, strict=True)) for record in formatted.records]
 
     def query_entity_by_id(self, id: int):
         """
