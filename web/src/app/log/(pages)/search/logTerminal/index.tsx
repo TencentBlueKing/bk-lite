@@ -4,6 +4,7 @@ import React, {
   useRef,
   useEffect,
   useCallback,
+  useMemo,
   forwardRef,
   useImperativeHandle,
 } from 'react';
@@ -21,11 +22,13 @@ import { useAuth } from '@/context/auth';
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 import { isJSON } from '@/app/log/utils/common';
+import SearchHighlight from '@/app/log/components/search-highlight';
+import { extractHighlightTerms } from '@/app/log/utils/searchHighlight';
 
 const MAX_LOGS_COUNT = 1000;
 
 const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
-  ({ query, className = '', fetchData }, ref) => {
+  ({ query, highlightQuery, className = '', fetchData }, ref) => {
     const { isLoading } = useApiClient();
     const { t } = useTranslation();
     const authContext = useAuth();
@@ -40,6 +43,10 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
     );
     const containerRef = useRef<HTMLDivElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
+    const highlightTerms = useMemo(
+      () => extractHighlightTerms(highlightQuery ?? query.query),
+      [highlightQuery, query.query]
+    );
 
     // 自动滚动到底部
     const scrollToBottom = useCallback(() => {
@@ -343,7 +350,9 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
           {logs.map((log, index) => (
             <div key={index} className={terminalstyles.logLine}>
               <span className={terminalstyles.lineNumber}>{index + 1}</span>
-              <span className={terminalstyles.logContent}>{log}</span>
+              <span className={terminalstyles.logContent}>
+                <SearchHighlight text={log} terms={highlightTerms} empty="" />
+              </span>
             </div>
           ))}
         </div>
