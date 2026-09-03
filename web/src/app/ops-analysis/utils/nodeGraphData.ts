@@ -262,9 +262,7 @@ export const layoutNodeGraphBipartite = (
   };
 };
 
-export const assignNodeGraphParallelOffsets = <
-  T extends { source: string; target: string },
->(
+export const assignNodeGraphParallelOffsets = <T extends { source: string; target: string }>(
   edges: T[],
   step = NODE_GRAPH_PARALLEL_OFFSET_STEP,
 ): Array<T & { parallelOffset: number }> => {
