@@ -605,6 +605,7 @@ def _cleanup_removed_plugins(path_list):
     from django.db import transaction
 
     from apps.monitor.models import MonitorPlugin, MonitorPluginConfigTemplate, MonitorPluginUITemplate
+    from apps.monitor.models.monitor_policy import PolicyTemplate
 
     builtin_plugin_names = _collect_ondisk_builtin_plugin_names(path_list)
     if not builtin_plugin_names:
@@ -621,6 +622,7 @@ def _cleanup_removed_plugins(path_list):
         with transaction.atomic():
             ui_deleted, _ = MonitorPluginUITemplate.objects.filter(plugin_id__in=removed_ids).delete()
             config_deleted, _ = MonitorPluginConfigTemplate.objects.filter(plugin_id__in=removed_ids).delete()
+            policy_deleted, _ = PolicyTemplate.objects.filter(plugin_id__in=removed_ids).delete()
             plugin_deleted, _ = removed_plugins.delete()
     except Exception:
         logger.exception(
@@ -630,10 +632,12 @@ def _cleanup_removed_plugins(path_list):
         raise
 
     logger.info(
-        "event=cleanup_removed_plugins plugin_count=%s ui_template_count=%s config_template_count=%s plugin_delete_count=%s names=%s",
+        "event=cleanup_removed_plugins plugin_count=%s ui_template_count=%s "
+        "config_template_count=%s policy_template_count=%s plugin_delete_count=%s names=%s",
         len(removed_ids),
         ui_deleted,
         config_deleted,
+        policy_deleted,
         plugin_deleted,
         ",".join(removed_names),
     )
