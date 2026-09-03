@@ -240,11 +240,11 @@ class TestPreviousPodLogs:
         core.read_namespaced_pod_log.return_value = "panic: boom\nstack trace"
         out = res.get_kubernetes_previous_pod_logs.invoke({"namespace": "ns", "pod_name": "p1", "config": {}})
         assert "panic: boom" in out
-        # previous=True 必须传入
+        # previous=True 必须传入；默认不限窗，避免 sinceSeconds 误杀昨日崩溃日志
         _, kwargs = core.read_namespaced_pod_log.call_args
         assert kwargs["previous"] is True
         assert kwargs["container"] == "app"
-        assert kwargs["since_seconds"] == 24 * 3600
+        assert "since_seconds" not in kwargs
 
     def test_string_lines_and_tail_are_coerced(self, apis):
         core, _, _ = apis
@@ -261,6 +261,19 @@ class TestPreviousPodLogs:
         core.read_namespaced_pod_log.return_value = ""
         out = res.get_kubernetes_previous_pod_logs.invoke({"namespace": "ns", "pod_name": "p1", "config": {}})
         assert "没有上一次实例的日志" in out
+        assert "滚动窗口" not in out
+
+    def test_empty_previous_logs_with_hours_window(self, apis):
+        core, _, _ = apis
+        core.read_namespaced_pod.return_value = self._pod([SimpleNamespace(name="app")])
+        core.read_namespaced_pod_log.return_value = ""
+        out = res.get_kubernetes_previous_pod_logs.func(namespace="ns", pod_name="p1", hours=24, config={})
+        assert "近 24 小时滚动窗口内没有 previous 日志" in out
+        assert "不传 hours" in out
+        assert "没有上一次实例的日志" not in out
+        assert "没有可用的 previous 日志" not in out
+        _, kwargs = core.read_namespaced_pod_log.call_args
+        assert kwargs["since_seconds"] == 24 * 3600
 
     def test_no_previous_terminated_container(self, apis):
         core, _, _ = apis
