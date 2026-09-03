@@ -82,7 +82,10 @@ export default function ElasticsearchDashboardPage() {
     runWithConcurrency(ES_TOP_NODE_QUERIES, TOP_NODE_CONCURRENCY, async (q) =>
       // autoConvert=false:禁用服务端单位自动换算,否则会与前端 formatMetricValue 双重换算
       //(如 bytes 被后端先缩成 GiB,前端再按 bytes 缩放)。见 postgresql / host 同因。
-      getInstanceQuery(buildSearchParams(q.query, q.unit, idValues, instanceIdKeys, timeValues, undefined, false, currentInstanceInterval))
+      getInstanceQuery(buildSearchParams(q.query, q.unit, idValues, instanceIdKeys, timeValues, undefined, false, currentInstanceInterval, {
+        monitorObjectId: dashboard.monitorObjectId,
+        instanceId: dashboard.instanceId,
+      }))
         .then((res: any) => [q.key, topNodeBars(res, q.unit, q.color)] as const)
         .catch(() => [q.key, [] as BarItem[]] as const)
     ).then((entries) => {
@@ -94,7 +97,6 @@ export default function ElasticsearchDashboardPage() {
       active = false;
     };
     // loadTick 随核心盘每次加载(含自动刷新)递增,使 TopN 与核心盘同步刷新。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentInstanceInterval, idValuesKey, timeKey, isDashboardMode, instanceIdKeys, getInstanceQuery, loadTick]);
 
   return (

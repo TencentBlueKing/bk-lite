@@ -77,6 +77,8 @@ export function FlowProtocolBreakdown({
           dashboard.timeValues,
           undefined,
           false,
+          dashboard.currentInstanceInterval,
+          { monitorObjectId: dashboard.monitorObjectId, instanceId: dashboard.instanceId },
         ),
       ).catch(() => null);
 

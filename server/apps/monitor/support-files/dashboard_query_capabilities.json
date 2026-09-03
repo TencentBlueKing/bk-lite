@@ -1,0 +1,5909 @@
+{
+  "version": 1,
+  "capabilities": [
+    {
+      "id": "dashboard:v1:0037a371",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "sum(rate(docker_container_blkio_io_service_bytes_recursive_read{__$labels__}[__$window__])) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:0045f512",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "mysql_threads_connected{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:004ae763",
+      "object_names": [
+        "Active Directory"
+      ],
+      "template": "win_ad_DS_Directory_Writes_persec{instance_type=\"active_directory\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:006e18b1",
+      "object_names": [
+        "Mongodb"
+      ],
+      "template": "mongodb_active_reads{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:0089b8fa",
+      "object_names": [
+        "Tomcat"
+      ],
+      "template": "rate(tomcat_connector_error_count{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:00974148",
+      "object_names": [
+        "K3SNode"
+      ],
+      "template": "cpu_usage_user{instance_type=\"k3s\",cpu=\"cpu-total\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:00a8c54f",
+      "object_names": [
+        "Active Directory"
+      ],
+      "template": "win_ad_LDAP_Writes_persec{instance_type=\"active_directory\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:00b65b22",
+      "object_names": [
+        "Loadbalance"
+      ],
+      "template": "sum(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:01fe2d05",
+      "object_names": [
+        "Active Directory"
+      ],
+      "template": "win_ad_DRA_Inbound_Full_Sync_Objects_Remaining{instance_type=\"active_directory\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:020ca5e3",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_connection_errors_max_connections{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:02375761",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "mysql_threads_cached{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:023ea113",
+      "object_names": [
+        "Minio"
+      ],
+      "template": "min by (instance_id) (minio_cluster_erasure_set_online_drives_count_gauge{__$labels__}) or min by (instance_id) (minio_cluster_health_erasure_set_online_drives_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:0262696a",
+      "object_names": [
+        "Mongodb"
+      ],
+      "template": "mongodb_connections_available{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:026784a7",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "sum without (db) (rate(postgresql_temp_files{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:033abc0d",
+      "object_names": [
+        "InfluxDB"
+      ],
+      "template": "sum by (instance_id) (rate(influxdb_httpd_writeReq{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:03c7ef3b",
+      "object_names": [
+        "Active Directory"
+      ],
+      "template": "win_ad_DS_Directory_Searches_persec{instance_type=\"active_directory\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:0444c91a",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "mysql_threads_running{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:04522f87",
+      "object_names": [
+        "RabbitMQ"
+      ],
+      "template": "clamp_min(rabbitmq_node_mem_limit{__$labels__} - rabbitmq_node_mem_used{__$labels__}, 0)"
+    },
+    {
+      "id": "dashboard:v1:04757891",
+      "object_names": [
+        "SGLang"
+      ],
+      "template": "clamp_max(100 * avg(sglang:token_usage_gauge{__$labels__}), 100)"
+    },
+    {
+      "id": "dashboard:v1:04c2972d",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "mysql_open_tables{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:05108083",
+      "object_names": [
+        "Minio"
+      ],
+      "template": "max by (instance_id) (minio_system_drive_perc_util_gauge{__$labels__}) or max by (instance_id) (minio_node_drive_perc_util_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:05195e7e",
+      "object_names": [
+        "InfluxDB"
+      ],
+      "template": "sum by (instance_id) (rate(influxdb_httpd_authFail{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:053a1b6a",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "mysql_connection_errors_max_connections{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:05d94de9",
+      "object_names": [
+        "Kafka"
+      ],
+      "template": "min(kafka_up_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:061331f1",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "sum(rate(interface_ifInDiscards{__$labels__}[__$window__])) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:064d7f70",
+      "object_names": [
+        "Consul"
+      ],
+      "template": "clamp_max(100 * sum by (instance_id) (consul_health_checks_passing{__$labels__}) / clamp_min(count by (instance_id) (consul_health_checks_status{__$labels__}), 1), 100)"
+    },
+    {
+      "id": "dashboard:v1:065a8dde",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "100 * sum(prometheus_remote_write_kube_deployment_status_replicas_available{instance_type=\"k8s\",__$labels__}) / clamp_min(sum(prometheus_remote_write_kube_deployment_spec_replicas{instance_type=\"k8s\",__$labels__}),1)"
+    },
+    {
+      "id": "dashboard:v1:069588ce",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "rate(elasticsearch_http_total_opened{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:077cf7a3",
+      "object_names": [
+        "Ping"
+      ],
+      "template": "max(ping_maximum_response_ms{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:0793542d",
+      "object_names": [
+        "K3SCluster"
+      ],
+      "template": "count(prometheus_remote_write_kube_deployment_status_replicas_unavailable{instance_type=\"k3s\",__$labels__} > 0)"
+    },
+    {
+      "id": "dashboard:v1:07aee933",
+      "object_names": [
+        "Tomcat"
+      ],
+      "template": "100 * (rate(tomcat_connector_error_count{__$labels__}[__$window__]) / clamp_min(rate(tomcat_connector_request_count{__$labels__}[__$window__]), 1))"
+    },
+    {
+      "id": "dashboard:v1:08002511",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "sum without (db) (rate(postgresql_buffers_backend{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:0815012b",
+      "object_names": [
+        "Firewall"
+      ],
+      "template": "topk(10, avg_over_time((sum(sflow_bytes{instance_type='firewall', collect_type='sflow', __$labels__}) by (instance_id, header_protocol))[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:087b531e",
+      "object_names": [
+        "Apache"
+      ],
+      "template": "100 * (apache_BusyWorkers{__$labels__} / clamp_min(apache_BusyWorkers{__$labels__} + apache_IdleWorkers{__$labels__}, 1))"
+    },
+    {
+      "id": "dashboard:v1:08a35d8a",
+      "object_names": [
+        "Tomcat"
+      ],
+      "template": "rate(tomcat_connector_bytes_sent{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:08ba0691",
+      "object_names": [
+        "K3SCluster"
+      ],
+      "template": "sum(prometheus_remote_write_kube_pod_container_resource_requests{instance_type=\"k3s\",resource=\"memory\", __$labels__})"
+    },
+    {
+      "id": "dashboard:v1:08c9e584",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_innodb_row_lock_waits{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:0924f764",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "rate(sqlserver_performance_value{counter=\"SQL Re-Compilations/sec\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:0959407a",
+      "object_names": [
+        "K3SCluster"
+      ],
+      "template": "count(prometheus_remote_write_kube_statefulset_status_replicas_ready{instance_type=\"k3s\",__$labels__} < prometheus_remote_write_kube_statefulset_replicas{instance_type=\"k3s\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:09624949",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "http_response_response_time{instance_type=\"exchange\", endpoint=\"owa\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:09c23589",
+      "object_names": [
+        "Kafka"
+      ],
+      "template": "count({instance_type='kafka', collect_type='exporter', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:0a50a530",
+      "object_names": [
+        "LlamaServer"
+      ],
+      "template": "avg(llamacpp:predicted_tokens_seconds_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:0a6a83ef",
+      "object_names": [
+        "Website"
+      ],
+      "template": "avg(http_response_result_code{__$labels__} == bool 3) * 100"
+    },
+    {
+      "id": "dashboard:v1:0a94e627",
+      "object_names": [
+        "Active Directory"
+      ],
+      "template": "win_ad_DS_Threads_in_Use{instance_type=\"active_directory\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:0aa8340c",
+      "object_names": [
+        "nginx"
+      ],
+      "template": "rate(nginx_handled{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:0bad41f3",
+      "object_names": [
+        "TCPPort"
+      ],
+      "template": "avg(net_response_result_code{__$labels__} != bool 0) * 100"
+    },
+    {
+      "id": "dashboard:v1:0bb78e7f",
+      "object_names": [
+        "Haproxy"
+      ],
+      "template": "sum by (instance_id) (rate(haproxy_chkfail{svname=\"BACKEND\",__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:0cae881a",
+      "object_names": [
+        "Mongodb"
+      ],
+      "template": "rate(mongodb_commands{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:0d432287",
+      "object_names": [
+        "Host"
+      ],
+      "template": "cpu_usage_system{cpu=\"cpu-total\", instance_type=\"os\", __$labels__} or cpu_usage_system_total_gauge{instance_type=\"os\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:0d71ccab",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "rate(sqlserver_requests_cpu_time_ms{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:0e200c97",
+      "object_names": [
+        "Node"
+      ],
+      "template": "count(prometheus_remote_write_kube_node_info{instance_type='k8s', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:0e274631",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "mysql_aborted_clients{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:0e4c81d6",
+      "object_names": [
+        "ActiveMQ"
+      ],
+      "template": "activemq_topics_dequeue_count{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:0e5e5527",
+      "object_names": [
+        "K3SCluster"
+      ],
+      "template": "sum(irate(prometheus_remote_write_container_cpu_usage_seconds_total{instance_type=\"k3s\", __$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:0f02a9f8",
+      "object_names": [
+        "Loadbalance"
+      ],
+      "template": "avg(sflow_frame_length{instance_type='loadbalance', collect_type='sflow', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:0f04a10a",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "sum without (db) (rate(postgresql_maxwritten_clean{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:0f0f3650",
+      "object_names": [
+        "JVM"
+      ],
+      "template": "jvm_threads_daemon_count_value{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:0f59d99a",
+      "object_names": [
+        "Zookeeper"
+      ],
+      "template": "zookeeper_approximate_data_size{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:0f827925",
+      "object_names": [
+        "JVM"
+      ],
+      "template": "jvm_os_memory_physical_total_value{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:0f880d93",
+      "object_names": [
+        "Node"
+      ],
+      "template": "rate(prometheus_remote_write_diskio_reads{instance_type=\"k8s\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:1093db4a",
+      "object_names": [
+        "K3SNode"
+      ],
+      "template": "rate(diskio_reads{instance_type=\"k3s\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:109ba2d5",
+      "object_names": [
+        "Pod"
+      ],
+      "template": "100 * ( sum(irate(prometheus_remote_write_container_cpu_usage_seconds_total{instance_type=\"k8s\",__$labels__}[__$window__])) by (instance_id,pod) / on(instance_id,pod) sum(prometheus_remote_write_kube_pod_container_resource_limits{instance_type=\"k8s\", resource=\"cpu\",__$labels__}) by (instance_id,pod) )"
+    },
+    {
+      "id": "dashboard:v1:113f8935",
+      "object_names": [
+        "K3SCluster"
+      ],
+      "template": "topk(5, sum by (pod) (increase(prometheus_remote_write_kube_pod_container_status_restarts_total{instance_type=\"k3s\",__$labels__}[1h])))"
+    },
+    {
+      "id": "dashboard:v1:1182a607",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "max(device_memory_usage{__$labels__}) by (instance_id) or avg(device_memory_usage{__$labels__}) by (instance_id) or (sum(device_memory_used{__$labels__}) by (instance_id) / (sum(device_memory_used{__$labels__}) by (instance_id) + sum(device_memory_free{__$labels__}) by (instance_id)) * 100) or (sum(device_memory_used{__$labels__}) by (instance_id) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100)"
+    },
+    {
+      "id": "dashboard:v1:11eabfbd",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "sum by (instance_id) (sqlserver_volume_space_available_space_bytes{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:124d5e0e",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "sum(rate(docker_container_blkio_io_service_bytes_recursive_write{__$labels__}[__$window__])) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:12a0fa17",
+      "object_names": [
+        "Node"
+      ],
+      "template": "prometheus_remote_write_cpu_usage_iowait{instance_type=\"k8s\",cpu=\"cpu-total\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:12a5f7de",
+      "object_names": [
+        "LlamaServer"
+      ],
+      "template": "sum(rate(llamacpp:tokens_predicted_total_counter{__$labels__}[5m])) / sum(rate(llamacpp:n_decode_total_counter{__$labels__}[5m]))"
+    },
+    {
+      "id": "dashboard:v1:12b28502",
+      "object_names": [
+        "Ping"
+      ],
+      "template": "count({instance_type='ping', collect_type='ping', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:1301a9bd",
+      "object_names": [
+        "K3SNode"
+      ],
+      "template": "mem_buffered{instance_type=\"k3s\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:13365ed8",
+      "object_names": [
+        "Process"
+      ],
+      "template": "sum(procstat_memory_usage{instance_type=\"process\", __$labels__}) by (instance_id, process_name)"
+    },
+    {
+      "id": "dashboard:v1:139b9cb0",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "max by (instance_id) (mysql_variables_super_read_only{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:13b556c4",
+      "object_names": [
+        "Loadbalance"
+      ],
+      "template": "avg(device_memory_usage{__$labels__}) by (instance_id) or (sum(device_memory_used{__$labels__}) by (instance_id) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100)"
+    },
+    {
+      "id": "dashboard:v1:13d2b6bb",
+      "object_names": [
+        "K3SNode"
+      ],
+      "template": "max by (instance_id, node, device) (disk_used_percent{instance_type=\"k3s\", __$labels__})"
+    },
+    {
+      "id": "dashboard:v1:13eac1e4",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "clamp_max(100 * max by (instance_id) (mysql_open_files{__$labels__}) / on(instance_id) clamp_min(max by (instance_id) (mysql_variables_open_files_limit{__$labels__}), 1), 100)"
+    },
+    {
+      "id": "dashboard:v1:1402c33b",
+      "object_names": [
+        "K3SNode"
+      ],
+      "template": "mem_shared{instance_type=\"k3s\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:145e9382",
+      "object_names": [
+        "TCPPort"
+      ],
+      "template": "avg(net_response_result_code{__$labels__} == bool 1) * 100"
+    },
+    {
+      "id": "dashboard:v1:14683557",
+      "object_names": [
+        "Mongodb"
+      ],
+      "template": "rate(mongodb_page_faults{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:14f738cf",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "max by (instance_id) (mysql_process_list_threads_sending_data{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:150958a1",
+      "object_names": [
+        "K3SCluster"
+      ],
+      "template": "count(count(prometheus_remote_write_kube_pod_info{instance_type=\"k3s\",__$labels__}) by (namespace))"
+    },
+    {
+      "id": "dashboard:v1:164ec0ca",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "sum without (db) (rate(postgresql_tup_deleted{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:16cc42ec",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "sum without (db) (rate(postgresql_tup_returned{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:16e207b6",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "100 * elasticsearch_cluster_health_active_primary_shards{__$labels__} / clamp_min(elasticsearch_cluster_health_active_primary_shards{__$labels__} + elasticsearch_cluster_health_unassigned_shards{__$labels__}, 1)"
+    },
+    {
+      "id": "dashboard:v1:16ecd72d",
+      "object_names": [
+        "K3SNode"
+      ],
+      "template": "rate(net_packets_sent{instance_type=\"k3s\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:17108b30",
+      "object_names": [
+        "SGLang"
+      ],
+      "template": "sum(rate(sglang:generation_tokens_total_counter{__$labels__}[5m]))"
+    },
+    {
+      "id": "dashboard:v1:17193cd8",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "topk(8, sum by (db) (rate(postgresql_xact_rollback{__$labels__}[__$window__])))"
+    },
+    {
+      "id": "dashboard:v1:176eb56c",
+      "object_names": [
+        "VLLM"
+      ],
+      "template": "histogram_quantile(0.99, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:e2e_request_latency_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:e2e_request_latency_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:e2e_request_latency_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
+    },
+    {
+      "id": "dashboard:v1:178128bc",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_availability_Availability_Requests_(sec){instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:17b5e898",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "sum without (database) (rate(sqlserver_database_io_writes{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:17c23836",
+      "object_names": [
+        "Consul"
+      ],
+      "template": "count({instance_type='consul', collect_type='middleware', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:17eafa6c",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "topk(8, max by (node_name) (elasticsearch_process_cpu_percent{__$labels__}))"
+    },
+    {
+      "id": "dashboard:v1:17f3483b",
+      "object_names": [
+        "Tomcat"
+      ],
+      "template": "tomcat_jvm_memory_max{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:184929b2",
+      "object_names": [
+        "Mongodb"
+      ],
+      "template": "clamp_max(100 * max by (instance_id) (mongodb_wtcache_current_bytes{__$labels__}) / on(instance_id) clamp_min(max by (instance_id) (mongodb_wtcache_max_bytes_configured{__$labels__}), 1), 100)"
+    },
+    {
+      "id": "dashboard:v1:1851f1d7",
+      "object_names": [
+        "Active Directory"
+      ],
+      "template": "win_ad_DRA_Pending_Replication_Operations{instance_type=\"active_directory\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:18caab92",
+      "object_names": [
+        "Apache"
+      ],
+      "template": "apache_Load1{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:190c0e9b",
+      "object_names": [
+        "Access",
+        "ConsoleServer",
+        "Firewall",
+        "Loadbalance",
+        "NetworkService",
+        "Router",
+        "Switch",
+        "Transmission",
+        "VoiceGateway",
+        "Wireless"
+      ],
+      "template": "(sum(rate(interface_ifHCOutOctets{__$labels__}[__$window__])) by (instance_id)) or (sum(rate(interface_ifOutOctets{__$labels__}[__$window__])) by (instance_id))"
+    },
+    {
+      "id": "dashboard:v1:19336c2b",
+      "object_names": [
+        "K3SCluster"
+      ],
+      "template": "count(prometheus_remote_write_kube_pod_container_status_waiting_reason{instance_type=\"k3s\",reason=\"CrashLoopBackOff\",__$labels__} > 0)"
+    },
+    {
+      "id": "dashboard:v1:19ad1449",
+      "object_names": [
+        "RabbitMQ"
+      ],
+      "template": "rate(rabbitmq_overview_messages_published{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:19ad740d",
+      "object_names": [
+        "Minio"
+      ],
+      "template": "min by (instance_id) (minio_cluster_erasure_set_overall_health_gauge{__$labels__}) or min by (instance_id) (minio_cluster_health_erasure_set_status_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:1a1c8bea",
+      "object_names": [
+        "K3SCluster"
+      ],
+      "template": "count(prometheus_remote_write_kube_node_info{instance_type=\"k3s\",__$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:1a2695ec",
+      "object_names": [
+        "Etcd"
+      ],
+      "template": "max by (instance_id) (etcd_server_proposals_pending_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:1a8564b8",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "count(prometheus_remote_write_kube_deployment_spec_replicas{instance_type=\"k8s\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:1adbf7f6",
+      "object_names": [
+        "Haproxy"
+      ],
+      "template": "avg by (instance_id) (haproxy_ttime{svname=\"BACKEND\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:1b087ed9",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "mysql_max_used_connections{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:1b1e3bf3",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "100 - avg(prometheus_remote_write_cpu_usage_idle{instance_type=\"k8s\",cpu=\"cpu-total\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:1b363a55",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "topk(8, max by (container_name) (docker_container_mem_usage_percent{__$labels__}))"
+    },
+    {
+      "id": "dashboard:v1:1befba65",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "sum by (instance_id) (sqlserver_volume_space_used_space_bytes{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:1c073cc6",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "count({instance_type='postgres', collect_type='database', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:1c23b5bf",
+      "object_names": [
+        "SGLang"
+      ],
+      "template": "histogram_quantile(0.50, sum by (instance_id, le) (label_replace(rate({__name__=~\"sglang:time_to_first_token_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"sglang:time_to_first_token_seconds_(.+)\") or label_replace(rate({__name__=\"sglang:time_to_first_token_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
+    },
+    {
+      "id": "dashboard:v1:1c5cafe5",
+      "object_names": [
+        "Router"
+      ],
+      "template": "avg(label_value(netflow_in_bytes{instance_type='router', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:1d07bfdf",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "mysql_variables_max_connections{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:1d131c0f",
+      "object_names": [
+        "VLLM"
+      ],
+      "template": "sum by (instance_id) (vllm:num_requests_waiting_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:1d14844f",
+      "object_names": [
+        "Oracle"
+      ],
+      "template": "max by (instance_id) (oracledb_sga_total_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:1d398f0b",
+      "object_names": [
+        "Loadbalance"
+      ],
+      "template": "topk(10, avg_over_time((sum(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}) by (instance_id, header_protocol))[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:1d4d9955",
+      "object_names": [
+        "VLLM"
+      ],
+      "template": "histogram_quantile(0.50, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_generation_tokens_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_generation_tokens_(.+)\") or label_replace(rate({__name__=\"vllm:request_generation_tokens_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
+    },
+    {
+      "id": "dashboard:v1:1d7d03af",
+      "object_names": [
+        "Mongodb"
+      ],
+      "template": "mongodb_open_connections{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:1ddc55cf",
+      "object_names": [
+        "Etcd"
+      ],
+      "template": "clamp_min(etcd_server_quota_backend_bytes_gauge{__$labels__} - etcd_mvcc_db_total_size_in_bytes_gauge{__$labels__}, 0)"
+    },
+    {
+      "id": "dashboard:v1:1df7f3ac",
+      "object_names": [
+        "Oracle"
+      ],
+      "template": "max by (instance_id) (oracledb_wait_time_commit_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:1e07292d",
+      "object_names": [
+        "Kafka"
+      ],
+      "template": "sum(kafka_exporter_lag_anomalies_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:1e582047",
+      "object_names": [
+        "TCPPort"
+      ],
+      "template": "avg(net_response_result_code{__$labels__} == bool 0) * 100"
+    },
+    {
+      "id": "dashboard:v1:1e65c4ce",
+      "object_names": [
+        "Mongodb"
+      ],
+      "template": "mongodb_wtcache_current_bytes{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:1e81601b",
+      "object_names": [
+        "SGLang"
+      ],
+      "template": "histogram_quantile(0.90, sum by (instance_id, le) (label_replace(rate({__name__=~\"sglang:time_to_first_token_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"sglang:time_to_first_token_seconds_(.+)\") or label_replace(rate({__name__=\"sglang:time_to_first_token_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
+    },
+    {
+      "id": "dashboard:v1:1ea69a2a",
+      "object_names": [
+        "Zookeeper"
+      ],
+      "template": "count({instance_type='zookeeper', collect_type='middleware', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:1ed84440",
+      "object_names": [
+        "Loadbalance"
+      ],
+      "template": "count({instance_type='loadbalance', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:1ee5774a",
+      "object_names": [
+        "Etcd"
+      ],
+      "template": "sum by (instance_id) (rate(etcd_server_proposals_failed_total_counter{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:1f79c86d",
+      "object_names": [
+        "Mongodb"
+      ],
+      "template": "rate(mongodb_net_in_bytes_count{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:20114010",
+      "object_names": [
+        "VLLM"
+      ],
+      "template": "histogram_quantile(0.95, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:inter_token_latency_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:inter_token_latency_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:inter_token_latency_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
+    },
+    {
+      "id": "dashboard:v1:206eb9f4",
+      "object_names": [
+        "LlamaServer"
+      ],
+      "template": "sum(rate(llamacpp:tokens_predicted_total_counter{__$labels__}[5m]))"
+    },
+    {
+      "id": "dashboard:v1:20aed6f8",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "topk(8, max by (node_name) (elasticsearch_jvm_mem_heap_used_percent{__$labels__}))"
+    },
+    {
+      "id": "dashboard:v1:20b8344b",
+      "object_names": [
+        "Access",
+        "ConsoleServer",
+        "Firewall",
+        "Loadbalance",
+        "NetworkService",
+        "Router",
+        "Switch",
+        "Transmission",
+        "VoiceGateway",
+        "Wireless"
+      ],
+      "template": "(sum(rate(interface_ifHCInOctets{__$labels__}[__$window__])) by (instance_id)) or (sum(rate(interface_ifInOctets{__$labels__}[__$window__])) by (instance_id))"
+    },
+    {
+      "id": "dashboard:v1:20cc0d1b",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "max by (instance_id) (mysql_variables_log_bin{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:20f32b60",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "count(prometheus_remote_write_kube_node_info{instance_type=\"k8s\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:2116e4a1",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_adaccess_LDAP_Timeout_Errors_persec{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:22082839",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "rate(sqlserver_performance_value{counter=\"Lock Waits/sec\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:22596b8e",
+      "object_names": [
+        "VLLM"
+      ],
+      "template": "histogram_quantile(0.95, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_queue_time_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_queue_time_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:request_queue_time_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
+    },
+    {
+      "id": "dashboard:v1:229a3849",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "rate(sqlserver_waitstats_resource_wait_ms{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:22c1d86d",
+      "object_names": [
+        "K3SPod"
+      ],
+      "template": "max by (instance_id, pod) ((prometheus_remote_write_kube_pod_status_phase{instance_type=\"k3s\",phase=\"Pending\",__$labels__} == 1) * 0 or (prometheus_remote_write_kube_pod_status_phase{instance_type=\"k3s\",phase=\"Running\",__$labels__} == 1) * 1 or (prometheus_remote_write_kube_pod_status_phase{instance_type=\"k3s\",phase=\"Succeeded\",__$labels__} == 1) * 2 or (prometheus_remote_write_kube_pod_status_phase{instance_type=\"k3s\",phase=\"Failed\",__$labels__} == 1) * 3 or (prometheus_remote_write_kube_pod_status_phase{instance_type=\"k3s\",phase=\"Unknown\",__$labels__} == 1) * 4)"
+    },
+    {
+      "id": "dashboard:v1:24588819",
+      "object_names": [
+        "Website"
+      ],
+      "template": "avg(http_response_result_code{__$labels__} == bool 5) * 100"
+    },
+    {
+      "id": "dashboard:v1:25277dde",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "100 * (1 - rate(mysql_key_reads{__$labels__}[__$window__]) / clamp_min(rate(mysql_key_read_requests{__$labels__}[__$window__]), 1e-6))"
+    },
+    {
+      "id": "dashboard:v1:252bc3de",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "100 * sum(prometheus_remote_write_kube_statefulset_status_replicas_ready{instance_type=\"k8s\",__$labels__}) / clamp_min(sum(prometheus_remote_write_kube_statefulset_replicas{instance_type=\"k8s\",__$labels__}),1)"
+    },
+    {
+      "id": "dashboard:v1:2573d10b",
+      "object_names": [
+        "Zookeeper"
+      ],
+      "template": "zookeeper_fsync_threshold_exceed_count{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:25a62668",
+      "object_names": [
+        "K3SNode"
+      ],
+      "template": "max by (instance_id, node, device) (disk_inodes_used_percent{instance_type=\"k3s\", __$labels__})"
+    },
+    {
+      "id": "dashboard:v1:26885db1",
+      "object_names": [
+        "Redis"
+      ],
+      "template": "rate(redis_rejected_connections{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:26929806",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "topk(5, sum by (pod) (rate(prometheus_remote_write_container_cpu_usage_seconds_total{instance_type=\"k8s\",__$labels__}[__$window__])))"
+    },
+    {
+      "id": "dashboard:v1:26bc2dc3",
+      "object_names": [
+        "Mongodb"
+      ],
+      "template": "rate(mongodb_latency_commands{__$labels__}[__$window__])/clamp_min(rate(mongodb_latency_commands_count{__$labels__}[__$window__]), 1e-6) / 1e6"
+    },
+    {
+      "id": "dashboard:v1:26e0c938",
+      "object_names": [
+        "Tomcat"
+      ],
+      "template": "tomcat_jvm_memorypool_used{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:2709e481",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "elasticsearch_fs_data_0_available_in_bytes{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:2728c633",
+      "object_names": [
+        "Tomcat"
+      ],
+      "template": "tomcat_connector_error_count{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:2773683b",
+      "object_names": [
+        "RabbitMQ"
+      ],
+      "template": "rabbitmq_overview_messages_ready{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:27cd3350",
+      "object_names": [
+        "Apache"
+      ],
+      "template": "count({instance_type='apache', collect_type='middleware', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:2819fa77",
+      "object_names": [
+        "SGLang"
+      ],
+      "template": "clamp_max(100 * avg(sglang:cache_hit_rate_gauge{__$labels__}), 100)"
+    },
+    {
+      "id": "dashboard:v1:2900961d",
+      "object_names": [
+        "K3SCluster"
+      ],
+      "template": "sum(prometheus_remote_write_kube_pod_status_phase{instance_type=\"k3s\",__$labels__}) by (phase)"
+    },
+    {
+      "id": "dashboard:v1:29134c84",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_activesync_Requests_persec{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:291e728e",
+      "object_names": [
+        "Node"
+      ],
+      "template": "prometheus_remote_write_diskio_io_util{instance_type=\"k8s\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:293d2165",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "sum without (db) (rate(postgresql_xact_commit{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:29def2cf",
+      "object_names": [
+        "Router"
+      ],
+      "template": "sum(sflow_bytes{instance_type='router', collect_type='sflow', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:29faf6bc",
+      "object_names": [
+        "Active Directory"
+      ],
+      "template": "net_response_response_time{instance_type=\"active_directory\", endpoint=\"ldap\", __$labels__} * 1000"
+    },
+    {
+      "id": "dashboard:v1:2a729ce3",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "http_response_result_code{instance_type=\"exchange\", endpoint=\"ews\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:2b101c51",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "mysql_variables_tmp_table_size{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:2b20a6e8",
+      "object_names": [
+        "K3SPod"
+      ],
+      "template": "sum by (instance_id,pod,device) ( rate(prometheus_remote_write_container_fs_writes_total{instance_type=\"k3s\",__$labels__}[__$window__]) )"
+    },
+    {
+      "id": "dashboard:v1:2b409bd1",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_transport_queues_Retry_Mailbox_Delivery_Queue_Length{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:2b416071",
+      "object_names": [
+        "Oracle"
+      ],
+      "template": "max by (instance_id) (clamp_min(oracledb_resource_current_utilization_gauge{__$labels__} / clamp_min(oracledb_resource_limit_value_gauge{__$labels__}, 1) * 100, 0))"
+    },
+    {
+      "id": "dashboard:v1:2b5109cb",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "mysql_variables_table_open_cache{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:2beb4c8f",
+      "object_names": [
+        "Pod"
+      ],
+      "template": "sum by (instance_id,pod) ( rate(prometheus_remote_write_container_network_receive_bytes_total{instance_type=\"k8s\",__$labels__}[__$window__]) )"
+    },
+    {
+      "id": "dashboard:v1:2d0e5ee1",
+      "object_names": [
+        "InfluxDB"
+      ],
+      "template": "sum by (instance_id) (influxdb_database_numSeries{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:2d1acd27",
+      "object_names": [
+        "Redis"
+      ],
+      "template": "rate(redis_keyspace_misses{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:2de6fb29",
+      "object_names": [
+        "JVM"
+      ],
+      "template": "jvm_os_memory_physical_free_value{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:2e04f0e5",
+      "object_names": [
+        "Host"
+      ],
+      "template": "clamp_min(100 - cpu_usage_idle{cpu=\"cpu-total\", instance_type=\"os\", __$labels__} - cpu_usage_user{cpu=\"cpu-total\", instance_type=\"os\", __$labels__} - cpu_usage_system{cpu=\"cpu-total\", instance_type=\"os\", __$labels__} - cpu_usage_iowait{cpu=\"cpu-total\", instance_type=\"os\", __$labels__}, 0) or clamp_min(host_cpu_usage_percent_gauge{instance_type=\"os\", __$labels__} - cpu_usage_user_total_gauge{instance_type=\"os\", __$labels__} - cpu_usage_system_total_gauge{instance_type=\"os\", __$labels__} - cpu_usage_iowait_total_gauge{instance_type=\"os\", __$labels__}, 0)"
+    },
+    {
+      "id": "dashboard:v1:2e4f8a61",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_com_insert{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:2e5c747b",
+      "object_names": [
+        "K3SPod"
+      ],
+      "template": "count(prometheus_remote_write_kube_pod_info{instance_type='k3s', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:2e88f1e5",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "elasticsearch_cluster_health_active_primary_shards{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:2fc2832b",
+      "object_names": [
+        "InfluxDB"
+      ],
+      "template": "count({instance_type='influxdb', collect_type='database', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:30203ebb",
+      "object_names": [
+        "VLLM"
+      ],
+      "template": "histogram_quantile(0.95, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_decode_time_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_decode_time_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:request_decode_time_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
+    },
+    {
+      "id": "dashboard:v1:304100e9",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "max by (instance_id) (mysql_slave_slave_io_running_int{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:3051fbde",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "sum(docker_container_status_restart_count{__$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:309c32ee",
+      "object_names": [
+        "LlamaServer"
+      ],
+      "template": "sum(llamacpp:requests_deferred_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:309da43c",
+      "object_names": [
+        "Etcd"
+      ],
+      "template": "count({instance_type='etcd', collect_type='bkpull', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:310452d5",
+      "object_names": [
+        "Mongodb"
+      ],
+      "template": "count({instance_type='mongodb', collect_type='database', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:3142769f",
+      "object_names": [
+        "TCPPort"
+      ],
+      "template": "max(net_response_response_time{__$labels__}) * 1000"
+    },
+    {
+      "id": "dashboard:v1:3191f945",
+      "object_names": [
+        "Minio"
+      ],
+      "template": "max by (instance_id) (minio_cluster_health_capacity_usable_free_bytes_gauge{__$labels__}) or max by (instance_id) (minio_cluster_capacity_usable_free_bytes_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:31e81656",
+      "object_names": [
+        "Node"
+      ],
+      "template": "rate(prometheus_remote_write_net_packets_recv{instance_type=\"k8s\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:31fafe6c",
+      "object_names": [
+        "Minio"
+      ],
+      "template": "clamp_min(100 * (1 - minio_cluster_health_capacity_usable_free_bytes_gauge{__$labels__} / clamp_min(minio_cluster_health_capacity_usable_total_bytes_gauge{__$labels__}, 1)), 0) or clamp_min(100 * (1 - minio_cluster_capacity_usable_free_bytes_gauge{__$labels__} / clamp_min(minio_cluster_capacity_usable_total_bytes_gauge{__$labels__}, 1)), 0)"
+    },
+    {
+      "id": "dashboard:v1:32353bb7",
+      "object_names": [
+        "Kafka"
+      ],
+      "template": "max by (instance_id) (kafka_brokers_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:3238f5d0",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_owa_Requests_persec{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:327d67a5",
+      "object_names": [
+        "Haproxy"
+      ],
+      "template": "avg by (instance_id) (haproxy_ctime{svname=\"BACKEND\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:32fb7fd4",
+      "object_names": [
+        "Mongodb"
+      ],
+      "template": "mongodb_wtcache_max_bytes_configured{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:332bc477",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "sum(prometheus_remote_write_container_memory_working_set_bytes{instance_type=\"k8s\", __$labels__})"
+    },
+    {
+      "id": "dashboard:v1:3365f98a",
+      "object_names": [
+        "Tomcat"
+      ],
+      "template": "tomcat_connector_processing_time{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:34cac749",
+      "object_names": [
+        "K3SNode"
+      ],
+      "template": "topk(5, sum by (pod) (rate(prometheus_remote_write_container_cpu_usage_seconds_total{instance_type=\"k3s\",__$labels__}[5m])))"
+    },
+    {
+      "id": "dashboard:v1:350832a9",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_bytes_received{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:3517bce0",
+      "object_names": [
+        "InfluxDB"
+      ],
+      "template": "sum by (instance_id) (rate(influxdb_httpd_pointsWrittenDropped{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:35497dc1",
+      "object_names": [
+        "LlamaServer"
+      ],
+      "template": "sum(llamacpp:prompt_tokens_total_counter{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:357a3767",
+      "object_names": [
+        "Zookeeper"
+      ],
+      "template": "zookeeper_znode_count{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:35fca49b",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "mysql_variables_innodb_buffer_pool_size{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:363e3caf",
+      "object_names": [
+        "Loadbalance",
+        "Router",
+        "Switch"
+      ],
+      "template": "max(device_psu_state{__$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:36951148",
+      "object_names": [
+        "Website"
+      ],
+      "template": "max by (instance_id) (http_response_response_time{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:36bd5c14",
+      "object_names": [
+        "Mongodb"
+      ],
+      "template": "rate(mongodb_queries{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:374e2122",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "max(device_voltage_volts{__$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:374fb8f1",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "count(prometheus_remote_write_kube_node_info{instance_type=\"k8s\",__$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:3759c104",
+      "object_names": [
+        "RabbitMQ"
+      ],
+      "template": "rabbitmq_node_fd_used{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:376e1423",
+      "object_names": [
+        "TCPPort"
+      ],
+      "template": "avg(net_response_result_code{__$labels__} == bool 4) * 100"
+    },
+    {
+      "id": "dashboard:v1:37748413",
+      "object_names": [
+        "Redis"
+      ],
+      "template": "redis_mem_fragmentation_ratio{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:3792cfdc",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "rate(sqlserver_performance_value{counter=\"Checkpoint pages/sec\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:37b62004",
+      "object_names": [
+        "Loadbalance"
+      ],
+      "template": "avg(sflow_sampling_rate{instance_type='loadbalance', collect_type='sflow', __$labels__}) by (instance_id) or avg(label_value(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:37bca60e",
+      "object_names": [
+        "Active Directory"
+      ],
+      "template": "win_ad_DRA_Outbound_Bytes_Total_persec{instance_type=\"active_directory\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:382abf2c",
+      "object_names": [
+        "K3SNode"
+      ],
+      "template": "max by (instance_id, node, device) (disk_free{instance_type=\"k3s\", __$labels__})"
+    },
+    {
+      "id": "dashboard:v1:3895943d",
+      "object_names": [
+        "Zookeeper"
+      ],
+      "template": "zookeeper_version{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:38b588d0",
+      "object_names": [
+        "Minio"
+      ],
+      "template": "sum by (instance_id) (rate(minio_api_requests_5xx_errors_total_counter{__$labels__}[__$window__])) or sum by (instance_id) (rate(minio_s3_requests_5xx_errors_total_counter{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:39218e88",
+      "object_names": [
+        "Zookeeper"
+      ],
+      "template": "zookeeper_outstanding_requests{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:394cf2e3",
+      "object_names": [
+        "Active Directory"
+      ],
+      "template": "win_ad_LDAP_Bind_Time{instance_type=\"active_directory\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:39a36fd6",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "sum(sflow_packets{instance_type='switch', collect_type='sflow', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:39d6449f",
+      "object_names": [
+        "Pod"
+      ],
+      "template": "100 * ( sum(prometheus_remote_write_container_memory_working_set_bytes{instance_type=\"k8s\",__$labels__}) by (instance_id,pod) / on(instance_id,pod) sum(prometheus_remote_write_kube_pod_container_resource_limits{instance_type=\"k8s\", resource=\"memory\",__$labels__}) by (instance_id,pod) )"
+    },
+    {
+      "id": "dashboard:v1:3af524ce",
+      "object_names": [
+        "Apache"
+      ],
+      "template": "rate(apache_TotalAccesses{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:3b106fc3",
+      "object_names": [
+        "RabbitMQ"
+      ],
+      "template": "rate(rabbitmq_overview_messages_delivered{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:3b29c4b0",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "sum without (db) (rate(postgresql_xact_rollback{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:3ba3b6f6",
+      "object_names": [
+        "Haproxy"
+      ],
+      "template": "sum by (instance_id) (rate(haproxy_econ{svname=\"BACKEND\",__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:3bdb7dad",
+      "object_names": [
+        "Zookeeper"
+      ],
+      "template": "zookeeper_num_alive_connections{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:3c7b682f",
+      "object_names": [
+        "JVM"
+      ],
+      "template": "jvm_os_memory_swap_free_value{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:3c82d3ed",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_aborted_connects{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:3d1d54f4",
+      "object_names": [
+        "Etcd"
+      ],
+      "template": "sum by (instance_id) (rate(etcd_server_heartbeat_send_failures_total_counter{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:3d4e82d8",
+      "object_names": [
+        "Etcd"
+      ],
+      "template": "sum by (instance_id) (rate(etcd_server_leader_changes_seen_total_counter{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:3df1b876",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "max(device_fan_speed{__$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:3e17a1a1",
+      "object_names": [
+        "Zookeeper"
+      ],
+      "template": "zookeeper_ephemerals_count{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:3e25d5af",
+      "object_names": [
+        "Host"
+      ],
+      "template": "system_load1{instance_type=\"os\", __$labels__} or system_load1_gauge{instance_type=\"os\", __$labels__} or host_cpu_load_1m_gauge{instance_type=\"os\", __$labels__} or system_load1_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:3ed547e5",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "rate(sqlserver_requests_logical_reads{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:3eda3797",
+      "object_names": [
+        "K3SNode"
+      ],
+      "template": "rate(net_packets_recv{instance_type=\"k3s\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:3f98dbb9",
+      "object_names": [
+        "K3SCluster"
+      ],
+      "template": "count(prometheus_remote_write_kube_deployment_spec_replicas{instance_type=\"k3s\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:3fa6cef8",
+      "object_names": [
+        "Node"
+      ],
+      "template": "prometheus_remote_write_mem_buffered{instance_type=\"k8s\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:3fb9c103",
+      "object_names": [
+        "Oracle"
+      ],
+      "template": "max by (instance_id) (oracledb_pga_used_percent_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:3fe1e356",
+      "object_names": [
+        "Node"
+      ],
+      "template": "100 - avg by (instance_id, node) (prometheus_remote_write_cpu_usage_idle{instance_type=\"k8s\", cpu=\"cpu-total\", __$labels__})"
+    },
+    {
+      "id": "dashboard:v1:401f455f",
+      "object_names": [
+        "Haproxy"
+      ],
+      "template": "avg by (instance_id) (haproxy_qtime{svname=\"BACKEND\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:4097c55a",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "topk(8, sum by (database_name) (sqlserver_database_io_write_latency_ms{__$labels__}))"
+    },
+    {
+      "id": "dashboard:v1:40cf764b",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "sum without (db) (rate(postgresql_deadlocks{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:4107353d",
+      "object_names": [
+        "Firewall"
+      ],
+      "template": "firewall_vpn_tunnels{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:419611c4",
+      "object_names": [
+        "Pod"
+      ],
+      "template": "max by (instance_id, pod) ((prometheus_remote_write_kube_pod_status_phase{instance_type=\"k8s\",phase=\"Pending\",__$labels__} == 1) * 0 or (prometheus_remote_write_kube_pod_status_phase{instance_type=\"k8s\",phase=\"Running\",__$labels__} == 1) * 1 or (prometheus_remote_write_kube_pod_status_phase{instance_type=\"k8s\",phase=\"Succeeded\",__$labels__} == 1) * 2 or (prometheus_remote_write_kube_pod_status_phase{instance_type=\"k8s\",phase=\"Failed\",__$labels__} == 1) * 3 or (prometheus_remote_write_kube_pod_status_phase{instance_type=\"k8s\",phase=\"Unknown\",__$labels__} == 1) * 4)"
+    },
+    {
+      "id": "dashboard:v1:41aa9f7e",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_innodb_buffer_pool_reads{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:41f1de7e",
+      "object_names": [
+        "Haproxy"
+      ],
+      "template": "sum by (instance_id) (rate(haproxy_hrsp_5xx{svname=\"BACKEND\",__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:425a56b0",
+      "object_names": [
+        "SGLang"
+      ],
+      "template": "histogram_quantile(0.50, sum by (instance_id, le) (label_replace(rate({__name__=~\"sglang:e2e_request_latency_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"sglang:e2e_request_latency_seconds_(.+)\") or label_replace(rate({__name__=\"sglang:e2e_request_latency_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
+    },
+    {
+      "id": "dashboard:v1:42e2a318",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "max by (instance_id) (mysql_variables_read_only{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:43024617",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_table_open_cache_misses{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:4319e339",
+      "object_names": [
+        "RabbitMQ"
+      ],
+      "template": "rabbitmq_node_run_queue{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:43a22b11",
+      "object_names": [
+        "K3SCluster"
+      ],
+      "template": "count(prometheus_remote_write_kube_node_info{instance_type=\"k3s\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:44a4f6ed",
+      "object_names": [
+        "Oracle"
+      ],
+      "template": "max by (instance_id) (oracledb_wait_time_system_io_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:44ef8f64",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "sum(prometheus_remote_write_kube_node_status_allocatable{instance_type=\"k8s\",resource=\"cpu\", __$labels__})"
+    },
+    {
+      "id": "dashboard:v1:45083898",
+      "object_names": [
+        "Process"
+      ],
+      "template": "((floor(((avg(clamp_max(net_response_result_code{instance_type=\"process\", __$labels__}, 1) == bool 0) by (instance_id, process_name)) or process_port_alive{instance_type=\"process\", __$labels__})) + ceil(((avg(clamp_max(net_response_result_code{instance_type=\"process\", __$labels__}, 1) == bool 0) by (instance_id, process_name)) or process_port_alive{instance_type=\"process\", __$labels__}))) / 2)"
+    },
+    {
+      "id": "dashboard:v1:45252c58",
+      "object_names": [
+        "Loadbalance",
+        "Router",
+        "Switch"
+      ],
+      "template": "max(device_fan_state{__$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:456d99c5",
+      "object_names": [
+        "Apache"
+      ],
+      "template": "apache_scboard_waiting{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:45a1d079",
+      "object_names": [
+        "RabbitMQ"
+      ],
+      "template": "rate(rabbitmq_node_mnesia_disk_tx_count{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:46271e39",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_adaccess_LDAP_Read_Time{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:469730f4",
+      "object_names": [
+        "Mongodb"
+      ],
+      "template": "mongodb_connections_current{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:46d0f9ce",
+      "object_names": [
+        "K3SCluster"
+      ],
+      "template": "100 * sum(prometheus_remote_write_kube_deployment_status_replicas_available{instance_type=\"k3s\",__$labels__}) / clamp_min(sum(prometheus_remote_write_kube_deployment_spec_replicas{instance_type=\"k3s\",__$labels__}),1)"
+    },
+    {
+      "id": "dashboard:v1:46e96889",
+      "object_names": [
+        "Redis"
+      ],
+      "template": "rate(redis_keyspace_hits{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:472656c9",
+      "object_names": [
+        "Zookeeper"
+      ],
+      "template": "clamp_min(zookeeper_max_file_descriptor_count{__$labels__} - zookeeper_open_file_descriptor_count{__$labels__}, 0)"
+    },
+    {
+      "id": "dashboard:v1:47306783",
+      "object_names": [
+        "ActiveMQ"
+      ],
+      "template": "rate(activemq_topics_enqueue_count{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:474fc672",
+      "object_names": [
+        "Firewall"
+      ],
+      "template": "sum(netflow_in_bytes{instance_type='firewall', collect_type='netflow', __$labels__} * label_value(netflow_in_bytes{instance_type='firewall', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id) / sum(netflow_in_packets{instance_type='firewall', collect_type='netflow', __$labels__} * label_value(netflow_in_packets{instance_type='firewall', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:476af534",
+      "object_names": [
+        "VLLM"
+      ],
+      "template": "sum by (instance_id) (rate(vllm:prompt_tokens_total_counter{__$labels__}[5m])) * 60"
+    },
+    {
+      "id": "dashboard:v1:48694644",
+      "object_names": [
+        "SGLang"
+      ],
+      "template": "sum(rate(sglang:prompt_tokens_total_counter{__$labels__}[5m]))"
+    },
+    {
+      "id": "dashboard:v1:48989c3a",
+      "object_names": [
+        "Firewall"
+      ],
+      "template": "count({instance_type='firewall', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:48a9356c",
+      "object_names": [
+        "Pod"
+      ],
+      "template": "sum by (instance_id,pod,device) ( rate(prometheus_remote_write_container_fs_reads_total{instance_type=\"k8s\",__$labels__}[__$window__]) )"
+    },
+    {
+      "id": "dashboard:v1:48ed8ca4",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "sum(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:4913c929",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "mysql_innodb_row_lock_time_avg{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:491856b5",
+      "object_names": [
+        "VLLM"
+      ],
+      "template": "histogram_quantile(0.90, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_prompt_tokens_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_prompt_tokens_(.+)\") or label_replace(rate({__name__=\"vllm:request_prompt_tokens_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
+    },
+    {
+      "id": "dashboard:v1:4925b8e9",
+      "object_names": [
+        "K3SNode"
+      ],
+      "template": "system_load1{instance_type=\"k3s\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:492fc6fa",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "100 * rate(mysql_table_open_cache_hits{__$labels__}[__$window__]) / clamp_min(rate(mysql_table_open_cache_hits{__$labels__}[__$window__]) + rate(mysql_table_open_cache_misses{__$labels__}[__$window__]), 1e-6)"
+    },
+    {
+      "id": "dashboard:v1:49387988",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "max(docker_container_mem_usage{__$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:496eb865",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_com_update{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:49dbe520",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "elasticsearch_jvm_mem_heap_used_percent{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:4ac00cb9",
+      "object_names": [
+        "Minio"
+      ],
+      "template": "sum by (instance_id) (rate(minio_api_requests_traffic_sent_bytes_counter{__$labels__}[__$window__])) or sum by (instance_id) (rate(minio_s3_traffic_sent_bytes_counter{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:4ad46230",
+      "object_names": [
+        "Oracle"
+      ],
+      "template": "max by (instance_id) (oracledb_sga_used_percent_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:4ad88e6f",
+      "object_names": [
+        "Active Directory"
+      ],
+      "template": "win_ad_DRA_Inbound_Bytes_Total_persec{instance_type=\"active_directory\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:4ae2cd32",
+      "object_names": [
+        "TCPPort"
+      ],
+      "template": "count({instance_type='tcp', collect_type='tcp', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:4b36d818",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "mysql_aborted_connects{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:4ba559b5",
+      "object_names": [
+        "Haproxy"
+      ],
+      "template": "sum by (instance_id) (rate(haproxy_wredis{svname=\"BACKEND\",__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:4c14ad42",
+      "object_names": [
+        "Active Directory"
+      ],
+      "template": "win_ad_ATQ_Outstanding_Queued_Requests{instance_type=\"active_directory\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:4c6c3c5d",
+      "object_names": [
+        "nginx"
+      ],
+      "template": "rate(nginx_accepts{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:4d3788b9",
+      "object_names": [
+        "InfluxDB"
+      ],
+      "template": "max by (instance_id) (influxdb_runtime_HeapAlloc{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:4d3aca94",
+      "object_names": [
+        "K3SNode"
+      ],
+      "template": "mem_cached{instance_type=\"k3s\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:4db325ac",
+      "object_names": [
+        "K3SPod"
+      ],
+      "template": "prometheus_remote_write_kube_pod_container_status_restarts_total{instance_type=\"k3s\",__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:4dbf9ddb",
+      "object_names": [
+        "Redis"
+      ],
+      "template": "rate(redis_expired_keys{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:4df58d02",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "rate(sqlserver_requests_wait_time_ms{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:4e8928b2",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_slow_queries{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:4eaf2b98",
+      "object_names": [
+        "Minio"
+      ],
+      "template": "max by (instance_id) (minio_cluster_erasure_set_overall_health_gauge{__$labels__}) or max by (instance_id) (minio_cluster_health_status_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:4f5a2773",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "sum(prometheus_remote_write_kube_node_status_allocatable{instance_type=\"k8s\",resource=\"memory\", __$labels__})"
+    },
+    {
+      "id": "dashboard:v1:4ff9c403",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_transport_queues_Poison_Queue_Length{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:501b0278",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "elasticsearch_process_cpu_percent{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:504c2598",
+      "object_names": [
+        "Node"
+      ],
+      "template": "topk(5, sum by (pod) (rate(prometheus_remote_write_container_cpu_usage_seconds_total{instance_type=\"k8s\",__$labels__}[5m])))"
+    },
+    {
+      "id": "dashboard:v1:50d24874",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "sqlserver_performance_value{counter=\"Target Server Memory (KB)\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:50f2b03f",
+      "object_names": [
+        "Active Directory"
+      ],
+      "template": "win_ad_LDAP_Searches_persec{instance_type=\"active_directory\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:512ffba4",
+      "object_names": [
+        "Ping"
+      ],
+      "template": "clamp_max(100 - avg(ping_percent_packet_loss{__$labels__}), 100)"
+    },
+    {
+      "id": "dashboard:v1:51dee34b",
+      "object_names": [
+        "JVM"
+      ],
+      "template": "jvm_memory_usage_committed_value{type=\"Heap\",__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:51f56db8",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "topk(8, max by (container_name) (docker_container_cpu_usage_percent{__$labels__}))"
+    },
+    {
+      "id": "dashboard:v1:5251c26a",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "avg(label_value(netflow_in_bytes{instance_type='switch', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:525575db",
+      "object_names": [
+        "Loadbalance",
+        "Switch"
+      ],
+      "template": "sum(device_memory_used{__$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:5265677e",
+      "object_names": [
+        "Consul"
+      ],
+      "template": "sum by (instance_id) (consul_health_checks_critical{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:52d678dd",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "clamp_max(100 * max by (instance_id) (mysql_threads_connected{__$labels__}) / on(instance_id) clamp_min(max by (instance_id) (mysql_variables_max_connections{__$labels__}), 1), 100)"
+    },
+    {
+      "id": "dashboard:v1:52e18755",
+      "object_names": [
+        "K3SNode"
+      ],
+      "template": "rate(diskio_read_bytes{instance_type=\"k3s\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:52e3e537",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_questions{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:5356f91a",
+      "object_names": [
+        "Host"
+      ],
+      "template": "sum by (instance_id) (rate(net_err_out{instance_type=\"os\", __$labels__}[__$window__]) or rate(net_err_out_gauge{instance_type=\"os\", __$labels__}[__$window__]) or rate(net_err_out_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:544d4c36",
+      "object_names": [
+        "K3SNode"
+      ],
+      "template": "rate(diskio_read_time{instance_type=\"k3s\", __$labels__}[__$window__]) / clamp_min(rate(diskio_reads{instance_type=\"k3s\", __$labels__}[__$window__]), 1e-9)"
+    },
+    {
+      "id": "dashboard:v1:54beea06",
+      "object_names": [
+        "Mongodb"
+      ],
+      "template": "mongodb_wtcache_tracked_dirty_bytes{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:54cfc6f2",
+      "object_names": [
+        "ActiveMQ"
+      ],
+      "template": "count({instance_type='activemq', collect_type='middleware', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:55833b43",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "topk(8, sum by (db) (postgresql_numbackends{__$labels__}))"
+    },
+    {
+      "id": "dashboard:v1:55933392",
+      "object_names": [
+        "RabbitMQ"
+      ],
+      "template": "rabbitmq_node_proc_used{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:55a2c1c3",
+      "object_names": [
+        "Mongodb"
+      ],
+      "template": "mongodb_queued_writes{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:55bf5f9b",
+      "object_names": [
+        "VLLM"
+      ],
+      "template": "histogram_quantile(0.95, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_prefill_time_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_prefill_time_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:request_prefill_time_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
+    },
+    {
+      "id": "dashboard:v1:566ff64c",
+      "object_names": [
+        "RabbitMQ"
+      ],
+      "template": "sum by (queue, vhost) (rabbitmq_queue_messages_ready{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:567b19e4",
+      "object_names": [
+        "Host"
+      ],
+      "template": "sum by (instance_id) (rate(net_bytes_recv{instance_type=\"os\", __$labels__}[__$window__]) or rate(net_bytes_recv_gauge{instance_type=\"os\", __$labels__}[__$window__]) or rate(net_bytes_recv_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:56aac697",
+      "object_names": [
+        "Pod"
+      ],
+      "template": "sum by (instance_id,pod,device) ( rate(prometheus_remote_write_container_fs_writes_total{instance_type=\"k8s\",__$labels__}[__$window__]) )"
+    },
+    {
+      "id": "dashboard:v1:56e84f9a",
+      "object_names": [
+        "Loadbalance"
+      ],
+      "template": "sum(netflow_in_bytes{instance_type='loadbalance', collect_type='netflow', __$labels__} * label_value(netflow_in_bytes{instance_type='loadbalance', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id) / sum(netflow_in_packets{instance_type='loadbalance', collect_type='netflow', __$labels__} * label_value(netflow_in_packets{instance_type='loadbalance', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:570ef25f",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "100 * rate(mysql_created_tmp_disk_tables{__$labels__}[__$window__]) / clamp_min(rate(mysql_created_tmp_tables{__$labels__}[__$window__]), 1e-6)"
+    },
+    {
+      "id": "dashboard:v1:5714ba03",
+      "object_names": [
+        "Oracle"
+      ],
+      "template": "sum by (instance_id) (rate(oracledb_activity_parse_count_total_gauge{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:5764f10c",
+      "object_names": [
+        "Kafka"
+      ],
+      "template": "count((kafka_consumergroup_lag_gauge{__$labels__} == -1) unless on(instance_id, consumergroup, topic, partition) (kafka_consumergroup_lag_anomaly_gauge{__$labels__} == 1)) or on() vector(0)"
+    },
+    {
+      "id": "dashboard:v1:57d70761",
+      "object_names": [
+        "Etcd"
+      ],
+      "template": "clamp_min((etcd_mvcc_db_total_size_in_bytes_gauge{__$labels__} - etcd_mvcc_db_total_size_in_use_in_bytes_gauge{__$labels__}) / clamp_min(etcd_mvcc_db_total_size_in_bytes_gauge{__$labels__}, 1) * 100, 0)"
+    },
+    {
+      "id": "dashboard:v1:585d46ef",
+      "object_names": [
+        "Node"
+      ],
+      "template": "max by (instance_id, node, device) (prometheus_remote_write_disk_inodes_used_percent{instance_type=\"k8s\", __$labels__})"
+    },
+    {
+      "id": "dashboard:v1:58a0aecb",
+      "object_names": [
+        "Active Directory"
+      ],
+      "template": "net_response_response_time{instance_type=\"active_directory\", endpoint=\"ldaps\", __$labels__} * 1000"
+    },
+    {
+      "id": "dashboard:v1:59661395",
+      "object_names": [
+        "nginx"
+      ],
+      "template": "clamp_max(100 * (nginx_reading{__$labels__} + nginx_writing{__$labels__}) / clamp_min(nginx_active{__$labels__}, 1), 100)"
+    },
+    {
+      "id": "dashboard:v1:59a1c2ee",
+      "object_names": [
+        "Etcd"
+      ],
+      "template": "sum by (instance_id) (rate(etcd_mvcc_delete_total_counter{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:59ae969c",
+      "object_names": [
+        "Firewall"
+      ],
+      "template": "firewall_active_sessions{__$labels__} or firewall_current_connections{__$labels__} or firewall_active_connections{__$labels__} or firewall_tcp_connections{__$labels__} or firewall_pf_states{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:5a55e526",
+      "object_names": [
+        "RabbitMQ"
+      ],
+      "template": "100 * (rabbitmq_overview_messages_unacked{__$labels__} / clamp_min(rabbitmq_overview_messages{__$labels__}, 1))"
+    },
+    {
+      "id": "dashboard:v1:5a7f4ae8",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "topk(5, prometheus_remote_write_mem_used_percent{instance_type=\"k8s\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:5aa4e079",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "sum(rate(docker_container_net_rx_bytes{__$labels__}[__$window__])) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:5ac524f2",
+      "object_names": [
+        "Host"
+      ],
+      "template": "mem_used_percent{instance_type=\"os\", __$labels__} or host_mem_used_percent_gauge{instance_type=\"os\", __$labels__} or mem_used_percent_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:5addc434",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "count(count(prometheus_remote_write_kube_pod_info{instance_type=\"k8s\",__$labels__}) by (namespace))"
+    },
+    {
+      "id": "dashboard:v1:5b09f228",
+      "object_names": [
+        "Minio"
+      ],
+      "template": "sum by (instance_id) (minio_api_requests_incoming_total_gauge{__$labels__}) or sum by (instance_id) (minio_s3_requests_incoming_total_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:5b208122",
+      "object_names": [
+        "Etcd"
+      ],
+      "template": "sum by (instance_id) (rate(etcd_server_proposals_committed_total_gauge{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:5b25c2be",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "sum(rate(interface_ifOutDiscards{__$labels__}[__$window__])) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:5b32db72",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "elasticsearch_process_open_file_descriptors{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:5b47bda9",
+      "object_names": [
+        "Etcd"
+      ],
+      "template": "max by (instance_id) (etcd_server_has_leader_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:5b7942fa",
+      "object_names": [
+        "Active Directory"
+      ],
+      "template": "net_response_result_code{instance_type=\"active_directory\", endpoint=\"ldaps\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:5c738e40",
+      "object_names": [
+        "Node"
+      ],
+      "template": "rate(prometheus_remote_write_net_packets_sent{instance_type=\"k8s\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:5ca86c45",
+      "object_names": [
+        "Active Directory"
+      ],
+      "template": "win_ad_ATQ_Estimated_Queue_Delay{instance_type=\"active_directory\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:5d3088b5",
+      "object_names": [
+        "Tomcat"
+      ],
+      "template": "tomcat_connector_max_threads{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:5da4cdb8",
+      "object_names": [
+        "Ping"
+      ],
+      "template": "avg(ping_result_code{__$labels__} == bool 0) * 100"
+    },
+    {
+      "id": "dashboard:v1:5dc11471",
+      "object_names": [
+        "K3SPod"
+      ],
+      "template": "100 * ( sum(irate(prometheus_remote_write_container_cpu_usage_seconds_total{instance_type=\"k3s\",__$labels__}[__$window__])) by (instance_id,pod) / on(instance_id,pod) sum(prometheus_remote_write_kube_pod_container_resource_limits{instance_type=\"k3s\", resource=\"cpu\",__$labels__}) by (instance_id,pod) )"
+    },
+    {
+      "id": "dashboard:v1:5ddfa051",
+      "object_names": [
+        "Minio"
+      ],
+      "template": "max by (instance_id) (minio_cluster_health_drives_online_count_gauge{__$labels__}) or max by (instance_id) (minio_cluster_drive_online_total_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:5e21aa00",
+      "object_names": [
+        "VLLM"
+      ],
+      "template": "histogram_quantile(0.99, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_generation_tokens_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_generation_tokens_(.+)\") or label_replace(rate({__name__=\"vllm:request_generation_tokens_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
+    },
+    {
+      "id": "dashboard:v1:5e25cc9f",
+      "object_names": [
+        "RabbitMQ"
+      ],
+      "template": "rabbitmq_overview_queues{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:5e44d3f7",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "count(prometheus_remote_write_kube_daemonset_status_number_unavailable{instance_type=\"k8s\",__$labels__} > 0)"
+    },
+    {
+      "id": "dashboard:v1:5f29a022",
+      "object_names": [
+        "Zookeeper"
+      ],
+      "template": "rate(zookeeper_fsync_threshold_exceed_count{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:5f41b916",
+      "object_names": [
+        "nginx"
+      ],
+      "template": "nginx_waiting{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:5f7e5563",
+      "object_names": [
+        "Tomcat"
+      ],
+      "template": "tomcat_connector_bytes_sent{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:5fce1502",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "avg(sflow_sampling_rate{instance_type='switch', collect_type='sflow', __$labels__}) by (instance_id) or avg(label_value(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:60a33134",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "rate(sqlserver_performance_value{counter=\"Number of Deadlocks/sec\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:6188de37",
+      "object_names": [
+        "Router"
+      ],
+      "template": "avg(device_memory_usage{__$labels__}) by (instance_id) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100)"
+    },
+    {
+      "id": "dashboard:v1:619c6393",
+      "object_names": [
+        "Process"
+      ],
+      "template": "sum(procstat_num_threads{instance_type=\"process\", __$labels__}) by (instance_id, process_name)"
+    },
+    {
+      "id": "dashboard:v1:61afb2c8",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "rate(sqlserver_performance_value{counter=~\"Batch Requests/sec\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:6206d346",
+      "object_names": [
+        "Haproxy"
+      ],
+      "template": "sum by (instance_id) (haproxy_rate{svname=\"FRONTEND\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:62ad801a",
+      "object_names": [
+        "Active Directory"
+      ],
+      "template": "count({instance_type='active_directory', collect_type='host', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:62f232d7",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "mysql_innodb_buffer_pool_pages_total{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:63181e12",
+      "object_names": [
+        "Router"
+      ],
+      "template": "avg(sflow_sampling_rate{instance_type='router', collect_type='sflow', __$labels__}) by (instance_id) or avg(label_value(sflow_bytes{instance_type='router', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:631fe3c5",
+      "object_names": [
+        "Active Directory"
+      ],
+      "template": "win_ad_DS_Notify_Queue_Size{instance_type=\"active_directory\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:638cb2dc",
+      "object_names": [
+        "JVM"
+      ],
+      "template": "sum(rate(jvm_gc_collectioncount_value{__$labels__}[__$window__])) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:6391a9df",
+      "object_names": [
+        "Redis"
+      ],
+      "template": "clamp_min(max by (instance_id) (redis_maxmemory{__$labels__}) - max by (instance_id) (redis_used_memory{__$labels__}), 0)"
+    },
+    {
+      "id": "dashboard:v1:63ba018a",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "sum(netflow_in_bytes{instance_type='switch', collect_type='netflow', __$labels__} * label_value(netflow_in_bytes{instance_type='switch', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id) / sum(netflow_in_packets{instance_type='switch', collect_type='netflow', __$labels__} * label_value(netflow_in_packets{instance_type='switch', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:63e55517",
+      "object_names": [
+        "Oracle"
+      ],
+      "template": "max by (instance_id) (oracledb_tablespace_used_percent_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:6416f65b",
+      "object_names": [
+        "SGLang"
+      ],
+      "template": "sum(sglang:gen_throughput_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:64264f55",
+      "object_names": [
+        "Kafka"
+      ],
+      "template": "topk(10, max by (consumergroup, topic, partition) (kafka_consumergroup_lag_gauge{__$labels__} >= 0))"
+    },
+    {
+      "id": "dashboard:v1:659002f9",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "sqlserver_schedulers_active_workers_count{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:6592d907",
+      "object_names": [
+        "Haproxy"
+      ],
+      "template": "sum by (instance_id) (rate(haproxy_chkdown{svname=\"BACKEND\",__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:65ad0fda",
+      "object_names": [
+        "Node"
+      ],
+      "template": "prometheus_remote_write_mem_shared{instance_type=\"k8s\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:65ffa41a",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "sqlserver_server_properties_uptime{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:666aa1e6",
+      "object_names": [
+        "RabbitMQ"
+      ],
+      "template": "rabbitmq_node_sockets_used{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:671c14e8",
+      "object_names": [
+        "RabbitMQ"
+      ],
+      "template": "rabbitmq_overview_connections{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:676f96b8",
+      "object_names": [
+        "LlamaServer"
+      ],
+      "template": "clamp_max(100 * avg(llamacpp:kv_cache_usage_ratio_gauge{__$labels__}), 100)"
+    },
+    {
+      "id": "dashboard:v1:67c75e59",
+      "object_names": [
+        "Loadbalance"
+      ],
+      "template": "topk(10, avg_over_time((sum(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}) by (instance_id, src_ip, src_port, dst_ip, header_protocol, dst_port))[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:67e2282d",
+      "object_names": [
+        "Redis"
+      ],
+      "template": "redis_used_memory{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:6970bbf2",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "count({instance_type='switch', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:698da4f4",
+      "object_names": [
+        "SGLang"
+      ],
+      "template": "sum(rate(sglang:time_to_first_token_seconds_sum{__$labels__}[5m])) / sum(rate(sglang:time_to_first_token_seconds_count{__$labels__}[5m]))"
+    },
+    {
+      "id": "dashboard:v1:69b8d97c",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "sum(irate(prometheus_remote_write_container_cpu_usage_seconds_total{instance_type=\"k8s\", __$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:6a65eff6",
+      "object_names": [
+        "Apache"
+      ],
+      "template": "apache_ParentServerConfigGeneration{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:6b68ac0a",
+      "object_names": [
+        "Active Directory"
+      ],
+      "template": "win_ad_DS_Directory_Reads_persec{instance_type=\"active_directory\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:6b8ec769",
+      "object_names": [
+        "JVM"
+      ],
+      "template": "sum(jvm_memorypool_usage_committed_value{__$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:6baa43bf",
+      "object_names": [
+        "Mongodb"
+      ],
+      "template": "mongodb_uptime_ns{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:6bab9127",
+      "object_names": [
+        "Active Directory"
+      ],
+      "template": "win_ad_LDAP_New_Connections_persec{instance_type=\"active_directory\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:6bc43be2",
+      "object_names": [
+        "Firewall"
+      ],
+      "template": "sum(sflow_packets{instance_type='firewall', collect_type='sflow', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:6bd52764",
+      "object_names": [
+        "Zookeeper"
+      ],
+      "template": "clamp_max(100 * (zookeeper_open_file_descriptor_count{__$labels__} / clamp_min(zookeeper_max_file_descriptor_count{__$labels__}, 1)), 100)"
+    },
+    {
+      "id": "dashboard:v1:6cb43331",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "sqlserver_performance_value{counter=\"Total Server Memory (KB)\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:6cd18340",
+      "object_names": [
+        "Redis"
+      ],
+      "template": "count({instance_type='redis', collect_type='database', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:6d074c64",
+      "object_names": [
+        "K3SCluster"
+      ],
+      "template": "count(prometheus_remote_write_kube_pod_info{instance_type=\"k3s\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:6ddc8a0f",
+      "object_names": [
+        "Mongodb"
+      ],
+      "template": "mongodb_resident_megabytes{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:6e098331",
+      "object_names": [
+        "RabbitMQ"
+      ],
+      "template": "sum by (queue, vhost) (rabbitmq_queue_consumers{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:6e4f44cc",
+      "object_names": [
+        "Firewall"
+      ],
+      "template": "topk(10, avg_over_time((sum(netflow_in_bytes{instance_type='firewall', collect_type='netflow', __$labels__} * label_value(netflow_in_bytes{instance_type='firewall', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id, protocol))[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:6e7177c6",
+      "object_names": [
+        "Firewall"
+      ],
+      "template": "avg(sflow_sampling_rate{instance_type='firewall', collect_type='sflow', __$labels__}) by (instance_id) or avg(label_value(sflow_bytes{instance_type='firewall', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:6ed4a7e1",
+      "object_names": [
+        "K3SNode"
+      ],
+      "template": "rate(net_bytes_recv{instance_type=\"k3s\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:6f135964",
+      "object_names": [
+        "Consul"
+      ],
+      "template": "max by (instance_id) (consul_health_checks_status{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:6f15906e",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "docker_n_containers_stopped{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:6f23278e",
+      "object_names": [
+        "Zookeeper"
+      ],
+      "template": "zookeeper_min_latency{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:6f244f83",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_com_delete{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:6f403a8a",
+      "object_names": [
+        "Active Directory"
+      ],
+      "template": "win_ad_DRA_Pending_Replication_Synchronizations{instance_type=\"active_directory\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:6f47c73f",
+      "object_names": [
+        "Loadbalance"
+      ],
+      "template": "sum(netflow_in_bytes{instance_type='loadbalance', collect_type='netflow', __$labels__} * label_value(netflow_in_bytes{instance_type='loadbalance', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:70750b39",
+      "object_names": [
+        "Etcd"
+      ],
+      "template": "1000 * histogram_quantile(0.99, sum(rate((label_replace({__name__=~\"etcd_disk_backend_commit_duration_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"etcd_disk_backend_commit_duration_seconds_(.+)\"))[5m:]) or label_replace(rate(etcd_disk_backend_commit_duration_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+    },
+    {
+      "id": "dashboard:v1:707b5adf",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "topk(10, avg_over_time((sum(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__}) by (instance_id, header_protocol))[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:70ffc291",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "elasticsearch_cluster_health_unassigned_shards{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:712226d0",
+      "object_names": [
+        "Node"
+      ],
+      "template": "rate(prometheus_remote_write_diskio_read_bytes{instance_type=\"k8s\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:7172dcbe",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "sum without (db) (rate(postgresql_checkpoints_timed{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:71800475",
+      "object_names": [
+        "RabbitMQ"
+      ],
+      "template": "rabbitmq_overview_messages_unacked{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:72c3c696",
+      "object_names": [
+        "K3SNode"
+      ],
+      "template": "cpu_usage_system{instance_type=\"k3s\",cpu=\"cpu-total\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:731f0f39",
+      "object_names": [
+        "K3SCluster",
+        "K3SNode"
+      ],
+      "template": "topk(5, sum by (pod) (prometheus_remote_write_container_memory_working_set_bytes{instance_type=\"k3s\",__$labels__}))"
+    },
+    {
+      "id": "dashboard:v1:73aa4208",
+      "object_names": [
+        "Node"
+      ],
+      "template": "rate(prometheus_remote_write_diskio_writes{instance_type=\"k8s\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:73b0ad8d",
+      "object_names": [
+        "Etcd"
+      ],
+      "template": "max by (instance_id) (etcd_debugging_mvcc_keys_total_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:73eac485",
+      "object_names": [
+        "SGLang"
+      ],
+      "template": "histogram_quantile(0.99, sum by (instance_id, le) (label_replace(rate({__name__=~\"sglang:e2e_request_latency_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"sglang:e2e_request_latency_seconds_(.+)\") or label_replace(rate({__name__=\"sglang:e2e_request_latency_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
+    },
+    {
+      "id": "dashboard:v1:74481caa",
+      "object_names": [
+        "Kafka"
+      ],
+      "template": "sum(kafka_topic_partitions_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:74da13d2",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "clamp_max(100 * (docker_n_containers_stopped{__$labels__} / clamp_min(docker_n_containers{__$labels__}, 1)), 100)"
+    },
+    {
+      "id": "dashboard:v1:76ff4618",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_http_proxy_Average_Authentication_Latency{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:77a5c5ef",
+      "object_names": [
+        "Haproxy"
+      ],
+      "template": "sum by (instance_id) (rate(haproxy_hrsp_4xx{svname=\"BACKEND\",__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:78470004",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "avg without (database) (avg_over_time(sqlserver_database_io_read_latency_ms{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:7852cb47",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "max by (instance_id) (mysql_process_list_threads_waiting_for_lock{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:789b57a4",
+      "object_names": [
+        "Loadbalance"
+      ],
+      "template": "topk(10, avg_over_time((sum(netflow_in_bytes{instance_type='loadbalance', collect_type='netflow', __$labels__} * label_value(netflow_in_bytes{instance_type='loadbalance', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id, protocol))[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:78ca9d67",
+      "object_names": [
+        "ActiveMQ"
+      ],
+      "template": "rate(activemq_topics_dequeue_count{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:78eef267",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "elasticsearch_http_current_open{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:799bc026",
+      "object_names": [
+        "Tomcat"
+      ],
+      "template": "clamp_min(tomcat_connector_max_threads{__$labels__} - tomcat_connector_current_threads_busy{__$labels__}, 0)"
+    },
+    {
+      "id": "dashboard:v1:79a395dc",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "sqlserver_performance_value{counter=\"Memory Grants Pending\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:7a11ebe7",
+      "object_names": [
+        "Process"
+      ],
+      "template": "clamp_max(count(procstat_cpu_usage{instance_type=\"process\", __$labels__}) by (instance_id, process_name), 1)"
+    },
+    {
+      "id": "dashboard:v1:7a3d067c",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "sum by (instance_id) (sqlserver_volume_space_total_space_bytes{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:7a69506b",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "count(prometheus_remote_write_kube_daemonset_status_desired_number_scheduled{instance_type=\"k8s\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:7a7d8c48",
+      "object_names": [
+        "Access"
+      ],
+      "template": "count({instance_type='access', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:7b994982",
+      "object_names": [
+        "Router"
+      ],
+      "template": "sum(netflow_in_bytes{instance_type='router', collect_type='netflow', __$labels__} * label_value(netflow_in_bytes{instance_type='router', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id) / sum(netflow_in_packets{instance_type='router', collect_type='netflow', __$labels__} * label_value(netflow_in_packets{instance_type='router', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:7bdc6dac",
+      "object_names": [
+        "RabbitMQ"
+      ],
+      "template": "100 * (rabbitmq_node_mem_used{__$labels__} / clamp_min(rabbitmq_node_mem_limit{__$labels__}, 1))"
+    },
+    {
+      "id": "dashboard:v1:7be7f413",
+      "object_names": [
+        "Host"
+      ],
+      "template": "processes_zombies{instance_type=\"os\", __$labels__} or processes_zombies_gauge{instance_type=\"os\", __$labels__} or processes_zombies_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:7be92b55",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "min((device_optical_tx_power{__$labels__} != -10000 != -2147483648) / 100) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:7c7235e5",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_workload_ActiveTasks{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:7cbd0452",
+      "object_names": [
+        "Node"
+      ],
+      "template": "prometheus_remote_write_mem_available{instance_type=\"k8s\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:7ccbdb68",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "avg_over_time(sqlserver_cpu_system_idle_cpu{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:7ced90db",
+      "object_names": [
+        "Haproxy"
+      ],
+      "template": "sum by (instance_id) (haproxy_req_rate{svname=\"FRONTEND\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:7d6fd449",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "sqlserver_waitstats_waiting_tasks_count{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:7d8dad5a",
+      "object_names": [
+        "Pod"
+      ],
+      "template": "sum by (instance_id,pod) ( rate(prometheus_remote_write_container_network_transmit_bytes_total{instance_type=\"k8s\",__$labels__}[__$window__]) )"
+    },
+    {
+      "id": "dashboard:v1:7dfe1458",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "sum without (db) (rate(postgresql_blks_read{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:7e4ca59b",
+      "object_names": [
+        "Tomcat"
+      ],
+      "template": "tomcat_connector_current_thread_count{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:7fe1cae9",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "count({instance_type='mysql', collect_type='database', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:7ff082fe",
+      "object_names": [
+        "Transmission"
+      ],
+      "template": "count({instance_type='transmission', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:7ff96566",
+      "object_names": [
+        "Router"
+      ],
+      "template": "topk(10, avg_over_time((sum(sflow_bytes{instance_type='router', collect_type='sflow', __$labels__}) by (instance_id, header_protocol))[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:80289fe3",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "mysql_variables_open_files_limit{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:80452508",
+      "object_names": [
+        "Router"
+      ],
+      "template": "topk(10, avg_over_time((sum(sflow_bytes{instance_type='router', collect_type='sflow', __$labels__}) by (instance_id, src_ip, src_port, dst_ip, header_protocol, dst_port))[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:8056a87d",
+      "object_names": [
+        "nginx"
+      ],
+      "template": "nginx_active{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:80bd1482",
+      "object_names": [
+        "Cluster",
+        "Node"
+      ],
+      "template": "topk(5, sum by (pod) (prometheus_remote_write_container_memory_working_set_bytes{instance_type=\"k8s\",__$labels__}))"
+    },
+    {
+      "id": "dashboard:v1:80e28994",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "sqlserver_performance_value{counter=\"Page life expectancy\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:80f550dc",
+      "object_names": [
+        "Redis"
+      ],
+      "template": "redis_uptime{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:813f0944",
+      "object_names": [
+        "Oracle"
+      ],
+      "template": "max by (instance_id) (oracledb_wait_time_concurrency_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:814210e1",
+      "object_names": [
+        "VLLM"
+      ],
+      "template": "clamp_max(100 * max by (instance_id) (vllm:kv_cache_usage_perc_gauge{__$labels__}), 100)"
+    },
+    {
+      "id": "dashboard:v1:815547b2",
+      "object_names": [
+        "K3SNode"
+      ],
+      "template": "cpu_usage_iowait{instance_type=\"k3s\",cpu=\"cpu-total\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:817522ba",
+      "object_names": [
+        "Access",
+        "ConsoleServer",
+        "Firewall",
+        "Loadbalance",
+        "NetworkService",
+        "Router",
+        "Switch",
+        "Transmission",
+        "VoiceGateway",
+        "Wireless"
+      ],
+      "template": "sum(snmp_uptime{__$labels__} / 100) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:8190568d",
+      "object_names": [
+        "K3SNode"
+      ],
+      "template": "rate(diskio_writes{instance_type=\"k3s\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:81ca8185",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_mapihttp_Active_User_Count{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:81eab703",
+      "object_names": [
+        "Host"
+      ],
+      "template": "system_load15{instance_type=\"os\", __$labels__} or system_load15_gauge{instance_type=\"os\", __$labels__} or host_cpu_load_15m_gauge{instance_type=\"os\", __$labels__} or system_load15_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:81fabd58",
+      "object_names": [
+        "Firewall"
+      ],
+      "template": "sum(sflow_bytes{instance_type='firewall', collect_type='sflow', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:821a6e6f",
+      "object_names": [
+        "VLLM"
+      ],
+      "template": "histogram_quantile(0.95, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:time_to_first_token_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:time_to_first_token_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:time_to_first_token_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
+    },
+    {
+      "id": "dashboard:v1:82826b79",
+      "object_names": [
+        "Firewall"
+      ],
+      "template": "topk(10, avg_over_time((sum(sflow_bytes{instance_type='firewall', collect_type='sflow', __$labels__}) by (instance_id, src_ip, src_port, dst_ip, header_protocol, dst_port))[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:839d52b6",
+      "object_names": [
+        "Apache"
+      ],
+      "template": "apache_scboard_sending{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:83b2c4ae",
+      "object_names": [
+        "K3SCluster"
+      ],
+      "template": "count(prometheus_remote_write_kube_daemonset_status_number_unavailable{instance_type=\"k3s\",__$labels__} > 0)"
+    },
+    {
+      "id": "dashboard:v1:83e89d25",
+      "object_names": [
+        "Haproxy"
+      ],
+      "template": "sum by (instance_id) (rate(haproxy_bout{svname=\"FRONTEND\",__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:8420b1dc",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_innodb_buffer_pool_read_requests{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:84332c24",
+      "object_names": [
+        "ActiveMQ"
+      ],
+      "template": "rate(activemq_topics_enqueue_count{__$labels__}[__$window__]) - rate(activemq_topics_dequeue_count{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:856f14b7",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "sum(rate(docker_container_net_tx_bytes{__$labels__}[__$window__])) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:85f876de",
+      "object_names": [
+        "Apache"
+      ],
+      "template": "apache_BytesPerSec{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:860ae6e6",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_bytes_sent{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:8612e1d4",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "topk(10, avg_over_time((sum(netflow_in_bytes{instance_type='switch', collect_type='netflow', __$labels__} * label_value(netflow_in_bytes{instance_type='switch', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id, protocol))[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:8676b063",
+      "object_names": [
+        "Apache"
+      ],
+      "template": "apache_BusyWorkers{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:868978ec",
+      "object_names": [
+        "Ping"
+      ],
+      "template": "avg(ping_percent_packet_loss{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:86a6f5df",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "sum(prometheus_remote_write_kube_pod_container_resource_requests{instance_type=\"k8s\",resource=\"cpu\", __$labels__})"
+    },
+    {
+      "id": "dashboard:v1:86ad41c0",
+      "object_names": [
+        "Minio"
+      ],
+      "template": "sum by (instance_id) (rate(minio_api_requests_rejected_auth_total_counter{__$labels__}[__$window__])) or sum by (instance_id) (rate(minio_s3_requests_rejected_auth_total_counter{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:87a1a5a2",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "100 * sum(any(prometheus_remote_write_disk_used{instance_type=\"k8s\",__$labels__}) by (instance_id, device)) / sum(any(prometheus_remote_write_disk_total{instance_type=\"k8s\",__$labels__}) by (instance_id, device))"
+    },
+    {
+      "id": "dashboard:v1:8894f1eb",
+      "object_names": [
+        "Host"
+      ],
+      "template": "cpu_usage_iowait{cpu=\"cpu-total\", instance_type=\"os\", __$labels__} or cpu_usage_iowait_total_gauge{instance_type=\"os\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:889da5be",
+      "object_names": [
+        "Apache"
+      ],
+      "template": "apache_Load5{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:88eb6a67",
+      "object_names": [
+        "Tomcat"
+      ],
+      "template": "rate(tomcat_connector_request_count{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:88f44f9f",
+      "object_names": [
+        "K3SNode"
+      ],
+      "template": "100 - avg by (instance_id, node) (cpu_usage_idle{instance_type=\"k3s\", cpu=\"cpu-total\", __$labels__})"
+    },
+    {
+      "id": "dashboard:v1:8929d4f1",
+      "object_names": [
+        "Router"
+      ],
+      "template": "sum(sflow_packets{instance_type='router', collect_type='sflow', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:893451e4",
+      "object_names": [
+        "Minio"
+      ],
+      "template": "max by (instance_id) (minio_cluster_health_nodes_online_count_gauge{__$labels__}) or max by (instance_id) (minio_cluster_nodes_online_total_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:8944e468",
+      "object_names": [
+        "LlamaServer"
+      ],
+      "template": "sum(rate(llamacpp:prompt_tokens_total_counter{__$labels__}[5m]))"
+    },
+    {
+      "id": "dashboard:v1:899ecacc",
+      "object_names": [
+        "SGLang"
+      ],
+      "template": "histogram_quantile(0.90, sum by (instance_id, le) (label_replace(rate({__name__=~\"sglang:e2e_request_latency_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"sglang:e2e_request_latency_seconds_(.+)\") or label_replace(rate({__name__=\"sglang:e2e_request_latency_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
+    },
+    {
+      "id": "dashboard:v1:89c73029",
+      "object_names": [
+        "Website"
+      ],
+      "template": "count((http_response_http_response_code{__$labels__} >= 200) and (http_response_http_response_code{__$labels__} < 300)) or on() vector(0)"
+    },
+    {
+      "id": "dashboard:v1:89e2d8b9",
+      "object_names": [
+        "LlamaServer"
+      ],
+      "template": "sum(llamacpp:tokens_predicted_total_counter{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:8a6739f8",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_queries{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:8ab7d7ad",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "rate(sqlserver_waitstats_signal_wait_time_ms{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:8ae3b991",
+      "object_names": [
+        "RabbitMQ"
+      ],
+      "template": "rabbitmq_node_mem_limit{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:8af954fa",
+      "object_names": [
+        "Oracle"
+      ],
+      "template": "sum by (instance_id) (rate(oracledb_activity_execute_count_gauge{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:8bf22e36",
+      "object_names": [
+        "RabbitMQ"
+      ],
+      "template": "rabbitmq_node_disk_free{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:8c3fa8da",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "count(prometheus_remote_write_kube_pod_container_status_waiting_reason{instance_type=\"k8s\",reason=\"CrashLoopBackOff\",__$labels__} > 0)"
+    },
+    {
+      "id": "dashboard:v1:8c433504",
+      "object_names": [
+        "Etcd"
+      ],
+      "template": "sum by (instance_id) (rate(etcd_mvcc_put_total_counter{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:8c4812fc",
+      "object_names": [
+        "nginx"
+      ],
+      "template": "rate(nginx_requests{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:8c84605b",
+      "object_names": [
+        "Node"
+      ],
+      "template": "max by (instance_id, node, device) (prometheus_remote_write_disk_free{instance_type=\"k8s\", __$labels__})"
+    },
+    {
+      "id": "dashboard:v1:8cf1f894",
+      "object_names": [
+        "JVM"
+      ],
+      "template": "jvm_memory_usage_used_value{type=\"Heap\",__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:8ebd3e28",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "sqlserver_memory_clerks_size_kb{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:8ef05738",
+      "object_names": [
+        "TCPPort"
+      ],
+      "template": "avg(net_response_result_code{__$labels__} == bool 3) * 100"
+    },
+    {
+      "id": "dashboard:v1:904bf908",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "elasticsearch_thread_pool_search_queue{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:905e2c1c",
+      "object_names": [
+        "Router"
+      ],
+      "template": "topk(10, avg_over_time((sum(netflow_in_bytes{instance_type='router', collect_type='netflow', __$labels__} * label_value(netflow_in_bytes{instance_type='router', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id, protocol))[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:912f3ab2",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "count({instance_type='docker', collect_type='docker', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:915ccf13",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "min((device_optical_rx_power{__$labels__} != -10000 != -2147483648) / 100) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:91755901",
+      "object_names": [
+        "Firewall",
+        "Loadbalance",
+        "Router"
+      ],
+      "template": "avg(device_cpu_usage{__$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:91ab6422",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_workload_QueuedTasks{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:91c1ff43",
+      "object_names": [
+        "Oracle"
+      ],
+      "template": "max by (instance_id) (oracledb_uptime_seconds_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:91de146a",
+      "object_names": [
+        "Active Directory"
+      ],
+      "template": "win_ad_LDAP_Successful_Binds_persec{instance_type=\"active_directory\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:92b77ed7",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "sqlserver_performance_value{counter=\"User Connections\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:92e02e90",
+      "object_names": [
+        "nginx"
+      ],
+      "template": "count({instance_type='nginx', collect_type='middleware', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:92fb39c9",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "sqlserver_performance_value{counter=\"Memory Grants Outstanding\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:92ff6295",
+      "object_names": [
+        "K3SPod"
+      ],
+      "template": "sum by (instance_id,pod) ( rate(prometheus_remote_write_container_network_transmit_bytes_total{instance_type=\"k3s\",__$labels__}[__$window__]) )"
+    },
+    {
+      "id": "dashboard:v1:9348d0a5",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "mysql_variables_max_heap_table_size{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:9366617e",
+      "object_names": [
+        "Redis"
+      ],
+      "template": "clamp_max(100 * max by (instance_id) (redis_used_memory{__$labels__}) / on(instance_id) clamp_min(max by (instance_id) (redis_maxmemory{__$labels__}), 1), 100)"
+    },
+    {
+      "id": "dashboard:v1:93d0324a",
+      "object_names": [
+        "Node"
+      ],
+      "template": "rate(prometheus_remote_write_diskio_read_time{instance_type=\"k8s\", __$labels__}[__$window__]) / clamp_min(rate(prometheus_remote_write_diskio_reads{instance_type=\"k8s\", __$labels__}[__$window__]), 1e-9)"
+    },
+    {
+      "id": "dashboard:v1:94707d0f",
+      "object_names": [
+        "Router"
+      ],
+      "template": "sum(netflow_in_bytes{instance_type='router', collect_type='netflow', __$labels__} * label_value(netflow_in_bytes{instance_type='router', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:94a981c7",
+      "object_names": [
+        "Router"
+      ],
+      "template": "avg(sflow_frame_length{instance_type='router', collect_type='sflow', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:94c4755f",
+      "object_names": [
+        "Apache"
+      ],
+      "template": "apache_ReqPerSec{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:95163e11",
+      "object_names": [
+        "Tomcat"
+      ],
+      "template": "tomcat_jvm_memorypool_committed{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:9563d407",
+      "object_names": [
+        "RabbitMQ"
+      ],
+      "template": "rate(rabbitmq_overview_messages_acked{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:95743d57",
+      "object_names": [
+        "Active Directory"
+      ],
+      "template": "win_ad_LDAP_Client_Sessions{instance_type=\"active_directory\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:95a3cdb8",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "sum without (db) (rate(postgresql_buffers_alloc{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:960d17a0",
+      "object_names": [
+        "Loadbalance"
+      ],
+      "template": "sum(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:964fc05a",
+      "object_names": [
+        "Router"
+      ],
+      "template": "topk(10, avg_over_time((sum(netflow_in_bytes{instance_type='router', collect_type='netflow', __$labels__} * label_value(netflow_in_bytes{instance_type='router', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id, src, src_port, dst, protocol, dst_port))[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:969bb3f3",
+      "object_names": [
+        "Haproxy"
+      ],
+      "template": "sum by (instance_id) (haproxy_qcur{svname=\"BACKEND\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:96af52ae",
+      "object_names": [
+        "Tomcat"
+      ],
+      "template": "tomcat_connector_current_threads_busy{__$labels__} / clamp_min(tomcat_connector_max_threads{__$labels__}, 1) * 100"
+    },
+    {
+      "id": "dashboard:v1:9734fe9b",
+      "object_names": [
+        "Minio"
+      ],
+      "template": "max by (instance_id) (minio_system_memory_used_perc_gauge{__$labels__}) or max by (instance_id) (minio_node_mem_used_perc_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:9788b1ef",
+      "object_names": [
+        "Oracle"
+      ],
+      "template": "sum by (instance_id) (rate(oracledb_activity_user_commits_gauge{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:98078440",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "100 * sum by (instance_id) (sqlserver_volume_space_used_space_bytes{__$labels__}) / clamp_min(sum by (instance_id) (sqlserver_volume_space_total_space_bytes{__$labels__}), 1)"
+    },
+    {
+      "id": "dashboard:v1:98235ada",
+      "object_names": [
+        "K3SNode"
+      ],
+      "template": "count(prometheus_remote_write_kube_node_info{instance_type='k3s', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:983cd0a8",
+      "object_names": [
+        "K3SNode"
+      ],
+      "template": "rate(diskio_write_bytes{instance_type=\"k3s\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:986cf93c",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "count({instance_type='elasticsearch', collect_type='database', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:98f119bb",
+      "object_names": [
+        "Etcd"
+      ],
+      "template": "max by (instance_id) (etcd_server_is_leader_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:9921c6cc",
+      "object_names": [
+        "Haproxy"
+      ],
+      "template": "sum by (instance_id) (rate(haproxy_bin{svname=\"FRONTEND\",__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:993d2382",
+      "object_names": [
+        "LlamaServer"
+      ],
+      "template": "sum(llamacpp:requests_processing_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:99fd0614",
+      "object_names": [
+        "Zookeeper"
+      ],
+      "template": "zookeeper_max_file_descriptor_count{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:99fe4b6a",
+      "object_names": [
+        "SGLang"
+      ],
+      "template": "sum(sglang:num_queue_reqs_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:9a2946ac",
+      "object_names": [
+        "Node"
+      ],
+      "template": "rate(prometheus_remote_write_net_bytes_recv{instance_type=\"k8s\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:9aae68cb",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "sum(rate(docker_container_net_tx_errors{__$labels__}[__$window__])) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:9ad0f351",
+      "object_names": [
+        "JVM"
+      ],
+      "template": "jvm_threads_peak_count_value{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:9aed688b",
+      "object_names": [
+        "Tomcat"
+      ],
+      "template": "tomcat_jvm_memory_total{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:9b4a39e8",
+      "object_names": [
+        "Redis"
+      ],
+      "template": "rate(redis_total_net_input_bytes{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:9b9e334f",
+      "object_names": [
+        "VLLM"
+      ],
+      "template": "count({instance_type='vllm', collect_type='bkpull', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:9c005642",
+      "object_names": [
+        "Loadbalance"
+      ],
+      "template": "topk(10, avg_over_time((sum(netflow_in_bytes{instance_type='loadbalance', collect_type='netflow', __$labels__} * label_value(netflow_in_bytes{instance_type='loadbalance', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id, src, src_port, dst, protocol, dst_port))[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:9c4a4a93",
+      "object_names": [
+        "JVM"
+      ],
+      "template": "max(1 - jmx_scrape_error_gauge{instance_type='jvm', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:9c73b761",
+      "object_names": [
+        "VLLM"
+      ],
+      "template": "histogram_quantile(0.90, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_generation_tokens_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_generation_tokens_(.+)\") or label_replace(rate({__name__=\"vllm:request_generation_tokens_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
+    },
+    {
+      "id": "dashboard:v1:9d78c2c3",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "topk(8, sum by (db) (rate(postgresql_temp_files{__$labels__}[__$window__])))"
+    },
+    {
+      "id": "dashboard:v1:9da847fa",
+      "object_names": [
+        "Host"
+      ],
+      "template": "sum by (instance_id) (rate(net_bytes_sent{instance_type=\"os\", __$labels__}[__$window__]) or rate(net_bytes_sent_gauge{instance_type=\"os\", __$labels__}[__$window__]) or rate(net_bytes_sent_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:9dcfda8c",
+      "object_names": [
+        "Ping"
+      ],
+      "template": "avg(ping_average_response_ms{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:9dd8e800",
+      "object_names": [
+        "LlamaServer"
+      ],
+      "template": "sum(rate(llamacpp:n_decode_total_counter{__$labels__}[5m]))"
+    },
+    {
+      "id": "dashboard:v1:9df94b8f",
+      "object_names": [
+        "LlamaServer"
+      ],
+      "template": "avg(llamacpp:n_busy_slots_per_decode_counter{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:9e51c113",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "clamp_min(rate(mysql_created_tmp_tables{__$labels__}[__$window__]) - rate(mysql_created_tmp_disk_tables{__$labels__}[__$window__]), 0)"
+    },
+    {
+      "id": "dashboard:v1:9ed2014d",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "topk(5, sum by (container_label_io_kubernetes_pod_namespace) (prometheus_remote_write_container_memory_working_set_bytes{instance_type=\"k8s\",__$labels__}))"
+    },
+    {
+      "id": "dashboard:v1:9ef6dee8",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "mysql_connection_errors_select{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:9f68dff6",
+      "object_names": [
+        "Consul"
+      ],
+      "template": "sum by (instance_id) (consul_health_checks_passing{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:9f883202",
+      "object_names": [
+        "Node"
+      ],
+      "template": "rate(prometheus_remote_write_net_bytes_sent{instance_type=\"k8s\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:9f9b304e",
+      "object_names": [
+        "Etcd"
+      ],
+      "template": "clamp_min(etcd_mvcc_db_total_size_in_bytes_gauge{__$labels__} / clamp_min(etcd_server_quota_backend_bytes_gauge{__$labels__}, 1) * 100, 0)"
+    },
+    {
+      "id": "dashboard:v1:9fd59461",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "mysql_connection_errors_peer_address{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:a049174f",
+      "object_names": [
+        "Website"
+      ],
+      "template": "avg by (instance_id) ((sum without (result) (count_over_time(http_response_result_type{result=\"success\",__$labels__}[__$window__])) or sum without (result) (count_over_time(http_response_result_type{__$labels__}[__$window__])) * 0) / sum without (result) (count_over_time(http_response_result_type{__$labels__}[__$window__])) * 100)"
+    },
+    {
+      "id": "dashboard:v1:a06486a6",
+      "object_names": [
+        "Oracle"
+      ],
+      "template": "topk(8, clamp_min(oracledb_resource_current_utilization_gauge{__$labels__} / clamp_min(oracledb_resource_limit_value_gauge{__$labels__}, 1) * 100, 0))"
+    },
+    {
+      "id": "dashboard:v1:a09d704d",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "bottomk(8, min by (node_name) (elasticsearch_fs_data_0_available_in_bytes{__$labels__}))"
+    },
+    {
+      "id": "dashboard:v1:a0e33d66",
+      "object_names": [
+        "RabbitMQ"
+      ],
+      "template": "rabbitmq_node_uptime{__$labels__} / 1000"
+    },
+    {
+      "id": "dashboard:v1:a10e2bf8",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "docker_n_containers{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:a12d44b0",
+      "object_names": [
+        "Host"
+      ],
+      "template": "mem_available{instance_type=\"os\", __$labels__} or host_mem_available_bytes_gauge{instance_type=\"os\", __$labels__} or mem_available_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:a154369f",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_transport_queues_Unreachable_Queue_Length{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:a18d6065",
+      "object_names": [
+        "K3SCluster"
+      ],
+      "template": "topk(5, sum by (namespace) (prometheus_remote_write_container_memory_working_set_bytes{instance_type=\"k3s\",__$labels__}))"
+    },
+    {
+      "id": "dashboard:v1:a2270f9a",
+      "object_names": [
+        "VLLM"
+      ],
+      "template": "sum by (instance_id) (rate(vllm:request_generation_tokens_sum{__$labels__}[5m])) / sum by (instance_id) (rate(vllm:request_generation_tokens_count{__$labels__}[5m]))"
+    },
+    {
+      "id": "dashboard:v1:a248718b",
+      "object_names": [
+        "Redis"
+      ],
+      "template": "rate(redis_total_commands_processed{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:a3e5982c",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "avg(sflow_frame_length{instance_type='switch', collect_type='sflow', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:a41346dd",
+      "object_names": [
+        "InfluxDB"
+      ],
+      "template": "sum by (instance_id) (rate(influxdb_httpd_serverError{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:a4719240",
+      "object_names": [
+        "Mongodb"
+      ],
+      "template": "mongodb_queued_reads{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:a488e69e",
+      "object_names": [
+        "Website"
+      ],
+      "template": "count(http_response_http_response_code{__$labels__} >= 500) or on() vector(0)"
+    },
+    {
+      "id": "dashboard:v1:a5122dbd",
+      "object_names": [
+        "K3SCluster"
+      ],
+      "template": "topk(5, mem_used_percent{instance_type=\"k3s\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:a528b80e",
+      "object_names": [
+        "Wireless"
+      ],
+      "template": "count({instance_type='wireless', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:a59f6ef0",
+      "object_names": [
+        "Zookeeper"
+      ],
+      "template": "zookeeper_max_latency{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:a5c1faa5",
+      "object_names": [
+        "Host"
+      ],
+      "template": "sum by (instance_id) (rate(diskio_read_bytes{instance_type=\"os\", __$labels__}[__$window__]) or rate(diskio_read_bytes_total_gauge{instance_type=\"os\", __$labels__}[__$window__]) or rate(diskio_read_bytes_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:a6041c1a",
+      "object_names": [
+        "Firewall"
+      ],
+      "template": "avg(label_value(netflow_in_bytes{instance_type='firewall', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:a6227059",
+      "object_names": [
+        "Kafka"
+      ],
+      "template": "sum(kafka_topic_partition_under_replicated_partition_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:a6650fec",
+      "object_names": [
+        "LlamaServer"
+      ],
+      "template": "avg(llamacpp:prompt_tokens_seconds_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:a6eee9fe",
+      "object_names": [
+        "LlamaServer"
+      ],
+      "template": "count({instance_type='llamaserver', collect_type='bkpull', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:a7075f48",
+      "object_names": [
+        "VLLM"
+      ],
+      "template": "sum by (instance_id) (rate(vllm:request_success_total_counter{__$labels__}[5m]))"
+    },
+    {
+      "id": "dashboard:v1:a7724867",
+      "object_names": [
+        "Firewall"
+      ],
+      "template": "sum(netflow_in_bytes{instance_type='firewall', collect_type='netflow', __$labels__} * label_value(netflow_in_bytes{instance_type='firewall', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:a7dd6a09",
+      "object_names": [
+        "Redis"
+      ],
+      "template": "redis_keyspace_hitrate{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:a875359b",
+      "object_names": [
+        "JVM"
+      ],
+      "template": "jvm_memory_usage_max_value{type=\"Heap\",__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:a882998a",
+      "object_names": [
+        "Tomcat"
+      ],
+      "template": "tomcat_connector_current_threads_busy{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:a8a18ae7",
+      "object_names": [
+        "Oracle"
+      ],
+      "template": "max by (instance_id) (oracledb_wait_time_user_io_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:a8acccfb",
+      "object_names": [
+        "Redis"
+      ],
+      "template": "rate(redis_total_net_output_bytes{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:a8d9ee58",
+      "object_names": [
+        "K3SCluster"
+      ],
+      "template": "sum(prometheus_remote_write_kube_node_status_allocatable{instance_type=\"k3s\",resource=\"memory\", __$labels__})"
+    },
+    {
+      "id": "dashboard:v1:a8e56348",
+      "object_names": [
+        "Oracle"
+      ],
+      "template": "max by (instance_id) (oracledb_up_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:a9a7f076",
+      "object_names": [
+        "SGLang"
+      ],
+      "template": "histogram_quantile(0.99, sum by (instance_id, le) (label_replace(rate({__name__=~\"sglang:time_to_first_token_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"sglang:time_to_first_token_seconds_(.+)\") or label_replace(rate({__name__=\"sglang:time_to_first_token_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
+    },
+    {
+      "id": "dashboard:v1:aa39e9d2",
+      "object_names": [
+        "Loadbalance",
+        "Router",
+        "Switch"
+      ],
+      "template": "max(device_temperature_celsius{__$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:aa57f8ad",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "topk(10, avg_over_time((sum(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__}) by (instance_id, src_ip, src_port, dst_ip, header_protocol, dst_port))[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:ab0b93c6",
+      "object_names": [
+        "Tomcat"
+      ],
+      "template": "tomcat_connector_request_count{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:aba2982b",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "avg without (database) (avg_over_time(sqlserver_database_io_write_latency_ms{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:ad73cb81",
+      "object_names": [
+        "Minio"
+      ],
+      "template": "max by (instance_id) (minio_cluster_health_capacity_usable_total_bytes_gauge{__$labels__}) or max by (instance_id) (minio_cluster_capacity_usable_total_bytes_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:af0b870f",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "sum without (db) (rate(postgresql_buffers_checkpoint{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:af670539",
+      "object_names": [
+        "VLLM"
+      ],
+      "template": "histogram_quantile(0.50, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_prompt_tokens_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_prompt_tokens_(.+)\") or label_replace(rate({__name__=\"vllm:request_prompt_tokens_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
+    },
+    {
+      "id": "dashboard:v1:b02322b9",
+      "object_names": [
+        "Haproxy"
+      ],
+      "template": "sum by (instance_id) (rate(haproxy_wretr{svname=\"BACKEND\",__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:b073d379",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "topk(8, sum by (database_name) (sqlserver_database_io_read_latency_ms{__$labels__}))"
+    },
+    {
+      "id": "dashboard:v1:b077058c",
+      "object_names": [
+        "Host"
+      ],
+      "template": "processes_blocked{instance_type=\"os\", __$labels__} or processes_blocked_gauge{instance_type=\"os\", __$labels__} or processes_blocked_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:b0f68307",
+      "object_names": [
+        "Pod"
+      ],
+      "template": "prometheus_remote_write_kube_pod_container_status_restarts_total{instance_type=\"k8s\",__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:b116c6b3",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_innodb_data_reads{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:b13b4b2d",
+      "object_names": [
+        "Mongodb"
+      ],
+      "template": "rate(mongodb_latency_reads{__$labels__}[__$window__])/clamp_min(rate(mongodb_latency_reads_count{__$labels__}[__$window__]), 1e-6) / 1e6"
+    },
+    {
+      "id": "dashboard:v1:b13c4b22",
+      "object_names": [
+        "Redis"
+      ],
+      "template": "redis_clients{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:b17a67db",
+      "object_names": [
+        "K3SNode"
+      ],
+      "template": "mem_available{instance_type=\"k3s\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:b1aec893",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_transport_queues_Active_Mailbox_Delivery_Queue_Length{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:b2594972",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "topk(10, avg_over_time((sum(netflow_in_bytes{instance_type='switch', collect_type='netflow', __$labels__} * label_value(netflow_in_bytes{instance_type='switch', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id, src, src_port, dst, protocol, dst_port))[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:b2c4fcc7",
+      "object_names": [
+        "VLLM"
+      ],
+      "template": "sum by (instance_id) (vllm:num_requests_running_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:b2f14009",
+      "object_names": [
+        "Minio"
+      ],
+      "template": "sum by (instance_id) (rate(minio_api_requests_traffic_received_bytes_counter{__$labels__}[__$window__])) or sum by (instance_id) (rate(minio_s3_traffic_received_bytes_counter{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:b348ab8d",
+      "object_names": [
+        "Haproxy"
+      ],
+      "template": "sum by (instance_id) (max by (instance_id, pxname) (haproxy_bck{svname=\"BACKEND\",__$labels__}))"
+    },
+    {
+      "id": "dashboard:v1:b46758f1",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "count(prometheus_remote_write_kube_statefulset_replicas{instance_type=\"k8s\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:b48271b6",
+      "object_names": [
+        "K3SCluster"
+      ],
+      "template": "100 - avg(cpu_usage_idle{instance_type=\"k3s\",cpu=\"cpu-total\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:b48936f6",
+      "object_names": [
+        "Mongodb"
+      ],
+      "template": "clamp_max(100 * max by (instance_id) (mongodb_wtcache_tracked_dirty_bytes{__$labels__}) / on(instance_id) clamp_min(max by (instance_id) (mongodb_wtcache_current_bytes{__$labels__}), 1), 100)"
+    },
+    {
+      "id": "dashboard:v1:b4ad06b2",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_com_select{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:b5430b18",
+      "object_names": [
+        "Minio"
+      ],
+      "template": "sum by (instance_id) (minio_api_requests_waiting_total_gauge{__$labels__}) or sum by (instance_id) (minio_s3_requests_waiting_total_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:b572dc14",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "max by (instance_id) (mysql_variables_log_slave_updates{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:b5875894",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "topk(5, sum by (pod) (increase(prometheus_remote_write_kube_pod_container_status_restarts_total{instance_type=\"k8s\",__$labels__}[1h])))"
+    },
+    {
+      "id": "dashboard:v1:b63b1822",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "sum without (db) (rate(postgresql_conflicts{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:b642c087",
+      "object_names": [
+        "Active Directory"
+      ],
+      "template": "net_response_result_code{instance_type=\"active_directory\", endpoint=\"ldap\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:b64bad2b",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "sqlserver_performance_value{counter=\"Buffer cache hit ratio\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:b67b981e",
+      "object_names": [
+        "K3SCluster"
+      ],
+      "template": "100 * sum(prometheus_remote_write_kube_statefulset_status_replicas_ready{instance_type=\"k3s\",__$labels__}) / clamp_min(sum(prometheus_remote_write_kube_statefulset_replicas{instance_type=\"k3s\",__$labels__}),1)"
+    },
+    {
+      "id": "dashboard:v1:b6c1e647",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "http_response_result_code{instance_type=\"exchange\", endpoint=\"owa\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:b6e15ea2",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "rate(elasticsearch_breakers_fielddata_tripped{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:b77acc29",
+      "object_names": [
+        "Node"
+      ],
+      "template": "prometheus_remote_write_cpu_usage_user{instance_type=\"k8s\",cpu=\"cpu-total\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:b78b89b7",
+      "object_names": [
+        "RabbitMQ"
+      ],
+      "template": "sum by (queue, vhost) (rabbitmq_queue_messages_unack{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:b798f830",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "docker_n_containers_running{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:b79eba57",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "sum without (db) (postgresql_numbackends{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:b7de8bcd",
+      "object_names": [
+        "Website"
+      ],
+      "template": "count((http_response_http_response_code{__$labels__} >= 400) and (http_response_http_response_code{__$labels__} < 500)) or on() vector(0)"
+    },
+    {
+      "id": "dashboard:v1:b7e87dd2",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "sum(prometheus_remote_write_kube_pod_status_phase{instance_type=\"k8s\",__$labels__}) by (phase)"
+    },
+    {
+      "id": "dashboard:v1:b8277ee6",
+      "object_names": [
+        "Host"
+      ],
+      "template": "(100 - cpu_usage_idle{cpu=\"cpu-total\", instance_type=\"os\", __$labels__}) or host_cpu_usage_percent_gauge{instance_type=\"os\", __$labels__} or cpu_usage_total_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:b8440293",
+      "object_names": [
+        "Zookeeper"
+      ],
+      "template": "rate(zookeeper_packets_received{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:b8d124d3",
+      "object_names": [
+        "Process"
+      ],
+      "template": "sum(procstat_cpu_usage{instance_type=\"process\", __$labels__}) by (instance_id, process_name)"
+    },
+    {
+      "id": "dashboard:v1:b998e908",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "rate(sqlserver_performance_value{counter=\"Log Flushes/sec\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:b9e65408",
+      "object_names": [
+        "Minio"
+      ],
+      "template": "count({instance_type='minio', collect_type='bkpull', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:ba189b8e",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_created_tmp_disk_tables{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:ba3493b0",
+      "object_names": [
+        "Oracle"
+      ],
+      "template": "sum by (instance_id) (rate(oracledb_activity_user_rollbacks_gauge{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:ba92b79a",
+      "object_names": [
+        "Website"
+      ],
+      "template": "avg by (instance_id) (http_response_response_time{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:baac1e13",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "elasticsearch_thread_pool_write_queue{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:bada0b67",
+      "object_names": [
+        "RabbitMQ"
+      ],
+      "template": "rabbitmq_overview_messages{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:bbeaba49",
+      "object_names": [
+        "VoiceGateway"
+      ],
+      "template": "count({instance_type='voice_gateway', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:bc042569",
+      "object_names": [
+        "Haproxy"
+      ],
+      "template": "sum by (instance_id) (haproxy_scur{svname=\"FRONTEND\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:bc9ca465",
+      "object_names": [
+        "Node"
+      ],
+      "template": "rate(prometheus_remote_write_diskio_write_bytes{instance_type=\"k8s\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:bd2bc914",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "max by (instance_id) (mysql_process_list_threads_executing{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:bd8b7c1f",
+      "object_names": [
+        "nginx"
+      ],
+      "template": "nginx_reading{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:bdaa98fe",
+      "object_names": [
+        "NetworkService"
+      ],
+      "template": "count({instance_type='network_service', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:bdfac005",
+      "object_names": [
+        "Etcd"
+      ],
+      "template": "sum by (instance_id) (rate(etcd_server_proposals_applied_total_gauge{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:be564564",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_aborted_clients{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:be7c4985",
+      "object_names": [
+        "RabbitMQ"
+      ],
+      "template": "rabbitmq_node_mem_used{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:bee49d3d",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "count({instance_type='exchange', collect_type='host', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:bf60e8eb",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "mysql_connection_errors_tcpwrap{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:bf77d601",
+      "object_names": [
+        "Oracle"
+      ],
+      "template": "max by (instance_id) (oracledb_wait_time_application_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:bf981470",
+      "object_names": [
+        "JVM"
+      ],
+      "template": "sum(jvm_memorypool_usage_used_value{__$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:c02f2273",
+      "object_names": [
+        "Tomcat"
+      ],
+      "template": "tomcat_connector_max_time{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:c1a856cc",
+      "object_names": [
+        "Mongodb"
+      ],
+      "template": "rate(mongodb_net_out_bytes_count{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:c1dd6762",
+      "object_names": [
+        "K3SCluster"
+      ],
+      "template": "sum(increase(prometheus_remote_write_kube_pod_container_status_restarts_total{instance_type=\"k3s\",__$labels__}[1h]))"
+    },
+    {
+      "id": "dashboard:v1:c1eda24a",
+      "object_names": [
+        "Firewall"
+      ],
+      "template": "topk(10, avg_over_time((sum(netflow_in_bytes{instance_type='firewall', collect_type='netflow', __$labels__} * label_value(netflow_in_bytes{instance_type='firewall', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id, src, src_port, dst, protocol, dst_port))[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:c2057010",
+      "object_names": [
+        "Firewall"
+      ],
+      "template": "avg(sflow_frame_length{instance_type='firewall', collect_type='sflow', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:c22d3340",
+      "object_names": [
+        "Apache"
+      ],
+      "template": "apache_IdleWorkers{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:c29c1921",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "100 * sum without (db) (rate(postgresql_blks_hit{__$labels__}[__$window__])) / clamp_min(sum without (db) (rate(postgresql_blks_hit{__$labels__}[__$window__])) + sum without (db) (rate(postgresql_blks_read{__$labels__}[__$window__])), 1e-6)"
+    },
+    {
+      "id": "dashboard:v1:c2b34c42",
+      "object_names": [
+        "ActiveMQ"
+      ],
+      "template": "activemq_topics_consumer_count{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:c2ce98fb",
+      "object_names": [
+        "Ping"
+      ],
+      "template": "min(ping_minimum_response_ms{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:c2e57aaf",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "max(device_cpu_usage{__$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:c3434181",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_http_proxy_Outstanding_Proxy_Requests{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:c3622228",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "count(prometheus_remote_write_kube_statefulset_status_replicas_ready{instance_type=\"k8s\",__$labels__} < prometheus_remote_write_kube_statefulset_replicas{instance_type=\"k8s\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:c386e57b",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "sqlserver_schedulers_runnable_tasks_count{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:c48e0e04",
+      "object_names": [
+        "Apache"
+      ],
+      "template": "apache_scboard_reading{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:c5376398",
+      "object_names": [
+        "InfluxDB"
+      ],
+      "template": "sum by (instance_id) (rate(influxdb_httpd_pointsWrittenFail{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:c5469d6e",
+      "object_names": [
+        "SGLang"
+      ],
+      "template": "sum(sglang:num_running_reqs_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:c618d67b",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "sum without (db) (rate(postgresql_temp_bytes{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:c63a0dbc",
+      "object_names": [
+        "Process"
+      ],
+      "template": "count({instance_type='process', collect_type='host', __$labels__}) by (instance_id, process_name)"
+    },
+    {
+      "id": "dashboard:v1:c6a51d16",
+      "object_names": [
+        "Zookeeper"
+      ],
+      "template": "zookeeper_avg_latency{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:c6d61d56",
+      "object_names": [
+        "K3SCluster"
+      ],
+      "template": "count(prometheus_remote_write_kube_daemonset_status_desired_number_scheduled{instance_type=\"k3s\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:c6e6bea0",
+      "object_names": [
+        "VLLM"
+      ],
+      "template": "histogram_quantile(0.95, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:e2e_request_latency_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:e2e_request_latency_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:e2e_request_latency_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
+    },
+    {
+      "id": "dashboard:v1:c7796ccc",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "clamp_min(sum(increase(docker_container_status_restart_count{__$labels__}[__$window__])) by (instance_id), 0)"
+    },
+    {
+      "id": "dashboard:v1:c7be1493",
+      "object_names": [
+        "Oracle"
+      ],
+      "template": "count({instance_type='oracle', collect_type='exporter', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:c8337aec",
+      "object_names": [
+        "InfluxDB"
+      ],
+      "template": "sum by (instance_id) (rate(influxdb_httpd_queryReq{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:c839dbcb",
+      "object_names": [
+        "K3SNode"
+      ],
+      "template": "rate(net_bytes_sent{instance_type=\"k3s\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:c8740b52",
+      "object_names": [
+        "JVM"
+      ],
+      "template": "sum(jvm_bufferpool_totalcapacity_value{__$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:c894425b",
+      "object_names": [
+        "Kafka"
+      ],
+      "template": "max(kafka_consumergroup_lag_gauge{__$labels__} >= 0)"
+    },
+    {
+      "id": "dashboard:v1:c8c92fa5",
+      "object_names": [
+        "K3SCluster"
+      ],
+      "template": "sum(prometheus_remote_write_kube_node_status_condition{instance_type=\"k3s\",condition=\"Ready\",status=\"true\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:c8cbcbb2",
+      "object_names": [
+        "Mongodb"
+      ],
+      "template": "mongodb_tcmalloc_current_allocated_bytes{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:c8df5215",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "count(prometheus_remote_write_kube_pod_info{instance_type=\"k8s\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:c92ea4db",
+      "object_names": [
+        "Loadbalance"
+      ],
+      "template": "sum(netflow_in_packets{instance_type='loadbalance', collect_type='netflow', __$labels__} * label_value(netflow_in_packets{instance_type='loadbalance', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:c94bbaff",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_key_reads{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:c96e3801",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "topk(8, sum by (database_name) (rate(sqlserver_database_io_reads{__$labels__}[__$window__]) + rate(sqlserver_database_io_writes{__$labels__}[__$window__])))"
+    },
+    {
+      "id": "dashboard:v1:c9768d55",
+      "object_names": [
+        "ConsoleServer"
+      ],
+      "template": "count({instance_type='console_server', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:ca17f83c",
+      "object_names": [
+        "SGLang"
+      ],
+      "template": "count({instance_type='sglang', collect_type='bkpull', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:ca5b5e26",
+      "object_names": [
+        "Loadbalance"
+      ],
+      "template": "lb_current_connections{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:ca6877cb",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "sum(netflow_in_packets{instance_type='switch', collect_type='netflow', __$labels__} * label_value(netflow_in_packets{instance_type='switch', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:ca6b18de",
+      "object_names": [
+        "K3SNode"
+      ],
+      "template": "mem_swap_free{instance_type=\"k3s\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:ca9e04e7",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "avg_over_time(sqlserver_cpu_sqlserver_process_cpu{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:cb17c657",
+      "object_names": [
+        "Node"
+      ],
+      "template": "prometheus_remote_write_mem_swap_free{instance_type=\"k8s\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:cc33995b",
+      "object_names": [
+        "Kafka"
+      ],
+      "template": "count(count by (topic) (kafka_topic_partitions_gauge{__$labels__}))"
+    },
+    {
+      "id": "dashboard:v1:ccce066f",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_autodiscover_Requests_persec{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:cd4ce4d6",
+      "object_names": [
+        "nginx"
+      ],
+      "template": "100 * rate(nginx_handled{__$labels__}[__$window__]) / clamp_min(rate(nginx_accepts{__$labels__}[__$window__]), 1e-6)"
+    },
+    {
+      "id": "dashboard:v1:cd77ff86",
+      "object_names": [
+        "Oracle"
+      ],
+      "template": "max by (instance_id) (oracledb_process_count_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:cdc0d60f",
+      "object_names": [
+        "Host"
+      ],
+      "template": "cpu_usage_user{cpu=\"cpu-total\", instance_type=\"os\", __$labels__} or cpu_usage_user_total_gauge{instance_type=\"os\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:cdc1f188",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "count(prometheus_remote_write_kube_deployment_status_replicas_unavailable{instance_type=\"k8s\",__$labels__} > 0)"
+    },
+    {
+      "id": "dashboard:v1:cdca87b2",
+      "object_names": [
+        "Zookeeper"
+      ],
+      "template": "zookeeper_open_file_descriptor_count{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:cdf7218a",
+      "object_names": [
+        "Tomcat"
+      ],
+      "template": "count({instance_type='tomcat', collect_type='middleware', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:ce2dce26",
+      "object_names": [
+        "Website"
+      ],
+      "template": "avg(http_response_result_code{__$labels__} == bool 6) * 100"
+    },
+    {
+      "id": "dashboard:v1:ce385139",
+      "object_names": [
+        "Host"
+      ],
+      "template": "sum by (instance_id) (rate(net_err_in{instance_type=\"os\", __$labels__}[__$window__]) or rate(net_err_in_gauge{instance_type=\"os\", __$labels__}[__$window__]) or rate(net_err_in_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:ce4260d5",
+      "object_names": [
+        "Ping"
+      ],
+      "template": "avg(ping_result_code{__$labels__} == bool 1) * 100"
+    },
+    {
+      "id": "dashboard:v1:ce9653ec",
+      "object_names": [
+        "Zookeeper"
+      ],
+      "template": "rate(zookeeper_packets_sent{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:ced590f9",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "sum(increase(prometheus_remote_write_kube_pod_container_status_restarts_total{instance_type=\"k8s\",__$labels__}[1h]))"
+    },
+    {
+      "id": "dashboard:v1:cee2b79c",
+      "object_names": [
+        "K3SCluster"
+      ],
+      "template": "sum(prometheus_remote_write_container_memory_working_set_bytes{instance_type=\"k3s\", __$labels__})"
+    },
+    {
+      "id": "dashboard:v1:cee53735",
+      "object_names": [
+        "Haproxy"
+      ],
+      "template": "sum by (instance_id) (rate(haproxy_hrsp_2xx{svname=\"BACKEND\",__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:cefe9d3a",
+      "object_names": [
+        "Etcd"
+      ],
+      "template": "clamp_min(etcd_server_proposals_committed_total_gauge{__$labels__} - etcd_server_proposals_applied_total_gauge{__$labels__}, 0)"
+    },
+    {
+      "id": "dashboard:v1:cf03dff7",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "100 * mysql_innodb_buffer_pool_pages_dirty{__$labels__} / clamp_min(mysql_innodb_buffer_pool_pages_total{__$labels__}, 1)"
+    },
+    {
+      "id": "dashboard:v1:cf85f24a",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "max(docker_container_mem_usage_percent{__$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:d0052796",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "sum without (db) (rate(postgresql_tup_fetched{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:d01a4fc2",
+      "object_names": [
+        "Apache"
+      ],
+      "template": "apache_scboard_open{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:d0204325",
+      "object_names": [
+        "Haproxy"
+      ],
+      "template": "sum by (instance_id) (max by (instance_id, pxname) (haproxy_act{svname=\"BACKEND\",__$labels__}))"
+    },
+    {
+      "id": "dashboard:v1:d0767d7b",
+      "object_names": [
+        "Router"
+      ],
+      "template": "sum(netflow_in_packets{instance_type='router', collect_type='netflow', __$labels__} * label_value(netflow_in_packets{instance_type='router', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:d0aad3a1",
+      "object_names": [
+        "Consul"
+      ],
+      "template": "count by (instance_id) (consul_health_checks_status{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:d0edd9ad",
+      "object_names": [
+        "Oracle"
+      ],
+      "template": "topk(8, max by (tablespace) (oracledb_tablespace_used_percent_gauge{__$labels__}))"
+    },
+    {
+      "id": "dashboard:v1:d123314d",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "sum(rate(docker_container_net_rx_errors{__$labels__}[__$window__])) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:d165d4e8",
+      "object_names": [
+        "RabbitMQ"
+      ],
+      "template": "count({instance_type='rabbitmq', collect_type='middleware', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:d1c61df1",
+      "object_names": [
+        "TCPPort"
+      ],
+      "template": "avg(net_response_response_time{__$labels__}) * 1000"
+    },
+    {
+      "id": "dashboard:v1:d2a98c20",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "sqlserver_performance_value{counter=\"Processes blocked\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:d306372b",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "max by (instance_id) (mysql_slave_slave_sql_running_int{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:d33dffa8",
+      "object_names": [
+        "RabbitMQ"
+      ],
+      "template": "sum by (queue, vhost) (rabbitmq_queue_messages{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:d3677097",
+      "object_names": [
+        "Redis"
+      ],
+      "template": "redis_blocked_clients{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:d4412920",
+      "object_names": [
+        "Mongodb"
+      ],
+      "template": "rate(mongodb_inserts{__$labels__}[__$window__]) + rate(mongodb_updates{__$labels__}[__$window__]) + rate(mongodb_deletes{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:d498582e",
+      "object_names": [
+        "Mongodb"
+      ],
+      "template": "mongodb_cursor_timed_out_count{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:d5eb0490",
+      "object_names": [
+        "K3SCluster"
+      ],
+      "template": "100 * sum(any(disk_used{instance_type=\"k3s\",__$labels__}) by (instance_id, device)) / sum(any(disk_total{instance_type=\"k3s\",__$labels__}) by (instance_id, device))"
+    },
+    {
+      "id": "dashboard:v1:d6273c80",
+      "object_names": [
+        "VLLM"
+      ],
+      "template": "histogram_quantile(0.99, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_prompt_tokens_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_prompt_tokens_(.+)\") or label_replace(rate({__name__=\"vllm:request_prompt_tokens_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
+    },
+    {
+      "id": "dashboard:v1:d6c3e36d",
+      "object_names": [
+        "Consul"
+      ],
+      "template": "sum by (instance_id) (consul_health_checks_warning{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:d6c7cfce",
+      "object_names": [
+        "VLLM"
+      ],
+      "template": "sum by (instance_id) (rate(vllm:request_prompt_tokens_sum{__$labels__}[5m])) / sum by (instance_id) (rate(vllm:request_prompt_tokens_count{__$labels__}[5m]))"
+    },
+    {
+      "id": "dashboard:v1:d7af4c8b",
+      "object_names": [
+        "JVM"
+      ],
+      "template": "jvm_threads_count_value{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:d7b283c5",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "mysql_uptime{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:d7efb00d",
+      "object_names": [
+        "K3SCluster"
+      ],
+      "template": "sum(prometheus_remote_write_kube_node_status_allocatable{instance_type=\"k3s\",resource=\"cpu\", __$labels__})"
+    },
+    {
+      "id": "dashboard:v1:d80d6ad7",
+      "object_names": [
+        "Website"
+      ],
+      "template": "count((http_response_http_response_code{__$labels__} >= 300) and (http_response_http_response_code{__$labels__} < 400)) or on() vector(0)"
+    },
+    {
+      "id": "dashboard:v1:d83bc0b2",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "max by (instance_id) (mysql_process_list_threads_idle{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:d9291be5",
+      "object_names": [
+        "Haproxy"
+      ],
+      "template": "count({instance_type='haproxy', collect_type='middleware', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:d953be20",
+      "object_names": [
+        "Website"
+      ],
+      "template": "avg(http_response_result_code{__$labels__} == bool 0) * 100"
+    },
+    {
+      "id": "dashboard:v1:d96300e3",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "mysql_innodb_buffer_pool_pages_free{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:d9f3bf90",
+      "object_names": [
+        "VLLM"
+      ],
+      "template": "sum by (instance_id) (rate(vllm:generation_tokens_total_counter{__$labels__}[5m])) * 60"
+    },
+    {
+      "id": "dashboard:v1:d9f714ff",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "sum without (db) (rate(postgresql_tup_inserted{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:da4fbaac",
+      "object_names": [
+        "Node"
+      ],
+      "template": "prometheus_remote_write_system_load1{instance_type=\"k8s\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:da7250f1",
+      "object_names": [
+        "K3SCluster"
+      ],
+      "template": "topk(5, sum by (pod) (rate(prometheus_remote_write_container_cpu_usage_seconds_total{instance_type=\"k3s\",__$labels__}[__$window__])))"
+    },
+    {
+      "id": "dashboard:v1:dc244186",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "rate(sqlserver_performance_value{counter=\"SQL Compilations/sec\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:dc6a9693",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_transport_queues_Submission_Queue_Length{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:dcbef466",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "100 * sum(prometheus_remote_write_kube_daemonset_status_number_available{instance_type=\"k8s\",__$labels__}) / clamp_min(sum(prometheus_remote_write_kube_daemonset_status_desired_number_scheduled{instance_type=\"k8s\",__$labels__}),1)"
+    },
+    {
+      "id": "dashboard:v1:dcc35767",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "sum(netflow_in_bytes{instance_type='switch', collect_type='netflow', __$labels__} * label_value(netflow_in_bytes{instance_type='switch', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:dcc56336",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_innodb_data_fsyncs{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:dd6153a4",
+      "object_names": [
+        "VLLM"
+      ],
+      "template": "histogram_quantile(0.99, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:inter_token_latency_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:inter_token_latency_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:inter_token_latency_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
+    },
+    {
+      "id": "dashboard:v1:dd965d0d",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "sum without (db) (rate(postgresql_checkpoints_req{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:dda9ff8d",
+      "object_names": [
+        "Process"
+      ],
+      "template": "sum(procstat_num_fds{instance_type=\"process\", __$labels__}) by (instance_id, process_name)"
+    },
+    {
+      "id": "dashboard:v1:ddc94289",
+      "object_names": [
+        "K3SNode"
+      ],
+      "template": "mem_used_percent{instance_type=\"k3s\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:ddc94eaa",
+      "object_names": [
+        "ActiveMQ"
+      ],
+      "template": "activemq_topics_enqueue_count{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:de94efc7",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "mysql_connection_errors_internal{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:df2dee47",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "100 * (mysql_innodb_buffer_pool_pages_total{__$labels__} - mysql_innodb_buffer_pool_pages_free{__$labels__}) / clamp_min(mysql_innodb_buffer_pool_pages_total{__$labels__}, 1)"
+    },
+    {
+      "id": "dashboard:v1:df2e1668",
+      "object_names": [
+        "Tomcat"
+      ],
+      "template": "clamp_max(100 * ((tomcat_jvm_memory_total{__$labels__} - tomcat_jvm_memory_free{__$labels__}) / clamp_min(tomcat_jvm_memory_max{__$labels__}, 1)), 100)"
+    },
+    {
+      "id": "dashboard:v1:df33cb51",
+      "object_names": [
+        "Node"
+      ],
+      "template": "prometheus_remote_write_mem_cached{instance_type=\"k8s\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:df5177cc",
+      "object_names": [
+        "Node"
+      ],
+      "template": "max by (instance_id, node, device) (prometheus_remote_write_disk_used_percent{instance_type=\"k8s\", __$labels__})"
+    },
+    {
+      "id": "dashboard:v1:df7dcc0d",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "rate(elasticsearch_breakers_request_tripped{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:dfdd50bc",
+      "object_names": [
+        "Website"
+      ],
+      "template": "avg(http_response_result_code{__$labels__} == bool 4) * 100"
+    },
+    {
+      "id": "dashboard:v1:dffe275a",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "rate(sqlserver_waitstats_wait_time_ms{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:e0f2c374",
+      "object_names": [
+        "Zookeeper"
+      ],
+      "template": "zookeeper_watch_count{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:e120fc41",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_key_read_requests{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:e14af78e",
+      "object_names": [
+        "Oracle"
+      ],
+      "template": "max by (instance_id) (oracledb_pga_total_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:e14c8eef",
+      "object_names": [
+        "K3SPod"
+      ],
+      "template": "100 * ( sum(prometheus_remote_write_container_memory_working_set_bytes{instance_type=\"k3s\",__$labels__}) by (instance_id,pod) / on(instance_id,pod) sum(prometheus_remote_write_kube_pod_container_resource_limits{instance_type=\"k3s\", resource=\"memory\",__$labels__}) by (instance_id,pod) )"
+    },
+    {
+      "id": "dashboard:v1:e1ec97a8",
+      "object_names": [
+        "Node"
+      ],
+      "template": "rate(prometheus_remote_write_diskio_write_time{instance_type=\"k8s\", __$labels__}[__$window__]) / clamp_min(rate(prometheus_remote_write_diskio_writes{instance_type=\"k8s\", __$labels__}[__$window__]), 1e-9)"
+    },
+    {
+      "id": "dashboard:v1:e1fe4307",
+      "object_names": [
+        "Tomcat"
+      ],
+      "template": "tomcat_jvm_memory_free{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:e26d7682",
+      "object_names": [
+        "K3SCluster"
+      ],
+      "template": "sum(prometheus_remote_write_kube_pod_container_resource_requests{instance_type=\"k3s\",resource=\"cpu\", __$labels__})"
+    },
+    {
+      "id": "dashboard:v1:e294dd67",
+      "object_names": [
+        "RabbitMQ"
+      ],
+      "template": "rabbitmq_node_running{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:e2d426cd",
+      "object_names": [
+        "Apache"
+      ],
+      "template": "apache_Load15{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:e30739bd",
+      "object_names": [
+        "Website"
+      ],
+      "template": "avg(http_response_result_code{__$labels__} == bool 1) * 100"
+    },
+    {
+      "id": "dashboard:v1:e3130a02",
+      "object_names": [
+        "Ping"
+      ],
+      "template": "avg(ping_result_code{__$labels__} == bool 2) * 100"
+    },
+    {
+      "id": "dashboard:v1:e39095be",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "rate(sqlserver_requests_total_elapsed_time_ms{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:e397a535",
+      "object_names": [
+        "Tomcat"
+      ],
+      "template": "tomcat_jvm_memorypool_max{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:e3c85242",
+      "object_names": [
+        "Mongodb"
+      ],
+      "template": "mongodb_vsize_megabytes{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:e47a12b1",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "sum(rate(interface_ifInErrors{__$labels__}[__$window__])) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:e4e0cd2a",
+      "object_names": [
+        "Host"
+      ],
+      "template": "max by (instance_id) (disk_used_percent{instance_type=\"os\", __$labels__} or host_disk_used_percent_gauge{instance_type=\"os\", __$labels__} or disk_used_percent_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__})"
+    },
+    {
+      "id": "dashboard:v1:e54bf04a",
+      "object_names": [
+        "Website"
+      ],
+      "template": "avg(http_response_result_code{__$labels__} == bool 2) * 100"
+    },
+    {
+      "id": "dashboard:v1:e5c19424",
+      "object_names": [
+        "Host"
+      ],
+      "template": "sum by (instance_id) (rate(diskio_write_bytes{instance_type=\"os\", __$labels__}[__$window__]) or rate(diskio_write_bytes_total_gauge{instance_type=\"os\", __$labels__}[__$window__]) or rate(diskio_write_bytes_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:e5e98cdd",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "http_response_response_time{instance_type=\"exchange\", endpoint=\"ews\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:e61b30e3",
+      "object_names": [
+        "RabbitMQ"
+      ],
+      "template": "rabbitmq_overview_channels{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:e657f024",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "max by (instance_id) (mysql_slave_seconds_behind_master{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:e674aafc",
+      "object_names": [
+        "Haproxy"
+      ],
+      "template": "sum by (instance_id) (rate(haproxy_eresp{svname=\"BACKEND\",__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:e6e75664",
+      "object_names": [
+        "RabbitMQ"
+      ],
+      "template": "rabbitmq_overview_consumers{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:e766f12a",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "sum(device_memory_free{__$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:e823e064",
+      "object_names": [
+        "Host"
+      ],
+      "template": "count({instance_type='os', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:e869394b",
+      "object_names": [
+        "K3SPod"
+      ],
+      "template": "sum by (instance_id,pod,device) ( rate(prometheus_remote_write_container_fs_reads_total{instance_type=\"k3s\",__$labels__}[__$window__]) )"
+    },
+    {
+      "id": "dashboard:v1:e8a018f4",
+      "object_names": [
+        "Node"
+      ],
+      "template": "prometheus_remote_write_mem_used_percent{instance_type=\"k8s\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:e8e89e26",
+      "object_names": [
+        "JVM"
+      ],
+      "template": "jvm_threads_total_started_count_value{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:e98587f7",
+      "object_names": [
+        "Website"
+      ],
+      "template": "clamp_max(100 - avg by (instance_id) ((sum without (result) (count_over_time(http_response_result_type{result=\"success\",__$labels__}[__$window__])) or sum without (result) (count_over_time(http_response_result_type{__$labels__}[__$window__])) * 0) / sum without (result) (count_over_time(http_response_result_type{__$labels__}[__$window__])) * 100), 100)"
+    },
+    {
+      "id": "dashboard:v1:e9ab711a",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_created_tmp_tables{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:eaf95d21",
+      "object_names": [
+        "Oracle"
+      ],
+      "template": "max by (instance_id) (oracledb_wait_time_network_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:eb236167",
+      "object_names": [
+        "JVM"
+      ],
+      "template": "100 * sum(rate(jvm_gc_collectiontime_seconds_value{__$labels__}[__$window__])) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:eb9f427b",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "sum without (database) (rate(sqlserver_database_io_reads{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:ebd96df2",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "100 * sum(prometheus_remote_write_mem_used{instance_type=\"k8s\",__$labels__}) / sum(prometheus_remote_write_mem_total{instance_type=\"k8s\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:ec2e434f",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_owa_Current_Unique_Users{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:ec5e12e6",
+      "object_names": [
+        "SGLang"
+      ],
+      "template": "sum(rate(sglang:e2e_request_latency_seconds_sum{__$labels__}[5m])) / sum(rate(sglang:e2e_request_latency_seconds_count{__$labels__}[5m]))"
+    },
+    {
+      "id": "dashboard:v1:ec9c95b9",
+      "object_names": [
+        "Firewall"
+      ],
+      "template": "firewall_session_utilization{__$labels__} or (firewall_active_sessions{__$labels__} / firewall_max_sessions{__$labels__} * 100) or (firewall_current_connections{__$labels__} / firewall_max_connections{__$labels__} * 100)"
+    },
+    {
+      "id": "dashboard:v1:ecd2bdad",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "mysql_innodb_buffer_pool_pages_dirty{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:ecdc8109",
+      "object_names": [
+        "Website"
+      ],
+      "template": "count(http_response_result_type{instance_type='web', collect_type='web', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:ed9e1237",
+      "object_names": [
+        "Oracle"
+      ],
+      "template": "sum by (instance_id) (oracledb_sessions_value_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:ef9da161",
+      "object_names": [
+        "InfluxDB"
+      ],
+      "template": "sum by (instance_id) (rate(influxdb_httpd_clientError{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:efa783e7",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "count({instance_type='mssql', collect_type='database', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:f09555af",
+      "object_names": [
+        "Host"
+      ],
+      "template": "system_load5{instance_type=\"os\", __$labels__} or system_load5_gauge{instance_type=\"os\", __$labels__} or host_cpu_load_5m_gauge{instance_type=\"os\", __$labels__} or system_load5_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:f09fb174",
+      "object_names": [
+        "nginx"
+      ],
+      "template": "clamp_max(100 * nginx_waiting{__$labels__} / clamp_min(nginx_active{__$labels__}, 1), 100)"
+    },
+    {
+      "id": "dashboard:v1:f0c5ff13",
+      "object_names": [
+        "Apache"
+      ],
+      "template": "apache_ServerUptimeSeconds{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:f0eb2c1d",
+      "object_names": [
+        "Mongodb"
+      ],
+      "template": "mongodb_assert_user{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:f14a6f66",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "100 * (1 - rate(mysql_innodb_buffer_pool_reads{__$labels__}[__$window__]) / clamp_min(rate(mysql_innodb_buffer_pool_read_requests{__$labels__}[__$window__]), 1e-6))"
+    },
+    {
+      "id": "dashboard:v1:f16c4a64",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "sum(prometheus_remote_write_kube_node_status_condition{instance_type=\"k8s\",condition=\"Ready\",status=\"true\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:f1d6e75b",
+      "object_names": [
+        "Apache"
+      ],
+      "template": "rate(apache_scboard_open{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:f1efd5cd",
+      "object_names": [
+        "Host"
+      ],
+      "template": "topk(8, max by (path, device) (disk_used_percent{instance_type=\"os\", __$labels__} or host_disk_used_percent_gauge{instance_type=\"os\", __$labels__} or disk_used_percent_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}))"
+    },
+    {
+      "id": "dashboard:v1:f20b0627",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_http_proxy_Proxy_Requests_persec{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:f279bc8e",
+      "object_names": [
+        "Pod"
+      ],
+      "template": "count(prometheus_remote_write_kube_pod_info{instance_type='k8s', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:f2b4d061",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_opened_tables{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:f30f80e5",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "rate(elasticsearch_jvm_gc_collectors_young_collection_time_in_millis{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:f31399ac",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "sum without (db) (rate(postgresql_tup_updated{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:f3b7fb69",
+      "object_names": [
+        "Etcd"
+      ],
+      "template": "sum by (instance_id) (etcd_network_active_peers_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:f3c5dfc0",
+      "object_names": [
+        "JVM"
+      ],
+      "template": "sum(jvm_bufferpool_memoryused_value{__$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:f43753eb",
+      "object_names": [
+        "Etcd"
+      ],
+      "template": "1000 * histogram_quantile(0.99, sum(rate((label_replace({__name__=~\"etcd_disk_wal_fsync_duration_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"etcd_disk_wal_fsync_duration_seconds_(.+)\"))[5m:]) or label_replace(rate(etcd_disk_wal_fsync_duration_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+    },
+    {
+      "id": "dashboard:v1:f4a484a8",
+      "object_names": [
+        "Loadbalance"
+      ],
+      "template": "avg(label_value(netflow_in_bytes{instance_type='loadbalance', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:f4c00da5",
+      "object_names": [
+        "ActiveMQ"
+      ],
+      "template": "activemq_topics_size{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:f5384728",
+      "object_names": [
+        "Haproxy"
+      ],
+      "template": "avg by (instance_id) (haproxy_rtime{svname=\"BACKEND\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:f55b7e5b",
+      "object_names": [
+        "Postgres"
+      ],
+      "template": "sum without (db) (rate(postgresql_blks_hit{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:f56ba1ca",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "sum(rate(interface_ifOutErrors{__$labels__}[__$window__])) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:f59dc18d",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_innodb_os_log_fsyncs{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:f5a6dffa",
+      "object_names": [
+        "K3SNode"
+      ],
+      "template": "rate(diskio_write_time{instance_type=\"k3s\", __$labels__}[__$window__]) / clamp_min(rate(diskio_writes{instance_type=\"k3s\", __$labels__}[__$window__]), 1e-9)"
+    },
+    {
+      "id": "dashboard:v1:f5c4dae3",
+      "object_names": [
+        "nginx"
+      ],
+      "template": "nginx_writing{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:f62099bd",
+      "object_names": [
+        "TCPPort"
+      ],
+      "template": "min(net_response_response_time{__$labels__}) * 1000"
+    },
+    {
+      "id": "dashboard:v1:f63c0b05",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "mysql_open_files{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:f68a5120",
+      "object_names": [
+        "Mongodb"
+      ],
+      "template": "mongodb_active_writes{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:f6b69804",
+      "object_names": [
+        "Apache"
+      ],
+      "template": "apache_CacheCurrentEntries{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:f6edc87c",
+      "object_names": [
+        "K3SCluster"
+      ],
+      "template": "100 * sum(prometheus_remote_write_kube_daemonset_status_number_available{instance_type=\"k3s\",__$labels__}) / clamp_min(sum(prometheus_remote_write_kube_daemonset_status_desired_number_scheduled{instance_type=\"k3s\",__$labels__}),1)"
+    },
+    {
+      "id": "dashboard:v1:f73d2940",
+      "object_names": [
+        "K3SCluster"
+      ],
+      "template": "count(prometheus_remote_write_kube_statefulset_replicas{instance_type=\"k3s\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:f790d549",
+      "object_names": [
+        "Router"
+      ],
+      "template": "count({instance_type='router', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:f8f30032",
+      "object_names": [
+        "Node"
+      ],
+      "template": "prometheus_remote_write_kube_node_status_condition{instance_type=\"k8s\",condition=\"Ready\",status=\"true\",__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:f91d9edf",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "max(docker_container_cpu_usage_percent{__$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:f91ec80b",
+      "object_names": [
+        "Firewall"
+      ],
+      "template": "sum(netflow_in_packets{instance_type='firewall', collect_type='netflow', __$labels__} * label_value(netflow_in_packets{instance_type='firewall', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:f9276881",
+      "object_names": [
+        "Firewall"
+      ],
+      "template": "avg(device_memory_usage{__$labels__}) by (instance_id) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or (sum(device_memory_used{__$labels__}) by (instance_id) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or (sum(device_memory_used{__$labels__}) by (instance_id) / (sum(device_memory_used{__$labels__}) by (instance_id) + sum(device_memory_free{__$labels__}) by (instance_id)) * 100)"
+    },
+    {
+      "id": "dashboard:v1:f9d16f6f",
+      "object_names": [
+        "K3SNode"
+      ],
+      "template": "diskio_io_util{instance_type=\"k3s\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:f9e3628a",
+      "object_names": [
+        "K3SCluster"
+      ],
+      "template": "100 * sum(mem_used{instance_type=\"k3s\",__$labels__}) / sum(mem_total{instance_type=\"k3s\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:fa3bc5c0",
+      "object_names": [
+        "JVM"
+      ],
+      "template": "100 * jvm_memory_usage_used_value{type=\"Heap\",__$labels__} / clamp_min(jvm_memory_usage_max_value{type=\"Heap\",__$labels__}, 1)"
+    },
+    {
+      "id": "dashboard:v1:fa7e6599",
+      "object_names": [
+        "K3SNode"
+      ],
+      "template": "prometheus_remote_write_kube_node_status_condition{instance_type=\"k3s\",condition=\"Ready\",status=\"true\",__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:facf0f4b",
+      "object_names": [
+        "Node"
+      ],
+      "template": "prometheus_remote_write_cpu_usage_system{instance_type=\"k8s\",cpu=\"cpu-total\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:fb3b1828",
+      "object_names": [
+        "Tomcat"
+      ],
+      "template": "tomcat_connector_bytes_received{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:fd17a5d0",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_innodb_data_writes{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:fd499a32",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "rate(sqlserver_performance_value{counter=\"Lazy writes/sec\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:fd4c2c0a",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "sum(prometheus_remote_write_kube_pod_container_resource_requests{instance_type=\"k8s\",resource=\"memory\", __$labels__})"
+    },
+    {
+      "id": "dashboard:v1:fd52d6ea",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "sqlserver_performance_value{counter=\"Free Space in tempdb (KB)\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:fe0b89f4",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "elasticsearch_cluster_health_status_code{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:fe286723",
+      "object_names": [
+        "Process"
+      ],
+      "template": "sum(procstat_memory_rss{instance_type=\"process\", __$labels__}) by (instance_id, process_name)"
+    },
+    {
+      "id": "dashboard:v1:fed85ec2",
+      "object_names": [
+        "Redis"
+      ],
+      "template": "rate(redis_evicted_keys{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:fefb2221",
+      "object_names": [
+        "Redis"
+      ],
+      "template": "redis_maxmemory{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:ff57711c",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "clamp_max(100 * max by (instance_id) (mysql_open_tables{__$labels__}) / on(instance_id) clamp_min(max by (instance_id) (mysql_variables_table_open_cache{__$labels__}), 1), 100)"
+    },
+    {
+      "id": "dashboard:v1:ff5b7254",
+      "object_names": [
+        "Host"
+      ],
+      "template": "system_uptime{instance_type=\"os\", __$labels__} or system_uptime_gauge{instance_type=\"os\", __$labels__} or system_uptime_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:ff8dea55",
+      "object_names": [
+        "TCPPort"
+      ],
+      "template": "avg(net_response_result_code{__$labels__} == bool 2) * 100"
+    },
+    {
+      "id": "dashboard:v1:ffbf3f1d",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "sqlserver_performance_value{counter=\"Version Store Size (KB)\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:fff61030",
+      "object_names": [
+        "K3SPod"
+      ],
+      "template": "sum by (instance_id,pod) ( rate(prometheus_remote_write_container_network_receive_bytes_total{instance_type=\"k3s\",__$labels__}[__$window__]) )"
+    }
+  ]
+}

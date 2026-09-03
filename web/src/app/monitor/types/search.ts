@@ -29,6 +29,14 @@ export interface SearchParams {
   start?: number;
   step?: number;
   query?: string;
+  capability_id?: string;
+  capability_params?: Record<string, unknown>;
+  scope?: {
+    type: 'host_process';
+    host_monitor_object_id: React.Key;
+    host_instance_id: React.Key;
+    process_names?: string[];
+  };
   monitor_object_id?: React.Key;
   metric_id?: React.Key;
   instance_ids?: string[];
@@ -42,7 +50,7 @@ export interface SearchParams {
   auto_convert_unit?: boolean;
   detect_gaps?: boolean;
   collection_interval?: number;
-  query_budget?: 'card';
+  card_budget?: boolean;
 }
 
 export interface QueryGroup {

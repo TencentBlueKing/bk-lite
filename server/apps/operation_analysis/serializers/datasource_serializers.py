@@ -221,13 +221,7 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
             getattr(self.instance, "source_type", DataSourceAPIModel.SOURCE_TYPE_NATS),
         )
         rest_api = attrs.get("rest_api", getattr(self.instance, "rest_api", ""))
-        keeps_existing_legacy_route = bool(
-            self.instance
-            and source_type == self.instance.source_type
-            and rest_api == self.instance.rest_api
-            and is_legacy_raw_monitor_query(source_type=source_type, rest_api=rest_api)
-        )
-        if is_legacy_raw_monitor_query(source_type=source_type, rest_api=rest_api) and not keeps_existing_legacy_route:
+        if is_legacy_raw_monitor_query(source_type=source_type, rest_api=rest_api):
             raise serializers.ValidationError({"rest_api": LEGACY_RAW_MONITOR_QUERY_ERROR})
 
         transform_config = attrs.get(
