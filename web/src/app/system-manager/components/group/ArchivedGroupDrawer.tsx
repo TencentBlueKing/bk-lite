@@ -30,7 +30,7 @@ const KIND_TAG_COLOR: Record<ArchivedGroupKind, string> = {
 };
 
 /** 树表行：叶子不带 children，避免 Ant Design 画出空的展开图标 */
-type ArchivedTableRow = {
+interface ArchivedTableRow {
   id: number;
   name: string;
   parent_id: number;
@@ -38,7 +38,7 @@ type ArchivedTableRow = {
   can_restore?: boolean;
   can_permanently_delete?: boolean;
   children?: ArchivedTableRow[];
-};
+}
 
 function toArchivedTableRows(
   nodes: Array<ArchivedGroupRoot | ArchivedGroupChildNode>,
@@ -123,7 +123,7 @@ const ArchivedGroupDrawer: React.FC<ArchivedGroupDrawerProps> = ({
       cancelled = true;
     };
     // listArchivedGroups 每次 render 新引用，仅随 open 触发加载
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [open, t]);
 
   const reloadArchived = useCallback(async (nextPage = page, nextPageSize = pageSize) => {
@@ -143,7 +143,7 @@ const ArchivedGroupDrawer: React.FC<ArchivedGroupDrawerProps> = ({
       setLoading(false);
     }
     // listArchivedGroups 每次 render 新引用
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [applyPage, page, pageSize, t]);
 
   const kindLabel = useCallback((kind: ArchivedGroupKind) => {
@@ -178,7 +178,7 @@ const ArchivedGroupDrawer: React.FC<ArchivedGroupDrawerProps> = ({
         }
       },
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [confirm, onChanged, reloadArchived, t]);
 
   const handlePermanentlyDelete = useCallback((root: ArchivedTableRow) => {
@@ -211,7 +211,7 @@ const ArchivedGroupDrawer: React.FC<ArchivedGroupDrawerProps> = ({
         }
       },
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [confirm, onChanged, reloadArchived, t]);
 
   const columns: ColumnsType<ArchivedTableRow> = useMemo(() => [

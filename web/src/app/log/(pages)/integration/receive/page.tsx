@@ -291,9 +291,9 @@ const Asset = () => {
         setExtractorInitialSample(
           shouldCreate
             ? consumeExtractorCreateSample({
-                kind: 'instance',
-                id: extractorId
-              })
+              kind: 'instance',
+              id: extractorId
+            })
             : null
         );
       } catch {

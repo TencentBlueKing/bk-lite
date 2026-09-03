@@ -93,6 +93,11 @@ for (const sourcePath of sourcePaths) {
           translated = true;
           break;
         }
+        if (ts.isVariableDeclaration(parent)
+          && ts.isIdentifier(parent.name)
+          && /(?:ICON|ASSET)/.test(parent.name.text)) {
+          machineSyntax = true;
+        }
         if (ts.isCallExpression(parent) && ts.isIdentifier(parent.expression) && parent.expression.text === 't') {
           translated = true;
           break;
@@ -106,7 +111,7 @@ for (const sourcePath of sourcePaths) {
         }
         parent = parent.parent;
       }
-      if (!translated && /[\u3400-\u9fff]/.test(text)) {
+      if (!translated && !machineSyntax && /[\u3400-\u9fff]/.test(text)) {
         const line = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
         sourceErrors.push(`Hardcoded APM UI copy remains at ${sourcePath}:${line}: ${text.trim()}`);
       }

@@ -7,7 +7,10 @@ const webRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (path: string) => readFileSync(join(webRoot, path), 'utf8');
 
 const api = read('src/app/apm/api/index.ts');
-const policies = read('src/app/apm/events/policies/page.tsx');
+const policies = [
+  read('src/app/apm/events/policies/page.tsx'),
+  read('src/app/apm/events/policies/policy-editor.tsx'),
+].join('\n');
 const events = [
   read('src/app/apm/events/alerts/page.tsx'),
   read('src/app/apm/events/alerts/alert-detail-drawer.tsx'),

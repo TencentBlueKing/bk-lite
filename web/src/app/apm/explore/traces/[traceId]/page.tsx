@@ -36,12 +36,12 @@ import { useTranslation } from '@/utils/i18n';
 
 type PageState = CatalogStateKind | 'ready' | 'not-found';
 type ViewMode = 'waterfall' | 'flame' | 'list';
-type SpanLayoutItem = {
+interface SpanLayoutItem {
   span: ApmSpanDetail;
   depth: number;
   left: number;
   width: number;
-};
+}
 
 const FLAME_ROW_HEIGHT = 24;
 const SPAN_ATTRIBUTE_KEY_COLUMN_WIDTH = '58%';

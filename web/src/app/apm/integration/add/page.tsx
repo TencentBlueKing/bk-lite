@@ -393,7 +393,7 @@ export default function ApmIntegrationAddPage() {
         <div className="flex flex-col gap-4 pt-2">
           <div className="rounded-lg bg-[var(--color-fill-1)] p-4">
             <div className="mb-1 flex items-center gap-2"><span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--color-primary)] text-sm font-semibold text-[var(--color-primary-foreground)]">1</span><Typography.Text strong>{t('apm.integration.configTitle', '接入配置')}</Typography.Text></div>
-            <Typography.Text type="secondary" className="mb-4 block text-xs">{t('apm.integration.configHint', '应用 ID、服务名称和版本将映射到标准 OpenTelemetry 资源属性；平台根据所选云区域分配上报端点。')}</Typography.Text>
+            <Typography.Text type="secondary" className="mb-4 block text-xs">{t('apm.integration.configHint', '应用 ID、服务名称和版本将映射到标准 OpenTelemetry 资源属性；平台根据所选云区域分配上报端点，填写后自动生成临时配置。')}</Typography.Text>
             <Form<SnippetForm>
               form={form}
               key={`${selectedMethod?.key ?? 'integration-form'}:${preferredApplicationId ?? ''}`}

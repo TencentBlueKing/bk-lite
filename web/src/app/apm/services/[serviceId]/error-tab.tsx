@@ -26,17 +26,17 @@ import { useTranslation } from '@/utils/i18n';
 
 type ErrorTabState = CatalogStateKind | 'ready';
 
-const LOCATION_LABEL: Record<ApmErrorLocation, string> = {
-  entry: '入口',
-  downstream: '调下游',
-  internal: '内部',
-};
-
 const LOCATION_TONE: Record<ApmErrorLocation, 'info' | 'warning' | 'danger'> = {
   entry: 'info',
   downstream: 'warning',
   internal: 'danger',
 };
+
+function locationLabel(value: ApmErrorLocation, t: ReturnType<typeof useTranslation>['t']) {
+  if (value === 'entry') return t('apm.serviceDetail.location.entry', '入口');
+  if (value === 'downstream') return t('apm.serviceDetail.location.downstream', '调下游');
+  return t('apm.serviceDetail.location.internal', '内部');
+}
 
 export default function ServiceErrorTab({
   breakdown,
@@ -84,7 +84,7 @@ export default function ServiceErrorTab({
       render: (value: ApmErrorLocation) => (
         <StatusPill
           tone={LOCATION_TONE[value]}
-          label={t(`apm.serviceDetail.location.${value}`, LOCATION_LABEL[value])}
+          label={locationLabel(value, t)}
         />
       ),
     },

@@ -801,9 +801,9 @@ const LineChart: React.FC<LineChartProps> = memo(
                     x2={gap.end}
                     {...(gapFit === 'plot'
                       ? {
-                          y1: niceYAxis.domain[0],
-                          y2: niceYAxis.domain[1],
-                        }
+                        y1: niceYAxis.domain[0],
+                        y2: niceYAxis.domain[1],
+                      }
                       : {})}
                     yAxisId="left"
                     {...GAP_INTERVAL_AREA_STYLE}

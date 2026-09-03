@@ -348,6 +348,11 @@ export default function ApmServicesPage() {
     });
   }, [alertCounts, environment, keyword, namespace, rows, statusFilter]);
 
+  const filteredServiceCount = useMemo(
+    () => new Set(filteredRows.map((item) => item.serviceId)).size,
+    [filteredRows]
+  );
+
   const selectedServices = useMemo(() => {
     const selectedIds = new Set(
       filteredRows.filter((row) => selectedRowKeys.includes(row.key)).map((row) => row.serviceId),
@@ -525,6 +530,14 @@ export default function ApmServicesPage() {
         onChange={setStatusFilter}
       />
       <div className="ml-auto flex flex-wrap items-center gap-2">
+        {perspective === 'service' ? (
+          <Typography.Text type="secondary" className="!text-xs tabular-nums">
+            {t('apm.services.filteredSummary', '{environments} 个环境视图 · {services} 个逻辑服务', {
+              environments: filteredRows.length,
+              services: filteredServiceCount,
+            })}
+          </Typography.Text>
+        ) : null}
         <Typography.Text type="secondary" className="!text-xs">{t('apm.common.timeWindow', '时间窗')}</Typography.Text>
         <Segmented<TimeWindow>
           aria-label={t('apm.services.metricWindow', '服务指标时间窗口')}
