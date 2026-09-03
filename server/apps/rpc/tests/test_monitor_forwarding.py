@@ -129,6 +129,11 @@ def test_monitor_object_instance_count(ana_rpc):
     assert _last(ana_rpc.client) == ("monitor_object_instance_count", (), {})
 
 
+def test_license_monitor_instance_count(ana_rpc):
+    ana_rpc.license_instance_count()
+    assert _last(ana_rpc.client) == ("license_monitor_instance_count", (), {})
+
+
 def test_monitor_metrics_具名monitor_obj_id(ana_rpc):
     ana_rpc.monitor_metrics("obj1", extra=1)
     assert _last(ana_rpc.client) == ("monitor_metrics", (), {"monitor_obj_id": "obj1", "extra": 1})

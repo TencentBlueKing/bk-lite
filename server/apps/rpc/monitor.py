@@ -82,6 +82,10 @@ class MonitorOperationAnaRpc(BaseOperationAnaRpc):
         """统计全部监控对象实例数量（不过滤权限）"""
         return self.client.run("monitor_object_instance_count", **kwargs)
 
+    def license_instance_count(self, **kwargs):
+        """许可管理专用：已启用且属于收费对象目录的监控资产实例数量。"""
+        return self.client.run("license_monitor_instance_count", **kwargs)
+
     def monitor_metrics(self, monitor_obj_id: str, **kwargs):
         """查询指标信息"""
         return self.client.run("monitor_metrics", monitor_obj_id=monitor_obj_id, **kwargs)

@@ -41,6 +41,7 @@ EXPECTED_MONITOR_NATS_HANDLER_NAMES = frozenset(
         "monitor_instance_metrics",
         "monitor_metrics",
         "monitor_object_instance_count",
+        "license_monitor_instance_count",
         "monitor_object_instances",
         "monitor_objects",
         "query_latest_active_alerts",
@@ -108,6 +109,37 @@ class TestMonitorObjectInstanceCount:
         MonitorInstance.objects.create(id="('c',)", name="c", monitor_object=obj, is_deleted=True)
         out = nm.monitor_object_instance_count()
         assert out["data"]["NMCntObj"] == 2
+
+
+class TestLicenseMonitorInstanceCount:
+    def test_counts_enabled_catalog_instances_only(self):
+        host = MonitorObject.objects.create(name="Host", level="base")
+        pod = MonitorObject.objects.create(name="Pod", level="derivative")
+        cluster = MonitorObject.objects.create(name="Cluster", level="base")
+        mysql = MonitorObject.objects.create(name="Mysql", level="base")
+        MonitorInstance.objects.create(id="('h1',)", name="h1", monitor_object=host, is_active=True)
+        MonitorInstance.objects.create(id="('h2',)", name="h2", monitor_object=host, is_active=True)
+        MonitorInstance.objects.create(id="('h-off',)", name="h-off", monitor_object=host, is_active=False)
+        MonitorInstance.objects.create(id="('h-del',)", name="h-del", monitor_object=host, is_deleted=True)
+        MonitorInstance.objects.create(id="('pod1',)", name="pod1", monitor_object=pod, is_active=True)
+        MonitorInstance.objects.create(id="('c1',)", name="c1", monitor_object=cluster, is_active=True)
+        MonitorInstance.objects.create(id="('db1',)", name="db1", monitor_object=mysql, is_active=True)
+
+        out = nm.license_monitor_instance_count()
+
+        assert out["result"] is True
+        assert out["data"]["Host"] == 2
+        assert out["data"]["Mysql"] == 1
+        assert "Pod" not in out["data"]
+        assert "Cluster" not in out["data"]
+
+    def test_public_count_still_includes_non_catalog_objects(self):
+        pod = MonitorObject.objects.create(name="Pod", level="derivative")
+        MonitorInstance.objects.create(id="('pod-public',)", name="pod-public", monitor_object=pod)
+        public_out = nm.monitor_object_instance_count()
+        license_out = nm.license_monitor_instance_count()
+        assert public_out["data"]["Pod"] == 1
+        assert "Pod" not in license_out["data"]
 
 
 class TestMonitorMetricsHandler:

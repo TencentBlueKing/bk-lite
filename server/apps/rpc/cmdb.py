@@ -134,6 +134,10 @@ class CMDB(object):
         return_data = self.client.run("model_inst_count", **kwargs)
         return return_data
 
+    def license_instance_count(self, **kwargs):
+        """许可管理专用：原生自动发现的收费模型实例数量。"""
+        return self.client.run("license_cmdb_instance_count", **kwargs)
+
     def get_monitor_ids_by_inst_uuids(self, **kwargs):
         return self.client.run("get_monitor_ids_by_inst_uuids", **kwargs)
 

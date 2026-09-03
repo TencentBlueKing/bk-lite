@@ -22,6 +22,7 @@ MONITOR_NATS_HANDLER_NAMES = frozenset(
         "monitor_instance_metrics",
         "monitor_metrics",
         "monitor_object_instance_count",
+        "license_monitor_instance_count",
         "monitor_object_instances",
         "monitor_objects",
         "query_latest_active_alerts",

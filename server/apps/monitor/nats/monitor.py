@@ -692,6 +692,24 @@ def monitor_object_instance_count(*args, **kwargs):
 
 
 @nats_client.register
+def license_monitor_instance_count(*args, **kwargs):
+    """许可管理专用：已启用且属于收费对象目录的监控资产实例数量。"""
+    from apps.monitor.constants.license_catalog import MONITOR_LICENSE_OBJECT_NAMES
+
+    queryset = (
+        MonitorInstance.objects.filter(
+            is_deleted=False,
+            is_active=True,
+            monitor_object__name__in=MONITOR_LICENSE_OBJECT_NAMES,
+        )
+        .values("monitor_object__name")
+        .annotate(instance_count=Count("id"))
+    )
+    data = {item["monitor_object__name"]: item["instance_count"] for item in queryset}
+    return {"result": True, "data": data, "message": ""}
+
+
+@nats_client.register
 def monitor_metrics(monitor_obj_id: str, *args, **kwargs):
     """查询指标信息"""
     logger.info("=== monitor_metrics called , monitor_obj_id={}, args={}, kwargs={}===".format(monitor_obj_id, args, kwargs))
