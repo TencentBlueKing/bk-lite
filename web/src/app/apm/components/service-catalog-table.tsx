@@ -71,6 +71,7 @@ export default function ServiceCatalogTable({
         </Space>
       ),
       key: 'service',
+      width: '24%',
       render: (_, item) => {
         const silent = item.status === 'silent';
         const href = item.environment

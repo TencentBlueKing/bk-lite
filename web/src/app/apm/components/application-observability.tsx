@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { PlusOutlined } from '@ant-design/icons';
 import { Button, Modal, Segmented, Typography, message } from 'antd';
 import useApmApi from '@/app/apm/api';
+import ApmPageBreadcrumb from '@/app/apm/components/apm-page-breadcrumb';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import {
@@ -42,9 +43,15 @@ interface KeyInfoItem {
 export default function ApplicationObservability({
   applicationId,
   showAddIngest = false,
+  parentHref = '/apm/services',
+  parentLabel,
+  parentAriaLabel,
 }: {
   applicationId: string;
   showAddIngest?: boolean;
+  parentHref?: string;
+  parentLabel?: string;
+  parentAriaLabel?: string;
 }) {
   const { t } = useTranslation();
   const searchParams = useSearchParams();
@@ -217,23 +224,37 @@ export default function ApplicationObservability({
       {state === 'ready' && application ? (
         <div className="flex flex-col gap-3">
           <div className="grid gap-3 xl:grid-cols-3">
-            <ApmSurface className="min-w-0 xl:col-span-2" padding="none">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border)] px-4 py-3">
-                <div className="flex min-w-0 items-center gap-2">
-                  <Typography.Text strong>{t('apm.applications.topology', '应用服务拓扑')}</Typography.Text>
-                  <Typography.Text type="secondary" className="min-w-0 truncate !text-xs">
-                    {application.name}
+            <ApmSurface className="min-w-0 overflow-hidden !rounded-xl shadow-2xs xl:col-span-2" padding="none">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-3.5">
+                <div className="min-w-0">
+                  <ApmPageBreadcrumb
+                    parentHref={parentHref}
+                    parentLabel={parentLabel ?? t('apm.common.application', '应用')}
+                    parentAriaLabel={parentAriaLabel ?? t('apm.applications.backToApplicationCatalog', '返回应用目录')}
+                    current={(
+                      <Typography.Title level={2} className="!mb-0 !truncate !text-base !font-semibold">
+                        {application.name}
+                      </Typography.Title>
+                    )}
+                  />
+                  <Typography.Text type="secondary" className="mt-0.5 block !text-xs">
+                    {t('apm.applications.topology', '应用服务拓扑')}
                   </Typography.Text>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Typography.Text type="secondary" className="!text-xs">{t('apm.common.timeWindow', '时间窗')}</Typography.Text>
-                  <Segmented<TimeWindow>
-                    aria-label={t('apm.services.metricWindow', '服务指标时间窗口')}
-                    options={['15m', '1h', '4h', '1d', '7d']}
-                    size="small"
-                    value={timeWindow}
-                    onChange={setTimeWindow}
-                  />
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <div className="flex items-center gap-1.5">
+                    <Typography.Text type="secondary" className="!text-xs">{t('apm.common.timeWindow', '时间窗')}</Typography.Text>
+                    <Segmented<TimeWindow>
+                      aria-label={t('apm.services.metricWindow', '服务指标时间窗口')}
+                      options={['15m', '1h', '4h', '1d', '7d']}
+                      size="small"
+                      value={timeWindow}
+                      onChange={setTimeWindow}
+                    />
+                  </div>
+
+                  <div className="h-4 w-px bg-[var(--color-border)]" aria-hidden="true" />
+
                   <Segmented<TopologyLayoutMode>
                     aria-label={t('apm.topology.layout', '拓扑布局')}
                     options={[
@@ -244,10 +265,14 @@ export default function ApplicationObservability({
                     value={layout}
                     onChange={setLayout}
                   />
+
                   {showAddIngest ? (
-                    <Link href={`/apm/integration/add?application_id=${encodeURIComponent(application.application_id)}`}>
-                      <Button type="primary" icon={<PlusOutlined aria-hidden="true" />} size="small">{t('apm.applications.addIngest', '添加接入')}</Button>
-                    </Link>
+                    <>
+                      <div className="h-4 w-px bg-[var(--color-border)]" aria-hidden="true" />
+                      <Link href={`/apm/integration/add?application_id=${encodeURIComponent(application.application_id)}`}>
+                        <Button type="primary" icon={<PlusOutlined aria-hidden="true" />} size="small">{t('apm.applications.addIngest', '添加接入')}</Button>
+                      </Link>
+                    </>
                   ) : null}
                 </div>
               </div>
@@ -270,19 +295,19 @@ export default function ApplicationObservability({
                 </div>
               )}
             </ApmSurface>
-            <ApmSurface>
-              <Typography.Text strong>{t('apm.applications.keyInfo', '关键信息')}</Typography.Text>
-              <div className="mt-3 grid grid-cols-2 gap-3">
+            <ApmSurface className="!rounded-xl shadow-2xs">
+              <Typography.Text strong className="text-sm">{t('apm.applications.keyInfo', '关键信息')}</Typography.Text>
+              <div className="mt-3 grid grid-cols-2 gap-2.5">
                 {keyInfo.map((item) => (
-                  <div key={item.label} className="rounded-lg bg-[var(--color-fill-1)] p-3">
+                  <div key={item.label} className="flex flex-col gap-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-fill-1)]/40 p-3 transition-all hover:border-[var(--color-primary)] hover:bg-[var(--color-bg)] hover:shadow-sm">
                     <Typography.Text type="secondary" className="block !text-xs">{item.label}</Typography.Text>
-                    <div className="mt-1 text-xl font-semibold tabular-nums">{item.value}</div>
+                    <div className="text-lg font-semibold tabular-nums text-[var(--color-text-1)]">{item.value}</div>
                   </div>
                 ))}
               </div>
             </ApmSurface>
           </div>
-          <ApmSurface>
+          <ApmSurface className="!rounded-xl shadow-2xs">
             <div className="mb-4">
               <Typography.Text strong>{t('apm.applications.childServices', '下属服务')}</Typography.Text>
               <Typography.Text type="secondary" className="ml-2 !text-xs">{t('apm.common.serviceCount', '共 {count} 个', { count: services.length })}</Typography.Text>

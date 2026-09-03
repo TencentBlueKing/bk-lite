@@ -35,7 +35,7 @@ export const TOPOLOGY_NODE_CARD = {
   minWidth: 176,
   widthSpan: 28,
   height: 48,
-  radius: 6,
+  radius: 8,
   iconSize: 20,
   iconPaddingX: 10,
   nameOffsetX: 40,
@@ -332,7 +332,8 @@ export const buildTopologyEdgeGeometry = (
     const endY = target.y - ySign * (target.radius + 9);
     const midY = (startY + endY) / 2 + (reciprocal ? 18 : 0);
     const spanX = Math.abs(endX - startX);
-    const corner = Math.min(10, spanX / 2, Math.abs(endY - startY) / 4);
+    const deltaY = Math.abs(endY - startY);
+    const corner = Math.min(48, spanX / 2, deltaY / 2.2);
     const path = spanX < 1
       ? `M ${roundCoordinate(startX)} ${roundCoordinate(startY)} L ${roundCoordinate(endX)} ${roundCoordinate(endY)}`
       : `M ${roundCoordinate(startX)} ${roundCoordinate(startY)} L ${roundCoordinate(startX)} ${roundCoordinate(midY - ySign * corner)} Q ${roundCoordinate(startX)} ${roundCoordinate(midY)} ${roundCoordinate(startX + Math.sign(endX - startX) * corner)} ${roundCoordinate(midY)} L ${roundCoordinate(endX - Math.sign(endX - startX) * corner)} ${roundCoordinate(midY)} Q ${roundCoordinate(endX)} ${roundCoordinate(midY)} ${roundCoordinate(endX)} ${roundCoordinate(midY + ySign * corner)} L ${roundCoordinate(endX)} ${roundCoordinate(endY)}`;
@@ -352,7 +353,9 @@ export const buildTopologyEdgeGeometry = (
   const direct = unitVector(source.x, source.y, target.x, target.y);
   const midpointX = (source.x + target.x) / 2;
   const midpointY = (source.y + target.y) / 2;
-  const curveOffset = reciprocal ? 28 : 0;
+  const distance = Math.hypot(target.x - source.x, target.y - source.y);
+  const baseCurve = Math.min(36, Math.max(16, distance * 0.14));
+  const curveOffset = reciprocal ? 40 : baseCurve;
   const controlX = midpointX - direct.y * curveOffset;
   const controlY = midpointY + direct.x * curveOffset;
   const sourceDirection = unitVector(source.x, source.y, controlX, controlY);
@@ -492,6 +495,7 @@ export const topologyCardsOverlap = (
 export const fitTopologyView = (
   nodes: PositionedApmTopologyNode[],
   zoom = 1,
+  canvasSize: { width: number; height: number } = TOPOLOGY_CANVAS_SIZE,
 ): { x: number; y: number; k: number } => {
   if (!nodes.length) return { x: 0, y: 0, k: zoom };
   const halfW = (TOPOLOGY_NODE_CARD.minWidth + TOPOLOGY_NODE_CARD.widthSpan) / 2;
@@ -502,10 +506,10 @@ export const fitTopologyView = (
   const maxY = Math.max(...nodes.map((node) => node.y + halfH));
   const width = Math.max(maxX - minX, 1);
   const height = Math.max(maxY - minY, 1);
-  const k = Math.min(zoom, TOPOLOGY_CANVAS_SIZE.width / width, TOPOLOGY_CANVAS_SIZE.height / height);
+  const k = Math.min(zoom, canvasSize.width / width, canvasSize.height / height);
   return {
     k,
-    x: (TOPOLOGY_CANVAS_SIZE.width - width * k) / 2 - minX * k,
-    y: (TOPOLOGY_CANVAS_SIZE.height - height * k) / 2 - minY * k,
+    x: (canvasSize.width - width * k) / 2 - minX * k,
+    y: (canvasSize.height - height * k) / 2 - minY * k,
   };
 };

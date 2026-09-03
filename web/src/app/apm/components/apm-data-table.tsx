@@ -17,19 +17,19 @@ const DEFAULT_PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 export const APM_TABLE_COLUMN_WIDTHS = {
   actionGroup: 192,
   actionPair: 160,
-  compact: 104,
-  entryService: 152,
-  metric: 112,
-  metricWide: 120,
+  compact: 120,
+  entryService: 168,
+  metric: 132,
+  metricWide: 152,
   organization: 160,
-  progress: 176,
-  relativeTime: 112,
-  resource: 168,
+  progress: 260,
+  relativeTime: 128,
+  resource: 220,
   singleAction: 96,
-  status: 96,
+  status: 100,
   timestamp: 168,
   traceId: 288,
-  trend: 96,
+  trend: 104,
 } as const;
 
 type ApmDataTableProps<RecordType extends object> = Omit<TableProps<RecordType>, 'bordered'> & {

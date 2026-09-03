@@ -128,6 +128,17 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+describe('APM 服务详情页头', () => {
+  it('用面包屑「服务」回到服务目录，而不是依赖已选中的二级菜单', async () => {
+    renderWithApmIntl(<ApmServiceDetailPage />);
+
+    const catalogLink = await screen.findByRole('link', { name: '返回服务目录' });
+    expect(catalogLink.getAttribute('href')).toBe('/apm/services?perspective=service');
+    expect(catalogLink.textContent).toBe('服务');
+    expect(screen.getByRole('navigation', { name: '页面路径' })).not.toBeNull();
+  }, 15_000);
+});
+
 describe('APM 服务详情部署 Tab', () => {
   it('进入部署 Tab 后展示推断部署事件而不是占位文案', async () => {
     const user = userEvent.setup();

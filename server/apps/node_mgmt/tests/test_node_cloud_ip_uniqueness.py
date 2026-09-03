@@ -259,15 +259,40 @@ def test_node_model_has_no_cloud_ip_schema_uniqueness():
     assert "ip" not in field_names
 
 
-def test_heartbeat_ip_rewrite_still_updates_when_target_ip_is_free(monkeypatch):
-    region = CloudRegion.objects.create(name="uniqueness-heartbeat-rewrite")
-    node = _create_node(region, "10.0.0.10", "rewrite-node")
+def test_heartbeat_does_not_rewrite_host_ip_from_sidecar_when_target_ip_is_free(monkeypatch):
+    region = CloudRegion.objects.create(name="uniqueness-heartbeat-host-freeze")
+    node = _create_node(region, "10.0.0.10", "rewrite-host")
     monkeypatch.setattr(Sidecar, "trigger_converge_tasks_if_needed", lambda *args, **kwargs: None)
 
     response = Sidecar.update_node_client(
         _heartbeat_request(node.name, _node_details(region.id, "10.0.0.20")),
         node.id,
     )
+
+    node.refresh_from_db()
+    assert response.status_code == 202
+    assert node.ip == "10.0.0.10"
+    assert Node.objects.filter(cloud_region=region, ip="10.0.0.10").count() == 1
+    assert Node.objects.filter(id=node.id).count() == 1
+
+
+def test_heartbeat_rewrites_container_ip_when_target_ip_is_free(monkeypatch):
+    region = CloudRegion.objects.create(name="uniqueness-heartbeat-container-rewrite")
+    node = _create_node(
+        region,
+        "10.0.0.10",
+        "rewrite-container",
+        node_type=ControllerConstants.NODE_TYPE_CONTAINER,
+    )
+    monkeypatch.setattr(Sidecar, "trigger_converge_tasks_if_needed", lambda *args, **kwargs: None)
+    details = _node_details(region.id, "10.0.0.20")
+    details["tags"] = [
+        f"zone:{region.id}",
+        f"{ControllerConstants.INSTALL_METHOD_TAG}:{ControllerConstants.MANUAL}",
+        f"{ControllerConstants.NODE_TYPE_TAG}:{ControllerConstants.NODE_TYPE_CONTAINER}",
+    ]
+
+    response = Sidecar.update_node_client(_heartbeat_request(node.name, details), node.id)
 
     node.refresh_from_db()
     assert response.status_code == 202

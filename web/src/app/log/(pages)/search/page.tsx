@@ -140,6 +140,7 @@ const SearchView: React.FC = () => {
   const [hasSearchText, setHasSearchText] = useState<boolean>(!!queryText);
   const [frequence, setFrequence] = useState<number>(0);
   const [defaultSearchText, setDefaultSearchText] = useState<string>(queryText);
+  const [highlightQuery, setHighlightQuery] = useState<string>(queryText);
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
   const [queryTime, setQueryTime] = useState<Date>(new Date());
   const [queryEndTime, setQueryEndTime] = useState<Date>(new Date());
@@ -343,6 +344,7 @@ const SearchView: React.FC = () => {
     if (!extra?.logGroups?.length && !groups.length) {
       return message.error(t('log.search.searchError'));
     }
+    setHighlightQuery(extra?.text || searchTextRef.current || '*');
     setTableData([]);
     setChartData([]);
     setQueryTime(new Date());
@@ -379,6 +381,7 @@ const SearchView: React.FC = () => {
   };
 
   const handleSearch = () => {
+    setHighlightQuery(searchTextRef.current || '*');
     if (isList) {
       onRefresh();
       return;
@@ -733,6 +736,7 @@ const SearchView: React.FC = () => {
                   loading={tableLoading}
                   dataSource={tableData}
                   fields={columnFields}
+                  highlightQuery={highlightQuery}
                   scroll={{ x: 'calc(100vw-350px)', y: scrollHeight }}
                   addToQuery={addToQuery}
                   onCreateExtractor={(row) => {
@@ -748,6 +752,7 @@ const SearchView: React.FC = () => {
               ref={terminalRef}
               className="h-[calc(100vh-244px)]"
               query={getParams()}
+              highlightQuery={highlightQuery}
               fetchData={(val) => setTerminalLoading(val)}
             />
           </Spin>
