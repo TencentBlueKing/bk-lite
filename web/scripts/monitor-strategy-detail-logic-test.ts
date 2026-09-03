@@ -14,6 +14,9 @@ import {
   insertAlertNameVariableAtCursor,
   isVacantThresholdUnit,
   pruneNoticeUsers,
+  collectMetricQueryTexts,
+  resolveFunctionDelayMinutes,
+  scheduleValueToMinutes,
   resolveFormulaResultUnit,
   resolveEffectiveCalculationUnit,
   resolveInitialMetricPluginId,
@@ -762,6 +765,71 @@ assert.deepEqual(
     value: 'api${metric_name}警',
     cursor: 3 + '${metric_name}'.length,
   }
+);
+
+assert.equal(scheduleValueToMinutes(5, 'min'), 5);
+assert.equal(scheduleValueToMinutes(1, 'hour'), 60);
+assert.equal(scheduleValueToMinutes(null, 'min'), 0);
+
+assert.equal(
+  resolveFunctionDelayMinutes(['sum(cpu_usage{__$labels__}) by (instance_id)']),
+  null
+);
+assert.equal(
+  resolveFunctionDelayMinutes([
+    'sum(rate(net_bytes_recv{__$labels__}[5m])) by (instance_id)',
+  ]),
+  5
+);
+assert.equal(
+  resolveFunctionDelayMinutes([
+    'sum(rate(net_bytes_recv{__$labels__}[30s])) by (instance_id)',
+  ]),
+  1
+);
+assert.equal(
+  resolveFunctionDelayMinutes([
+    'sum(rate(a{__$labels__}[5m]))',
+    'sum(rate(b{__$labels__}[15m]))',
+  ]),
+  15
+);
+assert.equal(
+  resolveFunctionDelayMinutes([
+    'sum(rate(net_bytes_recv{__$labels__}[__$window__])) by (instance_id)',
+  ], 5),
+  5
+);
+assert.equal(
+  resolveFunctionDelayMinutes([
+    'sum(rate(net_bytes_recv{__$labels__}[__$window__])) by (instance_id)',
+  ], 0),
+  null
+);
+assert.equal(
+  resolveFunctionDelayMinutes([
+    'avg_over_time(sqlserver_cpu{__$labels__}[1h:1m])',
+  ]),
+  60
+);
+
+assert.deepEqual(
+  collectMetricQueryTexts({
+    rows: [{ metricId: 1, metricName: 'cpu' }],
+    metrics: [
+      { id: 1, name: 'cpu', query: 'rate(cpu[5m])' },
+      { id: 2, name: 'mem', query: 'mem_used' },
+    ] as any,
+    formulaExpression: 'a / b * 100',
+  }),
+  ['rate(cpu[5m])', 'a / b * 100']
+);
+assert.deepEqual(
+  collectMetricQueryTexts({
+    rows: [{ metricId: 1, metricName: 'cpu' }],
+    metrics: [{ id: 1, name: 'cpu', query: 'rate(cpu[5m])' }] as any,
+  }),
+  ['rate(cpu[5m])']
 );
 
 console.log('monitor-strategy-detail logic validation passed');

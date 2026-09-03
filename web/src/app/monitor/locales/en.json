@@ -180,6 +180,7 @@
       "turnedOn": "On",
       "turnedOff": "Off",
       "noDataAlertTip": "Trigger a no-data alert when the metric query returns empty.",
+      "noDataFunctionDelayTip": "The current metric uses function calculation and is expected to have about {x} minutes of data delay. No-data alerts may fire later accordingly.",
       "noDataPeriod": "No-data Period",
       "noDataPeriodRequired": "Enter a no-data period",
       "selectNotificationChannel": "Select a notification channel",

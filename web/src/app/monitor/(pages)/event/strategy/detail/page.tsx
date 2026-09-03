@@ -58,12 +58,15 @@ import {
   getThresholdUnitOnCalculationUnitChange,
   pruneNoticeUsers,
   shouldRequireNoticeUsers,
+  collectMetricQueryTexts,
   resolveEffectiveCalculationUnit,
+  resolveFunctionDelayMinutes,
   resolveInitialMetricPluginId,
   resolveThresholdUnit,
   resolveUnitOnMetricSelect,
   restoreCalculationUnitState,
-  scaleThresholdValuesForUnitChange
+  scaleThresholdValuesForUnitChange,
+  scheduleValueToMinutes
 } from './strategyDetailUtils';
 import { MetricExpressionRow } from './metricExpressionTypes';
 import {
@@ -236,6 +239,26 @@ const StrategyOperation = () => {
     calculationUnit: effectiveCalculationUnit,
     unitList
   });
+  const functionDelayMinutes = useMemo(
+    () =>
+      resolveFunctionDelayMinutes(
+        collectMetricQueryTexts({
+          rows: metricRows,
+          metrics,
+          formulaExpression:
+            metricExpressionMode === 'formula' ? formulaExpression : undefined
+        }),
+        scheduleValueToMinutes(period, periodUnit)
+      ),
+    [
+      formulaExpression,
+      metricExpressionMode,
+      metricRows,
+      metrics,
+      period,
+      periodUnit
+    ]
+  );
 
   useEffect(() => {
     if (!unitList.length) return;
@@ -1265,6 +1288,7 @@ const StrategyOperation = () => {
                           noDataRecoveryUnit={noDataRecoveryUnit}
                           noDataAlertLevel={noDataAlertLevel}
                           noDataAlertName={noDataAlertName}
+                          functionDelayMinutes={functionDelayMinutes}
                           metricUnit={
                             metrics.find((item) => item.name === metric)
                               ?.unit || null

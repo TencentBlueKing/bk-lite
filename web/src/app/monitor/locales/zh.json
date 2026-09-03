@@ -180,6 +180,7 @@
       "turnedOn": "开启",
       "turnedOff": "关闭",
       "noDataAlertTip": "当指标查询结果为空时触发无数据告警。",
+      "noDataFunctionDelayTip": "当前指标使用了函数计算，预计存在约 {x} 分钟的数据延迟，请注意无数据告警的触发时间可能相应延后。",
       "noDataPeriod": "无数据周期",
       "noDataPeriodRequired": "请输入无数据周期",
       "selectNotificationChannel": "请选择通知渠道",

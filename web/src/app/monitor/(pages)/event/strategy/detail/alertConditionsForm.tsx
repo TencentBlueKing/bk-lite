@@ -33,6 +33,7 @@ interface AlertConditionsFormProps {
   noDataRecoveryUnit: string;
   noDataAlertLevel: string;
   noDataAlertName: string;
+  functionDelayMinutes: number | null;
   metricUnit: string | null;
   isFormulaMode: boolean;
   onEnableAlertsChange: (val: string[]) => void;
@@ -55,6 +56,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   nodataUnit,
   noDataAlertLevel,
   noDataAlertName,
+  functionDelayMinutes,
   metricUnit,
   isFormulaMode,
   onThresholdChange,
@@ -109,6 +111,14 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
 
   // 是否显示无数据告警名称（选择了非"不触发"的选项时显示）
   const showNoDataAlertName = noDataAlertLevel && noDataAlertLevel !== 'none';
+  const functionDelayTip =
+    showNoDataAlertName && functionDelayMinutes != null
+      ? t(
+          'monitor.events.noDataFunctionDelayTip',
+          '当前指标使用了函数计算，预计存在约 {x} 分钟的数据延迟，请注意无数据告警的触发时间可能相应延后。',
+          { x: functionDelayMinutes }
+        )
+      : undefined;
 
   return (
     <>
@@ -206,6 +216,13 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                   <span className="w-[100px]">
                     {t('monitor.events.noDataAlertLevel')}
                   </span>
+                }
+                extra={
+                  functionDelayTip ? (
+                    <span className="text-[12px] text-[var(--color-text-3)]">
+                      {functionDelayTip}
+                    </span>
+                  ) : undefined
                 }
               >
                 <div className="flex items-center">
