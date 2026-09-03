@@ -1,9 +1,52 @@
 import asyncio
+import gc
 import time
+import weakref
 
 import pytest
 from core.collection.metrics import CollectionMetrics
 from core.collection.scheduler import CollectionScheduler
+
+
+@pytest.mark.asyncio
+async def test_streaming_result_consumer_releases_completed_values_before_run_finishes():
+    class Payload:
+        pass
+
+    scheduler = CollectionScheduler(max_in_flight=1)
+    release = asyncio.Event()
+    consumed = asyncio.Event()
+    second_started = asyncio.Event()
+    references = []
+
+    async def handle(index):
+        if index == 1:
+            second_started.set()
+            await release.wait()
+        return Payload()
+
+    def consume(result):
+        references.append(weakref.ref(result))
+        consumed.set()
+
+    run = asyncio.create_task(
+        scheduler.execute(
+            "streaming-results",
+            range(2),
+            handle,
+            consume_result=consume,
+        )
+    )
+    await consumed.wait()
+    await second_started.wait()
+    await asyncio.sleep(0)
+    gc.collect()
+
+    assert references[0]() is None
+
+    release.set()
+    assert await run == ()
+    await scheduler.shutdown()
 
 
 @pytest.mark.asyncio
@@ -487,6 +530,40 @@ async def test_production_workload_weights_reach_100_30_30():
 
     release.set()
     await asyncio.gather(*runs)
+    await scheduler.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_snmp_only_backlog_uses_all_160_global_slots():
+    scheduler = CollectionScheduler(
+        max_in_flight=160,
+        capacity_group_limits={"snmp": 160},
+    )
+    release = asyncio.Event()
+
+    async def handle(item):
+        await release.wait()
+        return item
+
+    run = asyncio.create_task(
+        scheduler.execute(
+            "snmp-160",
+            range(320),
+            handle,
+            capacity_group="snmp",
+        )
+    )
+    deadline = time.monotonic() + 2
+    while scheduler.active < 160 and time.monotonic() < deadline:
+        await asyncio.sleep(0)
+
+    assert scheduler.active == 160
+    assert scheduler.active_by_capacity_group == {"snmp": 160}
+    assert scheduler.peak == 160
+
+    release.set()
+    await run
+    assert scheduler.peak == 160
     await scheduler.shutdown()
 
 

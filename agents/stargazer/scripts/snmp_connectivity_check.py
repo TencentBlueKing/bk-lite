@@ -139,6 +139,7 @@ def local_route_probe(host: str, port: int) -> tuple[bool, str]:
 
 async def _snmp_get(host: str, port: int, timeout: float, retries: int, credential: dict):
     """按生产 SnmpFacts 的认证/传输参数，GET 同一个 sysName.0 OID。"""
+    from core.infra.snmp_engine_pool import shared_snmp_engine
     from plugins.inputs.network import snmp_facts
 
     if credential["version"] in {"v2", "v2c"}:
@@ -167,8 +168,7 @@ async def _snmp_get(host: str, port: int, timeout: float, retries: int, credenti
             }[credential["privacy"]],
         )
     target = snmp_facts.UdpTransportTarget((host, port), timeout=timeout, retries=retries)
-    engine = snmp_facts.SnmpEngine()
-    try:
+    async with shared_snmp_engine(auth, target=(host, port)) as engine:
         return await snmp_facts.getCmd(
             engine,
             auth,
@@ -177,8 +177,6 @@ async def _snmp_get(host: str, port: int, timeout: float, retries: int, credenti
             snmp_facts.ObjectType(snmp_facts.ObjectIdentity(SYS_NAME_OID)),
             lookupMib=False,
         )
-    finally:
-        snmp_facts._close_snmp_engine(engine)
 
 
 def _safe_text(value, *, limit: int = 160) -> str:

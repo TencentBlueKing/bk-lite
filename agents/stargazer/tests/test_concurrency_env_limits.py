@@ -21,6 +21,7 @@ def test_default_concurrency_matches_production_baseline():
     assert DEFAULT_TARGET_TASK_WINDOW == 160
     assert TargetExecutorSettings().max_active_targets == 160
     assert TargetExecutorSettings().target_task_window == 160
+    assert CollectionApplicationSettings().snmp_max_in_flight == 160
 
 
 def test_concurrency_limit_parser_keeps_zero_for_low_level_compatibility(monkeypatch):
@@ -50,6 +51,7 @@ def test_application_settings_from_env_reads_concurrency(monkeypatch):
     assert settings.monitoring_max_active_targets == 30
     assert settings.network_topology_max_active_targets == 30
     assert settings.target_task_window == 160
+    assert settings.snmp_max_in_flight == 160
 
     monkeypatch.delenv("MAX_ACTIVE_TARGETS", raising=False)
     monkeypatch.delenv("CONFIGURATION_MAX_ACTIVE_TARGETS", raising=False)
@@ -176,6 +178,10 @@ def test_env_example_uses_split_timeout_contract():
     assert "NATS_DRAIN_TIMEOUT_SECONDS=5" in example
     assert "CAPACITY_LOG_INTERVAL=180" in example
     assert "MAX_ACTIVE_TARGETS=160" in example
+    assert "SNMP_MAX_IN_FLIGHT=160" in example
+    assert "SNMP_ENGINE_MAX_TARGETS=2000" in example
+    assert "SNMP_ENGINE_IDLE_SECONDS=300" in example
+    assert "SNMP_ENGINE_TOTAL_TARGET_BUDGET=4000" in example
     assert "CONFIGURATION_MAX_ACTIVE_TARGETS=100" in example
     assert "MONITORING_MAX_ACTIVE_TARGETS=30" in example
     assert "NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS=30" in example
