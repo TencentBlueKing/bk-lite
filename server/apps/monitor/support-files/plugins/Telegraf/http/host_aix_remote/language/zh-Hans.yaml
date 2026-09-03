@@ -1,5 +1,5 @@
 Host AIX Remote:
-  name: 主机 AIX 远程采集
+  name: AIX主机远程采集
   desc: 由 Linux 采集节点按采集间隔 SSH 到 AIX，执行系统命令。采集 CPU（含 LPAR）、内存分页与 svmon、负载、进程状态、磁盘容量与 inode、读写与忙碌、网卡和运行时长。目标主机无需安装采集器。表单填写 IP、SSH 用户名（如 root）、密码或私钥、端口（默认 22）、采集间隔和 Linux 采集节点。不采集硬件清单、lastlog、lsof 和连接表。无需选择版本，版本自动识别。
 monitor_object:
   Host: 主机

@@ -1,4 +1,4 @@
-# Host AIX Remote
+# AIX Host Remote Collection
 
 This is remote AIX OS monitoring on the Host object. A Linux collect node SSHes to AIX on each interval and runs system commands. The target does not need a collector installed. There is no version picker; the version is detected automatically.
 
