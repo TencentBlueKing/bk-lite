@@ -7,7 +7,7 @@ from apps.monitor.models import MonitorPlugin, MonitorPluginUITemplate
 from apps.monitor.models.monitor_metrics import Metric, MetricGroup
 from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectType
 from apps.monitor.services.instance_facts import InstanceFactResolver
-from apps.monitor.utils.display_fields_seed import build_seed_display_fields
+from apps.monitor.utils.display_fields_seed import build_seed_display_fields, merge_display_fields_bindings
 from apps.monitor.utils.instance_id_keys import resolve_metric_instance_id_keys, resolve_monitor_object_instance_id_keys
 from apps.monitor.utils.node_selector import normalize_node_selector
 
@@ -208,6 +208,8 @@ class MonitorPluginService:
                     metrics,
                 )
             if seeded:
+                if monitor_obj.display_fields:
+                    seeded = merge_display_fields_bindings(monitor_obj.display_fields, seeded)
                 monitor_obj.display_fields = seeded
                 monitor_obj.save(update_fields=["display_fields"])
 

@@ -88,7 +88,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '内存使用率',
       description: '主机内存使用率。',
       unit: 'percent',
-      query: 'mem_used_percent{instance_type="os", __$labels__} or host_mem_used_percent_gauge{instance_type="os", __$labels__} or mem_used_percent_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}',
+      query: 'mem_used_percent{instance_type="os", __$labels__} or host_mem_used_percent_gauge{instance_type="os", __$labels__} or mem_used_percent_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} or mem_used_percent_gauge{instance_type="os", config_type="host_aix_remote", __$labels__}',
       color: '#27c274'
     },
     {
@@ -97,7 +97,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '主机各挂载点磁盘使用率中的最大值（最满分区）。',
       unit: 'percent',
       // ①Telegraf host 按挂载点；②HTTP Remote；③Windows WMI。取 max 作为主机级容量压力信号。
-      query: 'max by (instance_id) (disk_used_percent{instance_type="os", __$labels__} or host_disk_used_percent_gauge{instance_type="os", __$labels__} or disk_used_percent_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__})',
+      query: 'max by (instance_id) (disk_used_percent{instance_type="os", __$labels__} or host_disk_used_percent_gauge{instance_type="os", __$labels__} or disk_used_percent_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} or disk_used_percent_gauge{instance_type="os", config_type="host_aix_remote", __$labels__})',
       color: '#faad14'
     },
     {
