@@ -143,6 +143,12 @@ monitor_object_metric:
     device_flow_top_dst_packets_rate:
       name: Top 目的地址 Flow 包速率
       desc: 按目的地址聚合并排序的 Flow 包速率，用于发现包量异常目标。
+    device_flow_top_src_ip_port_bytes_rate:
+      name: Top 源 IP+端口 Flow 流量速率
+      desc: 按源地址和源端口聚合并排序的 Flow 流量速率，用于发现主要客户端端点。
+    device_flow_top_dst_ip_port_bytes_rate:
+      name: Top 目标 IP+端口 Flow 流量速率
+      desc: 按目的地址和目的端口聚合并排序的 Flow 流量速率，用于发现主要服务端点。
     device_flow_top_conversation_bytes_rate:
       name: Top 会话 Flow 流量速率
       desc: 按源地址、目的地址、协议和目的端口聚合的会话流量排行，用于定位主要通信关系。

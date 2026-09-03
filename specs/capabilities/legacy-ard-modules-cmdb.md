@@ -10,7 +10,7 @@
 ## 2. 数据模型与存储【已实现/已存在】
 | 模型 | 文件 | 说明 |
 |------|------|------|
-| CollectModels / OidMapping | `models/collect_model.py` | 采集任务（SNMP/云/协议/K8s/DB/拓扑），加密凭据，结果 JSON |
+| CollectModels / OidMapping / PortFingerprint | `models/collect_model.py` | 采集任务（SNMP/云/协议/K8s/DB/拓扑），加密凭据，结果 JSON；端口指纹 `(port, target_type)` 唯一 |
 | ChangeRecord | `models/change_record.py` | 变更审计（前后快照、操作类型、场景） |
 | ConfigFileVersion | `models/config_file_version.py` | 配置文件版本，内容存 MinIO |
 | ShowField | `models/show_field.py:7` | 实例列表展示字段配置，按 创建人×model_id 保存 `show_fields` 列表（JSON） |
@@ -19,7 +19,7 @@
 | NodeMgmtSyncConfig / NodeMgmtSyncRun | `models/node_mgmt_sync.py:7,22` | 节点管理同步配置与运行记录（两个独立模型） |
 | CollectTaskCredentialHit | `models/collect_task_credential_hit.py` | 采集任务凭据使用审计 |
 | IPAMReconcileSource | `models/ipam_models.py:7` | IPAM 自动对账来源登记表，记录参与对账的 `(model_id, ip_attr_id)`，默认由迁移预置 `host.ip_addr` 与 `network.ip` |
-| ScanTask / ScanExecution / ScanFamilyRun / ScanHit | `models/scan_model.py:39,115,148,177` | 网段扫描任务、执行、家族运行与命中；允许家族 `network/host/physcial_server/mysql/postgresql/mssql/influxdb`，网段前缀下限 /21 |
+| ScanTask / ScanExecution / ScanFamilyRun / ScanHit | `models/scan_model.py:39,115,148,177` | 网段扫描任务、执行、家族运行与命中；任务勾选 `network/host/physcial_server/database/influxdb`（读取旧 mysql/postgresql/mssql 合并为 database）；触发时 database 按端口指纹拆 mysql/postgresql/mssql 三枪；网段前缀下限 /21 |
 
 **存储**：PostgreSQL（ORM）；**Neo4j / FalkorDB**（关系图谱，驱动实现 `graph/{neo4j,falkordb}.py`，运行期由 `graph/drivers/graph_client.py:46-52` 按环境变量 `FALKORDB_HOST` 动态二选一——设置则用 FalkorDB，否则回落 Neo4j，并非两者并存【已实现/已存在】）；Neo4j 搜索/过滤路径已参数化（`graph/neo4j.py:10,301`，引入 `FORMAT_TYPE_PARAMS + ParameterCollector`，`format_search_params/format_final_params` 返回 `(params_str, query_params)` 元组并以 `session.run(**query_params)` 执行，权限过滤条件同步参数化，该路径的 Cypher 注入风险已消除【已实现/已存在】；但写入与按 id 取详情等路径仍为 f-string 拼接、未参数化——`create_entity` `CREATE (n:{label} {properties_str})`（`:197`）、`MATCH (n) WHERE id(n) = {id}`（`:408`），属局部加固而非全面消除【已实现/待确认风险】）；MinIO（配置文件，`cmdb-config-file` bucket）；VictoriaMetrics（K8s 指标查询，`collection/query_vm.py`）。
 
@@ -54,7 +54,7 @@
 > 证据来源：server/apps/cmdb/services/ipam_edit.py:81-88，server/apps/cmdb/services/ipam_edit.py:104-121，server/apps/cmdb/services/ipam_edit.py:169-245，server/apps/cmdb/views/instance.py:1452-1540　|　同步基线：b98b782a7　|　【已实现】
 
 ## 3. 接口【已实现/已存在】
-`urls.py` 路由组：`classification`/`model`/`instance`/`change_record`/`collect`/`scan`/`config_file_versions`/`oid`/`field_groups`/`user_configs`/`public_enum_libraries`/`subscription`/`node_mgmt_sync`/`collect_tool`/`k8s_setup`；开放端点 `open_api/k8s_setup` 与 `api/open/*`（分类/模型/属性/关联/实例的开放 CRUD）；企业特性 `custom_reporting/{tasks,ingest}`（CE 为扩展门面，实现在企业包）。
+`urls.py` 路由组：`classification`/`model`/`instance`/`change_record`/`collect`/`scan`/`config_file_versions`/`oid`/`port_fingerprint`/`field_groups`/`user_configs`/`public_enum_libraries`/`subscription`/`node_mgmt_sync`/`collect_tool`/`k8s_setup`；开放端点 `open_api/k8s_setup` 与 `api/open/*`（分类/模型/属性/关联/实例的开放 CRUD）；企业特性 `custom_reporting/{tasks,ingest}`（CE 为扩展门面，实现在企业包）。
 
 > 证据来源：server/apps/cmdb/urls.py:27,41-87，server/apps/cmdb/models/scan_model.py:10-22,39　|　同步基线：61bace9f　|　【已实现】
 

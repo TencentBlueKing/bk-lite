@@ -129,6 +129,11 @@ def test_monitor_object_instance_count(ana_rpc):
     assert _last(ana_rpc.client) == ("monitor_object_instance_count", (), {})
 
 
+def test_license_monitor_instance_count(ana_rpc):
+    ana_rpc.license_instance_count()
+    assert _last(ana_rpc.client) == ("license_monitor_instance_count", (), {})
+
+
 def test_monitor_metrics_具名monitor_obj_id(ana_rpc):
     ana_rpc.monitor_metrics("obj1", extra=1)
     assert _last(ana_rpc.client) == ("monitor_metrics", (), {"monitor_obj_id": "obj1", "extra": 1})
@@ -201,4 +206,22 @@ def test_get_host_resource_top(ana_rpc):
         "get_host_resource_top",
         (),
         {"metric_type": "cpu", "instance_ids": ["host-a"]},
+    )
+
+
+def test_get_monitor_instance_list(ana_rpc):
+    ana_rpc.get_monitor_instance_list(user_info={"team": 1}, protocol="netflow")
+    assert _last(ana_rpc.client) == (
+        "get_monitor_instance_list",
+        (),
+        {"user_info": {"team": 1}, "protocol": "netflow"},
+    )
+
+
+def test_query_metric_series(ana_rpc):
+    ana_rpc.query_metric_series(metric="device_flow_bytes_rate", mode="range", instance_ids=["sw-1"])
+    assert _last(ana_rpc.client) == (
+        "query_metric_series",
+        (),
+        {"metric": "device_flow_bytes_rate", "mode": "range", "instance_ids": ["sw-1"]},
     )

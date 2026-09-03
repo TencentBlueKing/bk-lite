@@ -62,6 +62,24 @@ export const useScanApi = () => {
     [post]
   );
 
+  const classifyHits = useCallback(
+    (executionId: number | string, hitIds: number[], cmdbModelId: string) =>
+      post(`/cmdb/api/scan/executions/${executionId}/classify_hits/`, {
+        hit_ids: hitIds,
+        cmdb_model_id: cmdbModelId,
+      }),
+    [post]
+  );
+
+  const rematchSoid = useCallback(
+    (executionId: number | string, soid: string, hitIds?: number[]) =>
+      post(`/cmdb/api/scan/executions/${executionId}/rematch_soid/`, {
+        soid,
+        ...(hitIds?.length ? { hit_ids: hitIds } : {}),
+      }),
+    [post]
+  );
+
   return {
     getScanList,
     getScanDetail,
@@ -73,5 +91,7 @@ export const useScanApi = () => {
     getScanHits,
     generateCollect,
     pushMonitor,
+    classifyHits,
+    rematchSoid,
   };
 };

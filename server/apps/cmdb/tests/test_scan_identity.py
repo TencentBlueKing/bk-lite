@@ -4,7 +4,14 @@ import pytest
 
 from apps.cmdb.collection.collect_plugin.base import CollectBase
 from apps.cmdb.models.collect_model import CollectModels
-from apps.cmdb.services.scan_identity import NETWORK_CI_TYPES, refine_scan_metrics
+from apps.cmdb.services.scan_identity import (
+    NETWORK_CI_TYPES,
+    UNMATCH_CREDENTIAL_FAILED,
+    UNMATCH_EMPTY_SOID,
+    UNMATCH_UNKNOWN_SOID,
+    refine_scan_metrics,
+    unmatch_reason_for_hit,
+)
 
 
 class _StubPlugin(CollectBase):
@@ -89,3 +96,43 @@ def test_mysql_metrics_pass_through():
 
 def test_network_ci_types_are_the_four_exact_models():
     assert NETWORK_CI_TYPES == frozenset({"switch", "router", "firewall", "loadbalance"})
+
+
+def test_unmatch_reason_unknown_soid_when_network_has_soid_but_no_model():
+    hit = SimpleNamespace(family_run=SimpleNamespace(model_id="network"), cmdb_model_id="", soid="1.2.3.999")
+    assert unmatch_reason_for_hit(hit) == UNMATCH_UNKNOWN_SOID
+
+
+def test_unmatch_reason_empty_soid_when_network_has_neither_model_nor_soid():
+    hit = SimpleNamespace(family_run=SimpleNamespace(model_id="network"), cmdb_model_id="", soid="")
+    assert unmatch_reason_for_hit(hit) == UNMATCH_EMPTY_SOID
+
+
+def test_unmatch_reason_blank_when_network_already_classified():
+    hit = SimpleNamespace(family_run=SimpleNamespace(model_id="network"), cmdb_model_id="switch", soid="1.2.3.999")
+    assert unmatch_reason_for_hit(hit) == ""
+
+
+def test_unmatch_reason_blank_for_host_without_ci():
+    hit = SimpleNamespace(family_run=SimpleNamespace(model_id="host"), cmdb_model_id="", soid="", status="success", credential_id="x")
+    assert unmatch_reason_for_hit(hit) == ""
+
+
+def test_unmatch_reason_credential_failed_for_db_placeholder():
+    hit = SimpleNamespace(
+        family_run=SimpleNamespace(model_id="mysql"),
+        cmdb_model_id="",
+        status="failed",
+        credential_id="",
+    )
+    assert unmatch_reason_for_hit(hit) == UNMATCH_CREDENTIAL_FAILED
+
+
+def test_unmatch_reason_blank_after_db_ci_created():
+    hit = SimpleNamespace(
+        family_run=SimpleNamespace(model_id="mysql"),
+        cmdb_model_id="mysql",
+        status="failed",
+        credential_id="",
+    )
+    assert unmatch_reason_for_hit(hit) == ""

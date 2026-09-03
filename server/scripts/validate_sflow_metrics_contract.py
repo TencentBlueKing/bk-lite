@@ -3,7 +3,6 @@ import json
 import sys
 from pathlib import Path
 
-
 SERVER_ROOT = Path(__file__).resolve().parents[1]
 TELEGRAF_ROOT = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
 SFLOW_ROOT = TELEGRAF_ROOT / "sflow"
@@ -31,6 +30,8 @@ TRAFFIC_METRICS = {
     "device_flow_top_dst_bytes_rate": "sflow_bytes",
     "device_flow_top_src_packets_rate": "sflow_packets",
     "device_flow_top_dst_packets_rate": "sflow_packets",
+    "device_flow_top_src_ip_port_bytes_rate": "sflow_bytes",
+    "device_flow_top_dst_ip_port_bytes_rate": "sflow_bytes",
     "device_flow_top_conversation_bytes_rate": "sflow_bytes",
 }
 
@@ -39,6 +40,8 @@ ENDPOINT_METRICS = {
     "device_flow_top_src_packets_rate": "src_ip",
     "device_flow_top_dst_bytes_rate": "dst_ip",
     "device_flow_top_dst_packets_rate": "dst_ip",
+    "device_flow_top_src_ip_port_bytes_rate": "src_ip",
+    "device_flow_top_dst_ip_port_bytes_rate": "dst_ip",
 }
 
 INTERFACE_METRICS = {
@@ -61,9 +64,7 @@ def _metric_by_name(metrics):
 
 
 def _contains_second_pass_sampling(query):
-    return "label_value(" in query and (
-        '"effective_sampling_rate"' in query or '"sflow_sampling_rate"' in query
-    )
+    return "label_value(" in query and ('"effective_sampling_rate"' in query or '"sflow_sampling_rate"' in query)
 
 
 def _validate_file(path):
@@ -122,8 +123,7 @@ def main():
     expected_bytes = PRODUCTION_FRAME_LENGTH * PRODUCTION_EFFECTIVE_SAMPLING_RATE
     if expected_bytes != PRODUCTION_SFLOW_BYTES:
         print(
-            "sample check failed: "
-            f"{PRODUCTION_FRAME_LENGTH} * {PRODUCTION_EFFECTIVE_SAMPLING_RATE} != {PRODUCTION_SFLOW_BYTES}",
+            "sample check failed: " f"{PRODUCTION_FRAME_LENGTH} * {PRODUCTION_EFFECTIVE_SAMPLING_RATE} != {PRODUCTION_SFLOW_BYTES}",
             file=sys.stderr,
         )
         return 1

@@ -9,7 +9,7 @@ from apps.cmdb.constants.constants import INSTANCE, CollectInputMethod, DataClea
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.models.collect_model import CollectModels, normalize_topology_contract
 from apps.cmdb.models.collect_task_credential_hit import CollectTaskCredentialHit
-from apps.cmdb.models.scan_model import ScanExecution, ScanHit, scan_driver_type_for_model, scan_task_type_for_model
+from apps.cmdb.models.scan_model import ScanExecution, ScanHit, resolve_scan_task_credential, scan_driver_type_for_model, scan_task_type_for_model
 from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
 from apps.cmdb.services.collect_service import CollectModelService
 from apps.cmdb.services.instance import InstanceManage
@@ -152,13 +152,7 @@ def _successful_credential_hit_task_id(host: str, credential_id: str) -> int | N
 
 
 def _resolve_credential_item(task, family_model_id: str, credential_id: str) -> dict | None:
-    pool = (task.decrypt_credentials or {}).get(family_model_id) or []
-    if isinstance(pool, dict):
-        pool = [pool]
-    for item in pool:
-        if isinstance(item, dict) and str(item.get("credential_id") or "") == credential_id:
-            return dict(item)
-    return None
+    return resolve_scan_task_credential(task, family_model_id, credential_id)
 
 
 def _unique_task_name(base: str) -> str:

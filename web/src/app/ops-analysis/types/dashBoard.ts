@@ -119,6 +119,11 @@ export interface ValueConfig {
   descriptionField?: string;
   topNLabelField?: string;
   topNValueField?: string;
+  nodeGraphIdentityMode?: 'ip' | 'service';
+  nodeGraphSourceField?: string;
+  nodeGraphTargetField?: string;
+  nodeGraphValueField?: string;
+  nodeGraphTargetPortField?: string;
   unit?: string;
   /** 结构化单位 id（bytesIEC/bps/ms/percent/short…）。设置后启用单位库自动量纲；
    *  未设置时回退到自由文本 unit（向后兼容）。 */

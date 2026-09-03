@@ -4,7 +4,7 @@
 # @Author: windyzhao
 from django_filters import CharFilter, FilterSet
 
-from apps.cmdb.models.collect_model import CollectModels, OidMapping
+from apps.cmdb.models.collect_model import CollectModels, OidMapping, PortFingerprint
 
 
 class CollectModelFilter(FilterSet):
@@ -28,3 +28,12 @@ class OidModelFilter(FilterSet):
     class Meta:
         model = OidMapping
         fields = ["model", "oid", "brand", "device_type"]
+
+
+class PortFingerprintFilter(FilterSet):
+    target_type = CharFilter(field_name="target_type", label="类型")
+    protocol = CharFilter(field_name="protocol", label="协议")
+
+    class Meta:
+        model = PortFingerprint
+        fields = ["target_type", "protocol", "port"]

@@ -963,5 +963,172 @@
         {"key": "name", "title": "告警来源", "value_type": "string", "description": "告警数据中的来源名称，空值归为未知来源"},
         {"key": "value", "title": "告警数量", "value_type": "number", "description": "当前权限范围内该来源的全部告警数量"}
     ]
+},
+{
+    "key": "监控实例列表::monitor/get_monitor_instance_list",
+    "name": "监控实例列表（选项）",
+    "desc": "当前组织权限范围内已接入 Flow 的交换机/路由器/防火墙/负载均衡实例，供统一筛选下拉使用，本身不直接出图",
+    "rest_api": "monitor/get_monitor_instance_list",
+    "tag": ["monitor"],
+    "chart_type": [],
+    "params": [],
+    "field_schema": [
+      {"key": "instance_id", "title": "实例ID", "value_type": "string"},
+      {"key": "display_name", "title": "设备", "value_type": "string"},
+      {"key": "ip", "title": "IP地址", "value_type": "string"},
+      {"key": "object_name", "title": "对象类型", "value_type": "string"},
+      {"key": "enabled_protocols", "title": "已启用协议", "value_type": "string"}
+    ]
+},
+{
+    "key": "受控指标趋势::monitor/query_metric_series",
+    "name": "受控指标趋势",
+    "desc": "按已注册指标名查询所选实例的时间序列；未选实例不退化为全量，不接受原始 PromQL",
+    "rest_api": "monitor/query_metric_series",
+    "tag": ["monitor"],
+    "chart_type": ["line", "bar"],
+    "params": [
+      {
+        "name": "instance_ids",
+        "type": "string",
+        "value": [],
+        "alias_name": "设备",
+        "filterType": "filter",
+        "inputConfig": {
+          "control": "select",
+          "multiple": true,
+          "optionsSource": {
+            "type": "dynamic",
+            "sourceRef": {"type": "rest_api", "value": "monitor/get_monitor_instance_list"},
+            "valueField": "instance_id",
+            "labelField": "display_name"
+          }
+        }
+      },
+      {
+        "name": "metric",
+        "type": "string",
+        "value": "device_flow_bytes_rate",
+        "alias_name": "指标",
+        "filterType": "params",
+        "required": true,
+        "inputConfig": {
+          "control": "select",
+          "componentSwitch": true,
+          "optionsSource": {
+            "type": "static",
+            "staticItems": [
+              {"label": "总流量", "value": "device_flow_bytes_rate"},
+              {"label": "总包速", "value": "device_flow_packets_rate"},
+              {"label": "协议流量", "value": "device_flow_protocol_bytes_rate"}
+            ]
+          }
+        }
+      },
+      {
+        "name": "mode",
+        "type": "string",
+        "value": "range",
+        "alias_name": "查询模式",
+        "filterType": "fixed",
+        "required": true
+      },
+      {
+        "name": "time",
+        "type": "timeRange",
+        "value": 10080,
+        "alias_name": "时间范围",
+        "filterType": "filter"
+      }
+    ],
+    "field_schema": []
+},
+{
+    "key": "受控指标排行::monitor/query_metric_series",
+    "name": "受控指标排行",
+    "desc": "按已注册指标名查询所选实例在时间窗内的瞬时排行或汇总；未选实例不退化为全量，不接受原始 PromQL",
+    "rest_api": "monitor/query_metric_series",
+    "tag": ["monitor"],
+    "chart_type": ["topN", "table", "single", "pie", "nodeGraph"],
+    "params": [
+      {
+        "name": "instance_ids",
+        "type": "string",
+        "value": [],
+        "alias_name": "设备",
+        "filterType": "filter",
+        "inputConfig": {
+          "control": "select",
+          "multiple": true,
+          "optionsSource": {
+            "type": "dynamic",
+            "sourceRef": {"type": "rest_api", "value": "monitor/get_monitor_instance_list"},
+            "valueField": "instance_id",
+            "labelField": "display_name"
+          }
+        }
+      },
+      {
+        "name": "metric",
+        "type": "string",
+        "value": "device_flow_bytes_rate",
+        "alias_name": "指标",
+        "filterType": "params",
+        "required": true,
+        "inputConfig": {
+          "control": "select",
+          "componentSwitch": true,
+          "optionsSource": {
+            "type": "static",
+            "staticItems": [
+              {"label": "总流量", "value": "device_flow_bytes_rate"},
+              {"label": "总包速", "value": "device_flow_packets_rate"},
+              {"label": "平均包大小", "value": "device_flow_avg_packet_size"},
+              {"label": "有效采样率", "value": "device_flow_effective_sampling_rate"},
+              {"label": "协议流量", "value": "device_flow_protocol_bytes_rate"},
+              {"label": "Top 源地址", "value": "device_flow_top_src_bytes_rate"},
+              {"label": "Top 目的地址", "value": "device_flow_top_dst_bytes_rate"},
+              {"label": "Top 源 IP+端口", "value": "device_flow_top_src_ip_port_bytes_rate"},
+              {"label": "Top 目标 IP+端口", "value": "device_flow_top_dst_ip_port_bytes_rate"},
+              {"label": "源端口流量", "value": "device_flow_src_port_bytes_rate"},
+              {"label": "目的端口流量", "value": "device_flow_dst_port_bytes_rate"},
+              {"label": "Top 会话", "value": "device_flow_top_conversation_bytes_rate"}
+            ]
+          }
+        }
+      },
+      {
+        "name": "mode",
+        "type": "string",
+        "value": "instant",
+        "alias_name": "查询模式",
+        "filterType": "fixed",
+        "required": true
+      },
+      {
+        "name": "time",
+        "type": "timeRange",
+        "value": 10080,
+        "alias_name": "时间范围",
+        "filterType": "filter"
+      },
+      {
+        "name": "limit",
+        "type": "number",
+        "value": 10,
+        "alias_name": "返回条数",
+        "filterType": "params"
+      }
+    ],
+    "field_schema": [
+      {"key": "rank", "title": "排名", "value_type": "number"},
+      {"key": "name", "title": "名称", "value_type": "string"},
+      {"key": "value", "title": "指标值", "value_type": "number"},
+      {"key": "src", "title": "源地址", "value_type": "string"},
+      {"key": "dst", "title": "目的地址", "value_type": "string"},
+      {"key": "src_port", "title": "源端口", "value_type": "string"},
+      {"key": "dst_port", "title": "目的端口", "value_type": "string"},
+      {"key": "protocol", "title": "协议", "value_type": "string"}
+    ]
 }
 ]

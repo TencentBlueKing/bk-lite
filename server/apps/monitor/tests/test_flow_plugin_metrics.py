@@ -38,6 +38,8 @@ FLOW_ADVANCED_METRICS = [
     "device_flow_top_dst_bytes_rate",
     "device_flow_top_src_packets_rate",
     "device_flow_top_dst_packets_rate",
+    "device_flow_top_src_ip_port_bytes_rate",
+    "device_flow_top_dst_ip_port_bytes_rate",
     "device_flow_top_conversation_bytes_rate",
 ]
 FLOW_METRICS = FLOW_CORE_METRICS + FLOW_ADVANCED_METRICS
@@ -61,6 +63,8 @@ HIGH_CARDINALITY_METRICS = {
     "device_flow_top_dst_bytes_rate",
     "device_flow_top_src_packets_rate",
     "device_flow_top_dst_packets_rate",
+    "device_flow_top_src_ip_port_bytes_rate",
+    "device_flow_top_dst_ip_port_bytes_rate",
     "device_flow_top_conversation_bytes_rate",
 }
 NETFLOW_PORTABLE_METRICS = {
@@ -80,6 +84,8 @@ NETFLOW_PORTABLE_METRICS = {
     "device_flow_top_dst_bytes_rate": "netflow_in_bytes",
     "device_flow_top_src_packets_rate": "netflow_in_packets",
     "device_flow_top_dst_packets_rate": "netflow_in_packets",
+    "device_flow_top_src_ip_port_bytes_rate": "netflow_in_bytes",
+    "device_flow_top_dst_ip_port_bytes_rate": "netflow_in_bytes",
     "device_flow_top_conversation_bytes_rate": "netflow_in_bytes",
 }
 NETFLOW_INTERFACE_METRICS = {
@@ -106,6 +112,8 @@ SFLOW_TRAFFIC_METRICS = {
     "device_flow_top_dst_bytes_rate": "sflow_bytes",
     "device_flow_top_src_packets_rate": "sflow_packets",
     "device_flow_top_dst_packets_rate": "sflow_packets",
+    "device_flow_top_src_ip_port_bytes_rate": "sflow_bytes",
+    "device_flow_top_dst_ip_port_bytes_rate": "sflow_bytes",
     "device_flow_top_conversation_bytes_rate": "sflow_bytes",
 }
 SFLOW_ENDPOINT_METRICS = {
@@ -113,6 +121,8 @@ SFLOW_ENDPOINT_METRICS = {
     "device_flow_top_src_packets_rate": "src_ip",
     "device_flow_top_dst_bytes_rate": "dst_ip",
     "device_flow_top_dst_packets_rate": "dst_ip",
+    "device_flow_top_src_ip_port_bytes_rate": ("src_ip", "src_port"),
+    "device_flow_top_dst_ip_port_bytes_rate": ("dst_ip", "dst_port"),
 }
 SFLOW_PROTOCOL_METRICS = {
     "device_flow_protocol_bytes_rate",
@@ -130,11 +140,7 @@ SFLOW_INTERFACE_METRICS = {
 
 
 def _flow_metric_files():
-    return sorted(
-        path
-        for protocol in FLOW_PROTOCOLS
-        for path in (FLOW_METRICS_ROOT / protocol).glob("*/metrics.json")
-    )
+    return sorted(path for protocol in FLOW_PROTOCOLS for path in (FLOW_METRICS_ROOT / protocol).glob("*/metrics.json"))
 
 
 def test_netflow_traffic_metric_queries_use_effective_sampling_rate():
@@ -165,9 +171,7 @@ def test_sflow_traffic_metric_queries_do_not_second_pass_normalize_sampling_rate
             query = metric["query"]
             if expected_measurement not in query:
                 invalid_queries.append(f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}:missing:{expected_measurement}")
-            if "label_value(" in query and (
-                '"effective_sampling_rate"' in query or '"sflow_sampling_rate"' in query
-            ):
+            if "label_value(" in query and ('"effective_sampling_rate"' in query or '"sflow_sampling_rate"' in query):
                 invalid_queries.append(f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}:second-pass-sampling")
 
     assert invalid_queries == []
@@ -244,9 +248,7 @@ def test_netflow_common_dimension_metrics_use_portable_counters():
             query = metric["query"]
             missing_measurements = [name for name in expected_measurements if name not in query]
             if missing_measurements:
-                invalid_queries.append(
-                    f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}:missing:{','.join(missing_measurements)}"
-                )
+                invalid_queries.append(f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}:missing:{','.join(missing_measurements)}")
 
     assert invalid_queries == []
 
@@ -261,10 +263,16 @@ def test_sflow_endpoint_metrics_use_production_ip_labels():
                 continue
 
             query = metric["query"]
-            if expected_label not in query:
-                invalid_queries.append(f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}:missing:{expected_label}")
+            expected_labels = expected_label if isinstance(expected_label, tuple) else (expected_label,)
+            for label in expected_labels:
+                if label not in query:
+                    invalid_queries.append(f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}:missing:{label}")
             if "by (instance_id, src)" in query or "by (instance_id, dst)" in query:
                 invalid_queries.append(f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}:netflow-style-endpoint")
+            if metric["name"] == "device_flow_top_src_ip_port_bytes_rate" and "by (instance_id, src_ip, src_port)" not in query:
+                invalid_queries.append(f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}:missing-src-ip-port-group")
+            if metric["name"] == "device_flow_top_dst_ip_port_bytes_rate" and "by (instance_id, dst_ip, dst_port)" not in query:
+                invalid_queries.append(f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}:missing-dst-ip-port-group")
 
     assert invalid_queries == []
 
@@ -284,9 +292,7 @@ def test_sflow_protocol_and_conversation_metrics_use_header_protocol():
             if metric["name"] == "device_flow_top_conversation_bytes_rate":
                 for expected_label in ("src_ip", "dst_ip", "header_protocol", "dst_port"):
                     if expected_label not in query:
-                        invalid_queries.append(
-                            f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}:missing:{expected_label}"
-                        )
+                        invalid_queries.append(f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}:missing:{expected_label}")
                 if "src, dst, protocol" in query:
                     invalid_queries.append(f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}:netflow-style-conversation")
 
@@ -308,9 +314,7 @@ def test_sflow_interface_metrics_use_production_interface_labels():
                 invalid_queries.append(f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}:missing:{expected_measurement}")
             for interface_label in expected_interface_labels:
                 if f'"interface", "$1", "{interface_label}"' not in query:
-                    invalid_queries.append(
-                        f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}:missing:{interface_label}"
-                    )
+                    invalid_queries.append(f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}:missing:{interface_label}")
 
     assert invalid_queries == []
 
@@ -339,11 +343,15 @@ def test_sflow_metrics_survive_builtin_import_with_production_queries():
         src_metric = imported_metrics["device_flow_top_src_bytes_rate"]
         dst_metric = imported_metrics["device_flow_top_dst_bytes_rate"]
         protocol_metric = imported_metrics["device_flow_protocol_bytes_rate"]
+        src_ip_port_metric = imported_metrics["device_flow_top_src_ip_port_bytes_rate"]
+        dst_ip_port_metric = imported_metrics["device_flow_top_dst_ip_port_bytes_rate"]
         conversation_metric = imported_metrics["device_flow_top_conversation_bytes_rate"]
 
         assert "by (instance_id, src_ip)" in src_metric.query
         assert "by (instance_id, dst_ip)" in dst_metric.query
         assert "by (instance_id, header_protocol)" in protocol_metric.query
+        assert "by (instance_id, src_ip, src_port)" in src_ip_port_metric.query
+        assert "by (instance_id, dst_ip, dst_port)" in dst_ip_port_metric.query
         assert "by (instance_id, src_ip, dst_ip, header_protocol, dst_port)" in conversation_metric.query
 
 
@@ -426,11 +434,7 @@ def test_flow_policy_templates_use_low_cardinality_metrics_only():
         "device_flow_packets_rate",
         "device_flow_avg_packet_size",
     }
-    policy_files = sorted(
-        path
-        for protocol in FLOW_PROTOCOLS
-        for path in (FLOW_METRICS_ROOT / protocol).glob("*/policy.json")
-    )
+    policy_files = sorted(path for protocol in FLOW_PROTOCOLS for path in (FLOW_METRICS_ROOT / protocol).glob("*/policy.json"))
 
     assert len(policy_files) == len(FLOW_PROTOCOLS) * len(FLOW_OBJECTS)
 
@@ -459,11 +463,7 @@ def test_flow_metrics_have_bilingual_translations():
             ]
             assert missing_metrics == [], f"{language}:{object_name}: missing metric translations {missing_metrics}"
 
-            missing_groups = [
-                group_name
-                for group_name in FLOW_GROUPS
-                if not metric_groups.get(object_name, {}).get(group_name)
-            ]
+            missing_groups = [group_name for group_name in FLOW_GROUPS if not metric_groups.get(object_name, {}).get(group_name)]
             assert missing_groups == [], f"{language}:{object_name}: missing group translations {missing_groups}"
 
         for object_name in FLOW_MONITOR_OBJECTS:

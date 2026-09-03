@@ -26,6 +26,7 @@ vi.mock('@/app/ops-analysis/components/ops-analysis-widgets/text-panel', () => (
   default: stubComponent,
 }));
 vi.mock('@/app/ops-analysis/components/widgets/topologyMap', () => ({ default: stubComponent }));
+vi.mock('@/app/ops-analysis/components/widgets/nodeGraph', () => ({ default: stubComponent }));
 vi.mock('@/app/ops-analysis/components/widgets/application3D', () => ({ default: stubComponent }));
 
 describe('scene widget runtime surface enforcement', () => {

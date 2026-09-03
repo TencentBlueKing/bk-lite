@@ -1931,6 +1931,13 @@ def model_inst_count(*args, **kwargs):
     return {"result": True, "message": "", "data": result}
 
 
+@nats_client.register
+def license_cmdb_instance_count(*args, **kwargs):
+    """许可管理专用：原生自动发现的收费模型实例数量。"""
+    result = InstanceManage.license_instance_count()
+    return {"result": True, "message": "", "data": result}
+
+
 # === 云资源成本分析 Report Responder ===
 # 前端数据源通过 rest_api "cmdb/get_cloud_resource_cost_*" 路由到这里。
 # 入参约定:user_info(由 GetNatsData 注入) + 过滤项 kwargs。

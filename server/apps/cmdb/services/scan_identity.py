@@ -1,4 +1,27 @@
+from apps.cmdb.models.scan_model import SCAN_DATABASE_TYPES
+
 NETWORK_CI_TYPES = frozenset({"switch", "router", "firewall", "loadbalance"})
+UNMATCH_UNKNOWN_SOID = "unknown_soid"
+UNMATCH_EMPTY_SOID = "empty_soid"
+UNMATCH_CREDENTIAL_FAILED = "credential_failed"
+
+
+def unmatch_reason_for_hit(hit) -> str:
+    """尚未分类时给出可扩展原因；已有模型的命中不进未匹配。"""
+    family = str(getattr(getattr(hit, "family_run", None), "model_id", "") or "").strip()
+    if str(getattr(hit, "cmdb_model_id", "") or "").strip():
+        return ""
+    if family == "network":
+        soid = str(getattr(hit, "soid", "") or "").strip()
+        if soid:
+            return UNMATCH_UNKNOWN_SOID
+        return UNMATCH_EMPTY_SOID
+    if family in SCAN_DATABASE_TYPES:
+        status = str(getattr(hit, "status", "") or "")
+        credential_id = str(getattr(hit, "credential_id", "") or "").strip()
+        if status == "failed" and not credential_id:
+            return UNMATCH_CREDENTIAL_FAILED
+    return ""
 
 
 def refine_scan_metrics(model_id, plugin_result, oid_map=None):
