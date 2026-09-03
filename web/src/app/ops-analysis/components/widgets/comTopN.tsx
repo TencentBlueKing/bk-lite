@@ -21,6 +21,7 @@ import {
   scaleScreenMetric,
 } from './shared/screenMetrics';
 import { isTopNContentReady, resolveTopNContentState } from '@/app/ops-analysis/utils/topNContentState';
+import { formatVisibleChartValue } from '@/app/ops-analysis/utils/chartValueFormat';
 
 interface TopNProps {
   rawData: any;
@@ -297,7 +298,7 @@ const TopN: React.FC<TopNProps> = ({
                     paddingRight: cellPadding,
                   }}
                 >
-                  {item.value.toLocaleString()}
+                  {formatVisibleChartValue(item.value, config)}
                 </span>
               </React.Fragment>
             );

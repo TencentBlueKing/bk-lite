@@ -52,6 +52,19 @@ from apps.monitor.services.host_dashboard import (
 )
 from apps.monitor.services.host_resource_top import HostResourceTopService, validate_metric_type
 from apps.monitor.services.interface_metrics_query import InterfaceMetricsQueryError, normalize_instance_ids, query_interface_metric_items
+from apps.monitor.services.metric_series import (
+    DEFAULT_OBJECT_NAMES,
+    DEFAULT_RANGE_STEP,
+    MetricSeriesQueryError,
+    MetricSeriesQueryService,
+    build_monitor_instance_rows,
+    canonical_dimension_names,
+    validate_collect_type,
+    validate_instance_id_count,
+    validate_limit,
+    validate_metric_name,
+    validate_mode,
+)
 from apps.monitor.services.metrics import Metrics, MetricsQueryBudgetExceeded
 from apps.monitor.services.nats_query_contract import build_vm_query_failure_result as _build_vm_query_failure_result
 from apps.monitor.services.nats_query_contract import normalize_bool
@@ -1595,6 +1608,136 @@ def get_network_device_resource_top(metric_type: str, *args, **kwargs):
         logger.exception("network device resource top query failed metric_type=%s", metric_type)
         return {"result": False, "data": [], "message": "网络设备资源指标查询失败"}
     return {"result": True, "data": rows, "message": ""}
+
+
+def _empty_metric_series(mode: str):
+    return {} if mode == "range" else []
+
+
+def _resolve_metric_series_items(instances, metric_name: str, collect_type: str | None):
+    grouped = {}
+    for instance in instances:
+        monitor_object = getattr(instance, "monitor_object", None)
+        object_id = getattr(instance, "monitor_object_id", None)
+        if object_id is None:
+            object_id = getattr(monitor_object, "id", None)
+        if object_id is None:
+            continue
+        grouped.setdefault(object_id, []).append(instance)
+
+    items = []
+    found_metric = False
+    for object_id, object_instances in grouped.items():
+        metrics = list(Metric.objects.filter(monitor_object_id=object_id, name=metric_name).select_related("monitor_plugin"))
+        if metrics:
+            found_metric = True
+        for metric in metrics:
+            plugin = getattr(metric, "monitor_plugin", None)
+            plugin_collect_type = str(getattr(plugin, "collect_type", "") or "").strip().lower()
+            if collect_type and plugin_collect_type != collect_type:
+                continue
+            query = str(getattr(metric, "query", "") or "").strip()
+            if not query:
+                raise ValueError("指标查询语句为空")
+            items.append(
+                {
+                    "query": query,
+                    "instance_ids": [str(item.id) for item in object_instances],
+                    "instance_id_keys": _normalize_metric_instance_id_keys(metric, object_instances[0].monitor_object),
+                    "dimensions": canonical_dimension_names(getattr(metric, "dimensions", None)),
+                }
+            )
+    return found_metric, items
+
+
+@nats_client.register
+def get_monitor_instance_list(*args, **kwargs):
+    """Return authorized network-device instances for ops-analysis filter options."""
+    try:
+        protocol = validate_collect_type(kwargs.get("protocol"))
+        object_names = _normalize_filter_values(kwargs.get("object_names"), "object_names") or list(DEFAULT_OBJECT_NAMES)
+    except ValueError as exc:
+        return {"result": False, "data": [], "message": str(exc)}
+
+    user_info = kwargs.get("user_info") or {}
+    _, _, _, scope_ids, _, error = _get_nats_actor_scope(user_info)
+    if error:
+        return error
+    authorized_instances, error = _get_authorized_monitor_instances(user_info, scope_ids)
+    if error:
+        return error
+    allowed_names = set(object_names)
+    selected = [
+        instance
+        for instance in authorized_instances.values()
+        if str(getattr(getattr(instance, "monitor_object", None), "name", "") or "") in allowed_names
+    ]
+    return {
+        "result": True,
+        "data": build_monitor_instance_rows(selected, protocol=protocol),
+        "message": "",
+    }
+
+
+@nats_client.register
+def query_metric_series(*args, **kwargs):
+    """Query a registered metric as range series or instant ranking rows."""
+    mode = None
+    try:
+        mode = validate_mode(kwargs.get("mode"))
+        metric_name = validate_metric_name(kwargs.get("metric"))
+        collect_type = validate_collect_type(kwargs.get("collect_type"))
+        limit = validate_limit(kwargs.get("limit"))
+        instance_ids = _normalize_filter_values(kwargs.get("instance_ids"), "instance_ids")
+        validate_instance_id_count(instance_ids)
+    except ValueError as exc:
+        return {"result": False, "data": _empty_metric_series(mode or ""), "message": str(exc)}
+    empty = _empty_metric_series(mode)
+    if not instance_ids:
+        return {"result": True, "data": empty, "message": ""}
+
+    try:
+        start, end = parse_rfc3339_range_utc(kwargs.get("time"))
+        step = _normalize_step(kwargs.get("step") or DEFAULT_RANGE_STEP)
+    except ValueError as exc:
+        return {"result": False, "data": empty, "message": str(exc)}
+
+    user_info = kwargs.get("user_info") or {}
+    _, _, _, scope_ids, _, error = _get_nats_actor_scope(user_info)
+    if error:
+        return error
+    authorized_instances, error = _get_authorized_monitor_instances(user_info, scope_ids)
+    if error:
+        return error
+    selected_instances = [authorized_instances[item] for item in instance_ids if item in authorized_instances]
+    if not selected_instances:
+        return {"result": True, "data": empty, "message": ""}
+
+    try:
+        found_metric, items = _resolve_metric_series_items(selected_instances, metric_name, collect_type)
+        if not found_metric:
+            return {"result": False, "data": empty, "message": "指标不存在"}
+        if not items:
+            return {"result": True, "data": empty, "message": ""}
+        data = MetricSeriesQueryService(
+            vm_api=VictoriaMetricsAPI(),
+            build_label_query=_build_metric_label_query,
+        ).run(
+            mode=mode,
+            items=items,
+            start_ts=float(rfc3339_to_timestamp(start)),
+            end_ts=float(rfc3339_to_timestamp(end)),
+            step=step,
+            limit=limit,
+        )
+    except ValueError as exc:
+        return {"result": False, "data": empty, "message": str(exc)}
+    except MetricSeriesQueryError as exc:
+        return {"result": False, "data": empty, "message": str(exc)}
+    except Exception:
+        logger.exception("metric series query failed metric=%s mode=%s", metric_name, mode)
+        return {"result": False, "data": empty, "message": "指标查询失败"}
+    return {"result": True, "data": data, "message": ""}
 
 
 def _get_nats_actor_scope(user_info):

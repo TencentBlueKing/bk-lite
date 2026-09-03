@@ -207,3 +207,21 @@ def test_get_host_resource_top(ana_rpc):
         (),
         {"metric_type": "cpu", "instance_ids": ["host-a"]},
     )
+
+
+def test_get_monitor_instance_list(ana_rpc):
+    ana_rpc.get_monitor_instance_list(user_info={"team": 1}, protocol="netflow")
+    assert _last(ana_rpc.client) == (
+        "get_monitor_instance_list",
+        (),
+        {"user_info": {"team": 1}, "protocol": "netflow"},
+    )
+
+
+def test_query_metric_series(ana_rpc):
+    ana_rpc.query_metric_series(metric="device_flow_bytes_rate", mode="range", instance_ids=["sw-1"])
+    assert _last(ana_rpc.client) == (
+        "query_metric_series",
+        (),
+        {"metric": "device_flow_bytes_rate", "mode": "range", "instance_ids": ["sw-1"]},
+    )

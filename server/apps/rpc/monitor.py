@@ -226,3 +226,11 @@ class MonitorOperationAnaRpc(BaseOperationAnaRpc):
     def get_host_resource_top(self, metric_type: str, **kwargs):
         """查询主机资源使用率 Top10，可选 instance_ids 收窄。"""
         return self.client.run("get_host_resource_top", metric_type=metric_type, **kwargs)
+
+    def get_monitor_instance_list(self, **kwargs):
+        """查询当前组织权限范围内的监控实例，供下拉选项使用。"""
+        return self.client.run("get_monitor_instance_list", **kwargs)
+
+    def query_metric_series(self, **kwargs):
+        """按已注册指标名查询趋势或排行，未选实例不退化为全量。"""
+        return self.client.run("query_metric_series", **kwargs)
