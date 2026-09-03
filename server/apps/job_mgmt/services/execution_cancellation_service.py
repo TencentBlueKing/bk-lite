@@ -64,7 +64,9 @@ def request_execution_cancel(
             enqueue_terminal_effects(execution)
             message = "已取消执行"
         elif execution.status == ExecutionStatus.RUNNING:
-            countdown = max(0, execution.timeout) + CANCEL_CONVERGE_BUFFER_SECONDS
+            # execution.timeout 是从作业开始计算的执行时限，不是取消请求的等待时限。
+            # 取消后只保留独立的回调收敛窗口，避免长超时作业长期停留在 CANCELLING。
+            countdown = CANCEL_CONVERGE_BUFFER_SECONDS
             execution.status = ExecutionStatus.CANCELLING
             execution.cancel_finalize_at = now + timedelta(seconds=countdown)
             execution.save(update_fields=["status", "cancel_finalize_at", "updated_at"])
@@ -72,7 +74,5 @@ def request_execution_cancel(
         else:
             raise ExecutionCancellationError("状态已变更，请刷新后重试")
 
-        transaction.on_commit(
-            lambda: _run_cancel_fast_path(execution.id, execution.celery_task_id, countdown)
-        )
+        transaction.on_commit(lambda: _run_cancel_fast_path(execution.id, execution.celery_task_id, countdown))
     return execution, message
