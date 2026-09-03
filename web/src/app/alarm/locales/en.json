@@ -286,6 +286,8 @@
         "user": "User",
         "objectType": "Object Type",
         "object": "Object",
+        "monitorId": "Monitor Instance ID",
+        "cmdbId": "CMDB Instance ID",
         "content": "Content",
         "metricName": "Metric Name",
         "metricValue": "Metric Value",

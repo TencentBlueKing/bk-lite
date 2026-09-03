@@ -286,6 +286,8 @@
         "user": "用户",
         "objectType": "对象类型",
         "object": "对象",
+        "monitorId": "监控实例 ID",
+        "cmdbId": "CMDB 实例 ID",
         "content": "内容",
         "metricName": "指标",
         "metricValue": "指标值",

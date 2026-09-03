@@ -9,6 +9,7 @@ import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useCommon } from '@/app/alarm/context/common';
 import { useStateMap } from '@/app/alarm/constants/alarm';
 import { EventTableItem, RawEventData } from '@/app/alarm/types/integration';
+import { getMonitorIdentityColumns } from '@/app/alarm/components/monitor-object-list/columns';
 
 interface EventTableProps {
   dataSource: EventTableItem[];
@@ -48,7 +49,7 @@ const EventTable: React.FC<EventTableProps> = ({
     </span>
   );
 
-  const columns: ColumnsType<any> = [
+  const columns: ColumnsType<EventTableItem> = [
     { title: 'ID', dataIndex: 'id', key: 'id', width: 110 },
     {
       title: t('alarms.level'),
@@ -101,6 +102,7 @@ const EventTable: React.FC<EventTableProps> = ({
       key: 'resource_type',
       width: 120,
     },
+    ...getMonitorIdentityColumns<EventTableItem>(t),
     {
       title: t('alarms.state'),
       dataIndex: 'status',

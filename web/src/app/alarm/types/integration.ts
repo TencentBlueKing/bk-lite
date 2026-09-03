@@ -176,6 +176,8 @@ export interface EventTableItem {
     resource_id: string;
     resource_type: string;
     resource_name: string;
+    monitor_id?: string | null;
+    cmdb_id?: string | null;
     status: string;
     assignee: string[];
     value: number;

@@ -3,7 +3,12 @@ from copy import deepcopy
 
 from rest_framework import serializers
 
-from apps.alerts.common.source_adapter.constants import DEFAULT_SOURCE_CONFIG, build_prometheus_source_config, build_zabbix_source_config
+from apps.alerts.common.source_adapter.constants import (
+    DEFAULT_SOURCE_CONFIG,
+    build_nats_source_config,
+    build_prometheus_source_config,
+    build_zabbix_source_config,
+)
 from apps.alerts.constants.constants import AlertsSourceTypes
 from apps.alerts.models.alert_source import AlertSource
 
@@ -108,6 +113,8 @@ class AlertSourceModelSerializer(serializers.ModelSerializer):
 
     @staticmethod
     def _build_default_config(source_type, source_id):
+        if source_type == AlertsSourceTypes.NATS:
+            return build_nats_source_config()
         if source_type == AlertsSourceTypes.PROMETHEUS:
             return build_prometheus_source_config(source_id)
         if source_type == AlertsSourceTypes.ZABBIX:
