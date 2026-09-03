@@ -1465,6 +1465,27 @@ def test_select_visible_planned_messages_keeps_last_table_not_cumulative():
     assert sum(1 for item in visible if getattr(item, "type", "") == "tool") == 2
 
 
+def test_select_visible_planned_messages_keeps_last_prose_over_earlier_table():
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    cumulative = "| Pod | 累计重启 |\n| --- | --- |\n| calico | 9 |"
+    later = "以上名单累计重启均发生在 24 小时前，今天 0 次。"
+    messages = [
+        AIMessage(content="", tool_calls=[{"id": "1", "name": "get_high_restart_kubernetes_pods", "args": {}}]),
+        ToolMessage(content="[{}]", tool_call_id="1"),
+        AIMessage(content=cumulative),
+        AIMessage(content="", tool_calls=[{"id": "2", "name": "get_resource_events_timeline", "args": {}}]),
+        ToolMessage(content="[]", tool_call_id="2"),
+        AIMessage(content=later),
+    ]
+    visible = ToolsNodes._select_visible_planned_messages(messages, summary_ran=False)
+    ai = [item for item in visible if getattr(item, "type", "") == "ai" and not getattr(item, "tool_calls", None)]
+    assert len(ai) == 1
+    assert str(ai[0].content) == later
+    assert "| Pod |" not in str(ai[0].content)
+    assert sum(1 for item in visible if getattr(item, "type", "") == "tool") == 2
+
+
 def test_planned_step_already_answered_detects_tool_sentence():
     from langchain_core.messages import AIMessage
 

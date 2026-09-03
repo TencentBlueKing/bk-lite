@@ -99,7 +99,10 @@ class DeepAgentAssemblyMixin:
 
     @classmethod
     def _select_visible_planned_messages(cls, messages, *, summary_ran: bool) -> list:
-        """分步过程只给用户看一份终稿：工具结果保留，正文只留最后一张表或最后一段作答。"""
+        """分步过程只给用户看一份终稿：工具结果保留，正文只留最后一份作答。
+
+        summary_ran 保留调用契约；有无 summary 都取 answers[-1]，避免中间表盖掉更晚的无表终稿。
+        """
         visible: list = []
         answers: list = []
         stubs: list = []
@@ -116,11 +119,7 @@ class DeepAgentAssemblyMixin:
             visible.append(message)
         chosen = None
         if answers:
-            if summary_ran:
-                chosen = answers[-1]
-            else:
-                table_answers = [item for item in answers if cls._MARKDOWN_TABLE_RE.search(str(item.content or ""))]
-                chosen = (table_answers or answers)[-1]
+            chosen = answers[-1]
         elif stubs:
             chosen = stubs[-1]
         if chosen is not None:
