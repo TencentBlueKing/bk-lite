@@ -619,10 +619,19 @@ def get_kubernetes_previous_pod_logs(
     """
     获取Pod容器上一次实例的日志，用于重启类故障采集。
 
+    **何时使用此工具：**
+    - 已知具体 Pod，分析频繁重启的上一轮死因
+    - diagnose 已给出 last_state，需要对照崩溃现场日志
+    - 当前轮日志干净，但 restart_count > 0
+
+    **重要提示：**
+    - kubelet 只保留最近一次 previous 日志，不能还原全部历史重启
+    - 不要用本工具扫全集群；必须带 namespace 和 pod_name
+
     Args:
         namespace (str): Pod所在命名空间
         pod_name (str): Pod名称
-        container (str, optional): 容器名称，多容器Pod建议显式指定
+        container (str, optional): 容器名称，多容器Pod必须指定
         lines (int, optional): 日志行数，默认100
         tail (bool, optional): True=最后N行，False=开头N行
         hours (int, optional): 时间窗（小时），默认24；只看上一轮里落在该窗口内的日志

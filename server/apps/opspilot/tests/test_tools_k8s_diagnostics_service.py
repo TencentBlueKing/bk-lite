@@ -2,7 +2,7 @@
 
 mock prepare_context(kubeconfig 边界)与 client.CoreV1Api,用 SimpleNamespace
 构造真实形态的 V1Pod/V1Node/V1Event 对象驱动各诊断工具,断言失败/Pending/高重启
-Pod 识别、节点容量百分比计算、孤立资源过滤、单 Pod 深度诊断结构与 404/ApiException
+与按重启时间排序的最近重启 Pod 识别、节点容量百分比计算、孤立资源过滤、单 Pod 深度诊断结构与 404/ApiException
 包装。不连真实集群。
 """
 
@@ -29,8 +29,10 @@ def _state(waiting=None, terminated=None, running=None):
     return SimpleNamespace(waiting=waiting, terminated=terminated, running=running)
 
 
-def _cstatus(name="app", ready=False, restart_count=0, image="img:1", state=None, image_id="id"):
-    return SimpleNamespace(name=name, ready=ready, restart_count=restart_count, image=image, image_id=image_id, state=state or _state())
+def _cstatus(name="app", ready=False, restart_count=0, image="img:1", state=None, image_id="id", last_state=None):
+    return SimpleNamespace(
+        name=name, ready=ready, restart_count=restart_count, image=image, image_id=image_id, state=state or _state(), last_state=last_state
+    )
 
 
 def _meta(name="p", ns="default", owner=None, ts=None):
@@ -213,6 +215,104 @@ class TestHighRestart:
         assert "error" in out
 
 
+class TestRecentlyRestarted:
+    def test_sorts_by_last_restart_time_not_restart_count(self, core):
+        old = datetime(2026, 6, 1, tzinfo=timezone.utc)
+        recent = datetime(2026, 9, 3, 9, tzinfo=timezone.utc)
+        core.list_pod_for_all_namespaces.return_value = _items(
+            [
+                _pod(
+                    name="old-high",
+                    cstatuses=[_cstatus(restart_count=30000, ready=True, state=_state(running=SimpleNamespace(started_at=old)))],
+                ),
+                _pod(
+                    name="new-once",
+                    cstatuses=[_cstatus(restart_count=1, ready=True, state=_state(running=SimpleNamespace(started_at=recent)))],
+                ),
+            ]
+        )
+        out = json.loads(d.get_recently_restarted_kubernetes_pods.invoke({"config": {}}))
+        assert out["sort"] == "last_restart_time_desc"
+        assert "累计" in out["restart_count_note"]
+        assert [row["pod"] for row in out["items"]] == ["new-once", "old-high"]
+        assert out["items"][0]["last_restart_time"] == recent.isoformat()
+        assert out["items"][0]["restart_count"] == 1
+        assert out["items"][1]["restart_count"] == 30000
+
+    def test_top_n_truncates(self, core):
+        t1 = datetime(2026, 9, 1, tzinfo=timezone.utc)
+        t2 = datetime(2026, 9, 2, tzinfo=timezone.utc)
+        t3 = datetime(2026, 9, 3, tzinfo=timezone.utc)
+        core.list_pod_for_all_namespaces.return_value = _items(
+            [
+                _pod(name="a", cstatuses=[_cstatus(restart_count=1, state=_state(running=SimpleNamespace(started_at=t1)))]),
+                _pod(name="b", cstatuses=[_cstatus(restart_count=1, state=_state(running=SimpleNamespace(started_at=t2)))]),
+                _pod(name="c", cstatuses=[_cstatus(restart_count=1, state=_state(running=SimpleNamespace(started_at=t3)))]),
+            ]
+        )
+        out = json.loads(d.get_recently_restarted_kubernetes_pods.invoke({"top_n": 2, "config": {}}))
+        assert [row["pod"] for row in out["items"]] == ["c", "b"]
+
+    def test_string_top_n_is_coerced(self, core):
+        ts = datetime(2026, 9, 3, tzinfo=timezone.utc)
+        core.list_pod_for_all_namespaces.return_value = _items(
+            [_pod(cstatuses=[_cstatus(restart_count=1, state=_state(running=SimpleNamespace(started_at=ts)))])]
+        )
+        out = json.loads(d.get_recently_restarted_kubernetes_pods.func(top_n="10", config={}))
+        assert len(out["items"]) == 1
+
+    def test_restart_count_zero_skipped(self, core):
+        ts = datetime(2026, 9, 3, tzinfo=timezone.utc)
+        core.list_pod_for_all_namespaces.return_value = _items(
+            [_pod(cstatuses=[_cstatus(restart_count=0, ready=True, state=_state(running=SimpleNamespace(started_at=ts)))])]
+        )
+        out = json.loads(d.get_recently_restarted_kubernetes_pods.invoke({"config": {}}))
+        assert out["items"] == []
+
+    def test_missing_timestamp_skipped(self, core):
+        core.list_pod_for_all_namespaces.return_value = _items([_pod(cstatuses=[_cstatus(restart_count=9)])])
+        out = json.loads(d.get_recently_restarted_kubernetes_pods.invoke({"config": {}}))
+        assert out["items"] == []
+
+    def test_crashloop_uses_last_state_finished_at(self, core):
+        finished = datetime(2026, 9, 3, 10, tzinfo=timezone.utc)
+        cs = _cstatus(
+            restart_count=12,
+            ready=False,
+            state=_state(waiting=SimpleNamespace(reason="CrashLoopBackOff", message="back-off")),
+            last_state=SimpleNamespace(terminated=SimpleNamespace(reason="Error", exit_code=1, finished_at=finished, message="boom")),
+        )
+        core.list_pod_for_all_namespaces.return_value = _items([_pod(name="crashy", ns="prod", cstatuses=[cs])])
+        out = json.loads(d.get_recently_restarted_kubernetes_pods.invoke({"config": {}}))
+        assert out["items"][0]["pod"] == "crashy"
+        assert out["items"][0]["namespace"] == "prod"
+        assert out["items"][0]["container"] == "app"
+        assert out["items"][0]["last_restart_time"] == finished.isoformat()
+        assert out["items"][0]["restart_count"] == 12
+
+    def test_init_container_restart_included(self, core):
+        ts = datetime(2026, 9, 3, tzinfo=timezone.utc)
+        init_cs = _cstatus(name="init", restart_count=2, state=_state(running=SimpleNamespace(started_at=ts)))
+        core.list_pod_for_all_namespaces.return_value = _items([_pod(cstatuses=[], init_cstatuses=[init_cs])])
+        out = json.loads(d.get_recently_restarted_kubernetes_pods.invoke({"config": {}}))
+        assert out["items"][0]["container"] == "init"
+        assert out["items"][0]["restart_count"] == 2
+
+    def test_namespace_filter(self, core):
+        ts = datetime(2026, 9, 3, tzinfo=timezone.utc)
+        core.list_namespaced_pod.return_value = _items(
+            [_pod(name="nacos-0", ns="nacos", cstatuses=[_cstatus(restart_count=2, state=_state(running=SimpleNamespace(started_at=ts)))])]
+        )
+        out = json.loads(d.get_recently_restarted_kubernetes_pods.invoke({"namespace": "nacos", "config": {}}))
+        assert out["items"][0]["pod"] == "nacos-0"
+        core.list_namespaced_pod.assert_called_once_with("nacos")
+
+    def test_api_exception_wrapped(self, core):
+        core.list_pod_for_all_namespaces.side_effect = ApiException(status=500)
+        out = json.loads(d.get_recently_restarted_kubernetes_pods.invoke({"config": {}}))
+        assert "error" in out
+
+
 class TestNodeCapacity:
     def test_percentages_computed(self, core):
         node = SimpleNamespace(
@@ -325,6 +425,31 @@ class TestDiagnosePod:
         vol_types = {v["name"]: v["type"] for v in out["volumes"]}
         assert vol_types == {"v1": "pvc", "v2": "hostpath"}
         assert out["recent_events"][0]["reason"] == "BackOff"
+        assert out["containers"][0]["last_state"] == {}
+        assert out["init_containers"][0]["last_state"] == {}
+
+    def test_includes_last_state_from_previous_termination(self, core):
+        ts = datetime(2024, 6, 1, tzinfo=timezone.utc)
+        running_cs = _cstatus(
+            name="app",
+            ready=True,
+            restart_count=12,
+            state=_state(running=SimpleNamespace(started_at=ts)),
+            last_state=SimpleNamespace(
+                terminated=SimpleNamespace(reason="OOMKilled", exit_code=137, finished_at=ts, message="memory limit exceeded")
+            ),
+        )
+        core.read_namespaced_pod.return_value = _pod(name="px", cstatuses=[running_cs])
+        core.list_namespaced_event.return_value = _items([])
+
+        out = json.loads(d.diagnose_kubernetes_pod_issues.invoke({"namespace": "default", "pod_name": "px", "config": {}}))
+        assert out["containers"][0]["restart_count"] == 12
+        assert out["containers"][0]["last_state"] == {
+            "reason": "OOMKilled",
+            "exit_code": 137,
+            "finished_at": ts.isoformat(),
+            "message": "memory limit exceeded",
+        }
 
     def test_recent_events_sort_handles_aware_and_missing_timestamps(self, core):
         older = datetime(2024, 1, 1, tzinfo=timezone.utc)

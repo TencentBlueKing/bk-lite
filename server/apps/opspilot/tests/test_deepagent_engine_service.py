@@ -1509,6 +1509,9 @@ def test_planned_tool_step_guidance_is_policy_not_skill_scan():
     last = ToolsNodes._planned_tool_step_guidance(is_last_step=True)
     assert "只保留一张表" in last
     assert "时间窗" in last
+    assert "last_restart_time" in last
+    assert "last_state" in last
+    assert "previous" in last
     assert "不要输出 Markdown 表" not in last
 
 
