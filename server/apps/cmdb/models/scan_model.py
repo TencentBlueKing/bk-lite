@@ -7,19 +7,89 @@ from apps.cmdb.services.encrypt_collect_password import get_collect_model_passwo
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
 
+SCAN_DATABASE_FAMILY = "database"
+SCAN_DATABASE_TYPES = frozenset({"mysql", "postgresql", "mssql"})
 SCAN_ALLOWED_FAMILIES = frozenset(
     {
         "network",
         "host",
         "physcial_server",
-        "mysql",
-        "postgresql",
-        "mssql",
+        SCAN_DATABASE_FAMILY,
         "influxdb",
+        *SCAN_DATABASE_TYPES,
     }
 )
 SCAN_IP_RANGE_MIN_PREFIX = 21
 SCAN_IP_RANGE_MAX_SIZE = 2 ** (32 - SCAN_IP_RANGE_MIN_PREFIX)
+
+
+def scan_encrypt_model_id(model_id: str) -> str:
+    if model_id == SCAN_DATABASE_FAMILY:
+        return "mysql"
+    return model_id
+
+
+def normalize_scan_families(families) -> list:
+    result = []
+    saw_database = False
+    for item in families or []:
+        model_id = str(item or "").strip()
+        if not model_id:
+            continue
+        if model_id in SCAN_DATABASE_TYPES or model_id == SCAN_DATABASE_FAMILY:
+            if not saw_database:
+                result.append(SCAN_DATABASE_FAMILY)
+                saw_database = True
+            continue
+        if model_id not in result:
+            result.append(model_id)
+    return result
+
+
+def merge_database_credentials(credentials) -> dict:
+    from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
+
+    raw = credentials if isinstance(credentials, dict) else {}
+    merged = {}
+    for model_id, pool in raw.items():
+        if model_id in SCAN_DATABASE_TYPES or model_id == SCAN_DATABASE_FAMILY:
+            continue
+        merged[model_id] = pool
+    database_pool = []
+    seen_ids = set()
+    for model_id in (SCAN_DATABASE_FAMILY, "mysql", "postgresql", "mssql"):
+        for item in CollectCredentialPoolService.normalize_pool(raw.get(model_id) or []):
+            if not isinstance(item, dict):
+                continue
+            cleaned = dict(item)
+            cleaned.pop("port", None)
+            credential_id = str(cleaned.get("credential_id") or "")
+            if credential_id:
+                if credential_id in seen_ids:
+                    continue
+                seen_ids.add(credential_id)
+            database_pool.append(cleaned)
+    if database_pool:
+        merged[SCAN_DATABASE_FAMILY] = database_pool
+    return merged
+
+
+def resolve_scan_task_credential(task, family_model_id: str, credential_id: str):
+    credential_id = str(credential_id or "").strip()
+    if not credential_id:
+        return None
+    raw = getattr(task, "decrypt_credentials", None) or getattr(task, "credentials", None) or {}
+    if not isinstance(raw, dict):
+        return None
+    pools = [raw.get(family_model_id)]
+    if family_model_id in SCAN_DATABASE_TYPES:
+        pools.append(raw.get(SCAN_DATABASE_FAMILY))
+    for pool in pools:
+        items = pool if isinstance(pool, list) else ([pool] if isinstance(pool, dict) else [])
+        for item in items:
+            if isinstance(item, dict) and str(item.get("credential_id") or "") == credential_id:
+                return dict(item)
+    return None
 
 
 def scan_driver_type_for_model(model_id: str) -> str:
@@ -57,8 +127,8 @@ class ScanTask(MaintainerInfo, TimeInfo):
             return raw_item
         item = dict(raw_item)
         encrypted_fields = get_collect_model_passwords(
-            collect_model_id=model_id,
-            driver_type=scan_driver_type_for_model(model_id),
+            collect_model_id=scan_encrypt_model_id(model_id),
+            driver_type=scan_driver_type_for_model(scan_encrypt_model_id(model_id)),
         )
         for field_name in encrypted_fields:
             value = item.get(field_name)
@@ -72,8 +142,8 @@ class ScanTask(MaintainerInfo, TimeInfo):
             return raw_item
         item = dict(raw_item)
         encrypted_fields = get_collect_model_passwords(
-            collect_model_id=model_id,
-            driver_type=scan_driver_type_for_model(model_id),
+            collect_model_id=scan_encrypt_model_id(model_id),
+            driver_type=scan_driver_type_for_model(scan_encrypt_model_id(model_id)),
         )
         for field_name in encrypted_fields:
             value = item.get(field_name)

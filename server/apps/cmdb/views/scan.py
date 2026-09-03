@@ -1,12 +1,12 @@
 from django.db import transaction
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.cmdb.models.scan_model import ScanExecution, ScanHit, ScanTask
+from apps.cmdb.models.scan_model import SCAN_DATABASE_TYPES, ScanExecution, ScanHit, ScanTask
 from apps.cmdb.serializers.scan_serializer import (
     ScanExecutionSerializer,
     ScanHitPagination,
@@ -97,7 +97,15 @@ class ScanTaskViewSet(AuthViewSet):
     def execution_hits(self, request, eid=None):
         execution = self._get_execution(eid)
         queryset = (
-            ScanHit.objects.filter(execution=execution, status=ScanHit.STATUS_SUCCESS)
+            ScanHit.objects.filter(execution=execution)
+            .filter(
+                Q(status=ScanHit.STATUS_SUCCESS)
+                | Q(
+                    status=ScanHit.STATUS_FAILED,
+                    credential_id="",
+                    family_run__model_id__in=SCAN_DATABASE_TYPES,
+                )
+            )
             .select_related("family_run", "execution__task")
             .order_by("family_run__model_id", "host", "id")
         )
@@ -136,6 +144,33 @@ class ScanTaskViewSet(AuthViewSet):
             request=request,
             operator=getattr(request.user, "username", "") or "",
         )
+        return WebUtils.response_success(result)
+
+    @HasPermission("auto_collection-Execute")
+    @action(methods=["post"], detail=False, url_path=r"executions/(?P<eid>[0-9]+)/classify_hits")
+    def classify_hits(self, request, eid=None):
+        execution = self._get_execution(eid)
+        hit_ids = _hit_ids_from_request(request)
+        data = request.data if hasattr(request, "data") else {}
+        cmdb_model_id = str(data.get("cmdb_model_id") or "").strip() if isinstance(data, dict) else ""
+        from apps.cmdb.services.scan_classify_service import classify_hits as classify_scan_hits
+
+        result = classify_scan_hits(execution, hit_ids, cmdb_model_id)
+        return WebUtils.response_success(result)
+
+    @HasPermission("auto_collection-Execute")
+    @action(methods=["post"], detail=False, url_path=r"executions/(?P<eid>[0-9]+)/rematch_soid")
+    def rematch_soid(self, request, eid=None):
+        execution = self._get_execution(eid)
+        data = request.data if hasattr(request, "data") else {}
+        soid = str(data.get("soid") or "").strip() if isinstance(data, dict) else ""
+        raw_hit_ids = data.get("hit_ids") if isinstance(data, dict) else None
+        hit_ids = None
+        if raw_hit_ids is not None:
+            hit_ids = _hit_ids_from_request(request)
+        from apps.cmdb.services.scan_classify_service import rematch_soid as rematch_scan_soid
+
+        result = rematch_scan_soid(execution, soid, hit_ids=hit_ids)
         return WebUtils.response_success(result)
 
 

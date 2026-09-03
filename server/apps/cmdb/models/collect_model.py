@@ -360,3 +360,19 @@ class OidMapping(MaintainerInfo, TimeInfo):
     brand = models.CharField(max_length=64, null=True, help_text="品牌")
     device_type = models.CharField(max_length=128, help_text="设备类型")
     built_in = models.BooleanField(default=False, verbose_name="是否内置")
+
+
+class PortFingerprint(MaintainerInfo, TimeInfo):
+    """端口指纹：同一端口可对应多种类型，扫描数据库白名单另算。"""
+
+    PROTOCOL_TCP = "tcp"
+
+    port = models.PositiveIntegerField(validators=[MinValueValidator(1), MaxValueValidator(65535)], help_text="TCP 端口")
+    protocol = models.CharField(max_length=16, default=PROTOCOL_TCP, help_text="协议")
+    target_type = models.CharField(max_length=128, help_text="CMDB 模型 ID")
+    built_in = models.BooleanField(default=False, verbose_name="是否内置")
+
+    class Meta:
+        verbose_name = "端口指纹"
+        verbose_name_plural = verbose_name
+        unique_together = (("port", "target_type"),)

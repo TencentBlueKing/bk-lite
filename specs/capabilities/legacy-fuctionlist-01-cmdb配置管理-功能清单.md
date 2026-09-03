@@ -94,17 +94,18 @@ CMDB 是平台统一的资产与配置数据中心，围绕模型定义、资产
 | 插件说明 | 查看采集插件说明文档 | — | GA |
 | 实例侧关联任务 | 在实例侧查看可关联的采集任务名称 | — | GA |
 | 部分数据库采集 | MongoDB、Elasticsearch、HBase、TiDB、MSSQL 等数据库对象采集 | 部分对象处于试验阶段 | Beta |
-| 网段扫描发现 | 按网段创建扫描任务，查看执行与命中并回写采集/资产 | 允许家族：网络/主机/物理服务器/MySQL/PostgreSQL/MSSQL/InfluxDB；网段前缀不得宽于 /21 | GA |
+| 网段扫描发现 | 按网段创建扫描任务，查看执行与命中并回写采集/资产 | 允许家族：网络/主机/物理服务器/数据库/InfluxDB；数据库凭据为统一用户名密码池，探测端口与类型来自特征库端口指纹，登录成功仍写 mysql/postgresql/mssql CI；网段前缀不得宽于 /21；命中详情分已匹配/未匹配；未知 SOID 可写指纹或手选类型后推监控/生成采集；数据库鉴权失败可补端口指纹或按预判类型建 CI，失败行不可推监控/生成采集 | GA |
 
 相关 PRD：[[legacy-prd-cmdb-自动发现.md#3.2 采集任务]]；相关架构：[[legacy-ard-modules-cmdb.md#3. 接口]]
 > 证据来源：server/apps/cmdb/urls.py:27，server/apps/cmdb/models/scan_model.py:10-22,39，web/src/app/cmdb/(pages)/assetManage/autoDiscovery/scan/page.tsx　|　同步基线：61bace9f　|　【已实现】
 > 证据来源：server/apps/cmdb/constants/constants.py:377-403，server/apps/cmdb/node_configs/network_config_file.py:5-63，server/apps/cmdb/services/ipam_discovery.py:104-175　|　同步基线：83091efe　|　【已实现】
 
-### 6. SOID 特征库
+### 6. 特征库
 
 | 功能项 | 功能说明 | 规格 / 约束 | 状态 |
 |---|---|---|---|
 | sysObjectID 映射维护 | 设备 sysObjectID 映射的新增、编辑、删除、列表查询 | 用于 SNMP 网络设备类型识别 | GA |
+| 端口指纹维护 | TCP 端口到 CMDB 模型的映射新增、列表、删除用户行 | 唯一约束 `(端口, 类型)`；内置 3306/mysql、5432/postgresql、1433/mssql 不可删；中间件类型可登记但不参与本轮扫描探测 | GA |
 
 ### 7. 数据订阅
 

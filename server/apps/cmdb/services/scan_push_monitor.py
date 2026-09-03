@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from apps.cmdb.models.scan_model import ScanExecution, ScanHit
+from apps.cmdb.models.scan_model import ScanExecution, ScanHit, resolve_scan_task_credential
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.module_push import CmdbToMonitorPushService, build_cmdb_push_actor_scope
 from apps.core.logger import cmdb_logger as logger
@@ -12,13 +12,7 @@ _DB_MODELS = frozenset({"mysql", "postgresql", "mssql", "influxdb"})
 
 
 def _resolve_credential_item(task, family_model_id: str, credential_id: str) -> dict | None:
-    pool = (task.decrypt_credentials or {}).get(family_model_id) or []
-    if isinstance(pool, dict):
-        pool = [pool]
-    for item in pool:
-        if isinstance(item, dict) and str(item.get("credential_id") or "") == credential_id:
-            return dict(item)
-    return None
+    return resolve_scan_task_credential(task, family_model_id, credential_id)
 
 
 def _attach_cloud_region(instance: dict, scan_task) -> None:

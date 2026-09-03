@@ -251,6 +251,195 @@ def test_host_snapshot_backfills_os_facts(mocker):
     assert hit.inst_uuid == "uuid-10.0.1.20"
 
 
+def test_host_snapshot_maps_numeric_os_type_to_name(mocker):
+    task = _scan_task(
+        families=["host"],
+        cloud_region=1,
+        credentials={"host": [{"username": "root", "port": "22"}]},
+    )
+    execution = ScanExecution.objects.create(
+        task=task,
+        status=ScanExecution.STATUS_RUNNING,
+        claim_token="token-os-type",
+        target_count=1,
+        received_count=1,
+    )
+    family_run = ScanFamilyRun.objects.create(
+        execution=execution,
+        model_id="host",
+        driver_type="job",
+        target_count=1,
+        received_count=1,
+        admit_status=ScanFamilyRun.ADMIT_ACCEPTED,
+    )
+    ScanHit.objects.create(
+        execution=execution,
+        family_run=family_run,
+        protocol="host",
+        host="10.0.1.20",
+        port=22,
+        credential_id="cred-host",
+        status=ScanHit.STATUS_SUCCESS,
+        snapshot={"host": "10.0.1.20"},
+    )
+    mocker.patch(
+        "apps.cmdb.services.scan_finalize_service.collect_family_metrics",
+        return_value={
+            "host": [
+                {
+                    "ip_addr": "10.0.1.20",
+                    "hostname": "web-1",
+                    "os_type": "1",
+                    "os_name": "CentOS Linux",
+                    "os_version": "7",
+                }
+            ]
+        },
+    )
+    _capture_cannula(mocker)
+
+    write_scan_execution(execution)
+
+    hit = ScanHit.objects.get(host="10.0.1.20")
+    assert hit.snapshot.get("os_type") == "Linux"
+    assert hit.snapshot.get("os_name") == "CentOS Linux"
+
+
+def test_host_shim_copies_scan_cloud_region():
+    from apps.cmdb.services.scan_finalize_service import build_scan_collect_shim
+
+    task = _scan_task(
+        families=["host"],
+        cloud_region=1,
+        credentials={"host": [{"username": "root", "port": "22"}]},
+    )
+    execution = ScanExecution.objects.create(task=task, status=ScanExecution.STATUS_RUNNING)
+    family_run = ScanFamilyRun.objects.create(
+        execution=execution,
+        model_id="host",
+        driver_type="job",
+        admit_status=ScanFamilyRun.ADMIT_ACCEPTED,
+    )
+
+    shim = build_scan_collect_shim(family_run)
+
+    assert shim.params.get("cloud") == 1
+    assert shim.params.get("has_network_topo") is False
+
+
+def test_finalize_retries_when_host_row_has_ip_but_no_os_facts(mocker):
+    task = _scan_task(families=["host"], credentials={"host": [{"username": "root", "port": "22"}]})
+    execution = ScanExecution.objects.create(
+        task=task,
+        status=ScanExecution.STATUS_RUNNING,
+        claim_token="token-ip-only",
+        target_count=1,
+        received_count=1,
+    )
+    family_run = ScanFamilyRun.objects.create(
+        execution=execution,
+        model_id="host",
+        driver_type="job",
+        target_count=1,
+        received_count=1,
+        admit_status=ScanFamilyRun.ADMIT_ACCEPTED,
+    )
+    ScanHit.objects.create(
+        execution=execution,
+        family_run=family_run,
+        protocol="host",
+        host="10.0.1.20",
+        port=22,
+        credential_id="cred-host",
+        status=ScanHit.STATUS_SUCCESS,
+        snapshot={"host": "10.0.1.20"},
+    )
+    calls = {"n": 0}
+
+    def fake_collect(_family_run):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return {"host": [{"ip_addr": "10.0.1.20"}]}
+        return {
+            "host": [
+                {
+                    "ip_addr": "10.0.1.20",
+                    "hostname": "web-1",
+                    "os_name": "Ubuntu",
+                    "os_type": "Linux",
+                }
+            ]
+        }
+
+    mocker.patch("apps.cmdb.services.scan_finalize_service.collect_family_metrics", side_effect=fake_collect)
+    mocker.patch("apps.cmdb.services.scan_finalize_service.time.sleep")
+    _capture_cannula(mocker)
+
+    write_scan_execution(execution)
+
+    hit = ScanHit.objects.get(host="10.0.1.20")
+    assert calls["n"] == 2
+    assert hit.snapshot.get("hostname") == "web-1"
+    assert hit.snapshot.get("os_name") == "Ubuntu"
+
+
+def test_finalize_retries_vm_until_success_hits_have_metrics(mocker):
+    task = _scan_task(families=["host"], credentials={"host": [{"username": "root", "port": "22"}]})
+    execution = ScanExecution.objects.create(
+        task=task,
+        status=ScanExecution.STATUS_RUNNING,
+        claim_token="token-retry",
+        target_count=1,
+        received_count=1,
+    )
+    family_run = ScanFamilyRun.objects.create(
+        execution=execution,
+        model_id="host",
+        driver_type="job",
+        target_count=1,
+        received_count=1,
+        admit_status=ScanFamilyRun.ADMIT_ACCEPTED,
+    )
+    ScanHit.objects.create(
+        execution=execution,
+        family_run=family_run,
+        protocol="host",
+        host="10.0.1.20",
+        port=22,
+        credential_id="cred-host",
+        status=ScanHit.STATUS_SUCCESS,
+        snapshot={"host": "10.0.1.20"},
+    )
+    calls = {"n": 0}
+
+    def fake_collect(_family_run):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return {}
+        return {
+            "host": [
+                {
+                    "ip_addr": "10.0.1.20",
+                    "hostname": "web-1",
+                    "os_type": "Linux",
+                    "os_name": "Ubuntu",
+                    "os_version": "22.04",
+                }
+            ]
+        }
+
+    mocker.patch("apps.cmdb.services.scan_finalize_service.collect_family_metrics", side_effect=fake_collect)
+    mocker.patch("apps.cmdb.services.scan_finalize_service.time.sleep")
+    _capture_cannula(mocker)
+
+    write_scan_execution(execution)
+
+    hit = ScanHit.objects.get(host="10.0.1.20")
+    assert calls["n"] == 2
+    assert hit.snapshot.get("hostname") == "web-1"
+    assert hit.snapshot.get("os_name") == "Ubuntu"
+
+
 def test_snmp_without_network_ci_attaches_to_same_ip_ipmi(mocker):
     task = _scan_task(families=["network", "physcial_server"])
     execution, network_run = _execution_with_network_hits(task=task, hosts=["10.0.1.11"])

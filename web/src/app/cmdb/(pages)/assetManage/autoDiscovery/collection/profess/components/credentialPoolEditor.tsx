@@ -69,6 +69,7 @@ export interface CredentialPoolEditorProps {
   onChange?: (value: CredentialPoolItem[]) => void;
   editMode?: boolean;
   showDatabase?: boolean;
+  showPort?: boolean;
   allowAdd?: boolean;
   allowRemove?: boolean;
   showCount?: boolean;
@@ -99,6 +100,7 @@ const createEmptyCredential = (
   showDatabase?: boolean,
   defaultPort?: number | string,
   credentialSchema?: CredentialSchema,
+  showPort: boolean = true,
 ): CredentialPoolItem => {
   if (shape === 'snmp') {
     return {
@@ -163,11 +165,16 @@ const createEmptyCredential = (
 
   return {
     _client_id: makeClientId(),
-    port: shape === 'sql'
-      ? (defaultPort ?? (showDatabase ? '1433' : '3306'))
-      : shape === 'vm'
-        ? '443'
-        : '22',
+    ...(showPort
+      ? {
+        port:
+          shape === 'sql'
+            ? (defaultPort ?? (showDatabase ? '1433' : '3306'))
+            : shape === 'vm'
+              ? '443'
+              : '22',
+      }
+      : {}),
     ...(shape === 'vm' ? { ssl: false } : {}),
     ...(shape === 'cloud' ? { accessKey: '', accessSecret: '', regionId: '' } : {}),
     ...(shape === 'ipmi' ? { port: '623', privilege: 'administrator' } : {}),
@@ -196,6 +203,7 @@ function getPreviewFields(
     accessSecret: string;
     projectId?: string;
   },
+  showPort: boolean = true,
 ) {
   if (shape === 'winsphere') {
     return [
@@ -334,8 +342,13 @@ function getPreviewFields(
       value: passwordVisible && item.password && item.password !== PASSWORD_PLACEHOLDER ? item.password : getMaskedSecret(item.password),
       isSecret: true,
     },
-    { label: t('Collection.port', '端口'), value: String(item.port || (shape === 'sql' ? '3306' : shape === 'vm' ? '443' : shape === 'ipmi' ? '623' : '22')) },
   ];
+  if (showPort) {
+    fields.push({
+      label: t('Collection.port', '端口'),
+      value: String(item.port || (shape === 'sql' ? '3306' : shape === 'vm' ? '443' : shape === 'ipmi' ? '623' : '22')),
+    });
+  }
   if (shape === 'network_config_file') {
     fields.push({
       label: t('Collection.credentialPool.enablePassword', '特权密码'),
@@ -453,6 +466,7 @@ function renderCredentialFields({
   shape,
   editMode,
   showDatabase,
+  showPort,
   cloudRegionOptions,
   cloudRegionLoading,
   onCloudRegionRefresh,
@@ -467,6 +481,7 @@ function renderCredentialFields({
   shape: CredentialShape;
   editMode: boolean;
   showDatabase: boolean;
+  showPort: boolean;
   cloudRegionOptions: { label: string; value: string }[];
   cloudRegionLoading: boolean;
   onCloudRegionRefresh?: () => void;
@@ -996,15 +1011,17 @@ function renderCredentialFields({
           onChange={(nextValue) => updateItem(index, { password: nextValue })}
         />
       </InputRow>
-      <InputRow label={t('Collection.port', '端口')}>
-        <InputNumber
-          min={1}
-          max={65535}
-          className="w-32"
-          value={item.port}
-          onChange={(nextValue) => updateItem(index, { port: nextValue ?? undefined })}
-        />
-      </InputRow>
+      {showPort && (
+        <InputRow label={t('Collection.port', '端口')}>
+          <InputNumber
+            min={1}
+            max={65535}
+            className="w-32"
+            value={item.port}
+            onChange={(nextValue) => updateItem(index, { port: nextValue ?? undefined })}
+          />
+        </InputRow>
+      )}
       {shape === 'sql' && showDatabase && (
         <InputRow label={t('Collection.database', '数据库')}>
           <Input
@@ -1053,6 +1070,7 @@ export default function CredentialPoolEditor({
   onChange,
   editMode = false,
   showDatabase = false,
+  showPort = true,
   allowAdd = true,
   allowRemove = true,
   showCount = true,
@@ -1109,6 +1127,7 @@ export default function CredentialPoolEditor({
       showDatabase,
       defaultPort,
       credentialSchema,
+      showPort,
     );
     const nextItems = [...normalizedValue, nextItem];
     emitChange(nextItems);
@@ -1241,6 +1260,7 @@ export default function CredentialPoolEditor({
       t,
       passwordVisible,
       cloudCredentialLabels,
+      showPort,
     );
 
     return (
@@ -1320,6 +1340,7 @@ export default function CredentialPoolEditor({
                 shape: credentialShape,
                 editMode,
                 showDatabase,
+                showPort,
                 cloudRegionOptions,
                 cloudRegionLoading,
                 onCloudRegionRefresh,
