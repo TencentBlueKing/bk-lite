@@ -1,6 +1,6 @@
 Host AIX Remote:
   name: 主机 AIX 远程采集
-  desc: 本发行仅提供远程采集：由 Linux 采集节点通过 SSH 以 /usr/bin/ksh -c 在 AIX 上执行系统命令。AIX 不能作为已纳入节点运行 sidecar / nats-executor，因此不提供本机采集，也不会用 SSH 伪装成本机。命令不存在则跳过。版本由 oslevel -r 读取（例如 7100-00）。
+  desc: 由 Linux 采集节点按采集间隔 SSH 到 AIX，执行系统命令。采集 CPU（含 LPAR）、内存分页与 svmon、负载、进程状态、磁盘容量与 inode、读写与忙碌、网卡和运行时长。目标主机无需安装采集器。表单填写 IP、SSH 用户名（如 root）、密码或私钥、端口（默认 22）、采集间隔和 Linux 采集节点。不采集硬件清单、lastlog、lsof 和连接表。无需选择版本，版本自动识别。
 monitor_object:
   Host: 主机
 monitor_object_type:

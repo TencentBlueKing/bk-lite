@@ -1,6 +1,6 @@
 Host AIX Remote:
   name: Host AIX Remote
-  desc: This release is remote-only. A Linux collect node SSH-runs system commands on AIX with /usr/bin/ksh -c. AIX cannot run sidecar/nats-executor as an onboarded node, so there is no local plugin and SSH is not presented as local collection. Missing commands are skipped. OS level comes from oslevel -r (for example 7100-00).
+  desc: A Linux collect node SSHes to AIX on each interval and runs system commands. It collects CPU (including LPAR), memory paging and svmon, load, process state, disk capacity and inodes, read/write and busy, NICs, and uptime. The target does not need a collector installed. Fill in IP, SSH username (for example root), password or private key, port (default 22), interval, and a Linux collect node. It does not collect hardware inventory, lastlog, lsof, or connection tables. There is no version picker; the version is detected automatically.
 monitor_object:
   Host: Host
 monitor_object_type:
