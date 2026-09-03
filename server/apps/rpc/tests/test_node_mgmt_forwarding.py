@@ -180,6 +180,12 @@ def test_install_managed_component_组装字典(node):
     assert _last(node.client) == ("install_managed_component", ({"collector_package": 4, "nodes": ["n3"]},), {})
 
 
+def test_install_controller_转发远程安装参数(node):
+    payload = {"cloud_region_id": 1, "work_node": "executor-1", "package_id": 9}
+    node.install_controller(payload, [1, 2])
+    assert _last(node.client) == ("install_controller", (payload, [1, 2]), {})
+
+
 def test_ingest_from_source_wraps_flat_kwargs_as_params(node):
     node.ingest_from_source(source_module="cmdb", link_ids={"cmdb_id": "1"})
     assert _last(node.client) == (
