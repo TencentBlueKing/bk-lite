@@ -11,11 +11,23 @@ import {
   layoutApplication3DArchitecture,
   resolveArchitectureCameraPose,
 } from '../application3DArchitecture';
-import { APPLICATION3D_WALL_GROUP_NAME, createApplication3DScene } from '../application3DScene';
+import {
+  APPLICATION3D_ORBIT_PAN,
+  APPLICATION3D_USER_POLAR,
+  APPLICATION3D_WALL_GROUP_NAME,
+  createApplication3DScene,
+} from '../application3DScene';
 
 const captured = vi.hoisted(() => ({
   scene: null as THREE.Scene | null,
   camera: null as THREE.PerspectiveCamera | null,
+  controls: null as {
+    enablePan: boolean;
+    screenSpacePanning: boolean;
+    minPolarAngle: number;
+    maxPolarAngle: number;
+    enabled: boolean;
+  } | null,
   raf: [] as FrameRequestCallback[],
   now: 0,
 }));
@@ -65,6 +77,18 @@ vi.mock('three', async (importOriginal) => {
     TextureLoader: class {
       load() {
         return new actual.Texture();
+      }
+    },
+  };
+});
+
+vi.mock('three/examples/jsm/controls/OrbitControls.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('three/examples/jsm/controls/OrbitControls.js')>();
+  return {
+    OrbitControls: class extends actual.OrbitControls {
+      constructor(object: THREE.Camera, domElement?: HTMLElement) {
+        super(object, domElement);
+        captured.controls = this;
       }
     },
   };
@@ -135,6 +159,7 @@ describe('application3D architecture scene', () => {
   beforeEach(() => {
     captured.scene = null;
     captured.camera = null;
+    captured.controls = null;
     captured.raf = [];
     captured.now = 1_000;
     mount = document.createElement('div');
@@ -302,6 +327,57 @@ describe('application3D architecture scene', () => {
     expect(wallGroup()?.visible).toBe(true);
     expect(wallGroup()?.children.length).toBeGreaterThan(0);
     expect(captured.camera?.position.distanceTo(wallStart ?? new THREE.Vector3())).toBeLessThan(0.2);
+    controller.dispose();
+  });
+
+  it('lets wall and architecture user orbit pan and reach straight overhead', () => {
+    expect(APPLICATION3D_ORBIT_PAN.enablePan).toBe(true);
+    expect(APPLICATION3D_ORBIT_PAN.screenSpacePanning).toBe(true);
+    expect(APPLICATION3D_USER_POLAR.min).toBeLessThan(0.02);
+    expect(APPLICATION3D_USER_POLAR.min).toBeGreaterThanOrEqual(0);
+    expect(APPLICATION3D_USER_POLAR.max).toBeLessThan(Math.PI);
+    expect(APPLICATION3D_USER_POLAR.max).toBeGreaterThan(Math.PI / 2);
+
+    const controller = mountScene();
+    expect(captured.controls?.enablePan).toBe(true);
+    expect(captured.controls?.screenSpacePanning).toBe(true);
+    expect(captured.controls?.minPolarAngle).toBeCloseTo(APPLICATION3D_USER_POLAR.min);
+    expect(captured.controls?.maxPolarAngle).toBeCloseTo(APPLICATION3D_USER_POLAR.max);
+    expect(captured.controls?.minPolarAngle).toBeLessThan(0.02);
+
+    controller.showArchitecture(architecture);
+    flushFrames(16);
+    expect(captured.controls?.enablePan).toBe(true);
+    expect(captured.controls?.minPolarAngle).toBeCloseTo(APPLICATION3D_USER_POLAR.min);
+    expect(captured.controls?.maxPolarAngle).toBeCloseTo(APPLICATION3D_USER_POLAR.max);
+    controller.dispose();
+  });
+
+  it('ignores right-mouse pointer-up so pan never selects a card', () => {
+    const onSelect = vi.fn();
+    const controller = createApplication3DScene(mount, {
+      interactive: true,
+      translate: (_id, fallback = '') => fallback,
+      onSelect,
+    });
+    controller.reconcile([wallItem], { playIntro: false });
+    flushFrames();
+    const canvas = mount.querySelector('canvas');
+    expect(canvas).toBeTruthy();
+
+    const contextEvent = new Event('contextmenu', { bubbles: true, cancelable: true });
+    canvas?.dispatchEvent(contextEvent);
+    expect(contextEvent.defaultPrevented).toBe(true);
+
+    const point = { clientX: 160, clientY: 90, bubbles: true };
+    canvas?.dispatchEvent(new PointerEvent('pointerdown', { ...point, button: 2 }));
+    canvas?.dispatchEvent(new PointerEvent('pointerup', { ...point, button: 2 }));
+    expect(onSelect).not.toHaveBeenCalled();
+
+    canvas?.dispatchEvent(new PointerEvent('pointerdown', { ...point, button: 0 }));
+    canvas?.dispatchEvent(new PointerEvent('pointerup', { ...point, button: 0 }));
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect.mock.calls[0][0].id).toBe('sys-1');
     controller.dispose();
   });
 });

@@ -55,9 +55,21 @@ import {
 } from './application3DArchitecture';
 
 export const APPLICATION3D_WALL_GROUP_NAME = 'application3d-wall';
-const WALL_POLAR = { min: Math.PI * 0.28, max: Math.PI * 0.72 } as const;
-/** Keep orbit near the just-above-eye-level pose; block bird’s-eye / 图1. */
-const ARCH_POLAR = { min: Math.PI * 0.40, max: Math.PI * 0.72 } as const;
+/**
+ * User orbit polar clamp (OrbitControls: 0 = straight overhead / +Y,
+ * π/2 = horizon). Landing poses stay on WALL_CAMERA_HEIGHT_FACTOR and
+ * ARCH_CAMERA_PHI — only the *user* clamp opens to zenith.
+ */
+export const APPLICATION3D_USER_POLAR = {
+  min: 1e-3,
+  max: Math.PI * 0.72,
+} as const;
+export const APPLICATION3D_ORBIT_PAN = {
+  enablePan: true,
+  screenSpacePanning: true,
+} as const;
+const WALL_POLAR = APPLICATION3D_USER_POLAR;
+const ARCH_POLAR = APPLICATION3D_USER_POLAR;
 
 export interface Application3DSceneController {
   reconcile: (
@@ -585,7 +597,8 @@ export const createApplication3DScene = (
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
-  controls.enablePan = false;
+  controls.enablePan = APPLICATION3D_ORBIT_PAN.enablePan;
+  controls.screenSpacePanning = APPLICATION3D_ORBIT_PAN.screenSpacePanning;
   controls.minDistance = 6;
   controls.maxDistance = 80;
   controls.minPolarAngle = WALL_POLAR.min;
@@ -1830,11 +1843,19 @@ export const createApplication3DScene = (
     requestRender();
   };
 
+  const handleContextMenu = (event: Event) => {
+    event.preventDefault();
+  };
+
   const handlePointerUp = (event: PointerEvent) => {
     if (!active || !options.interactive || !pointerDown) return;
     const dx = event.clientX - pointerDown.x;
     const dy = event.clientY - pointerDown.y;
     pointerDown = null;
+    if (event.button !== 0) {
+      syncCursor(event.clientX, event.clientY);
+      return;
+    }
     if (Math.hypot(dx, dy) > CLICK_DRAG_THRESHOLD_PX) {
       syncCursor(event.clientX, event.clientY);
       return;
@@ -1899,6 +1920,7 @@ export const createApplication3DScene = (
     });
   };
 
+  renderer.domElement.addEventListener('contextmenu', handleContextMenu);
   if (options.interactive) {
     renderer.domElement.addEventListener('pointerdown', handlePointerDown);
     renderer.domElement.addEventListener('pointermove', handlePointerMove);
@@ -1944,6 +1966,7 @@ export const createApplication3DScene = (
       if (frameId !== null) window.cancelAnimationFrame(frameId);
       if (resizeRaf !== null) window.cancelAnimationFrame(resizeRaf);
       resizeObserver.disconnect();
+      renderer.domElement.removeEventListener('contextmenu', handleContextMenu);
       renderer.domElement.removeEventListener('pointerdown', handlePointerDown);
       renderer.domElement.removeEventListener('pointermove', handlePointerMove);
       renderer.domElement.removeEventListener('pointerup', handlePointerUp);

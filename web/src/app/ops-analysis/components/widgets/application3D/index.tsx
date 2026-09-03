@@ -652,7 +652,7 @@ export default function Application3D({
                 else handleBackFromFocus();
               }}
             >
-              {t('dashboard.application3DBackWall', '返回应用墙')}
+              {t('dashboard.application3DBackWall', '\u8fd4\u56de')}
             </button>
           </div>
         </div>
