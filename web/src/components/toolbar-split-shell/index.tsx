@@ -18,10 +18,17 @@ const ToolbarSplitShell: React.FC<ToolbarSplitShellProps> = ({
   leadingClassName,
   trailingClassName,
 }) => {
+  const justifyClassName = leading && trailing
+    ? 'justify-between'
+    : trailing
+      ? 'justify-end'
+      : 'justify-start';
+
   return (
     <div
       className={joinClassNames(
-        'mb-5 flex flex-wrap items-start justify-between gap-3',
+        'mb-4 flex flex-wrap items-center gap-x-4 gap-y-3',
+        justifyClassName,
         className,
       )}
     >
