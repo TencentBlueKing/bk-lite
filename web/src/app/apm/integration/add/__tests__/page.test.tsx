@@ -110,7 +110,7 @@ describe('APM 添加接入', () => {
     expect(screen.getByRole('radio', { name: '.NET 自动探针' })).not.toBeNull();
     expect(screen.getByRole('radio', { name: 'Docker 运行（-e 注入）' })).not.toBeNull();
     expect(screen.getByRole('radio', { name: 'Kubernetes Pod（Downward API）' })).not.toBeNull();
-    expect(screen.queryByRole('button', { name: '.NET 接入，尚未开放' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '.NET 接入，规划中' })).toBeNull();
 
     await user.type(screen.getByRole('textbox', { name: /服务名称/ }), 'checkout');
     await waitFor(() => expect(api.getIngestSnippet).toHaveBeenCalled(), { timeout: 3000 });

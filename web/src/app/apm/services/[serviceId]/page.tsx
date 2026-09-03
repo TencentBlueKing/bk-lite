@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
-  ArrowLeftOutlined,
   InboxOutlined,
   SearchOutlined,
 } from '@ant-design/icons';
@@ -531,36 +530,43 @@ export default function ApmServiceDetailPage() {
         <div className="flex flex-col gap-4">
           <ApmSurface padding="compact">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex min-w-0 items-center gap-3">
-                <Link href="/apm/services">
-                  <Button aria-label={t('apm.serviceDetail.backAria', '返回服务目录')} icon={<ArrowLeftOutlined aria-hidden="true" />}>
-                    {t('apm.serviceDetail.back', '返回服务')}
-                  </Button>
-                </Link>
-                <div className="min-w-0">
-                  <Space size={10} align="center" wrap>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <nav
+                    aria-label={t('apm.serviceDetail.breadcrumb', '页面路径')}
+                    className="flex min-w-0 items-center gap-1.5"
+                  >
+                    <Link
+                      href="/apm/services"
+                      aria-label={t('apm.serviceDetail.backAria', '返回服务目录')}
+                      className="shrink-0 text-sm text-[var(--color-text-3)] no-underline transition-colors hover:text-[var(--color-primary)]"
+                    >
+                      {t('apm.services.title', '服务')}
+                    </Link>
+                    <span className="shrink-0 text-[var(--color-text-3)]" aria-hidden="true">
+                      /
+                    </span>
                     <HealthDot level={health} showLabel={false} />
-                    <Typography.Title level={2} className="!mb-0 !text-base !font-semibold">
+                    <Typography.Title level={2} className="!mb-0 !truncate !text-base !font-semibold">
                       {service.name}
                     </Typography.Title>
-                    <Tag
-                      bordered={false}
-                      color={health <= 2 ? 'error' : health === 3 ? 'warning' : 'success'}
-                    >
-                      {health <= 2 ? t('apm.health.abnormal', '异常') : health === 3 ? t('apm.health.silent', '静默') : t('apm.health.healthy', '健康')}
-                    </Tag>
-                    <Tag bordered={false}>{environment || t('apm.common.unset', '未设置')}</Tag>
-                  </Space>
-                  <Typography.Text type="secondary" className="mt-1 block truncate text-xs">
-                    {t('apm.serviceDetail.ownerApplication', '所属应用')}{' '}
-                    <Link
-                      href={`/apm/services?namespace=${encodeURIComponent(service.namespace)}`}
-                      className="text-[var(--color-primary)]"
-                    >
-                      {service.application_name || service.namespace || t('apm.common.unsetNamespace', '未设置 namespace')}
-                    </Link>
-                  </Typography.Text>
+                  </nav>
+                  <Tag
+                    bordered={false}
+                    color={health <= 2 ? 'error' : health === 3 ? 'warning' : 'success'}
+                  >
+                    {health <= 2 ? t('apm.health.abnormal', '异常') : health === 3 ? t('apm.health.silent', '静默') : t('apm.health.healthy', '健康')}
+                  </Tag>
                 </div>
+                <Typography.Text type="secondary" className="mt-0.5 block truncate text-xs">
+                  {t('apm.serviceDetail.ownerApplication', '所属应用')}{' '}
+                  <Link
+                    href={`/apm/services?namespace=${encodeURIComponent(service.namespace)}`}
+                    className="text-[var(--color-primary)]"
+                  >
+                    {service.application_name || service.namespace || t('apm.common.unsetNamespace', '未设置 namespace')}
+                  </Link>
+                </Typography.Text>
               </div>
               <Space wrap>
                 <Select
