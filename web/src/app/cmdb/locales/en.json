@@ -745,6 +745,7 @@
             "minConfidenceHelp": "Value from 0 to 1. Higher values require stronger confidence for inferred topology links.",
             "topologyProtocolOptions": {
                 "lldp": "LLDP",
+                "huaweiNdp": "Huawei NDP",
                 "cdp": "CDP",
                 "fdb": "FDB",
                 "arp": "ARP"

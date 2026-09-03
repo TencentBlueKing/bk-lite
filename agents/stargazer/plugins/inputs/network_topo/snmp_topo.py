@@ -59,6 +59,9 @@ OPTIONAL_FALLBACK_ROOTS = {
     "1.3.6.1.4.1.1991.1.1.3.20.1.2.1.1.6",
     "1.3.6.1.4.1.1991.1.1.3.20.1.2.1.1.7",
     "1.3.6.1.4.1.1991.1.1.3.20.1.2.1.1.8",
+    "1.3.6.1.4.1.2011.6.7.5.6.1.1",
+    "1.3.6.1.4.1.2011.6.7.5.6.1.2",
+    "1.3.6.1.4.1.2011.6.7.5.6.1.3",
     "1.3.6.1.2.1.17.7.1.2.2.1.2",
     "1.3.6.1.2.1.17.7.1.2.2.1.3",
 }
@@ -219,8 +222,8 @@ class SnmpAuth(object):
 class SnmpTopo:
     BASE_COLLECTION_PROTOCOLS = ("system", "arp", "interface", "ipaddr")
     # fdp 仅采集证据行（由 server 端流水线按 tag 解析），不参与 agent 侧 facts 构建
-    DEFAULT_TOPOLOGY_PROTOCOLS = ("lldp", "cdp", "fdp", "fdb", "arp")
-    SUPPORTED_TOPOLOGY_FACT_PROTOCOLS = ("lldp", "cdp", "fdb", "arp")
+    DEFAULT_TOPOLOGY_PROTOCOLS = ("lldp", "huawei_ndp", "cdp", "fdp", "fdb", "arp")
+    SUPPORTED_TOPOLOGY_FACT_PROTOCOLS = ("lldp", "huawei_ndp", "cdp", "fdb", "arp")
 
     def __init__(self, kwargs):
         """
@@ -579,6 +582,12 @@ class SnmpTopo:
             return None
         return str(index_value).split(".", 1)[0]
 
+    @staticmethod
+    def _extract_huawei_ndp_local_ifindex(index_value):
+        if not index_value:
+            return None
+        return str(index_value).split(".", 1)[0]
+
     @classmethod
     def _build_lldp_topology_facts(cls, snmp_rows):
         local_ports = {str(row.get(IF_INDEX)): row for row in snmp_rows if row.get(TAG) == "LLDP-LocPortId" and row.get(IF_INDEX)}
@@ -654,6 +663,47 @@ class SnmpTopo:
         return facts
 
     @classmethod
+    def _build_huawei_ndp_topology_facts(cls, snmp_rows):
+        interface_names = cls._build_interface_names(snmp_rows)
+        remote_ports = {str(row.get(IF_INDEX)): row for row in snmp_rows if row.get(TAG) == "HNDP-RemPortName" and row.get(IF_INDEX)}
+        remote_systems = {str(row.get(IF_INDEX)): row for row in snmp_rows if row.get(TAG) == "HNDP-RemDeviceName" and row.get(IF_INDEX)}
+        remote_devices = [row for row in snmp_rows if row.get(TAG) == "HNDP-RemDeviceId" and row.get(IF_INDEX)]
+
+        facts = []
+        for remote_device in remote_devices:
+            neighbor_index = str(remote_device.get(IF_INDEX))
+            local_ifindex = cls._extract_huawei_ndp_local_ifindex(neighbor_index)
+            remote_port = remote_ports.get(neighbor_index)
+            if not local_ifindex or not remote_port:
+                continue
+            remote_system = remote_systems.get(neighbor_index)
+            remote_port_name = remote_port.get(VAL)
+            facts.append(
+                cls.build_topology_fact(
+                    "huawei_ndp",
+                    {
+                        "local_device_id": None,
+                        "local_port_id": local_ifindex,
+                        "local_port_name": interface_names.get(local_ifindex),
+                        "remote_device_id": remote_device.get(VAL),
+                        "remote_port_id": remote_port_name,
+                        "remote_port_name": remote_port_name,
+                    },
+                    raw_evidence={
+                        "local_port": {
+                            TAG: "IFTable-IfDescr",
+                            IF_INDEX: local_ifindex,
+                            VAL: interface_names.get(local_ifindex),
+                        },
+                        "remote_device": remote_device,
+                        "remote_port": remote_port,
+                        "remote_system": remote_system,
+                    },
+                )
+            )
+        return facts
+
+    @classmethod
     def _build_interface_names(cls, snmp_rows):
         interface_names = {}
         for row in snmp_rows:
@@ -721,6 +771,8 @@ class SnmpTopo:
             protocols = cls.normalize_enabled_protocols(enabled_protocols)
         if "lldp" in protocols:
             facts.extend(cls._build_lldp_topology_facts(snmp_rows))
+        if "huawei_ndp" in protocols:
+            facts.extend(cls._build_huawei_ndp_topology_facts(snmp_rows))
         if "cdp" in protocols:
             facts.extend(cls._build_cdp_topology_facts(snmp_rows))
         if "fdb" in protocols:

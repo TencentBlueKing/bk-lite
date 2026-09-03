@@ -745,6 +745,7 @@
             "minConfidenceHelp": "取值范围 0 到 1，数值越高表示对拓扑推断结果要求越严格。",
             "topologyProtocolOptions": {
                 "lldp": "LLDP",
+                "huaweiNdp": "华为 NDP",
                 "cdp": "CDP",
                 "fdb": "FDB",
                 "arp": "ARP"

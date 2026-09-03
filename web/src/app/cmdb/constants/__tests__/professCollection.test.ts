@@ -6,6 +6,7 @@ import {
   getSnmpTopologyFormValues,
   recommendedTopologyIntervalMinutes,
   SNMP_FORM_INITIAL_VALUES,
+  TOPOLOGY_PROTOCOL_OPTIONS,
 } from '../professCollection';
 
 describe('SNMP topology interval seam', () => {
@@ -62,6 +63,23 @@ describe('SNMP topology interval seam', () => {
     expect(getSnmpTopologyFormValues({ has_network_topo: true })).toMatchObject({
       topologyTimeout: 600,
     });
+  });
+
+  it('shows Huawei NDP and selects it by default', () => {
+    expect(TOPOLOGY_PROTOCOL_OPTIONS.map(({ value }) => value)).toEqual([
+      'lldp',
+      'huawei_ndp',
+      'cdp',
+      'fdb',
+      'arp',
+    ]);
+    expect(SNMP_FORM_INITIAL_VALUES.topologyProtocols).toEqual([
+      'lldp',
+      'huawei_ndp',
+      'cdp',
+      'fdb',
+      'arp',
+    ]);
   });
 
   it('uses the collection object task budget for Sangfor cloud forms', () => {

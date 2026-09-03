@@ -1,9 +1,4 @@
-from plugins.inputs.network_topo.protocol_oids import (
-    ALL_PROTOCOL_OID_MAP,
-    PROTOCOL_OID_GROUPS,
-    flatten_oid_registry,
-)
-
+from plugins.inputs.network_topo.protocol_oids import ALL_PROTOCOL_OID_MAP, PROTOCOL_OID_GROUPS, flatten_oid_registry
 
 REQUIRED_TAGS = {
     # system
@@ -31,6 +26,10 @@ REQUIRED_TAGS = {
     "1.3.6.1.4.1.1991.1.1.3.20.1.2.1.1.6": ("FDP-Version", "neighbors"),
     "1.3.6.1.4.1.1991.1.1.3.20.1.2.1.1.7": ("FDP-DevicePort", "neighbors"),
     "1.3.6.1.4.1.1991.1.1.3.20.1.2.1.1.8": ("FDP-Platform", "neighbors"),
+    # 华为 HGMP NDP 一跳邻居表
+    "1.3.6.1.4.1.2011.6.7.5.6.1.1": ("HNDP-RemDeviceId", "neighbors"),
+    "1.3.6.1.4.1.2011.6.7.5.6.1.2": ("HNDP-RemPortName", "neighbors"),
+    "1.3.6.1.4.1.2011.6.7.5.6.1.3": ("HNDP-RemDeviceName", "neighbors"),
     # bridge / fdb / qbridge
     "1.3.6.1.2.1.17.1.4.1.2": ("BRIDGE-BasePortIfIndex", "bridge"),
     "1.3.6.1.2.1.17.4.3.1.2": ("FDB-Port", "fdb"),
@@ -55,3 +54,7 @@ def test_every_registry_entry_has_group():
 
 def test_fdp_is_a_selectable_protocol_group():
     assert "fdp" in PROTOCOL_OID_GROUPS
+
+
+def test_huawei_ndp_is_a_selectable_protocol_group():
+    assert "huawei_ndp" in PROTOCOL_OID_GROUPS

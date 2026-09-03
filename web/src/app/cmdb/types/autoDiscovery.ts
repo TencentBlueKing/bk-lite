@@ -1,4 +1,4 @@
-export type TopologyProtocol = 'lldp' | 'cdp' | 'fdb' | 'arp';
+export type TopologyProtocol = 'lldp' | 'huawei_ndp' | 'cdp' | 'fdb' | 'arp';
 
 export type TopologyFallbackStrategy =
   | 'prefer_neighbors_then_fdb_then_arp'

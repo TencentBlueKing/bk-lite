@@ -526,9 +526,9 @@ def test_network_node_params_multicred_pool_carries_topology_contract_defaults()
 
     assert len(credentials_pool) == 2
     assert credentials_pool[0]["has_network_topo"] is True
-    assert credentials_pool[0]["topology_protocols"] == "lldp,cdp,fdb,arp"
+    assert credentials_pool[0]["topology_protocols"] == "lldp,huawei_ndp,cdp,fdb,arp"
     assert credentials_pool[0]["topology_fallback_strategy"] == "prefer_neighbors_then_fdb_then_arp"
     assert credentials_pool[0]["min_confidence"] == 0.0
-    assert credentials_pool[1]["topology_protocols"] == "lldp,cdp,fdb,arp"
+    assert credentials_pool[1]["topology_protocols"] == "lldp,huawei_ndp,cdp,fdb,arp"
     assert credentials_pool[1]["topology_fallback_strategy"] == "prefer_neighbors_then_fdb_then_arp"
     assert credentials_pool[1]["min_confidence"] == 0.0

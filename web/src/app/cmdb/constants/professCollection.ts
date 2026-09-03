@@ -102,6 +102,7 @@ export const PASSWORD_PLACEHOLDER = '******';
 export const MAX_CREDENTIAL_POOL_SIZE = 3;
 export const DEFAULT_TOPOLOGY_PROTOCOLS: TopologyProtocol[] = [
   'lldp',
+  'huawei_ndp',
   'cdp',
   'fdb',
   'arp',
@@ -144,6 +145,10 @@ export const TOPOLOGY_PROTOCOL_OPTIONS: Array<{
   labelKey: string;
 }> = [
   { value: 'lldp', labelKey: 'Collection.SNMPTask.topologyProtocolOptions.lldp' },
+  {
+    value: 'huawei_ndp',
+    labelKey: 'Collection.SNMPTask.topologyProtocolOptions.huaweiNdp',
+  },
   { value: 'cdp', labelKey: 'Collection.SNMPTask.topologyProtocolOptions.cdp' },
   { value: 'fdb', labelKey: 'Collection.SNMPTask.topologyProtocolOptions.fdb' },
   { value: 'arp', labelKey: 'Collection.SNMPTask.topologyProtocolOptions.arp' },
