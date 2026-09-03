@@ -137,22 +137,16 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
         )
 
         # i18n 可能未回写 DB:对剩余插件做轻量扫描(无 M2M / 无完整 serializer)
-        for plugin in queryset.only(
-            "id", "name", "display_name", "description", "template_type"
-        ).iterator(chunk_size=200):
+        for plugin in queryset.only("id", "name", "display_name", "description", "template_type").iterator(chunk_size=200):
             if plugin.id in db_ids:
                 continue
             plugin_key = f"{LanguageConstants.MONITOR_OBJECT_PLUGIN}.{plugin.name}"
             if plugin.template_type in {"api", "pull"}:
                 display_name = plugin.display_name or plugin.name
-                display_description = (
-                    lan.get(f"{plugin_key}.desc") or plugin.description or plugin.name
-                )
+                display_description = lan.get(f"{plugin_key}.desc") or plugin.description or plugin.name
             else:
                 display_name = lan.get(f"{plugin_key}.name") or plugin.display_name or plugin.name
-                display_description = (
-                    lan.get(f"{plugin_key}.desc") or plugin.description or plugin.name
-                )
+                display_description = lan.get(f"{plugin_key}.desc") or plugin.description or plugin.name
             haystacks = (
                 plugin.name or "",
                 display_name or "",
@@ -171,18 +165,12 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
             if result.get("template_type") in {"api", "pull"}:
                 result["display_name"] = result.get("display_name") or result["name"]
                 result["display_description"] = (
-                    lan.get(f"{LanguageConstants.MONITOR_OBJECT_PLUGIN}.{result['name']}.desc")
-                    or result["description"]
-                    or result["name"]
+                    lan.get(f"{LanguageConstants.MONITOR_OBJECT_PLUGIN}.{result['name']}.desc") or result["description"] or result["name"]
                 )
             else:
                 plugin_key = f"{LanguageConstants.MONITOR_OBJECT_PLUGIN}.{result['name']}"
-                result["display_name"] = (
-                    lan.get(f"{plugin_key}.name") or result.get("display_name") or result["name"]
-                )
-                result["display_description"] = (
-                    lan.get(f"{plugin_key}.desc") or result["description"] or result["name"]
-                )
+                result["display_name"] = lan.get(f"{plugin_key}.name") or result.get("display_name") or result["name"]
+                result["display_description"] = lan.get(f"{plugin_key}.desc") or result["description"] or result["name"]
             result["is_custom"] = result.get("template_type") in {"api", "pull", "snmp"}
 
             parent_id = result.get("parent_monitor_object")
@@ -207,9 +195,7 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
         return self._enrich_plugin_results(results, lan, parent_obj_by_id)
 
     def list(self, request, *args, **kwargs):
-        queryset = self._filter_visible_entry_plugins(
-            self.filter_queryset(self.get_queryset())
-        ).order_by("id")
+        queryset = self._filter_visible_entry_plugins(self.filter_queryset(self.get_queryset())).order_by("id")
         lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
 
         keyword = (request.query_params.get("keyword") or request.query_params.get("name") or "").strip()
@@ -239,9 +225,7 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
         results = self._serialize_and_enrich(queryset, lan)
 
         if kw:
-            results = [
-                r for r in results if any(kw in (r.get(f) or "").lower() for f in self.KEYWORD_FIELDS)
-            ]
+            results = [r for r in results if any(kw in (r.get(f) or "").lower() for f in self.KEYWORD_FIELDS)]
 
         if not use_pagination:
             return WebUtils.response_success(results)
@@ -319,6 +303,7 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
         :return: UI 模板内容（JSON 格式）。form_fields/table_columns 内
             的 label 字段已按 request.user.locale 自动选 label/label_en。
         """
+        from apps.monitor.services.ui_form_field_overlay import overlay_form_field_help_from_plugin_files
         from apps.monitor.services.ui_template_locale import (
             enrich_ui_template_from_plugin_files,
             localize_ui_template,
@@ -330,14 +315,15 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
 
         try:
             ui_template = MonitorPluginUITemplate.objects.get(plugin=plugin)
-            content = enrich_ui_template_from_plugin_files(ui_template.content, plugin)
+            content = overlay_form_field_help_from_plugin_files(
+                enrich_ui_template_from_plugin_files(ui_template.content, plugin),
+                plugin,
+            )
             return WebUtils.response_success(
                 {
                     "ui_template": localize_ui_template(content, locale),
                     "node_selector": plugin.node_selector or {},
-                    "support_collect_detect": resolve_support_collect_detect(
-                        plugin, fallback=plugin.support_collect_detect
-                    ),
+                    "support_collect_detect": resolve_support_collect_detect(plugin, fallback=plugin.support_collect_detect),
                 }
             )
         except MonitorPluginUITemplate.DoesNotExist:
@@ -345,15 +331,14 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
                 {
                     "ui_template": {},
                     "node_selector": plugin.node_selector or {},
-                    "support_collect_detect": resolve_support_collect_detect(
-                        plugin, fallback=plugin.support_collect_detect
-                    ),
+                    "support_collect_detect": resolve_support_collect_detect(plugin, fallback=plugin.support_collect_detect),
                 }
             )
 
     @action(methods=["get"], detail=False, url_path="ui_template_by_params")
     def get_ui_template_by_params(self, request):
         """根据采集器名称和采集类型以及监控对象获取插件的 UI 模板。"""
+        from apps.monitor.services.ui_form_field_overlay import overlay_form_field_help_from_plugin_files
         from apps.monitor.services.ui_template_locale import (
             enrich_ui_template_from_plugin_files,
             localize_ui_template,
@@ -363,23 +348,27 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
         collector = request.query_params.get("collector")
         collect_type = request.query_params.get("collect_type")
         monitor_object_id = request.query_params.get("monitor_object_id")
+        monitor_plugin_id = request.query_params.get("monitor_plugin_id")
         locale = getattr(request.user, "locale", "zh-Hans") or "zh-Hans"
 
-        ui_template = MonitorPluginService.get_ui_template_by_params(collector, collect_type, monitor_object_id)
-        plugin = (
-            MonitorPlugin.objects.filter(
-                monitor_object__id=monitor_object_id,
-                collector=collector,
-                collect_type=collect_type,
-                template_type="builtin",
-            )
-            .first()
+        ui_template = MonitorPluginService.get_ui_template_by_params(collector, collect_type, monitor_object_id, monitor_plugin_id)
+        plugin_qs = MonitorPlugin.objects.filter(
+            monitor_object__id=monitor_object_id,
+            collector=collector,
+            collect_type=collect_type,
+            template_type="builtin",
         )
-        content = enrich_ui_template_from_plugin_files(ui_template.get("ui_template"), plugin)
+        if monitor_plugin_id not in (None, ""):
+            plugin = plugin_qs.filter(id=monitor_plugin_id).first()
+        else:
+            matches = list(plugin_qs[:2])
+            plugin = matches[0] if len(matches) == 1 else None
+        content = overlay_form_field_help_from_plugin_files(
+            enrich_ui_template_from_plugin_files(ui_template.get("ui_template"), plugin),
+            plugin,
+        )
         ui_template["ui_template"] = localize_ui_template(content or {}, locale) if content else content
-        ui_template["support_collect_detect"] = resolve_support_collect_detect(
-            plugin, fallback=bool(ui_template.get("support_collect_detect"))
-        )
+        ui_template["support_collect_detect"] = resolve_support_collect_detect(plugin, fallback=bool(ui_template.get("support_collect_detect")))
         return WebUtils.response_success(ui_template)
 
     @HasPermission("integration_collect-View,integration_configure-Add")
