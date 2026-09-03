@@ -232,20 +232,63 @@
   line-height: 1.55;
 }
 
-// User: quiet neutral pill, right aligned
+// User: compact right-aligned bubble. Keep the chat-tail shape; don't let markdown <p> inflate a one-liner.
+.userMessageBubble {
+  max-width: 85%;
+  padding: 8px 12px;
+  border-radius: 16px 16px 4px 16px;
+  background-color: color-mix(in srgb, var(--color-fill-1) 70%, transparent);
+  color: var(--color-text-1);
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: break-word;
+  word-break: break-word;
+
+  .markdownBody {
+    font-size: inherit;
+    line-height: inherit;
+
+    p {
+      margin: 0;
+
+      & + p {
+        margin-top: 0.4em;
+      }
+    }
+
+    ul,
+    ol {
+      margin: 0.35em 0;
+    }
+  }
+}
+
 .chatContainer .userBubble :global(.ant-bubble-content-wrapper) {
   max-width: 85%;
 }
 
 .chatContainer .userBubble :global(.ant-bubble-content) {
-  padding: 8px 14px;
+  padding: 8px 12px;
   border-radius: 16px 16px 4px 16px;
   background-color: color-mix(in srgb, var(--color-fill-1) 70%, transparent);
   color: var(--color-text-1);
   font-size: 13px;
-  line-height: 1.55;
+  line-height: 1.45;
   border: 0;
   box-shadow: none;
+
+  :global(.markdownBody) {
+    font-size: inherit;
+    line-height: inherit;
+
+    p {
+      margin: 0;
+
+      & + p {
+        margin-top: 0.4em;
+      }
+    }
+  }
 }
 
 .chatContainer :global(.ant-bubble-footer) {

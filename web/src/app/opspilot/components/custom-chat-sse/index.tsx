@@ -1168,10 +1168,10 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
               if (isUser) {
                 return (
                   <div key={msg.id} className="group flex flex-col items-end w-full my-1.5">
-                    <div className="max-w-[85%] rounded-2xl rounded-tr-xs bg-[var(--color-fill-1)]/70 px-3.5 py-2 text-[13px] leading-relaxed text-[var(--color-text-1)] break-words">
+                    <div className={`${styles.userMessageBubble}`}>
                       {renderContent(msg)}
                     </div>
-                    <div className="mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="mt-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
                       <MessageActions
                         message={msg}
                         onCopy={handleCopyMessage}
@@ -1196,7 +1196,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                     )}
                   </div>
                   {!isCurrentBotLoading && (
-                    <div className="mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="mt-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
                       <MessageActions
                         message={msg}
                         onCopy={handleCopyMessage}
