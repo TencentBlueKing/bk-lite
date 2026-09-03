@@ -289,6 +289,8 @@ export interface WidgetWrapperProps {
   onTopologyLayoutChange?: (
     next: NonNullable<ValueConfig['networkStatusTopology']>,
   ) => void;
+  /** 预览等旁路需要同一份取数结果时使用；不影响画布渲染。 */
+  onRawData?: (data: unknown) => void;
 }
 
 const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
@@ -312,6 +314,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   runtimePriority = DEFAULT_RUNTIME_PRIORITY,
   surface = 'dashboard',
   onTopologyLayoutChange,
+  onRawData,
 }) => {
   const { t } = useTranslation();
   const headerRuntimeSlot = useWidgetHeaderRuntimeSlot();
@@ -337,7 +340,13 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     () => withRuntimeSourceDataErrorSuppression(getSourceDataByApiId),
     [getSourceDataByApiId],
   );
-  const isSceneWidget = isSelfFetchSceneWidget(config?.sceneWidgetType);
+  const isSceneWidget = isSelfFetchSceneWidget(
+    config?.sceneWidgetType || chartType,
+  );
+  useEffect(() => {
+    if (isSceneWidget) return;
+    onRawData?.(rawData);
+  }, [isSceneWidget, onRawData, rawData]);
   const effectiveComponentParams = useMemo(() => {
     const overrides = config?.dataSourceParams || [];
     if (!dataSource?.params?.length) return overrides;
@@ -1244,6 +1253,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           runtimeActive={runtimeActive}
           runtimePriority={runtimePriority}
           surface={surface}
+          onRawData={onRawData}
           fallback={renderError(
             `${t("dashboard.unknownComponentType")}: ${chartType}`,
           )}

@@ -76,15 +76,13 @@ const FilterBindingPanel: React.FC<FilterBindingPanelProps> = ({
         return (
           <div
             key={filterId}
-            className={`flex items-center justify-between rounded-lg border px-3 py-2.5 ${
-              canBind
-                ? 'border-(--color-border-1) bg-(--color-fill-2)'
-                : 'border-(--color-border-2) bg-(--color-fill-3) opacity-60'
+            className={`flex items-center justify-between py-2 ${
+              canBind ? '' : 'opacity-60'
             }`}
           >
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-medium text-sm text-(--color-text-1)">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium text-(--color-text-1)">
                   {displayName}
                 </span>
                 <Tag
@@ -95,23 +93,26 @@ const FilterBindingPanel: React.FC<FilterBindingPanelProps> = ({
                         ? 'purple'
                         : 'green'
                   }
-                  style={{ marginRight: 0 }}
+                  className="m-0"
                 >
                   {getTypeLabel(param.type)}
                 </Tag>
-                {!canBind && (
-                  <Tag color="default">{t('dashboard.filterDisabled')}</Tag>
-                )}
+                {!canBind ? (
+                  <Tag color="default" className="m-0">
+                    {t('dashboard.filterDisabled')}
+                  </Tag>
+                ) : null}
               </div>
-              <div className="text-xs text-(--color-text-3) mt-0.5 font-mono">
+              <div className="mt-0.5 font-mono text-xs text-(--color-text-3)">
                 {param.name}
               </div>
             </div>
-            <div className="ml-3 flex-shrink-0">
-              <span>
-                <Switch size="small" checked={canBind && isEnabled} disabled />
-              </span>
-            </div>
+            <Switch
+              size="small"
+              className="ml-3 shrink-0"
+              checked={canBind && isEnabled}
+              disabled
+            />
           </div>
         );
       })}

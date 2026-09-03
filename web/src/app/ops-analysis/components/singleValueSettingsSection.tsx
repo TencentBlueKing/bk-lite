@@ -109,8 +109,7 @@ export const SingleValueSettingsSection: React.FC<
   readonly = false,
   showDescriptionField = false,
 }) => {
-  const resolvedSectionTitle =
-    sectionTitle || t('topology.nodeConfig.dataSettings');
+  const resolvedSectionTitle = sectionTitle !== undefined ? sectionTitle : t('topology.nodeConfig.dataSettings');
   const canSelectField =
     Boolean(selectedDataSource) && singleValueTreeData.length > 0 && !readonly;
   const fieldSelectorDisabled =
@@ -157,25 +156,48 @@ export const SingleValueSettingsSection: React.FC<
   };
 
   return (
-    <div className="mb-6">
-      <div className="mb-6">
-        <div className="mb-4 flex items-center justify-between gap-2">
-          <div className="font-medium">{resolvedSectionTitle}</div>
+    <div className="space-y-4">
+      {resolvedSectionTitle ? (
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <span className="text-[13px] font-semibold text-(--color-text-2)">
+            {resolvedSectionTitle}
+          </span>
           <Button
             type="text"
+            size="small"
             icon={<ReloadOutlined aria-hidden />}
             onClick={onFetchSingleValueDataFields}
             loading={loadingSingleValueData}
             disabled={!selectedDataSource || readonly}
             title={t('topology.nodeConfig.refreshDataFields')}
             aria-label={t('topology.nodeConfig.refreshDataFields')}
-            className="shrink-0"
+            className="shrink-0 text-xs text-(--color-text-3) hover:text-(--color-primary)"
           />
         </div>
+      ) : null}
 
-        <Form.Item
-          label={t('topology.nodeConfig.displayField')}
-          name="selectedFields"
+      <Form.Item
+        label={
+          <div className="flex items-center justify-between w-full">
+            <span>{t('topology.nodeConfig.displayField')}</span>
+            {!resolvedSectionTitle ? (
+              <Button
+                type="text"
+                size="small"
+                icon={<ReloadOutlined aria-hidden />}
+                onClick={onFetchSingleValueDataFields}
+                loading={loadingSingleValueData}
+                disabled={!selectedDataSource || readonly}
+                title={t('topology.nodeConfig.refreshDataFields')}
+                aria-label={t('topology.nodeConfig.refreshDataFields')}
+                className="h-5 px-1 text-xs text-(--color-text-3) hover:text-(--color-primary)"
+              >
+                {t('topology.nodeConfig.refreshDataFields') || '刷新字段'}
+              </Button>
+            ) : null}
+          </div>
+        }
+        name="selectedFields"
           rules={[
             {
               required: true,
@@ -250,7 +272,6 @@ export const SingleValueSettingsSection: React.FC<
             />
           </Form.Item>
         ) : null}
-      </div>
 
       <Form.Item
         label={

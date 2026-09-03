@@ -2,6 +2,7 @@ import React from 'react';
 import { Button, Form, Input, InputNumber } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ResponseFieldDefinition } from '@/app/ops-analysis/types/dataSource';
+import { ConfigGroupTitle } from '../configTitles';
 
 interface RadarSettingsSectionProps {
   t: (key: string, defaultMessage?: string) => string;
@@ -21,9 +22,7 @@ export const RadarSettingsSection: React.FC<RadarSettingsSectionProps> = ({
   const hasFieldSchema = availableFields.length > 0;
 
   return (
-    <div className="mb-6">
-      <div className="font-medium mb-4">{t('dashboard.radarSettings')}</div>
-
+    <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <Form.Item label={t('dashboard.radarMin')} name={['radar', 'min']} initialValue={0}>
           <InputNumber style={{ width: '100%' }} />
@@ -55,9 +54,7 @@ export const RadarSettingsSection: React.FC<RadarSettingsSectionProps> = ({
         </Form.Item>
       </div>
 
-      <div className="mb-2 text-sm text-(--color-text-2)">
-        {t('dashboard.radarIndicators')}
-      </div>
+      <ConfigGroupTitle>{t('dashboard.radarIndicators')}</ConfigGroupTitle>
       <Form.List name={['radar', 'indicators']}>
         {(fields, { add, remove }) => (
           <div className="flex flex-col gap-2">

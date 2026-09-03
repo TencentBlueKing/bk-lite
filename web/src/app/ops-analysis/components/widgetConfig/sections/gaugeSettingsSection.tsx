@@ -41,7 +41,7 @@ export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
   onAddThreshold,
   onRemoveThreshold,
 }) => {
-  const resolvedSectionTitle = sectionTitle || t('dashboard.gaugeSettings');
+  const resolvedSectionTitle = sectionTitle !== undefined ? sectionTitle : t('dashboard.gaugeSettings');
   const canSelectField =
     Boolean(selectedDataSource) && singleValueTreeData.length > 0;
   const fieldSelectorDisabled = !selectedDataSource || loadingSingleValueData;
@@ -87,13 +87,35 @@ export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
   };
 
   return (
-    <div className="mb-6">
-      <div className="mb-6">
-        <div className="font-medium mb-4">{resolvedSectionTitle}</div>
+    <div className="space-y-4">
+      {resolvedSectionTitle ? (
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-[13px] font-semibold text-(--color-text-2)">
+            {resolvedSectionTitle}
+          </span>
+        </div>
+      ) : null}
 
-        <Form.Item
-          label={t('topology.nodeConfig.displayField')}
-          name="selectedFields"
+      <Form.Item
+        label={
+          <div className="flex items-center justify-between w-full">
+            <span>{t('topology.nodeConfig.displayField')}</span>
+            <Button
+              type="text"
+              size="small"
+              icon={<ReloadOutlined aria-hidden />}
+              onClick={onFetchSingleValueDataFields}
+              loading={loadingSingleValueData}
+              disabled={!selectedDataSource}
+              title={t('topology.nodeConfig.refreshDataFields')}
+              aria-label={t('topology.nodeConfig.refreshDataFields')}
+              className="h-5 px-1 text-xs text-(--color-text-3) hover:text-(--color-primary)"
+            >
+              {t('topology.nodeConfig.refreshDataFields') || '刷新字段'}
+            </Button>
+          </div>
+        }
+        name="selectedFields"
           rules={[
             {
               required: true,
@@ -284,7 +306,6 @@ export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
         >
           <ValueMappingsConfigSection t={t} />
         </Form.Item>
-      </div>
     </div>
   );
 };
