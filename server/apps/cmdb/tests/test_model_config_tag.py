@@ -3,9 +3,10 @@ CMDB model_config.xlsx 默认 tag 字段回归测试
 
 业务背景:
 - 4 大目标分类(应用主机/中间件/数据库/物理设备)下的内置模型应统一开启 tag 标签属性
-- 177 个新加 tag 模型:attr_type='tag', option 含 mode=free, attr_group='基本信息',
-  is_required=False, editable=True, is_only=False
+- 另有 15 个跨场景模型新建 attr_type=tag(K8S 只给 cluster；网络设备/应用拓扑/机房/PC/证书/ZStack/漏网虚拟机)
+- 208 个 tag 类型字段预置跨模型共用 option：Pack A=env+level，Pack B=env+level+zone，mode=free
 - 14 个已有 tag 模型(qcloud_*/azure_* 14 个云资源):保持 attr_type='str',不迁移
+- K8S namespace/node/workload/pod 不内置 tag
 """
 import json
 import os
@@ -61,6 +62,110 @@ PRE_EXISTING_TAG_MODELS = frozenset(
         "azure_dns",
     }
 )
+
+# 当前没有 tag 字段、需要新建 attr_type=tag 的 15 个模型
+NEW_TAG_MODELS = frozenset(
+    {
+        "k8s_cluster",
+        "system",
+        "application",
+        "datacenter",
+        "server_room",
+        "rack",
+        "pc",
+        "ssl_cer",
+        "zstack",
+        "switch",
+        "router",
+        "firewall",
+        "loadbalance",
+        "security_device",
+        "sangforhci_vm",
+    }
+)
+
+# K8S 只给 cluster 内置标签
+K8S_WITHOUT_BUILTIN_TAG = frozenset({"k8s_namespace", "k8s_node", "k8s_workload", "k8s_pod"})
+
+# 计算/网络位置是场景轴：env+level+zone
+PACK_B_MODELS = frozenset(
+    {
+        "host",
+        "physcial_server",
+        "server_bmc",
+        "switch",
+        "router",
+        "firewall",
+        "loadbalance",
+        "security_device",
+        "vmware_vm",
+        "vmware_esxi",
+        "aliyun_ecs",
+        "aliyun_clb",
+        "qcloud_cvm",
+        "hwcloud_ecs",
+        "aws_ec2",
+        "aws_elb",
+        "manageone_server",
+        "manageone_host",
+        "manageone_eip",
+        "openstack_vm",
+        "openstack_node",
+        "openstack_vpc",
+        "openstack_subnet",
+        "openstack_eip",
+        "openstack_sg",
+        "smartx_vm",
+        "smartx_host",
+        "fusioncompute_vm",
+        "fusioncompute_host",
+        "fusioninsight_host",
+        "inspurincloudrail_vm",
+        "sangforscp_host",
+        "sangforscp_vm",
+        "sangforhci_vm",
+        "nutanixhci_host",
+        "nutanixhci_vm",
+        "winsphere_host",
+        "winsphere_vm",
+        "winsphere_vswitch",
+        "winsphere_port_group",
+        "h3c_cas_host",
+        "h3c_cas_vm",
+        "h3c_cas_vswitch",
+        "hwcloud_vpc",
+        "hwcloud_subnet",
+        "hwcloud_eip",
+        "hwcloud_sg",
+        "hwcloud_elb",
+        "apache",
+        "nginx",
+        "openresty",
+        "haproxy",
+        "keepalive",
+        "squid",
+        "ihs",
+    }
+)
+
+ENV_LEVEL_OPTIONS = [
+    {"key": "env", "value": "生产"},
+    {"key": "env", "value": "预发"},
+    {"key": "env", "value": "测试"},
+    {"key": "env", "value": "开发"},
+    {"key": "env", "value": "灾备"},
+    {"key": "level", "value": "核心"},
+    {"key": "level", "value": "重要"},
+    {"key": "level", "value": "一般"},
+]
+ZONE_OPTIONS = [
+    {"key": "zone", "value": "隔离区"},
+    {"key": "zone", "value": "内网"},
+    {"key": "zone", "value": "外网"},
+    {"key": "zone", "value": "管理网"},
+]
+PACK_A_OPTIONS = ENV_LEVEL_OPTIONS
+PACK_B_OPTIONS = ENV_LEVEL_OPTIONS + ZONE_OPTIONS
 
 
 def _model_config_path() -> str:
@@ -269,3 +374,90 @@ def test_models_sheet_seeds_app_topo_layer():
     host_ids = {model_id for model_id, layer in by_id.items() if layer == "host"}
     assert "host" in host_ids
     assert all(mid.endswith(("_vm", "_ecs", "_cvm", "_ec2")) or mid in {"host", "manageone_server"} for mid in host_ids)
+
+
+def _parse_tag_option(raw) -> dict:
+    normalized = str(raw).replace("'", '"')
+    return json.loads(normalized)
+
+
+def _iter_unique_models(sheets: dict):
+    seen: set = set()
+    for model_id, classification_id in zip(sheets["models"]["model_id"], sheets["models"]["classification_id"]):
+        if model_id in seen:
+            continue
+        seen.add(model_id)
+        yield str(model_id), str(classification_id)
+
+
+def _tag_row(sheets: dict, model_id: str):
+    df = sheets.get(f"attr-{model_id}")
+    if df is None or "attr_id" not in df.columns:
+        return None
+    matched = df[df["attr_id"].astype(str) == "tag"]
+    if matched.empty:
+        return None
+    return matched.iloc[0]
+
+
+@pytest.mark.unit
+def test_new_scene_models_open_tag_field_in_basic_info():
+    sheets = _load_sheets()
+    missing = []
+    for model_id in sorted(NEW_TAG_MODELS):
+        row = _tag_row(sheets, model_id)
+        if row is None:
+            missing.append((model_id, "no tag attr"))
+            continue
+        if str(row["attr_type"]) != "tag":
+            missing.append((model_id, f"type={row['attr_type']}"))
+        if str(row["attr_group"]).strip() != "基本信息":
+            missing.append((model_id, f"group={row['attr_group']}"))
+        if bool(row["is_required"]) is True:
+            missing.append((model_id, "required"))
+        if bool(row["editable"]) is not True:
+            missing.append((model_id, "not editable"))
+        if bool(row["is_only"]) is True:
+            missing.append((model_id, "unique"))
+    assert not missing, missing
+
+
+@pytest.mark.unit
+def test_k8s_builtin_tag_only_on_cluster():
+    sheets = _load_sheets()
+    cluster = _tag_row(sheets, "k8s_cluster")
+    assert cluster is not None
+    assert str(cluster["attr_type"]) == "tag"
+    leaked = [model_id for model_id in sorted(K8S_WITHOUT_BUILTIN_TAG) if _tag_row(sheets, model_id) is not None]
+    assert leaked == [], f"K8S 子对象不应内置 tag: {leaked}"
+
+
+@pytest.mark.unit
+def test_builtin_tag_options_follow_shared_packs():
+    sheets = _load_sheets()
+    wrong = []
+    tag_type_models = []
+    for model_id, _classification_id in _iter_unique_models(sheets):
+        row = _tag_row(sheets, model_id)
+        if row is None:
+            continue
+        if str(row["attr_type"]) != "tag":
+            continue
+        tag_type_models.append(model_id)
+        expected = PACK_B_OPTIONS if model_id in PACK_B_MODELS else PACK_A_OPTIONS
+        try:
+            option = _parse_tag_option(row["option"])
+        except json.JSONDecodeError as exc:
+            wrong.append((model_id, f"invalid JSON {exc}"))
+            continue
+        if option.get("mode") != "free":
+            wrong.append((model_id, f"mode={option.get('mode')}"))
+        if option.get("options") != expected:
+            wrong.append((model_id, f"options={option.get('options')}"))
+
+    assert len(tag_type_models) == 208, f"attr_type=tag 应为 208 个,实际 {len(tag_type_models)}"
+    assert set(NEW_TAG_MODELS) <= set(tag_type_models)
+    assert not (set(tag_type_models) & K8S_WITHOUT_BUILTIN_TAG)
+    assert not (set(tag_type_models) & PRE_EXISTING_TAG_MODELS)
+    assert PACK_B_MODELS <= set(tag_type_models)
+    assert not wrong, wrong[:12]

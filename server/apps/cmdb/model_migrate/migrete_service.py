@@ -584,6 +584,13 @@ class ModelMigrate:
         return attrs if isinstance(attrs, list) else []
 
     @staticmethod
+    def _tag_field_options_empty(option) -> bool:
+        if not isinstance(option, dict):
+            return True
+        rows = option.get("options")
+        return not isinstance(rows, list) or len(rows) == 0
+
+    @staticmethod
     def _merge_existing_attr_config(existing_attr: dict, incoming_attr: dict) -> bool:
         changed = False
 
@@ -603,8 +610,8 @@ class ModelMigrate:
                 existing_attr["user_prompt"] = user_prompt
                 changed = True
 
-        # 标签候选项由用户在页面/实例写入中自行积累，model_init 不得用种子 option 覆盖。
-        skip_option_overwrite = existing_attr.get("attr_type") == "tag"
+        # 标签候选项：空列表允许写入种子；已有内容视为用户积累，model_init 不得覆盖。
+        skip_option_overwrite = existing_attr.get("attr_type") == "tag" and not ModelMigrate._tag_field_options_empty(existing_attr.get("option"))
         if "option" in incoming_attr and not skip_option_overwrite and existing_attr.get("option") != incoming_attr.get("option"):
             existing_attr["option"] = incoming_attr.get("option")
             changed = True

@@ -314,6 +314,93 @@ class TestModelMigrateParsing:
         assert m._merge_existing_attr_config(existing, incoming) is False
         assert existing["option"] == {"mode": "free", "options": user_options}
 
+    def test_merge_existing_attr_config_seeds_empty_tag_options(self, monkeypatch):
+        m = self._make(monkeypatch)
+        seed = [{"key": "env", "value": "prod"}, {"key": "level", "value": "core"}]
+        existing = {
+            "attr_id": "tag",
+            "attr_type": "tag",
+            "attr_name": "标签",
+            "option": {"mode": "free", "options": []},
+        }
+        incoming = {
+            "attr_id": "tag",
+            "attr_type": "tag",
+            "attr_name": "标签",
+            "option": {"mode": "free", "options": seed},
+        }
+
+        changed = m._merge_existing_attr_config(existing, incoming)
+
+        assert changed is True
+        assert existing["option"] == {"mode": "free", "options": seed}
+
+    def test_merge_existing_attr_config_seeds_tag_options_when_options_key_missing(self, monkeypatch):
+        m = self._make(monkeypatch)
+        seed = [{"key": "env", "value": "test"}]
+        existing = {
+            "attr_id": "tag",
+            "attr_type": "tag",
+            "attr_name": "标签",
+            "option": {"mode": "free"},
+        }
+        incoming = {
+            "attr_id": "tag",
+            "attr_type": "tag",
+            "attr_name": "标签",
+            "option": {"mode": "free", "options": seed},
+        }
+
+        changed = m._merge_existing_attr_config(existing, incoming)
+
+        assert changed is True
+        assert existing["option"]["options"] == seed
+
+    def test_merge_existing_attr_config_keeps_populated_tag_options_when_seed_differs(self, monkeypatch):
+        m = self._make(monkeypatch)
+        user_options = [{"key": "app", "value": "shop"}]
+        existing = {
+            "attr_id": "tag",
+            "attr_type": "tag",
+            "attr_name": "标签",
+            "option": {"mode": "free", "options": user_options},
+        }
+        incoming = {
+            "attr_id": "tag",
+            "attr_type": "tag",
+            "attr_name": "标签",
+            "option": {"mode": "free", "options": [{"key": "env", "value": "prod"}]},
+        }
+
+        assert m._merge_existing_attr_config(existing, incoming) is False
+        assert existing["option"]["options"] == user_options
+
+    def test_merge_existing_attr_config_does_not_replace_populated_tag_seed(self, monkeypatch):
+        m = self._make(monkeypatch)
+        existing_seed = [
+            {"key": "env", "value": "prod"},
+            {"key": "level", "value": "core"},
+        ]
+        incoming_seed = [
+            {"key": "env", "value": "生产"},
+            {"key": "level", "value": "核心"},
+        ]
+        existing = {
+            "attr_id": "tag",
+            "attr_type": "tag",
+            "attr_name": "标签",
+            "option": {"mode": "free", "options": existing_seed},
+        }
+        incoming = {
+            "attr_id": "tag",
+            "attr_type": "tag",
+            "attr_name": "标签",
+            "option": {"mode": "free", "options": incoming_seed},
+        }
+
+        assert m._merge_existing_attr_config(existing, incoming) is False
+        assert existing["option"]["options"] == existing_seed
+
 
 # ===========================================================================
 # ModelMigrate.get_model_config —— 真实 Excel 字节流喂入 pandas
@@ -604,6 +691,72 @@ class TestModelMigrateWithDB:
                     "attr_type": "tag",
                     "attr_name": "标签",
                     "option": {"mode": "free", "options": []},
+                }
+            ]
+        }
+        ag = FakeGraph()
+        res = m._sync_added_attrs_to_existing_models(ag, attrs_by_model, existing_model_map)
+
+        assert res["updated_attr_count"] == 0
+        assert res["added_attr_count"] == 0
+        assert not any(call[0] == "set_entity_properties" for call in ag.calls)
+
+    def test_sync_added_attrs_seeds_empty_tag_options(self, monkeypatch):
+        m, mod = self._make(monkeypatch, {})
+        monkeypatch.setattr(mod.ExcludeFieldsCache, "refresh_cache", classmethod(lambda cls: True))
+
+        seed = [{"key": "env", "value": "prod"}, {"key": "level", "value": "core"}]
+        existing_attrs = [
+            {
+                "attr_id": "tag",
+                "attr_type": "tag",
+                "attr_name": "标签",
+                "option": {"mode": "free", "options": []},
+            }
+        ]
+        existing_model_map = {"host": {"_id": "n1", "model_id": "host", "attrs": json.dumps(existing_attrs)}}
+        attrs_by_model = {
+            "host": [
+                {
+                    "attr_id": "tag",
+                    "attr_type": "tag",
+                    "attr_name": "标签",
+                    "option": {"mode": "free", "options": seed},
+                }
+            ]
+        }
+        ag = FakeGraph()
+        res = m._sync_added_attrs_to_existing_models(ag, attrs_by_model, existing_model_map)
+
+        assert res["updated_attr_count"] == 1
+        assert res["added_attr_count"] == 0
+        write_calls = [call for call in ag.calls if call[0] == "set_entity_properties"]
+        assert len(write_calls) == 1
+        written_attrs = json.loads(write_calls[0][1][2]["attrs"])
+        tag_attr = next(attr for attr in written_attrs if attr["attr_id"] == "tag")
+        assert tag_attr["option"]["options"] == seed
+
+    def test_sync_added_attrs_does_not_replace_populated_tag_seed(self, monkeypatch):
+        m, mod = self._make(monkeypatch, {})
+        monkeypatch.setattr(mod.ExcludeFieldsCache, "refresh_cache", classmethod(lambda cls: True))
+
+        existing_seed = [{"key": "env", "value": "prod"}, {"key": "level", "value": "core"}]
+        existing_attrs = [
+            {
+                "attr_id": "tag",
+                "attr_type": "tag",
+                "attr_name": "标签",
+                "option": {"mode": "free", "options": existing_seed},
+            }
+        ]
+        existing_model_map = {"host": {"_id": "n1", "model_id": "host", "attrs": json.dumps(existing_attrs)}}
+        attrs_by_model = {
+            "host": [
+                {
+                    "attr_id": "tag",
+                    "attr_type": "tag",
+                    "attr_name": "标签",
+                    "option": {"mode": "free", "options": [{"key": "env", "value": "生产"}]},
                 }
             ]
         }
