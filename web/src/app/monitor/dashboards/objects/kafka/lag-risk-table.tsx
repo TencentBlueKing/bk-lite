@@ -6,7 +6,7 @@ import type { TableColumnsType } from 'antd';
 import { useSearchParams } from 'next/navigation';
 import useViewApi from '@/app/monitor/api/view';
 import { DashboardPanel, TrendChartPanel } from '../../shared/widgets';
-import { buildSearchParams, formatMetricValue } from '../../shared/utils';
+import { buildDynamicCapabilitySearchParams, buildSearchParams, formatMetricValue } from '../../shared/utils';
 import { renderChart } from '@/app/monitor/utils/common';
 import { ChartData } from '@/app/monitor/types';
 import { useSimpleDashboardData } from '../common/simple-dashboard-core';
@@ -18,7 +18,7 @@ import {
   type KafkaLagRiskResult,
   type KafkaLagRiskRow,
 } from './parse';
-import { buildKafkaTopNExactQuery, KAFKA_LAG_TOP_QUERY } from './queries';
+import { KAFKA_LAG_TOP_QUERY } from './queries';
 
 interface KafkaLagRiskTableProps {
   dashboard: ReturnType<typeof useSimpleDashboardData>;
@@ -66,7 +66,15 @@ export function KafkaLagRiskTable({ dashboard, styles }: KafkaLagRiskTableProps)
     const load = async () => {
       // instant Top 10 在时间窗终点求值（buildSearchParams.time=end），与趋势 range 对齐；负 Lag 不参与排行。
       const lag = await getInstanceInstantQuery(buildSearchParams(
-        KAFKA_LAG_TOP_QUERY, 'counts', dashboard.idValues, instanceIdKeys, dashboard.timeValues, undefined, false,
+        KAFKA_LAG_TOP_QUERY,
+        'counts',
+        dashboard.idValues,
+        instanceIdKeys,
+        dashboard.timeValues,
+        undefined,
+        false,
+        dashboard.currentInstanceInterval,
+        { monitorObjectId: dashboard.monitorObjectId, instanceId: dashboard.instanceId },
       )).catch(() => null);
       if (!active) return;
       const topRows = parseKafkaLagRiskRows({ lag } as KafkaLagRiskResult);
@@ -79,13 +87,38 @@ export function KafkaLagRiskTable({ dashboard, styles }: KafkaLagRiskTableProps)
       }
       const trendDimensions = dimensions.slice(0, LAG_TREND_SERIES_LIMIT);
       // 只为 Top 10 精确维度请求当前/最早 Offset，不再进行全量范围查询。
-      const currentQuery = buildKafkaTopNExactQuery('kafka_consumergroup_current_offset_gauge', dimensions, true);
-      const oldestQuery = buildKafkaTopNExactQuery('kafka_topic_partition_oldest_offset_gauge', dimensions, false);
-      const historyQuery = buildKafkaTopNExactQuery('kafka_consumergroup_lag_gauge', trendDimensions, true);
+      const capabilityDimensions = (items: typeof dimensions) => items.map((item) => ({
+        consumer_group: item.consumerGroup,
+        topic: item.topic,
+        partition: item.partition,
+      }));
+      const capabilityContext = {
+        monitorObjectId: dashboard.monitorObjectId,
+        instanceId: dashboard.instanceId,
+      };
       setHistoryLoading(true);
-      const currentOffsetPromise = getInstanceInstantQuery(buildSearchParams(currentQuery, 'counts', dashboard.idValues, instanceIdKeys, dashboard.timeValues, undefined, false)).catch(() => null);
-      const oldestOffsetPromise = getInstanceInstantQuery(buildSearchParams(oldestQuery, 'counts', dashboard.idValues, instanceIdKeys, dashboard.timeValues, undefined, false)).catch(() => null);
-      const historyPromise = getInstanceQuery(buildSearchParams(historyQuery, 'counts', dashboard.idValues, instanceIdKeys, dashboard.timeValues, undefined, false, dashboard.currentInstanceInterval)).catch(() => null);
+      const currentOffsetPromise = getInstanceInstantQuery(buildDynamicCapabilitySearchParams({
+        capabilityId: 'dashboard:dynamic:kafka:current-offset',
+        capabilityParams: { dimensions: capabilityDimensions(dimensions) },
+        sourceUnit: 'counts',
+        timeValues: dashboard.timeValues,
+        context: capabilityContext,
+      })).catch(() => null);
+      const oldestOffsetPromise = getInstanceInstantQuery(buildDynamicCapabilitySearchParams({
+        capabilityId: 'dashboard:dynamic:kafka:oldest-offset',
+        capabilityParams: { dimensions: capabilityDimensions(dimensions) },
+        sourceUnit: 'counts',
+        timeValues: dashboard.timeValues,
+        context: capabilityContext,
+      })).catch(() => null);
+      const historyPromise = getInstanceQuery(buildDynamicCapabilitySearchParams({
+        capabilityId: 'dashboard:dynamic:kafka:lag-history',
+        capabilityParams: { dimensions: capabilityDimensions(trendDimensions) },
+        sourceUnit: 'counts',
+        timeValues: dashboard.timeValues,
+        minStepSeconds: dashboard.currentInstanceInterval,
+        context: capabilityContext,
+      })).catch(() => null);
       const [currentOffset, oldestOffset] = await Promise.all([
         currentOffsetPromise,
         oldestOffsetPromise,
@@ -115,7 +148,6 @@ export function KafkaLagRiskTable({ dashboard, styles }: KafkaLagRiskTableProps)
       active = false;
     };
     // 查询需随核心盘的实例、时间和自动刷新周期同步重载。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dashboard.currentInstanceInterval, dashboard.isDashboardMode, dashboard.loadTick, getInstanceInstantQuery, getInstanceQuery, idValuesKey, instanceIdKeys, timeKey]);
 
   const trendRows = useMemo(

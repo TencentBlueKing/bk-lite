@@ -1,0 +1,118 @@
+Host AIX Remote:
+  name: AIX主机远程采集
+  desc: 由 Linux 采集节点按采集间隔 SSH 到 AIX，执行系统命令。采集 CPU（含 LPAR）、内存分页与 svmon、负载、进程状态、磁盘容量与 inode、读写与忙碌、网卡和运行时长。目标主机无需安装采集器。表单填写 IP、SSH 用户名（如 root）、密码或私钥、端口（默认 22）、采集间隔和 Linux 采集节点。不采集硬件清单、lastlog、lsof 和连接表。无需选择版本，版本自动识别。
+monitor_object:
+  Host: 主机
+monitor_object_type:
+  OS: 操作系统
+monitor_object_metric:
+  Host:
+    cpu_usage_total:
+      name: CPU使用率
+      desc: 由 mpstat 的 user、sys、iowait 三相加得到的 CPU 使用率。
+    cpu_usage_iowait_total:
+      name: CPU等待IO占比
+      desc: 表示 CPU 因等待 I/O 操作完成而处于空闲状态的时间占比，主要用于判断系统是否受限于磁盘或其他 I/O 性能。
+    cpu_usage_system_total:
+      name: CPU系统占用率
+      desc: 表示 CPU 在内核态执行操作系统相关任务所占用的时间比例，异常升高可能与系统调用频繁或内核开销增加有关。
+    cpu_usage_user_total:
+      name: CPU用户占用率
+      desc: 表示 CPU 在用户态执行应用程序逻辑所消耗的时间占比，通常用于衡量业务程序对 CPU 的消耗程度。
+    system_load1:
+      name: 1分钟平均负载
+      desc: 表示系统在最近 1 分钟内的平均运行负载，主要用于观察系统的瞬时压力变化。
+    system_load5:
+      name: 5分钟平均负载
+      desc: 表示系统在最近 5 分钟内的平均运行负载，用于分析系统负载的短期趋势。
+    system_load15:
+      name: 15分钟平均负载
+      desc: 表示系统在最近 15 分钟内的平均运行负载，用于评估系统负载的长期稳定性。
+    system_uptime:
+      name: 系统运行时长
+      desc: 表示主机自上次启动以来的持续运行时间（秒），用于观察主机稳定性和识别异常重启。
+    diskio_write_bytes_rate:
+      name: 磁盘写入速率
+      desc: 表示磁盘单位时间内写入的数据量，用于评估磁盘写入吞吐能力。
+    diskio_write_bytes_total:
+      name: 磁盘写入字节数
+      desc: 该设备的磁盘写入字节数。速率用 1 秒间隔采样；7.1 空闲间隔回退时可能来自此前非空闲报告。
+    diskio_read_bytes_rate:
+      name: 磁盘读出速率
+      desc: 表示磁盘单位时间内读取的数据量，用于评估磁盘读取吞吐能力。
+    diskio_read_bytes_total:
+      name: 磁盘读取字节数
+      desc: 该设备的磁盘读取字节数。速率用 1 秒间隔采样；7.1 空闲间隔回退时可能来自此前非空闲报告。
+    disk_tm_act:
+      name: 磁盘 tm_act
+      desc: 表示 AIX iostat 的 % tm_act，即磁盘处于活动状态的时间占比。这是 AIX 磁盘忙碌指标，不是 Linux %util。
+    disk_total:
+      name: 磁盘总空间
+      desc: 表示磁盘或文件系统的总容量，用于容量规划与资源管理。
+    disk_free:
+      name: 磁盘剩余空间
+      desc: 表示磁盘或文件系统当前可用的剩余容量，用于监控磁盘空间风险。
+    disk_used_percent:
+      name: 磁盘使用率
+      desc: 表示磁盘已使用空间占总容量的比例，是磁盘容量监控的核心指标。
+    disk_inodes_used_percent:
+      name: Inode使用率
+      desc: 表示文件系统 inode 的使用比例，用于容量与 inode 监控。
+    disk_iused:
+      name: 已用 inode
+      desc: 表示已使用的 inode 个数，与容量一起用于文件系统监控。
+    disk_ifree:
+      name: 空闲 inode
+      desc: 表示剩余可用的 inode 个数，与容量一起用于文件系统监控。
+    mem_total:
+      name: 内存总量
+      desc: 表示系统可使用的物理内存总容量，是内存资源评估的基础指标。
+    mem_used_percent:
+      name: 内存使用率
+      desc: 表示已使用内存占总内存的比例，用于评估系统的内存压力水平。
+    mem_swap_free:
+      name: 空闲交换内存
+      desc: 表示当前剩余可用的交换内存空间，用于监控内存紧张情况下的缓冲能力。
+    svmon_work:
+      name: svmon work
+      desc: 表示 AIX svmon 的 work 段占用，保持 AIX 原名，不是 Linux cached/shared/buffered。
+    svmon_pers:
+      name: svmon pers
+      desc: 表示 AIX svmon 的 persistent 段占用，保持 AIX 原名。
+    svmon_clnt:
+      name: svmon clnt
+      desc: 表示 AIX svmon 的 client 段占用，保持 AIX 原名。
+    svmon_pin:
+      name: svmon pin
+      desc: 表示 AIX svmon 的 pinned 页占用，保持 AIX 原名。
+    lpar_entitled_capacity:
+      name: Entitled Capacity
+      desc: 表示 AIX LPAR 的 entitled capacity（授权容量）。
+    lpar_virtual_cpus:
+      name: Virtual CPUs
+      desc: 表示 AIX LPAR 的在线虚拟 CPU 数量。
+    net_bytes_recv_rate:
+      name: 网络接收吞吐速率
+      desc: 表示网络接口单位时间内接收的数据量，用于评估网络接收带宽使用情况。
+    net_bytes_sent_rate:
+      name: 网络发送吞吐速率
+      desc: 表示网络接口单位时间内发送的数据量，用于评估网络发送带宽使用情况。
+    net_err_in_rate:
+      name: 网络接收错误包速率
+      desc: 表示网络接口单位时间内接收到的错误数据包数量，用于监控网络质量。
+    net_err_out_rate:
+      name: 网络发送错误包速率
+      desc: 表示网络接口单位时间内发送失败的错误数据包数量。
+    processes_state:
+      name: AIX 进程状态计数
+      desc: 按 AIX ps 状态字母（A/Z/W/I/T/O 等）统计进程数，不映射为 Linux running/blocked。
+monitor_object_metric_group:
+  Host:
+    CPU: CPU
+    System: 系统
+    Disk IO: 磁盘 IO
+    Disk: 磁盘
+    Process: 进程
+    Memory: 内存
+    Network: 网络
+    LPAR: LPAR

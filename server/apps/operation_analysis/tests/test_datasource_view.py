@@ -61,11 +61,11 @@ def test_datasource_create_rejects_raw_monitor_query_route(authenticated_user):
 
 @pytest.mark.django_db
 @pytest.mark.integration
-def test_existing_raw_monitor_query_datasource_remains_executable(authenticated_user, monkeypatch):
+def test_existing_raw_monitor_query_datasource_is_not_executable(authenticated_user, monkeypatch):
     authenticated_user.is_superuser = True
     request = _build_request(authenticated_user, data={"query": "up"})
 
-    response, payload, captured = _build_view_response(
+    response, _payload, captured = _build_view_response(
         request,
         monkeypatch,
         {"result": True, "data": [{"name": "up", "value": 1}], "message": ""},
@@ -73,11 +73,9 @@ def test_existing_raw_monitor_query_datasource_remains_executable(authenticated_
         params=[{"name": "query", "type": "string", "value": "", "filterType": "params"}],
     )
 
-    assert response.status_code == status.HTTP_200_OK
-    assert payload["data"]["data"] == [{"name": "up", "value": 1}]
-    assert captured["kwargs"]["namespace"] == "monitor"
-    assert captured["kwargs"]["path"] == "mm_query"
-    assert captured["kwargs"]["params"]["query"] == "up"
+    assert response.status_code == status.HTTP_410_GONE
+    assert response.data["detail"] == LEGACY_RAW_MONITOR_QUERY_ERROR
+    assert captured == {}
 
 
 @pytest.mark.django_db

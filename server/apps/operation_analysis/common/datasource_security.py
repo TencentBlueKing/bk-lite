@@ -6,7 +6,7 @@ LEGACY_RAW_MONITOR_QUERY_ROUTES = frozenset(
         "monitor/mm_query_range",
     }
 )
-LEGACY_RAW_MONITOR_QUERY_ERROR = "该监控裸查询接口已停止新增，仅保留存量数据源兼容"
+LEGACY_RAW_MONITOR_QUERY_ERROR = "该监控裸查询接口已退役，禁止继续使用"
 
 
 def is_legacy_raw_monitor_query(*, source_type: str, rest_api: str) -> bool:

@@ -375,7 +375,7 @@ async def host_metrics(request):
     private_key_content = request.headers.get("private_key_content", "")
     private_key_passphrase = request.headers.get("private_key_passphrase", "")
     credential_encoding = request.headers.get("credential_encoding", "url")
-    port = request.headers.get("port", "22" if os_type == "linux" else "5986")
+    port = request.headers.get("port", "5986" if str(os_type or "").strip().lower() == "windows" else "22")
     metrics_modules = request.headers.get("metrics_modules", "cpu,mem,disk,diskio,net,processes,system")
     disk_include_fstypes = request.headers.get("disk_include_fstypes", "")
     disk_exclude_fstypes = request.headers.get(
@@ -456,4 +456,63 @@ async def host_metrics(request):
         accept_labels=lambda params: {"host": params.get("host")},
         error_labels=lambda: {"host": host},
         log_name="Host",
+    )
+
+
+def _aix_os_monitor_params(request, *, config_type: str) -> dict:
+    host = request.headers.get("host")
+    username = request.headers.get("username")
+    password = request.headers.get("password")
+    auth_type = request.headers.get("auth_type", "password")
+    private_key_content = request.headers.get("private_key_content", "")
+    private_key_passphrase = request.headers.get("private_key_passphrase", "")
+    credential_encoding = request.headers.get("credential_encoding", "url")
+    port = request.headers.get("port", "22")
+    ansible_node_id = request.headers.get("ansible_node_id", "")
+    if not host or not username:
+        raise ValueError("missing required headers: host, username")
+    if auth_type == "private_key":
+        if not private_key_content:
+            raise ValueError("missing required headers: private_key_content")
+    elif not password:
+        raise ValueError("missing required headers: host, username, password")
+    if not ansible_node_id:
+        raise ValueError("missing ansible_node_id header")
+    logger.info("event=aix_os_monitor_request host=%s config_type=%s monitor_type=host", host, config_type)
+    return {
+        "monitor_type": "host",
+        "host": host,
+        "os_type": "aix",
+        "username": username,
+        "password": password,
+        "port": port,
+        "ansible_node_id": ansible_node_id,
+        "auth_type": auth_type,
+        "private_key_content": private_key_content,
+        "private_key_passphrase": private_key_passphrase,
+        "credential_encoding": credential_encoding,
+        "tags": _standard_tags(
+            request,
+            defaults={
+                "instance_type": "os",
+                "collect_type": "http",
+                "config_type": config_type,
+            },
+        ),
+    }
+
+
+@monitor_router.get("/host_aix_remote/metrics")
+async def host_aix_remote_metrics(request):
+    try:
+        params = _aix_os_monitor_params(request, config_type="host_aix_remote")
+    except ValueError as error:
+        return _monitor_error_response("host", str(error), status=400, host=request.headers.get("host"))
+    return await _run_monitor_handler(
+        request,
+        monitor_type="host",
+        build_params=lambda _req: params,
+        accept_labels=lambda task_params: {"host": task_params.get("host")},
+        error_labels=lambda: {"host": request.headers.get("host")},
+        log_name="HostAIXRemote",
     )

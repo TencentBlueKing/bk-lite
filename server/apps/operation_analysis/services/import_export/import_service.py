@@ -368,16 +368,7 @@ class ImportService:
             source_type=ds_item.source_type,
             rest_api=ds_item.rest_api,
         )
-        preserves_existing_legacy_route = bool(
-            existing
-            and is_legacy_raw_monitor_query(
-                source_type=existing.source_type,
-                rest_api=existing.rest_api,
-            )
-            and action in {ConflictAction.SKIP.value, ConflictAction.OVERWRITE.value}
-        )
-        skips_existing_route = bool(existing and action == ConflictAction.SKIP.value)
-        if targets_legacy_route and not (preserves_existing_legacy_route or skips_existing_route):
+        if targets_legacy_route:
             self._record_result(
                 ds_item.key,
                 ObjectType.DATASOURCE.value,

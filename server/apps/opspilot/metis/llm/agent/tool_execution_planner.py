@@ -80,6 +80,16 @@ _K8S_NAMESPACE_SCAN_TOOLS = frozenset(
 )
 _K8S_NAMESPACE_LOOKUP_TOOLS = frozenset({_K8S_NAMESPACE_RESOLVE_TOOL})
 
+# 全集群发现类工具返回值已带 namespace；其后按对象取事件/describe 不必再插反查步。
+_K8S_CLUSTER_DISCOVERY_TOOLS = frozenset(
+    {
+        "get_high_restart_kubernetes_pods",
+        "get_failed_kubernetes_pods",
+        "get_pending_kubernetes_pods",
+        "get_not_ready_kubernetes_pods",
+    }
+)
+
 # 调用前通常已需要明确 namespace；若计划包含它们且未先反查，则服务端改写计划。
 _K8S_NAMESPACE_REQUIRED_TOOLS = frozenset(
     {
@@ -515,6 +525,14 @@ def enforce_k8s_namespace_lookup_first(
             first_required_idx = index
             break
     if first_required_idx is None:
+        return ToolExecutionPlan(goal=plan.goal, steps=cleaned)
+
+    prior_tools = {tool for step in cleaned[:first_required_idx] for tool in (step.tools or [])}
+    if prior_tools & _K8S_CLUSTER_DISCOVERY_TOOLS:
+        logger.info(
+            "DeepAgent 规划硬校验：前置发现工具已带 namespace，跳过插入反查 prior_tools=%s",
+            sorted(prior_tools & _K8S_CLUSTER_DISCOVERY_TOOLS),
+        )
         return ToolExecutionPlan(goal=plan.goal, steps=cleaned)
 
     lookup_step = ToolExecutionStep(

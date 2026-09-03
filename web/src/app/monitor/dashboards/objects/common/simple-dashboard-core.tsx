@@ -540,10 +540,20 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
 
   const loadSingleMetric = useCallback(
     (metric: SimpleMetricConfig, tv: TimeValuesProps) =>
-      getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, tv, undefined, false, currentInstanceInterval))
+      getInstanceQuery(buildSearchParams(
+        metric.query,
+        metric.unit,
+        idValues,
+        instanceIdKeys,
+        tv,
+        undefined,
+        false,
+        currentInstanceInterval,
+        { monitorObjectId, instanceId },
+      ))
         .then((result) => [metric.name, toMetricSeries(metric, result, instanceId, resolvedInstanceName, idValues, instanceIdKeys)] as const)
         .catch(() => [metric.name, { ...metric, viewData: [], loadState: 'error' as const }] as const),
-    [currentInstanceInterval, getInstanceQuery, idValues, instanceId, instanceIdKeys, resolvedInstanceName]
+    [currentInstanceInterval, getInstanceQuery, idValues, instanceId, instanceIdKeys, monitorObjectId, resolvedInstanceName]
   );
 
   const loadMetrics = useCallback(async (silent = false) => {
@@ -571,7 +581,17 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
           (metric) => loadSingleMetric(metric, frozenTimeValues)
         );
         const collectionStatusPromise: Promise<MetricSeries> = getInstanceQuery(
-          buildSearchParams(config.collectionStatusQuery, 'counts', idValues, instanceIdKeys, frozenTimeValues, undefined, false, currentInstanceInterval)
+          buildSearchParams(
+            config.collectionStatusQuery,
+            'counts',
+            idValues,
+            instanceIdKeys,
+            frozenTimeValues,
+            undefined,
+            false,
+            currentInstanceInterval,
+            { monitorObjectId, instanceId },
+          )
         )
           .then((result) =>
             toMetricSeries(

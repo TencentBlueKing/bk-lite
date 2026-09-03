@@ -79,7 +79,7 @@ VictoriaMetrics
 |---|---|---|---|
 | Catalog | 对象类型、对象、插件、指标、配置/UI 模板 | `models/plugin.py`、`models/monitor_metrics.py`、`management/services/plugin_migrate.py` | 监控能力定义、版本和兼容信息 |
 | Onboarding | 实例接入、参数校验、预检、配置渲染、下发与对账 | `services/node_mgmt.py`、`services/collect_detect.py`、`utils/plugin_controller.py` | 期望采集状态、接入操作状态 |
-| Observation | 指标查询、实例发现、插件在线状态、搜索与视图 | `services/monitor_instance.py`、`services/effective_plugins.py`、`utils/victoriametrics_api.py` | 观测状态的投影，不拥有原始时序事实 |
+| Observation | 受控指标查询、实例发现、插件在线状态、搜索与视图 | `services/authorized_metric_query.py`、`services/dashboard_query_capabilities.py`、`services/monitor_instance.py`、`services/effective_plugins.py`、`utils/victoriametrics_api.py` | 观测状态的投影与查询授权，不拥有原始时序事实 |
 | Policy Engine | 策略、调度、扫描、聚合、基线和无数据检测 | `views/monitor_policy.py`、`tasks/services/policy_scan/` | 策略定义、扫描游标与基线 |
 | Alerting | 事件、告警状态机、原始数据、指标快照 | `models/monitor_policy.py`、`tasks/services/policy_scan/event_alert_manager.py` | 事件和告警的业务事实 |
 | Delivery | 通知渠道、告警中心投影、失败补偿 | `services/alert_lifecycle_notify.py`、`tasks/monitor_policy.py` | 投递记录、重试和对账状态 |
@@ -234,6 +234,13 @@ status / organization_hint
 - 标签到实例身份的转换；
 - 缓存和批量查询；
 - 错误分类、降级与可观测性。
+
+当前页面查询已先收敛到 `AuthorizedMetricQueryService`：调用方只能提交指标 ID 或仓库生成的
+看板能力 ID，服务端在访问 VictoriaMetrics 前完成团队实例权限、监控对象绑定、模板参数和
+动态维度校验。`dashboard_query_capabilities.py` 作为内置看板查询允许列表，将浏览器提交的
+原始 PromQL 改为服务端模板渲染；旧 REST `query`、`query_range` 入口已退役。该服务是统一
+`MetricQueryPort` 的现有应用接缝，后续查询预算、缓存和错误分类应继续在此边界收敛，而不是
+重新向 HTTP 或消息调用方暴露原始查询语言。
 
 例如当前有效插件状态会按插件逐个发起 VM 查询，见 [effective_plugins.py:71](../../server/apps/monitor/services/effective_plugins.py#L71)。对象或插件数量增长时，这类“业务循环内调用指标后端”的实现需要被查询预算和批量规划约束。
 

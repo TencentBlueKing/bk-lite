@@ -1,0 +1,22 @@
+[[inputs.prometheus]]
+    startup_error_behavior = "retry"
+    urls = ["${STARGAZER_URL}/api/monitor/host_aix_remote/metrics"]
+    interval = "{{ interval | default(60, true) }}s"
+    timeout = "{{ timeout | default(900, true) }}s"
+    response_timeout = "{{ response_timeout | default(900, true) }}s"
+
+    [inputs.prometheus.http_headers]
+        host = "{{ host }}"
+        os_type = "aix"
+        username = "{{ username | default('root', true) }}"
+        password = "${PASSWORD__{{ config_id }}}"
+        private_key_content = "${PRIVATE_KEY_CONTENT__{{ config_id }}}"
+        private_key_passphrase = "${PRIVATE_KEY_PASSPHRASE__{{ config_id }}}"
+        credential_encoding = "{{ credential_encoding | default('url', true) }}"
+        auth_type = "{{ auth_type | default('password', true) }}"
+        port = "{{ port | default('22', true) }}"
+        ansible_node_id = "{{ node_id }}"
+        instance_id = "{{ instance_id }}"
+        instance_type = "os"
+        collect_type = "http"
+        config_type = "host_aix_remote"
