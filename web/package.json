@@ -39,6 +39,7 @@
     "test:alarm-operator-org-path": "pnpm exec tsx scripts/alarm-operator-org-path-test.ts",
     "test:alarm-notification-tooltip": "pnpm exec tsx scripts/alarm-notification-tooltip-test.ts",
     "test:alarm-manual-trigger-idempotency": "pnpm exec tsx scripts/alarm-manual-trigger-idempotency-test.ts",
+    "test:alarm-superuser-pending-reassign": "pnpm exec tsx scripts/alarm-superuser-pending-reassign-test.ts && pnpm exec vitest run src/app/alarm/utils/__tests__/alertActionAccess.test.ts",
     "test:incident-im-group-ui": "pnpm exec tsx enterprise/scripts/incident-im-group-ui-test.ts",
     "test:prepare-enterprise-dependency-link": "node scripts/prepare-enterprise-dependency-link-test.mjs",
     "test:build-pipeline": "node scripts/next-config-build-purity-test.mjs && node scripts/build-entry-test.mjs && node scripts/build-progress-test.mjs && node scripts/build-root-scope-test.mjs && node scripts/build-tsconfig-scope-test.mjs && node scripts/build-assets-error-test.mjs && node scripts/copy-public-error-test.mjs && node scripts/dockerfile-legacy-builder-test.mjs",

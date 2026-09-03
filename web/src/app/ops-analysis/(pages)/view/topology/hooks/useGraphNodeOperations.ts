@@ -451,6 +451,16 @@ export const useGraphNodeOperations = ({
           : {}),
         topNLabelField: values.topNLabelField ?? valueConfig?.topNLabelField,
         topNValueField: values.topNValueField ?? valueConfig?.topNValueField,
+        nodeGraphIdentityMode:
+          values.nodeGraphIdentityMode ?? valueConfig?.nodeGraphIdentityMode,
+        nodeGraphSourceField:
+          values.nodeGraphSourceField ?? valueConfig?.nodeGraphSourceField,
+        nodeGraphTargetField:
+          values.nodeGraphTargetField ?? valueConfig?.nodeGraphTargetField,
+        nodeGraphValueField:
+          values.nodeGraphValueField ?? valueConfig?.nodeGraphValueField,
+        nodeGraphTargetPortField:
+          values.nodeGraphTargetPortField ?? valueConfig?.nodeGraphTargetPortField,
         unitId: values.unitId ?? valueConfig?.unitId,
         valueMappings: values.valueMappings ?? valueConfig?.valueMappings,
       },

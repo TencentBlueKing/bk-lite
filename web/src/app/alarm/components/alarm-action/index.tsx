@@ -7,6 +7,7 @@ import PermissionWrapper from '@/components/permission';
 import AlarmAssignModal from './assign-modal';
 import { useTranslation } from '@/utils/i18n';
 import { showOperatorFailureMessages } from '@/app/alarm/utils/operatorResult';
+import { alarmActionsForStatus, canReassignAlert } from '@/app/alarm/utils/alertActionAccess';
 import { type ActionType, type AlarmActionProps } from './types';
 
 const AlarmAction: React.FC<AlarmActionProps> = ({
@@ -16,6 +17,7 @@ const AlarmAction: React.FC<AlarmActionProps> = ({
   showAll = false,
   from = 'alarm',
   currentUsername,
+  isSuperUser = false,
   assigneeOptions,
   operateAction,
   onAction,
@@ -48,7 +50,7 @@ const AlarmAction: React.FC<AlarmActionProps> = ({
   if (from === 'alarm') {
     statusActionMap = {
       unassigned: ['assign'],
-      pending: ['acknowledge'],
+      pending: alarmActionsForStatus('pending', { isSuperUser }),
       processing: ['reassign', 'close'],
       closed: [],
       auto_close: [],
@@ -88,6 +90,20 @@ const AlarmAction: React.FC<AlarmActionProps> = ({
     availableTypes = [];
   }
 
+  const isActionDisabled = (type: ActionType) => {
+    if (!rowData.length) return true;
+    if (from === 'alarm' && type === 'reassign') {
+      return !rowData.every((item) =>
+        canReassignAlert(item, { username, isSuperUser })
+      );
+    }
+    const allStatusValid = rowData.every((item) =>
+      validStatusMap[type]?.includes(item.status)
+    );
+    const needMine = from === 'alarm' && type === 'acknowledge';
+    return !allStatusValid || (needMine && !isMine());
+  };
+
   const handleOperate = (type: ActionType) => {
     if (!['acknowledge', 'close', 'reopen'].includes(type)) {
       setActionType(type);
@@ -123,13 +139,7 @@ const AlarmAction: React.FC<AlarmActionProps> = ({
   };
 
   const renderActionButton = (type: ActionType) => {
-    const allStatusValid = rowData.every((item) =>
-      validStatusMap[type]?.includes(item.status)
-    );
-    const needMine =
-      from === 'alarm' && ['acknowledge', 'reassign'].includes(type);
-    const disabled =
-      !rowData.length || !allStatusValid || (needMine && !isMine());
+    const disabled = isActionDisabled(type);
 
     return (
       <PermissionWrapper requiredPermissions={['Edit']} key={type}>
@@ -149,13 +159,7 @@ const AlarmAction: React.FC<AlarmActionProps> = ({
   const actionButtons = <>{availableTypes.map(renderActionButton)}</>;
 
   const menuItems = availableTypes.map((type, idx) => {
-    const allStatusValid = rowData.every((item) =>
-      validStatusMap[type]?.includes(item.status)
-    );
-    const needMine =
-      from === 'alarm' && ['acknowledge', 'reassign'].includes(type);
-    const disabled =
-      !rowData.length || !allStatusValid || (needMine && !isMine());
+    const disabled = isActionDisabled(type);
 
     return {
       key: idx.toString(),
