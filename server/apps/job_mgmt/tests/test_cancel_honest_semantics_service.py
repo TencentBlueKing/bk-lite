@@ -6,8 +6,8 @@
 3. 取消接口 CAS 分流：PENDING→CANCELLED、RUNNING→CANCELLING、终态/取消中 400
 """
 
-from datetime import timedelta
 from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
 from threading import Event
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -15,6 +15,7 @@ from unittest.mock import patch
 import pytest
 from django.utils import timezone
 
+from apps.job_mgmt.config import CANCEL_CONVERGE_BUFFER_SECONDS
 from apps.job_mgmt.constants import CallbackType, ExecutionStatus, JobType, TargetSource
 from apps.job_mgmt.models import JobCompletionOutbox, JobExecution
 from apps.job_mgmt.nats_api import ansible_task_callback, job_task_terminate
@@ -131,14 +132,15 @@ class TestCancelViewCAS:
         assert execution.status == ExecutionStatus.CANCELLING
         assert execution.finished_at is None  # 非终态，等待真实结果回写
 
-        # 兜底收敛任务以 execution.timeout + 缓冲调度
+        # 兜底收敛任务使用取消独立缓冲窗口，不再重复等待原作业超时
         mock_task.apply_async.assert_called_once()
         _, kwargs = mock_task.apply_async.call_args
         assert kwargs["args"] == [execution.id]
-        assert kwargs["countdown"] > execution.timeout
+        assert kwargs["countdown"] == CANCEL_CONVERGE_BUFFER_SECONDS
 
     def test_broker_failure_keeps_persistent_cancel_deadline(self, api_client, django_capture_on_commit_callbacks):
         execution = _make_execution(ExecutionStatus.RUNNING)
+        requested_at = timezone.now()
 
         with patch(
             "apps.job_mgmt.tasks.finalize_cancelling_execution.apply_async",
@@ -151,7 +153,7 @@ class TestCancelViewCAS:
         execution.refresh_from_db()
         assert execution.status == ExecutionStatus.CANCELLING
         assert execution.cancel_finalize_at is not None
-        assert execution.cancel_finalize_at > timezone.now() + timedelta(seconds=execution.timeout)
+        assert execution.cancel_finalize_at <= requested_at + timedelta(seconds=CANCEL_CONVERGE_BUFFER_SECONDS + 1)
 
     def test_running_cancel_revokes_celery_task(self, api_client, django_capture_on_commit_callbacks):
         execution = _make_execution(ExecutionStatus.RUNNING, celery_task_id="ct-1")
@@ -161,6 +163,21 @@ class TestCancelViewCAS:
                     resp = self._cancel(api_client, execution)
         assert resp.status_code == 200
         mock_revoke.assert_called_once_with("ct-1")
+
+    def test_running_cancel_fallback_does_not_wait_for_original_timeout(self, api_client, django_capture_on_commit_callbacks):
+        execution = _make_execution(ExecutionStatus.RUNNING, celery_task_id="ct-long", timeout=600)
+        requested_at = timezone.now()
+
+        with patch("apps.job_mgmt.tasks.finalize_cancelling_execution") as mock_task:
+            with patch("apps.job_mgmt.services.execution_cancellation_service.current_app.control.revoke"):
+                with django_capture_on_commit_callbacks(execute=True):
+                    resp = self._cancel(api_client, execution)
+
+        assert resp.status_code == 200
+        execution.refresh_from_db()
+        _, kwargs = mock_task.apply_async.call_args
+        assert kwargs["countdown"] == CANCEL_CONVERGE_BUFFER_SECONDS
+        assert execution.cancel_finalize_at <= requested_at + timedelta(seconds=CANCEL_CONVERGE_BUFFER_SECONDS + 1)
 
     def test_terminal_execution_cannot_cancel(self, api_client):
         execution = _make_execution(ExecutionStatus.SUCCESS)
@@ -249,10 +266,11 @@ class TestTerminateTaskNatsAPI:
         mock_task.apply_async.assert_called_once()
         _, kwargs = mock_task.apply_async.call_args
         assert kwargs["args"] == [execution.id]
-        assert kwargs["countdown"] > execution.timeout
+        assert kwargs["countdown"] == CANCEL_CONVERGE_BUFFER_SECONDS
 
     def test_broker_failure_keeps_persistent_cancel_deadline(self, django_capture_on_commit_callbacks):
         execution = _make_execution(ExecutionStatus.RUNNING)
+        requested_at = timezone.now()
 
         with patch(
             "apps.job_mgmt.tasks.finalize_cancelling_execution.apply_async",
@@ -265,6 +283,7 @@ class TestTerminateTaskNatsAPI:
         execution.refresh_from_db()
         assert execution.status == ExecutionStatus.CANCELLING
         assert execution.cancel_finalize_at is not None
+        assert execution.cancel_finalize_at <= requested_at + timedelta(seconds=CANCEL_CONVERGE_BUFFER_SECONDS + 1)
 
     def test_missing_caller_token_rejected(self):
         """不传 caller_token 时拒绝取消，防止伪造团队身份。"""

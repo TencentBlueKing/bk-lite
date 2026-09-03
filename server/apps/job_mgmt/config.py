@@ -41,7 +41,7 @@ DISTRIBUTION_FILE_CLEANUP_BATCH_SIZE = max(1, _int_env("JOB_DISTRIBUTION_FILE_CL
 # 取消兜底先于真实 Ansible 回调提交时，暂缓终态副作用，允许后到回调纠正占位结果。
 CALLBACK_CANCEL_RECONCILE_GRACE_SECONDS = max(0, _int_env("JOB_CALLBACK_CANCEL_RECONCILE_GRACE_SECONDS", 60))
 
-# 真实执行超时后再等待一个缓冲窗口，仍无回调才将 CANCELLING 收敛到终态。
+# 取消请求后等待一个独立缓冲窗口，仍无回调才将 CANCELLING 收敛到终态。
 CANCEL_CONVERGE_BUFFER_SECONDS = max(0, _int_env("JOB_CANCEL_CONVERGE_BUFFER_SECONDS", 60))
 
 
