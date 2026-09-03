@@ -241,7 +241,7 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
         <div className="flex items-center gap-2">
           <span className="text-[13px] font-medium text-[var(--color-text-1)]">{t('skill.tool')}</span>
           {selectedTools.length > 0 && (
-            <span className="rounded-full bg-[var(--color-primary-bg-active)] px-1.5 py-0.2 text-[10px] font-medium text-[var(--color-primary)]">
+            <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--color-count-alt-bg)] px-1.5 text-[11px] font-medium tabular-nums leading-none text-[var(--color-count-alt)]">
               {selectedTools.length}
             </span>
           )}
