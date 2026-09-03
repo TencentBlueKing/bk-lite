@@ -9,10 +9,9 @@ import {
   APPLICATION3D_CAMERA_FOV,
   buildApplication3DLayout,
   defaultApplication3DTranslate,
-  fitApplication3DCameraDistance,
   formatApplication3DCardTitle,
   resolveApplication3DCardVisual,
-  WALL_CAMERA_HEIGHT_FACTOR,
+  resolveApplication3DWallCamera,
   type Application3DCardTone,
   type Application3DTranslate,
 } from './application3DLayout';
@@ -848,7 +847,7 @@ export const createApplication3DScene = (
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
 
-  let wallCameraPosition = new THREE.Vector3(0, 0, 20);
+  const wallCameraPosition = new THREE.Vector3(0, 0, 20);
   const desiredCameraPosition = wallCameraPosition.clone();
   const desiredTarget = new THREE.Vector3();
   const cameraOrbitOffset = new THREE.Vector3();
@@ -872,7 +871,6 @@ export const createApplication3DScene = (
   let pointerDown: { x: number; y: number } | null = null;
   let hoveredId = '';
   let introSafetyTimer: number | null = null;
-  let introTimeouts: number[] = [];
   let resizeLayoutTimer: number | null = null;
   let particlesBuilt = false;
   let entrancePlayed = false;
@@ -930,8 +928,6 @@ export const createApplication3DScene = (
       window.clearTimeout(introSafetyTimer);
       introSafetyTimer = null;
     }
-    introTimeouts.forEach((id) => window.clearTimeout(id));
-    introTimeouts = [];
   };
 
   const finishIntro = () => {
@@ -1075,13 +1071,18 @@ export const createApplication3DScene = (
     }
   }
 
-  const fitCameraDistance = (layout: ReturnType<typeof buildApplication3DLayout>) =>
-    fitApplication3DCameraDistance(
-      layout.wallWidth,
-      layout.wallHeight,
-      camera.aspect,
-      camera.fov,
-    );
+  const snapCameraHome = () => {
+    cameraComplete = null;
+    cameraAnimating = false;
+    desiredCameraPosition.copy(wallCameraPosition);
+    desiredTarget.copy(wallLookTarget);
+    camera.position.copy(wallCameraPosition);
+    controls.target.copy(wallLookTarget);
+    camera.up.set(0, 1, 0);
+    camera.lookAt(controls.target);
+    controls.update();
+    controls.saveState();
+  };
 
   const fadeSceneCanvas = (durationMs: number) => {
     renderer.domElement.style.opacity = '0';
@@ -1208,7 +1209,6 @@ export const createApplication3DScene = (
   };
 
   const layoutVisuals = (layoutOptions?: {
-    snapCamera?: boolean;
     playIntro?: boolean;
     playFilter?: boolean;
   }) => {
@@ -1260,11 +1260,12 @@ export const createApplication3DScene = (
     stageRoot.position.y = floorY;
     floorGridMaterial.uniforms.uFade.value = Math.max(layout.wallWidth * 3.1, 32);
     wallLookTarget.set(0, 0, 0);
-    wallCameraPosition = new THREE.Vector3(
-      0,
-      layout.wallHeight * WALL_CAMERA_HEIGHT_FACTOR,
-      fitCameraDistance(layout),
+    const wallPose = resolveApplication3DWallCamera(
+      visuals.size,
+      camera.aspect,
+      camera.fov,
     );
+    wallCameraPosition.set(wallPose.x, wallPose.y, wallPose.z);
     if (phase !== 'architecture') {
       controls.minDistance = Math.max(wallCameraPosition.z * 0.45, 6);
       controls.maxDistance = wallCameraPosition.z * 2.2;
@@ -1277,27 +1278,13 @@ export const createApplication3DScene = (
       return;
     }
 
-    desiredTarget.copy(wallLookTarget);
     if (layoutOptions?.playIntro) {
       playEntrance();
-    } else if (layoutOptions?.playFilter) {
-      playFilterTransition();
-      desiredCameraPosition.copy(wallCameraPosition);
-      if (phase === 'initializing') {
-        phase = 'wall';
-        setOrbitEnabled(true);
-      }
     } else {
-      desiredCameraPosition.copy(wallCameraPosition);
-      if (layoutOptions?.snapCamera || phase === 'initializing') {
-        camera.position.copy(desiredCameraPosition);
-        controls.target.copy(desiredTarget);
-        camera.up.set(0, 1, 0);
-        camera.lookAt(controls.target);
-        controls.update();
-        controls.saveState();
-        cameraAnimating = false;
+      if (layoutOptions?.playFilter) {
+        playFilterTransition();
       }
+      snapCameraHome();
       if (phase === 'initializing') {
         phase = 'wall';
         setOrbitEnabled(true);
@@ -1333,6 +1320,8 @@ export const createApplication3DScene = (
     } else if (playFilter) {
       clearIntroTimers();
       cancelTweens();
+      cameraComplete = null;
+      cameraAnimating = false;
     }
 
     const nextIds = new Set(items.map((item) => item.id));
@@ -1486,18 +1475,6 @@ export const createApplication3DScene = (
     cameraOrbitDuration = duration;
     cameraAnimating = true;
     requestRender();
-  };
-
-  const snapCameraHome = () => {
-    camera.position.copy(wallCameraPosition);
-    controls.target.copy(wallLookTarget);
-    desiredCameraPosition.copy(wallCameraPosition);
-    desiredTarget.copy(wallLookTarget);
-    camera.up.set(0, 1, 0);
-    camera.lookAt(controls.target);
-    controls.update();
-    controls.saveState();
-    cameraAnimating = false;
   };
 
   const resetCamera = () => {
@@ -1736,7 +1713,6 @@ export const createApplication3DScene = (
     applyPolarLimits(ARCH_POLAR);
     const pose = resolveArchitectureCameraPose(
       architectureView.layout,
-      { position: wallCameraPosition, target: wallLookTarget },
       camera.aspect,
       camera.fov,
     );
@@ -1919,7 +1895,7 @@ export const createApplication3DScene = (
       resizeLayoutTimer = null;
       if (disposed) return;
       if (phase === 'initializing') return;
-      layoutVisuals({ snapCamera: phase === 'wall' });
+      layoutVisuals();
       if (phase === 'focused') applyFocusPose(false);
     }, RESIZE_LAYOUT_DEBOUNCE_MS);
   };

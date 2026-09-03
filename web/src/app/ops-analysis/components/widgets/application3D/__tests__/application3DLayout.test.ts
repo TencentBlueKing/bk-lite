@@ -3,12 +3,17 @@ import {
   APPLICATION3D_CAMERA_FOV,
   buildApplication3DLayout,
   fitApplication3DCameraDistance,
+  fitApplication3DCameraDistanceToWall,
   formatApplication3DCardTitle,
   formatApplicationAlarmBadge,
+  parkedApplication3DWallSize,
   resolveApplication3DBadge,
+  resolveApplication3DCardDensity,
   resolveApplication3DCardVisual,
+  resolveApplication3DWallCamera,
   shouldShowApplication3DAlertBadge,
   UNKNOWN_STATUS_BADGE,
+  WALL_CAMERA_HEIGHT_FACTOR,
   WALL_VIEW_COVERAGE,
 } from '../application3DLayout';
 import {
@@ -71,12 +76,22 @@ describe('application3D layout', () => {
     expect(last).toBeLessThanOrEqual(layout.columns);
   });
 
-  it('reduces card size for dense walls without dropping cards', () => {
+  it('floors card size at the 17–24 density so extra cards do not shrink further', () => {
     const few = buildApplication3DLayout(6, 1.6);
-    const regular = buildApplication3DLayout(20, 1.6);
+    const seventeen = buildApplication3DLayout(17, 1.6);
+    const twentyFour = buildApplication3DLayout(24, 1.6);
+    const twentyFive = buildApplication3DLayout(25, 1.6);
+    const fortyEight = buildApplication3DLayout(48, 1.6);
+    const eighty = buildApplication3DLayout(80, 1.6);
     const dense = buildApplication3DLayout(200, 1.6);
-    expect(regular.cardWidth).toBeLessThan(few.cardWidth);
-    expect(dense.cardWidth).toBeLessThan(regular.cardWidth);
+    expect(seventeen.cardWidth).toBeLessThan(few.cardWidth);
+    expect(seventeen.cardWidth).toBe(twentyFour.cardWidth);
+    expect(twentyFive.cardWidth).toBe(seventeen.cardWidth);
+    expect(fortyEight.cardWidth).toBe(seventeen.cardWidth);
+    expect(eighty.cardWidth).toBe(seventeen.cardWidth);
+    expect(dense.cardWidth).toBe(seventeen.cardWidth);
+    expect(dense.cardWidth).toBeCloseTo(CARD_WORLD_WIDTH * 0.82, 8);
+    expect(dense.cardHeight).toBeCloseTo(CARD_WORLD_HEIGHT * 0.82, 8);
     expect(dense.columns * dense.rows).toBeGreaterThanOrEqual(200);
   });
 
@@ -272,42 +287,142 @@ describe('application3D layout', () => {
     expect(layout.gapX / layout.cardWidth).toBeCloseTo(CARD_GAP / CARD_WORLD_WIDTH, 5);
   });
 
-  it('frames the actual wall so small grids stay readable', () => {
+  it('keeps one card density and one parked camera for every ≤16 wall', () => {
     const viewportAspect = 1.84;
-    const sixteen = buildApplication3DLayout(16, viewportAspect);
-    const four = buildApplication3DLayout(4, viewportAspect);
     const one = buildApplication3DLayout(1, viewportAspect);
-    expect(sixteen.columns * sixteen.rows).toBeGreaterThanOrEqual(16);
-    const sixteenDistance = fitApplication3DCameraDistance(
-      sixteen.wallWidth,
-      sixteen.wallHeight,
-      viewportAspect,
-    );
-    const fourDistance = fitApplication3DCameraDistance(
-      four.wallWidth,
-      four.wallHeight,
-      viewportAspect,
-    );
-    const oneDistance = fitApplication3DCameraDistance(
-      one.wallWidth,
-      one.wallHeight,
-      viewportAspect,
-    );
-    expect(sixteenDistance).toBeGreaterThan(fourDistance);
-    expect(oneDistance).toBe(fourDistance);
+    const seven = buildApplication3DLayout(7, viewportAspect);
+    const sixteen = buildApplication3DLayout(16, viewportAspect);
+    expect(one.columns).toBe(1);
+    expect(seven.columns).toBe(4);
+    expect(sixteen.columns).toBe(4);
+    expect(one.cardWidth).toBe(seven.cardWidth);
+    expect(seven.cardWidth).toBe(sixteen.cardWidth);
+    expect(one.cardWidth).toBe(CARD_WORLD_WIDTH);
+    expect(resolveApplication3DCardDensity(1)).toBe(1);
+    expect(resolveApplication3DCardDensity(7)).toBe(1);
+    expect(resolveApplication3DCardDensity(16)).toBe(1);
+
+    const oneCam = resolveApplication3DWallCamera(1, viewportAspect);
+    const sevenCam = resolveApplication3DWallCamera(7, viewportAspect);
+    const sixteenCam = resolveApplication3DWallCamera(16, viewportAspect);
+    expect(oneCam).toEqual(sevenCam);
+    expect(sevenCam).toEqual(sixteenCam);
+    const parked = parkedApplication3DWallSize();
+    const parkedDistance = fitApplication3DCameraDistance(viewportAspect);
+    expect(oneCam.y).toBeCloseTo(parked.wallHeight * WALL_CAMERA_HEIGHT_FACTOR, 8);
+    expect(oneCam.y).not.toBeCloseTo(one.wallHeight * WALL_CAMERA_HEIGHT_FACTOR, 4);
+    expect(oneCam.z).toBeCloseTo(parkedDistance, 8);
+    expect(oneCam.x).toBe(0);
 
     const halfFov = ((APPLICATION3D_CAMERA_FOV * Math.PI) / 180) / 2;
     const tan = Math.tan(halfFov);
     const tight = Math.max(
-      sixteen.wallHeight / (2 * tan),
-      sixteen.wallWidth / (2 * tan * viewportAspect),
+      parked.wallHeight / (2 * tan),
+      parked.wallWidth / (2 * tan * viewportAspect),
     );
-    expect(sixteenDistance).toBeGreaterThan(tight);
-    const widthFill = (sixteen.wallWidth / (2 * tan * viewportAspect)) / sixteenDistance;
-    const heightFill = (sixteen.wallHeight / (2 * tan)) / sixteenDistance;
+    expect(parkedDistance).toBeGreaterThan(tight);
+    const widthFill = (parked.wallWidth / (2 * tan * viewportAspect)) / parkedDistance;
+    const heightFill = (parked.wallHeight / (2 * tan)) / parkedDistance;
     expect(widthFill).toBeCloseTo(WALL_VIEW_COVERAGE, 5);
     expect(heightFill).toBeLessThan(WALL_VIEW_COVERAGE);
     expect(widthFill).toBeLessThan(1);
+  });
+
+  it('pulls the camera farther by 1/0.82 when crossing the 16-card tier', () => {
+    const viewportAspect = 1.84;
+    const sixteen = buildApplication3DLayout(16, viewportAspect);
+    const seventeen = buildApplication3DLayout(17, viewportAspect);
+    expect(resolveApplication3DCardDensity(17)).toBe(0.82);
+    expect(seventeen.cardWidth).toBeCloseTo(sixteen.cardWidth * 0.82, 8);
+    expect(seventeen.gapX).toBeCloseTo(sixteen.gapX * 0.82, 8);
+
+    const sixteenCam = resolveApplication3DWallCamera(16, viewportAspect);
+    const seventeenCam = resolveApplication3DWallCamera(17, viewportAspect);
+    expect(seventeenCam.z).toBeCloseTo(sixteenCam.z / 0.82, 8);
+    expect(seventeenCam.y).toBe(sixteenCam.y);
+    expect(seventeenCam.z).not.toBeCloseTo(
+      fitApplication3DCameraDistance(viewportAspect),
+      4,
+    );
+  });
+
+  it('keeps one 0.82 card size and one camera pose for every 17–24 wall', () => {
+    const viewportAspect = 1.84;
+    const seventeen = buildApplication3DLayout(17, viewportAspect);
+    const twentyFour = buildApplication3DLayout(24, viewportAspect);
+    expect(resolveApplication3DCardDensity(24)).toBe(0.82);
+    expect(seventeen.cardWidth).toBe(twentyFour.cardWidth);
+    expect(seventeen.cardHeight).toBe(twentyFour.cardHeight);
+
+    const seventeenCam = resolveApplication3DWallCamera(17, viewportAspect);
+    const twentyFourCam = resolveApplication3DWallCamera(24, viewportAspect);
+    expect(seventeenCam).toEqual(twentyFourCam);
+    const parked = parkedApplication3DWallSize();
+    expect(seventeenCam.z).toBeCloseTo(
+      fitApplication3DCameraDistance(viewportAspect) / 0.82,
+      8,
+    );
+    expect(seventeenCam.y).toBeCloseTo(parked.wallHeight * WALL_CAMERA_HEIGHT_FACTOR, 8);
+  });
+
+  it('pulls the camera back to the actual wall past 24 cards without shrinking them', () => {
+    const viewportAspect = 1.84;
+    const twentyFour = buildApplication3DLayout(24, viewportAspect);
+    const twentyFive = buildApplication3DLayout(25, viewportAspect);
+    const fortyEight = buildApplication3DLayout(48, viewportAspect);
+    const eighty = buildApplication3DLayout(80, viewportAspect);
+    const twoHundred = buildApplication3DLayout(200, viewportAspect);
+    expect(resolveApplication3DCardDensity(25)).toBe(0.82);
+    expect(resolveApplication3DCardDensity(48)).toBe(0.82);
+    expect(resolveApplication3DCardDensity(80)).toBe(0.82);
+    expect(resolveApplication3DCardDensity(200)).toBe(0.82);
+    expect(twentyFive.cardWidth).toBe(twentyFour.cardWidth);
+    expect(fortyEight.cardWidth).toBe(twentyFour.cardWidth);
+    expect(eighty.cardWidth).toBe(twentyFour.cardWidth);
+    expect(twoHundred.cardWidth).toBe(twentyFour.cardWidth);
+
+    const parked = parkedApplication3DWallSize();
+    const parkedDistance = fitApplication3DCameraDistance(viewportAspect);
+    const twentyFourCam = resolveApplication3DWallCamera(24, viewportAspect);
+    const twentyFiveCam = resolveApplication3DWallCamera(25, viewportAspect);
+    const fortyEightCam = resolveApplication3DWallCamera(48, viewportAspect);
+    const eightyCam = resolveApplication3DWallCamera(80, viewportAspect);
+    const fitted25 = fitApplication3DCameraDistanceToWall(
+      twentyFive.wallWidth,
+      twentyFive.wallHeight,
+      viewportAspect,
+    );
+    const fitted48 = fitApplication3DCameraDistanceToWall(
+      fortyEight.wallWidth,
+      fortyEight.wallHeight,
+      viewportAspect,
+    );
+
+    expect(twentyFiveCam.z).toBeGreaterThanOrEqual(twentyFourCam.z);
+    expect(twentyFiveCam.z).toBeCloseTo(Math.max(fitted25, twentyFourCam.z), 8);
+    expect(twentyFiveCam.z).not.toBeCloseTo(parkedDistance / 0.64, 4);
+    expect(twentyFiveCam.y).toBeCloseTo(
+      twentyFive.wallHeight * WALL_CAMERA_HEIGHT_FACTOR,
+      8,
+    );
+    expect(twentyFiveCam.y).not.toBeCloseTo(
+      parked.wallHeight * WALL_CAMERA_HEIGHT_FACTOR,
+      4,
+    );
+
+    expect(fortyEightCam.z).toBeGreaterThan(twentyFiveCam.z);
+    expect(fortyEightCam.z).toBeCloseTo(fitted48, 8);
+    expect(eightyCam.z).toBeGreaterThan(fortyEightCam.z);
+    expect(fortyEightCam.y).toBeCloseTo(
+      fortyEight.wallHeight * WALL_CAMERA_HEIGHT_FACTOR,
+      8,
+    );
+
+    const halfFov = ((APPLICATION3D_CAMERA_FOV * Math.PI) / 180) / 2;
+    const tan = Math.tan(halfFov);
+    const widthFill = (fortyEight.wallWidth / (2 * tan * viewportAspect)) / fortyEightCam.z;
+    const heightFill = (fortyEight.wallHeight / (2 * tan)) / fortyEightCam.z;
+    expect(Math.max(widthFill, heightFill)).toBeCloseTo(WALL_VIEW_COVERAGE, 5);
   });
 
   it('uses one world size for every card so a planar wall keeps them equal', () => {

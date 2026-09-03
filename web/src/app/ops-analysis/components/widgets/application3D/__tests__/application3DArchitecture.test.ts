@@ -14,7 +14,6 @@ import {
   ARCH_FRONT_INSET,
   ARCH_GRID_PITCH,
   ARCH_WRAP_COLS,
-  ARCH_INVERTED_NODE_SIZE,
   ARCH_LABEL_BILLBOARD,
   ARCH_LABEL_FILL,
   ARCH_LABEL_HAS_BACKGROUND,
@@ -51,10 +50,6 @@ import {
   ARCH_PLANE_FRONT_Z,
   ARCH_PLANE_WORLD_WIDTH,
   ARCH_PLANE_Y,
-  ARCH_PREVIOUS_CAMERA_PHI,
-  ARCH_PREVIOUS_FILL_PLANE_DEPTH,
-  ARCH_PREVIOUS_FILL_PLANE_WIDTH,
-  ARCH_PREVIOUS_NODE_SIZE,
   ARCH_PULSE_HALO_BLENDING,
   ARCH_PULSE_HALO_FALLOFF,
   ARCH_PULSE_HALO_INTENSITY,
@@ -119,9 +114,6 @@ import {
 } from '../application3DArchitecture';
 import {
   ARCH_CHASSIS_COLOR,
-  ARCH_CHASSIS_EMISSIVE,
-  ARCH_CHASSIS_EMISSIVE_INTENSITY,
-  ARCH_CHASSIS_METALNESS,
   ARCH_EDGE,
   ARCH_EDGE_ALARM,
   ARCH_LED_ALARM_COLOR,
@@ -129,7 +121,6 @@ import {
   ARCH_NODE_FILL,
   ARCH_PLANE,
   ARCH_PLANE_EMISSIVE,
-  ARCH_PREVIOUS_CHASSIS_COLOR,
   ARCH_RACK_FRONT_METALNESS,
   ARCH_RACK_FRONT_ROUGHNESS,
   ARCH_RACK_HULL_COLOR,
@@ -191,6 +182,20 @@ const wallPose = {
   position: { x: 0, y: 0.48, z: 20 },
   target: { x: 0, y: 0, z: 0 },
 };
+
+/** Historical fences — production no longer exports these rejected sizes/poses. */
+const ARCH_PREVIOUS_NODE_SIZE = {
+  application: { width: 0.32, height: 0.52, depth: 0.26 },
+  host: { width: 0.26, height: 0.42, depth: 0.22 },
+} as const;
+const ARCH_INVERTED_NODE_SIZE = {
+  application: { width: 0.42, height: 0.68, depth: 0.34 },
+  host: { width: 0.34, height: 0.55, depth: 0.28 },
+} as const;
+const ARCH_PREVIOUS_FILL_PLANE_WIDTH = 27.6;
+const ARCH_PREVIOUS_FILL_PLANE_DEPTH = 19.2;
+const ARCH_PREVIOUS_CAMERA_PHI = Math.PI / 2 - Math.PI / 8;
+const ARCH_PREVIOUS_CHASSIS_COLOR = 0x3a3e44;
 
 describe('application3D architecture layout', () => {
   it('places exactly two horizontal XZ ranks: 应用 lower, 主机 higher on +Y', () => {
@@ -613,10 +618,10 @@ describe('application3D architecture layout', () => {
     expect(eightFit).toBeCloseTo(deepFit);
     expect(sevenFit).toBeCloseTo(eightFit);
     expect(eightFit).toBeGreaterThan(smallFit);
-    const smallPose = resolveArchitectureCameraPose(threeApp, wallPose, 16 / 9);
-    const sixPose = resolveArchitectureCameraPose(sixHost, wallPose, 16 / 9);
-    const eightPose = resolveArchitectureCameraPose(eightHost, wallPose, 16 / 9);
-    const deepPose = resolveArchitectureCameraPose(deep, wallPose, 16 / 9);
+    const smallPose = resolveArchitectureCameraPose(threeApp, 16 / 9);
+    const sixPose = resolveArchitectureCameraPose(sixHost, 16 / 9);
+    const eightPose = resolveArchitectureCameraPose(eightHost, 16 / 9);
+    const deepPose = resolveArchitectureCameraPose(deep, 16 / 9);
     expect(smallPose.phi).toBeCloseTo(ARCH_CAMERA_PHI);
     expect(sixPose.phi).toBeCloseTo(ARCH_CAMERA_PHI);
     expect(eightPose.phi).toBeCloseTo(ARCH_CAMERA_PHI);
@@ -663,7 +668,7 @@ describe('application3D architecture layout', () => {
   it('lands the camera low looking into the stack, not wallPhi − π/2.5 overhead', () => {
     const layout = layoutApplication3DArchitecture(tree());
     const wall = describeWallCameraSpherical(wallPose);
-    const pose = resolveArchitectureCameraPose(layout, wallPose, 16 / 9);
+    const pose = resolveArchitectureCameraPose(layout, 16 / 9);
     const rejectedOverheadPhi = wall.phi - Math.PI / 2.5;
     expect(wall.phi).toBeGreaterThan(Math.PI / 2 - 0.1);
     expect('cameraBetaDelta' in ARCHITECTURE_MOTION).toBe(false);
@@ -1270,15 +1275,10 @@ describe('application3D architecture view', () => {
     expect(ARCH_RACK_LIFT).toBeGreaterThan(0);
     expect(ARCH_CHASSIS_COLOR).not.toBe(ARCH_LED_ALARM_COLOR);
     expect(ARCH_CHASSIS_COLOR).not.toBe(ARCH_LED_COLOR);
-    expect(ARCH_CHASSIS_EMISSIVE).not.toBe(ARCH_LED_ALARM_COLOR);
-    expect(ARCH_CHASSIS_EMISSIVE).not.toBe(ARCH_LED_COLOR);
     expect(hexChannelSum(ARCH_CHASSIS_COLOR)).toBeGreaterThan(hexChannelSum(ARCH_PREVIOUS_CHASSIS_COLOR));
-    expect(ARCH_CHASSIS_METALNESS).toBeLessThan(0.35);
-    expect(ARCH_CHASSIS_METALNESS).toBeLessThan(0.64);
-    expect(ARCH_CHASSIS_EMISSIVE_INTENSITY).toBeGreaterThan(0.2);
     expect(ARCH_RACK_HULL_COLOR).toBe(0xffffff);
     expect(ARCH_RACK_SIDE_ROUGHNESS).toBeCloseTo(0.5);
-    expect(ARCH_RACK_SIDE_METALNESS).toBeCloseTo(0.04);
+    expect(ARCH_RACK_SIDE_METALNESS).toBe(0.04);
     expect(ARCH_RACK_FRONT_ROUGHNESS).toBeCloseTo(ARCH_RACK_SIDE_ROUGHNESS);
     expect(ARCH_RACK_FRONT_METALNESS).toBeCloseTo(ARCH_RACK_SIDE_METALNESS);
     expect(ARCH_RACK_ALBEDO_LIFT_OFFSET).toBe(72);
@@ -1557,7 +1557,6 @@ describe('application3D architecture view', () => {
     expect(viewSrc).toContain('if (alarming)');
     expect(viewSrc).toContain('materials.led');
     expect(viewSrc).toContain('ARCH_LED_COLOR');
-    expect(viewSrc).not.toContain('emissive: ARCH_CHASSIS_EMISSIVE');
     view.dispose();
   });
 

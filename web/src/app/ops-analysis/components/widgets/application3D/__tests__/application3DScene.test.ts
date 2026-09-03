@@ -8,17 +8,20 @@ import type { Application3DArchitectureData, Application3DWallItem } from '@/app
 import {
   ARCH_CAMERA_PHI,
   ARCH_PLANE_Y,
-  ARCH_PREVIOUS_CAMERA_PHI,
   describeWallCameraSpherical,
   layoutApplication3DArchitecture,
   resolveArchitectureCameraPose,
 } from '../application3DArchitecture';
+import { resolveApplication3DWallCamera } from '../application3DLayout';
 import {
   APPLICATION3D_ORBIT_PAN,
   APPLICATION3D_USER_POLAR,
   APPLICATION3D_WALL_GROUP_NAME,
   createApplication3DScene,
 } from '../application3DScene';
+
+/** Rejected overhead pitch — fence only; production uses ARCH_CAMERA_PHI. */
+const ARCH_PREVIOUS_CAMERA_PHI = Math.PI / 2 - Math.PI / 8;
 
 const captured = vi.hoisted(() => ({
   scene: null as THREE.Scene | null,
@@ -31,6 +34,7 @@ const captured = vi.hoisted(() => ({
     minDistance: number;
     maxDistance: number;
     enabled: boolean;
+    target: THREE.Vector3;
   } | null,
   raf: [] as FrameRequestCallback[],
   now: 0,
@@ -138,6 +142,13 @@ const wallItem: Application3DWallItem = {
   name: '门户系统',
   health,
 };
+
+const makeWallItems = (count: number): Application3DWallItem[] =>
+  Array.from({ length: count }, (_, index) => ({
+    id: `sys-${index + 1}`,
+    name: `系统${index + 1}`,
+    health,
+  }));
 
 const architecture: Application3DArchitectureData = {
   systemId: 'sys-1',
@@ -290,7 +301,6 @@ describe('application3D architecture scene', () => {
     });
     const pose = resolveArchitectureCameraPose(
       layout,
-      { position: { x: 0, y: wallY, z: 20 }, target: { x: 0, y: 0, z: 0 } },
       16 / 9,
     );
     expect(pose.phi).toBeCloseTo(ARCH_CAMERA_PHI);
@@ -428,7 +438,6 @@ describe('application3D architecture scene', () => {
     const layout = layoutApplication3DArchitecture(architecture);
     const pose = resolveArchitectureCameraPose(
       layout,
-      { position: { x: 0, y: 0.48, z: 20 }, target: { x: 0, y: 0, z: 0 } },
       16 / 9,
     );
     expect(captured.controls?.minDistance).toBeCloseTo(Math.max(pose.radius * 0.35, 1.5));
@@ -462,6 +471,141 @@ describe('application3D architecture scene', () => {
     canvas?.dispatchEvent(new PointerEvent('pointerup', { ...point, button: 0 }));
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect.mock.calls[0][0].id).toBe('sys-1');
+    controller.dispose();
+  });
+
+  it('parks 1 and 7 cards on the same wall camera and card size', () => {
+    const aspect = 320 / 180;
+    const parked = resolveApplication3DWallCamera(1, aspect);
+    expect(resolveApplication3DWallCamera(7, aspect)).toEqual(parked);
+
+    const one = createApplication3DScene(mount, {
+      interactive: true,
+      translate: (_id, fallback = '') => fallback,
+      onSelect: () => undefined,
+    });
+    one.reconcile(makeWallItems(1), { playIntro: true });
+    expect(captured.camera?.position.x).toBeCloseTo(parked.x, 5);
+    expect(captured.camera?.position.y).toBeCloseTo(parked.y, 5);
+    expect(captured.camera?.position.z).toBeCloseTo(parked.z, 5);
+    one.dispose();
+
+    const seven = createApplication3DScene(mount, {
+      interactive: true,
+      translate: (_id, fallback = '') => fallback,
+      onSelect: () => undefined,
+    });
+    seven.reconcile(makeWallItems(7), { playIntro: false });
+    flushFrames();
+    expect(captured.camera?.position.x).toBeCloseTo(parked.x, 5);
+    expect(captured.camera?.position.y).toBeCloseTo(parked.y, 5);
+    expect(captured.camera?.position.z).toBeCloseTo(parked.z, 5);
+    const sevenScale = wallGroup()?.children[0]?.scale.clone();
+
+    seven.reconcile(makeWallItems(1), { playFilter: true });
+    expect(captured.camera?.position.x).toBeCloseTo(parked.x, 5);
+    expect(captured.camera?.position.y).toBeCloseTo(parked.y, 5);
+    expect(captured.camera?.position.z).toBeCloseTo(parked.z, 5);
+    for (let step = 0; step < 12; step += 1) flushFrames(20);
+    expect(wallGroup()?.children[0]?.scale.x).toBeCloseTo(sevenScale?.x ?? 0, 5);
+    expect(wallGroup()?.children[0]?.scale.y).toBeCloseTo(sevenScale?.y ?? 0, 5);
+    seven.dispose();
+  });
+
+  it('snaps the wall camera on filter even if the user orbited or an ease is in flight', () => {
+    const controller = createApplication3DScene(mount, {
+      interactive: true,
+      translate: (_id, fallback = '') => fallback,
+      onSelect: () => undefined,
+    });
+    controller.reconcile(makeWallItems(7), { playIntro: false });
+    flushFrames();
+    const parked = resolveApplication3DWallCamera(7, 320 / 180);
+    captured.camera?.position.set(12, 8, 42);
+    captured.controls?.target.set(3, -2, 1);
+    captured.camera?.lookAt(captured.controls?.target ?? new THREE.Vector3());
+
+    controller.reconcile(makeWallItems(1), { playFilter: true });
+    expect(captured.camera?.position.x).toBeCloseTo(parked.x, 5);
+    expect(captured.camera?.position.y).toBeCloseTo(parked.y, 5);
+    expect(captured.camera?.position.z).toBeCloseTo(parked.z, 5);
+    expect(captured.controls?.target.x).toBeCloseTo(0, 5);
+    expect(captured.controls?.target.y).toBeCloseTo(0, 5);
+    expect(captured.controls?.target.z).toBeCloseTo(0, 5);
+    expect(wallGroup()?.children).toHaveLength(1);
+
+    captured.camera?.position.set(-6, 11, 30);
+    captured.controls?.target.set(2, 1, -1);
+    controller.resetCamera();
+    expect(captured.camera?.position.distanceTo(
+      new THREE.Vector3(parked.x, parked.y, parked.z),
+    )).toBeGreaterThan(0.5);
+
+    controller.reconcile(makeWallItems(7), { playFilter: true });
+    expect(captured.camera?.position.x).toBeCloseTo(parked.x, 5);
+    expect(captured.camera?.position.y).toBeCloseTo(parked.y, 5);
+    expect(captured.camera?.position.z).toBeCloseTo(parked.z, 5);
+    flushFrames(80);
+    expect(captured.camera?.position.x).toBeCloseTo(parked.x, 5);
+    expect(captured.camera?.position.y).toBeCloseTo(parked.y, 5);
+    expect(captured.camera?.position.z).toBeCloseTo(parked.z, 5);
+    expect(wallGroup()?.children[0]?.scale.x).toBeCloseTo(
+      wallGroup()?.children[1]?.scale.x ?? 0,
+      5,
+    );
+
+    captured.camera?.position.set(9, 6, 28);
+    captured.controls?.target.set(-2, 2, 1);
+    controller.reconcile(makeWallItems(7));
+    expect(captured.camera?.position.x).toBeCloseTo(parked.x, 5);
+    expect(captured.camera?.position.y).toBeCloseTo(parked.y, 5);
+    expect(captured.camera?.position.z).toBeCloseTo(parked.z, 5);
+    controller.dispose();
+  });
+
+  it('scales cards and camera together when crossing the 16-card density tier', () => {
+    const controller = createApplication3DScene(mount, {
+      interactive: true,
+      translate: (_id, fallback = '') => fallback,
+      onSelect: () => undefined,
+    });
+    controller.reconcile(makeWallItems(16), { playIntro: false });
+    flushFrames();
+    const sixteenPose = captured.camera?.position.clone();
+    const sixteenScale = wallGroup()?.children[0]?.scale.clone();
+    const parked16 = resolveApplication3DWallCamera(16, 320 / 180);
+    const parked17 = resolveApplication3DWallCamera(17, 320 / 180);
+    expect(sixteenPose?.z).toBeCloseTo(parked16.z, 5);
+
+    controller.reconcile(makeWallItems(17), { playFilter: true });
+    expect(captured.camera?.position.z).toBeCloseTo(parked17.z, 5);
+    expect(captured.camera?.position.z).toBeCloseTo((sixteenPose?.z ?? 0) / 0.82, 5);
+    expect(captured.camera?.position.y).toBeCloseTo(sixteenPose?.y ?? 0, 5);
+    for (let step = 0; step < 12; step += 1) flushFrames(20);
+    expect(wallGroup()?.children[0]?.scale.x).toBeCloseTo((sixteenScale?.x ?? 0) * 0.82, 5);
+    controller.dispose();
+  });
+
+  it('keeps 0.82 card size past 24 and snaps the camera farther for the actual wall', () => {
+    const aspect = 320 / 180;
+    const controller = createApplication3DScene(mount, {
+      interactive: true,
+      translate: (_id, fallback = '') => fallback,
+      onSelect: () => undefined,
+    });
+    controller.reconcile(makeWallItems(24), { playIntro: false });
+    flushFrames();
+    const twentyFourScale = wallGroup()?.children[0]?.scale.clone();
+    const twentyFourPose = resolveApplication3DWallCamera(24, aspect);
+    const fortyEightPose = resolveApplication3DWallCamera(48, aspect);
+    expect(fortyEightPose.z).toBeGreaterThan(twentyFourPose.z);
+
+    controller.reconcile(makeWallItems(48), { playFilter: true });
+    expect(captured.camera?.position.z).toBeCloseTo(fortyEightPose.z, 5);
+    expect(captured.camera?.position.y).toBeCloseTo(fortyEightPose.y, 5);
+    for (let step = 0; step < 12; step += 1) flushFrames(20);
+    expect(wallGroup()?.children[0]?.scale.x).toBeCloseTo(twentyFourScale?.x ?? 0, 5);
+    expect(wallGroup()?.children[0]?.scale.y).toBeCloseTo(twentyFourScale?.y ?? 0, 5);
     controller.dispose();
   });
 });

@@ -23,18 +23,6 @@ export const ARCH_NODE_SIZE: Record<
   host: { width: 0.32, height: 0.72, depth: 0.26 },
 };
 
-/** Previous cabinet size — style pass bumps one step so they read as racks. */
-export const ARCH_PREVIOUS_NODE_SIZE = {
-  application: { width: 0.32, height: 0.52, depth: 0.26 },
-  host: { width: 0.26, height: 0.42, depth: 0.22 },
-} as const;
-
-/** Inverted family we flipped: application used to be taller than host. */
-export const ARCH_INVERTED_NODE_SIZE = {
-  application: { width: 0.42, height: 0.68, depth: 0.34 },
-  host: { width: 0.34, height: 0.55, depth: 0.28 },
-} as const;
-
 /**
  * Center-to-center Y gap between the two platform surfaces.
  * App-wall-screen used planeGap=3; two floors stay distinct without the
@@ -60,13 +48,6 @@ export type Application3DArchitecturePlaneShape = 'frustum' | 'plane';
 /** Same tilt as the grid floor: PlaneGeometry XY → world XZ. */
 export const ARCH_PLANE_ROTATION_X = -Math.PI / 2;
 export const ARCH_PLANE_ORIENTATION = 'xz' as const;
-
-/**
- * Previous fill-the-page cinematic glass (≈27.6×19.2). The locked landed
- * frame uses a much tighter world size so both slabs sit in the middle.
- */
-export const ARCH_PREVIOUS_FILL_PLANE_WIDTH = 27.6;
-export const ARCH_PREVIOUS_FILL_PLANE_DEPTH = 19.2;
 
 /**
  * Compact XZ platforms — two distinct slabs, not a viewport-filling sheet.
@@ -250,7 +231,6 @@ export const ARCH_FRONT_INSET = 1.15;
  * sheets foreshorten, rack fronts read, and both layers fill the frame.
  * Independent of the wall pose — not `wallPhi − π/2.5` (~0.29, overhead).
  */
-export const ARCH_PREVIOUS_CAMERA_PHI = Math.PI / 2 - Math.PI / 8;
 export const ARCH_CAMERA_PHI = Math.PI / 2 - Math.PI / 18;
 export const ARCH_CAMERA_THETA = 0;
 /** Floor under the fitted distance; frame-fill must be allowed to pull in. */
@@ -840,7 +820,6 @@ const clampPhi = (phi: number) => Math.min(Math.PI - 0.08, Math.max(0.08, phi));
  */
 export const resolveArchitectureCameraPose = (
   layout: Application3DArchitectureLayout,
-  _wall: Application3DWallCameraPose,
   viewportAspect: number,
   fovDeg = APPLICATION3D_CAMERA_FOV,
 ): Application3DArchitectureCameraPose => {

@@ -89,16 +89,10 @@ export interface Application3DArchitectureView {
 }
 
 /**
- * Chassis identity (never alarm red / cyan). The mapped hull itself is
- * white + albedo; these keep rank-size tests and the rejected black block.
+ * Chassis identity (never alarm red / cyan). Hulls paint with ARCH_RACK_*
+ * + albedo; this keeps rank-size tests off wall health tints.
  */
 export const ARCH_CHASSIS_COLOR = 0x6e767e;
-export const ARCH_CHASSIS_EMISSIVE = 0x3a4248;
-export const ARCH_CHASSIS_METALNESS = 0.2;
-export const ARCH_CHASSIS_ROUGHNESS = 0.58;
-export const ARCH_CHASSIS_EMISSIVE_INTENSITY = 0.3;
-/** Previous black-block chassis — rejected, not a paint target. */
-export const ARCH_PREVIOUS_CHASSIS_COLOR = 0x3a3e44;
 export const ARCH_NODE_FILL = ARCH_CHASSIS_COLOR;
 export const ARCH_STROKE_EMISSIVE_INTENSITY = 0.72;
 export const ARCH_RACK_LED_COUNT = 3;
