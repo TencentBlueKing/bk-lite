@@ -60,22 +60,39 @@ class DeepAgentAssemblyMixin:
     _STEP_STUB_RE = re.compile(r"^执行结果\s*\d+\s*$")
 
     @classmethod
-    def _planned_step_already_answered(cls, messages) -> bool:
-        """单步已写出给用户看的正文时，跳过总结轮，避免再复述一遍。"""
-        for message in reversed(messages or []):
+    def _iter_planned_assistant_text(cls, messages):
+        for message in messages or []:
             if not isinstance(message, AIMessage):
                 continue
             if getattr(message, "tool_calls", None):
                 continue
             text = str(getattr(message, "content", "") or "").strip()
-            if not text:
-                continue
+            if text:
+                yield text
+
+    @classmethod
+    def _planned_output_has_markdown_table(cls, messages) -> bool:
+        return any(cls._MARKDOWN_TABLE_RE.search(text) for text in cls._iter_planned_assistant_text(messages))
+
+    @classmethod
+    def _planned_step_already_answered(cls, messages) -> bool:
+        """步骤已写出给用户看的正文时，跳过总结轮，避免再复述一遍。"""
+        for text in reversed(list(cls._iter_planned_assistant_text(messages))):
             if cls._MARKDOWN_TABLE_RE.search(text):
                 return True
             if cls._STEP_STUB_RE.match(text):
                 return False
             return len(text) >= 15
         return False
+
+    @classmethod
+    def _should_skip_planned_summary(cls, messages, *, completed_step_count: int) -> bool:
+        """单步已作答，或多步里已经出现过完整表格时，不再跑总结轮。"""
+        if not cls._planned_step_already_answered(messages):
+            return False
+        if completed_step_count <= 1:
+            return True
+        return cls._planned_output_has_markdown_table(messages)
 
     @staticmethod
     def _plan_is_skills_only(candidate_plan) -> bool:
@@ -145,7 +162,8 @@ class DeepAgentAssemblyMixin:
             "401、kubeconfig 无效、连接参数缺失或解密失败时不要改参重试，把错误原样告诉用户并结束本步。"
             "工具抛出 AttributeError/TypeError 等实现异常时不要重试，把错误告诉用户。"
             "403 仅在可换 namespace 或实例时最多改参 1 次，否则把权限错误告诉用户。"
-            "工具成功后用一两句话直接回答用户并结束本步，禁止再写第二份重复说明。"
+            "工具成功后用一两句话直接回答用户并结束本步，禁止再写第二份重复说明，"
+            "也不要把同一张表或同一份名单再输出一遍。"
         )
 
     @staticmethod
@@ -205,6 +223,7 @@ class DeepAgentAssemblyMixin:
         graph_request,
         token_usage_accumulator,
     ):
+        from apps.opspilot.metis.llm.agent.tool_execution_planner import planned_execution_compact_limits_for_request
         from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
         from apps.opspilot.metis.llm.middleware.context_window import ContextWindowMiddleware
         from apps.opspilot.metis.llm.middleware.planned_execution_limits import (
@@ -220,6 +239,8 @@ class DeepAgentAssemblyMixin:
             ToolResultCompactionMiddleware,
             ToolVisibilityMiddleware,
         )
+
+        max_tool_chars, max_ai_chars = planned_execution_compact_limits_for_request(graph_request)
 
         visibility_middleware = ToolVisibilityMiddleware(
             business_tools=registered_tools,
@@ -241,7 +262,7 @@ class DeepAgentAssemblyMixin:
             visibility_middleware,
             skill_guard,
             ToolExceptionAsResultMiddleware(),
-            ToolResultCompactionMiddleware(),
+            ToolResultCompactionMiddleware(max_tool_chars=max_tool_chars, max_ai_chars=max_ai_chars),
             ContextWindowMiddleware(graph_request=graph_request, isolated_llm=isolated_llm),
             limit_middleware,
         ]
@@ -285,6 +306,8 @@ _build_interrupt_on = DeepAgentAssemblyMixin._build_interrupt_on
 _build_lightweight_system_prompt = DeepAgentAssemblyMixin._build_lightweight_system_prompt
 _plan_is_skills_only = DeepAgentAssemblyMixin._plan_is_skills_only
 _planned_step_already_answered = DeepAgentAssemblyMixin._planned_step_already_answered
+_planned_output_has_markdown_table = DeepAgentAssemblyMixin._planned_output_has_markdown_table
+_should_skip_planned_summary = DeepAgentAssemblyMixin._should_skip_planned_summary
 _planned_tool_step_guidance = DeepAgentAssemblyMixin._planned_tool_step_guidance
 _should_use_lightweight_after_empty_plan = DeepAgentAssemblyMixin._should_use_lightweight_after_empty_plan
 _should_use_lightweight_direct_reply = DeepAgentAssemblyMixin._should_use_lightweight_direct_reply

@@ -655,8 +655,36 @@ class TestBuildDeepagentNodes:
                 },
             )
         middlewares = captured["create_kwargs"]["middleware"]
-        assert any(isinstance(item, ToolResultCompactionMiddleware) for item in middlewares)
+        compaction = next(item for item in middlewares if isinstance(item, ToolResultCompactionMiddleware))
+        assert compaction._max_tool_chars == 1500
+        assert compaction._max_ai_chars == 1000
         assert any(isinstance(item, ContextWindowMiddleware) for item in middlewares)
+
+    def test_runtime_middleware_scales_tool_compaction_with_working_budget(self):
+        from apps.opspilot.metis.llm.middleware.tool_runtime import ToolResultCompactionMiddleware
+
+        node = ToolsNodes()
+        node.all_tools = [_tool("list_kubernetes_events")]
+        req = _request(
+            user_message="查事件",
+            extra_config={"input_working_tokens": 186_000},
+            message_trim_config={"max_single_message_tokens": 37_200},
+        )
+        captured = {}
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "查事件",
+                    "steps": [{"objective": "读事件", "tools": ["list_kubernetes_events"]}],
+                },
+            )
+        middlewares = captured["create_kwargs"]["middleware"]
+        compaction = next(item for item in middlewares if isinstance(item, ToolResultCompactionMiddleware))
+        assert compaction._max_tool_chars == 37_200
+        assert compaction._max_ai_chars == 27_352
 
     def test_planned_step_prepare_passes_active_tools(self):
         seen_tool_names = []
@@ -1303,6 +1331,31 @@ class TestBuildDeepagentNodes:
         assert len(result["messages"]) == 1
         assert result["messages"][0].content == table
 
+    def test_planned_execution_skips_summary_when_earlier_step_already_showed_table(self):
+        node = ToolsNodes()
+        node.all_tools = [_tool("list_kubernetes_pods"), _tool("list_kubernetes_events")]
+        req = _request(user_message="统计今天 pod 重启")
+        captured = {}
+        table = "| Pod | 重启次数 |\n" "| --- | --- |\n" "| calico-kube-controllers | 9 |"
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            result = self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "统计重启",
+                    "steps": [
+                        {"objective": "取重启次数", "tools": ["list_kubernetes_pods"]},
+                        {"objective": "取最后重启时间", "tools": ["list_kubernetes_events"]},
+                    ],
+                },
+                agent_reply=table,
+            )
+
+        assert len(captured["ainvoke_messages"]) == 2
+        assert all(table in str(getattr(message, "content", "") or "") for message in result["messages"] if getattr(message, "type", "") == "ai")
+
     def test_progressive_disabled_skips_planner_and_binds_all_tools(self, monkeypatch):
         monkeypatch.setenv("OPSPILOT_DEEPAGENT_PROGRESSIVE_TOOLS", "0")
         assert is_progressive_tools_enabled() is False
@@ -1330,6 +1383,21 @@ def test_planned_step_already_answered_detects_markdown_table():
     assert ToolsNodes._planned_step_already_answered([AIMessage(content=table)]) is True
     assert ToolsNodes._planned_step_already_answered([AIMessage(content="执行结果 1")]) is False
     assert ToolsNodes._planned_step_already_answered([ToolMessage(content=table, tool_call_id="t1")]) is False
+
+
+def test_should_skip_planned_summary_for_multi_step_table():
+    from langchain_core.messages import AIMessage
+
+    table = "| Pod | 重启次数 |\n| --- | --- |\n| a | 1 |"
+    later = "以上名单累计重启均发生在 24 小时前，今天 0 次。"
+    messages = [AIMessage(content=table), AIMessage(content=later)]
+    assert ToolsNodes._planned_output_has_markdown_table(messages) is True
+    assert ToolsNodes._should_skip_planned_summary(messages, completed_step_count=3) is True
+    stubs = [AIMessage(content="执行结果 1"), AIMessage(content="执行结果 2")]
+    assert ToolsNodes._should_skip_planned_summary(stubs, completed_step_count=2) is False
+    prose = [AIMessage(content="已拿到事件时间，今天没有新的重启。")]
+    assert ToolsNodes._should_skip_planned_summary(prose, completed_step_count=2) is False
+    assert ToolsNodes._should_skip_planned_summary(prose, completed_step_count=1) is True
 
 
 def test_planned_step_already_answered_detects_tool_sentence():

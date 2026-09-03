@@ -9,7 +9,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
 from apps.core.logger import opspilot_logger as logger
-from apps.opspilot.metis.llm.tools.kubernetes.utils import get_current_cluster_name, parse_resource_quantity, prepare_context
+from apps.opspilot.metis.llm.tools.kubernetes.utils import coerce_int, get_current_cluster_name, parse_resource_quantity, prepare_context
 
 _K8S_ANALYSIS_DETAIL_CACHE = OrderedDict()
 _K8S_ANALYSIS_DETAIL_CACHE_LOCK = Lock()
@@ -671,8 +671,8 @@ def analyze_deployment_configurations(  # noqa: C901
     namespace, name = resolve_deployment_analysis_scope(namespace, name, config)
 
     # 硬上限保护
-    limit = max(1, min(int(limit or 50), 50))
-    offset = max(0, int(offset or 0))
+    limit = coerce_int(limit, 50, lo=1, hi=50)
+    offset = coerce_int(offset, 0, lo=0, hi=1_000_000)
 
     try:
         prepare_context(config)

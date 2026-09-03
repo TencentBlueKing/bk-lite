@@ -818,6 +818,14 @@ NACOS_READINESS_ALERT_TEXT = (
     "负责人:：devil"
 )
 
+_LOOKUP_NAMESPACES = "apps.opspilot.metis.llm.tools.kubernetes.data_collection._lookup_namespaces_by_resource_name"
+
+
+def _patch_namespace_lookup(pods, events=None, error=None):
+    from unittest.mock import patch
+
+    return patch(_LOOKUP_NAMESPACES, return_value=(pods, events or [], error))
+
 
 def test_normalize_alert_event_builds_stable_schema():
     from apps.opspilot.metis.llm.tools.kubernetes.data_collection import normalize_alert_event
@@ -861,16 +869,9 @@ def test_normalize_alert_event_parses_nacos_notification_text_into_cluster():
 
 
 def test_resolve_k8s_target_from_alert_accepts_nacos_notification_text():
-    from unittest.mock import patch
-
     from apps.opspilot.metis.llm.tools.kubernetes.data_collection import resolve_k8s_target_from_alert
 
-    pods_json = json.dumps([{"name": "nacos-0", "namespace": "nacos", "phase": "Running"}])
-    with patch("apps.opspilot.metis.llm.tools.kubernetes.resources.list_kubernetes_pods") as list_pods, patch(
-        "apps.opspilot.metis.llm.tools.kubernetes.resources.list_kubernetes_events"
-    ) as list_events:
-        list_pods.invoke.return_value = pods_json
-        list_events.invoke.return_value = json.dumps([])
+    with _patch_namespace_lookup([{"name": "nacos-0", "namespace": "nacos"}]):
         payload = json.loads(resolve_k8s_target_from_alert.invoke({"normalized_alert": NACOS_READINESS_ALERT_TEXT}))
 
     assert payload["resolved"] is True
@@ -920,16 +921,9 @@ def test_resolve_k8s_target_from_alert_marks_missing_data_when_unresolved():
 
 
 def test_resolve_k8s_target_from_alert_reads_flattened_pod_name():
-    from unittest.mock import patch
-
     from apps.opspilot.metis.llm.tools.kubernetes.data_collection import resolve_k8s_target_from_alert
 
-    pods_json = json.dumps([{"name": "pod1005", "namespace": "prod", "phase": "Running"}])
-    with patch("apps.opspilot.metis.llm.tools.kubernetes.resources.list_kubernetes_pods") as list_pods, patch(
-        "apps.opspilot.metis.llm.tools.kubernetes.resources.list_kubernetes_events"
-    ) as list_events:
-        list_pods.invoke.return_value = pods_json
-        list_events.invoke.return_value = json.dumps([])
+    with _patch_namespace_lookup([{"name": "pod1005", "namespace": "prod"}]):
         result = resolve_k8s_target_from_alert.invoke(
             {
                 "normalized_alert": {
@@ -948,8 +942,6 @@ def test_resolve_k8s_target_from_alert_reads_flattened_pod_name():
 
 
 def test_resolve_k8s_target_from_alert_reads_flattened_kind_and_name():
-    from unittest.mock import patch
-
     from apps.opspilot.metis.llm.tools.kubernetes.data_collection import resolve_k8s_target_from_alert
 
     alert = {
@@ -961,12 +953,7 @@ def test_resolve_k8s_target_from_alert_reads_flattened_kind_and_name():
         "alert_time": "2026-08-28 10:09:01",
         "namespace": None,
     }
-    pods_json = json.dumps([{"name": "server-69bf94649c-b8szc", "namespace": "bklite", "phase": "Running"}])
-    with patch("apps.opspilot.metis.llm.tools.kubernetes.resources.list_kubernetes_pods") as list_pods, patch(
-        "apps.opspilot.metis.llm.tools.kubernetes.resources.list_kubernetes_events"
-    ) as list_events:
-        list_pods.invoke.return_value = pods_json
-        list_events.invoke.return_value = json.dumps([])
+    with _patch_namespace_lookup([{"name": "server-69bf94649c-b8szc", "namespace": "bklite"}]) as lookup:
         result = resolve_k8s_target_from_alert.invoke({"normalized_alert": alert})
 
     payload = json.loads(result)
@@ -975,12 +962,10 @@ def test_resolve_k8s_target_from_alert_reads_flattened_kind_and_name():
     assert payload["resource_name"] == "server-69bf94649c-b8szc"
     assert payload["pod_name"] == "server-69bf94649c-b8szc"
     assert payload["namespace"] == "bklite"
-    list_pods.invoke.assert_called_once()
+    lookup.assert_called_once()
 
 
 def test_resolve_k8s_target_from_alert_marks_lookup_exhausted_when_pod_gone():
-    from unittest.mock import patch
-
     from apps.opspilot.metis.llm.tools.kubernetes.data_collection import resolve_k8s_target_from_alert
 
     alert = {
@@ -991,11 +976,7 @@ def test_resolve_k8s_target_from_alert_marks_lookup_exhausted_when_pod_gone():
         "detail": "Startup probe failed: connection refused",
     }
     config = {"configurable": {}}
-    with patch("apps.opspilot.metis.llm.tools.kubernetes.resources.list_kubernetes_pods") as list_pods, patch(
-        "apps.opspilot.metis.llm.tools.kubernetes.resources.list_kubernetes_events"
-    ) as list_events:
-        list_pods.invoke.return_value = json.dumps([])
-        list_events.invoke.return_value = json.dumps([])
+    with _patch_namespace_lookup([]) as lookup:
         first = json.loads(resolve_k8s_target_from_alert.invoke({"normalized_alert": alert}, config=config))
         second = json.loads(resolve_k8s_target_from_alert.invoke({"normalized_alert": alert}, config=config))
 
@@ -1006,8 +987,7 @@ def test_resolve_k8s_target_from_alert_marks_lookup_exhausted_when_pod_gone():
     assert first["namespace"] is None
     assert "namespace" in first["missing_data"]
     assert second == first
-    list_pods.invoke.assert_called_once()
-    list_events.invoke.assert_called_once()
+    lookup.assert_called_once()
 
 
 def test_resolve_k8s_target_from_alert_ignores_non_object_title_name():
@@ -1026,7 +1006,7 @@ def test_resolve_k8s_target_from_alert_surfaces_kubeconfig_error():
     from apps.opspilot.metis.llm.tools.kubernetes.data_collection import resolve_k8s_target_from_alert
 
     with patch(
-        "apps.opspilot.metis.llm.tools.kubernetes.utils.prepare_context",
+        "apps.opspilot.metis.llm.tools.kubernetes.data_collection.prepare_context",
         side_effect=Exception("无法加载 Kubernetes 配置: Invalid base64-encoded string. 请检查 kubeconfig 配置内容或集群连接。"),
     ):
         result = resolve_k8s_target_from_alert.invoke(
@@ -1040,15 +1020,9 @@ def test_resolve_k8s_target_from_alert_surfaces_kubeconfig_error():
 
 
 def test_resolve_k8s_target_from_alert_surfaces_lookup_error_payload():
-    from unittest.mock import patch
-
     from apps.opspilot.metis.llm.tools.kubernetes.data_collection import resolve_k8s_target_from_alert
 
-    with patch("apps.opspilot.metis.llm.tools.kubernetes.resources.list_kubernetes_pods") as list_pods, patch(
-        "apps.opspilot.metis.llm.tools.kubernetes.resources.list_kubernetes_events"
-    ) as list_events:
-        list_pods.invoke.return_value = json.dumps({"error": "获取Pod列表失败: (401)\nReason: Unauthorized"})
-        list_events.invoke.return_value = json.dumps([])
+    with _patch_namespace_lookup([], error="获取Pod列表失败: (401)\nReason: Unauthorized"):
         result = resolve_k8s_target_from_alert.invoke({"normalized_alert": {"labels": {"pod": "pod1005"}}})
 
     payload = json.loads(result)
@@ -1057,23 +1031,14 @@ def test_resolve_k8s_target_from_alert_surfaces_lookup_error_payload():
 
 
 def test_resolve_k8s_target_from_alert_looks_up_namespace_via_pods():
-    from unittest.mock import patch
-
     from apps.opspilot.metis.llm.tools.kubernetes.data_collection import resolve_k8s_target_from_alert
 
-    pods_json = json.dumps(
+    with _patch_namespace_lookup(
         [
-            {"name": "server-5b8fb979d7-csdcc", "namespace": "bklite", "phase": "Running"},
-            {"name": "other", "namespace": "default", "phase": "Running"},
+            {"name": "server-5b8fb979d7-csdcc", "namespace": "bklite"},
+            {"name": "other", "namespace": "default"},
         ]
-    )
-    events_json = json.dumps([])
-
-    with patch("apps.opspilot.metis.llm.tools.kubernetes.resources.list_kubernetes_pods") as list_pods, patch(
-        "apps.opspilot.metis.llm.tools.kubernetes.resources.list_kubernetes_events"
-    ) as list_events:
-        list_pods.invoke.return_value = pods_json
-        list_events.invoke.return_value = events_json
+    ) as lookup:
         result = resolve_k8s_target_from_alert.invoke(
             {
                 "normalized_alert": {
@@ -1089,8 +1054,111 @@ def test_resolve_k8s_target_from_alert_looks_up_namespace_via_pods():
     assert payload["namespace"] == "bklite"
     assert payload["pod_name"] == "server-5b8fb979d7-csdcc"
     assert payload["namespace_lookup"] == "pods_or_events"
-    list_pods.invoke.assert_called_once()
-    list_events.invoke.assert_called_once()
+    lookup.assert_called_once()
+
+
+def test_infer_kube_system_namespace_for_control_plane_static_pods():
+    from apps.opspilot.metis.llm.tools.kubernetes.data_collection import _infer_kube_system_namespace
+
+    assert _infer_kube_system_namespace("kube-scheduler-minikube") == "kube-system"
+    assert _infer_kube_system_namespace("kube-apiserver-minikube", "pod") == "kube-system"
+    assert _infer_kube_system_namespace("kube-controller-manager-minikube") == "kube-system"
+    assert _infer_kube_system_namespace("kube-proxy-minikube") == "kube-system"
+    assert _infer_kube_system_namespace("nacos-0") is None
+    assert _infer_kube_system_namespace("kube-scheduler-minikube", "deployment") is None
+    assert _infer_kube_system_namespace("kube-proxy-exporter") is None
+    assert _infer_kube_system_namespace("kube-proxy-metrics") is None
+
+
+def test_lookup_namespaces_by_resource_name_uses_name_field_selector(mocker):
+    from types import SimpleNamespace
+
+    from apps.opspilot.metis.llm.tools.kubernetes import data_collection as dc
+
+    mocker.patch.object(dc, "prepare_context")
+    core = mocker.MagicMock()
+    mocker.patch.object(dc.client, "CoreV1Api", return_value=core)
+    core.list_pod_for_all_namespaces.return_value = SimpleNamespace(
+        items=[SimpleNamespace(metadata=SimpleNamespace(name="nacos-0", namespace="nacos"))]
+    )
+
+    pods, events, error = dc._lookup_namespaces_by_resource_name("nacos-0", {})
+
+    assert error is None
+    assert pods == [{"name": "nacos-0", "namespace": "nacos"}]
+    assert events == []
+    core.list_pod_for_all_namespaces.assert_called_once_with(field_selector="metadata.name=nacos-0")
+    core.list_event_for_all_namespaces.assert_not_called()
+
+
+def test_lookup_namespaces_accepts_dns1123_subdomain_and_rejects_invalid(mocker):
+    from types import SimpleNamespace
+
+    from apps.opspilot.metis.llm.tools.kubernetes import data_collection as dc
+
+    mocker.patch.object(dc, "prepare_context")
+    core = mocker.MagicMock()
+    mocker.patch.object(dc.client, "CoreV1Api", return_value=core)
+    core.list_pod_for_all_namespaces.return_value = SimpleNamespace(items=[])
+    core.list_event_for_all_namespaces.return_value = SimpleNamespace(items=[])
+
+    pods, events, error = dc._lookup_namespaces_by_resource_name("kube-scheduler-node.example.com", {})
+    assert error is None
+    assert pods == []
+    core.list_pod_for_all_namespaces.assert_called_once_with(field_selector="metadata.name=kube-scheduler-node.example.com")
+
+    pods, events, error = dc._lookup_namespaces_by_resource_name("NOT VALID!!", {})
+    assert pods == []
+    assert events == []
+    assert "DNS-1123" in error
+    assert core.list_pod_for_all_namespaces.call_count == 1
+
+
+def test_lookup_namespaces_by_resource_name_falls_back_to_events(mocker):
+    from types import SimpleNamespace
+
+    from apps.opspilot.metis.llm.tools.kubernetes import data_collection as dc
+
+    mocker.patch.object(dc, "prepare_context")
+    core = mocker.MagicMock()
+    mocker.patch.object(dc.client, "CoreV1Api", return_value=core)
+    core.list_pod_for_all_namespaces.return_value = SimpleNamespace(items=[])
+    core.list_event_for_all_namespaces.return_value = SimpleNamespace(
+        items=[
+            SimpleNamespace(
+                involved_object=SimpleNamespace(kind="Pod", name="nacos-0"),
+                namespace="nacos",
+                metadata=SimpleNamespace(namespace="nacos"),
+            )
+        ]
+    )
+
+    pods, events, error = dc._lookup_namespaces_by_resource_name("nacos-0", {})
+
+    assert error is None
+    assert pods == []
+    assert events == [{"object": "Pod/nacos-0", "namespace": "nacos"}]
+    core.list_event_for_all_namespaces.assert_called_once_with(field_selector="involvedObject.name=nacos-0")
+
+
+def test_resolve_control_plane_pod_skips_cluster_wide_list():
+    from unittest.mock import patch
+
+    from apps.opspilot.metis.llm.tools.kubernetes.data_collection import resolve_k8s_target_from_alert
+
+    with patch("apps.opspilot.metis.llm.tools.kubernetes.resources.list_kubernetes_pods") as list_pods, patch(_LOOKUP_NAMESPACES) as lookup:
+        payload = json.loads(
+            resolve_k8s_target_from_alert.invoke(
+                {"normalized_alert": ("告警：Unhealthy（kubernetes，minikube，kube-scheduler-minikube） 检测到异常\n" "内容：Liveness probe failed")}
+            )
+        )
+
+    assert payload["resolved"] is True
+    assert payload["namespace"] == "kube-system"
+    assert payload["pod_name"] == "kube-scheduler-minikube"
+    assert payload["namespace_lookup"] == "control_plane_convention"
+    lookup.assert_not_called()
+    list_pods.invoke.assert_not_called()
 
 
 def test_apply_namespace_lookup_reports_multiple_candidates():

@@ -1,17 +1,18 @@
 """Kubernetes高级诊断工具 - P0高频缺失场景"""
 import json
-from datetime import datetime, timezone
-from typing import Dict, List, Optional
+
+from kubernetes import client
 from kubernetes.client import ApiException
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from kubernetes import client
 from loguru import logger
-from apps.opspilot.metis.llm.tools.kubernetes.utils import prepare_context, parse_resource_quantity
+
+from apps.opspilot.metis.llm.tools.kubernetes.instance_scope import prepare_point_instance, run_scan_tool
+from apps.opspilot.metis.llm.tools.kubernetes.utils import coerce_int, parse_resource_quantity, prepare_context
 
 
 @tool()
-def diagnose_pending_pod_issues(pod_name, namespace, config: RunnableConfig = None):
+def diagnose_pending_pod_issues(pod_name, namespace, instance_name=None, config: RunnableConfig = None):  # noqa: C901
     """
     诊断Pod Pending调度失败的根本原因
 
@@ -33,6 +34,7 @@ def diagnose_pending_pod_issues(pod_name, namespace, config: RunnableConfig = No
     Args:
         pod_name (str): Pod名称（必填）
         namespace (str): 命名空间（必填）
+        instance_name (str, optional): 多实例时必须指定集群
         config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
@@ -66,6 +68,9 @@ def diagnose_pending_pod_issues(pod_name, namespace, config: RunnableConfig = No
     - 此工具只诊断Pending Pod，对于Running/Failed Pod请使用其他工具
     - 诊断结果基于当前集群状态，添加节点后可能变化
     """
+    config, err = prepare_point_instance(config, instance_name)
+    if err:
+        return err
     prepare_context(config)
 
     try:
@@ -77,9 +82,7 @@ def diagnose_pending_pod_issues(pod_name, namespace, config: RunnableConfig = No
             pod = core_v1.read_namespaced_pod(pod_name, namespace)
         except ApiException as e:
             if e.status == 404:
-                return json.dumps({
-                    "error": f"Pod不存在: {namespace}/{pod_name}"
-                })
+                return json.dumps({"error": f"Pod不存在: {namespace}/{pod_name}"})
             raise
 
         result = {
@@ -90,7 +93,7 @@ def diagnose_pending_pod_issues(pod_name, namespace, config: RunnableConfig = No
             "issues": [],
             "node_candidates": [],
             "recommendations": [],
-            "diagnosis_summary": ""
+            "diagnosis_summary": "",
         }
 
         # 检查Pod是否真的是Pending
@@ -104,20 +107,17 @@ def diagnose_pending_pod_issues(pod_name, namespace, config: RunnableConfig = No
                 if condition.type == "PodScheduled" and condition.status == "False":
                     result["pending_reason"] = condition.reason
                     if condition.message:
-                        result["issues"].append({
-                            "category": "scheduling",
-                            "severity": "critical",
-                            "message": f"调度失败: {condition.reason}",
-                            "details": condition.message
-                        })
+                        result["issues"].append(
+                            {"category": "scheduling", "severity": "critical", "message": f"调度失败: {condition.reason}", "details": condition.message}
+                        )
 
         # 2. 检查资源需求
         resource_requests = {"cpu": 0, "memory": 0}
         if pod.spec.containers:
             for container in pod.spec.containers:
                 if container.resources and container.resources.requests:
-                    cpu_req = parse_resource_quantity(container.resources.requests.get('cpu', '0'))
-                    mem_req = parse_resource_quantity(container.resources.requests.get('memory', '0'))
+                    cpu_req = parse_resource_quantity(container.resources.requests.get("cpu", "0"))
+                    mem_req = parse_resource_quantity(container.resources.requests.get("memory", "0"))
                     resource_requests["cpu"] += cpu_req
                     resource_requests["memory"] += mem_req
 
@@ -133,9 +133,9 @@ def diagnose_pending_pod_issues(pod_name, namespace, config: RunnableConfig = No
 
             node_name = node.metadata.name
             allocatable = node.status.allocatable or {}
-            allocatable_cpu = parse_resource_quantity(allocatable.get('cpu', '0'))
-            allocatable_memory = parse_resource_quantity(allocatable.get('memory', '0'))
-            allocatable_pods = int(allocatable.get('pods', '110'))
+            allocatable_cpu = parse_resource_quantity(allocatable.get("cpu", "0"))
+            allocatable_memory = parse_resource_quantity(allocatable.get("memory", "0"))
+            allocatable_pods = int(allocatable.get("pods", "110"))
 
             # 计算已使用
             used_cpu = 0
@@ -150,8 +150,8 @@ def diagnose_pending_pod_issues(pod_name, namespace, config: RunnableConfig = No
                     if p.spec.containers:
                         for c in p.spec.containers:
                             if c.resources and c.resources.requests:
-                                used_cpu += parse_resource_quantity(c.resources.requests.get('cpu', '0'))
-                                used_memory += parse_resource_quantity(c.resources.requests.get('memory', '0'))
+                                used_cpu += parse_resource_quantity(c.resources.requests.get("cpu", "0"))
+                                used_memory += parse_resource_quantity(c.resources.requests.get("memory", "0"))
 
             available_cpu = allocatable_cpu - used_cpu
             available_memory = allocatable_memory - used_memory
@@ -161,33 +161,28 @@ def diagnose_pending_pod_issues(pod_name, namespace, config: RunnableConfig = No
                 "available_cpu": available_cpu,
                 "available_memory": available_memory,
                 "available_pods": available_pods,
-                "can_fit": (
-                    available_cpu >= resource_requests["cpu"]
-                    and available_memory >= resource_requests["memory"]
-                    and available_pods >= 1
-                )
+                "can_fit": (available_cpu >= resource_requests["cpu"] and available_memory >= resource_requests["memory"] and available_pods >= 1),
             }
 
         # 检查是否有节点能满足资源需求
         candidates_by_resource = [n for n, r in node_resources.items() if r["can_fit"]]
 
         if not candidates_by_resource:
-            result["issues"].append({
-                "category": "resource",
-                "severity": "critical",
-                "message": "没有节点有足够资源",
-                "details": f"需要CPU: {resource_requests['cpu']:.2f}核, 内存: {resource_requests['memory'] / (1024**3):.2f}Gi"
-            })
+            result["issues"].append(
+                {
+                    "category": "resource",
+                    "severity": "critical",
+                    "message": "没有节点有足够资源",
+                    "details": f"需要CPU: {resource_requests['cpu']:.2f}核, 内存: {resource_requests['memory'] / (1024**3):.2f}Gi",
+                }
+            )
             result["recommendations"].append("增加集群节点或减少Pod的资源requests")
 
         # 4. 检查节点亲和性
         if pod.spec.node_selector:
-            result["issues"].append({
-                "category": "affinity",
-                "severity": "high",
-                "message": "配置了NodeSelector",
-                "details": f"NodeSelector: {pod.spec.node_selector}"
-            })
+            result["issues"].append(
+                {"category": "affinity", "severity": "high", "message": "配置了NodeSelector", "details": f"NodeSelector: {pod.spec.node_selector}"}
+            )
 
             # 检查有多少节点匹配selector
             matching_nodes = 0
@@ -211,25 +206,19 @@ def diagnose_pending_pod_issues(pod_name, namespace, config: RunnableConfig = No
                 tolerated = False
                 if pod.spec.tolerations:
                     for toleration in pod.spec.tolerations:
-                        if (toleration.key == taint.key
+                        if (
+                            toleration.key == taint.key
                             and (not toleration.value or toleration.value == taint.value)
-                                and (not toleration.effect or toleration.effect == taint.effect)):
+                            and (not toleration.effect or toleration.effect == taint.effect)
+                        ):
                             tolerated = True
                             break
 
                 if not tolerated and taint.effect in ["NoSchedule", "NoExecute"]:
-                    taints_blocking.append({
-                        "node": node_name,
-                        "taint": f"{taint.key}={taint.value}:{taint.effect}"
-                    })
+                    taints_blocking.append({"node": node_name, "taint": f"{taint.key}={taint.value}:{taint.effect}"})
 
         if taints_blocking:
-            result["issues"].append({
-                "category": "taint",
-                "severity": "high",
-                "message": "节点污点阻止调度",
-                "details": f"有{len(taints_blocking)}个节点的污点无法容忍"
-            })
+            result["issues"].append({"category": "taint", "severity": "high", "message": "节点污点阻止调度", "details": f"有{len(taints_blocking)}个节点的污点无法容忍"})
             result["recommendations"].append("为Pod添加Toleration或移除节点污点")
 
         # 6. 检查PVC绑定
@@ -240,20 +229,14 @@ def diagnose_pending_pod_issues(pod_name, namespace, config: RunnableConfig = No
                     try:
                         pvc = core_v1.read_namespaced_persistent_volume_claim(pvc_name, namespace)
                         if pvc.status.phase != "Bound":
-                            result["issues"].append({
-                                "category": "pvc",
-                                "severity": "critical",
-                                "message": f"PVC未绑定: {pvc_name}",
-                                "details": f"PVC状态: {pvc.status.phase}"
-                            })
+                            result["issues"].append(
+                                {"category": "pvc", "severity": "critical", "message": f"PVC未绑定: {pvc_name}", "details": f"PVC状态: {pvc.status.phase}"}
+                            )
                             result["recommendations"].append(f"检查PVC {pvc_name} 是否有可用的PV")
                     except ApiException:
-                        result["issues"].append({
-                            "category": "pvc",
-                            "severity": "critical",
-                            "message": f"PVC不存在: {pvc_name}",
-                            "details": "Pod引用了不存在的PVC"
-                        })
+                        result["issues"].append(
+                            {"category": "pvc", "severity": "critical", "message": f"PVC不存在: {pvc_name}", "details": "Pod引用了不存在的PVC"}
+                        )
 
         # 7. 检查镜像拉取
         if pod.status.container_statuses:
@@ -261,15 +244,15 @@ def diagnose_pending_pod_issues(pod_name, namespace, config: RunnableConfig = No
                 if container.state.waiting:
                     reason = container.state.waiting.reason
                     if reason in ["ImagePullBackOff", "ErrImagePull"]:
-                        result["issues"].append({
-                            "category": "image",
-                            "severity": "critical",
-                            "message": f"镜像拉取失败: {container.name}",
-                            "details": container.state.waiting.message or reason
-                        })
-                        result["recommendations"].append(
-                            f"检查镜像地址是否正确、镜像仓库凭据是否配置、网络是否可达"
+                        result["issues"].append(
+                            {
+                                "category": "image",
+                                "severity": "critical",
+                                "message": f"镜像拉取失败: {container.name}",
+                                "details": container.state.waiting.message or reason,
+                            }
                         )
+                        result["recommendations"].append("检查镜像地址是否正确、镜像仓库凭据是否配置、网络是否可达")
 
         # 8. 生成诊断总结
         if len(result["issues"]) == 0:
@@ -286,11 +269,7 @@ def diagnose_pending_pod_issues(pod_name, namespace, config: RunnableConfig = No
 
     except Exception as e:
         logger.error(f"诊断Pending Pod失败: {str(e)}")
-        return json.dumps({
-            "error": f"诊断失败: {str(e)}",
-            "pod_name": pod_name,
-            "namespace": namespace
-        })
+        return json.dumps({"error": f"诊断失败: {str(e)}", "pod_name": pod_name, "namespace": namespace})
 
 
 @tool()
@@ -342,7 +321,6 @@ def check_network_policies_blocking(source_namespace, source_pod=None, target_na
 
     try:
         networking_v1 = client.NetworkingV1Api()
-        core_v1 = client.CoreV1Api()
 
         logger.info(f"检查NetworkPolicy阻断: {source_namespace} -> {target_namespace}")
 
@@ -355,7 +333,7 @@ def check_network_policies_blocking(source_namespace, source_pod=None, target_na
             "ingress_blocked": False,
             "blocking_policies": [],
             "recommendations": [],
-            "diagnosis_summary": ""
+            "diagnosis_summary": "",
         }
 
         # 1. 获取源命名空间的NetworkPolicy
@@ -365,7 +343,7 @@ def check_network_policies_blocking(source_namespace, source_pod=None, target_na
                 policy_info = {
                     "name": np.metadata.name,
                     "pod_selector": np.spec.pod_selector.match_labels if np.spec.pod_selector.match_labels else {},
-                    "policy_types": np.spec.policy_types or []
+                    "policy_types": np.spec.policy_types or [],
                 }
                 result["source_policies"].append(policy_info)
 
@@ -374,12 +352,9 @@ def check_network_policies_blocking(source_namespace, source_pod=None, target_na
                     if not np.spec.egress:
                         # 没有egress规则 = 默认deny all
                         result["egress_blocked"] = True
-                        result["blocking_policies"].append({
-                            "policy": np.metadata.name,
-                            "namespace": source_namespace,
-                            "type": "Egress",
-                            "reason": "未定义Egress规则，默认拒绝所有出站流量"
-                        })
+                        result["blocking_policies"].append(
+                            {"policy": np.metadata.name, "namespace": source_namespace, "type": "Egress", "reason": "未定义Egress规则，默认拒绝所有出站流量"}
+                        )
         except ApiException as e:
             if e.status != 404:
                 logger.warning(f"获取源命名空间NetworkPolicy失败: {str(e)}")
@@ -392,7 +367,7 @@ def check_network_policies_blocking(source_namespace, source_pod=None, target_na
                     policy_info = {
                         "name": np.metadata.name,
                         "pod_selector": np.spec.pod_selector.match_labels if np.spec.pod_selector.match_labels else {},
-                        "policy_types": np.spec.policy_types or []
+                        "policy_types": np.spec.policy_types or [],
                     }
                     result["target_policies"].append(policy_info)
 
@@ -401,12 +376,9 @@ def check_network_policies_blocking(source_namespace, source_pod=None, target_na
                         if not np.spec.ingress:
                             # 没有ingress规则 = 默认deny all
                             result["ingress_blocked"] = True
-                            result["blocking_policies"].append({
-                                "policy": np.metadata.name,
-                                "namespace": target_namespace,
-                                "type": "Ingress",
-                                "reason": "未定义Ingress规则，默认拒绝所有入站流量"
-                            })
+                            result["blocking_policies"].append(
+                                {"policy": np.metadata.name, "namespace": target_namespace, "type": "Ingress", "reason": "未定义Ingress规则，默认拒绝所有入站流量"}
+                            )
             except ApiException as e:
                 if e.status != 404:
                     logger.warning(f"获取目标命名空间NetworkPolicy失败: {str(e)}")
@@ -421,28 +393,21 @@ def check_network_policies_blocking(source_namespace, source_pod=None, target_na
             if result["ingress_blocked"]:
                 blocked_types.append("入站Ingress")
             result["diagnosis_summary"] = f"NetworkPolicy阻断了{'/'.join(blocked_types)}流量"
-            result["recommendations"].append(
-                "检查NetworkPolicy规则，为需要通信的Pod添加相应的Egress/Ingress规则"
-            )
+            result["recommendations"].append("检查NetworkPolicy规则，为需要通信的Pod添加相应的Egress/Ingress规则")
         else:
             result["diagnosis_summary"] = "配置了NetworkPolicy但未发现明显阻断（需要详细分析Pod标签匹配）"
-            result["recommendations"].append(
-                "NetworkPolicy规则较复杂，建议人工检查Pod标签是否匹配policy selector"
-            )
+            result["recommendations"].append("NetworkPolicy规则较复杂，建议人工检查Pod标签是否匹配policy selector")
 
         logger.info(f"NetworkPolicy检查完成: {result['diagnosis_summary']}")
         return json.dumps(result, ensure_ascii=False, indent=2)
 
     except Exception as e:
         logger.error(f"检查NetworkPolicy失败: {str(e)}")
-        return json.dumps({
-            "error": f"检查失败: {str(e)}",
-            "source_namespace": source_namespace
-        })
+        return json.dumps({"error": f"检查失败: {str(e)}", "source_namespace": source_namespace})
 
 
 @tool()
-def check_pvc_capacity(namespace=None, threshold_percent=80, config: RunnableConfig = None):
+def check_pvc_capacity(namespace=None, threshold_percent: int = 80, instance_name=None, config: RunnableConfig = None):
     """
     检查PVC（持久化存储）使用率，识别磁盘满风险
 
@@ -466,6 +431,7 @@ def check_pvc_capacity(namespace=None, threshold_percent=80, config: RunnableCon
             - 80: 标准预警阈值
             - 90: 高风险阈值
             - 50: 提前规划容量
+        instance_name (str, optional): 多实例时指定集群；省略则扫描全部已配置实例
         config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
@@ -499,11 +465,19 @@ def check_pvc_capacity(namespace=None, threshold_percent=80, config: RunnableCon
     3. 日志占用：容器日志未rotate，占满磁盘
     4. emptyDir满：超过节点磁盘限制
     """
+    threshold_percent = coerce_int(threshold_percent, 80, lo=1, hi=100)
+
+    def _run(bound_config):
+        return _check_pvc_capacity_on_instance(namespace, threshold_percent, bound_config)
+
+    return run_scan_tool(config, instance_name, _run)
+
+
+def _check_pvc_capacity_on_instance(namespace, threshold_percent, config: RunnableConfig = None):
     prepare_context(config)
 
     try:
         core_v1 = client.CoreV1Api()
-        storage_v1 = client.StorageV1Api()
 
         logger.info(f"检查PVC容量, namespace={namespace}, threshold={threshold_percent}%")
 
@@ -526,7 +500,7 @@ def check_pvc_capacity(namespace=None, threshold_percent=80, config: RunnableCon
             "high_usage_pvcs": [],
             "recommendations": [],
             "total_capacity": 0,
-            "total_pvcs": 0
+            "total_pvcs": 0,
         }
 
         # 构建PVC到Pod的映射
@@ -546,7 +520,7 @@ def check_pvc_capacity(namespace=None, threshold_percent=80, config: RunnableCon
             pvc_key = f"{pvc.metadata.namespace}/{pvc.metadata.name}"
 
             # 解析容量
-            capacity_str = pvc.status.capacity.get('storage', '0') if pvc.status.capacity else '0'
+            capacity_str = pvc.status.capacity.get("storage", "0") if pvc.status.capacity else "0"
             capacity_bytes = parse_resource_quantity(capacity_str)
             result["total_capacity"] += capacity_bytes
             result["total_pvcs"] += 1
@@ -559,27 +533,19 @@ def check_pvc_capacity(namespace=None, threshold_percent=80, config: RunnableCon
                 "capacity_bytes": capacity_bytes,
                 "storage_class": pvc.spec.storage_class_name,
                 "access_modes": pvc.spec.access_modes or [],
-                "mounted_by": pvc_to_pods.get(pvc_key, [])
+                "mounted_by": pvc_to_pods.get(pvc_key, []),
             }
 
             result["pvc_list"].append(pvc_info)
 
             # 检查未绑定的PVC
             if pvc.status.phase == "Pending":
-                result["pending_pvcs"].append({
-                    "name": pvc.metadata.name,
-                    "namespace": pvc.metadata.namespace,
-                    "requested_capacity": capacity_str
-                })
-                result["recommendations"].append(
-                    f"PVC {pvc.metadata.name} 未绑定，检查是否有可用的PV或动态provisioner"
-                )
+                result["pending_pvcs"].append({"name": pvc.metadata.name, "namespace": pvc.metadata.namespace, "requested_capacity": capacity_str})
+                result["recommendations"].append(f"PVC {pvc.metadata.name} 未绑定，检查是否有可用的PV或动态provisioner")
 
         # 生成总结建议
         if len(result["pending_pvcs"]) > 0:
-            result["recommendations"].insert(0,
-                                             f"发现{len(result['pending_pvcs'])}个未绑定的PVC，可能导致Pod无法启动"
-                                             )
+            result["recommendations"].insert(0, f"发现{len(result['pending_pvcs'])}个未绑定的PVC，可能导致Pod无法启动")
 
         if result["total_pvcs"] == 0:
             result["recommendations"].append("集群中没有PVC，如果应用需要持久化存储请创建PVC")
@@ -589,7 +555,4 @@ def check_pvc_capacity(namespace=None, threshold_percent=80, config: RunnableCon
 
     except Exception as e:
         logger.error(f"检查PVC容量失败: {str(e)}")
-        return json.dumps({
-            "error": f"检查失败: {str(e)}",
-            "namespace": namespace
-        })
+        return json.dumps({"error": f"检查失败: {str(e)}", "namespace": namespace})

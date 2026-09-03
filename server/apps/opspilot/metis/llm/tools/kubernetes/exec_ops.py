@@ -10,7 +10,8 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
 from apps.core.logger import opspilot_logger as logger
-from apps.opspilot.metis.llm.tools.kubernetes.utils import prepare_context
+from apps.opspilot.metis.llm.tools.kubernetes.instance_scope import prepare_point_instance
+from apps.opspilot.metis.llm.tools.kubernetes.utils import coerce_int, prepare_context
 
 _ALLOWED_EXEC_BINARIES = frozenset({"curl", "nslookup", "dig", "env", "hostname", "date", "wget", "ping", "ss", "ip"})
 _UNSAFE_TOKEN_RE = re.compile(r"[;&|`$<>\n\r]")
@@ -36,11 +37,7 @@ def _normalize_exec_command(command):
 
 
 def _clamp_timeout(timeout) -> int:
-    try:
-        value = int(timeout)
-    except (TypeError, ValueError):
-        value = _DEFAULT_EXEC_TIMEOUT
-    return max(_MIN_EXEC_TIMEOUT, min(_MAX_EXEC_TIMEOUT, value))
+    return coerce_int(timeout, _DEFAULT_EXEC_TIMEOUT, lo=_MIN_EXEC_TIMEOUT, hi=_MAX_EXEC_TIMEOUT)
 
 
 @tool()
@@ -49,7 +46,8 @@ def exec_in_pod(
     pod_name,
     command,
     container=None,
-    timeout=None,
+    timeout: int | None = None,
+    instance_name=None,
     config: RunnableConfig = None,
 ):
     """
@@ -64,6 +62,9 @@ def exec_in_pod(
         return json.dumps({"success": False, "error": error}, ensure_ascii=False)
     if not namespace or not pod_name:
         return json.dumps({"success": False, "error": "需要指定 namespace 和 pod_name"}, ensure_ascii=False)
+    config, instance_error = prepare_point_instance(config, instance_name)
+    if instance_error:
+        return instance_error
 
     prepare_context(config)
     timeout_seconds = _clamp_timeout(timeout if timeout is not None else _DEFAULT_EXEC_TIMEOUT)

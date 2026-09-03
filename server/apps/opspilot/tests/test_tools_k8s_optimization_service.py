@@ -3,7 +3,7 @@
 mock prepare_context 与 client.CoreV1Api/AppsV1Api,构造节点/Pod/Deployment/RS。覆盖
 check_scaling_capacity(Ready/unschedulable 过滤、CPU/内存/Pod 不足、仅 Pod 容量分支、
 紧张预警)、check_pod_distribution(单节点单点故障/不均匀/单可用区/StatefulSet 回退/
-都不存在)、validate_probe_configuration(探针缺失/initialDelay=0/评分/404)、
+都不存在)、validate_probe_configuration(探针缺失/initialDelay=0/评分/404、httpGet.path)、
 compare_deployment_revisions(镜像/env/副本差异、revision 缺失)。另测 _get_probe_type。
 不连真实集群。
 """
@@ -98,6 +98,15 @@ class TestScalingCapacity:
         assert out["can_scale"] is False
         assert any("Pod容量不足" in r for r in out["recommendations"])
 
+    def test_string_replicas_are_coerced(self, apis):
+        core, _ = apis
+        core.list_node.return_value = _items([_node("n1", pods="5")])
+        existing = [_pod(name=f"e{i}") for i in range(4)]
+        core.list_pod_for_all_namespaces.return_value = _items(existing)
+        out = json.loads(o.check_scaling_capacity.func(namespace="p", replicas="3", config={}))
+        assert out["can_scale"] is False
+        assert out["requested_replicas"] == 3
+
     def test_exception_wrapped(self, apis):
         core, _ = apis
         core.list_node.side_effect = RuntimeError("boom")
@@ -165,12 +174,18 @@ class TestPodDistribution:
         assert "未找到Deployment或StatefulSet" in out["error"]
 
 
-def _probe(http=True, tcp=False, exec_=False, grpc=False, delay=10, timeout=1):
+def _probe(http=True, tcp=False, exec_=False, grpc=False, delay=10, timeout=1, path="/healthz", port=8080):
+    http_get = None
+    if http:
+        http_get = SimpleNamespace(path=path, port=port, scheme="HTTP", host=None)
+    tcp_socket = SimpleNamespace(port=port, host=None) if tcp else None
+    exec_action = SimpleNamespace(command=["cat", "/tmp/healthy"]) if exec_ else None
+    grpc_action = SimpleNamespace(port=port, service="health") if grpc else None
     return SimpleNamespace(
-        http_get=object() if http else None,
-        tcp_socket=object() if tcp else None,
-        _exec=object() if exec_ else None,
-        grpc=object() if grpc else None,
+        http_get=http_get,
+        tcp_socket=tcp_socket,
+        _exec=exec_action,
+        grpc=grpc_action,
         initial_delay_seconds=delay,
         period_seconds=10,
         timeout_seconds=timeout,
@@ -201,6 +216,59 @@ class TestValidateProbes:
         out = json.loads(o.validate_probe_configuration.invoke({"deployment_name": "d", "namespace": "p", "config": {}}))
         assert out["probe_score"] == "2/2"
         assert out["overall_status"] == "good"
+        liveness = out["containers_analysis"][0]["liveness_probe"]
+        assert liveness["type"] == "httpGet"
+        assert liveness["http_get"]["path"] == "/healthz"
+        assert liveness["http_get"]["port"] == 8080
+        assert liveness["http_get"]["scheme"] == "HTTP"
+
+    def test_tcp_and_exec_endpoints_are_serialized(self, apis):
+        _, apps = apis
+        container = _container(liveness=_probe(http=False, tcp=True, port=9090), readiness=_probe(http=False, exec_=True))
+        apps.read_namespaced_deployment.return_value = SimpleNamespace(
+            spec=SimpleNamespace(template=SimpleNamespace(spec=SimpleNamespace(containers=[container])))
+        )
+        out = json.loads(o.validate_probe_configuration.invoke({"deployment_name": "d", "namespace": "p", "config": {}}))
+        liveness = out["containers_analysis"][0]["liveness_probe"]
+        readiness = out["containers_analysis"][0]["readiness_probe"]
+        assert liveness["type"] == "tcpSocket"
+        assert liveness["tcp_socket"]["port"] == 9090
+        assert liveness["http_get"] is None
+        assert readiness["type"] == "exec"
+        assert readiness["exec_command"] == ["cat", "/tmp/healthy"]
+
+    def test_incomplete_http_get_mock_does_not_raise(self):
+        probe = SimpleNamespace(
+            http_get=object(),
+            tcp_socket=None,
+            _exec=None,
+            grpc=None,
+            initial_delay_seconds=5,
+            period_seconds=10,
+            timeout_seconds=1,
+            failure_threshold=3,
+        )
+        out = o._serialize_probe(probe)
+        assert out["http_get"]["path"] is None
+        assert out["type"] == "httpGet"
+
+    def test_nonstandard_port_is_json_safe_and_keeps_path(self):
+        probe = SimpleNamespace(
+            http_get=SimpleNamespace(path="/readyz", port=object(), scheme="HTTP", host=None),
+            tcp_socket=None,
+            _exec=SimpleNamespace(command=object()),
+            grpc=None,
+            initial_delay_seconds=5,
+            period_seconds=10,
+            timeout_seconds=1,
+            failure_threshold=3,
+        )
+        out = o._serialize_probe(probe)
+        dumped = json.dumps(out)
+        assert "/readyz" in dumped
+        assert out["http_get"]["path"] == "/readyz"
+        parsed = json.loads(dumped)
+        assert parsed["http_get"]["path"] == "/readyz"
 
     def test_missing_probes_and_bad_delay(self, apis):
         _, apps = apis
@@ -274,6 +342,16 @@ class TestCompareRevisions:
         env_diff = next(d for d in out["differences"] if d["field"].endswith("].env"))
         assert "B" in env_diff["added_vars"]
         assert "A" in env_diff["modified_vars"]
+
+    def test_string_revisions_are_coerced(self, apis):
+        _, apps = apis
+        apps.read_namespaced_deployment.return_value = _deploy()
+        rs1 = _rs("rs1", 1, image="img:1", env=None, replicas=2)
+        rs2 = _rs("rs2", 2, image="img:2", env=None, replicas=2)
+        apps.list_namespaced_replica_set.return_value = _items([rs1, rs2])
+        out = json.loads(o.compare_deployment_revisions.func(deployment_name="d", namespace="p", revision1="1", revision2="2", config={}))
+        assert "error" not in out
+        assert out["has_changes"] is True
 
     def test_revision1_missing(self, apis):
         _, apps = apis

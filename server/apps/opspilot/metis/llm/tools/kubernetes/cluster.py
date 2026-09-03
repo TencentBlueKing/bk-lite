@@ -8,6 +8,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
 from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.metis.llm.tools.kubernetes.instance_scope import prepare_point_instance
 from apps.opspilot.metis.llm.tools.kubernetes.utils import prepare_context
 
 _DESCRIBE_TYPE_ALIASES = {
@@ -366,7 +367,7 @@ def explain_kubernetes_resource(resource_type, config: RunnableConfig = None):
 
 
 @tool()
-def describe_kubernetes_resource(resource_type, resource_name, namespace=None, config: RunnableConfig = None):
+def describe_kubernetes_resource(resource_type, resource_name, namespace=None, instance_name=None, config: RunnableConfig = None):
     """
     描述指定的Kubernetes资源
 
@@ -376,12 +377,16 @@ def describe_kubernetes_resource(resource_type, resource_name, namespace=None, c
         resource_type (str): 资源类型 (pod, deployment, statefulset/sts, service, node, namespace)
         resource_name (str): 资源名称
         namespace (str, optional): 命名空间，某些资源类型需要
+        instance_name (str, optional): 多实例时必须指定集群
         config (RunnableConfig): 工具配置
 
     Returns:
         str: JSON格式的资源详细描述
     """
     try:
+        config, instance_error = prepare_point_instance(config, instance_name)
+        if instance_error:
+            return instance_error
         prepare_context(config)
 
         core_v1 = client.CoreV1Api()
