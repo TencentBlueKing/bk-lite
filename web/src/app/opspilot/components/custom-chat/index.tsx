@@ -210,11 +210,10 @@ const CustomChat: React.FC<CustomChatProps> = ({ handleSendMessage, initialMessa
             {messages.map((msg) => (
               <Bubble
                 key={msg.id}
-                className={styles.bubbleWrapper}
+                className={`${styles.bubbleWrapper} ${msg.role === 'user' ? styles.userBubble : styles.assistantBubble}`}
                 placement={msg.role === 'user' ? 'end' : 'start'}
                 loading={msg.content === '...'}
                 content={renderContent(msg)}
-                avatar={{ icon: <Icon type={msg.role === 'user' ? 'yonghu' : 'jiqiren3'} className={styles.avatar} /> }}
                 footer={msg.content === '...' ? null : (
                   <MessageActions
                     message={msg}
