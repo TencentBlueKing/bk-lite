@@ -41,6 +41,7 @@
       "editable": false,
       "default_value": "root",
       "description": "SSH 登录用户名，默认 root",
+      "description_en": "SSH login username, defaults to root",
       "widget_props": {
         "placeholder": "root"
       },

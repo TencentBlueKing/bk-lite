@@ -66,6 +66,8 @@ export const useConfigRenderer = () => {
       guide_short,
       tooltip
     } = fieldConfig;
+    // 帮助文案只使用当前插件字段自身的 description/tooltip/guide_short，
+    // 禁止按 name === "username" 去套 monitor.integrations.usernameDes 或 WMI 文案。
     const guideTip = guide_short || tooltip || description;
     const hasGuideTip = Boolean(guideTip);
     // 悬浮提示已承载说明时，不再在控件旁重复展示同一段 description
