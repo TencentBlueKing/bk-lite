@@ -7,6 +7,7 @@ from apps.core.decorators.api_permission import HasPermission
 from apps.operation_analysis.serializers.scene_widget_serializers import (
     Application3DAlarmDetailRequestSerializer,
     Application3DApplicationDetailRequestSerializer,
+    Application3DArchitectureRequestSerializer,
     Application3DMetricRequestSerializer,
     Application3DWallRequestSerializer,
     NetworkStatusTopologyRequestSerializer,
@@ -69,6 +70,21 @@ class SceneWidgetViewSet(ViewSet):
         try:
             return Response(
                 Application3DQueryService.application_detail(
+                    request,
+                    application_id=str(serializer.validated_data["application_id"]),
+                )
+            )
+        except Application3DError as exc:
+            return self.application3d_error_response(exc)
+
+    @HasPermission("view-View")
+    @action(detail=False, methods=["post"], url_path="application3d/architecture")
+    def application3d_architecture(self, request):
+        serializer = Application3DArchitectureRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            return Response(
+                Application3DQueryService.architecture(
                     request,
                     application_id=str(serializer.validated_data["application_id"]),
                 )

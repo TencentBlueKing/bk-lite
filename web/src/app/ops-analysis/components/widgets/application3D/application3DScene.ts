@@ -4,7 +4,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import type { Application3DWallItem } from '@/app/ops-analysis/types/sceneWidget';
+import type { Application3DArchitectureData, Application3DWallItem } from '@/app/ops-analysis/types/sceneWidget';
 import {
   APPLICATION3D_CAMERA_FOV,
   buildApplication3DLayout,
@@ -35,9 +35,29 @@ import {
 import {
   WALL_ENTRANCE,
   WALL_FILTER_MOTION,
+  FOCUS_MOTION,
+  ARCHITECTURE_MOTION,
+  architectureLabelDelayMs,
+  architectureNodeDelayMs,
+  architecturePlaneDelayMs,
+  architectureTubeDelayMs,
   cardStaggerDelayMs,
+  easeLinear,
   easeOutEntrance,
 } from './application3DMotion';
+import { createArchitectureTreeGroup, type Application3DArchitectureView } from './application3DArchitectureView';
+import {
+  ARCH_PLANE_EMISSIVE_INTENSITY,
+  ARCH_PLANE_OPACITY,
+  ARCH_PLANE_RIM_OPACITY,
+  ARCH_PLANE_RIM_STROKE_OPACITY,
+  resolveArchitectureCameraPose,
+} from './application3DArchitecture';
+
+export const APPLICATION3D_WALL_GROUP_NAME = 'application3d-wall';
+const WALL_POLAR = { min: Math.PI * 0.28, max: Math.PI * 0.72 } as const;
+/** Keep orbit near the just-above-eye-level pose; block bird’s-eye / 图1. */
+const ARCH_POLAR = { min: Math.PI * 0.40, max: Math.PI * 0.72 } as const;
 
 export interface Application3DSceneController {
   reconcile: (
@@ -48,6 +68,9 @@ export interface Application3DSceneController {
   setActive: (active: boolean) => void;
   /** Animate (or snap) the orbit camera back to the fitted wall home pose. */
   resetCamera: () => void;
+  focus: (applicationId: string | null) => void;
+  showArchitecture: (data: Application3DArchitectureData) => void;
+  hideArchitecture: () => void;
   dispose: () => void;
 }
 
@@ -88,7 +111,7 @@ const setCardBrightness = (visual: ApplicationCardVisual, value: number) => {
   visual.material.uniforms.uBright.value = value;
 };
 
-type ScenePhase = 'initializing' | 'wall';
+type ScenePhase = 'initializing' | 'wall' | 'focused' | 'architecture';
 
 interface Tween {
   id: number;
@@ -435,6 +458,7 @@ export const createApplication3DScene = (
     active?: boolean;
     translate?: Application3DTranslate;
     onSelect: (item: Application3DWallItem) => void;
+    onBackgroundClick?: () => void;
     onFirstRender?: () => void;
   },
 ): Application3DSceneController => {
@@ -443,7 +467,7 @@ export const createApplication3DScene = (
   const scene = new THREE.Scene();
   scene.fog = new THREE.FogExp2(0x0c2138, 0.0035);
 
-  const camera = new THREE.PerspectiveCamera(APPLICATION3D_CAMERA_FOV, 1, 0.1, 500);
+  const camera = new THREE.PerspectiveCamera(APPLICATION3D_CAMERA_FOV, 1, 0.1, 1200);
   const renderer = new THREE.WebGLRenderer({
     antialias: true,
     alpha: true,
@@ -496,6 +520,12 @@ export const createApplication3DScene = (
     const widthPx = viewportWidth;
     const heightPx = viewportHeight;
     if (widthPx <= 0 || heightPx <= 0) return;
+    if (phase === 'architecture' && !wallGroup.visible) {
+      visuals.forEach((visual) => {
+        visual.glassEl.hidden = true;
+      });
+      return;
+    }
     camera.updateMatrixWorld();
     visuals.forEach((visual) => {
       visual.frontPlane.updateWorldMatrix(true, false);
@@ -558,8 +588,8 @@ export const createApplication3DScene = (
   controls.enablePan = false;
   controls.minDistance = 6;
   controls.maxDistance = 80;
-  controls.minPolarAngle = Math.PI * 0.28;
-  controls.maxPolarAngle = Math.PI * 0.72;
+  controls.minPolarAngle = WALL_POLAR.min;
+  controls.maxPolarAngle = WALL_POLAR.max;
   controls.enabled = false;
 
   const composer = new EffectComposer(renderer);
@@ -584,6 +614,9 @@ export const createApplication3DScene = (
 
   const stageRoot = new THREE.Group();
   scene.add(stageRoot);
+  const wallGroup = new THREE.Group();
+  wallGroup.name = APPLICATION3D_WALL_GROUP_NAME;
+  scene.add(wallGroup);
   let floorY = -6;
   const wallLookTarget = new THREE.Vector3();
   const hoverLift = new THREE.Vector3();
@@ -830,6 +863,12 @@ export const createApplication3DScene = (
   let resizeLayoutTimer: number | null = null;
   let particlesBuilt = false;
   let entrancePlayed = false;
+  let focusedId = '';
+  let architectureView: Application3DArchitectureView | null = null;
+  const focusLift = new THREE.Vector3();
+  const architectureCameraPosition = new THREE.Vector3();
+  const architectureLookTarget = new THREE.Vector3();
+  let cameraComplete: (() => void) | null = null;
 
   const requestRender = () => {
     if (!disposed && active && frameId === null) {
@@ -837,9 +876,16 @@ export const createApplication3DScene = (
     }
   };
 
+  const applyPolarLimits = (limits: { min: number; max: number }) => {
+    controls.minPolarAngle = limits.min;
+    controls.maxPolarAngle = limits.max;
+  };
+
   const setOrbitEnabled = (enabled: boolean) => {
     controls.enabled = Boolean(enabled && options.interactive && active && !reducedMotion);
   };
+
+  const orbitAllowed = () => phase === 'wall' || phase === 'architecture';
 
   const startTween = (
     duration: number,
@@ -883,6 +929,7 @@ export const createApplication3DScene = (
     desiredCameraPosition.copy(wallCameraPosition);
     camera.position.copy(wallCameraPosition);
     controls.target.copy(wallLookTarget);
+    applyPolarLimits(WALL_POLAR);
     controls.update();
     controls.saveState();
     setOrbitEnabled(true);
@@ -949,7 +996,7 @@ export const createApplication3DScene = (
     }
 
     const hoverEnabled =
-      phase === 'wall' && tweens.size === 0 && !pointerDown;
+      phase === 'wall' && !focusedId && tweens.size === 0 && !pointerDown;
     visuals.forEach((visual) => {
       const want = hoverEnabled && !reducedMotion && visual.item.id === hoveredId ? 1 : 0;
       visual.hoverAmount = THREE.MathUtils.lerp(visual.hoverAmount, want, CARD_HOVER.lerp);
@@ -970,6 +1017,7 @@ export const createApplication3DScene = (
     });
 
     updateParticles(dt);
+    if (architectureView && phase === 'architecture') architectureView.tick(dt, camera);
     visuals.forEach(syncReflection);
 
     if (cameraAnimating) {
@@ -992,6 +1040,9 @@ export const createApplication3DScene = (
         controls.update();
         controls.saveState();
         cameraAnimating = false;
+        const done = cameraComplete;
+        cameraComplete = null;
+        done?.();
       }
     } else if (controls.enabled) {
       controls.update();
@@ -1006,7 +1057,7 @@ export const createApplication3DScene = (
       firstRender = false;
       options.onFirstRender?.();
     }
-    if (tweens.size > 0 || cameraAnimating || particlePoints || phase === 'wall' || controls.enabled) {
+    if (tweens.size > 0 || cameraAnimating || particlePoints || phase !== 'initializing' || controls.enabled) {
       requestRender();
     }
   }
@@ -1201,9 +1252,17 @@ export const createApplication3DScene = (
       layout.wallHeight * WALL_CAMERA_HEIGHT_FACTOR,
       fitCameraDistance(layout),
     );
-    controls.minDistance = Math.max(wallCameraPosition.z * 0.45, 6);
-    controls.maxDistance = wallCameraPosition.z * 2.2;
+    if (phase !== 'architecture') {
+      controls.minDistance = Math.max(wallCameraPosition.z * 0.45, 6);
+      controls.maxDistance = wallCameraPosition.z * 2.2;
+    }
     syncParticleScale();
+
+    if (phase === 'architecture' || phase === 'focused') {
+      if (phase === 'focused') applyFocusPose(false);
+      requestRender();
+      return;
+    }
 
     desiredTarget.copy(wallLookTarget);
     if (layoutOptions?.playIntro) {
@@ -1313,7 +1372,7 @@ export const createApplication3DScene = (
       const root = new THREE.Group();
       root.userData.applicationId = item.id;
       root.add(mesh);
-      scene.add(root);
+      wallGroup.add(root);
       const glassEl = createGlassOverlay(painted.cardTone, painted.texture.image as HTMLCanvasElement);
       const reflectionMaterial = createCardReflectionMaterial(
         painted.texture,
@@ -1367,6 +1426,55 @@ export const createApplication3DScene = (
     return delta;
   };
 
+  const easeCameraTo = (
+    position: THREE.Vector3,
+    target: THREE.Vector3,
+    duration = 0.55,
+    onComplete?: () => void,
+  ) => {
+    if (disposed) return;
+    cameraComplete = onComplete ?? null;
+    desiredCameraPosition.copy(position);
+    desiredTarget.copy(target);
+    if (
+      reducedMotion
+      || (
+        camera.position.distanceTo(position) < 0.08
+        && controls.target.distanceTo(target) < 0.08
+      )
+    ) {
+      camera.position.copy(position);
+      controls.target.copy(target);
+      camera.up.set(0, 1, 0);
+      camera.lookAt(controls.target);
+      controls.update();
+      controls.saveState();
+      cameraAnimating = false;
+      requestRender();
+      const done = cameraComplete;
+      cameraComplete = null;
+      done?.();
+      return;
+    }
+    cameraStartTarget.copy(controls.target);
+    cameraStartSpherical.setFromVector3(
+      cameraOrbitOffset.copy(camera.position).sub(controls.target),
+    );
+    cameraEndSpherical.setFromVector3(
+      cameraOrbitOffset.copy(position).sub(target),
+    );
+    cameraOrbitThetaDelta = shortestAngleDelta(
+      cameraStartSpherical.theta,
+      cameraEndSpherical.theta,
+    );
+    cameraStartSpherical.radius = Math.max(cameraStartSpherical.radius, 0.01);
+    cameraEndSpherical.radius = Math.max(cameraEndSpherical.radius, 0.01);
+    cameraOrbitProgress = 0;
+    cameraOrbitDuration = duration;
+    cameraAnimating = true;
+    requestRender();
+  };
+
   const snapCameraHome = () => {
     camera.position.copy(wallCameraPosition);
     controls.target.copy(wallLookTarget);
@@ -1381,38 +1489,288 @@ export const createApplication3DScene = (
 
   const resetCamera = () => {
     if (disposed) return;
-    desiredCameraPosition.copy(wallCameraPosition);
-    desiredTarget.copy(wallLookTarget);
-    if (
-      reducedMotion
-      || phase !== 'wall'
-      || (
-        camera.position.distanceTo(wallCameraPosition) < 0.08
-        && controls.target.distanceTo(wallLookTarget) < 0.08
-      )
-    ) {
-      snapCameraHome();
+    easeCameraTo(wallCameraPosition, wallLookTarget, 0.55);
+  };
+
+  const applyFocusPose = (animate: boolean) => {
+    const duration = (reducedMotion || !animate ? 0 : FOCUS_MOTION.durationMs) / 1000;
+    visuals.forEach((visual) => {
+      const selected = Boolean(focusedId) && visual.item.id === focusedId;
+      const toPos = visual.homePosition.clone();
+      const toScale = visual.homeScale.clone();
+      let toOpacity = 1;
+      let toBright = 1;
+      if (focusedId) {
+        if (selected) {
+          focusLift.set(0, 0, FOCUS_MOTION.liftZ);
+          toPos.add(focusLift);
+          toScale.multiplyScalar(FOCUS_MOTION.scale);
+          toBright = 1.1;
+        } else {
+          toOpacity = FOCUS_MOTION.dimOpacity;
+          toBright = FOCUS_MOTION.dimBright;
+        }
+      }
+      const fromPos = visual.root.position.clone();
+      const fromScale = visual.root.scale.clone();
+      const fromOpacity = visual.glassOpacity;
+      const fromBright = visual.material.uniforms.uBright.value as number;
+      startTween(duration, (t) => {
+        visual.root.position.lerpVectors(fromPos, toPos, t);
+        visual.root.scale.lerpVectors(fromScale, toScale, t);
+        setCardOpacity(visual, fromOpacity + (toOpacity - fromOpacity) * t);
+        setCardBrightness(visual, fromBright + (toBright - fromBright) * t);
+      }, () => {
+        visual.root.position.copy(toPos);
+        visual.root.scale.copy(toScale);
+        setCardOpacity(visual, toOpacity);
+        setCardBrightness(visual, toBright);
+      }, easeInOutCubic, 0, true);
+    });
+  };
+
+  const applyWallOrbitDistance = () => {
+    controls.minDistance = Math.max(wallCameraPosition.z * 0.45, 6);
+    controls.maxDistance = wallCameraPosition.z * 2.2;
+  };
+
+  const setGlassLayerVisible = (visible: boolean) => {
+    glassLayer.style.visibility = visible ? '' : 'hidden';
+    glassLayer.style.pointerEvents = visible ? '' : 'none';
+  };
+
+  const hideWallCards = (animate: boolean) => {
+    const duration = (reducedMotion || !animate ? 0 : ARCHITECTURE_MOTION.wallHideMs) / 1000;
+    const toScaleMul = ARCHITECTURE_MOTION.wallHideScale;
+    if (!visuals.size) {
+      wallGroup.visible = false;
+      setGlassLayerVisible(false);
+      return;
+    }
+    visuals.forEach((visual) => {
+      const fromPos = visual.root.position.clone();
+      const fromScale = visual.root.scale.clone();
+      const fromOpacity = visual.glassOpacity;
+      const toScale = visual.homeScale.clone().multiplyScalar(toScaleMul);
+      startTween(duration, (t) => {
+        visual.root.position.lerpVectors(fromPos, visual.homePosition, t);
+        visual.root.scale.lerpVectors(fromScale, toScale, t);
+        setCardOpacity(visual, fromOpacity * (1 - t));
+        setCardBrightness(visual, 1);
+      }, () => {
+        visual.root.position.copy(visual.homePosition);
+        visual.root.scale.copy(toScale);
+        setCardOpacity(visual, 0);
+        wallGroup.visible = false;
+        setGlassLayerVisible(false);
+      }, easeInOutCubic, 0, true);
+    });
+  };
+
+  const restoreWallCards = (animate: boolean) => {
+    focusedId = '';
+    phase = 'wall';
+    wallGroup.visible = true;
+    setGlassLayerVisible(true);
+    applyPolarLimits(WALL_POLAR);
+    applyWallOrbitDistance();
+    applyFocusPose(animate);
+    setOrbitEnabled(true);
+  };
+
+  const disposeArchitecture = () => {
+    architectureView?.dispose();
+    architectureView = null;
+  };
+
+  const focus = (applicationId: string | null) => {
+    if (disposed) return;
+    disposeArchitecture();
+    const nextId = applicationId && visuals.has(applicationId) ? applicationId : '';
+    if (!nextId) {
+      restoreWallCards(true);
       requestRender();
       return;
     }
+    focusedId = nextId;
+    phase = 'focused';
+    setOrbitEnabled(false);
+    applyFocusPose(true);
+    requestRender();
+  };
 
-    cameraStartTarget.copy(controls.target);
-    cameraStartSpherical.setFromVector3(
-      cameraOrbitOffset.copy(camera.position).sub(controls.target),
+  const setPlaneReveal = (planeGroup: THREE.Group, t: number) => {
+    planeGroup.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      const material = mesh.material as THREE.Material | THREE.Material[] | undefined;
+      const list = material ? (Array.isArray(material) ? material : [material]) : [];
+      list.forEach((item) => {
+        if (!('opacity' in item)) return;
+        const role = mesh.userData.archRole as string | undefined;
+        if (role === 'plane-mesh' || role === 'plane-veneer') {
+          const restOpacity = Number(mesh.userData.restOpacity ?? ARCH_PLANE_OPACITY);
+          const restEmissive = Number(
+            mesh.userData.restEmissiveIntensity ?? ARCH_PLANE_EMISSIVE_INTENSITY,
+          );
+          item.transparent = true;
+          item.opacity = 0.02 + (restOpacity - 0.02) * t;
+          if ('emissiveIntensity' in item) {
+            (item as THREE.MeshStandardMaterial).emissiveIntensity = restEmissive * t;
+          }
+        } else if (role === 'plane-rim') {
+          item.transparent = true;
+          const rim = item as THREE.ShaderMaterial;
+          if (rim.uniforms?.uOpacity) {
+            rim.uniforms.uOpacity.value = ARCH_PLANE_RIM_OPACITY * t;
+          }
+          if (rim.uniforms?.uStroke) {
+            rim.uniforms.uStroke.value = ARCH_PLANE_RIM_STROKE_OPACITY * t;
+          }
+          if (!rim.uniforms?.uOpacity) {
+            item.opacity = ARCH_PLANE_RIM_OPACITY * t;
+          }
+        } else if (role === 'plane-title') {
+          item.transparent = true;
+          item.opacity = t;
+        }
+      });
+    });
+  };
+
+  const expandArchitectureNodes = () => {
+    if (!architectureView || phase !== 'architecture') return;
+    const start = ARCHITECTURE_MOTION.startScale;
+    const planeMs = (reducedMotion ? WALL_ENTRANCE.reducedMotionMs : ARCHITECTURE_MOTION.planeMs) / 1000;
+    const expandMs = (reducedMotion ? WALL_ENTRANCE.reducedMotionMs : ARCHITECTURE_MOTION.expandMs) / 1000;
+    const labelMs = (reducedMotion ? WALL_ENTRANCE.reducedMotionMs : ARCHITECTURE_MOTION.labelMs) / 1000;
+    const tubeMs = (reducedMotion ? WALL_ENTRANCE.reducedMotionMs : ARCHITECTURE_MOTION.tubeMs) / 1000;
+    const lookDir = architectureLookTarget.clone().sub(architectureCameraPosition).normalize();
+    const inFront = architectureCameraPosition.clone().add(
+      lookDir.multiplyScalar(ARCHITECTURE_MOTION.planeStartDistance),
     );
-    cameraEndSpherical.setFromVector3(
-      cameraOrbitOffset.copy(wallCameraPosition).sub(wallLookTarget),
+    architectureView.group.scale.setScalar(1);
+    architectureView.planeGroups.forEach((planeGroup, index) => {
+      const rest = (planeGroup.userData.restPosition as THREE.Vector3 | undefined)?.clone()
+        ?? new THREE.Vector3();
+      const delay = reducedMotion ? 0 : architecturePlaneDelayMs(index) / 1000;
+      planeGroup.position.copy(inFront);
+      planeGroup.scale.setScalar(start);
+      setPlaneReveal(planeGroup, 0);
+      startTween(planeMs, (t) => {
+        planeGroup.position.lerpVectors(inFront, rest, t);
+        planeGroup.scale.setScalar(start + (1 - start) * t);
+        setPlaneReveal(planeGroup, t);
+      }, () => {
+        planeGroup.position.copy(rest);
+        planeGroup.scale.setScalar(1);
+        setPlaneReveal(planeGroup, 1);
+      }, easeLinear, delay, true);
+    });
+    const nodeDelay = reducedMotion ? 0 : architectureNodeDelayMs() / 1000;
+    const labelDelay = reducedMotion ? 0 : architectureLabelDelayMs() / 1000;
+    architectureView.nodeGroups.forEach((nodeGroup) => {
+      nodeGroup.scale.setScalar(0);
+      startTween(expandMs, (t) => {
+        nodeGroup.scale.setScalar(t);
+      }, () => {
+        nodeGroup.scale.setScalar(1);
+      }, easeLinear, nodeDelay, true);
+    });
+    architectureView.nodeLabels.forEach((label) => {
+      const targetScale = label.userData.labelScale as THREE.Vector3 | undefined;
+      const toX = targetScale?.x ?? 1;
+      const toY = targetScale?.y ?? 1;
+      label.scale.set(0, 0, 1);
+      startTween(labelMs, (t) => {
+        label.scale.set(toX * t, toY * t, 1);
+      }, () => {
+        label.scale.set(toX, toY, 1);
+      }, easeLinear, labelDelay, true);
+    });
+    const tubeDelay = reducedMotion ? 0 : architectureTubeDelayMs() / 1000;
+    architectureView.interPlaneTubes.forEach((tube) => {
+      tube.scale.setScalar(0);
+      startTween(tubeMs, (t) => {
+        tube.scale.setScalar(t);
+      }, () => {
+        tube.scale.setScalar(1);
+      }, easeLinear, tubeDelay, true);
+    });
+    architectureView.intraPlaneTubes.forEach((tube) => {
+      tube.scale.setScalar(0);
+      startTween(expandMs, (t) => {
+        tube.scale.setScalar(t);
+      }, () => {
+        tube.scale.setScalar(1);
+      }, easeLinear, nodeDelay, true);
+    });
+  };
+
+  const flyArchitectureCameraThenExpand = () => {
+    if (!architectureView || phase !== 'architecture' || disposed) return;
+    applyPolarLimits(ARCH_POLAR);
+    const pose = resolveArchitectureCameraPose(
+      architectureView.layout,
+      { position: wallCameraPosition, target: wallLookTarget },
+      camera.aspect,
+      camera.fov,
     );
-    cameraOrbitThetaDelta = shortestAngleDelta(
-      cameraStartSpherical.theta,
-      cameraEndSpherical.theta,
+    architectureLookTarget.set(pose.target.x, pose.target.y, pose.target.z);
+    architectureCameraPosition.set(pose.position.x, pose.position.y, pose.position.z);
+    controls.minDistance = Math.max(pose.radius * 0.35, 8);
+    controls.maxDistance = pose.radius * 2.8;
+    const cameraMs = reducedMotion ? WALL_ENTRANCE.reducedMotionMs : ARCHITECTURE_MOTION.cameraMs;
+    easeCameraTo(
+      architectureCameraPosition,
+      architectureLookTarget,
+      cameraMs / 1000,
+      () => {
+        if (phase !== 'architecture' || disposed) return;
+        expandArchitectureNodes();
+        setOrbitEnabled(true);
+      },
     );
-    // Keep the orbit radius outside the wall throughout the arc.
-    cameraStartSpherical.radius = Math.max(cameraStartSpherical.radius, wallCameraPosition.z * 0.45);
-    cameraEndSpherical.radius = Math.max(cameraEndSpherical.radius, wallCameraPosition.z * 0.45);
-    cameraOrbitProgress = 0;
-    cameraOrbitDuration = 0.55;
-    cameraAnimating = true;
+  };
+
+  const showArchitecture = (data: Application3DArchitectureData) => {
+    if (disposed) return;
+    cancelTweens();
+    cameraComplete = null;
+    disposeArchitecture();
+    phase = 'architecture';
+    applyPolarLimits(ARCH_POLAR);
+    setOrbitEnabled(false);
+    focusedId = '';
+    hideWallCards(true);
+    architectureView = createArchitectureTreeGroup(data, translate);
+    architectureView.group.scale.setScalar(1);
+    architectureView.planeGroups.forEach((planeGroup) => {
+      planeGroup.scale.setScalar(0);
+    });
+    architectureView.nodeGroups.forEach((nodeGroup) => {
+      nodeGroup.scale.setScalar(0);
+    });
+    architectureView.nodeLabels.forEach((label) => {
+      label.scale.set(0, 0, 1);
+    });
+    architectureView.interPlaneTubes.forEach((tube) => {
+      tube.scale.setScalar(0);
+    });
+    architectureView.intraPlaneTubes.forEach((tube) => {
+      tube.scale.setScalar(0);
+    });
+    scene.add(architectureView.group);
+    flyArchitectureCameraThenExpand();
+    requestRender();
+  };
+
+  const hideArchitecture = () => {
+    if (disposed) return;
+    cameraComplete = null;
+    cancelTweens();
+    disposeArchitecture();
+    easeCameraTo(wallCameraPosition, wallLookTarget, reducedMotion ? 0.2 : 0.7);
+    restoreWallCards(true);
     requestRender();
   };
 
@@ -1485,9 +1843,13 @@ export const createApplication3DScene = (
     const applicationId = pickApplicationId(event.clientX, event.clientY);
     const visual = applicationId ? visuals.get(applicationId) : undefined;
     if (visual) {
+      if (phase === 'architecture') return;
       options.onSelect(visual.item);
       renderer.domElement.style.cursor = 'pointer';
       return;
+    }
+    if (phase === 'focused') {
+      options.onBackgroundClick?.();
     }
     renderer.domElement.style.cursor = idleCursor();
   };
@@ -1524,7 +1886,8 @@ export const createApplication3DScene = (
       resizeLayoutTimer = null;
       if (disposed) return;
       if (phase === 'initializing') return;
-      layoutVisuals({ snapCamera: true });
+      layoutVisuals({ snapCamera: phase === 'wall' });
+      if (phase === 'focused') applyFocusPose(false);
     }, RESIZE_LAYOUT_DEBOUNCE_MS);
   };
 
@@ -1552,6 +1915,9 @@ export const createApplication3DScene = (
     reconcile,
     resize,
     resetCamera,
+    focus,
+    showArchitecture,
+    hideArchitecture,
     setActive: (nextActive) => {
       if (disposed || active === nextActive) return;
       active = nextActive;
@@ -1565,12 +1931,13 @@ export const createApplication3DScene = (
         return;
       }
       renderer.domElement.style.pointerEvents = options.interactive ? 'auto' : 'none';
-      setOrbitEnabled(phase === 'wall');
+      setOrbitEnabled(orbitAllowed());
       resizeNow();
       requestRender();
     },
     dispose: () => {
       disposed = true;
+      cameraComplete = null;
       cancelTweens();
       clearIntroTimers();
       if (resizeLayoutTimer !== null) window.clearTimeout(resizeLayoutTimer);
@@ -1584,6 +1951,8 @@ export const createApplication3DScene = (
       controls.dispose();
       visuals.forEach(disposeVisual);
       visuals.clear();
+      disposeArchitecture();
+      wallGroup.removeFromParent();
       floorPlate.geometry.dispose();
       floorPlateMaterial.dispose();
       floorGrid.geometry.dispose();

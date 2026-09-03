@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
 import type {
   Application3DAlarmDetailData,
+  Application3DArchitectureData,
   Application3DDetailData,
   Application3DMetricSeriesResult,
   Application3DWallData,
@@ -17,6 +18,10 @@ export interface Application3DTransport {
     cursor?: string,
     signal?: AbortSignal,
   ) => Promise<Application3DDetailData>;
+  getArchitecture: (
+    applicationId: string,
+    signal?: AbortSignal,
+  ) => Promise<Application3DArchitectureData>;
   getAlarmDetail: (
     applicationId: string,
     alarmId: string,
@@ -56,6 +61,15 @@ export const useApplication3DApi = (
       ),
     [basePath, post],
   );
+  const getArchitecture = useCallback(
+    (applicationId: string, signal?: AbortSignal) =>
+      post<Application3DArchitectureData>(
+        `${basePath}/architecture/`,
+        { application_id: applicationId },
+        { ...requestOptions, signal },
+      ),
+    [basePath, post],
+  );
   const getAlarmDetail = useCallback(
     (applicationId: string, alarmId: string, signal?: AbortSignal) =>
       post<Application3DAlarmDetailData>(
@@ -75,5 +89,5 @@ export const useApplication3DApi = (
     [basePath, post],
   );
 
-  return { getWall, getApplicationDetail, getAlarmDetail, getMetric };
+  return { getWall, getApplicationDetail, getArchitecture, getAlarmDetail, getMetric };
 };

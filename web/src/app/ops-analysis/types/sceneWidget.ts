@@ -100,6 +100,33 @@ export interface Application3DDetailData {
   refreshedAt: string;
 }
 
+export type Application3DArchitectureKind = 'system' | 'application' | 'host';
+
+export type Application3DArchitectureRelation =
+  | 'system_contains_application'
+  | 'application_run_host';
+
+export interface Application3DArchitectureNode {
+  id: string;
+  kind: Application3DArchitectureKind;
+  name: string;
+  health?: Application3DHealth;
+}
+
+export interface Application3DArchitectureEdge {
+  id: string;
+  sourceId: string;
+  targetId: string;
+  relation: Application3DArchitectureRelation;
+}
+
+export interface Application3DArchitectureData {
+  systemId: string;
+  nodes: Application3DArchitectureNode[];
+  edges: Application3DArchitectureEdge[];
+  refreshedAt: string;
+}
+
 export type Application3DNotificationState =
   | 'not_configured'
   | 'pending'

@@ -439,6 +439,19 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
     @action(
         detail=False,
         methods=["post"],
+        url_path=r"session/(?P<session_id>[^/.]+)/application3d/architecture",
+    )
+    def application3d_architecture(self, request, session_id=None):
+        return self._application3d_operation(
+            request,
+            session_id,
+            action_name="application3d_architecture",
+            view_action="application3d_architecture",
+        )
+
+    @action(
+        detail=False,
+        methods=["post"],
         url_path=r"session/(?P<session_id>[^/.]+)/application3d/alarm_detail",
     )
     def application3d_alarm_detail(self, request, session_id=None):

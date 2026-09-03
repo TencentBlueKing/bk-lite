@@ -1970,5 +1970,20 @@
     "baseUrl": "API 地址",
     "baseUrlPlaceholder": "请输入 API 地址（可选）",
     "storageTypeCannotChange": "存储类型创建后不可更改"
+  },
+  "unifiedCard": {
+    "owner": "所有者",
+    "team": "团队",
+    "modelCount": "{count} 个模型",
+    "enableAria": "{name} 启用",
+    "moreActions": "更多操作",
+    "status": {
+      "online": "上线",
+      "offline": "下线",
+      "ready": "就绪",
+      "building": "构建中",
+      "enabled": "启用",
+      "disabled": "停用"
+    }
   }
 }

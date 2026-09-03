@@ -4,12 +4,17 @@ from collections.abc import Iterable
 
 from apps.apm.services.contracts import (
     DeploymentReleaseQuery,
+    ENTRY_SPAN_KINDS,
     InferredDeploymentRelease,
     InstanceActivity,
     InstanceActivityQuery,
+    MetricDataState,
     NotificationDelivery,
     NotificationDeliveryResult,
     ServiceDependency,
+    ServiceErrorBreakdown,
+    ServiceErrorBreakdownQuery,
+    ServiceErrorSampleTrace,
     ServiceMetricQuery,
     ServiceRed,
     SloMeasurement,
@@ -24,6 +29,13 @@ from apps.apm.services.contracts import (
     TracePage,
     TraceSearchQuery,
     TraceSummary,
+)
+from apps.apm.services.error_breakdown import (
+    RawErrorGroup,
+    attach_samples,
+    coalesce_error_type,
+    merge_error_groups,
+    rank_failed_endpoints,
 )
 from apps.apm.services.identity import normalize_identity
 
@@ -89,6 +101,7 @@ class InMemoryTraceStore:
             and (query.span_name is None or item.name == query.span_name)
             and (query.status is None or item.status == query.status)
             and (query.kind is None or item.kind == query.kind)
+            and (query.kinds is None or item.kind in query.kinds)
             and (query.min_duration_ms is None or item.duration_ms >= query.min_duration_ms)
             and (query.max_duration_ms is None or item.duration_ms <= query.max_duration_ms)
         ]
@@ -100,6 +113,100 @@ class InMemoryTraceStore:
 
     def get_trace(self, trace_id: str) -> TraceDetail | None:
         return self._details.get(trace_id)
+
+    def service_error_breakdown(self, query: ServiceErrorBreakdownQuery) -> ServiceErrorBreakdown:
+        if query.sample_limit < 1 or query.sample_limit > 50:
+            raise ValueError("sample_limit 必须在 1 到 50 之间")
+        spans = [
+            item
+            for item in self._spans
+            if query.started_at <= item.started_at <= query.ended_at
+            and normalize_identity(item.service_namespace) == normalize_identity(query.service_namespace)
+            and normalize_identity(item.service_name) == normalize_identity(query.service_name)
+            and item.environment == query.environment
+        ]
+        entry = [item for item in spans if item.kind in ENTRY_SPAN_KINDS]
+        if not entry:
+            return ServiceErrorBreakdown(None, None, None, MetricDataState.NO_DATA)
+        entry_errors = [item for item in entry if item.status == "error"]
+        request_count = len(entry)
+        error_count = len(entry_errors)
+        endpoint_counts: dict[str, list[int]] = {}
+        for item in entry:
+            bucket = endpoint_counts.setdefault(item.name, [0, 0])
+            bucket[0] += 1
+            if item.status == "error":
+                bucket[1] += 1
+        failed_endpoints, other_error_count = rank_failed_endpoints(
+            [(endpoint, counts[0], counts[1]) for endpoint, counts in endpoint_counts.items()],
+            total_errors=error_count,
+        )
+        if error_count == 0:
+            return ServiceErrorBreakdown(
+                request_count,
+                0,
+                0.0,
+                MetricDataState.AVAILABLE,
+                failed_endpoints,
+                other_error_count,
+            )
+        error_spans = [item for item in spans if item.status == "error"]
+        types = merge_error_groups(
+            [
+                RawErrorGroup(
+                    kind=item.kind,
+                    exception_type=item.exception_type or "",
+                    span_error_type=item.span_error_type or "",
+                    status_message=item.status_message or "",
+                    http_status=item.http_status_code or "",
+                    exception_message=item.exception_message or "",
+                    count=1,
+                    last_seen_at=item.started_at,
+                )
+                for item in error_spans
+            ]
+        )
+        error_types = []
+        for item in types:
+            matching = [
+                span
+                for span in error_spans
+                if coalesce_error_type(
+                    exception_type=span.exception_type or "",
+                    span_error_type=span.span_error_type or "",
+                    status_message=span.status_message or "",
+                    http_status=span.http_status_code or "",
+                )
+                == item.error_type
+            ]
+            matching.sort(key=lambda span: (span.started_at, span.span_id), reverse=True)
+            error_types.append(
+                attach_samples(
+                    item,
+                    [
+                        ServiceErrorSampleTrace(
+                            trace_id=span.trace_id,
+                            span_id=span.span_id,
+                            endpoint=span.name,
+                            started_at=span.started_at,
+                        )
+                        for span in matching
+                    ],
+                )
+            )
+        recent = tuple(
+            sorted(entry_errors, key=lambda item: (item.started_at, item.span_id), reverse=True)[: query.sample_limit]
+        )
+        return ServiceErrorBreakdown(
+            request_count=request_count,
+            error_count=error_count,
+            error_rate=error_count / request_count,
+            data_state=MetricDataState.AVAILABLE,
+            failed_endpoints=failed_endpoints,
+            other_error_count=other_error_count,
+            error_types=tuple(error_types),
+            recent_failures=recent,
+        )
 
     def sample_traces(self, query: TopologySampleQuery) -> TopologyTraceSample:
         names = {normalize_identity(name) for name in query.service_names}

@@ -44,6 +44,7 @@ MVP 做成 **应用详情画布上的推断节点 + 调用链可解释**，不�
 | Python | `opentelemetry-distro[otlp]` | 0.65b0（配套 SDK 1.44.0） | `opentelemetry-python-contrib` `v0.65b0` |
 | Node.js | `@opentelemetry/auto-instrumentations-node` | 0.79.0 | `opentelemetry-js-contrib` `auto-instrumentations-node-v0.79.0` |
 | Go | `go.opentelemetry.io/otel` | v1.46.0 | `opentelemetry-go` `v1.46.0`；库插桩看同期 `opentelemetry-go-contrib` |
+| .NET | `opentelemetry-dotnet-auto-linux-glibc-x64.zip` | 1.16.0 | `opentelemetry-dotnet-instrumentation` `v1.16.0`（仅 Linux x86_64 glibc） |
 
 - 探针版本不与 Collector `0.153.0` 对齐。Git 仓库不钉探针号；`docs/operations/apm-probe-artifact-release.md` 只要求流水线固定版本并 `apm_probe_init`。构建必须带版本号，禁止 `pip download` 不钉版本。
 - MVP 产品入口是 **应用详情画布**。全局服务拓扑、应用列表、服务目录、接入实例、下属服务表和关键信息 KPI 都不展示推断节点。

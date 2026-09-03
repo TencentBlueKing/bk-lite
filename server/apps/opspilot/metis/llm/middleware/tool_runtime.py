@@ -9,6 +9,8 @@ from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResp
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import BaseTool
 
+from apps.core.logger import opspilot_logger as logger
+from apps.core.logger import safe_exception_info
 from apps.opspilot.metis.llm.agent.tool_execution_planner import (
     _DEFAULT_PLANNED_AI_TEXT_CHARS,
     _DEFAULT_PLANNED_TOOL_RESULT_CHARS,
@@ -364,6 +366,12 @@ class ToolExceptionAsResultMiddleware(AgentMiddleware):
         call = getattr(request, "tool_call", None) or {}
         name = str(call.get("name") or "unknown")
         call_id = str(call.get("id") or "")
+        logger.error(
+            "event=agent_tool_failed failed_stage=tool_call error_type=%s tool_name=%s",
+            type(exc).__name__,
+            name,
+            exc_info=safe_exception_info(exc),
+        )
         text = str(exc).strip() or f"{type(exc).__name__}: tool execution failed"
         return ToolMessage(
             content=text[:2000],
@@ -386,7 +394,7 @@ class ToolExceptionAsResultMiddleware(AgentMiddleware):
 
 
 class ToolResultCompactionMiddleware(AgentMiddleware):
-    """分步执行步内：每次模型调用前截断过长工具结果，避免 8K 窗口二次溢出。"""
+    """分步执行步内：每次模型调用前截断过长工具结果，上限随输入工作预算放大。"""
 
     def __init__(
         self,

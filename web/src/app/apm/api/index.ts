@@ -21,6 +21,7 @@ import type {
   ApmService,
   ApmServiceInstance,
   ApmServiceRed,
+  ApmServiceErrorBreakdown,
   ApmSlo,
   ApmSloInput,
   ApmPolicy,
@@ -163,6 +164,12 @@ const useApmApi = () => {
       get<ApmServiceRed>(`/apm/services/${serviceId}/metrics/`, {
         params: { environment, started_at: startedAt, ended_at: endedAt, endpoint },
       }),
+    [get]
+  );
+
+  const getServiceErrorBreakdown = useCallback(
+    (serviceId: string, params: { environment: string; started_at?: string; ended_at?: string; sample_limit?: number }) =>
+      get<ApmServiceErrorBreakdown>(`/apm/services/${serviceId}/error-breakdown/`, { params }),
     [get]
   );
 
@@ -341,6 +348,7 @@ const useApmApi = () => {
     getDeployments,
     getDashboard,
     getServiceRed,
+    getServiceErrorBreakdown,
     getSlos,
     createSlo,
     updateSlo,

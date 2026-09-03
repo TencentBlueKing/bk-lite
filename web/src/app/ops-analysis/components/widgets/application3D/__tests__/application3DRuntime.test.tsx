@@ -7,16 +7,21 @@ import type { ScreenRenderContext } from '@/app/ops-analysis/types/dashBoard';
 
 interface SceneCallbacks {
   onSelect: (item: Application3DWallItem) => void;
+  onBackgroundClick?: () => void;
 }
 
 const mocks = vi.hoisted(() => ({
   getWall: vi.fn(),
   getApplicationDetail: vi.fn(),
+  getArchitecture: vi.fn(),
   getAlarmDetail: vi.fn(),
   getMetric: vi.fn(),
   setActive: vi.fn(),
   reconcile: vi.fn(),
   resetCamera: vi.fn(),
+  focus: vi.fn(),
+  showArchitecture: vi.fn(),
+  hideArchitecture: vi.fn(),
   sceneCallbacks: null as SceneCallbacks | null,
 }));
 
@@ -27,6 +32,7 @@ vi.mock('@/app/ops-analysis/api/application3D', () => ({
   useApplication3DApi: () => ({
     getWall: mocks.getWall,
     getApplicationDetail: mocks.getApplicationDetail,
+    getArchitecture: mocks.getArchitecture,
     getAlarmDetail: mocks.getAlarmDetail,
     getMetric: mocks.getMetric,
   }),
@@ -40,6 +46,9 @@ vi.mock('../application3DScene', () => ({
       dispose: vi.fn(),
       setActive: mocks.setActive,
       resetCamera: mocks.resetCamera,
+      focus: mocks.focus,
+      showArchitecture: mocks.showArchitecture,
+      hideArchitecture: mocks.hideArchitecture,
     };
   },
 }));
@@ -124,7 +133,33 @@ describe('application3D runtimeActive contract', () => {
 });
 
 describe('application3D application detail', () => {
-  it('opens application detail immediately on card select', async () => {
+  it('focuses a card first and shows 详情 / 部署架构 without opening detail', async () => {
+    mocks.getWall.mockResolvedValue({
+      ...wall,
+      items: [wallItem],
+      capacity: { actualCount: 1, supportedCount: null },
+    });
+    render(<Application3D refreshKey="0" runtimeActive screenRenderContext={context} />);
+
+    await waitFor(() => expect(mocks.sceneCallbacks).not.toBeNull());
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    act(() => {
+      mocks.sceneCallbacks?.onSelect(wallItem);
+    });
+    expect(mocks.focus).toHaveBeenCalledWith('app-1');
+    expect(mocks.resetCamera).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(mocks.getApplicationDetail).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /application3DOpenDetail/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /application3DOpenArchitecture/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /application3DBackWall/ })).toBeTruthy();
+    expect(document.querySelector('.app3d-detail-cta')).toBeTruthy();
+    expect(document.querySelector('.app3d-architecture-cta')).toBeTruthy();
+    expect(document.querySelector('.app3d-back-cta')).toBeTruthy();
+  });
+
+  it('opens the existing detail chrome from 详情 using the system uuid', async () => {
     mocks.getWall.mockResolvedValue({
       ...wall,
       items: [wallItem],
@@ -134,18 +169,69 @@ describe('application3D application detail', () => {
     render(<Application3D refreshKey="0" runtimeActive screenRenderContext={context} />);
 
     await waitFor(() => expect(mocks.sceneCallbacks).not.toBeNull());
-    expect(screen.queryByRole('dialog')).toBeNull();
-
     act(() => {
       mocks.sceneCallbacks?.onSelect(wallItem);
     });
-    expect(mocks.resetCamera).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: /application3DOpenDetail/ }));
+    expect(mocks.resetCamera).toHaveBeenCalled();
     expect(screen.getByRole('dialog')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /application3DOpenDetail/ })).toBeNull();
-    expect(screen.queryByRole('button', { name: /application3DBackWall/ })).toBeNull();
-    expect(document.querySelector('.app3d-detail-cta')).toBeNull();
-    expect(document.querySelector('.app3d-back-cta')).toBeNull();
     expect(mocks.getApplicationDetail).toHaveBeenCalledWith('app-1', undefined, expect.any(AbortSignal));
+  });
+
+  it('requests architecture with the system uuid after 部署架构', async () => {
+    mocks.getWall.mockResolvedValue({
+      ...wall,
+      items: [wallItem],
+      capacity: { actualCount: 1, supportedCount: null },
+    });
+    const architecture = {
+      systemId: 'app-1',
+      refreshedAt: '2026-09-01T00:00:00Z',
+      nodes: [{ id: 'app-1', kind: 'system' as const, name: '运营门户' }],
+      edges: [],
+    };
+    mocks.getArchitecture.mockResolvedValue(architecture);
+    render(<Application3D refreshKey="0" runtimeActive screenRenderContext={context} />);
+
+    await waitFor(() => expect(mocks.sceneCallbacks).not.toBeNull());
+    act(() => {
+      mocks.sceneCallbacks?.onSelect(wallItem);
+    });
+    fireEvent.click(screen.getByRole('button', { name: /application3DOpenArchitecture/ }));
+    await waitFor(() => expect(mocks.getArchitecture).toHaveBeenCalledWith('app-1', expect.any(AbortSignal)));
+    await waitFor(() => expect(mocks.showArchitecture).toHaveBeenCalledWith(architecture));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(mocks.getApplicationDetail).not.toHaveBeenCalled();
+  });
+
+  it('returns from architecture to the full wall without focused CTAs', async () => {
+    mocks.getWall.mockResolvedValue({
+      ...wall,
+      items: [wallItem],
+      capacity: { actualCount: 1, supportedCount: null },
+    });
+    mocks.getArchitecture.mockResolvedValue({
+      systemId: 'app-1',
+      refreshedAt: '2026-09-01T00:00:00Z',
+      nodes: [{ id: 'app-1', kind: 'system' as const, name: '运营门户' }],
+      edges: [],
+    });
+    render(<Application3D refreshKey="0" runtimeActive screenRenderContext={context} />);
+    await waitFor(() => expect(mocks.sceneCallbacks).not.toBeNull());
+    act(() => {
+      mocks.sceneCallbacks?.onSelect(wallItem);
+    });
+    fireEvent.click(screen.getByRole('button', { name: /application3DOpenArchitecture/ }));
+    await waitFor(() => expect(mocks.showArchitecture).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: /application3DBackWall/ }));
+    expect(mocks.hideArchitecture).toHaveBeenCalled();
+    expect(mocks.hideArchitecture.mock.calls[0]?.[0]).toBeUndefined();
+    expect(screen.queryByRole('button', { name: /application3DOpenDetail/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /application3DOpenArchitecture/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /application3DBackFocus/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /application3DBackWall/ })).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('does not refetch the same application while its detail is already open', async () => {
@@ -161,10 +247,10 @@ describe('application3D application detail', () => {
     act(() => {
       mocks.sceneCallbacks?.onSelect(wallItem);
     });
+    fireEvent.click(screen.getByRole('button', { name: /application3DOpenDetail/ }));
     act(() => {
       mocks.sceneCallbacks?.onSelect(wallItem);
     });
-    expect(mocks.resetCamera).toHaveBeenCalledTimes(1);
     expect(mocks.getApplicationDetail).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('dialog')).toBeTruthy();
   });

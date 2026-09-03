@@ -8,11 +8,12 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from loguru import logger
 
-from apps.opspilot.metis.llm.tools.kubernetes.utils import parse_resource_quantity, prepare_context
+from apps.opspilot.metis.llm.tools.kubernetes.instance_scope import prepare_point_instance
+from apps.opspilot.metis.llm.tools.kubernetes.utils import coerce_int, parse_resource_quantity, prepare_context
 
 
 @tool()
-def check_scaling_capacity(namespace, replicas, resource_requirements=None, config: RunnableConfig = None):
+def check_scaling_capacity(namespace, replicas: int, resource_requirements=None, instance_name=None, config: RunnableConfig = None):
     """
     扩容前的容量校验，避免资源不足导致Pending
 
@@ -36,6 +37,7 @@ def check_scaling_capacity(namespace, replicas, resource_requirements=None, conf
             格式: {"cpu": "100m", "memory": "128Mi"}
             - 如果提供：精确计算CPU和内存是否满足
             - 如果不提供：只检查Pod数量容量，强烈建议补充
+        instance_name (str, optional): 多实例时必须指定集群
         config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
@@ -65,6 +67,13 @@ def check_scaling_capacity(namespace, replicas, resource_requirements=None, conf
     - 不考虑节点亲和性、污点等高级调度策略
     - 实际调度结果可能因调度器策略而异
     """
+    config, err = prepare_point_instance(config, instance_name)
+    if err:
+        return err
+    try:
+        replicas = coerce_int(replicas, lo=0, hi=10000)
+    except ValueError:
+        return json.dumps({"error": "replicas 必须是整数", "namespace": namespace})
     prepare_context(config)
 
     try:
@@ -404,6 +413,7 @@ def validate_probe_configuration(
     namespace=None,
     resource_type=None,
     resource_name=None,
+    instance_name=None,
     config: RunnableConfig = None,
 ):
     """
@@ -438,9 +448,8 @@ def validate_probe_configuration(
     Returns:
         JSON格式，包含：
         - containers_analysis[]: 每个容器的探针分析
-          - liveness_probe: 存活探针配置（type、delay、timeout等）
-          - readiness_probe: 就绪探针配置
-          - startup_probe: 启动探针配置
+          - liveness_probe / readiness_probe / startup_probe:
+            configured、type、delay/timeout/threshold，以及 http_get.path/port/scheme、tcp_socket.port、exec_command、grpc
           - issues[]: 发现的配置问题
           - recommendations[]: 改进建议
         - probe_score: 探针配置评分（如"4/6"表示3个容器中2个配置完整）
@@ -463,6 +472,9 @@ def validate_probe_configuration(
     - initialDelaySeconds应大于应用启动时间
     - 对于慢启动应用（如Java），建议配置Startup探针
     """
+    config, instance_error = prepare_point_instance(config, instance_name)
+    if instance_error:
+        return instance_error
     prepare_context(config)
     kind, name, target_error = _resolve_probe_target(deployment_name, namespace, resource_type, resource_name)
     if target_error:
@@ -488,14 +500,7 @@ def validate_probe_configuration(
             # 分析Liveness Probe
             if container.liveness_probe:
                 liveness = container.liveness_probe
-                container_analysis["liveness_probe"] = {
-                    "configured": True,
-                    "type": _get_probe_type(liveness),
-                    "initial_delay_seconds": liveness.initial_delay_seconds or 0,
-                    "period_seconds": liveness.period_seconds or 10,
-                    "timeout_seconds": liveness.timeout_seconds or 1,
-                    "failure_threshold": liveness.failure_threshold or 3,
-                }
+                container_analysis["liveness_probe"] = _serialize_probe(liveness)
 
                 # 检查配置合理性
                 if liveness.initial_delay_seconds == 0:
@@ -512,15 +517,7 @@ def validate_probe_configuration(
 
             # 分析Readiness Probe
             if container.readiness_probe:
-                readiness = container.readiness_probe
-                container_analysis["readiness_probe"] = {
-                    "configured": True,
-                    "type": _get_probe_type(readiness),
-                    "initial_delay_seconds": readiness.initial_delay_seconds or 0,
-                    "period_seconds": readiness.period_seconds or 10,
-                    "timeout_seconds": readiness.timeout_seconds or 1,
-                    "failure_threshold": readiness.failure_threshold or 3,
-                }
+                container_analysis["readiness_probe"] = _serialize_probe(container.readiness_probe)
             else:
                 container_analysis["readiness_probe"] = {"configured": False}
                 container_analysis["issues"].append("未配置Readiness探针")
@@ -528,14 +525,7 @@ def validate_probe_configuration(
 
             # 分析Startup Probe (K8S 1.16+)
             if hasattr(container, "startup_probe") and container.startup_probe:
-                startup = container.startup_probe
-                container_analysis["startup_probe"] = {
-                    "configured": True,
-                    "type": _get_probe_type(startup),
-                    "initial_delay_seconds": startup.initial_delay_seconds or 0,
-                    "period_seconds": startup.period_seconds or 10,
-                    "failure_threshold": startup.failure_threshold or 3,
-                }
+                container_analysis["startup_probe"] = _serialize_probe(container.startup_probe)
             else:
                 container_analysis["startup_probe"] = {"configured": False}
 
@@ -596,8 +586,82 @@ def _get_probe_type(probe):
         return "unknown"
 
 
+def _probe_action_field(action, *names):
+    if action is None:
+        return None
+    for name in names:
+        if hasattr(action, name):
+            return getattr(action, name)
+    return None
+
+
+def _json_safe_probe_value(value):
+    """探针 port/command 可能是 IntOrString 或 mock，转成 json.dumps 可接受的类型。"""
+    if value is None or isinstance(value, (str, int, bool)):
+        return value
+    if isinstance(value, float):
+        return value if value == value and value not in (float("inf"), float("-inf")) else str(value)
+    if isinstance(value, (list, tuple)):
+        return [_json_safe_probe_value(item) for item in value]
+    int_val = getattr(value, "int_val", None)
+    if int_val is None:
+        int_val = getattr(value, "int", None)
+    str_val = getattr(value, "str_val", None)
+    if str_val is None:
+        str_val = getattr(value, "str", None)
+    if isinstance(int_val, int) and not isinstance(int_val, bool):
+        return int_val
+    if isinstance(str_val, str) and str_val:
+        return str_val
+    try:
+        json.dumps(value)
+        return value
+    except (TypeError, ValueError, OverflowError):
+        return str(value)
+
+
+def _serialize_probe(probe) -> dict:
+    """序列化探针；http_get 等可能是不完整 mock，一律 getattr。"""
+    payload = {
+        "configured": True,
+        "type": _get_probe_type(probe),
+        "initial_delay_seconds": getattr(probe, "initial_delay_seconds", None) or 0,
+        "period_seconds": getattr(probe, "period_seconds", None) or 10,
+        "timeout_seconds": getattr(probe, "timeout_seconds", None) or 1,
+        "failure_threshold": getattr(probe, "failure_threshold", None) or 3,
+        "http_get": None,
+        "tcp_socket": None,
+        "exec_command": None,
+        "grpc": None,
+    }
+    http_get = getattr(probe, "http_get", None)
+    if http_get:
+        payload["http_get"] = {
+            "path": _probe_action_field(http_get, "path"),
+            "port": _json_safe_probe_value(_probe_action_field(http_get, "port")),
+            "scheme": _probe_action_field(http_get, "scheme"),
+            "host": _probe_action_field(http_get, "host"),
+        }
+    tcp_socket = getattr(probe, "tcp_socket", None)
+    if tcp_socket:
+        payload["tcp_socket"] = {
+            "port": _json_safe_probe_value(_probe_action_field(tcp_socket, "port")),
+            "host": _probe_action_field(tcp_socket, "host"),
+        }
+    exec_action = getattr(probe, "_exec", None)
+    if exec_action:
+        payload["exec_command"] = _json_safe_probe_value(_probe_action_field(exec_action, "command"))
+    grpc = getattr(probe, "grpc", None)
+    if grpc:
+        payload["grpc"] = {
+            "port": _json_safe_probe_value(_probe_action_field(grpc, "port")),
+            "service": _probe_action_field(grpc, "service"),
+        }
+    return payload
+
+
 @tool()
-def compare_deployment_revisions(deployment_name, namespace, revision1, revision2, config: RunnableConfig = None):
+def compare_deployment_revisions(deployment_name, namespace, revision1: int, revision2: int, instance_name=None, config: RunnableConfig = None):
     """
     对比Deployment版本差异，理解变更内容
 
@@ -621,6 +685,7 @@ def compare_deployment_revisions(deployment_name, namespace, revision1, revision
         revision1 (int): 第一个版本号（必填）
         revision2 (int): 第二个版本号（必填）
             提示：使用 get_deployment_revision_history 查看可用版本
+        instance_name (str, optional): 多实例时必须指定集群
         config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
@@ -654,6 +719,14 @@ def compare_deployment_revisions(deployment_name, namespace, revision1, revision
     步骤4: 建议回滚到rev2
     ```
     """
+    config, err = prepare_point_instance(config, instance_name)
+    if err:
+        return err
+    try:
+        revision1 = coerce_int(revision1, lo=1, hi=10_000_000)
+        revision2 = coerce_int(revision2, lo=1, hi=10_000_000)
+    except ValueError:
+        return json.dumps({"error": "revision1/revision2 必须是整数", "deployment_name": deployment_name, "namespace": namespace})
     prepare_context(config)
 
     try:

@@ -60,3 +60,17 @@ class TestExecInPod:
     def test_approval_metadata_required(self):
         meta = e.exec_in_pod.metadata or {}
         assert (meta.get("approval") or {}).get("required") is True
+
+    def test_string_timeout_is_coerced(self, exec_env):
+        _, stream_fn = exec_env
+        out = json.loads(
+            e.exec_in_pod.func(
+                namespace="nacos",
+                pod_name="nacos-0",
+                command=["curl", "-s", "http://127.0.0.1"],
+                timeout="10",
+                config={},
+            )
+        )
+        assert out["success"] is True
+        assert stream_fn.call_args.kwargs["_request_timeout"] == 10
