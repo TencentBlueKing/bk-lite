@@ -236,7 +236,10 @@ export default function MongoDashboardPage() {
       metrics,
       METRIC_QUERY_CONCURRENCY,
       async (metric) =>
-        getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, targetTimeValues, undefined, false, currentInstanceInterval))
+        getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, targetTimeValues, undefined, false, currentInstanceInterval, {
+          monitorObjectId,
+          instanceId,
+        }))
           .then((result) => [metric.name, toMetricSeries(metric, result, instanceId, resolvedInstanceName, idValues, instanceIdKeys)] as const)
           .catch(() => [metric.name, { ...metric, viewData: [], loadState: 'error' as const }] as const)
     );
@@ -259,7 +262,10 @@ export default function MongoDashboardPage() {
         const summaryResultsPromise = loadMetricGroup(MONGODB_METRIC_GROUPS[0].names, frozenTimeValues);
 
         const collectionStatusPromise: Promise<MetricSeries> = getInstanceQuery(
-          buildSearchParams(MONGODB_COLLECTION_STATUS_QUERY, 'counts', idValues, instanceIdKeys, frozenTimeValues, undefined, false, currentInstanceInterval)
+          buildSearchParams(MONGODB_COLLECTION_STATUS_QUERY, 'counts', idValues, instanceIdKeys, frozenTimeValues, undefined, false, currentInstanceInterval, {
+            monitorObjectId,
+            instanceId,
+          })
         )
           .then((result) =>
             toMetricSeries<MongoMetricConfig>(
@@ -297,7 +303,10 @@ export default function MongoDashboardPage() {
             compareMetrics,
             METRIC_QUERY_CONCURRENCY,
             async (metric) =>
-              getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, previousTimeValues, undefined, false, currentInstanceInterval))
+              getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, previousTimeValues, undefined, false, currentInstanceInterval, {
+                monitorObjectId,
+                instanceId,
+              }))
                 .then((result) => [metric.name, toMetricSeries(metric, result, instanceId, resolvedInstanceName, idValues, instanceIdKeys)] as const)
                 .catch(() => [metric.name, { ...metric, viewData: [], loadState: 'error' as const }] as const)
           )

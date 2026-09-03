@@ -18,6 +18,10 @@ from apps.apm.services.contracts import (
     MetricDataState,
     ServiceDependency,
     ServiceEndpointRed,
+    ServiceErrorBreakdown,
+    ServiceErrorBreakdownQuery,
+    ServiceErrorSampleTrace,
+    ServiceFailedEndpoint,
     ServiceMetricQuery,
     ServiceRed,
     ServiceRedPoint,
@@ -34,6 +38,16 @@ from apps.apm.services.contracts import (
     TracePage,
     TraceSearchQuery,
     TraceSummary,
+)
+from apps.apm.services.error_breakdown import (
+    MAX_ERROR_TYPE_GROUPS,
+    MAX_ERROR_TYPE_SAMPLES,
+    MAX_FAILED_ENDPOINTS,
+    RawErrorGroup,
+    UNATTRIBUTED_ERROR_TYPE,
+    attach_samples,
+    merge_error_groups,
+    rank_failed_endpoints,
 )
 from apps.apm.services.identity import normalize_identity
 from apps.core.logger import apm_logger as logger
@@ -80,6 +94,10 @@ _STATUS_TO_CODE = {"ok": "1", "error": "2"}
 _MAX_SPAN_SEARCH_LIMIT = 200
 _HTTP_METHOD_FIELDS = ("span_attr:http.request.method", "span_attr:http.method")
 _HTTP_STATUS_FIELDS = ("span_attr:http.response.status_code", "span_attr:http.status_code")
+_EXCEPTION_TYPE_FIELD = "`event:event_attr:exception.type:0`"
+_EXCEPTION_MESSAGE_FIELD = "`event:event_attr:exception.message:0`"
+_SPAN_ERROR_TYPE_FIELD = "`span_attr:error.type`"
+_HTTP_STATUS_FIELD = "`span_attr:http.response.status_code`"
 
 
 def _tag_map(tags: object) -> dict[str, object]:
@@ -140,6 +158,23 @@ def _logsql_string(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
+def _span_kind_filter(kind: str | None, kinds: tuple[str, ...] | None) -> str | None:
+    if kind is not None and kinds is not None:
+        raise ValueError("kind 与 kinds 不能同时指定")
+    if kind is not None:
+        if kind not in _KIND_TO_CODE:
+            raise ValueError("Span kind 无效")
+        return f"kind:={_logsql_string(_KIND_TO_CODE[kind])}"
+    if not kinds:
+        return None
+    codes: list[str] = []
+    for item in kinds:
+        if item not in _KIND_TO_CODE:
+            raise ValueError("Span kind 无效")
+        codes.append(_logsql_string(_KIND_TO_CODE[item]))
+    return f"kind:in({','.join(codes)})"
+
+
 def _validate_window(started_at: datetime, ended_at: datetime, *, maximum: timedelta = MAX_QUERY_WINDOW) -> int:
     if ended_at <= started_at:
         raise ValueError("查询结束时间必须晚于开始时间")
@@ -195,6 +230,33 @@ def _number(value: object) -> float | None:
     except (TypeError, ValueError):
         return None
     return parsed if math.isfinite(parsed) else None
+
+
+def _parse_vt_time(value: object) -> datetime | None:
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=UTC)
+    text = str(value or "").strip()
+    if not text:
+        return None
+    numeric = _number(value)
+    if numeric is not None and text[:1].isdigit():
+        seconds = numeric
+        if numeric > 1e16:
+            seconds = numeric / 1_000_000_000
+        elif numeric > 1e12:
+            seconds = numeric / 1_000_000
+        elif numeric > 1e11:
+            seconds = numeric / 1_000
+        try:
+            return datetime.fromtimestamp(seconds, tz=UTC)
+        except (OverflowError, OSError, ValueError):
+            return None
+    normalized = text[:-1] + "+00:00" if text.endswith("Z") else text
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
 class VictoriaTracesTelemetryStore:
@@ -331,8 +393,7 @@ class VictoriaTracesTelemetryStore:
             raise ValueError(f"Span 查询 limit 必须在 1 到 {_MAX_SPAN_SEARCH_LIMIT} 之间")
         if query.status is not None and query.status not in _STATUS_TO_CODE:
             raise ValueError("status 仅支持 ok 或 error")
-        if query.kind is not None and query.kind not in _KIND_TO_CODE:
-            raise ValueError("Span kind 无效")
+        kind_filter = _span_kind_filter(query.kind, query.kinds)
         if query.min_duration_ms is not None and query.min_duration_ms < 0:
             raise ValueError("min_duration_ms 不能为负数")
         if query.max_duration_ms is not None and query.max_duration_ms < 0:
@@ -354,8 +415,8 @@ class VictoriaTracesTelemetryStore:
             filters.append(f"name:={_logsql_string(query.span_name)}")
         if query.status is not None:
             filters.append(f"status_code:={_logsql_string(_STATUS_TO_CODE[query.status])}")
-        if query.kind is not None:
-            filters.append(f"kind:={_logsql_string(_KIND_TO_CODE[query.kind])}")
+        if kind_filter is not None:
+            filters.append(kind_filter)
         if query.min_duration_ms is not None:
             filters.append(f"duration:>={int(query.min_duration_ms * 1_000_000)}")
         if query.max_duration_ms is not None:
@@ -427,7 +488,7 @@ class VictoriaTracesTelemetryStore:
             return ServiceRed(None, None, None, None)
         if exact_dedup:
             self._reject_truncated_unique_spans(deduped, requests_count, query.started_at, query.ended_at)
-        errors_count = values.get("errors", 0.0)
+        errors_count = values.get("errors", 0.0) or 0.0
         timeseries: tuple[ServiceRedPoint, ...] = ()
         endpoints: tuple[ServiceEndpointRed, ...] = ()
         if query.include_breakdown:
@@ -455,6 +516,178 @@ class VictoriaTracesTelemetryStore:
             p99_ms=self._nanoseconds_to_ms(values.get("p99")),
             timeseries=timeseries,
             top_endpoints=endpoints,
+            request_count=int(requests_count),
+            error_count=int(errors_count),
+        )
+
+    def service_error_breakdown(self, query: ServiceErrorBreakdownQuery) -> ServiceErrorBreakdown:
+        if not 1 <= query.sample_limit <= 50:
+            raise ValueError("sample_limit 必须在 1 到 50 之间")
+        red = self.service_red(
+            ServiceMetricQuery(
+                service_namespace=query.service_namespace,
+                service_name=query.service_name,
+                environment=query.environment,
+                started_at=query.started_at,
+                ended_at=query.ended_at,
+            )
+        )
+        if red.request_count is None:
+            return ServiceErrorBreakdown(None, None, None, MetricDataState.NO_DATA)
+        error_count = red.error_count or 0
+        failed_endpoints, other_error_count = self._failed_endpoints(query, error_count)
+        if error_count == 0:
+            return ServiceErrorBreakdown(
+                red.request_count,
+                0,
+                0.0,
+                MetricDataState.AVAILABLE,
+                failed_endpoints,
+                other_error_count,
+            )
+        error_types = self._error_types(query)
+        recent = self.search_spans(
+            SpanSearchQuery(
+                started_at=query.started_at,
+                ended_at=query.ended_at,
+                service_namespace=query.service_namespace,
+                service_name=query.service_name,
+                environment=query.environment,
+                status="error",
+                kinds=("server", "consumer"),
+                limit=query.sample_limit,
+            )
+        )
+        return ServiceErrorBreakdown(
+            request_count=red.request_count,
+            error_count=error_count,
+            error_rate=red.error_rate,
+            data_state=MetricDataState.AVAILABLE,
+            failed_endpoints=failed_endpoints,
+            other_error_count=other_error_count,
+            error_types=error_types,
+            recent_failures=recent.items,
+        )
+
+    def _failed_endpoints(
+        self,
+        query: ServiceErrorBreakdownQuery,
+        total_errors: int,
+    ) -> tuple[tuple[ServiceFailedEndpoint, ...], int]:
+        exact_dedup = query.ended_at - query.started_at <= RED_EXACT_DEDUP_WINDOW
+        final_stats = 'count() as requests, count() if (status_code:="2") as errors'
+        if exact_dedup:
+            endpoint_query = (
+                f"{self._bounded_spans(self._deduped_entry_query(query.service_namespace, query.service_name, query.environment, keep_name=True))} "
+                f"| stats by (endpoint) {final_stats} "
+                f"| sort by (errors) desc | limit {MAX_FAILED_ENDPOINTS}"
+            )
+            rows = self._stats(endpoint_query, query.started_at, query.ended_at)
+        else:
+            endpoint_query = (
+                f"{self._entry_span_filters(query.service_namespace, query.service_name, query.environment)} "
+                f"| stats by (name) {final_stats} | sort by (errors) desc | limit {MAX_FAILED_ENDPOINTS}"
+            )
+            rows = self._stats(endpoint_query, query.started_at, query.ended_at)
+        grouped: dict[str, dict[str, float]] = {}
+        for series in rows:
+            metric = series.get("metric", {})
+            raw_value = series.get("value", [])
+            if not isinstance(metric, dict) or not isinstance(raw_value, list) or len(raw_value) != 2:
+                continue
+            endpoint = str(metric.get("endpoint") or metric.get("name") or "").strip()[:MAX_ENDPOINT_NAME_LENGTH]
+            name = str(metric.get("__name__", ""))
+            value = _number(raw_value[1])
+            if endpoint and name and value is not None:
+                grouped.setdefault(endpoint, {})[name] = value
+        return rank_failed_endpoints(
+            [
+                (endpoint, int(values.get("requests", 0)), int(values.get("errors", 0)))
+                for endpoint, values in grouped.items()
+            ],
+            total_errors=total_errors,
+        )
+
+    def _error_types(self, query: ServiceErrorBreakdownQuery):
+        filters = self._service_span_filters(query.service_namespace, query.service_name, query.environment)
+        stats_query = (
+            f"{filters} status_code:=\"2\" | stats by (kind, {_EXCEPTION_TYPE_FIELD}, {_SPAN_ERROR_TYPE_FIELD}, "
+            f"status_message, {_HTTP_STATUS_FIELD}, {_EXCEPTION_MESSAGE_FIELD}) count() as c, max(_time) as last_seen "
+            f"| sort by (c) desc | limit {MAX_ERROR_TYPE_GROUPS}"
+        )
+        rows = self._query_rows(stats_query, query.started_at, query.ended_at, limit=MAX_ERROR_TYPE_GROUPS)
+        groups: list[RawErrorGroup] = []
+        for row in rows:
+            count = int(_number(row.get("c")) or 0)
+            last_seen = _parse_vt_time(row.get("last_seen")) or query.ended_at
+            groups.append(
+                RawErrorGroup(
+                    kind=str(row.get("kind", "")),
+                    exception_type=str(row.get("event:event_attr:exception.type:0", "")).strip(),
+                    span_error_type=str(row.get("span_attr:error.type", "")).strip(),
+                    status_message=str(row.get("status_message", "")).strip(),
+                    http_status=str(row.get("span_attr:http.response.status_code", "")).strip(),
+                    exception_message=str(row.get("event:event_attr:exception.message:0", "")).strip(),
+                    count=count,
+                    last_seen_at=last_seen,
+                )
+            )
+        types = merge_error_groups(groups)
+        return tuple(attach_samples(item, self._error_type_samples(query, item.error_type)) for item in types)
+
+    def _error_type_samples(self, query: ServiceErrorBreakdownQuery, error_type: str) -> tuple[ServiceErrorSampleTrace, ...]:
+        filters = self._service_span_filters(query.service_namespace, query.service_name, query.environment)
+        logs_query = (
+            f"{filters} status_code:=\"2\" {self._error_type_predicate(error_type)} "
+            f"| sort by (_time) desc | limit {MAX_ERROR_TYPE_SAMPLES}"
+        )
+        rows = self._query_rows(logs_query, query.started_at, query.ended_at, limit=MAX_ERROR_TYPE_SAMPLES)
+        samples: list[ServiceErrorSampleTrace] = []
+        for row in rows:
+            summary = self._span_summary_from_row(row)
+            if summary is None:
+                continue
+            samples.append(
+                ServiceErrorSampleTrace(
+                    trace_id=summary.trace_id,
+                    span_id=summary.span_id,
+                    endpoint=summary.name,
+                    started_at=summary.started_at,
+                )
+            )
+        return tuple(samples[:MAX_ERROR_TYPE_SAMPLES])
+
+    @staticmethod
+    def _error_type_predicate(error_type: str) -> str:
+        no_exception = f"not {_EXCEPTION_TYPE_FIELD}:*"
+        no_error_type = f"not {_SPAN_ERROR_TYPE_FIELD}:*"
+        no_status_message = "not status_message:*"
+        if error_type == UNATTRIBUTED_ERROR_TYPE:
+            return (
+                f"({no_exception} and {no_error_type} and {no_status_message} "
+                f"and not {_HTTP_STATUS_FIELD}:~\"^5\")"
+            )
+        if error_type.startswith("HTTP "):
+            code = error_type.removeprefix("HTTP ").strip()
+            return (
+                f"({no_exception} and {no_error_type} and {no_status_message} "
+                f"and {_HTTP_STATUS_FIELD}:={_logsql_string(code)})"
+            )
+        quoted = _logsql_string(error_type)
+        return (
+            f"({_EXCEPTION_TYPE_FIELD}:={quoted} "
+            f"or ({no_exception} and {_SPAN_ERROR_TYPE_FIELD}:={quoted}) "
+            f"or ({no_exception} and {no_error_type} and status_message:={quoted}))"
+        )
+
+    def _service_span_filters(self, namespace: str, service_name: str, environment: str) -> str:
+        return " ".join(
+            [
+                "*",
+                f"{_NAMESPACE_FIELD}:={_logsql_string(namespace)}",
+                f"{_SERVICE_FIELD}:={_logsql_string(service_name)}",
+                f"{_ENVIRONMENT_FIELD}:={_logsql_string(environment)}",
+            ]
         )
 
     def _endpoint_stats_rows(

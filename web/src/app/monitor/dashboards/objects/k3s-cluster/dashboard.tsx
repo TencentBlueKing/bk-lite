@@ -202,7 +202,17 @@ export default function K3sClusterDashboardPage() {
       const q = QUERIES[key];
       try {
         // 前端按声明单位(bytes/counts/percent)格式化，必须关掉服务端自动换算。
-        const result = await getInstanceQuery(buildSearchParams(q.query, q.unit, idValues, instanceIdKeys, tv, undefined, false, currentInstanceInterval));
+        const result = await getInstanceQuery(buildSearchParams(
+          q.query,
+          q.unit,
+          idValues,
+          instanceIdKeys,
+          tv,
+          undefined,
+          false,
+          currentInstanceInterval,
+          { monitorObjectId, instanceId },
+        ));
         return [key, result] as const;
       } catch {
         return [key, null] as const;
@@ -240,7 +250,6 @@ export default function K3sClusterDashboardPage() {
       return;
     }
     loadAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentInstanceInterval, idValuesKey, timeValues, displayMode]);
 
   useEffect(() => {
@@ -254,7 +263,6 @@ export default function K3sClusterDashboardPage() {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [frequence, timeValues, idValuesKey, displayMode]);
 
   // ── 派生数据 ──

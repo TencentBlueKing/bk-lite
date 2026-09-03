@@ -89,9 +89,35 @@ describe('APM 添加接入', () => {
     renderPage();
 
     const nodeMethod = await screen.findByRole('button', { name: 'Node.js 接入' });
-    const dotnetMethod = screen.getByRole('button', { name: '.NET 接入，尚未开放' });
+    const dotnetMethod = screen.getByRole('button', { name: '.NET 接入' });
     expect(nodeMethod.querySelector('.anticon')).not.toBeNull();
     expect(dotnetMethod.querySelector('.anticon')).not.toBeNull();
+  });
+
+  it('开放 .NET 自动探针并展示三种运行方式', async () => {
+    api.getIngestSnippet.mockResolvedValue({
+      application_id: 'bklite',
+      application_name: 'BK-Lite',
+      cloud_region: { id: 1, name: '默认云区域' },
+      http_endpoint: 'http://proxy.example.com:4318/v1/traces',
+      environment: {},
+      code: 'dotnet App.dll',
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '.NET 接入' }));
+    expect(screen.getByRole('radio', { name: '.NET 自动探针' })).not.toBeNull();
+    expect(screen.getByRole('radio', { name: 'Docker 运行（-e 注入）' })).not.toBeNull();
+    expect(screen.getByRole('radio', { name: 'Kubernetes Pod（Downward API）' })).not.toBeNull();
+    expect(screen.queryByRole('button', { name: '.NET 接入，规划中' })).toBeNull();
+
+    await user.type(screen.getByRole('textbox', { name: /服务名称/ }), 'checkout');
+    await waitFor(() => expect(api.getIngestSnippet).toHaveBeenCalled(), { timeout: 3000 });
+    expect(api.getIngestSnippet).toHaveBeenCalledWith(expect.objectContaining({
+      language: 'dotnet',
+      runtime: 'host',
+    }));
   });
 
   it('点击 SDK 接入方式后从右侧打开配置抽屉', async () => {

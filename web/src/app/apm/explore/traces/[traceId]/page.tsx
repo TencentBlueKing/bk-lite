@@ -1,10 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import {
-  ArrowLeftOutlined,
   CloseCircleOutlined,
   CheckCircleOutlined,
   FireFilled,
@@ -27,6 +25,7 @@ import {
 import type { TableProps } from 'antd';
 import useApmApi from '@/app/apm/api';
 import ApmDataTable from '@/app/apm/components/apm-data-table';
+import ApmPageBreadcrumb from '@/app/apm/components/apm-page-breadcrumb';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import { formatLatency, formatPercentage } from '@/app/apm/components/metric-format';
@@ -36,12 +35,12 @@ import { useTranslation } from '@/utils/i18n';
 
 type PageState = CatalogStateKind | 'ready' | 'not-found';
 type ViewMode = 'waterfall' | 'flame' | 'list';
-type SpanLayoutItem = {
+interface SpanLayoutItem {
   span: ApmSpanDetail;
   depth: number;
   left: number;
   width: number;
-};
+}
 
 const FLAME_ROW_HEIGHT = 24;
 const SPAN_ATTRIBUTE_KEY_COLUMN_WIDTH = '58%';
@@ -132,10 +131,10 @@ function KpiStat({
   danger?: boolean;
 }) {
   return (
-    <div className="min-w-[96px]">
-      <Typography.Text type="secondary" className="!text-xs">{label}</Typography.Text>
+    <div className="flex flex-col gap-0.5">
+      <span className="text-xs font-medium text-[var(--color-text-3)]">{label}</span>
       <div
-        className={`mt-1 text-base font-semibold tabular-nums leading-6 ${
+        className={`text-xl font-bold tabular-nums ${
           danger ? 'text-[var(--color-fail)]' : 'text-[var(--color-text-1)]'
         }`}
       >
@@ -267,20 +266,22 @@ export default function ApmTraceDetailPage() {
         <div className="flex w-full flex-col gap-4">
           {trace.truncated ? <Alert type="warning" showIcon message={t('apm.trace.truncated', 'Trace 响应已达到安全上限，当前展示部分 Span 或属性。')} /> : null}
 
-          <ApmSurface padding="compact">
+          <ApmSurface padding="compact" className="!rounded-xl shadow-2xs">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex min-w-0 items-center gap-3">
-                <Link href="/apm/explore/traces">
-                  <Button aria-label={t('apm.trace.backAria', '返回调用链')} icon={<ArrowLeftOutlined aria-hidden="true" />}>
-                    {t('apm.trace.back', '返回')}
-                  </Button>
-                </Link>
-                <div className="min-w-0">
-                  <Space wrap size={8}>
-                    <Typography.Text type="secondary" className="text-xs">Trace ID</Typography.Text>
-                    <Typography.Text copyable className="font-mono text-sm font-medium">
-                      {trace.trace_id}
-                    </Typography.Text>
+              <div className="min-w-0">
+                <ApmPageBreadcrumb
+                  parentHref="/apm/explore/traces"
+                  parentLabel={t('apm.explore.tracesTitle', '调用链')}
+                  parentAriaLabel={t('apm.trace.backAria', '返回调用链')}
+                  current={(
+                    <span className="flex items-center gap-1.5">
+                      <span className="sr-only">Trace ID</span>
+                      <Typography.Text copyable className="font-mono text-sm font-medium">
+                        {trace.trace_id}
+                      </Typography.Text>
+                    </span>
+                  )}
+                  trailing={(
                     <Tag
                       bordered={false}
                       color={hasError ? 'error' : 'success'}
@@ -288,25 +289,31 @@ export default function ApmTraceDetailPage() {
                     >
                       {hasError ? t('apm.trace.hasError', '含错误') : t('apm.status.ok', '正常')}
                     </Tag>
-                  </Space>
-                  <Typography.Text type="secondary" className="mt-1 block truncate text-xs">
-                    {trace.service_namespace || t('apm.common.unsetNamespace', '未设置 namespace')} · {trace.service_name} · {trace.environment || t('apm.common.unsetEnvironment', '未设置环境')}
-                  </Typography.Text>
-                </div>
+                  )}
+                />
+                <Typography.Text type="secondary" className="mt-0.5 block truncate text-xs">
+                  {trace.service_namespace || t('apm.common.unsetNamespace', '未设置 namespace')} · {trace.service_name} · {trace.environment || t('apm.common.unsetEnvironment', '未设置环境')}
+                </Typography.Text>
               </div>
-              <div className="flex flex-wrap items-center gap-x-8 gap-y-3 lg:justify-end">
+              <div className="flex flex-wrap items-center gap-6 lg:justify-end">
                 <KpiStat label={t('apm.trace.spanCount', 'Span 数')} value={trace.spans.length} />
+                <div className="hidden h-8 w-px bg-[var(--color-border)] sm:block" aria-hidden="true" />
                 <KpiStat label={t('apm.trace.errorSpans', '错误 Span')} value={errorSpans.length} danger={hasError} />
+                <div className="hidden h-8 w-px bg-[var(--color-border)] sm:block" aria-hidden="true" />
                 <KpiStat label={t('apm.trace.serviceCount', '服务数')} value={services.length} />
+                <div className="hidden h-8 w-px bg-[var(--color-border)] sm:block" aria-hidden="true" />
                 <KpiStat label={t('apm.trace.totalDuration', '总耗时')} value={formatLatency(totalDuration, false, t)} />
                 {hasError ? (
-                  <Button
-                    danger
-                    icon={<FireFilled aria-hidden="true" />}
-                    onClick={() => firstErrorId && setSelectedSpanId(firstErrorId)}
-                  >
-                    {t('apm.trace.jumpFirstError', '跳到首个错误')}
-                  </Button>
+                  <>
+                    <div className="hidden h-8 w-px bg-[var(--color-border)] sm:block" aria-hidden="true" />
+                    <Button
+                      danger
+                      icon={<FireFilled aria-hidden="true" />}
+                      onClick={() => firstErrorId && setSelectedSpanId(firstErrorId)}
+                    >
+                      {t('apm.trace.jumpFirstError', '跳到首个错误')}
+                    </Button>
+                  </>
                 ) : null}
               </div>
             </div>
@@ -314,7 +321,7 @@ export default function ApmTraceDetailPage() {
 
           <Row gutter={[16, 16]}>
             <Col xs={24} xl={16}>
-              <ApmSurface className="h-full">
+              <ApmSurface className="h-full !rounded-xl shadow-2xs">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                   <Segmented<ViewMode>
                     aria-label={t('apm.trace.viewMode', 'Trace 视图模式')}
@@ -457,7 +464,7 @@ export default function ApmTraceDetailPage() {
 
             <Col xs={24} xl={8}>
               <div className="sticky top-4 flex flex-col gap-3">
-                <ApmSurface padding="compact">
+                <ApmSurface padding="compact" className="!rounded-xl shadow-2xs">
                   <div className="mb-3 flex items-center justify-between">
                     <Typography.Text strong className="!text-xs">{t('apm.trace.serviceBreakdown', '服务耗时分解')}</Typography.Text>
                     <Typography.Text type="secondary" className="!text-[10px]">{t('apm.trace.execTime', '% 执行时间')}</Typography.Text>
@@ -488,7 +495,7 @@ export default function ApmTraceDetailPage() {
                   </div>
                 </ApmSurface>
 
-                <ApmSurface>
+                <ApmSurface className="!rounded-xl shadow-2xs">
                   <Typography.Text strong className="mb-3 block">{t('apm.trace.spanDetail', 'Span 详情')}</Typography.Text>
                   {selected ? (
                     <Space direction="vertical" className="w-full" size="middle">

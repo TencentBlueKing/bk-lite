@@ -176,7 +176,7 @@ const UserSyncSourceList = <T extends UserSyncSourceCardItem>({
 
               <div className="flex flex-wrap gap-2 pt-0.5">
                 <div className={`${styles.metricCard} w-[172px] rounded-lg px-3 py-2`}>
-                  <div className="text-[19px] font-semibold leading-none text-[var(--color-text)]">
+                  <div className="text-[19px] font-semibold leading-none text-[var(--color-text-1)]">
                     {item.syncedUsersText}
                   </div>
                   <div className="mt-2 text-[10px] text-[var(--color-text-3)]">
@@ -184,7 +184,7 @@ const UserSyncSourceList = <T extends UserSyncSourceCardItem>({
                   </div>
                 </div>
                 <div className={`${styles.metricCard} w-[172px] rounded-lg px-3 py-2`}>
-                  <div className="text-[19px] font-semibold leading-none text-[var(--color-text)]">
+                  <div className="text-[19px] font-semibold leading-none text-[var(--color-text-1)]">
                     {item.syncCycleText}
                   </div>
                   <div className="mt-2 text-[10px] text-[var(--color-text-3)]">

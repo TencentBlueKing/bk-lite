@@ -36,6 +36,7 @@ from core.infra.nats import subscriber_transport_ready
 from core.infra.nats_utils import close_shared_nats, metrics_transport_ready, nats_metrics_connection_stats
 from core.infra.process_resources import ProcessResourceSampler
 from core.infra.redis_client import get_redis_client
+from core.infra.snmp_engine_pool import snmp_engine_pool_snapshot
 from core.logger import logger, safe_exception_info, safe_log_value
 
 
@@ -67,7 +68,7 @@ class CollectionApplicationSettings:
     monitoring_max_active_targets: int = DEFAULT_MONITORING_MAX_ACTIVE_TARGETS
     network_topology_max_active_targets: int = DEFAULT_NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS
     target_task_window: int = DEFAULT_TARGET_TASK_WINDOW
-    snmp_max_in_flight: int = 100
+    snmp_max_in_flight: int = 160
     sync_sdk_max_in_flight: int = 16
     remote_job_max_in_flight: int = 20
     default_async_max_in_flight: int = 160
@@ -155,7 +156,7 @@ class CollectionApplicationSettings:
             ),
             network_topology_max_active_targets=network_topology_max_active_targets,
             target_task_window=concurrency_limit_from_env("TARGET_TASK_WINDOW", DEFAULT_TARGET_TASK_WINDOW),
-            snmp_max_in_flight=int(os.getenv("SNMP_MAX_IN_FLIGHT", "100")),
+            snmp_max_in_flight=int(os.getenv("SNMP_MAX_IN_FLIGHT", "160")),
             sync_sdk_max_in_flight=int(os.getenv("SYNC_SDK_MAX_IN_FLIGHT", "16")),
             remote_job_max_in_flight=int(os.getenv("REMOTE_JOB_MAX_IN_FLIGHT", "20")),
             default_async_max_in_flight=int(os.getenv("DEFAULT_ASYNC_MAX_IN_FLIGHT", "160")),
@@ -314,6 +315,7 @@ class CollectionApplication:
         """返回 MAX_ACTIVE_TARGETS 全局异步槽位及发布背压的即时使用情况。"""
         metric_snapshot = self._metrics.snapshot()
         resource_snapshot = self._resource_sampler.sample()
+        snmp_snapshot = snmp_engine_pool_snapshot()
         workload_pending = self._scheduler.pending_by_workload
         workload_borrowed = self._scheduler.borrowed_by_workload
         group_pending = self._scheduler.pending_by_capacity_group
@@ -350,6 +352,13 @@ class CollectionApplication:
                     metric_snapshot.get("publish_queue_residence_seconds_p99", 0.0) * 1000,
                     2,
                 ),
+                "result_deliveries_pending": int(metric_snapshot.get("result_deliveries_pending", 0)),
+                "snmp_live_engines": int(snmp_snapshot["live_engines"]),
+                "snmp_active_engines": int(snmp_snapshot["active_engines"]),
+                "snmp_draining_engines": int(snmp_snapshot["draining_engines"]),
+                "snmp_engine_capacity": int(snmp_snapshot["max_engines"]),
+                "snmp_distinct_targets": int(snmp_snapshot["total_distinct_targets"]),
+                "snmp_target_budget": int(snmp_snapshot["total_target_budget"]),
                 "event_loop_lag_ms": round(self._loop_lag.latest_seconds * 1000, 2),
                 "event_loop_lag_p99_ms": round(self._loop_lag.p99_seconds * 1000, 2),
                 **resource_snapshot,
@@ -366,6 +375,7 @@ class CollectionApplication:
             "目标并发槽位[已用=%s/%s 可用=%s 使用率=%s 峰值=%s] | "
             "配置[最大目标并发=%s 任务窗口=%s] | "
             "发布队列[深度=%s/%s 使用率=%s 最老批次=%s P99等待=%s] | "
+            "发布终态[等待=%s] | SNMP池[Engine=%s/%s 排空=%s 目标条目=%s/%s] | "
             "事件循环[当前延迟=%s P99延迟=%s] | "
             "进程[CPU=%s CPU配额使用率=%s RSS内存=%s 线程=%s FD=%s] | "
             "容器[内存=%s/%s 使用率=%s CPU限额=%s CPU限流增量=%s/%s]",
@@ -389,6 +399,12 @@ class CollectionApplication:
             _capacity_value(snapshot, "publish_queue_utilization_percent", "%", missing_default=0),
             _capacity_value(snapshot, "publish_batch_age_ms", "ms", missing_default=0),
             _capacity_value(snapshot, "publish_queue_residence_p99_ms", "ms", missing_default=0),
+            snapshot.get("result_deliveries_pending", 0),
+            snapshot.get("snmp_live_engines", 0),
+            snapshot.get("snmp_engine_capacity", 0),
+            snapshot.get("snmp_draining_engines", 0),
+            snapshot.get("snmp_distinct_targets", 0),
+            snapshot.get("snmp_target_budget", 0),
             _capacity_value(snapshot, "event_loop_lag_ms", "ms", missing_default=0),
             _capacity_value(snapshot, "event_loop_lag_p99_ms", "ms", missing_default=0),
             _capacity_value(snapshot, "process_cpu_percent", "%"),

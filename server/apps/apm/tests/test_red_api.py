@@ -43,6 +43,8 @@ def test_red_endpoint_requires_one_environment_and_does_not_mix_views(apm_api_cl
                     p99_ms=110,
                 ),
             ),
+            request_count=750,
+            error_count=30,
         ),
     )
 
@@ -55,6 +57,8 @@ def test_red_endpoint_requires_one_environment_and_does_not_mix_views(apm_api_cl
     assert response.data["data_state"] == "available"
     assert response.data["environment"] == "production"
     assert response.data["error_rate"] == 0.04
+    assert response.data["request_count"] == 750
+    assert response.data["error_count"] == 30
     assert response.data["timeseries"][0]["request_rate"] == 10
     assert response.data["top_endpoints"][0] == {
         "endpoint": "GET /checkout",

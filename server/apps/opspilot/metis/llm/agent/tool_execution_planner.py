@@ -58,23 +58,35 @@ _MONITOR_CATALOG_HINT = (
     "禁止返回空 steps，不要改去规划 SSH/top/htop。"
 )
 
-# 告警 RCA：缺 namespace 时必须先反查一次；反查收口后禁止重复规划该工具。
+# 告警 RCA：缺 namespace 时必须先反查；禁止用扫全集群当反查。取证链由智能体 prompt 决定。
 _K8S_NAMESPACE_LOOKUP_HINT = (
     "能力导读：若告警/问题含 Pod 或工作负载名称但未给出 namespace，"
-    "第一步必须规划 resolve_k8s_target_from_alert（其会反查命名空间）"
-    "或 list_kubernetes_pods / list_kubernetes_events（namespace 留空）完成反查；"
+    "第一步必须规划 resolve_k8s_target_from_alert（按对象名定点反查命名空间）；"
+    "禁止用 list_kubernetes_pods / list_kubernetes_events 扫全集群来找 namespace。"
     "该工具对同一告警只能调用一次；返回 resolved=false、lookup_exhausted、conclusive 或 namespace 仍为空时，"
     "禁止再用相同参数重试，也禁止规划 diagnose_kubernetes_pod_issues、"
     "get_kubernetes_pod_logs、get_resource_events_timeline 等必填 namespace 的工具，"
     "直接总结「当前集群无法定位该对象」。"
     "在拿到 namespace 之前，禁止规划上述必填 namespace 的工具。"
+    "反查只是前置，后续取证/诊断步骤须对齐助手任务说明，不要只规划反查就结束。"
 )
 
-_K8S_NAMESPACE_LOOKUP_TOOLS = frozenset(
+_K8S_NAMESPACE_RESOLVE_TOOL = "resolve_k8s_target_from_alert"
+_K8S_NAMESPACE_SCAN_TOOLS = frozenset(
     {
-        "resolve_k8s_target_from_alert",
         "list_kubernetes_pods",
         "list_kubernetes_events",
+    }
+)
+_K8S_NAMESPACE_LOOKUP_TOOLS = frozenset({_K8S_NAMESPACE_RESOLVE_TOOL})
+
+# 全集群发现类工具返回值已带 namespace；其后按对象取事件/describe 不必再插反查步。
+_K8S_CLUSTER_DISCOVERY_TOOLS = frozenset(
+    {
+        "get_high_restart_kubernetes_pods",
+        "get_failed_kubernetes_pods",
+        "get_pending_kubernetes_pods",
+        "get_not_ready_kubernetes_pods",
     }
 )
 
@@ -91,9 +103,12 @@ _K8S_NAMESPACE_REQUIRED_TOOLS = frozenset(
     }
 )
 
-# 8K 分步执行：工具结果与中间 AI 文本必须远小于窗口，否则步内多轮会二次溢出。
+# 8K 分步执行基线：工具结果与中间 AI 文本必须远小于窗口，否则步内多轮会二次溢出。
+# 更大窗口按输入工作预算同比放大，并由单条消息 20% 封顶（CJK 按 1 字 1 token）。
 _DEFAULT_PLANNED_TOOL_RESULT_CHARS = 1500
 _DEFAULT_PLANNED_AI_TEXT_CHARS = 1000
+_PLANNED_COMPACT_BASELINE_WORKING_TOKENS = 6800  # derive_llm_working_budget(8000, scene_output_default=4000)
+_PLANNED_COMPACT_SINGLE_MESSAGE_RATIO = 20
 _TRUNCATION_SUFFIX = "\n...(truncated)"
 
 _FENCE_RE = re.compile(r"```(?:json|JSON)?\s*([\s\S]*?)```", re.MULTILINE)
@@ -105,6 +120,7 @@ _EMPTY_MESSAGE_REPLY_RE = re.compile(
 # 8K 上下文模型下，规划目录必须远小于窗口；描述过长会挤掉用户问题并诱发模型复读工具文档。
 _DEFAULT_CATALOG_DESCRIPTION_LIMIT = 48
 _DEFAULT_CATALOG_CHAR_BUDGET = 3500
+_DEFAULT_AGENT_PROMPT_CHAR_BUDGET = 2000
 
 # 规划器哨兵：表示本步需要 DeepAgent 技能运行时(read_file SKILL.md / execute 等),
 # 不是真实可调业务工具；执行层会换成 FS 常驻工具可见。
@@ -159,6 +175,57 @@ def is_context_size_error(exc: BaseException | str) -> bool:
         "llm_context_window_exceeded",
     )
     return any(needle in text for needle in needles)
+
+
+def _coerce_positive_int(value: Any) -> int | None:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    if number <= 0:
+        return None
+    return number
+
+
+def resolve_planned_execution_compact_limits(
+    *,
+    input_working_tokens: Any = None,
+    single_message_tokens: Any = None,
+) -> tuple[int, int]:
+    """按输入工作预算放大分步执行截断上限；缺预算时回退 8K 的 1500/1000 字。"""
+    working = _coerce_positive_int(input_working_tokens)
+    if working is None:
+        return _DEFAULT_PLANNED_TOOL_RESULT_CHARS, _DEFAULT_PLANNED_AI_TEXT_CHARS
+
+    tool_chars = max(
+        _DEFAULT_PLANNED_TOOL_RESULT_CHARS,
+        _DEFAULT_PLANNED_TOOL_RESULT_CHARS * working // _PLANNED_COMPACT_BASELINE_WORKING_TOKENS,
+    )
+    ai_chars = max(
+        _DEFAULT_PLANNED_AI_TEXT_CHARS,
+        _DEFAULT_PLANNED_AI_TEXT_CHARS * working // _PLANNED_COMPACT_BASELINE_WORKING_TOKENS,
+    )
+    single = _coerce_positive_int(single_message_tokens)
+    if single is None:
+        single = working * _PLANNED_COMPACT_SINGLE_MESSAGE_RATIO // 100
+    cap = max(_DEFAULT_PLANNED_TOOL_RESULT_CHARS, single)
+    return min(tool_chars, cap), min(ai_chars, cap)
+
+
+def planned_execution_compact_limits_for_request(graph_request: Any) -> tuple[int, int]:
+    extra = getattr(graph_request, "extra_config", None) or {}
+    if not isinstance(extra, dict):
+        extra = {}
+    trim = getattr(graph_request, "message_trim_config", None)
+    single: Any = None
+    if isinstance(trim, dict):
+        single = trim.get("max_single_message_tokens")
+    elif trim is not None:
+        single = getattr(trim, "max_single_message_tokens", None)
+    return resolve_planned_execution_compact_limits(
+        input_working_tokens=extra.get("input_working_tokens"),
+        single_message_tokens=single,
+    )
 
 
 def _truncate_text(text: str, max_chars: int) -> str:
@@ -423,33 +490,61 @@ def enforce_k8s_namespace_lookup_first(
     *,
     max_steps: int,
 ) -> ToolExecutionPlan:
-    """若计划使用需 namespace 的工具，且此前未安排反查，则在该步前插入反查。"""
-    lookup = [name for name in ("resolve_k8s_target_from_alert", "list_kubernetes_pods", "list_kubernetes_events") if name in available_names]
-    if not lookup:
+    """若计划使用需 namespace 的工具，且此前未安排反查，则在该步前插入反查。
+
+    定位前去掉全集群 list_kubernetes_pods / list_kubernetes_events，避免用扫全量当反查。
+    """
+    if _K8S_NAMESPACE_RESOLVE_TOOL not in available_names:
         return plan
 
-    first_required_idx: int | None = None
+    anchor_idx: int | None = None
     for index, step in enumerate(plan.steps):
-        if any(tool in _K8S_NAMESPACE_LOOKUP_TOOLS for tool in step.tools):
-            # 反查已出现在需 namespace 工具之前（或同批更早步骤）。
-            return plan
+        if _K8S_NAMESPACE_RESOLVE_TOOL in step.tools or any(tool in _K8S_NAMESPACE_REQUIRED_TOOLS for tool in step.tools):
+            anchor_idx = index
+            break
+
+    cleaned: list[ToolExecutionStep] = []
+    for index, step in enumerate(plan.steps):
+        tools = list(step.tools)
+        if _K8S_NAMESPACE_RESOLVE_TOOL in tools:
+            tools = [tool for tool in tools if tool not in _K8S_NAMESPACE_SCAN_TOOLS]
+        elif anchor_idx is not None and index < anchor_idx:
+            tools = [tool for tool in tools if tool not in _K8S_NAMESPACE_SCAN_TOOLS]
+        if not tools:
+            continue
+        if tools != list(step.tools):
+            cleaned.append(step.model_copy(update={"tools": tools}))
+        else:
+            cleaned.append(step)
+
+    first_required_idx: int | None = None
+    for index, step in enumerate(cleaned):
+        if _K8S_NAMESPACE_RESOLVE_TOOL in step.tools:
+            return ToolExecutionPlan(goal=plan.goal, steps=cleaned)
         if any(tool in _K8S_NAMESPACE_REQUIRED_TOOLS for tool in step.tools):
             first_required_idx = index
             break
     if first_required_idx is None:
-        return plan
+        return ToolExecutionPlan(goal=plan.goal, steps=cleaned)
 
-    preferred = lookup[0]
+    prior_tools = {tool for step in cleaned[:first_required_idx] for tool in (step.tools or [])}
+    if prior_tools & _K8S_CLUSTER_DISCOVERY_TOOLS:
+        logger.info(
+            "DeepAgent 规划硬校验：前置发现工具已带 namespace，跳过插入反查 prior_tools=%s",
+            sorted(prior_tools & _K8S_CLUSTER_DISCOVERY_TOOLS),
+        )
+        return ToolExecutionPlan(goal=plan.goal, steps=cleaned)
+
     lookup_step = ToolExecutionStep(
         objective="反查目标命名空间与定位信息",
-        tools=[preferred],
+        tools=[_K8S_NAMESPACE_RESOLVE_TOOL],
     )
-    steps = [*plan.steps[:first_required_idx], lookup_step, *plan.steps[first_required_idx:]]
+    steps = [*cleaned[:first_required_idx], lookup_step, *cleaned[first_required_idx:]]
     if len(steps) > max_steps:
         steps = steps[:max_steps]
     logger.info(
         "DeepAgent 规划硬校验：已在需 namespace 步骤前插入反查 tool=%s index=%s",
-        preferred,
+        _K8S_NAMESPACE_RESOLVE_TOOL,
         first_required_idx,
     )
     return ToolExecutionPlan(goal=plan.goal, steps=steps)
@@ -457,7 +552,7 @@ def enforce_k8s_namespace_lookup_first(
 
 def drop_k8s_followup_steps_after_unresolved_target(steps: Sequence[ToolExecutionStep]) -> list[ToolExecutionStep]:
     """反查已收口后，去掉重复反查和仍依赖 namespace 的后续步骤。"""
-    skip = _K8S_NAMESPACE_LOOKUP_TOOLS | _K8S_NAMESPACE_REQUIRED_TOOLS
+    skip = _K8S_NAMESPACE_LOOKUP_TOOLS | _K8S_NAMESPACE_SCAN_TOOLS | _K8S_NAMESPACE_REQUIRED_TOOLS
     kept: list[ToolExecutionStep] = []
     for step in steps or []:
         if any(tool in skip for tool in (step.tools or [])):
@@ -482,6 +577,16 @@ def merge_replanned_pending_steps(
             continue
         merged.append(step)
     return merged
+
+
+def _agent_task_brief(agent_system_prompt: str, *, limit: int = _DEFAULT_AGENT_PROMPT_CHAR_BUDGET) -> str:
+    """规划器用的智能体 prompt 摘要：去掉附件强制规则模板，并截断以保住 8K 窗口。"""
+    text = _ATTACHMENT_FORCE_RULE_BLOCK_RE.sub("", agent_system_prompt or "").strip()
+    if not text:
+        return ""
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "…"
 
 
 def looks_like_attachment_file_task(user_message: str = "", agent_system_prompt: str = "") -> bool:
@@ -880,6 +985,7 @@ class ToolExecutionPlanner:
             f"最多 {self._max_steps} 个步骤，每步最多 {self._max_tools_per_step} 个工具。"
             "只列出必须调用工具的执行步骤，并从目录选择精确工具名；"
             "纯分析或最终总结不要列为步骤，系统会在工具执行后单独完成。"
+            "规划须对齐「助手任务说明」中的目标；目录「能力导读」只约束工具前置条件，不改写任务目标。"
             "若用户要查平台已纳管主机/实例的指标或告警，且目录含 monitor_* 或能力导读，"
             "必须规划对应 monitor_* 步骤，禁止返回空 steps。"
             "若目录含 generate_attachment_file，且任务是生成报告/月报/文档/Markdown/.md 文件，"
@@ -899,9 +1005,13 @@ class ToolExecutionPlanner:
         failure_text: str,
         tools: Sequence[BaseTool],
         skill_packages: Sequence[Any] = (),
+        agent_system_prompt: str = "",
     ) -> str:
+        brief = _agent_task_brief(agent_system_prompt)
+        agent_block = f"助手任务说明（来自智能体 prompt，规划须对齐其目标；工具名只从目录选择）:\n{brief}\n\n" if brief else ""
         return (
             f"用户问题:\n{user_message}\n\n"
+            f"{agent_block}"
             f"已完成步骤:\n{completed_text}\n\n"
             f"最近失败或新证据:\n{failure_text}\n\n"
             f"紧凑工具目录:\n{self._catalog(tools, skill_packages)}"
@@ -943,7 +1053,14 @@ class ToolExecutionPlanner:
         failure_text = failure.strip() or "无"
         packages = [item for item in (skill_packages or []) if isinstance(item, dict)]
         system_prompt = self._system_prompt()
-        task_prompt = self._task_prompt(user_message, completed_text, failure_text, tools, packages)
+        task_prompt = self._task_prompt(
+            user_message,
+            completed_text,
+            failure_text,
+            tools,
+            packages,
+            agent_system_prompt=agent_system_prompt,
+        )
         primary_messages = [
             SystemMessage(content=system_prompt),
             HumanMessage(content=task_prompt),

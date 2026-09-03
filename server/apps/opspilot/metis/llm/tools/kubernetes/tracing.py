@@ -1,17 +1,22 @@
 """Kubernetes链路追踪和关联分析工具"""
 import json
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+
+from kubernetes import client
 from kubernetes.client import ApiException
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from kubernetes import client
 from loguru import logger
-from apps.opspilot.metis.llm.tools.kubernetes.utils import prepare_context
+
+from apps.opspilot.metis.llm.tools.kubernetes.instance_scope import prepare_point_instance, run_scan_tool
+from apps.opspilot.metis.llm.tools.kubernetes.utils import coerce_int, prepare_context
+
+_DEFAULT_EVENT_HOURS = 24
+_MAX_EVENT_HOURS = 168
 
 
 @tool()
-def trace_service_chain(service_name, namespace, config: RunnableConfig = None):
+def trace_service_chain(service_name, namespace, instance_name=None, config: RunnableConfig = None):  # noqa: C901
     """
     追踪Service调用链，从Service → Endpoint → Pod，定位流量异常
 
@@ -32,6 +37,7 @@ def trace_service_chain(service_name, namespace, config: RunnableConfig = None):
     Args:
         service_name (str): Service名称（必填）
         namespace (str): 命名空间（必填）
+        instance_name (str, optional): 多实例时必须指定集群
         config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
@@ -51,6 +57,9 @@ def trace_service_chain(service_name, namespace, config: RunnableConfig = None):
     - 此工具只检查配置和状态，不检查网络策略和DNS
     - 如需网络诊断，配合 check_network_policies_blocking 使用
     """
+    config, err = prepare_point_instance(config, instance_name)
+    if err:
+        return err
     prepare_context(config)
 
     try:
@@ -65,7 +74,7 @@ def trace_service_chain(service_name, namespace, config: RunnableConfig = None):
             "trace_time": datetime.now(timezone.utc).isoformat(),
             "chain": {},
             "issues": [],
-            "recommendations": []
+            "recommendations": [],
         }
 
         # 1. 检查Service本身
@@ -76,31 +85,19 @@ def trace_service_chain(service_name, namespace, config: RunnableConfig = None):
                 "type": service.spec.type,
                 "cluster_ip": service.spec.cluster_ip,
                 "ports": [
-                    {
-                        "name": port.name,
-                        "port": port.port,
-                        "target_port": str(port.target_port),
-                        "protocol": port.protocol
-                    } for port in (service.spec.ports or [])
+                    {"name": port.name, "port": port.port, "target_port": str(port.target_port), "protocol": port.protocol}
+                    for port in (service.spec.ports or [])
                 ],
-                "selector": service.spec.selector or {}
+                "selector": service.spec.selector or {},
             }
             result["chain"]["service"] = service_info
 
             if not service.spec.selector:
-                result["issues"].append({
-                    "severity": "high",
-                    "component": "service",
-                    "message": "Service没有配置selector，无法路由到任何Pod"
-                })
+                result["issues"].append({"severity": "high", "component": "service", "message": "Service没有配置selector，无法路由到任何Pod"})
         except ApiException as e:
             if e.status == 404:
                 result["chain"]["service"] = {"exists": False}
-                result["issues"].append({
-                    "severity": "critical",
-                    "component": "service",
-                    "message": f"Service不存在: {service_name}"
-                })
+                result["issues"].append({"severity": "critical", "component": "service", "message": f"Service不存在: {service_name}"})
                 return json.dumps(result)
             raise
 
@@ -114,45 +111,33 @@ def trace_service_chain(service_name, namespace, config: RunnableConfig = None):
                 for subset in endpoints.subsets:
                     if subset.addresses:
                         for addr in subset.addresses:
-                            ready_addresses.append({
-                                "ip": addr.ip,
-                                "target_ref": f"{addr.target_ref.kind}/{addr.target_ref.name}" if addr.target_ref else None
-                            })
+                            ready_addresses.append(
+                                {"ip": addr.ip, "target_ref": f"{addr.target_ref.kind}/{addr.target_ref.name}" if addr.target_ref else None}
+                            )
                     if subset.not_ready_addresses:
                         for addr in subset.not_ready_addresses:
-                            not_ready_addresses.append({
-                                "ip": addr.ip,
-                                "target_ref": f"{addr.target_ref.kind}/{addr.target_ref.name}" if addr.target_ref else None
-                            })
+                            not_ready_addresses.append(
+                                {"ip": addr.ip, "target_ref": f"{addr.target_ref.kind}/{addr.target_ref.name}" if addr.target_ref else None}
+                            )
 
             endpoints_info = {
                 "exists": True,
                 "ready_addresses": ready_addresses,
                 "not_ready_addresses": not_ready_addresses,
                 "ready_count": len(ready_addresses),
-                "not_ready_count": len(not_ready_addresses)
+                "not_ready_count": len(not_ready_addresses),
             }
             result["chain"]["endpoints"] = endpoints_info
 
             if len(ready_addresses) == 0:
-                result["issues"].append({
-                    "severity": "critical",
-                    "component": "endpoints",
-                    "message": "没有就绪的Endpoint，Service无法转发流量"
-                })
+                result["issues"].append({"severity": "critical", "component": "endpoints", "message": "没有就绪的Endpoint，Service无法转发流量"})
                 if len(not_ready_addresses) > 0:
-                    result["recommendations"].append(
-                        "有未就绪的Endpoint，请检查Pod的就绪探针配置和Pod健康状态"
-                    )
+                    result["recommendations"].append("有未就绪的Endpoint，请检查Pod的就绪探针配置和Pod健康状态")
 
         except ApiException as e:
             if e.status == 404:
                 result["chain"]["endpoints"] = {"exists": False}
-                result["issues"].append({
-                    "severity": "critical",
-                    "component": "endpoints",
-                    "message": "Endpoints不存在，可能是selector不匹配"
-                })
+                result["issues"].append({"severity": "critical", "component": "endpoints", "message": "Endpoints不存在，可能是selector不匹配"})
 
         # 3. 检查匹配的Pod
         if service.spec.selector:
@@ -164,53 +149,34 @@ def trace_service_chain(service_name, namespace, config: RunnableConfig = None):
                 container_statuses = []
                 if pod.status.container_statuses:
                     for container in pod.status.container_statuses:
-                        container_statuses.append({
-                            "name": container.name,
-                            "ready": container.ready,
-                            "restart_count": container.restart_count
-                        })
+                        container_statuses.append({"name": container.name, "ready": container.ready, "restart_count": container.restart_count})
 
                 pod_info = {
                     "name": pod.metadata.name,
                     "phase": pod.status.phase,
                     "pod_ip": pod.status.pod_ip,
                     "node": pod.spec.node_name,
-                    "containers": container_statuses
+                    "containers": container_statuses,
                 }
                 pod_list.append(pod_info)
 
                 # 检查Pod问题
                 if pod.status.phase != "Running":
-                    result["issues"].append({
-                        "severity": "high",
-                        "component": "pod",
-                        "message": f"Pod {pod.metadata.name} 状态异常: {pod.status.phase}"
-                    })
+                    result["issues"].append({"severity": "high", "component": "pod", "message": f"Pod {pod.metadata.name} 状态异常: {pod.status.phase}"})
 
                 # 检查容器就绪状态
                 if pod.status.container_statuses:
                     for container in pod.status.container_statuses:
                         if not container.ready:
-                            result["issues"].append({
-                                "severity": "medium",
-                                "component": "pod",
-                                "message": f"Pod {pod.metadata.name} 的容器 {container.name} 未就绪"
-                            })
+                            result["issues"].append(
+                                {"severity": "medium", "component": "pod", "message": f"Pod {pod.metadata.name} 的容器 {container.name} 未就绪"}
+                            )
 
-            result["chain"]["pods"] = {
-                "count": len(pod_list),
-                "pods": pod_list
-            }
+            result["chain"]["pods"] = {"count": len(pod_list), "pods": pod_list}
 
             if len(pod_list) == 0:
-                result["issues"].append({
-                    "severity": "critical",
-                    "component": "pods",
-                    "message": f"没有匹配selector的Pod: {service.spec.selector}"
-                })
-                result["recommendations"].append(
-                    "请检查Deployment/StatefulSet的Pod模板标签是否与Service的selector匹配"
-                )
+                result["issues"].append({"severity": "critical", "component": "pods", "message": f"没有匹配selector的Pod: {service.spec.selector}"})
+                result["recommendations"].append("请检查Deployment/StatefulSet的Pod模板标签是否与Service的selector匹配")
 
         # 4. 检查Ingress (如果有)
         try:
@@ -222,25 +188,15 @@ def trace_service_chain(service_name, namespace, config: RunnableConfig = None):
                     for rule in ingress.spec.rules:
                         if rule.http and rule.http.paths:
                             for path in rule.http.paths:
-                                if (path.backend and path.backend.service
-                                        and path.backend.service.name == service_name):
-                                    matching_ingresses.append({
-                                        "name": ingress.metadata.name,
-                                        "host": rule.host or "*",
-                                        "path": path.path,
-                                        "path_type": path.path_type
-                                    })
+                                if path.backend and path.backend.service and path.backend.service.name == service_name:
+                                    matching_ingresses.append(
+                                        {"name": ingress.metadata.name, "host": rule.host or "*", "path": path.path, "path_type": path.path_type}
+                                    )
 
             if matching_ingresses:
-                result["chain"]["ingress"] = {
-                    "exists": True,
-                    "ingresses": matching_ingresses
-                }
+                result["chain"]["ingress"] = {"exists": True, "ingresses": matching_ingresses}
             else:
-                result["chain"]["ingress"] = {
-                    "exists": False,
-                    "message": "没有Ingress指向此Service"
-                }
+                result["chain"]["ingress"] = {"exists": False, "message": "没有Ingress指向此Service"}
         except ApiException:
             # Ingress API可能不可用
             result["chain"]["ingress"] = {"exists": False, "message": "无法检查Ingress"}
@@ -263,15 +219,11 @@ def trace_service_chain(service_name, namespace, config: RunnableConfig = None):
 
     except Exception as e:
         logger.error(f"追踪服务链路失败: {namespace}/{service_name}, 错误: {str(e)}")
-        return json.dumps({
-            "error": f"追踪服务链路失败: {str(e)}",
-            "service_name": service_name,
-            "namespace": namespace
-        })
+        return json.dumps({"error": f"追踪服务链路失败: {str(e)}", "service_name": service_name, "namespace": namespace})
 
 
 @tool()
-def get_resource_events_timeline(resource_type, resource_name, namespace, hours=24, config: RunnableConfig = None):
+def get_resource_events_timeline(resource_type, resource_name, namespace, hours: int = 24, instance_name=None, config: RunnableConfig = None):
     """
     获取资源的事件时间线，追溯问题演变过程
 
@@ -314,7 +266,11 @@ def get_resource_events_timeline(resource_type, resource_name, namespace, hours=
     - 发现OOM事件 → 使用 check_oom_events 专项检查
     - 发现调度失败 → 使用 diagnose_pending_pod_issues 诊断
     """
+    config, instance_error = prepare_point_instance(config, instance_name)
+    if instance_error:
+        return instance_error
     prepare_context(config)
+    hours = coerce_int(hours, _DEFAULT_EVENT_HOURS, lo=1, hi=_MAX_EVENT_HOURS)
 
     try:
         core_v1 = client.CoreV1Api()
@@ -322,10 +278,7 @@ def get_resource_events_timeline(resource_type, resource_name, namespace, hours=
 
         # 获取所有相关事件
         field_selector = f"involvedObject.name={resource_name},involvedObject.kind={resource_type}"
-        events = core_v1.list_namespaced_event(
-            namespace,
-            field_selector=field_selector
-        )
+        events = core_v1.list_namespaced_event(namespace, field_selector=field_selector)
 
         # 计算时间过滤
         now = datetime.now(timezone.utc)
@@ -336,26 +289,24 @@ def get_resource_events_timeline(resource_type, resource_name, namespace, hours=
         for event in events.items:
             event_time = event.last_timestamp or event.first_timestamp or event.metadata.creation_timestamp
             if event_time and event_time.timestamp() >= cutoff_time:
-                timeline.append({
-                    "timestamp": event_time.isoformat(),
-                    "type": event.type,
-                    "reason": event.reason,
-                    "message": event.message,
-                    "count": event.count or 1,
-                    "first_seen": event.first_timestamp.isoformat() if event.first_timestamp else None,
-                    "last_seen": event.last_timestamp.isoformat() if event.last_timestamp else None,
-                    "source": event.source.component if event.source else None
-                })
+                timeline.append(
+                    {
+                        "timestamp": event_time.isoformat(),
+                        "type": event.type,
+                        "reason": event.reason,
+                        "message": event.message,
+                        "count": event.count or 1,
+                        "first_seen": event.first_timestamp.isoformat() if event.first_timestamp else None,
+                        "last_seen": event.last_timestamp.isoformat() if event.last_timestamp else None,
+                        "source": event.source.component if event.source else None,
+                    }
+                )
 
         # 按时间排序
         timeline.sort(key=lambda x: x["timestamp"])
 
         # 统计事件类型
-        event_summary = {
-            "Normal": 0,
-            "Warning": 0,
-            "Error": 0
-        }
+        event_summary = {"Normal": 0, "Warning": 0, "Error": 0}
         for event in timeline:
             event_type = event["type"]
             if event_type in event_summary:
@@ -368,7 +319,7 @@ def get_resource_events_timeline(resource_type, resource_name, namespace, hours=
             "time_range_hours": hours,
             "total_events": len(timeline),
             "event_summary": event_summary,
-            "timeline": timeline
+            "timeline": timeline,
         }
 
         logger.info(f"事件时间线获取完成: {len(timeline)}个事件")
@@ -376,16 +327,11 @@ def get_resource_events_timeline(resource_type, resource_name, namespace, hours=
 
     except ApiException as e:
         logger.error(f"获取事件时间线失败: {str(e)}")
-        return json.dumps({
-            "error": f"获取事件时间线失败: {str(e)}",
-            "resource_type": resource_type,
-            "resource_name": resource_name,
-            "namespace": namespace
-        })
+        return json.dumps({"error": f"获取事件时间线失败: {str(e)}", "resource_type": resource_type, "resource_name": resource_name, "namespace": namespace})
 
 
 @tool()
-def analyze_pod_restart_pattern(namespace=None, min_restarts: int = 3, config: RunnableConfig = None):
+def analyze_pod_restart_pattern(namespace=None, min_restarts: int = 3, instance_name=None, config: RunnableConfig = None):  # noqa: C901
     """
     深度分析Pod重启模式，定位根本原因
 
@@ -415,6 +361,7 @@ def analyze_pod_restart_pattern(namespace=None, min_restarts: int = 3, config: R
             - 3: 找出所有有重启迹象的Pod（推荐）
             - 5: 只关注重启较多的Pod
             - 10: 只看严重频繁重启的Pod
+        instance_name (str, optional): 多实例时指定集群；省略则扫描全部已配置实例
         config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
@@ -435,6 +382,15 @@ def analyze_pod_restart_pattern(namespace=None, min_restarts: int = 3, config: R
     - 查看容器日志 → 使用 get_kubernetes_pod_logs
     - 需要重启Pod → 使用 restart_pod
     """
+    min_restarts = coerce_int(min_restarts, 3, lo=0, hi=10000)
+
+    def _run(bound_config):
+        return _analyze_pod_restart_pattern_on_instance(namespace, min_restarts, bound_config)
+
+    return run_scan_tool(config, instance_name, _run)
+
+
+def _analyze_pod_restart_pattern_on_instance(namespace, min_restarts, config: RunnableConfig = None):  # noqa: C901
     prepare_context(config)
 
     try:
@@ -464,7 +420,7 @@ def analyze_pod_restart_pattern(namespace=None, min_restarts: int = 3, config: R
                         "current_state": {},
                         "last_state": {},
                         "restart_reasons": [],
-                        "severity": "unknown"
+                        "severity": "unknown",
                     }
 
                     # 分析当前状态
@@ -472,7 +428,7 @@ def analyze_pod_restart_pattern(namespace=None, min_restarts: int = 3, config: R
                         analysis["current_state"] = {
                             "status": "waiting",
                             "reason": container.state.waiting.reason,
-                            "message": container.state.waiting.message
+                            "message": container.state.waiting.message,
                         }
                         if container.state.waiting.reason == "CrashLoopBackOff":
                             analysis["severity"] = "critical"
@@ -480,14 +436,14 @@ def analyze_pod_restart_pattern(namespace=None, min_restarts: int = 3, config: R
                     elif container.state.running:
                         analysis["current_state"] = {
                             "status": "running",
-                            "started_at": container.state.running.started_at.isoformat() if container.state.running.started_at else None
+                            "started_at": container.state.running.started_at.isoformat() if container.state.running.started_at else None,
                         }
                     elif container.state.terminated:
                         analysis["current_state"] = {
                             "status": "terminated",
                             "reason": container.state.terminated.reason,
                             "exit_code": container.state.terminated.exit_code,
-                            "message": container.state.terminated.message
+                            "message": container.state.terminated.message,
                         }
 
                     # 分析上一次状态（重启原因）
@@ -498,7 +454,7 @@ def analyze_pod_restart_pattern(namespace=None, min_restarts: int = 3, config: R
                             "exit_code": last_term.exit_code,
                             "started_at": last_term.started_at.isoformat() if last_term.started_at else None,
                             "finished_at": last_term.finished_at.isoformat() if last_term.finished_at else None,
-                            "message": last_term.message
+                            "message": last_term.message,
                         }
 
                         # 根据退出码判断原因
@@ -526,18 +482,13 @@ def analyze_pod_restart_pattern(namespace=None, min_restarts: int = 3, config: R
                     # 获取相关事件
                     try:
                         events = core_v1.list_namespaced_event(
-                            pod.metadata.namespace,
-                            field_selector=f"involvedObject.name={pod.metadata.name},involvedObject.kind=Pod"
+                            pod.metadata.namespace, field_selector=f"involvedObject.name={pod.metadata.name},involvedObject.kind=Pod"
                         )
 
                         recent_events = []
                         for event in events.items:
                             if event.reason in ["BackOff", "Failed", "Killing", "Unhealthy"]:
-                                recent_events.append({
-                                    "reason": event.reason,
-                                    "message": event.message,
-                                    "count": event.count
-                                })
+                                recent_events.append({"reason": event.reason, "message": event.message, "count": event.count})
 
                         if recent_events:
                             analysis["recent_events"] = recent_events[:5]  # 最近5个相关事件
@@ -566,7 +517,7 @@ def analyze_pod_restart_pattern(namespace=None, min_restarts: int = 3, config: R
             "namespace": namespace or "all",
             "min_restarts_threshold": min_restarts,
             "total_problematic_containers": len(restart_analysis),
-            "analysis": restart_analysis
+            "analysis": restart_analysis,
         }
 
         logger.info(f"Pod重启分析完成: 发现{len(restart_analysis)}个问题容器")
@@ -574,14 +525,11 @@ def analyze_pod_restart_pattern(namespace=None, min_restarts: int = 3, config: R
 
     except Exception as e:
         logger.error(f"分析Pod重启模式失败: {str(e)}")
-        return json.dumps({
-            "error": f"分析Pod重启模式失败: {str(e)}",
-            "namespace": namespace
-        })
+        return json.dumps({"error": f"分析Pod重启模式失败: {str(e)}", "namespace": namespace})
 
 
 @tool()
-def check_oom_events(namespace=None, hours=24, config: RunnableConfig = None):
+def check_oom_events(namespace=None, hours: int = 24, instance_name=None, config: RunnableConfig = None):
     """
     检查OOM（Out of Memory）事件，识别内存配置问题
 
@@ -606,6 +554,7 @@ def check_oom_events(namespace=None, hours=24, config: RunnableConfig = None):
             - 24: 查看最近一天的OOM（常规检查）
             - 1: 只看最近一小时（快速定位刚发生的OOM）
             - 168: 查看一周内的OOM（分析长期趋势）
+        instance_name (str, optional): 多实例时指定集群；省略则扫描全部已配置实例
         config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
@@ -634,6 +583,15 @@ def check_oom_events(namespace=None, hours=24, config: RunnableConfig = None):
     - OOM通常表示内存配置不足，但也可能是应用内存泄漏
     - 建议结合日志分析，排查是否真实需要这么多内存
     """
+    hours = coerce_int(hours, _DEFAULT_EVENT_HOURS, lo=1, hi=_MAX_EVENT_HOURS)
+
+    def _run(bound_config):
+        return _check_oom_events_on_instance(namespace, hours, bound_config)
+
+    return run_scan_tool(config, instance_name, _run)
+
+
+def _check_oom_events_on_instance(namespace, hours, config: RunnableConfig = None):
     prepare_context(config)
 
     try:
@@ -656,14 +614,16 @@ def check_oom_events(namespace=None, hours=24, config: RunnableConfig = None):
             if event.reason in ["OOMKilling", "FailedKillPod"] or "OOM" in (event.message or ""):
                 event_time = event.last_timestamp or event.first_timestamp or event.metadata.creation_timestamp
                 if event_time and event_time.timestamp() >= cutoff_time:
-                    oom_events.append({
-                        "timestamp": event_time.isoformat(),
-                        "namespace": event.metadata.namespace,
-                        "pod_name": event.involved_object.name if event.involved_object else None,
-                        "reason": event.reason,
-                        "message": event.message,
-                        "count": event.count or 1
-                    })
+                    oom_events.append(
+                        {
+                            "timestamp": event_time.isoformat(),
+                            "namespace": event.metadata.namespace,
+                            "pod_name": event.involved_object.name if event.involved_object else None,
+                            "reason": event.reason,
+                            "message": event.message,
+                            "count": event.count or 1,
+                        }
+                    )
 
         # 获取当前有OOM历史的Pod
         oom_pods = []
@@ -676,10 +636,7 @@ def check_oom_events(namespace=None, hours=24, config: RunnableConfig = None):
             if pod.status.container_statuses:
                 for container in pod.status.container_statuses:
                     # 检查上次终止状态
-                    if (container.last_state
-                        and container.last_state.terminated
-                            and container.last_state.terminated.reason == "OOMKilled"):
-
+                    if container.last_state and container.last_state.terminated and container.last_state.terminated.reason == "OOMKilled":
                         # 获取资源配置
                         container_spec = None
                         for c in pod.spec.containers:
@@ -695,16 +652,20 @@ def check_oom_events(namespace=None, hours=24, config: RunnableConfig = None):
                             if container_spec.resources.requests:
                                 memory_request = container_spec.resources.requests.get("memory", "未设置")
 
-                        oom_pods.append({
-                            "pod_name": pod.metadata.name,
-                            "namespace": pod.metadata.namespace,
-                            "container_name": container.name,
-                            "restart_count": container.restart_count,
-                            "memory_limit": memory_limit,
-                            "memory_request": memory_request,
-                            "last_oom_time": container.last_state.terminated.finished_at.isoformat() if container.last_state.terminated.finished_at else None,
-                            "exit_code": container.last_state.terminated.exit_code
-                        })
+                        oom_pods.append(
+                            {
+                                "pod_name": pod.metadata.name,
+                                "namespace": pod.metadata.namespace,
+                                "container_name": container.name,
+                                "restart_count": container.restart_count,
+                                "memory_limit": memory_limit,
+                                "memory_request": memory_request,
+                                "last_oom_time": container.last_state.terminated.finished_at.isoformat()
+                                if container.last_state.terminated.finished_at
+                                else None,
+                                "exit_code": container.last_state.terminated.exit_code,
+                            }
+                        )
 
         # 生成建议
         recommendations = []
@@ -723,7 +684,7 @@ def check_oom_events(namespace=None, hours=24, config: RunnableConfig = None):
             "total_oom_pods": len(oom_pods),
             "oom_events": sorted(oom_events, key=lambda x: x["timestamp"], reverse=True),
             "oom_pods": oom_pods,
-            "recommendations": recommendations
+            "recommendations": recommendations,
         }
 
         logger.info(f"OOM检查完成: {len(oom_events)}个事件, {len(oom_pods)}个Pod")
@@ -731,7 +692,4 @@ def check_oom_events(namespace=None, hours=24, config: RunnableConfig = None):
 
     except Exception as e:
         logger.error(f"检查OOM事件失败: {str(e)}")
-        return json.dumps({
-            "error": f"检查OOM事件失败: {str(e)}",
-            "namespace": namespace
-        })
+        return json.dumps({"error": f"检查OOM事件失败: {str(e)}", "namespace": namespace})

@@ -103,7 +103,7 @@ CollectType/CollectInstance/CollectConfig 定义采集 → 日志汇聚至 Victo
 用户提交 → 危险命令校验 → Celery `execute_script_task`/`execute_playbook_task`/`distribute_files_task` → 路由到 nats-executor（sidecar 节点）或 ansible-executor（手动/Windows 目标）→ 异步 NATS 回调 `ansible_task_callback` 更新 `JobExecution` → 日志经 JetStream 实时流。
 
 ### 5.5 CMDB 采集链路【已实现/已存在】
-`CollectModels` 配置 → Celery `sync_collect_task` → 分发到 `CollectDispatchService`/协议采集 → 格式化（add/update/delete/association）→ 写入图库 + ORM，变更记 `ChangeRecord`，订阅通知 `SubscriptionTaskService`。
+普通 `CollectModels` 配置 → Celery `sync_collect_task` → Job/Protocol 采集 → 格式化（add/update/delete/association）→ 写入图库 + ORM。配置文件采集独立采用 NodeMgmt 下发 → Telegraf 周期 → Stargazer → Core NATS callback → CMDB 版本与正文存储。
 
 ### 5.6 AI 问答链路【已实现/已存在】
 用户 → opspilot bot/chat → `chat_service` 组装 RAG kwargs（`rag_service.format_naive_rag_kwargs`）→ **本地 pgvector** 检索（`metis/llm/rag/naive_rag/pgvector`）→ LLMModel（OpenAI/Anthropic/… provider）生成 → 返回（含 OpenAI 兼容端点 `bot_mgmt/v1/chat/completions`）。注：`METIS_SERVER_URL` 在 config.py 定义但当前代码未调用。

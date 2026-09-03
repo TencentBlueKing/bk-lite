@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Progress, Tag } from 'antd';
+import { Progress } from 'antd';
 import {
   ColumnItem,
   MetricItem,
@@ -114,48 +114,6 @@ export const buildReportTimeColumn = ({
   render: (_, { time }) => (
     <>{time ? convertToLocalizedTime(new Date(time * 1000) + '') : '--'}</>
   )
-});
-
-interface BuildReportingStatusColumnOptions {
-  t: (key: string) => string;
-  includeFilters?: boolean;
-}
-
-export const buildReportingStatusColumn = ({
-  t,
-  includeFilters = true
-}: BuildReportingStatusColumnOptions): ColumnItem => ({
-  title: t('monitor.integrations.reportingStatus'),
-  dataIndex: 'status',
-  key: 'status',
-  onCell: () => ({ style: { minWidth: 100 } }),
-  ...(includeFilters
-    ? {
-      filterMultiple: true,
-      filterParam: 'status',
-      filters: [
-        {
-          text: t('monitor.integrations.normal'),
-          value: 'normal'
-        },
-        {
-          text: t('monitor.integrations.unavailable'),
-          value: 'unavailable'
-        }
-      ]
-    }
-    : {}),
-  render: (_, record) => {
-    if (!record?.status) return <>--</>;
-    const isNormal = record.status === 'normal';
-    return (
-      <Tag color={isNormal ? 'success' : 'default'}>
-        {isNormal
-          ? t('monitor.integrations.normal')
-          : t('monitor.integrations.unavailable')}
-      </Tag>
-    );
-  }
 });
 
 interface BuildDisplayFieldColumnsOptions {

@@ -1,0 +1,45 @@
+{
+  "object": "Host",
+  "plugin": "Host AIX Remote",
+  "templates": [
+    {
+      "name": "CPU使用率过高",
+      "alert_name": "主机${instance_id} CPU使用率过高",
+      "description": "监控 AIX 主机 CPU 使用率，当超出设定阈值时触发告警。",
+      "metric_name": "cpu_usage_total",
+      "algorithm": "max_over_time",
+      "threshold": [
+        {"level": "critical", "value": 95, "method": ">"},
+        {"level": "error", "value": 90, "method": ">"},
+        {"level": "warning", "value": 80, "method": ">"}
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "内存使用率过高",
+      "alert_name": "主机${instance_id} 内存使用率过高",
+      "description": "监控 AIX 主机内存使用率，当超出设定阈值时触发告警。",
+      "metric_name": "mem_used_percent",
+      "algorithm": "max_over_time",
+      "threshold": [
+        {"level": "critical", "value": 95, "method": ">"},
+        {"level": "error", "value": 90, "method": ">"},
+        {"level": "warning", "value": 80, "method": ">"}
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "磁盘使用率过高",
+      "alert_name": "主机${instance_id} 磁盘${mount}使用率过高",
+      "description": "监控 AIX 主机磁盘使用率，当超出设定阈值时触发告警。",
+      "metric_name": "disk_used_percent",
+      "algorithm": "max_over_time",
+      "threshold": [
+        {"level": "critical", "value": 95, "method": ">"},
+        {"level": "error", "value": 90, "method": ">"},
+        {"level": "warning", "value": 80, "method": ">"}
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

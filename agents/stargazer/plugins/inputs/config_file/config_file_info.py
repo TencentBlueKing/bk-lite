@@ -114,7 +114,6 @@ class ConfigFileInfo(SSHPlugin):
         version = str(int(time.time() * 1000))
         return {
             "collect_task_id": self.params.get("collect_task_id"),
-            "execution_id": self.params.get("execution_id"),
             "protocol_version": "2",
             "instance_uuid": target_instance_uuid,
             "instance_name": instance_name,

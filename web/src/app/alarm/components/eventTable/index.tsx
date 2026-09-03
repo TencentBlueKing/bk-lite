@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import CustomTable from '@/components/custom-table';
+import FieldGuideTip from '@/components/field-guide-tip';
 import LevelIcon from '@/app/alarm/components/levelIcon';
 import { Drawer, Button, Tag } from 'antd';
 import { ColumnsType } from 'antd/es/table';
@@ -40,6 +41,13 @@ const EventTable: React.FC<EventTableProps> = ({
     setRawVisible(true);
   };
 
+  const timeColumnTitle = (label: string, tip: string) => (
+    <span className="inline-flex items-center">
+      {label}
+      <FieldGuideTip title={label} short={tip} />
+    </span>
+  );
+
   const columns: ColumnsType<any> = [
     { title: 'ID', dataIndex: 'id', key: 'id', width: 110 },
     {
@@ -62,7 +70,20 @@ const EventTable: React.FC<EventTableProps> = ({
       },
     },
     {
-      title: t('alarmCommon.time'),
+      title: timeColumnTitle(
+        t('alarms.receivedTime'),
+        t('alarms.receivedTimeTip')
+      ),
+      dataIndex: 'received_at',
+      key: 'received_at',
+      width: 180,
+      render: (text: string) => (text ? convertToLocalizedTime(text) : '--'),
+    },
+    {
+      title: timeColumnTitle(
+        t('alarms.occurrenceTime'),
+        t('alarms.occurrenceTimeTip')
+      ),
       dataIndex: 'start_time',
       key: 'start_time',
       width: 180,

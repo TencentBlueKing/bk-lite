@@ -445,6 +445,7 @@ describe('APM 服务拓扑画布', () => {
       <TopologyCanvas edges={edges} keyword="" nodes={nodes} onSelect={onSelect} zoom={1} />,
     );
     await waitFor(() => expect(result.container.querySelector('[data-node-id="catalog"]')).not.toBeNull());
+    await waitFor(() => expect(result.container.querySelector('[data-topology-layout-pending="false"]')).not.toBeNull());
     const catalog = result.container.querySelector('[data-node-id="catalog"]') as SVGGElement;
     const beforeTransform = catalog.getAttribute('transform');
     const beforePath = result.container.querySelector('g[data-source="catalog"] > path')?.getAttribute('d');

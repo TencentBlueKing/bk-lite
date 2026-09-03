@@ -85,6 +85,11 @@ class BaseNodeParams(metaclass=ABCMeta):
         return self.metric_scope_id
 
     @property
+    def drop_trigger_metric(self):
+        """配置类采集的 HTTP 接纳指标不进入 VictoriaMetrics。"""
+        return False
+
+    @property
     def model_plugin_name(self):
         """
         获取插件名称，如果找不到则抛出异常
@@ -260,6 +265,7 @@ class BaseNodeParams(metaclass=ABCMeta):
             "response_timeout": self.response_timeout,
             "headers": self.custom_headers(),
             "config_type": getattr(self, "supported_model_id", self.model_id),
+            "drop_trigger_metric": self.drop_trigger_metric,
         }
         jinja_context = self.render_template(context=content)
         nodes.append(

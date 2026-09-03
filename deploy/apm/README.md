@@ -81,7 +81,7 @@ make contract  # 真实 SDK 全链路；需 Docker
 
 ## 探针制品初始化（部署准备期）
 
-APM 接入页生成的 Java / Python / Node.js / Go 接入脚本都从本系统下载离线包，
+APM 接入页生成的 Java / Python / Node.js / Go / .NET 接入脚本都从本系统下载离线包，
 不依赖公网。运维调整发布流水线、归档产物和对象存储初始化，以
 [APM 探针制品发布 Runbook](../../docs/operations/apm-probe-artifact-release.md)
 为准。制品缺失只影响对应语言的接入指引，不阻断 Server 启动，也不得加入

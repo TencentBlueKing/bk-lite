@@ -83,7 +83,7 @@ def test_existing_sidecar_heartbeat_preserves_server_owned_fields(monkeypatch, c
     assert node.push_status == {"cmdb": {"state": "ok"}}
     assert node.created_by == "server-admin"
     assert node.updated_by == "server-admin"
-    assert node.ip == "10.0.0.20"
+    assert node.ip == "10.0.0.10"
     assert node.operating_system == NodeConstants.LINUX_OS
     assert node.collector_configuration_directory == "/opt/fusion-collectors/generated"
     assert node.metrics == {"cpu": 30}

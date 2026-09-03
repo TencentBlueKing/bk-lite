@@ -19,7 +19,7 @@ class IngestSnippetRequest:
     service_name: str
     service_version: str
     environment: str
-    # 本版本四类接入都需要的离线包下载地址，由服务器根据云区域
+    # 本版本五类接入都需要的离线包下载地址，由服务器根据云区域
     # NODE_SERVER_URL 解析，指向本系统的免登录下载接口。
     probe_download_url: str = ""
 
@@ -91,6 +91,9 @@ class TraceSummary:
     span_count: int = 0
 
 
+ENTRY_SPAN_KINDS = ("server", "consumer")
+
+
 @dataclass(frozen=True)
 class SpanSearchQuery:
     started_at: datetime
@@ -102,6 +105,7 @@ class SpanSearchQuery:
     span_name: str | None = None
     status: str | None = None
     kind: str | None = None
+    kinds: tuple[str, ...] | None = None
     min_duration_ms: float | None = None
     max_duration_ms: float | None = None
     cursor: str | None = None
@@ -123,6 +127,10 @@ class SpanSummary:
     kind: str
     http_method: str | None = None
     http_status_code: str | None = None
+    exception_type: str | None = None
+    exception_message: str | None = None
+    span_error_type: str | None = None
+    status_message: str | None = None
 
 
 @dataclass(frozen=True)
@@ -140,6 +148,7 @@ class IssueSearchQuery:
     environment: str | None = None
     cursor: str | None = None
     limit: int = 50
+    entry_only: bool = False
 
     def span_query(self) -> SpanSearchQuery:
         return SpanSearchQuery(
@@ -149,6 +158,7 @@ class IssueSearchQuery:
             service_name=self.service_name,
             environment=self.environment,
             status="error",
+            kinds=ENTRY_SPAN_KINDS if self.entry_only else None,
             cursor=self.cursor,
             limit=self.limit,
         )
@@ -362,6 +372,56 @@ class ServiceRed:
     p99_ms: float | None
     timeseries: tuple[ServiceRedPoint, ...] = ()
     top_endpoints: tuple[ServiceEndpointRed, ...] = ()
+    request_count: int | None = None
+    error_count: int | None = None
+
+
+@dataclass(frozen=True)
+class ServiceErrorBreakdownQuery:
+    service_namespace: str
+    service_name: str
+    environment: str
+    started_at: datetime
+    ended_at: datetime
+    sample_limit: int = 20
+
+
+@dataclass(frozen=True)
+class ServiceFailedEndpoint:
+    endpoint: str
+    error_count: int
+    request_count: int
+    error_rate: float | None
+
+
+@dataclass(frozen=True)
+class ServiceErrorSampleTrace:
+    trace_id: str
+    span_id: str
+    endpoint: str
+    started_at: datetime
+
+
+@dataclass(frozen=True)
+class ServiceErrorType:
+    error_type: str
+    message: str
+    count: int
+    location: str
+    last_seen_at: datetime
+    sample_traces: tuple[ServiceErrorSampleTrace, ...] = ()
+
+
+@dataclass(frozen=True)
+class ServiceErrorBreakdown:
+    request_count: int | None
+    error_count: int | None
+    error_rate: float | None
+    data_state: MetricDataState
+    failed_endpoints: tuple[ServiceFailedEndpoint, ...] = ()
+    other_error_count: int = 0
+    error_types: tuple[ServiceErrorType, ...] = ()
+    recent_failures: tuple[SpanSummary, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -496,6 +556,9 @@ class TraceStore(Protocol):
     def get_trace(self, trace_id: str) -> TraceDetail | None:
         ...
 
+    def service_error_breakdown(self, query: ServiceErrorBreakdownQuery) -> ServiceErrorBreakdown:
+        ...
+
 
 class MetricStore(Protocol):
     def service_red(self, query: ServiceMetricQuery) -> ServiceRed:
@@ -573,6 +636,9 @@ class TelemetryQueryService(Protocol):
         ...
 
     def get_trace(self, trace_id: str) -> TraceDetail | None:
+        ...
+
+    def service_error_breakdown(self, query: ServiceErrorBreakdownQuery) -> ServiceErrorBreakdown:
         ...
 
 

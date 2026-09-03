@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 import re
+from collections import deque
 from typing import Any, Callable, Mapping
 
 from core.collection.constants import AUTH_ERROR_WORDS, SNMP_NO_RESPONSE_WORDS, UNREACHABLE_ERROR_WORDS
@@ -42,6 +43,7 @@ class ConfigurationCollectionPlugin:
         self._metrics = metrics
         self._prepared = False
         self._prepared_executor_config = None
+        self._probed_services: dict[tuple[str, str, int, str, str], deque[Any]] = {}
 
     @property
     def prepared_executor_config(self):
@@ -90,7 +92,14 @@ class ConfigurationCollectionPlugin:
         except (TypeError, ValueError):
             configured_timeout = timeout_seconds
         params["timeout"] = min(configured_timeout, timeout_seconds)
-        return await self._service_factory(params).probe()
+        if _reuses_probe_service(context):
+            params["_runtime_structured_metrics"] = True
+        service = self._service_factory(params)
+        result = await service.probe()
+        if result.status == AccessProbeStatus.READY and _reuses_probe_service(context):
+            key = _probe_service_key(context, target, credential)
+            self._probed_services.setdefault(key, deque()).append(service)
+        return result
 
     async def collect(
         self,
@@ -103,7 +112,14 @@ class ConfigurationCollectionPlugin:
             params["_runtime_metrics"] = self._metrics
         await self._prepare_job_params(target, params)
         params["_runtime_structured_metrics"] = True
-        metrics = await self._service_factory(params).collect()
+        key = _probe_service_key(context, target, credential)
+        services = self._probed_services.get(key)
+        service = services.popleft() if services else None
+        if services is not None and not services:
+            self._probed_services.pop(key, None)
+        if service is None:
+            service = self._service_factory(params)
+        metrics = await service.collect()
         error = _extract_collection_error(metrics)
         if not error:
             return CollectOutcome(
@@ -113,6 +129,7 @@ class ConfigurationCollectionPlugin:
         return _failure_outcome(error, value=metrics)
 
     async def close(self) -> None:
+        self._probed_services.clear()
         if self._node_info_lookup is not None:
             await self._node_info_lookup.close()
 
@@ -297,6 +314,26 @@ def _target_params(
     return params
 
 
+def _reuses_probe_service(context: TargetCollectionContext) -> bool:
+    return str(context.plugin_ref or "") == "network.config" or str(context.params.get("plugin_name") or "") == "snmp_facts"
+
+
+def _probe_service_key(
+    context: TargetCollectionContext,
+    target: str,
+    credential: Mapping[str, Any],
+) -> tuple[str, str, int, str, str]:
+    """以稳定 attempt 身份传递 probe service，避免对象 id 复用误取旧实例。"""
+
+    return (
+        str(context.task_id),
+        str(context.attempt_id or context.owner_id),
+        int(context.fence),
+        str(target),
+        str(credential.get("credential_id") or ""),
+    )
+
+
 def _extract_collection_error(value: Any) -> str:
     if isinstance(value, StructuredMetricsPayload):
         return value.error
@@ -334,10 +371,24 @@ def _failure_outcome(error: str, *, value: Any = None) -> CollectOutcome:
         error_code = "product_api_mismatch"
     elif any(word in normalized for word in SNMP_NO_RESPONSE_WORDS):
         status = CollectOutcomeStatus.RETRY_CREDENTIAL
-        error_code = "credential_probe_no_response"
+        error_code = "snmp_no_response"
     elif any(word in normalized for word in AUTH_ERROR_WORDS):
         status = CollectOutcomeStatus.AUTH_FAILED
         error_code = "authentication_failed"
+    elif any(
+        marker in normalized
+        for marker in (
+            "getbulk",
+            "snmp system get",
+            "snmp interface walk",
+            "oid not increasing",
+            "varbind",
+            "endofmib",
+            "pdu limit",
+        )
+    ):
+        status = CollectOutcomeStatus.FAILED
+        error_code = "snmp_protocol_error"
     elif any(word in normalized for word in UNREACHABLE_ERROR_WORDS):
         status = CollectOutcomeStatus.UNREACHABLE
         error_code = "target_unreachable"

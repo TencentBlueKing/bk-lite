@@ -2030,9 +2030,7 @@ class TestHostCollectorCollect:
         await collector.collect()
 
         call_kwargs = mock_adhoc.call_args[1]
-        assert call_kwargs["module_args"].startswith(
-            f"{LINUX_SCRIPT_WRAPPER_PREFIX} <<'{LINUX_SCRIPT_WRAPPER_EOF}'\n"
-        )
+        assert call_kwargs["module_args"].startswith(f"{LINUX_SCRIPT_WRAPPER_PREFIX} <<'{LINUX_SCRIPT_WRAPPER_EOF}'\n")
 
     @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_default_modules_when_invalid(self, mock_adhoc):
@@ -2766,13 +2764,12 @@ class TestWorkerRunningFlag:
         handler.assert_awaited_once_with({}, {}, "task-worker-2")
 
 
-def test_config_file_callback_payload_preserves_execution_id():
+def test_config_file_callback_payload_uses_periodic_identity_without_execution_id():
     from plugins.inputs.config_file.config_file_info import ConfigFileInfo
 
     plugin = ConfigFileInfo.__new__(ConfigFileInfo)
     plugin.params = {
         "collect_task_id": 10,
-        "execution_id": "execution-current",
         "protocol_version": "2",
         "target_instance_uuid": "123e4567-e89b-42d3-a456-426614174000",
         "host": "10.0.0.1",
@@ -2788,7 +2785,7 @@ def test_config_file_callback_payload_preserves_execution_id():
         }
     )
 
-    assert payload["execution_id"] == "execution-current"
+    assert "execution_id" not in payload
     assert payload["instance_uuid"] == "123e4567-e89b-42d3-a456-426614174000"
     assert "instance_id" not in payload
 

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Button } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import CustomTable from '@/components/custom-table';
+import FieldGuideTip from '@/components/field-guide-tip';
 import AlarmLevelIcon from '@/app/alarm/components/alarm-level-icon';
 import ContentFormDrawer from '@/components/content-form-drawer';
 import EventLevelTag from '@/app/alarm/components/event-level-tag';
@@ -23,6 +24,7 @@ export interface AlarmEventRawData {
 export interface AlarmEventTableItem {
   id: number | string;
   start_time?: string;
+  received_at?: string;
   source_name?: string;
   title?: string;
   resource_type?: string;
@@ -77,6 +79,13 @@ const AlarmEventTable: React.FC<AlarmEventTableProps> = ({
     setRawVisible(true);
   };
 
+  const timeColumnTitle = (label: string, tip: string) => (
+    <span className="inline-flex items-center">
+      {label}
+      <FieldGuideTip title={label} short={tip} />
+    </span>
+  );
+
   const columns: ColumnsType<AlarmEventTableItem> = [
     { title: 'ID', dataIndex: 'id', key: 'id', width: 110 },
     {
@@ -98,7 +107,21 @@ const AlarmEventTable: React.FC<AlarmEventTableProps> = ({
       },
     },
     {
-      title: t('alarmCommon.time'),
+      title: timeColumnTitle(
+        t('alarms.receivedTime'),
+        t('alarms.receivedTimeTip')
+      ),
+      dataIndex: 'received_at',
+      key: 'received_at',
+      width: 180,
+      render: (text?: string) =>
+        text ? convertToLocalizedTime(text) : '--',
+    },
+    {
+      title: timeColumnTitle(
+        t('alarms.occurrenceTime'),
+        t('alarms.occurrenceTimeTip')
+      ),
       dataIndex: 'start_time',
       key: 'start_time',
       width: 180,

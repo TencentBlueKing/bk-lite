@@ -42,6 +42,12 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
             data = self._authorized_query_service(request).query_range(request.data)
         except AuthorizedMetricQueryError as exc:
             self._raise_authorized_query_error(exc)
+        except MetricsQueryBudgetExceeded as exc:
+            return WebUtils.response_error(
+                response_data=exc.data,
+                error_message=exc.message,
+                status_code=exc.STATUS_CODE,
+            )
 
         source_unit = request.data.get("source_unit")
         target_unit = request.data.get("unit")
@@ -73,122 +79,6 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
                 data = self._apply_unit_conversion(data, source_unit, target_unit)
             elif auto_convert:
                 data = self._apply_unit_conversion(data, source_unit)
-        return WebUtils.response_success(data)
-
-    @action(methods=["get"], detail=False, url_path="query")
-    def get_metrics(self, request):
-        """
-        查询指标信息（即时查询）
-
-        Query Parameters:
-            query (str): PromQL 查询语句
-            time (int): 求值时刻（毫秒时间戳）；未传时回退 end，再回退为 VM 当前时间
-            end (int): 与 time 相同语义的回退参数（毫秒），便于与 range 查询共用 search params
-            source_unit (str): 初始单位（必填），如 'B', 'bytes', 'ms', 's' 等
-            unit (str): 指定目标单位，若提供则直接转换到该单位，不使用自动推荐
-            auto_convert_unit (bool): 是否自动转换单位，默认 True（仅在未指定 unit 时生效）
-        """
-        query = request.GET.get("query")
-        source_unit = request.GET.get("source_unit")
-        target_unit = request.GET.get("unit")
-        auto_convert = request.GET.get("auto_convert_unit", "true").lower() == "true"
-        time_ms = request.GET.get("time")
-        if time_ms is None:
-            time_ms = request.GET.get("end")
-
-        if not query:
-            raise BaseAppException("query is required")
-
-        eval_time_sec = None
-        if time_ms is not None:
-            try:
-                eval_time_sec = int(time_ms) / 1000.0
-            except (TypeError, ValueError):
-                raise BaseAppException("time must be an integer timestamp in milliseconds")
-
-        data = MetricsService.get_metrics(query, time=eval_time_sec)
-
-        if source_unit:
-            if target_unit:
-                data = self._apply_unit_conversion(data, source_unit, target_unit)
-            elif auto_convert:
-                data = self._apply_unit_conversion(data, source_unit)
-
-        return WebUtils.response_success(data)
-
-    @action(methods=["get"], detail=False, url_path="query_range")
-    def get_metrics_range(self, request):
-        """
-        查询指标（范围查询）
-
-        Query Parameters:
-            query (str): PromQL 查询语句
-            start (int): 开始时间戳（毫秒）
-            end (int): 结束时间戳（毫秒）
-            step (str): 查询步长，如 '5m'
-            detect_gaps (bool): 是否检测断点区间，默认 False
-            collection_interval (int): 指标采集间隔（秒），开启 detect_gaps 时使用
-            source_unit (str): 初始单位（必填），如 'B', 'bytes', 'ms', 's' 等
-            unit (str): 指定目标单位，若提供则直接转换到该单位，不使用自动推荐
-            auto_convert_unit (bool): 是否自动转换单位，默认 True（仅在未指定 unit 时生效）
-        """
-        query = request.GET.get("query")
-        start = request.GET.get("start")
-        end = request.GET.get("end")
-        step = request.GET.get("step", "5m")
-        source_unit = request.GET.get("source_unit")
-        target_unit = request.GET.get("unit")
-        auto_convert = request.GET.get("auto_convert_unit", "true").lower() == "true"
-        detect_gaps = request.GET.get("detect_gaps", "false").lower() == "true"
-        collection_interval = request.GET.get("collection_interval")
-        query_budget = request.GET.get("query_budget")
-
-        if not query:
-            raise BaseAppException("query is required")
-
-        if start is None or end is None:
-            raise BaseAppException("start and end are required")
-
-        try:
-            start_int = int(start)
-            end_int = int(end)
-        except (TypeError, ValueError):
-            raise BaseAppException("start and end must be integer timestamps in milliseconds")
-
-        if start_int >= end_int:
-            raise BaseAppException("start must be less than end")
-
-        if not step:
-            raise BaseAppException("step is required")
-
-        try:
-            MetricsService.parse_step_to_seconds(step)
-        except ValueError as e:
-            raise BaseAppException(f"invalid step: {e}")
-
-        try:
-            data = MetricsService.get_metrics_range(
-                query,
-                start,
-                end,
-                step,
-                detect_gaps=detect_gaps,
-                collection_interval_seconds=collection_interval,
-                card_budget=query_budget == "card",
-            )
-        except MetricsQueryBudgetExceeded as exc:
-            return WebUtils.response_error(
-                response_data=exc.data,
-                error_message=exc.message,
-                status_code=exc.STATUS_CODE,
-            )
-
-        if source_unit:
-            if target_unit:
-                data = self._apply_unit_conversion(data, source_unit, target_unit)
-            elif auto_convert:
-                data = self._apply_unit_conversion(data, source_unit)
-
         return WebUtils.response_success(data)
 
     @staticmethod

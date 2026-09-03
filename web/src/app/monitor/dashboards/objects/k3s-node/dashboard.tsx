@@ -15,9 +15,9 @@ import {
 import { RingChartPanel, HorizontalBarPanel } from '../../shared/widgets';
 import { buildSearchParams, parseLegacyParamList, normalizeDisplayText } from '../../shared/utils';
 import { buildTopBars, coresDisplay, bytesDisplay } from '../k3s-cluster/parse';
-import { TOP_N } from '../k3s-cluster/queries';
 import { NODE_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
+import { K3S_NODE_TOP_POD_CPU, K3S_NODE_TOP_POD_MEM } from './queries';
 
 export default function K3sNodeDashboardPage() {
   const dashboard = useSimpleDashboardData(NODE_DASHBOARD_CONFIG);
@@ -32,29 +32,30 @@ export default function K3sNodeDashboardPage() {
     if (legacy.length > 0) return legacy;
     const normalized = normalizeDisplayText(searchParams.get('instance_id') || '');
     return normalized ? [normalized] : [];
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
   const idValuesKey = idValues.join('|');
 
   const [topPodCpuRaw, setTopPodCpuRaw] = useState<any>(null);
   const [topPodMemRaw, setTopPodMemRaw] = useState<any>(null);
 
-  const NODE_TOP_POD_CPU = `topk(${TOP_N}, sum by (pod) (rate(prometheus_remote_write_container_cpu_usage_seconds_total{instance_type="k3s",__$labels__}[5m])))`;
-  const NODE_TOP_POD_MEM = `topk(${TOP_N}, sum by (pod) (prometheus_remote_write_container_memory_working_set_bytes{instance_type="k3s",__$labels__}))`;
-
   useEffect(() => {
     if (idValues.length === 0) return;
     let active = true;
     const tv: TimeValuesProps = dashboard.timeValues;
-    getInstanceQuery(buildSearchParams(NODE_TOP_POD_CPU, 'none', idValues, instanceIdKeys, tv, undefined, false, dashboard.currentInstanceInterval))
+    getInstanceQuery(buildSearchParams(K3S_NODE_TOP_POD_CPU, 'none', idValues, instanceIdKeys, tv, undefined, false, dashboard.currentInstanceInterval, {
+      monitorObjectId: dashboard.monitorObjectId,
+      instanceId: dashboard.instanceId,
+    }))
       .then((r) => { if (active) setTopPodCpuRaw(r); })
       .catch(() => { if (active) setTopPodCpuRaw(null); });
     // 内存为字节类指标:禁用服务端单位自动换算,否则与前端 bytesDisplay 双重换算(见 k3s-cluster 同因)。
-    getInstanceQuery(buildSearchParams(NODE_TOP_POD_MEM, 'bytes', idValues, instanceIdKeys, tv, undefined, false, dashboard.currentInstanceInterval))
+    getInstanceQuery(buildSearchParams(K3S_NODE_TOP_POD_MEM, 'bytes', idValues, instanceIdKeys, tv, undefined, false, dashboard.currentInstanceInterval, {
+      monitorObjectId: dashboard.monitorObjectId,
+      instanceId: dashboard.instanceId,
+    }))
       .then((r) => { if (active) setTopPodMemRaw(r); })
       .catch(() => { if (active) setTopPodMemRaw(null); });
     return () => { active = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idValuesKey, dashboard.currentInstanceInterval, dashboard.timeValues]);
 
   const nodeTopPodCpuBars = useMemo(() => buildTopBars(topPodCpuRaw, 'pod', '#9254de', coresDisplay), [topPodCpuRaw]);

@@ -1,10 +1,6 @@
-import json
-from types import SimpleNamespace
-
 import pytest
 
 from apps.monitor.services.metrics import Metrics, MetricsQueryBudgetExceeded
-from apps.monitor.views.metrics_instance import MetricsInstanceViewSet
 
 pytestmark = pytest.mark.unit
 
@@ -118,39 +114,6 @@ def test_fill_missing_points_rejects_excessive_grid_before_dataframe_allocation(
 
     assert raised.value.data["reason"] == "total_points"
     assert data[0]["values"] == [[0, "1"]]
-
-
-def test_metrics_range_view_returns_structured_422_for_budget_error(monkeypatch):
-    error = MetricsQueryBudgetExceeded(
-        data={
-            "code": "MONITOR_RANGE_QUERY_BUDGET_EXCEEDED",
-            "reason": "points_per_series",
-            "limits": {"points_per_series": 10000},
-            "actual": {"points_per_series": 20000},
-        }
-    )
-    monkeypatch.setattr(
-        "apps.monitor.views.metrics_instance.MetricsService.get_metrics_range",
-        lambda *args, **kwargs: (_ for _ in ()).throw(error),
-    )
-
-    response = MetricsInstanceViewSet().get_metrics_range(
-        SimpleNamespace(
-            GET={
-                "query": "cpu_usage",
-                "start": "0",
-                "end": "1200000",
-                "step": "60s",
-            }
-        )
-    )
-
-    assert response.status_code == 422
-    assert json.loads(response.content) == {
-        "data": error.data,
-        "result": False,
-        "message": "指标范围查询超过服务端预算，请缩短时间范围、减少实例或增大查询步长",
-    }
 
 
 def test_card_budget_clamps_step_before_shared_hard_budget(monkeypatch):
@@ -681,62 +644,3 @@ def test_get_metrics_range_detects_one_minute_gaps_for_thirty_day_window(monkeyp
             ],
         },
     ]
-
-
-def test_metrics_range_view_passes_gap_detection_query_params(monkeypatch):
-    captured = {}
-
-    def fake_get_metrics_range(
-        query,
-        start,
-        end,
-        step,
-        detect_gaps=False,
-        collection_interval_seconds=None,
-        card_budget=False,
-    ):
-        captured.update(
-            {
-                "query": query,
-                "start": start,
-                "end": end,
-                "step": step,
-                "detect_gaps": detect_gaps,
-                "collection_interval_seconds": collection_interval_seconds,
-                "card_budget": card_budget,
-            }
-        )
-        return {"status": "success", "data": {"result": []}}
-
-    monkeypatch.setattr(
-        "apps.monitor.views.metrics_instance.MetricsService.get_metrics_range",
-        fake_get_metrics_range,
-    )
-    monkeypatch.setattr(
-        "apps.monitor.views.metrics_instance.WebUtils.response_success",
-        staticmethod(lambda data: data),
-    )
-
-    response = MetricsInstanceViewSet().get_metrics_range(
-        SimpleNamespace(
-            GET={
-                "query": "cpu_usage",
-                "start": "0",
-                "end": "600000",
-                "step": "1h",
-                "detect_gaps": "true",
-                "collection_interval": "60",
-            }
-        )
-    )
-
-    assert response == {"status": "success", "data": {"result": []}}
-    assert captured == {
-        "query": "cpu_usage",
-        "start": "0",
-        "end": "600000",
-        "step": "1h",
-        "detect_gaps": True,
-        "collection_interval_seconds": "60",
-        "card_budget": False,
-    }

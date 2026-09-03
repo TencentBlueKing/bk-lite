@@ -2359,6 +2359,7 @@ class ToolsNodes(
             registered_tools = list(tools)
             original_messages = list(state.get("messages") or [])
             collected_output_messages: List[BaseMessage] = []
+            summary_ran = False
             skill_packages = self._resolve_skill_packages(graph_request)
             has_skill_packages = bool(skill_packages)
             # 渐进路径推迟沙箱物化：空计划寒暄不应为技能包付 DeepAgent/FS 税。
@@ -2730,6 +2731,8 @@ class ToolsNodes(
                 agent_state: Dict[str, Any] = {"messages": without_system_messages(original_messages)}
                 replan_count = 0
                 total_steps = len(plan.steps)
+                summary_ran = False
+                self._set_hide_planned_step_text(graph_request, True)
 
                 while pending_steps:
                     step = pending_steps.pop(0)
@@ -2754,7 +2757,8 @@ class ToolsNodes(
                     ):
                         step_guidance = "\n" + self._skill_only_step_guidance(skill_packages)
                     else:
-                        step_guidance = "\n" + self._planned_tool_step_guidance()
+                        is_last_step = not pending_steps
+                        step_guidance = "\n" + self._planned_tool_step_guidance(is_last_step=is_last_step)
                     step_message = _internal_message(
                         f"执行计划当前步骤：{step.objective}\n"
                         f"本步骤计划工具：{', '.join(step.tools) or '无'}。\n"
@@ -3045,6 +3049,7 @@ class ToolsNodes(
                 active_tools.clear()
                 visibility_middleware.include_always_visible = False
                 limit_middleware.enforce_limits = False
+                self._set_hide_planned_step_text(graph_request, False)
                 # 若分析步因上限提前结束，仍要在最终总结前补上修复闭环。
                 await _maybe_run_repair_workflow()
                 completed_text = "\n".join(f"- {step.objective}: {step.result}" for step in completed_steps) or "没有需要执行工具的步骤"
@@ -3060,9 +3065,11 @@ class ToolsNodes(
                         "当前没有可用工具，不要继续调用工具；"
                         "请用一两句告知用户查看上方报告与修复建议，不要重复 Markdown 表格或声称数据被截断。"
                     )
-                elif len(completed_steps) == 1 and self._planned_step_already_answered(collected_output_messages):
-                    # 单步已经把答案写进正文（技能表 / 工具一两句话）。
-                    # 再跑总结轮会换个说法复述，用户看到两份结果。
+                elif self._should_skip_planned_summary(
+                    collected_output_messages,
+                    completed_step_count=len(completed_steps),
+                ):
+                    # 步骤正文已经给过表格或完整答案。再跑总结轮会换个说法复述。
                     result = {"messages": list(agent_state.get("messages") or [])}
                     final_message = None
                 else:
@@ -3071,9 +3078,10 @@ class ToolsNodes(
                         f"已完成步骤及结果：\n{completed_text}\n\n"
                         "现在向用户给出最终答案。当前没有可用工具，不要继续调用工具；"
                         "请基于已有证据直接总结结论、依据和下一步建议。"
-                        "用户已经看过步骤里的表格或清单时，不要再输出表格、不要重复名单，最多补一两句。"
+                        "禁止再输出 Markdown 表格或重复名单；用户若已看过步骤结果，最多补一两句。"
                     )
                 if final_message is not None:
+                    summary_ran = True
                     final_payload = {
                         **agent_state,
                         "messages": list(agent_state.get("messages") or []) + [final_message],
@@ -3123,6 +3131,7 @@ class ToolsNodes(
                         ]
                     }
             finally:
+                self._set_hide_planned_step_text(graph_request, False)
                 # 用完即弃：销毁本次运行的一次性技能沙箱目录
                 # _cleanup_sandbox 内部有 None 守卫,但这里再写一次防御:
                 # sandbox_dir 只在 _build_skill_backend_and_sources 成功返回时
@@ -3133,7 +3142,10 @@ class ToolsNodes(
             # 分步执行路径已单独累积对外消息；其余路径仍从最终 state 截取新增消息。
             final_messages = result.get("messages", [])
             if collected_output_messages:
-                new_messages = collected_output_messages
+                new_messages = self._select_visible_planned_messages(
+                    collected_output_messages,
+                    summary_ran=summary_ran,
+                )
             else:
                 if not final_messages:
                     return {"messages": [AIMessage(content="DeepAgent 未返回任何消息")]}

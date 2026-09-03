@@ -97,8 +97,8 @@ class CollectModelService(object):
 
     @classmethod
     def should_register_sync_beat(cls, instance):
-        """VM 对账任务改由全局守门调度；仅非 VM 链路（如 config_file）保留按任务 beat。"""
-        return not uses_vm_reconciliation(instance)
+        """配置制品由 Telegraf 调度；VM 对账任务由全局守门调度。"""
+        return instance.task_type != CollectPluginTypes.CONFIG_FILE and not uses_vm_reconciliation(instance)
 
     @staticmethod
     def has_permission(request, instance, view_self):
@@ -805,6 +805,8 @@ class CollectModelService(object):
 
     @classmethod
     def _exec_task_after_lock(cls, instance, operator):
+        if getattr(instance, "task_type", None) == CollectPluginTypes.CONFIG_FILE:
+            return WebUtils.response_error(error_message="配置文件采集仅支持周期执行", status_code=400)
         if instance.exec_status == CollectRunStatusType.RUNNING:
             return WebUtils.response_error(error_message="任务正在执行中!无法重复执行！", status_code=400)
 

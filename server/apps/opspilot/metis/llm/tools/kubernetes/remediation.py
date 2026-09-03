@@ -11,7 +11,8 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from loguru import logger
 
-from apps.opspilot.metis.llm.tools.kubernetes.utils import prepare_context
+from apps.opspilot.metis.llm.tools.kubernetes.instance_scope import prepare_point_instance
+from apps.opspilot.metis.llm.tools.kubernetes.utils import coerce_bool, coerce_int, prepare_context
 
 
 def _log_operation(operation: str, namespace: str, resource_type: str, resource_name: str):
@@ -34,6 +35,7 @@ def restart_pod(
     namespace: str,
     wait_for_ready: bool = True,
     timeout: int = 60,
+    instance_name=None,
     config: RunnableConfig = None,
 ):
     """
@@ -61,6 +63,7 @@ def restart_pod(
         timeout (int, optional): 等待超时时间（秒），默认60
             - 仅在wait_for_ready=True时生效
             - 超时不代表失败，只是不再等待
+        instance_name (str, optional): 多实例时必须指定集群
         config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
@@ -89,6 +92,9 @@ def restart_pod(
     - 重启前确认是由控制器管理的Pod
     - 建议使用wait_for_ready=True，确保新Pod启动成功
     """
+    config, err = prepare_point_instance(config, instance_name)
+    if err:
+        return err
     # TODO(security F022): gate behind human approval + namespace allow-list
     logger.warning(
         "UNGATED destructive K8S operation",
@@ -100,6 +106,8 @@ def restart_pod(
             "ungated": True,
         },
     )
+    wait_for_ready = coerce_bool(wait_for_ready, True)
+    timeout = coerce_int(timeout, 60, lo=1, hi=600)
     prepare_context(config)
 
     try:
@@ -193,7 +201,7 @@ def restart_pod(
 
 
 @tool()
-def scale_deployment(deployment_name: str, namespace: str, replicas: int, config: RunnableConfig = None):
+def scale_deployment(deployment_name: str, namespace: str, replicas: int, instance_name=None, config: RunnableConfig = None):
     """
     扩缩容Deployment或StatefulSet - 应对流量变化
 
@@ -217,6 +225,7 @@ def scale_deployment(deployment_name: str, namespace: str, replicas: int, config
             - >当前副本数: 扩容操作
             - <当前副本数: 缩容操作
             - 0: 完全停止服务（谨慎使用）
+        instance_name (str, optional): 多实例时必须指定集群
         config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
@@ -244,6 +253,13 @@ def scale_deployment(deployment_name: str, namespace: str, replicas: int, config
     - 缩容：建议逐步缩容，观察服务影响
     - 生产环境：谨慎缩容到0副本（会导致服务完全下线）
     """
+    config, err = prepare_point_instance(config, instance_name)
+    if err:
+        return err
+    try:
+        replicas = coerce_int(replicas, lo=0, hi=10000)
+    except ValueError:
+        return json.dumps({"success": False, "error": "replicas 必须是整数", "resource_name": deployment_name, "namespace": namespace})
     # TODO(security F022): gate behind human approval + namespace allow-list
     logger.warning(
         "UNGATED destructive K8S operation",
@@ -413,7 +429,7 @@ def get_deployment_revision_history(deployment_name, namespace, config: Runnable
 
 
 @tool()
-def rollback_deployment(deployment_name: str, namespace: str, revision: Optional[int] = None, config: RunnableConfig = None):
+def rollback_deployment(deployment_name: str, namespace: str, revision: Optional[int] = None, instance_name=None, config: RunnableConfig = None):
     """
     回滚Deployment到指定版本，快速恢复服务
 
@@ -438,6 +454,7 @@ def rollback_deployment(deployment_name: str, namespace: str, revision: Optional
             - None: 自动回滚到前一个版本（最常用）
             - 2: 回滚到revision 2
             - 使用 get_deployment_revision_history 查看可用版本
+        instance_name (str, optional): 多实例时必须指定集群
         config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
@@ -464,6 +481,13 @@ def rollback_deployment(deployment_name: str, namespace: str, revision: Optional
     - 生产环境回滚建议先在测试环境验证
     - 回滚后观察服务状态，确认问题已解决
     """
+    config, err = prepare_point_instance(config, instance_name)
+    if err:
+        return err
+    try:
+        revision = coerce_int(revision, lo=1, hi=10_000_000, allow_none=True)
+    except ValueError:
+        return json.dumps({"success": False, "error": "revision 必须是整数", "deployment_name": deployment_name, "namespace": namespace})
     # TODO(security F022): gate behind human approval + namespace allow-list
     logger.warning(
         "UNGATED destructive K8S operation",
@@ -563,6 +587,7 @@ def delete_kubernetes_resource(
     resource_name: str,
     namespace: str,
     grace_period: int = 30,
+    instance_name=None,
     config: RunnableConfig = None,
 ):
     """
@@ -589,6 +614,7 @@ def delete_kubernetes_resource(
             - 30: 给Pod足够时间清理资源（推荐）
             - 0: 立即强制删除（谨慎使用）
             - 60: 对于需要长时间清理的应用
+        instance_name (str, optional): 多实例时必须指定集群
         config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
@@ -611,6 +637,9 @@ def delete_kubernetes_resource(
     - 批量删除 → 使用 cleanup_failed_pods
     - 删除前检查依赖 → 使用 find_configmap_consumers
     """
+    config, err = prepare_point_instance(config, instance_name)
+    if err:
+        return err
     # TODO(security F022): gate behind human approval + namespace allow-list
     logger.warning(
         "UNGATED destructive K8S operation",
@@ -673,7 +702,7 @@ def delete_kubernetes_resource(
 
 
 @tool()
-def wait_for_pod_ready(pod_name, namespace, timeout=60, config: RunnableConfig = None):
+def wait_for_pod_ready(pod_name, namespace, timeout: int = 60, instance_name=None, config: RunnableConfig = None):
     """
     等待Pod就绪，验证操作成功
 
@@ -696,6 +725,7 @@ def wait_for_pod_ready(pod_name, namespace, timeout=60, config: RunnableConfig =
             - 60: 适用于大部分应用
             - 120: 对于启动慢的应用（如Java）
             - 30: 对于快速启动的应用
+        instance_name (str, optional): 多实例时必须指定集群
         config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
@@ -716,7 +746,11 @@ def wait_for_pod_ready(pod_name, namespace, timeout=60, config: RunnableConfig =
     - 如果Pod处于Failed状态，会立即返回失败
     - 超时不代表Pod永远不会就绪，只是超过等待时间
     """
+    config, err = prepare_point_instance(config, instance_name)
+    if err:
+        return err
     prepare_context(config)
+    timeout = coerce_int(timeout, 60, lo=1, hi=600)
 
     try:
         core_v1 = client.CoreV1Api()

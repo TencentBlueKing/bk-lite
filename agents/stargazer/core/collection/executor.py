@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections import Counter
 
 from core.collection.capacity import TargetActivityTracker, TargetWorkerBudget, unlimited_target_gate
 from core.collection.contracts import (
@@ -29,6 +28,7 @@ from core.collection.execution_plan import ExecutionPlan
 from core.collection.metrics import CollectionMetrics
 from core.collection.result_delivery import PendingPublish, ResultDeliveryCoordinator
 from core.collection.result_publisher import ImmediateResultPublishQueue
+from core.collection.run_result_sink import RunResultSink
 from core.collection.runtime import CollectionRequest, RunLease
 from core.collection.scheduler import CollectionScheduler
 from core.collection.target_attempt import TargetAttemptRunner, request_instance_id
@@ -36,7 +36,6 @@ from core.logger import logger, safe_exception_info, safe_log_value
 from core.plugin.error_logging import PluginExceptionLogBudget
 
 _FAILURE_SUMMARY_SAMPLE_LIMIT = 3
-_FAILURE_SUMMARY_CODE_LIMIT = 8
 
 # 兼容旧 import：执行器专属符号仍由此导出；领域类型请优先 from core.collection.contracts
 __all__ = [
@@ -123,13 +122,9 @@ class TargetCollectionExecutor:
         round_ts = new_round_ts()
         targets = request.targets
         instance_id = request_instance_id(request)
-        results: dict[int, TargetCollectionResult] = {}
-        publish_statuses: dict[int, str] = {}
-        publish_error_codes: dict[int, str] = {}
         active_targets: set[str] = set()
         progress_completed = 0
         progress_step = max(1, (len(targets) + 9) // 10)
-        skipped = 0
         delivery = ResultDeliveryCoordinator(
             publisher=self._publisher,
             settings=self._settings,
@@ -138,6 +133,11 @@ class TargetCollectionExecutor:
             lease=lease,
             log_identity=_request_log_identity(request, instance_id),
             failure_log_limit=_FAILURE_SUMMARY_SAMPLE_LIMIT,
+        )
+        result_sink = RunResultSink(
+            delivery=delivery,
+            metrics=self._metrics,
+            total_targets=len(targets),
         )
         plugin_exception_log_budget = PluginExceptionLogBudget(
             limit=_FAILURE_SUMMARY_SAMPLE_LIMIT
@@ -257,16 +257,18 @@ class TargetCollectionExecutor:
                 if self._plan.capacity_group == "network_topology"
                 else request.workload_class
             )
-            scheduled = await self._scheduler.execute(
-                f"{request.task_id}:{lease.fence}",
-                range(len(targets)),
-                execute_index,
-                workload=workload_class,
-                capacity_group=self._plan.capacity_group,
-            )
-            pending_publishes = scheduled
-            for pending in scheduled:
-                results[pending.index] = pending.result
+            try:
+                await self._scheduler.execute(
+                    f"{request.task_id}:{lease.fence}",
+                    range(len(targets)),
+                    execute_index,
+                    workload=workload_class,
+                    capacity_group=self._plan.capacity_group,
+                    consume_result=result_sink.accept,
+                )
+            except BaseException:
+                await result_sink.abort()
+                raise
         else:
             next_index = 0
             iterator_lock = asyncio.Lock()
@@ -280,8 +282,7 @@ class TargetCollectionExecutor:
                         index = next_index
                         next_index += 1
                     pending = await execute_index(index)
-                    results[pending.index] = pending.result
-                    pending_publishes.append(pending)
+                    await result_sink.accept(pending)
 
             window = self._settings.target_task_window
             desired_workers = (
@@ -290,7 +291,6 @@ class TargetCollectionExecutor:
                 else (min(len(targets), window) if targets else 1)
             )
             worker_count = await self._worker_budget.reserve(desired_workers)
-            pending_publishes = []
             worker_tasks = [
                 asyncio.create_task(
                     worker(),
@@ -305,93 +305,26 @@ class TargetCollectionExecutor:
                     if not task.done():
                         task.cancel()
                 await asyncio.gather(*worker_tasks, return_exceptions=True)
+                await result_sink.abort()
                 raise
             finally:
                 await self._worker_budget.release(worker_count)
-        for pending in pending_publishes:
-            index, publish_status, publish_error_code = await delivery.finish(pending)
-            publish_statuses[index] = publish_status
-            publish_error_codes[index] = publish_error_code
-        completed = tuple(results.values())
-        for status in publish_statuses.values():
-            self._metrics.increment(f"publish_{status}_total")
-            if status == "succeeded":
-                self._metrics.increment("publish_confirmed_total")
-            elif status == "unknown":
-                self._metrics.increment("publish_delivery_unknown_total")
-            elif status == "failed":
-                self._metrics.increment("publish_retryable_failed_total")
-        summary = RunSummary(
-            total=len(targets),
-            collection_succeeded=sum(
-                result.status == "success" for result in completed
-            ),
-            collection_failed=sum(result.status == "failed" for result in completed),
-            unreachable=sum(result.status == "unreachable" for result in completed),
-            deferred=sum(result.status == "deferred" for result in completed),
-            skipped=skipped,
-            publish_succeeded=sum(
-                status == "succeeded" for status in publish_statuses.values()
-            ),
-            publish_not_applicable=sum(
-                status == "not_applicable" for status in publish_statuses.values()
-            ),
-            publish_failed=sum(
-                status == "failed" for status in publish_statuses.values()
-            ),
-            publish_unknown=sum(
-                status == "unknown" for status in publish_statuses.values()
-            ),
-            publish_event_failed=sum(
-                status == "event_failed" for status in publish_statuses.values()
-            ),
-            publish_permanent_failed=sum(
-                status == "permanent_failed" for status in publish_statuses.values()
-            ),
-        )
-        failures = tuple(result for result in completed if result.status in {"failed", "unreachable"})
-        failure_counts = Counter(result.error_code or result.status for result in failures)
-        failure_codes = _bounded_failure_counts(failure_counts)
-        failure_samples = ",".join(
-            "%s|%s|%s"
-            % (
-                safe_log_value(result.target, max_length=255),
-                safe_log_value(_failure_stage_name(result)),
-                safe_log_value(result.error_code or result.status),
-            )
-            for result in failures[:_FAILURE_SUMMARY_SAMPLE_LIMIT]
-        ) or "-"
-        if failures:
+        report = await result_sink.finish()
+        summary = report.summary
+        if report.total_failures:
             logger.info(
                 "event=collection_failure_samples %s plugin_ref=%s model_id=%s "
                 "sample_count=%s total_failures=%s samples=%s",
                 _request_log_identity(request, instance_id),
                 safe_log_value(request.plugin_ref),
                 safe_log_value(request.params.get("model_id") or "-"),
-                min(len(failures), _FAILURE_SUMMARY_SAMPLE_LIMIT),
-                len(failures),
-                failure_samples,
+                report.failure_sample_count,
+                report.total_failures,
+                report.failure_samples,
             )
-        publish_failures = tuple(
-            (index, status, publish_error_codes.get(index) or status)
-            for index, status in publish_statuses.items()
-            if status not in {"succeeded", "not_applicable"}
-        )
-        publish_failure_counts = Counter(error_code for _index, _status, error_code in publish_failures)
-        publish_failure_codes = (
-            ",".join(
-                f"{safe_log_value(code)}:{count}"
-                for code, count in sorted(publish_failure_counts.items())
-            )
-            or "-"
-        )
-        publish_failure_samples = ",".join(
-            f"{safe_log_value(targets[index], max_length=255)}|{safe_log_value(error_code)}"
-            for index, _status, error_code in publish_failures[:_FAILURE_SUMMARY_SAMPLE_LIMIT]
-        ) or "-"
         log_summary = (
             logger.warning
-            if failures
+            if report.total_failures
             or summary.publish_failed
             or summary.publish_unknown
             or summary.publish_event_failed
@@ -419,10 +352,10 @@ class TargetCollectionExecutor:
             summary.publish_event_failed,
             summary.publish_permanent_failed,
             round((time.monotonic() - run_started_at) * 1000, 2),
-            failure_codes,
-            failure_samples,
-            publish_failure_codes,
-            publish_failure_samples,
+            report.failure_codes,
+            report.failure_samples,
+            report.publish_failure_codes,
+            report.publish_failure_samples,
         )
         from core.collection.round_complete import is_complete_round
 
@@ -450,42 +383,6 @@ def _request_log_identity(request: CollectionRequest, instance_id: str) -> str:
     if instance_id != "-":
         return f"instance_id={safe_log_value(instance_id)}"
     return f"task_id={safe_log_value(request.task_id)}"
-
-
-def _bounded_failure_counts(failure_counts: Counter) -> str:
-    ordered = sorted(
-        failure_counts.items(),
-        key=lambda item: (-item[1], str(item[0])),
-    )
-    visible = ordered[:_FAILURE_SUMMARY_CODE_LIMIT]
-    rendered = [f"{safe_log_value(code)}:{count}" for code, count in visible]
-    other_count = sum(count for _code, count in ordered[_FAILURE_SUMMARY_CODE_LIMIT:])
-    if other_count:
-        rendered.append(f"other:{other_count}")
-    return ",".join(rendered) or "-"
-
-
-def _failure_stage_name(result: TargetCollectionResult) -> str:
-    if result.failed_stage is not None:
-        return result.failed_stage.value
-    error_code = result.error_code or result.status
-    if result.status == "unreachable" and result.attempts == 0:
-        return "preflight"
-    if error_code.startswith("access_probe_") or error_code in {
-        "protocol_no_response",
-        "no_response_attempt_limit",
-        "target_unreachable",
-    }:
-        return "access_probe"
-    if error_code in {
-        "authentication_failed",
-        "credential_state_unavailable",
-        "credentials_exhausted",
-        "no_matching_credential",
-        "no_valid_credential",
-    }:
-        return "credential"
-    return "collection"
 
 
 def _target_status_zh(status: str) -> str:

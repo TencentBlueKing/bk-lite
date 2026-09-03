@@ -152,6 +152,7 @@ const useIntegrationApi = () => {
         collector: string;
         collect_type: string;
         monitor_object_id: string;
+        monitor_plugin_id?: string | number;
       }) => {
         return await get(`/monitor/api/monitor_plugin/ui_template_by_params/`, {
           params,

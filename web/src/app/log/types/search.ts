@@ -5,6 +5,7 @@ export interface SearchTableProps {
   dataSource: TableDataItem[];
   fields: string[];
   loading?: boolean;
+  highlightQuery?: string;
   scroll?: {
     x?: string | number;
     y?: string | number;
@@ -48,6 +49,7 @@ export interface AggregatedResult {
 export interface LogTerminalProps {
   className?: string;
   query: SearchParams;
+  highlightQuery?: string;
   fetchData?: (loading: boolean) => void;
 }
 

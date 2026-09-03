@@ -24,11 +24,79 @@ export const WALL_FILTER_MOTION = {
   startScale: 0.98,
 } as const;
 
+export const FOCUS_MOTION = {
+  durationMs: 380,
+  liftZ: 0.42,
+  scale: 1.05,
+  dimOpacity: 0.22,
+  dimBright: 0.55,
+} as const;
+
+export const ARCHITECTURE_MOTION = {
+  /** CubicEase-in-out camera fly; wait for this to finish before expand. */
+  cameraMs: 3000,
+  cameraRadiusScale: 1,
+  /**
+   * Extra world-Y on the landed look target (0 = plane midpoint).
+   * A slight drop keeps the lampshade foot in frame at the flatter phi.
+   */
+  cameraTargetLift: -0.55,
+  /** Extra world-Z on the landed look target (into the stack is negative). */
+  cameraTargetForward: 0,
+  planeMs: 420,
+  expandMs: 420,
+  labelMs: 280,
+  tubeMs: 360,
+  staggerMs: 200,
+  maxStaggerMs: 2000,
+  startScale: 0.08,
+  /** Spawn the platforms in front of the landed camera, then ease them to rest. */
+  planeStartDistance: 12,
+  /** Wall cards shrink + fade out, then stay gone for the landed frame. */
+  wallHideMs: 500,
+  wallHideScale: 0.35,
+} as const;
+
+/** Architecture shows exactly two horizontal XZ platforms: 应用 then 主机. */
+export const ARCHITECTURE_PLANE_COUNT = 2;
+
+export const easeLinear = (t: number) => {
+  if (t <= 0) return 0;
+  if (t >= 1) return 1;
+  return t;
+};
+
+/** Planes ease in first, staggered ~200ms (应用 → 主机). */
+export const architecturePlaneDelayMs = (
+  index: number,
+  count = ARCHITECTURE_PLANE_COUNT,
+) =>
+  cardStaggerDelayMs(
+    index,
+    count,
+    ARCHITECTURE_MOTION.staggerMs,
+    ARCHITECTURE_MOTION.maxStaggerMs,
+  );
+
+export const architecturePlanesDoneMs = (count = ARCHITECTURE_PLANE_COUNT) =>
+  architecturePlaneDelayMs(Math.max(count - 1, 0), count) + ARCHITECTURE_MOTION.planeMs;
+
+/** Racks scale after every plane has finished. */
+export const architectureNodeDelayMs = (_index = 0, _count = 1) => architecturePlanesDoneMs();
+
+/** Labels appear after racks reach rest scale. */
+export const architectureLabelDelayMs = (_index = 0, _count = 1) =>
+  architectureNodeDelayMs() + ARCHITECTURE_MOTION.expandMs;
+
+/** Inter-plane tubes appear after labels. */
+export const architectureTubeDelayMs = () =>
+  architectureLabelDelayMs() + ARCHITECTURE_MOTION.labelMs;
+
 export const cardStaggerDelayMs = (
   index: number,
   count: number,
-  staggerMs = WALL_ENTRANCE.staggerMs,
-  maxMs = WALL_ENTRANCE.maxStaggerMs,
+  staggerMs: number = WALL_ENTRANCE.staggerMs,
+  maxMs: number = WALL_ENTRANCE.maxStaggerMs,
 ) => {
   if (count <= 1 || index <= 0) return 0;
   const interval = Math.min(staggerMs, maxMs / Math.max(count - 1, 1));

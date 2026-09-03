@@ -20,7 +20,6 @@ from django.core.management import BaseCommand
 from django.db import transaction
 
 from apps.core.logger import operation_analysis_logger as logger
-from apps.operation_analysis.common.datasource_security import LEGACY_RAW_MONITOR_QUERY_ROUTES
 from apps.operation_analysis.common.load_json_data import load_support_json
 from apps.operation_analysis.constants.import_export import YAML_SCHEMA_VERSION
 
@@ -156,8 +155,6 @@ def _collect_retired_builtin_objects(doc, canvas_type_model_map, datasource_mode
         datasource_model.objects.filter(is_build_in=True, build_in_key__isnull=False)
         .exclude(build_in_key="")
         .exclude(build_in_key__in=builtin_keys)
-        # 裸查询路由已停止新装发布，但存量画布仍依赖原数据源主键；迁移完成前不得自动退役。
-        .exclude(source_type="nats", rest_api__in=LEGACY_RAW_MONITOR_QUERY_ROUTES)
         .order_by("pk")
     )
     if lock:

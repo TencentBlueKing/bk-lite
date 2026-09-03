@@ -47,7 +47,7 @@ const INTEGRATION_GROUPS: { key: string; title: string; icon: ReactNode; methods
       { key: 'nodejs', title: 'Node.js', icon: <JavaScriptOutlined aria-hidden="true" />, language: 'nodejs', available: true },
       { key: 'java', title: 'Java', icon: <CoffeeOutlined aria-hidden="true" />, language: 'java', available: true },
       { key: 'python', title: 'Python', icon: <PythonOutlined aria-hidden="true" />, language: 'python', available: true },
-      { key: 'dotnet', title: '.NET', icon: <DotNetOutlined aria-hidden="true" />, available: false },
+      { key: 'dotnet', title: '.NET', icon: <DotNetOutlined aria-hidden="true" />, language: 'dotnet', available: true },
       { key: 'go', title: 'Go', icon: <CodeOutlined aria-hidden="true" />, language: 'go', available: true },
     ],
   },
@@ -156,34 +156,34 @@ export default function ApmIntegrationAddPage() {
   const integrationGroups = useMemo(() => {
     const copy: Record<string, { description: string; badge?: string; title?: string }> = {
       nodejs: {
-        description: t('apm.integration.nodejsDesc', '零代码自动探针，支持 Express / Nest / Koa / Fastify'),
+        description: t('apm.integration.nodejsDesc', '自动探针，支持 Express / Nest / Koa / Fastify'),
         badge: t('apm.integration.recommended', '推荐'),
       },
       java: {
-        description: t('apm.integration.javaDesc', 'Java Agent 字节码注入，支持 Spring / Dubbo / gRPC'),
+        description: t('apm.integration.javaDesc', '自动探针，支持 Spring / Dubbo / gRPC'),
         badge: t('apm.integration.recommended', '推荐'),
       },
       python: {
-        description: t('apm.integration.pythonDesc', '自动探针接入，支持 Django / Flask / FastAPI'),
+        description: t('apm.integration.pythonDesc', '自动探针，支持 Django / Flask / FastAPI'),
       },
       dotnet: {
-        description: t('apm.integration.dotnetDesc', '基于 OpenTelemetry .NET 自动探针'),
+        description: t('apm.integration.dotnetDesc', '自动探针，支持 Linux x86_64 glibc'),
       },
       go: {
-        description: t('apm.integration.goDesc', '手动初始化 OpenTelemetry Go SDK，生成完整 Provider 示例'),
+        description: t('apm.integration.goDesc', '手动接入，生成 OpenTelemetry Provider 示例'),
         badge: t('apm.integration.manualSdk', '手动 SDK'),
       },
       'otel-collector': {
-        description: t('apm.integration.otelDesc', '复用自建 Collector，将链路转发到平台 OTLP 端点'),
+        description: t('apm.integration.otelDesc', '转发自建 Collector 链路到平台 OTLP 端点'),
       },
       'ebpf-obi': {
         title: t('apm.integration.ebpfTitle', 'eBPF 自动注入（OBI）'),
-        description: t('apm.integration.ebpfDesc', '无需修改业务代码，通过内核态捕获服务链路'),
+        description: t('apm.integration.ebpfDesc', '内核态自动采集服务链路'),
         badge: t('apm.integration.lowIntrusion', '低侵入'),
       },
       'otel-operator': {
         title: t('apm.integration.k8sTitle', 'Kubernetes 自动注入'),
-        description: t('apm.integration.k8sDesc', '通过 OTel Operator 和 Pod 注解自动注入探针'),
+        description: t('apm.integration.k8sDesc', 'OTel Operator 注解注入，自动接入集群服务'),
       },
     };
     return INTEGRATION_GROUPS.map((group) => ({
@@ -347,12 +347,12 @@ export default function ApmIntegrationAddPage() {
                     key={method.key}
                     aria-label={method.available
                       ? t('apm.integration.methodAria', '{title} 接入', { title: method.title })
-                      : t('apm.integration.methodAriaClosed', '{title} 接入，尚未开放', { title: method.title })}
+                      : t('apm.integration.methodAriaClosed', '{title} 接入，规划中', { title: method.title })}
                     className="min-h-32 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4 text-left transition-colors duration-150 enabled:cursor-pointer enabled:hover:border-[var(--color-primary)] enabled:hover:bg-[var(--color-fill-1)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)] disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={!method.available}
                     title={method.available
                       ? t('apm.integration.selectMethod', '选择 {title} 接入', { title: method.title })
-                      : t('apm.integration.methodClosed', '{title} 接入尚未开放', { title: method.title })}
+                      : t('apm.integration.methodClosed', '{title} 接入规划中', { title: method.title })}
                     type="button"
                     onClick={() => openMethod(method)}
                   >
@@ -364,11 +364,6 @@ export default function ApmIntegrationAddPage() {
                         <div className="min-w-0">
                           <Typography.Title level={5} className="!mb-2 !text-sm">{method.title}</Typography.Title>
                           <Typography.Text type="secondary" className="text-xs leading-5">{method.description}</Typography.Text>
-                          {!method.available ? (
-                            <Typography.Text type="secondary" className="!mt-2 !block !text-xs">
-                              {t('apm.integration.methodUnavailable', '当前 MVP 尚未开放此接入方式。')}
-                            </Typography.Text>
-                          ) : null}
                         </div>
                       </div>
                       <Space direction="vertical" align="end" size={4}>{method.badge ? <Tag color="blue">{method.badge}</Tag> : null}{!method.available ? <Tag>{t('apm.integration.planned', '规划中')}</Tag> : null}</Space>

@@ -18,7 +18,7 @@ for (const method of ['Node.js', 'Java', 'Python', '.NET', 'Go', 'OTel Collector
   assert.ok(catalog.includes(method), `接入目录应包含 ${method}`);
 }
 assert.match(catalog, /规划中/, '尚未落地的接入方式必须明确标记为规划中');
-assert.match(catalog, /当前 MVP 尚未开放此接入方式/, '不可用接入方式不能伪装为已落地能力');
+assert.match(catalog, /接入，规划中/, '不可用接入方式不能伪装为已落地能力');
 assert.match(catalog, /getIngestSnippet\(/, '可用接入方式必须生成真实后端配置片段');
 assert.match(catalog, /getApplications\(/, '接入配置必须选择已持久化应用');
 assert.match(catalog, /getCloudRegions\(/, '接入配置必须从服务端加载受信云区域');

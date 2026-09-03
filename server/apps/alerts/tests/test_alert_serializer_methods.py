@@ -332,3 +332,13 @@ def test_get_event_count_db_fallback():
     alert.events.add(ev)
     # 无注解 → events.count()
     assert AlertModelSerializer.get_event_count(alert) == 1
+
+
+def test_event_serializer_formats_received_at_like_start_time():
+    from apps.alerts.serializers.event import EventModelSerializer
+
+    received_at = EventModelSerializer._declared_fields["received_at"]
+    start_time = EventModelSerializer._declared_fields["start_time"]
+    assert received_at.format == "%Y-%m-%d %H:%M:%S"
+    assert start_time.format == "%Y-%m-%d %H:%M:%S"
+    assert received_at.read_only is True

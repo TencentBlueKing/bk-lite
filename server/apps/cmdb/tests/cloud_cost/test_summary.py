@@ -81,16 +81,16 @@ def test_summary_avg_daily_no_period_uses_log_span(monkeypatch, stub_orm):
     from apps.cmdb.services.cloud_cost import orm
     USER_INFO = {"team": 1, "user": "tester"}
 
-    single_log = [{
-        "_id": 999, "_bill_id": 1, "object_id": "1",
-        "billing_date": "2026-04-15", "total_cost": "50.00",
-    }]
-
-    def fake_logs(user_info, **kwargs):
-        return single_log, len(single_log)
-
-    monkeypatch.setattr(orm, "query_logs_by_filter", fake_logs)
-    # query_bills_by_filter 仍走 stub_orm 的实现,但本测试不再依赖它
+    monkeypatch.setattr(
+        orm,
+        "query_summary",
+        lambda *args, **kwargs: {
+            "total_cost": "50.00",
+            "instance_count": 1,
+            "min_billing_date": "2026-04-15",
+            "max_billing_date": "2026-04-15",
+        },
+    )
     result = CloudCostService.summary(USER_INFO)
     assert result["total_cost"] == Decimal("50.00")
     assert result["instance_count"] == 1
@@ -104,31 +104,37 @@ def test_summary_instance_count_dedups_by_object_id(monkeypatch):
     from apps.cmdb.services.cloud_cost.service import CloudCostService
     USER_INFO = {"team": 1, "user": "tester"}
 
-    # 2 张 bill 共享同一 object_id(模拟"同一资源、按不同周期拆账")
-    bills = [
-        {"_id": 10, "inst_name": "shared-1", "object_type": "database", "object_name": "x",
-         "user_department": "研发部", "applicant": "alice", "resource_unit_price": "30.00",
-         "object_id": "shared-res"},
-        {"_id": 11, "inst_name": "shared-2", "object_type": "database", "object_name": "x",
-         "user_department": "研发部", "applicant": "alice", "resource_unit_price": "30.00",
-         "object_id": "shared-res"},
-    ]
-    logs = [
-        {"_id": 1001, "_bill_id": 10, "object_id": "shared-res",
-         "billing_date": "2026-05-15", "total_cost": "100.00"},
-        {"_id": 1002, "_bill_id": 11, "object_id": "shared-res",
-         "billing_date": "2026-06-15", "total_cost": "200.00"},
-    ]
-
-    def fake_bills(user_info, **kwargs):
-        return bills, len(bills)
-
-    def fake_logs(user_info, **kwargs):
-        return logs, len(logs)
-
-    monkeypatch.setattr(orm, "query_bills_by_filter", fake_bills)
-    monkeypatch.setattr(orm, "query_logs_by_filter", fake_logs)
+    monkeypatch.setattr(
+        orm,
+        "query_summary",
+        lambda *args, **kwargs: {
+            "total_cost": "300.00",
+            "instance_count": 1,
+            "min_billing_date": "2026-05-15",
+            "max_billing_date": "2026-06-15",
+        },
+    )
 
     result = CloudCostService.summary(USER_INFO)
     assert result["total_cost"] == Decimal("300.00")
     assert result["instance_count"] == 1  # 2 张 bill,1 个 object_id → 1
+
+
+def test_summary_does_not_truncate_at_100001_rows(monkeypatch):
+    from apps.cmdb.services.cloud_cost import orm
+
+    monkeypatch.setattr(
+        orm,
+        "query_summary",
+        lambda *args, **kwargs: {
+            "total_cost": "100001.00",
+            "instance_count": 100001,
+            "min_billing_date": "2026-08-01",
+            "max_billing_date": "2026-08-01",
+        },
+    )
+
+    result = CloudCostService.summary({"team": 1, "user": "tester"})
+
+    assert result["total_cost"] == Decimal("100001.00")
+    assert result["instance_count"] == 100001

@@ -1,14 +1,14 @@
 # 运营分析 3D 应用场景组件
 
-Status: implemented (pending review / Phase 7–8 benchmark)
+Status: implemented (pending review) — 部署架构 scene state added on 2026-09-01
 
 ## Implementation Evidence (WIP)
 
 - Backend domain: `server/apps/operation_analysis/services/application3d/`（QueryService、health/severity/notifications、exact relation projection、Share/Normal 共用）。
-- Normal APIs: `POST .../scene_widgets/application3d/{wall,application_detail,alarm_detail,metric}/`
-- Share APIs: `POST .../share/session/{id}/application3d/{wall,application_detail,alarm_detail,metric}/`
-- Frontend: Scene capability metadata、Screen-only selector、Three.js Wall + Detail DOM、ephemeral `system_status` filter。
-- Tests (fresh): `pytest .../test_application3d_*.py` → **15 passed**；vitest capability+layout → **6 passed**；`pnpm type-check` ok。
+- Normal APIs: `POST .../scene_widgets/application3d/{wall,application_detail,architecture,alarm_detail,metric}/`
+- Share APIs: `POST .../share/session/{id}/application3d/{wall,application_detail,architecture,alarm_detail,metric}/`
+- Frontend: Scene capability metadata、Screen-only selector、Three.js Wall + Focus 两路径 + Detail DOM、ephemeral `system_status` filter。
+- Tests (fresh): `pytest .../test_application3d_*.py`；vitest capability+layout+runtime（含 post-focus 详情/部署架构）；`pnpm type-check`。
 - Review fixes applied: per-app relation integrity；policy-incomplete → unavailable；same-card reselect no-op；AbortController on unmount。
 - 未完成/待校准：真实浏览器 20/50/100/200 WebGL benchmark、hard capacity 产品值、import/export/Report 完整 metadata 拒绝矩阵、CMDB 字段级 View 权限进 properties、Share 撤权/query-count 测试、silent refresh 增量 reconcile、E2E。
 
@@ -37,8 +37,9 @@ runtime: self-fetch Scene Widget
 ```text
 Application Wall
 → Application Focus
-→ Application Detail
-→ Close Detail（保持 Focus）
+→ 详情 | 部署架构
+→ Application Detail 或 该系统的 System→Application→Host 树
+→ Close Detail（保持 Wall）/ Architecture Back（回到全墙）
 → Back to Wall
 ```
 
@@ -48,7 +49,8 @@ Application Wall
 
 1. 作为 Screen 搭建者，我可以添加并配置 `application3D`（通用标题/appearance），但不能把它添加到 Dashboard、Report、Topology、Architecture 或其他 Canvas，也无需勾选 Application 列表。
 2. 作为 Screen 使用者，我可以在连续 3D Application Wall 中看到每个 Application 的名称、当前健康、最高严重级别和 active alarm badge；并可用 ephemeral 的应用系统运行状态多选过滤 Wall。
-3. 作为使用者，我在查看/分享态点击 Application 后先看到即时的本地 3D focus，再主动进入 Scene 内完整 Application Detail，而不是被跳转到 CMDB 页面；编辑态仅预览、不可场景交互。
+3. 作为使用者，我在查看/分享态点击 Application 后先看到即时的本地 3D focus，再从 Focus 卡片上选择 **详情** 或 **部署架构**；详情仍打开现有 Scene 内 Application Detail chrome（基本信息/维护信息/描述/告警），而不是被跳转到 CMDB 页面；编辑态仅预览、不可场景交互。
+3a. 作为使用者，我选择部署架构后只展开**当前这一个**应用系统的 系统→应用→主机 树（`system_contains_application` 再 `application_run_host`）；共享 Host 按 `inst_uuid` 去重为单节点多边；Back 从架构回到全墙。
 4. 作为使用者，我在 Application Detail 中看到与 Wall 完全同源的 active alarm 数量、severity statistics、列表、详情、previous/next、真实通知结果和按需指标快照。
 5. 作为 Share 访问者，我在 sharer current authorization 下获得与 Normal Screen 相同的数据、交互和撤权行为，不能利用 Share 参数扩大资源范围。
 6. 作为维护者，我可以通过统一 Scene Widget metadata 管理 surface、self-fetch、Share 和 Report 能力，不再增加 `type === A || type === B` 特判。
@@ -62,8 +64,11 @@ Application Wall
 - 真实 Three.js/WebGL 3D Application Wall。
 - 当前 actor 权限可见的全部 **应用系统（CMDB `system`）** 自动上墙（无编辑期勾选）。
 - 连续 Wall、`system_status` filter、refresh、empty/error/unknown/stale。
-- Application selection、focus、detail、close detail、back（仅 view/share）。
+- Application selection、focus、**详情 / 部署架构** 两路径、detail、close detail、architecture back、back（仅 view/share）。
 - 经 exact `system_contains_application` 的子 Application，再经 exact `application_run_host` 关联 Host 的 Monitor 健康聚合。
+- 对该系统的 3D 部署架构树：`system` 根 → exact `system_contains_application` → `application` → exact `application_run_host` → `host`（unique by `inst_uuid`）。
+- 点击「应用详情」时 Focus Card 回到 Application Wall，然后展示现有 Detail overlay（不改 chrome）。
+- 点击「部署架构」时聚焦卡片可先回到墙格，然后墙卡约 0.5s 缩小淡出并保持隐藏（场景只剩网格地板 + 架构，不是画面下方一条细带，也不是前景仍可见的墙卡）；相机飞到独立的低机位落地姿态（沿 +Z 看向 −Z，略俯视叠层，**不是** `wallPhi − π/2.5` 的过顶俯仰，也不是 app-wall-screen 把墙当地板的 ~72° 俯仰）。落地取景把整组（下层锥台 + 层间空隙 + 上层薄板 + 管线 + 机柜）铺满视口的大部分（frameFill≈0.76），禁止按平面宽度 0.92 覆盖取景。相机完成后再交错放大两层水平平台（应用在下且为灯罩形玻璃锥台，主机在上且为薄半透明平面）、小型 3D 机柜（网格间距留空）、面向相机的 billboard 标签与细管脉冲连线。「返回应用墙」恢复墙卡与墙面相机并销毁架构。
 - 对 System 自身 `status` 的成员过滤（与健康投影解耦；不再经 Application→父 System 跳转）。
 - Application Detail 的属性、severity statistics、active alarm browsing、alarm detail、previous/next、通知摘要和 metric snapshot trend。
 - Screen 编辑态对齐 `room3D`：无场景交互，仅预览；view/share 全交互。
@@ -73,7 +78,7 @@ Application Wall
 ### Explicit Non-goals
 
 - Application dependency lines 或 Application-to-Application relation。
-- 部署架构、APM Service Wall。
+- APM Service Wall。
 - Dashboard、Report、Topology、Architecture 或其他 Canvas 支持（仅针对 `application3D`）。
 - 编辑期 Application 白名单/勾选（类 NST 设备列表）。
 - Application 模型自身字段业务 filter（如 `app_type`）；Screen unified filter 绑定。
@@ -86,7 +91,7 @@ Application Wall
 - 传统 Wall 分页。
 - 自由拖动 3D Application cards 或复杂自由相机。
 - 旧 Babylon/Three 代码迁移。
-- 为未来 APM、部署架构或跨告警源能力预留 DTO 字段。
+- 为未来 APM 或跨告警源能力预留 DTO 字段。
 - application3D 领域专用配置项（第一版仅复用通用 Widget 项：标题、appearance 等）。
 
 ## Surface and Capability Contract
@@ -530,6 +535,39 @@ Semantics：
 - `supportedCount=null` 表示 benchmark 尚未校准 hard capacity，不表示无限支持。
 - `ApplicationWallData` 不含分页字段。
 
+### ApplicationArchitectureData
+
+部署架构是一张 System 的可见树，不是第二套健康协议。节点可携带与 Wall 同源的 `health` 摘要。
+
+```ts
+interface ApplicationArchitectureData {
+  systemId: string;
+  nodes: ApplicationArchitectureNode[];
+  edges: ApplicationArchitectureEdge[];
+  refreshedAt: string;
+}
+
+interface ApplicationArchitectureNode {
+  id: string; // inst_uuid
+  kind: 'system' | 'application' | 'host';
+  name: string;
+  health?: ApplicationWallItem['health'];
+}
+
+interface ApplicationArchitectureEdge {
+  id: string;
+  sourceId: string;
+  targetId: string;
+  relation: 'system_contains_application' | 'application_run_host';
+}
+```
+
+- 请求字段仍为 `application_id`（System uuid）。
+- 空系统：仅根节点，无边。
+- `no_host`：系统 + 可见应用，无 host 节点。
+- 共享 host：一个 node，多条 `application_run_host` 边。
+- 不可见应用/主机不出现在 nodes/edges 中，不得用部分绿树冒充完整。
+
 ### ApplicationDetailData
 
 ```ts
@@ -807,11 +845,12 @@ Hard invariants：
 ```text
 wall
 application_detail
+architecture
 alarm_detail
 metric
 ```
 
-本变更必须为 `application3D` 做齐上述四类 operation，且 Normal/Share 共用同一 `Application3DQueryService` 与 DTO。本变更 **不** 重构 `networkStatusTopology` 现有「直连 scene API + overlay DataSource」混合 Share。
+本变更必须为 `application3D` 做齐上述 operation，且 Normal/Share 共用同一 `Application3DQueryService` 与 DTO。本变更 **不** 重构 `networkStatusTopology` 现有「直连 scene API + overlay DataSource」混合 Share。
 
 每次 operation 必须验证：
 
@@ -841,7 +880,7 @@ visitor
 → same DTO
 ```
 
-Share 完整支持 Wall、filters、refresh、selection、focus、Application Detail、previous/next 和 metric trend。
+Share 完整支持 Wall、filters、refresh、selection、focus、详情、部署架构、previous/next 和 metric trend。
 
 ### Revocation and stale policy
 
@@ -890,6 +929,8 @@ initializing
 wall
 focusing
 focused
+architectureEntering
+architecture
 detailLoading
 detail
 returning
@@ -907,7 +948,9 @@ initial empty → wall(empty)
 initial hard failure → hardError
 
 wall + select(A) → focusing(A) → focused(A)
-focused(A) + openDetail → returning(A) → wall + Detail overlay
+focused(A) + 详情 / openDetail → returning(A) → wall + Detail overlay
+focused(A) + 部署架构 → architectureEntering(A) → architecture(A)
+architecture(A) + back → wall
 detail overlay + closeDetail → wall
 focused(A) + back → returning(A) → wall
 focused(A) + blank scene click → returning(A) → wall
@@ -915,16 +958,24 @@ focused(A) + blank scene click → returning(A) → wall
 
 Rules：
 
-- 点击「应用详情」时 Focus Card 回到 Application Wall，然后展示 Detail overlay。这是正式设计，不是回退到 Focus。
-- Focus 下点击场景空白区域返回 Application Wall。这是正式设计。
-- select/focus transition 纯本地，点击后立即开始，不等待 Detail 请求。
+- Focus 之后才出现两条动作：**详情** 与 **部署架构**。匹配现有 navy frost CTA，不使用参考实现的青色 PNG banner。
+- 点击「详情」时 Focus Card 回到 Application Wall，然后展示现有 Detail overlay（基本信息/维护信息/描述/告警）。这是正式设计，不是回退到 Focus；不得改 Detail chrome。
+- 点击「部署架构」只展开当前这一张系统卡对应的树；请求字段仍为 `application_id`，值为 System `inst_uuid`。
+- 部署架构树：System 根 → `system_contains_application` → Application → `application_run_host` → Host。共享 Host 按 `inst_uuid` 一个节点、多条入边。孤立无边 Application 仍出现。禁止 system→host 边，禁止发明新 CMDB association。
+- 空系统：只显示根，无子节点，不得画成绿色假树。`no_host`：系统+应用，无 Host 节点。不可见应用/主机沿用 Wall 的 unavailable 规则，不泄露隐藏资源。
+- 相机 cubic ease-in-out 约 3s 从墙面朝向位飞到独立落地姿态：低机位、沿 +Z 看向 −Z 叠层，phi ≈ π/2 − π/8（约 22.5° 俯视），**禁止** `wallPhi − π/2.5`（约 0.29 的过顶俯视，层不可读）。墙卡约 0.5s 缩小淡出后保持隐藏，不销毁；落地后场景只含网格地板与架构。完成后可继续 OrbitControls。
+- 相机完成后再：两层水平 XZ 平台（与网格地板同向，沿 +Y 叠放，planeGap=3.2）从相机前方交错放大（约 200ms）→ 机柜 0→rest → 标签 → 层间管线。线性缩放即可，禁止 explode。无系统平面；聚焦系统卡是入口而不是一层。下层/更靠近地板 = 应用，上层 = 主机。下层是灯罩形玻璃锥台（顶面为平台，底面约为顶面宽的 10–15%，侧面大幅下收），上层保持薄半透明平面。平台按机柜网格+padding 取面积，且明显小于旧的铺满视口玻璃（约 27.6×19.2）；机柜是小型 3D 柜体，网格间距留空，不得铺满板面。相机按整组 AABB 取景，frameFill≈0.76 占满视口大部分，不得用 0.92 宽度覆盖。
+- 架构平面是水平 XZ 层（层层分明，层间留空气），不是站立 XY 广告板，也不把整面墙旋转 90°。机柜盒体直立坐在每层平台顶面上（不要 `rotation.x=π/2`）。层标题与节点标签必须 billboard 面向相机；侧视不可读是缺陷。层标题在每层右侧（+X，板面右侧而不是前缘中部），白字蓝外发光（`#00A3FF` / blur 10），无箭头、无底盒。节点名是机柜上方的纯白字，无铭牌底。节点少时从平台前缘（+Z）起排，网格间距留空。连线为细青色自发光管（层间半径 0.01，层内 0.015，非 LineBasic），并带沿路径循环的短亮脉冲 mesh。职级靠所在平面与标签区分。架构节点填充不复用 Wall `CARD_TONE` 健康着色。告警主机关联管线与脉冲为红色。孤立无边主机仍出现在主机平面的行列网格中。系统节点可不进入架构图可视化。仅顶面（应用锥台顶面 + 主机薄板）使用深蓝半透明贴面（opacity≈0.34，自发光≈0.38，depthWrite=false，DoubleSide）加细描边与向内 bloom（INNER≈0.004 / OUTER≈0.02，禁止 EdgesGeometry 胶带描边）；锥台四侧与底面保持先前的青蓝玻璃（opacity≈0.1，自发光≈0.14），不得给侧面套卡片贴面。不得改成空玻璃或实心塑料。
+- Architecture Back 一次回到全墙，不经过 Focused card。Focus 下点击场景空白区域返回 Application Wall。
+- Wall 卡片样式、frost-glass、布局尺寸和其他 ops-analysis canvas 不得因本场景改动。
+- select/focus transition 纯本地，点击后立即开始，不等待 Detail / architecture 请求。
 - 再次点击已 selected card 不创建重复 transition。
 - focusing 中选择另一 Application：取消旧 tween，以最新 selection 启动新 transition。
 - Detail response 必须带 request generation；selection 已变时丢弃 stale response。
-- selected Application 在 refresh 后消失：取消 detail/alarm/metric 请求，关闭 overlay，恢复/重排 Wall；不得保留幽灵 selection。
+- selected Application 在 refresh 后消失：取消 detail/alarm/metric/architecture 请求，关闭 overlay，恢复/重排 Wall；不得保留幽灵 selection。
 - Alarm navigation response 返回时必须再次验证 applicationId/alarmId/generation。
 - unmount 后任何 response/tween/RAF 不得更新状态。
-- Filter change 创建新 Wall generation，清除 selection/detail，并 camera fit；播放短 reconcile transition，不重播首次完整 intro。
+- Filter change 创建新 Wall generation，清除 selection/detail/architecture，并 camera fit；播放短 reconcile transition，不重播首次完整 intro。
 - health silent refresh 只更新 health/material/badge，不重建 renderer、不改变 card position、不重播 intro。
 
 ## Three.js Wall and Interaction Contract
@@ -946,7 +997,8 @@ Rules：
 - `info` 使用现有 semantic information token 的低强度视觉，不走红/黄危险级别，不新增 health enum。
 - 状态不能只靠颜色；badge、文字/形态和 unknown 标识提供辅助区分。
 - 首次有效 Wall 播放 camera intro；reduced-motion 环境缩短或关闭非必要过渡，但功能完整。
-- focus：selected card 移动/旋转/突出，其他 cards 弱化，显示“应用详情”和“返回应用墙”。
+- focus：selected card 移动/旋转/突出，其他 cards 弱化；Focused 卡片上出现 **详情** 与 **部署架构**（navy frost CTA），以及返回应用墙。
+- 不得改现有 Wall card 样式、frost-glass 材质或布局尺寸。
 
 ### Continuous layout
 
@@ -1145,6 +1197,7 @@ Phase 2 先于前端 Wall，是为了让 Normal/Share transport contract 在 UI 
 - 零子 Application 的 System 上墙且 `unknown/no_application`，不得 `normal` 或 `unavailable`，也不得标为 `no_host`。
 - 有子 Application 边但 actor 不可见这些 Application → `unknown/unavailable`，不是 `no_application`，也不是 `no_host`。
 - 有子 Application 但投影后零合法 Host → `unknown/no_host`，不得 `normal/0`，不得 `unavailable`，不得复用 `no_application`。
+- 部署架构树只含 exact `system_contains_application` 与 `application_run_host`；共享 Host 按 `inst_uuid` 去重；空系统仅根；`no_host` 无 Host 节点；不可见成员省略。
 - 混合子 Application（部分有 Host+告警、部分无 Host）仍聚合存在的 Host 告警，不是 `no_host`。
 - wrong-peer `application_run_host` 从 Host 列表省略，不使整张 System `unavailable`；兄弟子 Application 的合法 Host 仍聚合。仅剩 wrong-peer、无合法 Host → `no_host`。
 - wrong relation、wrong peer、BFS-reachable Host 不纳入 Host union / 不传播 health。
@@ -1175,6 +1228,7 @@ Phase 2 先于前端 Wall，是为了让 Normal/Share transport contract 在 UI 
 - Share expiry/revoke、visitor binding、Screen declaration、sharer permission loss。
 - Share Application/Host/Monitor permission loss。
 - filter unknown/tampering/Share expansion rejection。
+- Share architecture 与 wall/detail 同一权限链；不可见应用/主机不出现在树中。
 - `system_status` multiple OR；未选=全集；过滤 System 自身 `status`；非法值 400。
 - System 过滤不改变 `system_contains_application` + `application_run_host` 健康口径。
 - 不消费 Screen unified filter。
@@ -1193,7 +1247,9 @@ Phase 2 先于前端 Wall，是为了让 Normal/Share transport contract 在 UI 
 - health refresh 不重建 renderer、不改变 card positions、不重播 intro。
 - filter creates new Wall/reconcile/camera fit。
 - focus、focus double/repeated click、focus network independence。
-- Detail open/close；close preserves focused；Back restores Wall。
+- Focus 后两路径：详情仍打开现有 Detail chrome；部署架构请求 `application_id` = System uuid。
+- 架构树投影：system→application→host 边、共享 Host 去重、empty/no_host。
+- Detail open/close；close 保持 Wall。Architecture Back 回到全墙。
 - zero alarms、list/detail、previous/next。
 - selection/alarm request generation race。
 - selected Application removed/permission lost。

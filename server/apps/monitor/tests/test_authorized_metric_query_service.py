@@ -92,6 +92,93 @@ def test_range_query_uses_server_metric_template_and_authorized_instances(mocker
     )
 
 
+def test_range_query_forwards_gap_detection_and_card_budget(mocker):
+    monitor_object, metric, allowed, _ = _build_metric_contract()
+    service = _service(mocker, allowed)
+    vm_query = mocker.patch(
+        "apps.monitor.services.authorized_metric_query.Metrics.get_metrics_range",
+        return_value={"status": "success", "data": {"result": []}},
+    )
+
+    service.query_range(
+        {
+            "monitor_object_id": monitor_object.id,
+            "metric_id": metric.id,
+            "instance_ids": [allowed.id],
+            "start": 1000,
+            "end": 61000,
+            "step": "60s",
+            "detect_gaps": True,
+            "collection_interval": 60,
+            "card_budget": True,
+        }
+    )
+
+    assert vm_query.call_args.kwargs == {
+        "detect_gaps": True,
+        "collection_interval_seconds": 60,
+        "card_budget": True,
+    }
+
+
+def test_host_process_scope_authorizes_parent_host_and_builds_process_matchers(mocker):
+    host_object = MonitorObject.objects.create(
+        name="Host",
+        level="base",
+        instance_id_keys=["instance_id"],
+    )
+    process_object = MonitorObject.objects.create(
+        name="Process",
+        level="derivative",
+        parent=host_object,
+        instance_id_keys=["instance_id", "process_name"],
+    )
+    plugin = MonitorPlugin.objects.create(name="ProcessPlugin")
+    group = MetricGroup.objects.create(
+        monitor_object=process_object,
+        monitor_plugin=plugin,
+        name="ProcessGroup",
+    )
+    metric = Metric.objects.create(
+        monitor_object=process_object,
+        monitor_plugin=plugin,
+        metric_group=group,
+        name="process_cpu",
+        query="process_cpu{__$labels__}",
+        instance_id_keys=["instance_id", "process_name"],
+    )
+    host = MonitorInstance.objects.create(
+        id="('host-a',)",
+        name="host-a",
+        monitor_object=host_object,
+    )
+    service = _service(mocker, host)
+    vm_query = mocker.patch(
+        "apps.monitor.services.authorized_metric_query.Metrics.get_metrics_range",
+        return_value={"status": "success", "data": {"result": []}},
+    )
+
+    service.query_range(
+        {
+            "monitor_object_id": process_object.id,
+            "metric_id": metric.id,
+            "scope": {
+                "type": "host_process",
+                "host_monitor_object_id": host_object.id,
+                "host_instance_id": host.id,
+                "process_names": ["nginx", "postgres"],
+            },
+            "start": 1000,
+            "end": 61000,
+            "step": "60s",
+        }
+    )
+
+    query = vm_query.call_args.args[0]
+    assert 'instance_id=~"host\\\\-a"' in query
+    assert 'process_name=~"nginx|postgres"' in query
+
+
 def test_mixed_authorized_and_denied_instances_fail_before_vm_query(mocker):
     monitor_object, metric, allowed, denied = _build_metric_contract()
     service = _service(mocker, allowed)

@@ -6,10 +6,19 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Iterable
 
-from apps.apm.services.contracts import IssueDistribution, IssuePage, IssueProjection, IssueSampleTrace, SpanDetail, SpanSummary
+from apps.apm.services.contracts import (
+    IssueDistribution,
+    IssuePage,
+    IssueProjection,
+    IssueSampleTrace,
+    SpanDetail,
+    SpanSummary,
+    TraceDetail,
+)
 from apps.apm.services.query import DjangoTelemetryQueryService
 
 MAX_SAMPLE_TRACES = 5
+_UNATTRIBUTED_MESSAGE = "OTel Span status=Error"
 _UUID_RE = re.compile(r"\b[0-9a-f]{8}-[0-9a-f-]{27,}\b", re.IGNORECASE)
 _HEX_RE = re.compile(r"\b(?:0x)?[0-9a-f]{12,}\b", re.IGNORECASE)
 _NUMBER_RE = re.compile(r"\b\d+(?:\.\d+)?\b")
@@ -72,17 +81,12 @@ class DjangoTelemetryIssueService:
 
     def project(self, summaries: Iterable[SpanSummary], *, next_cursor: str | None) -> IssuePage:
         occurrences: list[_IssueOccurrence] = []
-        details = {}
+        details: dict[str, TraceDetail | None] = {}
         for summary in summaries:
-            detail = details.get(summary.trace_id)
-            if detail is None:
-                detail = self.query_service.get_trace(summary.trace_id)
-                details[summary.trace_id] = detail
-            if detail is None:
-                continue
-            span = next((item for item in detail.spans if item.span_id == summary.span_id), None)
-            if span is None:
-                continue
+            if summary.trace_id not in details:
+                details[summary.trace_id] = self.query_service.get_trace(summary.trace_id)
+            detail = details[summary.trace_id]
+            span = next((item for item in detail.spans if item.span_id == summary.span_id), None) if detail is not None else None
             occurrences.append(self._occurrence(summary, span))
 
         groups: dict[str, list[_IssueOccurrence]] = {}
@@ -99,8 +103,8 @@ class DjangoTelemetryIssueService:
         return IssuePage(items=issues, next_cursor=next_cursor, truncated=next_cursor is not None)
 
     @staticmethod
-    def _occurrence(summary: SpanSummary, span: SpanDetail) -> _IssueOccurrence:
-        attributes = dict(span.attributes)
+    def _occurrence(summary: SpanSummary, span: SpanDetail | None) -> _IssueOccurrence:
+        attributes = dict(span.attributes) if span is not None else {}
         exception_type = (
             _text(
                 attributes,
@@ -119,7 +123,7 @@ class DjangoTelemetryIssueService:
                 "otel.status_description",
                 "status.message",
             )
-            or "OTel Span status=Error"
+            or _UNATTRIBUTED_MESSAGE
         )
         stacktrace = _text(
             attributes,

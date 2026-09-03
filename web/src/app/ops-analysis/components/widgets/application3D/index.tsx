@@ -58,6 +58,7 @@ export default function Application3D({
   const {
     getWall,
     getApplicationDetail,
+    getArchitecture,
     getAlarmDetail,
     getMetric,
   } = useApplication3DApi(shareMode ? params.sessionId : undefined);
@@ -70,6 +71,7 @@ export default function Application3D({
   const wallAbortRef = useRef<AbortController | null>(null);
   const detailAbortRef = useRef<AbortController | null>(null);
   const metricAbortRef = useRef<AbortController | null>(null);
+  const architectureAbortRef = useRef<AbortController | null>(null);
   const [wall, setWall] = useState<Application3DWallData | null>(null);
   const [appliedFilters, setAppliedFilters] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(true);
@@ -89,15 +91,19 @@ export default function Application3D({
   const [metric, setMetric] = useState<Application3DMetricSeriesResult | null>(null);
   const [metricLoading, setMetricLoading] = useState(false);
   const [toolbarEntered, setToolbarEntered] = useState(false);
+  const [architectureOpen, setArchitectureOpen] = useState(false);
+  const [architectureLoading, setArchitectureLoading] = useState(false);
+  const [architectureError, setArchitectureError] = useState('');
+  const architectureOpenRef = useRef(false);
   const allowedOnSurface = screenRenderContext?.enabled === true;
   const wallMotionRef = useRef<'intro' | 'filter' | 'none'>('intro');
   const wallRef = useRef(wall);
   const selectedRef = useRef(selected);
   const detailOpenRef = useRef(detailOpen);
-  const openApplicationDetailRef = useRef<(item: Application3DWallItem) => void>(() => undefined);
   wallRef.current = wall;
   selectedRef.current = selected;
   detailOpenRef.current = detailOpen;
+  architectureOpenRef.current = architectureOpen;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -108,6 +114,7 @@ export default function Application3D({
       wallAbortRef.current?.abort();
       detailAbortRef.current?.abort();
       metricAbortRef.current?.abort();
+      architectureAbortRef.current?.abort();
     };
   }, []);
 
@@ -124,9 +131,18 @@ export default function Application3D({
         translate: (id, defaultMessage) => translateRef.current(id, defaultMessage),
         onSelect: (item) => {
           if (editMode) return;
-          if (selectedRef.current?.id === item.id && detailOpenRef.current) return;
-          controller.resetCamera();
-          openApplicationDetailRef.current(item);
+          if (detailOpenRef.current) return;
+          if (architectureOpenRef.current) return;
+          if (selectedRef.current?.id === item.id) return;
+          selectedRef.current = item;
+          setSelected(item);
+          controller.focus(item.id);
+        },
+        onBackgroundClick: () => {
+          if (editMode || detailOpenRef.current || architectureOpenRef.current) return;
+          controller.focus(null);
+          selectedRef.current = null;
+          setSelected(null);
         },
       });
       controllerRef.current = controller;
@@ -159,12 +175,14 @@ export default function Application3D({
     wallAbortRef.current?.abort();
     detailAbortRef.current?.abort();
     metricAbortRef.current?.abort();
+    architectureAbortRef.current?.abort();
     setLoading(false);
     setRefreshing(false);
     setDetailLoading(false);
     setAlarmLoading(false);
     setMetricLoading(false);
     setMoreAlarmsLoading(false);
+    setArchitectureLoading(false);
   }, [runtimeActive]);
 
   useEffect(() => {
@@ -196,8 +214,10 @@ export default function Application3D({
     detailGenerationRef.current += 1;
     detailAbortRef.current?.abort();
     metricAbortRef.current?.abort();
+    architectureAbortRef.current?.abort();
     selectedRef.current = null;
     detailOpenRef.current = false;
+    architectureOpenRef.current = false;
     setSelected(null);
     setDetailOpen(false);
     setDetail(null);
@@ -209,6 +229,11 @@ export default function Application3D({
     lastAlarmIdRef.current = null;
     setMetric(null);
     setMetricLoading(false);
+    setArchitectureOpen(false);
+    setArchitectureLoading(false);
+    setArchitectureError('');
+    controllerRef.current?.hideArchitecture();
+    controllerRef.current?.focus(null);
   }, []);
 
   const fetchWall = useCallback(async (filters: Record<string, string[]>, silent = false) => {
@@ -289,10 +314,12 @@ export default function Application3D({
     const generation = ++detailGenerationRef.current;
     detailAbortRef.current?.abort();
     metricAbortRef.current?.abort();
+    architectureAbortRef.current?.abort();
     const abortController = new AbortController();
     detailAbortRef.current = abortController;
     selectedRef.current = item;
     detailOpenRef.current = true;
+    architectureOpenRef.current = false;
     setSelected(item);
     setDetailOpen(true);
     setDetailLoading(true);
@@ -303,6 +330,12 @@ export default function Application3D({
     lastAlarmIdRef.current = null;
     setMetric(null);
     setMetricLoading(false);
+    setArchitectureOpen(false);
+    setArchitectureLoading(false);
+    setArchitectureError('');
+    controllerRef.current?.hideArchitecture();
+    controllerRef.current?.focus(null);
+    controllerRef.current?.resetCamera();
     try {
       const result = await getApplicationDetail(item.id, undefined, abortController.signal);
       if (!mountedRef.current || generation !== detailGenerationRef.current) return;
@@ -323,7 +356,57 @@ export default function Application3D({
       }
     }
   }, [clearSelection, getApplicationDetail, t]);
-  openApplicationDetailRef.current = loadDetail;
+
+  const loadArchitecture = useCallback(async (item: Application3DWallItem) => {
+    architectureAbortRef.current?.abort();
+    const abortController = new AbortController();
+    architectureAbortRef.current = abortController;
+    setArchitectureLoading(true);
+    setArchitectureError('');
+    try {
+      const result = await getArchitecture(item.id, abortController.signal);
+      if (!mountedRef.current || selectedRef.current?.id !== item.id) return;
+      architectureOpenRef.current = true;
+      setArchitectureOpen(true);
+      controllerRef.current?.showArchitecture(result);
+    } catch (requestError) {
+      if (abortController.signal.aborted) return;
+      if (!mountedRef.current || selectedRef.current?.id !== item.id) return;
+      if (['permission_denied', 'scope_changed', 'not_found'].includes(getErrorCode(requestError) || '')) {
+        clearSelection();
+        return;
+      }
+      setArchitectureError(t('dashboard.application3DArchitectureFailed'));
+    } finally {
+      if (mountedRef.current && architectureAbortRef.current === abortController) {
+        architectureAbortRef.current = null;
+        setArchitectureLoading(false);
+      }
+    }
+  }, [clearSelection, getArchitecture, t]);
+
+  const handleBackFromFocus = useCallback(() => {
+    architectureAbortRef.current?.abort();
+    architectureOpenRef.current = false;
+    setArchitectureOpen(false);
+    setArchitectureLoading(false);
+    setArchitectureError('');
+    controllerRef.current?.hideArchitecture();
+    controllerRef.current?.focus(null);
+    selectedRef.current = null;
+    setSelected(null);
+  }, []);
+
+  const handleBackFromArchitecture = useCallback(() => {
+    architectureAbortRef.current?.abort();
+    architectureOpenRef.current = false;
+    setArchitectureOpen(false);
+    setArchitectureLoading(false);
+    setArchitectureError('');
+    selectedRef.current = null;
+    setSelected(null);
+    controllerRef.current?.hideArchitecture();
+  }, []);
 
   const loadMoreAlarms = useCallback(async () => {
     if (!selected || detail?.alarms.state !== 'available' || !detail.alarms.page.nextCursor) return;
@@ -525,6 +608,54 @@ export default function Application3D({
           showIcon
           message={refreshWarning}
         />
+      )}
+      {architectureError && !editMode && (
+        <Alert
+          className="absolute bottom-16 left-1/2 z-20 -translate-x-1/2"
+          type="error"
+          showIcon
+          message={architectureError}
+          action={(
+            <Button size="small" onClick={() => selected && void loadArchitecture(selected)}>
+              {t('common.retry')}
+            </Button>
+          )}
+        />
+      )}
+      {!editMode && selected && !detailOpen && (
+        <div className="app3d-focus-actions pointer-events-none absolute bottom-6 left-0 right-0 z-20 flex justify-center">
+          <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-3">
+            {!architectureOpen && (
+              <>
+                <button
+                  type="button"
+                  className="app3d-close-cta app3d-detail-cta"
+                  onClick={() => void loadDetail(selected)}
+                >
+                  {t('dashboard.application3DOpenDetail', '详情')}
+                </button>
+                <button
+                  type="button"
+                  className="app3d-close-cta app3d-architecture-cta"
+                  disabled={architectureLoading}
+                  onClick={() => void loadArchitecture(selected)}
+                >
+                  {t('dashboard.application3DOpenArchitecture', '部署架构')}
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              className="app3d-close-cta app3d-back-cta"
+              onClick={() => {
+                if (architectureOpen) handleBackFromArchitecture();
+                else handleBackFromFocus();
+              }}
+            >
+              {t('dashboard.application3DBackWall', '返回应用墙')}
+            </button>
+          </div>
+        </div>
       )}
       {detailOpen && selected && !editMode && (
         <Application3DDetail

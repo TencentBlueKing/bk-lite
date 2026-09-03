@@ -9,11 +9,8 @@ from apps.monitor.models import MonitorPlugin
 from apps.monitor.models.monitor_metrics import Metric, MetricGroup
 from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectType
 from apps.monitor.services.instance_facts import InstanceFactResolver
-from apps.monitor.utils.display_fields_seed import build_seed_display_fields
-from apps.monitor.utils.instance_id_keys import (
-    resolve_metric_instance_id_keys,
-    resolve_monitor_object_instance_id_keys,
-)
+from apps.monitor.utils.display_fields_seed import build_seed_display_fields, merge_display_fields_bindings
+from apps.monitor.utils.instance_id_keys import resolve_metric_instance_id_keys, resolve_monitor_object_instance_id_keys
 from apps.monitor.utils.node_selector import normalize_node_selector
 
 METRIC_UPDATE_FIELDS = [
@@ -65,9 +62,7 @@ def prepare_plugin_import_plan(data: dict) -> dict:
         "collect_type": payload.get("collect_type", ""),
         "support_collect_detect": bool(payload.get("support_collect_detect", False)),
         "node_selector": normalize_node_selector(payload.get("node_selector", {})),
-        "instance_fact_bindings": InstanceFactResolver.validate_bindings(
-            payload.get("instance_fact_bindings", [])
-        ),
+        "instance_fact_bindings": InstanceFactResolver.validate_bindings(payload.get("instance_fact_bindings", [])),
         "objects": [],
     }
 
@@ -245,13 +240,9 @@ def _ensure_object_types(plans, now):
             if not type_id or type_id in types_map or type_id in seen:
                 continue
             seen.add(type_id)
-            to_create.append(
-                MonitorObjectType(id=type_id, order=999, created_at=now, updated_at=now)
-            )
+            to_create.append(MonitorObjectType(id=type_id, order=999, created_at=now, updated_at=now))
     if to_create:
-        MonitorObjectType.objects.bulk_create(
-            to_create, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE
-        )
+        MonitorObjectType.objects.bulk_create(to_create, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
         for item in to_create:
             types_map[item.id] = item
     return types_map
@@ -261,7 +252,18 @@ def _merge_object_specs(plans):
     merged = {}
     for plan in plans:
         for object_plan in plan["objects"]:
-            merged[object_plan["name"]] = object_plan
+            name = object_plan["name"]
+            existing = merged.get(name)
+            if existing is None:
+                merged[name] = object_plan
+                continue
+            incoming = dict(object_plan)
+            if existing.get("display_fields") or incoming.get("display_fields"):
+                incoming["display_fields"] = merge_display_fields_bindings(
+                    existing.get("display_fields"),
+                    incoming.get("display_fields"),
+                )
+            merged[name] = incoming
     return merged
 
 
@@ -326,17 +328,10 @@ def _upsert_monitor_objects(specs, objects_map, now):
         if spec.get("parent_id") is not None and existing.parent_id != spec["parent_id"]:
             existing.parent_id = spec["parent_id"]
             changed = True
-        if (
-            not existing.display_fields_customized
-            and spec.get("display_fields") is not None
-            and existing.display_fields != spec["display_fields"]
-        ):
+        if not existing.display_fields_customized and spec.get("display_fields") is not None and existing.display_fields != spec["display_fields"]:
             existing.display_fields = spec["display_fields"]
             changed = True
-        if (
-            spec.get("instance_summary_columns") is not None
-            and existing.instance_summary_columns != spec["instance_summary_columns"]
-        ):
+        if spec.get("instance_summary_columns") is not None and existing.instance_summary_columns != spec["instance_summary_columns"]:
             existing.instance_summary_columns = spec["instance_summary_columns"]
             changed = True
         if changed:
@@ -425,9 +420,7 @@ def _sync_plugin_object_m2m(plans, plugins_map, objects_map):
             if pair in seen_pairs:
                 continue
             seen_pairs.add(pair)
-            desired_rows.append(
-                through(monitorplugin_id=plugin.id, monitorobject_id=monitor_object.id)
-            )
+            desired_rows.append(through(monitorplugin_id=plugin.id, monitorobject_id=monitor_object.id))
     if plugin_ids:
         through.objects.filter(monitorplugin_id__in=plugin_ids).delete()
     if desired_rows:
@@ -435,14 +428,8 @@ def _sync_plugin_object_m2m(plans, plugins_map, objects_map):
 
 
 def _sync_metric_groups_and_metrics(plans, objects_map, plugins_map):
-    groups = {
-        (item.monitor_object_id, item.monitor_plugin_id, item.name): item
-        for item in MetricGroup.objects.all()
-    }
-    metrics = {
-        (item.monitor_object_id, item.monitor_plugin_id, item.name): item
-        for item in Metric.objects.all()
-    }
+    groups = {(item.monitor_object_id, item.monitor_plugin_id, item.name): item for item in MetricGroup.objects.all()}
+    metrics = {(item.monitor_object_id, item.monitor_plugin_id, item.name): item for item in Metric.objects.all()}
 
     groups_to_create = []
     seen_groups = set()
@@ -467,12 +454,8 @@ def _sync_metric_groups_and_metrics(plans, objects_map, plugins_map):
                     )
                 )
     if groups_to_create:
-        MetricGroup.objects.bulk_create(
-            groups_to_create, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE
-        )
-        for item in MetricGroup.objects.filter(
-            monitor_plugin_id__in={row.monitor_plugin_id for row in groups_to_create}
-        ):
+        MetricGroup.objects.bulk_create(groups_to_create, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
+        for item in MetricGroup.objects.filter(monitor_plugin_id__in={row.monitor_plugin_id for row in groups_to_create}):
             groups[(item.monitor_object_id, item.monitor_plugin_id, item.name)] = item
 
     stale_metric_ids = []
@@ -488,9 +471,7 @@ def _sync_metric_groups_and_metrics(plans, objects_map, plugins_map):
             if monitor_object is None:
                 continue
             scope = (monitor_object.id, plugin.id)
-            expected_names.setdefault(scope, set()).update(
-                metric["name"] for metric in object_plan["metrics"]
-            )
+            expected_names.setdefault(scope, set()).update(metric["name"] for metric in object_plan["metrics"])
             for metric in object_plan["metrics"]:
                 group = groups.get((monitor_object.id, plugin.id, metric["metric_group"]))
                 if group is None:
@@ -544,6 +525,4 @@ def _sync_metric_groups_and_metrics(plans, objects_map, plugins_map):
             batch_size=DatabaseConstants.BULK_UPDATE_BATCH_SIZE,
         )
     if metrics_to_create:
-        Metric.objects.bulk_create(
-            metrics_to_create, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE
-        )
+        Metric.objects.bulk_create(metrics_to_create, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)

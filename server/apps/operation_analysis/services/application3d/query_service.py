@@ -57,6 +57,7 @@ from apps.operation_analysis.services.application3d.presenters import (
 )
 from apps.operation_analysis.services.application3d.relations import project_application_hosts, project_system_applications
 from apps.operation_analysis.services.application3d.severity import severity_from_monitor_level
+from apps.operation_analysis.services.application3d.structure import compose_architecture_tree
 
 
 class _AlertPolicyScope(AlertPermissionMixin):
@@ -169,6 +170,91 @@ class Application3DQueryService:
             "alarms": alarms,
             "refreshedAt": timezone.now().isoformat(),
         }
+
+    @classmethod
+    def architecture(cls, request, application_id: str) -> dict[str, Any]:
+        """One System's visible 系统→应用→主机 tree. Request key stays application_id."""
+        system = cls._visible_application(request, application_id)
+        system_id = cls._instance_uuid(system)
+        try:
+            scope = cls._build_scope(request, [system])
+            system_health = cls._health_for_application(scope, system_id)
+            apps_by_system = project_system_applications([system_id])
+            associated_app_ids = list(dict.fromkeys(apps_by_system.get(system_id, [])))
+            visible_app_rows = cls._visible_model_instances(request, "application", associated_app_ids)
+            visible_app_map = {cls._instance_uuid(item): item for item in visible_app_rows}
+            visible_app_ids = [app_id for app_id in associated_app_ids if app_id in visible_app_map]
+
+            host_ids_by_app = project_application_hosts(visible_app_ids) if visible_app_ids else {}
+            all_host_ids = list(dict.fromkeys(host_id for app_id in visible_app_ids for host_id in host_ids_by_app.get(app_id, [])))
+            visible_host_rows = cls._visible_hosts(request, all_host_ids)
+            visible_host_map = {cls._instance_uuid(item): item for item in visible_host_rows}
+            visible_hosts_by_app = {
+                app_id: [host_id for host_id in host_ids_by_app.get(app_id, []) if host_id in visible_host_map] for app_id in visible_app_ids
+            }
+        except Application3DSourceFailure:
+            raise
+        except Exception as exc:
+            logger.exception("application3D architecture query failed")
+            raise Application3DSourceFailure("应用系统部署架构查询失败") from exc
+
+        tree = compose_architecture_tree(
+            system_id=system_id,
+            system_name=cls._instance_name(system),
+            system_health=system_health,
+            application_ids=visible_app_ids,
+            applications={
+                app_id: {
+                    "name": cls._instance_name(visible_app_map[app_id]),
+                    "health": cls._architecture_member_health(
+                        scope,
+                        system_id,
+                        hosts=[visible_host_map[host_id] for host_id in visible_hosts_by_app.get(app_id, [])],
+                        expected_host_ids=host_ids_by_app.get(app_id, []),
+                    ),
+                }
+                for app_id in visible_app_ids
+            },
+            hosts_by_application=visible_hosts_by_app,
+            hosts={
+                host_id: {
+                    "name": cls._instance_name(host),
+                    "health": cls._architecture_member_health(scope, system_id, hosts=[host], expected_host_ids=[host_id]),
+                }
+                for host_id, host in visible_host_map.items()
+            },
+        )
+        return {**tree, "refreshedAt": timezone.now().isoformat()}
+
+    @classmethod
+    def _architecture_member_health(
+        cls,
+        scope: _ApplicationScope,
+        system_id: str,
+        *,
+        hosts: list[dict[str, Any]],
+        expected_host_ids: list[str],
+    ) -> dict[str, Any]:
+        """Reuse Wall health protocol for tree nodes; never forge a complete green subset."""
+        if system_id in scope.empty_systems:
+            return no_application_health()
+        if len(expected_host_ids) == 0:
+            return no_host_health()
+        if len(hosts) != len(expected_host_ids):
+            return unavailable_health()
+        if system_id not in scope.complete_apps:
+            return unavailable_health()
+        monitor_ids = cls._mapped_monitor_ids(hosts)
+        if not monitor_ids:
+            return unavailable_health()
+        rows = cls._grouped_alert_counts_by_monitor(scope, monitor_ids)
+        collapsed: dict[tuple[str, str], int] = defaultdict(int)
+        for row in rows:
+            key = (str(row.get("alert_type") or ""), str(row.get("level") or ""))
+            collapsed[key] += int(row.get("count") or 0)
+        return aggregate_application_health(
+            [{"alert_type": alert_type, "level": level, "count": count} for (alert_type, level), count in collapsed.items()]
+        )
 
     @classmethod
     def alarm_detail(cls, request, application_id: str, alarm_id: str) -> dict[str, Any]:

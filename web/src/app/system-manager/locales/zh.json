@@ -1403,7 +1403,8 @@
         "loadFailed": "加载失败",
         "loadFailedReason": "原因：{errorType}",
         "builtinNoActions": "内置类型不可更换或卸载"
-      }
+      },
+      "createInstanceDesc": "从已接入的集成系统类型中选择一个类型创建集成系统实例"
     }
   }
 }

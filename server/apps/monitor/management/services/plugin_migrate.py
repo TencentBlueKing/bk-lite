@@ -7,11 +7,7 @@ from pathlib import Path
 from apps.core.logger import monitor_logger as logger
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.constants.plugin import PluginConstants
-from apps.monitor.management.utils import (
-    find_files_by_pattern,
-    extract_plugin_path_info,
-    parse_template_filename,
-)
+from apps.monitor.management.utils import extract_plugin_path_info, find_files_by_pattern, parse_template_filename
 from apps.monitor.services.plugin import MonitorPluginService
 from apps.monitor.services.plugin_import_bulk import prepare_plugin_import_plan
 from apps.monitor.utils.snmp_ifmib_capability import IFMIB_METRIC_CATALOG, is_ifmib_capable_plugin_data
@@ -23,9 +19,7 @@ REMOTE_HOST_METRICS_MODULES = ("cpu", "mem", "disk", "diskio", "net", "processes
 REMOTE_HOST_METRICS_MODULES_CSV = ",".join(REMOTE_HOST_METRICS_MODULES)
 REMOTE_HOST_CONFIG_TYPES = ("host", "windows_wmi")
 METRICS_MODULES_TOML_LINE_PATTERN = re.compile(r'(?m)^(\s*metrics_modules\s*=\s*)"[^"\n]*"')
-LOCAL_TEMPLATE_ASSET_PATTERN = re.compile(
-    r"(?m)^[ \t]*# @bk_include_file (?P<path>\S+)[ \t]*$"
-)
+LOCAL_TEMPLATE_ASSET_PATTERN = re.compile(r"(?m)^[ \t]*# @bk_include_file (?P<path>\S+)[ \t]*$")
 COMMON_IFMIB_TABLE_DIRECTIVE = "# @bk_include_ifmib_table"
 
 
@@ -95,9 +89,7 @@ def merge_common_ifmib_metrics(plugin_data):
     if not is_ifmib_capable_plugin_data(result):
         return result
 
-    common_metrics = _build_common_ifmib_metrics(
-        re.sub(r"(?<!^)(?=[A-Z])", "_", result["name"]).lower()
-    )
+    common_metrics = _build_common_ifmib_metrics(re.sub(r"(?<!^)(?=[A-Z])", "_", result["name"]).lower())
     common_metrics_by_name = {metric["name"]: metric for metric in common_metrics}
     merged_metrics = []
     existing_common_names = set()
@@ -109,11 +101,7 @@ def merge_common_ifmib_metrics(plugin_data):
             metric = {**common_metrics_by_name[metric_name]}
             existing_common_names.add(metric_name)
         merged_metrics.append(metric)
-    merged_metrics.extend(
-        metric
-        for metric in common_metrics
-        if metric["name"] not in existing_common_names
-    )
+    merged_metrics.extend(metric for metric in common_metrics if metric["name"] not in existing_common_names)
     result["metrics"] = merged_metrics
     return result
 
@@ -176,9 +164,7 @@ def _validate_ui_identity(plugin_dir, collector, collect_type):
     for field, expected in expected_values.items():
         declared = _clean_identity_value(ui_data.get(field))
         if declared and declared != expected:
-            raise PluginIdentityValidationError(
-                f"{ui_file} {field} mismatch: resolved={expected}, declared={declared}"
-            )
+            raise PluginIdentityValidationError(f"{ui_file} {field} mismatch: resolved={expected}, declared={declared}")
 
 
 def _validate_template_identity(plugin_dir, collect_type):
@@ -192,9 +178,7 @@ def _validate_template_identity(plugin_dir, collect_type):
             if not declared or "{" in declared or "}" in declared:
                 continue
             if declared != collect_type:
-                raise PluginIdentityValidationError(
-                    f"{j2_file} collect_type mismatch: resolved={collect_type}, declared={declared}"
-                )
+                raise PluginIdentityValidationError(f"{j2_file} collect_type mismatch: resolved={collect_type}, declared={declared}")
 
 
 def _validate_plugin_identity(file_path, collector, collect_type):
@@ -458,10 +442,7 @@ def _process_ui_templates(plugin_dir, plugin_obj, db_ui_template):
         try:
             ui_data = json.loads(ui_file.read_text(encoding="utf-8"))
             # SNMP：入库前合并接口过滤字段，避免仅依赖读时 enrich
-            if (
-                getattr(plugin_obj, "collect_type", None) == "snmp"
-                or plugin_dir.parent.name == "snmp"
-            ):
+            if getattr(plugin_obj, "collect_type", None) == "snmp" or plugin_dir.parent.name == "snmp":
                 from apps.monitor.utils.snmp_interface_template import merge_snmp_interface_filter_ui
 
                 ui_data = merge_snmp_interface_filter_ui(ui_data, plugin=plugin_obj) or ui_data
@@ -535,6 +516,7 @@ def _collect_templates_to_process(path_list, plugins_dict, all_config_templates,
 def _batch_save_templates(templates_data):
     """批量执行数据库操作：创建、更新、删除模板"""
     from django.db import transaction
+
     from apps.monitor.models import MonitorPluginConfigTemplate, MonitorPluginUITemplate
 
     stats = {
@@ -593,40 +575,79 @@ def _batch_save_templates(templates_data):
     return stats
 
 
-def _cleanup_removed_plugins(path_list):
-    """删除已移除的内置插件"""
-    from django.db import transaction
-    from apps.monitor.models import MonitorPlugin
-
-    # 收集所有内置目录中的插件名称
+def _collect_ondisk_builtin_plugin_names(path_list):
+    """从仍存在的 metrics.json 收集内置插件名，作为删除对照的磁盘 allowlist。"""
     builtin_plugin_names = set()
     for file_path in path_list:
         try:
             plugin_data = json.loads(Path(file_path).read_text(encoding="utf-8"))
-            plugin_name = plugin_data.get("plugin")
-            if plugin_name:
-                builtin_plugin_names.add(plugin_name)
-        except Exception as e:
-            logger.error(f"读取插件名称失败: {file_path}, 错误: {e}")
+        except Exception as exc:
+            logger.error(
+                "event=read_ondisk_plugin_name_failed file_path=%s failed_stage=collect_ondisk_plugin_names error_type=%s",
+                file_path,
+                type(exc).__name__,
+            )
+            continue
+        plugin_name = plugin_data.get("plugin")
+        if plugin_name:
+            builtin_plugin_names.add(plugin_name)
+    return builtin_plugin_names
 
-    # 删除已移除的内置插件
+
+def _cleanup_removed_plugins(path_list):
+    """删除 support-files 中已消失的内置插件及其 UI/配置模板。
+
+    只对照磁盘 metrics.json 的 plugin 名 allowlist，且仅处理 is_pre=True。
+    自定义插件（is_pre=False）不在此清理。allowlist 为空时跳过，避免误删。
+    例如 Telegraf/http/host_aix/ 删除后，DB 中的 Host AIX 会在一次 plugin_init 后消失；
+    Host AIX Remote 仍在磁盘上，不会被删。
+    """
+    from django.db import transaction
+
+    from apps.monitor.models import MonitorPlugin, MonitorPluginConfigTemplate, MonitorPluginUITemplate
+    from apps.monitor.models.monitor_policy import PolicyTemplate
+
+    builtin_plugin_names = _collect_ondisk_builtin_plugin_names(path_list)
+    if not builtin_plugin_names:
+        logger.warning("event=skip_removed_plugin_cleanup reason=empty_ondisk_allowlist failed_stage=cleanup_removed_plugins")
+        return
+
     removed_plugins = MonitorPlugin.objects.filter(is_pre=True).exclude(name__in=builtin_plugin_names)
+    if not removed_plugins.exists():
+        return
 
-    if removed_plugins.exists():
-        removed_count = removed_plugins.count()
-        removed_names = list(removed_plugins.values_list("name", flat=True))
-
+    removed_ids = list(removed_plugins.values_list("id", flat=True))
+    removed_names = list(removed_plugins.values_list("name", flat=True))
+    try:
         with transaction.atomic():
-            removed_plugins.delete()
+            ui_deleted, _ = MonitorPluginUITemplate.objects.filter(plugin_id__in=removed_ids).delete()
+            config_deleted, _ = MonitorPluginConfigTemplate.objects.filter(plugin_id__in=removed_ids).delete()
+            policy_deleted, _ = PolicyTemplate.objects.filter(plugin_id__in=removed_ids).delete()
+            plugin_deleted, _ = removed_plugins.delete()
+    except Exception:
+        logger.exception(
+            "event=cleanup_removed_plugins_failed plugin_count=%s failed_stage=cleanup_removed_plugins error_type=delete_error",
+            len(removed_ids),
+        )
+        raise
 
-        logger.info(f"已删除 {removed_count} 个从内置目录中移除的插件: {removed_names}")
-        logger.info("关联的配置模板和 UI 模板已自动级联删除")
+    logger.info(
+        "event=cleanup_removed_plugins plugin_count=%s ui_template_count=%s "
+        "config_template_count=%s policy_template_count=%s plugin_delete_count=%s names=%s",
+        len(removed_ids),
+        ui_deleted,
+        config_deleted,
+        policy_deleted,
+        plugin_deleted,
+        ",".join(removed_names),
+    )
 
 
 def _cleanup_orphan_objects():
     """删除没有关联插件的监控对象"""
     from django.db import transaction
     from django.db.models import Count
+
     from apps.monitor.models import MonitorObject
 
     orphan_objects = MonitorObject.objects.annotate(plugin_count=Count("monitorplugin")).filter(plugin_count=0)
@@ -646,6 +667,7 @@ def _cleanup_empty_builtin_metric_groups():
     """删除没有指标的内置指标分组"""
     from django.db import transaction
     from django.db.models import Count
+
     from apps.monitor.models import MetricGroup
 
     empty_groups = MetricGroup.objects.filter(is_pre=True).annotate(metric_count=Count("metric")).filter(metric_count=0)
@@ -667,7 +689,7 @@ def migrate_plugin():
     流程：
     1. 导入插件基础信息
     2. 同步配置模板和 UI 模板
-    3. 清理已移除的内置插件
+    3. 按磁盘 metrics.json allowlist 清理已消失的内置插件（含 UI/配置模板）
     4. 清理孤立的监控对象
     """
     # 社区版插件

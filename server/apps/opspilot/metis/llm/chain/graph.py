@@ -27,7 +27,7 @@ from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.constants import START
 
 from apps.core.logger import opspilot_logger as logger
-from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest, BasicLLMResponse
+from apps.opspilot.metis.llm.chain.entity import HIDE_PLANNED_STEP_TEXT_KEY, BasicLLMRequest, BasicLLMResponse
 from apps.opspilot.metis.llm.chain.report_renderers import find_unclosed_phantom_tool_call_start, strip_phantom_tool_calls
 from apps.opspilot.metis.llm.common.llm_error_diagnostics import (
     classify_llm_error,
@@ -54,6 +54,12 @@ _DEEPAGENT_BUILTIN_TOOL_NAMES = frozenset(
         "task",
     }
 )
+
+
+def _hide_planned_step_text(request: BasicLLMRequest) -> bool:
+    extra = getattr(request, "extra_config", None) or {}
+    return bool(extra.get(HIDE_PLANNED_STEP_TEXT_KEY))
+
 
 # 纯文本轮开播条件（仅 show_think=True 时启用；与模型无关，不按厂商硬编码）：
 # 1) 连续多个正文 stream chunk 且未见 tool_call，或
@@ -1507,10 +1513,14 @@ class BasicGraph(ABC):
                         pending_turn_text += text_piece
                         turn_plain_text_chunks += 1
                         # show_think=False：禁止提前开播，等 chat_model_end 再裁定（防长旁白泄漏）。
-                        should_go_live = show_think and (
-                            turn_text_live
-                            or turn_plain_text_chunks >= _AGUI_PLAIN_TEXT_LIVE_AFTER_CHUNKS
-                            or len(pending_turn_text) >= _AGUI_PLAIN_TEXT_LIVE_AFTER_CHARS
+                        should_go_live = (
+                            (not _hide_planned_step_text(request))
+                            and show_think
+                            and (
+                                turn_text_live
+                                or turn_plain_text_chunks >= _AGUI_PLAIN_TEXT_LIVE_AFTER_CHUNKS
+                                or len(pending_turn_text) >= _AGUI_PLAIN_TEXT_LIVE_AFTER_CHARS
+                            )
                         )
                         if should_go_live and pending_turn_text:
                             live_events, current_message_id, message_started = self._emit_live_text_delta(
@@ -1558,10 +1568,27 @@ class BasicGraph(ABC):
                     output = event_data.get("output")
                     end_tool_calls = getattr(output, "tool_calls", None) or []
                     turn_has_tools = bool(end_tool_calls) or turn_saw_tool_call_chunks
+                    hide_step_text = _hide_planned_step_text(request)
                     # 有工具：丢弃本轮旁白缓冲，只补工具事件。
                     # 已实时推送：冲掉剩余缓冲并结束消息，禁止再整段重发。
                     # 未实时推送的短纯文本：chat_model_end 一次性发出。
-                    if turn_has_tools:
+                    # 分步执行步内正文：只给后续步骤看，不推给用户。
+                    if hide_step_text and not turn_has_tools:
+                        pending_turn_text = ""
+                        fallback_text = ""
+                        allow_non_streaming_text = False
+                        if message_started and current_message_id is not None:
+                            yield encoder.encode(
+                                TextMessageEndEvent(
+                                    type=EventType.TEXT_MESSAGE_END,
+                                    message_id=current_message_id,
+                                    timestamp=int(time.time() * 1000),
+                                )
+                            )
+                            message_started = False
+                        live_turn_emitted_text = ""
+                        turn_text_live = False
+                    elif turn_has_tools:
                         pending_turn_text = ""
                         fallback_text = ""
                         allow_non_streaming_text = bool(tool_result_seen_since_model_end)
@@ -1625,17 +1652,20 @@ class BasicGraph(ABC):
                         request.max_output_tokens > 0 and isinstance(completion_tokens, int) and completion_tokens >= request.max_output_tokens
                     ):
                         output_truncated = True
-                    chat_model_end_events = self._handle_chat_model_end_event(
-                        event_data,
-                        encoder,
-                        current_message_id,
-                        current_tool_calls,
-                        # 已实时推送过正文时传 True，避免 end 再用 output.content 整段重发。
-                        message_started=turn_text_live,
-                        allow_non_streaming_text=allow_non_streaming_text,
-                        fallback_text=fallback_text,
-                        emitted_text_signatures=emitted_text_signatures,
-                    )
+                    if hide_step_text and not turn_has_tools:
+                        chat_model_end_events = []
+                    else:
+                        chat_model_end_events = self._handle_chat_model_end_event(
+                            event_data,
+                            encoder,
+                            current_message_id,
+                            current_tool_calls,
+                            # 已实时推送过正文时传 True，避免 end 再用 output.content 整段重发。
+                            message_started=turn_text_live,
+                            allow_non_streaming_text=allow_non_streaming_text,
+                            fallback_text=fallback_text,
+                            emitted_text_signatures=emitted_text_signatures,
+                        )
                     # 收集本轮 chat_model_end 实际 emit 的文本指纹(含拆段后的全文),
                     # 后续 on_chain_end 若再 emit 相同内容会基于此集合去重。
                     if _record_emitted_text_signatures(chat_model_end_events, emitted_text_signatures):
@@ -1653,7 +1683,7 @@ class BasicGraph(ABC):
                 elif event_type == "on_chain_end":
                     # add_chat_history_node 结束时 last=上一轮助手，不得当成本轮直答。
                     # 仍回填 ToolMessage（若有），但不 emit 文本。
-                    if str(event.get("name") or "") == "add_chat_history_node":
+                    if str(event.get("name") or "") == "add_chat_history_node" or _hide_planned_step_text(request):
                         chain_events = self._handle_chain_end_tool_results_only(
                             event_data,
                             encoder,

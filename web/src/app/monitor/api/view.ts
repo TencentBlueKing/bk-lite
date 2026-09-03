@@ -15,22 +15,18 @@ const useViewApi = () => {
   // 必须用 useCallback 固定引用,否则每次重渲染都生成新函数 → effect 反复触发 → 重复发起查询。
   const getInstanceQuery = useCallback(
     async (
-      params: SearchParams = {
-        query: '',
-      }
+      params: SearchParams
     ) => {
-      return await get(`/monitor/api/metrics_instance/query_range/`, {
-        params,
-      });
+      return await post(`/monitor/api/metrics_instance/query_by_metric_range/`, params);
     },
-    [get]
+    [post]
   );
 
   const getInstanceInstantQuery = useCallback(
-    async (params: SearchParams = { query: '' }) => {
-      return await get(`/monitor/api/metrics_instance/query/`, { params });
+    async (params: SearchParams) => {
+      return await post(`/monitor/api/metrics_instance/query_by_metric/`, params);
     },
-    [get]
+    [post]
   );
 
   const getInstanceSearch = useCallback(
