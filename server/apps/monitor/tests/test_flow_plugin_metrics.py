@@ -230,6 +230,19 @@ def test_netflow_interface_metrics_derive_direction_from_interface_tags():
     assert invalid_queries == []
 
 
+def test_flow_interface_direction_series_use_union_operator():
+    """接口方向序列按 in/out 分别 label_replace，恒不相同；`+` 按分组标签匹配恒为空，必须用 `or` 取并集（回归 #4352）。"""
+    invalid_queries = []
+    for path in _flow_metric_files():
+        payload = json.loads(path.read_text())
+        for metric in payload.get("metrics", []):
+            query = metric.get("query", "")
+            if ", direction) + sum(" in query:
+                invalid_queries.append(f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}:direction-plus-union")
+
+    assert invalid_queries == []
+
+
 def test_netflow_common_dimension_metrics_use_portable_counters():
     invalid_queries = []
     for path in sorted((FLOW_METRICS_ROOT / "netflow").glob("*/metrics.json")):

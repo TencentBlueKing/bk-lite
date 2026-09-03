@@ -128,7 +128,7 @@
     {
       "metric_group": "Interface Traffic",
       "name": "device_flow_interface_bytes_rate",
-      "query": "sum(label_replace(label_replace(sflow_bytes{instance_type='router', collect_type='sflow', __$labels__}, \"interface\", \"$1\", \"input_ifindex\", \"(.*)\"), \"direction\", \"in\", \"instance_id\", \"(.*)\")) by (instance_id, interface, direction) + sum(label_replace(label_replace(sflow_bytes{instance_type='router', collect_type='sflow', __$labels__}, \"interface\", \"$1\", \"output_ifindex\", \"(.*)\"), \"direction\", \"out\", \"instance_id\", \"(.*)\")) by (instance_id, interface, direction)",
+      "query": "sum(label_replace(label_replace(sflow_bytes{instance_type='router', collect_type='sflow', __$labels__}, \"interface\", \"$1\", \"input_ifindex\", \"(.*)\"), \"direction\", \"in\", \"instance_id\", \"(.*)\")) by (instance_id, interface, direction) or sum(label_replace(label_replace(sflow_bytes{instance_type='router', collect_type='sflow', __$labels__}, \"interface\", \"$1\", \"output_ifindex\", \"(.*)\"), \"direction\", \"out\", \"instance_id\", \"(.*)\")) by (instance_id, interface, direction)",
       "display_name": "Interface Flow Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -150,7 +150,7 @@
     {
       "metric_group": "Interface Traffic",
       "name": "device_flow_interface_packets_rate",
-      "query": "sum(label_replace(label_replace(sflow_packets{instance_type='router', collect_type='sflow', __$labels__}, \"interface\", \"$1\", \"input_ifindex\", \"(.*)\"), \"direction\", \"in\", \"instance_id\", \"(.*)\")) by (instance_id, interface, direction) + sum(label_replace(label_replace(sflow_packets{instance_type='router', collect_type='sflow', __$labels__}, \"interface\", \"$1\", \"output_ifindex\", \"(.*)\"), \"direction\", \"out\", \"instance_id\", \"(.*)\")) by (instance_id, interface, direction)",
+      "query": "sum(label_replace(label_replace(sflow_packets{instance_type='router', collect_type='sflow', __$labels__}, \"interface\", \"$1\", \"input_ifindex\", \"(.*)\"), \"direction\", \"in\", \"instance_id\", \"(.*)\")) by (instance_id, interface, direction) or sum(label_replace(label_replace(sflow_packets{instance_type='router', collect_type='sflow', __$labels__}, \"interface\", \"$1\", \"output_ifindex\", \"(.*)\"), \"direction\", \"out\", \"instance_id\", \"(.*)\")) by (instance_id, interface, direction)",
       "display_name": "Interface Flow Packet Rate",
       "data_type": "Number",
       "unit": "pps",
