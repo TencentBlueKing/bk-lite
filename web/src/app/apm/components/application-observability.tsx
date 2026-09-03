@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { PlusOutlined } from '@ant-design/icons';
 import { Button, Modal, Segmented, Typography, message } from 'antd';
 import useApmApi from '@/app/apm/api';
+import ApmPageBreadcrumb from '@/app/apm/components/apm-page-breadcrumb';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import {
@@ -42,9 +43,15 @@ interface KeyInfoItem {
 export default function ApplicationObservability({
   applicationId,
   showAddIngest = false,
+  parentHref = '/apm/services',
+  parentLabel,
+  parentAriaLabel,
 }: {
   applicationId: string;
   showAddIngest?: boolean;
+  parentHref?: string;
+  parentLabel?: string;
+  parentAriaLabel?: string;
 }) {
   const { t } = useTranslation();
   const searchParams = useSearchParams();
@@ -219,10 +226,19 @@ export default function ApplicationObservability({
           <div className="grid gap-3 xl:grid-cols-3">
             <ApmSurface className="min-w-0 xl:col-span-2" padding="none">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border)] px-4 py-3">
-                <div className="flex min-w-0 items-center gap-2">
-                  <Typography.Text strong>{t('apm.applications.topology', '应用服务拓扑')}</Typography.Text>
-                  <Typography.Text type="secondary" className="min-w-0 truncate !text-xs">
-                    {application.name}
+                <div className="min-w-0">
+                  <ApmPageBreadcrumb
+                    parentHref={parentHref}
+                    parentLabel={parentLabel ?? t('apm.common.application', '应用')}
+                    parentAriaLabel={parentAriaLabel ?? t('apm.applications.backToApplicationCatalog', '返回应用目录')}
+                    current={(
+                      <Typography.Title level={2} className="!mb-0 !truncate !text-base !font-semibold">
+                        {application.name}
+                      </Typography.Title>
+                    )}
+                  />
+                  <Typography.Text type="secondary" className="mt-0.5 block !text-xs">
+                    {t('apm.applications.topology', '应用服务拓扑')}
                   </Typography.Text>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
