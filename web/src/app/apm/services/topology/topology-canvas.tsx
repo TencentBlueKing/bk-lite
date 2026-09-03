@@ -49,7 +49,7 @@ export const topologyHealthI18n: Record<ApmTopologyHealth, { id: string; fallbac
   unknown: { id: 'apm.health.unknown', fallback: '未知' },
 };
 
-const EDGE_STROKE = 'color-mix(in srgb, var(--color-text-3) 42%, var(--color-border))';
+const EDGE_STROKE = 'color-mix(in srgb, var(--color-text-3) 48%, var(--color-border))';
 const EDGE_STROKE_ACTIVE = 'var(--color-primary)';
 const NODE_IDLE_OPACITY = 0.5;
 const NODE_DRAG_THRESHOLD_PX = 4;
@@ -80,25 +80,45 @@ function TopologyMetricLabel({
   clipPath?: string;
 }) {
   const parts = topologyMetricParts({ errorCount, total, p95_ms: p95Ms });
+  const isEdgeLabel = textAnchor === 'middle';
+  const pillWidth = 82;
+  const pillHeight = fontSize + 8;
   return (
-    <text
-      clipPath={clipPath}
-      data-topology-metrics="true"
-      data-has-errors={!parts.hasErrors ? 'false' : 'true'}
-      fontSize={fontSize}
-      paintOrder="stroke"
-      stroke="var(--color-fill-1)"
-      strokeLinejoin="round"
-      strokeWidth="4"
-      textAnchor={textAnchor}
-      x={x}
-      y={y}
-    >
-      <tspan fill="var(--color-text-3)">{`${parts.total} / ${parts.latency} / `}</tspan>
-      <tspan data-error-count="true" fill={topologyErrorFill(parts.hasErrors)} fontWeight={parts.hasErrors ? 700 : undefined}>
-        {parts.errors}
-      </tspan>
-    </text>
+    <g>
+      {isEdgeLabel ? (
+        <rect
+          className="opacity-95"
+          fill="var(--color-bg)"
+          filter="url(#apm-node-shadow)"
+          height={pillHeight}
+          rx={6}
+          stroke="var(--color-border)"
+          strokeWidth="0.8"
+          width={pillWidth}
+          x={x - pillWidth / 2}
+          y={y - pillHeight / 2}
+        />
+      ) : null}
+      <text
+        clipPath={clipPath}
+        data-topology-metrics="true"
+        data-has-errors={!parts.hasErrors ? 'false' : 'true'}
+        fontSize={fontSize}
+        paintOrder={isEdgeLabel ? undefined : 'stroke'}
+        stroke={isEdgeLabel ? undefined : 'var(--color-fill-1)'}
+        strokeLinejoin="round"
+        strokeWidth={isEdgeLabel ? undefined : '0'}
+        textAnchor={textAnchor}
+        dominantBaseline={isEdgeLabel ? 'central' : undefined}
+        x={x}
+        y={isEdgeLabel ? y : y}
+      >
+        <tspan fill="var(--color-text-3)">{`${parts.total} / ${parts.latency} / `}</tspan>
+        <tspan data-error-count="true" fill={topologyErrorFill(parts.hasErrors)} fontWeight={parts.hasErrors ? 700 : undefined}>
+          {parts.errors}
+        </tspan>
+      </text>
+    </g>
   );
 }
 
@@ -332,15 +352,19 @@ export default function TopologyCanvas({
   return (
     <div className="relative h-[640px] w-full overflow-hidden bg-[var(--color-fill-1)]" data-topology-layout-pending={layoutPending ? 'true' : 'false'} data-topology-surface="true">
       {layoutPending ? (
-        <div className="absolute inset-0 z-20 flex items-center bg-[var(--color-fill-1)]">
+        <div className="absolute inset-0 z-20 flex items-center bg-[var(--color-bg)]/80 backdrop-blur-xs">
           <div className="w-full">
             <CatalogState kind="loading" />
           </div>
         </div>
       ) : null}
-      {toolbar ? <div className="absolute left-3 top-3 z-10 w-52 max-w-[calc(100%-24px)]">{toolbar}</div> : null}
-      <div className={`absolute left-3 z-10 flex flex-col gap-2 ${toolbar ? 'top-14' : 'top-3'}`}>
-        <div className="inline-flex w-fit flex-col overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-bg)]">
+      {toolbar ? (
+        <div className="absolute left-3.5 top-3.5 z-10 w-60 max-w-[calc(100%-28px)] rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)]/95 p-1 shadow-2xs backdrop-blur-md">
+          {toolbar}
+        </div>
+      ) : null}
+      <div className={`absolute left-3.5 z-10 flex flex-col gap-2 ${toolbar ? 'top-16' : 'top-3.5'}`}>
+        <div className="inline-flex w-fit flex-col overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)]/95 shadow-2xs backdrop-blur-md">
           <Button aria-label={t('apm.topology.zoomIn', '放大拓扑')} type="text" size="small" icon={<PlusOutlined aria-hidden="true" />} onClick={() => adjustZoom(view.k + 0.15)} />
           <Button aria-label={t('apm.topology.zoomOut', '缩小拓扑')} type="text" size="small" icon={<MinusOutlined aria-hidden="true" />} onClick={() => adjustZoom(view.k - 0.15)} />
           <Button aria-label={t('apm.topology.resetZoom', '重置拓扑缩放')} type="text" size="small" icon={<AimOutlined aria-hidden="true" />} onClick={() => {
@@ -364,10 +388,34 @@ export default function TopologyCanvas({
         }}
       >
         <defs>
+          <pattern
+            id="apm-topology-grid"
+            width="24"
+            height="24"
+            patternUnits="userSpaceOnUse"
+            patternTransform={`translate(${view.x % 24} ${view.y % 24})`}
+          >
+            <circle cx="12" cy="12" r="1.1" fill="var(--color-primary)" opacity="0.14" />
+          </pattern>
+          <linearGradient id="apm-canvas-gradient" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="var(--color-bg)" />
+            <stop offset="100%" stopColor="color-mix(in srgb, var(--color-bg) 94%, var(--color-fill-1))" />
+          </linearGradient>
+          <radialGradient id="apm-canvas-glow" cx="50%" cy="38%" r="65%">
+            <stop offset="0%" stopColor="var(--color-primary)" stopOpacity="0.06" />
+            <stop offset="50%" stopColor="var(--color-primary)" stopOpacity="0.015" />
+            <stop offset="100%" stopColor="transparent" stopOpacity="0" />
+          </radialGradient>
+          <filter id="apm-node-shadow" x="-10%" y="-10%" width="124%" height="130%" filterUnits="userSpaceOnUse">
+            <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="rgba(0,0,0,0.06)" />
+          </filter>
           <marker id="apm-arrow" markerHeight="6" markerUnits="userSpaceOnUse" markerWidth="6" orient="auto" refX="5" refY="3" viewBox="0 0 6 6">
-            <path d="M 0 0.6 L 5.5 3 L 0 5.4 Z" fill="context-stroke" />
+            <path d="M 0 0.6 L 5.5 3 L 0 5.4 Z" fill="context-stroke" strokeLinejoin="round" />
           </marker>
         </defs>
+        <rect width="100%" height="100%" fill="url(#apm-canvas-gradient)" pointerEvents="none" />
+        <rect width="100%" height="100%" fill="url(#apm-canvas-glow)" pointerEvents="none" />
+        <rect width="100%" height="100%" fill="url(#apm-topology-grid)" pointerEvents="none" />
         <g data-topology-view="true" transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
         {edges.map((edge) => {
           const source = nodeMap.get(edge.source);
@@ -436,7 +484,7 @@ export default function TopologyCanvas({
                 textAnchor="middle"
                 total={edge.sampled_calls}
                 x={geometry.labelX}
-                y={geometry.labelY - 6}
+                y={geometry.labelY}
               />
             </g>
           );
@@ -529,6 +577,7 @@ export default function TopologyCanvas({
                 fill={isSelected
                   ? 'var(--color-primary-bg-active)'
                   : userRequest ? 'var(--color-fill-2)' : 'var(--color-bg)'}
+                filter="url(#apm-node-shadow)"
                 height={cardHeight}
                 rx={cardRadius}
                 stroke={isSelected ? 'var(--color-primary)' : 'var(--color-border)'}

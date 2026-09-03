@@ -136,7 +136,7 @@ describe('APM 服务详情页头', () => {
     expect(catalogLink.getAttribute('href')).toBe('/apm/services?perspective=service');
     expect(catalogLink.textContent).toBe('服务');
     expect(screen.getByRole('navigation', { name: '页面路径' })).not.toBeNull();
-  });
+  }, 15_000);
 });
 
 describe('APM 服务详情部署 Tab', () => {

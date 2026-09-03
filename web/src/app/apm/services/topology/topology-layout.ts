@@ -35,7 +35,7 @@ export const TOPOLOGY_NODE_CARD = {
   minWidth: 176,
   widthSpan: 28,
   height: 48,
-  radius: 6,
+  radius: 8,
   iconSize: 20,
   iconPaddingX: 10,
   nameOffsetX: 40,
@@ -332,7 +332,8 @@ export const buildTopologyEdgeGeometry = (
     const endY = target.y - ySign * (target.radius + 9);
     const midY = (startY + endY) / 2 + (reciprocal ? 18 : 0);
     const spanX = Math.abs(endX - startX);
-    const corner = Math.min(10, spanX / 2, Math.abs(endY - startY) / 4);
+    const deltaY = Math.abs(endY - startY);
+    const corner = Math.min(48, spanX / 2, deltaY / 2.2);
     const path = spanX < 1
       ? `M ${roundCoordinate(startX)} ${roundCoordinate(startY)} L ${roundCoordinate(endX)} ${roundCoordinate(endY)}`
       : `M ${roundCoordinate(startX)} ${roundCoordinate(startY)} L ${roundCoordinate(startX)} ${roundCoordinate(midY - ySign * corner)} Q ${roundCoordinate(startX)} ${roundCoordinate(midY)} ${roundCoordinate(startX + Math.sign(endX - startX) * corner)} ${roundCoordinate(midY)} L ${roundCoordinate(endX - Math.sign(endX - startX) * corner)} ${roundCoordinate(midY)} Q ${roundCoordinate(endX)} ${roundCoordinate(midY)} ${roundCoordinate(endX)} ${roundCoordinate(midY + ySign * corner)} L ${roundCoordinate(endX)} ${roundCoordinate(endY)}`;
@@ -352,7 +353,9 @@ export const buildTopologyEdgeGeometry = (
   const direct = unitVector(source.x, source.y, target.x, target.y);
   const midpointX = (source.x + target.x) / 2;
   const midpointY = (source.y + target.y) / 2;
-  const curveOffset = reciprocal ? 28 : 0;
+  const distance = Math.hypot(target.x - source.x, target.y - source.y);
+  const baseCurve = Math.min(36, Math.max(16, distance * 0.14));
+  const curveOffset = reciprocal ? 40 : baseCurve;
   const controlX = midpointX - direct.y * curveOffset;
   const controlY = midpointY + direct.x * curveOffset;
   const sourceDirection = unitVector(source.x, source.y, controlX, controlY);
