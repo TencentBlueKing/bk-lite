@@ -264,6 +264,7 @@ const JobHostSelectionModal: React.FC<JobHostSelectionModalProps> = ({
                 rowSelection={{
                   selectedRowKeys,
                   onChange: handleRowSelectionChange,
+                  preserveSelectedRowKeys: true,
                 }}
               />
             </div>

@@ -2,14 +2,15 @@
 
 import base64
 import io
+import math
 import os
 import threading
 
 import yaml
 from kubernetes import config
 
-from apps.core.utils.ssrf_validator import SSRFValidator
 from apps.core.logger import opspilot_logger as logger
+from apps.core.utils.ssrf_validator import SSRFValidator
 
 # 线程局部存储，用于传递当前操作的集群名
 _thread_local = threading.local()
@@ -222,8 +223,7 @@ def prepare_context(cfg):
             try:
                 _, active_context = config.list_kube_config_contexts()
                 if active_context:
-                    _set_current_cluster_name(active_context.get("context", {}).get("cluster", "")
-                                             or active_context.get("name", ""))
+                    _set_current_cluster_name(active_context.get("context", {}).get("cluster", "") or active_context.get("name", ""))
             except Exception:
                 pass
     except Exception as e:
@@ -292,3 +292,43 @@ def parse_resource_quantity(quantity_str):
         return float(quantity_str)
     except ValueError:
         return 0
+
+
+def coerce_int(value, default=None, *, lo=None, hi=None, allow_none=False):
+    """把 LLM 工具入参转成 int。模型常把数字编成字符串，未标注类型时不会自动转换。"""
+    if value is None or value == "":
+        if allow_none:
+            return None
+        if default is None:
+            raise ValueError("missing integer")
+        parsed = int(default)
+    else:
+        try:
+            as_float = float(str(value).strip())
+            if not math.isfinite(as_float):
+                raise ValueError("non-finite number")
+            parsed = int(as_float)
+        except (TypeError, ValueError, OverflowError) as exc:
+            if default is not None:
+                parsed = int(default)
+            else:
+                raise ValueError("invalid integer") from exc
+    if lo is not None:
+        parsed = max(lo, parsed)
+    if hi is not None:
+        parsed = min(hi, parsed)
+    return parsed
+
+
+def coerce_bool(value, default=False):
+    """把 LLM 工具入参转成 bool。字符串 \"false\" 在 Python 里为真，必须显式识别。"""
+    if isinstance(value, bool):
+        return value
+    if value is None or value == "":
+        return default
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "y", "on"}:
+        return True
+    if text in {"0", "false", "no", "n", "off"}:
+        return False
+    return default

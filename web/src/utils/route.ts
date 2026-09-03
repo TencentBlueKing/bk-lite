@@ -1,5 +1,8 @@
 const DEFAULT_CLIENT_ID = 'ops-console';
 
+/** Portal landing after sign-in and for the `/` route. */
+export const PORTAL_HOME_PATH = '/ops-console/home';
+
 const clientIdFromPathname = (pathname: string): string => {
   const pathSegments = pathname.split('/').filter(Boolean);
 

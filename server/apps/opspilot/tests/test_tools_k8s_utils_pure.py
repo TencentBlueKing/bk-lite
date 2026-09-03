@@ -23,7 +23,7 @@ class TestFormatBytes:
         assert k8s.format_bytes(5 * 1024 * 1024) == "5.0 MiB"
 
     def test_gib_rounding(self):
-        assert k8s.format_bytes(int(2.5 * 1024 ** 3)) == "2.5 GiB"
+        assert k8s.format_bytes(int(2.5 * 1024**3)) == "2.5 GiB"
 
 
 class TestParseResourceQuantity:
@@ -35,10 +35,10 @@ class TestParseResourceQuantity:
         assert k8s.parse_resource_quantity("100m") == 0.1
 
     def test_memory_gi(self):
-        assert k8s.parse_resource_quantity("1Gi") == 1024 ** 3
+        assert k8s.parse_resource_quantity("1Gi") == 1024**3
 
     def test_memory_mi(self):
-        assert k8s.parse_resource_quantity("500Mi") == 500 * 1024 ** 2
+        assert k8s.parse_resource_quantity("500Mi") == 500 * 1024**2
 
     def test_decimal_si_k(self):
         assert k8s.parse_resource_quantity("2K") == 2000
@@ -126,3 +126,46 @@ class TestRepresentStrNoFold:
         out = k8s._preprocess_kubeconfig(yaml.safe_dump(cfg))
         # 长 token 应被双引号包裹,且 yaml 可往返解析
         assert yaml.safe_load(out)["users"][0]["user"]["token"] == long_val
+
+
+class TestCoerceInt:
+    def test_string_and_float_string(self):
+        assert k8s.coerce_int("24", 1) == 24
+        assert k8s.coerce_int("24.9", 1) == 24
+        assert k8s.coerce_int(24, 1) == 24
+
+    def test_none_and_blank_use_default(self):
+        assert k8s.coerce_int(None, 24) == 24
+        assert k8s.coerce_int("", 24) == 24
+
+    def test_allow_none(self):
+        assert k8s.coerce_int(None, allow_none=True) is None
+        assert k8s.coerce_int("", allow_none=True) is None
+
+    def test_invalid_falls_back_or_raises(self):
+        assert k8s.coerce_int("abc", 24) == 24
+        with pytest.raises(ValueError):
+            k8s.coerce_int("abc")
+
+    def test_clamps_bounds(self):
+        assert k8s.coerce_int(0, 24, lo=1, hi=168) == 1
+        assert k8s.coerce_int(999, 24, lo=1, hi=168) == 168
+
+    def test_non_finite_and_overflow_use_default(self):
+        assert k8s.coerce_int("inf", 24) == 24
+        assert k8s.coerce_int("1e309", 24) == 24
+        assert k8s.coerce_int("nan", 24) == 24
+        with pytest.raises(ValueError):
+            k8s.coerce_int("inf")
+
+
+class TestCoerceBool:
+    def test_false_strings(self):
+        assert k8s.coerce_bool("false", True) is False
+        assert k8s.coerce_bool("0", True) is False
+        assert k8s.coerce_bool(False, True) is False
+
+    def test_true_strings_and_default(self):
+        assert k8s.coerce_bool("true", False) is True
+        assert k8s.coerce_bool(None, True) is True
+        assert k8s.coerce_bool("maybe", True) is True

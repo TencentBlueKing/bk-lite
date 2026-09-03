@@ -425,7 +425,7 @@ const IntegrationDetailPage: React.FC = () => {
         </div>
       </div>
 
-      <section className="grid overflow-hidden rounded-md bg-white shadow-sm xl:grid-cols-[minmax(0,8.4fr)_minmax(200px,1.6fr)]">
+      <section className="grid overflow-hidden rounded-md bg-[var(--color-bg)] shadow-sm xl:grid-cols-[minmax(0,8.4fr)_minmax(200px,1.6fr)]">
         <div className="px-5 py-4">
           <Tabs
             activeKey={activeTab}

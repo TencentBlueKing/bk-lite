@@ -112,6 +112,9 @@ class CredentialAttemptRunner:
     ) -> TargetCollectionResult:
         attempts = 0
         no_response_attempts = 0
+        last_no_response_error_code = ""
+        collect_no_response_attempts = 0
+        last_collect_no_response_error_code = ""
         credential_failures = []
         for credential in credentials:
             attempts += 1
@@ -128,6 +131,8 @@ class CredentialAttemptRunner:
             )
             if isinstance(access, TargetCollectionResult):
                 return replace(access, credential_failures=tuple(credential_failures))
+            if access.status == AccessProbeStatus.NO_RESPONSE:
+                last_no_response_error_code = access.error_code or "protocol_no_response"
 
             probe_decision = await self._apply_access_probe(
                 request,
@@ -155,6 +160,9 @@ class CredentialAttemptRunner:
                 context,
                 target_started_at=target_started_at,
             )
+            if outcome.status == CollectOutcomeStatus.RETRY_CREDENTIAL and outcome.error_code in {"snmp_no_response", "protocol_no_response"}:
+                collect_no_response_attempts += 1
+                last_collect_no_response_error_code = outcome.error_code
             collect_decision = await self._apply_collect_outcome(
                 request,
                 target,
@@ -172,13 +180,19 @@ class CredentialAttemptRunner:
                 )
             # continue → 下一凭据
 
+        all_attempts_no_response = attempts > 0 and no_response_attempts + collect_no_response_attempts == attempts
+        no_response_error_code = last_collect_no_response_error_code or last_no_response_error_code
         return TargetCollectionResult(
             target=target,
             status="failed",
             attempts=attempts,
-            error_code=("protocol_no_response" if attempts > 0 and no_response_attempts == attempts else "credentials_exhausted"),
+            error_code=(no_response_error_code if all_attempts_no_response else "credentials_exhausted"),
             credential_failures=tuple(credential_failures),
-            failed_stage=(FailureStage.ACCESS_PROBE if attempts > 0 and no_response_attempts == attempts else FailureStage.CREDENTIAL),
+            failed_stage=(
+                FailureStage.ACCESS_PROBE
+                if attempts > 0 and no_response_attempts == attempts
+                else (FailureStage.COLLECTION if all_attempts_no_response else FailureStage.CREDENTIAL)
+            ),
         )
 
     async def _apply_access_probe(
@@ -250,7 +264,7 @@ class CredentialAttemptRunner:
                         status="failed",
                         attempts=attempts,
                         credential_id=credential_id,
-                        error_code="no_response_attempt_limit",
+                        error_code=access.error_code or "protocol_no_response",
                         failed_stage=FailureStage.ACCESS_PROBE,
                     ),
                     no_response_attempts=no_response_attempts,

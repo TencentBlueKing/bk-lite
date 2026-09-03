@@ -204,7 +204,7 @@ class TestHighRestart:
     def test_string_threshold_is_coerced(self, core):
         cs = _cstatus(restart_count=3)
         core.list_pod_for_all_namespaces.return_value = _items([_pod(cstatuses=[cs])])
-        out = json.loads(d.get_high_restart_kubernetes_pods.invoke({"restart_threshold": "3", "config": {}}))
+        out = json.loads(d.get_high_restart_kubernetes_pods.func(restart_threshold="3", config={}))
         assert len(out) == 1
 
     def test_api_exception_wrapped(self, core):

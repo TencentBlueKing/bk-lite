@@ -76,8 +76,8 @@ const MappingInputRow = memo(({
   onChange,
 }: MappingInputRowProps) => (
   <div className="grid grid-cols-[minmax(0,1fr)_24px_minmax(0,1fr)] gap-x-4">
-    <div className="rounded-sm border border-[var(--color-border)] bg-white p-2">
-      <div className="text-[var(--color-text)]">
+    <div className="rounded-sm border border-[var(--color-border)] bg-[var(--color-fill-1)] p-2">
+      <div className="text-[var(--color-text-1)]">
         {PLATFORM_FIELD_META[row.platformField as keyof typeof PLATFORM_FIELD_META]?.label || row.platformField}
         {required ? <span className="ml-1 text-[var(--color-error)]">*</span> : null}
       </div>

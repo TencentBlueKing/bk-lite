@@ -3,8 +3,8 @@
 
 不写真实 DB/图(图写不回滚会污染 cmdb_graph),改为:
 - 内存数据集(4 bill × 每 bill 3 log,字段名对齐真实环境)
-- stub_orm fixture:monkeypatch orm.query_bills_by_filter / query_logs_by_filter
-  按筛选参数过滤内存数据集,让 service 聚合逻辑跑在真实形状的数据上。
+- stub_orm fixture:monkeypatch 三个权限感知聚合查询，按筛选参数过滤内存数据集，
+  让 service 的金额、环比和展示格式逻辑跑在真实形状的数据上。
 """
 from datetime import date
 
@@ -67,20 +67,77 @@ def _in_period(log, billing_period):
 
 @pytest.fixture
 def stub_orm(monkeypatch):
-    """把 service 依赖的 orm 两个查询函数换成内存实现。"""
+    """把 service 依赖的三种聚合查询换成内存实现。"""
     from apps.cmdb.services.cloud_cost import orm
 
-    def fake_bills(user_info, *, inst_type=None, user_department=None,
-                   applying_user=None, billing_period=None):
+    def selected(inst_type=None, user_department=None, applying_user=None, billing_period=None):
         bills = [b for b in BILLS if _match_bill(b, inst_type, user_department, applying_user)]
-        return bills, len(bills)
-
-    def fake_logs(user_info, *, inst_type=None, user_department=None,
-                  applying_user=None, billing_period=None):
-        eligible = {b["_id"] for b in BILLS if _match_bill(b, inst_type, user_department, applying_user)}
+        eligible = {b["_id"] for b in bills}
         logs = [dict(lg) for lg in LOGS if lg["_bill_id"] in eligible and _in_period(lg, billing_period)]
-        return logs, len(logs)
+        return bills, logs
 
-    monkeypatch.setattr(orm, "query_bills_by_filter", fake_bills)
-    monkeypatch.setattr(orm, "query_logs_by_filter", fake_logs)
+    def fake_summary(user_info, *, inst_type=None, user_department=None,
+                     applying_user=None, billing_period=None):
+        _, logs = selected(inst_type, user_department, applying_user, billing_period)
+        return {
+            "total_cost": sum(float(log["total_cost"]) for log in logs),
+            "instance_count": len({log.get("object_id") for log in logs}),
+            "min_billing_date": min((log["billing_date"] for log in logs), default=None),
+            "max_billing_date": max((log["billing_date"] for log in logs), default=None),
+        }
+
+    def fake_distribution(user_info, *, inst_type=None, user_department=None,
+                          applying_user=None, billing_period=None, group_field=None):
+        bills, logs = selected(inst_type, user_department, applying_user, billing_period)
+        bills_by_id = {bill["_id"]: bill for bill in bills}
+        rows = {}
+        for log in logs:
+            bill = bills_by_id[log["_bill_id"]]
+            key = bill.get(group_field)
+            row = rows.setdefault(key, {"key": key, "total_cost": 0.0, "objects": set()})
+            row["total_cost"] += float(log["total_cost"])
+            row["objects"].add(bill.get("object_id") or ("bill", bill["_id"]))
+        return [
+            {"key": row["key"], "total_cost": row["total_cost"], "instance_count": len(row["objects"])}
+            for row in rows.values()
+        ]
+
+    def fake_detail(user_info, *, inst_type=None, user_department=None,
+                    applying_user=None, billing_period=None, page=1, page_size=20,
+                    sort_field="total_cost_incurred", sort_order="desc"):
+        bills, logs = selected(inst_type, user_department, applying_user, billing_period)
+        logs_by_bill = {}
+        for log in logs:
+            logs_by_bill.setdefault(log["_bill_id"], []).append(log)
+        items = []
+        for bill in bills:
+            bill_logs = logs_by_bill.get(bill["_id"], [])
+            cost = sum(float(log["total_cost"]) for log in bill_logs)
+            if cost == 0:
+                continue
+            items.append({
+                "bill_id": bill["_id"],
+                "object_id": bill.get("object_id", ""),
+                "instance_name": bill.get("inst_name", ""),
+                "object_type": bill.get("object_type", ""),
+                "object_name": bill.get("object_name", ""),
+                "department": bill.get("user_department", ""),
+                "user": bill.get("applicant", ""),
+                "total_cost": cost,
+                "min_billing_date": min((log["billing_date"] for log in bill_logs), default=None),
+                "max_billing_date": max((log["billing_date"] for log in bill_logs), default=None),
+            })
+        sort_key = {
+            "total_cost_incurred": "total_cost",
+            "instance_name": "instance_name",
+            "department": "department",
+        }.get(sort_field, "total_cost")
+        items.sort(key=lambda item: item["bill_id"])
+        items.sort(key=lambda item: item[sort_key], reverse=(sort_order == "desc"))
+        start = (page - 1) * page_size
+        return {"total": len(items), "items": items[start:start + page_size]}
+
+    monkeypatch.setattr(orm, "query_summary", fake_summary)
+    monkeypatch.setattr(orm, "query_distribution", fake_distribution)
+    monkeypatch.setattr(orm, "query_bill_detail", fake_detail)
     return {"user_info": USER_INFO, "bills": BILLS, "logs": LOGS}

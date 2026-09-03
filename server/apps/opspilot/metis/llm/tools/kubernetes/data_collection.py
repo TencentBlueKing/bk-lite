@@ -8,15 +8,21 @@ import re
 import threading
 from datetime import datetime, timezone
 
+from kubernetes import client
+from kubernetes.client import ApiException
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
+from apps.core.logger import opspilot_logger as logger
+from apps.core.logger import safe_exception_info
 from apps.opspilot.metis.llm.tools.kubernetes.cluster import describe_kubernetes_resource
+from apps.opspilot.metis.llm.tools.kubernetes.instance_scope import bind_instance_config, route_alert_cluster
 from apps.opspilot.metis.llm.tools.kubernetes.node_diagnostics import diagnose_node_issues
 from apps.opspilot.metis.llm.tools.kubernetes.optimization import compare_deployment_revisions
 from apps.opspilot.metis.llm.tools.kubernetes.remediation import get_deployment_revision_history
 from apps.opspilot.metis.llm.tools.kubernetes.resources import get_kubernetes_pod_logs, get_kubernetes_previous_pod_logs
 from apps.opspilot.metis.llm.tools.kubernetes.tracing import get_resource_events_timeline, trace_service_chain
+from apps.opspilot.metis.llm.tools.kubernetes.utils import coerce_int, prepare_context
 
 
 def _configurable(config: RunnableConfig = None):
@@ -24,11 +30,7 @@ def _configurable(config: RunnableConfig = None):
 
 
 def _build_instance_config(config: RunnableConfig, instance: dict):
-    configurable = copy.deepcopy(_configurable(config))
-    configurable["instance_id"] = instance.get("id")
-    configurable["instance_name"] = instance.get("name")
-    configurable["kubeconfig_data"] = instance.get("kubeconfig_data", "")
-    return {"configurable": configurable}
+    return bind_instance_config(config, instance)
 
 
 def _get_target_instances(config: RunnableConfig = None, instance_name=None, instance_id=None):
@@ -80,27 +82,11 @@ def _json_or_raw(value):
     return value
 
 
-def _lookup_payload_error(value) -> str | None:
-    payload = _json_or_raw(value)
-    if isinstance(payload, dict):
-        err = payload.get("error")
-        if err not in (None, "", [], {}):
-            return str(err)
-    if isinstance(payload, str) and payload.strip():
-        from apps.opspilot.metis.llm.common.tool_failure import is_non_replanable_tool_failure
-
-        if is_non_replanable_tool_failure(payload):
-            return payload.strip()
-    return None
-
-
 def _cluster_config_error(config: RunnableConfig = None) -> str | None:
     """kubeconfig 无效时尽早返回，避免被包装成「缺 namespace / 缺标识」。"""
     configurable = _configurable(config)
     if not configurable.get("kubernetes_instances") and not configurable.get("kubeconfig_data"):
         return None
-    from apps.opspilot.metis.llm.tools.kubernetes.utils import prepare_context
-
     try:
         prepare_context(config)
     except Exception as exc:
@@ -117,6 +103,25 @@ def _unresolved_connection_result(target: dict, error: str) -> str:
     if not payload.get("reason"):
         payload["reason"] = error
     return json.dumps(payload, ensure_ascii=False)
+
+
+def _log_resolve_failed(failed_stage, error_type, instance_name=None, *, exc=None):
+    instance = instance_name or "-"
+    if exc is not None:
+        logger.error(
+            "event=k8s_alert_resolve_failed failed_stage=%s error_type=%s instance_name=%s",
+            failed_stage,
+            error_type,
+            instance,
+            exc_info=safe_exception_info(exc),
+        )
+        return
+    logger.warning(
+        "event=k8s_alert_resolve_failed failed_stage=%s error_type=%s instance_name=%s",
+        failed_stage,
+        error_type,
+        instance,
+    )
 
 
 def _evidence_block(value=None, *, status=None, error=None):
@@ -231,18 +236,57 @@ _K8S_KIND_NAMES = frozenset(
 K8S_TARGET_RESOLVE_TOOL_NAME = "resolve_k8s_target_from_alert"
 _resolve_cache_local = threading.local()
 
+# 控制面静态 Pod：kube-scheduler-minikube、kube-apiserver-<node> 等固定在 kube-system。
+_KUBE_SYSTEM_STATIC_POD_NAMES = frozenset(
+    {
+        "kube-apiserver",
+        "kube-scheduler",
+        "kube-controller-manager",
+        "kube-proxy",
+    }
+)
+_KUBE_SYSTEM_STATIC_POD_PREFIXES = (
+    "kube-apiserver-",
+    "kube-scheduler-",
+    "kube-controller-manager-",
+    "kube-proxy-",
+)
+# kube-proxy-exporter 等监控组件不是控制面静态 Pod。
+_KUBE_SYSTEM_NON_NODE_NAME_TOKENS = frozenset(
+    {
+        "exporter",
+        "metrics",
+        "operator",
+        "sidecar",
+        "prometheus",
+        "grafana",
+    }
+)
+
+
+def _copy_label(labels: dict, key: str, *values) -> None:
+    if labels.get(key) not in (None, "", [], {}):
+        return
+    for value in values:
+        if value not in (None, "", [], {}):
+            labels[key] = value
+            return
+
 
 def _extract_labels(alert):
     labels = alert.get("labels") or {}
     labels = dict(labels) if isinstance(labels, dict) else {}
+    tags = alert.get("tags") if isinstance(alert.get("tags"), dict) else {}
     # 模型常把 pod_name/namespace/name/kind 放在告警顶层而不是 labels 里
     for key in (
         "pod",
         "pod_name",
         "name",
+        "object_name",
         "namespace",
         "cluster",
         "cluster_id",
+        "cluster_name",
         "resource_name",
         "resource_type",
         "kind",
@@ -255,11 +299,30 @@ def _extract_labels(alert):
         value = alert.get(key)
         if value not in (None, "", [], {}) and not labels.get(key):
             labels[key] = value
+    _copy_label(
+        labels,
+        "cluster",
+        labels.get("cluster_name"),
+        tags.get("cluster"),
+        tags.get("cluster_name"),
+        alert.get("location"),
+        alert.get("push_source_id"),
+    )
+    _copy_label(labels, "resource_name", labels.get("object_name"), alert.get("object_name"))
+    _copy_label(labels, "name", labels.get("object_name"), alert.get("object_name"))
+    _copy_label(labels, "namespace", tags.get("namespace"))
+    _copy_label(labels, "kind", tags.get("kind"), tags.get("resource_type"))
+    service_name = str(labels.get("service") or labels.get("service_name") or "").strip().lower()
+    if service_name in _K8S_ALERT_SOURCE_NAMES:
+        labels.pop("service", None)
+        if str(labels.get("service_name") or "").strip().lower() in _K8S_ALERT_SOURCE_NAMES:
+            labels.pop("service_name", None)
     return labels
 
 
 _PAREN_GROUP_RE = re.compile(r"[（(]([^）)]+)[）)]")
 _POD_LIKE_NAME_RE = re.compile(r"\b([a-z0-9](?:[-a-z0-9]*[a-z0-9])?(?:-[a-f0-9]{5,10}){1,2})\b", re.IGNORECASE)
+_DNS1123_HYPHEN_NAME_RE = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$", re.IGNORECASE)
 _NOTIFICATION_TITLE_RE = re.compile(r"告警[：:]\s*(.+?)(?:\n|$)")
 _NOTIFICATION_CONTENT_RE = re.compile(r"内容[：:]\s*(.+?)(?:\n|$)")
 _NOTIFICATION_TIME_RE = re.compile(r"告警时间[：:]*\s*(.+?)(?:\n|$)")
@@ -321,7 +384,7 @@ def _coerce_alert_payload(alert_payload) -> dict:
 
 def _merge_paren_labels(payload: dict) -> dict:
     labels = dict(payload.get("labels") or {}) if isinstance(payload.get("labels"), dict) else {}
-    blob = "\n".join(str(payload.get(key) or "") for key in ("title", "name", "message", "summary", "detail", "content", "_raw_text"))
+    blob = "\n".join(str(payload.get(key) or "") for key in ("title", "name", "object_name", "message", "summary", "detail", "content", "_raw_text"))
     for key, value in _parse_k8s_paren_tuple(blob).items():
         if value and not labels.get(key):
             labels[key] = value
@@ -365,12 +428,21 @@ def _guess_resource_name_from_text(*texts: str) -> str | None:
         match = _POD_LIKE_NAME_RE.search(text)
         if match:
             return match.group(1)
+        for token in re.findall(r"[A-Za-z0-9][A-Za-z0-9._-]*", text):
+            if _is_hyphenated_object_name(token):
+                return token
     return None
 
 
+def _is_hyphenated_object_name(text: str) -> bool:
+    """静态 Pod / STS 名（kube-scheduler-minikube、nacos-0）没有 ReplicaSet hash。"""
+    candidate = str(text or "").strip()
+    return bool(candidate) and "-" in candidate and bool(_DNS1123_HYPHEN_NAME_RE.fullmatch(candidate))
+
+
 def _flat_object_name(labels: dict) -> str | None:
-    """顶层 name：仅在 kind 为 K8s 资源或名字像 Pod 时采用，避免把告警标题当对象名。"""
-    candidate = labels.get("name")
+    """顶层 name：仅在 kind 为 K8s 资源或名字像对象时采用，避免把告警标题当对象名。"""
+    candidate = labels.get("name") or labels.get("object_name")
     if candidate in (None, "", [], {}):
         return None
     text = str(candidate).strip()
@@ -379,7 +451,7 @@ def _flat_object_name(labels: dict) -> str | None:
     kind = str(labels.get("kind") or labels.get("resource_type") or "").lower()
     if kind in _K8S_KIND_NAMES:
         return text
-    if _POD_LIKE_NAME_RE.fullmatch(text):
+    if _POD_LIKE_NAME_RE.fullmatch(text) or _is_hyphenated_object_name(text):
         return text
     return None
 
@@ -456,19 +528,85 @@ def _alert_resolve_fingerprint(alert: dict, config: RunnableConfig = None) -> st
 
 
 def _resolve_alert_cache(config: RunnableConfig = None) -> dict:
-    """同一线程内缓存反查结果。LangChain invoke 会复制 config，不能只写 configurable。"""
-    configurable = _configurable(config)
-    existing = configurable.get("_k8s_resolve_alert_cache")
-    if isinstance(existing, dict):
-        _resolve_cache_local.entries = existing
-        return existing
+    """同一线程内缓存反查结果。不写入 configurable：其中含 callback/锁，deepcopy 会失败。"""
     cache = getattr(_resolve_cache_local, "entries", None)
     if not isinstance(cache, dict):
         cache = {}
         _resolve_cache_local.entries = cache
-    if configurable:
-        configurable["_k8s_resolve_alert_cache"] = cache
     return cache
+
+
+def _infer_kube_system_namespace(resource_name, resource_type=None) -> str | None:
+    """控制面静态 Pod 无需扫集群即可落到 kube-system。"""
+    name = str(resource_name or "").strip().lower()
+    if not name:
+        return None
+    kind = str(resource_type or "pod").strip().lower()
+    if kind not in ("", "pod"):
+        return None
+    if name in _KUBE_SYSTEM_STATIC_POD_NAMES:
+        return "kube-system"
+    for prefix in _KUBE_SYSTEM_STATIC_POD_PREFIXES:
+        if not name.startswith(prefix):
+            continue
+        remainder = name[len(prefix) :]
+        if not remainder:
+            continue
+        tokens = remainder.replace(".", "-").split("-")
+        if any(token in _KUBE_SYSTEM_NON_NODE_NAME_TOKENS for token in tokens):
+            return None
+        return "kube-system"
+    return None
+
+
+def _lookup_namespaces_by_resource_name(resource_name: str, config: RunnableConfig = None) -> tuple[list, list, str | None]:
+    """按对象名定点反查 namespace，禁止 list 全集群 Pod/Events。"""
+    name = str(resource_name or "").strip()
+    if not name:
+        return [], [], None
+    if not _DNS1123_HYPHEN_NAME_RE.fullmatch(name):
+        return [], [], f"资源名不符合 DNS-1123 subdomain: {name}"
+    try:
+        prepare_context(config)
+        core_v1 = client.CoreV1Api()
+        pods_resp = core_v1.list_pod_for_all_namespaces(field_selector=f"metadata.name={name}")
+        pods = []
+        for pod in pods_resp.items or []:
+            meta = getattr(pod, "metadata", None)
+            pod_name = getattr(meta, "name", None) if meta is not None else None
+            namespace = getattr(meta, "namespace", None) if meta is not None else None
+            if pod_name and namespace:
+                pods.append({"name": pod_name, "namespace": namespace})
+        if pods:
+            return pods, [], None
+
+        events_resp = core_v1.list_event_for_all_namespaces(field_selector=f"involvedObject.name={name}")
+        events = []
+        for event in events_resp.items or []:
+            involved = getattr(event, "involved_object", None)
+            kind = getattr(involved, "kind", None) if involved is not None else None
+            obj_name = getattr(involved, "name", None) if involved is not None else None
+            namespace = getattr(event, "namespace", None)
+            if not namespace:
+                namespace = getattr(getattr(event, "metadata", None), "namespace", None)
+            if not namespace:
+                continue
+            if kind and obj_name:
+                object_ref = f"{kind}/{obj_name}"
+            else:
+                object_ref = obj_name or ""
+            events.append({"object": object_ref, "namespace": namespace})
+        return [], events, None
+    except ApiException as exc:
+        return [], [], str(exc).strip() or type(exc).__name__
+
+
+def _apply_inferred_namespace(target: dict, namespace: str, lookup_kind: str) -> dict:
+    target["namespace"] = namespace
+    target["namespace_lookup"] = lookup_kind
+    target["missing_data"] = [item for item in (target.get("missing_data") or []) if item != "namespace"]
+    target["reason"] = None
+    return target
 
 
 def _apply_namespace_lookup(target: dict, pods: list, events: list) -> dict:
@@ -527,16 +665,19 @@ def _build_k8s_target_from_alert(alert: dict) -> dict:
     message = alert.get("message") or ""
     detail = alert.get("detail") or ""
     resource_type_label = str(labels.get("resource_type") or labels.get("kind") or "").lower()
+    if resource_type_label in {"k8s_pod", "k8spod"}:
+        resource_type_label = "pod"
     flat_name = _flat_object_name(labels)
 
     pod_name = _first_non_empty(
         labels.get("pod"),
         labels.get("pod_name"),
         labels.get("resource_name") if resource_type_label in ("", "pod") else None,
+        labels.get("object_name") if resource_type_label in ("", "pod") else None,
         flat_name if resource_type_label in ("", "pod") else None,
     )
     if not pod_name:
-        pod_name = _guess_resource_name_from_text(title, message, detail)
+        pod_name = _guess_resource_name_from_text(title, message, detail, labels.get("object_name"), labels.get("name"))
 
     target = {
         "cluster": labels.get("cluster") or labels.get("cluster_id"),
@@ -594,8 +735,9 @@ def normalize_alert_event(alert_payload, config: RunnableConfig = None):
 
 @tool()
 def resolve_k8s_target_from_alert(normalized_alert, config: RunnableConfig = None):
-    """从标准化告警解析 K8s 目标；缺 namespace 时反查一次 Pod/Events。
+    """从标准化告警解析 K8s 目标；缺 namespace 时按对象名定点反查，不扫全集群。
 
+    控制面静态 Pod（kube-scheduler-* 等）直接落到 kube-system。
     同一告警参数只应调用一次。返回 resolved=false 且 conclusive/lookup_exhausted 时
     表示对象当前不可见或标识不足，禁止用相同参数重试。
     """
@@ -622,52 +764,81 @@ def resolve_k8s_target_from_alert(normalized_alert, config: RunnableConfig = Non
     if isinstance(cached, str) and cached:
         return cached
 
-    target = _build_k8s_target_from_alert(alert)
+    target = {}
+    try:
+        target = _build_k8s_target_from_alert(alert)
 
-    connection_error = _cluster_config_error(config)
-    if connection_error:
-        result = _unresolved_connection_result(target, connection_error)
+        routed_config, route_extra = route_alert_cluster(target.get("cluster"), config)
+        for key in ("instance_name", "instance_id", "cluster_mismatch", "instance_names"):
+            if route_extra.get(key) not in (None, "", [], {}):
+                target[key] = route_extra[key]
+        if route_extra.get("route_error"):
+            target["reason"] = route_extra["route_error"]
+            _log_resolve_failed("cluster_route", "route_error", target.get("instance_name"))
+            result = _unresolved_connection_result(target, route_extra["route_error"])
+            cache[fingerprint] = result
+            return result
+        config = routed_config
+
+        connection_error = _cluster_config_error(config)
+        if connection_error:
+            _log_resolve_failed("cluster_config", "connection_error", target.get("instance_name"))
+            result = _unresolved_connection_result(target, connection_error)
+            cache[fingerprint] = result
+            return result
+
+        needs_lookup = bool(target.get("resource_name") or target.get("pod_name")) and not target.get("namespace")
+        if needs_lookup:
+            resource_name = target.get("pod_name") or target.get("resource_name")
+            inferred = _infer_kube_system_namespace(resource_name, target.get("resource_type"))
+            if inferred:
+                target = _apply_inferred_namespace(target, inferred, "control_plane_convention")
+            else:
+                try:
+                    pods, events, lookup_error = _lookup_namespaces_by_resource_name(resource_name, config)
+                except Exception as lookup_exc:
+                    _log_resolve_failed(
+                        "namespace_lookup",
+                        type(lookup_exc).__name__,
+                        target.get("instance_name"),
+                        exc=lookup_exc,
+                    )
+                    result = _unresolved_connection_result(target, str(lookup_exc).strip() or type(lookup_exc).__name__)
+                    cache[fingerprint] = result
+                    return result
+                if lookup_error:
+                    _log_resolve_failed("namespace_lookup", "lookup_error", target.get("instance_name"))
+                    result = _unresolved_connection_result(target, lookup_error)
+                    cache[fingerprint] = result
+                    return result
+                target = _apply_namespace_lookup(target, pods, events)
+
+        if target.get("resource_type") and target.get("resource_name") and target.get("namespace"):
+            target["resolved"] = True
+            if not target.get("reason"):
+                target["reason"] = None
+        elif target.get("resource_type") and target.get("resource_name") and not target.get("namespace"):
+            target["resolved"] = False
+            target["missing_data"] = list(dict.fromkeys((target.get("missing_data") or []) + ["namespace"]))
+            if not target.get("reason"):
+                target["reason"] = "Missing namespace after pods/events reverse lookup"
+            _mark_target_conclusive(target, lookup_exhausted=True)
+
+        result = json.dumps(target, ensure_ascii=False)
+        cache[fingerprint] = result
+        logger.info(
+            "event=k8s_alert_resolve_finished resolved=%s conclusive=%s instance_name=%s missing_data=%s",
+            bool(target.get("resolved")),
+            bool(target.get("conclusive")),
+            target.get("instance_name") or "-",
+            ",".join(target.get("missing_data") or []) or "-",
+        )
+        return result
+    except Exception as exc:
+        _log_resolve_failed("resolve", type(exc).__name__, target.get("instance_name"), exc=exc)
+        result = _unresolved_connection_result(target, type(exc).__name__)
         cache[fingerprint] = result
         return result
-
-    needs_lookup = bool(target.get("resource_name") or target.get("pod_name")) and not target.get("namespace")
-    if needs_lookup:
-        from apps.opspilot.metis.llm.tools.kubernetes.resources import list_kubernetes_events, list_kubernetes_pods
-
-        try:
-            pods_raw = list_kubernetes_pods.invoke({"namespace": None}, config=config)
-            events_raw = list_kubernetes_events.invoke({"namespace": None}, config=config)
-        except Exception as lookup_exc:
-            result = _unresolved_connection_result(target, str(lookup_exc).strip() or type(lookup_exc).__name__)
-            cache[fingerprint] = result
-            return result
-        lookup_error = _lookup_payload_error(pods_raw) or _lookup_payload_error(events_raw)
-        if lookup_error:
-            result = _unresolved_connection_result(target, lookup_error)
-            cache[fingerprint] = result
-            return result
-        pods = _json_or_raw(pods_raw) or []
-        events = _json_or_raw(events_raw) or []
-        if not isinstance(pods, list):
-            pods = []
-        if not isinstance(events, list):
-            events = []
-        target = _apply_namespace_lookup(target, pods, events)
-
-    if target.get("resource_type") and target.get("resource_name") and target.get("namespace"):
-        target["resolved"] = True
-        if not target.get("reason"):
-            target["reason"] = None
-    elif target.get("resource_type") and target.get("resource_name") and not target.get("namespace"):
-        target["resolved"] = False
-        target["missing_data"] = list(dict.fromkeys((target.get("missing_data") or []) + ["namespace"]))
-        if not target.get("reason"):
-            target["reason"] = "Missing namespace after pods/events reverse lookup"
-        _mark_target_conclusive(target, lookup_exhausted=True)
-
-    result = json.dumps(target, ensure_ascii=False)
-    cache[fingerprint] = result
-    return result
 
 
 def _collect_pod_context(target, scope):
@@ -675,8 +846,8 @@ def _collect_pod_context(target, scope):
     pod_name = target.get("pod_name") or target.get("resource_name")
     container_name = target.get("container_name")
     node_name = target.get("node_name")
-    minutes = int((scope or {}).get("time_window_minutes") or 60)
-    lines = int((scope or {}).get("log_lines") or 100)
+    minutes = coerce_int((scope or {}).get("time_window_minutes"), 60, lo=1, hi=10080)
+    lines = coerce_int((scope or {}).get("log_lines"), 100, lo=1, hi=10000)
 
     resource_snapshot = _json_or_raw(describe_kubernetes_resource.invoke({"resource_type": "pod", "resource_name": pod_name, "namespace": namespace}))
     resource_snapshot = _enrich_pod_snapshot(resource_snapshot)
@@ -732,7 +903,7 @@ def _collect_pod_context(target, scope):
 
 def _collect_node_context(target, scope):
     node_name = target.get("node_name") or target.get("resource_name")
-    minutes = int((scope or {}).get("time_window_minutes") or 60)
+    minutes = coerce_int((scope or {}).get("time_window_minutes"), 60, lo=1, hi=10080)
     return {
         "resource_snapshot": _json_or_raw(describe_kubernetes_resource.invoke({"resource_type": "node", "resource_name": node_name})),
         "events_timeline": _json_or_raw(

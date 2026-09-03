@@ -21,7 +21,7 @@ def test_config_file_callback_business_failure_has_correlated_terminal_summary(m
     )
     payload = {
         "collect_task_id": 42,
-        "execution_id": "execution-callback-1",
+        "instance_uuid": "123e4567-e89b-42d3-a456-426614174001",
         "status": "error",
     }
     caplog.set_level(logging.INFO, logger="cmdb")
@@ -39,7 +39,7 @@ def test_config_file_callback_business_failure_has_correlated_terminal_summary(m
     assert len(summaries) == 1
     assert summaries[0].levelno == logging.WARNING
     assert "task_id=42" in summaries[0].getMessage()
-    assert "execution_id=execution-callback-1" in summaries[0].getMessage()
+    assert "instance_uuid=123e4567-e89b-42d3-a456-426614174001" in summaries[0].getMessage()
     assert "callback_status=error" in summaries[0].getMessage()
     assert "processed=False" in summaries[0].getMessage()
     assert "changed=False" in summaries[0].getMessage()
@@ -60,7 +60,7 @@ def test_config_file_callback_success_preserves_ack_and_uses_info(monkeypatch, c
     )
     payload = {
         "collect_task_id": 43,
-        "execution_id": "execution-callback-2",
+        "instance_uuid": "123e4567-e89b-42d3-a456-426614174002",
         "status": "success",
     }
     caplog.set_level(logging.INFO, logger="cmdb")
@@ -78,7 +78,7 @@ def test_config_file_callback_success_preserves_ack_and_uses_info(monkeypatch, c
     assert len(summaries) == 1
     assert summaries[0].levelno == logging.INFO
     assert "task_id=43" in summaries[0].getMessage()
-    assert "execution_id=execution-callback-2" in summaries[0].getMessage()
+    assert "instance_uuid=123e4567-e89b-42d3-a456-426614174002" in summaries[0].getMessage()
     assert "callback_status=success" in summaries[0].getMessage()
     assert "processed=True" in summaries[0].getMessage()
     assert "changed=True" in summaries[0].getMessage()
@@ -97,7 +97,7 @@ def test_config_file_callback_reported_failure_uses_warning_when_processing_comp
     )
     payload = {
         "collect_task_id": 44,
-        "execution_id": "execution-callback-3",
+        "instance_uuid": "123e4567-e89b-42d3-a456-426614174003",
         "status": "permission_denied",
     }
     caplog.set_level(logging.INFO, logger="cmdb")
@@ -123,7 +123,7 @@ def test_config_file_callback_noncanonical_status_uses_warning(monkeypatch, capl
     )
     payload = {
         "collect_task_id": 45,
-        "execution_id": "execution-callback-4",
+        "instance_uuid": "123e4567-e89b-42d3-a456-426614174004",
         "status": " success ",
     }
     caplog.set_level(logging.INFO, logger="cmdb")
@@ -148,11 +148,11 @@ def test_config_file_callback_log_uses_normalized_nested_payload(monkeypatch, ca
     )
     payload = {
         "collect_task_id": 47,
-        "execution_id": "execution-top-level",
+        "instance_uuid": "123e4567-e89b-42d3-a456-426614174005",
         "status": "success",
         "collect_result": {
             "collect_task_id": 48,
-            "execution_id": "execution-nested",
+            "instance_uuid": "123e4567-e89b-42d3-a456-426614174006",
             "status": "error",
         },
     }
@@ -164,11 +164,11 @@ def test_config_file_callback_log_uses_normalized_nested_payload(monkeypatch, ca
     assert len(summaries) == 1
     assert summaries[0].levelno == logging.WARNING
     assert "task_id=48" in summaries[0].getMessage()
-    assert "execution_id=execution-nested" in summaries[0].getMessage()
+    assert "instance_uuid=123e4567-e89b-42d3-a456-426614174006" in summaries[0].getMessage()
     assert "callback_status=error" in summaries[0].getMessage()
 
 
-def test_config_file_callback_bounds_and_escapes_execution_id(monkeypatch, caplog):
+def test_config_file_callback_bounds_and_escapes_instance_uuid(monkeypatch, caplog):
     monkeypatch.setattr(
         cmdb_nats.ConfigFileService,
         "process_collect_result",
@@ -182,7 +182,7 @@ def test_config_file_callback_bounds_and_escapes_execution_id(monkeypatch, caplo
     )
     payload = {
         "collect_task_id": 46,
-        "execution_id": "execution\n" + "x" * 100,
+        "instance_uuid": "instance\n" + "x" * 100,
         "status": "success",
     }
     caplog.set_level(logging.INFO, logger="cmdb")
@@ -191,7 +191,7 @@ def test_config_file_callback_bounds_and_escapes_execution_id(monkeypatch, caplo
 
     summaries = [record for record in caplog.records if "event=config_file_callback_finished" in record.getMessage()]
     assert len(summaries) == 1
-    execution_id = summaries[0].args[1]
-    assert len(execution_id) == 64
-    assert "\n" not in execution_id
-    assert "\\n" in execution_id
+    instance_uuid = summaries[0].args[1]
+    assert len(instance_uuid) == 64
+    assert "\n" not in instance_uuid
+    assert "\\n" in instance_uuid

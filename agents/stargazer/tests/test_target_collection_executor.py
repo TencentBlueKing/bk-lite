@@ -1205,6 +1205,59 @@ async def test_single_snmp_no_response_is_visible_as_timeout_without_plugin_trac
 
 
 @pytest.mark.asyncio
+async def test_collect_no_response_across_credentials_is_not_reported_as_credentials_exhausted(monkeypatch):
+    info_logs = []
+    warning_logs = []
+    monkeypatch.setattr(
+        "core.collection.executor.logger.info",
+        lambda message, *args: info_logs.append(message % args if args else message),
+    )
+    monkeypatch.setattr(
+        "core.collection.executor.logger.warning",
+        lambda message, *args: warning_logs.append(message % args if args else message),
+    )
+    plugin = ScriptedPlugin(
+        [
+            CollectOutcome(
+                status=CollectOutcomeStatus.RETRY_CREDENTIAL,
+                error_code="snmp_no_response",
+            ),
+            CollectOutcome(
+                status=CollectOutcomeStatus.RETRY_CREDENTIAL,
+                error_code="snmp_no_response",
+            ),
+        ]
+    )
+    executor = TargetCollectionExecutor(
+        preflight=ReachablePreflight(),
+        plugin=plugin,
+        publisher=RecordingPublisher(),
+        settings=TargetExecutorSettings(max_active_targets=1, target_task_window=1),
+    )
+    request = CollectionRequest(
+        task_id="snmp-collect-no-response",
+        plugin_ref="network.config",
+        targets=("10.10.24.1",),
+        credentials=(
+            {"credential_id": "credential-1"},
+            {"credential_id": "credential-2"},
+        ),
+        params={"model_id": "network"},
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+
+    summary = await executor.execute(request, lease)
+
+    assert summary.failed == 1
+    assert len(plugin.calls) == 2
+    samples = [item for item in info_logs if "event=collection_failure_samples" in item]
+    run_summaries = [item for item in warning_logs if "event=collection_run_summary" in item]
+    assert "10.10.24.1|collection|snmp_no_response" in samples[0]
+    assert "失败类型=snmp_no_response:1" in run_summaries[0]
+    assert "credentials_exhausted" not in "".join(info_logs + warning_logs)
+
+
+@pytest.mark.asyncio
 async def test_collection_info_is_bounded_and_target_details_are_debug(monkeypatch):
     info_logs = []
     debug_logs = []

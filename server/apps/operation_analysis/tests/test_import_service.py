@@ -269,7 +269,7 @@ def test_import_rejects_new_raw_monitor_query_datasource(rest_api):
 
     assert result["success"] is False
     assert result["summary"]["failed"] == 1
-    assert result["results"][0]["message"] == "该监控裸查询接口已停止新增，仅保留存量数据源兼容"
+    assert result["results"][0]["message"] == "该监控裸查询接口已退役，禁止继续使用"
     assert not DataSourceAPIModel.objects.filter(name="raw-query").exists()
 
 
@@ -286,7 +286,7 @@ def test_precheck_rejects_new_raw_monitor_query_and_limits_legacy_conflict_actio
     assert precheck["errors"] == [
         {
             "code": "OA_YAML_SCHEMA_INVALID",
-            "message": "该监控裸查询接口已停止新增，仅保留存量数据源兼容",
+            "message": "该监控裸查询接口已退役，禁止继续使用",
             "object_key": "raw::monitor/mm_query",
             "object_type": "datasource",
         }
@@ -301,12 +301,12 @@ def test_precheck_rejects_new_raw_monitor_query_and_limits_legacy_conflict_actio
     )
     legacy_precheck = PrecheckService.precheck(yaml_content)
 
-    assert legacy_precheck["valid"] is True
-    assert legacy_precheck["conflicts"][0]["suggested_actions"] == ["skip", "overwrite"]
+    assert legacy_precheck["valid"] is False
+    assert legacy_precheck["errors"][0]["message"] == "该监控裸查询接口已退役，禁止继续使用"
 
 
 @pytest.mark.django_db
-def test_import_allows_overwriting_existing_raw_monitor_query_datasource():
+def test_import_rejects_overwriting_existing_raw_monitor_query_datasource():
     existing = DataSourceAPIModel.objects.create(
         name="raw-query",
         rest_api="monitor/mm_query_range",
@@ -331,9 +331,9 @@ def test_import_allows_overwriting_existing_raw_monitor_query_datasource():
         conflict_decisions={"raw::monitor/mm_query_range": ConflictAction.OVERWRITE.value},
     ).execute()
 
-    assert result["success"] is True
+    assert result["success"] is False
     existing.refresh_from_db()
-    assert existing.desc == "new"
+    assert existing.desc == "old"
 
 
 @pytest.mark.django_db

@@ -8,6 +8,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
 from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.metis.llm.tools.kubernetes.instance_scope import run_scan_tool
 from apps.opspilot.metis.llm.tools.kubernetes.utils import prepare_context
 
 _METRICS_GROUP = "metrics.k8s.io"
@@ -52,12 +53,16 @@ def _pod_usage_item(item: dict) -> dict:
 
 
 @tool()
-def get_kubernetes_pods_top(namespace=None, pod_name=None, config: RunnableConfig = None):
+def get_kubernetes_pods_top(namespace=None, pod_name=None, instance_name=None, config: RunnableConfig = None):
     """
     查询 Pod CPU/内存用量（Metrics Server，类似 kubectl top pods）
 
     用于区分探针过紧、CPU throttle、内存压力。Metrics Server 未安装时返回 metrics_available=false。
     """
+    return run_scan_tool(config, instance_name, lambda bound: _get_kubernetes_pods_top_on_instance(namespace, pod_name, bound))
+
+
+def _get_kubernetes_pods_top_on_instance(namespace, pod_name, config: RunnableConfig = None):
     prepare_context(config)
     try:
         api = client.CustomObjectsApi()
@@ -78,10 +83,14 @@ def get_kubernetes_pods_top(namespace=None, pod_name=None, config: RunnableConfi
 
 
 @tool()
-def get_kubernetes_nodes_top(node_name=None, config: RunnableConfig = None):
+def get_kubernetes_nodes_top(node_name=None, instance_name=None, config: RunnableConfig = None):
     """
     查询节点 CPU/内存用量（Metrics Server，类似 kubectl top nodes）
     """
+    return run_scan_tool(config, instance_name, lambda bound: _get_kubernetes_nodes_top_on_instance(node_name, bound))
+
+
+def _get_kubernetes_nodes_top_on_instance(node_name, config: RunnableConfig = None):
     prepare_context(config)
     try:
         api = client.CustomObjectsApi()

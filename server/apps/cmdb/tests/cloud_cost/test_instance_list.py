@@ -17,7 +17,22 @@
 from datetime import date
 from decimal import Decimal
 
+import pytest
+
 from apps.cmdb.services.cloud_cost.service import CloudCostService
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"page": 0}, "page must be >= 1"),
+        ({"page_size": 0}, "page_size must be between"),
+        ({"page_size": 1001}, "page_size must be between"),
+    ],
+)
+def test_instance_list_rejects_unbounded_or_invalid_pages(stub_orm, kwargs, message):
+    with pytest.raises(ValueError, match=message):
+        CloudCostService.instance_list(stub_orm["user_info"], **kwargs)
 
 
 def test_instance_list_default_sort_desc(stub_orm):
@@ -26,6 +41,27 @@ def test_instance_list_default_sort_desc(stub_orm):
     costs = [i["total_cost_incurred"] for i in result["items"]]
     assert costs == sorted(costs, reverse=True)
     assert result["total"] == 4
+
+
+def test_instance_list_preserves_legacy_sort_fallbacks(monkeypatch):
+    from apps.cmdb.services.cloud_cost import orm
+
+    captured = {}
+
+    def query(*args, **kwargs):
+        captured.update(kwargs)
+        return {"total": 0, "items": []}
+
+    monkeypatch.setattr(orm, "query_bill_detail", query)
+
+    CloudCostService.instance_list(
+        {"team": 1},
+        sort_by="unknown",
+        order="unknown",
+    )
+
+    assert captured["sort_field"] == "total_cost_incurred"
+    assert captured["sort_order"] == "asc"
 
 
 def test_instance_list_fields_mapped(stub_orm):
@@ -138,25 +174,19 @@ def test_instance_list_object_id_uses_bill_not_log(monkeypatch):
     from apps.cmdb.services.cloud_cost.service import CloudCostService
     USER_INFO = {"team": 1, "user": "tester"}
 
-    bills = [
-        {"_id": 10, "inst_name": "x", "object_type": "compute",
-         "object_name": "x", "user_department": "研发部", "applicant": "alice",
-         "resource_unit_price": "30.00", "object_id": "canonical"},
-    ]
-    # log 上 3 条 object_id 都不一样(模拟脏数据:采集/合并遗留)
-    logs = [
-        {"_id": 1001, "_bill_id": 10, "object_id": "log-junk-1",
-         "billing_date": "2026-04-15", "total_cost": "100.00"},
-        {"_id": 1002, "_bill_id": 10, "object_id": "log-junk-2",
-         "billing_date": "2026-05-15", "total_cost": "100.00"},
-        {"_id": 1003, "_bill_id": 10, "object_id": "log-junk-3",
-         "billing_date": "2026-06-15", "total_cost": "100.00"},
-    ]
-
-    monkeypatch.setattr(orm, "query_bills_by_filter",
-                        lambda *a, **kw: (bills, len(bills)))
-    monkeypatch.setattr(orm, "query_logs_by_filter",
-                        lambda *a, **kw: (logs, len(logs)))
+    monkeypatch.setattr(
+        orm,
+        "query_bill_detail",
+        lambda *args, **kwargs: {
+            "total": 1,
+            "items": [{
+                "bill_id": 10, "object_id": "canonical", "instance_name": "x",
+                "object_type": "compute", "object_name": "x", "department": "研发部",
+                "user": "alice", "total_cost": "300.00",
+                "min_billing_date": "2026-04-15", "max_billing_date": "2026-06-15",
+            }],
+        },
+    )
 
     result = CloudCostService.instance_list(USER_INFO)
     assert result["total"] == 1
@@ -169,25 +199,27 @@ def test_instance_list_same_object_id_multiple_bills_not_merged(monkeypatch):
     from apps.cmdb.services.cloud_cost.service import CloudCostService
     USER_INFO = {"team": 1, "user": "tester"}
 
-    bills = [
-        {"_id": 10, "inst_name": "shared-1", "object_type": "database",
-         "object_name": "x", "user_department": "研发部", "applicant": "alice",
-         "resource_unit_price": "30.00", "object_id": "shared-res"},
-        {"_id": 11, "inst_name": "shared-2", "object_type": "database",
-         "object_name": "x", "user_department": "研发部", "applicant": "alice",
-         "resource_unit_price": "30.00", "object_id": "shared-res"},
-    ]
-    logs = [
-        {"_id": 1001, "_bill_id": 10, "object_id": "shared-res",
-         "billing_date": "2026-05-15", "total_cost": "100.00"},
-        {"_id": 1002, "_bill_id": 11, "object_id": "shared-res",
-         "billing_date": "2026-06-15", "total_cost": "200.00"},
-    ]
-
-    monkeypatch.setattr(orm, "query_bills_by_filter",
-                        lambda *a, **kw: (bills, len(bills)))
-    monkeypatch.setattr(orm, "query_logs_by_filter",
-                        lambda *a, **kw: (logs, len(logs)))
+    monkeypatch.setattr(
+        orm,
+        "query_bill_detail",
+        lambda *args, **kwargs: {
+            "total": 2,
+            "items": [
+                {
+                    "bill_id": 11, "object_id": "shared-res", "instance_name": "shared-2",
+                    "object_type": "database", "object_name": "x", "department": "研发部",
+                    "user": "alice", "total_cost": "200.00",
+                    "min_billing_date": "2026-06-15", "max_billing_date": "2026-06-15",
+                },
+                {
+                    "bill_id": 10, "object_id": "shared-res", "instance_name": "shared-1",
+                    "object_type": "database", "object_name": "x", "department": "研发部",
+                    "user": "alice", "total_cost": "100.00",
+                    "min_billing_date": "2026-05-15", "max_billing_date": "2026-05-15",
+                },
+            ],
+        },
+    )
 
     result = CloudCostService.instance_list(USER_INFO)
     assert result["total"] == 2  # 不合并

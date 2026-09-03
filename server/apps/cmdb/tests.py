@@ -26,8 +26,6 @@ from django.test import SimpleTestCase
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
-from apps.core.exceptions.base_app_exception import BaseAppException
-
 # 检查是否在Django环境中
 if __name__ == "__main__":
     # 添加项目根目录到Python路径
@@ -3021,91 +3019,3 @@ class CmdbPermissionScopeRegressionTests(SimpleTestCase):
 
         mock_build.assert_called_once_with(user_teams=[1, 2], permission_rules={"team": [1], "instance": []}, fallback_team_id=1)
         self.assertEqual(result[2]["inst_names"], [DENY_PERMISSION_PLACEHOLDER])
-
-
-def test_config_file_collect_triggers_stargazer_and_returns_pending_result():
-    from apps.cmdb.collection.collect_tasks.config_file_collect import ConfigFileCollect
-
-    task = SimpleNamespace(
-        id=267,
-        params={"config_file_path": "/opt/bk-lite/common.env"},
-        instances=[{"inst_name": "10.0.0.1[default]"}],
-        timeout=30,
-    )
-    node_params = MagicMock()
-    node_params.custom_headers.return_value = {
-        "cmdbplugin_name": "config_file_info",
-        "cmdbhosts": "10.0.0.1[default]",
-        "cmdbcollect_task_id": "267",
-    }
-    node_params.tags = {
-        "instance_id": "cmdb_267",
-        "instance_type": "cmdb_config_file",
-        "collect_type": "http",
-        "config_type": "config_file",
-    }
-    response = MagicMock(status_code=200, headers={"X-Task-Status": "queued"})
-    pending_result = ({"config_file": {"status": "pending"}}, {"all": 0})
-
-    with (
-        patch("apps.cmdb.collection.collect_tasks.config_file_collect.CollectModels.objects.get", return_value=task),
-        patch("apps.cmdb.collection.collect_tasks.config_file_collect.NodeParamsFactory.get_node_params", return_value=node_params),
-        patch("apps.cmdb.collection.collect_tasks.config_file_collect.requests.get", return_value=response) as mock_get,
-        patch(
-            "apps.cmdb.collection.collect_tasks.config_file_collect.ConfigFileService.build_pending_result", return_value=pending_result
-        ) as mock_pending,
-    ):
-        result = ConfigFileCollect(task.id)()
-
-    assert result == pending_result
-    mock_get.assert_called_once_with(
-        "http://stargazer:8083/api/collect/collect_info",
-        params={
-            "plugin_name": "config_file_info",
-            "hosts": "10.0.0.1[default]",
-            "collect_task_id": "267",
-        },
-        headers={
-            "X-Instance-ID": "cmdb_267",
-            "X-Instance-Type": "cmdb_config_file",
-            "X-Collect-Type": "http",
-            "X-Config-Type": "config_file",
-        },
-        timeout=30,
-    )
-    mock_pending.assert_called_once_with(task)
-
-
-def test_config_file_collect_raises_when_stargazer_does_not_accept_trigger():
-    from apps.cmdb.collection.collect_tasks.config_file_collect import ConfigFileCollect
-
-    task = SimpleNamespace(
-        id=267,
-        params={"config_file_path": "/opt/bk-lite/common.env"},
-        instances=[{"inst_name": "10.0.0.1[default]"}],
-        timeout=30,
-    )
-    node_params = MagicMock()
-    node_params.custom_headers.return_value = {
-        "cmdbplugin_name": "config_file_info",
-        "cmdbhosts": "10.0.0.1[default]",
-    }
-    node_params.tags = {
-        "instance_id": "cmdb_267",
-        "instance_type": "cmdb_config_file",
-        "collect_type": "http",
-        "config_type": "config_file",
-    }
-    response = MagicMock(status_code=200, headers={"X-Task-Status": "failed"}, text="failed")
-
-    with (
-        patch("apps.cmdb.collection.collect_tasks.config_file_collect.CollectModels.objects.get", return_value=task),
-        patch("apps.cmdb.collection.collect_tasks.config_file_collect.NodeParamsFactory.get_node_params", return_value=node_params),
-        patch("apps.cmdb.collection.collect_tasks.config_file_collect.requests.get", return_value=response),
-    ):
-        try:
-            ConfigFileCollect(task.id)()
-        except BaseAppException as err:
-            assert "配置文件采集触发失败" in str(err)
-        else:
-            raise AssertionError("Expected BaseAppException when trigger was not accepted")

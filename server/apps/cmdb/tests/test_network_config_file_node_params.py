@@ -96,6 +96,55 @@ def test_env_config_contains_password_and_enable_password_without_plain_headers(
     assert any(value == "enable-secret" for value in env.values())
 
 
+def test_push_params_builds_one_telegraf_child_config_per_target():
+    task = _task()
+    task.cycle_value_type = "cycle"
+    task.cycle_value = "5"
+    task.instances = [
+        task.instances[0],
+        {
+            "_id": "102",
+            "inst_uuid": "223e4567-e89b-42d3-a456-426614174000",
+            "model_id": "router",
+            "inst_name": "10.0.0.2-router",
+            "ip_addr": "10.0.0.2",
+            "brand": "Huawei",
+            "device_type": "huawei",
+        },
+    ]
+
+    configs = NetworkConfigFileNodeParams(task).push_params()
+
+    assert [item["id"] for item in configs] == [
+        "cmdb_42_123e4567e89b42d3a456426614174000",
+        "cmdb_42_223e4567e89b42d3a456426614174000",
+    ]
+    assert '"cmdbhosts" = "10.0.0.1"' in configs[0]["content"]
+    assert '"cmdbtarget_instance_uuid" = "123e4567-e89b-42d3-a456-426614174000"' in configs[0]["content"]
+    assert '"cmdbhosts" = "10.0.0.2"' in configs[1]["content"]
+    assert '"cmdbtarget_instance_uuid" = "223e4567-e89b-42d3-a456-426614174000"' in configs[1]["content"]
+    assert all('namedrop = ["collection_request_accepted"]' in item["content"] for item in configs)
+
+
+def test_delete_params_cleans_legacy_and_per_target_child_configs():
+    task = _task()
+    task.instances.append(
+        {
+            "_id": "102",
+            "inst_uuid": "223e4567-e89b-42d3-a456-426614174000",
+            "model_id": "router",
+            "ip_addr": "10.0.0.2",
+            "brand": "Huawei",
+        }
+    )
+
+    assert NetworkConfigFileNodeParams(task).delete_params() == [
+        "cmdb_42",
+        "cmdb_42_123e4567e89b42d3a456426614174000",
+        "cmdb_42_223e4567e89b42d3a456426614174000",
+    ]
+
+
 # ---------------------------------------------------------------------------
 # P2-2.2 — get_hosts 不再对每个 instance 重复 resolve_brand
 # ---------------------------------------------------------------------------

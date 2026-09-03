@@ -10,7 +10,8 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from loguru import logger
 
-from apps.opspilot.metis.llm.tools.kubernetes.utils import prepare_context
+from apps.opspilot.metis.llm.tools.kubernetes.instance_scope import prepare_point_instance
+from apps.opspilot.metis.llm.tools.kubernetes.utils import coerce_bool, prepare_context
 
 
 def _log_operation(operation: str, namespace: str, resource_type: str, count: int):
@@ -28,7 +29,9 @@ def _log_operation(operation: str, namespace: str, resource_type: str, count: in
 
 
 @tool()
-def batch_restart_pods(namespace, label_selector=None, pod_names=None, wait_for_ready=False, config: RunnableConfig = None):
+def batch_restart_pods(  # noqa: C901
+    namespace, label_selector=None, pod_names=None, wait_for_ready: bool = False, instance_name=None, config: RunnableConfig = None
+):
     """
     批量重启Pod，提升运维效率
 
@@ -54,6 +57,7 @@ def batch_restart_pods(namespace, label_selector=None, pod_names=None, wait_for_
         wait_for_ready (bool, optional): 是否等待所有Pod就绪，默认False
             - False: 异步重启，立即返回（推荐批量操作）
             - True: 等待所有Pod就绪再返回（耗时长）
+        instance_name (str, optional): 多实例时必须指定集群
         config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
@@ -92,7 +96,11 @@ def batch_restart_pods(namespace, label_selector=None, pod_names=None, wait_for_
     → batch_restart_pods(namespace="prod", pod_names=["pod-1", "pod-2", "pod-3"])
     ```
     """
+    config, err = prepare_point_instance(config, instance_name)
+    if err:
+        return err
     prepare_context(config)
+    wait_for_ready = coerce_bool(wait_for_ready, False)
 
     try:
         core_v1 = client.CoreV1Api()
@@ -391,7 +399,7 @@ def find_configmap_consumers(configmap_name, namespace, config: RunnableConfig =
 
 
 @tool()
-def cleanup_failed_pods(namespace=None, include_evicted=True, config: RunnableConfig = None):
+def cleanup_failed_pods(namespace=None, include_evicted: bool = True, instance_name=None, config: RunnableConfig = None):
     """
     批量清理失败的Pod，释放资源
 
@@ -411,6 +419,7 @@ def cleanup_failed_pods(namespace=None, include_evicted=True, config: RunnableCo
     Args:
         namespace (str, optional): 命名空间，None=所有命名空间
         include_evicted (bool, optional): 是否清理Evicted Pod，默认True
+        instance_name (str, optional): 多实例时必须指定集群
         config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
@@ -456,7 +465,11 @@ def cleanup_failed_pods(namespace=None, include_evicted=True, config: RunnableCo
     → cleanup_failed_pods()
     ```
     """
+    config, err = prepare_point_instance(config, instance_name)
+    if err:
+        return err
     prepare_context(config)
+    include_evicted = coerce_bool(include_evicted, True)
 
     try:
         core_v1 = client.CoreV1Api()

@@ -17,6 +17,7 @@ from apps.core.utils.time_util import format_rfc3339_utc, parse_rfc3339_utc
 from apps.core.utils.trend_granularity import TREND_GROUP_BY_AUTO_REST_APIS
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.operation_analysis.common.audit_log import get_response_name, log_ops_analysis_success
+from apps.operation_analysis.common.datasource_security import LEGACY_RAW_MONITOR_QUERY_ERROR, is_legacy_raw_monitor_query
 from apps.operation_analysis.common.datasource_visibility import (
     can_access_datasource_in_org,
     expand_datasource_org_query,
@@ -543,6 +544,9 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                 "数据源不存在或已删除",
                 status.HTTP_404_NOT_FOUND,
             )
+
+        if is_legacy_raw_monitor_query(source_type=instance.source_type, rest_api=instance.rest_api):
+            return _build_error_response(LEGACY_RAW_MONITOR_QUERY_ERROR, status.HTTP_410_GONE)
 
         raw_request = getattr(request, "_request", request)
         render_scoped = getattr(raw_request, "dashboard_report_render_scope", None) is not None

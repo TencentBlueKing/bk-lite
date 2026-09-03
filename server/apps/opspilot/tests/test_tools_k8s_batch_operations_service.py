@@ -21,19 +21,15 @@ from apps.opspilot.metis.llm.tools.kubernetes import batch_operations as b
 @pytest.fixture
 def core():
     c = MagicMock()
-    with patch.object(b, "prepare_context", return_value=None), \
-         patch.object(b.client, "CoreV1Api", return_value=c):
+    with patch.object(b, "prepare_context", return_value=None), patch.object(b.client, "CoreV1Api", return_value=c):
         yield c
 
 
-def _pod(name="p", ns="default", phase="Running", owner=True, uid="u1",
-         volumes=None, containers=None, reason=None, cstatuses=None):
+def _pod(name="p", ns="default", phase="Running", owner=True, uid="u1", volumes=None, containers=None, reason=None, cstatuses=None):
     owner_refs = [SimpleNamespace(kind="ReplicaSet", name="rs")] if owner else None
     return SimpleNamespace(
-        metadata=SimpleNamespace(name=name, namespace=ns, uid=uid,
-                                 owner_references=owner_refs),
-        status=SimpleNamespace(phase=phase, reason=reason,
-                               container_statuses=cstatuses),
+        metadata=SimpleNamespace(name=name, namespace=ns, uid=uid, owner_references=owner_refs),
+        status=SimpleNamespace(phase=phase, reason=reason, container_statuses=cstatuses),
         spec=SimpleNamespace(volumes=volumes, containers=containers),
     )
 
@@ -88,8 +84,7 @@ class TestBatchRestart:
         owned = _pod(name="owned", owner=True, uid="a")
         orphan = _pod(name="orphan", owner=False, uid="b")
         core.list_namespaced_pod.return_value = _items([owned, orphan])
-        out = json.loads(b.batch_restart_pods.invoke({
-            "namespace": "prod", "label_selector": "app=x", "config": {}}))
+        out = json.loads(b.batch_restart_pods.invoke({"namespace": "prod", "label_selector": "app=x", "config": {}}))
         assert out["total_pods"] == 2
         assert [p["pod_name"] for p in out["restarted_pods"]] == ["owned"]
         assert [p["pod_name"] for p in out["skipped_pods"]] == ["orphan"]
@@ -100,44 +95,43 @@ class TestBatchRestart:
             if name == "gone":
                 raise ApiException(status=404)
             return _pod(name=name, owner=True)
+
         core.read_namespaced_pod.side_effect = read
-        out = json.loads(b.batch_restart_pods.invoke({
-            "namespace": "prod", "pod_names": ["live", "gone"], "config": {}}))
+        out = json.loads(b.batch_restart_pods.invoke({"namespace": "prod", "pod_names": ["live", "gone"], "config": {}}))
         assert out["total_pods"] == 1
         assert out["restarted_pods"][0]["pod_name"] == "live"
 
     def test_no_matching_pods(self, core):
         core.list_namespaced_pod.return_value = _items([])
-        out = json.loads(b.batch_restart_pods.invoke({
-            "namespace": "prod", "label_selector": "app=none", "config": {}}))
+        out = json.loads(b.batch_restart_pods.invoke({"namespace": "prod", "label_selector": "app=none", "config": {}}))
         assert out["message"] == "没有找到匹配的Pod"
 
     def test_delete_failure_recorded(self, core):
         core.list_namespaced_pod.return_value = _items([_pod(owner=True)])
         core.delete_namespaced_pod.side_effect = ApiException(status=500)
-        out = json.loads(b.batch_restart_pods.invoke({
-            "namespace": "prod", "label_selector": "a=b", "config": {}}))
+        out = json.loads(b.batch_restart_pods.invoke({"namespace": "prod", "label_selector": "a=b", "config": {}}))
         assert len(out["failed_pods"]) == 1
 
     def test_wait_for_ready(self, core):
         pod = _pod(name="w", owner=True, uid="old")
         core.list_namespaced_pod.return_value = _items([pod])
-        new_pod = _pod(name="w", owner=True, uid="new",
-                       cstatuses=[SimpleNamespace(ready=True)])
+        new_pod = _pod(name="w", owner=True, uid="new", cstatuses=[SimpleNamespace(ready=True)])
         new_pod.status.phase = "Running"
         core.read_namespaced_pod.return_value = new_pod
-        with patch.object(b.time, "sleep", return_value=None), \
-             patch.object(b.time, "time", side_effect=[0, 0, 1]):
-            out = json.loads(b.batch_restart_pods.invoke({
-                "namespace": "prod", "label_selector": "a=b",
-                "wait_for_ready": True, "config": {}}))
+        with patch.object(b.time, "sleep", return_value=None), patch.object(b.time, "time", side_effect=[0, 0, 1]):
+            out = json.loads(b.batch_restart_pods.invoke({"namespace": "prod", "label_selector": "a=b", "wait_for_ready": True, "config": {}}))
         assert out["all_ready"] is True
         assert out["ready_count"] == 1
 
+    def test_string_wait_for_ready_false_skips_wait(self, core):
+        core.list_namespaced_pod.return_value = _items([_pod(owner=True)])
+        out = json.loads(b.batch_restart_pods.func(namespace="prod", label_selector="a=b", wait_for_ready="false", config={}))
+        assert out["wait_for_ready"] is False
+        assert "all_ready" not in out
+
     def test_generic_exception_wrapped(self, core):
         core.list_namespaced_pod.side_effect = RuntimeError("boom")
-        out = json.loads(b.batch_restart_pods.invoke({
-            "namespace": "prod", "label_selector": "a=b", "config": {}}))
+        out = json.loads(b.batch_restart_pods.invoke({"namespace": "prod", "label_selector": "a=b", "config": {}}))
         assert "批量重启失败" in out["error"]
 
 
@@ -145,8 +139,7 @@ class TestBatchRestart:
 class TestFindConfigMapConsumers:
     def test_configmap_not_found(self, core):
         core.read_namespaced_config_map.side_effect = ApiException(status=404)
-        out = json.loads(b.find_configmap_consumers.invoke({
-            "configmap_name": "cm", "namespace": "prod", "config": {}}))
+        out = json.loads(b.find_configmap_consumers.invoke({"configmap_name": "cm", "namespace": "prod", "config": {}}))
         assert out["configmap_exists"] is False
         assert "不存在" in out["message"]
 
@@ -155,20 +148,14 @@ class TestFindConfigMapConsumers:
         # volume + subpath pod
         vol = SimpleNamespace(name="v", config_map=SimpleNamespace(name="cm"))
         vm = SimpleNamespace(name="v", sub_path="x")
-        sub_pod = _pod(name="subp", owner=True,
-                       volumes=[vol], containers=[SimpleNamespace(
-                           volume_mounts=[vm], env=None)])
+        sub_pod = _pod(name="subp", owner=True, volumes=[vol], containers=[SimpleNamespace(volume_mounts=[vm], env=None)])
         # env pod
         ref = SimpleNamespace(config_map_key_ref=SimpleNamespace(name="cm"))
-        env_pod = _pod(name="envp", owner=True, volumes=None,
-                       containers=[SimpleNamespace(
-                           volume_mounts=[], env=[SimpleNamespace(value_from=ref)])])
+        env_pod = _pod(name="envp", owner=True, volumes=None, containers=[SimpleNamespace(volume_mounts=[], env=[SimpleNamespace(value_from=ref)])])
         # unrelated pod
-        other = _pod(name="other", owner=True, volumes=None,
-                     containers=[SimpleNamespace(volume_mounts=[], env=None)])
+        other = _pod(name="other", owner=True, volumes=None, containers=[SimpleNamespace(volume_mounts=[], env=None)])
         core.list_namespaced_pod.return_value = _items([sub_pod, env_pod, other])
-        out = json.loads(b.find_configmap_consumers.invoke({
-            "configmap_name": "cm", "namespace": "prod", "config": {}}))
+        out = json.loads(b.find_configmap_consumers.invoke({"configmap_name": "cm", "namespace": "prod", "config": {}}))
         assert out["total_consumers"] == 2
         names = {c["pod_name"] for c in out["consumers"]}
         assert names == {"subp", "envp"}
@@ -177,11 +164,9 @@ class TestFindConfigMapConsumers:
 
     def test_no_consumers_recommendation(self, core):
         core.read_namespaced_config_map.return_value = SimpleNamespace()
-        pod = _pod(name="x", volumes=None,
-                   containers=[SimpleNamespace(volume_mounts=[], env=None)])
+        pod = _pod(name="x", volumes=None, containers=[SimpleNamespace(volume_mounts=[], env=None)])
         core.list_namespaced_pod.return_value = _items([pod])
-        out = json.loads(b.find_configmap_consumers.invoke({
-            "configmap_name": "cm", "namespace": "prod", "config": {}}))
+        out = json.loads(b.find_configmap_consumers.invoke({"configmap_name": "cm", "namespace": "prod", "config": {}}))
         assert out["total_consumers"] == 0
         assert any("可以安全修改或删除" in r for r in out["recommendations"])
 
@@ -189,18 +174,15 @@ class TestFindConfigMapConsumers:
         core.read_namespaced_config_map.return_value = SimpleNamespace()
         vol = SimpleNamespace(name="v", config_map=SimpleNamespace(name="cm"))
         vm = SimpleNamespace(name="v", sub_path=None)
-        pod = _pod(name="vp", owner=True, volumes=[vol],
-                   containers=[SimpleNamespace(volume_mounts=[vm], env=None)])
+        pod = _pod(name="vp", owner=True, volumes=[vol], containers=[SimpleNamespace(volume_mounts=[vm], env=None)])
         core.list_namespaced_pod.return_value = _items([pod])
-        out = json.loads(b.find_configmap_consumers.invoke({
-            "configmap_name": "cm", "namespace": "prod", "config": {}}))
+        out = json.loads(b.find_configmap_consumers.invoke({"configmap_name": "cm", "namespace": "prod", "config": {}}))
         assert out["consumers"][0]["needs_restart"] is False
         assert any("自动生效" in r for r in out["recommendations"])
 
     def test_exception_wrapped(self, core):
         core.read_namespaced_config_map.side_effect = RuntimeError("boom")
-        out = json.loads(b.find_configmap_consumers.invoke({
-            "configmap_name": "cm", "namespace": "prod", "config": {}}))
+        out = json.loads(b.find_configmap_consumers.invoke({"configmap_name": "cm", "namespace": "prod", "config": {}}))
         assert "查找失败" in out["error"]
 
 
@@ -218,20 +200,17 @@ class TestCleanupFailedPods:
 
     def test_namespace_scoped(self, core):
         core.list_namespaced_pod.return_value = _items([_pod(name="f", phase="Failed")])
-        out = json.loads(b.cleanup_failed_pods.invoke({
-            "namespace": "prod", "config": {}}))
+        out = json.loads(b.cleanup_failed_pods.invoke({"namespace": "prod", "config": {}}))
         core.list_namespaced_pod.assert_called_once_with("prod")
         assert out["namespace"] == "prod"
 
     def test_no_pods_to_clean(self, core):
-        core.list_pod_for_all_namespaces.return_value = _items(
-            [_pod(name="r", phase="Running")])
+        core.list_pod_for_all_namespaces.return_value = _items([_pod(name="r", phase="Running")])
         out = json.loads(b.cleanup_failed_pods.invoke({"config": {}}))
         assert out["message"] == "没有需要清理的Pod"
 
     def test_delete_failure_counted(self, core):
-        core.list_pod_for_all_namespaces.return_value = _items(
-            [_pod(name="f", phase="Failed")])
+        core.list_pod_for_all_namespaces.return_value = _items([_pod(name="f", phase="Failed")])
         core.delete_namespaced_pod.side_effect = ApiException(status=500)
         out = json.loads(b.cleanup_failed_pods.invoke({"config": {}}))
         assert out["total_failed"] == 1

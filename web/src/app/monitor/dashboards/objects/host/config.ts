@@ -14,8 +14,8 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: 'CPU 使用率',
       description: '主机 CPU 总体使用率。',
       unit: 'percent',
-      // ①Telegraf host: 100-空闲；②HTTP Remote: host_cpu_usage_percent_gauge；③Windows WMI。
-      query: '(100 - cpu_usage_idle{cpu="cpu-total", instance_type="os", __$labels__}) or host_cpu_usage_percent_gauge{instance_type="os", __$labels__} or cpu_usage_total_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}',
+      // ①Telegraf host: 100-空闲；②HTTP Remote: host_cpu_usage_percent_gauge；③Windows WMI；④Host AIX Remote: cpu_usage_total_gauge。
+      query: '(100 - cpu_usage_idle{cpu="cpu-total", instance_type="os", __$labels__}) or host_cpu_usage_percent_gauge{instance_type="os", __$labels__} or cpu_usage_total_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} or cpu_usage_total_gauge{instance_type="os", config_type="host_aix_remote", __$labels__}',
       color: '#2f6bff'
     },
     {
@@ -88,7 +88,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '内存使用率',
       description: '主机内存使用率。',
       unit: 'percent',
-      query: 'mem_used_percent{instance_type="os", __$labels__} or host_mem_used_percent_gauge{instance_type="os", __$labels__} or mem_used_percent_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}',
+      query: 'mem_used_percent{instance_type="os", __$labels__} or host_mem_used_percent_gauge{instance_type="os", __$labels__} or mem_used_percent_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} or mem_used_percent_gauge{instance_type="os", config_type="host_aix_remote", __$labels__}',
       color: '#27c274'
     },
     {
@@ -97,7 +97,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '主机各挂载点磁盘使用率中的最大值（最满分区）。',
       unit: 'percent',
       // ①Telegraf host 按挂载点；②HTTP Remote；③Windows WMI。取 max 作为主机级容量压力信号。
-      query: 'max by (instance_id) (disk_used_percent{instance_type="os", __$labels__} or host_disk_used_percent_gauge{instance_type="os", __$labels__} or disk_used_percent_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__})',
+      query: 'max by (instance_id) (disk_used_percent{instance_type="os", __$labels__} or host_disk_used_percent_gauge{instance_type="os", __$labels__} or disk_used_percent_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} or disk_used_percent_gauge{instance_type="os", config_type="host_aix_remote", __$labels__})',
       color: '#faad14'
     },
     {
@@ -161,7 +161,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '磁盘读吞吐',
       description: '主机所有磁盘设备读取字节速率合计。计算窗口与时间选择器一致。',
       unit: 'byteps',
-      query: 'sum by (instance_id) (rate(diskio_read_bytes{instance_type="os", __$labels__}[__$window__]) or rate(diskio_read_bytes_total_gauge{instance_type="os", __$labels__}[__$window__]) or rate(diskio_read_bytes_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__]))',
+      query: 'sum by (instance_id) (rate(diskio_read_bytes{instance_type="os", __$labels__}[__$window__]) or rate(diskio_read_bytes_total_gauge{instance_type="os", config_type!~"host_aix.*", __$labels__}[__$window__]) or rate(diskio_read_bytes_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__]) or diskio_read_bytes_gauge{instance_type="os", config_type="host_aix_remote", __$labels__})',
       color: '#13c2c2'
     },
     {
@@ -169,7 +169,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '磁盘写吞吐',
       description: '主机所有磁盘设备写入字节速率合计。计算窗口与时间选择器一致。',
       unit: 'byteps',
-      query: 'sum by (instance_id) (rate(diskio_write_bytes{instance_type="os", __$labels__}[__$window__]) or rate(diskio_write_bytes_total_gauge{instance_type="os", __$labels__}[__$window__]) or rate(diskio_write_bytes_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__]))',
+      query: 'sum by (instance_id) (rate(diskio_write_bytes{instance_type="os", __$labels__}[__$window__]) or rate(diskio_write_bytes_total_gauge{instance_type="os", config_type!~"host_aix.*", __$labels__}[__$window__]) or rate(diskio_write_bytes_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__]) or diskio_write_bytes_gauge{instance_type="os", config_type="host_aix_remote", __$labels__})',
       color: '#ff8a1f'
     }
   ],

@@ -295,6 +295,7 @@ class TestBuildDeepagentNodes:
         failing_agent_calls=(),
         direct_reply_content=None,
         agent_reply=None,
+        agent_replies=None,
     ):
         gb = _FakeGraphBuilder()
 
@@ -334,8 +335,14 @@ class TestBuildDeepagentNodes:
                 captured.setdefault("visible_tool_calls", []).append([tool.name for tool in visible_request.tools])
             else:
                 captured.setdefault("visible_tool_calls", []).append([tool.name for tool in captured["create_kwargs"]["tools"]])
+            extra = getattr(req, "extra_config", None) or {}
+            captured.setdefault("hide_during_ainvoke", []).append(bool(extra.get("opspilot_hide_planned_step_text")))
             call_index = len(captured["visible_tool_calls"])
-            appended_messages = [AIMessage(content=agent_reply or f"执行结果 {call_index}")]
+            if agent_replies and call_index in agent_replies:
+                reply_text = agent_replies[call_index]
+            else:
+                reply_text = agent_reply or f"执行结果 {call_index}"
+            appended_messages = [AIMessage(content=reply_text)]
             if call_index in failing_agent_calls:
                 from langchain_core.messages import ToolMessage
 
@@ -655,8 +662,36 @@ class TestBuildDeepagentNodes:
                 },
             )
         middlewares = captured["create_kwargs"]["middleware"]
-        assert any(isinstance(item, ToolResultCompactionMiddleware) for item in middlewares)
+        compaction = next(item for item in middlewares if isinstance(item, ToolResultCompactionMiddleware))
+        assert compaction._max_tool_chars == 1500
+        assert compaction._max_ai_chars == 1000
         assert any(isinstance(item, ContextWindowMiddleware) for item in middlewares)
+
+    def test_runtime_middleware_scales_tool_compaction_with_working_budget(self):
+        from apps.opspilot.metis.llm.middleware.tool_runtime import ToolResultCompactionMiddleware
+
+        node = ToolsNodes()
+        node.all_tools = [_tool("list_kubernetes_events")]
+        req = _request(
+            user_message="查事件",
+            extra_config={"input_working_tokens": 186_000},
+            message_trim_config={"max_single_message_tokens": 37_200},
+        )
+        captured = {}
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "查事件",
+                    "steps": [{"objective": "读事件", "tools": ["list_kubernetes_events"]}],
+                },
+            )
+        middlewares = captured["create_kwargs"]["middleware"]
+        compaction = next(item for item in middlewares if isinstance(item, ToolResultCompactionMiddleware))
+        assert compaction._max_tool_chars == 37_200
+        assert compaction._max_ai_chars == 27_352
 
     def test_planned_step_prepare_passes_active_tools(self):
         seen_tool_names = []
@@ -706,9 +741,9 @@ class TestBuildDeepagentNodes:
         assert "backend" not in kwargs
         assert "skills" not in kwargs
         assert "interrupt_on" not in kwargs
-        # 只返回 deepagent 新增消息（执行步 + 总结轮）
-        assert len(result["messages"]) == 2
-        assert result["messages"][0].content == "执行结果 1"
+        # 执行步正文不对外；只返回总结轮一份答案
+        assert len(result["messages"]) == 1
+        assert result["messages"][0].content == "执行结果 2"
 
     def test_planned_execution_reuses_agent_and_replaces_tools_per_step(self):
         node = ToolsNodes()
@@ -751,7 +786,8 @@ class TestBuildDeepagentNodes:
             [],
         ]
         assert len(captured["ainvoke_messages"]) == 3
-        assert len(result["messages"]) == 3
+        assert len(result["messages"]) == 1
+        assert result["messages"][0].content == "执行结果 3"
         assert all(not isinstance(message, HumanMessage) for message in result["messages"])
 
     def test_planned_execution_hides_deepagent_builtin_tools(self):
@@ -1303,6 +1339,67 @@ class TestBuildDeepagentNodes:
         assert len(result["messages"]) == 1
         assert result["messages"][0].content == table
 
+    def test_planned_execution_skips_summary_when_earlier_step_already_showed_table(self):
+        node = ToolsNodes()
+        node.all_tools = [_tool("list_kubernetes_pods"), _tool("list_kubernetes_events")]
+        req = _request(user_message="统计今天 pod 重启")
+        captured = {}
+        table = "| Pod | 重启次数 |\n" "| --- | --- |\n" "| calico-kube-controllers | 9 |"
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            result = self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "统计重启",
+                    "steps": [
+                        {"objective": "取重启次数", "tools": ["list_kubernetes_pods"]},
+                        {"objective": "取最后重启时间", "tools": ["list_kubernetes_events"]},
+                    ],
+                },
+                agent_reply=table,
+            )
+
+        assert len(captured["ainvoke_messages"]) == 2
+        ai_messages = [message for message in result["messages"] if getattr(message, "type", "") == "ai"]
+        assert len(ai_messages) == 1
+        assert table in str(ai_messages[0].content)
+        assert captured["hide_during_ainvoke"] == [True, True]
+        assert req.extra_config.get("opspilot_hide_planned_step_text") is False
+
+    def test_planned_execution_keeps_last_table_when_step_tables_conflict(self):
+        node = ToolsNodes()
+        node.all_tools = [_tool("get_high_restart_kubernetes_pods"), _tool("get_resource_events_timeline")]
+        req = _request(user_message="统计今天 pod 重启")
+        captured = {}
+        cumulative = "| Pod | 累计重启 |\n| --- | --- |\n| calico-kube-controllers | 9 |"
+        today = "| Pod | 今天重启 |\n| --- | --- |\n| calico-kube-controllers | 0 |"
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            result = self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "统计今天重启",
+                    "steps": [
+                        {"objective": "取累计重启", "tools": ["get_high_restart_kubernetes_pods"]},
+                        {"objective": "取今天事件", "tools": ["get_resource_events_timeline"]},
+                    ],
+                },
+                agent_replies={1: cumulative, 2: today},
+            )
+
+        assert len(captured["ainvoke_messages"]) == 2
+        ai_messages = [message for message in result["messages"] if getattr(message, "type", "") == "ai"]
+        assert len(ai_messages) == 1
+        assert "今天重启" in str(ai_messages[0].content)
+        assert "累计重启" not in str(ai_messages[0].content)
+        assert captured["hide_during_ainvoke"] == [True, True]
+        assert "不要输出 Markdown 表" in str(captured["ainvoke_messages"][0][-1].content)
+        assert "只保留一张表" in str(captured["ainvoke_messages"][1][-1].content)
+
     def test_progressive_disabled_skips_planner_and_binds_all_tools(self, monkeypatch):
         monkeypatch.setenv("OPSPILOT_DEEPAGENT_PROGRESSIVE_TOOLS", "0")
         assert is_progressive_tools_enabled() is False
@@ -1330,6 +1427,42 @@ def test_planned_step_already_answered_detects_markdown_table():
     assert ToolsNodes._planned_step_already_answered([AIMessage(content=table)]) is True
     assert ToolsNodes._planned_step_already_answered([AIMessage(content="执行结果 1")]) is False
     assert ToolsNodes._planned_step_already_answered([ToolMessage(content=table, tool_call_id="t1")]) is False
+
+
+def test_should_skip_planned_summary_for_multi_step_table():
+    from langchain_core.messages import AIMessage
+
+    table = "| Pod | 重启次数 |\n| --- | --- |\n| a | 1 |"
+    later = "以上名单累计重启均发生在 24 小时前，今天 0 次。"
+    messages = [AIMessage(content=table), AIMessage(content=later)]
+    assert ToolsNodes._planned_output_has_markdown_table(messages) is True
+    assert ToolsNodes._should_skip_planned_summary(messages, completed_step_count=3) is True
+    stubs = [AIMessage(content="执行结果 1"), AIMessage(content="执行结果 2")]
+    assert ToolsNodes._should_skip_planned_summary(stubs, completed_step_count=2) is False
+    prose = [AIMessage(content="已拿到事件时间，今天没有新的重启。")]
+    assert ToolsNodes._should_skip_planned_summary(prose, completed_step_count=2) is False
+    assert ToolsNodes._should_skip_planned_summary(prose, completed_step_count=1) is True
+
+
+def test_select_visible_planned_messages_keeps_last_table_not_cumulative():
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    cumulative = "| Pod | 累计重启 |\n| --- | --- |\n| calico | 9 |"
+    today = "| Pod | 今天重启 |\n| --- | --- |\n| calico | 0 |"
+    messages = [
+        AIMessage(content="", tool_calls=[{"id": "1", "name": "get_high_restart_kubernetes_pods", "args": {}}]),
+        ToolMessage(content="[{}]", tool_call_id="1"),
+        AIMessage(content=cumulative),
+        AIMessage(content="", tool_calls=[{"id": "2", "name": "get_resource_events_timeline", "args": {}}]),
+        ToolMessage(content="[]", tool_call_id="2"),
+        AIMessage(content=today),
+    ]
+    visible = ToolsNodes._select_visible_planned_messages(messages, summary_ran=False)
+    ai = [item for item in visible if getattr(item, "type", "") == "ai" and not getattr(item, "tool_calls", None)]
+    assert len(ai) == 1
+    assert "今天重启" in str(ai[0].content)
+    assert "累计重启" not in str(ai[0].content)
+    assert sum(1 for item in visible if getattr(item, "type", "") == "tool") == 2
 
 
 def test_planned_step_already_answered_detects_tool_sentence():
@@ -1370,9 +1503,13 @@ def test_planned_tool_step_guidance_is_policy_not_skill_scan():
     assert "未计划工具" in guidance
     assert "空列表" in guidance
     assert "重规划" in guidance
-    assert "第二份" in guidance
+    assert "不要输出 Markdown 表" in guidance
     assert "execute" not in guidance
     assert "扫技能包" not in guidance
+    last = ToolsNodes._planned_tool_step_guidance(is_last_step=True)
+    assert "只保留一张表" in last
+    assert "时间窗" in last
+    assert "不要输出 Markdown 表" not in last
 
 
 def test_skill_only_step_guidance_lists_real_scripts(tmp_path):

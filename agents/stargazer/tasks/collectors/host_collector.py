@@ -38,9 +38,22 @@ VALID_MODULES = {"cpu", "mem", "disk", "net", "diskio", "processes", "system"}
 HOST_REMOTE_CALLBACK_REQUEST_TIMEOUT = 60
 LINUX_SCRIPT_WRAPPER_EOF = "STARGAZER_HOST_COLLECT_EOF"
 LINUX_SCRIPT_WRAPPER_PREFIX = "LC_ALL=C LANG=C bash --noprofile --norc"
+SUPPORTED_OS_TYPES = {"linux", "windows", "aix"}
 
 
-def build_script(os_type: str, modules: List[str], monitor_type: str | None = None) -> str:
+def build_script(
+    os_type: str,
+    modules: List[str],
+    monitor_type: str | None = None,
+    config_type: str | None = None,
+) -> str:
+    os_type = str(os_type or "").strip().lower()
+    if os_type == "aix":
+        from .aix_os_monitor import wrap_ksh_collect
+
+        return wrap_ksh_collect()
+    if os_type not in {"linux", "windows"}:
+        raise ValueError(f"unsupported os_type: {os_type}")
     base_dir = SCRIPTS_DIR / ("linux" if os_type == "linux" else "windows")
     monitor_base_dir = MONITOR_SCRIPTS_DIR / ("linux" if os_type == "linux" else "windows")
     ext = ".sh" if os_type == "linux" else ".ps1"
@@ -58,11 +71,7 @@ def build_script(os_type: str, modules: List[str], monitor_type: str | None = No
     body = "\n".join(parts)
 
     if os_type == "linux":
-        body = (
-            f"{LINUX_SCRIPT_WRAPPER_PREFIX} <<'{LINUX_SCRIPT_WRAPPER_EOF}'\n"
-            f"{body}\n"
-            f"{LINUX_SCRIPT_WRAPPER_EOF}\n"
-        )
+        body = f"{LINUX_SCRIPT_WRAPPER_PREFIX} <<'{LINUX_SCRIPT_WRAPPER_EOF}'\n" f"{body}\n" f"{LINUX_SCRIPT_WRAPPER_EOF}\n"
 
     return body
 
@@ -70,6 +79,27 @@ def build_script(os_type: str, modules: List[str], monitor_type: str | None = No
 def _read_script(path: Path) -> str:
     with open(path, "r", encoding="utf-8") as f:
         return f.read()
+
+
+def _adhoc_stdout_preview(result: Dict[str, Any]) -> str:
+    task_result = result.get("result", {})
+    if isinstance(task_result, str):
+        return task_result
+    if isinstance(task_result, list):
+        chunks = []
+        for host_data in task_result:
+            if isinstance(host_data, dict) and host_data.get("stdout"):
+                chunks.append(str(host_data.get("stdout") or ""))
+        return "\n".join(chunks)
+    if isinstance(task_result, dict):
+        hosts_result = task_result.get("contacted", task_result)
+        if isinstance(hosts_result, dict):
+            chunks = []
+            for host_data in hosts_result.values():
+                if isinstance(host_data, dict) and host_data.get("stdout"):
+                    chunks.append(str(host_data.get("stdout") or ""))
+            return "\n".join(chunks)
+    return ""
 
 
 def _extract_json_payload(stdout: str) -> str:
@@ -126,10 +156,7 @@ def _metrics_json_failure_message(host: str, stdout: str, err: json.JSONDecodeEr
         stdout[:500],
     )
     if unclosed:
-        return (
-            f"Failed to parse metrics JSON from {host}: incomplete JSON "
-            f"(stdout_len={len(stdout)}, unclosed=true)"
-        )
+        return f"Failed to parse metrics JSON from {host}: incomplete JSON " f"(stdout_len={len(stdout)}, unclosed=true)"
     return f"Failed to parse metrics JSON from {host}: {err}"
 
 
@@ -308,22 +335,34 @@ class HostCollector(BaseCollector):
 
     def _resolve_execution_config(self) -> Dict[str, Any]:
         host = self.params["host"]
-        os_type = self.params.get("os_type", "linux")
+        os_type = str(self.params.get("os_type", "linux") or "linux").strip().lower()
+        if os_type not in SUPPORTED_OS_TYPES:
+            raise ValueError(f"unsupported os_type: {os_type}")
         username = self.params["username"]
         raw_port = self.params.get("port")
-        port = int(raw_port) if raw_port not in (None, "") else (22 if os_type == "linux" else 5986)
+        ssh_like = os_type in {"linux", "aix"}
+        port = int(raw_port) if raw_port not in (None, "") else (22 if ssh_like else 5986)
         ansible_node_id = self.params["ansible_node_id"]
-        execute_timeout = 60  # 脚本执行上限硬编码；表单 timeout 由框架作单对象预算
+        if os_type == "aix":
+            from .aix_os_monitor import COMMAND_EXECUTE_TIMEOUT
+
+            execute_timeout = COMMAND_EXECUTE_TIMEOUT
+        else:
+            execute_timeout = 60  # 脚本执行上限硬编码；表单 timeout 由框架作单对象预算
 
         modules = self._resolve_modules()
         credential_encoding = self.params.get("credential_encoding") or self.params.get("credentials_encoding") or "url"
 
-        logger.info(f"[Host Collector] host={host}, os={os_type}, modules={modules}")
+        logger.info("[Host Collector] host=%s, os=%s, modules=%s", host, os_type, modules)
 
-        script = build_script(os_type, modules, monitor_type=self.params.get("monitor_type"))
+        script = build_script(
+            os_type,
+            modules,
+            monitor_type=self.params.get("monitor_type"),
+        )
 
-        connection = "ssh" if os_type == "linux" else "winrm"
-        module = "raw" if os_type == "linux" else "win_shell"
+        connection = "ssh" if ssh_like else "winrm"
+        module = "raw" if ssh_like else "win_shell"
 
         host_credential = {
             "host": host,
@@ -331,7 +370,7 @@ class HostCollector(BaseCollector):
             "connection": connection,
             "port": port,
         }
-        if os_type == "linux":
+        if ssh_like:
             auth_type = self.params.get("auth_type", "password") or "password"
             if auth_type == "private_key":
                 private_key_content = self.params.get("private_key_content")
@@ -364,6 +403,11 @@ class HostCollector(BaseCollector):
         }
 
     def _resolve_callback_timeout(self) -> int:
+        os_type = str(self.params.get("os_type", "") or "").strip().lower()
+        if os_type == "aix":
+            from .aix_os_monitor import COMMAND_EXECUTE_TIMEOUT
+
+            return int(self.params.get("host_remote_callback_timeout", COMMAND_EXECUTE_TIMEOUT))
         return int(
             self.params.get(
                 "host_remote_callback_timeout",
@@ -428,14 +472,24 @@ class HostCollector(BaseCollector):
 
         instance_id = self.params.get("tags", {}).get("instance_id", host)
         callback_timestamp = self.params.get("callback_timestamp")
-        prometheus_metrics = parse_metrics_to_prometheus(
-            metrics_data,
-            instance_id,
-            os_type,
-            timestamp=callback_timestamp,
-            disk_include_fstypes=self.params.get("disk_include_fstypes"),
-            disk_exclude_fstypes=self.params.get("disk_exclude_fstypes"),
-        )
+        if os_type == "aix":
+            from .aix_os_monitor import parse_aix_metrics_to_prometheus
+
+            prometheus_metrics = parse_aix_metrics_to_prometheus(
+                metrics_data,
+                instance_id,
+                os_type,
+                int(callback_timestamp) if callback_timestamp is not None else int(time.time() * 1000),
+            )
+        else:
+            prometheus_metrics = parse_metrics_to_prometheus(
+                metrics_data,
+                instance_id,
+                os_type,
+                timestamp=callback_timestamp,
+                disk_include_fstypes=self.params.get("disk_include_fstypes"),
+                disk_exclude_fstypes=self.params.get("disk_exclude_fstypes"),
+            )
 
         logger.info(f"[Host Collector] Completed: host={host}, metrics_size={len(prometheus_metrics)}")
         return prometheus_metrics

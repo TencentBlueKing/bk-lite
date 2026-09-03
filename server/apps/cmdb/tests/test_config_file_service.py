@@ -235,24 +235,32 @@ def test_validate_callback_identity_requires_uuid_v2():
 
 
 # --------------------------------------------------------------------------
-# _is_stale_callback
+# _is_stale_callback（周期滚动结果）
 # --------------------------------------------------------------------------
 
 
-def test_is_stale_callback_no_exec_time():
-    assert S._is_stale_callback(_task(exec_time=None), "1700000000000") is False
+def test_is_stale_callback_without_previous_target_result():
+    assert S._is_stale_callback(_task(collect_data={}), "1700000000000", "target-1") is False
 
 
-def test_is_stale_callback_true():
-    from django.utils.timezone import now, timedelta
-
-    exec_time = now()
-    old_version = str(int((exec_time - timedelta(days=1)).timestamp() * 1000))
-    assert S._is_stale_callback(_task(exec_time=exec_time), old_version) is True
+def test_is_stale_callback_true_when_target_has_newer_result():
+    task = _task(
+        collect_data={
+            "config_file": {
+                "items": {
+                    "target-1": {
+                        "instance_id": "target-1",
+                        "version": "1700000001000",
+                    }
+                }
+            }
+        }
+    )
+    assert S._is_stale_callback(task, "1700000000000", "target-1") is True
 
 
 # --------------------------------------------------------------------------
-# _build_summary / build_pending_result
+# _build_summary
 # --------------------------------------------------------------------------
 
 
@@ -276,13 +284,6 @@ def test_build_summary_error():
         task, items={"1": {"instance_id": "1", "status": ConfigFileVersionStatus.ERROR, "changed": False, "version": "100", "error_message": "boom"}}
     )
     assert summary["config_file_data"]["status"] == "error"
-
-
-def test_build_pending_result():
-    task = _task(instances=[{"_id": "1"}])
-    config_file, format_data = S.build_pending_result(task)
-    assert "config_file" in config_file
-    assert format_data["add"] == []
 
 
 # --------------------------------------------------------------------------

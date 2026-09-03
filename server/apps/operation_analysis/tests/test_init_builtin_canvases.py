@@ -1168,7 +1168,7 @@ def test_init_builtin_canvases_overwrites_and_prunes_only_builtin_datasources():
         created_by="system",
         updated_by="system",
     )
-    preserved_raw_queries = [
+    retired_raw_queries = [
         DataSourceAPIModel.objects.create(
             name=name,
             rest_api=rest_api,
@@ -1205,7 +1205,7 @@ def test_init_builtin_canvases_overwrites_and_prunes_only_builtin_datasources():
     assert legacy.build_in_key == "告警状态分布::alert/get_alert_status_distribution"
     assert legacy.params != [{"name": "legacy"}]
     assert not DataSourceAPIModel.objects.filter(pk=stale.pk).exists()
-    assert all(DataSourceAPIModel.objects.filter(pk=item.pk).exists() for item in preserved_raw_queries)
+    assert all(not DataSourceAPIModel.objects.filter(pk=item.pk).exists() for item in retired_raw_queries)
     assert DataSourceAPIModel.objects.filter(pk=unknown_legacy_builtin.pk, is_build_in=True).exists()
     assert DataSourceAPIModel.objects.filter(pk=custom.pk, is_build_in=False).exists()
 

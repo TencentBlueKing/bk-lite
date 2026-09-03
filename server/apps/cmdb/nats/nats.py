@@ -934,13 +934,13 @@ def receive_config_file_result(data: dict):
     callback_status = str(payload.get("status") or "error").lower()
     if callback_status not in ConfigFileService.STATUS_MAP:
         callback_status = "unknown"
-    execution_id = str(payload.get("execution_id") or "-").replace("\r", "\\r").replace("\n", "\\n")[:64]
+    instance_uuid = str(payload.get("instance_uuid") or "-").replace("\r", "\\r").replace("\n", "\\n")[:64]
     callback_failed = callback_status != "success"
     log_terminal = logger.warning if error or callback_failed else logger.info
     log_terminal(
-        "event=config_file_callback_finished task_id=%s execution_id=%s " "callback_status=%s processed=%s changed=%s task_updated=%s stale=%s",
+        "event=config_file_callback_finished task_id=%s instance_uuid=%s " "callback_status=%s processed=%s changed=%s task_updated=%s stale=%s",
         payload.get("collect_task_id") or payload.get("task_id") or "-",
-        execution_id,
+        instance_uuid,
         callback_status,
         response["processed"],
         response["changed"],
