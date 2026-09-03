@@ -8,7 +8,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from loguru import logger
 
-from apps.opspilot.metis.llm.tools.kubernetes.instance_scope import prepare_point_instance
+from apps.opspilot.metis.llm.tools.kubernetes.instance_scope import prepare_point_instance, run_scan_tool
 from apps.opspilot.metis.llm.tools.kubernetes.utils import coerce_int, prepare_context
 
 _DEFAULT_EVENT_HOURS = 24
@@ -16,7 +16,7 @@ _MAX_EVENT_HOURS = 168
 
 
 @tool()
-def trace_service_chain(service_name, namespace, config: RunnableConfig = None):  # noqa: C901
+def trace_service_chain(service_name, namespace, instance_name=None, config: RunnableConfig = None):  # noqa: C901
     """
     追踪Service调用链，从Service → Endpoint → Pod，定位流量异常
 
@@ -37,6 +37,7 @@ def trace_service_chain(service_name, namespace, config: RunnableConfig = None):
     Args:
         service_name (str): Service名称（必填）
         namespace (str): 命名空间（必填）
+        instance_name (str, optional): 多实例时必须指定集群
         config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
@@ -56,6 +57,9 @@ def trace_service_chain(service_name, namespace, config: RunnableConfig = None):
     - 此工具只检查配置和状态，不检查网络策略和DNS
     - 如需网络诊断，配合 check_network_policies_blocking 使用
     """
+    config, err = prepare_point_instance(config, instance_name)
+    if err:
+        return err
     prepare_context(config)
 
     try:
@@ -327,7 +331,7 @@ def get_resource_events_timeline(resource_type, resource_name, namespace, hours:
 
 
 @tool()
-def analyze_pod_restart_pattern(namespace=None, min_restarts: int = 3, config: RunnableConfig = None):  # noqa: C901
+def analyze_pod_restart_pattern(namespace=None, min_restarts: int = 3, instance_name=None, config: RunnableConfig = None):  # noqa: C901
     """
     深度分析Pod重启模式，定位根本原因
 
@@ -357,6 +361,7 @@ def analyze_pod_restart_pattern(namespace=None, min_restarts: int = 3, config: R
             - 3: 找出所有有重启迹象的Pod（推荐）
             - 5: 只关注重启较多的Pod
             - 10: 只看严重频繁重启的Pod
+        instance_name (str, optional): 多实例时指定集群；省略则扫描全部已配置实例
         config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
@@ -377,8 +382,16 @@ def analyze_pod_restart_pattern(namespace=None, min_restarts: int = 3, config: R
     - 查看容器日志 → 使用 get_kubernetes_pod_logs
     - 需要重启Pod → 使用 restart_pod
     """
-    prepare_context(config)
     min_restarts = coerce_int(min_restarts, 3, lo=0, hi=10000)
+
+    def _run(bound_config):
+        return _analyze_pod_restart_pattern_on_instance(namespace, min_restarts, bound_config)
+
+    return run_scan_tool(config, instance_name, _run)
+
+
+def _analyze_pod_restart_pattern_on_instance(namespace, min_restarts, config: RunnableConfig = None):  # noqa: C901
+    prepare_context(config)
 
     try:
         core_v1 = client.CoreV1Api()
@@ -516,7 +529,7 @@ def analyze_pod_restart_pattern(namespace=None, min_restarts: int = 3, config: R
 
 
 @tool()
-def check_oom_events(namespace=None, hours: int = 24, config: RunnableConfig = None):
+def check_oom_events(namespace=None, hours: int = 24, instance_name=None, config: RunnableConfig = None):
     """
     检查OOM（Out of Memory）事件，识别内存配置问题
 
@@ -541,6 +554,7 @@ def check_oom_events(namespace=None, hours: int = 24, config: RunnableConfig = N
             - 24: 查看最近一天的OOM（常规检查）
             - 1: 只看最近一小时（快速定位刚发生的OOM）
             - 168: 查看一周内的OOM（分析长期趋势）
+        instance_name (str, optional): 多实例时指定集群；省略则扫描全部已配置实例
         config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
@@ -569,8 +583,16 @@ def check_oom_events(namespace=None, hours: int = 24, config: RunnableConfig = N
     - OOM通常表示内存配置不足，但也可能是应用内存泄漏
     - 建议结合日志分析，排查是否真实需要这么多内存
     """
-    prepare_context(config)
     hours = coerce_int(hours, _DEFAULT_EVENT_HOURS, lo=1, hi=_MAX_EVENT_HOURS)
+
+    def _run(bound_config):
+        return _check_oom_events_on_instance(namespace, hours, bound_config)
+
+    return run_scan_tool(config, instance_name, _run)
+
+
+def _check_oom_events_on_instance(namespace, hours, config: RunnableConfig = None):
+    prepare_context(config)
 
     try:
         core_v1 = client.CoreV1Api()

@@ -151,6 +151,13 @@ class TestCoerceInt:
         assert k8s.coerce_int(0, 24, lo=1, hi=168) == 1
         assert k8s.coerce_int(999, 24, lo=1, hi=168) == 168
 
+    def test_non_finite_and_overflow_use_default(self):
+        assert k8s.coerce_int("inf", 24) == 24
+        assert k8s.coerce_int("1e309", 24) == 24
+        assert k8s.coerce_int("nan", 24) == 24
+        with pytest.raises(ValueError):
+            k8s.coerce_int("inf")
+
 
 class TestCoerceBool:
     def test_false_strings(self):

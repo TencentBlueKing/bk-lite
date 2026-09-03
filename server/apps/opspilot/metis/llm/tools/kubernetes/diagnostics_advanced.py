@@ -7,11 +7,12 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from loguru import logger
 
+from apps.opspilot.metis.llm.tools.kubernetes.instance_scope import prepare_point_instance, run_scan_tool
 from apps.opspilot.metis.llm.tools.kubernetes.utils import coerce_int, parse_resource_quantity, prepare_context
 
 
 @tool()
-def diagnose_pending_pod_issues(pod_name, namespace, config: RunnableConfig = None):  # noqa: C901
+def diagnose_pending_pod_issues(pod_name, namespace, instance_name=None, config: RunnableConfig = None):  # noqa: C901
     """
     诊断Pod Pending调度失败的根本原因
 
@@ -33,6 +34,7 @@ def diagnose_pending_pod_issues(pod_name, namespace, config: RunnableConfig = No
     Args:
         pod_name (str): Pod名称（必填）
         namespace (str): 命名空间（必填）
+        instance_name (str, optional): 多实例时必须指定集群
         config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
@@ -66,6 +68,9 @@ def diagnose_pending_pod_issues(pod_name, namespace, config: RunnableConfig = No
     - 此工具只诊断Pending Pod，对于Running/Failed Pod请使用其他工具
     - 诊断结果基于当前集群状态，添加节点后可能变化
     """
+    config, err = prepare_point_instance(config, instance_name)
+    if err:
+        return err
     prepare_context(config)
 
     try:
@@ -402,7 +407,7 @@ def check_network_policies_blocking(source_namespace, source_pod=None, target_na
 
 
 @tool()
-def check_pvc_capacity(namespace=None, threshold_percent: int = 80, config: RunnableConfig = None):
+def check_pvc_capacity(namespace=None, threshold_percent: int = 80, instance_name=None, config: RunnableConfig = None):
     """
     检查PVC（持久化存储）使用率，识别磁盘满风险
 
@@ -426,6 +431,7 @@ def check_pvc_capacity(namespace=None, threshold_percent: int = 80, config: Runn
             - 80: 标准预警阈值
             - 90: 高风险阈值
             - 50: 提前规划容量
+        instance_name (str, optional): 多实例时指定集群；省略则扫描全部已配置实例
         config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
@@ -459,8 +465,16 @@ def check_pvc_capacity(namespace=None, threshold_percent: int = 80, config: Runn
     3. 日志占用：容器日志未rotate，占满磁盘
     4. emptyDir满：超过节点磁盘限制
     """
-    prepare_context(config)
     threshold_percent = coerce_int(threshold_percent, 80, lo=1, hi=100)
+
+    def _run(bound_config):
+        return _check_pvc_capacity_on_instance(namespace, threshold_percent, bound_config)
+
+    return run_scan_tool(config, instance_name, _run)
+
+
+def _check_pvc_capacity_on_instance(namespace, threshold_percent, config: RunnableConfig = None):
+    prepare_context(config)
 
     try:
         core_v1 = client.CoreV1Api()
