@@ -12,6 +12,13 @@ from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.tools.kubernetes.instance_scope import prepare_point_instance, run_scan_tool
 from apps.opspilot.metis.llm.tools.kubernetes.utils import coerce_bool, coerce_int, prepare_context
 
+_DEFAULT_LOG_HOURS = 24
+_MAX_LOG_HOURS = 168
+
+
+def _pod_log_since_seconds(hours) -> int:
+    return coerce_int(hours, _DEFAULT_LOG_HOURS, lo=1, hi=_MAX_LOG_HOURS) * 3600
+
 
 @tool()
 def get_kubernetes_namespaces(config: RunnableConfig):
@@ -474,7 +481,14 @@ def get_kubernetes_resource_yaml(namespace, resource_type, resource_name, instan
 
 @tool()
 def get_kubernetes_pod_logs(
-    namespace, pod_name, container=None, lines: int = 100, tail: bool = True, instance_name=None, config: RunnableConfig = None
+    namespace,
+    pod_name,
+    container=None,
+    lines: int = 100,
+    tail: bool = True,
+    hours: int = 24,
+    instance_name=None,
+    config: RunnableConfig = None,
 ):
     """
     获取Pod容器日志 - 定位应用程序错误
@@ -500,7 +514,8 @@ def get_kubernetes_pod_logs(
 
     **重要提示：**
     - 本工具只能获取当前运行容器的日志
-    - 如果容器已重启，无法获取上一次的日志（需要--previous参数，暂不支持）
+    - 容器已重启时，上一轮日志用 get_kubernetes_previous_pod_logs
+    - 默认只取近 24 小时，再按 lines 截取；频繁重启先看当天即可
     - 日志默认最多1MB，超大日志会被截断
 
     Args:
@@ -516,6 +531,7 @@ def get_kubernetes_pod_logs(
         tail (bool, optional): True=最后N行，False=开头N行，默认True
             - True: 查看最新日志（推荐）
             - False: 查看启动初期日志
+        hours (int, optional): 时间窗（小时），默认24，对应当天；最大168
         config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
@@ -535,6 +551,7 @@ def get_kubernetes_pod_logs(
     prepare_context(config)
     lines = coerce_int(lines, 100, lo=1, hi=10000)
     tail = coerce_bool(tail, True)
+    since_seconds = _pod_log_since_seconds(hours)
     try:
         core_v1 = client.CoreV1Api()
 
@@ -560,6 +577,7 @@ def get_kubernetes_pod_logs(
             name=pod_name,
             namespace=namespace,
             container=container,
+            since_seconds=since_seconds,
             tail_lines=lines if tail else None,
             limit_bytes=None if lines else 1024 * 1024,  # 1MB limit if no line limit
         )
@@ -589,7 +607,14 @@ def get_kubernetes_pod_logs(
 
 @tool()
 def get_kubernetes_previous_pod_logs(
-    namespace, pod_name, container=None, lines: int = 100, tail: bool = True, instance_name=None, config: RunnableConfig = None
+    namespace,
+    pod_name,
+    container=None,
+    lines: int = 100,
+    tail: bool = True,
+    hours: int = 24,
+    instance_name=None,
+    config: RunnableConfig = None,
 ):
     """
     获取Pod容器上一次实例的日志，用于重启类故障采集。
@@ -600,6 +625,7 @@ def get_kubernetes_previous_pod_logs(
         container (str, optional): 容器名称，多容器Pod建议显式指定
         lines (int, optional): 日志行数，默认100
         tail (bool, optional): True=最后N行，False=开头N行
+        hours (int, optional): 时间窗（小时），默认24；只看上一轮里落在该窗口内的日志
         instance_name (str, optional): 多实例时必须指定集群
         config (RunnableConfig): 工具配置
 
@@ -612,6 +638,7 @@ def get_kubernetes_previous_pod_logs(
     prepare_context(config)
     lines = coerce_int(lines, 100, lo=1, hi=10000)
     tail = coerce_bool(tail, True)
+    since_seconds = _pod_log_since_seconds(hours)
     try:
         core_v1 = client.CoreV1Api()
 
@@ -634,6 +661,7 @@ def get_kubernetes_previous_pod_logs(
             namespace=namespace,
             container=container,
             previous=True,
+            since_seconds=since_seconds,
             tail_lines=lines if tail else None,
             limit_bytes=None if lines else 1024 * 1024,
         )

@@ -106,6 +106,7 @@ class TestGetKubernetesPodLogs:
         _, kwargs = fake_core.read_namespaced_pod_log.call_args
         assert kwargs["container"] == "only"
         assert kwargs["tail_lines"] == 100
+        assert kwargs["since_seconds"] == 24 * 3600
 
     def test_empty_logs_message(self, fake_core):
         fake_core.read_namespaced_pod.return_value = self._pod_with_containers(["only"])
@@ -122,10 +123,11 @@ class TestGetKubernetesPodLogs:
     def test_string_lines_and_tail_are_coerced(self, fake_core):
         fake_core.read_namespaced_pod.return_value = self._pod_with_containers(["only"])
         fake_core.read_namespaced_pod_log.return_value = "l1\nl2\nl3\nl4"
-        out = res.get_kubernetes_pod_logs.func(namespace="ns", pod_name="p", lines="2", tail="false", config={})
+        out = res.get_kubernetes_pod_logs.func(namespace="ns", pod_name="p", lines="2", tail="false", hours="1", config={})
         assert out == "l1\nl2"
         _, kwargs = fake_core.read_namespaced_pod_log.call_args
         assert kwargs["tail_lines"] is None
+        assert kwargs["since_seconds"] == 3600
 
     def test_container_creating_message(self, fake_core):
         fake_core.read_namespaced_pod.return_value = self._pod_with_containers(["only"])
