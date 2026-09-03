@@ -23,18 +23,6 @@ export const ARCH_NODE_SIZE: Record<
   host: { width: 0.32, height: 0.72, depth: 0.26 },
 };
 
-/** Previous cabinet size — style pass bumps one step so they read as racks. */
-export const ARCH_PREVIOUS_NODE_SIZE = {
-  application: { width: 0.32, height: 0.52, depth: 0.26 },
-  host: { width: 0.26, height: 0.42, depth: 0.22 },
-} as const;
-
-/** Inverted family we flipped: application used to be taller than host. */
-export const ARCH_INVERTED_NODE_SIZE = {
-  application: { width: 0.42, height: 0.68, depth: 0.34 },
-  host: { width: 0.34, height: 0.55, depth: 0.28 },
-} as const;
-
 /**
  * Center-to-center Y gap between the two platform surfaces.
  * App-wall-screen used planeGap=3; two floors stay distinct without the
@@ -62,13 +50,6 @@ export const ARCH_PLANE_ROTATION_X = -Math.PI / 2;
 export const ARCH_PLANE_ORIENTATION = 'xz' as const;
 
 /**
- * Previous fill-the-page cinematic glass (≈27.6×19.2). The locked landed
- * frame uses a much tighter world size so both slabs sit in the middle.
- */
-export const ARCH_PREVIOUS_FILL_PLANE_WIDTH = 27.6;
-export const ARCH_PREVIOUS_FILL_PLANE_DEPTH = 19.2;
-
-/**
  * Compact XZ platforms — two distinct slabs, not a viewport-filling sheet.
  * Slightly roomier than the first landed pass so small cabinets have air,
  * still well under the old 27.6×19.2 fill-the-page glass.
@@ -94,17 +75,17 @@ export const ARCH_PLANE_MIN_HEIGHT = ARCH_PLANE_WORLD_HEIGHT;
 export const ARCH_PLANE_MIN_WIDTH = ARCH_PLANE_WORLD_WIDTH;
 export const ARCH_PLANE_PAD = 2.2;
 /**
- * Card-veneer fill on TOP faces only. Darker blue you can actually see,
- * still see-through. Opaque plastic would be ≥0.7.
+ * Card-veneer fill on TOP faces only. Original hue, higher opacity so the
+ * middle still reads over night/fog, still see-through. Opaque plastic ≥0.7.
  */
-export const ARCH_PLANE_OPACITY = 0.34;
+export const ARCH_PLANE_OPACITY = 0.46;
 export const ARCH_PLANE_EMISSIVE_INTENSITY = 0.38;
 /**
  * Frustum sides + bottom: SAME hue as the top veneer, slightly more
  * see-through, no rim/stroke. 0.1 cyan glass disappeared in the landed pose.
  */
-export const ARCH_PLANE_SIDE_OPACITY = 0.22;
-export const ARCH_PLANE_SIDE_EMISSIVE_INTENSITY = 0.3;
+export const ARCH_PLANE_SIDE_OPACITY = 0.32;
+export const ARCH_PLANE_SIDE_EMISSIVE_INTENSITY = 0.30;
 export const ARCH_PLANE_SIDE_HAS_STROKE = false;
 export const ARCH_PLANE_SIDE_MATCHES_TOP_HUE = true;
 /**
@@ -132,6 +113,11 @@ export const ARCH_PLANE_DEPTH_WRITE = false;
 export const ARCH_PLANE_COUNT = ARCHITECTURE_PLANE_COUNT;
 /** Center-to-center grid pitch (~2 on the 28-wide WeOps board). */
 export const ARCH_GRID_PITCH = 1.85;
+/**
+ * Cabinets per X-row on each architecture platform. Extra cabinets wrap
+ * toward −Z (`architectureFrontZ(row)`); width only grows up to this span.
+ */
+export const ARCH_WRAP_COLS = 8;
 export const ARCH_TUBE_RADIUS_INTER = 0.01;
 export const ARCH_TUBE_RADIUS_INTRA = 0.015;
 /**
@@ -245,7 +231,6 @@ export const ARCH_FRONT_INSET = 1.15;
  * sheets foreshorten, rack fronts read, and both layers fill the frame.
  * Independent of the wall pose — not `wallPhi − π/2.5` (~0.29, overhead).
  */
-export const ARCH_PREVIOUS_CAMERA_PHI = Math.PI / 2 - Math.PI / 8;
 export const ARCH_CAMERA_PHI = Math.PI / 2 - Math.PI / 18;
 export const ARCH_CAMERA_THETA = 0;
 /** Floor under the fitted distance; frame-fill must be allowed to pull in. */
@@ -254,8 +239,9 @@ export const ARCH_CAMERA_TARGET_Z = -0.6;
 /**
  * Fraction of the tighter viewport axis the stack should occupy.
  * Most of the view, still below the old 0.92 that swallowed the screen.
+ * 0.70 pulls the landed shot ~8% farther so larger layer titles have air.
  */
-export const ARCH_CAMERA_FRAME_FILL = 0.76;
+export const ARCH_CAMERA_FRAME_FILL = 0.70;
 
 export const ARCH_PLANE_ORDER: Application3DArchitecturePlaneKind[] = [
   'application',
@@ -275,12 +261,72 @@ export const ARCH_PLANE_TITLE: Record<
 
 export const formatArchitecturePlaneTitle = (name: string) => name.trim();
 
+/** World +Z of the min-board front lip. Grown boards keep this edge. */
+export const ARCH_PLANE_FRONT_Z = ARCH_PLANE_WORLD_DEPTH / 2;
+
 /** +Z is the near-camera front of the XZ platform. Row 0 sits on that lip. */
 export const architectureFrontZ = (rowIndex = 0) =>
-  ARCH_PLANE_WORLD_DEPTH / 2 - ARCH_FRONT_INSET - rowIndex * ARCH_GRID_PITCH;
+  ARCH_PLANE_FRONT_Z - ARCH_FRONT_INSET - rowIndex * ARCH_GRID_PITCH;
+
+/**
+ * Depth grows only toward −Z. The front world-Z stays on the min-board lip
+ * so row 0 never gains empty deck in front; `plane.z` slides back when the
+ * mesh would otherwise stay centered on 0.
+ */
+export const architectureBoardFromContentMinZ = (contentMinZ: number) => {
+  const backZ = Math.min(contentMinZ - ARCH_PLANE_PAD, -ARCH_PLANE_WORLD_DEPTH / 2);
+  const depth = ARCH_PLANE_FRONT_Z - backZ;
+  return {
+    depth,
+    z: (ARCH_PLANE_FRONT_Z + backZ) / 2,
+    frontZ: ARCH_PLANE_FRONT_Z,
+    backZ,
+  };
+};
 
 export const architectureTitleLocalX = (planeWidth: number) =>
   planeWidth / 2 + ARCH_TITLE_RIGHT_OUTSET;
+
+/**
+ * Local Z of a layer title: this mesh's near-camera front lip (+depth/2),
+ * inset slightly along −Z so the glyph sits on the edge rather than past it.
+ * Grows with board depth so the title does not follow the mesh center.
+ */
+export const ARCH_TITLE_FRONT_INSET = 0.08;
+
+export const architectureTitleLocalZ = (planeDepth: number) =>
+  planeDepth / 2 - ARCH_TITLE_FRONT_INSET;
+
+/**
+ * X span at the wrap cap (8 cabinets on a row). Extra −Z rows do not grow this.
+ * 8-col host board is ≈17.67; application cabinets are a hair wider.
+ */
+export const architectureWrapBoardWidth = (
+  nodeWidth = ARCH_NODE_SIZE.host.width,
+) => Math.max(
+  (ARCH_WRAP_COLS - 1) * ARCH_GRID_PITCH + nodeWidth + ARCH_PLANE_PAD * 2,
+  ARCH_PLANE_MIN_WIDTH,
+);
+
+/**
+ * First board width that leaves the min-board 图2 camera: 7 cabinets on a row.
+ * Six-host boards can slightly exceed 12.8; they stay on the small tier.
+ */
+export const architectureWideBoardFloor = (
+  nodeWidth = ARCH_NODE_SIZE.host.width,
+) => (ARCH_WRAP_COLS - 2) * ARCH_GRID_PITCH + nodeWidth + ARCH_PLANE_PAD * 2;
+
+/**
+ * Two landed-camera tiers by platform WIDTH, not wrap depth or row count.
+ * Still the min slab → current 图2 fit. Once width reaches 7–8 col (or wrap
+ * at 8, same X span) → fit the 8-col board once. Ignore extra depth.
+ */
+export const architectureCameraFitWidth = (boardWidth: number) => {
+  if (boardWidth + 1e-6 < architectureWideBoardFloor()) {
+    return ARCH_PLANE_MIN_WIDTH;
+  }
+  return Math.max(architectureWrapBoardWidth(), boardWidth);
+};
 
 export interface Application3DArchitecturePlacedNode {
   id: string;
@@ -360,21 +406,22 @@ const kindOrder: Record<Application3DArchitectureKind, number> = {
   system: 2,
 };
 
-const spreadOnPitch = (count: number, pitch: number): number[] => {
+const wrapOnPitch = (
+  count: number,
+  pitch: number,
+  colsPerRow = ARCH_WRAP_COLS,
+): Array<{ x: number; z: number }> => {
   if (count <= 0) return [];
-  if (count === 1) return [0];
-  const origin = -((count - 1) * pitch) / 2;
-  return Array.from({ length: count }, (_, index) => origin + index * pitch);
-};
-
-const resolveOverlaps = (xs: number[], minDistance: number): number[] => {
-  if (xs.length <= 1) return xs;
-  const next = [...xs];
-  for (let index = 1; index < next.length; index += 1) {
-    next[index] = Math.max(next[index], next[index - 1] + minDistance);
-  }
-  const shift = (next[0] + next[next.length - 1]) / 2;
-  return next.map((value) => value - shift);
+  const cols = Math.min(count, colsPerRow);
+  const originX = cols <= 1 ? 0 : -((cols - 1) * pitch) / 2;
+  return Array.from({ length: count }, (_, index) => {
+    const row = Math.floor(index / colsPerRow);
+    const col = index % colsPerRow;
+    return {
+      x: originX + col * pitch,
+      z: architectureFrontZ(row),
+    };
+  });
 };
 
 const planeSurfaceLift = (kind: Application3DArchitectureKind) =>
@@ -383,26 +430,6 @@ const planeSurfaceLift = (kind: Application3DArchitectureKind) =>
 /** Rack center sits ON the platform surface (frustum top / thin-plane face). */
 const rackStandY = (planeY: number, height: number, kind: Application3DArchitectureKind) =>
   planeY + planeSurfaceLift(kind) + height / 2;
-
-const hostGridPitch = () => ({
-  x: ARCH_GRID_PITCH,
-  z: ARCH_GRID_PITCH,
-});
-
-const isolatedHostGrid = (count: number): Array<{ x: number; z: number }> => {
-  if (count <= 0) return [];
-  const cols = Math.min(count, Math.max(1, Math.ceil(Math.sqrt(count))));
-  const pitch = hostGridPitch();
-  const originX = -((cols - 1) * pitch.x) / 2;
-  return Array.from({ length: count }, (_, index) => {
-    const row = Math.floor(index / cols);
-    const col = index % cols;
-    return {
-      x: originX + col * pitch.x,
-      z: architectureFrontZ(row),
-    };
-  });
-};
 
 export const offsetToSpherical = (
   dx: number,
@@ -539,9 +566,11 @@ export const layoutApplication3DArchitecture = (
     });
   };
 
-  const appXs = spreadOnPitch(applications.length, ARCH_GRID_PITCH);
-  const appFrontZ = architectureFrontZ(0);
-  applications.forEach((node, index) => place(node, appXs[index] ?? 0, appFrontZ));
+  const appCells = wrapOnPitch(applications.length, ARCH_GRID_PITCH);
+  applications.forEach((node, index) => {
+    const cell = appCells[index] ?? { x: 0, z: architectureFrontZ(0) };
+    place(node, cell.x, cell.z);
+  });
 
   const parentsByHost = new Map<string, string[]>();
   data.edges
@@ -569,27 +598,14 @@ export const layoutApplication3DArchitecture = (
     return { node, x };
   });
   connectedDraft.sort((left, right) => left.x - right.x || left.node.id.localeCompare(right.node.id));
-  const connectedXs = resolveOverlaps(
-    connectedDraft.map((item) => item.x),
-    ARCH_GRID_PITCH,
-  );
-  const hostFrontZ = architectureFrontZ(0);
-  connectedDraft.forEach((item, index) => {
-    place(item.node, connectedXs[index] ?? item.x, hostFrontZ);
-  });
-
-  const isolatedCells = isolatedHostGrid(isolatedHosts.length);
-  let isolatedShiftX = 0;
-  if (connectedDraft.length && isolatedCells.length) {
-    const connectedMax = Math.max(
-      ...connectedDraft.map((item, index) => (connectedXs[index] ?? item.x) + ARCH_NODE_SIZE.host.width / 2),
-    );
-    const isolatedMin = Math.min(...isolatedCells.map((cell) => cell.x - ARCH_NODE_SIZE.host.width / 2));
-    isolatedShiftX = connectedMax + (ARCH_GRID_PITCH - ARCH_NODE_SIZE.host.width) - isolatedMin;
-  }
-  isolatedHosts.forEach((node, index) => {
-    const cell = isolatedCells[index] ?? { x: 0, z: 0 };
-    place(node, cell.x + isolatedShiftX, cell.z, ARCH_PLANE_Y.host);
+  const hostQueue = [
+    ...connectedDraft.map((item) => item.node),
+    ...isolatedHosts,
+  ];
+  const hostCells = wrapOnPitch(hostQueue.length, ARCH_GRID_PITCH);
+  hostQueue.forEach((node, index) => {
+    const cell = hostCells[index] ?? { x: 0, z: architectureFrontZ(0) };
+    place(node, cell.x, cell.z, ARCH_PLANE_Y.host);
   });
 
   const placedNodes = [...placed.values()].sort(
@@ -618,9 +634,11 @@ export const layoutApplication3DArchitecture = (
   const minX = xs.length ? Math.min(...xs) : -1;
   const maxX = xs.length ? Math.max(...xs) : 1;
   const minZ = zs.length ? Math.min(...zs) : -1;
-  const maxZ = zs.length ? Math.max(...zs) : 1;
   const contentWidth = Math.max(maxX - minX + ARCH_PLANE_PAD * 2, ARCH_PLANE_MIN_WIDTH);
-  const contentDepth = Math.max(maxZ - minZ + ARCH_PLANE_PAD * 2, ARCH_PLANE_MIN_DEPTH);
+  const board = architectureBoardFromContentMinZ(
+    zs.length ? minZ : -ARCH_PLANE_WORLD_DEPTH / 2 + ARCH_PLANE_PAD,
+  );
+  const contentDepth = board.depth;
 
   const planes: Application3DArchitecturePlane[] = ARCH_PLANE_ORDER.map((kind) => {
     const title = ARCH_PLANE_TITLE[kind];
@@ -632,7 +650,7 @@ export const layoutApplication3DArchitecture = (
       titleText: formatArchitecturePlaneTitle(title.titleFallback),
       x: 0,
       y: ARCH_PLANE_Y[kind],
-      z: 0,
+      z: board.z,
       width: contentWidth,
       depth: contentDepth,
       height: contentDepth,
@@ -658,6 +676,8 @@ export const layoutApplication3DArchitecture = (
     stackBottomY,
     stackTopY,
     centerY: (ARCH_PLANE_Y.application + ARCH_PLANE_Y.host) / 2,
+    // Default look-target frame stays on the small-board center, not the
+    // grown mesh. Extra rows recede along −Z; the user orbits/pans to them.
     centerZ: 0,
   };
 };
@@ -670,10 +690,14 @@ export const fitArchitectureCameraDistance = (
   const halfFov = ((fovDeg * Math.PI) / 180) / 2;
   const tan = Math.tan(halfFov);
   const aspect = Math.max(viewportAspect, 0.1);
-  const titledWidth = layout.width + ARCH_TITLE_RIGHT_OUTSET * 2;
+  // Two width tiers only: min 12.8 slab, or the 8-col cap once the board
+  // widens. Do not use overflowDepth / cos(phi) / row count.
+  const titledWidth = architectureCameraFitWidth(layout.width)
+    + ARCH_TITLE_RIGHT_OUTSET * 2;
   const distanceForWidth = titledWidth / (2 * tan * aspect);
   const distanceForHeight = layout.stackHeight / (2 * tan);
-  const fitted = Math.max(distanceForWidth, distanceForHeight) / ARCH_CAMERA_FRAME_FILL;
+  const fitted = Math.max(distanceForWidth, distanceForHeight)
+    / ARCH_CAMERA_FRAME_FILL;
   return Math.max(ARCH_CAMERA_RADIUS, fitted);
 };
 
@@ -796,7 +820,6 @@ const clampPhi = (phi: number) => Math.min(Math.PI - 0.08, Math.max(0.08, phi));
  */
 export const resolveArchitectureCameraPose = (
   layout: Application3DArchitectureLayout,
-  _wall: Application3DWallCameraPose,
   viewportAspect: number,
   fovDeg = APPLICATION3D_CAMERA_FOV,
 ): Application3DArchitectureCameraPose => {

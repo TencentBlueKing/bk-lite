@@ -281,4 +281,40 @@ describe('application3D wall motion triggers', () => {
     expect(mocks.reconcile.mock.calls.every((call) => call[1]?.playIntro === true)).toBe(false);
     expect(mocks.reconcile.mock.calls.every((call) => call[1]?.playFilter !== true)).toBe(true);
   });
+
+  it('plays filter motion when 运行状态 changes', async () => {
+    const filtered = {
+      ...populated,
+      filters: [
+        {
+          id: 'system_status',
+          label: '运行状态',
+          type: 'multiple' as const,
+          options: [
+            { value: 'normal', label: '正常' },
+            { value: 'alarming', label: '告警' },
+          ],
+        },
+      ],
+    };
+    mocks.getWall.mockResolvedValue(filtered);
+    render(<Application3D refreshKey="0" runtimeActive screenRenderContext={context} />);
+    await waitFor(() => expect(mocks.reconcile).toHaveBeenCalled());
+
+    mocks.reconcile.mockClear();
+    mocks.getWall.mockResolvedValue({
+      ...filtered,
+      items: [wallItem, { ...wallItem, id: 'app-2', name: '采购管理' }],
+      appliedFilters: { system_status: ['normal'] },
+      capacity: { actualCount: 2, supportedCount: null },
+    });
+    fireEvent.mouseDown(screen.getByRole('combobox'));
+    fireEvent.click(await screen.findByTitle('正常'));
+    await waitFor(() => expect(mocks.getWall).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(mocks.reconcile).toHaveBeenCalled());
+    expect(mocks.focus).toHaveBeenCalledWith(null);
+    expect(mocks.hideArchitecture).toHaveBeenCalled();
+    expect(mocks.reconcile.mock.calls.some((call) => call[1]?.playFilter === true)).toBe(true);
+    expect(mocks.reconcile.mock.calls.every((call) => call[1]?.playIntro === true)).toBe(false);
+  });
 });

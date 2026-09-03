@@ -66,7 +66,7 @@ export const easeLinear = (t: number) => {
   return t;
 };
 
-/** Planes ease in first, staggered ~200ms (应用 → 主机). */
+/** Planes ease in sequentially: 应用 lands, then 主机 starts (delay = planeMs). */
 export const architecturePlaneDelayMs = (
   index: number,
   count = ARCHITECTURE_PLANE_COUNT,
@@ -74,7 +74,7 @@ export const architecturePlaneDelayMs = (
   cardStaggerDelayMs(
     index,
     count,
-    ARCHITECTURE_MOTION.staggerMs,
+    ARCHITECTURE_MOTION.planeMs,
     ARCHITECTURE_MOTION.maxStaggerMs,
   );
 
