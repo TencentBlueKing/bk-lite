@@ -55,6 +55,8 @@ vi.mock('three', async (importOriginal) => {
         height: 180,
         toJSON: () => ({}),
       });
+      this.domElement.setPointerCapture = () => undefined;
+      this.domElement.releasePointerCapture = () => undefined;
     }
     setClearColor() {}
     setPixelRatio() {}
@@ -390,12 +392,30 @@ describe('application3D architecture scene', () => {
     controller.dispose();
   });
 
+  it('does not assign scene.environment or RoomEnvironment IBL', () => {
+    const sceneSrc = readFileSync(
+      resolve(process.cwd(), 'src/app/ops-analysis/components/widgets/application3D/application3DScene.ts'),
+      'utf8',
+    );
+    expect(sceneSrc).not.toContain('RoomEnvironment');
+    expect(sceneSrc).not.toContain('PMREMGenerator');
+    expect(sceneSrc).not.toContain('scene.environment');
+    const controller = mountScene();
+    expect(captured.scene?.environment).toBeNull();
+    expect(captured.scene?.background).toBeNull();
+    controller.showArchitecture(architecture);
+    expect(captured.scene?.environment).toBeNull();
+    controller.dispose();
+    expect(captured.scene?.environment).toBeNull();
+  });
+
   it('lets architecture wheel zoom closer than the wall minDistance floor', () => {
     const sceneSrc = readFileSync(
       resolve(process.cwd(), 'src/app/ops-analysis/components/widgets/application3D/application3DScene.ts'),
       'utf8',
     );
-    expect(sceneSrc).toContain('controls.minDistance = Math.max(pose.radius * 0.35, 3)');
+    expect(sceneSrc).toContain('controls.minDistance = Math.max(pose.radius * 0.35, 1.5)');
+    expect(sceneSrc).not.toContain('controls.minDistance = Math.max(pose.radius * 0.35, 3)');
     expect(sceneSrc).not.toContain('controls.minDistance = Math.max(pose.radius * 0.35, 6)');
     expect(sceneSrc).not.toContain('controls.minDistance = Math.max(pose.radius * 0.35, 8)');
     expect(sceneSrc).toContain('controls.minDistance = Math.max(wallCameraPosition.z * 0.45, 6)');
@@ -411,8 +431,8 @@ describe('application3D architecture scene', () => {
       { position: { x: 0, y: 0.48, z: 20 }, target: { x: 0, y: 0, z: 0 } },
       16 / 9,
     );
-    expect(captured.controls?.minDistance).toBeCloseTo(Math.max(pose.radius * 0.35, 3));
-    expect(captured.controls?.minDistance).toBeGreaterThanOrEqual(3);
+    expect(captured.controls?.minDistance).toBeCloseTo(Math.max(pose.radius * 0.35, 1.5));
+    expect(captured.controls?.minDistance).toBeGreaterThanOrEqual(1.5);
     expect(captured.controls?.maxDistance).toBeCloseTo(pose.radius * 2.8);
     controller.dispose();
   });

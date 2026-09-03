@@ -1742,7 +1742,7 @@ export const createApplication3DScene = (
     );
     architectureLookTarget.set(pose.target.x, pose.target.y, pose.target.z);
     architectureCameraPosition.set(pose.position.x, pose.position.y, pose.position.z);
-    controls.minDistance = Math.max(pose.radius * 0.35, 3);
+    controls.minDistance = Math.max(pose.radius * 0.35, 1.5);
     controls.maxDistance = pose.radius * 2.8;
     const cameraMs = reducedMotion ? WALL_ENTRANCE.reducedMotionMs : ARCHITECTURE_MOTION.cameraMs;
     easeCameraTo(

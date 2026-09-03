@@ -118,13 +118,10 @@ import {
   sphericalToOffset,
 } from '../application3DArchitecture';
 import {
-  ARCH_BAY_FILL,
-  ARCH_BAY_LIP_COLOR,
   ARCH_CHASSIS_COLOR,
   ARCH_CHASSIS_EMISSIVE,
   ARCH_CHASSIS_EMISSIVE_INTENSITY,
   ARCH_CHASSIS_METALNESS,
-  ARCH_DOOR_COLOR,
   ARCH_EDGE,
   ARCH_EDGE_ALARM,
   ARCH_LED_ALARM_COLOR,
@@ -133,20 +130,29 @@ import {
   ARCH_PLANE,
   ARCH_PLANE_EMISSIVE,
   ARCH_PREVIOUS_CHASSIS_COLOR,
-  ARCH_RACK_BAY_COUNT,
+  ARCH_RACK_FRONT_METALNESS,
+  ARCH_RACK_FRONT_ROUGHNESS,
+  ARCH_RACK_HULL_COLOR,
+  ARCH_RACK_ALBEDO_LIFT_OFFSET,
+  ARCH_RACK_ALBEDO_LIFT_SCALE,
   ARCH_RACK_LED_COUNT,
+  ARCH_RACK_LED_RADIUS_UV,
+  ARCH_RACK_LED_UV_U,
+  ARCH_RACK_LED_UV_V,
   ARCH_RACK_LIFT,
+  ARCH_RACK_SIDE_METALNESS,
+  ARCH_RACK_SIDE_ROUGHNESS,
   ARCH_RACK_STROKE_WIDTH,
-  ARCH_RACK_WELL_RATIO,
   ARCH_STROKE_ALARM_COLOR,
   ARCH_STROKE_EMISSIVE_INTENSITY,
   architectureEdgeColor,
   architecturePulseProgress,
-  architectureRackBayCount,
   createArchitectureEdgeCurve,
   createArchitectureTreeGroup,
   createTrapezoidFrustumGeometry,
   hostHasAlarm,
+  liftCabinetAlbedoPixels,
+  liftCabinetAlbedoTexture,
   updateArchitecturePulse,
 } from '../application3DArchitectureView';
 import { ARCHITECTURE_MOTION } from '../application3DMotion';
@@ -1222,6 +1228,7 @@ describe('application3D architecture view', () => {
     const hints: THREE.Mesh[] = [];
     const vents: THREE.Mesh[] = [];
     const frontStripes: THREE.Mesh[] = [];
+    const shadows: THREE.Mesh[] = [];
     root.traverse((child) => {
       if (!(child as THREE.Mesh).isMesh) return;
       const mesh = child as THREE.Mesh;
@@ -1233,6 +1240,7 @@ describe('application3D architecture view', () => {
       if (mesh.userData.archRole === 'rack-stroke') strokes.push(mesh);
       if (mesh.userData.archRole === 'rack-bezel') bezels.push(mesh);
       if (mesh.userData.archRole === 'rack-contact-hint') hints.push(mesh);
+      if (mesh.userData.archRole === 'rack-contact-shadow') shadows.push(mesh);
       if (mesh.userData.archRole === 'rack-vent') vents.push(mesh);
       if (
         mesh.userData.archRole === 'rack-hdd-stripe'
@@ -1242,34 +1250,43 @@ describe('application3D architecture view', () => {
         frontStripes.push(mesh);
       }
     });
-    return { chassis, doors, bays, lips, leds, strokes, bezels, hints, vents, frontStripes };
+    return { chassis, doors, bays, lips, leds, strokes, bezels, hints, vents, frontStripes, shadows };
+  };
+
+  const hullFaces = (mesh: THREE.Mesh) => {
+    const materials = mesh.material;
+    expect(Array.isArray(materials)).toBe(true);
+    return materials as THREE.MeshStandardMaterial[];
   };
 
   const hexChannelSum = (hex: number) =>
     ((hex >> 16) & 255) + ((hex >> 8) & 255) + (hex & 255);
 
-  it('uses one metal-rack kit: readable gray body, cyan LEDs on 素柜, red LEDs+stroke on alarming hosts', () => {
+  it('uses one mapped hull: per-face albedo, cyan LEDs on 素柜, red LEDs+stroke on alarming hosts', () => {
     expect(ARCH_NODE_SIZE.host.height).toBeGreaterThan(ARCH_NODE_SIZE.application.height);
     expect(ARCH_NODE_SIZE.host.width).toBeLessThan(ARCH_NODE_SIZE.application.width);
-    expect(architectureRackBayCount('host')).toBeGreaterThan(architectureRackBayCount('application'));
-    expect(architectureRackBayCount('host')).toBe(ARCH_RACK_BAY_COUNT.host);
-    expect(architectureRackBayCount('application')).toBe(ARCH_RACK_BAY_COUNT.application);
     expect(ARCH_RACK_LED_COUNT).toBe(3);
-    expect(ARCH_RACK_WELL_RATIO).toBeGreaterThan(0.1);
     expect(ARCH_RACK_STROKE_WIDTH).toBeLessThan(0.012);
     expect(ARCH_RACK_LIFT).toBeGreaterThan(0);
     expect(ARCH_CHASSIS_COLOR).not.toBe(ARCH_LED_ALARM_COLOR);
     expect(ARCH_CHASSIS_COLOR).not.toBe(ARCH_LED_COLOR);
     expect(ARCH_CHASSIS_EMISSIVE).not.toBe(ARCH_LED_ALARM_COLOR);
     expect(ARCH_CHASSIS_EMISSIVE).not.toBe(ARCH_LED_COLOR);
-    expect(ARCH_BAY_FILL).not.toBe(ARCH_LED_ALARM_COLOR);
     expect(hexChannelSum(ARCH_CHASSIS_COLOR)).toBeGreaterThan(hexChannelSum(ARCH_PREVIOUS_CHASSIS_COLOR));
     expect(ARCH_CHASSIS_METALNESS).toBeLessThan(0.35);
     expect(ARCH_CHASSIS_METALNESS).toBeLessThan(0.64);
     expect(ARCH_CHASSIS_EMISSIVE_INTENSITY).toBeGreaterThan(0.2);
-    expect(hexChannelSum(ARCH_DOOR_COLOR)).toBeGreaterThan(hexChannelSum(ARCH_CHASSIS_COLOR));
-    expect(hexChannelSum(ARCH_BAY_FILL)).toBeLessThan(hexChannelSum(ARCH_DOOR_COLOR));
-    expect(hexChannelSum(ARCH_BAY_LIP_COLOR)).toBeGreaterThan(hexChannelSum(ARCH_DOOR_COLOR));
+    expect(ARCH_RACK_HULL_COLOR).toBe(0xffffff);
+    expect(ARCH_RACK_SIDE_ROUGHNESS).toBeCloseTo(0.5);
+    expect(ARCH_RACK_SIDE_METALNESS).toBeCloseTo(0.04);
+    expect(ARCH_RACK_FRONT_ROUGHNESS).toBeCloseTo(ARCH_RACK_SIDE_ROUGHNESS);
+    expect(ARCH_RACK_FRONT_METALNESS).toBeCloseTo(ARCH_RACK_SIDE_METALNESS);
+    expect(ARCH_RACK_ALBEDO_LIFT_OFFSET).toBe(72);
+    expect(ARCH_RACK_ALBEDO_LIFT_SCALE).toBeCloseTo(1.05);
+    expect(ARCH_RACK_LED_RADIUS_UV).toBeCloseTo(0.0195);
+    expect(ARCH_RACK_LED_UV_U).toEqual([0.1122, 0.1708, 0.2294]);
+    expect(ARCH_RACK_LED_UV_U).toHaveLength(ARCH_RACK_LED_COUNT);
+    expect(ARCH_RACK_LED_UV_V).toBeCloseTo(0.9606, 4);
 
     const view = createArchitectureTreeGroup(tree({
       nodes: [
@@ -1319,22 +1336,24 @@ describe('application3D architecture view', () => {
     expect(quiet.chassis).toHaveLength(1);
     expect(host.chassis[0].material).toBe(app.chassis[0].material);
     expect(quiet.chassis[0].material).toBe(host.chassis[0].material);
-    expect(host.bays[0].material).toBe(app.bays[0].material);
-    expect(host.bays).toHaveLength(ARCH_RACK_BAY_COUNT.host);
-    expect(app.bays).toHaveLength(ARCH_RACK_BAY_COUNT.application);
-    expect(host.bays.length).toBeGreaterThan(app.bays.length);
-    expect(host.lips).toHaveLength(host.bays.length);
-    expect(app.lips).toHaveLength(app.bays.length);
-    expect(host.doors).toHaveLength(1);
-    expect(app.doors).toHaveLength(1);
-    expect(host.bezels.length).toBeGreaterThanOrEqual(4);
+    expect(host.doors).toHaveLength(0);
+    expect(app.doors).toHaveLength(0);
+    expect(quiet.doors).toHaveLength(0);
+    expect(host.bays).toHaveLength(0);
+    expect(app.bays).toHaveLength(0);
+    expect(quiet.bays).toHaveLength(0);
+    expect(host.lips).toHaveLength(0);
+    expect(app.lips).toHaveLength(0);
+    expect(host.bezels).toHaveLength(0);
+    expect(app.bezels).toHaveLength(0);
+    expect(quiet.bezels).toHaveLength(0);
 
     expect(app.leds).toHaveLength(ARCH_RACK_LED_COUNT);
     expect(app.strokes).toHaveLength(0);
     expect(quiet.leds).toHaveLength(ARCH_RACK_LED_COUNT);
     expect(quiet.strokes).toHaveLength(0);
     expect(host.leds).toHaveLength(ARCH_RACK_LED_COUNT);
-    expect(host.strokes.length).toBeGreaterThanOrEqual(4);
+    expect(host.strokes).toHaveLength(12);
     expect(app.hints).toHaveLength(0);
     expect(quiet.hints).toHaveLength(0);
     expect(host.hints).toHaveLength(0);
@@ -1344,55 +1363,85 @@ describe('application3D architecture view', () => {
     expect(app.frontStripes).toHaveLength(0);
     expect(quiet.frontStripes).toHaveLength(0);
     expect(host.frontStripes).toHaveLength(0);
+    expect(app.shadows).toHaveLength(1);
+    expect(quiet.shadows).toHaveLength(1);
+    expect(host.shadows).toHaveLength(1);
 
-    const hostChassis = host.chassis[0].material as THREE.MeshStandardMaterial;
-    expect(hostChassis.color.getHex()).toBe(ARCH_CHASSIS_COLOR);
-    expect(hostChassis.emissive.getHex()).toBe(ARCH_CHASSIS_EMISSIVE);
-    expect(hostChassis.metalness).toBe(ARCH_CHASSIS_METALNESS);
-    expect(hostChassis.emissiveIntensity).toBe(ARCH_CHASSIS_EMISSIVE_INTENSITY);
-    expect(hostChassis.color.getHex()).not.toBe(ARCH_LED_ALARM_COLOR);
-    expect(hostChassis.color.getHex()).not.toBe(ARCH_LED_COLOR);
-    expect(hostChassis.emissive.getHex()).not.toBe(0x5a1820);
-    expect(hostChassis.emissive.getHex()).not.toBe(ARCH_LED_ALARM_COLOR);
-    expect(hostChassis.emissive.getHex()).not.toBe(ARCH_LED_COLOR);
+    const hostFaces = hullFaces(host.chassis[0]);
+    const appFaces = hullFaces(app.chassis[0]);
+    expect(hostFaces).toHaveLength(6);
+    expect(appFaces).toHaveLength(6);
+    expect(host.chassis[0].userData.faceCount).toBe(6);
+    expect(host.chassis[0].userData.mappedHull).toBe(true);
+    const [posX, negX, posY, negY, posZ, negZ] = hostFaces;
+    expect(posX).toBeInstanceOf(THREE.MeshStandardMaterial);
+    expect(negX).toBeInstanceOf(THREE.MeshStandardMaterial);
+    expect(posY).toBeInstanceOf(THREE.MeshStandardMaterial);
+    expect(negY).toBeInstanceOf(THREE.MeshStandardMaterial);
+    expect(posZ).toBeInstanceOf(THREE.MeshStandardMaterial);
+    expect(negZ).toBeInstanceOf(THREE.MeshStandardMaterial);
+    expect(posX).toBe(negX);
+    expect(posY).toBe(negY);
+    expect(negZ).toBe(posY);
+    expect(posZ).not.toBe(negZ);
+    expect(posX).not.toBe(posY);
+    expect(posX).not.toBe(posZ);
+    expect(posY).not.toBe(posZ);
+    expect(posX.map).toBeTruthy();
+    expect(posY.map).toBeTruthy();
+    expect(posZ.map).toBeTruthy();
+    expect(negZ.map).toBe(posY.map);
+    expect(posZ.map).not.toBe(negZ.map);
+    expect(posX.map).not.toBe(posY.map);
+    expect(posX.map).not.toBe(posZ.map);
+    expect(posY.map).not.toBe(posZ.map);
+    expect(posX.map?.colorSpace).toBe(THREE.SRGBColorSpace);
+    expect(posY.map?.colorSpace).toBe(THREE.SRGBColorSpace);
+    expect(posZ.map?.colorSpace).toBe(THREE.SRGBColorSpace);
+    expect(posX.color.getHex()).toBe(ARCH_RACK_HULL_COLOR);
+    expect(posY.color.getHex()).toBe(ARCH_RACK_HULL_COLOR);
+    expect(posZ.color.getHex()).toBe(ARCH_RACK_HULL_COLOR);
+    expect(posX.roughness).toBeCloseTo(ARCH_RACK_SIDE_ROUGHNESS);
+    expect(posX.metalness).toBeCloseTo(ARCH_RACK_SIDE_METALNESS);
+    expect(posY.roughness).toBeCloseTo(ARCH_RACK_SIDE_ROUGHNESS);
+    expect(posY.metalness).toBeCloseTo(ARCH_RACK_SIDE_METALNESS);
+    expect(('clearcoat' in posX) ? (posX as THREE.MeshPhysicalMaterial).clearcoat : 0).toBe(0);
+    const front = posZ;
+    expect(front).toBeInstanceOf(THREE.MeshStandardMaterial);
+    expect(front).not.toBeInstanceOf(THREE.MeshPhysicalMaterial);
+    expect(front.roughness).toBeCloseTo(ARCH_RACK_FRONT_ROUGHNESS);
+    expect(front.metalness).toBeCloseTo(ARCH_RACK_FRONT_METALNESS);
+    expect(('clearcoat' in front) ? (front as THREE.MeshPhysicalMaterial).clearcoat : 0).toBe(0);
+    hostFaces.forEach((face) => {
+      expect(face).toBeInstanceOf(THREE.MeshStandardMaterial);
+      expect(face).not.toBeInstanceOf(THREE.MeshPhysicalMaterial);
+      expect(face.envMap).toBeFalsy();
+      expect(('clearcoat' in face) ? (face as THREE.MeshPhysicalMaterial).clearcoat : 0).toBe(0);
+    });
+    expect(front.envMap).toBeFalsy();
+    expect(front.roughnessMap).toBeFalsy();
+    expect(front.emissive.getHex()).toBe(0);
+    expect(front.emissiveIntensity).toBe(0);
+    expect(front.color.getHex()).not.toBe(ARCH_LED_ALARM_COLOR);
+    expect(front.color.getHex()).not.toBe(ARCH_LED_COLOR);
+    expect(front.emissive.getHex()).not.toBe(ARCH_LED_ALARM_COLOR);
+    expect(front.emissive.getHex()).not.toBe(ARCH_LED_COLOR);
     expect(host.chassis[0].userData.alarmPaintsBody).toBe(false);
 
-    const hostDoor = host.doors[0].material as THREE.MeshStandardMaterial;
-    const hostBay = host.bays[0].material as THREE.MeshStandardMaterial;
-    const hostLip = host.lips[0].material as THREE.MeshStandardMaterial;
-    expect(hostDoor.color.getHex()).toBe(ARCH_DOOR_COLOR);
-    expect(hostBay.color.getHex()).toBe(ARCH_BAY_FILL);
-    expect(hostLip.color.getHex()).toBe(ARCH_BAY_LIP_COLOR);
-    expect(hexChannelSum(hostDoor.color.getHex())).toBeGreaterThan(hexChannelSum(hostChassis.color.getHex()));
-    expect(hexChannelSum(hostBay.color.getHex())).toBeLessThan(hexChannelSum(hostDoor.color.getHex()));
-    expect(hexChannelSum(hostLip.color.getHex())).toBeGreaterThan(hexChannelSum(hostDoor.color.getHex()));
-    expect(hostBay.emissive.getHex()).not.toBe(0x8a2030);
-    expect(hostBay.color.getHex()).not.toBe(ARCH_LED_ALARM_COLOR);
-    expect(hostDoor.color.getHex()).not.toBe(ARCH_LED_ALARM_COLOR);
     const hostNode = view.layout.nodes.find((node) => node.id === 'host-1');
     const appNode = view.layout.nodes.find((node) => node.id === 'app-1');
     expect(hostNode).toBeTruthy();
     expect(appNode).toBeTruthy();
     expect((hostNode?.height ?? 0)).toBeGreaterThan(appNode?.height ?? 0);
-    host.bays.forEach((bay) => {
-      const frontZ = bay.position.z + bay.scale.z / 2;
-      expect(frontZ).toBeLessThan((hostNode?.depth ?? 0) / 2);
-      expect(bay.position.z).toBeLessThan((hostNode?.depth ?? 0) / 2);
-      expect(bay.userData.recessed).toBe(true);
-      expect(Number(bay.userData.bayFrontZ)).toBeLessThan(Number(bay.userData.chassisFrontZ));
-      expect(bay.scale.x).toBeGreaterThan((hostNode?.width ?? 0) * 0.85);
-    });
-    app.bays.forEach((bay) => {
-      const frontZ = bay.position.z + bay.scale.z / 2;
-      expect(frontZ).toBeLessThan((appNode?.depth ?? 0) / 2);
-      expect(bay.userData.recessed).toBe(true);
-      expect(bay.scale.x).toBeGreaterThan((appNode?.width ?? 0) * 0.85);
-    });
-    host.lips.forEach((lip, index) => {
-      const bay = host.bays[index];
-      expect(lip.scale.x).toBeGreaterThan(bay.scale.x);
-      expect(lip.scale.y).toBeGreaterThan(bay.scale.y);
-    });
+    expect(host.chassis[0].scale.x).toBeCloseTo(hostNode?.width ?? 0);
+    expect(host.chassis[0].scale.y).toBeCloseTo(hostNode?.height ?? 0);
+    expect(host.chassis[0].scale.z).toBeCloseTo(hostNode?.depth ?? 0);
+    expect(host.chassis[0].position.x).toBeCloseTo(0);
+    expect(host.chassis[0].position.y).toBeCloseTo(0);
+    expect(host.chassis[0].position.z).toBeCloseTo(0);
+    expect(app.chassis[0].scale.x).toBeCloseTo(appNode?.width ?? 0);
+    expect(app.chassis[0].scale.y).toBeCloseTo(appNode?.height ?? 0);
+    expect(app.chassis[0].scale.z).toBeCloseTo(appNode?.depth ?? 0);
 
     const assertCyanLeds = (leds: THREE.Mesh[]) => {
       leds.forEach((led) => {
@@ -1412,6 +1461,21 @@ describe('application3D architecture view', () => {
     assertCyanLeds(quiet.leds);
     expect(app.leds[0].material).toBe(quiet.leds[0].material);
     expect(host.leds[0].material).not.toBe(app.leds[0].material);
+    expect(app.leds[0].position.y).toBeGreaterThan(0);
+    expect(app.leds[0].position.z).toBeGreaterThan((appNode?.depth ?? 0) / 2);
+    const assertLedUv = (leds: THREE.Mesh[], node: { width: number; height: number }) => {
+      const ledRadius = node.width * ARCH_RACK_LED_RADIUS_UV;
+      leds.forEach((led, index) => {
+        expect(led.position.x).toBeCloseTo((ARCH_RACK_LED_UV_U[index] - 0.5) * node.width, 5);
+        expect(led.position.y).toBeCloseTo((ARCH_RACK_LED_UV_V - 0.5) * node.height, 5);
+        expect(led.scale.x).toBeCloseTo(ledRadius, 5);
+        expect(led.scale.z).toBeCloseTo(ledRadius, 5);
+        expect(led.scale.y).toBeCloseTo(ledRadius * 0.5, 5);
+      });
+    };
+    assertLedUv(app.leds, appNode as { width: number; height: number });
+    assertLedUv(quiet.leds, view.layout.nodes.find((node) => node.id === 'host-quiet') as { width: number; height: number });
+    assertLedUv(host.leds, hostNode as { width: number; height: number });
 
     host.leds.forEach((led) => {
       const material = led.material as THREE.MeshStandardMaterial;
@@ -1425,13 +1489,25 @@ describe('application3D architecture view', () => {
     expect(host.leds[2].position.x).toBeGreaterThan(host.leds[1].position.x);
     expect(Math.abs(host.leds[0].position.y - host.leds[1].position.y)).toBeLessThan(1e-6);
 
+    const strokeW = ARCH_RACK_STROKE_WIDTH;
+    const hx = (hostNode?.width ?? 0) / 2 - strokeW / 2;
+    const hy = (hostNode?.height ?? 0) / 2 - strokeW / 2;
+    const hz = (hostNode?.depth ?? 0) / 2 - strokeW / 2;
+    const frontStrokes = host.strokes.filter((stroke) => Math.abs(stroke.position.z - hz) < 1e-6);
+    const backStrokes = host.strokes.filter((stroke) => Math.abs(stroke.position.z + hz) < 1e-6);
+    const depthStrokes = host.strokes.filter((stroke) => Math.abs(stroke.position.z) < 1e-6);
+    expect(frontStrokes).toHaveLength(4);
+    expect(backStrokes).toHaveLength(4);
+    expect(depthStrokes).toHaveLength(4);
     host.strokes.forEach((stroke) => {
       const material = stroke.material as THREE.MeshStandardMaterial;
-      expect(
-        stroke.scale.x === ARCH_RACK_STROKE_WIDTH
-        || stroke.scale.y === ARCH_RACK_STROKE_WIDTH
-        || stroke.scale.z === ARCH_RACK_STROKE_WIDTH,
-      ).toBe(true);
+      const thinAxes = [stroke.scale.x, stroke.scale.y, stroke.scale.z].filter(
+        (axis) => Math.abs(axis - ARCH_RACK_STROKE_WIDTH) < 1e-6,
+      );
+      expect(thinAxes.length).toBeGreaterThanOrEqual(2);
+      expect(Math.abs(stroke.position.x)).toBeLessThanOrEqual(hx + 1e-6);
+      expect(Math.abs(stroke.position.y)).toBeLessThanOrEqual(hy + 1e-6);
+      expect(Math.abs(stroke.position.z)).toBeLessThanOrEqual(hz + 1e-6);
       expect(material.emissive.getHex()).toBe(ARCH_STROKE_ALARM_COLOR);
       expect(material.color.getHex()).toBe(ARCH_STROKE_ALARM_COLOR);
       expect(material.emissiveIntensity).toBe(ARCH_STROKE_EMISSIVE_INTENSITY);
@@ -1455,12 +1531,52 @@ describe('application3D architecture view', () => {
     expect(viewSrc).not.toContain("'rack-hdd-stripe'");
     expect(viewSrc).not.toContain("'rack-front-stripe'");
     expect(viewSrc).not.toContain("'rack-door-stripe'");
+    expect(viewSrc).not.toContain("'rack-door'");
+    expect(viewSrc).not.toContain("'rack-bezel'");
+    expect(viewSrc).not.toContain("'rack-bay'");
+    expect(viewSrc).toContain('cabinet-front-albedo-v2.png');
+    expect(viewSrc).not.toContain('cabinet-front-roughness.png');
+    expect(viewSrc).toContain('cabinet-side-albedo.png');
+    expect(viewSrc).toContain('cabinet-top-albedo.png');
+    expect(viewSrc).not.toContain('ARCH_RACK_LED_HEADER_RATIO');
+    expect(viewSrc).not.toContain('ARCH_RACK_LED_SIDE_INSET_RATIO');
+    expect(viewSrc).toContain('ARCH_RACK_LED_RADIUS_UV');
+    expect(viewSrc).not.toContain('* 0.032');
+    expect(viewSrc).toContain('width * ARCH_RACK_LED_RADIUS_UV');
+    expect(viewSrc).toContain('faces: [side, side, top, top, front, top]');
+    expect(viewSrc).toContain('liftCabinetAlbedoTexture');
+    expect(viewSrc).not.toContain('MeshPhysicalMaterial');
+    expect(viewSrc).not.toContain('clearcoat');
+    expect(viewSrc).not.toContain('envMap');
+    expect(viewSrc).not.toContain('ARCH_RACK_FRONT_CLEARCOAT');
+    expect(viewSrc).toContain('MeshStandardMaterial');
     expect(viewSrc).toContain('rack-led');
     expect(viewSrc).toContain('rack-stroke');
+    expect(viewSrc).toContain('addRackAlarmStrokes');
+    expect(viewSrc).not.toContain('strokeZ = frontZ + strokeW * 0.45');
     expect(viewSrc).toContain('if (alarming)');
     expect(viewSrc).toContain('materials.led');
     expect(viewSrc).toContain('ARCH_LED_COLOR');
+    expect(viewSrc).not.toContain('emissive: ARCH_CHASSIS_EMISSIVE');
     view.dispose();
+  });
+
+  it('lifts near-black albedo pixels to readable slate at runtime', () => {
+    const pixels = new Uint8ClampedArray([0, 0, 0, 255, 1, 2, 3, 255, 255, 200, 0, 128]);
+    liftCabinetAlbedoPixels(pixels);
+    expect(Array.from(pixels)).toEqual([
+      72, 72, 72, 255,
+      73, 74, 75, 255,
+      255, 255, 72, 128,
+    ]);
+
+    const data = new Uint8ClampedArray([0, 0, 0, 255]);
+    const texture = new THREE.DataTexture(data, 1, 1);
+    liftCabinetAlbedoTexture(texture);
+    expect(texture.userData.albedoLifted).toBe(true);
+    expect(data[0]).toBe(72);
+    liftCabinetAlbedoTexture(texture);
+    expect(data[0]).toBe(72);
   });
 
   it('advances a long soft gradient band that wraps the seam without a dead gap', () => {
@@ -1658,6 +1774,11 @@ describe('application3D architecture view', () => {
     expect(viewSrc).not.toContain('EffectComposer');
     expect(viewSrc).toContain('edge-pulse-halo');
     expect(sceneSrc).toContain('bloomPass.enabled = false');
+    expect(sceneSrc).not.toContain('RoomEnvironment');
+    expect(sceneSrc).not.toContain('PMREMGenerator');
+    expect(sceneSrc).not.toContain('scene.environment');
+    expect(sceneSrc).not.toContain('pmrem.fromScene');
+    expect(sceneSrc).not.toContain('scene.background =');
     expect(ARCH_TUBE_IN_GLOW_LAYER).toBe(false);
     expect(ARCH_TUBE_RADIUS_INTER).toBe(0.01);
     expect(ARCH_TUBE_OPACITY).toBeLessThan(0.4);
