@@ -13,6 +13,7 @@ from apps.monitor.models import MonitorInstance
 from apps.monitor.models.monitor_metrics import Metric
 from apps.monitor.services.authorized_metric_query import AuthorizedMetricQueryError, AuthorizedMetricQueryService
 from apps.monitor.services.metrics import Metrics as MetricsService
+from apps.monitor.services.metrics import MetricsQueryBudgetExceeded
 from apps.monitor.utils.unit_converter import UnitConverter
 
 
@@ -41,6 +42,12 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
             data = self._authorized_query_service(request).query_range(request.data)
         except AuthorizedMetricQueryError as exc:
             self._raise_authorized_query_error(exc)
+        except MetricsQueryBudgetExceeded as exc:
+            return WebUtils.response_error(
+                response_data=exc.data,
+                error_message=exc.message,
+                status_code=exc.STATUS_CODE,
+            )
 
         source_unit = request.data.get("source_unit")
         target_unit = request.data.get("unit")
