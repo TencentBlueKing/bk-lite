@@ -1,9 +1,9 @@
 /** 归档组织列表操作列展示：由后端 capability 决定，前端只映射文案形态。 */
 
-export type ArchivedActionRow = {
+export interface ArchivedActionRow {
   can_restore?: boolean;
   can_permanently_delete?: boolean;
-};
+}
 
 export type ArchivedActionPresentation =
   | { type: 'empty' }
