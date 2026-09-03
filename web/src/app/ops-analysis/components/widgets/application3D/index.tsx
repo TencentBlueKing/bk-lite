@@ -18,6 +18,12 @@ import type {
 import type { ScreenRenderContext } from '@/app/ops-analysis/types/dashBoard';
 import type { Application3DSceneController } from './application3DScene';
 import Application3DDetail from './application3DDetail';
+import {
+  formatArchitectureHostAlarmCount,
+  formatArchitectureHostSeverity,
+  formatArchitectureHostState,
+  type ArchitectureHostSelection,
+} from './application3DArchitectureOverlay';
 
 interface Application3DProps {
   refreshKey?: string | number;
@@ -94,6 +100,7 @@ export default function Application3D({
   const [architectureOpen, setArchitectureOpen] = useState(false);
   const [architectureLoading, setArchitectureLoading] = useState(false);
   const [architectureError, setArchitectureError] = useState('');
+  const [architectureHost, setArchitectureHost] = useState<ArchitectureHostSelection | null>(null);
   const architectureOpenRef = useRef(false);
   const allowedOnSurface = screenRenderContext?.enabled === true;
   const wallMotionRef = useRef<'intro' | 'filter' | 'none'>('intro');
@@ -143,6 +150,10 @@ export default function Application3D({
           controller.focus(null);
           selectedRef.current = null;
           setSelected(null);
+        },
+        onArchitectureHostSelect: (selection) => {
+          if (editMode) return;
+          setArchitectureHost(selection);
         },
       });
       controllerRef.current = controller;
@@ -232,6 +243,7 @@ export default function Application3D({
     setArchitectureOpen(false);
     setArchitectureLoading(false);
     setArchitectureError('');
+    setArchitectureHost(null);
     controllerRef.current?.hideArchitecture();
     controllerRef.current?.focus(null);
   }, []);
@@ -333,6 +345,7 @@ export default function Application3D({
     setArchitectureOpen(false);
     setArchitectureLoading(false);
     setArchitectureError('');
+    setArchitectureHost(null);
     controllerRef.current?.hideArchitecture();
     controllerRef.current?.focus(null);
     controllerRef.current?.resetCamera();
@@ -391,6 +404,7 @@ export default function Application3D({
     setArchitectureOpen(false);
     setArchitectureLoading(false);
     setArchitectureError('');
+    setArchitectureHost(null);
     controllerRef.current?.hideArchitecture();
     controllerRef.current?.focus(null);
     selectedRef.current = null;
@@ -403,6 +417,7 @@ export default function Application3D({
     setArchitectureOpen(false);
     setArchitectureLoading(false);
     setArchitectureError('');
+    setArchitectureHost(null);
     selectedRef.current = null;
     setSelected(null);
     controllerRef.current?.hideArchitecture();
@@ -654,6 +669,41 @@ export default function Application3D({
             >
               {t('dashboard.application3DBackWall', '\u8fd4\u56de')}
             </button>
+          </div>
+        </div>
+      )}
+      {!editMode && architectureOpen && architectureHost && (
+        <div
+          className="app3d-arch-host-chip"
+          style={{
+            left: architectureHost.overlay.left,
+            top: architectureHost.overlay.top,
+          }}
+        >
+          <div className="app3d-arch-host-chip__title">{architectureHost.node.name}</div>
+          <div className="app3d-arch-host-chip__row">
+            <span className="app3d-arch-host-chip__label">
+              {t('dashboard.application3DHostStatus', '状态')}
+            </span>
+            <span className="app3d-arch-host-chip__value">
+              {formatArchitectureHostState(architectureHost.node.health?.state, t)}
+            </span>
+          </div>
+          <div className="app3d-arch-host-chip__row">
+            <span className="app3d-arch-host-chip__label">
+              {t('dashboard.application3DHostAlarmCount', '条数')}
+            </span>
+            <span className="app3d-arch-host-chip__value">
+              {formatArchitectureHostAlarmCount(architectureHost.node.health?.activeAlarmCount)}
+            </span>
+          </div>
+          <div className="app3d-arch-host-chip__row">
+            <span className="app3d-arch-host-chip__label">
+              {t('dashboard.application3DHostHighestSeverity', '最高级别')}
+            </span>
+            <span className="app3d-arch-host-chip__value">
+              {formatArchitectureHostSeverity(architectureHost.node.health?.highestSeverity?.label)}
+            </span>
           </div>
         </div>
       )}

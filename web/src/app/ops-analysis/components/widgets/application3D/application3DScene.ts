@@ -4,7 +4,11 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import type { Application3DArchitectureData, Application3DWallItem } from '@/app/ops-analysis/types/sceneWidget';
+import type {
+  Application3DArchitectureData,
+  Application3DArchitectureNode,
+  Application3DWallItem,
+} from '@/app/ops-analysis/types/sceneWidget';
 import {
   APPLICATION3D_CAMERA_FOV,
   buildApplication3DLayout,
@@ -44,7 +48,19 @@ import {
   easeLinear,
   easeOutEntrance,
 } from './application3DMotion';
-import { createArchitectureTreeGroup, type Application3DArchitectureView } from './application3DArchitectureView';
+import {
+  createArchitectureTreeGroup,
+  findArchitectureRackRoot,
+  type Application3DArchitectureView,
+} from './application3DArchitectureView';
+import {
+  ARCH_HOST_OVERLAY_GAP,
+  ARCH_HOST_OVERLAY_SIZE,
+  expandArchitectureCabinetWorldBox,
+  placeOverlayOutsideRect,
+  projectWorldBoxToScreenRect,
+  type ArchitectureHostSelection,
+} from './application3DArchitectureOverlay';
 import {
   ARCH_PLANE_EMISSIVE_INTENSITY,
   ARCH_PLANE_OPACITY,
@@ -470,6 +486,7 @@ export const createApplication3DScene = (
     translate?: Application3DTranslate;
     onSelect: (item: Application3DWallItem) => void;
     onBackgroundClick?: () => void;
+    onArchitectureHostSelect?: (selection: ArchitectureHostSelection | null) => void;
     onFirstRender?: () => void;
   },
 ): Application3DSceneController => {
@@ -876,6 +893,7 @@ export const createApplication3DScene = (
   let entrancePlayed = false;
   let focusedId = '';
   let architectureView: Application3DArchitectureView | null = null;
+  let architectureHostId = '';
   const focusLift = new THREE.Vector3();
   const architectureCameraPosition = new THREE.Vector3();
   const architectureLookTarget = new THREE.Vector3();
@@ -1568,7 +1586,62 @@ export const createApplication3DScene = (
     setOrbitEnabled(true);
   };
 
+  const setPointerFromClient = (clientX: number, clientY: number) => {
+    const rect = renderer.domElement.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    pointer.set(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1,
+    );
+    raycaster.setFromCamera(pointer, camera);
+    return rect;
+  };
+
+  const clearArchitectureHost = () => {
+    if (!architectureHostId) return;
+    architectureHostId = '';
+    options.onArchitectureHostSelect?.(null);
+  };
+
+  const selectArchitectureHost = (node: Application3DArchitectureNode) => {
+    const nodeGroup = architectureView?.nodeGroups.get(node.id);
+    if (!nodeGroup) {
+      clearArchitectureHost();
+      return;
+    }
+    camera.updateMatrixWorld();
+    const box = expandArchitectureCabinetWorldBox(nodeGroup);
+    const viewport = {
+      width: Math.max(viewportWidth, 1),
+      height: Math.max(viewportHeight, 1),
+    };
+    const hostScreenRect = projectWorldBoxToScreenRect(box, camera, viewport);
+    const overlay = placeOverlayOutsideRect(
+      hostScreenRect,
+      ARCH_HOST_OVERLAY_SIZE,
+      viewport,
+      ARCH_HOST_OVERLAY_GAP,
+    );
+    architectureHostId = node.id;
+    options.onArchitectureHostSelect?.({
+      node,
+      hostScreenRect,
+      overlay: { left: overlay.left, top: overlay.top },
+    });
+  };
+
+  const pickAlarmingArchitectureHost = (clientX: number, clientY: number) => {
+    if (!architectureView || phase !== 'architecture') return undefined;
+    if (!setPointerFromClient(clientX, clientY)) return undefined;
+    const hit = raycaster.intersectObjects([architectureView.group], true)[0];
+    if (!hit) return undefined;
+    const root = findArchitectureRackRoot(hit.object);
+    if (!root?.userData.alarming || typeof root.userData.nodeId !== 'string') return undefined;
+    return architectureView.layout.nodes.find((node) => node.id === root.userData.nodeId);
+  };
+
   const disposeArchitecture = () => {
+    clearArchitectureHost();
     architectureView?.dispose();
     architectureView = null;
   };
@@ -1776,13 +1849,7 @@ export const createApplication3DScene = (
   };
 
   const pickApplicationId = (clientX: number, clientY: number) => {
-    const rect = renderer.domElement.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return undefined;
-    pointer.set(
-      ((clientX - rect.left) / rect.width) * 2 - 1,
-      -((clientY - rect.top) / rect.height) * 2 + 1,
-    );
-    raycaster.setFromCamera(pointer, camera);
+    if (!setPointerFromClient(clientX, clientY)) return undefined;
     const hit = raycaster.intersectObjects(
       Array.from(visuals.values(), (visual) => visual.mesh),
       true,
@@ -1794,6 +1861,12 @@ export const createApplication3DScene = (
 
   const syncCursor = (clientX: number, clientY: number) => {
     if (!active || !options.interactive) return;
+    if (phase === 'architecture') {
+      renderer.domElement.style.cursor = pickAlarmingArchitectureHost(clientX, clientY)
+        ? 'pointer'
+        : idleCursor();
+      return;
+    }
     renderer.domElement.style.cursor = pickApplicationId(clientX, clientY)
       ? 'pointer'
       : idleCursor();
@@ -1807,6 +1880,14 @@ export const createApplication3DScene = (
 
   const handlePointerMove = (event: PointerEvent) => {
     syncCursor(event.clientX, event.clientY);
+    if (
+      phase === 'architecture'
+      && architectureHostId
+      && pointerDown
+      && Math.hypot(event.clientX - pointerDown.x, event.clientY - pointerDown.y) > CLICK_DRAG_THRESHOLD_PX
+    ) {
+      clearArchitectureHost();
+    }
     if (!active || !options.interactive || pointerDown || phase !== 'wall') {
       if (hoveredId) {
         hoveredId = '';
@@ -1835,16 +1916,34 @@ export const createApplication3DScene = (
     event.preventDefault();
   };
 
+  const handleWheel = () => {
+    if (phase !== 'architecture') return;
+    clearArchitectureHost();
+  };
+
   const handlePointerUp = (event: PointerEvent) => {
     if (!active || !options.interactive || !pointerDown) return;
     const dx = event.clientX - pointerDown.x;
     const dy = event.clientY - pointerDown.y;
+    const dragged = Math.hypot(dx, dy) > CLICK_DRAG_THRESHOLD_PX;
     pointerDown = null;
     if (event.button !== 0) {
       syncCursor(event.clientX, event.clientY);
       return;
     }
-    if (Math.hypot(dx, dy) > CLICK_DRAG_THRESHOLD_PX) {
+    if (phase === 'architecture') {
+      if (dragged) {
+        clearArchitectureHost();
+        syncCursor(event.clientX, event.clientY);
+        return;
+      }
+      const host = pickAlarmingArchitectureHost(event.clientX, event.clientY);
+      if (host) selectArchitectureHost(host);
+      else clearArchitectureHost();
+      syncCursor(event.clientX, event.clientY);
+      return;
+    }
+    if (dragged) {
       syncCursor(event.clientX, event.clientY);
       return;
     }
@@ -1852,7 +1951,6 @@ export const createApplication3DScene = (
     const applicationId = pickApplicationId(event.clientX, event.clientY);
     const visual = applicationId ? visuals.get(applicationId) : undefined;
     if (visual) {
-      if (phase === 'architecture') return;
       options.onSelect(visual.item);
       renderer.domElement.style.cursor = 'pointer';
       return;
@@ -1914,6 +2012,7 @@ export const createApplication3DScene = (
     renderer.domElement.addEventListener('pointermove', handlePointerMove);
     renderer.domElement.addEventListener('pointerup', handlePointerUp);
     renderer.domElement.addEventListener('pointerleave', handlePointerLeave);
+    renderer.domElement.addEventListener('wheel', handleWheel, { passive: true });
     renderer.domElement.style.cursor = 'grab';
   }
   const resizeObserver = new ResizeObserver(resize);
@@ -1959,6 +2058,7 @@ export const createApplication3DScene = (
       renderer.domElement.removeEventListener('pointermove', handlePointerMove);
       renderer.domElement.removeEventListener('pointerup', handlePointerUp);
       renderer.domElement.removeEventListener('pointerleave', handlePointerLeave);
+      renderer.domElement.removeEventListener('wheel', handleWheel);
       controls.dispose();
       visuals.forEach(disposeVisual);
       visuals.clear();
