@@ -244,13 +244,16 @@ class TestPreviousPodLogs:
         _, kwargs = core.read_namespaced_pod_log.call_args
         assert kwargs["previous"] is True
         assert kwargs["container"] == "app"
+        assert kwargs["since_seconds"] == 24 * 3600
 
     def test_string_lines_and_tail_are_coerced(self, apis):
         core, _, _ = apis
         core.read_namespaced_pod.return_value = self._pod([SimpleNamespace(name="app")])
         core.read_namespaced_pod_log.return_value = "l1\nl2\nl3"
-        out = res.get_kubernetes_previous_pod_logs.func(namespace="ns", pod_name="p1", lines="2", tail="false", config={})
+        out = res.get_kubernetes_previous_pod_logs.func(namespace="ns", pod_name="p1", lines="2", tail="false", hours="24", config={})
         assert out == "l1\nl2"
+        _, kwargs = core.read_namespaced_pod_log.call_args
+        assert kwargs["since_seconds"] == 24 * 3600
 
     def test_empty_previous_logs(self, apis):
         core, _, _ = apis

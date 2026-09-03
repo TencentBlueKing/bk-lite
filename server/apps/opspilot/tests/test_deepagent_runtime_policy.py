@@ -1049,6 +1049,38 @@ def test_enforce_k8s_namespace_lookup_strips_cluster_wide_scans():
     ]
 
 
+def test_enforce_k8s_namespace_lookup_skips_resolve_after_cluster_discovery(caplog):
+    import logging
+
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import ToolExecutionPlan, ToolExecutionStep, enforce_k8s_namespace_lookup_first
+
+    caplog.set_level(logging.INFO, logger="opspilot")
+    plan = ToolExecutionPlan(
+        goal="统计今天重启",
+        steps=[
+            ToolExecutionStep(objective="找高频重启", tools=["get_high_restart_kubernetes_pods"]),
+            ToolExecutionStep(objective="事件时间线", tools=["get_resource_events_timeline"]),
+        ],
+    )
+    fixed = enforce_k8s_namespace_lookup_first(
+        plan,
+        {
+            "resolve_k8s_target_from_alert",
+            "get_high_restart_kubernetes_pods",
+            "get_resource_events_timeline",
+        },
+        max_steps=4,
+    )
+    assert [step.tools for step in fixed.steps] == [
+        ["get_high_restart_kubernetes_pods"],
+        ["get_resource_events_timeline"],
+    ]
+    records = [rec for rec in caplog.records if rec.name == "opspilot" and rec.msg.startswith("DeepAgent 规划硬校验：前置发现工具已带 namespace，跳过插入反查")]
+    assert len(records) == 1
+    assert records[0].args == (["get_high_restart_kubernetes_pods"],)
+    assert "get_high_restart_kubernetes_pods" in records[0].getMessage()
+
+
 def test_drop_k8s_followup_steps_after_unresolved_target():
     from apps.opspilot.metis.llm.agent.tool_execution_planner import ToolExecutionStep, drop_k8s_followup_steps_after_unresolved_target
 

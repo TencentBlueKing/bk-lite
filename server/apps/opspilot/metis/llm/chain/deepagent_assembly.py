@@ -6,6 +6,8 @@ from pathlib import Path
 
 from langchain_core.messages import AIMessage
 
+from apps.opspilot.metis.llm.chain.entity import HIDE_PLANNED_STEP_TEXT_KEY
+
 
 class DeepAgentAssemblyMixin:
     """Mixin for ToolsNodes; extracted without behavior change."""
@@ -58,6 +60,7 @@ class DeepAgentAssemblyMixin:
     _MARKDOWN_TABLE_RE = re.compile(r"\|[^\n]+\|\s*\n\s*\|?\s*:?-{3,}", re.MULTILINE)
 
     _STEP_STUB_RE = re.compile(r"^执行结果\s*\d+\s*$")
+    HIDE_PLANNED_STEP_TEXT_KEY = HIDE_PLANNED_STEP_TEXT_KEY
 
     @classmethod
     def _iter_planned_assistant_text(cls, messages):
@@ -93,6 +96,43 @@ class DeepAgentAssemblyMixin:
         if completed_step_count <= 1:
             return True
         return cls._planned_output_has_markdown_table(messages)
+
+    @classmethod
+    def _select_visible_planned_messages(cls, messages, *, summary_ran: bool) -> list:
+        """分步过程只给用户看一份终稿：工具结果保留，正文只留最后一张表或最后一段作答。"""
+        visible: list = []
+        answers: list = []
+        stubs: list = []
+        for message in messages or []:
+            if isinstance(message, AIMessage) and not getattr(message, "tool_calls", None):
+                text = str(getattr(message, "content", "") or "").strip()
+                if not text:
+                    continue
+                if cls._STEP_STUB_RE.match(text):
+                    stubs.append(message)
+                    continue
+                answers.append(message)
+                continue
+            visible.append(message)
+        chosen = None
+        if answers:
+            if summary_ran:
+                chosen = answers[-1]
+            else:
+                table_answers = [item for item in answers if cls._MARKDOWN_TABLE_RE.search(str(item.content or ""))]
+                chosen = (table_answers or answers)[-1]
+        elif stubs:
+            chosen = stubs[-1]
+        if chosen is not None:
+            visible.append(chosen)
+        return visible
+
+    @staticmethod
+    def _set_hide_planned_step_text(graph_request, hidden: bool) -> None:
+        extra = getattr(graph_request, "extra_config", None)
+        if extra is None:
+            graph_request.extra_config = extra = {}
+        extra[HIDE_PLANNED_STEP_TEXT_KEY] = bool(hidden)
 
     @staticmethod
     def _plan_is_skills_only(candidate_plan) -> bool:
@@ -151,8 +191,16 @@ class DeepAgentAssemblyMixin:
         )
 
     @staticmethod
-    def _planned_tool_step_guidance() -> str:
+    def _planned_tool_step_guidance(*, is_last_step: bool = False) -> str:
         """业务工具步：与技能步共用停手契约，但不收掉本步多个计划工具。"""
+        if is_last_step:
+            tail = (
+                "本步给出用户可见的最终答案：只保留一张表，口径必须对齐用户问题。"
+                "用户问今天或某时间窗时，以事件时间线为准；累计 restart_count 不是该时间窗次数，禁止写成「今天重启了 N 次」。"
+                "若与前面累计名单矛盾，只保留时间窗结论，不要再贴口径不同的第二张表。"
+            )
+        else:
+            tail = "本步证据只给后续步骤用，不要输出 Markdown 表或最终结论。" "用户问今天或某时间窗时，禁止把累计 restart_count 写成该时间窗的次数。"
         return (
             "【工具执行】只调用本步骤计划/可见工具。"
             "未计划工具会被拒绝，不要改调其他工具，也不要当作步骤失败去重规划。"
@@ -162,8 +210,7 @@ class DeepAgentAssemblyMixin:
             "401、kubeconfig 无效、连接参数缺失或解密失败时不要改参重试，把错误原样告诉用户并结束本步。"
             "工具抛出 AttributeError/TypeError 等实现异常时不要重试，把错误告诉用户。"
             "403 仅在可换 namespace 或实例时最多改参 1 次，否则把权限错误告诉用户。"
-            "工具成功后用一两句话直接回答用户并结束本步，禁止再写第二份重复说明，"
-            "也不要把同一张表或同一份名单再输出一遍。"
+            f"{tail}"
         )
 
     @staticmethod
@@ -177,6 +224,7 @@ class DeepAgentAssemblyMixin:
         "\n\n【分步工具执行】外部规划器已经拆分任务。"
         "每次只完成当前步骤，只调用当前可见工具；不要自行创建待办、子任务或重复规划。"
         "工具证据足够后立即结束当前步骤。"
+        "给用户只保留一份与问题口径一致的结论；过程步骤不要输出互相矛盾的表。"
         "需要向用户提问时可使用交互工具；"
         "但可用工具查到的定位信息（例如缺 namespace 时先反查 Pod/Events）禁止直接问用户。"
     )
@@ -308,6 +356,8 @@ _plan_is_skills_only = DeepAgentAssemblyMixin._plan_is_skills_only
 _planned_step_already_answered = DeepAgentAssemblyMixin._planned_step_already_answered
 _planned_output_has_markdown_table = DeepAgentAssemblyMixin._planned_output_has_markdown_table
 _should_skip_planned_summary = DeepAgentAssemblyMixin._should_skip_planned_summary
+_select_visible_planned_messages = DeepAgentAssemblyMixin._select_visible_planned_messages
+_set_hide_planned_step_text = DeepAgentAssemblyMixin._set_hide_planned_step_text
 _planned_tool_step_guidance = DeepAgentAssemblyMixin._planned_tool_step_guidance
 _should_use_lightweight_after_empty_plan = DeepAgentAssemblyMixin._should_use_lightweight_after_empty_plan
 _should_use_lightweight_direct_reply = DeepAgentAssemblyMixin._should_use_lightweight_direct_reply

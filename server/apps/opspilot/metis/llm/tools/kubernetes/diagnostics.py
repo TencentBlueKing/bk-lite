@@ -323,6 +323,10 @@ def get_high_restart_kubernetes_pods(restart_threshold: int = 5, instance_name=N
     - 提供容器镜像信息，便于定位版本问题
     - 展示Ready状态，判断当前是否正常
 
+    **注意：** restart_count 是容器自创建以来的累计次数，不是今天或指定时间窗内的次数。
+    用户问「今天重启了几次」时，本工具不能当作时间窗答案；必须再用
+    get_resource_events_timeline 等按时间过滤，且不要把累计次数写成「今天重启了 N 次」。
+
     **与analyze_pod_restart_pattern的区别：**
     - 本工具：快速列表，找出"哪些Pod在重启"
     - analyze_pod_restart_pattern：深度分析"为什么重启"（退出码、OOM、事件）

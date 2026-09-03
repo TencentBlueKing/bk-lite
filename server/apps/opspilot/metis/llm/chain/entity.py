@@ -2,6 +2,9 @@ from typing import Any, Callable, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# 分步执行期间由引擎写入 extra_config：为 True 时 AG-UI 不推步内助手正文。
+HIDE_PLANNED_STEP_TEXT_KEY = "opspilot_hide_planned_step_text"
+
 
 class NormalizedToolCall(BaseModel):
     """规范化后的 tool_call 访问器。
