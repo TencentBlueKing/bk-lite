@@ -1,6 +1,6 @@
 # Stargazer 成功数据唯一出站与 160 弹性并发实施方案
 
-Status: implemented；待生产等价压测签字（2026-09-01）
+Status: implemented；SNMP 后续优化改由独立决策方案确认（2026-09-02）
 
 ## 1. 结论摘要
 
@@ -1348,3 +1348,498 @@ JetStream benchmark，按第 15.8、16.7 节保存原始报告后才能作为上
   升级，在统一 NATS Adapter 内忽略已完成 Future，同时保留 PONG 计数和连接状态；
 - SNMP 逐目标开始和 metrics 微批成功降为 DEBUG；插件异常详情由一个 Run 共享最多 3 条采样
   预算，终态失败计数与有界样本仍由 `collection_run_summary` 持有。
+
+## 21. 2026-09-02 四核环境下保留 160 的 SNMP 后续优化实施方案（待确认）
+
+> **已被替代：**本节保留为讨论历史，不再作为实施或决策依据。新的范围、方案和确认项统一以
+> [`snmp-160-concurrency-optimization-implementation-plan-v2-2026-09-02.md`](snmp-160-concurrency-optimization-implementation-plan-v2-2026-09-02.md)
+> 为准。V2 以社区版 MR #5115 为基线，将子进程降为条件后备，并保持全局 160。
+
+### 21.1 修订说明与适用范围
+
+本节从以下已确认结论继续，替代本节此前关于“先调整 NATS 单进程窗口”的草稿；冲突时以本节为准：
+
+> 先保留全局 160，实施结果流式释放、PySNMP 子进程隔离、Engine 复用、probe/collect 合并和
+> GETBULK；完成生产等价压测后再判断机器资源是否足够。现在直接改成 100 既无法证明能解决问题，
+> 也会破坏已经确认的产品并发口径。
+
+这里的“全局 160”指**单个 Stargazer/Sanic worker 内的全局目标并发上限**。现有默认 4 个
+Sanic worker 时，每个 worker 独立调度完整 CollectionRun，Pod 理论聚合目标并发上限仍为
+`4 × 160 = 640`。本轮不新增跨 worker 的共享 160 信号量，也不拆分一个 Run 到其他 Sanic worker。
+
+本节只处理：
+
+1. Run 结果对象和发布回执随目标数线性保留；
+2. PySNMP 在 Sanic 主事件循环执行，CPU/回调延迟会直接拖慢 HTTP、NATS 和 timeout；
+3. SNMP probe 与 collect 重复建 Engine、重复发送首个 GET；
+4. interface WALK 使用逐次 GETNEXT，网络 RTT、PDU 数和 Python callback/decode 次数偏高；
+5. SNMP 技术容量对产品 160 和 workload 借槽形成第二道硬限制。
+
+继续保持不变：
+
+- 只有成功且非空的采集指标进入 metrics NATS；
+- 失败、不可达、空结果、凭据结果和 RunSummary 只做有界本地汇总，不进入 NATS；
+- Redis 凭据冷冻、成功亲和和多凭据顺序轮换继续保留；
+- 配置文件采集链路继续暂缓，本节不修改其 callback/control RPC/CMDB 行为；
+- NATS Server、Stream、ACL、`nats-py==2.10.0` 和 10 秒 flush 默认值不变。
+
+### 21.2 已锁定的架构决策
+
+| 编号 | 决策 |
+| --- | --- |
+| D24 | 保持现有默认 4 个 Sanic worker，不回退为单进程 |
+| D25 | 每个 Sanic worker 的 `MAX_ACTIVE_TARGETS` 和 `TARGET_TASK_WINDOW` 保持 160，不先降为 100 |
+| D26 | 完整 CollectionRun 继续由接收请求的一个 Sanic worker 负责；SNMP 运算可下沉到该 worker 自己管理的子进程 |
+| D27 | 每个 worker 内保留 `configuration/monitoring/network_topology=100/30/30` 软配额；没有竞争时任一 workload 可借满 160 |
+| D28 | 删除 `snmp/sync_sdk/remote_job/default` 等技术 capacity group 对目标准入的第二道硬限制；它们只保留为执行类型和观测标签 |
+| D29 | 目标完成后流式终结并释放结果，不再等整轮采集结束后统一汇总、统一发出 |
+| D30 | 流式终结不改变 NATS 微批；成功非空结果仍按现有最多 50 个目标或 20ms 聚合发布 |
+| D31 | PySNMP 从 Sanic 主事件循环隔离到受管子进程；NATS、Redis、RunLease 和凭据策略仍只在 Sanic 父进程 |
+| D32 | 每个 PySNMP 子进程持有长生命周期 `SnmpEngine`，跨目标/凭据尝试复用；目标完成时不关闭共享 Engine |
+| D33 | SNMP 的 probe 与 collect 合并：首个 system GET 同时完成可达/认证判定并保留为正式采集结果 |
+| D34 | interface WALK 优先使用 GETBULK；遇到设备不兼容、tooBig、异常游标等明确条件时按目标回退 GETNEXT |
+| D35 | 本次不修改 PR #5100 的多 Sanic 进程和 NATS handler queue group |
+| D36 | 四核生产等价压测完成前，不以降低 160 或延长 NATS timeout 规避问题 |
+
+### 21.3 明确冻结的 PR #5100 范围
+
+本轮不得修改以下文件及其既有行为：
+
+```text
+agents/stargazer/server.py
+agents/stargazer/service/nats_server.py
+agents/stargazer/tests/test_nats_handler_queue_group.py
+agents/stargazer/.env.example
+agents/stargazer/support-files/docker/Dockerfile
+agents/stargazer/support-files/supervisor/service.conf
+```
+
+因此：
+
+- `SANIC_WORKERS` 的默认值、读取方式和启动命令不变；
+- NATS handler 的 queue group、subject、注册时机和请求协议不变；
+- 不在 `server.py` 或 Supervisor 中再启动一套 Stargazer 服务；
+- PySNMP 子进程由每个已启动的 Sanic worker 在 CollectionApplication 运行期创建和回收；
+- 子进程不注册 NATS handler，不持有 NATS/Redis 客户端，也不参与 queue group；
+- 本轮新增参数不写入截图所示 PR 修改过的 `.env.example`，先由代码默认值和现有部署覆盖机制承载。
+
+### 21.4 当前代码事实与问题判断
+
+#### 21.4.1 结果生命周期
+
+当前 `CollectionScheduler._RunState.results` 为每个目标保留结果槽；Scheduler 完成后，
+`TargetCollectionExecutor` 又保留 `results`、`pending_publishes`、`publish_statuses` 和
+`publish_error_codes`。大结果、失败详情和发布回执会一直存活到整个 Run 结束。
+
+这不是 NATS 吞吐问题，而是执行器的对象所有权过宽。修复目标是把所有权缩到“目标终态/发布终态”，
+使内存上界由在途目标和有界发布窗口决定，而不是由 Run 累计完成目标数决定。
+
+#### 21.4.2 PySNMP 与事件循环
+
+当前异步 PySNMP 的 socket 等待虽可让出事件循环，但 PDU 编解码、MIB/varBind 处理、callback、
+结果归一化及日志仍执行在 Sanic worker 的 Python 进程中。日志里单进程 CPU 接近一核且 loop lag
+P99 达 10～15 秒，说明主事件循环在高并发 SNMP 回调/CPU 工作下得不到及时调度。
+
+仅把 160 改成 100 只能降低同一时刻的工作量，不能消除主事件循环与 PySNMP CPU/callback 共用故障域。
+本轮通过子进程隔离先保证主事件循环及时处理 NATS PING/PONG、PubAck、HTTP 和 timeout。
+
+#### 21.4.3 Engine 与重复请求
+
+当前已有一级复用：
+
+```text
+单目标 collect:
+  SnmpEngine #1
+    -> system GET
+    -> interface GETNEXT WALK
+  finally close
+```
+
+但 probe 仍是独立链路：
+
+```text
+probe:
+  SnmpEngine #2 -> sysName GET -> close
+collect:
+  SnmpEngine #3 -> system GET（再次包含 sysName）-> interface WALK -> close
+```
+
+本轮要实现二级复用：
+
+```text
+每个 PySNMP 子进程:
+  一个长生命周期 SnmpEngine
+    -> target A / credential 1 的合并 probe+collect
+    -> target B / credential 2 的合并 probe+collect
+    -> ...
+  仅在子进程 shutdown/restart 时 close
+```
+
+是否需要按 SNMP 版本或传输域拆成极少量 Engine，必须由兼容性反馈环证明；不得回到“每目标一个
+Engine”作为默认路径。
+
+### 21.5 目标运行架构
+
+```text
+CMDB / monitoring HTTP
+          |
+    Sanic shared listener
+          |
+  +-------+-------+-------+-------+
+  |               每个 Run 只归属一个父 worker
+  v               v       v       v
+Sanic W1        Sanic W2  W3      W4
+Scheduler 160   160       160     160
+100/30/30       ...       ...     ...
+  |               |       |       |
+  | async IPC     |       |       |
+  v               v       v       v
+SNMP child 1   child 2  child 3 child 4
+shared Engine  shared    shared  shared
+GET + BULK     Engine    Engine  Engine
+  |
+  v
+目标终态回父进程
+  ├─ failed/unreachable/empty/credential result
+  |      -> 有界本地累计 -> 立即释放
+  └─ success + non-empty metrics
+         -> 现有 BufferedResultPublisher
+         -> <=50 targets 或 <=20ms 微批
+         -> JetStream PubAck 终态
+         -> 立即释放
+```
+
+一个 Run 的调度、凭据顺序、冷冻判断、终态汇总和 NATS 发布仍归属原 Sanic worker。子进程只是
+SNMP 协议执行边界，不改变任务归属，也不形成新的业务调度器。
+
+### 21.6 优化一：结果流式终结与释放
+
+新增固定大小的 `RunResultAccumulator`，仅保存：
+
+- 成功、失败、不可达、跳过、延后和发布终态计数；
+- 有界错误码计数（最多 8 类，其余归并为 `other`）；
+- 最多 3 条采集失败样本和 3 条发布失败样本；
+- 当前未完成发布数量及 Run 排空 Future。
+
+`CollectionScheduler` 删除按目标数分配的结果数组，只维护 pending/in-flight/completed 计数和
+Run 完成信号。每个目标完成后立即进入终态处理：
+
+```text
+采集失败 / 不可达 / 空成功
+  -> accumulator 计数与有界样本
+  -> 释放 TargetCollectionResult
+  -> NATS 消息数 0
+
+采集成功且非空
+  -> enqueue 到既有有界 publisher
+  -> 仍由 publisher 按 50/20ms 微批
+  -> PubAck/有限重试终态写入 accumulator
+  -> 释放 result、receipt、encoded chunk
+```
+
+不得为 Run 中每个目标永久保存 Future，也不得创建随目标总数增长的后台 waiter Task。round-complete
+仍须等待所有成功结果取得明确交付终态，不能因为流式释放而提前发送。
+
+这一优化不会把结果“一条一条直接发给 NATS”。逐条的是**内存所有权转交和终态累计**，NATS 侧仍是
+现有微批、切块、稳定 Msg-Id、消息/字节双窗口和 PubAck 语义，因此不会因本项增加消息数或 flush 次数。
+
+### 21.7 优化二：PySNMP 子进程隔离
+
+新增深模块 `SnmpProcessExecutor`，对父进程只暴露小接口：
+
+```python
+class SnmpProcessExecutor:
+    async def execute(self, request: SnmpExecutionRequest) -> SnmpExecutionResult: ...
+    async def close(self, *, grace_seconds: float) -> None: ...
+```
+
+初始四核部署采用“每个 Sanic worker 一个 SNMP 子进程”，共 4 个 SNMP 子进程。理由是：
+
+- 保持一个 Run 由一个 Sanic worker 管理；
+- 不引入跨 worker 的共享 IPC broker 或新的单点调度器；
+- PySNMP 的 CPU/callback 阻塞发生在 child，不再阻塞父进程 NATS/HTTP 事件循环；
+- 四个 child 可以由操作系统分布到四核，父进程主要承担轻量调度、累计和发布。
+
+生命周期要求：
+
+1. 子进程必须在 Sanic worker 已启动后的 Application 运行期创建，禁止模块导入时或 Sanic fork 前创建；
+2. 使用 fresh-process/`spawn` 语义，禁止继承父进程的 NATS、Redis、event loop 或 socket；
+3. IPC 请求只包含执行 SNMP 所需的最小字段；不得记录凭据、payload 或响应正文；
+4. 在途 IPC 请求数受父 Scheduler 的 160 硬上限约束，不再增加低于 160 的 SNMP 准入信号量；
+5. 取消/timeout 必须传播到 child；晚到结果通过 request ID + generation/fence 丢弃；
+6. child 异常退出时，父进程把该 generation 的未完成请求终结为稳定可观测错误，按有界退避重启；
+7. shutdown 先停止接收、等待有界 grace，再回收 child；不得无限等待或遗留僵尸进程。
+
+子进程隔离的验收重点不是让 SNMP 本身的 child loop lag 必然小于 1 秒，而是确保 Sanic 父事件循环
+P99 小于 1 秒，并让 NATS 心跳、PubAck、HTTP 和 timeout 在 SNMP 压力下保持及时。
+
+### 21.8 优化三：子进程生命周期级 Engine 复用
+
+每个 SNMP child 创建并拥有一个长生命周期 `SnmpEngine`：
+
+- 多个目标、多个凭据尝试可并发使用同一 Engine；
+- 单目标结束、取消或凭据失败不得关闭共享 transport dispatcher；
+- Engine 仅在 child 正常退出、失效重建或进程重启时关闭；
+- 目标级状态通过 request ID、target、credential attempt 和 fence 隔离；
+- 共享 Engine 故障不得让一个请求取消其他无关请求；
+- Engine 重建须有 generation；旧 generation 的晚到 callback 不得完成新 Future。
+
+实施前先建立并发兼容性反馈环，覆盖 SNMP v2c、v3、认证失败、超时、取消、混合成功/失败和 child
+重启。如果现有 PySNMP 版本证明单 Engine 在某类安全模型下不能安全复用，只允许按明确隔离键维护
+固定且有界的小型 Engine 集合，并记录证据；不得无界按目标创建。
+
+预期收益：
+
+- 消除每个目标 probe/collect 的 Engine 与 dispatcher 反复创建、关闭；
+- 减少对象分配、socket/dispatcher 抖动和 shutdown callback 竞态；
+- 把 Engine 故障域限制在可监督的 child generation 内。
+
+### 21.9 优化四：probe/collect 合并并保持多凭据语义
+
+SNMP 插件新增“合并探测与采集”能力，非 SNMP 插件继续使用现有通用 `probe -> collect` 契约。
+不得在通用凭据执行器里按插件名堆叠特殊分支；通过可选 capability/interface 路由。
+
+每个目标仍按 `flatten_credentials_pool` 提供的有效顺序尝试凭据：
+
+```text
+credential A
+  -> system GET（既是 access probe，也是正式数据首包）
+  ├─ auth failure：记录本地失败、执行 Redis 冷冻、继续 B
+  ├─ no response：按现有 no-response 上限处理，不误判为认证失败
+  ├─ unreachable/protocol error：按既有失败分类处理
+  └─ success：保留 system varbinds，继续同一次 collect 的 interface GETBULK
+               -> 成功后记录亲和并停止尝试后续凭据
+
+credential B（仅 A 按策略允许继续时执行）
+  -> 同一流程
+```
+
+必须保持：
+
+- 凭据只在 Stargazer 内顺序使用，不把逐凭据结果推回 CMDB；
+- 只有明确认证失败才冷冻；网络无响应不冷冻凭据；
+- 成功凭据亲和仍是 Redis 可重建状态，Redis 失败不阻断成功采集；
+- 一个目标最终只产生一个 `TargetCollectionResult`；
+- 失败凭据明细只进入有界本地汇总/DEBUG，不进入 NATS；
+- system GET 成功后不得再次为 collect 重发相同 OID，也不得重新创建 Engine。
+
+### 21.10 优化五：interface WALK 改为 GETBULK
+
+SNMP v2c/v3 的 interface table 默认使用 GETBULK，减少同一表遍历所需的 UDP 往返、PDU 编解码和
+Python callback 次数。初始 `maxRepetitions` 取保守值，具体默认值在兼容性测试后锁定，不能直接以
+最大吞吐配置上线。
+
+安全边界：
+
+- 保留 OID 单调前进、目标 subtree、最大行数、最大 PDU 数、最大响应字节和 deadline；
+- 对 `tooBig` 先降低 repetitions；仍失败再回退该目标到 GETNEXT；
+- 对设备明确不支持 GETBULK、返回异常游标/非递增 OID或畸形 varBind 时，只回退当前目标；
+- 回退行为必须有低基数指标和 DEBUG 原因，不逐 varBind 打日志；
+- SNMP v1 若仍受支持，直接走 GETNEXT；
+- 取消、超时和 child 重启必须释放对应请求状态，不关闭共享 Engine。
+
+GETBULK 的目标是减少协议往返和 CPU/callback 数量；它与子进程隔离共同解决“主 loop 不被拖慢”和
+“SNMP 自身工作量下降”两个不同问题。
+
+### 21.11 并发语义：只保留全局目标上限与 workload 软配额
+
+生产目标准入只保留：
+
+```text
+每个 Sanic worker 的全局目标硬上限：160
+每个 worker 的 workload 软配额：
+  configuration=100
+  monitoring=30
+  network_topology=30
+
+没有竞争时：
+  任一 workload 可借用空闲槽，最高达到 160
+```
+
+删除 `SNMP_MAX_IN_FLIGHT`、`SYNC_SDK_MAX_IN_FLIGHT`、`REMOTE_JOB_MAX_IN_FLIGHT`、
+`DEFAULT_ASYNC_MAX_IN_FLIGHT` 对目标启动的硬限制。capacity group 仅作为观测标签存在。
+
+PySNMP child 的 IPC 队列、请求表和 Engine 状态必须有界，但其上界从父 worker 的 160 派生，不构成
+低于 160 的第二道产品并发限制。协议 timeout、响应大小、GETBULK 分页、重试次数和 NATS 发布窗口
+仍是可靠性边界，不属于目标准入配额。
+
+### 21.12 NATS 架构保持项
+
+本轮不调整 NATS 发布架构和配置，避免把 SNMP CPU 问题与 NATS 参数同时改动：
+
+- NATS 客户端只存在于 Sanic 父进程，SNMP child 不连接 NATS；
+- 只有成功非空指标进入 `BufferedResultPublisher`；
+- 继续使用现有 50 targets/20ms 微批、编码切块、稳定 Msg-Id、JetStream PubAck 和双窗口；
+- 失败、凭据、RunSummary 的 NATS 消息数保持 0；
+- 不新增每目标 flush，不改 10 秒 flush timeout，不升级底层依赖；
+- 不调整 PR #5100 的 queue group、handler 或多 worker 启动；
+- 若发布 residence/PubAck 在 SNMP 优化后仍超标，再用独立压测证明是否需要调整 publisher/窗口；
+  该调整不属于本轮预设动作。
+
+因此结果流式释放不会增加 NATS 压力；相反，大对象更早释放后，父进程 event loop 和内存压力下降，
+更有利于现有发布链路及时获得调度。
+
+### 21.13 计划代码影响范围
+
+| 文件/模块 | 计划变更 |
+| --- | --- |
+| `core/collection/scheduler.py` | 删除逐目标结果数组和 capacity group 准入；保留每 worker 160、workload 公平和完成计数 |
+| `core/collection/executor.py` | 改为逐目标终结，删除整轮结果/回执/状态集合 |
+| `core/collection/result_delivery.py` | 提供有界发布终结回调，PubAck 终态后立即释放对象 |
+| `core/collection/contracts.py` | 增加固定大小 Run accumulator 与 SNMP 合并执行契约 |
+| `core/collection/application.py` | 装配并管理每 worker 的 SNMP child；不改变 Sanic worker 启动方式 |
+| `core/collection/credential_attempt.py` | 通过 capability 调用 SNMP 合并 probe+collect，保持通用多凭据状态机 |
+| 新增 `core/collection/snmp_process_executor.py`（名称可按实现收敛） | 子进程、IPC、Engine generation、取消、重启和 shutdown |
+| `plugins/inputs/network/snmp_facts.py` | 接受外部共享 Engine；合并首个 GET；GETBULK 与有界 GETNEXT fallback |
+| `core/collection/capacity_observer.py`、`metrics.py` | 增加 parent/child、IPC、Engine、bulk fallback 和对象驻留指标 |
+| `scripts/benchmark_collection_burst.py` | 增加四核/四 worker、真实 SNMP 和父/子进程资源观测 |
+| 相关测试 | 内存、子进程生命周期、共享 Engine、多凭据、GETBULK、重入、NATS 微批回归 |
+
+明确不修改：
+
+- 第 21.3 节列出的 PR #5100 文件；
+- Server 数据模型和数据库 migration；
+- CMDB 凭据投影；
+- 主机/网络设备配置文件采集链路。
+
+### 21.14 实施阶段与反馈环
+
+#### 阶段 A：建立修复前红灯
+
+1. 用 5000 目标、可控大 payload 的 Run 证明结果对象/RSS 随累计完成数增长；
+2. 在四核、4 Sanic worker、每 worker 160 下记录 parent/child 尚未隔离时的 CPU、RSS、loop lag；
+3. 为当前 probe+collect 统计每目标 Engine 创建数、system GET 次数、WALK PDU 数；
+4. 固化 v2c/v3、多凭据、认证失败、no-response、取消和 NATS 微批基线。
+
+#### 阶段 B：结果流式释放
+
+1. 先写 accumulator 和有界对象驻留测试；
+2. 删除 Scheduler/Executor 的整轮结果保留；
+3. 保持 round-complete 与发布终态契约；
+4. 用相同 5000 目标负载证明对象数量和 RSS 不再随累计完成数线性增长。
+
+#### 阶段 C：PySNMP 子进程与 Engine 复用
+
+1. 建立 spawn、IPC、取消、超时、child crash/restart 和 shutdown 测试；
+2. 把 SNMP 协议执行迁出父事件循环；
+3. 将 Engine 生命周期提升到 child generation；
+4. 验证父进程不继承/泄漏 NATS、Redis、socket 和 credential 日志；
+5. 验证单 worker 的 SNMP 目标仍可借满 160，没有新增低于 160 的准入限制。
+
+#### 阶段 D：probe/collect 合并与 GETBULK
+
+1. 用可选 capability 合并 system GET；
+2. 锁定多凭据冷冻、no-response 和亲和语义；
+3. 实现 GETBULK 的边界、降档和 GETNEXT fallback；
+4. 对比优化前后的 Engine 创建数、PDU 数、CPU time 和目标时延；
+5. 覆盖主流厂商设备或生产报文回放兼容性。
+
+#### 阶段 E：生产等价压测和资源决策
+
+只有阶段 B～D 全部通过后，执行第 21.15 节压测。若四核环境仍无法满足父 event-loop lag P99
+`<1s`，按以下顺序处理：
+
+1. 增加 CPU 配额并原样复测；
+2. 调整 Sanic worker 数量、SNMP child 数量及 Pod 分布，一次只改一个变量；
+3. 只有前两项有完整证据仍不满足时，才讨论降低每 worker 全局并发 160。
+
+### 21.15 四核生产等价压测矩阵
+
+固定基础条件：
+
+- 4 CPU 配额必须可从 cgroup 读取并记录 throttling；
+- 现有 4 个 Sanic worker；
+- 每 worker `MAX_ACTIVE_TARGETS=160`、`TARGET_TASK_WINDOW=160`；
+- 每 worker 初始 1 个 SNMP child、每 child 1 个共享 Engine；
+- 使用生产同版本 PySNMP、真实或等价网络延迟/丢包和真实 TLS JetStream；
+- 同时采集父/子 PID CPU、RSS、FD、event-loop lag、IPC backlog、PDU 数和 NATS 指标。
+
+负载矩阵：
+
+1. 1 秒内瞬时提交 1000、2500、5000 个独立 Run/API 请求；
+2. 单 Run 分别包含 1000、2500、5000 个目标；
+3. 同时提交 100、200、500、1000 目标的多个 Run，观察四个 worker 的分布；
+4. 持续补充 Run 让四个 worker 都有 backlog，验证每 worker不超过160、Pod理论聚合不超过640；
+5. workload 组合覆盖正式 `100/30/30` 与测试 `100/20/20`：
+   - 三类均积压时按软配额收敛；
+   - 任一类无任务时，其他 workload 可自然借满 160；
+6. SNMP 场景覆盖全 no-response、30% 成功/70% 失败、全成功小结果、全成功大结果；
+7. 多凭据覆盖 A 认证失败/B 成功、A no-response/B 成功、首凭据成功；
+8. GETBULK 覆盖正常、tooBig 降档、设备不支持、异常游标和 GETNEXT fallback；
+9. 故障注入覆盖 child crash、Engine 重建、取消风暴、PubAck 变慢、NATS 断连恢复和 Redis 短暂延迟。
+
+不要求两个指定 HTTP 请求必然落到指定 PID；应以足够样本验证多 Run 最终分布到多个 Sanic worker。
+单个 Run 仍不得跨 Sanic worker，但其 SNMP 协议调用会进入该 worker 自己的 child。
+
+### 21.16 验收标准
+
+#### 并发与任务语义
+
+- 每个 Sanic worker `active_targets <= 160`，四 worker 聚合 `<=640`；
+- 无其他 workload 竞争时，SNMP 配置采集可以借满所在 worker 的 160；
+- 三类持续积压时收敛到 `100/30/30`，`100/20/20` 场景的剩余 20 可被有需求的 workload 借用；
+- 单 Run 仍由一个 Sanic worker 管理；同 task ID 重入最多执行一次并保留重入日志；
+- 多凭据顺序、冷冻、no-response、亲和和单目标单终态不变。
+
+#### 主事件循环与 CPU
+
+- Sanic 父进程 event-loop lag P99 `<1s`，不再出现约 10～15 秒周期性延迟；
+- SNMP child 高 CPU 或 loop lag 不得阻塞父进程 NATS PING/PONG、PubAck、HTTP 和 timeout；
+- 必须同时记录各 PID CPU、cgroup CPU quota 与 throttling；数据缺失时不得宣称四核资源充足；
+- Engine 创建数与 child generation 数一致，不再与目标数线性增长；
+- GETBULK 后 interface table 的 PDU/callback 数相对 GETNEXT 基线显著下降；
+- 不出现无界 Task、进程、线程、FD、socket、IPC 请求或僵尸 child。
+
+#### 内存与结果生命周期
+
+- Scheduler/Executor 不再保存目标数等长的结果、状态和回执容器；
+- 5000 目标大结果中，已终结对象可以回收，驻留量受 160、发布队列、活动微批和 JS 窗口约束；
+- 连续三轮压测 RSS 回到稳定平台，不呈随累计目标数单调线性增长；
+- RunSummary、有界失败样本和 round-complete 语义不变。
+
+#### NATS
+
+- 失败、不可达、空结果、凭据结果和 RunSummary 的 NATS 消息数为 0；
+- 成功非空结果仍按 50 targets/20ms 微批，不退化为逐目标 publish/flush；
+- 正常网络下 PubAck timeout/retry/reject 为 0；故障恢复后可排空且 control handler 不被拖死；
+- 不修改 NATS Server、底层依赖、10 秒 flush timeout 或 PR #5100 queue group。
+
+### 21.17 回滚和资源决策边界
+
+每项优化独立提交并可独立回滚：
+
+1. 结果流式累计；
+2. capacity group 准入删除；
+3. PySNMP child + Engine 生命周期；
+4. probe/collect 合并；
+5. GETBULK + fallback。
+
+回滚不得恢复失败/credential NATS，不得清除 Redis 凭据冷冻/亲和，也不得触碰 PR #5100。
+
+若完整优化后四核真实 SNMP 压测仍不满足 P99 `<1s`，报告必须给出父/子 PID 火焰图、cgroup
+throttling、IPC backlog、PDU 数和 NATS 指标，再按以下优先级形成下一份变更：
+
+```text
+增加 CPU 配额
+    ↓ 若仍失败
+调整 Sanic worker / SNMP child 数量和 Pod 分布
+    ↓ 若仍失败且证据表明目标并发是主因
+最后才讨论把每 worker 全局并发从 160 下调
+```
+
+不得在本轮直接把 160 改成 100，也不得用延长 timeout 掩盖主事件循环饥饿。
+
+### 21.18 本轮确认清单
+
+- [x] 每个 Sanic worker 继续保持全局 160，当前不改为 100；
+- [x] 保持现有 4 个 Sanic worker；完整 Run 仍归属一个 worker；
+- [x] 本次不修改截图中 PR #5100 的多进程和 NATS queue group 代码；
+- [x] 去掉 SNMP 等技术 capacity group 的目标准入硬限制；
+- [x] 保留 `100/30/30` workload 软配额及无竞争时借满 160；
+- [x] 实施结果流式释放，但保持现有 NATS 微批和发布协议；
+- [x] 实施 PySNMP 子进程隔离和子进程生命周期级 Engine 复用；
+- [x] 实施 SNMP probe/collect 合并，保持多凭据冷冻与顺序语义；
+- [x] 实施 GETBULK，并提供有界降档和 GETNEXT fallback；
+- [x] 完整优化后再做四核生产等价压测；
+- [x] 若 P99 仍不达标，按“CPU → Worker/分布 → 最后降低160”的顺序决策；
+- [ ] 确认本节后按第 21.14 节分阶段实施。

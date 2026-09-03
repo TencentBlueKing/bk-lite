@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import time
 
 import pytest
@@ -167,7 +168,142 @@ async def test_v2c_communities_share_engine_but_v3_key_material_does_not(fake_en
     assert key_one is not public
     assert len(fake_engines) == 3
     labels = sorted(entry["scope"] for entry in pool.snmp_engine_pool_snapshot()["engines"])
-    assert labels == ["community", "v3#1", "v3#2"]
+    assert labels == ["community", "v3", "v3"]
+
+
+@pytest.mark.asyncio
+async def test_high_cardinality_v3_scopes_have_a_hard_engine_bound(fake_engines):
+    for index in range(161):
+        async with pool.shared_snmp_engine(_usm(f"authkey-{index}"), target=(f"10.20.0.{index}", 161)):
+            pass
+
+    snapshot = pool.snmp_engine_pool_snapshot()
+    assert snapshot["live_engines"] == 160
+    assert snapshot["active_engines"] == 160
+    assert snapshot["total_distinct_targets"] == 160
+    assert {entry["scope"] for entry in snapshot["engines"]} == {"v3"}
+    assert len(fake_engines) == 161
+    assert sum(engine.transportDispatcher.closed for engine in fake_engines) == 1
+
+
+@pytest.mark.asyncio
+async def test_engine_capacity_waits_until_an_in_flight_scope_can_be_evicted(fake_engines):
+    release = asyncio.Event()
+    waiting_release = asyncio.Event()
+    started = asyncio.Event()
+    entered = 0
+
+    async def hold(index):
+        nonlocal entered
+        async with pool.shared_snmp_engine(_usm(f"authkey-{index}"), target=(f"10.30.0.{index}", 161)):
+            entered += 1
+            if entered == 160:
+                started.set()
+            await release.wait()
+
+    holders = [asyncio.create_task(hold(index)) for index in range(160)]
+    await asyncio.wait_for(started.wait(), timeout=1)
+
+    async def wait_for_capacity():
+        async with pool.shared_snmp_engine(_usm("authkey-waiting"), target=("10.30.1.1", 161)) as engine:
+            await waiting_release.wait()
+            return engine
+
+    waiting = asyncio.create_task(wait_for_capacity())
+    await asyncio.sleep(0)
+
+    assert waiting.done() is False
+    assert pool.snmp_engine_pool_snapshot()["live_engines"] == 160
+
+    release.set()
+    await asyncio.gather(*holders)
+    for _ in range(100):
+        if pool.snmp_engine_pool_snapshot()["engines"][-1]["in_flight"] == 1:
+            break
+        await asyncio.sleep(0.01)
+    waiting_release.set()
+    engine = await asyncio.wait_for(waiting, timeout=1)
+
+    assert engine is fake_engines[-1]
+    assert pool.snmp_engine_pool_snapshot()["live_engines"] == 160
+
+
+@pytest.mark.asyncio
+async def test_shutdown_wakes_capacity_waiter_without_reopening_engine(fake_engines, settings):
+    settings(max_engines=1, total_target_budget=1)
+    release = asyncio.Event()
+    entered = asyncio.Event()
+
+    async def hold():
+        async with pool.shared_snmp_engine(_usm("authkey-holding"), target=("10.31.0.1", 161)):
+            entered.set()
+            await release.wait()
+
+    holding = asyncio.create_task(hold())
+    await entered.wait()
+    waiting = asyncio.create_task(pool.shared_snmp_engine(_usm("authkey-waiting"), target=("10.31.0.2", 161)).__aenter__())
+    await asyncio.sleep(0)
+    assert waiting.done() is False
+
+    assert pool.close_shared_snmp_engines(reason="server_stop") == 1
+    with pytest.raises(pool.SnmpEnginePoolClosedError):
+        await waiting
+
+    release.set()
+    await holding
+    assert len(fake_engines) == 1
+    assert fake_engines[0].transportDispatcher.closed == 1
+    assert pool.snmp_engine_pool_snapshot()["live_engines"] == 0
+
+
+@pytest.mark.asyncio
+async def test_capacity_wait_cancellation_leaves_no_zombie_acquisition(fake_engines, settings):
+    settings(max_engines=1, total_target_budget=1)
+    release = asyncio.Event()
+    entered = asyncio.Event()
+
+    async def hold():
+        async with pool.shared_snmp_engine(_usm("authkey-holding"), target=("10.32.0.1", 161)):
+            entered.set()
+            await release.wait()
+
+    holding = asyncio.create_task(hold())
+    await entered.wait()
+    waiting = asyncio.create_task(pool.shared_snmp_engine(_usm("authkey-cancelled"), target=("10.32.0.2", 161)).__aenter__())
+    await asyncio.sleep(0)
+    waiting.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await waiting
+
+    assert len(fake_engines) == 1
+    assert pool.snmp_engine_pool_snapshot()["live_engines"] == 1
+    release.set()
+    await holding
+
+    async with pool.shared_snmp_engine(_usm("authkey-after-cancel"), target=("10.32.0.3", 161)):
+        pass
+    assert len(fake_engines) == 2
+    assert pool.snmp_engine_pool_snapshot()["live_engines"] == 1
+
+
+@pytest.mark.asyncio
+async def test_total_target_budget_rotates_an_idle_engine_before_growth(fake_engines, settings):
+    settings(total_target_budget=160)
+
+    for index in range(160):
+        async with pool.shared_snmp_engine(_community(), target=(f"10.40.0.{index}", 161)):
+            pass
+    first = fake_engines[0]
+    assert pool.snmp_engine_pool_snapshot()["total_distinct_targets"] == 160
+
+    async with pool.shared_snmp_engine(_community(), target=("10.40.1.1", 161)) as current:
+        pass
+
+    snapshot = pool.snmp_engine_pool_snapshot()
+    assert current is fake_engines[1]
+    assert first.transportDispatcher.closed == 1
+    assert snapshot["live_engines"] == 1
+    assert snapshot["total_distinct_targets"] == 1
 
 
 def test_scope_key_never_contains_credential_material():
@@ -334,12 +470,12 @@ async def test_lifecycle_logs_use_templates_with_lazy_args_and_no_secrets(fake_e
         assert not kwargs
     rendered = recorder.rendered("info")
     assert rendered[0].startswith("event=snmp_engine_opened scope=community generation=1 active_engines=1 draining_engines=0 init_seconds=")
-    assert rendered[1].startswith("event=snmp_engine_opened scope=v3#1 generation=2 active_engines=2 draining_engines=0 init_seconds=")
+    assert rendered[1].startswith("event=snmp_engine_opened scope=v3 generation=2 active_engines=2 draining_engines=0 init_seconds=")
     assert rendered[2].startswith(
         "event=snmp_engine_closed scope=community generation=1 reason=idle acquisitions=1 distinct_targets=1 lifetime_seconds="
     )
     assert rendered[2].endswith("active_engines=1 draining_engines=0")
-    assert rendered[3].startswith("event=snmp_engine_closed scope=v3#1 generation=2 reason=idle ")
+    assert rendered[3].startswith("event=snmp_engine_closed scope=v3 generation=2 reason=idle ")
     assert all(SECRET not in line and "admin" not in line for line in rendered)
 
 
@@ -374,11 +510,25 @@ async def test_close_failure_logs_single_warning_without_traceback(monkeypatch):
 def test_settings_from_env_defaults_and_validation(monkeypatch):
     monkeypatch.delenv("SNMP_ENGINE_MAX_TARGETS", raising=False)
     monkeypatch.delenv("SNMP_ENGINE_IDLE_SECONDS", raising=False)
-    assert pool.SnmpEnginePoolSettings.from_env() == pool.SnmpEnginePoolSettings(max_targets=2000, idle_seconds=300.0)
+    monkeypatch.delenv("SNMP_ENGINE_TOTAL_TARGET_BUDGET", raising=False)
+    monkeypatch.delenv("MAX_ACTIVE_TARGETS", raising=False)
+    assert pool.SnmpEnginePoolSettings.from_env() == pool.SnmpEnginePoolSettings(
+        max_targets=2000,
+        idle_seconds=300.0,
+        max_engines=160,
+        total_target_budget=4000,
+    )
 
     monkeypatch.setenv("SNMP_ENGINE_MAX_TARGETS", "50")
     monkeypatch.setenv("SNMP_ENGINE_IDLE_SECONDS", "1.5")
-    assert pool.SnmpEnginePoolSettings.from_env() == pool.SnmpEnginePoolSettings(max_targets=50, idle_seconds=1.5)
+    monkeypatch.setenv("SNMP_ENGINE_TOTAL_TARGET_BUDGET", "320")
+    monkeypatch.setenv("MAX_ACTIVE_TARGETS", "80")
+    assert pool.SnmpEnginePoolSettings.from_env() == pool.SnmpEnginePoolSettings(
+        max_targets=50,
+        idle_seconds=1.5,
+        max_engines=80,
+        total_target_budget=320,
+    )
 
     for name, value in (
         ("SNMP_ENGINE_MAX_TARGETS", "0"),
@@ -387,12 +537,23 @@ def test_settings_from_env_defaults_and_validation(monkeypatch):
         ("SNMP_ENGINE_IDLE_SECONDS", "0"),
         ("SNMP_ENGINE_IDLE_SECONDS", "-1"),
         ("SNMP_ENGINE_IDLE_SECONDS", "soon"),
+        ("SNMP_ENGINE_TOTAL_TARGET_BUDGET", "0"),
+        ("SNMP_ENGINE_TOTAL_TARGET_BUDGET", "10001"),
+        ("SNMP_ENGINE_TOTAL_TARGET_BUDGET", "many"),
+        ("MAX_ACTIVE_TARGETS", "0"),
+        ("MAX_ACTIVE_TARGETS", "161"),
     ):
         monkeypatch.setenv("SNMP_ENGINE_MAX_TARGETS", "50")
         monkeypatch.setenv("SNMP_ENGINE_IDLE_SECONDS", "1.5")
+        monkeypatch.setenv("SNMP_ENGINE_TOTAL_TARGET_BUDGET", "320")
+        monkeypatch.setenv("MAX_ACTIVE_TARGETS", "80")
         monkeypatch.setenv(name, value)
         with pytest.raises(ValueError, match=name):
             pool.SnmpEnginePoolSettings.from_env()
+
+    for value in (math.inf, math.nan, 3600.1):
+        with pytest.raises(ValueError, match="SNMP_ENGINE_IDLE_SECONDS"):
+            pool.SnmpEnginePoolSettings(idle_seconds=value)
 
 
 @pytest.mark.asyncio

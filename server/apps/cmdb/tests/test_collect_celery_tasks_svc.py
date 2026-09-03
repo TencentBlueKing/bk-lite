@@ -599,10 +599,6 @@ def test_sync_collect_task_no_data_marks_error(monkeypatch):
         team=[1],
         instances=[{"_id": "i1", "model_id": "mysql", "inst_name": "db1"}],
     )
-    monkeypatch.setattr(
-        "apps.cmdb.services.collect_dispatch_service.CollectDispatchService.should_dispatch",
-        staticmethod(lambda inst: False),
-    )
 
     class FakeCollect:
         def __init__(self, task):
@@ -630,10 +626,6 @@ def test_node_mgmt_collect_bounds_raw_rows_before_persistence_and_keeps_true_cou
         instances=[{"ip_addr": "10.10.24.11"}],
         is_system=True,
         system_code="node_mgmt_sync_host_collect_7",
-    )
-    monkeypatch.setattr(
-        "apps.cmdb.services.collect_dispatch_service.CollectDispatchService.should_dispatch",
-        staticmethod(lambda inst: False),
     )
     monkeypatch.setattr(ct, "_NODE_MGMT_RAW_DATA_MAX_ROWS", 2)
 
@@ -707,10 +699,6 @@ def test_node_mgmt_collect_enforces_raw_byte_limit_before_persistence(monkeypatc
         is_system=True,
         system_code="node_mgmt_sync_host_collect_7",
     )
-    monkeypatch.setattr(
-        "apps.cmdb.services.collect_dispatch_service.CollectDispatchService.should_dispatch",
-        staticmethod(lambda inst: False),
-    )
     monkeypatch.setattr(ct, "_NODE_MGMT_RAW_DATA_MAX_BYTES", 1)
 
     class FakeCollect:
@@ -754,10 +742,6 @@ def test_sync_collect_task_skips_when_task_is_already_running(monkeypatch):
     monkeypatch.setattr(
         "apps.cmdb.services.collect_service.CollectModelService.repair_host_cloud_snapshot",
         lambda instance: None,
-    )
-    monkeypatch.setattr(
-        "apps.cmdb.services.collect_dispatch_service.CollectDispatchService.should_dispatch",
-        staticmethod(lambda inst: (_ for _ in ()).throw(AssertionError("dispatch decision should not run"))),
     )
     monkeypatch.setattr(
         ct,
@@ -889,7 +873,6 @@ def test_beat_request_id_deduplicates_redelivery_and_allows_next_period(monkeypa
         team=[1],
     )
     executions = []
-    monkeypatch.setattr(ct.CollectDispatchService, "should_dispatch", staticmethod(lambda instance: False))
     monkeypatch.setattr(
         "apps.cmdb.services.collect_service.CollectModelService.repair_host_cloud_snapshot",
         lambda instance: None,
@@ -1050,10 +1033,6 @@ def test_sync_collect_task_handles_collect_exception(monkeypatch):
         team=[1],
         instances=[{"_id": "i1", "model_id": "mysql", "inst_name": "db1"}],
     )
-    monkeypatch.setattr(
-        "apps.cmdb.services.collect_dispatch_service.CollectDispatchService.should_dispatch",
-        staticmethod(lambda inst: False),
-    )
 
     class FakeCollect:
         def __init__(self, task):
@@ -1090,11 +1069,6 @@ def test_repair_snapshot_exception_closes_owned_execution_and_same_delivery_does
         "apps.cmdb.services.collect_service.CollectModelService.repair_host_cloud_snapshot",
         broken_repair,
     )
-    monkeypatch.setattr(
-        ct.CollectDispatchService,
-        "should_dispatch",
-        staticmethod(lambda instance: (_ for _ in ()).throw(AssertionError("collection must not start"))),
-    )
 
     ct.sync_collect_task(task.id, execution_id="execution-repair")
     ct.sync_collect_task(task.id, execution_id="execution-repair")
@@ -1118,10 +1092,6 @@ def test_sync_collect_task_handles_numeric_exception_with_traceback(monkeypatch)
         cycle_value_type="cycle",
         team=[1],
         instances=[{"_id": "i1", "model_id": "mysql", "inst_name": "db1"}],
-    )
-    monkeypatch.setattr(
-        "apps.cmdb.services.collect_dispatch_service.CollectDispatchService.should_dispatch",
-        staticmethod(lambda inst: False),
     )
 
     class FakeCollect:
@@ -1157,7 +1127,6 @@ def test_sync_collect_task旧worker成功不能覆盖新execution(monkeypatch):
         team=[1],
         instances=[{"_id": "i1", "model_id": "mysql", "inst_name": "db1"}],
     )
-    monkeypatch.setattr(ct.CollectDispatchService, "should_dispatch", staticmethod(lambda inst: False))
     monkeypatch.setattr(
         "apps.cmdb.services.collect_service.CollectModelService.repair_host_cloud_snapshot",
         lambda instance: None,
@@ -1206,7 +1175,6 @@ def test_sync_collect_task旧worker异常不能覆盖新execution(monkeypatch):
         team=[1],
         instances=[{"_id": "i1", "model_id": "mysql", "inst_name": "db1"}],
     )
-    monkeypatch.setattr(ct.CollectDispatchService, "should_dispatch", staticmethod(lambda inst: False))
     monkeypatch.setattr(
         "apps.cmdb.services.collect_service.CollectModelService.repair_host_cloud_snapshot",
         lambda instance: None,
@@ -1235,50 +1203,32 @@ def test_sync_collect_task旧worker异常不能覆盖新execution(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_config_file_pending不能覆盖同execution回调终态(monkeypatch):
+def test_sync_collect_task_skips_telegraf_managed_config_file(monkeypatch):
     task = CollectModels.objects.create(
         name="config-callback-wins",
         task_type=CollectPluginTypes.CONFIG_FILE,
-        model_id="host",
+        model_id="config_file",
         driver_type="job",
         cycle_value_type="cycle",
         team=[1],
         instances=[{"_id": "i1", "model_id": "host", "inst_name": "host1"}],
+        collect_data={"kept": True},
+        collect_digest={"kept": True},
     )
-    monkeypatch.setattr(ct.CollectDispatchService, "should_dispatch", staticmethod(lambda inst: False))
     monkeypatch.setattr(
-        "apps.cmdb.services.collect_service.CollectModelService.repair_host_cloud_snapshot",
-        lambda instance: None,
+        ct,
+        "JobCollect",
+        lambda task: (_ for _ in ()).throw(AssertionError("配置文件任务不应进入 Server 采集链")),
     )
 
-    class FakeCollect:
-        def __init__(self, task):
-            self.task = task
-
-        def main(self):
-            CollectModels.objects.filter(id=self.task.id).update(
-                exec_status=CollectRunStatusType.SUCCESS,
-                collect_data={"owner": "callback"},
-                collect_digest={"owner": "callback"},
-            )
-            return {"config_file": {"status": "pending"}}, {
-                "add": [],
-                "update": [],
-                "delete": [],
-                "association": [],
-                "__raw_data__": [],
-            }
-
-    monkeypatch.setattr(ct, "JobCollect", FakeCollect)
-
-    ct.sync_collect_task(task.id, execution_id="execution-A")
+    result = ct.sync_collect_task(task.id, execution_id="execution-A")
 
     task.refresh_from_db()
-    assert task.task_id == "execution-A"
-    assert task.exec_status == CollectRunStatusType.SUCCESS
-    assert task.collect_data == {"owner": "callback"}
-    assert task.collect_digest == {"owner": "callback"}
-    assert task.execution_claim_token is None
+    assert result == {"status": "telegraf_managed", "task_id": task.id}
+    assert task.task_id is None
+    assert task.exec_status == CollectRunStatusType.NOT_START
+    assert task.collect_data == {"kept": True}
+    assert task.collect_digest == {"kept": True}
 
 
 @pytest.mark.django_db

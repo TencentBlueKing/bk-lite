@@ -2,7 +2,7 @@ import logging
 
 import pytest
 
-from apps.cmdb.constants.constants import CollectDriverTypes, CollectPluginTypes, CollectRunStatusType
+from apps.cmdb.constants.constants import CollectPluginTypes, CollectRunStatusType
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.tasks import celery_tasks as collect_tasks
 
@@ -21,26 +21,9 @@ def _create_protocol_task(name: str) -> CollectModels:
     )
 
 
-def _create_config_file_task(name: str) -> CollectModels:
-    return CollectModels.objects.create(
-        name=name,
-        task_type=CollectPluginTypes.CONFIG_FILE,
-        driver_type=CollectDriverTypes.JOB,
-        model_id="host",
-        cycle_value_type="cycle",
-        credential={"credential_id": "credential-1"},
-        instances=[{"_id": "host-1", "model_id": "host", "inst_name": "host-1"}],
-    )
-
-
 @pytest.mark.django_db
 def test_collect_execution_failure_has_owned_error_and_correlated_terminal_summary(monkeypatch, caplog):
     task = _create_protocol_task("diagnosability-execution-failure")
-    monkeypatch.setattr(
-        collect_tasks.CollectDispatchService,
-        "should_dispatch",
-        staticmethod(lambda _task: False),
-    )
 
     class FailingProtocolCollect:
         def __init__(self, task):
@@ -80,11 +63,6 @@ def test_collect_execution_failure_has_owned_error_and_correlated_terminal_summa
 @pytest.mark.django_db
 def test_collect_result_persistence_failure_identifies_stage_and_preserves_error_state(monkeypatch, caplog):
     task = _create_protocol_task("diagnosability-persistence-failure")
-    monkeypatch.setattr(
-        collect_tasks.CollectDispatchService,
-        "should_dispatch",
-        staticmethod(lambda _task: False),
-    )
 
     class MalformedProtocolCollect:
         def __init__(self, task):
@@ -124,33 +102,3 @@ def test_collect_result_persistence_failure_identifies_stage_and_preserves_error
     assert "status=ERROR" in summaries[0].getMessage()
     assert "failed_stage=result_persistence" in summaries[0].getMessage()
     assert "result_persisted=True" in summaries[0].getMessage()
-
-
-@pytest.mark.django_db
-def test_collect_config_callback_pending_is_an_info_outcome(monkeypatch, caplog):
-    task = _create_config_file_task("diagnosability-callback-pending")
-    monkeypatch.setattr(
-        collect_tasks.CollectDispatchService,
-        "should_dispatch",
-        staticmethod(lambda _task: False),
-    )
-
-    class PendingConfigFileCollect:
-        def __init__(self, task):
-            self.task = task
-
-        def main(self):
-            return {"config_file": {"status": "pending"}}, {}
-
-    monkeypatch.setattr(collect_tasks, "JobCollect", PendingConfigFileCollect)
-    caplog.set_level(logging.INFO, logger="cmdb")
-
-    collect_tasks.sync_collect_task(task.id, execution_id="execution-log-3")
-
-    task.refresh_from_db()
-    assert task.exec_status == CollectRunStatusType.RUNNING
-    summaries = [record for record in caplog.records if "event=collect_task_execution_finished" in record.getMessage()]
-    assert len(summaries) == 1
-    assert summaries[0].levelno == logging.INFO
-    assert "status=RUNNING" in summaries[0].getMessage()
-    assert "callback_pending=True" in summaries[0].getMessage()

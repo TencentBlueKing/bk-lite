@@ -795,6 +795,49 @@ async def test_configuration_failure_with_callback_keeps_callback_contract():
 
 
 @pytest.mark.asyncio
+async def test_callback_transport_failure_is_reported_without_metrics_fallback():
+    metrics_called = False
+
+    async def failed_callback(*_args):
+        raise ConnectionError("control nats unavailable")
+
+    async def unexpected_metrics(*_args):
+        nonlocal metrics_called
+        metrics_called = True
+
+    publisher = NatsResultPublisher(
+        metrics_publish=unexpected_metrics,
+        callback_publish=failed_callback,
+    )
+    request = CollectionRequest(
+        task_id="config-callback-transport-failure",
+        plugin_ref="config_file.config",
+        targets=("10.10.24.2",),
+        params={"callback_subject": "receive_config_file_result"},
+    )
+    lease = RunLease(
+        task_id=request.task_id,
+        request_digest=request.digest,
+        owner_id="pod-a",
+        fence=5,
+        expires_at=999999,
+        attempt_id="run-attempt-1",
+    )
+    result = TargetCollectionResult(
+        target="10.10.24.2",
+        status="success",
+        attempts=1,
+        value={"status": "success"},
+    )
+
+    outcomes = await publisher.publish_batch(((request, result, lease),))
+
+    assert metrics_called is False
+    assert len(outcomes) == 1
+    assert isinstance(next(iter(outcomes.values())), ConnectionError)
+
+
+@pytest.mark.asyncio
 async def test_buffered_publisher_can_run_multiple_publish_batches_concurrently():
     release = asyncio.Event()
 

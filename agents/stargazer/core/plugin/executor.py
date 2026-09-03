@@ -58,6 +58,7 @@ class PluginExecutor:
         self.fallback_executor_config = fallback_executor_config
         self.strict_enterprise = strict_enterprise
         self._collector_class = collector_class
+        self._collector_instance = None
 
     @classmethod
     async def prepare(
@@ -130,6 +131,8 @@ class PluginExecutor:
         return result
 
     async def _prepare_collector(self):
+        if self._collector_instance is not None:
+            return self._collector_instance
         collector_class = self._collector_class
         if collector_class is None:
             collector_info = self.executor_config.get_collector_info()
@@ -151,7 +154,8 @@ class PluginExecutor:
                 raise ValueError(f"Script not found for os_type '{os_type}'. " f"Available: {self.executor_config.list_available_os()}")
             collector_params["script_path"] = script_path
             logger.debug("Script path: %s", safe_log_value(script_path, max_length=255))
-        return await asyncio.to_thread(collector_class, collector_params)
+        self._collector_instance = await asyncio.to_thread(collector_class, collector_params)
+        return self._collector_instance
 
     def _determine_os_type(self) -> str:
         """

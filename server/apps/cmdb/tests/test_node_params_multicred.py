@@ -386,7 +386,7 @@ def test_network_topo_node_params_carries_topology_contract():
     assert node.tags["collection_role"] == "topology"
 
 
-def test_config_file_node_params_carries_execution_id():
+def test_config_file_node_params_does_not_carry_celery_execution_id():
     from apps.cmdb.node_configs.ssh.config_file import ConfigFileNodeParams
 
     instance = SimpleNamespace(
@@ -400,13 +400,75 @@ def test_config_file_node_params_carries_execution_id():
         params={"config_file_path": "/etc/app.conf"},
         timeout=60,
         access_point=[{"id": 3}],
-        instances=[{"_id": "inst-1", "model_id": "host", "ip_addr": "10.0.0.10"}],
+        instances=[
+            {
+                "_id": "inst-1",
+                "inst_uuid": "123e4567-e89b-42d3-a456-426614174000",
+                "model_id": "host",
+                "ip_addr": "10.0.0.10",
+            }
+        ],
         ip_range="",
     )
 
     credential = ConfigFileNodeParams(instance).set_credential()
 
-    assert credential["execution_id"] == "execution-current"
+    assert "execution_id" not in credential
+    assert credential["collect_task_id"] == 96
+    assert credential["callback_subject"] == "receive_config_file_result"
+
+
+def test_config_file_node_params_builds_one_telegraf_config_per_host():
+    from apps.cmdb.node_configs.ssh.config_file import ConfigFileNodeParams
+
+    instance = SimpleNamespace(
+        id=96,
+        task_id="legacy-execution",
+        model_id="config_file",
+        driver_type="job",
+        decrypt_credentials=[
+            {"credential_id": "cred-1", "username": "admin", "password": "secret", "port": 22},
+        ],
+        params={"config_file_path": "/etc/app.conf"},
+        timeout=60,
+        access_point=[{"id": 3}],
+        instances=[
+            {
+                "_id": "inst-1",
+                "inst_uuid": "123e4567-e89b-42d3-a456-426614174000",
+                "model_id": "host",
+                "ip_addr": "10.0.0.10",
+            },
+            {
+                "_id": "inst-2",
+                "inst_uuid": "223e4567-e89b-42d3-a456-426614174000",
+                "model_id": "host",
+                "ip_addr": "10.0.0.11",
+                "cloud_id": "cloud-a",
+            },
+        ],
+        ip_range="",
+        cycle_value_type="cycle",
+        cycle_value="10",
+    )
+
+    node = ConfigFileNodeParams(instance)
+    configs = node.push_params()
+
+    assert [item["id"] for item in configs] == [
+        "cmdb_96_123e4567e89b42d3a456426614174000",
+        "cmdb_96_223e4567e89b42d3a456426614174000",
+    ]
+    assert '"cmdbhosts" = "10.0.0.10"' in configs[0]["content"]
+    assert '"cmdbtarget_instance_uuid" = "123e4567-e89b-42d3-a456-426614174000"' in configs[0]["content"]
+    assert '"cmdbhosts" = "10.0.0.11[cloud-a]"' in configs[1]["content"]
+    assert '"cmdbtarget_instance_uuid" = "223e4567-e89b-42d3-a456-426614174000"' in configs[1]["content"]
+    assert all('namedrop = ["collection_request_accepted"]' in item["content"] for item in configs)
+    assert node.delete_params() == [
+        "cmdb_96",
+        "cmdb_96_123e4567e89b42d3a456426614174000",
+        "cmdb_96_223e4567e89b42d3a456426614174000",
+    ]
 
 
 def test_network_node_params_topology_protocols_header_is_agent_parseable():

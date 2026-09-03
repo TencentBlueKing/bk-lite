@@ -131,13 +131,13 @@ async def test_snmp_facts_collect_does_not_stall(monkeypatch):
         await asyncio.sleep(0.05)
         return (None, 0, 0, _system_var_binds())
 
-    async def fake_next(engine, *_args, **_kwargs):
+    async def fake_bulk(engine, *_args, **_kwargs):
         io_engines.append(engine)
         await asyncio.sleep(0.05)
         return (None, 0, 0, [])
 
     monkeypatch.setattr("plugins.inputs.network.snmp_facts.getCmd", fake_get)
-    monkeypatch.setattr("plugins.inputs.network.snmp_facts.nextCmd", fake_next)
+    monkeypatch.setattr("plugins.inputs.network.snmp_facts.bulkCmd", fake_bulk)
     result = await _heartbeat_during(facts.list_all_resources())
     assert result["success"] is True
     assert result["result"]["network_system"][0]["sysname"] == "sw"
@@ -149,6 +149,145 @@ async def test_snmp_facts_collect_does_not_stall(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_snmp_facts_collect_rejects_system_get_error_status(monkeypatch):
+    _install_fake_engines(monkeypatch)
+    bulk_calls = 0
+
+    async def failed_get(*_args, **_kwargs):
+        return (None, "genErr", 1, [])
+
+    async def unexpected_bulk(*_args, **_kwargs):
+        nonlocal bulk_calls
+        bulk_calls += 1
+        return (None, 0, 0, [])
+
+    monkeypatch.setattr("plugins.inputs.network.snmp_facts.getCmd", failed_get)
+    monkeypatch.setattr("plugins.inputs.network.snmp_facts.bulkCmd", unexpected_bulk)
+
+    with pytest.raises(RuntimeError, match="SNMP system GET failed: genErr"):
+        await SnmpFacts({"host": "127.0.0.1", "version": "v2c", "community": "public"}).collect()
+
+    assert bulk_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_snmp_facts_interface_walk_uses_getbulk_with_bounded_repetitions(monkeypatch):
+    _install_fake_engines(monkeypatch)
+    captured = {}
+
+    async def fake_get(*_args, **_kwargs):
+        return (None, 0, 0, _system_var_binds())
+
+    async def fake_bulk(_engine, _auth, _target, _context, non_repeaters, max_repetitions, *_oids, **_kwargs):
+        captured["non_repeaters"] = non_repeaters
+        captured["max_repetitions"] = max_repetitions
+        return (None, 0, 0, [])
+
+    async def unexpected_next(*_args, **_kwargs):
+        raise AssertionError("GETNEXT must not run on a successful GETBULK walk")
+
+    monkeypatch.setattr("plugins.inputs.network.snmp_facts.getCmd", fake_get)
+    monkeypatch.setattr("plugins.inputs.network.snmp_facts.bulkCmd", fake_bulk)
+    monkeypatch.setattr("plugins.inputs.network.snmp_facts.nextCmd", unexpected_next)
+
+    result = await SnmpFacts({"host": "127.0.0.1", "version": "v2c", "community": "public"}).collect()
+
+    assert result["interfaces"] == []
+    assert captured == {"non_repeaters": 0, "max_repetitions": 25}
+
+
+@pytest.mark.asyncio
+async def test_snmp_facts_getbulk_reduces_repetitions_before_getnext_fallback(monkeypatch):
+    _install_fake_engines(monkeypatch)
+    repetitions = []
+    next_calls = 0
+
+    async def fake_get(*_args, **_kwargs):
+        return (None, 0, 0, _system_var_binds())
+
+    async def too_big_bulk(_engine, _auth, _target, _context, _non_repeaters, max_repetitions, *_oids, **_kwargs):
+        repetitions.append(max_repetitions)
+        return (None, "tooBig", 1, [])
+
+    async def fallback_next(*_args, **_kwargs):
+        nonlocal next_calls
+        next_calls += 1
+        return (None, 0, 0, [])
+
+    monkeypatch.setattr("plugins.inputs.network.snmp_facts.getCmd", fake_get)
+    monkeypatch.setattr("plugins.inputs.network.snmp_facts.bulkCmd", too_big_bulk)
+    monkeypatch.setattr("plugins.inputs.network.snmp_facts.nextCmd", fallback_next)
+
+    result = await SnmpFacts({"host": "127.0.0.1", "version": "v2c", "community": "public"}).collect()
+
+    assert result["interfaces"] == []
+    assert repetitions == [25, 12, 6, 3, 1]
+    assert next_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_snmp_facts_getbulk_non_increasing_oid_falls_back_once(monkeypatch):
+    _install_fake_engines(monkeypatch)
+    roots = (
+        "1.3.6.1.2.1.2.2.1.1",
+        "1.3.6.1.2.1.2.2.1.2",
+        "1.3.6.1.2.1.2.2.1.4",
+        "1.3.6.1.2.1.2.2.1.5",
+        "1.3.6.1.2.1.2.2.1.6",
+        "1.3.6.1.2.1.2.2.1.7",
+        "1.3.6.1.2.1.2.2.1.8",
+        "1.3.6.1.2.1.31.1.1.1.18",
+    )
+    repeated_row = [(FakeOid(f"{root}.1"), FakeVal("value")) for root in roots]
+    next_calls = 0
+
+    async def fake_get(*_args, **_kwargs):
+        return (None, 0, 0, _system_var_binds())
+
+    async def non_increasing_bulk(*_args, **_kwargs):
+        return (None, 0, 0, [repeated_row, repeated_row])
+
+    async def fallback_next(*_args, **_kwargs):
+        nonlocal next_calls
+        next_calls += 1
+        return (None, 0, 0, [])
+
+    monkeypatch.setattr("plugins.inputs.network.snmp_facts.getCmd", fake_get)
+    monkeypatch.setattr("plugins.inputs.network.snmp_facts.bulkCmd", non_increasing_bulk)
+    monkeypatch.setattr("plugins.inputs.network.snmp_facts.nextCmd", fallback_next)
+
+    result = await SnmpFacts({"host": "127.0.0.1", "version": "v2c", "community": "public"}).collect()
+
+    assert result["interfaces"] == []
+    assert next_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_snmp_facts_getbulk_response_bytes_are_bounded(monkeypatch):
+    _install_fake_engines(monkeypatch)
+    facts = SnmpFacts({"host": "127.0.0.1", "version": "v2c", "community": "public"})
+
+    async def oversized_bulk(*_args, **_kwargs):
+        return (
+            None,
+            0,
+            0,
+            [[(FakeOid("1.3.6.1.2.1.2.2.1.1.1"), FakeVal("oversized"))]],
+        )
+
+    monkeypatch.setattr("plugins.inputs.network.snmp_facts.bulkCmd", oversized_bulk)
+    error, status, _index, rows = await facts._bulk_walk(
+        object(),
+        ["1.3.6.1.2.1.2.2.1.1"],
+        max_response_bytes=1,
+    )
+
+    assert status == 0
+    assert rows == []
+    assert "response byte limit exceeded" in str(error)
+
+
+@pytest.mark.asyncio
 async def test_snmp_facts_walk_failure_keeps_shared_engine_for_next_target(monkeypatch):
     engines, closed = _install_fake_engines(monkeypatch)
     io_engines = []
@@ -157,15 +296,15 @@ async def test_snmp_facts_walk_failure_keeps_shared_engine_for_next_target(monke
         io_engines.append(engine)
         return (None, 0, 0, [])
 
-    async def broken_next(*_args, **_kwargs):
+    async def broken_bulk(*_args, **_kwargs):
         raise RuntimeError("walk failed")
 
-    async def fake_next(engine, *_args, **_kwargs):
+    async def fake_bulk(engine, *_args, **_kwargs):
         io_engines.append(engine)
         return (None, 0, 0, [])
 
     monkeypatch.setattr("plugins.inputs.network.snmp_facts.getCmd", fake_get)
-    monkeypatch.setattr("plugins.inputs.network.snmp_facts.nextCmd", broken_next)
+    monkeypatch.setattr("plugins.inputs.network.snmp_facts.bulkCmd", broken_bulk)
 
     facts = SnmpFacts({"host": "127.0.0.1", "version": "v2", "community": "public"})
     with pytest.raises(RuntimeError, match="SNMP interface information collection"):
@@ -174,7 +313,7 @@ async def test_snmp_facts_walk_failure_keeps_shared_engine_for_next_target(monke
     assert closed == []
     assert snmp_engine_pool.snmp_engine_pool_snapshot()["engines"][0]["in_flight"] == 0
 
-    monkeypatch.setattr("plugins.inputs.network.snmp_facts.nextCmd", fake_next)
+    monkeypatch.setattr("plugins.inputs.network.snmp_facts.bulkCmd", fake_bulk)
     next_facts = SnmpFacts({"host": "127.0.0.2", "version": "v2", "community": "public"})
     result = await next_facts.collect()
     assert result["system"]["ip_addr"] == "127.0.0.2"
@@ -195,13 +334,13 @@ async def test_snmp_facts_collect_and_probe_share_one_engine_per_process(monkeyp
         await asyncio.sleep(0.01)
         return (None, 0, 0, _system_var_binds())
 
-    async def fake_next(engine, *_args, **_kwargs):
+    async def fake_bulk(engine, *_args, **_kwargs):
         io_engines.append(engine)
         await asyncio.sleep(0.01)
         return (None, 0, 0, [])
 
     monkeypatch.setattr("plugins.inputs.network.snmp_facts.getCmd", fake_get)
-    monkeypatch.setattr("plugins.inputs.network.snmp_facts.nextCmd", fake_next)
+    monkeypatch.setattr("plugins.inputs.network.snmp_facts.bulkCmd", fake_bulk)
 
     def make(host):
         return SnmpFacts({"host": host, "version": "v2c", "community": "public", "snmp_port": 161})
@@ -257,9 +396,12 @@ async def test_snmp_topo_bulk_walk_and_fallback_share_one_engine(monkeypatch):
         io_engines.append(engine)
         return (None, 0, 0, [])
 
-    monkeypatch.setattr("plugins.inputs.network_topo.snmp_topo.hlapi_bulk_cmd", fake_bulk)
-    monkeypatch.setattr("plugins.inputs.network_topo.snmp_topo.hlapi_next_cmd", fake_next)
-    monkeypatch.setattr("plugins.inputs.network_topo.snmp_topo.hlapi_get_cmd", fake_get)
+    # 其他测试可能重载 network_topo module；直接替换方法实际使用的 globals，
+    # 避免顶层导入的 SnmpTopo 类仍引用旧 module dict。
+    method_globals = SnmpTopo._bulk_walk_all_with_engine.__globals__
+    monkeypatch.setitem(method_globals, "hlapi_bulk_cmd", fake_bulk)
+    monkeypatch.setitem(method_globals, "hlapi_next_cmd", fake_next)
+    monkeypatch.setitem(method_globals, "hlapi_get_cmd", fake_get)
 
     first = SnmpTopo({"host": "127.0.0.1", "version": "v2c", "community": "public"})
     second = SnmpTopo({"host": "127.0.0.2", "version": "v2c", "community": "public"})

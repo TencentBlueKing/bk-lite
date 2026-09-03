@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 from core.collection.application import CollectionApplication
 from core.collection.capacity_observer import CapacityUsageReporter
+from core.collection.enums import WorkloadClass
 
 
 @pytest.mark.asyncio
@@ -44,7 +45,20 @@ async def test_capacity_reporter_stop_is_idempotent_before_start():
     await reporter.stop()
 
 
-def test_application_capacity_snapshot_exposes_derived_values_for_health_metrics():
+def test_application_capacity_snapshot_exposes_derived_values_for_health_metrics(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "core.collection.application.snmp_engine_pool_snapshot",
+        lambda: {
+            "live_engines": 2,
+            "active_engines": 1,
+            "draining_engines": 1,
+            "max_engines": 160,
+            "total_distinct_targets": 800,
+            "total_target_budget": 4000,
+        },
+    )
     application = SimpleNamespace(
         active_runs=3,
         runtime=SimpleNamespace(active_runs=3),
@@ -57,15 +71,28 @@ def test_application_capacity_snapshot_exposes_derived_values_for_health_metrics
             pending_runs=4,
             completed=600,
             completed_total=1800,
+            pending_by_workload={workload: 0 for workload in WorkloadClass},
+            borrowed_by_workload={workload: 0 for workload in WorkloadClass},
+            pending_by_capacity_group={},
+            capacity_group_limits={},
+            active_by_capacity_group={},
+            active_by_workload={workload: 0 for workload in WorkloadClass},
         ),
         settings=SimpleNamespace(
             max_active_targets=150,
+            configuration_max_active_targets=100,
+            monitoring_max_active_targets=30,
             network_topology_max_active_targets=50,
             target_task_window=150,
         ),
         _target_activity=SimpleNamespace(active=110),
         _publisher=SimpleNamespace(queue_depth=45, capacity=150, current_batch_age_seconds=1.25),
-        _metrics=SimpleNamespace(snapshot=lambda: {"publish_queue_residence_seconds_p99": 2.5}),
+        _metrics=SimpleNamespace(
+            snapshot=lambda: {
+                "publish_queue_residence_seconds_p99": 2.5,
+                "result_deliveries_pending": 23,
+            }
+        ),
         _loop_lag=SimpleNamespace(latest_seconds=0.008, p99_seconds=0.035),
         _resource_sampler=SimpleNamespace(
             sample=lambda: {
@@ -90,6 +117,12 @@ def test_application_capacity_snapshot_exposes_derived_values_for_health_metrics
     assert snapshot["process_cpu_percent"] == 62.5
     assert snapshot["process_rss_mb"] == 384.0
     assert snapshot["cgroup_memory_utilization_percent"] == 37.5
+    assert snapshot["result_deliveries_pending"] == 23
+    assert snapshot["snmp_live_engines"] == 2
+    assert snapshot["snmp_draining_engines"] == 1
+    assert snapshot["snmp_engine_capacity"] == 160
+    assert snapshot["snmp_distinct_targets"] == 800
+    assert snapshot["snmp_target_budget"] == 4000
 
 
 def test_capacity_log_includes_process_and_cgroup_resources(monkeypatch):

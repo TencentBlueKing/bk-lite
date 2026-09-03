@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import operator
 import time
 from collections import deque
@@ -19,8 +20,9 @@ R = TypeVar("R")
 class _RunState(Generic[T, R]):
     items: Iterator[T]
     handler: Callable[[T], Awaitable[R]]
-    results: list[R | None]
+    results: list[R | None] | None
     done: asyncio.Future[tuple[R, ...]]
+    consume_result: Callable[[R], Awaitable[None] | None] | None = None
     workload: WorkloadClass = WorkloadClass.CONFIGURATION
     capacity_group: str = "default"
     completed: int = 0
@@ -29,6 +31,7 @@ class _RunState(Generic[T, R]):
     first_dispatched: bool = False
     pending: int = 0
     pending_known: bool = True
+    dispatched: int = 0
     tasks: set[asyncio.Task] = field(default_factory=set)
 
 
@@ -137,6 +140,7 @@ class CollectionScheduler:
         *,
         workload: WorkloadClass | str = WorkloadClass.CONFIGURATION,
         capacity_group: str = "default",
+        consume_result: Callable[[R], Awaitable[None] | None] | None = None,
     ) -> tuple[R, ...]:
         loop = asyncio.get_running_loop()
         workload_class = WorkloadClass.CONFIGURATION if workload == "general" else WorkloadClass(workload)
@@ -147,8 +151,9 @@ class CollectionScheduler:
         state = _RunState(
             items=iter(items),
             handler=handler,
-            results=[],
+            results=[] if consume_result is None else None,
             done=loop.create_future(),
+            consume_result=consume_result,
             workload=workload_class,
             capacity_group=capacity_group_name,
             enqueued_at=time.monotonic(),
@@ -209,15 +214,17 @@ class CollectionScheduler:
                     item = next(state.items)
                 except StopIteration:
                     state.exhausted = True
-                    if state.completed == len(state.results) and not state.done.done():
-                        state.done.set_result(tuple(state.results))
+                    if state.completed == state.dispatched and not state.done.done():
+                        state.done.set_result(tuple(state.results or ()))
                         self._runs.pop(run_id, None)
                     continue
-                index = len(state.results)
+                index = state.dispatched
+                state.dispatched += 1
                 state.pending = max(0, state.pending - 1)
                 if state.pending_known and state.pending == 0:
                     state.exhausted = True
-                state.results.append(None)
+                if state.results is not None:
+                    state.results.append(None)
                 dispatched_at = time.monotonic()
                 if not state.first_dispatched:
                     state.first_dispatched = True
@@ -265,6 +272,13 @@ class CollectionScheduler:
             )
         try:
             result = await state.handler(item)
+            if state.consume_result is None:
+                assert state.results is not None
+                state.results[index] = result
+            else:
+                consumed = state.consume_result(result)
+                if inspect.isawaitable(consumed):
+                    await consumed
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # Run 级执行异常由调用方决定状态
@@ -272,11 +286,10 @@ class CollectionScheduler:
                 state.done.set_exception(exc)
             await self._cancel_run(run_id, exclude=current)
         else:
-            state.results[index] = result
             state.completed += 1
             self.completed_total += 1
-            if state.exhausted and state.completed == len(state.results) and not state.done.done():
-                state.done.set_result(tuple(state.results))
+            if state.exhausted and state.completed == state.dispatched and not state.done.done():
+                state.done.set_result(tuple(state.results or ()))
                 async with self._condition:
                     self._runs.pop(run_id, None)
         finally:

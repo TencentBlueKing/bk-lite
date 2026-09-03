@@ -50,6 +50,7 @@ def _payload(instances, params=None, credential=None):
         "task_type": CollectPluginTypes.CONFIG_FILE,
         "driver_type": CollectDriverTypes.PROTOCOL,
         "model_id": "network_config_file",
+        "is_interval": True,
         "access_point": [{"id": 1}],
         "instances": instances,
         "cycle_value_type": "interval",
@@ -126,3 +127,13 @@ def test_network_config_file_serializer_disables_enable_mode_without_enable_pass
 
     assert serializer.is_valid(), serializer.errors
     assert serializer.validated_data["params"]["need_enable"] is False
+
+
+def test_network_config_file_serializer_rejects_non_periodic_task():
+    payload = _payload([{"model_id": "switch", "brand": "Cisco", "ip_addr": "10.0.0.1"}])
+    payload["is_interval"] = False
+
+    serializer = _serializer(payload)
+
+    assert not serializer.is_valid()
+    assert "仅支持周期执行" in str(serializer.errors)

@@ -4,6 +4,9 @@
     timeout = "{{ telegraf_timeout | default(60, true) }}s"
     response_timeout = "{{ response_timeout | default(60, true) }}s"
     http_headers = {{ headers | default({}) | to_toml }}
+{% if drop_trigger_metric %}
+    namedrop = ["collection_request_accepted"]
+{% endif %}
     [inputs.prometheus.tags]
         instance_id = "{{ instance_id }}"
         instance_type = "{{ instance_type }}"

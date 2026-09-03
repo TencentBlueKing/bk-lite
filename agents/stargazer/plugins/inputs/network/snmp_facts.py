@@ -3,6 +3,7 @@
 # @Time: 2025/3/20 17:30
 # @Author: windyzhao
 
+import asyncio
 import socket
 import time
 
@@ -15,6 +16,7 @@ from pysnmp.hlapi.asyncio import (
     ObjectType,
     UdpTransportTarget,
     UsmUserData,
+    bulkCmd,
     getCmd,
     nextCmd,
     usmAesCfb128Protocol,
@@ -69,6 +71,19 @@ def _as_object_types(oids):
     return [ObjectType(ObjectIdentity(str(oid).lstrip("."))) for oid in oids]
 
 
+def _oid_sort_key(oid) -> tuple[int, ...]:
+    try:
+        return tuple(int(part) for part in _oid_text(oid).split("."))
+    except ValueError:
+        return ()
+
+
+def _var_bind_size(name, value) -> int:
+    pretty_print = getattr(value, "prettyPrint", None)
+    rendered = pretty_print() if callable(pretty_print) else str(value)
+    return len(_oid_text(name).encode("utf-8")) + len(str(rendered).encode("utf-8"))
+
+
 class SnmpFacts:
     """
     SNMP 数据采集类，支持 SNMP v2 和 v3 协议。
@@ -90,6 +105,7 @@ class SnmpFacts:
         self.retries = 1
         self.snmp_port = int(kwargs.get("snmp_port", 161))  # 默认 SNMP 端口为 161
         self._runtime_metrics = kwargs.get("_runtime_metrics")
+        self._probed_system_var_binds = None
 
         # 校验参数
         self._validate_params()
@@ -166,7 +182,19 @@ class SnmpFacts:
             retries=self.retries if retries is None else retries,
         )
 
-    async def _next_walk(self, engine, oids, *, timeout=None, retries=None, lexicographic_mode=False):
+    async def _next_walk(
+        self,
+        engine,
+        oids,
+        *,
+        timeout=None,
+        retries=None,
+        lexicographic_mode=False,
+        max_pdus=20000,
+        max_rows=20000,
+        max_response_bytes=16 * 1024 * 1024,
+        deadline_seconds=60,
+    ):
         """
         原生异步 GETNEXT 遍历，行为对齐 oneliner CommandGenerator.nextCmd
         （默认 lexicographicMode=False）。
@@ -177,22 +205,33 @@ class SnmpFacts:
         var_binds = _as_object_types(oids)
         initial_roots = [str(oid).lstrip(".") for oid in oids]
         var_bind_table = []
+        previous_oid_keys = [_oid_sort_key(root) for root in initial_roots]
+        response_bytes = 0
+        pdu_count = 0
+        deadline = asyncio.get_running_loop().time() + deadline_seconds
 
         while var_binds:
+            pdu_count += 1
+            if pdu_count > max_pdus:
+                return RuntimeError("GETNEXT PDU limit exceeded"), 0, 0, var_bind_table
             previous_var_binds = var_binds
-            (
-                error_indication,
-                error_status,
-                error_index,
-                response_table,
-            ) = await nextCmd(
-                engine,
-                auth,
-                target,
-                context,
-                *var_binds,
-                lookupMib=False,
-            )
+            try:
+                async with asyncio.timeout_at(deadline):
+                    (
+                        error_indication,
+                        error_status,
+                        error_index,
+                        response_table,
+                    ) = await nextCmd(
+                        engine,
+                        auth,
+                        target,
+                        context,
+                        *var_binds,
+                        lookupMib=False,
+                    )
+            except TimeoutError:
+                return RuntimeError("GETNEXT walk deadline exceeded"), 0, 0, var_bind_table
             if error_indication:
                 return error_indication, error_status, error_index, var_bind_table
             if error_status:
@@ -209,6 +248,14 @@ class SnmpFacts:
                     row[col] = (previous_var_binds[col][0], endOfMibView)
                 elif not lexicographic_mode and not _is_prefix_of(initial_roots[col], name):
                     row[col] = (previous_var_binds[col][0], endOfMibView)
+                else:
+                    oid_key = _oid_sort_key(name)
+                    if not oid_key or oid_key <= previous_oid_keys[col]:
+                        return RuntimeError("GETNEXT OID not increasing"), 0, 0, var_bind_table
+                    previous_oid_keys[col] = oid_key
+                    response_bytes += _var_bind_size(name, val)
+                    if response_bytes > max_response_bytes:
+                        return RuntimeError("GETNEXT response byte limit exceeded"), 0, 0, var_bind_table
                 cell_val = row[col][1]
                 if cell_val is not endOfMibView and not isinstance(cell_val, EndOfMibView):
                     stop_flag = False
@@ -217,9 +264,124 @@ class SnmpFacts:
                 break
 
             var_bind_table.append(row)
+            if len(var_bind_table) > max_rows:
+                return RuntimeError("GETNEXT row limit exceeded"), 0, 0, var_bind_table
             var_binds = row
 
         return None, 0, 0, var_bind_table
+
+    async def _bulk_walk(
+        self,
+        engine,
+        oids,
+        *,
+        timeout=None,
+        retries=None,
+        max_repetitions=25,
+        max_pdus=2000,
+        max_rows=20000,
+        max_response_bytes=16 * 1024 * 1024,
+        deadline_seconds=60,
+    ):
+        """使用 GETBULK 遍历多个接口列，并保持每列在自己的根 OID 内。"""
+
+        auth = self._get_snmp_auth()
+        target = self._transport_target(timeout=timeout, retries=retries)
+        context = ContextData()
+        var_binds = _as_object_types(oids)
+        initial_roots = [str(oid).lstrip(".") for oid in oids]
+        var_bind_table = []
+        ended = [False] * len(initial_roots)
+        previous_oid_keys = [_oid_sort_key(root) for root in initial_roots]
+        response_bytes = 0
+        pdu_count = 0
+        current_max_repetitions = max_repetitions
+        deadline = asyncio.get_running_loop().time() + deadline_seconds
+
+        while var_binds and not all(ended):
+            pdu_count += 1
+            if pdu_count > max_pdus:
+                return RuntimeError("GETBULK PDU limit exceeded"), 0, 0, var_bind_table
+            previous_var_binds = var_binds
+            try:
+                async with asyncio.timeout_at(deadline):
+                    error_indication, error_status, error_index, response_table = await bulkCmd(
+                        engine,
+                        auth,
+                        target,
+                        context,
+                        0,
+                        current_max_repetitions,
+                        *var_binds,
+                        lookupMib=False,
+                    )
+            except TimeoutError:
+                return RuntimeError("GETBULK walk deadline exceeded"), 0, 0, var_bind_table
+            walk_error = error_indication or error_status
+            if walk_error and self._is_too_big_error(walk_error) and current_max_repetitions > 1:
+                current_max_repetitions = max(1, current_max_repetitions // 2)
+                increment = getattr(self._runtime_metrics, "increment", None)
+                if callable(increment):
+                    increment("snmp_getbulk_repetition_reduced_total")
+                continue
+            if walk_error:
+                return error_indication, error_status, error_index, var_bind_table
+            if not response_table:
+                break
+
+            processed_rows = []
+            for raw_row in response_table:
+                row = list(raw_row)
+                if len(row) != len(initial_roots):
+                    return RuntimeError("GETBULK returned an unexpected column count"), 0, 0, var_bind_table
+                for column, (name, value) in enumerate(row):
+                    if ended[column]:
+                        row[column] = (previous_var_binds[column][0], endOfMibView)
+                    elif isinstance(value, Null) or not _is_prefix_of(initial_roots[column], name):
+                        row[column] = (previous_var_binds[column][0], endOfMibView)
+                        ended[column] = True
+                    else:
+                        oid_key = _oid_sort_key(name)
+                        if not oid_key or oid_key <= previous_oid_keys[column]:
+                            return RuntimeError("GETBULK OID not increasing"), 0, 0, var_bind_table
+                        previous_oid_keys[column] = oid_key
+                        response_bytes += _var_bind_size(name, value)
+                        if response_bytes > max_response_bytes:
+                            return RuntimeError("GETBULK response byte limit exceeded"), 0, 0, var_bind_table
+                if all(value is endOfMibView or isinstance(value, EndOfMibView) for _name, value in row):
+                    break
+                processed_rows.append(row)
+                var_bind_table.append(row)
+                if len(var_bind_table) > max_rows:
+                    return RuntimeError("GETBULK row limit exceeded"), 0, 0, var_bind_table
+                previous_var_binds = row
+            if not processed_rows:
+                break
+            var_binds = processed_rows[-1]
+
+        return None, 0, 0, var_bind_table
+
+    @staticmethod
+    def _is_too_big_error(error) -> bool:
+        message = str(error).lower().replace("_", " ")
+        return "too big" in message or "toobig" in message
+
+    @staticmethod
+    def _is_getbulk_fallback_error(error) -> bool:
+        message = str(error).lower().replace("_", " ")
+        return any(
+            token in message
+            for token in (
+                "oid not increasing",
+                "empty snmp response",
+                "unexpected column count",
+                "too big",
+                "toobig",
+                "generr",
+                "not supported",
+                "unsupported",
+            )
+        )
 
     async def collect(self):  # noqa: C901
         """
@@ -250,20 +412,29 @@ class SnmpFacts:
                         "snmp_collect_to_first_io_seconds",
                         time.monotonic() - collect_started_at,
                     )
-                errorIndication, errorStatus, errorIndex, varBinds = await getCmd(
-                    engine,
-                    snmp_auth,
-                    self._transport_target(timeout=probe_timeout, retries=self.retries),
-                    context,
-                    ObjectType(ObjectIdentity(p.sysDescr.lstrip("."))),
-                    ObjectType(ObjectIdentity(p.sysObjectId.lstrip("."))),
-                    ObjectType(ObjectIdentity(p.sysContact.lstrip("."))),
-                    ObjectType(ObjectIdentity(p.sysName.lstrip("."))),
-                    ObjectType(ObjectIdentity(p.sysLocation.lstrip("."))),
-                    lookupMib=False,
-                )
+                if self._probed_system_var_binds is None:
+                    errorIndication, errorStatus, errorIndex, varBinds = await getCmd(
+                        engine,
+                        snmp_auth,
+                        self._transport_target(timeout=probe_timeout, retries=self.retries),
+                        context,
+                        ObjectType(ObjectIdentity(p.sysDescr.lstrip("."))),
+                        ObjectType(ObjectIdentity(p.sysObjectId.lstrip("."))),
+                        ObjectType(ObjectIdentity(p.sysContact.lstrip("."))),
+                        ObjectType(ObjectIdentity(p.sysName.lstrip("."))),
+                        ObjectType(ObjectIdentity(p.sysLocation.lstrip("."))),
+                        lookupMib=False,
+                    )
+                else:
+                    errorIndication, errorStatus, errorIndex = None, 0, 0
+                    varBinds = self._probed_system_var_binds
+                    self._probed_system_var_binds = None
                 if errorIndication:
                     raise RuntimeError(f"SNMP getCmd failed: {errorIndication}")
+                if errorStatus:
+                    pretty_print = getattr(errorStatus, "prettyPrint", None)
+                    status_text = pretty_print() if callable(pretty_print) else str(errorStatus)
+                    raise RuntimeError(f"SNMP system GET failed: {status_text}")
 
                 for oid, val in varBinds:
                     current_oid = oid.prettyPrint()
@@ -289,7 +460,7 @@ class SnmpFacts:
                 raise RuntimeError(f"Error during SNMP system information collection: {str(e)}")
 
             try:
-                errorIndication, errorStatus, errorIndex, varTable = await self._next_walk(
+                errorIndication, errorStatus, errorIndex, varTable = await self._bulk_walk(
                     engine,
                     [
                         p.ifIndex,
@@ -303,10 +474,37 @@ class SnmpFacts:
                     ],
                     timeout=self.timeout,
                     retries=self.retries,
-                    lexicographic_mode=False,
                 )
+                walk_error = errorIndication or errorStatus
+                if walk_error and self._is_getbulk_fallback_error(walk_error):
+                    increment = getattr(self._runtime_metrics, "increment", None)
+                    if callable(increment):
+                        increment("snmp_getbulk_fallback_total")
+                    logger.warning(
+                        "event=snmp_getbulk_fallback host=%s error_type=%s",
+                        self.host,
+                        type(walk_error).__name__,
+                    )
+                    errorIndication, errorStatus, errorIndex, varTable = await self._next_walk(
+                        engine,
+                        [
+                            p.ifIndex,
+                            p.ifDescr,
+                            p.ifMtu,
+                            p.ifSpeed,
+                            p.ifPhysAddress,
+                            p.ifAdminStatus,
+                            p.ifOperStatus,
+                            p.ifAlias,
+                        ],
+                        timeout=self.timeout,
+                        retries=self.retries,
+                        lexicographic_mode=False,
+                    )
                 if errorIndication:
-                    raise RuntimeError(f"SNMP nextCmd failed: {errorIndication}")
+                    raise RuntimeError(f"SNMP interface walk failed: {errorIndication}")
+                if errorStatus:
+                    raise RuntimeError(f"SNMP interface walk failed: {errorStatus}")
 
                 for varBinds in varTable:
                     interface = {}
@@ -350,40 +548,74 @@ class SnmpFacts:
                     snmp_auth,
                     self._transport_target(timeout=10, retries=1),
                     ContextData(),
+                    ObjectType(ObjectIdentity(oid.sysDescr.lstrip("."))),
+                    ObjectType(ObjectIdentity(oid.sysObjectId.lstrip("."))),
+                    ObjectType(ObjectIdentity(oid.sysContact.lstrip("."))),
                     ObjectType(ObjectIdentity(oid.sysName.lstrip("."))),
+                    ObjectType(ObjectIdentity(oid.sysLocation.lstrip("."))),
                     lookupMib=False,
                 )
             except Exception:  # noqa: BLE001 - 不把 SDK 异常正文写入结果
                 return AccessProbeResult(
-                    status=AccessProbeStatus.NO_RESPONSE,
-                    error_code="snmp_probe_error",
+                    status=AccessProbeStatus.PROTOCOL_MISMATCH,
+                    error_code="snmp_protocol_error",
                 )
         if error_indication:
             indication = str(error_indication).lower()
             if "timeout" in indication or "no response" in indication:
                 return AccessProbeResult(
                     status=AccessProbeStatus.NO_RESPONSE,
-                    error_code="protocol_no_response",
+                    error_code="snmp_no_response",
                 )
-            if any(token in indication for token in ("authorization", "authentication", "community")):
+            if any(
+                token in indication
+                for token in (
+                    "authorization",
+                    "authentication",
+                    "community",
+                    "unknown user",
+                    "unknownusername",
+                    "wrong digest",
+                    "wrongdigest",
+                    "decryption error",
+                    "decryptionerror",
+                )
+            ):
                 return AccessProbeResult(
                     status=AccessProbeStatus.AUTH_FAILED,
                     error_code="snmp_authorization_failed",
                 )
             return AccessProbeResult(
-                status=AccessProbeStatus.NO_RESPONSE,
-                error_code="protocol_no_response",
+                status=AccessProbeStatus.PROTOCOL_MISMATCH,
+                error_code="snmp_protocol_error",
             )
         if error_status:
+            pretty_print = getattr(error_status, "prettyPrint", None)
+            status_text = (pretty_print() if callable(pretty_print) else str(error_status)).lower()
+            if any(
+                token in status_text
+                for token in (
+                    "authorization",
+                    "noaccess",
+                    "not writable",
+                    "notwritable",
+                    "readonly",
+                )
+            ):
+                return AccessProbeResult(
+                    status=AccessProbeStatus.CAPABILITY_DENIED,
+                    error_code="snmp_capability_denied",
+                )
             return AccessProbeResult(
-                status=AccessProbeStatus.AUTH_FAILED,
-                error_code="snmp_error_status",
+                status=AccessProbeStatus.PROTOCOL_MISMATCH,
+                error_code="snmp_protocol_error",
             )
         if not var_binds:
             return AccessProbeResult(
                 status=AccessProbeStatus.NO_RESPONSE,
                 error_code="empty_snmp_response",
             )
+        self._probed_system_var_binds = tuple(var_binds)
         return AccessProbeResult(status=AccessProbeStatus.READY)
 
     async def list_all_resources(self):

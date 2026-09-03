@@ -18,6 +18,7 @@ from plugins.inputs.network import snmp_facts
 
 @dataclass(frozen=True)
 class BenchmarkResult:
+    transport_mode: str
     targets: int
     configured_concurrency: int
     dispatch_quantum: int
@@ -30,6 +31,7 @@ class BenchmarkResult:
     max_rss_delta_bytes: int
     peak_asyncio_tasks: int
     peak_live_snmp_engines: int
+    peak_pool_distinct_targets: int
     completed_timeouts: int
     callback_errors: int
     scheduler_dispatch_total: int
@@ -79,11 +81,14 @@ async def run_benchmark(
     target_timeout_seconds: float,
     cycle_deadline_seconds: float,
     milestone_step: int = 0,
+    transport_mode: str = "real",
 ) -> BenchmarkResult:
     if targets <= 0 or concurrency <= 0 or target_timeout_seconds <= 0 or cycle_deadline_seconds <= 0:
         raise ValueError("benchmark arguments must be greater than zero")
     if quantum != 1:
         raise ValueError("production dispatch quantum is fixed to one")
+    if transport_mode not in {"real", "synthetic"}:
+        raise ValueError("transport_mode must be real or synthetic")
 
     loop = asyncio.get_running_loop()
     callback_errors: list[dict] = []
@@ -123,7 +128,8 @@ async def run_benchmark(
 
     snmp_engine_pool.create_snmp_engine = instrumented_engine
     snmp_engine_pool.close_snmp_engine = instrumented_close
-    snmp_facts.getCmd = never_respond
+    if transport_mode == "synthetic":
+        snmp_facts.getCmd = never_respond
 
     timeout_overshoots: list[float] = []
     completed_timeouts = 0
@@ -131,6 +137,7 @@ async def run_benchmark(
     milestone_timeout_overshoot_p99_seconds: dict[str, float] = {}
     event_loop_lags: list[float] = []
     peak_asyncio_tasks = 0
+    peak_pool_distinct_targets = 0
     stop_monitor = asyncio.Event()
 
     async def collect_one(_item: int) -> int:
@@ -140,15 +147,22 @@ async def run_benchmark(
                 "host": "127.0.0.1",
                 "version": "v2c",
                 "community": "benchmark-only",
-                "snmp_port": 161,
+                # 使用不同 UDP 端口模拟不同目标地址，覆盖 pysnmp LCD 目标条目增长。
+                "snmp_port": 20000 + (_item % 40000),
                 "_runtime_metrics": collector_metrics,
             }
         )
+        if transport_mode == "real":
+            facts.timeout = target_timeout_seconds
+            facts.retries = 0
         started = time.monotonic()
         try:
-            async with asyncio.timeout(target_timeout_seconds):
+            guard_seconds = target_timeout_seconds if transport_mode == "synthetic" else max(1.0, target_timeout_seconds * 5)
+            async with asyncio.timeout(guard_seconds):
                 await facts.collect()
-        except TimeoutError:
+        except (TimeoutError, RuntimeError) as error:
+            if isinstance(error, RuntimeError) and not any(token in str(error).lower() for token in ("timeout", "no response")):
+                raise
             completed_timeouts += 1
             timeout_overshoots.append(max(0.0, time.monotonic() - started - target_timeout_seconds))
             if milestone_step > 0 and completed_timeouts % milestone_step == 0:
@@ -161,7 +175,7 @@ async def run_benchmark(
         return _item
 
     async def monitor() -> None:
-        nonlocal peak_asyncio_tasks
+        nonlocal peak_asyncio_tasks, peak_pool_distinct_targets
         interval = 0.01
         previous = time.monotonic()
         while not stop_monitor.is_set():
@@ -170,6 +184,11 @@ async def run_benchmark(
             event_loop_lags.append(max(0.0, current - previous - interval))
             previous = current
             peak_asyncio_tasks = max(peak_asyncio_tasks, len(asyncio.all_tasks()))
+            pool_snapshot = snmp_engine_pool.snmp_engine_pool_snapshot()
+            peak_pool_distinct_targets = max(
+                peak_pool_distinct_targets,
+                int(pool_snapshot["total_distinct_targets"]),
+            )
 
     monitor_task = asyncio.create_task(monitor(), name="snmp-benchmark-monitor")
     rss_before = _max_rss_bytes()
@@ -192,7 +211,8 @@ async def run_benchmark(
             snmp_engine_pool.close_shared_snmp_engines(reason="benchmark_finished")
             snmp_engine_pool.create_snmp_engine = real_engine
             snmp_engine_pool.close_snmp_engine = real_close
-            snmp_facts.getCmd = real_get
+            if transport_mode == "synthetic":
+                snmp_facts.getCmd = real_get
 
     snapshot = scheduler_metrics.snapshot()
     first_io = collector_metrics.samples.get("snmp_collect_to_first_io_seconds", [])
@@ -200,6 +220,7 @@ async def run_benchmark(
     overshoot_p99 = _percentile(timeout_overshoots, 0.99)
     passed_latency_gates = completed_timeouts == targets and not callback_errors and lag_p99 < 0.5 and overshoot_p99 < 1.0
     return BenchmarkResult(
+        transport_mode=transport_mode,
         targets=targets,
         configured_concurrency=concurrency,
         dispatch_quantum=quantum,
@@ -212,6 +233,7 @@ async def run_benchmark(
         max_rss_delta_bytes=max(0, _max_rss_bytes() - rss_before),
         peak_asyncio_tasks=peak_asyncio_tasks,
         peak_live_snmp_engines=peak_live_engines,
+        peak_pool_distinct_targets=peak_pool_distinct_targets,
         completed_timeouts=completed_timeouts,
         callback_errors=len(callback_errors),
         scheduler_dispatch_total=int(snapshot["scheduler_dispatch_total"]),
@@ -242,22 +264,37 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--target-timeout-seconds", type=float, default=30.0)
     parser.add_argument("--cycle-deadline-seconds", type=float, default=1800.0)
     parser.add_argument("--milestone-step", type=int, default=0)
+    parser.add_argument("--repeats", type=int, default=1)
+    parser.add_argument(
+        "--transport-mode",
+        choices=("real", "synthetic"),
+        default="real",
+        help="real 使用 pysnmp UDP 超时回调；synthetic 仅测调度取消路径",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = _parse_args()
-    result = asyncio.run(
-        run_benchmark(
-            targets=args.targets,
-            concurrency=args.concurrency or args.targets,
-            quantum=args.quantum,
-            target_timeout_seconds=args.target_timeout_seconds,
-            cycle_deadline_seconds=args.cycle_deadline_seconds,
-            milestone_step=args.milestone_step,
+    if args.repeats <= 0:
+        raise ValueError("repeats must be greater than zero")
+    results = []
+    for repeat in range(1, args.repeats + 1):
+        snmp_engine_pool.reset_snmp_engine_pool()
+        result = asyncio.run(
+            run_benchmark(
+                targets=args.targets,
+                concurrency=args.concurrency or args.targets,
+                quantum=args.quantum,
+                target_timeout_seconds=args.target_timeout_seconds,
+                cycle_deadline_seconds=args.cycle_deadline_seconds,
+                milestone_step=args.milestone_step,
+                transport_mode=args.transport_mode,
+            )
         )
-    )
-    print("SNMP_SCHEDULER_BENCHMARK=" + json.dumps(asdict(result), sort_keys=True))
+        results.append({"repeat": repeat, **asdict(result)})
+    payload = results[0] if args.repeats == 1 else results
+    print("SNMP_SCHEDULER_BENCHMARK=" + json.dumps(payload, sort_keys=True))
 
 
 if __name__ == "__main__":

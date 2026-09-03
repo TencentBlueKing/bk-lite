@@ -1,6 +1,10 @@
 # 配置文件采集双插件链路与暂缓问题记录
 
-Status: deferred（2026-09-01）
+Status: resolved（2026-09-02）
+
+最终决策与落地方案见
+[`config-file-collection-telegraf-nats-design-2026-09-02.md`](config-file-collection-telegraf-nats-design-2026-09-02.md)。
+本文件第 2～6 节保留为改造前问题证据，不再描述当前运行链路。
 
 ## 1. 记录目的
 
@@ -123,9 +127,9 @@ Telegraf ChildConfig 在任务创建/更新时生成，不能天然携带每一�
 当前非 K8s 任务都会同步 NodeParams。即使任务没有注册 Beat，NodeParams 的 interval 仍会回退到
 插件默认的 600 秒，使“仅手动”配置文件任务也可能被 Telegraf 周期触发。
 
-## 6. 暂缓边界
+## 6. 原暂缓边界（已解除）
 
-本轮不修改：
+2026-09-02 已解除以下暂缓项并按最终方案收敛：
 
 - 两个配置文件插件的触发所有权；
 - Celery Beat 与 Telegraf 的去重/取舍；

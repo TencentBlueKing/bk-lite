@@ -29,6 +29,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import itertools
+import math
 import os
 import time
 from contextlib import asynccontextmanager
@@ -39,6 +40,13 @@ from core.logger import logger
 
 DEFAULT_SNMP_ENGINE_MAX_TARGETS = 2000
 DEFAULT_SNMP_ENGINE_IDLE_SECONDS = 300.0
+DEFAULT_SNMP_ENGINE_MAX_ENGINES = 160
+DEFAULT_SNMP_ENGINE_TOTAL_TARGET_BUDGET = 4000
+
+MAX_SNMP_ENGINE_MAX_TARGETS = 2000
+MAX_SNMP_ENGINE_IDLE_SECONDS = 3600.0
+MAX_SNMP_ENGINE_MAX_ENGINES = 160
+MAX_SNMP_ENGINE_TOTAL_TARGET_BUDGET = 10000
 
 _COMMUNITY_SCOPE = "community"
 
@@ -69,18 +77,35 @@ class SnmpEnginePoolSettings:
 
     max_targets: int = DEFAULT_SNMP_ENGINE_MAX_TARGETS
     idle_seconds: float = DEFAULT_SNMP_ENGINE_IDLE_SECONDS
+    max_engines: int = DEFAULT_SNMP_ENGINE_MAX_ENGINES
+    total_target_budget: int = DEFAULT_SNMP_ENGINE_TOTAL_TARGET_BUDGET
 
     def __post_init__(self) -> None:
-        if isinstance(self.max_targets, bool) or not isinstance(self.max_targets, int) or self.max_targets <= 0:
-            raise ValueError("SNMP_ENGINE_MAX_TARGETS must be a positive integer")
-        if not self.idle_seconds > 0:
-            raise ValueError("SNMP_ENGINE_IDLE_SECONDS must be greater than zero")
+        if isinstance(self.max_targets, bool) or not isinstance(self.max_targets, int) or not 1 <= self.max_targets <= MAX_SNMP_ENGINE_MAX_TARGETS:
+            raise ValueError(f"SNMP_ENGINE_MAX_TARGETS must be an integer between 1 and {MAX_SNMP_ENGINE_MAX_TARGETS}")
+        if not math.isfinite(self.idle_seconds) or not 0 < self.idle_seconds <= MAX_SNMP_ENGINE_IDLE_SECONDS:
+            raise ValueError(f"SNMP_ENGINE_IDLE_SECONDS must be finite and between 0 and {MAX_SNMP_ENGINE_IDLE_SECONDS:g}")
+        if isinstance(self.max_engines, bool) or not isinstance(self.max_engines, int) or not 1 <= self.max_engines <= MAX_SNMP_ENGINE_MAX_ENGINES:
+            raise ValueError(f"MAX_ACTIVE_TARGETS must be an integer between 1 and {MAX_SNMP_ENGINE_MAX_ENGINES}")
+        if (
+            isinstance(self.total_target_budget, bool)
+            or not isinstance(self.total_target_budget, int)
+            or not self.max_engines <= self.total_target_budget <= MAX_SNMP_ENGINE_TOTAL_TARGET_BUDGET
+        ):
+            raise ValueError(
+                "SNMP_ENGINE_TOTAL_TARGET_BUDGET must be an integer between " f"MAX_ACTIVE_TARGETS and {MAX_SNMP_ENGINE_TOTAL_TARGET_BUDGET}"
+            )
 
     @classmethod
     def from_env(cls) -> SnmpEnginePoolSettings:
         return cls(
             max_targets=_int_env("SNMP_ENGINE_MAX_TARGETS", DEFAULT_SNMP_ENGINE_MAX_TARGETS),
             idle_seconds=_float_env("SNMP_ENGINE_IDLE_SECONDS", DEFAULT_SNMP_ENGINE_IDLE_SECONDS),
+            max_engines=_int_env("MAX_ACTIVE_TARGETS", DEFAULT_SNMP_ENGINE_MAX_ENGINES),
+            total_target_budget=_int_env(
+                "SNMP_ENGINE_TOTAL_TARGET_BUDGET",
+                DEFAULT_SNMP_ENGINE_TOTAL_TARGET_BUDGET,
+            ),
         )
 
 
@@ -92,6 +117,7 @@ class _SharedEngine:
         "loop",
         "engine",
         "opened_at",
+        "last_used_at",
         "in_flight",
         "acquisitions",
         "targets",
@@ -108,6 +134,7 @@ class _SharedEngine:
         self.loop = loop
         self.engine = engine
         self.opened_at = time.monotonic()
+        self.last_used_at = self.opened_at
         self.in_flight = 0
         self.acquisitions = 0
         self.targets: set[tuple[str, int]] = set()
@@ -120,10 +147,15 @@ class _SharedEngine:
 _settings: SnmpEnginePoolSettings | None = None
 _active: dict[str, _SharedEngine] = {}
 _draining: list[_SharedEngine] = []
-_scope_labels: dict[str, str] = {}
+_capacity_events: dict[asyncio.AbstractEventLoop, asyncio.Event] = {}
 _generations = itertools.count(1)
 _shared_mib_compiler: Any = None
 _shared_mib_destination: str | None = None
+_closing = False
+
+
+class SnmpEnginePoolClosedError(RuntimeError):
+    """Engine 池已进入关闭态，不再接受新的 acquisition。"""
 
 
 def snmp_engine_pool_settings() -> SnmpEnginePoolSettings:
@@ -187,17 +219,9 @@ def snmp_engine_scope(auth_data: Any) -> str:
 
 
 def _scope_label(scope: str) -> str:
-    """日志与快照里使用的稳定标签：community 或 v3#N，不含任何密钥材料。"""
+    """日志与快照只暴露低基数协议类别，不保留历史凭据作用域。"""
 
-    label = _scope_labels.get(scope)
-    if label is None:
-        if scope == _COMMUNITY_SCOPE:
-            label = _COMMUNITY_SCOPE
-        else:
-            v3_count = sum(1 for existing in _scope_labels.values() if existing != _COMMUNITY_SCOPE)
-            label = f"v3#{v3_count + 1}"
-        _scope_labels[scope] = label
-    return label
+    return _COMMUNITY_SCOPE if scope == _COMMUNITY_SCOPE else "v3"
 
 
 def _attach_shared_mib_compiler(engine: Any) -> None:
@@ -280,6 +304,7 @@ def _close(holder: _SharedEngine, reason: str) -> None:
             holder.generation,
             reason,
         )
+        _notify_capacity(holder.loop)
         return
     try:
         close_snmp_engine(holder.engine)
@@ -291,6 +316,7 @@ def _close(holder: _SharedEngine, reason: str) -> None:
             reason,
             type(exc).__name__,
         )
+        _notify_capacity(holder.loop)
         return
     logger.info(
         "event=snmp_engine_closed scope=%s generation=%s reason=%s acquisitions=%s distinct_targets=%s "
@@ -304,6 +330,7 @@ def _close(holder: _SharedEngine, reason: str) -> None:
         len(_active),
         len(_draining),
     )
+    _notify_capacity(holder.loop)
 
 
 def _retire(holder: _SharedEngine, reason: str) -> None:
@@ -331,29 +358,84 @@ def _close_idle(holder: _SharedEngine) -> None:
     _close(holder, "idle")
 
 
-def _acquire(scope: str, target: tuple[str, int]) -> _SharedEngine:
+def _live_holders() -> list[_SharedEngine]:
+    return [holder for holder in (*_active.values(), *_draining) if not holder.closed]
+
+
+def _live_usage() -> tuple[int, int]:
+    holders = _live_holders()
+    return len(holders), sum(len(holder.targets) for holder in holders)
+
+
+def _fits_capacity(*, add_engines: int, add_targets: int, settings: SnmpEnginePoolSettings) -> bool:
+    live_engines, total_targets = _live_usage()
+    return live_engines + add_engines <= settings.max_engines and total_targets + add_targets <= settings.total_target_budget
+
+
+def _evict_one_idle_holder() -> bool:
+    candidates = [holder for holder in _live_holders() if holder.in_flight == 0]
+    if not candidates:
+        return False
+    victim = min(candidates, key=lambda holder: (holder.last_used_at, holder.generation))
+    _retire(victim, "capacity")
+    return True
+
+
+def _capacity_event(loop: asyncio.AbstractEventLoop) -> asyncio.Event:
+    event = _capacity_events.get(loop)
+    if event is None:
+        event = asyncio.Event()
+        _capacity_events[loop] = event
+    return event
+
+
+def _notify_capacity(loop: asyncio.AbstractEventLoop) -> None:
+    event = _capacity_events.get(loop)
+    if event is not None:
+        event.set()
+
+
+async def _acquire(scope: str, target: tuple[str, int]) -> _SharedEngine:
     loop = asyncio.get_running_loop()
     settings = snmp_engine_pool_settings()
-    holder = _active.get(scope)
-    if holder is not None and holder.loop is not loop:
-        _retire(holder, "loop_changed")
-        holder = None
-    if holder is not None and target not in holder.targets and len(holder.targets) >= settings.max_targets:
-        _retire(holder, "target_limit")
-        holder = None
-    if holder is None:
-        holder = _open(scope, loop)
-    if holder.idle_handle is not None:
-        holder.idle_handle.cancel()
-        holder.idle_handle = None
-    holder.in_flight += 1
-    holder.acquisitions += 1
-    holder.targets.add(target)
-    return holder
+    while True:
+        if _closing:
+            raise SnmpEnginePoolClosedError("SNMP engine pool is closed")
+        holder = _active.get(scope)
+        if holder is not None and holder.loop is not loop:
+            _retire(holder, "loop_changed")
+            continue
+
+        rotate = holder is not None and target not in holder.targets and len(holder.targets) >= settings.max_targets
+        add_engines = int(holder is None or rotate)
+        add_targets = int(holder is None or target not in holder.targets)
+        if _fits_capacity(add_engines=add_engines, add_targets=add_targets, settings=settings):
+            if rotate:
+                _retire(holder, "target_limit")
+                holder = None
+            if holder is None:
+                holder = _open(scope, loop)
+            if holder.idle_handle is not None:
+                holder.idle_handle.cancel()
+                holder.idle_handle = None
+            holder.in_flight += 1
+            holder.acquisitions += 1
+            holder.targets.add(target)
+            holder.last_used_at = time.monotonic()
+            return holder
+
+        if _evict_one_idle_holder():
+            continue
+
+        event = _capacity_event(loop)
+        event.clear()
+        await event.wait()
 
 
 def _release(holder: _SharedEngine) -> None:
     holder.in_flight -= 1
+    holder.last_used_at = time.monotonic()
+    _notify_capacity(holder.loop)
     if holder.in_flight > 0 or holder.closed:
         return
     if holder.retired:
@@ -370,7 +452,7 @@ async def shared_snmp_engine(auth_data: Any, *, target: Any):
     轮换。上下文退出只是归还引用，不关闭 engine。
     """
 
-    holder = _acquire(snmp_engine_scope(auth_data), _target_key(target))
+    holder = await _acquire(snmp_engine_scope(auth_data), _target_key(target))
     try:
         yield holder.engine
     finally:
@@ -380,6 +462,8 @@ async def shared_snmp_engine(auth_data: Any, *, target: Any):
 def close_shared_snmp_engines(reason: str = "shutdown") -> int:
     """关闭本进程所有共享 engine（包括仍在排空的旧代），返回关闭数量。"""
 
+    global _closing
+    _closing = True
     holders = list(_active.values()) + list(_draining)
     _active.clear()
     _draining.clear()
@@ -388,6 +472,8 @@ def close_shared_snmp_engines(reason: str = "shutdown") -> int:
         if not holder.closed:
             _close(holder, reason)
             closed += 1
+    for event in _capacity_events.values():
+        event.set()
     return closed
 
 
@@ -403,9 +489,15 @@ def snmp_engine_pool_snapshot() -> dict[str, Any]:
         }
         for holder in list(_active.values()) + list(_draining)
     ]
+    live_engines, total_targets = _live_usage()
+    settings = snmp_engine_pool_settings()
     return {
         "active_engines": len(_active),
         "draining_engines": len(_draining),
+        "live_engines": live_engines,
+        "max_engines": settings.max_engines,
+        "total_distinct_targets": total_targets,
+        "total_target_budget": settings.total_target_budget,
         "mib_compiler_shared": _shared_mib_compiler is not None,
         "engines": engines,
     }
@@ -414,11 +506,12 @@ def snmp_engine_pool_snapshot() -> dict[str, Any]:
 def reset_snmp_engine_pool(*, drop_mib_compiler: bool = False) -> None:
     """测试用：关闭全部 engine 并清空作用域标签与配置缓存。"""
 
-    global _settings, _generations, _shared_mib_compiler, _shared_mib_destination
+    global _settings, _generations, _shared_mib_compiler, _shared_mib_destination, _closing
     close_shared_snmp_engines(reason="reset")
-    _scope_labels.clear()
+    _capacity_events.clear()
     _generations = itertools.count(1)
     _settings = None
+    _closing = False
     if drop_mib_compiler:
         _shared_mib_compiler = None
         _shared_mib_destination = None
@@ -427,8 +520,10 @@ def reset_snmp_engine_pool(*, drop_mib_compiler: bool = False) -> None:
 def register_snmp_engine_lifecycle(app) -> None:
     @app.listener("before_server_start")
     async def validate_snmp_engine_pool(_app, _loop):
+        global _closing
         # 阈值配置非法时启动失败，而不是在第一批 SNMP 目标上才暴露。
         snmp_engine_pool_settings()
+        _closing = False
 
     @app.listener("after_server_stop")
     async def close_snmp_engines(_app, _loop):
@@ -437,8 +532,11 @@ def register_snmp_engine_lifecycle(app) -> None:
 
 __all__ = [
     "DEFAULT_SNMP_ENGINE_IDLE_SECONDS",
+    "DEFAULT_SNMP_ENGINE_MAX_ENGINES",
     "DEFAULT_SNMP_ENGINE_MAX_TARGETS",
+    "DEFAULT_SNMP_ENGINE_TOTAL_TARGET_BUDGET",
     "SnmpEnginePoolSettings",
+    "SnmpEnginePoolClosedError",
     "close_shared_snmp_engines",
     "close_snmp_engine",
     "configure_snmp_engine_pool",

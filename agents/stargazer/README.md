@@ -61,9 +61,10 @@ CONFIGURATION_MAX_ACTIVE_TARGETS=100
 MONITORING_MAX_ACTIVE_TARGETS=30
 NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS=30
 TARGET_TASK_WINDOW=160
-SNMP_MAX_IN_FLIGHT=100
+SNMP_MAX_IN_FLIGHT=160
 SNMP_ENGINE_MAX_TARGETS=2000
 SNMP_ENGINE_IDLE_SECONDS=300
+SNMP_ENGINE_TOTAL_TARGET_BUDGET=4000
 SYNC_SDK_MAX_IN_FLIGHT=16
 REMOTE_JOB_MAX_IN_FLIGHT=20
 DEFAULT_ASYNC_MAX_IN_FLIGHT=160
@@ -102,7 +103,9 @@ v3 按用户名与密钥组合各一个），不再为每个目标新建 engine�
 800 个不可达目标：修复前 RSS 73→1747 MiB、事件循环 P99 延迟最高 7.3 s；修复后 73→115 MiB、
 P99 延迟 ≤25 ms）。`SNMP_ENGINE_MAX_TARGETS` 限制单个 engine 服务过的不同目标地址数
 （每个目标在 pysnmp LCD 中约占 20 KiB），达到后新目标换用新 engine、旧 engine 排空在途请求后关闭；
-`SNMP_ENGINE_IDLE_SECONDS` 是 engine 空闲多久后释放 dispatcher。两者必须为正数，否则启动失败。
+`SNMP_ENGINE_IDLE_SECONDS` 是 engine 空闲多久后释放 dispatcher；`SNMP_ENGINE_TOTAL_TARGET_BUDGET`
+限制所有存活 engine 的 LCD 不同目标条目总数。存活 engine 数同时受 `MAX_ACTIVE_TARGETS=160` 约束；
+超过预算时先淘汰空闲 LRU，全部在途时等待容量。配置必须有限且位于受支持范围，否则启动失败。
 
 `REDIS_MAX_CONNECTIONS` 应不小于目标并发并留租约余量（推荐
 `≳ MAX_ACTIVE_TARGETS`，并按实际辅助请求留出余量）。多 Pod 时还要保证

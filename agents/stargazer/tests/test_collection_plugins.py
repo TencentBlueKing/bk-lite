@@ -333,6 +333,106 @@ async def test_snmp_no_response_rotates_without_auth_cooldown():
     )
 
     assert outcome.status == CollectOutcomeStatus.RETRY_CREDENTIAL
+    assert outcome.error_code == "snmp_no_response"
+
+
+@pytest.mark.asyncio
+async def test_snmp_malformed_walk_is_protocol_error_without_credential_rotation():
+    class Service:
+        def __init__(self, params):
+            pass
+
+        async def collect(self):
+            return 'network{collect_status="failed",' 'collect_error="GETBULK returned an unexpected column count"} 1'
+
+    outcome = await ConfigurationCollectionPlugin(service_factory=Service).collect(
+        "10.10.24.1",
+        {"credential_id": "credential-1"},
+        TargetCollectionContext(
+            task_id="config-snmp-protocol",
+            plugin_ref="network.config",
+            fence=1,
+            params={"model_id": "network", "executor_type": "protocol"},
+        ),
+    )
+
+    assert outcome.status == CollectOutcomeStatus.FAILED
+    assert outcome.error_code == "snmp_protocol_error"
+
+
+@pytest.mark.asyncio
+async def test_configuration_probe_and_collect_reuse_one_target_service_instance():
+    instances = []
+
+    class Service:
+        def __init__(self, params):
+            self.probed = False
+            instances.append(self)
+
+        async def probe(self):
+            self.probed = True
+            return AccessProbeResult(status=AccessProbeStatus.READY)
+
+        async def collect(self):
+            assert self.probed is True
+            return StructuredMetricsPayload(data={"network": [{"sysname": "switch-a"}]})
+
+    plugin = ConfigurationCollectionPlugin(service_factory=Service)
+    context = TargetCollectionContext(
+        task_id="config-snmp-single-get",
+        plugin_ref="network.config",
+        fence=1,
+        params={"model_id": "network", "executor_type": "protocol"},
+        attempt_id="attempt-1",
+    )
+    credential = {"credential_id": "credential-1"}
+
+    access = await plugin.probe("10.10.24.1", credential, context, timeout_seconds=10)
+    outcome = await plugin.collect("10.10.24.1", credential, context)
+
+    assert access.status == AccessProbeStatus.READY
+    assert outcome.status == CollectOutcomeStatus.SUCCESS
+    assert len(instances) == 1
+
+
+@pytest.mark.asyncio
+async def test_duplicate_target_attempts_do_not_overwrite_probed_services():
+    instances = []
+
+    class Service:
+        def __init__(self, params):
+            self.probed = False
+            instances.append(self)
+
+        async def probe(self):
+            self.probed = True
+            return AccessProbeResult(status=AccessProbeStatus.READY)
+
+        async def collect(self):
+            assert self.probed is True
+            return StructuredMetricsPayload(data={"network": [{"ok": True}]})
+
+    plugin = ConfigurationCollectionPlugin(service_factory=Service)
+    context = TargetCollectionContext(
+        task_id="duplicate-target",
+        plugin_ref="network.config",
+        fence=1,
+        params={"model_id": "network"},
+        attempt_id="attempt-1",
+    )
+    credential = {"credential_id": "credential-1"}
+
+    await asyncio.gather(
+        plugin.probe("10.10.24.1", credential, context, timeout_seconds=10),
+        plugin.probe("10.10.24.1", credential, context, timeout_seconds=10),
+    )
+    outcomes = await asyncio.gather(
+        plugin.collect("10.10.24.1", credential, context),
+        plugin.collect("10.10.24.1", credential, context),
+    )
+
+    assert len(instances) == 2
+    assert all(outcome.status == CollectOutcomeStatus.SUCCESS for outcome in outcomes)
 
 
 def test_factory_routes_configuration_and_monitor_to_one_contract():
