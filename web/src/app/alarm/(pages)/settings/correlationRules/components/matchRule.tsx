@@ -72,6 +72,16 @@ const RulesMatch: React.FC<MatchRuleProps> = ({
   ];
   const levelOptions = levelMeta[levelType]?.list || [];
 
+  const getValuePlaceholder = (operator?: string) => {
+    if (operator === 'contains' || operator === 'not_contains') {
+      return t('settings.correlation.containsValuePlaceholder');
+    }
+    if (operator === 're') {
+      return t('settings.correlation.regexValuePlaceholder');
+    }
+    return t('settings.correlation.exactValuePlaceholder');
+  };
+
   useEffect(() => {
     if (value?.length) {
       setPolicyList(value);
@@ -232,7 +242,7 @@ const RulesMatch: React.FC<MatchRuleProps> = ({
                         ) : (
                           <Input
                             value={i.value}
-                            placeholder={t('common.inputTip')}
+                            placeholder={getValuePlaceholder(i.operator)}
                             onChange={(e) => {
                               const updatedPolicyList = [...policyList];
                               updatedPolicyList[index][ind].value =

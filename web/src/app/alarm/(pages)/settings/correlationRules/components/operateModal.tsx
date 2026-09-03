@@ -122,7 +122,7 @@ const DIMENSION_OPTIONS: AggregationDimension[] = [
 
 const DEFAULT_FILTER_RULES = [[{ key: 'source_id', operator: 'eq', value: '' }]];
 
-const MISSING_DETECTION_FORM_RULE_LIST = [
+const CORRELATION_EVENT_RULE_LIST = [
   { name: 'title', verbose_name: '标题' },
   { name: 'source_id', verbose_name: '告警源' },
   { name: 'level', verbose_name: '级别' },
@@ -135,7 +135,7 @@ const MISSING_DETECTION_FORM_RULE_LIST = [
   { name: 'item', verbose_name: '指标' },
 ];
 
-const MISSING_DETECTION_INITIAL_CONDITION_LISTS: Record<
+const CORRELATION_EVENT_CONDITION_LISTS: Record<
   string,
   { name: string; desc: string }[]
 > = {
@@ -762,6 +762,9 @@ const OperateModal: React.FC<OperateModalProps> = ({
             strategyType === 'missing_detection' ||
             strategyType === 'instant') && (
             <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50/80 p-3">
+              <Typography.Text type="secondary" className="mb-3 block text-xs leading-5">
+                {t('settings.correlation.filterLogicGuide')}
+              </Typography.Text>
               <Form.Item
                 name="filter_rules"
                 className="mb-0"
@@ -792,16 +795,8 @@ const OperateModal: React.FC<OperateModalProps> = ({
               >
                 <RulesMatch
                   levelType="event"
-                  ruleOptions={
-                    strategyType === 'missing_detection' || strategyType === 'instant'
-                      ? MISSING_DETECTION_FORM_RULE_LIST
-                      : undefined
-                  }
-                  conditionOptions={
-                    strategyType === 'missing_detection' || strategyType === 'instant'
-                      ? MISSING_DETECTION_INITIAL_CONDITION_LISTS
-                      : undefined
-                  }
+                  ruleOptions={CORRELATION_EVENT_RULE_LIST}
+                  conditionOptions={CORRELATION_EVENT_CONDITION_LISTS}
                 />
               </Form.Item>
             </div>

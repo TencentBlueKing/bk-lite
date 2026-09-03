@@ -127,6 +127,8 @@ class AlertSourceModelSerializer(serializers.ModelSerializer):
 
     @staticmethod
     def get_event_count(obj):
+        if hasattr(obj, "scoped_event_count"):
+            return obj.scoped_event_count
         return obj.event_set.count()
 
     @staticmethod
@@ -135,12 +137,16 @@ class AlertSourceModelSerializer(serializers.ModelSerializer):
         获取最近一次事件时间
         """
         format_time = "%Y-%m-%d %H:%M:%S"
-        last_event = obj.event_set.order_by("-received_at").first()
-        if not last_event or not last_event.received_at:
+        if hasattr(obj, "scoped_last_event_time"):
+            last_event_time = obj.scoped_last_event_time
+        else:
+            last_event = obj.event_set.order_by("-received_at").first()
+            last_event_time = last_event.received_at if last_event else None
+        if not last_event_time:
             return ""
         from django.utils import timezone
 
-        return timezone.localtime(last_event.received_at).strftime(format_time)
+        return timezone.localtime(last_event_time).strftime(format_time)
 
 
 class AlertSourceOptionSerializer(serializers.ModelSerializer):

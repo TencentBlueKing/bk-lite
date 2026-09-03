@@ -19,8 +19,13 @@ def source(db):
 
 def _make_event(source, event_id, title="t", level="0", description="", **over):
     defaults = dict(
-        source=source, raw_data={}, title=title, level=level, description=description,
-        start_time=timezone.now(), event_id=event_id,
+        source=source,
+        raw_data={},
+        title=title,
+        level=level,
+        description=description,
+        start_time=timezone.now(),
+        event_id=event_id,
     )
     defaults.update(over)
     return Event.objects.create(**defaults)
@@ -99,6 +104,18 @@ def test_match_or_groups(source):
     ]
     result = StrategyMatcher.match_events_to_strategy(Event.objects.all(), rules)
     assert {e.event_id for e in result} == {"E1", "E2"}
+
+
+@pytest.mark.django_db
+def test_match_contains_uses_case_insensitive_plain_substring(source):
+    _make_event(source, "E1", location="CN-BEIJING-IDC-A")
+    _make_event(source, "E2", location="CN-SHANGHAI-IDC-B")
+
+    plain_text_rules = [[{"key": "location", "operator": "contains", "value": "beijing"}]]
+    wildcard_rules = [[{"key": "location", "operator": "contains", "value": "*beijing*"}]]
+
+    assert {e.event_id for e in StrategyMatcher.match_events_to_strategy(Event.objects.all(), plain_text_rules)} == {"E1"}
+    assert not StrategyMatcher.match_events_to_strategy(Event.objects.all(), wildcard_rules).exists()
 
 
 @pytest.mark.django_db
