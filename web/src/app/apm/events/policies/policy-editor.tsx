@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeftOutlined, DeleteOutlined } from '@ant-design/icons';
+import { DeleteOutlined } from '@ant-design/icons';
 import {
   Button,
   Form,
@@ -21,6 +21,7 @@ import {
 } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
+import ApmPageBreadcrumb from '@/app/apm/components/apm-page-breadcrumb';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState from '@/app/apm/components/catalog-state';
 import { formatClockTime, formatErrorRate } from '@/app/apm/components/metric-format';
@@ -257,6 +258,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const selectedEndpoints = Form.useWatch('endpoints', form);
   const noDataSeverity = Form.useWatch('no_data_severity', form);
   const notificationChannelIds = Form.useWatch('notification_channel_ids', form);
+  const policyName = Form.useWatch('name', form);
   const [services, setServices] = useState<ApmService[]>([]);
   const [channels, setChannels] = useState<ApmNotificationChannel[]>([]);
   const [availableEndpoints, setAvailableEndpoints] = useState<string[]>([]);
@@ -880,10 +882,20 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
         onFinish={(values) => void submit(values)}
       >
         <div className={styles.editor}>
-          <Link href="/apm/events/policies" className={styles.editorTitle}>
-            <ArrowLeftOutlined aria-hidden="true" />
-            {t('apm.policies.backToList', '返回策略列表')}
-          </Link>
+          <div className="mb-3">
+            <ApmPageBreadcrumb
+              parentHref="/apm/events/policies"
+              parentLabel={t('apm.policies.title', '告警策略')}
+              parentAriaLabel={t('apm.policies.backAria', '返回告警策略')}
+              current={(
+                <Typography.Title level={2} className="!mb-0 !truncate !text-base !font-semibold">
+                  {policyId
+                    ? (policyName || t('apm.policies.editEditorTitle', '编辑告警策略'))
+                    : t('apm.policies.createEditorTitle', '新建告警策略')}
+                </Typography.Title>
+              )}
+            />
+          </div>
           <div className={styles.editorLayout}>
             <div className={styles.editorMain}>
               <Steps direction="vertical" current={0} items={stepItems} />

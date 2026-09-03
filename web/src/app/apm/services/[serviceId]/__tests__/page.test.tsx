@@ -133,7 +133,7 @@ describe('APM 服务详情页头', () => {
     renderWithApmIntl(<ApmServiceDetailPage />);
 
     const catalogLink = await screen.findByRole('link', { name: '返回服务目录' });
-    expect(catalogLink.getAttribute('href')).toBe('/apm/services');
+    expect(catalogLink.getAttribute('href')).toBe('/apm/services?perspective=service');
     expect(catalogLink.textContent).toBe('服务');
     expect(screen.getByRole('navigation', { name: '页面路径' })).not.toBeNull();
   });

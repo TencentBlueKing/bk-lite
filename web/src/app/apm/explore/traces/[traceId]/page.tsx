@@ -1,10 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import {
-  ArrowLeftOutlined,
   CloseCircleOutlined,
   CheckCircleOutlined,
   FireFilled,
@@ -27,6 +25,7 @@ import {
 import type { TableProps } from 'antd';
 import useApmApi from '@/app/apm/api';
 import ApmDataTable from '@/app/apm/components/apm-data-table';
+import ApmPageBreadcrumb from '@/app/apm/components/apm-page-breadcrumb';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import { formatLatency, formatPercentage } from '@/app/apm/components/metric-format';
@@ -269,18 +268,17 @@ export default function ApmTraceDetailPage() {
 
           <ApmSurface padding="compact">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex min-w-0 items-center gap-3">
-                <Link href="/apm/explore/traces">
-                  <Button aria-label={t('apm.trace.backAria', '返回调用链')} icon={<ArrowLeftOutlined aria-hidden="true" />}>
-                    {t('apm.trace.back', '返回')}
-                  </Button>
-                </Link>
-                <div className="min-w-0">
-                  <Space wrap size={8}>
-                    <Typography.Text type="secondary" className="text-xs">Trace ID</Typography.Text>
+              <div className="min-w-0">
+                <ApmPageBreadcrumb
+                  parentHref="/apm/explore/traces"
+                  parentLabel={t('apm.explore.tracesTitle', '调用链')}
+                  parentAriaLabel={t('apm.trace.backAria', '返回调用链')}
+                  current={(
                     <Typography.Text copyable className="font-mono text-sm font-medium">
                       {trace.trace_id}
                     </Typography.Text>
+                  )}
+                  trailing={(
                     <Tag
                       bordered={false}
                       color={hasError ? 'error' : 'success'}
@@ -288,11 +286,11 @@ export default function ApmTraceDetailPage() {
                     >
                       {hasError ? t('apm.trace.hasError', '含错误') : t('apm.status.ok', '正常')}
                     </Tag>
-                  </Space>
-                  <Typography.Text type="secondary" className="mt-1 block truncate text-xs">
-                    {trace.service_namespace || t('apm.common.unsetNamespace', '未设置 namespace')} · {trace.service_name} · {trace.environment || t('apm.common.unsetEnvironment', '未设置环境')}
-                  </Typography.Text>
-                </div>
+                  )}
+                />
+                <Typography.Text type="secondary" className="mt-0.5 block truncate text-xs">
+                  {trace.service_namespace || t('apm.common.unsetNamespace', '未设置 namespace')} · {trace.service_name} · {trace.environment || t('apm.common.unsetEnvironment', '未设置环境')}
+                </Typography.Text>
               </div>
               <div className="flex flex-wrap items-center gap-x-8 gap-y-3 lg:justify-end">
                 <KpiStat label={t('apm.trace.spanCount', 'Span 数')} value={trace.spans.length} />

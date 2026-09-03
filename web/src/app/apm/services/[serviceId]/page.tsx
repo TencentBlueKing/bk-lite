@@ -31,6 +31,7 @@ import CompactEmptyState from '@/components/compact-empty-state';
 import useApmApi from '@/app/apm/api';
 import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
+import ApmPageBreadcrumb from '@/app/apm/components/apm-page-breadcrumb';
 import CatalogState, {
   catalogErrorKind,
   type CatalogStateKind,
@@ -531,33 +532,27 @@ export default function ApmServiceDetailPage() {
           <ApmSurface padding="compact">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <nav
-                    aria-label={t('apm.serviceDetail.breadcrumb', '页面路径')}
-                    className="flex min-w-0 items-center gap-1.5"
-                  >
-                    <Link
-                      href="/apm/services"
-                      aria-label={t('apm.serviceDetail.backAria', '返回服务目录')}
-                      className="shrink-0 text-sm text-[var(--color-text-3)] no-underline transition-colors hover:text-[var(--color-primary)]"
+                <ApmPageBreadcrumb
+                  parentHref="/apm/services?perspective=service"
+                  parentLabel={t('apm.services.title', '服务')}
+                  parentAriaLabel={t('apm.serviceDetail.backAria', '返回服务目录')}
+                  current={(
+                    <>
+                      <HealthDot level={health} showLabel={false} />
+                      <Typography.Title level={2} className="!mb-0 !truncate !text-base !font-semibold">
+                        {service.name}
+                      </Typography.Title>
+                    </>
+                  )}
+                  trailing={(
+                    <Tag
+                      bordered={false}
+                      color={health <= 2 ? 'error' : health === 3 ? 'warning' : 'success'}
                     >
-                      {t('apm.services.title', '服务')}
-                    </Link>
-                    <span className="shrink-0 text-[var(--color-text-3)]" aria-hidden="true">
-                      /
-                    </span>
-                    <HealthDot level={health} showLabel={false} />
-                    <Typography.Title level={2} className="!mb-0 !truncate !text-base !font-semibold">
-                      {service.name}
-                    </Typography.Title>
-                  </nav>
-                  <Tag
-                    bordered={false}
-                    color={health <= 2 ? 'error' : health === 3 ? 'warning' : 'success'}
-                  >
-                    {health <= 2 ? t('apm.health.abnormal', '异常') : health === 3 ? t('apm.health.silent', '静默') : t('apm.health.healthy', '健康')}
-                  </Tag>
-                </div>
+                      {health <= 2 ? t('apm.health.abnormal', '异常') : health === 3 ? t('apm.health.silent', '静默') : t('apm.health.healthy', '健康')}
+                    </Tag>
+                  )}
+                />
                 <Typography.Text type="secondary" className="mt-0.5 block truncate text-xs">
                   {t('apm.serviceDetail.ownerApplication', '所属应用')}{' '}
                   <Link

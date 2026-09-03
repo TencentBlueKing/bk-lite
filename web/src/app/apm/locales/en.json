@@ -2,6 +2,7 @@
   "apm": {
     "common": {
       "home": "Home",
+      "breadcrumb": "Breadcrumb",
       "services": "Services",
       "explore": "Explore",
       "events": "Events",
@@ -478,6 +479,7 @@
       "removeChannel": "Remove channel",
       "removeNotificationChannel": "Remove notification channel",
       "backToList": "Back to list",
+      "backAria": "Back to alert policies",
       "basic": "Basic information",
       "triggerRecover": "Trigger and recovery",
       "notificationChannels": "Notification channels",
@@ -948,6 +950,9 @@
       "noServices": "No services have been observed for this application.",
       "childServices": "Child services",
       "backToList": "Back to list",
+      "backToServiceCatalog": "Back to service catalog",
+      "backToApplicationCatalog": "Back to application catalog",
+      "backToManagement": "Back to application management",
       "topology": "Application service topology",
       "noTopology": "No application-internal call relationships in the current time window.",
       "kpi": "Application KPIs",
