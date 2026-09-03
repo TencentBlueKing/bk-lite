@@ -48,6 +48,7 @@ import {
   architecturePulseHaloRadius,
   architecturePulseTrailForLength,
   architectureTitleLocalX,
+  architectureTitleLocalZ,
   architectureTubeRadius,
   architectureTubeStyle,
   formatArchitecturePlaneTitle,
@@ -127,7 +128,7 @@ export const ARCH_RACK_BAY_PACK = 1.16;
 /** Sit a hair above the board so the hull is not a z-fight void. */
 export const ARCH_RACK_LIFT = 0.02;
 export const ARCH_RACK_STROKE_WIDTH = 0.006;
-/** Darker card-veneer blue — CARD_GLASS.body family, not empty cyan glass. */
+/** Original card-veneer hue; higher opacity so the middle still reads. */
 export const ARCH_PLANE = 0x163e5c;
 export const ARCH_PLANE_EMISSIVE = 0x1a6e98;
 export const ARCH_EDGE = 0x3ec8d0;
@@ -147,8 +148,8 @@ export const architectureEdgeColor = (
 ) => (hostHasAlarm(target) ? ARCH_EDGE_ALARM : ARCH_EDGE);
 
 const TUBE_SCROLL_SPEED = 0.08;
-const PLANE_TITLE_WIDTH = 2.1;
-const PLANE_TITLE_HEIGHT = 0.58;
+const PLANE_TITLE_WIDTH = 2.5;
+const PLANE_TITLE_HEIGHT = 0.70;
 const PULSE_POINT = new THREE.Vector3();
 
 /**
@@ -353,7 +354,7 @@ const paintPlaneTitle = (plane: Application3DArchitecturePlane, translate: Appli
     context.shadowColor = ARCH_TITLE_SHADOW_COLOR;
     context.shadowBlur = ARCH_TITLE_SHADOW_BLUR;
     context.fillStyle = ARCH_TITLE_FILL;
-    context.font = `600 56px ${CARD_GLASS.fontFamily}`;
+    context.font = `600 68px ${CARD_GLASS.fontFamily}`;
     context.fillText(name, canvas.width / 2, canvas.height / 2);
   });
 };
@@ -1034,7 +1035,11 @@ export const createArchitectureTreeGroup = (
       new THREE.PlaneGeometry(PLANE_TITLE_WIDTH, PLANE_TITLE_HEIGHT),
       titleMaterial,
     );
-    title.position.set(architectureTitleLocalX(plane.width), 0.38, 0);
+    title.position.set(
+      architectureTitleLocalX(plane.width),
+      0.38,
+      architectureTitleLocalZ(plane.depth),
+    );
     title.userData.archRole = 'plane-title';
     title.userData.billboard = ARCH_LABEL_BILLBOARD;
     title.userData.planeTitleSide = ARCH_PLANE_TITLE_SIDE;

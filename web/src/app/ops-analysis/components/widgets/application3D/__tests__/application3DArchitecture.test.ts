@@ -13,6 +13,7 @@ import {
   ARCH_FRUSTUM_TAPER,
   ARCH_FRONT_INSET,
   ARCH_GRID_PITCH,
+  ARCH_WRAP_COLS,
   ARCH_INVERTED_NODE_SIZE,
   ARCH_LABEL_BILLBOARD,
   ARCH_LABEL_FILL,
@@ -22,6 +23,8 @@ import {
   ARCH_PLANE_DEPTH_WRITE,
   ARCH_PLANE_EMISSIVE_INTENSITY,
   ARCH_PLANE_GAP,
+  ARCH_PLANE_MIN_DEPTH,
+  ARCH_PLANE_MIN_WIDTH,
   ARCH_PLANE_OPACITY,
   ARCH_PLANE_ORIENTATION,
   ARCH_PLANE_RIM_BLENDING,
@@ -39,11 +42,13 @@ import {
   ARCH_PLANE_SIDE_HAS_STROKE,
   ARCH_PLANE_SIDE_MATCHES_TOP_HUE,
   ARCH_PLANE_SIDE_OPACITY,
+  ARCH_PLANE_PAD,
   ARCH_PLANE_THICKNESS,
   ARCH_PLANE_TITLE,
   ARCH_PLANE_TITLE_SIDE,
   ARCH_PLANE_WORLD_DEPTH,
   ARCH_PLANE_WORLD_HEIGHT,
+  ARCH_PLANE_FRONT_Z,
   ARCH_PLANE_WORLD_WIDTH,
   ARCH_PLANE_Y,
   ARCH_PREVIOUS_CAMERA_PHI,
@@ -68,6 +73,7 @@ import {
   ARCH_PULSE_WRAP_OFFSET,
   ARCH_STACK_ORIGIN,
   ARCH_TITLE_FILL,
+  ARCH_TITLE_FRONT_INSET,
   ARCH_TITLE_RIGHT_OUTSET,
   ARCH_TITLE_SHADOW_BLUR,
   ARCH_TITLE_SHADOW_COLOR,
@@ -82,6 +88,8 @@ import {
   ARCH_TUBE_RADIUS_INTER,
   ARCH_TUBE_RADIUS_INTRA,
   ARCH_TUBE_TUBULAR_SEGMENTS,
+  architectureBoardFromContentMinZ,
+  architectureCameraFitWidth,
   architectureFrontZ,
   architecturePulseBandIntensity,
   architecturePulseCompanionHead,
@@ -96,9 +104,13 @@ import {
   architectureRimBloomWeight,
   architectureRimUvWidth,
   architectureTitleLocalX,
+  architectureTitleLocalZ,
   architectureTubeRadius,
+  architectureWideBoardFloor,
+  architectureWrapBoardWidth,
   architectureTubeStyle,
   describeArchitectureLandedFrame,
+  fitArchitectureCameraDistance,
   describeWallCameraSpherical,
   formatArchitecturePlaneTitle,
   layoutApplication3DArchitecture,
@@ -119,6 +131,7 @@ import {
   ARCH_LED_COLOR,
   ARCH_NODE_FILL,
   ARCH_PLANE,
+  ARCH_PLANE_EMISSIVE,
   ARCH_PREVIOUS_CHASSIS_COLOR,
   ARCH_RACK_BAY_COUNT,
   ARCH_RACK_LED_COUNT,
@@ -213,8 +226,12 @@ describe('application3D architecture layout', () => {
     expect(layout.planes[1].shape).toBe('plane');
     expect(layout.stackBottomY).toBeLessThan(layout.planes[0].y);
     expect(layout.stackTopY).toBeGreaterThan(layout.planes[1].y);
+    expect(ARCH_PLANE).toBe(0x163e5c);
+    expect(ARCH_PLANE_EMISSIVE).toBe(0x1a6e98);
+    expect(ARCH_PLANE_OPACITY).toBe(0.46);
     expect(ARCH_PLANE_OPACITY).toBeGreaterThan(0.1);
     expect(ARCH_PLANE_OPACITY).toBeLessThan(0.55);
+    expect(ARCH_PLANE_EMISSIVE_INTENSITY).toBe(0.38);
     expect(ARCH_PLANE_EMISSIVE_INTENSITY).toBeGreaterThan(0.14);
     expect(ARCH_PLANE_EMISSIVE_INTENSITY).toBeLessThan(0.7);
     expect(ARCH_PLANE_DEPTH_WRITE).toBe(false);
@@ -244,6 +261,8 @@ describe('application3D architecture layout', () => {
     expect(architectureRimUvWidth(ARCH_PLANE_RIM_HALO_WORLD, 12)).toBeLessThan(0.022);
     expect(ARCH_PLANE_RIM_HAS_EDGE_LINES).toBe(false);
     expect(ARCH_PLANE_RIM_COLOR).toBeGreaterThan(0);
+    expect(ARCH_PLANE_SIDE_OPACITY).toBe(0.32);
+    expect(ARCH_PLANE_SIDE_EMISSIVE_INTENSITY).toBe(0.30);
     expect(ARCH_PLANE_SIDE_OPACITY).not.toBe(ARCH_PLANE_OPACITY);
     expect(ARCH_PLANE_SIDE_OPACITY).toBeLessThan(ARCH_PLANE_OPACITY);
     expect(ARCH_PLANE_SIDE_OPACITY).toBeGreaterThan(0.16);
@@ -355,7 +374,7 @@ describe('application3D architecture layout', () => {
     expect(layout.edges).toHaveLength(0);
   });
 
-  it('wraps many isolated hosts into a grid still on the host plane', () => {
+  it('keeps eight-or-fewer isolated hosts on the front host row', () => {
     const hosts = Array.from({ length: 5 }, (_, index) => ({
       id: `host-${index}`,
       kind: 'host' as const,
@@ -372,10 +391,237 @@ describe('application3D architecture layout', () => {
     expect(placed.every((node) => Math.abs(node.y - hostY) < 1e-6)).toBe(true);
     expect(new Set(placed.map((node) => `${node.x.toFixed(2)},${node.z.toFixed(2)}`)).size).toBe(5);
     const zs = [...new Set(placed.map((node) => node.z))].sort((left, right) => left - right);
-    expect(zs.length).toBeGreaterThan(1);
+    expect(zs).toHaveLength(1);
+    expect(zs[0]).toBeCloseTo(architectureFrontZ(0));
+    expect(ARCH_WRAP_COLS).toBe(8);
+  });
+
+  const layerNodes = (
+    kind: 'application' | 'host',
+    count: number,
+  ) => Array.from({ length: count }, (_, index) => ({
+    id: `${kind}-${index}`,
+    kind,
+    name: `${kind}-${index}`,
+    health,
+  }));
+
+  it('wraps applications at 8 per row and sends the 9th backward on −Z', () => {
+    const apps = layerNodes('application', 9);
+    const layout = layoutApplication3DArchitecture(tree({
+      nodes: [{ id: 'sys-1', kind: 'system', name: '九应用', health }, ...apps],
+      edges: [],
+    }));
+    const placed = layout.nodes.filter((node) => node.kind === 'application');
+    expect(placed).toHaveLength(9);
+    const front = placed.filter((node) => Math.abs(node.z - architectureFrontZ(0)) < 1e-6);
+    const next = placed.filter((node) => Math.abs(node.z - architectureFrontZ(1)) < 1e-6);
+    expect(front).toHaveLength(ARCH_WRAP_COLS);
+    expect(next).toHaveLength(1);
+    expect(next[0].z).toBeLessThan(front[0].z);
+    expect(next[0].z).toBeCloseTo(architectureFrontZ(0) - ARCH_GRID_PITCH);
+    const xs = [...new Set(front.map((node) => node.x))].sort((left, right) => left - right);
+    expect(xs).toHaveLength(ARCH_WRAP_COLS);
+    expect(xs[1] - xs[0]).toBeCloseTo(ARCH_GRID_PITCH);
+  });
+
+  it('keeps eight or fewer cabinets on a single front-packed row', () => {
+    const apps = layerNodes('application', 8);
+    const hosts = layerNodes('host', 3);
+    const layout = layoutApplication3DArchitecture(tree({
+      nodes: [{ id: 'sys-1', kind: 'system', name: '满一行', health }, ...apps, ...hosts],
+      edges: [],
+    }));
+    const placedApps = layout.nodes.filter((node) => node.kind === 'application');
+    const placedHosts = layout.nodes.filter((node) => node.kind === 'host');
+    expect(placedApps.every((node) => Math.abs(node.z - architectureFrontZ(0)) < 1e-6)).toBe(true);
+    expect(placedHosts.every((node) => Math.abs(node.z - architectureFrontZ(0)) < 1e-6)).toBe(true);
+    expect(new Set(placedApps.map((node) => node.x)).size).toBe(8);
+    expect(new Set(placedHosts.map((node) => node.x)).size).toBe(3);
+    expect(layout.width).toBeGreaterThan(ARCH_PLANE_MIN_WIDTH);
+    expect(layout.depth).toBe(ARCH_PLANE_MIN_DEPTH);
+  });
+
+  it('does not grow width linearly with 20 hosts — wrap caps the X span at 8 columns', () => {
+    const hosts20 = layerNodes('host', 20);
+    const hosts8 = layerNodes('host', 8);
+    const layout20 = layoutApplication3DArchitecture(tree({
+      nodes: [{ id: 'sys-1', kind: 'system', name: '二十主机', health }, ...hosts20],
+      edges: [],
+    }));
+    const layout8 = layoutApplication3DArchitecture(tree({
+      nodes: [{ id: 'sys-1', kind: 'system', name: '八主机', health }, ...hosts8],
+      edges: [],
+    }));
+    const placed20 = layout20.nodes.filter((node) => node.kind === 'host');
+    const zs = [...new Set(placed20.map((node) => node.z))].sort((left, right) => left - right);
+    expect(zs).toHaveLength(3);
+    expect(zs[0]).toBeCloseTo(architectureFrontZ(2));
+    expect(zs[zs.length - 1]).toBeCloseTo(architectureFrontZ(0));
     expect(zs[1] - zs[0]).toBeCloseTo(ARCH_GRID_PITCH);
-    expect(Math.max(...zs)).toBeCloseTo(architectureFrontZ(0));
-    expect(Math.max(...zs)).toBeGreaterThan(Math.abs(Math.min(...zs)));
+    expect(layout20.width).toBeCloseTo(layout8.width);
+    expect(layout20.width).toBeLessThan(20 * ARCH_GRID_PITCH);
+    const eightSpan = (ARCH_WRAP_COLS - 1) * ARCH_GRID_PITCH
+      + ARCH_NODE_SIZE.host.width
+      + ARCH_PLANE_PAD * 2;
+    expect(layout20.width).toBeCloseTo(Math.max(eightSpan, ARCH_PLANE_MIN_WIDTH));
+    expect(layout20.width).toBeLessThan(eightSpan + ARCH_GRID_PITCH);
+  });
+
+  it('wraps isolated and connected hosts on the same 8-column grid', () => {
+    const connected = layerNodes('host', 5).map((node, index) => ({
+      ...node,
+      id: `host-c-${index}`,
+    }));
+    const isolated = layerNodes('host', 5).map((node, index) => ({
+      ...node,
+      id: `host-i-${index}`,
+    }));
+    const layout = layoutApplication3DArchitecture(tree({
+      nodes: [
+        { id: 'sys-1', kind: 'system', name: '混合主机', health },
+        { id: 'app-1', kind: 'application', name: '门户', health },
+        ...connected,
+        ...isolated,
+      ],
+      edges: connected.map((node, index) => ({
+        id: `ec-${index}`,
+        sourceId: 'app-1',
+        targetId: node.id,
+        relation: 'application_run_host' as const,
+      })),
+    }));
+    const placed = layout.nodes.filter((node) => node.kind === 'host');
+    expect(placed).toHaveLength(10);
+    expect(layout.nodes.filter((node) => node.id === 'host-c-0')).toHaveLength(1);
+    const front = placed.filter((node) => Math.abs(node.z - architectureFrontZ(0)) < 1e-6);
+    const next = placed.filter((node) => Math.abs(node.z - architectureFrontZ(1)) < 1e-6);
+    expect(front).toHaveLength(ARCH_WRAP_COLS);
+    expect(next).toHaveLength(2);
+    expect(next[0].z).toBeLessThan(front[0].z);
+    const xs = placed.map((node) => node.x);
+    expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo((ARCH_WRAP_COLS - 1) * ARCH_GRID_PITCH);
+    expect(layout.width).toBeLessThan(10 * ARCH_GRID_PITCH);
+  });
+
+  it('grows the board only toward −Z so the front lip stays with row 0', () => {
+    const few = layoutApplication3DArchitecture(tree());
+    const manyHosts = layerNodes('host', 40);
+    const many = layoutApplication3DArchitecture(tree({
+      nodes: [{ id: 'sys-1', kind: 'system', name: '四十主机', health }, ...manyHosts],
+      edges: [],
+    }));
+    const fewFront = few.nodes.filter((node) => node.kind === 'host');
+    const manyPlaced = many.nodes.filter((node) => node.kind === 'host');
+    const manyFirst = manyPlaced.reduce((best, node) => (node.z > best.z ? node : best));
+    const manyLast = manyPlaced.reduce((best, node) => (node.z < best.z ? node : best));
+    expect(fewFront[0].z).toBeCloseTo(architectureFrontZ(0));
+    expect(manyFirst.z).toBeCloseTo(fewFront[0].z);
+    expect(manyFirst.z).toBeCloseTo(architectureFrontZ(0));
+    const fewPlane = few.planes[0];
+    const manyPlane = many.planes[0];
+    const fewFrontEdge = fewPlane.z + fewPlane.depth / 2;
+    const manyFrontEdge = manyPlane.z + manyPlane.depth / 2;
+    const manyBackEdge = manyPlane.z - manyPlane.depth / 2;
+    expect(fewFrontEdge).toBeCloseTo(ARCH_PLANE_FRONT_Z);
+    expect(manyFrontEdge).toBeCloseTo(fewFrontEdge);
+    expect(manyFrontEdge).toBeCloseTo(ARCH_PLANE_WORLD_DEPTH / 2);
+    expect(fewPlane.z).toBeCloseTo(0);
+    expect(manyPlane.z).toBeLessThan(0);
+    expect(many.depth).toBeGreaterThan(ARCH_PLANE_MIN_DEPTH);
+    expect(many.depth).toBeCloseTo(architectureBoardFromContentMinZ(
+      manyLast.z - manyLast.depth / 2,
+    ).depth);
+    expect(manyLast.z).toBeGreaterThanOrEqual(manyBackEdge);
+    expect(manyLast.z - manyLast.depth / 2).toBeGreaterThanOrEqual(manyBackEdge);
+    expect(manyLast.z - manyLast.depth / 2).toBeCloseTo(manyBackEdge + ARCH_PLANE_PAD);
+    expect(many.centerZ).toBe(0);
+    expect(many.centerZ).toBe(few.centerZ);
+    expect(architectureTitleLocalZ(fewPlane.depth)).toBeCloseTo(
+      fewPlane.depth / 2 - ARCH_TITLE_FRONT_INSET,
+    );
+    expect(architectureTitleLocalZ(manyPlane.depth)).toBeCloseTo(
+      manyPlane.depth / 2 - ARCH_TITLE_FRONT_INSET,
+    );
+    expect(architectureTitleLocalZ(manyPlane.depth)).toBeGreaterThan(
+      architectureTitleLocalZ(fewPlane.depth),
+    );
+    expect(architectureTitleLocalZ(manyPlane.depth)).not.toBeCloseTo(0, 1);
+    expect(ARCH_TITLE_FRONT_INSET).toBeGreaterThan(0);
+    expect(ARCH_TITLE_FRONT_INSET).toBeLessThan(0.2);
+  });
+
+  it('uses two landed-camera width tiers: min board vs 8-col cap, not wrap depth', () => {
+    const threeApps = layerNodes('application', 3);
+    const sixHosts = layerNodes('host', 6);
+    const sevenHosts = layerNodes('host', 7);
+    const eightHosts = layerNodes('host', 8);
+    const deepHosts = layerNodes('host', 40);
+    const threeApp = layoutApplication3DArchitecture(tree({
+      nodes: [{ id: 'sys-1', kind: 'system', name: '三应用', health }, ...threeApps],
+      edges: [],
+    }));
+    const sixHost = layoutApplication3DArchitecture(tree({
+      nodes: [
+        { id: 'sys-1', kind: 'system', name: '六主机', health },
+        ...threeApps,
+        ...sixHosts,
+      ],
+      edges: [],
+    }));
+    const sevenHost = layoutApplication3DArchitecture(tree({
+      nodes: [{ id: 'sys-1', kind: 'system', name: '七主机', health }, ...sevenHosts],
+      edges: [],
+    }));
+    const eightHost = layoutApplication3DArchitecture(tree({
+      nodes: [{ id: 'sys-1', kind: 'system', name: '八主机', health }, ...eightHosts],
+      edges: [],
+    }));
+    const deep = layoutApplication3DArchitecture(tree({
+      nodes: [{ id: 'sys-1', kind: 'system', name: '深板', health }, ...deepHosts],
+      edges: [],
+    }));
+    expect(threeApp.width).toBe(ARCH_PLANE_MIN_WIDTH);
+    expect(sixHost.width).toBeLessThan(architectureWideBoardFloor());
+    expect(architectureCameraFitWidth(threeApp.width)).toBe(ARCH_PLANE_MIN_WIDTH);
+    expect(architectureCameraFitWidth(sixHost.width)).toBe(ARCH_PLANE_MIN_WIDTH);
+    expect(architectureCameraFitWidth(eightHost.width)).toBeCloseTo(
+      architectureWrapBoardWidth(),
+    );
+    expect(architectureCameraFitWidth(deep.width)).toBeCloseTo(
+      architectureWrapBoardWidth(),
+    );
+    expect(eightHost.width).toBeCloseTo(deep.width);
+    expect(eightHost.width).toBeCloseTo(architectureWrapBoardWidth());
+    expect(deep.depth).toBeGreaterThan(ARCH_PLANE_MIN_DEPTH);
+    expect(eightHost.depth).toBe(ARCH_PLANE_MIN_DEPTH);
+    const smallFit = fitArchitectureCameraDistance(threeApp, 16 / 9);
+    const sixFit = fitArchitectureCameraDistance(sixHost, 16 / 9);
+    const sevenFit = fitArchitectureCameraDistance(sevenHost, 16 / 9);
+    const eightFit = fitArchitectureCameraDistance(eightHost, 16 / 9);
+    const deepFit = fitArchitectureCameraDistance(deep, 16 / 9);
+    expect(sixFit).toBeCloseTo(smallFit);
+    expect(smallFit).toBeCloseTo(
+      fitArchitectureCameraDistance(layoutApplication3DArchitecture(tree()), 16 / 9),
+    );
+    expect(eightFit).toBeCloseTo(deepFit);
+    expect(sevenFit).toBeCloseTo(eightFit);
+    expect(eightFit).toBeGreaterThan(smallFit);
+    const smallPose = resolveArchitectureCameraPose(threeApp, wallPose, 16 / 9);
+    const sixPose = resolveArchitectureCameraPose(sixHost, wallPose, 16 / 9);
+    const eightPose = resolveArchitectureCameraPose(eightHost, wallPose, 16 / 9);
+    const deepPose = resolveArchitectureCameraPose(deep, wallPose, 16 / 9);
+    expect(smallPose.phi).toBeCloseTo(ARCH_CAMERA_PHI);
+    expect(sixPose.phi).toBeCloseTo(ARCH_CAMERA_PHI);
+    expect(eightPose.phi).toBeCloseTo(ARCH_CAMERA_PHI);
+    expect(deepPose.phi).toBeCloseTo(ARCH_CAMERA_PHI);
+    expect(deepPose.phi).toBeCloseTo(eightPose.phi);
+    expect(sixPose.radius).toBeCloseTo(smallPose.radius);
+    expect(deepPose.radius).toBeCloseTo(eightPose.radius);
+    expect(eightPose.radius).toBeGreaterThan(smallPose.radius);
+    expect(deepPose.target.z).toBeCloseTo(eightPose.target.z);
+    expect(deep.centerZ).toBe(0);
+    expect(smallPose.target.z).toBeCloseTo(eightPose.target.z);
   });
 
   it('keeps an empty system as two empty planes with no visual system node', () => {
@@ -540,6 +786,7 @@ describe('application3D architecture view', () => {
     fillStyle: string;
     shadowColor: string;
     shadowBlur: number;
+    font: string;
   }> = [];
   const fillRectCalls: Array<{ fillStyle: string }> = [];
 
@@ -555,12 +802,18 @@ describe('application3D architecture view', () => {
       fillRect(this: { fillStyle: string }) {
         fillRectCalls.push({ fillStyle: String(this.fillStyle) });
       },
-      fillText(this: { fillStyle: string; shadowColor: string; shadowBlur: number }, text: string) {
+      fillText(this: {
+        fillStyle: string;
+        shadowColor: string;
+        shadowBlur: number;
+        font: string;
+      }, text: string) {
         paintCalls.push({
           text,
           fillStyle: String(this.fillStyle),
           shadowColor: String(this.shadowColor),
           shadowBlur: Number(this.shadowBlur),
+          font: String(this.font),
         });
       },
       createLinearGradient: () => ({ addColorStop: () => undefined }),
@@ -691,12 +944,20 @@ describe('application3D architecture view', () => {
     expect(ARCH_LABEL_HAS_BACKGROUND).toBe(false);
     expect(ARCH_LABEL_BILLBOARD).toBe(true);
     expect(view.billboardMeshes.length).toBe(titles.length + labels.length);
-    expect(titles.every((title) => Math.abs(title.position.z) < 0.2)).toBe(true);
-    expect(titles.every((title) => (
-      Math.abs(title.position.x - architectureTitleLocalX(view.layout.planes[0].width)) < 1e-6
-    ))).toBe(true);
-    expect(titles.every((title) => title.position.x > view.layout.planes[0].width / 2)).toBe(true);
+    expect(titles.every((title) => {
+      const plane = view.layout.planes.find((item) => item.kind === title.parent?.userData.planeKind);
+      return plane != null
+        && Math.abs(title.position.z - architectureTitleLocalZ(plane.depth)) < 1e-6
+        && Math.abs(title.position.z - (plane.depth / 2 - ARCH_TITLE_FRONT_INSET)) < 1e-6
+        && title.position.z > plane.depth / 2 - 0.2
+        && Math.abs(title.position.x - architectureTitleLocalX(plane.width)) < 1e-6
+        && title.position.x > plane.width / 2;
+    })).toBe(true);
     expect(titles.every((title) => title.position.x > 0)).toBe(true);
+    expect(titles.every((title) => {
+      const geo = title.geometry as THREE.PlaneGeometry;
+      return geo.parameters.width === 2.5 && geo.parameters.height === 0.70;
+    })).toBe(true);
     expect(ARCH_TITLE_RIGHT_OUTSET).toBeGreaterThan(0);
     expect(rims).toHaveLength(2);
     expect(rims.every((rim) => rim instanceof THREE.Mesh)).toBe(true);
@@ -801,6 +1062,7 @@ describe('application3D architecture view', () => {
       call.fillStyle === ARCH_TITLE_FILL
       && call.shadowColor === ARCH_TITLE_SHADOW_COLOR
       && call.shadowBlur === ARCH_TITLE_SHADOW_BLUR
+      && call.font.startsWith('600 68px ')
       && !call.text.includes('➤')
     ))).toBe(true);
     const nodeTexts = paintCalls.filter((call) => ['门户', '订单', 'web-1', 'shared'].includes(call.text));
@@ -808,10 +1070,40 @@ describe('application3D architecture view', () => {
     expect(nodeTexts.every((call) => (
       call.fillStyle === ARCH_LABEL_FILL
       && call.shadowBlur === 0
+      && call.font.startsWith('600 58px ')
     ))).toBe(true);
     expect(paintCalls.some((call) => call.text.includes('➤'))).toBe(false);
     expect(fillRectCalls.some((call) => call.fillStyle.includes('12, 32, 52'))).toBe(false);
     expect(view.layout.nodes.every((node) => node.z > 0)).toBe(true);
+    view.dispose();
+  });
+
+  it('pins layer titles to the grown board front lip, not the mesh center', () => {
+    const hosts = Array.from({ length: 40 }, (_, index) => ({
+      id: `host-${index}`,
+      kind: 'host' as const,
+      name: `host-${index}`,
+      health,
+    }));
+    const view = createArchitectureTreeGroup(tree({
+      nodes: [{ id: 'sys-1', kind: 'system', name: '四十主机', health }, ...hosts],
+      edges: [],
+    }), (_id, fallback = '') => fallback);
+    expect(view.layout.planes[0].depth).toBeGreaterThan(ARCH_PLANE_MIN_DEPTH);
+    const titles: THREE.Mesh[] = [];
+    view.group.traverse((child) => {
+      if (child.userData.archRole === 'plane-title') titles.push(child as THREE.Mesh);
+    });
+    expect(titles).toHaveLength(2);
+    titles.forEach((title) => {
+      const plane = view.layout.planes.find((item) => item.kind === title.parent?.userData.planeKind);
+      expect(plane).toBeTruthy();
+      expect(title.position.z).toBeCloseTo(architectureTitleLocalZ(plane!.depth));
+      expect(title.position.z).toBeCloseTo(plane!.depth / 2 - ARCH_TITLE_FRONT_INSET);
+      expect(title.position.z).toBeGreaterThan(4);
+      expect(Math.abs(title.position.z)).toBeGreaterThan(0.2);
+      expect(title.position.x).toBeGreaterThan(plane!.width / 2);
+    });
     view.dispose();
   });
 

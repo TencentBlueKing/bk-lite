@@ -1666,10 +1666,22 @@ export const createApplication3DScene = (
       const rest = (planeGroup.userData.restPosition as THREE.Vector3 | undefined)?.clone()
         ?? new THREE.Vector3();
       const delay = reducedMotion ? 0 : architecturePlaneDelayMs(index) / 1000;
-      planeGroup.position.copy(inFront);
-      planeGroup.scale.setScalar(start);
-      setPlaneReveal(planeGroup, 0);
+      let launched = false;
+      const launchPlaneFlyIn = () => {
+        if (launched) return;
+        launched = true;
+        planeGroup.position.copy(inFront);
+        planeGroup.scale.setScalar(start);
+        setPlaneReveal(planeGroup, 0);
+      };
+      if (delay <= 0) {
+        launchPlaneFlyIn();
+      } else {
+        planeGroup.scale.setScalar(0);
+        setPlaneReveal(planeGroup, 0);
+      }
       startTween(planeMs, (t) => {
+        launchPlaneFlyIn();
         planeGroup.position.lerpVectors(inFront, rest, t);
         planeGroup.scale.setScalar(start + (1 - start) * t);
         setPlaneReveal(planeGroup, t);
@@ -1730,7 +1742,7 @@ export const createApplication3DScene = (
     );
     architectureLookTarget.set(pose.target.x, pose.target.y, pose.target.z);
     architectureCameraPosition.set(pose.position.x, pose.position.y, pose.position.z);
-    controls.minDistance = Math.max(pose.radius * 0.35, 8);
+    controls.minDistance = Math.max(pose.radius * 0.35, 3);
     controls.maxDistance = pose.radius * 2.8;
     const cameraMs = reducedMotion ? WALL_ENTRANCE.reducedMotionMs : ARCHITECTURE_MOTION.cameraMs;
     easeCameraTo(

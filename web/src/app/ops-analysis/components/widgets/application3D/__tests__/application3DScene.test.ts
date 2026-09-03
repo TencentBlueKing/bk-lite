@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 
 import * as THREE from 'three';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Application3DArchitectureData, Application3DWallItem } from '@/app/ops-analysis/types/sceneWidget';
 import {
@@ -26,6 +28,8 @@ const captured = vi.hoisted(() => ({
     screenSpacePanning: boolean;
     minPolarAngle: number;
     maxPolarAngle: number;
+    minDistance: number;
+    maxDistance: number;
     enabled: boolean;
   } | null,
   raf: [] as FrameRequestCallback[],
@@ -298,6 +302,39 @@ describe('application3D architecture scene', () => {
     controller.dispose();
   });
 
+  it('keeps the host plane hidden until the application fly-in finishes', () => {
+    const controller = mountScene();
+    controller.showArchitecture(architecture);
+    for (let step = 0; step < 155; step += 1) flushFrames(20);
+    const [app, host] = planeGroups();
+    expect(app?.userData.planeKind).toBe('application');
+    expect(host?.userData.planeKind).toBe('host');
+    const hostRest = (host?.userData.restPosition as THREE.Vector3 | undefined)?.clone();
+    expect(hostRest).toBeTruthy();
+    expect(app?.scale.x).toBeGreaterThan(0);
+    expect(app?.scale.x).toBeLessThan(1);
+    expect(host?.scale.x).toBe(0);
+    expect(host?.position.distanceTo(hostRest ?? new THREE.Vector3())).toBeLessThan(0.05);
+
+    for (let step = 0; step < 10; step += 1) flushFrames(20);
+    expect(app?.scale.x).toBeGreaterThan(0.2);
+    expect(app?.scale.x).toBeLessThan(1);
+    expect(host?.scale.x).toBe(0);
+    expect(host?.position.distanceTo(hostRest ?? new THREE.Vector3())).toBeLessThan(0.05);
+
+    for (let step = 0; step < 16; step += 1) flushFrames(20);
+    expect(Math.abs((app?.scale.x ?? 0) - 1)).toBeLessThan(0.02);
+    expect(host?.scale.x).toBeGreaterThan(0);
+    expect(host?.scale.x).toBeLessThan(1);
+    expect(host?.position.distanceTo(hostRest ?? new THREE.Vector3())).toBeGreaterThan(1);
+
+    for (let step = 0; step < 25; step += 1) flushFrames(20);
+    expect(Math.abs((app?.scale.x ?? 0) - 1)).toBeLessThan(0.02);
+    expect(Math.abs((host?.scale.x ?? 0) - 1)).toBeLessThan(0.02);
+    expect(host?.position.distanceTo(hostRest ?? new THREE.Vector3())).toBeLessThan(0.05);
+    controller.dispose();
+  });
+
   it('starts hiding the focused wall while the architecture camera flies', () => {
     const controller = mountScene();
     const card = wallGroup()?.children[0];
@@ -350,6 +387,33 @@ describe('application3D architecture scene', () => {
     expect(captured.controls?.enablePan).toBe(true);
     expect(captured.controls?.minPolarAngle).toBeCloseTo(APPLICATION3D_USER_POLAR.min);
     expect(captured.controls?.maxPolarAngle).toBeCloseTo(APPLICATION3D_USER_POLAR.max);
+    controller.dispose();
+  });
+
+  it('lets architecture wheel zoom closer than the wall minDistance floor', () => {
+    const sceneSrc = readFileSync(
+      resolve(process.cwd(), 'src/app/ops-analysis/components/widgets/application3D/application3DScene.ts'),
+      'utf8',
+    );
+    expect(sceneSrc).toContain('controls.minDistance = Math.max(pose.radius * 0.35, 3)');
+    expect(sceneSrc).not.toContain('controls.minDistance = Math.max(pose.radius * 0.35, 6)');
+    expect(sceneSrc).not.toContain('controls.minDistance = Math.max(pose.radius * 0.35, 8)');
+    expect(sceneSrc).toContain('controls.minDistance = Math.max(wallCameraPosition.z * 0.45, 6)');
+
+    const controller = mountScene();
+    const wallMin = captured.controls?.minDistance ?? 0;
+    expect(wallMin).toBeGreaterThanOrEqual(6);
+    controller.showArchitecture(architecture);
+    flushFrames(16);
+    const layout = layoutApplication3DArchitecture(architecture);
+    const pose = resolveArchitectureCameraPose(
+      layout,
+      { position: { x: 0, y: 0.48, z: 20 }, target: { x: 0, y: 0, z: 0 } },
+      16 / 9,
+    );
+    expect(captured.controls?.minDistance).toBeCloseTo(Math.max(pose.radius * 0.35, 3));
+    expect(captured.controls?.minDistance).toBeGreaterThanOrEqual(3);
+    expect(captured.controls?.maxDistance).toBeCloseTo(pose.radius * 2.8);
     controller.dispose();
   });
 
