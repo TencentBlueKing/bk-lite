@@ -142,6 +142,7 @@ import {
   createArchitectureTreeGroup,
   createTrapezoidFrustumGeometry,
   hostHasAlarm,
+  findArchitectureRackRoot,
   liftCabinetAlbedoPixels,
   liftCabinetAlbedoTexture,
   updateArchitecturePulse,
@@ -1321,6 +1322,9 @@ describe('application3D architecture view', () => {
     expect(hostGroup?.userData.alarming).toBe(true);
     expect(quietGroup?.userData.alarming).toBe(false);
     expect(appGroup?.userData.alarming).toBe(false);
+    expect(hostGroup?.userData.nodeId).toBe('host-1');
+    expect(quietGroup?.userData.nodeId).toBe('host-quiet');
+    expect(appGroup?.userData.nodeId).toBe('app-1');
     expect(hostGroup?.userData.plainMetal).toBe(false);
     expect(quietGroup?.userData.plainMetal).toBe(true);
     expect(appGroup?.userData.plainMetal).toBe(true);
@@ -1354,6 +1358,9 @@ describe('application3D architecture view', () => {
     expect(quiet.strokes).toHaveLength(0);
     expect(host.leds).toHaveLength(ARCH_RACK_LED_COUNT);
     expect(host.strokes).toHaveLength(12);
+    expect(findArchitectureRackRoot(host.leds[0])).toBe(hostGroup);
+    expect(findArchitectureRackRoot(host.chassis[0])).toBe(hostGroup);
+    expect(findArchitectureRackRoot(quiet.leds[0])).toBe(quietGroup);
     expect(app.hints).toHaveLength(0);
     expect(quiet.hints).toHaveLength(0);
     expect(host.hints).toHaveLength(0);
