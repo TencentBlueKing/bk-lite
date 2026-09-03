@@ -132,6 +132,17 @@ export const hostHasAlarm = (
   node: { kind: string; health?: { state: string } } | undefined,
 ) => node?.kind === 'host' && node.health?.state === 'alarming';
 
+export const findArchitectureRackRoot = (
+  object: THREE.Object3D | null | undefined,
+): THREE.Object3D | null => {
+  let current: THREE.Object3D | null | undefined = object;
+  while (current) {
+    if (current.userData.archRole === 'rack-root') return current;
+    current = current.parent;
+  }
+  return null;
+};
+
 export const architectureEdgeColor = (
   target: { kind: string; health?: { state: string } } | undefined,
 ) => (hostHasAlarm(target) ? ARCH_EDGE_ALARM : ARCH_EDGE);
@@ -1018,6 +1029,7 @@ export const createArchitectureTreeGroup = (
   layout.nodes.forEach((node) => {
     const nodeGroup = new THREE.Group();
     nodeGroup.userData.archRole = 'rack-root';
+    nodeGroup.userData.nodeId = node.id;
     nodeGroup.userData.nodeKind = node.kind;
     const alarming = hostHasAlarm(node);
     nodeGroup.userData.alarming = alarming;

@@ -14,6 +14,12 @@ import {
 } from '../application3DArchitecture';
 import { resolveApplication3DWallCamera } from '../application3DLayout';
 import {
+  expandArchitectureCabinetWorldBox,
+  overlayScreenRect,
+  projectWorldBoxToScreenRect,
+  screenRectsIntersect,
+} from '../application3DArchitectureOverlay';
+import {
   APPLICATION3D_ORBIT_PAN,
   APPLICATION3D_USER_POLAR,
   APPLICATION3D_WALL_GROUP_NAME,
@@ -609,3 +615,267 @@ describe('application3D architecture scene', () => {
     controller.dispose();
   });
 });
+
+describe('application3D architecture host pick', () => {
+  let mount: HTMLDivElement;
+
+  beforeEach(() => {
+    captured.scene = null;
+    captured.camera = null;
+    captured.controls = null;
+    captured.raf = [];
+    captured.now = 1_000;
+    mount = document.createElement('div');
+    Object.defineProperty(mount, 'clientWidth', { configurable: true, value: 320 });
+    Object.defineProperty(mount, 'clientHeight', { configurable: true, value: 180 });
+    document.body.appendChild(mount);
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      captured.raf.push(callback);
+      return captured.raf.length;
+    });
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => {
+      captured.raf.splice(id - 1, 1);
+    });
+    vi.spyOn(performance, 'now').mockImplementation(() => captured.now);
+    vi.stubGlobal('ResizeObserver', class {
+      observe() {}
+      disconnect() {}
+    });
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function (
+      this: HTMLCanvasElement,
+    ) {
+      const context: Record<string, unknown> = {
+        canvas: this,
+        fillStyle: '',
+        strokeStyle: '',
+        font: '',
+        filter: '',
+        textAlign: 'center',
+        textBaseline: 'middle',
+        lineWidth: 1,
+        lineJoin: 'round',
+        lineCap: 'round',
+        globalAlpha: 1,
+        createLinearGradient: () => ({ addColorStop: () => undefined }),
+        createRadialGradient: () => ({ addColorStop: () => undefined }),
+        measureText: (text: string) => ({ width: text.length * 8 }),
+      };
+      return new Proxy(context, {
+        get: (target, prop) => {
+          if (prop in target) return target[prop as string];
+          return () => undefined;
+        },
+        set: (target, prop, value) => {
+          target[prop as string] = value;
+          return true;
+        },
+      }) as unknown as CanvasRenderingContext2D;
+    });
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: false,
+      media: query,
+      addEventListener() {},
+      removeEventListener() {},
+      addListener() {},
+      removeListener() {},
+      dispatchEvent() { return false; },
+      onchange: null,
+    }));
+  });
+
+  afterEach(() => {
+    mount.remove();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  const alarmingHealth = {
+    ...health,
+    state: 'alarming' as const,
+    reason: 'active_alarm' as const,
+    activeAlarmCount: 3,
+    highestSeverity: { id: 'critical' as const, label: '严重', rank: 400 as const, color: 'critical' as const },
+  };
+
+  const architectureAlarms: Application3DArchitectureData = {
+    systemId: 'sys-1',
+    refreshedAt: '2026-09-01T00:00:00Z',
+    nodes: [
+      { id: 'sys-1', kind: 'system', name: '门户系统', health },
+      { id: 'app-1', kind: 'application', name: '门户', health },
+      { id: 'host-alarm', kind: 'host', name: 'web-alarm', health: alarmingHealth },
+      { id: 'host-quiet', kind: 'host', name: 'web-ok', health },
+      { id: 'host-alarm-2', kind: 'host', name: 'web-alarm-2', health: alarmingHealth },
+    ],
+    edges: [
+      { id: 'e1', sourceId: 'sys-1', targetId: 'app-1', relation: 'system_contains_application' },
+      { id: 'e2', sourceId: 'app-1', targetId: 'host-alarm', relation: 'application_run_host' },
+      { id: 'e3', sourceId: 'app-1', targetId: 'host-quiet', relation: 'application_run_host' },
+      { id: 'e4', sourceId: 'app-1', targetId: 'host-alarm-2', relation: 'application_run_host' },
+    ],
+  };
+
+  const architectureGroup = () => captured.scene?.getObjectByName('application3d-architecture');
+
+  const findRackMesh = (nodeId: string) => {
+    let mesh: THREE.Object3D | undefined;
+    architectureGroup()?.traverse((child) => {
+      if (mesh) return;
+      if (
+        (child as THREE.Mesh).isMesh
+        && child.parent?.userData.archRole === 'rack-root'
+        && child.parent.userData.nodeId === nodeId
+      ) {
+        mesh = child;
+      }
+    });
+    return mesh;
+  };
+
+  const mockHit = (object: THREE.Object3D | undefined) => {
+    vi.spyOn(THREE.Raycaster.prototype, 'intersectObjects').mockImplementation(() => {
+      if (!object) return [];
+      return [{
+        object,
+        distance: 1,
+        point: new THREE.Vector3(),
+        distanceToRay: 0,
+      }] as THREE.Intersection[];
+    });
+  };
+
+  const point = { clientX: 160, clientY: 90, bubbles: true as const };
+
+  const click = (canvas: Element | null, moveX = 0) => {
+    canvas?.dispatchEvent(new PointerEvent('pointerdown', { ...point, button: 0 }));
+    if (moveX) {
+      canvas?.dispatchEvent(new PointerEvent('pointermove', {
+        clientX: point.clientX + moveX,
+        clientY: point.clientY,
+        bubbles: true,
+      }));
+    }
+    canvas?.dispatchEvent(new PointerEvent('pointerup', {
+      ...point,
+      clientX: point.clientX + moveX,
+      button: 0,
+    }));
+  };
+
+  const mountArchitecture = (onArchitectureHostSelect = vi.fn(), onSelect = vi.fn()) => {
+    const controller = createApplication3DScene(mount, {
+      interactive: true,
+      translate: (_id, fallback = '') => fallback,
+      onSelect,
+      onArchitectureHostSelect,
+    });
+    controller.reconcile([wallItem], { playIntro: false });
+    flushFrames();
+    controller.showArchitecture(architectureAlarms);
+    for (let step = 0; step < 40; step += 1) flushFrames(20);
+    return { controller, onArchitectureHostSelect, onSelect, canvas: mount.querySelector('canvas') };
+  };
+
+  it('selects an alarming host rack on click and ignores drag and quiet racks', () => {
+    const { controller, onArchitectureHostSelect, onSelect, canvas } = mountArchitecture();
+    const alarmMesh = findRackMesh('host-alarm');
+    const quietMesh = findRackMesh('host-quiet');
+    const alarm2Mesh = findRackMesh('host-alarm-2');
+    expect(alarmMesh).toBeTruthy();
+    expect(quietMesh).toBeTruthy();
+
+    mockHit(alarmMesh);
+    click(canvas, 12);
+    expect(onArchitectureHostSelect).not.toHaveBeenCalled();
+    expect(onSelect).not.toHaveBeenCalled();
+
+    click(canvas);
+    expect(onArchitectureHostSelect).toHaveBeenCalledTimes(1);
+    expect(onArchitectureHostSelect.mock.calls[0][0]?.node.id).toBe('host-alarm');
+    expect(onSelect).not.toHaveBeenCalled();
+
+    mockHit(quietMesh);
+    click(canvas);
+    expect(onArchitectureHostSelect.mock.calls.at(-1)?.[0]).toBeNull();
+
+    mockHit(alarmMesh);
+    click(canvas);
+    mockHit(alarm2Mesh);
+    click(canvas);
+    expect(onArchitectureHostSelect.mock.calls.at(-1)?.[0]?.node.id).toBe('host-alarm-2');
+
+    mockHit(undefined);
+    click(canvas);
+    expect(onArchitectureHostSelect.mock.calls.at(-1)?.[0]).toBeNull();
+
+    mockHit(alarmMesh);
+    click(canvas);
+    click(canvas, 10);
+    expect(onArchitectureHostSelect.mock.calls.at(-1)?.[0]).toBeNull();
+
+    controller.dispose();
+  });
+
+  it('uses a pointer cursor only on alarming hosts in architecture', () => {
+    const { controller, canvas } = mountArchitecture();
+    mockHit(findRackMesh('host-alarm'));
+    canvas?.dispatchEvent(new PointerEvent('pointermove', point));
+    expect(canvas).toHaveProperty('style.cursor', 'pointer');
+
+    mockHit(findRackMesh('host-quiet'));
+    canvas?.dispatchEvent(new PointerEvent('pointermove', point));
+    expect(canvas).toHaveProperty('style.cursor', 'grab');
+
+    mockHit(undefined);
+    canvas?.dispatchEvent(new PointerEvent('pointermove', point));
+    expect(canvas).toHaveProperty('style.cursor', 'grab');
+    controller.dispose();
+  });
+
+  it('places the host overlay from the cabinet AABB in widget CSS pixels', () => {
+    const { controller, onArchitectureHostSelect, canvas } = mountArchitecture();
+    const rackRoot = findRackMesh('host-alarm')?.parent;
+    expect(rackRoot).toBeTruthy();
+    rackRoot?.scale.setScalar(1);
+    rackRoot?.traverse((child) => {
+      if (child.userData.archRole !== 'node-label') return;
+      const scale = child.userData.labelScale as THREE.Vector3 | undefined;
+      if (scale) child.scale.copy(scale);
+    });
+    canvas!.getBoundingClientRect = () => ({
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 160,
+      bottom: 90,
+      width: 160,
+      height: 90,
+      toJSON: () => ({}),
+    });
+    mockHit(findRackMesh('host-alarm'));
+    click(canvas);
+    const selection = onArchitectureHostSelect.mock.calls.at(-1)?.[0];
+    expect(selection).toBeTruthy();
+    expect(selection.node.id).toBe('host-alarm');
+    expect(captured.camera).toBeTruthy();
+    const cssViewport = { width: 320, height: 180 };
+    const scaledViewport = { width: 160, height: 90 };
+    const cabinetBox = expandArchitectureCabinetWorldBox(rackRoot!);
+    const fullBox = new THREE.Box3().setFromObject(rackRoot!);
+    const cabinetRect = projectWorldBoxToScreenRect(cabinetBox, captured.camera!, cssViewport);
+    const fullRect = projectWorldBoxToScreenRect(fullBox, captured.camera!, cssViewport);
+    const scaledRect = projectWorldBoxToScreenRect(cabinetBox, captured.camera!, scaledViewport);
+    expect(selection.hostScreenRect.left).toBeCloseTo(cabinetRect.left, 1);
+    expect(selection.hostScreenRect.right).toBeCloseTo(cabinetRect.right, 1);
+    expect(selection.hostScreenRect.right - selection.hostScreenRect.left).toBeLessThan(
+      fullRect.right - fullRect.left,
+    );
+    expect(Math.abs(selection.hostScreenRect.left - scaledRect.left)).toBeGreaterThan(1);
+    expect(
+      screenRectsIntersect(overlayScreenRect(selection.overlay), selection.hostScreenRect),
+    ).toBe(false);
+    controller.dispose();
+  });
+});
+

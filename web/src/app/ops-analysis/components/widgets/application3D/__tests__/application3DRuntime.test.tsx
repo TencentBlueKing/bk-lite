@@ -8,6 +8,10 @@ import type { ScreenRenderContext } from '@/app/ops-analysis/types/dashBoard';
 interface SceneCallbacks {
   onSelect: (item: Application3DWallItem) => void;
   onBackgroundClick?: () => void;
+  onArchitectureHostSelect?: (selection: {
+    node: { id: string; name: string; health?: { state: string; activeAlarmCount: number | null; highestSeverity: { label: string } | null } };
+    overlay: { left: number; top: number };
+  } | null) => void;
 }
 
 const mocks = vi.hoisted(() => ({
@@ -232,6 +236,84 @@ describe('application3D application detail', () => {
     expect(screen.queryByRole('button', { name: /application3DBackFocus/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /application3DBackWall/ })).toBeNull();
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('renders a compact host status chip from architecture selection without opening detail', async () => {
+    mocks.getWall.mockResolvedValue({
+      ...wall,
+      items: [wallItem],
+      capacity: { actualCount: 1, supportedCount: null },
+    });
+    mocks.getArchitecture.mockResolvedValue({
+      systemId: 'app-1',
+      refreshedAt: '2026-09-01T00:00:00Z',
+      nodes: [{ id: 'app-1', kind: 'system' as const, name: '运营门户' }],
+      edges: [],
+    });
+    render(<Application3D refreshKey="0" runtimeActive screenRenderContext={context} />);
+    await waitFor(() => expect(mocks.sceneCallbacks).not.toBeNull());
+    act(() => {
+      mocks.sceneCallbacks?.onSelect(wallItem);
+    });
+    fireEvent.click(screen.getByRole('button', { name: /application3DOpenArchitecture/ }));
+    await waitFor(() => expect(mocks.showArchitecture).toHaveBeenCalled());
+
+    act(() => {
+      mocks.sceneCallbacks?.onArchitectureHostSelect?.({
+        node: {
+          id: 'host-alarm',
+          name: 'web-alarm',
+          kind: 'host',
+          health: {
+            state: 'alarming',
+            activeAlarmCount: 3,
+            highestSeverity: { label: '严重' },
+          },
+        },
+        overlay: { left: 48, top: 12 },
+      } as never);
+    });
+
+    const chip = document.querySelector('.app3d-arch-host-chip') as HTMLElement | null;
+    expect(chip).toBeTruthy();
+    expect(chip?.style.left).toBe('48px');
+    expect(chip?.style.top).toBe('12px');
+    expect(chip?.textContent).toContain('web-alarm');
+    expect(chip?.textContent).toContain('application3DHostStatus');
+    expect(chip?.textContent).toContain('application3DStatus_alarming');
+    expect(chip?.textContent).toContain('application3DHostAlarmCount');
+    expect(chip?.textContent).toContain('3');
+    expect(chip?.textContent).toContain('application3DHostHighestSeverity');
+    expect(chip?.textContent).toContain('严重');
+    expect(chip?.querySelector('button')).toBeNull();
+    expect(chip?.textContent).not.toContain('application3DBackWall');
+    expect(getComputedStyle(chip as Element).pointerEvents === 'none' || chip?.className.includes('app3d-arch-host-chip')).toBe(true);
+    expect(screen.getByRole('button', { name: /application3DBackWall/ })).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(mocks.getApplicationDetail).not.toHaveBeenCalled();
+    expect(mocks.getAlarmDetail).not.toHaveBeenCalled();
+
+    act(() => {
+      mocks.sceneCallbacks?.onArchitectureHostSelect?.({
+        node: {
+          id: 'host-alarm',
+          name: 'web-alarm',
+          kind: 'host',
+          health: {
+            state: 'alarming',
+            activeAlarmCount: null,
+            highestSeverity: null,
+          },
+        },
+        overlay: { left: 48, top: 12 },
+      } as never);
+    });
+    expect(document.querySelector('.app3d-arch-host-chip')?.textContent).toContain('--');
+
+    act(() => {
+      mocks.sceneCallbacks?.onArchitectureHostSelect?.(null);
+    });
+    expect(document.querySelector('.app3d-arch-host-chip')).toBeNull();
   });
 
   it('does not refetch the same application while its detail is already open', async () => {

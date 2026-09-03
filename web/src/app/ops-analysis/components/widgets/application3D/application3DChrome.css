@@ -292,6 +292,63 @@
   transform: none;
 }
 
+/* Keep width/height in sync with ARCH_HOST_OVERLAY_SIZE. pointer-events none so orbit still works. */
+.app3d-arch-host-chip {
+  position: absolute;
+  z-index: 18;
+  box-sizing: border-box;
+  width: 176px;
+  min-height: 96px;
+  padding: 8px 10px 10px;
+  pointer-events: none;
+  border-radius: 10px;
+  border: 1px solid rgba(214, 226, 240, 0.34);
+  color: var(--color-application3d-text);
+  background: linear-gradient(180deg, rgba(42, 58, 80, 0.82) 0%, rgba(16, 26, 40, 0.88) 100%);
+  box-shadow:
+    0 0 0 1px rgba(186, 210, 236, 0.12),
+    0 0 14px rgba(160, 190, 220, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.app3d-arch-host-chip__title {
+  margin: 0 0 6px;
+  overflow: hidden;
+  color: var(--color-application3d-text);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.app3d-arch-host-chip__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 1px 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.app3d-arch-host-chip__label {
+  color: var(--color-application3d-text-muted, rgba(186, 198, 214, 0.82));
+  flex-shrink: 0;
+}
+
+.app3d-arch-host-chip__value {
+  color: var(--color-application3d-text);
+  min-width: 0;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .app3d-detail-mask {
   position: absolute;
   inset: 0;
