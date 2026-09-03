@@ -99,7 +99,10 @@ class DeepAgentAssemblyMixin:
 
     @classmethod
     def _select_visible_planned_messages(cls, messages, *, summary_ran: bool) -> list:
-        """分步过程只给用户看一份终稿：工具结果保留，正文只留最后一张表或最后一段作答。"""
+        """分步过程只给用户看一份终稿：工具结果保留，正文只留最后一份作答。
+
+        summary_ran 保留调用契约；有无 summary 都取 answers[-1]，避免中间表盖掉更晚的无表终稿。
+        """
         visible: list = []
         answers: list = []
         stubs: list = []
@@ -116,11 +119,7 @@ class DeepAgentAssemblyMixin:
             visible.append(message)
         chosen = None
         if answers:
-            if summary_ran:
-                chosen = answers[-1]
-            else:
-                table_answers = [item for item in answers if cls._MARKDOWN_TABLE_RE.search(str(item.content or ""))]
-                chosen = (table_answers or answers)[-1]
+            chosen = answers[-1]
         elif stubs:
             chosen = stubs[-1]
         if chosen is not None:
@@ -197,10 +196,17 @@ class DeepAgentAssemblyMixin:
             tail = (
                 "本步给出用户可见的最终答案：只保留一张表，口径必须对齐用户问题。"
                 "用户问今天或某时间窗时，以事件时间线为准；累计 restart_count 不是该时间窗次数，禁止写成「今天重启了 N 次」。"
+                "用户问按重启时间排序或最近重启的 Pod 时，以 last_restart_time 为准，禁止按累计 restart_count 排序。"
+                "已知具体 Pod 的重启原因时，以 diagnose 的 last_state、previous 日志和定点事件为准，不要把当前轮日志当成上一轮死因。"
                 "若与前面累计名单矛盾，只保留时间窗结论，不要再贴口径不同的第二张表。"
             )
         else:
-            tail = "本步证据只给后续步骤用，不要输出 Markdown 表或最终结论。" "用户问今天或某时间窗时，禁止把累计 restart_count 写成该时间窗的次数。"
+            tail = (
+                "本步证据只给后续步骤用，不要输出 Markdown 表或最终结论。"
+                "用户问今天或某时间窗时，禁止把累计 restart_count 写成该时间窗的次数。"
+                "用户问按重启时间排序或最近重启的 Pod 时，以 last_restart_time 为准，禁止按累计 restart_count 排序。"
+                "已知具体 Pod 的重启原因时，优先看 last_state 和 previous 日志。"
+            )
         return (
             "【工具执行】只调用本步骤计划/可见工具。"
             "未计划工具会被拒绝，不要改调其他工具，也不要当作步骤失败去重规划。"
