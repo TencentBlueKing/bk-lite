@@ -495,6 +495,7 @@ export const topologyCardsOverlap = (
 export const fitTopologyView = (
   nodes: PositionedApmTopologyNode[],
   zoom = 1,
+  canvasSize: { width: number; height: number } = TOPOLOGY_CANVAS_SIZE,
 ): { x: number; y: number; k: number } => {
   if (!nodes.length) return { x: 0, y: 0, k: zoom };
   const halfW = (TOPOLOGY_NODE_CARD.minWidth + TOPOLOGY_NODE_CARD.widthSpan) / 2;
@@ -505,10 +506,10 @@ export const fitTopologyView = (
   const maxY = Math.max(...nodes.map((node) => node.y + halfH));
   const width = Math.max(maxX - minX, 1);
   const height = Math.max(maxY - minY, 1);
-  const k = Math.min(zoom, TOPOLOGY_CANVAS_SIZE.width / width, TOPOLOGY_CANVAS_SIZE.height / height);
+  const k = Math.min(zoom, canvasSize.width / width, canvasSize.height / height);
   return {
     k,
-    x: (TOPOLOGY_CANVAS_SIZE.width - width * k) / 2 - minX * k,
-    y: (TOPOLOGY_CANVAS_SIZE.height - height * k) / 2 - minY * k,
+    x: (canvasSize.width - width * k) / 2 - minX * k,
+    y: (canvasSize.height - height * k) / 2 - minY * k,
   };
 };

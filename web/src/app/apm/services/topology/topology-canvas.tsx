@@ -149,9 +149,14 @@ export default function TopologyCanvas({
   onNodeClick?: (node: ApmTopologyNode) => void;
 }) {
   const { t } = useTranslation();
+  const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const dragRef = useRef<CanvasDrag | null>(null);
   const skipNodeClickRef = useRef(false);
+  const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>({
+    width: TOPOLOGY_CANVAS_SIZE.width,
+    height: TOPOLOGY_CANVAS_SIZE.height,
+  });
   const layoutKey = useMemo(
     () => `${layout}:${nodes.map((node) => node.id).join('|')}:${edges.map((edge) => `${edge.source}>${edge.target}`).join('|')}`,
     [edges, layout, nodes],
@@ -164,6 +169,36 @@ export default function TopologyCanvas({
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [nodePositions, setNodePositions] = useState<Record<string, { x: number; y: number }>>({});
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const updateSize = () => {
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (w > 0 && h > 0) {
+        setCanvasSize((prev) => (prev.width === w && prev.height === h ? prev : { width: w, height: h }));
+      }
+    };
+
+    updateSize();
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const { width: w, height: h } = entry.contentRect;
+          if (w > 0 && h > 0) {
+            const nextW = Math.round(w);
+            const nextH = Math.round(h);
+            setCanvasSize((prev) => (prev.width === nextW && prev.height === nextH ? prev : { width: nextW, height: nextH }));
+          }
+        }
+      });
+      observer.observe(el);
+      return () => observer.disconnect();
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -186,12 +221,12 @@ export default function TopologyCanvas({
       setView({ x: 0, y: 0, k: zoom });
       return;
     }
-    const fitted = fitTopologyView(layoutResult.nodes, zoom);
+    const fitted = fitTopologyView(layoutResult.nodes, zoom, canvasSize);
     setView({
       ...fitted,
       k: clampZoom(fitted.k),
     });
-  }, [layoutKey, layoutResult, zoom]);
+  }, [canvasSize, layoutKey, layoutResult, zoom]);
 
   useEffect(() => {
     setNodePositions({});
@@ -255,11 +290,11 @@ export default function TopologyCanvas({
 
   const viewBoxDelta = (clientX: number, clientY: number, originX: number, originY: number) => {
     const svg = svgRef.current;
-    const width = svg?.clientWidth || TOPOLOGY_CANVAS_SIZE.width;
-    const height = svg?.clientHeight || TOPOLOGY_CANVAS_SIZE.height;
+    const width = svg?.clientWidth || canvasSize.width;
+    const height = svg?.clientHeight || canvasSize.height;
     return {
-      dx: (clientX - originX) * (TOPOLOGY_CANVAS_SIZE.width / width),
-      dy: (clientY - originY) * (TOPOLOGY_CANVAS_SIZE.height / height),
+      dx: (clientX - originX) * (canvasSize.width / width),
+      dy: (clientY - originY) * (canvasSize.height / height),
     };
   };
 
@@ -350,7 +385,12 @@ export default function TopologyCanvas({
     node.kind === 'user_request' ? t('apm.topology.userRequestNode', '用户请求') : node.service_name;
 
   return (
-    <div className="relative h-[640px] w-full overflow-hidden bg-[var(--color-fill-1)]" data-topology-layout-pending={layoutPending ? 'true' : 'false'} data-topology-surface="true">
+    <div
+      ref={containerRef}
+      className="relative h-[640px] w-full overflow-hidden bg-[var(--color-fill-1)]"
+      data-topology-layout-pending={layoutPending ? 'true' : 'false'}
+      data-topology-surface="true"
+    >
       {layoutPending ? (
         <div className="absolute inset-0 z-20 flex items-center bg-[var(--color-bg)]/80 backdrop-blur-xs">
           <div className="w-full">
@@ -368,7 +408,7 @@ export default function TopologyCanvas({
           <Button aria-label={t('apm.topology.zoomIn', '放大拓扑')} type="text" size="small" icon={<PlusOutlined aria-hidden="true" />} onClick={() => adjustZoom(view.k + 0.15)} />
           <Button aria-label={t('apm.topology.zoomOut', '缩小拓扑')} type="text" size="small" icon={<MinusOutlined aria-hidden="true" />} onClick={() => adjustZoom(view.k - 0.15)} />
           <Button aria-label={t('apm.topology.resetZoom', '重置拓扑缩放')} type="text" size="small" icon={<AimOutlined aria-hidden="true" />} onClick={() => {
-            const fitted = fitTopologyView(positionedNodes, zoom);
+            const fitted = fitTopologyView(positionedNodes, zoom, canvasSize);
             setView({ ...fitted, k: clampZoom(fitted.k) });
           }} />
         </div>
@@ -380,7 +420,7 @@ export default function TopologyCanvas({
         data-layout={layout}
         data-topology-scale={view.k.toFixed(2)}
         role="img"
-        viewBox={`0 0 ${TOPOLOGY_CANVAS_SIZE.width} ${TOPOLOGY_CANVAS_SIZE.height}`}
+        viewBox={`0 0 ${canvasSize.width} ${canvasSize.height}`}
         onWheel={onWheel}
         onMouseDown={onCanvasMouseDown}
         onClick={(event) => {
