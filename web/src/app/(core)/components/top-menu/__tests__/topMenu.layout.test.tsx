@@ -36,8 +36,12 @@ vi.mock('@/context/permissions', () => ({
 vi.mock('@/context/client', () => ({
   useClientData: () => ({
     clientData: [
+      { name: 'opspilot', display_name: 'OpsPilot', url: '/opspilot', icon: 'opspilot', is_build_in: true },
+      { name: 'ops-console', display_name: '控制台', url: '/ops-console', icon: 'ops-console', is_build_in: true },
       { name: 'cmdb', display_name: 'CMDB', url: '/cmdb', icon: 'cmdb', is_build_in: true },
-      { name: 'monitor', display_name: 'Monitor', url: '/monitor', icon: 'monitor', is_build_in: true },
+      { name: 'monitor', display_name: '监控中心', url: '/monitor', icon: 'monitor', is_build_in: true },
+      { name: 'log', display_name: '日志中心', url: '/log', icon: 'log', is_build_in: true },
+      { name: 'alarm', display_name: '告警中心', url: '/alarm', icon: 'alarm', is_build_in: true },
     ],
     appConfigList: [],
     loading: false,
@@ -93,13 +97,19 @@ describe('TopMenu chrome layouts', () => {
     chromeLayout = 'app-top';
     render(<TopMenu />);
     expect(screen.queryByTestId('icon-caidandaohang')).toBeNull();
+    expect(screen.getByText('OpsPilot')).toBeTruthy();
+    expect(screen.getByText('控制台')).toBeTruthy();
     expect(screen.getByText('CMDB')).toBeTruthy();
-    expect(screen.getByText('Monitor')).toBeTruthy();
+    expect(screen.getByText('监控中心')).toBeTruthy();
+    expect(screen.getByText('日志中心')).toBeTruthy();
+    expect(screen.getByText('告警中心')).toBeTruthy();
     expect(screen.getByTestId('icon-cmdb')).toBeTruthy();
     expect(screen.getByTestId('icon-monitor')).toBeTruthy();
     expect(screen.queryByText('搜索')).toBeNull();
+    expect(screen.queryByText('common.more')).toBeNull();
+    expect(screen.queryByText('详情')).toBeNull();
     expect(screen.getByRole('link', { name: 'CMDB' }).className).toMatch(/active/);
-    expect(screen.getByRole('link', { name: 'Monitor' }).className).not.toMatch(/active/);
+    expect(screen.getByRole('link', { name: '监控中心' }).className).not.toMatch(/active/);
   });
 
   it('keeps the stored app-top header on no-permission instead of falling back to classic', () => {
@@ -108,18 +118,18 @@ describe('TopMenu chrome layouts', () => {
     render(<TopMenu />);
     expect(screen.queryByTestId('icon-caidandaohang')).toBeNull();
     expect(screen.getByText('CMDB')).toBeTruthy();
-    expect(screen.getByText('Monitor')).toBeTruthy();
+    expect(screen.getByText('监控中心')).toBeTruthy();
   });
 
-  it('reserves a 240px brand column in app-top so the app strip aligns with the left rail', () => {
+  it('reserves a 200px brand column in app-top so the app strip aligns with the left rail', () => {
     chromeLayout = 'app-top';
     render(<TopMenu />);
     const brand = screen.getByTestId('app-top-brand');
-    expect(brand.style.width).toBe('240px');
+    expect(brand.style.width).toBe('200px');
     expect(screen.getByText('BlueKing Lite')).toBeTruthy();
     expect(screen.getByAltText('logo')).toBeTruthy();
     expect(screen.getByText('CMDB')).toBeTruthy();
-    expect(screen.getByText('Monitor')).toBeTruthy();
+    expect(screen.getByText('监控中心')).toBeTruthy();
   });
 
   it('can hide portal branding when hideBrand is passed', () => {

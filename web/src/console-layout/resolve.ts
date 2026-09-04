@@ -208,3 +208,19 @@ export const countVisibleAppSlots = (containerWidth: number, appCount: number): 
     Math.floor((containerWidth - APP_TOP_NAV_MORE_WIDTH_PX) / APP_TOP_NAV_CHIP_WIDTH_PX),
   );
 };
+
+const APP_STRIP_OVERFLOW_EDGE_PX = 2;
+
+export const getAppStripOverflow = (
+  scrollLeft: number,
+  clientWidth: number,
+  scrollWidth: number,
+): { left: boolean; right: boolean } => {
+  if (clientWidth <= 0 || scrollWidth <= clientWidth + APP_STRIP_OVERFLOW_EDGE_PX) {
+    return { left: false, right: false };
+  }
+  return {
+    left: scrollLeft > APP_STRIP_OVERFLOW_EDGE_PX,
+    right: scrollLeft + clientWidth < scrollWidth - APP_STRIP_OVERFLOW_EDGE_PX,
+  };
+};
