@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  aggregateApplicationRedSeries,
   aggregateApplicationRedTrends,
   deriveHealth,
   formatErrorRate,
@@ -121,6 +122,39 @@ describe('APM metric-format', () => {
       requestRateTrend: [],
       errorRateTrend: [],
     });
+  });
+
+  it('应用级 RED 时序：吞吐求和、错误率加权为百分比、延迟取最差值，缺失值保持 null', () => {
+    const series = aggregateApplicationRedSeries([
+      {
+        timeseries: [
+          { timestamp: '2026-08-14T00:05:00Z', request_rate: 20, error_rate: 0, p95_ms: 30, p99_ms: null },
+          { timestamp: '2026-08-14T00:00:00Z', request_rate: 10, error_rate: 0.1, p95_ms: 20, p99_ms: 50 },
+        ],
+      },
+      {
+        timeseries: [
+          { timestamp: '2026-08-14T00:00:00Z', request_rate: 30, error_rate: 0.2, p95_ms: 45, p99_ms: 40 },
+          { timestamp: '2026-08-14T00:10:00Z', request_rate: null, error_rate: null, p95_ms: null, p99_ms: null },
+        ],
+      },
+    ]);
+    expect(series.map((point) => point.timestamp)).toEqual([
+      '2026-08-14T00:00:00Z',
+      '2026-08-14T00:05:00Z',
+      '2026-08-14T00:10:00Z',
+    ]);
+    expect(series[0]).toMatchObject({ request_rate: 40, p95_ms: 45, p99_ms: 50 });
+    expect(series[0].error_rate_percent).toBeCloseTo(17.5);
+    expect(series[1]).toMatchObject({ request_rate: 20, error_rate_percent: 0, p95_ms: 30, p99_ms: null });
+    expect(series[2]).toEqual({
+      timestamp: '2026-08-14T00:10:00Z',
+      request_rate: null,
+      error_rate_percent: null,
+      p95_ms: null,
+      p99_ms: null,
+    });
+    expect(aggregateApplicationRedSeries([])).toEqual([]);
   });
 
   it('拓扑连线展示 总数 / P95 / 错误数', () => {
