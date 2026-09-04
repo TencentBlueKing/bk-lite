@@ -170,9 +170,77 @@ class TestLoginFlowWithOTP:
         assert "qr_code" in result["data"]
         assert result["data"]["need_binding"] is True
         assert "need_bindng" not in result["data"]
-        # User should now have otp_secret set
+        # Binding is incomplete until the first successful OTP verify.
         test_user.refresh_from_db()
-        assert test_user.otp_secret is not None and test_user.otp_secret != ""
+        assert not test_user.otp_secret
+        from apps.system_mgmt.otp_challenge import verify_challenge
+
+        challenge = verify_challenge(result["data"]["challenge_id"])
+        assert challenge is not None
+        assert challenge.get("pending_otp_secret")
+
+    @pytest.mark.django_db
+    def test_unbound_relogin_issues_new_qr_without_persisting_secret(self, clear_cache, test_user, enable_otp_setting):
+        """Refreshing and logging in again must still show a QR and must not treat the user as bound."""
+        import pyotp
+
+        from apps.system_mgmt.nats_api import get_user_login_token, verify_otp_login
+        from apps.system_mgmt.otp_challenge import verify_challenge
+
+        first = get_user_login_token(user=test_user, username=test_user.username, skip_token_for_otp=True)
+        first_challenge_id = first["data"]["challenge_id"]
+        first_secret = verify_challenge(first_challenge_id)["pending_otp_secret"]
+
+        second = get_user_login_token(user=test_user, username=test_user.username, skip_token_for_otp=True)
+        second_challenge_id = second["data"]["challenge_id"]
+        second_secret = verify_challenge(second_challenge_id)["pending_otp_secret"]
+
+        assert first["data"]["need_binding"] is True
+        assert second["data"]["need_binding"] is True
+        assert "qr_code" in first["data"]
+        assert "qr_code" in second["data"]
+        assert first_challenge_id != second_challenge_id
+        assert first_secret != second_secret
+        assert verify_challenge(first_challenge_id) is None
+
+        stale = verify_otp_login(
+            challenge_id=first_challenge_id,
+            otp_code=pyotp.TOTP(first_secret).now(),
+            client_ip="127.0.0.1",
+        )
+        assert stale["result"] is False
+        assert "token" not in stale.get("data", {})
+
+        test_user.refresh_from_db()
+        assert not test_user.otp_secret
+
+    @pytest.mark.django_db
+    def test_pending_otp_verify_persists_secret(self, clear_cache, test_user, enable_otp_setting):
+        """First successful verify binds the pending challenge secret onto the user."""
+        import pyotp
+
+        from apps.system_mgmt.nats_api import get_user_login_token, verify_otp_login
+        from apps.system_mgmt.otp_challenge import verify_challenge
+
+        login_result = get_user_login_token(user=test_user, username=test_user.username, skip_token_for_otp=True)
+        pending_secret = verify_challenge(login_result["data"]["challenge_id"])["pending_otp_secret"]
+
+        with patch.dict(os.environ, {"SECRET_KEY": "test-secret-key"}):
+            result = verify_otp_login(
+                challenge_id=login_result["data"]["challenge_id"],
+                otp_code=pyotp.TOTP(pending_secret).now(),
+                client_ip="127.0.0.1",
+            )
+
+        assert result["result"] is True
+        assert "token" in result["data"]
+        test_user.refresh_from_db()
+        assert test_user.otp_secret == pending_secret
+
+        bound_login = get_user_login_token(user=test_user, username=test_user.username, skip_token_for_otp=True)
+        assert bound_login["data"]["require_otp"] is True
+        assert "qr_code" not in bound_login["data"]
+        assert bound_login["data"].get("need_binding") is not True
 
     @pytest.mark.django_db
     def test_login_without_otp_returns_token(self, clear_cache, test_user, disable_otp_setting):
@@ -640,8 +708,10 @@ class TestAdminExpiredPasswordForcedReset:
         assert "challenge_id" in result["data"]
         assert result["data"]["temporary_pwd"] is True
 
-        expired_admin_user.refresh_from_db()
-        valid_code = pyotp.TOTP(expired_admin_user.otp_secret).now()
+        from apps.system_mgmt.otp_challenge import verify_challenge
+
+        pending_secret = verify_challenge(result["data"]["challenge_id"])["pending_otp_secret"]
+        valid_code = pyotp.TOTP(pending_secret).now()
 
         with patch.dict(os.environ, {"SECRET_KEY": "test-secret-key"}):
             otp_result = verify_otp_login(
