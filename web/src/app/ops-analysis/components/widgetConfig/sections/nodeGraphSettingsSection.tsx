@@ -31,13 +31,13 @@ export const NodeGraphSettingsSection: React.FC<NodeGraphSettingsSectionProps> =
         ) : null}
 
         {!selectedDataSource ? (
-          <div className="text-center py-4 text-gray-500">
+          <div className="text-center py-4 text-xs text-(--color-text-3)">
             {t('topology.nodeConfig.selectDataSourceFirst')}
           </div>
         ) : null}
 
         {selectedDataSource && fieldOptions.length === 0 ? (
-          <div className="text-center py-4 text-gray-500">
+          <div className="text-center py-4 text-xs text-(--color-text-3)">
             {t('topology.nodeConfig.noAvailableFields')}
           </div>
         ) : null}

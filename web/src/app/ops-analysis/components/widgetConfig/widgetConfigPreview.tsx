@@ -98,10 +98,10 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
     try {
       await navigator.clipboard.writeText(jsonText);
       setCopied(true);
-      message.success(t('common.copySuccess') || '已复制到剪贴板');
+      message.success(t('common.copySuccess'));
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      message.error(t('common.copyFailed') || '复制失败');
+      message.error(t('common.copyFailed'));
     }
   }, [jsonText, t]);
 
@@ -213,11 +213,12 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
                     size="small"
                     icon={copied ? <CheckOutlined className="text-(--color-success)" /> : <CopyOutlined />}
                     onClick={handleCopyJson}
+                    data-testid="widget-config-preview-copy-json"
                     className="absolute right-1 top-1 z-10 !h-6 !px-2 text-xs text-(--color-text-3)"
                   >
                     {copied
-                      ? t('common.copySuccess', '已复制')
-                      : t('common.copy', '复制')}
+                      ? t('common.copySuccess')
+                      : t('common.copy')}
                   </Button>
                 ) : null}
                 <pre
