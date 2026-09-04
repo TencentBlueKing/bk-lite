@@ -1015,7 +1015,13 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
   const metaMetricChips = (config.metaMetrics || [])
     .filter((m) => hasMetricData(m.metric))
     .map((m) => `${m.label}: ${formatField({ label: m.label, metric: m.metric, unit: m.unit })}`);
-  const objectMetaItems = [objectDisplayText, ...metaMetricChips, ...(config.metaItems || []), '时区: Asia/Shanghai'];
+  // 与对象展示名仅大小写/分隔符不同的 meta（如 Ping vs ping、TCP vs tcp）视为重复，不再展示。
+  const normalizeMetaKey = (value: string) => value.trim().toLowerCase().replace(/[-_\s]+/g, '');
+  const objectMetaKey = normalizeMetaKey(objectDisplayText);
+  const dedupedConfigMetaItems = (config.metaItems || []).filter(
+    (item) => normalizeMetaKey(item) !== objectMetaKey
+  );
+  const objectMetaItems = [objectDisplayText, ...metaMetricChips, ...dedupedConfigMetaItems, '时区: Asia/Shanghai'];
 
   const onTimeChange = (val: number[], originValue: number | null) => setTimeValues({ timeRange: val, originValue });
   const onXRangeChange = (arr: [Dayjs, Dayjs]) => {
