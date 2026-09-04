@@ -30,6 +30,7 @@ import {
   resolvePolicyTemplateList,
   selectedPolicyTemplates
 } from './automaticPolicyApply';
+import { COLLECTION_POLICY_BULK_CONFIG_DEFAULTS } from '@/app/monitor/(pages)/event/template/templateBulkUtils';
 import { TableDataItem } from '@/app/monitor/types';
 import {
   IntegrationAccessProps,
@@ -183,10 +184,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       setPolicyTemplatesLoading(false);
       form.setFieldsValue({
         [COLLECTION_POLICY_FIELD]: [],
-        [COLLECTION_POLICY_NAME_PREFIX_FIELD]: t(
-          'monitor.integrations.collectionNamePrefixDefault',
-          '接入批量'
-        )
+        [COLLECTION_POLICY_NAME_PREFIX_FIELD]:
+          COLLECTION_POLICY_BULK_CONFIG_DEFAULTS.name_prefix
       });
       return;
     }
@@ -202,10 +201,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         setPolicyTemplates(templates);
         form.setFieldsValue({
           [COLLECTION_POLICY_FIELD]: defaultSelectedTemplateKeys(templates),
-          [COLLECTION_POLICY_NAME_PREFIX_FIELD]: t(
-            'monitor.integrations.collectionNamePrefixDefault',
-            '接入批量'
-          )
+          [COLLECTION_POLICY_NAME_PREFIX_FIELD]:
+            COLLECTION_POLICY_BULK_CONFIG_DEFAULTS.name_prefix
         });
       })
       .catch(() => {
@@ -213,10 +210,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         setPolicyTemplates([]);
         form.setFieldsValue({
           [COLLECTION_POLICY_FIELD]: [],
-          [COLLECTION_POLICY_NAME_PREFIX_FIELD]: t(
-            'monitor.integrations.collectionNamePrefixDefault',
-            '接入批量'
-          )
+          [COLLECTION_POLICY_NAME_PREFIX_FIELD]:
+            COLLECTION_POLICY_BULK_CONFIG_DEFAULTS.name_prefix
         });
       })
       .finally(() => {
@@ -228,7 +223,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       cancelled = true;
     };
     // 模板列表只随当前插件/对象切换；getPolicyTemplate 引用变化不应冲掉用户选择。
-  }, [isLoading, pluginId, objectName, form, t]);
+  }, [isLoading, pluginId, objectName, form]);
 
   // 获取基础配置（不依赖 dataSource）
   const baseConfig = useMemo(() => {
@@ -802,7 +797,6 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       return unchanged ? prev : next;
     });
     // 刻意依赖 defaultFormKey 而非 defaultForm 对象引用。
-     
   }, [configLoading, defaultFormKey, enableIfmibFromUrl, form]);
 
   const handleAdd = (key: string) => {
@@ -1190,13 +1184,14 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       }}
       onValuesChange={(changed, all) => {
         const changedKeys = Object.keys(changed);
-        if (
-          !(
-            changedKeys.length === 1 &&
-            (changedKeys[0] === COLLECTION_POLICY_FIELD ||
-              changedKeys[0] === COLLECTION_POLICY_NAME_PREFIX_FIELD)
-          )
-        ) {
+        const isPolicyUiOnlyChange =
+          changedKeys.length > 0 &&
+          changedKeys.every(
+            (key) =>
+              key === COLLECTION_POLICY_FIELD ||
+              key === COLLECTION_POLICY_NAME_PREFIX_FIELD
+          );
+        if (!isPolicyUiOnlyChange) {
           clearCollectDetectState();
         }
         const defaultIfTypeExclude = currentConfig?.form_fields?.find(
