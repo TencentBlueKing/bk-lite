@@ -14,7 +14,7 @@ def test_stargazer_has_no_credential_result_transport_or_projection():
     assert "/credential_results" not in production_source
     assert "credential_projection" not in production_source
     assert "CredentialStateCache" not in production_source
-    assert "credential_result_subject" not in production_source
+    assert "receive_collect_credential_result" not in production_source
     assert not (root / "core" / "infra" / "credential_state_cache.py").exists()
     assert not (root / "service" / "collect_credential_result_push_service.py").exists()
     assert not (root / "service" / "collect_credential_result_push_task.py").exists()
