@@ -830,6 +830,7 @@ const Asset = () => {
           </div>
         </div>
         <CustomTable
+          key={String(objectId || 'asset-table')}
           scroll={{ y: 'calc(100vh - 330px)', x: 'max-content' }}
           columns={columns}
           dataSource={tableData}
