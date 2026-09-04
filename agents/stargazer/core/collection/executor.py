@@ -147,6 +147,10 @@ class TargetCollectionExecutor:
             nonlocal progress_completed
             target = targets[index]
             target_started_at = time.monotonic()
+            payload_permit = None
+            reserve_payload = getattr(self._publisher, "reserve_payload", None)
+            if callable(reserve_payload):
+                payload_permit = await reserve_payload()
             # 目标槽位只覆盖目标执行与进入发布路径；发布异常在目标内隔离。
             try:
                 async with self._target_semaphore:
@@ -192,6 +196,8 @@ class TargetCollectionExecutor:
                         active_targets.discard(target)
                         await self._activity_tracker.exit()
             except asyncio.CancelledError:
+                if payload_permit is not None:
+                    payload_permit.release()
                 raise
             except Exception as error:  # noqa: BLE001 - 单目标框架异常不得取消 Run
                 self._metrics.increment("target_execution_error_total")
@@ -249,7 +255,12 @@ class TargetCollectionExecutor:
                     _target_status_zh(result.status),
                     active_samples,
                 )
-            return await delivery.enqueue(index, result)
+            try:
+                return await delivery.enqueue(index, result, payload_permit=payload_permit)
+            except BaseException:
+                if payload_permit is not None:
+                    payload_permit.release()
+                raise
 
         if self._scheduler is not None:
             workload_class = (
@@ -321,6 +332,18 @@ class TargetCollectionExecutor:
                 report.failure_sample_count,
                 report.total_failures,
                 report.failure_samples,
+            )
+        if report.ip_precheck_failure_count:
+            logger.warning(
+                "event=ip_precheck_failed %s plugin_ref=%s model_id=%s "
+                "failed_stage=ip_precheck error_type=PreflightFailure "
+                "failure_count=%s sample_count=%s samples=%s",
+                _request_log_identity(request, instance_id),
+                safe_log_value(request.plugin_ref),
+                safe_log_value(request.params.get("model_id") or "-"),
+                report.ip_precheck_failure_count,
+                report.ip_precheck_failure_sample_count,
+                report.ip_precheck_failure_samples,
             )
         log_summary = (
             logger.warning

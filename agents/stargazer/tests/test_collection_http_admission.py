@@ -303,12 +303,16 @@ async def test_health_metrics_expose_capacity_and_event_loop_lag(monkeypatch):
             return {
                 "healthy": True,
                 "active_runs": 3,
+                "active_run_targets": 2400,
                 "active_targets": 120,
                 "target_worker_tasks": 180,
                 "max_active_runs": 16,
+                "configured_max_active_run_targets": 4000,
                 "max_active_targets": 150,
                 "target_task_window": 150,
                 "publish_queue_depth": 12,
+                "publish_payloads_pending": 80,
+                "publish_payload_capacity": 160,
                 "publish_batch_size_p99": 50,
                 "run_first_schedule_wait_seconds_p99": 0.02,
                 "execution_mode_async_success_total": 119,
@@ -331,7 +335,7 @@ async def test_health_metrics_expose_capacity_and_event_loop_lag(monkeypatch):
                 "workload_configuration_borrowed": 20,
                 "capacity_group_snmp_active": 80,
                 "capacity_group_snmp_pending": 15,
-                "capacity_group_snmp_limit": 100,
+                "capacity_group_snmp_limit": 0,
             }
 
     monkeypatch.setattr(
@@ -344,6 +348,8 @@ async def test_health_metrics_expose_capacity_and_event_loop_lag(monkeypatch):
     body = result.body.decode()
 
     assert "stargazer_collection_active_targets 120" in body
+    assert "stargazer_collection_active_run_targets 2400" in body
+    assert "stargazer_collection_max_active_run_targets 4000" in body
     assert "stargazer_collection_target_worker_tasks 180" in body
     assert "stargazer_event_loop_lag_p99_seconds 0.009" in body
     assert "stargazer_collection_plugin_duration_seconds_p99 0.45" in body
@@ -357,6 +363,8 @@ async def test_health_metrics_expose_capacity_and_event_loop_lag(monkeypatch):
     assert "stargazer_collection_lease_takeover_total 1" in body
     assert "stargazer_collection_target_task_window 150" in body
     assert "stargazer_collection_publish_queue_depth 12" in body
+    assert "stargazer_collection_publish_payloads_pending 80" in body
+    assert "stargazer_collection_publish_payload_capacity 160" in body
     assert "stargazer_collection_publish_batch_size_p99 50" in body
     assert "stargazer_collection_run_first_schedule_wait_seconds_p99 0.02" in body
     assert "stargazer_collection_job_node_info_lookup_rpc_total 1" in body
@@ -368,7 +376,7 @@ async def test_health_metrics_expose_capacity_and_event_loop_lag(monkeypatch):
     assert 'stargazer_scheduler_borrowed_slots{workload_class="configuration"} 20' in body
     assert 'stargazer_capacity_group_active_targets{capacity_group="snmp"} 80' in body
     assert 'stargazer_capacity_group_pending_targets{capacity_group="snmp"} 15' in body
-    assert 'stargazer_capacity_group_limit{capacity_group="snmp"} 100' in body
+    assert 'stargazer_capacity_group_limit{capacity_group="snmp"} 0' in body
 
 
 @pytest.mark.asyncio

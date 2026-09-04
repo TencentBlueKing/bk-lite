@@ -356,6 +356,7 @@ async def nats_publish_lines(
     *,
     before_publish: Callable[[int], bool] | None = None,
     message_ids: Sequence[str] | None = None,
+    deadlines: Sequence[float | None] | None = None,
 ) -> int:
     """
     批量发布多行文本到指定主题（复用共享长连接）。
@@ -375,12 +376,15 @@ async def nats_publish_lines(
 
     if message_ids is not None and len(message_ids) != len(lines):
         raise ValueError("message_ids length must match lines length")
+    if deadlines is not None and len(deadlines) != len(lines):
+        raise ValueError("deadlines length must match lines length")
     if _read_bool_env("NATS_METRICS_JETSTREAM_ENABLED", True):
         return await _nats_publish_lines_jetstream(
             subject,
             lines,
             before_publish=before_publish,
             message_ids=message_ids,
+            deadlines=deadlines,
         )
 
     if not _read_bool_env("NATS_METRICS_CORE_FALLBACK_ENABLED", False):
@@ -462,12 +466,14 @@ async def _nats_publish_lines_jetstream(
     *,
     before_publish: Callable[[int], bool] | None,
     message_ids: Sequence[str] | None,
+    deadlines: Sequence[float | None] | None,
 ) -> int:
     payloads = tuple(line.encode("utf-8") for line in lines)
     messages = tuple(
         JetStreamMessage(
             payload=payload,
             message_id=(str(message_ids[index]) if message_ids is not None else _jetstream_message_id(subject, index, payload)),
+            deadline=(deadlines[index] if deadlines is not None else None),
         )
         for index, payload in enumerate(payloads)
     )

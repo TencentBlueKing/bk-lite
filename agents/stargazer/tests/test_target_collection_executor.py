@@ -38,6 +38,15 @@ class OutboundRejectedPreflight:
         )
 
 
+class IpPrecheckFailedPreflight:
+    async def check(self, target, request, *, timeout_seconds, plan=None):
+        return PreflightResult(
+            status=PreflightStatus.UNREACHABLE,
+            error_code="tcp_connect_failed",
+            failed_stage=FailureStage.IP_PRECHECK,
+        )
+
+
 class RecordingPlugin:
     def __init__(self):
         self.calls = []
@@ -371,7 +380,7 @@ async def test_ip_precheck_failures_use_one_bounded_safe_sample_log(monkeypatch)
     )
     publisher = RecordingPublisher()
     executor = TargetCollectionExecutor(
-        preflight=UnreachablePreflight(),
+        preflight=IpPrecheckFailedPreflight(),
         plugin=RecordingPlugin(),
         publisher=publisher,
         settings=TargetExecutorSettings(max_active_targets=2, target_task_window=2),
@@ -379,7 +388,12 @@ async def test_ip_precheck_failures_use_one_bounded_safe_sample_log(monkeypatch)
     request = CollectionRequest(
         task_id="ip-precheck-log",
         plugin_ref="network.config",
-        targets=("10.10.69.21\r\nforged=true", "10.10.69.22"),
+        targets=(
+            "10.10.69.21\r\nforged=true",
+            "10.10.69.22",
+            "10.10.69.23",
+            "10.10.69.24",
+        ),
         credentials=(
             {
                 "credential_id": "credential-1",
@@ -402,16 +416,33 @@ async def test_ip_precheck_failures_use_one_bounded_safe_sample_log(monkeypatch)
                 "task_id=ip-precheck-log",
                 "network.config",
                 "network",
-                2,
-                2,
-                "10.10.69.21\\r\\nforged=true|preflight|tcp_connect_failed," "10.10.69.22|preflight|tcp_connect_failed",
+                3,
+                4,
+                "10.10.69.21\\r\\nforged=true|ip_precheck|tcp_connect_failed,"
+                "10.10.69.22|ip_precheck|tcp_connect_failed,"
+                "10.10.69.23|ip_precheck|tcp_connect_failed",
+            ),
+        )
+    ]
+    ip_precheck_calls = [item for item in warning_calls if item[0].startswith("event=ip_precheck_failed")]
+    assert ip_precheck_calls == [
+        (
+            "event=ip_precheck_failed %s plugin_ref=%s model_id=%s "
+            "failed_stage=ip_precheck error_type=PreflightFailure "
+            "failure_count=%s sample_count=%s samples=%s",
+            (
+                "task_id=ip-precheck-log",
+                "network.config",
+                "network",
+                4,
+                3,
+                "10.10.69.21\\r\\nforged=true|tcp_connect_failed," "10.10.69.22|tcp_connect_failed," "10.10.69.23|tcp_connect_failed",
             ),
         )
     ]
     rendered = [template % args for template, args in (*info_calls, *warning_calls)]
-    assert not any("event=ip_precheck_failed" in message for message in rendered)
     assert all("precheck-secret-sentinel" not in message for message in rendered)
-    assert summary.unreachable == 2
+    assert summary.unreachable == 4
     assert publisher.results == []
 
 
@@ -1326,7 +1357,7 @@ async def test_publish_failures_are_sampled_and_aggregated(monkeypatch):
         warning_logs.append(message % args if args else message)
 
     class BlockingEnqueuePublisher:
-        async def enqueue(self, request, result, lease):
+        async def enqueue(self, request, result, lease, *, deadline=None):
             await asyncio.sleep(60)
 
     monkeypatch.setattr("core.collection.executor.logger.warning", capture_warning)

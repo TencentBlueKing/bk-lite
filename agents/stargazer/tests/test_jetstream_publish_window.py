@@ -300,7 +300,7 @@ async def test_puback_timeout_bounds_jetstream_provider_wait_and_releases_window
 
 
 @pytest.mark.asyncio
-async def test_one_rejected_message_does_not_leave_later_microbatch_messages_unattempted():
+async def test_one_rejected_window_stops_before_starting_later_messages():
     class RejectFirstJetStream:
         async def publish_async(self, _subject, payload=b"", **_kwargs):
             future = asyncio.get_running_loop().create_future()
@@ -328,5 +328,92 @@ async def test_one_rejected_message_does_not_leave_later_microbatch_messages_una
     with pytest.raises(JetStreamWindowPublishError) as caught:
         await window.publish("metrics.network", messages)
 
-    assert caught.value.attempted_indices == (0, 1, 2)
-    assert caught.value.confirmed_indices == (1, 2)
+    assert caught.value.attempted_indices == (0,)
+    assert caught.value.confirmed_indices == ()
+    assert window.snapshot().pending_messages == 0
+    assert window.snapshot().pending_bytes == 0
+
+
+@pytest.mark.asyncio
+async def test_first_rejection_cancels_other_pubacks_in_the_same_window():
+    hanging_future = None
+
+    class RejectAndHangJetStream:
+        async def publish_async(self, _subject, payload=b"", **_kwargs):
+            nonlocal hanging_future
+            future = asyncio.get_running_loop().create_future()
+            if payload == b"rejected":
+                future.set_exception(RuntimeError("rejected"))
+            else:
+                hanging_future = future
+            return future
+
+    window = JetStreamPublishWindow(
+        lambda: RejectAndHangJetStream(),
+        settings=JetStreamPublishWindowSettings(
+            max_pending_messages=2,
+            max_pending_bytes=1024,
+            puback_timeout_seconds=30,
+            max_attempts=1,
+        ),
+    )
+
+    with pytest.raises(JetStreamWindowPublishError):
+        await asyncio.wait_for(
+            window.publish(
+                "metrics.network",
+                (
+                    JetStreamMessage(payload=b"rejected", message_id="rejected"),
+                    JetStreamMessage(payload=b"hanging", message_id="hanging"),
+                ),
+            ),
+            timeout=0.2,
+        )
+
+    assert hanging_future is not None and hanging_future.cancelled()
+    assert window.snapshot().pending_messages == 0
+
+
+@pytest.mark.asyncio
+async def test_result_deadline_bounds_credit_wait_and_does_not_start_expired_message():
+    first_started = asyncio.Event()
+
+    class NeverAckJetStream:
+        def __init__(self) -> None:
+            self.started = []
+
+        async def publish_async(self, _subject, payload=b"", **_kwargs):
+            self.started.append(payload)
+            first_started.set()
+            return asyncio.get_running_loop().create_future()
+
+    jetstream = NeverAckJetStream()
+    window = JetStreamPublishWindow(
+        lambda: jetstream,
+        settings=JetStreamPublishWindowSettings(
+            max_pending_messages=1,
+            max_pending_bytes=1024,
+            puback_timeout_seconds=30,
+            max_attempts=2,
+        ),
+    )
+    loop = asyncio.get_running_loop()
+    publishing = asyncio.create_task(
+        window.publish(
+            "metrics.network",
+            (
+                JetStreamMessage(payload=b"first", message_id="first", deadline=loop.time() + 0.03),
+                JetStreamMessage(payload=b"second", message_id="second", deadline=loop.time() + 0.03),
+            ),
+        )
+    )
+    await first_started.wait()
+
+    with pytest.raises(JetStreamWindowPublishError) as caught:
+        await asyncio.wait_for(publishing, timeout=0.3)
+
+    assert isinstance(caught.value.__cause__, TimeoutError)
+    assert caught.value.attempted_indices == (0,)
+    assert jetstream.started == [b"first"]
+    assert window.snapshot().pending_messages == 0
+    assert window.snapshot().pending_bytes == 0

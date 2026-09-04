@@ -257,6 +257,8 @@ class ResultPublisher(Protocol):
         request: CollectionRequest,
         result: TargetCollectionResult,
         lease: RunLease,
+        *,
+        deadline: float | None = None,
     ) -> PublishReceipt:
         ...
 

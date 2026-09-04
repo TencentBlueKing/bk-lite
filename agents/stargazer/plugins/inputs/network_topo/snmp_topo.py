@@ -3,6 +3,8 @@
 # @Time: 2025/3/31 14:35
 # @Author: windyzhao
 
+import asyncio
+
 try:
     from pysnmp.hlapi.asyncio import CommunityData, ContextData, ObjectIdentity, ObjectType, UdpTransportTarget, UsmUserData
     from pysnmp.hlapi.asyncio import bulkCmd as hlapi_bulk_cmd
@@ -262,6 +264,7 @@ class SnmpTopo:
         self.auth = self.snmp_auth_obj.auth()
         self.transport_opts = self.snmp_auth_obj.get_transport_opts()
         self.collection_task_id = kwargs.get("collection_task_id")
+        self._runtime_metrics = kwargs.get("_runtime_metrics")
 
     def _transport_target(self):
         return UdpTransportTarget(
@@ -357,7 +360,7 @@ class SnmpTopo:
         initial_roots = [str(oid).lstrip(".") for oid in self.oids]
         target = self._transport_target()
         context = ContextData()
-        var_bind_table = []
+        records = []
         null_var_binds = [False] * len(initial_roots)
         stop_flag = False
 
@@ -411,10 +414,20 @@ class SnmpTopo:
                 if stop_flag:
                     break
                 processed_rows.append(row)
-                var_bind_table.append(row)
+                records.extend(self._format_result([row], eval_oids))
                 var_binds = row
+            if processed_rows:
+                await self._yield_walk_loop()
 
-        return self._format_result(var_bind_table, eval_oids)
+        return records
+
+    async def _yield_walk_loop(self):
+        """在每个 WALK PDU 转换完成后把控制权交还事件循环。"""
+
+        increment = getattr(self._runtime_metrics, "increment", None)
+        if callable(increment):
+            increment("snmp_walk_yield_total")
+        await asyncio.sleep(0)
 
     @staticmethod
     def _is_retryable_fallback_error(error):
@@ -435,15 +448,23 @@ class SnmpTopo:
     def _is_scalar_oid(root_oid):
         return get_oid_meta(root_oid).get("ifindex_type") == "scalar"
 
-    async def _next_walk_oid(self, oid, *, ignore_non_increasing_oid=True):
+    async def _next_walk_oid(self, oid, *, ignore_non_increasing_oid=True, row_consumer=None):
         async with self._shared_engine() as engine:
             return await self._next_walk_oid_with_engine(
                 oid,
                 engine,
                 ignore_non_increasing_oid=ignore_non_increasing_oid,
+                row_consumer=row_consumer,
             )
 
-    async def _next_walk_oid_with_engine(self, oid, engine, *, ignore_non_increasing_oid=True):
+    async def _next_walk_oid_with_engine(
+        self,
+        oid,
+        engine,
+        *,
+        ignore_non_increasing_oid=True,
+        row_consumer=None,
+    ):
         target = self._transport_target()
         context = ContextData()
         var_binds = self._format_oids([oid])
@@ -491,18 +512,27 @@ class SnmpTopo:
             if stop_flag:
                 break
 
-            var_bind_table.append(row)
+            if row_consumer is None:
+                var_bind_table.append(row)
+            else:
+                row_consumer(row)
             var_binds = row
+            await self._yield_walk_loop()
 
         return None, 0, 0, var_bind_table
 
     async def _walk_oid_with_next_cmd(self, oid):
+        records = []
+
+        def append_records(row):
+            records.extend(self._format_result([row], [oid]))
+
         (
             errorIndication,
             errorStatus,
             errorIndex,
             varBindTable,
-        ) = await self._next_walk_oid(oid)
+        ) = await self._next_walk_oid(oid, row_consumer=append_records)
         if errorIndication:
             if self._is_retryable_fallback_error(errorIndication):
                 logger.warning(f"Skipping OID subtree host={self.host} oid={oid}: {errorIndication}")
@@ -513,7 +543,7 @@ class SnmpTopo:
                 logger.warning(f"Skipping OID subtree host={self.host} oid={oid}: {errorStatus.prettyPrint()}")
                 return FallbackOidResult(records=[], skipped=True)
             raise RuntimeError(f"SNMP error: {errorStatus.prettyPrint()} (oid={oid})")
-        return FallbackOidResult(records=self._format_result(varBindTable, [oid]))
+        return FallbackOidResult(records=records)
 
     async def _get_scalar_oid(self, oid):
         async with self._shared_engine() as engine:

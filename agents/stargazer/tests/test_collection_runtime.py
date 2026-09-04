@@ -303,3 +303,60 @@ async def test_run_deadline_cancels_slow_collection_and_releases_capacity():
     await runtime.submit(CollectionRequest(task_id="deadline", plugin_ref="mysql.config", targets=("127.0.0.1",)))
     await tasks[0]
     assert runtime.active_runs == 0
+
+
+@pytest.mark.asyncio
+async def test_run_admission_limits_total_targets_and_releases_budget():
+    release = asyncio.Event()
+    tasks = []
+
+    async def execute(_request, _lease):
+        await release.wait()
+
+    runtime = CollectionRuntime(
+        state_store=InMemoryRunStateStore(),
+        execute=execute,
+        schedule=lambda coroutine, *, name: tasks.append(asyncio.create_task(coroutine, name=name)) or tasks[-1],
+        settings=CollectionRuntimeSettings(max_active_runs=4, max_active_run_targets=4),
+        owner_id="pod-a",
+    )
+    first = CollectionRequest(task_id="target-budget-1", plugin_ref="network.config", targets=("1", "2", "3"))
+    second = CollectionRequest(task_id="target-budget-2", plugin_ref="network.config", targets=("4", "5"))
+
+    assert (await runtime.submit(first)).status == SubmissionStatus.ACCEPTED
+    rejected = await runtime.submit(second)
+
+    assert rejected.status == SubmissionStatus.BUSY
+    assert rejected.reason == "collection runtime target budget is full"
+    assert runtime.active_run_targets == 3
+
+    release.set()
+    await tasks[0]
+    assert runtime.active_run_targets == 0
+    assert (await runtime.submit(second)).status == SubmissionStatus.ACCEPTED
+    await tasks[1]
+
+
+@pytest.mark.asyncio
+async def test_single_oversized_run_is_admitted_when_target_budget_is_empty():
+    release = asyncio.Event()
+    tasks = []
+
+    async def execute(_request, _lease):
+        await release.wait()
+
+    runtime = CollectionRuntime(
+        state_store=InMemoryRunStateStore(),
+        execute=execute,
+        schedule=lambda coroutine, *, name: tasks.append(asyncio.create_task(coroutine, name=name)) or tasks[-1],
+        settings=CollectionRuntimeSettings(max_active_runs=4, max_active_run_targets=2),
+        owner_id="pod-a",
+    )
+    oversized = CollectionRequest(task_id="oversized", plugin_ref="network.config", targets=("1", "2", "3"))
+    another = CollectionRequest(task_id="another", plugin_ref="network.config", targets=("4",))
+
+    assert (await runtime.submit(oversized)).status == SubmissionStatus.ACCEPTED
+    assert (await runtime.submit(another)).status == SubmissionStatus.BUSY
+
+    release.set()
+    await tasks[0]
