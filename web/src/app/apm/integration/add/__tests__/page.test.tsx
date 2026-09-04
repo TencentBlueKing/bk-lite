@@ -117,7 +117,35 @@ describe('APM 添加接入', () => {
     expect(api.getIngestSnippet).toHaveBeenCalledWith(expect.objectContaining({
       language: 'dotnet',
       runtime: 'host',
+      sample_rate: 100,
     }));
+  });
+
+  it('将采样率写入本次脚本请求，并说明不会改变已运行应用', async () => {
+    api.getIngestSnippet.mockResolvedValue({
+      application_id: 'bklite',
+      application_name: 'BK-Lite',
+      cloud_region: { id: 1, name: '默认云区域' },
+      http_endpoint: 'http://proxy.example.com:4318/v1/traces',
+      environment: {},
+      code: 'export OTEL_TRACES_SAMPLER=parentbased_traceidratio',
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Node.js 接入' }));
+    await user.type(screen.getByRole('textbox', { name: /服务名称/ }), 'checkout');
+    await waitFor(() => expect(api.getIngestSnippet).toHaveBeenCalled(), { timeout: 3000 });
+    expect(api.getIngestSnippet).toHaveBeenCalledWith(expect.objectContaining({ sample_rate: 100 }));
+    expect(screen.queryByText(/只写入接下来复制的安装脚本/)).toBeNull();
+
+    await user.click(screen.getByRole('combobox', { name: '采样率' }));
+    await user.click(await screen.findByTitle('10%'));
+    await waitFor(() => expect(api.getIngestSnippet).toHaveBeenCalledWith(expect.objectContaining({
+      sample_rate: 10,
+    })), { timeout: 3000 });
+    expect(screen.getByText('采样率只写入本次安装脚本')).not.toBeNull();
+    expect(screen.getByText(/不会改变已经在跑的应用/)).not.toBeNull();
   });
 
   it('点击 SDK 接入方式后从右侧打开配置抽屉', async () => {

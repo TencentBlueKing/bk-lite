@@ -151,6 +151,7 @@ export default function ApmIntegrationAddPage() {
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [form] = Form.useForm<SnippetForm>();
   const formValues = Form.useWatch([], form);
+  const sampleRate = Form.useWatch('sample_rate', form);
   const requestSequence = useRef(0);
 
   const integrationGroups = useMemo(() => {
@@ -399,6 +400,7 @@ export default function ApmIntegrationAddPage() {
                 service_name: '',
                 service_version: '',
                 environment: 'production',
+                sample_rate: 100,
               }}
               onValuesChange={() => {
                 setSnippet(null);
@@ -411,7 +413,24 @@ export default function ApmIntegrationAddPage() {
                 <Form.Item name="service_name" label={t('apm.integration.serviceName', '服务名称')} rules={[{ required: true, whitespace: true, message: t('apm.integration.serviceNameRequired', '请输入服务名称') }, { max: 256 }]}><Input placeholder={t('apm.integration.serviceNamePlaceholder', 'service.name，例如 checkout')} /></Form.Item>
                 <Form.Item name="service_version" label={t('apm.integration.serviceVersion', '服务版本')} rules={[{ max: 256 }]}><Input placeholder={t('apm.integration.serviceVersionPlaceholder', 'service.version，例如 1.4.0（可选）')} /></Form.Item>
                 <Form.Item name="environment" label={t('apm.integration.deployEnv', '部署环境')} rules={[{ required: true, whitespace: true, message: t('apm.integration.deployEnvRequired', '请输入部署环境') }, { max: 256 }]}><Input placeholder={t('apm.integration.deployEnvPlaceholder', 'deployment.environment，例如 production')} /></Form.Item>
+                <Form.Item name="sample_rate" label={t('apm.integration.sampleRate', '采样率')} rules={[{ required: true, message: t('apm.integration.sampleRateRequired', '请选择采样率') }]}>
+                  <Select
+                    options={[
+                      { value: 100, label: t('apm.integration.sampleRateFull', '100% 全量（默认）') },
+                      { value: 10, label: t('apm.integration.sampleRateTen', '10%') },
+                    ]}
+                  />
+                </Form.Item>
               </div>
+              {sampleRate != null && sampleRate < 100 ? (
+                <Alert
+                  className="mb-4"
+                  showIcon
+                  type="info"
+                  message={t('apm.integration.sampleRateHintTitle', '采样率只写入本次安装脚本')}
+                  description={t('apm.integration.sampleRateHint', '只写入接下来复制的安装脚本，不会改变已经在跑的应用。应用需用新环境变量重启后生效。吞吐、SLO 和告警请求量按采样后的 Trace 统计；错误率和时延仍大致可参考。')}
+                />
+              ) : null}
               <Form.Item label={t('apm.integration.runtime', '运行方式')} className="!mb-4">
                 <Segmented
                   aria-label={t('apm.integration.runtime', '运行方式')}
