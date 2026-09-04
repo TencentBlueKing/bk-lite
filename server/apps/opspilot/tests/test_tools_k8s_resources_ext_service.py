@@ -262,6 +262,7 @@ class TestPreviousPodLogs:
         out = res.get_kubernetes_previous_pod_logs.invoke({"namespace": "ns", "pod_name": "p1", "config": {}})
         assert "没有上一次实例的日志" in out
         assert "滚动窗口" not in out
+        assert "禁止降低 lines" in out
 
     def test_empty_previous_logs_with_hours_window(self, apis):
         core, _, _ = apis
@@ -281,6 +282,7 @@ class TestPreviousPodLogs:
         core.read_namespaced_pod_log.side_effect = ApiException(status=400, reason="previous terminated container not found")
         out = res.get_kubernetes_previous_pod_logs.invoke({"namespace": "ns", "pod_name": "p1", "config": {}})
         assert "没有可用的 previous 日志" in out
+        assert "禁止降低 lines" in out
 
 
 # ---------------- search_workload_across_namespaces ----------------
