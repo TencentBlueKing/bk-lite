@@ -22,7 +22,7 @@ export const MSSQL_TOP_DB_QUERIES: MssqlTopDbQuery[] = [
     key: 'read_latency',
     title: '读延迟 Top',
     unit: 'ms',
-    color: '#2f6bff',
+    color: '#2563EB',
     query: `topk(${MSSQL_TOP_N}, sum by (database_name) (sqlserver_database_io_read_latency_ms{__$labels__}))`,
     guide: [{ label: '读延迟排行', detail: '各数据库文件读操作平均延迟,定位读取最慢的库。' }]
   },
@@ -30,7 +30,7 @@ export const MSSQL_TOP_DB_QUERIES: MssqlTopDbQuery[] = [
     key: 'write_latency',
     title: '写延迟 Top',
     unit: 'ms',
-    color: '#ff8a1f',
+    color: '#F97316',
     query: `topk(${MSSQL_TOP_N}, sum by (database_name) (sqlserver_database_io_write_latency_ms{__$labels__}))`,
     guide: [{ label: '写延迟排行', detail: '各数据库文件写操作平均延迟,定位写入最慢的库。' }]
   },
@@ -38,7 +38,7 @@ export const MSSQL_TOP_DB_QUERIES: MssqlTopDbQuery[] = [
     key: 'io_rate',
     title: 'I/O 速率 Top',
     unit: 'cps',
-    color: '#27c274',
+    color: '#10B981',
     query: `topk(${MSSQL_TOP_N}, sum by (database_name) (rate(sqlserver_database_io_reads{__$labels__}[__$window__]) + rate(sqlserver_database_io_writes{__$labels__}[__$window__])))`,
     guide: [{ label: 'I/O 速率排行', detail: '各数据库读写操作合计速率,定位 I/O 负载最重的库。' }]
   }

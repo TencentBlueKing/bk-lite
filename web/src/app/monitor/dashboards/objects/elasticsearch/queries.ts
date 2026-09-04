@@ -22,7 +22,7 @@ export const ES_TOP_NODE_QUERIES: EsTopNodeQuery[] = [
     key: 'jvm_heap',
     title: 'JVM 堆使用率 Top',
     unit: 'percent',
-    color: '#2f6bff',
+    color: '#2563EB',
     query: `topk(${ES_TOP_N}, max by (node_name) (elasticsearch_jvm_mem_heap_used_percent{__$labels__}))`,
     guide: [{ label: 'JVM 堆排行', detail: '各节点 JVM 堆内存使用率,定位 GC 压力集中的节点。' }]
   },
@@ -30,7 +30,7 @@ export const ES_TOP_NODE_QUERIES: EsTopNodeQuery[] = [
     key: 'process_cpu',
     title: '进程 CPU Top',
     unit: 'percent',
-    color: '#ff8a1f',
+    color: '#F97316',
     query: `topk(${ES_TOP_N}, max by (node_name) (elasticsearch_process_cpu_percent{__$labels__}))`,
     guide: [{ label: '进程 CPU 排行', detail: '各节点 ES 进程 CPU 使用率,定位计算负载集中的节点。' }]
   },
@@ -38,7 +38,7 @@ export const ES_TOP_NODE_QUERIES: EsTopNodeQuery[] = [
     key: 'fs_available',
     title: '节点可用磁盘 Bottom',
     unit: 'bytes',
-    color: '#ff4d4f',
+    color: '#EF4444',
     query: `bottomk(${ES_TOP_N}, min by (node_name) (elasticsearch_fs_data_0_available_in_bytes{__$labels__}))`,
     guide: [{ label: '磁盘紧张排行', detail: '各节点数据目录可用磁盘空间(取最小),定位磁盘水位紧张的节点。' }]
   }

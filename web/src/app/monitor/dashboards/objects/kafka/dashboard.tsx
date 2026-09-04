@@ -65,7 +65,7 @@ export default function KafkaDashboardPage() {
       styles={styles}
       dashboardContent={(
         <>
-          <div className={styles.sectionLabel}>集群概况</div>
+          <div className={styles.sectionLabel}>健康概览</div>
           <KpiSection
             dashboard={dashboard}
             summaryCards={clusterHealthCards}

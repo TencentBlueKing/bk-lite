@@ -95,7 +95,7 @@ export default function OracleDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康与容量</div>
+          <div className={styles.sectionLabel}>健康概览</div>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} styles={styles} />
 
           <div className={styles.sectionLabel}>活性与事务</div>

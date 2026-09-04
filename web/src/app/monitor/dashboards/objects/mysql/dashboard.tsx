@@ -823,15 +823,39 @@ export default function MysqlDashboardPage() {
     hasReplicationMetrics: hasReplicationData,
     logSlaveUpdates: logSlaveUpdatesValue
   });
+  // 实例 ID 与展示名仅分隔符不同时（mysql_3306 vs mysql-3306）视为重复，不再展示。
+  const normalizeIdentityKey = (value: string) => value.trim().toLowerCase().replace(/[-_\s]+/g, '');
+  const showInstanceId =
+    Boolean(instanceIdText) &&
+    normalizeIdentityKey(instanceIdText) !== normalizeIdentityKey(primaryInstanceText);
+  const identityMetaItems =
+    mysqlIdentity.deployment === '单节点'
+      ? [
+        <span key="topology" className={styles.instanceMetaInline}>
+          单节点
+        </span>
+      ]
+      : [
+        <span key="topology" className={styles.instanceMetaInline}>
+          主从复制
+        </span>,
+        <span key="role" className={`${styles.identityPill} ${styles.identityPillRole}`}>
+          {mysqlIdentity.role}
+        </span>
+      ];
   const instanceMetaItems = [
-    <span key="object-name" className={styles.instanceMetaInline}>{objectDisplayText}</span>,
-    instanceIdText ? <span key="instance-id" className={styles.instanceMetaMuted}>{instanceIdText}</span> : null,
-    <span key="identity" className={styles.instanceIdentityGroup}>
-      <span className={styles.identityPill}>部署 {mysqlIdentity.deployment}</span>
-      <span className={`${styles.identityPill} ${styles.identityPillRole}`}>身份 {mysqlIdentity.role}</span>
-      <span className={styles.identityPill}>复制 {mysqlIdentity.replication}</span>
+    <span key="object-name" className={styles.instanceMetaInline}>
+      {objectDisplayText}
     </span>,
-    <span key="timezone" className={styles.instanceMetaMuted}>时区 Asia/Shanghai</span>
+    showInstanceId ? (
+      <span key="instance-id" className={styles.instanceMetaMuted}>
+        {instanceIdText}
+      </span>
+    ) : null,
+    ...identityMetaItems,
+    <span key="timezone" className={styles.instanceMetaMuted}>
+      时区 Asia/Shanghai
+    </span>
   ].filter(Boolean) as React.ReactNode[];
   // 展示复制区块的条件:存在 SHOW SLAVE STATUS 数据(运行中或已停止的真实从库 —— hasReplicationData 是
   // 判定从库的 ground truth,主库永远没有这些行),或名称明确为从库。主库 / 独立实例两者皆不满足 → 显示"不适用"。
@@ -1001,6 +1025,7 @@ export default function MysqlDashboardPage() {
             <>
               {displayMode === 'dashboard' ? (
                 <div className={styles.modeContent}>
+                  <div className={styles.sectionLabel}>健康概览</div>
                   <div className={styles.primaryGrid}>
                     <CollectionStatusCard
                       styles={styles}
@@ -1014,8 +1039,8 @@ export default function MysqlDashboardPage() {
                       value={uptimeDisplay}
                       unit=""
                       icon={<ClockCircleOutlined />}
-                      iconStyle={{ background: 'rgba(91, 143, 249, 0.12)', color: '#5b8ff9' }}
-                      color="#5b8ff9"
+                      iconStyle={{ background: 'rgba(99, 102, 241, 0.12)', color: '#6366F1' }}
+                      color="#6366F1"
                       footer={<span>{hasMetricData('mysql_uptime') ? `启动 ${uptimeInsight.startupTimeText}` : metricEmptyText}</span>}
                       hideTrend
                       className={styles.statCardRelaxed}
@@ -1036,8 +1061,8 @@ export default function MysqlDashboardPage() {
                       value={connCardDisplay.value}
                       unit={connCardDisplay.unit}
                       icon={<NodeIndexOutlined />}
-                      iconStyle={{ background: 'rgba(255, 145, 20, 0.12)', color: '#ff8a1f' }}
-                      color="#ff7a00"
+                      iconStyle={{ background: 'rgba(245, 158, 11, 0.12)', color: '#F59E0B' }}
+                      color="#F59E0B"
                       compare={hasConnectionData ? connCompare : null}
                       footer={<><span>{hasConnectionData ? `当前 ${threadsConnectedValue.toFixed(0)} / 上限 ${maxConnectionsValue.toFixed(0)}` : metricEmptyText}</span></>}
                       trendData={metricMap.mysql_connection_utilization?.viewData || []}
@@ -1049,8 +1074,8 @@ export default function MysqlDashboardPage() {
                       value={slowCardDisplay.value}
                       unit={slowCardDisplay.unit}
                       icon={<ClockCircleOutlined />}
-                      iconStyle={{ background: 'rgba(255, 77, 79, 0.12)', color: '#ff4d4f' }}
-                      color="#ff3030"
+                      iconStyle={{ background: 'rgba(239, 68, 68, 0.12)', color: '#EF4444' }}
+                      color="#EF4444"
                       compare={hasSlowData ? slowCompare : null}
                       footer={<><span>{hasSlowData && hasLockData ? `行锁等待 ${formatPerMinute(lockWaitRate * 60)}` : metricEmptyText}</span></>}
                       trendData={metricMap.mysql_slow_queries_rate?.viewData || []}
@@ -1062,8 +1087,8 @@ export default function MysqlDashboardPage() {
                       value={lockWaitRateCardDisplay.value}
                       unit={lockWaitRateCardDisplay.unit}
                       icon={<NodeIndexOutlined />}
-                      iconStyle={{ background: 'rgba(255, 77, 79, 0.08)', color: '#ff4d4f' }}
-                      color="#ff4d4f"
+                      iconStyle={{ background: 'rgba(249, 115, 22, 0.12)', color: '#F97316' }}
+                      color="#F97316"
                       compare={hasLockData ? lockWaitRateCompare : null}
                       footer={<><span>{hasLockData ? `平均等待 ${lockWait.toFixed(lockWait >= 10 ? 0 : 1)} ms` : metricEmptyText}</span></>}
                       trendData={metricMap.mysql_innodb_row_lock_waits_rate?.viewData || []}
@@ -1071,12 +1096,12 @@ export default function MysqlDashboardPage() {
                     />
                     <StatCard
                       styles={styles}
-                      title={<TitleWithGuide styles={styles} title="QPS（每秒查询数）" items={qpsGuide} />}
+                      title={<TitleWithGuide styles={styles} title="QPS" items={qpsGuide} />}
                       value={qpsCardDisplay.value}
                       unit={qpsCardDisplay.unit}
                       icon={<ThunderboltOutlined />}
-                      iconStyle={{ background: 'rgba(47, 107, 255, 0.12)', color: '#2f6bff' }}
-                      color="#2f6bff"
+                      iconStyle={{ background: 'rgba(37, 99, 235, 0.12)', color: '#2563EB' }}
+                      color="#2563EB"
                       compare={hasQpsData ? qpsCompare : null}
                       footer={<><span>{hasQpsData ? `SELECT 查询 ${selectValue.toFixed(1)}/s` : metricEmptyText}</span></>}
                       trendData={metricMap.mysql_queries_rate?.viewData || []}

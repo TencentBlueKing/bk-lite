@@ -66,7 +66,7 @@ export default function K3sNodeDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>节点概览</div>
+          <div className={styles.sectionLabel}>健康概览</div>
           <KpiSection dashboard={dashboard} summaryCards={dashboard.summaryCards} kpiCols={6} styles={styles} />
           <div className={styles.sectionLabel}>资源趋势</div>
           <TrendSection

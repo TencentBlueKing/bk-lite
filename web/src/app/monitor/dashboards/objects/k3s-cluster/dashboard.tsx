@@ -532,7 +532,7 @@ export default function K3sClusterDashboardPage() {
         ) : (
           <>
             {/* Tier 1 · 概览:6 张等宽卡(采集状态 + 5 KPI),全 span2(=12) */}
-            <div className={styles.sectionLabel}>概览</div>
+            <div className={styles.sectionLabel}>健康概览</div>
             <section className={styles.dashboardSection}>
               <div className={styles.sectionGrid}>
                 <CollectionStatusCard

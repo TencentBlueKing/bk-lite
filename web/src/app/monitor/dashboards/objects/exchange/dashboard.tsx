@@ -68,7 +68,7 @@ export default function ExchangeDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>邮件流与 Synthetic 健康</div>
+          <div className={styles.sectionLabel}>健康概览</div>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
 
           <div className={styles.sectionLabel}>Hub Transport 邮件流</div>

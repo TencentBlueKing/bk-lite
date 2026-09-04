@@ -21,7 +21,6 @@ import {
   TrendChartPanel,
   RingChartPanel
 } from '../../shared/widgets';
-import { DetailMetricRow } from '../common/dashboard-components';
 import { formatDuration, countRestartsInRange } from '../common/simple-dashboard-core';
 import {
   buildSearchParams,
@@ -69,10 +68,6 @@ interface InstanceOption {
 const MEBIBYTE = 1024 * 1024;
 
 const METRIC_QUERY_CONCURRENCY = 4;
-
-// 详情行 sparkline 取指标语义色,与 KPI/趋势统一配色。
-const metricColor = (name: string): string | undefined =>
-  DASHBOARD_METRICS.find((m) => m.name === name)?.color;
 
 const MONGODB_METRIC_GROUPS = [
   {
@@ -436,6 +431,8 @@ export default function MongoDashboardPage() {
   const virtualDisplay = formatMetricValue(virtualMemory, 'mebibytes');
   const netInDisplay = formatMetricValue(netIn, 'byteps');
   const netOutDisplay = formatMetricValue(netOut, 'byteps');
+  const cursorDisplay = formatMetricValue(cursorTimedOut, 'counts');
+  const userAssertDisplay = formatMetricValue(userAssert, 'counts');
 
   const connectionCompare = getPeriodCompare(currentConnections, getLatestChartValue(previousMetricMap.mongodb_connections_current?.viewData || []));
 
@@ -587,6 +584,12 @@ export default function MongoDashboardPage() {
   const networkDetailGuide = [
     { label: '网络与异常', detail: '展示网络流量、游标超时和用户断言，用于判断响应层异常。' }
   ];
+  const residentGuide = useMemo(() => [{ label: '常驻内存 (Resident)', detail: 'MongoDB 进程实际占用物理内存大小。' }], []);
+  const virtualGuide = useMemo(() => [{ label: '虚拟内存 (Virtual)', detail: 'MongoDB 进程申请的虚拟内存空间，包含映射的存储与缓存。' }], []);
+  const netInGuide = useMemo(() => [{ label: '网络入流量', detail: 'MongoDB 服务端每秒接收的网络数据速率。' }], []);
+  const netOutGuide = useMemo(() => [{ label: '网络出流量', detail: 'MongoDB 服务端每秒发送的网络数据速率。' }], []);
+  const cursorGuide = useMemo(() => [{ label: '游标超时数', detail: '空闲超时被服务端回收的查询游标累计数；持续增长常因结果集未及时遍历完。' }], []);
+  const userAssertGuide = useMemo(() => [{ label: '用户断言', detail: '因非法请求、权限或参数抛出的错误累计次数；持续增长说明客户端存在问题请求。' }], []);
   const metricsOverviewGuide = [
     { label: '监控指标全景', detail: '这里承载完整原始监控视图，适合在仪表盘发现异常后继续下钻排查。' }
   ];
@@ -646,8 +649,8 @@ export default function MongoDashboardPage() {
                   value={renderMetricValue('mongodb_uptime_ns', uptimeDisplay)}
                   unit=""
                   icon={<ClockCircleOutlined />}
-                  iconStyle={{ background: 'rgba(91, 143, 249, 0.12)', color: '#5b8ff9' }}
-                  color="#5b8ff9"
+                  iconStyle={{ background: 'rgba(99, 102, 241, 0.12)', color: '#6366F1' }}
+                  color="#6366F1"
                   footer={<span>启动 {uptimeStartedAt}</span>}
                   hideTrend
                   className={styles.statCardRelaxed}
@@ -668,8 +671,8 @@ export default function MongoDashboardPage() {
                   value={renderMetricValue('mongodb_queued_reads', formatMetricValue(queuedReads, 'counts').value)}
                   unit=""
                   icon={<PauseCircleOutlined />}
-                  iconStyle={{ background: 'rgba(91, 143, 249, 0.12)', color: '#5b8ff9' }}
-                  color="#5b8ff9"
+                  iconStyle={{ background: 'rgba(37, 99, 235, 0.12)', color: '#2563EB' }}
+                  color="#2563EB"
                   footer={
                     <>
                       <span>活跃读 {renderMetricValue('mongodb_active_reads', formatMetricValue(activeReads, 'counts').value)}</span>
@@ -685,8 +688,8 @@ export default function MongoDashboardPage() {
                   value={renderMetricValue('mongodb_queued_writes', formatMetricValue(queuedWrites, 'counts').value)}
                   unit=""
                   icon={<PauseCircleOutlined />}
-                  iconStyle={{ background: 'rgba(255, 159, 67, 0.12)', color: '#ff9f43' }}
-                  color="#ff9f43"
+                  iconStyle={{ background: 'rgba(249, 115, 22, 0.12)', color: '#F97316' }}
+                  color="#F97316"
                   footer={
                     <>
                       <span>活跃写 {renderMetricValue('mongodb_active_writes', formatMetricValue(activeWrites, 'counts').value)}</span>
@@ -701,8 +704,8 @@ export default function MongoDashboardPage() {
                   value={renderMetricValue('mongodb_page_faults_rate', pageFaultDisplay.value)}
                   unit={hasMetricData('mongodb_page_faults_rate') ? pageFaultDisplay.unit : ''}
                   icon={<ExclamationCircleOutlined />}
-                  iconStyle={{ background: 'rgba(255, 77, 79, 0.10)', color: '#ff4d4f' }}
-                  color="#ff4d4f"
+                  iconStyle={{ background: 'rgba(239, 68, 68, 0.12)', color: '#EF4444' }}
+                  color="#EF4444"
                   footer={
                     <>
                       <span>常驻内存 {renderMetricValue('mongodb_resident_megabytes', `${residentDisplay.value}${residentDisplay.unit}`)}</span>
@@ -717,8 +720,8 @@ export default function MongoDashboardPage() {
                   value={renderMetricValue('mongodb_connections_current', connectionsDisplay.value)}
                   unit=""
                   icon={<NodeIndexOutlined />}
-                  iconStyle={{ background: 'rgba(47, 107, 255, 0.12)', color: '#2f6bff' }}
-                  color="#2f6bff"
+                  iconStyle={{ background: 'rgba(37, 99, 235, 0.12)', color: '#2563EB' }}
+                  color="#2563EB"
                   footer={
                     <>
                       <span>打开 {renderMetricValue('mongodb_open_connections', formatMetricValue(openConnections, 'counts').value)}</span>
@@ -863,28 +866,192 @@ export default function MongoDashboardPage() {
                 />
 
                 <DetailPanel
-                  styles={styles}
+                  styles={{ ...styles, detailRowsFill: styles.detailTilesFill }}
                   className={styles.quarterPanel}
                   title="内存与缺页"
                   subtitle="工作集与进程内存匹配"
                   guide={memoryDetailGuide}
                 >
-                  <DetailMetricRow styles={styles} label="常驻内存" value={renderMetricValue('mongodb_resident_megabytes', `${residentDisplay.value}${residentDisplay.unit}`)} viz={hasMetricData('mongodb_resident_megabytes') ? 'spark' : 'none'} trend={metricMap.mongodb_resident_megabytes?.viewData || []} color={metricColor('mongodb_resident_megabytes')} />
-                  <DetailMetricRow styles={styles} label="虚拟内存" value={renderMetricValue('mongodb_vsize_megabytes', `${virtualDisplay.value}${virtualDisplay.unit}`)} viz={hasMetricData('mongodb_vsize_megabytes') ? 'spark' : 'none'} trend={metricMap.mongodb_vsize_megabytes?.viewData || []} color={metricColor('mongodb_vsize_megabytes')} />
-                  <DetailMetricRow styles={styles} label="缺页频率" value={renderMetricValue('mongodb_page_faults_rate', `${pageFaultDisplay.value}${pageFaultDisplay.unit}`)} viz={hasMetricData('mongodb_page_faults_rate') ? 'spark' : 'none'} trend={metricMap.mongodb_page_faults_rate?.viewData || []} color={metricColor('mongodb_page_faults_rate')} />
+                  <div className={styles.metricTileGrid}>
+                    <div className={styles.metricTile}>
+                      <div className={styles.metricTileHeader}>
+                        <div className={styles.metricTileLabelWrap}>
+                          <span className={styles.metricTileDot} style={{ background: '#2f6bff' }} />
+                          <TitleWithGuide title="常驻内存" items={residentGuide} className={styles.metricTileLabel} styles={styles} />
+                        </div>
+                      </div>
+                      <div className={styles.metricTileValueWrap}>
+                        <span className={styles.metricTileValue}>
+                          {hasMetricData('mongodb_resident_megabytes') ? residentDisplay.value : '--'}
+                        </span>
+                        <span className={styles.metricTileUnit}>
+                          {hasMetricData('mongodb_resident_megabytes') ? residentDisplay.unit : ''}
+                        </span>
+                      </div>
+                      <div className={styles.metricTileSubtext}>物理内存驻留</div>
+                    </div>
+
+                    <div className={styles.metricTile}>
+                      <div className={styles.metricTileHeader}>
+                        <div className={styles.metricTileLabelWrap}>
+                          <span className={styles.metricTileDot} style={{ background: '#8a5cff' }} />
+                          <TitleWithGuide title="虚拟内存" items={virtualGuide} className={styles.metricTileLabel} styles={styles} />
+                        </div>
+                      </div>
+                      <div className={styles.metricTileValueWrap}>
+                        <span className={styles.metricTileValue}>
+                          {hasMetricData('mongodb_vsize_megabytes') ? virtualDisplay.value : '--'}
+                        </span>
+                        <span className={styles.metricTileUnit}>
+                          {hasMetricData('mongodb_vsize_megabytes') ? virtualDisplay.unit : ''}
+                        </span>
+                      </div>
+                      <div className={styles.metricTileSubtext}>进程地址空间</div>
+                    </div>
+
+                    <div className={`${styles.metricTile} ${styles.metricTileSpan2}`}>
+                      <div className={styles.metricTileSpan2Left}>
+                        <div className={styles.metricTileHeader}>
+                          <div className={styles.metricTileLabelWrap}>
+                            <span
+                              className={styles.metricTileDot}
+                              style={{ background: pageFaults > 0 ? '#faad14' : '#10b981' }}
+                            />
+                            <TitleWithGuide title="缺页频率" items={pageFaultGuide} className={styles.metricTileLabel} styles={styles} />
+                          </div>
+                          {hasMetricData('mongodb_page_faults_rate') && (
+                            pageFaults > 0 ? (
+                              <span className={`${styles.metricTileBadge} ${styles.metricTileBadgeWarn}`}>换入中</span>
+                            ) : (
+                              <span className={`${styles.metricTileBadge} ${styles.metricTileBadgeSuccess}`}>无缺页</span>
+                            )
+                          )}
+                        </div>
+                        <div className={styles.metricTileSubtext}>工作集与物理内存换入速率</div>
+                      </div>
+                      <div className={styles.metricTileSpan2Right}>
+                        <div className={styles.metricTileValueWrap}>
+                          <span
+                            className={styles.metricTileValue}
+                            style={pageFaults > 0 ? { color: '#faad14' } : undefined}
+                          >
+                            {hasMetricData('mongodb_page_faults_rate') ? pageFaultDisplay.value : '--'}
+                          </span>
+                          <span className={styles.metricTileUnit}>
+                            {hasMetricData('mongodb_page_faults_rate') ? pageFaultDisplay.unit : ''}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </DetailPanel>
 
                 <DetailPanel
-                  styles={styles}
+                  styles={{ ...styles, detailRowsFill: styles.detailTilesFill }}
                   className={styles.quarterPanel}
                   title="网络与异常"
                   subtitle="结果返回与异常信号"
                   guide={networkDetailGuide}
                 >
-                  <DetailMetricRow styles={styles} label="入流量" value={renderMetricValue('mongodb_net_in_bytes_count_rate', `${netInDisplay.value}${netInDisplay.unit}`)} viz={hasMetricData('mongodb_net_in_bytes_count_rate') ? 'spark' : 'none'} trend={metricMap.mongodb_net_in_bytes_count_rate?.viewData || []} color={metricColor('mongodb_net_in_bytes_count_rate')} />
-                  <DetailMetricRow styles={styles} label="出流量" value={renderMetricValue('mongodb_net_out_bytes_count_rate', `${netOutDisplay.value}${netOutDisplay.unit}`)} viz={hasMetricData('mongodb_net_out_bytes_count_rate') ? 'spark' : 'none'} trend={metricMap.mongodb_net_out_bytes_count_rate?.viewData || []} color={metricColor('mongodb_net_out_bytes_count_rate')} />
-                  <DetailMetricRow styles={styles} label="游标超时数" guide={[{ label: '游标超时数', detail: '空闲超时被服务端回收的查询游标累计数;偏高常因结果未及时遍历完。' }]} value={renderMetricValue('mongodb_cursor_timed_out_count', formatMetricValue(cursorTimedOut, 'counts').value)} viz={hasMetricData('mongodb_cursor_timed_out_count') ? 'spark' : 'none'} trend={metricMap.mongodb_cursor_timed_out_count?.viewData || []} color={metricColor('mongodb_cursor_timed_out_count')} />
-                  <DetailMetricRow styles={styles} label="用户断言" guide={[{ label: '用户断言', detail: '因非法请求 / 参数抛出的错误累计次数;持续增长说明客户端有问题请求。' }]} value={renderMetricValue('mongodb_assert_user', formatMetricValue(userAssert, 'counts').value)} viz={hasMetricData('mongodb_assert_user') ? 'spark' : 'none'} trend={metricMap.mongodb_assert_user?.viewData || []} color={metricColor('mongodb_assert_user')} />
+                  <div className={styles.metricTileGrid}>
+                    <div className={styles.metricTile}>
+                      <div className={styles.metricTileHeader}>
+                        <div className={styles.metricTileLabelWrap}>
+                          <span className={styles.metricTileDot} style={{ background: '#2f6bff' }} />
+                          <TitleWithGuide title="入流量" items={netInGuide} className={styles.metricTileLabel} styles={styles} />
+                        </div>
+                      </div>
+                      <div className={styles.metricTileValueWrap}>
+                        <span className={styles.metricTileValue}>
+                          {hasMetricData('mongodb_net_in_bytes_count_rate') ? netInDisplay.value : '--'}
+                        </span>
+                        <span className={styles.metricTileUnit}>
+                          {hasMetricData('mongodb_net_in_bytes_count_rate') ? netInDisplay.unit : ''}
+                        </span>
+                      </div>
+                      <div className={styles.metricTileSubtext}>接收数据速率</div>
+                    </div>
+
+                    <div className={styles.metricTile}>
+                      <div className={styles.metricTileHeader}>
+                        <div className={styles.metricTileLabelWrap}>
+                          <span className={styles.metricTileDot} style={{ background: '#10b981' }} />
+                          <TitleWithGuide title="出流量" items={netOutGuide} className={styles.metricTileLabel} styles={styles} />
+                        </div>
+                      </div>
+                      <div className={styles.metricTileValueWrap}>
+                        <span className={styles.metricTileValue}>
+                          {hasMetricData('mongodb_net_out_bytes_count_rate') ? netOutDisplay.value : '--'}
+                        </span>
+                        <span className={styles.metricTileUnit}>
+                          {hasMetricData('mongodb_net_out_bytes_count_rate') ? netOutDisplay.unit : ''}
+                        </span>
+                      </div>
+                      <div className={styles.metricTileSubtext}>发送数据速率</div>
+                    </div>
+
+                    <div className={styles.metricTile}>
+                      <div className={styles.metricTileHeader}>
+                        <div className={styles.metricTileLabelWrap}>
+                          <span
+                            className={styles.metricTileDot}
+                            style={{ background: cursorTimedOut > 0 ? '#faad14' : '#10b981' }}
+                          />
+                          <TitleWithGuide title="游标超时" items={cursorGuide} className={styles.metricTileLabel} styles={styles} />
+                        </div>
+                        {hasMetricData('mongodb_cursor_timed_out_count') && (
+                          cursorTimedOut > 0 ? (
+                            <span className={`${styles.metricTileBadge} ${styles.metricTileBadgeWarn}`}>有超时</span>
+                          ) : (
+                            <span className={`${styles.metricTileBadge} ${styles.metricTileBadgeSuccess}`}>无超时</span>
+                          )
+                        )}
+                      </div>
+                      <div className={styles.metricTileValueWrap}>
+                        <span
+                          className={styles.metricTileValue}
+                          style={cursorTimedOut > 0 ? { color: '#faad14' } : undefined}
+                        >
+                          {hasMetricData('mongodb_cursor_timed_out_count') ? cursorDisplay.value : '--'}
+                        </span>
+                        <span className={styles.metricTileUnit}>
+                          {hasMetricData('mongodb_cursor_timed_out_count') ? (cursorDisplay.unit || '次') : ''}
+                        </span>
+                      </div>
+                      <div className={styles.metricTileSubtext}>空闲回收游标数</div>
+                    </div>
+
+                    <div className={styles.metricTile}>
+                      <div className={styles.metricTileHeader}>
+                        <div className={styles.metricTileLabelWrap}>
+                          <span
+                            className={styles.metricTileDot}
+                            style={{ background: userAssert > 0 ? '#ff4d4f' : '#10b981' }}
+                          />
+                          <TitleWithGuide title="用户断言" items={userAssertGuide} className={styles.metricTileLabel} styles={styles} />
+                        </div>
+                        {hasMetricData('mongodb_assert_user') && (
+                          userAssert > 0 ? (
+                            <span className={`${styles.metricTileBadge} ${styles.metricTileBadgeDanger}`}>有异常</span>
+                          ) : (
+                            <span className={`${styles.metricTileBadge} ${styles.metricTileBadgeSuccess}`}>正常</span>
+                          )
+                        )}
+                      </div>
+                      <div className={styles.metricTileValueWrap}>
+                        <span
+                          className={styles.metricTileValue}
+                          style={userAssert > 0 ? { color: '#ff4d4f' } : undefined}
+                        >
+                          {hasMetricData('mongodb_assert_user') ? userAssertDisplay.value : '--'}
+                        </span>
+                        <span className={styles.metricTileUnit}>
+                          {hasMetricData('mongodb_assert_user') ? (userAssertDisplay.unit || '次') : ''}
+                        </span>
+                      </div>
+                      <div className={styles.metricTileSubtext}>客户端异常请求数</div>
+                    </div>
+                  </div>
                 </DetailPanel>
               </div>
             </>
