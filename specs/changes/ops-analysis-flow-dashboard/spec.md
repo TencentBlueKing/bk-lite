@@ -8,7 +8,7 @@ Status: implemented
 
 ## Solution
 
-监控提供两个通用 NATS 查询（实例选项、指标视图），运营分析登记三个数据源并给一张可导入的 Flow 仪表盘。画布只用现有单值、折线、饼图、TopN、表格。监控继续持有 PromQL、采样率归一化和实例权限。
+监控提供两个通用 NATS 查询（实例选项、指标视图），运营分析登记三个数据源，并由 `init_builtin_canvases` 写入内置 Flow 仪表盘。画布只用现有单值、折线、饼图、TopN、表格。监控继续持有 PromQL、采样率归一化和实例权限。
 
 ## User Stories
 
@@ -29,7 +29,7 @@ Status: implemented
 - `range` 返回 `{series_name: [[ts, value], ...]}`；`instant` 返回按 `value` 降序的行列表。概览指标（无额外维度）instant 折叠成一行 `name=total`。
 - 不接受裸 PromQL。非法 `mode`/`metric`/`collect_type`/`limit` 返回失败消息，不崩 worker。
 - 运营分析登记三个内置数据源：实例选项（不出图）、趋势（`mode=range`，折线）、排行（`mode=instant`，TopN/表格/单值）。`instance_ids` 与主机盘相同：字符串 + 多选筛选。指标名用组件内切换。
-- Flow 仪表盘 YAML 作为可导入样例，不并入 `init_builtin_canvases` 默认文件（与主机综合盘相同），依赖已登记数据源。
+- Flow 仪表盘 YAML 并入 `init_builtin_canvases` 默认文件（`flow_dashboard.yaml` 与 `builtin_canvases.yaml` 合并），数据源仍以 `source_api.json` 为单一事实来源。
 - 这些 NATS 不经 OpenAPI 网关对外暴露。
 
 ## Testing Decisions
@@ -43,7 +43,7 @@ Status: implemented
 - RPC 方法名转发（对齐 `test_monitor_forwarding.py`）
 - 契约集合含新 handler（对齐 `test_nats_monitor_handlers.py`；注册名同时在 `test_metric_series_handler.py` 断言，避免依赖 django_db 建库）
 - `source_api.json` 定义（对齐 `test_host_dashboard_datasource_definitions.py`）
-- YAML 可解析、非内置、组件绑定正确数据源（对齐 `test_host_comprehensive_dashboard_yaml.py`）
+- YAML 可解析、随 `init_builtin_canvases` 进入内置目录、组件绑定正确数据源
 
 不测 Telegraf 采集、真实 VM、前端 E2E。
 

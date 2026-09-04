@@ -16,7 +16,7 @@ from core.collection.contracts import (
     has_publishable_metrics,
 )
 from core.collection.metrics import CollectionMetrics
-from core.collection.result_publisher import FuturePublishReceipt
+from core.collection.result_publisher import SCAN_CREDENTIAL_RESULT_SUBJECT, FuturePublishReceipt
 from core.collection.runtime import CollectionRequest, RunLease
 from core.logger import logger, safe_log_value
 
@@ -307,7 +307,9 @@ def _requires_delivery(
     request: CollectionRequest,
     result: TargetCollectionResult,
 ) -> bool:
-    """显式 callback 保持协议；普通结果仅成功且非空时进入 metrics。"""
+    """显式 callback / 扫描一枪保持协议；普通结果仅成功且非空时进入 metrics。"""
     if str(request.params.get("callback_subject") or "").strip():
+        return True
+    if str(request.params.get("credential_result_subject") or "").strip() == SCAN_CREDENTIAL_RESULT_SUBJECT:
         return True
     return result.status == "success" and has_publishable_metrics(result.value)

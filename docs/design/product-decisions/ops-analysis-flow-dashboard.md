@@ -21,7 +21,8 @@
   - `get_monitor_instance_list`：可选 `object_names`、`protocol`（滤 `enabled_protocols`）；返回 `instance_id` / `display_name` / `ip` / `object_name` / `enabled_protocols`。
   - `query_metric_series`：`metric` 用已注册稳定名，`mode=range|instant`，可选 `collect_type`；由实例反查对象并合并序列；不接受裸 PromQL。不改 `query_monitor_data_by_metric` 的 VictoriaMetrics 原结构。
 - 运营分析数据源 3 个、指向上述 2 个 NATS：实例选项源（不出图）、受控指标趋势（`range` / 折线）、受控指标排行（`instant` / TopN·表格·单值）。
-- 画布组件：单值做 KPI（可周期对比）；折线做 Bytes/s、Packets/s 和 TCP/UDP 多序列；饼图或 TopN 做协议占比；TopN 做 Source / Dest / 源 IP+端口 / 目标 IP+端口 / Protocol；Conversation 用表格多列，不用 TopN 拼标签。通信关系图作为独立通用图表挂在样例盘上。
+- 画布组件：单值做 KPI（可周期对比）；折线做 Bytes/s、Packets/s 和 TCP/UDP 多序列；饼图或 TopN 做协议占比；TopN 做 Source / Dest / 源 IP+端口 / 目标 IP+端口 / Protocol；Conversation 用表格多列。通信关系图挂在内置 Flow 盘上。
+- 内置初始化加载 `flow_dashboard.yaml`，新环境开箱即有 Flow 盘；数据源仍以 `source_api.json` 为准。
 - 协议号到 TCP/UDP、会话展示名、B/s 到 Mbps 都在监控查询或画布单位配置完成，不为此新做图。
 - 不复用 `get_host_*`、`query_metric_range_scoped`（只返回第一条且依赖环境相关 `metric_id`）、`get_network_device_resource_top`（SNMP 总流量）、`query_latest_interface_metrics`（IF-MIB）。
 
