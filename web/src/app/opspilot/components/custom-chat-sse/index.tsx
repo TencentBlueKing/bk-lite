@@ -1025,7 +1025,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
               <Tooltip title={t('chat.clear') || '清空对话'}>
                 <button
                   type="button"
-                  className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--color-text-3)] hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/30 transition-colors"
+                  className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--color-text-3)] hover:bg-[var(--color-fail)]/10 hover:text-[var(--color-fail)] transition-colors"
                   aria-label="清空对话"
                 >
                   <DeleteOutlined className="text-sm" />

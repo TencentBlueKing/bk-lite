@@ -5,6 +5,7 @@ import {
   getDeepestMatchedMenuItems,
   getFirstLayerSiblingMenuItems,
   isMenuPathMatch,
+  isPathCoveredByMenus,
   resolveMenuIcon,
 } from '../menuHelpers';
 import type { MenuItem } from '@/types/index';
@@ -104,6 +105,31 @@ const cmdbAutoDiscoveryMenus: MenuItem[] = [
     ],
   }),
 ];
+
+describe('isPathCoveredByMenus', () => {
+  it('treats an app landing as covered when menus only list deeper leaves', () => {
+    const logMenus: MenuItem[] = [
+      menu({
+        title: '检索',
+        url: '/log/search',
+        name: 'search',
+      }),
+      menu({
+        title: '事件',
+        url: '/log/event',
+        name: 'event',
+        children: [
+          menu({ title: '告警', url: '/log/event/alert', name: 'alert' }),
+        ],
+      }),
+    ];
+
+    expect(isPathCoveredByMenus('/log', logMenus)).toBe(true);
+    expect(isPathCoveredByMenus('/log/search', logMenus)).toBe(true);
+    expect(isPathCoveredByMenus('/log/event/alert', logMenus)).toBe(true);
+    expect(isPathCoveredByMenus('/monitor', logMenus)).toBe(false);
+  });
+});
 
 describe('isMenuPathMatch', () => {
   it('matches exact and descendant paths on segment boundary', () => {
