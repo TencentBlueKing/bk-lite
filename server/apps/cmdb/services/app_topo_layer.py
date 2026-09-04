@@ -168,6 +168,8 @@ _INFRA_MODEL_IDS = frozenset(
         "storage_pool",
         "storage_disk",
         "storage_volume",
+        "storage_eth_port",
+        "storage_fc_port",
         "server_bmc_cpu",
         "server_bmc_memory",
         "server_bmc_disk",
