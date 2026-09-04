@@ -73,6 +73,7 @@ class BaseCollect(object):
             inst_id = instance.get("_id")
             return self.task.model_id, inst_name, inst_org, inst_id, not self.task.is_host
 
+        # 多实例没有单一图节点 _id / inst_name。执行层按 instances 对账，不能收成第一台。
         return self.task.model_id, None, organization, None, not self.task.is_host
 
     @property

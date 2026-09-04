@@ -50,7 +50,8 @@ class CollectBase(metaclass=ABCMeta):
 
     def _resolve_inst_name_from_task(self) -> str:
         task_inst_data = self.get_collect_inst().instances
-        if not isinstance(task_inst_data, list) or not task_inst_data:
+        # 多实例任务没有单一 inst_name；回填第一台会让后续主机/组件全部挂到同一 CI。
+        if not isinstance(task_inst_data, list) or len(task_inst_data) != 1:
             return ""
         first_item = task_inst_data[0]
         if not isinstance(first_item, dict):

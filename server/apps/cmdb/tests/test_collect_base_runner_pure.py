@@ -112,6 +112,23 @@ def test_format_params_instance_mode_missing_graph_id():
     assert c.inst_id is None
 
 
+def test_format_params_multi_instance_does_not_collapse_to_first_identity():
+    t = _task(
+        instances=[
+            {"_id": "h1", "model_id": "host", "inst_name": "10.0.0.1", "organization": 3},
+            {"_id": "h2", "model_id": "host", "inst_name": "10.0.0.2", "organization": 3},
+        ],
+        team=[7],
+        is_host=True,
+    )
+    c = BaseCollect(instance_id=None, task=t)
+    assert c.model_id == "host"
+    assert c.inst_name is None
+    assert c.inst_id is None
+    assert c.organization == [7]
+    assert c.filter_collect_task is False
+
+
 # --------------------------------------------------------------------------
 # build_plugin_kwargs
 # --------------------------------------------------------------------------
