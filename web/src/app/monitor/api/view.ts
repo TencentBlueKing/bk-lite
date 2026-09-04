@@ -20,33 +20,31 @@ const useViewApi = () => {
   // 这些函数会被消费方放进 useEffect/useCallback 依赖数组(如各对象盘的 TopN 取数 effect)。
   // 必须用 useCallback 固定引用,否则每次重渲染都生成新函数 → effect 反复触发 → 重复发起查询。
   const getInstanceQuery = useCallback(
-    async (
-      params: SearchParams = {
-        query: '',
-      },
-      config?: RequestConfig
-    ) => {
-      return await get(`/monitor/api/metrics_instance/query_range/`, {
+    async (params: SearchParams, config?: RequestConfig) => {
+      return await post(
+        `/monitor/api/metrics_instance/query_by_metric_range/`,
         params,
-        ...METRIC_QUERY_REQUEST_CONFIG,
-        ...config,
-      });
+        {
+          ...METRIC_QUERY_REQUEST_CONFIG,
+          ...config,
+        }
+      );
     },
-    [get]
+    [post]
   );
 
   const getInstanceInstantQuery = useCallback(
-    async (
-      params: SearchParams = { query: '' },
-      config?: RequestConfig
-    ) => {
-      return await get(`/monitor/api/metrics_instance/query/`, {
+    async (params: SearchParams, config?: RequestConfig) => {
+      return await post(
+        `/monitor/api/metrics_instance/query_by_metric/`,
         params,
-        ...METRIC_QUERY_REQUEST_CONFIG,
-        ...config,
-      });
+        {
+          ...METRIC_QUERY_REQUEST_CONFIG,
+          ...config,
+        }
+      );
     },
-    [get]
+    [post]
   );
 
   const getInstanceSearch = useCallback(
