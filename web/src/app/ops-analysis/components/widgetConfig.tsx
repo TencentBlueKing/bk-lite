@@ -64,6 +64,7 @@ import ComponentSelector from './widgetSelector';
 import { useTableConfig } from './widgetConfig/hooks/useTableConfig';
 import { TableSettingsSection } from './widgetConfig/sections/tableSettingsSection';
 import { TopNSettingsSection } from './widgetConfig/sections/topNSettingsSection';
+import { NodeGraphSettingsSection } from './widgetConfig/sections/nodeGraphSettingsSection';
 import { GaugeSettingsSection } from './widgetConfig/sections/gaugeSettingsSection';
 import { RadarSettingsSection } from './widgetConfig/sections/radarSettingsSection';
 import { CardListSettingsSection } from './widgetConfig/sections/cardListSettingsSection';
@@ -110,7 +111,7 @@ interface ViewConfigPropsWithManager extends ViewConfigProps {
 }
 
 const NETWORK_STATUS_TOPOLOGY = 'networkStatusTopology';
-const VALUE_FORMAT_CHART_TYPES = new Set(['line', 'bar', 'pie', 'multiValue']);
+const VALUE_FORMAT_CHART_TYPES = new Set(['line', 'bar', 'pie', 'multiValue', 'nodeGraph']);
 
 interface SelectorLike {
   id?: unknown;
@@ -343,6 +344,11 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           selectedFields: [],
           topNLabelField: undefined,
           topNValueField: undefined,
+          nodeGraphIdentityMode: 'ip',
+          nodeGraphSourceField: undefined,
+          nodeGraphTargetField: undefined,
+          nodeGraphValueField: undefined,
+          nodeGraphTargetPortField: undefined,
           unit: undefined,
           unitId: undefined,
           valueMappings: undefined,
@@ -416,6 +422,11 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         selectedFields: [],
         topNLabelField: undefined,
         topNValueField: undefined,
+        nodeGraphIdentityMode: 'ip',
+        nodeGraphSourceField: undefined,
+        nodeGraphTargetField: undefined,
+        nodeGraphValueField: undefined,
+        nodeGraphTargetPortField: undefined,
         unit: undefined,
         unitId: undefined,
         valueMappings: undefined,
@@ -589,6 +600,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       singleValueConfig.setThresholdColors((prev) =>
         prev.length > 0 ? prev : initThresholdColors(undefined),
       );
+    }
+    if (newChartType === 'nodeGraph' && !form.getFieldValue('nodeGraphIdentityMode')) {
+      form.setFieldValue('nodeGraphIdentityMode', 'ip');
     }
     if (surface === 'screen') {
       form.setFieldValue(
@@ -832,6 +846,23 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     }
     if (valueConfig?.topNValueField !== undefined) {
       formValues.topNValueField = valueConfig.topNValueField;
+    }
+    if (valueConfig?.nodeGraphIdentityMode !== undefined) {
+      formValues.nodeGraphIdentityMode = valueConfig.nodeGraphIdentityMode;
+    } else if (valueConfig?.chartType === 'nodeGraph') {
+      formValues.nodeGraphIdentityMode = 'ip';
+    }
+    if (valueConfig?.nodeGraphSourceField !== undefined) {
+      formValues.nodeGraphSourceField = valueConfig.nodeGraphSourceField;
+    }
+    if (valueConfig?.nodeGraphTargetField !== undefined) {
+      formValues.nodeGraphTargetField = valueConfig.nodeGraphTargetField;
+    }
+    if (valueConfig?.nodeGraphValueField !== undefined) {
+      formValues.nodeGraphValueField = valueConfig.nodeGraphValueField;
+    }
+    if (valueConfig?.nodeGraphTargetPortField !== undefined) {
+      formValues.nodeGraphTargetPortField = valueConfig.nodeGraphTargetPortField;
     }
     if (valueConfig?.unit !== undefined) {
       formValues.unit = valueConfig.unit;
@@ -1512,6 +1543,15 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             onThresholdBlur={singleValueConfig.handleThresholdBlur}
             onAddThreshold={singleValueConfig.addThreshold}
             onRemoveThreshold={singleValueConfig.removeThreshold}
+          />
+        )}
+
+        {chartType === 'nodeGraph' && (
+          <NodeGraphSettingsSection
+            t={t}
+            selectedDataSource={selectedDataSource}
+            fieldOptions={topNLabelFieldOptions}
+            valueFieldOptions={topNValueFieldOptions}
           />
         )}
 

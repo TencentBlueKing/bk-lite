@@ -1,24 +1,6 @@
 @use '../common/simple-dashboard.module.scss';
 
-// 区块小标题:给分区加语义标题,提升可扫读性(与 redis/postgresql 同款)
-.sectionLabel {
-  margin: 2px 2px 4px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid #eceff4;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #8c95a8;
-}
-
-.dashboardSection + .sectionLabel {
-  margin-top: 8px;
-}
-
-:global(html.dark) .sectionLabel {
-  border-bottom-color: rgba(255, 255, 255, 0.08);
-}
+// sectionLabel 已上收到共享壳（带品牌蓝指示条与现代间距）；此处仅保留趋势图高度与图例微调。
 
 .chartLegendHeader {
   justify-content: flex-end;
@@ -28,22 +10,7 @@
 
 .compactTrend {
   .chartWrap {
-    height: 164px;
-  }
-}
-
-.compactStatusRing {
-  .ringCard {
-    grid-template-columns: minmax(132px, 144px) minmax(0, 1fr);
-    gap: 12px;
-  }
-
-  .metricRow {
-    gap: 10px;
-  }
-
-  .metricValueGroup {
-    gap: 2px;
+    height: 180px;
   }
 }
 
@@ -56,7 +23,7 @@
 
   .compactTrend {
     .chartWrap {
-      height: 138px;
+      height: 140px;
     }
   }
 }

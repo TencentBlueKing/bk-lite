@@ -16,8 +16,15 @@ _DEFAULT_LOG_HOURS = 24
 _MAX_LOG_HOURS = 168
 
 
-def _pod_log_since_seconds(hours) -> int:
-    return coerce_int(hours, _DEFAULT_LOG_HOURS, lo=1, hi=_MAX_LOG_HOURS) * 3600
+def _pod_log_since_seconds(hours, *, default=_DEFAULT_LOG_HOURS):
+    """hours -> kubelet sinceSeconds（相对当前时间的滚动窗口）。
+
+    default=None 表示省略 hours 时不限窗，不传 since_seconds。
+    """
+    if default is None and (hours is None or hours == ""):
+        return None
+    fallback = _DEFAULT_LOG_HOURS if default is None else default
+    return coerce_int(hours, fallback, lo=1, hi=_MAX_LOG_HOURS) * 3600
 
 
 @tool()
@@ -515,7 +522,7 @@ def get_kubernetes_pod_logs(
     **重要提示：**
     - 本工具只能获取当前运行容器的日志
     - 容器已重启时，上一轮日志用 get_kubernetes_previous_pod_logs
-    - 默认只取近 24 小时，再按 lines 截取；频繁重启先看当天即可
+    - 默认只取近 24 小时（滚动窗口），再按 lines 截取
     - 日志默认最多1MB，超大日志会被截断
 
     Args:
@@ -531,7 +538,7 @@ def get_kubernetes_pod_logs(
         tail (bool, optional): True=最后N行，False=开头N行，默认True
             - True: 查看最新日志（推荐）
             - False: 查看启动初期日志
-        hours (int, optional): 时间窗（小时），默认24，对应当天；最大168
+        hours (int, optional): 近 N 小时（滚动窗口），默认24；最大168
         config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
@@ -612,20 +619,29 @@ def get_kubernetes_previous_pod_logs(
     container=None,
     lines: int = 100,
     tail: bool = True,
-    hours: int = 24,
+    hours=None,
     instance_name=None,
     config: RunnableConfig = None,
 ):
     """
     获取Pod容器上一次实例的日志，用于重启类故障采集。
 
+    **何时使用此工具：**
+    - 已知具体 Pod，分析频繁重启的上一轮死因
+    - diagnose 已给出 last_state，需要对照崩溃现场日志
+    - 当前轮日志干净，但 restart_count > 0
+
+    **重要提示：**
+    - kubelet 只保留最近一次 previous 日志，不能还原全部历史重启
+    - 不要用本工具扫全集群；必须带 namespace 和 pod_name
+
     Args:
         namespace (str): Pod所在命名空间
         pod_name (str): Pod名称
-        container (str, optional): 容器名称，多容器Pod建议显式指定
+        container (str, optional): 容器名称，多容器Pod必须指定
         lines (int, optional): 日志行数，默认100
         tail (bool, optional): True=最后N行，False=开头N行
-        hours (int, optional): 时间窗（小时），默认24；只看上一轮里落在该窗口内的日志
+        hours (int, optional): 近 N 小时（滚动窗口）；默认不限窗。仅显式传入时才按 sinceSeconds 过滤
         instance_name (str, optional): 多实例时必须指定集群
         config (RunnableConfig): 工具配置
 
@@ -638,7 +654,7 @@ def get_kubernetes_previous_pod_logs(
     prepare_context(config)
     lines = coerce_int(lines, 100, lo=1, hi=10000)
     tail = coerce_bool(tail, True)
-    since_seconds = _pod_log_since_seconds(hours)
+    since_seconds = _pod_log_since_seconds(hours, default=None)
     try:
         core_v1 = client.CoreV1Api()
 
@@ -656,21 +672,26 @@ def get_kubernetes_previous_pod_logs(
         if not container and pod.spec.containers and len(pod.spec.containers) == 1:
             container = pod.spec.containers[0].name
 
-        logs = core_v1.read_namespaced_pod_log(
-            name=pod_name,
-            namespace=namespace,
-            container=container,
-            previous=True,
-            since_seconds=since_seconds,
-            tail_lines=lines if tail else None,
-            limit_bytes=None if lines else 1024 * 1024,
-        )
+        log_kwargs = {
+            "name": pod_name,
+            "namespace": namespace,
+            "container": container,
+            "previous": True,
+            "tail_lines": lines if tail else None,
+            "limit_bytes": None if lines else 1024 * 1024,
+        }
+        if since_seconds is not None:
+            log_kwargs["since_seconds"] = since_seconds
+        logs = core_v1.read_namespaced_pod_log(**log_kwargs)
 
         if not tail and logs:
             log_lines = logs.split("\n")
             logs = "\n".join(log_lines[:lines])
 
         if not logs:
+            if since_seconds is not None:
+                window_hours = since_seconds // 3600
+                return f"Pod {pod_name} 容器 {container} 在近 {window_hours} 小时滚动窗口内没有 previous 日志。" f"这不等于没有 previous 容器；可加大 hours 或不传 hours（不限窗）再查。"
             return f"Pod {pod_name} 容器 {container} 没有上一次实例的日志输出"
 
         return logs

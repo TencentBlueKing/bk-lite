@@ -13,7 +13,7 @@ import {
   ARCH_FRUSTUM_TAPER,
   ARCH_FRONT_INSET,
   ARCH_GRID_PITCH,
-  ARCH_INVERTED_NODE_SIZE,
+  ARCH_WRAP_COLS,
   ARCH_LABEL_BILLBOARD,
   ARCH_LABEL_FILL,
   ARCH_LABEL_HAS_BACKGROUND,
@@ -22,6 +22,8 @@ import {
   ARCH_PLANE_DEPTH_WRITE,
   ARCH_PLANE_EMISSIVE_INTENSITY,
   ARCH_PLANE_GAP,
+  ARCH_PLANE_MIN_DEPTH,
+  ARCH_PLANE_MIN_WIDTH,
   ARCH_PLANE_OPACITY,
   ARCH_PLANE_ORIENTATION,
   ARCH_PLANE_RIM_BLENDING,
@@ -39,17 +41,15 @@ import {
   ARCH_PLANE_SIDE_HAS_STROKE,
   ARCH_PLANE_SIDE_MATCHES_TOP_HUE,
   ARCH_PLANE_SIDE_OPACITY,
+  ARCH_PLANE_PAD,
   ARCH_PLANE_THICKNESS,
   ARCH_PLANE_TITLE,
   ARCH_PLANE_TITLE_SIDE,
   ARCH_PLANE_WORLD_DEPTH,
   ARCH_PLANE_WORLD_HEIGHT,
+  ARCH_PLANE_FRONT_Z,
   ARCH_PLANE_WORLD_WIDTH,
   ARCH_PLANE_Y,
-  ARCH_PREVIOUS_CAMERA_PHI,
-  ARCH_PREVIOUS_FILL_PLANE_DEPTH,
-  ARCH_PREVIOUS_FILL_PLANE_WIDTH,
-  ARCH_PREVIOUS_NODE_SIZE,
   ARCH_PULSE_HALO_BLENDING,
   ARCH_PULSE_HALO_FALLOFF,
   ARCH_PULSE_HALO_INTENSITY,
@@ -68,6 +68,7 @@ import {
   ARCH_PULSE_WRAP_OFFSET,
   ARCH_STACK_ORIGIN,
   ARCH_TITLE_FILL,
+  ARCH_TITLE_FRONT_INSET,
   ARCH_TITLE_RIGHT_OUTSET,
   ARCH_TITLE_SHADOW_BLUR,
   ARCH_TITLE_SHADOW_COLOR,
@@ -82,6 +83,8 @@ import {
   ARCH_TUBE_RADIUS_INTER,
   ARCH_TUBE_RADIUS_INTRA,
   ARCH_TUBE_TUBULAR_SEGMENTS,
+  architectureBoardFromContentMinZ,
+  architectureCameraFitWidth,
   architectureFrontZ,
   architecturePulseBandIntensity,
   architecturePulseCompanionHead,
@@ -96,9 +99,13 @@ import {
   architectureRimBloomWeight,
   architectureRimUvWidth,
   architectureTitleLocalX,
+  architectureTitleLocalZ,
   architectureTubeRadius,
+  architectureWideBoardFloor,
+  architectureWrapBoardWidth,
   architectureTubeStyle,
   describeArchitectureLandedFrame,
+  fitArchitectureCameraDistance,
   describeWallCameraSpherical,
   formatArchitecturePlaneTitle,
   layoutApplication3DArchitecture,
@@ -106,34 +113,38 @@ import {
   sphericalToOffset,
 } from '../application3DArchitecture';
 import {
-  ARCH_BAY_FILL,
-  ARCH_BAY_LIP_COLOR,
   ARCH_CHASSIS_COLOR,
-  ARCH_CHASSIS_EMISSIVE,
-  ARCH_CHASSIS_EMISSIVE_INTENSITY,
-  ARCH_CHASSIS_METALNESS,
-  ARCH_DOOR_COLOR,
   ARCH_EDGE,
   ARCH_EDGE_ALARM,
   ARCH_LED_ALARM_COLOR,
   ARCH_LED_COLOR,
   ARCH_NODE_FILL,
   ARCH_PLANE,
-  ARCH_PREVIOUS_CHASSIS_COLOR,
-  ARCH_RACK_BAY_COUNT,
+  ARCH_PLANE_EMISSIVE,
+  ARCH_RACK_FRONT_METALNESS,
+  ARCH_RACK_FRONT_ROUGHNESS,
+  ARCH_RACK_HULL_COLOR,
+  ARCH_RACK_ALBEDO_LIFT_OFFSET,
+  ARCH_RACK_ALBEDO_LIFT_SCALE,
   ARCH_RACK_LED_COUNT,
+  ARCH_RACK_LED_RADIUS_UV,
+  ARCH_RACK_LED_UV_U,
+  ARCH_RACK_LED_UV_V,
   ARCH_RACK_LIFT,
+  ARCH_RACK_SIDE_METALNESS,
+  ARCH_RACK_SIDE_ROUGHNESS,
   ARCH_RACK_STROKE_WIDTH,
-  ARCH_RACK_WELL_RATIO,
   ARCH_STROKE_ALARM_COLOR,
   ARCH_STROKE_EMISSIVE_INTENSITY,
   architectureEdgeColor,
   architecturePulseProgress,
-  architectureRackBayCount,
   createArchitectureEdgeCurve,
   createArchitectureTreeGroup,
   createTrapezoidFrustumGeometry,
   hostHasAlarm,
+  findArchitectureRackRoot,
+  liftCabinetAlbedoPixels,
+  liftCabinetAlbedoTexture,
   updateArchitecturePulse,
 } from '../application3DArchitectureView';
 import { ARCHITECTURE_MOTION } from '../application3DMotion';
@@ -172,6 +183,20 @@ const wallPose = {
   position: { x: 0, y: 0.48, z: 20 },
   target: { x: 0, y: 0, z: 0 },
 };
+
+/** Historical fences — production no longer exports these rejected sizes/poses. */
+const ARCH_PREVIOUS_NODE_SIZE = {
+  application: { width: 0.32, height: 0.52, depth: 0.26 },
+  host: { width: 0.26, height: 0.42, depth: 0.22 },
+} as const;
+const ARCH_INVERTED_NODE_SIZE = {
+  application: { width: 0.42, height: 0.68, depth: 0.34 },
+  host: { width: 0.34, height: 0.55, depth: 0.28 },
+} as const;
+const ARCH_PREVIOUS_FILL_PLANE_WIDTH = 27.6;
+const ARCH_PREVIOUS_FILL_PLANE_DEPTH = 19.2;
+const ARCH_PREVIOUS_CAMERA_PHI = Math.PI / 2 - Math.PI / 8;
+const ARCH_PREVIOUS_CHASSIS_COLOR = 0x3a3e44;
 
 describe('application3D architecture layout', () => {
   it('places exactly two horizontal XZ ranks: 应用 lower, 主机 higher on +Y', () => {
@@ -213,8 +238,12 @@ describe('application3D architecture layout', () => {
     expect(layout.planes[1].shape).toBe('plane');
     expect(layout.stackBottomY).toBeLessThan(layout.planes[0].y);
     expect(layout.stackTopY).toBeGreaterThan(layout.planes[1].y);
+    expect(ARCH_PLANE).toBe(0x163e5c);
+    expect(ARCH_PLANE_EMISSIVE).toBe(0x1a6e98);
+    expect(ARCH_PLANE_OPACITY).toBe(0.46);
     expect(ARCH_PLANE_OPACITY).toBeGreaterThan(0.1);
     expect(ARCH_PLANE_OPACITY).toBeLessThan(0.55);
+    expect(ARCH_PLANE_EMISSIVE_INTENSITY).toBe(0.38);
     expect(ARCH_PLANE_EMISSIVE_INTENSITY).toBeGreaterThan(0.14);
     expect(ARCH_PLANE_EMISSIVE_INTENSITY).toBeLessThan(0.7);
     expect(ARCH_PLANE_DEPTH_WRITE).toBe(false);
@@ -244,6 +273,8 @@ describe('application3D architecture layout', () => {
     expect(architectureRimUvWidth(ARCH_PLANE_RIM_HALO_WORLD, 12)).toBeLessThan(0.022);
     expect(ARCH_PLANE_RIM_HAS_EDGE_LINES).toBe(false);
     expect(ARCH_PLANE_RIM_COLOR).toBeGreaterThan(0);
+    expect(ARCH_PLANE_SIDE_OPACITY).toBe(0.32);
+    expect(ARCH_PLANE_SIDE_EMISSIVE_INTENSITY).toBe(0.30);
     expect(ARCH_PLANE_SIDE_OPACITY).not.toBe(ARCH_PLANE_OPACITY);
     expect(ARCH_PLANE_SIDE_OPACITY).toBeLessThan(ARCH_PLANE_OPACITY);
     expect(ARCH_PLANE_SIDE_OPACITY).toBeGreaterThan(0.16);
@@ -355,7 +386,7 @@ describe('application3D architecture layout', () => {
     expect(layout.edges).toHaveLength(0);
   });
 
-  it('wraps many isolated hosts into a grid still on the host plane', () => {
+  it('keeps eight-or-fewer isolated hosts on the front host row', () => {
     const hosts = Array.from({ length: 5 }, (_, index) => ({
       id: `host-${index}`,
       kind: 'host' as const,
@@ -372,10 +403,237 @@ describe('application3D architecture layout', () => {
     expect(placed.every((node) => Math.abs(node.y - hostY) < 1e-6)).toBe(true);
     expect(new Set(placed.map((node) => `${node.x.toFixed(2)},${node.z.toFixed(2)}`)).size).toBe(5);
     const zs = [...new Set(placed.map((node) => node.z))].sort((left, right) => left - right);
-    expect(zs.length).toBeGreaterThan(1);
+    expect(zs).toHaveLength(1);
+    expect(zs[0]).toBeCloseTo(architectureFrontZ(0));
+    expect(ARCH_WRAP_COLS).toBe(8);
+  });
+
+  const layerNodes = (
+    kind: 'application' | 'host',
+    count: number,
+  ) => Array.from({ length: count }, (_, index) => ({
+    id: `${kind}-${index}`,
+    kind,
+    name: `${kind}-${index}`,
+    health,
+  }));
+
+  it('wraps applications at 8 per row and sends the 9th backward on −Z', () => {
+    const apps = layerNodes('application', 9);
+    const layout = layoutApplication3DArchitecture(tree({
+      nodes: [{ id: 'sys-1', kind: 'system', name: '九应用', health }, ...apps],
+      edges: [],
+    }));
+    const placed = layout.nodes.filter((node) => node.kind === 'application');
+    expect(placed).toHaveLength(9);
+    const front = placed.filter((node) => Math.abs(node.z - architectureFrontZ(0)) < 1e-6);
+    const next = placed.filter((node) => Math.abs(node.z - architectureFrontZ(1)) < 1e-6);
+    expect(front).toHaveLength(ARCH_WRAP_COLS);
+    expect(next).toHaveLength(1);
+    expect(next[0].z).toBeLessThan(front[0].z);
+    expect(next[0].z).toBeCloseTo(architectureFrontZ(0) - ARCH_GRID_PITCH);
+    const xs = [...new Set(front.map((node) => node.x))].sort((left, right) => left - right);
+    expect(xs).toHaveLength(ARCH_WRAP_COLS);
+    expect(xs[1] - xs[0]).toBeCloseTo(ARCH_GRID_PITCH);
+  });
+
+  it('keeps eight or fewer cabinets on a single front-packed row', () => {
+    const apps = layerNodes('application', 8);
+    const hosts = layerNodes('host', 3);
+    const layout = layoutApplication3DArchitecture(tree({
+      nodes: [{ id: 'sys-1', kind: 'system', name: '满一行', health }, ...apps, ...hosts],
+      edges: [],
+    }));
+    const placedApps = layout.nodes.filter((node) => node.kind === 'application');
+    const placedHosts = layout.nodes.filter((node) => node.kind === 'host');
+    expect(placedApps.every((node) => Math.abs(node.z - architectureFrontZ(0)) < 1e-6)).toBe(true);
+    expect(placedHosts.every((node) => Math.abs(node.z - architectureFrontZ(0)) < 1e-6)).toBe(true);
+    expect(new Set(placedApps.map((node) => node.x)).size).toBe(8);
+    expect(new Set(placedHosts.map((node) => node.x)).size).toBe(3);
+    expect(layout.width).toBeGreaterThan(ARCH_PLANE_MIN_WIDTH);
+    expect(layout.depth).toBe(ARCH_PLANE_MIN_DEPTH);
+  });
+
+  it('does not grow width linearly with 20 hosts — wrap caps the X span at 8 columns', () => {
+    const hosts20 = layerNodes('host', 20);
+    const hosts8 = layerNodes('host', 8);
+    const layout20 = layoutApplication3DArchitecture(tree({
+      nodes: [{ id: 'sys-1', kind: 'system', name: '二十主机', health }, ...hosts20],
+      edges: [],
+    }));
+    const layout8 = layoutApplication3DArchitecture(tree({
+      nodes: [{ id: 'sys-1', kind: 'system', name: '八主机', health }, ...hosts8],
+      edges: [],
+    }));
+    const placed20 = layout20.nodes.filter((node) => node.kind === 'host');
+    const zs = [...new Set(placed20.map((node) => node.z))].sort((left, right) => left - right);
+    expect(zs).toHaveLength(3);
+    expect(zs[0]).toBeCloseTo(architectureFrontZ(2));
+    expect(zs[zs.length - 1]).toBeCloseTo(architectureFrontZ(0));
     expect(zs[1] - zs[0]).toBeCloseTo(ARCH_GRID_PITCH);
-    expect(Math.max(...zs)).toBeCloseTo(architectureFrontZ(0));
-    expect(Math.max(...zs)).toBeGreaterThan(Math.abs(Math.min(...zs)));
+    expect(layout20.width).toBeCloseTo(layout8.width);
+    expect(layout20.width).toBeLessThan(20 * ARCH_GRID_PITCH);
+    const eightSpan = (ARCH_WRAP_COLS - 1) * ARCH_GRID_PITCH
+      + ARCH_NODE_SIZE.host.width
+      + ARCH_PLANE_PAD * 2;
+    expect(layout20.width).toBeCloseTo(Math.max(eightSpan, ARCH_PLANE_MIN_WIDTH));
+    expect(layout20.width).toBeLessThan(eightSpan + ARCH_GRID_PITCH);
+  });
+
+  it('wraps isolated and connected hosts on the same 8-column grid', () => {
+    const connected = layerNodes('host', 5).map((node, index) => ({
+      ...node,
+      id: `host-c-${index}`,
+    }));
+    const isolated = layerNodes('host', 5).map((node, index) => ({
+      ...node,
+      id: `host-i-${index}`,
+    }));
+    const layout = layoutApplication3DArchitecture(tree({
+      nodes: [
+        { id: 'sys-1', kind: 'system', name: '混合主机', health },
+        { id: 'app-1', kind: 'application', name: '门户', health },
+        ...connected,
+        ...isolated,
+      ],
+      edges: connected.map((node, index) => ({
+        id: `ec-${index}`,
+        sourceId: 'app-1',
+        targetId: node.id,
+        relation: 'application_run_host' as const,
+      })),
+    }));
+    const placed = layout.nodes.filter((node) => node.kind === 'host');
+    expect(placed).toHaveLength(10);
+    expect(layout.nodes.filter((node) => node.id === 'host-c-0')).toHaveLength(1);
+    const front = placed.filter((node) => Math.abs(node.z - architectureFrontZ(0)) < 1e-6);
+    const next = placed.filter((node) => Math.abs(node.z - architectureFrontZ(1)) < 1e-6);
+    expect(front).toHaveLength(ARCH_WRAP_COLS);
+    expect(next).toHaveLength(2);
+    expect(next[0].z).toBeLessThan(front[0].z);
+    const xs = placed.map((node) => node.x);
+    expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo((ARCH_WRAP_COLS - 1) * ARCH_GRID_PITCH);
+    expect(layout.width).toBeLessThan(10 * ARCH_GRID_PITCH);
+  });
+
+  it('grows the board only toward −Z so the front lip stays with row 0', () => {
+    const few = layoutApplication3DArchitecture(tree());
+    const manyHosts = layerNodes('host', 40);
+    const many = layoutApplication3DArchitecture(tree({
+      nodes: [{ id: 'sys-1', kind: 'system', name: '四十主机', health }, ...manyHosts],
+      edges: [],
+    }));
+    const fewFront = few.nodes.filter((node) => node.kind === 'host');
+    const manyPlaced = many.nodes.filter((node) => node.kind === 'host');
+    const manyFirst = manyPlaced.reduce((best, node) => (node.z > best.z ? node : best));
+    const manyLast = manyPlaced.reduce((best, node) => (node.z < best.z ? node : best));
+    expect(fewFront[0].z).toBeCloseTo(architectureFrontZ(0));
+    expect(manyFirst.z).toBeCloseTo(fewFront[0].z);
+    expect(manyFirst.z).toBeCloseTo(architectureFrontZ(0));
+    const fewPlane = few.planes[0];
+    const manyPlane = many.planes[0];
+    const fewFrontEdge = fewPlane.z + fewPlane.depth / 2;
+    const manyFrontEdge = manyPlane.z + manyPlane.depth / 2;
+    const manyBackEdge = manyPlane.z - manyPlane.depth / 2;
+    expect(fewFrontEdge).toBeCloseTo(ARCH_PLANE_FRONT_Z);
+    expect(manyFrontEdge).toBeCloseTo(fewFrontEdge);
+    expect(manyFrontEdge).toBeCloseTo(ARCH_PLANE_WORLD_DEPTH / 2);
+    expect(fewPlane.z).toBeCloseTo(0);
+    expect(manyPlane.z).toBeLessThan(0);
+    expect(many.depth).toBeGreaterThan(ARCH_PLANE_MIN_DEPTH);
+    expect(many.depth).toBeCloseTo(architectureBoardFromContentMinZ(
+      manyLast.z - manyLast.depth / 2,
+    ).depth);
+    expect(manyLast.z).toBeGreaterThanOrEqual(manyBackEdge);
+    expect(manyLast.z - manyLast.depth / 2).toBeGreaterThanOrEqual(manyBackEdge);
+    expect(manyLast.z - manyLast.depth / 2).toBeCloseTo(manyBackEdge + ARCH_PLANE_PAD);
+    expect(many.centerZ).toBe(0);
+    expect(many.centerZ).toBe(few.centerZ);
+    expect(architectureTitleLocalZ(fewPlane.depth)).toBeCloseTo(
+      fewPlane.depth / 2 - ARCH_TITLE_FRONT_INSET,
+    );
+    expect(architectureTitleLocalZ(manyPlane.depth)).toBeCloseTo(
+      manyPlane.depth / 2 - ARCH_TITLE_FRONT_INSET,
+    );
+    expect(architectureTitleLocalZ(manyPlane.depth)).toBeGreaterThan(
+      architectureTitleLocalZ(fewPlane.depth),
+    );
+    expect(architectureTitleLocalZ(manyPlane.depth)).not.toBeCloseTo(0, 1);
+    expect(ARCH_TITLE_FRONT_INSET).toBeGreaterThan(0);
+    expect(ARCH_TITLE_FRONT_INSET).toBeLessThan(0.2);
+  });
+
+  it('uses two landed-camera width tiers: min board vs 8-col cap, not wrap depth', () => {
+    const threeApps = layerNodes('application', 3);
+    const sixHosts = layerNodes('host', 6);
+    const sevenHosts = layerNodes('host', 7);
+    const eightHosts = layerNodes('host', 8);
+    const deepHosts = layerNodes('host', 40);
+    const threeApp = layoutApplication3DArchitecture(tree({
+      nodes: [{ id: 'sys-1', kind: 'system', name: '三应用', health }, ...threeApps],
+      edges: [],
+    }));
+    const sixHost = layoutApplication3DArchitecture(tree({
+      nodes: [
+        { id: 'sys-1', kind: 'system', name: '六主机', health },
+        ...threeApps,
+        ...sixHosts,
+      ],
+      edges: [],
+    }));
+    const sevenHost = layoutApplication3DArchitecture(tree({
+      nodes: [{ id: 'sys-1', kind: 'system', name: '七主机', health }, ...sevenHosts],
+      edges: [],
+    }));
+    const eightHost = layoutApplication3DArchitecture(tree({
+      nodes: [{ id: 'sys-1', kind: 'system', name: '八主机', health }, ...eightHosts],
+      edges: [],
+    }));
+    const deep = layoutApplication3DArchitecture(tree({
+      nodes: [{ id: 'sys-1', kind: 'system', name: '深板', health }, ...deepHosts],
+      edges: [],
+    }));
+    expect(threeApp.width).toBe(ARCH_PLANE_MIN_WIDTH);
+    expect(sixHost.width).toBeLessThan(architectureWideBoardFloor());
+    expect(architectureCameraFitWidth(threeApp.width)).toBe(ARCH_PLANE_MIN_WIDTH);
+    expect(architectureCameraFitWidth(sixHost.width)).toBe(ARCH_PLANE_MIN_WIDTH);
+    expect(architectureCameraFitWidth(eightHost.width)).toBeCloseTo(
+      architectureWrapBoardWidth(),
+    );
+    expect(architectureCameraFitWidth(deep.width)).toBeCloseTo(
+      architectureWrapBoardWidth(),
+    );
+    expect(eightHost.width).toBeCloseTo(deep.width);
+    expect(eightHost.width).toBeCloseTo(architectureWrapBoardWidth());
+    expect(deep.depth).toBeGreaterThan(ARCH_PLANE_MIN_DEPTH);
+    expect(eightHost.depth).toBe(ARCH_PLANE_MIN_DEPTH);
+    const smallFit = fitArchitectureCameraDistance(threeApp, 16 / 9);
+    const sixFit = fitArchitectureCameraDistance(sixHost, 16 / 9);
+    const sevenFit = fitArchitectureCameraDistance(sevenHost, 16 / 9);
+    const eightFit = fitArchitectureCameraDistance(eightHost, 16 / 9);
+    const deepFit = fitArchitectureCameraDistance(deep, 16 / 9);
+    expect(sixFit).toBeCloseTo(smallFit);
+    expect(smallFit).toBeCloseTo(
+      fitArchitectureCameraDistance(layoutApplication3DArchitecture(tree()), 16 / 9),
+    );
+    expect(eightFit).toBeCloseTo(deepFit);
+    expect(sevenFit).toBeCloseTo(eightFit);
+    expect(eightFit).toBeGreaterThan(smallFit);
+    const smallPose = resolveArchitectureCameraPose(threeApp, 16 / 9);
+    const sixPose = resolveArchitectureCameraPose(sixHost, 16 / 9);
+    const eightPose = resolveArchitectureCameraPose(eightHost, 16 / 9);
+    const deepPose = resolveArchitectureCameraPose(deep, 16 / 9);
+    expect(smallPose.phi).toBeCloseTo(ARCH_CAMERA_PHI);
+    expect(sixPose.phi).toBeCloseTo(ARCH_CAMERA_PHI);
+    expect(eightPose.phi).toBeCloseTo(ARCH_CAMERA_PHI);
+    expect(deepPose.phi).toBeCloseTo(ARCH_CAMERA_PHI);
+    expect(deepPose.phi).toBeCloseTo(eightPose.phi);
+    expect(sixPose.radius).toBeCloseTo(smallPose.radius);
+    expect(deepPose.radius).toBeCloseTo(eightPose.radius);
+    expect(eightPose.radius).toBeGreaterThan(smallPose.radius);
+    expect(deepPose.target.z).toBeCloseTo(eightPose.target.z);
+    expect(deep.centerZ).toBe(0);
+    expect(smallPose.target.z).toBeCloseTo(eightPose.target.z);
   });
 
   it('keeps an empty system as two empty planes with no visual system node', () => {
@@ -411,7 +669,7 @@ describe('application3D architecture layout', () => {
   it('lands the camera low looking into the stack, not wallPhi − π/2.5 overhead', () => {
     const layout = layoutApplication3DArchitecture(tree());
     const wall = describeWallCameraSpherical(wallPose);
-    const pose = resolveArchitectureCameraPose(layout, wallPose, 16 / 9);
+    const pose = resolveArchitectureCameraPose(layout, 16 / 9);
     const rejectedOverheadPhi = wall.phi - Math.PI / 2.5;
     expect(wall.phi).toBeGreaterThan(Math.PI / 2 - 0.1);
     expect('cameraBetaDelta' in ARCHITECTURE_MOTION).toBe(false);
@@ -540,6 +798,7 @@ describe('application3D architecture view', () => {
     fillStyle: string;
     shadowColor: string;
     shadowBlur: number;
+    font: string;
   }> = [];
   const fillRectCalls: Array<{ fillStyle: string }> = [];
 
@@ -555,12 +814,18 @@ describe('application3D architecture view', () => {
       fillRect(this: { fillStyle: string }) {
         fillRectCalls.push({ fillStyle: String(this.fillStyle) });
       },
-      fillText(this: { fillStyle: string; shadowColor: string; shadowBlur: number }, text: string) {
+      fillText(this: {
+        fillStyle: string;
+        shadowColor: string;
+        shadowBlur: number;
+        font: string;
+      }, text: string) {
         paintCalls.push({
           text,
           fillStyle: String(this.fillStyle),
           shadowColor: String(this.shadowColor),
           shadowBlur: Number(this.shadowBlur),
+          font: String(this.font),
         });
       },
       createLinearGradient: () => ({ addColorStop: () => undefined }),
@@ -691,12 +956,20 @@ describe('application3D architecture view', () => {
     expect(ARCH_LABEL_HAS_BACKGROUND).toBe(false);
     expect(ARCH_LABEL_BILLBOARD).toBe(true);
     expect(view.billboardMeshes.length).toBe(titles.length + labels.length);
-    expect(titles.every((title) => Math.abs(title.position.z) < 0.2)).toBe(true);
-    expect(titles.every((title) => (
-      Math.abs(title.position.x - architectureTitleLocalX(view.layout.planes[0].width)) < 1e-6
-    ))).toBe(true);
-    expect(titles.every((title) => title.position.x > view.layout.planes[0].width / 2)).toBe(true);
+    expect(titles.every((title) => {
+      const plane = view.layout.planes.find((item) => item.kind === title.parent?.userData.planeKind);
+      return plane != null
+        && Math.abs(title.position.z - architectureTitleLocalZ(plane.depth)) < 1e-6
+        && Math.abs(title.position.z - (plane.depth / 2 - ARCH_TITLE_FRONT_INSET)) < 1e-6
+        && title.position.z > plane.depth / 2 - 0.2
+        && Math.abs(title.position.x - architectureTitleLocalX(plane.width)) < 1e-6
+        && title.position.x > plane.width / 2;
+    })).toBe(true);
     expect(titles.every((title) => title.position.x > 0)).toBe(true);
+    expect(titles.every((title) => {
+      const geo = title.geometry as THREE.PlaneGeometry;
+      return geo.parameters.width === 2.5 && geo.parameters.height === 0.70;
+    })).toBe(true);
     expect(ARCH_TITLE_RIGHT_OUTSET).toBeGreaterThan(0);
     expect(rims).toHaveLength(2);
     expect(rims.every((rim) => rim instanceof THREE.Mesh)).toBe(true);
@@ -801,6 +1074,7 @@ describe('application3D architecture view', () => {
       call.fillStyle === ARCH_TITLE_FILL
       && call.shadowColor === ARCH_TITLE_SHADOW_COLOR
       && call.shadowBlur === ARCH_TITLE_SHADOW_BLUR
+      && call.font.startsWith('600 68px ')
       && !call.text.includes('➤')
     ))).toBe(true);
     const nodeTexts = paintCalls.filter((call) => ['门户', '订单', 'web-1', 'shared'].includes(call.text));
@@ -808,10 +1082,40 @@ describe('application3D architecture view', () => {
     expect(nodeTexts.every((call) => (
       call.fillStyle === ARCH_LABEL_FILL
       && call.shadowBlur === 0
+      && call.font.startsWith('600 58px ')
     ))).toBe(true);
     expect(paintCalls.some((call) => call.text.includes('➤'))).toBe(false);
     expect(fillRectCalls.some((call) => call.fillStyle.includes('12, 32, 52'))).toBe(false);
     expect(view.layout.nodes.every((node) => node.z > 0)).toBe(true);
+    view.dispose();
+  });
+
+  it('pins layer titles to the grown board front lip, not the mesh center', () => {
+    const hosts = Array.from({ length: 40 }, (_, index) => ({
+      id: `host-${index}`,
+      kind: 'host' as const,
+      name: `host-${index}`,
+      health,
+    }));
+    const view = createArchitectureTreeGroup(tree({
+      nodes: [{ id: 'sys-1', kind: 'system', name: '四十主机', health }, ...hosts],
+      edges: [],
+    }), (_id, fallback = '') => fallback);
+    expect(view.layout.planes[0].depth).toBeGreaterThan(ARCH_PLANE_MIN_DEPTH);
+    const titles: THREE.Mesh[] = [];
+    view.group.traverse((child) => {
+      if (child.userData.archRole === 'plane-title') titles.push(child as THREE.Mesh);
+    });
+    expect(titles).toHaveLength(2);
+    titles.forEach((title) => {
+      const plane = view.layout.planes.find((item) => item.kind === title.parent?.userData.planeKind);
+      expect(plane).toBeTruthy();
+      expect(title.position.z).toBeCloseTo(architectureTitleLocalZ(plane!.depth));
+      expect(title.position.z).toBeCloseTo(plane!.depth / 2 - ARCH_TITLE_FRONT_INSET);
+      expect(title.position.z).toBeGreaterThan(4);
+      expect(Math.abs(title.position.z)).toBeGreaterThan(0.2);
+      expect(title.position.x).toBeGreaterThan(plane!.width / 2);
+    });
     view.dispose();
   });
 
@@ -930,6 +1234,7 @@ describe('application3D architecture view', () => {
     const hints: THREE.Mesh[] = [];
     const vents: THREE.Mesh[] = [];
     const frontStripes: THREE.Mesh[] = [];
+    const shadows: THREE.Mesh[] = [];
     root.traverse((child) => {
       if (!(child as THREE.Mesh).isMesh) return;
       const mesh = child as THREE.Mesh;
@@ -941,6 +1246,7 @@ describe('application3D architecture view', () => {
       if (mesh.userData.archRole === 'rack-stroke') strokes.push(mesh);
       if (mesh.userData.archRole === 'rack-bezel') bezels.push(mesh);
       if (mesh.userData.archRole === 'rack-contact-hint') hints.push(mesh);
+      if (mesh.userData.archRole === 'rack-contact-shadow') shadows.push(mesh);
       if (mesh.userData.archRole === 'rack-vent') vents.push(mesh);
       if (
         mesh.userData.archRole === 'rack-hdd-stripe'
@@ -950,34 +1256,38 @@ describe('application3D architecture view', () => {
         frontStripes.push(mesh);
       }
     });
-    return { chassis, doors, bays, lips, leds, strokes, bezels, hints, vents, frontStripes };
+    return { chassis, doors, bays, lips, leds, strokes, bezels, hints, vents, frontStripes, shadows };
+  };
+
+  const hullFaces = (mesh: THREE.Mesh) => {
+    const materials = mesh.material;
+    expect(Array.isArray(materials)).toBe(true);
+    return materials as THREE.MeshStandardMaterial[];
   };
 
   const hexChannelSum = (hex: number) =>
     ((hex >> 16) & 255) + ((hex >> 8) & 255) + (hex & 255);
 
-  it('uses one metal-rack kit: readable gray body, cyan LEDs on 素柜, red LEDs+stroke on alarming hosts', () => {
+  it('uses one mapped hull: per-face albedo, cyan LEDs on 素柜, red LEDs+stroke on alarming hosts', () => {
     expect(ARCH_NODE_SIZE.host.height).toBeGreaterThan(ARCH_NODE_SIZE.application.height);
     expect(ARCH_NODE_SIZE.host.width).toBeLessThan(ARCH_NODE_SIZE.application.width);
-    expect(architectureRackBayCount('host')).toBeGreaterThan(architectureRackBayCount('application'));
-    expect(architectureRackBayCount('host')).toBe(ARCH_RACK_BAY_COUNT.host);
-    expect(architectureRackBayCount('application')).toBe(ARCH_RACK_BAY_COUNT.application);
     expect(ARCH_RACK_LED_COUNT).toBe(3);
-    expect(ARCH_RACK_WELL_RATIO).toBeGreaterThan(0.1);
     expect(ARCH_RACK_STROKE_WIDTH).toBeLessThan(0.012);
     expect(ARCH_RACK_LIFT).toBeGreaterThan(0);
     expect(ARCH_CHASSIS_COLOR).not.toBe(ARCH_LED_ALARM_COLOR);
     expect(ARCH_CHASSIS_COLOR).not.toBe(ARCH_LED_COLOR);
-    expect(ARCH_CHASSIS_EMISSIVE).not.toBe(ARCH_LED_ALARM_COLOR);
-    expect(ARCH_CHASSIS_EMISSIVE).not.toBe(ARCH_LED_COLOR);
-    expect(ARCH_BAY_FILL).not.toBe(ARCH_LED_ALARM_COLOR);
     expect(hexChannelSum(ARCH_CHASSIS_COLOR)).toBeGreaterThan(hexChannelSum(ARCH_PREVIOUS_CHASSIS_COLOR));
-    expect(ARCH_CHASSIS_METALNESS).toBeLessThan(0.35);
-    expect(ARCH_CHASSIS_METALNESS).toBeLessThan(0.64);
-    expect(ARCH_CHASSIS_EMISSIVE_INTENSITY).toBeGreaterThan(0.2);
-    expect(hexChannelSum(ARCH_DOOR_COLOR)).toBeGreaterThan(hexChannelSum(ARCH_CHASSIS_COLOR));
-    expect(hexChannelSum(ARCH_BAY_FILL)).toBeLessThan(hexChannelSum(ARCH_DOOR_COLOR));
-    expect(hexChannelSum(ARCH_BAY_LIP_COLOR)).toBeGreaterThan(hexChannelSum(ARCH_DOOR_COLOR));
+    expect(ARCH_RACK_HULL_COLOR).toBe(0xffffff);
+    expect(ARCH_RACK_SIDE_ROUGHNESS).toBeCloseTo(0.5);
+    expect(ARCH_RACK_SIDE_METALNESS).toBe(0.04);
+    expect(ARCH_RACK_FRONT_ROUGHNESS).toBeCloseTo(ARCH_RACK_SIDE_ROUGHNESS);
+    expect(ARCH_RACK_FRONT_METALNESS).toBeCloseTo(ARCH_RACK_SIDE_METALNESS);
+    expect(ARCH_RACK_ALBEDO_LIFT_OFFSET).toBe(72);
+    expect(ARCH_RACK_ALBEDO_LIFT_SCALE).toBeCloseTo(1.05);
+    expect(ARCH_RACK_LED_RADIUS_UV).toBeCloseTo(0.0195);
+    expect(ARCH_RACK_LED_UV_U).toEqual([0.1122, 0.1708, 0.2294]);
+    expect(ARCH_RACK_LED_UV_U).toHaveLength(ARCH_RACK_LED_COUNT);
+    expect(ARCH_RACK_LED_UV_V).toBeCloseTo(0.9606, 4);
 
     const view = createArchitectureTreeGroup(tree({
       nodes: [
@@ -1012,6 +1322,9 @@ describe('application3D architecture view', () => {
     expect(hostGroup?.userData.alarming).toBe(true);
     expect(quietGroup?.userData.alarming).toBe(false);
     expect(appGroup?.userData.alarming).toBe(false);
+    expect(hostGroup?.userData.nodeId).toBe('host-1');
+    expect(quietGroup?.userData.nodeId).toBe('host-quiet');
+    expect(appGroup?.userData.nodeId).toBe('app-1');
     expect(hostGroup?.userData.plainMetal).toBe(false);
     expect(quietGroup?.userData.plainMetal).toBe(true);
     expect(appGroup?.userData.plainMetal).toBe(true);
@@ -1027,22 +1340,27 @@ describe('application3D architecture view', () => {
     expect(quiet.chassis).toHaveLength(1);
     expect(host.chassis[0].material).toBe(app.chassis[0].material);
     expect(quiet.chassis[0].material).toBe(host.chassis[0].material);
-    expect(host.bays[0].material).toBe(app.bays[0].material);
-    expect(host.bays).toHaveLength(ARCH_RACK_BAY_COUNT.host);
-    expect(app.bays).toHaveLength(ARCH_RACK_BAY_COUNT.application);
-    expect(host.bays.length).toBeGreaterThan(app.bays.length);
-    expect(host.lips).toHaveLength(host.bays.length);
-    expect(app.lips).toHaveLength(app.bays.length);
-    expect(host.doors).toHaveLength(1);
-    expect(app.doors).toHaveLength(1);
-    expect(host.bezels.length).toBeGreaterThanOrEqual(4);
+    expect(host.doors).toHaveLength(0);
+    expect(app.doors).toHaveLength(0);
+    expect(quiet.doors).toHaveLength(0);
+    expect(host.bays).toHaveLength(0);
+    expect(app.bays).toHaveLength(0);
+    expect(quiet.bays).toHaveLength(0);
+    expect(host.lips).toHaveLength(0);
+    expect(app.lips).toHaveLength(0);
+    expect(host.bezels).toHaveLength(0);
+    expect(app.bezels).toHaveLength(0);
+    expect(quiet.bezels).toHaveLength(0);
 
     expect(app.leds).toHaveLength(ARCH_RACK_LED_COUNT);
     expect(app.strokes).toHaveLength(0);
     expect(quiet.leds).toHaveLength(ARCH_RACK_LED_COUNT);
     expect(quiet.strokes).toHaveLength(0);
     expect(host.leds).toHaveLength(ARCH_RACK_LED_COUNT);
-    expect(host.strokes.length).toBeGreaterThanOrEqual(4);
+    expect(host.strokes).toHaveLength(12);
+    expect(findArchitectureRackRoot(host.leds[0])).toBe(hostGroup);
+    expect(findArchitectureRackRoot(host.chassis[0])).toBe(hostGroup);
+    expect(findArchitectureRackRoot(quiet.leds[0])).toBe(quietGroup);
     expect(app.hints).toHaveLength(0);
     expect(quiet.hints).toHaveLength(0);
     expect(host.hints).toHaveLength(0);
@@ -1052,55 +1370,85 @@ describe('application3D architecture view', () => {
     expect(app.frontStripes).toHaveLength(0);
     expect(quiet.frontStripes).toHaveLength(0);
     expect(host.frontStripes).toHaveLength(0);
+    expect(app.shadows).toHaveLength(1);
+    expect(quiet.shadows).toHaveLength(1);
+    expect(host.shadows).toHaveLength(1);
 
-    const hostChassis = host.chassis[0].material as THREE.MeshStandardMaterial;
-    expect(hostChassis.color.getHex()).toBe(ARCH_CHASSIS_COLOR);
-    expect(hostChassis.emissive.getHex()).toBe(ARCH_CHASSIS_EMISSIVE);
-    expect(hostChassis.metalness).toBe(ARCH_CHASSIS_METALNESS);
-    expect(hostChassis.emissiveIntensity).toBe(ARCH_CHASSIS_EMISSIVE_INTENSITY);
-    expect(hostChassis.color.getHex()).not.toBe(ARCH_LED_ALARM_COLOR);
-    expect(hostChassis.color.getHex()).not.toBe(ARCH_LED_COLOR);
-    expect(hostChassis.emissive.getHex()).not.toBe(0x5a1820);
-    expect(hostChassis.emissive.getHex()).not.toBe(ARCH_LED_ALARM_COLOR);
-    expect(hostChassis.emissive.getHex()).not.toBe(ARCH_LED_COLOR);
+    const hostFaces = hullFaces(host.chassis[0]);
+    const appFaces = hullFaces(app.chassis[0]);
+    expect(hostFaces).toHaveLength(6);
+    expect(appFaces).toHaveLength(6);
+    expect(host.chassis[0].userData.faceCount).toBe(6);
+    expect(host.chassis[0].userData.mappedHull).toBe(true);
+    const [posX, negX, posY, negY, posZ, negZ] = hostFaces;
+    expect(posX).toBeInstanceOf(THREE.MeshStandardMaterial);
+    expect(negX).toBeInstanceOf(THREE.MeshStandardMaterial);
+    expect(posY).toBeInstanceOf(THREE.MeshStandardMaterial);
+    expect(negY).toBeInstanceOf(THREE.MeshStandardMaterial);
+    expect(posZ).toBeInstanceOf(THREE.MeshStandardMaterial);
+    expect(negZ).toBeInstanceOf(THREE.MeshStandardMaterial);
+    expect(posX).toBe(negX);
+    expect(posY).toBe(negY);
+    expect(negZ).toBe(posY);
+    expect(posZ).not.toBe(negZ);
+    expect(posX).not.toBe(posY);
+    expect(posX).not.toBe(posZ);
+    expect(posY).not.toBe(posZ);
+    expect(posX.map).toBeTruthy();
+    expect(posY.map).toBeTruthy();
+    expect(posZ.map).toBeTruthy();
+    expect(negZ.map).toBe(posY.map);
+    expect(posZ.map).not.toBe(negZ.map);
+    expect(posX.map).not.toBe(posY.map);
+    expect(posX.map).not.toBe(posZ.map);
+    expect(posY.map).not.toBe(posZ.map);
+    expect(posX.map?.colorSpace).toBe(THREE.SRGBColorSpace);
+    expect(posY.map?.colorSpace).toBe(THREE.SRGBColorSpace);
+    expect(posZ.map?.colorSpace).toBe(THREE.SRGBColorSpace);
+    expect(posX.color.getHex()).toBe(ARCH_RACK_HULL_COLOR);
+    expect(posY.color.getHex()).toBe(ARCH_RACK_HULL_COLOR);
+    expect(posZ.color.getHex()).toBe(ARCH_RACK_HULL_COLOR);
+    expect(posX.roughness).toBeCloseTo(ARCH_RACK_SIDE_ROUGHNESS);
+    expect(posX.metalness).toBeCloseTo(ARCH_RACK_SIDE_METALNESS);
+    expect(posY.roughness).toBeCloseTo(ARCH_RACK_SIDE_ROUGHNESS);
+    expect(posY.metalness).toBeCloseTo(ARCH_RACK_SIDE_METALNESS);
+    expect(('clearcoat' in posX) ? (posX as THREE.MeshPhysicalMaterial).clearcoat : 0).toBe(0);
+    const front = posZ;
+    expect(front).toBeInstanceOf(THREE.MeshStandardMaterial);
+    expect(front).not.toBeInstanceOf(THREE.MeshPhysicalMaterial);
+    expect(front.roughness).toBeCloseTo(ARCH_RACK_FRONT_ROUGHNESS);
+    expect(front.metalness).toBeCloseTo(ARCH_RACK_FRONT_METALNESS);
+    expect(('clearcoat' in front) ? (front as THREE.MeshPhysicalMaterial).clearcoat : 0).toBe(0);
+    hostFaces.forEach((face) => {
+      expect(face).toBeInstanceOf(THREE.MeshStandardMaterial);
+      expect(face).not.toBeInstanceOf(THREE.MeshPhysicalMaterial);
+      expect(face.envMap).toBeFalsy();
+      expect(('clearcoat' in face) ? (face as THREE.MeshPhysicalMaterial).clearcoat : 0).toBe(0);
+    });
+    expect(front.envMap).toBeFalsy();
+    expect(front.roughnessMap).toBeFalsy();
+    expect(front.emissive.getHex()).toBe(0);
+    expect(front.emissiveIntensity).toBe(0);
+    expect(front.color.getHex()).not.toBe(ARCH_LED_ALARM_COLOR);
+    expect(front.color.getHex()).not.toBe(ARCH_LED_COLOR);
+    expect(front.emissive.getHex()).not.toBe(ARCH_LED_ALARM_COLOR);
+    expect(front.emissive.getHex()).not.toBe(ARCH_LED_COLOR);
     expect(host.chassis[0].userData.alarmPaintsBody).toBe(false);
 
-    const hostDoor = host.doors[0].material as THREE.MeshStandardMaterial;
-    const hostBay = host.bays[0].material as THREE.MeshStandardMaterial;
-    const hostLip = host.lips[0].material as THREE.MeshStandardMaterial;
-    expect(hostDoor.color.getHex()).toBe(ARCH_DOOR_COLOR);
-    expect(hostBay.color.getHex()).toBe(ARCH_BAY_FILL);
-    expect(hostLip.color.getHex()).toBe(ARCH_BAY_LIP_COLOR);
-    expect(hexChannelSum(hostDoor.color.getHex())).toBeGreaterThan(hexChannelSum(hostChassis.color.getHex()));
-    expect(hexChannelSum(hostBay.color.getHex())).toBeLessThan(hexChannelSum(hostDoor.color.getHex()));
-    expect(hexChannelSum(hostLip.color.getHex())).toBeGreaterThan(hexChannelSum(hostDoor.color.getHex()));
-    expect(hostBay.emissive.getHex()).not.toBe(0x8a2030);
-    expect(hostBay.color.getHex()).not.toBe(ARCH_LED_ALARM_COLOR);
-    expect(hostDoor.color.getHex()).not.toBe(ARCH_LED_ALARM_COLOR);
     const hostNode = view.layout.nodes.find((node) => node.id === 'host-1');
     const appNode = view.layout.nodes.find((node) => node.id === 'app-1');
     expect(hostNode).toBeTruthy();
     expect(appNode).toBeTruthy();
     expect((hostNode?.height ?? 0)).toBeGreaterThan(appNode?.height ?? 0);
-    host.bays.forEach((bay) => {
-      const frontZ = bay.position.z + bay.scale.z / 2;
-      expect(frontZ).toBeLessThan((hostNode?.depth ?? 0) / 2);
-      expect(bay.position.z).toBeLessThan((hostNode?.depth ?? 0) / 2);
-      expect(bay.userData.recessed).toBe(true);
-      expect(Number(bay.userData.bayFrontZ)).toBeLessThan(Number(bay.userData.chassisFrontZ));
-      expect(bay.scale.x).toBeGreaterThan((hostNode?.width ?? 0) * 0.85);
-    });
-    app.bays.forEach((bay) => {
-      const frontZ = bay.position.z + bay.scale.z / 2;
-      expect(frontZ).toBeLessThan((appNode?.depth ?? 0) / 2);
-      expect(bay.userData.recessed).toBe(true);
-      expect(bay.scale.x).toBeGreaterThan((appNode?.width ?? 0) * 0.85);
-    });
-    host.lips.forEach((lip, index) => {
-      const bay = host.bays[index];
-      expect(lip.scale.x).toBeGreaterThan(bay.scale.x);
-      expect(lip.scale.y).toBeGreaterThan(bay.scale.y);
-    });
+    expect(host.chassis[0].scale.x).toBeCloseTo(hostNode?.width ?? 0);
+    expect(host.chassis[0].scale.y).toBeCloseTo(hostNode?.height ?? 0);
+    expect(host.chassis[0].scale.z).toBeCloseTo(hostNode?.depth ?? 0);
+    expect(host.chassis[0].position.x).toBeCloseTo(0);
+    expect(host.chassis[0].position.y).toBeCloseTo(0);
+    expect(host.chassis[0].position.z).toBeCloseTo(0);
+    expect(app.chassis[0].scale.x).toBeCloseTo(appNode?.width ?? 0);
+    expect(app.chassis[0].scale.y).toBeCloseTo(appNode?.height ?? 0);
+    expect(app.chassis[0].scale.z).toBeCloseTo(appNode?.depth ?? 0);
 
     const assertCyanLeds = (leds: THREE.Mesh[]) => {
       leds.forEach((led) => {
@@ -1120,6 +1468,21 @@ describe('application3D architecture view', () => {
     assertCyanLeds(quiet.leds);
     expect(app.leds[0].material).toBe(quiet.leds[0].material);
     expect(host.leds[0].material).not.toBe(app.leds[0].material);
+    expect(app.leds[0].position.y).toBeGreaterThan(0);
+    expect(app.leds[0].position.z).toBeGreaterThan((appNode?.depth ?? 0) / 2);
+    const assertLedUv = (leds: THREE.Mesh[], node: { width: number; height: number }) => {
+      const ledRadius = node.width * ARCH_RACK_LED_RADIUS_UV;
+      leds.forEach((led, index) => {
+        expect(led.position.x).toBeCloseTo((ARCH_RACK_LED_UV_U[index] - 0.5) * node.width, 5);
+        expect(led.position.y).toBeCloseTo((ARCH_RACK_LED_UV_V - 0.5) * node.height, 5);
+        expect(led.scale.x).toBeCloseTo(ledRadius, 5);
+        expect(led.scale.z).toBeCloseTo(ledRadius, 5);
+        expect(led.scale.y).toBeCloseTo(ledRadius * 0.5, 5);
+      });
+    };
+    assertLedUv(app.leds, appNode as { width: number; height: number });
+    assertLedUv(quiet.leds, view.layout.nodes.find((node) => node.id === 'host-quiet') as { width: number; height: number });
+    assertLedUv(host.leds, hostNode as { width: number; height: number });
 
     host.leds.forEach((led) => {
       const material = led.material as THREE.MeshStandardMaterial;
@@ -1133,13 +1496,25 @@ describe('application3D architecture view', () => {
     expect(host.leds[2].position.x).toBeGreaterThan(host.leds[1].position.x);
     expect(Math.abs(host.leds[0].position.y - host.leds[1].position.y)).toBeLessThan(1e-6);
 
+    const strokeW = ARCH_RACK_STROKE_WIDTH;
+    const hx = (hostNode?.width ?? 0) / 2 - strokeW / 2;
+    const hy = (hostNode?.height ?? 0) / 2 - strokeW / 2;
+    const hz = (hostNode?.depth ?? 0) / 2 - strokeW / 2;
+    const frontStrokes = host.strokes.filter((stroke) => Math.abs(stroke.position.z - hz) < 1e-6);
+    const backStrokes = host.strokes.filter((stroke) => Math.abs(stroke.position.z + hz) < 1e-6);
+    const depthStrokes = host.strokes.filter((stroke) => Math.abs(stroke.position.z) < 1e-6);
+    expect(frontStrokes).toHaveLength(4);
+    expect(backStrokes).toHaveLength(4);
+    expect(depthStrokes).toHaveLength(4);
     host.strokes.forEach((stroke) => {
       const material = stroke.material as THREE.MeshStandardMaterial;
-      expect(
-        stroke.scale.x === ARCH_RACK_STROKE_WIDTH
-        || stroke.scale.y === ARCH_RACK_STROKE_WIDTH
-        || stroke.scale.z === ARCH_RACK_STROKE_WIDTH,
-      ).toBe(true);
+      const thinAxes = [stroke.scale.x, stroke.scale.y, stroke.scale.z].filter(
+        (axis) => Math.abs(axis - ARCH_RACK_STROKE_WIDTH) < 1e-6,
+      );
+      expect(thinAxes.length).toBeGreaterThanOrEqual(2);
+      expect(Math.abs(stroke.position.x)).toBeLessThanOrEqual(hx + 1e-6);
+      expect(Math.abs(stroke.position.y)).toBeLessThanOrEqual(hy + 1e-6);
+      expect(Math.abs(stroke.position.z)).toBeLessThanOrEqual(hz + 1e-6);
       expect(material.emissive.getHex()).toBe(ARCH_STROKE_ALARM_COLOR);
       expect(material.color.getHex()).toBe(ARCH_STROKE_ALARM_COLOR);
       expect(material.emissiveIntensity).toBe(ARCH_STROKE_EMISSIVE_INTENSITY);
@@ -1163,12 +1538,51 @@ describe('application3D architecture view', () => {
     expect(viewSrc).not.toContain("'rack-hdd-stripe'");
     expect(viewSrc).not.toContain("'rack-front-stripe'");
     expect(viewSrc).not.toContain("'rack-door-stripe'");
+    expect(viewSrc).not.toContain("'rack-door'");
+    expect(viewSrc).not.toContain("'rack-bezel'");
+    expect(viewSrc).not.toContain("'rack-bay'");
+    expect(viewSrc).toContain('cabinet-front-albedo-v2.png');
+    expect(viewSrc).not.toContain('cabinet-front-roughness.png');
+    expect(viewSrc).toContain('cabinet-side-albedo.png');
+    expect(viewSrc).toContain('cabinet-top-albedo.png');
+    expect(viewSrc).not.toContain('ARCH_RACK_LED_HEADER_RATIO');
+    expect(viewSrc).not.toContain('ARCH_RACK_LED_SIDE_INSET_RATIO');
+    expect(viewSrc).toContain('ARCH_RACK_LED_RADIUS_UV');
+    expect(viewSrc).not.toContain('* 0.032');
+    expect(viewSrc).toContain('width * ARCH_RACK_LED_RADIUS_UV');
+    expect(viewSrc).toContain('faces: [side, side, top, top, front, top]');
+    expect(viewSrc).toContain('liftCabinetAlbedoTexture');
+    expect(viewSrc).not.toContain('MeshPhysicalMaterial');
+    expect(viewSrc).not.toContain('clearcoat');
+    expect(viewSrc).not.toContain('envMap');
+    expect(viewSrc).not.toContain('ARCH_RACK_FRONT_CLEARCOAT');
+    expect(viewSrc).toContain('MeshStandardMaterial');
     expect(viewSrc).toContain('rack-led');
     expect(viewSrc).toContain('rack-stroke');
+    expect(viewSrc).toContain('addRackAlarmStrokes');
+    expect(viewSrc).not.toContain('strokeZ = frontZ + strokeW * 0.45');
     expect(viewSrc).toContain('if (alarming)');
     expect(viewSrc).toContain('materials.led');
     expect(viewSrc).toContain('ARCH_LED_COLOR');
     view.dispose();
+  });
+
+  it('lifts near-black albedo pixels to readable slate at runtime', () => {
+    const pixels = new Uint8ClampedArray([0, 0, 0, 255, 1, 2, 3, 255, 255, 200, 0, 128]);
+    liftCabinetAlbedoPixels(pixels);
+    expect(Array.from(pixels)).toEqual([
+      72, 72, 72, 255,
+      73, 74, 75, 255,
+      255, 255, 72, 128,
+    ]);
+
+    const data = new Uint8ClampedArray([0, 0, 0, 255]);
+    const texture = new THREE.DataTexture(data, 1, 1);
+    liftCabinetAlbedoTexture(texture);
+    expect(texture.userData.albedoLifted).toBe(true);
+    expect(data[0]).toBe(72);
+    liftCabinetAlbedoTexture(texture);
+    expect(data[0]).toBe(72);
   });
 
   it('advances a long soft gradient band that wraps the seam without a dead gap', () => {
@@ -1366,6 +1780,11 @@ describe('application3D architecture view', () => {
     expect(viewSrc).not.toContain('EffectComposer');
     expect(viewSrc).toContain('edge-pulse-halo');
     expect(sceneSrc).toContain('bloomPass.enabled = false');
+    expect(sceneSrc).not.toContain('RoomEnvironment');
+    expect(sceneSrc).not.toContain('PMREMGenerator');
+    expect(sceneSrc).not.toContain('scene.environment');
+    expect(sceneSrc).not.toContain('pmrem.fromScene');
+    expect(sceneSrc).not.toContain('scene.background =');
     expect(ARCH_TUBE_IN_GLOW_LAYER).toBe(false);
     expect(ARCH_TUBE_RADIUS_INTER).toBe(0.01);
     expect(ARCH_TUBE_OPACITY).toBeLessThan(0.4);

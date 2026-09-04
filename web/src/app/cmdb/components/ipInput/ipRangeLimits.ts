@@ -34,3 +34,24 @@ export function isIpRangeWithinLimit(
   const size = ipRangeSize(beginIp, endIp);
   return size > 0 && size <= maxSize;
 }
+
+export function ipOctetsFromValue(ip?: string): [string, string, string, string] {
+  const parts = String(ip || '').split('.');
+  return [parts[0] || '', parts[1] || '', parts[2] || '', parts[3] || ''];
+}
+
+export function displayedIpFromOctets(octets: Array<{ value: string } | string>): string {
+  const parts = octets.map((item) => (typeof item === 'string' ? item : item.value));
+  if (parts.every((part) => !part)) {
+    return '';
+  }
+  return parts.join('.');
+}
+
+export function ipRangeDisplayNeedsSync(
+  displayedBegin: string,
+  displayedEnd: string,
+  incoming?: string[] | null,
+): boolean {
+  return displayedBegin !== (incoming?.[0] || '') || displayedEnd !== (incoming?.[1] || '');
+}

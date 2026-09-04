@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import type { Application3DTranslate } from './application3DLayout';
 import { CARD_GLASS } from './application3DCardStyle';
+import cabinetFrontAlbedo from './assets/cabinet-front-albedo-v2.png';
+import cabinetSideAlbedo from './assets/cabinet-side-albedo.png';
+import cabinetTopAlbedo from './assets/cabinet-top-albedo.png';
 import {
   ARCH_FRUSTUM_HEIGHT,
   ARCH_FRUSTUM_TAPER,
@@ -48,6 +51,7 @@ import {
   architecturePulseHaloRadius,
   architecturePulseTrailForLength,
   architectureTitleLocalX,
+  architectureTitleLocalZ,
   architectureTubeRadius,
   architectureTubeStyle,
   formatArchitecturePlaneTitle,
@@ -85,49 +89,35 @@ export interface Application3DArchitectureView {
 }
 
 /**
- * Readable cool-gray metal. 0x3a3e44 + metalness 0.64 + emissive 0.12
- * crushed to a silhouette in the dark ops canvas; diffuse gray + a weak
- * cool fill keep top/front/side visible without extra scene lights.
- * Chassis never swaps this for alarm red or cyan.
+ * Chassis identity (never alarm red / cyan). Hulls paint with ARCH_RACK_*
+ * + albedo; this keeps rank-size tests off wall health tints.
  */
 export const ARCH_CHASSIS_COLOR = 0x6e767e;
-export const ARCH_CHASSIS_EMISSIVE = 0x3a4248;
-export const ARCH_CHASSIS_METALNESS = 0.2;
-export const ARCH_CHASSIS_ROUGHNESS = 0.58;
-export const ARCH_CHASSIS_EMISSIVE_INTENSITY = 0.3;
-/** Previous black-block chassis — rejected, not a paint target. */
-export const ARCH_PREVIOUS_CHASSIS_COLOR = 0x3a3e44;
 export const ARCH_NODE_FILL = ARCH_CHASSIS_COLOR;
-/** Front door plate: slightly lighter than the hull. */
-export const ARCH_DOOR_COLOR = 0x7c848c;
-export const ARCH_DOOR_EMISSIVE = 0x424a52;
-export const ARCH_DOOR_METALNESS = 0.16;
-export const ARCH_DOOR_EMISSIVE_INTENSITY = 0.32;
-/** HDD slots: darker than the door, still above crushed 0x16181c. */
-export const ARCH_BAY_FILL = 0x2c3036;
-export const ARCH_BAY_EMISSIVE = 0x16181c;
-export const ARCH_BAY_METALNESS = 0.08;
-export const ARCH_BAY_EMISSIVE_INTENSITY = 0.2;
-/** Slot lips: a bit lighter than the door so the recess reads at ~40px. */
-export const ARCH_BAY_LIP_COLOR = 0x8a929a;
-export const ARCH_BAY_LIP_EMISSIVE = 0x4a5258;
-export const ARCH_BAY_LIP_EMISSIVE_INTENSITY = 0.28;
 export const ARCH_STROKE_EMISSIVE_INTENSITY = 0.72;
 export const ARCH_RACK_LED_COUNT = 3;
-export const ARCH_RACK_BAY_COUNT = {
-  host: 6,
-  application: 3,
-  system: 4,
-} as const;
-export const ARCH_RACK_WELL_RATIO = 0.22;
-/** Narrower side rails so HDD slots stay wide at landing size. */
-export const ARCH_RACK_BEZEL_X_RATIO = 0.045;
-/** Bay band packing — lower than 1.38 so slots stay thick enough to read. */
-export const ARCH_RACK_BAY_PACK = 1.16;
+/**
+ * Front-albedo UV of the three painted header pits on
+ * cabinet-front-albedo-v2.png (512×1024). u left→right; v from +Z bottom
+ * (image y ≈ 39.9 → 0.9606). BoxGeometry +Z: u 0→1 is −X→+X, v 0→1 is −Y→+Y.
+ * World: x = (u − 0.5) * width, y = (v − 0.5) * height.
+ */
+export const ARCH_RACK_LED_UV_U = [0.1122, 0.1708, 0.2294] as const;
+export const ARCH_RACK_LED_UV_V = 0.9606;
+/** Cylinder radius in UV of front albedo width. Header pits ~20px on 512-wide map (diameter 0.039). */
+export const ARCH_RACK_LED_RADIUS_UV = 0.0195;
 /** Sit a hair above the board so the hull is not a z-fight void. */
 export const ARCH_RACK_LIFT = 0.02;
 export const ARCH_RACK_STROKE_WIDTH = 0.006;
-/** Darker card-veneer blue — CARD_GLASS.body family, not empty cyan glass. */
+export const ARCH_RACK_SIDE_ROUGHNESS = 0.5;
+export const ARCH_RACK_SIDE_METALNESS = 0.04;
+export const ARCH_RACK_FRONT_ROUGHNESS = ARCH_RACK_SIDE_ROUGHNESS;
+export const ARCH_RACK_FRONT_METALNESS = ARCH_RACK_SIDE_METALNESS;
+export const ARCH_RACK_HULL_COLOR = 0xffffff;
+/** Runtime albedo lift: out = offset + src * scale, clamp 255. Black → ~0x48. */
+export const ARCH_RACK_ALBEDO_LIFT_OFFSET = 72;
+export const ARCH_RACK_ALBEDO_LIFT_SCALE = 1.05;
+/** Original card-veneer hue; higher opacity so the middle still reads. */
 export const ARCH_PLANE = 0x163e5c;
 export const ARCH_PLANE_EMISSIVE = 0x1a6e98;
 export const ARCH_EDGE = 0x3ec8d0;
@@ -142,13 +132,24 @@ export const hostHasAlarm = (
   node: { kind: string; health?: { state: string } } | undefined,
 ) => node?.kind === 'host' && node.health?.state === 'alarming';
 
+export const findArchitectureRackRoot = (
+  object: THREE.Object3D | null | undefined,
+): THREE.Object3D | null => {
+  let current: THREE.Object3D | null | undefined = object;
+  while (current) {
+    if (current.userData.archRole === 'rack-root') return current;
+    current = current.parent;
+  }
+  return null;
+};
+
 export const architectureEdgeColor = (
   target: { kind: string; health?: { state: string } } | undefined,
 ) => (hostHasAlarm(target) ? ARCH_EDGE_ALARM : ARCH_EDGE);
 
 const TUBE_SCROLL_SPEED = 0.08;
-const PLANE_TITLE_WIDTH = 2.1;
-const PLANE_TITLE_HEIGHT = 0.58;
+const PLANE_TITLE_WIDTH = 2.5;
+const PLANE_TITLE_HEIGHT = 0.70;
 const PULSE_POINT = new THREE.Vector3();
 
 /**
@@ -353,7 +354,7 @@ const paintPlaneTitle = (plane: Application3DArchitecturePlane, translate: Appli
     context.shadowColor = ARCH_TITLE_SHADOW_COLOR;
     context.shadowBlur = ARCH_TITLE_SHADOW_BLUR;
     context.fillStyle = ARCH_TITLE_FILL;
-    context.font = `600 56px ${CARD_GLASS.fontFamily}`;
+    context.font = `600 68px ${CARD_GLASS.fontFamily}`;
     context.fillText(name, canvas.width / 2, canvas.height / 2);
   });
 };
@@ -386,44 +387,96 @@ interface RackKitGeometries {
 }
 
 interface RackKitMaterials {
-  chassis: THREE.MeshStandardMaterial;
-  door: THREE.MeshStandardMaterial;
-  bay: THREE.MeshStandardMaterial;
-  bayLip: THREE.MeshStandardMaterial;
+  /** BoxGeometry face order: +X, -X, +Y, -Y, +Z, -Z. */
+  faces: THREE.MeshStandardMaterial[];
+  textures: THREE.Texture[];
   led: THREE.MeshStandardMaterial;
   ledAlarm: THREE.MeshStandardMaterial;
   strokeAlarm: THREE.MeshStandardMaterial;
   shadow: THREE.MeshBasicMaterial;
 }
 
+const textureSrc = (asset: string | { src: string }) =>
+  typeof asset === 'string' ? asset : asset.src;
+
+/** Lift near-black albedo pixels so a matte hull still reads without IBL. */
+export const liftCabinetAlbedoPixels = (pixels: Uint8ClampedArray | Uint8Array) => {
+  for (let i = 0; i < pixels.length; i += 4) {
+    pixels[i] = Math.min(255, ARCH_RACK_ALBEDO_LIFT_OFFSET + pixels[i] * ARCH_RACK_ALBEDO_LIFT_SCALE);
+    pixels[i + 1] = Math.min(255, ARCH_RACK_ALBEDO_LIFT_OFFSET + pixels[i + 1] * ARCH_RACK_ALBEDO_LIFT_SCALE);
+    pixels[i + 2] = Math.min(255, ARCH_RACK_ALBEDO_LIFT_OFFSET + pixels[i + 2] * ARCH_RACK_ALBEDO_LIFT_SCALE);
+  }
+};
+
+export const liftCabinetAlbedoTexture = (texture: THREE.Texture) => {
+  if (texture.userData.albedoLifted) return;
+  const image = texture.image as {
+    width?: number;
+    height?: number;
+    data?: Uint8ClampedArray | Uint8Array;
+  } | undefined;
+  if (!image) return;
+
+  if (image.data instanceof Uint8ClampedArray || image.data instanceof Uint8Array) {
+    liftCabinetAlbedoPixels(image.data);
+    texture.userData.albedoLifted = true;
+    texture.needsUpdate = true;
+    return;
+  }
+
+  const width = Number(image.width) || 0;
+  const height = Number(image.height) || 0;
+  if (width < 1 || height < 1) return;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+  if (!context) return;
+  try {
+    context.drawImage(image as CanvasImageSource, 0, 0);
+    const imageData = context.getImageData(0, 0, width, height);
+    liftCabinetAlbedoPixels(imageData.data);
+    context.putImageData(imageData, 0, 0);
+  } catch {
+    return;
+  }
+  texture.image = canvas;
+  texture.userData.albedoLifted = true;
+  texture.needsUpdate = true;
+};
+
+const loadCabinetAlbedo = (loader: THREE.TextureLoader, url: string) => {
+  const texture = loader.load(url, liftCabinetAlbedoTexture);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  if (texture.image) liftCabinetAlbedoTexture(texture);
+  return texture;
+};
+
 const createRackMaterials = (): RackKitMaterials => {
-  const chassis = new THREE.MeshStandardMaterial({
-    color: ARCH_CHASSIS_COLOR,
-    metalness: ARCH_CHASSIS_METALNESS,
-    roughness: ARCH_CHASSIS_ROUGHNESS,
-    emissive: ARCH_CHASSIS_EMISSIVE,
-    emissiveIntensity: ARCH_CHASSIS_EMISSIVE_INTENSITY,
+  const loader = new THREE.TextureLoader();
+  const frontAlbedo = loadCabinetAlbedo(loader, textureSrc(cabinetFrontAlbedo));
+  const sideAlbedo = loadCabinetAlbedo(loader, textureSrc(cabinetSideAlbedo));
+  const topAlbedo = loadCabinetAlbedo(loader, textureSrc(cabinetTopAlbedo));
+  const side = new THREE.MeshStandardMaterial({
+    color: ARCH_RACK_HULL_COLOR,
+    map: sideAlbedo,
+    roughness: ARCH_RACK_SIDE_ROUGHNESS,
+    metalness: ARCH_RACK_SIDE_METALNESS,
   });
-  const door = new THREE.MeshStandardMaterial({
-    color: ARCH_DOOR_COLOR,
-    metalness: ARCH_DOOR_METALNESS,
-    roughness: 0.62,
-    emissive: ARCH_DOOR_EMISSIVE,
-    emissiveIntensity: ARCH_DOOR_EMISSIVE_INTENSITY,
+  const top = new THREE.MeshStandardMaterial({
+    color: ARCH_RACK_HULL_COLOR,
+    map: topAlbedo,
+    roughness: ARCH_RACK_SIDE_ROUGHNESS,
+    metalness: ARCH_RACK_SIDE_METALNESS,
   });
-  const bay = new THREE.MeshStandardMaterial({
-    color: ARCH_BAY_FILL,
-    metalness: ARCH_BAY_METALNESS,
-    roughness: 0.78,
-    emissive: ARCH_BAY_EMISSIVE,
-    emissiveIntensity: ARCH_BAY_EMISSIVE_INTENSITY,
-  });
-  const bayLip = new THREE.MeshStandardMaterial({
-    color: ARCH_BAY_LIP_COLOR,
-    metalness: 0.14,
-    roughness: 0.6,
-    emissive: ARCH_BAY_LIP_EMISSIVE,
-    emissiveIntensity: ARCH_BAY_LIP_EMISSIVE_INTENSITY,
+  const front = new THREE.MeshStandardMaterial({
+    color: ARCH_RACK_HULL_COLOR,
+    map: frontAlbedo,
+    roughness: ARCH_RACK_FRONT_ROUGHNESS,
+    metalness: ARCH_RACK_FRONT_METALNESS,
+    emissive: 0x000000,
+    emissiveIntensity: 0,
   });
   const led = new THREE.MeshStandardMaterial({
     color: ARCH_LED_COLOR,
@@ -456,10 +509,8 @@ const createRackMaterials = (): RackKitMaterials => {
     depthWrite: false,
   });
   return {
-    chassis,
-    door,
-    bay,
-    bayLip,
+    faces: [side, side, top, top, front, top],
+    textures: [frontAlbedo, sideAlbedo, topAlbedo],
     led,
     ledAlarm,
     strokeAlarm,
@@ -467,13 +518,10 @@ const createRackMaterials = (): RackKitMaterials => {
   };
 };
 
-export const architectureRackBayCount = (kind: Application3DArchitecturePlacedNode['kind']) =>
-  ARCH_RACK_BAY_COUNT[kind];
-
 const addBoxPart = (
   group: THREE.Group,
   geometry: THREE.BoxGeometry,
-  material: THREE.Material,
+  material: THREE.Material | THREE.Material[],
   scale: [number, number, number],
   position: [number, number, number],
   role: string,
@@ -489,10 +537,49 @@ const addBoxPart = (
 };
 
 /**
- * Shared metal-rack kit. Application and quiet hosts stay 素柜: cool-gray
- * body + 3 cyan/teal front LEDs, never a stroke. Alarming hosts swap those
- * LEDs to red and add a red hairline only. Chassis never paints red/cyan.
- * Front is a graphic: lighter door plate, darker wide HDD slots, lighter lips.
+ * Full AABB wire: 12 edges on the hull. Half-width inset so bars sit on
+ * the faces instead of floating off the front. Quiet racks never call this.
+ */
+const addRackAlarmStrokes = (
+  group: THREE.Group,
+  size: { width: number; height: number; depth: number },
+  geos: RackKitGeometries,
+  material: THREE.Material,
+) => {
+  const { width, height, depth } = size;
+  const strokeW = ARCH_RACK_STROKE_WIDTH;
+  const hx = width / 2 - strokeW / 2;
+  const hy = height / 2 - strokeW / 2;
+  const hz = depth / 2 - strokeW / 2;
+  const extra = {
+    alarmTint: true,
+    restEmissiveIntensity: ARCH_STROKE_EMISSIVE_INTENSITY,
+    strokeColor: ARCH_STROKE_ALARM_COLOR,
+  };
+  const add = (
+    scale: [number, number, number],
+    position: [number, number, number],
+  ) => addBoxPart(group, geos.box, material, scale, position, 'rack-stroke', extra);
+
+  add([width, strokeW, strokeW], [0, hy, hz]);
+  add([width, strokeW, strokeW], [0, -hy, hz]);
+  add([strokeW, height, strokeW], [-hx, 0, hz]);
+  add([strokeW, height, strokeW], [hx, 0, hz]);
+  add([width, strokeW, strokeW], [0, hy, -hz]);
+  add([width, strokeW, strokeW], [0, -hy, -hz]);
+  add([strokeW, height, strokeW], [-hx, 0, -hz]);
+  add([strokeW, height, strokeW], [hx, 0, -hz]);
+  add([strokeW, strokeW, depth], [-hx, hy, 0]);
+  add([strokeW, strokeW, depth], [hx, hy, 0]);
+  add([strokeW, strokeW, depth], [-hx, -hy, 0]);
+  add([strokeW, strokeW, depth], [hx, -hy, 0]);
+};
+
+/**
+ * Shared mapped-rack kit. One BoxGeometry hull, per-face albedo.
+ * Application and quiet hosts stay 素柜: 3 cyan/teal front LEDs, never a
+ * stroke. Alarming hosts swap those LEDs to red and add a 12-edge AABB
+ * hairline. Chassis maps never paint red/cyan; texture LED pits are not lights.
  */
 const addRackMeshes = (
   group: THREE.Group,
@@ -504,131 +591,36 @@ const addRackMeshes = (
   const width = node.width;
   const height = node.height;
   const depth = node.depth;
-  const well = depth * ARCH_RACK_WELL_RATIO;
   const frontZ = depth / 2;
-  const bezelX = width * ARCH_RACK_BEZEL_X_RATIO;
-  const bezelTop = height * 0.12;
-  const bezelBottom = height * 0.06;
-  const hullDepth = depth - well;
 
   const chassis = addBoxPart(
     group,
     geos.box,
-    materials.chassis,
-    [width, height, hullDepth],
-    [0, 0, -well / 2],
+    materials.faces,
+    [width, height, depth],
+    [0, 0, 0],
     'rack',
     {
       alarmPaintsBody: false,
       sharedMaterial: true,
-      chassisColor: ARCH_CHASSIS_COLOR,
-      chassisMetalness: ARCH_CHASSIS_METALNESS,
-      chassisEmissive: ARCH_CHASSIS_EMISSIVE,
+      mappedHull: true,
+      faceCount: 6,
+      chassisColor: ARCH_RACK_HULL_COLOR,
     },
   );
   chassis.userData.nodeKind = node.kind;
 
-  const doorDepth = well * 0.38;
-  const doorZ = frontZ - well + doorDepth / 2;
-  addBoxPart(
-    group,
-    geos.box,
-    materials.door,
-    [width, height, doorDepth],
-    [0, 0, doorZ],
-    'rack-door',
-    { doorColor: ARCH_DOOR_COLOR },
-  );
-
-  addBoxPart(
-    group,
-    geos.box,
-    materials.door,
-    [width, bezelTop, well],
-    [0, height / 2 - bezelTop / 2, frontZ - well / 2],
-    'rack-bezel',
-  );
-  addBoxPart(
-    group,
-    geos.box,
-    materials.door,
-    [width, bezelBottom, well],
-    [0, -height / 2 + bezelBottom / 2, frontZ - well / 2],
-    'rack-bezel',
-  );
-  const sideHeight = height - bezelTop - bezelBottom;
-  const sideY = (bezelBottom - bezelTop) / 2;
-  addBoxPart(
-    group,
-    geos.box,
-    materials.door,
-    [bezelX, sideHeight, well],
-    [-width / 2 + bezelX / 2, sideY, frontZ - well / 2],
-    'rack-bezel',
-  );
-  addBoxPart(
-    group,
-    geos.box,
-    materials.door,
-    [bezelX, sideHeight, well],
-    [width / 2 - bezelX / 2, sideY, frontZ - well / 2],
-    'rack-bezel',
-  );
-
-  const bayCount = architectureRackBayCount(node.kind);
-  const innerWidth = width - bezelX * 2;
-  const innerBottom = -height / 2 + bezelBottom;
-  const innerTop = height / 2 - bezelTop;
-  const innerHeight = innerTop - innerBottom;
-  const bayHeight = innerHeight / (bayCount * ARCH_RACK_BAY_PACK);
-  const bayGap = (innerHeight - bayHeight * bayCount) / (bayCount + 1);
-  const bayDepth = well * 0.52;
-  const bayZ = frontZ - well + bayDepth / 2 + well * 0.08;
-  const lipPadX = Math.max(0.01, innerWidth * 0.04);
-  const lipPadY = Math.max(0.012, bayHeight * 0.16);
-  const lipDepth = well * 0.14;
-  const lipZ = bayZ + bayDepth / 2 - lipDepth * 0.15;
-  for (let index = 0; index < bayCount; index += 1) {
-    const bayY = innerBottom + bayGap + bayHeight / 2 + index * (bayHeight + bayGap);
-    addBoxPart(
-      group,
-      geos.box,
-      materials.bayLip,
-      [innerWidth + lipPadX * 2, bayHeight + lipPadY * 2, lipDepth],
-      [0, bayY, lipZ],
-      'rack-bay-lip',
-      { lipColor: ARCH_BAY_LIP_COLOR },
-    );
-    addBoxPart(
-      group,
-      geos.box,
-      materials.bay,
-      [innerWidth, bayHeight, bayDepth],
-      [0, bayY, bayZ],
-      'rack-bay',
-      {
-        recessed: true,
-        bayIndex: index,
-        bayFrontZ: bayZ + bayDepth / 2,
-        chassisFrontZ: frontZ,
-        lipFrontZ: lipZ + lipDepth / 2,
-      },
-    );
-  }
-
-  const ledRadius = Math.min(width, height) * 0.032;
+  const ledRadius = width * ARCH_RACK_LED_RADIUS_UV;
   const ledDepth = ledRadius * 0.5;
-  const ledY = height / 2 - bezelTop * 0.5;
+  const ledY = (ARCH_RACK_LED_UV_V - 0.5) * height;
   const ledZ = frontZ + ledDepth * 0.35;
-  const ledStartX = -width / 2 + bezelX + ledRadius * 2.1;
-  const ledPitch = ledRadius * 2.55;
   const ledMaterial = alarming ? materials.ledAlarm : materials.led;
   const ledColor = alarming ? ARCH_LED_ALARM_COLOR : ARCH_LED_COLOR;
   for (let index = 0; index < ARCH_RACK_LED_COUNT; index += 1) {
     const led = new THREE.Mesh(geos.led, ledMaterial);
     led.scale.set(ledRadius, ledDepth, ledRadius);
     led.rotation.x = Math.PI / 2;
-    led.position.set(ledStartX + index * ledPitch, ledY, ledZ);
+    led.position.set((ARCH_RACK_LED_UV_U[index] - 0.5) * width, ledY, ledZ);
     led.userData.archRole = 'rack-led';
     led.userData.alarmTint = alarming;
     led.userData.ledIndex = index;
@@ -637,35 +629,7 @@ const addRackMeshes = (
   }
 
   if (alarming) {
-    const strokeW = ARCH_RACK_STROKE_WIDTH;
-    const strokeZ = frontZ + strokeW * 0.45;
-    const strokeExtra = {
-      alarmTint: true,
-      restEmissiveIntensity: ARCH_STROKE_EMISSIVE_INTENSITY,
-      strokeColor: ARCH_STROKE_ALARM_COLOR,
-    };
-    addBoxPart(group, geos.box, materials.strokeAlarm, [width, strokeW, strokeW], [0, height / 2 - strokeW / 2, strokeZ], 'rack-stroke', strokeExtra);
-    addBoxPart(group, geos.box, materials.strokeAlarm, [width, strokeW, strokeW], [0, -height / 2 + strokeW / 2, strokeZ], 'rack-stroke', strokeExtra);
-    addBoxPart(group, geos.box, materials.strokeAlarm, [strokeW, height, strokeW], [-width / 2 + strokeW / 2, 0, strokeZ], 'rack-stroke', strokeExtra);
-    addBoxPart(group, geos.box, materials.strokeAlarm, [strokeW, height, strokeW], [width / 2 - strokeW / 2, 0, strokeZ], 'rack-stroke', strokeExtra);
-    addBoxPart(
-      group,
-      geos.box,
-      materials.strokeAlarm,
-      [strokeW, height, strokeW],
-      [-width / 2 + strokeW / 2, 0, frontZ - strokeW / 2],
-      'rack-stroke',
-      strokeExtra,
-    );
-    addBoxPart(
-      group,
-      geos.box,
-      materials.strokeAlarm,
-      [strokeW, height, strokeW],
-      [width / 2 - strokeW / 2, 0, frontZ - strokeW / 2],
-      'rack-stroke',
-      strokeExtra,
-    );
+    addRackAlarmStrokes(group, { width, height, depth }, geos, materials.strokeAlarm);
   }
 
   const shadow = new THREE.Mesh(geos.shadow, materials.shadow);
@@ -945,10 +909,8 @@ export const createArchitectureTreeGroup = (
     chassisGeo,
     ledGeo,
     planeGeo,
-    rackMats.chassis,
-    rackMats.door,
-    rackMats.bay,
-    rackMats.bayLip,
+    ...new Set(rackMats.faces),
+    ...rackMats.textures,
     rackMats.led,
     rackMats.ledAlarm,
     rackMats.strokeAlarm,
@@ -1034,7 +996,11 @@ export const createArchitectureTreeGroup = (
       new THREE.PlaneGeometry(PLANE_TITLE_WIDTH, PLANE_TITLE_HEIGHT),
       titleMaterial,
     );
-    title.position.set(architectureTitleLocalX(plane.width), 0.38, 0);
+    title.position.set(
+      architectureTitleLocalX(plane.width),
+      0.38,
+      architectureTitleLocalZ(plane.depth),
+    );
     title.userData.archRole = 'plane-title';
     title.userData.billboard = ARCH_LABEL_BILLBOARD;
     title.userData.planeTitleSide = ARCH_PLANE_TITLE_SIDE;
@@ -1063,11 +1029,11 @@ export const createArchitectureTreeGroup = (
   layout.nodes.forEach((node) => {
     const nodeGroup = new THREE.Group();
     nodeGroup.userData.archRole = 'rack-root';
+    nodeGroup.userData.nodeId = node.id;
     nodeGroup.userData.nodeKind = node.kind;
     const alarming = hostHasAlarm(node);
     nodeGroup.userData.alarming = alarming;
     nodeGroup.userData.plainMetal = !alarming;
-    nodeGroup.userData.bayCount = architectureRackBayCount(node.kind);
     addRackMeshes(nodeGroup, node, rackGeos, rackMats, alarming);
     // Y-up rack sitting ON the horizontal XZ platform — do not pitch the cabinet.
     nodeGroup.rotation.x = 0;

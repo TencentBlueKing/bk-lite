@@ -54,7 +54,7 @@ export default function RedisDashboardPage() {
                   loading={dashboard.loading}
                   seriesStyles={fragChart.seriesStyles}
                   onXRangeChange={dashboard.onXRangeChange}
-                  className={`${styles.panel} ${styles.span6}`}
+                  className={`${styles.panel} ${styles.span6} ${styles.compactTrend}`}
                   styles={styles}
                 />
               )}
@@ -70,7 +70,7 @@ export default function RedisDashboardPage() {
                   loading={dashboard.loading}
                   seriesStyles={clientChart.seriesStyles}
                   onXRangeChange={dashboard.onXRangeChange}
-                  className={`${styles.panel} ${styles.span6}`}
+                  className={`${styles.panel} ${styles.span6} ${styles.compactTrend}`}
                   styles={styles}
                 />
               )}

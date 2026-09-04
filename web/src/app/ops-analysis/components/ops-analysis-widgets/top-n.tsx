@@ -7,6 +7,7 @@ import type {
   ValueConfig,
 } from '@/app/ops-analysis/components/ops-analysis-widgets';
 import ChartSurface from '@/components/chart-surface';
+import { formatVisibleChartValue } from '@/app/ops-analysis/utils/chartValueFormat';
 
 export interface OpsAnalysisTopNProps {
   rawData: any;
@@ -185,7 +186,7 @@ const OpsAnalysisTopN: React.FC<OpsAnalysisTopNProps> = ({
                   color: isDark ? 'rgba(255,255,255,0.88)' : '#1f2d44',
                 }}
               >
-                {item.value.toLocaleString()}
+                {formatVisibleChartValue(item.value, config)}
               </span>
             </React.Fragment>
           );

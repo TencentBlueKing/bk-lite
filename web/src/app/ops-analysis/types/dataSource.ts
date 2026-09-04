@@ -13,6 +13,7 @@ export type ChartType =
   | 'topN'
   | 'gauge'
   | 'radar'
+  | 'nodeGraph'
   | 'topologyMap'
   | 'room3D'
   | 'message';

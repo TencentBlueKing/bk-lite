@@ -151,3 +151,35 @@ test('invalid topology is rejected before renderer and can terminate as failed',
   );
   assert.equal(signal?.type, 'report-failed');
 });
+
+test('nodeGraph session rows with complete mapping are renderable', () => {
+  const rows = [
+    { src: '10.0.0.1', dst: '10.0.0.2', value: 12 },
+    { src: '10.0.0.2', dst: '10.0.0.3', value: 4 },
+  ];
+  assert.equal(
+    hasRenderableChartData('nodeGraph', rows, {
+      nodeGraphIdentityMode: 'ip',
+      nodeGraphSourceField: 'src',
+      nodeGraphTargetField: 'dst',
+      nodeGraphValueField: 'value',
+    }),
+    true,
+  );
+});
+
+test('nodeGraph empty rows or incomplete mapping are not renderable', () => {
+  const mapping = {
+    nodeGraphIdentityMode: 'ip' as const,
+    nodeGraphSourceField: 'src',
+    nodeGraphTargetField: 'dst',
+    nodeGraphValueField: 'value',
+  };
+  assert.equal(hasRenderableChartData('nodeGraph', [], mapping), false);
+  assert.equal(
+    hasRenderableChartData('nodeGraph', [{ src: '10.0.0.1', dst: '10.0.0.2', value: 9 }], {
+      nodeGraphSourceField: 'src',
+    }),
+    false,
+  );
+});

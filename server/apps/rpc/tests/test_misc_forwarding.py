@@ -123,6 +123,11 @@ def test_cmdb_model_inst_count(cmdb):
     assert _last(cmdb.client) == ("run", "model_inst_count", (), {"model_id": "host"})
 
 
+def test_cmdb_license_instance_count(cmdb):
+    cmdb.license_instance_count()
+    assert _last(cmdb.client) == ("run", "license_cmdb_instance_count", (), {})
+
+
 def test_cmdb_get_monitor_ids_by_inst_uuids(cmdb):
     payload = {"inst_uuids": ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"], "user_info": {"team": 1}}
     cmdb.get_monitor_ids_by_inst_uuids(**payload)

@@ -251,6 +251,90 @@ def test_reassign_no_assignee():
     assert result["result"] is False
 
 
+@pytest.mark.django_db
+def test_superuser_can_reassign_pending_alert(sys_user, caplog):
+    secret = "must-not-log-reassign-payload"
+    alert = _make_alert(status=AlertStatus.PENDING, operator=["other"], team=[1])
+    alert.content = secret
+    alert.save(update_fields=["content"])
+    op = AlertOperator(user="admin", is_superuser=True)
+    with caplog.at_level("INFO", logger="alert"):
+        result = op.operate("reassign", "A1", {"assignee": ["op1"]})
+    assert result["result"] is True
+    assert result["data"]["status"] == AlertStatus.PENDING
+    alert = Alert.objects.get(alert_id="A1")
+    assert alert.status == AlertStatus.PENDING
+    assert alert.operator == ["op1"]
+
+    success_records = [record for record in caplog.records if record.name == "alert" and record.msg.startswith("[AlertOperator] 告警转派成功:")]
+    assert len(success_records) == 1
+    record = success_records[0]
+    assert record.msg == "[AlertOperator] 告警转派成功: alert_id=%s, old_assignee=%s, new_assignee=%s, 状态变更: %s -> %s"
+    assert record.args == ("A1", ["other"], ["op1"], AlertStatus.PENDING, AlertStatus.PENDING)
+    assert record.getMessage() == ("[AlertOperator] 告警转派成功: alert_id=A1, old_assignee=['other'], new_assignee=['op1'], " "状态变更: pending -> pending")
+    assert secret not in caplog.text
+    assert secret not in record.getMessage()
+
+
+@pytest.mark.django_db
+def test_non_superuser_cannot_reassign_pending_alert(sys_user):
+    _make_alert(status=AlertStatus.PENDING, operator=["op1"], team=[1])
+    op = AlertOperator(user="admin")
+    result = op.operate("reassign", "A1", {"assignee": ["op1"]})
+    assert result["result"] is False
+    assert "无法进行转派" in result["message"]
+
+
+@pytest.mark.django_db
+def test_superuser_cannot_reassign_processing_unless_assignee(sys_user):
+    _make_alert(status=AlertStatus.PROCESSING, operator=["op1"], team=[1])
+    op = AlertOperator(user="admin", is_superuser=True)
+    result = op.operate("reassign", "A1", {"assignee": ["op1"]})
+    assert result["result"] is False
+    assert "没有权限转派" in result["message"]
+
+
+@pytest.mark.django_db
+def test_superuser_assignee_can_reassign_processing(sys_user):
+    _make_alert(status=AlertStatus.PROCESSING, operator=["op1"], team=[1])
+    op = AlertOperator(user="op1", is_superuser=True)
+    result = op.operate("reassign", "A1", {"assignee": ["op1"]})
+    assert result["result"] is True
+    assert Alert.objects.get(alert_id="A1").status == AlertStatus.PENDING
+
+
+@pytest.mark.django_db
+def test_superuser_cannot_reassign_unassigned(sys_user):
+    _make_alert(status=AlertStatus.UNASSIGNED, team=[1])
+    op = AlertOperator(user="admin", is_superuser=True)
+    result = op.operate("reassign", "A1", {"assignee": ["op1"]})
+    assert result["result"] is False
+    assert "无法进行转派" in result["message"]
+
+
+@pytest.mark.django_db
+def test_superuser_reassign_judges_each_alert(sys_user):
+    _make_alert(alert_id="P1", status=AlertStatus.PENDING, operator=["other"], team=[1])
+    Alert.objects.create(
+        alert_id="R1",
+        level="0",
+        title="t2",
+        content="c2",
+        fingerprint="fp-R1",
+        status=AlertStatus.PROCESSING,
+        operator=["op1"],
+        team=[1],
+    )
+    op = AlertOperator(user="admin", is_superuser=True)
+    pending = op.operate("reassign", "P1", {"assignee": ["op1"]})
+    processing = op.operate("reassign", "R1", {"assignee": ["op1"]})
+    assert pending["result"] is True
+    assert Alert.objects.get(alert_id="P1").status == AlertStatus.PENDING
+    assert processing["result"] is False
+    assert "没有权限转派" in processing["message"]
+    assert Alert.objects.get(alert_id="R1").status == AlertStatus.PROCESSING
+
+
 # --------------------------------------------------------------------------
 # resolve
 # --------------------------------------------------------------------------

@@ -350,6 +350,50 @@
       "description": "Top destination addresses by normalized Flow packet rate."
     },
     {
+      "metric_group": "Endpoint",
+      "name": "device_flow_top_src_ip_port_bytes_rate",
+      "query": "topk(10, sum(netflow_in_bytes{instance_type='firewall', collect_type='netflow', __$labels__} * label_value(netflow_in_bytes{instance_type='firewall', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id, src, src_port))",
+      "display_name": "Top Source IP+Port Flow Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "src",
+          "description": "src"
+        },
+        {
+          "name": "src_port",
+          "description": "src_port"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Top source address and source port pairs by normalized Flow traffic rate."
+    },
+    {
+      "metric_group": "Endpoint",
+      "name": "device_flow_top_dst_ip_port_bytes_rate",
+      "query": "topk(10, sum(netflow_in_bytes{instance_type='firewall', collect_type='netflow', __$labels__} * label_value(netflow_in_bytes{instance_type='firewall', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id, dst, dst_port))",
+      "display_name": "Top Destination IP+Port Flow Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "dst",
+          "description": "dst"
+        },
+        {
+          "name": "dst_port",
+          "description": "dst_port"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Top destination address and destination port pairs by normalized Flow traffic rate."
+    },
+    {
       "metric_group": "Conversation",
       "name": "device_flow_top_conversation_bytes_rate",
       "query": "topk(10, sum(netflow_in_bytes{instance_type='firewall', collect_type='netflow', __$labels__} * label_value(netflow_in_bytes{instance_type='firewall', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id, src, dst, protocol, dst_port))",

@@ -21,7 +21,7 @@ export default function K3sPodDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>Pod 概览</div>
+          <div className={styles.sectionLabel}>健康概览</div>
           <KpiSection dashboard={dashboard} summaryCards={dashboard.summaryCards} kpiCols={5} styles={styles} />
           <div className={styles.sectionLabel}>资源趋势</div>
           <FlexiblePanelSection styles={styles}>

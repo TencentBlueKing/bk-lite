@@ -8,16 +8,22 @@ from rest_framework.response import Response
 from apps.cmdb.constants.constants import PERMISSION_TASK
 from apps.cmdb.models.scan_model import (
     SCAN_ALLOWED_FAMILIES,
+    SCAN_DATABASE_FAMILY,
+    SCAN_DATABASE_TYPES,
     SCAN_IP_RANGE_MAX_SIZE,
     ScanExecution,
     ScanFamilyRun,
     ScanHit,
     ScanTask,
+    merge_database_credentials,
+    normalize_scan_families,
     scan_driver_type_for_model,
+    scan_encrypt_model_id,
 )
 from apps.cmdb.services.collect_credential_contract import API_SECRET_MASK
 from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
 from apps.cmdb.services.encrypt_collect_password import get_collect_model_passwords
+from apps.cmdb.services.scan_identity import unmatch_reason_for_hit
 from apps.core.utils.serializers import AuthSerializer, UsernameSerializer
 
 
@@ -87,6 +93,11 @@ class ScanTaskListSerializer(AuthSerializer):
             "target_count": execution.target_count,
             "received_count": execution.received_count,
         }
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        representation["families"] = normalize_scan_families(instance.families)
+        return representation
 
 
 class ScanTaskSerializer(AuthSerializer):
@@ -158,8 +169,8 @@ class ScanTaskSerializer(AuthSerializer):
         for model_id, pool in raw.items():
             items = CollectCredentialPoolService.normalize_pool(copy.deepcopy(pool))
             encrypted_fields = get_collect_model_passwords(
-                collect_model_id=model_id,
-                driver_type=scan_driver_type_for_model(model_id),
+                collect_model_id=scan_encrypt_model_id(model_id),
+                driver_type=scan_driver_type_for_model(scan_encrypt_model_id(model_id)),
             )
             for item in items:
                 if not isinstance(item, dict):
@@ -171,17 +182,18 @@ class ScanTaskSerializer(AuthSerializer):
         return masked
 
     def _merge_masked_credentials(self, incoming):
+        incoming = merge_database_credentials(incoming)
         if self.instance is None:
             return incoming
-        existing = self.instance.decrypt_credentials or {}
+        existing = merge_database_credentials(self.instance.decrypt_credentials or {})
         merged = {}
         for model_id, pool in (incoming or {}).items():
             old_pool = CollectCredentialPoolService.normalize_pool(existing.get(model_id) or [])
             old_by_id = {item.get("credential_id"): item for item in old_pool}
             new_pool = []
             encrypted_fields = get_collect_model_passwords(
-                collect_model_id=model_id,
-                driver_type=scan_driver_type_for_model(model_id),
+                collect_model_id=scan_encrypt_model_id(model_id),
+                driver_type=scan_driver_type_for_model(scan_encrypt_model_id(model_id)),
             )
             for item in CollectCredentialPoolService.normalize_pool(pool):
                 merged_item = dict(item)
@@ -198,7 +210,8 @@ class ScanTaskSerializer(AuthSerializer):
         families = attrs.get("families")
         if families is None and self.instance is not None:
             families = self.instance.families
-        families = families or []
+        families = normalize_scan_families(families or [])
+        attrs["families"] = families
 
         cloud_region = attrs.get("cloud_region")
         if cloud_region is None and self.instance is not None:
@@ -212,12 +225,12 @@ class ScanTaskSerializer(AuthSerializer):
         if not isinstance(credentials, dict):
             raise serializers.ValidationError({"credentials": "凭据必须按族提交"})
 
-        credentials = self._merge_masked_credentials(credentials)
+        credentials = merge_database_credentials(self._merge_masked_credentials(credentials))
         if self.instance is None:
             for model_id, pool in credentials.items():
                 encrypted_fields = get_collect_model_passwords(
-                    collect_model_id=model_id,
-                    driver_type=scan_driver_type_for_model(model_id),
+                    collect_model_id=scan_encrypt_model_id(model_id),
+                    driver_type=scan_driver_type_for_model(scan_encrypt_model_id(model_id)),
                 )
                 for item in CollectCredentialPoolService.normalize_pool(pool):
                     for field in encrypted_fields:
@@ -237,7 +250,10 @@ class ScanTaskSerializer(AuthSerializer):
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
-        representation["credentials"] = self._mask_credentials(instance.decrypt_credentials)
+        families = normalize_scan_families(instance.families)
+        credentials = merge_database_credentials(instance.decrypt_credentials)
+        representation["families"] = families
+        representation["credentials"] = self._mask_credentials(credentials)
         return representation
 
 
@@ -279,6 +295,7 @@ class ScanExecutionSerializer(UsernameSerializer):
 class ScanHitSerializer(UsernameSerializer):
     family_model_id = serializers.CharField(source="family_run.model_id", read_only=True)
     credential_label = serializers.SerializerMethodField()
+    unmatch_reason = serializers.SerializerMethodField()
 
     class Meta:
         model = ScanHit
@@ -298,6 +315,7 @@ class ScanHitSerializer(UsernameSerializer):
             "inst_uuid",
             "attached_inst_uuid",
             "error_code",
+            "unmatch_reason",
             "snapshot",
             "created_at",
             "updated_at",
@@ -305,6 +323,9 @@ class ScanHitSerializer(UsernameSerializer):
 
     def get_credential_label(self, obj):
         return _credential_label_for_hit(obj)
+
+    def get_unmatch_reason(self, obj):
+        return unmatch_reason_for_hit(obj)
 
 
 def _credential_label_for_hit(hit: ScanHit) -> str:
@@ -317,6 +338,11 @@ def _credential_label_for_hit(hit: ScanHit) -> str:
     pool = (task.credentials or {}).get(hit.family_run.model_id) or []
     if not isinstance(pool, list):
         pool = [pool] if isinstance(pool, dict) else []
+    if hit.family_run.model_id in SCAN_DATABASE_TYPES:
+        extra = (task.credentials or {}).get(SCAN_DATABASE_FAMILY) or []
+        if isinstance(extra, dict):
+            extra = [extra]
+        pool = list(pool) + list(extra)
     item = next(
         (entry for entry in pool if isinstance(entry, dict) and entry.get("credential_id") == credential_id),
         None,

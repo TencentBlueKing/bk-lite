@@ -71,6 +71,27 @@ _K8S_NAMESPACE_LOOKUP_HINT = (
     "反查只是前置，后续取证/诊断步骤须对齐助手任务说明，不要只规划反查就结束。"
 )
 
+_K8S_POD_RESTART_RCA_HINT = (
+    "能力导读：已指定具体 Pod 问重启原因时，规划 diagnose_kubernetes_pod_issues"
+    " → get_kubernetes_previous_pod_logs → get_resource_events_timeline；"
+    "怀疑探针再加 validate_probe_configuration。"
+    "禁止 analyze_pod_restart_pattern / describe_kubernetes_resource / "
+    "list_kubernetes_pods / list_kubernetes_events。"
+)
+
+_K8S_RECENTLY_RESTARTED_TOOL = "get_recently_restarted_kubernetes_pods"
+_K8S_HIGH_RESTART_TOOL = "get_high_restart_kubernetes_pods"
+_K8S_RESTART_TIME_SORT_RE = re.compile(
+    r"重启时间|按时间.{0,12}重启|最近的?\s*\d*\s*个?重启|最近重启|" r"recently\s+restarted|sort(?:ed)?\s+by\s+restart\s+time",
+    re.IGNORECASE,
+)
+_K8S_RESTART_TIME_SORT_HINT = (
+    "能力导读：用户要按重启时间排序、列出最近重启的 Pod 时，必须规划 "
+    "get_recently_restarted_kubernetes_pods；禁止 get_high_restart_kubernetes_pods。"
+    "后者只按累计 restartCount 过滤，没有重启时间，也不能当时间窗次数。"
+    "restart_count 只作展示，不是排序键。"
+)
+
 _K8S_NAMESPACE_RESOLVE_TOOL = "resolve_k8s_target_from_alert"
 _K8S_NAMESPACE_SCAN_TOOLS = frozenset(
     {
@@ -84,6 +105,7 @@ _K8S_NAMESPACE_LOOKUP_TOOLS = frozenset({_K8S_NAMESPACE_RESOLVE_TOOL})
 _K8S_CLUSTER_DISCOVERY_TOOLS = frozenset(
     {
         "get_high_restart_kubernetes_pods",
+        "get_recently_restarted_kubernetes_pods",
         "get_failed_kubernetes_pods",
         "get_pending_kubernetes_pods",
         "get_not_ready_kubernetes_pods",
@@ -95,11 +117,22 @@ _K8S_NAMESPACE_REQUIRED_TOOLS = frozenset(
     {
         "diagnose_kubernetes_pod_issues",
         "get_kubernetes_pod_logs",
+        "get_kubernetes_previous_pod_logs",
         "get_resource_events_timeline",
         "describe_kubernetes_resource",
         "get_kubernetes_resource_yaml",
         "exec_in_pod",
         "validate_probe_configuration",
+    }
+)
+
+_K8S_KNOWN_POD_DIAGNOSE_TOOL = "diagnose_kubernetes_pod_issues"
+_K8S_KNOWN_POD_SCAN_TOOLS = frozenset(
+    {
+        "analyze_pod_restart_pattern",
+        "describe_kubernetes_resource",
+        "list_kubernetes_pods",
+        "list_kubernetes_events",
     }
 )
 
@@ -550,6 +583,59 @@ def enforce_k8s_namespace_lookup_first(
     return ToolExecutionPlan(goal=plan.goal, steps=steps)
 
 
+def drop_cluster_scan_tools_for_known_pod_diagnose(plan: ToolExecutionPlan) -> ToolExecutionPlan:
+    """已知 Pod 走 diagnose 时去掉全集群扫描和整份 describe，避免撑爆上下文。"""
+    planned = {tool for step in plan.steps for tool in (step.tools or [])}
+    if _K8S_KNOWN_POD_DIAGNOSE_TOOL not in planned:
+        return plan
+    cleaned: list[ToolExecutionStep] = []
+    for step in plan.steps:
+        tools = [tool for tool in (step.tools or []) if tool not in _K8S_KNOWN_POD_SCAN_TOOLS]
+        if not tools:
+            continue
+        if tools != list(step.tools):
+            cleaned.append(step.model_copy(update={"tools": tools}))
+        else:
+            cleaned.append(step)
+    return ToolExecutionPlan(goal=plan.goal, steps=cleaned)
+
+
+def rewrite_high_restart_to_recent_for_time_sort(
+    plan: ToolExecutionPlan,
+    available_names: set[str],
+    user_message: str = "",
+) -> ToolExecutionPlan:
+    """按重启时间列出最近 Pod 时，把累计次数扫描改成按时间排序的扫描。"""
+    if _K8S_RECENTLY_RESTARTED_TOOL not in available_names:
+        return plan
+    if not _K8S_RESTART_TIME_SORT_RE.search(user_message or ""):
+        return plan
+    planned = {tool for step in plan.steps for tool in (step.tools or [])}
+    if _K8S_KNOWN_POD_DIAGNOSE_TOOL in planned or _K8S_HIGH_RESTART_TOOL not in planned:
+        return plan
+    cleaned: list[ToolExecutionStep] = []
+    changed = False
+    for step in plan.steps:
+        tools = []
+        for tool in step.tools or []:
+            name = _K8S_RECENTLY_RESTARTED_TOOL if tool == _K8S_HIGH_RESTART_TOOL else tool
+            if name not in tools:
+                tools.append(name)
+        if tools != list(step.tools):
+            changed = True
+            cleaned.append(step.model_copy(update={"tools": tools}))
+        else:
+            cleaned.append(step)
+    if not changed:
+        return plan
+    logger.info(
+        "DeepAgent 规划硬校验：按重启时间排序改写 tool=%s -> tool=%s",
+        _K8S_HIGH_RESTART_TOOL,
+        _K8S_RECENTLY_RESTARTED_TOOL,
+    )
+    return ToolExecutionPlan(goal=plan.goal, steps=cleaned)
+
+
 def drop_k8s_followup_steps_after_unresolved_target(steps: Sequence[ToolExecutionStep]) -> list[ToolExecutionStep]:
     """反查已收口后，去掉重复反查和仍依赖 namespace 的后续步骤。"""
     skip = _K8S_NAMESPACE_LOOKUP_TOOLS | _K8S_NAMESPACE_SCAN_TOOLS | _K8S_NAMESPACE_REQUIRED_TOOLS
@@ -869,6 +955,8 @@ class ToolExecutionPlanner:
         lines = []
         has_monitor = False
         has_k8s_lookup = False
+        has_pod_diagnose = False
+        has_restart_time_sort = False
         has_attachment = False
         used = 0
         skill_block = self._skill_catalog(skill_packages)
@@ -884,6 +972,10 @@ class ToolExecutionPlanner:
                 has_monitor = True
             if name in _K8S_NAMESPACE_LOOKUP_TOOLS:
                 has_k8s_lookup = True
+            if name == _K8S_KNOWN_POD_DIAGNOSE_TOOL:
+                has_pod_diagnose = True
+            if name in {_K8S_RECENTLY_RESTARTED_TOOL, _K8S_HIGH_RESTART_TOOL}:
+                has_restart_time_sort = True
             if name == GENERATE_ATTACHMENT_FILE_TOOL_NAME:
                 has_attachment = True
             # 预算耗尽后只保留工具名，避免 60+ 长描述撑爆 8K 窗口。
@@ -903,6 +995,10 @@ class ToolExecutionPlanner:
             hints.append(_MONITOR_CATALOG_HINT)
         if has_k8s_lookup:
             hints.append(_K8S_NAMESPACE_LOOKUP_HINT)
+        if has_pod_diagnose:
+            hints.append(_K8S_POD_RESTART_RCA_HINT)
+        if has_restart_time_sort:
+            hints.append(_K8S_RESTART_TIME_SORT_HINT)
         if has_attachment:
             hints.append(_ATTACHMENT_CATALOG_HINT)
         if declared_source_tools:
@@ -963,6 +1059,8 @@ class ToolExecutionPlanner:
             steps=steps,
         )
         plan = enforce_k8s_namespace_lookup_first(plan, available_names, max_steps=self._max_steps)
+        plan = drop_cluster_scan_tools_for_known_pod_diagnose(plan)
+        plan = rewrite_high_restart_to_recent_for_time_sort(plan, available_names, user_message=user_message)
         plan = enforce_skill_report_source_tools(
             plan,
             available_names,

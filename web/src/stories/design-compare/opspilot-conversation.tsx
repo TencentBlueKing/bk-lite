@@ -18,13 +18,21 @@ import {
   RightOutlined,
   SearchOutlined,
 } from '@ant-design/icons';
+import MessageActions from '@/app/opspilot/components/custom-chat/actions';
 import UserChoiceCard from '@/app/opspilot/components/custom-chat-sse/UserChoiceCard';
-import type { UserChoiceRequest } from '@/app/opspilot/types/global';
+import type { CustomChatMessage, UserChoiceRequest } from '@/app/opspilot/types/global';
 import Icon from '@/components/icon';
 import { CompactConfidenceBar, Surface, afterSys } from './opspilot-after-system';
 
 const { Text, Paragraph } = Typography;
 const now = Date.now();
+const demoAssistantMessage: CustomChatMessage = {
+  id: 'demo-assistant',
+  role: 'bot',
+  content: 'nginx-web 近 24h 重启 11 次；无探针窗口 5xx 明显高于基线。建议先补 readinessProbe（超时 3s / 失败阈值 3），再观察错误率。',
+  createAt: new Date(now - 16 * 60 * 1000).toISOString(),
+  updateAt: new Date(now - 16 * 60 * 1000).toISOString(),
+};
 
 const approvalPending = {
   execution_id: 'exec-chat-1',
@@ -68,7 +76,7 @@ function Bubble({ role, children }: { role: 'user' | 'assistant'; children: Reac
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
         className={`max-w-[90%] text-[13px] leading-[1.55] text-[var(--color-text-1)] ${
-          isUser ? 'rounded-[10px] bg-[var(--color-fill-1)] px-3 py-2' : ''
+          isUser ? 'rounded-[16px] rounded-tr-sm bg-[var(--color-fill-1)] px-3 py-2' : ''
         }`}
       >
         {children}
@@ -458,7 +466,7 @@ export function OpsPilotConversationDemo() {
       >
         <Bubble role="user">nginx-web 最近频繁重启，帮我定位并给出可执行修复。</Bubble>
         <Bubble role="assistant">
-          <div style={{ display: 'grid', gap: 8 }}>
+          <div className="group" style={{ display: 'grid', gap: 8 }}>
             <ThoughtBlock />
             <ToolGroup />
             <AssistantMessage />
@@ -467,6 +475,16 @@ export function OpsPilotConversationDemo() {
             <Surface meta={<span>user choice · 变更窗口</span>}>
               <UserChoiceCard token="mock-token" onSubmit={() => undefined} request={choiceRequest} />
             </Surface>
+            <div className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+              <MessageActions
+                message={demoAssistantMessage}
+                onCopy={(content) => {
+                  void navigator.clipboard?.writeText(content);
+                }}
+                onRegenerate={() => undefined}
+                onDelete={() => undefined}
+              />
+            </div>
           </div>
         </Bubble>
       </div>

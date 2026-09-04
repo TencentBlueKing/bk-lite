@@ -16,12 +16,14 @@ MONITOR_NATS_HANDLER_NAMES = frozenset(
         "get_host_metric_range",
         "get_host_resource_snapshot",
         "get_host_resource_top",
+        "get_monitor_instance_list",
         "get_monitor_statistics",
         "get_network_device_resource_top",
         "monitor_ingest_from_source",
         "monitor_instance_metrics",
         "monitor_metrics",
         "monitor_object_instance_count",
+        "license_monitor_instance_count",
         "monitor_object_instances",
         "monitor_objects",
         "query_latest_active_alerts",
@@ -29,6 +31,7 @@ MONITOR_NATS_HANDLER_NAMES = frozenset(
         "query_monitor_alert_segments",
         "query_monitor_data_by_metric",
         "query_metric_range_scoped",
+        "query_metric_series",
         "search_monitor_policies",
     }
 )

@@ -83,4 +83,4 @@ Prior art：`test_first_collection_task.py`、`test_collect_credential_event_nat
 
 ## Further Notes
 
-讨论稿见 grilling 画布；实现以本文和 `plan.md` 为准。入口不要占用 `featureLibrary/scanFeature`（那是空的特征库页）。权限本章复用 `auto_collection-*`，避免先改系统管理权限种子；菜单仍把扫描做成采集的兄妹项。
+讨论稿见 grilling 画布；实现以本文和 `plan.md` 为准。入口不要占用 `featureLibrary/scanFeature`（那是空的特征库页）。权限本章复用 `auto_collection-*`，避免先改系统管理权限种子；菜单仍把扫描做成采集的兄妹项。命中详情表格、未匹配 tab 与指纹 / 手选分类见 `cmdb-scan-hit-interaction`。

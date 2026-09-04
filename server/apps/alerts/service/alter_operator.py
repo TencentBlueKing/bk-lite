@@ -23,13 +23,15 @@ class AlertOperator(object):
     未分派——待响应——处理中——关闭
     待响应——处理中——转派——待响应——处理中——关闭
     未分派——待响应——处理中——转派——待响应——处理中——关闭
+    待响应——超级用户转派——待响应（替换处理人，不经过认领）
     """
 
-    def __init__(self, user, allowed_alert_ids=None, *, api_close=False):
+    def __init__(self, user, allowed_alert_ids=None, *, api_close=False, is_superuser=False):
         self.user = user
         self.status_map = dict(AlertStatus.CHOICES)
         self.allowed_alert_ids = None if allowed_alert_ids is None else {str(item) for item in allowed_alert_ids}
         self.api_close = bool(api_close)
+        self.is_superuser = bool(is_superuser)
 
     def _is_alert_allowed(self, alert_id: str) -> bool:
         if self.allowed_alert_ids is None:
@@ -359,7 +361,7 @@ class AlertOperator(object):
 
     def _reassign_alert(self, alert_id: str, data: dict) -> dict:
         """
-        转派告警：处理中 -> 待响应（重新分配处理人）
+        转派告警：处理中由当前处理人转派为待响应；待响应仅平台超级用户可直接换人且状态保持待响应。
         :param alert_id: 告警ID
         :param data: 包含新处理人信息的数据
         :return: 操作结果
@@ -373,8 +375,17 @@ class AlertOperator(object):
                 logger.error("[AlertOperator] 告警不存在: alert_id=%s", alert_id)
                 return {"result": False, "message": "告警不存在", "data": {}}
 
-            # 检查当前状态是否为处理中
-            if alert.status != AlertStatus.PROCESSING:
+            can_reassign_pending = alert.status == AlertStatus.PENDING and self.is_superuser
+            can_reassign_processing = alert.status == AlertStatus.PROCESSING and self.user in alert.operator
+            if not (can_reassign_pending or can_reassign_processing):
+                if alert.status == AlertStatus.PROCESSING:
+                    logger.warning(
+                        "[AlertOperator] 用户无权限转派告警: alert_id=%s, user=%s, operators=%s",
+                        alert_id,
+                        self.user,
+                        alert.operator,
+                    )
+                    return {"result": False, "message": "您没有权限转派此告警", "data": {}}
                 logger.warning(
                     "[AlertOperator] 告警状态不符合转派条件: alert_id=%s, current_status=%s",
                     alert_id,
@@ -385,16 +396,6 @@ class AlertOperator(object):
                     "message": f"告警当前状态为{alert.get_status_display()}，无法进行转派操作",
                     "data": {},
                 }
-
-            # 检查是否有权限转派（是否为当前处理人）
-            if self.user not in alert.operator:
-                logger.warning(
-                    "[AlertOperator] 用户无权限转派告警: alert_id=%s, user=%s, operators=%s",
-                    alert_id,
-                    self.user,
-                    alert.operator,
-                )
-                return {"result": False, "message": "您没有权限转派此告警", "data": {}}
 
             # 获取新的处理人信息
             new_assignee = data.get("assignee", [])
@@ -407,6 +408,7 @@ class AlertOperator(object):
                 return {"result": False, "message": validation_message, "data": {}}
 
             old_assignee = alert.operator.copy()
+            old_status = alert.status
 
             # 更新告警状态和处理人
             alert.status = AlertStatus.PENDING
@@ -424,7 +426,7 @@ class AlertOperator(object):
                 alert_id,
                 old_assignee,
                 new_assignee,
-                AlertStatus.PROCESSING,
+                old_status,
                 AlertStatus.PENDING,
             )
 
@@ -452,7 +454,7 @@ class AlertOperator(object):
                 "target_id": alert.alert_id,
                 "overview": (
                     f"告警转派成功, 转派处理人[{new_assignee}] 告警[{alert.title}]"
-                    f"状态变更: {self.status_map[AlertStatus.PROCESSING]} -> {self.status_map[AlertStatus.PENDING]}"
+                    f"状态变更: {self.status_map[old_status]} -> {self.status_map[AlertStatus.PENDING]}"
                 ),
             }
             self.operator_log(log_data)

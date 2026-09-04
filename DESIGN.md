@@ -6,7 +6,7 @@
 
 | 你要找的 | 去这里 |
 |----------|--------|
-| 颜色 / 圆角 / 间距 / 排版 / 基础组件 token / 布局样式写法 | [web/DESIGN.md](web/DESIGN.md)(唯一真相源) |
+| 颜色 / 圆角 / 间距 / 排版 / 基础组件 token / 布局样式写法 | [web/DESIGN.md](web/DESIGN.md)（唯一真相源）。气质：**浅色、克制的企业控制台**，见该文 Overview |
 | Web 组件所有权与治理执行 | [web/COMPONENT_GOVERNANCE.md](web/COMPONENT_GOVERNANCE.md) |
 | 前端工程约定(栈/包管理/i18n/门禁) | [前端工程规则](specs/capabilities/frontend-engineering.md) |
 | 产品侧 UI / 交互规范 | [specs/capabilities/legacy-design-ui.md](specs/capabilities/legacy-design-ui.md) |
