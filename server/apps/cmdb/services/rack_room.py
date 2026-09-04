@@ -276,6 +276,8 @@ def get_room3d_rack_device_summaries(rack_uuids, permission_map=None, user=None)
                     "rack_u_start": rack_u_start,
                     "u_size": u_size,
                     "status": _scalar(inst.get("status") or inst.get("datacenter_state")),
+                    # Stripped by room3d_device_alarms.enrich before layout response.
+                    "monitor_id": ("" if inst.get("monitor_id") in (None, "") else str(inst.get("monitor_id"))),
                 }
             )
 

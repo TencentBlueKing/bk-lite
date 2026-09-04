@@ -789,6 +789,7 @@ def test_kubernetes_data_collection_toolkit_exposes_only_collection_focused_tool
     assert "rollback_deployment" not in tool_names
     assert "delete_kubernetes_resource" not in tool_names
     assert "exec_in_pod" not in tool_names
+    assert "collect_pod_restart_evidence" not in tool_names
 
 
 def test_builtin_k8s_chatflow_uses_kubernetes_toolkit():

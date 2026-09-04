@@ -7,10 +7,10 @@ Phase B-1：仅 metric_values / link_runtime。
 from __future__ import annotations
 
 from typing import Any
-from uuid import UUID
 
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
+from apps.operation_analysis.services.network_topology.canvas_config import parse_weops_inst_id
 from apps.operation_analysis.services.network_topology.runtime import _node_ref_from_view_set
 
 _FORBIDDEN_BODY_KEYS = frozenset(
@@ -27,7 +27,7 @@ _FORBIDDEN_BODY_KEYS = frozenset(
 _NODE_REF_KEYS = frozenset(
     {
         "bk_obj_id",
-        "bk_inst_uuid",
+        "bk_inst_id",
         "network_collect_task_id",
         "network_collect_instance_id",
         "plugin_group_id",
@@ -62,17 +62,10 @@ def _as_int(value: Any, default: int = 0) -> int:
         return default
 
 
-def _as_uuid(value: Any) -> str:
-    try:
-        return str(UUID(str(value)))
-    except (TypeError, ValueError, AttributeError):
-        return ""
-
-
 def _normalize_node_ref(ref: dict[str, Any]) -> tuple:
     return (
         str(ref.get("bk_obj_id") or ""),
-        _as_uuid(ref.get("bk_inst_uuid")),
+        parse_weops_inst_id(ref.get("bk_inst_id")),
         _as_int(ref.get("network_collect_task_id")),
         _as_int(ref.get("network_collect_instance_id")),
         _as_int(ref.get("plugin_group_id")),
@@ -95,6 +88,9 @@ def _view_sets_links(view_sets: Any) -> list[dict[str, Any]]:
 
 
 def _find_node_by_ref(view_sets: Any, node_ref: dict[str, Any]) -> dict[str, Any] | None:
+    request_inst_id = parse_weops_inst_id(node_ref.get("bk_inst_id"))
+    if request_inst_id is None:
+        return None
     target = _normalize_node_ref(node_ref)
     for node in _view_sets_nodes(view_sets):
         if _normalize_node_ref(_node_ref_from_view_set(node)) == target:
@@ -102,14 +98,14 @@ def _find_node_by_ref(view_sets: Any, node_ref: dict[str, Any]) -> dict[str, Any
         # 前端 node_ref 可能省略 plugin_group_id；再按核心字段兜底匹配。
         loose = (
             str(node.get("bk_obj_id") or ""),
-            _as_uuid(node.get("bk_inst_uuid")),
+            parse_weops_inst_id(node.get("bk_inst_id")),
             _as_int(node.get("network_collect_task_id")),
             _as_int(node.get("network_collect_instance_id")),
             str(node.get("plugin_template_id") or "0"),
         )
         request_loose = (
             str(node_ref.get("bk_obj_id") or ""),
-            _as_uuid(node_ref.get("bk_inst_uuid")),
+            request_inst_id,
             _as_int(node_ref.get("network_collect_task_id")),
             _as_int(node_ref.get("network_collect_instance_id")),
             str(node_ref.get("plugin_template_id") or "0"),
@@ -160,8 +156,8 @@ def _validate_node_ref_shape(node_ref: Any) -> dict[str, Any]:
     unknown = set(node_ref.keys()) - _NODE_REF_KEYS
     if unknown:
         raise ValidationError({"node_ref": [f"包含未声明字段: {', '.join(sorted(unknown))}"]})
-    if "bk_obj_id" not in node_ref or "bk_inst_uuid" not in node_ref:
-        raise ValidationError({"node_ref": ["缺少 bk_obj_id / bk_inst_uuid"]})
+    if "bk_obj_id" not in node_ref or "bk_inst_id" not in node_ref:
+        raise ValidationError({"node_ref": ["缺少 bk_obj_id / bk_inst_id"]})
     return node_ref
 
 
@@ -226,9 +222,9 @@ def _port_pairs_fingerprint(link: dict[str, Any]) -> list[tuple]:
         target = pair.get("target_interface") or {}
         fingerprints.append(
             (
-                _as_uuid(source.get("bk_inst_uuid")),
+                parse_weops_inst_id(source.get("bk_inst_id")),
                 str(source.get("interface_name") or ""),
-                _as_uuid(target.get("bk_inst_uuid")),
+                parse_weops_inst_id(target.get("bk_inst_id")),
                 str(target.get("interface_name") or ""),
             )
         )

@@ -116,6 +116,10 @@ def test_render_snapshot_migration_writer_is_command_scoped_and_field_limited(mo
         )
 
 
+def test_oa_uuid_migration_excludes_weops_network_topology():
+    assert "NetworkTopology" not in Command.OA_UUID_MODEL_FIELDS
+
+
 def test_rewrite_renames_bk_inst_id_and_inst_id_aliases():
     inst_uuid = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
     stats = {"operation_analysis_orphan_removed": 0}

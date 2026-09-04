@@ -13,6 +13,7 @@ from django.core.cache import cache
 # Challenge configuration
 CHALLENGE_TTL = 300  # 5 minutes
 CHALLENGE_PREFIX = "otp_challenge:"
+ACTIVE_CHALLENGE_PREFIX = "otp_active_challenge:"
 
 # Rate limiting configuration
 RATE_LIMIT_TTL = 300  # 5 minutes
@@ -21,17 +22,23 @@ RATE_LIMIT_PREFIX = "otp_rate_limit:"
 OTP_LOGIN_ACCOUNT_RATE_LIMIT_PREFIX = "otp_login_account_rate_limit:"
 
 
-def create_challenge(user_id: int, username: str) -> str:
+def create_challenge(user_id: int, username: str, pending_otp_secret: str | None = None) -> str:
     """
     Create a new OTP challenge for a user.
 
     Args:
         user_id: The user's database ID
         username: The user's username
+        pending_otp_secret: Unbound TOTP secret for first-time binding. Stored only
+            on this challenge until verification succeeds; not persisted on the user.
 
     Returns:
         A unique challenge_id (UUID string)
     """
+    previous_challenge_id = cache.get(f"{ACTIVE_CHALLENGE_PREFIX}{user_id}")
+    if previous_challenge_id:
+        invalidate_challenge(previous_challenge_id)
+
     challenge_id = str(uuid.uuid4())
     cache_key = f"{CHALLENGE_PREFIX}{challenge_id}"
 
@@ -40,8 +47,11 @@ def create_challenge(user_id: int, username: str) -> str:
         "username": username,
         "created_at": datetime.now().isoformat(),
     }
+    if pending_otp_secret:
+        challenge_data["pending_otp_secret"] = pending_otp_secret
 
     cache.set(cache_key, challenge_data, timeout=CHALLENGE_TTL)
+    cache.set(f"{ACTIVE_CHALLENGE_PREFIX}{user_id}", challenge_id, timeout=CHALLENGE_TTL)
     return challenge_id
 
 
@@ -78,7 +88,14 @@ def invalidate_challenge(challenge_id: str) -> bool:
         return False
 
     cache_key = f"{CHALLENGE_PREFIX}{challenge_id}"
-    return cache.delete(cache_key)
+    challenge_data = cache.get(cache_key)
+    deleted = cache.delete(cache_key)
+    if challenge_data:
+        user_id = challenge_data.get("user_id")
+        active_key = f"{ACTIVE_CHALLENGE_PREFIX}{user_id}"
+        if cache.get(active_key) == challenge_id:
+            cache.delete(active_key)
+    return deleted
 
 
 def check_rate_limit(ip: str, username: str) -> tuple[bool, int]:

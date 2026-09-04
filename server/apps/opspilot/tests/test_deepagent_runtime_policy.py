@@ -601,9 +601,104 @@ async def test_planner_catalog_prepends_known_pod_restart_rca_hint():
     prompt = "\n".join(str(message.content) for message in llm.messages)
     assert "已指定具体 Pod 问重启原因" in prompt
     assert "get_kubernetes_previous_pod_logs" in prompt
+    assert "禁止降低 lines" in prompt
+    assert "没有 previous" in prompt or "无 previous" in prompt or "没有可用的 previous" in prompt
     assert "禁止 analyze_pod_restart_pattern" in prompt
     assert "describe_kubernetes_resource" in prompt
     assert [step.tools for step in plan.steps] == [["diagnose_kubernetes_pod_issues"]]
+
+
+@pytest.mark.asyncio
+async def test_planner_collapses_restart_reason_to_evidence_tool():
+    tools = [
+        _tool("diagnose_kubernetes_pod_issues", "诊断 Pod"),
+        _tool("get_kubernetes_pod_logs", "当前日志"),
+        _tool("get_kubernetes_previous_pod_logs", "上一轮日志"),
+        _tool("get_resource_events_timeline", "事件时间线"),
+        _tool("collect_pod_restart_evidence", "重启取证包"),
+        _tool("current_time", "当前时间"),
+    ]
+
+    class FakeLLM:
+        def __init__(self):
+            self.messages = None
+
+        async def ainvoke(self, messages, config=None):
+            self.messages = messages
+            return AIMessage(
+                content=json.dumps(
+                    {
+                        "goal": "分析指定 Pod 重启原因",
+                        "steps": [
+                            {"objective": "对时", "tools": ["current_time"]},
+                            {
+                                "objective": "诊断和日志",
+                                "tools": [
+                                    "diagnose_kubernetes_pod_issues",
+                                    "get_kubernetes_pod_logs",
+                                    "get_kubernetes_previous_pod_logs",
+                                ],
+                            },
+                        ],
+                    },
+                    ensure_ascii=False,
+                )
+            )
+
+    llm = FakeLLM()
+    plan = await ToolExecutionPlanner(llm).plan("分析 argocd/argocd-repo-server 频繁重启的原因", tools)
+    prompt = "\n".join(str(message.content) for message in llm.messages)
+    assert "collect_pod_restart_evidence" in prompt
+    assert "只规划 collect_pod_restart_evidence" in prompt
+    assert "禁止再规划 diagnose_kubernetes_pod_issues" in prompt
+    assert [step.tools for step in plan.steps] == [["current_time"], ["collect_pod_restart_evidence"]]
+
+
+@pytest.mark.asyncio
+async def test_planner_does_not_collapse_alert_rca_when_evidence_tool_present():
+    tools = [
+        _tool("diagnose_kubernetes_pod_issues", "诊断 Pod"),
+        _tool("get_kubernetes_pod_logs", "当前日志"),
+        _tool("get_kubernetes_previous_pod_logs", "上一轮日志"),
+        _tool("get_resource_events_timeline", "事件时间线"),
+        _tool("collect_pod_restart_evidence", "重启取证包"),
+        _tool("resolve_k8s_target_from_alert", "反查 namespace"),
+    ]
+
+    class FakeLLM:
+        def __init__(self):
+            self.messages = None
+
+        async def ainvoke(self, messages, config=None):
+            self.messages = messages
+            return AIMessage(
+                content=json.dumps(
+                    {
+                        "goal": "告警 RCA",
+                        "steps": [
+                            {"objective": "反查", "tools": ["resolve_k8s_target_from_alert"]},
+                            {
+                                "objective": "诊断",
+                                "tools": ["diagnose_kubernetes_pod_issues", "get_kubernetes_pod_logs"],
+                            },
+                        ],
+                    },
+                    ensure_ascii=False,
+                )
+            )
+
+    llm = FakeLLM()
+    plan = await ToolExecutionPlanner(llm).plan(
+        "告警：Unhealthy（kubernetes，bk-lite-k3s，nacos-0） 检测到异常\nReadiness probe failed",
+        tools,
+        agent_system_prompt="你是 Kubernetes 集群 RCA 助手。\n## 告警怎么读\n",
+    )
+    prompt = "\n".join(str(message.content) for message in llm.messages)
+    assert "只规划 collect_pod_restart_evidence" not in prompt
+    assert [step.tools for step in plan.steps] == [
+        ["resolve_k8s_target_from_alert"],
+        ["diagnose_kubernetes_pod_issues", "get_kubernetes_pod_logs"],
+    ]
 
 
 @pytest.mark.asyncio
@@ -853,6 +948,7 @@ def test_classify_tool_failure_kind_separates_auth_from_retryable():
         TOOL_FAILURE_OTHER,
         classify_tool_failure_kind,
         is_non_replanable_tool_failure,
+        is_tool_result_failure,
     )
     from apps.opspilot.metis.llm.common.tool_failure import unrecoverable_skill_result_hint
 
@@ -908,6 +1004,14 @@ def test_classify_tool_failure_kind_separates_auth_from_retryable():
     assert hint is not None and "禁止重试" in hint
     assert unrecoverable_skill_result_hint("timed out") is None
     assert unrecoverable_skill_result_hint('{"ok":false,"error":{"code":6,"message":"Cannot reach"}}') is None
+    app_previous_log = (
+        "Traceback (most recent call last):\n"
+        '  File "/usr/local/lib/python3.12/site-packages/mlflow/store/model_registry/base_rest_store.py", line 42, in _call_endpoint\n'
+        "mlflow.exceptions.RestException: RESOURCE_DOES_NOT_EXIST: Registered Model with name=classification_XGBoost_1.1 not found"
+    )
+    assert classify_tool_failure_kind(app_previous_log) == TOOL_FAILURE_OTHER
+    assert not is_tool_result_failure(app_previous_log)
+    assert not is_non_replanable_tool_failure(app_previous_log)
 
 
 def test_resolve_planned_execution_compact_limits_scales_with_working_budget():
@@ -950,6 +1054,54 @@ def test_compact_planned_execution_messages_truncates_tool_and_ai_text():
     assert out[0].content.endswith("...(truncated)")
     assert len(out[1].content) <= 80
     assert out[2].content == "keep tool call"
+
+
+def test_compact_pod_logs_keeps_tail_error_and_forbids_retry():
+    from langchain_core.messages import ToolMessage
+
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import compact_planned_execution_messages
+
+    body = ("INFO heartbeat " + ("x" * 40) + "\n") * 80 + "ERROR boom RESOURCE_DOES_NOT_EXIST"
+    out = compact_planned_execution_messages(
+        [ToolMessage(content=body, tool_call_id="c1", name="get_kubernetes_pod_logs")],
+        max_tool_chars=180,
+        max_ai_chars=80,
+    )
+    text = out[0].content
+    assert len(text) <= 180
+    assert "RESOURCE_DOES_NOT_EXIST" in text
+    assert "禁止" in text
+    assert not text.endswith("...(truncated)")
+
+
+def test_compact_pod_restart_evidence_keeps_previous_tail():
+    import json
+
+    from langchain_core.messages import ToolMessage
+
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import compact_planned_execution_messages
+
+    payload = {
+        "pod_name": "px",
+        "namespace": "ns",
+        "clock": {"finished_at": "2026-09-04T05:00:00+00:00", "started_at": "2026-09-04T05:01:00+00:00"},
+        "last_state": {"reason": "Error", "exit_code": 1},
+        "events": [{"reason": "BackOff", "message": "x" * 400}],
+        "logs": {
+            "previous_tail": {"available": True, "content": ("INFO " + "y" * 80 + "\n") * 40 + "ERROR boom RESOURCE_DOES_NOT_EXIST"},
+            "current_tail": {"skipped": True},
+            "current_head": {"skipped": True},
+        },
+        "missing": [],
+    }
+    out = compact_planned_execution_messages(
+        [ToolMessage(content=json.dumps(payload, ensure_ascii=False), tool_call_id="c1", name="collect_pod_restart_evidence")],
+        max_tool_chars=1800,
+        max_ai_chars=80,
+    )
+    parsed = json.loads(out[0].content)
+    assert parsed["clock"]["finished_at"].startswith("2026-09-04T05:00:00")
+    assert "RESOURCE_DOES_NOT_EXIST" in parsed["logs"]["previous_tail"]["content"]
 
 
 def test_compact_execute_skill_json_keeps_all_entries_under_budget():
@@ -1199,6 +1351,68 @@ def test_drop_cluster_scan_tools_for_known_pod_diagnose():
         ["get_high_restart_kubernetes_pods"],
         ["diagnose_kubernetes_pod_issues"],
     ]
+
+
+def test_collapse_known_pod_restart_to_evidence_tool_only_for_restart_reason():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import (
+        ToolExecutionPlan,
+        ToolExecutionStep,
+        collapse_known_pod_restart_to_evidence_tool,
+        is_pod_restart_reason_query,
+    )
+
+    available = {
+        "current_time",
+        "resolve_k8s_target_from_alert",
+        "diagnose_kubernetes_pod_issues",
+        "get_kubernetes_pod_logs",
+        "get_kubernetes_previous_pod_logs",
+        "get_resource_events_timeline",
+        "collect_pod_restart_evidence",
+    }
+    noisy = ToolExecutionPlan(
+        goal="分析重启",
+        steps=[
+            ToolExecutionStep(objective="对时", tools=["current_time"]),
+            ToolExecutionStep(objective="反查", tools=["resolve_k8s_target_from_alert"]),
+            ToolExecutionStep(objective="诊断", tools=["diagnose_kubernetes_pod_issues"]),
+            ToolExecutionStep(objective="当前日志", tools=["get_kubernetes_pod_logs"]),
+            ToolExecutionStep(objective="上一轮日志", tools=["get_kubernetes_previous_pod_logs"]),
+            ToolExecutionStep(objective="事件", tools=["get_resource_events_timeline"]),
+        ],
+    )
+    restart_q = "分析 argocd/argocd-repo-server-f6d44484c-kkss8 频繁重启的原因"
+    assert is_pod_restart_reason_query(restart_q) is True
+    collapsed = collapse_known_pod_restart_to_evidence_tool(noisy, available, user_message=restart_q)
+    assert [step.tools for step in collapsed.steps] == [
+        ["current_time"],
+        ["resolve_k8s_target_from_alert"],
+        ["collect_pod_restart_evidence"],
+    ]
+
+    alert_q = "告警：Unhealthy（kubernetes，bk-lite-k3s，nacos-0） 检测到异常\nReadiness probe failed"
+    assert is_pod_restart_reason_query(alert_q) is False
+    kept_alert = collapse_known_pod_restart_to_evidence_tool(noisy, available, user_message=alert_q)
+    assert [step.tools for step in kept_alert.steps] == [step.tools for step in noisy.steps]
+
+    rca_prompt = "你是 Kubernetes 集群 RCA 助手。\n## 告警怎么读\n"
+    kept_prompt = collapse_known_pod_restart_to_evidence_tool(
+        noisy,
+        available,
+        user_message="这个 Pod 为什么重启",
+        agent_system_prompt=rca_prompt,
+    )
+    assert [step.tools for step in kept_prompt.steps] == [step.tools for step in noisy.steps]
+
+    assert is_pod_restart_reason_query("看看 argocd-repo-server 当前日志") is False
+    assert is_pod_restart_reason_query("按重启时间列出最近 10 个重启的 Pod") is False
+    assert is_pod_restart_reason_query("巡检 Deployment 探针配置") is False
+    kept_logs = collapse_known_pod_restart_to_evidence_tool(
+        noisy,
+        available,
+        user_message="看看 argocd-repo-server 当前日志",
+    )
+    assert [step.tools for step in kept_logs.steps] == [step.tools for step in noisy.steps]
 
 
 def test_rewrite_high_restart_to_recent_for_time_sort():

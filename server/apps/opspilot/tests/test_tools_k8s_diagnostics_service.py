@@ -503,3 +503,89 @@ class TestDiagnosePod:
         core.read_namespaced_pod.side_effect = ApiException(status=500)
         out = json.loads(d.diagnose_kubernetes_pod_issues.invoke({"namespace": "default", "pod_name": "x", "config": {}}))
         assert "诊断Pod失败" in out["error"]
+
+
+class TestCollectPodRestartEvidence:
+    def _running_restarted(self, *, ready=True, waiting=None):
+        ts = datetime(2026, 9, 4, 5, 0, tzinfo=timezone.utc)
+        started = datetime(2026, 9, 4, 5, 1, tzinfo=timezone.utc)
+        state = _state(waiting=waiting, running=None if waiting else SimpleNamespace(started_at=started))
+        return _cstatus(
+            name="app",
+            ready=ready,
+            restart_count=3,
+            state=state,
+            last_state=SimpleNamespace(terminated=SimpleNamespace(reason="Error", exit_code=1, finished_at=ts, message="boom")),
+        )
+
+    def test_ready_pod_takes_previous_tail_not_current_tail(self, core):
+        core.read_namespaced_pod.return_value = _pod(name="px", cstatuses=[self._running_restarted()])
+        core.list_namespaced_event.return_value = _items(
+            [
+                SimpleNamespace(
+                    type="Warning", reason="BackOff", message="restart", count=2, last_timestamp=datetime(2026, 9, 4, 5, 0, tzinfo=timezone.utc)
+                )
+            ]
+        )
+        calls = []
+
+        def fake_logs(**kwargs):
+            calls.append(kwargs)
+            if kwargs.get("previous"):
+                return "panic at startup"
+            raise AssertionError("Ready Pod 不应拉当前轮日志")
+
+        with patch.object(d, "_pod_log_text", side_effect=fake_logs):
+            out = json.loads(d.collect_pod_restart_evidence.invoke({"namespace": "argocd", "pod_name": "px", "config": {}}))
+        assert out["clock"]["finished_at"].startswith("2026-09-04T05:00:00")
+        assert out["clock"]["started_at"].startswith("2026-09-04T05:01:00")
+        assert out["last_state"]["exit_code"] == 1
+        assert out["logs"]["previous_tail"]["available"] is True
+        assert "panic at startup" in out["logs"]["previous_tail"]["content"]
+        assert out["logs"]["current_tail"]["skipped"] is True
+        assert out["logs"]["current_head"]["skipped"] is True
+        assert len(calls) == 1
+        assert calls[0]["previous"] is True
+        assert calls[0]["tail"] is True
+        assert calls[0]["lines"] == 80
+
+    def test_crashloop_adds_current_tail_as_contrast_only(self, core):
+        waiting = SimpleNamespace(reason="CrashLoopBackOff", message="back-off")
+        core.read_namespaced_pod.return_value = _pod(
+            name="px",
+            phase="Running",
+            cstatuses=[self._running_restarted(ready=False, waiting=waiting)],
+        )
+        core.list_namespaced_event.return_value = _items([])
+
+        def fake_logs(**kwargs):
+            return "still crashing" if not kwargs.get("previous") else "ERROR boom"
+
+        with patch.object(d, "_pod_log_text", side_effect=fake_logs):
+            out = json.loads(d.collect_pod_restart_evidence.invoke({"namespace": "ns", "pod_name": "px", "config": {}}))
+        assert out["logs"]["current_tail"]["skipped"] is False
+        assert out["logs"]["current_tail"]["content"] == "still crashing"
+        assert "不是 finishedAt" in out["logs"]["current_tail"]["why"]
+
+    def test_missing_previous_is_terminal_and_does_not_pull_current(self, core):
+        core.read_namespaced_pod.return_value = _pod(name="px", cstatuses=[self._running_restarted()])
+        core.list_namespaced_event.return_value = _items([])
+        calls = []
+
+        def fake_logs(**kwargs):
+            calls.append(kwargs)
+            if kwargs.get("previous"):
+                return "Pod px 容器 app 没有可用的 previous 日志。这是有效证据，禁止降低 lines 再次调用本工具。"
+            raise AssertionError("previous 缺失时不应改拉当前尾巴")
+
+        with patch.object(d, "_pod_log_text", side_effect=fake_logs):
+            out = json.loads(d.collect_pod_restart_evidence.invoke({"namespace": "ns", "pod_name": "px", "config": {}}))
+        assert out["logs"]["previous_tail"]["available"] is False
+        assert out["missing"] == ["previous_container_logs"]
+        assert "终态" in out["logs"]["previous_tail"]["why"]
+        assert all(call["previous"] is True for call in calls)
+
+    def test_pod_not_found_404(self, core):
+        core.read_namespaced_pod.side_effect = ApiException(status=404)
+        out = json.loads(d.collect_pod_restart_evidence.invoke({"namespace": "ns", "pod_name": "ghost", "config": {}}))
+        assert "不存在" in out["error"]

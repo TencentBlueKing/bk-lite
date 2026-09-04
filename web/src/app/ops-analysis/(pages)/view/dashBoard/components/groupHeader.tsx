@@ -83,8 +83,10 @@ const GroupHeader: React.FC<GroupHeaderProps> = ({
       {isEditMode && (
         <MoreActionsDropdown
           items={menuItems}
+          trigger={['hover']}
+          labelAlign="start"
           stopPropagation
-          buttonClassName="no-drag h-7 w-7 rounded-full! text-(--color-text-2)!"
+          buttonClassName="no-drag h-7 w-7 rounded-full! text-(--color-text-2)! hover:!bg-transparent"
         />
       )}
     </div>

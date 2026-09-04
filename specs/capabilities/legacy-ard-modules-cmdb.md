@@ -88,7 +88,7 @@
   - **实例 CRUD / 显示字段**：`update_instance`(:396)、`sync_display_fields`(:736)。
   - **采集结果回传（Stargazer→CMDB）**：`receive_config_file_result`(:696，配置文件落库为 ConfigFileVersion)、`receive_collect_credential_result`(:711，凭据探测命中)。**注：原 `receive_ip_discovery_result` handler 已下线，IP 发现结果回写由服务层 `services/ipam_discovery.py:205` `apply_discovery_result`（落库 `ip` 台账并更新在线/离线状态）与 `:299` `apply_ip_discovery_vm_rows`（回写 VictoriaMetrics 离线 IP 行）协同完成。**
   - **运营分析统计取数**：`get_cmdb_statistics`(:758)、`get_change_trend`(:887)、`get_instance_group_by`(:960)、`get_model_inst_statistics`(:1024)、`get_cmdb_model_instance_top`(:1075)、`get_cmdb_collect_statistics`(:1120)。
-  - **机房 3D 布局取数**【已实现/已存在】：`get_room3d_layout`(`nats/nats.py:952-1050`) 返回机房的 row/col 网格、U 占用与设备摘要；payload 中 `rack_type`（`datacenter_type` 枚举 id）由 `_get_room3d_rack_type_name_map`(`nats/nats.py:942-949`) 解析为可读名称 `rack_type_name`（无值时不带该字段），供 3D 大屏图例与机柜顶贴图渲染；`rack_id`/`rack_name` 字段源统一改取 `item['rack_id']` / `item['rack_name']`（当 `instance_name` 缺失时 fallback 到 `rack_id`）。
+  - **机房 3D 布局取数**【已实现/已存在】：`get_room3d_layout` 返回机房的 row/col 网格、U 占用与设备摘要；payload 中 `rack_type`（`datacenter_type` 枚举 id）解析为可读名称 `rack_type_name`（无值时不带该字段）；已上架设备附加告警摘要字段 `monitor_bound` / `alarm_unavailable` / `active_alarm_count` / `highest_severity`（经 Monitor `query_active_alert_summaries_by_monitor_ids`，不下发 `monitor_id`；告警失败软降级）。`rack_id`/`rack_name` 取自 `item['rack_id']` / `item['rack_name']`（`instance_name` 缺失时 fallback 到 `rack_id`）。
   - **实例/模型/关联通用查询与 CRUD（对外 RPC 供数与维护）**【已实现/已存在】（`nats/nats.py:453-679`，供跨模块经 RPC 调用）：
     | handler | 行号 | 说明 |
     |---------|------|------|
@@ -176,6 +176,9 @@
 - `[cmdb#20260709-001]` NATS `get_room3d_layout` payload 增 `rack_type_name` 字段：依据 `rack` 模型 `datacenter_type` 枚举属性将 id 解析为可读名称（计算/网络/存储/安全/其他/未分类），无值时不带该字段。消费方为运营分析 3D 大屏 `web/src/app/ops-analysis/components/widgets/room3D/`（数据源 `cmdb/get_room3d_layout` 注册于 `server/apps/operation_analysis/support-files/source_api.json:406`）。
 - `[cmdb#20260709-002]` `get_room3d_layout` 中 `rack_id`/`rack_name` 来源统一为 `item['rack_id']` / `item['rack_name']`（`instance_name` 缺失时 fallback 到 `rack_id`），并配套新增 `test_get_room3d_layout_falls_back_to_rack_id_when_name_missing`、`test_get_room3d_layout_returns_rack_type_name_from_cmdb_enum` 两个测试。
 - `[cmdb#20260709-003]` 双向校验修订：`InstanceViewSet.room3d_layout` REST 端点**不存在**（3D 数据走内置数据源 rest_api，不在 ViewSet 路由表内）；NATS `receive_ip_discovery_result` handler 与 `services.ipam_discovery.maybe_dispatch_ip_discovery` 函数**已下线**（功能下沉到 `services/ipam_discovery.py:205,299` 服务层直连 Stargazer 回调）。spec 删除相关端点行，证据行按代码当前位置刷新。
+
+## 2026-09-04 Code-ARD 校准
+- `[cmdb#20260904-001]` `get_room3d_layout` 已上架设备附加监控告警摘要（`monitor_bound` / `alarm_unavailable` / `active_alarm_count` / `highest_severity`）；经 Monitor `query_active_alert_summaries_by_monitor_ids` 聚合，不下发 `monitor_id`；告警失败软降级。契约见 `specs/changes/ops-analysis-room3d-device-alarms/spec.md`。
 
 ## 7. 证据来源
 `server/apps/cmdb/{urls.py,models/*,models/ipam_models.py:7,graph/*,graph/neo4j.py,graph/drivers/graph_client.py,collection/*,collection/collect_plugin/oceanstor.py,constants/constants.py,tasks/celery_tasks.py:72-74,397,408,nats/nats.py:696,711,942-949,952-1050,services/rack_room.py,services/ipam_*.py,services/ipam_discovery.py:205,299,services/ipam_reconcile.py,utils/ipam_cidr.py,node_configs/network_config_file.py:5-63,views/collect.py:66-68,views/instance.py:1145,1190,1212,1282,management/commands/{model_init.py:7,init_oid.py:11,init_field_groups.py:15,init_display_fields.py:24},support-files/model_config.xlsx}`、`server/apps/operation_analysis/support-files/source_api.json:406`（3D 机房数据源 `cmdb/get_room3d_layout` 注册）；`server/apps/rpc/cmdb.py:44-94`。

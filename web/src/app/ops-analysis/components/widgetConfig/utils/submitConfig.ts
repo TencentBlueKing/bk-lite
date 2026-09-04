@@ -102,6 +102,8 @@ export interface BuildWidgetSubmitConfigInput {
   displayColumns: SubmitDisplayColumn[];
   filterFields: SubmitFilterField[];
   actions: DashboardActionConfig[];
+  /** 预览组装：映射与提交相同，但不因未填必填项拦截。 */
+  forPreview?: boolean;
 }
 
 export interface BuildWidgetSubmitConfigResult {
@@ -159,9 +161,10 @@ const buildTableConfig = ({
   filterFields,
   showTableFilterFields,
   includeCellStyle,
+  forPreview = false,
 }: Pick<
   BuildWidgetSubmitConfigInput,
-  'displayColumns' | 'filterFields' | 'showTableFilterFields'
+  'displayColumns' | 'filterFields' | 'showTableFilterFields' | 'forPreview'
 > & { includeCellStyle: boolean }): BuildWidgetSubmitConfigResult & { tableConfig?: TableConfig } => {
   const tableConfig: TableConfig = {};
 
@@ -190,14 +193,14 @@ const buildTableConfig = ({
     return false;
   });
 
-  if (hasDuplicateKeys) {
+  if (hasDuplicateKeys && !forPreview) {
     return { error: 'duplicateFieldKey' };
   }
 
   const hasVisibleColumn = validDisplayColumns.some(
     (column) => column.visible !== false,
   );
-  if (!hasVisibleColumn) {
+  if (!hasVisibleColumn && !forPreview) {
     return { error: 'atLeastOneVisibleColumn' };
   }
 
@@ -365,9 +368,13 @@ export const mergeSanitizedWidgetValueConfig = (
 const applyCardListConfig = (
   result: WidgetConfig,
   values: WidgetConfigFormValues,
+  forPreview = false,
 ): WidgetSubmitError | undefined => {
   const titleField = values.cardList?.titleField?.trim() || '';
   if (!titleField) {
+    if (forPreview) {
+      return undefined;
+    }
     return 'cardListTitleRequired';
   }
 
@@ -379,13 +386,16 @@ const applyCardListConfig = (
   if (leadingType === 'field') {
     const field = values.cardList?.leading?.field?.trim() || '';
     if (!field) {
-      return 'cardListLeadingFieldRequired';
+      if (!forPreview) {
+        return 'cardListLeadingFieldRequired';
+      }
+    } else {
+      leading = {
+        type: 'field',
+        field,
+        ...(leadingStyle ? { style: leadingStyle } : {}),
+      };
     }
-    leading = {
-      type: 'field',
-      field,
-      ...(leadingStyle ? { style: leadingStyle } : {}),
-    };
   } else if (leadingType === 'index') {
     leading = {
       type: 'index',
@@ -456,13 +466,14 @@ export const buildWidgetSubmitConfig = ({
   displayColumns,
   filterFields,
   actions,
+  forPreview = false,
 }: BuildWidgetSubmitConfigInput): BuildWidgetSubmitConfigResult => {
   if (values.sceneWidgetType) {
     return { config: buildSceneWidgetConfig(values) };
   }
 
   const result: WidgetConfig = buildWidgetConfigBase(values, chartType);
-  if (validateComponentSwitchParams(values.dataSourceParams)) {
+  if (validateComponentSwitchParams(values.dataSourceParams) && !forPreview) {
     return { error: 'multipleComponentSwitchParams' };
   }
 
@@ -472,6 +483,7 @@ export const buildWidgetSubmitConfig = ({
       filterFields,
       showTableFilterFields,
       includeCellStyle: chartType === 'table',
+      forPreview,
     });
     if (tableResult.error) {
       return { error: tableResult.error };
@@ -556,7 +568,7 @@ export const buildWidgetSubmitConfig = ({
   }
 
   if (chartType === 'cardList') {
-    const cardListError = applyCardListConfig(result, values);
+    const cardListError = applyCardListConfig(result, values, forPreview);
     if (cardListError) {
       return { error: cardListError };
     }
@@ -568,3 +580,9 @@ export const buildWidgetSubmitConfig = ({
 
   return { config: result };
 };
+
+/** 预览用：与提交同一套字段映射，不因未填名称/列等拦截。 */
+export const buildWidgetDraftConfig = (
+  input: BuildWidgetSubmitConfigInput,
+): WidgetConfig | undefined =>
+  buildWidgetSubmitConfig({ ...input, forPreview: true }).config;

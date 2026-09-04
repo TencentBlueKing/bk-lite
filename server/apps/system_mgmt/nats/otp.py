@@ -122,7 +122,10 @@ def verify_otp_login(challenge_id, otp_code, client_ip=""):
     if not user:
         return {"result": False, "message": "User not found"}
 
-    if not user.otp_secret:
+    bound_otp_secret = user.otp_secret if user.otp_secret else None
+    pending_otp_secret = challenge_data.get("pending_otp_secret") or None
+    otp_secret = bound_otp_secret or pending_otp_secret
+    if not otp_secret:
         return {"result": False, "message": "OTP not configured for this user"}
 
     # Reserve before verification so concurrent requests cannot all pass a stale check.
@@ -130,7 +133,7 @@ def verify_otp_login(challenge_id, otp_code, client_ip=""):
         return {"result": False, "message": "Too many failed attempts. Please try again later."}
 
     # Verify OTP code
-    totp = pyotp.TOTP(user.otp_secret)
+    totp = pyotp.TOTP(otp_secret)
     if not totp.verify(otp_code):
         record_failed_attempt(client_ip, username)
         return {"result": False, "message": "Invalid OTP code"}
@@ -150,6 +153,8 @@ def verify_otp_login(challenge_id, otp_code, client_ip=""):
     token = jwt.encode(payload=user_obj, key=secret_key, algorithm=algorithm)
 
     user.last_login = timezone.now()
+    if not bound_otp_secret:
+        user.otp_secret = otp_secret
     user.save()
 
     # Check password expiry reminder (expired users already blocked in login phase)

@@ -43,9 +43,14 @@ export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
 }) => {
   const resolvedSectionTitle = sectionTitle || t('dashboard.gaugeSettings');
   return (
-    <div className="mb-6">
-      <div className="mb-6">
-        <div className="font-medium mb-4">{resolvedSectionTitle}</div>
+    <div className="mb-6 space-y-4">
+      <div>
+        <div className="flex items-center gap-2 mb-4 pb-2 border-b border-(--color-border-1)">
+          <span className="w-1 h-3.5 bg-(--color-primary) rounded-full shrink-0" />
+          <span className="text-[14px] font-semibold text-(--color-text-1)">
+            {resolvedSectionTitle}
+          </span>
+        </div>
 
         <MetricFieldSelectorFormItem
           t={t}
@@ -58,54 +63,59 @@ export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
           validationMessage={t('topology.nodeConfig.selectDisplayField')}
         />
 
-        <Form.Item
-          label={t('dashboard.gaugeMin')}
-          name="gaugeMin"
-          rules={[
-            {
-              required: true,
-              message: t('common.inputMsg'),
-            },
-          ]}
-          initialValue={0}
-        >
-          <InputNumber style={{ width: '100%' }} />
-        </Form.Item>
-
-        <Form.Item
-          label={t('dashboard.gaugeMax')}
-          name="gaugeMax"
-          rules={[
-            {
-              required: true,
-              message: t('common.inputMsg'),
-            },
-            ({ getFieldValue }) => ({
-              validator(_, value) {
-                const min = Number(getFieldValue('gaugeMin'));
-                const max = Number(value);
-                if (
-                  !Number.isFinite(min) ||
-                  !Number.isFinite(max) ||
-                  max <= min
-                ) {
-                  return Promise.reject(
-                    new Error(t('dashboard.gaugeMaxMustGreaterMin')),
-                  );
-                }
-                return Promise.resolve();
+        <div className="grid grid-cols-2 gap-4">
+          <Form.Item
+            label={t('dashboard.gaugeMin')}
+            name="gaugeMin"
+            rules={[
+              {
+                required: true,
+                message: t('common.inputMsg'),
               },
-            }),
-          ]}
-          initialValue={100}
-        >
-          <InputNumber style={{ width: '100%' }} />
-        </Form.Item>
+            ]}
+            initialValue={0}
+            className="!mb-0"
+          >
+            <InputNumber className="w-full" />
+          </Form.Item>
+
+          <Form.Item
+            label={t('dashboard.gaugeMax')}
+            name="gaugeMax"
+            rules={[
+              {
+                required: true,
+                message: t('common.inputMsg'),
+              },
+              ({ getFieldValue }) => ({
+                validator(_, value) {
+                  const min = Number(getFieldValue('gaugeMin'));
+                  const max = Number(value);
+                  if (
+                    !Number.isFinite(min) ||
+                    !Number.isFinite(max) ||
+                    max <= min
+                  ) {
+                    return Promise.reject(
+                      new Error(t('dashboard.gaugeMaxMustGreaterMin')),
+                    );
+                  }
+                  return Promise.resolve();
+                },
+              }),
+            ]}
+            initialValue={100}
+            className="!mb-0"
+          >
+            <InputNumber className="w-full" />
+          </Form.Item>
+        </div>
 
         <Form.Item
           label={t('dashboard.gaugeShape')}
           name="gaugeShape"
           initialValue="semicircle"
+          className="mt-4"
         >
           <Radio.Group>
             <Radio.Button value="semicircle">
@@ -117,7 +127,7 @@ export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
           </Radio.Group>
         </Form.Item>
 
-        <ValueFormatConfigSection t={t} width={240} />
+        <ValueFormatConfigSection t={t} />
 
         <ThresholdColorConfigSection
           t={t}

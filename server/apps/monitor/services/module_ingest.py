@@ -1,4 +1,4 @@
-"""跨模块推送写入监控：按 node_id → cmdb_id → 对象类型身份归并 upsert。
+"""跨模块推送写入监控：按 node_id → cmdb_id → 对象类型身份 → 同名 归并 upsert。
 
 节点来源创建/补采集必须命中 Host + Telegraf 主机模板；找不到或套用失败则整次失败。
 """
@@ -1078,10 +1078,11 @@ class MonitorModuleIngestService:
         model_id = cls._resolve_cmdb_model_id(raw)
         object_name = CMDB_MODEL_TO_MONITOR_OBJECT.get(model_id)
         ip = cls._extract_ip(raw)
-        if not object_name or not ip:
+        if not object_name:
             return None
         cloud = cls._extract_cloud_region_id(raw)
-        if model_id in cls.IP_PORT_CLAIM_MODELS:
+        claimed: MonitorInstance | None = None
+        if ip and model_id in cls.IP_PORT_CLAIM_MODELS:
             db_type = {"mysql": "mysql", "postgresql": "postgres", "mssql": "mssql"}[model_id]
             port = cls._extract_port(raw, default=DB_DEFAULT_PORTS.get(db_type))
             storage_key = cls._storage_key_after_onboarding(
@@ -1092,36 +1093,62 @@ class MonitorModuleIngestService:
             )
             by_pk = cls._find_by_pk(storage_key)
             if by_pk and not by_pk.is_deleted and by_pk.monitor_object and by_pk.monitor_object.name == object_name:
-                return by_pk
+                claimed = by_pk
+        elif ip and model_id in cls.IP_CLOUD_CLAIM_MODELS:
+            if cloud is not None:
+                storage_key = cls._storage_key_after_onboarding(
+                    model_id=model_id,
+                    raw_instance_id=f"{cloud}_{ip}",
+                    cloud=cloud,
+                    ip=ip,
+                )
+                by_pk = cls._find_by_pk(storage_key)
+                if by_pk and not by_pk.is_deleted and by_pk.monitor_object and by_pk.monitor_object.name == object_name:
+                    claimed = by_pk
+            if claimed is None:
+                qs = MonitorInstance.objects.filter(
+                    ip=ip,
+                    is_deleted=False,
+                    monitor_object__name=object_name,
+                ).select_related("monitor_object")
+                if cloud is not None:
+                    qs = qs.filter(cloud_region_id=cloud)
+                matches = list(qs[:2])
+                if len(matches) == 1:
+                    claimed = matches[0]
+                elif matches:
+                    # IP 身份歧义：不回落到同名，避免误绑
+                    return None
+                else:
+                    claimed = cls._find_by_encoded_network_identity(object_name, ip=ip, cloud=cloud)
+                    if claimed is None:
+                        claimed = cls._find_by_unique_network_name(object_name, ip=ip)
+
+        if claimed is not None:
+            return claimed
+
+        # 最低优先级：CMDB 实例名与监控实例名精确且唯一匹配（不用 IP 合成名）
+        explicit_name = str(raw.get("name") or raw.get("inst_name") or "").strip()
+        return cls._find_by_unique_instance_name(object_name, name=explicit_name or None)
+
+    @classmethod
+    def _find_by_unique_instance_name(cls, object_name: str, *, name: str | None) -> MonitorInstance | None:
+        """按监控对象类型 + 实例名精确认领；同名多条则放弃。"""
+        text = str(name or "").strip()
+        if not text:
             return None
-        if model_id not in cls.IP_CLOUD_CLAIM_MODELS:
-            return None
-        if cloud is not None:
-            storage_key = cls._storage_key_after_onboarding(
-                model_id=model_id,
-                raw_instance_id=f"{cloud}_{ip}",
-                cloud=cloud,
-                ip=ip,
-            )
-            by_pk = cls._find_by_pk(storage_key)
-            if by_pk and not by_pk.is_deleted and by_pk.monitor_object and by_pk.monitor_object.name == object_name:
-                return by_pk
-        qs = MonitorInstance.objects.filter(
-            ip=ip,
-            is_deleted=False,
-            monitor_object__name=object_name,
-        ).select_related("monitor_object")
-        if cloud is not None:
-            qs = qs.filter(cloud_region_id=cloud)
-        matches = list(qs[:2])
+        matches = list(
+            MonitorInstance.objects.filter(
+                name=text,
+                is_deleted=False,
+                monitor_object__name=object_name,
+            ).select_related(
+                "monitor_object"
+            )[:2]
+        )
         if len(matches) == 1:
             return matches[0]
-        if matches:
-            return None
-        by_encoded = cls._find_by_encoded_network_identity(object_name, ip=ip, cloud=cloud)
-        if by_encoded:
-            return by_encoded
-        return cls._find_by_unique_network_name(object_name, ip=ip)
+        return None
 
     @classmethod
     def _find_by_encoded_network_identity(

@@ -1,6 +1,6 @@
-# 可导入的非内置画布：Flow 网络流量分析仪表盘。
-# 不会被 init_builtin_canvases 加载。
-# 导入前请先执行 init_source_api_data；若环境已有同名内置数据源，冲突策略选「跳过」。
+# 内置画布：Flow 网络流量分析仪表盘。
+# 由 init_builtin_canvases 与 builtin_canvases.yaml 合并加载。
+# 数据源以 source_api.json 为准；本文件保留同名定义以便单独导入。
 # 组件按流量概览 / 趋势 / 协议与排行 / 会话 / 通信关系分组。
 meta:
   schema_version: 1.2.0
@@ -14,11 +14,11 @@ meta:
     reports: 0
     architectures: 0
     datasources: 3
-    namespaces: 0
+    namespaces: 1
 dashboards:
 - key: dashboard::Flow网络流量分析仪表盘
   name: Flow 网络流量分析仪表盘
-  desc: 按所选网络设备查看 Flow 总流量、趋势、协议分布、TopN、会话与通信关系。导入后不是内置画布。
+  desc: 按所选网络设备查看 Flow 总流量、趋势、协议分布、TopN、会话与通信关系。
   other:
     timeSelector:
       selectValue: 360
@@ -664,7 +664,8 @@ datasources:
   - key: enabled_protocols
     title: 已启用协议
     value_type: string
-  namespace_keys: []
+  namespace_keys:
+  - 默认命名空间
 - key: 受控指标趋势::monitor/query_metric_series
   name: 受控指标趋势
   rest_api: monitor/query_metric_series
@@ -721,7 +722,8 @@ datasources:
   - line
   - bar
   field_schema: []
-  namespace_keys: []
+  namespace_keys:
+  - 默认命名空间
 - key: 受控指标排行::monitor/query_metric_series
   name: 受控指标排行
   rest_api: monitor/query_metric_series
@@ -828,5 +830,14 @@ datasources:
   - key: protocol
     title: 协议
     value_type: string
-  namespace_keys: []
-namespaces: []
+  namespace_keys:
+  - 默认命名空间
+namespaces:
+- key: 默认命名空间
+  name: 默认命名空间
+  domain: 10.10.41.149:4222
+  namespace: bklite_hong_local
+  account: admin
+  password: '******'
+  enable_tls: true
+  desc: 系统初始化创建的默认命名空间

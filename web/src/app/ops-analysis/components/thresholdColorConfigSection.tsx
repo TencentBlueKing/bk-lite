@@ -40,13 +40,13 @@ export const ThresholdColorConfigSection: React.FC<
       label={label ?? t('topology.nodeConfig.thresholdColors')}
       extra={extra}
     >
-      <div className="rounded-md border border-(--color-border-1) bg-(--color-fill-1) px-3 py-2">
+      <div className="rounded-xl bg-(--color-fill-1)/30 p-3">
         {thresholdColors.map((threshold, index) => {
           const isBaseThreshold = index === thresholdColors.length - 1;
           return (
             <div key={index} className="flex items-center gap-2 py-1.5">
               <div className="flex items-center gap-3">
-                <span className="text-sm text-gray-600 whitespace-nowrap">
+                <span className="text-xs text-(--color-text-2) whitespace-nowrap">
                   {t('topology.nodeConfig.thresholdWhenValueGte')}
                 </span>
                 <InputNumber
@@ -66,7 +66,7 @@ export const ThresholdColorConfigSection: React.FC<
                   size="small"
                   min={0}
                 />
-                <span className="text-sm text-gray-600">
+                <span className="text-xs text-(--color-text-2)">
                   {t('topology.nodeConfig.thresholdShow')}
                 </span>
               </div>

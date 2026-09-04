@@ -1,19 +1,38 @@
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { MenuItem } from '@/types/index';
 import AppTopSideNav from '../index';
 
 let currentPath = '/job/execution/quick-exec';
+let sideNavMode: 'expanded' | 'collapsed' = 'expanded';
+const setSideNav = vi.fn();
 
 vi.mock('next/navigation', () => ({
   usePathname: () => currentPath,
 }));
 
+vi.mock('@/utils/i18n', () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
+}));
+
 vi.mock('@/components/icon', () => ({
   default: ({ type }: { type: string }) => <span data-testid={`icon-${type}`} />,
 }));
+
+vi.mock('@/console-layout', async () => {
+  const actual = await vi.importActual<typeof import('@/console-layout')>('@/console-layout');
+  return {
+    ...actual,
+    useConsoleLayout: () => ({
+      layout: 'app-top',
+      setLayout: vi.fn(),
+      sideNav: sideNavMode,
+      setSideNav,
+    }),
+  };
+});
 
 const menu = (item: Partial<MenuItem> & Pick<MenuItem, 'name' | 'url'>): MenuItem => ({
   title: item.title || item.name,
@@ -43,6 +62,8 @@ const opspilotMenus: MenuItem[] = [
 afterEach(() => {
   cleanup();
   currentPath = '/job/execution/quick-exec';
+  sideNavMode = 'expanded';
+  setSideNav.mockReset();
 });
 
 describe('AppTopSideNav', () => {
@@ -58,10 +79,10 @@ describe('AppTopSideNav', () => {
     render(<AppTopSideNav menus={menus} pathname="/job/execution/quick-exec" />);
     expect(screen.queryByText('作业管理')).toBeNull();
     expect(screen.queryByAltText('logo')).toBeNull();
-    expect(screen.getByTestId('app-top-side-nav').style.width).toBe('240px');
+    expect(screen.getByTestId('app-top-side-nav').style.width).toBe('200px');
     expect(screen.getByTestId('app-top-side-nav').className).toContain('h-full');
     expect(screen.getByTestId('app-top-side-nav').className).toContain('self-stretch');
-    expect(screen.getByTestId('app-top-side-nav').className).toContain('color-bg-1');
+    expect(screen.getByTestId('app-top-side-nav-panel').className).toContain('color-bg-1');
     expect(screen.getByTestId('app-top-side-nav').className).not.toContain('border-r');
     expect(screen.getByTestId('app-top-side-nav-menu').className).not.toContain('border-r');
     expect(screen.getByTestId('app-top-side-nav-menu').className).toContain('main-content');
@@ -87,5 +108,69 @@ describe('AppTopSideNav', () => {
     render(<AppTopSideNav menus={opspilotMenus} pathname={currentPath} />);
     expect(screen.getByRole('link', { name: '工作台' }).className).toContain('nav-button-bg-active');
     expect(screen.getByRole('link', { name: '知识库' }).className).not.toContain('nav-button-bg-active');
+  });
+
+  it('links container menus to the first leaf instead of a redirect stub', () => {
+    render(<AppTopSideNav menus={menus} pathname="/job/execution/quick-exec" />);
+    expect(screen.getByRole('link', { name: '作业执行' }).getAttribute('href')).toBe(
+      '/job/execution/quick-exec',
+    );
+    expect(screen.getByRole('link', { name: '首页' }).getAttribute('href')).toBe('/job/home');
+  });
+
+  it('collapses from the footer toggle and persists through the console layout', () => {
+    render(<AppTopSideNav menus={opspilotMenus} pathname="/opspilot/wiki" />);
+    fireEvent.click(screen.getByRole('button', { name: 'common.collapseSideNav' }));
+    expect(setSideNav).toHaveBeenCalledWith('collapsed');
+  });
+
+  it('keeps only icons in the collapsed rail and labels the links for assistive tech', () => {
+    sideNavMode = 'collapsed';
+    render(<AppTopSideNav menus={opspilotMenus} pathname="/opspilot/wiki" />);
+    const rail = screen.getByTestId('app-top-side-nav');
+    expect(rail.style.width).toBe('56px');
+    expect(rail.dataset.sideNav).toBe('collapsed');
+    expect(screen.getByTestId('app-top-side-nav-panel').style.width).toBe('56px');
+    expect(screen.queryByText('工作台')).toBeNull();
+    expect(screen.getByRole('link', { name: '工作台' })).toBeTruthy();
+    expect(screen.getByTestId('icon-jiqiren2')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'common.expandSideNav' })).toBeTruthy();
+  });
+
+  it('flies out on hover without widening the rail, then hides again on leave', () => {
+    sideNavMode = 'collapsed';
+    render(<AppTopSideNav menus={opspilotMenus} pathname="/opspilot/wiki" />);
+    const rail = screen.getByTestId('app-top-side-nav');
+    fireEvent.mouseEnter(rail);
+    const panel = screen.getByTestId('app-top-side-nav-panel');
+    expect(rail.style.width).toBe('56px');
+    expect(panel.style.width).toBe('200px');
+    expect(panel.dataset.flyout).toBe('true');
+    expect(panel.className).toContain('absolute');
+    expect(panel.className).toContain('4px_0_6px');
+    expect(panel.className).not.toContain('0_4px_12px');
+    expect(screen.getByText('工作台')).toBeTruthy();
+    expect(setSideNav).not.toHaveBeenCalled();
+
+    fireEvent.mouseLeave(rail);
+    expect(screen.getByTestId('app-top-side-nav-panel').style.width).toBe('56px');
+    expect(screen.queryByText('工作台')).toBeNull();
+  });
+
+  it('opens the flyout when the pointer moves onto another icon after collapsing in place', () => {
+    sideNavMode = 'collapsed';
+    render(<AppTopSideNav menus={opspilotMenus} pathname="/opspilot/wiki" />);
+    expect(screen.getByTestId('app-top-side-nav-panel').style.width).toBe('56px');
+    fireEvent.mouseMove(screen.getByRole('link', { name: '知识库' }));
+    expect(screen.getByTestId('app-top-side-nav-panel').style.width).toBe('200px');
+    expect(screen.getByText('知识库')).toBeTruthy();
+  });
+
+  it('expands for real when the flyout toggle is clicked', () => {
+    sideNavMode = 'collapsed';
+    render(<AppTopSideNav menus={opspilotMenus} pathname="/opspilot/wiki" />);
+    fireEvent.mouseEnter(screen.getByTestId('app-top-side-nav'));
+    fireEvent.click(screen.getByRole('button', { name: 'common.expandSideNav' }));
+    expect(setSideNav).toHaveBeenCalledWith('expanded');
   });
 });
