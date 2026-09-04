@@ -2684,15 +2684,7 @@ class ToolsNodes(
                 return {"messages": without_system_messages(original_messages) + [summary]}
 
             def _step_summary(messages: List[BaseMessage]) -> str:
-                for message in reversed(messages):
-                    if isinstance(message, AIMessage):
-                        text = str(message.content or "").strip()
-                        if text:
-                            return text[:1200]
-                for message in reversed(messages):
-                    if isinstance(message, ToolMessage):
-                        return str(message.content or "")[:1200]
-                return "步骤已完成"
+                return self._summarize_planned_step_messages(messages)
 
             def _resolve_step_tools(step_tool_names: List[str]) -> list:
                 selected = [tool_by_name[name] for name in step_tool_names if name in tool_by_name]
@@ -2758,7 +2750,11 @@ class ToolsNodes(
                         step_guidance = "\n" + self._skill_only_step_guidance(skill_packages)
                     else:
                         is_last_step = not pending_steps
-                        step_guidance = "\n" + self._planned_tool_step_guidance(is_last_step=is_last_step)
+                        step_guidance = "\n" + self._planned_tool_step_guidance(
+                            is_last_step=is_last_step,
+                            user_message=planning_question,
+                            agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
+                        )
                     step_message = _internal_message(
                         f"执行计划当前步骤：{step.objective}\n"
                         f"本步骤计划工具：{', '.join(step.tools) or '无'}。\n"
@@ -3076,9 +3072,10 @@ class ToolsNodes(
                     final_message = _internal_message(
                         f"工具执行计划目标：{plan.goal or planning_question}\n"
                         f"已完成步骤及结果：\n{completed_text}\n\n"
-                        "现在向用户给出最终答案。当前没有可用工具，不要继续调用工具；"
-                        "请基于已有证据直接总结结论、依据和下一步建议。"
-                        "禁止再输出 Markdown 表格或重复名单；用户若已看过步骤结果，最多补一两句。"
+                        + self._planned_summary_guidance(
+                            user_message=planning_question,
+                            agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
+                        )
                     )
                 if final_message is not None:
                     summary_ran = True

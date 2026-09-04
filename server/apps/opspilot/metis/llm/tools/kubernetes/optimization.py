@@ -6,8 +6,8 @@ from kubernetes import client
 from kubernetes.client import ApiException
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from loguru import logger
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.tools.kubernetes.instance_scope import prepare_point_instance
 from apps.opspilot.metis.llm.tools.kubernetes.utils import coerce_int, parse_resource_quantity, prepare_context
 
@@ -365,10 +365,15 @@ _PROBE_TYPE_ALIASES = {
     "pod": "pod",
     "deploy": "deployment",
     "deployment": "deployment",
+    "rs": "replicaset",
+    "replicaset": "replicaset",
     "sts": "statefulset",
     "statefulset": "statefulset",
 }
-_PROBE_KIND_LABELS = {"pod": "Pod", "deployment": "Deployment", "statefulset": "StatefulSet"}
+_PROBE_KIND_LABELS = {"pod": "Pod", "deployment": "Deployment", "replicaset": "ReplicaSet", "statefulset": "StatefulSet"}
+_PROBE_NOT_FOUND_TEMPLATE = "event=k8s_probe_validate_not_found kind=%s namespace=%s name=%s"
+_PROBE_FALLBACK_TEMPLATE = "event=k8s_probe_validate_not_found kind=%s namespace=%s name=%s fallback=%s"
+_PROBE_FAILED_TEMPLATE = "event=k8s_probe_validate_failed failed_stage=%s error_type=%s kind=%s namespace=%s name=%s status=%s"
 
 
 def _resolve_probe_target(deployment_name, namespace, resource_type, resource_name):
@@ -383,7 +388,7 @@ def _resolve_probe_target(deployment_name, namespace, resource_type, resource_na
                 None,
                 {
                     "error": f"暂不支持资源类型: {resource_type}",
-                    "supported_types": ["pod", "deployment", "statefulset"],
+                    "supported_types": ["pod", "deployment", "replicaset", "statefulset"],
                 },
             )
         name = resource_name or deployment_name
@@ -402,9 +407,27 @@ def _read_probe_containers(kind, name, namespace):
     apps_v1 = client.AppsV1Api()
     if kind == "statefulset":
         workload = apps_v1.read_namespaced_stateful_set(name, namespace)
+    elif kind == "replicaset":
+        workload = apps_v1.read_namespaced_replica_set(name, namespace)
     else:
         workload = apps_v1.read_namespaced_deployment(name, namespace)
     return list(workload.spec.template.spec.containers or [])
+
+
+def _read_probe_containers_with_fallback(kind, name, namespace):
+    """Deployment 404 时再读同名 ReplicaSet（告警对象常是带哈希的 RS 名）。"""
+    try:
+        return kind, _read_probe_containers(kind, name, namespace)
+    except ApiException as exc:
+        if exc.status != 404 or kind != "deployment":
+            raise
+        logger.debug(_PROBE_FALLBACK_TEMPLATE, kind, namespace, name, "replicaset")
+        try:
+            return "replicaset", _read_probe_containers("replicaset", name, namespace)
+        except ApiException as fallback_exc:
+            if fallback_exc.status == 404:
+                raise exc
+            raise fallback_exc
 
 
 @tool()
@@ -441,7 +464,7 @@ def validate_probe_configuration(
     Args:
         deployment_name (str, optional): Deployment 名称；未传 resource_type 时按 Deployment 读取
         namespace (str): 命名空间（必填）
-        resource_type (str, optional): pod / deployment / statefulset（及 po/sts 别名）
+        resource_type (str, optional): pod / deployment / replicaset / statefulset（及 po/rs/sts 别名）
         resource_name (str, optional): 资源名称；与 resource_type 一起使用，可替代 deployment_name
         config (RunnableConfig): 工具配置（自动传递）
 
@@ -481,13 +504,14 @@ def validate_probe_configuration(
         return json.dumps(target_error, ensure_ascii=False)
 
     try:
-        logger.info(f"验证探针配置: {kind} {namespace}/{name}")
+        logger.debug("event=k8s_probe_validate_start kind=%s namespace=%s name=%s", kind, namespace, name)
 
         containers_analysis = []
         issues = []
         recommendations = []
 
-        for container in _read_probe_containers(kind, name, namespace):
+        kind, containers = _read_probe_containers_with_fallback(kind, name, namespace)
+        for container in containers:
             container_analysis = {
                 "container_name": container.name,
                 "liveness_probe": None,
@@ -561,15 +585,31 @@ def validate_probe_configuration(
             "overall_status": "good" if len(issues) == 0 else "needs_improvement",
         }
 
-        logger.info(f"探针配置验证完成: {probe_score}/{total_score}")
+        logger.debug(
+            "event=k8s_probe_validate_done kind=%s namespace=%s name=%s probe_score=%s total_score=%s",
+            kind,
+            namespace,
+            name,
+            probe_score,
+            total_score,
+        )
         return json.dumps(result, ensure_ascii=False, indent=2)
 
     except ApiException as e:
-        logger.error(f"验证探针配置失败: {str(e)}")
         if e.status == 404:
+            logger.debug(_PROBE_NOT_FOUND_TEMPLATE, kind, namespace, name)
             kind_label = _PROBE_KIND_LABELS.get(kind, kind)
-            return json.dumps({"error": f"{kind_label}不存在: {namespace}/{name}"})
-        return json.dumps({"error": f"验证探针配置失败: {str(e)}"})
+            return json.dumps({"error": f"{kind_label}不存在: {namespace}/{name}", "status_code": 404})
+        logger.error(
+            _PROBE_FAILED_TEMPLATE,
+            "read_probe_containers",
+            type(e).__name__,
+            kind,
+            namespace,
+            name,
+            e.status,
+        )
+        return json.dumps({"error": f"验证探针配置失败: HTTP {e.status}", "status_code": e.status})
 
 
 def _get_probe_type(probe):

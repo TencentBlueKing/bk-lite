@@ -4,8 +4,9 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, ToolMessage
 
+from apps.opspilot.metis.llm.agent.tool_execution_planner import is_pod_restart_reason_query
 from apps.opspilot.metis.llm.chain.entity import HIDE_PLANNED_STEP_TEXT_KEY
 
 
@@ -60,6 +61,10 @@ class DeepAgentAssemblyMixin:
     _MARKDOWN_TABLE_RE = re.compile(r"\|[^\n]+\|\s*\n\s*\|?\s*:?-{3,}", re.MULTILINE)
 
     _STEP_STUB_RE = re.compile(r"^执行结果\s*\d+\s*$")
+    _EVIDENCE_NOTE_RE = re.compile(r"日志获取完成|关键证据确认|证据链已闭环|本步证据")
+    _INVESTIGATION_DUMP_RE = re.compile(r"事件描述|事件总结|涉及对象清单|异常对象名单|链路分析|数据分析|调查结论|诊断结论")
+    _RCA_REQUIRED_HEADINGS = ("事件概述", "异常对象清单", "根因分析", "修复建议")
+    _RESTART_REASON_REQUIRED_HEADINGS = ("对象与结论", "证据", "原因")
     HIDE_PLANNED_STEP_TEXT_KEY = HIDE_PLANNED_STEP_TEXT_KEY
 
     @classmethod
@@ -78,9 +83,96 @@ class DeepAgentAssemblyMixin:
         return any(cls._MARKDOWN_TABLE_RE.search(text) for text in cls._iter_planned_assistant_text(messages))
 
     @classmethod
+    def _looks_like_repeated_investigation(cls, text: str) -> bool:
+        """同一份正文里反复贴事件/清单/结论，还不是一份终稿。"""
+        body = text or ""
+        return body.count("事件概述") >= 2 or body.count("事件描述") >= 2 or body.count("调查结论") >= 2 or body.count("异常对象清单") >= 2
+
+    @classmethod
+    def _looks_like_complete_rca_report(cls, text: str) -> bool:
+        """助手「输出格式」：以 RCA 报告为标题，含事件概述/清单/根因/修复，且未重复粘贴。"""
+        body = text or ""
+        if "RCA 报告" not in body:
+            return False
+        if cls._looks_like_repeated_investigation(body):
+            return False
+        return all(heading in body for heading in cls._RCA_REQUIRED_HEADINGS)
+
+    @classmethod
+    def _looks_like_complete_restart_reason_report(cls, text: str) -> bool:
+        """重启原因助手终稿：时间基准可省略，禁止套告警 RCA 标题。"""
+        body = text or ""
+        if "RCA 报告" in body:
+            return False
+        if cls._looks_like_repeated_investigation(body):
+            return False
+        return all(heading in body for heading in cls._RESTART_REASON_REQUIRED_HEADINGS)
+
+    @staticmethod
+    def _planned_report_mode(*, user_message: str = "", agent_system_prompt: str = "") -> str:
+        """分步终稿模板：重启原因 / 告警 RCA / 其它，互不套用。"""
+        prompt = agent_system_prompt or ""
+        if is_pod_restart_reason_query(user_message, prompt):
+            return "restart_reason"
+        if "Kubernetes 集群 RCA 助手" in prompt or "告警怎么读" in prompt:
+            return "alert_rca"
+        if "输出格式" in prompt and "RCA 报告" in prompt:
+            return "alert_rca"
+        return "default"
+
+    @classmethod
+    def _looks_like_step_investigation_dump(cls, text: str) -> bool:
+        """分步调查草稿（事件描述/链路分析/调查结论），不是输出格式里的 RCA。"""
+        body = text or ""
+        if cls._looks_like_complete_rca_report(body):
+            return False
+        return bool(cls._INVESTIGATION_DUMP_RE.search(body))
+
+    @classmethod
+    def _looks_like_evidence_note(cls, text: str) -> bool:
+        """取证过程要点或调查草稿，还不是助手「输出格式」里的完整 RCA 报告。"""
+        body = text or ""
+        if cls._looks_like_complete_rca_report(body) or cls._looks_like_complete_restart_reason_report(body):
+            return False
+        if cls._looks_like_step_investigation_dump(body) or cls._looks_like_repeated_investigation(body):
+            return True
+        return bool(cls._EVIDENCE_NOTE_RE.search(body))
+
+    @classmethod
+    def _summarize_planned_step_messages(cls, messages) -> str:
+        """步间摘要：调查草稿改留工具结果，避免后续步把整份报告再贴一遍。"""
+        ai_text = ""
+        for message in reversed(list(messages or [])):
+            if isinstance(message, AIMessage) and not getattr(message, "tool_calls", None):
+                ai_text = str(getattr(message, "content", "") or "").strip()
+                if ai_text:
+                    break
+        if ai_text and not cls._looks_like_evidence_note(ai_text) and not cls._looks_like_step_investigation_dump(ai_text):
+            return ai_text[:1200]
+        tool_bits: list[str] = []
+        for message in messages or []:
+            if not isinstance(message, ToolMessage):
+                continue
+            name = str(getattr(message, "name", "") or "tool")
+            tool_bits.append(f"{name}: {str(getattr(message, 'content', '') or '')[:400]}")
+        if tool_bits:
+            return "；".join(tool_bits)[:1200]
+        if ai_text:
+            return ai_text[:200]
+        return "步骤已完成"
+
+    @classmethod
     def _planned_step_already_answered(cls, messages) -> bool:
         """步骤已写出给用户看的正文时，跳过总结轮，避免再复述一遍。"""
         for text in reversed(list(cls._iter_planned_assistant_text(messages))):
+            if cls._looks_like_evidence_note(text):
+                return False
+            if cls._looks_like_complete_rca_report(text):
+                return True
+            if cls._looks_like_complete_restart_reason_report(text):
+                return True
+            if any(heading in text for heading in cls._RCA_REQUIRED_HEADINGS):
+                return False
             if cls._MARKDOWN_TABLE_RE.search(text):
                 return True
             if cls._STEP_STUB_RE.match(text):
@@ -94,6 +186,9 @@ class DeepAgentAssemblyMixin:
         if not cls._planned_step_already_answered(messages):
             return False
         if completed_step_count <= 1:
+            return True
+        texts = list(cls._iter_planned_assistant_text(messages))
+        if any(cls._looks_like_complete_rca_report(text) or cls._looks_like_complete_restart_reason_report(text) for text in texts):
             return True
         return cls._planned_output_has_markdown_table(messages)
 
@@ -189,20 +284,97 @@ class DeepAgentAssemblyMixin:
             f"可用脚本：\n{hint_lines}"
         )
 
-    @staticmethod
-    def _planned_tool_step_guidance(*, is_last_step: bool = False) -> str:
+    _K8S_CLOCK_RULES = (
+        "仅当用户问今天或某时间窗的重启次数（不是告警 RCA）时："
+        "累计 restart_count 不是该时间窗次数，禁止写成「今天重启了 N 次」；此时只保留一张表，口径必须对齐该时间窗。"
+        "用户问按重启时间排序或最近重启的 Pod 时，以 last_restart_time 为准，禁止按累计 restart_count 排序。"
+        "若与前面累计名单矛盾，只保留时间窗结论，不要再贴口径不同的第二张表。"
+    )
+
+    @classmethod
+    def _planned_last_step_tail(cls, *, user_message: str = "", agent_system_prompt: str = "") -> str:
+        mode = cls._planned_report_mode(user_message=user_message, agent_system_prompt=agent_system_prompt)
+        if mode == "restart_reason":
+            return (
+                "本步给出用户可见的最终答案，只输出一份重启原因报告，不要按排查步骤重复粘贴。"
+                "按助手约定写：时间基准、对象与结论、证据、原因、建议与待确认；证据没有的章节可省略。"
+                "禁止写「# RCA 报告」，禁止套告警复盘的事件概述、异常对象清单、根因分析、修复建议模板。"
+                "标题之前不要写定位说明、步骤结果或客套话。"
+                "禁止输出「事件描述」「事件总结」「涉及对象清单」「异常对象名单」「链路分析」「数据分析」「调查结论」「诊断结论」。"
+                "禁止改成「日志获取完成」「关键证据确认」这类要点列表。"
+                "解读 collect_pod_restart_evidence：死因看 finished_at、last_state、events 和 previous_tail，不要把当前轮尾巴当上一轮死因。"
+                f"{cls._K8S_CLOCK_RULES}"
+            )
+        if mode == "alert_rca":
+            return (
+                "本步给出用户可见的最终答案，只输出一份报告，不要按排查步骤重复粘贴。"
+                "必须以「# RCA 报告」作为第一行，然后按系统提示「输出格式」写完整中文 Markdown，章节顺序为："
+                "事件概述、异常对象清单、根因分析、修复建议、待确认项。"
+                "标题之前不要写定位说明、步骤结果或客套话。"
+                "异常对象清单必须是 Markdown 表，列名为：对象、状态/现象、重启次数、关键事件、是否已定位。"
+                "禁止输出「事件描述」「事件总结」「涉及对象清单」「异常对象名单」「链路分析」「数据分析」「调查结论」「诊断结论」。"
+                "禁止改成「日志获取完成」「关键证据确认」这类要点列表。"
+                "已知具体 Pod 的重启原因时，以 diagnose 的 last_state、previous 日志和定点事件为准，不要把当前轮日志当成上一轮死因。"
+                f"{cls._K8S_CLOCK_RULES}"
+            )
+        return (
+            "本步给出用户可见的最终答案，只输出一份报告，不要按排查步骤重复粘贴。"
+            "按系统提示写最终答案，不要套「# RCA 报告」或「事件概述 / 异常对象清单」告警复盘模板。"
+            "标题之前不要写定位说明、步骤结果或客套话。"
+            "禁止输出「事件描述」「事件总结」「涉及对象清单」「异常对象名单」「链路分析」「数据分析」「调查结论」「诊断结论」。"
+            "禁止改成「日志获取完成」「关键证据确认」这类要点列表。"
+            "已知具体 Pod 的重启原因时，以 last_state、previous 日志和定点事件为准，不要把当前轮日志当成上一轮死因。"
+            f"{cls._K8S_CLOCK_RULES}"
+        )
+
+    @classmethod
+    def _planned_summary_guidance(cls, *, user_message: str = "", agent_system_prompt: str = "") -> str:
+        mode = cls._planned_report_mode(user_message=user_message, agent_system_prompt=agent_system_prompt)
+        if mode == "restart_reason":
+            return (
+                "现在向用户给出最终答案。当前没有可用工具，不要继续调用工具。"
+                "按助手约定写一份重启原因报告：时间基准、对象与结论、证据、原因、建议与待确认；没有的章节可省略。"
+                "禁止写「# RCA 报告」或告警复盘的事件概述、异常对象清单。"
+                "标题之前不要写定位说明或步骤结果。"
+                "若步骤里已经写过完整重启原因报告，不要重写，最多一两句。"
+                "禁止再贴互相矛盾的名单；累计 restart_count 不要写成时间窗次数。"
+            )
+        if mode == "alert_rca":
+            return (
+                "现在向用户给出最终答案。当前没有可用工具，不要继续调用工具。"
+                "必须以「# RCA 报告」作为第一行，再按"
+                "「事件概述、异常对象清单、根因分析、修复建议、待确认项」只写一份完整 Markdown 报告，"
+                "异常对象清单表必须保留；标题之前不要写定位说明或步骤结果。"
+                "不要写事件描述、涉及对象清单、链路分析、调查结论；不要重复粘贴多份同类章节。"
+                "禁止改成「日志获取完成」「关键证据确认」要点列表。"
+                "若步骤里已经写过以「# RCA 报告」起笔且未重复粘贴的完整报告，不要重写，最多一两句。"
+                "禁止再贴互相矛盾的名单；累计 restart_count 不要写成时间窗次数。"
+            )
+        return (
+            "现在向用户给出最终答案。当前没有可用工具，不要继续调用工具。"
+            "按系统提示写最终答案，不要套「# RCA 报告」告警复盘模板。"
+            "不要写事件描述、涉及对象清单、链路分析、调查结论；不要重复粘贴多份同类章节。"
+            "禁止改成「日志获取完成」「关键证据确认」要点列表。"
+            "若步骤里已经写过完整答案，不要重写，最多一两句。"
+            "禁止再贴互相矛盾的名单；累计 restart_count 不要写成时间窗次数。"
+        )
+
+    @classmethod
+    def _planned_tool_step_guidance(
+        cls,
+        *,
+        is_last_step: bool = False,
+        user_message: str = "",
+        agent_system_prompt: str = "",
+    ) -> str:
         """业务工具步：与技能步共用停手契约，但不收掉本步多个计划工具。"""
         if is_last_step:
-            tail = (
-                "本步给出用户可见的最终答案：只保留一张表，口径必须对齐用户问题。"
-                "用户问今天或某时间窗时，以事件时间线为准；累计 restart_count 不是该时间窗次数，禁止写成「今天重启了 N 次」。"
-                "用户问按重启时间排序或最近重启的 Pod 时，以 last_restart_time 为准，禁止按累计 restart_count 排序。"
-                "已知具体 Pod 的重启原因时，以 diagnose 的 last_state、previous 日志和定点事件为准，不要把当前轮日志当成上一轮死因。"
-                "若与前面累计名单矛盾，只保留时间窗结论，不要再贴口径不同的第二张表。"
-            )
+            tail = cls._planned_last_step_tail(user_message=user_message, agent_system_prompt=agent_system_prompt)
         else:
             tail = (
                 "本步证据只给后续步骤用，不要输出 Markdown 表或最终结论。"
+                "不要写事件概述、事件描述、异常对象清单、根因分析、修复建议、调查结论。"
+                "一两句话说明本步拿到了什么即可。"
                 "用户问今天或某时间窗时，禁止把累计 restart_count 写成该时间窗的次数。"
                 "用户问按重启时间排序或最近重启的 Pod 时，以 last_restart_time 为准，禁止按累计 restart_count 排序。"
                 "已知具体 Pod 的重启原因时，优先看 last_state 和 previous 日志。"
@@ -211,6 +383,7 @@ class DeepAgentAssemblyMixin:
             "【工具执行】只调用本步骤计划/可见工具。"
             "未计划工具会被拒绝，不要改调其他工具，也不要当作步骤失败去重规划。"
             "工具已返回结构化结果（含空列表）即终态，不要把空当失败反复换参。"
+            "日志工具对同一 Pod 只调用一次；返回截断、压缩、空日志或没有 previous 都是有效证据，禁止降低 lines 重试。"
             "resolve_k8s_target_from_alert 对同一参数只调用一次；返回 resolved=false、"
             "lookup_exhausted 或 namespace 为空时不要重试，直接结束本步。"
             "401、kubeconfig 无效、连接参数缺失或解密失败时不要改参重试，把错误原样告诉用户并结束本步。"
