@@ -385,8 +385,8 @@ BK-Lite Web 已启用 Tailwind。**布局、间距、对齐的默认且优先表
 - **Pagination:** 默认 20 条，提供 10 / 20 / 50 / 100，显示总数。
 
 ### Navigation
-- **Top Menu:** 顶栏背景跟随主题，active 使用 `var(--color-primary)` 或 active 背景。图标使用统一图标库，不手绘临时 SVG。
-- **Side Menu:** 侧栏默认 `var(--color-components-side-nav-bg)`，hover 用 `var(--color-components-side-nav-hover-bg)`，active 用 `var(--color-components-side-nav-text-active-bg)`。
+- **Top Menu:** 顶栏背景跟随主题，active 使用 `var(--color-primary)` 或 active 背景。图标使用统一图标库，不手绘临时 SVG。应用顶栏（app-top）列出全部应用，空间不够时在顶栏内左右滚动，溢出侧只用小箭头提示，不要「详情 / 更多」文字。
+- **Side Menu:** 侧栏默认 `var(--color-components-side-nav-bg)`，hover 用 `var(--color-components-side-nav-hover-bg)`，active 用 `var(--color-components-side-nav-text-active-bg)`。app-top 左栏 200px，可从底部图标按钮收起为 56px 纯图标栏；收起后移入只是浮出完整导航（不挤内容），点展开才真正占位。
 - **Segmented:** 二级视图切换优先用 AntD Segmented 或项目 `sub-layout` 约定，保持 `gap-2` 节奏。
 
 ### Modals / Drawers

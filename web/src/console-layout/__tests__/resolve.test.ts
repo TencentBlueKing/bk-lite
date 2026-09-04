@@ -5,6 +5,7 @@ import {
   buildAppTopSideNavGroups,
   countVisibleAppSlots,
   findActiveApp,
+  getAppStripOverflow,
   isConsoleChromeException,
   isDetailChromeContext,
   resolveAppNavigation,
@@ -160,5 +161,13 @@ describe('console chrome layout resolve', () => {
     expect(countVisibleAppSlots(500, 3)).toBe(3);
     expect(countVisibleAppSlots(400, 3)).toBe(2);
     expect(countVisibleAppSlots(200, 8)).toBe(1);
+  });
+
+  it('detects which side of an app strip can still scroll', () => {
+    expect(getAppStripOverflow(0, 0, 800)).toEqual({ left: false, right: false });
+    expect(getAppStripOverflow(0, 400, 400)).toEqual({ left: false, right: false });
+    expect(getAppStripOverflow(0, 400, 900)).toEqual({ left: false, right: true });
+    expect(getAppStripOverflow(240, 400, 900)).toEqual({ left: true, right: true });
+    expect(getAppStripOverflow(500, 400, 900)).toEqual({ left: true, right: false });
   });
 });
