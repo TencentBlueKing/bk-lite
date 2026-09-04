@@ -26,7 +26,7 @@ export interface MonitorSource {
 /** WeOps 节点库条目(API 字段直传,不重命名)。 */
 export interface NetworkNodeLibraryItem {
   bk_obj_id: string;
-  bk_inst_uuid: string;
+  bk_inst_id: number;
   bk_inst_name: string;
   ip_addr?: string;
   collect_status?: string;
@@ -43,7 +43,7 @@ export interface NetworkNodeModel {
 export interface NetworkTopologyNode {
   id: string;
   bk_obj_id: string;
-  bk_inst_uuid: string;
+  bk_inst_id: number;
   bk_inst_name: string;
   ip_addr?: string;
   network_collect_task_id: number;
@@ -60,7 +60,7 @@ export interface NetworkTopologyNode {
 /** 端口引用(显式配对的 source/target)。 */
 export interface NetworkInterfaceRef {
   bk_obj_id: 'bk_interface';
-  bk_inst_uuid: string;
+  bk_inst_id: number;
   interface_name: string;
 }
 
@@ -144,7 +144,7 @@ export interface NetworkTopologyConfig {
 export interface NetworkInterfaceRuntime {
   request_id?: string;
   endpoint?: 'source' | 'target';
-  bk_inst_uuid?: string;
+  bk_inst_id?: number;
   interface_name?: string;
   source_node_key?: string;
   target_node_key?: string;
@@ -184,7 +184,7 @@ export interface NetworkMetricRuntime {
 export interface NetworkNodeRuntime {
   /**
    * 与画布内 `NetworkTopologyNode.id` 一致 —— 即
-   * `bk_obj_id:bk_inst_uuid` 形式（见 buildNetworkNodeClientId）。
+   * `bk_obj_id:bk_inst_id` 形式（见 buildNetworkNodeClientId）。
    * 后端 runtime 端点在每个节点上输出此字段，索引时用此字段做 key。
    */
   id: string;

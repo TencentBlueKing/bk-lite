@@ -2008,6 +2008,17 @@ def _resolve_monitor_ingest_allowed_org_ids(params):
 
 
 @nats_client.register
+def query_active_alert_summaries_by_monitor_ids(monitor_ids=None, user_info=None, **kwargs):
+    """Batch active-alert summaries for room3D / similar CMDB callers.
+
+    Only status=new alerts under actor-accessible policies; levels critical|error|warning.
+    """
+    from apps.monitor.services.active_alert_summaries import summarize_active_alerts_by_monitor_ids
+
+    return summarize_active_alerts_by_monitor_ids(monitor_ids, user_info=user_info or {})
+
+
+@nats_client.register
 def monitor_ingest_from_source(params):
     """跨模块推送写入监控（node_id → cmdb_id → ip+cloud）。
 

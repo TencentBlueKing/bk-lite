@@ -19,21 +19,25 @@ export const NodeGraphSettingsSection: React.FC<NodeGraphSettingsSectionProps> =
 }) => {
   const identityMode = Form.useWatch('nodeGraphIdentityMode') || 'ip';
   const resolvedSectionTitle =
-    sectionTitle || t('topology.nodeConfig.dataSettings');
+    sectionTitle !== undefined
+      ? sectionTitle
+      : t('topology.nodeConfig.dataSettings');
 
   return (
     <div className="mb-6">
       <div className="mb-6">
-        <div className="font-medium mb-4">{resolvedSectionTitle}</div>
+        {resolvedSectionTitle ? (
+          <div className="font-medium mb-4">{resolvedSectionTitle}</div>
+        ) : null}
 
         {!selectedDataSource ? (
-          <div className="text-center py-4 text-gray-500">
+          <div className="text-center py-4 text-xs text-(--color-text-3)">
             {t('topology.nodeConfig.selectDataSourceFirst')}
           </div>
         ) : null}
 
         {selectedDataSource && fieldOptions.length === 0 ? (
-          <div className="text-center py-4 text-gray-500">
+          <div className="text-center py-4 text-xs text-(--color-text-3)">
             {t('topology.nodeConfig.noAvailableFields')}
           </div>
         ) : null}

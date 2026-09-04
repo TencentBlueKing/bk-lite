@@ -52,7 +52,7 @@ interface RackInteractionState {
 interface PickedRoomObject {
   rackId: string;
   deviceId?: string;
-  target?: "rack" | "door" | "device";
+  target?: "rack" | "device";
 }
 
 interface PointerCoordinates {
@@ -121,15 +121,6 @@ export const resolveRoomObjectClickState = (
         normalized.selectedDeviceId === clicked.deviceId
           ? ""
           : clicked.deviceId,
-    };
-  }
-
-  if (clicked.target === "door") {
-    const willCloseDoor = normalized.openRackId === clicked.rackId;
-    return {
-      selectedRackId: willCloseDoor ? "" : clicked.rackId,
-      openRackId: willCloseDoor ? "" : clicked.rackId,
-      selectedDeviceId: "",
     };
   }
 
@@ -510,7 +501,6 @@ export const createRoom3DScene = (
       setRackVisualState(visual, {
         hovered: rackId === hoveredRackId,
         selected: rackId === selectedRackId,
-        open: rackId === openRackId,
         selectedDeviceId,
       });
     });
@@ -524,24 +514,8 @@ export const createRoom3DScene = (
     raycaster.setFromCamera(pointer, camera);
     const hits = raycaster.intersectObjects(pickTargets, false);
     const firstHit = hits[0];
-    const deviceHit = hits.find((item) => {
-      const rack = item.object.userData?.rack as Room3DRack | undefined;
-      return Boolean(
-        rack?.rack_id === openRackId && item.object.userData?.device,
-      );
-    });
-    const openRackInteriorHit = hits.find((item) => {
-      const rack = item.object.userData?.rack as Room3DRack | undefined;
-      return Boolean(
-        rack?.rack_id === openRackId &&
-        item.object.userData?.clickTarget === "rack",
-      );
-    });
-    const hit =
-      deviceHit ||
-      (firstHit?.object.userData?.clickTarget === "door"
-        ? firstHit
-        : openRackInteriorHit || firstHit);
+    const deviceHit = hits.find((item) => Boolean(item.object.userData?.device));
+    const hit = deviceHit || firstHit;
     const rack = hit?.object?.userData?.rack as Room3DRack | undefined;
     const device = hit?.object?.userData?.device as
       | Room3DRenderableDevice

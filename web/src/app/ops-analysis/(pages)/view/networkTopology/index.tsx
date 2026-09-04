@@ -1327,7 +1327,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
             >
               {!shareMode && !isFullscreen && (
                 <section
-                  className="flex shrink-0 min-h-0 flex-col overflow-visible rounded-lg border border-[var(--color-border-1,#d9e0e8)] bg-[var(--color-bg-1,#fff)] shadow-[0_10px_24px_rgba(34,47,62,0.05)]"
+                  className="flex h-full min-h-0 shrink-0 flex-col overflow-visible rounded-lg border border-[var(--color-border-1,#d9e0e8)] bg-[var(--color-bg-1,#fff)] shadow-[0_10px_24px_rgba(34,47,62,0.05)]"
                   data-testid="network-topology-library-panel"
                 >
                   <NetworkLibrary
@@ -1701,7 +1701,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
                     </span>
                     <span className={detailColonClassName}>：</span>
                     <span className="min-w-0 truncate font-medium">
-                      {editingNode.bk_inst_uuid || '--'}
+                      {editingNode.bk_inst_id || '--'}
                     </span>
                   </div>
                   <div className={detailSummaryRowClassName}>
@@ -1889,7 +1889,7 @@ export default NetworkTopology;
 function nodeRef(node: NetworkTopologyNode): Record<string, unknown> {
   return {
     bk_obj_id: node.bk_obj_id,
-    bk_inst_uuid: node.bk_inst_uuid,
+    bk_inst_id: node.bk_inst_id,
     network_collect_task_id: node.network_collect_task_id,
     network_collect_instance_id: node.network_collect_instance_id,
     plugin_template_id: node.plugin_template_id,

@@ -400,3 +400,37 @@ describe('application3D wall motion triggers', () => {
     expect(mocks.reconcile.mock.calls.every((call) => call[1]?.playIntro === true)).toBe(false);
   });
 });
+
+describe('application3D surface gate', () => {
+  it('allows screen config preview without screenRenderContext', async () => {
+    mocks.getWall.mockResolvedValue(wall);
+    render(<Application3D refreshKey="0" runtimeActive surface="screen" />);
+
+    await waitFor(() => expect(mocks.getWall).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('dashboard.application3DScreenOnly')).toBeNull();
+  });
+
+  it('reports wall payload for preview raw data', async () => {
+    mocks.getWall.mockResolvedValue(wall);
+    const onRawData = vi.fn();
+    render(
+      <Application3D
+        refreshKey="0"
+        runtimeActive
+        surface="screen"
+        onRawData={onRawData}
+      />,
+    );
+
+    await waitFor(() => expect(onRawData).toHaveBeenCalledWith(wall));
+  });
+
+  it('blocks dashboard without screen canvas context', async () => {
+    mocks.getWall.mockResolvedValue(wall);
+    render(<Application3D refreshKey="0" runtimeActive surface="dashboard" />);
+
+    expect(screen.getByText('dashboard.application3DScreenOnly')).toBeTruthy();
+    await act(async () => Promise.resolve());
+    expect(mocks.getWall).not.toHaveBeenCalled();
+  });
+});

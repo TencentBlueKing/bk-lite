@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import {
+  deviceHasAlarmGlow,
   getRoom3DPositionLabel,
   getRoom3DRackDevices,
   type Room3DRack,
@@ -9,11 +10,9 @@ import {
 export interface RackVisual {
   rack: Room3DRack;
   root: THREE.Group;
-  doorGroup: THREE.Group;
   outline: THREE.LineSegments;
   interiorShield: THREE.Mesh;
   pickTargets: THREE.Object3D[];
-  targetDoorRotation: number;
   deviceMeshes: THREE.Mesh[];
 }
 
@@ -23,7 +22,6 @@ export const ROOM3D_FRONT_AISLE_EXTRA = 1.5;
 export const ROOM3D_RACK_WIDTH = 1.05;
 export const ROOM3D_RACK_DEPTH = 1.2;
 export const ROOM3D_RACK_HEIGHT = 1.95;
-export const ROOM3D_RACK_DOOR_OPEN_ROTATION = Math.PI * 0.62;
 export const ROOM3D_DEVICE_PULL_OUT_DISTANCE = 0.32;
 
 const WALL_HEIGHT = ROOM3D_RACK_HEIGHT;
@@ -62,79 +60,276 @@ const createCanvasTexture = (
   return texture;
 };
 
-const createDoorTexture = () =>
-  createCanvasTexture(160, 260, (context) => {
-    const gradient = context.createLinearGradient(0, 0, 160, 260);
-    gradient.addColorStop(0, "#a9aeb3");
-    gradient.addColorStop(0.48, "#7b838a");
-    gradient.addColorStop(1, "#b4b8bd");
+const EQUIPMENT_FRONT_MAP_WIDTH = 320;
+const EQUIPMENT_FRONT_MAP_HEIGHT = 96;
+const EQUIPMENT_FACE_EMISSIVE_INTENSITY = 1.22;
+/** Unified interior red warning glow for devices with active alarms. */
+const EQUIPMENT_ALARM_GLOW_COLOR = "#ff2a2a";
+const EQUIPMENT_ALARM_GLOW_INTENSITY = 1.7;
+const EQUIPMENT_ALARM_GLOW_DISTANCE = 0.9;
+const EQUIPMENT_ALARM_CORE_OPACITY = 0.22;
+const EQUIPMENT_ALARM_HALO_OPACITY = 0.85;
+/** Keep chassis mostly textured; only a hint of warm red, not a full paint. */
+const EQUIPMENT_ALARM_SIDE_EMISSIVE_INTENSITY = 0.16;
+const EQUIPMENT_ALARM_FRONT_EMISSIVE_INTENSITY = EQUIPMENT_FACE_EMISSIVE_INTENSITY;
+
+/** Soft alpha falloff so the envelope reads as fog, not a hard red slab. */
+const createAlarmGlowTexture = () =>
+  createCanvasTexture(64, 64, (context) => {
+    const gradient = context.createRadialGradient(32, 32, 1, 32, 32, 31);
+    gradient.addColorStop(0, "rgba(255, 42, 42, 0.95)");
+    gradient.addColorStop(0.4, "rgba(255, 42, 42, 0.42)");
+    gradient.addColorStop(0.75, "rgba(255, 42, 42, 0.12)");
+    gradient.addColorStop(1, "rgba(255, 42, 42, 0)");
     context.fillStyle = gradient;
-    context.fillRect(0, 0, 160, 260);
-    context.strokeStyle = "rgba(248,251,253,0.58)";
-    context.lineWidth = 2;
-    context.strokeRect(8, 8, 144, 244);
-    context.fillStyle = "rgba(61,70,78,0.72)";
-    context.fillRect(20, 24, 120, 196);
-    context.fillStyle = "rgba(224,238,246,0.22)";
-    for (let y = 28; y < 216; y += 9) {
-      context.fillRect(28, y, 88, 1.2);
-    }
-    context.fillStyle = "rgba(226,239,247,0.18)";
-    for (let x = 30; x < 120; x += 10) {
-      context.fillRect(x, 28, 1.2, 188);
-    }
-    context.fillStyle = "rgba(12,18,24,0.3)";
-    for (let y = 34; y < 210; y += 10) {
-      for (let x = 36; x < 116; x += 12) {
-        context.fillRect(x, y, 3.4, 3.4);
-      }
-    }
-    context.strokeStyle = "rgba(115, 214, 255, 0.32)";
-    context.strokeRect(18, 22, 124, 200);
-    context.fillStyle = "rgba(248,251,253,0.78)";
-    context.fillRect(22, 104, 7, 34);
-    context.fillStyle = "rgba(5,10,16,0.86)";
-    context.fillRect(24, 108, 3, 26);
+    context.fillRect(0, 0, 64, 64);
   });
 
-const createEquipmentTexture = () =>
-  createCanvasTexture(320, 96, (context) => {
-    context.fillStyle = "#829db2";
-    context.fillRect(0, 0, 320, 96);
-    const gradient = context.createLinearGradient(0, 0, 0, 96);
-    gradient.addColorStop(0, "rgba(255,255,255,0.28)");
-    gradient.addColorStop(0.5, "rgba(31,45,58,0.08)");
-    gradient.addColorStop(1, "rgba(6,16,26,0.25)");
-    context.fillStyle = gradient;
-    context.fillRect(0, 0, 320, 96);
-    context.fillStyle = "rgba(18, 30, 42, 0.32)";
-    context.fillRect(0, 0, 320, 12);
-    context.fillRect(0, 84, 320, 12);
-    context.fillStyle = "rgba(230, 239, 246, 0.42)";
-    context.fillRect(12, 16, 296, 2);
-    context.fillRect(12, 78, 296, 2);
-    context.fillStyle = "rgba(8, 18, 28, 0.54)";
-    for (let bay = 0; bay < 4; bay += 1) {
-      const left = 18 + bay * 68;
-      context.fillRect(left, 26, 52, 34);
-      context.fillStyle = "rgba(190, 203, 214, 0.28)";
-      context.fillRect(left + 4, 29, 44, 2);
-      context.fillStyle = "rgba(8, 18, 28, 0.54)";
-      for (let y = 35; y < 55; y += 6) {
-        for (let x = left + 5; x < left + 48; x += 7) {
-          context.fillRect(x, y, 3, 2);
-        }
-      }
-    }
-    context.fillStyle = "#47e8ff";
-    for (let x = 286; x < 310; x += 8) {
-      context.beginPath();
-      context.arc(x, 48, 2.4, 0, Math.PI * 2);
-      context.fill();
-    }
-    context.fillStyle = "rgba(91, 234, 255, 0.42)";
-    context.fillRect(276, 31, 3, 34);
+const createAlarmGlowMaterial = (opacity: number) =>
+  new THREE.MeshBasicMaterial({
+    color: "#ffffff",
+    map: createAlarmGlowTexture(),
+    transparent: true,
+    opacity,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
   });
+
+type EquipmentPortLedKind = "green" | "amber" | "red" | "off";
+
+const EQUIPMENT_PORT_LED_PAINT: Record<
+  Exclude<EquipmentPortLedKind, "off">,
+  {
+    core: string;
+    innerHalo: string;
+    outerHalo: string;
+    emissiveCore: string;
+    emissiveInnerHalo: string;
+    emissiveOuterHalo: string;
+  }
+> = {
+  green: {
+    core: "#3dff68",
+    innerHalo: "rgba(61, 255, 104, 0.58)",
+    outerHalo: "rgba(61, 255, 104, 0.24)",
+    emissiveCore: "#f3fff5",
+    emissiveInnerHalo: "rgba(110, 255, 150, 0.9)",
+    emissiveOuterHalo: "rgba(50, 255, 110, 0.4)",
+  },
+  amber: {
+    core: "#ff9c1c",
+    innerHalo: "rgba(255, 156, 28, 0.6)",
+    outerHalo: "rgba(255, 156, 28, 0.26)",
+    emissiveCore: "#fff3e2",
+    emissiveInnerHalo: "rgba(255, 180, 70, 0.9)",
+    emissiveOuterHalo: "rgba(255, 150, 30, 0.42)",
+  },
+  red: {
+    core: "#ff2a2a",
+    innerHalo: "rgba(255, 42, 42, 0.62)",
+    outerHalo: "rgba(255, 42, 42, 0.28)",
+    emissiveCore: "#fff0f0",
+    emissiveInnerHalo: "rgba(255, 120, 120, 0.92)",
+    emissiveOuterHalo: "rgba(255, 40, 40, 0.48)",
+  },
+};
+
+const getEquipmentPortLedKind = (
+  bay: number,
+  row: number,
+  col: number,
+): EquipmentPortLedKind => {
+  const slot = (bay * 7 + row * 3 + col * 5 + 2) % 12;
+  if (slot === 0) {
+    return "off";
+  }
+  if (slot === 3 || slot === 9) {
+    return "amber";
+  }
+  return "green";
+};
+
+const paintEquipmentPortLed = (
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  kind: EquipmentPortLedKind,
+  target: "map" | "emissive",
+) => {
+  if (kind === "off") {
+    if (target === "map") {
+      context.fillStyle = "rgba(6, 12, 18, 0.92)";
+      context.fillRect(x, y, 3, 2);
+    }
+    return;
+  }
+
+  const paint = EQUIPMENT_PORT_LED_PAINT[kind];
+  context.fillStyle = target === "map" ? paint.outerHalo : paint.emissiveOuterHalo;
+  context.fillRect(x - 2, y - 2, 7, 6);
+  context.fillStyle = target === "map" ? paint.innerHalo : paint.emissiveInnerHalo;
+  context.fillRect(x - 1, y - 1, 5, 4);
+  context.fillStyle = target === "map" ? paint.core : paint.emissiveCore;
+  context.fillRect(x, y, 3, 2);
+  context.fillStyle =
+    target === "map" ? "rgba(255, 255, 255, 0.42)" : "rgba(255, 255, 255, 0.85)";
+  context.fillRect(x + 1, y, 1, 1);
+};
+
+const forEachEquipmentPortLed = (
+  callback: (x: number, y: number, kind: EquipmentPortLedKind) => void,
+) => {
+  for (let bay = 0; bay < 4; bay += 1) {
+    const left = 18 + bay * 68;
+    let row = 0;
+    for (let y = 35; y < 55; y += 6) {
+      let col = 0;
+      for (let x = left + 5; x < left + 48; x += 7) {
+        callback(x, y, getEquipmentPortLedKind(bay, row, col));
+        col += 1;
+      }
+      row += 1;
+    }
+  }
+};
+
+const paintEquipmentPortLeds = (
+  context: CanvasRenderingContext2D,
+  target: "map" | "emissive",
+  alarmMode = false,
+) => {
+  forEachEquipmentPortLed((x, y, kind) => {
+    paintEquipmentPortLed(
+      context,
+      x,
+      y,
+      alarmMode ? "red" : kind,
+      target,
+    );
+  });
+};
+
+const EQUIPMENT_STATUS_DOTS: Array<{
+  x: number;
+  y: number;
+  kind: EquipmentPortLedKind;
+}> = [
+  { x: 286, y: 48, kind: "green" },
+  { x: 294, y: 48, kind: "amber" },
+  { x: 302, y: 48, kind: "green" },
+];
+
+const paintEquipmentStatusBar = (
+  context: CanvasRenderingContext2D,
+  target: "map" | "emissive",
+  alarmMode = false,
+) => {
+  const paint = alarmMode
+    ? EQUIPMENT_PORT_LED_PAINT.red
+    : EQUIPMENT_PORT_LED_PAINT.green;
+  context.fillStyle = target === "map" ? paint.outerHalo : paint.emissiveOuterHalo;
+  context.fillRect(274, 29, 7, 38);
+  context.fillStyle = target === "map" ? paint.innerHalo : paint.emissiveInnerHalo;
+  context.fillRect(275, 30, 5, 36);
+  context.fillStyle = target === "map" ? paint.core : paint.emissiveCore;
+  context.fillRect(276, 31, 3, 34);
+  context.fillStyle =
+    target === "map" ? "rgba(255, 255, 255, 0.42)" : "rgba(255, 255, 255, 0.85)";
+  context.fillRect(277, 36, 1, 8);
+};
+
+const paintEquipmentStatusDot = (
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  kind: EquipmentPortLedKind,
+  target: "map" | "emissive",
+) => {
+  const fillDot = (style: string, radius: number) => {
+    context.fillStyle = style;
+    context.beginPath();
+    context.arc(x, y, radius, 0, Math.PI * 2);
+    context.fill();
+  };
+
+  if (kind === "off") {
+    if (target === "map") {
+      fillDot("rgba(6, 12, 18, 0.92)", 2.4);
+    }
+    return;
+  }
+
+  const paint = EQUIPMENT_PORT_LED_PAINT[kind];
+  fillDot(target === "map" ? paint.outerHalo : paint.emissiveOuterHalo, 4.4);
+  fillDot(target === "map" ? paint.innerHalo : paint.emissiveInnerHalo, 3.3);
+  fillDot(target === "map" ? paint.core : paint.emissiveCore, 2.4);
+  fillDot(
+    target === "map" ? "rgba(255, 255, 255, 0.42)" : "rgba(255, 255, 255, 0.85)",
+    0.9,
+  );
+};
+
+const paintEquipmentStatusLights = (
+  context: CanvasRenderingContext2D,
+  target: "map" | "emissive",
+  alarmMode = false,
+) => {
+  paintEquipmentStatusBar(context, target, alarmMode);
+  EQUIPMENT_STATUS_DOTS.forEach((dot) => {
+    paintEquipmentStatusDot(
+      context,
+      dot.x,
+      dot.y,
+      alarmMode ? "red" : dot.kind,
+      target,
+    );
+  });
+};
+
+const createEquipmentTexture = (alarmMode = false) => {
+  const map = createCanvasTexture(
+    EQUIPMENT_FRONT_MAP_WIDTH,
+    EQUIPMENT_FRONT_MAP_HEIGHT,
+    (context) => {
+      context.fillStyle = "#829db2";
+      context.fillRect(0, 0, 320, 96);
+      const gradient = context.createLinearGradient(0, 0, 0, 96);
+      gradient.addColorStop(0, "rgba(255,255,255,0.28)");
+      gradient.addColorStop(0.5, "rgba(31,45,58,0.08)");
+      gradient.addColorStop(1, "rgba(6,16,26,0.25)");
+      context.fillStyle = gradient;
+      context.fillRect(0, 0, 320, 96);
+      context.fillStyle = "rgba(18, 30, 42, 0.32)";
+      context.fillRect(0, 0, 320, 12);
+      context.fillRect(0, 84, 320, 12);
+      context.fillStyle = "rgba(230, 239, 246, 0.42)";
+      context.fillRect(12, 16, 296, 2);
+      context.fillRect(12, 78, 296, 2);
+      context.fillStyle = "rgba(8, 18, 28, 0.54)";
+      for (let bay = 0; bay < 4; bay += 1) {
+        const left = 18 + bay * 68;
+        context.fillRect(left, 26, 52, 34);
+        context.fillStyle = "rgba(190, 203, 214, 0.28)";
+        context.fillRect(left + 4, 29, 44, 2);
+        context.fillStyle = "rgba(8, 18, 28, 0.54)";
+      }
+      paintEquipmentPortLeds(context, "map", alarmMode);
+      paintEquipmentStatusLights(context, "map", alarmMode);
+    },
+  );
+  const emissiveMap = createCanvasTexture(
+    EQUIPMENT_FRONT_MAP_WIDTH,
+    EQUIPMENT_FRONT_MAP_HEIGHT,
+    (context) => {
+      context.fillStyle = "#000000";
+      context.fillRect(0, 0, 320, 96);
+      paintEquipmentPortLeds(context, "emissive", alarmMode);
+      paintEquipmentStatusLights(context, "emissive", alarmMode);
+    },
+  );
+  return { map, emissiveMap };
+};
 
 const createRackTopTexture = (label: string, category?: string) =>
   createCanvasTexture(192, 128, (context) => {
@@ -916,11 +1111,16 @@ const createEquipmentLayer = (
     height,
     0.34,
   );
+  const deviceWidth = ROOM3D_RACK_WIDTH - 0.08;
+  const deviceDepth = 0.34;
+  const alarmMode = deviceHasAlarmGlow(device);
+  const { map, emissiveMap } = createEquipmentTexture(alarmMode);
   const frontMaterial = new THREE.MeshStandardMaterial({
     color: "#7893a8",
-    map: createEquipmentTexture(),
-    emissive: "#1b536c",
-    emissiveIntensity: 0.24,
+    map,
+    emissive: "#ffffff",
+    emissiveMap,
+    emissiveIntensity: EQUIPMENT_FACE_EMISSIVE_INTENSITY,
     metalness: 0.28,
     roughness: 0.38,
   });
@@ -932,7 +1132,7 @@ const createEquipmentLayer = (
     metalness: 0.3,
     roughness: 0.42,
   });
-  frontMaterial.userData.baseEmissiveIntensity = 0.24;
+  frontMaterial.userData.baseEmissiveIntensity = EQUIPMENT_FACE_EMISSIVE_INTENSITY;
   sideMaterial.userData.baseEmissiveIntensity = 0.1;
   const layer = new THREE.Mesh(geometry, [
     sideMaterial,
@@ -953,6 +1153,69 @@ const createEquipmentLayer = (
   layer.userData.targetZ = layer.position.z;
   layer.userData.height = height;
   layer.castShadow = true;
+
+  if (alarmMode) {
+    // Opaque chassis cannot transmit PointLight. Build a soft envelope that wraps
+    // the device in Y/Z while keeping X ≤ device width so posts are not pierced.
+    sideMaterial.emissive = new THREE.Color("#5a1a1a");
+    sideMaterial.emissiveIntensity = EQUIPMENT_ALARM_SIDE_EMISSIVE_INTENSITY;
+    sideMaterial.userData.baseEmissiveIntensity =
+      EQUIPMENT_ALARM_SIDE_EMISSIVE_INTENSITY;
+    // Keep front LED map on a white emissive so status lights stay readable.
+    frontMaterial.emissive = new THREE.Color("#ffffff");
+    frontMaterial.emissiveIntensity = EQUIPMENT_ALARM_FRONT_EMISSIVE_INTENSITY;
+    frontMaterial.userData.baseEmissiveIntensity =
+      EQUIPMENT_ALARM_FRONT_EMISSIVE_INTENSITY;
+
+    const alarmCore = new THREE.Mesh(
+      new THREE.BoxGeometry(
+        Math.max(0.08, deviceWidth * 0.72),
+        Math.max(0.04, height * 0.62),
+        deviceDepth * 0.48,
+      ),
+      createAlarmGlowMaterial(EQUIPMENT_ALARM_CORE_OPACITY),
+    );
+    alarmCore.name = "rack-device-alarm-core";
+    alarmCore.position.set(0, 0, -0.02);
+    layer.add(alarmCore);
+
+    // Envelope: slightly taller/deeper for wrap feeling; width stays inside device.
+    const alarmHalo = new THREE.Mesh(
+      new THREE.BoxGeometry(
+        Math.max(0.1, deviceWidth * 0.98),
+        Math.max(0.06, height * 1.14),
+        deviceDepth * 1.08,
+      ),
+      createAlarmGlowMaterial(EQUIPMENT_ALARM_HALO_OPACITY),
+    );
+    alarmHalo.name = "rack-device-alarm-halo";
+    alarmHalo.position.set(0, 0, 0.02);
+    layer.add(alarmHalo);
+
+    // Soft front spill plane — width clamped to device so it stays between posts.
+    const alarmFrontSpill = new THREE.Mesh(
+      new THREE.PlaneGeometry(
+        Math.max(0.12, deviceWidth * 0.92),
+        Math.max(0.06, height * 1.2),
+      ),
+      createAlarmGlowMaterial(0.55),
+    );
+    alarmFrontSpill.name = "rack-device-alarm-front-spill";
+    alarmFrontSpill.position.set(0, 0, deviceDepth * 0.52);
+    layer.add(alarmFrontSpill);
+
+    const alarmLight = new THREE.PointLight(
+      EQUIPMENT_ALARM_GLOW_COLOR,
+      EQUIPMENT_ALARM_GLOW_INTENSITY,
+      EQUIPMENT_ALARM_GLOW_DISTANCE,
+      1.6,
+    );
+    alarmLight.name = "rack-device-alarm-glow";
+    // Slightly in front of the face, still inside the rack mouth.
+    alarmLight.position.set(0, 0, deviceDepth * 0.22);
+    layer.add(alarmLight);
+  }
+
   return layer;
 };
 
@@ -1183,33 +1446,6 @@ export const createRackVisual = (
     root.add(shelf);
   });
 
-  const doorGroup = new THREE.Group();
-  doorGroup.name = "rack-door-group";
-  doorGroup.position.set(
-    ROOM3D_RACK_WIDTH / 2,
-    0,
-    ROOM3D_RACK_DEPTH / 2 + 0.025,
-  );
-  doorGroup.userData.rack = rack;
-  const door = new THREE.Mesh(
-    new THREE.BoxGeometry(ROOM3D_RACK_WIDTH, ROOM3D_RACK_HEIGHT, 0.045),
-    new THREE.MeshStandardMaterial({
-      color: "#9ca2a8",
-      map: createDoorTexture(),
-      emissive: "#5d656b",
-      emissiveIntensity: 0.24,
-      metalness: 0.22,
-      roughness: 0.46,
-    }),
-  );
-  door.name = "rack-door";
-  door.position.set(-ROOM3D_RACK_WIDTH / 2, ROOM3D_RACK_HEIGHT / 2, 0);
-  door.castShadow = true;
-  door.userData.rack = rack;
-  door.userData.clickTarget = "door";
-  doorGroup.add(door);
-  root.add(doorGroup);
-
   const outline = new THREE.LineSegments(
     new THREE.EdgesGeometry(
       new THREE.BoxGeometry(
@@ -1251,11 +1487,9 @@ export const createRackVisual = (
   return {
     rack,
     root,
-    doorGroup,
     outline,
     interiorShield,
-    pickTargets: [pickBody, interiorShield, top, door, ...deviceMeshes],
-    targetDoorRotation: 0,
+    pickTargets: [pickBody, interiorShield, top, ...deviceMeshes],
     deviceMeshes,
   };
 };
@@ -1265,7 +1499,6 @@ export const setRackVisualState = (
   options: {
     hovered: boolean;
     selected: boolean;
-    open: boolean;
     selectedDeviceId?: string;
   },
 ) => {
@@ -1276,16 +1509,12 @@ export const setRackVisualState = (
       : options.hovered
         ? 0.92
         : 0.78;
-    visual.targetDoorRotation = 0;
   } else {
     outlineMaterial.opacity = options.selected
       ? 0.95
       : options.hovered
         ? 0.55
         : 0;
-    visual.targetDoorRotation = options.open
-      ? ROOM3D_RACK_DOOR_OPEN_ROTATION
-      : 0;
   }
   visual.deviceMeshes.forEach((mesh) => {
     const device = mesh.userData.device as Room3DRenderableDevice | undefined;
@@ -1313,13 +1542,6 @@ export const setRackVisualState = (
 
 export const animateRackVisual = (visual: RackVisual) => {
   let isAnimating = false;
-  visual.doorGroup.rotation.y = interpolateRoom3DValue(
-    visual.doorGroup.rotation.y,
-    visual.targetDoorRotation,
-    0.16,
-  );
-  isAnimating = visual.doorGroup.rotation.y !== visual.targetDoorRotation;
-
   visual.deviceMeshes.forEach((mesh) => {
     const targetZ =
       typeof mesh.userData.targetZ === "number"

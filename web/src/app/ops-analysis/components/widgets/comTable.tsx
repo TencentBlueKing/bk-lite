@@ -538,9 +538,16 @@ const ComTable: React.FC<ComTableProps> = ({
           columns={antColumns}
           dataSource={displayedTableData}
           loading={loading}
-          rowKey={(record, index) =>
-            record.id || record.key || index?.toString() || '0'
-          }
+          rowKey={(record) => {
+            const row = record as Record<string, unknown>;
+            if (row.id != null && row.id !== '') return String(row.id);
+            if (row.key != null && row.key !== '') return String(row.key);
+            try {
+              return JSON.stringify(row);
+            } catch {
+              return 'row';
+            }
+          }}
           size="small"
           pagination={
             isPaginated

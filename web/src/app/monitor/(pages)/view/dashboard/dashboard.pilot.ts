@@ -42,6 +42,40 @@ export interface DashboardChartLabel {
   readings: string[];
 }
 
+const readBarRowLabel = (row: Element): string => {
+  const labelRoot = row.querySelector('[class*="barLabel"]');
+  if (!labelRoot) return '';
+  const clone = labelRoot.cloneNode(true) as HTMLElement;
+  Array.from(clone.children).forEach((child) => {
+    if (/^\d+$/.test(cleanLabel(child.textContent || ''))) {
+      child.remove();
+    }
+  });
+  return cleanLabel(clone.textContent || '');
+};
+
+/** 横条排行图不是 echarts，从 DOM 抽出「路径 82.9%」供 caption / 截图超时回退。 */
+export const readDashboardRankPanels = (): DashboardChartLabel[] => {
+  const panels = new Map<HTMLElement, DashboardChartLabel>();
+  Array.from(document.querySelectorAll('[class*="barRow"]')).forEach((row) => {
+    const panel = row.closest('[class*="panel"]') as HTMLElement | null;
+    if (!panel || panels.has(panel)) return;
+    const heading = panel.querySelector('h1, h2, h3, h4, [class*="panelTitle"]');
+    const title = heading ? titleFromNode(heading) : '';
+    if (!title) return;
+    const readings = Array.from(panel.querySelectorAll('[class*="barRow"]'))
+      .map((item) => {
+        const label = readBarRowLabel(item);
+        const value = cleanLabel(item.querySelector('[class*="barValue"]')?.textContent || '');
+        return [label, value].filter(Boolean).join(' ');
+      })
+      .filter(Boolean);
+    if (!readings.length) return;
+    panels.set(panel, { title, legends: readings, readings });
+  });
+  return Array.from(panels.values());
+};
+
 /** 监控卡片标题在 echarts 画布外，只在本页 pilot 里回填，不影响通用采集器。 */
 export const labelFromDashboardCard = (dom: HTMLElement): DashboardChartLabel => {
   let node: HTMLElement | null = dom.parentElement;
@@ -94,6 +128,9 @@ export const buildDashboardCaption = (
     .filter((part) => !/^序列:/.test(part.trim()) || !nearby.legends.length);
   return [nearby.title, legends || (generic ? '' : ''), ...rest].filter(Boolean).join('；');
 };
+
+const captionsFromRankPanels = (panels: DashboardChartLabel[]): string[] =>
+  panels.map((panel) => buildDashboardCaption({ caption: '', dataUrl: '' }, panel));
 
 const overlayChartTitle = (dataUrl: string, title: string): Promise<string> =>
   new Promise((resolve) => {
@@ -152,6 +189,7 @@ export interface DashboardPageDataStamp {
   kpiReadings: string[];
   collectionStatus: string;
   uptimeState: string;
+  rankFingerprint: string;
 }
 
 const cardValue = (card: Element): string =>
@@ -189,17 +227,21 @@ export const readDashboardPageDataStamp = (): DashboardPageDataStamp => {
   const uptimeState = cleanLabel(
     document.querySelector('[class*="uptimeStatusMain"]')?.textContent || '',
   );
+  const rankPanels = readDashboardRankPanels();
   return {
     timeRangeLabel,
     kpiFingerprint,
     kpiReadings: readDashboardKpiReadings(),
     collectionStatus,
     uptimeState,
+    rankFingerprint: rankPanels
+      .map((panel) => `${panel.title}:${panel.readings.join('|')}`)
+      .join('||'),
   };
 };
 
 export const buildDashboardCurrentTime = (stamp: DashboardPageDataStamp): string =>
-  [stamp.timeRangeLabel, stamp.kpiFingerprint, stamp.collectionStatus, stamp.uptimeState]
+  [stamp.timeRangeLabel, stamp.kpiFingerprint, stamp.collectionStatus, stamp.uptimeState, stamp.rankFingerprint]
     .filter(Boolean)
     .join('::');
 
@@ -253,7 +295,17 @@ const dashboardTextSections = (
   ];
 };
 
-/** 截图超时仍能带上 KPI；问「磁盘使用率高吗」至少看得到 82.9%。 */
+const visibleChartSection = (captions: string[]) =>
+  captions.length
+    ? [{
+      id: 'visible-charts',
+      label: '可见图表',
+      content: captions.map((caption, index) => `${index + 1}. ${caption}`).join('\n'),
+      priority: 9,
+    }]
+    : [];
+
+/** 截图超时仍能带上 KPI / 排行；问「磁盘使用率高吗」至少看得到 82.9%。 */
 export function getTextContext(): Partial<AiPageContext> {
   const identity = dashboardIdentity();
   const stamp = readDashboardPageDataStamp();
@@ -262,7 +314,10 @@ export function getTextContext(): Partial<AiPageContext> {
     url: window.location.href,
     app: 'monitor',
     title: document.title || `${identity.objectName} 仪表盘`,
-    sections: dashboardTextSections(stamp, identity, dataUpdatedAt),
+    sections: [
+      ...dashboardTextSections(stamp, identity, dataUpdatedAt),
+      ...visibleChartSection(captionsFromRankPanels(readDashboardRankPanels())),
+    ],
     images: [],
   };
 }
@@ -291,10 +346,12 @@ export async function getContext(
     }),
   );
   const images = captured.filter((item): item is ChartSnapshot => Boolean(item));
-
-  const chartLines = images.length
-    ? images.map((image, index) => `${index + 1}. ${image.caption}`)
-    : [];
+  const rankPanels = readDashboardRankPanels();
+  const chartCaptions = [
+    ...captionsFromRankPanels(rankPanels),
+    ...images.map((image) => image.caption).filter(Boolean),
+  ];
+  const chartLines = chartCaptions.map((caption, index) => `${index + 1}. ${caption}`);
 
   console.info('[ai-page-context] page data updated at', dataUpdatedAt, {
     timeRange: stamp.timeRangeLabel || '(unknown)',
@@ -302,21 +359,15 @@ export async function getContext(
     kpiReadings: stamp.kpiReadings,
     collectionStatus: stamp.collectionStatus,
     uptimeState: stamp.uptimeState,
+    rankReadings: rankPanels.map((panel) => `${panel.title}: ${panel.readings.join(', ')}`),
     charts: chartLines,
   });
 
   return {
     ...base,
     sections: [
-      ...(base.sections || []),
-      ...(chartLines.length
-        ? [{
-          id: 'visible-charts',
-          label: '可见图表',
-          content: chartLines.join('\n'),
-          priority: 9,
-        }]
-        : []),
+      ...(base.sections || []).filter((section) => section.id !== 'visible-charts'),
+      ...visibleChartSection(chartCaptions),
     ],
     images,
   };

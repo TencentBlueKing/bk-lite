@@ -18,7 +18,7 @@ interface FilterBindingPanelProps {
   definitions: UnifiedFilterDefinition[];
   dataSourceParams: ParamItem[];
   filterBindings: FilterBindings;
-  onChange: (bindings: FilterBindings) => void;
+  onChange?: (bindings: FilterBindings) => void;
 }
 
 interface BindableParam {
@@ -67,50 +67,62 @@ const FilterBindingPanel: React.FC<FilterBindingPanelProps> = ({
     return t('dashboard.string');
   };
 
+  const getTypeTagColor = (type: string) => {
+    if (type === 'timeRange') return 'blue';
+    if (type === 'dateRange') return 'purple';
+    return 'default';
+  };
+
   return (
-    <div className="space-y-2">
+    <div className="divide-y divide-(--color-border-1) rounded-md border border-(--color-border-1) bg-(--color-bg)">
       {bindableParams.map(({ param, matchedDefinition, canBind, filterId }) => {
         const isEnabled = safeFilterBindings[filterId] ?? false;
         const displayName = matchedDefinition?.name || param.alias_name || param.name;
+        const hasCustomName = Boolean(displayName && displayName !== param.name);
 
         return (
           <div
             key={filterId}
-            className={`flex items-center justify-between rounded-lg border px-3 py-2.5 ${
-              canBind
-                ? 'border-(--color-border-1) bg-(--color-fill-2)'
-                : 'border-(--color-border-2) bg-(--color-fill-3) opacity-60'
+            className={`flex items-center justify-between px-3.5 py-2.5 transition-colors ${
+              canBind ? 'hover:bg-(--color-fill-1)/40' : 'opacity-60'
             }`}
           >
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-medium text-sm text-(--color-text-1)">
-                  {displayName}
-                </span>
-                <Tag
-                  color={
-                    param.type === 'timeRange'
-                      ? 'blue'
-                      : param.type === 'dateRange'
-                        ? 'purple'
-                        : 'green'
-                  }
-                  style={{ marginRight: 0 }}
-                >
-                  {getTypeLabel(param.type)}
-                </Tag>
-                {!canBind && (
-                  <Tag color="default">{t('dashboard.filterDisabled')}</Tag>
-                )}
-              </div>
-              <div className="text-xs text-(--color-text-3) mt-0.5 font-mono">
-                {param.name}
-              </div>
-            </div>
-            <div className="ml-3 flex-shrink-0">
-              <span>
-                <Switch size="small" checked={canBind && isEnabled} disabled />
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <span className="truncate text-[13px] font-medium text-(--color-text-1)">
+                {displayName}
               </span>
+              {hasCustomName ? (
+                <span className="truncate font-mono text-xs text-(--color-text-3)">
+                  ({param.name})
+                </span>
+              ) : null}
+              <Tag
+                bordered={false}
+                color={getTypeTagColor(param.type)}
+                className="m-0 text-[11px] font-normal leading-tight"
+              >
+                {getTypeLabel(param.type)}
+              </Tag>
+              {!canBind ? (
+                <Tag
+                  bordered={false}
+                  className="m-0 text-[11px] font-normal leading-tight text-(--color-text-4)"
+                >
+                  {t('dashboard.filterDisabled')}
+                </Tag>
+              ) : null}
+            </div>
+            <div className="ml-3 flex shrink-0 items-center gap-2">
+              <span className="text-xs text-(--color-text-3)">
+                {canBind && isEnabled
+                  ? t('dashboard.filterLinked')
+                  : t('dashboard.filterUnlinked')}
+              </span>
+              <Switch
+                size="small"
+                checked={canBind && isEnabled}
+                disabled
+              />
             </div>
           </div>
         );

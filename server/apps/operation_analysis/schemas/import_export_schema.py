@@ -488,7 +488,7 @@ DB_ID_FIELD_PATTERN = re.compile(r"(^|_)(id|ids)$", re.IGNORECASE)
 PURE_NUMERIC_PATTERN = re.compile(r"^\d+$")
 
 NETWORK_TOPOLOGY_EXTERNAL_ID_FIELDS = {
-    "bk_inst_uuid",
+    "bk_inst_id",
     "plugin_group_id",
     "plugin_template_id",
     "network_collect_task_id",
