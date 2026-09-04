@@ -1,3 +1,5 @@
+import json
+
 from rest_framework import viewsets
 from rest_framework.decorators import action
 
@@ -17,6 +19,60 @@ from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.services.node_mgmt import InstanceConfigService
 from apps.monitor.utils.dimension import normalize_instance_identity
 from apps.monitor.utils.pagination import parse_page_params
+
+# 已选资产回填等批量精确查询的单次上限，避免超长 URL / 过大 IN 子句。
+_MAX_INSTANCE_ID_IN = 200
+
+
+def _normalize_storage_instance_keys(raw_ids):
+    """将原始 instance_id 列表归一为去重后的存储键；非法项跳过。"""
+    normalized = []
+    seen = set()
+    for raw in raw_ids:
+        text = str(raw or "").strip()
+        if not text:
+            continue
+        try:
+            key = normalize_instance_identity(text)["storage_instance_key"]
+        except ValueError:
+            continue
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(key)
+    return normalized
+
+
+def _parse_instance_id_filters(query_params):
+    """解析 list 的精确实例过滤。
+
+    返回 (instance_id, instance_ids, empty_response)：
+    - empty_response=True：调用方应直接返回空列表（非法单值等）
+    - instance_ids 非空时优先批量过滤
+    - 否则回落单值 instance_id
+    """
+    raw_in = (query_params.get("instance_id_in") or "").strip()
+    if raw_in:
+        try:
+            parsed = json.loads(raw_in)
+        except json.JSONDecodeError:
+            return None, None, True
+        if not isinstance(parsed, list):
+            return None, None, True
+        if len(parsed) > _MAX_INSTANCE_ID_IN:
+            parsed = parsed[:_MAX_INSTANCE_ID_IN]
+        keys = _normalize_storage_instance_keys(parsed)
+        if not keys:
+            return None, None, True
+        return None, keys, False
+
+    raw_instance_id = (query_params.get("instance_id") or "").strip()
+    if not raw_instance_id:
+        return None, None, False
+    try:
+        return normalize_instance_identity(raw_instance_id)["storage_instance_key"], None, False
+    except ValueError:
+        return None, None, True
 
 
 def _build_actor_context(request):
@@ -182,14 +238,11 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             "true",
             "yes",
         )
-        # 可选精确实例 ID：与 name 模糊搜索并存；非法值按无匹配返回，避免 500。
-        raw_instance_id = (request.GET.get("instance_id") or "").strip()
-        instance_id = None
-        if raw_instance_id:
-            try:
-                instance_id = normalize_instance_identity(raw_instance_id)["storage_instance_key"]
-            except ValueError:
-                return WebUtils.response_success({"count": 0, "results": []})
+        # 可选精确实例 ID（单值 instance_id 或批量 JSON instance_id_in）：
+        # 与 name 模糊搜索并存；非法值按无匹配返回，避免 500。
+        instance_id, instance_ids, empty_response = _parse_instance_id_filters(request.GET)
+        if empty_response:
+            return WebUtils.response_success({"count": 0, "results": []})
         data = MonitorObjectService.get_monitor_instance(
             int(monitor_object_id),
             page,
@@ -201,6 +254,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             visible_organization_ids=scope.data_team_ids,
             vm_params=_extract_vm_params(request),
             instance_id=instance_id,
+            instance_ids=instance_ids,
         )
         # 如果有权限规则，则添加到数据中
         inst_permission_map = {i["id"]: i["permission"] for i in permission.get("instance", [])}

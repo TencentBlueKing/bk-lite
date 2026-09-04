@@ -39,6 +39,7 @@ import {
   resolveProcessNameFromInstance,
   withHostProcessMetricsTab
 } from '@/app/monitor/dashboards/objects/host/host-process-metrics-tab';
+import { fetchMonitorInstancePages } from '@/app/monitor/utils/fetchInstancePages';
 
 const MonitorView: React.FC<ViewModalProps> = ({
   monitorObject,
@@ -231,14 +232,21 @@ const MonitorView: React.FC<ViewModalProps> = ({
     const loadProcessOptions = async () => {
       setProcessFilterLoading(true);
       try {
-        const data = await getInstanceList(processObjectId, {
-          page_size: -1,
-          vm_params: { instance_id: hostLogicalId },
-        });
+        const { results, truncated } = await fetchMonitorInstancePages(
+          getInstanceList,
+          processObjectId,
+          { vm_params: { instance_id: hostLogicalId } }
+        );
         if (!active) return;
+        if (truncated) {
+          console.debug(
+            '[monitor-view] process instance list truncated',
+            processObjectId
+          );
+        }
         const options: { label: string; value: string }[] = [];
         const seen = new Set<string>();
-        (data?.results || []).forEach((item: any) => {
+        (results || []).forEach((item: any) => {
           const name = resolveProcessNameFromInstance(item);
           if (!name || seen.has(name)) return;
           seen.add(name);
@@ -256,7 +264,6 @@ const MonitorView: React.FC<ViewModalProps> = ({
     return () => {
       active = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isProcessMetricsView, processObjectId, hostLogicalId]);
 
   const onTabChange = (val: string) => {

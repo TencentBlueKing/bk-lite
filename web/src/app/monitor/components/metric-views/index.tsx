@@ -41,6 +41,7 @@ import {
   resolveProcessNameFromInstance,
   withHostProcessMetricsTab
 } from '@/app/monitor/dashboards/objects/host/host-process-metrics-tab';
+import { fetchMonitorInstancePages } from '@/app/monitor/utils/fetchInstancePages';
 
 const MYSQL_GROUP_NAME_MAP: Record<string, string> = {
   ConnStatus: '连接状态',
@@ -239,14 +240,21 @@ const MetricViews: React.FC<ViewDetailProps> = ({
     const loadProcessOptions = async () => {
       setProcessFilterLoading(true);
       try {
-        const data = await getInstanceList(processObjectId, {
-          page_size: -1,
-          vm_params: { instance_id: hostLogicalId }
-        });
+        const { results, truncated } = await fetchMonitorInstancePages(
+          getInstanceList,
+          processObjectId,
+          { vm_params: { instance_id: hostLogicalId } }
+        );
         if (!active) return;
+        if (truncated) {
+          console.debug(
+            '[metric-views] process instance list truncated',
+            processObjectId
+          );
+        }
         const options: { label: string; value: string }[] = [];
         const seen = new Set<string>();
-        (data?.results || []).forEach((item: any) => {
+        (results || []).forEach((item: any) => {
           const name = resolveProcessNameFromInstance(item);
           if (!name || seen.has(name)) return;
           seen.add(name);
@@ -264,8 +272,6 @@ const MetricViews: React.FC<ViewDetailProps> = ({
     return () => {
       active = false;
     };
-    // getInstanceList 来自 hook，身份不稳定；仅随主机/进程对象/页签变化重载。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isProcessMetricsView, processObjectId, hostLogicalId]);
 
   useEffect(() => {

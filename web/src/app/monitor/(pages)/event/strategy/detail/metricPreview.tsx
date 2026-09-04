@@ -24,6 +24,7 @@ import {
   MetricExpressionMode
 } from './formulaExpressionUtils';
 import { resolvePreviewChartUnit } from './strategyDetailUtils';
+import { fetchMonitorInstancePages } from '@/app/monitor/utils/fetchInstancePages';
 
 const { Option } = Select;
 
@@ -246,19 +247,19 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
     instanceAbortControllerRef.current = abortController;
     try {
       setInstanceLoading(true);
-      const data = await getInstanceList(
+      const { results, truncated } = await fetchMonitorInstancePages(
+        (id, params) =>
+          getInstanceList(id, params, { signal: abortController.signal }),
         monitorObjId as React.Key,
-        {
-          page: 1,
-          page_size: -1,
-          name: ''
-        },
-        {
-          signal: abortController.signal
-        }
+        { name: '' }
       );
-      const results = data?.results || [];
-      setAllInstances(results);
+      if (truncated) {
+        console.debug(
+          '[metric-preview] instance list truncated for object',
+          monitorObjId
+        );
+      }
+      setAllInstances((results || []) as InstanceItem[]);
     } catch (error: any) {
       if (error?.name !== 'AbortError') {
         setAllInstances([]);

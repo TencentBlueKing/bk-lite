@@ -183,6 +183,7 @@ class MonitorObjectService:
         visible_organization_ids=None,
         vm_params=None,
         instance_id=None,
+        instance_ids=None,
     ):
         """获取监控对象实例"""
         qs = qs.filter(
@@ -191,16 +192,15 @@ class MonitorObjectService:
             is_active=True,
         )
         # 可选精确主键过滤（存储键形态，如 "('h1',)"）；与 name 模糊互不干扰。
-        if instance_id:
+        # instance_ids 优先于单值 instance_id，供已选资产回填等批量场景使用。
+        if instance_ids:
+            qs = qs.filter(id__in=list(instance_ids))
+        elif instance_id:
             qs = qs.filter(id=instance_id)
         if name:
             # 与列表「IP信息」/ ${resource_ip} 同源：summary_facts['asset.ip'] 优先字段。
-            qs = qs.annotate(
-                _asset_ip_fact=KeyTextTransform("asset.ip", "summary_facts")
-            ).filter(
-                Q(name__icontains=name)
-                | Q(ip__icontains=name)
-                | Q(_asset_ip_fact__icontains=name)
+            qs = qs.annotate(_asset_ip_fact=KeyTextTransform("asset.ip", "summary_facts")).filter(
+                Q(name__icontains=name) | Q(ip__icontains=name) | Q(_asset_ip_fact__icontains=name)
             )
 
         monitor_obj = MonitorObject.objects.filter(id=monitor_object_id).first()
@@ -679,11 +679,7 @@ class MonitorObjectService:
         frontier = [root_id]
         seen = {root_id}
         while frontier:
-            children = list(
-                MonitorObject.objects.filter(parent_id__in=frontier)
-                .exclude(id__in=seen)
-                .values_list("id", flat=True)
-            )
+            children = list(MonitorObject.objects.filter(parent_id__in=frontier).exclude(id__in=seen).values_list("id", flat=True))
             descendant_ids.extend(children)
             seen.update(children)
             frontier = children

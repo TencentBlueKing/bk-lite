@@ -44,6 +44,12 @@ import {
   trackSnmpFilterMutexLastChanged
 } from '@/app/monitor/hooks/integration/snmpFilterMutex';
 import { toMonitorNodeOption } from '@/app/monitor/hooks/integration/nodeOptions';
+import { runWithConcurrency } from '@/app/monitor/dashboards/shared/utils/concurrency';
+import {
+  fetchPagedItems,
+  MONITOR_LIST_MAX_ITEMS,
+  MONITOR_LIST_PAGE_SIZE,
+} from '@/app/monitor/utils/fetchPagedItems';
 import BatchEditModal from './batchEditModal';
 import ExcelImportModal from './excelImportModal';
 import PluginGuidePanel from './pluginGuidePanel';
@@ -575,8 +581,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         count: runnableRows.length
       })
     );
-    await Promise.all(
-      runnableRows.map((row) => handleCollectDetect(row, 'batch'))
+    await runWithConcurrency(runnableRows, 3, (row) =>
+      handleCollectDetect(row, 'batch')
     );
   };
 
@@ -913,14 +919,26 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const getNodeList = async () => {
     setNodesLoading(true);
     try {
-      const data = await getMonitorNodeList({
-        monitor_plugin_id: Number(pluginId),
-        cloud_region_id: 0,
-        page: 1,
-        page_size: -1,
-        is_active: true
-      });
-      const formattedNodes = (data.nodes || []).map((node: any) =>
+      const { items, truncated } = await fetchPagedItems<any>(
+        async (page, pageSize) => {
+          const data = await getMonitorNodeList({
+            monitor_plugin_id: Number(pluginId),
+            cloud_region_id: 0,
+            page,
+            page_size: pageSize,
+            is_active: true
+          });
+          return {
+            items: data?.nodes || [],
+            total: typeof data?.count === 'number' ? data.count : undefined
+          };
+        },
+        { pageSize: MONITOR_LIST_PAGE_SIZE, maxItems: MONITOR_LIST_MAX_ITEMS }
+      );
+      if (truncated) {
+        console.debug('[automatic] node list truncated', pluginId);
+      }
+      const formattedNodes = items.map((node: any) =>
         toMonitorNodeOption(
           node,
           t('monitor.integrations.hostMonitoringAlreadyConfigured'),
