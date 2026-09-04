@@ -7,6 +7,7 @@ import json
 
 from langchain_core.runnables import RunnableConfig
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.tools.kubernetes.connection import get_kubernetes_instances_from_configurable, resolve_kubernetes_instance
 
 # LangGraph configurable 含 callback/accumulator 等带锁对象，禁止 deepcopy 整份 config。
@@ -95,17 +96,33 @@ def point_instance_error(config: RunnableConfig | None, instance_name=None) -> s
     )
 
 
+_UNKNOWN_INSTANCE_TEMPLATE = "event=k8s_instance_name_ignored requested=%s bound=%s"
+
+
+def bind_known_or_keep_bound(config: RunnableConfig | None, instance_name=None) -> tuple[dict | None, str | None]:
+    """绑定指定实例；名称对不上时沿用已绑定或唯一实例（LLM 常把 Pod 名填进 instance_name）。"""
+    if not instance_name:
+        return config or {}, None
+    try:
+        return bind_instance_name(config, instance_name=instance_name), None
+    except ValueError as exc:
+        bound_name = str(_configurable(config).get("instance_name") or _configurable(config).get("instance_id") or "-")
+        if _already_bound(config):
+            logger.debug(_UNKNOWN_INSTANCE_TEMPLATE, instance_name, bound_name)
+            return config or {}, None
+        instances = configured_instances(config)
+        if len(instances) == 1:
+            logger.debug(_UNKNOWN_INSTANCE_TEMPLATE, instance_name, instances[0].get("name") or "-")
+            return bind_instance_config(config, instances[0]), None
+        return None, json.dumps({"error": str(exc)}, ensure_ascii=False)
+
+
 def prepare_point_instance(config: RunnableConfig | None, instance_name=None) -> tuple[dict | None, str | None]:
     """返回 (绑定后的 config, 错误 JSON)。错误非空时不要继续调用集群 API。"""
     error = point_instance_error(config, instance_name)
     if error:
         return None, error
-    if instance_name:
-        try:
-            return bind_instance_name(config, instance_name=instance_name), None
-        except ValueError as exc:
-            return None, json.dumps({"error": str(exc)}, ensure_ascii=False)
-    return config or {}, None
+    return bind_known_or_keep_bound(config, instance_name)
 
 
 def scan_instances(config: RunnableConfig | None, instance_name=None) -> list[dict] | None:
@@ -145,10 +162,9 @@ def wrap_scan_payload(cluster_name: str, raw: str) -> dict:
 def run_scan_tool(config: RunnableConfig | None, instance_name, run_single) -> str:
     """run_single(bound_config) -> JSON/文本。多实例未指定时扇出；坏实例记 error。"""
     if instance_name:
-        try:
-            bound = bind_instance_name(config, instance_name=instance_name)
-        except ValueError as exc:
-            return json.dumps({"error": str(exc)}, ensure_ascii=False)
+        bound, error = bind_known_or_keep_bound(config, instance_name)
+        if error:
+            return error
         return run_single(bound)
 
     scoped = scan_instances(config, instance_name=None)

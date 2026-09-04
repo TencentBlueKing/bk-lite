@@ -1399,6 +1399,7 @@ class TestBuildDeepagentNodes:
         assert captured["hide_during_ainvoke"] == [True, True]
         assert "不要输出 Markdown 表" in str(captured["ainvoke_messages"][0][-1].content)
         assert "只保留一张表" in str(captured["ainvoke_messages"][1][-1].content)
+        assert "事件概述" in str(captured["ainvoke_messages"][1][-1].content)
 
     def test_progressive_disabled_skips_planner_and_binds_all_tools(self, monkeypatch):
         monkeypatch.setenv("OPSPILOT_DEEPAGENT_PROGRESSIVE_TOOLS", "0")
@@ -1427,6 +1428,43 @@ def test_planned_step_already_answered_detects_markdown_table():
     assert ToolsNodes._planned_step_already_answered([AIMessage(content=table)]) is True
     assert ToolsNodes._planned_step_already_answered([AIMessage(content="执行结果 1")]) is False
     assert ToolsNodes._planned_step_already_answered([ToolMessage(content=table, tool_call_id="t1")]) is False
+    evidence = "日志获取完成。\n\n**关键证据确认：**\n- MLflow 返回 RESOURCE_DOES_NOT_EXIST。\n" "证据链已闭环，确认为模型依赖缺失导致的启动失败。"
+    assert ToolsNodes._planned_step_already_answered([AIMessage(content=evidence)]) is False
+    dump = (
+        "## 事件描述\nPod 重启。\n\n## 涉及对象清单\n| Pod | Status | Reason | Restart Count |\n"
+        "| --- | --- | --- | --- |\n| a | Running | OOMKilled | 5 |\n\n## 链路分析\n步骤 1：OOM。\n\n## 调查结论\n堆内存不足。"
+    )
+    assert ToolsNodes._looks_like_step_investigation_dump(dump) is True
+    assert ToolsNodes._planned_step_already_answered([AIMessage(content=dump)]) is False
+    partial = (
+        "## 事件概述\n探针失败。\n\n## 异常对象清单\n| 对象 | 状态/现象 | 重启次数 | 关键事件 | 是否已定位 |\n"
+        "| --- | --- | --- | --- | --- |\n| pod/a | Ready=false | 1 | connection refused | 是 |\n\n## 根因分析\n模型缺失。"
+    )
+    assert ToolsNodes._looks_like_complete_rca_report(partial) is False
+    assert ToolsNodes._planned_step_already_answered([AIMessage(content=partial)]) is False
+    untitled = (
+        "## 事件概述\n探针失败。\n\n## 异常对象清单\n| 对象 | 状态/现象 | 重启次数 | 关键事件 | 是否已定位 |\n"
+        "| --- | --- | --- | --- | --- |\n| pod/a | Ready=false | 1 | connection refused | 是 |\n\n"
+        "## 根因分析\n模型缺失。\n\n## 修复建议\n核对模型 URI。\n\n## 待确认项\n无。"
+    )
+    assert ToolsNodes._looks_like_complete_rca_report(untitled) is False
+    assert ToolsNodes._planned_step_already_answered([AIMessage(content=untitled)]) is False
+    report = (
+        "# RCA 报告\n\n## 事件概述\n探针失败。\n\n## 异常对象清单\n| 对象 | 状态/现象 | 重启次数 | 关键事件 | 是否已定位 |\n"
+        "| --- | --- | --- | --- | --- |\n| pod/a | Ready=false | 1 | connection refused | 是 |\n\n"
+        "## 根因分析\n模型缺失。\n\n## 修复建议\n核对模型 URI。\n\n## 待确认项\n无。"
+    )
+    assert ToolsNodes._looks_like_complete_rca_report(report) is True
+    assert ToolsNodes._looks_like_evidence_note(report) is False
+    assert ToolsNodes._planned_step_already_answered([AIMessage(content=report)]) is True
+    restart = (
+        "## 时间基准\n现在 2026-09-04。\n\n## 对象与结论\nCrashLoop 仍在发生。\n\n"
+        "## 证据\nlast_state exit=1；previous_tail 含 bind() failed。\n\n"
+        "## 原因\nNginx 无法绑定 80 端口，置信度高。\n\n## 建议与待确认\n检查 hostPort/权限。"
+    )
+    assert ToolsNodes._looks_like_complete_restart_reason_report(restart) is True
+    assert ToolsNodes._looks_like_complete_rca_report(restart) is False
+    assert ToolsNodes._planned_step_already_answered([AIMessage(content=restart)]) is True
 
 
 def test_should_skip_planned_summary_for_multi_step_table():
@@ -1442,6 +1480,15 @@ def test_should_skip_planned_summary_for_multi_step_table():
     prose = [AIMessage(content="已拿到事件时间，今天没有新的重启。")]
     assert ToolsNodes._should_skip_planned_summary(prose, completed_step_count=2) is False
     assert ToolsNodes._should_skip_planned_summary(prose, completed_step_count=1) is True
+    evidence = [AIMessage(content=("日志获取完成。\n\n**关键证据确认：**\n" "- 应用启动失败，端口 3000 未监听。\n" "证据链已闭环，确认为模型依赖缺失导致的启动失败。"))]
+    assert ToolsNodes._should_skip_planned_summary(evidence, completed_step_count=1) is False
+    assert ToolsNodes._should_skip_planned_summary(evidence, completed_step_count=3) is False
+    dump = [AIMessage(content=("## 事件描述\nPod 重启。\n\n## 涉及对象清单\n| Pod | Reason |\n| --- | --- |\n" "| a | OOMKilled |\n\n## 调查结论\n堆内存不足。"))]
+    assert ToolsNodes._should_skip_planned_summary(dump, completed_step_count=1) is False
+    assert ToolsNodes._should_skip_planned_summary(dump, completed_step_count=3) is False
+    restart = [AIMessage(content=("## 时间基准\n现在 2026-09-04。\n\n## 对象与结论\nCrashLoop。\n\n" "## 证据\nprevious_tail bind failed。\n\n## 原因\n端口占用。"))]
+    assert ToolsNodes._should_skip_planned_summary(restart, completed_step_count=1) is True
+    assert ToolsNodes._should_skip_planned_summary(restart, completed_step_count=2) is True
 
 
 def test_select_visible_planned_messages_keeps_last_table_not_cumulative():
@@ -1486,6 +1533,43 @@ def test_select_visible_planned_messages_keeps_last_prose_over_earlier_table():
     assert sum(1 for item in visible if getattr(item, "type", "") == "tool") == 2
 
 
+def test_select_visible_planned_messages_prefers_complete_rca():
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    dump = "## 事件描述\nPod 重启。\n\n| Pod | Reason |\n| --- | --- |\n| a | OOMKilled |\n\n## 调查结论\nOOM。"
+    rca = (
+        "# RCA 报告\n\n## 事件概述\nOOM 导致重启。\n\n## 异常对象清单\n| 对象 | 状态/现象 | 重启次数 | 关键事件 | 是否已定位 |\n"
+        "| --- | --- | --- | --- | --- |\n| pod/a | OOMKilled | 5 | Java heap space | 是 |\n\n"
+        "## 根因分析\nJVM 堆不足。\n\n## 修复建议\n提高堆上限。\n\n## 待确认项\n无。"
+    )
+    messages = [
+        ToolMessage(content="{}", tool_call_id="1"),
+        AIMessage(content=dump),
+        AIMessage(content=rca),
+    ]
+    visible = ToolsNodes._select_visible_planned_messages(messages, summary_ran=False)
+    ai = [item for item in visible if getattr(item, "type", "") == "ai" and not getattr(item, "tool_calls", None)]
+    assert len(ai) == 1
+    assert "事件概述" in str(ai[0].content)
+    assert "# RCA 报告" in str(ai[0].content)
+    assert "调查结论" not in str(ai[0].content)
+
+
+def test_summarize_planned_step_keeps_tool_result_not_investigation_dump():
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    dump = "## 事件描述\n重启。\n\n## 调查结论\nOOM。"
+    messages = [
+        AIMessage(content="", tool_calls=[{"id": "1", "name": "diagnose_kubernetes_pod", "args": {}}]),
+        ToolMessage(content='{"last_state":"OOMKilled","exit_code":137}', tool_call_id="1", name="diagnose_kubernetes_pod"),
+        AIMessage(content=dump),
+    ]
+    summary = ToolsNodes._summarize_planned_step_messages(messages)
+    assert "OOMKilled" in summary
+    assert "事件描述" not in summary
+    assert "调查结论" not in summary
+
+
 def test_planned_step_already_answered_detects_tool_sentence():
     from langchain_core.messages import AIMessage
 
@@ -1525,15 +1609,68 @@ def test_planned_tool_step_guidance_is_policy_not_skill_scan():
     assert "空列表" in guidance
     assert "重规划" in guidance
     assert "不要输出 Markdown 表" in guidance
+    assert "禁止降低 lines" in guidance
     assert "execute" not in guidance
     assert "扫技能包" not in guidance
     last = ToolsNodes._planned_tool_step_guidance(is_last_step=True)
+    assert "只输出一份报告" in last
+    assert "不要套「# RCA 报告」" in last
+    assert "必须以「# RCA 报告」" not in last
+    assert "异常对象清单必须是 Markdown 表" not in last
     assert "只保留一张表" in last
+    assert "不是告警 RCA" in last
+    assert "调查结论" in last
+    assert "关键证据确认" in last
     assert "时间窗" in last
     assert "last_restart_time" in last
     assert "last_state" in last
     assert "previous" in last
     assert "不要输出 Markdown 表" not in last
+    mid = ToolsNodes._planned_tool_step_guidance()
+    assert "调查结论" in mid
+    assert "一两句话" in mid
+
+
+def test_planned_tool_step_guidance_alert_rca_keeps_report_template():
+    last = ToolsNodes._planned_tool_step_guidance(
+        is_last_step=True,
+        user_message="告警：Unhealthy 检测到异常\nReadiness probe failed",
+        agent_system_prompt="你是 Kubernetes 集群 RCA 助手。\n## 告警怎么读\n## 输出格式\n# RCA 报告\n",
+    )
+    assert "必须以「# RCA 报告」" in last
+    assert "事件概述" in last
+    assert "异常对象清单" in last
+    assert "根因分析" in last
+    assert "修复建议" in last
+    assert "待确认项" in last
+    assert "第一行" in last
+    summary = ToolsNodes._planned_summary_guidance(
+        user_message="告警：Unhealthy 检测到异常",
+        agent_system_prompt="你是 Kubernetes 集群 RCA 助手。\n## 告警怎么读\n",
+    )
+    assert "必须以「# RCA 报告」" in summary
+
+
+def test_planned_tool_step_guidance_restart_reason_forbids_rca_template():
+    question = "分析下pod gateway-proxy-7d4bc9778-tczng的重启原因，所属namespace：production"
+    last = ToolsNodes._planned_tool_step_guidance(
+        is_last_step=True,
+        user_message=question,
+        agent_system_prompt="你是 Kubernetes Pod 重启原因分析助手。",
+    )
+    assert "重启原因报告" in last
+    assert "时间基准" in last
+    assert "对象与结论" in last
+    assert "禁止写「# RCA 报告」" in last
+    assert "必须以「# RCA 报告」" not in last
+    assert "collect_pod_restart_evidence" in last
+    summary = ToolsNodes._planned_summary_guidance(
+        user_message=question,
+        agent_system_prompt="你是 Kubernetes Pod 重启原因分析助手。",
+    )
+    assert "重启原因报告" in summary
+    assert "禁止写「# RCA 报告」" in summary
+    assert "必须以「# RCA 报告」" not in summary
 
 
 def test_skill_only_step_guidance_lists_real_scripts(tmp_path):
