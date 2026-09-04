@@ -20,6 +20,8 @@ _MAX_POD_LOG_LINES = 80
 _POD_LOG_RCA_MAX_CHARS = 3500
 _POD_LOG_RCA_TAIL_LINES = 40
 _POD_LOG_NO_RETRY = "这是有效证据，禁止降低 lines 再次调用本工具。"
+_POD_LOG_NO_LINES_RETRY = "禁止降低 lines 再次调用本工具。"
+_POD_LOG_HEAD_TRUNCATION_SUFFIX = "\n...(truncated)"
 _POD_LOG_COMPACT_PREFIX = "【日志已按 RCA 压缩，禁止为获取更多行再次调用本工具。】"
 _POD_LOG_ERROR_RE = re.compile(
     r"error|exception|traceback|panic|fatal|oomkilled|\boom\b|failed|denied|refused|timeout|crash|resource_does_not_exist",
@@ -50,6 +52,14 @@ def _empty_pod_log_message(pod_name, container, *, previous: bool) -> str:
 
 def _unavailable_previous_log_message(pod_name, container) -> str:
     return f"Pod {pod_name} 容器 {container} 没有可用的 previous 日志。{_POD_LOG_NO_RETRY}"
+
+
+def _cap_pod_logs_head(logs: str, *, max_chars: int = _POD_LOG_RCA_MAX_CHARS) -> str:
+    """tail=false：只做长度上限的头截断，不套「最近日志」式 RCA 尾摘录。"""
+    if not logs or len(logs) <= max_chars:
+        return logs
+    keep = max(0, max_chars - len(_POD_LOG_HEAD_TRUNCATION_SUFFIX))
+    return logs[:keep] + _POD_LOG_HEAD_TRUNCATION_SUFFIX
 
 
 def excerpt_pod_logs_for_rca(logs: str, *, max_chars: int = _POD_LOG_RCA_MAX_CHARS, tail_lines: int = _POD_LOG_RCA_TAIL_LINES) -> str:
@@ -84,6 +94,8 @@ def _finalize_pod_logs(logs, *, pod_name, container, previous: bool, tail: bool,
         logs = "\n".join(log_lines[:lines])
     if not logs:
         return _empty_pod_log_message(pod_name, container, previous=previous)
+    if not tail:
+        return _cap_pod_logs_head(logs)
     return excerpt_pod_logs_for_rca(logs)
 
 
@@ -731,21 +743,17 @@ def get_kubernetes_previous_pod_logs(
             log_kwargs["since_seconds"] = since_seconds
         logs = core_v1.read_namespaced_pod_log(**log_kwargs)
 
-        if not tail and logs:
-            log_lines = logs.split("\n")
-            logs = "\n".join(log_lines[:lines])
-
         if not logs:
             if since_seconds is not None:
                 window_hours = since_seconds // 3600
                 return (
                     f"Pod {pod_name} 容器 {container} 在近 {window_hours} 小时滚动窗口内没有 previous 日志。"
                     f"这不等于没有 previous 容器；可加大 hours 或不传 hours（不限窗）再查。"
-                    f"{_POD_LOG_NO_RETRY}"
+                    f"{_POD_LOG_NO_LINES_RETRY}"
                 )
             return _empty_pod_log_message(pod_name, container, previous=True)
 
-        return excerpt_pod_logs_for_rca(logs)
+        return _finalize_pod_logs(logs, pod_name=pod_name, container=container, previous=True, tail=tail, lines=lines)
 
     except ApiException as e:
         error_message = str(e)
