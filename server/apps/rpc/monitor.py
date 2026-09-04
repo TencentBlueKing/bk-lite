@@ -40,6 +40,14 @@ class Monitor(object):
         """
         return self.ingest_client.run("monitor_ingest_from_source", params=kwargs)
 
+    def query_active_alert_summaries_by_monitor_ids(self, monitor_ids, **kwargs):
+        """CMDB room3D 等调用方：按 monitor_id 批量查活跃告警摘要。"""
+        return self.ingest_client.run(
+            "query_active_alert_summaries_by_monitor_ids",
+            monitor_ids=monitor_ids,
+            **kwargs,
+        )
+
 
 class MonitorOperationAnaRpc(BaseOperationAnaRpc):
     def create_monitor_object_type(self, data: dict, **kwargs):
