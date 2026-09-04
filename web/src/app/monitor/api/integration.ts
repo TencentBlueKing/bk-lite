@@ -178,6 +178,7 @@ const useIntegrationApi = () => {
           page?: number;
           page_size?: number;
           name?: string;
+          vm_params?: Record<string, string | string[]>;
         } = {},
         config?: AxiosRequestConfig
       ) => {
