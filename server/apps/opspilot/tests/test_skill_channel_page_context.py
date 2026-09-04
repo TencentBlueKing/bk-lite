@@ -169,6 +169,48 @@ class TestInjectPageContext:
         assert "磁盘吞吐趋势" not in text
         assert "《资源使用趋势》" in text
 
+    def test_disk_usage_top_question_keeps_rank_chart_not_resource_trend(self):
+        page_context = {
+            "sections": [
+                {
+                    "id": "dashboard-time-range",
+                    "label": "时间筛选",
+                    "content": "当前筛选: 最近15分钟\nKPI 快照:\n磁盘使用率: 82.9%\nCPU 使用率: 86.0%",
+                    "priority": 9,
+                },
+                {
+                    "id": "visible-charts",
+                    "label": "可见图表",
+                    "content": (
+                        "1. 资源使用趋势；序列: CPU 使用率, 内存使用率, 磁盘使用率, I/O Wait 占比；最新值: 86.0, 79.0, 82.9, 6.9\n"
+                        "2. 磁盘使用率 Top；序列: / 82.9%, /var 80.1%, /data 71.2%, /home 66.5%, /opt 57.3%, /var/lib/docker 49.9%, /tmp 34.6%, /boot 16.8%"
+                    ),
+                    "priority": 9,
+                },
+            ],
+            "images": [
+                {
+                    "caption": "资源使用趋势；序列: CPU 使用率, 内存使用率, 磁盘使用率, I/O Wait 占比；最新值: 86.0, 79.0, 82.9, 6.9",
+                    "dataUrl": _tiny_png_data_url(),
+                },
+            ],
+        }
+        result = chat_svc.inject_page_context("磁盘使用率top", page_context)
+        if isinstance(result, str):
+            text = result
+            image_items = []
+        else:
+            image_items = [item for item in result if item.get("type") == "image_url"]
+            text = result[-1]["message"]
+        assert image_items == []
+        assert "磁盘使用率 Top" in text
+        assert "/var 80.1%" in text
+        assert "/boot 16.8%" in text
+        assert "资源使用趋势" not in text
+        assert "《磁盘使用率 Top》" in text
+        assert "不要只用 KPI 快照里的单一占用百分比代替排行" in text
+        assert "优先用 KPI 快照" not in text
+
     def test_cpu_time_question_keeps_distribution_chart(self):
         page_context = {
             "sections": [
@@ -232,6 +274,17 @@ class TestInjectPageContext:
             "磁盘吞吐趋势；序列: 读吞吐, 写吞吐；最新值: 12.1, 8.4",
             "磁盘使用率高吗",
         )
+        assert chat_svc.chart_title_matches_question("磁盘使用率 Top", "磁盘使用率top")
+        assert not chat_svc.chart_matches_question(
+            "资源使用趋势；序列: CPU 使用率, 内存使用率, 磁盘使用率, I/O Wait 占比；最新值: 86.0, 79.0, 82.9, 6.9",
+            "磁盘使用率top",
+        )
+        assert chat_svc.chart_matches_question(
+            "磁盘使用率 Top；序列: / 82.9%, /var 80.1%",
+            "磁盘使用率top",
+        )
+        assert not chat_svc._has_ranking_marker("desktop")
+        assert chat_svc._has_ranking_marker("磁盘使用率top")
         result = chat_svc.inject_page_context("具体分析下CPU使用时间", page_context)
         image_items = [item for item in result if item.get("type") == "image_url"]
         assert len(image_items) == 1
