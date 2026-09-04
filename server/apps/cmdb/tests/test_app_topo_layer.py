@@ -21,6 +21,8 @@ def test_default_app_topo_layer_matches_builtin_identity():
     assert default_app_topo_layer("nacos") == "appService"
     assert default_app_topo_layer("aliyun_mysql") == "appService"
     assert default_app_topo_layer("physcial_server") == "infrastructure"
+    assert default_app_topo_layer("storage_eth_port") == "infrastructure"
+    assert default_app_topo_layer("storage_fc_port") == "infrastructure"
     assert default_app_topo_layer("switch") == "infrastructure"
     assert default_app_topo_layer("rack") == "infrastructure"
     assert default_app_topo_layer("server_room") == "infrastructure"
