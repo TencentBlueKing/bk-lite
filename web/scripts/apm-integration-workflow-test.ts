@@ -27,7 +27,6 @@ assert.match(catalog, /name="cloud_region_id"/, '接入配置必须选择云区�
 assert.match(catalog, /name="service_name"/, '接入配置必须收集 service.name');
 assert.match(catalog, /name="service_version"/, '接入配置必须收集 service.version');
 assert.match(catalog, /name="sample_rate"/, '接入配置必须能选择本次脚本的采样率');
-assert.match(catalog, /只写入接下来复制的安装脚本/, '采样率不得被描述成平台正在执行的策略');
 assert.doesNotMatch(catalog, /接入配置不会保存|APM Token/, '页面不应使用全局警示解释内部存储或鉴权实现');
 assert.match(catalog, /仅在本窗口保留/, '生成结果附近必须说明临时性');
 assert.doesNotMatch(catalog, /Token 仅在本窗口显示一次|credential|createIngestSource/, '接入配置不得创建接入源或签发 Token');

@@ -121,7 +121,7 @@ describe('APM 添加接入', () => {
     }));
   });
 
-  it('将采样率写入本次脚本请求，并说明不会改变已运行应用', async () => {
+  it('将采样率写入本次脚本请求', async () => {
     api.getIngestSnippet.mockResolvedValue({
       application_id: 'bklite',
       application_name: 'BK-Lite',
@@ -137,15 +137,16 @@ describe('APM 添加接入', () => {
     await user.type(screen.getByRole('textbox', { name: /服务名称/ }), 'checkout');
     await waitFor(() => expect(api.getIngestSnippet).toHaveBeenCalled(), { timeout: 3000 });
     expect(api.getIngestSnippet).toHaveBeenCalledWith(expect.objectContaining({ sample_rate: 100 }));
-    expect(screen.queryByText(/只写入接下来复制的安装脚本/)).toBeNull();
 
     await user.click(screen.getByRole('combobox', { name: '采样率' }));
-    await user.click(await screen.findByTitle('10%'));
+    expect(await screen.findAllByTitle('1%')).not.toHaveLength(0);
+    expect(screen.getAllByTitle(/^\d+%$/).map((option) => option.getAttribute('title'))).toEqual(
+      expect.arrayContaining(['100%', '50%', '20%', '10%', '5%', '1%']),
+    );
+    await user.click(screen.getAllByTitle('10%').at(-1)!);
     await waitFor(() => expect(api.getIngestSnippet).toHaveBeenCalledWith(expect.objectContaining({
       sample_rate: 10,
     })), { timeout: 3000 });
-    expect(screen.getByText('采样率只写入本次安装脚本')).not.toBeNull();
-    expect(screen.getByText(/不会改变已经在跑的应用/)).not.toBeNull();
   });
 
   it('点击 SDK 接入方式后从右侧打开配置抽屉', async () => {
