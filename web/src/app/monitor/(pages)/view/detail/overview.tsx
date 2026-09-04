@@ -158,6 +158,13 @@ const Overview: React.FC<ViewDetailProps> = ({
   const fetchViewData = async (data: MetricItem[], type?: string) => {
     setLoading(type !== 'timer');
     try {
+      // 实例身份未就绪时不并发拉指标，避免空标签请求。
+      if (!idValues.length) {
+        data.forEach((metricItem) => {
+          metricItem.viewData = [];
+        });
+        return;
+      }
       const results = await runWithConcurrency(
         data,
         OVERVIEW_QUERY_CONCURRENCY,
