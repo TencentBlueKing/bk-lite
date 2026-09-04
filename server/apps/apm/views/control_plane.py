@@ -251,6 +251,7 @@ class ApmIntegrationConfigurationViewSet(viewsets.GenericViewSet):
                 service_version=data.get("service_version", ""),
                 environment=data["environment"],
                 probe_download_url=endpoints.probe_download_url,
+                sample_rate=data.get("sample_rate", 100),
             )
         )
         return Response(

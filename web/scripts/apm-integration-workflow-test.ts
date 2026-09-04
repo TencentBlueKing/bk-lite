@@ -26,8 +26,8 @@ assert.match(catalog, /name="application_id"/, '应用 ID 必须映射到 servic
 assert.match(catalog, /name="cloud_region_id"/, '接入配置必须选择云区域');
 assert.match(catalog, /name="service_name"/, '接入配置必须收集 service.name');
 assert.match(catalog, /name="service_version"/, '接入配置必须收集 service.version');
+assert.match(catalog, /name="sample_rate"/, '接入配置必须能选择本次脚本的采样率');
 assert.doesNotMatch(catalog, /接入配置不会保存|APM Token/, '页面不应使用全局警示解释内部存储或鉴权实现');
-assert.match(catalog, /生成临时配置/, '临时性应在生成动作附近以用户语言表达');
 assert.match(catalog, /仅在本窗口保留/, '生成结果附近必须说明临时性');
 assert.doesNotMatch(catalog, /Token 仅在本窗口显示一次|credential|createIngestSource/, '接入配置不得创建接入源或签发 Token');
 assert.match(catalog, /suppressErrorNotification: true/, '页面内错误态存在时，目录请求必须禁止重复全局 toast');

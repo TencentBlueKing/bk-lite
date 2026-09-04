@@ -399,6 +399,7 @@ export default function ApmIntegrationAddPage() {
                 service_name: '',
                 service_version: '',
                 environment: 'production',
+                sample_rate: 100,
               }}
               onValuesChange={() => {
                 setSnippet(null);
@@ -411,6 +412,14 @@ export default function ApmIntegrationAddPage() {
                 <Form.Item name="service_name" label={t('apm.integration.serviceName', '服务名称')} rules={[{ required: true, whitespace: true, message: t('apm.integration.serviceNameRequired', '请输入服务名称') }, { max: 256 }]}><Input placeholder={t('apm.integration.serviceNamePlaceholder', 'service.name，例如 checkout')} /></Form.Item>
                 <Form.Item name="service_version" label={t('apm.integration.serviceVersion', '服务版本')} rules={[{ max: 256 }]}><Input placeholder={t('apm.integration.serviceVersionPlaceholder', 'service.version，例如 1.4.0（可选）')} /></Form.Item>
                 <Form.Item name="environment" label={t('apm.integration.deployEnv', '部署环境')} rules={[{ required: true, whitespace: true, message: t('apm.integration.deployEnvRequired', '请输入部署环境') }, { max: 256 }]}><Input placeholder={t('apm.integration.deployEnvPlaceholder', 'deployment.environment，例如 production')} /></Form.Item>
+                <Form.Item name="sample_rate" label={t('apm.integration.sampleRate', '采样率')} rules={[{ required: true, message: t('apm.integration.sampleRateRequired', '请选择采样率') }]}>
+                  <Select
+                    options={[100, 50, 20, 10, 5, 1].map((value) => ({
+                      value,
+                      label: `${value}%`,
+                    }))}
+                  />
+                </Form.Item>
               </div>
               <Form.Item label={t('apm.integration.runtime', '运行方式')} className="!mb-4">
                 <Segmented

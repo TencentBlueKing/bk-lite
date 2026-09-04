@@ -340,6 +340,7 @@ export interface ApmIngestSnippetInput {
   service_name: string;
   service_version?: string;
   environment: string;
+  sample_rate?: number;
 }
 
 export interface ApmCloudRegion {
