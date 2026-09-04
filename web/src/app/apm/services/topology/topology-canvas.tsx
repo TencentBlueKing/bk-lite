@@ -490,7 +490,7 @@ export default function TopologyCanvas({
               : 'var(--color-primary)';
           const trafficRatio = maxCalls > 0 ? Math.min(1, edge.sampled_calls / maxCalls) : 0.5;
           const flowDuration = Math.max(0.7, (edge.error_calls > 0 ? 1.35 : 1.7) - trafficRatio * 0.85);
-          const strokeWidth = Math.max(1, Math.min(2.4, 0.9 + (edge.sampled_calls / maxCalls) * 1.4));
+          const strokeWidth = Math.max(1.1, Math.min(2.0, 0.9 + (edge.sampled_calls / maxCalls) * 1.0));
           const trackWidth = isSelected ? strokeWidth + 0.6 : strokeWidth;
           const emphasized = isSelected || isHovered || isNodeSelected;
           const gradientId = `apm-edge-grad-${sanitizeSvgId(edge.source)}-${sanitizeSvgId(edge.target)}`;
@@ -570,8 +570,8 @@ export default function TopologyCanvas({
                 stroke={flowColor}
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeOpacity={emphasized ? 0.5 : 0.32}
-                strokeWidth={trackWidth + 3.2}
+                strokeOpacity={emphasized ? 0.45 : 0.22}
+                strokeWidth={trackWidth + 1.2}
                 style={{ animationDuration: `${flowDuration.toFixed(2)}s` }}
               />
               <path
@@ -583,8 +583,8 @@ export default function TopologyCanvas({
                 stroke={flowColor}
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeOpacity={emphasized ? 1 : 0.85}
-                strokeWidth={Math.max(1.4, trackWidth)}
+                strokeOpacity={emphasized ? 0.95 : 0.8}
+                strokeWidth={trackWidth}
                 style={{ animationDuration: `${flowDuration.toFixed(2)}s` }}
               />
               <TopologyMetricLabel
