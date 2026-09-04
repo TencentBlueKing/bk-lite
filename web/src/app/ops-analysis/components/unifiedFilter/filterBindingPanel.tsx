@@ -18,7 +18,7 @@ interface FilterBindingPanelProps {
   definitions: UnifiedFilterDefinition[];
   dataSourceParams: ParamItem[];
   filterBindings: FilterBindings;
-  onChange: (bindings: FilterBindings) => void;
+  onChange?: (bindings: FilterBindings) => void;
 }
 
 interface BindableParam {
@@ -67,52 +67,63 @@ const FilterBindingPanel: React.FC<FilterBindingPanelProps> = ({
     return t('dashboard.string');
   };
 
+  const getTypeTagColor = (type: string) => {
+    if (type === 'timeRange') return 'blue';
+    if (type === 'dateRange') return 'purple';
+    return 'default';
+  };
+
   return (
-    <div className="space-y-2">
+    <div className="divide-y divide-(--color-border-1) rounded-md border border-(--color-border-1) bg-(--color-bg)">
       {bindableParams.map(({ param, matchedDefinition, canBind, filterId }) => {
         const isEnabled = safeFilterBindings[filterId] ?? false;
         const displayName = matchedDefinition?.name || param.alias_name || param.name;
+        const hasCustomName = Boolean(displayName && displayName !== param.name);
 
         return (
           <div
             key={filterId}
-            className={`flex items-center justify-between py-2 ${
-              canBind ? '' : 'opacity-60'
+            className={`flex items-center justify-between px-3.5 py-2.5 transition-colors ${
+              canBind ? 'hover:bg-(--color-fill-1)/40' : 'opacity-60'
             }`}
           >
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-medium text-(--color-text-1)">
-                  {displayName}
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <span className="truncate text-[13px] font-medium text-(--color-text-1)">
+                {displayName}
+              </span>
+              {hasCustomName ? (
+                <span className="truncate font-mono text-xs text-(--color-text-3)">
+                  ({param.name})
                 </span>
+              ) : null}
+              <Tag
+                bordered={false}
+                color={getTypeTagColor(param.type)}
+                className="m-0 text-[11px] font-normal leading-tight"
+              >
+                {getTypeLabel(param.type)}
+              </Tag>
+              {!canBind ? (
                 <Tag
-                  color={
-                    param.type === 'timeRange'
-                      ? 'blue'
-                      : param.type === 'dateRange'
-                        ? 'purple'
-                        : 'green'
-                  }
-                  className="m-0"
+                  bordered={false}
+                  className="m-0 text-[11px] font-normal leading-tight text-(--color-text-4)"
                 >
-                  {getTypeLabel(param.type)}
+                  {t('dashboard.filterDisabled')}
                 </Tag>
-                {!canBind ? (
-                  <Tag color="default" className="m-0">
-                    {t('dashboard.filterDisabled')}
-                  </Tag>
-                ) : null}
-              </div>
-              <div className="mt-0.5 font-mono text-xs text-(--color-text-3)">
-                {param.name}
-              </div>
+              ) : null}
             </div>
-            <Switch
-              size="small"
-              className="ml-3 shrink-0"
-              checked={canBind && isEnabled}
-              disabled
-            />
+            <div className="ml-3 flex shrink-0 items-center gap-2">
+              <span className="text-xs text-(--color-text-3)">
+                {canBind && isEnabled
+                  ? t('dashboard.filterLinked')
+                  : t('dashboard.filterUnlinked')}
+              </span>
+              <Switch
+                size="small"
+                checked={canBind && isEnabled}
+                disabled
+              />
+            </div>
           </div>
         );
       })}

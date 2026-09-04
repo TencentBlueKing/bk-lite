@@ -1,6 +1,6 @@
 import React from 'react';
-import { ReloadOutlined } from '@ant-design/icons';
-import { Button, Form, Input, InputNumber, Radio, Select, TreeSelect } from 'antd';
+import { QuestionCircleOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Button, Form, Input, InputNumber, Radio, Select, Tooltip, TreeSelect } from 'antd';
 import type { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
 import { getUnitCategories } from '@/app/ops-analysis/utils/unitFormat';
 import { ThresholdColorConfigSection } from '@/app/ops-analysis/components/thresholdColorConfigSection';
@@ -98,75 +98,68 @@ export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
 
       <Form.Item
         label={
-          <div className="flex items-center justify-between w-full">
-            <span>{t('topology.nodeConfig.displayField')}</span>
-            <Button
-              type="text"
-              size="small"
-              icon={<ReloadOutlined aria-hidden />}
-              onClick={onFetchSingleValueDataFields}
-              loading={loadingSingleValueData}
-              disabled={!selectedDataSource}
-              title={t('topology.nodeConfig.refreshDataFields')}
-              aria-label={t('topology.nodeConfig.refreshDataFields')}
-              className="h-5 px-1 text-xs text-(--color-text-3) hover:text-(--color-primary)"
+          <span>
+            {t('topology.nodeConfig.displayField')}
+            <Tooltip
+              title={t('dashboard.displayFieldTip')}
+              overlayInnerStyle={{ maxWidth: 360 }}
             >
-              {t('topology.nodeConfig.refreshDataFields') || '刷新字段'}
-            </Button>
-          </div>
+              <QuestionCircleOutlined className="ml-1 text-(--color-text-3) cursor-help" />
+            </Tooltip>
+          </span>
         }
         name="selectedFields"
-          rules={[
-            {
-              required: true,
-              validator: (_, value) => {
-                if (!value || value.length === 0) {
-                  return Promise.reject(
-                    new Error(t('topology.nodeConfig.selectDisplayField')),
-                  );
-                }
-                return Promise.resolve();
-              },
+        rules={[
+          {
+            required: true,
+            validator: (_, value) => {
+              if (!value || value.length === 0) {
+                return Promise.reject(
+                  new Error(t('topology.nodeConfig.selectDisplayField')),
+                );
+              }
+              return Promise.resolve();
             },
-          ]}
-        >
-          <div className="flex items-start gap-3">
-            <TreeSelect
-              value={selectedFields[0]}
-              treeData={buildFieldOptions(singleValueTreeData)}
-              treeDefaultExpandAll
-              allowClear
-              showSearch
-              treeNodeFilterProp="searchText"
-              placeholder={
-                !selectedDataSource
-                  ? t('topology.nodeConfig.selectDataSourceFirst')
-                  : loadingSingleValueData
-                    ? t('topology.nodeConfig.fetchingDataFields')
-                    : singleValueTreeData.length === 0
-                      ? t('topology.nodeConfig.clickRefreshToGetFields')
-                      : t('topology.nodeConfig.selectDisplayField')
-              }
-              disabled={fieldSelectorDisabled}
-              onChange={(value) =>
-                handleFieldSelect(value as string | undefined)
-              }
-              className={fieldSelectorClassName}
-              popupClassName={fieldPopupClassName}
-              style={{ width: '100%' }}
-              dropdownStyle={{ maxHeight: 360, overflow: 'auto' }}
-            />
-            <Button
-              type="text"
-              icon={<ReloadOutlined />}
-              onClick={onFetchSingleValueDataFields}
-              loading={loadingSingleValueData}
-              disabled={!selectedDataSource}
-              title={t('topology.nodeConfig.refreshDataFields')}
-              className="shrink-0"
-            />
-          </div>
-        </Form.Item>
+          },
+        ]}
+      >
+        <div className="flex items-center gap-2">
+          <TreeSelect
+            value={selectedFields[0]}
+            treeData={buildFieldOptions(singleValueTreeData)}
+            treeDefaultExpandAll
+            allowClear
+            showSearch
+            treeNodeFilterProp="searchText"
+            placeholder={
+              !selectedDataSource
+                ? t('topology.nodeConfig.selectDataSourceFirst')
+                : loadingSingleValueData
+                  ? t('topology.nodeConfig.fetchingDataFields')
+                  : singleValueTreeData.length === 0
+                    ? t('topology.nodeConfig.clickRefreshToGetFields')
+                    : t('topology.nodeConfig.selectDisplayField')
+            }
+            disabled={fieldSelectorDisabled}
+            onChange={(value) =>
+              handleFieldSelect(value as string | undefined)
+            }
+            className={`flex-1 ${fieldSelectorClassName}`}
+            popupClassName={fieldPopupClassName}
+            dropdownStyle={{ maxHeight: 360, overflow: 'auto' }}
+          />
+          <Button
+            type="text"
+            icon={<ReloadOutlined aria-hidden />}
+            onClick={onFetchSingleValueDataFields}
+            loading={loadingSingleValueData}
+            disabled={!selectedDataSource}
+            title={t('topology.nodeConfig.refreshDataFields')}
+            aria-label={t('topology.nodeConfig.refreshDataFields')}
+            className="shrink-0 text-(--color-text-3) hover:text-(--color-primary)"
+          />
+        </div>
+      </Form.Item>
 
         <Form.Item
           label={t('dashboard.gaugeMin')}

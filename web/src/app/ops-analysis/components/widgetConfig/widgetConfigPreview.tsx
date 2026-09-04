@@ -8,7 +8,6 @@ import {
   ReloadOutlined,
   LineChartOutlined,
   CodeOutlined,
-  SyncOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
@@ -114,29 +113,45 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
             {t('dashboard.configPreview')}
           </span>
           {previewed && onRefresh ? (
-            <Tooltip title={t('dashboard.configPreviewRefresh')}>
+            stale ? (
               <Button
                 type="text"
                 size="small"
-                className="inline-flex !h-7 !w-7 shrink-0 items-center justify-center text-(--color-text-3) hover:text-(--color-primary)"
-                icon={<ReloadOutlined />}
+                className="inline-flex !h-7 !w-7 shrink-0 items-center justify-center text-(--ant-color-warning) hover:text-(--ant-color-warning)"
+                icon={<ReloadOutlined aria-hidden />}
+                aria-label={t('dashboard.configPreviewRefresh')}
                 onClick={onRefresh}
                 data-testid="widget-config-preview-refresh"
               />
-            </Tooltip>
+            ) : (
+              <Tooltip title={t('dashboard.configPreviewRefresh')}>
+                <Button
+                  type="text"
+                  size="small"
+                  className="inline-flex !h-7 !w-7 shrink-0 items-center justify-center text-(--color-text-3) hover:text-(--color-primary)"
+                  icon={<ReloadOutlined aria-hidden />}
+                  aria-label={t('dashboard.configPreviewRefresh')}
+                  onClick={onRefresh}
+                  data-testid="widget-config-preview-refresh"
+                />
+              </Tooltip>
+            )
           ) : null}
           {previewed && stale ? (
-            <Tooltip title={t('dashboard.configPreviewStale')}>
-              <button
-                type="button"
-                className="inline-flex h-5 items-center gap-1 rounded-full bg-(--color-fill-2) px-2 text-[11px] font-medium leading-none text-(--color-text-2)"
-                onClick={onRefresh}
-                data-testid="widget-config-preview-stale"
-              >
-                <SyncOutlined className="text-[10px]" />
-                {t('dashboard.configPreviewStale')}
-              </button>
-            </Tooltip>
+            <span
+              data-testid="widget-config-preview-stale"
+              className="relative inline-flex h-5 shrink-0 items-center rounded-sm border border-(--ant-color-warning-border) bg-(--ant-color-warning-bg) px-2 text-[11px] font-medium leading-none text-(--ant-color-warning)"
+            >
+              <span
+                aria-hidden
+                className="absolute top-1/2 -left-[5px] -mt-[5px] border-y-[5px] border-r-[5px] border-y-transparent border-r-(--ant-color-warning-border)"
+              />
+              <span
+                aria-hidden
+                className="absolute top-1/2 -left-[4px] -mt-[4px] border-y-[4px] border-r-[4px] border-y-transparent border-r-(--ant-color-warning-bg)"
+              />
+              {t('dashboard.configPreviewStale')}
+            </span>
           ) : null}
         </div>
 

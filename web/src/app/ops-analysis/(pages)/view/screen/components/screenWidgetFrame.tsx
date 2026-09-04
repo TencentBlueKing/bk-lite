@@ -1,11 +1,6 @@
 'use client';
 
 import React from 'react';
-import {
-  CopyOutlined,
-  DeleteOutlined,
-  SettingOutlined,
-} from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
@@ -88,7 +83,6 @@ const ScreenWidgetFrame: React.FC<ScreenWidgetFrameProps> = ({
   const copyMenuItem: MoreActionsDropdownItem | null = showCopy
     ? {
       key: 'copy',
-      icon: <CopyOutlined />,
       label: t('common.copy'),
       onClick: () => onCopy?.(),
     }
@@ -96,16 +90,14 @@ const ScreenWidgetFrame: React.FC<ScreenWidgetFrameProps> = ({
   const menuItems: MoreActionsDropdownItem[] = [
     {
       key: 'configure',
-      icon: <SettingOutlined />,
-      label: t('opsAnalysis.screen.editWidget'),
+      label: t('common.edit'),
       onClick: () => onConfigure?.(),
     },
     ...(copyMenuItem ? [copyMenuItem] : []),
     {
       key: 'delete',
       danger: true,
-      icon: <DeleteOutlined />,
-      label: t('opsAnalysis.screen.deleteWidget'),
+      label: t('common.delete'),
       onClick: () => onDelete?.(),
     },
   ];
@@ -145,6 +137,8 @@ const ScreenWidgetFrame: React.FC<ScreenWidgetFrameProps> = ({
           <MoreActionsDropdown
             items={menuItems}
             ariaLabel={t('common.more')}
+            trigger={['hover']}
+            labelAlign="start"
             stopPropagation
             overlayClassName="screen-widget-frame-actions-menu"
             buttonClassName="screen-widget-frame__action"

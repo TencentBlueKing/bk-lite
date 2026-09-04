@@ -211,7 +211,6 @@ const buildDataFetchSignature = (config: WidgetConfig | undefined): string => {
     dataSourceParams: Array.isArray(config.dataSourceParams)
       ? config.dataSourceParams.map((p) => ({ name: p.name, value: p.value }))
       : [],
-    selectedFields: config.selectedFields,
     topNLabelField: config.topNLabelField,
     topNValueField: config.topNValueField,
     cardListTitleField: config.cardList?.titleField,
@@ -249,6 +248,14 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   const [widgetParamOverrides, setWidgetParamOverrides] = useState<ParamItem[]>([]);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewSnapshotConfig, setPreviewSnapshotConfig] = useState<WidgetConfig | null>(null);
+  const [previewSnapshotDataSource, setPreviewSnapshotDataSource] = useState<
+    DatasourceItem | undefined
+  >(undefined);
+  const [previewSnapshotFilterDefinitions, setPreviewSnapshotFilterDefinitions] =
+    useState<UnifiedFilterDefinition[]>([]);
+  const [previewSnapshotNamespaceId, setPreviewSnapshotNamespaceId] = useState<
+    number | undefined
+  >(undefined);
   const [previewDataFetchSignature, setPreviewDataFetchSignature] = useState<string | null>(null);
   const [previewReloadVersion, setPreviewReloadVersion] = useState(0);
   const [previewRawData, setPreviewRawData] = useState<unknown>(null);
@@ -1033,6 +1040,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     setWidgetParamOverrides([]);
     setPreviewOpen(false);
     setPreviewSnapshotConfig(null);
+    setPreviewSnapshotDataSource(undefined);
+    setPreviewSnapshotFilterDefinitions([]);
+    setPreviewSnapshotNamespaceId(undefined);
     setPreviewDataFetchSignature(null);
     setPreviewReloadVersion(0);
     setPreviewRawData(null);
@@ -1312,6 +1322,17 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   const effectivePreviewConfig = hasDataFetchChanged
     ? previewSnapshotConfig
     : liveDraft || previewSnapshotConfig;
+  // 取数签名变了时，配置、数据源、筛选定义必须一起冻住。
+  // 只冻 config 会让渲染器用旧参数打新数据源（或反过来），触发「未声明参数」。
+  const previewRequestDataSource = hasDataFetchChanged
+    ? previewSnapshotDataSource
+    : effectiveDataSource;
+  const previewRequestFilterDefinitions = hasDataFetchChanged
+    ? previewSnapshotFilterDefinitions
+    : previewFilterDefinitions;
+  const previewRequestNamespaceId = hasDataFetchChanged
+    ? previewSnapshotNamespaceId
+    : effectiveNamespaceId;
 
   const formDrawerWidth = isNetworkStatusTopology ? 760 : 680;
   const previewPaneWidth = 480;
@@ -1331,13 +1352,18 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     }
     setPreviewRawData(null);
     setPreviewSnapshotConfig(draft);
+    setPreviewSnapshotDataSource(effectiveDataSource);
+    setPreviewSnapshotFilterDefinitions(previewFilterDefinitions);
+    setPreviewSnapshotNamespaceId(effectiveNamespaceId);
     setPreviewDataFetchSignature(buildDataFetchSignature(draft));
     setPreviewReloadVersion((version) => version + 1);
     setPreviewOpen(true);
   }, [
     buildCurrentDraftConfig,
     effectiveDataSource,
+    effectiveNamespaceId,
     isSceneWidget,
+    previewFilterDefinitions,
     t,
   ]);
 
@@ -1461,10 +1487,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
               previewed
               stale={previewStale}
               config={effectivePreviewConfig}
-              dataSource={effectiveDataSource}
+              dataSource={previewRequestDataSource}
               unifiedFilterValues={unifiedFilterValues}
-              filterDefinitions={previewFilterDefinitions}
-              builtinNamespaceId={effectiveNamespaceId}
+              filterDefinitions={previewRequestFilterDefinitions}
+              builtinNamespaceId={previewRequestNamespaceId}
               surface={surface}
               reloadVersion={previewReloadVersion}
               rawData={previewRawData}
@@ -1557,7 +1583,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           <Input />
         </Form.Item>
 
-        {/* ================= 2. 数据配置 ================= */}
+        {/* ================= 2. 图表配置 / 场景数据 ================= */}
         {isNetworkStatusTopology ? (
           <section>
             <ConfigSectionTitle>
@@ -1655,7 +1681,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         ) : isSceneWidget ? null : (
           <section>
             <ConfigSectionTitle>
-              {t('dashboard.dataConfigSection', '数据配置')}
+              {t('dashboard.chartConfigSection', '图表配置')}
             </ConfigSectionTitle>
 
             <Form.Item
@@ -1707,10 +1733,17 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             ) : null}
 
             {shouldShowUnifiedFilterSection && hasUnifiedFilterBindings ? (
-              <div>
+              <div className="mb-6">
                 <ConfigGroupTitle
                   extra={
-                    <Tooltip title={t('dashboard.unifiedFilterBindingTip')}>
+                    <Tooltip
+                      title={
+                        <span className="whitespace-pre-line">
+                          {t('dashboard.unifiedFilterBindingTip')}
+                        </span>
+                      }
+                      overlayInnerStyle={{ maxWidth: 360 }}
+                    >
                       <QuestionCircleOutlined className="cursor-help text-(--color-text-3)" />
                     </Tooltip>
                   }
@@ -1725,15 +1758,6 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 />
               </div>
             ) : null}
-          </section>
-        )}
-
-        {/* ================= 3. 图表配置 ================= */}
-        {!isNetworkStatusTopology && !isSceneWidget && (
-          <section>
-            <ConfigSectionTitle>
-              {t('dashboard.chartConfigSection', '图表配置')}
-            </ConfigSectionTitle>
 
             <Form.Item
               label={t('dashboard.chartTypeLabel')}

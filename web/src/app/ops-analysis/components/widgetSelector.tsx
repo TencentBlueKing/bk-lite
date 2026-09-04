@@ -232,7 +232,7 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
               onClick={() => handleModeChange('dataSource')}
             >
               <DatabaseOutlined />
-              {t('dashboard.dataComponents')}
+              {t('dashboard.dataSource')}
             </button>
             <button
               type="button"
@@ -250,7 +250,7 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
             <div className={styles.categoryTitle}>
               {selectorMode === 'sceneWidget'
                 ? t('dashboard.sceneComponents')
-                : t('dashboard.dataComponents')}
+                : t('dashboard.dataSource')}
             </div>
             {tagsLoading && selectorMode === 'dataSource' ? (
               <div className={styles.loadingBox}>
