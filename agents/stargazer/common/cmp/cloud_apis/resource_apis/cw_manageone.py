@@ -5,10 +5,11 @@ import time
 import typing
 
 import requests
-
 from common.cmp.cloud_apis.base import PrivateCloudManage
 from common.cmp.cloud_apis.cloud_object.base import VM, BusinessRegion, DataStore, HostMachine
 from core.logger import logger
+
+MANAGEONE_REQUEST_TIMEOUT = (10, 60)
 
 # from common.cmp.cloud_apis.constant import CloudResourceType, CloudType, SnapshotStatus, VMStatusType, VolumeStatus,
 # VPCStatus
@@ -24,6 +25,7 @@ from core.logger import logger
 # from common.cmp.models import AccountConfig
 # from common.cmp.cloud_apis.constant import CloudResourceType, CloudType
 # from common.cmp.cloud_apis.resource_apis.utils import fail
+
 
 def character_conversion_timestamp(time_str):
     """
@@ -58,6 +60,7 @@ def split_list(_list, count=100):
 
 
 def handle_request(method, url, **kwargs):
+    kwargs["timeout"] = MANAGEONE_REQUEST_TIMEOUT
     try:
         resp = requests.request(method, url, **kwargs)
     except Exception:
@@ -426,9 +429,7 @@ class ManageOne(PrivateCloudManage):
 
     def list_resource(self, classname, append_metric=False, format=True):
         params = {"pageSize": 1, "pageNo": 1}
-        url = get_resource_uri(
-            "list_resource", self.basic_url, res_type=self.get_res_type(classname), class_name=classname
-        )
+        url = get_resource_uri("list_resource", self.basic_url, res_type=self.get_res_type(classname), class_name=classname)
         resp = self._handle_request("GET", url, headers=self.cw_headers, params=params, verify=False)
         if not resp["result"]:
             return {"result": False, "message": resp["message"]}
@@ -619,9 +620,7 @@ class ManageOne(PrivateCloudManage):
                             if value is None:
                                 continue
                             value = round(float(value), 2)
-                            res.setdefault(obj, {}).setdefault(indicator_id_name_map.get(indicator_id, ""), []).append(
-                                (int(timestamp), value)
-                            )
+                            res.setdefault(obj, {}).setdefault(indicator_id_name_map.get(indicator_id, ""), []).append((int(timestamp), value))
             ex_metrics = self.EX_METRICS.get(classname, [])
             resource_params = {"format": False}
             if classname == self.SYS_BusinessRegion:
@@ -638,9 +637,7 @@ class ManageOne(PrivateCloudManage):
                         value = self.get_ex_metrics(classname, metric, resource)
                         res.setdefault(resource_id, {}).setdefault(metric, []).append((int(timestamp), value))
                     except Exception:
-                        logger.exception(
-                            f"get_ex_metrics error classname:{classname},metric:{metric},resource:{resource}"
-                        )
+                        logger.exception(f"get_ex_metrics error classname:{classname},metric:{metric},resource:{resource}")
                         continue
             return {"result": True, "data": res}
         except Exception:

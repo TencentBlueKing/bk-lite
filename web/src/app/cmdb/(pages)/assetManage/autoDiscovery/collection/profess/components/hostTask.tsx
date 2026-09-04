@@ -177,8 +177,7 @@ const HostTask: React.FC<HostTaskFormProps> = ({
           submitLoading={submitLoading}
           instPlaceholder={`${t('Collection.chooseAsset')}`}
           timeoutProps={{
-            min: 0,
-            defaultValue: 60,
+            min: 1,
             addonAfter: t('Collection.k8sTask.second'),
           }}
         >

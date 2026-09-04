@@ -182,7 +182,6 @@ const ConfigFileTask: React.FC<ConfigFileTaskFormProps> = ({
           assetOptionLabel={t('Collection.chooseHost')}
           timeoutProps={{
             min: 1,
-            defaultValue: 10,
             addonAfter: t('Collection.k8sTask.second'),
           }}
         >

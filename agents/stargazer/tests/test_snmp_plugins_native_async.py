@@ -86,6 +86,20 @@ def _system_var_binds():
     ]
 
 
+def test_snmp_topo_transport_timeout_does_not_read_form_budget():
+    collector = SnmpTopo(
+        {
+            "host": "127.0.0.1",
+            "version": "v2c",
+            "community": "public",
+            "timeout": 999,
+            "retries": 9,
+        }
+    )
+
+    assert collector.transport_opts == {"timeout": 10, "retries": 1}
+
+
 @pytest.mark.asyncio
 async def test_snmp_facts_probe_does_not_stall(monkeypatch):
     engines, closed = _install_fake_engines(monkeypatch)

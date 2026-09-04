@@ -12,6 +12,7 @@ from core.collection.contracts import AccessProbeResult, AccessProbeStatus
 DEFAULT_PORTS = [22, 80, 443, 3389]
 CONCURRENCY = 50
 MAX_PORTS = 64
+PROBE_TIMEOUT_SECONDS = 5
 
 
 class IPDiscoveryScanner:
@@ -27,7 +28,8 @@ class IPDiscoveryScanner:
             raise ValueError("MAX_TARGETS_PER_RUN must be greater than zero")
         self.concurrency = CONCURRENCY
         self.targets = self._build_targets(kwargs.get("targets") or [])
-        self.timeout = float(kwargs.get("timeout", 5))
+        # 表单 timeout 是整次子网正式采集的框架预算；单 IP 探测使用独立固定上限。
+        self.timeout = PROBE_TIMEOUT_SECONDS
 
     async def probe(self) -> AccessProbeResult:
         """扫描器自身执行有界探测，不在正式扫描前重复扫描目标。"""

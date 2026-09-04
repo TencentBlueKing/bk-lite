@@ -319,7 +319,6 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
           timeoutProps={{
             min: 1,
             max: 86400,
-            defaultValue: cloudFormInitialValues.timeout,
             addonAfter: t('Collection.k8sTask.second'),
           }}
         >

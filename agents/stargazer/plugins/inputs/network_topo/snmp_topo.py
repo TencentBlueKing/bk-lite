@@ -222,6 +222,8 @@ class SnmpAuth(object):
 
 
 class SnmpTopo:
+    REQUEST_TIMEOUT_SECONDS = 10
+    REQUEST_RETRIES = 1
     BASE_COLLECTION_PROTOCOLS = ("system", "arp", "interface", "ipaddr")
     # fdp 仅采集证据行（由 server 端流水线按 tag 解析），不参与 agent 侧 facts 构建
     DEFAULT_TOPOLOGY_PROTOCOLS = ("lldp", "huawei_ndp", "cdp", "fdp", "fdb", "arp")
@@ -243,8 +245,9 @@ class SnmpTopo:
         self.privacy = kwargs.get("privacy")
         self.authkey = kwargs.get("authkey")
         self.privkey = kwargs.get("privkey")
-        self.timeout = int(kwargs.get("timeout", 10))
-        self.retries = int(kwargs.get("retries", 1))
+        # 表单 timeout 是单设备拓扑采集总预算，不作为单次 SNMP 请求超时。
+        self.timeout = self.REQUEST_TIMEOUT_SECONDS
+        self.retries = self.REQUEST_RETRIES
         self.snmp_port = int(kwargs.get("snmp_port", 161))  # 默认 SNMP 端口为 161
         self.topology_protocols = kwargs.get("topology_protocols")
         self.oids = self._build_oids(self.topology_protocols)

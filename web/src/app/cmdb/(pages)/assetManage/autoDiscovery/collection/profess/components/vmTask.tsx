@@ -158,8 +158,7 @@ const VMTask: React.FC<VMTaskFormProps> = ({
           submitLoading={submitLoading}
           instPlaceholder={`${t('common.select')} ${t('Collection.VMTask.chooseVCenter')}`}
           timeoutProps={{
-            min: 0,
-            defaultValue: 600,
+            min: 1,
             addonAfter: t('Collection.k8sTask.second'),
           }}
         >

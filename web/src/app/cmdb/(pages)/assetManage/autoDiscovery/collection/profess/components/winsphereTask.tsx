@@ -177,8 +177,7 @@ const WinSphereTask: React.FC<WinSphereTaskProps> = ({
             'WinSphere管理平台',
           )}`}
           timeoutProps={{
-            min: 0,
-            defaultValue: 600,
+            min: 1,
             addonAfter: t('Collection.k8sTask.second'),
           }}
         >

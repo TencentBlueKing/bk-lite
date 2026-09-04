@@ -161,8 +161,7 @@ const IPMITask: React.FC<IPMITaskFormProps> = ({
           submitLoading={submitLoading}
           instPlaceholder={`${t('Collection.chooseAsset')}`}
           timeoutProps={{
-            min: 0,
-            defaultValue: 10,
+            min: 1,
             addonAfter: t('Collection.k8sTask.second'),
           }}
         >

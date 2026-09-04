@@ -149,7 +149,6 @@ const PlatformApiTask: React.FC<PlatformApiTaskProps> = ({
           instPlaceholder={t('Collection.chooseAsset')}
           timeoutProps={{
             min: 1,
-            defaultValue: platformFormInitialValues.timeout,
             addonAfter: t('Collection.k8sTask.second'),
           }}
         >

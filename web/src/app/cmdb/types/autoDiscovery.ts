@@ -174,7 +174,6 @@ export interface BaseTaskFormProps {
   showAdvanced?: boolean;
   timeoutProps?: {
     min?: number;
-    defaultValue?: number;
     addonAfter?: string;
   };
   modelId: string;
