@@ -215,3 +215,4 @@ def test_new_pg_leftover_stages_are_required():
     assert "operation_outbox" in REQUIRED_CMDB_UUID_STAGES
     assert "monitor_cmdb_ids" in REQUIRED_CMDB_UUID_STAGES
     assert "node_cmdb_ids" in REQUIRED_CMDB_UUID_STAGES
+    assert "NetworkTopology" not in REQUIRED_OA_UUID_MODEL_NAMES

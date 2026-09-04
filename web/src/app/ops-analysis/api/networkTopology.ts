@@ -218,7 +218,7 @@ export const useNetworkTopologyApi = () => {
         items?: Array<{
           interface_key: string;
           bk_obj_id: 'bk_interface';
-          bk_inst_uuid: string;
+          bk_inst_id: number;
           interface_name: string;
           admin_status: 'up' | 'down' | 'testing' | 'unknown';
           oper_status: 'up' | 'down' | 'testing' | 'unknown';

@@ -9,11 +9,11 @@ from apps.operation_analysis.models.share_models import DashboardShareLink
 from apps.operation_analysis.services.share_service import create_or_get_share, exchange_share
 from apps.system_mgmt.models.user import User
 
-INST_UUID_10001 = "00000000-0000-4000-8000-000000010001"
-INST_UUID_10002 = "00000000-0000-4000-8000-000000010002"
-INST_UUID_EVIL = "00000000-0000-4000-8000-000000099999"
-IFACE_UUID_90001 = "00000000-0000-4000-8000-000000090001"
-IFACE_UUID_90002 = "00000000-0000-4000-8000-000000090002"
+INST_ID_10001 = 10001
+INST_ID_10002 = 10002
+INST_ID_EVIL = 99999
+IFACE_ID_90001 = 90001
+IFACE_ID_90002 = 90002
 
 
 @pytest.fixture
@@ -242,12 +242,12 @@ def test_network_topology_session_rejects_datasource_query(settings, sharer, vis
     assert response.status_code == 403
 
 
-def _node(node_id, bk_inst_uuid=INST_UUID_10001, *, with_metric=True, metric_overrides=None):
+def _node(node_id, bk_inst_id=INST_ID_10001, *, with_metric=True, metric_overrides=None):
     node = {
         "id": node_id,
         "bk_obj_id": "bk_switch",
-        "bk_inst_uuid": bk_inst_uuid,
-        "bk_inst_name": f"switch-{bk_inst_uuid}",
+        "bk_inst_id": bk_inst_id,
+        "bk_inst_name": f"switch-{bk_inst_id}",
         "ip_addr": "10.0.0.1",
         "network_collect_task_id": 12,
         "network_collect_instance_id": 345,
@@ -284,12 +284,12 @@ def _link(link_id="link-1", source="node-1", target="node-2"):
             {
                 "source_interface": {
                     "bk_obj_id": "bk_interface",
-                    "bk_inst_uuid": IFACE_UUID_90001,
+                    "bk_inst_id": IFACE_ID_90001,
                     "interface_name": "GigE0/1",
                 },
                 "target_interface": {
                     "bk_obj_id": "bk_interface",
-                    "bk_inst_uuid": IFACE_UUID_90002,
+                    "bk_inst_id": IFACE_ID_90002,
                     "interface_name": "GigE0/1",
                 },
             }
@@ -321,7 +321,7 @@ def _open_nt_session(settings, sharer, visitor, monkeypatch, topology):
 def test_share_nt_metric_values_and_link_runtime_success(settings, sharer, visitor, monkeypatch):
     topology = _make_network_topology(
         view_sets={
-            "nodes": [_node("node-1", INST_UUID_10001), _node("node-2", INST_UUID_10002)],
+            "nodes": [_node("node-1", INST_ID_10001), _node("node-2", INST_ID_10002)],
             "links": [_link()],
         }
     )
@@ -371,7 +371,7 @@ def test_share_nt_metric_values_and_link_runtime_success(settings, sharer, visit
                 "request_id": "node-1:cpu_usage",
                 "node_ref": {
                     "bk_obj_id": "bk_switch",
-                    "bk_inst_uuid": INST_UUID_10001,
+                    "bk_inst_id": INST_ID_10001,
                     "network_collect_task_id": 12,
                     "network_collect_instance_id": 345,
                     "plugin_template_id": "tpl-1",
@@ -387,7 +387,7 @@ def test_share_nt_metric_values_and_link_runtime_success(settings, sharer, visit
     )
     assert metric_resp.status_code == 200, metric_resp.data
     assert metric_resp.data["items"][0]["value"] == 42
-    assert captured["metric_items"][0]["node_ref"]["bk_inst_uuid"] == INST_UUID_10001
+    assert captured["metric_items"][0]["node_ref"]["bk_inst_id"] == INST_ID_10001
     assert captured["metric_items"][0]["dimensions"] == {"ifName": "GigE0/1"}
     assert captured["metric_items"][0]["condition_filter"] == [{"dimension_id": "ifName", "value": ["GigE0/1"]}]
     assert captured["metric_items"][0]["display_mode"] == "dimension"
@@ -458,7 +458,7 @@ def test_dashboard_session_cannot_call_nt_runtime_proxy(settings, sharer, visito
 
 @pytest.mark.django_db
 def test_share_nt_rejects_tampered_node_ref(settings, sharer, visitor, monkeypatch):
-    topology = _make_network_topology(view_sets={"nodes": [_node("node-1", INST_UUID_10001)], "links": []})
+    topology = _make_network_topology(view_sets={"nodes": [_node("node-1", INST_ID_10001)], "links": []})
     client, session = _open_nt_session(settings, sharer, visitor, monkeypatch, topology)
     monkeypatch.setattr(
         "apps.operation_analysis.views.network_topology_view._adapter_for",
@@ -472,7 +472,37 @@ def test_share_nt_rejects_tampered_node_ref(settings, sharer, visitor, monkeypat
                     "request_id": "evil",
                     "node_ref": {
                         "bk_obj_id": "bk_switch",
-                        "bk_inst_uuid": INST_UUID_EVIL,
+                        "bk_inst_id": INST_ID_EVIL,
+                        "network_collect_task_id": 12,
+                        "network_collect_instance_id": 345,
+                        "plugin_template_id": "tpl-1",
+                    },
+                    "metric_ref": {"metric_field": "cpu_usage", "result_table_id": "rt.cpu"},
+                }
+            ]
+        },
+        format="json",
+    )
+    assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_share_nt_rejects_non_numeric_bk_inst_id(settings, sharer, visitor, monkeypatch):
+    topology = _make_network_topology(view_sets={"nodes": [_node("node-1", INST_ID_10001)], "links": []})
+    client, session = _open_nt_session(settings, sharer, visitor, monkeypatch, topology)
+    monkeypatch.setattr(
+        "apps.operation_analysis.views.network_topology_view._adapter_for",
+        lambda topology_obj: (_ for _ in ()).throw(AssertionError("should not call adapter")),
+    )
+    response = client.post(
+        f"/api/v1/operation_analysis/api/dashboard_share/session/" f"{session.session_id}/network_topology/metric_values/",
+        {
+            "items": [
+                {
+                    "request_id": "evil-uuid",
+                    "node_ref": {
+                        "bk_obj_id": "bk_switch",
+                        "bk_inst_id": "00000000-0000-4000-8000-000000010001",
                         "network_collect_task_id": 12,
                         "network_collect_instance_id": 345,
                         "plugin_template_id": "tpl-1",
@@ -489,7 +519,7 @@ def test_share_nt_rejects_tampered_node_ref(settings, sharer, visitor, monkeypat
 @pytest.mark.django_db
 def test_share_nt_uses_stored_metric_query_params(settings, sharer, visitor, monkeypatch):
     """客户端篡改 dimensions/condition_filter/display_mode/aggregate_type 时仍转发画布配置。"""
-    topology = _make_network_topology(view_sets={"nodes": [_node("node-1", INST_UUID_10001)], "links": []})
+    topology = _make_network_topology(view_sets={"nodes": [_node("node-1", INST_ID_10001)], "links": []})
     client, session = _open_nt_session(settings, sharer, visitor, monkeypatch, topology)
     captured = {}
 
@@ -510,7 +540,7 @@ def test_share_nt_uses_stored_metric_query_params(settings, sharer, visitor, mon
                     "request_id": "tamper",
                     "node_ref": {
                         "bk_obj_id": "bk_switch",
-                        "bk_inst_uuid": INST_UUID_10001,
+                        "bk_inst_id": INST_ID_10001,
                         "network_collect_task_id": 12,
                         "network_collect_instance_id": 345,
                         "plugin_template_id": "tpl-1",
@@ -535,7 +565,7 @@ def test_share_nt_uses_stored_metric_query_params(settings, sharer, visitor, mon
 
 @pytest.mark.django_db
 def test_share_nt_rejects_undeclared_metric_ref(settings, sharer, visitor, monkeypatch):
-    topology = _make_network_topology(view_sets={"nodes": [_node("node-1", INST_UUID_10001)], "links": []})
+    topology = _make_network_topology(view_sets={"nodes": [_node("node-1", INST_ID_10001)], "links": []})
     client, session = _open_nt_session(settings, sharer, visitor, monkeypatch, topology)
     monkeypatch.setattr(
         "apps.operation_analysis.views.network_topology_view._adapter_for",
@@ -549,7 +579,7 @@ def test_share_nt_rejects_undeclared_metric_ref(settings, sharer, visitor, monke
                     "request_id": "evil-metric",
                     "node_ref": {
                         "bk_obj_id": "bk_switch",
-                        "bk_inst_uuid": INST_UUID_10001,
+                        "bk_inst_id": INST_ID_10001,
                         "network_collect_task_id": 12,
                         "network_collect_instance_id": 345,
                         "plugin_template_id": "tpl-1",
@@ -570,7 +600,7 @@ def test_share_nt_rejects_undeclared_metric_ref(settings, sharer, visitor, monke
 def test_share_nt_rejects_tampered_link(settings, sharer, visitor, monkeypatch):
     topology = _make_network_topology(
         view_sets={
-            "nodes": [_node("node-1", INST_UUID_10001), _node("node-2", INST_UUID_10002)],
+            "nodes": [_node("node-1", INST_ID_10001), _node("node-2", INST_ID_10002)],
             "links": [_link()],
         }
     )
@@ -592,7 +622,7 @@ def test_share_nt_rejects_tampered_link(settings, sharer, visitor, monkeypatch):
 
 @pytest.mark.django_db
 def test_share_nt_runtime_response_excludes_canvas_token(settings, sharer, visitor, monkeypatch):
-    topology = _make_network_topology(view_sets={"nodes": [_node("node-1", INST_UUID_10001)], "links": []})
+    topology = _make_network_topology(view_sets={"nodes": [_node("node-1", INST_ID_10001)], "links": []})
     client, session = _open_nt_session(settings, sharer, visitor, monkeypatch, topology)
 
     class FakeAdapter:
@@ -611,7 +641,7 @@ def test_share_nt_runtime_response_excludes_canvas_token(settings, sharer, visit
                     "request_id": "r1",
                     "node_ref": {
                         "bk_obj_id": "bk_switch",
-                        "bk_inst_uuid": INST_UUID_10001,
+                        "bk_inst_id": INST_ID_10001,
                         "network_collect_task_id": 12,
                         "network_collect_instance_id": 345,
                         "plugin_template_id": "tpl-1",

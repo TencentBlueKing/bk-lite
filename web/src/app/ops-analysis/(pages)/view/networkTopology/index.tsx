@@ -1701,7 +1701,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
                     </span>
                     <span className={detailColonClassName}>：</span>
                     <span className="min-w-0 truncate font-medium">
-                      {editingNode.bk_inst_uuid || '--'}
+                      {editingNode.bk_inst_id || '--'}
                     </span>
                   </div>
                   <div className={detailSummaryRowClassName}>
@@ -1889,7 +1889,7 @@ export default NetworkTopology;
 function nodeRef(node: NetworkTopologyNode): Record<string, unknown> {
   return {
     bk_obj_id: node.bk_obj_id,
-    bk_inst_uuid: node.bk_inst_uuid,
+    bk_inst_id: node.bk_inst_id,
     network_collect_task_id: node.network_collect_task_id,
     network_collect_instance_id: node.network_collect_instance_id,
     plugin_template_id: node.plugin_template_id,
