@@ -21,6 +21,7 @@ import {
   scaleScreenMetric,
   scaleScreenMetricFloat,
 } from './shared/screenMetrics';
+import { placeEChartsAxisTooltip, useChartTooltipWheelScrollRef } from '@/components/echarts-tooltip-card';
 import {
   formatLineBarAxisTick,
   formatVisibleChartValue,
@@ -88,6 +89,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
 }) => {
   const { t } = useTranslation();
   const chartRef = useRef<any>(null);
+  const chartPaneRef = useChartTooltipWheelScrollRef();
   const themeName = resolveOpsChartThemeName();
   const usesScreenChartTheme = isScreenChartThemeMode(config?.chartThemeMode);
   const chartTheme = getOpsChartThemeByMode(config?.chartThemeMode);
@@ -226,19 +228,14 @@ const TrendLine: React.FC<TrendLineProps> = ({
           width: scaleScreenMetricFloat(1, screenRenderContext),
         },
       },
-      enterable: false,
+      enterable: true,
       confine: true,
-      position: function (point: number[], _params: any, _dom: any, _rect: any, size: any) {
-        const tooltipWidth = size.contentSize[0];
-        const chartWidth = size.viewSize[0];
-        // 默认放右上方，离鼠标远一些
-        let x = point[0] + scaleScreenMetric(40, screenRenderContext);
-        const y = scaleScreenMetric(10, screenRenderContext);
-        // 如果右边放不下，放左边
-        if (x + tooltipWidth > chartWidth) {
-          x = point[0] - tooltipWidth - scaleScreenMetric(40, screenRenderContext);
-        }
-        return [x, y];
+      hideDelay: 300,
+      position: function (point: number[], _params: any, el: HTMLElement, _rect: any, size: any) {
+        return placeEChartsAxisTooltip(point, size, el, {
+          x: scaleScreenMetric(40, screenRenderContext),
+          y: scaleScreenMetric(10, screenRenderContext),
+        });
       },
       backgroundColor: chartTheme.tooltipBackgroundColor,
       borderWidth: 1,
@@ -256,7 +253,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
         const markerSize = scaleScreenMetric(10, screenRenderContext);
         const markerGap = scaleScreenMetric(6, screenRenderContext);
         let content = `<div style="padding: ${tooltipPaddingY}px ${tooltipPaddingX}px;">
-          <div style="margin-bottom: ${tooltipGap}px; font-weight: bold;">${params[0].axisValueLabel}</div>`;
+          <div style="position: sticky; top: 0; z-index: 1; margin-bottom: ${tooltipGap}px; font-weight: bold; background: ${chartTheme.tooltipBackgroundColor};">${params[0].axisValueLabel}</div>`;
 
         params.forEach((param: any) => {
           content += `
@@ -553,7 +550,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
       style={{ gap: scaleScreenMetric(8, screenRenderContext) }}
     >
       {/* 图表区域 */}
-      <div className="flex-1 min-w-0 relative">
+      <div ref={chartPaneRef} className="flex-1 min-w-0 relative">
         {isZoomed && (
           <button
             onClick={handleResetZoom}

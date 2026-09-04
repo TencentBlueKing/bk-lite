@@ -172,7 +172,7 @@ const OpsAnalysisPie: React.FC<OpsAnalysisPieProps> = ({
       surfaceProps={{
         loading,
         hasData: !!(isDataReady && chartData && chartData.length > 0),
-        containerClassName: 'flex h-full w-full',
+        containerClassName: 'flex h-full min-h-0 w-full',
         loadingClassName: 'flex h-full w-full items-center justify-center',
         emptyClassName: 'flex h-full w-full items-center justify-center',
       }}

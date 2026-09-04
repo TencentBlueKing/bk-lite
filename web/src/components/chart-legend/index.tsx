@@ -181,8 +181,11 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
   }
 
   return (
-    <div className={`w-[120px] shrink-0 min-w-0 h-full flex items-center ${className}`}>
-      <div className="max-h-full w-full min-w-0 overflow-y-auto py-1">
+    <div className={`w-[120px] shrink-0 min-w-0 h-full min-h-0 flex ${className}`}>
+      <div
+        className="h-full min-h-0 w-full min-w-0 overflow-y-auto py-1"
+        data-testid="chart-legend-scroll"
+      >
         {legendData.map((item, index) => {
           const active = isActive(item.name);
           const percent = showPercent && total > 0
