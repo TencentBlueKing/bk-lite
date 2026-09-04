@@ -59,14 +59,14 @@ const demoEdges = [
 ];
 
 describe('APM 服务拓扑布局', () => {
-  it('按调用方向自上而下分层，根服务在上层', async () => {
+  it('按调用方向自左向右分层，根服务在左侧', async () => {
     const result = await layoutLayeredTopology(demoNodes, demoEdges);
     const byId = new Map(result.map((item) => [item.id, item]));
 
-    expect(byId.get('demo-storefront')?.y).toBeLessThan(byId.get('demo-catalog')?.y ?? 0);
-    expect(byId.get('demo-storefront')?.y).toBeLessThan(byId.get('demo-orders')?.y ?? 0);
-    expect(byId.get('demo-catalog')?.y).toBeLessThan(byId.get('demo-inventory')?.y ?? 0);
-    expect(byId.get('demo-orders')?.y).toBeLessThan(byId.get('demo-payment')?.y ?? 0);
+    expect(byId.get('demo-storefront')?.x).toBeLessThan(byId.get('demo-catalog')?.x ?? 0);
+    expect(byId.get('demo-storefront')?.x).toBeLessThan(byId.get('demo-orders')?.x ?? 0);
+    expect(byId.get('demo-catalog')?.x).toBeLessThan(byId.get('demo-inventory')?.x ?? 0);
+    expect(byId.get('demo-orders')?.x).toBeLessThan(byId.get('demo-payment')?.x ?? 0);
     expect(new Set(result.map((item) => `${item.x}:${item.y}`)).size).toBe(result.length);
   });
 
@@ -76,8 +76,8 @@ describe('APM 服务拓扑布局', () => {
     result.forEach((item) => {
       expect(item.x).toBeGreaterThanOrEqual(90);
       expect(item.x).toBeLessThanOrEqual(950);
-      expect(item.y).toBeGreaterThanOrEqual(90);
-      expect(item.y).toBeLessThanOrEqual(540);
+      expect(item.y).toBeGreaterThanOrEqual(50);
+      expect(item.y).toBeLessThanOrEqual(590);
     });
     expect(topologyCardsOverlap(result)).toBe(false);
   });
@@ -86,8 +86,8 @@ describe('APM 服务拓扑布局', () => {
     const root = node('root');
     const siblings = ['a', 'b', 'c', 'd', 'e', 'f'].map((id) => node(id));
     const result = await layoutLayeredTopology([root, ...siblings], siblings.map((item) => edge('root', item.id)));
-    const childXs = result.filter((item) => item.id !== 'root').map((item) => item.x);
-    expect(Math.max(...childXs) - Math.min(...childXs)).toBeGreaterThan(TOPOLOGY_CANVAS_SIZE.width / 2);
+    const childYs = result.filter((item) => item.id !== 'root').map((item) => item.y);
+    expect(Math.max(...childYs) - Math.min(...childYs)).toBeGreaterThan(TOPOLOGY_CANVAS_SIZE.height / 2);
     expect(topologyCardsOverlap(result)).toBe(false);
   });
 });
@@ -133,19 +133,19 @@ describe('APM 服务拓扑力导向稳定性', () => {
     const storefront = byId.get('storefront');
     const inventory = byId.get('inventory');
     const inferred = byId.get('inferred:local:mysql');
-    const ys = result.map((item) => item.y);
+    const xs = result.map((item) => item.x);
 
-    expect(entry?.y).toBe(Math.min(...ys));
-    expect(inferred?.y).toBe(Math.max(...ys));
-    expect(entry?.y).toBeLessThan(storefront?.y ?? 0);
-    expect(storefront?.y).toBeLessThan(byId.get('catalog')?.y ?? 0);
-    expect(byId.get('catalog')?.y).toBeLessThan(inventory?.y ?? 0);
-    expect(inventory?.y).toBeLessThan(inferred?.y ?? 0);
+    expect(entry?.x).toBe(Math.min(...xs));
+    expect(inferred?.x).toBe(Math.max(...xs));
+    expect(entry?.x).toBeLessThan(storefront?.x ?? 0);
+    expect(storefront?.x).toBeLessThan(byId.get('catalog')?.x ?? 0);
+    expect(byId.get('catalog')?.x).toBeLessThan(inventory?.x ?? 0);
+    expect(inventory?.x).toBeLessThan(inferred?.x ?? 0);
     expect(distance(entry, storefront)).toBeLessThan(distance(entry, inferred));
     expect(distance(inferred, inventory)).toBeLessThan(distance(inferred, entry));
     expect(topologyCardsOverlap(result)).toBe(false);
-    expect(Math.abs((entry?.x ?? 0) - (storefront?.x ?? 0))).toBeLessThan(TOPOLOGY_CANVAS_SIZE.width / 2);
-    expect(Math.abs((inferred?.x ?? 0) - (inventory?.x ?? 0))).toBeLessThan(TOPOLOGY_CANVAS_SIZE.width / 2);
+    expect(Math.abs((entry?.y ?? 0) - (storefront?.y ?? 0))).toBeLessThan(TOPOLOGY_CANVAS_SIZE.height / 2);
+    expect(Math.abs((inferred?.y ?? 0) - (inventory?.y ?? 0))).toBeLessThan(TOPOLOGY_CANVAS_SIZE.height / 2);
   });
 });
 
@@ -198,10 +198,10 @@ describe('APM 服务拓扑连线', () => {
       'curve',
     );
 
-    expect(forward.path).toContain(' Q ');
+    expect(forward.path).toContain(' C ');
     expect(forward.path).not.toBe(reverse.path);
-    expect(forward.controlY).toBeGreaterThan(100);
-    expect(reverse.controlY).toBeLessThan(100);
+    expect(forward.startY).toBeLessThan(100);
+    expect(reverse.startY).toBeGreaterThan(100);
   });
 });
 

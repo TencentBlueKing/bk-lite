@@ -49,9 +49,9 @@ export const topologyHealthI18n: Record<ApmTopologyHealth, { id: string; fallbac
   unknown: { id: 'apm.health.unknown', fallback: '未知' },
 };
 
-const EDGE_STROKE = 'color-mix(in srgb, var(--color-text-3) 48%, var(--color-border))';
+const EDGE_STROKE = 'color-mix(in srgb, var(--color-text-3) 42%, var(--color-border))';
 const EDGE_STROKE_ACTIVE = 'var(--color-primary)';
-const NODE_IDLE_OPACITY = 0.5;
+const NODE_IDLE_OPACITY = 0.38;
 const NODE_DRAG_THRESHOLD_PX = 4;
 
 type CanvasDrag =
@@ -243,14 +243,19 @@ export default function TopologyCanvas({
   const maxSpans = Math.max(...nodes.map((node) => node.sampled_spans), 1);
   const maxCalls = Math.max(...edges.map((edge) => edge.sampled_calls), 1);
   const edgePairs = new Set(edges.map((edge) => edgeKey(edge.source, edge.target)));
-  const routing = layout === 'layered' ? 'polyline' : 'curve';
+  const routing = 'curve';
   const focusNodeIds = focusNamespace
     ? new Set(positionedNodes.filter((node) => node.service_namespace === focusNamespace).map((node) => node.id))
     : null;
   const nodeCardWidth = (sampledSpans: number) => TOPOLOGY_NODE_CARD.minWidth + (sampledSpans / maxSpans) * TOPOLOGY_NODE_CARD.widthSpan;
-  const nodeVisualRadius = (node: ApmTopologyNode) => (
-    node.kind === 'user_request' ? TOPOLOGY_ENTRY_PILL.height / 2 : TOPOLOGY_NODE_CARD.height / 2
-  );
+  const nodeVisualRadius = (node: ApmTopologyNode) => {
+    const nodeName = nodeDisplayName(node);
+    const countLabel = formatNumber(node.sampled_spans);
+    const cardWidth = node.kind === 'user_request'
+      ? topologyEntryPillWidth(nodeName, countLabel)
+      : nodeCardWidth(node.sampled_spans);
+    return cardWidth / 2;
+  };
   const highlightNodeId = hoveredNodeId;
   const highlightedIds = highlightNodeId ? topologyNeighborIds(edges, highlightNodeId) : null;
   const selectedEdgeKey = selected?.kind === 'edge' ? edgeKey(selected.source, selected.target) : null;
@@ -420,7 +425,7 @@ export default function TopologyCanvas({
         data-layout={layout}
         data-topology-scale={view.k.toFixed(2)}
         role="img"
-        viewBox={`0 0 ${canvasSize.width} ${canvasSize.height}`}
+        viewBox={`0 0 ${TOPOLOGY_CANVAS_SIZE.width} ${TOPOLOGY_CANVAS_SIZE.height}`}
         onWheel={onWheel}
         onMouseDown={onCanvasMouseDown}
         onClick={(event) => {
@@ -448,6 +453,9 @@ export default function TopologyCanvas({
           </radialGradient>
           <filter id="apm-node-shadow" x="-10%" y="-10%" width="124%" height="130%" filterUnits="userSpaceOnUse">
             <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="rgba(0,0,0,0.06)" />
+          </filter>
+          <filter id="apm-card-glow" x="-20%" y="-20%" width="140%" height="140%" filterUnits="userSpaceOnUse">
+            <feDropShadow dx="0" dy="4" stdDeviation="6" floodColor="var(--color-primary)" floodOpacity="0.12" />
           </filter>
           <marker id="apm-arrow" markerHeight="6" markerUnits="userSpaceOnUse" markerWidth="6" orient="auto" refX="5" refY="3" viewBox="0 0 6 6">
             <path d="M 0 0.6 L 5.5 3 L 0 5.4 Z" fill="context-stroke" strokeLinejoin="round" />
@@ -517,6 +525,18 @@ export default function TopologyCanvas({
                 strokeLinejoin="round"
                 strokeWidth={isSelected ? strokeWidth + 0.6 : strokeWidth}
               />
+              <circle
+                aria-hidden="true"
+                fill={edge.error_calls > 0 ? 'var(--color-fail)' : 'var(--color-primary)'}
+                opacity={0.8}
+                r={edge.error_calls > 0 ? 2.5 : 2}
+              >
+                <animateMotion
+                  dur={`${Math.max(1.8, Math.min(4.0, 360 / Math.max(edge.sampled_calls, 10)))}s`}
+                  path={geometry.path}
+                  repeatCount="indefinite"
+                />
+              </circle>
               <TopologyMetricLabel
                 errorCount={edge.error_calls}
                 fontSize={10}
@@ -617,7 +637,7 @@ export default function TopologyCanvas({
                 fill={isSelected
                   ? 'var(--color-primary-bg-active)'
                   : userRequest ? 'var(--color-fill-2)' : 'var(--color-bg)'}
-                filter="url(#apm-node-shadow)"
+                filter={isSelected ? 'url(#apm-card-glow)' : 'url(#apm-node-shadow)'}
                 height={cardHeight}
                 rx={cardRadius}
                 stroke={isSelected ? 'var(--color-primary)' : 'var(--color-border)'}
@@ -627,6 +647,22 @@ export default function TopologyCanvas({
                 x={cardX}
                 y={cardY}
               />
+              {userRequest ? null : (
+                <circle
+                  aria-hidden="true"
+                  cx={cardX + 22}
+                  cy={0}
+                  fill={node.health === 'critical'
+                    ? 'color-mix(in srgb, var(--color-fail) 10%, var(--color-bg))'
+                    : node.health === 'warning'
+                      ? 'color-mix(in srgb, var(--theme-color-status-warning) 10%, var(--color-bg))'
+                      : 'var(--color-fill-2)'}
+                  opacity={0.85}
+                  r={13}
+                  stroke={topologyHealthColors[node.health]}
+                  strokeWidth={1.5}
+                />
+              )}
               <TopologyServiceIcon
                 inferredSystem={node.inferred_system}
                 kind={node.kind}

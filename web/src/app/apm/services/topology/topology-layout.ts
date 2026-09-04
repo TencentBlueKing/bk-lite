@@ -32,10 +32,10 @@ export const TOPOLOGY_CANVAS_SIZE = {
 } as const;
 
 export const TOPOLOGY_NODE_CARD = {
-  minWidth: 176,
-  widthSpan: 28,
+  minWidth: 180,
+  widthSpan: 24,
   height: 48,
-  radius: 8,
+  radius: 10,
   iconSize: 20,
   iconPaddingX: 10,
   nameOffsetX: 40,
@@ -46,12 +46,12 @@ export const TOPOLOGY_NODE_CARD = {
 export const TOPOLOGY_NODE_MIN_GAP = 24;
 
 export const TOPOLOGY_ENTRY_PILL = {
-  minWidth: 128,
-  maxWidth: 176,
+  minWidth: 140,
+  maxWidth: 188,
   height: 32,
   radius: 16,
   paddingX: 12,
-  iconSize: 14,
+  iconSize: 16,
   iconGap: 8,
   countGap: 8,
   nameFontSize: 12,
@@ -138,12 +138,14 @@ const mapLayoutPositions = (
   const maxY = Math.max(...yValues);
   const spanX = Math.max(maxX - minX, 1);
   const spanY = Math.max(maxY - minY, 1);
-  const usableWidth = TOPOLOGY_CANVAS_SIZE.width - CANVAS_PADDING.left - CANVAS_PADDING.right;
-  const usableHeight = TOPOLOGY_CANVAS_SIZE.height - CANVAS_PADDING.top - CANVAS_PADDING.bottom;
+  const cardW = TOPOLOGY_NODE_CARD.minWidth + TOPOLOGY_NODE_CARD.widthSpan;
+  const cardH = TOPOLOGY_NODE_CARD.height;
+  const usableWidth = TOPOLOGY_CANVAS_SIZE.width - CANVAS_PADDING.left - CANVAS_PADDING.right - cardW;
+  const usableHeight = TOPOLOGY_CANVAS_SIZE.height - CANVAS_PADDING.top - CANVAS_PADDING.bottom - cardH;
   const fitted = Math.min(usableWidth / spanX, usableHeight / spanY, 1.25);
   const scale = Math.max(fitted, 1);
-  const offsetX = CANVAS_PADDING.left + Math.max(0, (usableWidth - spanX * scale) / 2);
-  const offsetY = CANVAS_PADDING.top + Math.max(0, (usableHeight - spanY * scale) / 2);
+  const offsetX = CANVAS_PADDING.left + cardW / 2 + Math.max(0, (usableWidth - spanX * scale) / 2);
+  const offsetY = CANVAS_PADDING.top + cardH / 2 + Math.max(0, (usableHeight - spanY * scale) / 2);
 
   return nodes.map((item) => {
     const raw = rawPositions.get(item.id) ?? { x: 0, y: 0 };
@@ -161,14 +163,17 @@ export const layoutLayeredTopology = async (
 ): Promise<PositionedApmTopologyNode[]> => {
   if (nodes.length === 0) return [];
 
+  const cardW = TOPOLOGY_NODE_CARD.minWidth + TOPOLOGY_NODE_CARD.widthSpan;
+  const cardH = TOPOLOGY_NODE_CARD.height;
+
   const layout = new DagreLayout({
-    rankdir: 'TB',
+    rankdir: 'LR',
     align: 'UL',
-    nodesep: TOPOLOGY_NODE_MIN_GAP + TOPOLOGY_NODE_CARD.widthSpan,
-    edgesep: 28,
-    ranksep: 104,
-    nodeSize: [TOPOLOGY_NODE_CARD.minWidth + TOPOLOGY_NODE_CARD.widthSpan, TOPOLOGY_NODE_CARD.height],
-    edgeLabelSize: [96, 18],
+    nodesep: TOPOLOGY_NODE_MIN_GAP,
+    edgesep: 16,
+    ranksep: 72,
+    nodeSize: [cardW, cardH],
+    edgeLabelSize: [84, 18],
     edgeLabelOffset: 10,
     controlPoints: true,
   });
@@ -193,19 +198,6 @@ export const isInferredTopologyNode = (node: ApmTopologyNode | undefined): boole
 
 export const isUserRequestTopologyNode = (node: ApmTopologyNode | undefined): boolean => node?.kind === 'user_request';
 
-const FORCE_LAYOUT = {
-  iterations: 64,
-  damping: 0.78,
-  maxStep: 18,
-  repulsion: 2400,
-  yRepulsionScale: 0.28,
-  edgeSpring: 0.05,
-  seedSpringX: 0.055,
-  seedSpringY: 0.32,
-  kindSpringY: 0.48,
-  minDistance: TOPOLOGY_NODE_CARD.minWidth + TOPOLOGY_NODE_CARD.widthSpan + TOPOLOGY_NODE_MIN_GAP,
-} as const;
-
 const compareTopologyId = (left: string, right: string) => (left < right ? -1 : left > right ? 1 : 0);
 
 const stabilizeTopologyGraph = (nodes: ApmTopologyNode[], edges: ApmTopologyEdge[]) => ({
@@ -213,109 +205,13 @@ const stabilizeTopologyGraph = (nodes: ApmTopologyNode[], edges: ApmTopologyEdge
   edges: [...edges].sort((left, right) => compareTopologyId(left.source, right.source) || compareTopologyId(left.target, right.target)),
 });
 
-const forceSeparation = (left: number, right: number, dx: number, dy: number) => {
-  const dist = Math.hypot(dx, dy);
-  if (dist > 0) return { x: dx / dist, y: dy / dist, dist };
-  return { x: left < right ? -1 : 1, y: 0, dist: 0 };
-};
-
-const runSeededForce = (
-  seeded: PositionedApmTopologyNode[],
-  edges: ApmTopologyEdge[],
-): Map<string, { x: number; y: number }> => {
-  const indexById = new Map(seeded.map((node, index) => [node.id, index]));
-  const px = seeded.map((node) => node.x);
-  const py = seeded.map((node) => node.y);
-  const vx = seeded.map(() => 0);
-  const vy = seeded.map(() => 0);
-  const seedX = seeded.map((node) => node.x);
-  const seedY = seeded.map((node) => node.y);
-  const minSeedY = Math.min(...seedY);
-  const maxSeedY = Math.max(...seedY);
-  const targetY = seeded.map((node) => {
-    if (isUserRequestTopologyNode(node)) return Math.min(node.y, minSeedY);
-    if (isInferredTopologyNode(node)) return Math.max(node.y, maxSeedY);
-    return node.y;
-  });
-  const links = edges.flatMap((edge) => {
-    const source = indexById.get(edge.source);
-    const target = indexById.get(edge.target);
-    if (source == null || target == null || source === target) return [];
-    return [{ source, target }];
-  });
-
-  for (let iteration = 0; iteration < FORCE_LAYOUT.iterations; iteration += 1) {
-    const fx = seeded.map(() => 0);
-    const fy = seeded.map(() => 0);
-
-    for (let i = 0; i < seeded.length; i += 1) {
-      for (let j = i + 1; j < seeded.length; j += 1) {
-        const { x, y, dist } = forceSeparation(i, j, px[j] - px[i], py[j] - py[i]);
-        const overlap = Math.max(FORCE_LAYOUT.minDistance - dist, 0);
-        const force = FORCE_LAYOUT.repulsion / ((dist * dist) + 24) + overlap * 0.35;
-        fx[i] -= x * force;
-        fy[i] -= y * force * FORCE_LAYOUT.yRepulsionScale;
-        fx[j] += x * force;
-        fy[j] += y * force * FORCE_LAYOUT.yRepulsionScale;
-      }
-    }
-
-    links.forEach((link) => {
-      const { x, y, dist } = forceSeparation(link.source, link.target, px[link.target] - px[link.source], py[link.target] - py[link.source]);
-      const rest = Math.hypot(FORCE_LAYOUT.minDistance, 88);
-      const pull = (dist - rest) * FORCE_LAYOUT.edgeSpring;
-      fx[link.source] += x * pull;
-      fy[link.source] += y * pull * FORCE_LAYOUT.yRepulsionScale;
-      fx[link.target] -= x * pull;
-      fy[link.target] -= y * pull * FORCE_LAYOUT.yRepulsionScale;
-    });
-
-    seeded.forEach((node, index) => {
-      const ySpring = isUserRequestTopologyNode(node) || isInferredTopologyNode(node)
-        ? FORCE_LAYOUT.kindSpringY
-        : FORCE_LAYOUT.seedSpringY;
-      fx[index] += (seedX[index] - px[index]) * FORCE_LAYOUT.seedSpringX;
-      fy[index] += (targetY[index] - py[index]) * ySpring;
-    });
-
-    seeded.forEach((_, index) => {
-      vx[index] = (vx[index] + fx[index]) * FORCE_LAYOUT.damping;
-      vy[index] = (vy[index] + fy[index]) * FORCE_LAYOUT.damping;
-      const speed = Math.hypot(vx[index], vy[index]) || 1;
-      if (speed > FORCE_LAYOUT.maxStep) {
-        vx[index] = (vx[index] / speed) * FORCE_LAYOUT.maxStep;
-        vy[index] = (vy[index] / speed) * FORCE_LAYOUT.maxStep;
-      }
-      px[index] += vx[index];
-      py[index] += vy[index];
-      py[index] = Math.min(maxSeedY, Math.max(minSeedY, py[index]));
-    });
-  }
-
-  return new Map(seeded.map((node, index) => [node.id, { x: px[index], y: py[index] }]));
-};
-
 export const layoutForceTopology = async (
   nodes: ApmTopologyNode[],
   edges: ApmTopologyEdge[],
 ): Promise<PositionedApmTopologyNode[]> => {
   if (nodes.length === 0) return [];
   const stable = stabilizeTopologyGraph(nodes, edges);
-  const seeded = await layoutLayeredTopology(stable.nodes, stable.edges);
-  const positioned = seeded.length <= 1
-    ? new Map(seeded.map((item) => [item.id, { x: item.x, y: item.y }]))
-    : runSeededForce(seeded, stable.edges);
-  return nodes.map((item) => {
-    const raw = positioned.get(item.id) ?? { x: CANVAS_PADDING.left, y: CANVAS_PADDING.top };
-    return { ...item, x: roundCoordinate(raw.x), y: roundCoordinate(raw.y) };
-  });
-};
-
-const unitVector = (fromX: number, fromY: number, toX: number, toY: number) => {
-  const dx = toX - fromX;
-  const dy = toY - fromY;
-  const length = Math.hypot(dx, dy) || 1;
-  return { x: dx / length, y: dy / length };
+  return layoutLayeredTopology(stable.nodes, stable.edges);
 };
 
 export const buildTopologyEdgeGeometry = (
@@ -350,31 +246,44 @@ export const buildTopologyEdgeGeometry = (
     };
   }
 
-  const direct = unitVector(source.x, source.y, target.x, target.y);
-  const midpointX = (source.x + target.x) / 2;
-  const midpointY = (source.y + target.y) / 2;
-  const distance = Math.hypot(target.x - source.x, target.y - source.y);
-  const baseCurve = Math.min(36, Math.max(16, distance * 0.14));
-  const curveOffset = reciprocal ? 40 : baseCurve;
-  const controlX = midpointX - direct.y * curveOffset;
-  const controlY = midpointY + direct.x * curveOffset;
-  const sourceDirection = unitVector(source.x, source.y, controlX, controlY);
-  const targetDirection = unitVector(target.x, target.y, controlX, controlY);
-  const startX = source.x + sourceDirection.x * (source.radius + 4);
-  const startY = source.y + sourceDirection.y * (source.radius + 4);
-  const endX = target.x + targetDirection.x * (target.radius + 9);
-  const endY = target.y + targetDirection.y * (target.radius + 9);
-  const labelX = (startX + 2 * controlX + endX) / 4;
-  const labelY = (startY + 2 * controlY + endY) / 4;
+  // Horizontal S-curve routing (Left-to-Right)
+  const isForward = target.x >= source.x;
+  const yOffset = reciprocal ? (isForward ? -10 : 10) : 0;
+  const startX = isForward ? (source.x + source.radius) : (source.x - source.radius);
+  const startY = source.y + yOffset;
+  const endX = isForward ? (target.x - target.radius) : (target.x + target.radius);
+  const endY = target.y + yOffset;
+  const dx = endX - startX;
+  const dy = endY - startY;
+
+  let cx1: number, cy1: number, cx2: number, cy2: number;
+  if (isForward) {
+    const extend = Math.max(36, dx * 0.46);
+    cx1 = startX + extend;
+    cy1 = startY;
+    cx2 = endX - extend;
+    cy2 = endY;
+  } else {
+    const extend = Math.max(36, Math.abs(dx) * 0.3);
+    const loopY = Math.sign(dy || 1) * 48;
+    cx1 = startX - extend;
+    cy1 = startY + loopY;
+    cx2 = endX + extend;
+    cy2 = endY + loopY;
+  }
+
+  const labelX = roundCoordinate((startX + 3 * cx1 + 3 * cx2 + endX) / 8);
+  const labelY = roundCoordinate((startY + 3 * cy1 + 3 * cy2 + endY) / 8);
+  const path = `M ${roundCoordinate(startX)} ${roundCoordinate(startY)} C ${roundCoordinate(cx1)} ${roundCoordinate(cy1)}, ${roundCoordinate(cx2)} ${roundCoordinate(cy2)}, ${roundCoordinate(endX)} ${roundCoordinate(endY)}`;
 
   return {
-    path: `M ${roundCoordinate(startX)} ${roundCoordinate(startY)} Q ${roundCoordinate(controlX)} ${roundCoordinate(controlY)} ${roundCoordinate(endX)} ${roundCoordinate(endY)}`,
+    path,
     startX,
     startY,
     endX,
     endY,
-    controlX,
-    controlY,
+    controlX: roundCoordinate((cx1 + cx2) / 2),
+    controlY: roundCoordinate((cy1 + cy2) / 2),
     labelX,
     labelY,
   };

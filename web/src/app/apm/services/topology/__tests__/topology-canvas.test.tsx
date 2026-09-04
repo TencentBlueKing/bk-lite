@@ -135,7 +135,7 @@ describe('APM 服务拓扑画布', () => {
     expect(paths).toHaveLength(2);
     expect(new Set(paths.map((path) => path.getAttribute('d'))).size).toBe(2);
     paths.forEach((path) => {
-      expect(path.getAttribute('d')).toContain(' L ');
+      expect(path.getAttribute('d')).toContain(' C ');
       expect(path.getAttribute('marker-end')).toBe('url(#apm-arrow)');
       expect(path.getAttribute('marker-start')).toBeNull();
     });
