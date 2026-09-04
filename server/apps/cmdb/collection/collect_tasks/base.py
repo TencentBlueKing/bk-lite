@@ -53,24 +53,28 @@ class BaseCollect(object):
         return kwargs
 
     def format_params(self):
-        if not self.task.instances or not isinstance(self.task.instances, list):
-            # IP范围采集模式
-            organization = self.task.team
-            if not organization:
-                organization = self.task.params.get("organization")
-                if organization is not None and not isinstance(organization, list):
-                    organization = [organization]
+        organization = self.task.team
+        if not organization:
+            organization = (self.task.params or {}).get("organization") if getattr(self.task, "params", None) else None
+            if organization is not None and not isinstance(organization, list):
+                organization = [organization]
+
+        instances = self.task.instances
+        if not instances or not isinstance(instances, list):
             return self.task.model_id, None, organization, None, not self.task.is_host
 
-        instance = self.task.instances[0]
-        model_id = instance["model_id"]
-        inst_name = instance["inst_name"]
-        organization = instance.get("organization") or self.task.team
-        if organization is not None and not isinstance(organization, list):
-            organization = [organization]
-        # 完成链路按 inst_name + collect_task 对账，图 _id 只是可选写句柄；缺 _id 不得 KeyError。
-        inst_id = instance.get("_id")
-        return model_id, inst_name, organization, inst_id, not self.task.is_host
+        # 插件始终按任务族 model_id 查找；实例上的 switch 等只是 CI 类型。
+        if len(instances) == 1:
+            instance = instances[0]
+            inst_name = instance.get("inst_name")
+            inst_org = instance.get("organization") or organization
+            if inst_org is not None and not isinstance(inst_org, list):
+                inst_org = [inst_org]
+            inst_id = instance.get("_id")
+            return self.task.model_id, inst_name, inst_org, inst_id, not self.task.is_host
+
+        # 多实例没有单一图节点 _id / inst_name。执行层按 instances 对账，不能收成第一台。
+        return self.task.model_id, None, organization, None, not self.task.is_host
 
     @property
     def task_id(self):

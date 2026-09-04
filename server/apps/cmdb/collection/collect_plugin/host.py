@@ -100,21 +100,36 @@ class HostCollectMetrics(CollectBase):
 
         return host or "unknown"
 
-    def _get_matched_instance_snapshot(self, raw_ip=""):
+    def _find_instance_snapshot_by_ip(self, raw_ip=""):
+        raw_ip = str(raw_ip or "").strip()
+        if not raw_ip or raw_ip == "unknown":
+            return {}
+
         task = self.get_collect_inst()
         instances = task.instances if isinstance(task.instances, list) else []
 
-        if raw_ip:
-            for instance_item in instances:
-                if not isinstance(instance_item, dict):
-                    continue
-                instance_ip = str(instance_item.get("ip_addr") or instance_item.get("host") or "").strip()
-                if not instance_ip:
-                    instance_ip = self._extract_ip_from_inst_name(instance_item.get("inst_name"))
-                if instance_ip == raw_ip:
-                    return instance_item
+        for instance_item in instances:
+            if not isinstance(instance_item, dict):
+                continue
+            instance_ip = str(instance_item.get("ip_addr") or instance_item.get("host") or "").strip()
+            if not instance_ip:
+                instance_ip = self._extract_ip_from_inst_name(instance_item.get("inst_name"))
+            if instance_ip == raw_ip:
+                return instance_item
+        return {}
 
+    def _get_matched_instance_snapshot(self, raw_ip=""):
+        matched = self._find_instance_snapshot_by_ip(raw_ip)
+        if matched:
+            return matched
+        task = self.get_collect_inst()
+        instances = task.instances if isinstance(task.instances, list) else []
         return self._get_default_instance_snapshot(instances)
+
+    def _matched_instance_inst_name(self, data, *args, **kwargs):
+        raw_ip = self.set_ip_addr(data, *args, **kwargs)
+        matched = self._find_instance_snapshot_by_ip(raw_ip)
+        return str(matched.get("inst_name") or "").strip()
 
     def set_cloud(self, data, *args, **kwargs):
         raw_ip = self.set_ip_addr(data, *args, **kwargs)
@@ -167,6 +182,11 @@ class HostCollectMetrics(CollectBase):
         return {}
 
     def set_display_inst_name(self, data, *args, **kwargs):
+        if not self.inst_name:
+            matched_name = self._matched_instance_inst_name(data, *args, **kwargs)
+            if matched_name:
+                return matched_name
+
         raw_ip = self.set_ip_addr(data, *args, **kwargs)
         if not raw_ip or raw_ip == "unknown":
             return self.inst_name or data.get("host", "unknown")
@@ -180,6 +200,9 @@ class HostCollectMetrics(CollectBase):
         """设置实例名称"""
         if self.inst_name:
             return self.inst_name
+        matched_name = self._matched_instance_inst_name(data, *args, **kwargs)
+        if matched_name:
+            return matched_name
         if data.get("host", ""):
             return data["host"]
         # IP范围采集模式: 从instance_id提取IP

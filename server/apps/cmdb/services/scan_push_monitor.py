@@ -5,6 +5,8 @@ from __future__ import annotations
 from apps.cmdb.models.scan_model import ScanExecution, ScanHit, resolve_scan_task_credential
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.module_push import CmdbToMonitorPushService, build_cmdb_push_actor_scope
+from apps.cmdb.services.scan_host_cloud import host_cloud_from_scan
+from apps.cmdb.services.scan_identity import ensure_scan_execution_terminal
 from apps.core.logger import cmdb_logger as logger
 
 _NETWORK_MODELS = frozenset({"switch", "router", "firewall", "loadbalance"})
@@ -19,21 +21,9 @@ def _attach_cloud_region(instance: dict, scan_task) -> None:
     """扫描任务上的云区域补到 CI raw，便于 Host 身份 / Remote 选节点。"""
     if instance.get("cloud_region_id") not in (None, "") or instance.get("cloud") not in (None, ""):
         return
-    region = getattr(scan_task, "cloud_region", None)
-    if not region:
-        return
-    if isinstance(region, dict):
-        cloud = region.get("id")
-        if cloud in (None, ""):
-            cloud = region.get("cloud_region_id", region.get("cloud"))
-        cloud_name = region.get("name") or region.get("cloud_region_name") or region.get("cloud_name") or ""
-    elif isinstance(region, int):
-        cloud, cloud_name = region, ""
-    else:
-        text = str(region).strip()
-        if not text:
-            return
-        cloud, cloud_name = (int(text), "") if text.isdigit() else (None, text)
+    fields = host_cloud_from_scan(scan_task)
+    cloud = fields.get("cloud")
+    cloud_name = fields.get("cloud_name")
     if cloud not in (None, ""):
         instance["cloud"] = cloud
         instance["cloud_region_id"] = cloud
@@ -123,6 +113,7 @@ class ScanPushMonitorService:
 
     @classmethod
     def push(cls, execution: ScanExecution, hit_ids: list[int], *, request=None, operator: str = "") -> dict:
+        ensure_scan_execution_terminal(execution)
         actor_scope = (
             build_cmdb_push_actor_scope(request)
             if request is not None
@@ -157,9 +148,8 @@ class ScanPushMonitorService:
                 "cmdb_model_id": hit.cmdb_model_id,
             }
 
-            # network 未识别 soid：先拦，避免空 uuid 被误报成 no_ci。
-            if family_model_id == "network" and not hit.cmdb_model_id:
-                item.update({"status": "skipped", "reason": "unknown_soid"})
+            if not str(hit.inst_uuid or "").strip():
+                item.update({"status": "skipped", "reason": "no_ci"})
                 results.append(item)
                 continue
             if not credential_id:

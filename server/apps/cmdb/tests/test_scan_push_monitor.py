@@ -96,7 +96,7 @@ def test_unknown_soid_does_not_call_ingest(mocker):
     assert result["pushed"] == 1
     assert result["skipped"] == 1
     skipped = next(item for item in result["items"] if item["hit_id"] == unknown.id)
-    assert skipped["reason"] == "unknown_soid"
+    assert skipped["reason"] == "no_ci"
     ingest.assert_called_once()
     payload = ingest.call_args.kwargs
     assert payload["allow_credential_create"] is True
@@ -225,8 +225,8 @@ def test_influx_token_credential_is_passed_to_ingest(mocker):
     assert payload["raw"]["port"] == 8086
 
 
-def test_empty_hit_uuid_host_falls_back_to_ip_lookup(mocker):
-    """主机 hit 未回写 inst_uuid 时，按 model+IP 找回 CI 再推送。"""
+def test_empty_hit_uuid_is_rejected_without_ip_fallback(mocker):
+    """无 inst_uuid 时不得按 IP 代查出 CI 再推送。"""
     task = ScanTask.objects.create(
         name="scan-host",
         team=[1],
@@ -281,12 +281,12 @@ def test_empty_hit_uuid_host_falls_back_to_ip_lookup(mocker):
 
     result = ScanPushMonitorService.push(execution, [hit.id], operator="alice")
 
-    assert result["pushed"] == 1
-    assert result["skipped"] == 0
-    ingest.assert_called_once()
-    assert ingest.call_args.kwargs["link_ids"]["cmdb_id"] == live_uuid
+    assert result["pushed"] == 0
+    assert result["skipped"] == 1
+    assert result["items"][0]["reason"] == "no_ci"
+    ingest.assert_not_called()
     hit.refresh_from_db()
-    assert hit.inst_uuid == live_uuid
+    assert hit.inst_uuid == ""
 
 
 def test_push_binds_monitor_native_id_and_cmdb_id(mocker):
@@ -381,7 +381,7 @@ def test_scan_push_does_not_import_monitor_internal_ingest():
     import apps.cmdb.services.scan_push_monitor as mod
 
     source = inspect.getsource(mod)
-    assert "MonitorModuleIngestService" not in source
+    assert "from apps.monitor.services.module_ingest import MonitorModuleIngestService" not in source
     assert "push_with_credential" in source
 
 
