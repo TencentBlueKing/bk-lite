@@ -1327,7 +1327,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
             >
               {!shareMode && !isFullscreen && (
                 <section
-                  className="flex shrink-0 min-h-0 flex-col overflow-visible rounded-lg border border-[var(--color-border-1,#d9e0e8)] bg-[var(--color-bg-1,#fff)] shadow-[0_10px_24px_rgba(34,47,62,0.05)]"
+                  className="flex h-full min-h-0 shrink-0 flex-col overflow-visible rounded-lg border border-[var(--color-border-1,#d9e0e8)] bg-[var(--color-bg-1,#fff)] shadow-[0_10px_24px_rgba(34,47,62,0.05)]"
                   data-testid="network-topology-library-panel"
                 >
                   <NetworkLibrary
