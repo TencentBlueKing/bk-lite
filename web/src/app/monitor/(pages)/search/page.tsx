@@ -141,6 +141,18 @@ const SearchView: React.FC = () => {
           instances,
           timeRange: _timeRange
         });
+        // 实例列表尚未对齐时 selectedInstances 可能为空；勿发受控查询以免触发 instance_ids 校验刷屏。
+        if (!Array.isArray(params.instance_ids) || params.instance_ids.length === 0) {
+          if (currentRequestId !== searchRequestIdRef.current) return;
+          setChartItems((prev) =>
+            prev.map((item, i) =>
+              i === index
+                ? { ...item, data: [], loading: false, duration: Date.now() - startTime }
+                : item
+            )
+          );
+          return;
+        }
         const responseData = await post(
           '/monitor/api/metrics_instance/query_by_metric_range/',
           params,
