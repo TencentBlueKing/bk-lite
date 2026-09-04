@@ -57,6 +57,7 @@
     "test:log-alert-raw-columns": "pnpm exec tsx scripts/log-alert-raw-columns-test.ts",
     "test:event-user-display": "pnpm exec tsx scripts/event-user-display-test.ts",
     "test:log-group-field-bootstrap": "pnpm exec tsx scripts/log-group-field-bootstrap-test.ts",
+    "test:log-group-write-payload": "pnpm exec tsx scripts/log-group-write-payload-test.ts",
     "test:log-search-field-stats": "pnpm exec tsx scripts/log-search-field-stats-test.ts",
     "test:log-analysis-group-bootstrap": "pnpm exec tsx scripts/log-analysis-group-bootstrap-test.ts",
     "test:log-terminal-token": "pnpm exec tsx scripts/log-terminal-token-test.ts && pnpm exec vitest run 'src/app/log/(pages)/search/logTerminal/__tests__/interaction.test.tsx'",
