@@ -14,7 +14,7 @@ from django.core.cache import cache
 from django.core.management import call_command
 from django.utils import timezone
 
-from apps.cmdb.services.uuid_migration_runtime import is_uuid_runtime_migration_complete, mark_uuid_runtime_migration_complete
+from apps.cmdb.services.uuid_migration_runtime import mark_uuid_runtime_migration_complete
 from apps.core.logger import cmdb_logger as logger
 from apps.core.utils.celery_utils import CeleryUtils
 
@@ -56,16 +56,15 @@ def _periodic_task_matches(task, *, enabled: bool) -> bool:
 
 
 def ensure_uuid_migration_periodic_task():
-    """保证 UUID 清洗周期任务存在；已完成后禁用，未完成则启用。"""
-    enabled = not is_uuid_runtime_migration_complete()
+    """保证 UUID 清洗周期任务存在。可变快照会再次写入遗留 ID，任务保持启用。"""
     current = CeleryUtils.get_periodic_task(UUID_MIGRATION_PERIODIC_TASK_NAME)
-    if _periodic_task_matches(current, enabled=enabled):
+    if _periodic_task_matches(current, enabled=True):
         return current
     return CeleryUtils.create_or_update_periodic_task(
         name=UUID_MIGRATION_PERIODIC_TASK_NAME,
         crontab=UUID_MIGRATION_CRONTAB,
         task=UUID_MIGRATION_TASK,
-        enabled=enabled,
+        enabled=True,
     )
 
 
@@ -74,20 +73,11 @@ def migrate_cmdb_instance_uuid_runtime() -> dict[str, Any]:
     """幂等执行 CMDB/OA UUID 清洗；多 Worker 互斥；异常不打挂 Worker。"""
     ensure_uuid_migration_periodic_task()
 
-    if is_uuid_runtime_migration_complete():
-        CeleryUtils.disable_periodic_task(UUID_MIGRATION_PERIODIC_TASK_NAME)
-        logger.info("[uuid_migration] already complete, skip")
-        return {"status": "done", "skipped": True}
-
     if not cache.add(UUID_MIGRATION_LOCK_KEY, "1", timeout=UUID_MIGRATION_LOCK_TTL):
         logger.info("[uuid_migration] another worker holds the lock, skip")
         return {"status": "locked"}
 
     try:
-        if is_uuid_runtime_migration_complete():
-            CeleryUtils.disable_periodic_task(UUID_MIGRATION_PERIODIC_TASK_NAME)
-            return {"status": "done", "skipped": True}
-
         call_command("migrate_cmdb_instance_uuid_refs", apply=True)
         call_command("migrate_oa_cmdb_instance_uuid_refs", apply=True)
         try:
@@ -98,7 +88,6 @@ def migrate_cmdb_instance_uuid_runtime() -> dict[str, Any]:
             return {"status": "retry", "reason": "verify_failed"}
 
         mark_uuid_runtime_migration_complete()
-        CeleryUtils.disable_periodic_task(UUID_MIGRATION_PERIODIC_TASK_NAME)
         logger.info("[uuid_migration] apply+verify completed")
         return {"status": "done", "skipped": False}
     except Exception:

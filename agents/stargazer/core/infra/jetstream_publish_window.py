@@ -16,6 +16,7 @@ class JetStreamMessage:
 
     payload: bytes
     message_id: str
+    deadline: float | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.payload, bytes):
@@ -30,7 +31,7 @@ class JetStreamPublishWindowSettings:
     max_pending_bytes: int = 32 * 1024 * 1024
     puback_timeout_seconds: float = 30.0
     max_attempts: int = 2
-    expected_stream: str = "CMDB_METRICS"
+    expected_stream: str = "metrics"
 
     def __post_init__(self) -> None:
         if self.max_pending_messages <= 0:
@@ -190,13 +191,26 @@ class JetStreamPublishWindow:
 
         try:
             for index, message in enumerate(messages):
+                if first_error is not None:
+                    break
                 if before_publish is not None and not before_publish(index):
                     continue
                 if len(message.payload) > self.settings.max_pending_bytes:
                     raise ValueError("message payload exceeds JetStream byte window")
+                if message.deadline is not None and asyncio.get_running_loop().time() >= message.deadline:
+                    first_error = TimeoutError("JetStream publish deadline expired before delivery")
+                    break
                 while len(pending) >= self.settings.max_pending_messages:
                     await collect_done(wait_for_one=True)
-                await self._reserve(len(message.payload))
+                    if first_error is not None:
+                        break
+                if first_error is not None:
+                    break
+                try:
+                    await self._reserve(len(message.payload), deadline=message.deadline)
+                except TimeoutError as error:
+                    first_error = error
+                    break
                 attempted_indices.append(index)
                 try:
                     task = asyncio.create_task(
@@ -212,7 +226,11 @@ class JetStreamPublishWindow:
                 task.credit_released = False  # type: ignore[attr-defined]
                 pending.add(task)
 
-            await collect_done(wait_for_one=False)
+            if first_error is None:
+                while pending and first_error is None:
+                    await collect_done(wait_for_one=True)
+            if first_error is not None:
+                await cancel_pending()
         except BaseException:
             await cancel_pending()
             raise
@@ -236,7 +254,13 @@ class JetStreamPublishWindow:
                 attempt_started_at = time.monotonic()
                 future = None
                 try:
-                    async with asyncio.timeout(self.settings.puback_timeout_seconds):
+                    timeout_seconds = self.settings.puback_timeout_seconds
+                    if message.deadline is not None:
+                        remaining_seconds = message.deadline - asyncio.get_running_loop().time()
+                        if remaining_seconds <= 0:
+                            raise TimeoutError("JetStream publish deadline expired")
+                        timeout_seconds = min(timeout_seconds, remaining_seconds)
+                    async with asyncio.timeout(timeout_seconds):
                         jetstream = self._provider()
                         if inspect.isawaitable(jetstream):
                             jetstream = await jetstream
@@ -270,7 +294,7 @@ class JetStreamPublishWindow:
             if current_task is not None:
                 current_task.credit_released = True  # type: ignore[attr-defined]
 
-    async def _reserve(self, payload_bytes: int) -> None:
+    async def _reserve(self, payload_bytes: int, *, deadline: float | None = None) -> None:
         async with self._condition:
 
             def has_capacity() -> bool:
@@ -291,7 +315,11 @@ class JetStreamPublishWindow:
                     self._waiting_bytes,
                 )
                 try:
-                    await self._condition.wait_for(has_capacity)
+                    if deadline is None:
+                        await self._condition.wait_for(has_capacity)
+                    else:
+                        async with asyncio.timeout_at(deadline):
+                            await self._condition.wait_for(has_capacity)
                 finally:
                     self._waiting_messages -= 1
                     self._waiting_bytes -= payload_bytes

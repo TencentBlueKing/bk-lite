@@ -89,12 +89,12 @@ export function formatCompactLatency(ms: number): string {
   return `${Math.round(ms)}ms`;
 }
 
-export type TopologyMetricParts = {
+export interface TopologyMetricParts {
   total: string;
   latency: string;
   errors: string;
   hasErrors: boolean;
-};
+}
 
 export function topologyMetricParts(input: {
   errorCount: number;

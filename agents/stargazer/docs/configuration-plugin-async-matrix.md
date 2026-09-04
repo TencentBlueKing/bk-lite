@@ -125,4 +125,5 @@ job 插件通过 `SSHPlugin.list_all_resources()` 调用异步 `nats_request()`�
 3. 同步 SDK 必须标记为 `sync` 并在插件内部隔离，不能阻塞 `PluginExecutor` 所在事件循环。
 4. job executor 保持 `remote`，不得因为远端脚本是同步 shell 就改成 `sync`。
 5. 插件改造后必须验证输出契约、超时、取消、连接释放和凭据不进入日志。
-6. 全局容量继续只使用 `MAX_ACTIVE_RUNS`、`MAX_ACTIVE_TARGETS`、`TARGET_TASK_WINDOW`。
+6. 全局容量使用 `MAX_ACTIVE_RUNS`、`MAX_ACTIVE_RUN_TARGETS`、`MAX_ACTIVE_TARGETS`、
+   `TARGET_TASK_WINDOW`；SNMP 不增加独立目标并发参数。

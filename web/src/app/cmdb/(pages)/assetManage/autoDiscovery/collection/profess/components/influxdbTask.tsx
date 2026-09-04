@@ -145,7 +145,6 @@ const InfluxdbTask: React.FC<InfluxdbTaskProps> = ({
           instPlaceholder={t('Collection.chooseAsset')}
           timeoutProps={{
             min: 1,
-            defaultValue: 60,
             addonAfter: t('Collection.k8sTask.second'),
           }}
           singleInstanceOnly

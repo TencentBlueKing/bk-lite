@@ -233,7 +233,6 @@ const PCTask: React.FC<PCTaskFormProps> = ({
           instPlaceholder={`${t('Collection.chooseAsset')}`}
           timeoutProps={{
             min: 30,
-            defaultValue: 120,
             addonAfter: t('Collection.k8sTask.second'),
           }}
         >

@@ -458,6 +458,72 @@ def test_clean_collect_result_snapshots_adds_uuid_to_format_data():
 
 
 @pytest.mark.django_db
+def test_clean_collect_result_snapshots_rescans_after_stage_completed():
+    from apps.cmdb.constants.constants import CollectPluginTypes
+    from apps.cmdb.models.collect_model import CollectModels
+    from apps.cmdb.models.uuid_migration_state import CmdbUuidMigrationState
+
+    inst_uuid = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+    task = CollectModels.objects.create(
+        name="collect-result-uuid-reentry",
+        task_type=CollectPluginTypes.HOST,
+        model_id="host",
+        cycle_value_type="cycle",
+        team=[1],
+        format_data={"add": [{"_id": 7, "inst_name": "host-a", "inst_uuid": inst_uuid}]},
+    )
+    CmdbUuidMigrationState.objects.update_or_create(
+        stage="collect_result_snapshots",
+        defaults={"cursor": str(task.id), "completed": True},
+    )
+    task.format_data = {"add": [{"_id": 7, "inst_name": "host-a"}]}
+    task.save(update_fields=["format_data"])
+
+    command = Command()
+    command._graph_uuid_by_id = {7: inst_uuid}
+    command._dry_run = False
+    stats = {"collect_result_snapshot_updated": 0}
+
+    command._clean_collect_result_snapshots(batch_size=50, dry_run=False, stats=stats)
+
+    task.refresh_from_db()
+    assert task.format_data["add"][0]["inst_uuid"] == inst_uuid
+    assert stats["collect_result_snapshot_updated"] == 1
+    assert command._leftover_snapshot_ids == [task.id]
+
+
+@pytest.mark.django_db
+def test_verify_reports_leftover_snapshot_ids(monkeypatch):
+    from apps.cmdb.constants.constants import CollectPluginTypes
+    from apps.cmdb.models.collect_model import CollectModels
+
+    inst_uuid = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+    task = CollectModels.objects.create(
+        name="collect-result-uuid-verify",
+        task_type=CollectPluginTypes.HOST,
+        model_id="host",
+        cycle_value_type="cycle",
+        team=[1],
+        format_data={"add": [{"_id": 7, "inst_name": "host-a"}]},
+    )
+    command = Command()
+
+    def _noop(*_args, **_kwargs):
+        return None
+
+    for name in dir(Command):
+        if name.startswith("_clean_") and name != "_clean_collect_result_snapshots":
+            monkeypatch.setattr(command, name, _noop)
+    monkeypatch.setattr(
+        "apps.cmdb.management.commands.migrate_cmdb_instance_uuid_refs.InstanceManage.query_entity_by_ids",
+        staticmethod(lambda ids: [{"_id": 7, "inst_uuid": inst_uuid}] if 7 in ids else []),
+    )
+
+    with pytest.raises(CommandError, match=rf"leftover_ids=\[{task.id}\]"):
+        command.handle(batch_size=50, verify=True, apply=False, dry_run=False)
+
+
+@pytest.mark.django_db
 def test_clean_operation_snapshots_and_skip_success_outbox():
     from apps.cmdb.models.operation import CmdbOperation, CmdbOperationOutbox, CmdbOperationOutboxStatus, CmdbOperationStatus
 

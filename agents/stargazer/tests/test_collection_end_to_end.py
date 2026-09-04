@@ -92,6 +92,16 @@ async def redis_client(redis_socket):
         await client.aclose()
 
 
+@pytest.fixture(autouse=True)
+def _metrics_stream_ready_for_e2e(monkeypatch):
+    """E2E 测 HTTP→Redis→插件→回调，不连真实 JetStream；指标通道按已就绪处理。"""
+
+    async def ready():
+        return True
+
+    monkeypatch.setattr("core.collection.application.metrics_transport_ready", ready)
+
+
 class ReachablePreflight:
     def __init__(self):
         self.targets = []

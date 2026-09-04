@@ -78,6 +78,7 @@ class AlertModelSerializer(AuthSerializer):
             "created_at": {"read_only": True},
             "updated_at": {"read_only": True},
             "closed_at": {"read_only": True},
+            "monitor_objects": {"read_only": True},
             # "operator": {"write_only": True},
             "labels": {"write_only": True},
         }

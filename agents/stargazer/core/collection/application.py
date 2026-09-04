@@ -19,7 +19,7 @@ from core.collection.constants import (
 )
 from core.collection.contracts import TargetExecutorSettings
 from core.collection.credential_policy import CredentialPolicy
-from core.collection.enums import WorkloadClass
+from core.collection.enums import SubmissionStatus, WorkloadClass
 from core.collection.execution_plan import ExecutionPlanResolver, TimeoutDefaults
 from core.collection.executor import TargetActivityTracker, TargetCollectionExecutor
 from core.collection.metrics import CollectionMetrics
@@ -63,12 +63,12 @@ def _open_file_descriptor_count() -> int:
 @dataclass(frozen=True)
 class CollectionApplicationSettings:
     max_active_runs: int = 16
+    max_active_run_targets: int = 4000
     max_active_targets: int = DEFAULT_MAX_ACTIVE_TARGETS
     configuration_max_active_targets: int = DEFAULT_CONFIGURATION_MAX_ACTIVE_TARGETS
     monitoring_max_active_targets: int = DEFAULT_MONITORING_MAX_ACTIVE_TARGETS
     network_topology_max_active_targets: int = DEFAULT_NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS
     target_task_window: int = DEFAULT_TARGET_TASK_WINDOW
-    snmp_max_in_flight: int = 160
     sync_sdk_max_in_flight: int = 16
     remote_job_max_in_flight: int = 20
     default_async_max_in_flight: int = 160
@@ -87,11 +87,13 @@ class CollectionApplicationSettings:
     publish_worker_count: int = 1
     metrics_encode_workers: int = 2
     metrics_jetstream_enabled: bool = True
-    capacity_log_interval_seconds: float = 180.0
+    capacity_log_interval_seconds: float = 30.0
 
     def __post_init__(self) -> None:
         if self.max_active_runs <= 0:
             raise ValueError("max_active_runs must be greater than zero")
+        if self.max_active_run_targets <= 0:
+            raise ValueError("MAX_ACTIVE_RUN_TARGETS must be greater than zero")
         if self.max_active_targets <= 0:
             raise ValueError("MAX_ACTIVE_TARGETS must be greater than zero")
         workload_limits = (
@@ -109,7 +111,6 @@ class CollectionApplicationSettings:
         if any(
             value <= 0
             for value in (
-                self.snmp_max_in_flight,
                 self.sync_sdk_max_in_flight,
                 self.remote_job_max_in_flight,
                 self.default_async_max_in_flight,
@@ -145,6 +146,7 @@ class CollectionApplicationSettings:
                 raise ValueError("NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS must be an integer between 1 and 100") from exc
         return cls(
             max_active_runs=int(os.getenv("MAX_ACTIVE_RUNS", "16")),
+            max_active_run_targets=int(os.getenv("MAX_ACTIVE_RUN_TARGETS", "4000")),
             max_active_targets=max_active_targets,
             configuration_max_active_targets=concurrency_limit_from_env(
                 "CONFIGURATION_MAX_ACTIVE_TARGETS",
@@ -156,7 +158,6 @@ class CollectionApplicationSettings:
             ),
             network_topology_max_active_targets=network_topology_max_active_targets,
             target_task_window=concurrency_limit_from_env("TARGET_TASK_WINDOW", DEFAULT_TARGET_TASK_WINDOW),
-            snmp_max_in_flight=int(os.getenv("SNMP_MAX_IN_FLIGHT", "160")),
             sync_sdk_max_in_flight=int(os.getenv("SYNC_SDK_MAX_IN_FLIGHT", "16")),
             remote_job_max_in_flight=int(os.getenv("REMOTE_JOB_MAX_IN_FLIGHT", "20")),
             default_async_max_in_flight=int(os.getenv("DEFAULT_ASYNC_MAX_IN_FLIGHT", "160")),
@@ -175,7 +176,7 @@ class CollectionApplicationSettings:
             publish_worker_count=int(os.getenv("PUBLISH_WORKERS", "4") if jetstream_publish_enabled else "1"),
             metrics_encode_workers=int(os.getenv("METRICS_ENCODE_WORKERS", "2")),
             metrics_jetstream_enabled=jetstream_publish_enabled,
-            capacity_log_interval_seconds=float(os.getenv("CAPACITY_LOG_INTERVAL", "180")),
+            capacity_log_interval_seconds=float(os.getenv("CAPACITY_LOG_INTERVAL", "30")),
         )
 
 
@@ -245,7 +246,6 @@ class CollectionApplication:
                 WorkloadClass.NETWORK_TOPOLOGY: self.settings.network_topology_max_active_targets,
             },
             capacity_group_limits={
-                "snmp": self.settings.snmp_max_in_flight,
                 "sync_sdk": self.settings.sync_sdk_max_in_flight,
                 "remote_job": self.settings.remote_job_max_in_flight,
                 "default": self.settings.default_async_max_in_flight,
@@ -253,10 +253,11 @@ class CollectionApplication:
             metrics=self._metrics,
         )
         self._submission_counts: dict[str, int] = {}
+        self._capacity_counter_baseline: dict[str, int] = {}
         self._loop_lag = EventLoopLagMonitor(interval_seconds=float(os.getenv("EVENT_LOOP_LAG_INTERVAL", "1")))
         self._resource_sampler = resource_sampler or ProcessResourceSampler()
         self._capacity_reporter = CapacityUsageReporter(
-            snapshot=self.capacity_snapshot,
+            snapshot=self._capacity_log_snapshot,
             emit=self._emit_capacity_log,
             interval_seconds=self.settings.capacity_log_interval_seconds,
         )
@@ -280,6 +281,7 @@ class CollectionApplication:
             schedule=schedule,
             settings=CollectionRuntimeSettings(
                 max_active_runs=self.settings.max_active_runs,
+                max_active_run_targets=self.settings.max_active_run_targets,
                 lease_ttl_seconds=self.settings.lease_ttl_seconds,
                 lease_heartbeat_seconds=self.settings.lease_heartbeat_seconds,
                 run_deadline_seconds=self.settings.run_deadline_seconds,
@@ -292,7 +294,19 @@ class CollectionApplication:
         return self.runtime.active_runs
 
     async def submit(self, request: CollectionRequest) -> Submission:
-        submission = await self.runtime.submit(request)
+        if _request_requires_metrics_stream(request) and not await metrics_transport_ready():
+            logger.error(
+                "event=metrics_transport_not_ready task_id=%s plugin_ref=%s " "failed_stage=run_admission error_type=MetricsTransportNotReady",
+                safe_log_value(request.task_id),
+                safe_log_value(request.plugin_ref),
+            )
+            submission = Submission(
+                task_id=request.task_id,
+                status=SubmissionStatus.BUSY,
+                reason="metrics_transport_not_ready",
+            )
+        else:
+            submission = await self.runtime.submit(request)
         status = submission.status.value
         self._submission_counts[status] = self._submission_counts.get(status, 0) + 1
         return submission
@@ -323,6 +337,8 @@ class CollectionApplication:
         return with_capacity_utilization(
             {
                 "active_runs": self.active_runs,
+                "active_run_targets": self.runtime.active_run_targets,
+                "configured_max_active_run_targets": self.settings.max_active_run_targets,
                 "target_slots_used": self._scheduler.active,
                 "target_slots_capacity": self._scheduler.capacity,
                 "configured_max_active_targets": self.settings.max_active_targets,
@@ -347,6 +363,12 @@ class CollectionApplication:
                 "pending_runs": self._scheduler.pending_runs,
                 "publish_queue_depth": self._publisher.queue_depth,
                 "publish_queue_capacity": self._publisher.capacity,
+                "publish_payloads_pending": self._publisher.pending_payloads,
+                "publish_payload_capacity": self._publisher.capacity,
+                "configured_publish_total_timeout_ms": round(
+                    self.settings.publish_total_timeout_seconds * 1000,
+                    2,
+                ),
                 "publish_batch_age_ms": round(self._publisher.current_batch_age_seconds * 1000, 2),
                 "publish_queue_residence_p99_ms": round(
                     metric_snapshot.get("publish_queue_residence_seconds_p99", 0.0) * 1000,
@@ -361,21 +383,39 @@ class CollectionApplication:
                 "snmp_target_budget": int(snmp_snapshot["total_target_budget"]),
                 "event_loop_lag_ms": round(self._loop_lag.latest_seconds * 1000, 2),
                 "event_loop_lag_p99_ms": round(self._loop_lag.p99_seconds * 1000, 2),
+                **nats_metrics_connection_stats(),
                 **resource_snapshot,
             }
         )
+
+    def _capacity_log_snapshot(self) -> dict[str, float | int]:
+        """在即时容量快照上附加仅供周期日志使用的计数器增量。"""
+        snapshot = self.capacity_snapshot()
+        for total_key, delta_key in (
+            ("nats_js_puback_timeout_total", "nats_js_puback_timeout_delta"),
+            ("nats_js_publish_retry_total", "nats_js_publish_retry_delta"),
+            ("nats_js_publish_rejected_total", "nats_js_publish_rejected_delta"),
+        ):
+            current = int(snapshot.get(total_key, 0))
+            previous = self._capacity_counter_baseline.get(total_key, current)
+            snapshot[delta_key] = max(0, current - previous)
+            self._capacity_counter_baseline[total_key] = current
+        return snapshot
 
     @staticmethod
     def _emit_capacity_log(snapshot: dict[str, float | int]) -> None:
         status, hint = _capacity_status(snapshot)
         logger.info(
             "event=collection_capacity 状态=%s 提示=%s | "
-            "采集任务[正在执行=%s 调度中=%s] | "
+            "采集任务[正在执行=%s 调度中=%s 准入目标=%s/%s] | "
             "目标任务[等待执行=%s 正在执行=%s 本轮已完成=%s 累计已完成=%s] | "
             "目标并发槽位[已用=%s/%s 可用=%s 使用率=%s 峰值=%s] | "
             "配置[最大目标并发=%s 任务窗口=%s] | "
             "发布队列[深度=%s/%s 使用率=%s 最老批次=%s P99等待=%s] | "
-            "发布终态[等待=%s] | SNMP池[Engine=%s/%s 排空=%s 目标条目=%s/%s] | "
+            "Payload[未终态=%s/%s] | "
+            "JetStream[在途=%s 等待信贷=%s PubAck-P99=%s 超时=%s(+%s) 重试=%s(+%s) 拒绝=%s(+%s)] | "
+            "发布终态[等待=%s] | "
+            "SNMP池[活跃Engine=%s 总Engine=%s 安全上限=%s 排空=%s 目标条目=%s/%s] | "
             "事件循环[当前延迟=%s P99延迟=%s] | "
             "进程[CPU=%s CPU配额使用率=%s RSS内存=%s 线程=%s FD=%s] | "
             "容器[内存=%s/%s 使用率=%s CPU限额=%s CPU限流增量=%s/%s]",
@@ -383,6 +423,8 @@ class CollectionApplication:
             hint,
             snapshot.get("active_runs", 0),
             snapshot.get("pending_runs", 0),
+            snapshot.get("active_run_targets", 0),
+            snapshot.get("configured_max_active_run_targets", 0),
             snapshot.get("pending_targets", 0),
             snapshot.get("target_slots_used", 0),
             snapshot.get("completed_targets", 0),
@@ -399,7 +441,24 @@ class CollectionApplication:
             _capacity_value(snapshot, "publish_queue_utilization_percent", "%", missing_default=0),
             _capacity_value(snapshot, "publish_batch_age_ms", "ms", missing_default=0),
             _capacity_value(snapshot, "publish_queue_residence_p99_ms", "ms", missing_default=0),
+            snapshot.get("publish_payloads_pending", 0),
+            snapshot.get("publish_payload_capacity", 0),
+            snapshot.get("nats_js_publish_pending_messages", 0),
+            snapshot.get("nats_js_publish_waiting_messages", 0),
+            _capacity_value(
+                {"puback_p99_ms": float(snapshot.get("nats_js_puback_duration_seconds_p99", 0.0)) * 1000},
+                "puback_p99_ms",
+                "ms",
+                missing_default=0,
+            ),
+            snapshot.get("nats_js_puback_timeout_total", 0),
+            snapshot.get("nats_js_puback_timeout_delta", 0),
+            snapshot.get("nats_js_publish_retry_total", 0),
+            snapshot.get("nats_js_publish_retry_delta", 0),
+            snapshot.get("nats_js_publish_rejected_total", 0),
+            snapshot.get("nats_js_publish_rejected_delta", 0),
             snapshot.get("result_deliveries_pending", 0),
+            snapshot.get("snmp_active_engines", 0),
             snapshot.get("snmp_live_engines", 0),
             snapshot.get("snmp_engine_capacity", 0),
             snapshot.get("snmp_draining_engines", 0),
@@ -486,6 +545,8 @@ class CollectionApplication:
             "publish_queue_depth": self._publisher.queue_depth,
             "publish_queue_peak": self._publisher.peak_queue_depth,
             "publish_queue_capacity": self._publisher.capacity,
+            "publish_payloads_pending": self._publisher.pending_payloads,
+            "publish_payloads_peak": self._publisher.peak_pending_payloads,
             "max_active_runs": self.settings.max_active_runs,
             "max_active_targets": self.settings.max_active_targets,
             "configuration_max_active_targets": self.settings.configuration_max_active_targets,
@@ -520,6 +581,18 @@ class CollectionApplication:
         }
 
 
+def _request_requires_metrics_stream(request: CollectionRequest) -> bool:
+    params = request.params or {}
+    plugin_ref = str(request.plugin_ref or "")
+    model_id = str(params.get("model_id") or "")
+    callback = str(params.get("callback_subject") or "")
+    if callback == "receive_config_file_result":
+        return False
+    if "config_file" in plugin_ref or model_id in {"config_file", "network_config_file"}:
+        return False
+    return True
+
+
 def _capacity_value(
     snapshot: dict[str, float | int],
     key: str,
@@ -545,6 +618,18 @@ def _capacity_status(snapshot: dict[str, float | int]) -> tuple[str, str]:
         issues.append("容器内存使用率超过80%")
     if snapshot.get("publish_queue_utilization_percent", 0) >= 80:
         issues.append("发布队列使用率超过80%")
+    payload_capacity = float(snapshot.get("publish_payload_capacity", 0) or 0)
+    if payload_capacity > 0 and float(snapshot.get("publish_payloads_pending", 0) or 0) / payload_capacity >= 0.8:
+        issues.append("Payload容量使用率超过80%")
+    publish_deadline_ms = float(snapshot.get("configured_publish_total_timeout_ms", 0) or 0)
+    if publish_deadline_ms > 0 and float(snapshot.get("publish_batch_age_ms", 0) or 0) > publish_deadline_ms:
+        issues.append("发布批次超过总期限")
+    if snapshot.get("nats_js_publish_waiting_messages", 0) > 0:
+        issues.append("JetStream等待信贷")
+    if snapshot.get("nats_js_puback_timeout_delta", 0) > 0:
+        issues.append("PubAck本周期发生超时")
+    if snapshot.get("nats_js_publish_rejected_delta", 0) > 0:
+        issues.append("JetStream本周期发生拒绝")
     if issues:
         return "需关注", "、".join(issues)
     if snapshot.get("active_runs", 0) == 0 and snapshot.get("target_slots_used", 0) == 0:

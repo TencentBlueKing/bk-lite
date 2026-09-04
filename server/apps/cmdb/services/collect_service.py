@@ -837,6 +837,7 @@ class CollectModelService(object):
                 execution_id,
                 node_config_id,
                 node_config_version,
+                resolve_latest_round=True,
             )
 
         create_change_record(
@@ -862,6 +863,7 @@ class CollectModelService(object):
                 execution_id,
                 node_config_id,
                 node_config_version,
+                resolve_latest_round=True,
             )
         except Exception:
             CollectModels.objects.filter(

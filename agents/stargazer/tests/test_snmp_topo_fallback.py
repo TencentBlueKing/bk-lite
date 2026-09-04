@@ -1,7 +1,6 @@
 from unittest import mock
 
 import pytest
-
 from plugins.inputs.network_topo import snmp_topo as topo_mod
 from plugins.inputs.network_topo.snmp_topo import FallbackOidResult, SnmpTopo
 
@@ -19,6 +18,17 @@ def test_build_oid_dict_carries_group():
     assert record["group"] == "interfaces"
     record = topo_mod.build_oid_dict("1.3.6.1.2.1.17.1.4.1.2.5", "23")
     assert record["group"] == "bridge"
+
+
+def test_huawei_ndp_is_collected_by_default_and_safe_to_skip():
+    ndp_oids = {
+        "1.3.6.1.4.1.2011.6.7.5.6.1.1",
+        "1.3.6.1.4.1.2011.6.7.5.6.1.2",
+        "1.3.6.1.4.1.2011.6.7.5.6.1.3",
+    }
+
+    assert ndp_oids.issubset(SnmpTopo._build_oids(None))
+    assert ndp_oids.issubset(topo_mod.OPTIONAL_FALLBACK_ROOTS)
 
 
 @pytest.mark.asyncio

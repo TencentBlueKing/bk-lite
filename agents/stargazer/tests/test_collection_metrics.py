@@ -32,3 +32,15 @@ def test_collection_metrics_tracks_non_negative_in_flight_gauges():
 
     metrics.add_gauge("sync_calls_in_flight", -10)
     assert metrics.snapshot()["sync_calls_in_flight"] == 0
+
+
+def test_collection_metrics_expires_percentiles_by_time_window_when_idle():
+    now = [100.0]
+    metrics = CollectionMetrics(sample_capacity=10, sample_window_seconds=300, monotonic=lambda: now[0])
+    metrics.observe("publish_queue_residence_seconds", 40.0)
+
+    assert metrics.snapshot()["publish_queue_residence_seconds_p99"] == 40.0
+
+    now[0] += 301
+
+    assert metrics.snapshot()["publish_queue_residence_seconds_p99"] == 0.0

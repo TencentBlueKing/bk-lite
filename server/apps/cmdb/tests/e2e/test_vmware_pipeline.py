@@ -9,6 +9,7 @@ VMware 采集特点：
 import jsonschema
 import pytest
 
+from apps.cmdb.collection.plugins.community.vm.plugins import VMWARE_MODEL_FIELD_MAPPING
 from apps.cmdb.tests.e2e import pipeline
 
 
@@ -35,7 +36,8 @@ def test_vmware_vc_pipeline_end_to_end(load_fixture, load_schema, monkeypatch):
 
     # 给 plugin 加一个最小 field_mapping，generic 驱动会用它
     monkeypatch.setattr(
-        VmwareVCCollectionPlugin, "field_mapping",
+        VmwareVCCollectionPlugin,
+        "field_mapping",
         {"vc_version": "vc_version", "inst_name": CollectVmwareMetrics.set_vc_inst_name},
         raising=False,
     )
@@ -60,8 +62,63 @@ def test_vmware_vc_pipeline_end_to_end(load_fixture, load_schema, monkeypatch):
 
     actual = instances[0]
     for field, expected_value in expected["expected_instance_subset"].items():
-        assert actual.get(field) == expected_value, \
-            f"字段 {field}：期望 {expected_value!r}，实际 {actual.get(field)!r}"
+        assert actual.get(field) == expected_value, f"字段 {field}：期望 {expected_value!r}，实际 {actual.get(field)!r}"
+
+
+def test_vmware_completed_round_older_than_one_day_is_still_formatted(monkeypatch):
+    """完整轮次已经限定 [T, C]，恢复历史轮次时不应再被墙上时钟过滤。"""
+    from apps.cmdb.collection.collect_plugin.vmware import CollectVmwareMetrics
+
+    monkeypatch.setattr(
+        CollectVmwareMetrics,
+        "_metrics",
+        property(lambda _self: ["vmware_vc_info_gauge"]),
+    )
+    monkeypatch.setattr(
+        CollectVmwareMetrics,
+        "model_field_mapping",
+        property(
+            lambda _self: {
+                "vmware_vc": {
+                    "inst_name": "inst_name",
+                    "vc_version": "vc_version",
+                }
+            }
+        ),
+    )
+
+    class FakeCollection:
+        def query(self, _sql, **_kwargs):
+            return {
+                "data": {
+                    "result": [
+                        {
+                            "metric": {
+                                "__name__": "vmware_vc_info_gauge",
+                                "instance_id": "cmdb_6002",
+                                "collect_status": "success",
+                                "inst_name": "vc-prod-01",
+                                "vc_version": "8.0.2",
+                            },
+                            "value": [100, "1"],
+                        }
+                    ]
+                }
+            }
+
+    monkeypatch.setattr("apps.cmdb.collection.collect_plugin.base.Collection", FakeCollection)
+    runner = CollectVmwareMetrics(
+        inst_name="vc-prod-01",
+        inst_id=1,
+        task_id=6002,
+        round_ts=100,
+        round_completed_at=200,
+        snapshot_complete=True,
+    )
+
+    result = runner.run()
+
+    assert result["vmware_vc"] == [{"inst_name": "vc-prod-01", "vc_version": "8.0.2"}]
 
 
 def test_drift_detection(load_schema):
@@ -83,9 +140,9 @@ def test_vmware_vc_a_b_alignment(load_fixture, load_schema, monkeypatch):
     vmware model_id 在 alignment test 里使用,实际 pipeline 走 vmware_vc sub-model
     (因为 VMWARE_COLLECT_MAP 把 vmware_vc_info_gauge 映射到 vmware_vc)。
     """
-    from apps.cmdb.tests.e2e.utils.model_reflection import get_model_field_def
     from apps.cmdb.collection.collect_plugin.vmware import CollectVmwareMetrics
     from apps.cmdb.collection.plugins.community.vm.plugins import VmwareVCCollectionPlugin
+    from apps.cmdb.tests.e2e.utils.model_reflection import get_model_field_def
 
     raw = load_fixture("vmware/01_stargazer_raw.json")
     expected = load_fixture("vmware/04_expected_cmdb_result.json")
@@ -103,31 +160,35 @@ def test_vmware_vc_a_b_alignment(load_fixture, load_schema, monkeypatch):
         model_fields = get_model_field_def("vmware")
         required = {f.name for f in model_fields.values() if f.is_required}
         labels = set(result_item["metric"].keys())
-        exclude = {"__name__", "instance_id", "collect_status", "inst_name",
-                   "model_id", "id", "create_time", "update_time", "assos"}
+        exclude = {"__name__", "instance_id", "collect_status", "inst_name", "model_id", "id", "create_time", "update_time", "assos"}
         missing = required - labels - exclude
         assert not missing, f"A 端 03 metric 缺 model 必填字段: {missing}"
 
     # B 端:03 → 04
     monkeypatch.setattr(
-        VmwareVCCollectionPlugin, "field_mapping",
+        VmwareVCCollectionPlugin,
+        "field_mapping",
         {"vc_version": "vc_version", "inst_name": CollectVmwareMetrics.set_vc_inst_name},
         raising=False,
     )
     from apps.cmdb.collection.plugins.base import bind_collection_mapping
+
     monkeypatch.setattr(
-        CollectVmwareMetrics, "_metrics",
-        property(lambda self: [
-            "vmware_vc_info_gauge", "vmware_ds_info_gauge",
-            "vmware_esxi_info_gauge", "vmware_vm_info_gauge",
-        ]),
+        CollectVmwareMetrics,
+        "_metrics",
+        property(
+            lambda self: [
+                "vmware_vc_info_gauge",
+                "vmware_ds_info_gauge",
+                "vmware_esxi_info_gauge",
+                "vmware_vm_info_gauge",
+            ]
+        ),
     )
     monkeypatch.setattr(
-        CollectVmwareMetrics, "model_field_mapping",
-        property(lambda self: {
-            mid: bind_collection_mapping(self, m)
-            for mid, m in VMWARE_MODEL_FIELD_MAPPING.items()
-        }),
+        CollectVmwareMetrics,
+        "model_field_mapping",
+        property(lambda self: {mid: bind_collection_mapping(self, m) for mid, m in VMWARE_MODEL_FIELD_MAPPING.items()}),
     )
 
     raw_items = raw if isinstance(raw, list) else raw
@@ -149,8 +210,14 @@ def test_vmware_vc_a_b_alignment(load_fixture, load_schema, monkeypatch):
     # B 端:实例字段 ⊆ model 字段定义
     model_fields = get_model_field_def("vmware")
     system_fields = {
-        "inst_name", "model_id", "id", "create_time", "update_time",
-        "_placeholder_reason", "license_status", "assos",
+        "inst_name",
+        "model_id",
+        "id",
+        "create_time",
+        "update_time",
+        "_placeholder_reason",
+        "license_status",
+        "assos",
     }
     model_field_names = set(model_fields.keys()) - system_fields
     inst_fields = set(inst.keys())
@@ -158,9 +225,4 @@ def test_vmware_vc_a_b_alignment(load_fixture, load_schema, monkeypatch):
     assert not missing, f"B 端 04 实例缺 model 字段: {missing}"
 
     # B 端:vc_version 是 string
-    assert inst.get("vc_version") == "8.0.2.00100", \
-        f"vc_version 应该是 8.0.2.00100,实际 {inst.get('vc_version')}"
-
-
-# 导入 VMWARE_MODEL_FIELD_MAPPING 用于 test_vmware_vc_a_b_alignment
-from apps.cmdb.collection.plugins.community.vm.plugins import VMWARE_MODEL_FIELD_MAPPING
+    assert inst.get("vc_version") == "8.0.2.00100", f"vc_version 应该是 8.0.2.00100,实际 {inst.get('vc_version')}"

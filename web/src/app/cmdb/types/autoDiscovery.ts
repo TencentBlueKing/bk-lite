@@ -1,4 +1,4 @@
-export type TopologyProtocol = 'lldp' | 'cdp' | 'fdb' | 'arp';
+export type TopologyProtocol = 'lldp' | 'huawei_ndp' | 'cdp' | 'fdb' | 'arp';
 
 export type TopologyFallbackStrategy =
   | 'prefer_neighbors_then_fdb_then_arp'
@@ -174,7 +174,6 @@ export interface BaseTaskFormProps {
   showAdvanced?: boolean;
   timeoutProps?: {
     min?: number;
-    defaultValue?: number;
     addonAfter?: string;
   };
   modelId: string;

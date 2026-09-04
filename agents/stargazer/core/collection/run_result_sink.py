@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import asyncio
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from core.collection.contracts import RunSummary, TargetCollectionResult
+from core.collection.enums import FailureStage
 from core.collection.result_delivery import BoundedResultDeliveryObserver
 from core.logger import safe_log_value
 
@@ -25,6 +26,9 @@ class RunResultReport:
     total_failures: int = 0
     publish_failure_codes: str = "-"
     publish_failure_samples: str = "-"
+    ip_precheck_failure_count: int = 0
+    ip_precheck_failure_sample_count: int = 0
+    ip_precheck_failure_samples: str = "-"
 
 
 class RunResultSink:
@@ -59,6 +63,8 @@ class RunResultSink:
         self._failure_samples: list[str] = []
         self._publish_failure_counts: Counter[str] = Counter()
         self._publish_failure_samples: list[tuple[int, str]] = []
+        self._ip_precheck_failure_count = 0
+        self._ip_precheck_failure_samples: list[str] = []
         self._pending_deliveries = 0
         self._delivery_terminal = asyncio.Event()
         self._delivery_terminal.set()
@@ -88,7 +94,7 @@ class RunResultSink:
         self._metrics.add_gauge("result_deliveries_pending", 1)
         self._delivery_terminal.clear()
         await self._delivery_observer.observe(
-            pending,
+            (replace(pending, result=None, target=result.target) if bool(getattr(pending.receipt, "retries_managed", False)) else pending),
             target=safe_log_value(result.target, max_length=255),
             on_terminal=self._delivery_finished,
         )
@@ -126,6 +132,9 @@ class RunResultSink:
             total_failures=sum(self._failure_counts.values()),
             publish_failure_codes=_render_counts(self._publish_failure_counts),
             publish_failure_samples=",".join(sample for _index, sample in ordered_publish_samples) or "-",
+            ip_precheck_failure_count=self._ip_precheck_failure_count,
+            ip_precheck_failure_sample_count=len(self._ip_precheck_failure_samples),
+            ip_precheck_failure_samples=",".join(self._ip_precheck_failure_samples) or "-",
         )
 
     async def abort(self) -> None:
@@ -143,6 +152,16 @@ class RunResultSink:
             return
         error_code = result.error_code or result.status
         _increment_bounded(self._failure_counts, error_code)
+        if result.failed_stage == FailureStage.IP_PRECHECK:
+            self._ip_precheck_failure_count += 1
+            if len(self._ip_precheck_failure_samples) < _FAILURE_SAMPLE_LIMIT:
+                self._ip_precheck_failure_samples.append(
+                    "%s|%s"
+                    % (
+                        safe_log_value(result.target, max_length=255),
+                        safe_log_value(error_code),
+                    )
+                )
         if len(self._failure_samples) < _FAILURE_SAMPLE_LIMIT:
             self._failure_samples.append(
                 "%s|%s|%s"

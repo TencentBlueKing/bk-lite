@@ -15,6 +15,7 @@ from core.collection.contracts import (
     TargetExecutorSettings,
 )
 from core.collection.executor import TargetCollectionExecutor
+from core.collection.result_publisher import BufferedResultPublisher
 from core.collection.runtime import CollectionRequest, RunLease
 
 
@@ -131,7 +132,7 @@ async def test_5000_large_success_payloads_are_bounded_before_run_finishes():
             return False
 
     class ImmediatePublisher:
-        async def enqueue(self, request, result, lease):
+        async def enqueue(self, request, result, lease, *, deadline=None):
             return ImmediateReceipt()
 
     request = CollectionRequest(
@@ -176,3 +177,73 @@ async def test_5000_large_success_payloads_are_bounded_before_run_finishes():
     assert summary.collection_succeeded == 5000
     assert summary.publish_succeeded == 5000
     assert sum(reference() is not None for reference in payload_references) == 0
+
+
+@pytest.mark.asyncio
+async def test_payload_lifecycle_capacity_includes_targets_waiting_for_publisher_admission():
+    release_publish = asyncio.Event()
+    payload_references = []
+    completed = 0
+
+    class ReachablePreflight:
+        async def check(self, target, request, *, timeout_seconds, plan=None):
+            return PreflightResult(status=PreflightStatus.REACHABLE)
+
+    class PayloadPlugin:
+        async def collect(self, target, credential, context):
+            nonlocal completed
+            payload = StructuredMetricsPayload(data={"network": [{"target": target, "blob": "x" * 32768}]})
+            payload_references.append(weakref.ref(payload))
+            completed += 1
+            return CollectOutcome(status=CollectOutcomeStatus.SUCCESS, value=payload)
+
+    class BlockingDelegate:
+        async def publish_batch(self, items):
+            await release_publish.wait()
+            return {}
+
+    publisher = BufferedResultPublisher(
+        BlockingDelegate(),
+        capacity=2,
+        batch_size=1,
+        worker_count=1,
+    )
+    request = CollectionRequest(
+        task_id="payload-lifecycle-admission",
+        plugin_ref="network.config",
+        targets=tuple(f"target-{index}" for index in range(8)),
+        credentials=({"credential_id": "credential-1"},),
+    )
+    executor = TargetCollectionExecutor(
+        preflight=ReachablePreflight(),
+        plugin=PayloadPlugin(),
+        publisher=publisher,
+        settings=TargetExecutorSettings(
+            max_active_targets=2,
+            target_task_window=2,
+            publish_queue_timeout_seconds=1,
+            publish_total_timeout_seconds=2,
+        ),
+    )
+
+    run = asyncio.create_task(
+        executor.execute(
+            request,
+            RunLease(request.task_id, request.digest, "load-pod", 1, time.time() + 60),
+        )
+    )
+    for _ in range(100):
+        if publisher.pending_payloads == 2:
+            break
+        await asyncio.sleep(0.01)
+    await asyncio.sleep(0.05)
+    gc.collect()
+
+    assert publisher.pending_payloads == 2
+    assert completed <= 2
+    assert sum(reference() is not None for reference in payload_references) <= 2
+
+    release_publish.set()
+    summary = await asyncio.wait_for(run, timeout=2)
+    await publisher.shutdown()
+    assert summary.publish_succeeded == 8

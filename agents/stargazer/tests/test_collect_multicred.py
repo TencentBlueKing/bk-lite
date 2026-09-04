@@ -834,6 +834,23 @@ def test_merge_topology_facts_preserves_stronger_fact_on_exact_full_edge_duplica
     assert merge_topology_facts([cdp_fact, lldp_fact]) == [lldp_fact]
 
 
+def test_merge_topology_facts_prefers_huawei_ndp_over_cdp_on_equal_confidence():
+    from plugins.inputs.network_topo.topology_facts import build_topology_fact, merge_topology_facts
+
+    observation = {
+        "local_device_id": "access-sw-1",
+        "local_port_id": "7",
+        "local_port_name": "GigabitEthernet0/0/7",
+        "remote_device_id": "core-sw-1",
+        "remote_port_id": "48",
+        "remote_port_name": "GigabitEthernet0/0/48",
+    }
+    cdp_fact = build_topology_fact("cdp", observation, confidence=0.92)
+    ndp_fact = build_topology_fact("huawei_ndp", observation, confidence=0.92)
+
+    assert merge_topology_facts([cdp_fact, ndp_fact]) == [ndp_fact]
+
+
 def test_merge_topology_facts_prefers_higher_confidence_across_protocols_for_same_full_edge():
     from plugins.inputs.network_topo.topology_facts import build_topology_fact, merge_topology_facts
 
@@ -1055,6 +1072,38 @@ def test_snmp_topo_build_topology_facts_builds_cdp_neighbor_evidence(monkeypatch
                 "local_port": snmp_rows[0],
                 "remote_device": snmp_rows[1],
                 "remote_port": snmp_rows[2],
+            },
+        }
+    ]
+
+
+def test_snmp_topo_build_topology_facts_builds_huawei_ndp_neighbor_evidence(monkeypatch):
+    SnmpTopo = _import_snmp_topo_with_stubbed_sanic_log(monkeypatch).SnmpTopo
+    suffix = "7.10.0.0.17.34.51.68.85.6.71.69.48.47.48.47.49"
+    snmp_rows = [
+        {"tag": "IFTable-IfDescr", "ifindex": "7", "val": "GigabitEthernet0/0/7"},
+        {"tag": "HNDP-RemDeviceId", "ifindex": suffix, "val": "0x00000000112233445566"},
+        {"tag": "HNDP-RemPortName", "ifindex": suffix, "val": "GigabitEthernet0/0/1"},
+        {"tag": "HNDP-RemDeviceName", "ifindex": suffix, "val": "access-sw-1"},
+    ]
+
+    facts = SnmpTopo.build_topology_facts(snmp_rows, enabled_protocols=("huawei_ndp",))
+
+    assert facts == [
+        {
+            "source_protocol": "huawei_ndp",
+            "confidence": 0.92,
+            "local_device_id": None,
+            "local_port_id": "7",
+            "local_port_name": "GigabitEthernet0/0/7",
+            "remote_device_id": "0x00000000112233445566",
+            "remote_port_id": "GigabitEthernet0/0/1",
+            "remote_port_name": "GigabitEthernet0/0/1",
+            "raw_evidence": {
+                "local_port": snmp_rows[0],
+                "remote_device": snmp_rows[1],
+                "remote_port": snmp_rows[2],
+                "remote_system": snmp_rows[3],
             },
         }
     ]

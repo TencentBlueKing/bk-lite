@@ -745,6 +745,7 @@
             "minConfidenceHelp": "Value from 0 to 1. Higher values require stronger confidence for inferred topology links.",
             "topologyProtocolOptions": {
                 "lldp": "LLDP",
+                "huaweiNdp": "Huawei NDP",
                 "cdp": "CDP",
                 "fdb": "FDB",
                 "arp": "ARP"
@@ -928,6 +929,7 @@
             "chooseSubnet": "Select Subnets",
             "scanMethod": "Scan Method",
             "tcpPorts": "TCP Ports",
+            "timeoutTooltip": "Total budget for formally scanning the selected subnets. Each ICMP/TCP probe is capped at 5 seconds; the framework stops the scan when the total budget expires.",
             "tcpPortsInvalid": "Invalid port format. Enter numbers between 1-65535, separated by commas.",
             "securityWarning": "Large-scale IP scanning may be flagged as port scanning or intrusion by security devices. Please notify your security team in advance and keep the scan scope and frequency reasonable.",
             "rangeGuardTitle": "Large scan range — please confirm",

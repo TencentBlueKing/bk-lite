@@ -745,6 +745,7 @@
             "minConfidenceHelp": "取值范围 0 到 1，数值越高表示对拓扑推断结果要求越严格。",
             "topologyProtocolOptions": {
                 "lldp": "LLDP",
+                "huaweiNdp": "华为 NDP",
                 "cdp": "CDP",
                 "fdb": "FDB",
                 "arp": "ARP"
@@ -1184,6 +1185,7 @@
             "chooseSubnet": "选子网",
             "scanMethod": "采集方式",
             "tcpPorts": "TCP端口",
+            "timeoutTooltip": "本次所选子网正式扫描的总预算；单个 IP 的 ICMP/TCP 探测固定最多 5 秒。超过总预算后，框架将终止本次扫描。",
             "tcpPortsInvalid": "端口格式无效，请输入1-65535之间的数字，多个端口用逗号分隔",
             "securityWarning": "大批量 IP 扫描可能被安全设备识别为端口扫描 / 黑客探测行为，请提前与安全部门报备并合理控制扫描范围与频率。",
             "rangeGuardTitle": "扫描范围较大，请确认",

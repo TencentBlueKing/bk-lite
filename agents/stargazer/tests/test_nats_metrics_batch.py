@@ -452,6 +452,42 @@ async def test_metrics_batch_builds_result_scoped_stable_message_ids(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_metrics_batch_passes_each_result_deadline_to_jetstream_lines(monkeypatch):
+    calls = []
+
+    def iter_lines(_metrics, _params):
+        yield "line-0"
+        yield "line-1"
+
+    async def publish_lines(_subject, lines, *, deadlines=None, **_kwargs):
+        calls.append((tuple(lines), tuple(deadlines or ())))
+        return len(lines)
+
+    deadline = asyncio.get_running_loop().time() + 30
+    monkeypatch.setenv("NATS_METRICS_JETSTREAM_ENABLED", "true")
+    monkeypatch.setattr(nats_helper, "_iter_metrics_to_influx", iter_lines)
+    monkeypatch.setattr(nats_helper, "nats_publish_lines", publish_lines)
+
+    outcomes = await nats_helper.publish_metrics_batch_to_nats(
+        (
+            (
+                {},
+                "metrics",
+                {
+                    "model_id": "network",
+                    "collection_result_id": "result-a",
+                    "_publish_attempt_state": SimpleNamespace(deadline=deadline),
+                },
+                "run-1",
+            ),
+        )
+    )
+
+    assert outcomes == {"result-a": None}
+    assert calls == [(("line-0", "line-1"), (deadline, deadline))]
+
+
+@pytest.mark.asyncio
 async def test_direct_metrics_publish_message_ids_are_stable_per_result_and_distinct_across_runs(monkeypatch):
     published_message_ids = []
 
@@ -1046,3 +1082,72 @@ async def test_large_target_does_not_starve_small_target_with_same_subject(monke
     )
 
     assert published[:2] == ["large-0", "small-0"]
+
+
+@pytest.mark.asyncio
+async def test_jetstream_transport_quantum_never_exceeds_the_message_window(monkeypatch):
+    published_chunk_sizes = []
+
+    def iter_lines(_metrics, _params):
+        yield from (f"line-{index}" for index in range(5))
+
+    async def publish(_subject, lines, _task_id, **_kwargs):
+        published_chunk_sizes.append(len(lines))
+        return len(lines)
+
+    monkeypatch.setenv("NATS_METRICS_JETSTREAM_ENABLED", "true")
+    monkeypatch.setenv("NATS_JS_PUBLISH_MAX_PENDING", "2")
+    monkeypatch.setattr(nats_helper, "_iter_metrics_to_influx", iter_lines)
+    monkeypatch.setattr(nats_helper, "_publish_lines_with_retry", publish)
+
+    outcomes = await nats_helper.publish_metrics_batch_to_nats(
+        (({}, "metrics", {"model_id": "network", "collection_result_id": "result-1"}, "run-1"),)
+    )
+
+    assert outcomes == {"result-1": None}
+    assert published_chunk_sizes == [2, 2, 1]
+
+
+@pytest.mark.asyncio
+async def test_expired_result_deadline_stops_before_metrics_encoding(monkeypatch):
+    encoded = False
+    published = False
+
+    class ExpiredAttempt:
+        deadline = 0.0
+
+        def mark_delivery_started(self):
+            raise AssertionError("expired result must not reach transport")
+
+    def encode(*_args):
+        nonlocal encoded
+        encoded = True
+        return ["line"]
+
+    async def publish(*_args, **_kwargs):
+        nonlocal published
+        published = True
+        return 1
+
+    monkeypatch.setattr(nats_helper, "_iter_metrics_to_influx", encode)
+    monkeypatch.setattr(nats_helper, "_publish_lines_with_retry", publish)
+
+    outcomes = await nats_helper.publish_metrics_batch_to_nats(
+        (
+            (
+                {},
+                "metrics",
+                {
+                    "model_id": "network",
+                    "collection_result_id": "expired",
+                    "_publish_attempt_state": ExpiredAttempt(),
+                },
+                "run-1",
+            ),
+        )
+    )
+
+    assert isinstance(outcomes["expired"], nats_helper.PublishDeadlineExceededError)
+    assert outcomes["expired"].delivery_detected is False
+    assert encoded is False
+    assert published is False

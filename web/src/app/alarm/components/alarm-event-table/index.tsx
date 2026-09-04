@@ -9,6 +9,7 @@ import EventLevelTag from '@/app/alarm/components/event-level-tag';
 import StructuredDataPreview from '@/components/structured-data-preview';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
+import { getMonitorIdentityColumns } from '@/app/alarm/components/monitor-object-list/columns';
 
 export interface AlarmEventLevelOption {
   color?: string;
@@ -28,6 +29,8 @@ export interface AlarmEventTableItem {
   source_name?: string;
   title?: string;
   resource_type?: string;
+  monitor_id?: string | null;
+  cmdb_id?: string | null;
   status?: string;
   item?: string;
   value?: number | string;
@@ -140,6 +143,7 @@ const AlarmEventTable: React.FC<AlarmEventTableProps> = ({
       key: 'resource_type',
       width: 120,
     },
+    ...getMonitorIdentityColumns<AlarmEventTableItem>(t),
     {
       title: t('alarms.state'),
       dataIndex: 'status',

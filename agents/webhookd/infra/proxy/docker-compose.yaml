@@ -148,6 +148,7 @@ services:
       NATS_TLS_ENABLED: true
       NATS_TLS_CA_FILE: /etc/certs/ca.crt
       NATS_METRIC_TOPIC: metrics
+      NATS_JS_STREAM_NAME: metrics
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD}

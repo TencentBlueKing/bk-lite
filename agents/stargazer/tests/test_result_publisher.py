@@ -1,4 +1,5 @@
 import asyncio
+from types import SimpleNamespace
 
 import core.infra.nats_utils as nats_utils
 import pytest
@@ -6,6 +7,49 @@ from core.collection.contracts import PublishStatus, StructuredMetricsPayload, T
 from core.collection.result_delivery import _requires_delivery
 from core.collection.result_publisher import BufferedResultPublisher, NatsResultPublisher, PublishShutdownError
 from core.collection.runtime import CollectionRequest, RunLease
+
+
+@pytest.mark.asyncio
+async def test_expired_deadline_stops_before_round_metadata_and_metrics_delivery():
+    events = []
+
+    class Store:
+        async def save(self, _envelope):
+            events.append("metadata")
+
+    async def publish_metrics_batch(_entries):
+        events.append("metrics")
+        return {}
+
+    request = CollectionRequest(
+        task_id="expired-before-publish",
+        plugin_ref="network.config",
+        targets=("10.0.0.8",),
+        params={"model_id": "network", "plugin_family": "configuration"},
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999, attempt_id="attempt-a")
+    result = TargetCollectionResult(
+        target="10.0.0.8",
+        status="success",
+        attempts=1,
+        value=StructuredMetricsPayload(
+            data={"network": [{"host": "10.0.0.8"}]},
+            round_metadata={
+                "snapshot_id": "snapshot-1",
+                "snapshot_status": "complete",
+                "details": {},
+            },
+        ),
+    )
+
+    outcomes = await NatsResultPublisher(
+        metrics_publish_batch=publish_metrics_batch,
+        round_metadata_store=Store(),
+    ).publish_batch(((request, result, lease, SimpleNamespace(deadline=0.0)),))
+
+    assert events == []
+    assert list(outcomes.values())[0].status == PublishStatus.RETRYABLE_FAILED
+    assert list(outcomes.values())[0].error_code == "publish_total_timeout_before_delivery"
 
 
 @pytest.mark.asyncio
@@ -232,6 +276,96 @@ async def test_publish_receipt_exposes_queue_and_delivery_telemetry():
 
     release.set()
     await receipt.wait()
+    await publisher.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_buffered_publisher_carries_the_result_deadline_to_the_transport_attempt():
+    observed_deadline = None
+
+    class DeadlineAwareDelegate:
+        async def publish_batch(self, items):
+            nonlocal observed_deadline
+            observed_deadline = items[0][3].deadline
+
+    publisher = BufferedResultPublisher(DeadlineAwareDelegate(), capacity=1, batch_size=1)
+    request = CollectionRequest(
+        task_id="publish-deadline",
+        plugin_ref="network.config",
+        targets=("10.10.24.1",),
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+    deadline = asyncio.get_running_loop().time() + 30
+
+    receipt = await publisher.enqueue(
+        request,
+        TargetCollectionResult(target="10.10.24.1", status="success", attempts=1, value="metric 1"),
+        lease,
+        deadline=deadline,
+    )
+
+    await receipt.wait()
+    assert observed_deadline == deadline
+    await publisher.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_payload_capacity_includes_results_already_taken_by_active_writers():
+    two_started = asyncio.Event()
+    release = asyncio.Event()
+    started = []
+
+    class BlockingDelegate:
+        async def publish_batch(self, items):
+            started.extend(item[1].target for item in items)
+            if len(started) >= 2:
+                two_started.set()
+            await release.wait()
+
+    publisher = BufferedResultPublisher(
+        BlockingDelegate(),
+        capacity=2,
+        batch_size=1,
+        worker_count=2,
+    )
+    request = CollectionRequest(
+        task_id="payload-capacity",
+        plugin_ref="network.config",
+        targets=("10.10.24.1", "10.10.24.2", "10.10.24.3"),
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+
+    first, second = await asyncio.gather(
+        *(
+            publisher.enqueue(
+                request,
+                TargetCollectionResult(target=target, status="success", attempts=1, value="metric 1"),
+                lease,
+            )
+            for target in request.targets[:2]
+        )
+    )
+    await asyncio.wait_for(two_started.wait(), timeout=1)
+    assert publisher.queue_depth == 0
+    assert publisher.pending_payloads == 2
+
+    third_enqueue = asyncio.create_task(
+        publisher.enqueue(
+            request,
+            TargetCollectionResult(target="10.10.24.3", status="success", attempts=1, value="metric 1"),
+            lease,
+        )
+    )
+    await asyncio.sleep(0)
+
+    assert third_enqueue.done() is False
+    assert publisher.peak_pending_payloads == 2
+
+    release.set()
+    await asyncio.gather(first.wait(), second.wait())
+    third = await asyncio.wait_for(third_enqueue, timeout=1)
+    await third.wait()
+    assert publisher.pending_payloads == 0
     await publisher.shutdown()
 
 

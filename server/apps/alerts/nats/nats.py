@@ -926,12 +926,22 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
                 "errored": 0,
             }
 
-        logger.info("[AlertEvent] 成功处理 %s 条事件 pusher=%s source_id=%s", len(events), pusher, source_id)
-
         fully_accepted = ingestion.get("skipped", 0) == 0 and ingestion.get("errored", 0) == 0
         if event_results is not None:
             # duplicate 是幂等终态；rejected/errored 仍失败。旧模式 result 语义完全不变。
             fully_accepted = all(item["status"] in {"accepted", "duplicate"} for item in event_results)
+        if fully_accepted:
+            logger.info("[AlertEvent] 成功处理 %s 条事件 pusher=%s source_id=%s", len(events), pusher, source_id)
+        else:
+            logger.warning(
+                "[AlertEvent] 事件部分接收: source_id=%s pusher=%s received=%s accepted=%s rejected=%s errored=%s",
+                source_id,
+                pusher,
+                ingestion.get("received", len(events)),
+                ingestion.get("accepted", 0),
+                ingestion.get("rejected", 0),
+                ingestion.get("errored", 0),
+            )
         data = {
             "processed_events": ingestion.get("accepted", 0),
             "ingestion": ingestion,

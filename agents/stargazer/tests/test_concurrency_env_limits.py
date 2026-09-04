@@ -21,7 +21,7 @@ def test_default_concurrency_matches_production_baseline():
     assert DEFAULT_TARGET_TASK_WINDOW == 160
     assert TargetExecutorSettings().max_active_targets == 160
     assert TargetExecutorSettings().target_task_window == 160
-    assert CollectionApplicationSettings().snmp_max_in_flight == 160
+    assert not hasattr(CollectionApplicationSettings(), "snmp_max_in_flight")
 
 
 def test_concurrency_limit_parser_keeps_zero_for_low_level_compatibility(monkeypatch):
@@ -51,7 +51,8 @@ def test_application_settings_from_env_reads_concurrency(monkeypatch):
     assert settings.monitoring_max_active_targets == 30
     assert settings.network_topology_max_active_targets == 30
     assert settings.target_task_window == 160
-    assert settings.snmp_max_in_flight == 160
+    assert settings.max_active_run_targets == 4000
+    assert not hasattr(settings, "snmp_max_in_flight")
 
     monkeypatch.delenv("MAX_ACTIVE_TARGETS", raising=False)
     monkeypatch.delenv("CONFIGURATION_MAX_ACTIVE_TARGETS", raising=False)
@@ -63,7 +64,12 @@ def test_application_settings_from_env_reads_concurrency(monkeypatch):
     assert settings.network_topology_max_active_targets == DEFAULT_NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS
     assert settings.target_task_window == DEFAULT_TARGET_TASK_WINDOW
     monkeypatch.delenv("CAPACITY_LOG_INTERVAL", raising=False)
-    assert CollectionApplicationSettings.from_env().capacity_log_interval_seconds == 180
+    monkeypatch.delenv("MAX_ACTIVE_RUN_TARGETS", raising=False)
+    assert CollectionApplicationSettings.from_env().max_active_run_targets == 4000
+    assert CollectionApplicationSettings.from_env().capacity_log_interval_seconds == 30
+
+    monkeypatch.setenv("MAX_ACTIVE_RUN_TARGETS", "6000")
+    assert CollectionApplicationSettings.from_env().max_active_run_targets == 6000
 
     monkeypatch.setenv("CAPACITY_LOG_INTERVAL", "45")
     assert CollectionApplicationSettings.from_env().capacity_log_interval_seconds == 45
@@ -171,14 +177,15 @@ def test_env_example_uses_split_timeout_contract():
     assert "NATS_JS_PUBLISH_MAX_PENDING=256" in example
     assert "NATS_JS_PUBLISH_MAX_PENDING_BYTES=33554432" in example
     assert "NATS_METRICS_PENDING_SIZE_BYTES=34603008" in example
-    assert "NATS_JS_STREAM_NAME=CMDB_METRICS" in example
+    assert "NATS_JS_STREAM_NAME=metrics" in example
     assert "NATS_MAX_RECONNECT_ATTEMPTS=-1" in example
     assert "NATS_PENDING_SIZE_BYTES=2097152" in example
     assert "NATS_METRICS_READINESS_TIMEOUT=2" in example
     assert "NATS_DRAIN_TIMEOUT_SECONDS=5" in example
-    assert "CAPACITY_LOG_INTERVAL=180" in example
+    assert "CAPACITY_LOG_INTERVAL=30" in example
+    assert "MAX_ACTIVE_RUN_TARGETS=4000" in example
     assert "MAX_ACTIVE_TARGETS=160" in example
-    assert "SNMP_MAX_IN_FLIGHT=160" in example
+    assert "SNMP_MAX_IN_FLIGHT" not in example
     assert "SNMP_ENGINE_MAX_TARGETS=2000" in example
     assert "SNMP_ENGINE_IDLE_SECONDS=300" in example
     assert "SNMP_ENGINE_TOTAL_TARGET_BUDGET=4000" in example

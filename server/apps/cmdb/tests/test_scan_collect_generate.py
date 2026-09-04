@@ -206,7 +206,7 @@ def test_one_credential_multiple_ips_creates_single_collect_task(mocker, authent
     assert "integrity" not in creds[0]
     assert "privacy" not in creds[0]
     assert collect.params["has_network_topo"] is True
-    assert collect.params["topology_protocols"] == ["lldp", "cdp", "fdb", "arp"]
+    assert collect.params["topology_protocols"] == ["lldp", "huawei_ndp", "cdp", "fdb", "arp"]
     assert collect.params["topology_fallback_strategy"] == "prefer_neighbors_then_fdb_then_arp"
     assert collect.params["min_confidence"] == 0.0
     runner = BaseCollect(instance_id=None, task=collect)

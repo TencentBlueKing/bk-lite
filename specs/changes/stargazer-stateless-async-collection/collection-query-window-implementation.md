@@ -110,6 +110,10 @@ sequenceDiagram
     Q-->>C: 仅返回 sample_time in [T, C] 的记录
 ```
 
+页面手动同步不经过 Gate 的游标去重，但 worker 使用同一标记窗口解析最新
+`CompletedRound(T,C)` 后再执行对账。这保证手动与自动路径消费同一份完整快照，
+同时避免在页面请求事务中访问 VM。
+
 ## 5. Module 与 Interface
 
 `Collection` 是 VictoriaMetrics Adapter，继续提供一个稳定 Interface，并在内部隐藏 PromQL、
@@ -176,6 +180,8 @@ Collection.query(
 14. 无版本旧标记和缺少 `C` 的历史 pending 均只能 Upsert；
 15. 成功空快照仍发布新协议完成标记，从而可以安全删除陈旧实例；
 16. 每页无标记任务的数据存在性探测只产生一次 VM 查询。
+17. 手动同步按最新完整 `[T,C]` 查询，轮次标记查询失败不得降级为“无数据”。
+18. 恢复窗口内超过一天的已完成轮次仍能进入格式化和图写入。
 
 ## 8. 实施映射
 
@@ -183,6 +189,7 @@ Collection.query(
   完成毫秒时间；无需发布的成功空结果计入完整性证明；
 - `RoundGate`：计算并按 retention 截断发现窗口，分页批量取得 `CompletedRound(T,C)`；
 - Celery 对账任务：透传 `T/C`，游标仍只提交 `T`；
+- 手动同步：派发时标记 worker 解析最新轮次，按同一 `[T,C]` 对账；
 - 完整性门禁：只有新协议完成轮次允许差集删除，旧 Agent/partial/历史 pending 只 Upsert；
 - VM Adapter：在 `time=C` 查询原值与原始样本时间，并按 `[T,C]` 过滤；
 - 网络拓扑：独立 role 标记按自己的采集周期批量发现并透传 `T/C`；

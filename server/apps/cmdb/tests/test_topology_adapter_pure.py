@@ -47,6 +47,23 @@ def test_falls_back_to_tag_group_map_when_group_label_missing():
     assert evidence["neighbors"][0]["tag"] == "LLDP-RemSysName"
 
 
+def test_huawei_ndp_rows_fall_back_to_neighbor_group_when_group_label_missing():
+    rows = [
+        _row("dev-a", "HNDP-RemDeviceId", "10.0.0.0.187.187.187.187.187.187.7", "0x00000000bbbbbbbbbbbb"),
+        _row("dev-a", "HNDP-RemPortName", "10.0.0.0.187.187.187.187.187.187.7", "GigabitEthernet0/0/2"),
+        _row("dev-a", "HNDP-RemDeviceName", "10.0.0.0.187.187.187.187.187.187.7", "sw-b"),
+    ]
+
+    aggregate = build_pipeline_aggregate(rows)
+
+    evidence = aggregate["devices"][0]["collector_result"]["result"]["evidence"]
+    assert [row["tag"] for row in evidence["neighbors"]] == [
+        "HNDP-RemDeviceId",
+        "HNDP-RemPortName",
+        "HNDP-RemDeviceName",
+    ]
+
+
 def test_missing_ifindex_label_defaults_to_empty_string():
     rows = [
         {"instance_id": "dev-a", "tag": "System-SysName", "val": "sw-a", "group": "system"},
@@ -88,3 +105,27 @@ def test_adapter_output_feeds_pipeline_end_to_end():
     link = result["topology"]["inferred_links"][0]
     assert link["evidence_source"] == "arp"
     assert {link["source_device"], link["target_device"]} == {"dev-a", "dev-b"}
+
+
+def test_huawei_ndp_adapter_output_feeds_pipeline_end_to_end():
+    from apps.cmdb.collection.collect_plugin.topology.parse import parse_aggregate_result
+
+    suffix = "10.0.0.0.187.187.187.187.187.187.7"
+    rows = [
+        _row("dev-a", "System-SysName", "", "access-sw"),
+        _row("dev-a", "IFXTable-IfName", "10", "GigabitEthernet0/0/1"),
+        _row("dev-a", "HNDP-RemDeviceId", suffix, "0x00000000bbbbbbbbbbbb"),
+        _row("dev-a", "HNDP-RemPortName", suffix, "GigabitEthernet0/0/2"),
+        _row("dev-a", "HNDP-RemDeviceName", suffix, "core-sw"),
+        _row("dev-b", "System-SysName", "", "core-sw"),
+        _row("dev-b", "IFXTable-IfName", "2", "GigabitEthernet0/0/2"),
+        _row("dev-b", "IFTable-PhysAddress", "2", "0xbbbbbbbbbbbb"),
+    ]
+
+    result = parse_aggregate_result(build_pipeline_aggregate(rows))
+
+    assert result["summary"]["authoritative_links"] == 1
+    link = result["topology"]["authoritative_links"][0]
+    assert link["evidence_source"] == "huawei_ndp"
+    assert link["source_port_id"] == "dev-a:10"
+    assert link["target_port_id"] == "dev-b:2"

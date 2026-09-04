@@ -102,6 +102,7 @@ export const PASSWORD_PLACEHOLDER = '******';
 export const MAX_CREDENTIAL_POOL_SIZE = 3;
 export const DEFAULT_TOPOLOGY_PROTOCOLS: TopologyProtocol[] = [
   'lldp',
+  'huawei_ndp',
   'cdp',
   'fdb',
   'arp',
@@ -144,6 +145,10 @@ export const TOPOLOGY_PROTOCOL_OPTIONS: Array<{
   labelKey: string;
 }> = [
   { value: 'lldp', labelKey: 'Collection.SNMPTask.topologyProtocolOptions.lldp' },
+  {
+    value: 'huawei_ndp',
+    labelKey: 'Collection.SNMPTask.topologyProtocolOptions.huaweiNdp',
+  },
   { value: 'cdp', labelKey: 'Collection.SNMPTask.topologyProtocolOptions.cdp' },
   { value: 'fdb', labelKey: 'Collection.SNMPTask.topologyProtocolOptions.fdb' },
   { value: 'arp', labelKey: 'Collection.SNMPTask.topologyProtocolOptions.arp' },
@@ -238,6 +243,27 @@ export const K8S_FORM_INITIAL_VALUES = {
   cleanupDays: 3,
 };
 
+/** IP 表单 timeout 是所选子网整次正式扫描预算，单 IP 探测由插件固定为 5 秒。 */
+export const IP_DISCOVERY_FORM_INITIAL_VALUES = {
+  cycle: CYCLE_OPTIONS.INTERVAL,
+  intervalValue: 60,
+  scanMethod: 'icmp',
+  tcpPorts: '22,80,443,3389',
+  timeout: 300,
+  cleanupStrategy: 'no_cleanup',
+  cleanupDays: 3,
+};
+
+export const resolveIpDiscoveryFormTimeout = (
+  isCopy: boolean,
+  sourceTimeout?: number
+) =>
+  isCopy
+    ? IP_DISCOVERY_FORM_INITIAL_VALUES.timeout
+    : Number.isInteger(sourceTimeout) && Number(sourceTimeout) >= 1
+      ? Number(sourceTimeout)
+      : IP_DISCOVERY_FORM_INITIAL_VALUES.timeout;
+
 export const VM_FORM_INITIAL_VALUES = {
   instUuid: undefined,
   cycle: CYCLE_OPTIONS.INTERVAL,
@@ -300,9 +326,14 @@ export const CLOUD_FORM_INITIAL_VALUES = {
   cleanupDays: 3,
 };
 
+const resolveFormTimeout = (value: number | undefined, fallback: number) =>
+  Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 86400
+    ? Number(value)
+    : fallback;
+
 export const getCloudFormInitialValues = (defaultTimeout?: number) => ({
   ...CLOUD_FORM_INITIAL_VALUES,
-  timeout: defaultTimeout ?? CLOUD_FORM_INITIAL_VALUES.timeout,
+  timeout: resolveFormTimeout(defaultTimeout, CLOUD_FORM_INITIAL_VALUES.timeout),
 });
 
 /** FusionInsight / OceanStor / 华三 UIS 等平台 HTTPS API 采集表单默认值 */
@@ -319,7 +350,10 @@ export const PLATFORM_API_FORM_INITIAL_VALUES = {
 /** 优先使用采集对象元数据 default_timeout（如深信服 SCP/HCI=3000）。 */
 export const getPlatformApiFormInitialValues = (defaultTimeout?: number) => ({
   ...PLATFORM_API_FORM_INITIAL_VALUES,
-  timeout: defaultTimeout ?? PLATFORM_API_FORM_INITIAL_VALUES.timeout,
+  timeout: resolveFormTimeout(
+    defaultTimeout,
+    PLATFORM_API_FORM_INITIAL_VALUES.timeout
+  ),
 });
 
 export const HOST_FORM_INITIAL_VALUES = {
