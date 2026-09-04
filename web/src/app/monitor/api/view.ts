@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
+import type { RequestConfig } from '@/utils/request';
 import { AxiosRequestConfig } from 'axios';
 import { SearchParams } from '@/app/monitor/types/search';
 import {
@@ -8,6 +9,11 @@ import {
 } from '@/app/monitor/types/view';
 import { InstanceParam } from '@/app/monitor/types';
 
+/** 指标查询类接口由面板自行处理失败态，避免并行请求刷屏 toast。 */
+const METRIC_QUERY_REQUEST_CONFIG: RequestConfig = {
+  suppressErrorNotification: true,
+};
+
 const useViewApi = () => {
   const { get, post, put } = useApiClient();
 
@@ -15,18 +21,32 @@ const useViewApi = () => {
   // 必须用 useCallback 固定引用,否则每次重渲染都生成新函数 → effect 反复触发 → 重复发起查询。
   const getInstanceQuery = useCallback(
     async (
-      params: SearchParams
+      params: SearchParams = {
+        query: '',
+      },
+      config?: RequestConfig
     ) => {
-      return await post(`/monitor/api/metrics_instance/query_by_metric_range/`, params);
+      return await get(`/monitor/api/metrics_instance/query_range/`, {
+        params,
+        ...METRIC_QUERY_REQUEST_CONFIG,
+        ...config,
+      });
     },
-    [post]
+    [get]
   );
 
   const getInstanceInstantQuery = useCallback(
-    async (params: SearchParams) => {
-      return await post(`/monitor/api/metrics_instance/query_by_metric/`, params);
+    async (
+      params: SearchParams = { query: '' },
+      config?: RequestConfig
+    ) => {
+      return await get(`/monitor/api/metrics_instance/query/`, {
+        params,
+        ...METRIC_QUERY_REQUEST_CONFIG,
+        ...config,
+      });
     },
-    [post]
+    [get]
   );
 
   const getInstanceSearch = useCallback(

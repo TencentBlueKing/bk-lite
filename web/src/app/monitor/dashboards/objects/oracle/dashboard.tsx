@@ -41,7 +41,7 @@ export default function OracleDashboardPage() {
   const timeKey = JSON.stringify(timeValues);
 
   useEffect(() => {
-    if (!isDashboardMode) {
+    if (!isDashboardMode || !idValues.length) {
       setTopBars({});
       return;
     }
