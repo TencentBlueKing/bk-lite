@@ -109,8 +109,7 @@ export const SingleValueSettingsSection: React.FC<
   readonly = false,
   showDescriptionField = false,
 }) => {
-  const resolvedSectionTitle =
-    sectionTitle || t('topology.nodeConfig.dataSettings');
+  const resolvedSectionTitle = sectionTitle !== undefined ? sectionTitle : t('topology.nodeConfig.dataSettings');
   const canSelectField =
     Boolean(selectedDataSource) && singleValueTreeData.length > 0 && !readonly;
   const fieldSelectorDisabled =
@@ -156,65 +155,106 @@ export const SingleValueSettingsSection: React.FC<
     onSingleValueFieldChange(value ? [value] : []);
   };
 
-  return (
-    <div className="mb-6">
-      <div className="mb-6">
-        <div className="mb-4 flex items-center justify-between gap-2">
-          <div className="font-medium">{resolvedSectionTitle}</div>
-          <Button
-            type="text"
-            icon={<ReloadOutlined aria-hidden />}
-            onClick={onFetchSingleValueDataFields}
-            loading={loadingSingleValueData}
-            disabled={!selectedDataSource || readonly}
-            title={t('topology.nodeConfig.refreshDataFields')}
-            aria-label={t('topology.nodeConfig.refreshDataFields')}
-            className="shrink-0"
-          />
-        </div>
+  const refreshFieldsButton = (
+    <Button
+      type="text"
+      size="small"
+      icon={<ReloadOutlined aria-hidden />}
+      onClick={onFetchSingleValueDataFields}
+      loading={loadingSingleValueData}
+      disabled={!selectedDataSource || readonly}
+      className="h-6 px-1.5 text-xs text-(--color-text-3) hover:text-(--color-primary)"
+    >
+      {t('dashboard.refreshFields')}
+    </Button>
+  );
 
-        <Form.Item
-          label={t('topology.nodeConfig.displayField')}
-          name="selectedFields"
-          rules={[
-            {
-              required: true,
-              validator: (_, value) => {
-                if (!value || value.length === 0) {
-                  return Promise.reject(
-                    new Error(t('topology.nodeConfig.selectAtLeastOneField')),
-                  );
-                }
-                return Promise.resolve();
-              },
+  const displayFieldSelect = (
+    <TreeSelect
+      value={selectedFields[0]}
+      treeData={buildFieldOptions(singleValueTreeData)}
+      treeDefaultExpandAll
+      allowClear
+      showSearch
+      treeNodeFilterProp="searchText"
+      placeholder={
+        !selectedDataSource
+          ? t('topology.nodeConfig.selectDataSourceFirst')
+          : loadingSingleValueData
+            ? t('topology.nodeConfig.fetchingDataFields')
+            : singleValueTreeData.length === 0
+              ? t('topology.nodeConfig.clickRefreshToGetFields')
+              : t('topology.nodeConfig.selectDisplayField')
+      }
+      disabled={fieldSelectorDisabled}
+      onChange={(value) => handleFieldSelect(value as string | undefined)}
+      className={`${showDescriptionField ? 'w-full' : 'flex-1'} ${fieldSelectorClassName}`}
+      popupClassName={fieldPopupClassName}
+      dropdownStyle={{ maxHeight: 360, overflow: 'auto' }}
+    />
+  );
+
+  return (
+    <div className="space-y-4">
+      {resolvedSectionTitle ? (
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-[13px] font-semibold text-(--color-text-2)">
+            {resolvedSectionTitle}
+          </span>
+        </div>
+      ) : null}
+
+      <div className={showDescriptionField ? 'relative' : undefined}>
+        {showDescriptionField ? (
+          <div className="absolute right-0 top-0 z-10">{refreshFieldsButton}</div>
+        ) : null}
+
+      <Form.Item
+        label={
+          <span>
+            {t('topology.nodeConfig.displayField')}
+            <Tooltip
+              title={t('dashboard.displayFieldTip')}
+              overlayInnerStyle={{ maxWidth: 360 }}
+            >
+              <QuestionCircleOutlined className="ml-1 text-(--color-text-3) cursor-help" />
+            </Tooltip>
+          </span>
+        }
+        name="selectedFields"
+        className={showDescriptionField ? '[&_.ant-form-item-label]:pr-24' : undefined}
+        rules={[
+          {
+            required: true,
+            validator: (_, value) => {
+              if (!value || value.length === 0) {
+                return Promise.reject(
+                  new Error(t('topology.nodeConfig.selectAtLeastOneField')),
+                );
+              }
+              return Promise.resolve();
             },
-          ]}
-        >
-          <TreeSelect
-            value={selectedFields[0]}
-            treeData={buildFieldOptions(singleValueTreeData)}
-            treeDefaultExpandAll
-            allowClear
-            showSearch
-            treeNodeFilterProp="searchText"
-            placeholder={
-              !selectedDataSource
-                ? t('topology.nodeConfig.selectDataSourceFirst')
-                : loadingSingleValueData
-                  ? t('topology.nodeConfig.fetchingDataFields')
-                  : singleValueTreeData.length === 0
-                    ? t('topology.nodeConfig.clickRefreshToGetFields')
-                    : t('topology.nodeConfig.selectDisplayField')
-            }
-            disabled={fieldSelectorDisabled}
-            onChange={(value) =>
-              handleFieldSelect(value as string | undefined)
-            }
-            className={fieldSelectorClassName}
-            popupClassName={fieldPopupClassName}
-            dropdownStyle={{ maxHeight: 360, overflow: 'auto' }}
-          />
-        </Form.Item>
+          },
+        ]}
+      >
+        {showDescriptionField ? (
+          <div>{displayFieldSelect}</div>
+        ) : (
+          <div className="flex items-center gap-2">
+            {displayFieldSelect}
+            <Button
+              type="text"
+              icon={<ReloadOutlined aria-hidden />}
+              onClick={onFetchSingleValueDataFields}
+              loading={loadingSingleValueData}
+              disabled={!selectedDataSource || readonly}
+              title={t('topology.nodeConfig.refreshDataFields')}
+              aria-label={t('topology.nodeConfig.refreshDataFields')}
+              className="shrink-0 text-(--color-text-3) hover:text-(--color-primary)"
+            />
+          </div>
+        )}
+      </Form.Item>
 
         {showDescriptionField ? (
           <Form.Item

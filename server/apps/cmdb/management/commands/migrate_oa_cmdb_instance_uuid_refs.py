@@ -19,10 +19,20 @@ def _canonical_uuid(value):
 
 class Command(BaseCommand):
     _RENDER_SNAPSHOT_MIGRATION_FIELDS = frozenset({"view_sets", "filters", "other"})
+    # NetworkTopology 不在此列：其 bk_inst_id 是 WeOps 设备身份，不是 BK-Lite UUID。
+    OA_UUID_MODEL_FIELDS = {
+        "Dashboard": ("view_sets", "filters", "other"),
+        "Topology": ("view_sets", "other"),
+        "Architecture": ("view_sets", "other"),
+        "Screen": ("view_sets", "other"),
+        "Report": ("view_sets", "other"),
+        "DashboardReportRenderSnapshot": ("view_sets", "filters", "other"),
+    }
 
     help = (
         "清洗 operation_analysis 画布/组件 JSON 中的 CMDB 实例引用："
         "bk_inst_id→bk_inst_uuid、instId→instUuid。"
+        "不含 NetworkTopology：其 bk_inst_id 是 WeOps 设备身份，不是 BK-Lite UUID。"
         "可与 migrate_cmdb_instance_uuid_refs 并行或手动执行；依赖图侧已有 _id→uuid 映射。"
         "部署后由 Celery 运行期任务自动幂等收敛；不进 batch_init 硬门禁。"
     )
@@ -196,16 +206,7 @@ class Command(BaseCommand):
 
     def _clean_operation_analysis_refs(self, batch_size, dry_run, stats):
         self._dry_run = dry_run
-        model_fields = {
-            "Dashboard": ("view_sets", "filters", "other"),
-            "Topology": ("view_sets", "other"),
-            "Architecture": ("view_sets", "other"),
-            "Screen": ("view_sets", "other"),
-            "Report": ("view_sets", "other"),
-            "NetworkTopology": ("view_sets", "last_runtime_cache"),
-            "DashboardReportRenderSnapshot": ("view_sets", "filters", "other"),
-        }
-        for model_name, fields in model_fields.items():
+        for model_name, fields in self.OA_UUID_MODEL_FIELDS.items():
             try:
                 model = django_apps.get_model("operation_analysis", model_name)
             except LookupError:

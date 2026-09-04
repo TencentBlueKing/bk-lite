@@ -475,7 +475,14 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
           <div className="mb-6">
             <div className="font-bold text-(--color-text-1) mb-4 flex items-center gap-1">
               {t('dashboard.unifiedFilterLinkage')}
-              <Tooltip title={t('dashboard.unifiedFilterBindingTip')}>
+              <Tooltip
+                title={
+                  <span className="whitespace-pre-line">
+                    {t('dashboard.unifiedFilterBindingTip')}
+                  </span>
+                }
+                overlayInnerStyle={{ maxWidth: 360 }}
+              >
                 <QuestionCircleOutlined className="text-(--color-text-3) cursor-help" />
               </Tooltip>
             </div>

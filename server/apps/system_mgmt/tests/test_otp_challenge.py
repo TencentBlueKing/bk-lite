@@ -7,7 +7,7 @@ Tests cover:
 - Rate limiting for OTP verification attempts
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -65,6 +65,16 @@ class TestChallengeCreation:
         assert data["user_id"] == 42
         assert data["username"] == "alice"
         assert "created_at" in data
+        assert "pending_otp_secret" not in data
+
+    def test_create_challenge_stores_pending_otp_secret(self, clear_cache):
+        """Unbound binding secret stays on the challenge until verify succeeds."""
+        challenge_id = create_challenge(user_id=7, username="bob", pending_otp_secret="JBSWY3DPEHPK3PXP")
+
+        data = verify_challenge(challenge_id)
+
+        assert data is not None
+        assert data["pending_otp_secret"] == "JBSWY3DPEHPK3PXP"
 
     def test_create_multiple_challenges_unique(self, clear_cache):
         """Each challenge should have a unique ID."""
@@ -75,6 +85,16 @@ class TestChallengeCreation:
         assert challenge1 != challenge2
         assert challenge2 != challenge3
         assert challenge1 != challenge3
+
+    def test_create_challenge_replaces_previous_for_same_user(self, clear_cache):
+        """A new login challenge must retire the previous one for the same user."""
+        previous = create_challenge(user_id=1, username="user1", pending_otp_secret="OLDSECRETBASE32AAA")
+        other_user = create_challenge(user_id=2, username="user2", pending_otp_secret="OTHERSECRETBASE32A")
+        current = create_challenge(user_id=1, username="user1", pending_otp_secret="NEWSECRETBASE32AAA")
+
+        assert verify_challenge(previous) is None
+        assert verify_challenge(current)["pending_otp_secret"] == "NEWSECRETBASE32AAA"
+        assert verify_challenge(other_user)["pending_otp_secret"] == "OTHERSECRETBASE32A"
 
 
 class TestChallengeVerification:
@@ -252,12 +272,14 @@ class TestChallengeExpiration:
 
     @patch("apps.system_mgmt.otp_challenge.cache")
     def test_challenge_created_with_ttl(self, mock_cache):
-        """Challenge should be created with correct TTL."""
-        mock_cache.set = MagicMock()
+        """Challenge and the per-user active pointer should use the same TTL."""
+        mock_cache.get.return_value = None
 
         create_challenge(user_id=1, username="testuser")
 
-        # Verify cache.set was called with timeout=CHALLENGE_TTL
-        mock_cache.set.assert_called_once()
-        call_args = mock_cache.set.call_args
-        assert call_args[1].get("timeout") == CHALLENGE_TTL or call_args[0][2] == CHALLENGE_TTL
+        assert mock_cache.set.call_count == 2
+        for call in mock_cache.set.call_args_list:
+            timeout = call.kwargs.get("timeout")
+            if timeout is None and len(call.args) > 2:
+                timeout = call.args[2]
+            assert timeout == CHALLENGE_TTL

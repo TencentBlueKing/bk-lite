@@ -962,7 +962,7 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
 
         .screen-widget-frame:hover .screen-widget-frame__title,
         .screen-widget-frame--selected .screen-widget-frame__title {
-          padding-right: calc(26px * var(--screen-widget-ui-scale));
+          padding-right: calc(54px * var(--screen-widget-ui-scale));
         }
 
         .screen-widget-frame__signal {
@@ -1014,8 +1014,8 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
 
         .screen-widget-frame__actions {
           position: absolute;
-          right: calc(3px * var(--screen-widget-ui-scale));
-          top: calc(3px * var(--screen-widget-ui-scale));
+          right: calc(6px * var(--screen-widget-ui-scale));
+          top: calc(4px * var(--screen-widget-ui-scale));
           z-index: 6;
           opacity: 0;
           pointer-events: none;
@@ -1034,35 +1034,32 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
 
         .screen-widget-frame__action {
           display: inline-flex;
-          width: calc(22px * var(--screen-widget-ui-scale));
-          height: calc(22px * var(--screen-widget-ui-scale));
+          min-width: 32px;
+          min-height: 24px;
+          width: calc(36px * var(--screen-widget-ui-scale));
+          height: calc(24px * var(--screen-widget-ui-scale));
           cursor: pointer;
           align-items: center;
           justify-content: center;
-          border: 1px solid var(--screen-widget-action-border);
-          border-radius: 999px;
-          background: var(--screen-widget-action-bg);
+          border: none !important;
+          border-radius: calc(4px * var(--screen-widget-ui-scale));
+          background: transparent !important;
           color: var(--screen-widget-action-color);
           padding: 0;
-          font-size: calc(12px * var(--screen-widget-ui-scale));
+          font-size: max(16px, calc(16px * var(--screen-widget-ui-scale)));
           line-height: 1;
-          box-shadow: var(--screen-widget-action-shadow);
-          backdrop-filter: var(--screen-widget-control-backdrop-filter);
-          -webkit-backdrop-filter: var(--screen-widget-control-backdrop-filter);
-          transition:
-            border-color 120ms ease,
-            background 120ms ease,
-            color 120ms ease;
+          box-shadow: none !important;
         }
 
-        .screen-widget-frame__action:hover {
-          border-color: var(--screen-widget-action-hover-border);
-          background: var(--screen-widget-action-hover-bg);
+        .screen-widget-frame__action:hover,
+        .screen-widget-frame__action:focus {
+          background: transparent !important;
           color: var(--screen-widget-action-hover-color);
         }
 
         .screen-widget-frame-actions-menu .ant-dropdown-menu {
-          min-width: 108px;
+          min-width: 0;
+          width: max-content;
           padding: 4px;
           border-radius: 8px;
           box-shadow: 0 8px 24px rgba(15, 23, 42, 0.16);
@@ -1070,14 +1067,10 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
 
         .screen-widget-frame-actions-menu .ant-dropdown-menu-item {
           min-height: 30px;
-          padding: 5px 9px !important;
+          padding: 5px 12px !important;
           border-radius: 5px;
           font-size: 12px;
           line-height: 20px;
-        }
-
-        .screen-widget-frame-actions-menu .ant-dropdown-menu-item-icon {
-          font-size: 12px !important;
         }
 
         .screen-widget-frame__action-label {

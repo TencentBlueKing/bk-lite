@@ -10,74 +10,83 @@ interface ValueFormatConfigSectionProps {
 
 export const ValueFormatConfigSection: React.FC<
   ValueFormatConfigSectionProps
-> = ({ t, readonly = false, width = 200 }) => {
-  const numberWidth = Math.max(120, Math.round(width * 0.6));
-
+> = ({ t, readonly = false }) => {
   return (
-    <>
-      <Form.Item label={t('topology.nodeConfig.unit')} name="unitId">
-        <Select
-          allowClear
-          placeholder={t('common.selectMsg')}
-          disabled={readonly}
-          style={{ width }}
-          options={[
-            { value: '', label: t('topology.nodeConfig.customSuffix') },
-            ...getUnitCategories().map((cat) => ({
-              label: cat.label,
-              options: cat.units.map((u) => ({ value: u.id, label: u.label })),
-            })),
-          ]}
-        />
-      </Form.Item>
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-4">
+        <Form.Item
+          label={t('topology.nodeConfig.unit')}
+          name="unitId"
+          className="!mb-0"
+        >
+          <Select
+            allowClear
+            placeholder={t('common.selectMsg')}
+            disabled={readonly}
+            className="w-full"
+            options={[
+              { value: '', label: t('topology.nodeConfig.customSuffix') },
+              ...getUnitCategories().map((cat) => ({
+                label: cat.label,
+                options: cat.units.map((u) => ({ value: u.id, label: u.label })),
+              })),
+            ]}
+          />
+        </Form.Item>
 
-      <Form.Item
-        noStyle
-        shouldUpdate={(prev, cur) => prev.unitId !== cur.unitId}
-      >
-        {({ getFieldValue }) =>
-          !getFieldValue('unitId') ? (
-            <Form.Item
-              label={t('topology.nodeConfig.customSuffix')}
-              name="unit"
-            >
-              <Input
-                placeholder={t('common.inputMsg')}
-                disabled={readonly}
-                style={{ width }}
-              />
-            </Form.Item>
-          ) : null
-        }
-      </Form.Item>
+        <Form.Item
+          noStyle
+          shouldUpdate={(prev, cur) => prev.unitId !== cur.unitId}
+        >
+          {({ getFieldValue }) =>
+            !getFieldValue('unitId') ? (
+              <Form.Item
+                label={t('topology.nodeConfig.customSuffix')}
+                name="unit"
+                className="!mb-0"
+              >
+                <Input
+                  placeholder={t('common.inputMsg')}
+                  disabled={readonly}
+                  className="w-full"
+                />
+              </Form.Item>
+            ) : <div />
+          }
+        </Form.Item>
+      </div>
 
-      <Form.Item
-        label={t('topology.nodeConfig.conversionFactor')}
-        name="conversionFactor"
-      >
-        <InputNumber
-          min={0}
-          max={100000}
-          step={0.01}
-          placeholder={t('common.inputMsg')}
-          disabled={readonly}
-          style={{ width: numberWidth }}
-        />
-      </Form.Item>
+      <div className="grid grid-cols-2 gap-4">
+        <Form.Item
+          label={t('topology.nodeConfig.conversionFactor')}
+          name="conversionFactor"
+          className="!mb-0"
+        >
+          <InputNumber
+            min={0}
+            max={100000}
+            step={0.01}
+            placeholder={t('common.inputMsg')}
+            disabled={readonly}
+            className="w-full"
+          />
+        </Form.Item>
 
-      <Form.Item
-        label={t('topology.nodeConfig.decimalPlaces')}
-        name="decimalPlaces"
-      >
-        <InputNumber
-          min={0}
-          max={10}
-          step={1}
-          placeholder={t('common.inputMsg')}
-          disabled={readonly}
-          style={{ width: numberWidth }}
-        />
-      </Form.Item>
-    </>
+        <Form.Item
+          label={t('topology.nodeConfig.decimalPlaces')}
+          name="decimalPlaces"
+          className="!mb-0"
+        >
+          <InputNumber
+            min={0}
+            max={10}
+            step={1}
+            placeholder={t('common.inputMsg')}
+            disabled={readonly}
+            className="w-full"
+          />
+        </Form.Item>
+      </div>
+    </div>
   );
 };
