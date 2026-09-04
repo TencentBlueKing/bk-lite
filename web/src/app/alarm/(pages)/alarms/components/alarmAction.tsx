@@ -13,6 +13,8 @@ import { useIncidentsApi } from '@/app/alarm/api/incidents';
 import { useSettingApi } from '@/app/alarm/api/settings';
 import { useSession } from 'next-auth/react';
 import { showOperatorFailureMessages } from '@/app/alarm/utils/operatorResult';
+import { alarmActionsForStatus, canReassignAlert } from '@/app/alarm/utils/alertActionAccess';
+import { useUserInfoContext } from '@/context/userInfo';
 
 const AlarmAction: React.FC<AlarmActionProps> = ({
   rowData,
@@ -28,6 +30,8 @@ const AlarmAction: React.FC<AlarmActionProps> = ({
   };
   const { t } = useTranslation();
   const { data: session } = useSession();
+  const { isSuperUser, loading: userInfoLoading } = useUserInfoContext();
+  const allowSuperuserReassign = isSuperUser && !userInfoLoading;
   const { alertActionOperate } = useAlarmApi();
   const { incidentActionOperate } = useIncidentsApi();
   const { getActionRuleList, manualTriggerAction } = useSettingApi();
@@ -59,7 +63,7 @@ const AlarmAction: React.FC<AlarmActionProps> = ({
   if (from === 'alarm') {
     statusActionMap = {
       unassigned: ['assign'],
-      pending: ['acknowledge'],
+      pending: alarmActionsForStatus('pending', { isSuperUser: allowSuperuserReassign }),
       processing: ['reassign', 'close'],
       closed: [],
       auto_close: [],
@@ -99,6 +103,23 @@ const AlarmAction: React.FC<AlarmActionProps> = ({
     availableTypes = [];
   }
 
+  const isActionDisabled = (type: ActionType) => {
+    if (!rowData.length) return true;
+    if (from === 'alarm' && type === 'reassign') {
+      return !rowData.every((item) =>
+        canReassignAlert(
+          { status: item.status, operator: item.operator },
+          { username, isSuperUser: allowSuperuserReassign }
+        )
+      );
+    }
+    const allStatusValid = rowData.every((item) =>
+      validStatusMap[type]?.includes(item.status)
+    );
+    const needMine = from === 'alarm' && type === 'acknowledge';
+    return !allStatusValid || (needMine && !isMine());
+  };
+
   const handleOperate = (type: ActionType) => {
     if (!['acknowledge', 'close', 'reopen'].includes(type)) {
       setActionType(type);
@@ -134,13 +155,7 @@ const AlarmAction: React.FC<AlarmActionProps> = ({
   };
 
   const renderActionButton = (type: ActionType) => {
-    const allStatusValid = rowData.every((item) =>
-      validStatusMap[type]?.includes(item.status)
-    );
-    const needMine =
-      from === 'alarm' && ['acknowledge', 'reassign'].includes(type);
-    const disabled =
-      !rowData.length || !allStatusValid || (needMine && !isMine());
+    const disabled = isActionDisabled(type);
     
     return (
       <PermissionWrapper requiredPermissions={['Edit']} key={type}>
@@ -240,13 +255,7 @@ const AlarmAction: React.FC<AlarmActionProps> = ({
   );
 
   const menuItems = availableTypes.map((type, idx) => {
-    const allStatusValid = rowData.every((item) =>
-      validStatusMap[type]?.includes(item.status)
-    );
-    const needMine =
-      from === 'alarm' && ['acknowledge', 'reassign'].includes(type);
-    const disabled =
-      !rowData.length || !allStatusValid || (needMine && !isMine());
+    const disabled = isActionDisabled(type);
 
     return {
       key: idx.toString(),

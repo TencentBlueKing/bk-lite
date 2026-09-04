@@ -62,6 +62,7 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
     topN: t('dataSource.topN'),
     radar: t('dashboard.radar'),
     topologyMap: t('dataSource.topologyMap'),
+    nodeGraph: t('dataSource.nodeGraph'),
     room3D: t('dataSource.room3D'),
   };
 

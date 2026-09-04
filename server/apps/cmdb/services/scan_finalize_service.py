@@ -1,3 +1,4 @@
+import time
 from types import SimpleNamespace
 
 from apps.cmdb.collection.metrics_cannula import MetricsCannula
@@ -33,15 +34,25 @@ _NETWORK_SNAPSHOT_KEYS = (
     "model",
 )
 _DB_SNAPSHOT_KEYS = ("inst_name", "ip_addr", "port", "version", "db_version")
+_HOST_OS_TYPE_LABELS = {"1": "Linux", "2": "Windows", "3": "AIX", "4": "Unix"}
+_SCAN_METRICS_RETRY_ATTEMPTS = 12
+_SCAN_METRICS_RETRY_SECONDS = 5
 
 
 def build_scan_collect_shim(family_run: ScanFamilyRun):
+    params = {"has_network_topo": False}
+    if family_run.model_id == "host":
+        from apps.cmdb.services.scan_collect_generate import _host_cloud_from_scan
+
+        task = getattr(getattr(family_run, "execution", None), "task", None)
+        if task is not None:
+            params.update(_host_cloud_from_scan(task))
     return SimpleNamespace(
         id=family_run.id,
         model_id=family_run.model_id,
         instances=[],
         is_network_topo=False,
-        params={"has_network_topo": False},
+        params=params,
         driver_type=family_run.driver_type,
         topology_snapshot={},
         topology_contract={},
@@ -60,6 +71,40 @@ def collect_family_metrics(family_run: ScanFamilyRun):
         collect_inst=build_scan_collect_shim(family_run),
     )
     return plugin.run() or {}
+
+
+def _missing_success_hosts(family_run: ScanFamilyRun, plugin_result: dict) -> int:
+    success_hosts = {host for host in family_run.hits.filter(status=ScanHit.STATUS_SUCCESS).values_list("host", flat=True) if str(host or "").strip()}
+    if not success_hosts:
+        return 0
+    covered = {host for host, row in _rows_by_host(plugin_result).items() if _row_has_snapshot_facts(family_run.model_id, row)}
+    return len(success_hosts - covered)
+
+
+def collect_family_metrics_until_hits(family_run: ScanFamilyRun) -> dict:
+    metrics = {}
+    last_missing = 0
+    for attempt in range(1, _SCAN_METRICS_RETRY_ATTEMPTS + 1):
+        metrics = collect_family_metrics(family_run)
+        last_missing = _missing_success_hosts(family_run, metrics)
+        if last_missing == 0:
+            return metrics
+        logger.debug(
+            "[ScanFinalize] 指标尚未覆盖成功命中 execution=%s family=%s missing=%s attempt=%s",
+            family_run.execution_id,
+            family_run.model_id,
+            last_missing,
+            attempt,
+        )
+        if attempt < _SCAN_METRICS_RETRY_ATTEMPTS:
+            time.sleep(_SCAN_METRICS_RETRY_SECONDS)
+    logger.info(
+        "[ScanFinalize] 收口时指标仍未覆盖成功命中 execution=%s family=%s missing=%s",
+        family_run.execution_id,
+        family_run.model_id,
+        last_missing,
+    )
+    return metrics
 
 
 def write_refined_metrics(family_run: ScanFamilyRun, organization, refined: dict):
@@ -141,6 +186,10 @@ def _snapshot_keys_for_family(model_id: str):
     return _DB_SNAPSHOT_KEYS
 
 
+def _row_has_snapshot_facts(model_id: str, row: dict) -> bool:
+    return any(row.get(key) not in (None, "") for key in _snapshot_keys_for_family(model_id))
+
+
 def _rows_by_host(plugin_result: dict):
     by_host = {}
     for model_id, rows in (plugin_result or {}).items():
@@ -177,9 +226,18 @@ def annotate_hit_snapshots(family_run: ScanFamilyRun, plugin_result: dict, oid_m
             value = row.get(key)
             if value in (None, ""):
                 continue
+            if family_run.model_id == "host" and key == "os_type":
+                value = _HOST_OS_TYPE_LABELS.get(str(value), value)
             if snapshot.get(key) != value:
                 snapshot[key] = value
                 changed = True
+        if family_run.model_id == "network" and not snapshot.get("sysname"):
+            for key in ("sys_desc", "sysdescr"):
+                value = row.get(key)
+                if value not in (None, ""):
+                    snapshot["sysname"] = value
+                    changed = True
+                    break
         soid = str(row.get("soid") or row.get("sysobjectid") or snapshot.get("soid") or snapshot.get("sysobjectid") or "")
         if soid and family_run.model_id == "network":
             mapped = oid_map.get(soid) if isinstance(oid_map, dict) else None
@@ -237,7 +295,7 @@ def write_scan_execution(execution: ScanExecution):
 
     for family_run in execution.family_runs.all():
         try:
-            metrics = collect_family_metrics(family_run)
+            metrics = collect_family_metrics_until_hits(family_run)
         except Exception:
             logger.exception(
                 "[ScanFinalize] 族 mapping 失败 execution=%s family=%s",

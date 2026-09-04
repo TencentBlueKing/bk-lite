@@ -265,6 +265,7 @@ export default function ApmEndpointsPage() {
   const columns: TableColumnsType<EndpointRow> = [
     {
       title: t('apm.common.endpoint', '端点'),
+      width: '36%',
       render: (_, row) => (
         <span className="inline-flex min-w-0 items-center gap-2">
           <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-xs font-medium ${
@@ -275,12 +276,13 @@ export default function ApmEndpointsPage() {
           >
             {row.method}
           </span>
-          <EllipsisWithTooltip className="truncate font-mono text-xs" text={row.route} />
+          <EllipsisWithTooltip className="truncate font-mono text-xs font-medium text-[var(--color-text-1)]" text={row.route} />
         </span>
       ),
     },
     {
       title: t('apm.explore.ownerService', '所属服务'),
+      width: '24%',
       responsive: ['sm'],
       render: (_, row) => (
         <Space direction="vertical" size={0} className="min-w-0">

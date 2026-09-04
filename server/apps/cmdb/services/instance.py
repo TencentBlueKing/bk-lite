@@ -2750,6 +2750,21 @@ class InstanceManage(object):
         return cls.group_inst_count(group_by_attr="model_id", permissions_map=permissions_map, creator=creator)
 
     @classmethod
+    def license_instance_count(cls) -> dict:
+        """许可用量：原生自动发现且属于收费模型目录的实例数。"""
+        from apps.cmdb.constants.license_catalog import CMDB_LICENSE_MODEL_IDS
+
+        return cls.group_inst_count(
+            group_by_attr="model_id",
+            permissions_map={},
+            params=[
+                {"field": "auto_collect", "type": "bool", "value": True},
+                {"field": "model_id", "type": "str[]", "value": list(CMDB_LICENSE_MODEL_IDS)},
+            ],
+            creator="",
+        )
+
+    @classmethod
     def _build_permission_params(cls, permission_map: dict, creator: str = ""):
         """
         构建权限参数（统一方法，供全文检索系列接口使用）

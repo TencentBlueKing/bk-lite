@@ -75,10 +75,12 @@ afterEach(() => {
 });
 
 describe('APM 集成应用详情入口', () => {
-  it('保留添加接入且不展示返回列表', async () => {
+  it('保留添加接入，并用面包屑回到应用管理', async () => {
     renderWithApmIntl(<ApmApplicationDetailPage />);
     expect(await screen.findByText('应用服务拓扑')).not.toBeNull();
-    expect(screen.queryByRole('link', { name: '返回列表' })).toBeNull();
+    const catalogLink = screen.getByRole('link', { name: '返回应用管理' });
+    expect(catalogLink.getAttribute('href')).toBe('/apm/integration/applications');
+    expect(catalogLink.textContent).toBe('应用管理');
     const addIngest = screen.getAllByRole('link', { name: '添加接入' });
     expect(addIngest.length).toBeGreaterThan(0);
     expect(addIngest.every((link) => link.getAttribute('href') === '/apm/integration/add?application_id=shop')).toBe(true);

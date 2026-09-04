@@ -3,7 +3,7 @@ import { Alert, Button, Tooltip, Form, Input,  InputNumber, Switch } from 'antd'
 import CompactEmptyState from '@/components/compact-empty-state';
 
 const { TextArea } = Input;
-import { DeleteOutlined, EditOutlined } from '@ant-design/icons';
+import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import SelectorOperateModal from './operateModal';
 import Icon from '@/components/icon';
@@ -237,32 +237,60 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
 
   return (
     <div>
-      <Button onClick={openModal}>+ {t('common.add')}</Button>
-      <div className="grid grid-cols-2 gap-4 mt-2 pb-2">
-        {selectedTools.map((tool) => (
-          <div
-            key={tool.id}
-            className="flex w-full items-center justify-between rounded-md border border-[var(--color-border)] bg-[var(--color-bg-1)] px-4 py-2"
-          >
-            <Tooltip title={tool.name}>
-              <div className='flex items-center'>
-                <Icon className='text-xl mr-1' type={tool.icon} />
-                <span className="inline-block text-ellipsis overflow-hidden whitespace-nowrap">{tool.name}</span>
-              </div>
-            </Tooltip>
-            <div className="flex items-center space-x-2 text-[var(--color-text-3)]">
-              <EditOutlined
-                className="hover:text-[var(--color-primary)] transition-colors duration-200"
-                onClick={() => openEditModal(tool)}
-              />
-              <DeleteOutlined
-                className="hover:text-[var(--color-primary)] transition-colors duration-200"
-                onClick={() => removeSelectedTool(tool.id)}
-              />
-            </div>
-          </div>
-        ))}
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-2">
+          <span className="text-[13px] font-medium text-[var(--color-text-1)]">{t('skill.tool')}</span>
+          {selectedTools.length > 0 && (
+            <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--color-count-alt-bg)] px-1.5 text-[11px] font-medium tabular-nums leading-none text-[var(--color-count-alt)]">
+              {selectedTools.length}
+            </span>
+          )}
+        </div>
+        <Button size="small" type="link" icon={<PlusOutlined />} onClick={openModal} className="px-0 text-xs">
+          添加工具
+        </Button>
       </div>
+      <p className="text-xs text-[var(--color-text-3)] mb-2.5 mt-0">扩展智能体的外部 API 和插件调用能力</p>
+      {selectedTools.length === 0 ? (
+        <div className="text-xs text-[var(--color-text-4)] py-1">
+          暂未添加工具，可点击右上角「添加工具」进行选择
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+          {selectedTools.map((tool) => (
+            <div
+              key={tool.id}
+              className="flex flex-col rounded-lg p-2.5 transition-all bg-[var(--color-fill-1)]/70 hover:bg-[var(--color-fill-2)]"
+            >
+              <div className="flex w-full items-center justify-between">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-[var(--color-bg)] text-[var(--color-primary)] shadow-2xs">
+                    <Icon className="text-xs" type={tool.icon || 'gongju'} />
+                  </span>
+                  <span className="truncate text-xs font-medium text-[var(--color-text-1)]" title={tool.name}>
+                    {tool.name}
+                  </span>
+                </div>
+                <div className="ml-2 flex shrink-0 items-center gap-1">
+                  <Button
+                    type="link"
+                    size="small"
+                    className="h-6 px-1 text-[11px]"
+                    onClick={() => openEditModal(tool)}
+                  >
+                    <EditOutlined className="text-xs" />
+                    <span className="ml-0.5">配置</span>
+                  </Button>
+                  <DeleteOutlined
+                    className="cursor-pointer p-1 text-xs text-[var(--color-text-4)] transition-colors hover:text-red-500"
+                    onClick={() => removeSelectedTool(tool.id)}
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       <SelectorOperateModal
         title={t('skill.selecteTool')}

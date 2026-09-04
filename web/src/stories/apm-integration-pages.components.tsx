@@ -245,32 +245,32 @@ const INTEGRATION_GROUPS: Array<{
     group: 'SDK',
     icon: <CodeOutlined />,
     items: [
-      { kind: 'node', title: 'Node.js', desc: '零代码自动探针接入,支持 Express / Nest / Koa / Fastify', tag: '推荐' },
-      { kind: 'java', title: 'Java', desc: '字节码注入零代码接入,支持 Spring / Dubbo / gRPC', tag: '推荐' },
-      { kind: 'python', title: 'Python', desc: '运行时 SDK 接入,支持 Django / Flask / FastAPI' },
-      { kind: 'dotnet', title: '.NET', desc: '基于 OpenTelemetry .NET 自动探针' },
-      { kind: 'go', title: 'Go', desc: '编译期引入 SDK 接入,需在代码中埋点' },
+      { kind: 'node', title: 'Node.js', desc: '自动探针，支持 Express / Nest / Koa / Fastify', tag: '推荐' },
+      { kind: 'java', title: 'Java', desc: '自动探针，支持 Spring / Dubbo / gRPC', tag: '推荐' },
+      { kind: 'python', title: 'Python', desc: '自动探针，支持 Django / Flask / FastAPI' },
+      { kind: 'dotnet', title: '.NET', desc: '自动探针，支持 Linux x86_64 glibc' },
+      { kind: 'go', title: 'Go', desc: '手动接入，生成 OpenTelemetry Provider 示例' },
     ],
   },
   {
     group: 'OTC',
     icon: <ApiOutlined />,
     items: [
-      { kind: 'otc', title: 'OTel Collector(链路)', desc: '已有自建 Collector?改它的 exporter 把链路推到本平台' },
+      { kind: 'otc', title: 'OTel Collector(链路)', desc: '转发自建 Collector 链路到平台 OTLP 端点' },
     ],
   },
   {
     group: 'eBPF',
     icon: <ExperimentOutlined />,
     items: [
-      { kind: 'ebpf', title: 'eBPF 自动注入(OBI)', desc: '无需改代码,内核态 eBPF 自动捕获服务链路', tag: '低侵入' },
+      { kind: 'ebpf', title: 'eBPF 自动注入(OBI)', desc: '内核态自动采集服务链路', tag: '低侵入' },
     ],
   },
   {
     group: 'K8s',
     icon: <GlobalOutlined />,
     items: [
-      { kind: 'k8s', title: 'Kubernetes 注册注入(OTel Operator)', desc: '装一次 Operator,给 Pod 打一行注解即零代码注入探针' },
+      { kind: 'k8s', title: 'Kubernetes 注册注入(OTel Operator)', desc: 'OTel Operator 注解注入，自动接入集群服务' },
     ],
   },
 ];

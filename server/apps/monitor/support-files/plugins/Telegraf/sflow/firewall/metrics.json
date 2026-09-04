@@ -350,6 +350,50 @@
       "description": "Top destination addresses by sFlow-estimated packet rate."
     },
     {
+      "metric_group": "Endpoint",
+      "name": "device_flow_top_src_ip_port_bytes_rate",
+      "query": "topk(10, sum(sflow_bytes{instance_type='firewall', collect_type='sflow', __$labels__}) by (instance_id, src_ip, src_port))",
+      "display_name": "Top Source IP+Port Flow Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "src_ip",
+          "description": "src_ip"
+        },
+        {
+          "name": "src_port",
+          "description": "src_port"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Top source address and source port pairs by sFlow-estimated traffic rate."
+    },
+    {
+      "metric_group": "Endpoint",
+      "name": "device_flow_top_dst_ip_port_bytes_rate",
+      "query": "topk(10, sum(sflow_bytes{instance_type='firewall', collect_type='sflow', __$labels__}) by (instance_id, dst_ip, dst_port))",
+      "display_name": "Top Destination IP+Port Flow Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "dst_ip",
+          "description": "dst_ip"
+        },
+        {
+          "name": "dst_port",
+          "description": "dst_port"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Top destination address and destination port pairs by sFlow-estimated traffic rate."
+    },
+    {
       "metric_group": "Conversation",
       "name": "device_flow_top_conversation_bytes_rate",
       "query": "topk(10, sum(sflow_bytes{instance_type='firewall', collect_type='sflow', __$labels__}) by (instance_id, src_ip, dst_ip, header_protocol, dst_port))",

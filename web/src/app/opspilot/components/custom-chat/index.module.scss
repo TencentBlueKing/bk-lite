@@ -160,20 +160,17 @@
 }
 
 .chatContainer {
-  background: var(--color-bg-1);
-  .avatar {
-    width: 35px;
-    height: 35px;
-  }
-  .guideAvatar {
-    width: 30px;
-    height: 30px;
+  background: var(--color-bg);
+
+  // 对话正文比通用 markdownBody 收一档，贴近 Storybook 会话稿的 13px / 1.55
+  .markdownBody {
+    font-size: 13px;
+    line-height: 1.55;
   }
 
-  // 引导语(默认欢迎语)字号比 markdownBody 小一档,不影响 LLM 回复正文
+  // 引导语(默认欢迎语)与助手正文同级，不加重、不套框
   .guideText {
-    font-size: 12px;
-    line-height: 1.6;
+    color: var(--color-text-2);
     // markdownBody 默认 h1-h6 + strong 都是 600 (semibold),引导语不加重
     h1, h2, h3, h4, h5, h6, strong, b {
       font-weight: 400;
@@ -218,145 +215,180 @@
   }
 }
 
-.chatContainer :global(.ant-avatar) {
-  background: transparent;
-}
-
-.chatContainer :global(.ant-bubble-content-wrapper) {
-  max-width: 100%;
-}
-
-.chatContainer :global(.ant-bubble-start .ant-bubble-content-wrapper) {
+// Assistant: plain text on the working surface, no bubble chrome (Storybook After)
+.chatContainer .assistantBubble :global(.ant-bubble-content-wrapper) {
   width: 100%;
+  max-width: 100%;
   min-width: 0;
 }
 
-.chatContainer :global(.ant-bubble-start .ant-bubble-content) {
+.chatContainer .assistantBubble :global(.ant-bubble-content) {
   width: 100%;
   max-width: 100%;
+  padding: 0;
   background-color: transparent;
+  color: var(--color-text-1);
+  font-size: 13px;
+  line-height: 1.55;
 }
 
-// User messages: subtle blue rounded bubble, left tail
+// User: compact right-aligned bubble. Keep the chat-tail shape; don't let markdown <p> inflate a one-liner.
+.userMessageBubble {
+  max-width: 85%;
+  padding: 8px 12px;
+  border-radius: 16px 16px 4px 16px;
+  background-color: color-mix(in srgb, var(--color-fill-1) 70%, transparent);
+  color: var(--color-text-1);
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: break-word;
+  word-break: break-word;
+
+  .markdownBody {
+    font-size: inherit;
+    line-height: inherit;
+
+    p {
+      margin: 0;
+
+      & + p {
+        margin-top: 0.4em;
+      }
+    }
+
+    ul,
+    ol {
+      margin: 0.35em 0;
+    }
+  }
+}
+
+.chatContainer .userBubble :global(.ant-bubble-content-wrapper) {
+  max-width: 85%;
+}
+
 .chatContainer .userBubble :global(.ant-bubble-content) {
-  background-color: var(--color-primary-light-1, #e6f4ff);
-  border-radius: 4px 18px 18px 18px;
-  padding: 10px 16px;
+  padding: 8px 12px;
+  border-radius: 16px 16px 4px 16px;
+  background-color: color-mix(in srgb, var(--color-fill-1) 70%, transparent);
+  color: var(--color-text-1);
+  font-size: 13px;
+  line-height: 1.45;
+  border: 0;
+  box-shadow: none;
+
+  :global(.markdownBody) {
+    font-size: inherit;
+    line-height: inherit;
+
+    p {
+      margin: 0;
+
+      & + p {
+        margin-top: 0.4em;
+      }
+    }
+  }
 }
 
 .chatContainer :global(.ant-bubble-footer) {
-  margin-top: 5px;
+  margin-top: 4px;
 }
 
+.chatContainer .userBubble :global(.ant-bubble-footer) {
+  display: flex;
+  justify-content: flex-end;
+}
+
+// Thought block: minimal inline stream style
 .thinkingPanel {
-  margin-bottom: 12px;
-  border: 1px solid rgba(31, 53, 84, 0.12);
-  border-radius: 14px;
+  margin-bottom: 6px;
+  border: 0;
+  border-radius: 4px;
   background: transparent;
   box-shadow: none;
-  overflow: hidden;
+  overflow: visible;
 }
 
-.thinkingPanelActive {
-  border-color: rgba(31, 53, 84, 0.14);
-}
-
+.thinkingPanelActive,
 .thinkingPanelDone {
   background: transparent;
 }
 
 .thinkingToggle {
-  width: 100%;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 8px 12px;
+  gap: 6px;
+  padding: 2px 4px;
+  margin-left: -4px;
   border: 0;
+  border-radius: 4px;
   background: transparent;
-  color: var(--color-text-2);
+  color: var(--color-text-3);
   font-size: 12px;
   cursor: pointer;
   text-align: left;
+  transition: color 0.15s ease, background 0.15s ease;
+
+  &:hover {
+    color: var(--color-text-2);
+    background: var(--color-fill-1);
+  }
 }
 
 .thinkingArrow {
-  font-size: 13px;
-  color: #263549;
-  transform: rotate(-45deg);
+  font-size: 9px;
+  color: var(--color-text-4);
   transition: transform 0.2s ease;
   line-height: 1;
 }
 
 .thinkingArrowExpanded {
-  transform: rotate(45deg);
+  transform: rotate(90deg);
 }
 
 .thinkingMeta {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .thinkingBadge {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 0;
-  border-radius: 999px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 400;
   line-height: 1.2;
+  color: var(--color-text-3);
 }
 
 .thinkingBadgeActive {
-  color: #202f44;
+  color: var(--color-text-2);
 }
 
 .thinkingBadgeDone {
-  color: #202f44;
-}
-
-.thinkingBadgeDot {
-  width: 0;
-  height: 0;
-  flex: 0 0 auto;
-  overflow: hidden;
+  color: var(--color-text-3);
 }
 
 .thinkingAside {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-left: auto;
-}
-
-.thinkingIconButton {
-  width: 24px;
-  height: 24px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 999px;
-  background: transparent;
-}
-
-.thinkingIconButtonExpanded {
-  background: transparent;
+  gap: 6px;
+  margin-left: 4px;
 }
 
 .thinkingDots {
   display: inline-flex;
-  gap: 4px;
+  gap: 3px;
 
   span {
-    width: 6px;
-    height: 6px;
+    width: 4px;
+    height: 4px;
     border-radius: 999px;
-    background: #1677ff;
+    background: var(--color-primary);
     animation: thinking-dot 1.4s infinite ease-in-out both;
   }
 
@@ -370,20 +402,21 @@
 }
 
 .thinkingBody {
-  margin: 0 14px 10px;
-  border-top: 1px solid rgba(31, 53, 84, 0.08);
-  padding: 8px 0 0;
+  margin-top: 4px;
+  margin-left: 2px;
+  border-left: 2px solid var(--color-fill-3);
+  padding: 2px 0 2px 12px;
 }
 
 .thinkingText {
   white-space: pre-wrap;
-  line-height: 1.8;
+  line-height: 1.6;
   font-size: 12px;
-  color: #4a596e;
+  color: var(--color-text-3);
 }
 
 .thinkingPlaceholder {
-  color: #8a97a7;
+  color: var(--color-text-4);
   font-size: 12px;
 }
 

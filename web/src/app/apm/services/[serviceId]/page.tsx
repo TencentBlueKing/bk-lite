@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
-  ArrowLeftOutlined,
+  AppstoreOutlined,
   InboxOutlined,
   SearchOutlined,
 } from '@ant-design/icons';
@@ -18,7 +18,6 @@ import {
   Row,
   Segmented,
   Select,
-  Space,
   Tabs,
   Tag,
   Typography,
@@ -65,7 +64,6 @@ import type {
 } from '@/app/apm/types';
 import { isInferredTopologyNode } from '@/app/apm/services/topology/topology-layout';
 import ServiceErrorTab from '@/app/apm/services/[serviceId]/error-tab';
-import SummaryMetricCard from '@/components/summary-metric-card';
 import Permission from '@/components/permission';
 import TimeSeriesComposedChart from '@/components/time-series-composed-chart';
 import { useTranslation } from '@/utils/i18n';
@@ -88,32 +86,6 @@ const RANGE_MS: Record<TimeRange, number> = {
   '1d': 24 * 60 * 60 * 1000,
   '7d': 7 * 24 * 60 * 60 * 1000,
 };
-
-function ServiceMetricCard({
-  label,
-  value,
-  suffix,
-  danger,
-}: {
-  label: string;
-  value: string;
-  suffix?: string;
-  danger?: boolean;
-}) {
-  return (
-    <SummaryMetricCard
-      className="rounded-lg px-4 py-3.5"
-      label={label}
-      labelClassName="!text-xs"
-      layout="vertical"
-      maxFontSize={16}
-      minFontSize={16}
-      unit={suffix}
-      value={value}
-      valueColor={danger ? 'var(--color-fail)' : undefined}
-    />
-  );
-}
 
 export default function ApmServiceDetailPage() {
   const { t } = useTranslation();
@@ -456,7 +428,7 @@ export default function ApmServiceDetailPage() {
     {
       title: t('apm.deployments.version', '版本'),
       dataIndex: 'version',
-      width: APM_TABLE_COLUMN_WIDTHS.metric,
+      width: APM_TABLE_COLUMN_WIDTHS.metricWide,
       render: (value: string) => (
         <span className="rounded bg-[var(--color-bg)] px-1.5 py-px font-mono text-[11px] text-[var(--color-text-3)]">
           {value}
@@ -472,7 +444,7 @@ export default function ApmServiceDetailPage() {
     {
       title: t('apm.deployments.deployedAt', '发布时间'),
       dataIndex: 'deployed_at',
-      width: APM_TABLE_COLUMN_WIDTHS.relativeTime,
+      width: APM_TABLE_COLUMN_WIDTHS.timestamp,
       render: (value: string) => (
         <span className="tabular-nums" title={formatDateTime(value)}>
           {formatRelativeTime(value, t)}
@@ -529,43 +501,55 @@ export default function ApmServiceDetailPage() {
         </ApmSurface>
       ) : service ? (
         <div className="flex flex-col gap-4">
-          <ApmSurface padding="compact">
+          <ApmSurface padding="normal" className="!rounded-xl shadow-2xs">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex min-w-0 items-center gap-3">
-                <Link href="/apm/services">
-                  <Button aria-label={t('apm.serviceDetail.backAria', '返回服务目录')} icon={<ArrowLeftOutlined aria-hidden="true" />}>
-                    {t('apm.serviceDetail.back', '返回服务')}
-                  </Button>
-                </Link>
-                <div className="min-w-0">
-                  <Space size={10} align="center" wrap>
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <nav
+                  aria-label={t('apm.common.breadcrumb', '页面路径')}
+                  className="flex min-w-0 items-center gap-1.5 text-xs text-[var(--color-text-3)]"
+                >
+                  <Link
+                    href="/apm/services?perspective=service"
+                    aria-label={t('apm.serviceDetail.backAria', '返回服务目录')}
+                    className="shrink-0 text-xs text-[var(--color-text-3)] no-underline transition-colors hover:text-[var(--color-primary)]"
+                  >
+                    {t('apm.services.title', '服务')}
+                  </Link>
+                  <span className="shrink-0 text-[var(--color-text-4)]" aria-hidden="true">
+                    /
+                  </span>
+                  <Link
+                    href={`/apm/services?namespace=${encodeURIComponent(service.namespace)}`}
+                    className="inline-flex min-w-0 items-center gap-1 text-xs text-[var(--color-text-3)] no-underline transition-colors hover:text-[var(--color-primary)]"
+                    title={t('apm.serviceDetail.ownerApplication', '所属应用') + '：' + (service.application_name || service.namespace || t('apm.common.unsetNamespace', '未设置 namespace'))}
+                  >
+                    <AppstoreOutlined className="shrink-0 text-[11px]" />
+                    <span className="truncate">
+                      {service.application_name || service.namespace || t('apm.common.unsetNamespace', '未设置 namespace')}
+                    </span>
+                  </Link>
+                </nav>
+
+                <div className="flex min-w-0 flex-wrap items-center gap-2.5">
+                  <div className="flex min-w-0 items-center gap-2">
                     <HealthDot level={health} showLabel={false} />
-                    <Typography.Title level={2} className="!mb-0 !text-base !font-semibold">
+                    <Typography.Title level={2} className="!mb-0 !truncate !text-base !font-bold text-[var(--color-text-1)]">
                       {service.name}
                     </Typography.Title>
-                    <Tag
-                      bordered={false}
-                      color={health <= 2 ? 'error' : health === 3 ? 'warning' : 'success'}
-                    >
-                      {health <= 2 ? t('apm.health.abnormal', '异常') : health === 3 ? t('apm.health.silent', '静默') : t('apm.health.healthy', '健康')}
-                    </Tag>
-                    <Tag bordered={false}>{environment || t('apm.common.unset', '未设置')}</Tag>
-                  </Space>
-                  <Typography.Text type="secondary" className="mt-1 block truncate text-xs">
-                    {t('apm.serviceDetail.ownerApplication', '所属应用')}{' '}
-                    <Link
-                      href={`/apm/services?namespace=${encodeURIComponent(service.namespace)}`}
-                      className="text-[var(--color-primary)]"
-                    >
-                      {service.application_name || service.namespace || t('apm.common.unsetNamespace', '未设置 namespace')}
-                    </Link>
-                  </Typography.Text>
+                  </div>
+                  <Tag
+                    bordered={false}
+                    className="!m-0 !rounded-full !px-2.5 !py-0.5 !text-xs !font-medium"
+                    color={health <= 2 ? 'error' : health === 3 ? 'warning' : 'success'}
+                  >
+                    {health <= 2 ? t('apm.health.abnormal', '异常') : health === 3 ? t('apm.health.silent', '静默') : t('apm.health.healthy', '健康')}
+                  </Tag>
                 </div>
               </div>
-              <Space wrap>
+              <div className="flex flex-wrap items-center gap-2.5">
                 <Select
                   aria-label={t('apm.serviceDetail.selectEnvironment', '选择环境')}
-                  className="min-w-40"
+                  className="min-w-36"
                   value={environment}
                   onChange={setEnvironment}
                   options={service.environment_views.map((item) => ({
@@ -573,12 +557,18 @@ export default function ApmServiceDetailPage() {
                     label: item.environment || t('apm.common.unset', '未设置'),
                   }))}
                 />
+
+                <div className="h-4 w-px bg-[var(--color-border)]" aria-hidden="true" />
+
                 <Segmented<TimeRange>
                   aria-label={t('apm.serviceDetail.selectWindow', '选择时间窗')}
                   value={timeRange}
                   onChange={setTimeRange}
                   options={(Object.keys(RANGE_MS) as TimeRange[]).map((value) => ({ value, label: value }))}
                 />
+
+                <div className="h-4 w-px bg-[var(--color-border)]" aria-hidden="true" />
+
                 <Link href={exploreHref}>
                   <Button icon={<SearchOutlined aria-hidden="true" />}>{t('apm.explore.openInExplore', '在探索中打开')}</Button>
                 </Link>
@@ -590,37 +580,61 @@ export default function ApmServiceDetailPage() {
                     buttonSize="middle"
                   />
                 </Permission>
-              </Space>
+              </div>
             </div>
           </ApmSurface>
 
           {metricState === 'ready' && red ? (
-            <Row gutter={[12, 12]}>
-              <Col xs={12} lg={6}>
-                <ServiceMetricCard
-                  label={t('apm.explore.throughputShort', '吞吐')}
-                  value={formatThroughput(red.request_rate, false, t)}
-                  suffix={red.request_rate === null ? undefined : t('apm.common.requestsPerSecondUnit', 'req/s')}
-                />
-              </Col>
-              <Col xs={12} lg={6}>
-                <ServiceMetricCard
-                  label={t('apm.common.errorRate', '错误率')}
-                  value={formatErrorRate(red.error_rate, false, t)}
-                  danger={isErrorRateDanger(red.error_rate)}
-                />
-              </Col>
-              <Col xs={12} lg={6}>
-                <ServiceMetricCard
-                  label={t('apm.common.p99', 'P99')}
-                  value={formatLatency(red.p99_ms, false, t)}
-                  danger={red.p99_ms !== null && red.p99_ms >= 500}
-                />
-              </Col>
-              <Col xs={12} lg={6}>
-                <ServiceMetricCard label={t('apm.common.p95', 'P95')} value={formatLatency(red.p95_ms, false, t)} />
-              </Col>
-            </Row>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="flex flex-col gap-1.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-4 shadow-2xs transition-all hover:border-[var(--color-primary)] hover:shadow-xs">
+                <span className="text-xs font-medium text-[var(--color-text-3)]">{t('apm.explore.throughputShort', '吞吐')}</span>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-2xl font-bold tabular-nums text-[var(--color-text-1)]">
+                    {red.request_rate === null ? '—' : formatThroughput(red.request_rate, false, t)}
+                  </span>
+                  {red.request_rate !== null ? (
+                    <span className="text-xs text-[var(--color-text-3)]">{t('apm.common.requestsPerSecondUnit', 'req/s')}</span>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-4 shadow-2xs transition-all hover:border-[var(--color-primary)] hover:shadow-xs">
+                <span className="text-xs font-medium text-[var(--color-text-3)]">{t('apm.common.errorRate', '错误率')}</span>
+                <div className="flex items-baseline gap-1">
+                  <span className={`text-2xl font-bold tabular-nums ${isErrorRateDanger(red.error_rate) ? 'text-[var(--color-fail)]' : 'text-[var(--color-text-1)]'}`}>
+                    {formatErrorRate(red.error_rate, false, t)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-4 shadow-2xs transition-all hover:border-[var(--color-primary)] hover:shadow-xs">
+                <span className="text-xs font-medium text-[var(--color-text-3)]">{t('apm.common.p99', 'P99')}</span>
+                <div className="flex items-baseline gap-1">
+                  <span className={`text-2xl font-bold tabular-nums ${red.p99_ms !== null && red.p99_ms >= 500 ? 'text-[var(--color-fail)]' : 'text-[var(--color-text-1)]'}`}>
+                    {red.p99_ms === null ? '—' : (red.p99_ms >= 1000 ? formatNumber(red.p99_ms / 1000, 2) : formatNumber(Math.round(red.p99_ms), 0))}
+                  </span>
+                  {red.p99_ms !== null ? (
+                    <span className="text-xs text-[var(--color-text-3)]">
+                      {red.p99_ms >= 1000 ? t('apm.common.secondUnit', '秒') : t('apm.common.millisecondUnit', '毫秒')}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-4 shadow-2xs transition-all hover:border-[var(--color-primary)] hover:shadow-xs">
+                <span className="text-xs font-medium text-[var(--color-text-3)]">{t('apm.common.p95', 'P95')}</span>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-2xl font-bold tabular-nums text-[var(--color-text-1)]">
+                    {red.p95_ms === null ? '—' : (red.p95_ms >= 1000 ? formatNumber(red.p95_ms / 1000, 2) : formatNumber(Math.round(red.p95_ms), 0))}
+                  </span>
+                  {red.p95_ms !== null ? (
+                    <span className="text-xs text-[var(--color-text-3)]">
+                      {red.p95_ms >= 1000 ? t('apm.common.secondUnit', '秒') : t('apm.common.millisecondUnit', '毫秒')}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            </div>
           ) : null}
 
           <Tabs
@@ -856,11 +870,15 @@ export default function ApmServiceDetailPage() {
                       pagination={false}
                       dataSource={serviceSlos}
                       columns={[
-                        { title: t('apm.slo.name', '名称'), dataIndex: 'name' },
+                        {
+                          title: t('apm.slo.name', '名称'),
+                          dataIndex: 'name',
+                          render: (value) => <span className="font-medium text-[var(--color-text-1)]">{value}</span>,
+                        },
                         {
                           title: t('apm.serviceDetail.target', '目标'),
                           dataIndex: 'objective',
-                          width: APM_TABLE_COLUMN_WIDTHS.metric,
+                          width: APM_TABLE_COLUMN_WIDTHS.metricWide,
                           align: 'right',
                           responsive: ['sm'],
                           render: (value) => <span className="tabular-nums">{formatPercentage(value)}</span>,
@@ -868,7 +886,7 @@ export default function ApmServiceDetailPage() {
                         {
                           title: t('apm.serviceDetail.current', '当前'),
                           dataIndex: 'current_rate',
-                          width: APM_TABLE_COLUMN_WIDTHS.metric,
+                          width: APM_TABLE_COLUMN_WIDTHS.metricWide,
                           align: 'right',
                           responsive: ['md'],
                           render: (value) => value == null
@@ -886,7 +904,7 @@ export default function ApmServiceDetailPage() {
                         },
                         {
                           title: t('apm.common.operation', '操作'),
-                          width: APM_TABLE_COLUMN_WIDTHS.status,
+                          width: APM_TABLE_COLUMN_WIDTHS.singleAction,
                           align: 'right',
                           fixed: 'right',
                           render: () => <Link href="/apm/services/slo"><Button className="!px-0" type="link" size="small">{t('apm.serviceDetail.manage', '管理')}</Button></Link>,

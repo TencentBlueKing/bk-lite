@@ -328,6 +328,8 @@ tools:
         description: 发现集群中所有失败或异常的Pod
       get_high_restart_kubernetes_pods:
         description: 发现频繁重启的不稳定Pod
+      get_recently_restarted_kubernetes_pods:
+        description: 按最近一次重启时间列出最近重启过的Pod
       get_kubernetes_contexts:
         description: 获取kubectl上下文信息，显示当前可用的上下文和当前活动的上下文
       get_kubernetes_namespaces:

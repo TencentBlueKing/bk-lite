@@ -131,7 +131,9 @@ describe('APM 应用观测详情', () => {
     );
 
     expect(await screen.findByText('应用服务拓扑')).not.toBeNull();
-    expect(screen.queryByRole('link', { name: '返回服务' })).toBeNull();
+    const catalogLink = screen.getByRole('link', { name: '返回应用目录' });
+    expect(catalogLink.getAttribute('href')).toBe('/apm/services');
+    expect(catalogLink.textContent).toBe('应用');
     expect(screen.getByRole('radiogroup', { name: '服务指标时间窗口' })).not.toBeNull();
     expect(screen.getByRole('radiogroup', { name: '拓扑布局' })).not.toBeNull();
     expect(screen.getByRole('radio', { name: '层次' })).not.toBeNull();

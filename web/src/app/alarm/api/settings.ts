@@ -117,7 +117,10 @@ export const useSettingApi = () => {
   const deleteActionRule = (id: number) => del(`/alerts/api/action_rule/${id}/`);
   const patchActionRule = (id: number, params: any) => patch(`/alerts/api/action_rule/${id}/`, params);
   const getActionExecutions = (params: any) => get('/alerts/api/action_execution/', { params });
-  const manualTriggerAction = (params: any) => post('/alerts/api/action_execution/manual_trigger/', params);
+  const manualTriggerAction = (params: any) =>
+    post('/alerts/api/action_execution/manual_trigger/', params, {
+      headers: { 'Idempotency-Key': crypto.randomUUID() },
+    });
   const getActionJobScripts = (params: any) => get('/alerts/api/action_job/scripts/', { params });
   const getActionJobScript = (id: number) => get(`/alerts/api/action_job/scripts/${id}/`);
 

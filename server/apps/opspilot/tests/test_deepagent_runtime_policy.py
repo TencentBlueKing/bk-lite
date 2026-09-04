@@ -559,6 +559,88 @@ async def test_planner_catalog_prepends_k8s_namespace_lookup_hint():
 
 
 @pytest.mark.asyncio
+async def test_planner_catalog_prepends_known_pod_restart_rca_hint():
+    tools = [
+        _tool("diagnose_kubernetes_pod_issues", "诊断 Pod"),
+        _tool("get_kubernetes_previous_pod_logs", "上一轮日志"),
+        _tool("get_resource_events_timeline", "事件时间线"),
+        _tool("analyze_pod_restart_pattern", "扫描重启模式"),
+        _tool("describe_kubernetes_resource", "描述资源"),
+        _tool("list_kubernetes_pods", "列出 Pod"),
+        _tool("list_kubernetes_events", "列出事件"),
+    ]
+
+    class FakeLLM:
+        def __init__(self):
+            self.messages = None
+
+        async def ainvoke(self, messages, config=None):
+            self.messages = messages
+            return AIMessage(
+                content=json.dumps(
+                    {
+                        "goal": "分析指定 Pod 重启原因",
+                        "steps": [
+                            {
+                                "objective": "诊断",
+                                "tools": [
+                                    "diagnose_kubernetes_pod_issues",
+                                    "analyze_pod_restart_pattern",
+                                    "describe_kubernetes_resource",
+                                    "list_kubernetes_events",
+                                ],
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                )
+            )
+
+    llm = FakeLLM()
+    plan = await ToolExecutionPlanner(llm).plan("分析 kube-system/coredns-xxx 频繁重启的原因", tools)
+    prompt = "\n".join(str(message.content) for message in llm.messages)
+    assert "已指定具体 Pod 问重启原因" in prompt
+    assert "get_kubernetes_previous_pod_logs" in prompt
+    assert "禁止 analyze_pod_restart_pattern" in prompt
+    assert "describe_kubernetes_resource" in prompt
+    assert [step.tools for step in plan.steps] == [["diagnose_kubernetes_pod_issues"]]
+
+
+@pytest.mark.asyncio
+async def test_planner_catalog_prepends_restart_time_sort_hint():
+    tools = [
+        _tool("get_high_restart_kubernetes_pods", "发现频繁重启的不稳定Pod"),
+        _tool("get_recently_restarted_kubernetes_pods", "按最近一次重启时间列出最近重启过的 Pod"),
+    ]
+
+    class FakeLLM:
+        def __init__(self):
+            self.messages = None
+
+        async def ainvoke(self, messages, config=None):
+            self.messages = messages
+            return AIMessage(
+                content=json.dumps(
+                    {
+                        "goal": "按重启时间列最近 Pod",
+                        "steps": [{"objective": "累计高重启", "tools": ["get_high_restart_kubernetes_pods"]}],
+                    },
+                    ensure_ascii=False,
+                )
+            )
+
+    llm = FakeLLM()
+    plan = await ToolExecutionPlanner(llm).plan(
+        "按照重启时间排序，列出最近的 10 个重启的 pod，并展示重启时间和次数",
+        tools,
+    )
+    prompt = "\n".join(str(message.content) for message in llm.messages)
+    assert "必须规划 get_recently_restarted_kubernetes_pods" in prompt
+    assert "禁止 get_high_restart_kubernetes_pods" in prompt
+    assert [step.tools for step in plan.steps] == [["get_recently_restarted_kubernetes_pods"]]
+
+
+@pytest.mark.asyncio
 async def test_planner_task_prompt_includes_agent_system_prompt():
     tools = [
         _tool("resolve_k8s_target_from_alert", "从告警解析目标"),
@@ -1079,6 +1161,106 @@ def test_enforce_k8s_namespace_lookup_skips_resolve_after_cluster_discovery(capl
     assert len(records) == 1
     assert records[0].args == (["get_high_restart_kubernetes_pods"],)
     assert "get_high_restart_kubernetes_pods" in records[0].getMessage()
+
+
+def test_drop_cluster_scan_tools_for_known_pod_diagnose():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import (
+        ToolExecutionPlan,
+        ToolExecutionStep,
+        drop_cluster_scan_tools_for_known_pod_diagnose,
+    )
+
+    plan = ToolExecutionPlan(
+        goal="分析指定 Pod 重启",
+        steps=[
+            ToolExecutionStep(
+                objective="诊断",
+                tools=["diagnose_kubernetes_pod_issues", "list_kubernetes_events", "describe_kubernetes_resource"],
+            ),
+            ToolExecutionStep(objective="扫集群", tools=["analyze_pod_restart_pattern", "list_kubernetes_pods"]),
+            ToolExecutionStep(objective="上一轮日志", tools=["get_kubernetes_previous_pod_logs"]),
+        ],
+    )
+    fixed = drop_cluster_scan_tools_for_known_pod_diagnose(plan)
+    assert [step.tools for step in fixed.steps] == [
+        ["diagnose_kubernetes_pod_issues"],
+        ["get_kubernetes_previous_pod_logs"],
+    ]
+
+    mixed = ToolExecutionPlan(
+        goal="先巡检再诊断",
+        steps=[
+            ToolExecutionStep(objective="高重启名单", tools=["get_high_restart_kubernetes_pods"]),
+            ToolExecutionStep(objective="诊断", tools=["diagnose_kubernetes_pod_issues"]),
+        ],
+    )
+    kept = drop_cluster_scan_tools_for_known_pod_diagnose(mixed)
+    assert [step.tools for step in kept.steps] == [
+        ["get_high_restart_kubernetes_pods"],
+        ["diagnose_kubernetes_pod_issues"],
+    ]
+
+
+def test_rewrite_high_restart_to_recent_for_time_sort():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import (
+        ToolExecutionPlan,
+        ToolExecutionStep,
+        rewrite_high_restart_to_recent_for_time_sort,
+    )
+
+    available = {"get_high_restart_kubernetes_pods", "get_recently_restarted_kubernetes_pods"}
+    plan = ToolExecutionPlan(
+        goal="按重启时间列最近 Pod",
+        steps=[ToolExecutionStep(objective="找高频重启", tools=["get_high_restart_kubernetes_pods"])],
+    )
+    fixed = rewrite_high_restart_to_recent_for_time_sort(
+        plan,
+        available,
+        user_message="按照重启时间排序，列出最近的 10 个重启的 pod，并展示重启时间和次数",
+    )
+    assert [step.tools for step in fixed.steps] == [["get_recently_restarted_kubernetes_pods"]]
+
+    count_only = rewrite_high_restart_to_recent_for_time_sort(
+        plan,
+        available,
+        user_message="找出累计重启次数很高的不稳定 Pod",
+    )
+    assert [step.tools for step in count_only.steps] == [["get_high_restart_kubernetes_pods"]]
+
+    mixed = ToolExecutionPlan(
+        goal="先名单再诊断",
+        steps=[
+            ToolExecutionStep(objective="高重启名单", tools=["get_high_restart_kubernetes_pods"]),
+            ToolExecutionStep(objective="诊断", tools=["diagnose_kubernetes_pod_issues"]),
+        ],
+    )
+    kept = rewrite_high_restart_to_recent_for_time_sort(
+        mixed,
+        available | {"diagnose_kubernetes_pod_issues"},
+        user_message="按照重启时间排序，列出最近的 10 个重启的 pod",
+    )
+    assert [step.tools for step in kept.steps] == [
+        ["get_high_restart_kubernetes_pods"],
+        ["diagnose_kubernetes_pod_issues"],
+    ]
+
+
+def test_enforce_k8s_namespace_lookup_first_prepends_for_previous_logs():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import ToolExecutionPlan, ToolExecutionStep, enforce_k8s_namespace_lookup_first
+
+    plan = ToolExecutionPlan(
+        goal="上一轮日志",
+        steps=[ToolExecutionStep(objective="取 previous 日志", tools=["get_kubernetes_previous_pod_logs"])],
+    )
+    fixed = enforce_k8s_namespace_lookup_first(
+        plan,
+        {"resolve_k8s_target_from_alert", "get_kubernetes_previous_pod_logs"},
+        max_steps=4,
+    )
+    assert [step.tools for step in fixed.steps] == [
+        ["resolve_k8s_target_from_alert"],
+        ["get_kubernetes_previous_pod_logs"],
+    ]
 
 
 def test_drop_k8s_followup_steps_after_unresolved_target():

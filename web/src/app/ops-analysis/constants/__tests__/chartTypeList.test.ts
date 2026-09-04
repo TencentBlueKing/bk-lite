@@ -13,6 +13,20 @@ test('getChartTypeList includes datasource-driven chart types', () => {
   assert.ok(values.includes('radar'));
   assert.ok(values.includes('cardList'));
   assert.ok(values.includes('topologyMap'));
+  assert.ok(values.includes('nodeGraph'));
+});
+
+test('report surface does not expose nodeGraph even when the datasource declares it', () => {
+  const result = resolveDatasourceChartTypes({
+    chartTypes: ['table', 'nodeGraph'],
+    chartTypeDefinitions: getChartTypeList(),
+    surface: 'report',
+  });
+
+  assert.deepEqual(
+    result.map((item) => item.value),
+    ['table'],
+  );
 });
 
 test('resolveDatasourceChartTypes exposes topologyMap only when declared by datasource', () => {

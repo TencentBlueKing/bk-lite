@@ -12,6 +12,7 @@ import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell'
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import HealthDot from '@/app/apm/components/health-dot';
 import {
+  formatCompactLatency,
   formatDateTime,
   formatErrorRate,
   formatLatency,
@@ -26,7 +27,6 @@ import type {
   ApmTraceSummary,
 } from '@/app/apm/types';
 import FilterToolbar from '@/components/filter-toolbar';
-import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useTranslation } from '@/utils/i18n';
 
 type PageState = CatalogStateKind | 'ready' | 'idle';
@@ -197,38 +197,102 @@ function TraceDistribution({ items, unitLabel }: { items: DurationPoint[]; unitL
   return <DurationDistribution items={items} unitLabel={unitLabel} />;
 }
 
+function useContainerWidth(defaultWidth = 1000) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(defaultWidth);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.contentRect && entry.contentRect.width > 0) {
+          setWidth(Math.round(entry.contentRect.width));
+        }
+      }
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  return { ref, width };
+}
+
 function DurationDistribution({ items, unitLabel }: { items: DurationPoint[]; unitLabel: string }) {
   const { t } = useTranslation();
-  const width = 800;
+  const { ref, width } = useContainerWidth(1000);
   const height = 130;
   const sorted = [...items].sort((left, right) => left.started_at.localeCompare(right.started_at));
   const maxDuration = Math.max(...sorted.map((item) => item.duration_ms), 1);
+  const maxLabel = formatCompactLatency(maxDuration);
+  const midLabel = formatCompactLatency(maxDuration / 2);
+
+  const leftMargin = 52;
+  const rightMargin = 20;
+  const chartWidth = Math.max(width - leftMargin - rightMargin, 100);
+
   return (
-    <svg
-      aria-label={t('apm.explore.distributionAria', '{unit} 耗时分布，共 {count} 条', { unit: unitLabel, count: items.length })}
-      className="block h-32 w-full"
-      role="img"
-      viewBox={`0 0 ${width} ${height}`}
-    >
-      {[0, 0.5, 1].map((ratio) => {
-        const y = 10 + ratio * 100;
-        return <line key={ratio} x1="0" x2={width} y1={y} y2={y} stroke="var(--color-border-1)" strokeDasharray="4 5" />;
-      })}
-      {sorted.map((item, index) => {
-        const x = sorted.length === 1 ? width / 2 : 12 + (index / (sorted.length - 1)) * (width - 24);
-        const y = 110 - (item.duration_ms / maxDuration) * 96;
-        return (
-          <circle
-            aria-label={t('apm.explore.barAria', '{label}，{duration} 毫秒', { label: item.label, duration: formatNumber(item.duration_ms, 2) })}
-            cx={x}
-            cy={y}
-            fill={item.status === 'error' ? 'var(--color-fail)' : 'var(--color-primary)'}
-            key={item.key}
-            r="5"
-          />
-        );
-      })}
-    </svg>
+    <div ref={ref} className="relative w-full overflow-hidden">
+      <svg
+        aria-label={t('apm.explore.distributionAria', '{unit} 耗时分布，共 {count} 条', { unit: unitLabel, count: items.length })}
+        className="block h-32 w-full"
+        role="img"
+        viewBox={`0 0 ${width} ${height}`}
+      >
+        {/* Reference grid lines */}
+        {[0, 0.5, 1].map((ratio) => {
+          const y = 16 + ratio * 88;
+          return (
+            <line
+              key={ratio}
+              x1={leftMargin}
+              x2={width - rightMargin}
+              y1={y}
+              y2={y}
+              stroke="var(--color-border)"
+              strokeDasharray="3 4"
+              opacity="0.5"
+            />
+          );
+        })}
+        {/* Y-axis Latency Scale Labels */}
+        <text x={leftMargin - 8} y="20" fill="var(--color-text-3)" fontSize="11" textAnchor="end" className="tabular-nums font-mono">{maxLabel}</text>
+        <text x={leftMargin - 8} y="64" fill="var(--color-text-3)" fontSize="11" textAnchor="end" className="tabular-nums font-mono">{midLabel}</text>
+        <text x={leftMargin - 8} y="108" fill="var(--color-text-3)" fontSize="11" textAnchor="end" className="tabular-nums font-mono">0ms</text>
+
+        {/* Data Points */}
+        {sorted.map((item, index) => {
+          const x = sorted.length === 1
+            ? leftMargin + chartWidth / 2
+            : leftMargin + 8 + (index / (sorted.length - 1)) * (chartWidth - 16);
+          const y = 104 - (item.duration_ms / maxDuration) * 88;
+          const isError = item.status === 'error';
+          return (
+            <g key={item.key} className="cursor-pointer transition-opacity hover:opacity-80">
+              <title>{`${item.label} · ${formatLatency(item.duration_ms, false, t)} (${isError ? 'Error' : 'OK'})`}</title>
+              {isError ? (
+                <circle
+                  cx={x}
+                  cy={y}
+                  r="7"
+                  fill="none"
+                  stroke="var(--color-fail)"
+                  strokeWidth="1.5"
+                  strokeOpacity="0.4"
+                />
+              ) : null}
+              <circle
+                aria-label={t('apm.explore.barAria', '{label}，{duration} 毫秒', { label: item.label, duration: formatNumber(item.duration_ms, 2) })}
+                cx={x}
+                cy={y}
+                fill={isError ? 'var(--color-fail)' : 'var(--color-primary)'}
+                r={isError ? '4.5' : '3.5'}
+              />
+            </g>
+          );
+        })}
+      </svg>
+    </div>
   );
 }
 
@@ -470,37 +534,42 @@ export default function ApmTracesPage() {
       dataIndex: 'trace_id',
       width: APM_TABLE_COLUMN_WIDTHS.traceId,
       render: (value: string) => (
-        <EllipsisWithTooltip className="truncate font-mono text-xs text-[var(--color-text-3)]" text={value} />
+        <Link
+          href={`/apm/explore/traces/${value}`}
+          className="truncate font-mono text-xs text-[var(--color-text-3)] transition-colors hover:text-[var(--color-primary)]"
+        >
+          {value}
+        </Link>
       ),
     },
     {
       title: t('apm.explore.entryService', '入口服务'),
       key: 'service',
-      width: APM_TABLE_COLUMN_WIDTHS.entryService,
+      width: '18%',
       ellipsis: true,
       render: (_, item) => (
         <span className="flex min-w-0 items-center gap-1.5">
-          <HealthDot level={item.status === 'error' ? 1 : 5} />
-          <span className="truncate text-sm font-medium">{item.service_name}</span>
+          <HealthDot level={item.status === 'error' ? 1 : 5} showLabel={false} />
+          <span className="truncate text-sm font-medium text-[var(--color-text-1)]">{item.service_name}</span>
         </span>
       ),
     },
     {
       title: t('apm.explore.resource', '资源'),
       dataIndex: 'root_span_name',
-      width: APM_TABLE_COLUMN_WIDTHS.resource,
+      width: '32%',
       ellipsis: true,
       responsive: ['md'],
-      render: (value) => <span className="truncate font-mono text-xs">{value}</span>,
+      render: (value) => <span className="truncate font-mono text-xs font-medium text-[var(--color-text-1)]">{value}</span>,
     },
     {
       title: t('apm.explore.totalDuration', '总耗时'),
       dataIndex: 'duration_ms',
-      width: APM_TABLE_COLUMN_WIDTHS.metric,
+      width: APM_TABLE_COLUMN_WIDTHS.metricWide,
       align: 'right',
       className: 'tabular-nums',
       responsive: ['sm'],
-      render: (value: number) => formatLatency(value, false, t),
+      render: (value: number) => <span className="font-medium text-[var(--color-text-1)]">{formatLatency(value, false, t)}</span>,
     },
     {
       title: t('apm.explore.spanCount', '跨度数'),
@@ -509,6 +578,7 @@ export default function ApmTracesPage() {
       align: 'right',
       className: 'tabular-nums',
       responsive: ['lg'],
+      render: (value: number) => <span className="tabular-nums font-medium">{formatNumber(value)}</span>,
     },
     {
       title: t('apm.common.status', '状态'),
@@ -525,6 +595,7 @@ export default function ApmTracesPage() {
       title: t('apm.common.time', '时间'),
       dataIndex: 'started_at',
       width: APM_TABLE_COLUMN_WIDTHS.relativeTime,
+      align: 'right',
       responsive: ['xl'],
       render: (value: string) => (
         <span className="text-xs tabular-nums text-[var(--color-text-3)]" title={formatDateTime(value)}>
@@ -541,7 +612,7 @@ export default function ApmTracesPage() {
       render: (_, item) => (
         <Link
           href={`/apm/explore/traces/${item.trace_id}`}
-          className="text-sm text-[var(--color-primary)] hover:text-[var(--color-primary-hover)]"
+          className="text-xs font-medium text-[var(--color-primary)] hover:underline"
         >
           {t('apm.explore.traceDetail', '详情')}
         </Link>
@@ -552,30 +623,45 @@ export default function ApmTracesPage() {
   const spanColumns = useMemo<TableProps<ApmSpanSummary>['columns']>(() => [
     {
       title: t('apm.common.service', '服务'),
+      key: 'service',
+      width: '22%',
+      ellipsis: true,
       render: (_, item) => (
-        <Space size={6}>
-          <HealthDot level={item.status === 'error' ? 1 : 5} />
-          <span className="text-sm font-medium">{item.service_name}</span>
-        </Space>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <HealthDot level={item.status === 'error' ? 1 : 5} showLabel={false} />
+          <span className="truncate text-sm font-medium text-[var(--color-text-1)]">{item.service_name}</span>
+        </div>
       ),
     },
     {
       title: t('apm.explore.resource', '资源'),
       dataIndex: 'name',
+      width: '38%',
+      ellipsis: true,
       responsive: ['sm'],
-      render: (value) => <span className="font-mono text-xs">{value}</span>,
+      render: (value) => <span className="truncate font-mono text-xs font-medium text-[var(--color-text-1)]">{value}</span>,
     },
     {
       title: 'HTTP',
-      width: APM_TABLE_COLUMN_WIDTHS.metric,
+      width: 100,
       responsive: ['lg'],
       render: (_, item) => {
         if (!item.http_method && !item.http_status_code) {
-          return <span className="text-xs text-[var(--color-text-3)]">-</span>;
+          return <span className="text-xs text-[var(--color-text-3)]">—</span>;
         }
+        const failed = Boolean(item.http_status_code && /^[45]/.test(String(item.http_status_code)));
         return (
-          <span className="font-mono text-xs">
-            {[item.http_method, item.http_status_code].filter(Boolean).join(' ')}
+          <span className="inline-flex items-center gap-1.5 font-mono text-xs tabular-nums">
+            {item.http_method ? (
+              <span className="rounded bg-[var(--color-fill-1)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-text-2)]">
+                {item.http_method}
+              </span>
+            ) : null}
+            {item.http_status_code ? (
+              <span className={failed ? 'font-semibold text-[var(--color-fail)]' : 'text-[var(--color-text-2)]'}>
+                {item.http_status_code}
+              </span>
+            ) : null}
           </span>
         );
       },
@@ -583,16 +669,17 @@ export default function ApmTracesPage() {
     {
       title: t('apm.common.latency', '耗时'),
       dataIndex: 'duration_ms',
-      width: APM_TABLE_COLUMN_WIDTHS.metric,
+      width: APM_TABLE_COLUMN_WIDTHS.metricWide,
       align: 'right',
       className: 'tabular-nums',
       responsive: ['md'],
-      render: (value: number) => formatLatency(value, false, t),
+      render: (value: number) => <span className="font-medium text-[var(--color-text-1)]">{formatLatency(value, false, t)}</span>,
     },
     {
       title: t('apm.common.time', '时间'),
       dataIndex: 'started_at',
       width: APM_TABLE_COLUMN_WIDTHS.relativeTime,
+      align: 'right',
       responsive: ['xl'],
       render: (value: string) => (
         <span className="text-xs tabular-nums text-[var(--color-text-3)]" title={formatDateTime(value)}>
@@ -704,8 +791,21 @@ export default function ApmTracesPage() {
   };
 
   const aggregateColumns: TableProps<AggregateRow>['columns'] = [
-    { title: t('apm.explore.group', '分组'), dataIndex: 'label' },
-    { title: t('apm.explore.count', '数量'), dataIndex: 'count', width: APM_TABLE_COLUMN_WIDTHS.status, align: 'right', className: 'tabular-nums' },
+    {
+      title: t('apm.explore.group', '分组'),
+      dataIndex: 'label',
+      width: '28%',
+      ellipsis: true,
+      render: (value: string) => <span className="font-medium text-[var(--color-text-1)]">{value}</span>,
+    },
+    {
+      title: t('apm.explore.count', '数量'),
+      dataIndex: 'count',
+      width: APM_TABLE_COLUMN_WIDTHS.status,
+      align: 'right',
+      className: 'tabular-nums',
+      render: (value: number) => <span className="tabular-nums font-medium">{formatNumber(value)}</span>,
+    },
     {
       title: t('apm.common.errorRate', '错误率'),
       dataIndex: 'errorRate',
@@ -750,11 +850,11 @@ export default function ApmTracesPage() {
       description={t('apm.explore.tracesDescription', '按服务、环境与时间窗检索 Trace 或 Span，支持明细列表与客户端聚合分析。')}
       dependency="telemetry"
     >
-      <ApmSurface>
-        <div className="flex flex-col gap-4">
-        <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
+      <div className="flex flex-col gap-4">
+        {/* 顶部搜索与过滤控制条卡片 */}
+        <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-3.5 shadow-2xs">
+          <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full flex-wrap items-center gap-3">
             <Segmented<EntityMode>
-              size="small"
               aria-label={t('apm.explore.entityMode', '调用链查询粒度')}
               options={[
                 { value: 'spans', label: 'Spans' },
@@ -770,6 +870,9 @@ export default function ApmTracesPage() {
                 setState(serviceName.trim() ? 'loading' : 'idle');
               }}
             />
+
+            <div className="h-4 w-px shrink-0 bg-[var(--color-border)]" aria-hidden="true" />
+
             <Input
               allowClear
               aria-label={t('apm.explore.filterAria', '调用链过滤条件')}
@@ -805,9 +908,11 @@ export default function ApmTracesPage() {
             >
               {t('apm.common.query', '查询')}
             </Button>
-            <Space size={4}>
+
+            <div className="h-4 w-px shrink-0 bg-[var(--color-border)]" aria-hidden="true" />
+
+            <Space size={6}>
               <Select
-                size="small"
                 aria-label={t('apm.common.timeWindow', '时间窗')}
                 className="w-[90px]"
                 value={timeRange}
@@ -818,7 +923,6 @@ export default function ApmTracesPage() {
                 }}
               />
               <Select
-                size="small"
                 aria-label={t('apm.explore.liveTail', '实时尾随')}
                 className="w-[88px]"
                 disabled
@@ -828,29 +932,53 @@ export default function ApmTracesPage() {
               />
             </Space>
           </FilterToolbar>
+        </section>
+
         {state === 'idle' ? (
-          <CatalogState kind="empty" description={t('apm.explore.idle', '在上方输入 service:... 后回车搜索调用链。')} />
+          <ApmSurface className="!rounded-xl shadow-2xs">
+            <CatalogState kind="empty" description={t('apm.explore.idle', '在上方输入 service:... 后回车搜索调用链。')} />
+          </ApmSurface>
         ) : state === 'ready' || state === 'empty' ? (
-          <div className="grid min-h-0 grid-cols-1 gap-4 border-t border-[var(--color-border)] pt-4 xl:grid-cols-[240px_minmax(0,1fr)]">
-            <aside className="self-start rounded-lg bg-[var(--color-fill-1)] p-3">
-              <Typography.Title level={2} className="!mb-4 !text-sm !font-semibold">{t('apm.explore.quickFilter', '快速筛选')}</Typography.Title>
-              <div className="flex flex-col gap-5">
+          <div className="grid min-h-0 grid-cols-1 gap-4 xl:grid-cols-[250px_minmax(0,1fr)] xl:items-start">
+            {/* 左侧侧边栏快速筛选 */}
+            <aside className="self-start rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-4 shadow-2xs">
+              <div className="mb-3.5 flex items-center justify-between border-b border-[var(--color-border)] pb-2.5">
+                <Typography.Title level={2} className="!mb-0 !text-xs !font-bold !text-[var(--color-text-2)] uppercase tracking-wider">
+                  {t('apm.explore.quickFilter', '快速筛选')}
+                </Typography.Title>
+                {facets.status !== 'all' || facets.serviceName || facets.environment !== undefined || facets.kind || facets.minDurationMs != null || facets.maxDurationMs != null ? (
+                  <Button
+                    type="link"
+                    size="small"
+                    className="!p-0 !h-auto text-xs"
+                    onClick={() => {
+                      setFacets(EMPTY_RESULT_FACETS);
+                      setDurationDraft({ min: null, max: null });
+                    }}
+                  >
+                    {t('apm.common.clear', '清空')}
+                  </Button>
+                ) : null}
+              </div>
+              <div className="flex flex-col gap-4 divide-y divide-[var(--color-border)]">
                 <div>
-                  <Typography.Text type="secondary" className="mb-2 block !text-xs">
+                  <Typography.Text type="secondary" className="mb-2 block !text-xs font-medium">
                     {t('apm.common.status', '状态')}
                     {facets.status !== 'all' ? (
                       <span className="ml-1.5 font-semibold text-[var(--color-primary)]">(1)</span>
                     ) : null}
                   </Typography.Text>
-                  <Space direction="vertical" size={6} className="w-full">
+                  <div className="flex flex-col gap-1">
                     {([
                       { value: 'error' as const, label: statusError, count: statusCounts.error, color: 'var(--color-fail)' },
                       { value: 'ok' as const, label: statusOk, count: statusCounts.ok, color: 'var(--color-success)' },
                     ]).map((item) => (
                       <div
                         key={item.value}
-                        className={`flex w-full items-center justify-between gap-3 rounded px-1.5 py-0.5 ${
-                          facets.status === item.value ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]' : ''
+                        className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 transition-colors ${
+                          facets.status === item.value
+                            ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]'
+                            : 'hover:bg-[var(--color-fill-1)]/60'
                         }`}
                       >
                         <Checkbox
@@ -860,7 +988,7 @@ export default function ApmTracesPage() {
                             status: event.target.checked ? item.value : 'all',
                           }))}
                         >
-                          <span className="inline-flex items-center gap-1.5">
+                          <span className="inline-flex items-center gap-1.5 text-xs">
                             <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full" style={{ background: item.color }} />
                             {item.label}
                           </span>
@@ -868,16 +996,16 @@ export default function ApmTracesPage() {
                         <span className="tabular-nums text-xs text-[var(--color-text-3)]">{item.count}</span>
                       </div>
                     ))}
-                  </Space>
+                  </div>
                 </div>
-                <div>
-                  <Typography.Text type="secondary" className="mb-2 block !text-xs">
+                <div className="pt-3">
+                  <Typography.Text type="secondary" className="mb-2 block !text-xs font-medium">
                     {t('apm.common.service', '服务')}
                     {facets.serviceName ? (
                       <span className="ml-1.5 font-semibold text-[var(--color-primary)]">(1)</span>
                     ) : null}
                   </Typography.Text>
-                  <Space direction="vertical" size={6} className="w-full">
+                  <div className="flex flex-col gap-1">
                     {(serviceCounts.length
                       ? serviceCounts
                       : services.map((service) => [service.name, 0] as [string, number])
@@ -885,36 +1013,38 @@ export default function ApmTracesPage() {
                       <button
                         key={name}
                         type="button"
-                        className={`flex w-full items-center justify-between gap-3 rounded px-1.5 py-0.5 text-left hover:bg-[var(--color-fill-1)] ${
-                          facets.serviceName === name ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]' : ''
+                        className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors ${
+                          facets.serviceName === name
+                            ? 'bg-[var(--color-primary-bg-active)] font-medium text-[var(--color-primary)]'
+                            : 'hover:bg-[var(--color-fill-1)]/60 text-[var(--color-text-1)]'
                         }`}
                         onClick={() => setFacets((current) => ({
                           ...current,
                           serviceName: current.serviceName === name ? undefined : name,
                         }))}
                       >
-                        <Typography.Text ellipsis={{ tooltip: name }} className="max-w-36 !text-xs !text-inherit">{name}</Typography.Text>
+                        <span className="truncate max-w-36 text-xs text-inherit" title={name}>{name}</span>
                         <span className="tabular-nums text-xs text-[var(--color-text-3)]">{count}</span>
                       </button>
                     ))}
-                  </Space>
+                  </div>
                 </div>
-                <div>
-                  <Typography.Text type="secondary" className="mb-2 block !text-xs">
+                <div className="pt-3">
+                  <Typography.Text type="secondary" className="mb-2 block !text-xs font-medium">
                     {t('apm.common.environment', '环境')}
                     {facets.environment !== undefined ? (
                       <span className="ml-1.5 font-semibold text-[var(--color-primary)]">(1)</span>
                     ) : null}
                   </Typography.Text>
-                  <Space direction="vertical" size={6} className="w-full">
+                  <div className="flex flex-col gap-1">
                     {(environmentCounts.length ? environmentCounts : [[unsetParen, 0] as [string, number]]).slice(0, 8).map(([name, count]) => (
                       <button
                         key={name}
                         type="button"
-                        className={`flex w-full items-center justify-between gap-3 rounded px-1.5 py-0.5 text-left hover:bg-[var(--color-fill-1)] ${
+                        className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors ${
                           facets.environment !== undefined && (facets.environment || unsetParen) === name
-                            ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]'
-                            : ''
+                            ? 'bg-[var(--color-primary-bg-active)] font-medium text-[var(--color-primary)]'
+                            : 'hover:bg-[var(--color-fill-1)]/60 text-[var(--color-text-1)]'
                         }`}
                         onClick={() => {
                           const nextEnvironment = name === unsetParen ? '' : name;
@@ -924,29 +1054,31 @@ export default function ApmTracesPage() {
                           }));
                         }}
                       >
-                        <Typography.Text ellipsis={{ tooltip: name }} className="max-w-36 !text-xs !text-inherit">{name}</Typography.Text>
+                        <span className="truncate max-w-36 text-xs text-inherit" title={name}>{name}</span>
                         <span className="tabular-nums text-xs text-[var(--color-text-3)]">{count}</span>
                       </button>
                     ))}
-                  </Space>
+                  </div>
                 </div>
                 {entityMode === 'spans' ? (
-                  <div>
-                    <Typography.Text type="secondary" className="mb-2 block !text-xs">
+                  <div className="pt-3">
+                    <Typography.Text type="secondary" className="mb-2 block !text-xs font-medium">
                       {t('apm.explore.spanKind', 'SPAN 类型')}
                       {facets.kind ? (
                         <span className="ml-1.5 font-semibold text-[var(--color-primary)]">(1)</span>
                       ) : null}
                     </Typography.Text>
-                    <Space direction="vertical" size={6} className="w-full">
+                    <div className="flex flex-col gap-1">
                       {(kindCounts.length
                         ? kindCounts
                         : SPAN_KINDS.map((value) => [value, 0] as [string, number])
                       ).map(([name, count]) => (
                         <div
                           key={name}
-                          className={`flex w-full items-center justify-between gap-3 rounded px-1.5 py-0.5 ${
-                            facets.kind === name ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]' : ''
+                          className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 transition-colors ${
+                            facets.kind === name
+                              ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]'
+                              : 'hover:bg-[var(--color-fill-1)]/60'
                           }`}
                         >
                           <Checkbox
@@ -961,11 +1093,11 @@ export default function ApmTracesPage() {
                           <span className="tabular-nums text-xs text-[var(--color-text-3)]">{count}</span>
                         </div>
                       ))}
-                    </Space>
+                    </div>
                   </div>
                 ) : null}
-                <div>
-                  <Typography.Text type="secondary" className="mb-2 block !text-xs">{t('apm.common.latency', '耗时')}</Typography.Text>
+                <div className="pt-3">
+                  <Typography.Text type="secondary" className="mb-2 block !text-xs font-medium">{t('apm.common.latency', '耗时')}</Typography.Text>
                   <div className="mt-2 flex items-center gap-1.5">
                     <InputNumber
                       size="small"
@@ -1004,19 +1136,33 @@ export default function ApmTracesPage() {
                 </div>
               </div>
             </aside>
+
+            {/* 右侧主内容区域 */}
             <div className="flex min-w-0 flex-col gap-4">
-              <div className="flex flex-wrap items-end justify-between gap-3">
-                <div>
-                  <div className="flex items-baseline gap-2">
-                    <strong className="text-base font-semibold tabular-nums">{formatNumber(hitRate, hitRate >= 10 ? 1 : 2)}</strong>
-                    <Typography.Text type="secondary" className="!text-xs">
+              {/* 命中统计横幅卡片 */}
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-4 shadow-2xs">
+                <div className="flex flex-wrap items-center gap-6">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-xs font-medium text-[var(--color-text-3)]">
                       {entityMode === 'spans' ? t('apm.explore.spansPerSec', 'spans/s') : t('apm.explore.hitRate', 'traces/s')}
-                    </Typography.Text>
+                    </span>
+                    <span className="text-xl font-bold tabular-nums text-[var(--color-text-1)]">
+                      {formatNumber(hitRate, hitRate >= 10 ? 1 : 2)}
+                    </span>
                   </div>
-                  <Typography.Text type="secondary" className="!text-xs">
-                    {t('apm.explore.hitSummary', '命中 {count} 条 · 窗 {window}', { count: activeItems.length, window: timeRange })}
-                  </Typography.Text>
+                  <div className="h-8 w-px bg-[var(--color-border)]" aria-hidden="true" />
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-xs font-medium text-[var(--color-text-3)]">
+                      {t('apm.explore.matchedCount', '命中数量')}
+                    </span>
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-xl font-bold tabular-nums text-[var(--color-text-1)]">
+                        {t('apm.explore.hitSummary', '命中 {count} 条 · 窗 {window}', { count: activeItems.length, window: timeRange })}
+                      </span>
+                    </div>
+                  </div>
                 </div>
+
                 <Segmented<ResultMode>
                   options={[
                     { value: 'detail', label: t('apm.explore.detail', '明细') },
@@ -1026,21 +1172,32 @@ export default function ApmTracesPage() {
                   onChange={setResultMode}
                 />
               </div>
+
               {resultMode === 'detail' ? (
-                  <>
-                    <div className="rounded-lg bg-[var(--color-fill-1)] p-3">
-                    <div className="mb-1 flex items-center justify-between">
-                      <Typography.Text strong>{t('apm.explore.durationDistribution', '耗时分布')}</Typography.Text>
-                      <Space size={12}>
-                        <span className="inline-flex items-center gap-1 text-xs text-[var(--color-text-3)]"><span className="h-1.5 w-1.5 rounded-full bg-[var(--color-primary)]" />{statusOk}</span>
-                        <span className="inline-flex items-center gap-1 text-xs text-[var(--color-text-3)]"><span className="h-1.5 w-1.5 rounded-full bg-[var(--color-fail)]" />{statusError}</span>
+                <>
+                  <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-4 shadow-2xs">
+                    <div className="mb-3 flex items-center justify-between border-b border-[var(--color-border)] pb-2.5">
+                      <span className="text-xs font-bold uppercase tracking-wider text-[var(--color-text-2)]">
+                        {t('apm.explore.durationDistribution', '耗时分布')}
+                      </span>
+                      <Space size={16}>
+                        <span className="inline-flex items-center gap-1.5 text-xs text-[var(--color-text-3)]">
+                          <span className="h-2 w-2 rounded-full bg-[var(--color-primary)]" />
+                          {statusOk}
+                        </span>
+                        <span className="inline-flex items-center gap-1.5 text-xs text-[var(--color-text-3)]">
+                          <span className="h-2 w-2 rounded-full bg-[var(--color-fail)]" />
+                          {statusError}
+                        </span>
                       </Space>
                     </div>
                     <TraceDistribution
                       items={distributionItems}
                       unitLabel={entityMode === 'spans' ? 'Span' : 'Trace'}
                     />
-                    </div>
+                  </div>
+
+                  <div className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] shadow-2xs">
                     {entityMode === 'spans' ? (
                       <ApmDataTable
                         rowKey="span_id"
@@ -1056,11 +1213,12 @@ export default function ApmTracesPage() {
                         pagination={listPagination}
                       />
                     )}
+                  </div>
                 </>
               ) : (
-                <div>
-                  <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                    <Typography.Text strong>{t('apm.explore.aggregateAnalysis', '聚合分析')}</Typography.Text>
+                <div className="flex flex-col gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-4 shadow-2xs">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border)] pb-3">
+                    <Typography.Text strong className="text-sm">{t('apm.explore.aggregateAnalysis', '聚合分析')}</Typography.Text>
                     <Segmented<AggregateDimension>
                       size="small"
                       value={aggregateDimension}
@@ -1083,13 +1241,14 @@ export default function ApmTracesPage() {
             </div>
           </div>
         ) : (
-          <CatalogState
-            kind={state}
-            onRetry={state === 'forbidden' ? undefined : () => search(undefined, filters)}
-          />
+          <ApmSurface className="!rounded-xl shadow-2xs">
+            <CatalogState
+              kind={state}
+              onRetry={state === 'forbidden' ? undefined : () => search(undefined, filters)}
+            />
+          </ApmSurface>
         )}
-        </div>
-      </ApmSurface>
+      </div>
     </ApmRouteShell>
   );
 }

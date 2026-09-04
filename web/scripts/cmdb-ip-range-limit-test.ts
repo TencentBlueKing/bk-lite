@@ -4,6 +4,9 @@ import {
   IP_RANGE_LOCKED_PREFIX_OCTETS,
   IP_RANGE_MAX_SIZE,
   IP_RANGE_MIN_PREFIX,
+  displayedIpFromOctets,
+  ipOctetsFromValue,
+  ipRangeDisplayNeedsSync,
   ipRangeSize,
   ipToNumber,
   isIpRangeOrderValid,
@@ -29,6 +32,17 @@ assert.equal(isIpRangeOrderValid('10.0.1.10', '10.0.1.1'), false);
 assert.equal(isIpRangeOrderValid('10.0.1.1', '10.0.5.200'), true);
 // 跨第 3 段但仍在 /21 内
 assert.equal(isIpRangeWithinLimit('10.0.1.1', '10.0.5.200'), true);
+
+assert.equal(displayedIpFromOctets(['', '', '', '']), '');
+assert.deepEqual(ipOctetsFromValue('10.11.27.140'), ['10', '11', '27', '140']);
+assert.equal(
+  ipRangeDisplayNeedsSync('', '', ['10.11.27.140', '10.11.27.147']),
+  true,
+);
+assert.equal(
+  ipRangeDisplayNeedsSync('10.11.27.140', '10.11.27.147', ['10.11.27.140', '10.11.27.147']),
+  false,
+);
 
 // 周期提示阈值：255 个不提示，256 个提示
 assert.equal(ipRangeSize('10.0.0.1', '10.0.0.255') > IP_RANGE_CYCLE_HINT_THRESHOLD, false);

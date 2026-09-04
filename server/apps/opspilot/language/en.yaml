@@ -334,6 +334,8 @@ tools:
         description: Discover all failed or abnormal Pods in the cluster
       get_high_restart_kubernetes_pods:
         description: Discover frequently restarting unstable Pods
+      get_recently_restarted_kubernetes_pods:
+        description: List recently restarted Pods ordered by last restart time
       get_kubernetes_contexts:
         description: Get kubectl context information, display currently available contexts and active context
       get_kubernetes_namespaces:
