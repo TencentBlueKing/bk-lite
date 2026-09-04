@@ -17,7 +17,10 @@ import useApiClient from '@/utils/request';
 import useIntegrationApi from '@/app/monitor/api/integration';
 import useEventApi from '@/app/monitor/api/event';
 import FieldGuideTip from '@/components/field-guide-tip';
-import type { PolicyTemplateItem } from '@/app/monitor/(pages)/event/template/templateBulkUtils';
+import {
+  COLLECTION_POLICY_BULK_CONFIG_DEFAULTS,
+  type PolicyTemplateItem
+} from '@/app/monitor/(pages)/event/template/templateBulkUtils';
 import {
   COLLECTION_POLICY_CONTROL_WIDTH,
   COLLECTION_POLICY_FIELD,
@@ -30,7 +33,6 @@ import {
   resolvePolicyTemplateList,
   selectedPolicyTemplates
 } from './automaticPolicyApply';
-import { COLLECTION_POLICY_BULK_CONFIG_DEFAULTS } from '@/app/monitor/(pages)/event/template/templateBulkUtils';
 import { TableDataItem } from '@/app/monitor/types';
 import {
   IntegrationAccessProps,
@@ -46,6 +48,7 @@ import {
   trackSnmpFilterMutexLastChanged
 } from '@/app/monitor/hooks/integration/snmpFilterMutex';
 import { toMonitorNodeOption } from '@/app/monitor/hooks/integration/nodeOptions';
+import { runWithConcurrency } from '@/app/monitor/dashboards/shared/utils/concurrency';
 import BatchEditModal from './batchEditModal';
 import ExcelImportModal from './excelImportModal';
 import PluginGuidePanel from './pluginGuidePanel';
@@ -601,8 +604,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         count: runnableRows.length
       })
     );
-    await Promise.all(
-      runnableRows.map((row) => handleCollectDetect(row, 'batch'))
+    // 有界并发，避免勾选大量实例时瞬时打满探测/节点任务
+    await runWithConcurrency(runnableRows, 3, (row) =>
+      handleCollectDetect(row, 'batch')
     );
   };
 
