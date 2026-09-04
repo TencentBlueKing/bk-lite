@@ -3,7 +3,7 @@ from django_filters import BaseInFilter, BooleanFilter, CharFilter, FilterSet, N
 
 from apps.monitor.filters.id_filters import filter_positive_int_field
 from apps.monitor.models.monitor_metrics import Metric, MetricGroup
-from apps.monitor.utils.snmp_ifmib_capability import get_ifmib_metric_names_matching_keyword
+from apps.monitor.utils.metric_keyword import apply_metric_keyword_filter
 
 
 class MetricGroupFilter(FilterSet):
@@ -62,14 +62,8 @@ class MetricFilter(FilterSet):
         return filter_positive_int_field(queryset, "monitor_plugin_id", value)
 
     def filter_keyword(self, queryset, _name, value):
-        keyword = str(value or "").strip()
-        if not keyword:
-            return queryset
         locale = getattr(getattr(self.request, "user", None), "locale", "")
-        localized_names = get_ifmib_metric_names_matching_keyword(keyword, locale)
-        return queryset.filter(
-            Q(name__icontains=keyword) | Q(display_name__icontains=keyword) | Q(description__icontains=keyword) | Q(name__in=localized_names)
-        )
+        return apply_metric_keyword_filter(queryset, value, locale)
 
     @staticmethod
     def filter_include_ifmib(queryset, _name, value):
