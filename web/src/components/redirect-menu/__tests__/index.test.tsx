@@ -48,4 +48,32 @@ describe('RedirectToFirstMenu', () => {
 
     expect(replace).toHaveBeenCalledWith('/opspilot/studio');
   });
+
+  it('redirects with optimistic menus even while permissions are still loading', () => {
+    vi.mocked(usePathname).mockReturnValue('/log');
+    vi.mocked(usePermissions).mockReturnValue({
+      menus: [{ url: '/log/search', name: 'search' } as any],
+      loading: true,
+      permissions: {},
+      hasPermission: () => false,
+    });
+
+    render(<RedirectToFirstMenu />);
+
+    expect(replace).toHaveBeenCalledWith('/log/search');
+  });
+
+  it('does not redirect using menus from a different app', () => {
+    vi.mocked(usePathname).mockReturnValue('/log');
+    vi.mocked(usePermissions).mockReturnValue({
+      menus: [{ url: '/cmdb/assetOverview', name: 'asset_views' } as any],
+      loading: false,
+      permissions: {},
+      hasPermission: () => true,
+    });
+
+    render(<RedirectToFirstMenu />);
+
+    expect(replace).not.toHaveBeenCalled();
+  });
 });

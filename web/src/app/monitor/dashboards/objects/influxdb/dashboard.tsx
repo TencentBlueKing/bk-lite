@@ -29,7 +29,7 @@ export default function InfluxdbDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>基数与写入健康</div>
+          <div className={styles.sectionLabel}>健康概览</div>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} styles={styles} />
 
           <div className={styles.sectionLabel}>请求与完整性</div>

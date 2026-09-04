@@ -46,6 +46,7 @@ EXPECTED_MONITOR_NATS_HANDLER_NAMES = frozenset(
         "monitor_object_instances",
         "monitor_objects",
         "query_latest_active_alerts",
+        "query_active_alert_summaries_by_monitor_ids",
         "query_latest_interface_metrics",
         "query_monitor_alert_segments",
         "query_monitor_data_by_metric",

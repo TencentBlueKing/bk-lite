@@ -54,6 +54,7 @@ class IngestSnippetSerializer(serializers.Serializer):
     service_name = serializers.CharField(max_length=256)
     service_version = serializers.CharField(max_length=256, required=False, allow_blank=True)
     environment = serializers.CharField(max_length=256, allow_blank=True)
+    sample_rate = serializers.IntegerField(min_value=1, max_value=100, required=False, default=100)
 
     def validate_endpoint(self, _value):
         raise serializers.ValidationError("OTLP 端点必须由服务器根据云区域配置解析，客户端不得提交。")

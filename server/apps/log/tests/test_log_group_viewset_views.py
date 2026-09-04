@@ -129,7 +129,8 @@ def test_create_rejects_unknown_rule_mode_without_persisting(api_client, authent
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert "AND or OR" in response.json()["message"]
+    assert "所有条件" in response.json()["message"]
+    assert "任意条件" in response.json()["message"]
     assert not LogGroup.objects.filter(id="invalid-mode").exists()
 
 
@@ -162,6 +163,74 @@ def test_create_with_unauthorized_organization_rejected(api_client, authenticate
     # 序列化器 validate_organizations 拒绝无权限组织
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert not LogGroup.objects.filter(id="y").exists()
+
+
+@pytest.mark.django_db
+def test_patch_default_group_keeps_star_rule_when_ui_sends_null_mode(api_client, authenticated_user, mocker):
+    LogGroup.objects.create(id="default", name="Default", rule={})
+    LogGroupOrganization.objects.create(log_group_id="default", organization=1)
+    _mock_permission(mocker, teams=[1, 2])
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.patch(
+        "/api/v1/log/log_group/default/",
+        data={"organizations": [1, 2], "rule": {"mode": None, "conditions": []}},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert LogGroup.objects.get(id="default").rule == {}
+    assert set(
+        LogGroupOrganization.objects.filter(log_group_id="default").values_list("organization", flat=True)
+    ) == {1, 2}
+
+
+@pytest.mark.django_db
+def test_patch_default_group_list_echoes_assignable_organizations(api_client, authenticated_user, mocker):
+    LogGroup.objects.create(id="default", name="Default", rule={})
+    LogGroupOrganization.objects.create(log_group_id="default", organization=1)
+    mocker.patch(
+        "apps.core.utils.current_team_scope.SystemMgmt.get_authorized_groups_scoped",
+        return_value={"result": True, "data": [1]},
+    )
+    mocker.patch(
+        "apps.core.utils.current_team_scope.SystemMgmt.get_assignable_groups",
+        return_value={"result": True, "data": [1, 2]},
+    )
+    _mock_permission(mocker, teams=[1, 2])
+
+    api_client.cookies["current_team"] = "1"
+    patch_response = api_client.patch(
+        "/api/v1/log/log_group/default/",
+        data={"organizations": [1, 2], "rule": {"mode": None, "conditions": []}},
+        format="json",
+    )
+    list_response = api_client.get("/api/v1/log/log_group/?page_size=-1")
+
+    assert patch_response.status_code == status.HTTP_200_OK
+    assert list_response.status_code == status.HTTP_200_OK
+    item = next(row for row in list_response.json()["data"] if row["id"] == "default")
+    assert set(item["organizations"]) == {1, 2}
+
+
+@pytest.mark.django_db
+def test_patch_default_group_organizations_without_rule_keeps_star(api_client, authenticated_user, mocker):
+    LogGroup.objects.create(id="default", name="Default", rule={})
+    LogGroupOrganization.objects.create(log_group_id="default", organization=1)
+    _mock_permission(mocker, teams=[1, 2])
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.patch(
+        "/api/v1/log/log_group/default/",
+        data={"organizations": [1, 2]},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert LogGroup.objects.get(id="default").rule == {}
+    assert set(
+        LogGroupOrganization.objects.filter(log_group_id="default").values_list("organization", flat=True)
+    ) == {1, 2}
 
 
 @pytest.mark.django_db

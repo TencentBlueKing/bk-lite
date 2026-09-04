@@ -8,6 +8,16 @@ import {
   type ConsoleChromeLayout,
 } from './contract';
 
+export const shouldHideConsoleTopNav = (pathname: string | null | undefined): boolean => {
+  if (!pathname) {
+    return false;
+  }
+  return (
+    pathname.startsWith('/opspilot/studio/chat')
+    || pathname.startsWith('/opspilot/skill/chat')
+  );
+};
+
 export const isConsoleChromeException = (pathname: string | null | undefined): boolean => {
   if (!pathname) {
     return false;
@@ -17,7 +27,7 @@ export const isConsoleChromeException = (pathname: string | null | undefined): b
     || pathname.startsWith('/auth/signout')
     || pathname === '/no-permission'
     || pathname === '/no-found'
-    || pathname.startsWith('/opspilot/studio/chat')
+    || shouldHideConsoleTopNav(pathname)
     || pathname.startsWith('/ops-analysis/share/')
     || pathname.startsWith('/ops-analysis/render/execution/')
     || pathname.startsWith('/monitor/view/dashboard/')
@@ -86,6 +96,43 @@ export const buildAppTopSideNavGroups = (
     item,
     children: [],
   }));
+};
+
+/**
+ * App-top first-layer links: real list pages with hasDetail keep their own URL;
+ * container menus with children jump to the first visible leaf so we skip
+ * client redirect stubs that briefly render null.
+ */
+export const resolveMenuNavHref = (item: MenuItem): string => {
+  if (!item.url) {
+    return '';
+  }
+  if (item.hasDetail || !item.children?.length) {
+    return item.url;
+  }
+
+  const findFirstVisibleHref = (items: MenuItem[]): string | null => {
+    for (const child of items) {
+      if (child.isNotMenuItem) {
+        continue;
+      }
+      if (child.isDirectory) {
+        if (child.children?.length) {
+          const nested = findFirstVisibleHref(child.children);
+          if (nested) {
+            return nested;
+          }
+        }
+        continue;
+      }
+      if (child.url) {
+        return child.url;
+      }
+    }
+    return null;
+  };
+
+  return findFirstVisibleHref(item.children) || item.url;
 };
 
 export const shouldOpenAppInNewTab = (
@@ -207,4 +254,20 @@ export const countVisibleAppSlots = (containerWidth: number, appCount: number): 
     1,
     Math.floor((containerWidth - APP_TOP_NAV_MORE_WIDTH_PX) / APP_TOP_NAV_CHIP_WIDTH_PX),
   );
+};
+
+const APP_STRIP_OVERFLOW_EDGE_PX = 2;
+
+export const getAppStripOverflow = (
+  scrollLeft: number,
+  clientWidth: number,
+  scrollWidth: number,
+): { left: boolean; right: boolean } => {
+  if (clientWidth <= 0 || scrollWidth <= clientWidth + APP_STRIP_OVERFLOW_EDGE_PX) {
+    return { left: false, right: false };
+  }
+  return {
+    left: scrollLeft > APP_STRIP_OVERFLOW_EDGE_PX,
+    right: scrollLeft + clientWidth < scrollWidth - APP_STRIP_OVERFLOW_EDGE_PX,
+  };
 };

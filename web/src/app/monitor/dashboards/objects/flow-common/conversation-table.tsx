@@ -66,8 +66,9 @@ export function FlowConversationTable({
   );
 
   useEffect(() => {
-    if (!dashboard.isDashboardMode || !instanceType) {
+    if (!dashboard.isDashboardMode || !instanceType || !dashboard.idValues.length) {
       setRows([]);
+      setLoading(false);
       return;
     }
 

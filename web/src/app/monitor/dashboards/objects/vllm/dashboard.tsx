@@ -67,7 +67,7 @@ export default function VllmDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>总览</div>
+          <div className={styles.sectionLabel}>健康概览</div>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
           <FlexiblePanelSection styles={styles}>
             {renderChart(queueTrend, styles.span8)}

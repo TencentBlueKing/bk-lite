@@ -66,7 +66,7 @@ export default function RabbitMQDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>总览</div>
+          <div className={styles.sectionLabel}>健康概览</div>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
 
           {/* R1: 内存分布环 span4 + 内存压力趋势 span8 = 12 —— 环图配同主题折线,消除中部留白 */}

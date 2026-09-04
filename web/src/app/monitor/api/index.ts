@@ -132,8 +132,14 @@ const useMonitorApi = () => {
     params: InstanceParam = {},
     config?: AxiosRequestConfig
   ) => {
+    const { instance_id_in, ...rest } = params;
     return await get(`/monitor/api/monitor_instance/${String(objectId)}/list/`, {
-      params,
+      params: {
+        ...rest,
+        ...(instance_id_in?.length
+          ? { instance_id_in: JSON.stringify(instance_id_in) }
+          : {}),
+      },
       ...config
     });
   };

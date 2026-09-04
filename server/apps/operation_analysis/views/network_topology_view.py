@@ -32,8 +32,14 @@ from __future__ import annotations
 
 import json
 
+from django.core.exceptions import ValidationError as DjangoValidationError
+from rest_framework import permissions, status
+from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import ValidationError as DRFValidationError
+from rest_framework.response import Response
+
 from apps.core.decorators.api_permission import HasPermission
-from apps.core.logger import operation_analysis_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.operation_analysis.models.models import NetworkTopology
 from apps.operation_analysis.serializers.network_topology_serializers import (
@@ -45,12 +51,6 @@ from apps.operation_analysis.services.network_topology import canvas_config
 from apps.operation_analysis.services.network_topology.runtime import NetworkTopologyRuntimeService
 from apps.operation_analysis.services.network_topology.weops_adapter import WeOpsTopologyAdapter, WeOpsTopologyAdapterError
 from apps.operation_analysis.views.view import BuiltinVisibleMixin, _create_canvas_share_response
-from django.core.exceptions import ValidationError as DjangoValidationError
-from rest_framework import permissions, status
-from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
-from rest_framework.exceptions import ValidationError as DRFValidationError
-from rest_framework.response import Response
 
 # --------------------------------------------------------------------------- #
 # Adapter factory                                                               #
@@ -321,7 +321,7 @@ class NetworkTopologyViewSet(BuiltinVisibleMixin, AuthViewSet):
         """Proxy: list the interfaces of a WeOps node.
 
         ``node_ref`` comes URL-encoded from the frontend (a JSON dict of
-        ``bk_obj_id`` / ``bk_inst_uuid`` / ``network_collect_*`` /
+        ``bk_obj_id`` / ``bk_inst_id`` / ``network_collect_*`` /
         ``plugin_*`` fields). We decode it back into a dict before
         handing it to the adapter, which re-encodes it for the upstream
         path segment.

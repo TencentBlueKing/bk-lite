@@ -24,6 +24,7 @@ import type {
 } from '@/app/ops-analysis/types/dashBoard';
 import type { DisplayColumnRow } from '../utils/columnProbing';
 import CompactEmptyState from '@/components/compact-empty-state';
+import { ConfigGroupTitle } from '../configTitles';
 import { ActionInteractionModal } from './actionInteractionModal';
 import { ColumnCellStyleModal } from './columnCellStyleModal';
 
@@ -319,16 +320,11 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
   ];
 
   return (
-    <div className="mb-6">
-      <div className="mb-4 flex items-center gap-2 font-bold text-(--color-text-1)">
-        <span>{t('dashboard.tableSettings')}</span>
-      </div>
-
-      <div className="mb-4">
-        <div className="mb-2 flex items-center justify-between">
-          <span className="inline-flex items-center gap-1.5 font-medium">
-            <span>{t('dashboard.displayColumns')}</span>
-            {invalidConfiguredFieldKeys.length > 0 && (
+    <div className="space-y-5">
+      <div>
+        <ConfigGroupTitle
+          extra={
+            invalidConfiguredFieldKeys.length > 0 ? (
               <Tooltip
                 title={(
                   t('dashboard.invalidConfiguredFieldsTip') ||
@@ -337,50 +333,54 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
               >
                 <ExclamationCircleOutlined className="text-[14px] text-[var(--color-warning)]" />
               </Tooltip>
-            )}
-          </span>
-          <div className="flex gap-2">
-            <Tooltip
-              title={
-                t('dashboard.reProbeColumnsTip') ||
-                '将基于当前数据源和参数重新探测并恢复默认列，同时保留已有自定义列'
-              }
-            >
-              <Button
-                size="small"
-                onClick={onReProbeColumns}
-                loading={isProbingColumns}
-                type={paramsChangedAfterProbe ? 'primary' : 'default'}
+            ) : null
+          }
+          actions={
+            <div className="flex gap-2">
+              <Tooltip
+                title={
+                  t('dashboard.reProbeColumnsTip') ||
+                  '将基于当前数据源和参数重新探测并恢复默认列，同时保留已有自定义列'
+                }
               >
-                {t('dashboard.reProbeColumns') || '重新探测列'}
-              </Button>
-            </Tooltip>
-            <Dropdown
-              trigger={['click']}
-              menu={{
-                items: [
-                  {
-                    key: 'data',
-                    label: t('dashboard.addDataColumn'),
-                  },
-                  {
-                    key: 'actions',
-                    label: t('dashboard.addOperationColumn'),
-                  },
-                ],
-                onClick: ({ key }) =>
-                  onAddNewDisplayColumn(
-                    key === 'actions' ? 'actions' : 'data',
-                  ),
-              }}
-            >
-              <Button type="dashed" size="small" icon={<PlusCircleOutlined />}>
-                {t('common.add')}
-                <DownOutlined />
-              </Button>
-            </Dropdown>
-          </div>
-        </div>
+                <Button
+                  size="small"
+                  onClick={onReProbeColumns}
+                  loading={isProbingColumns}
+                  type={paramsChangedAfterProbe ? 'primary' : 'default'}
+                >
+                  {t('dashboard.reProbeColumns') || '重新探测列'}
+                </Button>
+              </Tooltip>
+              <Dropdown
+                trigger={['click']}
+                menu={{
+                  items: [
+                    {
+                      key: 'data',
+                      label: t('dashboard.addDataColumn'),
+                    },
+                    {
+                      key: 'actions',
+                      label: t('dashboard.addOperationColumn'),
+                    },
+                  ],
+                  onClick: ({ key }) =>
+                    onAddNewDisplayColumn(
+                      key === 'actions' ? 'actions' : 'data',
+                    ),
+                }}
+              >
+                <Button type="dashed" size="small" icon={<PlusCircleOutlined />}>
+                  {t('common.add')}
+                  <DownOutlined />
+                </Button>
+              </Dropdown>
+            </div>
+          }
+        >
+          {t('dashboard.displayColumns')}
+        </ConfigGroupTitle>
         {displayColumns.length > 0 ? (
           <div className="pt-1">
             <CustomTable
@@ -388,7 +388,9 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
               columns={displayColumnTableColumns}
               dataSource={displayColumns}
               pagination={false}
-              scroll={{ y: 320 }}
+              scroll={
+                displayColumns.length > 8 ? { y: 320 } : undefined
+              }
               size="small"
               rowDraggable
               onRowDragEnd={(targetTableData) =>
@@ -414,20 +416,21 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
 
       {showFilterFields && (
         <div>
-          <div className="mb-2 flex items-center justify-between">
-            <span className="font-medium">
-              {t('dashboard.filterFields')}
-            </span>
-            <Button
-              type="dashed"
-              size="small"
-              icon={<PlusCircleOutlined />}
-              onClick={onAddNewFilterField}
-              disabled={filterFieldOptions.length === 0}
-            >
-              {t('common.add')}
-            </Button>
-          </div>
+          <ConfigGroupTitle
+            actions={
+              <Button
+                type="dashed"
+                size="small"
+                icon={<PlusCircleOutlined />}
+                onClick={onAddNewFilterField}
+                disabled={filterFieldOptions.length === 0}
+              >
+                {t('common.add')}
+              </Button>
+            }
+          >
+            {t('dashboard.filterFields')}
+          </ConfigGroupTitle>
           {filterFieldOptions.length === 0 ? (
             <CompactEmptyState description={t('dashboard.noSchemaFields')} />
           ) : filterFields.length > 0 ? (
@@ -436,7 +439,7 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
               columns={filterFieldColumns}
               dataSource={filterFields}
               pagination={false}
-              scroll={{ y: 320 }}
+              scroll={filterFields.length > 8 ? { y: 320 } : undefined}
             />
           ) : (
             <CompactEmptyState description={t('dashboard.noFilterFields')} />

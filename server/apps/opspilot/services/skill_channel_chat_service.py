@@ -38,6 +38,14 @@ PAGE_CONTEXT_FOCUSED_GUIDE = (
     "问使用率或容量时优先用 KPI 快照里的「指标名: 数值」，不要把吞吐、流量或错误速率图当成占用百分比。"
     "禁止回答、复述或续写历史对话里已经分析过的其它图表。"
 )
+PAGE_CONTEXT_RANKING_GUIDE = (
+    "本轮用户问题是「{question}」，已定位到图表{names}。"
+    "只根据本轮 <current_page> 中的截图与文字回答这一问，"
+    "不要沿用上一问的结论、表格、图表名或时间范围。"
+    "截图上可能没有标题，以这段文字中的图表名与「序列」里的排行项为准。"
+    "问 Top 或排行时按图表列出各挂载点或设备及其数值，不要只用 KPI 快照里的单一占用百分比代替排行。"
+    "禁止回答、复述或续写历史对话里已经分析过的其它图表。"
+)
 # ~600px 截图按 OpenAI high-detail 估算：ceil(600/512)^2 * 170 + 85
 PAGE_CONTEXT_IMAGE_TOKEN_ESTIMATE = 765
 # 单轮页面内容（快照+图）估算超限：拒绝问答；会话累计超限：提示新开会话。测试可 patch。
@@ -177,6 +185,8 @@ _QUESTION_TITLE_ALIASES = (
     ("使用时间", "时间分布"),
     ("时间分布", "使用时间"),
 )
+# 避免 desktop/stop 这类词误伤；「磁盘使用率top」里的 top 仍算排行。
+_RANKING_MARKER_RE = re.compile(r"(?:^|[^a-z])top(?:[^a-z]|$)|排行")
 
 
 def _chart_qualifiers(text: str) -> set[str]:
@@ -192,6 +202,10 @@ def _qualifiers_conflict(left: str, right: str) -> bool:
     left_quals = _chart_qualifiers(left)
     right_quals = _chart_qualifiers(right)
     return bool(left_quals and right_quals and left_quals.isdisjoint(right_quals))
+
+
+def _has_ranking_marker(text: str) -> bool:
+    return bool(_RANKING_MARKER_RE.search(_normalize_chart_text(text)))
 
 
 def chart_title_matches_question(title: str, question: str) -> bool:
@@ -220,6 +234,8 @@ def chart_title_matches_question(title: str, question: str) -> bool:
 
 def _caption_series_matches_question(caption: str, question: str) -> bool:
     """序列里出现「磁盘使用率」这类完整度量时，允许命中综合趋势图。"""
+    if _has_ranking_marker(question):
+        return False
     cap = _normalize_chart_text(caption)
     q = _normalize_chart_text(question)
     if not cap or len(q) < 2:
@@ -276,7 +292,10 @@ def _page_context_guide(focused_titles: list[str], question: str = "") -> str:
     if not titles:
         return PAGE_CONTEXT_GUIDE
     names = "、".join(f"《{title}》" for title in titles)
-    return PAGE_CONTEXT_FOCUSED_GUIDE.format(question=str(question or "").strip(), names=names)
+    question_text = str(question or "").strip()
+    if _has_ranking_marker(question_text) and any(_has_ranking_marker(title) for title in titles):
+        return PAGE_CONTEXT_RANKING_GUIDE.format(question=question_text, names=names)
+    return PAGE_CONTEXT_FOCUSED_GUIDE.format(question=question_text, names=names)
 
 
 def _focused_titles_from_page_context(question: str, page_context) -> list[str]:
@@ -299,26 +318,48 @@ def _history_for_focused_charts(history: list[dict], focused_titles: list[str]) 
 
 
 def _focus_page_context(question: str, snapshot: dict) -> dict:
-    """问题点名了图表时，只保留对应截图，避免把上一问的图再喂一遍。"""
-    images = [item for item in (snapshot.get("images") or []) if isinstance(item, dict)]
-    if not images or not str(question or "").strip():
+    """问题点名了图表时，只保留对应截图与匹配的图表说明。"""
+    question_text = str(question or "").strip()
+    if not question_text:
         return snapshot
-    matched = _unique_titles([_caption_title(caption) for caption in _visible_chart_captions(snapshot) if chart_matches_question(caption, question)])
+    captions = _visible_chart_captions(snapshot)
+    if not captions:
+        return snapshot
+    matched = _unique_titles([_caption_title(caption) for caption in captions if chart_matches_question(caption, question)])
+    if _has_ranking_marker(question_text):
+        ranked = [title for title in matched if _has_ranking_marker(title)]
+        if ranked:
+            matched = ranked
     if not matched:
         return snapshot
-    kept = []
-    for image in images:
-        caption = str(image.get("caption") or "")
-        title = _caption_title(caption)
-        if title in matched or chart_matches_question(caption, question):
-            kept.append(image)
-    next_snapshot = {**snapshot, "images": kept, "_focused_titles": matched, "_focus_question": str(question or "").strip()}
+    matched_keys = {_normalize_chart_text(title) for title in matched}
+    images = [item for item in (snapshot.get("images") or []) if isinstance(item, dict)]
+    kept_images = [image for image in images if _normalize_chart_text(_caption_title(str(image.get("caption") or ""))) in matched_keys]
+    kept_captions: list[str] = []
+    seen: set[str] = set()
+    for image in kept_images:
+        caption = str(image.get("caption") or "").strip()
+        title_key = _normalize_chart_text(_caption_title(caption))
+        if caption and title_key not in seen:
+            kept_captions.append(caption)
+            seen.add(title_key)
+    for caption in captions:
+        title_key = _normalize_chart_text(_caption_title(caption))
+        if title_key in matched_keys and title_key not in seen:
+            kept_captions.append(caption)
+            seen.add(title_key)
+    next_snapshot = {
+        **snapshot,
+        "images": kept_images,
+        "_focused_titles": matched,
+        "_focus_question": question_text,
+    }
     sections = []
     for section in snapshot.get("sections") or []:
         if section.get("id") != "visible-charts":
             sections.append(section)
             continue
-        lines = [f"{idx}. {image.get('caption')}" for idx, image in enumerate(kept, start=1) if image.get("caption")]
+        lines = [f"{idx}. {caption}" for idx, caption in enumerate(kept_captions, start=1)]
         if not lines:
             continue
         sections.append({**section, "content": "\n".join(lines)})

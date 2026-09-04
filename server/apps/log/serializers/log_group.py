@@ -51,7 +51,7 @@ class LogGroupSerializer(serializers.ModelSerializer):
         request = self.context.get("request") if hasattr(self, "context") else None
         if request is not None:
             try:
-                visible_organizations = LogAccessScopeService.get_data_scope(request).data_team_ids
+                visible_organizations = LogAccessScopeService.get_visible_organization_ids(request)
             except ValueError:
                 visible_organizations = frozenset()
             organization_queryset = organization_queryset.filter(organization__in=list(visible_organizations))
@@ -109,6 +109,8 @@ class LogGroupSerializer(serializers.ModelSerializer):
     def validate_rule(self, value):
         if not isinstance(value, dict):
             raise serializers.ValidationError("日志分组规则必须是对象（object）格式")
+
+        value = LogGroupQueryBuilder.normalize_star_rule(value)
 
         try:
             LogGroupQueryBuilder.validate_rule(

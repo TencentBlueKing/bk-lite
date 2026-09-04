@@ -64,7 +64,7 @@ export default function LlamaServerDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>推理概览</div>
+          <div className={styles.sectionLabel}>健康概览</div>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
 
           <div className={styles.sectionLabel}>队列与吞吐</div>

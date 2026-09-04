@@ -256,30 +256,30 @@ const StudioChatPage: React.FC = () => {
   }, [initialMessages]);
 
   return (
-    <div className="absolute left-0 right-0 bottom-0 flex overflow-hidden" style={{ top: '56px', height: 'calc(100vh - 56px)' }}>
+    <div className="absolute inset-0 flex overflow-hidden">
       {!sidebarCollapsed && (
-        <div className="w-64 flex-shrink-0 border-r border-gray-200 bg-white flex flex-col">
+        <div className="w-64 flex-shrink-0 border-r border-[var(--color-border-1)] bg-[var(--color-bg)] flex flex-col">
           {/* 顶部智能体选择器和收缩按钮 */}
-          <div className="px-4 pt-4 pb-3 border-b border-gray-200 flex-shrink-0">
+          <div className="px-4 pt-4 pb-3 border-b border-[var(--color-border-1)] flex-shrink-0">
             <div className="flex items-center justify-between mb-3">
               <Dropdown menu={{ items: agentMenuItems }} trigger={['click']} placement="bottomLeft">
-                <div className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 rounded px-2 py-1 flex-1">
+                <div className="flex items-center gap-2 cursor-pointer hover:bg-[var(--color-fill-2)] rounded px-2 py-1 flex-1">
                   {agentLoading ? (
                     <Skeleton.Avatar active size="large" shape="circle" />
                   ) : (
                     <Icon 
                       type={currentAgent?.icon || 'jiqiren3'} 
-                      className="text-3xl text-blue-500 flex-shrink-0"
+                      className="text-3xl text-[var(--color-primary)] flex-shrink-0"
                     />
                   )}
-                  <span className="text-sm font-medium text-gray-900 truncate flex-1">
+                  <span className="text-sm font-medium text-[var(--color-text-1)] truncate flex-1">
                     {agentLoading ? <Skeleton.Input active size="small" style={{ width: 80 }} /> : (currentAgent?.name || '')}
                   </span>
-                  <Icon type="xiala" className="text-gray-400 text-xs flex-shrink-0" />
+                  <Icon type="xiala" className="text-[var(--color-text-4)] text-xs flex-shrink-0" />
                 </div>
               </Dropdown>
               <div 
-                className="w-8 h-8 rounded-full bg-white shadow-md hover:shadow-lg cursor-pointer hover:text-blue-500 transition-all ml-2 flex-shrink-0 flex items-center justify-center"
+                className="w-8 h-8 rounded-full bg-[var(--color-bg)] border border-[var(--color-border-1)] shadow-sm hover:shadow-md cursor-pointer hover:text-[var(--color-primary)] transition-all ml-2 flex-shrink-0 flex items-center justify-center"
                 onClick={() => setSidebarCollapsed(true)}
               >
                 <Icon type="xiangzuoshousuo" className="text-base" />
@@ -297,20 +297,23 @@ const StudioChatPage: React.FC = () => {
           
           <div className="flex-1 overflow-y-auto min-h-0">
             <div className="p-2">
-              <div className="text-xs text-gray-500 px-3 py-2">历史对话</div>
+              <div className="text-xs text-[var(--color-text-3)] px-3 py-2">历史对话</div>
               <List
                 dataSource={functionList}
                 loading={functionLoading}
+                className="bg-transparent [&_.ant-list-item]:border-none"
                 renderItem={(item) => (
                   <List.Item
-                    className={`cursor-pointer py-3 px-4 mx-2 mb-1 rounded hover:bg-gray-100 transition-colors border-0 group ${
-                      selectedItem === item.id ? 'bg-blue-50 hover:bg-blue-50' : ''
+                    className={`cursor-pointer py-3 px-4 mx-2 mb-1 rounded transition-colors border-0 group ${
+                      selectedItem === item.id
+                        ? '!bg-[var(--color-primary-bg-active)] hover:!bg-[var(--color-primary-bg-active)]'
+                        : '!bg-transparent hover:!bg-[var(--color-fill-2)]'
                     }`}
                     onClick={() => handleSelectSession(item.id)}
                     style={{ border: 'none' }}
                   >
                     <div className="flex items-center justify-between w-full gap-2">
-                      <div className={`text-sm px-2 font-normal flex-1 truncate ${selectedItem === item.id ? 'text-blue-600' : 'text-gray-900'}`}>
+                      <div className={`text-sm px-2 font-normal flex-1 truncate ${selectedItem === item.id ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-1)]'}`}>
                         <span className="mr-2">
                           {item.source === 'nats' ? (
                             <Tag color="orange">NATS</Tag>
@@ -331,10 +334,10 @@ const StudioChatPage: React.FC = () => {
                         okButtonProps={{ danger: true }}
                       >
                         <div
-                          className="invisible group-hover:visible flex-shrink-0 p-1 hover:bg-red-50 rounded cursor-pointer transition-all"
+                          className="invisible group-hover:visible flex-shrink-0 p-1 rounded cursor-pointer transition-all hover:bg-[var(--color-fail)]/10"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <Icon type="shanchu" className="text-gray-400 hover:text-red-500 text-base" />
+                          <Icon type="shanchu" className="text-[var(--color-text-4)] hover:text-[var(--color-fail)] text-base" />
                         </div>
                       </Popconfirm>
                     </div>
@@ -348,58 +351,58 @@ const StudioChatPage: React.FC = () => {
 
       {/* 收缩状态的侧边栏 */}
       {sidebarCollapsed && (
-        <div className="w-12 flex-shrink-0 border-r border-gray-200 bg-white flex flex-col items-center py-4 gap-3">
+        <div className="w-12 flex-shrink-0 border-r border-[var(--color-border-1)] bg-[var(--color-bg)] flex flex-col items-center py-4 gap-3">
           <div 
-            className="text-xl cursor-pointer hover:text-blue-500 transition-colors"
+            className="text-xl cursor-pointer text-[var(--color-text-2)] hover:text-[var(--color-primary)] transition-colors"
             onClick={() => setSidebarCollapsed(false)}
           >
             <Icon type="xiangyoushousuo" />
           </div>
-          <div className="h-px w-8 bg-gray-200" />
+          <div className="h-px w-8 bg-[var(--color-border-1)]" />
           <div 
             className="cursor-pointer"
             onClick={() => setSidebarCollapsed(false)}
           >
             <Icon 
               type={currentAgent?.icon || 'jiqiren3'}
-              className="text-3xl text-blue-500"
+              className="text-3xl text-[var(--color-primary)]"
             />
           </div>
-          <div className="text-xl cursor-pointer hover:text-blue-500 transition-colors">
+          <div className="text-xl cursor-pointer text-[var(--color-text-2)] hover:text-[var(--color-primary)] transition-colors">
             <Icon type="quanping1" />
           </div>
         </div>
       )}
 
       {/* 右侧对话区域 */}
-      <div className="flex-1 bg-gray-50 min-w-0 h-full">
+      <div className="flex-1 bg-[var(--color-bg)] min-w-0 h-full">
         {chatLoading ? (
           <div className="w-full h-full flex flex-col pt-8">
             <div className="flex gap-4 items-end mb-6 w-full px-8">
-              <div className="rounded-full bg-blue-100 w-12 h-12 flex items-center justify-center">
-                <Icon type="jiqiren3" className="text-2xl text-blue-500" />
+              <div className="rounded-full bg-[var(--color-primary-bg-active)] w-12 h-12 flex items-center justify-center">
+                <Icon type="jiqiren3" className="text-2xl text-[var(--color-primary)]" />
               </div>
               <div className="flex-1">
-                <div className="h-4 bg-gray-200 rounded w-2/3 mb-2 animate-pulse" />
-                <div className="h-4 bg-gray-200 rounded w-1/2 animate-pulse" />
+                <div className="h-4 bg-[var(--color-fill-2)] rounded w-2/3 mb-2 animate-pulse" />
+                <div className="h-4 bg-[var(--color-fill-2)] rounded w-1/2 animate-pulse" />
               </div>
             </div>
             <div className="flex gap-4 items-end justify-end mb-6 w-full px-8">
               <div className="flex-1 text-right">
-                <div className="h-4 bg-gray-200 rounded w-1/2 mb-2 animate-pulse inline-block" />
-                <div className="h-4 bg-gray-200 rounded w-2/3 animate-pulse inline-block" />
+                <div className="h-4 bg-[var(--color-fill-2)] rounded w-1/2 mb-2 animate-pulse inline-block" />
+                <div className="h-4 bg-[var(--color-fill-2)] rounded w-2/3 animate-pulse inline-block" />
               </div>
-              <div className="rounded-full bg-gray-100 w-12 h-12 flex items-center justify-center">
-                <Icon type="yonghu" className="text-2xl text-gray-500" />
+              <div className="rounded-full bg-[var(--color-fill-1)] w-12 h-12 flex items-center justify-center">
+                <Icon type="yonghu" className="text-2xl text-[var(--color-text-3)]" />
               </div>
             </div>
             <div className="flex gap-4 items-end mb-6 w-full px-8">
-              <div className="rounded-full bg-blue-100 w-12 h-12 flex items-center justify-center">
-                <Icon type="jiqiren3" className="text-2xl text-blue-500" />
+              <div className="rounded-full bg-[var(--color-primary-bg-active)] w-12 h-12 flex items-center justify-center">
+                <Icon type="jiqiren3" className="text-2xl text-[var(--color-primary)]" />
               </div>
               <div className="flex-1">
-                <div className="h-4 bg-gray-200 rounded w-1/2 mb-2 animate-pulse" />
-                <div className="h-4 bg-gray-200 rounded w-1/3 animate-pulse" />
+                <div className="h-4 bg-[var(--color-fill-2)] rounded w-1/2 mb-2 animate-pulse" />
+                <div className="h-4 bg-[var(--color-fill-2)] rounded w-1/3 animate-pulse" />
               </div>
             </div>
           </div>

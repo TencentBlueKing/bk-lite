@@ -126,6 +126,10 @@
     "disable": "Disabled",
     "navigation": "Navigation",
     "appList": "App List",
+    "scrollAppsLeft": "View apps to the left",
+    "scrollAppsRight": "View apps to the right",
+    "expandSideNav": "Expand navigation",
+    "collapseSideNav": "Collapse navigation",
     "clear": "Clear",
     "selectAll": "Select All",
     "deselectAll": "Deselect All",
@@ -456,7 +460,8 @@
     "node": "Used to centrally manage nodes under various cloud regions and install various probes on each node to collect monitoring data, configuration information, logs and other information",
     "ops-console": "Unified operations console for managing and monitoring all operational activities",
     "job": "Quickly create and execute jobs, unified management of script execution, file distribution and scheduled tasks",
-    "patch": "Centrally manage system patches with scanning, installation, and patch library maintenance to continuously reduce security risks."
+    "patch": "Centrally manage system patches with scanning, installation, and patch library maintenance to continuously reduce security risks.",
+    "apm": "Application performance and tracing platform that provides service metrics, trace exploration, and alert policies to help quickly locate latency and errors and keep services stable"
   },
   "tag": {
     "user_management": "User Management",
@@ -499,6 +504,10 @@
     "scheduled_task": "Scheduled Task",
     "patch_scan": "Patch Scanning",
     "patch_install": "Patch Installation",
-    "patch_library": "Patch Library"
+    "patch_library": "Patch Library",
+    "apm_integration": "App Integration",
+    "service_red": "Service Metrics",
+    "trace_explore": "Traces",
+    "alert_center": "Alert Policies"
   }
 }

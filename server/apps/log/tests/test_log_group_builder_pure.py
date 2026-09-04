@@ -21,9 +21,24 @@ def test_json_to_logsql_empty_rule_returns_empty():
     assert LogGroupQueryBuilder.json_to_logsql_expression({}) == ""
 
 
+@pytest.mark.parametrize(
+    "rule",
+    [
+        {"mode": None, "conditions": []},
+        {"mode": None},
+    ],
+)
+def test_json_to_logsql_null_mode_empty_conditions_is_star(rule):
+    assert LogGroupQueryBuilder.json_to_logsql_expression(rule) == ""
+    assert LogGroupQueryBuilder.normalize_star_rule(rule) == {}
+    classification, mode = LogGroupQueryBuilder.classify_rule_mode(rule)
+    assert classification == LogGroupQueryBuilder.MODE_VALID
+    assert mode == "AND"
+
+
 @pytest.mark.parametrize("rule", [None, [], "", 0, False])
 def test_json_to_logsql_falsey_non_object_rule_raises(rule):
-    with pytest.raises(ValueError, match="AND or OR"):
+    with pytest.raises(ValueError, match=LogGroupQueryBuilder.INVALID_RULE_MODE_MESSAGE):
         LogGroupQueryBuilder.json_to_logsql_expression(rule)
 
 
@@ -63,7 +78,7 @@ def test_json_to_logsql_unknown_mode_raises():
         ],
     }
 
-    with pytest.raises(ValueError, match="AND or OR"):
+    with pytest.raises(ValueError, match=LogGroupQueryBuilder.INVALID_RULE_MODE_MESSAGE):
         LogGroupQueryBuilder.json_to_logsql_expression(rule)
 
 
@@ -180,6 +195,13 @@ def test_build_query_combines_user_and_group_filter():
 
 def test_build_query_all_empty_rule_groups_returns_user_query():
     g = _group("g1", rule={})
+    out, info = LogGroupQueryBuilder.build_query_with_groups("host:web", ["g1"], resolved_groups=[g])
+    assert out == "host:web"
+    assert info[0]["status"] == "empty_rule"
+
+
+def test_build_query_null_mode_empty_conditions_is_empty_rule():
+    g = _group("g1", rule={"mode": None, "conditions": []})
     out, info = LogGroupQueryBuilder.build_query_with_groups("host:web", ["g1"], resolved_groups=[g])
     assert out == "host:web"
     assert info[0]["status"] == "empty_rule"

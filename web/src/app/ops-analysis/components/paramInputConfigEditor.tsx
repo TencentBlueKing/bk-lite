@@ -66,7 +66,8 @@ interface SortableStaticRowProps {
   onAddAfter: (uid: string) => void;
   onRemove: (uid: string) => void;
   showRemove: boolean;
-  placeholder: string;
+  valuePlaceholder: string;
+  labelPlaceholder: string;
 }
 
 const newId = () => Math.random().toString(36).slice(2);
@@ -77,7 +78,8 @@ const SortableStaticRow: React.FC<SortableStaticRowProps> = ({
   onAddAfter,
   onRemove,
   showRemove,
-  placeholder,
+  valuePlaceholder,
+  labelPlaceholder,
 }) => {
   const { attributes, listeners, setNodeRef, transform, transition } =
     useSortable({ id: row.uid });
@@ -97,13 +99,13 @@ const SortableStaticRow: React.FC<SortableStaticRowProps> = ({
       <Input
         className="mr-[10px] w-2/5"
         value={String(row.value)}
-        placeholder={String(row.value).trim() ? undefined : placeholder}
+        placeholder={valuePlaceholder}
         onChange={(event) => onChange(row.uid, 'value', event.target.value)}
       />
       <Input
         className="mr-[10px] w-2/5"
         value={row.label}
-        placeholder={row.label.trim() ? undefined : placeholder}
+        placeholder={labelPlaceholder}
         onChange={(event) => onChange(row.uid, 'label', event.target.value)}
       />
       <PlusOutlined
@@ -609,15 +611,6 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
                     strategy={verticalListSortingStrategy}
                   >
                     <ul className="pt-1">
-                      <li className="mb-2 flex items-center text-sm text-[var(--color-text-2)]">
-                        <span className="mr-[4px] w-[14px]" />
-                        <span className="mr-[10px] w-2/5">
-                          {t('paramInput.static.value')}
-                        </span>
-                        <span className="mr-[10px] w-2/5">
-                          {t('paramInput.static.label')}
-                        </span>
-                      </li>
                       {staticRows.map((row) => (
                         <SortableStaticRow
                           key={row.uid}
@@ -626,7 +619,8 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
                           onAddAfter={handleAddStaticRowAfter}
                           onRemove={handleRemoveStaticRow}
                           showRemove={staticRows.length > 1}
-                          placeholder={t('common.inputMsg')}
+                          valuePlaceholder={t('paramInput.static.value')}
+                          labelPlaceholder={t('paramInput.static.label')}
                         />
                       ))}
                     </ul>

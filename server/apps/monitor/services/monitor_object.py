@@ -189,6 +189,7 @@ class MonitorObjectService:
         visible_organization_ids=None,
         vm_params=None,
         instance_id=None,
+        instance_ids=None,
     ):
         """获取监控对象实例"""
         qs = qs.filter(
@@ -197,7 +198,10 @@ class MonitorObjectService:
             is_active=True,
         )
         # 可选精确主键过滤（存储键形态，如 "('h1',)"）；与 name 模糊互不干扰。
-        if instance_id:
+        # instance_ids 优先于单值 instance_id，供已选资产回填等批量场景使用。
+        if instance_ids:
+            qs = qs.filter(id__in=list(instance_ids))
+        elif instance_id:
             qs = qs.filter(id=instance_id)
         if name:
             # 与列表「IP信息」/ ${resource_ip} 同源：summary_facts['asset.ip'] 优先字段。

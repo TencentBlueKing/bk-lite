@@ -5,13 +5,15 @@ import useApiClient from '@/utils/request';
 import { UserItem, ModelItem } from '@/app/cmdb/types/assetManage';
 import { useModelApi, useUserConfigApi } from '@/app/cmdb/api';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
-import Spin from '@/components/spin';
 import { usePathname } from 'next/navigation';
 import { useAliveController } from 'react-activation';
+
 interface CommonContextType {
   userList: UserItem[];
   modelList: ModelItem[];
   refreshModelList: () => Promise<void>;
+  /** 公共数据后台加载中；页面可先渲染再等模型/用户补齐 */
+  commonLoading: boolean;
 }
 
 const CommonContext = createContext<CommonContextType | null>(null);
@@ -19,7 +21,7 @@ const CommonContext = createContext<CommonContextType | null>(null);
 const CommonContextProvider = ({ children }: { children: React.ReactNode }) => {
   const [userList, setUserList] = useState<UserItem[]>([]);
   const [modelList, setModelList] = useState<ModelItem[]>([]);
-  const [pageLoading, setPageLoading] = useState(false);
+  const [commonLoading, setCommonLoading] = useState(false);
   const { get } = useApiClient();
   const { getModelList } = useModelApi();
   const { getAllConfigs } = useUserConfigApi();
@@ -72,23 +74,24 @@ const CommonContextProvider = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     const initializeData = async () => {
-      setPageLoading(true);
+      setCommonLoading(true);
       try {
         await Promise.all([fetchUserList(), fetchModelList(), fetchUserConfigs()]);
       } finally {
-        setPageLoading(false);
+        setCommonLoading(false);
       }
     };
 
     initializeData();
   }, []);
-  return pageLoading ? (
-    <Spin></Spin>
-  ) : (
+
+  // 不再用全屏 Spin 挡住子路由：布局或详情壳切换导致 remount 时也不再整页 LOADING
+  return (
     <CommonContext.Provider
       value={{
         userList,
         modelList,
+        commonLoading,
         refreshModelList: fetchModelList,
       }}
     >

@@ -36,6 +36,12 @@ import {
   resolveViewColumns,
 } from '@/app/monitor/(pages)/view/viewColumnPreference';
 import { buildInstanceViewColumns } from '@/app/monitor/(pages)/view/instanceViewColumns';
+import { runWithConcurrency } from '@/app/monitor/dashboards/shared/utils/concurrency';
+
+/** 已选资产展示名回填：单次批量查询上限（与后端 _MAX_INSTANCE_ID_IN 对齐量级）。 */
+const HYDRATE_LABEL_BATCH_SIZE = 100;
+/** 批量回填的 HTTP 并发上限，避免打开弹窗时打满数据库连接。 */
+const HYDRATE_LABEL_CONCURRENCY = 2;
 
 const filterTreeData = (treeData: any, searchText: string) => {
   if (!searchText) return treeData;
@@ -197,24 +203,35 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
     const hydrateSelectedLabels = async (keys: string[]) => {
       const uniqueKeys = [...new Set(keys.filter(Boolean))];
       if (!uniqueKeys.length) return;
-      const results = await Promise.all(
-        uniqueKeys.map(async (instanceId) => {
+
+      const batches = Array.from(
+        { length: Math.ceil(uniqueKeys.length / HYDRATE_LABEL_BATCH_SIZE) },
+        (_, index) =>
+          uniqueKeys.slice(
+            index * HYDRATE_LABEL_BATCH_SIZE,
+            (index + 1) * HYDRATE_LABEL_BATCH_SIZE
+          )
+      );
+
+      const batchResults = await runWithConcurrency(
+        batches,
+        HYDRATE_LABEL_CONCURRENCY,
+        async (batch) => {
           try {
             const data = await getInstanceList(monitorObject as React.Key, {
               page: 1,
-              page_size: 1,
-              instance_id: instanceId,
+              page_size: batch.length,
+              instance_id_in: batch,
               add_metrics: false,
             });
-            return data?.results?.[0] as TableDataItem | undefined;
+            return (data?.results || []) as TableDataItem[];
           } catch {
-            return undefined;
+            return [] as TableDataItem[];
           }
-        })
+        }
       );
-      mergeSelectedLabels(
-        results.filter(Boolean) as TableDataItem[]
-      );
+
+      mergeSelectedLabels(batchResults.flat());
     };
 
     const fetchColumns = async () => {

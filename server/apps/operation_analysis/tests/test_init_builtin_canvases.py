@@ -1061,6 +1061,27 @@ def test_init_builtin_canvases_marks_existing_directory_builtin():
 
 
 @pytest.mark.django_db
+def test_init_builtin_canvases_creates_flow_dashboard():
+    from apps.system_mgmt.models.user import Group
+
+    Group.objects.get_or_create(name="Default")
+    _ensure_default_namespace()
+    call_command("init_builtin_canvases")
+
+    dashboard = Dashboard.objects.get(name="Flow 网络流量分析仪表盘", is_build_in=True)
+    assert dashboard.build_in_key == "dashboard::Flow网络流量分析仪表盘"
+    assert dashboard.directory.build_in_key == "__builtin__"
+    widget_ids = {
+        child["id"]
+        for group in dashboard.view_sets
+        if group.get("itemType") == "group"
+        for child in (group.get("subGridOpts") or {}).get("children") or []
+    }
+    assert "flow-node-graph-ip" in widget_ids
+    assert "flow-topn" in widget_ids
+
+
+@pytest.mark.django_db
 def test_init_builtin_canvases_merges_extra_yaml_files(tmp_path, settings, monkeypatch):
     from apps.operation_analysis.management.commands import init_builtin_canvases
     from apps.system_mgmt.models.user import Group
@@ -1118,6 +1139,7 @@ architectures: []
     )
 
     monkeypatch.setattr(init_builtin_canvases, "YAML_FILE_PATH", str(base_yaml))
+    monkeypatch.setattr(init_builtin_canvases, "FLOW_DASHBOARD_YAML_PATH", str(missing_yaml))
     settings.OPERATION_ANALYSIS_BUILTIN_CANVAS_FILES = [str(enterprise_yaml), str(missing_yaml)]
 
     call_command("init_builtin_canvases")

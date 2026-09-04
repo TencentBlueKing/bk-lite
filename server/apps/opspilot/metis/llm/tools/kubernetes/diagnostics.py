@@ -8,6 +8,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
 from apps.opspilot.metis.llm.tools.kubernetes.instance_scope import prepare_point_instance, run_scan_tool
+from apps.opspilot.metis.llm.tools.kubernetes.resources import get_kubernetes_pod_logs, get_kubernetes_previous_pod_logs
 from apps.opspilot.metis.llm.tools.kubernetes.utils import coerce_int, format_bytes, parse_resource_quantity, prepare_context
 
 _EVENT_TIME_MIN = datetime.min.replace(tzinfo=timezone.utc)
@@ -441,7 +442,7 @@ def get_recently_restarted_kubernetes_pods(namespace=None, top_n: int = 10, inst
     - 需要看谁最近刚重启过，而不是谁累计 restartCount 最高
 
     **不要用此工具：**
-    - 已知具体 Pod 问重启原因 → diagnose_kubernetes_pod_issues
+    - 已知具体 Pod 问重启原因 → collect_pod_restart_evidence（目录没有则用 diagnose_kubernetes_pod_issues）
     - 只想按累计次数找长期不稳定 Pod → get_high_restart_kubernetes_pods
     - 问今天/近 N 小时重启了几次 → 本工具给不出时间窗次数
 
@@ -1010,3 +1011,220 @@ def diagnose_kubernetes_pod_issues(namespace, pod_name, instance_name=None, conf
         return json.dumps(diagnosis)
     except ApiException as e:
         return json.dumps({"error": f"诊断Pod失败: {str(e)}"})
+
+
+def _pod_log_text(*, previous: bool, namespace, pod_name, container, lines, tail, config) -> str:
+    """读取当前/上一轮日志正文。抽成模块函数便于测试替身，避免 patch StructuredTool.invoke。"""
+    tool = get_kubernetes_previous_pod_logs if previous else get_kubernetes_pod_logs
+    return tool.func(
+        namespace=namespace,
+        pod_name=pod_name,
+        container=container,
+        lines=lines,
+        tail=tail,
+        config=config,
+    )
+
+
+def _restart_log_slice(content: str, *, role: str) -> dict:
+    text = str(content or "").strip()
+    unavailable = (not text) or any(
+        marker in text
+        for marker in (
+            "没有可用的 previous",
+            "没有上一次实例的日志",
+            "没有 previous 日志",
+            "没有日志输出",
+        )
+    )
+    return {
+        "role": role,
+        "available": not unavailable,
+        "content": text,
+    }
+
+
+def _container_needs_current_tail(container, phase: str) -> bool:
+    if str(phase or "") in {"Failed"}:
+        return True
+    if not getattr(container, "ready", True):
+        return True
+    state = getattr(container, "state", None)
+    waiting = getattr(state, "waiting", None) if state is not None else None
+    reason = str(getattr(waiting, "reason", "") or "")
+    if reason in {"CrashLoopBackOff", "Error", "CreateContainerError"}:
+        return True
+    if getattr(state, "terminated", None) is not None:
+        return True
+    return False
+
+
+def _pick_restart_container(statuses, container_name: str | None):
+    items = list(statuses or [])
+    if not items:
+        return None
+    if container_name:
+        for item in items:
+            if getattr(item, "name", None) == container_name:
+                return item
+        return None
+    return max(items, key=lambda item: int(getattr(item, "restart_count", 0) or 0))
+
+
+def _container_started_at(container) -> str | None:
+    running = getattr(getattr(container, "state", None), "running", None)
+    started = getattr(running, "started_at", None) if running is not None else None
+    if started is None:
+        terminated = getattr(getattr(container, "state", None), "terminated", None)
+        started = getattr(terminated, "started_at", None) if terminated is not None else None
+    return started.isoformat() if started else None
+
+
+@tool()
+def collect_pod_restart_evidence(
+    namespace,
+    pod_name,
+    container=None,
+    instance_name=None,
+    config: RunnableConfig = None,
+):
+    """
+    已知具体 Pod 时，采集重启原因取证包（时钟 + lastState + 事件 + 死前日志）。
+
+    **何时使用此工具：**
+    - 用户指定 namespace/pod，问为什么重启、频繁重启、重启原因
+    - 不要用于告警 RCA、查看当前日志、按重启时间列 Top-N、配置巡检
+
+    **工具能力：**
+    - 区分 finishedAt（上一轮死亡/开始重启）与 startedAt（这一轮起来）
+    - 默认取 previous 日志末尾（死前现场），不取当前轮「现在往前」的尾巴
+    - 仅当容器当前未 Ready / CrashLoop 时才附加 current_tail
+    - previous 不存在或为空是终态，不要再降 lines 或改拉当前尾巴
+
+    Args:
+        namespace (str): Pod 所在命名空间
+        pod_name (str): Pod 名称
+        container (str, optional): 多容器时指定；省略则取重启次数最高的容器
+        instance_name (str, optional): 多实例时指定集群
+        config (RunnableConfig): 工具配置
+    """
+    config, instance_error = prepare_point_instance(config, instance_name)
+    if instance_error:
+        return instance_error
+    prepare_context(config)
+    try:
+        core_v1 = client.CoreV1Api()
+        try:
+            pod = core_v1.read_namespaced_pod(pod_name, namespace)
+        except ApiException as e:
+            if e.status == 404:
+                return json.dumps({"error": f"Pod {pod_name} 在命名空间 {namespace} 中不存在"})
+            raise
+
+        statuses = list(getattr(pod.status, "container_statuses", None) or [])
+        chosen = _pick_restart_container(statuses, container)
+        if chosen is None and statuses:
+            return json.dumps({"error": f"在 Pod {pod_name} 中找不到容器 {container}"})
+        if chosen is None:
+            return json.dumps(
+                {
+                    "pod_name": pod_name,
+                    "namespace": namespace,
+                    "phase": pod.status.phase,
+                    "missing": ["container_status"],
+                    "logs": {
+                        "previous_tail": {"role": "previous_tail", "available": False, "content": "", "skipped": True, "why": "无容器状态"},
+                        "current_tail": {"role": "current_tail", "available": False, "content": "", "skipped": True, "why": "无容器状态"},
+                        "current_head": {"role": "current_head", "available": False, "content": "", "skipped": True, "why": "重启取证默认不取当前轮开头"},
+                    },
+                }
+            )
+
+        last_state = _container_last_state(chosen)
+        restart_count = int(getattr(chosen, "restart_count", 0) or 0)
+        clock = {
+            "finished_at": last_state.get("finished_at"),
+            "started_at": _container_started_at(chosen),
+            "start_time_note": "pod.status.startTime 是首次上节点时间，容器重启通常不变，不当重启时间",
+        }
+        events = core_v1.list_namespaced_event(namespace, field_selector=f"involvedObject.name={pod_name},involvedObject.kind=Pod")
+        recent_events = []
+        for event in sorted(events.items, key=_event_sort_time, reverse=True)[:10]:
+            recent_events.append(
+                {
+                    "type": event.type,
+                    "reason": event.reason,
+                    "message": event.message,
+                    "count": event.count,
+                    "last_timestamp": event.last_timestamp.isoformat() if event.last_timestamp else None,
+                }
+            )
+
+        container_name = chosen.name
+        log_kwargs = {
+            "namespace": namespace,
+            "pod_name": pod_name,
+            "container": container_name,
+            "lines": 80,
+            "tail": True,
+            "config": config,
+        }
+        previous_tail = {
+            "role": "previous_tail",
+            "available": False,
+            "content": "",
+            "skipped": True,
+            "why": "restart_count=0 且无 lastState，没有上一轮",
+        }
+        if restart_count > 0 or last_state:
+            previous_tail = _restart_log_slice(
+                _pod_log_text(previous=True, **log_kwargs),
+                role="previous_tail",
+            )
+            previous_tail["skipped"] = False
+            if not previous_tail["available"]:
+                previous_tail["why"] = "kubelet 未保留 previous 日志，这是终态，不要改拉当前尾巴或降低 lines"
+
+        current_tail = {
+            "role": "current_tail",
+            "available": False,
+            "content": "",
+            "skipped": True,
+            "why": "当前已 Ready，尾巴是此刻日志，不是上一轮死因",
+        }
+        if _container_needs_current_tail(chosen, pod.status.phase):
+            current_tail = _restart_log_slice(
+                _pod_log_text(previous=False, **log_kwargs),
+                role="current_tail",
+            )
+            current_tail["skipped"] = False
+            current_tail["why"] = "当前未就绪或仍在 CrashLoop，附加此刻尾巴作对照，不是 finishedAt 现场"
+
+        return json.dumps(
+            {
+                "pod_name": pod_name,
+                "namespace": namespace,
+                "container": container_name,
+                "phase": pod.status.phase,
+                "ready": bool(getattr(chosen, "ready", False)),
+                "restart_count": restart_count,
+                "restart_count_note": _RESTART_COUNT_NOTE,
+                "clock": clock,
+                "last_state": last_state,
+                "events": recent_events,
+                "logs": {
+                    "previous_tail": previous_tail,
+                    "current_tail": current_tail,
+                    "current_head": {
+                        "role": "current_head",
+                        "available": False,
+                        "content": "",
+                        "skipped": True,
+                        "why": "重启取证默认不取当前轮开头；问启动过程再调 get_kubernetes_pod_logs 且 tail=false",
+                    },
+                },
+                "missing": [] if previous_tail.get("available") or previous_tail.get("skipped") else ["previous_container_logs"],
+            }
+        )
+    except ApiException as e:
+        return json.dumps({"error": f"采集 Pod 重启取证失败: {str(e)}"})

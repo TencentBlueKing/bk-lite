@@ -50,7 +50,7 @@ export default function PostgresqlDashboardPage() {
   const timeKey = JSON.stringify(timeValues);
 
   useEffect(() => {
-    if (!isDashboardMode) {
+    if (!isDashboardMode || !idValues.length) {
       setTopDb({});
       return;
     }

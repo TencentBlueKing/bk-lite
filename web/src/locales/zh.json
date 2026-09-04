@@ -126,6 +126,10 @@
     "disable": "禁用",
     "navigation": "工作台",
     "appList": "应用列表",
+    "scrollAppsLeft": "向左查看应用",
+    "scrollAppsRight": "向右查看应用",
+    "expandSideNav": "展开导航",
+    "collapseSideNav": "收起导航",
     "clear": "清空",
     "selectAll": "全选",
     "deselectAll": "取消全选",
@@ -456,7 +460,8 @@
     "node": "用于集中管理各个云区域下的节点，为各个节点安装各类探针，以便进行监控数据、配置信息、日志等信息的采集",
     "ops-console": "统一运维控制台，用于管理和监控所有运维活动",
     "job": "快速创建并执行作业，统一管理脚本执行、文件分发和定时任务",
-    "patch": "集中管理系统补丁，支持补丁扫描、安装与补丁库维护，帮助持续降低安全风险。"
+    "patch": "集中管理系统补丁，支持补丁扫描、安装与补丁库维护，帮助持续降低安全风险。",
+    "apm": "用于观测应用请求性能与依赖调用的平台，提供服务指标、调用链探索和告警策略等功能，帮助快速定位延迟与错误，保障业务稳定"
   },
   "tag": {
     "user_management": "用户管理",
@@ -499,6 +504,10 @@
     "scheduled_task": "定时任务",
     "patch_scan": "补丁扫描",
     "patch_install": "补丁安装",
-    "patch_library": "补丁库"
+    "patch_library": "补丁库",
+    "apm_integration": "应用接入",
+    "service_red": "服务指标",
+    "trace_explore": "调用链",
+    "alert_center": "告警策略"
   }
 }

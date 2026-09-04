@@ -16,6 +16,8 @@ import type {
   Application3DWallItem,
 } from '@/app/ops-analysis/types/sceneWidget';
 import type { ScreenRenderContext } from '@/app/ops-analysis/types/dashBoard';
+import type { OpsAnalysisWidgetSurface } from '@/app/ops-analysis/utils/chartTypeSurface';
+import { isSceneWidgetAllowedOnSurface } from '@/app/ops-analysis/types/sceneWidgetCapability';
 import type { Application3DSceneController } from './application3DScene';
 import Application3DDetail from './application3DDetail';
 import {
@@ -29,9 +31,11 @@ interface Application3DProps {
   refreshKey?: string | number;
   editMode?: boolean;
   screenRenderContext?: ScreenRenderContext;
+  surface?: OpsAnalysisWidgetSurface;
   onReady?: (ready: boolean) => void;
   onError?: (message: string) => void;
   runtimeActive?: boolean;
+  onRawData?: (data: unknown) => void;
 }
 
 const getErrorCode = (error: unknown): string | undefined => {
@@ -52,9 +56,11 @@ export default function Application3D({
   refreshKey,
   editMode = false,
   screenRenderContext,
+  surface,
   onReady,
   onError,
   runtimeActive = true,
+  onRawData,
 }: Application3DProps) {
   const { t } = useTranslation();
   const translateRef = useRef(t);
@@ -102,7 +108,9 @@ export default function Application3D({
   const [architectureError, setArchitectureError] = useState('');
   const [architectureHost, setArchitectureHost] = useState<ArchitectureHostSelection | null>(null);
   const architectureOpenRef = useRef(false);
-  const allowedOnSurface = screenRenderContext?.enabled === true;
+  const allowedOnSurface =
+    isSceneWidgetAllowedOnSurface('application3D', surface) ||
+    screenRenderContext?.enabled === true;
   const wallMotionRef = useRef<'intro' | 'filter' | 'none'>('intro');
   const wallRef = useRef(wall);
   const selectedRef = useRef(selected);
@@ -111,6 +119,12 @@ export default function Application3D({
   selectedRef.current = selected;
   detailOpenRef.current = detailOpen;
   architectureOpenRef.current = architectureOpen;
+
+  const onRawDataRef = useRef(onRawData);
+  onRawDataRef.current = onRawData;
+  useEffect(() => {
+    onRawDataRef.current?.(wall);
+  }, [wall]);
 
   useEffect(() => {
     mountedRef.current = true;

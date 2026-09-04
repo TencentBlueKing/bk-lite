@@ -228,7 +228,7 @@ section('menu action rendering');
   const source = fs.readFileSync('src/components/more-actions-dropdown/index.tsx', 'utf8');
   const menuSource = source.slice(source.indexOf('menu={{'), source.indexOf('trigger={trigger}'));
   assertNotContains('菜单项不嵌套 Button，避免出现双重按钮', menuSource, '<Button');
-  assertContains('菜单标签水平居中', menuSource, 'justify-center');
+  assertContains('菜单标签默认水平居中', menuSource, 'justify-center');
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

@@ -189,6 +189,18 @@ afterEach(() => {
 });
 
 describe('APM 告警指标快照与事件原始数据', { timeout: 15000 }, () => {
+  it('空列表只展示一处页面空态，不复用 APM 总述也不叠分布图空态', async () => {
+    api.getAlerts.mockResolvedValue([]);
+    api.getAlertDistribution.mockResolvedValue([]);
+    renderWithApmIntl(<ApmAlertsPage />);
+
+    expect(await screen.findByText('暂无活跃告警数据')).not.toBeNull();
+    expect(screen.queryByText('当前范围暂无 APM 数据')).toBeNull();
+    expect(screen.queryByText('暂无数据')).toBeNull();
+    expect(screen.queryByRole('button', { name: '重新加载' })).toBeNull();
+    expect(screen.queryByRole('img', { name: /活跃告警事件分布/ })).toBeNull();
+  });
+
   it('只通过显式详情入口打开告警详情', async () => {
     renderWithApmIntl(<ApmAlertsPage />);
     const serviceCell = await screen.findByText('checkout');
