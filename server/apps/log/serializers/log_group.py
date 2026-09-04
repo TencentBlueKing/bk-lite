@@ -110,6 +110,8 @@ class LogGroupSerializer(serializers.ModelSerializer):
         if not isinstance(value, dict):
             raise serializers.ValidationError("日志分组规则必须是对象（object）格式")
 
+        value = LogGroupQueryBuilder.normalize_star_rule(value)
+
         try:
             LogGroupQueryBuilder.validate_rule(
                 value,

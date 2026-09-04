@@ -207,6 +207,8 @@
       "excludeContainers": "Neglected Containers",
       "haltWith": "Merge up to and including the first line that matches the condition. For example, when logs end with a semicolon ;, it will include the line with the semicolon to indicate the end. Suitable for cases with clear end markers.",
       "conditionValidate": "Tags, conditions, or values cannot be empty.",
+      "ruleModeRequired": "Select All Conditions or Any Condition",
+      "ruleModePlaceholder": "All Conditions or Any Condition",
       "fieldDiscoveryExpandedTip": "No recent labels found. Expanded lookup to the last 24 hours.",
       "fieldDiscoveryFallbackTip": "No recommended labels found. You can enter a log field name manually.",
       "fieldDiscoveryPermissionTip": "Dynamic labels cannot be loaded with current permissions. You can enter a log field name manually.",

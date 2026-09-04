@@ -12,6 +12,7 @@ class LogGroupQueryBuilder:
 
     DENY_ALL_QUERY = '(__bk_lite_log_scope__:"deny-1") AND (__bk_lite_log_scope__:"deny-2")'
     VALID_RULE_MODES = frozenset({"AND", "OR"})
+    INVALID_RULE_MODE_MESSAGE = "规则匹配方式仅支持「所有条件」或「任意条件」"
     MODE_VALID = "valid"
     MODE_LEGACY_OR = "legacy_or"
     MODE_LEGACY_EMPTY_RULE = "legacy_empty_rule"
@@ -24,8 +25,24 @@ class LogGroupQueryBuilder:
     LEGACY_REGEX_SPECIAL_CHARS = frozenset(r"\.^$*+?{}[]|()")
 
     @classmethod
+    def normalize_star_rule(cls, rule_json):
+        """把前端 Default `*` 回写的空规则收成 {}。
+
+        分组页没有规则编辑器时会提交 {mode: null, conditions: []}，这与库里的空对象
+        同义，不是非法 mode。带真实条件的 null mode 不在此兼容。
+        """
+        if not isinstance(rule_json, dict):
+            return rule_json
+        mode = rule_json.get("mode", "AND")
+        conditions = rule_json.get("conditions", [])
+        if mode is None and isinstance(conditions, list) and not conditions:
+            return {}
+        return rule_json
+
+    @classmethod
     def classify_rule_mode(cls, rule_json):
         """按历史运行语义分类规则模式，不回显不可信的原始值。"""
+        rule_json = cls.normalize_star_rule(rule_json)
         if not isinstance(rule_json, dict):
             return cls.MODE_INVALID, None
 
@@ -44,11 +61,12 @@ class LogGroupQueryBuilder:
     def validate_rule_mode(cls, rule_json):
         classification, normalized_mode = cls.classify_rule_mode(rule_json)
         if classification != cls.MODE_VALID:
-            raise ValueError("Rule mode must be AND or OR")
+            raise ValueError(cls.INVALID_RULE_MODE_MESSAGE)
         return normalized_mode
 
     @classmethod
     def validate_rule(cls, rule_json, *, allow_legacy_or=False, require_legacy_safe=False):
+        rule_json = cls.normalize_star_rule(rule_json)
         mode, used_legacy_or = cls._resolve_rule_mode(rule_json, allow_legacy_or=allow_legacy_or)
         conditions = rule_json.get("conditions", [])
         if not isinstance(conditions, list):
@@ -108,7 +126,7 @@ class LogGroupQueryBuilder:
             return normalized_mode, False
         if classification == cls.MODE_LEGACY_OR and allow_legacy_or:
             return "OR", True
-        raise ValueError("Rule mode must be AND or OR")
+        raise ValueError(cls.INVALID_RULE_MODE_MESSAGE)
 
     @staticmethod
     def _configured_legacy_or_group_ids():
@@ -200,6 +218,7 @@ class LogGroupQueryBuilder:
     def json_to_logsql_expression(cls, rule_json, *, allow_legacy_or=False, preserve_legacy_structure=False):
         """将规则JSON转换为VictoriaLogs LogsQL表达式"""
 
+        rule_json = cls.normalize_star_rule(rule_json)
         # 如果不存在规则，返回空字符串
         if rule_json == {}:
             return ""
@@ -308,7 +327,8 @@ class LogGroupQueryBuilder:
 
         for group in groups:
             try:
-                if group.rule == {}:
+                rule = cls.normalize_star_rule(group.rule)
+                if rule == {}:
                     invalid_group_status[group.id] = "empty_rule"
                     continue
                 if legacy_migration_mode and cls._is_legacy_falsey_non_object(group.rule):
@@ -316,9 +336,9 @@ class LogGroupQueryBuilder:
                     continue
 
                 allow_legacy_or = legacy_migration_mode or str(group.id) in legacy_or_group_ids
-                classification, _ = cls.classify_rule_mode(group.rule)
+                classification, _ = cls.classify_rule_mode(rule)
                 condition = cls.json_to_logsql_expression(
-                    group.rule,
+                    rule,
                     allow_legacy_or=allow_legacy_or,
                     preserve_legacy_structure=legacy_migration_mode,
                 )
