@@ -243,6 +243,13 @@ export default function MongoDashboardPage() {
     if (!silent) setLoading(true);
     try {
       if (isDashboardMode) {
+        if (!idValues.length) {
+          setSeries({});
+          setPreviousSeries({});
+          setCollectionStatusMetric(null);
+          if (!silent) setLoading(false);
+          return;
+        }
         const frozenTimeValues = freezeTimeValues(timeValues);
         const frozenRange = resolveCollectionStatusRange(frozenTimeValues);
         if (frozenRange) setQueryTimeRange(frozenRange);

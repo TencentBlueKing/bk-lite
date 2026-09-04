@@ -399,6 +399,13 @@ export default function MysqlDashboardPage() {
 
     try {
       if (isDashboardMode) {
+        if (!idValues.length) {
+          setSeries({});
+          setPreviousSeries({});
+          setCollectionStatusMetric(null);
+          if (!silent) setLoading(false);
+          return;
+        }
         const frozenTimeValues = freezeTimeValues(timeValues);
         const frozenRange = resolveCollectionStatusRange(frozenTimeValues);
         if (frozenRange) setQueryTimeRange(frozenRange);
@@ -1026,7 +1033,7 @@ export default function MysqlDashboardPage() {
               {displayMode === 'dashboard' ? (
                 <div className={styles.modeContent}>
                   <div className={styles.sectionLabel}>健康概览</div>
-                  <div className={styles.primaryGrid}>
+                  <div className={styles.overviewSixCol}>
                     <CollectionStatusCard
                       styles={styles}
                       status={statusInfo}

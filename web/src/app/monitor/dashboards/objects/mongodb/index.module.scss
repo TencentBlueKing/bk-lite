@@ -38,10 +38,10 @@
 
 .pageTitleRow {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 32px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0;
 }
 
 .titleBlock {
@@ -52,6 +52,14 @@
   flex: 1;
 }
 
+.titleControlsRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
 .title {
   margin: 0;
   color: #182132;
@@ -60,6 +68,8 @@
   line-height: 1.25;
   letter-spacing: -0.02em;
   word-break: break-word;
+  min-width: 0;
+  flex: 1;
 }
 
 .meta {
@@ -1539,8 +1549,11 @@
 
   .pageTitleRow {
     width: 100%;
-    align-items: flex-start;
+  }
+
+  .titleControlsRow {
     flex-direction: column;
+    align-items: flex-start;
   }
 
   .instanceCard {
