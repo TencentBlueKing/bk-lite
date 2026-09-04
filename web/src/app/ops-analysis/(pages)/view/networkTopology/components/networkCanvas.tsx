@@ -541,7 +541,7 @@ const registerNetworkNodeShapeOnce = () => {
         {
           id: "",
           bk_obj_id: "bk_network",
-          bk_inst_uuid: '',
+          bk_inst_id: 0,
           bk_inst_name: "",
           network_collect_task_id: 0,
           network_collect_instance_id: 0,
@@ -698,13 +698,13 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
     const graph = graphRef.current;
     if (!graph) return;
     const runtimeByKey = new Map<string, NetworkNodeRuntime>();
-    // 后端 runtime 端点用 `id` 字段（也是 `bk_obj_id:bk_inst_uuid`）
+    // 后端 runtime 端点用 `id` 字段（也是 `bk_obj_id:bk_inst_id`）
     // 标识节点 —— 见 buildNetworkNodeClientId。
     (runtimeNodes ?? []).forEach((item) => runtimeByKey.set(item.id, item));
     const existing = new Set<string>();
     graph.getNodes().forEach((cell) => existing.add(cell.id));
     nodes.forEach((node) => {
-      const key = `${node.bk_obj_id}:${node.bk_inst_uuid}`;
+      const key = `${node.bk_obj_id}:${node.bk_inst_id}`;
       const cell = graph.getCellById(node.id);
       const desired = node.position;
       const runtimeItem = runtimeByKey.get(key);

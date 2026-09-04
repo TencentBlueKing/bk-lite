@@ -30,13 +30,16 @@ export const ThresholdColorConfigSection: React.FC<
 }) => {
   return (
     <Form.Item label={t('topology.nodeConfig.thresholdColors')}>
-      <div className="rounded-md border border-(--color-border-1) bg-(--color-fill-1) px-3 py-2">
+      <div className="rounded-lg border border-(--color-border-1) bg-(--color-fill-1)/40 p-2.5 space-y-1.5">
         {thresholdColors.map((threshold, index) => {
           const isBaseThreshold = index === thresholdColors.length - 1;
           return (
-            <div key={index} className="flex items-center gap-2 py-1.5">
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-gray-600 whitespace-nowrap">
+            <div
+              key={index}
+              className="flex items-center justify-between gap-2 rounded-md bg-(--color-bg) px-3 py-1.5 border border-(--color-border-1)/60 shadow-xs"
+            >
+              <div className="flex items-center gap-2 text-xs text-(--color-text-2)">
+                <span className="whitespace-nowrap">
                   {t('topology.nodeConfig.thresholdWhenValueGte')}
                 </span>
                 <InputNumber
@@ -52,46 +55,48 @@ export const ThresholdColorConfigSection: React.FC<
                   }}
                   placeholder={t('common.inputMsg')}
                   disabled={isBaseThreshold || readonly}
-                  style={{ width: '100px' }}
+                  className="!w-24"
                   size="small"
                   min={0}
                 />
-                <span className="text-sm text-gray-600">
+                <span className="whitespace-nowrap text-(--color-text-3)">
                   {t('topology.nodeConfig.thresholdShow')}
                 </span>
               </div>
-              <ColorPicker
-                value={threshold.color}
-                onChange={(color) =>
-                  onThresholdChange(index, 'color', color.toHexString())
-                }
-                disabled={readonly}
-                size="small"
-                showText
-              />
-              {!readonly ? (
-                <div className="flex items-center gap-1 pl-2">
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<PlusCircleOutlined />}
-                    title={t('topology.nodeConfig.addThresholdBelow')}
-                    onClick={() => onAddThreshold(index)}
-                  />
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<MinusCircleOutlined />}
-                    title={
-                      isBaseThreshold
-                        ? t('topology.nodeConfig.baseThresholdNotRemovable')
-                        : t('topology.nodeConfig.removeThreshold')
-                    }
-                    disabled={isBaseThreshold}
-                    onClick={() => onRemoveThreshold(index)}
-                  />
-                </div>
-              ) : null}
+              <div className="flex items-center gap-2">
+                <ColorPicker
+                  value={threshold.color}
+                  onChange={(color) =>
+                    onThresholdChange(index, 'color', color.toHexString())
+                  }
+                  disabled={readonly}
+                  size="small"
+                  showText
+                />
+                {!readonly ? (
+                  <div className="flex items-center gap-0.5">
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<PlusCircleOutlined className="text-(--color-text-3) hover:text-(--color-primary)" />}
+                      title={t('topology.nodeConfig.addThresholdBelow')}
+                      onClick={() => onAddThreshold(index)}
+                    />
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<MinusCircleOutlined className={isBaseThreshold ? 'text-(--color-text-4)' : 'text-(--color-text-3) hover:text-(--color-fail)'} />}
+                      title={
+                        isBaseThreshold
+                          ? t('topology.nodeConfig.baseThresholdNotRemovable')
+                          : t('topology.nodeConfig.removeThreshold')
+                      }
+                      disabled={isBaseThreshold}
+                      onClick={() => onRemoveThreshold(index)}
+                    />
+                  </div>
+                ) : null}
+              </div>
             </div>
           );
         })}

@@ -21,10 +21,10 @@ from apps.operation_analysis.models.models import NODE_OUTER_COLOR_UNKNOWN, Dire
 from apps.operation_analysis.services.network_topology.runtime import NetworkTopologyRuntimeService, resolve_link_status, resolve_node_outer_color
 from apps.operation_analysis.services.network_topology.weops_adapter import WeOpsTopologyAdapterError
 
-INST_UUID_10001 = "00000000-0000-4000-8000-000000010001"
-INST_UUID_10002 = "00000000-0000-4000-8000-000000010002"
-IFACE_UUID_90001 = "00000000-0000-4000-8000-000000090001"
-IFACE_UUID_90002 = "00000000-0000-4000-8000-000000090002"
+INST_ID_10001 = 10001
+INST_ID_10002 = 10002
+IFACE_ID_90001 = 90001
+IFACE_ID_90002 = 90002
 
 # --------------------------------------------------------------------------- #
 # resolve_node_outer_color                                                      #
@@ -317,7 +317,7 @@ def test_build_runtime_aggregates_node_color_and_link_status_from_view_sets():
             {
                 "id": "node-1",
                 "bk_obj_id": "bk_switch",
-                "bk_inst_uuid": INST_UUID_10001,
+                "bk_inst_id": INST_ID_10001,
                 "bk_inst_name": "core-switch-01",
                 "ip_addr": "10.0.0.1",
                 "network_collect_task_id": 12,
@@ -350,8 +350,8 @@ def test_build_runtime_aggregates_node_color_and_link_status_from_view_sets():
                 "interface_metrics": ["ifInOctets_5min"],
                 "port_pairs": [
                     {
-                        "source_interface": {"bk_obj_id": "bk_interface", "bk_inst_uuid": IFACE_UUID_90001, "interface_name": "GigE0/1"},
-                        "target_interface": {"bk_obj_id": "bk_interface", "bk_inst_uuid": IFACE_UUID_90002, "interface_name": "GigE0/2"},
+                        "source_interface": {"bk_obj_id": "bk_interface", "bk_inst_id": IFACE_ID_90001, "interface_name": "GigE0/1"},
+                        "target_interface": {"bk_obj_id": "bk_interface", "bk_inst_id": IFACE_ID_90002, "interface_name": "GigE0/2"},
                     }
                 ],
                 "style": {},
@@ -427,7 +427,7 @@ def test_build_link_runtime_preview_queries_single_link_and_returns_node_summary
             {
                 "id": "node-a",
                 "bk_obj_id": "bk_switch",
-                "bk_inst_uuid": INST_UUID_10001,
+                "bk_inst_id": INST_ID_10001,
                 "bk_inst_name": "source-switch",
                 "network_collect_task_id": 12,
                 "network_collect_instance_id": 345,
@@ -439,7 +439,7 @@ def test_build_link_runtime_preview_queries_single_link_and_returns_node_summary
             {
                 "id": "node-b",
                 "bk_obj_id": "bk_router",
-                "bk_inst_uuid": INST_UUID_10002,
+                "bk_inst_id": INST_ID_10002,
                 "bk_inst_name": "target-router",
                 "network_collect_task_id": 13,
                 "network_collect_instance_id": 346,
@@ -460,8 +460,8 @@ def test_build_link_runtime_preview_queries_single_link_and_returns_node_summary
         "interface_metrics": ["ifInOctets_5min"],
         "port_pairs": [
             {
-                "source_interface": {"bk_obj_id": "bk_interface", "bk_inst_uuid": IFACE_UUID_90001, "interface_name": "GigE0/1"},
-                "target_interface": {"bk_obj_id": "bk_interface", "bk_inst_uuid": IFACE_UUID_90002, "interface_name": "GigE0/2"},
+                "source_interface": {"bk_obj_id": "bk_interface", "bk_inst_id": IFACE_ID_90001, "interface_name": "GigE0/1"},
+                "target_interface": {"bk_obj_id": "bk_interface", "bk_inst_id": IFACE_ID_90002, "interface_name": "GigE0/2"},
             }
         ],
     }
@@ -508,8 +508,8 @@ def test_build_link_runtime_preview_queries_single_link_and_returns_node_summary
     )
 
     assert [item["request_id"] for item in captured_items] == ["link-draft::src::0", "link-draft::dst::0"]
-    assert captured_items[0]["node_ref"]["bk_inst_uuid"] == INST_UUID_10001
-    assert captured_items[1]["node_ref"]["bk_inst_uuid"] == INST_UUID_10002
+    assert captured_items[0]["node_ref"]["bk_inst_id"] == INST_ID_10001
+    assert captured_items[1]["node_ref"]["bk_inst_id"] == INST_ID_10002
     assert response["result"] is True
     link = response["data"]["link"]
     assert link["id"] == "link-draft"
@@ -527,7 +527,7 @@ def test_build_runtime_unknown_color_when_metrics_lack_data():
             {
                 "id": "node-1",
                 "bk_obj_id": "bk_switch",
-                "bk_inst_uuid": INST_UUID_10001,
+                "bk_inst_id": INST_ID_10001,
                 "bk_inst_name": "core-switch-01",
                 "ip_addr": "10.0.0.1",
                 "network_collect_task_id": 12,
@@ -589,7 +589,7 @@ def test_build_runtime_routes_same_metric_to_owning_node_by_request_id():
             {
                 "id": "node-a",
                 "bk_obj_id": "bk_switch",
-                "bk_inst_uuid": INST_UUID_10001,
+                "bk_inst_id": INST_ID_10001,
                 "bk_inst_name": "switch-a",
                 "network_collect_task_id": 12,
                 "network_collect_instance_id": 345,
@@ -609,7 +609,7 @@ def test_build_runtime_routes_same_metric_to_owning_node_by_request_id():
             {
                 "id": "node-b",
                 "bk_obj_id": "bk_router",
-                "bk_inst_uuid": INST_UUID_10002,
+                "bk_inst_id": INST_ID_10002,
                 "bk_inst_name": "router-b",
                 "network_collect_task_id": 13,
                 "network_collect_instance_id": 346,
@@ -672,7 +672,7 @@ def test_build_runtime_passes_metric_display_mode_and_aggregate_type():
             {
                 "id": "node-a",
                 "bk_obj_id": "bk_switch",
-                "bk_inst_uuid": INST_UUID_10001,
+                "bk_inst_id": INST_ID_10001,
                 "bk_inst_name": "switch-a",
                 "network_collect_task_id": 12,
                 "network_collect_instance_id": 345,
@@ -731,7 +731,7 @@ def test_build_runtime_keeps_duplicate_node_metrics_separate_by_sort_order():
             {
                 "id": "node-a",
                 "bk_obj_id": "bk_firewall",
-                "bk_inst_uuid": INST_UUID_10001,
+                "bk_inst_id": INST_ID_10001,
                 "bk_inst_name": "firewall-a",
                 "network_collect_task_id": 12,
                 "network_collect_instance_id": 345,
@@ -818,7 +818,7 @@ def test_build_runtime_degrades_metric_batch_failure_without_losing_canvas_runti
             {
                 "id": "node-a",
                 "bk_obj_id": "bk_firewall",
-                "bk_inst_uuid": INST_UUID_10001,
+                "bk_inst_id": INST_ID_10001,
                 "bk_inst_name": "firewall-a",
                 "network_collect_task_id": 12,
                 "network_collect_instance_id": 345,

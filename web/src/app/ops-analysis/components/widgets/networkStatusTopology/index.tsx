@@ -119,6 +119,7 @@ interface NetworkStatusTopologyProps {
   runtimeOwnerId?: string;
   runtimeActive?: boolean;
   runtimePriority?: RuntimeRequestPriority;
+  onRawData?: (data: unknown) => void;
 }
 
 const DEFAULT_RUNTIME_PRIORITY: RuntimeRequestPriority = {
@@ -352,6 +353,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   runtimeOwnerId = 'network-status-topology',
   runtimeActive = true,
   runtimePriority = DEFAULT_RUNTIME_PRIORITY,
+  onRawData,
 }) => {
   const { t } = useTranslation();
   const shareMode = useShareMode();
@@ -444,10 +446,16 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   // 父级 onReady 常随 layout 草稿更新换新引用；不得进入 fetch 依赖，否则拖点会重取数出 loading
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
+  const onRawDataRef = useRef(onRawData);
+  onRawDataRef.current = onRawData;
   const refreshCauseRef = useRef(refreshCause);
   refreshCauseRef.current = refreshCause;
   const dataRef = useRef(data);
   dataRef.current = data;
+
+  useEffect(() => {
+    onRawDataRef.current?.(data);
+  }, [data]);
 
   useEffect(() => {
     if (canPersistLayout) {
