@@ -135,10 +135,9 @@ describe('APM 应用观测详情', () => {
     expect(catalogLink.getAttribute('href')).toBe('/apm/services');
     expect(catalogLink.textContent).toBe('应用');
     expect(screen.getByRole('radiogroup', { name: '服务指标时间窗口' })).not.toBeNull();
-    expect(screen.getByRole('radiogroup', { name: '拓扑布局' })).not.toBeNull();
-    expect(screen.getByRole('radio', { name: '层次' })).not.toBeNull();
-    expect(screen.getByRole('radio', { name: '力导向' })).not.toBeNull();
+    expect(screen.queryByRole('radiogroup', { name: '拓扑布局' })).toBeNull();
     expect(screen.getByText('关键信息')).not.toBeNull();
+    expect(screen.getByText('重点指标')).not.toBeNull();
     expect(screen.getByText('服务数')).not.toBeNull();
     expect(screen.getByText('告警数')).not.toBeNull();
     expect(screen.getAllByText('SLO').length).toBeGreaterThan(0);
@@ -160,10 +159,6 @@ describe('APM 应用观测详情', () => {
       expect(topology.getAttribute('data-focus')).toBe('shop');
       expect(topology.getAttribute('data-layout')).toBe('layered');
     });
-    await userEvent.click(screen.getByRole('radio', { name: '力导向' }).closest('label')!);
-    await waitFor(() => expect(topology.getAttribute('data-layout')).toBe('force'));
-    await userEvent.click(screen.getByRole('radio', { name: '层次' }).closest('label')!);
-    await waitFor(() => expect(topology.getAttribute('data-layout')).toBe('layered'));
     expect(api.getTopology).toHaveBeenCalledWith(expect.objectContaining({
       include_inferred: true,
       include_user_request: true,

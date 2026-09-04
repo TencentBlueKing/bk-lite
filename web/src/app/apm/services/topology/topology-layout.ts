@@ -1,4 +1,4 @@
-import { DagreLayout } from '@antv/layout';
+import { DagreLayout, ForceLayout } from '@antv/layout';
 import type { ApmTopologyEdge, ApmTopologyGraph, ApmTopologyNode } from '@/app/apm/types';
 
 export interface PositionedApmTopologyNode extends ApmTopologyNode {
@@ -12,7 +12,7 @@ interface EdgeEndpoint {
   radius: number;
 }
 
-export type TopologyEdgeRouting = 'polyline' | 'curve';
+export type TopologyEdgeRouting = 'polyline' | 'curve' | 'arc';
 
 export interface TopologyEdgeGeometry {
   path: string;
@@ -36,8 +36,8 @@ export const TOPOLOGY_NODE_CARD = {
   widthSpan: 24,
   height: 48,
   radius: 10,
-  iconSize: 20,
-  iconPaddingX: 10,
+  iconSize: 16,
+  iconPaddingX: 12,
   nameOffsetX: 40,
   healthGutter: 22,
   inferredBadgeWidth: 28,
@@ -67,7 +67,7 @@ const topologyCharWidth = (character: string, fontSize: number) => {
   return fontSize * LATIN_CHAR_WIDTH_RATIO;
 };
 
-const topologyTextWidth = (text: string, fontSize: number) => (
+export const topologyTextWidth = (text: string, fontSize: number) => (
   [...text].reduce((sum, character) => sum + topologyCharWidth(character, fontSize), 0)
 );
 
@@ -171,9 +171,9 @@ export const layoutLayeredTopology = async (
     align: 'UL',
     nodesep: TOPOLOGY_NODE_MIN_GAP,
     edgesep: 16,
-    ranksep: 72,
+    ranksep: 32,
     nodeSize: [cardW, cardH],
-    edgeLabelSize: [84, 18],
+    edgeLabelSize: [40, 18],
     edgeLabelOffset: 10,
     controlPoints: true,
   });
@@ -211,7 +211,97 @@ export const layoutForceTopology = async (
 ): Promise<PositionedApmTopologyNode[]> => {
   if (nodes.length === 0) return [];
   const stable = stabilizeTopologyGraph(nodes, edges);
-  return layoutLayeredTopology(stable.nodes, stable.edges);
+  const seeded = await layoutLayeredTopology(stable.nodes, stable.edges);
+  if (seeded.length <= 1) return seeded;
+
+  const seedMap = new Map(seeded.map((item) => [item.id, { x: item.x, y: item.y }]));
+
+  const degreeMap = new Map<string, number>();
+  stable.edges.forEach((edge) => {
+    degreeMap.set(edge.source, (degreeMap.get(edge.source) || 0) + 1);
+    degreeMap.set(edge.target, (degreeMap.get(edge.target) || 0) + 1);
+  });
+  const maxCalls = Math.max(...stable.edges.map((edge) => edge.sampled_calls), 1);
+
+  const force = new ForceLayout({
+    width: TOPOLOGY_CANVAS_SIZE.width,
+    height: TOPOLOGY_CANVAS_SIZE.height,
+    maxIteration: 300,
+    gravity: 3,
+    damping: 0.9,
+    factor: 1,
+    coulombDisScale: 0.005,
+    preventOverlap: true,
+    nodeSize: 250,
+    collideStrength: 1,
+    clustering: true,
+    nodeClusterBy: (n) => {
+      const raw = (n as { _original?: { data?: { service_namespace?: string }; id?: string }; id?: string; data?: { service_namespace?: string } })._original || n;
+      const ns = raw.data?.service_namespace;
+      return ns && ns.length > 0 ? ns : raw.id || 'default';
+    },
+    clusterNodeStrength: 48,
+    getCenter: (n) => {
+      const raw = (n as { _original?: { data?: { kind?: string } }; data?: { kind?: string } })._original || n;
+      const kind = raw.data?.kind;
+      if (kind === 'user_request') {
+        return [TOPOLOGY_CANVAS_SIZE.width * 0.12, TOPOLOGY_CANVAS_SIZE.height * 0.5, 12];
+      }
+      if (kind === 'inferred') {
+        return [TOPOLOGY_CANVAS_SIZE.width * 0.88, TOPOLOGY_CANVAS_SIZE.height * 0.5, 12];
+      }
+      return undefined;
+    },
+    getMass: (n) => {
+      const raw = (n as { _original?: { data?: { kind?: string }; id?: string }; id?: string; data?: { kind?: string } })._original || n;
+      const kind = raw.data?.kind;
+      if (kind === 'user_request' || kind === 'inferred') return 12;
+      const deg = degreeMap.get(raw.id || '') || 1;
+      return 1 + 0.5 * deg;
+    },
+    nodeStrength: (n) => {
+      const raw = (n as { _original?: { id?: string }; id?: string })._original || n;
+      const deg = degreeMap.get(raw.id || '') || 1;
+      return -(600 + 100 * deg);
+    },
+    linkDistance: (e) => {
+      const calls = (e as { sampled_calls?: number } | undefined)?.sampled_calls || 50;
+      return 210 + 50 * (1 - calls / maxCalls);
+    },
+    edgeStrength: (e) => {
+      const calls = (e as { sampled_calls?: number } | undefined)?.sampled_calls || 50;
+      return 40 + 30 * (calls / maxCalls);
+    },
+  });
+
+  await force.execute({
+    nodes: stable.nodes.map((item, index) => {
+      const s = seedMap.get(item.id) || { x: 500, y: 320 };
+      return {
+        id: item.id,
+        size: 240,
+        x: s.x * 0.45 + TOPOLOGY_CANVAS_SIZE.width * 0.25,
+        y: s.y + (index % 2 === 0 ? -18 : 18),
+        data: {
+          service_namespace: item.service_namespace || '',
+          kind: item.kind,
+        },
+      };
+    }),
+    edges: stable.edges.map((item, index) => ({
+      id: `apm-force-edge-${index}`,
+      source: item.source,
+      target: item.target,
+      sampled_calls: item.sampled_calls,
+    })),
+  });
+
+  const rawPositions = new Map<string, { x: number; y: number }>();
+  force.forEachNode((item) => {
+    rawPositions.set(String(item.id), { x: item.x, y: item.y });
+  });
+
+  return mapLayoutPositions(nodes, rawPositions);
 };
 
 export const buildTopologyEdgeGeometry = (
@@ -220,6 +310,51 @@ export const buildTopologyEdgeGeometry = (
   reciprocal: boolean,
   routing: TopologyEdgeRouting = 'curve',
 ): TopologyEdgeGeometry => {
+  if (routing === 'arc') {
+    const dx = target.x - source.x;
+    const dy = target.y - source.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    const ux = dx / dist;
+    const uy = dy / dist;
+    const nx = -uy;
+    const ny = ux;
+
+    const absUx = Math.abs(ux) || 0.0001;
+    const absUy = Math.abs(uy) || 0.0001;
+    const halfH = TOPOLOGY_NODE_CARD.height / 2;
+    const sOffset = Math.min(source.radius / absUx, halfH / absUy);
+    const tOffset = Math.min(target.radius / absUx, halfH / absUy);
+
+    const startX = source.x + ux * (sOffset + 2);
+    const startY = source.y + uy * (sOffset + 2);
+    const endX = target.x - ux * (tOffset + 8);
+    const endY = target.y - uy * (tOffset + 8);
+
+    const mx = (startX + endX) / 2;
+    const my = (startY + endY) / 2;
+    const isForward = target.x >= source.x;
+    const curveOffset = reciprocal ? (isForward ? 18 : -18) : Math.min(22, Math.max(-22, dist * 0.08));
+
+    const cx = mx + nx * curveOffset;
+    const cy = my + ny * curveOffset;
+
+    const labelX = roundCoordinate((startX + 2 * cx + endX) / 4);
+    const labelY = roundCoordinate((startY + 2 * cy + endY) / 4);
+    const path = `M ${roundCoordinate(startX)} ${roundCoordinate(startY)} Q ${roundCoordinate(cx)} ${roundCoordinate(cy)} ${roundCoordinate(endX)} ${roundCoordinate(endY)}`;
+
+    return {
+      path,
+      startX: roundCoordinate(startX),
+      startY: roundCoordinate(startY),
+      endX: roundCoordinate(endX),
+      endY: roundCoordinate(endY),
+      controlX: roundCoordinate(cx),
+      controlY: roundCoordinate(cy),
+      labelX,
+      labelY,
+    };
+  }
+
   if (routing === 'polyline') {
     const ySign = Math.sign(target.y - source.y || 1);
     const startX = source.x;
@@ -415,7 +550,10 @@ export const fitTopologyView = (
   const maxY = Math.max(...nodes.map((node) => node.y + halfH));
   const width = Math.max(maxX - minX, 1);
   const height = Math.max(maxY - minY, 1);
-  const k = Math.min(zoom, canvasSize.width / width, canvasSize.height / height);
+  const padding = 20;
+  const usableW = Math.max(canvasSize.width - padding * 2, 1);
+  const usableH = Math.max(canvasSize.height - padding * 2, 1);
+  const k = Math.min(zoom, usableW / width, usableH / height);
   return {
     k,
     x: (canvasSize.width - width * k) / 2 - minX * k,

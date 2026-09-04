@@ -965,6 +965,7 @@
       "noTopology": "No application-internal call relationships in the current time window.",
       "kpi": "Application KPIs",
       "keyInfo": "Key information",
+      "keyMetrics": "Key metrics",
       "alertCount": "Alerts",
       "observabilityDescription": "View application topology, key information, and services in this application."
     },

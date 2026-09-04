@@ -17,6 +17,7 @@ import {
   topologyEntryPillWidth,
   topologyNeighborIds,
   topologyNodeNameWidth,
+  topologyTextWidth,
   truncateTopologyNodeLabel,
   TOPOLOGY_CANVAS_SIZE,
   TOPOLOGY_ENTRY_PILL,
@@ -69,6 +70,7 @@ function TopologyMetricLabel({
   fontSize,
   textAnchor = 'start',
   clipPath,
+  opacity,
 }: {
   errorCount: number;
   total: number;
@@ -78,13 +80,16 @@ function TopologyMetricLabel({
   fontSize: number;
   textAnchor?: 'start' | 'middle';
   clipPath?: string;
+  opacity?: number;
 }) {
   const parts = topologyMetricParts({ errorCount, total, p95_ms: p95Ms });
   const isEdgeLabel = textAnchor === 'middle';
-  const pillWidth = 82;
+  const metricText = `${parts.total} / ${parts.latency} / ${parts.errors}`;
+  const textW = topologyTextWidth(metricText, fontSize);
+  const pillWidth = isEdgeLabel ? Math.max(68, Math.round(textW + 16)) : 82;
   const pillHeight = fontSize + 8;
   return (
-    <g>
+    <g opacity={opacity}>
       {isEdgeLabel ? (
         <rect
           className="opacity-95"
@@ -167,6 +172,7 @@ export default function TopologyCanvas({
   });
   const [view, setView] = useState({ x: 0, y: 0, k: zoom });
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const [hoveredEdgeKey, setHoveredEdgeKey] = useState<string | null>(null);
   const [nodePositions, setNodePositions] = useState<Record<string, { x: number; y: number }>>({});
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
 
@@ -243,10 +249,12 @@ export default function TopologyCanvas({
   const maxSpans = Math.max(...nodes.map((node) => node.sampled_spans), 1);
   const maxCalls = Math.max(...edges.map((edge) => edge.sampled_calls), 1);
   const edgePairs = new Set(edges.map((edge) => edgeKey(edge.source, edge.target)));
-  const routing = 'curve';
+  const routing = layout === 'force' ? 'arc' : 'curve';
   const focusNodeIds = focusNamespace
     ? new Set(positionedNodes.filter((node) => node.service_namespace === focusNamespace).map((node) => node.id))
     : null;
+  const nodeDisplayName = (node: ApmTopologyNode) =>
+    node.kind === 'user_request' ? t('apm.topology.userRequestNode', '用户请求') : node.service_name;
   const nodeCardWidth = (sampledSpans: number) => TOPOLOGY_NODE_CARD.minWidth + (sampledSpans / maxSpans) * TOPOLOGY_NODE_CARD.widthSpan;
   const nodeVisualRadius = (node: ApmTopologyNode) => {
     const nodeName = nodeDisplayName(node);
@@ -256,7 +264,8 @@ export default function TopologyCanvas({
       : nodeCardWidth(node.sampled_spans);
     return cardWidth / 2;
   };
-  const highlightNodeId = hoveredNodeId;
+
+  const highlightNodeId = hoveredNodeId || (selected?.kind === 'node' ? selected.id : null);
   const highlightedIds = highlightNodeId ? topologyNeighborIds(edges, highlightNodeId) : null;
   const selectedEdgeKey = selected?.kind === 'edge' ? edgeKey(selected.source, selected.target) : null;
 
@@ -386,13 +395,10 @@ export default function TopologyCanvas({
     beginWindowDrag();
   };
 
-  const nodeDisplayName = (node: ApmTopologyNode) =>
-    node.kind === 'user_request' ? t('apm.topology.userRequestNode', '用户请求') : node.service_name;
-
   return (
     <div
       ref={containerRef}
-      className="relative h-[640px] w-full overflow-hidden bg-[var(--color-bg)]"
+      className="relative h-[640px] w-full overflow-hidden bg-[var(--color-fill-1)]"
       data-topology-layout-pending={layoutPending ? 'true' : 'false'}
       data-topology-surface="true"
     >
@@ -423,6 +429,7 @@ export default function TopologyCanvas({
         aria-label={t('apm.topology.chartAria', 'APM 服务调用拓扑')}
         className="absolute inset-0 block h-full w-full cursor-grab active:cursor-grabbing"
         data-layout={layout}
+        data-ego-mode={Boolean(selected?.kind === 'node' && layout === 'force') ? 'true' : undefined}
         data-topology-scale={view.k.toFixed(2)}
         role="img"
         viewBox={`0 0 ${canvasSize.width} ${canvasSize.height}`}
@@ -481,6 +488,10 @@ export default function TopologyCanvas({
           const isHighlighted = highlightedIds
             ? highlightedIds.has(edge.source) && highlightedIds.has(edge.target) && (edge.source === highlightNodeId || edge.target === highlightNodeId)
             : true;
+          const isHovered = hoveredEdgeKey === key || hoveredNodeId === edge.source || hoveredNodeId === edge.target;
+          const isNodeSelected = selected?.kind === 'node' && (selected.id === edge.source || selected.id === edge.target);
+          const edgeLength = Math.hypot(geometry.endX - geometry.startX, geometry.endY - geometry.startY);
+          const showMetricLabel = edgeLength >= 68 || isSelected || isHovered || isNodeSelected;
           const color = isSelected
             ? EDGE_STROKE_ACTIVE
             : edge.error_calls > 0
@@ -498,6 +509,8 @@ export default function TopologyCanvas({
               tabIndex={onSelect ? 0 : undefined}
               className={onSelect ? 'cursor-pointer' : undefined}
               onMouseDown={(event) => event.stopPropagation()}
+              onMouseEnter={() => setHoveredEdgeKey(key)}
+              onMouseLeave={() => setHoveredEdgeKey((value) => (value === key ? null : value))}
               onClick={(event) => {
                 event.stopPropagation();
                 onSelect?.({ kind: 'edge', source: edge.source, target: edge.target });
@@ -525,21 +538,25 @@ export default function TopologyCanvas({
                 strokeLinejoin="round"
                 strokeWidth={isSelected ? strokeWidth + 0.6 : strokeWidth}
               />
-              <circle
+              <path
                 aria-hidden="true"
-                fill={edge.error_calls > 0 ? 'var(--color-fail)' : 'var(--color-primary)'}
-                opacity={0.8}
-                r={edge.error_calls > 0 ? 2.5 : 2}
-              >
-                <animateMotion
-                  dur={`${Math.max(1.8, Math.min(4.0, 360 / Math.max(edge.sampled_calls, 10)))}s`}
-                  path={geometry.path}
-                  repeatCount="indefinite"
-                />
-              </circle>
+                className="apm-edge-flow-line"
+                d={geometry.path}
+                fill="none"
+                pointerEvents="none"
+                stroke={edge.error_calls > 0 ? 'var(--color-fail)' : 'var(--color-primary)'}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeOpacity={0.85}
+                strokeWidth={Math.max(1.2, strokeWidth * 0.9)}
+                style={{
+                  animationDuration: `${Math.max(1.0, Math.min(2.8, 240 / Math.max(edge.sampled_calls, 10)))}s`,
+                }}
+              />
               <TopologyMetricLabel
                 errorCount={edge.error_calls}
                 fontSize={10}
+                opacity={showMetricLabel ? 1 : 0}
                 p95Ms={edge.p95_ms}
                 textAnchor="middle"
                 total={edge.sampled_calls}
@@ -650,17 +667,16 @@ export default function TopologyCanvas({
               {userRequest ? null : (
                 <circle
                   aria-hidden="true"
-                  cx={cardX + 22}
+                  cx={cardX + 20}
                   cy={0}
-                  fill={node.health === 'critical'
-                    ? 'color-mix(in srgb, var(--color-fail) 10%, var(--color-bg))'
-                    : node.health === 'warning'
-                      ? 'color-mix(in srgb, var(--theme-color-status-warning) 10%, var(--color-bg))'
-                      : 'var(--color-fill-2)'}
-                  opacity={0.85}
+                  fill="var(--color-fill-1)"
                   r={13}
-                  stroke={topologyHealthColors[node.health]}
-                  strokeWidth={1.5}
+                  stroke={node.health === 'critical'
+                    ? 'var(--color-fail)'
+                    : node.health === 'warning'
+                      ? 'var(--theme-color-status-warning)'
+                      : 'var(--color-border)'}
+                  strokeWidth={node.health === 'critical' || node.health === 'warning' ? 1.2 : 0.8}
                 />
               )}
               <TopologyServiceIcon
@@ -722,13 +738,25 @@ export default function TopologyCanvas({
                 />
               )}
               {userRequest ? null : (
-                <circle
-                  aria-hidden="true"
-                  cx={cardX + cardWidth - 12}
-                  cy={0}
-                  fill={topologyHealthColors[node.health]}
-                  r={3.5}
-                />
+                <g>
+                  {node.health === 'critical' ? (
+                    <circle
+                      aria-hidden="true"
+                      cx={cardX + cardWidth - 12}
+                      cy={0}
+                      fill="var(--color-fail)"
+                      opacity={0.2}
+                      r={6}
+                    />
+                  ) : null}
+                  <circle
+                    aria-hidden="true"
+                    cx={cardX + cardWidth - 12}
+                    cy={0}
+                    fill={topologyHealthColors[node.health]}
+                    r={3.5}
+                  />
+                </g>
               )}
             </g>
           );

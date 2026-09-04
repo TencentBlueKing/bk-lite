@@ -965,6 +965,7 @@
       "noTopology": "当前时间窗暂无应用内调用关系。",
       "kpi": "应用 KPI",
       "keyInfo": "关键信息",
+      "keyMetrics": "重点指标",
       "alertCount": "告警数",
       "observabilityDescription": "查看应用拓扑、关键信息与该应用下的服务。"
     },

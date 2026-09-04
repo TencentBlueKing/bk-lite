@@ -26,7 +26,7 @@ import {
   timeWindowRange,
   type TimeWindow,
 } from '@/app/apm/components/service-catalog-model';
-import TopologyCanvas, { type TopologyLayoutMode } from '@/app/apm/services/topology/topology-canvas';
+import TopologyCanvas from '@/app/apm/services/topology/topology-canvas';
 import { focusApplicationTopology } from '@/app/apm/services/topology/topology-layout';
 import type { ApmApplication, ApmEvent, ApmService, ApmServiceRed, ApmSlo, ApmTopologyGraph } from '@/app/apm/types';
 import { useUserInfoContext } from '@/context/userInfo';
@@ -73,7 +73,6 @@ export default function ApplicationObservability({
   const [graph, setGraph] = useState<ApmTopologyGraph>({ nodes: [], edges: [], sampled_traces: 0, truncated: false, data_state: 'no_data' });
   const [topologyState, setTopologyState] = useState<TopologySurfaceState>('loading');
   const [topologyRefreshKey, setTopologyRefreshKey] = useState(0);
-  const [layout, setLayout] = useState<TopologyLayoutMode>('layered');
   const [redMetrics, setRedMetrics] = useState<Record<string, ApmServiceRed>>({});
   const [metricFailureKeys, setMetricFailureKeys] = useState<string[]>([]);
   const [events, setEvents] = useState<ApmEvent[]>([]);
@@ -253,19 +252,6 @@ export default function ApplicationObservability({
                     />
                   </div>
 
-                  <div className="h-4 w-px bg-[var(--color-border)]" aria-hidden="true" />
-
-                  <Segmented<TopologyLayoutMode>
-                    aria-label={t('apm.topology.layout', '拓扑布局')}
-                    options={[
-                      { value: 'layered', label: t('apm.topology.layered', '层次') },
-                      { value: 'force', label: t('apm.topology.layoutForce', '力导向') },
-                    ]}
-                    size="small"
-                    value={layout}
-                    onChange={setLayout}
-                  />
-
                   {showAddIngest ? (
                     <>
                       <div className="h-4 w-px bg-[var(--color-border)]" aria-hidden="true" />
@@ -281,7 +267,7 @@ export default function ApplicationObservability({
                   edges={graph.edges}
                   focusNamespace={application.application_id}
                   keyword=""
-                  layout={layout}
+                  layout="layered"
                   nodes={graph.nodes}
                   zoom={1}
                 />
@@ -309,7 +295,7 @@ export default function ApplicationObservability({
           </div>
           <ApmSurface className="!rounded-xl shadow-2xs">
             <div className="mb-4">
-              <Typography.Text strong>{t('apm.applications.childServices', '下属服务')}</Typography.Text>
+              <Typography.Text strong>{t('apm.applications.keyMetrics', '重点指标')}</Typography.Text>
               <Typography.Text type="secondary" className="ml-2 !text-xs">{t('apm.common.serviceCount', '共 {count} 个', { count: services.length })}</Typography.Text>
             </div>
             {rows.length ? (

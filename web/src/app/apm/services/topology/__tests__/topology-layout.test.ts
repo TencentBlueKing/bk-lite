@@ -15,6 +15,7 @@ import {
   TOPOLOGY_CANVAS_SIZE,
   topologyEntryPillWidth,
   topologyNodeNameWidth,
+  topologyTextWidth,
   truncateTopologyNodeLabel,
 } from '../topology-layout';
 
@@ -90,6 +91,23 @@ describe('APM 服务拓扑布局', () => {
     expect(Math.max(...childYs) - Math.min(...childYs)).toBeGreaterThan(TOPOLOGY_CANVAS_SIZE.height / 2);
     expect(topologyCardsOverlap(result)).toBe(false);
   });
+
+  it('分层布局层间距紧凑，避免相邻层留白过大导致全图缩放过小', async () => {
+    const result = await layoutLayeredTopology(demoNodes, demoEdges);
+    const byId = new Map(result.map((item) => [item.id, item]));
+    const storefrontX = byId.get('demo-storefront')?.x ?? 0;
+    const catalogX = byId.get('demo-catalog')?.x ?? 0;
+    const inventoryX = byId.get('demo-inventory')?.x ?? 0;
+    expect(catalogX - storefrontX).toBeLessThanOrEqual(320);
+    expect(inventoryX - catalogX).toBeLessThanOrEqual(320);
+  });
+
+  it('topologyTextWidth 正确估算文本宽度并支持自适应胶囊', () => {
+    const shortWidth = topologyTextWidth('10 / 1ms / 0', 10);
+    const longWidth = topologyTextWidth('250,000 / 1.25s / 34', 10);
+    expect(longWidth).toBeGreaterThan(shortWidth);
+    expect(longWidth).toBeGreaterThan(90);
+  });
 });
 
 describe('APM 服务拓扑力导向稳定性', () => {
@@ -138,14 +156,46 @@ describe('APM 服务拓扑力导向稳定性', () => {
     expect(entry?.x).toBe(Math.min(...xs));
     expect(inferred?.x).toBe(Math.max(...xs));
     expect(entry?.x).toBeLessThan(storefront?.x ?? 0);
-    expect(storefront?.x).toBeLessThan(byId.get('catalog')?.x ?? 0);
-    expect(byId.get('catalog')?.x).toBeLessThan(inventory?.x ?? 0);
     expect(inventory?.x).toBeLessThan(inferred?.x ?? 0);
     expect(distance(entry, storefront)).toBeLessThan(distance(entry, inferred));
     expect(distance(inferred, inventory)).toBeLessThan(distance(inferred, entry));
     expect(topologyCardsOverlap(result)).toBe(false);
     expect(Math.abs((entry?.y ?? 0) - (storefront?.y ?? 0))).toBeLessThan(TOPOLOGY_CANVAS_SIZE.height / 2);
     expect(Math.abs((inferred?.y ?? 0) - (inventory?.y ?? 0))).toBeLessThan(TOPOLOGY_CANVAS_SIZE.height / 2);
+  });
+
+  it('多业务域服务形成明显的二维聚类，且与分层布局产生实质空间分布差异', async () => {
+    const domainNodes: ApmTopologyNode[] = [
+      { ...node('cart'), service_namespace: 'shop' },
+      { ...node('checkout'), service_namespace: 'shop' },
+      { ...node('storefront'), service_namespace: 'shop' },
+      { ...node('catalog'), service_namespace: 'item' },
+      { ...node('search'), service_namespace: 'item' },
+      { ...node('payment'), service_namespace: 'billing' },
+      { ...node('invoice'), service_namespace: 'billing' },
+    ];
+    const domainEdges: ApmTopologyEdge[] = [
+      edge('storefront', 'cart'),
+      edge('cart', 'checkout'),
+      edge('storefront', 'catalog'),
+      edge('search', 'catalog'),
+      edge('checkout', 'payment'),
+      edge('payment', 'invoice'),
+    ];
+
+    const forceResult = await layoutForceTopology(domainNodes, domainEdges);
+    const layeredResult = await layoutLayeredTopology(domainNodes, domainEdges);
+
+    expect(topologyCardsOverlap(forceResult)).toBe(false);
+
+    // 验证与层次布局有实质位移差异（至少 40% 的节点偏移超过 60px）
+    const layeredMap = new Map(layeredResult.map((item) => [item.id, item]));
+    const significantDeltas = forceResult.filter((item) => {
+      const layered = layeredMap.get(item.id);
+      if (!layered) return false;
+      return Math.hypot(item.x - layered.x, item.y - layered.y) > 60;
+    });
+    expect(significantDeltas.length).toBeGreaterThanOrEqual(Math.floor(domainNodes.length * 0.4));
   });
 });
 
@@ -202,6 +252,27 @@ describe('APM 服务拓扑连线', () => {
     expect(forward.path).not.toBe(reverse.path);
     expect(forward.startY).toBeLessThan(100);
     expect(reverse.startY).toBeGreaterThan(100);
+  });
+
+  it('力导向多向弧线连线使用二次贝塞尔曲线且端点位于边界', () => {
+    const forward = buildTopologyEdgeGeometry(
+      { x: 100, y: 100, radius: 90 },
+      { x: 300, y: 300, radius: 90 },
+      true,
+      'arc',
+    );
+    const reverse = buildTopologyEdgeGeometry(
+      { x: 300, y: 300, radius: 90 },
+      { x: 100, y: 100, radius: 90 },
+      true,
+      'arc',
+    );
+
+    expect(forward.path).toContain(' Q ');
+    expect(reverse.path).toContain(' Q ');
+    expect(forward.path).not.toBe(reverse.path);
+    expect(forward.startX).toBeGreaterThan(100);
+    expect(forward.endX).toBeLessThan(300);
   });
 });
 

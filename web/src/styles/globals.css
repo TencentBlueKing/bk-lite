@@ -351,3 +351,15 @@ html:not(.dark) .header-bg-scrolled {
   cursor: pointer !important;
 }
 
+@keyframes apm-edge-flow {
+  to {
+    stroke-dashoffset: -20px;
+  }
+}
+
+.apm-edge-flow-line {
+  animation: apm-edge-flow 1.2s linear infinite;
+  stroke-dasharray: 6 14;
+}
+
+
