@@ -1,6 +1,7 @@
 import json
 import shlex
 from dataclasses import dataclass
+from decimal import Decimal
 from urllib.parse import quote, urlsplit
 
 from django.core.exceptions import ValidationError
@@ -167,10 +168,27 @@ _DOTNET_PROFILER_CLSID = "{918728DD-259F-4A6A-AC2B-B85E1B658318}"
 _DOTNET_CONTAINER_HOME = "/otel-dotnet-auto"
 
 
+FULL_TRACE_SAMPLE_RATE = 100
+
+
 def _otel_resource_value(value: str) -> str:
     """按 OTEL_RESOURCE_ATTRIBUTES 语法编码值；Shell literal 由调用方另行处理。"""
 
     return quote(value, safe="-._~")
+
+
+def _trace_sampler_environment(sample_rate: int) -> dict[str, str]:
+    """全量沿用 SDK 默认；降采样只写入本次脚本，不表示平台正在按该比例采集。"""
+
+    if not 1 <= sample_rate <= FULL_TRACE_SAMPLE_RATE:
+        raise ValueError("sample_rate 必须在 1 到 100 之间")
+    if sample_rate >= FULL_TRACE_SAMPLE_RATE:
+        return {}
+    ratio = format(Decimal(sample_rate) / Decimal(100), "f").rstrip("0").rstrip(".")
+    return {
+        "OTEL_TRACES_SAMPLER": "parentbased_traceidratio",
+        "OTEL_TRACES_SAMPLER_ARG": ratio,
+    }
 
 
 def _dotnet_traces_only_environment() -> dict[str, str]:
@@ -540,6 +558,7 @@ class DjangoIntegrationConfigurationService:
             "OTEL_EXPORTER_OTLP_PROTOCOL": protocol,
             "OTEL_PROPAGATORS": "tracecontext,baggage",
             "OTEL_RESOURCE_ATTRIBUTES": resource,
+            **_trace_sampler_environment(request.sample_rate),
         }
         if request.language == "dotnet":
             environment.update(_dotnet_traces_only_environment())

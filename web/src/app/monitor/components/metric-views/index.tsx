@@ -582,6 +582,10 @@ const MetricViews: React.FC<ViewDetailProps> = ({
     if (!options?.force && loadingMetricIds.has(metric.id)) {
       return;
     }
+    // 实例未就绪时不进入并发队列，避免受控查询 instance_ids 为空刷屏。
+    if (!String(instanceId || '').trim()) {
+      return;
+    }
     const isCancelledRequest = cancelledMetricIds.has(metric.id);
     if (isCancelledRequest) {
       setCancelledMetricIds((prev) => {
@@ -612,7 +616,11 @@ const MetricViews: React.FC<ViewDetailProps> = ({
       response = await post(
         `/monitor/api/metrics_instance/query_by_metric_range/`,
         params,
-        { signal: abortController.signal },
+        {
+          signal: abortController.signal,
+          // 全量指标并行展开时由卡片空态承接失败，避免同类 400 刷 toast。
+          suppressErrorNotification: true,
+        },
       );
     } catch (error: any) {
       if (error.name === 'AbortError') {

@@ -117,7 +117,36 @@ describe('APM 添加接入', () => {
     expect(api.getIngestSnippet).toHaveBeenCalledWith(expect.objectContaining({
       language: 'dotnet',
       runtime: 'host',
+      sample_rate: 100,
     }));
+  });
+
+  it('将采样率写入本次脚本请求', async () => {
+    api.getIngestSnippet.mockResolvedValue({
+      application_id: 'bklite',
+      application_name: 'BK-Lite',
+      cloud_region: { id: 1, name: '默认云区域' },
+      http_endpoint: 'http://proxy.example.com:4318/v1/traces',
+      environment: {},
+      code: 'export OTEL_TRACES_SAMPLER=parentbased_traceidratio',
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Node.js 接入' }));
+    await user.type(screen.getByRole('textbox', { name: /服务名称/ }), 'checkout');
+    await waitFor(() => expect(api.getIngestSnippet).toHaveBeenCalled(), { timeout: 3000 });
+    expect(api.getIngestSnippet).toHaveBeenCalledWith(expect.objectContaining({ sample_rate: 100 }));
+
+    await user.click(screen.getByRole('combobox', { name: '采样率' }));
+    expect(await screen.findAllByTitle('1%')).not.toHaveLength(0);
+    expect(screen.getAllByTitle(/^\d+%$/).map((option) => option.getAttribute('title'))).toEqual(
+      expect.arrayContaining(['100%', '50%', '20%', '10%', '5%', '1%']),
+    );
+    await user.click(screen.getAllByTitle('10%').at(-1)!);
+    await waitFor(() => expect(api.getIngestSnippet).toHaveBeenCalledWith(expect.objectContaining({
+      sample_rate: 10,
+    })), { timeout: 3000 });
   });
 
   it('点击 SDK 接入方式后从右侧打开配置抽屉', async () => {

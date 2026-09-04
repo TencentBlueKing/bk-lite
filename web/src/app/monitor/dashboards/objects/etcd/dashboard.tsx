@@ -48,7 +48,7 @@ export default function EtcdDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>共识与配额</div>
+          <div className={styles.sectionLabel}>健康概览</div>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={5} styles={styles} />
 
           <div className={styles.sectionLabel}>磁盘与共识</div>

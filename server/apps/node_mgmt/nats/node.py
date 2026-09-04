@@ -6,6 +6,8 @@ from django.db import IntegrityError, connection, transaction
 from django.db.models import F
 
 import nats_client
+from rest_framework.exceptions import ValidationError as DRFValidationError
+
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import node_logger as logger
 from apps.core.utils.crypto.aes_crypto import AESCryptor
@@ -25,11 +27,13 @@ from apps.node_mgmt.models import (
     NodeOrganization,
     SidecarEnv,
 )
+from apps.node_mgmt.serializers.installer import ControllerInstallRequestSerializer
 from apps.node_mgmt.services.cloudregion import RegionService
 from apps.node_mgmt.services.installer import InstallerService
 from apps.node_mgmt.services.node import NodeService
 from apps.node_mgmt.services.sidecar_cache import invalidate_bulk_child_config_etags, invalidate_bulk_config_node_etags
 from apps.node_mgmt.tasks.installer import install_collector as install_collector_task
+from apps.node_mgmt.tasks.installer import install_controller as install_controller_task
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 
 LEGACY_NODE_LIST_CALLSITES = frozenset(
@@ -1021,9 +1025,82 @@ def delete_configs(ids: list):
     NatsService().delete_configs(ids)
 
 
+CONTROLLER_INSTALL_FORBIDDEN_KEYS = frozenset(
+    {
+        "created_by",
+        "domain",
+        "organization_ids",
+        "permission_data",
+        "skip_permission",
+        "user",
+        "user_info",
+        "username",
+    }
+)
+
+
 def _install_collector_by_nats(data: dict):
     task_id = InstallerService.install_collector(data["collector_package"], data["nodes"])
     install_collector_task.delay(task_id)
+    return {"task_id": task_id}
+
+
+def _authorized_controller_install_orgs(organization_ids):
+    if not isinstance(organization_ids, (list, tuple, set)):
+        raise BaseAppException("organization_ids 必须是组织 ID 列表")
+    return _normalize_organization_ids(organization_ids)
+
+
+def _validate_controller_install_scope(nodes, authorized_orgs):
+    requested_orgs = []
+    node_ids = []
+    for node in nodes:
+        requested_orgs.extend(node.get("organizations") or [])
+        node_id = node.get("node_id")
+        if node_id:
+            node_ids.append(str(node_id))
+
+    try:
+        requested = _normalize_organization_ids(requested_orgs)
+    except BaseAppException as error:
+        raise BaseAppException("目标组织不在授权范围内") from error
+    if not requested.issubset(authorized_orgs):
+        raise BaseAppException("目标组织不在授权范围内")
+
+    if not node_ids:
+        return
+
+    existing_nodes = list(Node.objects.filter(id__in=node_ids).prefetch_related("nodeorganization_set"))
+    for node in existing_nodes:
+        node_orgs = {relation.organization for relation in node.nodeorganization_set.all()}
+        if not (node_orgs & authorized_orgs):
+            raise BaseAppException("无权在指定节点上安装控制器")
+
+
+def _install_controller_by_nats(data: dict, organization_ids):
+    if not isinstance(data, dict):
+        raise BaseAppException("data 必须是对象")
+    if any(key in data for key in CONTROLLER_INSTALL_FORBIDDEN_KEYS):
+        raise BaseAppException("不允许通过消息参数覆盖安装身份或组织范围")
+
+    authorized_orgs = _authorized_controller_install_orgs(organization_ids)
+    serializer = ControllerInstallRequestSerializer(data=data)
+    try:
+        serializer.is_valid(raise_exception=True)
+    except DRFValidationError as error:
+        raise BaseAppException("控制器远程安装参数不合法") from error
+
+    payload = serializer.validated_data
+    _validate_controller_install_scope(payload["nodes"], authorized_orgs)
+    task_id = InstallerService.install_controller(
+        payload["cloud_region_id"],
+        payload["work_node"],
+        payload["package_id"],
+        payload["nodes"],
+        payload["cpu_architecture"],
+    )
+    install_controller_task.delay(task_id)
+    logger.info("event=nats_install_controller_accepted task_id=%s", task_id)
     return {"task_id": task_id}
 
 
@@ -1037,6 +1114,12 @@ def install_collector(data: dict):
 def install_managed_component(data: dict):
     """安装托管组件（当前复用采集器安装流程）"""
     return _install_collector_by_nats(data)
+
+
+@nats_client.register
+def install_controller(data: dict, organization_ids: list):
+    """远程安装控制器。不含卸载、重试、手动安装或任务查询。"""
+    return _install_controller_by_nats(data, organization_ids)
 
 
 @nats_client.register

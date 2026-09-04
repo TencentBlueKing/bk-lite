@@ -43,3 +43,34 @@ async def test_control_transport_rejects_removed_credential_result_subject():
         )
 
     assert published == []
+
+
+@pytest.mark.asyncio
+async def test_control_transport_publishes_scan_credential_result():
+    published = []
+
+    async def publish(subject, payload):
+        published.append((subject, payload))
+
+    transport = NatsControlTransport(namespace="bklite", publish=publish)
+
+    await transport.publish_collection_callback(
+        "receive_scan_credential_result",
+        {"collect_task_id": "5", "host": "10.10.24.1", "status": "success"},
+    )
+
+    assert published == [
+        (
+            "bklite.receive_scan_credential_result",
+            {
+                "args": [],
+                "kwargs": {
+                    "data": {
+                        "collect_task_id": "5",
+                        "host": "10.10.24.1",
+                        "status": "success",
+                    }
+                },
+            },
+        )
+    ]

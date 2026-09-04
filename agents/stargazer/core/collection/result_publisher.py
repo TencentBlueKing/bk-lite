@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from core.collection.contracts import (
     PublishOutcome,
@@ -23,6 +25,19 @@ from core.collection.round_metadata import (
     build_round_metadata_envelope,
 )
 from core.collection.runtime import CollectionRequest, RunLease
+
+SCAN_CREDENTIAL_RESULT_SUBJECT = "receive_scan_credential_result"
+CREDENTIAL_RESULT_EVENT_VERSION = 2
+CREDENTIAL_FAILURE_ERROR_CODES = frozenset(
+    {
+        "auth_failed",
+        "authentication_failed",
+        "capability_denied",
+        "snmp_error_status",
+        "snmp_authorization_failed",
+        "unauthorized",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -389,12 +404,14 @@ class NatsResultPublisher:
         metrics_publish: Callable | None = None,
         metrics_publish_batch: Callable | None = None,
         callback_publish: Callable | None = None,
+        credential_result_publish: Callable | None = None,
         round_metadata_store=None,
         metrics=None,
     ) -> None:
         self._metrics_publish = metrics_publish
         self._metrics_publish_batch = metrics_publish_batch
         self._callback_publish = callback_publish
+        self._credential_result_publish = credential_result_publish
         self._round_metadata_store = round_metadata_store
         self._metrics = metrics
 
@@ -419,6 +436,13 @@ class NatsResultPublisher:
             )
             if request.params.get("callback_subject"):
                 non_metrics.append((request, result, lease, attempt_state))
+                continue
+            try:
+                await self._publish_scan_credential_result_if_needed(
+                    request, result, lease, result_id
+                )
+            except Exception as error:  # noqa: BLE001 - 返回逐目标失败，不抛整批
+                outcomes[result_id] = error
                 continue
             if result.status != "success" or not has_publishable_metrics(result.value):
                 outcomes[result_id] = None
@@ -538,6 +562,9 @@ class NatsResultPublisher:
             attempt_id=lease.attempt_id,
         )
         params = self._result_params(request, result, lease, result_id)
+        await self._publish_scan_credential_result_if_needed(
+            request, result, lease, result_id
+        )
         if params.get("callback_subject"):
             callback_publish = self._callback_publish
             if callback_publish is None:
@@ -612,3 +639,220 @@ class NatsResultPublisher:
         if attempt_state is not None:
             params["_publish_attempt_state"] = attempt_state
         return params
+
+    async def _publish_scan_credential_result_if_needed(
+        self,
+        request: CollectionRequest,
+        result: TargetCollectionResult,
+        lease: RunLease,
+        result_id: str,
+    ) -> None:
+        if str(request.params.get("credential_result_subject") or "").strip() != SCAN_CREDENTIAL_RESULT_SUBJECT:
+            return
+        credential_failures = tuple(getattr(result, "credential_failures", ()))
+        for event_index, failure in enumerate(credential_failures):
+            await self._emit_scan_credential_event(
+                request,
+                self._build_credential_event(
+                    request=request,
+                    result=result,
+                    lease=lease,
+                    result_id=result_id,
+                    target=result.target,
+                    credential_id=failure.credential_id,
+                    status="failed",
+                    error_code=failure.error_code,
+                    attempts=result.attempts,
+                    event_index=event_index,
+                ),
+            )
+        if credential_failures and not result.credential_id:
+            return
+        await self._emit_scan_credential_event(
+            request,
+            self._build_credential_event(
+                request=request,
+                result=result,
+                lease=lease,
+                result_id=result_id,
+                target=result.target,
+                credential_id=result.credential_id,
+                status=result.status,
+                error_code=result.error_code,
+                attempts=result.attempts,
+                event_index=len(credential_failures),
+            ),
+        )
+
+    async def _emit_scan_credential_event(self, request: CollectionRequest, event: dict) -> None:
+        if not str(event.get("finished_at") or "").strip():
+            event["finished_at"] = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+        publish = self._credential_result_publish
+        if publish is None:
+            from core.infra.control_transport import get_control_transport
+
+            async def publish(result, _params, _task_id):
+                await get_control_transport().publish_collection_callback(
+                    SCAN_CREDENTIAL_RESULT_SUBJECT,
+                    result,
+                )
+
+        await publish(event, dict(request.params), request.task_id)
+
+    @classmethod
+    def _build_credential_event(
+        cls,
+        *,
+        request: CollectionRequest,
+        result: TargetCollectionResult,
+        lease: RunLease,
+        result_id: str,
+        target: str,
+        credential_id: str,
+        status: str,
+        error_code: str,
+        attempts: int,
+        event_index: int,
+    ) -> dict:
+        success = status == "success"
+        failure_kind = (
+            "credential"
+            if status == "failed" and error_code in CREDENTIAL_FAILURE_ERROR_CODES
+            else "task"
+        )
+        event_identity = "\0".join(
+            (result_id, str(event_index), credential_id, status, error_code)
+        )
+        collect_task_id = request.params.get("collect_task_id") or request.task_id
+        snapshot, port = cls._extract_scan_snapshot(request, result)
+        event = {
+            "event_id": hashlib.sha256(event_identity.encode("utf-8")).hexdigest(),
+            "event_version": str(CREDENTIAL_RESULT_EVENT_VERSION),
+            "producer": "stargazer",
+            "scope_id": str(collect_task_id),
+            "collect_task_id": collect_task_id,
+            "run_id": request.task_id,
+            "run_attempt_id": lease.attempt_id,
+            "producer_instance": lease.owner_id,
+            "plugin_ref": request.plugin_ref,
+            "host": target,
+            "credential_id": credential_id,
+            "status": status,
+            "error_code": error_code,
+            "success": success,
+            "failure_kind": "" if success else failure_kind,
+            "error_message": "" if success else error_code,
+            "attempts": attempts,
+            "fence": lease.fence,
+            "result_id": result_id,
+            "event_index": event_index,
+            "snapshot": snapshot,
+        }
+        if port > 0:
+            event["port"] = port
+        return event
+
+    _SCAN_SNAPSHOT_KEYS = (
+        "hostname",
+        "os_type",
+        "os_name",
+        "os_version",
+        "os_bit",
+        "cpu_arch",
+        "cpu_model",
+        "cpu_core",
+        "memory",
+        "disk",
+        "inner_mac",
+        "serial_number",
+        "uuid",
+        "board_serial",
+        "inst_name",
+        "ip_addr",
+        "soid",
+        "sysobjectid",
+        "sysname",
+        "sysdescr",
+        "device_type",
+        "brand",
+        "model",
+        "version",
+        "db_version",
+    )
+
+    @classmethod
+    def _iter_scan_snapshot_sources(cls, data: Mapping):
+        """展开 host / network_system 等列表桶，兼容扁平 system 字典。"""
+        preferred = (
+            "system",
+            "network_system",
+            "host",
+            "physcial_server",
+            "physical_server",
+        )
+        for key in preferred:
+            value = data.get(key)
+            if isinstance(value, Mapping):
+                yield value
+            elif isinstance(value, (list, tuple)):
+                for item in value:
+                    if isinstance(item, Mapping):
+                        yield item
+        for value in data.values():
+            if isinstance(value, Mapping):
+                yield value
+            elif isinstance(value, (list, tuple)):
+                for item in value:
+                    if isinstance(item, Mapping):
+                        yield item
+
+    @classmethod
+    def _extract_scan_snapshot(
+        cls,
+        request: CollectionRequest,
+        result: TargetCollectionResult,
+    ) -> tuple[dict, int]:
+        """从 params / 采集结果尽力提取扫描命中身份；缺字段时仍可推进进度。"""
+        snapshot: dict = {"host": result.target}
+        port = 0
+
+        def _coerce_port(raw) -> int:
+            try:
+                value = int(raw)
+            except (TypeError, ValueError):
+                return 0
+            return value if value > 0 else 0
+
+        for key in ("port", "snmp_port", "http_port"):
+            candidate = _coerce_port(request.params.get(key))
+            if candidate:
+                port = candidate
+                break
+
+        payload = result.value
+        data: Mapping | None = None
+        if isinstance(payload, StructuredMetricsPayload):
+            if isinstance(payload.data, Mapping):
+                data = payload.data
+        elif isinstance(payload, Mapping):
+            data = payload
+
+        if data is not None:
+            for source in cls._iter_scan_snapshot_sources(data):
+                soid = source.get("sysobjectid") or source.get("sysObjectID") or source.get("soid")
+                if soid not in (None, "") and "sysobjectid" not in snapshot:
+                    snapshot["sysobjectid"] = str(soid)
+                    snapshot.setdefault("soid", str(soid))
+                candidate = _coerce_port(source.get("port") or source.get("snmp_port"))
+                if candidate:
+                    port = candidate
+                for key in cls._SCAN_SNAPSHOT_KEYS:
+                    if key in snapshot and snapshot.get(key) not in (None, ""):
+                        continue
+                    value = source.get(key)
+                    if value not in (None, ""):
+                        snapshot[key] = value if isinstance(value, (int, float, bool)) else str(value)
+
+        if port > 0:
+            snapshot["port"] = port
+        return snapshot, port

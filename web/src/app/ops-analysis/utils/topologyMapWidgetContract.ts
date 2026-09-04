@@ -7,6 +7,12 @@ import {
 } from '@/app/ops-analysis/utils/compareQuery';
 import { parseTableLikeData } from '@/app/ops-analysis/utils/tableLikeData';
 import {
+  buildNodeGraph,
+  isNodeGraphMappingComplete,
+  toNodeGraphMapping,
+  type NodeGraphIdentityMode,
+} from '@/app/ops-analysis/utils/nodeGraphData';
+import {
   isEmptyTopologyMapPayload,
   parseTopologyMapPayload,
 } from '@/app/ops-analysis/utils/topologyMapData';
@@ -30,8 +36,22 @@ export const validateTopologyMapWidgetData = (
 export const hasRenderableChartData = (
   chartType: string | undefined,
   data: unknown,
-  config?: { selectedFields?: string[] },
+  config?: {
+    selectedFields?: string[];
+    nodeGraphIdentityMode?: NodeGraphIdentityMode;
+    nodeGraphSourceField?: string;
+    nodeGraphTargetField?: string;
+    nodeGraphValueField?: string;
+    nodeGraphTargetPortField?: string;
+  },
 ) => {
+  if (chartType === 'nodeGraph') {
+    const mapping = toNodeGraphMapping(config);
+    return (
+      isNodeGraphMappingComplete(mapping)
+      && buildNodeGraph(data, mapping).edges.length > 0
+    );
+  }
   if (chartType === 'topologyMap') {
     const parsed = parseTopologyMapPayload(data);
     return parsed.ok && !isEmptyTopologyMapPayload(parsed.data);

@@ -70,6 +70,16 @@ afterEach(() => {
 });
 
 describe('APM 策略列表', () => {
+  it('空列表只展示策略空态，不复用 APM 总述', async () => {
+    api.getPolicies.mockResolvedValue([]);
+    renderWithApmIntl(<ApmPoliciesPage />);
+
+    expect(await screen.findByText('暂无告警策略')).not.toBeNull();
+    expect(screen.queryByText('当前范围暂无 APM 数据')).toBeNull();
+    expect(screen.queryByText('暂无数据')).toBeNull();
+    expect(screen.queryByRole('button', { name: '重新加载' })).toBeNull();
+  });
+
   it('按原型展示策略名称、服务、审计时间和启停操作列', async () => {
     renderWithApmIntl(<ApmPoliciesPage />);
     await screen.findByText('结账接口 P95 过慢');

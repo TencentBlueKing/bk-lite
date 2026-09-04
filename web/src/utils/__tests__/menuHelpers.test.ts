@@ -91,7 +91,13 @@ const cmdbAutoDiscoveryMenus: MenuItem[] = [
         name: 'autoDiscovery',
         children: [
           menu({ title: '采集', url: '/cmdb/assetManage/autoDiscovery/collection', name: 'collection' }),
-          menu({ title: 'SOID特征库', url: '/cmdb/assetManage/autoDiscovery/featureLibrary/soid', name: 'soid' }),
+          menu({ title: '特征库', url: '/cmdb/assetManage/autoDiscovery/featureLibrary/soid', name: 'soid' }),
+          menu({
+            title: '端口指纹',
+            url: '/cmdb/assetManage/autoDiscovery/featureLibrary/port',
+            name: 'soid',
+            isNotMenuItem: true,
+          }),
           menu({ title: '采集工具', url: '/cmdb/assetManage/autoDiscovery/featureLibrary/collectionTool', name: 'tool' }),
         ],
       }),
@@ -192,7 +198,15 @@ describe('getDeepestMatchedMenuItems', () => {
       cmdbAutoDiscoveryMenus,
       '/cmdb/assetManage/autoDiscovery/collection',
     ).map((item) => item.title);
-    expect(items).toEqual(['采集', 'SOID特征库', '采集工具']);
+    expect(items).toEqual(['采集', '特征库', '采集工具']);
+  });
+
+  it('keeps the port fingerprint tab off the auto-discovery sidebar', () => {
+    const items = getDeepestMatchedMenuItems(
+      cmdbAutoDiscoveryMenus,
+      '/cmdb/assetManage/autoDiscovery/featureLibrary/port',
+    ).map((item) => item.title);
+    expect(items).toEqual(['采集', '特征库', '采集工具']);
   });
 
   it('returns children when the deepest match still has children', () => {

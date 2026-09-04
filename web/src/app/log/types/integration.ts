@@ -64,8 +64,8 @@ export interface GroupInfo {
 }
 
 export interface GroupRule {
-  mode: string;
-  conditions: FilterItem[];
+  mode?: string | null;
+  conditions?: FilterItem[];
 }
 
 export interface FilterItem {

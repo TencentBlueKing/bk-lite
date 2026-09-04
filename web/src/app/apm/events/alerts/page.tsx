@@ -435,8 +435,10 @@ export default function ApmAlertsPage() {
           <section className={styles.alertsDistribution} aria-label={t('apm.alerts.distributionSection', '告警分布')}>
             <Collapse
               title={t('apm.alerts.distributionChart', '分布图')}
-              isOpen={chartExpanded}
-              onToggle={setChartExpanded}
+              isOpen={chartExpanded && distribution.length > 0}
+              onToggle={(open) => {
+                if (distribution.length > 0) setChartExpanded(open);
+              }}
               titleClassName={styles.alertsDistributionCollapseTitle}
               contentClassName={styles.alertsDistributionCollapseContent}
               icon={(
@@ -474,51 +476,53 @@ export default function ApmAlertsPage() {
                 </div>
               )}
             >
-              <div
-                className={styles.alertsDistributionChart}
-                role="img"
-                aria-label={t('apm.alerts.distributionDetailAria', '{view} alert event distribution grouped by critical, error, and warning', {
-                  view: t(activeTab === 'active' ? 'apm.alerts.active' : 'apm.alerts.history'),
-                })}
-              >
-                <TimeSeriesComposedChart
-                  data={distribution}
-                  xDataKey="time"
-                  getXLabel={(item) => formatDateTime(String(item.time), false)}
-                  series={[
-                    {
-                      name: t('apm.severity.critical', '严重'),
-                      type: 'bar',
-                      dataKey: 'critical',
-                      color: ALERT_LEVEL_COLORS.critical,
-                      stack: 'severity',
-                      barGradient: false,
-                      barMaxWidth: 32,
-                      barBorderRadius: [0, 0, 0, 0],
-                    },
-                    {
-                      name: t('apm.severity.error', '错误'),
-                      type: 'bar',
-                      dataKey: 'error',
-                      color: ALERT_LEVEL_COLORS.error,
-                      stack: 'severity',
-                      barGradient: false,
-                      barMaxWidth: 32,
-                      barBorderRadius: [0, 0, 0, 0],
-                    },
-                    {
-                      name: t('apm.severity.warning', '警告'),
-                      type: 'bar',
-                      dataKey: 'warning',
-                      color: ALERT_LEVEL_COLORS.warning,
-                      stack: 'severity',
-                      barGradient: false,
-                      barMaxWidth: 32,
-                      barBorderRadius: [3, 3, 0, 0],
-                    },
-                  ]}
-                />
-              </div>
+              {distribution.length ? (
+                <div
+                  className={styles.alertsDistributionChart}
+                  role="img"
+                  aria-label={t('apm.alerts.distributionDetailAria', '{view} alert event distribution grouped by critical, error, and warning', {
+                    view: t(activeTab === 'active' ? 'apm.alerts.active' : 'apm.alerts.history'),
+                  })}
+                >
+                  <TimeSeriesComposedChart
+                    data={distribution}
+                    xDataKey="time"
+                    getXLabel={(item) => formatDateTime(String(item.time), false)}
+                    series={[
+                      {
+                        name: t('apm.severity.critical', '严重'),
+                        type: 'bar',
+                        dataKey: 'critical',
+                        color: ALERT_LEVEL_COLORS.critical,
+                        stack: 'severity',
+                        barGradient: false,
+                        barMaxWidth: 32,
+                        barBorderRadius: [0, 0, 0, 0],
+                      },
+                      {
+                        name: t('apm.severity.error', '错误'),
+                        type: 'bar',
+                        dataKey: 'error',
+                        color: ALERT_LEVEL_COLORS.error,
+                        stack: 'severity',
+                        barGradient: false,
+                        barMaxWidth: 32,
+                        barBorderRadius: [0, 0, 0, 0],
+                      },
+                      {
+                        name: t('apm.severity.warning', '警告'),
+                        type: 'bar',
+                        dataKey: 'warning',
+                        color: ALERT_LEVEL_COLORS.warning,
+                        stack: 'severity',
+                        barGradient: false,
+                        barMaxWidth: 32,
+                        barBorderRadius: [3, 3, 0, 0],
+                      },
+                    ]}
+                  />
+                </div>
+              ) : null}
             </Collapse>
           </section>
 
@@ -538,7 +542,14 @@ export default function ApmAlertsPage() {
                 ) : null}
               </>
             ) : (
-              <CatalogState kind={state === 'ready' ? 'empty' : state} onRetry={load} />
+              <CatalogState
+                kind={state === 'ready' ? 'empty' : state}
+                description={t(
+                  activeTab === 'active' ? 'apm.alerts.emptyActive' : 'apm.alerts.emptyHistory',
+                  activeTab === 'active' ? '暂无活跃告警数据' : '暂无历史告警数据',
+                )}
+                onRetry={state === 'empty' || state === 'ready' ? undefined : load}
+              />
             )}
           </section>
         </section>

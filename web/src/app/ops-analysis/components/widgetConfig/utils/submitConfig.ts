@@ -42,6 +42,11 @@ export interface WidgetConfigFormValues {
   descriptionField?: string;
   topNLabelField?: string;
   topNValueField?: string;
+  nodeGraphIdentityMode?: 'ip' | 'service';
+  nodeGraphSourceField?: string;
+  nodeGraphTargetField?: string;
+  nodeGraphValueField?: string;
+  nodeGraphTargetPortField?: string;
   unit?: string;
   unitId?: string;
   valueMappings?: ValueConfig['valueMappings'];
@@ -261,6 +266,11 @@ const CARD_LIST_FOREIGN_KEYS = [
   'descriptionField',
   'topNLabelField',
   'topNValueField',
+  'nodeGraphIdentityMode',
+  'nodeGraphSourceField',
+  'nodeGraphTargetField',
+  'nodeGraphValueField',
+  'nodeGraphTargetPortField',
 ] as const;
 
 const OPTIONAL_NUMERIC_DISPLAY_FIELDS = [
@@ -291,7 +301,13 @@ const applyValueFormatFields = (
   applyOptionalNumericDisplayFields(result, values);
 };
 
-const VALUE_FORMAT_CHART_TYPES = new Set(['line', 'bar', 'pie', 'multiValue']);
+const VALUE_FORMAT_CHART_TYPES = new Set([
+  'line',
+  'bar',
+  'pie',
+  'multiValue',
+  'nodeGraph',
+]);
 
 const stripUnsetOptionalNumericDisplayFields = <T extends object>(
   valueConfig: T,
@@ -505,6 +521,17 @@ export const buildWidgetSubmitConfig = ({
   if (chartType === 'topN') {
     result.topNLabelField = values.topNLabelField;
     result.topNValueField = values.topNValueField;
+  }
+
+  if (chartType === 'nodeGraph') {
+    const identityMode = values.nodeGraphIdentityMode || 'ip';
+    result.nodeGraphIdentityMode = identityMode;
+    result.nodeGraphSourceField = values.nodeGraphSourceField;
+    result.nodeGraphTargetField = values.nodeGraphTargetField;
+    result.nodeGraphValueField = values.nodeGraphValueField;
+    if (identityMode === 'service') {
+      result.nodeGraphTargetPortField = values.nodeGraphTargetPortField;
+    }
   }
 
   if (chartType === 'eventTimeline') {
