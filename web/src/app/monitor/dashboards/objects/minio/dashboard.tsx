@@ -48,7 +48,7 @@ export default function MinioDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>集群健康与容量</div>
+          <div className={styles.sectionLabel}>健康概览</div>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={5} styles={styles} />
 
           <div className={styles.sectionLabel}>容量与冗余</div>

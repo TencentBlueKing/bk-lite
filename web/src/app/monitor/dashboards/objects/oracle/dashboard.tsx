@@ -19,7 +19,7 @@ import { ORACLE_TOP_QUERIES } from './queries';
 import styles from './index.module.scss';
 
 const SUMMARY_TITLES = ['数据库状态', '会话数', 'User I/O 等待'];
-const CHART_TITLES = ['SQL 活性', '事务提交与回滚', 'Wait Class 概览', 'SGA / PGA 使用率'];
+const CHART_TITLES = ['SQL 活性', '事务提交与回滚', 'Wait Class 概览', '内存使用'];
 const TOP_CONCURRENCY = 2;
 
 export default function OracleDashboardPage() {
@@ -41,7 +41,7 @@ export default function OracleDashboardPage() {
   const timeKey = JSON.stringify(timeValues);
 
   useEffect(() => {
-    if (!isDashboardMode) {
+    if (!isDashboardMode || !idValues.length) {
       setTopBars({});
       return;
     }
@@ -95,7 +95,7 @@ export default function OracleDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康与容量</div>
+          <div className={styles.sectionLabel}>健康概览</div>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} styles={styles} />
 
           <div className={styles.sectionLabel}>活性与事务</div>

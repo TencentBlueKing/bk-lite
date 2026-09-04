@@ -55,7 +55,7 @@ export default function HaproxyDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>入口与后端健康</div>
+          <div className={styles.sectionLabel}>健康概览</div>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} styles={styles} />
 
           <div className={styles.sectionLabel}>负载与时延</div>

@@ -203,10 +203,13 @@ export const SummaryStatCard = ({ summaryCard, className, styles }: SummaryStatC
       value={mainValue.value}
       unit={mainValue.unit}
       icon={getIcon(card.icon)}
-      iconStyle={{ background: `${valueColor ?? card.color}1f`, color: valueColor ?? card.color }}
+      iconStyle={{ background: `${valueColor ?? card.color}1c`, color: valueColor ?? card.color }}
       color={valueColor ?? card.color}
       footer={footerItems.map((item) => (
-        <span key={item.label}>{item.label} {item.value}</span>
+        <span key={item.label} className={styles.statMetaItem}>
+          <span className={styles.statMetaLabel}>{item.label}</span>
+          <span className={styles.statMetaValue}>{item.value}</span>
+        </span>
       ))}
       compare={compare}
       compareFavorableDirection={card.compareFavorableDirection}

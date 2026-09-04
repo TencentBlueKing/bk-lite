@@ -64,7 +64,7 @@ function FlowDashboardMetricsView({
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>流量概览</div>
+          <div className={styles.sectionLabel}>健康概览</div>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={5} styles={styles} />
 
           <div className={styles.sectionLabel}>流量分析</div>
