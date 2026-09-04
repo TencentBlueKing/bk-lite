@@ -41,11 +41,11 @@ _SCAN_METRICS_RETRY_SECONDS = 5
 def build_scan_collect_shim(family_run: ScanFamilyRun):
     params = {"has_network_topo": False}
     if family_run.model_id == "host":
-        from apps.cmdb.services.scan_collect_generate import _host_cloud_from_scan
+        from apps.cmdb.services.scan_host_cloud import host_cloud_from_scan
 
         task = getattr(getattr(family_run, "execution", None), "task", None)
         if task is not None:
-            params.update(_host_cloud_from_scan(task))
+            params.update(host_cloud_from_scan(task))
     return SimpleNamespace(
         id=family_run.id,
         model_id=family_run.model_id,

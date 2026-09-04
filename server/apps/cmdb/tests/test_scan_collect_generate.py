@@ -136,13 +136,13 @@ def _patch_side_effects(mocker):
     )
     mocker.patch("apps.cmdb.permissions.inst_task_permission.get_cmdb_rules", return_value={})
     mocker.patch(
-        "apps.cmdb.services.scan_collect_generate.InstanceManage.query_entity_by_uuids",
+        "apps.cmdb.services.scan_collect_task.InstanceManage.query_entity_by_uuids",
         side_effect=lambda uuids: [{"_id": index + 1, **_graph_row(item)} for index, item in enumerate(uuids)],
     )
     fake_graph = mocker.MagicMock()
     fake_graph.set_entity_properties.return_value = []
     mocker.patch(
-        "apps.cmdb.services.scan_collect_generate.GraphClient",
+        "apps.cmdb.services.scan_collect_task.GraphClient",
         return_value=mocker.MagicMock(__enter__=mocker.Mock(return_value=fake_graph), __exit__=mocker.Mock(return_value=False)),
     )
     return fake_graph

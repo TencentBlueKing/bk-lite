@@ -5,6 +5,7 @@ from __future__ import annotations
 from apps.cmdb.models.scan_model import ScanExecution, ScanHit, resolve_scan_task_credential
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.module_push import CmdbToMonitorPushService, build_cmdb_push_actor_scope
+from apps.cmdb.services.scan_host_cloud import host_cloud_from_scan
 from apps.cmdb.services.scan_identity import ensure_scan_execution_terminal
 from apps.core.logger import cmdb_logger as logger
 
@@ -20,21 +21,9 @@ def _attach_cloud_region(instance: dict, scan_task) -> None:
     """扫描任务上的云区域补到 CI raw，便于 Host 身份 / Remote 选节点。"""
     if instance.get("cloud_region_id") not in (None, "") or instance.get("cloud") not in (None, ""):
         return
-    region = getattr(scan_task, "cloud_region", None)
-    if not region:
-        return
-    if isinstance(region, dict):
-        cloud = region.get("id")
-        if cloud in (None, ""):
-            cloud = region.get("cloud_region_id", region.get("cloud"))
-        cloud_name = region.get("name") or region.get("cloud_region_name") or region.get("cloud_name") or ""
-    elif isinstance(region, int):
-        cloud, cloud_name = region, ""
-    else:
-        text = str(region).strip()
-        if not text:
-            return
-        cloud, cloud_name = (int(text), "") if text.isdigit() else (None, text)
+    fields = host_cloud_from_scan(scan_task)
+    cloud = fields.get("cloud")
+    cloud_name = fields.get("cloud_name")
     if cloud not in (None, ""):
         instance["cloud"] = cloud
         instance["cloud_region_id"] = cloud

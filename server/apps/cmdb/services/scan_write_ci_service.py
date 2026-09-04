@@ -6,6 +6,7 @@ from collections import defaultdict
 
 from apps.cmdb.models.scan_model import SCAN_DATABASE_TYPES, ScanExecution, ScanHit
 from apps.cmdb.services.scan_finalize_service import attach_snmp_hits_to_physical, backfill_hit_identities, write_refined_metrics
+from apps.cmdb.services.scan_host_cloud import host_cloud_from_scan
 from apps.cmdb.services.scan_identity import UNMATCH_CREDENTIAL_FAILED, ensure_scan_execution_terminal, suggested_network_type, unmatch_reason_for_hit
 from apps.core.logger import cmdb_logger as logger
 
@@ -29,94 +30,112 @@ def _snapshot(hit: ScanHit) -> dict:
     return dict(snapshot)
 
 
+def _scan_task_of(hit: ScanHit):
+    task = getattr(getattr(hit, "execution", None), "task", None)
+    if task is not None:
+        return task
+    family_run = getattr(hit, "family_run", None)
+    return getattr(getattr(family_run, "execution", None), "task", None)
+
+
 def _host_cloud_fields(hit: ScanHit, snapshot: dict) -> dict:
-    """主机模型「云区域」必填；优先 snapshot，其次扫描任务 cloud_region，缺省默认区域 1。"""
+    """主机「云区域」必填：snapshot → 扫描任务 → 缺省区域 1。"""
     if snapshot.get("cloud") not in (None, ""):
         fields = {"cloud": snapshot.get("cloud")}
         if snapshot.get("cloud_name") not in (None, ""):
             fields["cloud_name"] = snapshot.get("cloud_name")
         return fields
-    task = getattr(getattr(hit, "execution", None), "task", None)
-    if task is None:
-        family_run = getattr(hit, "family_run", None)
-        task = getattr(getattr(family_run, "execution", None), "task", None)
-    from apps.cmdb.services.scan_collect_generate import _host_cloud_from_scan
-
-    fields = _host_cloud_from_scan(task) if task is not None else {}
+    fields = dict(host_cloud_from_scan(_scan_task_of(hit)))
     if fields.get("cloud") in (None, ""):
         fields["cloud"] = 1
     return fields
 
 
+def _map_network_row(hit: ScanHit, snapshot: dict, host: str) -> tuple[str, dict] | None:
+    device_type = suggested_network_type(hit)
+    if not device_type:
+        return None
+    inst_name = str(snapshot.get("inst_name") or "").strip() or f"{host}-{device_type}"
+    return device_type, {
+        "ip_addr": host,
+        "host": host,
+        "inst_name": inst_name,
+        "soid": hit.soid or snapshot.get("soid") or snapshot.get("sysobjectid") or "",
+        "sysobjectid": snapshot.get("sysobjectid") or hit.soid or "",
+        "sysname": snapshot.get("sysname") or snapshot.get("sys_desc") or inst_name,
+        "sys_desc": snapshot.get("sys_desc") or snapshot.get("sysdescr") or snapshot.get("sysname") or "",
+        "brand": snapshot.get("brand") or "",
+        "model": snapshot.get("model") or "",
+        "device_type": device_type,
+        "model_id": device_type,
+    }
+
+
+def _map_host_row(hit: ScanHit, snapshot: dict, host: str) -> tuple[str, dict]:
+    inst_name = str(snapshot.get("inst_name") or snapshot.get("hostname") or host).strip() or host
+    row = {
+        "ip_addr": host,
+        "host": host,
+        "inst_name": inst_name,
+        "hostname": snapshot.get("hostname") or "",
+        "os_type": snapshot.get("os_type") or "",
+        "os_name": snapshot.get("os_name") or "",
+        "os_version": snapshot.get("os_version") or "",
+        "os_bit": snapshot.get("os_bit") or snapshot.get("os_bits") or "",
+        "cpu_arch": snapshot.get("cpu_arch") or "",
+        "cpu_model": snapshot.get("cpu_model") or "",
+        "cpu_core": snapshot.get("cpu_core") or snapshot.get("cpu_cores") or "",
+        "memory": snapshot.get("memory") or snapshot.get("memory_gb") or "",
+        "disk": snapshot.get("disk") or snapshot.get("disk_gb") or "",
+        "inner_mac": snapshot.get("inner_mac") or snapshot.get("mac_address") or "",
+    }
+    row.update(_host_cloud_fields(hit, snapshot))
+    return "host", row
+
+
+def _map_physical_row(snapshot: dict, host: str) -> tuple[str, dict]:
+    serial = str(snapshot.get("serial_number") or "").strip()
+    inst_name = str(snapshot.get("inst_name") or serial or host).strip() or host
+    return "physcial_server", {
+        "ip_addr": host,
+        "host": host,
+        "inst_name": inst_name,
+        "serial_number": serial,
+        "uuid": snapshot.get("uuid") or "",
+        "board_serial": snapshot.get("board_serial") or "",
+        "brand": snapshot.get("brand") or "",
+        "model": snapshot.get("model") or "",
+    }
+
+
+def _map_database_row(hit: ScanHit, snapshot: dict, host: str, family: str) -> tuple[str, dict]:
+    port = hit.port or snapshot.get("port") or ""
+    suffix = _DB_INST_NAME_SUFFIX.get(family, family)
+    inst_name = str(snapshot.get("inst_name") or "").strip() or (f"{host}-{suffix}-{port}" if port not in (None, "") else f"{host}-{suffix}")
+    return family, {
+        "ip_addr": host,
+        "host": host,
+        "inst_name": inst_name,
+        "port": port,
+        "version": snapshot.get("version") or snapshot.get("db_version") or "",
+    }
+
+
 def mapping_row_from_hit(hit: ScanHit) -> tuple[str, dict] | None:
+    """snapshot → 写入 CI 的一行。只信 snapshot，不回查采集结果。"""
     family = str(getattr(hit.family_run, "model_id", "") or "").strip()
     snapshot = _snapshot(hit)
     host = str(hit.host or snapshot.get("ip_addr") or snapshot.get("host") or "").strip()
     if not host:
         return None
     if family == "network":
-        device_type = suggested_network_type(hit)
-        if not device_type:
-            return None
-        inst_name = str(snapshot.get("inst_name") or "").strip() or f"{host}-{device_type}"
-        return device_type, {
-            "ip_addr": host,
-            "host": host,
-            "inst_name": inst_name,
-            "soid": hit.soid or snapshot.get("soid") or snapshot.get("sysobjectid") or "",
-            "sysobjectid": snapshot.get("sysobjectid") or hit.soid or "",
-            "sysname": snapshot.get("sysname") or snapshot.get("sys_desc") or inst_name,
-            "sys_desc": snapshot.get("sys_desc") or snapshot.get("sysdescr") or snapshot.get("sysname") or "",
-            "brand": snapshot.get("brand") or "",
-            "model": snapshot.get("model") or "",
-            "device_type": device_type,
-            "model_id": device_type,
-        }
+        return _map_network_row(hit, snapshot, host)
     if family == "host":
-        inst_name = str(snapshot.get("inst_name") or snapshot.get("hostname") or host).strip() or host
-        row = {
-            "ip_addr": host,
-            "host": host,
-            "inst_name": inst_name,
-            "hostname": snapshot.get("hostname") or "",
-            "os_type": snapshot.get("os_type") or "",
-            "os_name": snapshot.get("os_name") or "",
-            "os_version": snapshot.get("os_version") or "",
-            "os_bit": snapshot.get("os_bit") or snapshot.get("os_bits") or "",
-            "cpu_arch": snapshot.get("cpu_arch") or "",
-            "cpu_model": snapshot.get("cpu_model") or "",
-            "cpu_core": snapshot.get("cpu_core") or snapshot.get("cpu_cores") or "",
-            "memory": snapshot.get("memory") or snapshot.get("memory_gb") or "",
-            "disk": snapshot.get("disk") or snapshot.get("disk_gb") or "",
-            "inner_mac": snapshot.get("inner_mac") or snapshot.get("mac_address") or "",
-        }
-        row.update(_host_cloud_fields(hit, snapshot))
-        return "host", row
+        return _map_host_row(hit, snapshot, host)
     if family == "physcial_server":
-        serial = str(snapshot.get("serial_number") or "").strip()
-        inst_name = str(snapshot.get("inst_name") or serial or host).strip() or host
-        return "physcial_server", {
-            "ip_addr": host,
-            "host": host,
-            "inst_name": inst_name,
-            "serial_number": serial,
-            "uuid": snapshot.get("uuid") or "",
-            "board_serial": snapshot.get("board_serial") or "",
-            "brand": snapshot.get("brand") or "",
-            "model": snapshot.get("model") or "",
-        }
+        return _map_physical_row(snapshot, host)
     if family in SCAN_DATABASE_TYPES:
-        port = hit.port or snapshot.get("port") or ""
-        suffix = _DB_INST_NAME_SUFFIX.get(family, family)
-        inst_name = str(snapshot.get("inst_name") or "").strip() or (f"{host}-{suffix}-{port}" if port not in (None, "") else f"{host}-{suffix}")
-        row = {
-            "ip_addr": host,
-            "host": host,
-            "inst_name": inst_name,
-            "port": port,
-            "version": snapshot.get("version") or snapshot.get("db_version") or "",
-        }
-        return family, row
+        return _map_database_row(hit, snapshot, host, family)
     return None
 
 
@@ -135,6 +154,7 @@ def _recorded_uuid(hit: ScanHit) -> str:
 
 
 def _live_inst_uuids(hits: list[ScanHit]) -> set[str]:
+    """清单 inst_uuid 必须在图里才算已写入；用户删过 CI 后应重写，不能只看 Postgres。"""
     wanted = [_recorded_uuid(hit) for hit in hits if _recorded_uuid(hit)]
     if not wanted:
         return set()
@@ -279,6 +299,7 @@ class ScanWriteCiService:
     @classmethod
     def write_and_generate(cls, execution: ScanExecution, hit_ids: list[int], *, request=None, operator: str = "") -> dict:
         write_result = cls.write(execution, hit_ids)
+        # 写失败 / 未分类 / 凭据失败的行不进生成。
         eligible_ids = [item["hit_id"] for item in write_result.get("items") or [] if item.get("status") in {"written", "already_written"}]
         collect_result = {
             "execution_id": execution.id,
