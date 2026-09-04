@@ -82,6 +82,74 @@ async def test_configuration_http_maps_runtime_admission_status(monkeypatch, sub
 
 
 @pytest.mark.asyncio
+async def test_http_collect_rejects_when_metrics_stream_not_ready(monkeypatch):
+    from core.collection.application import CollectionApplication
+
+    admitted = []
+
+    class Runtime:
+        async def submit(self, request):
+            admitted.append(request.task_id)
+            raise AssertionError("metrics-not-ready tasks must not be admitted")
+
+    async def not_ready():
+        return False
+
+    application = CollectionApplication.__new__(CollectionApplication)
+    application.runtime = Runtime()
+    application._submission_counts = {}
+    monkeypatch.setattr(collect_api, "get_collection_application", lambda: application)
+    monkeypatch.setattr("core.collection.application.metrics_transport_ready", not_ready)
+
+    result = await collect_api._submit_collection_run(
+        _request(headers={"cmdbplugin_name": "vmware_info", "cmdbhosts": "10.10.24.1"}),
+        {"model_id": "vmware", "plugin_name": "vmware_info", "hosts": "10.10.24.1"},
+        "vmware",
+    )
+
+    assert result.status == 429
+    assert result.headers["x-task-status"] == SubmissionStatus.BUSY.value
+    assert result.headers["Retry-After"] == "1"
+    assert admitted == []
+
+
+@pytest.mark.asyncio
+async def test_http_config_file_collect_still_admits_when_metrics_stream_not_ready(monkeypatch):
+    from core.collection.application import CollectionApplication
+
+    admitted = []
+
+    class Runtime:
+        async def submit(self, request):
+            admitted.append(request.task_id)
+            return Submission(task_id=request.task_id, status=SubmissionStatus.ACCEPTED, fence=1)
+
+    async def not_ready():
+        return False
+
+    application = CollectionApplication.__new__(CollectionApplication)
+    application.runtime = Runtime()
+    application._submission_counts = {}
+    monkeypatch.setattr(collect_api, "get_collection_application", lambda: application)
+    monkeypatch.setattr("core.collection.application.metrics_transport_ready", not_ready)
+
+    result = await collect_api._submit_collection_run(
+        _request(headers={"cmdbplugin_name": "config_file_info", "cmdbhosts": "10.10.24.1"}),
+        {
+            "model_id": "config_file",
+            "plugin_name": "config_file_info",
+            "hosts": "10.10.24.1",
+            "callback_subject": "receive_config_file_result",
+        },
+        "config_file",
+    )
+
+    assert result.status == 202
+    assert result.headers["x-task-status"] == SubmissionStatus.ACCEPTED.value
+    assert admitted
+
+
+@pytest.mark.asyncio
 async def test_vmware_legacy_http_headers_use_hostname_not_instance_id(monkeypatch):
     app = Application(SubmissionStatus.ACCEPTED, fence=1)
     monkeypatch.setattr(collect_api, "get_collection_application", lambda: app)

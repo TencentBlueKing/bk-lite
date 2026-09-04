@@ -254,6 +254,16 @@ export const IP_DISCOVERY_FORM_INITIAL_VALUES = {
   cleanupDays: 3,
 };
 
+export const resolveIpDiscoveryFormTimeout = (
+  isCopy: boolean,
+  sourceTimeout?: number
+) =>
+  isCopy
+    ? IP_DISCOVERY_FORM_INITIAL_VALUES.timeout
+    : Number.isInteger(sourceTimeout) && Number(sourceTimeout) >= 1
+      ? Number(sourceTimeout)
+      : IP_DISCOVERY_FORM_INITIAL_VALUES.timeout;
+
 export const VM_FORM_INITIAL_VALUES = {
   instUuid: undefined,
   cycle: CYCLE_OPTIONS.INTERVAL,

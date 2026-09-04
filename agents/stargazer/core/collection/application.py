@@ -19,7 +19,7 @@ from core.collection.constants import (
 )
 from core.collection.contracts import TargetExecutorSettings
 from core.collection.credential_policy import CredentialPolicy
-from core.collection.enums import WorkloadClass
+from core.collection.enums import SubmissionStatus, WorkloadClass
 from core.collection.execution_plan import ExecutionPlanResolver, TimeoutDefaults
 from core.collection.executor import TargetActivityTracker, TargetCollectionExecutor
 from core.collection.metrics import CollectionMetrics
@@ -294,7 +294,19 @@ class CollectionApplication:
         return self.runtime.active_runs
 
     async def submit(self, request: CollectionRequest) -> Submission:
-        submission = await self.runtime.submit(request)
+        if _request_requires_metrics_stream(request) and not await metrics_transport_ready():
+            logger.error(
+                "event=metrics_transport_not_ready task_id=%s plugin_ref=%s " "failed_stage=run_admission error_type=MetricsTransportNotReady",
+                safe_log_value(request.task_id),
+                safe_log_value(request.plugin_ref),
+            )
+            submission = Submission(
+                task_id=request.task_id,
+                status=SubmissionStatus.BUSY,
+                reason="metrics_transport_not_ready",
+            )
+        else:
+            submission = await self.runtime.submit(request)
         status = submission.status.value
         self._submission_counts[status] = self._submission_counts.get(status, 0) + 1
         return submission
@@ -567,6 +579,18 @@ class CollectionApplication:
             "metrics_jetstream": await metrics_transport_ready(),
             "nats_subscriber": subscriber_transport_ready(),
         }
+
+
+def _request_requires_metrics_stream(request: CollectionRequest) -> bool:
+    params = request.params or {}
+    plugin_ref = str(request.plugin_ref or "")
+    model_id = str(params.get("model_id") or "")
+    callback = str(params.get("callback_subject") or "")
+    if callback == "receive_config_file_result":
+        return False
+    if "config_file" in plugin_ref or model_id in {"config_file", "network_config_file"}:
+        return False
+    return True
 
 
 def _capacity_value(

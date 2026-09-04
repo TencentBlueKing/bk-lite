@@ -318,7 +318,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-pending-bytes", type=int, default=32 * 1024 * 1024)
     parser.add_argument("--puback-timeout", type=float, default=30.0)
     parser.add_argument("--max-attempts", type=int, default=2)
-    parser.add_argument("--stream", default="CMDB_METRICS")
+    parser.add_argument("--stream", default="metrics")
     parser.add_argument("--simulated-ack-ms", type=float, default=1.0)
     parser.add_argument("--shutdown-grace", type=float, default=120.0)
     return parser

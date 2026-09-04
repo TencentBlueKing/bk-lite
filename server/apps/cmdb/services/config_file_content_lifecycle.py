@@ -186,27 +186,50 @@ class ConfigFileContentLifecycle:
         return stats
 
     @classmethod
+    def _iter_temp_object_keys(cls, storage, *, scan_limit: int):
+        prefix = cls.TEMP_PREFIX.rstrip("/") + "/"
+        client = getattr(storage, "client", None)
+        bucket = getattr(storage, "bucket", None)
+        if client is not None and bucket:
+            listed = 0
+            for obj in client.list_objects(bucket_name=bucket, prefix=prefix, recursive=True):
+                object_name = getattr(obj, "object_name", None)
+                if not object_name:
+                    continue
+                yield str(object_name)
+                listed += 1
+                if listed >= scan_limit:
+                    return
+            return
+        list_object_keys = getattr(storage, "list_object_keys", None)
+        if not callable(list_object_keys):
+            raise RuntimeError("object storage adapter does not support temp object listing")
+        listed = 0
+        for object_name in list_object_keys(prefix):
+            yield str(object_name)
+            listed += 1
+            if listed >= scan_limit:
+                return
+
+    @classmethod
     def cleanup_orphan_temp_objects(
         cls,
         *,
         retention_seconds: int = 86400,
         batch_size: int = 100,
+        scan_limit: int = 1000,
         now_time=None,
     ) -> int:
         current_time = now_time or now()
         cutoff = current_time - timedelta(seconds=max(1, retention_seconds))
         limit = max(1, min(int(batch_size), 1000))
-        referenced_keys = set(
-            ConfigFileVersion.objects.exclude(temp_content_key="").values_list("temp_content_key", flat=True)
-        )
+        max_scan = max(limit, min(int(scan_limit), 5000))
         storage = cls._storage()
-        _directories, file_names = storage.listdir(cls.TEMP_PREFIX)
         deleted = 0
-        for file_name in file_names:
+        for object_key in cls._iter_temp_object_keys(storage, scan_limit=max_scan):
             if deleted >= limit:
                 break
-            object_key = f"{cls.TEMP_PREFIX}/{file_name}"
-            if object_key in referenced_keys:
+            if ConfigFileVersion.objects.filter(temp_content_key=object_key).exists():
                 continue
             try:
                 if storage.get_modified_time(object_key) >= cutoff:

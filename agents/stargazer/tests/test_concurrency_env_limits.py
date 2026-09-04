@@ -177,7 +177,7 @@ def test_env_example_uses_split_timeout_contract():
     assert "NATS_JS_PUBLISH_MAX_PENDING=256" in example
     assert "NATS_JS_PUBLISH_MAX_PENDING_BYTES=33554432" in example
     assert "NATS_METRICS_PENDING_SIZE_BYTES=34603008" in example
-    assert "NATS_JS_STREAM_NAME=CMDB_METRICS" in example
+    assert "NATS_JS_STREAM_NAME=metrics" in example
     assert "NATS_MAX_RECONNECT_ATTEMPTS=-1" in example
     assert "NATS_PENDING_SIZE_BYTES=2097152" in example
     assert "NATS_METRICS_READINESS_TIMEOUT=2" in example

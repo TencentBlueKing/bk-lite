@@ -35,12 +35,52 @@ class FakeStorage:
         self.deleted_keys.append(key)
         self.objects.pop(key, None)
 
-    def listdir(self, prefix):
-        marker = prefix.rstrip("/") + "/"
-        return [], [key[len(marker) :] for key in self.objects if key.startswith(marker) and "/" not in key[len(marker) :]]
+    def list_object_keys(self, prefix):
+        marker = prefix.rstrip("/") + "/" if not prefix.endswith("/") else prefix
+        return [key for key in self.objects if key.startswith(marker)]
 
     def get_modified_time(self, key):
         return self.modified_at[key]
+
+
+class FakeMinioObject:
+    def __init__(self, object_name):
+        self.object_name = object_name
+
+
+class FakeMinioClient:
+    def __init__(self, storage):
+        self.storage = storage
+        self.list_calls = []
+
+    def list_objects(self, bucket_name, prefix="", recursive=False):
+        self.list_calls.append({"bucket_name": bucket_name, "prefix": prefix, "recursive": recursive})
+        marker = prefix or ""
+        for name in list(self.storage.objects):
+            if name.startswith(marker):
+                yield FakeMinioObject(name)
+
+
+class FakeMinioBackend:
+    """贴合 django-minio-backend.MinioBackend 的公开表面：bucket + client.list_objects。"""
+
+    bucket = "cmdb-config-file"
+
+    def __init__(self):
+        self.objects = {}
+        self.deleted_keys = []
+        self.modified_at = {}
+        self.client = FakeMinioClient(self)
+
+    def delete(self, key):
+        self.deleted_keys.append(key)
+        self.objects.pop(key, None)
+
+    def get_modified_time(self, key):
+        return self.modified_at[key]
+
+    def listdir(self, bucket_name):
+        raise AssertionError(f"lifecycle must not call listdir; got {bucket_name!r}")
 
 
 @pytest.fixture
@@ -272,7 +312,7 @@ def test_cleanup_orphan_temp_objects_keeps_referenced_and_fresh_objects(fake_sto
     assert old_orphan not in fake_storage.objects
 
 
-def test_periodic_task_combines_recovery_and_orphan_stats(monkeypatch):
+def test_periodic_recovery_task_does_not_run_orphan_cleanup(monkeypatch):
     from apps.cmdb.tasks.celery_tasks import reconcile_config_file_content_task
 
     monkeypatch.setattr(
@@ -280,18 +320,29 @@ def test_periodic_task_combines_recovery_and_orphan_stats(monkeypatch):
         "recover_stale",
         classmethod(lambda cls: {"scanned": 3, "recovered": 2, "failed": 1}),
     )
+
+    def fail_cleanup(cls, **_kwargs):
+        raise AssertionError("orphan cleanup must run as a separate task")
+
+    monkeypatch.setattr(ConfigFileContentLifecycle, "cleanup_orphan_temp_objects", classmethod(fail_cleanup))
+
+    assert reconcile_config_file_content_task() == {
+        "scanned": 3,
+        "recovered": 2,
+        "failed": 1,
+    }
+
+
+def test_periodic_orphan_cleanup_task_is_isolated(monkeypatch):
+    from apps.cmdb.tasks.celery_tasks import cleanup_config_file_orphan_temp_task
+
     monkeypatch.setattr(
         ConfigFileContentLifecycle,
         "cleanup_orphan_temp_objects",
         classmethod(lambda cls: 4),
     )
 
-    assert reconcile_config_file_content_task() == {
-        "scanned": 3,
-        "recovered": 2,
-        "failed": 1,
-        "orphans_deleted": 4,
-    }
+    assert cleanup_config_file_orphan_temp_task() == {"orphans_deleted": 4}
 
 
 def test_periodic_schedule_is_registered():
@@ -299,3 +350,40 @@ def test_periodic_schedule_is_registered():
 
     schedule = CELERY_BEAT_SCHEDULE["reconcile_config_file_content_task"]
     assert schedule["task"] == "apps.cmdb.tasks.celery_tasks.reconcile_config_file_content_task"
+    cleanup = CELERY_BEAT_SCHEDULE["cleanup_config_file_orphan_temp_task"]
+    assert cleanup["task"] == "apps.cmdb.tasks.celery_tasks.cleanup_config_file_orphan_temp_task"
+
+
+@pytest.mark.django_db
+def test_cleanup_uses_minio_bucket_and_temp_prefix_not_listdir(monkeypatch):
+    storage = FakeMinioBackend()
+    monkeypatch.setattr(ConfigFileContentLifecycle, "_storage", staticmethod(lambda: storage))
+    referenced_key = "tmp/config-file/referenced.txt"
+    old_orphan = "tmp/config-file/old-orphan.txt"
+    nested_orphan = "tmp/config-file/nested/old.txt"
+    _create_version(temp_content_key=referenced_key)
+    storage.objects.update(
+        {
+            referenced_key: b"v1",
+            old_orphan: b"old",
+            nested_orphan: b"nested",
+        }
+    )
+    old_time = now() - timedelta(hours=2)
+    storage.modified_at = {
+        referenced_key: old_time,
+        old_orphan: old_time,
+        nested_orphan: old_time,
+    }
+
+    deleted = ConfigFileContentLifecycle.cleanup_orphan_temp_objects(
+        retention_seconds=3600,
+        batch_size=10,
+        now_time=now(),
+    )
+
+    assert deleted == 2
+    assert referenced_key in storage.objects
+    assert old_orphan not in storage.objects
+    assert nested_orphan not in storage.objects
+    assert storage.client.list_calls == [{"bucket_name": "cmdb-config-file", "prefix": "tmp/config-file/", "recursive": True}]

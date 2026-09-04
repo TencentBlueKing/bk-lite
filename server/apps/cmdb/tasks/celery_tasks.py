@@ -620,6 +620,9 @@ def sync_collect_task(  # noqa: C901
 
     try:
         node_mgmt_raw_summary = _bound_node_mgmt_raw_data(instance, format_data)
+        from apps.cmdb.services.collect_snapshot_uuid import normalize_collect_result_payloads
+
+        result, format_data = normalize_collect_result_payloads(result, format_data)
         instance.collect_data = result
         instance.format_data = format_data
         collect_digest = {
@@ -1326,9 +1329,17 @@ def reconcile_config_file_content_task() -> dict:
     from apps.cmdb.services.config_file_content_lifecycle import ConfigFileContentLifecycle
 
     recovery = ConfigFileContentLifecycle.recover_stale()
+    logger.info("[ConfigFileContent] 周期正文补偿完成: %s", recovery)
+    return recovery
+
+
+@shared_task
+def cleanup_config_file_orphan_temp_task() -> dict:
+    from apps.cmdb.services.config_file_content_lifecycle import ConfigFileContentLifecycle
+
     orphans_deleted = ConfigFileContentLifecycle.cleanup_orphan_temp_objects()
-    result = {**recovery, "orphans_deleted": orphans_deleted}
-    logger.info("[ConfigFileContent] 周期补偿完成: %s", result)
+    result = {"orphans_deleted": orphans_deleted}
+    logger.info("[ConfigFileContent] 周期孤儿临时对象清理完成: %s", result)
     return result
 
 

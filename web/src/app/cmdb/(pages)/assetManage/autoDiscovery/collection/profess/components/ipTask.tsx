@@ -10,7 +10,7 @@ import {
   getCycleFormValues,
 } from '../hooks/useTaskForm';
 import { TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
-import { IP_DISCOVERY_FORM_INITIAL_VALUES } from '@/app/cmdb/constants/professCollection';
+import { IP_DISCOVERY_FORM_INITIAL_VALUES, resolveIpDiscoveryFormTimeout } from '@/app/cmdb/constants/professCollection';
 import { formatTaskValues } from '../hooks/formatTaskValues';
 import { useInstanceApi } from '@/app/cmdb/api';
 import { Form, Spin, Alert, Radio, Input, Modal, Select } from 'antd';
@@ -235,6 +235,7 @@ const IpTask: React.FC<IpTaskFormProps> = ({
       scanMethod: values.instances?.scan_method || 'icmp',
       tcpPorts: (values.instances?.ports || [22, 80, 443, 3389]).join(','),
       subnetUuids,
+      timeout: resolveIpDiscoveryFormTimeout(isCopy, values.timeout),
     };
   };
 

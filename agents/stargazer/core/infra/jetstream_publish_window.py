@@ -31,7 +31,7 @@ class JetStreamPublishWindowSettings:
     max_pending_bytes: int = 32 * 1024 * 1024
     puback_timeout_seconds: float = 30.0
     max_attempts: int = 2
-    expected_stream: str = "CMDB_METRICS"
+    expected_stream: str = "metrics"
 
     def __post_init__(self) -> None:
         if self.max_pending_messages <= 0:

@@ -1117,6 +1117,48 @@ def test_collect_result_requires_current_execution_owner():
 
 
 @pytest.mark.django_db
+def test_sync_collect_task_persists_inst_uuid_on_collect_snapshot(monkeypatch):
+    inst_uuid = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+    task = CollectModels.objects.create(
+        name="uuid-collect-snapshot",
+        task_type=CollectPluginTypes.PROTOCOL,
+        model_id="mysql",
+        driver_type="protocol",
+        cycle_value_type="cycle",
+        team=[1],
+        instances=[{"_id": "i1", "model_id": "mysql", "inst_name": "db1"}],
+    )
+
+    class FakeCollect:
+        def __init__(self, task):
+            self.task = task
+
+        def main(self):
+            return (
+                {"ok": True},
+                {
+                    "add": [{"_id": 7, "inst_name": "db1", "model_id": "mysql", "_status": "success"}],
+                    "update": [],
+                    "delete": [],
+                    "association": [],
+                    "__raw_data__": [{"__name__": "mysql_up"}],
+                },
+            )
+
+    monkeypatch.setattr(ct, "ProtocolCollect", FakeCollect)
+    monkeypatch.setattr(
+        "apps.cmdb.management.commands.migrate_cmdb_instance_uuid_refs.InstanceManage.query_entity_by_ids",
+        staticmethod(lambda ids: [{"_id": 7, "inst_uuid": inst_uuid}] if 7 in ids else []),
+    )
+
+    ct.sync_collect_task(task.id)
+    task.refresh_from_db()
+    assert task.format_data["add"][0]["inst_uuid"] == inst_uuid
+    assert task.format_data["add"][0]["_id"] == 7
+    assert task.exec_status == CollectRunStatusType.SUCCESS
+
+
+@pytest.mark.django_db
 def test_sync_collect_task_handles_collect_exception(monkeypatch):
     task = CollectModels.objects.create(
         name="boom-collect",

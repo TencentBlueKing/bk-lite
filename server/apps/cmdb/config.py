@@ -15,6 +15,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.cmdb.tasks.celery_tasks.reconcile_config_file_content_task",
         "schedule": crontab(minute="*/15"),
     },
+    "cleanup_config_file_orphan_temp_task": {
+        "task": "apps.cmdb.tasks.celery_tasks.cleanup_config_file_orphan_temp_task",
+        "schedule": crontab(minute="*/15"),
+    },
     "reconcile_cmdb_operations_task": {"task": "apps.cmdb.tasks.celery_tasks.reconcile_cmdb_operations_task", "schedule": crontab(minute="*/5")},
     "recover_change_record_mirror_outbox_task": {
         "task": "apps.cmdb.tasks.celery_tasks.recover_change_record_mirror_outbox_task",
