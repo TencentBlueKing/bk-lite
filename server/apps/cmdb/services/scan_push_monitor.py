@@ -5,6 +5,7 @@ from __future__ import annotations
 from apps.cmdb.models.scan_model import ScanExecution, ScanHit, resolve_scan_task_credential
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.module_push import CmdbToMonitorPushService, build_cmdb_push_actor_scope
+from apps.cmdb.services.scan_identity import ensure_scan_execution_terminal
 from apps.core.logger import cmdb_logger as logger
 
 _NETWORK_MODELS = frozenset({"switch", "router", "firewall", "loadbalance"})
@@ -123,6 +124,7 @@ class ScanPushMonitorService:
 
     @classmethod
     def push(cls, execution: ScanExecution, hit_ids: list[int], *, request=None, operator: str = "") -> dict:
+        ensure_scan_execution_terminal(execution)
         actor_scope = (
             build_cmdb_push_actor_scope(request)
             if request is not None
@@ -157,9 +159,8 @@ class ScanPushMonitorService:
                 "cmdb_model_id": hit.cmdb_model_id,
             }
 
-            # network 未识别 soid：先拦，避免空 uuid 被误报成 no_ci。
-            if family_model_id == "network" and not hit.cmdb_model_id:
-                item.update({"status": "skipped", "reason": "unknown_soid"})
+            if not str(hit.inst_uuid or "").strip():
+                item.update({"status": "skipped", "reason": "no_ci"})
                 results.append(item)
                 continue
             if not credential_id:

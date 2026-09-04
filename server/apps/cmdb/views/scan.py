@@ -147,6 +147,31 @@ class ScanTaskViewSet(AuthViewSet):
         return WebUtils.response_success(result)
 
     @HasPermission("auto_collection-Execute")
+    @action(methods=["post"], detail=False, url_path=r"executions/(?P<eid>[0-9]+)/write_cmdb")
+    def write_cmdb(self, request, eid=None):
+        execution = self._get_execution(eid)
+        hit_ids = _hit_ids_from_request(request)
+        from apps.cmdb.services.scan_write_ci_service import ScanWriteCiService
+
+        result = ScanWriteCiService.write(execution, hit_ids)
+        return WebUtils.response_success(result)
+
+    @HasPermission("auto_collection-Execute")
+    @action(methods=["post"], detail=False, url_path=r"executions/(?P<eid>[0-9]+)/write_cmdb_and_generate_collect")
+    def write_cmdb_and_generate_collect(self, request, eid=None):
+        execution = self._get_execution(eid)
+        hit_ids = _hit_ids_from_request(request)
+        from apps.cmdb.services.scan_write_ci_service import ScanWriteCiService
+
+        result = ScanWriteCiService.write_and_generate(
+            execution,
+            hit_ids,
+            request=request,
+            operator=getattr(request.user, "username", "") or "",
+        )
+        return WebUtils.response_success(result)
+
+    @HasPermission("auto_collection-Execute")
     @action(methods=["post"], detail=False, url_path=r"executions/(?P<eid>[0-9]+)/classify_hits")
     def classify_hits(self, request, eid=None):
         execution = self._get_execution(eid)

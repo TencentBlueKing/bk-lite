@@ -687,6 +687,23 @@ class TestListRegions:
         assert is_interval is True
         assert scan_cycle == "*/10 * * * *"
 
+    def test_format_params_保留空_ip_range(self):
+        data = {
+            "name": "task1",
+            "task_type": "network",
+            "driver_type": "snmp",
+            "model_id": "network",
+            "timeout": 5,
+            "input_method": 0,
+            "team": [1],
+            "scan_cycle": {"value_type": "cycle", "value": "30"},
+            "ip_range": "",
+            "instances": [{"inst_uuid": "u1"}],
+        }
+        params, _is_interval, _scan_cycle = CollectModelService.format_params(data)
+        assert params["ip_range"] == ""
+        assert params["instances"] == [{"inst_uuid": "u1"}]
+
     def test_format_params_close_无周期(self):
         data = {
             "name": "t",

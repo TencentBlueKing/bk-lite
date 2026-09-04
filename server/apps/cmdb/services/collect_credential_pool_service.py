@@ -33,11 +33,11 @@ class CollectCredentialPoolService:
         return normalized_pool
 
     @classmethod
-    def validate_pool_shape(cls, pool):
-        """校验凭据池数量与字段结构。"""
+    def validate_pool_shape(cls, pool, *, max_size=MAX_POOL_SIZE):
+        """校验凭据池数量与字段结构。max_size=None 表示不限制数量（扫描生成路径）。"""
         if not pool:
             raise BaseAppException("采集凭据不能为空！")
-        if len(pool) > cls.MAX_POOL_SIZE:
+        if max_size is not None and len(pool) > max_size:
             raise BaseAppException("采集凭据最多支持3组！")
         for item in pool:
             if not isinstance(item, dict):

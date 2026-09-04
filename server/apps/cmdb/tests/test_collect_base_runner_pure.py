@@ -69,6 +69,17 @@ def test_format_params_dict_instances_falls_back_to_task_mode():
     assert c.filter_collect_task is True
 
 
+def test_format_params_network_switch_instance_uses_task_model_id():
+    t = _task(
+        model_id="network",
+        is_host=False,
+        instances=[{"_id": "s1", "model_id": "switch", "inst_name": "10.0.0.1-switch", "organization": 3}],
+    )
+    c = BaseCollect(instance_id=None, task=t)
+    assert c.model_id == "network"
+    assert c.inst_name == "10.0.0.1-switch"
+
+
 def test_format_params_instance_mode():
     t = _task(
         instances=[{"_id": "h1", "model_id": "host", "inst_name": "10.0.0.1", "organization": 3}],

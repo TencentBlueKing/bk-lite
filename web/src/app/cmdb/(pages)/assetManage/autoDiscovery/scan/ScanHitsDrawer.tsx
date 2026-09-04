@@ -169,7 +169,8 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
   const {
     getScanExecution,
     getScanHits,
-    generateCollect,
+    writeCmdb,
+    writeCmdbAndGenerateCollect,
     pushMonitor,
     classifyHits,
     rematchSoid,
@@ -204,7 +205,7 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
 
   // 快捷选类型弹窗（网络未匹配）
   const [classifyOpen, setClassifyOpen] = useState(false);
-  const [classifyKind, setClassifyKind] = useState<'collect' | 'monitor'>('monitor');
+  const [classifyKind, setClassifyKind] = useState<'cmdb' | 'collect'>('cmdb');
   const [pendingUnmatchedIds, setPendingUnmatchedIds] = useState<number[]>([]);
   const [pendingValidExportIds, setPendingValidExportIds] = useState<number[]>([]);
 
@@ -412,16 +413,30 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
   };
 
   const handleBatchResult = (
-    kind: 'collect' | 'monitor',
-    result: Record<string, number> & { items?: Array<{ status?: string; reason?: string; host?: string }> }
+    kind: 'cmdb' | 'collect' | 'monitor',
+    result: Record<string, number> & { items?: Array<{ status?: string; reason?: string; host?: string }>; collect?: Record<string, number> }
   ) => {
-    if (kind === 'collect') {
-      const created = result?.created ?? 0;
-      const appended = result?.appended ?? 0;
+    if (kind === 'cmdb') {
+      const written = result?.written ?? 0;
       const skipped = result?.skipped ?? 0;
       const failed = result?.failed ?? 0;
+      if (failed || skipped || written === 0) {
+        message.warning(t('Scan.writeCmdbPartial', undefined, { written, skipped, failed }));
+      } else {
+        message.success(t('Scan.writeCmdbDone', undefined, { count: written }));
+      }
+      return;
+    }
+    if (kind === 'collect') {
+      const written = result?.written ?? 0;
+      const created = result?.created ?? result?.collect?.created ?? 0;
+      const appended = result?.appended ?? result?.collect?.appended ?? 0;
+      const skipped = result?.collect?.skipped ?? result?.skipped ?? 0;
+      const failed = result?.failed ?? result?.collect?.failed ?? 0;
       if (failed || skipped || appended || created === 0) {
-        message.warning(t('Scan.generateCollectPartial', undefined, { created, appended, skipped, failed }));
+        message.warning(
+          `${t('Scan.writeCmdbPartial', undefined, { written, skipped: result?.skipped ?? 0, failed: result?.failed ?? 0 })}；${t('Scan.generateCollectPartial', undefined, { created, appended, skipped, failed })}`
+        );
       } else {
         message.success(t('Scan.generateCollectDone', undefined, { count: created }));
       }
@@ -444,20 +459,25 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
     }
   };
 
-  const runExport = async (kind: 'collect' | 'monitor', hitIds: number[]) => {
+  const runExport = async (kind: 'cmdb' | 'collect' | 'monitor', hitIds: number[]) => {
     if (!activeExecution?.id || !hitIds.length) {
       return;
     }
-    if (kind === 'collect') {
-      const result = await generateCollect(activeExecution.id, hitIds);
-      handleBatchResult('collect', result);
-    } else {
-      const result = await pushMonitor(activeExecution.id, hitIds);
-      handleBatchResult('monitor', result);
+    if (kind === 'cmdb') {
+      const result = await writeCmdb(activeExecution.id, hitIds);
+      handleBatchResult('cmdb', result);
+      return;
     }
+    if (kind === 'collect') {
+      const result = await writeCmdbAndGenerateCollect(activeExecution.id, hitIds);
+      handleBatchResult('collect', result);
+      return;
+    }
+    const result = await pushMonitor(activeExecution.id, hitIds);
+    handleBatchResult('monitor', result);
   };
 
-  const handleBatch = async (kind: 'collect' | 'monitor') => {
+  const handleBatch = async (kind: 'cmdb' | 'collect' | 'monitor') => {
     if (!activeExecution?.id) {
       return;
     }
@@ -473,22 +493,25 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
     );
     const matchedSelected = selectedHits.filter((item) => !item.unmatch_reason);
 
-    // 若只勾选了数据库未匹配项
     if (dbUnmatchedSelected.length > 0 && networkUnmatchedSelected.length === 0 && matchedSelected.length === 0) {
       message.warning(t('Scan.dbUnmatchedOnlyCreateCi'));
       return;
     }
 
-    // 过滤掉数据库未匹配项
     const validExportHits = [...networkUnmatchedSelected, ...matchedSelected];
     const validExportIds = validExportHits.map((item) => item.id);
+
+    if (kind === 'monitor' && networkUnmatchedSelected.length > 0) {
+      message.warning(t('Scan.needWriteCmdbFirst'));
+      return;
+    }
 
     if (networkUnmatchedSelected.length > 0) {
       if (!canSplitUnmatched) {
         message.warning(t('Scan.awaitingFinalize'));
         return;
       }
-      setClassifyKind(kind);
+      setClassifyKind(kind === 'collect' ? 'collect' : 'cmdb');
       setPendingUnmatchedIds(networkUnmatchedSelected.map((item) => item.id));
       setPendingValidExportIds(validExportIds);
       classifyForm.setFieldsValue({ cmdb_model_id: undefined });
@@ -499,9 +522,12 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
     setBatchLoading(true);
     try {
       await runExport(kind, validExportIds);
+      await fetchAllHits(activeExecution.id, { silent: true });
     } catch (error) {
       console.error(error);
-      message.error(kind === 'collect' ? t('Scan.generateCollectFailed') : t('Scan.pushMonitorFailed'));
+      message.error(
+        kind === 'monitor' ? t('Scan.pushMonitorFailed') : kind === 'collect' ? t('Scan.generateCollectFailed') : t('Scan.writeCmdbFailed')
+      );
     } finally {
       setBatchLoading(false);
     }
@@ -520,7 +546,7 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
       await fetchAllHits(activeExecution.id, { silent: true });
     } catch (error) {
       console.error(error);
-      message.error(classifyKind === 'collect' ? t('Scan.generateCollectFailed') : t('Scan.pushMonitorFailed'));
+      message.error(classifyKind === 'collect' ? t('Scan.generateCollectFailed') : t('Scan.writeCmdbFailed'));
     } finally {
       setBatchLoading(false);
     }
@@ -822,7 +848,7 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
   );
 
   const actionsDisabled = hitsLoading || !canSplitUnmatched;
-  const exportDisabled = hitsLoading || isOnlyDbUnmatchedSelected;
+  const exportDisabled = hitsLoading || isOnlyDbUnmatchedSelected || !selectedHitIds.length || !canSplitUnmatched;
   const targetCount = activeExecution?.target_count ?? 0;
   const receivedCount = activeExecution?.received_count ?? 0;
   const progressPercent = targetCount ? Math.min(100, Math.round((receivedCount / targetCount) * 100)) : 0;
@@ -856,8 +882,13 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
           </div>
           <Space>
             <PermissionWrapper requiredPermissions={['Execute']} permissionPath={SCAN_PERMISSION_PATH}>
+              <Button loading={batchLoading} disabled={exportDisabled} onClick={() => handleBatch('cmdb')}>
+                {t('Scan.writeCmdb')}
+              </Button>
+            </PermissionWrapper>
+            <PermissionWrapper requiredPermissions={['Execute']} permissionPath={SCAN_PERMISSION_PATH}>
               <Button loading={batchLoading} disabled={exportDisabled} onClick={() => handleBatch('collect')}>
-                {t('Scan.generateCollect')}
+                {t('Scan.writeCmdbAndGenerate')}
               </Button>
             </PermissionWrapper>
             <PermissionWrapper requiredPermissions={['Execute']} permissionPath={SCAN_PERMISSION_PATH}>

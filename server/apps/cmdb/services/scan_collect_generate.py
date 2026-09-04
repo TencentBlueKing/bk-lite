@@ -13,6 +13,7 @@ from apps.cmdb.models.scan_model import ScanExecution, ScanHit, resolve_scan_tas
 from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
 from apps.cmdb.services.collect_service import CollectModelService
 from apps.cmdb.services.instance import InstanceManage
+from apps.cmdb.services.scan_identity import ensure_scan_execution_terminal
 from apps.cmdb.services.scan_shot import join_ip_ranges
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
@@ -226,20 +227,11 @@ def _build_create_payload(
     *,
     scan_task,
     family_model_id: str,
-    credential_item: dict,
-    ip_range: str,
+    credential_items: list,
     name: str,
     instances: list | None = None,
 ) -> dict:
     defaults = _form_defaults(family_model_id)
-    if _uses_single_endpoint(family_model_id):
-        payload_ip_range = ""
-        payload_instances = list(instances or [])
-    else:
-        # 必须做成手建 IP 段任务：instances 为空，plugin 查找才走 task.model_id=network。
-        # 挂交换机实例会让线上旧 format_params 用 model_id=switch 查插件并失败。
-        payload_ip_range = ip_range
-        payload_instances = []
     return {
         "name": name,
         "task_type": scan_task_type_for_model(family_model_id),
@@ -250,24 +242,19 @@ def _build_create_payload(
         "scan_cycle": {"value_type": "cycle", "value": str(defaults["cycle_minutes"])},
         "team": list(scan_task.team or []),
         "access_point": list(scan_task.access_point or []),
-        "ip_range": payload_ip_range,
-        "instances": payload_instances,
-        "credential": CollectCredentialPoolService.normalize_pool([_normalize_credential_item(family_model_id, credential_item)]),
+        "ip_range": "",
+        "instances": list(instances or []),
+        "credential": CollectCredentialPoolService.normalize_pool([_normalize_credential_item(family_model_id, item) for item in credential_items]),
         "params": _collect_params(scan_task, family_model_id),
         "data_cleanup_strategy": DataCleanupStrategy.NO_CLEANUP,
         "expire_days": 0,
     }
 
 
-def _build_update_payload(collect: CollectModels, *, ip_range: str, instances: list | None = None, params=None) -> dict:
-    if _uses_single_endpoint(collect.model_id):
-        payload_ip_range = ""
-        payload_instances = list(instances if instances is not None else (collect.instances or []))
-    else:
-        payload_ip_range = ip_range
-        payload_instances = []
+def _build_update_payload(collect: CollectModels, *, instances: list | None = None, params=None, credentials=None) -> dict:
     if not isinstance(params, dict):
         params = collect.params if isinstance(collect.params, dict) else {}
+    pool = credentials if credentials is not None else collect.decrypt_credentials
     return {
         "name": collect.name,
         "task_type": collect.task_type,
@@ -281,9 +268,9 @@ def _build_update_payload(collect: CollectModels, *, ip_range: str, instances: l
         },
         "team": list(collect.team or []),
         "access_point": list(collect.access_point or []) if isinstance(collect.access_point, list) else collect.access_point,
-        "ip_range": payload_ip_range,
-        "instances": payload_instances,
-        "credential": CollectCredentialPoolService.normalize_pool(collect.decrypt_credentials),
+        "ip_range": "",
+        "instances": list(instances if instances is not None else (collect.instances or [])),
+        "credential": CollectCredentialPoolService.normalize_pool(pool),
         "params": params,
         "data_cleanup_strategy": collect.data_cleanup_strategy,
         "expire_days": collect.expire_days or 0,
@@ -302,16 +289,14 @@ def _create_collect_task(
     *,
     scan_task,
     family_model_id: str,
-    credential_item: dict,
-    ip_range: str,
+    credential_items: list,
     request,
     instances: list | None = None,
     host: str = "",
     port: int = 0,
 ) -> CollectModels:
     request = _require_request(request)
-    cred_id = str(credential_item.get("credential_id") or "cred")[:8]
-    name_parts = [scan_task.name, family_model_id, cred_id]
+    name_parts = [scan_task.name, family_model_id]
     if _uses_single_endpoint(family_model_id):
         if host:
             name_parts.append(str(host).strip())
@@ -321,13 +306,12 @@ def _create_collect_task(
     payload = _build_create_payload(
         scan_task=scan_task,
         family_model_id=family_model_id,
-        credential_item=credential_item,
-        ip_range=ip_range,
+        credential_items=credential_items,
         name=name,
         instances=instances,
     )
     view = _collect_view(request, action="create")
-    collect_id = CollectModelService.create(request, view, payload=payload)
+    collect_id = CollectModelService.create(request, view, payload=payload, credential_pool_max_size=None)
     return CollectModels.objects.get(pk=collect_id)
 
 
@@ -345,31 +329,52 @@ def _first_instance_uuid(collect: CollectModels) -> str:
     return ""
 
 
+def _merge_instance_payloads(existing, incoming) -> list:
+    by_uuid = {}
+    for item in list(existing or []) + list(incoming or []):
+        if not isinstance(item, dict):
+            continue
+        inst_uuid = str(item.get("inst_uuid") or "").strip()
+        if not inst_uuid:
+            continue
+        by_uuid[inst_uuid] = {
+            "inst_uuid": inst_uuid,
+            "model_id": item.get("model_id") or by_uuid.get(inst_uuid, {}).get("model_id") or "",
+        }
+    return list(by_uuid.values())
+
+
+def _merge_credential_items(family_model_id: str, existing, incoming) -> list:
+    pool = []
+    seen = set()
+    for item in list(existing or []) + list(incoming or []):
+        if not isinstance(item, dict):
+            continue
+        normalized = _normalize_credential_item(family_model_id, item)
+        cred_id = str(normalized.get("credential_id") or "")
+        if not cred_id or cred_id in seen:
+            continue
+        seen.add(cred_id)
+        pool.append(normalized)
+    return CollectCredentialPoolService.normalize_pool(pool)
+
+
 def _find_scan_generated_collect(
     scan_task,
     family_model_id: str,
-    credential_id: str,
     inst_uuid: str | None = None,
 ) -> CollectModels | None:
-    """只匹配本扫描生成的任务，避免误改手建采集。
-
-    优先 params.generated_from_scan_task_id；名称前缀仅作旧数据兜底。
-    """
+    """只匹配本扫描生成的同族任务，避免误改手建采集。"""
     qs = CollectModels.objects.filter(is_system=False, model_id=family_model_id)
     marked = list(qs.filter(params__contains={_SCAN_SOURCE_PARAM: scan_task.id}))
-    if marked:
-        candidates = marked
-    else:
-        # 旧任务可能没有 params 标记，用命名约定兜底（限 name__startswith，不扫全表）。
-        cred_prefix = str(credential_id or "cred")[:8]
-        name_prefix = f"{scan_task.name}-{family_model_id}-{cred_prefix}"
-        candidates = list(qs.filter(name__startswith=name_prefix))
-    for collect in candidates:
+    if not marked:
+        name_prefix = f"{scan_task.name}-{family_model_id}"
+        marked = list(qs.filter(name__startswith=name_prefix))
+    for collect in marked:
         if _uses_single_endpoint(family_model_id) and inst_uuid:
             if _first_instance_uuid(collect) != str(inst_uuid):
                 continue
-        if _pool_has_credential(collect, credential_id):
-            return collect
+        return collect
     return None
 
 
@@ -402,9 +407,8 @@ def _collect_holding_instance(inst_uuid: str) -> CollectModels | None:
 def _claim_instances(collect: CollectModels, inst_uuids: list[str]) -> None:
     """把扫描已写入的 CI 认领到这张采集任务上。
 
-    采集执行（线上旧代码）按 collect_task 对账。扫描落库时 collect_task 是 family_run.id，
+    采集执行按 collect_task 对账。扫描落库时 collect_task 是 family_run.id，
     不认领则自动模式会把已有 CI 当成新增，撞 inst_name 唯一约束。
-    网络 / 主机 / 库的 IP 段任务不往 instances 里挂 CI；InfluxDB 必须挂恰好一个端点。
     """
     uuids = []
     seen = set()
@@ -440,31 +444,41 @@ def _sync_existing_collect(
     collect: CollectModels,
     *,
     scan_task,
-    ip_range: str,
     instances: list | None,
+    credentials: list | None,
     request,
 ) -> CollectModels:
     params = collect.params if isinstance(collect.params, dict) else {}
     if collect.model_id == "host":
         params = {**params, **_collect_params(scan_task, "host")}
+    merged_instances = _merge_instance_payloads(collect.instances, instances)
+    merged_credentials = _merge_credential_items(collect.model_id, collect.decrypt_credentials, credentials)
+    existing_uuids = {str(item.get("inst_uuid") or "") for item in (collect.instances or []) if isinstance(item, dict)}
+    incoming_uuids = {str(item.get("inst_uuid") or "") for item in (instances or []) if isinstance(item, dict)}
+    existing_creds = {str(item.get("credential_id") or "") for item in (collect.decrypt_credentials or []) if isinstance(item, dict)}
+    incoming_creds = {str(item.get("credential_id") or "") for item in (credentials or []) if isinstance(item, dict)}
     needs_auto = collect.input_method != CollectInputMethod.AUTO
     needs_params = params != (collect.params if isinstance(collect.params, dict) else {})
-    if _uses_single_endpoint(collect.model_id):
-        needs_range = False
-    else:
-        needs_range = (collect.ip_range or "") != ip_range
-    if not needs_auto and not needs_range and not needs_params:
+    needs_instances = not incoming_uuids.issubset(existing_uuids)
+    needs_creds = not incoming_creds.issubset(existing_creds)
+    if not needs_auto and not needs_params and not needs_instances and not needs_creds:
         return collect
     request = _require_request(request)
-    payload = _build_update_payload(collect, ip_range=ip_range, instances=instances, params=params)
+    payload = _build_update_payload(
+        collect,
+        instances=merged_instances,
+        params=params,
+        credentials=merged_credentials,
+    )
     view = _collect_view(request, action="update", pk=collect.id)
-    collect_id = CollectModelService.update(request, view, payload=payload)
+    collect_id = CollectModelService.update(request, view, payload=payload, credential_pool_max_size=None)
     return CollectModels.objects.get(pk=collect_id)
 
 
 class ScanCollectGenerateService:
     @classmethod
     def generate(cls, execution: ScanExecution, hit_ids: list[int], *, operator: str = "", request=None) -> dict:
+        ensure_scan_execution_terminal(execution)
         hits = list(
             ScanHit.objects.filter(
                 execution=execution,
@@ -474,8 +488,7 @@ class ScanCollectGenerateService:
         )
         scan_task = execution.task
         results = []
-        groups: dict[tuple[str, str, str], dict] = {}
-        # 批量校验 hit 上回写的 collect_task_id，避免循环内逐条 exists。
+        groups: dict[tuple[str, str], dict] = {}
         recorded_task_ids = {int(hit.collect_task_id) for hit in hits if hit.collect_task_id not in (None, "")}
         live_task_ids = (
             set(CollectModels.objects.filter(pk__in=recorded_task_ids, is_system=False).values_list("pk", flat=True)) if recorded_task_ids else set()
@@ -500,7 +513,6 @@ class ScanCollectGenerateService:
                 item.update({"status": "skipped", "reason": "no_credential"})
                 results.append(item)
                 continue
-            # 幂等：已生成过且任务仍在 → 跳过（重复点击）。
             if hit.collect_task_id:
                 if hit.collect_task_id in live_task_ids:
                     item.update(
@@ -512,46 +524,21 @@ class ScanCollectGenerateService:
                     )
                     results.append(item)
                     continue
-                # 任务已被删：清掉脏引用，允许重新生成。
                 hit.collect_task_id = None
                 hit.save(update_fields=["collect_task_id", "updated_at"])
             holding = _collect_holding_instance(hit.inst_uuid)
-            if holding is not None:
-                existing_holder = _find_scan_generated_collect(
-                    scan_task,
-                    family_model_id,
-                    credential_id,
-                    inst_uuid=hit.inst_uuid,
-                )
-                if existing_holder is not None and existing_holder.id == holding.id:
-                    # 旧数据未回写 collect_task_id：补写后同样跳过。
-                    if hit.collect_task_id != holding.id:
-                        hit.collect_task_id = holding.id
-                        hit.save(update_fields=["collect_task_id", "updated_at"])
-                        live_task_ids.add(holding.id)
-                    item.update(
-                        {
-                            "status": "skipped",
-                            "reason": "already_generated",
-                            "collect_task_id": holding.id,
-                        }
-                    )
-                    results.append(item)
-                    continue
-                # 已被其它采集任务占用，不抢。
+            existing_scan = _find_scan_generated_collect(
+                scan_task,
+                family_model_id,
+                inst_uuid=hit.inst_uuid if _uses_single_endpoint(family_model_id) else None,
+            )
+            if holding is not None and (existing_scan is None or existing_scan.id != holding.id):
                 item.update({"status": "skipped", "reason": "already_on_collect"})
                 results.append(item)
                 continue
             hit_task_id = _successful_credential_hit_task_id(host, credential_id)
             if hit_task_id is not None:
-                existing_for_hit = _find_scan_generated_collect(
-                    scan_task,
-                    family_model_id,
-                    credential_id,
-                    inst_uuid=hit.inst_uuid,
-                )
-                # 别的采集任务已经采过：不要再建。本扫描生成的任务已采过：仍要认领 CI。
-                if existing_for_hit is None or existing_for_hit.id != hit_task_id:
+                if existing_scan is None or existing_scan.id != hit_task_id:
                     item.update({"status": "skipped", "reason": "credential_already_hit"})
                     results.append(item)
                     continue
@@ -564,11 +551,10 @@ class ScanCollectGenerateService:
 
             group_inst = hit.inst_uuid if _uses_single_endpoint(family_model_id) else ""
             group = groups.setdefault(
-                (family_model_id, credential_id, group_inst),
+                (family_model_id, group_inst),
                 {
                     "family_model_id": family_model_id,
-                    "credential_id": credential_id,
-                    "credential_item": credential_item,
+                    "credential_items": {},
                     "hosts": [],
                     "inst_uuids": [],
                     "instances": [],
@@ -577,38 +563,30 @@ class ScanCollectGenerateService:
                     "items": [],
                 },
             )
+            group["credential_items"][credential_id] = credential_item
             group["hosts"].append(host)
             group["inst_uuids"].append(hit.inst_uuid)
-            if _uses_single_endpoint(family_model_id) and not group["instances"]:
-                group["instances"] = [
-                    {
-                        "inst_uuid": hit.inst_uuid,
-                        "model_id": hit.cmdb_model_id or family_model_id,
-                    }
-                ]
+            group["instances"] = _merge_instance_payloads(
+                group["instances"],
+                [{"inst_uuid": hit.inst_uuid, "model_id": hit.cmdb_model_id or family_model_id}],
+            )
             group["items"].append(item)
 
         for group in groups.values():
             existing = _find_scan_generated_collect(
                 scan_task,
                 group["family_model_id"],
-                group["credential_id"],
                 inst_uuid=group["inst_uuids"][0] if _uses_single_endpoint(group["family_model_id"]) else None,
             )
+            credential_items = list(group["credential_items"].values())
             try:
                 with transaction.atomic():
-                    if _uses_single_endpoint(group["family_model_id"]):
-                        ip_range = ""
-                    else:
-                        ip_range = _ip_range_from_scan(scan_task, group["hosts"])
                     if existing is not None:
-                        if ip_range:
-                            ip_range = _union_ip_range(existing.ip_range or "", ip_range)
                         collect = _sync_existing_collect(
                             existing,
                             scan_task=scan_task,
-                            ip_range=ip_range,
                             instances=group["instances"] or None,
+                            credentials=credential_items,
                             request=request,
                         )
                         status = "appended"
@@ -616,8 +594,7 @@ class ScanCollectGenerateService:
                         collect = _create_collect_task(
                             scan_task=scan_task,
                             family_model_id=group["family_model_id"],
-                            credential_item=group["credential_item"],
-                            ip_range=ip_range,
+                            credential_items=credential_items,
                             request=request,
                             instances=group["instances"] or None,
                             host=group["host"],
@@ -642,9 +619,8 @@ class ScanCollectGenerateService:
                     ScanHit.objects.filter(id__in=hit_ids_in_group).update(collect_task_id=collect.id)
             except Exception as exc:
                 logger.exception(
-                    "[ScanCollectGenerate] 生成失败 family=%s credential=%s",
+                    "[ScanCollectGenerate] 生成失败 family=%s",
                     group["family_model_id"],
-                    group["credential_id"],
                 )
                 for item in group["items"]:
                     item.update({"status": "failed", "reason": str(exc)})
