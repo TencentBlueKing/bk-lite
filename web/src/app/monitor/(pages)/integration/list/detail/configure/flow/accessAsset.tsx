@@ -17,7 +17,6 @@ import {
   type FlowExistingAssetItem
 } from '@/app/monitor/utils/flowAsset';
 import type { FlowAssetWizardState } from './flowConfiguration';
-import { fetchMonitorInstancePages } from '@/app/monitor/utils/fetchInstancePages';
 
 interface FlowAssetFormValues {
   accessType: 'new' | 'existing';
@@ -77,17 +76,14 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
       setCloudRegionLoading(true);
       setAssetLoading(true);
       try {
-        const [regions, assetsPage] = await Promise.all([
-          getCloudRegionListRef.current(),
+        const [regions, assets] = await Promise.all([
+          getCloudRegionListRef.current({ page_size: -1 }),
           objectId
-            ? fetchMonitorInstancePages(getInstanceListRef.current, objectId)
-            : Promise.resolve({ results: [], truncated: false, total: 0 })
+            ? getInstanceListRef.current(objectId, { page_size: -1 })
+            : Promise.resolve({ results: [] })
         ]);
         const nextRegions = regions || [];
-        const nextAssets = (assetsPage?.results || []) as FlowExistingAssetItem[];
-        if (assetsPage.truncated) {
-          console.debug('[flow-access] instance list truncated', objectId);
-        }
+        const nextAssets = assets?.results || [];
         setCloudRegionList(nextRegions);
         setExistingAssets(nextAssets);
 

@@ -18,7 +18,6 @@ import {
   isValidK8sImageRegistryPrefix,
 } from '@/utils/k8sImageRegistry';
 import { parseIntegrationObjectId } from '@/app/monitor/utils/integrationEntryContext';
-import { fetchMonitorInstancePages } from '@/app/monitor/utils/fetchInstancePages';
 
 const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
   const { t } = useTranslation();
@@ -63,8 +62,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
   const getCloudRegions = async () => {
     setCloudRegionLoading(true);
     try {
-      // cloud_region_list 后端不分页，禁止传 page_size=-1。
-      const data = await getCloudRegionList();
+      const data = await getCloudRegionList({ page_size: -1 });
       setCloudRegionList(data || []);
       if (commandData?.cloud_region_id) {
         form.setFieldsValue({
@@ -79,14 +77,8 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
   const getK8sClusters = async () => {
     setK8sClusterLoading(true);
     try {
-      const { results, truncated } = await fetchMonitorInstancePages(
-        getInstanceList,
-        objectId
-      );
-      if (truncated) {
-        console.debug('[k8s-access] instance list truncated', objectId);
-      }
-      setK8sClusterList(results || []);
+      const data = await getInstanceList(objectId, { page_size: -1 });
+      setK8sClusterList(data?.results || []);
       if (commandData?.instance_id) {
         form.setFieldsValue({
           k8sCluster: commandData.instance_id,

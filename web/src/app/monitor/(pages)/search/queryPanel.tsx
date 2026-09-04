@@ -29,7 +29,6 @@ import useMonitorApi from '@/app/monitor/api';
 import useViewApi from '@/app/monitor/api/view';
 import useApiClient from '@/utils/request';
 import { runWithConcurrency } from '@/app/monitor/dashboards/shared/utils/concurrency';
-import { fetchMonitorInstancePages } from '@/app/monitor/utils/fetchInstancePages';
 import { useSearchParams } from 'next/navigation';
 import {
   ListItem,
@@ -65,7 +64,6 @@ import {
   resolveMetricDimensionLabels,
   resolveMetricSelection
 } from './searchQueryLogic';
-import { mergeViewQueryKeyValues } from '@/app/monitor/utils/common';
 
 const { Option } = Select;
 
@@ -85,7 +83,7 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
       getMetricsGroup,
       getInstanceList
     } = useMonitorApi();
-    const { getInstanceInstantQuery } = useViewApi();
+    const { getMetricsInstanceQuery } = useViewApi();
     const CONDITION_LIST = useConditionList();
     const [panelCollapsed, setPanelCollapsed] = useState(false);
     const initialObjectId = searchParams.get('monitor_object');
@@ -497,21 +495,17 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
       instanceAbortControllerRef.current[key] = abortController;
       try {
         setInstanceLoading((prev) => ({ ...prev, [key]: true }));
-        const { results, truncated } = await fetchMonitorInstancePages(
-          (id, params) =>
-            getInstanceList(id, params, { signal: abortController.signal }),
+        const data = await getInstanceList(
           objectId,
-          pluginId ? { monitor_plugin_id: pluginId } : {}
+          {
+            page_size: -1,
+            ...(pluginId ? { monitor_plugin_id: pluginId } : {})
+          },
+          { signal: abortController.signal }
         );
-        if (truncated) {
-          console.debug(
-            '[monitor-search] instance list truncated for object',
-            objectId
-          );
-        }
-        const list = (results || []) as InstanceItem[];
-        setInstancesMap((prev) => ({ ...prev, [key]: list }));
-        return list;
+        const results = data.results || [];
+        setInstancesMap((prev) => ({ ...prev, [key]: results }));
+        return results;
       } catch {
         return [];
       } finally {
@@ -707,59 +701,18 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
 
       setConditionValueLoadingMap((prev) => ({ ...prev, [cacheKey]: true }));
       try {
-        // 按批拼多实例 PromQL instant 查询，替代逐实例 query_by_instance，避免 N 路刷屏。
-        const CONDITION_VALUE_BATCH_SIZE = 100;
-        const CONDITION_VALUE_CONCURRENCY = 2;
-        const dataKey = getMetricsMapKey(group.object, group.plugin);
-        const metrics = metricsMap[dataKey] || [];
-        const instances = instancesMap[dataKey] || [];
-        const metricItem = resolveMetricSelection(metrics, group.metric);
-        if (!metricItem?.query) {
-          setConditionValueOptionsMap((prev) => ({ ...prev, [cacheKey]: [] }));
-          return;
-        }
-
-        const instanceIds = [...new Set((group.instanceIds || []).filter(Boolean))];
-        const queryKeys: string[] = metricItem.instance_id_keys || [];
-        const dimensionNames = (metricItem.dimensions || [])
-          .map((item) =>
-            typeof item === 'string' ? item : String((item as { name?: string })?.name || '')
-          )
-          .filter(Boolean);
-        const batches = Array.from(
-          { length: Math.ceil(instanceIds.length / CONDITION_VALUE_BATCH_SIZE) },
-          (_, index) =>
-            instanceIds.slice(
-              index * CONDITION_VALUE_BATCH_SIZE,
-              (index + 1) * CONDITION_VALUE_BATCH_SIZE
-            )
-        );
         const responses = await runWithConcurrency(
-          batches,
-          CONDITION_VALUE_CONCURRENCY,
-          (batch) => {
-            const selected = instances.filter((item) =>
-              batch.includes(item.instance_id)
-            );
-            const queryList = selected.map((item) => ({
-              keys: queryKeys,
-              values: item.instance_id_values || []
-            }));
-            const labels = queryList.length
-              ? mergeViewQueryKeyValues(queryList)
-              : '';
-            let query = (metricItem.query || '').replace(
-              /__\$labels__/g,
-              labels
-            );
-            query = dimensionNames.length
-              ? `any(${query}) by (${dimensionNames.join(',')})`
-              : `any(${query})`;
-            return getInstanceInstantQuery({
-              query,
-              auto_convert_unit: false
-            });
-          }
+          group.instanceIds,
+          4,
+          (instanceId) =>
+            getMetricsInstanceQuery({
+              monitor_object_id: group.object,
+              instance_id: instanceId,
+              metric_id: group.metric as React.Key,
+              auto_convert: false,
+              limit: 200,
+              mode: 'limited'
+            })
         );
         const series = responses.flatMap(
           (resp) => resp?.data?.result || []

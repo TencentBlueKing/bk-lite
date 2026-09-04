@@ -183,7 +183,7 @@ const TemplateAccessGuide: React.FC = () => {
     const fetchCloudRegions = async () => {
       setCloudRegionLoading(true);
       try {
-        const data = await getCloudRegionList();
+        const data = await getCloudRegionList({ page_size: -1 });
         const nextList = data || [];
         setCloudRegionList(nextList);
         if (!selectedCloudRegion && nextList.length) {

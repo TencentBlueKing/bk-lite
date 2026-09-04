@@ -9,7 +9,6 @@ import useIntegrationApi from '@/app/monitor/api/integration';
 import useMonitorApi from '@/app/monitor/api';
 import { useTranslation } from '@/utils/i18n';
 import type { K3sCommandData } from '@/app/monitor/types/integration';
-import { fetchMonitorInstancePages } from '@/app/monitor/utils/fetchInstancePages';
 
 interface AccessConfigProps {
   commandData: K3sCommandData | null;
@@ -32,14 +31,11 @@ const AccessConfig: React.FC<AccessConfigProps> = ({
   const { getInstanceList } = useMonitorApi();
 
   useEffect(() => {
-    void getCloudRegionList().then((items) => setCloudRegions(items || []));
-    void fetchMonitorInstancePages(getInstanceList, objectId).then(
-      ({ results, truncated }) => {
-        if (truncated) {
-          console.debug('[k3s-access] instance list truncated', objectId);
-        }
-        setClusters(results || []);
-      }
+    void getCloudRegionList({ page_size: -1 }).then((items) =>
+      setCloudRegions(items || [])
+    );
+    void getInstanceList(objectId, { page_size: -1 }).then((result) =>
+      setClusters(result?.results || [])
     );
   }, [getCloudRegionList, getInstanceList, objectId]);
 
