@@ -966,8 +966,19 @@
       "kpi": "Application KPIs",
       "keyInfo": "Key information",
       "keyMetrics": "Key metrics",
+      "keyMetricsHint": "Aggregated across all services over the {window} window; mini trends use the same window",
+      "kpiSum": "Sum of services",
+      "kpiWeighted": "Throughput-weighted",
+      "kpiWorst": "Worst service",
+      "kpiWindow": "In {window}",
+      "requestCount": "Requests",
+      "errorCount": "Errors",
+      "partialMetricFailure": "{count} service metric queries failed, retry",
+      "slowestEndpoints": "Slowest endpoints",
+      "errorEndpoints": "Highest error rate endpoints",
+      "noErrorEndpoints": "No failing endpoints in this time window",
       "alertCount": "Alerts",
-      "observabilityDescription": "View application topology, key information, and services in this application."
+      "observabilityDescription": "View application topology, key information, and key metrics."
     },
     "integration": {
       "copyEndpoint": "Copy HTTP ingest endpoint",

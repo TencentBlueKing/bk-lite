@@ -17,7 +17,6 @@ import {
   topologyEntryPillWidth,
   topologyNeighborIds,
   topologyNodeNameWidth,
-  topologyTextWidth,
   truncateTopologyNodeLabel,
   TOPOLOGY_CANVAS_SIZE,
   TOPOLOGY_ENTRY_PILL,
@@ -84,39 +83,21 @@ function TopologyMetricLabel({
 }) {
   const parts = topologyMetricParts({ errorCount, total, p95_ms: p95Ms });
   const isEdgeLabel = textAnchor === 'middle';
-  const metricText = `${parts.total} / ${parts.latency} / ${parts.errors}`;
-  const textW = topologyTextWidth(metricText, fontSize);
-  const pillWidth = isEdgeLabel ? Math.max(68, Math.round(textW + 16)) : 82;
-  const pillHeight = fontSize + 8;
   return (
-    <g opacity={opacity}>
-      {isEdgeLabel ? (
-        <rect
-          className="opacity-95"
-          fill="var(--color-bg)"
-          filter="url(#apm-node-shadow)"
-          height={pillHeight}
-          rx={6}
-          stroke="var(--color-border)"
-          strokeWidth="0.8"
-          width={pillWidth}
-          x={x - pillWidth / 2}
-          y={y - pillHeight / 2}
-        />
-      ) : null}
+    <g opacity={opacity} pointerEvents="none">
       <text
         clipPath={clipPath}
         data-topology-metrics="true"
         data-has-errors={!parts.hasErrors ? 'false' : 'true'}
         fontSize={fontSize}
-        paintOrder={isEdgeLabel ? undefined : 'stroke'}
-        stroke={isEdgeLabel ? undefined : 'var(--color-fill-1)'}
+        paintOrder={isEdgeLabel ? 'stroke fill' : undefined}
+        stroke={isEdgeLabel ? 'var(--color-bg)' : undefined}
         strokeLinejoin="round"
-        strokeWidth={isEdgeLabel ? undefined : '0'}
+        strokeWidth={isEdgeLabel ? 3.5 : undefined}
         textAnchor={textAnchor}
         dominantBaseline={isEdgeLabel ? 'central' : undefined}
         x={x}
-        y={isEdgeLabel ? y : y}
+        y={y}
       >
         <tspan fill="var(--color-text-3)">{`${parts.total} / ${parts.latency} / `}</tspan>
         <tspan data-error-count="true" fill={topologyErrorFill(parts.hasErrors)} fontWeight={parts.hasErrors ? 700 : undefined}>
@@ -131,6 +112,8 @@ const clampZoom = (value: number) => Math.min(MAX_TOPOLOGY_ZOOM, Math.max(MIN_TO
 
 const edgeKey = (source: string, target: string) => `${source}\u0000${target}`;
 
+const sanitizeSvgId = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, (char) => `_${char.charCodeAt(0).toString(16)}`);
+
 export default function TopologyCanvas({
   nodes,
   edges,
@@ -139,6 +122,7 @@ export default function TopologyCanvas({
   focusNamespace,
   selected = null,
   toolbar,
+  fillHeight = false,
   onSelect,
   onNodeClick,
 }: {
@@ -150,6 +134,8 @@ export default function TopologyCanvas({
   focusNamespace?: string;
   selected?: TopologyCanvasSelection | null;
   toolbar?: ReactNode;
+  /** 撑满父级 flex 容器剩余高度（父级需 `flex flex-col min-h-0`），否则固定 640px。 */
+  fillHeight?: boolean;
   onSelect?: (selection: TopologyCanvasSelection | null) => void;
   onNodeClick?: (node: ApmTopologyNode) => void;
 }) {
@@ -398,7 +384,7 @@ export default function TopologyCanvas({
   return (
     <div
       ref={containerRef}
-      className="relative h-[640px] w-full overflow-hidden bg-[var(--color-fill-1)]"
+      className={`relative w-full overflow-hidden bg-[var(--color-fill-1)] ${fillHeight ? 'min-h-[320px] flex-1 basis-0' : 'h-[640px]'}`}
       data-topology-layout-pending={layoutPending ? 'true' : 'false'}
       data-topology-surface="true"
     >
@@ -492,12 +478,22 @@ export default function TopologyCanvas({
           const isNodeSelected = selected?.kind === 'node' && (selected.id === edge.source || selected.id === edge.target);
           const edgeLength = Math.hypot(geometry.endX - geometry.startX, geometry.endY - geometry.startY);
           const showMetricLabel = edgeLength >= 68 || isSelected || isHovered || isNodeSelected;
-          const color = isSelected
+          const trackColor = isSelected
             ? EDGE_STROKE_ACTIVE
             : edge.error_calls > 0
               ? topologyHealthColors.critical
               : EDGE_STROKE;
+          const flowColor = isSelected
+            ? EDGE_STROKE_ACTIVE
+            : edge.error_calls > 0
+              ? 'var(--color-fail)'
+              : 'var(--color-primary)';
+          const trafficRatio = maxCalls > 0 ? Math.min(1, edge.sampled_calls / maxCalls) : 0.5;
+          const flowDuration = Math.max(0.7, (edge.error_calls > 0 ? 1.35 : 1.7) - trafficRatio * 0.85);
           const strokeWidth = Math.max(1, Math.min(2.4, 0.9 + (edge.sampled_calls / maxCalls) * 1.4));
+          const trackWidth = isSelected ? strokeWidth + 0.6 : strokeWidth;
+          const emphasized = isSelected || isHovered || isNodeSelected;
+          const gradientId = `apm-edge-grad-${sanitizeSvgId(edge.source)}-${sanitizeSvgId(edge.target)}`;
           return (
             <g
               data-source={edge.source}
@@ -528,15 +524,55 @@ export default function TopologyCanvas({
                 errors: formatNumber(edge.error_calls),
                 calls: formatNumber(edge.sampled_calls),
               })}</title>
+              <defs>
+                {/* 沿调用方向由淡到实的轨道渐变：源端隐入卡片阴影，靶端与箭头一同收实。 */}
+                <linearGradient
+                  gradientUnits="userSpaceOnUse"
+                  id={gradientId}
+                  x1={geometry.startX}
+                  x2={geometry.endX}
+                  y1={geometry.startY}
+                  y2={geometry.endY}
+                >
+                  <stop offset="0%" stopColor={trackColor} stopOpacity={emphasized ? 0.55 : 0.22} />
+                  <stop offset="55%" stopColor={trackColor} stopOpacity={emphasized ? 0.9 : 0.62} />
+                  <stop offset="100%" stopColor={trackColor} stopOpacity={1} />
+                </linearGradient>
+              </defs>
+              {/* 命中区 + 箭头：本体透明，只借 context-stroke 给箭头上实色，并加宽命中范围。 */}
               <path
                 d={geometry.path}
+                data-edge-hit="true"
                 fill="none"
                 markerEnd="url(#apm-arrow)"
-                stroke={color}
+                stroke={trackColor}
+                strokeOpacity={0}
+                strokeWidth={Math.max(10, trackWidth)}
+              />
+              <path
+                aria-hidden="true"
+                d={geometry.path}
+                data-edge-track="true"
+                fill="none"
+                pointerEvents="none"
+                stroke={`url(#${gradientId})`}
                 strokeDasharray={entryEdge ? '5 4' : undefined}
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeWidth={isSelected ? strokeWidth + 0.6 : strokeWidth}
+                strokeWidth={trackWidth}
+              />
+              <path
+                aria-hidden="true"
+                className="apm-edge-flow-line apm-edge-flow-glow"
+                d={geometry.path}
+                fill="none"
+                pointerEvents="none"
+                stroke={flowColor}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeOpacity={emphasized ? 0.5 : 0.32}
+                strokeWidth={trackWidth + 3.2}
+                style={{ animationDuration: `${flowDuration.toFixed(2)}s` }}
               />
               <path
                 aria-hidden="true"
@@ -544,14 +580,12 @@ export default function TopologyCanvas({
                 d={geometry.path}
                 fill="none"
                 pointerEvents="none"
-                stroke={edge.error_calls > 0 ? 'var(--color-fail)' : 'var(--color-primary)'}
+                stroke={flowColor}
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeOpacity={0.85}
-                strokeWidth={Math.max(1.2, strokeWidth * 0.9)}
-                style={{
-                  animationDuration: `${Math.max(1.0, Math.min(2.8, 240 / Math.max(edge.sampled_calls, 10)))}s`,
-                }}
+                strokeOpacity={emphasized ? 1 : 0.85}
+                strokeWidth={Math.max(1.4, trackWidth)}
+                style={{ animationDuration: `${flowDuration.toFixed(2)}s` }}
               />
               <TopologyMetricLabel
                 errorCount={edge.error_calls}

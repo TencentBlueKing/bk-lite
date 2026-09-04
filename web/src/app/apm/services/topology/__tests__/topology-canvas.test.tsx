@@ -156,7 +156,37 @@ describe('APM 服务拓扑画布', () => {
     expect(path?.getAttribute('marker-end')).toBe('url(#apm-arrow)');
   });
 
-  it('边指标胶囊根据长文本自适应宽度，避免文字溢出白色胶囊底色', async () => {
+  it('连线由方向渐变轨道 + 柔光/核心两层流光组成，箭头保留实色且命中区加宽', async () => {
+    const result = renderWithApmIntl(
+      <TopologyCanvas edges={[edge('catalog', 'inventory')]} keyword="" nodes={nodes.slice(0, 2)} zoom={1} />,
+    );
+
+    await waitFor(() => expect(edgePairs(result.container)).toEqual(['catalog>inventory']));
+    const group = result.container.querySelector('g[data-source="catalog"]')!;
+    const hit = group.querySelector<SVGPathElement>('path[data-edge-hit]');
+    const track = group.querySelector<SVGPathElement>('path[data-edge-track]');
+    const flows = group.querySelectorAll<SVGPathElement>('path.apm-edge-flow-line');
+    const gradient = group.querySelector('linearGradient');
+
+    expect(hit?.getAttribute('marker-end')).toBe('url(#apm-arrow)');
+    expect(hit?.getAttribute('stroke-opacity')).toBe('0');
+    expect(Number(hit?.getAttribute('stroke-width'))).toBeGreaterThanOrEqual(10);
+    expect(hit?.getAttribute('stroke')).not.toMatch(/^url\(/);
+
+    expect(gradient?.getAttribute('gradientUnits')).toBe('userSpaceOnUse');
+    expect(gradient?.querySelectorAll('stop').length).toBe(3);
+    expect(track?.getAttribute('stroke')).toBe(`url(#${gradient?.getAttribute('id')})`);
+    expect(track?.getAttribute('marker-end')).toBeNull();
+    expect(track?.getAttribute('d')).toBe(hit?.getAttribute('d'));
+
+    expect(flows.length).toBe(2);
+    expect(flows[0].classList.contains('apm-edge-flow-glow')).toBe(true);
+    expect(Number(flows[0].getAttribute('stroke-width'))).toBeGreaterThan(Number(flows[1].getAttribute('stroke-width')));
+    expect(flows[0].style.animationDuration).toBe(flows[1].style.animationDuration);
+    expect(group.querySelector('animateMotion')).toBeNull();
+  });
+
+  it('边指标采用文字描边光晕轻量展示，无生硬白色矩形框阻断连线流动', async () => {
     const longEdge = {
       ...edge('catalog', 'inventory'),
       sampled_calls: 250000,
@@ -169,8 +199,10 @@ describe('APM 服务拓扑画布', () => {
 
     await waitFor(() => expect(result.container.querySelector('g[data-source="catalog"] [data-topology-metrics]')).not.toBeNull());
     const pillRect = result.container.querySelector('g[data-source="catalog"] rect[filter*="apm-node-shadow"]');
-    const width = Number(pillRect?.getAttribute('width') || 0);
-    expect(width).toBeGreaterThan(90);
+    expect(pillRect).toBeNull();
+    const metricsText = result.container.querySelector('g[data-source="catalog"] text[data-topology-metrics]');
+    expect(metricsText?.getAttribute('paint-order')).toBe('stroke fill');
+    expect(metricsText?.getAttribute('stroke')).toBe('var(--color-bg)');
   });
 
   it('严重节点用状态点表达健康度，不把服务名涂成红色', async () => {
@@ -383,9 +415,9 @@ describe('APM 服务拓扑画布', () => {
     expect(entry.textContent).not.toContain('12 / — / 0');
     expect(entry.textContent).not.toContain('观测请求 12 次');
     expect(entry.textContent).not.toContain('无数据');
-    const entryEdge = result.container.querySelector('g[data-source="user_request:local"] > path');
+    const entryEdge = result.container.querySelector('g[data-source="user_request:local"] > path[data-edge-track]');
     expect(entryEdge?.getAttribute('stroke-dasharray')).toBe('5 4');
-    const serviceEdge = result.container.querySelector('g[data-source="storefront"] > path');
+    const serviceEdge = result.container.querySelector('g[data-source="storefront"] > path[data-edge-track]');
     expect(serviceEdge?.getAttribute('stroke-dasharray')).toBeNull();
   });
 

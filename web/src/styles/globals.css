@@ -353,13 +353,27 @@ html:not(.dark) .header-bg-scrolled {
 
 @keyframes apm-edge-flow {
   to {
-    stroke-dashoffset: -20px;
+    stroke-dashoffset: -46px;
   }
 }
 
 .apm-edge-flow-line {
   animation: apm-edge-flow 1.2s linear infinite;
-  stroke-dasharray: 6 14;
+  stroke-dasharray: 28 18;
+  will-change: stroke-dashoffset;
+}
+
+/* 流光底层柔光：CSS filter 直接作用在 SVG path 上，避免 SVG filter 区域随细线包围盒被裁切。 */
+.apm-edge-flow-glow {
+  filter: blur(2.4px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .apm-edge-flow-line {
+    animation: none;
+    stroke-dasharray: none;
+    stroke-opacity: 0;
+  }
 }
 
 

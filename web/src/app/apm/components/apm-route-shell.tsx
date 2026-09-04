@@ -10,8 +10,11 @@ interface ApmRouteShellProps {
   description: string;
   /** 保留为路由元数据，页面不再用装饰图标表达依赖类型。 */
   dependency?: 'metadata' | 'telemetry' | 'control';
-  /** 事件等工作区页面由自身管理分区留白时，可关闭 APM 默认的二次内边距。 */
-  spacing?: 'default' | 'flush';
+  /**
+   * 事件等工作区页面由自身管理分区留白时，可关闭 APM 默认的二次内边距；
+   * `fill` 让子内容撑满一屏高度（子内容自行用 flex/min-h-0 分配），视口过矮时仍可滚动。
+   */
+  spacing?: 'default' | 'flush' | 'fill';
   children?: ReactNode;
 }
 
@@ -25,12 +28,13 @@ export default function ApmRouteShell({
   const shellClassName = spacing === 'flush'
     ? 'h-full min-h-0 overflow-auto'
     : 'h-full overflow-auto pb-4 lg:pb-5';
+  const fill = spacing === 'fill';
 
   return (
     <div className={shellClassName}>
-      <div className="mx-auto w-full min-w-0 max-w-[1920px]">
+      <div className={`mx-auto w-full min-w-0 max-w-[1920px] ${fill ? 'flex h-full min-h-0 flex-col' : ''}`}>
         <h1 className="sr-only">{title}</h1>
-        <div className="min-w-0">
+        <div className={fill ? 'min-h-0 min-w-0 flex-1' : 'min-w-0'}>
           {children ?? (
             <ApmSurface className="py-12">
               <CompactEmptyState

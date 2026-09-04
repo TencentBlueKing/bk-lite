@@ -45,18 +45,19 @@ vi.mock('@/context/userInfo', () => ({
 vi.mock('@/components/permission', () => ({
   default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
-vi.mock('@/app/apm/components/organization-assignment-modal', () => ({ default: () => null }));
 vi.mock('@/app/apm/services/topology/topology-canvas', () => ({
   default: ({
     nodes,
     edges,
     focusNamespace,
     layout,
+    fillHeight,
   }: {
     nodes: Array<{ id: string }>;
     edges: Array<{ source: string; target: string }>;
     focusNamespace?: string;
     layout?: string;
+    fillHeight?: boolean;
   }) => (
     <div
       data-testid="application-topology"
@@ -64,6 +65,7 @@ vi.mock('@/app/apm/services/topology/topology-canvas', () => ({
       data-edges={edges.map((edge) => `${edge.source}>${edge.target}`).join(',')}
       data-focus={focusNamespace ?? ''}
       data-layout={layout ?? 'layered'}
+      data-fill-height={fillHeight ? 'true' : 'false'}
     />
   ),
 }));
@@ -114,7 +116,23 @@ beforeEach(() => {
     ],
     sampled_traces: 2, truncated: false, data_state: 'available',
   });
-  api.getServiceRed.mockResolvedValue({ request_rate: 3, error_rate: 0.1, p95_ms: 25, p99_ms: 40, data_state: 'available', timeseries: [], top_endpoints: [] });
+  api.getServiceRed.mockResolvedValue({
+    request_rate: 3,
+    error_rate: 0.1,
+    p95_ms: 25,
+    p99_ms: 40,
+    request_count: 1200,
+    error_count: 120,
+    data_state: 'available',
+    timeseries: [
+      { timestamp: '2026-08-14T00:00:00Z', request_rate: 2, error_rate: 0.1, p95_ms: 20, p99_ms: 35 },
+      { timestamp: '2026-08-14T00:05:00Z', request_rate: 4, error_rate: 0.1, p95_ms: 25, p99_ms: 40 },
+    ],
+    top_endpoints: [
+      { endpoint: 'GET /checkout', request_rate: 2, error_rate: 0.2, p95_ms: 25, p99_ms: 40 },
+      { endpoint: 'GET /health', request_rate: 1, error_rate: 0, p95_ms: 2, p99_ms: 3 },
+    ],
+  });
   api.getEvents.mockResolvedValue([]);
   api.getSlos.mockResolvedValue([]);
 });
@@ -125,7 +143,7 @@ afterEach(() => {
 });
 
 describe('APM 应用观测详情', () => {
-  it('拓扑展示本应用及一跳上下游，关键信息含服务数/告警数/SLO，服务列表与目录一致', async () => {
+  it('一屏布局：拓扑撑满左侧，关键信息含服务数/告警数/SLO 与 Top 端点，底部一行 KPI 带迷你趋势，不再有服务列表', async () => {
     renderWithApmIntl(
       <ApplicationObservability applicationId="app-row-1" />,
     );
@@ -158,6 +176,7 @@ describe('APM 应用观测详情', () => {
       ]);
       expect(topology.getAttribute('data-focus')).toBe('shop');
       expect(topology.getAttribute('data-layout')).toBe('layered');
+      expect(topology.getAttribute('data-fill-height')).toBe('true');
     });
     expect(api.getTopology).toHaveBeenCalledWith(expect.objectContaining({
       include_inferred: true,
@@ -165,15 +184,46 @@ describe('APM 应用观测详情', () => {
     }));
     expect(api.getTopology.mock.calls[0][0].include_user_request).toBe(true);
 
-    expect(await screen.findByText('checkout')).not.toBeNull();
+    await waitFor(() => expect(api.getServiceRed).toHaveBeenCalledTimes(1));
+    expect(api.getServiceRed.mock.calls[0][0]).toBe('shop-service');
+
+    // 底部一行 KPI：吞吐 / 错误率 / P95 / P99 带迷你趋势，请求数 / 错误数为窗口总量
+    const kpiOf = (key: string) => document.querySelector(`[data-kpi="${key}"]`);
+    await waitFor(() => expect(kpiOf('throughput')?.textContent).toContain('3.0/秒'));
+    expect(kpiOf('throughput')?.getAttribute('data-kpi-trend')).toBe('true');
+    expect(kpiOf('error-rate')?.textContent).toContain('10.0%');
+    expect(kpiOf('error-rate')?.getAttribute('data-kpi-trend')).toBe('true');
+    expect(kpiOf('p95')?.textContent).toContain('25毫秒');
+    expect(kpiOf('p99')?.textContent).toContain('40毫秒');
+    expect(kpiOf('p99')?.getAttribute('data-kpi-trend')).toBe('true');
+    expect(kpiOf('request-count')?.textContent).toContain('1,200');
+    expect(kpiOf('request-count')?.getAttribute('data-kpi-trend')).toBe('false');
+    expect(kpiOf('error-count')?.textContent).toContain('120');
+    expect(document.querySelectorAll('[data-kpi]').length).toBe(6);
+
+    // 右侧关键信息：Top 端点排行进入侧栏
+    expect(screen.getByText('最慢端点')).not.toBeNull();
+    expect(screen.getByText('错误率最高端点')).not.toBeNull();
+    const slowest = screen.getAllByRole('link', { name: /GET \/checkout/ });
+    expect(slowest.length).toBe(2);
+    expect(slowest[0].getAttribute('href')).toBe('/apm/explore/endpoints?service=checkout&environment=prod&endpoint=GET+%2Fcheckout');
+    expect(screen.getAllByRole('link', { name: /GET \/health/ }).length).toBe(1);
+
+    // 不再展示服务列表表格
+    expect(screen.queryByRole('columnheader', { name: '活跃告警' })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: '吞吐量（请求/秒）' })).toBeNull();
     expect(screen.queryByText('invoice')).toBeNull();
-    expect(screen.queryByRole('link', { name: 'mysql' })).toBeNull();
-    expect(screen.queryByRole('link', { name: 'user_request' })).toBeNull();
-    expect(screen.getByRole('columnheader', { name: /服务/ })).not.toBeNull();
-    expect(screen.getByRole('columnheader', { name: '活跃告警' })).not.toBeNull();
-    expect(screen.getByRole('columnheader', { name: '吞吐量（请求/秒）' })).not.toBeNull();
-    await waitFor(() => expect(api.getServiceRed).toHaveBeenCalled());
   }, 15_000);
+
+  it('全部服务 RED 查询失败时重点指标展示错误态并可重试', async () => {
+    api.getServiceRed.mockRejectedValue(new Error('boom'));
+    renderWithApmIntl(<ApplicationObservability applicationId="app-row-1" />);
+
+    expect(await screen.findByText('重点指标')).not.toBeNull();
+    await waitFor(() => expect(api.getServiceRed).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText('1 个服务指标查询失败，重试')).not.toBeNull();
+    expect(document.querySelector('[data-kpi]')).toBeNull();
+  });
 
   it('拓扑取数完成前展示加载而不是空状态', async () => {
     let resolveTopology: (value: unknown) => void = () => undefined;
@@ -187,6 +237,8 @@ describe('APM 应用观测详情', () => {
     expect(screen.getByLabelText('加载 APM 数据')).not.toBeNull();
     expect(screen.queryByText('当前时间窗暂无应用内调用关系。')).toBeNull();
     expect(screen.queryByTestId('application-topology')).toBeNull();
+    // 高负载下 passive effect 可能晚于断言触发，先等拓扑请求真正发出再放行，避免 resolver 尚未挂接。
+    await waitFor(() => expect(api.getTopology).toHaveBeenCalled());
 
     resolveTopology({
       nodes: [
