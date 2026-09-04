@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
-import { Button, Progress, Segmented, Typography } from 'antd';
+import { Button, Progress, Segmented, Tooltip, Typography } from 'antd';
 import useApmApi from '@/app/apm/api';
 import ApmPageBreadcrumb from '@/app/apm/components/apm-page-breadcrumb';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
@@ -14,10 +14,8 @@ import {
   aggregateApplicationRedSeries,
   formatErrorRate,
   formatLatency,
-  formatMetricEmpty,
   formatNumber,
   formatPerSecond,
-  formatRequestRate,
   formatThroughput,
   isErrorRateDanger,
   type ApplicationRedSeriesPoint,
@@ -43,11 +41,12 @@ interface KeyInfoItem {
   key: string;
   label: string;
   value: string;
+  hint?: string;
   danger?: boolean;
 }
 
 interface KpiTileItem extends KeyInfoItem {
-  hint: string;
+  detail?: string;
   trend?: number[];
   color: string;
 }
@@ -55,19 +54,29 @@ interface KpiTileItem extends KeyInfoItem {
 function KpiTile({ item }: { item: KpiTileItem }) {
   return (
     <div
-      className="flex min-w-0 flex-col gap-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-fill-1)]/40 px-3 py-2.5 transition-all hover:border-[var(--color-primary)] hover:bg-[var(--color-bg)] hover:shadow-sm"
+      className="flex min-w-0 flex-1 flex-col justify-between rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-4 shadow-2xs transition-all hover:border-[var(--color-primary)] hover:shadow-sm"
       data-kpi={item.key}
       data-kpi-trend={item.trend?.length ? 'true' : 'false'}
     >
-      <div className="flex items-baseline justify-between gap-2">
-        <Typography.Text type="secondary" className="truncate !text-xs">{item.label}</Typography.Text>
-        <Typography.Text type="secondary" className="shrink-0 !text-[11px]">{item.hint}</Typography.Text>
+      <div className="flex items-center justify-between gap-2">
+        <Typography.Text type="secondary" className="!text-xs font-medium">
+          {item.label}
+        </Typography.Text>
+        {item.detail ? (
+          <Typography.Text type="secondary" className="!text-[11px] tabular-nums">
+            {item.detail}
+          </Typography.Text>
+        ) : null}
       </div>
-      <div className={`truncate text-xl font-semibold tabular-nums leading-tight ${item.danger ? 'text-[var(--color-fail)]' : 'text-[var(--color-text-1)]'}`}>
+      <div className={`my-1 text-2xl font-bold tabular-nums tracking-tight ${item.danger ? 'text-[var(--color-fail)]' : 'text-[var(--color-text-1)]'}`}>
         {item.value}
       </div>
-      <div className="h-7">
-        {item.trend?.length ? <Sparkline color={item.color} data={item.trend} height={28} kind="area" /> : null}
+      <div className="h-6 w-full pt-0.5">
+        {item.trend?.length ? (
+          <Sparkline color={item.color} data={item.trend} height={24} kind="area" fit="fill" fillOpacity={0.12} />
+        ) : (
+          <div className="h-6" />
+        )}
       </div>
     </div>
   );
@@ -244,11 +253,21 @@ export default function ApplicationObservability({
     [rows, sloByServiceEnv],
   );
 
+  const instrumentedServiceCount = useMemo(
+    () => services.filter((service) => !service.archived_at).length,
+    [services],
+  );
+
   const keyInfo = useMemo<KeyInfoItem[]>(() => [
-    { key: 'services', label: t('apm.applications.serviceCount', '服务数'), value: String(services.length) },
+    {
+      key: 'services',
+      label: t('apm.applications.instrumentedServiceCount', '接入服务'),
+      value: String(instrumentedServiceCount),
+      hint: t('apm.applications.instrumentedServiceCountHint', '与应用卡片一致，只计本应用已接入的插桩服务；图上 Redis、PostgreSQL 等为推断下游，不计入'),
+    },
     { key: 'alerts', label: t('apm.applications.alertCount', '告警数'), value: String(applicationAlertCount), danger: applicationAlertCount > 0 },
     { key: 'slo', label: t('apm.slo.title', 'SLO'), value: String(applicationSloCount) },
-  ], [applicationAlertCount, applicationSloCount, services.length, t]);
+  ], [applicationAlertCount, applicationSloCount, instrumentedServiceCount, t]);
 
   const redSeries = useMemo<ApplicationRedSeriesPoint[]>(
     () => aggregateApplicationRedSeries(Object.values(redMetrics)),
@@ -273,21 +292,24 @@ export default function ApplicationObservability({
     const trend = (pick: (point: ApplicationRedSeriesPoint) => number | null) => (
       redSeries.length >= 2 ? toSparklineData(redSeries.map(pick)) : undefined
     );
-    const windowHint = t('apm.applications.kpiWindow', '{window} 内', { window: timeWindow });
     return [
       {
         key: 'throughput',
         label: t('apm.common.throughput', '吞吐量'),
-        hint: t('apm.applications.kpiSum', '全部服务求和'),
         value: formatPerSecond(formatThroughput(requestRate || null, false, t), t),
+        detail: requestCount == null
+          ? undefined
+          : t('apm.applications.kpiRequestTotal', '{count} 请求', { count: formatNumber(requestCount) }),
         trend: trend((point) => point.request_rate),
         color: 'var(--color-primary)',
       },
       {
         key: 'error-rate',
         label: t('apm.common.errorRate', '错误率'),
-        hint: t('apm.applications.kpiWeighted', '按吞吐加权'),
         value: formatErrorRate(errorRate, false, t),
+        detail: errorCount == null
+          ? undefined
+          : t('apm.applications.kpiErrorTotal', '{count} 错误', { count: formatNumber(errorCount) }),
         danger: isErrorRateDanger(errorRate),
         trend: trend((point) => point.error_rate_percent),
         color: 'var(--color-fail)',
@@ -295,7 +317,6 @@ export default function ApplicationObservability({
       {
         key: 'p95',
         label: t('apm.common.p95Latency', 'P95 延迟'),
-        hint: t('apm.applications.kpiWorst', '取最差服务'),
         value: formatLatency(worst((red) => red.p95_ms), false, t),
         trend: trend((point) => point.p95_ms),
         color: 'var(--color-primary)',
@@ -303,28 +324,12 @@ export default function ApplicationObservability({
       {
         key: 'p99',
         label: t('apm.common.p99Latency', 'P99 延迟'),
-        hint: t('apm.applications.kpiWorst', '取最差服务'),
         value: formatLatency(worst((red) => red.p99_ms), false, t),
         trend: trend((point) => point.p99_ms),
         color: 'var(--theme-color-status-warning)',
       },
-      {
-        key: 'request-count',
-        label: t('apm.applications.requestCount', '请求数'),
-        hint: windowHint,
-        value: requestCount == null ? formatMetricEmpty(false, t) : formatNumber(requestCount),
-        color: 'var(--color-primary)',
-      },
-      {
-        key: 'error-count',
-        label: t('apm.applications.errorCount', '错误数'),
-        hint: windowHint,
-        value: errorCount == null ? formatMetricEmpty(false, t) : formatNumber(errorCount),
-        danger: (errorCount ?? 0) > 0,
-        color: 'var(--color-fail)',
-      },
     ];
-  }, [redMetrics, redSeries, t, timeWindow]);
+  }, [redMetrics, redSeries, t]);
 
   const endpointRows = useMemo<Omit<ApplicationEndpointRow, 'ratio'>[]>(() => {
     const rowByKey = new Map(rows.map((row) => [metricKey(row.serviceId, row.environment), row]));
@@ -375,7 +380,7 @@ export default function ApplicationObservability({
         <div className="flex flex-col gap-3 xl:h-full xl:min-h-0">
           <div className="grid gap-3 xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,1fr)_300px]">
             <ApmSurface className="flex min-h-[440px] min-w-0 flex-col overflow-hidden !rounded-xl shadow-2xs xl:min-h-0" padding="none">
-              <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-3">
+              <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-bg)] px-5 py-3">
                 <div className="min-w-0">
                   <ApmPageBreadcrumb
                     parentHref={parentHref}
@@ -387,9 +392,6 @@ export default function ApplicationObservability({
                       </Typography.Title>
                     )}
                   />
-                  <Typography.Text type="secondary" className="mt-0.5 block !text-xs">
-                    {t('apm.applications.topology', '应用服务拓扑')}
-                  </Typography.Text>
                 </div>
                 <div className="flex flex-wrap items-center gap-2.5">
                   <div className="flex items-center gap-1.5">
@@ -438,12 +440,15 @@ export default function ApplicationObservability({
             <ApmSurface className="flex min-w-0 flex-col gap-3 !rounded-xl shadow-2xs xl:min-h-0 xl:overflow-auto" padding="compact">
               <Typography.Text strong className="text-sm">{t('apm.applications.keyInfo', '关键信息')}</Typography.Text>
               <div className="grid grid-cols-3 gap-2">
-                {keyInfo.map((item) => (
-                  <div key={item.key} className="flex min-w-0 flex-col gap-0.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-fill-1)]/40 px-2.5 py-2" data-key-info={item.key}>
-                    <Typography.Text type="secondary" className="truncate !text-[11px]">{item.label}</Typography.Text>
-                    <div className={`text-lg font-semibold tabular-nums leading-tight ${item.danger ? 'text-[var(--color-fail)]' : 'text-[var(--color-text-1)]'}`}>{item.value}</div>
-                  </div>
-                ))}
+                {keyInfo.map((item) => {
+                  const card = (
+                    <div className="flex min-w-0 flex-col gap-0.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-fill-1)]/40 px-2.5 py-2" data-key-info={item.key}>
+                      <Typography.Text type="secondary" className="truncate !text-[11px]">{item.label}</Typography.Text>
+                      <div className={`text-lg font-semibold tabular-nums leading-tight ${item.danger ? 'text-[var(--color-fail)]' : 'text-[var(--color-text-1)]'}`}>{item.value}</div>
+                    </div>
+                  );
+                  return item.hint ? <Tooltip key={item.key} title={item.hint}>{card}</Tooltip> : <div key={item.key}>{card}</div>;
+                })}
               </div>
               {!rows.length ? (
                 <CatalogState
@@ -458,10 +463,7 @@ export default function ApplicationObservability({
               ) : (
                 <>
                   <div className={panelClass}>
-                    <div className="flex items-baseline justify-between">
-                      <Typography.Text strong className="!text-xs">{t('apm.applications.slowestEndpoints', '最慢端点')}</Typography.Text>
-                      <Typography.Text type="secondary" className="!text-[11px]">{t('apm.common.p99Latency', 'P99 延迟')}</Typography.Text>
-                    </div>
+                    <Typography.Text strong className="!text-xs">{t('apm.applications.slowestEndpoints', '最慢端点')}</Typography.Text>
                     <EndpointRankList
                       rows={slowestEndpoints}
                       emptyText={t('apm.serviceDetail.noEndpoints', '当前时间窗暂无端点指标')}
@@ -470,14 +472,11 @@ export default function ApplicationObservability({
                     />
                   </div>
                   <div className={panelClass}>
-                    <div className="flex items-baseline justify-between">
-                      <Typography.Text strong className="!text-xs">{t('apm.applications.errorEndpoints', '错误率最高端点')}</Typography.Text>
-                      <Typography.Text type="secondary" className="!text-[11px]">{t('apm.common.errorRate', '错误率')}</Typography.Text>
-                    </div>
+                    <Typography.Text strong className="!text-xs">{t('apm.applications.errorEndpoints', '错误端点')}</Typography.Text>
                     <EndpointRankList
                       rows={errorEndpoints}
                       emptyText={t('apm.applications.noErrorEndpoints', '当前时间窗没有出错的端点')}
-                      metricOf={(row) => `${formatErrorRate(row.error_rate, false, t)} · ${formatRequestRate(row.request_rate, false, t)}`}
+                      metricOf={(row) => formatErrorRate(row.error_rate, false, t)}
                       strokeColor="var(--color-fail)"
                     />
                   </div>
@@ -485,15 +484,9 @@ export default function ApplicationObservability({
               )}
             </ApmSurface>
           </div>
-          <ApmSurface className="shrink-0 !rounded-xl shadow-2xs" padding="compact">
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <Typography.Text strong className="text-sm">{t('apm.applications.keyMetrics', '重点指标')}</Typography.Text>
-                <Typography.Text type="secondary" className="ml-2 !text-xs">
-                  {t('apm.applications.keyMetricsHint', '按 {window} 时间窗聚合全部服务，迷你趋势为同窗口时序', { window: timeWindow })}
-                </Typography.Text>
-              </div>
-              {metricFailureKeys.length ? (
+          <div className="shrink-0" aria-label={t('apm.applications.keyMetrics', '重点指标')}>
+            {metricFailureKeys.length ? (
+              <div className="mb-2 flex justify-end">
                 <Button
                   size="small"
                   type="link"
@@ -502,16 +495,18 @@ export default function ApplicationObservability({
                 >
                   {t('apm.applications.partialMetricFailure', '{count} 个服务指标查询失败，重试', { count: metricFailureKeys.length })}
                 </Button>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
             {rows.length && !hasRedMetrics && metricFailureKeys.length ? (
-              <CatalogState kind="error" onRetry={() => setMetricRefreshKey((value) => value + 1)} />
+              <ApmSurface className="!rounded-xl shadow-2xs" padding="normal">
+                <CatalogState kind="error" onRetry={() => setMetricRefreshKey((value) => value + 1)} />
+              </ApmSurface>
             ) : (
-              <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+              <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
                 {kpis.map((item) => <KpiTile key={item.key} item={item} />)}
               </div>
             )}
-          </ApmSurface>
+          </div>
         </div>
       ) : (
         <ApmSurface padding="none">
