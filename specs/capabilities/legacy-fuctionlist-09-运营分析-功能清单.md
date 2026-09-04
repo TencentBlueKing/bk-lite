@@ -192,7 +192,7 @@
 | 多值 | `multiValue` | ComMultiValue |
 | 文本 | `text` | OpsAnalysisTextPanel |
 | 网络状态拓扑 | `networkStatusTopology` | NetworkStatusTopology |
-| 3D 机房 | `room3D` | Room3D（消费 CMDB NATS `get_room3d_layout`，渲染机房 row/col 网格、机柜 U 占用与类型名图例） |
+| 3D 机房 | `room3D` | Room3D（消费 CMDB NATS `get_room3d_layout`，渲染机房布局；设备告警摘要驱动侧栏/tooltip 与内部红光晕） |
 | 拓扑地图 | `topologyMap` | TopologyMap |
 
 共 16 种，由前端 `components/widgetRegistry.ts` 实际注册并由 `getWidgetComponent()` 解析。后端 `chart_type` 字段仅作 JSON 透传，不再维护独立图表枚举（以前端落地为准）。
@@ -253,7 +253,7 @@
 | 多值 | `multiValue` | 多值展示组件 |
 | 文本 | `text` | 文本面板组件 |
 | 网络状态拓扑 | `networkStatusTopology` | 网络状态拓扑组件 |
-| 3D 机房 | `room3D` | 3D 机房大屏组件（消费 CMDB NATS `get_room3d_layout`，含 `rack_type_name` 字段） |
+| 3D 机房 | `room3D` | 3D 机房大屏组件（消费 `get_room3d_layout`，含设备告警摘要与红光晕） |
 | 拓扑地图 | `topologyMap` | 通用关系拓扑地图组件 |
 
 ### 内置数据源 API（代表性摘录）
