@@ -43,7 +43,14 @@ class CollectBase(metaclass=ABCMeta):
             self.inst_name = self._resolve_inst_name_from_task() or self.inst_name
         assert self.check_metrics(), "请定义_metrics"
         self.collection_metrics_dict = {i: [] for i in self._metrics}
-        self.timestamp_gt = False
+        try:
+            # [T, C] 已由 VM 查询限定时，该轮次可能是恢复窗口内的历史快照，
+            # 不能再用“距当前时间超过一天”把它丢弃。
+            self.timestamp_gt = (
+                self.round_ts is not None and self.round_completed_at is not None and float(self.round_completed_at) >= float(self.round_ts)
+            )
+        except (TypeError, ValueError):
+            self.timestamp_gt = False
         self.asso = "assos"
         self.result = {}
         self.raw_data = []

@@ -19,6 +19,7 @@ import pydantic.root_model  # noqa: F401
 import pytest
 from django.utils.timezone import now
 
+from apps.cmdb.collection.round_sync import SNAPSHOT_CONTRACT_LABEL, SNAPSHOT_CONTRACT_VERSION, CompletedRound
 from apps.cmdb.constants.constants import CollectPluginTypes, CollectRunStatusType
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.models.node_mgmt_sync import NodeMgmtSyncConfig
@@ -588,6 +589,99 @@ def test_daily_data_cleanup_task_delegates(monkeypatch):
 # --------------------------------------------------------------------------
 # sync_collect_task：未发现有效数据 → ERROR
 # --------------------------------------------------------------------------
+@pytest.mark.django_db
+def test_manual_sync_collect_task_uses_latest_completed_vm_round(monkeypatch):
+    task = CollectModels.objects.create(
+        name="manual-vcenter-round",
+        task_type=CollectPluginTypes.VM,
+        model_id="vmware_vc",
+        driver_type="protocol",
+        cycle_value_type="cycle",
+        cycle_value="5",
+        is_interval=True,
+        team=[1],
+        exec_status=CollectRunStatusType.RUNNING,
+        task_id="manual-execution",
+        instances=[{"_id": "vc-1", "model_id": "vmware_vc", "inst_name": "vc1"}],
+    )
+    observed = {}
+
+    class FakeCollect:
+        def __init__(self, task):
+            observed["round_ts"] = getattr(task, "_sync_round_ts", None)
+            observed["completed_at"] = getattr(task, "_sync_round_completed_at", None)
+            observed["snapshot_complete"] = getattr(task, "_sync_snapshot_complete", None)
+
+        def main(self):
+            return {}, {
+                "add": [],
+                "update": [],
+                "delete": [],
+                "association": [],
+                "all": 38,
+                "__raw_data__": [{"__time__": "2026-09-04T11:00:00+08:00"}],
+            }
+
+    monkeypatch.setattr(ct, "ProtocolCollect", FakeCollect)
+    monkeypatch.setattr(
+        ct,
+        "resolve_latest_completed_round_for_task",
+        lambda _task: CompletedRound(
+            started_at=1_788_489_000,
+            completed_at=1_788_490_800,
+            labels={SNAPSHOT_CONTRACT_LABEL: SNAPSHOT_CONTRACT_VERSION},
+        ),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.collect_service.CollectModelService.repair_host_cloud_snapshot",
+        lambda _task: None,
+    )
+
+    ct.sync_collect_task(task.id, execution_id="manual-execution", resolve_latest_round=True)
+
+    task.refresh_from_db()
+    assert observed == {
+        "round_ts": 1_788_489_000,
+        "completed_at": 1_788_490_800.0,
+        "snapshot_complete": True,
+    }
+    assert task.exec_status == CollectRunStatusType.SUCCESS
+    assert task.collect_digest["last_synced_round"] == 1_788_489_000
+
+
+@pytest.mark.django_db
+def test_manual_sync_round_query_failure_is_not_reported_as_no_data(monkeypatch):
+    task = CollectModels.objects.create(
+        name="manual-vm-query-failure",
+        task_type=CollectPluginTypes.VM,
+        model_id="vmware_vc",
+        driver_type="protocol",
+        cycle_value_type="cycle",
+        team=[1],
+        exec_status=CollectRunStatusType.RUNNING,
+        task_id="manual-execution",
+        instances=[{"_id": "vc-1", "model_id": "vmware_vc", "inst_name": "vc1"}],
+    )
+    monkeypatch.setattr(
+        ct,
+        "resolve_latest_completed_round_for_task",
+        lambda _task: (_ for _ in ()).throw(RuntimeError("VM marker unavailable")),
+    )
+    monkeypatch.setattr(
+        ct,
+        "ProtocolCollect",
+        lambda _task: (_ for _ in ()).throw(AssertionError("collection must not run")),
+    )
+
+    ct.sync_collect_task(task.id, execution_id="manual-execution", resolve_latest_round=True)
+
+    task.refresh_from_db()
+    assert task.exec_status == CollectRunStatusType.ERROR
+    assert "VM marker unavailable" in task.collect_digest["message"]
+    assert "未发现任何有效数据" not in task.collect_digest["message"]
+
+
 @pytest.mark.django_db
 def test_sync_collect_task_no_data_marks_error(monkeypatch):
     task = CollectModels.objects.create(
@@ -1259,8 +1353,19 @@ def test_sync_collect_tasks_gate_skips_node_mgmt_pull_collect(monkeypatch):
         exec_status=CollectRunStatusType.SUCCESS,
         collect_digest={"last_synced_round": 100},
     )
-    monkeypatch.setattr(ct, "query_latest_round_ts", lambda *_a, **_k: 200)
-    monkeypatch.setattr(ct, "has_instance_vm_data", lambda *_a, **_k: False)
+    monkeypatch.setattr(
+        ct,
+        "query_latest_completed_rounds",
+        lambda instance_ids, **_kwargs: {
+            instance_id: CompletedRound(
+                started_at=200,
+                completed_at=260,
+                labels={SNAPSHOT_CONTRACT_LABEL: SNAPSHOT_CONTRACT_VERSION},
+            )
+            for instance_id in instance_ids
+        },
+    )
+    monkeypatch.setattr(ct, "query_instance_ids_with_vm_data", lambda *_a, **_k: set())
     monkeypatch.setattr(ct, "_purge_legacy_vm_sync_beats", lambda: 0)
 
     dispatched = []
