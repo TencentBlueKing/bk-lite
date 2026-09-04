@@ -6,9 +6,8 @@
 // - 不做硬编码颜色,边框 / 背景用 CSS 变量(spec §2.1: 颜色完全由用户
 //   配置决定,无预设严重等级)
 
-// 连线流动动画:networkCanvas 给 edge line 挂 class=network-edge-flow,
-// dashoffset 8→0 与 strokeDasharray "5 3"(周期 8)对齐实现无缝流动,
-// 写法对齐 topology/index.module.scss 的 edgeFlowAnimation。
+// 仅 critical 告警线挂 class=network-edge-flow。
+// dashoffset 8→0 与 strokeDasharray "5 3"(周期 8)对齐实现无缝流动。
 @keyframes networkEdgeFlow {
   0% {
     stroke-dashoffset: 8;
@@ -20,6 +19,11 @@
 
 :global(.network-edge-flow) {
   animation: networkEdgeFlow 1s linear infinite;
+}
+
+// 缩放过小时隐藏指标/副标题/分割线,只留名称 + 状态点。
+:global(.network-canvas-compact) :global(.nt-node-detail) {
+  display: none;
 }
 
 .workspace {

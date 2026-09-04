@@ -28,6 +28,7 @@ import {
 import {
   buildLinkDetailPortRows,
   buildLinkInterfaceMetricRows,
+  groupLinkMetricRowsByInterface,
   buildNodeDetailMetricRows,
   buildBoundMetricConfigRows,
   buildNetworkTopologyMetricDraft,
@@ -653,12 +654,16 @@ assert.deepEqual(
   [
     {
       key: 'link-1:source:0:11:ifInOctets_5min',
+      groupKey: 'link-1:source:0:11',
+      endpoint: 'source',
       interfaceName: 'eth0',
       metricLabel: '入网流速',
       value: '84.24 Mbps',
     },
     {
       key: 'link-1:source:0:11:ifOutOctets_5min',
+      groupKey: 'link-1:source:0:11',
+      endpoint: 'source',
       interfaceName: 'eth0',
       metricLabel: '出网流速',
       value: '28.36 Kbps',
@@ -675,24 +680,32 @@ assert.deepEqual(
   [
     {
       key: 'link-1:0:source:11:ifInOctets_5min',
+      groupKey: 'link-1:0:source:11',
+      endpoint: 'source',
       interfaceName: 'eth0',
       metricLabel: '入网流速',
       value: '--',
     },
     {
       key: 'link-1:0:source:11:ifOutOctets_5min',
+      groupKey: 'link-1:0:source:11',
+      endpoint: 'source',
       interfaceName: 'eth0',
       metricLabel: '出网流速',
       value: '--',
     },
     {
       key: 'link-1:0:target:22:ifInOctets_5min',
+      groupKey: 'link-1:0:target:22',
+      endpoint: 'target',
       interfaceName: 'eth1',
       metricLabel: '入网流速',
       value: '--',
     },
     {
       key: 'link-1:0:target:22:ifOutOctets_5min',
+      groupKey: 'link-1:0:target:22',
+      endpoint: 'target',
       interfaceName: 'eth1',
       metricLabel: '出网流速',
       value: '--',
@@ -728,6 +741,63 @@ assert.deepEqual(
   );
   assert.equal(new Set(rows.map((row) => row.key)).size, rows.length, 'duplicated runtime interfaces should still produce unique React keys');
 }
+
+{
+  const sameNameLink: NetworkTopologyLink = {
+    ...detailLinks[0],
+    interface_metrics: ['ifInOctets_5min', 'ifOutOctets_5min'],
+  };
+  const sameNameRuntime: NetworkLinkRuntime = {
+    id: 'link-1',
+    status: 'normal',
+    interfaces: [
+      {
+        endpoint: 'source',
+        bk_inst_id: 11,
+        interface_name: 'GigabitEthernet1/0/1',
+        oper_status: 'up',
+        metrics: {
+          ifInOctets_5min: { value: 31_000_000, unit: 'bps' },
+          ifOutOctets_5min: { value: 22_000_000, unit: 'bps' },
+        },
+      },
+      {
+        endpoint: 'target',
+        bk_inst_id: 22,
+        interface_name: 'GigabitEthernet1/0/1',
+        oper_status: 'up',
+        metrics: {
+          ifInOctets_5min: { value: 44_000_000, unit: 'bps' },
+          ifOutOctets_5min: { value: 35_000_000, unit: 'bps' },
+        },
+      },
+    ],
+  };
+  const groups = groupLinkMetricRowsByInterface(
+    buildLinkInterfaceMetricRows(sameNameLink, sameNameRuntime, {
+      ifInOctets_5min: '入网流速',
+      ifOutOctets_5min: '出网流速',
+    }),
+  );
+  assert.equal(groups.length, 2, 'source and target ports with the same ifDescr must stay in separate metric groups');
+  assert.deepEqual(
+    groups.map((group) => ({
+      interfaceName: group.interfaceName,
+      values: group.metrics.map((metric) => metric.value),
+    })),
+    [
+      { interfaceName: 'GigabitEthernet1/0/1', values: ['31 Mbps', '22 Mbps'] },
+      { interfaceName: 'GigabitEthernet1/0/1', values: ['44 Mbps', '35 Mbps'] },
+    ],
+    'same-named endpoints should keep their own metric values instead of merging into one list',
+  );
+}
+
+assert.doesNotMatch(
+  readRepoFile('src/app/ops-analysis/(pages)/view/networkTopology/index.tsx'),
+  /const groupKey = row\.interfaceName/,
+  'link detail must not group interface metrics by display name alone',
+);
 
 assert.deepEqual(
   updateNetworkTopologyLinkTerminals(detailLinks, 'link-1', {
@@ -1174,6 +1244,52 @@ assert.match(
   topologyIndexSource,
   /nodes:\s*selectLinkEndpointNodes\(runtimeNodeIndex, link\)/,
   'configured link refreshes should send only endpoint nodes from the prebuilt index',
+);
+
+assert.match(
+  topologyIndexSource,
+  /detailPortPairNameClassName[\s\S]*line-clamp-2/,
+  'link detail interface names should use the available row width and wrap up to two lines',
+);
+assert.doesNotMatch(
+  topologyIndexSource,
+  /port\.sourceName[\s\S]{0,80}className="min-w-0 truncate/,
+  'link detail interface names must not ellipsize while unused space remains in the pair row',
+);
+
+const networkToolbarSource = readRepoFile(
+  'src/app/ops-analysis/(pages)/view/networkTopology/components/networkToolbar.tsx',
+);
+const timeSelectorSource = readRepoFile('src/components/time-selector/index.tsx');
+assert.doesNotMatch(
+  networkToolbarSource,
+  /ShareAltOutlined|onOpenShare|network-toolbar-share/,
+  'network topology toolbar should not expose a share button',
+);
+assert.doesNotMatch(
+  topologyIndexSource,
+  /useCanvasShareAction/,
+  'network topology view should not create a share action from the toolbar',
+);
+assert.match(
+  networkToolbarSource,
+  /refreshLoading=\{refreshing\}/,
+  'view-mode refresh should drive TimeSelector loading from toolbar-local state',
+);
+assert.match(
+  networkToolbarSource,
+  /loading=\{refreshing\}/,
+  'edit-mode refresh should show button loading from toolbar-local state',
+);
+assert.match(
+  topologyIndexSource,
+  /return loadConfiguredRuntime\(canvasId, config\)/,
+  'manual refresh should return the runtime promise so toolbar loading can wait on it',
+);
+assert.match(
+  timeSelectorSource,
+  /refreshLoading\?: boolean/,
+  'TimeSelector should accept an optional refresh loading flag',
 );
 
 console.log('ops-analysis-network-topology-test passed');

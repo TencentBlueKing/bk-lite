@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Spin } from "antd";
 import { ExclamationCircleFilled } from "@ant-design/icons";
 import type {
@@ -7,6 +7,7 @@ import type {
   Node as X6Node,
   Edge as X6Edge,
 } from "@antv/x6";
+import type { Attr } from "@antv/x6/es/registry/attr";
 import { Graph } from "@antv/x6";
 import { Selection } from "@antv/x6-plugin-selection";
 import type {
@@ -31,6 +32,19 @@ import {
   resolveNodeOuterColor,
 } from "../utils/nodeStatus";
 import { formatNetworkMetricValue } from "../utils/metricValueFormat";
+import {
+  NETWORK_CANVAS_COMPACT_CLASS,
+  NETWORK_NODE_DETAIL_CLASS,
+  NETWORK_NODE_PORT_IDS,
+  buildLinkLineAttrs,
+  buildLinkRuntimeFingerprint,
+  buildNodeRuntimeFingerprint,
+  isTransientConnectingEdge,
+  shouldShowEdgeTools,
+  shouldShowNodePorts,
+  shouldUseCompactNodeDetail,
+  type NetworkLinkLineAttrs,
+} from "../utils/networkCanvasRender";
 
 /** 画布侧使用的连线运行态 —— 复用后端 ``NetworkLinkRuntime``，便于跟 index.tsx 对齐。 */
 export type NetworkLinkRuntimeSummary = NetworkLinkRuntime;
@@ -53,6 +67,8 @@ export interface NetworkCanvasProps {
   runtimeLinks?: ReadonlyArray<NetworkLinkRuntimeSummary>;
   /** 是否处于编辑模式(用于 enable/disable magnet / node move)。 */
   editMode?: boolean;
+  /** 当前选中连线；编辑工具只挂在这一条边上。 */
+  selectedLinkId?: string | null;
   /** 接收 graph 实例回调(父级可用于 fit / 序列化等)。 */
   onGraphReady?: (graph: X6Graph) => void;
   onSelectNode: (
@@ -130,7 +146,7 @@ const NETWORK_NODE_METRIC_ROW_HEIGHT = 18;
 const NETWORK_NODE_METRIC_TOP = 98;
 const NETWORK_NODE_METRIC_BOTTOM_PADDING = 12;
 const NETWORK_NODE_MAX_METRIC_ROWS = 6;
-const NETWORK_NODE_SHAPE_VERSION = 9;
+const NETWORK_NODE_SHAPE_VERSION = 10;
 const NETWORK_NODE_SHAPE_NAME = "network-node-card-v8";
 
 const edgeVertexTool = {
@@ -173,18 +189,30 @@ const edgeTargetEndpointTool = {
   },
 };
 
-const NETWORK_NODE_PORT_IDS = [
-  "port-top",
-  "port-right",
-  "port-bottom",
-  "port-left",
-] as const;
-
-const syncNodePorts = (node: X6Node, editMode: boolean) => {
+const applyNodePortAppearance = (
+  node: X6Node,
+  editMode: boolean,
+  hoveredNodeId: string | null,
+  connecting = false,
+) => {
+  const visible = shouldShowNodePorts(editMode, hoveredNodeId, node.id, {
+    connecting,
+  });
   NETWORK_NODE_PORT_IDS.forEach((portId) => {
-    node.portProp(portId, "attrs/circle/opacity", editMode ? 1 : 0);
+    node.portProp(portId, "attrs/circle/opacity", visible ? 1 : 0);
     node.portProp(portId, "attrs/circle/magnet", editMode);
   });
+};
+
+const syncEdgeTools = (
+  edge: X6Edge,
+  editMode: boolean,
+  selectedEdgeId: string | null,
+) => {
+  edge.removeTools();
+  if (shouldShowEdgeTools(editMode, selectedEdgeId, edge.id)) {
+    edge.addTools([edgeSourceEndpointTool, edgeTargetEndpointTool, edgeVertexTool]);
+  }
 };
 
 const normalizeVertices = (
@@ -206,13 +234,6 @@ const isSameVertices = (
       Math.abs(point.x - right[index].x) < 0.5 &&
       Math.abs(point.y - right[index].y) < 0.5,
   );
-};
-
-const syncEdgeTools = (edge: X6Edge, editMode: boolean) => {
-  edge.removeTools();
-  if (editMode) {
-    edge.addTools([edgeSourceEndpointTool, edgeTargetEndpointTool, edgeVertexTool]);
-  }
 };
 
 const getVisibleMetricRows = (node: NetworkTopologyNode) =>
@@ -265,11 +286,7 @@ const buildNodeAttrs = (
       textVerticalAnchor: "middle",
       refX: 12,
       refY: y,
-      textWrap: {
-        width: 126,
-        height: 16,
-        ellipsis: true,
-      },
+      class: NETWORK_NODE_DETAIL_CLASS,
     };
     attrs[`metric${index}Value`] = {
       display: row && !row.loading ? "block" : "none",
@@ -281,11 +298,7 @@ const buildNodeAttrs = (
       textVerticalAnchor: "middle",
       refX: NETWORK_NODE_WIDTH - 12,
       refY: y,
-      textWrap: {
-        width: 66,
-        height: 16,
-        ellipsis: true,
-      },
+      class: NETWORK_NODE_DETAIL_CLASS,
     };
     attrs[`metric${index}Loading`] = {
       display: row?.loading ? "block" : "none",
@@ -297,6 +310,7 @@ const buildNodeAttrs = (
       strokeWidth: 1.3,
       strokeDasharray: "7 5",
       opacity: 0.9,
+      class: NETWORK_NODE_DETAIL_CLASS,
     };
     return attrs;
   }, {});
@@ -312,10 +326,6 @@ const buildNodeAttrs = (
       fill: "#ffffff",
       rx: 8,
       ry: 8,
-      filter: {
-        name: "dropShadow",
-        args: { dx: 0, dy: 2, blur: 4, color: "rgba(36,50,63,0.08)" },
-      },
     },
     topLine: {
       stroke: outerColor,
@@ -357,11 +367,6 @@ const buildNodeAttrs = (
       textVerticalAnchor: "middle",
       refX: 12,
       refY: 22 / nodeHeight,
-      textWrap: {
-        width: NETWORK_NODE_WIDTH - 44,
-        height: 18,
-        ellipsis: true,
-      },
     },
     subtitle: {
       text: compactText(metaText || node.bk_obj_id, 24),
@@ -371,11 +376,7 @@ const buildNodeAttrs = (
       textVerticalAnchor: "middle",
       refX: 12,
       refY: 40 / nodeHeight,
-      textWrap: {
-        width: NETWORK_NODE_WIDTH - 44,
-        height: 16,
-        ellipsis: true,
-      },
+      class: NETWORK_NODE_DETAIL_CLASS,
     },
     statusDot: {
       fill: outerColor,
@@ -392,6 +393,7 @@ const buildNodeAttrs = (
       y1: 58,
       x2: NETWORK_NODE_WIDTH - 12,
       y2: 58,
+      class: NETWORK_NODE_DETAIL_CLASS,
     },
     summary: {
       text:
@@ -410,11 +412,7 @@ const buildNodeAttrs = (
       textVerticalAnchor: "middle",
       refX: 12,
       refY: 74 / nodeHeight,
-      textWrap: {
-        width: NETWORK_NODE_WIDTH - 24,
-        height: 16,
-        ellipsis: true,
-      },
+      class: NETWORK_NODE_DETAIL_CLASS,
     },
     error: {
       display: "none",
@@ -491,7 +489,8 @@ const registerNetworkNodeShapeOnce = () => {
             attrs: {
               circle: {
                 r: 4,
-                magnet: true,
+                magnet: false,
+                opacity: 0,
                 stroke: "#2d7df0",
                 strokeWidth: 1.5,
                 fill: "#ffffff",
@@ -503,7 +502,8 @@ const registerNetworkNodeShapeOnce = () => {
             attrs: {
               circle: {
                 r: 4,
-                magnet: true,
+                magnet: false,
+                opacity: 0,
                 stroke: "#2d7df0",
                 strokeWidth: 1.5,
                 fill: "#ffffff",
@@ -515,7 +515,8 @@ const registerNetworkNodeShapeOnce = () => {
             attrs: {
               circle: {
                 r: 4,
-                magnet: true,
+                magnet: false,
+                opacity: 0,
                 stroke: "#2d7df0",
                 strokeWidth: 1.5,
                 fill: "#ffffff",
@@ -527,7 +528,8 @@ const registerNetworkNodeShapeOnce = () => {
             attrs: {
               circle: {
                 r: 4,
-                magnet: true,
+                magnet: false,
+                opacity: 0,
                 stroke: "#2d7df0",
                 strokeWidth: 1.5,
                 fill: "#ffffff",
@@ -558,31 +560,11 @@ const registerNetworkNodeShapeOnce = () => {
   );
 };
 
-const strokeFromStatus = (status?: "normal" | "critical" | "unknown") => {
-  if (status === "critical") return "#dc2626";
-  if (status === "normal") return "#16a34a";
-  return "#64748b";
-};
+const pendingInterfaceSelectionLineAttrs = () =>
+  buildLinkLineAttrs("unknown", { pending: true });
 
-// 流动虚线:dasharray 5+3=8,与 index.module.scss 里 networkEdgeFlow 的
-// stroke-dashoffset 8→0 周期对齐,动画才能无缝循环;class 经 X6 特殊 attr
-// 挂到 line path 上(参考 topology 模块 edge-flow-animation 的做法)。
-const lineAttrsFromStatus = (
-  status?: "normal" | "critical" | "unknown",
-) => ({
-  stroke: strokeFromStatus(status),
-  strokeWidth: status === "critical" ? 2 : 1.8,
-  strokeLinecap: "round",
-  strokeLinejoin: "round",
-  strokeDasharray: "5 3",
-  class: "network-edge-flow",
-  targetMarker: {
-    name: "block",
-    size: 8,
-  },
-});
-
-const pendingInterfaceSelectionLineAttrs = () => lineAttrsFromStatus("unknown");
+const toX6LineAttrs = (attrs: NetworkLinkLineAttrs): Attr.ComplexAttrs =>
+  attrs as unknown as Attr.ComplexAttrs;
 
 const lineAttrsForLinkRuntime = (
   link: NetworkTopologyLink,
@@ -590,7 +572,7 @@ const lineAttrsForLinkRuntime = (
 ) =>
   isNetworkTopologyLinkPendingInterfaceSelection(link)
     ? pendingInterfaceSelectionLineAttrs()
-    : lineAttrsFromStatus(runtimeItem?.status);
+    : buildLinkLineAttrs(runtimeItem?.status);
 
 const terminalPortId = (terminal: unknown): string | undefined => {
   const port = (terminal as { port?: unknown } | null)?.port;
@@ -611,6 +593,7 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
   runtimeNodes,
   runtimeLinks,
   editMode = false,
+  selectedLinkId = null,
   loading = false,
   fatalMessage = null,
   stale = false,
@@ -631,6 +614,10 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
   const graphHostRef = useRef<HTMLDivElement | null>(null);
   const graphRef = useRef<X6Graph | null>(null);
   const editModeRef = useRef(editMode);
+  const hoveredNodeIdRef = useRef<string | null>(null);
+  const selectedEdgeIdRef = useRef<string | null>(null);
+  const connectingRef = useRef(false);
+  const [compactCanvas, setCompactCanvas] = useState(false);
   const onSelectNodeRef = useRef(onSelectNode);
   const onSelectLinkRef = useRef(onSelectLink);
   const onNodeMovedRef = useRef(onNodeMoved);
@@ -659,17 +646,20 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
     }
     editModeRef.current = editMode;
     if (!editMode) {
+      hoveredNodeIdRef.current = null;
       (
         graphRef.current as
           | (X6Graph & { cleanSelection?: () => void })
           | null
       )?.cleanSelection?.();
     }
-    graphRef.current?.getEdges().forEach((edge) => {
-      syncEdgeTools(edge as X6Edge, editMode);
-    });
     graphRef.current?.getNodes().forEach((node) => {
-      syncNodePorts(node as X6Node, editMode);
+      applyNodePortAppearance(
+        node as X6Node,
+        editMode,
+        hoveredNodeIdRef.current,
+        connectingRef.current,
+      );
     });
   }, [editMode, flushPendingVertices]);
 
@@ -696,169 +686,213 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
   // 同步节点 & 连线到 graph
   const syncNodes = useCallback(() => {
     const graph = graphRef.current;
-    if (!graph) return;
+    if (!graph || connectingRef.current) return;
     const runtimeByKey = new Map<string, NetworkNodeRuntime>();
     // 后端 runtime 端点用 `id` 字段（也是 `bk_obj_id:bk_inst_id`）
     // 标识节点 —— 见 buildNetworkNodeClientId。
     (runtimeNodes ?? []).forEach((item) => runtimeByKey.set(item.id, item));
     const existing = new Set<string>();
     graph.getNodes().forEach((cell) => existing.add(cell.id));
-    nodes.forEach((node) => {
-      const key = `${node.bk_obj_id}:${node.bk_inst_id}`;
-      const cell = graph.getCellById(node.id);
-      const desired = node.position;
-      const runtimeItem = runtimeByKey.get(key);
-      const nodeHeight = getNetworkNodeHeight(node);
-      if (cell && cell.isNode()) {
-        const data = (cell as X6Cell).getData<{
-          shapeVersion?: number;
-        }>();
-        const pos = (cell as X6Node).getPosition();
-        const shouldRecreate =
-          (cell as X6Cell).prop("shape") !== NETWORK_NODE_SHAPE_NAME ||
-          data?.shapeVersion !== NETWORK_NODE_SHAPE_VERSION;
-        if (shouldRecreate) {
-          cell.remove();
-          const nextNode = graph.addNode({
-            id: node.id,
-            shape: NETWORK_NODE_SHAPE_NAME,
-            x: desired?.x ?? pos.x,
-            y: desired?.y ?? pos.y,
-            zIndex: 1,
-            width: NETWORK_NODE_WIDTH,
-            height: nodeHeight,
-            attrs: buildNodeAttrs(node, runtimeItem, t, editModeRef.current),
-            data: {
-              node,
-              shapeVersion: NETWORK_NODE_SHAPE_VERSION,
-              runtime: runtimeItem
-                ? { ...runtimeItem, metrics: runtimeItem.metrics }
-                : undefined,
-            },
-          });
-          syncNodePorts(nextNode as X6Node, editModeRef.current);
-          existing.delete(node.id);
-          return;
-        }
-        const currentSize = (cell as X6Node).size();
-        if (
-          Math.abs(currentSize.width - NETWORK_NODE_WIDTH) > 1 ||
-          Math.abs(currentSize.height - nodeHeight) > 1
-        ) {
-          (cell as X6Node).resize(NETWORK_NODE_WIDTH, nodeHeight);
-        }
-        const metrics: NetworkMetricRuntime[] = runtimeItem?.metrics ?? [];
-        (cell as X6Cell).setData(
-          {
-            node,
-            shapeVersion: NETWORK_NODE_SHAPE_VERSION,
-            runtime: { ...(runtimeItem ?? {}), metrics },
-          },
-          { overwrite: true },
-        );
-        (cell as X6Cell).setAttrs(
-          buildNodeAttrs(node, runtimeItem, t, editModeRef.current),
-          {
-            overwrite: true,
-          },
-        );
-        syncNodePorts(cell as X6Node, editModeRef.current);
-        existing.delete(node.id);
-        return;
-      }
-      const nextNode = graph.addNode({
-        id: node.id,
-        shape: NETWORK_NODE_SHAPE_NAME,
-        x: desired?.x ?? 40,
-        y: desired?.y ?? 40,
-        zIndex: 1,
-        width: NETWORK_NODE_WIDTH,
-        height: nodeHeight,
-        attrs: buildNodeAttrs(node, runtimeItem, t, editModeRef.current),
-        data: {
+    graph.batchUpdate("network-sync-nodes", () => {
+      nodes.forEach((node) => {
+        const key = `${node.bk_obj_id}:${node.bk_inst_id}`;
+        const cell = graph.getCellById(node.id);
+        const desired = node.position;
+        const runtimeItem = runtimeByKey.get(key);
+        const nodeHeight = getNetworkNodeHeight(node);
+        const fingerprint = buildNodeRuntimeFingerprint(node, runtimeItem, {
+          editMode: editModeRef.current,
+        });
+        const nextData = {
           node,
           shapeVersion: NETWORK_NODE_SHAPE_VERSION,
           runtime: runtimeItem
             ? { ...runtimeItem, metrics: runtimeItem.metrics }
             : undefined,
-        },
+          runtimeFingerprint: fingerprint,
+        };
+        if (cell && cell.isNode()) {
+          const data = (cell as X6Cell).getData<{
+            shapeVersion?: number;
+            runtimeFingerprint?: string;
+          }>();
+          const pos = (cell as X6Node).getPosition();
+          const shouldRecreate =
+            (cell as X6Cell).prop("shape") !== NETWORK_NODE_SHAPE_NAME ||
+            data?.shapeVersion !== NETWORK_NODE_SHAPE_VERSION;
+          if (shouldRecreate) {
+            cell.remove();
+            const nextNode = graph.addNode({
+              id: node.id,
+              shape: NETWORK_NODE_SHAPE_NAME,
+              x: desired?.x ?? pos.x,
+              y: desired?.y ?? pos.y,
+              zIndex: 1,
+              width: NETWORK_NODE_WIDTH,
+              height: nodeHeight,
+              attrs: buildNodeAttrs(node, runtimeItem, t, editModeRef.current),
+              data: nextData,
+            });
+            applyNodePortAppearance(
+              nextNode as X6Node,
+              editModeRef.current,
+              hoveredNodeIdRef.current,
+              connectingRef.current,
+            );
+            existing.delete(node.id);
+            return;
+          }
+          const currentSize = (cell as X6Node).size();
+          if (
+            Math.abs(currentSize.width - NETWORK_NODE_WIDTH) > 1 ||
+            Math.abs(currentSize.height - nodeHeight) > 1
+          ) {
+            (cell as X6Node).resize(NETWORK_NODE_WIDTH, nodeHeight);
+          }
+          if (data?.runtimeFingerprint === fingerprint) {
+            existing.delete(node.id);
+            return;
+          }
+          const metrics: NetworkMetricRuntime[] = runtimeItem?.metrics ?? [];
+          (cell as X6Cell).setData(
+            {
+              node,
+              shapeVersion: NETWORK_NODE_SHAPE_VERSION,
+              runtime: { ...(runtimeItem ?? {}), metrics },
+              runtimeFingerprint: fingerprint,
+            },
+            { overwrite: true },
+          );
+          (cell as X6Cell).setAttrs(
+            buildNodeAttrs(node, runtimeItem, t, editModeRef.current),
+            {
+              overwrite: true,
+            },
+          );
+          existing.delete(node.id);
+          return;
+        }
+        const nextNode = graph.addNode({
+          id: node.id,
+          shape: NETWORK_NODE_SHAPE_NAME,
+          x: desired?.x ?? 40,
+          y: desired?.y ?? 40,
+          zIndex: 1,
+          width: NETWORK_NODE_WIDTH,
+          height: nodeHeight,
+          attrs: buildNodeAttrs(node, runtimeItem, t, editModeRef.current),
+          data: nextData,
+        });
+        applyNodePortAppearance(
+          nextNode as X6Node,
+          editModeRef.current,
+          hoveredNodeIdRef.current,
+          connectingRef.current,
+        );
       });
-      syncNodePorts(nextNode as X6Node, editModeRef.current);
+      existing.forEach((id) => {
+        const cell = graph.getCellById(id);
+        cell?.remove();
+      });
     });
-    existing.forEach((id) => {
-      const cell = graph.getCellById(id);
-      cell?.remove();
-    });
-  }, [nodes, runtimeNodes]);
+  }, [nodes, runtimeNodes, t]);
 
   const syncLinks = useCallback(() => {
     const graph = graphRef.current;
-    if (!graph) return;
+    if (!graph || connectingRef.current) return;
     const runtimeById = new Map<string, NetworkLinkRuntimeSummary>();
     (runtimeLinks ?? []).forEach((item) => runtimeById.set(item.id, item));
     const existing = new Set<string>();
     graph.getEdges().forEach((edge) => existing.add(edge.id));
-    links.forEach((link) => {
-      const cell = graph.getCellById(link.id);
-      const runtimeItem = runtimeById.get(link.id);
-      if (cell && cell.isEdge()) {
-        const edge = cell as X6Edge;
+    graph.batchUpdate("network-sync-links", () => {
+      links.forEach((link) => {
+        const cell = graph.getCellById(link.id);
+        const runtimeItem = runtimeById.get(link.id);
+        const fingerprint = buildLinkRuntimeFingerprint(link, runtimeItem);
+        if (cell && cell.isEdge()) {
+          const edge = cell as X6Edge;
+          const terminals = buildNetworkTopologyLinkTerminals(link);
+          const renderOptions = buildNetworkTopologyLinkRenderOptions(link);
+          const data = (cell as X6Cell).getData<{
+            link: NetworkTopologyLink;
+            runtimeFingerprint?: string;
+          }>();
+          const isEditingVertices = pendingVerticesRef.current.has(link.id);
+          if (data?.runtimeFingerprint === fingerprint && !isEditingVertices) {
+            existing.delete(link.id);
+            return;
+          }
+          (cell as X6Cell).setData(
+            {
+              ...(data ?? {}),
+              link,
+              runtime: runtimeItem,
+              runtimeFingerprint: fingerprint,
+            },
+            { overwrite: false },
+          );
+          (cell as X6Cell).setAttrs({
+            line: toX6LineAttrs(lineAttrsForLinkRuntime(link, runtimeItem)),
+          });
+          edge.setConnector(renderOptions.connector);
+          edge.removeRouter();
+          const nextVertices = renderOptions.vertices;
+          if (
+            !isEditingVertices &&
+            !isSameVertices(edge.getVertices(), nextVertices)
+          ) {
+            edge.setVertices(nextVertices);
+          }
+          if (!isSameTerminal(edge.getSource(), terminals.source)) {
+            edge.setSource(terminals.source);
+          }
+          if (!isSameTerminal(edge.getTarget(), terminals.target)) {
+            edge.setTarget(terminals.target);
+          }
+          existing.delete(link.id);
+          return;
+        }
         const terminals = buildNetworkTopologyLinkTerminals(link);
         const renderOptions = buildNetworkTopologyLinkRenderOptions(link);
-        const data = (cell as X6Cell).getData<{
-          link: NetworkTopologyLink;
-        }>();
-        (cell as X6Cell).setData(
-          { ...(data ?? {}), link, runtime: runtimeItem },
-          { overwrite: false },
-        );
-        (cell as X6Cell).setAttrs({ line: lineAttrsForLinkRuntime(link, runtimeItem) });
-        edge.setConnector(renderOptions.connector);
-        edge.removeRouter();
-        const nextVertices = renderOptions.vertices;
-        const isEditingVertices = pendingVerticesRef.current.has(link.id);
-        if (
-          !isEditingVertices &&
-          !isSameVertices(edge.getVertices(), nextVertices)
-        ) {
-          edge.setVertices(nextVertices);
+        graph.addEdge({
+          id: link.id,
+          source: terminals.source,
+          target: terminals.target,
+          vertices: renderOptions.vertices,
+          connector: renderOptions.connector,
+          zIndex: 0,
+          attrs: {
+            line: toX6LineAttrs(lineAttrsForLinkRuntime(link, runtimeItem)),
+          },
+          data: { link, runtime: runtimeItem, runtimeFingerprint: fingerprint },
+        });
+        const edge = graph.getCellById(link.id);
+        if (edge?.isEdge()) {
+          syncEdgeTools(
+            edge as X6Edge,
+            editModeRef.current,
+            selectedEdgeIdRef.current,
+          );
         }
-        if (!isSameTerminal(edge.getSource(), terminals.source)) {
-          edge.setSource(terminals.source);
-        }
-        if (!isSameTerminal(edge.getTarget(), terminals.target)) {
-          edge.setTarget(terminals.target);
-        }
-        if (!isEditingVertices) {
-          syncEdgeTools(edge, editModeRef.current);
-        }
-        existing.delete(link.id);
-        return;
-      }
-      const terminals = buildNetworkTopologyLinkTerminals(link);
-      const renderOptions = buildNetworkTopologyLinkRenderOptions(link);
-      graph.addEdge({
-        id: link.id,
-        source: terminals.source,
-        target: terminals.target,
-        vertices: renderOptions.vertices,
-        connector: renderOptions.connector,
-        zIndex: 0,
-        attrs: {
-          line: lineAttrsForLinkRuntime(link, runtimeItem),
-        },
-        data: { link, runtime: runtimeItem },
       });
-      const edge = graph.getCellById(link.id);
-      if (edge?.isEdge()) {
-        syncEdgeTools(edge as X6Edge, editModeRef.current);
-      }
-    });
-    existing.forEach((id) => {
-      const cell = graph.getCellById(id);
-      cell?.remove();
+      existing.forEach((id) => {
+        const cell = graph.getCellById(id);
+        if (cell?.isEdge()) {
+          const data = (cell as X6Cell).getData<{
+            connecting?: boolean;
+            link?: NetworkTopologyLink;
+          }>();
+          if (isTransientConnectingEdge(data)) return;
+        }
+        cell?.remove();
+      });
     });
   }, [links, runtimeLinks]);
+
+  const syncNodesRef = useRef(syncNodes);
+  const syncLinksRef = useRef(syncLinks);
+  syncNodesRef.current = syncNodes;
+  syncLinksRef.current = syncLinks;
 
   // 创建 / 销毁 X6 graph。
   // 注意：X6 会接管并清理 container 子节点，graphHost 必须和 React 管理的
@@ -895,13 +929,21 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
         createEdge: () =>
           graph.createEdge({
             connector: { name: 'normal' },
+            zIndex: 100,
+            data: { connecting: true },
             attrs: {
               line: {
-                ...lineAttrsFromStatus('unknown'),
                 stroke: '#2d7df0',
+                strokeWidth: 1.8,
+                strokeLinecap: 'round',
+                strokeLinejoin: 'round',
+                strokeDasharray: '5 3',
+                targetMarker: {
+                  name: 'block',
+                  size: 8,
+                },
               },
             },
-            zIndex: 0,
           }),
         validateMagnet: ({ magnet }) =>
           magnet?.getAttribute('magnet') === 'true',
@@ -957,6 +999,58 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
       suppressSelectionBriefly();
       onSelectLinkRef.current(id, { point });
     };
+    const applyCompactClass = () => {
+      setCompactCanvas((prev) => {
+        const compact = shouldUseCompactNodeDetail(graph.zoom());
+        return prev === compact ? prev : compact;
+      });
+    };
+    const setHoveredNode = (nodeId: string | null) => {
+      if (!editModeRef.current) return;
+      const prev = hoveredNodeIdRef.current;
+      if (prev === nodeId) return;
+      hoveredNodeIdRef.current = nodeId;
+      if (connectingRef.current) return;
+      if (prev) {
+        const prevNode = graph.getCellById(prev);
+        if (prevNode?.isNode()) {
+          applyNodePortAppearance(
+            prevNode as X6Node,
+            true,
+            nodeId,
+            false,
+          );
+        }
+      }
+      if (nodeId) {
+        const node = graph.getCellById(nodeId);
+        if (node?.isNode()) {
+          applyNodePortAppearance(node as X6Node, true, nodeId, false);
+        }
+      }
+    };
+    const refreshNodePorts = () => {
+      graph.getNodes().forEach((node) => {
+        applyNodePortAppearance(
+          node as X6Node,
+          editModeRef.current,
+          hoveredNodeIdRef.current,
+          connectingRef.current,
+        );
+      });
+    };
+    const beginConnecting = () => {
+      if (connectingRef.current) return;
+      connectingRef.current = true;
+      refreshNodePorts();
+    };
+    const endConnecting = () => {
+      if (!connectingRef.current) return;
+      connectingRef.current = false;
+      refreshNodePorts();
+      syncNodesRef.current();
+      syncLinksRef.current();
+    };
 
     graph.on("node:click", ({ e, node }) => {
       if (isRightButtonEvent(e)) return;
@@ -979,6 +1073,20 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
         y: e.clientY,
       });
     });
+    graph.on("node:mouseenter", ({ node }) => {
+      setHoveredNode(node.id);
+    });
+    graph.on("node:mouseleave", ({ node }) => {
+      if (hoveredNodeIdRef.current === node.id) {
+        setHoveredNode(null);
+      }
+    });
+    graph.on("edge:connecting", beginConnecting);
+    graph.on("edge:removed", ({ edge }) => {
+      const data = (edge as X6Cell).getData<{ connecting?: boolean }>();
+      if (data?.connecting) endConnecting();
+    });
+    graph.on("scale", applyCompactClass);
     graph.on("edge:click", ({ e, edge }) => {
       if (isRightButtonEvent(e)) return;
       selectLink(edge.id, { x: e.clientX, y: e.clientY });
@@ -1021,8 +1129,18 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
       onNodeMovedRef.current(node.id, { x: pos.x, y: pos.y });
     });
     graph.on("edge:connected", ({ edge }) => {
+      edge.setZIndex(0);
+      const clearConnectingFlag = () => {
+        const connectedData =
+          (edge as X6Cell).getData<Record<string, unknown>>() ?? {};
+        if (connectedData.connecting) {
+          delete connectedData.connecting;
+          (edge as X6Cell).setData(connectedData, { overwrite: true });
+        }
+      };
       if (!editModeRef.current) {
         edge.remove();
+        endConnecting();
         return;
       }
       const currentData = (edge as X6Cell).getData<{
@@ -1035,10 +1153,13 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
           const terminals = buildNetworkTopologyLinkTerminals(currentData.link);
           edge.setSource(terminals.source);
           edge.setTarget(terminals.target);
-          syncEdgeTools(edge as X6Edge, true);
+          syncEdgeTools(edge as X6Edge, true, selectedEdgeIdRef.current);
+          endConnecting();
+          clearConnectingFlag();
           return;
         }
         edge.remove();
+        endConnecting();
         return;
       }
       if (currentData?.link) {
@@ -1062,7 +1183,9 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
           target_port_id: targetPortId,
         });
         suppressSelectionBriefly(600);
-        syncEdgeTools(edge as X6Edge, true);
+        syncEdgeTools(edge as X6Edge, true, selectedEdgeIdRef.current);
+        endConnecting();
+        clearConnectingFlag();
         return;
       }
       const result = onConnectPortsRef.current?.(
@@ -1073,12 +1196,17 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
       );
       if (!result || "cancel" in result) {
         edge.remove();
+        endConnecting();
         return;
       }
       suppressSelectionBriefly(600);
       edge.prop("id", result.linkId);
-      edge.setAttrs({ line: pendingInterfaceSelectionLineAttrs() });
-      syncEdgeTools(edge as X6Edge, true);
+      selectedEdgeIdRef.current = result.linkId;
+      edge.setAttrs({ line: toX6LineAttrs(pendingInterfaceSelectionLineAttrs()) });
+      syncEdgeTools(edge as X6Edge, true, result.linkId);
+      // 先同步再清 connecting，避免松手时把刚落点的草稿边当多余边删掉。
+      endConnecting();
+      clearConnectingFlag();
     });
     graph.on("edge:change:vertices", ({ edge }) => {
       if (!editModeRef.current) return;
@@ -1093,10 +1221,13 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
         { overwrite: true },
       );
     });
-    graph.on("cell:mouseup", flushPendingVertices);
-    graph.on("blank:mouseup", flushPendingVertices);
-    window.addEventListener("mouseup", flushPendingVertices);
-    window.addEventListener("pointerup", flushPendingVertices);
+    const handlePointerUp = () => {
+      flushPendingVertices();
+    };
+    graph.on("cell:mouseup", handlePointerUp);
+    graph.on("blank:mouseup", handlePointerUp);
+    window.addEventListener("mouseup", handlePointerUp);
+    window.addEventListener("pointerup", handlePointerUp);
 
     graphRef.current = graph;
     onGraphReady?.(graph);
@@ -1112,12 +1243,13 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
         if (graph.getCells().length > 0) {
           graph.centerContent();
         }
+        applyCompactClass();
       }
     });
     return () => {
       flushPendingVertices();
-      window.removeEventListener("mouseup", flushPendingVertices);
-      window.removeEventListener("pointerup", flushPendingVertices);
+      window.removeEventListener("mouseup", handlePointerUp);
+      window.removeEventListener("pointerup", handlePointerUp);
       if (graphRef.current === graph) {
         graphRef.current = null;
       }
@@ -1205,7 +1337,7 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
     };
   }, [onDropDevice]);
 
-  // editMode 切换 → 实时更新 interacting
+  // editMode 切换 → 实时更新 interacting 与 hint 文案
   useEffect(() => {
     const graph = graphRef.current;
     if (!graph) return;
@@ -1219,9 +1351,34 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
           { overwrite: true },
         );
       }
-      syncNodePorts(node as X6Node, editMode);
+      applyNodePortAppearance(
+        node as X6Node,
+        editMode,
+        hoveredNodeIdRef.current,
+        connectingRef.current,
+      );
     });
   }, [editMode, t]);
+
+  useEffect(() => {
+    const graph = graphRef.current;
+    const prev = selectedEdgeIdRef.current;
+    const next = selectedLinkId ?? null;
+    selectedEdgeIdRef.current = next;
+    if (!graph) return;
+    if (prev && prev !== next) {
+      const prevEdge = graph.getCellById(prev);
+      if (prevEdge?.isEdge()) {
+        syncEdgeTools(prevEdge as X6Edge, editModeRef.current, next);
+      }
+    }
+    if (next) {
+      const edge = graph.getCellById(next);
+      if (edge?.isEdge()) {
+        syncEdgeTools(edge as X6Edge, editModeRef.current, next);
+      }
+    }
+  }, [selectedLinkId, editMode]);
 
   return (
     // 三层嵌套结构(对齐 topology/components/canvasShell.tsx 的高度链路):
@@ -1239,7 +1396,9 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
       <div className="h-full min-h-0 w-full">
         <div
           ref={graphHostRef}
-          className="relative h-full min-h-0 w-full overflow-hidden"
+          className={`relative h-full min-h-0 w-full overflow-hidden${
+            compactCanvas ? ` ${NETWORK_CANVAS_COMPACT_CLASS}` : ""
+          }`}
         />
       </div>
 
