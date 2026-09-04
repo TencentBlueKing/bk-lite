@@ -79,7 +79,7 @@ assert.match(topologyCanvas, /layout === 'force' \? layoutForceTopology : layout
 assert.match(topologyLayout, /layoutLayeredTopology\(stable\.nodes/, '力导向必须从稳定后的层次布局初始化');
 assert.doesNotMatch(topologyLayout, /Math\.random/, 'layoutForceTopology 不得使用 Math.random');
 assert.doesNotMatch(topologyPage, /type ViewMode = 'graph' \| 'list'/, '拓扑不得再按图形/列表切换');
-assert.match(topologyCanvas, /viewBox=\{`0 0 \$\{TOPOLOGY_CANVAS_SIZE\.width\} \$\{TOPOLOGY_CANVAS_SIZE\.height\}`\}/, '图形视图必须使用响应式 viewBox');
+assert.match(topologyCanvas, /viewBox=\{`0 0 \$\{(?:canvasSize|TOPOLOGY_CANVAS_SIZE)\.width\} \$\{(?:canvasSize|TOPOLOGY_CANVAS_SIZE)\.height\}`\}/, '图形视图必须使用响应式 viewBox');
 assert.match(topologyCanvas, /tabIndex=\{0\}/, '拓扑节点必须支持键盘聚焦');
 assert.match(topologyCanvas, /event\.key === 'Enter' \|\| event\.key === ' '/, '拓扑节点必须支持 Enter 与 Space 下钻');
 assert.match(topologyCanvas, /sampled_spans/, '拓扑节点大小必须编码采样吞吐');

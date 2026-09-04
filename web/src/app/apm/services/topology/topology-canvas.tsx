@@ -392,7 +392,7 @@ export default function TopologyCanvas({
   return (
     <div
       ref={containerRef}
-      className="relative h-[640px] w-full overflow-hidden bg-[var(--color-fill-1)]"
+      className="relative h-[640px] w-full overflow-hidden bg-[var(--color-bg)]"
       data-topology-layout-pending={layoutPending ? 'true' : 'false'}
       data-topology-surface="true"
     >
@@ -425,7 +425,7 @@ export default function TopologyCanvas({
         data-layout={layout}
         data-topology-scale={view.k.toFixed(2)}
         role="img"
-        viewBox={`0 0 ${TOPOLOGY_CANVAS_SIZE.width} ${TOPOLOGY_CANVAS_SIZE.height}`}
+        viewBox={`0 0 ${canvasSize.width} ${canvasSize.height}`}
         onWheel={onWheel}
         onMouseDown={onCanvasMouseDown}
         onClick={(event) => {
