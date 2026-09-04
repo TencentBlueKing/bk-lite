@@ -1,10 +1,10 @@
-"""非内置 Flow 仪表盘 YAML：可导入、不进内置初始化。"""
+"""Flow 仪表盘 YAML：随 init_builtin_canvases 进入内置目录。"""
 
 from pathlib import Path
 
 import yaml
 
-from apps.operation_analysis.management.commands.init_builtin_canvases import YAML_FILE_PATH
+from apps.operation_analysis.management.commands.init_builtin_canvases import FLOW_DASHBOARD_YAML_PATH, YAML_FILE_PATH, _get_builtin_canvas_file_paths
 from apps.operation_analysis.schemas.import_export_schema import YAMLDocument
 from apps.operation_analysis.services.import_export.precheck_service import PrecheckService
 
@@ -24,12 +24,17 @@ def _iter_widgets(view_sets):
             yield item
 
 
-def test_sample_yaml_is_not_loaded_as_builtin():
+def test_flow_yaml_is_loaded_as_builtin():
     assert SAMPLE_PATH.exists()
     assert Path(YAML_FILE_PATH).resolve() != SAMPLE_PATH.resolve()
+    assert Path(FLOW_DASHBOARD_YAML_PATH).resolve() == SAMPLE_PATH.resolve()
+    loaded = {Path(path).resolve() for path in _get_builtin_canvas_file_paths()}
+    assert SAMPLE_PATH.resolve() in loaded
     builtin = yaml.safe_load(Path(YAML_FILE_PATH).read_text(encoding="utf-8"))
     builtin_keys = {item["key"] for item in builtin.get("dashboards") or []}
     assert "dashboard::Flow网络流量分析仪表盘" not in builtin_keys
+    flow = yaml.safe_load(SAMPLE_PATH.read_text(encoding="utf-8"))
+    assert "dashboard::Flow网络流量分析仪表盘" in {item["key"] for item in flow.get("dashboards") or []}
 
 
 def test_sample_yaml_parses_and_binds_flow_sources():
@@ -129,3 +134,25 @@ def test_sample_yaml_parses_and_binds_flow_sources():
         "受控指标趋势",
         "受控指标排行",
     }
+    assert [item.key for item in document.namespaces] == ["默认命名空间"]
+
+
+def test_flow_dashboard_survives_builtin_merge():
+    from apps.operation_analysis.management.commands.init_builtin_canvases import (
+        _get_builtin_canvas_file_paths,
+        _load_source_api_document,
+        _merge_yaml_documents,
+    )
+
+    documents = [_load_source_api_document()]
+    for file_path in _get_builtin_canvas_file_paths():
+        documents.append(yaml.safe_load(Path(file_path).read_text(encoding="utf-8")))
+    merged = _merge_yaml_documents(documents)
+    document = YAMLDocument(**merged)
+    keys = {item.key for item in document.dashboards}
+    assert "dashboard::Flow网络流量分析仪表盘" in keys
+    flow = next(item for item in document.dashboards if item.key == "dashboard::Flow网络流量分析仪表盘")
+    assert flow.name == "Flow 网络流量分析仪表盘"
+    widget_ids = {item["id"] for item in _iter_widgets(flow.view_sets)}
+    assert "flow-node-graph-ip" in widget_ids
+    assert "flow-topn" in widget_ids
