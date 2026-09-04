@@ -1016,6 +1016,26 @@ assert.match(
   'network library keyword search should submit through Input.Search onSearch instead of querying on every keypress',
 );
 assert.match(
+  networkLibrarySource,
+  /data-testid="network-library-list"/,
+  'network library device list should be a dedicated scroll region',
+);
+assert.match(
+  networkLibrarySource,
+  /flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto/,
+  'network library device list must scroll inside the panel instead of overflowing the canvas',
+);
+assert.match(
+  networkLibrarySource,
+  /relative flex h-full min-h-0 shrink-0 flex-col/,
+  'network library panel should fill the workspace height so overflow-y-auto can take effect',
+);
+assert.match(
+  topologyIndexSource,
+  /className="flex h-full min-h-0 shrink-0 flex-col overflow-visible rounded-lg[\s\S]{0,180}data-testid="network-topology-library-panel"/,
+  'library panel wrapper must have a definite height so the device list can scroll',
+);
+assert.match(
   topologyIndexSource,
   /if \(node && canvasId && editor\.editMode\) \{\s*loadNodeMetrics\(node\);\s*\}/,
   'read-only node detail selection should not fetch metric options; metrics are only needed in edit drawer',
