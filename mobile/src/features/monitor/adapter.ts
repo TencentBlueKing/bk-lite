@@ -23,29 +23,6 @@ function unwrap<T>(value: unknown): T {
 
 const LEGACY_INSTANCE_LOOKUP_PAGE_SIZE = 100;
 const LEGACY_INSTANCE_LOOKUP_MAX_PAGES = 20;
-const RECENT_VIEWS_OBJECT_CONCURRENCY = 2;
-
-async function runWithConcurrency<T, R>(
-  items: T[],
-  limit: number,
-  worker: (item: T, index: number) => Promise<R>,
-): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  let cursor = 0;
-  const workerCount = Math.min(Math.max(limit, 1), items.length || 1);
-  if (!items.length) return results;
-
-  await Promise.all(
-    Array.from({ length: workerCount }, async () => {
-      while (cursor < items.length) {
-        const index = cursor;
-        cursor += 1;
-        results[index] = await worker(items[index], index);
-      }
-    }),
-  );
-  return results;
-}
 
 function mapMonitorInstance(value: unknown): MonitorInstance {
   const item = record(value);
@@ -175,31 +152,6 @@ export async function getMonitorInstance(
     if (fallbackResults.length === 0 || page * LEGACY_INSTANCE_LOOKUP_PAGE_SIZE >= count) return null;
   }
   throw new Error('Legacy Server instance lookup exceeded the safe pagination limit');
-}
-
-/** 按 instance_id_in 批量精确拉取；旧 Server 忽略该参数时由调用方对 miss 做单条回退。 */
-async function listMonitorInstancesByIds(
-  objectId: number,
-  instanceIds: readonly string[],
-  hints: { addMetrics?: boolean } = {},
-  signal?: AbortSignal,
-): Promise<Map<string, MonitorInstance>> {
-  const uniqueIds = [...new Set(instanceIds.map((id) => text(id)).filter(Boolean))];
-  const byId = new Map<string, MonitorInstance>();
-  if (!objectId || !uniqueIds.length) return byId;
-
-  const response = await apiGet(`/monitor/api/monitor_instance/${objectId}/list/`, {
-    page: 1,
-    page_size: uniqueIds.length,
-    instance_id_in: JSON.stringify(uniqueIds),
-    add_metrics: hints.addMetrics ?? false,
-  }, { signal });
-  const raw = record(unwrap<unknown>(response));
-  const results = Array.isArray(raw.results) ? raw.results : [];
-  results.map(mapMonitorInstance).forEach((item) => {
-    if (item.id) byId.set(item.id, item);
-  });
-  return byId;
 }
 
 export async function listEffectivePlugins(objectId: number, instanceId: string, signal?: AbortSignal): Promise<MonitorPlugin[]> {
@@ -346,78 +298,22 @@ export async function resolveRecentViews(
       return empty;
     }
   };
-
-  // 索引访问类型只能用 type alias，不能写成 interface。
-  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions -- indexed access
-  type RecentItem = (typeof config.items)[number];
-  interface RecentEntry {
-    item: RecentItem;
-    object: MonitorObject;
-    instance: MonitorInstance;
-    metricUnits: Map<string, string>;
-  }
-
-  const groups = new Map<number, RecentItem[]>();
-  for (const item of config.items) {
-    const list = groups.get(item.objectId) || [];
-    list.push(item);
-    groups.set(item.objectId, list);
-  }
-
-  const groupEntries = [...groups.entries()];
-  const groupResults = await runWithConcurrency(
-    groupEntries,
-    RECENT_VIEWS_OBJECT_CONCURRENCY,
-    async ([objectId, items]) => {
-      const object = objectMap.get(objectId);
-      if (!object) {
-        return {
-          entries: [] as RecentEntry[],
-          failedItems: items,
-        };
-      }
-
-      const metricUnits = await loadUnits(object);
-      let byId = new Map<string, MonitorInstance>();
-      try {
-        byId = await listMonitorInstancesByIds(
-          objectId,
-          items.map((item) => item.instanceId),
-          { addMetrics: true },
-          signal,
-        );
-      } catch {
-        byId = new Map();
-      }
-
-      const entries: RecentEntry[] = [];
-      const failedItems: RecentItem[] = [];
-      for (const item of items) {
-        try {
-          let instance = byId.get(item.instanceId) || null;
-          if (!instance) {
-            instance = await getMonitorInstance(
-              item.objectId,
-              item.instanceId,
-              { addMetrics: true },
-              signal,
-            );
-          }
-          if (!instance) {
-            failedItems.push(item);
-            continue;
-          }
-          entries.push({ item, object, instance, metricUnits });
-        } catch {
-          failedItems.push(item);
-        }
-      }
-      return { entries, failedItems };
-    },
-  );
-
-  const entries = groupResults.flatMap((result) => result.entries);
-  const failedItems = groupResults.flatMap((result) => result.failedItems);
+  const settled = await Promise.allSettled(config.items.map(async (item) => {
+    const object = objectMap.get(item.objectId);
+    if (!object) return null;
+    const [instance, metricUnits] = await Promise.all([
+      getMonitorInstance(item.objectId, item.instanceId, { addMetrics: true }, signal),
+      loadUnits(object),
+    ]);
+    if (!instance) return null;
+    return { item, object, instance, metricUnits };
+  }));
+  const entries = settled.flatMap((result) => (
+    result.status === 'fulfilled' && result.value ? [result.value] : []
+  ));
+  const failedItems = settled.flatMap((result, index) => (
+    result.status === 'rejected' ? [config.items[index]] : []
+  ));
   return {
     entries,
     requestedCount: config.items.length,
