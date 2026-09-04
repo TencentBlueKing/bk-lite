@@ -28,7 +28,8 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
   surface = 'dashboard',
 }) => {
   const { t } = useTranslation();
-  const [search, setSearch] = useState('');
+  const [searchValue, setSearchValue] = useState('');
+  const [searchKey, setSearchKey] = useState('');
   const [selectedTagId, setSelectedTagId] = useState<number | null>(null);
   const [hoveredDatasourceId, setHoveredDatasourceId] = useState<number | null>(
     null,
@@ -110,7 +111,8 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
       }
     } else {
       setHoveredDatasourceId(null);
-      setSearch('');
+      setSearchValue('');
+      setSearchKey('');
     }
   }, [getTagList, visible]);
 
@@ -125,7 +127,7 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
         setDataSourcesLoading(true);
         const response = await getDataSourceBriefList({
           tags: selectedTagId,
-          search: search.trim() || undefined,
+          search: searchKey.trim() || undefined,
           page_size: -1,
         });
         setCurrentDataSources(Array.isArray(response) ? response : []);
@@ -140,7 +142,7 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
     if (visible && selectedTagId) {
       void fetchBriefList();
     }
-  }, [getDataSourceBriefList, search, selectedTagId]);
+  }, [getDataSourceBriefList, searchKey, selectedTagId]);
 
   useEffect(() => {
     if (visible && tagList.length > 0 && !selectedTagId) {
@@ -148,14 +150,19 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
     }
   }, [visible, tagList, selectedTagId]);
 
+  const applySearch = (value: string) => {
+    setSearchValue(value);
+    setSearchKey(value.trim());
+  };
+
   const handleTagSelect = (tagItemId: number) => {
     setSelectedTagId(tagItemId);
-    setSearch('');
+    applySearch('');
   };
 
   const handleModeChange = (mode: 'dataSource' | 'sceneWidget') => {
     setSelectorMode(mode);
-    setSearch('');
+    applySearch('');
     setHoveredDatasourceId(null);
   };
 
@@ -285,11 +292,19 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
           <div className={styles.listPane}>
             {selectorMode === 'dataSource' && (
               <Input.Search
-                placeholder={t('common.search')}
                 allowClear
+                value={searchValue}
+                placeholder={t('common.search')}
                 className={styles.search}
-                onSearch={(value) => setSearch(value)}
-                onClear={() => setSearch('')}
+                onChange={(event) => {
+                  const nextValue = event.target.value;
+                  setSearchValue(nextValue);
+                  if (!nextValue.trim()) {
+                    setSearchKey('');
+                  }
+                }}
+                onSearch={(value) => applySearch(value)}
+                onClear={() => applySearch('')}
               />
             )}
 

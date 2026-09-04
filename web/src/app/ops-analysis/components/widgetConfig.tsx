@@ -1901,6 +1901,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             {chartType === 'nodeGraph' && (
               <NodeGraphSettingsSection
                 t={t}
+                sectionTitle=""
                 selectedDataSource={selectedDataSource}
                 fieldOptions={topNLabelFieldOptions}
                 valueFieldOptions={topNValueFieldOptions}

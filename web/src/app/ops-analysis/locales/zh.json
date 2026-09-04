@@ -744,8 +744,8 @@
       "unknown": "未知",
       "normal": "正常"
     },
-    "addView": "添加视图",
-    "viewShort": "视图",
+    "addView": "添加组件",
+    "viewShort": "组件",
     "groupShort": "分组",
     "filterType": "筛选类型",
     "startTime": "开始时间",
@@ -941,6 +941,7 @@
     "inputModeSelect": "下拉选择",
     "inputModeRadio": "单选框",
     "inputModeOrganization": "组织选择",
+    "configure": "配置",
     "configOptions": "配置选项",
     "configOptionsFirst": "请先配置选项",
     "optionLabel": "选项标签",

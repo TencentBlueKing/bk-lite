@@ -744,8 +744,8 @@
       "unknown": "Unknown",
       "normal": "Normal"
     },
-    "addView": "Add View",
-    "viewShort": "View",
+    "addView": "Add Widget",
+    "viewShort": "Widget",
     "groupShort": "Group",
     "filterType": "Filter Type",
     "startTime": "Start Time",
@@ -941,6 +941,7 @@
     "inputModeSelect": "Dropdown",
     "inputModeRadio": "Radio",
     "inputModeOrganization": "Organization",
+    "configure": "Configure",
     "configOptions": "Configure Options",
     "configOptionsFirst": "Configure options first",
     "optionLabel": "Option Label",
