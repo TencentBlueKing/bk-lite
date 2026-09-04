@@ -3,7 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.core.utils.current_team_scope import resolve_current_team_data_scope, scope_permission_queryset, validate_assignable_organizations
+from apps.core.utils.current_team_scope import (
+    resolve_assignable_organization_ids,
+    resolve_current_team_data_scope,
+    scope_permission_queryset,
+    validate_assignable_organizations,
+)
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.log.constants.permission import PermissionConstants
 from apps.log.models.log_group import LogGroup
@@ -66,6 +71,26 @@ class LogAccessScopeService:
     @classmethod
     def get_manageable_organization_ids(cls, request):
         return set(cls.get_data_scope(request).data_team_ids)
+
+    @classmethod
+    def get_visible_organization_ids(cls, request):
+        """列表/编辑回显用的组织集合：当前数据范围 ∪ 可分配组织。
+
+        只按 current_team 投影会把用户刚选上的其它组织从回显里裁掉，
+        编辑页保存成功后「所属组织」看起来像没回写。
+        """
+        cache_key = "_log_visible_organization_ids"
+        cached = getattr(request, cache_key, None)
+        if cached is not None:
+            return cached
+        visible = set(cls.get_data_scope(request).data_team_ids)
+        try:
+            visible |= set(resolve_assignable_organization_ids(request))
+        except BaseAppException:
+            pass
+        frozen = frozenset(visible)
+        setattr(request, cache_key, frozen)
+        return frozen
 
     @classmethod
     def validate_organizations(cls, request, organizations):

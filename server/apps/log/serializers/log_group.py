@@ -51,7 +51,7 @@ class LogGroupSerializer(serializers.ModelSerializer):
         request = self.context.get("request") if hasattr(self, "context") else None
         if request is not None:
             try:
-                visible_organizations = LogAccessScopeService.get_data_scope(request).data_team_ids
+                visible_organizations = LogAccessScopeService.get_visible_organization_ids(request)
             except ValueError:
                 visible_organizations = frozenset()
             organization_queryset = organization_queryset.filter(organization__in=list(visible_organizations))
