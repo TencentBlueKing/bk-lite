@@ -9,6 +9,7 @@ import {
   APP_TOP_SIDE_RAIL_COLLAPSED_WIDTH_PX,
   APP_TOP_SIDE_RAIL_WIDTH_PX,
   buildAppTopSideNavGroups,
+  resolveMenuNavHref,
   useConsoleLayout,
 } from '@/console-layout';
 import { isMenuPathMatch, resolveMenuIcon } from '@/utils/menuHelpers';
@@ -98,11 +99,12 @@ const AppTopSideNav = ({ menus, pathname }: AppTopSideNavProps) => {
                 currentPath && group.item.url && isMenuPathMatch(group.item.url, currentPath),
               );
               const iconType = resolveMenuIcon(group.item);
+              const href = resolveMenuNavHref(group.item);
 
               return (
                 <li key={group.item.url}>
                   <Link
-                    href={group.item.url}
+                    href={href}
                     prefetch={false}
                     data-side-nav-item
                     title={showLabels ? undefined : group.item.title}

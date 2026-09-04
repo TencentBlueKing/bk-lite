@@ -1,7 +1,7 @@
 'use client';
 
 import '@ant-design/v5-patch-for-react-19';
-import { useEffect, useLayoutEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import Script from 'next/script';
 import { useRouter, usePathname } from 'next/navigation';
 import { AntdRegistry } from '@ant-design/nextjs-registry';
@@ -12,6 +12,7 @@ import { ThemeBootstrap, ThemeProvider } from '@/theme';
 import {
   ConsoleLayoutBootstrap,
   ConsoleLayoutProvider,
+  shouldHideConsoleTopNav,
   shouldShowAppTopSideNav,
   useConsoleLayout,
 } from '@/console-layout';
@@ -27,15 +28,14 @@ import { portalBrandingDefaults, usePortalBranding } from '@/hooks/usePortalBran
 import { getProfessionalDashboardPermissionPath } from '@/app/monitor/dashboards/metadata';
 import { isProfessionalDashboardRoute } from '@/app/monitor/dashboards/shared/utils';
 import '@/styles/globals.css';
-import { MenuItem } from '@/types/index'
-import WithSideMenuLayout from '@/components/sub-layout'
-import { shouldRenderSecondLayerMenu } from '@/utils/menuHelpers'
+import WithSideMenuLayout from '@/components/sub-layout';
+import { isPathCoveredByMenus, shouldRenderSecondLayerMenu } from '@/utils/menuHelpers';
 import {
   PORTAL_TAB_TITLE_BOOTSTRAP_SCRIPT,
   resolvePortalTabTitle,
-} from '@/utils/portalTabTitle'
+} from '@/utils/portalTabTitle';
 import { resolveAppDisplayName } from '@/utils/appDisplayName';
-import { isSessionExpiredState } from '@/utils/sessionExpiry'
+import { isSessionExpiredState } from '@/utils/sessionExpiry';
 import { useUserInfoContext } from '@/context/userInfo';
 import { RouteScopedLayout } from '@/app/routeScopedLayout';
 import dynamic from 'next/dynamic';
@@ -220,18 +220,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   ]);
 
   const showAppTopSide = shouldShowAppTopSideNav(storedChromeLayout, pathname, menus);
-
-  const isPathInMenu = useCallback((path: string, menus: MenuItem[]): boolean => {
-    for (const menu of menus) {
-      if (path?.startsWith(menu.url)) {
-        return true;
-      }
-      if (menu.children && isPathInMenu(path, menu.children)) {
-        return true;
-      }
-    }
-    return false;
-  }, []);
+  const hideConsoleTopNav = shouldHideConsoleTopNav(pathname);
 
   useEffect(() => {
     const checkPermission = async () => {
@@ -259,7 +248,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
 
       const permissionPath = getProfessionalDashboardPermissionPath(pathname) || pathname;
 
-      if (permissionPath && isPathInMenu(permissionPath, configMenus)) {
+      if (permissionPath && isPathCoveredByMenus(permissionPath, configMenus)) {
         if (hasPermission(permissionPath)) {
           setIsAllowed(true);
         } else {
@@ -297,10 +286,6 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
     }
   }, [isAuthenticated, isAuthRoute]);
 
-  const hideTopMenu = useMemo(() => {
-    return pathname?.startsWith('/opspilot/studio/chat');
-  }, [pathname]);
-
   const watermarkContent = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
     return applyWatermarkTemplate(watermarkText || portalBrandingDefaults.watermarkText, {
@@ -328,8 +313,8 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   }
 
   const layoutContent = (
-    <div className={`flex flex-col pr-[var(--bk-webchat-dock-width)] transition-[padding-right] duration-200 ease-out ${isDashboardShareRoute ? 'h-screen overflow-hidden' : showAppTopSide ? 'h-screen overflow-x-auto overflow-y-hidden' : 'min-h-screen'} ${!isAuthRoute && !isResponsiveAppRoute ? 'min-w-[1280px]' : ''}`}>
-      {isAuthenticated && hasResolvedPathname && !isAuthRoute && (
+    <div className={`flex flex-col pr-[var(--bk-webchat-dock-width)] transition-[padding-right] duration-200 ease-out ${isDashboardShareRoute || hideConsoleTopNav ? 'h-screen overflow-hidden' : showAppTopSide ? 'h-screen overflow-x-auto overflow-y-hidden' : 'min-h-screen'} ${!isAuthRoute && !isResponsiveAppRoute ? 'min-w-[1280px]' : ''}`}>
+      {isAuthenticated && hasResolvedPathname && !isAuthRoute && !hideConsoleTopNav && (
         <header
           className={`sticky top-0 left-0 right-0 z-20 flex shrink-0 justify-between items-center ${
             storedChromeLayout === 'app-top'
@@ -337,7 +322,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
               : `header-bg ${isHeaderScrolled ? 'header-bg-scrolled' : ''}`
           }`}
         >
-          <TopMenu hideMainMenu={hideTopMenu} />
+          <TopMenu />
         </header>
       )}
       <div className={showAppTopSide ? 'flex min-h-0 min-w-0 flex-1' : 'contents'}>
@@ -346,21 +331,32 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
         )}
         <main
           className={`main-content flex-1 flex text-sm ${
-            showAppTopSide ? 'min-h-0 min-w-0 flex-col py-4 pr-4' : 'p-4'
-          } ${isDashboardShareRoute ? 'min-h-0 overflow-hidden' : ''} ${!isAuthenticated || isAuthRoute ? 'h-screen' : ''}`}
+            hideConsoleTopNav
+              ? 'min-h-0 overflow-hidden p-0'
+              : showAppTopSide ? 'min-h-0 min-w-0 flex-col py-4 pr-4' : 'p-4'
+          } ${isDashboardShareRoute ? 'min-h-0 overflow-hidden' : ''} ${!isAuthenticated || isAuthRoute || hideConsoleTopNav ? 'h-screen' : ''}`}
           style={showAppTopSide ? { ['--custom-height' as string]: '100%' } : undefined}
         >
-          {shouldRenderMenu ? (
-            <div className={showAppTopSide ? 'flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-x-auto pl-4' : 'contents'}>
-              <WithSideMenuLayout
-                layoutType="segmented"
-                menuLevel={1}
-              >
-                {children}
-              </WithSideMenuLayout>
+          {showAppTopSide ? (
+            <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-x-auto pl-4">
+              {shouldRenderMenu ? (
+                <WithSideMenuLayout
+                  layoutType="segmented"
+                  menuLevel={1}
+                >
+                  {children}
+                </WithSideMenuLayout>
+              ) : (
+                <div className="min-h-0 min-w-0 flex-1 overflow-auto">{children}</div>
+              )}
             </div>
-          ) : showAppTopSide ? (
-            <div className="min-h-0 min-w-0 flex-1 overflow-auto pl-4">{children}</div>
+          ) : shouldRenderMenu ? (
+            <WithSideMenuLayout
+              layoutType="segmented"
+              menuLevel={1}
+            >
+              {children}
+            </WithSideMenuLayout>
           ) : (
             children
           )}

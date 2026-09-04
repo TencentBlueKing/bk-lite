@@ -8,8 +8,10 @@ import {
   getAppStripOverflow,
   isConsoleChromeException,
   isDetailChromeContext,
+  shouldHideConsoleTopNav,
   resolveAppNavigation,
   resolveEffectiveChromeLayout,
+  resolveMenuNavHref,
   shouldOpenAppInNewTab,
   shouldShowAppTopSideNav,
   shouldShowClassicSegmentedNav,
@@ -68,6 +70,7 @@ describe('console chrome layout resolve', () => {
   it('forces classic chrome on exception routes', () => {
     expect(isConsoleChromeException('/ops-console/home')).toBe(true);
     expect(isConsoleChromeException('/opspilot/studio/chat')).toBe(true);
+    expect(isConsoleChromeException('/opspilot/skill/chat')).toBe(true);
     expect(isConsoleChromeException('/ops-analysis/share/abc')).toBe(true);
     expect(isConsoleChromeException('/ops-analysis/render/execution/7')).toBe(true);
     expect(isConsoleChromeException('/monitor/view/dashboard/1')).toBe(true);
@@ -86,6 +89,17 @@ describe('console chrome layout resolve', () => {
     expect(shouldShowAppTopSideNav('classic', '/opspilot/studio', opspilotMenus)).toBe(false);
     expect(shouldShowAppTopSideNav('app-top', '/ops-console/home', opspilotMenus)).toBe(false);
     expect(shouldShowAppTopSideNav('app-top', '/no-permission', opspilotMenus)).toBe(false);
+    expect(shouldShowAppTopSideNav('app-top', '/opspilot/studio/chat', opspilotMenus)).toBe(false);
+    expect(shouldShowAppTopSideNav('app-top', '/opspilot/skill/chat', opspilotMenus)).toBe(false);
+  });
+
+  it('hides the console top nav on immersive OpsPilot chat pages', () => {
+    expect(shouldHideConsoleTopNav('/opspilot/studio/chat')).toBe(true);
+    expect(shouldHideConsoleTopNav('/opspilot/studio/chat/')).toBe(true);
+    expect(shouldHideConsoleTopNav('/opspilot/skill/chat')).toBe(true);
+    expect(shouldHideConsoleTopNav('/opspilot/studio')).toBe(false);
+    expect(shouldHideConsoleTopNav('/opspilot/skill/detail/settings')).toBe(false);
+    expect(shouldHideConsoleTopNav('/cmdb/assetOverview')).toBe(false);
   });
 
   it('keeps first-layer items flat and leaves children to the original in-page side menu', () => {
@@ -99,6 +113,30 @@ describe('console chrome layout resolve', () => {
     const groups = buildAppTopSideNavGroups(opspilotMenus, '/opspilot/studio');
     expect(groups[0].children).toEqual([]);
     expect(groups[1].children).toEqual([]);
+  });
+
+  it('jumps container menus to the first leaf while keeping hasDetail list pages on themselves', () => {
+    const logEvent = menu({
+      title: '事件',
+      url: '/log/event',
+      name: 'event',
+      children: [
+        menu({ title: '告警', url: '/log/event/alert', name: 'alert' }),
+        menu({ title: '策略', url: '/log/event/strategy', name: 'strategy' }),
+      ],
+    });
+    const assetData = menu({
+      title: '资产',
+      url: '/cmdb/assetData',
+      name: 'asset_data',
+      hasDetail: true,
+      children: [
+        menu({ title: '详情', url: '/cmdb/assetData/detail/baseInfo', name: 'base' }),
+      ],
+    });
+    expect(resolveMenuNavHref(logEvent)).toBe('/log/event/alert');
+    expect(resolveMenuNavHref(assetData)).toBe('/cmdb/assetData');
+    expect(resolveMenuNavHref(menu({ title: '搜索', url: '/log/search', name: 'search' }))).toBe('/log/search');
   });
 
   it('keeps classic segmented nav only when classic chrome is effective', () => {

@@ -110,6 +110,14 @@ describe('AppTopSideNav', () => {
     expect(screen.getByRole('link', { name: '知识库' }).className).not.toContain('nav-button-bg-active');
   });
 
+  it('links container menus to the first leaf instead of a redirect stub', () => {
+    render(<AppTopSideNav menus={menus} pathname="/job/execution/quick-exec" />);
+    expect(screen.getByRole('link', { name: '作业执行' }).getAttribute('href')).toBe(
+      '/job/execution/quick-exec',
+    );
+    expect(screen.getByRole('link', { name: '首页' }).getAttribute('href')).toBe('/job/home');
+  });
+
   it('collapses from the footer toggle and persists through the console layout', () => {
     render(<AppTopSideNav menus={opspilotMenus} pathname="/opspilot/wiki" />);
     fireEvent.click(screen.getByRole('button', { name: 'common.collapseSideNav' }));
