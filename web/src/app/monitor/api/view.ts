@@ -47,6 +47,20 @@ const useViewApi = () => {
     [post]
   );
 
+  const queryFlowConversations = useCallback(
+    async (params: SearchParams, config?: RequestConfig) => {
+      return await post(
+        `/monitor/api/metrics_instance/query_flow_conversations/`,
+        params,
+        {
+          ...METRIC_QUERY_REQUEST_CONFIG,
+          ...config,
+        }
+      );
+    },
+    [post]
+  );
+
   const getInstanceSearch = useCallback(
     async (
       objectId: React.Key,
@@ -117,6 +131,7 @@ const useViewApi = () => {
   return {
     getInstanceQuery,
     getInstanceInstantQuery,
+    queryFlowConversations,
     getInstanceSearch,
     getInstanceQueryParams,
     getMetricsInstanceQuery,
