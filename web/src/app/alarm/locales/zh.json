@@ -211,6 +211,9 @@
         "source": "告警源",
         "activeAlarms": "活跃告警",
         "historicalAlarms": "所有告警",
+        "capability": {
+            "alarmTrend": "告警趋势"
+        },
         "event": "事件",
         "distributionMap": "分布图",
         "activeAlarmsMapTips": "展示所有活跃告警的分布图。",
