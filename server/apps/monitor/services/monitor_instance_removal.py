@@ -11,12 +11,14 @@ from apps.core.logger import monitor_logger as logger
 from apps.monitor.models import (
     CollectConfig,
     MonitorAlert,
+    MonitorEvent,
     MonitorInstance,
     MonitorInstanceOrganization,
     MonitorObjectOrganizationRule,
     MonitorPolicy,
     PolicyInstanceBaseline,
 )
+from apps.monitor.services.alert_lifecycle_events import record_lifecycle_events
 from apps.monitor.services.alert_lifecycle_notify import AlertLifecycleNotifier
 from apps.monitor.services.flow_onboarding import FlowOnboardingService
 from apps.monitor.services.policy_source_cleanup import cleanup_policy_sources
@@ -211,6 +213,13 @@ class MonitorInstanceRemovalService:
                     "alert_center_notified",
                 ],
                 batch_size=cls.ALERT_BATCH_SIZE,
+            )
+            record_lifecycle_events(
+                alerts,
+                MonitorEvent.Action.CLOSED,
+                event_time=closed_at,
+                operator=operator,
+                reason=reason,
             )
             policies = MonitorPolicy.objects.in_bulk({alert.policy_id for alert in alerts if alert.policy_id})
             alerts_by_policy = defaultdict(list)

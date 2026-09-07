@@ -32,6 +32,7 @@ from django_celery_beat.models import CrontabSchedule, PeriodicTask
 
 from apps.monitor.models import (
     MonitorAlert,
+    MonitorEvent,
     PolicyInstanceBaseline,
     PolicyOrganization,
 )
@@ -117,7 +118,7 @@ class TestDestroySuccessPath:
     """正常路径:destroy 成功 → 所有相关数据清理,NATS 推送 1 次"""
 
     def test_destroy_policy_clears_all_related_data(
-        self, superuser_client, stub_notifier, stub_baseline_service
+        self, superuser_client, stub_notifier, stub_baseline_service, django_capture_on_commit_callbacks
     ):
         policy = _make_policy()
         # baseline 行
@@ -138,7 +139,8 @@ class TestDestroySuccessPath:
         PolicyOrganization.objects.create(policy=policy, organization=1)
         policy_id = policy.id
 
-        resp = superuser_client.delete(f"{BASE}/api/monitor_policy/{policy_id}/")
+        with django_capture_on_commit_callbacks(execute=True):
+            resp = superuser_client.delete(f"{BASE}/api/monitor_policy/{policy_id}/")
 
         # CustomRenderer 把 DELETE 204 → 200 (config/drf/renderers.py:46)
         assert resp.status_code == 200
@@ -165,6 +167,7 @@ class TestDestroySuccessPath:
         call_args = stub_notifier.return_value.notify_alerts.call_args
         closed_alerts = call_args.args[0] if call_args.args else call_args.kwargs.get("alerts")
         assert any(a.id == alert.id for a in closed_alerts)
+        assert MonitorEvent.objects.filter(alert_id=alert.id, action=MonitorEvent.Action.CLOSED).count() == 1
 
     def test_destroy_policy_with_no_alerts_and_no_baseline(
         self, superuser_client, stub_notifier, stub_baseline_service

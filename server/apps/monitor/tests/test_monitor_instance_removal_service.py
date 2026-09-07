@@ -11,6 +11,7 @@ from apps.monitor.models import (
     MonitorObject,
     MonitorObjectOrganizationRule,
     MonitorAlert,
+    MonitorEvent,
     MonitorPolicy,
     PolicyInstanceBaseline,
 )
@@ -153,6 +154,14 @@ def test_remove_closes_active_alerts_and_preserves_alert_history(
     assert threshold_alert.operation_logs[-1]["operator"] == "tester"
     assert historical_alert.status == "recovered"
     assert unrelated_alert.status == "new"
+    assert MonitorEvent.objects.filter(
+        alert_id__in=[threshold_alert.id, no_data_alert.id],
+        action=MonitorEvent.Action.CLOSED,
+    ).count() == 2
+    assert MonitorEvent.objects.filter(
+        alert_id=historical_alert.id,
+        action=MonitorEvent.Action.CLOSED,
+    ).count() == 0
     assert notified == [
         (
             [threshold_alert.id, no_data_alert.id],
@@ -250,6 +259,9 @@ def test_remove_notifies_closed_alerts_with_their_policy_context(
                     action,
                 )
             )
+
+        def enqueue_alert_center_deliveries(self, *args, **kwargs):
+            return []
 
     _stub_node_mgmt(monkeypatch)
     monkeypatch.setattr(

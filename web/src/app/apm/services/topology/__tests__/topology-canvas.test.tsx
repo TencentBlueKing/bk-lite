@@ -14,7 +14,15 @@ const api = {
 };
 
 vi.mock('next/link', () => ({
-  default: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a>,
+  default: ({
+    href,
+    children,
+    ...rest
+  }: {
+    href: string;
+    children: React.ReactNode;
+    [key: string]: unknown;
+  }) => <a href={href} {...rest}>{children}</a>,
 }));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -243,7 +251,9 @@ describe('APM 服务拓扑画布', () => {
     expect(screen.queryByText('观测 Trace')).toBeNull();
     expect(screen.queryByRole('button', { name: '收起拓扑图例' })).toBeNull();
     expect(screen.queryByText('数字为错误数 / 总数')).toBeNull();
-    expect(screen.getByRole('complementary', { name: '拓扑调查栏' })).not.toBeNull();
+    expect(screen.getByRole('complementary', { name: '服务概况' })).not.toBeNull();
+    expect(screen.getByText('服务概况')).not.toBeNull();
+    expect(screen.queryByText('调查')).toBeNull();
   });
 
   it('截断时说明拓扑按 Trace 抽样聚合而不是全量流量', async () => {
@@ -262,7 +272,7 @@ describe('APM 服务拓扑画布', () => {
     expect(screen.queryByText('当前拓扑仅聚合查询上限内的最近 Trace，调用量不代表全量流量。')).toBeNull();
   });
 
-  it('点选节点停在图上打开调查栏并加载样本 Trace', async () => {
+  it('点选节点停在图上打开服务概况并加载样本 Trace', async () => {
     const result = renderWithApmIntl(<ApmTopologyPage />);
     await screen.findByRole('img', { name: 'APM 服务调用拓扑' });
     await waitFor(() => expect(result.container.querySelector('[data-node-id="catalog"]')).not.toBeNull());
@@ -271,6 +281,32 @@ describe('APM 服务拓扑画布', () => {
     expect(screen.getByRole('link', { name: '更多调用链' })).not.toBeNull();
     await waitFor(() => expect(api.getTraces).toHaveBeenCalled());
     expect(await screen.findByText('GET /catalog')).not.toBeNull();
+  });
+
+  it('点选服务后查看详情在新窗口打开该服务详情页', async () => {
+    api.getServices.mockResolvedValue([{
+      id: 'svc-catalog',
+      application_id: 'shop',
+      application_name: '电商应用',
+      namespace: 'apm-demo-shop',
+      name: 'catalog',
+      language: 'python',
+      first_seen_at: '2026-08-26T00:00:00.000Z',
+      last_seen_at: '2026-08-26T00:00:00.000Z',
+      archived_at: null,
+      archive_reason: '',
+      status: 'active',
+      environment_views: [{ environment: 'local', last_seen_at: '2026-08-26T00:00:00.000Z', status: 'active' }],
+      organization_ids: [1],
+    }]);
+    const result = renderWithApmIntl(<ApmTopologyPage />);
+    await screen.findByRole('img', { name: 'APM 服务调用拓扑' });
+    await waitFor(() => expect(result.container.querySelector('[data-node-id="catalog"]')).not.toBeNull());
+    fireEvent.click(result.container.querySelector('[data-node-id="catalog"]') as Element);
+    const detail = await screen.findByRole('link', { name: '查看详情' });
+    expect(detail.getAttribute('href')).toBe('/apm/services/svc-catalog?environment=local');
+    expect(detail.getAttribute('target')).toBe('_blank');
+    expect(detail.getAttribute('rel')).toBe('noopener noreferrer');
   });
 
   it('隔离一跳后只保留目标服务的直接邻居', async () => {
@@ -287,7 +323,7 @@ describe('APM 服务拓扑画布', () => {
     expect(screen.getByText('正在隔离查看一个服务及其直接依赖。')).not.toBeNull();
   });
 
-  it('推断节点展示角标，调查栏隐藏服务详情并列出样本 Client Span', async () => {
+  it('推断节点展示角标，服务概况隐藏服务详情并列出样本 Client Span', async () => {
     api.getTopology.mockResolvedValue({
       nodes: [
         node('catalog'),
@@ -341,6 +377,7 @@ describe('APM 服务拓扑画布', () => {
     expect(screen.getByRole('link', { name: /SELECT orders/ }).textContent).toContain('db.internal:3306');
     expect(screen.getByRole('link', { name: /SELECT inventory/ }).textContent).toContain('10.0.0.2:3306');
     expect(screen.queryByRole('link', { name: '服务详情' })).toBeNull();
+    expect(screen.queryByRole('link', { name: '查看详情' })).toBeNull();
     expect(screen.getByRole('button', { name: '隔离一跳' })).not.toBeNull();
   });
 

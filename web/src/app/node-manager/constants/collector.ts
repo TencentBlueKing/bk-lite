@@ -52,6 +52,7 @@ const COLLECTOR_LABEL: Record<string, string[]> = {
     'etcd-Bk-pull',
     'TiDB-BK-pull',
   ],
+  Executor: ['NATS-Executor', 'Ansible-Executor'],
 };
 
 export { COLLECTOR_LABEL, DISPLAY_PLUGINS };

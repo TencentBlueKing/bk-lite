@@ -5,7 +5,8 @@ from string import Template
 from django.db import transaction
 from django.db.models import F
 
-from apps.monitor.models import MonitorAlert
+from apps.monitor.models import MonitorAlert, MonitorEvent
+from apps.monitor.services.alert_lifecycle_events import record_lifecycle_events
 from apps.monitor.services.alert_lifecycle_notify import AlertLifecycleNotifier
 from apps.monitor.tasks.utils.policy_calculate import vm_to_dataframe, calculate_alerts
 from apps.monitor.utils.alert_name_variables import overlay_dimension_field_values
@@ -371,7 +372,7 @@ class AlertDetector:
 
     def recover_threshold_alerts(self):
         if self.policy.recovery_condition <= 0:
-            return
+            return []
 
         alert_ids = [alert.id for alert in self.active_alerts if alert.alert_type == "alert"]
 
@@ -394,7 +395,7 @@ class AlertDetector:
                 .order_by("id")
             )
             if not alerts_to_recover:
-                return
+                return []
             for alert in alerts_to_recover:
                 alert.status = "recovered"
                 alert.end_event_time = end_time
@@ -404,6 +405,13 @@ class AlertDetector:
             MonitorAlert.objects.bulk_update(
                 alerts_to_recover,
                 fields=["status", "end_event_time", "operator", "operation_logs", "alert_center_notified"],
+            )
+            recovered_events = record_lifecycle_events(
+                alerts_to_recover,
+                MonitorEvent.Action.RECOVERED,
+                event_time=end_time,
+                operator="system",
+                reason="auto_recovered",
             )
             notifier.enqueue_alert_center_deliveries(
                 alerts_to_recover,
@@ -419,11 +427,12 @@ class AlertDetector:
                     reason="auto_recovered",
                 )
             )
+            return recovered_events
 
     def recover_no_data_alerts(self):
         if not self.policy.no_data_recovery_period:
             logger.debug(f"Policy {self.policy.id}: no_data_recovery_period not configured, skip recovery")
-            return
+            return []
 
         aggregation_metrics = self.metric_query_service.query_aggregation_metrics(self.policy.no_data_recovery_period)
         logger.debug(f"Policy {self.policy.id}: no_data recovery query returned {len(aggregation_metrics.get('data', {}).get('result', []))} results")
@@ -476,7 +485,7 @@ class AlertDetector:
                     .order_by("id")
                 )
                 if not alerts_to_recover:
-                    return
+                    return []
                 for alert in alerts_to_recover:
                     alert.status = "recovered"
                     alert.end_event_time = end_time
@@ -486,6 +495,13 @@ class AlertDetector:
                 MonitorAlert.objects.bulk_update(
                     alerts_to_recover,
                     fields=["status", "end_event_time", "operator", "operation_logs", "alert_center_notified"],
+                )
+                recovered_events = record_lifecycle_events(
+                    alerts_to_recover,
+                    MonitorEvent.Action.RECOVERED,
+                    event_time=end_time,
+                    operator="system",
+                    reason="auto_recovered",
                 )
                 notifier.enqueue_alert_center_deliveries(
                     alerts_to_recover,
@@ -502,8 +518,9 @@ class AlertDetector:
                     )
                 )
             logger.info(f"Policy {self.policy.id}: recovered {len(alerts_to_recover)} no_data alerts")
-        else:
-            logger.debug(f"Policy {self.policy.id}: no no_data alerts to recover")
+            return recovered_events
+        logger.debug(f"Policy {self.policy.id}: no no_data alerts to recover")
+        return []
 
     def _get_baseline_keys(self) -> set:
         if self.baselines_map:

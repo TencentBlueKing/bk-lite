@@ -21,9 +21,10 @@ from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.filters.id_filters import filter_positive_int_field
 from apps.monitor.filters.monitor_policy import MonitorPolicyFilter
-from apps.monitor.models import MonitorAlert, MonitorObject, PolicyOrganization, PolicyTemplate
+from apps.monitor.models import MonitorAlert, MonitorEvent, MonitorObject, PolicyOrganization, PolicyTemplate
 from apps.monitor.models.monitor_policy import MonitorPolicy
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
+from apps.monitor.services.alert_lifecycle_events import record_lifecycle_events
 from apps.monitor.services.alert_lifecycle_notify import NOTIFY_SCOPE_ALERT_CENTER_ONLY, NOTIFY_SCOPE_ALL_CONFIGURED, AlertLifecycleNotifier
 from apps.monitor.services.node_mgmt import InstanceConfigService
 from apps.monitor.services.policy import PolicyService
@@ -319,25 +320,45 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
 
     def _close_alerts_in_tx(self, policy, alerts_to_close, operator, reason):
         """事务内只做 DB 写,不再触发 NATS(NATS 由 destroy 的 on_commit 负责)。"""
+        self._mark_new_alerts_closed(alerts_to_close, operator, reason)
+
+    def _mark_new_alerts_closed(self, alerts_to_close, operator, reason):
+        """只关闭仍为 new 的告警并写一条 closed Event，已恢复/已关闭的不再写终态。"""
         if not alerts_to_close:
-            return
+            return []
         now = datetime.now(timezone.utc)
-        operation_log = {
-            "action": "closed",
-            "reason": reason,
-            "operator": operator,
-            "time": now.isoformat(),
-        }
-        for alert in alerts_to_close:
-            alert.status = "closed"
-            alert.end_event_time = now
-            alert.operator = operator
-            alert.operation_logs = (alert.operation_logs or []) + [operation_log]
-            alert.alert_center_notified = False
-        MonitorAlert.objects.bulk_update(
-            alerts_to_close,
-            fields=["status", "end_event_time", "operator", "operation_logs", "alert_center_notified"],
-        )
+        with transaction.atomic():
+            locked_alerts = list(
+                MonitorAlert.objects.select_for_update()
+                .filter(id__in=[alert.id for alert in alerts_to_close], status="new")
+                .order_by("id")
+            )
+            if not locked_alerts:
+                return []
+            operation_log = {
+                "action": "closed",
+                "reason": reason,
+                "operator": operator,
+                "time": now.isoformat(),
+            }
+            for alert in locked_alerts:
+                alert.status = "closed"
+                alert.end_event_time = now
+                alert.operator = operator
+                alert.operation_logs = (alert.operation_logs or []) + [operation_log]
+                alert.alert_center_notified = False
+            MonitorAlert.objects.bulk_update(
+                locked_alerts,
+                fields=["status", "end_event_time", "operator", "operation_logs", "alert_center_notified"],
+            )
+            record_lifecycle_events(
+                locked_alerts,
+                MonitorEvent.Action.CLOSED,
+                event_time=now,
+                operator=operator,
+                reason=reason,
+            )
+            return locked_alerts
 
     def is_no_data_alert_enabled(self, policy):
         return bool(policy and AlertConstants.NO_DATA in (policy.enable_alerts or []))
@@ -440,36 +461,19 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
             baseline_service.clear()
 
     def close_alerts(self, policy, alerts_to_close, operator, reason, notify_scope=NOTIFY_SCOPE_ALL_CONFIGURED):
-        if not alerts_to_close:
+        locked_alerts = self._mark_new_alerts_closed(alerts_to_close, operator, reason)
+        if not locked_alerts:
             return
-
-        now = datetime.now(timezone.utc)
-        operation_log = {
-            "action": "closed",
-            "reason": reason,
-            "operator": operator,
-            "time": now.isoformat(),
-        }
-        for alert in alerts_to_close:
-            alert.status = "closed"
-            alert.end_event_time = now
-            alert.operator = operator
-            alert.operation_logs = (alert.operation_logs or []) + [operation_log]
-            alert.alert_center_notified = False
-        MonitorAlert.objects.bulk_update(
-            alerts_to_close,
-            fields=["status", "end_event_time", "operator", "operation_logs", "alert_center_notified"],
-        )
         if policy and notify_scope:
             notifier = AlertLifecycleNotifier(policy)
             notifier.enqueue_alert_center_deliveries(
-                alerts_to_close,
+                locked_alerts,
                 "closed",
                 operator=operator,
                 reason=reason,
             )
             transaction.on_commit(
-                lambda alerts=tuple(alerts_to_close): notifier.notify_alerts(
+                lambda alerts=tuple(locked_alerts): notifier.notify_alerts(
                     alerts,
                     action="closed",
                     operator=operator,
