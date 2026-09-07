@@ -270,6 +270,47 @@ def is_context_size_error(exc: BaseException | str) -> bool:
     return any(needle in text for needle in needles)
 
 
+_LLM_UPSTREAM_TYPE_NAMES = frozenset(
+    {
+        "internalservererror",
+        "apitimeouterror",
+        "apiconnectionerror",
+        "ratelimiterror",
+        "serviceunavailableerror",
+    }
+)
+_LLM_UPSTREAM_REQUEST_ID_RE = re.compile(r"request id:\s*([A-Za-z0-9]+)", re.IGNORECASE)
+
+
+def is_llm_upstream_error(exc: BaseException | str) -> bool:
+    """识别模型网关/上游失败（如 new_api 500 do_request_failed），不是沙箱白名单拦截。"""
+    if is_context_size_error(exc):
+        return False
+    if isinstance(exc, BaseException) and type(exc).__name__.casefold() in _LLM_UPSTREAM_TYPE_NAMES:
+        return True
+    text = str(exc or "").casefold()
+    needles = (
+        "new_api_error",
+        "do_request_failed",
+        "upstream error: do request failed",
+    )
+    return any(needle in text for needle in needles)
+
+
+def extract_llm_upstream_request_id(exc: BaseException | str) -> str:
+    match = _LLM_UPSTREAM_REQUEST_ID_RE.search(str(exc or ""))
+    if not match:
+        return ""
+    return match.group(1)[:80]
+
+
+def llm_upstream_user_message(exc: BaseException | str) -> str:
+    request_id = extract_llm_upstream_request_id(exc)
+    if request_id:
+        return f"模型服务暂时不可用（上游请求失败），不是本地工具或沙箱命令被拦截。请稍后重试。request_id={request_id}"
+    return "模型服务暂时不可用（上游请求失败），不是本地工具或沙箱命令被拦截。请稍后重试。"
+
+
 def _coerce_positive_int(value: Any) -> int | None:
     try:
         number = int(value)
