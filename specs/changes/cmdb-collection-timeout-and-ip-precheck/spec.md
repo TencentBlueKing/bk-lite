@@ -81,7 +81,7 @@ Status: done
 
 - 表单「超时时间」= 一个逻辑目标进入正式 `plugin.collect()` 后的硬截止；普通 IP 段
   拆开后**每个 IP 独立计时**，某个正式采集超时不影响其余。IP 发现插件当前把所选
-  子网展开并在一个 Collector 内扫描，因此该表单值是整次所选子网扫描预算，默认 300s；
+  子网展开并在一个 Collector 内扫描，因此该表单值是整次所选子网扫描预算，默认且最小 30s；
   单个 IP 的 ICMP/TCP 探测固定最多 5s。
 - 生效机制：框架层（`ExecutionPlanResolver` / executor）使用任务下发的 `timeout`，
   在 `plugin.collect()` 外由 `asyncio.timeout` 强制。等待 Scheduler 槽位的时间不计入；
@@ -100,7 +100,7 @@ Status: done
 - 前端一般 tooltip 应明确为“单个对象正式采集超时时间”，避免再次被理解为调度至
   发布的完整流程预算；IP 发现使用专用 tooltip，明确“所选子网扫描总预算”和固定
   5s 单次探测上限。所有表单只从 `initialValues` 提供默认值，不再维护无效且易冲突的
-  `timeoutProps.defaultValue`；输入最小值不得低于后端 1s 下限（SNMP 保持 30s）。
+  `timeoutProps.defaultValue`；输入最小值不得低于后端 1s 下限（SNMP 与 IP 发现保持 30s）。
 
 ### 三、任务级 IP 预检
 
@@ -153,7 +153,8 @@ Status: done
 - **超时**：
   - 执行计划契约：任务下发 timeout 生效为正式 Collector 预算；一般插件钳制
     1s/86400s，SNMP 钳制 30s/86400s；空/0 回落 `COLLECTION_TIMEOUT`；yml
-    `timeout` 字段删除后解析不再读取。
+    `timeout` 字段删除后解析不再读取。IP 发现任务新建时最小 30s；存量任务不迁移，
+    编辑时允许保留原有小于 30s 的值，但不能改成另一个小于 30s 的值。
   - 分阶段契约：Scheduler 排队不计入表单 timeout；preflight、access probe、正式
     collect、publish 分别计时；整轮墙钟上限由独立 Run deadline 管理。
   - 插件契约：连接超时不随任务 `timeout` 变化（抽样断言建连参数为写死值）。

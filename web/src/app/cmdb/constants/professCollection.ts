@@ -244,12 +244,13 @@ export const K8S_FORM_INITIAL_VALUES = {
 };
 
 /** IP 表单 timeout 是所选子网整次正式扫描预算，单 IP 探测由插件固定为 5 秒。 */
+export const IP_DISCOVERY_MIN_TIMEOUT_SECONDS = 30;
 export const IP_DISCOVERY_FORM_INITIAL_VALUES = {
   cycle: CYCLE_OPTIONS.INTERVAL,
   intervalValue: 60,
   scanMethod: 'icmp',
   tcpPorts: '22,80,443,3389',
-  timeout: 300,
+  timeout: IP_DISCOVERY_MIN_TIMEOUT_SECONDS,
   cleanupStrategy: 'no_cleanup',
   cleanupDays: 3,
 };

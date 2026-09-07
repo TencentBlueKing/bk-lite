@@ -42,6 +42,8 @@ COLLECT_RESULT_PAYLOAD_FIELDS = (
     "topology_snapshot",
 )
 
+IP_DISCOVERY_MIN_TIMEOUT_SECONDS = 30
+
 COLLECT_MODEL_DETAIL_FIELDS = (
     "id",
     "name",
@@ -132,6 +134,17 @@ class CollectModelSerializer(AuthSerializer):
         params = dict(instance_params)
         params.update(dict(raw_params or {}))
         return params
+
+    def _validate_ip_discovery_timeout(self, attrs, task_type):
+        if task_type != CollectPluginTypes.IP or "timeout" not in attrs:
+            return
+
+        timeout = attrs["timeout"]
+        existing_timeout = getattr(self.instance, "timeout", None)
+        if self.instance is not None and timeout == existing_timeout:
+            return
+        if timeout < IP_DISCOVERY_MIN_TIMEOUT_SECONDS:
+            raise serializers.ValidationError({"timeout": f"IP 采集任务超时时间不能小于 {IP_DISCOVERY_MIN_TIMEOUT_SECONDS} 秒"})
 
     def _query_authorized_instances(self, inst_uuids):
         trusted_instances = InstanceManage.query_entity_by_uuids(inst_uuids)
@@ -494,6 +507,7 @@ class CollectModelSerializer(AuthSerializer):
     def validate(self, attrs):  # noqa: C901
         task_type = self._get_attr_or_instance_value(attrs, "task_type")
         model_id = self._get_attr_or_instance_value(attrs, "model_id")
+        self._validate_ip_discovery_timeout(attrs, task_type)
 
         if "instances" in attrs:
             attrs["instances"] = self._normalize_instance_identity_contract(
