@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Input, Pagination, Spin } from 'antd';
+import { SearchOutlined } from '@ant-design/icons';
 import useViewApi from '@/app/monitor/api/view';
 import ChartEmptyState from '@/components/chart-empty-state';
 import { DashboardPanel } from '../../shared/widgets';
@@ -155,14 +156,15 @@ export function FlowConversationTable({
       styles={styles}
     >
       <Spin spinning={loading}>
-        <div className="mb-2 flex items-center">
+        <div className="mb-2.5 flex items-center justify-between gap-2">
           <Input
             allowClear
             size="small"
+            prefix={<SearchOutlined className="text-gray-400" />}
             value={keywordInput}
             placeholder="搜索源/目的地址"
             onChange={(event) => setKeywordInput(event.target.value)}
-            className="max-w-[240px]"
+            className="w-60"
           />
         </div>
         {!loading && rows.length === 0 ? (
@@ -237,7 +239,7 @@ export function FlowConversationTable({
           </div>
         )}
         {count > 0 ? (
-          <div className="mt-2 flex justify-end">
+          <div className="mt-3 flex items-center justify-end">
             <Pagination
               size="small"
               current={page}
@@ -245,8 +247,9 @@ export function FlowConversationTable({
               total={count}
               showSizeChanger
               pageSizeOptions={['10', '20', '50']}
+              showTotal={(total) => `共 ${total} 条会话`}
               onChange={(nextPage, nextPageSize) => {
-                setPage(nextPage);
+                setPage(nextPageSize === pageSize ? nextPage : 1);
                 setPageSize(nextPageSize);
               }}
             />
