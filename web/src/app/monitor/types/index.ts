@@ -213,6 +213,10 @@ export interface InstanceParam {
    */
   instance_id_in?: string[];
   vm_params?: any;
+  /** 视图列表服务端排序列（time / column_key / plugin::metric） */
+  ordering?: string;
+  /** asc | desc */
+  order?: 'asc' | 'desc';
 }
 
 export interface GroupInfo {
