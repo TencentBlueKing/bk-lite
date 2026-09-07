@@ -14,6 +14,7 @@ class CollectorConstants:
         "monitor": {"is_app": True, "name": "Monitor"},
         "log": {"is_app": True, "name": "Log"},
         "cmdb": {"is_app": True, "name": "CMDB"},
+        "apm": {"is_app": True, "name": "APM"},
         "executor": {"is_app": True, "name": "Executor"},
         "linux": {"is_app": False, "name": "Linux"},
         "windows": {"is_app": False, "name": "Windows"},
@@ -23,7 +24,7 @@ class CollectorConstants:
     }
 
     # 容器节点才会默认初始化的采集器配置
-    DEFAULT_CONTAINER_COLLECTOR_CONFIGS = ["Snmptrapd", "Ansible-Executor"]
+    DEFAULT_CONTAINER_COLLECTOR_CONFIGS = ["Snmptrapd", "Ansible-Executor", "APM-OTEL"]
 
     IGNORE_ERROR_COLLECTORS = ["Metricbeat", "Auditbeat", "Filebeat", "Packetbeat", "Winlogbeat"]
     IGNORE_ERROR_COLLECTORS_MESSAGES = [

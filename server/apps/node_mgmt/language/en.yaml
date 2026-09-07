@@ -17,6 +17,9 @@ collector:
       with native monitoring capabilities for diverse objects. It also serves as a
       data hub that stores information collected by other monitoring and CMDB collectors
       into the platform.
+  apm_otel_linux:
+    name: APM OTEL
+    description: APM OTEL (Linux) is the regional OpenTelemetry collector managed by the container-node Sidecar to receive traces from language probes.
   jmx_weblogic_linux:
     description: The WebLogic JMX (Linux) collector gathers various monitoring metrics
       from WebLogic servers based on the Java Management Extensions (JMX) technology.
@@ -134,6 +137,7 @@ collector_tag:
   log: Log
   beat: Beat
   monitor: Monitor
+  apm: APM
   jmx: JMX
   cmdb: CMDB
   executor: Executor

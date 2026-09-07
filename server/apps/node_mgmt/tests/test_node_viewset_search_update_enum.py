@@ -145,6 +145,8 @@ def test_enum_falls_back_to_constant_labels(monkeypatch):
     assert data["tag"]["monitor"]["name"] == CollectorConstants.TAG_ENUM["monitor"]["name"]
     assert data["tag"]["executor"]["is_app"] is True
     assert data["tag"]["executor"]["name"] == CollectorConstants.TAG_ENUM["executor"]["name"]
+    assert data["tag"]["apm"]["is_app"] is True
+    assert data["tag"]["apm"]["name"] == CollectorConstants.TAG_ENUM["apm"]["name"]
     assert data["node_type"] == ControllerConstants.NODE_TYPE_ENUM
 
 
