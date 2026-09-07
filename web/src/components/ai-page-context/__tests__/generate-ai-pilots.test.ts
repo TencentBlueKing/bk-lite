@@ -11,6 +11,9 @@ describe('generate-ai-pilots', () => {
     expect(pathnamePrefixFromPilotFile('monitor/(pages)/view/dashboard/[objectKey]/detail.pilot.ts')).toBe(
       '/monitor/view/dashboard/',
     );
+    expect(pathnamePrefixFromPilotFile('ops-analysis/(pages)/view/dashboard.pilot.ts')).toBe(
+      '/ops-analysis/view/',
+    );
   });
 
   it('builds a deterministic manifest', () => {
