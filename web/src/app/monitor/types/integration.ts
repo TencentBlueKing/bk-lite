@@ -274,6 +274,7 @@ export interface K8sCommandData {
   cloud_region_id?: number;
   interval?: number;
   image_registry_prefix?: string;
+  tolerations?: { key: string; effect: 'NoSchedule' | 'NoExecute'; value?: string }[] | null;
 }
 
 export type K3sSignalStatus = 'success' | 'pending' | 'error';

@@ -1,6 +1,41 @@
 import type { K8sCollectorInstallStepCopy } from './index';
+import type { K8sDaemonSetTolerationsEditorCopy } from './TolerationsEditor';
 
 type TranslateFn = (key: string) => string;
+
+export const createK8sTolerationsEditorCopy = (
+  t: TranslateFn,
+  prefix: string,
+): K8sDaemonSetTolerationsEditorCopy => ({
+  add: t(`${prefix}.taintTolerationsAdd`),
+  restoreDefault: t(`${prefix}.taintTolerationsRestore`),
+  keyPlaceholder: t(`${prefix}.taintTolerationsKey`),
+  valuePlaceholder: t(`${prefix}.taintTolerationsValueOptional`),
+  emptyHint: t(`${prefix}.taintTolerationsEmptyHint`),
+  defaultHint: t(`${prefix}.taintTolerationsDefaultHint`),
+  effectNoSchedule: 'NoSchedule',
+  effectNoExecute: 'NoExecute',
+});
+
+export const k8sTolerationRuleMessage = (
+  t: TranslateFn,
+  prefix: string,
+  code: string | null,
+): string | undefined => {
+  if (!code) return undefined;
+  const keyMap: Record<string, string> = {
+    keyRequired: 'taintTolerationsKeyRequired',
+    keyInvalid: 'taintTolerationsKeyInvalid',
+    placeholderReserved: 'taintTolerationsPlaceholderReserved',
+    effectInvalid: 'taintTolerationsEffectInvalid',
+    valueInvalid: 'taintTolerationsValueInvalid',
+    tooMany: 'taintTolerationsTooMany',
+    unknownFields: 'taintTolerationsUnknownFields',
+    mustBeArray: 'taintTolerationsMustBeArray',
+    itemInvalid: 'taintTolerationsItemInvalid',
+  };
+  return t(`${prefix}.${keyMap[code] || 'taintTolerationsKeyInvalid'}`);
+};
 
 export const createMonitorK8sCollectorInstallCopy = (
   t: TranslateFn,

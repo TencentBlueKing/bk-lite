@@ -162,6 +162,9 @@ const useIntegrationApi = () => {
     namespace_patterns?: string;
     pod_patterns?: string;
     image_registry_prefix?: string;
+    tolerations?:
+      | { key: string; effect: 'NoSchedule' | 'NoExecute'; value?: string }[]
+      | null;
   }) => {
     return await post('/log/k8s_collect/collect_setting/', data);
   };

@@ -10,6 +10,9 @@ export const useK8sSetupApi = () => {
   const generateInstallCommand = (params: {
     collector_cluster_id: string;
     cloud_region_id: number | string;
+    tolerations?:
+      | { key: string; effect: 'NoSchedule' | 'NoExecute'; value?: string }[]
+      | null;
   }) => post('/cmdb/api/k8s_setup/install_command/', params);
 
   // 探测采集器是否已上报到 VictoriaMetrics
