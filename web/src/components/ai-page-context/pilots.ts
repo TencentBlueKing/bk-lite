@@ -12,13 +12,20 @@ export function registerPageContextPilot(pilot: AiPageContextPilot): () => void 
   };
 }
 
+/** Codegen prefixes end with `/`; leaf routes like `/ops-analysis/view` do not. */
+function pathnameForPilotMatch(pathname: string): string {
+  if (!pathname) return pathname;
+  return pathname.endsWith('/') ? pathname : `${pathname}/`;
+}
+
 export function matchPilots(
   pathname: string,
   pilots: AiPageContextPilot[] = PAGE_CONTEXT_PILOTS,
 ): AiPageContextPilot[] {
+  const normalized = pathnameForPilotMatch(pathname);
   return pilots.filter((pilot) => {
     try {
-      return Boolean(pilot.test(pathname));
+      return Boolean(pilot.test(normalized));
     } catch {
       return false;
     }

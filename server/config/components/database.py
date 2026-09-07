@@ -220,3 +220,18 @@ if db_engine == "postgresql" and os.getenv("PG_COMPAT", "").lower() == "kingbase
     from apps.core.db_patches.kingbase import apply_early_patches as apply_kingbase_patches
 
     apply_kingbase_patches()
+
+# ============================================================
+# Vastbase G100（海量数据）B 兼容模式补丁 - 必须在 migrate / introspection 前应用
+# ============================================================
+# 客户的 Vastbase G100 V3.0.9 是 openGauss 内核、PG 9.2.4 血统，走 PG 线协议，建库使用
+# DBCOMPATIBILITY='B'（MySQL 兼容模式）。与 Kingbase 不同，它的 B 模式保留了 PG 语义
+# （`||` 仍是字符串拼接、jsonb 与 GIN 可用），需要处理的是另外六类不兼容：
+# 版本上报 9.2.4 撞 Django 的 minimum_database_version、introspection 的 PG12+ 语法、
+# IDENTITY 不支持、ON CONFLICT 无 target 不支持、auto_increment 序列拒绝 setval、
+# 以及 timestamptz 输出不带时区偏移。
+# 设置 PG_COMPAT=vastbase 启用补丁，正常 PostgreSQL 部署不受影响。
+if db_engine == "postgresql" and os.getenv("PG_COMPAT", "").lower() == "vastbase":
+    from apps.core.db_patches.vastbase import apply_early_patches as apply_vastbase_patches
+
+    apply_vastbase_patches()

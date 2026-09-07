@@ -101,6 +101,8 @@
       "systemManage": "System Management",
       "newValue": "NEW",
       "historicalAlarms": "Historical Alerts",
+      "alarmTrend": "Alert Trend",
+      "alarmTrendTips": "Shows the alert-center trend for the selected time range.",
       "sumOverTimeTitle": "Represents the sum of multiple data points within the time range for each dimension separately within the selected time range (dimension filtering is required, otherwise the dimension with the largest sum is selected as the final value by default).\n The sum_over_time function is used to calculate the total value of each time series within the specified time range, suitable for analyzing the cumulative value of each dimension over time.",
       "convergenceMethod": "Agg. Method",
       "groupAggregationMethod": "Group Agg. Method",

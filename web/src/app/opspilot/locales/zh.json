@@ -1234,6 +1234,7 @@
     "channel": {
       "type": "渠道类型",
       "name": "名称",
+      "namePlaceholder": "选填，便于识别不同入口",
       "enabled": "启用",
       "status": "启停",
       "types": {
@@ -1251,7 +1252,7 @@
       "loadFailed": "加载渠道失败",
       "saveFailed": "保存失败",
       "toggleFailed": "启停失败",
-      "pageDesc": "为当前智能体开通独立入口。配置活引用技能参数；同类型可挂多条；启停互不影响。",
+      "pageDesc": "为当前智能体开通独立入口，配置各引用技能参数；同类型可挂多条，启停互不影响。",
       "add": "添加渠道",
       "statTotal": "渠道总数",
       "statEnabled": "已启用",

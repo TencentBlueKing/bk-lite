@@ -181,13 +181,26 @@ class DeepAgentAssemblyMixin:
         return False
 
     @classmethod
-    def _should_skip_planned_summary(cls, messages, *, completed_step_count: int) -> bool:
-        """单步已作答，或多步里已经出现过完整表格时，不再跑总结轮。"""
+    def _should_skip_planned_summary(
+        cls,
+        messages,
+        *,
+        completed_step_count: int,
+        report_mode: str = "default",
+        require_formatted_report: bool = False,
+    ) -> bool:
+        """已有对应终稿时跳过总结轮。告警 RCA / 对象不可见时，调查草稿不算终稿。"""
+        texts = list(cls._iter_planned_assistant_text(messages))
+        if report_mode == "alert_rca":
+            return any(cls._looks_like_complete_rca_report(text) for text in texts)
+        if report_mode == "restart_reason":
+            return any(cls._looks_like_complete_restart_reason_report(text) for text in texts)
+        if require_formatted_report:
+            return any(cls._looks_like_complete_rca_report(text) or cls._looks_like_complete_restart_reason_report(text) for text in texts)
         if not cls._planned_step_already_answered(messages):
             return False
         if completed_step_count <= 1:
             return True
-        texts = list(cls._iter_planned_assistant_text(messages))
         if any(cls._looks_like_complete_rca_report(text) or cls._looks_like_complete_restart_reason_report(text) for text in texts):
             return True
         return cls._planned_output_has_markdown_table(messages)
@@ -312,6 +325,8 @@ class DeepAgentAssemblyMixin:
                 "事件概述、异常对象清单、根因分析、修复建议、待确认项。"
                 "标题之前不要写定位说明、步骤结果或客套话。"
                 "异常对象清单必须是 Markdown 表，列名为：对象、状态/现象、重启次数、关键事件、是否已定位。"
+                "即使 namespace 未解析、lookup_exhausted 或对象在当前集群不可见，也必须输出这份完整报告；"
+                "把无法定位写进根因分析与待确认项，禁止只复述本步工具结果。"
                 "禁止输出「事件描述」「事件总结」「涉及对象清单」「异常对象名单」「链路分析」「数据分析」「调查结论」「诊断结论」。"
                 "禁止改成「日志获取完成」「关键证据确认」这类要点列表。"
                 "已知具体 Pod 的重启原因时，以 diagnose 的 last_state、previous 日志和定点事件为准，不要把当前轮日志当成上一轮死因。"
@@ -345,6 +360,8 @@ class DeepAgentAssemblyMixin:
                 "必须以「# RCA 报告」作为第一行，再按"
                 "「事件概述、异常对象清单、根因分析、修复建议、待确认项」只写一份完整 Markdown 报告，"
                 "异常对象清单表必须保留；标题之前不要写定位说明或步骤结果。"
+                "即使 namespace 未解析、lookup_exhausted 或对象在当前集群不可见，也必须输出完整报告，"
+                "把无法定位写进根因分析与待确认项，禁止只复述步骤结果。"
                 "不要写事件描述、涉及对象清单、链路分析、调查结论；不要重复粘贴多份同类章节。"
                 "禁止改成「日志获取完成」「关键证据确认」要点列表。"
                 "若步骤里已经写过以「# RCA 报告」起笔且未重复粘贴的完整报告，不要重写，最多一两句。"

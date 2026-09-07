@@ -134,6 +134,12 @@ def test_cmdb_get_monitor_ids_by_inst_uuids(cmdb):
     assert _last(cmdb.client) == ("run", "get_monitor_ids_by_inst_uuids", (), payload)
 
 
+def test_cmdb_network_topology_among_uuids(cmdb):
+    payload = {"inst_uuids": ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"], "user_info": {"team": 1}}
+    cmdb.network_topology_among_uuids(**payload)
+    assert _last(cmdb.client) == ("run", "network_topology_among_uuids", (), payload)
+
+
 def test_cmdb_ingest_from_source_wraps_flat_kwargs_as_params(cmdb):
     """NATS handler 是 ingest_from_source(params)；RPC 必须整包，不能摊成顶层 kwargs。"""
     cmdb.ingest_from_source(

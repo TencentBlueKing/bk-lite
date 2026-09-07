@@ -1227,6 +1227,7 @@
     "channel": {
       "type": "Channel Type",
       "name": "Name",
+      "namePlaceholder": "Optional, to identify this entry point",
       "enabled": "Enabled",
       "status": "On/Off",
       "types": {

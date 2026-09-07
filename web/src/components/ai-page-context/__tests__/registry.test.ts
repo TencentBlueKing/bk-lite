@@ -124,6 +124,21 @@ describe('ai-page-context registry', () => {
     ])).toHaveLength(0);
   });
 
+  it('matches a leaf route that has no trailing slash', () => {
+    const pilots: AiPageContextPilot[] = [
+      {
+        test: (pathname) => pathname.includes('/ops-analysis/view/'),
+        load: async () => ({
+          getMessage: () => ({ title: 'x' }),
+          getContext: async () => ({}),
+        }),
+      },
+    ];
+    expect(matchPilots('/ops-analysis/view', pilots)).toHaveLength(1);
+    expect(matchPilots('/ops-analysis/view/', pilots)).toHaveLength(1);
+    expect(matchPilots('/ops-analysis/view-extra', pilots)).toHaveLength(0);
+  });
+
   it('merges sources and drops low-priority overflow', () => {
     const merged = mergePageContexts([
       {

@@ -50,7 +50,9 @@ def test_apm_otel_collector_json_registers_linux_exec():
 
 
 def test_apm_otel_is_default_container_collector():
-    assert "APM-OTEL" in CollectorConstants.DEFAULT_CONTAINER_COLLECTOR_CONFIGS
+    # upstream #5179 已用 OTel-Collector 作为官方名称；勿与 APM-OTEL 同时加入默认列表，避免 4318 双开。
+    assert "OTel-Collector" in CollectorConstants.DEFAULT_CONTAINER_COLLECTOR_CONFIGS
+    assert "APM-OTEL" not in CollectorConstants.DEFAULT_CONTAINER_COLLECTOR_CONFIGS
     assert CollectorConstants.TAG_ENUM["apm"] == {"is_app": True, "name": "APM"}
 
 

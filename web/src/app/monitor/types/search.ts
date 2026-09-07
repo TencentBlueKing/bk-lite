@@ -51,6 +51,10 @@ export interface SearchParams {
   detect_gaps?: boolean;
   collection_interval?: number;
   card_budget?: boolean;
+  keyword?: string;
+  ip?: string;
+  page?: number;
+  page_size?: number;
 }
 
 export interface QueryGroup {

@@ -101,6 +101,8 @@
       "systemManage": "系统管理",
       "newValue": "最新值",
       "historicalAlarms": "历史告警",
+      "alarmTrend": "告警趋势",
+      "alarmTrendTips": "展示告警中心中，符合当前时间范围的告警趋势。",
       "sumOverTimeTitle": "表示选中时间范围内，各个维度分别在时间范围内多个数据点之和（需要进行维度过滤，否则默认选取总和最大的维度作为最终值）。\n sum_over_time函数用于计算每个时间序列在指定时间范围内的总和，适用于分析各个维度在时间段内的累积值。",
       "convergenceMethod": "汇聚方式",
       "groupAggregationMethod": "分组聚合方式",

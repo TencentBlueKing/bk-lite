@@ -24,7 +24,7 @@ class CollectorConstants:
     }
 
     # 容器节点才会默认初始化的采集器配置
-    DEFAULT_CONTAINER_COLLECTOR_CONFIGS = ["Snmptrapd", "Ansible-Executor", "APM-OTEL"]
+    DEFAULT_CONTAINER_COLLECTOR_CONFIGS = ["Snmptrapd", "Ansible-Executor", "OTel-Collector"]
 
     IGNORE_ERROR_COLLECTORS = ["Metricbeat", "Auditbeat", "Filebeat", "Packetbeat", "Winlogbeat"]
     IGNORE_ERROR_COLLECTORS_MESSAGES = [
