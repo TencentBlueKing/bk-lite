@@ -40,7 +40,7 @@
 - 非 NATS 预览【已实现】：`services/datasource_preview/` + `services/transform/`（独立 Runner）+ `services/excel_materialize/`（Celery 候选物化）。
 - 内置数据源保护【已实现】：内置标记和稳定身份键仅由系统维护；普通更新、删除接口均拒绝内置项。
 - `directory` 的 `tree`（GET）：返回目录树（`views/view.py:148`）。
-- `scene_widgets/network_status_topology`（POST）：按设备闭集构建网络状态拓扑场景数据。
+- `scene_widgets/network_status_topology`（POST）：按设备闭集构建网络状态拓扑场景数据；取图经 CMDB NATS `network_topology_among_uuids`（带 `user_info`），运营分析只编排 RPC，不再进程内调用 `InstanceManage`。
 - `scene_widgets/application3d/{wall,application_detail,alarm_detail,metric}`（POST）【WIP】：3D 应用墙 self-fetch 领域查询；与 Share session 下同名 operation 共用 `Application3DQueryService`。
 - Share：`session/{id}/application3d/{wall,application_detail,alarm_detail,metric}`（POST）【WIP】：sharer 重建后走同一 QueryService。
 
@@ -165,6 +165,10 @@
 ## 2026-08-17 报表画布工具栏对齐仪表盘
 
 - `[operation_analysis#20260817-001]` 报表查看态补齐周期刷新、全屏、客户端 A4 横向分页 PDF、画布分享与邮件订阅。Report 增加 `refresh_interval`（migration `0029`）并进入 YAML/分享载荷；打开 `POST /api/report/:id/share/` 与分享数据源查询；注册 `ReportCanvasReportAdapter`（`render_route_key=report`，删除终止 `report_deleted`）；订阅 PDF 走仪表盘视口与分页，不套用 Screen 策略 2。契约见 `specs/changes/ops-analysis-report-canvas-toolbar/spec.md`。
+
+## 2026-09-07 网络状态拓扑取图改走 CMDB NATS
+
+- `[operation_analysis#20260907-001]` 网络状态拓扑场景取图不再进程内调用 CMDB `InstanceManage` / `CmdbRulesFormatUtil`；经 `apps.rpc.cmdb.CMDB.network_topology_among_uuids` 转发 CMDB NATS，身份与权限留在 CMDB。无权、非网络设备、非法闭集均为失败（HTTP 400，文案 `设备列表包含无效或不允许的网络设备，请重新配置`），不是空图。`operation_analysis/services` 生产代码禁止新增 `apps.cmdb.services` / `apps.cmdb.graph` / `apps.cmdb.utils.permission_util` / `apps.monitor.{models,views,services}` 直连；应用 3D 存量写入 allowlist。告警叠层仍走已有 `get_monitor_ids_by_inst_uuids` 与 monitor NATS。
 
 ## 6. 证据来源
 `server/apps/operation_analysis/{urls.py,models/*,views/datasource_view.py,views/view.py,nats/nats.py,common/get_nats_source_data.py,constants/constants.py,tasks/tasks.py,management/commands/*,services/*}`、`apps/operation_analysis/migrations/0010_remove_namespace_groups.py`、`apps/rpc/base.py:OperationAnalysisRpc`、`web/src/app/ops-analysis/{utils/widgetRequestCache.ts,components/widgetDataRenderer.tsx,api/namespace.ts,(pages)/settings/namespace/operateModal.tsx}`。

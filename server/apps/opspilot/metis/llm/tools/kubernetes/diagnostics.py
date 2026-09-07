@@ -1060,6 +1060,7 @@ def _container_needs_current_tail(container, phase: str) -> bool:
 
 
 def _pick_restart_container(statuses, container_name: str | None):
+    """从常规 container_statuses 里挑重启次数最高的容器；不看 initContainerStatuses。"""
     items = list(statuses or [])
     if not items:
         return None

@@ -20,6 +20,7 @@ from pydantic import BaseModel as PydanticBaseModel
 from pydantic import Field as PydanticField
 
 from apps.core.logger import opspilot_logger as logger
+from apps.core.logger import safe_exception_info
 from apps.opspilot.metis.llm.chain.approval_tools import ApprovalToolsMixin, _build_approval_tool, _build_choice_tool  # noqa: E402,F401
 from apps.opspilot.metis.llm.chain.deepagent_assembly import (  # noqa: E402,F401
     DeepAgentAssemblyMixin,
@@ -2329,11 +2330,25 @@ class ToolsNodes(
                 ToolPlanningError,
                 classify_tool_failure_kind,
                 drop_k8s_followup_steps_after_unresolved_target,
+                extract_llm_upstream_request_id,
                 is_context_size_error,
+                is_llm_upstream_error,
                 is_non_replanable_tool_failure,
                 is_tool_result_failure,
+                llm_upstream_user_message,
                 merge_replanned_pending_steps,
             )
+
+            def _llm_upstream_failure_result(exc: BaseException, *, failed_stage: str) -> Dict[str, Any]:
+                logger.error(
+                    "event=deepagent_llm_upstream_failed failed_stage=%s error_type=%s request_id=%s",
+                    failed_stage,
+                    type(exc).__name__,
+                    extract_llm_upstream_request_id(exc) or "-",
+                    exc_info=safe_exception_info(exc),
+                )
+                return {"messages": [AIMessage(content=llm_upstream_user_message(exc))]}
+
             from apps.opspilot.metis.llm.tools.kubernetes.data_collection import k8s_target_lookup_exhausted_from_messages
 
             graph_request = config["configurable"]["graph_request"]
@@ -2416,6 +2431,8 @@ class ToolsNodes(
                     )
                     result = await deep_agent.ainvoke({"messages": deep_input_messages}, config=deep_config)
                 except Exception as _await_exc:
+                    if is_llm_upstream_error(_await_exc):
+                        return _llm_upstream_failure_result(_await_exc, failed_stage="legacy_deepagent")
                     try:
                         err_prompt = (
                             f"上一轮工具执行失败(异常 {type(_await_exc).__name__}:"
@@ -2724,6 +2741,7 @@ class ToolsNodes(
                 replan_count = 0
                 total_steps = len(plan.steps)
                 summary_ran = False
+                require_formatted_report = False
                 self._set_hide_planned_step_text(graph_request, True)
 
                 while pending_steps:
@@ -2871,6 +2889,8 @@ class ToolsNodes(
                             )
                         except Exception as step_exc:
                             failure = f"步骤“{step.objective}”执行异常 " f"{type(step_exc).__name__}: {str(step_exc)[:800]}"
+                            if is_llm_upstream_error(step_exc):
+                                raise
                             # 上下文溢出：不带着全量工具目录重规划，但压缩上下文后继续后续步骤。
                             if is_context_size_error(step_exc):
                                 logger.warning(
@@ -2955,6 +2975,7 @@ class ToolsNodes(
                         if k8s_target_lookup_exhausted_from_messages(step_messages):
                             _collect_output_messages(step_messages)
                             remaining_steps = drop_k8s_followup_steps_after_unresolved_target(pending_steps)
+                            require_formatted_report = True
                             logger.info(
                                 "DeepAgent k8s 目标反查已收口，跳过后续需 namespace 步骤 dropped=%s",
                                 len(pending_steps) - len(remaining_steps),
@@ -3064,6 +3085,11 @@ class ToolsNodes(
                 elif self._should_skip_planned_summary(
                     collected_output_messages,
                     completed_step_count=len(completed_steps),
+                    report_mode=self._planned_report_mode(
+                        user_message=planning_question,
+                        agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
+                    ),
+                    require_formatted_report=require_formatted_report,
                 ):
                     # 步骤正文已经给过表格或完整答案。再跑总结轮会换个说法复述。
                     result = {"messages": list(agent_state.get("messages") or [])}
@@ -3096,7 +3122,9 @@ class ToolsNodes(
             except Exception as _await_exc:
                 # deepagent 框架层异常(典型:execute 工具撞 sandbox 命令白名单)会把整
                 # 个 graph 标 ERROR,LLM 没机会拿到 ToolMessage 写 follow-up。
-                # 上下文不足时不要再喂长 system/工具目录给模型“解释失败”，避免二次浪费。
+                # 模型网关 500 / 上下文不足时不要再喂同一上游“解释失败”，避免二次浪费。
+                if is_llm_upstream_error(_await_exc):
+                    return _llm_upstream_failure_result(_await_exc, failed_stage="planned_execution")
                 if is_context_size_error(_await_exc):
                     logger.warning(
                         "DeepAgent 因上下文窗口不足失败，直接返回短提示: %s",

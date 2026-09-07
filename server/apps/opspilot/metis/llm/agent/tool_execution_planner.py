@@ -89,8 +89,24 @@ _K8S_POD_RESTART_EVIDENCE_HINT = (
     "get_kubernetes_previous_pod_logs、get_resource_events_timeline。"
     "不要用当前轮尾巴代替上一轮死因。"
 )
+# 重启原因类措辞：不能单独凭 crashloopbackoff / 「分析…重启」判定，必须再钉死具体 Pod。
 _K8S_POD_RESTART_REASON_RE = re.compile(
-    r"重启原因|为什么重启|为何重启|为啥重启|频繁重启|crashloopbackoff|分析.{0,24}重启",
+    r"重启原因|为什么重启|为何重启|为啥重启|频繁重启|重启的原因|重启.{0,4}原因|" r"crash.?loop.?back.?off",
+    re.I,
+)
+_K8S_POD_RESTART_LIST_RE = re.compile(
+    r"哪些|列出|有哪些|怎么找|怎么查|如何找|如何查|" r"\btop\b|top-?\s*\d*|排行|" r"有很多|集群里|全集群|整个集群|扫描集群",
+    re.I,
+)
+_K8S_DNS_LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+_K8S_NS_AND_POD_RE = re.compile(
+    rf"(?<![a-z0-9.])({_K8S_DNS_LABEL})/({_K8S_DNS_LABEL})(?![a-z0-9.-])",
+    re.I,
+)
+_K8S_THIS_POD_RE = re.compile(r"(这个|该|此)\s*(个)?\s*(Pod|pod|POD)\b")
+_K8S_POD_MENTION_RE = re.compile(rf"(?:Pod|pod|POD)[\s:：=]+({_K8S_DNS_LABEL})")
+_K8S_HYPHENATED_OBJECT_RE = re.compile(
+    rf"(?<![a-z0-9-]){_K8S_DNS_LABEL}-{_K8S_DNS_LABEL}(?![a-z0-9-])",
     re.I,
 )
 _K8S_ALERT_LIKE_RE = re.compile(
@@ -252,6 +268,47 @@ def is_context_size_error(exc: BaseException | str) -> bool:
         "llm_context_window_exceeded",
     )
     return any(needle in text for needle in needles)
+
+
+_LLM_UPSTREAM_TYPE_NAMES = frozenset(
+    {
+        "internalservererror",
+        "apitimeouterror",
+        "apiconnectionerror",
+        "ratelimiterror",
+        "serviceunavailableerror",
+    }
+)
+_LLM_UPSTREAM_REQUEST_ID_RE = re.compile(r"request id:\s*([A-Za-z0-9]+)", re.IGNORECASE)
+
+
+def is_llm_upstream_error(exc: BaseException | str) -> bool:
+    """识别模型网关/上游失败（如 new_api 500 do_request_failed），不是沙箱白名单拦截。"""
+    if is_context_size_error(exc):
+        return False
+    if isinstance(exc, BaseException) and type(exc).__name__.casefold() in _LLM_UPSTREAM_TYPE_NAMES:
+        return True
+    text = str(exc or "").casefold()
+    needles = (
+        "new_api_error",
+        "do_request_failed",
+        "upstream error: do request failed",
+    )
+    return any(needle in text for needle in needles)
+
+
+def extract_llm_upstream_request_id(exc: BaseException | str) -> str:
+    match = _LLM_UPSTREAM_REQUEST_ID_RE.search(str(exc or ""))
+    if not match:
+        return ""
+    return match.group(1)[:80]
+
+
+def llm_upstream_user_message(exc: BaseException | str) -> str:
+    request_id = extract_llm_upstream_request_id(exc)
+    if request_id:
+        return f"模型服务暂时不可用（上游请求失败），不是本地工具或沙箱命令被拦截。请稍后重试。request_id={request_id}"
+    return "模型服务暂时不可用（上游请求失败），不是本地工具或沙箱命令被拦截。请稍后重试。"
 
 
 def _coerce_positive_int(value: Any) -> int | None:
@@ -719,8 +776,23 @@ def drop_cluster_scan_tools_for_known_pod_diagnose(plan: ToolExecutionPlan) -> T
     return ToolExecutionPlan(goal=plan.goal, steps=cleaned)
 
 
+def _has_specific_pod_object(text: str) -> bool:
+    """用户话里是否已钉死具体对象：ns/pod、Pod 名、或「这个/该 Pod」。"""
+    if _K8S_THIS_POD_RE.search(text or ""):
+        return True
+    for match in _K8S_NS_AND_POD_RE.finditer(text or ""):
+        name = match.group(2) or ""
+        if name.isdigit():
+            continue
+        if re.search(r"[a-zA-Z]", name):
+            return True
+    if _K8S_POD_MENTION_RE.search(text or ""):
+        return True
+    return bool(_K8S_HYPHENATED_OBJECT_RE.search(text or ""))
+
+
 def is_pod_restart_reason_query(user_message: str, agent_system_prompt: str = "") -> bool:
-    """是否为「指定 Pod 问重启原因」。告警 RCA、按时间列 Top-N 不算。"""
+    """是否为「已指定具体 Pod 问重启原因」。名单/扫集群、告警 RCA、按时间 Top-N 不算。"""
     text = user_message or ""
     prompt = agent_system_prompt or ""
     if _K8S_RESTART_TIME_SORT_RE.search(text):
@@ -729,9 +801,13 @@ def is_pod_restart_reason_query(user_message: str, agent_system_prompt: str = ""
         return False
     if "Kubernetes 集群 RCA 助手" in prompt or "告警怎么读" in prompt:
         return False
+    if _K8S_POD_RESTART_LIST_RE.search(text):
+        return False
+    if not _has_specific_pod_object(text):
+        return False
     if _K8S_POD_RESTART_REASON_RE.search(text):
         return True
-    if "Pod 重启原因分析助手" in prompt and "重启" in text and not re.search(r"哪些|列出|top-?\s*\d*", text, re.I):
+    if "Pod 重启原因分析助手" in prompt and "重启" in text:
         return True
     return False
 
