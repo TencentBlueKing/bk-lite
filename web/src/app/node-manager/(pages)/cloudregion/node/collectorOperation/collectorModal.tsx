@@ -17,6 +17,11 @@ import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
 import { COLLECTOR_LABEL } from '@/app/node-manager/constants/collector';
 import { useCommon } from '@/app/node-manager/context/common';
 import { buildCollectorOperationListParams } from '@/app/node-manager/utils/nodeOperation';
+import {
+  EXECUTOR_TYPE_TAG,
+  filterCollectorsForOperationType,
+  groupCollectorsForOperationSelect
+} from '@/app/node-manager/utils/collectorConfig';
 const { Option } = Select;
 
 interface Option {
@@ -110,47 +115,17 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
           typeTag: currentType
         });
         const data = await getCollectorlist(params);
-        const natsexecutorId =
-          selectedsystem === 'linux'
-            ? 'natsexecutor_linux'
-            : 'natsexecutor_windows';
-        const options: any = [];
-        data?.forEach((item: any) => {
-          if (item.id === natsexecutorId) {
-            options.push({
-              label: 'Controller',
-              title: 'Controller',
-              options: [
-                {
-                  label: item.name,
-                  value: item.id
-                }
-              ]
-            });
-            return;
-          }
-          const tag = getCollectorLabelKey(item.name);
-          const tagIndex = options.findIndex((item: any) => item.title === tag);
-          if (tagIndex >= 0) {
-            options[tagIndex].options.push({
-              label: item.name,
-              value: item.id
-            });
-          } else {
-            options.push({
-              label: tag,
-              title: tag,
-              options: [
-                {
-                  label: item.name,
-                  value: item.id
-                }
-              ]
-            });
-          }
-        });
-        setOptions(options);
-        setCollectorlist(data);
+        const visibleCollectors =
+          currentType === EXECUTOR_TYPE_TAG
+            ? filterCollectorsForOperationType(data || [], currentType)
+            : data || [];
+        setOptions(
+          groupCollectorsForOperationSelect(
+            visibleCollectors,
+            getCollectorLabelKey
+          )
+        );
+        setCollectorlist(visibleCollectors);
       } finally {
         setCollectorLoading(false);
       }

@@ -136,6 +136,7 @@ collector_tag:
   monitor: Monitor
   jmx: JMX
   cmdb: CMDB
+  executor: Executor
   windows: Windows
   linux: Linux
 controller_status:
@@ -145,15 +146,13 @@ controller_status:
 controller:
   linux:
     name: Linux Controller
-    description: Linux Controller is composed of Sidecar and NATS Executor, used to
-      manage Linux nodes and various collectors on the nodes, enabling automated deployment,
-      resource coordination, and task execution on the nodes. By default, the controller
-      integrates Telegraf and Vector collectors.
+    description: Linux Controller is the Sidecar used to manage Linux nodes and hosted
+      components, enabling automated deployment, resource coordination, and task execution.
+      NATS-Executor and Ansible-Executor are managed separately as hosted components.
   windows:
-    description: Windows Controller is composed of Sidecar and NATS Executor, used
-      to manage Windows nodes and various collectors on the nodes, enabling automated
-      deployment, resource coordination, and task execution on the nodes. By default,
-      the controller integrates Telegraf and Vector collectors.
+    description: Windows Controller is the Sidecar used to manage Windows nodes and
+      hosted components, enabling automated deployment, resource coordination, and
+      task execution. NATS-Executor is managed separately as a hosted component.
     name: Windows Controller
 controller_install_method:
   manual: Manual Installation

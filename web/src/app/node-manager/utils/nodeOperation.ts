@@ -1,4 +1,5 @@
 import type { TableDataItem } from '../types';
+import { EXECUTOR_TYPE_TAG } from './collectorConfig';
 
 export type CollectorOperationSelection =
   | {
@@ -117,7 +118,7 @@ export const buildCollectorOperationListParams = ({
     cpu_architecture: cpuArchitecture
   };
 
-  if (typeTag) {
+  if (typeTag && typeTag !== EXECUTOR_TYPE_TAG) {
     params.tags = typeTag;
   }
 

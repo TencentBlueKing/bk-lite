@@ -14,6 +14,7 @@ class CollectorConstants:
         "monitor": {"is_app": True, "name": "Monitor"},
         "log": {"is_app": True, "name": "Log"},
         "cmdb": {"is_app": True, "name": "CMDB"},
+        "executor": {"is_app": True, "name": "Executor"},
         "linux": {"is_app": False, "name": "Linux"},
         "windows": {"is_app": False, "name": "Windows"},
         "jmx": {"is_app": False, "name": "JMX"},
@@ -32,11 +33,5 @@ class CollectorConstants:
         "Unable to start collector after 3 tries, giving up!",
     ]
 
-    # 忽略的采集器
-    IGNORE_COLLECTORS = [
-        "natsexecutor_windows",
-        "natsexecutor_linux",
-        "natsexecutor_linux_arm64",
-        "ansibleexecutor_linux",
-        "ansibleexecutor_linux_arm64",
-    ]
+    # 控制机只保留 Sidecar。NATS-Executor / Ansible-Executor 作为托管组件暴露。
+    IGNORE_COLLECTORS = []
