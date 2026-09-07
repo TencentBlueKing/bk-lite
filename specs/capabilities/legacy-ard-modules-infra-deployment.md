@@ -11,6 +11,7 @@
 | MySQL（`DB_ENGINE=mysql`）【已实现】 | `ENGINE=cw_cornerstone.db.mysql.backend`，分支内 `import pymysql` 并 `pymysql.install_as_MySQLdb()` 注册为 MySQLdb 驱动 | `database.py:24-38` |
 | SQLite（`DB_ENGINE=sqlite`）【已实现】 | 本地文件库入口，供轻量开发/本地运行使用 | `database.py:40` |
 | KingbaseES 兼容补丁【已实现】 | 当 `DB_ENGINE=postgresql` 且 `PG_COMPAT=kingbase` 时启用 KingbaseES 兼容补丁 | `database.py:199,213,219` |
+| Vastbase G100 兼容补丁【已实现】 | 当 `DB_ENGINE=postgresql` 且 `PG_COMPAT=vastbase` 时启用 Vastbase B(MySQL)兼容模式补丁；openGauss 内核、上报 PG 9.2.4，覆盖版本门 / introspection PG12+ 语法 / IDENTITY 退化 serial / `ON CONFLICT` 无 target / 序列重置 / 两种驱动的 timestamptz | `database.py:234` |
 | Redis / LocMem | 缓存：`REDIS_CACHE_URL` 非空时 `default`=Redis，否则=LocMem；另预置 `db`(DatabaseCache)/`dummy` 命名别名 | `cache.py:6-25` |
 | RabbitMQ | Celery broker（默认 `amqp://admin:password@rabbitmq.lite/`） | `celery.py` |
 | NATS | RPC / pub-sub / 权限同步（namespace `bklite`，JetStream 默认关闭）；支持 TLS（`_create_ssl_context()`）与 user/password/token 认证、重连参数【已实现】 | `nats.py:10-72` |
@@ -59,5 +60,10 @@
 ## 2026-07-01 Code-ARD 校准
 - `[infra-deployment#20260701-036]` 数据库依赖补录 SQLite 本地文件库入口，以及 PostgreSQL + `PG_COMPAT=kingbase` 时启用 KingbaseES 兼容补丁。
 
+## 2026-09-07 Code-ARD 校准
+- `[infra-deployment#20260907-001]` 数据库依赖补录 Vastbase G100 兼容补丁：`DB_ENGINE=postgresql` +
+  `PG_COMPAT=vastbase` 时挂载 `apps/core/db_patches/vastbase.py`。已在 Vastbase G100 V3.0.9
+  （`DBCOMPATIBILITY='B'`，单机）上完成全量 `migrate` 验证。
+
 ## 6. 证据来源
-`server/config/components/{app,base,database.py:40,199,213,219,cache,celery,nats,minio,mlflow,log,locale,drf,enterprise,extra}.py`、`server/Makefile`、`web/{Dockerfile,.env.example}`、`deploy/dist/bk-lite-kubernetes-collector/{bk-lite-metric-collector.yaml,bk-lite-log-collector.yaml}`。
+`server/config/components/{app,base,database.py:40,199,213,219,234,cache,celery,nats,minio,mlflow,log,locale,drf,enterprise,extra}.py`、`server/apps/core/db_patches/{kingbase,vastbase}.py`、`server/Makefile`、`web/{Dockerfile,.env.example}`、`deploy/dist/bk-lite-kubernetes-collector/{bk-lite-metric-collector.yaml,bk-lite-log-collector.yaml}`。
