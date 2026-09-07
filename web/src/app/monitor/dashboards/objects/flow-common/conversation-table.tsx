@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Spin } from 'antd';
-import { useSearchParams } from 'next/navigation';
+import { Input, Pagination, Spin } from 'antd';
 import useViewApi from '@/app/monitor/api/view';
 import ChartEmptyState from '@/components/chart-empty-state';
 import { DashboardPanel } from '../../shared/widgets';
@@ -10,7 +9,7 @@ import { buildSearchParams, formatMetricValue } from '../../shared/utils';
 import { useSimpleDashboardData } from '../common/simple-dashboard-core';
 import type { FlowProtocol } from './constants';
 import { buildConversationTopQuery } from './queries';
-import { parseConversationRows, type FlowConversationRow } from './parse-conversation-rows';
+import { mapConversationPageItems, type FlowConversationPage, type FlowConversationRow } from './parse-conversation-rows';
 import { formatProtocolShortName } from './protocol-labels';
 import { resolveFlowRankClass } from './rank-class';
 
@@ -21,9 +20,12 @@ interface FlowConversationTableProps {
   styles: Record<string, string>;
 }
 
+const DEFAULT_PAGE_SIZE = 10;
+const SEARCH_DEBOUNCE_MS = 300;
+
 const CONVERSATION_GUIDE = [{
   label: 'Top 会话',
-  detail: '所选时间窗内平均流量速率最高的 10 组会话，按源/目的地址、端口与协议聚合展示。',
+  detail: '所选时间窗内的全量会话，按源/目的地址、端口与协议聚合，并按平均流量速率排序。可按源或目的地址关键字过滤后分页查看。',
 }];
 
 const formatBytesRate = (value: number | null) => {
@@ -52,12 +54,12 @@ export function FlowConversationTable({
   instanceType,
   styles,
 }: FlowConversationTableProps) {
-  const { getInstanceInstantQuery } = useViewApi();
-  const searchParams = useSearchParams();
-  const instanceIdKeys = useMemo(
-    () => (searchParams.get('instance_id_keys') || 'instance_id').split(',').filter(Boolean),
-    [searchParams],
-  );
+  const { queryFlowConversations } = useViewApi();
+  const [keywordInput, setKeywordInput] = useState('');
+  const [keyword, setKeyword] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [count, setCount] = useState(0);
   const [rows, setRows] = useState<FlowConversationRow[]>([]);
   const [loading, setLoading] = useState(false);
   const conversationQuery = useMemo(
@@ -66,8 +68,19 @@ export function FlowConversationTable({
   );
 
   useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const nextKeyword = keywordInput.trim();
+      if (nextKeyword === keyword) return;
+      setKeyword(nextKeyword);
+      setPage(1);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [keyword, keywordInput]);
+
+  useEffect(() => {
     if (!dashboard.isDashboardMode || !instanceType || !dashboard.idValues.length) {
       setRows([]);
+      setCount(0);
       setLoading(false);
       return;
     }
@@ -76,22 +89,29 @@ export function FlowConversationTable({
     setLoading(true);
 
     const load = async () => {
-      const result = await getInstanceInstantQuery(
-        buildSearchParams(
+      const result = await queryFlowConversations({
+        ...buildSearchParams(
           conversationQuery,
           'byteps',
           dashboard.idValues,
-          instanceIdKeys,
+          ['instance_id'],
           dashboard.timeValues,
           undefined,
           false,
           dashboard.currentInstanceInterval,
           { monitorObjectId: dashboard.monitorObjectId, instanceId: dashboard.instanceId },
         ),
-      ).catch(() => null);
+        keyword,
+        page,
+        page_size: pageSize,
+      }).catch(() => null) as FlowConversationPage | null;
 
       if (!active) return;
-      setRows(parseConversationRows(result, protocol));
+      const nextCount = Number(result?.count) || 0;
+      setRows(mapConversationPageItems(result?.items));
+      setCount(nextCount);
+      const maxPage = Math.max(1, Math.ceil(nextCount / pageSize) || 1);
+      if (page > maxPage) setPage(maxPage);
       setLoading(false);
     };
 
@@ -104,13 +124,16 @@ export function FlowConversationTable({
     conversationQuery,
     dashboard.currentInstanceInterval,
     dashboard.idValues,
+    dashboard.instanceId,
     dashboard.isDashboardMode,
     dashboard.loadTick,
+    dashboard.monitorObjectId,
     dashboard.timeValues,
-    getInstanceInstantQuery,
-    instanceIdKeys,
     instanceType,
-    protocol,
+    keyword,
+    page,
+    pageSize,
+    queryFlowConversations,
   ]);
 
   const peakRate = useMemo(
@@ -118,19 +141,33 @@ export function FlowConversationTable({
     [rows],
   );
 
+  const emptyDescription = keyword
+    ? '未找到匹配的 Flow 会话'
+    : '所选时间窗内无 Flow 会话数据';
+
   return (
     <DashboardPanel
       title="Top 会话"
-      subtitle="Top 10 会话 · 按源/目的地址、端口与协议聚合"
+      subtitle="全量会话 · 按源/目的地址、端口与协议聚合，支持搜索与分页"
       guide={CONVERSATION_GUIDE}
       className={`${styles.span8} ${styles.flowConversationPanel}`}
       bodyClassName={styles.flowConversationBody}
       styles={styles}
     >
       <Spin spinning={loading}>
+        <div className="mb-2 flex items-center">
+          <Input
+            allowClear
+            size="small"
+            value={keywordInput}
+            placeholder="搜索源/目的地址"
+            onChange={(event) => setKeywordInput(event.target.value)}
+            className="max-w-[240px]"
+          />
+        </div>
         {!loading && rows.length === 0 ? (
           <div className={styles.flowConversationEmpty}>
-            <ChartEmptyState description="所选时间窗内无 Flow 会话数据" compact />
+            <ChartEmptyState description={emptyDescription} compact />
           </div>
         ) : (
           <div
@@ -161,12 +198,13 @@ export function FlowConversationTable({
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row, index) => {
+                {rows.map((row) => {
+                  const rank = row.rank ?? 0;
                   const share = peakRate > 0 ? (row.bytesRate / peakRate) * 100 : 0;
                   return (
-                    <tr key={row.rowKey} className={resolveFlowRankClass(index, styles)}>
+                    <tr key={row.rowKey} className={resolveFlowRankClass(Math.max(rank - 1, 0), styles)}>
                       <td className={styles.flowCellRank}>
-                        <span className={styles.flowProtocolRankMark}>{index + 1}</span>
+                        <span className={styles.flowProtocolRankMark}>{rank || '--'}</span>
                       </td>
                       <td className={styles.flowCellIp} title={row.srcIp}>{row.srcIp}</td>
                       <td className={styles.flowCellIp} title={row.dstIp}>{row.dstIp}</td>
@@ -198,6 +236,22 @@ export function FlowConversationTable({
             </table>
           </div>
         )}
+        {count > 0 ? (
+          <div className="mt-2 flex justify-end">
+            <Pagination
+              size="small"
+              current={page}
+              pageSize={pageSize}
+              total={count}
+              showSizeChanger
+              pageSizeOptions={['10', '20', '50']}
+              onChange={(nextPage, nextPageSize) => {
+                setPage(nextPage);
+                setPageSize(nextPageSize);
+              }}
+            />
+          </div>
+        ) : null}
       </Spin>
     </DashboardPanel>
   );

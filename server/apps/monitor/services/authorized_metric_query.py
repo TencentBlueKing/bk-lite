@@ -344,6 +344,9 @@ class AuthorizedMetricQueryService:
             card_budget=prepared.card_budget,
         )
 
+    def prepare(self, payload: dict) -> AuthorizedMetricQuery:
+        return self._prepare(payload)
+
     def query_instant(self, payload: dict) -> dict:
-        prepared = self._prepare(payload)
+        prepared = self.prepare(payload)
         return Metrics.get_metrics(prepared.query, time=prepared.end / 1000.0)
