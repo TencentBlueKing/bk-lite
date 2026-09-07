@@ -11,6 +11,8 @@ const DASHBOARD_TYPE = 'dashboard';
 const TITLE_PREFIX = 'ops-analysis-dashboard:';
 const DECORATIVE_CHART_MAX_HEIGHT = 72;
 const TABLE_ROW_LIMIT = 10;
+const COUNT_PLACEHOLDER = /已选\s*\d+\s*项/;
+const EMPTY_HINT = /暂无数据|无数据|No [Dd]ata/;
 
 const cleanLabel = (value: string) => value.replace(/\s+/g, ' ').trim();
 
@@ -44,17 +46,59 @@ const isWidgetLoading = (widget: Element) =>
 
 const isWidgetCollapsed = (widget: Element) => isHidden(widgetBody(widget)) || isHidden(widget);
 
-export interface OpsAnalysisDashboardStamp {
-  canvasId: string;
-  dashboardName: string;
-  filterText: string;
-  valueFingerprint: string;
-  loadingCount: number;
-}
+const titledNames = (root: Element | null): string => {
+  if (!root) return '';
+  const titled = [root, ...Array.from(root.querySelectorAll('[title]'))].find(
+    (node) => node instanceof HTMLElement && node.title && !COUNT_PLACEHOLDER.test(node.title),
+  );
+  return titled instanceof HTMLElement ? cleanLabel(titled.title) : '';
+};
+
+const readOpenTableSelectNames = (filterName: string): string => {
+  const dialogs = Array.from(document.querySelectorAll<HTMLElement>('.ant-modal, [role="dialog"]'));
+  for (const dialog of dialogs) {
+    if (isHidden(dialog)) continue;
+    const title = cleanLabel(dialog.querySelector('.ant-modal-title')?.textContent || '');
+    if (title && title !== filterName) continue;
+    const names = Array.from(dialog.querySelectorAll('tr.ant-table-row-selected, tr.ant-table-row-checked'))
+      .map((row) => {
+        const cells = Array.from(row.querySelectorAll('td')).filter(
+          (cell) => !cell.querySelector('.ant-checkbox, input[type="checkbox"]'),
+        );
+        const texts = cells.map((cell) => cleanLabel(cell.textContent || '')).filter(Boolean);
+        return texts[0] || '';
+      })
+      .filter(Boolean);
+    if (names.length) return names.join('、');
+  }
+  return '';
+};
+
+const expandCountPlaceholder = (visible: string, group: HTMLElement, filterName: string): string => {
+  if (!COUNT_PLACEHOLDER.test(visible)) return visible;
+  const names = titledNames(group.querySelector('.ant-select-selection-item')) || readOpenTableSelectNames(filterName);
+  return names ? `${visible}（${names}）` : visible;
+};
+
+const readPickerRange = (group: HTMLElement): string => {
+  const values = Array.from(group.querySelectorAll<HTMLInputElement>('.ant-picker-input input'))
+    .map((node) => cleanLabel(node.value || ''))
+    .filter(Boolean);
+  return values.join(' ~ ');
+};
 
 const readFilterControlValue = (group: HTMLElement, label: Element): string => {
-  const select = cleanLabel(group.querySelector('.ant-select-selection-item')?.textContent || '');
-  if (select) return select;
+  const filterName = cleanLabel(label.textContent || '').replace(/[:：]\s*$/, '');
+  const selectItems = Array.from(group.querySelectorAll('.ant-select-selection-item'))
+    .map((node) => cleanLabel(node.textContent || ''))
+    .filter(Boolean);
+  const select = [...new Set(selectItems)].join('、');
+  const picker = readPickerRange(group);
+  if (select) {
+    const expanded = expandCountPlaceholder(select, group, filterName);
+    return picker && /自定义/.test(select) ? `${expanded} ${picker}` : expanded;
+  }
+  if (picker) return picker;
 
   const checkedRadio = group.querySelector('.ant-radio-button-wrapper-checked, .ant-radio-wrapper-checked');
   const radioText = cleanLabel(checkedRadio?.textContent || '');
@@ -62,11 +106,14 @@ const readFilterControlValue = (group: HTMLElement, label: Element): string => {
 
   const typedInput = Array.from(group.querySelectorAll('input')).find((node) => {
     if (!(node instanceof HTMLInputElement)) return false;
+    if (node.closest('.ant-picker')) return false;
     return node.type !== 'radio' && node.type !== 'checkbox' && node.type !== 'hidden';
   });
   if (typedInput instanceof HTMLInputElement) {
     return cleanLabel(typedInput.value || '');
   }
+
+  if (group.querySelector('.ant-spin')) return '加载中';
 
   const control = label.nextElementSibling;
   if (control instanceof HTMLElement) {
@@ -104,7 +151,7 @@ const visibleWidgets = () =>
   );
 
 const isTopNWidget = (widget: Element) =>
-  Boolean(widget.querySelector('.h-2\\.5.w-full.overflow-hidden.rounded-full, .rounded-full.h-2\\.5'));
+  Boolean(widget.querySelector('.h-2\\.5.w-full.overflow-hidden.rounded-full'));
 
 const isTableWidget = (widget: Element) =>
   Boolean(widget.querySelector('.ant-table-tbody, table'));
@@ -147,15 +194,77 @@ const readTableRows = (widget: Element): string[] => {
   return [header, ...bodyRows].filter(Boolean);
 };
 
+const readMultiValueRows = (widget: Element): string[] => {
+  if (isTopNWidget(widget) || isTableWidget(widget)) return [];
+  const valueNodes = Array.from(widgetBody(widget).querySelectorAll('.font-semibold'));
+  const rows: string[] = [];
+  for (const valueNode of valueNodes) {
+    const row = valueNode.parentElement;
+    if (!row) continue;
+    const value = cleanLabel(valueNode.textContent || '');
+    const label = Array.from(row.children)
+      .map((child) => cleanLabel(child.textContent || ''))
+      .find((text) => text && text !== value);
+    if (!label || !value) continue;
+    rows.push(`${label} ${value}`);
+    if (rows.length >= TABLE_ROW_LIMIT) break;
+  }
+  return rows.length > 1 ? rows : [];
+};
+
+const readCardListRows = (widget: Element): string[] =>
+  Array.from(widgetBody(widget).querySelectorAll('article'))
+    .map((article) => {
+      const primary = cleanLabel(article.querySelector('.text-sm')?.textContent || '');
+      const trailingNodes = Array.from(article.querySelectorAll('.text-xs.font-medium'));
+      const trailing = cleanLabel(trailingNodes.at(-1)?.textContent || '');
+      return [primary, trailing].filter(Boolean).join(' ');
+    })
+    .filter(Boolean)
+    .slice(0, TABLE_ROW_LIMIT);
+
+const listLikeRows = (widget: Element): string[] => {
+  if (isTopNWidget(widget)) return readTopNRows(widget);
+  if (isTableWidget(widget)) return readTableRows(widget);
+  const multi = readMultiValueRows(widget);
+  if (multi.length) return multi;
+  return readCardListRows(widget);
+};
+
 const readSingleValue = (widget: Element) => {
   if (isTopNWidget(widget) || isTableWidget(widget)) return '';
-  const metric = widget.querySelector('.font-semibold');
+  if (readMultiValueRows(widget).length) return '';
+  const metric = widgetBody(widget).querySelector('.font-semibold');
   return cleanLabel(metric?.textContent || '');
+};
+
+const readWidgetError = (widget: Element): string => {
+  const icon = widgetBody(widget).querySelector('.anticon-exclamation-circle, .anticon-exclamation-circle-outlined');
+  if (!icon) return '';
+  const holder = icon.parentElement;
+  if (!holder) return '';
+  const texts = Array.from(holder.querySelectorAll('span'))
+    .map((node) => cleanLabel(node.textContent || ''))
+    .filter((text) => text && !text.includes('exclamation'));
+  return texts.at(-1) || '';
+};
+
+const readWidgetEmpty = (widget: Element): string => {
+  const description = cleanLabel(widgetBody(widget).querySelector('.ant-empty-description')?.textContent || '');
+  if (description) return description;
+  if (readSingleValue(widget) || isTableWidget(widget) || isTopNWidget(widget)) return '';
+  if (readMultiValueRows(widget).length || readCardListRows(widget).length) {
+    return '';
+  }
+  const spans = Array.from(widgetBody(widget).querySelectorAll('span'))
+    .map((node) => cleanLabel(node.textContent || ''))
+    .filter(Boolean);
+  return spans.find((text) => EMPTY_HINT.test(text)) || '';
 };
 
 export const isDecorativeOpsAnalysisChart = (dom: HTMLElement): boolean => {
   const widget = widgetShell(dom);
-  if (widget && (isWidgetLoading(widget) || isWidgetCollapsed(widget))) return true;
+  if (widget && (isWidgetLoading(widget) || isWidgetCollapsed(widget) || readWidgetError(widget))) return true;
   const height = dom.getBoundingClientRect().height;
   if (height > 0 && height < DECORATIVE_CHART_MAX_HEIGHT) return true;
   if (widget && readSingleValue(widget) && !isTopNWidget(widget) && !isTableWidget(widget)) {
@@ -189,15 +298,36 @@ const captionFromWidget = (dom: HTMLElement) => {
   return widget ? widgetTitle(widget) : '';
 };
 
+const optionCaptionWithoutGenericTitle = (caption = ''): string =>
+  caption.replace(/^图表；/, '').replace(/^图表$/, '');
+
+export const mergeOpsAnalysisChartCaption = (title: string, shotCaption = ''): string => {
+  const rest = optionCaptionWithoutGenericTitle(shotCaption);
+  if (!title) return rest || shotCaption;
+  return rest && rest !== title ? `${title}；${rest}` : title;
+};
+
+export interface OpsAnalysisDashboardStamp {
+  canvasId: string;
+  dashboardName: string;
+  filterText: string;
+  valueFingerprint: string;
+  loadingCount: number;
+  errorCount: number;
+}
+
 export const readOpsAnalysisDashboardStamp = (): OpsAnalysisDashboardStamp => {
   const widgets = visibleWidgets();
   const loadingCount = widgets.filter(isWidgetLoading).length;
+  const errorCount = widgets.filter((widget) => Boolean(readWidgetError(widget))).length;
   const readyWidgets = widgets.filter((widget) => !isWidgetLoading(widget));
   const valueFingerprint = readyWidgets
     .map((widget) => {
       const title = widgetTitle(widget);
-      if (isTopNWidget(widget)) return `${title}:${readTopNRows(widget).join('|')}`;
-      if (isTableWidget(widget)) return `${title}:${readTableRows(widget).slice(0, 3).join('|')}`;
+      const error = readWidgetError(widget);
+      if (error) return `${title}:${error}`;
+      const rows = listLikeRows(widget);
+      if (rows.length) return `${title}:${rows.slice(0, 3).join('|')}`;
       return `${title}:${readSingleValue(widget)}`;
     })
     .filter(Boolean)
@@ -208,6 +338,7 @@ export const readOpsAnalysisDashboardStamp = (): OpsAnalysisDashboardStamp => {
     filterText: readFilterFields().join('；'),
     valueFingerprint,
     loadingCount,
+    errorCount,
   };
 };
 
@@ -221,29 +352,27 @@ const dashboardTextSections = (stamp: OpsAnalysisDashboardStamp): AiContextSecti
     stamp.canvasId ? `画布 id: ${stamp.canvasId}` : '',
     stamp.filterText ? `当前筛选: ${stamp.filterText}` : '',
     stamp.loadingCount > 0 ? `还有 ${stamp.loadingCount} 个组件未加载完` : '',
+    stamp.errorCount > 0 ? `有 ${stamp.errorCount} 个组件查询失败` : '',
   ].filter(Boolean);
 
   const widgets = visibleWidgets();
   const cardLines = widgets.flatMap((widget) => {
     const title = widgetTitle(widget);
     if (!title) return [];
-    if (isWidgetLoading(widget)) return [title];
+    if (isWidgetLoading(widget)) return [`${title}: 加载中`];
+    const error = readWidgetError(widget);
+    if (error) return [`${title}: ${error}`];
+    const empty = readWidgetEmpty(widget);
+    if (empty) return [`${title}: ${empty}`];
     const single = readSingleValue(widget);
     return [single ? `${title}: ${single}` : title];
   });
 
   const tableLines = widgets.flatMap((widget) => {
-    if (isWidgetLoading(widget)) return [];
+    if (isWidgetLoading(widget) || readWidgetError(widget)) return [];
     const title = widgetTitle(widget);
-    if (isTopNWidget(widget)) {
-      const rows = readTopNRows(widget);
-      return rows.length ? [`${title}`, ...rows] : [];
-    }
-    if (isTableWidget(widget)) {
-      const rows = readTableRows(widget);
-      return rows.length ? [`${title}`, ...rows] : [];
-    }
-    return [];
+    const rows = listLikeRows(widget);
+    return rows.length ? [`${title}`, ...rows] : [];
   });
 
   return [
@@ -309,7 +438,7 @@ export async function getContext(
       const title = captionFromWidget(dom);
       return {
         ...shot,
-        caption: title ? (shot.caption && shot.caption !== '图表' ? `${title}；${shot.caption}` : title) : shot.caption,
+        caption: mergeOpsAnalysisChartCaption(title, shot.caption),
       };
     }),
   );
@@ -320,6 +449,7 @@ export async function getContext(
     timeRange: stamp.filterText || '(none)',
     canvasId: stamp.canvasId,
     loadingCount: stamp.loadingCount,
+    errorCount: stamp.errorCount,
     charts: chartLines,
   });
   return {
