@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.monitor.models import MonitorAlert
+from apps.monitor.models import MonitorAlert, MonitorAlertMetricSnapshot, MonitorEvent
 from apps.monitor.models.monitor_object import MonitorObject
 from apps.monitor.models.monitor_policy import (
     MonitorPolicy,
@@ -155,7 +155,7 @@ class TestCloseAlerts:
         _vs().close_alerts(_policy_obj(), [], "system", "reason")
         notifier.assert_not_called()
 
-    def test_closes_and_notifies(self, mocker):
+    def test_closes_and_notifies(self, mocker, django_capture_on_commit_callbacks):
         notifier = mocker.patch("apps.monitor.views.monitor_policy.AlertLifecycleNotifier")
         obj = MonitorObject.objects.create(name="CAObj", level="base")
         policy = MonitorPolicy.objects.create(
@@ -165,12 +165,32 @@ class TestCloseAlerts:
         alert = MonitorAlert.objects.create(
             policy_id=policy.id, monitor_instance_id="h1", status="new",
         )
-        _vs().close_alerts(policy, [alert], "admin", "manual")
+        with django_capture_on_commit_callbacks(execute=True):
+            _vs().close_alerts(policy, [alert], "admin", "manual")
         alert.refresh_from_db()
         assert alert.status == "closed"
         assert alert.operator == "admin"
         assert alert.alert_center_notified is False
         notifier.return_value.notify_alerts.assert_called_once()
+        closed_events = MonitorEvent.objects.filter(alert_id=alert.id, action=MonitorEvent.Action.CLOSED)
+        assert closed_events.count() == 1
+        assert MonitorAlertMetricSnapshot.objects.filter(alert_id=alert.id).count() == 0
+
+    def test_skips_recovered_alert(self, mocker):
+        notifier = mocker.patch("apps.monitor.views.monitor_policy.AlertLifecycleNotifier")
+        obj = MonitorObject.objects.create(name="CASkipObj", level="base")
+        policy = MonitorPolicy.objects.create(
+            monitor_object=obj, name="p", algorithm="max",
+            query_condition={}, source={}, group_by=[],
+        )
+        alert = MonitorAlert.objects.create(
+            policy_id=policy.id, monitor_instance_id="h1", status="recovered",
+        )
+        _vs().close_alerts(policy, [alert], "admin", "manual")
+        alert.refresh_from_db()
+        assert alert.status == "recovered"
+        assert MonitorEvent.objects.filter(alert_id=alert.id, action=MonitorEvent.Action.CLOSED).count() == 0
+        notifier.assert_not_called()
 
 
 class TestHandlePolicyEnableChange:
@@ -190,6 +210,7 @@ class TestHandlePolicyEnableChange:
         _vs().handle_policy_enable_change(policy.id, True, False)
         alert.refresh_from_db()
         assert alert.status == "closed"
+        assert MonitorEvent.objects.filter(alert_id=alert.id, action=MonitorEvent.Action.CLOSED).count() == 1
 
     def test_enable_sets_last_run_time(self):
         obj = MonitorObject.objects.create(name="HPECObj2", level="base")

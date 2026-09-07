@@ -150,7 +150,8 @@ class TestRecordSnapshotsForActiveAlerts:
         )
         snap = MonitorAlertMetricSnapshot.objects.get(alert_id=alert.id)
         types = [item["type"] for item in snap.snapshots]
-        assert types == ["pre_alert", "no_data"]
+        assert types == ["pre_alert", "event"]
+        assert snap.snapshots[1]["event_id"] == event.id
         assert snap.snapshots[1]["raw_data"] == {}
 
     def test_threshold_alert_still_records_info_from_raw_data(self, stub_s3):
@@ -167,6 +168,34 @@ class TestRecordSnapshotsForActiveAlerts:
         )
         snap = MonitorAlertMetricSnapshot.objects.get(alert_id=alert.id)
         assert [item["type"] for item in snap.snapshots] == ["info"]
+
+    def test_recovered_event_records_event_snapshot(self, stub_s3):
+        alert = MonitorAlert.objects.create(
+            policy_id=1, monitor_instance_id="h1", metric_instance_id="('h1',)",
+            alert_type="alert", status="recovered",
+        )
+        event = MonitorEvent.objects.create(
+            id="rec-ev1",
+            alert_id=alert.id,
+            policy_id=1,
+            monitor_instance_id="h1",
+            metric_instance_id="('h1',)",
+            level="critical",
+            action=MonitorEvent.Action.RECOVERED,
+            content="recovered",
+            event_time=datetime(2026, 1, 1, 12, 10, 0, tzinfo=timezone.utc),
+        )
+        rec = SnapshotRecorder(_policy(), {}, [alert], _mq())
+        rec.record_snapshots_for_active_alerts(
+            info_events=[{
+                "metric_instance_id": "('h1',)",
+                "raw_data": {"values": [[210, "1"]]},
+            }],
+            event_objs=[event],
+        )
+        snap = MonitorAlertMetricSnapshot.objects.get(alert_id=alert.id)
+        assert [item["type"] for item in snap.snapshots] == ["event"]
+        assert snap.snapshots[0]["event_id"] == event.id
 
 
 class TestBuildPreAlertSnapshot:
