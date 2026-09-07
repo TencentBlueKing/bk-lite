@@ -13,6 +13,14 @@ from service.task_store_sanitization import _sanitize_callback_for_storage
 class CallbackDeliveryMixin:
     CALLBACK_PAYLOAD_MARGIN_BYTES = 4 * 1024
     CALLBACK_RESULT_TEXT_MAX_CHARS = 8 * 1024
+    CALLBACK_RESULT_SUMMARY_KEYS = (
+        "host_count",
+        "output_truncated",
+        "output_bytes_total",
+        "output_bytes_retained",
+        "output_max_bytes",
+        "callback_payload_truncated",
+    )
 
     @classmethod
     def _callback_request_size_bytes(cls, payload: dict[str, Any]) -> int:
@@ -64,14 +72,7 @@ class CallbackDeliveryMixin:
         if isinstance(result_summary, dict):
             callback_payload["result_summary"] = {
                 key: result_summary[key]
-                for key in (
-                    "host_count",
-                    "output_truncated",
-                    "output_bytes_total",
-                    "output_bytes_retained",
-                    "output_max_bytes",
-                    "callback_payload_truncated",
-                )
+                for key in cls.CALLBACK_RESULT_SUMMARY_KEYS
                 if key in result_summary
             }
         callback_payload["callback_payload_truncated"] = True
