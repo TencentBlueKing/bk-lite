@@ -138,7 +138,7 @@
 }
 
 .flowColProtocol {
-  width: 12%;
+  width: 76px;
 }
 
 .flowColTraffic {
@@ -160,6 +160,8 @@
 .flowConversationTable tbody td.flowCellProtocol {
   padding-left: 8px;
   padding-right: 8px;
+  text-align: left;
+  vertical-align: middle;
 }
 
 .flowConversationTable thead th.flowColTraffic,
@@ -199,7 +201,7 @@
 }
 
 .flowCellProtocol {
-  text-align: center;
+  text-align: left;
   white-space: nowrap;
 }
 
