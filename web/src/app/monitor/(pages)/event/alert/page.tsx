@@ -61,6 +61,11 @@ import {
   resolveMonitorObjectQueryId,
   resolveMonitorObjectTreeKey
 } from '@/app/monitor/utils/monitorObjectQuery';
+import {
+  AppSlot,
+  isHostTab,
+  useAppSlotTabs
+} from '@/context/appCapabilities';
 const { Search } = Input;
 const { Option } = Select;
 
@@ -74,7 +79,19 @@ const Alert: React.FC = () => {
   const ALERT_TYPE_MAP = useAlertTypeMap();
   const LEVEL_LIST = useLevelList();
   const stateList = useStateList();
-  const tabs: TabItem[] = useAlarmTabs();
+  const hostTabs: TabItem[] = useAlarmTabs();
+  const { tabs: extraTabs, loading: extraTabsLoading } = useAppSlotTabs(
+    'monitor.event.extraTabs'
+  );
+  const extraTabKeys = useMemo(
+    () => extraTabs.map((item) => item.key),
+    [extraTabs]
+  );
+  const extraTabKeySet = useMemo(() => new Set(extraTabKeys), [extraTabKeys]);
+  const tabs: TabItem[] = useMemo(
+    () => [...hostTabs, ...extraTabs],
+    [extraTabs, hostTabs]
+  );
   const { convertToLocalizedTime } = useLocalizedTime();
   const commonContext = useCommon();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -107,6 +124,12 @@ const Alert: React.FC = () => {
     state: []
   });
   const [activeTab, setActiveTab] = useState<string>('activeAlarms');
+  const [slotRefreshKey, setSlotRefreshKey] = useState(0);
+  const showingHostTab = isHostTab(activeTab, extraTabKeySet);
+  const slotTimeRange = useMemo(
+    () => getRecentTimeRange(timeValues),
+    [timeValues]
+  );
   const [chartData, setChartData] = useState<Record<string, any>[]>([]);
   const loadChartHabit = useCallback(
     () => getUserHabit(MONITOR_ALERT_CHART_HABIT_KEY),
@@ -268,7 +291,7 @@ const Alert: React.FC = () => {
       return;
     }
     timerRef.current = setInterval(() => {
-      if (objectId) {
+      if (objectId && showingHostTab) {
         getAssetInsts('timer');
         getChartData('timer');
       }
@@ -282,24 +305,33 @@ const Alert: React.FC = () => {
     objectId,
     searchText,
     pagination.current,
-    pagination.pageSize
+    pagination.pageSize,
+    showingHostTab
   ]);
 
   useEffect(() => {
-    if (isLoading || !objectId) return;
+    if (isLoading || !objectId || !showingHostTab) return;
     getAssetInsts('refresh');
   }, [
     isLoading,
     timeValues,
     objectId,
     pagination.current,
-    pagination.pageSize
+    pagination.pageSize,
+    showingHostTab
   ]);
 
   useEffect(() => {
-    if (isLoading || !objectId) return;
+    if (isLoading || !objectId || !showingHostTab) return;
     getChartData('refresh');
-  }, [isLoading, timeValues, objectId]);
+  }, [isLoading, timeValues, objectId, showingHostTab]);
+
+  useEffect(() => {
+    if (extraTabsLoading) return;
+    if (!showingHostTab && !extraTabKeySet.has(activeTab)) {
+      setActiveTab('activeAlarms');
+    }
+  }, [activeTab, extraTabKeySet, extraTabsLoading, showingHostTab]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -314,6 +346,9 @@ const Alert: React.FC = () => {
 
   const changeTab = (val: string) => {
     setActiveTab(val);
+    if (!isHostTab(val, extraTabKeySet)) {
+      return;
+    }
     const filtersConfig = {
       level: [],
       state: []
@@ -508,6 +543,10 @@ const Alert: React.FC = () => {
   };
 
   const onRefresh = () => {
+    if (!showingHostTab) {
+      setSlotRefreshKey((key) => key + 1);
+      return;
+    }
     getAssetInsts('refresh');
     getChartData('refresh');
   };
@@ -635,7 +674,9 @@ const Alert: React.FC = () => {
         </ResizableSidebar>
         <div className={alertStyle.alarmList}>
           <Tabs activeKey={activeTab} items={tabs} onChange={changeTab} />
-          <div className={alertStyle.searchCondition}>
+          {showingHostTab ? (
+            <>
+              <div className={alertStyle.searchCondition}>
             <div className="mb-[10px]">
               {t('monitor.search.searchCriteria')}
             </div>
@@ -751,6 +792,29 @@ const Alert: React.FC = () => {
               onChange={handleTableChange}
             />
           </div>
+            </>
+          ) : (
+            <>
+              <div className={alertStyle.searchCondition}>
+                <div className="flex justify-end">
+                  <TimeSelector
+                    defaultValue={timeDefaultValue}
+                    onChange={onTimeChange}
+                    onFrequenceChange={onFrequenceChange}
+                    onRefresh={onRefresh}
+                  />
+                </div>
+              </div>
+              <div className="bg-[var(--color-bg-1)] p-4">
+                <AppSlot
+                  id="monitor.event.extraTabs"
+                  slotKey={activeTab}
+                  timeRange={slotTimeRange}
+                  refreshKey={slotRefreshKey}
+                />
+              </div>
+            </>
+          )}
         </div>
       </div>
       <AlertDetail
