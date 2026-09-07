@@ -9,7 +9,7 @@ from __future__ import annotations
 import requests
 
 from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
-from apps.monitor.constants.instance_list_ordering import ORDERING_MAX_CANDIDATES, ORDERING_METRIC_BATCH_SIZE
+from apps.monitor.constants.instance_list_ordering import ORDERING_METRIC_BATCH_SIZE
 from apps.monitor.models.collect_config import CollectConfig
 from apps.monitor.models.monitor_metrics import Metric
 from apps.monitor.utils.display_fields import build_display_column_key
@@ -25,11 +25,6 @@ def parse_ordering_params(ordering, order="asc"):
     if direction not in ("asc", "desc"):
         raise ValidationAppException("order must be asc or desc")
     return key, direction
-
-
-def ensure_ordering_candidate_limit(count: int) -> None:
-    if count > ORDERING_MAX_CANDIDATES:
-        raise ValidationAppException(f"Too many instances to sort ({count}); refine filters first " f"(limit {ORDERING_MAX_CANDIDATES})")
 
 
 def resolve_ordering_spec(monitor_object_id, display_fields, ordering_key: str):
@@ -126,7 +121,6 @@ def apply_ordering_to_instances(
     if not ordering_key or not instances:
         return None
 
-    ensure_ordering_candidate_limit(len(instances))
     display_fields = obj_metric_map.get("display_fields") or []
     spec = resolve_ordering_spec(monitor_object_id, display_fields, ordering_key)
     filled_out_key = None

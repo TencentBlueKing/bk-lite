@@ -199,7 +199,7 @@ class MonitorObjectService:
         order="asc",
     ):
         """获取监控对象实例"""
-        from apps.monitor.services.instance_list_ordering import apply_ordering_to_instances, ensure_ordering_candidate_limit, parse_ordering_params
+        from apps.monitor.services.instance_list_ordering import apply_ordering_to_instances, parse_ordering_params
 
         ordering_key, order_dir = parse_ordering_params(ordering, order)
 
@@ -274,7 +274,6 @@ class MonitorObjectService:
         skip_out_keys = None
 
         if ordering_key:
-            ensure_ordering_candidate_limit(count)
             all_objs = list(projected_qs)
             # 排序阶段先用空 org_map 序列化，分页后再补组织。
             candidates = [MonitorObjectService._serialize_instance_list_item(obj, instance_map, {}) for obj in all_objs]
