@@ -180,5 +180,9 @@
 ## 2026-09-04 Code-ARD 校准
 - `[cmdb#20260904-001]` `get_room3d_layout` 已上架设备附加监控告警摘要（`monitor_bound` / `alarm_unavailable` / `active_alarm_count` / `highest_severity`）；经 Monitor `query_active_alert_summaries_by_monitor_ids` 聚合，不下发 `monitor_id`；告警失败软降级。契约见 `specs/changes/ops-analysis-room3d-device-alarms/spec.md`。
 
+## 2026-09-07 网络状态拓扑闭集 NATS
+
+- `[cmdb#20260907-001]` 新增 NATS `network_topology_among_uuids`：入参 `inst_uuids` + `user_info`，按模型构建 permission_map，调用 `InstanceManage.network_topology_among_uuids`。无权 / 非网络设备 / 非法 UUID / 超上限 / 闭集不完整一律 `{result: False, data: {nodes:[], links:[]}}`，不返回空成功图。RPC 包装：`apps.rpc.cmdb.CMDB.network_topology_among_uuids`。消费方为运营分析网络状态拓扑场景。
+
 ## 7. 证据来源
 `server/apps/cmdb/{urls.py,models/*,models/ipam_models.py:7,graph/*,graph/neo4j.py,graph/drivers/graph_client.py,collection/*,collection/collect_plugin/oceanstor.py,constants/constants.py,tasks/celery_tasks.py:72-74,397,408,nats/nats.py:696,711,942-949,952-1050,services/rack_room.py,services/ipam_*.py,services/ipam_discovery.py:205,299,services/ipam_reconcile.py,utils/ipam_cidr.py,node_configs/network_config_file.py:5-63,views/collect.py:66-68,views/instance.py:1145,1190,1212,1282,management/commands/{model_init.py:7,init_oid.py:11,init_field_groups.py:15,init_display_fields.py:24},support-files/model_config.xlsx}`、`server/apps/operation_analysis/support-files/source_api.json:406`（3D 机房数据源 `cmdb/get_room3d_layout` 注册）；`server/apps/rpc/cmdb.py:44-94`。

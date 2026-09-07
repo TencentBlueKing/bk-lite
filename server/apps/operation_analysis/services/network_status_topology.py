@@ -3,10 +3,8 @@ from typing import Any
 from rest_framework.exceptions import ValidationError
 
 from apps.cmdb.constants.constants import NETWORK_STATUS_TOPOLOGY_DEFAULT_NODES, NETWORK_STATUS_TOPOLOGY_MAX_NODES
-from apps.cmdb.services.instance import InstanceManage
-from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
-from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.core.logger import operation_analysis_logger as logger
+from apps.operation_analysis.common.get_nats_source_data import build_nats_user_info
+from apps.rpc.cmdb import CMDB
 
 
 class NetworkStatusTopologyService:
@@ -31,25 +29,15 @@ class NetworkStatusTopologyService:
 
     @classmethod
     def _get_cmdb_topology(cls, request, inst_uuids: list[str]) -> dict[str, Any]:
-        entities = InstanceManage.query_entity_by_uuids(inst_uuids)
-        if len(entities) != len(inst_uuids):
+        result = CMDB().network_topology_among_uuids(
+            inst_uuids=inst_uuids,
+            user_info=build_nats_user_info(request),
+        )
+        if not isinstance(result, dict) or result.get("result") is not True:
             raise ValidationError({"inst_uuids": cls.CLOSED_SET_ERROR})
-
-        permission_maps: dict[str, dict] = {}
-        for entity in entities:
-            model_id = str(entity.get("model_id") or "")
-            if model_id and model_id not in permission_maps:
-                permission_maps[model_id] = CmdbRulesFormatUtil.format_user_groups_permissions(
-                    request=request,
-                    model_id=model_id,
-                )
-
-        try:
-            return InstanceManage.network_topology_among_uuids(
-                inst_uuids,
-                permission_maps=permission_maps,
-                user=request.user,
-            )
-        except BaseAppException as exc:
-            logger.info("network status topology closed set rejected: %s", exc)
-            raise ValidationError({"inst_uuids": cls.CLOSED_SET_ERROR}) from exc
+        data = result.get("data") if isinstance(result.get("data"), dict) else {}
+        return {
+            "nodes": data.get("nodes") or [],
+            "links": data.get("links") or [],
+            "truncated": bool(data.get("truncated")),
+        }
