@@ -41,6 +41,7 @@ import Permission from '@/components/permission';
 import { cloneDeep } from 'lodash';
 import { usePluginFromJson } from '@/app/monitor/hooks/integration/usePluginFromJson';
 import { useConfigRenderer } from '@/app/monitor/hooks/integration/useConfigRenderer';
+import { useQcloudRegionOptions } from '@/app/monitor/hooks/integration/useQcloudRegionOptions';
 import {
   getSnmpFilterMutexConflicts,
   trackSnmpFilterMutexLastChanged
@@ -233,6 +234,25 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     return currentConfig;
   }, [configLoading, currentConfig]);
 
+  const isQcloudPlugin =
+    baseConfig?.instance_type === 'qcloud' ||
+    (Array.isArray(baseConfig?.config_type) &&
+      baseConfig.config_type.includes('qcloud')) ||
+    Boolean(
+      baseConfig?.form_fields?.some(
+        (field: { name?: string; options_key?: string }) =>
+          field?.options_key === 'region_option' || field?.name === 'region'
+      )
+    );
+  const {
+    regionOptions,
+    loadingRegions,
+    refreshRegions,
+  } = useQcloudRegionOptions({
+    enabled: Boolean(isQcloudPlugin),
+    form,
+  });
+
   // 获取表单配置
   const formConfig = useMemo(() => {
     if (!baseConfig || !pluginId) {
@@ -244,15 +264,31 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       onTableDataChange,
       form,
       externalOptions: {
-        node_ids_option: nodeList
-      }
+        node_ids_option: nodeList,
+        region_option: regionOptions,
+      },
+      optionControls: {
+        region_option: {
+          loading: loadingRegions,
+          onRefresh: refreshRegions,
+        },
+      },
     });
     return {
       formItems: cfg.formItems,
       defaultForm: cfg.defaultForm,
       initTableItems: cfg.initTableItems
     };
-  }, [baseConfig, pluginId, form, nodeList, jsonConfig.buildPluginUI]);
+  }, [
+    baseConfig,
+    pluginId,
+    form,
+    nodeList,
+    regionOptions,
+    loadingRegions,
+    refreshRegions,
+    jsonConfig.buildPluginUI,
+  ]);
 
   // 获取动态配置（依赖 dataSource）
   const configsInfo = useMemo(() => {
