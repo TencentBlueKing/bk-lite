@@ -146,7 +146,6 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
       await loadList();
     } catch (error) {
       message.error(credentialActionError(error));
-      throw error;
     }
   };
 
