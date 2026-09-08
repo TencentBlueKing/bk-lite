@@ -3,16 +3,14 @@ import json
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.models.monitor_metrics import Metric
-from apps.monitor.utils.alert_name_variables import (
-    normalize_variable_id,
-    validate_variable_id,
-)
+from apps.monitor.utils.alert_name_variables import normalize_variable_id, validate_variable_id
 
 DISPLAY_FIELD_TYPES = {"metric", "field"}
 
 # 展示列语义角色。云平台子对象的 IP 来自指标 label，与基础对象的 asset.ip 摘要列是两套机制；
-# 打上 role 后页面按内置 IP 列渲染，各平台上报的 label 名（resource_ip / ip）无需统一。
-DISPLAY_FIELD_ROLES = {"resource_ip"}
+# 打上 role 后页面按内置列渲染并承诺列头筛选。各平台上报的 label 名（resource_ip / ip）无需统一。
+# namespace：K8s Pod 的命名空间，来自 kube_pod_info.namespace。
+DISPLAY_FIELD_ROLES = {"resource_ip", "namespace"}
 
 
 def build_display_column_key(display_field):
@@ -24,11 +22,7 @@ def build_display_column_key(display_field):
             {
                 "plugin": binding.get("plugin") or "",
                 "metric": binding.get("metric") or "",
-                **(
-                    {"field": binding.get("field") or ""}
-                    if column_type == "field"
-                    else {}
-                ),
+                **({"field": binding.get("field") or ""} if column_type == "field" else {}),
             }
             for binding in display_field.get("metrics") or []
         ],
@@ -44,8 +38,7 @@ def validate_display_fields(monitor_object, display_fields):
         raise BaseAppException("display_fields must be a list")
 
     existing = {
-        (m["monitor_plugin__name"], m["name"])
-        for m in Metric.objects.filter(monitor_object=monitor_object).values("monitor_plugin__name", "name")
+        (m["monitor_plugin__name"], m["name"]) for m in Metric.objects.filter(monitor_object=monitor_object).values("monitor_plugin__name", "name")
     }
 
     normalized = []
