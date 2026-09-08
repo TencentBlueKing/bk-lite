@@ -116,8 +116,12 @@ class QCloudCollector(BaseCollector):
             try:
                 all_resources = driver.list_all_resources()
             except Exception as e:
-                logger.error("[QCloud Collector] Resource fetch failed Region=%s error_type=%s", region, type(e).__name__)
-                raise
+                logger.exception(
+                    "event=qcloud_collect_failed Region=%s failed_stage=list_all_resources error_type=%s",
+                    region,
+                    type(e).__name__,
+                )
+                continue
 
             listed_ok = True
             if not all_resources.get("data"):
