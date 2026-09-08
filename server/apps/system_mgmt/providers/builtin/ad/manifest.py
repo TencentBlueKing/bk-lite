@@ -122,9 +122,11 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                                 "required": True,
                                 "placeholder": "OU=BizA,DC=example,DC=com\nOU=BizC,DC=example,DC=com",
                                 "help_text": (
-                                    "One complete DN per line. "
-                                    "With one DN, child organizations attach under this sync source's root group. "
-                                    "With multiple OUs, each appears as its own organization under that root."
+                                    "You can enter one or more DNs. "
+                                    "For multiple DNs, press Enter to put one complete DN per line; "
+                                    "do not use commas or other separators. "
+                                    "With one DN, that directory and its child organizations are synced; "
+                                    "with multiple DNs, each DN is synced as a separate organization under the local root."
                                 ),
                                 "input_mode": "manual_input",
                             },
