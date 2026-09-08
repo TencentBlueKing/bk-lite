@@ -30,8 +30,8 @@ def _append_gauge(lines: list[str], name: str, labels: str, value: Any, timestam
 
 AIX_SCRIPT_PATH = Path(__file__).parent / "scripts" / "aix" / "os_monitor.ksh"
 AIX_COLLECT_EOF = "STARGAZER_AIX_COLLECT_EOF"
-# 与 Linux 采集一致：quoted heredoc。不要再用 `ksh -c '. /dev/stdin'`，
-# 嵌套单引号会被 Ansible adhoc `-a` 的 split_args 判成 unbalanced quotes。
+# 与 Linux 采集一致：quoted heredoc。Ansible adhoc `-a` 的引号拆分由
+# encode_ansible_raw_module_args 的 JSON `_raw_params` 绕过。
 AIX_KSH_PREFIX = "LC_ALL=C LANG=C /usr/bin/ksh"
 
 COMMAND_EXECUTE_TIMEOUT = int(os.getenv("COMMAND_EXECUTE_TIMEOUT", "900"))

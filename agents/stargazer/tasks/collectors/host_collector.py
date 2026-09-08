@@ -54,22 +54,6 @@ def encode_ansible_raw_module_args(command: str) -> str:
     return json.dumps({"_raw_params": command}, ensure_ascii=False)
 
 
-def decode_ansible_raw_module_args(module_args: str) -> str:
-    """还原 encode_ansible_raw_module_args 的命令正文；非 JSON 则原样返回。"""
-    text = str(module_args or "")
-    stripped = text.strip()
-    if stripped.startswith("{") and stripped.endswith("}"):
-        try:
-            parsed = json.loads(stripped)
-        except json.JSONDecodeError:
-            return text
-        if isinstance(parsed, dict):
-            raw_params = parsed.get("_raw_params")
-            if isinstance(raw_params, str):
-                return raw_params
-    return text
-
-
 def _url_decode_secret(value: Any, credential_encoding: Any = "url") -> str:
     """还原前端对 encrypted 字段做的 encodeURIComponent。
 
