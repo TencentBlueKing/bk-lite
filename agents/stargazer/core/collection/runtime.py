@@ -57,6 +57,14 @@ class CollectionRequest:
         return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
 
     @property
+    def rotate_on_credential_failure_enabled(self) -> bool:
+        """连接端点或协议选项随凭据变化时，失败后继续尝试下一组。"""
+        value = self.params.get("rotate_on_credential_failure")
+        if isinstance(value, bool):
+            return value
+        return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+    @property
     def digest(self) -> str:
         credential_refs = []
         for credential in self.credentials:

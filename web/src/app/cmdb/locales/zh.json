@@ -963,6 +963,10 @@
         "platformApiTask": {
             "tlsWarning": "关闭证书校验会增加中间人攻击风险，仅应临时用于受信任网络中的自签名证书。"
         },
+        "RedfishTask": {
+            "verifyTls": "校验证书",
+            "tlsWarning": "关闭证书校验会增加中间人攻击风险，仅应临时用于受信任网络中的自签名证书。"
+        },
         "WinSphereTask": {
             "platform": "WinSphere管理平台",
             "user": "WinSphere账号",
@@ -1128,7 +1132,8 @@
                 "macosSsh": "SSH",
                 "winsphereApi": "WinSphere HTTPS API",
                 "vsphereApi": "VMware vSphere HTTPS API",
-                "ipmi": "IPMI RMCP/RMCP+"
+                "ipmi": "IPMI RMCP/RMCP+",
+                "redfish": "Redfish HTTPS API"
             },
             "kind": {
                 "hostAccount": "目标主机操作系统账户",
@@ -1168,6 +1173,7 @@
                 "winsphere": "填写可访问 WinSphere 管理 API 的平台账户；建议使用只读或最小权限账户并开启证书校验。",
                 "vsphere": "填写可访问 VMware vCenter SDK/API 的账户；建议使用只读角色并开启证书校验。",
                 "ipmi": "填写目标物理服务器 BMC 的 IPMI 登录账户；建议使用满足资产读取所需的最低权限。",
+                "redfish": "填写目标物理服务器 BMC 的 Redfish 只读账户；固定使用 HTTPS，默认校验服务端证书。仅在受信任管理网络中接入自签名证书时关闭校验。",
                 "networkConfig": "填写可通过 SSH 登录网络设备并执行只读配置查看命令的账户；需要进入特权模式时再填写特权密码。",
                 "configFile": "填写可通过 SSH 登录目标主机并读取指定配置文件的操作系统账户。"
             },

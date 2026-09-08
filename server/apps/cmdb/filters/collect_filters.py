@@ -2,8 +2,11 @@
 # @File: collect_filters.py
 # @Time: 2025/3/3 14:00
 # @Author: windyzhao
+from django.db.models import Q
 from django_filters import CharFilter, FilterSet
 
+from apps.cmdb.collection.physical_server_protocol import PHYSICAL_SERVER_MODEL_ID
+from apps.cmdb.constants.constants import CollectDriverTypes
 from apps.cmdb.models.collect_model import CollectModels, OidMapping, PortFingerprint
 
 
@@ -13,10 +16,25 @@ class CollectModelFilter(FilterSet):
     driver_type = CharFilter(field_name="driver_type", label="任务类型")
     exec_status = CharFilter(field_name="exec_status", label="任务类型")
     model_id = CharFilter(field_name="model_id", label="模型id")
+    collection_protocol = CharFilter(method="filter_collection_protocol", label="物理服务器采集协议")
+
+    @staticmethod
+    def filter_collection_protocol(queryset, _name, value):
+        protocol = str(value or "").strip().lower()
+        queryset = queryset.filter(
+            model_id=PHYSICAL_SERVER_MODEL_ID,
+            driver_type=CollectDriverTypes.PROTOCOL,
+        )
+        if protocol == "ipmi":
+            # 历史物理服务器协议任务没有 collection_protocol，按 IPMI 兼容。
+            return queryset.filter(Q(params__collection_protocol="ipmi") | Q(params__collection_protocol__isnull=True))
+        if protocol == "redfish":
+            return queryset.filter(params__collection_protocol="redfish")
+        return queryset.none()
 
     class Meta:
         model = CollectModels
-        fields = ["name", "driver_type", "exec_status", "model_id"]
+        fields = ["name", "driver_type", "exec_status", "model_id", "collection_protocol"]
 
 
 class OidModelFilter(FilterSet):

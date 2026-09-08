@@ -7,6 +7,7 @@
 - contains 图边 src=physcial_server、dst=nic（父 → 网卡），不是 nic → 父
 - 不走 IPMI/BMC 网卡清单；不改 physcial_server 拼写
 """
+
 import pandas as pd
 import pytest
 
@@ -14,7 +15,7 @@ from apps.cmdb.collection.common import Management
 from apps.cmdb.collection.nic_inventory import is_ingestible_nic, normalize_nic_mac, parse_nic_record
 from apps.cmdb.collection.plugins.community.host.host import HostCollectionPlugin
 from apps.cmdb.collection.plugins.community.host.physical_server import PhysicalServerCollectionPlugin
-from apps.cmdb.collection.plugins.community.protocol.physical_server import PhysicalServerIPMICollectionPlugin
+from apps.cmdb.collection.plugins.community.protocol.physical_server import PhysicalServerProtocolCollectionPlugin
 from apps.cmdb.tests.test_collect_management_service import FakeGraph, _patch_common
 
 pytestmark = pytest.mark.unit
@@ -146,7 +147,7 @@ def test_format_data_then_metrics_simulates_one_ssh_collect(runner):
     nics = runner.result["nic"]
     assert [item["inst_name"] for item in nics] == ["aa:bb:cc:dd:ee:01"]
     assert nics[0]["assos"][0]["model_asst_id"] == "physcial_server_contains_nic"
-    assert nics[0]["assos"][0]["inst_name"] == "srv-1"
+    assert nics[0]["assos"][0]["inst_name"] == "10.0.0.8"
 
 
 def test_format_metrics_ingests_nics_with_mac_identity(runner):
@@ -180,10 +181,39 @@ def test_format_metrics_ingests_nics_with_mac_identity(runner):
     assert nics[0]["assos"] == [
         {
             "model_id": "physcial_server",
-            "inst_name": "srv-1",
+            "inst_name": "10.0.0.8",
             "asst_id": "contains",
             "model_asst_id": "physcial_server_contains_nic",
         }
+    ]
+
+
+def test_format_metrics_keeps_components_separate_for_multiple_selected_servers(runner):
+    runner.collection_metrics_dict["disk_info_gauge"] = [
+        {
+            "index_key": "disk_info_gauge",
+            "model_id": "disk",
+            "disk_name": "sda",
+            "self_device": "10.0.0.8",
+        },
+        {
+            "index_key": "disk_info_gauge",
+            "model_id": "disk",
+            "disk_name": "sda",
+            "self_device": "10.0.0.9",
+        },
+    ]
+
+    runner.format_metrics()
+
+    disks = runner.result["disk"]
+    assert [item["inst_name"] for item in disks] == [
+        "sda-10.0.0.8",
+        "sda-10.0.0.9",
+    ]
+    assert [item["assos"][0]["inst_name"] for item in disks] == [
+        "10.0.0.8",
+        "10.0.0.9",
     ]
 
 
@@ -212,8 +242,56 @@ def test_host_plugin_does_not_ingest_nic_components():
 
 
 def test_ipmi_plugin_does_not_emit_nic_metrics():
-    assert "nic_info_gauge" not in PhysicalServerIPMICollectionPlugin.metric_names
-    assert "nic" not in getattr(PhysicalServerIPMICollectionPlugin, "related_field_mappings", {})
+    assert "nic_info_gauge" not in PhysicalServerProtocolCollectionPlugin.metric_names
+    assert "nic" not in getattr(PhysicalServerProtocolCollectionPlugin, "related_field_mappings", {})
+
+
+def test_ssh_and_ipmi_build_same_instance_name_from_collection_target(monkeypatch):
+    """协议返回的序列号/地址不同，也只能用本轮目标 IP 构建物理机实例名。"""
+    monkeypatch.setattr(
+        PhysicalServerCollectionPlugin,
+        "model_id",
+        property(lambda self: "physcial_server"),
+    )
+    monkeypatch.setattr(
+        PhysicalServerProtocolCollectionPlugin,
+        "model_id",
+        property(lambda self: "physcial_server"),
+    )
+    ssh = PhysicalServerCollectionPlugin("legacy-name", "cmdb_1", 1)
+    ipmi = PhysicalServerProtocolCollectionPlugin("legacy-name", "cmdb_2", 2)
+    metric = {
+        "collection_target": " 2001:0DB8:0:0:0:0:0:8 ",
+        "host": "10.0.0.8",
+        "ip_addr": "172.16.0.8",
+        "serial_number": "SERVER-SN-8",
+        "model": "2288H V5",
+    }
+
+    ssh_name = ssh.model_field_mapping["physcial_server"]["inst_name"](metric)
+    ipmi_name = ipmi.get_inst_name(metric)
+
+    assert ssh_name == "2001:db8::8"
+    assert ipmi_name == "2001:db8::8"
+
+
+def test_physical_server_children_use_canonical_ipv6_parent_identity(monkeypatch):
+    monkeypatch.setattr(
+        PhysicalServerCollectionPlugin,
+        "model_id",
+        property(lambda self: "physcial_server"),
+    )
+    plugin = PhysicalServerCollectionPlugin("legacy-name", "cmdb_1", 1)
+    disk_mapping = plugin.model_field_mapping["disk"]
+    disk = {
+        "model_id": "disk",
+        "disk_name": "sda",
+        "self_device": "2001:0DB8:0:0:0:0:0:8",
+    }
+
+    assert disk_mapping["inst_name"](disk) == "sda-2001:db8::8"
+    assert disk_mapping["self_device"](disk) == "2001:db8::8"
+    assert disk_mapping["assos"](disk, model_id="disk")[0]["inst_name"] == "2001:db8::8"
 
 
 def test_model_config_already_has_physcial_server_contains_nic():

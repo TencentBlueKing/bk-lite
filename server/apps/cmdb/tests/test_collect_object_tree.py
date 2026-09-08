@@ -125,6 +125,34 @@ def test_get_collect_obj_tree_includes_ipam_discovery(monkeypatch):
     assert discovery["encrypted_fields"] == []
 
 
+def test_get_collect_obj_tree_exposes_separate_ipmi_and_redfish_plugins(monkeypatch):
+    _patch_collect_extension(monkeypatch, [])
+    tree = get_collect_obj_tree()
+    objects = {
+        child["id"]: child
+        for group in tree
+        for child in group.get("children", [])
+        if child.get("id") in {"physcial_server_ipmi", "physcial_server_redfish"}
+    }
+
+    assert objects["physcial_server_ipmi"]["model_id"] == "physcial_server"
+    assert objects["physcial_server_ipmi"]["credential_protocol"] == "ipmi"
+    assert objects["physcial_server_ipmi"]["credential_default_port"] == 623
+    assert objects["physcial_server_redfish"] == {
+        "id": "physcial_server_redfish",
+        "model_id": "physcial_server",
+        "name": "【BETA】物理服务器 Redfish",
+        "task_type": CollectPluginTypes.PROTOCOL,
+        "type": CollectDriverTypes.PROTOCOL,
+        "credential_protocol": "redfish",
+        "credential_kind": "bmc_account",
+        "credential_default_port": 443,
+        "tag": ["REDFISH", "HTTPS", "BMC"],
+        "desc": "通过 Redfish HTTPS API 采集物理服务器基础身份信息",
+        "encrypted_fields": ["password"],
+    }
+
+
 def test_simple_collect_objects_expose_real_credential_protocol(monkeypatch):
     _patch_collect_extension(monkeypatch, [])
     tree = get_collect_obj_tree()

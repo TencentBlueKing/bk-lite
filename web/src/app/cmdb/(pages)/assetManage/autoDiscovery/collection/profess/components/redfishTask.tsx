@@ -1,28 +1,29 @@
 'use client';
 
 import React, { useEffect, useRef } from 'react';
-import BaseTaskForm, { BaseTaskRef } from './baseTask';
+import { Form, Spin } from 'antd';
+
+import { HOST_FORM_INITIAL_VALUES } from '@/app/cmdb/constants/professCollection';
+import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
+import type { CollectTask, ModelItem, TreeNode } from '@/app/cmdb/types/autoDiscovery';
 import { useTranslation } from '@/utils/i18n';
+
 import { useCollectionFormLayout } from '../hooks/useCollectionFormLayout';
-import { useTaskForm } from '../hooks/useTaskForm';
-import { getCleanupFormValues } from '../hooks/useTaskForm';
-import { TreeNode, ModelItem, CollectTask } from '@/app/cmdb/types/autoDiscovery';
 import {
-  HOST_FORM_INITIAL_VALUES,
-  PASSWORD_PLACEHOLDER,
-} from '@/app/cmdb/constants/professCollection';
-import {
-  buildCredentialPool,
   formatTaskValues,
   normalizeCredentialPool,
-  trimFormString,
 } from '../hooks/formatTaskValues';
-import { Form, Spin } from 'antd';
-import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
-import CredentialPoolEditor from './credentialPoolEditor';
+import { getCleanupFormValues, useTaskForm } from '../hooks/useTaskForm';
+import BaseTaskForm, { BaseTaskRef } from './baseTask';
 import { resolveCredentialHelp } from './credentialHelp';
+import CredentialPoolEditor from './credentialPoolEditor';
+import {
+  buildRedfishCredential,
+  createRedfishCredential,
+  restoreRedfishCredential,
+} from './redfishCredential';
 
-interface IPMITaskFormProps {
+interface RedfishTaskFormProps {
   onClose: () => void;
   onSuccess?: () => void;
   selectedNode: TreeNode;
@@ -30,12 +31,12 @@ interface IPMITaskFormProps {
   editId?: number | null;
 }
 
-const IPMI_FORM_INITIAL_VALUES = {
+const REDFISH_FORM_INITIAL_VALUES = {
   ...HOST_FORM_INITIAL_VALUES,
-  credentialPool: [{ port: '623', privilege: 'administrator' }],
+  credentialPool: [createRedfishCredential()],
 };
 
-const IPMITask: React.FC<IPMITaskFormProps> = ({
+const RedfishTask: React.FC<RedfishTaskFormProps> = ({
   onClose,
   onSuccess,
   selectedNode,
@@ -58,7 +59,7 @@ const IPMITask: React.FC<IPMITaskFormProps> = ({
   } = useTaskForm({
     modelId,
     editId,
-    initialValues: IPMI_FORM_INITIAL_VALUES,
+    initialValues: REDFISH_FORM_INITIAL_VALUES,
     onSuccess,
     onClose,
     formatValues: (values) => {
@@ -70,35 +71,23 @@ const IPMITask: React.FC<IPMITaskFormProps> = ({
         modelId,
         formatCycleValue,
       });
-
       const collectType = baseRef.current?.collectionType;
       const ipRange = values.ipRange?.length ? values.ipRange : undefined;
       const selectedData = baseRef.current?.selectedData;
-      // IPMI 与 SSH 物理机任务共享 BaseTask 的目标选择交互：既支持 IP 段，也支持从现有资产实例中选择。
       const instanceData = collectType === 'ip'
-        ? {
-          ip_range: ipRange.join('-'),
-          instances: [],
-        }
-        : {
-          ip_range: '',
-          instances: selectedData || [],
-        };
+        ? { ip_range: ipRange.join('-'), instances: [] }
+        : { ip_range: '', instances: selectedData || [] };
 
       return {
         ...baseData,
         ...instanceData,
         params: {
           ...(baseData.params || {}),
-          collection_protocol: 'ipmi',
+          collection_protocol: 'redfish',
         },
-        // 注意：这里仍然写回现有 physcial_server 模型，但凭据语义已经变成 IPMI/BMC 登录信息。
-        credential: buildCredentialPool(values.credentialPool, (item) => ({
-          username: trimFormString(item.username),
-          password: trimFormString(item.password),
-          port: item.port,
-          privilege: item.privilege,
-        })),
+        credential: normalizeCredentialPool(values.credentialPool).map(
+          buildRedfishCredential,
+        ),
       };
     },
   });
@@ -111,14 +100,8 @@ const IPMITask: React.FC<IPMITaskFormProps> = ({
     organization: values.team || [],
     credentialPool: (normalizeCredentialPool(values.credential).length
       ? normalizeCredentialPool(values.credential)
-      : IPMI_FORM_INITIAL_VALUES.credentialPool
-    ).map((item) => ({
-      ...item,
-      username: item.username || item.user,
-      password: isCopy ? '' : PASSWORD_PLACEHOLDER,
-      port: item.port || '623',
-      privilege: item.privilege || 'administrator',
-    })),
+      : REDFISH_FORM_INITIAL_VALUES.credentialPool
+    ).map((item) => restoreRedfishCredential(item, isCopy)),
     accessPointId: values.access_point?.[0]?.id,
   });
 
@@ -127,23 +110,21 @@ const IPMITask: React.FC<IPMITaskFormProps> = ({
       if (copyTaskData) {
         const values = copyTaskData;
         const ipRange = values.ip_range?.split('-');
-        if (values.ip_range?.length) {
-          baseRef.current?.initCollectionType(ipRange, 'ip');
-        } else {
-          baseRef.current?.initCollectionType(values.instances, 'asset');
-        }
+        baseRef.current?.initCollectionType(
+          values.ip_range?.length ? ipRange : values.instances,
+          values.ip_range?.length ? 'ip' : 'asset',
+        );
         form.setFieldsValue(buildFormValues(values, true, ipRange));
       } else if (editId) {
         const values = await fetchTaskDetail(editId);
         const ipRange = values.ip_range?.split('-');
-        if (values.ip_range?.length) {
-          baseRef.current?.initCollectionType(ipRange, 'ip');
-        } else {
-          baseRef.current?.initCollectionType(values.instances, 'asset');
-        }
+        baseRef.current?.initCollectionType(
+          values.ip_range?.length ? ipRange : values.instances,
+          values.ip_range?.length ? 'ip' : 'asset',
+        );
         form.setFieldsValue(buildFormValues(values, false, ipRange));
       } else {
-        form.setFieldsValue(IPMI_FORM_INITIAL_VALUES);
+        form.setFieldsValue(REDFISH_FORM_INITIAL_VALUES);
       }
     };
     initForm();
@@ -155,7 +136,7 @@ const IPMITask: React.FC<IPMITaskFormProps> = ({
         {...collectionFormLayout}
         form={form}
         onFinish={onFinish}
-        initialValues={IPMI_FORM_INITIAL_VALUES}
+        initialValues={REDFISH_FORM_INITIAL_VALUES}
       >
         <BaseTaskForm
           ref={baseRef}
@@ -163,7 +144,7 @@ const IPMITask: React.FC<IPMITaskFormProps> = ({
           modelItem={modelItem}
           onClose={onClose}
           submitLoading={submitLoading}
-          instPlaceholder={`${t('Collection.chooseAsset')}`}
+          instPlaceholder={t('Collection.chooseAsset')}
           timeoutProps={{
             min: 1,
             addonAfter: t('Collection.k8sTask.second'),
@@ -171,7 +152,7 @@ const IPMITask: React.FC<IPMITaskFormProps> = ({
         >
           <Form.Item name="credentialPool">
             <CredentialPoolEditor
-              credentialShape="ipmi"
+              credentialShape="redfish"
               credentialHelp={resolveCredentialHelp(modelItem, t)}
               editMode={Boolean(editId)}
             />
@@ -182,4 +163,4 @@ const IPMITask: React.FC<IPMITaskFormProps> = ({
   );
 };
 
-export default IPMITask;
+export default RedfishTask;

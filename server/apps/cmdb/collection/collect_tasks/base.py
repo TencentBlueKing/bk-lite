@@ -60,7 +60,7 @@ class BaseCollect(object):
                 organization = self.task.params.get("organization")
                 if organization is not None and not isinstance(organization, list):
                     organization = [organization]
-            return self.task.model_id, None, organization, None, not self.task.is_host
+            return self.task.model_id, None, organization, None, self._should_filter_collect_task(self.task.model_id)
 
         instance = self.task.instances[0]
         model_id = instance["model_id"]
@@ -70,7 +70,12 @@ class BaseCollect(object):
             organization = [organization]
         # 完成链路按 inst_name + collect_task 对账，图 _id 只是可选写句柄；缺 _id 不得 KeyError。
         inst_id = instance.get("_id")
-        return model_id, inst_name, organization, inst_id, not self.task.is_host
+        return model_id, inst_name, organization, inst_id, self._should_filter_collect_task(model_id)
+
+    def _should_filter_collect_task(self, model_id):
+        # 物理服务器以 IP 作为模型唯一实例名，并由首个成功创建它的任务持续更新。
+        # 因此 SSH/host 也必须像 IPMI/Redfish protocol 一样按 collect_task 对账。
+        return model_id == "physcial_server" or not self.task.is_host
 
     @property
     def task_id(self):
