@@ -92,12 +92,13 @@ export function mergeNodeCollectorStatuses(
   ];
 }
 
-export function listNodeHostedCollectors(record: {
+export function listNodeHostedCollectors(record?: {
   status?: { collectors?: unknown; collectors_install?: unknown };
-}): Array<Record<string, any>> {
+  [key: string]: any;
+} | null): Array<Record<string, any>> {
   return mergeNodeCollectorStatuses(
-    record.status?.collectors,
-    record.status?.collectors_install
+    record?.status?.collectors,
+    record?.status?.collectors_install
   );
 }
 
@@ -122,19 +123,17 @@ export function filterCollectorsForOperationType<
   );
 }
 
-export function groupCollectorsForOperationSelect(
-  collectors: Array<{ id: string; name: string }>,
-  getLabelKey: (name: string) => string | undefined
-): Array<{
+export interface CollectorOperationSelectGroup {
   label: string;
   title: string;
   options: Array<{ label: string; value: string }>;
-}> {
-  const options: Array<{
-    label: string;
-    title: string;
-    options: Array<{ label: string; value: string }>;
-  }> = [];
+}
+
+export function groupCollectorsForOperationSelect(
+  collectors: Array<{ id: string; name: string }>,
+  getLabelKey: (name: string) => string | undefined
+): CollectorOperationSelectGroup[] {
+  const options: CollectorOperationSelectGroup[] = [];
   collectors.forEach((item) => {
     const tag =
       getLabelKey(item.name) ||

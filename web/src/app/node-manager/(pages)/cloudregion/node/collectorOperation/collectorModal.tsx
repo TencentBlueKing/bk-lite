@@ -20,15 +20,10 @@ import { buildCollectorOperationListParams } from '@/app/node-manager/utils/node
 import {
   EXECUTOR_TYPE_TAG,
   filterCollectorsForOperationType,
-  groupCollectorsForOperationSelect
+  groupCollectorsForOperationSelect,
+  type CollectorOperationSelectGroup
 } from '@/app/node-manager/utils/collectorConfig';
 const { Option } = Select;
-
-interface Option {
-  value: string;
-  label: string;
-  children?: Option[];
-}
 
 const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
   ({ onSuccess }, ref) => {
@@ -59,7 +54,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
     const [collector, setCollector] = useState<string | null>(null);
     const [system, setSystem] = useState<string>('');
     const [cpuArchitecture, setCpuArchitecture] = useState<string>('');
-    const [options, setOptions] = useState<Option[]>([]);
+    const [options, setOptions] = useState<CollectorOperationSelectGroup[]>([]);
     const [typeOptions, setTypeOptions] = useState<any[]>([]);
     const [selectedType, setSelectedType] = useState<string>('');
 
