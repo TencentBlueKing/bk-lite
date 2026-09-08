@@ -248,11 +248,14 @@ def _apply_temperature(call_kwargs: dict, request: BasicLLMRequest) -> None:
 
 
 def _client_temperature_kwargs(request: BasicLLMRequest) -> dict:
-    """LangChain 构造参数：网关拒参时省略 temperature，与 HTTP omit 一致。"""
-    temperature = _request_temperature(request)
-    if temperature is None:
-        return {}
-    return {"temperature": temperature}
+    """LangChain 构造参数：网关拒参时显式 ``temperature=None``。
+
+    ChatOpenAI.validate_temperature 在构造字典缺少 ``temperature`` 键时会给
+    o1 注入 ``1``，随后 ``_default_params`` 把 1 写进 HTTP body，网关仍可能
+    400。显式 None 使 ``"temperature" in values`` 为真，挡住该注入；None 再
+    被 ``exclude_if_none`` 真正 omit。Anthropic 路径默认已是 None，行为不变。
+    """
+    return {"temperature": _request_temperature(request)}
 
 
 def _is_unsupported_response_format_error(exc) -> bool:
