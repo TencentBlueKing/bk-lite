@@ -1,5 +1,6 @@
 export const APP_CAPABILITY_LOADERS = {
   alarm: () => import('@/app/alarm/capability'),
+  'ops-analysis': () => import('@/app/ops-analysis/capability'),
 } as const;
 
 export type AppCapabilityName = keyof typeof APP_CAPABILITY_LOADERS;

@@ -1635,6 +1635,48 @@ def network_topology_among_uuids(inst_uuids=None, user_info=None, **kwargs):
     }
 
 
+def _topo_search_lite_failure(code: str, message: str):
+    return {"result": False, "data": {"code": code}, "message": message}
+
+
+@nats_client.register
+def topo_search_lite_by_uuid(inst_uuid=None, user_info=None, **kwargs):
+    """按实例 UUID 返回资产详情同源的轻量关联拓扑（默认深度 3，含权限裁剪）。
+
+    调用方不传模型 ID。圆心无权或不存在返回失败，空邻居返回成功空树。
+    """
+    from apps.cmdb.services.instance_identity import normalize_inst_uuid
+    from apps.core.exceptions.base_app_exception import BaseAppException
+
+    raw = inst_uuid if inst_uuid is not None else kwargs.get("inst_uuid")
+    try:
+        normalized = normalize_inst_uuid(raw)
+    except BaseAppException:
+        return _topo_search_lite_failure("invalid_inst_uuid", "inst_uuid 必须是 UUIDv4")
+
+    instance = InstanceManage.query_entity_by_uuid(normalized)
+    if not instance:
+        return _topo_search_lite_failure("not_found", "实例不存在")
+
+    permission_map = _build_nats_permission_map(user_info, model_id=str(instance.get("model_id") or ""))
+    user = _normalize_permission_user((user_info or {}).get("user"), domain=(user_info or {}).get("domain"))
+    if permission_map is None or not InstanceManage._has_topology_view_permission(instance, permission_map, user=user):
+        return _topo_search_lite_failure("permission_denied", "无权限查看该实例")
+
+    try:
+        result = InstanceManage.topo_search_lite_by_uuid(
+            normalized,
+            depth=3,
+            permission_map=permission_map,
+            user=user,
+            language=_resolve_nats_cmdb_language(user_info),
+        )
+    except BaseAppException:
+        return _topo_search_lite_failure("not_found", "实例不存在")
+
+    return {"result": True, "data": result, "message": ""}
+
+
 @nats_client.register
 def get_change_trend(time=None, model_id=None, user_info=None, **kwargs):
     """
