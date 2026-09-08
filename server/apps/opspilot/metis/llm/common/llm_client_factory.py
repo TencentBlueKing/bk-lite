@@ -203,6 +203,9 @@ def _normalize_message_content(content) -> str:
 # 部分推理/新一代模型网关拒绝自定义 temperature（即使传 1 也会 400）。
 _FIXED_UNIT_TEMPERATURE_PREFIXES = ("gpt-5", "o1", "o3", "o4-mini", "kimi", "moonshot", "k3")
 DEFAULT_CHAT_TEMPERATURE = 1.0
+# 用户对话忽略技能表/请求滑条，固定 DEFAULT_CHAT_TEMPERATURE。
+# 内部节点（如意图分类）通过该键显式保留低温采样，仍经 resolve_gateway_temperature 省略。
+INTERNAL_SAMPLING_TEMPERATURE_KEY = "internal_sampling_temperature"
 
 
 def _normalize_llm_model_id(model_name: str) -> str:
@@ -242,6 +245,17 @@ def _apply_temperature(call_kwargs: dict, request: BasicLLMRequest) -> None:
     temperature = _request_temperature(request)
     if temperature is not None:
         call_kwargs["temperature"] = temperature
+
+
+def _client_temperature_kwargs(request: BasicLLMRequest) -> dict:
+    """LangChain 构造参数：网关拒参时显式 ``temperature=None``。
+
+    ChatOpenAI.validate_temperature 在构造字典缺少 ``temperature`` 键时会给
+    o1 注入 ``1``，随后 ``_default_params`` 把 1 写进 HTTP body，网关仍可能
+    400。显式 None 使 ``"temperature" in values`` 为真，挡住该注入；None 再
+    被 ``exclude_if_none`` 真正 omit。Anthropic 路径默认已是 None，行为不变。
+    """
+    return {"temperature": _request_temperature(request)}
 
 
 def _is_unsupported_response_format_error(exc) -> bool:
@@ -325,11 +339,11 @@ class LLMClientFactory:
             model=request.model,
             base_url=base_url,
             api_key=request.openai_api_key,
-            temperature=_request_temperature(request),
             max_tokens=request.max_output_tokens or None,
             disable_streaming=disable_stream,
             timeout=LLMClientFactory._resolve_timeout(request, timeout=timeout),
             default_headers=openai_compat_user_agent_headers(),
+            **_client_temperature_kwargs(request),
         )
         _attach_openai_compat_sdk_headers(llm)
 
@@ -366,11 +380,11 @@ class LLMClientFactory:
             model=request.model,
             anthropic_api_url=base_url,
             api_key=request.openai_api_key,
-            temperature=_request_temperature(request),
             max_tokens=request.max_output_tokens or 4096,
             disable_streaming=disable_stream,
             timeout=LLMClientFactory._resolve_timeout(request, timeout=timeout),
             model_kwargs=model_kwargs if model_kwargs else None,
+            **_client_temperature_kwargs(request),
         )
 
         return llm
@@ -399,12 +413,12 @@ class LLMClientFactory:
             model=request.model,
             api_key=request.openai_api_key,
             api_base=base_url,
-            temperature=_request_temperature(request),
             max_tokens=request.max_output_tokens or 4096,
             disable_streaming=disable_stream,
             timeout=LLMClientFactory._resolve_timeout(request, timeout=timeout),
             vendor_type=getattr(request, "vendor_type", ""),
             thinking_enabled=show_think,
+            **_client_temperature_kwargs(request),
         )
 
     @staticmethod
