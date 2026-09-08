@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { requestLegacyThirdLoginAuthorize } from '@/utils/legacyThirdLogin';
+import { useTranslation } from '@/utils/i18n';
 import { PORTAL_HOME_PATH } from '@/utils/route';
 
 interface LegacyThirdLoginAuthorizeBridgeProps {
@@ -15,6 +16,8 @@ export default function LegacyThirdLoginAuthorizeBridge({
   thirdLoginCode,
   token,
 }: LegacyThirdLoginAuthorizeBridgeProps) {
+  const { t } = useTranslation();
+
   useEffect(() => {
     let cancelled = false;
 
@@ -40,8 +43,12 @@ export default function LegacyThirdLoginAuthorizeBridge({
   return (
     <div className="flex min-h-screen items-center justify-center px-6 text-center">
       <div>
-        <div className="text-lg font-semibold text-(--color-text-1)">登录成功</div>
-        <div className="mt-2 text-sm text-(--color-text-3)">正在返回原页面...</div>
+        <div className="text-lg font-semibold text-(--color-text-1)">
+          {t('signin.legacyThirdLogin.title')}
+        </div>
+        <div className="mt-2 text-sm text-(--color-text-3)">
+          {t('signin.legacyThirdLogin.returning')}
+        </div>
       </div>
     </div>
   );
