@@ -916,6 +916,32 @@ def test_is_context_size_error_detects_provider_messages():
     assert not is_context_size_error("connection refused")
 
 
+def test_is_llm_upstream_error_detects_gateway_failures():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import extract_llm_upstream_request_id, is_llm_upstream_error, llm_upstream_user_message
+
+    class InternalServerError(Exception):
+        pass
+
+    class RateLimitError(Exception):
+        pass
+
+    gateway = InternalServerError(
+        "Error code: 500 - {'error': {'message': 'upstream error: do request failed "
+        "(request id: 202609051131219225871028268d9d61rWfvQV9)', "
+        "'type': 'new_api_error', 'param': '', 'code': 'do_request_failed'}}"
+    )
+    assert is_llm_upstream_error(gateway)
+    assert extract_llm_upstream_request_id(gateway) == "202609051131219225871028268d9d61rWfvQV9"
+    text = llm_upstream_user_message(gateway)
+    assert "上游请求失败" in text
+    assert "202609051131219225871028268d9d61rWfvQV9" in text
+    assert "uvx" not in text
+    assert is_llm_upstream_error(RateLimitError("rate limited"))
+    assert not is_llm_upstream_error("connection refused")
+    assert not is_llm_upstream_error("BadRequestError: request exceeds the available context size")
+    assert not is_llm_upstream_error('{"error": "Pod not found", "code": 500}')
+
+
 def test_is_tool_result_failure_detects_json_error_payload():
     from apps.opspilot.metis.llm.agent.tool_execution_planner import is_tool_result_failure
 
@@ -1413,6 +1439,26 @@ def test_collapse_known_pod_restart_to_evidence_tool_only_for_restart_reason():
         user_message="看看 argocd-repo-server 当前日志",
     )
     assert [step.tools for step in kept_logs.steps] == [step.tools for step in noisy.steps]
+
+    for list_q in ("列出频繁重启的 Pod", "哪些 Pod 频繁重启", "有 CrashLoopBackOff"):
+        assert is_pod_restart_reason_query(list_q) is False
+        kept_list = collapse_known_pod_restart_to_evidence_tool(noisy, available, user_message=list_q)
+        assert [step.tools for step in kept_list.steps] == [step.tools for step in noisy.steps]
+        assert all("collect_pod_restart_evidence" not in (step.tools or []) for step in kept_list.steps)
+
+    empty = ToolExecutionPlan(goal="名单", steps=[])
+    inserted = collapse_known_pod_restart_to_evidence_tool(empty, available, user_message="列出频繁重启的 Pod")
+    assert inserted.steps == []
+    assert is_pod_restart_reason_query("分析 Deployment 的重启策略") is False
+    assert is_pod_restart_reason_query("帮我分析一下重启") is False
+    assert is_pod_restart_reason_query("集群里有很多 CrashLoopBackOff 怎么办") is False
+    assert is_pod_restart_reason_query("这个 Pod 为什么重启") is True
+    collapsed_deixis = collapse_known_pod_restart_to_evidence_tool(noisy, available, user_message="这个 Pod 为什么重启")
+    assert [step.tools for step in collapsed_deixis.steps] == [
+        ["current_time"],
+        ["resolve_k8s_target_from_alert"],
+        ["collect_pod_restart_evidence"],
+    ]
 
 
 def test_rewrite_high_restart_to_recent_for_time_sort():

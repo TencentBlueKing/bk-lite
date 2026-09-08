@@ -6,16 +6,20 @@ tools/MCP、knowledge_retrieve 工具、SKILL.md 技能（MinIO backend）、人
 """
 
 import asyncio
+import io
 import json
+import logging
 import os
 import subprocess
 import sys
+import traceback
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 from langchain_core.messages import HumanMessage
 
+from apps.core.logger import SafeLogException, opspilot_logger
 from apps.opspilot.metis.llm.chain.node import ToolsNodes
 from apps.opspilot.metis.llm.middleware.tool_runtime import (
     PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS,
@@ -572,6 +576,111 @@ class TestBuildDeepagentNodes:
         assert "上下文压缩" in captured["ainvoke_joined"][1]
         assert result["messages"][-1].content == "执行结果 3"
 
+    def test_llm_upstream_500_skips_sandbox_whitelist_fallback(self, caplog):
+        node = ToolsNodes()
+        node.all_tools = [
+            _tool("list_kubernetes_events"),
+            _tool("get_kubernetes_pod_logs"),
+        ]
+        req = _request(user_message="告警：Unhealthy startup probe")
+        captured = {}
+
+        gb = _FakeGraphBuilder()
+        name = asyncio.run(node.build_deepagent_nodes(gb, composite_node_name="deep_agent"))
+        wrapper = gb.nodes[name]
+
+        from langchain_core.messages import AIMessage, HumanMessage
+
+        class InternalServerError(Exception):
+            pass
+
+        class _PlannerLLM:
+            async def ainvoke(self, messages, config=None):
+                captured.setdefault("planner_calls", []).append(messages)
+                joined = "\n".join(str(getattr(m, "content", "") or "") for m in messages)
+                if "上一轮工具执行失败" in joined:
+                    captured["fallback_explain"] = True
+                    raise AssertionError("must not re-invoke LLM to explain upstream 500")
+                return AIMessage(
+                    content=json.dumps(
+                        {
+                            "goal": "诊断",
+                            "steps": [
+                                {"objective": "查日志与事件", "tools": ["get_kubernetes_pod_logs", "list_kubernetes_events"]},
+                            ],
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+
+        fake_agent = MagicMock()
+
+        async def _ainvoke(payload, config=None):
+            captured.setdefault("agent_calls", 0)
+            captured["agent_calls"] += 1
+            original = InternalServerError(
+                "Error code: 500 - {'error': {'message': 'upstream error: do request failed "
+                "(request id: 202609051131219225871028268d9d61rWfvQV9)', "
+                "'type': 'new_api_error', 'param': '', 'code': 'do_request_failed'}}"
+            )
+            captured["original"] = original
+            raise original
+
+        fake_agent.ainvoke = _ainvoke
+        caplog.set_level(logging.ERROR, logger="opspilot")
+        log_output = io.StringIO()
+        handler = logging.StreamHandler(log_output)
+        handler.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
+        opspilot_logger.addHandler(handler)
+        try:
+            with patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=fake_agent), patch.object(
+                ToolsNodes, "get_llm_client", return_value=_PlannerLLM()
+            ), patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None), patch.object(
+                ToolsNodes, "_build_skill_backend_and_sources", return_value=(None, [], None)
+            ):
+                result = asyncio.run(
+                    wrapper(
+                        {"messages": [HumanMessage(content="告警：Unhealthy")]},
+                        {"configurable": {"graph_request": req}},
+                    )
+                )
+        finally:
+            opspilot_logger.removeHandler(handler)
+
+        content = result["messages"][-1].content
+        assert "上游请求失败" in content
+        assert "202609051131219225871028268d9d61rWfvQV9" in content
+        assert "uvx" not in content
+        assert "python -m" not in content
+        assert captured["agent_calls"] == 1
+        assert len(captured["planner_calls"]) == 1
+        assert "fallback_explain" not in captured
+
+        owned = [
+            rec
+            for rec in caplog.records
+            if rec.name == "opspilot"
+            and rec.levelno == logging.ERROR
+            and rec.exc_info
+            and rec.msg == "event=deepagent_llm_upstream_failed failed_stage=%s error_type=%s request_id=%s"
+        ]
+        assert len(owned) == 1
+        rec = owned[0]
+        assert rec.args == ("planned_execution", "InternalServerError", "202609051131219225871028268d9d61rWfvQV9")
+        message = rec.getMessage()
+        assert "failed_stage=planned_execution" in message
+        assert "error_type=InternalServerError" in message
+        assert rec.exc_info[0] is SafeLogException
+        assert rec.exc_info[1] is not captured["original"]
+        assert str(rec.exc_info[1]) == "InternalServerError"
+        frame_names = [frame.name for frame in traceback.extract_tb(rec.exc_info[2])]
+        assert "_ainvoke" in frame_names
+        rendered = log_output.getvalue()
+        assert "do_request_failed" not in message
+        assert "do_request_failed" not in rendered
+        traceback_errors = [r for r in caplog.records if r.name == "opspilot" and r.levelno >= logging.ERROR and r.exc_info]
+        assert traceback_errors == owned
+
     def test_successful_step_compacts_history_before_next_step(self):
         node = ToolsNodes()
         node.all_tools = [
@@ -1096,6 +1205,74 @@ class TestBuildDeepagentNodes:
         ]
         assert len(captured["planner_calls"]) == 1
 
+    def test_unresolved_k8s_target_still_runs_alert_rca_summary(self):
+        node = ToolsNodes()
+        node.all_tools = [
+            _tool("resolve_k8s_target_from_alert"),
+            _tool("diagnose_kubernetes_pod_issues"),
+            _tool("get_kubernetes_pod_logs"),
+        ]
+        req = _request(
+            user_message="告警：Unhealthy (kubernetes, bk-lite-k3s, server-fc88f89f4-j2s5z) 检测到异常",
+            system_message_prompt="你是 Kubernetes 集群 RCA 助手。\n## 告警怎么读\n## 输出格式\n# RCA 报告\n",
+        )
+        captured = {}
+        unresolved = json.dumps(
+            {
+                "cluster": "bk-lite-k3s",
+                "namespace": None,
+                "resource_type": "pod",
+                "resource_name": "server-fc88f89f4-j2s5z",
+                "resolved": False,
+                "lookup_exhausted": True,
+                "conclusive": True,
+                "missing_data": ["namespace"],
+                "reason": "Namespace not found for resource server-fc88f89f4-j2s5z via pods/events lookup",
+            },
+            ensure_ascii=False,
+        )
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "告警 RCA",
+                    "steps": [
+                        {
+                            "objective": "反查命名空间",
+                            "tools": ["resolve_k8s_target_from_alert"],
+                        },
+                        {
+                            "objective": "诊断 Pod",
+                            "tools": ["diagnose_kubernetes_pod_issues"],
+                        },
+                        {
+                            "objective": "拉日志",
+                            "tools": ["get_kubernetes_pod_logs"],
+                        },
+                    ],
+                },
+                failing_agent_calls={
+                    1: {
+                        "content": unresolved,
+                        "status": "success",
+                        "name": "resolve_k8s_target_from_alert",
+                    }
+                },
+                agent_reply=("本步结果：resolve_k8s_target_from_alert 已收口。" "resolved=false，lookup_exhausted=true，无法确定 namespace。" "后续步骤应按对象不可见结束。"),
+            )
+
+        assert captured["visible_tool_calls"] == [
+            ["resolve_k8s_target_from_alert"],
+            [],
+        ]
+        assert len(captured["planner_calls"]) == 1
+        summary_prompt = "\n".join(str(getattr(message, "content", "") or "") for message in captured["ainvoke_messages"][-1])
+        assert "必须以「# RCA 报告」" in summary_prompt
+        assert "对象在当前集群不可见" in summary_prompt
+
     def test_permission_tool_error_aborts_without_replan(self):
         node = ToolsNodes()
         node.all_tools = [
@@ -1489,6 +1666,20 @@ def test_should_skip_planned_summary_for_multi_step_table():
     restart = [AIMessage(content=("## 时间基准\n现在 2026-09-04。\n\n## 对象与结论\nCrashLoop。\n\n" "## 证据\nprevious_tail bind failed。\n\n## 原因\n端口占用。"))]
     assert ToolsNodes._should_skip_planned_summary(restart, completed_step_count=1) is True
     assert ToolsNodes._should_skip_planned_summary(restart, completed_step_count=2) is True
+    rca_prompt_mode = "alert_rca"
+    assert ToolsNodes._should_skip_planned_summary(prose, completed_step_count=1, report_mode=rca_prompt_mode) is False
+    assert ToolsNodes._should_skip_planned_summary(dump, completed_step_count=1, report_mode=rca_prompt_mode) is False
+    complete_rca = [
+        AIMessage(
+            content=(
+                "# RCA 报告\n\n## 事件概述\n对象不可见。\n\n## 异常对象清单\n| 对象 | 状态/现象 | 重启次数 | 关键事件 | 是否已定位 |\n"
+                "| --- | --- | --- | --- | --- |\n| pod/a | 当前集群无匹配 | 未知 | lookup_exhausted | 否 |\n\n"
+                "## 根因分析\n无法定位 namespace。\n\n## 修复建议\n核对集群。\n\n## 待确认项\n对象是否已删除。"
+            )
+        )
+    ]
+    assert ToolsNodes._should_skip_planned_summary(complete_rca, completed_step_count=1, report_mode=rca_prompt_mode) is True
+    assert ToolsNodes._should_skip_planned_summary(prose, completed_step_count=1, require_formatted_report=True) is False
 
 
 def test_select_visible_planned_messages_keeps_last_table_not_cumulative():
@@ -1639,6 +1830,7 @@ def test_planned_tool_step_guidance_alert_rca_keeps_report_template():
     )
     assert "必须以「# RCA 报告」" in last
     assert "事件概述" in last
+    assert "对象在当前集群不可见" in last
     assert "异常对象清单" in last
     assert "根因分析" in last
     assert "修复建议" in last
@@ -1649,6 +1841,7 @@ def test_planned_tool_step_guidance_alert_rca_keeps_report_template():
         agent_system_prompt="你是 Kubernetes 集群 RCA 助手。\n## 告警怎么读\n",
     )
     assert "必须以「# RCA 报告」" in summary
+    assert "对象在当前集群不可见" in summary
 
 
 def test_planned_tool_step_guidance_restart_reason_forbids_rca_template():

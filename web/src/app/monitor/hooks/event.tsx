@@ -113,6 +113,19 @@ const useGroupMethodList = (): ListItem[] => {
   );
 };
 
+const useEventActionMap = () => {
+  const { t } = useTranslation();
+  return useMemo(
+    () => ({
+      triggered: t('monitor.events.eventTriggered'),
+      escalated: t('monitor.events.eventEscalated'),
+      recovered: t('monitor.events.eventRecovered'),
+      closed: t('monitor.events.eventClosed'),
+    }),
+    [t]
+  );
+};
+
 export {
   useAlertDetailTabs,
   useAlarmTabs,
@@ -120,4 +133,5 @@ export {
   useScheduleList,
   useMethodList,
   useGroupMethodList,
+  useEventActionMap,
 };

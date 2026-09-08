@@ -4,7 +4,7 @@ from apps.cmdb.constants.constants import CollectPluginTypes
 
 
 class OceanStorCollectionPlugin(AutoRegisterCollectionPluginMixin, OceanStorCollectMetrics):
-    """华为 OceanStor 存储采集（多对象：storage + 池/磁盘/卷）。"""
+    """华为 OceanStor 存储采集（多对象：storage + 池/磁盘/卷 + 以太口/FC 口）。"""
 
     supported_task_type = CollectPluginTypes.CLOUD
     supported_model_id = "storage"
@@ -16,12 +16,16 @@ class OceanStorCollectionPlugin(AutoRegisterCollectionPluginMixin, OceanStorColl
         "storage_pool_info_gauge",
         "storage_disk_info_gauge",
         "storage_volume_info_gauge",
+        "storage_eth_port_info_gauge",
+        "storage_fc_port_info_gauge",
     ]
 
     field_mappings = {
         # 主对象：采集器已产出设备级字段与聚合容量/数量
         "storage": {
+            "inst_name": OceanStorCollectMetrics.self_device,
             "device_sn": "device_sn",
+            "ip_addr": "ip_addr",
             "model": "model",
             "brand": "brand",
             "storage_type": "storage_type",
@@ -72,6 +76,28 @@ class OceanStorCollectionPlugin(AutoRegisterCollectionPluginMixin, OceanStorColl
             "alloc_type": "ALLOCTYPE",
             "running_status": OceanStorCollectMetrics.running_status,
         },
+        # 以太口（GET /eth_port）；MACADDR → mac，无 MAC 不入库
+        "storage_eth_port": {
+            "inst_name": OceanStorCollectMetrics.set_eth_inst_name,
+            "self_device": OceanStorCollectMetrics.self_device,
+            "assos": OceanStorCollectMetrics.asso_eth_port,
+            "name": OceanStorCollectMetrics.set_port_name,
+            "location": "LOCATION",
+            "mac": OceanStorCollectMetrics.set_eth_mac,
+            "ip_addr": OceanStorCollectMetrics.set_eth_ip,
+            "running_status": OceanStorCollectMetrics.running_status,
+        },
+        # FC 口（GET /fc_port）；WWPN → wwpn，无 WWPN 不入库
+        "storage_fc_port": {
+            "inst_name": OceanStorCollectMetrics.set_fc_inst_name,
+            "self_device": OceanStorCollectMetrics.self_device,
+            "assos": OceanStorCollectMetrics.asso_fc_port,
+            "name": OceanStorCollectMetrics.set_port_name,
+            "location": "LOCATION",
+            "wwpn": OceanStorCollectMetrics.set_fc_wwpn,
+            "speed": OceanStorCollectMetrics.set_fc_speed,
+            "running_status": OceanStorCollectMetrics.running_status,
+        },
     }
 
     @property
@@ -80,7 +106,4 @@ class OceanStorCollectionPlugin(AutoRegisterCollectionPluginMixin, OceanStorColl
 
     @property
     def model_field_mapping(self):
-        return {
-            model_id: bind_collection_mapping(self, mapping)
-            for model_id, mapping in self.field_mappings.items()
-        }
+        return {model_id: bind_collection_mapping(self, mapping) for model_id, mapping in self.field_mappings.items()}

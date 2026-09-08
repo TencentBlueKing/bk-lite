@@ -17,3 +17,4 @@ from .system_settings import *  # noqa
 from .user import *  # noqa
 from .user_login_log import *  # noqa
 from .user_sync_source import *  # noqa
+from .credential import *  # noqa

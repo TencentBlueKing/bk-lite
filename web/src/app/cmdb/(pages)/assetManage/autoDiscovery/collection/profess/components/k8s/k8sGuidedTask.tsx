@@ -6,6 +6,7 @@ import K8sTaskForm from '../k8sTask';
 import CollectorInstall from './collectorInstall';
 import AccessComplete from './accessComplete';
 import { TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
+import type { K8sDaemonSetToleration } from '@/app/monitor/components/k8s-collector-install-step';
 
 interface Props {
   onClose: () => void;
@@ -32,6 +33,9 @@ const K8sGuidedTask: React.FC<Props> = ({
   const [step, setStep] = useState(0);
   const [collectorClusterId, setCollectorClusterId] = useState('');
   const [cloudRegionId, setCloudRegionId] = useState<number | string>('');
+  const [tolerations, setTolerations] = useState<
+    K8sDaemonSetToleration[] | null
+  >(null);
 
   const steps = [
     { title: t('Collection.k8sTask.accessConfig') || 'Access Config' },
@@ -56,9 +60,12 @@ const K8sGuidedTask: React.FC<Props> = ({
             selectedNode={selectedNode}
             modelItem={modelItem}
             editId={editId}
-            onAfterSave={({ collector_cluster_id, cloud_region_id }) => {
+            onAfterSave={({ collector_cluster_id, cloud_region_id, tolerations: nextTolerations }) => {
               setCollectorClusterId(collector_cluster_id);
               setCloudRegionId(cloud_region_id);
+              setTolerations(
+                nextTolerations === undefined ? null : nextTolerations
+              );
               setStep(1);
               return true; // 接管后续流程，阻止默认关闭
             }}
@@ -68,6 +75,7 @@ const K8sGuidedTask: React.FC<Props> = ({
           <CollectorInstall
             collectorClusterId={collectorClusterId}
             cloudRegionId={cloudRegionId}
+            tolerations={tolerations}
             onPrev={() => setStep(0)}
             onNext={() => setStep(2)}
           />
@@ -79,6 +87,7 @@ const K8sGuidedTask: React.FC<Props> = ({
               setStep(0);
               setCollectorClusterId('');
               setCloudRegionId('');
+              setTolerations(null);
             }}
           />
         )}

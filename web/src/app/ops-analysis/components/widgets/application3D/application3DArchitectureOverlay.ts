@@ -26,7 +26,7 @@ export interface ArchitectureHostSelection {
 }
 
 /** Keep in sync with `.app3d-arch-host-chip` in application3DChrome.css. */
-export const ARCH_HOST_OVERLAY_SIZE = { width: 176, height: 96 } as const;
+export const ARCH_HOST_OVERLAY_SIZE = { width: 236, height: 108 } as const;
 export const ARCH_HOST_OVERLAY_GAP = 10;
 
 const SIDES: ArchitectureOverlaySide[] = ['right', 'left', 'above', 'below'];
@@ -165,3 +165,9 @@ export const formatArchitectureHostAlarmCount = (count: number | null | undefine
 
 export const formatArchitectureHostSeverity = (label: string | null | undefined) =>
   label?.trim() ? label : UNKNOWN_STATUS_BADGE;
+
+export const formatArchitectureHostIp = (ip: string | undefined) =>
+  ip?.trim() ? ip : UNKNOWN_STATUS_BADGE;
+
+export const formatArchitectureHostOs = (os: string | undefined) =>
+  os?.trim() ? os : UNKNOWN_STATUS_BADGE;

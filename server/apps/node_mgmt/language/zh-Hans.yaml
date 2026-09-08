@@ -12,6 +12,9 @@ collector:
   telegraf_linux:
     name: Telegraf
     description: Telegraf （Linux）是一款轻量高效的指标采集器，原生具备各类对象的监控采集能力。同时作为数据中转站将其他监控、CMDB采集器收集的数据存储到平台。
+  otelcollector_linux:
+    name: OTel Collector
+    description: OTel Collector（Linux）是区域 OpenTelemetry 采集器，由容器节点 Sidecar 托管，接收语言探针上报的 Trace，并发布到 apm.traces.<区域>。
   jmx_weblogic_linux:
     description: WebLogic JMX（Linux）采集器基于Java管理扩展（JMX）采集WebLogic服务器的各类监控指标。
     name: WebLogic JMX
@@ -107,8 +110,10 @@ collector_tag:
   log: 日志
   beat: Beat
   monitor: 监控
+  apm: APM
   jmx: JMX
   cmdb: CMDB
+  executor: 执行器
   windows: Windows
   linux: Linux
 controller_status:
@@ -118,9 +123,9 @@ controller_status:
 controller:
   linux:
     name: Linux控制器
-    description: Linux控制器由 Sidecar 和 NATS Executor组成，用于管理Linux节点和节点上的各类采集器，实现节点上的自动化部署、资源协调与任务执行。控制器默认集成了Telegraf和Vector采集器。
+    description: Linux控制器即 Sidecar，用于管理Linux节点和节点上的各类托管组件，实现节点上的自动化部署、资源协调与任务执行。NATS-Executor、Ansible-Executor 作为托管组件单独管理。
   windows:
-    description: Windows控制器由 Sidecar 和 NATS Executor组成，用于管理Windows节点和节点上的各类采集器，实现节点上的自动化部署、资源协调与任务执行。控制器默认集成了Telegraf和Vector采集器。
+    description: Windows控制器即 Sidecar，用于管理Windows节点和节点上的各类托管组件，实现节点上的自动化部署、资源协调与任务执行。NATS-Executor 作为托管组件单独管理。
     name: Windows控制器
 controller_install_method:
   manual: 手动安装

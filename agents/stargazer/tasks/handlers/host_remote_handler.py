@@ -53,6 +53,9 @@ async def process_host_remote_callback_task(ctx: Dict, params: Dict[str, Any], t
         try:
             metrics_data = await asyncio.to_thread(collector.process_adhoc_result, raw_callback)
         except Exception as processing_err:
+            processing_message = str(processing_err)
+            if not processing_message.startswith("Host collection failed"):
+                processing_message = f"Host collection failed: {processing_err}"
             logger.error(
                 "event=host_remote_processing_failed task_id=%s failed_stage=%s error_type=%s",
                 safe_log_value(task_id),
@@ -64,7 +67,7 @@ async def process_host_remote_callback_task(ctx: Dict, params: Dict[str, Any], t
             await publish_metrics_to_nats(callback_ctx, error_metrics, callback_params, task_id)
             await host_remote_callback.mark_host_remote_processing_failed(
                 task_id,
-                f"Host collection failed: {processing_err}",
+                processing_message,
             )
             await _publish_host_remote_state_metric(
                 callback_ctx,
@@ -77,7 +80,7 @@ async def process_host_remote_callback_task(ctx: Dict, params: Dict[str, Any], t
             return {
                 "task_id": task_id,
                 "status": "failed",
-                "error": f"Host collection failed: {processing_err}",
+                "error": processing_message,
                 "monitor_type": callback_params.get("monitor_type", "host"),
             }
 

@@ -6,5 +6,9 @@ export const GENERATED_PAGE_CONTEXT_PILOTS: AiPageContextPilot[] = [
     test: (pathname) => pathname.includes('/monitor/view/dashboard/'),
     load: () => import('@/app/monitor/(pages)/view/dashboard/dashboard.pilot'),
   },
+  {
+    test: (pathname) => pathname.includes('/ops-analysis/view/'),
+    load: () => import('@/app/ops-analysis/(pages)/view/dashboard.pilot'),
+  },
 ];
 

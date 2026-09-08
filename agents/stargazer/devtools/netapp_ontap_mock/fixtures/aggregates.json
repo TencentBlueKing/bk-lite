@@ -1,0 +1,14 @@
+[
+  {
+    "name": "aggr1",
+    "uuid": "19425837-f32d-11e8-8ac9-005056bbc848",
+    "state": "online",
+    "space": {
+      "block_storage": {
+        "size": 1099511627776,
+        "used": 107374182400,
+        "available": 992137445376
+      }
+    }
+  }
+]

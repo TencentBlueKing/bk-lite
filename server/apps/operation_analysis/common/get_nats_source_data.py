@@ -20,6 +20,30 @@ _LOCAL_RPC_OVERLAY_MODULES = {
 }
 
 
+def build_nats_user_info(request) -> dict:
+    username = request.user.username
+    team_str = get_current_team(request)
+    try:
+        team = int(team_str)
+    except (TypeError, ValueError):
+        raise ValidationError("current_team cookie 缺失或格式错误，请重新登录或刷新页面")
+    include_children = request.COOKIES.get("include_children", "0") == "1"
+    permission = getattr(request.user, "permission", {})
+    if isinstance(permission, dict):
+        permission = {key: list(value) if isinstance(value, set) else value for key, value in permission.items()}
+    return {
+        "team": team,
+        "user": username,
+        "domain": request.user.domain,
+        "locale": translation.get_language() or getattr(request.user, "locale", None),
+        "timezone": getattr(request.user, "timezone", None),
+        "permission": permission,
+        "group_tree": getattr(request.user, "group_tree", []),
+        "is_superuser": getattr(request.user, "is_superuser", False),
+        "include_children": include_children,
+    }
+
+
 class GetNatsData:
     """
     获取NATS数据源数据
@@ -51,27 +75,7 @@ class GetNatsData:
         更新请求参数 带上当前请求的用户和组织信息
         :return:
         """
-        username = self.request.user.username
-        team_str = get_current_team(self.request)
-        try:
-            team = int(team_str)
-        except (TypeError, ValueError):
-            raise ValidationError("current_team cookie 缺失或格式错误，请重新登录或刷新页面")
-        include_children = self.request.COOKIES.get("include_children", "0") == "1"
-        permission = getattr(self.request.user, "permission", {})
-        if isinstance(permission, dict):
-            permission = {key: list(value) if isinstance(value, set) else value for key, value in permission.items()}
-        self.params[self.user_param_key] = {
-            "team": team,
-            "user": username,
-            "domain": self.request.user.domain,
-            "locale": translation.get_language() or getattr(self.request.user, "locale", None),
-            "timezone": getattr(self.request.user, "timezone", None),
-            "permission": permission,
-            "group_tree": getattr(self.request.user, "group_tree", []),
-            "is_superuser": getattr(self.request.user, "is_superuser", False),
-            "include_children": include_children,
-        }
+        self.params[self.user_param_key] = build_nats_user_info(self.request)
 
     def set_namespace_servers(self):
         """

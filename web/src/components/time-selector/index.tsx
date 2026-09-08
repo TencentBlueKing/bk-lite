@@ -30,6 +30,8 @@ interface TimeSelectorProps {
   className?: string; // 外层容器样式类名
   defaultValue?: TimeSelectorDefaultValue; // defaultValue为时间组合组件的默认值
   frequenceValue?: number; // 受控刷新频率（毫秒），仅同步下拉展示，不改变计时语义
+  /** 刷新按钮 loading，不改变自动刷新下拉。 */
+  refreshLoading?: boolean;
   onFrequenceChange?: (frequence: number) => void;
   onRefresh?: () => void;
   onChange?: (range: number[], originValue: number | null) => void;
@@ -49,6 +51,7 @@ const TimeSelector = forwardRef((props: TimeSelectorProps, ref) => {
       rangePickerVaule: null, // 如果想显示为rangePicker组件，selectValue设置为0，rangePickerVaule为rangePicker组件的值。
     },
     frequenceValue,
+    refreshLoading = false,
     customFrequencyList,
     customTimeRangeList,
     onFrequenceChange,
@@ -338,6 +341,7 @@ const TimeSelector = forwardRef((props: TimeSelectorProps, ref) => {
             className={timeSelectorStyle.refreshBtn}
             icon={<ReloadOutlined />}
             aria-label={t('common.refresh')}
+            loading={refreshLoading}
             onClick={onRefresh}
           />
           <Select

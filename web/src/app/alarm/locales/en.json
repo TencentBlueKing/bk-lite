@@ -216,6 +216,9 @@
         "source": "Source",
         "activeAlarms": "Active Alarms",
         "historicalAlarms": "Historical Alarms",
+        "capability": {
+            "alarmTrend": "Alert Trend"
+        },
         "event": "Events",
         "distributionMap": "Distribution Map",
         "activeAlarmsMapTips": "Display the distribution map of all active alarms.",
@@ -249,6 +252,7 @@
         "note": "Note",
         "alert": "Alert",
         "changes": "Timeline",
+        "relatedTopology": "Related Topology",
         "firstEventTime": "First Event Time",
         "lastEventTime": "Last Event Time",
         "closeTime": "Close Time",

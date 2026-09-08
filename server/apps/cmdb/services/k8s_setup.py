@@ -2,11 +2,13 @@ import re
 
 from apps.cmdb.collection.constants import COLLECTION_METRICS
 from apps.cmdb.collection.query_vm import Collection
+from apps.cmdb.constants.constants import CollectPluginTypes
 from apps.cmdb.constants.infra import InfraConstants
+from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.services.infra import InfraService
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
-
+from apps.core.utils.k8s_daemonset_tolerations import TOLERATIONS_UNSET, normalize_k8s_daemonset_tolerations, token_tolerations_kwargs
 
 _COLLECTOR_ID_RE = re.compile(InfraConstants.COLLECTOR_CLUSTER_ID_PATTERN)
 
@@ -15,9 +17,7 @@ def validate_collector_cluster_id(value: str) -> str:
     if not value:
         raise BaseAppException("collector_cluster_id is required")
     if not _COLLECTOR_ID_RE.match(value):
-        raise BaseAppException(
-            "Invalid collector_cluster_id: only letters, digits, underscore and hyphen are allowed"
-        )
+        raise BaseAppException("Invalid collector_cluster_id: only letters, digits, underscore and hyphen are allowed")
     return value
 
 
@@ -25,9 +25,44 @@ class K8sSetupService:
     """CMDB k8s 引导式接入：token / render / verify"""
 
     @staticmethod
-    def generate_install_token(collector_cluster_id: str, cloud_region_id) -> dict:
+    def persist_tolerations(collector_cluster_id: str, tolerations) -> None:
         validate_collector_cluster_id(collector_cluster_id)
-        token = InfraService.generate_install_token(collector_cluster_id, cloud_region_id)
+        normalized = normalize_k8s_daemonset_tolerations(tolerations)
+        tasks = CollectModels.objects.filter(
+            task_type=CollectPluginTypes.K8S,
+            params__collector_cluster_id=collector_cluster_id,
+        )
+        for task in tasks:
+            params = dict(task.params or {})
+            if normalized is None:
+                params.pop("tolerations", None)
+            else:
+                params["tolerations"] = normalized
+            task.params = params
+            task.save(update_fields=["params"])
+
+    @staticmethod
+    def load_tolerations(collector_cluster_id: str):
+        task = (
+            CollectModels.objects.filter(
+                task_type=CollectPluginTypes.K8S,
+                params__collector_cluster_id=collector_cluster_id,
+            )
+            .order_by("-updated_at")
+            .first()
+        )
+        if task is None:
+            return TOLERATIONS_UNSET
+        params = task.params or {}
+        if "tolerations" not in params:
+            return TOLERATIONS_UNSET
+        return normalize_k8s_daemonset_tolerations(params.get("tolerations"))
+
+    @staticmethod
+    def generate_install_token(collector_cluster_id: str, cloud_region_id, tolerations=TOLERATIONS_UNSET) -> dict:
+        validate_collector_cluster_id(collector_cluster_id)
+        extra = token_tolerations_kwargs(tolerations)
+        token = InfraService.generate_install_token(collector_cluster_id, cloud_region_id, **extra)
         return {
             "token": token,
             "expire_seconds": InfraConstants.TOKEN_EXPIRE_TIME,
@@ -35,7 +70,7 @@ class K8sSetupService:
         }
 
     @staticmethod
-    def generate_install_command(collector_cluster_id: str, cloud_region_id) -> dict:
+    def generate_install_command(collector_cluster_id: str, cloud_region_id, tolerations=TOLERATIONS_UNSET) -> dict:
         """
         后端生成安装命令，URL 直连 Django open_api（不走 Next.js 代理），
         与 Monitor 的 ManualCollectService.generate_install_command 保持一致。
@@ -49,17 +84,19 @@ class K8sSetupService:
 
         server_url = env_vars.get("NODE_SERVER_URL")
         if not server_url:
-            raise BaseAppException(
-                f"Missing NODE_SERVER_URL in cloud region {cloud_region_id}"
-            )
+            raise BaseAppException(f"Missing NODE_SERVER_URL in cloud region {cloud_region_id}")
 
-        token = InfraService.generate_install_token(collector_cluster_id, cloud_region_id)
+        if tolerations is not TOLERATIONS_UNSET:
+            K8sSetupService.persist_tolerations(collector_cluster_id, tolerations)
+
+        token = InfraService.generate_install_token(
+            collector_cluster_id,
+            cloud_region_id,
+            **token_tolerations_kwargs(tolerations),
+        )
         api_url = f"{server_url.rstrip('/')}/api/v1/cmdb/open_api/k8s_setup/render/"
 
-        install_command = (
-            f"curl -sSLk -X POST -H 'Content-Type: application/json' "
-            f"{api_url} -d '{{\"token\":\"{token}\"}}' | kubectl apply -f -"
-        )
+        install_command = f"curl -sSLk -X POST -H 'Content-Type: application/json' " f'{api_url} -d \'{{"token":"{token}"}}\' | kubectl apply -f -'
         return {
             "command": install_command,
             "token": token,
@@ -70,10 +107,14 @@ class K8sSetupService:
     @staticmethod
     def render_yaml_by_token(token: str) -> dict:
         token_data = InfraService.validate_and_get_token_data(token)
+        extra = {}
+        if "tolerations" in token_data:
+            extra["tolerations"] = token_data.get("tolerations")
         yaml_content = InfraService.render_config_from_cloud_region(
             cluster_name=token_data["cluster_name"],
             cloud_region_id=token_data["cloud_region_id"],
             config_type="resource",
+            **extra,
         )
         return {
             "yaml": yaml_content,

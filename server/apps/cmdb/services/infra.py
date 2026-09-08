@@ -6,9 +6,14 @@ from django.core.cache import cache
 from apps.cmdb.constants.infra import InfraConstants
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
+from apps.core.utils.k8s_daemonset_tolerations import (
+    TOLERATIONS_UNSET,
+    apply_tolerations_to_payload,
+    include_stored_tolerations,
+    normalize_k8s_daemonset_tolerations,
+)
 from apps.core.utils.webhook_tls import get_webhook_tls_verify
 from apps.rpc.node_mgmt import NodeMgmt
-
 
 CACHE_KEY_PREFIX = "cmdb_infra_install_token:"
 
@@ -17,7 +22,7 @@ class InfraService:
     """CMDB 基础设施配置服务 - 代理调用外部 infra API（与 monitor.InfraService 对齐，独立实现）"""
 
     @staticmethod
-    def generate_install_token(cluster_name: str, cloud_region_id: str) -> str:
+    def generate_install_token(cluster_name: str, cloud_region_id: str, tolerations=TOLERATIONS_UNSET) -> str:
         token = str(uuid.uuid4())
         cache_key = f"{CACHE_KEY_PREFIX}{token}"
 
@@ -27,6 +32,8 @@ class InfraService:
             "usage_count": 0,
             "max_usage": InfraConstants.TOKEN_MAX_USAGE,
         }
+        if tolerations is not TOLERATIONS_UNSET:
+            include_stored_tolerations(token_data, normalize_k8s_daemonset_tolerations(tolerations))
 
         cache.set(cache_key, token_data, timeout=InfraConstants.TOKEN_EXPIRE_TIME)
 
@@ -49,9 +56,7 @@ class InfraService:
         data = cache.get(cache_key)
 
         if not data:
-            logger.warning(
-                f"Token 验证失败: token={token[:8]}*** 在缓存中不存在或已过期"
-            )
+            logger.warning(f"Token 验证失败: token={token[:8]}*** 在缓存中不存在或已过期")
             raise BaseAppException("Invalid or expired token")
 
         usage_count = data.get("usage_count", 0)
@@ -59,10 +64,7 @@ class InfraService:
 
         if usage_count >= max_usage:
             cache.delete(cache_key)
-            logger.warning(
-                f"Token 已达到最大使用次数: token={token[:8]}***, "
-                f"usage={usage_count}/{max_usage}, cluster={data.get('cluster_name')}"
-            )
+            logger.warning(f"Token 已达到最大使用次数: token={token[:8]}***, " f"usage={usage_count}/{max_usage}, cluster={data.get('cluster_name')}")
             raise BaseAppException(f"Token has exceeded maximum usage limit ({max_usage} times)")
 
         data["usage_count"] = usage_count + 1
@@ -74,14 +76,21 @@ class InfraService:
             f"使用次数={data['usage_count']}/{max_usage}"
         )
 
-        return {
+        result = {
             "cluster_name": data["cluster_name"],
             "cloud_region_id": data["cloud_region_id"],
             "remaining_usage": max_usage - data["usage_count"],
         }
+        include_stored_tolerations(result, data.get("tolerations"))
+        return result
 
     @staticmethod
-    def render_config_from_cloud_region(cluster_name: str, cloud_region_id: str, config_type: str = "resource") -> str:
+    def render_config_from_cloud_region(
+        cluster_name: str,
+        cloud_region_id: str,
+        config_type: str = "resource",
+        tolerations=TOLERATIONS_UNSET,
+    ) -> str:
         """
         从云区域环境变量获取参数后，调用外部 webhook API 渲染 YAML。
         CMDB 默认走 type=resource 语义。
@@ -89,26 +98,24 @@ class InfraService:
         node_mgmt_rpc = NodeMgmt()
         env_vars = node_mgmt_rpc.get_cloud_region_envconfig(cloud_region_id)
 
-        nats_username = env_vars.get('NATS_USERNAME')
-        nats_password = env_vars.get('NATS_PASSWORD')
-        nats_servers = env_vars.get('NATS_SERVERS')
-        nats_tls_ca = env_vars.get('NATS_TLS_CA')
-        webhook_server_url = env_vars.get('WEBHOOK_SERVER_URL')
+        nats_username = env_vars.get("NATS_USERNAME")
+        nats_password = env_vars.get("NATS_PASSWORD")
+        nats_servers = env_vars.get("NATS_SERVERS")
+        nats_tls_ca = env_vars.get("NATS_TLS_CA")
+        webhook_server_url = env_vars.get("WEBHOOK_SERVER_URL")
 
         missing_vars = []
         if not nats_username:
-            missing_vars.append('NATS_USERNAME')
+            missing_vars.append("NATS_USERNAME")
         if not nats_password:
-            missing_vars.append('NATS_PASSWORD')
+            missing_vars.append("NATS_PASSWORD")
         if not nats_servers:
-            missing_vars.append('NATS_SERVERS')
+            missing_vars.append("NATS_SERVERS")
         if not webhook_server_url:
-            missing_vars.append('WEBHOOK_SERVER_URL')
+            missing_vars.append("WEBHOOK_SERVER_URL")
 
         if missing_vars:
-            raise BaseAppException(
-                f"Missing required environment variables in cloud region {cloud_region_id}: {', '.join(missing_vars)}"
-            )
+            raise BaseAppException(f"Missing required environment variables in cloud region {cloud_region_id}: {', '.join(missing_vars)}")
 
         params = {
             "nats_username": nats_username,
@@ -118,6 +125,10 @@ class InfraService:
             "nats_url": nats_servers,
             "nats_ca": nats_tls_ca,
         }
+        apply_tolerations_to_payload(
+            params,
+            None if tolerations is TOLERATIONS_UNSET else normalize_k8s_daemonset_tolerations(tolerations),
+        )
 
         return InfraService.render_config_from_api(params, webhook_server_url)
 
@@ -132,18 +143,16 @@ class InfraService:
             response = requests.post(
                 api_url,
                 json=params,
-                headers={'Content-Type': 'application/json'},
+                headers={"Content-Type": "application/json"},
                 timeout=InfraConstants.REQUEST_TIMEOUT,
                 verify=get_webhook_tls_verify(),
             )
 
             if response.status_code != 200:
-                raise BaseAppException(
-                    f"Infra API returned status {response.status_code}: {response.text}"
-                )
+                raise BaseAppException(f"Infra API returned status {response.status_code}: {response.text}")
 
             response_data = response.json()
-            yaml_content = response_data.get('yaml')
+            yaml_content = response_data.get("yaml")
 
             if not yaml_content:
                 raise BaseAppException("Invalid response from infra API: missing 'yaml' field")

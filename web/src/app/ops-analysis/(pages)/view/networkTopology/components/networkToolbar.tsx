@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Button, Tooltip } from 'antd';
 import {
   ZoomInOutlined,
@@ -8,7 +8,6 @@ import {
   FullscreenExitOutlined,
   EditOutlined,
   ReloadOutlined,
-  ShareAltOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import TimeSelector from '@/components/time-selector';
@@ -18,8 +17,6 @@ export interface NetworkToolbarProps {
   dirty: boolean;
   saving: boolean;
   shareMode?: boolean;
-  shareLoading?: boolean;
-  onOpenShare?: () => void;
   /** 节点缩放 / 自适应。 */
   onZoomIn?: () => void;
   onZoomOut?: () => void;
@@ -27,7 +24,7 @@ export interface NetworkToolbarProps {
   isFullscreen?: boolean;
   onFullscreenToggle?: () => void;
   /** 运行态刷新(对应 reference 的 TimeSelector.refresh)。 */
-  onRefresh: () => void;
+  onRefresh: () => void | Promise<void>;
   onFrequencyChange: (intervalMs: number) => void;
   frequenceValue?: number;
   /** 编辑 / 取消 / 保存。 */
@@ -36,6 +33,8 @@ export interface NetworkToolbarProps {
   onSave: () => void;
   editExtra?: React.ReactNode;
 }
+
+const MIN_REFRESH_LOADING_MS = 300;
 
 /**
  * 网络拓扑工具栏(design.md §7.6)。
@@ -52,14 +51,13 @@ export interface NetworkToolbarProps {
  * - 不提供 setting / filterConfig(无 filter 概念)
  * - 不提供节点 / 链路级删除按钮(由 Drawer 提供)
  * - 不提供状态计数(节点 / 链路状态展示由节点外层颜色和连线颜色表达,见 spec §5/§6)
+ * - 不提供分享入口;刷新 loading 留在工具栏内部,避免带动画布重渲染
  */
 const NetworkToolbar: React.FC<NetworkToolbarProps> = ({
   editMode,
   dirty,
   saving,
   shareMode = false,
-  shareLoading = false,
-  onOpenShare,
   onZoomIn,
   onZoomOut,
   onFit,
@@ -74,8 +72,41 @@ const NetworkToolbar: React.FC<NetworkToolbarProps> = ({
   editExtra,
 }) => {
   const { t } = useTranslation();
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshingRef = useRef(false);
+  const refreshLoadingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const iconButtonClassName =
     'rounded-full! h-8 w-8 min-w-8 flex items-center justify-center';
+
+  useEffect(() => {
+    return () => {
+      if (refreshLoadingTimerRef.current != null) {
+        clearTimeout(refreshLoadingTimerRef.current);
+      }
+    };
+  }, []);
+
+  const runRefresh = () => {
+    if (refreshingRef.current) {
+      return;
+    }
+    refreshingRef.current = true;
+    setRefreshing(true);
+    const startedAt = Date.now();
+    void Promise.resolve(onRefresh()).finally(() => {
+      const remain = Math.max(
+        0,
+        MIN_REFRESH_LOADING_MS - (Date.now() - startedAt),
+      );
+      refreshLoadingTimerRef.current = setTimeout(() => {
+        refreshLoadingTimerRef.current = null;
+        refreshingRef.current = false;
+        setRefreshing(false);
+      }, remain);
+    });
+  };
 
   return (
     <div className="flex items-center gap-1.5" data-testid="network-toolbar">
@@ -83,7 +114,8 @@ const NetworkToolbar: React.FC<NetworkToolbarProps> = ({
         <TimeSelector
           onlyRefresh
           frequenceValue={frequenceValue}
-          onRefresh={onRefresh}
+          refreshLoading={refreshing}
+          onRefresh={runRefresh}
           onFrequenceChange={onFrequencyChange}
           className="network-topology-refresh"
         />
@@ -142,20 +174,6 @@ const NetworkToolbar: React.FC<NetworkToolbarProps> = ({
             />
           </Tooltip>
         )}
-        {!shareMode && !editMode && onOpenShare && (
-          <Tooltip title={t('dashboard.share')}>
-            <Button
-              type="text"
-              icon={<ShareAltOutlined style={{ fontSize: 16 }} />}
-              loading={shareLoading}
-              disabled={shareLoading}
-              aria-label={t('dashboard.share')}
-              onClick={onOpenShare}
-              className={iconButtonClassName}
-              data-testid="network-toolbar-share"
-            />
-          </Tooltip>
-        )}
         {!shareMode && !editMode && (
           <Tooltip title={t('opsAnalysis.networkTopology.toolbar.edit')}>
             <Button
@@ -170,12 +188,13 @@ const NetworkToolbar: React.FC<NetworkToolbarProps> = ({
       </div>
 
       {editMode ? (
-        <Tooltip title={t('common.refresh')}>
+        <Tooltip title={t('opsAnalysis.networkTopology.toolbar.refreshRuntime')}>
           <Button
             type="text"
             icon={<ReloadOutlined style={{ fontSize: 16 }} />}
-            aria-label={t('common.refresh')}
-            onClick={onRefresh}
+            aria-label={t('opsAnalysis.networkTopology.toolbar.refreshRuntime')}
+            loading={refreshing}
+            onClick={runRefresh}
             className={iconButtonClassName}
             data-testid="network-toolbar-refresh"
           />

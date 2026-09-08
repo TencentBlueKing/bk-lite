@@ -139,10 +139,15 @@ class MonitorObjectService:
             return {}
 
     @staticmethod
-    def _safe_fill_display_metrics(monitor_object_id, obj_metric_map, result):
+    def _safe_fill_display_metrics(monitor_object_id, obj_metric_map, result, skip_out_keys=None):
         """展示指标不可用不应阻断实例身份与基础事实列表。"""
         try:
-            MonitorObjectService._fill_display_metrics(monitor_object_id, obj_metric_map, result)
+            MonitorObjectService._fill_display_metrics(
+                monitor_object_id,
+                obj_metric_map,
+                result,
+                skip_out_keys=skip_out_keys,
+            )
         except Exception:
             logger.exception("回填监控实例展示指标失败，列表将保留基础事实")
 
@@ -190,8 +195,14 @@ class MonitorObjectService:
         vm_params=None,
         instance_id=None,
         instance_ids=None,
+        ordering=None,
+        order="asc",
     ):
         """获取监控对象实例"""
+        from apps.monitor.services.instance_list_ordering import apply_ordering_to_instances, parse_ordering_params
+
+        ordering_key, order_dir = parse_ordering_params(ordering, order)
+
         qs = qs.filter(
             monitor_object_id=monitor_object_id,
             is_deleted=False,
@@ -259,30 +270,67 @@ class MonitorObjectService:
         qs = qs.distinct()
 
         count = qs.count()
-
-        start = (page - 1) * page_size
-        end = start + page_size
         projected_qs = MonitorObjectService._project_instance_identity(qs)
-        if page_size == -1:
-            objs = projected_qs
+        skip_out_keys = None
+
+        if ordering_key:
+            all_objs = list(projected_qs)
+            # 排序阶段先用空 org_map 序列化，分页后再补组织。
+            candidates = [MonitorObjectService._serialize_instance_list_item(obj, instance_map, {}) for obj in all_objs]
+            fill_missing_host_container_asset_ips(candidates, monitor_obj.name)
+            filled_out_key = apply_ordering_to_instances(
+                monitor_object_id,
+                obj_metric_map,
+                candidates,
+                ordering_key,
+                order_dir,
+                query_metric_values=MonitorObjectService._query_metric_values,
+            )
+            if page_size == -1:
+                result = candidates
+            else:
+                start = (page - 1) * page_size
+                end = start + page_size
+                result = candidates[start:end]
+            if filled_out_key:
+                skip_out_keys = {filled_out_key}
+            page_ids = [item["instance_id"] for item in result]
+            org_objs = MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=page_ids)
+            org_objs = MonitorObjectService._filter_visible_organizations(org_objs, visible_organization_ids)
+            org_map = {}
+            for org in org_objs:
+                if org.monitor_instance_id not in org_map:
+                    org_map[org.monitor_instance_id] = set()
+                org_map[org.monitor_instance_id].add(org.organization)
+            for item in result:
+                item["organizations"] = list(org_map.get(item["instance_id"], []))
         else:
-            objs = projected_qs[start:end]
-        org_objs = MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=[obj.id for obj in objs])
-        org_objs = MonitorObjectService._filter_visible_organizations(org_objs, visible_organization_ids)
-        org_map = {}
-        for org in org_objs:
-            if org.monitor_instance_id not in org_map:
-                org_map[org.monitor_instance_id] = set()
-            org_map[org.monitor_instance_id].add(org.organization)
+            start = (page - 1) * page_size
+            end = start + page_size
+            if page_size == -1:
+                objs = projected_qs
+            else:
+                objs = projected_qs[start:end]
+            org_objs = MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=[obj.id for obj in objs])
+            org_objs = MonitorObjectService._filter_visible_organizations(org_objs, visible_organization_ids)
+            org_map = {}
+            for org in org_objs:
+                if org.monitor_instance_id not in org_map:
+                    org_map[org.monitor_instance_id] = set()
+                org_map[org.monitor_instance_id].add(org.organization)
 
-        result = []
-
-        for obj in objs:
-            result.append(MonitorObjectService._serialize_instance_list_item(obj, instance_map, org_map))
-        fill_missing_host_container_asset_ips(result, monitor_obj.name)
+            result = []
+            for obj in objs:
+                result.append(MonitorObjectService._serialize_instance_list_item(obj, instance_map, org_map))
+            fill_missing_host_container_asset_ips(result, monitor_obj.name)
 
         if add_metrics and page_size != -1:
-            MonitorObjectService._safe_fill_display_metrics(monitor_object_id, obj_metric_map, result)
+            MonitorObjectService._safe_fill_display_metrics(
+                monitor_object_id,
+                obj_metric_map,
+                result,
+                skip_out_keys=skip_out_keys,
+            )
 
         MonitorObjectService.add_attr(result, visible_organization_ids)
 
@@ -479,7 +527,7 @@ class MonitorObjectService:
                     instance_plugin_map.setdefault(inst["instance_id"], set()).add(plugin_name)
 
     @staticmethod
-    def _fill_display_metrics(monitor_object_id, obj_metric_map, result):
+    def _fill_display_metrics(monitor_object_id, obj_metric_map, result, skip_out_keys=None):
         """按 display_fields 的 (plugin, metric) 绑定回填展示指标值。
 
         - 回填 key 用复合 key ``<plugin>::<metric>``(见 display_field_key),避免不同插件的同名
@@ -488,7 +536,9 @@ class MonitorObjectService:
           无采集配置的实例无法判定插件归属,不展示带插件的绑定指标(显示 --)。
         - 兼容:绑定缺 plugin(遗留配置)时按指标名匹配、不做隔离、用裸指标名回填;display_fields
           为空时退回 supplementary_indicators(裸指标名,不区分插件)。
+        - ``skip_out_keys``: 排序阶段已写入的 out_key，本页补数时跳过同列重复 VM 查询。
         """
+        skip_out_keys = set(skip_out_keys or ())
         display_fields = obj_metric_map.get("display_fields", [])
         bindings = extract_metric_bindings(display_fields)
         field_bindings = extract_field_bindings(display_fields)
@@ -498,6 +548,8 @@ class MonitorObjectService:
             if not supplementary:
                 return
             for metric_obj in Metric.objects.filter(monitor_object_id=monitor_object_id, name__in=supplementary):
+                if metric_obj.name in skip_out_keys:
+                    continue
                 value_map = MonitorObjectService._query_metric_values(metric_obj, result)
                 for instance in result:
                     instance[metric_obj.name] = value_map.get(instance["instance_id"])
@@ -531,6 +583,9 @@ class MonitorObjectService:
         resolved = []
         for binding in bindings:
             plugin_name, metric_name = binding["plugin"], binding["metric"]
+            out_key = display_field_key(plugin_name, metric_name)
+            if out_key in skip_out_keys:
+                continue
             if plugin_name:
                 metric_obj = metric_by_plugin.get((plugin_name, metric_name))
                 eligible = [inst for inst in result if plugin_name in instance_plugin_map.get(inst["instance_id"], set())]
@@ -563,6 +618,9 @@ class MonitorObjectService:
 
         for binding in field_bindings:
             plugin_name, metric_name, field = binding["plugin"], binding["metric"], binding["field"]
+            out_key = display_field_key(plugin_name, metric_name, field)
+            if out_key in skip_out_keys:
+                continue
             if plugin_name:
                 metric_obj = metric_by_plugin.get((plugin_name, metric_name))
                 eligible = [inst for inst in result if plugin_name in instance_plugin_map.get(inst["instance_id"], set())]
@@ -572,7 +630,6 @@ class MonitorObjectService:
             if not metric_obj or not eligible:
                 continue
             value_map = MonitorObjectService._query_metric_field_values(metric_obj, eligible, field)
-            out_key = display_field_key(plugin_name, metric_name, field)
             for instance in eligible:
                 instance[out_key] = value_map.get(instance["instance_id"])
 

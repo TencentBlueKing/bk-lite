@@ -10,15 +10,16 @@ import pytest
 
 from apps.monitor.models import (
     MonitorAlert,
+    MonitorAlertMetricSnapshot,
     MonitorEvent,
     MonitorInstance,
     MonitorInstanceOrganization,
     PolicyInstanceBaseline,
 )
-from apps.monitor.serializers.monitor_alert import MonitorAlertSerializer
-from apps.monitor.tasks.services.policy_scan import metric_query as metric_query_module
 from apps.monitor.models.monitor_object import MonitorObject
 from apps.monitor.models.monitor_policy import MonitorPolicy
+from apps.monitor.serializers.monitor_alert import MonitorAlertSerializer
+from apps.monitor.tasks.services.policy_scan import metric_query as metric_query_module
 from apps.monitor.tasks.services.policy_scan.scanner import MonitorPolicyScan
 
 pytestmark = pytest.mark.django_db
@@ -80,25 +81,17 @@ class TestBuildInstancesMap:
         assert scan.instances_map == {}
 
     def test_derivative_object_builds_parent_name_map(self):
-        parent = MonitorObject.objects.create(
-            name="ClusterObj", level="base", instance_id_keys=["instance_id"]
-        )
+        parent = MonitorObject.objects.create(name="ClusterObj", level="base", instance_id_keys=["instance_id"])
         child = MonitorObject.objects.create(
             name="PodObj",
             level="derivative",
             parent=parent,
             instance_id_keys=["instance_id", "pod"],
         )
-        MonitorInstance.objects.create(
-            id="('cluster-a',)", name="生产集群", monitor_object=parent
-        )
+        MonitorInstance.objects.create(id="('cluster-a',)", name="生产集群", monitor_object=parent)
         child_id = "('cluster-a', 'orders-7f9')"
-        MonitorInstance.objects.create(
-            id=child_id, name="orders-7f9", monitor_object=child
-        )
-        policy = _make_policy(
-            child, source={"type": "instance", "values": [child_id]}
-        )
+        MonitorInstance.objects.create(id=child_id, name="orders-7f9", monitor_object=child)
+        policy = _make_policy(child, source={"type": "instance", "values": [child_id]})
 
         scan = MonitorPolicyScan(policy)
 
@@ -144,7 +137,9 @@ class TestBuildBaselinesMap:
         MonitorInstance.objects.create(id="('h1',)", name="主机1", monitor_object=obj)
         policy = _make_policy(obj, source={"type": "instance", "values": ["('h1',)"]})
         PolicyInstanceBaseline.objects.create(
-            policy=policy, monitor_instance_id="('h1',)", metric_instance_id="('h1','eth0')",
+            policy=policy,
+            monitor_instance_id="('h1',)",
+            metric_instance_id="('h1','eth0')",
         )
         scan = MonitorPolicyScan(policy)
         assert scan.baselines_map == {"('h1','eth0')": "('h1',)"}
@@ -218,13 +213,15 @@ class TestRun:
         scan = MonitorPolicyScan(policy)
         mocker.patch.object(scan.metric_query_service, "set_monitor_obj_instance_key")
         mocker.patch.object(
-            scan.alert_detector, "detect_threshold_alerts",
+            scan.alert_detector,
+            "detect_threshold_alerts",
             return_value=([], []),
         )
         mocker.patch.object(scan.alert_detector, "count_events")
-        mocker.patch.object(scan.alert_detector, "recover_threshold_alerts")
+        mocker.patch.object(scan.alert_detector, "recover_threshold_alerts", return_value=[])
         create = mocker.patch.object(
-            scan.event_alert_manager, "create_events_and_alerts",
+            scan.event_alert_manager,
+            "create_events_and_alerts",
             return_value=([], []),
         )
         scan.run()
@@ -269,14 +266,8 @@ class TestPodAlertEndToEnd:
             "apps.core.fields.s3_json_field.S3JSONField._upload_to_s3",
             return_value="2026/01/01/mock.json.gz",
         )
-        mocker.patch(
-            "apps.monitor.tasks.services.policy_scan.snapshot_recorder."
-            "SnapshotRecorder.record_snapshots_for_active_alerts"
-        )
-        mocker.patch(
-            "apps.monitor.tasks.services.policy_scan.alert_detector."
-            "AlertLifecycleNotifier.notify_alerts"
-        )
+        mocker.patch("apps.monitor.tasks.services.policy_scan.snapshot_recorder." "SnapshotRecorder.record_snapshots_for_active_alerts")
+        mocker.patch("apps.monitor.tasks.services.policy_scan.alert_detector." "AlertLifecycleNotifier.notify_alerts")
 
         query_condition = {
             "type": "pmq",
@@ -344,7 +335,7 @@ class TestPodAlertEndToEnd:
             ]
         )
 
-        # 两个容器同时无数据：生成两个事件，但按 Pod 聚合为一个 alert。
+        # 两个容器同时无数据：只写一条 triggered Event，按 Pod 聚合为一个 alert。
         phase["result"] = []
         MonitorPolicyScan(no_data_policy).run()
 
@@ -353,7 +344,8 @@ class TestPodAlertEndToEnd:
         assert no_data_alert.monitor_instance_id == pod_id
         assert no_data_alert.monitor_instance_name == "orders-7f9"
         assert no_data_alert.content == "生产集群/orders-7f9 Pod Ready 无数据"
-        assert first_events.count() == 2
+        assert first_events.count() == 1
+        assert first_events.get().action == MonitorEvent.Action.TRIGGERED
         assert set(first_events.values_list("alert_id", flat=True)) == {no_data_alert.id}
 
         # api 恢复但 worker 仍无数据：复用原 alert，不应提前恢复。
@@ -374,7 +366,7 @@ class TestPodAlertEndToEnd:
         no_data_alert.refresh_from_db()
         assert no_data_alert.status == "new"
         assert MonitorAlert.objects.filter(policy_id=no_data_policy.id).count() == 1
-        assert MonitorEvent.objects.filter(policy_id=no_data_policy.id).count() == 3
+        assert MonitorEvent.objects.filter(policy_id=no_data_policy.id).count() == 1
 
         # 两个容器都恢复数据：同一个聚合 alert 自动恢复。
         no_data_policy.last_run_time += timedelta(minutes=10)
@@ -395,3 +387,68 @@ class TestPodAlertEndToEnd:
         no_data_alert.refresh_from_db()
         assert no_data_alert.status == "recovered"
         assert no_data_alert.end_event_time == no_data_policy.last_run_time
+        recovered_events = MonitorEvent.objects.filter(policy_id=no_data_policy.id, action=MonitorEvent.Action.RECOVERED)
+        assert recovered_events.count() == 1
+
+
+class TestThresholdLifecycleEvents:
+    def test_still_firing_adds_info_snapshot_without_new_event(self, mocker):
+        obj = _make_obj()
+        MonitorInstance.objects.create(id="('h1',)", name="主机1", monitor_object=obj)
+        policy = _make_policy(
+            obj,
+            source={"type": "instance", "values": ["('h1',)"]},
+            threshold=[{"method": ">", "value": 80, "level": "critical"}],
+            recovery_condition=5,
+            period={"type": "min", "value": 5},
+        )
+        phase = {
+            "result": [
+                {
+                    "metric": {"instance_id": "h1"},
+                    "values": [[1767225600, "95"]],
+                }
+            ]
+        }
+
+        def mock_victoriametrics(*args, **kwargs):
+            return {"data": {"result": phase["result"]}}
+
+        mocker.patch.dict(metric_query_module.METHOD, {"max": mock_victoriametrics})
+        snapshot_store = {}
+
+        def upload_snapshot(self, instance, json_data, *args, **kwargs):
+            snapshot_store["data"] = json_data
+            return "2026/01/01/mock.json.gz"
+
+        mocker.patch(
+            "apps.core.fields.s3_json_field.S3JSONField._upload_to_s3",
+            upload_snapshot,
+        )
+        mocker.patch(
+            "apps.core.fields.s3_json_field.S3JSONField._load_from_s3",
+            lambda self, *args, **kwargs: snapshot_store.get("data", []),
+        )
+        mocker.patch("apps.monitor.tasks.services.policy_scan.alert_detector.AlertLifecycleNotifier.notify_alerts")
+        mocker.patch(
+            "apps.monitor.tasks.services.policy_scan.snapshot_recorder." "SnapshotRecorder._build_pre_alert_snapshot",
+            return_value=None,
+        )
+
+        MonitorPolicyScan(policy).run()
+        alert = MonitorAlert.objects.get(policy_id=policy.id)
+        events = list(MonitorEvent.objects.filter(alert_id=alert.id))
+        assert [event.action for event in events] == [MonitorEvent.Action.TRIGGERED]
+        first_snap = MonitorAlertMetricSnapshot.objects.get(alert_id=alert.id)
+        assert any(item["type"] == "event" for item in first_snap.snapshots)
+
+        policy.last_run_time += timedelta(minutes=5)
+        policy.save(update_fields=["last_run_time"])
+        MonitorPolicyScan(policy).run()
+
+        assert MonitorEvent.objects.filter(alert_id=alert.id).count() == 1
+        snap = MonitorAlertMetricSnapshot.objects.get(alert_id=alert.id)
+        assert any(item["type"] == "info" for item in snap.snapshots)
+        alert.refresh_from_db()
+        assert alert.status == "new"
+        assert alert.level == "critical"

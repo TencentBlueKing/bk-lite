@@ -98,9 +98,13 @@ assert.doesNotMatch(topologyCanvas, /encodingLegend|TopologyEncodingLegend/, '�
 assert.match(topologyCanvas, /startNodeDrag/, '拓扑节点必须可拖动整理布局');
 assert.match(topologyCanvas, /nodePositions/, '拖动整理必须覆盖层次与力导向算出的节点坐标');
 assert.match(topologyCanvas, /onWheel/, '拓扑必须支持滚轮缩放');
-assert.match(topologyPage, /onSelect/, '拓扑节点必须可点选并停在图上调查');
-assert.match(topologyPage, /TopologyInspectPanel/, '拓扑必须提供右侧调查栏');
-assert.match(topologyPage, /getTraces/, '调查栏样本 Trace 必须来自真实调用链查询');
+assert.match(topologyPage, /onSelect/, '拓扑节点必须可点选并停在图上打开服务概况');
+assert.match(topologyPage, /TopologyInspectPanel/, '拓扑必须提供右侧服务概况');
+assert.match(topologyPage, /getTraces/, '服务概况样本 Trace 必须来自真实调用链查询');
+assert.match(topologyInspectPanel, /服务概况/, '右侧抽屉必须叫服务概况而不是调查');
+assert.match(topologyInspectPanel, /viewDetail/, '服务概况必须提供查看详情入口');
+assert.match(topologyInspectPanel, /target="_blank"/, '查看详情必须新窗口打开服务详情页');
+assert.doesNotMatch(topologyInspectPanel, /['"]调查['"]/, '右侧抽屉文案不得再使用调查');
 assert.match(topologyPage, /isolateTopologyNeighborhood/, '拓扑必须支持一跳隔离');
 assert.match(topologyPage, /totalCalls/, '拓扑摘要必须展示调用而不是观测 Trace');
 assert.match(topologyPage, /最多 200 条 Trace 抽样聚合/, '截断提示必须说明拓扑按 Trace 抽样，指标不是全量流量');
@@ -118,8 +122,8 @@ assert.match(applicationObservability, /topologyState === 'ready'/, '应用拓�
 assert.match(applicationObservability, /setTopologyState\(catalogErrorKind\(error\)\)/, '应用拓扑遥测失败必须按不可用展示，不能写成空调用');
 assert.doesNotMatch(topologyPage, /setState\('loading'\)/, '刷新拓扑不得先把已有图画成 loading 空态');
 assert.match(topologyCanvas, /data-node-kind/, '推断节点必须可被画布按 kind 识别');
-assert.match(topologyInspectPanel, /peerAddress/, '推断节点调查栏必须展示 Client Span 中的地址');
-assert.match(topologyInspectPanel, /dbName/, '推断节点调查栏必须单独展示库名而不是用库名冒充 host');
+assert.match(topologyInspectPanel, /peerAddress/, '推断节点服务概况必须展示 Client Span 中的地址');
+assert.match(topologyInspectPanel, /dbName/, '推断节点服务概况必须单独展示库名而不是用库名冒充 host');
 assert.match(applicationObservability, /include_inferred:\s*true/, '应用详情拓扑必须请求本应用的直接推断下游');
 assert.match(applicationObservability, /include_user_request:\s*true/, '应用详情拓扑必须请求用户请求入口');
 assert.doesNotMatch(serviceDetail, /include_inferred:\s*true/, '服务详情不得打开推断查询');

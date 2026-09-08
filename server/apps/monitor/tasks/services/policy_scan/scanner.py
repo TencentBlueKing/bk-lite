@@ -181,14 +181,14 @@ class MonitorPolicyScan:
         """处理阈值告警"""
         alert_events, info_events = self.alert_detector.detect_threshold_alerts()
         self.alert_detector.count_events(alert_events, info_events)
-        self.alert_detector.recover_threshold_alerts()
-        return alert_events, info_events
+        recovered_events = self.alert_detector.recover_threshold_alerts() or []
+        return alert_events, info_events, recovered_events
 
     def _process_no_data_alerts(self):
         """处理无数据告警"""
         no_data_events = self.alert_detector.detect_no_data_alerts()
-        self.alert_detector.recover_no_data_alerts()
-        return no_data_events
+        recovered_events = self.alert_detector.recover_no_data_alerts() or []
+        return no_data_events, recovered_events
 
     def _create_events_alerts_and_notify(self, events):
         """创建事件、告警并发送通知"""
@@ -228,7 +228,7 @@ class MonitorPolicyScan:
         if not self._pre_check():
             return
 
-        alert_events, info_events, no_data_events = self._collect_events()
+        alert_events, info_events, no_data_events, recovered_events = self._collect_events()
 
         self._sync_baselines(alert_events, info_events)
 
@@ -238,7 +238,11 @@ class MonitorPolicyScan:
             return
         event_objs, new_alerts = result
 
-        self._record_snapshots(info_events, event_objs, new_alerts)
+        self._record_snapshots(
+            info_events + alert_events,
+            list(event_objs or []) + recovered_events,
+            new_alerts,
+        )
 
     def _sync_baselines(self, alert_events, info_events):
         """同步基准表（只增不删）"""
@@ -282,7 +286,7 @@ class MonitorPolicyScan:
 
     def _collect_events(self):
         """收集告警事件"""
-        alert_events, info_events, no_data_events = [], [], []
+        alert_events, info_events, no_data_events, recovered_events = [], [], [], []
 
         if AlertConstants.THRESHOLD in self.policy.enable_alerts:
             success, result = self._execute_step(
@@ -291,7 +295,8 @@ class MonitorPolicyScan:
                 critical=True,
             )
             if success and result is not None:
-                alert_events, info_events = result
+                alert_events, info_events, threshold_recovered = result
+                recovered_events.extend(threshold_recovered)
                 logger.info(f"Threshold alerts: {len(alert_events)} alerts, {len(info_events)} info events")
 
         if AlertConstants.NO_DATA in self.policy.enable_alerts:
@@ -301,7 +306,8 @@ class MonitorPolicyScan:
                 critical=True,
             )
             if success and result is not None:
-                no_data_events = result
+                no_data_events, no_data_recovered = result
+                recovered_events.extend(no_data_recovered)
                 logger.info(f"No-data alerts: {len(no_data_events)} events")
 
-        return alert_events, info_events, no_data_events
+        return alert_events, info_events, no_data_events, recovered_events

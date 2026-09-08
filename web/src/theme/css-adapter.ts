@@ -117,6 +117,7 @@ const legacyVariableMap: Record<string, keyof SemanticColorTokens> = {
   '--color-bg-6': 'surfaceTranslucent',
   '--color-bg-7': 'surfaceTranslucentSubtle',
   '--color-success': 'statusSuccess',
+  '--color-warning': 'statusWarning',
   '--color-fail': 'statusError',
   '--color-count': 'metaCount',
   '--color-count-bg': 'metaCountSoft',

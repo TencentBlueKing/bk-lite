@@ -1,0 +1,13 @@
+[
+  {
+    "id": "pool_1",
+    "name": "Pool0",
+    "sizeTotal": 1099511627776,
+    "sizeUsed": 107374182400,
+    "sizeFree": 992137445376,
+    "type": 1,
+    "health": {
+      "value": 5
+    }
+  }
+]

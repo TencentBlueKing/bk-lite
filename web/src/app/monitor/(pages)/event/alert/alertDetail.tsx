@@ -21,11 +21,9 @@ import {
   ChartData,
   MetricItem
 } from '@/app/monitor/types';
-import { HeatMapDataItem } from '@/types';
 import { AlertOutlined } from '@ant-design/icons';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
-import { HeatMapCellClickPayload } from '@/components/heat-map';
-import { useAlertDetailTabs } from '@/app/monitor/hooks/event';
+import { useAlertDetailTabs, useEventActionMap } from '@/app/monitor/hooks/event';
 import {
   useLevelList,
   useStateMap,
@@ -34,7 +32,6 @@ import {
 import useMonitorApi from '@/app/monitor/api';
 import useEventApi from '@/app/monitor/api/event';
 import Information from './information';
-import EventHeatMap, { getHeatMapCellColor } from '@/components/heat-map';
 import { renderChart } from '@/app/monitor/utils/common';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { LEVEL_MAP } from '@/app/monitor/constants';
@@ -49,7 +46,7 @@ import {
 
 const TIMELINE_ITEM_HEIGHT = 48;
 
-type AlertEventItem = TableDataItem & HeatMapDataItem;
+type AlertEventItem = TableDataItem;
 
 const AlertDetail = forwardRef<ModalRef, ModalConfig>(
   ({ objects, userList, onSuccess }, ref) => {
@@ -61,6 +58,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
     const STATE_MAP = useStateMap();
     const ALERT_TYPE_MAP = useAlertTypeMap();
     const LEVEL_LIST = useLevelList();
+    const EVENT_ACTION_MAP = useEventActionMap();
     const [groupVisible, setGroupVisible] = useState<boolean>(false);
     const [formData, setFormData] = useState<TableDataItem>({});
     const [title, setTitle] = useState<string>('');
@@ -92,26 +90,6 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
       observer.observe(container);
       return () => observer.disconnect();
     }, [activeTab, groupVisible]);
-
-    // 预计算每个事件所在小时的事件数量 → 对应热力图颜色
-    const eventDotColors = useMemo(() => {
-      // 按小时分组统计数量
-      const hourCountMap = new Map<string, number>();
-      eventData.forEach((item) => {
-        if (!item.event_time) return;
-        const d = new Date(item.event_time);
-        const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}-${d.getHours()}`;
-        hourCountMap.set(key, (hourCountMap.get(key) || 0) + 1);
-      });
-      // 为每个事件生成颜色（按天视图的阈值，因为按小时分桶）
-      return eventData.map((item) => {
-        if (!item.event_time) return '#d9d9d9';
-        const d = new Date(item.event_time);
-        const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}-${d.getHours()}`;
-        const count = hourCountMap.get(key) || 0;
-        return getHeatMapCellColor(count, 'day');
-      });
-    }, [eventData]);
 
     useImperativeHandle(ref, () => ({
       showModal: ({ title, form }) => {
@@ -232,18 +210,38 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
     };
 
     const renderTimelineContent = useCallback(
-      (item: AlertEventItem) => (
-        <>
-          <span className="font-[600] mr-[10px] inline-block shrink-0">
-            {item.event_time ? convertToLocalizedTime(item.event_time) : '--'}
-          </span>
-          {`${formData.metric?.display_name || item.content}`}
-          <span className="text-[var(--color-text-3)] ml-[10px]">
-            {getEnumValueUnit(formData.metric, item.value)}
-          </span>
-        </>
-      ),
-      [convertToLocalizedTime, formData.metric, getEnumValueUnit]
+      (item: AlertEventItem) => {
+        const actionLabel = item.action
+          ? EVENT_ACTION_MAP[item.action as keyof typeof EVENT_ACTION_MAP]
+          : '';
+        const levelLabel =
+          LEVEL_LIST.find((entry) => entry.value === item.level)?.label ||
+          item.level ||
+          '';
+        return (
+          <>
+            <span className="font-[600] mr-[10px] inline-block shrink-0">
+              {item.event_time ? convertToLocalizedTime(item.event_time) : '--'}
+            </span>
+            {actionLabel ? (
+              <Tag className="mr-[8px]">{actionLabel}</Tag>
+            ) : null}
+            {levelLabel ? (
+              <Tag
+                className="mr-[8px]"
+                color={LEVEL_MAP[item.level] as string}
+              >
+                {levelLabel}
+              </Tag>
+            ) : null}
+            {`${formData.metric?.display_name || item.content}`}
+            <span className="text-[var(--color-text-3)] ml-[10px]">
+              {getEnumValueUnit(formData.metric, item.value)}
+            </span>
+          </>
+        );
+      },
+      [EVENT_ACTION_MAP, LEVEL_LIST, convertToLocalizedTime, formData.metric, getEnumValueUnit]
     );
 
     const renderTimelineItem = useCallback(
@@ -252,7 +250,6 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
         _index: number,
         props: { style: React.CSSProperties }
       ) => {
-        const dotColor = eventDotColors[_index] || '#d9d9d9';
         const isLast = _index === eventData.length - 1;
         return (
           <div style={props.style} className="relative">
@@ -278,7 +275,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
                 top: 6,
                 insetInlineStart: 3,
                 borderRadius: '50%',
-                border: `3px solid ${dotColor}`,
+                border: '3px solid var(--color-primary)',
                 backgroundColor: '#fff',
                 boxSizing: 'border-box'
               }}
@@ -298,7 +295,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
           </div>
         );
       },
-      [eventData.length, eventDotColors, renderTimelineContent]
+      [eventData.length, renderTimelineContent]
     );
 
     const handleCancel = () => {
@@ -328,23 +325,6 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
         return;
       }
     };
-
-    const handleHeatMapCellClick = useCallback(
-      ({ startTime, endTime }: HeatMapCellClickPayload) => {
-        const startMs = new Date(startTime).getTime();
-        const endMs = new Date(endTime).getTime();
-        const targetIndex = eventData.findIndex((item) => {
-          if (!item.event_time) return false;
-          const eventMs = new Date(item.event_time).getTime();
-          return eventMs >= startMs && eventMs < endMs;
-        });
-
-        if (targetIndex >= 0) {
-          timelineRef.current?.scrollTo({ index: targetIndex, align: 'top' });
-        }
-      },
-      [eventData]
-    );
 
     const closeModal = () => {
       handleCancel();
@@ -438,34 +418,23 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
                     />
                   </Spin>
                 ) : (
-                  <div className="flex flex-col h-full">
-                    <div className="shrink-0">
-                      <Spin spinning={eventLoading}>
-                        <EventHeatMap
-                          data={eventData}
-                          className="mb-4"
-                          onCellClick={handleHeatMapCellClick}
-                        />
-                      </Spin>
-                    </div>
-                    <div
-                      ref={timelineContainerRef}
-                      className="flex-1 min-h-0 pl-[4px] pt-[10px] overflow-hidden"
-                    >
-                      <Spin spinning={eventLoading}>
-                        <VirtualList
-                          ref={timelineRef}
-                          data={eventData}
-                          height={timelineHeight - 10}
-                          itemHeight={TIMELINE_ITEM_HEIGHT}
-                          itemKey={(item) =>
-                            item.id || item.event_time || item.content
-                          }
-                        >
-                          {renderTimelineItem}
-                        </VirtualList>
-                      </Spin>
-                    </div>
+                  <div
+                    ref={timelineContainerRef}
+                    className="flex-1 min-h-0 pl-[4px] pt-[10px] overflow-hidden"
+                  >
+                    <Spin spinning={eventLoading}>
+                      <VirtualList
+                        ref={timelineRef}
+                        data={eventData}
+                        height={timelineHeight - 10}
+                        itemHeight={TIMELINE_ITEM_HEIGHT}
+                        itemKey={(item) =>
+                          item.id || item.event_time || item.content
+                        }
+                      >
+                        {renderTimelineItem}
+                      </VirtualList>
+                    </Spin>
                   </div>
                 )}
               </div>

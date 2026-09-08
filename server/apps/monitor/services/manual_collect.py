@@ -1,5 +1,6 @@
 from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.core.models.maintainer_info import maintainer_kwargs
+from apps.core.utils.k8s_daemonset_tolerations import TOLERATIONS_UNSET, normalize_k8s_daemonset_tolerations, token_tolerations_kwargs
 from apps.core.utils.k8s_image_registry import build_kubectl_install_command
 from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObject
 from apps.monitor.services.infra import InfraService
@@ -104,10 +105,23 @@ class ManualCollectService:
         return {"instance_id": instance_id}
 
     @staticmethod
+    def persist_k8s_daemonset_tolerations(instance_id: str, tolerations) -> None:
+        normalized = normalize_k8s_daemonset_tolerations(tolerations)
+        MonitorInstance.objects.filter(id=instance_id).update(k8s_daemonset_tolerations=normalized)
+
+    @staticmethod
+    def load_k8s_daemonset_tolerations(instance_id: str):
+        instance = MonitorInstance.objects.filter(id=instance_id).only("k8s_daemonset_tolerations").first()
+        if instance is None:
+            return TOLERATIONS_UNSET
+        return instance.k8s_daemonset_tolerations
+
+    @staticmethod
     def generate_install_command(
         instance_id: str,
         cloud_region_id: str,
         image_registry_prefix: str | None = None,
+        tolerations=TOLERATIONS_UNSET,
     ) -> str:
         """
         生成 Kubernetes 安装命令
@@ -135,6 +149,7 @@ class ManualCollectService:
             cluster_name,
             cloud_region_id,
             image_registry_prefix,
+            **token_tolerations_kwargs(tolerations),
         )
 
         # 构造完整的 API URL（使用 open_api 前缀，统一开放 API 路由风格）

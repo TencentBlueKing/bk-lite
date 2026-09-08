@@ -17,6 +17,7 @@ from apps.monitor.filters.monitor_alert import MonitorAlertFilter
 from apps.monitor.models import MonitorAlert, MonitorAlertMetricSnapshot, MonitorEvent, MonitorEventRawData, MonitorPolicy, PolicyInstanceBaseline
 from apps.monitor.serializers.monitor_alert import MonitorAlertSerializer, MonitorAlertUpdateSerializer
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
+from apps.monitor.services.alert_lifecycle_events import record_lifecycle_events
 from apps.monitor.services.alert_lifecycle_notify import AlertLifecycleNotifier
 from apps.monitor.services.chart_unit import convert_snapshots_copy, resolve_chart_unit
 from apps.monitor.services.policy_baseline import PolicyBaselineService
@@ -304,6 +305,15 @@ class MonitorAlertViewSet(
                     self.perform_update(serializer)
                 else:
                     self.perform_update(serializer)
+                if old_status == "new":
+                    instance.refresh_from_db()
+                    record_lifecycle_events(
+                        [instance],
+                        MonitorEvent.Action.CLOSED,
+                        event_time=now,
+                        operator=request.user.username,
+                        reason="manual",
+                    )
             else:
                 self.perform_update(serializer)
             instance.refresh_from_db()
@@ -453,6 +463,7 @@ class MonitorEventViewSet(AlertPermissionMixin, viewsets.ViewSet):
                 "level": i.level,
                 "value": i.value,
                 "content": i.content,
+                "action": i.action or "",
                 "created_at": i.created_at,
                 "monitor_instance_id": i.monitor_instance_id,
                 "policy_id": i.policy_id,

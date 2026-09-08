@@ -101,7 +101,7 @@ _EN_FALLBACKS = {
     "URL必须以http://或https://开头，IPv6地址需使用方括号": "URL must start with http:// or https://; IPv6 addresses must use brackets",
     "请输入有效的域名、IPv4或IPv6地址（IPv6无需方括号）": "Enter a valid domain name, IPv4 address, or IPv6 address (IPv6 does not need brackets)",
     "推荐仅采集 Linux 的 ext4、xfs、btrfs，或 Windows 的 NTFS、ReFS；留空表示不按类型限制。": "We recommend collecting only Linux ext4, xfs, and btrfs, or Windows NTFS and ReFS. Leave empty to avoid filesystem-type filtering.",
-    "临时盘/容器盘：tmpfs、devtmpfs、overlay、aufs、squashfs；光盘：iso9660；常见 U 盘：vfat、exfat、fat、fat32。黑名单优先于仅采集列表；不默认排除 ntfs。": "Temporary or container filesystems: tmpfs, devtmpfs, overlay, aufs, squashfs; optical media: iso9660; common USB filesystems: vfat, exfat, fat, fat32. The denylist takes precedence over the allowlist; NTFS is not excluded by default.",
+    "临时盘/容器盘：tmpfs、devtmpfs、overlay、aufs、squashfs；光盘：iso9660、cdfs；常见 U 盘：vfat、exfat、fat、fat32。黑名单优先于仅采集列表；不默认排除 ntfs。": "Temporary or container filesystems: tmpfs, devtmpfs, overlay, aufs, squashfs; optical media: iso9660, cdfs; common USB filesystems: vfat, exfat, fat, fat32. The denylist takes precedence over the allowlist; NTFS is not excluded by default.",
     "从设备请求数据的超时时间，超过配置时间（例如 10 秒）的请求将被视为失败": "Timeout for requesting data from the device. Requests exceeding the configured duration, for example 10 seconds, are treated as failures.",
     "监控的目标主机的 IP 地址，用于标识数据收集的来源": "IP address of the monitored target host, used to identify the source of collected data.",
     "安全级别设置，例如 authPriv 表示同时使用认证和隐私（加密）": "Security-level setting; for example, authPriv enables both authentication and privacy (encryption).",

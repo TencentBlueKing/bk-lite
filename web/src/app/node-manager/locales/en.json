@@ -89,7 +89,7 @@
         "guide": "Installation Guide",
         "sidecar": "Controller",
         "installationGuide": "Installation Guide",
-        "installWayDes": "Remote installation requires providing host-related login information to perform remote installation of controllers, including sidecar and nas executor; for manual installation, follow the installation steps to manually operate and install the component on the host.",
+        "installWayDes": "Remote installation requires providing host-related login information to perform remote installation of the controller (Sidecar); for manual installation, follow the installation steps to manually operate and install the component on the host.",
         "windowsRemoteInstallDes": "Uses an Ansible Executor in the same cloud region and WinRM to dispatch the native installer. Requires Server 2016, PowerShell 5.1 or newer, and NTLM. Defaults to HTTPS/5986; HTTP/5985 can be selected explicitly. Certificate validation applies to HTTPS only and is disabled by default.",
         "controllerInfo": "Controller Information",
         "system": "Operating System",

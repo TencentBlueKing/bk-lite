@@ -1,0 +1,25 @@
+[
+  {
+    "id": "otelcollector_linux",
+    "name": "OTel-Collector",
+    "controller_default_run": true,
+    "icon": "caijixinxi",
+    "node_operating_system": "linux",
+    "service_type": "exec",
+    "executable_path": "/opt/fusion-collectors/bin/bklite-otelcol",
+    "execute_parameters": "--config %s",
+    "validation_parameters": "",
+    "default_template": "",
+    "introduction": "BK-Lite APM regional collector. Receives OTLP traces from application probes on 4317/gRPC and 4318/HTTP, sanitizes them with trace_guard, and publishes them to the NATS JetStream subject apm.traces.<cloud_region_id> for the system collector to write into VictoriaTraces.",
+    "default_config": {
+      "nats": "extensions:\n  health_check:\n    endpoint: 0.0.0.0:13133\n  file_storage:\n    directory: /opt/fusion-collectors/cache/apm-queue\n    create_directory: true\n    timeout: 1s\n    compaction:\n      directory: /opt/fusion-collectors/cache/apm-queue\n      on_start: true\n\nreceivers:\n  otlp:\n    protocols:\n      grpc:\n        endpoint: 0.0.0.0:4317\n        max_recv_msg_size_mib: 8\n        include_metadata: true\n      http:\n        endpoint: 0.0.0.0:4318\n        include_metadata: true\n        max_request_body_size: 8388608\n\nprocessors:\n  memory_limiter:\n    check_interval: 1s\n    limit_mib: 384\n    spike_limit_mib: 96\n  trace_guard:\n    cloud_region_id: \"${node.cloud_region}\"\n    max_resource_attributes: 64\n    max_scope_attributes: 32\n    max_span_attributes: 100\n    max_event_attributes: 32\n    max_link_attributes: 32\n    max_attribute_runes: 4096\n  batch/traces:\n    timeout: 2s\n    send_batch_size: 256\n    send_batch_max_size: 512\n\nexporters:\n  nats_jetstream:\n    urls: [\"${NATS_PROTOCOL}://${NATS_USERNAME}:${env:NATS_PASSWORD}@${NATS_SERVERS}\"]\n    subject: apm.traces.${node.cloud_region}\n    connect_timeout: 5s\n    timeout: 10s\n    max_message_bytes: 8388608\n{% if NATS_PROTOCOL == \"tls\" %}\n    tls:\n      ca_file: \"${NATS_TLS_CA_FILE}\"\n      insecure_skip_verify: false\n{% endif %}\n    sending_queue:\n      enabled: true\n      sizer: bytes\n      queue_size: 1073741824\n      num_consumers: 4\n      block_on_overflow: false\n      storage: file_storage\n    retry_on_failure:\n      enabled: true\n      initial_interval: 1s\n      max_interval: 30s\n      max_elapsed_time: 0s\n\nservice:\n  extensions: [health_check, file_storage]\n  telemetry:\n    metrics:\n      level: normal\n      readers:\n        - pull:\n            exporter:\n              prometheus:\n                host: 0.0.0.0\n                port: 8888\n  pipelines:\n    traces:\n      receivers: [otlp]\n      processors:\n        - memory_limiter\n        - trace_guard\n        - batch/traces\n      exporters: [nats_jetstream]\n"
+    },
+    "tags": [
+      "linux",
+      "apm",
+      "x86_64"
+    ],
+    "package_name": "bklite-otelcol",
+    "cpu_architecture": "x86_64"
+  }
+]

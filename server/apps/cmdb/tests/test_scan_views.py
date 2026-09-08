@@ -251,6 +251,44 @@ def test_push_monitor_returns_pushed_summary(superuser, monkeypatch):
     assert body["pushed"] == 2
 
 
+def test_write_cmdb_returns_written_summary(superuser, monkeypatch):
+    _bypass_permission(monkeypatch)
+    task = ScanTask.objects.create(name="scan-write-api", team=[1])
+    execution = ScanExecution.objects.create(task=task, status=ScanExecution.STATUS_COMPLETED)
+    monkeypatch.setattr(
+        "apps.cmdb.services.scan_write_ci_service.ScanWriteCiService.write",
+        lambda execution, hit_ids: {"written": 2, "skipped": 0, "failed": 0, "items": []},
+    )
+    request = _req("post", superuser, data={"hit_ids": [13, 14]}, current_team="1")
+    response = ScanTaskViewSet.as_view({"post": "write_cmdb"})(request, eid=str(execution.id))
+    assert response.status_code == 200
+    assert _data(response)["written"] == 2
+
+
+def test_write_cmdb_and_generate_collect_returns_combined_summary(superuser, monkeypatch):
+    _bypass_permission(monkeypatch)
+    task = ScanTask.objects.create(name="scan-write-gen-api", team=[1])
+    execution = ScanExecution.objects.create(task=task, status=ScanExecution.STATUS_COMPLETED)
+    monkeypatch.setattr(
+        "apps.cmdb.services.scan_write_ci_service.ScanWriteCiService.write_and_generate",
+        lambda execution, hit_ids, request=None, operator="": {
+            "written": 1,
+            "skipped": 0,
+            "failed": 0,
+            "created": 1,
+            "appended": 0,
+            "items": [],
+            "collect": {"created": 1},
+        },
+    )
+    request = _req("post", superuser, data={"hit_ids": [13]}, current_team="1")
+    response = ScanTaskViewSet.as_view({"post": "write_cmdb_and_generate_collect"})(request, eid=str(execution.id))
+    assert response.status_code == 200
+    body = _data(response)
+    assert body["written"] == 1
+    assert body["created"] == 1
+
+
 def test_classify_hits_returns_classified_summary(superuser, monkeypatch):
     _bypass_permission(monkeypatch)
     task = ScanTask.objects.create(name="scan-classify-api", team=[1])

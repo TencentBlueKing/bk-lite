@@ -833,6 +833,8 @@ def node_list(query_data: dict):
     is_container = query_data.get("is_container")
     permission_data = query_data.get("permission_data", {})
     skip_permission = query_data.get("skip_permission", False)
+    keyword = query_data.get("keyword")
+    sink_child_config = query_data.get("sink_child_config")
     if skip_permission:
         declared_callsite = query_data.get("legacy_callsite")
         if not isinstance(declared_callsite, str) or declared_callsite not in LEGACY_NODE_LIST_CALLSITES:
@@ -851,6 +853,8 @@ def node_list(query_data: dict):
         is_container,
         permission_data,
         skip_permission,
+        keyword=keyword,
+        sink_child_config=sink_child_config,
     )
 
 

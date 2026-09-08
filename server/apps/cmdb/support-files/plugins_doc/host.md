@@ -14,11 +14,11 @@
 > 一句话：装了 Agent 的机器零凭据即可采集；未装的依赖你填写的 SSH 账号远程采集。
 
 ### 版本兼容性
-#### Linux 系统（支持内核 4.x+）
+#### Linux 系统
 - 兼容 openEuler 22.03/24.03 LTS 系列版本
 - 兼容 银河麒麟 V10/V11 系列版本
 - 兼容 统信 UOS V20/V25 系列版本
-- 兼容 RHEL 7/8/9/10 系列版本
+- 兼容 RHEL/CentOS 6/7/8/9/10 系列版本
 
 #### Windows 系统
 - 兼容 Windows Server 2016 LTSB、2019 LTSC、2022 LTSC、2025 LTSC 版本
@@ -31,7 +31,7 @@
    - **基础信息**（主机名、OS、CPU、内存、磁盘、MAC）：普通登录账号即可，无需 root/sudo。脚本仅读取 `lscpu`、`free`、`df`、`ip link`、`/etc/os-release`、`/proc` 等全局可读信息。
    - **进程与监听端口（`proc` 字段）**：如需采全所有进程的可执行路径与端口归属，需 **root（或等价权限）**；普通账号只能看到自身进程，进程清单会不完整。
 3. **目标依赖**
-   - Linux：`/bin/sh` 及 `lscpu`、`free`、`df`、`ip`、`ss`、`ps`、`awk`、`readlink` 等常见命令（多数发行版自带）。JSON 转义由 `awk` 完成，**无需 python3**。
+   - Linux：`/bin/sh` 及 `lscpu`、`free`、`df`、`ip`/`ifconfig`、`ss`/`netstat`、`ps`、`awk`、`readlink` 等常见命令（多数发行版自带）。JSON 转义由 `awk` 完成，**无需 python3**。无 `/etc/os-release` 时回退 `redhat-release`。
    - Windows：PowerShell 5+。
 
 ### 操作步骤

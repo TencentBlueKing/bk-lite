@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 from rest_framework import status
+from rest_framework.exceptions import ValidationError
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.alerts.views.alert import AlertModelViewSet
@@ -32,6 +33,21 @@ def _post_request(user, data):
     return request
 
 
+def _topology_request():
+    return SimpleNamespace(
+        user=SimpleNamespace(
+            username="testuser",
+            domain="domain.com",
+            locale="en",
+            timezone="Asia/Shanghai",
+            permission={},
+            group_tree=[],
+            is_superuser=False,
+        ),
+        COOKIES={"current_team": "1", "include_children": "0"},
+    )
+
+
 def test_request_serializer_defaults_node_limit_and_rejects_invalid_params():
     serializer = NetworkStatusTopologyRequestSerializer(data={"inst_uuids": [SWITCH_UUID]})
 
@@ -57,7 +73,7 @@ def test_request_serializer_defaults_node_limit_and_rejects_invalid_params():
         assert not invalid.is_valid(), payload
 
 
-def test_build_returns_closed_set_without_center_or_alert_fields(monkeypatch, authenticated_user):
+def test_build_returns_closed_set_without_center_or_alert_fields(monkeypatch):
     topology = {
         "nodes": [
             {"id": SWITCH_UUID, "model_id": "switch", "name": "core-switch", "hop": 0},
@@ -73,7 +89,7 @@ def test_build_returns_closed_set_without_center_or_alert_fields(monkeypatch, au
     )
 
     result = NetworkStatusTopologyService.build(
-        request=SimpleNamespace(user=authenticated_user),
+        request=_topology_request(),
         inst_uuids=[SWITCH_UUID, ROUTER_UUID],
         node_limit=100,
     )
@@ -91,7 +107,7 @@ def test_build_returns_closed_set_without_center_or_alert_fields(monkeypatch, au
         assert "color" not in node
 
 
-def test_build_does_not_query_alerts(monkeypatch, authenticated_user):
+def test_build_does_not_query_alerts(monkeypatch):
     topology = {
         "nodes": [
             {"id": SWITCH_UUID, "model_id": "switch", "name": "core-switch", "hop": 0},
@@ -112,7 +128,7 @@ def test_build_does_not_query_alerts(monkeypatch, authenticated_user):
     monkeypatch.setattr(AlertModelViewSet, "get_queryset", fail_if_called)
 
     result = NetworkStatusTopologyService.build(
-        request=SimpleNamespace(user=authenticated_user),
+        request=_topology_request(),
         inst_uuids=[SWITCH_UUID],
         node_limit=100,
     )
@@ -169,3 +185,70 @@ def test_view_rejects_legacy_center_payload_without_calling_service(monkeypatch,
     assert payload["result"] is False
     assert called is False
     assert "inst_uuids" in payload["message"]
+
+
+def test_build_calls_cmdb_rpc_with_user_info(monkeypatch):
+    captured = {}
+    topology = {
+        "nodes": [{"id": SWITCH_UUID, "model_id": "switch", "name": "core-switch", "hop": 0}],
+        "links": [{"relationship_id": "rel-1", "source_device": SWITCH_UUID, "target_device": ROUTER_UUID}],
+        "truncated": False,
+    }
+
+    class FakeCMDB:
+        def network_topology_among_uuids(self, **kwargs):
+            captured["kwargs"] = kwargs
+            return {"result": True, "message": "", "data": topology}
+
+    monkeypatch.setattr("apps.operation_analysis.services.network_status_topology.CMDB", FakeCMDB)
+
+    result = NetworkStatusTopologyService.build(
+        request=_topology_request(),
+        inst_uuids=[SWITCH_UUID, ROUTER_UUID],
+        node_limit=100,
+    )
+
+    assert captured["kwargs"]["inst_uuids"] == [SWITCH_UUID, ROUTER_UUID]
+    assert captured["kwargs"]["user_info"]["team"] == 1
+    assert captured["kwargs"]["user_info"]["user"] == "testuser"
+    assert result["nodes"] == topology["nodes"]
+    assert result["links"] == topology["links"]
+    assert result["truncated"] is False
+    assert result["node_limit"] == 100
+    assert "center_id" not in result
+
+
+def test_build_maps_nats_failure_to_closed_set_error(monkeypatch):
+    class FakeCMDB:
+        def network_topology_among_uuids(self, **kwargs):
+            return {
+                "result": False,
+                "data": {"nodes": [], "links": []},
+                "message": "inst_uuids 不能超过 200",
+            }
+
+    monkeypatch.setattr("apps.operation_analysis.services.network_status_topology.CMDB", FakeCMDB)
+
+    with pytest.raises(ValidationError) as exc_info:
+        NetworkStatusTopologyService.build(
+            request=_topology_request(),
+            inst_uuids=[SWITCH_UUID],
+            node_limit=100,
+        )
+
+    assert NetworkStatusTopologyService.CLOSED_SET_ERROR in str(exc_info.value.detail)
+
+
+def test_build_does_not_map_rpc_errors_to_closed_set(monkeypatch):
+    class FakeCMDB:
+        def network_topology_among_uuids(self, **kwargs):
+            raise RuntimeError("nats unavailable")
+
+    monkeypatch.setattr("apps.operation_analysis.services.network_status_topology.CMDB", FakeCMDB)
+
+    with pytest.raises(RuntimeError, match="nats unavailable"):
+        NetworkStatusTopologyService.build(
+            request=_topology_request(),
+            inst_uuids=[SWITCH_UUID],
+            node_limit=100,
+        )

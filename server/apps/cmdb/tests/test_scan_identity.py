@@ -99,17 +99,27 @@ def test_network_ci_types_are_the_four_exact_models():
 
 
 def test_unmatch_reason_unknown_soid_when_network_has_soid_but_no_model():
-    hit = SimpleNamespace(family_run=SimpleNamespace(model_id="network"), cmdb_model_id="", soid="1.2.3.999")
+    hit = SimpleNamespace(family_run=SimpleNamespace(model_id="network"), cmdb_model_id="", soid="1.2.3.999", snapshot={})
     assert unmatch_reason_for_hit(hit) == UNMATCH_UNKNOWN_SOID
 
 
 def test_unmatch_reason_empty_soid_when_network_has_neither_model_nor_soid():
-    hit = SimpleNamespace(family_run=SimpleNamespace(model_id="network"), cmdb_model_id="", soid="")
+    hit = SimpleNamespace(family_run=SimpleNamespace(model_id="network"), cmdb_model_id="", soid="", snapshot={})
     assert unmatch_reason_for_hit(hit) == UNMATCH_EMPTY_SOID
 
 
 def test_unmatch_reason_blank_when_network_already_classified():
-    hit = SimpleNamespace(family_run=SimpleNamespace(model_id="network"), cmdb_model_id="switch", soid="1.2.3.999")
+    hit = SimpleNamespace(family_run=SimpleNamespace(model_id="network"), cmdb_model_id="switch", soid="1.2.3.999", snapshot={})
+    assert unmatch_reason_for_hit(hit) == ""
+
+
+def test_unmatch_reason_blank_when_snapshot_has_suggested_type():
+    hit = SimpleNamespace(
+        family_run=SimpleNamespace(model_id="network"),
+        cmdb_model_id="",
+        soid="1.2.3.999",
+        snapshot={"device_type": "switch"},
+    )
     assert unmatch_reason_for_hit(hit) == ""
 
 

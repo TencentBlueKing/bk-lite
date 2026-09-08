@@ -152,6 +152,17 @@ const K8sCollectorInstallStep: React.FC<K8sCollectorInstallStepProps> = ({
 export default K8sCollectorInstallStep;
 export {
   createCmdbK8sCollectorInstallCopy,
+  createK8sTolerationsEditorCopy,
   createLogK8sCollectorInstallCopy,
   createMonitorK8sCollectorInstallCopy,
+  k8sTolerationRuleMessage,
 } from './presets';
+export { default as K8sDaemonSetTolerationsEditor } from './TolerationsEditor';
+export type { K8sDaemonSetTolerationsEditorCopy } from './TolerationsEditor';
+export {
+  DEFAULT_K8S_DAEMONSET_TOLERATIONS,
+  MAX_K8S_DAEMONSET_TOLERATIONS,
+  toRequestTolerations,
+  validateK8sDaemonSetTolerations,
+} from './tolerations';
+export type { K8sDaemonSetToleration } from './tolerations';

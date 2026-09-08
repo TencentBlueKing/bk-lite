@@ -46,6 +46,22 @@ export const useScanApi = () => {
     [get]
   );
 
+  const writeCmdb = useCallback(
+    (executionId: number | string, hitIds: number[]) =>
+      post(`/cmdb/api/scan/executions/${executionId}/write_cmdb/`, {
+        hit_ids: hitIds,
+      }),
+    [post]
+  );
+
+  const writeCmdbAndGenerateCollect = useCallback(
+    (executionId: number | string, hitIds: number[]) =>
+      post(`/cmdb/api/scan/executions/${executionId}/write_cmdb_and_generate_collect/`, {
+        hit_ids: hitIds,
+      }),
+    [post]
+  );
+
   const generateCollect = useCallback(
     (executionId: number | string, hitIds: number[]) =>
       post(`/cmdb/api/scan/executions/${executionId}/generate_collect/`, {
@@ -89,6 +105,8 @@ export const useScanApi = () => {
     executeScan,
     getScanExecution,
     getScanHits,
+    writeCmdb,
+    writeCmdbAndGenerateCollect,
     generateCollect,
     pushMonitor,
     classifyHits,

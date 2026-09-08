@@ -130,19 +130,19 @@
 }
 
 .flowColIp {
-  width: 18%;
+  width: 22%;
 }
 
 .flowColPort {
-  width: 10%;
+  width: 9%;
 }
 
 .flowColProtocol {
-  width: 12%;
+  width: 92px;
 }
 
 .flowColTraffic {
-  width: 27%;
+  width: 20%;
 }
 
 .flowConversationTable thead th.flowColRank {
@@ -158,8 +158,10 @@
 
 .flowConversationTable thead th.flowColProtocol,
 .flowConversationTable tbody td.flowCellProtocol {
-  padding-left: 8px;
+  padding-left: 16px;
   padding-right: 8px;
+  text-align: left;
+  vertical-align: middle;
 }
 
 .flowConversationTable thead th.flowColTraffic,
@@ -199,7 +201,7 @@
 }
 
 .flowCellProtocol {
-  text-align: center;
+  text-align: left;
   white-space: nowrap;
 }
 

@@ -271,10 +271,24 @@ class TestPreviousPodLogs:
         out = res.get_kubernetes_previous_pod_logs.func(namespace="ns", pod_name="p1", hours=24, config={})
         assert "近 24 小时滚动窗口内没有 previous 日志" in out
         assert "不传 hours" in out
+        assert "禁止降低 lines" in out
+        assert "这是有效证据" not in out
         assert "没有上一次实例的日志" not in out
         assert "没有可用的 previous 日志" not in out
         _, kwargs = core.read_namespaced_pod_log.call_args
         assert kwargs["since_seconds"] == 24 * 3600
+
+    def test_previous_head_mode_does_not_apply_rca_tail_excerpt(self, apis):
+        core, _, _ = apis
+        core.read_namespaced_pod.return_value = self._pod([SimpleNamespace(name="app")])
+        rows = [f"STARTUP init {i:04d} " + ("x" * 100) for i in range(80)]
+        rows[-1] = "ERROR boom RESOURCE_DOES_NOT_EXIST " + ("z" * 100)
+        core.read_namespaced_pod_log.return_value = "\n".join(rows)
+        out = res.get_kubernetes_previous_pod_logs.func(namespace="ns", pod_name="p1", lines=80, tail=False, config={})
+        assert out.startswith("STARTUP init 0000")
+        assert "【最近日志】" not in out
+        assert "【日志已按 RCA 压缩" not in out
+        assert "RESOURCE_DOES_NOT_EXIST" not in out
 
     def test_no_previous_terminated_container(self, apis):
         core, _, _ = apis

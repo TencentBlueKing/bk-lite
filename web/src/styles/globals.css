@@ -98,6 +98,9 @@ html.dark {
   --color-application3d-severity-error: #e8862a;
   --color-application3d-severity-warning: #e8b04a;
   --color-application3d-severity-info: #5eb0ff;
+  /* Host chip healthy accent — same cyan as architecture ARCH_EDGE (0x3ec8d0). */
+  --color-application3d-arch-host-healthy: #3ec8d0;
+  --color-application3d-arch-host-unknown: #94a3b8;
   --color-application3d-severity-badge-critical-bg: rgba(220, 56, 48, 0.92);
   --color-application3d-severity-badge-error-bg: rgba(200, 108, 28, 0.9);
   --color-application3d-severity-badge-warning-bg: rgba(196, 126, 40, 0.9);
