@@ -55,6 +55,9 @@ class Command(BaseCommand):
             Group.objects.get_or_create(name="Guest", parent_id=0, defaults={"description": "Guest group"})
             if _permission_signature() != permission_signature_before:
                 clear_all_permission_cache()
+            from apps.system_mgmt.services.credential_service import seed_builtin_types
+
+            seed_builtin_types()
 
 
 def _permission_signature():
