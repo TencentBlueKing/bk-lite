@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { signOut, useSession } from "next-auth/react";
 import { clearAuthToken } from '@/utils/crossDomainAuth';
 import { resolveThirdLoginFlag } from '@/utils/authRedirect';
+import { clearUserTeamPreference } from '@/utils/userTeamPreference';
 
 export default function SignoutPage() {
   const { data: session, status } = useSession();
@@ -26,6 +27,7 @@ export default function SignoutPage() {
   const handleSignout = async () => {
     try {
       setIsLoading(true);
+      clearUserTeamPreference();
 
       // Call logout API for server-side cleanup
       await fetch("/api/auth/federated-logout", {
