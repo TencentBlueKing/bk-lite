@@ -1302,6 +1302,8 @@
     "reportDesc": "Best for periodic analysis and readable operations conclusions.",
     "addGroup": "Add Group",
     "exportYaml": "Export YAML",
+    "copyTargetDirectory": "Target directory",
+    "copySuccess": "Copied as {name}",
     "importYaml": "Import YAML",
     "exportSuccess": "Export success",
     "exportFailed": "Export failed",
