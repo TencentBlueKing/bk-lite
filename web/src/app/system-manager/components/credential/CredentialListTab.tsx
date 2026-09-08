@@ -63,7 +63,7 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
   const [typeKey, setTypeKey] = useState<string>(ALL_TYPES);
   const [search, setSearch] = useState('');
   const [ownerId, setOwnerId] = useState<number | undefined>();
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerMode, setDrawerMode] = useState<CredentialDrawerMode>('create');
@@ -518,7 +518,7 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
 
         {/* Content Table / Empty */}
         <div className="min-h-0 flex-1">
-          {!typesInCategory.length ? (
+          {!typesInCategory.length && !loading ? (
             <div className="flex h-full min-h-[300px] flex-col items-center justify-center rounded-lg border border-dashed border-[var(--color-border-2)] bg-[var(--color-fill-1)]/20 p-8 text-center">
               <Empty
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
