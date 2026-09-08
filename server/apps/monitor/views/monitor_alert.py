@@ -17,6 +17,7 @@ from apps.monitor.filters.monitor_alert import MonitorAlertFilter
 from apps.monitor.models import MonitorAlert, MonitorAlertMetricSnapshot, MonitorEvent, MonitorEventRawData, MonitorPolicy, PolicyInstanceBaseline
 from apps.monitor.serializers.monitor_alert import MonitorAlertSerializer, MonitorAlertUpdateSerializer
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
+from apps.monitor.services.alert_access import visible_monitor_alerts
 from apps.monitor.services.alert_lifecycle_events import record_lifecycle_events
 from apps.monitor.services.alert_lifecycle_notify import AlertLifecycleNotifier
 from apps.monitor.services.chart_unit import convert_snapshots_copy, resolve_chart_unit
@@ -29,11 +30,10 @@ from config.drf.pagination import CustomPageNumberPagination
 
 class AlertPermissionMixin:
     """
-    共享的策略权限过滤逻辑。
+    共享的告警可见性与策略权限。
 
-    将原先在 MonitorAlertViewSet 和 MonitorEventViewSet 中各自重复定义的
-    _get_all_accessible_policy_ids / _check_alert_permission 提取到此 Mixin，
-    同时将全量加载改为按权限数据结构预先缩小 DB 查询范围，避免 O(N) 全表扫描。
+    告警列表/详情按生成时组织快照 fail-closed；策略对象级权限仍用于策略本身
+    以及未删除策略上的实例授权。策略删除后，告警仍可按快照组织查看。
     """
 
     def _get_data_scope(self, request):
@@ -100,6 +100,27 @@ class AlertPermissionMixin:
 
         return policy_qs.filter(id__in=accessible_policy_ids)
 
+    def get_visible_alert_queryset(self, request, require_operate=False):
+        """告警可见性以生成时组织快照为准，不再跟随策略当前组织。"""
+        scope = self._get_data_scope(request)
+        permissions_data = None
+        if not request.user.is_superuser:
+            permissions_result = get_permissions_rules(
+                request.user,
+                scope.current_team,
+                "monitor",
+                PermissionConstants.POLICY_MODULE,
+                include_children=scope.include_children,
+            )
+            permissions_data = permissions_result.get("data") if isinstance(permissions_result, dict) else None
+        return visible_monitor_alerts(
+            MonitorAlert.objects.all(),
+            organization_ids=list(scope.data_team_ids),
+            is_superuser=request.user.is_superuser,
+            permissions_data=permissions_data,
+            require_operate=require_operate,
+        )
+
     def _get_all_accessible_policy_ids(self, request, require_operate=False):
         """兼容既有调用方，ID 集合始终由受限策略根 queryset 派生。"""
         return list(
@@ -111,8 +132,7 @@ class AlertPermissionMixin:
 
     def _check_alert_permission(self, request, alert_obj):
         """Check if the current user has permission to access the given alert."""
-        accessible_policy_ids = self._get_all_accessible_policy_ids(request)
-        return alert_obj.policy_id in accessible_policy_ids
+        return self.get_visible_alert_queryset(request).filter(pk=alert_obj.pk).exists()
 
     def _build_policy_permission_map(self, request, policies):
         """为告警列表补充每条策略的实例权限，供前端编辑按钮门控。"""
@@ -171,89 +191,66 @@ class MonitorAlertViewSet(
         return super().get_serializer_class()
 
     def get_queryset(self):
-        """所有入口均从受限策略根派生告警 queryset。"""
-        qs = super().get_queryset()
+        """所有入口均从告警组织快照派生可见集合。"""
         request = self.request
         require_operate = self.action in ("update", "partial_update")
-        policy_qs = self.get_accessible_policy_queryset(
+        return self.get_visible_alert_queryset(
             request,
             require_operate=require_operate,
-        )
-        return qs.filter(policy_id__in=policy_qs.values("id"))
+        ).order_by("-created_at")
 
     def list(self, request, *args, **kwargs):
         monitor_object_id = request.query_params.get("monitor_object_id", None)
-        policy_qs = self.get_accessible_policy_queryset(request)
-        # 非法非数字 id（如分类名 Network Device）不得落入 ORM，否则 ValueError → 500
-        policy_qs = filter_positive_int_field(policy_qs, "monitor_object_id", monitor_object_id)
-        policy_ids = policy_qs.values_list("id", flat=True)
-
-        if not policy_ids:
-            return WebUtils.response_success(dict(count=0, results=[]))
-
-        # 获取经过过滤器处理的数据
         queryset = self.filter_queryset(self.get_queryset())
-        queryset = queryset.filter(policy_id__in=list(policy_ids)).distinct()
+        if monitor_object_id not in (None, ""):
+            policy_qs = filter_positive_int_field(
+                MonitorPolicy.objects.all(),
+                "monitor_object_id",
+                monitor_object_id,
+            )
+            queryset = queryset.filter(policy_id__in=policy_qs.values("id"))
 
         if request.GET.get("type") == "count":
-            # 执行序列化
             serializer = self.get_serializer(queryset, many=True)
-            # 返回成功响应
             return WebUtils.response_success(dict(count=queryset.count(), results=serializer.data))
 
-        # 获取分页参数
         page, page_size = parse_page_params(request.GET, default_page=1, default_page_size=10)
-
-        # 计算分页的起始位置
         start = (page - 1) * page_size
         end = start + page_size
-
-        # 获取当前页的数据
         page_data = queryset[start:end]
-
-        # 执行序列化
         serializer = self.get_serializer(page_data, many=True)
         results = serializer.data
 
-        # 获取当前页中所有的 policy_id 和 monitor_instance_id
         _policy_ids = [alert["policy_id"] for alert in results if alert["policy_id"]]
-
-        # 查询所有相关的策略和实例
-        policies = policy_qs.filter(id__in=_policy_ids)
-
-        # 将策略和实例数据映射到字典中
+        policies = list(MonitorPolicy.objects.filter(id__in=_policy_ids).prefetch_related("policyorganization_set"))
         policy_dict = {policy.id: policy for policy in policies}
         policy_permission_map = self._build_policy_permission_map(request, policies)
-
-        # 补充策略和实例到每个 alert 中
+        data_team_ids = self._get_data_scope(request).data_team_ids
 
         for alert in results:
             policy_id = alert["policy_id"]
+            policy_obj = policy_dict.get(policy_id)
             if policy_id in policy_permission_map:
                 alert["policy_permission"] = policy_permission_map[policy_id]
-            elif policy_id:
+            elif policy_obj:
                 alert["policy_permission"] = PermissionConstants.DEFAULT_PERMISSION
-
-            # 补充instance_id_values
+            else:
+                alert["policy_permission"] = []
 
             alert["instance_id_values"] = list(parse_instance_id(alert["monitor_instance_id"]))
-            # 在 results 字典中添加完整的 policy 和 monitor_instance 信息
             alert["policy"] = (
                 MonitorPolicySerializer(
-                    policy_dict.get(alert["policy_id"]),
+                    policy_obj,
                     context={
-                        "data_team_ids": self._get_data_scope(request).data_team_ids,
+                        "data_team_ids": data_team_ids,
                         "filter_organizations": True,
                     },
                 ).data
-                if alert["policy_id"]
+                if policy_obj
                 else None
             )
 
-        # 通知人字段存的是用户 ID；列表详情共用本页数据，这里补展示名避免前端依赖组织范围 userList
         enrich_alerts_notice_users_display(results)
-
-        # 返回成功响应
         return WebUtils.response_success(dict(count=queryset.count(), results=results))
 
     def update(self, request, *args, **kwargs):
@@ -429,11 +426,8 @@ class MonitorEventViewSet(AlertPermissionMixin, viewsets.ViewSet):
             allow_page_size_all=True,
         )
 
-        accessible_policy_qs = self.get_accessible_policy_queryset(request)
-        alert_obj = MonitorAlert.objects.filter(
-            id=alert_id,
-            policy_id__in=accessible_policy_qs.values("id"),
-        ).first()
+        accessible_alerts = self.get_visible_alert_queryset(request)
+        alert_obj = accessible_alerts.filter(id=alert_id).first()
         if alert_obj is None:
             return WebUtils.response_error("告警不存在", status_code=404)
 
@@ -476,11 +470,13 @@ class MonitorEventViewSet(AlertPermissionMixin, viewsets.ViewSet):
     @action(methods=["get"], detail=False, url_path="raw_data/(?P<event_id>[^/.]+)")
     def get_raw_data(self, request, event_id):
         """根据事件ID获取事件的原始指标数据（从 S3 加载）"""
+        accessible_alerts = self.get_visible_alert_queryset(request)
         accessible_policy_qs = self.get_accessible_policy_queryset(request)
         event_obj = (
-            MonitorEvent.objects.filter(
-                id=event_id,
-                policy_id__in=accessible_policy_qs.values("id"),
+            MonitorEvent.objects.filter(id=event_id)
+            .filter(
+                Q(alert_id__in=accessible_alerts.values("id"))
+                | Q(alert__isnull=True, policy_id__in=accessible_policy_qs.values("id"))
             )
             .filter(Q(alert__isnull=True) | Q(alert__policy_id=F("policy_id")))
             .first()
