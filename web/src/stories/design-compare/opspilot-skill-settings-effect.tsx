@@ -5,7 +5,7 @@
  */
 
 import { useState, type ReactNode } from 'react';
-import { Button, Form, Input, InputNumber, Select, Slider, Switch } from 'antd';
+import { Button, Form, Input, InputNumber, Select, Switch } from 'antd';
 import { CloseOutlined, PlusOutlined } from '@ant-design/icons';
 import Icon from '@/components/icon';
 import { afterPanel } from './opspilot-after-system';
@@ -245,12 +245,6 @@ function SkillConfigColumn() {
             </Form.Item>
           </Form>
 
-          <div className="-mx-3.5 border-y border-[var(--color-fill-2)] px-3.5">
-            <SkillSettingRow title="展示思考" description="回复中保留推理过程，默认可折叠。" extra={<Switch defaultChecked size="small" />} />
-            <SkillSettingRow title="问题建议" description="回答后给出可执行的下一步。" extra={<Switch defaultChecked size="small" />} />
-            <SkillSettingRow title="问题优化" description="先改写提问再检索，适合含糊问题。" extra={<Switch size="small" />} />
-          </div>
-
           <Form
             layout="horizontal"
             labelCol={labelCol}
@@ -258,12 +252,6 @@ function SkillConfigColumn() {
             colon={false}
             className="pt-3 [&_.ant-form-item]:mb-3 [&_.ant-form-item-label]:pr-3"
           >
-            <Form.Item label="温度">
-              <div className="flex items-center gap-3">
-                <Slider min={0} max={1} step={0.01} defaultValue={0.7} className="m-0 flex-1" />
-                <InputNumber min={0} max={1} step={0.01} defaultValue={0.7} className="w-[72px]" />
-              </div>
-            </Form.Item>
             <Form.Item label="提示" required>
               <TextArea
                 rows={4}

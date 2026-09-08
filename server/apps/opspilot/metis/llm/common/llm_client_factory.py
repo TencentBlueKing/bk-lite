@@ -200,8 +200,9 @@ def _normalize_message_content(content) -> str:
     return str(content)
 
 
-# 部分推理/新一代模型网关只接受 temperature=1。
+# 部分推理/新一代模型网关拒绝自定义 temperature（即使传 1 也会 400）。
 _FIXED_UNIT_TEMPERATURE_PREFIXES = ("gpt-5", "o1", "o3", "o4-mini", "kimi", "moonshot", "k3")
+DEFAULT_CHAT_TEMPERATURE = 1.0
 
 
 def _normalize_llm_model_id(model_name: str) -> str:
@@ -211,20 +212,36 @@ def _normalize_llm_model_id(model_name: str) -> str:
     return name
 
 
-def resolve_gateway_temperature(model_name: str, requested: float, vendor_type: str = "") -> float:
-    """Keep the requested temperature unless the gateway only accepts 1."""
+def _is_fixed_unit_temperature_model(model_name: str, vendor_type: str = "") -> bool:
     name = _normalize_llm_model_id(model_name)
     vendor = str(vendor_type or "").strip().lower()
     if vendor in {"kimi", "moonshot"}:
-        return 1.0
+        return True
     for prefix in _FIXED_UNIT_TEMPERATURE_PREFIXES:
         if name == prefix or name.startswith(f"{prefix}-") or name.startswith(f"{prefix}."):
-            return 1.0
+            return True
+    return False
+
+
+def resolve_gateway_temperature(model_name: str, requested: float | None, vendor_type: str = "") -> float | None:
+    """Return the requested temperature, or None when the gateway rejects the field.
+
+    None means omit ``temperature`` from the HTTP body. Sending the documented
+    unit value (1) is not safer: some o1 / gpt-5 / Kimi gateways still 400.
+    """
+    if _is_fixed_unit_temperature_model(model_name, vendor_type):
+        return None
     return requested
 
 
-def _request_temperature(request: BasicLLMRequest) -> float:
+def _request_temperature(request: BasicLLMRequest) -> float | None:
     return resolve_gateway_temperature(request.model, request.temperature, getattr(request, "vendor_type", ""))
+
+
+def _apply_temperature(call_kwargs: dict, request: BasicLLMRequest) -> None:
+    temperature = _request_temperature(request)
+    if temperature is not None:
+        call_kwargs["temperature"] = temperature
 
 
 def _is_unsupported_response_format_error(exc) -> bool:
@@ -319,7 +336,7 @@ class LLMClientFactory:
         if llm.extra_body is None:
             llm.extra_body = {}
 
-        show_think = bool((request.extra_config or {}).get("show_think", True))
+        show_think = bool((request.extra_config or {}).get("show_think", False))
         llm.extra_body.update(_build_openai_thinking_extra_body(request.model, show_think))
 
         return llm
@@ -336,7 +353,7 @@ class LLMClientFactory:
         SSRFValidator.validate_llm_endpoint(base_url)
 
         # 处理 thinking 模式
-        show_think = bool((request.extra_config or {}).get("show_think", True))
+        show_think = bool((request.extra_config or {}).get("show_think", False))
         model_kwargs = {}
 
         # DeepSeek Anthropic API 使用与 OpenAI 相同的 thinking 参数格式
@@ -376,7 +393,7 @@ class LLMClientFactory:
 
         SSRFValidator.validate_llm_endpoint(base_url)
 
-        show_think = bool((request.extra_config or {}).get("show_think", True))
+        show_think = bool((request.extra_config or {}).get("show_think", False))
 
         return AnthropicCompatibleChatClient(
             model=request.model,
@@ -481,12 +498,12 @@ class LLMClientFactory:
                 content = getattr(msg, "content", str(msg))
                 openai_messages.append({"role": role, "content": content})
 
-        # 准备调用参数
+        # 准备调用参数；固定值模型省略 temperature，避免网关 400。
         call_kwargs = {
             "model": request.model,
             "messages": openai_messages,
-            "temperature": _request_temperature(request),
         }
+        _apply_temperature(call_kwargs, request)
         if request.max_output_tokens > 0:
             call_kwargs["max_tokens"] = request.max_output_tokens
 
@@ -557,9 +574,9 @@ class LLMClientFactory:
         call_kwargs = {
             "model": request.model,
             "messages": anthropic_messages,
-            "temperature": _request_temperature(request),
             "max_tokens": request.max_output_tokens or 4096,  # Anthropic 要求必须指定 max_tokens
         }
+        _apply_temperature(call_kwargs, request)
 
         if system_message:
             call_kwargs["system"] = system_message
@@ -616,9 +633,9 @@ class LLMClientFactory:
         call_kwargs = {
             "model": request.model,
             "messages": openai_messages,
-            "temperature": _request_temperature(request),
             "stream": True,
         }
+        _apply_temperature(call_kwargs, request)
         if request.max_output_tokens > 0:
             call_kwargs["max_tokens"] = request.max_output_tokens
 
@@ -695,9 +712,9 @@ class LLMClientFactory:
         call_kwargs = {
             "model": request.model,
             "messages": anthropic_messages,
-            "temperature": _request_temperature(request),
             "max_tokens": request.max_output_tokens or 4096,
         }
+        _apply_temperature(call_kwargs, request)
         if system_message:
             call_kwargs["system"] = system_message
 

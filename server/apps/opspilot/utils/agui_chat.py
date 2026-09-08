@@ -10,6 +10,7 @@ import threading
 import time
 
 from asgiref.sync import sync_to_async
+
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.common.llm_error_diagnostics import classify_llm_error, format_llm_failure_log, summarize_llm_endpoint
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
@@ -614,7 +615,7 @@ def _log_and_update_tokens_agui(final_stats, skill_name, skill_id, current_ip, k
             )
 
         for call in usage_calls:
-            logger.info(
+            logger.debug(
                 "AGUI token usage call recorded: skill_id=%s, skill_name=%s, "
                 "call_index=%s, visible_tool_count=%s, visible_tools=%s, "
                 "prompt_tokens=%s, completion_tokens=%s, total_tokens=%s",
@@ -658,7 +659,7 @@ def stream_agui_chat(params, skill_name, kwargs, current_ip, user_message, skill
     """
     # 仅保留构造响应头所需的轻量同步处理（不含 DB / 格式化），其余阻塞型前置工作
     # 已下沉到生成器内（F044）。
-    show_think = params.get("show_think", True)  # 使用 get 而不是 pop，保留值给 format_chat_server_kwargs
+    show_think = params.get("show_think", False)  # 使用 get 而不是 pop，保留值给 format_chat_server_kwargs
     skill_type = params.get("skill_type")
     params.pop("group", 0)
     params["execution_id"] = params.get("execution_id") or params.get("thread_id") or str(int(time.time() * 1000))

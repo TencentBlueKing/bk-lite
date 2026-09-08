@@ -89,7 +89,7 @@ def build_messages_payload(
     *,
     model: str,
     messages: list,
-    temperature: float,
+    temperature: float | None,
     max_tokens: int = 4096,
     tools: list | None = None,
     tool_choice: str | None = None,
@@ -142,9 +142,10 @@ def build_messages_payload(
     payload = {
         "model": model,
         "messages": anthropic_messages,
-        "temperature": temperature,
         "max_tokens": max_tokens,
     }
+    if temperature is not None:
+        payload["temperature"] = temperature
     if system_message:
         payload["system"] = system_message
     if tools:
@@ -213,7 +214,7 @@ class AnthropicCompatibleChatClient(BaseChatModel):
     model: str
     api_key: str
     api_base: str
-    temperature: float
+    temperature: float | None = None
     max_tokens: int = 4096
     disable_streaming: bool = False
     timeout: int = 15

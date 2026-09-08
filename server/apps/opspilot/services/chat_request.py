@@ -36,7 +36,7 @@ class ChatRequest:
     llm_model: Any
 
     # Optional keys with their documented defaults.
-    show_think: bool = True
+    show_think: bool = False
     skill_type: Optional[Any] = None
     group: Any = 0
 
@@ -61,7 +61,7 @@ class ChatRequest:
 
         return cls(
             llm_model=llm_model,
-            show_think=kwargs.get("show_think", True),
+            show_think=kwargs.get("show_think", False),
             skill_type=kwargs.get("skill_type"),
             group=kwargs.get("group", 0),
             tools=kwargs.get("tools", []) or [],

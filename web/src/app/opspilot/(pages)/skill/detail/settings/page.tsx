@@ -33,7 +33,6 @@ import {
   normalizeMonitorToolConfigs,
 } from '@/app/opspilot/utils/monitorToolConfig';
 import Icon from '@/components/icon';
-import SkillTemperatureField from './SkillTemperatureField';
 import OpsPilotStudioWorkbenchSkeleton from '@/app/opspilot/components/opspilot-studio-workbench-skeleton';
 
 const { Option } = Select;
@@ -55,7 +54,6 @@ const SkillSettingsPage: React.FC = () => {
   const manageGroup: number[] = Form.useWatch('group', form) || [];
   const selectedModelId = Form.useWatch('llmModel', form);
 
-  const [temperature, setTemperature] = useState(0.7);
   const [initialMessages] = useState<any[]>([]); // 稳定的空数组引用
 
   const [chatHistoryEnabled, setChatHistoryEnabled] = useState(true);
@@ -128,15 +126,10 @@ const SkillSettingsPage: React.FC = () => {
           llmModel: data.llm_model,
           prompt: data.skill_prompt,
           guide: data.guide || initialGuide,
-          temperature: data.temperature ?? 0.7,
-          show_think: data.show_think ?? true,
-          enable_suggest: data.enable_suggest,
-          enable_query_rewrite: data.enable_query_rewrite,
           wiki_knowledge_bases: data.wiki_knowledge_bases || [],
           skill_params: data.skill_params || [],
         });
         setGuideValue(data.guide || initialGuide);
-        setTemperature(data.temperature ?? 0.7);
         setChatHistoryEnabled(data.enable_conversation_history ?? true);
         setQuantity(data.conversation_window_size ?? 10);
         setSelectedTools(normalizeMonitorToolConfigs((data.tools || []) as SelectTool[]));
@@ -197,12 +190,12 @@ const SkillSettingsPage: React.FC = () => {
         skill_prompt: values.prompt,
         enable_conversation_history: chatHistoryEnabled,
         conversation_window_size: chatHistoryEnabled ? quantity : undefined,
-        temperature: temperature,
-        show_think: values.show_think,
+        temperature: 1,
+        show_think: false,
         guide: values.guide,
         tools: buildSkillSaveTools(selectedTools),
-        enable_suggest: values.enable_suggest,
-        enable_query_rewrite: values.enable_query_rewrite,
+        enable_suggest: false,
+        enable_query_rewrite: false,
         skill_params: (values.skill_params || []).filter((p: any) => p && p.key),
         wiki_knowledge_bases: values.wiki_knowledge_bases || [],
         skill_package_params: skillPackageParams,
@@ -283,8 +276,8 @@ const SkillSettingsPage: React.FC = () => {
         skill_prompt: values.prompt,
         skill_name: values.name,
         skill_id: id,
-        enable_suggest: values.enable_suggest,
-        enable_query_rewrite: values.enable_query_rewrite,
+        enable_suggest: false,
+        enable_query_rewrite: false,
         skill_params: (values.skill_params || []).filter((p: any) => p && p.key),
         skill_package_params: skillPackageParams,
         skill_packages: effectiveSkillCapabilityProfiles.map((pkg) => ({
@@ -299,8 +292,8 @@ const SkillSettingsPage: React.FC = () => {
         })),
         chat_history: chatHistory,
         conversation_window_size: chatHistoryEnabled ? quantity : undefined,
-        temperature: temperature,
-        show_think: values.show_think,
+        temperature: 1,
+        show_think: false,
         tools: buildStudioRuntimeTools(selectedTools),
         skill_type: 1,
         group: values.group?.[0],
@@ -328,11 +321,6 @@ const SkillSettingsPage: React.FC = () => {
       }
       return null;
     }
-  };
-
-  const handleTemperatureChange = (value: number) => {
-    setTemperature(value);
-    form.setFieldsValue({ temperature: value });
   };
 
   const effectiveSkillCapabilityProfiles = useMemo(() => {
@@ -690,7 +678,6 @@ const SkillSettingsPage: React.FC = () => {
                 wrapperCol={{ flex: 1 }}
                 colon={false}
                 className="[&_.ant-form-item]:mb-3.5 [&_.ant-form-item-label]:pr-3 text-sm"
-                initialValues={{ temperature: 0.7, show_think: true }}
               >
                 {/* 1. 基本信息 */}
                 <section className="mb-6">
@@ -769,48 +756,6 @@ const SkillSettingsPage: React.FC = () => {
                       options={wikiKbs.map((kb) => ({ value: kb.id, label: kb.name }))}
                     />
                   </Form.Item>
-
-                  <Form.Item
-                    label={t('skill.form.temperature')}
-                    name="temperature"
-                    tooltip={t('skill.form.temperatureTip')}
-                  >
-                    <SkillTemperatureField
-                      value={temperature}
-                      onChange={handleTemperatureChange}
-                    />
-                  </Form.Item>
-
-                  {/* 规整无边框的 Setting Rows */}
-                  <div className="divide-y divide-[var(--color-fill-2)]/60 pt-1">
-                    <div className="flex items-center justify-between py-2.5">
-                      <div>
-                        <div className="text-[13px] font-medium text-[var(--color-text-1)]">{t('skill.form.showThought')}</div>
-                        <div className="text-xs text-[var(--color-text-3)]">在回答中显示模型的推理思考过程</div>
-                      </div>
-                      <Form.Item name="show_think" valuePropName="checked" className="!mb-0" noStyle>
-                        <Switch size="small" />
-                      </Form.Item>
-                    </div>
-                    <div className="flex items-center justify-between py-2.5">
-                      <div>
-                        <div className="text-[13px] font-medium text-[var(--color-text-1)]">{t('skill.form.enableSuggest')}</div>
-                        <div className="text-xs text-[var(--color-text-3)]">根据当前回答推荐用户可能感兴趣的后续提问</div>
-                      </div>
-                      <Form.Item name="enable_suggest" valuePropName="checked" className="!mb-0" noStyle>
-                        <Switch size="small" />
-                      </Form.Item>
-                    </div>
-                    <div className="flex items-center justify-between py-2.5">
-                      <div>
-                        <div className="text-[13px] font-medium text-[var(--color-text-1)]">{t('skill.form.problemOptimization')}</div>
-                        <div className="text-xs text-[var(--color-text-3)]">{t('skill.form.problemOptimizationTip')}</div>
-                      </div>
-                      <Form.Item name="enable_query_rewrite" valuePropName="checked" className="!mb-0" noStyle>
-                        <Switch size="small" />
-                      </Form.Item>
-                    </div>
-                  </div>
                 </section>
 
                 {/* 3. 提示词与参数 */}

@@ -58,3 +58,19 @@ def test_format_chat_server_kwargs_8k_window_uses_capped_output_and_smaller_trim
     assert chat_kwargs["message_trim_config"]["max_single_message_tokens"] == 1_360
     assert chat_kwargs["max_output_tokens"] == 800
     assert chat_kwargs["extra_config"]["input_working_tokens"] == 6_800
+
+
+def test_format_chat_server_kwargs_ignores_legacy_suggest_rewrite_and_think_flags():
+    model = LLMModel.objects.create(name="chat-flags", vendor=_vendor(), model="gpt-4", context_window_tokens=8_000)
+    kwargs = _kwargs([])
+    kwargs["enable_suggest"] = True
+    kwargs["enable_query_rewrite"] = True
+    kwargs["show_think"] = True
+    kwargs["temperature"] = 0.2
+
+    chat_kwargs, _, _ = ChatService.format_chat_server_kwargs(kwargs, model)
+
+    assert chat_kwargs["enable_suggest"] is False
+    assert chat_kwargs["enable_query_rewrite"] is False
+    assert chat_kwargs["extra_config"]["show_think"] is False
+    assert chat_kwargs["temperature"] == 1.0

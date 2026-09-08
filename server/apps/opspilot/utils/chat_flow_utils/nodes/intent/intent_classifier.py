@@ -5,6 +5,7 @@ from typing import Any, Dict
 from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.safe_template import TemplateSecurityError, safe_render
 from apps.opspilot.enum import SkillTypeChoices
+from apps.opspilot.metis.llm.common.llm_client_factory import DEFAULT_CHAT_TEMPERATURE
 from apps.opspilot.services.chat_service import ChatService
 from apps.opspilot.utils.chat_flow_utils.conversation_history import build_node_chat_history
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
@@ -89,7 +90,7 @@ class IntentClassifierNode(BaseNodeExecutor):
         return {
             "llm_model": llm_model,
             "skill_prompt": self._build_intent_prompt(node_id, intent_names, config.get("classificationRules", "")),
-            "temperature": 0.1,
+            "temperature": DEFAULT_CHAT_TEMPERATURE,
             "chat_history": build_node_chat_history(self.variable_manager, message, message),
             "user_message": message,
             "conversation_window_size": INTENT_HISTORY_WINDOW,
