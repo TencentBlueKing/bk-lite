@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useEffect, useCallback, useState } from 'react';
+import React, { useMemo, useEffect, useState } from 'react';
 import Link from 'next/link';
 import Icon from '@/components/icon';
 import sideMenuStyle from './index.module.scss';
@@ -13,6 +13,12 @@ import {
 import { MenuItem } from '@/types/index';
 import { useRelationships } from '@/app/cmdb/context/relationships';
 import { useTranslation } from '@/utils/i18n';
+import {
+  buildRelationshipTabHref,
+  DEFAULT_RELATIONSHIP_TAB,
+  isRelationshipMenuActive,
+} from '../../relationshipViewNavigation';
+import { mergeRelationshipAssociations } from '../../relationshipMenuData';
 
 interface SideMenuProps {
   menuItems: MenuItem[];
@@ -90,7 +96,6 @@ const SideMenu: React.FC<SideMenuProps> = ({
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelId]);
 
   const relItem = menuItems.find((m) => m.name === ASSET_NAME);
@@ -119,8 +124,12 @@ const SideMenu: React.FC<SideMenuProps> = ({
   };
 
   const handleItemClick = (modelAsstId: string, item: MenuItem) => {
-    if (!isActive(item.url)) {
-      const newUrl = buildUrlWithParams(item.url);
+    if (!isActive(item.url) || currentTab !== DEFAULT_RELATIONSHIP_TAB) {
+      const newUrl = buildRelationshipTabHref(
+        item.url,
+        searchParams,
+        DEFAULT_RELATIONSHIP_TAB
+      );
       router.push(newUrl);
     }
     setSelectedAssoId(modelAsstId);
@@ -131,59 +140,67 @@ const SideMenu: React.FC<SideMenuProps> = ({
     return `${path}?${params.toString()}`;
   };
 
+  const shortcutTabs = shortcuts.map((shortcut) => shortcut.tab);
+
   const isActive = (path: string): boolean => {
     if (pathname === null) return false;
     return pathname.startsWith(path);
   };
 
-  useEffect(() => {
-    fetchAllAssociations(modelId || '');
-  }, []);
+  const isMenuItemActive = (item: MenuItem): boolean => {
+    const pathMatches = isActive(item.url);
+    if (item.name !== ASSET_NAME) return pathMatches;
+    return isRelationshipMenuActive(pathMatches, currentTab, shortcutTabs);
+  };
 
-  const fetchAllAssociations = useCallback(
-    async (modelId: string) => {
-      if (!modelId) return;
-      try {
-        const data = await getModelAssociations(modelId);
-        setAllAssociations(Array.isArray(data) ? data : []);
-      } catch {
-        setAllAssociations([]);
-      }
-    },
-    [getModelAssociations]
-  );
+  useEffect(() => {
+    if (!modelId) {
+      setAllAssociations([]);
+      return;
+    }
+    let cancelled = false;
+    getModelAssociations(modelId)
+      .then((data) => {
+        if (!cancelled) {
+          setAllAssociations(Array.isArray(data) ? data : []);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setAllAssociations([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [modelId]);
 
   const relationData = useMemo<RelationSection[]>(() => {
-    if (!assoInstances?.length) return [];
+    const mergedAssociations: any[] = mergeRelationshipAssociations(
+      assoInstances || [],
+      allAssociations
+    );
+    if (!mergedAssociations.length) return [];
 
-    const filterAssoList: any = allAssociations.filter((item) => {
-      return assoInstances.every(
-        (asso) => asso.model_asst_id !== item.model_asst_id
-      );
-    });
-    const groupedData = assoInstances
-      .concat(filterAssoList)
-      .reduce((acc, item) => {
-        const title =
-          assoTypes.find((type) => type.asst_id === item.asst_id)?.asst_name ||
-          '--';
-        if (!acc.has(title)) {
-          acc.set(title, []);
-        }
+    const groupedData = mergedAssociations.reduce((acc, item) => {
+      const title =
+        assoTypes.find((type) => type.asst_id === item.asst_id)?.asst_name ||
+        '--';
+      if (!acc.has(title)) {
+        acc.set(title, []);
+      }
 
-        const text =
-          item.dst_model_id === modelId
-            ? item.src_model_name || item.src_model_id
-            : item.dst_model_name || item.dst_model_id;
+      const text =
+        item.dst_model_id === modelId
+          ? item.src_model_name || item.src_model_id
+          : item.dst_model_name || item.dst_model_id;
 
-        acc.get(title)?.push({
-          model_asst_id: item.model_asst_id,
-          text,
-          value: item.inst_list?.length || 0,
-        });
+      acc.get(title)?.push({
+        model_asst_id: item.model_asst_id,
+        text,
+        value: item.inst_list?.length || 0,
+      });
 
-        return acc;
-      }, new Map());
+      return acc;
+    }, new Map());
 
     return Array.from(groupedData.entries()).map(([title, children]) => {
       const dedupedMap = new Map<string, ListItem>();
@@ -210,7 +227,7 @@ const SideMenu: React.FC<SideMenuProps> = ({
         children: Array.from(dedupedMap.values()),
       };
     });
-  }, [assoInstances, assoTypes, allAssociations]);
+  }, [assoInstances, assoTypes, allAssociations, modelId]);
 
   const orderedMenuItems = useMemo(() => {
     const items = [...menuItems];
@@ -261,10 +278,16 @@ const SideMenu: React.FC<SideMenuProps> = ({
                 );
               })}
               <li
-                className={`rounded-md mb-1 ${isActive(item.url) ? sideMenuStyle.active : ''}`}
+                className={`rounded-md mb-1 ${isMenuItemActive(item) ? sideMenuStyle.active : ''}`}
               >
                 <Link
-                  href={buildUrlWithParams(item.url)}
+                  href={item.name === ASSET_NAME
+                    ? buildRelationshipTabHref(
+                      item.url,
+                      searchParams,
+                      DEFAULT_RELATIONSHIP_TAB
+                    )
+                    : buildUrlWithParams(item.url)}
                   className="group flex items-center h-9 rounded-md py-2 text-sm font-normal px-3"
                 >
                   {item.icon && (
