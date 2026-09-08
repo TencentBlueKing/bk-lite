@@ -135,6 +135,13 @@ def test_proxy_compose_injects_zone_instance_id_for_region_services(
     assert stargazer["restart"] == "always"
 
 
+def test_proxy_bundle_publishes_platform_nats_port(certificate_authority):
+    with _generate_proxy_archive("10.0.0.8", certificate_authority) as archive:
+        compose_config = yaml.safe_load(archive.extractfile("./docker-compose.yaml").read().decode())
+
+    assert compose_config["services"]["nats"]["ports"] == ["4222:4222"]
+
+
 def test_bootstrap_uses_rendered_nats_admin_user(certificate_authority):
     """bootstrap.sh 必须用 .env 渲染出的管理员账号连 NATS，不能写死 admin。"""
     with _generate_proxy_archive("10.0.0.8", certificate_authority) as archive:
