@@ -3,14 +3,16 @@
 
 复用监控侧调用契约（已与官方《Dorado 6.1.8 REST 接口参考》校验一致）：
   登录 POST /deviceManager/rest/xxxxx/sessions（scope=0）→ iBaseToken + deviceid；
-  配置端点 GET /storagepool、/disk、/lun（仅取配置，不取性能）；
-  分页 range=[start-end]；登出 DELETE /sessions。
+  配置端点 GET /storagepool、/disk、/lun、/eth_port、/fc_port（仅取配置，不取性能）；
+  可选 GET /system 回填型号/微码；分页 range=[start-end]；登出 DELETE /sessions。
 
 输出结构：{"result": {"storage":[...], "storage_pool":[...],
-          "storage_disk":[...], "storage_volume":[...]}, "success": True}
+          "storage_disk":[...], "storage_volume":[...],
+          "storage_eth_port":[...], "storage_fc_port":[...]}, "success": True}
 子对象字段保留 OceanStor 原始字段名（NAME/USERTOTALCAPACITY/SECTORSIZE/LOCATION/
 MODEL/SERIALNUMBER/DISKTYPE/SECTORS/SPEEDRPM/MANUFACTURER/WWN/CAPACITY/ALLOCCAPACITY/
-ALLOCTYPE/PARENTNAME/USAGETYPE/RUNNINGSTATUS），由 CMDB 侧 runner 归一化。
+ALLOCTYPE/PARENTNAME/USAGETYPE/RUNNINGSTATUS/MACADDRESS/MACADDR/IPV4ADDR/WWPN/
+RUNSPEED），由 CMDB 侧 runner 归一化。
 """
 import httpx
 from sanic.log import logger
@@ -85,6 +87,42 @@ class OceanStorManager:
             start += self.PAGE_SIZE
         return items
 
+    async def _fetch_object(self, path):
+        """拉取单对象配置端点（如 /system）；失败不阻断主采集。"""
+        url = f"{self.base_url}/deviceManager/rest/{self.device_id}/{path}"
+        try:
+            resp = await self._client.get(url, headers=self._headers())
+            body = resp.json() or {}
+        except Exception as exc:  # noqa
+            logger.warning(f"OceanStor fetch {path} error: {exc}")
+            return {}
+        if (body.get("error") or {}).get("code", 0) != 0:
+            logger.warning(f"OceanStor fetch {path} error: {body.get('error')}")
+            return {}
+        data = body.get("data") or {}
+        if isinstance(data, list):
+            return data[0] if data else {}
+        return data if isinstance(data, dict) else {}
+
+    @staticmethod
+    def _system_model(system):
+        for key in ("PRODUCTMODESTRING", "productModeString"):
+            value = str(system.get(key) or "").strip()
+            if value:
+                return value
+        mode = str(system.get("PRODUCTMODE") or "").strip()
+        if mode and not mode.isdigit():
+            return mode
+        return ""
+
+    @staticmethod
+    def _system_firmware(system):
+        for key in ("PRODUCTVERSION", "pointRelease"):
+            value = str(system.get(key) or "").strip()
+            if value:
+                return value
+        return ""
+
     async def list_all_resources(self):
         self._client = httpx.AsyncClient(
             timeout=self.timeout,
@@ -92,9 +130,12 @@ class OceanStorManager:
         )
         try:
             await self.login()
+            system = await self._fetch_object("system")
             pools = await self._fetch_all("storagepool")
             disks = await self._fetch_all("disk")
             luns = await self._fetch_all("lun")
+            eth_ports = await self._fetch_all("eth_port")
+            fc_ports = await self._fetch_all("fc_port")
 
             def _gb(sectors, sector_size):
                 try:
@@ -111,10 +152,11 @@ class OceanStorManager:
 
             storage = {
                 "device_sn": self.device_id,
-                "model": "",
+                "ip_addr": self.host,
+                "model": self._system_model(system),
                 "brand": "huawei",
                 "storage_type": "SAN",
-                "firmware_version": "",
+                "firmware_version": self._system_firmware(system),
                 "sys_desc": "Huawei OceanStor",
                 "total_capacity": str(total),
                 "used_capacity": str(used),
@@ -130,6 +172,8 @@ class OceanStorManager:
                 "storage_pool": pools,
                 "storage_disk": disks,
                 "storage_volume": luns,
+                "storage_eth_port": eth_ports,
+                "storage_fc_port": fc_ports,
             }
             return {"result": result, "success": True}
         except Exception as err:  # noqa

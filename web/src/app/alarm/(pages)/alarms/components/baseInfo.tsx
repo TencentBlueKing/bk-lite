@@ -2,10 +2,12 @@ import React from 'react';
 import { Descriptions } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { AlarmTableDataItem } from '@/app/alarm/types/alarms';
+import MonitorObjectList from '@/app/alarm/components/monitor-object-list';
 import NotificationStatusTooltip from './notificationStatusTooltip';
 
 const BaseInfo: React.FC<{ detail: AlarmTableDataItem }> = ({ detail }) => {
   const { t } = useTranslation();
+  const hasMonitorObjects = Boolean(detail.monitor_objects?.length);
   const descriptionItems = [
     {
       key: 'operator',
@@ -23,15 +25,17 @@ const BaseInfo: React.FC<{ detail: AlarmTableDataItem }> = ({ detail }) => {
         />
       ),
     },
-    {
+    ...(hasMonitorObjects ? [] : [{
       key: 'objectType',
       label: t('alarms.objectType'),
       value: detail.resource_type,
-    },
+    }]),
     {
       key: 'object',
       label: t('alarms.object'),
-      value: detail.resource_name,
+      value: hasMonitorObjects ? (
+        <MonitorObjectList objects={detail.monitor_objects || []} />
+      ) : detail.resource_name,
     },
   ];
   return (

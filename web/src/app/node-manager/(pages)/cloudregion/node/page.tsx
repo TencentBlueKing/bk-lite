@@ -53,7 +53,7 @@ import {
   getCollectorOperationSelection,
   isControllerOperationDisabled
 } from '@/app/node-manager/utils/nodeOperation';
-import { asCollectorStatusList } from '@/app/node-manager/utils/collectorConfig';
+import { listNodeHostedCollectors } from '@/app/node-manager/utils/collectorConfig';
 const { confirm } = Modal;
 
 type TableRowSelection<T extends object = object> =
@@ -204,26 +204,8 @@ const Node = () => {
     return selectedNodes[0]?.operating_system || 'linux';
   }, [nodeList, selectedRowKeys]);
 
-  // 获取节点的所有采集器（排除 NATS-Executor）
   const getNodeCollectors = (record: TableDataItem) => {
-    const natsexecutorId =
-      record.operating_system === 'linux'
-        ? 'natsexecutor_linux'
-        : 'natsexecutor_windows';
-    const collectors = asCollectorStatusList(record.status?.collectors);
-    const collectorsInstall = asCollectorStatusList(
-      record.status?.collectors_install
-    );
-    // 获取已在 collectors 中的 collector_id 集合
-    const collectorIds = new Set(collectors.map((c: any) => c.collector_id));
-    // 过滤 collectors_install,排除已在 collectors 中的采集器
-    const filteredCollectorsInstall = collectorsInstall.filter(
-      (c: any) => !collectorIds.has(c.collector_id)
-    );
-    // 合并并排除 NATS-Executor
-    return [...collectors, ...filteredCollectorsInstall].filter(
-      (collector: any) => collector.collector_id !== natsexecutorId
-    );
+    return listNodeHostedCollectors(record);
   };
 
   useEffect(() => {
@@ -470,48 +452,10 @@ const Node = () => {
         key: 'controller',
         onCell: () => ({
           style: {
-            minWidth: 190
+            minWidth: 100
           }
         }),
         render: (_: any, record: TableDataItem) => {
-          // 根据当前行的操作系统动态确定 NATS-Executor ID
-          const natsexecutorId =
-            record.operating_system === 'linux'
-              ? 'natsexecutor_linux'
-              : 'natsexecutor_windows';
-          const collectorTarget = asCollectorStatusList(
-            record.status?.collectors
-          ).find(
-            (item: TableDataItem) => item.collector_id === natsexecutorId
-          );
-          const installTarget = asCollectorStatusList(
-            record.status?.collectors_install
-          ).find(
-            (item: TableDataItem) => item.collector_id === natsexecutorId
-          );
-          const { title, tagColor } = getStatusInfo(
-            collectorTarget,
-            installTarget
-          );
-
-          // 检查是否有 Ansible-Executor
-          const ansibleExecutorId = 'ansibleexecutor_linux';
-          const ansibleCollectorTarget = asCollectorStatusList(
-            record.status?.collectors
-          ).find(
-            (item: TableDataItem) => item.collector_id === ansibleExecutorId
-          );
-          const ansibleInstallTarget = asCollectorStatusList(
-            record.status?.collectors_install
-          ).find(
-            (item: TableDataItem) => item.collector_id === ansibleExecutorId
-          );
-          const hasAnsibleExecutor =
-            ansibleCollectorTarget || ansibleInstallTarget;
-          const ansibleStatusInfo = hasAnsibleExecutor
-            ? getStatusInfo(ansibleCollectorTarget, ansibleInstallTarget)
-            : null;
-
           return (
             <div className="flex flex-nowrap gap-1">
               <Tooltip title={`${record.status?.message}`}>
@@ -522,21 +466,6 @@ const Node = () => {
                   Sidecar
                 </Tag>
               </Tooltip>
-              <Tooltip title={title}>
-                <Tag color={tagColor} className="py-1 px-2">
-                  NATS-Executor
-                </Tag>
-              </Tooltip>
-              {hasAnsibleExecutor && (
-                <Tooltip title={ansibleStatusInfo?.title}>
-                  <Tag
-                    color={ansibleStatusInfo?.tagColor}
-                    className="py-1 px-2"
-                  >
-                    Ansible-Executor
-                  </Tag>
-                </Tooltip>
-              )}
             </div>
           );
         }
@@ -640,28 +569,6 @@ const Node = () => {
       collectors,
       row: record
     });
-  };
-
-  const getStatusInfo = (
-    collectorTarget: TableDataItem,
-    installTarget: TableDataItem
-  ) => {
-    const { message } = installTarget?.message || {};
-    const statusCode = collectorTarget
-      ? collectorTarget.status
-      : installTarget?.status;
-    const color = statusMap[statusCode]?.color || '#b2b5bd';
-    const tagColor = statusMap[statusCode]?.tagColor || color || 'default';
-    const status = statusMap[statusCode]?.text || '--';
-    const engText = statusMap[statusCode]?.engText || '--';
-    const str = message || engText;
-    const title = collectorTarget ? collectorTarget.message : str;
-    return {
-      title,
-      color,
-      status,
-      tagColor
-    };
   };
 
   const handleCollector = (

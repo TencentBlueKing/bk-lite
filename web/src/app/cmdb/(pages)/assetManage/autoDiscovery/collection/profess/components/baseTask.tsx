@@ -119,8 +119,8 @@ interface BaseTaskFormProps {
   timeoutProps?: {
     min?: number;
     max?: number;
-    defaultValue?: number;
     addonAfter?: string;
+    tooltip?: React.ReactNode;
   };
   onClose: () => void;
   onTest?: () => void;
@@ -150,7 +150,6 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       modelItem,
       timeoutProps = {
         max: 86400,
-        defaultValue: 600,
         addonAfter: '',
       },
       instPlaceholder,
@@ -1030,7 +1029,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                   label={
                     <span>
                       {t('Collection.timeout')}
-                      <Tooltip title={t('Collection.timeoutTooltip')}>
+                      <Tooltip title={timeoutProps.tooltip ?? t('Collection.timeoutTooltip')}>
                         <QuestionCircleOutlined className="ml-1 text-gray-400" />
                       </Tooltip>
                     </span>

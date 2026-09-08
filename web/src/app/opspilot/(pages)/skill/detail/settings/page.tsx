@@ -1,13 +1,13 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Form, Input, Select, Switch, Button, InputNumber, message, Modal, Checkbox } from 'antd';
-import { PlusOutlined, DeleteOutlined, SendOutlined } from '@ant-design/icons';
+import { Form, Input, Select, Switch, Button, InputNumber, message, Modal, Checkbox, Space, Tooltip } from 'antd';
+import { PlusOutlined, DeleteOutlined, SendOutlined, SearchOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useSearchParams } from 'next/navigation';
 import CustomChatSSE from '@/app/opspilot/components/custom-chat-sse';
 import CompactEmptyState from '@/components/compact-empty-state';
-import SearchActionBar from '@/components/search-action-bar';
+import OperateModal from '@/components/operate-modal';
 import PermissionWrapper from '@/components/permission';
 import GroupTreeSelect from '@/components/group-tree-select';
 import { SkillPackage, SkillPackageParam } from '@/app/opspilot/types/skill';
@@ -504,68 +504,114 @@ const SkillSettingsPage: React.FC = () => {
   );
 
   const renderSkillPickerModal = () => (
-    <Modal
+    <OperateModal
       title="选择技能包"
       open={isSkillPickerOpen}
-      onOk={handleConfirmSkillPicker}
       onCancel={() => setIsSkillPickerOpen(false)}
-      okText="确认选择"
-      cancelText="取消"
-      width={640}
-    >
-      <SearchActionBar
-        spacing="flush"
-        className="mb-3"
-        searchProps={{
-          allowClear: true,
-          placeholder: '搜索技能包',
-          value: skillPickerKeyword,
-          onChange: (event) => setSkillPickerKeyword(event.target.value),
-        }}
-      />
-      <div className="grid max-h-[420px] grid-cols-1 gap-3 overflow-y-auto pr-1 lg:grid-cols-2">
-        {filteredAvailableSkillAssets.length === 0 ? (
-          <div className="col-span-full">
-            <CompactEmptyState description="没有匹配的技能包" />
+      width={720}
+      footer={
+        <div className="flex w-full items-center justify-between">
+          <div className="text-xs text-[var(--color-text-3)]">
+            已选择数量:{' '}
+            <span className="font-semibold tabular-nums text-[var(--color-text-1)]">
+              {draftSkillAssetKeys.length}
+            </span>
           </div>
-        ) : (
-          filteredAvailableSkillAssets.map((asset) => {
+          <Space>
+            <Button onClick={() => setIsSkillPickerOpen(false)}>取消</Button>
+            <Button type="primary" onClick={handleConfirmSkillPicker}>
+              确认选择
+            </Button>
+          </Space>
+        </div>
+      }
+    >
+      <div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-[var(--color-text-3)]">
+            共 {filteredAvailableSkillAssets.length} 项
+          </span>
+          {draftSkillAssetKeys.length > 0 && (
+            <span className="inline-flex h-5 items-center rounded-full bg-[var(--color-count-bg)] px-2 text-[11px] font-medium tabular-nums text-[var(--color-count)]">
+              已选 {draftSkillAssetKeys.length} 项
+            </span>
+          )}
+        </div>
+        <Input
+          allowClear
+          className="w-64"
+          placeholder="搜索技能包..."
+          prefix={<SearchOutlined className="text-[var(--color-text-4)]" />}
+          value={skillPickerKeyword}
+          onChange={(event) => setSkillPickerKeyword(event.target.value)}
+        />
+      </div>
+
+      {filteredAvailableSkillAssets.length === 0 ? (
+        <div className="py-8">
+          <CompactEmptyState description="没有匹配的技能包" />
+        </div>
+      ) : (
+        <div className="grid max-h-[440px] grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
+          {filteredAvailableSkillAssets.map((asset) => {
             const assetKey = getPackageKey(asset);
             const checked = draftSkillAssetKeys.includes(assetKey);
             return (
-              <label
+              <div
                 key={assetKey}
-                className={`block min-h-[132px] cursor-pointer rounded-lg border p-4 transition ${
+                role="button"
+                tabIndex={0}
+                aria-pressed={checked}
+                className={`group relative flex flex-col justify-between rounded-lg border p-3.5 cursor-pointer transition-all duration-150 select-none ${
                   checked
-                    ? 'border-[var(--color-primary)] bg-[var(--color-primary-bg-active)]'
-                    : 'border-[var(--color-border-1)] bg-[var(--color-bg)] hover:border-[var(--color-primary-border)]'
+                    ? 'border-[var(--color-primary)] bg-[var(--color-primary-bg-active)]/45 shadow-2xs'
+                    : 'border-[var(--color-border-1)] bg-[var(--color-bg)] hover:border-[var(--color-primary)]/40 hover:bg-[var(--color-fill-1)]/40'
                 }`}
+                onClick={() => toggleDraftSkillAsset(assetKey, !checked)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    toggleDraftSkillAsset(assetKey, !checked);
+                  }
+                }}
               >
-                <div className="flex h-full items-start gap-3">
-                  <Checkbox
-                    checked={checked}
-                    className="mt-0.5"
-                    onChange={(event) => toggleDraftSkillAsset(assetKey, event.target.checked)}
-                  />
-                  <Icon type="jinengpeixun" className="shrink-0 text-3xl text-[var(--color-primary)]" />
-                  <div className="flex min-w-0 flex-1 flex-col">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <div className="truncate font-medium text-[var(--color-text-1)]">{asset.name}</div>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--color-fill-1)] text-[var(--color-primary)] transition-colors group-hover:bg-[var(--color-fill-2)]">
+                      <Icon type="jinengpeixun" className="text-xl" />
                     </div>
-                    <p className="mt-1.5 line-clamp-2 min-h-10 text-xs leading-5 text-[var(--color-text-3)]">
-                      {asset.description || '暂无描述'}
-                    </p>
-                    {asset.category && (
-                      <div className="mt-auto pt-2 text-[11px] text-[var(--color-text-4)]">{asset.category}</div>
-                    )}
+                    <div className="min-w-0 flex-1">
+                      <Tooltip title={asset.name}>
+                        <div className="truncate text-[13px] font-semibold leading-snug text-[var(--color-text-1)]">
+                          {asset.name}
+                        </div>
+                      </Tooltip>
+                      {asset.category && (
+                        <div className="mt-0.5 truncate text-[11px] text-[var(--color-text-4)]">
+                          {asset.category}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="shrink-0 pt-0.5" onClick={(event) => event.stopPropagation()}>
+                    <Checkbox
+                      checked={checked}
+                      onChange={(event) => toggleDraftSkillAsset(assetKey, event.target.checked)}
+                    />
                   </div>
                 </div>
-              </label>
+
+                <div className="mt-2 min-h-[36px]">
+                  <p className="line-clamp-2 text-xs leading-relaxed text-[var(--color-text-3)] m-0">
+                    {asset.description || '暂无描述'}
+                  </p>
+                </div>
+              </div>
             );
-          })
-        )}
-      </div>
-    </Modal>
+          })}
+        </div>
+      )}
+    </OperateModal>
   );
 
   return (

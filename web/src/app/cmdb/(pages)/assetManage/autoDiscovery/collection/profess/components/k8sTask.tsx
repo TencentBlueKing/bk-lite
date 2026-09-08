@@ -5,7 +5,7 @@ import BaseTaskForm, { BaseTaskRef } from './baseTask';
 import styles from '../index.module.scss';
 import { useTranslation } from '@/utils/i18n';
 import { useCollectionFormLayout } from '../hooks/useCollectionFormLayout';
-import { Form, Spin, Select, Input } from 'antd';
+import { Form, Spin, Select, Input, Alert } from 'antd';
 import {
   getCleanupFormValues,
   getCycleFormValues,
@@ -16,6 +16,14 @@ import { formatTaskValues } from '../hooks/formatTaskValues';
 import { TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
 import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
 import useApiClient from '@/utils/request';
+import {
+  K8sDaemonSetTolerationsEditor,
+  createK8sTolerationsEditorCopy,
+  k8sTolerationRuleMessage,
+  toRequestTolerations,
+  validateK8sDaemonSetTolerations,
+  type K8sDaemonSetToleration,
+} from '@/app/monitor/components/k8s-collector-install-step';
 
 const COLLECTOR_CLUSTER_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 
@@ -32,6 +40,7 @@ interface K8sTaskFormProps {
   onAfterSave?: (ctx: {
     collector_cluster_id: string;
     cloud_region_id: number | string;
+    tolerations?: K8sDaemonSetToleration[] | null;
     values: any;
   }) => boolean | void | Promise<boolean | void>;
 }
@@ -86,6 +95,7 @@ const K8sTaskForm: React.FC<K8sTaskFormProps> = ({
         const result = await onAfterSave({
           collector_cluster_id: values.collector_cluster_id,
           cloud_region_id: values.cloud_region_id,
+          tolerations: toRequestTolerations(values.tolerations),
           values,
         });
         return result === true;
@@ -123,6 +133,7 @@ const K8sTaskForm: React.FC<K8sTaskFormProps> = ({
           ...baseData.params,
           collector_cluster_id: values.collector_cluster_id,
           cloud_region_id: values.cloud_region_id,
+          tolerations: toRequestTolerations(values.tolerations),
         },
       };
     },
@@ -141,6 +152,10 @@ const K8sTaskForm: React.FC<K8sTaskFormProps> = ({
       values.params?.collector_cluster_id ??
       '',
     cloud_region_id: values.params?.cloud_region_id,
+    tolerations:
+      values.params?.tolerations === undefined
+        ? null
+        : values.params?.tolerations,
     timeout: values.timeout,
   });
 
@@ -213,6 +228,41 @@ const K8sTaskForm: React.FC<K8sTaskFormProps> = ({
                 value: r.id,
                 label: r.display_name || r.name,
               }))}
+            />
+          </Form.Item>
+          <Alert
+            type="info"
+            showIcon
+            className="mb-4"
+            message={
+              t('Collection.k8sTask.singleNodeTaintPrecondition') ||
+              'On a single-node cluster that keeps the control-plane taint, central Deployments stay Pending. Administrators should remove that taint. Collector Deployments never receive tolerations.'
+            }
+          />
+          <Form.Item
+            label={t('Collection.k8sTask.taintTolerations') || 'Taint Tolerations'}
+            name="tolerations"
+            extra={t('Collection.k8sTask.taintTolerationsDesc')}
+            rules={[
+              {
+                validator: (_, value) => {
+                  const code = validateK8sDaemonSetTolerations(value);
+                  if (!code) return Promise.resolve();
+                  return Promise.reject(
+                    new Error(
+                      k8sTolerationRuleMessage(
+                        t,
+                        'Collection.k8sTask',
+                        code
+                      ) || code
+                    )
+                  );
+                },
+              },
+            ]}
+          >
+            <K8sDaemonSetTolerationsEditor
+              copy={createK8sTolerationsEditorCopy(t, 'Collection.k8sTask')}
             />
           </Form.Item>
         </BaseTaskForm>

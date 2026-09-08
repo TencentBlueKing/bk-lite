@@ -255,6 +255,8 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             vm_params=_extract_vm_params(request),
             instance_id=instance_id,
             instance_ids=instance_ids,
+            ordering=request.GET.get("ordering"),
+            order=request.GET.get("order", "asc"),
         )
         # 如果有权限规则，则添加到数据中
         inst_permission_map = {i["id"]: i["permission"] for i in permission.get("instance", [])}

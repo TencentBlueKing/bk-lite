@@ -53,6 +53,7 @@ vi.mock('../application3DScene', () => ({
       focus: mocks.focus,
       showArchitecture: mocks.showArchitecture,
       hideArchitecture: mocks.hideArchitecture,
+      dismissArchitectureOverlay: vi.fn(),
     };
   },
 }));
@@ -309,6 +310,24 @@ describe('application3D application detail', () => {
       } as never);
     });
     expect(document.querySelector('.app3d-arch-host-chip')?.textContent).toContain('--');
+
+    act(() => {
+      mocks.sceneCallbacks?.onArchitectureHostSelect?.({
+        node: {
+          id: 'host-unknown',
+          name: 'web-unknown',
+          kind: 'host',
+          health: {
+            state: 'unknown',
+            activeAlarmCount: 0,
+            highestSeverity: null,
+          },
+        },
+        overlay: { left: 48, top: 12 },
+      } as never);
+    });
+    const unknownMetricVal = document.querySelector('.app3d-arch-host-chip__metric-val');
+    expect(unknownMetricVal?.textContent).toBe('-');
 
     act(() => {
       mocks.sceneCallbacks?.onArchitectureHostSelect?.(null);

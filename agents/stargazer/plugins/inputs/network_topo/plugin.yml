@@ -1,9 +1,9 @@
 name: network_topo
-version: 2.0.0
+version: 2.1.0
 category: network
 metadata:
   display_name: SNMP 网络设备拓扑
-  description: SNMP 网络设备采集插件，支持协议方式采集
+  description: SNMP 网络设备拓扑采集插件，支持 LLDP、华为 NDP、CDP、FDB 和 ARP
   author: WeOps
   tags:
   - network

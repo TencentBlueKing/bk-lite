@@ -49,9 +49,9 @@ export const topologyHealthI18n: Record<ApmTopologyHealth, { id: string; fallbac
   unknown: { id: 'apm.health.unknown', fallback: '未知' },
 };
 
-const EDGE_STROKE = 'color-mix(in srgb, var(--color-text-3) 48%, var(--color-border))';
+const EDGE_STROKE = 'color-mix(in srgb, var(--color-text-3) 42%, var(--color-border))';
 const EDGE_STROKE_ACTIVE = 'var(--color-primary)';
-const NODE_IDLE_OPACITY = 0.5;
+const NODE_IDLE_OPACITY = 0.38;
 const NODE_DRAG_THRESHOLD_PX = 4;
 
 type CanvasDrag =
@@ -69,6 +69,7 @@ function TopologyMetricLabel({
   fontSize,
   textAnchor = 'start',
   clipPath,
+  opacity,
 }: {
   errorCount: number;
   total: number;
@@ -78,40 +79,25 @@ function TopologyMetricLabel({
   fontSize: number;
   textAnchor?: 'start' | 'middle';
   clipPath?: string;
+  opacity?: number;
 }) {
   const parts = topologyMetricParts({ errorCount, total, p95_ms: p95Ms });
   const isEdgeLabel = textAnchor === 'middle';
-  const pillWidth = 82;
-  const pillHeight = fontSize + 8;
   return (
-    <g>
-      {isEdgeLabel ? (
-        <rect
-          className="opacity-95"
-          fill="var(--color-bg)"
-          filter="url(#apm-node-shadow)"
-          height={pillHeight}
-          rx={6}
-          stroke="var(--color-border)"
-          strokeWidth="0.8"
-          width={pillWidth}
-          x={x - pillWidth / 2}
-          y={y - pillHeight / 2}
-        />
-      ) : null}
+    <g opacity={opacity} pointerEvents="none">
       <text
         clipPath={clipPath}
         data-topology-metrics="true"
         data-has-errors={!parts.hasErrors ? 'false' : 'true'}
         fontSize={fontSize}
-        paintOrder={isEdgeLabel ? undefined : 'stroke'}
-        stroke={isEdgeLabel ? undefined : 'var(--color-fill-1)'}
+        paintOrder={isEdgeLabel ? 'stroke fill' : undefined}
+        stroke={isEdgeLabel ? 'var(--color-bg)' : undefined}
         strokeLinejoin="round"
-        strokeWidth={isEdgeLabel ? undefined : '0'}
+        strokeWidth={isEdgeLabel ? 3.5 : undefined}
         textAnchor={textAnchor}
         dominantBaseline={isEdgeLabel ? 'central' : undefined}
         x={x}
-        y={isEdgeLabel ? y : y}
+        y={y}
       >
         <tspan fill="var(--color-text-3)">{`${parts.total} / ${parts.latency} / `}</tspan>
         <tspan data-error-count="true" fill={topologyErrorFill(parts.hasErrors)} fontWeight={parts.hasErrors ? 700 : undefined}>
@@ -126,6 +112,8 @@ const clampZoom = (value: number) => Math.min(MAX_TOPOLOGY_ZOOM, Math.max(MIN_TO
 
 const edgeKey = (source: string, target: string) => `${source}\u0000${target}`;
 
+const sanitizeSvgId = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, (char) => `_${char.charCodeAt(0).toString(16)}`);
+
 export default function TopologyCanvas({
   nodes,
   edges,
@@ -134,6 +122,7 @@ export default function TopologyCanvas({
   focusNamespace,
   selected = null,
   toolbar,
+  fillHeight = false,
   onSelect,
   onNodeClick,
 }: {
@@ -145,6 +134,8 @@ export default function TopologyCanvas({
   focusNamespace?: string;
   selected?: TopologyCanvasSelection | null;
   toolbar?: ReactNode;
+  /** 撑满父级 flex 容器剩余高度（父级需 `flex flex-col min-h-0`），否则固定 640px。 */
+  fillHeight?: boolean;
   onSelect?: (selection: TopologyCanvasSelection | null) => void;
   onNodeClick?: (node: ApmTopologyNode) => void;
 }) {
@@ -167,6 +158,7 @@ export default function TopologyCanvas({
   });
   const [view, setView] = useState({ x: 0, y: 0, k: zoom });
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const [hoveredEdgeKey, setHoveredEdgeKey] = useState<string | null>(null);
   const [nodePositions, setNodePositions] = useState<Record<string, { x: number; y: number }>>({});
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
 
@@ -243,15 +235,23 @@ export default function TopologyCanvas({
   const maxSpans = Math.max(...nodes.map((node) => node.sampled_spans), 1);
   const maxCalls = Math.max(...edges.map((edge) => edge.sampled_calls), 1);
   const edgePairs = new Set(edges.map((edge) => edgeKey(edge.source, edge.target)));
-  const routing = layout === 'layered' ? 'polyline' : 'curve';
+  const routing = layout === 'force' ? 'arc' : 'curve';
   const focusNodeIds = focusNamespace
     ? new Set(positionedNodes.filter((node) => node.service_namespace === focusNamespace).map((node) => node.id))
     : null;
+  const nodeDisplayName = (node: ApmTopologyNode) =>
+    node.kind === 'user_request' ? t('apm.topology.userRequestNode', '用户请求') : node.service_name;
   const nodeCardWidth = (sampledSpans: number) => TOPOLOGY_NODE_CARD.minWidth + (sampledSpans / maxSpans) * TOPOLOGY_NODE_CARD.widthSpan;
-  const nodeVisualRadius = (node: ApmTopologyNode) => (
-    node.kind === 'user_request' ? TOPOLOGY_ENTRY_PILL.height / 2 : TOPOLOGY_NODE_CARD.height / 2
-  );
-  const highlightNodeId = hoveredNodeId;
+  const nodeVisualRadius = (node: ApmTopologyNode) => {
+    const nodeName = nodeDisplayName(node);
+    const countLabel = formatNumber(node.sampled_spans);
+    const cardWidth = node.kind === 'user_request'
+      ? topologyEntryPillWidth(nodeName, countLabel)
+      : nodeCardWidth(node.sampled_spans);
+    return cardWidth / 2;
+  };
+
+  const highlightNodeId = hoveredNodeId || (selected?.kind === 'node' ? selected.id : null);
   const highlightedIds = highlightNodeId ? topologyNeighborIds(edges, highlightNodeId) : null;
   const selectedEdgeKey = selected?.kind === 'edge' ? edgeKey(selected.source, selected.target) : null;
 
@@ -381,13 +381,10 @@ export default function TopologyCanvas({
     beginWindowDrag();
   };
 
-  const nodeDisplayName = (node: ApmTopologyNode) =>
-    node.kind === 'user_request' ? t('apm.topology.userRequestNode', '用户请求') : node.service_name;
-
   return (
     <div
       ref={containerRef}
-      className="relative h-[640px] w-full overflow-hidden bg-[var(--color-fill-1)]"
+      className={`relative w-full overflow-hidden bg-[var(--color-fill-1)] ${fillHeight ? 'min-h-[320px] flex-1 basis-0' : 'h-[640px]'}`}
       data-topology-layout-pending={layoutPending ? 'true' : 'false'}
       data-topology-surface="true"
     >
@@ -418,6 +415,7 @@ export default function TopologyCanvas({
         aria-label={t('apm.topology.chartAria', 'APM 服务调用拓扑')}
         className="absolute inset-0 block h-full w-full cursor-grab active:cursor-grabbing"
         data-layout={layout}
+        data-ego-mode={Boolean(selected?.kind === 'node' && layout === 'force') ? 'true' : undefined}
         data-topology-scale={view.k.toFixed(2)}
         role="img"
         viewBox={`0 0 ${canvasSize.width} ${canvasSize.height}`}
@@ -449,6 +447,9 @@ export default function TopologyCanvas({
           <filter id="apm-node-shadow" x="-10%" y="-10%" width="124%" height="130%" filterUnits="userSpaceOnUse">
             <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="rgba(0,0,0,0.06)" />
           </filter>
+          <filter id="apm-card-glow" x="-20%" y="-20%" width="140%" height="140%" filterUnits="userSpaceOnUse">
+            <feDropShadow dx="0" dy="4" stdDeviation="6" floodColor="var(--color-primary)" floodOpacity="0.12" />
+          </filter>
           <marker id="apm-arrow" markerHeight="6" markerUnits="userSpaceOnUse" markerWidth="6" orient="auto" refX="5" refY="3" viewBox="0 0 6 6">
             <path d="M 0 0.6 L 5.5 3 L 0 5.4 Z" fill="context-stroke" strokeLinejoin="round" />
           </marker>
@@ -473,12 +474,26 @@ export default function TopologyCanvas({
           const isHighlighted = highlightedIds
             ? highlightedIds.has(edge.source) && highlightedIds.has(edge.target) && (edge.source === highlightNodeId || edge.target === highlightNodeId)
             : true;
-          const color = isSelected
+          const isHovered = hoveredEdgeKey === key || hoveredNodeId === edge.source || hoveredNodeId === edge.target;
+          const isNodeSelected = selected?.kind === 'node' && (selected.id === edge.source || selected.id === edge.target);
+          const edgeLength = Math.hypot(geometry.endX - geometry.startX, geometry.endY - geometry.startY);
+          const showMetricLabel = edgeLength >= 68 || isSelected || isHovered || isNodeSelected;
+          const trackColor = isSelected
             ? EDGE_STROKE_ACTIVE
             : edge.error_calls > 0
               ? topologyHealthColors.critical
               : EDGE_STROKE;
-          const strokeWidth = Math.max(1, Math.min(2.4, 0.9 + (edge.sampled_calls / maxCalls) * 1.4));
+          const flowColor = isSelected
+            ? EDGE_STROKE_ACTIVE
+            : edge.error_calls > 0
+              ? 'var(--color-fail)'
+              : 'var(--color-primary)';
+          const trafficRatio = maxCalls > 0 ? Math.min(1, edge.sampled_calls / maxCalls) : 0.5;
+          const flowDuration = Math.max(0.7, (edge.error_calls > 0 ? 1.35 : 1.7) - trafficRatio * 0.85);
+          const strokeWidth = Math.max(1.1, Math.min(2.0, 0.9 + (edge.sampled_calls / maxCalls) * 1.0));
+          const trackWidth = isSelected ? strokeWidth + 0.6 : strokeWidth;
+          const emphasized = isSelected || isHovered || isNodeSelected;
+          const gradientId = `apm-edge-grad-${sanitizeSvgId(edge.source)}-${sanitizeSvgId(edge.target)}`;
           return (
             <g
               data-source={edge.source}
@@ -490,6 +505,8 @@ export default function TopologyCanvas({
               tabIndex={onSelect ? 0 : undefined}
               className={onSelect ? 'cursor-pointer' : undefined}
               onMouseDown={(event) => event.stopPropagation()}
+              onMouseEnter={() => setHoveredEdgeKey(key)}
+              onMouseLeave={() => setHoveredEdgeKey((value) => (value === key ? null : value))}
               onClick={(event) => {
                 event.stopPropagation();
                 onSelect?.({ kind: 'edge', source: edge.source, target: edge.target });
@@ -507,19 +524,73 @@ export default function TopologyCanvas({
                 errors: formatNumber(edge.error_calls),
                 calls: formatNumber(edge.sampled_calls),
               })}</title>
+              <defs>
+                {/* 沿调用方向由淡到实的轨道渐变：源端隐入卡片阴影，靶端与箭头一同收实。 */}
+                <linearGradient
+                  gradientUnits="userSpaceOnUse"
+                  id={gradientId}
+                  x1={geometry.startX}
+                  x2={geometry.endX}
+                  y1={geometry.startY}
+                  y2={geometry.endY}
+                >
+                  <stop offset="0%" stopColor={trackColor} stopOpacity={emphasized ? 0.55 : 0.22} />
+                  <stop offset="55%" stopColor={trackColor} stopOpacity={emphasized ? 0.9 : 0.62} />
+                  <stop offset="100%" stopColor={trackColor} stopOpacity={1} />
+                </linearGradient>
+              </defs>
+              {/* 命中区 + 箭头：本体透明，只借 context-stroke 给箭头上实色，并加宽命中范围。 */}
               <path
                 d={geometry.path}
+                data-edge-hit="true"
                 fill="none"
                 markerEnd="url(#apm-arrow)"
-                stroke={color}
+                stroke={trackColor}
+                strokeOpacity={0}
+                strokeWidth={Math.max(10, trackWidth)}
+              />
+              <path
+                aria-hidden="true"
+                d={geometry.path}
+                data-edge-track="true"
+                fill="none"
+                pointerEvents="none"
+                stroke={`url(#${gradientId})`}
                 strokeDasharray={entryEdge ? '5 4' : undefined}
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeWidth={isSelected ? strokeWidth + 0.6 : strokeWidth}
+                strokeWidth={trackWidth}
+              />
+              <path
+                aria-hidden="true"
+                className="apm-edge-flow-line apm-edge-flow-glow"
+                d={geometry.path}
+                fill="none"
+                pointerEvents="none"
+                stroke={flowColor}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeOpacity={emphasized ? 0.45 : 0.22}
+                strokeWidth={trackWidth + 1.2}
+                style={{ animationDuration: `${flowDuration.toFixed(2)}s` }}
+              />
+              <path
+                aria-hidden="true"
+                className="apm-edge-flow-line"
+                d={geometry.path}
+                fill="none"
+                pointerEvents="none"
+                stroke={flowColor}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeOpacity={emphasized ? 0.95 : 0.8}
+                strokeWidth={trackWidth}
+                style={{ animationDuration: `${flowDuration.toFixed(2)}s` }}
               />
               <TopologyMetricLabel
                 errorCount={edge.error_calls}
                 fontSize={10}
+                opacity={showMetricLabel ? 1 : 0}
                 p95Ms={edge.p95_ms}
                 textAnchor="middle"
                 total={edge.sampled_calls}
@@ -617,7 +688,7 @@ export default function TopologyCanvas({
                 fill={isSelected
                   ? 'var(--color-primary-bg-active)'
                   : userRequest ? 'var(--color-fill-2)' : 'var(--color-bg)'}
-                filter="url(#apm-node-shadow)"
+                filter={isSelected ? 'url(#apm-card-glow)' : 'url(#apm-node-shadow)'}
                 height={cardHeight}
                 rx={cardRadius}
                 stroke={isSelected ? 'var(--color-primary)' : 'var(--color-border)'}
@@ -627,6 +698,21 @@ export default function TopologyCanvas({
                 x={cardX}
                 y={cardY}
               />
+              {userRequest ? null : (
+                <circle
+                  aria-hidden="true"
+                  cx={cardX + 20}
+                  cy={0}
+                  fill="var(--color-fill-1)"
+                  r={13}
+                  stroke={node.health === 'critical'
+                    ? 'var(--color-fail)'
+                    : node.health === 'warning'
+                      ? 'var(--theme-color-status-warning)'
+                      : 'var(--color-border)'}
+                  strokeWidth={node.health === 'critical' || node.health === 'warning' ? 1.2 : 0.8}
+                />
+              )}
               <TopologyServiceIcon
                 inferredSystem={node.inferred_system}
                 kind={node.kind}
@@ -686,13 +772,25 @@ export default function TopologyCanvas({
                 />
               )}
               {userRequest ? null : (
-                <circle
-                  aria-hidden="true"
-                  cx={cardX + cardWidth - 12}
-                  cy={0}
-                  fill={topologyHealthColors[node.health]}
-                  r={3.5}
-                />
+                <g>
+                  {node.health === 'critical' ? (
+                    <circle
+                      aria-hidden="true"
+                      cx={cardX + cardWidth - 12}
+                      cy={0}
+                      fill="var(--color-fail)"
+                      opacity={0.2}
+                      r={6}
+                    />
+                  ) : null}
+                  <circle
+                    aria-hidden="true"
+                    cx={cardX + cardWidth - 12}
+                    cy={0}
+                    fill={topologyHealthColors[node.health]}
+                    r={3.5}
+                  />
+                </g>
               )}
             </g>
           );

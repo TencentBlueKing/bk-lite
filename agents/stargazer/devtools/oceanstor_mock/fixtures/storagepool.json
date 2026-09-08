@@ -1,0 +1,12 @@
+[
+  {
+    "ID": "0",
+    "NAME": "StoragePool001",
+    "USAGETYPE": "1",
+    "USERTOTALCAPACITY": "2147483648",
+    "USERCONSUMEDCAPACITY": "214748364",
+    "USERFREECAPACITY": "1932735283",
+    "SECTORSIZE": "512",
+    "RUNNINGSTATUS": "27"
+  }
+]

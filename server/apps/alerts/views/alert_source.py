@@ -5,6 +5,7 @@ import tempfile
 from datetime import timedelta
 from pathlib import Path
 
+from django.db.models import Count, Max, Q, Subquery
 from django.utils import timezone
 from django.utils.translation import get_language
 from rest_framework import status
@@ -26,6 +27,7 @@ from apps.alerts.serializers import (
 from apps.alerts.serializers.alert_source import build_public_alert_source_config
 from apps.alerts.service.alert_source_credential import AlertSourceCredentialService
 from apps.alerts.service.k8s_install import K8sInstallService
+from apps.alerts.utils.permission_scope import filter_event_queryset_for_request
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.team_utils import get_current_team
@@ -75,6 +77,18 @@ class AlertSourceModelViewSet(ReadOnlyModelViewSet):
     ordering = ["id"]
     filterset_class = AlertSourceModelFilter
     pagination_class = CustomPageNumberPagination
+
+    def get_queryset(self):
+        queryset = AlertSource.objects.all()
+        if self.action not in {"list", "retrieve"}:
+            return queryset
+
+        visible_event_ids = filter_event_queryset_for_request(Event.objects.all(), self.request).order_by().values("pk")
+        visible_event_filter = Q(event__pk__in=Subquery(visible_event_ids))
+        return queryset.annotate(
+            scoped_event_count=Count("event", filter=visible_event_filter, distinct=True),
+            scoped_last_event_time=Max("event__received_at", filter=visible_event_filter),
+        )
 
     def get_serializer_class(self):
         if self.action == "options":

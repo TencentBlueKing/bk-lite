@@ -9,6 +9,7 @@ compare_deployment_revisions(镜像/env/副本差异、revision 缺失)。另测
 """
 
 import json
+import logging
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -18,6 +19,23 @@ import pytest
 from kubernetes.client import ApiException
 
 from apps.opspilot.metis.llm.tools.kubernetes import optimization as o
+
+_PROBE_BODY_SENTINEL = "K8S_PROBE_404_BODY_SENTINEL"
+_PROBE_HEADER_SENTINEL = "K8S_PROBE_404_HEADER_SENTINEL"
+
+
+class _ApiHttpResp:
+    def __init__(self, status, body, reason="Not Found"):
+        self.status = status
+        self.reason = reason
+        self.data = body
+
+    def getheaders(self):
+        return {"Audit-Id": _PROBE_HEADER_SENTINEL}
+
+
+def _api_http_error(status, body, reason="Not Found"):
+    return ApiException(http_resp=_ApiHttpResp(status, body, reason=reason))
 
 
 @pytest.fixture
@@ -281,11 +299,73 @@ class TestValidateProbes:
         assert any("initialDelaySeconds为0" in i for i in out["issues"])
         assert any("未配置Readiness" in i for i in out["issues"])
 
-    def test_not_found(self, apis):
+    def test_not_found(self, apis, caplog):
         _, apps = apis
-        apps.read_namespaced_deployment.side_effect = ApiException(status=404)
+        caplog.set_level(logging.DEBUG, logger="opspilot")
+        body = '{"message":"deployments.apps \\"d\\" not found","reason":"NotFound"} ' + _PROBE_BODY_SENTINEL
+        apps.read_namespaced_deployment.side_effect = _api_http_error(404, body)
+        apps.read_namespaced_replica_set.side_effect = ApiException(status=404)
         out = json.loads(o.validate_probe_configuration.invoke({"deployment_name": "d", "namespace": "p", "config": {}}))
         assert "Deployment不存在" in out["error"]
+        assert out["status_code"] == 404
+        not_found = [record for record in caplog.records if record.msg == o._PROBE_NOT_FOUND_TEMPLATE]
+        assert len(not_found) == 1
+        record = not_found[0]
+        assert record.name == "opspilot"
+        assert record.levelno == logging.DEBUG
+        assert record.args == ("deployment", "p", "d")
+        rendered = record.getMessage()
+        formatted = logging.Formatter("%(levelname)s %(name)s %(message)s").format(record)
+        assert rendered == "event=k8s_probe_validate_not_found kind=deployment namespace=p name=d"
+        assert _PROBE_BODY_SENTINEL not in rendered
+        assert _PROBE_HEADER_SENTINEL not in rendered
+        assert _PROBE_BODY_SENTINEL not in formatted
+        assert _PROBE_HEADER_SENTINEL not in formatted
+        assert _PROBE_BODY_SENTINEL not in caplog.text
+        assert not any(rec.levelno >= logging.ERROR and rec.name == "opspilot" for rec in caplog.records)
+        assert not any("验证探针配置失败" in rec.getMessage() for rec in caplog.records)
+
+    def test_deployment_404_falls_back_to_replicaset(self, apis):
+        _, apps = apis
+        container = _container(liveness=_probe(), readiness=_probe())
+        apps.read_namespaced_deployment.side_effect = ApiException(status=404)
+        apps.read_namespaced_replica_set.return_value = SimpleNamespace(
+            spec=SimpleNamespace(template=SimpleNamespace(spec=SimpleNamespace(containers=[container])))
+        )
+        out = json.loads(
+            o.validate_probe_configuration.invoke(
+                {"deployment_name": "classification-serving-2-55b8c94f55", "namespace": "bklite-mlops", "config": {}}
+            )
+        )
+        assert out["resource_type"] == "replicaset"
+        assert out["resource_name"] == "classification-serving-2-55b8c94f55"
+        assert out["probe_score"] == "2/2"
+        apps.read_namespaced_replica_set.assert_called_once_with("classification-serving-2-55b8c94f55", "bklite-mlops")
+
+    def test_api_error_logs_status_without_response_body(self, apis, caplog):
+        _, apps = apis
+        caplog.set_level(logging.DEBUG, logger="opspilot")
+        body = '{"message":"forbidden"} ' + _PROBE_BODY_SENTINEL
+        apps.read_namespaced_deployment.side_effect = _api_http_error(403, body, reason="Forbidden")
+        out = json.loads(o.validate_probe_configuration.invoke({"deployment_name": "d", "namespace": "p", "config": {}}))
+        assert out["error"] == "验证探针配置失败: HTTP 403"
+        assert out["status_code"] == 403
+        failed = [record for record in caplog.records if record.msg == o._PROBE_FAILED_TEMPLATE]
+        assert len(failed) == 1
+        record = failed[0]
+        assert record.name == "opspilot"
+        assert record.levelno == logging.ERROR
+        assert record.args == ("read_probe_containers", "ApiException", "deployment", "p", "d", 403)
+        rendered = record.getMessage()
+        formatted = logging.Formatter("%(levelname)s %(name)s %(message)s").format(record)
+        assert "failed_stage=read_probe_containers" in rendered
+        assert "status=403" in rendered
+        assert _PROBE_BODY_SENTINEL not in rendered
+        assert _PROBE_HEADER_SENTINEL not in rendered
+        assert _PROBE_BODY_SENTINEL not in formatted
+        assert _PROBE_BODY_SENTINEL not in caplog.text
+        traceback_errors = [rec for rec in caplog.records if rec.name == "opspilot" and rec.levelno >= logging.ERROR and rec.exc_info]
+        assert traceback_errors == []
 
     def test_pod_resource_type_reads_pod_spec(self, apis):
         core, _ = apis

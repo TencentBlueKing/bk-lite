@@ -322,6 +322,8 @@ tools:
         description: Describe specified Kubernetes resource, get detailed resource information, similar to kubectl describe
       diagnose_kubernetes_pod_issues:
         description: Deep diagnosis of all issues for a single Pod - one-stop troubleshooting
+      collect_pod_restart_evidence:
+        description: Collect restart-reason evidence for a known Pod (clock, lastState, events, previous-tail logs). Do not use for alert RCA or browsing current logs.
       diagnose_pending_pod_issues:
         description: Diagnose the root cause of Pod Pending scheduling failure
       explain_kubernetes_resource:

@@ -105,20 +105,48 @@ class TestGetKubernetesPodLogs:
         # 自动选用唯一容器名
         _, kwargs = fake_core.read_namespaced_pod_log.call_args
         assert kwargs["container"] == "only"
-        assert kwargs["tail_lines"] == 100
+        assert kwargs["tail_lines"] == 80
         assert kwargs["since_seconds"] == 24 * 3600
+
+    def test_caps_requested_lines_at_rca_max(self, fake_core):
+        fake_core.read_namespaced_pod.return_value = self._pod_with_containers(["only"])
+        fake_core.read_namespaced_pod_log.return_value = "ok"
+        res.get_kubernetes_pod_logs.invoke({"namespace": "ns", "pod_name": "p", "lines": 200, "config": {}})
+        _, kwargs = fake_core.read_namespaced_pod_log.call_args
+        assert kwargs["tail_lines"] == 80
 
     def test_empty_logs_message(self, fake_core):
         fake_core.read_namespaced_pod.return_value = self._pod_with_containers(["only"])
         fake_core.read_namespaced_pod_log.return_value = ""
         out = res.get_kubernetes_pod_logs.invoke({"namespace": "ns", "pod_name": "p", "config": {}})
         assert "没有日志输出" in out
+        assert "禁止降低 lines" in out
+
+    def test_long_logs_excerpt_keeps_tail_error_and_forbids_retry(self, fake_core):
+        fake_core.read_namespaced_pod.return_value = self._pod_with_containers(["only"])
+        noise = "\n".join(f"INFO heartbeat {i:04d} " + ("x" * 80) for i in range(80))
+        fake_core.read_namespaced_pod_log.return_value = noise + "\nERROR failed to load model RESOURCE_DOES_NOT_EXIST"
+        out = res.get_kubernetes_pod_logs.invoke({"namespace": "ns", "pod_name": "p", "lines": 200, "config": {}})
+        assert "RESOURCE_DOES_NOT_EXIST" in out
+        assert "禁止" in out
+        assert "heartbeat 0000" not in out
 
     def test_head_mode_truncates(self, fake_core):
         fake_core.read_namespaced_pod.return_value = self._pod_with_containers(["only"])
         fake_core.read_namespaced_pod_log.return_value = "l1\nl2\nl3\nl4"
         out = res.get_kubernetes_pod_logs.invoke({"namespace": "ns", "pod_name": "p", "lines": 2, "tail": False, "config": {}})
         assert out == "l1\nl2"
+
+    def test_head_mode_does_not_apply_rca_tail_excerpt(self, fake_core):
+        fake_core.read_namespaced_pod.return_value = self._pod_with_containers(["only"])
+        rows = [f"STARTUP init {i:04d} " + ("x" * 100) for i in range(80)]
+        rows[-1] = "ERROR failed to load model RESOURCE_DOES_NOT_EXIST " + ("z" * 100)
+        fake_core.read_namespaced_pod_log.return_value = "\n".join(rows)
+        out = res.get_kubernetes_pod_logs.invoke({"namespace": "ns", "pod_name": "p", "lines": 80, "tail": False, "config": {}})
+        assert out.startswith("STARTUP init 0000")
+        assert "【最近日志】" not in out
+        assert "【日志已按 RCA 压缩" not in out
+        assert "RESOURCE_DOES_NOT_EXIST" not in out
 
     def test_string_lines_and_tail_are_coerced(self, fake_core):
         fake_core.read_namespaced_pod.return_value = self._pod_with_containers(["only"])

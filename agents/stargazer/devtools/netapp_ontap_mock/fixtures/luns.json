@@ -1,0 +1,39 @@
+[
+  {
+    "name": "/vol/vol1/lun1",
+    "uuid": "5a443c57-354d-11e9-9dff-00a0986138f7",
+    "serial_number": "80Z0x$ABC",
+    "os_type": "linux",
+    "class": "regular",
+    "space": {
+      "size": 10737418240,
+      "used": 1073741824
+    },
+    "location": {
+      "volume": {
+        "name": "vol1"
+      }
+    },
+    "status": {
+      "state": "online"
+    }
+  },
+  {
+    "name": "/vol/vol1/lun_san",
+    "uuid": "6b554d68-354d-11e9-9dff-00a0986138f8",
+    "serial_number": "80Z0x$DEF",
+    "os_type": "linux",
+    "class": "regular",
+    "space": {
+      "size": 21474836480
+    },
+    "location": {
+      "volume": {
+        "name": "vol1"
+      }
+    },
+    "status": {
+      "state": "online"
+    }
+  }
+]

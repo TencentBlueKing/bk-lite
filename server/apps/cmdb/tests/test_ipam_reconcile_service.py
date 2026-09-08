@@ -2,11 +2,14 @@
 import pytest
 from django.test import override_settings
 
+from apps.cmdb.services.ipam_reconcile import decide_ip_status, match_subnet_for_ip
+
 pytestmark = pytest.mark.django_db
 
 
 def test_reconcile_source_model_fields():
     from apps.cmdb.models.ipam_models import IPAMReconcileSource
+
     # 用非默认种子的来源，避免与数据迁移 0029 预置的 host.ip_addr/network.ip 撞唯一键
     src = IPAMReconcileSource.objects.create(model_id="switch", ip_attr_id="mgmt_ip", enabled=True)
     assert src.model_id == "switch"
@@ -18,6 +21,7 @@ def test_seed_reconcile_sources_idempotent():
     """seed_reconcile_sources 预置 host.ip_addr / network.ip，且可重复执行不重复插入。
     数据迁移与（如有）init 流程共用此函数；替代被删除的 ipam_init 命令。"""
     from apps.cmdb.models.ipam_models import IPAMReconcileSource, seed_reconcile_sources
+
     seed_reconcile_sources(IPAMReconcileSource)
     assert IPAMReconcileSource.objects.filter(model_id="host", ip_attr_id="ip_addr").exists()
     assert IPAMReconcileSource.objects.filter(model_id="network", ip_attr_id="ip").exists()
@@ -29,9 +33,6 @@ def test_seed_reconcile_sources_idempotent():
 # ---------------------------------------------------------------------------
 # Task 6: 纯逻辑测试（无 DB/IO）
 # ---------------------------------------------------------------------------
-
-from apps.cmdb.services.ipam_reconcile import match_subnet_for_ip, decide_ip_status
-
 
 SUBNETS = [
     {"_id": 1, "subnet_address": "10.0.1.0", "subnet_mask": "24"},
@@ -141,14 +142,15 @@ class TestDecideStatus:
 class TestRunReconciliation:
     def test_新IP入账并置在线(self, monkeypatch):
         from apps.cmdb.services import ipam_reconcile
+
         monkeypatch.setattr(ipam_reconcile, "_load_sources", lambda: [{"model_id": "host", "ip_attr_id": "ip_addr"}])
         monkeypatch.setattr(ipam_reconcile, "_load_subnets", lambda: [{"_id": 1, "subnet_address": "10.0.1.0", "subnet_mask": "24"}])
-        monkeypatch.setattr(ipam_reconcile, "_load_ci_with_ip",
-                            lambda model_id, attr: [{"_id": 55, "model_id": "host", "ip_addr": "10.0.1.10", "inst_name": "h1"}])
+        monkeypatch.setattr(
+            ipam_reconcile, "_load_ci_with_ip", lambda model_id, attr: [{"_id": 55, "model_id": "host", "ip_addr": "10.0.1.10", "inst_name": "h1"}]
+        )
         monkeypatch.setattr(ipam_reconcile, "_load_existing_ips", lambda: [])
         created = []
-        monkeypatch.setattr(ipam_reconcile, "_upsert_ip_instance",
-                            lambda **kw: created.append(kw) or {"_id": 900, **kw})
+        monkeypatch.setattr(ipam_reconcile, "_upsert_ip_instance", lambda **kw: created.append(kw) or {"_id": 900, **kw})
         monkeypatch.setattr(ipam_reconcile, "_writeback_subnet_utilization", lambda subnet_ids: None)
         result = ipam_reconcile.run_reconciliation()
         assert result["created"] == 1
@@ -158,12 +160,15 @@ class TestRunReconciliation:
 
     def test_手工记录不被覆盖(self, monkeypatch):
         from apps.cmdb.services import ipam_reconcile
+
         monkeypatch.setattr(ipam_reconcile, "_load_sources", lambda: [{"model_id": "host", "ip_attr_id": "ip_addr"}])
         monkeypatch.setattr(ipam_reconcile, "_load_subnets", lambda: [{"_id": 1, "subnet_address": "10.0.1.0", "subnet_mask": "24"}])
-        monkeypatch.setattr(ipam_reconcile, "_load_ci_with_ip",
-                            lambda m, a: [{"_id": 55, "model_id": "host", "ip_addr": "10.0.1.10", "inst_name": "h1"}])
-        monkeypatch.setattr(ipam_reconcile, "_load_existing_ips",
-                            lambda: [{"_id": 800, "ip_addr": "10.0.1.10", "subnet_id": 1, "auto_collect": False}])
+        monkeypatch.setattr(
+            ipam_reconcile, "_load_ci_with_ip", lambda m, a: [{"_id": 55, "model_id": "host", "ip_addr": "10.0.1.10", "inst_name": "h1"}]
+        )
+        monkeypatch.setattr(
+            ipam_reconcile, "_load_existing_ips", lambda: [{"_id": 800, "ip_addr": "10.0.1.10", "subnet_id": 1, "auto_collect": False}]
+        )
         touched = []
         monkeypatch.setattr(ipam_reconcile, "_upsert_ip_instance", lambda **kw: touched.append(kw))
         monkeypatch.setattr(ipam_reconcile, "_writeback_subnet_utilization", lambda subnet_ids: None)
@@ -175,13 +180,14 @@ class TestRunReconciliation:
         """非自动创建的记录（auto_collect 缺失/None，如手工经通用表单建的）也不能被对账覆盖。
         仅 auto_collect is True 才是对账自己的记录、可写。"""
         from apps.cmdb.services import ipam_reconcile
+
         monkeypatch.setattr(ipam_reconcile, "_load_sources", lambda: [{"model_id": "host", "ip_attr_id": "ip_addr"}])
         monkeypatch.setattr(ipam_reconcile, "_load_subnets", lambda: [{"_id": 1, "subnet_address": "10.0.1.0", "subnet_mask": "24"}])
-        monkeypatch.setattr(ipam_reconcile, "_load_ci_with_ip",
-                            lambda m, a: [{"_id": 55, "model_id": "host", "ip_addr": "10.0.1.10", "inst_name": "h1"}])
+        monkeypatch.setattr(
+            ipam_reconcile, "_load_ci_with_ip", lambda m, a: [{"_id": 55, "model_id": "host", "ip_addr": "10.0.1.10", "inst_name": "h1"}]
+        )
         # 已有记录没有 auto_collect 字段（None）
-        monkeypatch.setattr(ipam_reconcile, "_load_existing_ips",
-                            lambda: [{"_id": 801, "ip_addr": "10.0.1.10", "subnet_id": "1"}])
+        monkeypatch.setattr(ipam_reconcile, "_load_existing_ips", lambda: [{"_id": 801, "ip_addr": "10.0.1.10", "subnet_id": "1"}])
         touched = []
         monkeypatch.setattr(ipam_reconcile, "_upsert_ip_instance", lambda **kw: touched.append(kw))
         monkeypatch.setattr(ipam_reconcile, "_writeback_subnet_utilization", lambda subnet_ids: None)
@@ -193,16 +199,22 @@ class TestRunReconciliation:
         """auto_collect=True 但本轮无任何 CI 命中的 IP → 置 offline（台账跟随 CI 变更，§2.4）。
         手工记录(auto_collect 非 True)即使无命中也不动。"""
         from apps.cmdb.services import ipam_reconcile
+
         monkeypatch.setattr(ipam_reconcile, "_load_sources", lambda: [{"model_id": "host", "ip_attr_id": "ip_addr"}])
         monkeypatch.setattr(ipam_reconcile, "_load_subnets", lambda: [{"_id": 1, "subnet_address": "10.0.1.0", "subnet_mask": "24"}])
-        monkeypatch.setattr(ipam_reconcile, "_load_ci_with_ip",
-                            lambda m, a: [{"_id": 55, "model_id": "host", "ip_addr": "10.0.1.10", "inst_name": "h1"}])
+        monkeypatch.setattr(
+            ipam_reconcile, "_load_ci_with_ip", lambda m, a: [{"_id": 55, "model_id": "host", "ip_addr": "10.0.1.10", "inst_name": "h1"}]
+        )
         # .10 自动且本轮命中(保持)、.99 自动但本轮无命中(→离线)、.30 手工无命中(不动)
-        monkeypatch.setattr(ipam_reconcile, "_load_existing_ips", lambda: [
-            {"_id": 901, "ip_addr": "10.0.1.10", "subnet_id": "1", "auto_collect": True},
-            {"_id": 902, "ip_addr": "10.0.1.99", "subnet_id": "1", "auto_collect": True},
-            {"_id": 903, "ip_addr": "10.0.1.30", "subnet_id": "1", "auto_collect": False},
-        ])
+        monkeypatch.setattr(
+            ipam_reconcile,
+            "_load_existing_ips",
+            lambda: [
+                {"_id": 901, "ip_addr": "10.0.1.10", "subnet_id": "1", "auto_collect": True},
+                {"_id": 902, "ip_addr": "10.0.1.99", "subnet_id": "1", "auto_collect": True},
+                {"_id": 903, "ip_addr": "10.0.1.30", "subnet_id": "1", "auto_collect": False},
+            ],
+        )
         monkeypatch.setattr(ipam_reconcile, "_upsert_ip_instance", lambda **kw: {"_id": 900, **kw})
         offs = []
         monkeypatch.setattr(ipam_reconcile, "_mark_offline", lambda ip_id: offs.append(ip_id))
@@ -216,6 +228,7 @@ class TestRunReconciliation:
 # DEFECT B (reconcile side) — _upsert_ip_instance must write collect_time
 # ---------------------------------------------------------------------------
 
+
 class TestUpsertIpInstanceCollectTime:
     """DEFECT B: _upsert_ip_instance payload must include collect_time."""
 
@@ -227,8 +240,10 @@ class TestUpsertIpInstanceCollectTime:
 
         def fake_instance_create(model_id, payload, operator, **kw):
             captured_payloads.append(payload)
+            captured_kwargs.append(kw)
             return {"_id": 888}
 
+        captured_kwargs = []
         monkeypatch.setattr(InstanceManage, "instance_create", staticmethod(fake_instance_create))
         monkeypatch.setattr(ipam_reconcile, "_ensure_associations", lambda *a, **k: None)
 
@@ -245,12 +260,78 @@ class TestUpsertIpInstanceCollectTime:
         assert len(captured_payloads) == 1
         assert "collect_time" in captured_payloads[0]
         assert captured_payloads[0]["collect_time"]  # non-empty
+        assert captured_kwargs[0]["allowed_org_ids"] == [1]
+
+    def test_create_runs_real_organization_scope_check(self, monkeypatch):
+        from apps.cmdb.services import ipam_reconcile
+        from apps.cmdb.services.instance import InstanceManage, validate_instance_organization_scope
+        from apps.core.exceptions.base_app_exception import BaseAppException
+
+        persisted = []
+
+        def fake_instance_create(model_id, payload, operator, **kw):
+            validate_instance_organization_scope(payload, allowed_org_ids=kw.get("allowed_org_ids"))
+            persisted.append(payload)
+            return {"_id": 901}
+
+        monkeypatch.setattr(InstanceManage, "instance_create", staticmethod(fake_instance_create))
+        monkeypatch.setattr(ipam_reconcile, "_ensure_associations", lambda *a, **k: None)
+
+        ipam_reconcile._upsert_ip_instance(
+            existing_id=None,
+            subnet_id=1,
+            ip_addr="10.0.1.8",
+            ip_status="online",
+            auto_collect=True,
+            occupants=[],
+            organization=[3],
+        )
+        assert persisted[0]["organization"] == [3]
+
+        with pytest.raises(BaseAppException, match="不在当前选择组织范围"):
+            from apps.cmdb.services.system_instance_write import system_create_or_update
+
+            system_create_or_update(
+                "ip",
+                {
+                    "ip_addr": "10.0.1.9",
+                    "inst_name": "10.0.1.9",
+                    "organization": [9],
+                },
+                organization=[3],
+            )
+
+    def test_update_passes_allowed_org_ids(self, monkeypatch):
+        from apps.cmdb.services import ipam_reconcile
+        from apps.cmdb.services.instance import InstanceManage
+
+        captured = []
+
+        def fake_instance_update(user_groups, roles, inst_id, payload, operator, **kw):
+            captured.append({"inst_id": inst_id, "payload": payload, "kwargs": kw})
+
+        monkeypatch.setattr(InstanceManage, "instance_update", staticmethod(fake_instance_update))
+        monkeypatch.setattr(ipam_reconcile, "_ensure_associations", lambda *a, **k: None)
+
+        ipam_reconcile._upsert_ip_instance(
+            existing_id=77,
+            subnet_id=1,
+            ip_addr="10.0.1.77",
+            ip_status="online",
+            auto_collect=True,
+            occupants=[],
+            organization=[4],
+        )
+
+        assert captured[0]["inst_id"] == 77
+        assert captured[0]["kwargs"]["allowed_org_ids"] == [4]
 
 
 # ---------------------------------------------------------------------------
 # DEFECT C — run_reconciliation must add subnet to affected_subnets even for
 # manual-skipped IPs so utilization is always recomputed
 # ---------------------------------------------------------------------------
+
 
 class TestReconciliationManualSkipSubnetWriteback:
     """DEFECT C: when a matched IP is manual-protected, the subnet must still
@@ -259,22 +340,21 @@ class TestReconciliationManualSkipSubnetWriteback:
     def test_manual_skip_subnet_still_written_back(self, monkeypatch):
         from apps.cmdb.services import ipam_reconcile
 
-        monkeypatch.setattr(ipam_reconcile, "_load_sources",
-                            lambda: [{"model_id": "host", "ip_attr_id": "ip_addr"}])
-        monkeypatch.setattr(ipam_reconcile, "_load_subnets",
-                            lambda: [{"_id": 1, "subnet_address": "10.0.1.0", "subnet_mask": "24"}])
-        monkeypatch.setattr(ipam_reconcile, "_load_ci_with_ip",
-                            lambda m, a: [{"_id": 55, "model_id": "host", "ip_addr": "10.0.1.10", "inst_name": "h1"}])
+        monkeypatch.setattr(ipam_reconcile, "_load_sources", lambda: [{"model_id": "host", "ip_attr_id": "ip_addr"}])
+        monkeypatch.setattr(ipam_reconcile, "_load_subnets", lambda: [{"_id": 1, "subnet_address": "10.0.1.0", "subnet_mask": "24"}])
+        monkeypatch.setattr(
+            ipam_reconcile, "_load_ci_with_ip", lambda m, a: [{"_id": 55, "model_id": "host", "ip_addr": "10.0.1.10", "inst_name": "h1"}]
+        )
         # existing IP is manual (auto_collect=False)
-        monkeypatch.setattr(ipam_reconcile, "_load_existing_ips",
-                            lambda: [{"_id": 800, "ip_addr": "10.0.1.10", "subnet_id": "1", "auto_collect": False}])
+        monkeypatch.setattr(
+            ipam_reconcile, "_load_existing_ips", lambda: [{"_id": 800, "ip_addr": "10.0.1.10", "subnet_id": "1", "auto_collect": False}]
+        )
 
         touched = []
         monkeypatch.setattr(ipam_reconcile, "_upsert_ip_instance", lambda **kw: touched.append(kw))
 
         writeback_args = []
-        monkeypatch.setattr(ipam_reconcile, "_writeback_subnet_utilization",
-                            lambda subnet_ids: writeback_args.append(set(subnet_ids)))
+        monkeypatch.setattr(ipam_reconcile, "_writeback_subnet_utilization", lambda subnet_ids: writeback_args.append(set(subnet_ids)))
 
         result = ipam_reconcile.run_reconciliation()
 
@@ -291,6 +371,7 @@ class TestReconciliationManualSkipSubnetWriteback:
 # DEFECT D — match_subnet_for_ip must not raise on malformed subnet records
 # ---------------------------------------------------------------------------
 
+
 class TestMatchSubnetMalformedRecord:
     """DEFECT D: a bad subnet_address/mask should be skipped; matching continues."""
 
@@ -300,6 +381,7 @@ class TestMatchSubnetMalformedRecord:
             {"_id": 2, "subnet_address": "10.0.1.0", "subnet_mask": "24"},
         ]
         from apps.cmdb.services.ipam_reconcile import match_subnet_for_ip
+
         result = match_subnet_for_ip("10.0.1.5", subnets)
         assert result is not None
         assert result["_id"] == 2
@@ -311,9 +393,11 @@ class TestEnsureAssociations:
         ip--connect-->CI。方向错或类型未注册都会被图层拒绝并静默失败。"""
         from apps.cmdb.services import ipam_reconcile
         from apps.cmdb.services.instance import InstanceManage
+
         captured = []
         monkeypatch.setattr(
-            InstanceManage, "instance_association_create",
+            InstanceManage,
+            "instance_association_create",
             staticmethod(lambda data, operator, *a, **k: captured.append(data)),
         )
         ipam_reconcile._ensure_associations(ip_id=900, subnet_id=1, occupants=["host:55"])

@@ -3,7 +3,7 @@ version: 1.0.0
 category: storage
 metadata:
   display_name: 华为 OceanStor 存储【BETA】
-  description: 华为 OceanStor 存储采集插件（Beta），DeviceManager REST 采集设备及存储池/磁盘/卷
+  description: 华为 OceanStor 存储采集插件（Beta），DeviceManager REST 采集设备及存储池/磁盘/卷/以太口/FC口
   author: WeOps
   tags:
   - storage

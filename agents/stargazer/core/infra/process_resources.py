@@ -12,7 +12,7 @@ _MIB = 1024 * 1024
 
 
 class ProcessResourceSampler:
-    """按采样周期计算进程 CPU，并读取 Linux procfs/cgroup v2 资源。"""
+    """按采样周期计算进程 CPU，并读取 Linux procfs/cgroup v1 或 v2 资源。"""
 
     def __init__(
         self,
@@ -36,11 +36,19 @@ class ProcessResourceSampler:
     def sample(self) -> dict[str, float | int]:
         process_cpu_percent = self._sample_process_cpu_percent()
         cgroup_dir = self._cgroup_v2_directory()
-        memory_current = self._read_int(cgroup_dir / "memory.current")
-        memory_limit = self._read_limit(cgroup_dir / "memory.max")
-        cpu_limit_cores = self._read_cpu_limit(cgroup_dir / "cpu.max")
-        cpu_stat = self._read_key_values(cgroup_dir / "cpu.stat")
-        throttled_seconds = self._microseconds(cpu_stat.get("throttled_usec"))
+        if cgroup_dir is not None:
+            memory_current = self._read_int(cgroup_dir / "memory.current")
+            memory_limit = self._read_limit(cgroup_dir / "memory.max")
+            cpu_limit_cores = self._read_cpu_limit(cgroup_dir / "cpu.max")
+            cpu_stat = self._read_key_values(cgroup_dir / "cpu.stat")
+            throttled_seconds = self._microseconds(cpu_stat.get("throttled_usec"))
+        else:
+            memory_dir, cpu_dir = self._cgroup_v1_directories()
+            memory_current = self._read_int(memory_dir / "memory.usage_in_bytes")
+            memory_limit = self._read_v1_memory_limit(memory_dir / "memory.limit_in_bytes")
+            cpu_limit_cores = self._read_v1_cpu_limit(cpu_dir)
+            cpu_stat = self._read_key_values(cpu_dir / "cpu.stat")
+            throttled_seconds = self._nanoseconds(cpu_stat.get("throttled_time"))
         throttled_periods = cpu_stat.get("nr_throttled", -1)
 
         snapshot: dict[str, float | int] = {
@@ -77,20 +85,44 @@ class ProcessResourceSampler:
             return 0.0
         return round(cpu_delta / wall_delta * 100, 2)
 
-    def _cgroup_v2_directory(self) -> Path:
+    def _cgroup_v2_directory(self) -> Path | None:
         if (self._cgroup_root / "cgroup.controllers").exists():
             return self._cgroup_root
         try:
             lines = (self._proc_root / "self/cgroup").read_text(encoding="utf-8").splitlines()
         except (OSError, UnicodeError):
-            return self._cgroup_root
+            return None
         for line in lines:
             parts = line.split(":", 2)
             if len(parts) == 3 and parts[0] == "0" and parts[1] == "":
                 candidate = self._cgroup_root / parts[2].lstrip("/")
                 if candidate.exists():
                     return candidate
-        return self._cgroup_root
+        return None
+
+    def _cgroup_v1_directories(self) -> tuple[Path, Path]:
+        memory_dir = self._cgroup_root / "memory"
+        cpu_dir = self._cgroup_root / "cpu,cpuacct"
+        try:
+            lines = (self._proc_root / "self/cgroup").read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeError):
+            return memory_dir, cpu_dir
+        for line in lines:
+            parts = line.split(":", 2)
+            if len(parts) != 3 or not parts[1]:
+                continue
+            controller_group, relative = parts[1], parts[2].lstrip("/")
+            controllers = controller_group.split(",")
+            candidates = (controller_group, *controllers)
+            if "memory" in controllers:
+                memory_dir = self._first_existing_cgroup_path(candidates, relative)
+            if "cpu" in controllers:
+                cpu_dir = self._first_existing_cgroup_path(candidates, relative)
+        return memory_dir, cpu_dir
+
+    def _first_existing_cgroup_path(self, controller_names: tuple[str, ...], relative: str) -> Path:
+        candidates = tuple(self._cgroup_root / name / relative for name in controller_names)
+        return next((path for path in candidates if path.exists()), candidates[0])
 
     def _process_rss_mb(self) -> float:
         try:
@@ -126,6 +158,17 @@ class ProcessResourceSampler:
             return -1 if raw == "max" else int(raw)
         except (OSError, UnicodeError, ValueError):
             return -1
+
+    def _read_v1_memory_limit(self, path: Path) -> int:
+        value = self._read_int(path)
+        return -1 if value >= 1 << 60 else value
+
+    def _read_v1_cpu_limit(self, directory: Path) -> float:
+        quota = self._read_int(directory / "cpu.cfs_quota_us")
+        period = self._read_int(directory / "cpu.cfs_period_us")
+        if quota < 0 or period <= 0:
+            return -1.0
+        return round(quota / period, 2)
 
     def _read_cpu_limit(self, path: Path) -> float:
         try:
@@ -170,6 +213,10 @@ class ProcessResourceSampler:
     @staticmethod
     def _microseconds(value: int | None) -> float:
         return -1.0 if value is None else round(value / 1_000_000, 3)
+
+    @staticmethod
+    def _nanoseconds(value: int | None) -> float:
+        return -1.0 if value is None else round(value / 1_000_000_000, 3)
 
     @staticmethod
     def _bytes_to_mib(value: int) -> float:

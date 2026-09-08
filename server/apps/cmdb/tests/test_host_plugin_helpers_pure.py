@@ -11,6 +11,16 @@ import pytest
 from apps.cmdb.collection.collect_plugin.host import HostCollectMetrics
 
 
+def _fake_task(instances=None, params=None):
+    class _T:
+        pass
+
+    t = _T()
+    t.instances = instances if instances is not None else []
+    t.params = params if params is not None else {}
+    return t
+
+
 @pytest.fixture
 def runner(monkeypatch):
     # model_id 属性会触发 DB 查询；纯方法测试直接桩为 "host"
@@ -23,6 +33,7 @@ def _runner_empty_name(monkeypatch):
     monkeypatch.setattr(HostCollectMetrics, "model_id", property(lambda self: "host"))
     r = HostCollectMetrics("placeholder", "cmdb_1", 1)
     r.inst_name = ""
+    monkeypatch.setattr(r, "get_collect_inst", lambda: _fake_task())
     return r
 
 
@@ -196,16 +207,6 @@ def test_add_host_proc_no_key_noop(runner):
 # --------------------------------------------------------------------------
 
 
-def _fake_task(instances=None, params=None):
-    class _T:
-        pass
-
-    t = _T()
-    t.instances = instances if instances is not None else []
-    t.params = params if params is not None else {}
-    return t
-
-
 def test_set_cloud_from_matched_instance(monkeypatch, runner):
     task = _fake_task(instances=[{"ip_addr": "1.2.3.4", "cloud": "aliyun"}])
     monkeypatch.setattr(runner, "get_collect_inst", lambda: task)
@@ -234,6 +235,43 @@ def test_set_display_inst_name_without_label(monkeypatch, runner):
     task = _fake_task(instances=[{"ip_addr": "1.2.3.4"}])
     monkeypatch.setattr(runner, "get_collect_inst", lambda: task)
     assert runner.set_display_inst_name({"host": "1.2.3.4"}) == "1.2.3.4"
+
+
+def test_set_display_inst_name_uses_matched_instance_name(monkeypatch, runner):
+    runner.inst_name = ""
+    task = _fake_task(
+        instances=[
+            {"ip_addr": "10.0.0.1", "inst_name": "host-a", "cloud_name": "生产云"},
+            {"ip_addr": "10.0.0.2", "inst_name": "host-b", "cloud_name": "生产云"},
+        ]
+    )
+    monkeypatch.setattr(runner, "get_collect_inst", lambda: task)
+    assert runner.set_display_inst_name({"host": "10.0.0.2"}) == "host-b"
+    assert runner.set_display_inst_name({"host": "10.0.0.1"}) == "host-a"
+
+
+def test_set_inst_name_uses_matched_instance_when_runner_has_no_singleton(monkeypatch):
+    r = _runner_empty_name(monkeypatch)
+    task = _fake_task(
+        instances=[
+            {"ip_addr": "10.0.0.1", "inst_name": "serial-a"},
+            {"ip_addr": "10.0.0.2", "inst_name": "serial-b"},
+        ]
+    )
+    monkeypatch.setattr(r, "get_collect_inst", lambda: task)
+    assert r.set_inst_name({"host": "10.0.0.2"}) == "serial-b"
+
+
+def test_set_inst_name_unmatched_ip_does_not_steal_first_instance(monkeypatch):
+    r = _runner_empty_name(monkeypatch)
+    task = _fake_task(
+        instances=[
+            {"ip_addr": "10.0.0.1", "inst_name": "serial-a"},
+            {"ip_addr": "10.0.0.2", "inst_name": "serial-b"},
+        ]
+    )
+    monkeypatch.setattr(r, "get_collect_inst", lambda: task)
+    assert r.set_inst_name({"host": "10.0.0.9"}) == "10.0.0.9"
 
 
 def test_set_asso_instances(runner):

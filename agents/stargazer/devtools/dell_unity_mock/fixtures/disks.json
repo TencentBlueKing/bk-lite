@@ -1,0 +1,16 @@
+[
+  {
+    "id": "dpe_disk_0",
+    "name": "DPE Disk 0",
+    "manufacturer": "SAMSUNG",
+    "model": "MZILS3T8HMLH0D3",
+    "diskTechnology": 1,
+    "rawSize": 3840755982336,
+    "wwn": "5002538E00000001",
+    "slotNumber": 0,
+    "rpm": 0,
+    "health": {
+      "value": 5
+    }
+  }
+]

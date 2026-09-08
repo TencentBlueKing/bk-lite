@@ -87,7 +87,7 @@ DEFAULT_HOST_COLLECT_MODULES = ("cpu", "disk", "diskio", "mem", "net", "processe
 DEFAULT_COLLECT_INTERVAL = 60
 # 与 Switch SNMP General UI.json timeout.default_value 对齐；缺了会留下 {{ timeout }}s，Telegraf 整份配置解析失败。
 DEFAULT_SNMP_TIMEOUT = 10
-DEFAULT_DISK_EXCLUDE_FSTYPES = "tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs,vfat,exfat,fat,fat32"
+DEFAULT_DISK_EXCLUDE_FSTYPES = "tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs,vfat,exfat,fat,fat32,cdfs"
 
 # CMDB 带凭据创建场景：套用 Host Remote（远程采集）模板
 HOST_REMOTE_PLUGIN_NAME = "Host Remote"

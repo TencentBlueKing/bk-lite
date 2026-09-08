@@ -6,7 +6,7 @@ from django.conf import settings
 
 from apps.cmdb.constants.constants import INSTANCE
 from apps.cmdb.graph.drivers.graph_client import GraphClient
-from apps.cmdb.utils.ipam_cidr import parse_subnet, ip_in_subnet
+from apps.cmdb.utils.ipam_cidr import ip_in_subnet, parse_subnet
 from apps.core.logger import cmdb_logger as logger
 
 
@@ -34,6 +34,7 @@ def _load_bounded_reference(model_id: str, reference_name: str, limit: int | Non
 # 纯逻辑：无 DB/IO 依赖
 # ---------------------------------------------------------------------------
 
+
 def match_subnet_for_ip(ip: str, subnets: list):
     """返回唯一包含该 IP 的子网（子网两两不重叠，故至多一个）。无则 None。
 
@@ -42,6 +43,7 @@ def match_subnet_for_ip(ip: str, subnets: list):
     remaining valid subnets are still checked.
     """
     from apps.core.exceptions.base_app_exception import BaseAppException
+
     for sn in subnets:
         addr, mask = sn.get("subnet_address"), sn.get("subnet_mask")
         if not addr or mask in (None, ""):
@@ -68,8 +70,10 @@ def decide_ip_status(occupant_keys: list) -> str:
 # IO helpers（单测时被 monkeypatch 替换）
 # ---------------------------------------------------------------------------
 
+
 def _load_sources() -> list:
     from apps.cmdb.models.ipam_models import IPAMReconcileSource
+
     return list(IPAMReconcileSource.objects.filter(enabled=True).values("model_id", "ip_attr_id"))
 
 
@@ -124,9 +128,9 @@ def _load_existing_ips(limit: int | None = None) -> list:
     return _load_bounded_reference("ip", "existing_ips", limit=limit)
 
 
-def _upsert_ip_instance(existing_id=None, subnet_id=None, ip_addr=None, ip_status=None,
-                        auto_collect=True, occupants=None, organization=None) -> dict:
-    from apps.cmdb.services.instance import InstanceManage
+def _upsert_ip_instance(existing_id=None, subnet_id=None, ip_addr=None, ip_status=None, auto_collect=True, occupants=None, organization=None) -> dict:
+    from apps.cmdb.services.system_instance_write import system_create_or_update
+
     payload = {
         "ip_addr": ip_addr,
         "inst_name": ip_addr,
@@ -137,15 +141,8 @@ def _upsert_ip_instance(existing_id=None, subnet_id=None, ip_addr=None, ip_statu
         "organization": organization or [],
         "collect_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
-    if existing_id:
-        InstanceManage.instance_update(
-            [], [], existing_id, payload, "system",
-            skip_permission_check=True, record_change=False,
-        )
-        ip_id = existing_id
-    else:
-        res = InstanceManage.instance_create("ip", payload, "system", record_change=False)
-        ip_id = res["_id"]
+    saved = system_create_or_update("ip", payload, existing_id=existing_id, organization=organization)
+    ip_id = saved["_id"]
     _ensure_associations(ip_id, subnet_id, occupants or [])
     return {"_id": ip_id}
 
@@ -185,37 +182,52 @@ def _ensure_associations(ip_id, subnet_id, occupants):
 def _mark_offline(ip_id):
     """把 ip 实例现网状态置为 offline（auto_collect 记录本轮无 CI 命中时）。"""
     from apps.cmdb.services.instance import InstanceManage
+
     InstanceManage.instance_update(
-        [], [], ip_id, {"ip_status": ["offline"]}, "system",
-        skip_permission_check=True, record_change=False,
+        [],
+        [],
+        ip_id,
+        {"ip_status": ["offline"]},
+        "system",
+        skip_permission_check=True,
+        record_change=False,
     )
 
 
 def _writeback_subnet_utilization(subnet_ids):
     from apps.cmdb.services.instance import InstanceManage
     from apps.cmdb.utils.ipam_cidr import parse_subnet, subnet_capacity
+
     for sid in subnet_ids:
         subnet = InstanceManage.query_entity_by_id(int(sid))
         if not subnet:
             continue
         with GraphClient() as ag:
-            ips, _ = ag.query_entity(INSTANCE, [
-                {"field": "model_id", "type": "str=", "value": "ip"},
-                {"field": "subnet_id", "type": "str=", "value": str(sid)},
-            ])
+            ips, _ = ag.query_entity(
+                INSTANCE,
+                [
+                    {"field": "model_id", "type": "str=", "value": "ip"},
+                    {"field": "subnet_id", "type": "str=", "value": str(sid)},
+                ],
+            )
         net = parse_subnet(subnet["subnet_address"], subnet["subnet_mask"])
         size = subnet_capacity(net)
         used = len(ips or [])
         InstanceManage.instance_update(
-            [], [], int(sid),
+            [],
+            [],
+            int(sid),
             {"subnet_size": size, "subnet_used_size": used, "subnet_available_size": size - used},
-            "system", skip_permission_check=True, record_change=False,
+            "system",
+            skip_permission_check=True,
+            record_change=False,
         )
 
 
 # ---------------------------------------------------------------------------
 # 编排入口
 # ---------------------------------------------------------------------------
+
 
 def run_reconciliation() -> dict:
     """执行一次完整对账，返回统计字典：created/updated/skipped_manual/conflicts。"""
@@ -240,9 +252,7 @@ def run_reconciliation() -> dict:
             key = (str(sn["_id"]), ci["ip_addr"])
             if key not in occupants and len(occupants) >= occupant_limit:
                 raise IPAMReconcileLimitExceeded(f"occupants exceeds configured limit {occupant_limit}")
-            occupants.setdefault(key, {"subnet": sn, "ips": []})["ips"].append(
-                f'{ci["model_id"]}:{ci["_id"]}'
-            )
+            occupants.setdefault(key, {"subnet": sn, "ips": []})["ips"].append(f'{ci["model_id"]}:{ci["_id"]}')
 
     created = updated = skipped_manual = conflicts = 0
     affected_subnets: set = set()

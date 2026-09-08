@@ -26,6 +26,15 @@ from apps.alerts.utils.util import decode_team_secret, split_list
 from apps.rpc.cmdb import CMDB
 
 INTEGRATION_SECRET_PLACEHOLDER = "{{TEAM_SECRET}}"
+MONITOR_IDENTITY_FIELDS = {"monitor_id", "cmdb_id"}
+
+
+class InvalidMonitorIdentity(ValueError):
+    """监控身份快照字段不符合可持久化契约。"""
+
+    def __init__(self, field: str):
+        self.field = field
+        super().__init__(field)
 
 
 class AlertSourceAdapter(ABC):
@@ -197,6 +206,13 @@ class AlertSourceAdapter(ABC):
             if key == "value":
                 _value = float(_value) if _value and isinstance(_value, str) and _value.isdigit() else _value
 
+            if key in MONITOR_IDENTITY_FIELDS and _value is not None:
+                model_field = Event._meta.get_field(key)
+                if not isinstance(_value, str):
+                    raise InvalidMonitorIdentity(key)
+                if model_field.max_length and len(_value) > model_field.max_length:
+                    raise InvalidMonitorIdentity(key)
+
             result[key] = _value
 
         self.add_start_time(result)
@@ -214,6 +230,7 @@ class AlertSourceAdapter(ABC):
         """将原始告警数据转换为Event对象（批量丰富）"""
         event_dicts = []
         skipped_missing = 0  # 预期内丢弃：缺必填字段
+        rejected_invalid = 0  # 预期内丢弃：字段不符合接入契约
         errored = 0  # 非预期错误：转换异常
         for event_index, add_event in enumerate(add_events):
             try:
@@ -231,6 +248,14 @@ class AlertSourceAdapter(ABC):
                 data["team"] = self._resolve_event_team(add_event)
                 data.setdefault("enrichment", {})
                 event_dicts.append((data, add_event, event_index))
+            except InvalidMonitorIdentity as exc:
+                rejected_invalid += 1
+                logger.warning(
+                    "[AlertSource] 事件身份字段校验失败: source_id=%s event_index=%s field=%s",
+                    self.alert_source.source_id,
+                    event_index,
+                    exc.field,
+                )
             except Exception as e:
                 errored += 1
                 logger.error(
@@ -264,13 +289,14 @@ class AlertSourceAdapter(ABC):
                     type(e).__name__,
                 )
         # D3：让接入过程中的丢弃可观测，区分"预期跳过"与"非预期错误"，避免静默丢数据。
-        if skipped_missing or errored:
+        if skipped_missing or rejected_invalid or errored:
             logger.warning(
-                "[AlertSource] 接入丢弃统计: source_id=%s received=%s transformed=%s skipped_missing=%s errored=%s",
+                "[AlertSource] 接入丢弃统计: source_id=%s received=%s transformed=%s skipped_missing=%s rejected_invalid=%s errored=%s",
                 self.alert_source.source_id,
                 len(add_events),
                 len(events),
                 skipped_missing,
+                rejected_invalid,
                 errored,
             )
         else:
@@ -282,7 +308,7 @@ class AlertSourceAdapter(ABC):
             )
         bulk_events = self.bulk_save_events(events)
         accepted = sum(len(batch or []) for batch in (bulk_events or []))
-        rejected = skipped_missing
+        rejected = skipped_missing + rejected_invalid
         duplicates = max(0, len(add_events) - accepted - rejected - errored)
         self.last_ingestion_result = {
             "received": len(add_events),

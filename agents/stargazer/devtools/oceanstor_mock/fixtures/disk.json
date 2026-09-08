@@ -1,0 +1,15 @@
+[
+  {
+    "ID": "0",
+    "NAME": "disk-0",
+    "LOCATION": "CTE0.0",
+    "MODEL": "HSSD-D7K94DN7T6V",
+    "MANUFACTURER": "HUAWEI",
+    "SERIALNUMBER": "SN12345",
+    "DISKTYPE": "SSD",
+    "SECTORS": "15002931200",
+    "SECTORSIZE": "512",
+    "SPEEDRPM": "0",
+    "RUNNINGSTATUS": "27"
+  }
+]

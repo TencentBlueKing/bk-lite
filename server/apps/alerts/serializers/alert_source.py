@@ -3,7 +3,12 @@ from copy import deepcopy
 
 from rest_framework import serializers
 
-from apps.alerts.common.source_adapter.constants import DEFAULT_SOURCE_CONFIG, build_prometheus_source_config, build_zabbix_source_config
+from apps.alerts.common.source_adapter.constants import (
+    DEFAULT_SOURCE_CONFIG,
+    build_nats_source_config,
+    build_prometheus_source_config,
+    build_zabbix_source_config,
+)
 from apps.alerts.constants.constants import AlertsSourceTypes
 from apps.alerts.models.alert_source import AlertSource
 
@@ -108,6 +113,8 @@ class AlertSourceModelSerializer(serializers.ModelSerializer):
 
     @staticmethod
     def _build_default_config(source_type, source_id):
+        if source_type == AlertsSourceTypes.NATS:
+            return build_nats_source_config()
         if source_type == AlertsSourceTypes.PROMETHEUS:
             return build_prometheus_source_config(source_id)
         if source_type == AlertsSourceTypes.ZABBIX:
@@ -127,6 +134,8 @@ class AlertSourceModelSerializer(serializers.ModelSerializer):
 
     @staticmethod
     def get_event_count(obj):
+        if hasattr(obj, "scoped_event_count"):
+            return obj.scoped_event_count
         return obj.event_set.count()
 
     @staticmethod
@@ -135,12 +144,16 @@ class AlertSourceModelSerializer(serializers.ModelSerializer):
         获取最近一次事件时间
         """
         format_time = "%Y-%m-%d %H:%M:%S"
-        last_event = obj.event_set.order_by("-received_at").first()
-        if not last_event or not last_event.received_at:
+        if hasattr(obj, "scoped_last_event_time"):
+            last_event_time = obj.scoped_last_event_time
+        else:
+            last_event = obj.event_set.order_by("-received_at").first()
+            last_event_time = last_event.received_at if last_event else None
+        if not last_event_time:
             return ""
         from django.utils import timezone
 
-        return timezone.localtime(last_event.received_at).strftime(format_time)
+        return timezone.localtime(last_event_time).strftime(format_time)
 
 
 class AlertSourceOptionSerializer(serializers.ModelSerializer):

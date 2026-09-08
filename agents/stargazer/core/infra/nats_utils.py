@@ -35,7 +35,10 @@ from typing import Any, List, Optional, Sequence
 
 from core.infra.jetstream_publish_window import JetStreamMessage, JetStreamPublishWindow, JetStreamPublishWindowSettings, JetStreamWindowPublishError
 from core.infra.nats import NATS, NATSConfig
-from core.logger import logger
+from core.logger import logger, safe_log_value
+
+DEFAULT_METRICS_STREAM_NAME = "metrics"
+_METRICS_ASYNC_ERROR_TYPES = frozenset({"BadRequestError", "APIError", "NotFoundError"})
 
 # 进程级共享连接与连接锁
 _shared_nc: Optional[NATS] = None
@@ -91,11 +94,47 @@ def _get_lock(channel: str = "control") -> asyncio.Lock:
     return _connect_lock
 
 
+def configured_metrics_stream_name() -> str:
+    raw = str(os.getenv("NATS_JS_STREAM_NAME", DEFAULT_METRICS_STREAM_NAME) or "").strip()
+    return raw or DEFAULT_METRICS_STREAM_NAME
+
+
+def nats_error_log_fields(error: BaseException) -> tuple[str, object, object, str]:
+    """提取 NATS 异常的安全日志字段，不记录 payload 或完整异常正文。"""
+
+    error_type = type(error).__name__
+    nats_code = getattr(error, "code", None)
+    nats_err_code = getattr(error, "err_code", None)
+    description = getattr(error, "description", None)
+    if description in (None, ""):
+        description_text = "-"
+    else:
+        description_text = safe_log_value(description, max_length=120)
+    return (
+        error_type,
+        "-" if nats_code is None else nats_code,
+        "-" if nats_err_code is None else nats_err_code,
+        description_text,
+    )
+
+
 async def _on_error(channel: str, error: Exception) -> None:
+    error_type, nats_code, nats_err_code, description = nats_error_log_fields(error)
+    if channel == "metrics" and error_type in _METRICS_ASYNC_ERROR_TYPES:
+        logger.debug(
+            "event=nats_metrics_async_error error_type=%s nats_code=%s nats_err_code=%s description=%s",
+            error_type,
+            nats_code,
+            nats_err_code,
+            description,
+        )
+        return
     logger.error(
-        "event=nats_connection_error channel=%s error_type=%s",
+        "event=nats_connection_error channel=%s error_type=%s nats_code=%s nats_err_code=%s",
         channel,
-        type(error).__name__,
+        error_type,
+        nats_code,
+        nats_err_code,
     )
 
 
@@ -270,7 +309,7 @@ async def metrics_transport_ready() -> bool:
             nc = await get_shared_nats("metrics")
             if not nc.is_connected:
                 return False
-            stream_name = os.getenv("NATS_JS_STREAM_NAME", "CMDB_METRICS")
+            stream_name = configured_metrics_stream_name()
             stream_info = await nc.jetstream().stream_info(stream_name)
             subjects = tuple(getattr(stream_info.config, "subjects", ()) or ())
             topic = str(os.getenv("NATS_METRIC_TOPIC", "metrics") or "metrics").strip(".")
@@ -356,6 +395,7 @@ async def nats_publish_lines(
     *,
     before_publish: Callable[[int], bool] | None = None,
     message_ids: Sequence[str] | None = None,
+    deadlines: Sequence[float | None] | None = None,
 ) -> int:
     """
     批量发布多行文本到指定主题（复用共享长连接）。
@@ -375,12 +415,15 @@ async def nats_publish_lines(
 
     if message_ids is not None and len(message_ids) != len(lines):
         raise ValueError("message_ids length must match lines length")
+    if deadlines is not None and len(deadlines) != len(lines):
+        raise ValueError("deadlines length must match lines length")
     if _read_bool_env("NATS_METRICS_JETSTREAM_ENABLED", True):
         return await _nats_publish_lines_jetstream(
             subject,
             lines,
             before_publish=before_publish,
             message_ids=message_ids,
+            deadlines=deadlines,
         )
 
     if not _read_bool_env("NATS_METRICS_CORE_FALLBACK_ENABLED", False):
@@ -450,7 +493,7 @@ def _get_metrics_js_window() -> JetStreamPublishWindow:
                     )
                 ),
                 max_attempts=int(os.getenv("NATS_JS_PUBLISH_MAX_ATTEMPTS", "2")),
-                expected_stream=os.getenv("NATS_JS_STREAM_NAME", "CMDB_METRICS"),
+                expected_stream=configured_metrics_stream_name(),
             ),
         )
     return _metrics_js_window
@@ -462,12 +505,14 @@ async def _nats_publish_lines_jetstream(
     *,
     before_publish: Callable[[int], bool] | None,
     message_ids: Sequence[str] | None,
+    deadlines: Sequence[float | None] | None,
 ) -> int:
     payloads = tuple(line.encode("utf-8") for line in lines)
     messages = tuple(
         JetStreamMessage(
             payload=payload,
             message_id=(str(message_ids[index]) if message_ids is not None else _jetstream_message_id(subject, index, payload)),
+            deadline=(deadlines[index] if deadlines is not None else None),
         )
         for index, payload in enumerate(payloads)
     )
@@ -478,11 +523,28 @@ async def _nats_publish_lines_jetstream(
             before_publish=before_publish,
         )
     except JetStreamWindowPublishError as error:
+        cause = error.error if isinstance(error.error, Exception) else RuntimeError(type(error.error).__name__)
+        error_type, nats_code, nats_err_code, description = nats_error_log_fields(cause)
+        rejected_count = max(0, len(error.attempted_indices) - len(error.confirmed_indices))
+        logger.error(
+            "event=nats_metrics_publish_rejected subject=%s stream=%s rejected_count=%s "
+            "attempted_count=%s confirmed_count=%s error_type=%s nats_code=%s nats_err_code=%s "
+            "description=%s failed_stage=metrics_publish",
+            safe_log_value(subject),
+            safe_log_value(configured_metrics_stream_name()),
+            rejected_count,
+            len(error.attempted_indices),
+            len(error.confirmed_indices),
+            error_type,
+            nats_code,
+            nats_err_code,
+            description,
+        )
         raise NatsLinesPublishError(
             subject=subject,
             attempted_count_before_failure=len(error.attempted_indices),
             delivery_detected=bool(error.attempted_indices),
-            error=error.error if isinstance(error.error, Exception) else RuntimeError(type(error.error).__name__),
+            error=cause,
             attempted_indices=error.attempted_indices,
             confirmed_indices=error.confirmed_indices,
         ) from error

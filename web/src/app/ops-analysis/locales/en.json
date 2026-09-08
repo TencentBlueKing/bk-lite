@@ -1136,6 +1136,8 @@
     "application3DHostStatus": "Status",
     "application3DHostAlarmCount": "Count",
     "application3DHostHighestSeverity": "Highest severity",
+    "application3DHostIp": "IP Address",
+    "application3DHostOs": "OS",
     "application3DKindSystem": "System",
     "application3DKindApplication": "Application",
     "application3DKindHost": "Host",

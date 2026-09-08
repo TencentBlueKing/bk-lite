@@ -27,18 +27,11 @@ class PlatformApiNodeParamsMixin:
             raw_host = params["host"]
         elif self.instance.instances:
             first = self.instance.instances[0] or {}
-            raw_host = (
-                first.get("endpoint")
-                or first.get("ip_addr")
-                or first.get("host")
-                or ""
-            )
+            raw_host = first.get("endpoint") or first.get("ip_addr") or first.get("host") or ""
         else:
             raw_host = self.instance.ip_range
 
-        parsed = urlsplit(
-            raw_host if "://" in str(raw_host) else f"//{raw_host}"
-        )
+        parsed = urlsplit(raw_host if "://" in str(raw_host) else f"//{raw_host}")
         try:
             port = parsed.port
         except ValueError:
@@ -57,16 +50,8 @@ class PlatformApiNodeParamsMixin:
         return {
             "username": "${" + self._username_env_name() + "}",
             "password": "${" + self._password_env_name() + "}",
-            "scheme": (
-                self.credential.get("scheme")
-                or endpoint["scheme"]
-                or "https"
-            ),
-            "port": (
-                self.credential.get("port")
-                or endpoint["port"]
-                or self.default_port
-            ),
+            "scheme": (self.credential.get("scheme") or endpoint["scheme"] or "https"),
+            "port": (self.credential.get("port") or endpoint["port"] or self.default_port),
             "verify_tls": _as_bool(
                 self.credential.get("verify_tls"),
                 default=True,
@@ -75,14 +60,8 @@ class PlatformApiNodeParamsMixin:
 
     def env_config(self, *args, **kwargs):
         return {
-            self._username_env_name(): (
-                self.credential.get("username")
-                or self.credential.get("accessKey", "")
-            ),
-            self._password_env_name(): (
-                self.credential.get("password")
-                or self.credential.get("accessSecret", "")
-            ),
+            self._username_env_name(): (self.credential.get("username") or self.credential.get("accessKey", "")),
+            self._password_env_name(): (self.credential.get("password") or self.credential.get("accessSecret", "")),
         }
 
 
@@ -98,3 +77,17 @@ class OceanStorNodeParams(PlatformApiNodeParamsMixin, BaseNodeParams):
     supported_driver_type = CollectDriverTypes.PROTOCOL
     plugin_name = "oceanstor_info"
     default_port = 8088
+
+
+class DellUnityNodeParams(PlatformApiNodeParamsMixin, BaseNodeParams):
+    supported_model_id = "dell_unity"
+    supported_driver_type = CollectDriverTypes.PROTOCOL
+    plugin_name = "dell_unity_info"
+    default_port = 443
+
+
+class NetAppOntapNodeParams(PlatformApiNodeParamsMixin, BaseNodeParams):
+    supported_model_id = "netapp_ontap"
+    supported_driver_type = CollectDriverTypes.PROTOCOL
+    plugin_name = "netapp_ontap_info"
+    default_port = 443

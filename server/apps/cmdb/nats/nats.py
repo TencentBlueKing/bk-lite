@@ -1563,6 +1563,78 @@ def get_monitor_ids_by_inst_uuids(inst_uuids=None, user_info=None, **kwargs):
     return {"result": True, "data": {"items": items}, "message": ""}
 
 
+_NETWORK_TOPOLOGY_CLOSED_SET_ERROR = "设备列表包含无效或不允许的网络设备，请重新配置"
+
+
+def _network_topology_closed_set_failure(message=_NETWORK_TOPOLOGY_CLOSED_SET_ERROR):
+    return {"result": False, "data": {"nodes": [], "links": []}, "message": message}
+
+
+@nats_client.register
+def network_topology_among_uuids(inst_uuids=None, user_info=None, **kwargs):
+    from apps.cmdb.constants.constants import NETWORK_STATUS_TOPOLOGY_MAX_NODES
+    from apps.cmdb.services.instance_identity import normalize_inst_uuid
+    from apps.core.exceptions.base_app_exception import BaseAppException
+
+    raw = inst_uuids if inst_uuids is not None else kwargs.get("inst_uuids")
+    if raw in (None, ""):
+        raw = []
+    if not isinstance(raw, list):
+        return _network_topology_closed_set_failure("inst_uuids 必须是列表")
+
+    unique = []
+    seen = set()
+    for value in raw:
+        if value in (None, ""):
+            return _network_topology_closed_set_failure()
+        try:
+            normalized = normalize_inst_uuid(value)
+        except BaseAppException:
+            return _network_topology_closed_set_failure()
+        if normalized in seen:
+            return _network_topology_closed_set_failure()
+        seen.add(normalized)
+        unique.append(normalized)
+
+    if not unique or len(unique) > NETWORK_STATUS_TOPOLOGY_MAX_NODES:
+        return _network_topology_closed_set_failure(
+            _NETWORK_TOPOLOGY_CLOSED_SET_ERROR if not unique else f"inst_uuids 不能超过 {NETWORK_STATUS_TOPOLOGY_MAX_NODES}"
+        )
+
+    entities = InstanceManage.query_entity_by_uuids(unique)
+    if len(entities) != len(unique):
+        return _network_topology_closed_set_failure()
+
+    permission_maps = {}
+    for entity in entities:
+        model_id = str(entity.get("model_id") or "")
+        if model_id in permission_maps:
+            continue
+        permission_map = _build_nats_permission_map(user_info, model_id=model_id)
+        if permission_map is None:
+            return _network_topology_closed_set_failure()
+        permission_maps[model_id] = permission_map
+
+    try:
+        topology = InstanceManage.network_topology_among_uuids(
+            unique,
+            permission_maps=permission_maps,
+            user=_normalize_permission_user((user_info or {}).get("user"), domain=(user_info or {}).get("domain")),
+        )
+    except BaseAppException:
+        return _network_topology_closed_set_failure()
+
+    return {
+        "result": True,
+        "message": "",
+        "data": {
+            "nodes": topology.get("nodes") or [],
+            "links": topology.get("links") or [],
+            "truncated": bool(topology.get("truncated")),
+        },
+    }
+
+
 @nats_client.register
 def get_change_trend(time=None, model_id=None, user_info=None, **kwargs):
     """

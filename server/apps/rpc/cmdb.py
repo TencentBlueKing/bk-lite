@@ -141,6 +141,9 @@ class CMDB(object):
     def get_monitor_ids_by_inst_uuids(self, **kwargs):
         return self.client.run("get_monitor_ids_by_inst_uuids", **kwargs)
 
+    def network_topology_among_uuids(self, **kwargs):
+        return self.client.run("network_topology_among_uuids", **kwargs)
+
     def ingest_from_source(self, **kwargs):
         """跨模块推送写入 CMDB（host：node_id 优先 + 存量认领）。
 

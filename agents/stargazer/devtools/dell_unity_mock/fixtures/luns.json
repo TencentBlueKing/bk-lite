@@ -1,0 +1,32 @@
+[
+  {
+    "id": "sv_1",
+    "name": "lun1",
+    "wwn": "60:06:01:60:12:34:56:78:12:34:56:78:9A:BC:DE:F0",
+    "sizeTotal": 107374182400,
+    "sizeAllocated": 53687091200,
+    "type": 1,
+    "pool": {
+      "id": "pool_1",
+      "name": "Pool0"
+    },
+    "health": {
+      "value": 5
+    }
+  },
+  {
+    "id": "sv_2",
+    "name": "lun2",
+    "wwn": "6006016012345678123456789ABCDEF1",
+    "sizeTotal": 21474836480,
+    "sizeAllocated": 1073741824,
+    "type": 1,
+    "pool": {
+      "id": "pool_1",
+      "name": "Pool0"
+    },
+    "health": {
+      "value": 5
+    }
+  }
+]

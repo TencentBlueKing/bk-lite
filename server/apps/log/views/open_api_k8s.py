@@ -14,10 +14,14 @@ class K8sOpenAPIViewSet(OpenAPIViewSet):
             raise BaseAppException("Missing required parameter: token")
 
         token_data = K8sLogCollectService.validate_and_get_token_data(token)
+        render_kwargs = {}
+        if "tolerations" in token_data:
+            render_kwargs["tolerations"] = token_data.get("tolerations")
         yaml_content = K8sLogCollectService.render_config_from_cloud_region(
             token_data.get("cluster_name"),
             token_data.get("cloud_region_id"),
             token_data.get("image_registry_prefix"),
+            **render_kwargs,
         )
         response = HttpResponse(yaml_content, content_type="text/yaml; charset=utf-8")
         response["X-Token-Remaining-Usage"] = str(token_data.get("remaining_usage", 0))

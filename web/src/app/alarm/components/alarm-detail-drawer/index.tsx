@@ -33,6 +33,7 @@ import type {
   AlarmActionContextProps,
   AlarmActionRowData,
 } from '@/app/alarm/components/alarm-action/types';
+import type { MonitorObjectSnapshot } from '@/app/alarm/types/alarms';
 
 export interface AlarmDetailLevelOption {
   color?: string;
@@ -76,6 +77,7 @@ export interface AlarmDetailDrawerData extends AlarmActionRowData {
   operator_user?: string;
   resource_name?: string;
   resource_type?: string;
+  monitor_objects?: MonitorObjectSnapshot[];
   title?: string;
 }
 

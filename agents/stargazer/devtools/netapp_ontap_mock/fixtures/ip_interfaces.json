@@ -1,0 +1,19 @@
+[
+  {
+    "name": "cluster_mgmt",
+    "ip": {
+      "address": "10.0.0.10",
+      "netmask": "24"
+    },
+    "location": {
+      "port": {
+        "name": "e0a",
+        "node": {
+          "name": "node1"
+        }
+      }
+    },
+    "state": "up",
+    "enabled": true
+  }
+]

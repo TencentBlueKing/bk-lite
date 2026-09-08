@@ -77,6 +77,8 @@ def compose_architecture_tree(
                         kind=ARCHITECTURE_NODE_HOST,
                         name=str(host.get("name") or host_id),
                         health=host.get("health"),
+                        ip_addr=host.get("ip_addr"),
+                        os_name=host.get("os_name"),
                     )
                 )
             edges.append(
@@ -94,7 +96,15 @@ def compose_architecture_tree(
     }
 
 
-def _node(*, node_id: str, kind: str, name: str, health: dict[str, Any] | None) -> dict[str, Any]:
+def _node(
+    *,
+    node_id: str,
+    kind: str,
+    name: str,
+    health: dict[str, Any] | None,
+    ip_addr: str | None = None,
+    os_name: str | None = None,
+) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "id": node_id,
         "kind": kind,
@@ -102,6 +112,10 @@ def _node(*, node_id: str, kind: str, name: str, health: dict[str, Any] | None) 
     }
     if health is not None:
         payload["health"] = health
+    if ip_addr:
+        payload["ip_addr"] = ip_addr
+    if os_name:
+        payload["os_name"] = os_name
     return payload
 
 

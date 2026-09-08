@@ -54,31 +54,36 @@ def test_ensure_uuid_migration_periodic_task_is_idempotent():
     assert task.enabled is True
 
 
-def test_ensure_disables_periodic_task_when_migration_complete():
+def test_ensure_keeps_periodic_task_enabled_after_migration_complete():
     _mark_all_required_stages_complete()
     ensure_uuid_migration_periodic_task()
 
     task = PeriodicTask.objects.get(name=UUID_MIGRATION_PERIODIC_TASK_NAME)
-    assert task.enabled is False
+    assert task.enabled is True
     assert is_uuid_runtime_migration_complete() is True
 
 
-def test_runtime_task_noops_when_already_complete(mocker):
+def test_runtime_task_still_applies_when_already_complete(mocker):
     _mark_all_required_stages_complete()
-    call_apply = mocker.patch("apps.cmdb.tasks.uuid_migration.call_command")
+    calls = []
+
+    def _fake_call_command(name, **kwargs):
+        calls.append((name, kwargs))
+
+    mocker.patch("apps.cmdb.tasks.uuid_migration.call_command", side_effect=_fake_call_command)
+    mocker.patch("apps.cmdb.tasks.uuid_migration.ensure_uuid_migration_periodic_task")
+    mark = mocker.patch("apps.cmdb.tasks.uuid_migration.mark_uuid_runtime_migration_complete")
 
     result = migrate_cmdb_instance_uuid_runtime()
 
     assert result["status"] == "done"
-    assert result["skipped"] is True
-    call_apply.assert_not_called()
+    assert result["skipped"] is False
+    assert ("migrate_cmdb_instance_uuid_refs", {"apply": True}) in calls
+    assert ("migrate_cmdb_instance_uuid_refs", {"verify": True}) in calls
+    mark.assert_called_once_with()
 
 
 def test_runtime_task_returns_locked_when_another_worker_holds_lock(mocker):
-    mocker.patch(
-        "apps.cmdb.tasks.uuid_migration.is_uuid_runtime_migration_complete",
-        return_value=False,
-    )
     mocker.patch("apps.cmdb.tasks.uuid_migration.ensure_uuid_migration_periodic_task")
     mocker.patch("apps.cmdb.tasks.uuid_migration.cache.add", return_value=False)
     call_apply = mocker.patch("apps.cmdb.tasks.uuid_migration.call_command")
@@ -96,10 +101,6 @@ def test_runtime_task_applies_and_marks_complete(mocker):
         calls.append((name, kwargs))
 
     mocker.patch("apps.cmdb.tasks.uuid_migration.call_command", side_effect=_fake_call_command)
-    mocker.patch(
-        "apps.cmdb.tasks.uuid_migration.is_uuid_runtime_migration_complete",
-        return_value=False,
-    )
     mark = mocker.patch("apps.cmdb.tasks.uuid_migration.mark_uuid_runtime_migration_complete")
     disable = mocker.patch("apps.cmdb.tasks.uuid_migration.CeleryUtils.disable_periodic_task")
     mocker.patch("apps.cmdb.tasks.uuid_migration.ensure_uuid_migration_periodic_task")
@@ -112,15 +113,12 @@ def test_runtime_task_applies_and_marks_complete(mocker):
     assert ("migrate_cmdb_instance_uuid_refs", {"verify": True}) in calls
     assert ("migrate_oa_cmdb_instance_uuid_refs", {"verify": True}) in calls
     mark.assert_called_once_with()
-    disable.assert_called_once_with(UUID_MIGRATION_PERIODIC_TASK_NAME)
+    disable.assert_not_called()
     assert cache.get(UUID_MIGRATION_LOCK_KEY) is None
 
 
 def test_runtime_task_swallows_apply_failure_and_returns_retry(mocker):
-    mocker.patch(
-        "apps.cmdb.tasks.uuid_migration.is_uuid_runtime_migration_complete",
-        return_value=False,
-    )
+    mocker.patch("apps.cmdb.tasks.uuid_migration.ensure_uuid_migration_periodic_task")
     mocker.patch(
         "apps.cmdb.tasks.uuid_migration.call_command",
         side_effect=RuntimeError("graph unavailable"),
@@ -138,10 +136,7 @@ def test_runtime_task_verify_failure_returns_retry_without_marking_done(mocker):
         if kwargs.get("verify"):
             raise RuntimeError("still dirty")
 
-    mocker.patch(
-        "apps.cmdb.tasks.uuid_migration.is_uuid_runtime_migration_complete",
-        return_value=False,
-    )
+    mocker.patch("apps.cmdb.tasks.uuid_migration.ensure_uuid_migration_periodic_task")
     mocker.patch("apps.cmdb.tasks.uuid_migration.call_command", side_effect=_fake_call_command)
     mark = mocker.patch("apps.cmdb.tasks.uuid_migration.mark_uuid_runtime_migration_complete")
 

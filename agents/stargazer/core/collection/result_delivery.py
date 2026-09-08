@@ -26,11 +26,12 @@ class PendingPublish:
     """已进入发布队列、等待最终确认的目标结果。"""
 
     index: int
-    result: TargetCollectionResult
+    result: TargetCollectionResult | None
     receipt: object | None
     started_at: float
     deadline: float
     delivery_required: bool = True
+    target: str = ""
 
 
 class BoundedResultDeliveryObserver:
@@ -147,6 +148,7 @@ class ResultDeliveryCoordinator:
         *,
         started_at: float | None = None,
         deadline: float | None = None,
+        payload_permit=None,
     ) -> PendingPublish:
         loop = asyncio.get_running_loop()
         if result.publish_timestamp_ms <= 0:
@@ -155,6 +157,8 @@ class ResultDeliveryCoordinator:
         started_at = attempt_started_at if started_at is None else started_at
         deadline = started_at + self._settings.publish_total_timeout_seconds if deadline is None else deadline
         if not _requires_delivery(self._request, result):
+            if payload_permit is not None:
+                payload_permit.release()
             self._metrics.increment("result_delivery_not_applicable_total")
             return PendingPublish(
                 index=index,
@@ -163,6 +167,7 @@ class ResultDeliveryCoordinator:
                 started_at=started_at,
                 deadline=deadline,
                 delivery_required=False,
+                target=result.target,
             )
         queue_deadline = min(
             deadline,
@@ -170,12 +175,13 @@ class ResultDeliveryCoordinator:
         )
         try:
             async with asyncio.timeout_at(queue_deadline):
-                receipt = await self._publisher.enqueue(
-                    self._request,
-                    result,
-                    self._lease,
-                )
+                enqueue_options = {"deadline": deadline}
+                if payload_permit is not None:
+                    enqueue_options["payload_permit"] = payload_permit
+                receipt = await self._publisher.enqueue(self._request, result, self._lease, **enqueue_options)
         except Exception as error:  # noqa: BLE001 - 统一交给 finish 的有限重试
+            if payload_permit is not None:
+                payload_permit.release()
             completion = loop.create_future()
             if isinstance(error, TimeoutError):
                 self._metrics.increment("publish_queue_timeout_total")
@@ -187,7 +193,11 @@ class ResultDeliveryCoordinator:
                 )
             else:
                 completion.set_exception(error)
-            receipt = FuturePublishReceipt(completion)
+            manages_retries_for = getattr(self._publisher, "manages_retries_for", None)
+            receipt = FuturePublishReceipt(
+                completion,
+                retries_managed=bool(manages_retries_for(self._request) if callable(manages_retries_for) else False),
+            )
         self._metrics.observe(
             "publish_enqueue_duration_seconds",
             loop.time() - attempt_started_at,
@@ -198,6 +208,7 @@ class ResultDeliveryCoordinator:
             receipt=receipt,
             started_at=started_at,
             deadline=deadline,
+            target=result.target,
         )
 
     async def finish(self, pending: PendingPublish) -> tuple[int, str, str]:
@@ -228,6 +239,9 @@ class ResultDeliveryCoordinator:
                     error_code = outcome.error_code
                     break
                 error_code = outcome.error_code or "publish_retryable_failed"
+                if bool(getattr(current.receipt, "retries_managed", False)):
+                    publish_status = "failed"
+                    break
             except Exception as error:  # noqa: BLE001 - 单目标发布有限重试
                 self._observe_queue_residence(current)
                 error_code = type(error).__name__
@@ -249,6 +263,8 @@ class ResultDeliveryCoordinator:
                     break
             if attempt + 1 < self._settings.publish_max_attempts:
                 self._metrics.increment("result_publish_retry_total")
+                if current.result is None:
+                    raise RuntimeError("retryable publish receipt lost its payload")
                 current = await self.enqueue(
                     current.index,
                     current.result,
@@ -295,7 +311,7 @@ class ResultDeliveryCoordinator:
             safe_log_value(self._log_identity, max_length=255),
             safe_log_value(self._request.plugin_ref),
             safe_log_value(self._request.params.get("model_id") or "-"),
-            safe_log_value(pending.result.target, max_length=255),
+            safe_log_value(pending.target or (pending.result.target if pending.result is not None else "-"), max_length=255),
             phase,
             safe_log_value(error_code or publish_status),
             attempts,

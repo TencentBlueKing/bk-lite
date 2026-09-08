@@ -1136,6 +1136,8 @@
     "application3DHostStatus": "状态",
     "application3DHostAlarmCount": "条数",
     "application3DHostHighestSeverity": "最高级别",
+    "application3DHostIp": "IP 地址",
+    "application3DHostOs": "操作系统",
     "application3DKindSystem": "系统",
     "application3DKindApplication": "应用",
     "application3DKindHost": "主机",

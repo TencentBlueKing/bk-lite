@@ -1,0 +1,26 @@
+[
+  {
+    "ID": "0",
+    "NAME": "CTE0.A.IOM0.P0",
+    "LOCATION": "CTE0.A.IOM0.P0",
+    "MACADDR": "AA-BB-CC-DD-EE-01",
+    "IPV4ADDR": "10.0.1.8",
+    "RUNNINGSTATUS": "27"
+  },
+  {
+    "ID": "1",
+    "NAME": "CTE0.A.IOM0.P1",
+    "LOCATION": "CTE0.A.IOM0.P1",
+    "MACADDR": "",
+    "IPV4ADDR": "",
+    "RUNNINGSTATUS": "27"
+  },
+  {
+    "ID": "2",
+    "NAME": "CTE0.A.IOM0.P2",
+    "LOCATION": "CTE0.A.IOM0.P2",
+    "MACADDRESS": "AA-BB-CC-DD-EE-02",
+    "IPV4ADDR": "10.0.1.9",
+    "RUNNINGSTATUS": "27"
+  }
+]

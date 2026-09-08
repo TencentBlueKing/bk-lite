@@ -6,4 +6,5 @@ export type {
 export {
   defaultIconTypes,
   getIconTypeByIndex,
+  resolveOptionIcon,
 } from './contracts';

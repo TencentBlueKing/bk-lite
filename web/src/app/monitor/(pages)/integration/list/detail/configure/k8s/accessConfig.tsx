@@ -18,6 +18,13 @@ import {
   isValidK8sImageRegistryPrefix,
 } from '@/utils/k8sImageRegistry';
 import { parseIntegrationObjectId } from '@/app/monitor/utils/integrationEntryContext';
+import {
+  K8sDaemonSetTolerationsEditor,
+  createK8sTolerationsEditorCopy,
+  k8sTolerationRuleMessage,
+  toRequestTolerations,
+  validateK8sDaemonSetTolerations,
+} from '@/app/monitor/components/k8s-collector-install-step';
 
 const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
   const { t } = useTranslation();
@@ -55,6 +62,10 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
         interval: commandData.interval,
         image_registry_prefix:
           commandData.image_registry_prefix || DEFAULT_K8S_IMAGE_REGISTRY_PREFIX,
+        tolerations:
+          commandData.tolerations === undefined
+            ? null
+            : commandData.tolerations,
       });
     }
   }, [commandData, form]);
@@ -101,6 +112,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
         cloud_region_id: values.cloud_region_id,
         interval: values.interval,
         image_registry_prefix: values.image_registry_prefix,
+        tolerations: toRequestTolerations(values.tolerations),
       };
       if (values.accessType === 'new') {
         // 新建资产：先创建实例，再获取命令
@@ -154,6 +166,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
           accessType: 'new',
           interval: 60,
           image_registry_prefix: DEFAULT_K8S_IMAGE_REGISTRY_PREFIX,
+          tolerations: null,
         }}
       >
         {/* 接入配置标题 */}
@@ -352,6 +365,35 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
               {t('monitor.integrations.k8s.imageRegistryPrefixDesc')}
             </div>
           </div>
+        </Form.Item>
+        <Form.Item
+          label={t('monitor.integrations.k8s.taintTolerations')}
+          name="tolerations"
+          extra={t('monitor.integrations.k8s.taintTolerationsDesc')}
+          rules={[
+            {
+              validator: (_, value) => {
+                const code = validateK8sDaemonSetTolerations(value);
+                if (!code) return Promise.resolve();
+                return Promise.reject(
+                  new Error(
+                    k8sTolerationRuleMessage(
+                      t,
+                      'monitor.integrations.k8s',
+                      code
+                    )
+                  )
+                );
+              },
+            },
+          ]}
+        >
+          <K8sDaemonSetTolerationsEditor
+            copy={createK8sTolerationsEditorCopy(
+              t,
+              'monitor.integrations.k8s'
+            )}
+          />
         </Form.Item>
         {/* 上报间隔 */}
         <Form.Item

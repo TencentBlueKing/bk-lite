@@ -1,8 +1,5 @@
-import time
-
 import pytest
 
-from apps.cmdb.constants.constants import DataCleanupStrategy
 from apps.cmdb.models.scan_model import ScanExecution, ScanFamilyRun, ScanHit, ScanTask
 from apps.cmdb.services.scan_finalize_service import write_scan_execution
 from apps.cmdb.services.scan_trigger_service import poll_scan_finalize
@@ -74,131 +71,43 @@ def _patch_oid_map(mocker):
     )
 
 
-def _capture_cannula(mocker):
-    captured = {}
-
-    class FakeCannula:
-        def __init__(self, *args, **kwargs):
-            captured.update(kwargs)
-            self.collect_data = {}
-
-        def collect_controller(self):
-            metrics = captured.get("default_metrics") or {}
-            result = {}
-            for model_id, rows in metrics.items():
-                success = []
-                for row in rows or []:
-                    success.append(
-                        {
-                            "inst_info": {
-                                **row,
-                                "inst_uuid": f"uuid-{row.get('ip_addr')}",
-                                "model_id": model_id,
-                            }
-                        }
-                    )
-                result[model_id] = {
-                    "add": {"success": success, "failed": []},
-                    "update": {"success": [], "failed": []},
-                    "delete": {"success": [], "failed": []},
-                }
-            result["__raw_data__"] = []
-            result["all"] = sum(len(rows or []) for rows in metrics.values())
-            return result
-
-    mocker.patch("apps.cmdb.services.scan_finalize_service.MetricsCannula", FakeCannula)
-    return captured
-
-
-def test_unknown_soid_is_not_in_controller_metrics_and_hit_remains(mocker):
+def test_unknown_soid_stays_unclassified_and_is_not_written(mocker):
     execution, _family_run = _execution_with_network_hits(hosts=["10.0.1.11"])
     _patch_oid_map(mocker)
-    now_ts = time.time()
-    mocker.patch(
-        "apps.cmdb.collection.collect_plugin.base.Collection.query",
-        return_value={
-            "data": {
-                "result": [
-                    {
-                        "metric": {
-                            "__name__": "network_system_info_gauge",
-                            "sysobjectid": UNKNOWN_OID,
-                            "host": "10.0.1.11",
-                            "ip_addr": "10.0.1.11",
-                            "collect_status": "success",
-                        },
-                        "value": [now_ts, "1"],
-                    }
-                ]
-            }
-        },
-    )
-    captured = _capture_cannula(mocker)
+    cannula = mocker.patch("apps.cmdb.services.scan_finalize_service.MetricsCannula")
+    collect = mocker.patch("apps.cmdb.services.scan_finalize_service.collect_family_metrics")
 
     write_scan_execution(execution)
 
-    assert captured.get("default_metrics") in (None, {})
     hit = ScanHit.objects.get(host="10.0.1.11")
     assert hit.inst_uuid == ""
     assert hit.cmdb_model_id == ""
-    assert ScanHit.objects.filter(pk=hit.pk).exists()
+    assert hit.snapshot.get("device_type") in (None, "")
+    cannula.assert_not_called()
+    collect.assert_not_called()
 
 
-def test_known_switch_soid_goes_through_controller(mocker):
+def test_known_switch_soid_annotates_snapshot_without_writing_ci(mocker):
     execution, _family_run = _execution_with_network_hits(hosts=["10.0.1.10", "10.0.1.11"])
     _patch_oid_map(mocker)
-    now_ts = time.time()
-    mocker.patch(
-        "apps.cmdb.collection.collect_plugin.base.Collection.query",
-        return_value={
-            "data": {
-                "result": [
-                    {
-                        "metric": {
-                            "__name__": "network_system_info_gauge",
-                            "sysobjectid": KNOWN_SWITCH_OID,
-                            "host": "10.0.1.10",
-                            "ip_addr": "10.0.1.10",
-                            "collect_status": "success",
-                        },
-                        "value": [now_ts, "1"],
-                    },
-                    {
-                        "metric": {
-                            "__name__": "network_system_info_gauge",
-                            "sysobjectid": UNKNOWN_OID,
-                            "host": "10.0.1.11",
-                            "ip_addr": "10.0.1.11",
-                            "collect_status": "success",
-                        },
-                        "value": [now_ts, "1"],
-                    },
-                ]
-            }
-        },
-    )
-    captured = _capture_cannula(mocker)
+    cannula = mocker.patch("apps.cmdb.services.scan_finalize_service.MetricsCannula")
 
     write_scan_execution(execution)
 
-    assert captured["filter_collect_task"] is False
-    assert captured["data_cleanup_strategy"] == DataCleanupStrategy.NO_CLEANUP
-    assert captured["manual"] is False
-    switch_ips = [row.get("ip_addr") for row in (captured["default_metrics"] or {}).get("switch", [])]
-    assert switch_ips == ["10.0.1.10"]
     known = ScanHit.objects.get(host="10.0.1.10")
-    assert known.inst_uuid == "uuid-10.0.1.10"
-    assert known.cmdb_model_id == "switch"
+    assert known.inst_uuid == ""
+    assert known.cmdb_model_id == ""
     assert known.soid == KNOWN_SWITCH_OID
-    assert known.snapshot.get("sysobjectid") == KNOWN_SWITCH_OID or known.snapshot.get("soid") == KNOWN_SWITCH_OID
+    assert known.snapshot.get("device_type") == "switch"
+    assert known.snapshot.get("brand") == "Cisco"
     unknown = ScanHit.objects.get(host="10.0.1.11")
     assert unknown.inst_uuid == ""
     assert unknown.cmdb_model_id == ""
-    assert unknown.soid == UNKNOWN_OID
-    assert unknown.snapshot.get("sysobjectid") == UNKNOWN_OID or unknown.snapshot.get("soid") == UNKNOWN_OID
+    assert unknown.snapshot.get("device_type") in (None, "")
+    cannula.assert_not_called()
 
 
-def test_host_snapshot_backfills_os_facts(mocker):
+def test_host_snapshot_from_nats_is_kept_without_writing_ci(mocker):
     task = _scan_task(families=["host"], credentials={"host": [{"username": "root", "port": "22"}]})
     execution = ScanExecution.objects.create(
         task=task,
@@ -223,23 +132,10 @@ def test_host_snapshot_backfills_os_facts(mocker):
         port=22,
         credential_id="cred-host",
         status=ScanHit.STATUS_SUCCESS,
-        snapshot={"host": "10.0.1.20"},
+        snapshot={"host": "10.0.1.20", "hostname": "web-1", "os_type": "Linux", "os_name": "Ubuntu", "os_version": "22.04"},
     )
-    mocker.patch(
-        "apps.cmdb.services.scan_finalize_service.collect_family_metrics",
-        return_value={
-            "host": [
-                {
-                    "ip_addr": "10.0.1.20",
-                    "hostname": "web-1",
-                    "os_type": "Linux",
-                    "os_name": "Ubuntu",
-                    "os_version": "22.04",
-                }
-            ]
-        },
-    )
-    _capture_cannula(mocker)
+    cannula = mocker.patch("apps.cmdb.services.scan_finalize_service.MetricsCannula")
+    collect = mocker.patch("apps.cmdb.services.scan_finalize_service.collect_family_metrics")
 
     write_scan_execution(execution)
 
@@ -247,8 +143,10 @@ def test_host_snapshot_backfills_os_facts(mocker):
     assert hit.snapshot.get("hostname") == "web-1"
     assert hit.snapshot.get("os_type") == "Linux"
     assert hit.snapshot.get("os_name") == "Ubuntu"
-    assert hit.cmdb_model_id == "host"
-    assert hit.inst_uuid == "uuid-10.0.1.20"
+    assert hit.cmdb_model_id == ""
+    assert hit.inst_uuid == ""
+    cannula.assert_not_called()
+    collect.assert_not_called()
 
 
 def test_host_snapshot_maps_numeric_os_type_to_name(mocker):
@@ -280,29 +178,15 @@ def test_host_snapshot_maps_numeric_os_type_to_name(mocker):
         port=22,
         credential_id="cred-host",
         status=ScanHit.STATUS_SUCCESS,
-        snapshot={"host": "10.0.1.20"},
+        snapshot={"host": "10.0.1.20", "os_type": "1", "os_name": "CentOS Linux"},
     )
-    mocker.patch(
-        "apps.cmdb.services.scan_finalize_service.collect_family_metrics",
-        return_value={
-            "host": [
-                {
-                    "ip_addr": "10.0.1.20",
-                    "hostname": "web-1",
-                    "os_type": "1",
-                    "os_name": "CentOS Linux",
-                    "os_version": "7",
-                }
-            ]
-        },
-    )
-    _capture_cannula(mocker)
 
     write_scan_execution(execution)
 
     hit = ScanHit.objects.get(host="10.0.1.20")
     assert hit.snapshot.get("os_type") == "Linux"
     assert hit.snapshot.get("os_name") == "CentOS Linux"
+    assert hit.inst_uuid == ""
 
 
 def test_host_shim_copies_scan_cloud_region():
@@ -327,120 +211,7 @@ def test_host_shim_copies_scan_cloud_region():
     assert shim.params.get("has_network_topo") is False
 
 
-def test_finalize_retries_when_host_row_has_ip_but_no_os_facts(mocker):
-    task = _scan_task(families=["host"], credentials={"host": [{"username": "root", "port": "22"}]})
-    execution = ScanExecution.objects.create(
-        task=task,
-        status=ScanExecution.STATUS_RUNNING,
-        claim_token="token-ip-only",
-        target_count=1,
-        received_count=1,
-    )
-    family_run = ScanFamilyRun.objects.create(
-        execution=execution,
-        model_id="host",
-        driver_type="job",
-        target_count=1,
-        received_count=1,
-        admit_status=ScanFamilyRun.ADMIT_ACCEPTED,
-    )
-    ScanHit.objects.create(
-        execution=execution,
-        family_run=family_run,
-        protocol="host",
-        host="10.0.1.20",
-        port=22,
-        credential_id="cred-host",
-        status=ScanHit.STATUS_SUCCESS,
-        snapshot={"host": "10.0.1.20"},
-    )
-    calls = {"n": 0}
-
-    def fake_collect(_family_run):
-        calls["n"] += 1
-        if calls["n"] == 1:
-            return {"host": [{"ip_addr": "10.0.1.20"}]}
-        return {
-            "host": [
-                {
-                    "ip_addr": "10.0.1.20",
-                    "hostname": "web-1",
-                    "os_name": "Ubuntu",
-                    "os_type": "Linux",
-                }
-            ]
-        }
-
-    mocker.patch("apps.cmdb.services.scan_finalize_service.collect_family_metrics", side_effect=fake_collect)
-    mocker.patch("apps.cmdb.services.scan_finalize_service.time.sleep")
-    _capture_cannula(mocker)
-
-    write_scan_execution(execution)
-
-    hit = ScanHit.objects.get(host="10.0.1.20")
-    assert calls["n"] == 2
-    assert hit.snapshot.get("hostname") == "web-1"
-    assert hit.snapshot.get("os_name") == "Ubuntu"
-
-
-def test_finalize_retries_vm_until_success_hits_have_metrics(mocker):
-    task = _scan_task(families=["host"], credentials={"host": [{"username": "root", "port": "22"}]})
-    execution = ScanExecution.objects.create(
-        task=task,
-        status=ScanExecution.STATUS_RUNNING,
-        claim_token="token-retry",
-        target_count=1,
-        received_count=1,
-    )
-    family_run = ScanFamilyRun.objects.create(
-        execution=execution,
-        model_id="host",
-        driver_type="job",
-        target_count=1,
-        received_count=1,
-        admit_status=ScanFamilyRun.ADMIT_ACCEPTED,
-    )
-    ScanHit.objects.create(
-        execution=execution,
-        family_run=family_run,
-        protocol="host",
-        host="10.0.1.20",
-        port=22,
-        credential_id="cred-host",
-        status=ScanHit.STATUS_SUCCESS,
-        snapshot={"host": "10.0.1.20"},
-    )
-    calls = {"n": 0}
-
-    def fake_collect(_family_run):
-        calls["n"] += 1
-        if calls["n"] == 1:
-            return {}
-        return {
-            "host": [
-                {
-                    "ip_addr": "10.0.1.20",
-                    "hostname": "web-1",
-                    "os_type": "Linux",
-                    "os_name": "Ubuntu",
-                    "os_version": "22.04",
-                }
-            ]
-        }
-
-    mocker.patch("apps.cmdb.services.scan_finalize_service.collect_family_metrics", side_effect=fake_collect)
-    mocker.patch("apps.cmdb.services.scan_finalize_service.time.sleep")
-    _capture_cannula(mocker)
-
-    write_scan_execution(execution)
-
-    hit = ScanHit.objects.get(host="10.0.1.20")
-    assert calls["n"] == 2
-    assert hit.snapshot.get("hostname") == "web-1"
-    assert hit.snapshot.get("os_name") == "Ubuntu"
-
-
-def test_snmp_without_network_ci_attaches_to_same_ip_ipmi(mocker):
+def test_finalize_does_not_attach_snmp_before_physical_ci(mocker):
     task = _scan_task(families=["network", "physcial_server"])
     execution, network_run = _execution_with_network_hits(task=task, hosts=["10.0.1.11"])
     physical_run = ScanFamilyRun.objects.create(
@@ -457,29 +228,21 @@ def test_snmp_without_network_ci_attaches_to_same_ip_ipmi(mocker):
         port=623,
         credential_id="cred-ipmi",
         status=ScanHit.STATUS_SUCCESS,
-    )
-    mocker.patch(
-        "apps.cmdb.services.scan_finalize_service.collect_family_metrics",
-        side_effect=lambda family_run: (
-            {"switch": [{"inst_name": "10.0.1.11-switch", "ip_addr": "10.0.1.11", "soid": UNKNOWN_OID}]}
-            if family_run.model_id == "network"
-            else {"physcial_server": [{"inst_name": "SN123", "ip_addr": "10.0.1.11", "serial_number": "SN123"}]}
-        ),
+        snapshot={"serial_number": "SN123", "ip_addr": "10.0.1.11"},
     )
     _patch_oid_map(mocker)
-    _capture_cannula(mocker)
 
     write_scan_execution(execution)
 
     snmp_hit = ScanHit.objects.get(family_run=network_run, host="10.0.1.11")
     physical_hit = ScanHit.objects.get(family_run=physical_run)
-    assert physical_hit.inst_uuid == "uuid-10.0.1.11"
+    assert physical_hit.inst_uuid == ""
     assert physical_hit.snapshot.get("serial_number") == "SN123"
     assert snmp_hit.inst_uuid == ""
-    assert snmp_hit.attached_inst_uuid == physical_hit.inst_uuid
+    assert snmp_hit.attached_inst_uuid == ""
 
 
-def test_poll_ready_writes_ci_and_marks_completed(mocker):
+def test_poll_ready_finalizes_and_marks_completed(mocker):
     execution, _family_run = _execution_with_network_hits()
     write = mocker.patch(
         "apps.cmdb.services.scan_finalize_service.write_scan_execution",

@@ -136,7 +136,7 @@ def test_manual_exec_atomically_claims_and_dispatches_execution_token(
     assert task.collect_data == {}
     assert task.format_data == {}
     assert task.collect_digest == {}
-    delay.assert_called_once_with(task.id, task.task_id, None, None)
+    delay.assert_called_once_with(task.id, task.task_id, None, None, resolve_latest_round=True)
 
 
 @pytest.mark.django_db

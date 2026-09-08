@@ -337,6 +337,7 @@ class CollectModelSerializer(AuthSerializer):
         credential = credential_pool[0]
         allowed_fields = {
             "credential_id",
+            "credential_version",
             "scheme",
             "port",
             "verify_tls",

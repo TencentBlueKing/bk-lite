@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from apps.monitor.models import MonitorAlert
+from apps.monitor.models import MonitorAlert, MonitorEvent
 from apps.monitor.tasks.services.policy_scan.alert_detector import AlertDetector
 
 
@@ -124,6 +124,7 @@ class TestDetectThresholdAlerts:
             "monitor_instance_id": "('cluster-a', 'orders-7f9')",
             "resource_id": "('cluster-a', 'orders-7f9')",
             "resource_name": "orders-7f9",
+            "resource_ip": "",
             "parent_resource_id": "('cluster-a',)",
             "parent_resource_name": "生产集群",
         }
@@ -278,12 +279,14 @@ class TestRecoverThresholdAlerts:
         )
         detector = AlertDetector(_policy(recovery_condition=2), {}, {}, [alert], _mq())
         with django_capture_on_commit_callbacks(execute=True):
-            detector.recover_threshold_alerts()
+            recovered_events = detector.recover_threshold_alerts()
         alert.refresh_from_db()
         assert alert.status == "recovered"
         assert alert.operator == "system"
         assert alert.alert_center_notified is False
         assert alert.operation_logs[-1]["action"] == "recovered"
+        assert len(recovered_events) == 1
+        assert recovered_events[0].action == MonitorEvent.Action.RECOVERED
         notifier.return_value.notify_alerts.assert_called_once()
 
     def test_no_recovery_when_condition_not_met(self, mocker):
@@ -311,7 +314,7 @@ class TestRecoverNoDataAlerts:
     def test_no_recovery_period_skips(self, mocker):
         detector = AlertDetector(_policy(no_data_recovery_period={}), {}, {}, [], _mq())
         # 不应抛错，直接返回
-        assert detector.recover_no_data_alerts() is None
+        assert detector.recover_no_data_alerts() == []
 
     def test_recovers_no_data_alert_when_data_returns(
         self, mocker, django_capture_on_commit_callbacks
@@ -328,9 +331,11 @@ class TestRecoverNoDataAlerts:
             _mq(formatted={"('h1',)": {"value": 1.0}}),
         )
         with django_capture_on_commit_callbacks(execute=True):
-            detector.recover_no_data_alerts()
+            recovered_events = detector.recover_no_data_alerts()
         alert.refresh_from_db()
         assert alert.status == "recovered"
+        assert len(recovered_events) == 1
+        assert recovered_events[0].action == MonitorEvent.Action.RECOVERED
         notifier.return_value.notify_alerts.assert_called_once()
 
     def test_no_recovery_when_still_no_data(self, mocker):

@@ -114,6 +114,11 @@ describe('placeOverlayOutsideRect', () => {
     expect(ARCH_HOST_OVERLAY_GAP).toBeLessThanOrEqual(12);
     expect(placed.left - host.right).toBe(ARCH_HOST_OVERLAY_GAP);
   });
+
+  it('keeps ARCH_HOST_OVERLAY_SIZE aligned with the CSS chip box', () => {
+    // CSS `.app3d-arch-host-chip`: width 236px, min-height 108px
+    expect(ARCH_HOST_OVERLAY_SIZE).toEqual({ width: 236, height: 108 });
+  });
 });
 
 describe('architecture cabinet overlay AABB', () => {
@@ -129,7 +134,7 @@ describe('architecture cabinet overlay AABB', () => {
     stroke.userData.archRole = 'rack-stroke';
     const label = new THREE.Mesh(new THREE.PlaneGeometry(1, 1));
     label.userData.archRole = 'node-label';
-    label.scale.set(Math.max(0.32 * 3.6, 1.4), 0.36, 1);
+    label.scale.set(1.44, 0.36, 1);
     label.position.set(0, 0.82, 0);
     group.add(chassis, led, stroke, label);
     group.updateWorldMatrix(true, true);
@@ -141,7 +146,7 @@ describe('architecture cabinet overlay AABB', () => {
     const cabinetBox = expandArchitectureCabinetWorldBox(group);
     const fullBox = new THREE.Box3().setFromObject(group);
     expect(cabinetBox.max.x - cabinetBox.min.x).toBeCloseTo(0.34, 5);
-    expect(fullBox.max.x - fullBox.min.x).toBeCloseTo(1.4, 5);
+    expect(fullBox.max.x - fullBox.min.x).toBeCloseTo(1.44, 5);
     expect(cabinetBox.max.x - cabinetBox.min.x).toBeLessThan(0.5);
     expect(fullBox.max.x - fullBox.min.x).toBeGreaterThan(1);
   });

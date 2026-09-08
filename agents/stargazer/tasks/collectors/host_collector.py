@@ -2,15 +2,47 @@
 import asyncio
 import json
 import logging
+import re
 import time
 from pathlib import Path
 from typing import Any, Dict, List
 from urllib.parse import unquote
 
+from core.logger import safe_log_value
+
 from .base_collector import BaseCollector
 from .disk_filter import should_collect_disk
 
 logger = logging.getLogger("stargazer.host_collector")
+
+ANSIBLE_FAILURE_TEXT_MAX_CHARS = 200
+ANSIBLE_ADHOC_FAILED_LOG_TEMPLATE = (
+    "[Host Collector] event=ansible_adhoc_failed host=%s error=%s "
+    "host_status=%s exit_code=%s stderr=%s stderr_missing=%s "
+    "failed_stage=callback_process error_type=%s"
+)
+_SECRET_ASSIGNMENT_RE = re.compile(
+    r"(?i)\b(password|passwd|secret|token|authorization|passphrase|"
+    r"private_key(?:_content)?)\s*[:=]\s*\S+"
+)
+_PEM_BLOCK_RE = re.compile(
+    r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----",
+    re.DOTALL,
+)
+_AUTH_FAILURE_MARKERS = (
+    "permission denied",
+    "authentication",
+    "auth fail",
+    "invalid user",
+    "sshpass",
+)
+_UNREACHABLE_MARKERS = (
+    "unreachable",
+    "connection timed out",
+    "connection refused",
+    "no route to host",
+    "name or service not known",
+)
 
 
 def _url_decode_secret(value: Any, credential_encoding: Any = "url") -> str:
@@ -39,6 +71,95 @@ HOST_REMOTE_CALLBACK_REQUEST_TIMEOUT = 60
 LINUX_SCRIPT_WRAPPER_EOF = "STARGAZER_HOST_COLLECT_EOF"
 LINUX_SCRIPT_WRAPPER_PREFIX = "LC_ALL=C LANG=C bash --noprofile --norc"
 SUPPORTED_OS_TYPES = {"linux", "windows", "aix"}
+
+
+def sanitize_ansible_failure_text(
+    value: Any, *, max_length: int = ANSIBLE_FAILURE_TEXT_MAX_CHARS
+) -> str:
+    text = _PEM_BLOCK_RE.sub("[omitted]", str(value or ""))
+    text = _SECRET_ASSIGNMENT_RE.sub(r"\1=[omitted]", text)
+    return safe_log_value(text, max_length=max_length)
+
+
+def _lookup_host_result(result: Dict[str, Any], host: str) -> Dict[str, Any]:
+    task_result = result.get("result")
+    expected_host = str(host or "").strip()
+    if isinstance(task_result, list):
+        for item in task_result:
+            if isinstance(item, dict) and str(item.get("host") or "") == expected_host:
+                return item
+        for item in task_result:
+            if isinstance(item, dict):
+                return item
+    if isinstance(task_result, dict):
+        hosts_result = task_result.get("contacted", task_result)
+        if isinstance(hosts_result, dict):
+            host_data = hosts_result.get(expected_host)
+            if isinstance(host_data, dict):
+                return host_data
+            for item in hosts_result.values():
+                if isinstance(item, dict):
+                    return item
+    return {}
+
+
+def extract_ansible_failure_summary(result: Dict[str, Any], host: str) -> Dict[str, Any]:
+    payload = result if isinstance(result, dict) else {}
+    error = payload.get("error") or payload.get("message") or "Ansible adhoc failed"
+    host_result = _lookup_host_result(payload, host)
+    summary_meta = payload.get("result_summary")
+    if not isinstance(summary_meta, dict):
+        summary_meta = {}
+    raw_status = str(
+        host_result.get("raw_status")
+        or summary_meta.get("failure_status")
+        or host_result.get("status")
+        or ""
+    )
+    exit_code = host_result.get("exit_code")
+    if exit_code is None:
+        exit_code = host_result.get("rc", summary_meta.get("failure_exit_code"))
+    stderr = str(
+        host_result.get("stderr")
+        or host_result.get("error_message")
+        or summary_meta.get("failure_stderr")
+        or ""
+    )
+    sanitized_stderr = sanitize_ansible_failure_text(stderr)
+    return {
+        "error": sanitize_ansible_failure_text(error),
+        "host_status": sanitize_ansible_failure_text(raw_status, max_length=32),
+        "exit_code": "" if exit_code in (None, "") else str(exit_code),
+        "stderr": sanitized_stderr,
+        "stderr_missing": not bool(sanitized_stderr),
+    }
+
+
+def classify_ansible_failure(summary: Dict[str, Any]) -> str:
+    host_status = str(summary.get("host_status") or "").upper()
+    text = " ".join(
+        str(summary.get(key) or "") for key in ("error", "stderr", "host_status")
+    ).lower()
+    if host_status.startswith("UNREACHABLE"):
+        return "target_unreachable"
+    if any(marker in text for marker in _AUTH_FAILURE_MARKERS):
+        return "authentication_failed"
+    if any(marker in text for marker in _UNREACHABLE_MARKERS):
+        return "target_unreachable"
+    return "collection_failed"
+
+
+def format_ansible_failure_message(summary: Dict[str, Any]) -> str:
+    parts = [f"Host collection failed: {summary.get('error') or 'Ansible adhoc failed'}"]
+    if summary.get("host_status"):
+        parts.append(f"host_status={summary['host_status']}")
+    if summary.get("exit_code"):
+        parts.append(f"exit_code={summary['exit_code']}")
+    if summary.get("stderr"):
+        parts.append(f"stderr={summary['stderr']}")
+    else:
+        parts.append("stderr_missing=true")
+    return "; ".join(parts)
 
 
 def build_script(
@@ -447,9 +568,19 @@ class HostCollector(BaseCollector):
         os_type = self.params.get("os_type", "linux")
 
         if not result.get("success"):
-            error_msg = result.get("error") or result.get("message") or "Ansible adhoc failed"
-            logger.error(f"[Host Collector] Ansible adhoc failed for {host}: {error_msg}")
-            raise RuntimeError(f"Host collection failed: {error_msg}")
+            summary = extract_ansible_failure_summary(result, host)
+            error_type = classify_ansible_failure(summary)
+            logger.error(
+                ANSIBLE_ADHOC_FAILED_LOG_TEMPLATE,
+                host,
+                summary["error"],
+                summary["host_status"] or "-",
+                summary["exit_code"] or "-",
+                summary["stderr"] or "-",
+                summary["stderr_missing"],
+                error_type,
+            )
+            raise RuntimeError(format_ansible_failure_message(summary))
 
         stdout = self._extract_stdout(result)
         if not stdout or not stdout.strip():

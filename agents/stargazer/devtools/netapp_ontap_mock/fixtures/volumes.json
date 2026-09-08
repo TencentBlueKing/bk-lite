@@ -1,0 +1,18 @@
+[
+  {
+    "name": "vol1",
+    "uuid": "028baa66-41bd-11e9-81d5-00a0986138f7",
+    "type": "rw",
+    "state": "online",
+    "aggregates": [
+      {
+        "name": "aggr1"
+      }
+    ],
+    "space": {
+      "size": 107374182400,
+      "available": 53687091200,
+      "used": 53687091200
+    }
+  }
+]

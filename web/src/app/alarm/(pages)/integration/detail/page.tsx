@@ -352,18 +352,20 @@ const IntegrationDetail: FC = () => {
   const sidebarMetaClassName = 'text-[11px] leading-[18px] text-[var(--color-text-2)]';
   const sidebarEllipsisClassName = 'overflow-hidden text-ellipsis whitespace-nowrap';
 
-  const k8sSummaryMetrics = [
+  const summaryMetrics = [
     {
       key: 'event_count',
       label: t('integration.cumulativeEventCount'),
       value: formatDisplayValue(source?.event_count),
-      helper: hasLoadedEvents ? '累计接收的 Kubernetes 事件数量。' : '事件列表加载后会持续更新该统计。',
+      helper: t('integration.visibleEventCountHelp'),
     },
     {
       key: 'last_event_time',
       label: t('integration.lastEventTime'),
       value: formatDisplayTime(source?.last_event_time),
-      helper: source?.last_event_time ? '最近一次接入事件时间。' : '当前还没有可展示的最近事件时间。',
+      helper: source?.last_event_time
+        ? t('integration.visibleLastEventTimeHelp')
+        : t('integration.noVisibleLastEventTimeHelp'),
     },
   ];
 
@@ -400,7 +402,7 @@ const IntegrationDetail: FC = () => {
     },
   ];
 
-  const K8sSummary = () => (
+  const IntegrationSummary = () => (
     <div className="rounded-[20px] border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-5 py-4">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex items-center gap-4 xl:min-w-0 xl:flex-[0.9]">
@@ -414,22 +416,24 @@ const IntegrationDetail: FC = () => {
                   onError={() => setLogoLoadFailed(true)}
                 />
               ) : (
-                <span className="text-base font-semibold text-[var(--color-primary)]">K8s</span>
+                <span className="px-2 text-center text-base font-semibold leading-5 text-[var(--color-primary)]">
+                  {isK8sSource ? 'K8s' : source?.name?.slice(0, 4) || '--'}
+                </span>
               )}
             </div>
           </div>
           <div className="min-w-0 flex-1">
             <h1 className="text-[21px] font-semibold leading-[28px] text-[var(--color-text-1)]">
-              {source?.name || t('integration.k8sDetailTitle')}
+              {source?.name || (isK8sSource ? t('integration.k8sDetailTitle') : '--')}
             </h1>
             <p className="mt-0.5 text-[13px] leading-5 text-[var(--color-text-2)] sm:text-sm">
-              {source?.description || t('integration.k8sDetailDescription')}
+              {source?.description || (isK8sSource ? t('integration.k8sDetailDescription') : '--')}
             </p>
           </div>
         </div>
         <div className="flex-1 border-t border-[var(--color-border-1)] pt-3 xl:min-w-[520px] xl:flex-[1.1] xl:border-t-0 xl:border-l xl:pt-0 xl:pl-7">
           <div className="grid gap-0 sm:grid-cols-2">
-            {k8sSummaryMetrics.map((item, index) => (
+            {summaryMetrics.map((item, index) => (
               <div
                 key={item.key}
                 className={[
@@ -612,37 +616,6 @@ const IntegrationDetail: FC = () => {
               )}
             </div>
           </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  const IntegrationHeader = () => (
-    <div className="rounded-[20px] border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-5 py-4">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        <div className="flex h-[82px] w-[82px] shrink-0 items-center justify-center rounded-[20px] border border-[var(--color-border-1)] bg-[var(--color-fill-1)] p-2.5">
-          <div className="flex h-full w-full items-center justify-center rounded-lg bg-[var(--color-primary-bg-active)]">
-            {!logoLoadFailed && source?.logo ? (
-              <img
-                src={source.logo}
-                alt=""
-                className="h-14 w-14 shrink-0 rounded object-contain"
-                onError={() => setLogoLoadFailed(true)}
-              />
-            ) : (
-              <span className="px-2 text-center text-base font-semibold leading-5 text-[var(--color-primary)]">
-                {source?.name?.slice(0, 4) || '--'}
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="min-w-0 flex-1">
-          <h1 className="text-[21px] font-semibold leading-[28px] text-[var(--color-text-1)]">
-            {source?.name}
-          </h1>
-          <p className="mt-0.5 break-words text-[13px] leading-5 text-[var(--color-text-2)] sm:text-sm">
-            {source?.description}
-          </p>
         </div>
       </div>
     </div>
@@ -913,7 +886,7 @@ const IntegrationDetail: FC = () => {
             {isK8sSource ? (
               <>
                 {/** Guide-first layout keeps the sidebar tied to the guide tab only. */}
-                <K8sSummary />
+                <IntegrationSummary />
                 <div className={`mt-4 grid gap-4 xl:items-start ${activeTab === 'guide' ? 'xl:grid-cols-[minmax(0,1fr)_368px]' : 'xl:grid-cols-[minmax(0,1fr)]'}`}>
                   <div className="min-w-0 rounded-[20px] border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-4 shadow-[0_8px_24px_color-mix(in_srgb,var(--color-text-1)_3%,transparent)]">
                     <Tabs activeKey={activeTab} onChange={setActiveTab} items={[
@@ -970,7 +943,7 @@ const IntegrationDetail: FC = () => {
               </>
             ) : (
               <>
-                <IntegrationHeader />
+                <IntegrationSummary />
                 <div className="mt-4 rounded-[20px] border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-4 shadow-[0_8px_24px_color-mix(in_srgb,var(--color-text-1)_3%,transparent)]">
                   <Tabs activeKey={activeTab} onChange={setActiveTab}>
                     <Tabs.TabPane key="event" tab={t('integration.eventTab')}>

@@ -23,8 +23,9 @@ Status: done
 超时体系从三层收敛为两层，并为采集任务建立"凭据前连接预检"的任务级开关链路：
 
 1. **插件内部超时全部硬编码写死**（连接建立、脚本执行上限等），用户不可配；
-2. **用户唯一可配的超时 = 单对象（单 IP）正式 Collector 采集预算**：表单 timeout
-   下发后只在 `plugin.collect()` 外由框架 `asyncio.timeout` 强制，每个 IP 独立计时；
+2. **用户唯一可配的超时 = 单个逻辑采集对象的正式 Collector 预算**：表单 timeout
+   下发后只在 `plugin.collect()` 外由框架 `asyncio.timeout` 强制；普通 IP 范围任务按 IP
+   独立计时，IP 发现任务当前以一次所选子网扫描为一个逻辑采集对象；
    调度排队、preflight、access probe、publish 使用各自预算，删除 `plugin.yml`
    executor `timeout` 参数，消灭双轨；
 3. **任务级 IP 预检开关**（本期只建链路）：开启后每个目标在进入凭据尝试前先做
@@ -54,7 +55,8 @@ Status: done
 | network_config_file | 建连 `conn_timeout` 30s；单命令 `timeout_ops` 60s | 写死 |
 | SSH/job 类全体（host、config_file、physcial_server 及约 34 个中间件插件） | 脚本执行上限 `execute_timeout` 60s | 停止读任务参数写死；server 侧 `node_configs/ssh/base.py` 同步停止把表单 timeout 塞入凭据下发 |
 | vmware_vc（10s/池 10s）、fusioninsight（60s） | — | 已写死，不动 |
-| ip（IP 发现） | 探测超时=表单值（其"连接"即单 IP 探测，与单对象预算同义） | 不动 |
+| ip（IP 发现） | 单次 ICMP/TCP 探测 5s | 停止读任务 `timeout`；表单值只作整次所选子网扫描预算 |
+| network_topo | SNMP 请求 10s / 重试 1 次 | 停止读任务 `timeout` / `retries`，写死 |
 | physcial_server IPMI | pyghmi 库默认（无参数可设） | 不动 |
 
 #### 企业版
@@ -64,20 +66,23 @@ Status: done
 | aws | 连接 10s / 读 60s | 停止读任务 `timeout`，写死 |
 | nacos / oceanbase / server_bmc | 10s | 同上 |
 | h3c_cas / sangforhci | 60s | 同上 |
-| winsphere | 30s | 同上 |
+| winsphere | 请求 30s | 停止读任务 `timeout`，写死 |
 | highgo | 10s（继承社区 postgresql） | 随社区版自动生效 |
 | openstack / fusioncompute / smartx / inspurincloudrail | 连接 10s / 读 60s | **当前完全无超时，必须补**：`handle_request` 统一 `kwargs.setdefault("timeout", (10, 60))`；openstack 另有 2 处直连 `requests.post`（登录取 token）单独补 |
 | pc（PC 盘点） | 脚本执行上限 120s | 写死为现值（盘点脚本较慢，保留） |
 | 企业版 job/SSH 类（aix、hdfs、sybase 等约 24 个） | `execute_timeout` 60s | 随 script_executor 统一写死 |
 | azure（30s）、nutanixhci（30s） | — | 已写死，不动 |
-| sangforscp | 由 `plugin.yml` collector.options 静态配置 | 不动 |
-| hwcloud / manageone | CMP 驱动内部 10s | 不动 |
+| sangforscp | 连接 10s / 读 60s / 写 15s / 连接池 10s | 请求超时写死并移除插件内部总预算；完整采集只受框架表单预算约束 |
+| manageone | 连接 10s / 读 60s | CMP 驱动统一写死，不读取调用方或表单 timeout |
+| hwcloud | CMP 驱动内部 10s | 已写死，不动 |
 | 存储/设备 stub 插件 | 无网络连接 | 不涉及 |
 
-### 二、用户唯一可配：单对象（单 IP）正式 Collector 采集预算
+### 二、用户唯一可配：单个逻辑采集对象的正式 Collector 采集预算
 
-- 表单「超时时间」= 一个 IP/实例进入正式 `plugin.collect()` 后的硬截止；IP 段拆开后
-  **每个 IP 独立计时**，某个正式采集超时不影响其余。
+- 表单「超时时间」= 一个逻辑目标进入正式 `plugin.collect()` 后的硬截止；普通 IP 段
+  拆开后**每个 IP 独立计时**，某个正式采集超时不影响其余。IP 发现插件当前把所选
+  子网展开并在一个 Collector 内扫描，因此该表单值是整次所选子网扫描预算，默认 300s；
+  单个 IP 的 ICMP/TCP 探测固定最多 5s。
 - 生效机制：框架层（`ExecutionPlanResolver` / executor）使用任务下发的 `timeout`，
   在 `plugin.collect()` 外由 `asyncio.timeout` 强制。等待 Scheduler 槽位的时间不计入；
   preflight、access probe 和 publish 继续使用各自独立预算。
@@ -92,8 +97,10 @@ Status: done
   写死的 `execute_timeout=60s`（pc 为 120s）约束。
 - `TASK_JOB_TIMEOUT`（默认 600s）保留为 server 内部状态兜底（把僵死 RUNNING 收敛为
   TIME_OUT），与用户超时体系无关，不暴露、不改动。
-- 前端 tooltip 应明确为“单个对象正式采集超时时间”，避免再次被理解为调度至发布的
-  完整流程预算。
+- 前端一般 tooltip 应明确为“单个对象正式采集超时时间”，避免再次被理解为调度至
+  发布的完整流程预算；IP 发现使用专用 tooltip，明确“所选子网扫描总预算”和固定
+  5s 单次探测上限。所有表单只从 `initialValues` 提供默认值，不再维护无效且易冲突的
+  `timeoutProps.defaultValue`；输入最小值不得低于后端 1s 下限（SNMP 保持 30s）。
 
 ### 三、任务级 IP 预检
 

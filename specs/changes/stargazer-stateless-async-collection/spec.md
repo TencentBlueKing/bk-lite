@@ -460,6 +460,7 @@ Stargazer 与 CMDB 凭据命中事件字段对齐，以及 CMDB「查询 VM → 
 | 参数 | 含义 |
 | --- | --- |
 | `MAX_ACTIVE_RUNS` | 单 Pod 同时运行的 `CollectionRun` 数量 |
+| `MAX_ACTIVE_RUN_TARGETS` | 单进程全部已接纳 Run 的目标总数预算；空闲时允许单个超大 Run 独占预算 |
 | `MAX_ACTIVE_TARGETS` | 单 Pod 同时活跃的 `TargetCollection` 数量 |
 | `NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS` | 网络拓扑 workload 的基础目标配额；普通采集完全空闲时可动态借槽 |
 | `TARGET_TASK_WINDOW` | 已创建但未完成的目标协程上限，并复用为有界发布队列容量 |

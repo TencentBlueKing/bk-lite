@@ -122,6 +122,8 @@ runtime:
   callback_timeout: 10
   work_dir: /var/lib/ansible-executor/work
   state_db_path: /var/lib/ansible-executor/task_state.db
+  terminal_task_retention_seconds: 86400
+  terminal_task_purge_interval_seconds: 300
 
 security:
   allowed_callback_subjects:
@@ -142,6 +144,8 @@ jetstream:
 
 `security.allowed_callback_subjects` 和 `security.allowed_stream_subjects` 也可分别通过
 `ANSIBLE_ALLOWED_CALLBACK_SUBJECTS`、`ANSIBLE_ALLOWED_STREAM_SUBJECTS` 以逗号分隔形式注入；仅在部署确有自定义回调或流式日志 subject 时扩展。
+终态任务行保留期可通过 `ANSIBLE_TERMINAL_TASK_RETENTION_SECONDS`（默认 86400）和
+`ANSIBLE_TERMINAL_TASK_PURGE_INTERVAL_SECONDS`（默认 300）覆盖；回调仍 `pending` 的行不会删除。
 
 兼容的环境变量模式仍保留，便于迁移，但不再推荐作为主配置方式。
 

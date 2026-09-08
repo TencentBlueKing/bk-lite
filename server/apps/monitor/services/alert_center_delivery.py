@@ -19,9 +19,7 @@ def _env_flag(name, *, default=False):
 
 
 def _outbox_enabled():
-    return _env_flag("MONITOR_ALERT_CENTER_OUTBOX_ENABLED") and bool(
-        os.getenv("ALERTS_PER_EVENT_ACK_TOKEN", "")
-    )
+    return _env_flag("MONITOR_ALERT_CENTER_OUTBOX_ENABLED") and bool(os.getenv("ALERTS_PER_EVENT_ACK_TOKEN", ""))
 
 
 # The receiver must understand per-event acknowledgements before producers start
@@ -31,9 +29,7 @@ ALERT_CENTER_ACK_TOKEN = os.getenv("ALERTS_PER_EVENT_ACK_TOKEN", "")
 # outbox 的 shadow/active 两阶段都依赖 receiver-first 的认证生命周期身份；
 # 缺少共享凭据时保持旧链路，避免先写入无法与即时投递收敛的代次。
 ALERT_CENTER_OUTBOX_ENABLED = _outbox_enabled()
-ALERT_CENTER_OUTBOX_DELIVERY_ENABLED = _env_flag(
-    "MONITOR_ALERT_CENTER_OUTBOX_DELIVERY_ENABLED"
-)
+ALERT_CENTER_OUTBOX_DELIVERY_ENABLED = _env_flag("MONITOR_ALERT_CENTER_OUTBOX_DELIVERY_ENABLED")
 OUTBOX_BATCH_SIZE = 200
 OUTBOX_LEASE_TIMEOUT = timedelta(minutes=5)
 
@@ -65,19 +61,14 @@ def enqueue_alert_center_deliveries(
     configured_channel_ids = {
         int(value)
         for alert in alerts
-        for value in (
-            (channel_ids_by_alert or {}).get(alert.id)
-            or notifier._resolve_notice_type_ids(alert)
-        )
+        for value in ((channel_ids_by_alert or {}).get(alert.id) or notifier._resolve_notice_type_ids(alert))
         if str(value).isdigit()
     }
     alert_center_channel_ids = set()
     unresolved_channel_ids = set()
     for channel_id in configured_channel_ids:
         try:
-            capability = SystemMgmtUtils.probe_notification_channel(
-                channel_id, capability_only=True
-            ) or {}
+            capability = SystemMgmtUtils.probe_notification_channel(channel_id, capability_only=True) or {}
         except Exception:
             # 能力目录是外部可降级依赖。生命周期事务不能因为瞬时 RPC
             # 失败而回滚；保留 backfilled=False，由周期对账有界重试。
@@ -92,10 +83,7 @@ def enqueue_alert_center_deliveries(
     alert_channels = {
         alert.id: [
             int(value)
-            for value in (
-                (channel_ids_by_alert or {}).get(alert.id)
-                or notifier._resolve_notice_type_ids(alert)
-            )
+            for value in ((channel_ids_by_alert or {}).get(alert.id) or notifier._resolve_notice_type_ids(alert))
             if str(value).isdigit() and int(value) in alert_center_channel_ids
         ]
         for alert in alerts
@@ -103,23 +91,24 @@ def enqueue_alert_center_deliveries(
     target_alerts = [alert for alert in alerts if alert_channels[alert.id]]
     if not target_alerts:
         if not unresolved_channel_ids:
-            MonitorAlert.objects.filter(id__in=[alert.id for alert in alerts]).update(
-                alert_center_delivery_backfilled=True
-            )
+            MonitorAlert.objects.filter(id__in=[alert.id for alert in alerts]).update(alert_center_delivery_backfilled=True)
         return []
 
     alert_ids = sorted({alert.id for alert in target_alerts})
     created_ids = []
     with transaction.atomic():
-        locked_by_id = {
-            alert.id: alert
-            for alert in MonitorAlert.objects.select_for_update().filter(id__in=alert_ids).order_by("id")
-        }
+        locked_by_id = {alert.id: alert for alert in MonitorAlert.objects.select_for_update().filter(id__in=alert_ids).order_by("id")}
         instance_org_map = notifier._build_instance_org_map(target_alerts)
+        monitor_identity_map = notifier._build_monitor_identity_map(target_alerts)
         for original in target_alerts:
             alert = locked_by_id.get(original.id, original)
             base_payload = notifier._build_alert_center_payload(
-                alert, action, operator, reason, instance_org_map
+                alert,
+                action,
+                operator,
+                reason,
+                instance_org_map,
+                monitor_identity_map,
             )
             if legacy_ingest_identity:
                 # 旧 producer 没有 lifecycle identity。存量 new 的 notified=True
@@ -145,9 +134,7 @@ def enqueue_alert_center_deliveries(
                 existing = MonitorAlertCenterDelivery.objects.filter(delivery_id=delivery_id).first()
                 if existing:
                     continue
-                generation = (
-                    MonitorAlertCenterDelivery.objects.filter(alert_id=alert.id).aggregate(value=Max("generation"))["value"] or 0
-                ) + 1
+                generation = (MonitorAlertCenterDelivery.objects.filter(alert_id=alert.id).aggregate(value=Max("generation"))["value"] or 0) + 1
                 payload = {
                     **base_payload,
                     "lifecycle_generation": delivery_id,
@@ -160,15 +147,9 @@ def enqueue_alert_center_deliveries(
                     channel_id=channel_id,
                     payload=payload,
                     status=(
-                        MonitorAlertCenterDelivery.Status.FAILED
-                        if blocking_generation is not None
-                        else MonitorAlertCenterDelivery.Status.PENDING
+                        MonitorAlertCenterDelivery.Status.FAILED if blocking_generation is not None else MonitorAlertCenterDelivery.Status.PENDING
                     ),
-                    last_error=(
-                        f"blocked by terminal generation {blocking_generation}"
-                        if blocking_generation is not None
-                        else ""
-                    ),
+                    last_error=(f"blocked by terminal generation {blocking_generation}" if blocking_generation is not None else ""),
                 )
                 created_ids.append(delivery.id)
 
@@ -181,17 +162,12 @@ def enqueue_alert_center_deliveries(
             for alert in target_alerts
             if not unresolved_channel_ids.intersection(
                 int(value)
-                for value in (
-                    (channel_ids_by_alert or {}).get(alert.id)
-                    or notifier._resolve_notice_type_ids(alert)
-                )
+                for value in ((channel_ids_by_alert or {}).get(alert.id) or notifier._resolve_notice_type_ids(alert))
                 if str(value).isdigit()
             )
         ]
         if resolved_alert_ids:
-            MonitorAlert.objects.filter(id__in=resolved_alert_ids).update(
-                alert_center_delivery_backfilled=True
-            )
+            MonitorAlert.objects.filter(id__in=resolved_alert_ids).update(alert_center_delivery_backfilled=True)
     return created_ids
 
 
@@ -226,11 +202,7 @@ def _ack_result(send_result, delivery_id):
 def deliver_alert_center_delivery(record_id):
     """按代次 claim/finalize；旧执行不能覆盖新 claim，后继动作不得越过前驱。"""
     now = timezone.now()
-    alert_id = (
-        MonitorAlertCenterDelivery.objects.filter(id=record_id)
-        .values_list("alert_id", flat=True)
-        .first()
-    )
+    alert_id = MonitorAlertCenterDelivery.objects.filter(id=record_id).values_list("alert_id", flat=True).first()
     if alert_id is None:
         return False
     with transaction.atomic():
@@ -240,11 +212,15 @@ def deliver_alert_center_delivery(record_id):
         record = MonitorAlertCenterDelivery.objects.select_for_update().filter(id=record_id).first()
         if not record or record.status in {record.Status.DELIVERED, record.Status.FAILED}:
             return False
-        earlier_unfinished = MonitorAlertCenterDelivery.objects.filter(
-            alert_id=record.alert_id,
-            channel_id=record.channel_id,
-            generation__lt=record.generation,
-        ).exclude(status=record.Status.DELIVERED).exists()
+        earlier_unfinished = (
+            MonitorAlertCenterDelivery.objects.filter(
+                alert_id=record.alert_id,
+                channel_id=record.channel_id,
+                generation__lt=record.generation,
+            )
+            .exclude(status=record.Status.DELIVERED)
+            .exists()
+        )
         if earlier_unfinished:
             return False
         if record.status == record.Status.DELIVERING and record.updated_at > now - OUTBOX_LEASE_TIMEOUT:
@@ -306,9 +282,12 @@ def deliver_alert_center_delivery(record_id):
                 last_error="",
                 updated_at=finished_at,
             )
-            if finalized and not MonitorAlertCenterDelivery.objects.filter(alert_id=record.alert_id).exclude(
-                status=MonitorAlertCenterDelivery.Status.DELIVERED
-            ).exists():
+            if (
+                finalized
+                and not MonitorAlertCenterDelivery.objects.filter(alert_id=record.alert_id)
+                .exclude(status=MonitorAlertCenterDelivery.Status.DELIVERED)
+                .exists()
+            ):
                 MonitorAlert.objects.filter(id=record.alert_id).update(alert_center_notified=True, alert_center_retry_count=0)
         return bool(finalized)
 
@@ -357,9 +336,7 @@ def _fail_blocked_successors(record):
 def backfill_legacy_alerts():
     """有界对账存量告警；成功旧投递会由接收端幂等去重。"""
     alerts = list(
-        MonitorAlert.objects.filter(
-            alert_center_delivery_backfilled=False
-        )
+        MonitorAlert.objects.filter(alert_center_delivery_backfilled=False)
         .filter(Q(alert_center_notified=False) | Q(status="new"))
         .order_by("id")[:OUTBOX_BATCH_SIZE]
     )
@@ -385,16 +362,13 @@ def backfill_legacy_alerts():
             configured_ids = [
                 channel_id
                 for channel_id in configured_ids
-                if alert.status in {"recovered", "closed"}
-                and channel_id in successful_created_channel_ids
+                if alert.status in {"recovered", "closed"} and channel_id in successful_created_channel_ids
             ]
         if not configured_ids:
             MonitorAlert.objects.filter(id=alert.id).update(alert_center_delivery_backfilled=True)
             continue
         notifier = AlertLifecycleNotifier(policy, policies_by_id=policies)
-        missing_created_channel_ids = sorted(
-            set(configured_ids) - successful_created_channel_ids
-        )
+        missing_created_channel_ids = sorted(set(configured_ids) - successful_created_channel_ids)
         if alert.status != "new" and missing_created_channel_ids:
             # 存量只有当前态，没有首次告警的不可变快照；先建立兼容 created
             # 前驱，保证 recovery/closed 不会越过尚未确认的首次投递。
@@ -409,9 +383,7 @@ def backfill_legacy_alerts():
             [alert],
             "created" if alert.status == "new" else alert.status,
             notifier=notifier,
-            legacy_ingest_identity=(
-                alert.status == "new" and alert.alert_center_notified
-            ),
+            legacy_ingest_identity=(alert.status == "new" and alert.alert_center_notified),
             channel_ids_by_alert={alert.id: configured_ids},
         )
     return len(alerts)

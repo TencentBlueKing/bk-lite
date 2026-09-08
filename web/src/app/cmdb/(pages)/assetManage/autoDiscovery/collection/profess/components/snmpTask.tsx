@@ -281,7 +281,6 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
           timeoutProps={{
             min: 30,
             max: 86400,
-            defaultValue: 30,
             addonAfter: t('Collection.k8sTask.second'),
           }}
         >

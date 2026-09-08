@@ -16,7 +16,6 @@ from apps.cmdb.collection.collect_plugin.topology.models import (
     NormalizedPort,
 )
 
-
 LLDP_PORT_SUBTYPE_INTERFACE_ALIAS = "1"
 LLDP_PORT_SUBTYPE_PORT_COMPONENT = "2"
 LLDP_PORT_SUBTYPE_MAC_ADDRESS = "3"
@@ -143,6 +142,17 @@ def decode_lldp_chassis_id(subtype: str, raw_value: str) -> str:
     return value
 
 
+def decode_huawei_ndp_device_id(raw_value: str) -> str:
+    """从 HGMP NDP OCTET STRING 中提取尾部 6 字节设备 MAC。"""
+    value = str(raw_value or "").strip().lower()
+    if value.startswith("0x"):
+        value = value[2:]
+    compact = value.replace(":", "").replace("-", "").replace(".", "").replace(" ", "")
+    if len(compact) >= 12 and all(char in "0123456789abcdef" for char in compact):
+        return normalize_mac(compact[-12:])
+    return value
+
+
 def get_neighbor_identifier_quality(protocol: str, remote_port_subtype: str, remote_port_value: str) -> int:
     if protocol == "cdp":
         return 5 if str(remote_port_value or "").strip() else 0
@@ -247,11 +257,7 @@ def build_device_label_indexes(
         for label in labels:
             label_to_devices[label].add(device_id)
 
-    unique_labels = {
-        label: next(iter(device_ids))
-        for label, device_ids in label_to_devices.items()
-        if len(device_ids) == 1
-    }
+    unique_labels = {label: next(iter(device_ids)) for label, device_ids in label_to_devices.items() if len(device_ids) == 1}
     return unique_labels, device_labels
 
 
@@ -262,11 +268,7 @@ def build_unique_mac_port_index(ports: dict[str, NormalizedPort]) -> dict[str, N
             continue
         mac_to_ports[port.mac].append(port)
 
-    return {
-        mac: candidates[0]
-        for mac, candidates in mac_to_ports.items()
-        if len(candidates) == 1
-    }
+    return {mac: candidates[0] for mac, candidates in mac_to_ports.items() if len(candidates) == 1}
 
 
 def is_l2_candidate_port(port: NormalizedPort) -> bool:
@@ -279,7 +281,18 @@ def is_l2_candidate_port(port: NormalizedPort) -> bool:
     return not any(token in identity for token in excluded_tokens)
 
 
-def winner_priority(item: dict[str, Any]) -> tuple[int, int]:
+EVIDENCE_SOURCE_PRIORITY = {
+    "lldp": 5,
+    "huawei_ndp": 4,
+    "cdp": 3,
+    "fdp": 2,
+    "fdb+arp": 1,
+    "fdb": 0,
+    "arp": 0,
+}
+
+
+def winner_priority(item: dict[str, Any]) -> tuple[int, int, int]:
     relationship_type = str(item.get("relationship_type", ""))
     evidence_source = str(item.get("evidence_source", "") or "")
     if relationship_type == "authoritative":
@@ -288,7 +301,11 @@ def winner_priority(item: dict[str, Any]) -> tuple[int, int]:
         priority = 2
     else:
         priority = 1
-    return (priority, int(item.get("confidence", 0) or 0))
+    return (
+        priority,
+        int(item.get("confidence", 0) or 0),
+        EVIDENCE_SOURCE_PRIORITY.get(evidence_source, -1),
+    )
 
 
 def normalize_interface_name(value: str) -> str:
@@ -310,9 +327,9 @@ def build_interface_name_candidates(value: str) -> set[str]:
     )
     for full, short in replacements:
         if normalized.startswith(full):
-            candidates.add(short + normalized[len(full):])
+            candidates.add(short + normalized[len(full) :])
         if normalized.startswith(short):
-            candidates.add(full + normalized[len(short):])
+            candidates.add(full + normalized[len(short) :])
     return candidates
 
 
@@ -334,10 +351,7 @@ def build_device_identity_mac_sets(ports: dict[str, NormalizedPort]) -> dict[str
             continue
         macs_by_device[port.device_id][port.mac].add(port.port_id)
 
-    return {
-        device_id: {mac for mac, port_ids in mac_map.items() if len(port_ids) == 1}
-        for device_id, mac_map in macs_by_device.items()
-    }
+    return {device_id: {mac for mac, port_ids in mac_map.items() if len(port_ids) == 1} for device_id, mac_map in macs_by_device.items()}
 
 
 def build_globally_unique_device_mac_sets(ports: dict[str, NormalizedPort]) -> dict[str, set[str]]:
@@ -350,11 +364,7 @@ def build_globally_unique_device_mac_sets(ports: dict[str, NormalizedPort]) -> d
         mac_owners[port.mac].add(port.device_id)
 
     return {
-        device_id: {
-            mac
-            for mac, port_ids in mac_map.items()
-            if len(port_ids) == 1 and len(mac_owners.get(mac, set())) == 1
-        }
+        device_id: {mac for mac, port_ids in mac_map.items() if len(port_ids) == 1 and len(mac_owners.get(mac, set())) == 1}
         for device_id, mac_map in per_device_macs.items()
     }
 
@@ -368,10 +378,7 @@ def build_globally_unique_non_l2_device_mac_sets(ports: dict[str, NormalizedPort
         per_device_macs[port.device_id].add(port.mac)
         mac_owners[port.mac].add(port.device_id)
 
-    return {
-        device_id: {mac for mac in macs if len(mac_owners.get(mac, set())) == 1}
-        for device_id, macs in per_device_macs.items()
-    }
+    return {device_id: {mac for mac in macs if len(mac_owners.get(mac, set())) == 1} for device_id, macs in per_device_macs.items()}
 
 
 def build_observed_device_mac_sets(ports: dict[str, NormalizedPort]) -> dict[str, set[str]]:
@@ -475,8 +482,8 @@ def resolve_local_neighbor_port_id(
                 return port.port_id
         return None
 
-    # CDP/FDP 的索引第一段就是 ifIndex，不存在 basePort 语义，禁止查 bridge 映射。
-    if protocol in {"cdp", "fdp"}:
+    # CDP/FDP/Huawei NDP 的索引第一段就是 ifIndex，不存在 basePort 语义，禁止查 bridge 映射。
+    if protocol in {"cdp", "fdp", "huawei_ndp"}:
         if direct_port_id in ports:
             return direct_port_id, "resolved"
         matched = find_by_local_fields()
@@ -555,7 +562,7 @@ def _iter_device_items(aggregate: dict[str, Any]) -> tuple[list[dict[str, Any]],
     return items, errors
 
 
-def normalize_topology_data(aggregate: dict[str, Any]) -> dict[str, Any]:
+def normalize_topology_data(aggregate: dict[str, Any]) -> dict[str, Any]:  # noqa: C901
     items, errors = _iter_device_items(aggregate)
     devices: dict[str, NormalizedDevice] = {}
     ports: dict[str, NormalizedPort] = {}
@@ -702,8 +709,12 @@ def normalize_topology_data(aggregate: dict[str, Any]) -> dict[str, Any]:
                     protocol = "lldp"
                 elif tag.startswith("FDP-"):
                     protocol = "fdp"
-                else:
+                elif tag.startswith("HNDP-"):
+                    protocol = "huawei_ndp"
+                elif tag.startswith("CDP-"):
                     protocol = "cdp"
+                else:
+                    continue
                 grouped_neighbors[(protocol, suffix)][tag] = str(entry.get("val", "") or "")
                 grouped_neighbors[(protocol, suffix)]["suffix"] = suffix
 
@@ -733,13 +744,17 @@ def normalize_topology_data(aggregate: dict[str, Any]) -> dict[str, Any]:
                     values.get("LLDP-RemPortId", "")
                     or values.get("CDP-DevicePort", "")
                     or values.get("FDP-DevicePort", "")
+                    or values.get("HNDP-RemPortName", "")
                 )
-                remote_port_subtype = values.get("LLDP-RemPortIdSubtype", "") or ("5" if values.get("FDP-DevicePort", "") else "")
+                remote_port_subtype = values.get("LLDP-RemPortIdSubtype", "") or (
+                    "5" if values.get("FDP-DevicePort", "") or values.get("HNDP-RemPortName", "") else ""
+                )
                 decoded_remote_port, _ = decode_lldp_port_id(remote_port_subtype, raw_remote_port)
                 remote_chassis_id = (
                     decode_lldp_chassis_id(values.get("LLDP-RemChassisIdSubtype", ""), values.get("LLDP-RemChassisId", ""))
                     or values.get("CDP-DeviceId", "")
                     or values.get("FDP-DeviceId", "")
+                    or decode_huawei_ndp_device_id(values.get("HNDP-RemDeviceId", ""))
                 )
 
                 observation = NeighborObservation(
@@ -753,6 +768,8 @@ def normalize_topology_data(aggregate: dict[str, Any]) -> dict[str, Any]:
                         or values.get("CDP-SysName", "")
                         or values.get("CDP-DeviceId", "")
                         or values.get("FDP-DeviceId", "")
+                        or values.get("HNDP-RemDeviceName", "")
+                        or decode_huawei_ndp_device_id(values.get("HNDP-RemDeviceId", ""))
                     ),
                     remote_chassis_id=remote_chassis_id,
                     remote_port_id=decoded_remote_port,
@@ -852,25 +869,14 @@ def infer_topology(normalized: dict[str, Any]) -> dict[str, Any]:
             or unique_device_labels.get(remote_system_name)
         )
         if target_device is None and str(entry.get("protocol", "")) == "lldp" and remote_candidates:
-            candidate_devices = {
-                port.device_id
-                for port in ports.values()
-                if remote_candidates & build_port_match_candidates(port)
-            }
+            candidate_devices = {port.device_id for port in ports.values() if remote_candidates & build_port_match_candidates(port)}
             chassis_devices = mac_to_devices.get(remote_chassis_id, set()) if remote_chassis_id else set()
             if len(candidate_devices) == 1 and len(chassis_devices) == 1 and candidate_devices == chassis_devices:
                 target_device = next(iter(candidate_devices))
         target_port = None
         if target_device and remote_port_id:
             target_port = next(
-                (
-                    port
-                    for port in ports.values()
-                    if port.device_id == target_device
-                    and (
-                        remote_candidates & build_port_match_candidates(port)
-                    )
-                ),
+                (port for port in ports.values() if port.device_id == target_device and (remote_candidates & build_port_match_candidates(port))),
                 None,
             )
 
@@ -966,12 +972,7 @@ def infer_topology(normalized: dict[str, Any]) -> dict[str, Any]:
             continue
         source_port = ports.get(str(entry.get("local_port_id", "")))
         target_port = mac_to_port.get(str(entry.get("mac", "")))
-        if (
-            source_port is None
-            or not is_l2_candidate_port(source_port)
-            or target_port is None
-            or target_port.device_id == source_port.device_id
-        ):
+        if source_port is None or not is_l2_candidate_port(source_port) or target_port is None or target_port.device_id == source_port.device_id:
             continue
         relationship_id = f"inf:{source_port.port_id}:{target_port.port_id}:arp"
         inferred.append(
@@ -1179,10 +1180,7 @@ def build_device_mac_correlations(
     ports: dict[str, NormalizedPort],
     devices: dict[str, dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    device_labels = {
-        device_id: canonical_device_labels(device)
-        for device_id, device in devices.items()
-    }
+    device_labels = {device_id: canonical_device_labels(device) for device_id, device in devices.items()}
     device_mac_sets = build_globally_unique_device_mac_sets(ports)
     non_l2_device_mac_sets = build_globally_unique_non_l2_device_mac_sets(ports)
     observed_device_mac_sets = build_observed_device_mac_sets(ports)
@@ -1265,9 +1263,10 @@ def build_device_mac_correlations(
         right_port_id = next(iter(right_ports))
         if len(port_seen_devices.get(left_port_id, set())) > 1 and len(port_seen_devices.get(right_port_id, set())) > 1:
             continue
-        shared_third_party_devices = (
-            port_seen_devices.get(left_port_id, set()) & port_seen_devices.get(right_port_id, set())
-        ) - {left_device, right_device}
+        shared_third_party_devices = (port_seen_devices.get(left_port_id, set()) & port_seen_devices.get(right_port_id, set())) - {
+            left_device,
+            right_device,
+        }
         if shared_third_party_devices:
             continue
         left_port = ports.get(left_port_id)
@@ -1305,7 +1304,7 @@ def build_device_mac_correlations(
     return correlations
 
 
-def reconcile_topology(
+def reconcile_topology(  # noqa: C901
     normalized: dict[str, Any],
     inferred: dict[str, Any],
     previous_links: list[dict[str, Any]] | None = None,
@@ -1313,11 +1312,7 @@ def reconcile_topology(
     authoritative_candidates = list(inferred.get("authoritative_links", []))
     inferred_links = list(inferred.get("inferred_links", []))
     unresolved_candidates = list(inferred.get("unresolved_neighbors", []))
-    device_labels = {
-        str(device_id): set(labels)
-        for device_id, labels in inferred.get("device_labels", {}).items()
-        if isinstance(labels, list)
-    }
+    device_labels = {str(device_id): set(labels) for device_id, labels in inferred.get("device_labels", {}).items() if isinstance(labels, list)}
     ports = _index_ports(normalized)
     devices = _index_devices(normalized)
     stale_links: list[dict[str, Any]] = []
@@ -1330,10 +1325,16 @@ def reconcile_topology(
             seen_authoritative[key] = item
             continue
 
-        stale_item = dict(item)
+        if winner_priority(item) > winner_priority(existing):
+            stale_item = dict(existing)
+            seen_authoritative[key] = item
+            winner = item
+        else:
+            stale_item = dict(item)
+            winner = existing
         stale_item["status"] = "superseded"
         stale_item["reconciliation_role"] = "corroborating"
-        append_supporting_evidence(existing, stale_item, disposition="corroborating")
+        append_supporting_evidence(winner, stale_item, disposition="corroborating")
         stale_links.append(stale_item)
 
     authoritative = list(seen_authoritative.values())
@@ -1455,7 +1456,6 @@ def reconcile_topology(
             continue
         winner = max(candidates, key=winner_priority)
         unresolved_remote = str(unresolved.get("remote_device_name", "") or "")
-        unresolved_labels = {unresolved_remote} if unresolved_remote else set()
         winner_remote = str(winner.get("target_device") or winner.get("remote_device_name") or "")
         winner_labels = {winner_remote} if winner_remote else set()
         target_device = str(winner.get("target_device", "") or "")
@@ -1469,16 +1469,8 @@ def reconcile_topology(
             signals.append(f"competes_with:{winner_remote}")
             unresolved["conflicts_with_relationship_id"] = winner.get("relationship_id")
 
-    previous_index = {
-        _snapshot_identity(item): item
-        for item in (previous_links or [])
-        if isinstance(item, dict)
-    }
-    current_index = {
-        _snapshot_identity(item): item
-        for item in current_links
-        if isinstance(item, dict)
-    }
+    previous_index = {_snapshot_identity(item): item for item in (previous_links or []) if isinstance(item, dict)}
+    current_index = {_snapshot_identity(item): item for item in current_links if isinstance(item, dict)}
 
     for key, previous in previous_index.items():
         if key in current_index:

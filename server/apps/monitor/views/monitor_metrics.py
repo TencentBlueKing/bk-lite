@@ -19,13 +19,9 @@ from apps.monitor.models.monitor_metrics import Metric, MetricGroup
 from apps.monitor.models.monitor_object import MonitorObject
 from apps.monitor.serializers.monitor_metrics import MetricGroupSerializer, MetricSerializer
 from apps.monitor.utils.metric_enum_locale import localize_metric_enum_unit
+from apps.monitor.utils.metric_keyword import apply_metric_keyword_filter
 from apps.monitor.utils.metric_query_labels import ensure_metric_labels_placeholder, is_raw_vector_selector
-from apps.monitor.utils.snmp_ifmib_capability import (
-    COMMON_IFMIB_METRIC_NAMES,
-    IFMIB_ZH_DISPLAY_TEXTS,
-    get_ifmib_metric_names_matching_keyword,
-    is_ifmib_capable_plugin,
-)
+from apps.monitor.utils.snmp_ifmib_capability import COMMON_IFMIB_METRIC_NAMES, IFMIB_ZH_DISPLAY_TEXTS, is_ifmib_capable_plugin
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
 # PromQL 中紧跟 `{` 的指标名（用于目录兜底提取）。
@@ -152,10 +148,7 @@ def apply_inherited_metric_filters(queryset, query_params, locale=""):
         queryset = queryset.filter(name__in=[value for value in names.split(",") if value])
     keyword = str(query_params.get("keyword") or "").strip()
     if keyword:
-        localized_names = get_ifmib_metric_names_matching_keyword(keyword, locale)
-        queryset = queryset.filter(
-            Q(name__icontains=keyword) | Q(display_name__icontains=keyword) | Q(description__icontains=keyword) | Q(name__in=localized_names)
-        )
+        queryset = apply_metric_keyword_filter(queryset, keyword, locale)
     is_ifmib = query_params.get("is_ifmib")
     if is_ifmib is not None and str(is_ifmib).strip() != "":
         normalized = str(is_ifmib).strip().lower()

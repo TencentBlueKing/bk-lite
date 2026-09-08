@@ -92,6 +92,7 @@ async def _publish_lines_with_retry(
     *,
     before_publish=None,
     message_ids=None,
+    deadlines=None,
 ) -> int:
     """执行一次 NATS 发布；重试由目标执行器统一管理。"""
     total_lines = len(influx_lines)
@@ -101,6 +102,8 @@ async def _publish_lines_with_retry(
             publish_kwargs["before_publish"] = before_publish
         if message_ids is not None:
             publish_kwargs["message_ids"] = message_ids
+        if deadlines is not None:
+            publish_kwargs["deadlines"] = deadlines
         success_count = await nats_publish_lines(subject, influx_lines, **publish_kwargs)
     except NatsLinesPublishError as error:
         raise MetricsPublishError(
@@ -158,6 +161,10 @@ async def _publish_lines_with_retry(
 
 
 class PublishCancelledBeforeDeliveryError(RuntimeError):
+    delivery_detected = False
+
+
+class PublishDeadlineExceededError(TimeoutError):
     delivery_detected = False
 
 
@@ -319,33 +326,39 @@ class _SubjectPublishLane:
             state["chunks"] = iter(_iter_line_chunks(_iter_metrics_to_influx(state["metrics_data"], state["params"])))
         return next(state["chunks"], None)
 
-    async def publish_round(self) -> bool:
+    async def publish_round(self) -> bool:  # noqa: C901 - 发布轮次集中维护 deadline、公平性和终态归因
+        max_lines_per_flush = _transport_lines_per_flush()
         selected = [self.states.popleft() for _ in range(min(50, len(self.states)))]
         buffered_lines: list[str] = []
         buffered_result_ids: list[str] = []
         buffered_message_ids: list[str] = []
+        buffered_deadlines: list[float | None] = []
         buffered_bytes = 0
         buffered_task_id = ""
         continuing_states = []
 
         async def flush_buffer() -> None:
-            nonlocal buffered_lines, buffered_result_ids, buffered_message_ids, buffered_bytes, buffered_task_id
+            nonlocal buffered_lines, buffered_result_ids, buffered_message_ids, buffered_deadlines, buffered_bytes, buffered_task_id
             if not buffered_lines:
                 return
             lines = buffered_lines
             line_result_ids = tuple(buffered_result_ids)
             message_ids = tuple(buffered_message_ids)
+            deadlines = tuple(buffered_deadlines)
             result_ids = tuple(dict.fromkeys(line_result_ids))
             task_id = buffered_task_id
             buffered_lines = []
             buffered_result_ids = []
             buffered_message_ids = []
+            buffered_deadlines = []
             buffered_bytes = 0
             buffered_task_id = ""
             attempt_filter = _DeliveryAttemptFilter(line_result_ids, self.attempt_states)
             publish_kwargs = {}
             if _metrics_jetstream_enabled():
                 publish_kwargs["message_ids"] = message_ids
+                if any(deadline is not None for deadline in deadlines):
+                    publish_kwargs["deadlines"] = deadlines
             try:
                 if self.attempt_states:
                     await _publish_lines_with_retry(
@@ -426,7 +439,20 @@ class _SubjectPublishLane:
 
         encode_workers = max(1, int(os.getenv("METRICS_ENCODE_WORKERS", "2")))
         for offset in range(0, len(selected), encode_workers):
-            group = selected[offset : offset + encode_workers]
+            group = []
+            now = asyncio.get_running_loop().time()
+            for state in selected[offset : offset + encode_workers]:
+                attempt_state = self.attempt_states.get(state["result_id"])
+                deadline = getattr(attempt_state, "deadline", None)
+                if deadline is not None and now >= deadline:
+                    self.outcomes[state["result_id"]] = PublishDeadlineExceededError("publish deadline expired before metrics encoding")
+                    self.failed_result_ids.add(state["result_id"])
+                    if self.metrics is not None:
+                        self.metrics.increment("publish_deadline_expired_total")
+                    continue
+                group.append(state)
+            if not group:
+                continue
             started = time.monotonic()
             chunks = await asyncio.gather(
                 *(_run_metrics_encode(self._next_state_chunk, state) for state in group),
@@ -437,6 +463,14 @@ class _SubjectPublishLane:
             for state, chunk in zip(group, chunks):
                 task_id = state["task_id"]
                 result_id = state["result_id"]
+                attempt_state = self.attempt_states.get(result_id)
+                deadline = getattr(attempt_state, "deadline", None)
+                if deadline is not None and asyncio.get_running_loop().time() >= deadline:
+                    self.outcomes[result_id] = PublishDeadlineExceededError("publish deadline expired during metrics encoding")
+                    self.failed_result_ids.add(result_id)
+                    if self.metrics is not None:
+                        self.metrics.increment("publish_deadline_expired_total")
+                    continue
                 error = chunk if isinstance(chunk, BaseException) else None
                 if error is not None:
                     self.outcomes[result_id] = error
@@ -449,7 +483,7 @@ class _SubjectPublishLane:
                 state["line_count"] += len(chunk)
                 state["byte_count"] += chunk_bytes
                 if buffered_lines and (
-                    len(buffered_lines) + len(chunk) > MAX_NATS_LINES_PER_FLUSH or buffered_bytes + chunk_bytes > MAX_NATS_BYTES_PER_FLUSH
+                    len(buffered_lines) + len(chunk) > max_lines_per_flush or buffered_bytes + chunk_bytes > MAX_NATS_BYTES_PER_FLUSH
                 ):
                     await flush_buffer()
                 if result_id in self.failed_result_ids:
@@ -459,8 +493,10 @@ class _SubjectPublishLane:
                 buffered_lines.extend(chunk)
                 buffered_result_ids.extend([result_id] * len(chunk))
                 buffered_message_ids.extend(_metric_message_id(result_id, first_line_ordinal + index, line) for index, line in enumerate(chunk))
+                attempt_state = self.attempt_states.get(result_id)
+                buffered_deadlines.extend([getattr(attempt_state, "deadline", None)] * len(chunk))
                 buffered_bytes += chunk_bytes
-                if len(buffered_lines) >= MAX_NATS_LINES_PER_FLUSH or buffered_bytes >= MAX_NATS_BYTES_PER_FLUSH:
+                if len(buffered_lines) >= max_lines_per_flush or buffered_bytes >= MAX_NATS_BYTES_PER_FLUSH:
                     await flush_buffer()
                 continuing_states.append(state)
         await flush_buffer()
@@ -475,6 +511,18 @@ def _metrics_jetstream_enabled() -> bool:
         "yes",
         "on",
     }
+
+
+def _transport_lines_per_flush() -> int:
+    """使单次发送量不超过 JetStream 的消息信贷窗口。"""
+
+    if not _metrics_jetstream_enabled():
+        return MAX_NATS_LINES_PER_FLUSH
+    try:
+        pending_window = int(os.getenv("NATS_JS_PUBLISH_MAX_PENDING", "256"))
+    except ValueError:
+        pending_window = 256
+    return min(MAX_NATS_LINES_PER_FLUSH, max(1, pending_window))
 
 
 def _metric_message_id(result_id: str, line_ordinal: int, line: str) -> str:
@@ -494,7 +542,7 @@ def _iter_line_chunks(
     max_bytes: int | None = None,
 ):
     """按行数和 UTF-8 字节数生成有界 flush 批次。"""
-    max_lines = MAX_NATS_LINES_PER_FLUSH if max_lines is None else max_lines
+    max_lines = _transport_lines_per_flush() if max_lines is None else max_lines
     max_bytes = MAX_NATS_BYTES_PER_FLUSH if max_bytes is None else max_bytes
     chunk: list[str] = []
     chunk_bytes = 0

@@ -1,0 +1,43 @@
+[
+  {
+    "id": "spa_eth0",
+    "name": "SP A Ethernet Port 0",
+    "macAddress": "00:60:16:aa:bb:01",
+    "currentSpeed": 10000,
+    "isLinkUp": true,
+    "storageProcessor": {
+      "id": "spa",
+      "name": "SP A"
+    },
+    "health": {
+      "value": 5
+    }
+  },
+  {
+    "id": "spa_eth1",
+    "name": "SP A Ethernet Port 1",
+    "macAddress": "",
+    "isLinkUp": false,
+    "storageProcessor": {
+      "id": "spa",
+      "name": "SP A"
+    },
+    "health": {
+      "value": 5
+    }
+  },
+  {
+    "id": "spb_eth0",
+    "name": "SP B Ethernet Port 0",
+    "macAddress": "00-60-16-AA-BB-02",
+    "currentSpeed": 10000,
+    "isLinkUp": true,
+    "storageProcessor": {
+      "id": "spb",
+      "name": "SP B"
+    },
+    "health": {
+      "value": 5
+    }
+  }
+]

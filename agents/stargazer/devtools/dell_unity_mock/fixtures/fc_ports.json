@@ -1,0 +1,43 @@
+[
+  {
+    "id": "spa_fc0",
+    "name": "SP A FC Port 0",
+    "wwn": "50:06:01:60:88:60:32:8D",
+    "currentSpeed": 16,
+    "isLinkUp": true,
+    "storageProcessor": {
+      "id": "spa",
+      "name": "SP A"
+    },
+    "health": {
+      "value": 5
+    }
+  },
+  {
+    "id": "spa_fc1",
+    "name": "SP A FC Port 1",
+    "wwn": "",
+    "isLinkUp": false,
+    "storageProcessor": {
+      "id": "spa",
+      "name": "SP A"
+    },
+    "health": {
+      "value": 5
+    }
+  },
+  {
+    "id": "spb_fc0",
+    "name": "SP B FC Port 0",
+    "wwn": "500601608860328E",
+    "currentSpeed": 16,
+    "isLinkUp": true,
+    "storageProcessor": {
+      "id": "spb",
+      "name": "SP B"
+    },
+    "health": {
+      "value": 5
+    }
+  }
+]

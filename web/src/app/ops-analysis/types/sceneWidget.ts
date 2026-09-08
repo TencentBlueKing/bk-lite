@@ -111,6 +111,8 @@ export interface Application3DArchitectureNode {
   kind: Application3DArchitectureKind;
   name: string;
   health?: Application3DHealth;
+  ip_addr?: string;
+  os_name?: string;
 }
 
 export interface Application3DArchitectureEdge {

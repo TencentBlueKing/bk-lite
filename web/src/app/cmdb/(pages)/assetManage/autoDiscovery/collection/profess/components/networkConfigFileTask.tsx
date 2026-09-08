@@ -184,7 +184,6 @@ const NetworkConfigFileTask: React.FC<NetworkConfigFileTaskProps> = ({
           assetOptionLabel="选择网络设备"
           timeoutProps={{
             min: 1,
-            defaultValue: 60,
             addonAfter: '秒',
           }}
         >

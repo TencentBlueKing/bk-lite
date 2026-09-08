@@ -1,0 +1,10 @@
+{
+  "id": "0",
+  "name": "FNM00123456789",
+  "model": "Unity 480",
+  "serialNumber": "FNM00123456789",
+  "softwareVersion": "5.3.0.0.5.120",
+  "health": {
+    "value": 5
+  }
+}

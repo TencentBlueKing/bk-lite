@@ -13,6 +13,9 @@ runtime:
   callback_timeout: 10
   work_dir: /var/lib/ansible-executor/work
   state_db_path: /var/lib/ansible-executor/task_state.db
+  # 终态行（success/failed/callback_failed）单独保留期；回调仍 pending 的行不会删。
+  terminal_task_retention_seconds: 86400
+  terminal_task_purge_interval_seconds: 300
 
 security:
   # Callback subjects are NATS request targets used by the executor to report task results.

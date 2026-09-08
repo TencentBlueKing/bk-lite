@@ -4,10 +4,12 @@ import { Alert, Button, Input, message, Tooltip } from 'antd';
 import { CopyOutlined, QuestionCircleOutlined, SearchOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useK8sSetupApi } from '@/app/cmdb/api';
+import type { K8sDaemonSetToleration } from '@/app/monitor/components/k8s-collector-install-step';
 
 interface Props {
   collectorClusterId: string;
   cloudRegionId: number | string;
+  tolerations?: K8sDaemonSetToleration[] | null;
   onNext: () => void;
   onPrev?: () => void;
 }
@@ -19,6 +21,7 @@ interface Props {
 const CollectorInstall: React.FC<Props> = ({
   collectorClusterId,
   cloudRegionId,
+  tolerations = null,
   onNext,
   onPrev,
 }) => {
@@ -36,6 +39,7 @@ const CollectorInstall: React.FC<Props> = ({
       const data = await generateInstallCommand({
         collector_cluster_id: collectorClusterId,
         cloud_region_id: cloudRegionId,
+        tolerations,
       });
       const cmd = data?.command;
       if (!cmd) {
