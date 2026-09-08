@@ -29,13 +29,6 @@ export function listRelatedTopologyCenters(
 export function resolveRelatedTopologyTabVisibility(input: {
   declared: boolean;
   centerCount: number;
-  uniqueAccess: 'pending' | 'ok' | 'hidden' | 'retryable';
 }): boolean {
-  if (!input.declared || input.centerCount <= 0) {
-    return false;
-  }
-  if (input.centerCount > 1) {
-    return true;
-  }
-  return input.uniqueAccess === 'ok' || input.uniqueAccess === 'retryable';
+  return input.declared && input.centerCount > 0;
 }
