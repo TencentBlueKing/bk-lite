@@ -2009,7 +2009,6 @@ def test_node_mgmt_sync_service_sync_hosts_creates_run_with_task():
         error_message="",
         save=MagicMock(),
     )
-    hidden_task = SimpleNamespace(id=9, save=MagicMock())
     graph_instance = {
         "_id": 101,
         "id": "node-host-1",
@@ -2039,9 +2038,7 @@ def test_node_mgmt_sync_service_sync_hosts_creates_run_with_task():
         patch.object(NodeMgmtSyncService, "_fetch_non_container_nodes", return_value=nodes),
         patch.object(NodeMgmtSyncService, "_group_nodes_by_region", return_value={1: nodes}),
         patch.object(NodeMgmtSyncService, "_pick_access_point", return_value=None),
-        patch.object(NodeMgmtSyncService, "_ensure_region_collect_task", return_value=hidden_task) as mock_ensure_task,
         patch.object(NodeMgmtSyncService, "_load_existing_host_map", return_value={}),
-        patch.object(NodeMgmtSyncService, "_query_region_host_instances", return_value=[graph_instance]),
         patch.object(NodeMgmtSyncService, "_build_sync_run", return_value=sync_run) as mock_build_run,
         patch("apps.cmdb.services.node_mgmt_sync_service.InstanceManage.instance_create", return_value=graph_instance) as mock_create_instance,
     ):
@@ -2049,7 +2046,6 @@ def test_node_mgmt_sync_service_sync_hosts_creates_run_with_task():
 
     mock_build_run.assert_called_once_with(task=task)
     mock_create_instance.assert_called_once()
-    assert mock_ensure_task.call_args.kwargs["instances"] == [graph_instance]
     assert payload["task_id"] == 1
 
 

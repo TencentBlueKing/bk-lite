@@ -857,7 +857,7 @@ class CollectModelService(object):
             after_data=cls._snapshot_task(instance),
         )
 
-        return WebUtils.response_success(instance.id)
+        return WebUtils.response_success({"id": instance.id, "execution_id": execution_id})
 
     @staticmethod
     def _dispatch_manual_execution(task_id, execution_id, node_config_id, node_config_version):
