@@ -84,8 +84,10 @@ class QCloudCollector(BaseCollector):
         username = self.params["username"]
         password = self.params["password"]
         minutes = self.params.get("minutes", 5)
+        # 与 API 缺省一致：旧配置未传地域时仍采广州，避免无数据行为突变。
+        region = str(self.params.get("region") or "").strip() or "ap-guangzhou"
 
-        logger.info(f"[QCloud Collector] Minutes={minutes}")
+        logger.info("[QCloud Collector] Minutes=%s Region=%s", minutes, region)
 
         # 获取时间范围
         end_time = datetime.datetime.now()
@@ -95,7 +97,7 @@ class QCloudCollector(BaseCollector):
 
         logger.info(f"[QCloud Collector] Time range: {start_time_str} to {end_time_str}")
 
-        driver = CMPDriver(username, password, "qcloud")
+        driver = CMPDriver(username, password, "qcloud", region=region)
 
         try:
             all_resources = driver.list_all_resources()
