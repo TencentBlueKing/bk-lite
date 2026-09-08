@@ -35,8 +35,7 @@ LOGIN_RESULT_ALLOWED_KEYS = {
     "challenge_id",
     "qr_code",
     "need_binding",
-    "legacy_external_callback_url",
-    "legacy_third_login_code",
+    "legacy_redirect_url",
 }
 
 LOGIN_AUTH_CALLBACK_PATH = "/api/v1/core/api/login_auth/callback/"

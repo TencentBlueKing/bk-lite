@@ -26,10 +26,10 @@ import {
   LOGIN_AUTH_RESULT_RETURN_MESSAGE,
   SIGNIN_WINDOW_NAME,
   buildThirdLoginCallbackUrl,
-  buildLegacyThirdLoginCallbackUrl,
   getLegacyThirdLoginCode,
   resolveThirdLoginFlag
 } from "@/utils/authRedirect";
+import { requestLegacyThirdLoginAuthorize } from "@/utils/legacyThirdLogin";
 import type { LoginAuthLoginResult } from "./login-auth/types";
 import { PORTAL_HOME_PATH } from "@/utils/route";
 
@@ -60,8 +60,7 @@ interface LoginResponse {
   locale?: string;
   timezone?: string;
   redirect_url?: string;
-  legacy_external_callback_url?: string;
-  legacy_third_login_code?: string;
+  legacy_redirect_url?: string;
   password_expiry_reminder?: string;
   // OTP two-phase authentication fields
   require_otp?: boolean;
@@ -158,8 +157,7 @@ export default function SigninClient({
       otp_recommended_apps: otpLoginResult.otp_recommended_apps,
       qr_code: otpLoginResult.qr_code,
       redirect_url: otpLoginResult.redirect_url,
-      legacy_external_callback_url: otpLoginResult.legacy_external_callback_url,
-      legacy_third_login_code: otpLoginResult.legacy_third_login_code,
+      legacy_redirect_url: otpLoginResult.legacy_redirect_url,
     });
     setQrCodeUrl(otpLoginResult.qr_code || "");
     setAuthStep('otp-verification');
@@ -197,8 +195,7 @@ export default function SigninClient({
         enable_otp: loginResult.enable_otp,
         password_expiry_reminder: loginResult.password_expiry_reminder,
         redirect_url: loginResult.redirect_url,
-        legacy_external_callback_url: loginResult.legacy_external_callback_url,
-        legacy_third_login_code: loginResult.legacy_third_login_code,
+        legacy_redirect_url: loginResult.legacy_redirect_url,
       });
 
       if (!success) {
@@ -344,18 +341,20 @@ export default function SigninClient({
           sessionStorage.setItem('password_expiry_reminder', userData.password_expiry_reminder);
         }
 
-        const legacyThirdLoginCode = userData.legacy_third_login_code || thirdLoginCode;
-        const targetUrl = legacyThirdLoginCode
-          ? buildLegacyThirdLoginCallbackUrl(
-            userData.legacy_external_callback_url || userData.redirect_url || callbackUrl,
-            userData.token,
-            legacyThirdLoginCode,
-          )
-          : buildThirdLoginCallbackUrl(
-            userData.redirect_url || callbackUrl || PORTAL_HOME_PATH,
-            userData.token,
-            thirdLoginFlag,
-          );
+        let targetUrl = buildThirdLoginCallbackUrl(
+          userData.redirect_url || callbackUrl || PORTAL_HOME_PATH,
+          userData.token,
+          thirdLoginFlag,
+        );
+        if (userData.legacy_redirect_url) {
+          targetUrl = userData.legacy_redirect_url;
+        } else if (thirdLoginCode && userData.token) {
+          targetUrl = await requestLegacyThirdLoginAuthorize({
+            callbackUrl,
+            thirdLoginCode,
+            token: userData.token,
+          });
+        }
 
         finishAuthentication(targetUrl);
         return true;
