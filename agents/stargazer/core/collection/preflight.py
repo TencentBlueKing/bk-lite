@@ -4,8 +4,9 @@
 按插件协议做无凭据连接性探测：
 
 - TCP/TLS/SSH：拨端口；
-- SNMP/UDP：无凭据层只做出站安全检查，可选探测交给带凭据的插件 probe。
+- SNMP/UDP：无凭据层不拨测，可选探测交给带凭据的插件 probe。
 
+采集目标与 IP 预检不按网段或域名白名单拦截。
 ICMP 不作为采集准入条件。
 """
 
@@ -13,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import re
 import socket
 import ssl
 from urllib.parse import urlsplit
@@ -20,16 +22,7 @@ from urllib.parse import urlsplit
 from core.collection.contracts import PreflightResult, PreflightStatus
 from core.collection.enums import FailureStage
 from core.collection.runtime import CollectionRequest
-from core.infra.outbound_policy import OutboundTargetPolicy, OutboundTargetRejected
 from core.logger import logger, safe_log_value
-
-
-def _is_ip_literal(host: str) -> bool:
-    try:
-        ipaddress.ip_address(host)
-        return True
-    except ValueError:
-        return False
 
 
 def _normalized_ip(value: str) -> str | None:
@@ -39,13 +32,18 @@ def _normalized_ip(value: str) -> str | None:
         return None
 
 
+def _trusted_cloud_domains(domains) -> tuple[str, ...]:
+    """校验 plugin YAML 声明的云 SDK 域名后缀格式，不做出站网段拦截。"""
+    normalized = tuple(str(value or "").strip().lower().lstrip(".") for value in domains)
+    if not normalized or any(
+        not value or len(value) > 253 or not re.fullmatch(r"[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?", value) or "." not in value for value in normalized
+    ):
+        raise ValueError("trusted cloud endpoint domains are invalid")
+    return normalized
+
+
 class AsyncProtocolPreflight:
-    def __init__(
-        self,
-        policy: OutboundTargetPolicy | None = None,
-        remote_probe=None,
-    ) -> None:
-        self._policy = policy or OutboundTargetPolicy()
+    def __init__(self, remote_probe=None) -> None:
         self._remote_probe = remote_probe
 
     async def check(  # noqa: C901
@@ -99,22 +97,11 @@ class AsyncProtocolPreflight:
             if request.params.get("target_policy_mode") == "cloud_endpoint" and request.params.get("_yaml_target_policy_verified") is True:
                 trusted_cloud_domains = request.params.get("trusted_endpoint_domains") or ()
             try:
-                trusted_cloud_domains = self._policy.validate_trusted_domains(trusted_cloud_domains)
-            except OutboundTargetRejected as error:
-                self._log_outbound_skip(request, target, error)
+                trusted_cloud_domains = _trusted_cloud_domains(trusted_cloud_domains)
+            except ValueError:
                 return PreflightResult(
                     status=PreflightStatus.UNREACHABLE,
-                    error_code="outbound_target_rejected",
-                    failed_stage=FailureStage.OUTBOUND_POLICY,
-                )
-        elif kind != "skip" or _is_ip_literal(host):
-            try:
-                connect_host = await self._policy.resolve_allowed(host, port or 0)
-            except (OutboundTargetRejected, socket.gaierror) as error:
-                self._log_outbound_skip(request, target, error)
-                return PreflightResult(
-                    status=PreflightStatus.UNREACHABLE,
-                    error_code="outbound_target_rejected",
+                    error_code="invalid_cloud_endpoint_domains",
                     failed_stage=FailureStage.OUTBOUND_POLICY,
                 )
         if kind == "cloud":
@@ -189,8 +176,6 @@ class AsyncProtocolPreflight:
             port=port,
             use_tls=use_tls,
             timeout_seconds=timeout_seconds,
-            request=request,
-            target=target,
         )
 
     async def _check_remote(
@@ -232,8 +217,6 @@ class AsyncProtocolPreflight:
             port=port,
             use_tls=False,
             timeout_seconds=timeout_seconds,
-            request=request,
-            target=target,
         )
 
     async def _tcp_dial(
@@ -244,8 +227,6 @@ class AsyncProtocolPreflight:
         port: int,
         use_tls: bool,
         timeout_seconds: float,
-        request: CollectionRequest,
-        target: str,
     ) -> PreflightResult:
         writer = None
         try:
@@ -282,14 +263,6 @@ class AsyncProtocolPreflight:
                 detail=type(error).__name__,
                 failed_stage=FailureStage.IP_PRECHECK,
             )
-        except OutboundTargetRejected as error:
-            self._log_outbound_skip(request, target, error)
-            return PreflightResult(
-                status=PreflightStatus.UNREACHABLE,
-                error_code="outbound_target_rejected",
-                detail=type(error).__name__,
-                failed_stage=FailureStage.OUTBOUND_POLICY,
-            )
         except ssl.SSLCertVerificationError as error:
             # 证书校验失败仍算可达：交给凭据/业务阶段处理。
             return PreflightResult(
@@ -308,15 +281,6 @@ class AsyncProtocolPreflight:
             if writer is not None:
                 writer.close()
                 await writer.wait_closed()
-
-    @staticmethod
-    def _log_outbound_skip(request: CollectionRequest, target: str, error: BaseException) -> None:
-        logger.info(
-            "event=outbound_target_skipped task_id=%s target=%s " "failed_stage=outbound_policy error_type=%s",
-            safe_log_value(request.task_id),
-            safe_log_value(target, max_length=255),
-            type(error).__name__,
-        )
 
     @staticmethod
     def _endpoint(target: str, request: CollectionRequest, kind: str) -> tuple[str, int | None, bool]:
