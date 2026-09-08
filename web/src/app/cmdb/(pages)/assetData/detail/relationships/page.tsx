@@ -110,7 +110,6 @@ const Ralationships = () => {
 
   const handleExpand = () => {
     assoListRef.current?.expandAll(!isExpand);
-    setIsExpand(!isExpand);
   };
 
   const handleRelate = () => {

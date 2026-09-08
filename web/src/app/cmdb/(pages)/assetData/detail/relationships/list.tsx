@@ -106,6 +106,12 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
       getInitData(mergedAssociations as CrentialsAssoInstItem[]);
     }, [definitionModelId, mergedAssociations, modelId, modelList]);
 
+    useEffect(() => {
+      onExpandStateChange?.(
+        areAllRelationshipsExpanded(activeKey, allActiveKeys)
+      );
+    }, [activeKey, allActiveKeys, onExpandStateChange]);
+
     const getInitData = async (data: any[]) => {
       setPageLoading(true);
       try {
@@ -173,13 +179,9 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
             const keys = newCredentials.map((item: any) => item.model_asst_id);
             setAllActiveKeys(keys);
             setActiveKey((previousKeys) => {
-              const nextKeys = previousKeys.includes(targetId)
+              return previousKeys.includes(targetId)
                 ? previousKeys
                 : [...previousKeys, targetId];
-              onExpandStateChange?.(
-                areAllRelationshipsExpanded(nextKeys, keys)
-              );
-              return nextKeys;
             });
             return newCredentials;
           });
@@ -203,9 +205,6 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
       );
       setActiveKey(defaultExpandedKeys);
       setAllActiveKeys(allKeys);
-      onExpandStateChange?.(
-        areAllRelationshipsExpanded(defaultExpandedKeys, allKeys)
-      );
       setAssoCredentials(updatedItems);
     };
 
@@ -222,13 +221,9 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
     useEffect(() => {
       if (selectedAssoId && assoCredentials.length) {
         setActiveKey((previousKeys) => {
-          const nextKeys = previousKeys.includes(selectedAssoId)
+          return previousKeys.includes(selectedAssoId)
             ? previousKeys
             : [...previousKeys, selectedAssoId];
-          onExpandStateChange?.(
-            areAllRelationshipsExpanded(nextKeys, allActiveKeys)
-          );
-          return nextKeys;
         });
         scrollToElement(`collapse-${selectedAssoId}`);
       }
@@ -238,9 +233,6 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
       expandAll: (type: boolean) => {
         const nextKeys = type ? allActiveKeys : [];
         setActiveKey(nextKeys);
-        onExpandStateChange?.(
-          areAllRelationshipsExpanded(nextKeys, allActiveKeys)
-        );
       },
       showRelateModal: () => {
         instanceRef.current?.showModal({
@@ -421,9 +413,6 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
     const handleCollapseChange = (keys: any) => {
       const nextKeys = Array.isArray(keys) ? keys : [keys].filter(Boolean);
       setActiveKey(nextKeys);
-      onExpandStateChange?.(
-        areAllRelationshipsExpanded(nextKeys, allActiveKeys)
-      );
     };
 
     const confirmRelate = async () => {
