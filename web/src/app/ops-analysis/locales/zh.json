@@ -1303,6 +1303,8 @@
     "addGroup": "添加分组",
     "importYaml": "导入 YAML",
     "exportYaml": "导出 YAML",
+    "copyTargetDirectory": "目标目录",
+    "copySuccess": "已复制为 {name}",
     "exportSuccess": "导出成功",
     "exportFailed": "导出失败",
     "exportConfirmMsg": "您确定要导出",

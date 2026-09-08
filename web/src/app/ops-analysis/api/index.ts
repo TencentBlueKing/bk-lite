@@ -42,10 +42,20 @@ export const useDirectoryApi = () => {
     return del(`${endpoint}${id}/`);
   };
 
+  const copyItem = async (
+    type: DirectoryType,
+    id: number | string,
+    data: { directory: number; groups: number[] },
+  ) => {
+    const endpoint = getEndpoint(type);
+    return post(`${endpoint}${id}/copy/`, data);
+  };
+
   return {
     getDirectoryTree,
     createItem,
     updateItem,
     deleteItem,
+    copyItem,
   };
 };
