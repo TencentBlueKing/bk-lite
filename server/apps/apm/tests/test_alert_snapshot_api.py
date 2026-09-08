@@ -175,6 +175,30 @@ def test_policy_delete_does_not_change_or_remove_historical_snapshot():
     assert alert.snapshots.get().policy_snapshot == before
 
 
+def test_policy_delete_keeps_alert_visible_by_generation_organizations(apm_api_client):
+    policy, alert, _ = _trigger(organization=10)
+    policy.delete()
+
+    listed = apm_api_client.get("/api/v1/apm/alerts/")
+
+    assert listed.status_code == 200
+    assert [str(item["id"]) for item in listed.data] == [str(alert.id)]
+    assert listed.data[0]["organizations"] == [10]
+
+
+def test_alert_organizations_freeze_at_generation():
+    policy, alert, at = _trigger(organization=10)
+    alert.organizations = [10]
+    alert.save(update_fields=("organizations",))
+    ApmServiceOrganization.objects.filter(service=policy.service).delete()
+    ApmServiceOrganization.objects.create(service=policy.service, organization=20)
+
+    DjangoApmPolicyService(MetricStore(at), InMemoryNotificationDispatcher()).evaluate(policy.id, evaluated_at=at)
+    alert.refresh_from_db()
+
+    assert alert.organizations == [10]
+
+
 def test_event_id_is_idempotent_and_retention_clears_available_or_failed_payload(mocker):
     policy, alert, at = _trigger()
     event = alert.events.get()
