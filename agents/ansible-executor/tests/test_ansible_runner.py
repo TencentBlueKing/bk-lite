@@ -13,6 +13,8 @@ from service.ansible_runner import (
     _redact_cli_command,
     _safe_extract_zip,
     _safe_workspace_path,
+    build_adhoc_command,
+    encode_adhoc_module_args,
     parse_ansible_output_per_host,
     parse_playbook_recap,
     prepare_adhoc_execution,
@@ -27,6 +29,33 @@ def test_redact_cli_command_hides_extra_vars_values():
 
     assert _redact_cli_command(command) == ["ansible-playbook", "playbook.yml", "--extra-vars", "***"]
     assert command[-1] != "***"
+
+
+def test_encode_adhoc_module_args_json_wraps_raw_heredoc_with_unbalanced_quotes():
+    command = "/usr/bin/ksh -c '. /dev/stdin' <<'STARGAZER_AIX_COLLECT_EOF'\nawk '{print $1}'\nSTARGAZER_AIX_COLLECT_EOF\n"
+
+    encoded = encode_adhoc_module_args("raw", command)
+
+    parsed = json.loads(encoded)
+    assert parsed["_raw_params"] == command
+    assert encode_adhoc_module_args("raw", encoded) == encoded
+    assert encode_adhoc_module_args("shell", command) == command
+
+
+def test_build_adhoc_command_passes_raw_module_args_as_json():
+    command = "LC_ALL=C LANG=C /usr/bin/ksh <<'EOF'\n'unbalanced\nEOF\n"
+    cmd = build_adhoc_command(
+        AdhocRequest(
+            inventory="/tmp/inventory.ini",
+            hosts="all",
+            module="raw",
+            module_args=command,
+        )
+    )
+
+    args_index = cmd.index("-a")
+    encoded = cmd[args_index + 1]
+    assert json.loads(encoded)["_raw_params"] == command
 
 
 def test_to_adhoc_request_accepts_windows_stream_type():
