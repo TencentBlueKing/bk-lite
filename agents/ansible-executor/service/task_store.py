@@ -6,6 +6,7 @@ import os
 import secrets
 import sqlite3
 import tempfile
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,7 @@ from service.task_store_sanitization import (
 )
 
 TERMINAL_TASK_STATUSES = {"success", "failed", "callback_failed"}
+PURGEABLE_CALLBACK_STATUSES = {"sent", "none", "failed"}
 SENSITIVE_CREDENTIAL_KEYS = _SENSITIVE_CREDENTIAL_KEYS
 
 
@@ -136,6 +138,12 @@ class TaskStore:
             for column, sql in migrations.items():
                 if column not in columns:
                     conn.execute(sql)
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_task_state_terminal_updated
+                ON task_state(status, callback_status, updated_at)
+                """
+            )
             self._cleanup_terminal_execution_payloads(conn)
         os.chmod(self.db_path, 0o600)
 
@@ -477,3 +485,30 @@ class TaskStore:
                     (self._encrypt_execution_payload(sanitized_payload), task_id),
                 )
             return sanitized_payload
+
+    @staticmethod
+    def _cutoff_iso(now_iso: str, retention_seconds: int) -> str:
+        now = datetime.fromisoformat(now_iso)
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=UTC)
+        return (now - timedelta(seconds=retention_seconds)).isoformat()
+
+    def purge_expired_terminal_tasks(self, now_iso: str, retention_seconds: int) -> int:
+        if retention_seconds <= 0:
+            return 0
+        cutoff_iso = self._cutoff_iso(now_iso, retention_seconds)
+        terminal_statuses = tuple(sorted(TERMINAL_TASK_STATUSES))
+        callback_statuses = tuple(sorted(PURGEABLE_CALLBACK_STATUSES))
+        status_placeholders = ", ".join("?" for _ in terminal_statuses)
+        callback_placeholders = ", ".join("?" for _ in callback_statuses)
+        with self._connect() as conn:
+            cursor = conn.execute(
+                f"""
+                DELETE FROM task_state
+                WHERE status IN ({status_placeholders})
+                  AND callback_status IN ({callback_placeholders})
+                  AND updated_at < ?
+                """,
+                (*terminal_statuses, *callback_statuses, cutoff_iso),
+            )
+            return int(cursor.rowcount or 0)

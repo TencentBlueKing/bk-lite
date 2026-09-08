@@ -43,9 +43,9 @@ DEFAULT_SOURCE_CONFIG = {
         "Python": """
         import requests
         import json
-        
+
         url = "{url}/api/v1/alerts/api/receiver_data/"
-        
+
         payload = json.dumps({
            "source_id": "restful",
            "events": [
@@ -75,9 +75,9 @@ DEFAULT_SOURCE_CONFIG = {
            'SECRET': '{SECRET}',
            'Content-Type': 'application/json'
         }
-        
+
         response = requests.request("POST", url, headers=headers, data=payload)
-        
+
         print(response.text)
 
         """,
@@ -135,11 +135,29 @@ DEFAULT_SOURCE_CONFIG = {
 }
 
 
+def build_nats_source_config():
+    """为 NATS 告警源追加内部监控身份快照字段。"""
+    config = deepcopy(DEFAULT_SOURCE_CONFIG)
+    config["event_fields_mapping"].update(
+        {
+            "monitor_id": "monitor_id",
+            "cmdb_id": "cmdb_id",
+        }
+    )
+    config["event_fields_desc_mapping"].update(
+        {
+            "monitor_id": "监控实例ID快照 | 类型: string | 必填: 否",
+            "cmdb_id": "CMDB实例ID快照 | 类型: string | 必填: 否",
+        }
+    )
+    return config
+
+
 def build_prometheus_source_config(source_id):
     config = deepcopy(DEFAULT_SOURCE_CONFIG)
     config.update(
         {
-  "url": f"/api/v1/alerts/api/source/{source_id}/webhook/",
+            "url": f"/api/v1/alerts/api/source/{source_id}/webhook/",
             "headers": {"SECRET": "your_source_secret"},
             "params": {
                 "receiver": "bk-lite-prometheus",
@@ -216,7 +234,7 @@ def build_zabbix_source_config(source_id):
     config = deepcopy(DEFAULT_SOURCE_CONFIG)
     config.update(
         {
-  "url": f"/api/v1/alerts/api/source/{source_id}/webhook/",
+            "url": f"/api/v1/alerts/api/source/{source_id}/webhook/",
             "headers": {"SECRET": "your_source_secret"},
             "params": {
                 "Subject": "Zabbix CPU High",

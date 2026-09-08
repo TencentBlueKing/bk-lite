@@ -25,6 +25,7 @@ from apps.alerts.constants import INSTANT_HIT_CEILING, INSTANT_STRATEGY_CACHE_TT
 from apps.alerts.constants.constants import AlarmStrategyType, AlertStatus, EventStatus
 from apps.alerts.models.alert_operator import AlarmStrategy
 from apps.alerts.models.models import Alert, Event
+from apps.alerts.service.monitor_object_snapshot import resolve_monitor_objects
 from apps.alerts.utils.permission_scope import normalize_team_ids
 from apps.core.logger import alert_logger as logger
 
@@ -137,7 +138,6 @@ def _build_alert_row(strategy: AlarmStrategy, event: Event, fingerprint: str) ->
     template = params.get("alert_template") or {}
     rendered_title = _render_template(template.get("title"), event) or (event.title or "即时告警")
     rendered_desc = _render_template(template.get("description"), event) or (event.description or "")
-
     return Alert(
         alert_id=f"ALERT-{uuid.uuid4().hex.upper()}",
         fingerprint=fingerprint,
@@ -153,6 +153,7 @@ def _build_alert_row(strategy: AlarmStrategy, event: Event, fingerprint: str) ->
         resource_id=event.resource_id,
         resource_name=event.resource_name,
         resource_type=event.resource_type,
+        monitor_objects=(resolve_monitor_objects([event]) if event.action == EventAction.CREATED else []),
         source_name=getattr(getattr(event, "source", None), "name", None),
         labels=event.labels or {},
         team=_safe_team(strategy),

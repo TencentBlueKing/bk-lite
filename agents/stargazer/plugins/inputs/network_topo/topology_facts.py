@@ -2,9 +2,11 @@ from plugins.inputs.network_topo.protocol_oids import PROTOCOL_OID_GROUPS
 
 PROTOCOL_PRECEDENCE = {
     "lldp": 0,
-    "cdp": 1,
-    "fdb": 2,
-    "arp": 3,
+    "huawei_ndp": 1,
+    "cdp": 2,
+    "fdp": 3,
+    "fdb": 4,
+    "arp": 5,
 }
 
 

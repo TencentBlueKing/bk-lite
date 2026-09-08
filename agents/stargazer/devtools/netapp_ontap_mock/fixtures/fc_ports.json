@@ -1,0 +1,38 @@
+[
+  {
+    "name": "0c",
+    "uuid": "1cd8a442-86d1-11e0-ae1c-123478563411",
+    "wwpn": "50:0a:09:81:80:11:22:33",
+    "wwnn": "50:0a:09:80:80:11:22:33",
+    "state": "online",
+    "speed": {
+      "configured": "auto",
+      "operating": "16"
+    },
+    "node": {
+      "name": "node1"
+    }
+  },
+  {
+    "name": "0d",
+    "uuid": "1cd8a442-86d1-11e0-ae1c-123478563412",
+    "wwpn": "",
+    "state": "offline",
+    "node": {
+      "name": "node1"
+    }
+  },
+  {
+    "name": "0e",
+    "uuid": "1cd8a442-86d1-11e0-ae1c-123478563413",
+    "wwpn": "500a098180112234",
+    "state": "online",
+    "speed": {
+      "configured": "auto",
+      "operating": "32"
+    },
+    "node": {
+      "name": "node1"
+    }
+  }
+]

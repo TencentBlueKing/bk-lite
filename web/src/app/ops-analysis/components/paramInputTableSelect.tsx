@@ -101,9 +101,20 @@ const ParamInputTableSelect: React.FC<ParamInputTableSelectProps> = ({
         maxTagCount={multiple ? 0 : undefined}
         maxTagPlaceholder={
           multiple
-            ? () => t('paramInput.tableSelect.selected', undefined, {
-              count: toKeyList(value).length,
-            })
+            ? () => {
+              const names = toKeyList(value)
+                .map((key) => optionByKey.get(key)?.label)
+                .map((item) => (item === undefined || item === null ? '' : String(item)))
+                .filter(Boolean)
+                .join('、');
+              return (
+                <span title={names}>
+                  {t('paramInput.tableSelect.selected', undefined, {
+                    count: toKeyList(value).length,
+                  })}
+                </span>
+              );
+            }
             : undefined
         }
         open={false}

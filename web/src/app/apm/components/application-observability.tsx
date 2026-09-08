@@ -3,20 +3,23 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { PlusOutlined } from '@ant-design/icons';
-import { Button, Modal, Segmented, Typography, message } from 'antd';
+import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Button, Progress, Segmented, Tooltip, Typography } from 'antd';
 import useApmApi from '@/app/apm/api';
 import ApmPageBreadcrumb from '@/app/apm/components/apm-page-breadcrumb';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
+import Sparkline, { toSparklineData } from '@/app/apm/components/home/sparkline';
 import {
+  aggregateApplicationRedSeries,
   formatErrorRate,
   formatLatency,
+  formatNumber,
   formatPerSecond,
   formatThroughput,
+  isErrorRateDanger,
+  type ApplicationRedSeriesPoint,
 } from '@/app/apm/components/metric-format';
-import OrganizationAssignmentModal from '@/app/apm/components/organization-assignment-modal';
-import ServiceCatalogTable from '@/app/apm/components/service-catalog-table';
 import {
   countActiveAlerts,
   expandServiceRows,
@@ -26,18 +29,106 @@ import {
   timeWindowRange,
   type TimeWindow,
 } from '@/app/apm/components/service-catalog-model';
-import TopologyCanvas, { type TopologyLayoutMode } from '@/app/apm/services/topology/topology-canvas';
+import TopologyCanvas from '@/app/apm/services/topology/topology-canvas';
 import { focusApplicationTopology } from '@/app/apm/services/topology/topology-layout';
 import type { ApmApplication, ApmEvent, ApmService, ApmServiceRed, ApmSlo, ApmTopologyGraph } from '@/app/apm/types';
-import { useUserInfoContext } from '@/context/userInfo';
 import { useTranslation } from '@/utils/i18n';
 
 type PageState = CatalogStateKind | 'ready';
 type TopologySurfaceState = CatalogStateKind | 'ready';
 
 interface KeyInfoItem {
+  key: string;
   label: string;
   value: string;
+  hint?: string;
+  danger?: boolean;
+}
+
+interface KpiTileItem extends KeyInfoItem {
+  detail?: string;
+  trend?: number[];
+  color: string;
+}
+
+function KpiTile({ item }: { item: KpiTileItem }) {
+  return (
+    <div
+      className="flex min-w-0 flex-1 flex-col justify-between rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-4 shadow-2xs transition-all hover:border-[var(--color-primary)] hover:shadow-sm"
+      data-kpi={item.key}
+      data-kpi-trend={item.trend?.length ? 'true' : 'false'}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <Typography.Text type="secondary" className="!text-xs font-medium">
+          {item.label}
+        </Typography.Text>
+        {item.detail ? (
+          <Typography.Text type="secondary" className="!text-[11px] tabular-nums">
+            {item.detail}
+          </Typography.Text>
+        ) : null}
+      </div>
+      <div className={`my-1 text-2xl font-bold tabular-nums tracking-tight ${item.danger ? 'text-[var(--color-fail)]' : 'text-[var(--color-text-1)]'}`}>
+        {item.value}
+      </div>
+      <div className="h-6 w-full pt-0.5">
+        {item.trend?.length ? (
+          <Sparkline color={item.color} data={item.trend} height={24} kind="area" fit="fill" fillOpacity={0.12} />
+        ) : (
+          <div className="h-6" />
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface ApplicationEndpointRow {
+  key: string;
+  serviceName: string;
+  environment: string;
+  endpoint: string;
+  request_rate: number;
+  error_rate: number | null;
+  p99_ms: number | null;
+  ratio: number;
+}
+
+const TOP_ENDPOINT_LIMIT = 3;
+
+function EndpointRankList({
+  rows,
+  emptyText,
+  metricOf,
+  strokeColor,
+}: {
+  rows: ApplicationEndpointRow[];
+  emptyText: string;
+  metricOf: (row: ApplicationEndpointRow) => string;
+  strokeColor: string;
+}) {
+  if (!rows.length) {
+    return <Typography.Text type="secondary" className="block py-3 text-center !text-xs">{emptyText}</Typography.Text>;
+  }
+  return (
+    <ul className="m-0 flex list-none flex-col gap-2 p-0">
+      {rows.map((row) => (
+        <li key={row.key} className="flex flex-col gap-0.5">
+          <div className="flex items-start justify-between gap-2">
+            <Link
+              href={`/apm/explore/endpoints?${new URLSearchParams({ service: row.serviceName, environment: row.environment, endpoint: row.endpoint }).toString()}`}
+              className="flex min-w-0 flex-col text-[var(--color-text-1)] hover:text-[var(--color-primary)]"
+              title={`${row.serviceName} ${row.endpoint}`}
+            >
+              <span className="truncate text-[11px] leading-4 text-[var(--color-text-3)]">{row.serviceName}</span>
+              <span className="truncate font-mono text-xs leading-4">{row.endpoint}</span>
+            </Link>
+            <span className="shrink-0 text-xs font-medium tabular-nums leading-4 text-[var(--color-text-2)]">{metricOf(row)}</span>
+          </div>
+          <Progress className="!leading-none" percent={row.ratio} showInfo={false} size={['100%', 3]} strokeColor={strokeColor} trailColor="var(--color-border)" />
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 export default function ApplicationObservability({
@@ -62,18 +153,14 @@ export default function ApplicationObservability({
     getTopology,
     getEvents,
     getSlos,
-    setServiceArchived,
-    setServiceOrganizations,
     isLoading,
   } = useApmApi();
-  const { flatGroups } = useUserInfoContext();
   const [application, setApplication] = useState<ApmApplication>();
   const [services, setServices] = useState<ApmService[]>([]);
   const [state, setState] = useState<PageState>('loading');
   const [graph, setGraph] = useState<ApmTopologyGraph>({ nodes: [], edges: [], sampled_traces: 0, truncated: false, data_state: 'no_data' });
   const [topologyState, setTopologyState] = useState<TopologySurfaceState>('loading');
   const [topologyRefreshKey, setTopologyRefreshKey] = useState(0);
-  const [layout, setLayout] = useState<TopologyLayoutMode>('layered');
   const [redMetrics, setRedMetrics] = useState<Record<string, ApmServiceRed>>({});
   const [metricFailureKeys, setMetricFailureKeys] = useState<string[]>([]);
   const [events, setEvents] = useState<ApmEvent[]>([]);
@@ -82,15 +169,7 @@ export default function ApplicationObservability({
     const value = searchParams.get('window');
     return isTimeWindow(value) ? value : '1h';
   });
-  const [organizationService, setOrganizationService] = useState<ApmService | null>(null);
-  const [organizationSubmitting, setOrganizationSubmitting] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
   const [metricRefreshKey, setMetricRefreshKey] = useState(0);
-
-  const groupNames = useMemo(
-    () => new Map(flatGroups.map((group) => [Number(group.id), group.name])),
-    [flatGroups],
-  );
 
   useEffect(() => {
     if (isLoading || !applicationId) return;
@@ -109,7 +188,7 @@ export default function ApplicationObservability({
         setState('ready');
       })
       .catch((error) => setState(catalogErrorKind(error)));
-  }, [applicationId, getApplication, getEvents, getServices, getSlos, isLoading, refreshKey]);
+  }, [applicationId, getApplication, getEvents, getServices, getSlos, isLoading]);
 
   useEffect(() => {
     if (!application) return;
@@ -174,58 +253,134 @@ export default function ApplicationObservability({
     [rows, sloByServiceEnv],
   );
 
-  const keyInfo = useMemo<KeyInfoItem[]>(() => {
+  const instrumentedServiceCount = useMemo(
+    () => services.filter((service) => !service.archived_at).length,
+    [services],
+  );
+
+  const keyInfo = useMemo<KeyInfoItem[]>(() => [
+    {
+      key: 'services',
+      label: t('apm.applications.instrumentedServiceCount', '接入服务'),
+      value: String(instrumentedServiceCount),
+      hint: t('apm.applications.instrumentedServiceCountHint', '与应用卡片一致，只计本应用已接入的插桩服务；图上 Redis、PostgreSQL 等为推断下游，不计入'),
+    },
+    { key: 'alerts', label: t('apm.applications.alertCount', '告警数'), value: String(applicationAlertCount), danger: applicationAlertCount > 0 },
+    { key: 'slo', label: t('apm.slo.title', 'SLO'), value: String(applicationSloCount) },
+  ], [applicationAlertCount, applicationSloCount, instrumentedServiceCount, t]);
+
+  const redSeries = useMemo<ApplicationRedSeriesPoint[]>(
+    () => aggregateApplicationRedSeries(Object.values(redMetrics)),
+    [redMetrics],
+  );
+
+  const kpis = useMemo<KpiTileItem[]>(() => {
     const metrics = Object.values(redMetrics);
     const requestRate = metrics.reduce((sum, red) => sum + (red.request_rate ?? 0), 0);
     const weightedErrors = metrics.reduce((sum, red) => sum + (red.request_rate ?? 0) * (red.error_rate ?? 0), 0);
+    const errorRate = requestRate ? weightedErrors / requestRate : null;
+    const worst = (pick: (red: ApmServiceRed) => number | null) => metrics.reduce<number | null>((max, red) => {
+      const value = pick(red);
+      return value == null ? max : Math.max(max ?? 0, value);
+    }, null);
+    const sumCount = (pick: (red: ApmServiceRed) => number | null) => metrics.reduce<number | null>((sum, red) => {
+      const value = pick(red);
+      return value == null ? sum : (sum ?? 0) + value;
+    }, null);
+    const requestCount = sumCount((red) => red.request_count);
+    const errorCount = sumCount((red) => red.error_count);
+    const trend = (pick: (point: ApplicationRedSeriesPoint) => number | null) => (
+      redSeries.length >= 2 ? toSparklineData(redSeries.map(pick)) : undefined
+    );
     return [
-      { label: t('apm.common.throughput', '吞吐量'), value: formatPerSecond(formatThroughput(requestRate || null, false, t), t) },
-      { label: t('apm.common.errorRate', '错误率'), value: formatErrorRate(requestRate ? weightedErrors / requestRate : null, false, t) },
-      { label: t('apm.common.p99', 'P99'), value: formatLatency(metrics.reduce<number | null>((max, red) => red.p99_ms == null ? max : Math.max(max ?? 0, red.p99_ms), null), false, t) },
-      { label: t('apm.applications.serviceCount', '服务数'), value: String(services.length) },
-      { label: t('apm.applications.alertCount', '告警数'), value: String(applicationAlertCount) },
-      { label: t('apm.slo.title', 'SLO'), value: String(applicationSloCount) },
-    ];
-  }, [applicationAlertCount, applicationSloCount, redMetrics, services.length, t]);
-
-  const confirmArchive = (serviceId: string) => {
-    Modal.confirm({
-      title: t('apm.services.archiveConfirm', '确认归档服务？'),
-      content: t('apm.services.archiveHint', '归档不会删除 Trace 或指标数据。'),
-      okText: t('apm.services.archive', '归档'),
-      okButtonProps: { danger: true },
-      cancelText: t('common.cancel', '取消'),
-      onOk: async () => {
-        await setServiceArchived(serviceId, true);
-        message.success(t('apm.services.archived', '服务已归档'));
-        setRefreshKey((value) => value + 1);
+      {
+        key: 'throughput',
+        label: t('apm.common.throughput', '吞吐量'),
+        value: formatPerSecond(formatThroughput(requestRate || null, false, t), t),
+        detail: requestCount == null
+          ? undefined
+          : t('apm.applications.kpiRequestTotal', '{count} 请求', { count: formatNumber(requestCount) }),
+        trend: trend((point) => point.request_rate),
+        color: 'var(--color-primary)',
       },
-    });
-  };
+      {
+        key: 'error-rate',
+        label: t('apm.common.errorRate', '错误率'),
+        value: formatErrorRate(errorRate, false, t),
+        detail: errorCount == null
+          ? undefined
+          : t('apm.applications.kpiErrorTotal', '{count} 错误', { count: formatNumber(errorCount) }),
+        danger: isErrorRateDanger(errorRate),
+        trend: trend((point) => point.error_rate_percent),
+        color: 'var(--color-fail)',
+      },
+      {
+        key: 'p95',
+        label: t('apm.common.p95Latency', 'P95 延迟'),
+        value: formatLatency(worst((red) => red.p95_ms), false, t),
+        trend: trend((point) => point.p95_ms),
+        color: 'var(--color-primary)',
+      },
+      {
+        key: 'p99',
+        label: t('apm.common.p99Latency', 'P99 延迟'),
+        value: formatLatency(worst((red) => red.p99_ms), false, t),
+        trend: trend((point) => point.p99_ms),
+        color: 'var(--theme-color-status-warning)',
+      },
+    ];
+  }, [redMetrics, redSeries, t]);
 
-  const submitOrganizations = async (organizationIds: number[]) => {
-    if (!organizationService) return;
-    setOrganizationSubmitting(true);
-    try {
-      await setServiceOrganizations(organizationService.id, organizationIds);
-      message.success(t('apm.services.orgUpdated', '服务组织已更新'));
-      setOrganizationService(null);
-      setRefreshKey((value) => value + 1);
-    } finally {
-      setOrganizationSubmitting(false);
-    }
-  };
+  const endpointRows = useMemo<Omit<ApplicationEndpointRow, 'ratio'>[]>(() => {
+    const rowByKey = new Map(rows.map((row) => [metricKey(row.serviceId, row.environment), row]));
+    return Object.entries(redMetrics).flatMap(([key, red]) => {
+      const row = rowByKey.get(key);
+      if (!row) return [];
+      return (red.top_endpoints ?? []).map((item) => ({
+        key: `${key}::${item.endpoint}`,
+        serviceName: row.serviceName,
+        environment: row.environment,
+        endpoint: item.endpoint,
+        request_rate: item.request_rate,
+        error_rate: item.error_rate,
+        p99_ms: item.p99_ms,
+      }));
+    });
+  }, [redMetrics, rows]);
+
+  const slowestEndpoints = useMemo<ApplicationEndpointRow[]>(() => {
+    const items = endpointRows
+      .filter((item) => item.p99_ms != null)
+      .sort((left, right) => (right.p99_ms ?? 0) - (left.p99_ms ?? 0))
+      .slice(0, TOP_ENDPOINT_LIMIT);
+    const max = Math.max(...items.map((item) => item.p99_ms ?? 0), 1);
+    return items.map((item) => ({ ...item, ratio: Math.round(((item.p99_ms ?? 0) / max) * 100) }));
+  }, [endpointRows]);
+
+  const errorEndpoints = useMemo<ApplicationEndpointRow[]>(() => {
+    const items = endpointRows
+      .filter((item) => (item.error_rate ?? 0) > 0)
+      .sort((left, right) => (right.error_rate ?? 0) - (left.error_rate ?? 0))
+      .slice(0, TOP_ENDPOINT_LIMIT);
+    const max = Math.max(...items.map((item) => item.error_rate ?? 0), Number.EPSILON);
+    return items.map((item) => ({ ...item, ratio: Math.round(((item.error_rate ?? 0) / max) * 100) }));
+  }, [endpointRows]);
+
+  const hasRedMetrics = Object.keys(redMetrics).length > 0;
+  const panelClass = 'flex flex-col gap-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-fill-1)]/40 p-3';
+  const addIngestHref = application ? `/apm/integration/add?application_id=${encodeURIComponent(application.application_id)}` : '/apm/integration/add';
 
   return (
     <ApmRouteShell
       title={application?.name ?? t('apm.applications.detailTitle', '应用详情')}
-      description={t('apm.applications.observabilityDescription', '查看应用拓扑、关键信息与该应用下的服务。')}
+      description={t('apm.applications.observabilityDescription', '查看应用拓扑、关键信息与重点指标。')}
+      spacing="fill"
     >
       {state === 'ready' && application ? (
-        <div className="flex flex-col gap-3">
-          <div className="grid gap-3 xl:grid-cols-3">
-            <ApmSurface className="min-w-0 overflow-hidden !rounded-xl shadow-2xs xl:col-span-2" padding="none">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-3.5">
+        <div className="flex flex-col gap-3 xl:h-full xl:min-h-0">
+          <div className="grid gap-3 xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,1fr)_300px]">
+            <ApmSurface className="flex min-h-[440px] min-w-0 flex-col overflow-hidden !rounded-xl shadow-2xs xl:min-h-0" padding="none">
+              <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-bg)] px-5 py-3">
                 <div className="min-w-0">
                   <ApmPageBreadcrumb
                     parentHref={parentHref}
@@ -237,9 +392,6 @@ export default function ApplicationObservability({
                       </Typography.Title>
                     )}
                   />
-                  <Typography.Text type="secondary" className="mt-0.5 block !text-xs">
-                    {t('apm.applications.topology', '应用服务拓扑')}
-                  </Typography.Text>
                 </div>
                 <div className="flex flex-wrap items-center gap-2.5">
                   <div className="flex items-center gap-1.5">
@@ -253,23 +405,10 @@ export default function ApplicationObservability({
                     />
                   </div>
 
-                  <div className="h-4 w-px bg-[var(--color-border)]" aria-hidden="true" />
-
-                  <Segmented<TopologyLayoutMode>
-                    aria-label={t('apm.topology.layout', '拓扑布局')}
-                    options={[
-                      { value: 'layered', label: t('apm.topology.layered', '层次') },
-                      { value: 'force', label: t('apm.topology.layoutForce', '力导向') },
-                    ]}
-                    size="small"
-                    value={layout}
-                    onChange={setLayout}
-                  />
-
                   {showAddIngest ? (
                     <>
                       <div className="h-4 w-px bg-[var(--color-border)]" aria-hidden="true" />
-                      <Link href={`/apm/integration/add?application_id=${encodeURIComponent(application.application_id)}`}>
+                      <Link href={addIngestHref}>
                         <Button type="primary" icon={<PlusOutlined aria-hidden="true" />} size="small">{t('apm.applications.addIngest', '添加接入')}</Button>
                       </Link>
                     </>
@@ -279,76 +418,95 @@ export default function ApplicationObservability({
               {topologyState === 'ready' ? (
                 <TopologyCanvas
                   edges={graph.edges}
+                  fillHeight
                   focusNamespace={application.application_id}
                   keyword=""
-                  layout={layout}
+                  layout="layered"
                   nodes={graph.nodes}
                   zoom={1}
                 />
               ) : (
-                <div className="min-h-[640px]">
-                  <CatalogState
-                    kind={topologyState}
-                    description={topologyState === 'empty' ? t('apm.applications.noTopology', '当前时间窗暂无应用内调用关系。') : undefined}
-                    onRetry={topologyState === 'forbidden' ? undefined : () => setTopologyRefreshKey((value) => value + 1)}
-                  />
+                <div className="flex min-h-[320px] flex-1 basis-0 items-center">
+                  <div className="w-full">
+                    <CatalogState
+                      kind={topologyState}
+                      description={topologyState === 'empty' ? t('apm.applications.noTopology', '当前时间窗暂无应用内调用关系。') : undefined}
+                      onRetry={topologyState === 'forbidden' ? undefined : () => setTopologyRefreshKey((value) => value + 1)}
+                    />
+                  </div>
                 </div>
               )}
             </ApmSurface>
-            <ApmSurface className="!rounded-xl shadow-2xs">
+            <ApmSurface className="flex min-w-0 flex-col gap-3 !rounded-xl shadow-2xs xl:min-h-0 xl:overflow-auto" padding="compact">
               <Typography.Text strong className="text-sm">{t('apm.applications.keyInfo', '关键信息')}</Typography.Text>
-              <div className="mt-3 grid grid-cols-2 gap-2.5">
-                {keyInfo.map((item) => (
-                  <div key={item.label} className="flex flex-col gap-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-fill-1)]/40 p-3 transition-all hover:border-[var(--color-primary)] hover:bg-[var(--color-bg)] hover:shadow-sm">
-                    <Typography.Text type="secondary" className="block !text-xs">{item.label}</Typography.Text>
-                    <div className="text-lg font-semibold tabular-nums text-[var(--color-text-1)]">{item.value}</div>
-                  </div>
-                ))}
+              <div className="grid grid-cols-3 gap-2">
+                {keyInfo.map((item) => {
+                  const card = (
+                    <div className="flex min-w-0 flex-col gap-0.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-fill-1)]/40 px-2.5 py-2" data-key-info={item.key}>
+                      <Typography.Text type="secondary" className="truncate !text-[11px]">{item.label}</Typography.Text>
+                      <div className={`text-lg font-semibold tabular-nums leading-tight ${item.danger ? 'text-[var(--color-fail)]' : 'text-[var(--color-text-1)]'}`}>{item.value}</div>
+                    </div>
+                  );
+                  return item.hint ? <Tooltip key={item.key} title={item.hint}>{card}</Tooltip> : <div key={item.key}>{card}</div>;
+                })}
               </div>
+              {!rows.length ? (
+                <CatalogState
+                  kind="empty"
+                  description={t('apm.applications.noServices', '该应用还没有观测到服务。')}
+                  action={showAddIngest ? (
+                    <Link href={addIngestHref}>
+                      <Button type="primary" size="small">{t('apm.applications.addIngest', '添加接入')}</Button>
+                    </Link>
+                  ) : undefined}
+                />
+              ) : (
+                <>
+                  <div className={panelClass}>
+                    <Typography.Text strong className="!text-xs">{t('apm.applications.slowestEndpoints', '最慢端点')}</Typography.Text>
+                    <EndpointRankList
+                      rows={slowestEndpoints}
+                      emptyText={t('apm.serviceDetail.noEndpoints', '当前时间窗暂无端点指标')}
+                      metricOf={(row) => formatLatency(row.p99_ms, false, t)}
+                      strokeColor="var(--color-primary)"
+                    />
+                  </div>
+                  <div className={panelClass}>
+                    <Typography.Text strong className="!text-xs">{t('apm.applications.errorEndpoints', '错误端点')}</Typography.Text>
+                    <EndpointRankList
+                      rows={errorEndpoints}
+                      emptyText={t('apm.applications.noErrorEndpoints', '当前时间窗没有出错的端点')}
+                      metricOf={(row) => formatErrorRate(row.error_rate, false, t)}
+                      strokeColor="var(--color-fail)"
+                    />
+                  </div>
+                </>
+              )}
             </ApmSurface>
           </div>
-          <ApmSurface className="!rounded-xl shadow-2xs">
-            <div className="mb-4">
-              <Typography.Text strong>{t('apm.applications.childServices', '下属服务')}</Typography.Text>
-              <Typography.Text type="secondary" className="ml-2 !text-xs">{t('apm.common.serviceCount', '共 {count} 个', { count: services.length })}</Typography.Text>
-            </div>
-            {rows.length ? (
-              <ServiceCatalogTable
-                alertCounts={alertCounts}
-                groupNames={groupNames}
-                metricFailureKeys={metricFailureKeys}
-                onAdjustOrganization={(serviceId) => setOrganizationService(services.find((service) => service.id === serviceId) ?? null)}
-                onArchive={confirmArchive}
-                onRetryMetrics={() => setMetricRefreshKey((value) => value + 1)}
-                redMetrics={redMetrics}
-                rows={rows}
-                selectedApplicationName={application.name}
-                sloByServiceEnv={sloByServiceEnv}
-                timeWindow={timeWindow}
-              />
+          <div className="shrink-0" aria-label={t('apm.applications.keyMetrics', '重点指标')}>
+            {metricFailureKeys.length ? (
+              <div className="mb-2 flex justify-end">
+                <Button
+                  size="small"
+                  type="link"
+                  icon={<ReloadOutlined aria-hidden="true" />}
+                  onClick={() => setMetricRefreshKey((value) => value + 1)}
+                >
+                  {t('apm.applications.partialMetricFailure', '{count} 个服务指标查询失败，重试', { count: metricFailureKeys.length })}
+                </Button>
+              </div>
+            ) : null}
+            {rows.length && !hasRedMetrics && metricFailureKeys.length ? (
+              <ApmSurface className="!rounded-xl shadow-2xs" padding="normal">
+                <CatalogState kind="error" onRetry={() => setMetricRefreshKey((value) => value + 1)} />
+              </ApmSurface>
             ) : (
-              <CatalogState
-                kind="empty"
-                description={t('apm.applications.noServices', '该应用还没有观测到服务。')}
-                action={showAddIngest ? (
-                  <Link href={`/apm/integration/add?application_id=${encodeURIComponent(application.application_id)}`}>
-                    <Button type="primary">{t('apm.applications.addIngest', '添加接入')}</Button>
-                  </Link>
-                ) : undefined}
-              />
+              <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+                {kpis.map((item) => <KpiTile key={item.key} item={item} />)}
+              </div>
             )}
-          </ApmSurface>
-          <OrganizationAssignmentModal
-            open={Boolean(organizationService)}
-            title={organizationService
-              ? t('apm.services.adjustOrgNamed', '调整服务组织：{identity}', { identity: `${organizationService.namespace}/${organizationService.name}` })
-              : t('apm.services.adjustOrg', '调整服务组织')}
-            organizationIds={organizationService?.organization_ids ?? []}
-            submitting={organizationSubmitting}
-            description={t('apm.services.orgHint', '服务组织独立于应用与实例，仅影响此逻辑服务的可见和可操作范围。')}
-            onCancel={() => setOrganizationService(null)}
-            onSubmit={submitOrganizations}
-          />
+          </div>
         </div>
       ) : (
         <ApmSurface padding="none">

@@ -19,6 +19,24 @@ export interface FlowConversationRow {
   protocol: string;
   bytesRate: number;
   rowKey: string;
+  rank?: number;
+}
+
+export interface FlowConversationPageItem {
+  src_ip?: string;
+  dst_ip?: string;
+  src_port?: string;
+  dst_port?: string;
+  protocol?: string;
+  bytes_rate?: number;
+  rank?: number;
+}
+
+export interface FlowConversationPage {
+  count?: number;
+  page?: number;
+  page_size?: number;
+  items?: FlowConversationPageItem[];
 }
 
 const latestValue = (series: RawSeries): number | null => {
@@ -100,4 +118,27 @@ export const parseConversationRows = (
   }
 
   return rows.sort((left, right) => right.bytesRate - left.bytesRate);
+};
+
+export const mapConversationPageItems = (
+  items: FlowConversationPageItem[] | null | undefined,
+): FlowConversationRow[] => {
+  if (!items?.length) return [];
+  return items.map((item, index) => {
+    const srcIp = item.src_ip || '--';
+    const dstIp = item.dst_ip || '--';
+    const srcPort = normalizePort(item.src_port);
+    const dstPort = normalizePort(item.dst_port);
+    const protocol = item.protocol || '';
+    return {
+      srcIp,
+      srcPort,
+      dstIp,
+      dstPort,
+      protocol,
+      bytesRate: Number(item.bytes_rate),
+      rank: item.rank ?? index + 1,
+      rowKey: [srcIp, srcPort, dstIp, protocol, dstPort, String(item.rank ?? index)].join('\u0000'),
+    };
+  }).filter((row) => Number.isFinite(row.bytesRate));
 };

@@ -78,5 +78,8 @@ describe('ParamInputTableSelect', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'common.confirm' }));
 
     expect(onChange).toHaveBeenCalledWith(['1111', 'host-b']);
+    const restTag = document.querySelector('.ant-select-selection-item [title], .ant-select-selection-item[title]');
+    expect(restTag?.getAttribute('title')).toContain('1111');
+    expect(restTag?.getAttribute('title')).toContain('host-b');
   });
 });

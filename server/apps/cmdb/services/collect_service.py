@@ -143,6 +143,10 @@ class CollectModelService(object):
         }
 
         for key in not_required:
+            if key == "ip_range" and "ip_range" in data:
+                # 扫描生成路径会显式传空串以清掉旧 IP 段；falsy 判断会把这次更新吞掉。
+                params[key] = data.get(key) or ""
+                continue
             if data.get(key):
                 params[key] = data[key]
 
@@ -514,12 +518,12 @@ class CollectModelService(object):
         return request.data
 
     @classmethod
-    def create(cls, request, view_self, payload=None):
+    def create(cls, request, view_self, payload=None, *, credential_pool_max_size=CollectCredentialPoolService.MAX_POOL_SIZE):
         create_data, is_interval, scan_cycle = cls.format_params(cls._request_payload(request, payload))
         if create_data.get("credential"):
             create_data["credential"] = CollectCredentialPoolService.normalize_pool(create_data["credential"])
             create_data["credential"] = CollectCredentialPoolService.assign_versions([], create_data["credential"])
-            CollectCredentialPoolService.validate_pool_shape(create_data["credential"])
+            CollectCredentialPoolService.validate_pool_shape(create_data["credential"], max_size=credential_pool_max_size)
         cls.enrich_host_cloud_snapshot_payload(create_data)
 
         # 使用数据库事务保证原子性：DB + 外部操作要么全成功，要么全失败
@@ -616,7 +620,7 @@ class CollectModelService(object):
         update_data["params"] = params
 
     @classmethod
-    def update(cls, request, view_self, payload=None):
+    def update(cls, request, view_self, payload=None, *, credential_pool_max_size=CollectCredentialPoolService.MAX_POOL_SIZE):
         # 获取旧实例数据（在事务外）
         instance = view_self.get_object()
         old_instance = copy.deepcopy(instance)
@@ -629,7 +633,7 @@ class CollectModelService(object):
             old_pool = CollectCredentialPoolService.normalize_pool(instance.decrypt_credentials)
             new_pool = CollectCredentialPoolService.normalize_pool(update_data["credential"])
             new_pool = CollectCredentialPoolService.assign_versions(old_pool, new_pool)
-            CollectCredentialPoolService.validate_pool_shape(new_pool)
+            CollectCredentialPoolService.validate_pool_shape(new_pool, max_size=credential_pool_max_size)
             update_data["credential"] = new_pool
             credential_pool_diff = CollectCredentialPoolService.diff_pool(old_pool, new_pool)
         else:
@@ -837,6 +841,7 @@ class CollectModelService(object):
                 execution_id,
                 node_config_id,
                 node_config_version,
+                resolve_latest_round=True,
             )
 
         create_change_record(
@@ -862,6 +867,7 @@ class CollectModelService(object):
                 execution_id,
                 node_config_id,
                 node_config_version,
+                resolve_latest_round=True,
             )
         except Exception:
             CollectModels.objects.filter(

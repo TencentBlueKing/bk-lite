@@ -21,6 +21,18 @@ async def _make_true():
 
 
 class TestScanner:
+    def test_单次探测超时不读取表单总预算(self):
+        scanner = IPDiscoveryScanner(
+            {
+                "model_id": "ip",
+                "scan_method": "icmp",
+                "targets": ["10.0.1.10"],
+                "timeout": 999,
+            }
+        )
+
+        assert scanner.timeout == 5
+
     @pytest.mark.parametrize("port", [-1, 0, 65536, 22.5, True, "not-a-port"])
     def test_拒绝超出tcp端口值域的端口(self, port):
         with pytest.raises(ValueError, match="port must be between 1 and 65535"):

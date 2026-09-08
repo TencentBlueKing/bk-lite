@@ -1,0 +1,27 @@
+name: netapp_ontap
+version: 1.0.0
+category: storage
+metadata:
+  display_name: NetApp ONTAP 存储【BETA】
+  description: NetApp ONTAP REST 采集插件（Beta），采集集群及存储池/磁盘/卷/以太口/FC口
+  author: WeOps
+  tags:
+  - storage
+  - netapp
+  - ontap
+  - beta
+  cloud_protocol: true
+  model_id: netapp_ontap
+executors:
+  protocol:
+    type: protocol
+    execution_mode: async
+    capacity_group: default
+    collector:
+      module: plugins.inputs.netapp_ontap.netapp_ontap_info
+      class: NetAppOntapManager
+    target_policy:
+      mode: tls
+      port: 443
+      tls: true
+default_executor: protocol

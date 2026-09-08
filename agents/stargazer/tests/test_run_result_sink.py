@@ -162,3 +162,40 @@ async def test_abort_cancels_fixed_delivery_workers_and_releases_payloads():
 
     assert payload_reference() is None
     assert sink.pending_deliveries == 0
+
+
+@pytest.mark.asyncio
+async def test_transport_managed_receipt_is_observed_without_retaining_the_payload():
+    class TransportManagedReceipt:
+        retries_managed = True
+
+    delivery = BlockingDelivery()
+    sink = RunResultSink(
+        delivery=delivery,
+        metrics=CollectionMetrics(),
+        total_targets=1,
+    )
+    payload = StructuredMetricsPayload(data={"network": [{"blob": "x" * 1024}]})
+    payload_reference = weakref.ref(payload)
+    result = TargetCollectionResult(
+        target="target-0",
+        status="success",
+        attempts=1,
+        value=payload,
+    )
+    pending = PendingPublish(
+        index=0,
+        result=result,
+        receipt=TransportManagedReceipt(),
+        started_at=time.monotonic(),
+        deadline=time.monotonic() + 10,
+    )
+
+    await sink.accept(pending)
+    del pending, result, payload
+    gc.collect()
+
+    assert payload_reference() is None
+
+    delivery.release.set()
+    await sink.finish()

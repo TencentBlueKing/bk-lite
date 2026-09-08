@@ -10,10 +10,10 @@ const IntegrationSettingRow: React.FC<IntegrationSettingRowProps> = ({
   description,
 }) => {
   return (
-    <div className="flex items-start gap-4">
+    <div className="flex flex-col items-start gap-1">
       {control}
       {description ? (
-        <div className="flex-1 text-[var(--color-text-3)]">{description}</div>
+        <div className="w-full text-[var(--color-text-3)] leading-5">{description}</div>
       ) : null}
     </div>
   );

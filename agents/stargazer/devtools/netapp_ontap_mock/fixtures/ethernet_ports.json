@@ -1,0 +1,34 @@
+[
+  {
+    "name": "e0a",
+    "uuid": "1cd8a442-86d1-11e0-ae1c-123478563401",
+    "mac_address": "00:0c:29:aa:bb:01",
+    "state": "up",
+    "speed": 10000,
+    "node": {
+      "name": "node1"
+    },
+    "type": "physical"
+  },
+  {
+    "name": "e0b",
+    "uuid": "1cd8a442-86d1-11e0-ae1c-123478563402",
+    "mac_address": "",
+    "state": "down",
+    "node": {
+      "name": "node1"
+    },
+    "type": "physical"
+  },
+  {
+    "name": "e0c",
+    "uuid": "1cd8a442-86d1-11e0-ae1c-123478563403",
+    "mac_address": "00-0c-29-aa-bb-02",
+    "state": "up",
+    "speed": 1000,
+    "node": {
+      "name": "node1"
+    },
+    "type": "physical"
+  }
+]

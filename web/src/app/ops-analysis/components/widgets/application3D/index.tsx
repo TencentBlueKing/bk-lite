@@ -22,6 +22,8 @@ import type { Application3DSceneController } from './application3DScene';
 import Application3DDetail from './application3DDetail';
 import {
   formatArchitectureHostAlarmCount,
+  formatArchitectureHostIp,
+  formatArchitectureHostOs,
   formatArchitectureHostSeverity,
   formatArchitectureHostState,
   type ArchitectureHostSelection,
@@ -686,41 +688,115 @@ export default function Application3D({
           </div>
         </div>
       )}
-      {!editMode && architectureOpen && architectureHost && (
-        <div
-          className="app3d-arch-host-chip"
-          style={{
-            left: architectureHost.overlay.left,
-            top: architectureHost.overlay.top,
-          }}
-        >
-          <div className="app3d-arch-host-chip__title">{architectureHost.node.name}</div>
-          <div className="app3d-arch-host-chip__row">
-            <span className="app3d-arch-host-chip__label">
-              {t('dashboard.application3DHostStatus', '状态')}
-            </span>
-            <span className="app3d-arch-host-chip__value">
-              {formatArchitectureHostState(architectureHost.node.health?.state, t)}
-            </span>
+      {!editMode && architectureOpen && architectureHost && (() => {
+        const state = architectureHost.node.health?.state;
+        const badgeModifier = state === 'alarming' ? 'alarming' : state === 'normal' ? 'normal' : 'unknown';
+        const isAlarming = state === 'alarming';
+        const isNormal = state === 'normal';
+        const alarmCount = formatArchitectureHostAlarmCount(architectureHost.node.health?.activeAlarmCount);
+        const severityLabel = formatArchitectureHostSeverity(architectureHost.node.health?.highestSeverity?.label);
+        const dismissHostOverlay = (event: { stopPropagation: () => void }) => {
+          event.stopPropagation();
+          setArchitectureHost(null);
+          controllerRef.current?.dismissArchitectureOverlay?.();
+        };
+
+        return (
+          <div
+            className={`app3d-arch-host-chip app3d-arch-host-chip--${badgeModifier}`}
+            style={{
+              left: architectureHost.overlay.left,
+              top: architectureHost.overlay.top,
+            }}
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            <div className="app3d-arch-host-chip__header">
+              <div className="app3d-arch-host-chip__meta">
+                <span
+                  className={`app3d-arch-host-chip__status-dot app3d-arch-host-chip__status-dot--${badgeModifier}`}
+                  aria-hidden="true"
+                />
+                <span className="app3d-arch-host-chip__title" title={architectureHost.node.name}>
+                  {architectureHost.node.name}
+                </span>
+              </div>
+              <span
+                role="button"
+                tabIndex={0}
+                className="app3d-arch-host-chip__close"
+                onClick={dismissHostOverlay}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    dismissHostOverlay(e);
+                  }
+                }}
+                title={t('common.close', '关闭')}
+                aria-label={t('common.close', '关闭')}
+              >
+                ✕
+              </span>
+            </div>
+
+            <div className="app3d-arch-host-chip__body">
+              <div className="app3d-arch-host-chip__metric">
+                <div className={`app3d-arch-host-chip__metric-val app3d-arch-host-chip__metric-val--${badgeModifier}`}>
+                  {isAlarming ? alarmCount : isNormal ? '0' : '-'}
+                </div>
+                <div className="app3d-arch-host-chip__metric-lbl">
+                  {t('dashboard.application3DHostAlarmCount', '条数')}
+                </div>
+              </div>
+
+              <div className="app3d-arch-host-chip__details">
+                <div className="app3d-arch-host-chip__row">
+                  <span className="app3d-arch-host-chip__label">
+                    {t('dashboard.application3DHostIp', 'IP 地址')}
+                  </span>
+                  <span className="app3d-arch-host-chip__value app3d-arch-host-chip__value--ip">
+                    {formatArchitectureHostIp(architectureHost.node.ip_addr)}
+                  </span>
+                </div>
+                <div className="app3d-arch-host-chip__row">
+                  <span className="app3d-arch-host-chip__label">
+                    {t('dashboard.application3DHostOs', '操作系统')}
+                  </span>
+                  <span
+                    className="app3d-arch-host-chip__value"
+                    title={formatArchitectureHostOs(architectureHost.node.os_name)}
+                  >
+                    {formatArchitectureHostOs(architectureHost.node.os_name)}
+                  </span>
+                </div>
+                <div className="app3d-arch-host-chip__row">
+                  <span className="app3d-arch-host-chip__label">
+                    {isAlarming
+                      ? t('dashboard.application3DHostHighestSeverity', '最高级别')
+                      : t('dashboard.application3DHostStatus', '状态')}
+                  </span>
+                  <span
+                    className={`app3d-arch-host-chip__value app3d-arch-host-chip__value--${badgeModifier}`}
+                  >
+                    {isAlarming
+                      ? severityLabel
+                      : formatArchitectureHostState(state, t)}
+                  </span>
+                  {isAlarming && (
+                    <span className="sr-only">
+                      {t('dashboard.application3DHostStatus', '状态')}: {formatArchitectureHostState(state, t)}
+                    </span>
+                  )}
+                  {!isAlarming && (
+                    <span className="sr-only">
+                      {t('dashboard.application3DHostHighestSeverity', '最高级别')}: {severityLabel}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="app3d-arch-host-chip__row">
-            <span className="app3d-arch-host-chip__label">
-              {t('dashboard.application3DHostAlarmCount', '条数')}
-            </span>
-            <span className="app3d-arch-host-chip__value">
-              {formatArchitectureHostAlarmCount(architectureHost.node.health?.activeAlarmCount)}
-            </span>
-          </div>
-          <div className="app3d-arch-host-chip__row">
-            <span className="app3d-arch-host-chip__label">
-              {t('dashboard.application3DHostHighestSeverity', '最高级别')}
-            </span>
-            <span className="app3d-arch-host-chip__value">
-              {formatArchitectureHostSeverity(architectureHost.node.health?.highestSeverity?.label)}
-            </span>
-          </div>
-        </div>
-      )}
+        );
+      })()}
       {detailOpen && selected && !editMode && (
         <Application3DDetail
           selected={selected}

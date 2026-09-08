@@ -3,6 +3,7 @@ import json
 
 import pytest
 from core.config import ServiceConfig
+from service.failure_summary import ANSIBLE_TASK_FAILED_LOG_TEMPLATE, sanitize_failure_text
 from service.nats_service import AnsibleNATSService, QueuedTask
 
 
@@ -461,6 +462,64 @@ async def test_prepare_callback_payload_shrinks_oversized_output_for_retry(tmp_p
     assert callback_payload["result"][0]["stdout"].endswith("...[truncated for callback]")
 
 
+def test_compact_callback_payload_does_not_add_failure_fields(tmp_path):
+    service = AnsibleNATSService(
+        ServiceConfig(
+            nats_servers=["nats://127.0.0.1:4222"],
+            nats_instance_id="default",
+            js_stream="BK_ANS_EXEC_TASKS",
+            js_subject_prefix="bk.ans_exec.tasks",
+            js_durable="ansible-executor",
+            state_db_path=str(tmp_path / "task.db"),
+        )
+    )
+    service.nc = DummyNATSClient({"success": True}, max_payload=8 * 1024)
+
+    payload = {
+        "task_id": "task-unreachable",
+        "success": False,
+        "error": "ansible adhoc failed with exit code 4",
+        "result": [
+            {
+                "host": "10.233.2.31",
+                "status": "failed",
+                "raw_status": "UNREACHABLE",
+                "stdout": "x" * 20000,
+                "stderr": "Failed to connect to the host via ssh: Connection timed out",
+                "error_message": "Failed to connect to the host via ssh: Connection timed out",
+                "exit_code": 4,
+            }
+        ],
+        "result_summary": {
+            "stdout_combined": "x" * 20000,
+            "host_count": 1,
+            "output_truncated": True,
+            "output_bytes_total": 20000,
+            "output_bytes_retained": 20000,
+            "output_max_bytes": 20000,
+        },
+    }
+
+    callback_payload = service._prepare_callback_payload(payload)
+
+    assert callback_payload["success"] is False
+    assert callback_payload["error"] == "ansible adhoc failed with exit code 4"
+    assert callback_payload["result"][0]["host"] == "10.233.2.31"
+    assert callback_payload["result"][0]["raw_status"] == "UNREACHABLE"
+    assert callback_payload["result"][0]["exit_code"] == 4
+    assert callback_payload["result"][0]["stderr"] == ""
+    assert set(callback_payload["result_summary"]) <= {
+        "host_count",
+        "output_truncated",
+        "output_bytes_total",
+        "output_bytes_retained",
+        "output_max_bytes",
+        "callback_payload_truncated",
+    }
+    assert "failure_host" not in callback_payload["result_summary"]
+    assert "failure_stderr" not in callback_payload["result_summary"]
+
+
 @pytest.mark.asyncio
 async def test_enqueue_callback_retry_uses_compact_payload(tmp_path):
     service = AnsibleNATSService(
@@ -884,6 +943,67 @@ def test_build_task_result_keeps_structured_results_when_output_is_truncated(mon
     assert result["result_summary"]["stream_publish_failures"] == 2
     assert result["result_summary"]["stream_flush_timed_out"] is True
     assert result["result_summary"]["stream_line_chunks"] == 3
+    assert "failure_host" not in result["result_summary"]
+
+
+def test_build_task_result_logs_and_summarizes_ansible_failure(caplog):
+    sentinel_password = "must-not-be-logged-password-xyz"
+    task = QueuedTask(
+        task_id="task-unreachable",
+        task_type="adhoc",
+        payload={"task_id": "task-unreachable"},
+        callback={},
+        instance_id="default",
+    )
+    output = (
+        f"10.233.2.31 | UNREACHABLE! => password={sentinel_password} "
+        "Failed to connect to the host via ssh: Connection timed out"
+    )
+
+    with caplog.at_level("WARNING", logger="core.config"):
+        result = AnsibleNATSService._build_task_result(
+            task,
+            "owner-a",
+            "2026-06-02T00:00:00+00:00",
+            4,
+            output,
+            {"truncated": False, "output_bytes_total": len(output), "output_bytes_retained": len(output), "output_max_bytes": 0},
+            "",
+        )
+
+    assert result["success"] is False
+    assert result["error"] == "ansible adhoc failed with exit code 4"
+    assert result["result"][0]["host"] == "10.233.2.31"
+    assert result["result"][0]["raw_status"] == "UNREACHABLE!"
+    assert "failure_host" not in result["result_summary"]
+    assert "failure_stderr" not in result["result_summary"]
+
+    expected_stderr = sanitize_failure_text(
+        f"password={sentinel_password} Failed to connect to the host via ssh: Connection timed out"
+    )
+    records = [item for item in caplog.records if item.msg == ANSIBLE_TASK_FAILED_LOG_TEMPLATE]
+    assert len(records) == 1
+    record = records[0]
+    assert record.levelname == "WARNING"
+    assert record.args == (
+        "task-unreachable",
+        "adhoc",
+        "ansible adhoc failed with exit code 4",
+        "10.233.2.31",
+        "UNREACHABLE!",
+        4,
+        expected_stderr,
+        False,
+        "target_unreachable",
+    )
+    rendered = record.getMessage()
+    assert rendered.startswith("event=ansible_task_failed")
+    assert "task_id=task-unreachable" in rendered
+    assert "host_status=UNREACHABLE!" in rendered
+    assert "Connection timed out" in rendered
+    assert sentinel_password not in rendered
+    assert sentinel_password not in "".join(map(str, record.args))
+    assert output not in rendered
 
 
 class RecordingNATSClient(DummyNATSClient):

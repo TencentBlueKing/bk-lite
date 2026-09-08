@@ -56,12 +56,12 @@ STARGAZER_MONITOR_AUTH_PREVIOUS_TOKEN=<previous-token>
 
 ```bash
 MAX_ACTIVE_RUNS=16
+MAX_ACTIVE_RUN_TARGETS=4000
 MAX_ACTIVE_TARGETS=160
 CONFIGURATION_MAX_ACTIVE_TARGETS=100
 MONITORING_MAX_ACTIVE_TARGETS=30
 NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS=30
 TARGET_TASK_WINDOW=160
-SNMP_MAX_IN_FLIGHT=160
 SNMP_ENGINE_MAX_TARGETS=2000
 SNMP_ENGINE_IDLE_SECONDS=300
 SNMP_ENGINE_TOTAL_TARGET_BUDGET=4000
@@ -82,18 +82,20 @@ RUN_LEASE_TTL=600
 RUN_LEASE_HEARTBEAT=30
 COLLECTION_SHUTDOWN_GRACE=30
 EVENT_LOOP_LAG_INTERVAL=1
-CAPACITY_LOG_INTERVAL=180
+CAPACITY_LOG_INTERVAL=30
 OUTBOUND_ALLOWED_CIDRS=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
 OUTBOUND_ALLOWED_DOMAINS=
 ```
 
 这些值是单 Pod、跨所有 Run 共享的容量。三类软配额必须为正整数，但不要求总和等于 160；
 三类同时积压时按 `100/30/30` 调度，某类无排队目标时，其他类可借满 160。新类别到达后不抢占
-在途目标，而是优先获得后续释放的槽位。`SNMP_MAX_IN_FLIGHT`、`SYNC_SDK_MAX_IN_FLIGHT`
-和 `REMOTE_JOB_MAX_IN_FLIGHT` 是第二维技术资源边界；两维都有容量时才创建目标 Task。配置非法时启动失败，
-不再支持用 `0` 隐式关闭边界。
+在途目标，而是优先获得后续释放的槽位。SNMP 不再拥有独立目标并发池，直接与其他异步采集共享
+全局 160；`SYNC_SDK_MAX_IN_FLIGHT` 和 `REMOTE_JOB_MAX_IN_FLIGHT` 仅作为对应阻塞资源的第二维技术
+边界。配置非法时启动失败，不再支持用 `0` 隐式关闭边界。
 
-`MAX_ACTIVE_RUNS` 仍保留 run 级准入；满了返回 busy/429。
+`MAX_ACTIVE_RUNS` 保留 Run 数量准入，`MAX_ACTIVE_RUN_TARGETS` 同时限制所有已接纳 Run 的目标总数；
+任一边界满了均返回 busy/429。为避免单个合法大 Run 永久无法执行，当前无活动 Run 时允许一个超过目标
+预算的 Run 独占执行；其结束前不再接纳其他 Run。
 
 SNMP 采集在每个 worker 进程内按凭据作用域共享 pysnmp `SnmpEngine`（v1/v2c 共用一个，
 v3 按用户名与密钥组合各一个），不再为每个目标新建 engine：pysnmp 每个 engine 首次解析 OID
@@ -149,12 +151,14 @@ P99 延迟 ≤25 ms）。`SNMP_ENGINE_MAX_TARGETS` 限制单个 engine 服务过
 发布失败、Redis 连接池等待/超时，以及凭据状态 Redis 错误。日志和指标只允许任务、目标、插件、凭据 ID 与稳定错误码，不得记录凭据
 正文。
 
-运行时默认每 3 分钟输出一次 `event=collection_capacity`，专门记录
+运行时默认每 30 秒输出一次 `event=collection_capacity`，专门记录
 `MAX_ACTIVE_TARGETS`（默认 160）全局异步目标槽位的已用、剩余、利用率和峰值，同时包含待调度
-目标/Run、发布队列利用率、事件循环 lag、进程 CPU/RSS/线程/FD，以及 cgroup CPU 限额、内存
-利用率和 CPU throttling 增量。可通过 `CAPACITY_LOG_INTERVAL` 调整周期；该日志用于压测后判断
+目标/Run、已接纳 Run 的目标总预算、发布队列与完整 payload 生命周期利用率、JetStream 本周期异常、
+事件循环 lag、进程 CPU/RSS/线程/FD，以及 cgroup v1/v2 CPU 限额、内存利用率和 CPU throttling
+增量。可通过 `CAPACITY_LOG_INTERVAL` 调整周期；该日志用于压测后判断
 是否调整 `MAX_ACTIVE_TARGETS`，不代表线程池并发。若 lag P99 持续超过 1 秒、CPU 限额利用率或
-cgroup 内存利用率持续超过 80%、发布队列长期超过 80%，或 throttling 增量持续增长，不应继续
+cgroup 内存利用率持续超过 80%、发布队列或 payload 生命周期容量长期超过 80%、PubAck 本周期持续
+超时/拒绝，或 throttling 增量持续增长，不应继续
 上调并发，应先定位事件循环阻塞、CPU/内存限额或发布瓶颈。健康接口中字段为 `-1` 表示当前平台
 不可采集。
 
@@ -175,6 +179,8 @@ cgroup 内存利用率持续超过 80%、发布队列长期超过 80%，或 thro
 - `collection_failure_samples`：存在失败时每个 Run 只输出一条 INFO，最多包含 3 个
   `target|failed_stage|error_code` 样本；协议无响应使用 `access_probe|protocol_no_response`，
   不伪装成插件代码异常，也不记录错误正文或凭据标识；
+- `ip_precheck_failed`：IP 预检存在不可达结果时每个 Run 只输出一条 WARNING，记录失败总数和最多
+  3 个 `target|error_code` 安全样本；出站策略拒绝不归入该事件；
 - `collection_run_summary`：中文“任务汇总”，包含总目标、采集成功/失败、不可达、延后处理、跳过、
   发布统计、总耗时、Top 8 聚合失败类型（其余合并为 `other`），以及最多 3 个脱敏失败样本；
 - `plugin_exception`：插件执行、协议预检或插件内部捕获到的每个异常均记录，包含 `task_id`、

@@ -3,6 +3,8 @@
 # @Time: 2025/3/31 14:35
 # @Author: windyzhao
 
+import asyncio
+
 try:
     from pysnmp.hlapi.asyncio import CommunityData, ContextData, ObjectIdentity, ObjectType, UdpTransportTarget, UsmUserData
     from pysnmp.hlapi.asyncio import bulkCmd as hlapi_bulk_cmd
@@ -59,6 +61,9 @@ OPTIONAL_FALLBACK_ROOTS = {
     "1.3.6.1.4.1.1991.1.1.3.20.1.2.1.1.6",
     "1.3.6.1.4.1.1991.1.1.3.20.1.2.1.1.7",
     "1.3.6.1.4.1.1991.1.1.3.20.1.2.1.1.8",
+    "1.3.6.1.4.1.2011.6.7.5.6.1.1",
+    "1.3.6.1.4.1.2011.6.7.5.6.1.2",
+    "1.3.6.1.4.1.2011.6.7.5.6.1.3",
     "1.3.6.1.2.1.17.7.1.2.2.1.2",
     "1.3.6.1.2.1.17.7.1.2.2.1.3",
 }
@@ -217,10 +222,12 @@ class SnmpAuth(object):
 
 
 class SnmpTopo:
+    REQUEST_TIMEOUT_SECONDS = 10
+    REQUEST_RETRIES = 1
     BASE_COLLECTION_PROTOCOLS = ("system", "arp", "interface", "ipaddr")
     # fdp 仅采集证据行（由 server 端流水线按 tag 解析），不参与 agent 侧 facts 构建
-    DEFAULT_TOPOLOGY_PROTOCOLS = ("lldp", "cdp", "fdp", "fdb", "arp")
-    SUPPORTED_TOPOLOGY_FACT_PROTOCOLS = ("lldp", "cdp", "fdb", "arp")
+    DEFAULT_TOPOLOGY_PROTOCOLS = ("lldp", "huawei_ndp", "cdp", "fdp", "fdb", "arp")
+    SUPPORTED_TOPOLOGY_FACT_PROTOCOLS = ("lldp", "huawei_ndp", "cdp", "fdb", "arp")
 
     def __init__(self, kwargs):
         """
@@ -238,8 +245,9 @@ class SnmpTopo:
         self.privacy = kwargs.get("privacy")
         self.authkey = kwargs.get("authkey")
         self.privkey = kwargs.get("privkey")
-        self.timeout = int(kwargs.get("timeout", 10))
-        self.retries = int(kwargs.get("retries", 1))
+        # 表单 timeout 是单设备拓扑采集总预算，不作为单次 SNMP 请求超时。
+        self.timeout = self.REQUEST_TIMEOUT_SECONDS
+        self.retries = self.REQUEST_RETRIES
         self.snmp_port = int(kwargs.get("snmp_port", 161))  # 默认 SNMP 端口为 161
         self.topology_protocols = kwargs.get("topology_protocols")
         self.oids = self._build_oids(self.topology_protocols)
@@ -259,6 +267,7 @@ class SnmpTopo:
         self.auth = self.snmp_auth_obj.auth()
         self.transport_opts = self.snmp_auth_obj.get_transport_opts()
         self.collection_task_id = kwargs.get("collection_task_id")
+        self._runtime_metrics = kwargs.get("_runtime_metrics")
 
     def _transport_target(self):
         return UdpTransportTarget(
@@ -354,7 +363,7 @@ class SnmpTopo:
         initial_roots = [str(oid).lstrip(".") for oid in self.oids]
         target = self._transport_target()
         context = ContextData()
-        var_bind_table = []
+        records = []
         null_var_binds = [False] * len(initial_roots)
         stop_flag = False
 
@@ -408,10 +417,20 @@ class SnmpTopo:
                 if stop_flag:
                     break
                 processed_rows.append(row)
-                var_bind_table.append(row)
+                records.extend(self._format_result([row], eval_oids))
                 var_binds = row
+            if processed_rows:
+                await self._yield_walk_loop()
 
-        return self._format_result(var_bind_table, eval_oids)
+        return records
+
+    async def _yield_walk_loop(self):
+        """在每个 WALK PDU 转换完成后把控制权交还事件循环。"""
+
+        increment = getattr(self._runtime_metrics, "increment", None)
+        if callable(increment):
+            increment("snmp_walk_yield_total")
+        await asyncio.sleep(0)
 
     @staticmethod
     def _is_retryable_fallback_error(error):
@@ -432,15 +451,23 @@ class SnmpTopo:
     def _is_scalar_oid(root_oid):
         return get_oid_meta(root_oid).get("ifindex_type") == "scalar"
 
-    async def _next_walk_oid(self, oid, *, ignore_non_increasing_oid=True):
+    async def _next_walk_oid(self, oid, *, ignore_non_increasing_oid=True, row_consumer=None):
         async with self._shared_engine() as engine:
             return await self._next_walk_oid_with_engine(
                 oid,
                 engine,
                 ignore_non_increasing_oid=ignore_non_increasing_oid,
+                row_consumer=row_consumer,
             )
 
-    async def _next_walk_oid_with_engine(self, oid, engine, *, ignore_non_increasing_oid=True):
+    async def _next_walk_oid_with_engine(
+        self,
+        oid,
+        engine,
+        *,
+        ignore_non_increasing_oid=True,
+        row_consumer=None,
+    ):
         target = self._transport_target()
         context = ContextData()
         var_binds = self._format_oids([oid])
@@ -488,18 +515,27 @@ class SnmpTopo:
             if stop_flag:
                 break
 
-            var_bind_table.append(row)
+            if row_consumer is None:
+                var_bind_table.append(row)
+            else:
+                row_consumer(row)
             var_binds = row
+            await self._yield_walk_loop()
 
         return None, 0, 0, var_bind_table
 
     async def _walk_oid_with_next_cmd(self, oid):
+        records = []
+
+        def append_records(row):
+            records.extend(self._format_result([row], [oid]))
+
         (
             errorIndication,
             errorStatus,
             errorIndex,
             varBindTable,
-        ) = await self._next_walk_oid(oid)
+        ) = await self._next_walk_oid(oid, row_consumer=append_records)
         if errorIndication:
             if self._is_retryable_fallback_error(errorIndication):
                 logger.warning(f"Skipping OID subtree host={self.host} oid={oid}: {errorIndication}")
@@ -510,7 +546,7 @@ class SnmpTopo:
                 logger.warning(f"Skipping OID subtree host={self.host} oid={oid}: {errorStatus.prettyPrint()}")
                 return FallbackOidResult(records=[], skipped=True)
             raise RuntimeError(f"SNMP error: {errorStatus.prettyPrint()} (oid={oid})")
-        return FallbackOidResult(records=self._format_result(varBindTable, [oid]))
+        return FallbackOidResult(records=records)
 
     async def _get_scalar_oid(self, oid):
         async with self._shared_engine() as engine:
@@ -575,6 +611,12 @@ class SnmpTopo:
 
     @staticmethod
     def _extract_cdp_local_ifindex(index_value):
+        if not index_value:
+            return None
+        return str(index_value).split(".", 1)[0]
+
+    @staticmethod
+    def _extract_huawei_ndp_local_ifindex(index_value):
         if not index_value:
             return None
         return str(index_value).split(".", 1)[0]
@@ -654,6 +696,47 @@ class SnmpTopo:
         return facts
 
     @classmethod
+    def _build_huawei_ndp_topology_facts(cls, snmp_rows):
+        interface_names = cls._build_interface_names(snmp_rows)
+        remote_ports = {str(row.get(IF_INDEX)): row for row in snmp_rows if row.get(TAG) == "HNDP-RemPortName" and row.get(IF_INDEX)}
+        remote_systems = {str(row.get(IF_INDEX)): row for row in snmp_rows if row.get(TAG) == "HNDP-RemDeviceName" and row.get(IF_INDEX)}
+        remote_devices = [row for row in snmp_rows if row.get(TAG) == "HNDP-RemDeviceId" and row.get(IF_INDEX)]
+
+        facts = []
+        for remote_device in remote_devices:
+            neighbor_index = str(remote_device.get(IF_INDEX))
+            local_ifindex = cls._extract_huawei_ndp_local_ifindex(neighbor_index)
+            remote_port = remote_ports.get(neighbor_index)
+            if not local_ifindex or not remote_port:
+                continue
+            remote_system = remote_systems.get(neighbor_index)
+            remote_port_name = remote_port.get(VAL)
+            facts.append(
+                cls.build_topology_fact(
+                    "huawei_ndp",
+                    {
+                        "local_device_id": None,
+                        "local_port_id": local_ifindex,
+                        "local_port_name": interface_names.get(local_ifindex),
+                        "remote_device_id": remote_device.get(VAL),
+                        "remote_port_id": remote_port_name,
+                        "remote_port_name": remote_port_name,
+                    },
+                    raw_evidence={
+                        "local_port": {
+                            TAG: "IFTable-IfDescr",
+                            IF_INDEX: local_ifindex,
+                            VAL: interface_names.get(local_ifindex),
+                        },
+                        "remote_device": remote_device,
+                        "remote_port": remote_port,
+                        "remote_system": remote_system,
+                    },
+                )
+            )
+        return facts
+
+    @classmethod
     def _build_interface_names(cls, snmp_rows):
         interface_names = {}
         for row in snmp_rows:
@@ -721,6 +804,8 @@ class SnmpTopo:
             protocols = cls.normalize_enabled_protocols(enabled_protocols)
         if "lldp" in protocols:
             facts.extend(cls._build_lldp_topology_facts(snmp_rows))
+        if "huawei_ndp" in protocols:
+            facts.extend(cls._build_huawei_ndp_topology_facts(snmp_rows))
         if "cdp" in protocols:
             facts.extend(cls._build_cdp_topology_facts(snmp_rows))
         if "fdb" in protocols:

@@ -18,16 +18,7 @@ import {
   Tooltip,
   message,
 } from 'antd';
-import {
-  ApiOutlined,
-  BranchesOutlined,
-  CheckCircleFilled,
-  ClusterOutlined,
-  DatabaseOutlined,
-  ExportOutlined,
-  PlusOutlined,
-  SafetyCertificateOutlined,
-} from '@ant-design/icons';
+import { BranchesOutlined, DatabaseOutlined, ExportOutlined, PlusOutlined } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
 import ExecutionStatusBadge from '@/components/execution-status-badge';
 import CompactEmptyState from '@/components/compact-empty-state';
@@ -37,29 +28,30 @@ import { getNetworkDeviceOptions } from '@/app/cmdb/constants/professCollection'
 import { useTranslation } from '@/utils/i18n';
 import { isScanExecutionBusy } from './scanExecutionStatus';
 import { SCAN_FAMILIES } from './ScanTaskDrawer';
+import ScanDeviceTypePicker from './ScanDeviceTypePicker';
+import ScanUnmatchedGroupTable from './ScanUnmatchedGroupTable';
+import { summarizeScanBatchResult, type ScanBatchKind } from './scanHitBatch';
+import {
+  EMPTY_SOID_KEY,
+  GROUP_PAGE_SIZE,
+  HIT_FETCH_SIZE,
+  SCAN_PERMISSION_PATH,
+  SOID_LIBRARY_PATH,
+  TABLE_PAGE_SIZE,
+  TERMINAL_STATUSES,
+  displayValue,
+  groupDbUnmatchedByFamily,
+  groupNetworkUnmatchedBySoid,
+  hitSoid,
+  oidLibraryUrl,
+  portLibraryUrl,
+  snapshotText,
+  sortedMatchedFamilies,
+  type ScanExecutionSummary,
+  type ScanHitItem,
+} from './scanHits';
 
-export interface ScanExecutionSummary {
-  id: number;
-  status: string;
-  target_count: number;
-  received_count: number;
-}
-
-export interface ScanHitItem {
-  id: number;
-  host: string;
-  protocol: string;
-  family_model_id?: string;
-  status: string;
-  soid: string;
-  cmdb_model_id: string;
-  credential_id: string;
-  credential_label?: string;
-  inst_uuid: string;
-  port?: number;
-  unmatch_reason?: string;
-  snapshot?: Record<string, unknown>;
-}
+export type { ScanExecutionSummary, ScanHitItem } from './scanHits';
 
 interface ScanHitsDrawerProps {
   open: boolean;
@@ -67,109 +59,13 @@ interface ScanHitsDrawerProps {
   onClose: () => void;
 }
 
-const TERMINAL_STATUSES = new Set(['completed', 'failed', 'timed_out']);
-const HIT_FETCH_SIZE = 200;
-const TABLE_PAGE_SIZE = 20;
-const GROUP_PAGE_SIZE = 10;
-const SOID_LIBRARY_PATH = '/cmdb/assetManage/autoDiscovery/featureLibrary/soid';
-const PORT_LIBRARY_PATH = '/cmdb/assetManage/autoDiscovery/featureLibrary/port';
-const SCAN_PERMISSION_PATH = '/cmdb/assetManage/autoDiscovery/collection';
-const EMPTY_SOID_KEY = '__empty_soid__';
-
-const displayValue = (value: unknown) => {
-  if (value === null || value === undefined || value === '') {
-    return '--';
-  }
-  return String(value);
-};
-
-const snapshotText = (hit: ScanHitItem, keys: string[]) => {
-  const snapshot = hit.snapshot || {};
-  for (const key of keys) {
-    const value = snapshot[key];
-    if (value !== null && value !== undefined && value !== '') {
-      return String(value);
-    }
-  }
-  return '--';
-};
-
-const hitSoid = (hit: ScanHitItem) => {
-  const fromField = String(hit.soid || '').trim();
-  if (fromField) {
-    return fromField;
-  }
-  const snapshot = hit.snapshot || {};
-  for (const key of ['soid', 'sysobjectid', 'sysObjectID']) {
-    const value = snapshot[key];
-    if (value !== null && value !== undefined && value !== '') {
-      return String(value).trim();
-    }
-  }
-  return '';
-};
-
-const oidLibraryUrl = (soid: string) => `${SOID_LIBRARY_PATH}?oid=${encodeURIComponent(soid)}`;
-const portLibraryUrl = (targetType: string) =>
-  `${PORT_LIBRARY_PATH}?type=${encodeURIComponent(targetType)}`;
-
-const DEVICE_TYPE_ICONS: Record<string, React.ReactNode> = {
-  switch: <BranchesOutlined className="text-xl" />,
-  router: <ApiOutlined className="text-xl" />,
-  firewall: <SafetyCertificateOutlined className="text-xl" />,
-  loadbalance: <ClusterOutlined className="text-xl" />,
-};
-
-const UnmatchedGroupTable: React.FC<{
-  columns: Array<Record<string, unknown>>;
-  hits: ScanHitItem[];
-  selectedHitIds: number[];
-  onSelectedChange: (nextIds: number[], visibleIds: number[]) => void;
-}> = ({ columns, hits, selectedHitIds, onSelectedChange }) => {
-  const [page, setPage] = useState(1);
-  const pagedHits = useMemo(() => {
-    const start = (page - 1) * TABLE_PAGE_SIZE;
-    return hits.slice(start, start + TABLE_PAGE_SIZE);
-  }, [hits, page]);
-
-  return (
-    <div>
-      <CustomTable
-        rowKey="id"
-        columns={columns}
-        dataSource={pagedHits}
-        rowSelection={{
-          selectedRowKeys: selectedHitIds,
-          onChange: (keys) =>
-            onSelectedChange(
-              keys as number[],
-              pagedHits.map((item) => item.id)
-            ),
-        }}
-        pagination={false}
-      />
-      {hits.length > TABLE_PAGE_SIZE ? (
-        <div className="flex justify-end p-2.5">
-          <Pagination
-            size="small"
-            current={page}
-            pageSize={TABLE_PAGE_SIZE}
-            total={hits.length}
-            showSizeChanger={false}
-            onChange={(next) => setPage(next)}
-          />
-        </div>
-      ) : null}
-    </div>
-  );
-};
-
 const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClose }) => {
   const { t } = useTranslation();
   const {
     getScanExecution,
     getScanHits,
-    generateCollect,
+    writeCmdb,
+    writeCmdbAndGenerateCollect,
     pushMonitor,
     classifyHits,
     rematchSoid,
@@ -204,7 +100,7 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
 
   // 快捷选类型弹窗（网络未匹配）
   const [classifyOpen, setClassifyOpen] = useState(false);
-  const [classifyKind, setClassifyKind] = useState<'collect' | 'monitor'>('monitor');
+  const [classifyKind, setClassifyKind] = useState<'cmdb' | 'collect'>('cmdb');
   const [pendingUnmatchedIds, setPendingUnmatchedIds] = useState<number[]>([]);
   const [pendingValidExportIds, setPendingValidExportIds] = useState<number[]>([]);
 
@@ -328,15 +224,7 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
     return unmatchedHits.filter((hit) => hit.unmatch_reason === 'credential_failed');
   }, [unmatchedHits]);
 
-  const matchedFamilies = useMemo(() => {
-    const order = ['network', 'host', 'physcial_server', 'database', 'mysql', 'postgresql', 'mssql', 'influxdb'];
-    const present = new Set(matchedHits.map((hit) => hit.family_model_id || hit.protocol || 'unknown'));
-    return [...present].sort((a, b) => {
-      const ai = order.indexOf(a);
-      const bi = order.indexOf(b);
-      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-    });
-  }, [matchedHits]);
+  const matchedFamilies = useMemo(() => sortedMatchedFamilies(matchedHits), [matchedHits]);
 
   useEffect(() => {
     if (!matchedFamilies.length) {
@@ -353,37 +241,15 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
     [familyTab, matchedHits]
   );
 
-  // 网络未匹配按 SOID 分组
-  const networkUnmatchedGroups = useMemo(() => {
-    const grouped = new Map<string, ScanHitItem[]>();
-    networkUnmatchedHits.forEach((hit) => {
-      const key = hitSoid(hit) || EMPTY_SOID_KEY;
-      const list = grouped.get(key) || [];
-      list.push(hit);
-      grouped.set(key, list);
-    });
-    return [...grouped.entries()]
-      .sort((a, b) => {
-        if (a[0] === EMPTY_SOID_KEY) return 1;
-        if (b[0] === EMPTY_SOID_KEY) return -1;
-        return b[1].length - a[1].length;
-      })
-      .map(([soid, groupHits]) => ({ soid, hits: groupHits }));
-  }, [networkUnmatchedHits]);
+  const networkUnmatchedGroups = useMemo(
+    () => groupNetworkUnmatchedBySoid(networkUnmatchedHits),
+    [networkUnmatchedHits]
+  );
 
-  // 数据库未匹配按 family_model_id 分组
-  const dbUnmatchedGroups = useMemo(() => {
-    const grouped = new Map<string, ScanHitItem[]>();
-    dbUnmatchedHits.forEach((hit) => {
-      const key = hit.family_model_id || hit.protocol || 'database';
-      const list = grouped.get(key) || [];
-      list.push(hit);
-      grouped.set(key, list);
-    });
-    return [...grouped.entries()]
-      .sort((a, b) => b[1].length - a[1].length)
-      .map(([familyModelId, groupHits]) => ({ familyModelId, hits: groupHits }));
-  }, [dbUnmatchedHits]);
+  const dbUnmatchedGroups = useMemo(
+    () => groupDbUnmatchedByFamily(dbUnmatchedHits),
+    [dbUnmatchedHits]
+  );
 
   const pagedFamilyHits = useMemo(() => {
     const start = (matchedPage - 1) * TABLE_PAGE_SIZE;
@@ -411,53 +277,34 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
     });
   };
 
-  const handleBatchResult = (
-    kind: 'collect' | 'monitor',
-    result: Record<string, number> & { items?: Array<{ status?: string; reason?: string; host?: string }> }
-  ) => {
-    if (kind === 'collect') {
-      const created = result?.created ?? 0;
-      const appended = result?.appended ?? 0;
-      const skipped = result?.skipped ?? 0;
-      const failed = result?.failed ?? 0;
-      if (failed || skipped || appended || created === 0) {
-        message.warning(t('Scan.generateCollectPartial', undefined, { created, appended, skipped, failed }));
-      } else {
-        message.success(t('Scan.generateCollectDone', undefined, { count: created }));
-      }
+  const handleBatchResult = (kind: ScanBatchKind, result: Parameters<typeof summarizeScanBatchResult>[2]) => {
+    const toast = summarizeScanBatchResult(t, kind, result);
+    if (toast.kind === 'warning') {
+      message.warning(toast.text);
       return;
     }
-    const pushed = result?.pushed ?? 0;
-    const failed = result?.failed ?? 0;
-    const skipped = result?.skipped ?? 0;
-    const items = Array.isArray(result?.items) ? result.items : [];
-    const reasons = items
-      .filter((item) => item.status !== 'pushed' && item.reason)
-      .slice(0, 3)
-      .map((item) => `${item.host || '-'}: ${item.reason}`)
-      .join('；');
-    if (failed || skipped || pushed === 0) {
-      const summary = t('Scan.pushMonitorPartial', undefined, { pushed, failed, skipped });
-      message.warning(reasons ? `${summary}（${reasons}）` : summary);
-    } else {
-      message.success(t('Scan.pushMonitorDone', undefined, { count: pushed }));
-    }
+    message.success(toast.text);
   };
 
-  const runExport = async (kind: 'collect' | 'monitor', hitIds: number[]) => {
+  const runExport = async (kind: ScanBatchKind, hitIds: number[]) => {
     if (!activeExecution?.id || !hitIds.length) {
       return;
     }
-    if (kind === 'collect') {
-      const result = await generateCollect(activeExecution.id, hitIds);
-      handleBatchResult('collect', result);
-    } else {
-      const result = await pushMonitor(activeExecution.id, hitIds);
-      handleBatchResult('monitor', result);
+    if (kind === 'cmdb') {
+      const result = await writeCmdb(activeExecution.id, hitIds);
+      handleBatchResult('cmdb', result);
+      return;
     }
+    if (kind === 'collect') {
+      const result = await writeCmdbAndGenerateCollect(activeExecution.id, hitIds);
+      handleBatchResult('collect', result);
+      return;
+    }
+    const result = await pushMonitor(activeExecution.id, hitIds);
+    handleBatchResult('monitor', result);
   };
 
-  const handleBatch = async (kind: 'collect' | 'monitor') => {
+  const handleBatch = async (kind: ScanBatchKind) => {
     if (!activeExecution?.id) {
       return;
     }
@@ -473,22 +320,26 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
     );
     const matchedSelected = selectedHits.filter((item) => !item.unmatch_reason);
 
-    // 若只勾选了数据库未匹配项
     if (dbUnmatchedSelected.length > 0 && networkUnmatchedSelected.length === 0 && matchedSelected.length === 0) {
       message.warning(t('Scan.dbUnmatchedOnlyCreateCi'));
       return;
     }
 
-    // 过滤掉数据库未匹配项
     const validExportHits = [...networkUnmatchedSelected, ...matchedSelected];
     const validExportIds = validExportHits.map((item) => item.id);
 
+    if (kind === 'monitor' && networkUnmatchedSelected.length > 0) {
+      message.warning(t('Scan.needWriteCmdbFirst'));
+      return;
+    }
+
     if (networkUnmatchedSelected.length > 0) {
+      // 网络未分类必须先选类型，再走写入 / 生成。
       if (!canSplitUnmatched) {
         message.warning(t('Scan.awaitingFinalize'));
         return;
       }
-      setClassifyKind(kind);
+      setClassifyKind(kind === 'collect' ? 'collect' : 'cmdb');
       setPendingUnmatchedIds(networkUnmatchedSelected.map((item) => item.id));
       setPendingValidExportIds(validExportIds);
       classifyForm.setFieldsValue({ cmdb_model_id: undefined });
@@ -499,9 +350,12 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
     setBatchLoading(true);
     try {
       await runExport(kind, validExportIds);
+      await fetchAllHits(activeExecution.id, { silent: true });
     } catch (error) {
       console.error(error);
-      message.error(kind === 'collect' ? t('Scan.generateCollectFailed') : t('Scan.pushMonitorFailed'));
+      message.error(
+        kind === 'monitor' ? t('Scan.pushMonitorFailed') : kind === 'collect' ? t('Scan.generateCollectFailed') : t('Scan.writeCmdbFailed')
+      );
     } finally {
       setBatchLoading(false);
     }
@@ -520,7 +374,7 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
       await fetchAllHits(activeExecution.id, { silent: true });
     } catch (error) {
       console.error(error);
-      message.error(classifyKind === 'collect' ? t('Scan.generateCollectFailed') : t('Scan.pushMonitorFailed'));
+      message.error(classifyKind === 'collect' ? t('Scan.generateCollectFailed') : t('Scan.writeCmdbFailed'));
     } finally {
       setBatchLoading(false);
     }
@@ -822,7 +676,7 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
   );
 
   const actionsDisabled = hitsLoading || !canSplitUnmatched;
-  const exportDisabled = hitsLoading || isOnlyDbUnmatchedSelected;
+  const exportDisabled = hitsLoading || isOnlyDbUnmatchedSelected || !selectedHitIds.length || !canSplitUnmatched;
   const targetCount = activeExecution?.target_count ?? 0;
   const receivedCount = activeExecution?.received_count ?? 0;
   const progressPercent = targetCount ? Math.min(100, Math.round((receivedCount / targetCount) * 100)) : 0;
@@ -856,8 +710,13 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
           </div>
           <Space>
             <PermissionWrapper requiredPermissions={['Execute']} permissionPath={SCAN_PERMISSION_PATH}>
+              <Button loading={batchLoading} disabled={exportDisabled} onClick={() => handleBatch('cmdb')}>
+                {t('Scan.writeCmdb')}
+              </Button>
+            </PermissionWrapper>
+            <PermissionWrapper requiredPermissions={['Execute']} permissionPath={SCAN_PERMISSION_PATH}>
               <Button loading={batchLoading} disabled={exportDisabled} onClick={() => handleBatch('collect')}>
-                {t('Scan.generateCollect')}
+                {t('Scan.writeCmdbAndGenerate')}
               </Button>
             </PermissionWrapper>
             <PermissionWrapper requiredPermissions={['Execute']} permissionPath={SCAN_PERMISSION_PATH}>
@@ -1137,7 +996,7 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
                                   </Space>
                                 </div>
 
-                                <UnmatchedGroupTable
+                                <ScanUnmatchedGroupTable
                                   columns={networkUnmatchedColumns}
                                   hits={group.hits}
                                   selectedHitIds={selectedHitIds}
@@ -1231,7 +1090,7 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
                                   </Space>
                                 </div>
 
-                                <UnmatchedGroupTable
+                                <ScanUnmatchedGroupTable
                                   columns={dbUnmatchedColumns}
                                   hits={group.hits}
                                   selectedHitIds={selectedHitIds}
@@ -1303,31 +1162,12 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
             name="device_type"
             rules={[{ required: true, message: t('required') }]}
           >
-            <div className="grid grid-cols-2 gap-2.5">
-              {deviceTypeList.map((option) => {
-                const isSelected = selectedFingerprintType === option.key;
-                return (
-                  <button
-                    type="button"
-                    key={option.key}
-                    onClick={() => fingerprintForm.setFieldsValue({ device_type: option.key })}
-                    className={`relative flex items-center gap-2.5 rounded-lg border p-2.5 text-left transition-all ${
-                      isSelected
-                        ? 'border-[var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_8%,transparent)] font-medium text-[var(--color-primary)]'
-                        : 'border-[var(--color-border-2)] bg-[var(--color-bg-1)] hover:border-[var(--color-primary)] hover:bg-[var(--color-fill-1)]'
-                    }`}
-                  >
-                    <div className={isSelected ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-3)]'}>
-                      {DEVICE_TYPE_ICONS[option.key] || <BranchesOutlined className="text-xl" />}
-                    </div>
-                    <span className="text-sm">{option.label}</span>
-                    {isSelected ? (
-                      <CheckCircleFilled className="absolute right-2 top-2 text-xs text-[var(--color-primary)]" />
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
+            <ScanDeviceTypePicker
+              compact
+              options={deviceTypeList}
+              value={selectedFingerprintType}
+              onChange={(key) => fingerprintForm.setFieldsValue({ device_type: key })}
+            />
           </Form.Item>
           <Form.Item
             label={t('OidLibrary.brand')}
@@ -1418,34 +1258,11 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
             rules={[{ required: true, message: t('required') }]}
             className="!mb-2"
           >
-            <div className="grid grid-cols-2 gap-3">
-              {deviceTypeList.map((option) => {
-                const isSelected = selectedModelId === option.key;
-                return (
-                  <button
-                    type="button"
-                    key={option.key}
-                    onClick={() => classifyForm.setFieldsValue({ cmdb_model_id: option.key })}
-                    className={`relative flex items-center gap-3 rounded-lg border p-3 text-left transition-all ${
-                      isSelected
-                        ? 'border-[var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_8%,transparent)] font-medium text-[var(--color-primary)] shadow-sm'
-                        : 'border-[var(--color-border-2)] bg-[var(--color-bg-1)] hover:border-[var(--color-primary)] hover:bg-[var(--color-fill-1)]'
-                    }`}
-                  >
-                    <div className={isSelected ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-3)]'}>
-                      {DEVICE_TYPE_ICONS[option.key] || <BranchesOutlined className="text-xl" />}
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="text-sm font-medium">{option.label}</span>
-                      <span className="text-[11px] text-[var(--color-text-4)] uppercase">{option.key}</span>
-                    </div>
-                    {isSelected ? (
-                      <CheckCircleFilled className="absolute right-2.5 top-2.5 text-sm text-[var(--color-primary)]" />
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
+            <ScanDeviceTypePicker
+              options={deviceTypeList}
+              value={selectedModelId}
+              onChange={(key) => classifyForm.setFieldsValue({ cmdb_model_id: key })}
+            />
           </Form.Item>
         </Form>
       </Modal>

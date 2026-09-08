@@ -194,6 +194,7 @@ class SnmpFacts:
         max_rows=20000,
         max_response_bytes=16 * 1024 * 1024,
         deadline_seconds=60,
+        row_consumer=None,
     ):
         """
         原生异步 GETNEXT 遍历，行为对齐 oneliner CommandGenerator.nextCmd
@@ -208,6 +209,7 @@ class SnmpFacts:
         previous_oid_keys = [_oid_sort_key(root) for root in initial_roots]
         response_bytes = 0
         pdu_count = 0
+        row_count = 0
         deadline = asyncio.get_running_loop().time() + deadline_seconds
 
         while var_binds:
@@ -263,10 +265,15 @@ class SnmpFacts:
             if stop_flag:
                 break
 
-            var_bind_table.append(row)
-            if len(var_bind_table) > max_rows:
+            row_count += 1
+            if row_count > max_rows:
                 return RuntimeError("GETNEXT row limit exceeded"), 0, 0, var_bind_table
+            if row_consumer is None:
+                var_bind_table.append(row)
+            else:
+                row_consumer(row)
             var_binds = row
+            await self._yield_walk_loop()
 
         return None, 0, 0, var_bind_table
 
@@ -282,6 +289,7 @@ class SnmpFacts:
         max_rows=20000,
         max_response_bytes=16 * 1024 * 1024,
         deadline_seconds=60,
+        row_consumer=None,
     ):
         """使用 GETBULK 遍历多个接口列，并保持每列在自己的根 OID 内。"""
 
@@ -295,6 +303,7 @@ class SnmpFacts:
         previous_oid_keys = [_oid_sort_key(root) for root in initial_roots]
         response_bytes = 0
         pdu_count = 0
+        row_count = 0
         current_max_repetitions = max_repetitions
         deadline = asyncio.get_running_loop().time() + deadline_seconds
 
@@ -351,15 +360,28 @@ class SnmpFacts:
                 if all(value is endOfMibView or isinstance(value, EndOfMibView) for _name, value in row):
                     break
                 processed_rows.append(row)
-                var_bind_table.append(row)
-                if len(var_bind_table) > max_rows:
+                row_count += 1
+                if row_count > max_rows:
                     return RuntimeError("GETBULK row limit exceeded"), 0, 0, var_bind_table
+                if row_consumer is None:
+                    var_bind_table.append(row)
+                else:
+                    row_consumer(row)
                 previous_var_binds = row
             if not processed_rows:
                 break
             var_binds = processed_rows[-1]
+            await self._yield_walk_loop()
 
         return None, 0, 0, var_bind_table
+
+    async def _yield_walk_loop(self):
+        """在每个 WALK PDU 转换完成后把控制权交还事件循环。"""
+
+        increment = getattr(self._runtime_metrics, "increment", None)
+        if callable(increment):
+            increment("snmp_walk_yield_total")
+        await asyncio.sleep(0)
 
     @staticmethod
     def _is_too_big_error(error) -> bool:
@@ -460,55 +482,10 @@ class SnmpFacts:
                 raise RuntimeError(f"Error during SNMP system information collection: {str(e)}")
 
             try:
-                errorIndication, errorStatus, errorIndex, varTable = await self._bulk_walk(
-                    engine,
-                    [
-                        p.ifIndex,
-                        p.ifDescr,
-                        p.ifMtu,
-                        p.ifSpeed,
-                        p.ifPhysAddress,
-                        p.ifAdminStatus,
-                        p.ifOperStatus,
-                        p.ifAlias,
-                    ],
-                    timeout=self.timeout,
-                    retries=self.retries,
-                )
-                walk_error = errorIndication or errorStatus
-                if walk_error and self._is_getbulk_fallback_error(walk_error):
-                    increment = getattr(self._runtime_metrics, "increment", None)
-                    if callable(increment):
-                        increment("snmp_getbulk_fallback_total")
-                    logger.warning(
-                        "event=snmp_getbulk_fallback host=%s error_type=%s",
-                        self.host,
-                        type(walk_error).__name__,
-                    )
-                    errorIndication, errorStatus, errorIndex, varTable = await self._next_walk(
-                        engine,
-                        [
-                            p.ifIndex,
-                            p.ifDescr,
-                            p.ifMtu,
-                            p.ifSpeed,
-                            p.ifPhysAddress,
-                            p.ifAdminStatus,
-                            p.ifOperStatus,
-                            p.ifAlias,
-                        ],
-                        timeout=self.timeout,
-                        retries=self.retries,
-                        lexicographic_mode=False,
-                    )
-                if errorIndication:
-                    raise RuntimeError(f"SNMP interface walk failed: {errorIndication}")
-                if errorStatus:
-                    raise RuntimeError(f"SNMP interface walk failed: {errorStatus}")
 
-                for varBinds in varTable:
+                def append_interface(var_binds):
                     interface = {}
-                    for oid, val in varBinds:
+                    for oid, val in var_binds:
                         current_oid = oid.prettyPrint()
                         current_val = val.prettyPrint()
                         if current_oid.startswith(v.ifIndex):
@@ -529,6 +506,57 @@ class SnmpFacts:
                             interface["alias"] = current_val
                     if interface:
                         results["interfaces"].append(interface)
+
+                errorIndication, errorStatus, errorIndex, varTable = await self._bulk_walk(
+                    engine,
+                    [
+                        p.ifIndex,
+                        p.ifDescr,
+                        p.ifMtu,
+                        p.ifSpeed,
+                        p.ifPhysAddress,
+                        p.ifAdminStatus,
+                        p.ifOperStatus,
+                        p.ifAlias,
+                    ],
+                    timeout=self.timeout,
+                    retries=self.retries,
+                    row_consumer=append_interface,
+                )
+                walk_error = errorIndication or errorStatus
+                if walk_error and self._is_getbulk_fallback_error(walk_error):
+                    increment = getattr(self._runtime_metrics, "increment", None)
+                    if callable(increment):
+                        increment("snmp_getbulk_fallback_total")
+                    logger.warning(
+                        "event=snmp_getbulk_fallback host=%s error_type=%s",
+                        self.host,
+                        type(walk_error).__name__,
+                    )
+                    # GETBULK 失败前可能已产生部分结果；GETNEXT 会从头重试。
+                    results["interfaces"].clear()
+                    errorIndication, errorStatus, errorIndex, varTable = await self._next_walk(
+                        engine,
+                        [
+                            p.ifIndex,
+                            p.ifDescr,
+                            p.ifMtu,
+                            p.ifSpeed,
+                            p.ifPhysAddress,
+                            p.ifAdminStatus,
+                            p.ifOperStatus,
+                            p.ifAlias,
+                        ],
+                        timeout=self.timeout,
+                        retries=self.retries,
+                        lexicographic_mode=False,
+                        row_consumer=append_interface,
+                    )
+                if errorIndication:
+                    raise RuntimeError(f"SNMP interface walk failed: {errorIndication}")
+                if errorStatus:
+                    raise RuntimeError(f"SNMP interface walk failed: {errorStatus}")
+
             except Exception as e:
                 raise RuntimeError(f"Error during SNMP interface information collection: {str(e)}")
 

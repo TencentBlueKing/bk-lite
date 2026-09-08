@@ -1,0 +1,14 @@
+[
+  {
+    "ID": "0",
+    "NAME": "aSV_Cluster01_LUN001",
+    "WWN": "6abcdef0123456789",
+    "CAPACITY": "2147483648",
+    "ALLOCCAPACITY": "1073741824",
+    "ALLOCTYPE": "1",
+    "PARENTNAME": "StoragePool001",
+    "SECTORSIZE": "512",
+    "USAGETYPE": "1",
+    "RUNNINGSTATUS": "27"
+  }
+]

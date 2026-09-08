@@ -28,6 +28,8 @@ class EventModelSerializer(AuthSerializer):
             "start_time": {"read_only": True},
             "end_time": {"read_only": True},
             "received_at": {"read_only": True},
+            "monitor_id": {"read_only": True},
+            "cmdb_id": {"read_only": True},
             "labels": {"write_only": True},
             # "raw_data": {"write_only": True},
         }

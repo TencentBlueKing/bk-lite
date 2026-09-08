@@ -32,13 +32,16 @@ def test_compose_architecture_tree_keeps_system_app_host_edges():
         },
         hosts_by_application={"app-1": ["host-1"], "app-2": ["host-2"]},
         hosts={
-            "host-1": {"name": "web-1", "health": _health()},
+            "host-1": {"name": "web-1", "health": _health(), "ip_addr": "192.168.1.10", "os_name": "Ubuntu 22.04"},
             "host-2": {"name": "web-2", "health": _health()},
         },
     )
 
     assert tree["systemId"] == "sys-1"
     assert [node["id"] for node in tree["nodes"]] == ["sys-1", "app-1", "host-1", "app-2", "host-2"]
+    host_1_node = next(node for node in tree["nodes"] if node["id"] == "host-1")
+    assert host_1_node.get("ip_addr") == "192.168.1.10"
+    assert host_1_node.get("os_name") == "Ubuntu 22.04"
     assert [node["kind"] for node in tree["nodes"]] == ["system", "application", "host", "application", "host"]
     assert {(edge["sourceId"], edge["targetId"], edge["relation"]) for edge in tree["edges"]} == {
         ("sys-1", "app-1", "system_contains_application"),

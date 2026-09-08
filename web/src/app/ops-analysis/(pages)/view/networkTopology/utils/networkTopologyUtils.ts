@@ -347,9 +347,17 @@ export interface LinkDetailPortRow {
 
 export interface LinkInterfaceMetricRow {
   key: string;
+  groupKey: string;
+  endpoint?: 'source' | 'target';
   interfaceName: string;
   metricLabel: string;
   value: string;
+}
+
+export interface LinkInterfaceMetricGroup {
+  key: string;
+  interfaceName: string;
+  metrics: Array<{ key: string; metricLabel: string; value: string }>;
 }
 
 export const DEFAULT_LINK_INTERFACE_METRICS = [
@@ -524,10 +532,14 @@ export const buildLinkInterfaceMetricRows = (
   if (runtimeInterfaces.length > 0) {
     return runtimeInterfaces.flatMap((iface, ifaceIndex) => {
       const interfaceName = iface.interface_name || '--';
+      const endpoint = iface.endpoint;
+      const groupKey = `${link.id}:${endpoint ?? 'interface'}:${ifaceIndex}:${iface.bk_inst_id ?? interfaceName}`;
       return selectedMetrics.map((field) => {
         const metric = iface.metrics?.[field];
         return {
-          key: `${link.id}:${iface.endpoint ?? 'interface'}:${ifaceIndex}:${iface.bk_inst_id ?? interfaceName}:${field}`,
+          key: `${groupKey}:${field}`,
+          groupKey,
+          endpoint,
           interfaceName,
           metricLabel: labels[field] ?? field,
           value:
@@ -542,15 +554,40 @@ export const buildLinkInterfaceMetricRows = (
     ([
       ['source', pair.source_interface],
       ['target', pair.target_interface],
-    ] as const).flatMap(([endpoint, ref]) =>
-      selectedMetrics.map((field) => ({
-        key: `${link.id}:${index}:${endpoint}:${ref.bk_inst_id || ref.interface_name || 'interface'}:${field}`,
-        interfaceName: ref.interface_name || '--',
+    ] as const).flatMap(([endpoint, ref]) => {
+      const interfaceName = ref.interface_name || '--';
+      const groupKey = `${link.id}:${index}:${endpoint}:${ref.bk_inst_id || interfaceName}`;
+      return selectedMetrics.map((field) => ({
+        key: `${groupKey}:${field}`,
+        groupKey,
+        endpoint,
+        interfaceName,
         metricLabel: labels[field] ?? field,
         value: '--',
-      })),
-    ),
+      }));
+    }),
   );
+};
+
+/** 源/宿端口即使同名也分成两组，避免两端 GigabitEthernet1/0/1 叠成一份重复指标。 */
+export const groupLinkMetricRowsByInterface = (
+  rows: ReadonlyArray<LinkInterfaceMetricRow>,
+): LinkInterfaceMetricGroup[] => {
+  const groups = new Map<string, LinkInterfaceMetricGroup>();
+  rows.forEach((row) => {
+    const group = groups.get(row.groupKey) ?? {
+      key: row.groupKey,
+      interfaceName: row.interfaceName,
+      metrics: [],
+    };
+    group.metrics.push({
+      key: row.key,
+      metricLabel: row.metricLabel,
+      value: row.value,
+    });
+    groups.set(row.groupKey, group);
+  });
+  return Array.from(groups.values());
 };
 
 export const updateNetworkTopologyLinkTerminals = (

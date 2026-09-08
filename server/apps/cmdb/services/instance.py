@@ -1,7 +1,9 @@
 from apps.cmdb.constants.constants import (
+    ASSOCIATION_TYPE,
     ENUM_SELECT_MODE_DEFAULT,
     INSTANCE,
     INSTANCE_ASSOCIATION,
+    MODEL,
     NETWORK_TOPO_NODE_LIMIT,
     OPERATOR_INSTANCE,
     PERMISSION_INSTANCES,
@@ -363,6 +365,14 @@ def apply_enum_validation_for_instance(instance_data: dict, attrs: list[dict]) -
     return data
 
 
+_ASSOCIATION_TYPE_NAME = {item["asst_id"]: item["asst_name"] for item in ASSOCIATION_TYPE}
+
+
+def _normalize_cmdb_display_language(language: str | None) -> str:
+    raw = str(language or "zh-Hans")
+    return "en" if raw.lower().startswith("en") else "zh-Hans"
+
+
 class InstanceManage(object):
     @staticmethod
     def _query_instance_map_by_ids(inst_ids: set[int]) -> dict[int, dict]:
@@ -574,7 +584,44 @@ class InstanceManage(object):
         return filtered_result
 
     @classmethod
-    def _transport_topology_result(cls, result: dict) -> dict:
+    def _resolve_topology_model_names(cls, model_ids: set[str], language: str | None = None) -> dict[str, str]:
+        ids = sorted({str(model_id) for model_id in model_ids if model_id not in (None, "")})
+        if not ids:
+            return {}
+        from apps.cmdb.language.service import SettingLanguage
+
+        lan = SettingLanguage(_normalize_cmdb_display_language(language))
+        names: dict[str, str] = {}
+        missing: list[str] = []
+        for model_id in ids:
+            translated = lan.get_val("MODEL", model_id)
+            if translated:
+                names[model_id] = translated
+            else:
+                missing.append(model_id)
+        if missing:
+            names.update(cls._query_stored_model_names(missing))
+        for model_id in ids:
+            names.setdefault(model_id, model_id)
+        return names
+
+    @staticmethod
+    def _query_stored_model_names(model_ids: list[str]) -> dict[str, str]:
+        if not model_ids:
+            return {}
+        with GraphClient() as ag:
+            models, _ = ag.query_entity(MODEL, [{"field": "model_id", "type": "str[]", "value": sorted(model_ids)}])
+        names: dict[str, str] = {}
+        for model in models:
+            model_id = model.get("model_id")
+            model_name = model.get("model_name")
+            if model_id in (None, "") or model_name in (None, ""):
+                continue
+            names[str(model_id)] = str(model_name)
+        return names
+
+    @classmethod
+    def _transport_topology_result(cls, result: dict, language: str | None = None) -> dict:
         """把通用拓扑树递归转换为只暴露 inst_uuid 的 Transport DTO。"""
         if not isinstance(result, dict):
             return result
@@ -586,6 +633,13 @@ class InstanceManage(object):
         uuid_by_id = {
             int(graph_id): item.get("inst_uuid") for graph_id, item in instances_map.items() if isinstance(item, dict) and item.get("inst_uuid")
         }
+        model_ids = set()
+        for item in instances_map.values():
+            if isinstance(item, dict) and item.get("model_id") not in (None, ""):
+                model_ids.add(str(item["model_id"]))
+        for key in ("src_result", "dst_result"):
+            model_ids.update(cls._collect_topology_model_ids(result.get(key)))
+        model_name_by_id = cls._resolve_topology_model_names(model_ids, language=language)
 
         def transport_node(node: dict | None) -> dict:
             if not isinstance(node, dict) or node.get("_id") is None:
@@ -599,6 +653,15 @@ class InstanceManage(object):
                 return {}
             transported = {key: value for key, value in node.items() if key not in {"_id", "inst_id", "children"}}
             transported["inst_uuid"] = inst_uuid
+            asst_id = transported.get("asst_id")
+            if asst_id and not transported.get("asst_name"):
+                transported["asst_name"] = _ASSOCIATION_TYPE_NAME.get(str(asst_id), "")
+            instance = instances_map.get(graph_id) if isinstance(instances_map.get(graph_id), dict) else {}
+            model_id = transported.get("model_id") or instance.get("model_id")
+            if model_id not in (None, ""):
+                transported["model_id"] = str(model_id)
+                if not transported.get("model_name"):
+                    transported["model_name"] = model_name_by_id.get(str(model_id), str(model_id))
             transported["children"] = [child for item in node.get("children") or [] if (child := transport_node(item))]
             return transported
 
@@ -607,6 +670,22 @@ class InstanceManage(object):
             "src_result": transport_node(result.get("src_result")),
             "dst_result": transport_node(result.get("dst_result")),
         }
+
+    @classmethod
+    def _collect_topology_model_ids(cls, node: dict | None) -> set[str]:
+        model_ids: set[str] = set()
+
+        def walk(value):
+            if not isinstance(value, dict):
+                return
+            model_id = value.get("model_id")
+            if model_id not in (None, ""):
+                model_ids.add(str(model_id))
+            for child in value.get("children") or []:
+                walk(child)
+
+        walk(node)
+        return model_ids
 
     @staticmethod
     def _build_format_permission_dict(permission_map: dict, creator: str = "") -> dict:
@@ -2316,12 +2395,19 @@ class InstanceManage(object):
         return cls._filter_topology_result(result, int(inst_id), permission_map=permission_map, user=user)
 
     @classmethod
-    def topo_search_lite_by_uuid(cls, inst_uuid: str, depth: int = 3, permission_map: dict | None = None, user=None):
+    def topo_search_lite_by_uuid(
+        cls,
+        inst_uuid: str,
+        depth: int = 3,
+        permission_map: dict | None = None,
+        user=None,
+        language: str | None = None,
+    ):
         instance = cls.query_entity_by_uuid(inst_uuid)
         if not instance:
             raise BaseAppException("实例不存在！")
         result = cls.topo_search_lite(instance["_id"], depth=depth, permission_map=permission_map, user=user)
-        return cls._transport_topology_result(result)
+        return cls._transport_topology_result(result, language=language)
 
     @classmethod
     def topo_search_expand(
@@ -2345,6 +2431,7 @@ class InstanceManage(object):
         depth: int = 2,
         permission_map: dict | None = None,
         user=None,
+        language: str | None = None,
     ):
         instance = cls.query_entity_by_uuid(inst_uuid)
         if not instance:
@@ -2359,7 +2446,7 @@ class InstanceManage(object):
             permission_map=permission_map,
             user=user,
         )
-        return cls._transport_topology_result(result)
+        return cls._transport_topology_result(result, language=language)
 
     @staticmethod
     def inst_export(

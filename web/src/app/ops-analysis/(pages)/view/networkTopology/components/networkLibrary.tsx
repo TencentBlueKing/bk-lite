@@ -116,7 +116,7 @@ const NetworkLibrary: React.FC<NetworkLibraryProps> = ({
   return (
     <>
       <section
-        className={`relative shrink-0 transition-[width] duration-300 ${
+        className={`relative flex h-full min-h-0 shrink-0 flex-col transition-[width] duration-300 ${
           collapsed ? 'w-0' : 'w-72'
         } ${className ?? ''}`}
         data-testid={testId ?? 'network-library'}
@@ -141,9 +141,9 @@ const NetworkLibrary: React.FC<NetworkLibraryProps> = ({
           aria-label={collapsed ? 'expand' : 'collapse'}
         />
         {!collapsed && (
-          <div className="h-full w-72 overflow-hidden border-r border-[var(--color-border-1)]">
-            <div className="flex h-full flex-col gap-2 overflow-auto p-3">
-              <div className="flex items-center gap-2">
+          <div className="flex h-full min-h-0 w-72 flex-col overflow-hidden border-r border-[var(--color-border-1)]">
+            <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
+              <div className="flex shrink-0 items-center gap-2">
                 <strong className="flex-1 text-[13px] font-semibold text-[var(--color-text-1)]">
                   {t('opsAnalysis.networkTopology.library.title')}
                 </strong>
@@ -183,7 +183,7 @@ const NetworkLibrary: React.FC<NetworkLibraryProps> = ({
                 - 未选中:浅灰底深字 + hover 加深
                 不用 Tailwind 任意值类,避免 JIT 漏掉 hex 色。 */}
               <div
-                className="mt-1 flex flex-wrap gap-1.5"
+                className="mt-1 flex shrink-0 flex-wrap gap-1.5"
                 data-testid="network-library-model-filter"
               >
                 <span
@@ -222,19 +222,22 @@ const NetworkLibrary: React.FC<NetworkLibraryProps> = ({
                 })}
               </div>
               {loading ? (
-                <div className="flex justify-center p-6">
+                <div className="flex min-h-0 flex-1 justify-center overflow-y-auto p-6">
                   <Spin />
                 </div>
               ) : error ? (
-                <div data-testid="network-library-error">
+                <div className="min-h-0 flex-1 overflow-y-auto" data-testid="network-library-error">
                   <CompactEmptyState description={error} />
                 </div>
               ) : nodeCount === 0 ? (
-                <div data-testid="network-library-empty">
+                <div className="min-h-0 flex-1 overflow-y-auto" data-testid="network-library-empty">
                   <CompactEmptyState description={t('opsAnalysis.networkTopology.library.empty')} />
                 </div>
               ) : (
-                <div className="flex flex-col gap-2">
+                <div
+                  className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto"
+                  data-testid="network-library-list"
+                >
                   {(nodes ?? []).map((item) => (
                     <div
                       key={buildNetworkNodeClientId(item)}

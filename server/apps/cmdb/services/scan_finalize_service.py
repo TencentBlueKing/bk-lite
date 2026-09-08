@@ -5,7 +5,6 @@ from apps.cmdb.collection.metrics_cannula import MetricsCannula
 from apps.cmdb.collection.plugins import get_collection_plugin
 from apps.cmdb.constants.constants import DataCleanupStrategy
 from apps.cmdb.models.scan_model import ScanExecution, ScanFamilyRun, ScanHit, scan_task_type_for_model
-from apps.cmdb.services.scan_identity import refine_scan_metrics
 from apps.core.logger import cmdb_logger as logger
 
 _PHYSICAL_SNAPSHOT_KEYS = ("serial_number", "uuid", "board_serial")
@@ -42,11 +41,11 @@ _SCAN_METRICS_RETRY_SECONDS = 5
 def build_scan_collect_shim(family_run: ScanFamilyRun):
     params = {"has_network_topo": False}
     if family_run.model_id == "host":
-        from apps.cmdb.services.scan_collect_generate import _host_cloud_from_scan
+        from apps.cmdb.services.scan_host_cloud import host_cloud_from_scan
 
         task = getattr(getattr(family_run, "execution", None), "task", None)
         if task is not None:
-            params.update(_host_cloud_from_scan(task))
+            params.update(host_cloud_from_scan(task))
     return SimpleNamespace(
         id=family_run.id,
         model_id=family_run.model_id,
@@ -287,42 +286,57 @@ def attach_snmp_hits_to_physical(execution: ScanExecution):
         hit.save(update_fields=["attached_inst_uuid", "updated_at"])
 
 
-def write_scan_execution(execution: ScanExecution):
-    task = execution.task
-    organization = task.team or []
-    if organization is not None and not isinstance(organization, list):
-        organization = [organization]
+def polish_hit_snapshots(family_run: ScanFamilyRun):
+    """收口只整理 snapshot，不写图、不拉 VM。网络用特征库给建议类型。"""
+    if family_run.model_id == "network":
+        from apps.cmdb.collection.collect_plugin.network import CollectNetworkMetrics
 
+        oid_map = CollectNetworkMetrics.get_oid_map()
+        for hit in family_run.hits.filter(status=ScanHit.STATUS_SUCCESS):
+            snapshot = dict(hit.snapshot or {}) if isinstance(hit.snapshot, dict) else {}
+            soid = str(hit.soid or snapshot.get("soid") or snapshot.get("sysobjectid") or "").strip()
+            changed = False
+            update_fields = []
+            if soid:
+                mapped = oid_map.get(soid) if isinstance(oid_map, dict) else None
+                if isinstance(mapped, dict):
+                    for key in ("brand", "model", "device_type"):
+                        value = mapped.get(key)
+                        if value and snapshot.get(key) != value:
+                            snapshot[key] = value
+                            changed = True
+                if hit.soid != soid:
+                    hit.soid = soid
+                    update_fields.append("soid")
+            if changed:
+                hit.snapshot = snapshot
+                update_fields.extend(["snapshot", "updated_at"])
+            elif update_fields:
+                update_fields.append("updated_at")
+            if update_fields:
+                hit.save(update_fields=list(dict.fromkeys(update_fields)))
+        return
+    if family_run.model_id != "host":
+        return
+    for hit in family_run.hits.filter(status=ScanHit.STATUS_SUCCESS):
+        snapshot = dict(hit.snapshot or {}) if isinstance(hit.snapshot, dict) else {}
+        os_type = snapshot.get("os_type")
+        mapped = _HOST_OS_TYPE_LABELS.get(str(os_type)) if os_type not in (None, "") else None
+        if mapped and snapshot.get("os_type") != mapped:
+            snapshot["os_type"] = mapped
+            hit.snapshot = snapshot
+            hit.save(update_fields=["snapshot", "updated_at"])
+
+
+def write_scan_execution(execution: ScanExecution):
     for family_run in execution.family_runs.all():
         try:
-            metrics = collect_family_metrics_until_hits(family_run)
+            polish_hit_snapshots(family_run)
         except Exception:
             logger.exception(
-                "[ScanFinalize] 族 mapping 失败 execution=%s family=%s",
+                "[ScanFinalize] 整理 snapshot 失败 execution=%s family=%s",
                 execution.id,
                 family_run.model_id,
             )
             continue
-
-        oid_map = None
-        if family_run.model_id == "network":
-            from apps.cmdb.collection.collect_plugin.network import CollectNetworkMetrics
-
-            oid_map = CollectNetworkMetrics.get_oid_map()
-        refined = refine_scan_metrics(family_run.model_id, metrics, oid_map=oid_map)
-        annotate_hit_snapshots(family_run, metrics, oid_map=oid_map)
-        if not refined:
-            continue
-        try:
-            controller_result = write_refined_metrics(family_run, organization, refined)
-        except Exception:
-            logger.exception(
-                "[ScanFinalize] 写 CI 失败 execution=%s family=%s",
-                execution.id,
-                family_run.model_id,
-            )
-            continue
-        backfill_hit_identities(family_run, refined, controller_result)
-
-    attach_snmp_hits_to_physical(execution)
     return {"status": "written", "execution_id": execution.id}

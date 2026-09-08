@@ -8,7 +8,6 @@ import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell'
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import TopologyCanvas, {
   type TopologyCanvasSelection,
-  type TopologyLayoutMode,
 } from '@/app/apm/services/topology/topology-canvas';
 import TopologyInspectPanel from '@/app/apm/services/topology/topology-inspect-panel';
 import { filterAnomalousTopology, filterTopologyByKeyword, isolateTopologyNeighborhood } from '@/app/apm/services/topology/topology-layout';
@@ -38,7 +37,6 @@ export default function ApmTopologyPage() {
   const [environment, setEnvironment] = useState<string>();
   const [environmentOptions, setEnvironmentOptions] = useState<{ value: string; label: string }[]>([]);
   const [serviceIds, setServiceIds] = useState<Map<string, string>>(new Map());
-  const [layout, setLayout] = useState<TopologyLayoutMode>('layered');
   const [anomalyOnly, setAnomalyOnly] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [minDurationMs, setMinDurationMs] = useState<number | null>(null);
@@ -192,16 +190,6 @@ export default function ApmTopologyPage() {
 
               <div className="h-4 w-px shrink-0 bg-[var(--color-border)]" aria-hidden="true" />
 
-              <Segmented<TopologyLayoutMode>
-                aria-label={t('apm.topology.layout', '拓扑布局')}
-                className="shrink-0"
-                options={[
-                  { value: 'layered', label: t('apm.topology.layered', '层次') },
-                  { value: 'force', label: t('apm.topology.force', '力导向') },
-                ]}
-                value={layout}
-                onChange={setLayout}
-              />
               <InputNumber
                 aria-label={t('apm.topology.minDuration', '耗时下限')}
                 className="w-36"
@@ -227,7 +215,7 @@ export default function ApmTopologyPage() {
               <div className="relative min-w-0 flex-1">
                 <TopologyCanvas
                   edges={visibleGraph.edges}
-                  layout={layout}
+                  layout="layered"
                   nodes={visibleGraph.nodes}
                   selected={selection}
                   toolbar={(

@@ -119,6 +119,7 @@ class ScanTaskViewSet(AuthViewSet):
     @HasPermission("auto_collection-Execute")
     @action(methods=["post"], detail=False, url_path=r"executions/(?P<eid>[0-9]+)/generate_collect")
     def generate_collect(self, request, eid=None):
+        """已有 CI 的勾选行单独生成采集（写入并生成走 write_cmdb_and_generate_collect）。"""
         execution = self._get_execution(eid)
         hit_ids = _hit_ids_from_request(request)
         from apps.cmdb.services.scan_collect_generate import ScanCollectGenerateService
@@ -134,11 +135,39 @@ class ScanTaskViewSet(AuthViewSet):
     @HasPermission("auto_collection-Execute")
     @action(methods=["post"], detail=False, url_path=r"executions/(?P<eid>[0-9]+)/push_monitor")
     def push_monitor(self, request, eid=None):
+        """必须已有 CI，不代写。"""
         execution = self._get_execution(eid)
         hit_ids = _hit_ids_from_request(request)
         from apps.cmdb.services.scan_push_monitor import ScanPushMonitorService
 
         result = ScanPushMonitorService.push(
+            execution,
+            hit_ids,
+            request=request,
+            operator=getattr(request.user, "username", "") or "",
+        )
+        return WebUtils.response_success(result)
+
+    @HasPermission("auto_collection-Execute")
+    @action(methods=["post"], detail=False, url_path=r"executions/(?P<eid>[0-9]+)/write_cmdb")
+    def write_cmdb(self, request, eid=None):
+        """勾选行写入 CMDB；清单 uuid 不在图里时会重写。"""
+        execution = self._get_execution(eid)
+        hit_ids = _hit_ids_from_request(request)
+        from apps.cmdb.services.scan_write_ci_service import ScanWriteCiService
+
+        result = ScanWriteCiService.write(execution, hit_ids)
+        return WebUtils.response_success(result)
+
+    @HasPermission("auto_collection-Execute")
+    @action(methods=["post"], detail=False, url_path=r"executions/(?P<eid>[0-9]+)/write_cmdb_and_generate_collect")
+    def write_cmdb_and_generate_collect(self, request, eid=None):
+        """写入成功的行再按族生成采集；写失败行不进生成。"""
+        execution = self._get_execution(eid)
+        hit_ids = _hit_ids_from_request(request)
+        from apps.cmdb.services.scan_write_ci_service import ScanWriteCiService
+
+        result = ScanWriteCiService.write_and_generate(
             execution,
             hit_ids,
             request=request,

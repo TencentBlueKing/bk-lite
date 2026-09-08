@@ -99,7 +99,7 @@
             "__name__": { "const": "network_topology_facts_info_gauge" },
             "source_protocol": {
               "type": "string",
-              "enum": ["lldp", "cdp", "fdb", "arp"]
+              "enum": ["lldp", "huawei_ndp", "cdp", "fdb", "arp"]
             },
             "local_device_id": { "type": ["string", "null"] },
             "local_port_id": { "type": "string" },

@@ -1,5 +1,13 @@
 #!/bin/sh
-# System Info Collector - POSIX sh Safe Version
+# System Info Collector - POSIX sh, CentOS/RHEL 6+ compatible
+# JSON contract unchanged. Rollback: host_default_discover.sh.bak
+#
+# EL6 兼容：
+# - /etc/os-release 可能不存在，回退 /etc/centos-release|/etc/redhat-release|/etc/system-release
+# - ss 无 -H，-p 输出是 users:(("name",pid,fd))；再回退 netstat
+# - ip 可能缺失，回退 ifconfig
+# - df --exclude-type 失败时回退 df -kP
+# - 过滤内核线程（arg 形如 [kthreadd]）
 
 set -e
 
@@ -44,6 +52,32 @@ make_temp_file() {
     printf '%s' "$tmp_file"
 }
 
+parse_legacy_release() {
+    what="$1"
+    file="$2"
+    [ -r "$file" ] || return 0
+    awk -v what="$what" '
+        {
+            for (i = 1; i <= NF; i++) {
+                if ($i == "release") {
+                    name = $1
+                    for (j = 2; j < i; j++) {
+                        name = name " " $j
+                    }
+                    ver = $(i + 1)
+                    gsub(/[^0-9.].*/, "", ver)
+                    if (what == "name") {
+                        print name
+                    } else {
+                        print ver
+                    }
+                    exit
+                }
+            }
+        }
+    ' "$file"
+}
+
 # -----------------------------
 # 进程排除指纹（name + arg）
 # -----------------------------
@@ -63,6 +97,7 @@ iscsid
 rpcbind
 chronyd
 agetty
+mingetty
 kthreadd
 kworker/
 ksoftirqd/
@@ -110,17 +145,37 @@ NetworkManager
 udisksd
 wpa_supplicant
 accounts-daemon
+release workque
 host_default_discover.sh
+host_default_discover_el6.sh
 EOF
 )
 
 collect_proc_ports() {
     ss_output="$(safe ss -lntpH)"
     [ -n "$ss_output" ] || ss_output="$(safe ss -lntp)"
+    [ -n "$ss_output" ] || ss_output="$(safe ss -lnt -p)"
+    [ -n "$ss_output" ] || ss_output="$(safe netstat -lntp)"
+    [ -n "$ss_output" ] || ss_output="$(safe netstat -tlnp)"
     [ -n "$ss_output" ] || return 0
 
     printf '%s\n' "$ss_output" | awk '
-        /^(Netid|State)/ { next }
+        function add_pid_port(pid, port,    key) {
+            if (pid == "" || port == "" || port == "*") {
+                return
+            }
+            key = pid SUBSEP port
+            if (key in seen) {
+                return
+            }
+            seen[key] = 1
+            if (ports[pid] != "") {
+                ports[pid] = ports[pid] "," port
+            } else {
+                ports[pid] = port
+            }
+        }
+        /^(Netid|State|Recv-Q|Proto|Active)/ { next }
         {
             local_addr = $4
             proc_info = $NF
@@ -134,20 +189,27 @@ collect_proc_ports() {
                 next
             }
 
-            while (match(proc_info, /pid=[0-9]+/)) {
-                pid = substr(proc_info, RSTART + 4, RLENGTH - 4)
-                if (pid != "") {
-                    key = pid SUBSEP port
-                    if (!(key in seen)) {
-                        seen[key] = 1
-                        if (ports[pid] != "") {
-                            ports[pid] = ports[pid] "," port
-                        } else {
-                            ports[pid] = port
-                        }
-                    }
+            rest = proc_info
+            found = 0
+            while (match(rest, /pid=[0-9]+/)) {
+                add_pid_port(substr(rest, RSTART + 4, RLENGTH - 4), port)
+                found = 1
+                rest = substr(rest, RSTART + RLENGTH)
+            }
+
+            if (!found) {
+                rest = proc_info
+                while (match(rest, /users:\(\("[^"]+",[0-9]+/)) {
+                    m = substr(rest, RSTART, RLENGTH)
+                    sub(/.*,/, "", m)
+                    add_pid_port(m, port)
+                    found = 1
+                    rest = substr(rest, RSTART + RLENGTH)
                 }
-                proc_info = substr(proc_info, RSTART + RLENGTH)
+            }
+
+            if (!found && match(proc_info, /^[0-9]+\//)) {
+                add_pid_port(substr(proc_info, 1, RLENGTH - 1), port)
             }
         }
         END {
@@ -164,6 +226,9 @@ collect_proc_list() {
 
     collect_proc_ports > "$ports_file"
     safe ps -e -o pid= -o comm= -o args= > "$ps_file"
+    if [ ! -s "$ps_file" ]; then
+        safe ps -eo pid,comm,args > "$ps_file"
+    fi
 
     proc_json="$(awk -v excludes="$PROC_EXCLUDE_FINGERPRINTS" -v ports_file="$ports_file" '
         function esc(s) {
@@ -191,10 +256,20 @@ collect_proc_list() {
             name = $2
             $1 = ""
             $2 = ""
-            sub(/^[[:space:]]+/, "", $0)
+            sub(/^[ \t]+/, "", $0)
             arg = $0
 
             if (pid == "" || arg == "") {
+                next
+            }
+            if (pid + 0 != pid) {
+                next
+            }
+            # Linux 内核线程：ps 显示为 [kthreadd]
+            if (arg ~ /^\[[^\]]+\]$/) {
+                next
+            }
+            if (name == "ps" && index(arg, "pid=") > 0) {
                 next
             }
 
@@ -229,7 +304,7 @@ collect_proc_list() {
     ' "$ps_file")"
 
     rm -f "$ports_file" "$ps_file"
-    printf '%s' "$proc_json"
+    printf '%s' "${proc_json:-[]}"
 }
 
 # -----------------------------
@@ -242,14 +317,23 @@ hostname_val="$(safe hostname -f)"
 # OS
 # -----------------------------
 os_type="$(safe uname -s)"
+os_name=""
+os_version=""
 
-os_name="$(
-    awk -F= '/^NAME=/{gsub(/"/,"",$2);print $2;exit}' /etc/os-release 2>/dev/null
-)"
+if [ -r /etc/os-release ]; then
+    os_name="$(awk -F= '/^NAME=/{gsub(/"/,"",$2);print $2;exit}' /etc/os-release)"
+    os_version="$(awk -F= '/^VERSION_ID=/{gsub(/"/,"",$2);print $2;exit}' /etc/os-release)"
+fi
 
-os_version="$(
-    awk -F= '/^VERSION_ID=/{gsub(/"/,"",$2);print $2;exit}' /etc/os-release 2>/dev/null
-)"
+if [ -z "$os_name" ] || [ -z "$os_version" ]; then
+    for release_file in /etc/centos-release /etc/redhat-release /etc/system-release; do
+        if [ -r "$release_file" ]; then
+            [ -n "$os_name" ] || os_name="$(parse_legacy_release name "$release_file")"
+            [ -n "$os_version" ] || os_version="$(parse_legacy_release version "$release_file")"
+            break
+        fi
+    done
+fi
 
 # -----------------------------
 # Arch / Bits
@@ -266,20 +350,20 @@ esac
 # CPU
 # -----------------------------
 cpu_model="$(
-    safe lscpu | awk -F: '/Model name/{print $2;exit}' | xargs
+    safe lscpu | awk -F: '/Model name/{gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2; exit}'
 )"
 
-[ -n "$cpu_model" ] || cpu_model="$(
-    awk -F: '/model name/{print $2;exit}' /proc/cpuinfo 2>/dev/null | xargs
-)"
+if [ -z "$cpu_model" ] && [ -r /proc/cpuinfo ]; then
+    cpu_model="$(awk -F: '/model name/{gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2; exit}' /proc/cpuinfo)"
+fi
 
 cpu_cores="$(
-    safe lscpu | awk -F: '/^CPU\(s\)/{print $2;exit}' | xargs
+    safe lscpu | awk -F: '/^CPU\(s\)/{gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2; exit}'
 )"
 
-[ -n "$cpu_cores" ] || cpu_cores="$(
-    awk '/^processor/{c++} END{print c+0}' /proc/cpuinfo 2>/dev/null
-)"
+if [ -z "$cpu_cores" ] && [ -r /proc/cpuinfo ]; then
+    cpu_cores="$(awk '/^processor/{c++} END{print c+0}' /proc/cpuinfo)"
+fi
 
 # -----------------------------
 # Memory (GB, no bc)
@@ -288,18 +372,26 @@ memory_gb="$(
     safe free -m | awk '/Mem:/{printf "%.1f", $2/1024}'
 )"
 
-[ -n "$memory_gb" ] || memory_gb="$(
-    awk '/MemTotal/{printf "%.1f", $2/1024/1024}' /proc/meminfo 2>/dev/null
-)"
+if [ -z "$memory_gb" ] && [ -r /proc/meminfo ]; then
+    memory_gb="$(awk '/MemTotal/{printf "%.1f", $2/1024/1024}' /proc/meminfo)"
+fi
 
 [ -n "$memory_gb" ] || memory_gb="0.0"
 
 # -----------------------------
 # Disk (GB)
 # -----------------------------
+df_out="$(safe df -k --exclude-type=tmpfs --exclude-type=devtmpfs --exclude-type=overlay)"
+[ -n "$df_out" ] || df_out="$(safe df -k -x tmpfs -x devtmpfs)"
+[ -n "$df_out" ] || df_out="$(safe df -kP)"
+
 disk_gb="$(
-    safe df -k --exclude-type=tmpfs --exclude-type=devtmpfs --exclude-type=overlay | \
-    awk 'NR>1{sum+=$2} END{printf "%.1f", sum/1024/1024}'
+    printf '%s\n' "$df_out" | awk '
+        NR==1 { next }
+        $1 == "tmpfs" || $1 == "devtmpfs" { next }
+        { sum += $2 }
+        END { printf "%.1f", sum/1024/1024 }
+    '
 )"
 
 [ -n "$disk_gb" ] || disk_gb="0.0"
@@ -311,12 +403,17 @@ mac_address="$(
     safe ip link show | awk '/ether/{print $2;exit}'
 )"
 
+[ -n "$mac_address" ] || mac_address="$(
+    safe ifconfig -a | awk '/HWaddr/{print $NF; exit}'
+)"
+
 [ -n "$mac_address" ] || mac_address="unknown"
 
 # -----------------------------
 # Process
 # -----------------------------
 proc_json="$(collect_proc_list)"
+[ -n "$proc_json" ] || proc_json="[]"
 
 # -----------------------------
 # Final JSON (ONLY OUTPUT)

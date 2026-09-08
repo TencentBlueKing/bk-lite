@@ -1,9 +1,9 @@
 """存储设备(华为OceanStor)采集插件单元测试（_pure：不依赖 DB/IO）。
 
 存储走多对象采集（CLOUD task_type，复用云家族多对象机制，对齐 SmartX）：
-主对象 storage + 子对象 storage_pool/storage_disk/storage_volume。
+主对象 storage + 子对象 storage_pool/storage_disk/storage_volume/
+storage_eth_port/storage_fc_port。
 """
-import pytest
 
 
 def test_storage_plugin_contract():
@@ -12,21 +12,38 @@ def test_storage_plugin_contract():
 
     assert OceanStorCollectionPlugin.supported_model_id == "storage"
     assert OceanStorCollectionPlugin.supported_task_type == CollectPluginTypes.CLOUD
-    for m in ("storage_info_gauge", "storage_pool_info_gauge",
-              "storage_disk_info_gauge", "storage_volume_info_gauge"):
+    for m in (
+        "storage_info_gauge",
+        "storage_pool_info_gauge",
+        "storage_disk_info_gauge",
+        "storage_volume_info_gauge",
+        "storage_eth_port_info_gauge",
+        "storage_fc_port_info_gauge",
+    ):
         assert m in OceanStorCollectionPlugin.metric_names
 
 
-def test_storage_field_mappings_cover_four_models():
+def test_storage_field_mappings_cover_six_models():
     from apps.cmdb.collection.plugins.community.cloud.oceanstor import OceanStorCollectionPlugin
 
     fms = OceanStorCollectionPlugin.field_mappings
-    assert set(fms) == {"storage", "storage_pool", "storage_disk", "storage_volume"}
+    assert set(fms) == {
+        "storage",
+        "storage_pool",
+        "storage_disk",
+        "storage_volume",
+        "storage_eth_port",
+        "storage_fc_port",
+    }
     # 子对象关键字段
     assert "self_device" in fms["storage_pool"]
     assert "disk_sn" in fms["storage_disk"]
     assert "wwn" in fms["storage_volume"]
     assert "parent_pool" in fms["storage_volume"]
+    assert "mac" in fms["storage_eth_port"]
+    assert "wwpn" in fms["storage_fc_port"]
+    assert "ip_addr" in fms["storage"]
+    assert "inst_name" in fms["storage"]
 
 
 def test_storage_registered_in_registry():
@@ -41,8 +58,7 @@ def test_storage_registered_in_registry():
 def test_storage_in_collect_object_tree_with_beta():
     from apps.cmdb.constants.constants import COLLECT_OBJ_TREE
 
-    entries = [c for grp in COLLECT_OBJ_TREE for c in grp.get("children", [])
-               if c.get("model_id") == "storage"]
+    entries = [c for grp in COLLECT_OBJ_TREE for c in grp.get("children", []) if c.get("model_id") == "storage"]
     assert entries, "COLLECT_OBJ_TREE 中缺少 storage"
     assert "beta" in entries[0]["name"].lower()
 
@@ -62,6 +78,6 @@ def test_running_status_normalization():
     """HEALTHSTATUS/RUNNINGSTATUS 数字码归一化到公共库 opera_status。"""
     from apps.cmdb.collection.collect_plugin.oceanstor import OceanStorCollectMetrics
 
-    assert OceanStorCollectMetrics.norm_status("27") == "running"   # 在线
-    assert OceanStorCollectMetrics.norm_status("28") == "stopped"   # 离线
-    assert OceanStorCollectMetrics.norm_status("") == "stopped"     # 未知兜底
+    assert OceanStorCollectMetrics.norm_status("27") == "running"  # 在线
+    assert OceanStorCollectMetrics.norm_status("28") == "stopped"  # 离线
+    assert OceanStorCollectMetrics.norm_status("") == "stopped"  # 未知兜底

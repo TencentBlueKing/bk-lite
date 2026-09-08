@@ -204,7 +204,9 @@ class Command(BaseCommand):
             )
             blockers = {key: stats[key] for key in blocker_keys if stats[key]}
             if blockers:
-                raise CommandError(f"CMDB UUID 迁移验证失败，仍存在待清洗项: {blockers}")
+                leftover_ids = getattr(self, "_leftover_snapshot_ids", [])
+                extra = f" leftover_ids={leftover_ids}" if leftover_ids else ""
+                raise CommandError(f"CMDB UUID 迁移验证失败，仍存在待清洗项: {blockers}{extra}")
         self.stdout.write(self.style.SUCCESS(str(stats)))
 
     def _clean_graph(self, batch_size, dry_run, stats):
@@ -922,15 +924,16 @@ class Command(BaseCommand):
             self._save_stage("collect_instances", cursor)
 
     def _clean_collect_result_snapshots(self, batch_size, dry_run, stats):
-        """采集结果快照递归补 inst_uuid；无法映射的保持原样。"""
-        cursor, completed = self._stage_cursor("collect_result_snapshots")
-        if completed:
-            return
+        """采集结果快照递归补 inst_uuid；可变 JSON 每次全表重扫，不因 completed 跳过。"""
+        cursor, _completed = self._stage_cursor("collect_result_snapshots")
+        cursor = 0
+        leftover_ids = []
         fields = ("format_data", "collect_data", "collect_digest", "topology_snapshot")
         while True:
             tasks = list(CollectModels.objects.filter(id__gt=cursor).order_by("id")[:batch_size])
             if not tasks:
                 self._save_stage("collect_result_snapshots", cursor, completed=True)
+                self._leftover_snapshot_ids = leftover_ids[:20]
                 return
             cursor = tasks[-1].id
             numeric_ids = []
@@ -948,6 +951,7 @@ class Command(BaseCommand):
                         row_changed = True
                 if row_changed:
                     changed.append(task)
+                    leftover_ids.append(task.id)
             stats["collect_result_snapshot_updated"] += len(changed)
             if changed and not dry_run:
                 CollectModels.objects.bulk_update(changed, list(fields))

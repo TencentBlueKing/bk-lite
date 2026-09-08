@@ -11,10 +11,12 @@ from apps.operation_analysis.serializers.scene_widget_serializers import (
     Application3DMetricRequestSerializer,
     Application3DWallRequestSerializer,
     NetworkStatusTopologyRequestSerializer,
+    RelatedTopologyRequestSerializer,
 )
 from apps.operation_analysis.services.application3d import Application3DQueryService
 from apps.operation_analysis.services.application3d.errors import Application3DError
 from apps.operation_analysis.services.network_status_topology import NetworkStatusTopologyService
+from apps.operation_analysis.services.related_topology import RelatedTopologyError, RelatedTopologyService
 
 
 class SceneWidgetViewSet(ViewSet):
@@ -107,6 +109,24 @@ class SceneWidgetViewSet(ViewSet):
             )
         except Application3DError as exc:
             return self.application3d_error_response(exc)
+
+    @action(detail=False, methods=["post"], url_path="related_topology")
+    def related_topology(self, request):
+        """只读关联拓扑拼图。对象读权限走 CMDB NATS user_info，不绑运营分析 view-View。"""
+        serializer = RelatedTopologyRequestSerializer(data=request.data or {})
+        serializer.is_valid(raise_exception=True)
+        try:
+            return Response(
+                RelatedTopologyService.build(
+                    request,
+                    inst_uuid=serializer.validated_data["inst_uuid"],
+                )
+            )
+        except RelatedTopologyError as exc:
+            return Response(
+                {"code": exc.code, "detail": exc.message},
+                status=self._APPLICATION3D_ERROR_STATUS.get(exc.code, status.HTTP_500_INTERNAL_SERVER_ERROR),
+            )
 
     @HasPermission("view-View")
     @action(detail=False, methods=["post"], url_path="application3d/metric")

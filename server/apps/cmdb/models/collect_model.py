@@ -24,7 +24,7 @@ from apps.core.utils.crypto.password_crypto import PasswordCrypto
 
 # 加密密码的标记前缀
 ENCRYPTED_PREFIX = "enc:"
-ALLOWED_TOPOLOGY_PROTOCOLS = ("lldp", "cdp", "fdb", "arp")
+ALLOWED_TOPOLOGY_PROTOCOLS = ("lldp", "huawei_ndp", "cdp", "fdb", "arp")
 ALLOWED_TOPOLOGY_FALLBACK_STRATEGIES = (
     "prefer_neighbors_then_fdb_then_arp",
     "strict_neighbors_only",

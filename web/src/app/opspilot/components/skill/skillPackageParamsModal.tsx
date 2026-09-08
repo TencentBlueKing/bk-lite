@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Button, Input, Modal, Select, Tooltip } from 'antd';
+import { Button, Input, Modal, Select, Space } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
+import OperateModal from '@/components/operate-modal';
 import EditablePasswordField from '@/components/dynamic-form/editPasswordField';
 import {
   SkillPackage,
@@ -110,6 +111,50 @@ interface DraftRow extends SkillPackageParam {
 let draftUid = 0;
 const nextDraftUid = () => `skill-param-${++draftUid}`;
 
+const CUSTOM_NAME_COL = 'w-[168px]';
+const CUSTOM_TYPE_COL = 'w-[120px]';
+const CUSTOM_ACTION_COL = 'w-8';
+
+const ValueControl = ({
+  type,
+  value,
+  placeholder,
+  onChange,
+}: {
+  type: SkillPackageParam['type'];
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+}) => {
+  if (type === 'textarea') {
+    return (
+      <TextArea
+        value={value}
+        rows={2}
+        placeholder={placeholder}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    );
+  }
+  if (type === 'password') {
+    return (
+      <EditablePasswordField
+        size="middle"
+        value={value}
+        placeholder={placeholder}
+        onChange={onChange}
+      />
+    );
+  }
+  return (
+    <Input
+      value={value}
+      placeholder={placeholder}
+      onChange={(event) => onChange(event.target.value)}
+    />
+  );
+};
+
 interface SkillPackageParamsModalProps {
   open: boolean;
   pkg: SkillPackage | null;
@@ -179,126 +224,188 @@ const SkillPackageParamsModal: React.FC<SkillPackageParamsModalProps> = ({
     onOk(normalized);
   };
 
+  const declaredRows = draft.filter((row) => row.declared);
+  const customRows = draft.filter((row) => !row.declared);
+  const requiredRows = declaredRows.filter((row) => declared.get(row.key)?.required);
+  const missingRequiredCount = requiredRows.filter((row) => !isFilled(row)).length;
+  const typeOptions = [
+    { value: 'text', label: t('skill.skillPackageParams.text') },
+    { value: 'password', label: t('skill.skillPackageParams.password') },
+    { value: 'textarea', label: t('skill.skillPackageParams.textarea') },
+  ];
+
+  const addCustomRow = () => {
+    setDraft((prev) => [
+      ...prev,
+      { uid: nextDraftUid(), declared: false, key: '', value: '', type: 'text', multiline: false },
+    ]);
+  };
+
+  const valuePlaceholderOf = (type: SkillPackageParam['type']) => {
+    if (type === 'password') return t('skill.skillPackageParams.passwordPlaceholder');
+    if (type === 'textarea') return t('skill.skillPackageParams.multilinePlaceholder');
+    return t('skill.skillPackageParams.valuePlaceholder');
+  };
+
+  const footerStatus = requiredRows.length > 0
+    ? missingRequiredCount > 0
+      ? t('skill.skillPackageParams.footerMissingRequired', '还有 {count} 项必填未填', { count: missingRequiredCount })
+      : t('skill.skillPackageParams.footerRequiredDone', '必填已全部填写')
+    : customRows.some(isFilled)
+      ? t('skill.skillPackageParams.footerFilled', '已填 {count} 项', { count: customRows.filter(isFilled).length })
+      : '';
+
   return (
-    <Modal
-      title={`${t('skill.skillPackageParams.modalTitle')}${pkg?.name ? ` · ${pkg.name}` : ''}`}
+    <OperateModal
+      title={t('skill.skillPackageParams.modalTitle')}
+      subTitle={pkg?.name}
       open={open}
       onCancel={onCancel}
-      onOk={handleOk}
-      width={780}
+      width={720}
       destroyOnClose
+      footer={
+        <div className="flex w-full items-center justify-between">
+          <div className={`text-xs ${missingRequiredCount > 0 ? 'text-[var(--color-fail)]' : 'text-[var(--color-text-3)]'}`}>
+            {footerStatus}
+          </div>
+          <Space>
+            <Button onClick={onCancel}>{t('common.cancel')}</Button>
+            <Button type="primary" onClick={handleOk}>{t('common.confirm')}</Button>
+          </Space>
+        </div>
+      }
     >
-      <p className="mb-2 text-xs leading-5 text-[var(--color-text-4)]">{t('skill.skillPackageParams.modalTip')}</p>
-      <div className="mb-4 rounded-md border border-[var(--color-border)] bg-[var(--color-fill-1)] px-3 py-2 text-xs leading-5 text-[var(--color-text-3)]">
-        {t('skill.skillPackageParams.typeHint')}
-      </div>
-      <div className="max-h-[480px] overflow-y-auto pr-1">
-        {draft.map((row, index) => {
-          const decl = row.declared ? declared.get(row.key) : undefined;
-          const lockedName = row.declared;
-          const lockedDelete = Boolean(decl?.required);
-          const paramType = lockedName ? resolveDeclType(decl) : normalizeParamType(row.type);
-          const isTextarea = paramType === 'textarea';
-          const valuePlaceholder = paramType === 'password'
-            ? t('skill.skillPackageParams.passwordPlaceholder')
-            : isTextarea
-              ? t('skill.skillPackageParams.multilinePlaceholder')
-              : t('skill.skillPackageParams.valuePlaceholder');
-          return (
-            <div
-              key={row.uid}
-              className={index > 0 ? 'border-t border-[var(--color-border)] pt-3 mt-3' : ''}
-            >
-              <div className={`flex gap-2 ${isTextarea ? 'items-start' : 'items-center'}`}>
-                <div className="w-[168px] min-w-0 shrink-0">
-                  {lockedName ? (
-                    <div className="flex h-8 items-center text-sm text-[var(--color-text-1)]">
-                      {decl?.required ? (
-                        <span className="mr-1 font-semibold text-[var(--color-fail)]" aria-hidden>
-                          *
-                        </span>
-                      ) : null}
-                      <span className="truncate font-medium">{row.key}</span>
-                    </div>
-                  ) : (
-                    <Input
-                      value={row.key}
-                      placeholder={t('skill.skillPackageParams.namePlaceholder')}
-                      onChange={(event) => updateRow(row.uid, { key: event.target.value })}
-                    />
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  {isTextarea ? (
-                    <TextArea
-                      value={row.value}
-                      rows={3}
-                      placeholder={valuePlaceholder}
-                      onChange={(event) => updateRow(row.uid, { value: event.target.value })}
-                    />
-                  ) : paramType === 'password' ? (
-                    <EditablePasswordField
-                      size="middle"
-                      value={row.value}
-                      placeholder={valuePlaceholder}
-                      onChange={(value) => updateRow(row.uid, { value })}
-                    />
-                  ) : (
-                    <Input
-                      value={row.value}
-                      placeholder={valuePlaceholder}
-                      onChange={(event) => updateRow(row.uid, { value: event.target.value })}
-                    />
-                  )}
-                </div>
-                <Select
-                  className="w-[128px] shrink-0"
-                  value={paramType}
-                  disabled={lockedName}
-                  options={[
-                    { value: 'text', label: t('skill.skillPackageParams.text') },
-                    { value: 'password', label: t('skill.skillPackageParams.password') },
-                    { value: 'textarea', label: t('skill.skillPackageParams.textarea') },
-                  ]}
-                  onChange={(type) => updateRow(row.uid, { type: normalizeParamType(type), value: '' })}
-                />
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center">
-                  <Tooltip title={lockedDelete ? t('skill.skillPackageParams.declaredLocked') : undefined}>
-                    <Button
-                      type="text"
-                      size="small"
-                      disabled={lockedDelete}
-                      icon={<DeleteOutlined />}
-                      aria-label={t('common.delete')}
-                      onClick={() => setDraft((prev) => prev.filter((item) => item.uid !== row.uid))}
-                    />
-                  </Tooltip>
-                </div>
-              </div>
-              {decl?.description ? (
-                <p className="mt-1 pl-3 text-xs text-[var(--color-text-4)]">{decl.description}</p>
-              ) : null}
-              {paramType === 'password' && row.value === '******' ? (
-                <p className="mt-1 pl-[176px] text-xs text-[var(--color-text-4)]">
-                  {t('skill.skillPackageParams.savedPasswordHint')}
-                </p>
-              ) : null}
+      <p className="mb-4 mt-0 text-xs leading-5 text-[var(--color-text-3)]">
+        {t('skill.skillPackageParams.modalTip')}
+      </p>
+
+      <div className="max-h-[440px] space-y-5 overflow-y-auto pr-1">
+        {declaredRows.length > 0 && (
+          <section>
+            <div className="mb-1 text-[13px] font-medium text-[var(--color-text-1)]">
+              {t('skill.skillPackageParams.declaredSection', '技能包声明')}
             </div>
-          );
-        })}
+            <div className="divide-y divide-[var(--color-fill-2)]">
+              {declaredRows.map((row) => {
+                const decl = declared.get(row.key);
+                const paramType = resolveDeclType(decl);
+                return (
+                  <div key={row.uid} className="flex items-start gap-4 py-3">
+                    <div className="w-[168px] shrink-0 pt-1">
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <span className="truncate font-mono text-[13px] font-medium text-[var(--color-text-1)]" title={row.key}>
+                          {row.key}
+                        </span>
+                        {decl?.required ? (
+                          <span className="shrink-0 text-[11px] text-[var(--color-fail)]">
+                            {t('skill.skillPackageParams.required')}
+                          </span>
+                        ) : null}
+                      </div>
+                      {decl?.description ? (
+                        <p className="mb-0 mt-1 text-xs leading-5 text-[var(--color-text-4)]">
+                          {decl.description}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <ValueControl
+                        type={paramType}
+                        value={row.value}
+                        placeholder={valuePlaceholderOf(paramType)}
+                        onChange={(value) => updateRow(row.uid, { value })}
+                      />
+                      {paramType === 'password' && row.value === '******' ? (
+                        <p className="mb-0 mt-1 text-xs leading-5 text-[var(--color-text-4)]">
+                          {t('skill.skillPackageParams.savedPasswordHint')}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        <section>
+          {declaredRows.length > 0 && (
+            <div className="mb-2 text-[13px] font-medium text-[var(--color-text-1)]">
+              {t('skill.skillPackageParams.customSection', '自定义变量')}
+            </div>
+          )}
+          {declaredRows.length === 0 && (
+            <p className="mb-3 mt-0 text-xs leading-5 text-[var(--color-text-4)]">
+              {t('skill.skillPackageParams.emptyHint', '该技能包未声明变量，需要时可以添加自定义变量')}
+            </p>
+          )}
+
+          {customRows.length === 0 && declaredRows.length > 0 ? (
+            <p className="m-0 py-1 text-xs text-[var(--color-text-4)]">
+              {t('skill.skillPackageParams.customEmpty', '还没有自定义变量')}
+            </p>
+          ) : null}
+
+          {customRows.length > 0 && (
+            <>
+              <div className="mb-1 flex gap-2 px-0.5 text-[11px] text-[var(--color-text-4)]">
+                <span className={`${CUSTOM_NAME_COL} shrink-0`}>{t('skill.skillPackageParams.paramName')}</span>
+                <span className="min-w-0 flex-1">{t('skill.skillPackageParams.paramValue')}</span>
+                <span className={`${CUSTOM_TYPE_COL} shrink-0`}>{t('skill.skillPackageParams.paramType')}</span>
+                <span className={`${CUSTOM_ACTION_COL} shrink-0`} />
+              </div>
+              <div className="divide-y divide-[var(--color-fill-2)]">
+                {customRows.map((row) => {
+                  const paramType = normalizeParamType(row.type);
+                  return (
+                    <div key={row.uid} className="flex items-start gap-2 py-2">
+                      <Input
+                        className={`${CUSTOM_NAME_COL} shrink-0`}
+                        value={row.key}
+                        placeholder={t('skill.skillPackageParams.namePlaceholder')}
+                        onChange={(event) => updateRow(row.uid, { key: event.target.value })}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <ValueControl
+                          type={paramType}
+                          value={row.value}
+                          placeholder={valuePlaceholderOf(paramType)}
+                          onChange={(value) => updateRow(row.uid, { value })}
+                        />
+                      </div>
+                      <Select
+                        className={`${CUSTOM_TYPE_COL} shrink-0`}
+                        value={paramType}
+                        options={typeOptions}
+                        onChange={(type) => updateRow(row.uid, { type: normalizeParamType(type), value: '' })}
+                      />
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<DeleteOutlined />}
+                        className={`${CUSTOM_ACTION_COL} text-[var(--color-text-4)] hover:!text-[var(--color-fail)]`}
+                        aria-label={t('common.delete')}
+                        onClick={() => setDraft((prev) => prev.filter((item) => item.uid !== row.uid))}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          <Button
+            type="link"
+            size="small"
+            className="mt-1 h-6 px-1"
+            icon={<PlusOutlined />}
+            onClick={addCustomRow}
+          >
+            {t('skill.skillPackageParams.add')}
+          </Button>
+        </section>
       </div>
-      <Button
-        className="mt-4"
-        type="dashed"
-        icon={<PlusOutlined />}
-        onClick={() => setDraft((prev) => [
-          ...prev,
-          { uid: nextDraftUid(), declared: false, key: '', value: '', type: 'text', multiline: false },
-        ])}
-      >
-        {t('skill.skillPackageParams.add')}
-      </Button>
-    </Modal>
+    </OperateModal>
   );
 };
 

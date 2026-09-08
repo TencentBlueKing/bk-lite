@@ -13,7 +13,7 @@ def _parse_ipaddr_index(oid, root_oid):
 def _parse_suffix_index(oid, root_oid):
     if oid == root_oid:
         return None
-    return oid[len(root_oid) + 1:]
+    return oid[len(root_oid) + 1 :]
 
 
 def _parse_scalar_index(oid, root_oid):
@@ -216,6 +216,35 @@ PROTOCOL_OID_GROUPS = {
                 "tag": "FDP-Platform",
                 "ifindex_type": "suffix",
                 "index_kind": "fdp_cache",
+                "index_parser": _parse_suffix_index,
+                "group": "neighbors",
+            },
+        ],
+    },
+    "huawei_ndp": {
+        "default_confidence": 0.92,
+        "oids": [
+            {
+                "key": "1.3.6.1.4.1.2011.6.7.5.6.1.1",
+                "tag": "HNDP-RemDeviceId",
+                "ifindex_type": "suffix",
+                "index_kind": "huawei_ndp_neighbor",
+                "index_parser": _parse_suffix_index,
+                "group": "neighbors",
+            },
+            {
+                "key": "1.3.6.1.4.1.2011.6.7.5.6.1.2",
+                "tag": "HNDP-RemPortName",
+                "ifindex_type": "suffix",
+                "index_kind": "huawei_ndp_neighbor",
+                "index_parser": _parse_suffix_index,
+                "group": "neighbors",
+            },
+            {
+                "key": "1.3.6.1.4.1.2011.6.7.5.6.1.3",
+                "tag": "HNDP-RemDeviceName",
+                "ifindex_type": "suffix",
+                "index_kind": "huawei_ndp_neighbor",
                 "index_parser": _parse_suffix_index,
                 "group": "neighbors",
             },

@@ -114,10 +114,10 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   const functionDelayTip =
     showNoDataAlertName && functionDelayMinutes != null
       ? t(
-          'monitor.events.noDataFunctionDelayTip',
-          '当前指标使用了函数计算，预计存在约 {x} 分钟的数据延迟，请注意无数据告警的触发时间可能相应延后。',
-          { x: functionDelayMinutes }
-        )
+        'monitor.events.noDataFunctionDelayTip',
+        '当前指标使用了函数计算，预计存在约 {x} 分钟的数据延迟，请注意无数据告警的触发时间可能相应延后。',
+        { x: functionDelayMinutes }
+      )
       : undefined;
 
   return (

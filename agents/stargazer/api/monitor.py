@@ -323,7 +323,7 @@ async def windows_wmi_metrics(request):
     disk_include_fstypes = request.headers.get("disk_include_fstypes", "")
     disk_exclude_fstypes = request.headers.get(
         "disk_exclude_fstypes",
-        "tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs,vfat,exfat,fat,fat32",
+        "tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs,vfat,exfat,fat,fat32,cdfs",
     )
     raw_timeout = request.headers.get("timeout", "60")
     try:
@@ -380,7 +380,7 @@ async def host_metrics(request):
     disk_include_fstypes = request.headers.get("disk_include_fstypes", "")
     disk_exclude_fstypes = request.headers.get(
         "disk_exclude_fstypes",
-        "tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs,vfat,exfat,fat,fat32",
+        "tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs,vfat,exfat,fat,fat32,cdfs",
     )
     ansible_node_id = request.headers.get("ansible_node_id", "")
     winrm_scheme = request.headers.get("winrm_scheme", "https")

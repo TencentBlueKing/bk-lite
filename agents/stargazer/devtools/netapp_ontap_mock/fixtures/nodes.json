@@ -1,0 +1,11 @@
+[
+  {
+    "name": "node1",
+    "uuid": "4c06cc23-9c4e-11e9-8ee2-00a0986b782b",
+    "model": "AFF-A400",
+    "serial_number": "701234567890",
+    "version": {
+      "full": "NetApp Release 9.13.1P1: Fri Oct 13 2023"
+    }
+  }
+]

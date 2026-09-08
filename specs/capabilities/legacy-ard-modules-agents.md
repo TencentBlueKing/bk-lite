@@ -14,7 +14,7 @@
   - collect（`/collect`）：`/credential_results`、`/collect_info`（证据：`agents/stargazer/api/collect.py:21,253,300`）。
   - monitor（`/monitor`）：`/vmware/metrics`、`/qcloud/metrics`、`/oceanstor/metrics`、`/windows/wmi/metrics`、`/host/metrics`（证据：`agents/stargazer/api/monitor.py:9,26,153,276,353,423`）。
 - enterprise 扩展机制【已实现/已存在】：`api/__init__.py` 在导入时尝试 `from enterprise.api import ENTERPRISE_BLUEPRINTS`，存在则分组挂载到 `/api/enterprise` 前缀；`server.py` 同时导入 `api` 与 `enterprise_api` 两组蓝图（证据：`agents/stargazer/api/__init__.py:12,15-17,24-25`；`agents/stargazer/server.py:2`）。
-- 统一调度与容量边界【已实现/已存在】：应用运行时按 `MAX_ACTIVE_RUNS`、`MAX_ACTIVE_TARGETS`、`TARGET_TASK_WINDOW` 构造全局容量边界；跨 `CollectionRun` 的目标由 round-robin 调度器在同一 in-flight 窗口内公平派发，新 Run 优先获得下一空闲槽位，避免大 Run 长时间占用。运行统计暴露活动 Run/目标、排队目标与峰值，作为容量观测契约。
+- 统一调度与容量边界【已实现/已存在】：应用运行时按 `MAX_ACTIVE_RUNS`、`MAX_ACTIVE_RUN_TARGETS`、`MAX_ACTIVE_TARGETS`、`TARGET_TASK_WINDOW` 构造全局容量边界；`MAX_ACTIVE_RUN_TARGETS` 限制全部已接纳 Run 的目标总数，避免仅按 Run 数接纳多个超大任务；跨 `CollectionRun` 的目标由 round-robin 调度器在同一 in-flight 窗口内公平派发，新 Run 优先获得下一空闲槽位，避免大 Run 长时间占用。运行统计暴露活动 Run/目标、准入目标预算、排队目标与峰值，作为容量观测契约。
 - 结果发布背压【已实现/已存在】：采集执行器将每个目标结果交给有界 `BufferedResultPublisher`；队列容量随目标任务窗口/目标上限确定，队列接纳与最终投递确认分离。发布阶段在统一截止时间内有限重试，投递状态区分 succeeded、failed 与 unknown，运行关闭时按宽限期排空或终止。这一队列是 NATS 结果发布链路的本地有界背压点。
 - 执行计划与阶段超时【已实现/已存在】：每次采集从环境变量与插件 YAML 解析为不可变 `ExecutionPlan`，统一约束预检、可达性/访问探测、插件采集和结果发布四个阶段的超时，并标记 `sync`、`async`、`remote` 执行模式及 `snmp`、`sync_sdk`、`remote_job`、`default` 容量组。YAML 缺失时回退默认计划；插件具体配置到真实连接的全链路重校验【待确认】。
 - 预检与出站安全【已实现/已存在】：目标在协议采集前由异步预检处理，预检结果区分通过、不可达及超时等状态；预检路径会在连接前校验出站地址或受信云端点声明。部署策略与插件真实连接是否逐项复用该校验【待确认】。

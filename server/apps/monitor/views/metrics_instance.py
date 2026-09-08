@@ -12,6 +12,7 @@ from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.models import MonitorInstance
 from apps.monitor.models.monitor_metrics import Metric
 from apps.monitor.services.authorized_metric_query import AuthorizedMetricQueryError, AuthorizedMetricQueryService
+from apps.monitor.services.flow_conversations import query_flow_conversation_page
 from apps.monitor.services.metrics import Metrics as MetricsService
 from apps.monitor.services.metrics import MetricsQueryBudgetExceeded
 from apps.monitor.utils.unit_converter import UnitConverter
@@ -79,6 +80,19 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
                 data = self._apply_unit_conversion(data, source_unit, target_unit)
             elif auto_convert:
                 data = self._apply_unit_conversion(data, source_unit)
+        return WebUtils.response_success(data)
+
+    @action(methods=["post"], detail=False, url_path="query_flow_conversations")
+    def query_flow_conversations(self, request):
+        """全量 Flow 会话列表：按源/目的地址关键字过滤后分页，不截断为 TopN。"""
+        payload = request.data if isinstance(request.data, dict) else {}
+        try:
+            data = query_flow_conversation_page(
+                authorized_service=self._authorized_query_service(request),
+                payload=payload,
+            )
+        except AuthorizedMetricQueryError as exc:
+            self._raise_authorized_query_error(exc)
         return WebUtils.response_success(data)
 
     @staticmethod

@@ -190,8 +190,7 @@ const SQLTask: React.FC<SQLTaskFormProps> = ({
           submitLoading={submitLoading}
           instPlaceholder={`${t('Collection.chooseAsset')}`}
           timeoutProps={{
-            min: 0,
-            defaultValue: 600,
+            min: 1,
             addonAfter: t('Collection.k8sTask.second'),
           }}
         >

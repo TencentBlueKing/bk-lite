@@ -3,6 +3,7 @@ import {
   buildCollectorOperationListParams,
   getCollectorOperationSelection
 } from '../src/app/node-manager/utils/nodeOperation.ts';
+import { EXECUTOR_TYPE_TAG } from '../src/app/node-manager/utils/collectorConfig.ts';
 
 const armNode = {
   key: 'linux-arm',
@@ -35,6 +36,19 @@ assert.deepEqual(
     tags: 'monitor'
   },
   'collector operation query should include structured CPU architecture'
+);
+
+assert.deepEqual(
+  buildCollectorOperationListParams({
+    operatingSystem: armSelection.operatingSystem,
+    cpuArchitecture: armSelection.cpuArchitecture,
+    typeTag: EXECUTOR_TYPE_TAG
+  }),
+  {
+    node_operating_system: 'linux',
+    cpu_architecture: 'arm64'
+  },
+  'executor operations should not hide candidates behind an app tag filter'
 );
 
 const unknownSelection = getCollectorOperationSelection([unknownArchNode]);

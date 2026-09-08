@@ -292,51 +292,185 @@
   transform: none;
 }
 
-/* Keep width/height in sync with ARCH_HOST_OVERLAY_SIZE. pointer-events none so orbit still works. */
+/* Keep width/height in sync with ARCH_HOST_OVERLAY_SIZE. pointer-events auto for copying IP/text. */
 .app3d-arch-host-chip {
   position: absolute;
   z-index: 18;
   box-sizing: border-box;
-  width: 176px;
-  min-height: 96px;
-  padding: 8px 10px 10px;
-  pointer-events: none;
-  border-radius: 10px;
-  border: 1px solid rgba(214, 226, 240, 0.34);
+  width: 236px;
+  min-height: 108px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(214, 226, 240, 0.32);
   color: var(--color-application3d-text);
-  background: linear-gradient(180deg, rgba(42, 58, 80, 0.82) 0%, rgba(16, 26, 40, 0.88) 100%);
+  background: linear-gradient(180deg, rgba(30, 46, 68, 0.92) 0%, rgba(14, 22, 34, 0.96) 100%);
   box-shadow:
     0 0 0 1px rgba(186, 210, 236, 0.12),
-    0 0 14px rgba(160, 190, 220, 0.16),
+    0 8px 24px rgba(0, 0, 0, 0.45),
     inset 0 1px 0 rgba(255, 255, 255, 0.16);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
+  pointer-events: auto;
+  user-select: text;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.app3d-arch-host-chip--alarming {
+  border-color: color-mix(in srgb, var(--color-application3d-severity-critical) 65%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--color-application3d-severity-critical) 20%, transparent),
+    0 0 14px color-mix(in srgb, var(--color-application3d-severity-critical) 25%, transparent),
+    0 8px 24px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 color-mix(in srgb, var(--color-application3d-severity-critical) 30%, white);
+}
+
+.app3d-arch-host-chip--normal {
+  border-color: color-mix(in srgb, var(--color-application3d-arch-host-healthy) 50%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--color-application3d-arch-host-healthy) 18%, transparent),
+    0 0 12px color-mix(in srgb, var(--color-application3d-arch-host-healthy) 22%, transparent),
+    0 8px 24px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+.app3d-arch-host-chip__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.app3d-arch-host-chip__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.app3d-arch-host-chip__status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.app3d-arch-host-chip__status-dot--normal {
+  background: var(--color-application3d-arch-host-healthy);
+  box-shadow: 0 0 6px var(--color-application3d-arch-host-healthy);
+}
+
+.app3d-arch-host-chip__status-dot--alarming {
+  background: var(--color-application3d-severity-critical);
+  box-shadow: 0 0 6px var(--color-application3d-severity-critical);
+}
+
+.app3d-arch-host-chip__status-dot--unknown {
+  background: var(--color-application3d-arch-host-unknown);
 }
 
 .app3d-arch-host-chip__title {
-  margin: 0 0 6px;
+  margin: 0;
   overflow: hidden;
   color: var(--color-application3d-text);
-  font-size: 12px;
-  font-weight: 650;
-  letter-spacing: 0.02em;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
   line-height: 1.3;
   white-space: nowrap;
   text-overflow: ellipsis;
+  flex: 1;
+}
+
+.app3d-arch-host-chip__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: color 0.15s, background-color 0.15s;
+  flex-shrink: 0;
+}
+
+.app3d-arch-host-chip__close:hover {
+  color: var(--color-application3d-text);
+  background-color: var(--color-application3d-surface-hover);
+}
+
+.app3d-arch-host-chip__body {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 8px;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.26);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.app3d-arch-host-chip__metric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  padding-right: 6px;
+}
+
+.app3d-arch-host-chip__metric-val {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-application3d-text);
+}
+
+.app3d-arch-host-chip__metric-val--alarming {
+  color: var(--color-application3d-severity-critical);
+}
+
+.app3d-arch-host-chip__metric-val--normal {
+  color: var(--color-application3d-arch-host-healthy);
+}
+
+.app3d-arch-host-chip__metric-val--unknown {
+  color: var(--color-application3d-arch-host-unknown);
+}
+
+.app3d-arch-host-chip__metric-lbl {
+  font-size: 10px;
+  color: var(--color-application3d-text-muted, rgba(186, 198, 214, 0.82));
+  line-height: 1.2;
+  margin-top: 2px;
+}
+
+.app3d-arch-host-chip__details {
+  display: flex;
+  flex-direction: column;
+  gap: 2.5px;
+  min-width: 0;
 }
 
 .app3d-arch-host-chip__row {
   display: flex;
   justify-content: space-between;
-  gap: 8px;
-  padding: 1px 0;
-  font-size: 12px;
-  line-height: 1.4;
+  align-items: center;
+  gap: 6px;
+  padding: 0.5px 0;
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .app3d-arch-host-chip__label {
-  color: var(--color-application3d-text-muted, rgba(186, 198, 214, 0.82));
+  color: var(--color-application3d-text-muted, rgba(186, 198, 214, 0.78));
   flex-shrink: 0;
+  font-size: 11px;
 }
 
 .app3d-arch-host-chip__value {
@@ -347,6 +481,26 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.app3d-arch-host-chip__value--ip {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: var(--color-application3d-text);
+}
+
+.app3d-arch-host-chip__value--alarming {
+  color: var(--color-application3d-severity-critical);
+  font-weight: 600;
+}
+
+.app3d-arch-host-chip__value--normal {
+  color: var(--color-application3d-arch-host-healthy);
+}
+
+.app3d-arch-host-chip__value--unknown {
+  color: var(--color-application3d-arch-host-unknown);
 }
 
 .app3d-detail-mask {

@@ -77,7 +77,8 @@ afterEach(() => {
 describe('APM 集成应用详情入口', () => {
   it('保留添加接入，并用面包屑回到应用管理', async () => {
     renderWithApmIntl(<ApmApplicationDetailPage />);
-    expect(await screen.findByText('应用服务拓扑')).not.toBeNull();
+    expect(await screen.findByText('电商应用')).not.toBeNull();
+    expect(screen.queryByText('应用服务拓扑')).toBeNull();
     const catalogLink = screen.getByRole('link', { name: '返回应用管理' });
     expect(catalogLink.getAttribute('href')).toBe('/apm/integration/applications');
     expect(catalogLink.textContent).toBe('应用管理');

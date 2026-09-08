@@ -121,6 +121,10 @@ stargazer_collection_runtime_healthy {is_healthy}
 # TYPE stargazer_collection_active_runs gauge
 stargazer_collection_active_runs {stats.get("active_runs", 0)}
 
+# HELP stargazer_collection_active_run_targets Targets admitted across active runs in this process
+# TYPE stargazer_collection_active_run_targets gauge
+stargazer_collection_active_run_targets {stats.get("active_run_targets", 0)}
+
 # HELP stargazer_collection_active_targets Active target collections in this pod
 # TYPE stargazer_collection_active_targets gauge
 stargazer_collection_active_targets {stats.get("active_targets", 0)}
@@ -148,6 +152,10 @@ stargazer_process_open_file_descriptors {stats.get("open_file_descriptors", -1)}
 # HELP stargazer_collection_max_active_runs Configured active run limit
 # TYPE stargazer_collection_max_active_runs gauge
 stargazer_collection_max_active_runs {stats.get("max_active_runs", 0)}
+
+# HELP stargazer_collection_max_active_run_targets Configured target admission budget across active runs
+# TYPE stargazer_collection_max_active_run_targets gauge
+stargazer_collection_max_active_run_targets {stats.get("configured_max_active_run_targets", 0)}
 
 # HELP stargazer_collection_max_active_targets Configured pod target concurrency limit
 # TYPE stargazer_collection_max_active_targets gauge
@@ -237,6 +245,10 @@ stargazer_collection_credential_state_redis_error_total {stats.get("credential_s
             "publish_queue_depth",
             "publish_queue_peak",
             "publish_queue_capacity",
+            "publish_payloads_pending",
+            "publish_payloads_peak",
+            "publish_payload_capacity",
+            "configured_publish_total_timeout_ms",
             "publish_queue_wait_seconds_p95",
             "publish_queue_wait_seconds_p99",
             "publish_queue_residence_seconds_p95",

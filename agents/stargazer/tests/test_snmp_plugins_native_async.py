@@ -86,6 +86,20 @@ def _system_var_binds():
     ]
 
 
+def test_snmp_topo_transport_timeout_does_not_read_form_budget():
+    collector = SnmpTopo(
+        {
+            "host": "127.0.0.1",
+            "version": "v2c",
+            "community": "public",
+            "timeout": 999,
+            "retries": 9,
+        }
+    )
+
+    assert collector.transport_opts == {"timeout": 10, "retries": 1}
+
+
 @pytest.mark.asyncio
 async def test_snmp_facts_probe_does_not_stall(monkeypatch):
     engines, closed = _install_fake_engines(monkeypatch)
@@ -194,6 +208,71 @@ async def test_snmp_facts_interface_walk_uses_getbulk_with_bounded_repetitions(m
 
     assert result["interfaces"] == []
     assert captured == {"non_repeaters": 0, "max_repetitions": 25}
+
+
+@pytest.mark.asyncio
+async def test_snmp_facts_converts_each_pdu_before_requesting_the_next_one(monkeypatch):
+    _install_fake_engines(monkeypatch)
+    metrics = CollectionMetrics()
+    roots = (
+        "1.3.6.1.2.1.2.2.1.1",
+        "1.3.6.1.2.1.2.2.1.2",
+        "1.3.6.1.2.1.2.2.1.4",
+        "1.3.6.1.2.1.2.2.1.5",
+        "1.3.6.1.2.1.2.2.1.6",
+        "1.3.6.1.2.1.2.2.1.7",
+        "1.3.6.1.2.1.2.2.1.8",
+        "1.3.6.1.2.1.31.1.1.1.18",
+    )
+
+    class PduValue(FakeVal):
+        expired = False
+
+        def prettyPrint(self):
+            if self.expired:
+                raise AssertionError("raw varBind survived until the next PDU")
+            return super().prettyPrint()
+
+    values = [PduValue(str(index)) for index in range(len(roots))]
+    calls = 0
+
+    async def fake_get(*_args, **_kwargs):
+        return (None, 0, 0, _system_var_binds())
+
+    async def fake_bulk(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return (None, 0, 0, [[(FakeOid(f"{root}.1"), value) for root, value in zip(roots, values)]])
+        for value in values:
+            value.expired = True
+        return (None, 0, 0, [])
+
+    monkeypatch.setattr("plugins.inputs.network.snmp_facts.getCmd", fake_get)
+    monkeypatch.setattr("plugins.inputs.network.snmp_facts.bulkCmd", fake_bulk)
+
+    result = await SnmpFacts(
+        {
+            "host": "127.0.0.1",
+            "version": "v2c",
+            "community": "public",
+            "_runtime_metrics": metrics,
+        }
+    ).collect()
+
+    assert result["interfaces"] == [
+        {
+            "index": "0",
+            "description": "1",
+            "mtu": "2",
+            "speed": "3",
+            "mac_address": "4",
+            "admin_status": "5",
+            "oper_status": "6",
+            "alias": "7",
+        }
+    ]
+    assert metrics.snapshot()["snmp_walk_yield_total"] >= 1
 
 
 @pytest.mark.asyncio
@@ -364,6 +443,71 @@ async def test_snmp_facts_collect_and_probe_share_one_engine_per_process(monkeyp
 
 
 @pytest.mark.asyncio
+async def test_160_concurrent_snmp_walks_keep_the_loop_responsive(monkeypatch):
+    """单 Worker 的 160 个目标同时 WALK 时，每个 PDU 都必须给 I/O 调度机会。"""
+
+    _install_fake_engines(monkeypatch)
+    roots = (
+        "1.3.6.1.2.1.2.2.1.1",
+        "1.3.6.1.2.1.2.2.1.2",
+        "1.3.6.1.2.1.2.2.1.4",
+        "1.3.6.1.2.1.2.2.1.5",
+        "1.3.6.1.2.1.2.2.1.6",
+        "1.3.6.1.2.1.2.2.1.7",
+        "1.3.6.1.2.1.2.2.1.8",
+        "1.3.6.1.2.1.31.1.1.1.18",
+    )
+    pdu_by_context = {}
+    heartbeat_ticks = 0
+    lag_samples = []
+    stop_heartbeat = False
+
+    async def fake_get(*_args, **_kwargs):
+        return (None, 0, 0, _system_var_binds())
+
+    async def fake_bulk(_engine, _auth, _target, context, *_args, **_kwargs):
+        pdu = pdu_by_context.get(id(context), 0) + 1
+        pdu_by_context[id(context)] = pdu
+        if pdu > 20:
+            return (None, 0, 0, [])
+        row = [(FakeOid(f"{root}.{pdu}"), FakeVal(f"value-{pdu}-{column}")) for column, root in enumerate(roots)]
+        return (None, 0, 0, [row])
+
+    async def heartbeat():
+        nonlocal heartbeat_ticks
+        expected = asyncio.get_running_loop().time()
+        while not stop_heartbeat:
+            await asyncio.sleep(0)
+            now = asyncio.get_running_loop().time()
+            lag_samples.append(max(0.0, now - expected))
+            heartbeat_ticks += 1
+            expected = now
+
+    monkeypatch.setattr("plugins.inputs.network.snmp_facts.getCmd", fake_get)
+    monkeypatch.setattr("plugins.inputs.network.snmp_facts.bulkCmd", fake_bulk)
+    collectors = [
+        SnmpFacts(
+            {
+                "host": f"127.0.0.{index + 1}",
+                "version": "v2c",
+                "community": "public",
+            }
+        )
+        for index in range(160)
+    ]
+
+    heartbeat_task = asyncio.create_task(heartbeat())
+    results = await asyncio.gather(*(collector.collect() for collector in collectors))
+    stop_heartbeat = True
+    await heartbeat_task
+
+    assert len(pdu_by_context) == 160
+    assert all(len(result["interfaces"]) == 20 for result in results)
+    assert heartbeat_ticks >= 20
+    assert max(lag_samples, default=0.0) < 0.1
+
+
+@pytest.mark.asyncio
 async def test_snmp_topo_list_all_resources_does_not_stall(monkeypatch):
     collector = SnmpTopo.__new__(SnmpTopo)
     collector.host = "127.0.0.1"
@@ -413,6 +557,47 @@ async def test_snmp_topo_bulk_walk_and_fallback_share_one_engine(monkeypatch):
     assert len(engines) == 1
     assert io_engines == [engines[0]] * 4
     assert closed == []
+
+
+@pytest.mark.asyncio
+async def test_snmp_topo_formats_each_pdu_and_yields_before_requesting_the_next_one(monkeypatch):
+    _install_fake_engines(monkeypatch)
+    collector = SnmpTopo({"host": "127.0.0.1", "version": "v2c", "community": "public"})
+    collector.oids = ["1.3.6.1.2.1.2.2.1.2"]
+    yielded = False
+    calls = 0
+
+    class PduValue(FakeVal):
+        expired = False
+
+        def prettyPrint(self):
+            if self.expired:
+                raise AssertionError("raw topology varBind survived until the next PDU")
+            return super().prettyPrint()
+
+    value = PduValue("eth0")
+
+    def mark_yielded():
+        nonlocal yielded
+        yielded = True
+
+    async def fake_bulk(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            asyncio.get_running_loop().call_soon(mark_yielded)
+            return (None, 0, 0, [[(FakeOid("1.3.6.1.2.1.2.2.1.2.1"), value)]])
+        assert yielded is True
+        value.expired = True
+        return (None, 0, 0, [])
+
+    method_globals = SnmpTopo._bulk_walk_all_with_engine.__globals__
+    monkeypatch.setitem(method_globals, "hlapi_bulk_cmd", fake_bulk)
+
+    records = await collector._bulk_walk_all()
+
+    assert len(records) == 1
+    assert records[0]["val"] == "eth0"
 
 
 @pytest.mark.asyncio

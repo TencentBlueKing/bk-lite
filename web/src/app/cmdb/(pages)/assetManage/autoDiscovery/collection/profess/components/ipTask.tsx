@@ -10,7 +10,7 @@ import {
   getCycleFormValues,
 } from '../hooks/useTaskForm';
 import { TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
-import { CYCLE_OPTIONS } from '@/app/cmdb/constants/professCollection';
+import { IP_DISCOVERY_FORM_INITIAL_VALUES, resolveIpDiscoveryFormTimeout } from '@/app/cmdb/constants/professCollection';
 import { formatTaskValues } from '../hooks/formatTaskValues';
 import { useInstanceApi } from '@/app/cmdb/api';
 import { Form, Spin, Alert, Radio, Input, Modal, Select } from 'antd';
@@ -34,16 +34,6 @@ interface IpTaskFormProps {
   modelItem: ModelItem;
   editId?: number | null;
 }
-
-const IP_TASK_INITIAL_VALUES = {
-  cycle: CYCLE_OPTIONS.INTERVAL,
-  intervalValue: 60,
-  scanMethod: 'icmp',
-  tcpPorts: '22,80,443,3389',
-  timeout: 5,
-  cleanupStrategy: 'no_cleanup',
-  cleanupDays: 3,
-};
 
 /**
  * Derive a prefix length (0-32) from a subnet mask value that may be:
@@ -179,7 +169,7 @@ const IpTask: React.FC<IpTaskFormProps> = ({
   } = useTaskForm({
     modelId,
     editId,
-    initialValues: IP_TASK_INITIAL_VALUES,
+    initialValues: IP_DISCOVERY_FORM_INITIAL_VALUES,
     onSuccess,
     onClose,
     formatValues: (values) => {
@@ -245,6 +235,7 @@ const IpTask: React.FC<IpTaskFormProps> = ({
       scanMethod: values.instances?.scan_method || 'icmp',
       tcpPorts: (values.instances?.ports || [22, 80, 443, 3389]).join(','),
       subnetUuids,
+      timeout: resolveIpDiscoveryFormTimeout(isCopy, values.timeout),
     };
   };
 
@@ -259,7 +250,7 @@ const IpTask: React.FC<IpTaskFormProps> = ({
           form.setFieldsValue(buildFormValues(values, false));
         }
       } else {
-        form.setFieldsValue(IP_TASK_INITIAL_VALUES);
+        form.setFieldsValue(IP_DISCOVERY_FORM_INITIAL_VALUES);
       }
     };
     initForm();
@@ -273,7 +264,7 @@ const IpTask: React.FC<IpTaskFormProps> = ({
         {...collectionFormLayout}
         form={form}
         onFinish={handleFinish}
-        initialValues={IP_TASK_INITIAL_VALUES}
+        initialValues={IP_DISCOVERY_FORM_INITIAL_VALUES}
       >
         <BaseTaskForm
           ref={baseRef}
@@ -283,9 +274,9 @@ const IpTask: React.FC<IpTaskFormProps> = ({
           submitLoading={submitLoading}
           showAdvanced={true}
           timeoutProps={{
-            min: 0,
-            defaultValue: 300,
+            min: 1,
             addonAfter: t('Collection.k8sTask.second'),
+            tooltip: t('Collection.IPTask.timeoutTooltip'),
           }}
         >
           {/* Security warning — always visible */}

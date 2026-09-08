@@ -5,14 +5,16 @@
 
 import json
 import subprocess
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient, APIRequestFactory, force_authenticate
 
 from apps.alerts.models.alert_source import AlertSource
-from apps.alerts.models.models import Level
+from apps.alerts.models.models import Event, Level
 from apps.alerts.views.alert_source import AlertSourceModelViewSet
 
 
@@ -105,6 +107,44 @@ def test_alert_source_retrieve(superuser):
     assert "SOURCE-SECRET-SENTINEL" not in serialized
     assert "TEAM-SECRET-SENTINEL" not in serialized
     assert "CONFIG-PASSWORD-SENTINEL" not in serialized
+
+
+@pytest.mark.django_db
+def test_alert_source_retrieve_statistics_match_visible_event_scope(permission_user):
+    """详情统计必须与事件列表使用相同的当前组织范围。"""
+    source = _make_source("s1")
+    permission_user.permission = {"alarm": {"Integration-Detail"}}
+    visible_event = Event.objects.create(
+        source=source,
+        raw_data={},
+        title="当前组织事件",
+        level="0",
+        start_time=timezone.now(),
+        event_id="E-visible",
+        team=[1],
+    )
+    hidden_event = Event.objects.create(
+        source=source,
+        raw_data={},
+        title="其他组织事件",
+        level="0",
+        start_time=timezone.now(),
+        event_id="E-hidden",
+        team=[5],
+    )
+    visible_time = timezone.now() - timedelta(hours=1)
+    hidden_time = timezone.now()
+    Event.objects.filter(pk=visible_event.pk).update(received_at=visible_time)
+    Event.objects.filter(pk=hidden_event.pk).update(received_at=hidden_time)
+
+    request = _request("get", f"/alert_source/{source.id}/", permission_user)
+    request.COOKIES["current_team"] = "1"
+    response = AlertSourceModelViewSet.as_view({"get": "retrieve"})(request, pk=str(source.id))
+    payload = _render(response)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert payload["data"]["event_count"] == 1
+    assert payload["data"]["last_event_time"] == timezone.localtime(visible_time).strftime("%Y-%m-%d %H:%M:%S")
 
 
 @pytest.mark.django_db

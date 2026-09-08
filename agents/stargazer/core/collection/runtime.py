@@ -113,6 +113,7 @@ class Submission:
 @dataclass(frozen=True)
 class CollectionRuntimeSettings:
     max_active_runs: int = 16
+    max_active_run_targets: int = 4000
     lease_ttl_seconds: float = 600.0
     lease_heartbeat_seconds: float = 30.0
     run_deadline_seconds: float = 0.0
@@ -120,6 +121,8 @@ class CollectionRuntimeSettings:
     def __post_init__(self) -> None:
         if self.max_active_runs <= 0:
             raise ValueError("max_active_runs must be greater than zero")
+        if self.max_active_run_targets <= 0:
+            raise ValueError("max_active_run_targets must be greater than zero")
         if self.lease_ttl_seconds <= 0:
             raise ValueError("lease_ttl_seconds must be greater than zero")
         if self.lease_heartbeat_seconds <= 0:
@@ -256,6 +259,7 @@ class CollectionRuntime:
         if not self._owner_id:
             raise ValueError("owner_id is required")
         self._active_runs = 0
+        self._active_run_targets = 0
         self._accepting = True
         self._admission_lock = asyncio.Lock()
         self._tasks: set[asyncio.Task] = set()
@@ -263,6 +267,10 @@ class CollectionRuntime:
     @property
     def active_runs(self) -> int:
         return self._active_runs
+
+    @property
+    def active_run_targets(self) -> int:
+        return self._active_run_targets
 
     async def submit(self, request: CollectionRequest) -> Submission:
         async with self._admission_lock:
@@ -294,13 +302,14 @@ class CollectionRuntime:
         if lease is None:
             raise RuntimeError("state store acquired a run without a lease")
 
-        if not await self._try_admit():
+        admitted, rejection_reason = await self._try_admit(len(request.targets))
+        if not admitted:
             await self._state_store.finish(lease, RunStatus.ABANDONED)
             return Submission(
                 task_id=request.task_id,
                 status=SubmissionStatus.BUSY,
                 fence=lease.fence,
-                reason="collection runtime capacity is full",
+                reason=rejection_reason,
             )
 
         try:
@@ -309,7 +318,7 @@ class CollectionRuntime:
                 name=f"collection-run:{safe_log_value(request.task_id)}:{lease.fence}",
             )
         except Exception:
-            await self._release_admission()
+            await self._release_admission(len(request.targets))
             await self._state_store.finish(lease, RunStatus.ABANDONED)
             raise
         self._tasks.add(task)
@@ -320,18 +329,22 @@ class CollectionRuntime:
             fence=lease.fence,
         )
 
-    async def _try_admit(self) -> bool:
+    async def _try_admit(self, target_count: int) -> tuple[bool, str]:
         async with self._admission_lock:
             if not self._accepting:
-                return False
+                return False, "collection runtime is shutting down"
             if self._active_runs >= self._settings.max_active_runs:
-                return False
+                return False, "collection runtime capacity is full"
+            if self._active_run_targets and self._active_run_targets + target_count > self._settings.max_active_run_targets:
+                return False, "collection runtime target budget is full"
             self._active_runs += 1
-            return True
+            self._active_run_targets += target_count
+            return True, ""
 
-    async def _release_admission(self) -> None:
+    async def _release_admission(self, target_count: int) -> None:
         async with self._admission_lock:
             self._active_runs = max(0, self._active_runs - 1)
+            self._active_run_targets = max(0, self._active_run_targets - target_count)
 
     async def _run(self, request: CollectionRequest, lease: RunLease) -> None:
         run_started_at = time.monotonic()
@@ -392,7 +405,7 @@ class CollectionRuntime:
                 duration_ms,
                 lease.fence,
             )
-            await self._release_admission()
+            await self._release_admission(len(request.targets))
 
     async def shutdown(self, *, grace_seconds: float = 30.0) -> None:
         """停止接纳，宽限等待后取消仍在运行的顶层任务。"""

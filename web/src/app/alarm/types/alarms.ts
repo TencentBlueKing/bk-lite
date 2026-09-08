@@ -1,4 +1,12 @@
 import type { Pagination, TableDataItem } from '@/app/alarm/types/types';
+
+export interface MonitorObjectSnapshot {
+  monitor_id: string;
+  cmdb_id: string | null;
+  resource_type: string | null;
+  resource_name: string | null;
+}
+
 export interface GroupInfo {
   name?: string;
   description?: string;
@@ -55,6 +63,7 @@ export interface AlarmTableDataItem {
   resource_id: string;
   resource_name: string;
   resource_type: string;
+  monitor_objects?: MonitorObjectSnapshot[];
   operate: string | null;
   notify_status?: string;
   notify_total?: number;
@@ -412,6 +421,8 @@ export interface EventItem {
   resource_id: string;
   resource_type: string;
   resource_name: string;
+  monitor_id?: string | null;
+  cmdb_id?: string | null;
   status: string;
   assignee: any[];
   note: string | null;

@@ -599,8 +599,12 @@ def test_exec_task_passes_execution_token_to_sync_collect_task(settings, mocker)
     mocker.patch.object(CollectModelService, "repair_host_cloud_snapshot")
     mocker.patch(
         "apps.cmdb.services.collect_service.sync_collect_task",
-        side_effect=lambda task_id, execution_id=None, config_id=None, config_version=None: called.update(
-            {"sync_task_id": task_id, "sync_execution_id": execution_id}
+        side_effect=lambda task_id, execution_id=None, config_id=None, config_version=None, **kwargs: called.update(
+            {
+                "sync_task_id": task_id,
+                "sync_execution_id": execution_id,
+                "resolve_latest_round": kwargs.get("resolve_latest_round"),
+            }
         ),
     )
     mocker.patch("apps.cmdb.services.collect_service.create_change_record")
@@ -611,6 +615,7 @@ def test_exec_task_passes_execution_token_to_sync_collect_task(settings, mocker)
     assert called["saved_task_id"]
     assert called["sync_task_id"] == task.id
     assert called["sync_execution_id"] == called["saved_task_id"]
+    assert called["resolve_latest_round"] is True
 
 
 def test_exec_task_defers_celery_publish_until_transaction_commit(settings, mocker):
@@ -641,7 +646,7 @@ def test_exec_task_defers_celery_publish_until_transaction_commit(settings, mock
     delay.assert_not_called()
     assert len(callbacks) == 1
     callbacks[0]()
-    delay.assert_called_once_with(task.id, task.task_id, None, None)
+    delay.assert_called_once_with(task.id, task.task_id, None, None, resolve_latest_round=True)
 
 
 class TestListRegions:
@@ -686,6 +691,23 @@ class TestListRegions:
         assert params["access_point"] == [{"id": "n1"}]
         assert is_interval is True
         assert scan_cycle == "*/10 * * * *"
+
+    def test_format_params_保留空_ip_range(self):
+        data = {
+            "name": "task1",
+            "task_type": "network",
+            "driver_type": "snmp",
+            "model_id": "network",
+            "timeout": 5,
+            "input_method": 0,
+            "team": [1],
+            "scan_cycle": {"value_type": "cycle", "value": "30"},
+            "ip_range": "",
+            "instances": [{"inst_uuid": "u1"}],
+        }
+        params, _is_interval, _scan_cycle = CollectModelService.format_params(data)
+        assert params["ip_range"] == ""
+        assert params["instances"] == [{"inst_uuid": "u1"}]
 
     def test_format_params_close_无周期(self):
         data = {

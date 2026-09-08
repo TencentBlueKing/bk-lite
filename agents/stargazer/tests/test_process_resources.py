@@ -77,3 +77,41 @@ def test_process_resource_sampler_ignores_immediate_startup_cpu_spike(tmp_path):
     )
 
     assert sampler.sample()["process_cpu_percent"] == 0.0
+
+
+def test_process_resource_sampler_reads_cgroup_v1_fallback(tmp_path):
+    proc_root = tmp_path / "proc"
+    cgroup_root = tmp_path / "cgroup"
+    (proc_root / "self/fd").mkdir(parents=True)
+    (proc_root / "self/statm").write_text("1000 128 0 0 0 0 0\n", encoding="utf-8")
+    (proc_root / "self/status").write_text("Name:\ttest\nThreads:\t4\n", encoding="utf-8")
+    (proc_root / "self/cgroup").write_text(
+        "5:memory:/kubepods/pod-a\n4:cpu,cpuacct:/kubepods/pod-a\n",
+        encoding="utf-8",
+    )
+    memory_dir = cgroup_root / "memory/kubepods/pod-a"
+    cpu_dir = cgroup_root / "cpu,cpuacct/kubepods/pod-a"
+    memory_dir.mkdir(parents=True)
+    cpu_dir.mkdir(parents=True)
+    (memory_dir / "memory.usage_in_bytes").write_text("536870912\n", encoding="utf-8")
+    (memory_dir / "memory.limit_in_bytes").write_text("1073741824\n", encoding="utf-8")
+    (cpu_dir / "cpu.cfs_quota_us").write_text("200000\n", encoding="utf-8")
+    (cpu_dir / "cpu.cfs_period_us").write_text("100000\n", encoding="utf-8")
+    (cpu_dir / "cpu.stat").write_text("nr_periods 100\nnr_throttled 40\nthrottled_time 2500000000\n", encoding="utf-8")
+    wall_times = iter((100.0, 102.0))
+    cpu_times = iter((10.0, 11.0))
+    sampler = ProcessResourceSampler(
+        proc_root=proc_root,
+        cgroup_root=cgroup_root,
+        monotonic=lambda: next(wall_times),
+        process_time=lambda: next(cpu_times),
+        page_size=4096,
+    )
+
+    snapshot = sampler.sample()
+
+    assert snapshot["cgroup_memory_current_mb"] == 512.0
+    assert snapshot["cgroup_memory_limit_mb"] == 1024.0
+    assert snapshot["cgroup_cpu_limit_cores"] == 2.0
+    assert snapshot["cgroup_cpu_throttled_seconds_total"] == 2.5
+    assert snapshot["cgroup_cpu_throttled_periods_total"] == 40

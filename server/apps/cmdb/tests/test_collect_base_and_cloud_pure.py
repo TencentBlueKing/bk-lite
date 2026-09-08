@@ -65,6 +65,19 @@ def test_collect_base_init_backfills_inst_name_from_list_instances(monkeypatch):
     assert runner.inst_name == "host-a"
 
 
+def test_collect_base_init_does_not_backfill_first_name_when_multiple_instances(monkeypatch):
+    monkeypatch.setattr(
+        CollectBase,
+        "get_collect_inst",
+        lambda self: SimpleNamespace(
+            instances=[{"inst_name": "host-a", "_id": "h1"}, {"inst_name": "host-b", "_id": "h2"}],
+            model_id="host",
+        ),
+    )
+    runner = _DummyCollect(inst_name="", inst_id=None, task_id=42)
+    assert runner.inst_name == ""
+
+
 def test_collect_base_init_skips_dict_instances_for_ip_tasks(monkeypatch):
     monkeypatch.setattr(
         CollectBase,

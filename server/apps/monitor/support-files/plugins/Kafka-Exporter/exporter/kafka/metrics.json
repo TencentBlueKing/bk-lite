@@ -33,7 +33,7 @@
       "unit": "counts",
       "dimensions": [],
       "description": "Number of Kafka Brokers in the cluster.",
-      "query": "sum(kafka_brokers_gauge{__$labels__})"
+      "query": "max by (instance_id) (kafka_brokers_gauge{__$labels__})"
     },
     {
       "metric_group": "Base",
@@ -69,7 +69,7 @@
         }
       ],
       "description": "Number of partitions for a given Kafka topic.",
-      "query": "sum by (topic) (kafka_topic_partitions_gauge{__$labels__})"
+      "query": "sum by (instance_id, topic) (kafka_topic_partitions_gauge{__$labels__})"
     },
     {
       "metric_group": "Topic",
