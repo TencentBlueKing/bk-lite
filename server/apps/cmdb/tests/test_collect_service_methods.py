@@ -118,6 +118,7 @@ def patch_transaction_callbacks(mocker):
     callbacks = []
     mocker.patch("apps.cmdb.services.collect_service.transaction.atomic", return_value=FakeAtomic())
     mocker.patch("apps.cmdb.services.collect_service.transaction.on_commit", side_effect=callbacks.append)
+    mocker.patch.object(CollectModelService, "schedule_first_collection_if_needed", return_value=None)
     return callbacks
 
 

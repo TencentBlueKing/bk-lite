@@ -184,13 +184,6 @@
       "template": "clamp_max(100 * sum by (instance_id) (consul_health_checks_passing{__$labels__}) / clamp_min(count by (instance_id) (consul_health_checks_status{__$labels__}), 1), 100)"
     },
     {
-      "id": "dashboard:v1:065a8dde",
-      "object_names": [
-        "Cluster"
-      ],
-      "template": "100 * sum(prometheus_remote_write_kube_deployment_status_replicas_available{instance_type=\"k8s\",__$labels__}) / clamp_min(sum(prometheus_remote_write_kube_deployment_spec_replicas{instance_type=\"k8s\",__$labels__}),1)"
-    },
-    {
       "id": "dashboard:v1:069588ce",
       "object_names": [
         "ElasticSearch"
@@ -891,6 +884,13 @@
         "Mongodb"
       ],
       "template": "rate(mongodb_net_in_bytes_count{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:1fc6119c",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "topk(5, sum by (namespace) (label_replace(prometheus_remote_write_container_memory_working_set_bytes{instance_type=\"k8s\",__$labels__}, \"namespace\", \"$1\", \"container_label_io_kubernetes_pod_namespace\", \"(.+)\")))"
     },
     {
       "id": "dashboard:v1:20114010",
@@ -1774,13 +1774,6 @@
       "template": "mongodb_connections_current{__$labels__}"
     },
     {
-      "id": "dashboard:v1:46d0f9ce",
-      "object_names": [
-        "K3SCluster"
-      ],
-      "template": "100 * sum(prometheus_remote_write_kube_deployment_status_replicas_available{instance_type=\"k3s\",__$labels__}) / clamp_min(sum(prometheus_remote_write_kube_deployment_spec_replicas{instance_type=\"k3s\",__$labels__}),1)"
-    },
-    {
       "id": "dashboard:v1:46e96889",
       "object_names": [
         "Redis"
@@ -2010,6 +2003,13 @@
         "Exchange"
       ],
       "template": "win_exchange_transport_queues_Poison_Queue_Length{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:50110358",
+      "object_names": [
+        "K3SCluster"
+      ],
+      "template": "100 * clamp_min(sum(prometheus_remote_write_kube_daemonset_status_desired_number_scheduled{instance_type=\"k3s\",__$labels__}) - (sum(prometheus_remote_write_kube_daemonset_status_number_unavailable{instance_type=\"k3s\",__$labels__}) or vector(0)), 0) / clamp_min(sum(prometheus_remote_write_kube_daemonset_status_desired_number_scheduled{instance_type=\"k3s\",__$labels__}),1)"
     },
     {
       "id": "dashboard:v1:501b0278",
@@ -3403,6 +3403,13 @@
       "template": "jvm_memory_usage_used_value{type=\"Heap\",__$labels__}"
     },
     {
+      "id": "dashboard:v1:8d5f975a",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "100 * clamp_min(sum(prometheus_remote_write_kube_deployment_spec_replicas{instance_type=\"k8s\",__$labels__}) - (sum(prometheus_remote_write_kube_deployment_status_replicas_unavailable{instance_type=\"k8s\",__$labels__}) or vector(0)), 0) / clamp_min(sum(prometheus_remote_write_kube_deployment_spec_replicas{instance_type=\"k8s\",__$labels__}),1)"
+    },
+    {
       "id": "dashboard:v1:8ebd3e28",
       "object_names": [
         "MSSQL"
@@ -3781,13 +3788,6 @@
         "Mysql"
       ],
       "template": "clamp_min(rate(mysql_created_tmp_tables{__$labels__}[__$window__]) - rate(mysql_created_tmp_disk_tables{__$labels__}[__$window__]), 0)"
-    },
-    {
-      "id": "dashboard:v1:9ed2014d",
-      "object_names": [
-        "Cluster"
-      ],
-      "template": "topk(5, sum by (container_label_io_kubernetes_pod_namespace) (prometheus_remote_write_container_memory_working_set_bytes{instance_type=\"k8s\",__$labels__}))"
     },
     {
       "id": "dashboard:v1:9ef6dee8",
@@ -4996,6 +4996,13 @@
       "template": "mongodb_cursor_timed_out_count{__$labels__}"
     },
     {
+      "id": "dashboard:v1:d55dbd27",
+      "object_names": [
+        "K3SCluster"
+      ],
+      "template": "100 * clamp_min(sum(prometheus_remote_write_kube_deployment_spec_replicas{instance_type=\"k3s\",__$labels__}) - (sum(prometheus_remote_write_kube_deployment_status_replicas_unavailable{instance_type=\"k3s\",__$labels__}) or vector(0)), 0) / clamp_min(sum(prometheus_remote_write_kube_deployment_spec_replicas{instance_type=\"k3s\",__$labels__}),1)"
+    },
+    {
       "id": "dashboard:v1:d5eb0490",
       "object_names": [
         "K3SCluster"
@@ -5120,13 +5127,6 @@
         "Exchange"
       ],
       "template": "win_exchange_transport_queues_Submission_Queue_Length{instance_type=\"exchange\", __$labels__}"
-    },
-    {
-      "id": "dashboard:v1:dcbef466",
-      "object_names": [
-        "Cluster"
-      ],
-      "template": "100 * sum(prometheus_remote_write_kube_daemonset_status_number_available{instance_type=\"k8s\",__$labels__}) / clamp_min(sum(prometheus_remote_write_kube_daemonset_status_desired_number_scheduled{instance_type=\"k8s\",__$labels__}),1)"
     },
     {
       "id": "dashboard:v1:dcc35767",
@@ -5724,13 +5724,6 @@
       "template": "apache_CacheCurrentEntries{__$labels__}"
     },
     {
-      "id": "dashboard:v1:f6edc87c",
-      "object_names": [
-        "K3SCluster"
-      ],
-      "template": "100 * sum(prometheus_remote_write_kube_daemonset_status_number_available{instance_type=\"k3s\",__$labels__}) / clamp_min(sum(prometheus_remote_write_kube_daemonset_status_desired_number_scheduled{instance_type=\"k3s\",__$labels__}),1)"
-    },
-    {
       "id": "dashboard:v1:f73d2940",
       "object_names": [
         "K3SCluster"
@@ -5743,6 +5736,13 @@
         "Router"
       ],
       "template": "count({instance_type='router', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:f8bf91af",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "100 * clamp_min(sum(prometheus_remote_write_kube_daemonset_status_desired_number_scheduled{instance_type=\"k8s\",__$labels__}) - (sum(prometheus_remote_write_kube_daemonset_status_number_unavailable{instance_type=\"k8s\",__$labels__}) or vector(0)), 0) / clamp_min(sum(prometheus_remote_write_kube_daemonset_status_desired_number_scheduled{instance_type=\"k8s\",__$labels__}),1)"
     },
     {
       "id": "dashboard:v1:f8f30032",

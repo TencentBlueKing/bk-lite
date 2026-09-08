@@ -313,6 +313,36 @@ class TestChatServiceUnit:
         assert params["skill_prompt"] == "p2"
         assert params["foo"] == 1
         assert "t1" in [t.get("name") for t in params["tools"]]
+        assert params["enable_suggest"] is False
+        assert params["enable_query_rewrite"] is False
+        assert params["show_think"] is False
+
+    def test_build_params_ignores_legacy_suggest_rewrite_and_think_flags(self):
+        skill = _skill(
+            tools=[],
+            skill_prompt="p",
+            team=[1],
+            enable_suggest=True,
+            enable_query_rewrite=True,
+            show_think=True,
+            temperature=0.2,
+        )
+        user = SimpleNamespace(username="u", id=1, locale="zh-CN")
+        with patch("apps.opspilot.services.skill_channel_chat_service.resolve_request_tools", return_value=[]):
+            with patch("apps.opspilot.services.skill_channel_chat_service.hydrate_skill_packages", return_value=[]):
+                with patch(
+                    "apps.opspilot.services.skill_channel_chat_service.build_skill_package_prompt",
+                    return_value=("p", []),
+                ):
+                    with patch(
+                        "apps.opspilot.services.skill_channel_chat_service.build_skill_package_strategy",
+                        return_value={},
+                    ):
+                        params = chat_svc.build_skill_chat_params(skill, "hi", user)
+        assert params["enable_suggest"] is False
+        assert params["enable_query_rewrite"] is False
+        assert params["show_think"] is False
+        assert params["temperature"] == 1.0
 
     def test_stream_chat_persists_assistant_and_identity_error(self):
         skill = _skill()

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import logging
 
 import pytest
 from core.collection.contracts import AccessProbeStatus
@@ -521,6 +522,36 @@ async def test_snmp_topo_list_all_resources_does_not_stall(monkeypatch):
     result = await _heartbeat_during(collector.list_all_resources())
     assert result["success"] is True
     assert result["result"]["network_topo"][0]["val"] == "eth0"
+
+
+@pytest.mark.asyncio
+async def test_snmp_topo_expected_no_response_is_debug_without_traceback(monkeypatch, caplog):
+    collector = SnmpTopo.__new__(SnmpTopo)
+    collector.host = "127.0.0.9"
+    collector.collection_task_id = "topology-9"
+
+    async def no_response():
+        raise RuntimeError("No SNMP response received before timeout")
+
+    test_logger = logging.getLogger("test.stargazer.snmp_topo.expected_failure")
+    monkeypatch.setitem(SnmpTopo.list_all_resources.__globals__, "logger", test_logger)
+    monkeypatch.setattr(collector, "bulkCmd", no_response)
+
+    with caplog.at_level(logging.DEBUG, logger=test_logger.name):
+        result = await collector.list_all_resources()
+
+    assert result["success"] is False
+    assert not [record for record in caplog.records if record.levelno >= logging.ERROR]
+    records = [record for record in caplog.records if record.levelno == logging.DEBUG]
+    assert len(records) == 1
+    assert records[0].msg == ("event=snmp_topo_collect_unavailable host=%s task_id=%s " "failed_stage=%s error_type=%s")
+    assert records[0].args == (
+        "127.0.0.9",
+        "topology-9",
+        "list_all_resources",
+        "RuntimeError",
+    )
+    assert records[0].exc_info is None
 
 
 @pytest.mark.asyncio

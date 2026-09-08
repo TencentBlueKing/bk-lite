@@ -258,7 +258,7 @@ class LLMSkill(MaintainerInfo):
     # 使用组织：平台/Web/嵌入式对话准入；不变式 team ⊆ usage_team（与 Bot 对齐）。
     usage_team = models.JSONField(default=list, verbose_name="使用组织")
 
-    show_think = models.BooleanField(default=True)
+    show_think = models.BooleanField(default=False)
     tools = models.JSONField(default=list)
     skill_params = models.JSONField(default=list, verbose_name="技能参数")
     skill_packages = models.JSONField(default=list, verbose_name="技能包")

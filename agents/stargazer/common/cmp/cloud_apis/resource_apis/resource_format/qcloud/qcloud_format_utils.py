@@ -115,7 +115,11 @@ def format_qcloud_vm_status(status):
 
 
 def format_qcloud_vm_charge_type(charge_type):
-    if charge_type in [QCloudVMChargeType.PREPAID.value, QCloudVMChargeType.CDHPAID.value]:
+    if charge_type in [
+        QCloudVMChargeType.PREPAID.value,
+        QCloudVMChargeType.CDHPAID.value,
+        QCloudVMChargeType.CDCPAID.value,
+    ]:
         return VMChargeType.PREPAID.value
     elif charge_type in [QCloudVMChargeType.POSTPAID_BY_HOUR.value, QCloudVMChargeType.SPOTPAID.value]:
         return VMChargeType.POSTPAID_BY_HOUR.value
@@ -127,9 +131,7 @@ def format_qcloud_tag(tags):
     if not tags:
         return []
     # return [{i.Key: i.Value} for i in tags]
-    return [
-        {getattr(i, "TagKey"): getattr(i, "TagValue")} for i in tags if hasattr(i, "TagKey") and hasattr(i, "TagValue")
-    ]
+    return [{getattr(i, "TagKey"): getattr(i, "TagValue")} for i in tags if hasattr(i, "TagKey") and hasattr(i, "TagValue")]
 
 
 # ******************************* 磁盘 disk

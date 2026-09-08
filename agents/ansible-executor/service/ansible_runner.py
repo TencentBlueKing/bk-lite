@@ -42,6 +42,22 @@ _SENSITIVE_INVENTORY_PATTERNS = (
 
 _SSH_KNOWN_HOSTS_FILE_ENV = "SSH_KNOWN_HOSTS_FILE"
 _LEGACY_PASSWORD_SSH_COMMON_ARGS = "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+_RAW_ADHOC_MODULES = {"raw"}
+
+
+def encode_adhoc_module_args(module: str, module_args: str) -> str:
+    """raw 模块的 `-a` 用 JSON `_raw_params`，避免 Ansible split_args 被引号/heredoc 拆失败。"""
+    if str(module or "").strip() not in _RAW_ADHOC_MODULES or not module_args:
+        return module_args
+    stripped = module_args.strip()
+    if stripped.startswith("{") and stripped.endswith("}"):
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError:
+            parsed = None
+        if isinstance(parsed, dict) and isinstance(parsed.get("_raw_params"), str):
+            return module_args
+    return json.dumps({"_raw_params": module_args}, ensure_ascii=False)
 
 
 def _redact_cli_command(args: list[str]) -> list[str]:
@@ -977,7 +993,7 @@ def build_adhoc_command(payload: AdhocRequest) -> list[str]:
         payload.module,
     ]
     if payload.module_args:
-        cli_args.extend(["-a", payload.module_args])
+        cli_args.extend(["-a", encode_adhoc_module_args(payload.module, payload.module_args)])
     if payload.extra_vars_file:
         cli_args.extend(["--extra-vars", f"@{payload.extra_vars_file}"])
     elif extra_vars:

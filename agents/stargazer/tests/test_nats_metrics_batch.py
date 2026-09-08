@@ -769,10 +769,24 @@ def test_nats_metrics_connection_stats_expose_connection_and_pending_bytes(monke
         "nats_js_publish_confirmed_total": 0,
         "nats_js_puback_duration_seconds_p95": 0.0,
         "nats_js_puback_duration_seconds_p99": 0.0,
+        "nats_js_deadline_expired_total": 0,
+        "nats_js_credit_wait_timeout_total": 0,
+        "nats_js_publish_call_timeout_total": 0,
         "nats_js_puback_timeout_total": 0,
         "nats_js_publish_retry_total": 0,
         "nats_js_publish_rejected_total": 0,
     }
+
+
+def test_metrics_window_uses_per_call_fair_share_from_environment(monkeypatch):
+    monkeypatch.setattr(nats_utils, "_metrics_js_window", None)
+    monkeypatch.setenv("NATS_JS_PUBLISH_MAX_PENDING", "256")
+    monkeypatch.setenv("NATS_JS_PUBLISH_MAX_PENDING_PER_CALL", "64")
+
+    window = nats_utils._get_metrics_js_window()
+
+    assert window.settings.max_pending_messages == 256
+    assert window.settings.max_pending_messages_per_call == 64
 
 
 @pytest.mark.asyncio
@@ -1082,6 +1096,41 @@ async def test_large_target_does_not_starve_small_target_with_same_subject(monke
     )
 
     assert published[:2] == ["large-0", "small-0"]
+
+
+@pytest.mark.asyncio
+async def test_metrics_batch_streams_small_target_terminal_before_large_peer_finishes(monkeypatch):
+    published = []
+
+    def iter_lines(_metrics, params):
+        count = 5 if params["collection_result_id"] == "large" else 1
+        for index in range(count):
+            yield f"{params['collection_result_id']}-{index}"
+
+    async def publish(_subject, lines, _task_id, **_kwargs):
+        published.extend(lines)
+        return len(lines)
+
+    monkeypatch.setenv("NATS_METRICS_JETSTREAM_ENABLED", "true")
+    monkeypatch.setenv("NATS_JS_PUBLISH_MAX_PENDING", "1")
+    monkeypatch.setattr(nats_helper, "_iter_metrics_to_influx", iter_lines)
+    monkeypatch.setattr(nats_helper, "_publish_lines_with_retry", publish)
+
+    events = nats_helper.iter_metrics_batch_outcomes(
+        (
+            ({}, "a", {"model_id": "network", "collection_result_id": "large"}, "run-1"),
+            ({}, "b", {"model_id": "network", "collection_result_id": "small"}, "run-1"),
+        )
+    )
+
+    first_result_id, first_outcome = await anext(events)
+
+    assert first_result_id == "small"
+    assert first_outcome is None
+    assert published == ["large-0", "small-0", "large-1"]
+
+    remaining = [event async for event in events]
+    assert remaining == [("large", None)]
 
 
 @pytest.mark.asyncio

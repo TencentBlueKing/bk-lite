@@ -56,6 +56,7 @@ def _create_alert(policy, alert_id, status_value="new"):
         content="alert content",
         status=status_value,
         start_event_time=timezone.now(),
+        organizations=list(policy.policyorganization_set.values_list("organization", flat=True)),
     )
 
 

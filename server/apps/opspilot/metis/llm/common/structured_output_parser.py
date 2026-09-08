@@ -1,14 +1,12 @@
-import json
 from typing import Type, TypeVar
 
 import json_repair
-from langchain_core.messages import HumanMessage
 from langchain_core.output_parsers import PydanticOutputParser
+from loguru import logger
 from openai import OpenAI
 from pydantic import BaseModel
-from loguru import logger
 
-T = TypeVar('T', bound=BaseModel)
+T = TypeVar("T", bound=BaseModel)
 
 
 class StructuredOutputParser:
@@ -28,22 +26,19 @@ class StructuredOutputParser:
         """
         self.llm = llm
         self._independent_llm = None  # 独立的 LLM 实例，不会被 LangGraph 捕获
-        
+
         # 根据配置决定是否禁用thinking模式
         self._configure_thinking_mode()
 
     def _configure_thinking_mode(self):
         """根据模型配置决定是否禁用thinking模式"""
-        model_name = getattr(self.llm, 'model_name', '') or getattr(self.llm, 'model', '')
-        
+        model_name = getattr(self.llm, "model_name", "") or getattr(self.llm, "model", "")
+
         # 检查当前模型是否在需要禁用thinking的列表中
-        should_disable = any(
-            disabled_model.lower() in str(model_name).lower() 
-            for disabled_model in self.THINKING_DISABLED_MODELS
-        )
-        
+        should_disable = any(disabled_model.lower() in str(model_name).lower() for disabled_model in self.THINKING_DISABLED_MODELS)
+
         if should_disable:
-            if not hasattr(self.llm, 'extra_body') or self.llm.extra_body is None:
+            if not hasattr(self.llm, "extra_body") or self.llm.extra_body is None:
                 self.llm.extra_body = {}
             self.llm.extra_body["enable_thinking"] = False
 
@@ -55,20 +50,17 @@ class StructuredOutputParser:
             secret_key = self.llm.openai_api_key
             api_key = secret_key.get_secret_value() if secret_key else None
             base_url = self.llm.openai_api_base
-            
+
             if not api_key:
                 raise ValueError("无法从 ChatOpenAI 实例中获取 API key")
-            
+
             # 创建原生 OpenAI 客户端，完全绕过 LangChain，设置合理的超时时间
-            kwargs = {
-                'api_key': api_key,
-                'timeout': 60.0  # 设置60秒超时
-            }
+            kwargs = {"api_key": api_key, "timeout": 60.0}  # 设置60秒超时
             if base_url:
-                kwargs['base_url'] = base_url
-            
+                kwargs["base_url"] = base_url
+
             self._independent_llm = OpenAI(**kwargs)
-        
+
         return self._independent_llm
 
     async def parse_with_structured_output(self, user_message: str, pydantic_class: Type[T]) -> T:
@@ -89,29 +81,30 @@ class StructuredOutputParser:
         try:
             # 创建 PydanticOutputParser
             output_parser = PydanticOutputParser(pydantic_object=pydantic_class)
-            
+
             # 获取格式化指令
             format_instructions = output_parser.get_format_instructions()
 
             # 构建消息内容
             full_message = f"{user_message}\n\n请按照以下格式要求输出结果：\n{format_instructions}"
-            
+
             # 使用原生 OpenAI SDK，完全绕过 LangChain/LangGraph
             client = self._get_openai_client()
-            model_name = getattr(self.llm, 'model_name', None) or getattr(self.llm, 'model', 'gpt-3.5-turbo')
-            temperature = getattr(self.llm, 'temperature', 0.7)
-            
-            # 准备调用参数
+            model_name = getattr(self.llm, "model_name", None) or getattr(self.llm, "model", "gpt-3.5-turbo")
+            temperature = getattr(self.llm, "temperature", None)
+
+            # 准备调用参数；temperature 为 None 时省略，避免固定值模型网关 400。
             call_kwargs = {
-                'model': model_name,
-                'messages': [{'role': 'user', 'content': full_message}],
-                'temperature': temperature,
+                "model": model_name,
+                "messages": [{"role": "user", "content": full_message}],
             }
-            
+            if temperature is not None:
+                call_kwargs["temperature"] = temperature
+
             # 添加 extra_body 如果存在
-            if hasattr(self.llm, 'extra_body') and self.llm.extra_body:
-                call_kwargs['extra_body'] = self.llm.extra_body
-            
+            if hasattr(self.llm, "extra_body") and self.llm.extra_body:
+                call_kwargs["extra_body"] = self.llm.extra_body
+
             # 直接调用 OpenAI API，不经过 LangChain
             raw_response = client.chat.completions.create(**call_kwargs)
             response_text = raw_response.choices[0].message.content
@@ -132,8 +125,8 @@ class StructuredOutputParser:
                     # 如果没有响应内容，返回默认实例
                     logger.warning(f"响应内容为空，返回默认的 {pydantic_class.__name__} 实例")
                     return pydantic_class()
-            except Exception as fallback_error:
-                logger.warning(f"后备解析方案失败，返回默认实例")
+            except Exception:
+                logger.warning("后备解析方案失败，返回默认实例")
                 # 如果所有解析都失败，返回模型的默认实例
                 try:
                     return pydantic_class()

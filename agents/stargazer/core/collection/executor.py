@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from dataclasses import replace
 
 from core.collection.capacity import TargetActivityTracker, TargetWorkerBudget, unlimited_target_gate
 from core.collection.contracts import (
@@ -380,20 +381,34 @@ class TargetCollectionExecutor:
             report.publish_failure_codes,
             report.publish_failure_samples,
         )
-        from core.collection.round_complete import is_complete_round
+        from core.collection.round_complete import publish_round_complete_marker, round_complete_skip_reason
 
-        publish_clean = is_complete_round(summary)
-        if publish_clean:
-            from core.collection.round_complete import publish_round_complete_marker
-
-            await publish_round_complete_marker(request, round_ts)
-        else:
+        marker_skip_reason = round_complete_skip_reason(request, summary)
+        if marker_skip_reason is None:
+            marker_published = await publish_round_complete_marker(request, round_ts)
+            summary = replace(
+                summary,
+                round_complete_marker_published=int(marker_published),
+                round_complete_marker_failed=int(not marker_published),
+            )
+        elif marker_skip_reason != "not_applicable":
             logger.info(
-                "event=round_complete_marker_skipped %s reason=publish_incomplete "
-                "round_ts=%s publish_failed=%s publish_unknown=%s "
-                "publish_event_failed=%s publish_permanent_failed=%s",
+                "event=round_complete_marker_skipped %s reason=%s round_ts=%s "
+                "total=%s collection_succeeded=%s collection_failed=%s unreachable=%s "
+                "deferred=%s skipped=%s publish_succeeded=%s publish_not_applicable=%s "
+                "publish_failed=%s publish_unknown=%s publish_event_failed=%s "
+                "publish_permanent_failed=%s",
                 _request_log_identity(request, instance_id),
+                marker_skip_reason,
                 round_ts,
+                summary.total,
+                summary.collection_succeeded,
+                summary.collection_failed,
+                summary.unreachable,
+                summary.deferred,
+                summary.skipped,
+                summary.publish_succeeded,
+                summary.publish_not_applicable,
                 summary.publish_failed,
                 summary.publish_unknown,
                 summary.publish_event_failed,

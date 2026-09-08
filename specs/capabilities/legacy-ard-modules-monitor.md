@@ -15,7 +15,7 @@
 | MetricGroup / Metric | `models/monitor_metrics.py` | 指标分组与定义（PromQL、单位、维度） |
 | MonitorPlugin / MonitorPluginConfigTemplate / MonitorPluginUITemplate | `models/plugin.py:8,26,39` | 采集插件（telegraf）、配置模板、UI 模板 |
 | MonitorPolicy / PolicyTemplate / PolicyOrganization | `models/monitor_policy.py:21,10,72` | 告警策略、模板、策略-组织关联表（权限隔离载体） |
-| MonitorEvent / MonitorEventRawData / MonitorAlert / MonitorAlertMetricSnapshot | `models/monitor_policy.py` | 事件/原始数据/告警聚合/生命周期快照（S3JSONField） |
+| MonitorAlert / MonitorEvent | `models/monitor_policy.py` | 告警聚合（含生成时组织快照 `organizations`）/ 事件 / 原始数据 / 生命周期快照 |
 | PolicyInstanceBaseline / CollectConfig | `models/*.py` | 无数据基线、采集配置 |
 | MonitorCondition / MonitorConditionOrganization | `models/monitor_condition.py:7,21` | 可复用监控条件、条件-组织关联表（权限隔离载体） |
 | CollectDetectTask | `models/collect_detect.py` | 接入前采集探测任务（状态、阶段、结果、错误信息） |

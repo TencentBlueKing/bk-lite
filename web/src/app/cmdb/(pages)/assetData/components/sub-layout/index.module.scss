@@ -16,10 +16,6 @@
   }
   .nav {
     background: var(--color-components-side-nav-bg);
-    .relationList {
-      max-height: calc(100% - 220px);
-      overflow: auto;
-    }
     li {
       &:hover {
         background: var(--color-components-side-nav-hover-bg);

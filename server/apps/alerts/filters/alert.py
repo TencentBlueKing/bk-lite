@@ -1,8 +1,10 @@
 # -- coding: utf-8 --
+from django.db.models import Q
 from django_filters import CharFilter, FilterSet
 
 from apps.alerts.constants.constants import AlertStatus
 from apps.alerts.models.models import Alert
+from apps.alerts.utils.enrichment import enrichment_orm_lookups, is_enrichment_path
 
 
 class AlertModelFilter(FilterSet):
@@ -33,6 +35,8 @@ class AlertModelFilter(FilterSet):
     rule_id = CharFilter(field_name="rule_id", label="是否有事故")
     resource_type = CharFilter(field_name="resource_type", lookup_expr="exact", label="资源类型")
     resource_id = CharFilter(field_name="resource_id", lookup_expr="exact", label="资源ID")
+    enrichment_key = CharFilter(method="filter_enrichment", label="丰富字段路径")
+    enrichment_value = CharFilter(method="filter_enrichment_value", label="丰富字段值")
 
     class Meta:
         model = Alert
@@ -51,7 +55,26 @@ class AlertModelFilter(FilterSet):
             "rule_id",
             "resource_type",
             "resource_id",
+            "enrichment_key",
+            "enrichment_value",
         ]
+
+    def filter_enrichment(self, qs, field_name, value):
+        """enrichment_key 与 enrichment_value 成对使用，路径例 enrichment.cmdb.owner。"""
+        if not value:
+            return qs
+        if not is_enrichment_path(value):
+            return qs.none()
+        expected = self.data.get("enrichment_value")
+        current_lookup, legacy_lookup = enrichment_orm_lookups(value)
+        if expected in (None, ""):
+            return qs.filter(Q(**{f"{current_lookup}__isnull": False}) | Q(**{f"{legacy_lookup}__isnull": False}))
+        return qs.filter(Q(**{current_lookup: expected}) | Q(**{legacy_lookup: expected}))
+
+    @staticmethod
+    def filter_enrichment_value(qs, field_name, value):
+        # 实际过滤由 enrichment_key 一次完成，避免 django-filter 重复叠加。
+        return qs
 
     @staticmethod
     def filter_activate(qs, field_name, value):

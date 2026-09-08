@@ -42,9 +42,9 @@ export const QUERIES: Record<string, ClusterQuery> = {
   crashloop: { query: `count(prometheus_remote_write_kube_pod_container_status_waiting_reason{instance_type="k3s",reason="CrashLoopBackOff",__$labels__} > 0)`, unit: 'none' },
   restarts1h: { query: `sum(increase(prometheus_remote_write_kube_pod_container_status_restarts_total${L}[1h]))`, unit: 'counts' },
 
-  deployPct: { query: `100 * sum(prometheus_remote_write_kube_deployment_status_replicas_available${L}) / clamp_min(sum(prometheus_remote_write_kube_deployment_spec_replicas${L}),1)`, unit: 'percent' },
+  deployPct: { query: `100 * clamp_min(sum(prometheus_remote_write_kube_deployment_spec_replicas${L}) - (sum(prometheus_remote_write_kube_deployment_status_replicas_unavailable${L}) or vector(0)), 0) / clamp_min(sum(prometheus_remote_write_kube_deployment_spec_replicas${L}),1)`, unit: 'percent' },
   stsPct: { query: `100 * sum(prometheus_remote_write_kube_statefulset_status_replicas_ready${L}) / clamp_min(sum(prometheus_remote_write_kube_statefulset_replicas${L}),1)`, unit: 'percent' },
-  dsPct: { query: `100 * sum(prometheus_remote_write_kube_daemonset_status_number_available${L}) / clamp_min(sum(prometheus_remote_write_kube_daemonset_status_desired_number_scheduled${L}),1)`, unit: 'percent' },
+  dsPct: { query: `100 * clamp_min(sum(prometheus_remote_write_kube_daemonset_status_desired_number_scheduled${L}) - (sum(prometheus_remote_write_kube_daemonset_status_number_unavailable${L}) or vector(0)), 0) / clamp_min(sum(prometheus_remote_write_kube_daemonset_status_desired_number_scheduled${L}),1)`, unit: 'percent' },
 
   cpuAllocatable: { query: `sum(prometheus_remote_write_kube_node_status_allocatable{instance_type="k3s",resource="cpu", __$labels__})`, unit: 'none' },
   cpuRequests: { query: `sum(prometheus_remote_write_kube_pod_container_resource_requests{instance_type="k3s",resource="cpu", __$labels__})`, unit: 'none' },

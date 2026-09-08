@@ -14,8 +14,14 @@ import assoListStyle from './index.module.scss';
 import SelectInstance from './selectInstance';
 import PermissionWrapper from '@/components/permission';
 import { RACK_ROOM_ASSET_PERMISSION_PATH } from './rackRoomEdit';
+import {
+  areAllRelationshipsExpanded,
+  getDefaultExpandedRelationshipKeys,
+  mergeRelationshipAssociations,
+} from '../../relationshipMenuData';
 import React, {
   useEffect,
+  useMemo,
   useState,
   useRef,
   forwardRef,
@@ -34,7 +40,7 @@ import {
 const { confirm } = Modal;
 
 const AssoList = forwardRef<AssoListRef, AssoListProps>(
-  ({ modelList, userList, assoTypeList }, ref) => {
+  ({ modelList, userList, assoTypeList, onExpandStateChange }, ref) => {
     const { t } = useTranslation();
     const [activeKey, setActiveKey] = useState<string[]>([]);
     const [allActiveKeys, setAllActiveKeys] = useState<string[]>([]);
@@ -42,6 +48,10 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
     const [assoCredentials, setAssoCredentials] = useState<
       CrentialsAssoInstItem[]
     >([]);
+    const [associationDefinitions, setAssociationDefinitions] = useState<any[]>(
+      []
+    );
+    const [definitionModelId, setDefinitionModelId] = useState('');
     const [pageLoading, setPageLoading] = useState<boolean>(false);
     const searchParams = useSearchParams();
     const modelApi = useModelApi();
@@ -49,7 +59,6 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
     const modelId: string = searchParams.get('model_id') || '';
     const instUuid: string = searchParams.get('inst_uuid') || '';
     const instanceRef = useRef<RelationInstanceRef>(null);
-    const prevModelLenRef = useRef(0);
     const {
       assoInstances,
       loading,
@@ -58,16 +67,52 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
       setSelectedAssoId,
     } = useRelationships();
 
-    useEffect(() => {
-      const prevLength = prevModelLenRef.current;
-      const currentLength = modelList.length;
-      if (prevLength === 0 && currentLength > 0) {
-        getInitData(assoInstances);
-      }
-      prevModelLenRef.current = currentLength;
-    }, [modelList, assoInstances]);
+    const mergedAssociations = useMemo(
+      () => mergeRelationshipAssociations(
+        assoInstances || [],
+        associationDefinitions
+      ),
+      [assoInstances, associationDefinitions]
+    );
 
-    const getInitData = async (data: CrentialsAssoInstItem[]) => {
+    useEffect(() => {
+      setDefinitionModelId('');
+      if (!modelId) {
+        setAssociationDefinitions([]);
+        return;
+      }
+
+      let cancelled = false;
+      modelApi.getModelAssociations(modelId)
+        .then((data) => {
+          if (!cancelled) {
+            setAssociationDefinitions(Array.isArray(data) ? data : []);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setAssociationDefinitions([]);
+        })
+        .finally(() => {
+          if (!cancelled) setDefinitionModelId(modelId);
+        });
+
+      return () => {
+        cancelled = true;
+      };
+    }, [modelId]);
+
+    useEffect(() => {
+      if (!modelList.length || definitionModelId !== modelId) return;
+      getInitData(mergedAssociations as CrentialsAssoInstItem[]);
+    }, [definitionModelId, mergedAssociations, modelId, modelList]);
+
+    useEffect(() => {
+      onExpandStateChange?.(
+        areAllRelationshipsExpanded(activeKey, allActiveKeys)
+      );
+    }, [activeKey, allActiveKeys, onExpandStateChange]);
+
+    const getInitData = async (data: any[]) => {
       setPageLoading(true);
       try {
         processedData(data);
@@ -85,7 +130,10 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
     };
 
     const processedData = (assoInstancesList: any) => {
-      if (loading || !assoInstancesList?.length) return [];
+      if (!assoInstancesList?.length) {
+        setInstIds([]);
+        return [];
+      }
       const newInstIds = assoInstancesList.reduce(
         (pre: RelationListInstItem[], cur: CrentialsAssoInstItem) => {
           if (!cur.inst_list) return pre;
@@ -129,8 +177,12 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
               item.model_asst_id === targetId ? updatedItem : item
             );
             const keys = newCredentials.map((item: any) => item.model_asst_id);
-            setActiveKey(keys);
             setAllActiveKeys(keys);
+            setActiveKey((previousKeys) => {
+              return previousKeys.includes(targetId)
+                ? previousKeys
+                : [...previousKeys, targetId];
+            });
             return newCredentials;
           });
           return;
@@ -147,9 +199,12 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
           })
         )
       );
-      const keys = updatedItems.map((item) => item.model_asst_id);
-      setActiveKey(keys);
-      setAllActiveKeys(keys);
+      const allKeys = updatedItems.map((item) => item.model_asst_id);
+      const defaultExpandedKeys = getDefaultExpandedRelationshipKeys(
+        assoInstancesList
+      );
+      setActiveKey(defaultExpandedKeys);
+      setAllActiveKeys(allKeys);
       setAssoCredentials(updatedItems);
     };
 
@@ -165,14 +220,19 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
 
     useEffect(() => {
       if (selectedAssoId && assoCredentials.length) {
-        setActiveKey([...activeKey, selectedAssoId]);
+        setActiveKey((previousKeys) => {
+          return previousKeys.includes(selectedAssoId)
+            ? previousKeys
+            : [...previousKeys, selectedAssoId];
+        });
         scrollToElement(`collapse-${selectedAssoId}`);
       }
     }, [selectedAssoId]);
 
     useImperativeHandle(ref, () => ({
       expandAll: (type: boolean) => {
-        setActiveKey(type ? allActiveKeys : []);
+        const nextKeys = type ? allActiveKeys : [];
+        setActiveKey(nextKeys);
       },
       showRelateModal: () => {
         instanceRef.current?.showModal({
@@ -204,6 +264,29 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
     };
 
     const getModelAttrList = async (item: any, config: any) => {
+      const instanceCount = Array.isArray(item.inst_list)
+        ? item.inst_list.length
+        : 0;
+      const collapseItem = {
+        key: item.model_asst_id,
+        label: showConnectName(item, config),
+        model_asst_id: item.model_asst_id,
+        extra: (
+          <span className="inline-flex min-w-6 justify-center rounded-full bg-[var(--color-fill-3)] px-2 py-0.5 text-xs font-normal text-[var(--color-text-2)]">
+            {instanceCount}
+          </span>
+        ),
+      };
+
+      if (!instanceCount) {
+        return {
+          ...collapseItem,
+          children: (
+            <CompactEmptyState description={t('Model.noAssociations')} />
+          ),
+        };
+      }
+
       const attrId = getAttrId(item as CrentialsAssoDetailItem);
       const responseData = await modelApi.getModelAttrList(attrId as string);
       const columns = [
@@ -251,16 +334,13 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
       }
 
       const updatedItem = {
-        key: item.model_asst_id,
-        label: showConnectName(item, config),
-        model_asst_id: item.model_asst_id,
+        ...collapseItem,
         children: (
           <CustomTable
             size="middle"
             pagination={false}
             dataSource={item.inst_list}
             columns={columns as any}
-            scroll={{ x: 'calc(100vw - 306px)', y: 300 }}
             rowKey="inst_uuid"
           />
         ),
@@ -289,8 +369,15 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
               );
               message.success(t('successfullyDisassociated'));
               const data = await fetchAssoInstances(modelId, instUuid);
-              processedData(data);
-              await updateInstAttrList(data, item.model_asst_id);
+              const updatedAssociations = mergeRelationshipAssociations(
+                data,
+                associationDefinitions
+              );
+              processedData(updatedAssociations);
+              await updateInstAttrList(
+                updatedAssociations,
+                item.model_asst_id
+              );
             } finally {
               resolve(true);
             }
@@ -324,16 +411,25 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
     };
 
     const handleCollapseChange = (keys: any) => {
-      setActiveKey(keys);
+      const nextKeys = Array.isArray(keys) ? keys : [keys].filter(Boolean);
+      setActiveKey(nextKeys);
     };
 
     const confirmRelate = async () => {
       const data = await fetchAssoInstances(modelId, instUuid);
-      getInitData(data);
+      const updatedAssociations = mergeRelationshipAssociations(
+        data,
+        associationDefinitions
+      );
+      getInitData(updatedAssociations);
     };
 
     return (
-      <Spin spinning={!loading && pageLoading}>
+      <Spin
+        spinning={
+          definitionModelId !== modelId || (!loading && pageLoading)
+        }
+      >
         <div className={assoListStyle.relationships}>
           {assoCredentials.length ? (
             <Collapse

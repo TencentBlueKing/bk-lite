@@ -40,7 +40,7 @@ if __name__ == "__main__":
 
     django.setup()
 
-from apps.cmdb.constants.constants import PERMISSION_INSTANCES, VIEW
+from apps.cmdb.constants.constants import PERMISSION_INSTANCES, VIEW, CollectRunStatusType
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.services.collect_tool_service import CollectToolService
 from apps.cmdb.services.instance import InstanceManage
@@ -1077,21 +1077,25 @@ def test_task_status_excludes_hidden_system_tasks_from_statistics():
 
     filtered_queryset = MagicMock(name="filtered_queryset")
     visible_queryset = MagicMock(name="visible_queryset")
-    only_queryset = MagicMock(name="only_queryset")
+    values_queryset = MagicMock(name="values_queryset")
     filtered_queryset.filter.return_value = visible_queryset
-    visible_queryset.only.return_value = only_queryset
+    visible_queryset.values.return_value = values_queryset
+    values_queryset.annotate.return_value = []
 
     with (
         patch.object(CollectModelViewSet, "get_queryset", return_value=filtered_queryset),
         patch.object(CollectModelViewSet, "get_queryset_by_permission", return_value=filtered_queryset),
-        patch("apps.cmdb.views.collect.CollectModelIdStatusSerializer") as mock_serializer,
     ):
-        mock_serializer.return_value.data = []
         response = view.task_status(request)
 
     assert response.status_code == 200
     filtered_queryset.filter.assert_called_once_with(is_visible=True)
-    visible_queryset.only.assert_called_once_with("model_id", "driver_type", "exec_status")
+    visible_queryset.values.assert_called_once_with(
+        "model_id",
+        "driver_type",
+        "exec_status",
+        "params__collection_protocol",
+    )
 
 
 def test_task_status_splits_same_model_by_driver_type():
@@ -1105,28 +1109,40 @@ def test_task_status_splits_same_model_by_driver_type():
 
     filtered_queryset = MagicMock(name="filtered_queryset")
     visible_queryset = MagicMock(name="visible_queryset")
-    only_queryset = MagicMock(name="only_queryset")
+    values_queryset = MagicMock(name="values_queryset")
     filtered_queryset.filter.return_value = visible_queryset
-    visible_queryset.only.return_value = only_queryset
+    visible_queryset.values.return_value = values_queryset
 
-    serializer_rows = [
-        {"model_id": "physcial_server", "driver_type": "job", "exec_status": "success"},
-        {"model_id": "physcial_server", "driver_type": "protocol", "exec_status": "running"},
+    status_rows = [
+        {
+            "model_id": "physcial_server",
+            "driver_type": "job",
+            "exec_status": CollectRunStatusType.SUCCESS,
+            "params__collection_protocol": None,
+            "total": 1,
+        },
+        {
+            "model_id": "physcial_server",
+            "driver_type": "protocol",
+            "exec_status": CollectRunStatusType.RUNNING,
+            "params__collection_protocol": None,
+            "total": 1,
+        },
     ]
+    values_queryset.annotate.return_value = status_rows
 
     with (
         patch.object(CollectModelViewSet, "get_queryset", return_value=filtered_queryset),
         patch.object(CollectModelViewSet, "get_queryset_by_permission", return_value=filtered_queryset),
-        patch("apps.cmdb.views.collect.CollectModelIdStatusSerializer") as mock_serializer,
     ):
-        mock_serializer.return_value.data = serializer_rows
         response = view.task_status(request)
 
     payload = _response_json(response)
     assert payload["result"] is True
     assert payload["data"] == {
-        "physcial_server__job": {"success": 1, "failed": 0, "running": 0},
-        "physcial_server__protocol": {"success": 0, "failed": 0, "running": 1},
+        "physcial_server__job": {"success": 1, "failed": 0, "running": 0, "partial_success": 0},
+        "physcial_server__protocol": {"success": 0, "failed": 0, "running": 1, "partial_success": 0},
+        "physcial_server__protocol__ipmi": {"success": 0, "failed": 0, "running": 1, "partial_success": 0},
     }
 
 

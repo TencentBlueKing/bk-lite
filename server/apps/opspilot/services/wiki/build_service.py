@@ -183,9 +183,9 @@ def _log_wiki_llm_invoke(stage, request, result, output_reserve):
     )
 
 
-def _wiki_llm_temperature(model_name):
-    """Wiki 默认 temperature=0；部分模型网关只接受 1。"""
-    return resolve_gateway_temperature(model_name, _WIKI_LLM_TEMPERATURE)
+def _wiki_llm_temperature(model_name, vendor_type=""):
+    """Wiki 默认 temperature=0；固定值模型省略该参数。"""
+    return resolve_gateway_temperature(model_name, _WIKI_LLM_TEMPERATURE, vendor_type)
 
 
 def _invoke_llm(
@@ -242,7 +242,7 @@ def _invoke_llm(
             openai_api_base=llm.openai_api_base,
             openai_api_key=llm.openai_api_key,
             model=llm.model_name,
-            temperature=_wiki_llm_temperature(llm.model_name),
+            temperature=_wiki_llm_temperature(llm.model_name, vendor_type),
             user_message=prompt,
             max_output_tokens=output_reserve,
             protocol_type=protocol_type,

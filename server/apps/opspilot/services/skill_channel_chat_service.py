@@ -14,6 +14,7 @@ from apps.base.models import UserAPISecret
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.enum import SKILL_CHANNEL_SKIP_ORG_CHECK, SkillChannelChoices
 from apps.opspilot.metis.llm.chain.token_utils import count_text_tokens
+from apps.opspilot.metis.llm.common.llm_client_factory import DEFAULT_CHAT_TEMPERATURE
 from apps.opspilot.models import LLMSkill, SkillChannel, SkillConversation, SkillConversationMessage
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY, CallerIdentityError, capture_caller_identity
 from apps.opspilot.services.history_service import HistoryService
@@ -730,15 +731,15 @@ def build_skill_chat_params(skill: LLMSkill, user_message: str, request_user, ex
         "llm_model": skill.llm_model_id,
         "skill_prompt": skill.skill_prompt or "",
         "conversation_window_size": skill.conversation_window_size,
-        "show_think": skill.show_think,
-        "enable_suggest": skill.enable_suggest,
-        "enable_query_rewrite": skill.enable_query_rewrite,
+        "show_think": False,
+        "enable_suggest": False,
+        "enable_query_rewrite": False,
         "skill_type": skill.skill_type,
         "tools": tools,
         "group": (skill.team or [0])[0],
         "wiki_kb_ids": list(skill.wiki_knowledge_bases.values_list("id", flat=True)),
         "skill_params": merge_skill_params([], skill.skill_params or []),
-        "temperature": getattr(skill, "temperature", 0.7),
+        "temperature": DEFAULT_CHAT_TEMPERATURE,
         "username": getattr(request_user, "username", "") or "",
         "user_id": getattr(request_user, "id", None),
         "locale": getattr(request_user, "locale", "en") or "en",

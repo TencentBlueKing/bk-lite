@@ -6,30 +6,56 @@
     "qcloud"
   ],
   "collector": "Telegraf",
-  "instance_id": "{{cloud_region}}_qcloud_{{username}}",
+  "instance_id": "{{cloud_region}}_qcloud_{{username}}_{{region}}",
   "form_fields": [
     {
       "name": "username",
-      "label": "用户名",
+      "label": "SecretId",
       "type": "input",
       "required": true,
       "editable": false,
+      "description": "腾讯云 API 密钥 SecretId。填写后与 SecretKey 一起用于拉取可用地域。",
+      "description_en": "Tencent Cloud API SecretId. Used with SecretKey to load available regions.",
       "transform_on_edit": {
         "origin_path": "child.content.config.http_headers.username"
       },
-      "label_en": "Username"
+      "label_en": "SecretId"
     },
     {
       "name": "ENV_PASSWORD",
-      "label": "密码",
+      "label": "SecretKey",
       "type": "password",
       "required": true,
       "editable": false,
       "encrypted": true,
+      "description": "腾讯云 API 密钥 SecretKey。填写后与 SecretId 一起用于拉取可用地域。",
+      "description_en": "Tencent Cloud API SecretKey. Used with SecretId to load available regions.",
       "transform_on_edit": {
         "origin_path": "child.env_config.PASSWORD__{{config_id}}"
       },
-      "label_en": "Password"
+      "label_en": "SecretKey"
+    },
+    {
+      "name": "region",
+      "label": "腾讯云地域",
+      "type": "select",
+      "required": true,
+      "editable": true,
+      "options_key": "region_option",
+      "options": [],
+      "description": "填写 SecretId / SecretKey 后会自动拉取可用地域；也可点击右侧刷新图标手动更新。仅采集所选地域的资源与监控指标。",
+      "description_en": "Available regions load automatically after SecretId / SecretKey are filled; use the refresh icon to reload. Only the selected region is collected.",
+      "widget_props": {
+        "placeholder": "请选择腾讯云地域",
+        "placeholder_en": "Select a Tencent Cloud region",
+        "showSearch": true,
+        "optionFilterProp": "label",
+        "show_refresh": true
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.region"
+      },
+      "label_en": "Tencent Cloud Region"
     }
   ],
   "table_columns": [

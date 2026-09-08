@@ -46,6 +46,20 @@ def test_format_params_ip_range_mode_uses_team():
     assert c.filter_collect_task is False  # is_host=True → not is_host = False
 
 
+def test_physical_server_ssh_filters_existing_instances_by_collect_task():
+    """物理服务器三种采集方式都遵循“首任务占有”规则。"""
+    t = _task(
+        model_id="physcial_server",
+        instances=[],
+        team=[7],
+        is_host=True,
+    )
+
+    c = BaseCollect(instance_id=None, task=t)
+
+    assert c.filter_collect_task is True
+
+
 def test_format_params_ip_range_falls_back_to_params_org():
     t = _task(instances=[], team=None, params={"organization": 9}, is_host=False)
     c = BaseCollect(instance_id=None, task=t)

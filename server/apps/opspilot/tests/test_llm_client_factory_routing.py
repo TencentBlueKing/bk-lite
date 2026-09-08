@@ -42,6 +42,10 @@ def test_create_client_openai_qwen_deepseek_and_isolated(monkeypatch):
     qwen = LLMClientFactory.create_client(_request(model="Qwen2.5-72B"), isolated=True)
     assert qwen.callbacks is None
     assert qwen.extra_body["enable_thinking"] is True
+    assert created["kwargs"]["temperature"] == 0.2
+
+    LLMClientFactory.create_client(_request(model="kimi-k2", temperature=0.7))
+    assert created["kwargs"]["temperature"] is None
 
     deepseek = LLMClientFactory.create_client(_request(model="deepseek-chat", extra_config={"show_think": False}))
     assert deepseek.extra_body["thinking"] == {"type": "disabled"}
@@ -96,6 +100,25 @@ def test_create_isolated_clients_and_invoke(monkeypatch):
     assert text == "rewritten"
     payload = openai_cls.return_value.chat.completions.create.call_args.kwargs
     assert payload["messages"][0] == {"role": "user", "content": "hi"}
+    assert payload["temperature"] == 0.2
+
+
+def test_create_client_omits_temperature_for_kimi(monkeypatch):
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.common.llm_client_factory.SSRFValidator.validate_llm_endpoint",
+        lambda *a, **k: None,
+    )
+    created = {}
+
+    class FakeChat:
+        def __init__(self, **kwargs):
+            created["kwargs"] = kwargs
+            self.extra_body = None
+            self.callbacks = "keep"
+
+    monkeypatch.setattr("apps.opspilot.metis.llm.common.llm_client_factory.ChatOpenAI", FakeChat)
+    LLMClientFactory.create_client(_request(model="kimi-k2", temperature=0.2))
+    assert created["kwargs"]["temperature"] is None
 
 
 def test_create_client_gemma_and_openai_without_extra_body(monkeypatch):

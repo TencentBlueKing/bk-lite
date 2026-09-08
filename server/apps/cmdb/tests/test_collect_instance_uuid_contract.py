@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from apps.cmdb.constants.constants import CollectDriverTypes, CollectPluginTypes
+from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.serializers.collect_serializer import CollectModelSerializer
 
 HOST_UUID = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
@@ -46,21 +47,39 @@ def _stub_auth_serializer_dependencies(monkeypatch):
     )
 
 
-def _serializer(*, model_id="host", instances):
+def _serializer(*, model_id="host", instances, timeout=60):
     request = SimpleNamespace(user=SimpleNamespace(group_list=[]), COOKIES={})
     return CollectModelSerializer(
         data={
             "name": f"{model_id}-uuid-contract",
-            "task_type": CollectPluginTypes.HOST,
+            "task_type": CollectPluginTypes.IP if model_id == "ip" else CollectPluginTypes.HOST,
             "driver_type": CollectDriverTypes.PROTOCOL,
             "model_id": model_id,
             "cycle_value_type": "cycle",
             "instances": instances,
             "access_point": [{"id": 1}],
             "credential": [],
+            "timeout": timeout,
             "params": {},
             "team": [1],
         },
+        context={"request": request},
+    )
+
+
+def _legacy_ip_update_serializer(*, existing_timeout, submitted_timeout):
+    request = SimpleNamespace(user=SimpleNamespace(group_list=[]), COOKIES={})
+    instance = CollectModels(
+        name="legacy-ip-task",
+        task_type=CollectPluginTypes.IP,
+        driver_type=CollectDriverTypes.PROTOCOL,
+        model_id="ip",
+        timeout=existing_timeout,
+    )
+    return CollectModelSerializer(
+        instance,
+        data={"timeout": submitted_timeout},
+        partial=True,
         context={"request": request},
     )
 
@@ -128,6 +147,41 @@ def test_ip_task_accepts_subnet_uuids():
         "subnet_uuids": [SUBNET_UUID],
         "scan_method": "icmp",
     }
+
+
+def test_ip_task_rejects_new_scan_budget_below_30_seconds():
+    serializer = _serializer(
+        model_id="ip",
+        instances={"subnet_uuids": [SUBNET_UUID], "scan_method": "icmp"},
+        timeout=29,
+    )
+
+    assert serializer.is_valid() is False
+    assert serializer.errors["timeout"] == ["IP 采集任务超时时间不能小于 30 秒"]
+
+
+def test_ip_task_accepts_30_second_scan_budget():
+    serializer = _serializer(
+        model_id="ip",
+        instances={"subnet_uuids": [SUBNET_UUID], "scan_method": "icmp"},
+        timeout=30,
+    )
+
+    assert serializer.is_valid(), serializer.errors
+
+
+def test_ip_task_preserves_unchanged_legacy_scan_budget_on_edit():
+    serializer = _legacy_ip_update_serializer(existing_timeout=5, submitted_timeout=5)
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["timeout"] == 5
+
+
+def test_ip_task_rejects_changing_legacy_scan_budget_to_another_low_value():
+    serializer = _legacy_ip_update_serializer(existing_timeout=5, submitted_timeout=10)
+
+    assert serializer.is_valid() is False
+    assert serializer.errors["timeout"] == ["IP 采集任务超时时间不能小于 30 秒"]
 
 
 def test_ip_task_rejects_digit_only_subnet_write():

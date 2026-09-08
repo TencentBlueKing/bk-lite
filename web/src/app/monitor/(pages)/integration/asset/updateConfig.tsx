@@ -14,6 +14,7 @@ import { useTranslation } from '@/utils/i18n';
 import OperateModal from '@/components/operate-modal';
 import useApiClient from '@/utils/request';
 import { usePluginFromJson } from '@/app/monitor/hooks/integration/usePluginFromJson';
+import { useQcloudRegionOptions } from '@/app/monitor/hooks/integration/useQcloudRegionOptions';
 import {
   getSnmpFilterMutexConflicts,
   trackSnmpFilterMutexLastChanged
@@ -27,10 +28,13 @@ interface PluginFormField {
   type?: string;
   editable?: boolean;
   default_value?: unknown;
+  options_key?: string;
 }
 
 interface PluginConfig {
   form_fields?: PluginFormField[];
+  instance_type?: string;
+  config_type?: string[];
 }
 
 const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
@@ -78,6 +82,24 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
   }));
 
   // 获取配置信息
+  const isQcloudPlugin =
+    currentConfig?.instance_type === 'qcloud' ||
+    (Array.isArray(currentConfig?.config_type) &&
+      currentConfig.config_type.includes('qcloud')) ||
+    Boolean(
+      currentConfig?.form_fields?.some(
+        (field) => field?.options_key === 'region_option' || field?.name === 'region'
+      )
+    );
+  const {
+    regionOptions,
+    loadingRegions,
+    refreshRegions,
+  } = useQcloudRegionOptions({
+    enabled: Boolean(isQcloudPlugin && modalVisible),
+    form,
+  });
+
   const configsInfo = useMemo(() => {
     if (configLoading || !currentConfig || !pluginId) {
       return {
@@ -89,8 +111,26 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
     return jsonConfig.buildPluginUI(pluginId, {
       mode: 'edit',
       form,
+      externalOptions: {
+        region_option: regionOptions,
+      },
+      optionControls: {
+        region_option: {
+          loading: loadingRegions,
+          onRefresh: refreshRegions,
+        },
+      },
     });
-  }, [configLoading, currentConfig, pluginId, form, jsonConfig.buildPluginUI]);
+  }, [
+    configLoading,
+    currentConfig,
+    pluginId,
+    form,
+    regionOptions,
+    loadingRegions,
+    refreshRegions,
+    jsonConfig.buildPluginUI,
+  ]);
 
   const formItems = useMemo(() => {
     return configsInfo.formItems;

@@ -1,15 +1,15 @@
 {# Macro: Check if all dimensions are non-null #}
 {% macro all_dimensions_present(dimensions) %}
-  {%- for dim_name in dimensions -%}
-    NULLIF(CAST({{ dim_name }} AS VARCHAR), '') IS NOT NULL{{ " OR " if not loop.last else "" }}
+  {%- for dim in dimensions -%}
+    NULLIF(CAST({{ dim.expression }} AS VARCHAR), '') IS NOT NULL{{ " OR " if not loop.last else "" }}
   {%- endfor -%}
 {% endmacro %}
 
 {# Macro: Build dimension segment only for non-empty values #}
-{% macro present_dimension_segment(dim_name) %}
+{% macro present_dimension_segment(dim) %}
   CASE
-    WHEN NULLIF(CAST({{ dim_name }} AS VARCHAR), '') IS NOT NULL THEN
-      '{{ dim_name }}=' || CAST({{ dim_name }} AS VARCHAR)
+    WHEN NULLIF(CAST({{ dim.expression }} AS VARCHAR), '') IS NOT NULL THEN
+      '{{ dim.name }}=' || CAST({{ dim.expression }} AS VARCHAR)
     ELSE NULL
   END
 {% endmacro %}
@@ -20,8 +20,8 @@ CASE
     WHEN {{ all_dimensions_present(dimensions) }} THEN
       CONCAT_WS(
         '|'
-        {%- for dim_name in dimensions -%}
-          , {{ present_dimension_segment(dim_name) }}
+        {%- for dim in dimensions -%}
+          , {{ present_dimension_segment(dim) }}
         {%- endfor -%}
       )
     {{ " " }}ELSE external_id
@@ -38,8 +38,8 @@ CASE
 
 {# Macro: Build dimension columns for GROUP BY #}
 {% macro dimension_columns(dimensions) %}
-  {%- for dim_name in dimensions -%}
-    {{ dim_name }}{{ ", " if not loop.last else "" }}
+  {%- for dim in dimensions -%}
+    {{ dim.expression }}{{ ", " if not loop.last else "" }}
   {%- endfor -%}
 {% endmacro %}
 

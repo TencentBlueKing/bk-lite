@@ -27,6 +27,7 @@ from apps.log.constants.database import DatabaseConstants
 from apps.log.constants.web import WebConstants
 from apps.log.models.policy import Alert, AlertSnapshot, Event, EventRawData
 from apps.log.services.aggregate_group_identity import build_aggregate_group_identity
+from apps.log.services.alert_access import snapshot_policy_organization_ids
 from apps.log.services.alert_lifecycle_notify import LogAlertLifecycleNotifier
 from apps.log.services.log_event_contract import to_logical_event
 from apps.log.services.search import SearchService
@@ -46,6 +47,7 @@ class LogPolicyScan:
         self.window_end = window_end
         self.execution_key = execution_key
         self.cursor_time = cursor_time
+        self.organizations = snapshot_policy_organization_ids(policy)
 
     def _get_scan_window(self):
         window_start = getattr(self, "window_start", None)
@@ -861,6 +863,7 @@ class LogPolicyScan:
                         start_event_time=self.scan_time,
                         end_event_time=self.scan_time,
                         operator="",
+                        organizations=list(self.organizations),
                     )
                     alerts_to_create.append(alert_obj)
                     # 更新映射表，供后续事件关联使用

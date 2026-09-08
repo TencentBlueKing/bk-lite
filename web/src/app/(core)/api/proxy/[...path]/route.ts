@@ -1,6 +1,7 @@
 import {NextRequest, NextResponse} from 'next/server';
 import {consumeProxyTimeoutMs, DEFAULT_TIMEOUT_MS, scheduleProxyAbort} from '@/utils/proxyTimeout';
 
+import {isLegacyThirdLoginExchangePath} from './legacyThirdLoginCors';
 import {buildProxyTargets} from './proxyTarget';
 
 const TARGET_SERVER = process.env.NEXTAPI_URL + '/api/v1' || 'http://localhost:3000';
@@ -22,6 +23,13 @@ export async function DELETE(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  return await handleProxy(req);
+}
+
+export async function OPTIONS(req: NextRequest) {
+  if (!isLegacyThirdLoginExchangePath(req.nextUrl.pathname)) {
+    return new NextResponse(null, { status: 405 });
+  }
   return await handleProxy(req);
 }
 

@@ -1,228 +1,107 @@
 import pytest
 
-from apps.cmdb.constants.constants import CollectPluginTypes
-from apps.cmdb.models.collect_model import CollectModels
-from apps.cmdb.tasks import celery_tasks as ct
+from apps.cmdb.tasks import celery_tasks
 
-pytestmark = pytest.mark.django_db
+pytestmark = pytest.mark.unit
 
 
-def create_task(**overrides):
-    values = {
-        "name": "first-collect",
-        "task_type": CollectPluginTypes.HOST,
-        "driver_type": "snmp",
-        "model_id": "host",
-        "is_interval": True,
-        "cycle_value_type": "cycle",
-        "cycle_value": "30",
-        "instances": [{"inst_name": "host-1", "ip_addr": "10.0.0.1"}],
-        "access_point": [{"id": "node-1"}],
-        "params": {},
-        "team": [1],
-    }
-    values.update(overrides)
-    return CollectModels.objects.create(**values)
-
-
-def test_current_fingerprint_triggers_client(mocker):
-    task = create_task()
-    mocker.patch(
-        "apps.cmdb.services.first_collection_policy.FirstCollectionPolicy.is_eligible",
-        return_value=True,
+def test_terminal_orchestrator_result_is_returned_without_retry(mocker):
+    execute = mocker.patch(
+        "apps.cmdb.services.first_collection_orchestrator.FirstCollectionOrchestrator.execute",
+        return_value={"run_id": 12, "status": "accepted"},
     )
-    mocker.patch(
-        "apps.cmdb.services.first_collection_policy.FirstCollectionPolicy.fingerprint",
-        return_value="fp",
-    )
-    trigger = mocker.patch(
-        "apps.cmdb.services.stargazer_collect_trigger.StargazerCollectTriggerClient.trigger",
-        return_value=mocker.Mock(status="accepted", total=1, accepted=1),
-    )
+    retry = mocker.patch.object(celery_tasks.execute_first_collection_run, "retry")
 
-    result = ct.trigger_first_collection.run(task.id, "fp", "create")
+    result = celery_tasks.execute_first_collection_run.run(12)
 
-    assert result["status"] == "accepted"
-    trigger.assert_called_once()
-
-
-def test_stale_fingerprint_skips(mocker):
-    task = create_task()
-    mocker.patch(
-        "apps.cmdb.services.first_collection_policy.FirstCollectionPolicy.fingerprint",
-        return_value="new-fp",
-    )
-    trigger = mocker.patch(
-        "apps.cmdb.services.stargazer_collect_trigger.StargazerCollectTriggerClient.trigger"
-    )
-
-    assert ct.trigger_first_collection.run(task.id, "old-fp", "update:params")["status"] == "stale"
-    trigger.assert_not_called()
-
-
-def test_missing_ineligible_and_disabled_skip(mocker):
-    assert ct.trigger_first_collection.run(999999, "fp", "create")["status"] == "missing"
-
-    short = create_task(cycle_value="5")
-    assert ct.trigger_first_collection.run(short.id, "fp", "create")["status"] == "ineligible"
-
-    long_task = create_task(name="disabled")
-    mocker.patch("apps.cmdb.constants.constants.CMDB_FIRST_COLLECTION_ENABLED", False)
-    assert ct.trigger_first_collection.run(long_task.id, "fp", "create")["status"] == "disabled"
-
-
-def test_first_retryable_error_uses_ten_second_backoff(mocker):
-    task = create_task()
-    mocker.patch(
-        "apps.cmdb.services.first_collection_policy.FirstCollectionPolicy.is_eligible",
-        return_value=True,
-    )
-    mocker.patch(
-        "apps.cmdb.services.first_collection_policy.FirstCollectionPolicy.fingerprint",
-        return_value="fp",
-    )
-    from apps.cmdb.services.stargazer_collect_trigger import StargazerCollectRetryableError
-
-    mocker.patch(
-        "apps.cmdb.services.stargazer_collect_trigger.StargazerCollectTriggerClient.trigger",
-        side_effect=StargazerCollectRetryableError("retryable"),
-    )
-    from celery.canvas import Signature
-    from celery.exceptions import Retry
-
-    apply_async = mocker.patch.object(Signature, "apply_async", autospec=True)
-    ct.trigger_first_collection.push_request(
-        args=(task.id, "fp", "create"),
-        kwargs={},
-        id="first-collection-retry-1",
-        retries=0,
-        called_directly=False,
-        is_eager=False,
-    )
-    try:
-        with pytest.raises(Retry) as retry_error:
-            ct.trigger_first_collection.run(task.id, "fp", "create")
-    finally:
-        ct.trigger_first_collection.pop_request()
-
-    scheduled_signature = apply_async.call_args.args[0]
-    assert retry_error.value.when == 10
-    assert scheduled_signature.options["countdown"] == 10
-    assert scheduled_signature.options["retries"] == 1
-    assert ct.trigger_first_collection.max_retries == 2
-
-
-def test_second_retryable_error_uses_twenty_second_backoff(mocker):
-    task = create_task()
-    mocker.patch(
-        "apps.cmdb.services.first_collection_policy.FirstCollectionPolicy.is_eligible",
-        return_value=True,
-    )
-    mocker.patch(
-        "apps.cmdb.services.first_collection_policy.FirstCollectionPolicy.fingerprint",
-        return_value="fp",
-    )
-    from apps.cmdb.services.stargazer_collect_trigger import StargazerCollectRetryableError
-
-    mocker.patch(
-        "apps.cmdb.services.stargazer_collect_trigger.StargazerCollectTriggerClient.trigger",
-        side_effect=StargazerCollectRetryableError("retryable"),
-    )
-    from celery.canvas import Signature
-    from celery.exceptions import Retry
-
-    apply_async = mocker.patch.object(Signature, "apply_async", autospec=True)
-    ct.trigger_first_collection.push_request(
-        args=(task.id, "fp", "create"),
-        kwargs={},
-        id="first-collection-retry-2",
-        retries=1,
-        called_directly=False,
-        is_eager=False,
-    )
-    try:
-        with pytest.raises(Retry) as retry_error:
-            ct.trigger_first_collection.run(task.id, "fp", "create")
-    finally:
-        ct.trigger_first_collection.pop_request()
-
-    scheduled_signature = apply_async.call_args.args[0]
-    assert retry_error.value.when == 20
-    assert scheduled_signature.options["countdown"] == 20
-    assert scheduled_signature.options["retries"] == 2
-
-
-def test_third_retryable_error_returns_exhausted_result_without_rescheduling(
-    mocker, caplog
-):
-    task = create_task()
-    mocker.patch(
-        "apps.cmdb.services.first_collection_policy.FirstCollectionPolicy.is_eligible",
-        return_value=True,
-    )
-    mocker.patch(
-        "apps.cmdb.services.first_collection_policy.FirstCollectionPolicy.fingerprint",
-        return_value="fp",
-    )
-    from apps.cmdb.services.stargazer_collect_trigger import StargazerCollectRetryableError
-
-    mocker.patch(
-        "apps.cmdb.services.stargazer_collect_trigger.StargazerCollectTriggerClient.trigger",
-        side_effect=StargazerCollectRetryableError(
-            "token=top-secret broker=nats://user:password@broker.internal:4222"
-        ),
-    )
-    from celery.canvas import Signature
-
-    apply_async = mocker.patch.object(Signature, "apply_async", autospec=True)
-    ct.trigger_first_collection.push_request(
-        args=(task.id, "fp", "create"),
-        kwargs={},
-        id="first-collection-retry-3",
-        retries=2,
-        called_directly=False,
-        is_eager=False,
-    )
-    try:
-        with caplog.at_level("WARNING"):
-            result = ct.trigger_first_collection.run(task.id, "fp", "create")
-    finally:
-        ct.trigger_first_collection.pop_request()
-
-    apply_async.assert_not_called()
-    assert result == {
-        "status": "failed",
-        "task_id": task.id,
-        "reason": "create",
-        "retry_exhausted": True,
-    }
-    assert "result=failed" in caplog.text
-    assert "retry_exhausted=true" in caplog.text
-    assert "top-secret" not in caplog.text
-    assert "nats://" not in caplog.text
-    assert "password" not in caplog.text
-    assert ct.trigger_first_collection.max_retries == 2
-
-
-def test_permanent_error_does_not_retry(mocker):
-    task = create_task()
-    mocker.patch(
-        "apps.cmdb.services.first_collection_policy.FirstCollectionPolicy.is_eligible",
-        return_value=True,
-    )
-    mocker.patch(
-        "apps.cmdb.services.first_collection_policy.FirstCollectionPolicy.fingerprint",
-        return_value="fp",
-    )
-    from apps.cmdb.services.stargazer_collect_trigger import StargazerCollectPermanentError
-
-    mocker.patch(
-        "apps.cmdb.services.stargazer_collect_trigger.StargazerCollectTriggerClient.trigger",
-        side_effect=StargazerCollectPermanentError("HTTP 400"),
-    )
-    retry = mocker.patch.object(ct.trigger_first_collection, "retry")
-
-    result = ct.trigger_first_collection.run(task.id, "fp", "create")
-
-    assert result == {"status": "failed", "task_id": task.id, "reason": "create"}
+    assert result == {"run_id": 12, "status": "accepted"}
+    execute.assert_called_once_with(12)
     retry.assert_not_called()
+
+
+@pytest.mark.parametrize("retry_after", [10, 20])
+def test_retry_wait_uses_orchestrator_backoff(mocker, retry_after):
+    from celery.canvas import Signature
+    from celery.exceptions import Retry
+
+    mocker.patch(
+        "apps.cmdb.services.first_collection_orchestrator.FirstCollectionOrchestrator.execute",
+        return_value={"run_id": 12, "status": "retry_wait", "retry_after": retry_after},
+    )
+    apply_async = mocker.patch.object(Signature, "apply_async", autospec=True)
+    celery_tasks.execute_first_collection_run.push_request(
+        args=(12,),
+        kwargs={},
+        id=f"first-collection-retry-{retry_after}",
+        retries=0 if retry_after == 10 else 1,
+        called_directly=False,
+        is_eager=False,
+    )
+    try:
+        with pytest.raises(Retry) as retry_error:
+            celery_tasks.execute_first_collection_run.run(12)
+    finally:
+        celery_tasks.execute_first_collection_run.pop_request()
+
+    assert retry_error.value.when == retry_after
+    assert apply_async.call_args.args[0].options["countdown"] == retry_after
+
+
+def test_first_collection_task_never_calls_legacy_stargazer_trigger(mocker):
+    legacy_trigger = mocker.patch("apps.cmdb.services.stargazer_collect_trigger.StargazerCollectTriggerClient.trigger")
+    mocker.patch(
+        "apps.cmdb.services.first_collection_orchestrator.FirstCollectionOrchestrator.execute",
+        return_value={"run_id": 12, "status": "failed"},
+    )
+
+    assert celery_tasks.execute_first_collection_run.run(12) == {
+        "run_id": 12,
+        "status": "failed",
+    }
+    legacy_trigger.assert_not_called()
+
+
+def test_new_one_shot_task_uses_a_new_protocol_name_and_legacy_messages_are_safely_retired(mocker, caplog):
+    legacy_trigger = mocker.patch("apps.cmdb.services.stargazer_collect_trigger.StargazerCollectTriggerClient.trigger")
+
+    assert celery_tasks.execute_first_collection_run.name == "apps.cmdb.tasks.celery_tasks.execute_first_collection_run"
+    assert celery_tasks.trigger_first_collection.run(7, "old-fingerprint", "create") == {
+        "status": "retired",
+        "task_id": 7,
+        "reason": "create",
+    }
+    legacy_trigger.assert_not_called()
+    records = [record for record in caplog.records if record.msg.startswith("event=first_collection_legacy_message_retired")]
+    assert len(records) == 1
+    assert records[0].levelname == "WARNING"
+    assert records[0].args == (7, "LegacyMessage")
+    assert records[0].getMessage() == (
+        "event=first_collection_legacy_message_retired task_id=7 failed_stage=protocol_retired error_type=LegacyMessage"
+    )
+
+
+def test_first_collection_task_retry_budget_covers_the_node_lock_watchdog():
+    from apps.cmdb.services.first_collection_orchestrator import FirstCollectionOrchestrator
+
+    covered_seconds = celery_tasks.execute_first_collection_run.max_retries * FirstCollectionOrchestrator.LOCK_RETRY_AFTER_SECONDS
+
+    assert celery_tasks.execute_first_collection_run.max_retries >= FirstCollectionOrchestrator.MAX_LOCK_RETRIES
+    assert covered_seconds > 70
+
+
+def test_first_collection_recovery_task_is_registered_and_bounded(mocker):
+    from apps.cmdb.config import CELERY_BEAT_SCHEDULE
+
+    recover = mocker.patch(
+        "apps.cmdb.services.first_collection_orchestrator.FirstCollectionOrchestrator.recover",
+        return_value={"scanned": 3, "dispatched": 2, "failed": 1},
+    )
+
+    assert celery_tasks.recover_first_collection_runs.run() == {
+        "scanned": 3,
+        "dispatched": 2,
+        "failed": 1,
+    }
+    recover.assert_called_once_with()
+    entry = CELERY_BEAT_SCHEDULE["recover_first_collection_runs"]
+    assert entry["task"] == "apps.cmdb.tasks.celery_tasks.recover_first_collection_runs"

@@ -2,8 +2,9 @@
 """
 内置画布初始化命令
 
-合并 source_api.json、support-files/builtin_canvases.yaml 与
-support-files/flow_dashboard.yaml 中的内置定义，
+合并 source_api.json、support-files/builtin_canvases.yaml、
+support-files/flow_dashboard.yaml 与
+support-files/weopsx_platform_usage_dashboard.yaml 中的内置定义，
 复用 ImportService 在一个事务中同步数据源和画布。
 
 - YAML 文件不存在或为空时静默跳过
@@ -34,6 +35,10 @@ YAML_FILE_PATH = os.path.join(
 FLOW_DASHBOARD_YAML_PATH = os.path.join(
     os.path.dirname(YAML_FILE_PATH),
     "flow_dashboard.yaml",
+)
+WEOPSX_PLATFORM_USAGE_YAML_PATH = os.path.join(
+    os.path.dirname(YAML_FILE_PATH),
+    "weopsx_platform_usage_dashboard.yaml",
 )
 MERGEABLE_SECTIONS = ("dashboards", "topologies", "architectures", "screens", "reports", "datasources", "namespaces")
 DEFAULT_RETIRE_LIMIT = 200
@@ -207,7 +212,7 @@ def _get_builtin_canvas_file_paths():
     if isinstance(extra_files, (str, os.PathLike)):
         extra_files = [extra_files]
 
-    paths = [YAML_FILE_PATH, FLOW_DASHBOARD_YAML_PATH]
+    paths = [YAML_FILE_PATH, FLOW_DASHBOARD_YAML_PATH, WEOPSX_PLATFORM_USAGE_YAML_PATH]
     seen = {os.path.abspath(path) for path in paths}
     for path in extra_files:
         normalized = str(path).strip()

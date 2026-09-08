@@ -49,7 +49,7 @@ import type { CredentialHelpDefinition } from './credentialHelp';
 
 import styles from '../index.module.scss';
 
-type CredentialShape = 'ssh' | 'sql' | 'snmp' | 'config_file' | 'network_config_file' | 'vm' | 'winsphere' | 'cloud' | 'ipmi' | 'winrm' | 'macos_ssh' | 'influxdb' | 'platform_api';
+type CredentialShape = 'ssh' | 'sql' | 'snmp' | 'config_file' | 'network_config_file' | 'vm' | 'winsphere' | 'cloud' | 'ipmi' | 'redfish' | 'winrm' | 'macos_ssh' | 'influxdb' | 'platform_api';
 interface CredentialDragEndEvent {
   active: { id: string | number };
   over: { id: string | number } | null;
@@ -178,6 +178,7 @@ const createEmptyCredential = (
     ...(shape === 'vm' ? { ssl: false } : {}),
     ...(shape === 'cloud' ? { accessKey: '', accessSecret: '', regionId: '' } : {}),
     ...(shape === 'ipmi' ? { port: '623', privilege: 'administrator' } : {}),
+    ...(shape === 'redfish' ? { port: '443', verify_tls: true } : {}),
     ...(shape === 'sql' && showDatabase ? { database: 'master' } : {}),
   };
 };
@@ -346,7 +347,13 @@ function getPreviewFields(
   if (showPort) {
     fields.push({
       label: t('Collection.port', '端口'),
-      value: String(item.port || (shape === 'sql' ? '3306' : shape === 'vm' ? '443' : shape === 'ipmi' ? '623' : '22')),
+      value: String(item.port || (shape === 'sql' ? '3306' : shape === 'vm' || shape === 'redfish' ? '443' : shape === 'ipmi' ? '623' : '22')),
+    });
+  }
+  if (shape === 'redfish') {
+    fields.push({
+      label: t('Collection.RedfishTask.verifyTls', '校验证书'),
+      value: item.verify_tls !== false ? t('common.yes', '是') : t('common.no', '否'),
     });
   }
   if (shape === 'network_config_file') {
@@ -1021,6 +1028,26 @@ function renderCredentialFields({
             onChange={(nextValue) => updateItem(index, { port: nextValue ?? undefined })}
           />
         </InputRow>
+      )}
+      {shape === 'redfish' && (
+        <>
+          <InputRow label={t('Collection.RedfishTask.verifyTls', '校验证书')}>
+            <Switch
+              checked={item.verify_tls !== false}
+              onChange={(verify_tls) => updateItem(index, { verify_tls })}
+            />
+          </InputRow>
+          {item.verify_tls === false && (
+            <Alert
+              type="warning"
+              showIcon
+              message={t(
+                'Collection.RedfishTask.tlsWarning',
+                '关闭证书校验会增加中间人攻击风险，仅应临时用于受信任网络中的自签名证书。',
+              )}
+            />
+          )}
+        </>
       )}
       {shape === 'sql' && showDatabase && (
         <InputRow label={t('Collection.database', '数据库')}>

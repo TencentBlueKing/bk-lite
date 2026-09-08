@@ -148,6 +148,8 @@ class RunSummary:
     publish_unknown: int = 0
     publish_event_failed: int = 0
     publish_permanent_failed: int = 0
+    round_complete_marker_published: int = 0
+    round_complete_marker_failed: int = 0
 
     @property
     def succeeded(self) -> int:
@@ -168,6 +170,7 @@ class RunSummary:
             or self.publish_unknown
             or self.publish_event_failed
             or self.publish_permanent_failed
+            or self.round_complete_marker_failed
         )
 
 

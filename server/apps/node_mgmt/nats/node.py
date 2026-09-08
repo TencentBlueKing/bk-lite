@@ -3,7 +3,7 @@ import uuid
 from collections import defaultdict
 
 from django.db import IntegrityError, connection, transaction
-from django.db.models import F
+from django.db.models import Count, F
 from rest_framework.exceptions import ValidationError as DRFValidationError
 
 import nats_client
@@ -11,6 +11,7 @@ from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import node_logger as logger
 from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.core.utils.current_team_scope import _normalize_organization_ids
+from apps.core.utils.permission_utils import permission_filter
 from apps.core.utils.safe_template import build_sandboxed_env
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.database import DatabaseConstants, EnvVariableConstants
@@ -972,6 +973,56 @@ def get_child_configs_by_ids(ids: list):
 
 
 @nats_client.register
+def run_telegraf_child_configs_once(data: dict):
+    """受控执行已保存的 CMDB Telegraf 子配置，不接受任意命令或配置正文。"""
+    from apps.node_mgmt.services.telegraf_oneshot import TelegrafOneShotService
+
+    required_keys = {
+        "request_id",
+        "config_ids",
+        "expected_node_id",
+        "organization_ids",
+        "authorization",
+    }
+    if not isinstance(data, dict) or set(data) != required_keys:
+        return {"request_id": "", "status": "failed", "channels": {}, "error_type": "InvalidRequest"}
+    request_id = data["request_id"]
+    config_ids = data["config_ids"]
+    expected_node_id = data["expected_node_id"]
+    authorization = data["authorization"]
+    if (
+        not isinstance(request_id, str)
+        or not 1 <= len(request_id) <= 128
+        or not isinstance(config_ids, list)
+        or not 1 <= len(config_ids) <= TelegrafOneShotService.MAX_CONFIGS
+        or any(not isinstance(config_id, str) for config_id in config_ids)
+        or not isinstance(expected_node_id, str)
+        or not 1 <= len(expected_node_id) <= 100
+        or not isinstance(authorization, str)
+        or not 1 <= len(authorization) <= 2048
+    ):
+        return {"request_id": "", "status": "failed", "channels": {}, "error_type": "InvalidRequest"}
+    try:
+        organization_ids = sorted(_normalize_organization_ids(data["organization_ids"]))
+    except BaseAppException:
+        return {"request_id": request_id, "status": "failed", "channels": {}, "error_type": "InvalidRequest"}
+    if not TelegrafOneShotService.verify_authorization(
+        authorization,
+        request_id=request_id,
+        config_ids=config_ids,
+        expected_node_id=expected_node_id,
+        organization_ids=organization_ids,
+    ):
+        return {"request_id": request_id, "status": "failed", "channels": {}, "error_type": "AuthorizationFailed"}
+    return TelegrafOneShotService.run_telegraf_child_configs_once(
+        request_id=request_id,
+        config_ids=config_ids,
+        expected_node_id=expected_node_id,
+        organization_ids=organization_ids,
+    )
+
+
+@nats_client.register
 def get_child_config_nodes_by_ids(ids: list, organization_ids: list):
     """按子配置 ID 批量获取授权组织范围内的采集节点。"""
     return NatsService().get_child_config_nodes_by_ids(ids, organization_ids)
@@ -1135,3 +1186,89 @@ def node_ingest_from_source(params):
     from apps.node_mgmt.services.module_ingest import NodeModuleIngestService
 
     return NodeModuleIngestService.ingest(dict(params or {}))
+
+
+def _user_info_permission_data(user_info):
+    user_info = user_info or {}
+    user = user_info.get("user")
+    username = user if isinstance(user, str) else getattr(user, "username", None)
+    domain = user_info.get("domain") or getattr(user, "domain", None)
+    if not isinstance(username, str) or not username.strip() or not isinstance(domain, str) or not domain.strip():
+        return None
+    return {
+        "username": username,
+        "domain": domain,
+        "current_team": user_info.get("team"),
+        "include_children": user_info.get("include_children", False),
+        "is_superuser": user_info.get("is_superuser", False),
+    }
+
+
+def _authorized_node_queryset(user_info):
+    permission_data = _user_info_permission_data(user_info)
+    if not permission_data or permission_data.get("current_team") in (None, ""):
+        return Node.objects.none()
+    permission, scope = NodeService._build_scoped_permission(permission_data)
+    if scope is None:
+        return Node.objects.none()
+    return (
+        permission_filter(
+            Node,
+            permission,
+            team_key="nodeorganization__organization__in",
+            id_key="id__in",
+        )
+        .filter(nodeorganization__organization__in=scope.data_team_ids)
+        .distinct()
+    )
+
+
+def _node_is_online(status):
+    return isinstance(status, dict) and status.get("status") == 0
+
+
+@nats_client.register
+def get_node_usage_statistics(user_info=None, **kwargs):
+    node_qs = _authorized_node_queryset(user_info)
+    node_total = node_qs.count()
+    online_count = sum(1 for status in node_qs.values_list("status", flat=True) if _node_is_online(status))
+    cloud_region_total = node_qs.values("cloud_region_id").distinct().count()
+    return {
+        "result": True,
+        "data": {
+            "node_total": node_total,
+            "collector_total": Collector.objects.count(),
+            "cloud_region_total": cloud_region_total,
+            "online_count": online_count,
+            "online_rate": round(online_count / node_total * 100, 1) if node_total else 0,
+        },
+        "message": "",
+    }
+
+
+@nats_client.register
+def get_cloud_region_node_top(user_info=None, limit=10, **kwargs):
+    try:
+        limit = int(limit or 10)
+    except (TypeError, ValueError):
+        limit = 10
+    if limit <= 0:
+        limit = 10
+    if limit > 100:
+        limit = 100
+    node_qs = _authorized_node_queryset(user_info)
+    rows = (
+        node_qs.order_by()
+        .values("cloud_region_id", "cloud_region__name")
+        .annotate(count=Count("id"))
+        .order_by("-count", "cloud_region__name")[:limit]
+    )
+    data = [
+        {
+            "cloud_region_id": item["cloud_region_id"],
+            "cloud_region_name": item["cloud_region__name"],
+            "count": item["count"],
+        }
+        for item in rows
+    ]
+    return {"result": True, "data": data, "message": ""}

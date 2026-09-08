@@ -53,8 +53,7 @@ import {
   NEUTRAL_BLUE,
   NEUTRAL_INK,
   RING_REST,
-  RING_DONE,
-  NS_LABEL
+  RING_DONE
 } from './queries';
 import {
   DashboardDisplayMode,
@@ -63,6 +62,7 @@ import {
 } from '../../shared/utils/display-mode-route';
 import {
   latestScalar,
+  latestScalarOrNull,
   seriesLatestByLabel,
   phaseCount,
   saturationColor,
@@ -392,7 +392,8 @@ export default function K8sClusterDashboardPage() {
   // 工作负载可用度条
   const workloadBars = useMemo(() => {
     const mk = (label: string, key: string, color: string) => {
-      const v = latestScalar(raw[key]);
+      const v = latestScalarOrNull(raw[key]);
+      if (v === null) return { label, value: 0, display: '--', color, max: 100 };
       return { label, value: v, display: pct(v), color, max: 100 };
     };
     return [
@@ -444,7 +445,10 @@ export default function K8sClusterDashboardPage() {
   // 资源消耗 Top-N
   const topPodCpuBars = useMemo(() => buildTopBars(raw.topPodCpu, 'pod', '#9254de', coresDisplay), [raw.topPodCpu]);
   const topPodMemBars = useMemo(() => buildTopBars(raw.topPodMem, 'pod', '#13c2c2', bytesDisplay), [raw.topPodMem]);
-  const topNsMemBars = useMemo(() => buildTopBars(raw.topNsMem, NS_LABEL, '#13c2c2', bytesDisplay), [raw.topNsMem]);
+  const topNsMemBars = useMemo(
+    () => buildTopBars(raw.topNsMem, ['namespace', 'container_label_io_kubernetes_pod_namespace'], '#13c2c2', bytesDisplay),
+    [raw.topNsMem]
+  );
 
   // ── 事件 ──
   const onTimeChange = (vals: number[], originValue: number | null) => {
@@ -683,6 +687,7 @@ export default function K8sClusterDashboardPage() {
                   guide={guide('Top 命名空间 · 内存', '内存占用最高的命名空间。')}
                   items={topNsMemBars}
                   tiered
+                  isEmpty={topNsMemBars.length === 0}
                   className={styles.span4}
                   styles={styles}
                 />
@@ -690,6 +695,7 @@ export default function K8sClusterDashboardPage() {
                   title="工作负载可用度"
                   guide={guide('工作负载可用度', '各类工作负载可用副本占期望副本的比例。')}
                   items={workloadBars}
+                  isEmpty={workloadBars.every((item) => item.display === '--')}
                   className={styles.span4}
                   styles={styles}
                 />

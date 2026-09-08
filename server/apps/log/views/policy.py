@@ -2,7 +2,7 @@ import json
 from datetime import datetime, timedelta, timezone
 
 from django.db import models, transaction
-from django.db.models import Count
+from django.db.models import Count, Q
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -23,6 +23,7 @@ from apps.log.filters.policy import AlertFilter, EventFilter, EventRawDataFilter
 from apps.log.models.policy import Alert, AlertSnapshot, Event, EventRawData, Policy, PolicyOrganization
 from apps.log.serializers.policy import AlertSerializer, EventRawDataSerializer, EventSerializer, PolicySerializer
 from apps.log.services.access_scope import LogAccessScopeService
+from apps.log.services.alert_access import visible_log_alerts
 from apps.log.services.alert_lifecycle_notify import LogAlertLifecycleNotifier
 from config.drf.pagination import CustomPageNumberPagination
 
@@ -109,6 +110,40 @@ def get_accessible_log_policy_ids(request, collect_type_id=None, require_operate
             require_operate=require_operate,
         ).values_list("id", flat=True)
     )
+
+
+def get_visible_log_alert_queryset(request, collect_type_id=None, require_operate=False):
+    """告警可见性以生成时组织快照为准，不再跟随策略当前组织。"""
+    try:
+        scope = LogAccessScopeService.get_data_scope(request)
+    except ValueError:
+        return Alert.objects.none()
+
+    queryset = Alert.objects.select_related("policy", "collect_type").prefetch_related("policy__policyorganization_set")
+    normalized_collect_type_id = None if collect_type_id in (None, "", "all") else str(collect_type_id)
+    if normalized_collect_type_id == "global":
+        queryset = queryset.filter(collect_type_id__isnull=True)
+    elif normalized_collect_type_id is not None:
+        queryset = queryset.filter(collect_type_id=normalized_collect_type_id)
+
+    permissions_data = None
+    if not scope.is_superuser:
+        permissions_result = get_permissions_rules(
+            request.user,
+            scope.current_team,
+            "log",
+            PermissionConstants.POLICY_MODULE,
+            include_children=scope.include_children,
+        )
+        permissions_data = permissions_result.get("data") if isinstance(permissions_result, dict) else None
+
+    return visible_log_alerts(
+        queryset,
+        organization_ids=list(scope.data_team_ids),
+        is_superuser=scope.is_superuser,
+        permissions_data=permissions_data,
+        require_operate=require_operate,
+    ).order_by("-created_at")
 
 
 class PolicyViewSet(viewsets.ModelViewSet):
@@ -452,6 +487,11 @@ class PolicyViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
             # 删除相关的定时任务
             PeriodicTask.objects.filter(name=f"log_policy_task_{policy_id}").delete()
+            Alert.objects.filter(policy_id=policy_id, status=AlertConstants.STATUS_NEW).update(
+                status=AlertConstants.STATUS_CLOSED,
+                operator=request.user.username,
+                end_event_time=datetime.now(timezone.utc),
+            )
             return super().destroy(request, *args, **kwargs)
 
     def format_crontab(self, schedule):
@@ -548,7 +588,7 @@ class AlertViewSet(viewsets.ModelViewSet):
         return get_accessible_log_policy_ids(request)
 
     def _authorize_alert_operate(self, request, alert):
-        if not get_accessible_log_policy_queryset(request, require_operate=True).filter(id=alert.policy_id).exists():
+        if not get_visible_log_alert_queryset(request, require_operate=True).filter(pk=alert.pk).exists():
             return WebUtils.response_403("User does not have permission to operate this alert")
         return None
 
@@ -564,13 +604,7 @@ class AlertViewSet(viewsets.ModelViewSet):
         request = getattr(self, "request", None)
         if request is None:
             return Alert.objects.none()
-
-        return (
-            Alert.objects.select_related("policy", "collect_type")
-            .prefetch_related("policy__policyorganization_set")
-            .filter(policy_id__in=get_accessible_log_policy_queryset(request).values("id"))
-            .order_by("-created_at")
-        )
+        return get_visible_log_alert_queryset(request)
 
     @staticmethod
     def _deliver_closed_event(alert_id, closed_at):
@@ -653,15 +687,7 @@ class AlertViewSet(viewsets.ModelViewSet):
         2. 不传collect_type：查询当前用户所有有权限的采集类型的告警
         """
         collect_type_id = request.query_params.get("collect_type", None)
-
-        policy_ids = get_accessible_log_policy_ids(request, collect_type_id=collect_type_id)
-
-        if not policy_ids:
-            return WebUtils.response_success({"count": 0, "items": []})
-
-        # 基于policy权限过滤告警
-        queryset = self.filter_queryset(self.get_queryset())
-        queryset = queryset.filter(policy_id__in=policy_ids).distinct()
+        queryset = self.filter_queryset(get_visible_log_alert_queryset(request, collect_type_id=collect_type_id))
 
         # 获取分页参数
         page = _to_positive_int(request.GET.get("page"), 1)
@@ -688,15 +714,7 @@ class AlertViewSet(viewsets.ModelViewSet):
 
         URL: /api/alerts/all/
         """
-        # 使用优化后的统一方法获取策略ID和权限映射
-        policy_ids = self._get_all_accessible_policy_ids(request)
-
-        if not policy_ids:
-            return WebUtils.response_success({"count": 0, "items": []})
-
-        # 基于policy权限过滤告警
-        queryset = self.filter_queryset(self.get_queryset())
-        queryset = queryset.filter(policy_id__in=policy_ids).distinct()
+        queryset = self.filter_queryset(get_visible_log_alert_queryset(request))
 
         # 获取分页参数
         page = _to_positive_int(request.GET.get("page"), 1)
@@ -743,7 +761,12 @@ class AlertViewSet(viewsets.ModelViewSet):
         if not alert:
             return WebUtils.response_error("告警不存在", status_code=404)
 
-        event = Event.objects.filter(alert_id=alert.id, policy_id=alert.policy_id).order_by("-event_time").first()
+        event_qs = Event.objects.filter(alert_id=alert.id)
+        if alert.policy_id is None:
+            event_qs = event_qs.filter(policy_id__isnull=True)
+        else:
+            event_qs = event_qs.filter(policy_id=alert.policy_id)
+        event = event_qs.order_by("-event_time").first()
         if not event:
             return WebUtils.response_error("未找到相关事件", status_code=404)
 
@@ -772,22 +795,7 @@ class AlertViewSet(viewsets.ModelViewSet):
         4. 统计每个区间内指定状态的告警数量
         """
         collect_type_id = request.query_params.get("collect_type", None)
-
-        policy_ids = get_accessible_log_policy_ids(request, collect_type_id=collect_type_id)
-        if not policy_ids:
-            return WebUtils.response_success(
-                {
-                    "total": 0,
-                    "status": request.query_params.get("status", AlertConstants.STATUS_NEW),
-                    "time_range": {"start": None, "end": None},
-                    "step_minutes": _to_positive_int(request.query_params.get("step"), 60, min_val=1, max_val=1440),
-                    "time_series": [],
-                }
-            )
-
-        # 基于policy权限过滤告警（与list接口保持一致）
-        queryset = self.filter_queryset(self.get_queryset())
-        queryset = queryset.filter(policy_id__in=policy_ids).distinct()
+        queryset = self.filter_queryset(get_visible_log_alert_queryset(request, collect_type_id=collect_type_id))
 
         # 获取参数
         status = request.query_params.get("status", AlertConstants.STATUS_NEW)
@@ -991,12 +999,11 @@ class EventViewSet(viewsets.ReadOnlyModelViewSet):
         if request is None:
             return Event.objects.none()
 
+        visible_alerts = get_visible_log_alert_queryset(request)
         return (
             Event.objects.select_related("policy", "alert")
-            .filter(
-                policy_id__in=get_accessible_log_policy_queryset(request).values("id"),
-                policy_id=models.F("alert__policy_id"),
-            )
+            .filter(alert_id__in=visible_alerts.values("id"))
+            .filter(Q(policy_id=models.F("alert__policy_id")) | Q(policy_id__isnull=True, alert__policy_id__isnull=True))
             .order_by("-event_time")
         )
 
@@ -1012,11 +1019,13 @@ class EventRawDataViewSet(viewsets.ReadOnlyModelViewSet):
         if request is None:
             return EventRawData.objects.none()
 
+        visible_alerts = get_visible_log_alert_queryset(request)
         return (
             EventRawData.objects.select_related("event", "event__alert", "event__policy")
+            .filter(event__alert_id__in=visible_alerts.values("id"))
             .filter(
-                event__policy_id__in=get_accessible_log_policy_queryset(request).values("id"),
-                event__policy_id=models.F("event__alert__policy_id"),
+                Q(event__policy_id=models.F("event__alert__policy_id"))
+                | Q(event__policy_id__isnull=True, event__alert__policy_id__isnull=True)
             )
             .order_by("-event__event_time", "-id")
         )

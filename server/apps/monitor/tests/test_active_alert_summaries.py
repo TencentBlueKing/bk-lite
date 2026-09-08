@@ -15,6 +15,17 @@ MON_C = "mon-c"
 _PERMISSION_FAIL_TEMPLATE = "active alert summary permission context failed monitor_id_count=%s " "failed_stage=permission_context error_type=%s"
 
 
+def _patch_actor_scope(monkeypatch):
+    monkeypatch.setattr(
+        "apps.monitor.nats.monitor._get_nats_actor_scope",
+        lambda user_info: (None, 1, False, [1], True, None),
+    )
+    monkeypatch.setattr(
+        "apps.monitor.services.active_alert_summaries.filter_alerts_by_organizations",
+        lambda queryset, organization_ids, field_name="organizations": queryset,
+    )
+
+
 def test_normalize_monitor_ids_dedupes_and_rejects_non_list():
     assert normalize_monitor_ids(["a", "a", "", None, "b"]) == ["a", "b"]
     with pytest.raises(ValueError):
@@ -35,6 +46,7 @@ def test_summarize_empty_ids_returns_empty_items():
 
 
 def test_summarize_excludes_info_and_picks_highest_severity(monkeypatch):
+    _patch_actor_scope(monkeypatch)
     policy_qs = SimpleNamespace(values_list=lambda *args, **kwargs: [1, 2])
 
     class _InstanceQS:
@@ -53,8 +65,9 @@ def test_summarize_excludes_info_and_picks_highest_severity(monkeypatch):
     captured = {}
 
     class _AlertQS:
-        def filter(self, **kwargs):
-            captured["filter"] = kwargs
+        def filter(self, *args, **kwargs):
+            if "status" in kwargs:
+                captured["filter"] = kwargs
             return self
 
         def values(self, *args):
@@ -87,6 +100,7 @@ def test_summarize_excludes_info_and_picks_highest_severity(monkeypatch):
 
 
 def test_summarize_batches_above_100_keeps_all_authorized_results(monkeypatch):
+    _patch_actor_scope(monkeypatch)
     total = ACTIVE_ALERT_SUMMARY_BATCH_SIZE + 3
     ordered_ids = [f"mon-{index:03d}" for index in range(total)]
     policy_qs = SimpleNamespace(values_list=lambda *args, **kwargs: [1])
@@ -104,7 +118,9 @@ def test_summarize_batches_above_100_keeps_all_authorized_results(monkeypatch):
         def __init__(self):
             self._batch: list[str] = []
 
-        def filter(self, **kwargs):
+        def filter(self, *args, **kwargs):
+            if "monitor_instance_id__in" not in kwargs:
+                return self
             batch = list(kwargs["monitor_instance_id__in"])
             batches.append(batch)
             self._batch = batch
@@ -152,6 +168,7 @@ def test_summarize_batches_above_100_keeps_all_authorized_results(monkeypatch):
 
 
 def test_summarize_returns_zero_for_authorized_without_alerts(monkeypatch):
+    _patch_actor_scope(monkeypatch)
     policy_qs = SimpleNamespace(values_list=lambda *args, **kwargs: [1])
 
     class _InstanceQS:
@@ -162,7 +179,7 @@ def test_summarize_returns_zero_for_authorized_without_alerts(monkeypatch):
             return [MON_A]
 
     class _AlertQS:
-        def filter(self, **kwargs):
+        def filter(self, *args, **kwargs):
             return self
 
         def values(self, *args):

@@ -14,9 +14,11 @@ Telegraf ACK 语义、不新增 Metric Ingester，也不得把 PubAck 表述为 
 
 2026-08-14 补充锁定：以同目录
 `collection-failure-remediation-plan-2026-08-14.md` 为准。请求未开启 `params.ip_precheck` 时跳过
-全部采集前探测但保留出站安全检查；全局容量默认
+全部采集前探测；全局容量默认
 `MAX_ACTIVE_RUNS=16`、`MAX_ACTIVE_TARGETS=250`、`TARGET_TASK_WINDOW=250`；单目标发布失败不得取消
 同 Run 其他目标，Run 汇总为 `completed_with_errors`。
+2026-09-08 出站网段修正：配置采集与 IP 预检不再按 CIDR/域名白名单拦截目标；已删除
+`OUTBOUND_ALLOWED_CIDRS` / `OutboundTargetPolicy`。
 
 2026-08-20 容量补充锁定：单 Pod 默认目标并发与任务窗口由 `150/150` 提升为 `250/250`；
 `collection_capacity` 同步记录进程 CPU/RSS/线程/FD 与 cgroup CPU、内存、throttling，供压测后

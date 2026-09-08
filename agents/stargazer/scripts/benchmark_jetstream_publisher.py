@@ -217,6 +217,7 @@ async def run_pipeline_scenario(args, *, name: str, include_network: bool, inclu
         "failed_targets": failures,
         "elapsed_seconds": round(elapsed, 6),
         "messages_per_second": round(snapshot.get("publish_lines_total", 0) / elapsed, 2) if elapsed else 0,
+        "network_first_complete_seconds": round(min(completion_seconds["network"]), 6) if completion_seconds["network"] else None,
         "network_complete_seconds": round(max(completion_seconds["network"]), 6) if completion_seconds["network"] else None,
         "sangfor_complete_seconds": round(max(completion_seconds["sangfor"]), 6) if completion_seconds["sangfor"] else None,
         "peak_result_queue_depth": publisher.peak_queue_depth,
@@ -231,6 +232,7 @@ async def run_pipeline_scenario(args, *, name: str, include_network: bool, inclu
 async def async_main(args) -> int:
     os.environ["NATS_METRICS_JETSTREAM_ENABLED"] = "true"
     os.environ["NATS_JS_PUBLISH_MAX_PENDING"] = str(args.max_pending_messages)
+    os.environ["NATS_JS_PUBLISH_MAX_PENDING_PER_CALL"] = str(args.max_pending_messages_per_call)
     os.environ["NATS_JS_PUBLISH_MAX_PENDING_BYTES"] = str(args.max_pending_bytes)
     os.environ["NATS_JS_PUBACK_TIMEOUT"] = str(args.puback_timeout)
     os.environ["NATS_JS_PUBLISH_MAX_ATTEMPTS"] = str(args.max_attempts)
@@ -242,6 +244,7 @@ async def async_main(args) -> int:
             lambda: simulated,
             settings=JetStreamPublishWindowSettings(
                 max_pending_messages=args.max_pending_messages,
+                max_pending_messages_per_call=args.max_pending_messages_per_call,
                 max_pending_bytes=args.max_pending_bytes,
                 puback_timeout_seconds=args.puback_timeout,
                 max_attempts=args.max_attempts,
@@ -315,6 +318,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--publish-workers", type=int, default=4)
     parser.add_argument("--flush-interval", type=float, default=0.02)
     parser.add_argument("--max-pending-messages", type=int, default=256)
+    parser.add_argument("--max-pending-messages-per-call", type=int, default=64)
     parser.add_argument("--max-pending-bytes", type=int, default=32 * 1024 * 1024)
     parser.add_argument("--puback-timeout", type=float, default=30.0)
     parser.add_argument("--max-attempts", type=int, default=2)

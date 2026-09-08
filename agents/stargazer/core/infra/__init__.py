@@ -1,1 +1,1 @@
-"""基础设施：Redis / NATS / SSH / 出站策略等。"""
+"""基础设施：Redis / NATS / SSH 等。"""
