@@ -30,7 +30,8 @@ from apps.alerts.constants import (
 from apps.alerts.constants.constants import EventStatus, LevelType
 from apps.alerts.models.alert_operator import AlarmStrategy
 from apps.alerts.models.models import Alert, Event, Level
-from apps.alerts.serializers.strategy import ALLOWED_DIMENSIONS, DIMENSION_NAME_PATTERN
+from apps.alerts.serializers.strategy import DIMENSION_NAME_PATTERN, is_allowed_dimension
+from apps.alerts.utils.enrichment import is_enrichment_path
 from apps.alerts.utils.util import parse_aggregation_window_size, str_to_md5
 from apps.core.logger import alert_logger as logger
 
@@ -56,10 +57,10 @@ class AggregationProcessor:
                 logger.warning("[AlertAggregation] 策略 %s: 维度名非字符串，已跳过: %s", strategy_name, dim)
                 continue
             dim = dim.strip()
-            if not DIMENSION_NAME_PATTERN.match(dim):
+            if not (DIMENSION_NAME_PATTERN.fullmatch(dim) or is_enrichment_path(dim)):
                 logger.warning("[AlertAggregation] 策略 %s: 维度名格式非法，已跳过: %s", strategy_name, dim)
                 continue
-            if dim not in ALLOWED_DIMENSIONS:
+            if not is_allowed_dimension(dim):
                 logger.warning("[AlertAggregation] 策略 %s: 不支持的维度名，已跳过: %s", strategy_name, dim)
                 continue
             validated.append(dim)

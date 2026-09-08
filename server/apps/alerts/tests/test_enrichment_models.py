@@ -1,5 +1,4 @@
-import pytest
-from apps.alerts.models.models import Event, Alert
+from apps.alerts.models.models import Alert, Event
 
 
 def test_event_enrichment_defaults_to_empty_dict():
@@ -12,8 +11,14 @@ def test_alert_enrichment_defaults_to_empty_dict():
     assert field.get_default() == {}
 
 
+def test_enrichment_diagnostic_meta_defaults_to_empty_dict():
+    assert Event._meta.get_field("enrichment_meta").get_default() == {}
+    assert Alert._meta.get_field("enrichment_meta").get_default() == {}
+
+
 def test_enrichment_rule_field_defaults():
     from apps.alerts.models.enrichment import EnrichmentRule
+
     assert EnrichmentRule._meta.get_field("provider_type").get_default() == "cmdb"
     assert EnrichmentRule._meta.get_field("on_multiple").get_default() == "first"
     assert EnrichmentRule._meta.get_field("input_binding").get_default() == {}
@@ -23,6 +28,7 @@ def test_enrichment_rule_field_defaults():
 
 def test_enrichment_rule_resolved_namespace_falls_back_to_provider_type():
     from apps.alerts.models.enrichment import EnrichmentRule
+
     rule = EnrichmentRule(name="r", provider_type="cmdb", namespace="")
     assert rule.resolved_namespace == "cmdb"
     rule2 = EnrichmentRule(name="r2", provider_type="cmdb", namespace="biz")

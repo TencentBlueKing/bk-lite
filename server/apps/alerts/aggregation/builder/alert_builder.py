@@ -6,9 +6,11 @@ from django.utils import timezone
 
 from apps.alerts.aggregation.window.factory import WindowFactory
 from apps.alerts.constants.constants import AlertStatus, EventAction, LevelType, SessionStatus
+from apps.alerts.enrichment.merge import merge_namespace_payload
 from apps.alerts.models.alert_operator import AlarmStrategy
 from apps.alerts.models.models import Alert, Event, Level
 from apps.alerts.service.monitor_object_snapshot import resolve_monitor_objects
+from apps.alerts.utils.enrichment import resolve_data_path
 from apps.alerts.utils.permission_scope import normalize_team_ids
 from apps.core.logger import alert_logger as logger
 
@@ -122,14 +124,19 @@ class AlertBuilder:
 
     @staticmethod
     def _merge_enrichment(events) -> dict:
-        """按命名空间合并成员事件 enrichment：首条非空者优先。"""
-        merged = {}
+        """合并成员事件 enrichment；命名空间保持稳定对象，冲突写入 _meta。"""
+        merged_by_namespace = {}
         for event in events:
             data = getattr(event, "enrichment", None) or {}
             for namespace, payload in data.items():
-                if namespace not in merged and payload:
-                    merged[namespace] = payload
-        return merged
+                if not payload:
+                    continue
+                existing = merged_by_namespace.get(namespace)
+                if existing is None:
+                    merged_by_namespace[namespace], _ = merge_namespace_payload({}, payload)
+                elif existing != payload:
+                    merged_by_namespace[namespace], _ = merge_namespace_payload(existing, payload)
+        return merged_by_namespace
 
     @staticmethod
     def _get_consistent_labels(events: List[Event]) -> Dict[str, Any]:
@@ -144,6 +151,20 @@ class AlertBuilder:
         return {}
 
     @staticmethod
+    def _merge_enrichment_meta(events) -> dict:
+        status_counts: Dict[str, int] = {}
+        event_count = 0
+        for event in events:
+            event_count += 1
+            status = (getattr(event, "enrichment_meta", None) or {}).get("status", "skipped")
+            status_counts[status] = status_counts.get(status, 0) + 1
+        return {
+            "schema_version": 1,
+            "event_count": event_count,
+            "status_counts": status_counts,
+        }
+
+    @staticmethod
     def _resolve_standard_fields(events) -> Dict[str, Any]:
         event_list = list(events)
         if not event_list:
@@ -155,6 +176,7 @@ class AlertBuilder:
                 "item": None,
                 "labels": {},
                 "enrichment": {},
+                "enrichment_meta": {"schema_version": 1, "event_count": 0, "status_counts": {}},
             }
 
         return {
@@ -165,6 +187,7 @@ class AlertBuilder:
             "item": AlertBuilder._get_unique_scalar_value([event.item for event in event_list]),
             "labels": AlertBuilder._get_consistent_labels(event_list),
             "enrichment": AlertBuilder._merge_enrichment(event_list),
+            "enrichment_meta": AlertBuilder._merge_enrichment_meta(event_list),
         }
 
     @staticmethod
@@ -179,7 +202,13 @@ class AlertBuilder:
         for dimension_name in dimension_names:
             values = set()
             for event in event_list:
-                value = getattr(event, dimension_name, None)
+                if dimension_name.startswith("enrichment."):
+                    value = resolve_data_path(
+                        {"enrichment": getattr(event, "enrichment", None) or {}},
+                        dimension_name,
+                    )
+                else:
+                    value = getattr(event, dimension_name, None)
                 if value is None:
                     continue
                 normalized_value = str(value).strip()
@@ -251,6 +280,7 @@ class AlertBuilder:
             last_event_time=result["last_event_time"],
             labels=standard_fields["labels"],
             enrichment=standard_fields["enrichment"],
+            enrichment_meta=standard_fields["enrichment_meta"],
             item=standard_fields["item"],
             resource_id=standard_fields["resource_id"],
             resource_name=standard_fields["resource_name"],
@@ -328,6 +358,7 @@ class AlertBuilder:
         alert.item = standard_fields["item"]
         alert.labels = standard_fields["labels"]
         alert.enrichment = standard_fields["enrichment"]
+        alert.enrichment_meta = standard_fields["enrichment_meta"]
         alert.dimensions = dimensions
         alert.save(
             update_fields=[
@@ -343,6 +374,7 @@ class AlertBuilder:
                 "item",
                 "labels",
                 "enrichment",
+                "enrichment_meta",
                 "dimensions",
             ]
         )
