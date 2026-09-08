@@ -1,9 +1,23 @@
 import pytest
+from django.core.cache import cache
 
 from apps.node_mgmt.models import Node
 from apps.node_mgmt.models.cloud_region import CloudRegion
 from apps.node_mgmt.models.sidecar import NodeOrganization
 from apps.node_mgmt.services.module_push_contract import LINK_CONFLICT
+
+
+@pytest.fixture(autouse=True)
+def _locmem_cache(settings):
+    settings.CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "node-mgmt-module-push-service-tests",
+        }
+    }
+    cache.clear()
+    yield
+    cache.clear()
 
 
 @pytest.fixture
@@ -239,3 +253,105 @@ def test_push_both_targets_second_gets_first_id(mocker, node):
     assert monitor.return_value.ingest_from_source.call_count >= 2
     last_cmdb = cmdb.return_value.ingest_from_source.call_args.kwargs
     assert last_cmdb["link_ids"]["monitor_id"] == "mon-88"
+
+
+def test_consume_deferred_push_matches_install_ip_without_node_id(mocker, node):
+    from apps.node_mgmt.services.module_push import ModulePushService
+
+    ModulePushService.remember_deferred_push(
+        cloud_region_id=node.cloud_region_id,
+        nodes=[{"ip": node.ip}],
+        targets=["cmdb", "monitor"],
+        actor_scope={"allowed_org_ids": [1], "operator": "alice"},
+    )
+    push = mocker.patch.object(ModulePushService, "best_effort_push_node", return_value={"monitor": object()})
+
+    result = ModulePushService.consume_deferred_push_for_node(node)
+
+    assert result is not None
+    push.assert_called_once_with(
+        node.id,
+        targets=["cmdb", "monitor"],
+        actor_scope={"allowed_org_ids": [1], "operator": "alice"},
+    )
+    from django.core.cache import cache
+
+    from apps.node_mgmt.constants.installer import InstallerConstants
+
+    assert cache.get(f"{InstallerConstants.MODULE_PUSH_INTENT_CACHE_PREFIX}:ip:{node.cloud_region_id}:{node.ip}") is None
+    assert ModulePushService.consume_deferred_push_for_node(node) is None
+    assert push.call_count == 1
+
+
+def test_consume_deferred_push_from_install_task_result_when_cache_empty(mocker, node):
+    from django.core.cache import cache
+
+    from apps.node_mgmt.constants.installer import InstallerConstants
+    from apps.node_mgmt.models.installer import ControllerTask, ControllerTaskNode
+    from apps.node_mgmt.services.module_push import ModulePushService
+
+    task = ControllerTask.objects.create(
+        cloud_region=node.cloud_region,
+        type="install",
+        status="waiting",
+        package_version_id=1,
+    )
+    ControllerTaskNode.objects.create(
+        task=task,
+        ip=node.ip,
+        node_name=node.name,
+        os="linux",
+        port=22,
+        username="root",
+        password="x",
+        status="waiting",
+        result={
+            InstallerConstants.MODULE_PUSH_TARGETS_KEY: ["monitor"],
+            InstallerConstants.MODULE_PUSH_ACTOR_SCOPE_KEY: {
+                "allowed_org_ids": [1],
+                "operator": "bob",
+            },
+        },
+    )
+    cache.delete(f"{InstallerConstants.MODULE_PUSH_INTENT_CACHE_PREFIX}:ip:{node.cloud_region_id}:{node.ip}")
+    cache.delete(f"{InstallerConstants.MODULE_PUSH_INTENT_CACHE_PREFIX}:node:{node.id}")
+    push = mocker.patch.object(ModulePushService, "best_effort_push_node", return_value={"monitor": object()})
+
+    result = ModulePushService.consume_deferred_push_for_node(node)
+
+    assert result is not None
+    push.assert_called_once_with(
+        node.id,
+        targets=["monitor"],
+        actor_scope={"allowed_org_ids": [1], "operator": "bob"},
+    )
+    task_node = ControllerTaskNode.objects.get(task=task)
+    assert task_node.result[InstallerConstants.MODULE_PUSH_CONSUMED_KEY] is True
+    assert ModulePushService.consume_deferred_push_for_node(node) is None
+
+
+def test_remember_deferred_push_log_template_and_params(caplog, node):
+    import logging
+
+    from apps.node_mgmt.services.module_push import ModulePushService
+
+    caplog.set_level(logging.INFO, logger="node")
+    count = ModulePushService.remember_deferred_push(
+        cloud_region_id=node.cloud_region_id,
+        nodes=[{"ip": node.ip, "node_id": "pending-1"}],
+        targets=["cmdb", "monitor"],
+        actor_scope={"allowed_org_ids": [1], "operator": "alice"},
+    )
+
+    assert count == 1
+    records = [r for r in caplog.records if r.name == "node" and "remembered deferred push" in (r.msg or "")]
+    assert len(records) == 1
+    record = records[0]
+    assert "%s" in record.msg
+    assert record.args == (node.cloud_region_id, 1, ["cmdb", "monitor"])
+    formatted = record.msg % record.args
+    assert str(node.cloud_region_id) in formatted
+    assert "cmdb" in formatted
+    assert "monitor" in formatted
+    assert "pending-1" not in formatted
+    assert "password" not in formatted.lower()
