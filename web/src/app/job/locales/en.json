@@ -403,6 +403,7 @@
     "defaultExecuteUser": "root",
     "executionLog": "Execution Log",
     "streamingLive": "Live",
+    "waitingForExecutionLog": "Waiting for execution logs. Status will keep refreshing; use the actions above to inspect the execution content and parameters.",
     "searchLog": "Search logs...",
     "sortAsc": "Ascending",
     "sortDesc": "Descending",
