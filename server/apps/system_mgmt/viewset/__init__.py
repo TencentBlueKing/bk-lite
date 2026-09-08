@@ -1,5 +1,6 @@
 from .app_viewset import AppViewSet  # noqa
 from .channel_viewset import ChannelViewSet  # noqa
+from .credential_viewset import CredentialTypeViewSet, CredentialViewSet  # noqa
 from .custom_menu_group_viewset import CustomMenuGroupViewSet  # noqa
 from .error_log_viewset import ErrorLogViewSet  # noqa
 from .group_data_rule_viewset import GroupDataRuleViewSet  # noqa

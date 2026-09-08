@@ -52,7 +52,7 @@ templates:
           root_dns:
             label: Sync pull DNs
             placeholder: "OU=BizA,DC=example,DC=com\nOU=BizC,DC=example,DC=com"
-            help_text: One complete DN per line. With one DN, child organizations attach under this sync source's root group. With multiple OUs, each appears as its own organization under that root.
+            help_text: You can enter one or more DNs. For multiple DNs, press Enter to put one complete DN per line; do not use commas or other separators. With one DN, that directory and its child organizations are synced; with multiple DNs, each DN is synced as a separate organization under the local root.
           user_object_class:
             label: User object class
             help_text: Object class for user accounts in AD/LDAP. The common value is user; keep the default unless you need a different class.
