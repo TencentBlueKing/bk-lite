@@ -12,6 +12,7 @@ from apps.system_mgmt.services.credential_service import (
     delete_credential,
     delete_type,
     list_credentials,
+    list_types,
     page_credentials,
     query_credentials,
     resolve_credential,
@@ -87,6 +88,19 @@ def test_seed_builtin_types_is_idempotent_and_authoritative():
     assert ssh_fields["username"]["name"] == "用户名"
     assert ssh_fields["auth_method"]["name"] == "认证方式"
     assert ssh_fields["port"]["name"] == "端口"
+
+
+def test_list_types_orders_builtin_first_then_by_creation():
+    seed_builtin_types()
+    CredentialType.objects.create(key="zzz_custom", name="First custom", categories=["other"])
+    CredentialType.objects.create(key="aaa_custom", name="Second custom", categories=["other"])
+    items = list_types()
+    keys = [item["key"] for item in items]
+    builtin_keys = [item["key"] for item in items if item["is_builtin"]]
+    custom_keys = [item["key"] for item in items if not item["is_builtin"]]
+    assert keys == builtin_keys + custom_keys
+    assert builtin_keys[0] == next(iter(BUILTIN_TYPES))
+    assert custom_keys.index("zzz_custom") < custom_keys.index("aaa_custom")
 
 
 def test_builtin_type_is_immutable_but_custom_type_is_editable():
@@ -173,7 +187,10 @@ def test_owner_scope_direction_filtering_and_forbidden_resolution():
     assert {item["credential_id"] for item in list_credentials({"current_team": root.id}, actor=actor(root.id, root.id))} == {root_cred.credential_id}
     child_items = list_credentials({"current_team": child.id}, actor=actor(child.id, child.id))
     assert {item["credential_id"] for item in child_items} == {root_cred.credential_id, child_cred.credential_id}
-    assert list_credentials({"current_team": child.id, "group_id": root.id}, actor=actor(child.id, child.id))[0]["credential_id"] == root_cred.credential_id
+    assert (
+        list_credentials({"current_team": child.id, "group_id": root.id}, actor=actor(child.id, child.id))[0]["credential_id"]
+        == root_cred.credential_id
+    )
     with pytest.raises(CredentialServiceError) as exc:
         resolve_credential(child_cred.credential_id, root.id, actor(root.id, root.id))
     assert exc.value.code == "forbidden"
@@ -208,10 +225,18 @@ def test_list_filters_category_type_search_disabled_and_exact_owner():
     )
     set_disabled(second.credential_id, True)
     scoped_actor = actor(child.id, child.id)
-    assert [row["credential_id"] for row in list_credentials({"current_team": child.id, "category": "database", "type": typ.key}, actor=scoped_actor)] == [first.credential_id, second.credential_id]
-    assert [row["credential_id"] for row in list_credentials({"current_team": child.id, "search": "Alpha"}, actor=scoped_actor)] == [first.credential_id]
-    assert [row["credential_id"] for row in list_credentials({"current_team": child.id, "disabled": True}, actor=scoped_actor)] == [second.credential_id]
-    assert [row["credential_id"] for row in list_credentials({"current_team": child.id, "group_id": child.id}, actor=scoped_actor)] == [second.credential_id]
+    assert [
+        row["credential_id"] for row in list_credentials({"current_team": child.id, "category": "database", "type": typ.key}, actor=scoped_actor)
+    ] == [first.credential_id, second.credential_id]
+    assert [row["credential_id"] for row in list_credentials({"current_team": child.id, "search": "Alpha"}, actor=scoped_actor)] == [
+        first.credential_id
+    ]
+    assert [row["credential_id"] for row in list_credentials({"current_team": child.id, "disabled": True}, actor=scoped_actor)] == [
+        second.credential_id
+    ]
+    assert [row["credential_id"] for row in list_credentials({"current_team": child.id, "group_id": child.id}, actor=scoped_actor)] == [
+        second.credential_id
+    ]
 
 
 def test_manage_scope_lists_authorized_siblings_consume_scope_does_not():
@@ -232,10 +257,7 @@ def test_manage_scope_lists_authorized_siblings_consume_scope_does_not():
         actor(child.id, child.id),
     )
     manage_actor = actor(root.id, root.id, sibling.id)
-    managed_ids = {
-        row.credential_id
-        for row in query_credentials({"current_team": root.id, "owner_scope": "manage"}, actor=manage_actor)
-    }
+    managed_ids = {row.credential_id for row in query_credentials({"current_team": root.id, "owner_scope": "manage"}, actor=manage_actor)}
     assert managed_ids == {root_cred.credential_id, sibling_cred.credential_id}
     assert child_cred.credential_id not in managed_ids
     consume_ids = {row["credential_id"] for row in list_credentials({"current_team": root.id}, actor=manage_actor)}

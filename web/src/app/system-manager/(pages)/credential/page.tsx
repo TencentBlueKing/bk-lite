@@ -14,7 +14,7 @@ const CredentialPage: React.FC = () => {
 
   return (
     <PageLayout
-      height="calc(100vh - 220px)"
+      height="calc(100vh - 200px)"
       topSection={
         <TopSection
           title={t('system.credential.title')}
@@ -30,12 +30,23 @@ const CredentialPage: React.FC = () => {
               {
                 key: 'list',
                 label: t('system.credential.listTab'),
-                children: <div className="h-[calc(100vh-320px)]"><CredentialListTab active={activeKey === 'list'} onGoTypes={() => setActiveKey('types')} /></div>,
+                children: (
+                  <div className="h-[calc(100vh-300px)]">
+                    <CredentialListTab
+                      active={activeKey === 'list'}
+                      onGoTypes={() => setActiveKey('types')}
+                    />
+                  </div>
+                ),
               },
               {
                 key: 'types',
                 label: t('system.credential.typeTab'),
-                children: <div className="h-[calc(100vh-320px)]"><TypeCatalogTab /></div>,
+                children: (
+                  <div className="h-[calc(100vh-320px)]">
+                    <TypeCatalogTab />
+                  </div>
+                ),
               },
             ]}
           />

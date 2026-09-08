@@ -80,18 +80,9 @@ const CredentialFormDrawer: React.FC<CredentialFormDrawerProps> = ({
       return t('system.credential.createCredential', '新建凭据');
     }
     const name = record?.name || '—';
-    return (
-      <div>
-        {record?.credential_id ? (
-          <div className="mb-0.5 font-mono text-[11px] text-[var(--color-text-3)]">{record.credential_id}</div>
-        ) : null}
-        <span className="text-base font-semibold text-[var(--color-text-1)]">
-          {mode === 'edit'
-            ? t('system.credential.editCredentialTitle', '编辑凭据 · {name}', { name })
-            : t('system.credential.viewCredentialTitle', '查看凭据 · {name}', { name })}
-        </span>
-      </div>
-    );
+    return mode === 'edit'
+      ? t('system.credential.editCredentialTitle', '编辑凭据-{name}', { name })
+      : t('system.credential.viewCredentialTitle', '查看凭据-{name}', { name });
   })();
 
   const secretPlaceholder = readOnly
@@ -149,14 +140,10 @@ const CredentialFormDrawer: React.FC<CredentialFormDrawerProps> = ({
               <>
                 <Form.Item
                   label={t('system.credential.credentialType', '凭据类型')}
-                  extra={mode === 'create' ? null : t('system.credential.typeImmutableHint', '保存后类型不可变更。如需更换类型请新建。')}
                 >
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <Tag color={selectedType?.is_builtin ? 'blue' : 'orange'} className="!m-0">
-                      {selectedType?.name || watchedType}
-                    </Tag>
-                    <code className="font-mono text-xs text-[var(--color-text-3)]">{selectedType?.key || watchedType}</code>
-                  </div>
+                  <Tag color={selectedType?.is_builtin ? 'blue' : 'orange'} className="!m-0">
+                    {selectedType?.name || watchedType}
+                  </Tag>
                 </Form.Item>
                 <Form.Item name="type" hidden rules={[{ required: true }]}>
                   <Input />
@@ -172,11 +159,6 @@ const CredentialFormDrawer: React.FC<CredentialFormDrawerProps> = ({
                 />
               </Form.Item>
             )}
-            {mode === 'edit' ? (
-              <p className="mb-3 text-xs text-[var(--color-text-3)]">
-                {t('system.credential.secretRotateHint', '密钥字段留空表示不修改；重新填写即轮换密钥。')}
-              </p>
-            ) : null}
             <div className="mt-1">
               {selectedType?.fields?.length ? (
                 <CredentialFieldsBlock

@@ -2,10 +2,11 @@
 
 import React, { useEffect, useState } from 'react';
 import { Button, Form, Input, message, Popconfirm, Space, Tag, Tooltip } from 'antd';
-import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { PlusOutlined } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
 import OperateModal from '@/components/operate-modal';
 import ContentDrawer from '@/components/content-drawer';
+import SearchActionBar from '@/components/search-action-bar';
 import { renderFormFeedbackFooter } from '@/components/form-feedback-footer';
 import PermissionWrapper from '@/components/permission';
 import { useTranslation } from '@/utils/i18n';
@@ -15,9 +16,25 @@ import { useCredentialApi } from '@/app/system-manager/api/credential';
 import CategoryCheckboxGroup from './CategoryCheckboxGroup';
 import TypeFieldsDesigner from './TypeFieldsDesigner';
 import type { ColumnItem } from '@/types';
+import { HandledRequestError } from '@/utils/request';
 
-const TYPE_DESIGNER_WIDTH = 920;
-const TYPE_PREVIEW_WIDTH = 340;
+const TYPE_DESIGNER_WIDTH = 800;
+const BUILTIN_MARK_CLASS =
+  'inline-flex h-[18px] shrink-0 items-center rounded px-1.5 text-xs font-medium leading-none text-[var(--color-text-3)] bg-[var(--color-fill-2)]';
+
+const CATEGORY_TAG_COLOR: Record<string, string> = {
+  host: 'blue',
+  network: 'cyan',
+  storage: 'gold',
+  database: 'purple',
+  middleware: 'geekblue',
+  cloud: 'orange',
+  other: 'default',
+};
+
+const BuiltinMark: React.FC<{ label: string }> = ({ label }) => (
+  <span className={BUILTIN_MARK_CLASS}>{label}</span>
+);
 
 const TypeCatalogTab: React.FC = () => {
   const { t } = useTranslation();
@@ -43,7 +60,6 @@ const TypeCatalogTab: React.FC = () => {
 
   const categoryLabel = (id: string) => t(`system.credential.categories.${id}`, id);
   const draftName = Form.useWatch('name', designerForm) || draft?.name || '';
-  const draftKey = Form.useWatch('key', designerForm) || draft?.key || '';
   const fieldsLocked = designerReadOnly || Boolean(draft?.is_builtin);
 
   const fillDesigner = (record: Partial<CredentialTypeItem>) => {
@@ -89,14 +105,30 @@ const TypeCatalogTab: React.FC = () => {
 
   const handleMetaOk = async () => {
     const values = await metaForm.validateFields();
-    const nextDraft = { key: values.key, name: values.name, categories: values.categories, is_builtin: false };
-    setDraft(nextDraft);
-    fillDesigner(nextDraft);
-    setFields([]);
-    previewForm.resetFields();
-    setDesignerReadOnly(false);
-    setMetaOpen(false);
-    setDesignerOpen(true);
+    setSaving(true);
+    try {
+      const created = await createCredentialType({
+        key: values.key,
+        name: values.name,
+        categories: values.categories || [],
+        fields: [],
+      });
+      message.success(t('common.saveSuccess'));
+      setDraft(created);
+      fillDesigner(created);
+      setFields(created.fields || []);
+      previewForm.resetFields();
+      setDesignerReadOnly(false);
+      setMetaOpen(false);
+      setDesignerOpen(true);
+      await load();
+    } catch (error) {
+      if (!(error instanceof HandledRequestError)) {
+        message.error(t('common.saveFailed'));
+      }
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleSaveType = async () => {
@@ -106,26 +138,18 @@ const TypeCatalogTab: React.FC = () => {
     }
     setSaving(true);
     try {
-      const exists = items.some((item) => item.key === values.key);
-      if (exists) {
-        await updateCredentialType(values.key, {
-          name: values.name,
-          categories: values.categories,
-          fields,
-        });
-      } else {
-        await createCredentialType({
-          key: values.key,
-          name: values.name,
-          categories: values.categories || [],
-          fields,
-        });
-      }
+      await updateCredentialType(values.key, {
+        name: values.name,
+        categories: values.categories,
+        fields,
+      });
       message.success(t('common.saveSuccess'));
       setDesignerOpen(false);
       await load();
-    } catch {
-      message.error(t('common.saveFailed'));
+    } catch (error) {
+      if (!(error instanceof HandledRequestError)) {
+        message.error(t('common.saveFailed'));
+      }
     } finally {
       setSaving(false);
     }
@@ -136,7 +160,12 @@ const TypeCatalogTab: React.FC = () => {
       title: t('system.credential.typeName'),
       dataIndex: 'name',
       key: 'name',
-      render: (_, record: CredentialTypeItem) => <span>{record.name}</span>,
+      render: (_, record: CredentialTypeItem) => (
+        <span className="inline-flex items-center gap-1.5">
+          <span>{record.name}</span>
+          {record.is_builtin ? <BuiltinMark label={t('system.credential.builtin')} /> : null}
+        </span>
+      ),
     },
     {
       title: t('system.credential.typeKey'),
@@ -155,23 +184,17 @@ const TypeCatalogTab: React.FC = () => {
           {(categories || []).map((id) => (
             <Tooltip key={id} title={id}>
               <span>
-                <Tag bordered={false} className="m-0 rounded bg-[var(--color-fill-2)] px-2 py-0.5 font-medium text-[var(--color-text-2)]">
-                  {categoryLabel(id)}
+                <Tag
+                  bordered={false}
+                  color={CATEGORY_TAG_COLOR[id] || 'default'}
+                  className="m-0 rounded px-2 py-0.5 font-medium"
+                >
+                  <span className="opacity-80">{categoryLabel(id)}</span>
                 </Tag>
               </span>
             </Tooltip>
           ))}
         </div>
-      ),
-    },
-    {
-      title: t('system.credential.source'),
-      dataIndex: 'is_builtin',
-      key: 'source',
-      render: (isBuiltin: boolean) => (
-        <Tag color={isBuiltin ? 'blue' : 'orange'}>
-          {isBuiltin ? t('system.credential.builtin') : t('system.credential.custom')}
-        </Tag>
       ),
     },
     {
@@ -214,24 +237,23 @@ const TypeCatalogTab: React.FC = () => {
   ];
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="mb-2 flex justify-end gap-2">
-        <Input.Search
-          allowClear
-          className="w-60"
-          placeholder={t('common.search')}
-          onSearch={(value) => {
+    <div className="flex h-full min-h-0 flex-col">
+      <SearchActionBar
+        searchProps={{
+          placeholder: t('common.search'),
+          onSearch: (value) => {
             setSearch(value);
             void load(1, pagination.pageSize, value);
-          }}
-        />
-        <PermissionWrapper requiredPermissions={['Add']}>
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-            {t('system.credential.addType')}
-          </Button>
-        </PermissionWrapper>
-        <Button type="text" icon={<ReloadOutlined />} onClick={() => void load()} />
-      </div>
+          },
+        }}
+        actions={(
+          <PermissionWrapper requiredPermissions={['Add']}>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+              {t('system.credential.addType')}
+            </Button>
+          </PermissionWrapper>
+        )}
+      />
       <div className="min-h-0 flex-1">
         <CustomTable
           rowKey="key"
@@ -251,8 +273,13 @@ const TypeCatalogTab: React.FC = () => {
         title={t('system.credential.addType')}
         open={metaOpen}
         okText={t('system.credential.saveAndDesignFields')}
+        confirmLoading={saving}
         onOk={() => void handleMetaOk()}
-        onCancel={() => setMetaOpen(false)}
+        onCancel={() => {
+          if (!saving) {
+            setMetaOpen(false);
+          }
+        }}
       >
         <Form form={metaForm} layout="vertical">
           <Form.Item name="name" label={t('system.credential.typeName')} rules={[{ required: true, whitespace: true }]}>
@@ -272,7 +299,6 @@ const TypeCatalogTab: React.FC = () => {
           <Form.Item
             name="categories"
             label={t('system.credential.categoryBelong')}
-            extra={t('system.credential.categoryHint')}
             rules={[{ required: true }]}
           >
             <CategoryCheckboxGroup />
@@ -286,21 +312,14 @@ const TypeCatalogTab: React.FC = () => {
               {designerReadOnly
                 ? t('system.credential.viewTypePrefix')
                 : t('system.credential.editTypePrefix')}
-              {' · '}
-              {draftName || '—'}
+              -{draftName || '—'}
             </span>
-            {draftKey ? (
-              <Tag bordered={false} className="!m-0 font-mono text-[var(--color-text-2)]">
-                {draftKey}
-              </Tag>
-            ) : null}
-            <Tag color={draft?.is_builtin ? 'blue' : 'orange'} className="!m-0">
-              {draft?.is_builtin ? t('system.credential.builtin') : t('system.credential.custom')}
-            </Tag>
+            {draft?.is_builtin ? <BuiltinMark label={t('system.credential.builtin')} /> : null}
           </div>
         )}
         open={designerOpen}
         width={TYPE_DESIGNER_WIDTH}
+        destroyOnClose
         footer={designerReadOnly ? null : (
           <div className="flex justify-end">
             {renderFormFeedbackFooter({
@@ -325,57 +344,59 @@ const TypeCatalogTab: React.FC = () => {
         onClose={() => setDesignerOpen(false)}
       >
         <div className="flex h-full min-h-0 flex-col">
-          <div className="shrink-0 border-b border-[var(--color-fill-2)] bg-[var(--color-bg-container)] px-5 py-4">
-            <Form form={designerForm} layout="vertical" disabled={designerReadOnly} className="flex flex-col gap-3.5">
-              <Form.Item
-                name="name"
-                label={<span className="text-xs font-medium text-[var(--color-text-3)]">{t('system.credential.typeName')}</span>}
-                rules={[{ required: true, whitespace: true }]}
-                className="!mb-0"
-              >
-                <Input placeholder={t('system.credential.typeNamePlaceholder')} disabled={Boolean(draft?.is_builtin)} />
-              </Form.Item>
-              <Form.Item
-                name="key"
-                label={<span className="text-xs font-medium text-[var(--color-text-3)]">{t('system.credential.typeKeyShort')}</span>}
-                className="!mb-0"
-              >
-                <Input disabled className="font-mono" />
-              </Form.Item>
+          <div className="shrink-0 px-6 pt-5 pb-5">
+            <Form form={designerForm} layout="vertical" disabled={designerReadOnly} className="flex flex-col gap-4">
+              <div className="grid grid-cols-2 gap-x-6">
+                <Form.Item
+                  name="name"
+                  label={t('system.credential.typeName')}
+                  rules={[{ required: true, whitespace: true }]}
+                  className="!mb-0"
+                >
+                  <Input placeholder={t('system.credential.typeNamePlaceholder')} disabled={Boolean(draft?.is_builtin)} />
+                </Form.Item>
+                <Form.Item
+                  name="key"
+                  label={t('system.credential.typeKeyShort')}
+                  className="!mb-0"
+                >
+                  <Input disabled className="font-mono" />
+                </Form.Item>
+              </div>
               <Form.Item
                 name="categories"
-                label={<span className="text-xs font-medium text-[var(--color-text-3)]">{t('system.credential.categoryBelong')}</span>}
-                extra={fieldsLocked ? null : (
-                  <span className="mt-1 block text-xs text-[var(--color-text-3)]">{t('system.credential.categoryHint')}</span>
-                )}
+                label={t('system.credential.categoryBelong')}
                 rules={[{ required: true }]}
                 className="!mb-0"
               >
-                <CategoryCheckboxGroup layout="boxed" disabled={fieldsLocked} />
+                <CategoryCheckboxGroup layout="inline" disabled={fieldsLocked} />
               </Form.Item>
             </Form>
           </div>
-          <div className="flex w-full min-h-0 flex-1 max-[900px]:flex-col">
-            <div className="min-h-0 min-w-0 flex-1 overflow-y-auto px-5 py-4 pb-6">
+          <div className="flex min-h-0 w-full flex-1 gap-4 border-t border-[var(--color-border-2)] bg-[var(--color-bg)] px-6 py-4">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               <TypeFieldsDesigner value={fields} typeName={draftName} onChange={setFields} readOnly={fieldsLocked} />
             </div>
-            <div
-              className="overflow-y-auto border-l border-[var(--color-fill-2)] bg-[var(--color-fill-1)] px-5 py-4 pb-6 max-[900px]:w-full max-[900px]:border-l-0 max-[900px]:border-t"
-              style={{ width: TYPE_PREVIEW_WIDTH, flex: `0 0 ${TYPE_PREVIEW_WIDTH}px` }}
-            >
-              <div className="mb-3">
-                <h3 className="text-[13px] font-semibold text-[var(--color-text-1)]">
+            <div className="flex min-h-0 w-[300px] shrink-0 flex-col overflow-hidden">
+              <div className="mb-3 flex h-8 shrink-0 items-center">
+                <h3 className="text-sm font-medium leading-5 text-[var(--color-text-1)]">
                   {t('system.credential.preview')}
                 </h3>
               </div>
-              <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
-                <Form form={previewForm} layout="vertical" className="w-full">
-                  {fields.length === 0 ? (
-                    <span className="text-xs text-[var(--color-text-3)]">{t('system.credential.previewEmpty')}</span>
-                  ) : (
+              <div className="min-h-0 flex-1 overflow-y-auto rounded-lg bg-[var(--color-fill-1)] px-4 py-4">
+                {fields.length === 0 ? (
+                  <div className="flex h-full min-h-[88px] items-center justify-center px-2 text-center">
+                    <p className="mb-0 text-sm leading-6 text-[var(--color-text-3)]">{t('system.credential.previewEmpty')}</p>
+                  </div>
+                ) : (
+                  <Form
+                    form={previewForm}
+                    layout="vertical"
+                    className="w-full [&_.ant-form-item]:!mb-4 [&_.ant-form-item:last-child]:!mb-0"
+                  >
                     <CredentialFieldsBlock fields={fields} form={previewForm} />
-                  )}
-                </Form>
+                  </Form>
+                )}
               </div>
             </div>
           </div>
