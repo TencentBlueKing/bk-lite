@@ -886,6 +886,13 @@
       "template": "rate(mongodb_net_in_bytes_count{__$labels__}[__$window__])"
     },
     {
+      "id": "dashboard:v1:1fc6119c",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "topk(5, sum by (namespace) (label_replace(prometheus_remote_write_container_memory_working_set_bytes{instance_type=\"k8s\",__$labels__}, \"namespace\", \"$1\", \"container_label_io_kubernetes_pod_namespace\", \"(.+)\")))"
+    },
+    {
       "id": "dashboard:v1:20114010",
       "object_names": [
         "VLLM"
@@ -1378,13 +1385,6 @@
         "Switch"
       ],
       "template": "max(device_psu_state{__$labels__}) by (instance_id)"
-    },
-    {
-      "id": "dashboard:v1:3674f24d",
-      "object_names": [
-        "Cluster"
-      ],
-      "template": "topk(5, sum by (namespace) (sum by (instance_id, pod) (prometheus_remote_write_container_memory_working_set_bytes{instance_type=\"k8s\",__$labels__}) * on (instance_id, pod) group_left (namespace) topk by (instance_id, pod) (1, prometheus_remote_write_kube_pod_info{instance_type=\"k8s\",__$labels__})))"
     },
     {
       "id": "dashboard:v1:36951148",

@@ -59,8 +59,8 @@ export const QUERIES: Record<string, ClusterQuery> = {
 
   topPodCpu: { query: `topk(${TOP_N}, sum by (pod) (rate(prometheus_remote_write_container_cpu_usage_seconds_total${L}[__$window__])))`, unit: 'none' },
   topPodMem: { query: `topk(${TOP_N}, sum by (pod) (prometheus_remote_write_container_memory_working_set_bytes${L}))`, unit: 'bytes' },
-  // cadvisor 序列常只有 pod；用 kube_pod_info 补 namespace，不依赖 docker 长 label。
-  topNsMem: { query: `topk(${TOP_N}, sum by (namespace) (sum by (instance_id, pod) (prometheus_remote_write_container_memory_working_set_bytes${L}) * on (instance_id, pod) group_left (namespace) topk by (instance_id, pod) (1, prometheus_remote_write_kube_pod_info${L})))`, unit: 'bytes' },
+  // 按 namespace 聚合：relabel 后已有短标签；未滚动采集器时把 docker 长 label 写成 namespace。不用 pod 名 join，避免跨 ns 同名叠在一起。
+  topNsMem: { query: `topk(${TOP_N}, sum by (namespace) (label_replace(prometheus_remote_write_container_memory_working_set_bytes${L}, "namespace", "$1", "container_label_io_kubernetes_pod_namespace", "(.+)")))`, unit: 'bytes' },
 
   memPct: { query: `100 * sum(prometheus_remote_write_mem_used${L}) / sum(prometheus_remote_write_mem_total${L})`, unit: 'percent' },
   cpuPct: { query: `100 - avg(prometheus_remote_write_cpu_usage_idle{instance_type="k8s",cpu="cpu-total",__$labels__})`, unit: 'percent' },
