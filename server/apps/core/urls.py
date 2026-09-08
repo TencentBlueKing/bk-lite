@@ -23,6 +23,8 @@ urlpatterns = [
     re_path(r"api/verify_otp_code/", index_view.verify_otp_code),
     re_path(r"api/reset_pwd/", index_view.reset_pwd),
     re_path(r"api/login_info/", index_view.login_info),
+    re_path(r"api/legacy_third_login/authorize/", index_view.legacy_third_login_authorize),
+    re_path(r"api/legacy_third_login/exchange/", index_view.legacy_third_login_exchange),
     re_path(r"api/get_client/", index_view.get_client),
     re_path(r"api/get_my_client/", index_view.get_my_client),
     re_path(r"api/get_client_detail/", index_view.get_client_detail),

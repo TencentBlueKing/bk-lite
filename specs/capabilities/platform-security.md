@@ -13,6 +13,7 @@
 
 - 自定义用户模型 `base.User`,多后端(Session / API Secret / 标准)。
 - Web → 后端经 `/api/proxy/core/api/login/`，统一由现行认证辅助函数设置 `bklite_token` cookie；具体函数名以当前代码为准。
+- Legacy 外部站点登录（bklite.ai / bklite.cn playground）：回跳 URL **不得**携带 JWT。服务端按 `LEGACY_THIRD_LOGIN_ALLOWED_CALLBACK_HOSTS`（默认空=禁用）校验回调 host 后签发一次性 `bk_lite_code`，外站再 POST `/api/proxy/core/api/legacy_third_login/exchange/` 兑 token。authorize/exchange 属登录链路，**不走** OpenAPI 网关。
 - `bk_lite_login` 是内部函数,**不暴露为 URL 路由**。
 - 认证源 / SSO 经 NATS 接入，接口规范见 [SSO NATS 接入规格](sso-nats-integration.md)。
 

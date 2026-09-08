@@ -23,8 +23,8 @@ vi.mock('next/headers', () => ({ headers }));
 vi.mock('next/navigation', () => ({ redirect: vi.fn() }));
 vi.mock('../SigninClient', () => ({ default: () => null }));
 vi.mock('../PopupAuthBridge', () => ({ default: () => null }));
+vi.mock('../LegacyThirdLoginAuthorizeBridge', () => ({ default: () => null }));
 vi.mock('@/utils/authRedirect', () => ({
-  buildLegacyThirdLoginCallbackUrl: vi.fn(),
   buildThirdLoginCallbackUrl: vi.fn(),
   getLegacyThirdLoginCode: vi.fn(() => null),
   resolveThirdLoginFlag: vi.fn(() => false),
@@ -35,6 +35,9 @@ vi.mock('@/utils/userPreferences', () => ({
 }));
 
 import SigninPage from '../page';
+import { redirect } from 'next/navigation';
+import { getLegacyThirdLoginCode } from '@/utils/authRedirect';
+import LegacyThirdLoginAuthorizeBridge from '../LegacyThirdLoginAuthorizeBridge';
 
 describe('SigninPage session configuration', () => {
   beforeEach(() => {
@@ -51,6 +54,23 @@ describe('SigninPage session configuration', () => {
 
     expect(getAuthOptions).not.toHaveBeenCalled();
     expect(getServerSession).toHaveBeenCalledWith(authOptions);
+  });
+
+  it('does not send authenticated users to an external token callback', async () => {
+    vi.mocked(getLegacyThirdLoginCode).mockReturnValue('attacker-state');
+    getServerSession.mockResolvedValueOnce({
+      user: { id: 'u1', token: 'jwt-token-sentinel-value' },
+    });
+
+    const result = await SigninPage({
+      searchParams: Promise.resolve({
+        callbackUrl: 'http://attacker.example/cb?third_login_code=attacker-state',
+        error: '',
+      }),
+    });
+
+    expect(redirect).not.toHaveBeenCalled();
+    expect(result).toEqual(expect.objectContaining({ type: LegacyThirdLoginAuthorizeBridge }));
   });
 
   it('keeps the NextAuth route on the dynamic provider configuration', async () => {
