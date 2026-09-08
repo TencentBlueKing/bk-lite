@@ -309,7 +309,7 @@
       "unit": "counts",
       "dimensions": [{"name": "queue", "description": "队列"}, {"name": "vhost", "description": "vhost"}],
       "description": "Total messages in a queue, reflecting queue depth",
-      "query": "sum by (queue, vhost) (rabbitmq_queue_messages{__$labels__})"
+      "query": "sum by (instance_id, queue, vhost) (rabbitmq_queue_messages{__$labels__})"
     },
     {
       "metric_group": "Queue",
@@ -320,7 +320,7 @@
       "unit": "counts",
       "dimensions": [{"name": "queue", "description": "队列"}, {"name": "vhost", "description": "vhost"}],
       "description": "Ready messages waiting for delivery in a queue",
-      "query": "sum by (queue, vhost) (rabbitmq_queue_messages_ready{__$labels__})"
+      "query": "sum by (instance_id, queue, vhost) (rabbitmq_queue_messages_ready{__$labels__})"
     },
     {
       "metric_group": "Queue",
@@ -331,7 +331,7 @@
       "unit": "counts",
       "dimensions": [{"name": "queue", "description": "队列"}, {"name": "vhost", "description": "vhost"}],
       "description": "Delivered but unacknowledged messages in a queue",
-      "query": "sum by (queue, vhost) (rabbitmq_queue_messages_unack{__$labels__})"
+      "query": "sum by (instance_id, queue, vhost) (rabbitmq_queue_messages_unack{__$labels__})"
     },
     {
       "metric_group": "Queue",
@@ -342,7 +342,7 @@
       "unit": "counts",
       "dimensions": [{"name": "queue", "description": "队列"}, {"name": "vhost", "description": "vhost"}],
       "description": "Number of consumers on a queue",
-      "query": "sum by (queue, vhost) (rabbitmq_queue_consumers{__$labels__})"
+      "query": "sum by (instance_id, queue, vhost) (rabbitmq_queue_consumers{__$labels__})"
     },
     {
       "metric_group": "Queue",
@@ -353,7 +353,7 @@
       "unit": "percent",
       "dimensions": [{"name": "queue", "description": "队列"}, {"name": "vhost", "description": "vhost"}],
       "description": "Fraction of time the queue can deliver to consumers, as a percentage",
-      "query": "100 * max by (queue, vhost) (rabbitmq_queue_consumer_utilisation{__$labels__})"
+      "query": "100 * max by (instance_id, queue, vhost) (rabbitmq_queue_consumer_utilisation{__$labels__})"
     },
     {
       "metric_group": "Queue",
@@ -364,7 +364,7 @@
       "unit": "bytes",
       "dimensions": [{"name": "queue", "description": "队列"}, {"name": "vhost", "description": "vhost"}],
       "description": "Memory used by a queue",
-      "query": "sum by (queue, vhost) (rabbitmq_queue_memory{__$labels__})"
+      "query": "sum by (instance_id, queue, vhost) (rabbitmq_queue_memory{__$labels__})"
     }
   ]
 }
