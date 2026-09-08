@@ -21,10 +21,7 @@ ANSIBLE_ADHOC_FAILED_LOG_TEMPLATE = (
     "host_status=%s exit_code=%s stderr=%s stderr_missing=%s "
     "failed_stage=callback_process error_type=%s"
 )
-_SECRET_ASSIGNMENT_RE = re.compile(
-    r"(?i)\b(password|passwd|secret|token|authorization|passphrase|"
-    r"private_key(?:_content)?)\s*[:=]\s*\S+"
-)
+_SECRET_ASSIGNMENT_RE = re.compile(r"(?i)\b(password|passwd|secret|token|authorization|passphrase|" r"private_key(?:_content)?)\s*[:=]\s*\S+")
 _PEM_BLOCK_RE = re.compile(
     r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----",
     re.DOTALL,
@@ -43,6 +40,34 @@ _UNREACHABLE_MARKERS = (
     "no route to host",
     "name or service not known",
 )
+
+
+def encode_ansible_raw_module_args(command: str) -> str:
+    """把 raw 命令编码成 Ansible adhoc `-a` 可安全解析的 JSON。
+
+    AdHocCLI 对非 JSON 的 `-a` 会走 ``parse_kv`` / ``split_args``。AIX ksh
+    heredoc 和脚本正文里的引号会触发
+    ``failed at splitting arguments, either an unbalanced jinja2 block or quotes``
+    （进程退出码 4），SSH 根本不会发生。JSON ``{"_raw_params": "..."}`` 走
+    ``from_yaml(..., json_only=True)``，跳过引号拆分。
+    """
+    return json.dumps({"_raw_params": command}, ensure_ascii=False)
+
+
+def decode_ansible_raw_module_args(module_args: str) -> str:
+    """还原 encode_ansible_raw_module_args 的命令正文；非 JSON 则原样返回。"""
+    text = str(module_args or "")
+    stripped = text.strip()
+    if stripped.startswith("{") and stripped.endswith("}"):
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError:
+            return text
+        if isinstance(parsed, dict):
+            raw_params = parsed.get("_raw_params")
+            if isinstance(raw_params, str):
+                return raw_params
+    return text
 
 
 def _url_decode_secret(value: Any, credential_encoding: Any = "url") -> str:
@@ -73,9 +98,7 @@ LINUX_SCRIPT_WRAPPER_PREFIX = "LC_ALL=C LANG=C bash --noprofile --norc"
 SUPPORTED_OS_TYPES = {"linux", "windows", "aix"}
 
 
-def sanitize_ansible_failure_text(
-    value: Any, *, max_length: int = ANSIBLE_FAILURE_TEXT_MAX_CHARS
-) -> str:
+def sanitize_ansible_failure_text(value: Any, *, max_length: int = ANSIBLE_FAILURE_TEXT_MAX_CHARS) -> str:
     text = _PEM_BLOCK_RE.sub("[omitted]", str(value or ""))
     text = _SECRET_ASSIGNMENT_RE.sub(r"\1=[omitted]", text)
     return safe_log_value(text, max_length=max_length)
@@ -110,21 +133,11 @@ def extract_ansible_failure_summary(result: Dict[str, Any], host: str) -> Dict[s
     summary_meta = payload.get("result_summary")
     if not isinstance(summary_meta, dict):
         summary_meta = {}
-    raw_status = str(
-        host_result.get("raw_status")
-        or summary_meta.get("failure_status")
-        or host_result.get("status")
-        or ""
-    )
+    raw_status = str(host_result.get("raw_status") or summary_meta.get("failure_status") or host_result.get("status") or "")
     exit_code = host_result.get("exit_code")
     if exit_code is None:
         exit_code = host_result.get("rc", summary_meta.get("failure_exit_code"))
-    stderr = str(
-        host_result.get("stderr")
-        or host_result.get("error_message")
-        or summary_meta.get("failure_stderr")
-        or ""
-    )
+    stderr = str(host_result.get("stderr") or host_result.get("error_message") or summary_meta.get("failure_stderr") or "")
     sanitized_stderr = sanitize_ansible_failure_text(stderr)
     return {
         "error": sanitize_ansible_failure_text(error),
@@ -137,9 +150,7 @@ def extract_ansible_failure_summary(result: Dict[str, Any], host: str) -> Dict[s
 
 def classify_ansible_failure(summary: Dict[str, Any]) -> str:
     host_status = str(summary.get("host_status") or "").upper()
-    text = " ".join(
-        str(summary.get(key) or "") for key in ("error", "stderr", "host_status")
-    ).lower()
+    text = " ".join(str(summary.get(key) or "") for key in ("error", "stderr", "host_status")).lower()
     if host_status.startswith("UNREACHABLE"):
         return "target_unreachable"
     if any(marker in text for marker in _AUTH_FAILURE_MARKERS):
@@ -484,6 +495,7 @@ class HostCollector(BaseCollector):
 
         connection = "ssh" if ssh_like else "winrm"
         module = "raw" if ssh_like else "win_shell"
+        module_args = encode_ansible_raw_module_args(script) if ssh_like else script
 
         host_credential = {
             "host": host,
@@ -519,7 +531,7 @@ class HostCollector(BaseCollector):
             "ansible_node_id": ansible_node_id,
             "host_credentials": host_credentials,
             "module": module,
-            "module_args": script,
+            "module_args": module_args,
             "execute_timeout": execute_timeout,
         }
 
