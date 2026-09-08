@@ -141,6 +141,7 @@ def _create_alert_with_event(policy, alert_id, event_id):
         level="warning",
         content="raw log alert",
         start_event_time=timezone.now(),
+        organizations=list(policy.policyorganization_set.values_list("organization", flat=True)),
     )
     event = Event.objects.create(
         id=event_id,

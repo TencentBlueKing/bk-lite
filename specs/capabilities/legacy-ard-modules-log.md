@@ -17,7 +17,7 @@
 | CollectType | `models/collect_type.py` | 采集方式（采集器、默认查询） |
 | CollectInstance / CollectInstanceOrganization / CollectConfig | `models/instance.py` | 采集实例（绑定 node）、组织权限、采集配置 |
 | LogGroup / LogGroupOrganization / SearchCondition | `models/log_group.py` | 多租户日志分组、组织权限、保存的搜索条件 |
-| Policy / PolicyOrganization / Alert / Event / EventRawData | `models/policy.py` | 日志告警策略、生成的告警/事件/原始日志 |
+| Policy / PolicyOrganization / Alert / Event / EventRawData | `models/policy.py` | 日志告警策略、策略组织、生成时快照组织的告警/事件/原始日志；策略删除 SET_NULL 保留历史告警 |
 | AlertSnapshot | `models/policy.py:127` | 告警生命周期快照（存 S3/MinIO，支持压缩） |
 
 **存储**：PostgreSQL（元数据）；**VictoriaLogs**（日志，`utils/query_log.py` + `constants/victoriametrics.py`，环境变量 `VICTORIALOGS_*`）；MinIO/S3 bucket `log-alert-raw-data`（`EventRawData.data` 与 `AlertSnapshot.snapshots` 均使用 `S3JSONField`，raw data 保存失败会回滚主事务）。
