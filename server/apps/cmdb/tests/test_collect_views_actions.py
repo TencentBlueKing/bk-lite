@@ -381,6 +381,56 @@ def test_collect_task_names_includes_plugin_meta(superuser, monkeypatch):
 
 
 @pytest.mark.django_db
+def test_collect_task_names_distinguishes_physical_server_protocol_plugins(superuser, monkeypatch):
+    _bypass_permission(monkeypatch)
+    CollectModels.objects.create(
+        name="ssh",
+        task_type=CollectPluginTypes.HOST,
+        driver_type="job",
+        model_id="physcial_server",
+        cycle_value_type="cycle",
+        team=[1],
+        is_visible=True,
+        params={},
+    )
+    common = {
+        "task_type": CollectPluginTypes.PROTOCOL,
+        "driver_type": "protocol",
+        "model_id": "physcial_server",
+        "cycle_value_type": "cycle",
+        "team": [1],
+        "is_visible": True,
+    }
+    CollectModels.objects.create(name="legacy-ipmi", params={}, **common)
+    CollectModels.objects.create(name="redfish", params={"collection_protocol": "redfish"}, **common)
+    monkeypatch.setattr(
+        "apps.cmdb.views.collect.get_collect_obj_tree",
+        lambda: [
+            {
+                "id": "host_manage",
+                "name": "主机物理主机",
+                "children": [
+                    {"id": "physcial_server", "name": "物理服务器 SSH"},
+                    {"id": "physcial_server_ipmi", "name": "物理服务器 IPMI"},
+                    {"id": "physcial_server_redfish", "name": "物理服务器 Redfish"},
+                ],
+            }
+        ],
+    )
+    request = _req("get", superuser, current_team="1")
+
+    response = CollectModelViewSet.as_view({"get": "collect_task_names"})(request)
+
+    by_name = {item["name"]: item for item in _body(response)["data"]}
+    assert by_name["ssh"]["plugin"] == "physcial_server"
+    assert by_name["ssh"]["plugin_name"] == "物理服务器 SSH"
+    assert by_name["legacy-ipmi"]["plugin"] == "physcial_server_ipmi"
+    assert by_name["legacy-ipmi"]["plugin_name"] == "物理服务器 IPMI"
+    assert by_name["redfish"]["plugin"] == "physcial_server_redfish"
+    assert by_name["redfish"]["plugin_name"] == "物理服务器 Redfish"
+
+
+@pytest.mark.django_db
 def test_tree_returns_obj_tree(superuser, monkeypatch):
     monkeypatch.setattr("apps.cmdb.views.collect.get_collect_obj_tree", lambda: [{"id": "a"}])
     request = _req("get", superuser)

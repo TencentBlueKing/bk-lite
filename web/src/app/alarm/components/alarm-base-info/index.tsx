@@ -14,6 +14,7 @@ export interface AlarmBaseInfoDetail {
   resource_type?: string | null;
   resource_name?: string | null;
   monitor_objects?: MonitorObjectSnapshot[];
+  enrichment?: Record<string, unknown>;
 }
 
 export interface AlarmBaseInfoProps {
@@ -33,6 +34,9 @@ const AlarmBaseInfo: React.FC<AlarmBaseInfoProps> = ({ detail }) => {
   const notificationStatus =
     detail.notification_status || detail.notify_status || '';
   const hasMonitorObjects = Boolean(detail.monitor_objects?.length);
+  const hasEnrichment = Boolean(
+    detail.enrichment && Object.keys(detail.enrichment).length
+  );
 
   const descriptionItems = [
     {
@@ -75,6 +79,16 @@ const AlarmBaseInfo: React.FC<AlarmBaseInfoProps> = ({ detail }) => {
       ) : undefined,
       copyable: false,
     },
+    ...(hasEnrichment ? [{
+      key: 'enrichment',
+      label: t('alarms.enrichment'),
+      displayValue: (
+        <pre className="max-h-[180px] overflow-auto whitespace-pre-wrap break-all text-xs">
+          {JSON.stringify(detail.enrichment, null, 2)}
+        </pre>
+      ),
+      copyable: false,
+    }] : []),
   ];
 
   return (

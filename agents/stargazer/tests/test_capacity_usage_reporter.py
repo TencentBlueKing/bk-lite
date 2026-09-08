@@ -65,6 +65,9 @@ def test_application_capacity_snapshot_exposes_derived_values_for_health_metrics
             "nats_js_publish_pending_messages": 12,
             "nats_js_publish_waiting_messages": 7,
             "nats_js_puback_duration_seconds_p99": 0.25,
+            "nats_js_deadline_expired_total": 6,
+            "nats_js_credit_wait_timeout_total": 2,
+            "nats_js_publish_call_timeout_total": 1,
             "nats_js_puback_timeout_total": 3,
             "nats_js_publish_retry_total": 4,
             "nats_js_publish_rejected_total": 5,
@@ -182,6 +185,12 @@ def test_capacity_log_includes_process_and_cgroup_resources(monkeypatch):
             "nats_js_publish_pending_messages": 12,
             "nats_js_publish_waiting_messages": 7,
             "nats_js_puback_duration_seconds_p99": 0.25,
+            "nats_js_deadline_expired_total": 6,
+            "nats_js_deadline_expired_delta": 2,
+            "nats_js_credit_wait_timeout_total": 2,
+            "nats_js_credit_wait_timeout_delta": 1,
+            "nats_js_publish_call_timeout_total": 1,
+            "nats_js_publish_call_timeout_delta": 1,
             "nats_js_puback_timeout_total": 3,
             "nats_js_puback_timeout_delta": 1,
             "nats_js_publish_retry_total": 4,
@@ -213,8 +222,9 @@ def test_capacity_log_includes_process_and_cgroup_resources(monkeypatch):
     assert "目标任务[等待执行=80 正在执行=120 本轮已完成=600 累计已完成=1800]" in messages[0]
     assert "目标并发槽位[已用=120/150 可用=30 使用率=80.0% 峰值=145]" in messages[0]
     assert "发布队列[深度=45/150 使用率=30.0%" in messages[0]
+    assert "最老活动发布批次=1250.0ms" in messages[0]
     assert "Payload[未终态=90/150]" in messages[0]
-    assert "JetStream[在途=12 等待信贷=7 PubAck-P99=250.0ms 超时=3(+1) 重试=4(+2) 拒绝=5(+1)]" in messages[0]
+    assert ("JetStream[在途=12 等待信贷=7 PubAck-P99=250.0ms " "截止超时=6(+2) 信贷超时=2(+1) 调用超时=1(+1) PubAck超时=3(+1) " "重试=4(+2) 拒绝=5(+1)]") in messages[0]
     assert "事件循环[当前延迟=8.0ms P99延迟=35.0ms]" in messages[0]
     assert "进程[CPU=62.5% CPU配额使用率=31.25% RSS内存=384.0MiB 线程=9 FD=128]" in messages[0]
     assert "容器[内存=512.0MiB/1024.0MiB 使用率=50.0% CPU限额=2.0核" in messages[0]
@@ -225,11 +235,17 @@ def test_capacity_log_snapshot_reports_counter_deltas():
     snapshots = iter(
         (
             {
+                "nats_js_deadline_expired_total": 6,
+                "nats_js_credit_wait_timeout_total": 2,
+                "nats_js_publish_call_timeout_total": 1,
                 "nats_js_puback_timeout_total": 3,
                 "nats_js_publish_retry_total": 4,
                 "nats_js_publish_rejected_total": 5,
             },
             {
+                "nats_js_deadline_expired_total": 8,
+                "nats_js_credit_wait_timeout_total": 3,
+                "nats_js_publish_call_timeout_total": 2,
                 "nats_js_puback_timeout_total": 4,
                 "nats_js_publish_retry_total": 6,
                 "nats_js_publish_rejected_total": 8,
@@ -245,9 +261,15 @@ def test_capacity_log_snapshot_reports_counter_deltas():
     second = CollectionApplication._capacity_log_snapshot(application)
 
     assert first["nats_js_puback_timeout_delta"] == 0
+    assert first["nats_js_deadline_expired_delta"] == 0
+    assert first["nats_js_credit_wait_timeout_delta"] == 0
+    assert first["nats_js_publish_call_timeout_delta"] == 0
     assert first["nats_js_publish_retry_delta"] == 0
     assert first["nats_js_publish_rejected_delta"] == 0
     assert second["nats_js_puback_timeout_delta"] == 1
+    assert second["nats_js_deadline_expired_delta"] == 2
+    assert second["nats_js_credit_wait_timeout_delta"] == 1
+    assert second["nats_js_publish_call_timeout_delta"] == 1
     assert second["nats_js_publish_retry_delta"] == 2
     assert second["nats_js_publish_rejected_delta"] == 3
 
@@ -267,6 +289,9 @@ def test_capacity_status_detects_publisher_and_jetstream_backpressure(monkeypatc
             "publish_batch_age_ms": 120001,
             "configured_publish_total_timeout_ms": 120000,
             "nats_js_publish_waiting_messages": 3,
+            "nats_js_deadline_expired_delta": 1,
+            "nats_js_credit_wait_timeout_delta": 1,
+            "nats_js_publish_call_timeout_delta": 1,
             "nats_js_puback_timeout_delta": 1,
             "nats_js_publish_rejected_delta": 1,
         }
@@ -276,6 +301,9 @@ def test_capacity_status_detects_publisher_and_jetstream_backpressure(monkeypatc
     assert "Payload容量使用率超过80%" in messages[0]
     assert "发布批次超过总期限" in messages[0]
     assert "JetStream等待信贷" in messages[0]
+    assert "发布总期限本周期发生超时" in messages[0]
+    assert "JetStream信贷等待本周期发生超时" in messages[0]
+    assert "JetStream调用本周期发生超时" in messages[0]
     assert "PubAck本周期发生超时" in messages[0]
     assert "JetStream本周期发生拒绝" in messages[0]
 

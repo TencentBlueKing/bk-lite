@@ -13,6 +13,7 @@ import PlatformApiTask from './components/platformApiTask';
 import CloudTask from './components/cloudTask';
 import HostTask from './components/hostTask';
 import IPMITask from './components/ipmiTask';
+import RedfishTask from './components/redfishTask';
 import ConfigFileTask from './components/configFileTask';
 import NetworkConfigFileTask from './components/networkConfigFileTask';
 import IpTask from './components/ipTask';
@@ -34,7 +35,7 @@ import type { TableColumnType, TablePaginationConfig } from 'antd';
 import type { ColumnItem } from '@/app/cmdb/types/assetManage';
 import type { ColumnType } from 'antd/es/table';
 import type { FilterValue } from 'antd/es/table/interface';
-import { Alert, Button, Drawer, Input, Modal, Spin, Tag, Tabs, Tooltip, message } from 'antd';
+import { Alert, Button, Drawer, Modal, Spin, Tag, Tabs, Tooltip, message } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import {
   getExecStatusConfig,
@@ -100,9 +101,30 @@ const getCollectToolProtocol = (pluginId?: string | null) => {
 
 const getTaskStatusKey = (tab: Pick<TreeNode, 'id' | 'model_id' | 'type'>) => {
   if (tab.model_id && tab.type) {
+    if (tab.id === 'physcial_server_ipmi') {
+      return `${tab.model_id}__${tab.type}__ipmi`;
+    }
+    if (tab.id === 'physcial_server_redfish') {
+      return `${tab.model_id}__${tab.type}__redfish`;
+    }
     return `${tab.model_id}__${tab.type}`;
   }
   return tab.model_id || tab.id;
+};
+
+const getTaskStatusStats = (
+  statusMap: TaskStatusMap,
+  tab: Pick<TreeNode, 'id' | 'model_id' | 'type'>,
+) => {
+  const specificStats = statusMap[getTaskStatusKey(tab)];
+  if (
+    specificStats ||
+    tab.id === 'physcial_server_ipmi' ||
+    tab.id === 'physcial_server_redfish'
+  ) {
+    return specificStats;
+  }
+  return statusMap[tab.model_id || tab.id];
 };
 
 const ProfessionalCollection: React.FC = () => {
@@ -111,7 +133,6 @@ const ProfessionalCollection: React.FC = () => {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const editingId = useAssetManageStore((state) => state.editingId);
   const setEditingId = useAssetManageStore((state) => state.setEditingId);
   const setCopyTaskData = useAssetManageStore((state) => state.setCopyTaskData);
@@ -264,6 +285,12 @@ const ProfessionalCollection: React.FC = () => {
       page_size: stateRef.current.pagination.pageSize,
       model_id: plugin?.model_id || currentPluginId,
       ...(plugin?.type && { driver_type: plugin.type }),
+      ...(plugin?.id === 'physcial_server_ipmi' && {
+        collection_protocol: 'ipmi',
+      }),
+      ...(plugin?.id === 'physcial_server_redfish' && {
+        collection_protocol: 'redfish',
+      }),
       name: stateRef.current.searchText,
       ...(stateRef.current.currentExecStatus !== undefined && {
         exec_status: stateRef.current.currentExecStatus,
@@ -652,6 +679,10 @@ const ProfessionalCollection: React.FC = () => {
 
     if (currentPlugin.id === 'physcial_server_ipmi') {
       return <IPMITask {...taskProps} />;
+    }
+
+    if (currentPlugin.id === 'physcial_server_redfish') {
+      return <RedfishTask {...taskProps} />;
     }
 
     if (currentPlugin.model_id === 'network_config_file') {
@@ -1113,19 +1144,13 @@ const ProfessionalCollection: React.FC = () => {
                   successLabel={t('Collection.statusLabel.syncSuccess')}
                   failedLabel={t('Collection.statusLabel.syncFailed')}
                   runningCount={
-                    taskStatus[getTaskStatusKey(tab)]?.running ||
-                    taskStatus[tab.model_id || tab.id]?.running ||
-                    0
+                    getTaskStatusStats(taskStatus, tab)?.running ?? 0
                   }
                   successCount={
-                    taskStatus[getTaskStatusKey(tab)]?.success ||
-                    taskStatus[tab.model_id || tab.id]?.success ||
-                    0
+                    getTaskStatusStats(taskStatus, tab)?.success ?? 0
                   }
                   failedCount={
-                    taskStatus[getTaskStatusKey(tab)]?.failed ||
-                    taskStatus[tab.model_id || tab.id]?.failed ||
-                    0
+                    getTaskStatusStats(taskStatus, tab)?.failed ?? 0
                   }
                 />
               ))}

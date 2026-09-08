@@ -6,9 +6,34 @@ import asyncio
 import json
 from typing import Any, Dict
 
+from plugins.inputs.physcial_server.redfish_info import PhyscialServerRedfishInfo
 from plugins.inputs.physcial_server.server_info_parse import parse_server_info
 from plugins.script_executor import SSHPlugin
 from sanic.log import logger
+
+
+class PhyscialServerProtocolInfo:
+    """物理服务器带外协议入口；旧任务默认走 IPMI。"""
+
+    def __init__(self, kwargs, *, transport=None):
+        protocol = str(kwargs.get("collection_protocol") or "ipmi").strip().lower()
+        if protocol == "redfish":
+            self.collector = PhyscialServerRedfishInfo(kwargs, transport=transport)
+        elif protocol == "ipmi":
+            self.collector = PhyscialServerIPMIInfo(kwargs)
+        else:
+            raise ValueError("physical server protocol must be ipmi or redfish")
+
+    async def list_all_resources(self):
+        return await self.collector.list_all_resources()
+
+    async def probe(self):
+        probe = getattr(self.collector, "probe", None)
+        if probe is None:
+            from core.collection.contracts import AccessProbeResult, AccessProbeStatus
+
+            return AccessProbeResult(status=AccessProbeStatus.NOT_SUPPORTED)
+        return await probe()
 
 
 class PhyscialServerInfo(SSHPlugin):

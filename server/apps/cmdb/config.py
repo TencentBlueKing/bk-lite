@@ -5,6 +5,10 @@
 from celery.schedules import crontab
 
 CELERY_BEAT_SCHEDULE = {
+    "recover_first_collection_runs": {
+        "task": "apps.cmdb.tasks.celery_tasks.recover_first_collection_runs",
+        "schedule": crontab(minute="*"),
+    },
     "node_mgmt_sync_recovery_watchdog": {"task": "apps.cmdb.tasks.node_mgmt_sync.watch_node_mgmt_sync_recovery", "schedule": crontab(minute="*/5")},
     "sync_periodic_update_task_status": {"task": "apps.cmdb.tasks.celery_tasks.sync_periodic_update_task_status", "schedule": crontab(minute="*/5")},
     "sync_collect_tasks_gate": {"task": "apps.cmdb.tasks.celery_tasks.sync_collect_tasks_gate", "schedule": crontab(minute="*/5")},

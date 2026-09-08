@@ -7,7 +7,6 @@ import types
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from core.collection.contracts import AccessProbeResult, AccessProbeStatus
 
 
@@ -46,9 +45,7 @@ async def test_vmware_manage_probe_ready_on_connect_success(vmware_modules):
         }
     )
 
-    with patch.object(manager, "connect_vc"), patch.object(
-        manager, "disconnect_vc"
-    ) as disconnect:
+    with patch.object(manager, "connect_vc"), patch.object(manager, "disconnect_vc") as disconnect:
         result = await manager.probe()
 
     assert result.status == AccessProbeStatus.READY
@@ -67,14 +64,34 @@ async def test_vmware_manage_probe_maps_auth_failure(vmware_modules):
     )
 
     def boom():
-        raise RuntimeError(
-            "Connect vcenter error! incorrect user name or password"
-        )
+        raise RuntimeError("Connect vcenter error! incorrect user name or password")
 
-    with patch.object(manager, "connect_vc", side_effect=boom), patch.object(
-        manager, "disconnect_vc"
-    ):
+    with patch.object(manager, "connect_vc", side_effect=boom), patch.object(manager, "disconnect_vc"):
         result = await manager.probe()
+
+    assert result.status == AccessProbeStatus.AUTH_FAILED
+    assert result.error_code == "authentication_failed"
+
+
+@pytest.mark.asyncio
+async def test_vmware_probe_classifies_sanitized_connect_error_from_cause(vmware_modules, monkeypatch):
+    VmwareManage, _VmwareCollector = vmware_modules
+    method_globals = VmwareManage.connect_vc.__globals__
+    monkeypatch.setitem(
+        method_globals,
+        "SmartConnect",
+        MagicMock(side_effect=RuntimeError("incorrect user name or password")),
+    )
+    monkeypatch.setitem(method_globals, "logger", MagicMock())
+    manager = VmwareManage(
+        {
+            "username": "admin",
+            "password": "secret",
+            "hostname": "vcenter.example",
+        }
+    )
+
+    result = await manager.probe()
 
     assert result.status == AccessProbeStatus.AUTH_FAILED
     assert result.error_code == "authentication_failed"
@@ -123,25 +140,19 @@ def _sample_object_map():
                 "inst_name": "db-1[vm-2]",
             },
         ],
-        "vmware_ds": [
-            {"resource_id": "datastore-1", "inst_name": "ds1[datastore-1]"}
-        ],
+        "vmware_ds": [{"resource_id": "datastore-1", "inst_name": "ds1[datastore-1]"}],
     }
 
 
 def _monitor_data_for_object(**kwargs):
     obj = kwargs["context"]["resources"][0]["bk_obj_id"]
     payload = {
-        "vmware_esxi": {
-            "host-1": {"cpu_usage_average": [[1700000000000, 12.5]]}
-        },
+        "vmware_esxi": {"host-1": {"cpu_usage_average": [[1700000000000, 12.5]]}},
         "vmware_vm": {
             "vm-1": {"cpu_usage_average": [[1700000000000, 8.0]]},
             "vm-2": {"cpu_usage_average": [[1700000000000, 3.0]]},
         },
-        "vmware_ds": {
-            "datastore-1": {"disk_used_average": [[1700000000000, 50.0]]}
-        },
+        "vmware_ds": {"datastore-1": {"disk_used_average": [[1700000000000, 50.0]]}},
     }
     data = payload.get(obj)
     if not data:
@@ -162,23 +173,40 @@ def test_vmware_collector_puts_esxi_and_vm_ip_on_metrics(vmware_modules):
     driver = MagicMock()
     driver.get_weops_monitor_data.side_effect = _monitor_data_for_object
 
-    with patch("common.cmp.driver.CMPDriver", return_value=driver), patch.object(
-        VmwareManage, "connect_vc"
-    ), patch.object(VmwareManage, "service", return_value=_sample_object_map()):
+    with patch("common.cmp.driver.CMPDriver", return_value=driver), patch.object(VmwareManage, "connect_vc"), patch.object(
+        VmwareManage, "service", return_value=_sample_object_map()
+    ):
         output = collector._collect_sync()
 
-    assert (
-        'cpu_usage_average{resource_id="host-1", resource_type="vmware_esxi", ip="10.10.16.10"} 12.5 1700000000000'
-        in output
+    assert 'cpu_usage_average{resource_id="host-1", resource_type="vmware_esxi", ip="10.10.16.10"} 12.5 1700000000000' in output
+    assert 'cpu_usage_average{resource_id="vm-1", resource_type="vmware_vm", ip="192.168.1.20"} 8.0 1700000000000' in output
+    assert 'cpu_usage_average{resource_id="vm-2", resource_type="vmware_vm"} 3.0 1700000000000' in output
+    assert "ip=" not in [line for line in output.splitlines() if "datastore-1" in line][0]
+
+
+def test_vmware_connect_timings_are_structured_debug_events(vmware_modules, monkeypatch):
+    VmwareManage, _VmwareCollector = vmware_modules
+    logger = MagicMock()
+    service_instance = MagicMock()
+    method_globals = VmwareManage.connect_vc.__globals__
+    monkeypatch.setitem(method_globals, "logger", logger)
+    monkeypatch.setitem(method_globals, "SmartConnect", MagicMock(return_value=service_instance))
+    manager = VmwareManage(
+        {
+            "username": "admin",
+            "password": "secret",
+            "hostname": "vcenter.example",
+        }
     )
-    assert (
-        'cpu_usage_average{resource_id="vm-1", resource_type="vmware_vm", ip="192.168.1.20"} 8.0 1700000000000'
-        in output
-    )
-    assert (
-        'cpu_usage_average{resource_id="vm-2", resource_type="vmware_vm"} 3.0 1700000000000'
-        in output
-    )
-    assert "ip=" not in [
-        line for line in output.splitlines() if "datastore-1" in line
-    ][0]
+
+    manager.connect_vc()
+
+    assert logger.error.call_count == 0
+    assert [call.args[0] for call in logger.debug.call_args_list] == [
+        "event=vmware_vc_connect_timing host=%s stage=%s duration_ms=%s",
+        "event=vmware_vc_connect_timing host=%s stage=%s duration_ms=%s",
+    ]
+    assert [call.args[2] for call in logger.debug.call_args_list] == [
+        "smart_connect",
+        "retrieve_content",
+    ]

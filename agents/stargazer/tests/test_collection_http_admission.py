@@ -434,6 +434,9 @@ async def test_health_metrics_expose_capacity_and_event_loop_lag(monkeypatch):
     assert "stargazer_collection_publish_payloads_pending 80" in body
     assert "stargazer_collection_publish_payload_capacity 160" in body
     assert "stargazer_collection_publish_batch_size_p99 50" in body
+    assert "stargazer_collection_nats_js_deadline_expired_total 0" in body
+    assert "stargazer_collection_nats_js_credit_wait_timeout_total 0" in body
+    assert "stargazer_collection_nats_js_publish_call_timeout_total 0" in body
     assert "stargazer_collection_run_first_schedule_wait_seconds_p99 0.02" in body
     assert "stargazer_collection_job_node_info_lookup_rpc_total 1" in body
     assert "stargazer_collection_job_node_info_lookup_found_total 140" in body

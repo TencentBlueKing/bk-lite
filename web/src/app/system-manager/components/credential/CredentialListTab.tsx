@@ -270,26 +270,29 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
           return <span className="text-[var(--color-text-4)]">—</span>;
         }
         if (Array.isArray(refs)) {
-          const labelOf = (module: string, count: number) => {
-            if (module === 'cmdb') {
+          const labelOf = (moduleName: string, count: number) => {
+            if (moduleName === 'cmdb') {
               return t('system.credential.refCmdb', 'CMDB {count}', { count });
             }
-            if (module === 'monitor') {
+            if (moduleName === 'monitor') {
               return t('system.credential.refMonitor', '监控 {count}', { count });
             }
-            return `${module} ${count}`;
+            return `${moduleName} ${count}`;
           };
           return (
             <div className="flex flex-wrap gap-1">
               {refs.map((item) => {
-                const module = item && typeof item === 'object' ? String((item as { module?: string }).module || '') : '';
+                const moduleName =
+                  item && typeof item === 'object'
+                    ? String((item as { module?: string }).module || '')
+                    : '';
                 const count = item && typeof item === 'object' ? Number((item as { count?: number }).count) : 0;
-                if (!module || !count) {
+                if (!moduleName || !count) {
                   return null;
                 }
                 return (
-                  <Tag key={module} bordered={false} color="blue" className="rounded">
-                    {labelOf(module, count)}
+                  <Tag key={moduleName} bordered={false} color="blue" className="rounded">
+                    {labelOf(moduleName, count)}
                   </Tag>
                 );
               })}

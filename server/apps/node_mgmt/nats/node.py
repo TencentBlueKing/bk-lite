@@ -972,6 +972,56 @@ def get_child_configs_by_ids(ids: list):
 
 
 @nats_client.register
+def run_telegraf_child_configs_once(data: dict):
+    """受控执行已保存的 CMDB Telegraf 子配置，不接受任意命令或配置正文。"""
+    from apps.node_mgmt.services.telegraf_oneshot import TelegrafOneShotService
+
+    required_keys = {
+        "request_id",
+        "config_ids",
+        "expected_node_id",
+        "organization_ids",
+        "authorization",
+    }
+    if not isinstance(data, dict) or set(data) != required_keys:
+        return {"request_id": "", "status": "failed", "channels": {}, "error_type": "InvalidRequest"}
+    request_id = data["request_id"]
+    config_ids = data["config_ids"]
+    expected_node_id = data["expected_node_id"]
+    authorization = data["authorization"]
+    if (
+        not isinstance(request_id, str)
+        or not 1 <= len(request_id) <= 128
+        or not isinstance(config_ids, list)
+        or not 1 <= len(config_ids) <= TelegrafOneShotService.MAX_CONFIGS
+        or any(not isinstance(config_id, str) for config_id in config_ids)
+        or not isinstance(expected_node_id, str)
+        or not 1 <= len(expected_node_id) <= 100
+        or not isinstance(authorization, str)
+        or not 1 <= len(authorization) <= 2048
+    ):
+        return {"request_id": "", "status": "failed", "channels": {}, "error_type": "InvalidRequest"}
+    try:
+        organization_ids = sorted(_normalize_organization_ids(data["organization_ids"]))
+    except BaseAppException:
+        return {"request_id": request_id, "status": "failed", "channels": {}, "error_type": "InvalidRequest"}
+    if not TelegrafOneShotService.verify_authorization(
+        authorization,
+        request_id=request_id,
+        config_ids=config_ids,
+        expected_node_id=expected_node_id,
+        organization_ids=organization_ids,
+    ):
+        return {"request_id": request_id, "status": "failed", "channels": {}, "error_type": "AuthorizationFailed"}
+    return TelegrafOneShotService.run_telegraf_child_configs_once(
+        request_id=request_id,
+        config_ids=config_ids,
+        expected_node_id=expected_node_id,
+        organization_ids=organization_ids,
+    )
+
+
+@nats_client.register
 def get_child_config_nodes_by_ids(ids: list, organization_ids: list):
     """按子配置 ID 批量获取授权组织范围内的采集节点。"""
     return NatsService().get_child_config_nodes_by_ids(ids, organization_ids)

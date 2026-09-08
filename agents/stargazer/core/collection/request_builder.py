@@ -12,6 +12,15 @@ from core.collection.enums import WorkloadClass
 from core.collection.runtime import CollectionRequest
 from core.logger import logger
 
+CREDENTIAL_KEY_ALIASES = {
+    "accesskey": "accessKey",
+    "accesssecret": "accessSecret",
+}
+
+
+def _normalize_credential_key_aliases(params: Mapping[str, Any]) -> dict[str, Any]:
+    return {CREDENTIAL_KEY_ALIASES.get(str(key).lower(), str(key)): value for key, value in params.items()}
+
 
 def parse_flattened_credentials_pool(
     params: Mapping[str, Any] | None = None,
@@ -85,7 +94,7 @@ def build_collection_request(
     normalized_task_id = str(task_id or "").strip()
     if not normalized_task_id:
         raise ValueError("task_id is required")
-    source = dict(params or {})
+    source = _normalize_credential_key_aliases(params or {})
     monitor_type = str(source.get("monitor_type") or "").strip()
     model_id = str(source.get("model_id") or "").strip()
     family = "monitor" if monitor_type else "configuration"

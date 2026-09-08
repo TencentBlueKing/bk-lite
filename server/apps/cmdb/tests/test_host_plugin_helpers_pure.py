@@ -102,6 +102,31 @@ def test_set_component_inst_name_existing(runner):
 
 
 @pytest.mark.parametrize(
+    "model_id,identity_field,identity_value,expected",
+    [
+        ("disk", "disk_name", "sdb", "sdb-server-b"),
+        ("memory", "mem_locator", "DIMM-B1", "DIMM-B1-server-b"),
+        ("gpu", "gpu_name", "GPU-B", "GPU-B-server-b"),
+    ],
+)
+def test_set_component_inst_name_prefers_row_parent_over_first_selected_instance(
+    runner,
+    model_id,
+    identity_field,
+    identity_value,
+    expected,
+):
+    """多资产任务必须按当前指标的 self_device 组合子资源实例名。"""
+    data = {
+        "model_id": model_id,
+        identity_field: identity_value,
+        "self_device": "server-b",
+    }
+
+    assert runner.set_component_inst_name(data) == expected
+
+
+@pytest.mark.parametrize(
     "model_id,extra,expected",
     [
         ("nic", {"nic_pci_addr": "0000:01", "self_device": "h1"}, "0000:01-h1"),
@@ -282,5 +307,17 @@ def test_set_asso_instances(runner):
             "inst_name": "dev1",
             "asst_id": "contains",
             "model_asst_id": "host_contains_disk",
+        }
+    ]
+
+
+def test_set_nic_asso_instances_prefers_row_parent_over_first_selected_instance(runner):
+    """多资产任务的网卡必须关联当前指标所属服务器，而非任务首个实例。"""
+    assert runner.set_nic_asso_instances({"self_device": "server-b"}) == [
+        {
+            "model_id": "host",
+            "inst_name": "server-b",
+            "asst_id": "contains",
+            "model_asst_id": "host_contains_nic",
         }
     ]

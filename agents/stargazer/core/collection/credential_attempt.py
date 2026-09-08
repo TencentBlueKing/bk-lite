@@ -116,6 +116,7 @@ class CredentialAttemptRunner:
         collect_no_response_attempts = 0
         last_collect_no_response_error_code = ""
         credential_failures = []
+        rotated_failures = []
         for credential in credentials:
             attempts += 1
             self._metrics.increment("credential_attempt_total")
@@ -144,6 +145,11 @@ class CredentialAttemptRunner:
             )
             if probe_decision.credential_failure:
                 credential_failures.append(probe_decision.credential_failure)
+                if request.rotate_on_credential_failure_enabled and access.status not in {
+                    AccessProbeStatus.AUTH_FAILED,
+                    AccessProbeStatus.CAPABILITY_DENIED,
+                }:
+                    rotated_failures.append((FailureStage.ACCESS_PROBE, probe_decision.credential_failure.error_code))
             if probe_decision.action is _AttemptAction.RETURN:
                 return replace(
                     probe_decision.result,
@@ -173,6 +179,11 @@ class CredentialAttemptRunner:
             )
             if collect_decision.credential_failure:
                 credential_failures.append(collect_decision.credential_failure)
+                if request.rotate_on_credential_failure_enabled and outcome.status in {
+                    CollectOutcomeStatus.UNREACHABLE,
+                    CollectOutcomeStatus.FAILED,
+                }:
+                    rotated_failures.append((FailureStage.COLLECTION, collect_decision.credential_failure.error_code))
             if collect_decision.action is _AttemptAction.RETURN:
                 return replace(
                     collect_decision.result,
@@ -182,16 +193,18 @@ class CredentialAttemptRunner:
 
         all_attempts_no_response = attempts > 0 and no_response_attempts + collect_no_response_attempts == attempts
         no_response_error_code = last_collect_no_response_error_code or last_no_response_error_code
+        all_attempts_rotated = attempts > 0 and len(rotated_failures) == attempts
+        rotated_stage, rotated_error_code = rotated_failures[-1] if all_attempts_rotated else (FailureStage.CREDENTIAL, "")
         return TargetCollectionResult(
             target=target,
             status="failed",
             attempts=attempts,
-            error_code=(no_response_error_code if all_attempts_no_response else "credentials_exhausted"),
+            error_code=(no_response_error_code if all_attempts_no_response else (rotated_error_code or "credentials_exhausted")),
             credential_failures=tuple(credential_failures),
             failed_stage=(
                 FailureStage.ACCESS_PROBE
                 if attempts > 0 and no_response_attempts == attempts
-                else (FailureStage.COLLECTION if all_attempts_no_response else FailureStage.CREDENTIAL)
+                else (FailureStage.COLLECTION if all_attempts_no_response else rotated_stage)
             ),
         )
 
@@ -223,6 +236,34 @@ class CredentialAttemptRunner:
                 "event=access_probe_failed task_id=%s plugin_ref=%s "
                 "model_id=%s target=%s "
                 "credential_id=%s probe_status=%s error_code=%s action=rotate",
+                safe_log_value(request.task_id),
+                safe_log_value(request.plugin_ref),
+                safe_log_value(request.params.get("model_id") or "-"),
+                safe_log_value(target, max_length=255),
+                safe_log_value(credential_id or "-"),
+                access.status.value,
+                safe_log_value(error_code),
+            )
+            return _AttemptDecision(
+                action=_AttemptAction.CONTINUE,
+                no_response_attempts=no_response_attempts,
+                credential_failure=CredentialFailureResult(
+                    credential_id=credential_id,
+                    error_code=error_code,
+                ),
+            )
+        if request.rotate_on_credential_failure_enabled and access.status in {
+            AccessProbeStatus.TARGET_UNREACHABLE,
+            AccessProbeStatus.SERVICE_UNAVAILABLE,
+            AccessProbeStatus.TLS_VALIDATION_FAILED,
+            AccessProbeStatus.PROTOCOL_MISMATCH,
+            AccessProbeStatus.MISCONFIGURED,
+        }:
+            error_code = access.error_code or access.status.value
+            logger.debug(
+                "event=access_probe_failed task_id=%s plugin_ref=%s "
+                "model_id=%s target=%s credential_id=%s probe_status=%s "
+                "error_code=%s action=rotate",
                 safe_log_value(request.task_id),
                 safe_log_value(request.plugin_ref),
                 safe_log_value(request.params.get("model_id") or "-"),
@@ -422,6 +463,18 @@ class CredentialAttemptRunner:
             )
         if outcome.status == CollectOutcomeStatus.RETRY_CREDENTIAL:
             return _AttemptDecision(action=_AttemptAction.CONTINUE)
+        if request.rotate_on_credential_failure_enabled and outcome.status in {
+            CollectOutcomeStatus.UNREACHABLE,
+            CollectOutcomeStatus.FAILED,
+        }:
+            error_code = outcome.error_code or "collection_failed"
+            return _AttemptDecision(
+                action=_AttemptAction.CONTINUE,
+                credential_failure=CredentialFailureResult(
+                    credential_id=credential_id,
+                    error_code=error_code,
+                ),
+            )
         if outcome.status == CollectOutcomeStatus.UNREACHABLE:
             return _AttemptDecision(
                 action=_AttemptAction.RETURN,
