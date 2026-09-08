@@ -613,7 +613,7 @@ class InstanceSearch:
 
     @staticmethod
     def role_display_field_bindings(monitor_object_id):
-        """取该对象带 role 的字段展示列绑定（当前为云平台子对象 IP）。
+        """取该对象带 role 的字段展示列绑定（云平台子对象 IP、K8s Pod Namespace）。
 
         只认 role 列：普通字段展示列由用户自由配置，不承诺筛选能力。
         """

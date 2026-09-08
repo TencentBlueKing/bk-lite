@@ -23,6 +23,12 @@ import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/compon
 import { AddTargetHostButton, TargetSourceSelector } from '@/app/job/components/target-selection-controls';
 import ScriptEditor from '@/app/job/components/script-editor';
 import { createDefaultExecutionName } from '@/app/job/utils/execution-name';
+import {
+  parseCommandLineArgs,
+  replayManualParamsText,
+  replayTemplateParamFields,
+  type ExecutionParams,
+} from '@/app/job/utils/execution-record';
 import Password from '@/components/password';
 
 type ContentSource = 'template' | 'manual';
@@ -55,7 +61,7 @@ interface QuickExecReplayDraft {
   templateType?: TemplateType;
   scriptId?: number;
   playbookId?: number;
-  params?: Record<string, unknown> | Array<{ name?: string; value?: unknown }>;
+  params?: ExecutionParams;
   scriptType?: ScriptLang;
   scriptContent?: string;
 }
@@ -148,7 +154,7 @@ const QuickExecPage = () => {
       form.setFieldsValue({
         jobName: draft.jobName,
         timeout: draft.timeout || '600',
-        execParams: Array.isArray(draft.params) ? String(draft.params[0]?.value || '') : '',
+        execParams: replayManualParamsText(draft.params),
         scriptContent: {
           ...defaultScriptContent,
           [draftScriptType]: draft.scriptContent,
@@ -185,21 +191,7 @@ const QuickExecPage = () => {
       }
     }
 
-    if (draft.params) {
-      const paramValues = Array.isArray(draft.params)
-        ? draft.params.reduce<Record<string, unknown>>((acc, item) => {
-          if (item.name) {
-            acc[`param_${item.name}`] = item.value;
-          }
-          return acc;
-        }, {})
-        : Object.entries(draft.params).reduce<Record<string, unknown>>((acc, [key, value]) => {
-          acc[`param_${key}`] = value;
-          return acc;
-        }, {});
-
-      form.setFieldsValue(paramValues);
-    }
+    form.setFieldsValue(replayTemplateParamFields(draft.params));
   }, [form, getPlaybookDetail, getScriptDetail]);
 
   // Initialize: fetch lists and handle script_id from URL
@@ -394,14 +386,14 @@ const QuickExecPage = () => {
         });
       }
     } else {
-      const execParamsText = String(values.execParams || '').trim();
+      const execParams = parseCommandLineArgs(String(values.execParams || ''));
       executionResult = await quickExecute({
         name: values.jobName,
         script_type: scriptLang,
         script_content: scriptContent!,
         target_source,
         target_list,
-        params: execParamsText ? [{ value: execParamsText }] : [],
+        params: execParams.map((value) => ({ value })),
         timeout,
       });
     }
