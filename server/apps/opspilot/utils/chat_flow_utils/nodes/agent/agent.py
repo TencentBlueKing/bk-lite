@@ -9,6 +9,7 @@ from asgiref.sync import sync_to_async
 
 from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.safe_template import TemplateSecurityError, safe_render
+from apps.opspilot.metis.llm.common.llm_client_factory import DEFAULT_CHAT_TEMPERATURE
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
 from apps.opspilot.models import LLMModel, LLMSkill, SkillRequestLog, WorkflowAttachmentAsset
 from apps.opspilot.services.builtin_tools import BUILTIN_ATTACHMENT_FILE_TOOL_NAME
@@ -252,17 +253,17 @@ class AgentNode(BaseNodeExecutor):
             "skill_id": getattr(skill, "id", None),
             "skill_package_params_overlay": getattr(skill, "skill_package_params", None) or {},
             **skill_package_strategy,
-            "temperature": skill.temperature,
+            "temperature": DEFAULT_CHAT_TEMPERATURE,
             "chat_history": [{"event": "user", "message": final_message}],
             "user_message": final_message,
             "conversation_window_size": skill.conversation_window_size,
-            "show_think": skill.show_think,
+            "show_think": False,
             "tools": skill.tools,
             "skill_type": skill.skill_type,
             "group": skill.team[0],
             "user_id": flow_input.get("user_id", "anonymous"),
-            "enable_suggest": skill.enable_suggest,
-            "enable_query_rewrite": skill.enable_query_rewrite,
+            "enable_suggest": False,
+            "enable_query_rewrite": False,
             "locale": flow_input.get("locale", "en"),  # 用户语言设置，用于 browser-use 输出国际化
             "thread_id": flow_input.get("execution_id", ""),
             "execution_id": flow_input.get("execution_id", ""),
@@ -337,7 +338,7 @@ class AgentNode(BaseNodeExecutor):
 
         # 获取 LLM 模型并构建请求参数
         llm_model = LLMModel.objects.get(id=llm_params["llm_model"])
-        show_think = llm_params.pop("show_think", True)
+        show_think = llm_params.pop("show_think", False)
         skill_type = llm_params.get("skill_type")
         llm_params.pop("group", 0)
 
@@ -548,7 +549,7 @@ class AgentNode(BaseNodeExecutor):
                 user_message=user_message,
             )
             for call in usage_calls:
-                logger.info(
+                logger.debug(
                     "%s token usage call recorded: entry_type=%s, bot_id=%s, execution_id=%s, "
                     "node_id=%s, skill_id=%s, call_index=%s, visible_tool_count=%s, "
                     "visible_tools=%s, prompt_tokens=%s, completion_tokens=%s, total_tokens=%s",

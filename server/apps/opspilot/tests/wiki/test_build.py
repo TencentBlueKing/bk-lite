@@ -480,22 +480,22 @@ def test_wiki_llm_invocation_uses_wiki_timeout(monkeypatch):
         ("gpt-4o", 0.0),
         ("qwen-plus", 0.0),
         ("o10", 0.0),
-        ("gpt-5", 1.0),
-        ("gpt-5.1", 1.0),
-        ("gpt-5-mini", 1.0),
-        ("openai/gpt-5-nano", 1.0),
-        ("o1", 1.0),
-        ("o1-mini", 1.0),
-        ("o3", 1.0),
-        ("o3-mini", 1.0),
-        ("o4-mini", 1.0),
-        ("kimi-for-coding", 1.0),
-        ("moonshot/kimi-for-coding", 1.0),
-        ("kimi-k2", 1.0),
-        ("kimi-for-coding-highspeed", 1.0),
-        ("k3", 1.0),
-        ("k3-256k", 1.0),
-        ("moonshot-v1-128k", 1.0),
+        ("gpt-5", None),
+        ("gpt-5.1", None),
+        ("gpt-5-mini", None),
+        ("openai/gpt-5-nano", None),
+        ("o1", None),
+        ("o1-mini", None),
+        ("o3", None),
+        ("o3-mini", None),
+        ("o4-mini", None),
+        ("kimi-for-coding", None),
+        ("moonshot/kimi-for-coding", None),
+        ("kimi-k2", None),
+        ("kimi-for-coding-highspeed", None),
+        ("k3", None),
+        ("k3-256k", None),
+        ("moonshot-v1-128k", None),
     ],
 )
 def test_wiki_llm_temperature_by_model(model_name, expected):
@@ -504,7 +504,7 @@ def test_wiki_llm_temperature_by_model(model_name, expected):
     assert build_service._wiki_llm_temperature(model_name) == expected
 
 
-def test_wiki_llm_invocation_uses_unit_temperature_for_gpt5(monkeypatch):
+def test_wiki_llm_invocation_omits_temperature_for_gpt5(monkeypatch):
     from apps.opspilot.services.wiki import build_service
 
     class FakeModel:
@@ -526,7 +526,7 @@ def test_wiki_llm_invocation_uses_unit_temperature_for_gpt5(monkeypatch):
     monkeypatch.setattr(build_service.LLMClientFactory, "invoke_isolated", fake_invoke)
 
     assert build_service._invoke_llm(1, "prompt") == "ok"
-    assert captured["request"].temperature == 1.0
+    assert captured["request"].temperature is None
 
 
 def test_finalize_coerces_missing_page_type_and_promotes_source_only_output():

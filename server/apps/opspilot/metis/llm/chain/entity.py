@@ -413,7 +413,7 @@ class BasicLLMRequest(BaseModel):
     system_message_prompt: str = ""
     enable_suggest: bool = False
     enable_query_rewrite: bool = False
-    temperature: float = 0.7
+    temperature: Optional[float] = 0.7
     max_output_tokens: int = Field(default=0, description="单次输出 token 上限（0=provider 默认）")
 
     user_message: str = ""

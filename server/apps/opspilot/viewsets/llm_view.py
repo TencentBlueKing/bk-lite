@@ -22,6 +22,7 @@ from apps.core.mixinx import EncryptMixin
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
 from apps.core.utils.viewset_utils import AuthViewSet, LanguageViewSet
+from apps.opspilot.metis.llm.common.llm_client_factory import DEFAULT_CHAT_TEMPERATURE
 from apps.opspilot.metis.llm.tools.elasticsearch.connection import normalize_es_instance, test_es_instance
 from apps.opspilot.metis.llm.tools.jenkins.connection import normalize_jenkins_instance, test_jenkins_instance
 from apps.opspilot.metis.llm.tools.kubernetes.connection import (
@@ -390,9 +391,10 @@ class LLMViewSet(PinMixin, AuthViewSet):
             params["skill_type"] = skill_obj.skill_type
             params["tools"] = resolve_request_tools(params.get("tools"), skill_obj.tools)
             params["group"] = params["group"] if params.get("group") else skill_obj.team[0]
-            params["enable_suggest"] = params["enable_suggest"] if params.get("enable_suggest") else skill_obj.enable_suggest
-            params["enable_query_rewrite"] = params["enable_query_rewrite"] if params.get("enable_query_rewrite") else skill_obj.enable_query_rewrite
-            params["show_think"] = params["show_think"] if params.get("show_think") is not None else skill_obj.show_think
+            params["enable_suggest"] = False
+            params["enable_query_rewrite"] = False
+            params["show_think"] = False
+            params["temperature"] = DEFAULT_CHAT_TEMPERATURE
             params["locale"] = getattr(request.user, "locale", "en")  # 用户语言设置
             # 透传技能绑定的 Wiki 知识库,触发 format_chat_server_kwargs 的检索增强;
             # 否则智能体对话不会引用知识库内容,易凭 LLM 自身知识作答(幻觉)。
@@ -473,9 +475,10 @@ class LLMViewSet(PinMixin, AuthViewSet):
             params["skill_type"] = skill_obj.skill_type
             params["tools"] = resolve_request_tools(params.get("tools"), skill_obj.tools)
             params["group"] = params["group"] if params.get("group") else skill_obj.team[0]
-            params["enable_suggest"] = params["enable_suggest"] if params.get("enable_suggest") else skill_obj.enable_suggest
-            params["enable_query_rewrite"] = params["enable_query_rewrite"] if params.get("enable_query_rewrite") else skill_obj.enable_query_rewrite
-            params["show_think"] = params["show_think"] if params.get("show_think") is not None else skill_obj.show_think
+            params["enable_suggest"] = False
+            params["enable_query_rewrite"] = False
+            params["show_think"] = False
+            params["temperature"] = DEFAULT_CHAT_TEMPERATURE
             params["locale"] = getattr(request.user, "locale", "en")  # 用户语言设置
             params["browser_use_force_task"] = True
             # 同 execute:透传 Wiki 知识库以触发检索增强,避免智能体不查知识库而凭空作答。

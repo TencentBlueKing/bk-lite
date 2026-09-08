@@ -1383,7 +1383,7 @@ class BasicGraph(ABC):
         # last_message is latest_plain_ai_message 拦截。
         emitted_text_signatures: set[str] = set()
         emitted_any_text_this_run = False
-        show_think = bool((request.extra_config or {}).get("show_think", True))
+        show_think = bool((request.extra_config or {}).get("show_think", False))
         execution_id = (request.extra_config or {}).get("execution_id") or request.thread_id
         if not isinstance(token_usage_accumulator, TokenUsageAccumulator):
             token_usage_accumulator = None
