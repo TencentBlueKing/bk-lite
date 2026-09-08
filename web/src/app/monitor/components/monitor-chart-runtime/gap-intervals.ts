@@ -358,6 +358,14 @@ export const expandGapIntervalsToChartPoints = (
   });
 };
 
+const reportedGapCoversDisplayedSamples = (
+  data: ChartData[],
+  gap: GapInterval,
+): boolean => {
+  const times = getFinitePointTimes(data);
+  return times.some((time) => time > gap.start && time < gap.end);
+};
+
 export const getRenderedGapIntervals = (
   data: ChartData[],
   gaps: GapInterval[] = [],
@@ -371,9 +379,13 @@ export const getRenderedGapIntervals = (
         : alignReportedGapToSampleBoundaries(data, gap, visibleXAxisDomain)
     ),
   );
+  // 后端按完整标签切序列；图上常把未声明标签合成一条线。并集红底会盖住已有采样点。
+  const visibleReportedGaps = reportedGaps.filter(
+    (gap) => !reportedGapCoversDisplayedSamples(data, gap),
+  );
   // 后端区间是缺失采样点；视觉边界取有效点与缺失点的中点，避免背景压住折线或留下生硬白缝。
-  return reportedGaps.length
-    ? reportedGaps
+  return visibleReportedGaps.length
+    ? visibleReportedGaps
     : deriveFinitePointGapIntervals(data);
 };
 
