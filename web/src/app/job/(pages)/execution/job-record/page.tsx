@@ -5,7 +5,7 @@ import {
   Segmented,
   Button,
   Spin,
-  message,
+  App,
   Input,
   Drawer,
   DatePicker,
@@ -43,6 +43,11 @@ import useJobApi from '@/app/job/api';
 import { useExecutionStream } from '@/app/job/hooks/useExecutionStream';
 import { JobRecord, JobRecordStatus, JobRecordSource, JobRecordDetail, ExecutionTarget, Playbook, FileTreeNode, PlaybookFilePreview } from '@/app/job/types';
 import { normalizeExecutionTargets } from '@/app/job/utils/execution-targets';
+import {
+  formatExecutionParams,
+  isActiveExecutionStatus,
+  shouldPollExecutionList,
+} from '@/app/job/utils/execution-record';
 import { ColumnItem } from '@/types';
 import SearchCombination from '@/components/search-combination';
 import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
@@ -55,6 +60,7 @@ const FILE_DIST_REPLAY_STORAGE_KEY = 'job.file-dist.replay';
 
 const JobRecordPage = () => {
   const { t } = useTranslation();
+  const { message, modal } = App.useApp();
   const router = useRouter();
   const searchParams = useSearchParams();
   const recordId = searchParams.get('id');
@@ -80,6 +86,7 @@ const JobRecordPage = () => {
   const [logSearch, setLogSearch] = useState('');
   const [autoScroll, setAutoScroll] = useState(false);
   const [scriptDrawerOpen, setScriptDrawerOpen] = useState(false);
+  const [lastDetailRefreshAt, setLastDetailRefreshAt] = useState<number | null>(null);
   const [playbookDrawerOpen, setPlaybookDrawerOpen] = useState(false);
   const [viewingPlaybook, setViewingPlaybook] = useState<Playbook | null>(null);
   const [playbookDetailLoading, setPlaybookDetailLoading] = useState(false);
@@ -88,7 +95,8 @@ const JobRecordPage = () => {
   const [filePreviewData, setFilePreviewData] = useState<PlaybookFilePreview | null>(null);
   const [filePreviewError, setFilePreviewError] = useState<string | null>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
-  const pollingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const getJobRecordDetailRef = useRef(getJobRecordDetail);
+  getJobRecordDetailRef.current = getJobRecordDetail;
 
   const formatFilterTime = useCallback((value: Dayjs) => value.format('YYYY-MM-DD HH:mm:ss'), []);
 
@@ -124,8 +132,13 @@ const JobRecordPage = () => {
   }, [customRange, formatFilterTime, timeRange]);
 
   const fetchData = useCallback(
-    async (params: { filters?: SearchFilters; current?: number; pageSize?: number } = {}) => {
-      setLoading(true);
+    async (
+      params: { filters?: SearchFilters; current?: number; pageSize?: number } = {},
+      silent = false
+    ) => {
+      if (!silent) {
+        setLoading(true);
+      }
       try {
         const filters = params.filters ?? searchFilters;
         const timeFilter = getTimeFilter();
@@ -152,7 +165,9 @@ const JobRecordPage = () => {
           total: res.count || 0,
         }));
       } finally {
-        setLoading(false);
+        if (!silent) {
+          setLoading(false);
+        }
       }
     },
     [searchFilters, pagination.current, pagination.pageSize, getTimeFilter]
@@ -163,18 +178,19 @@ const JobRecordPage = () => {
       setDetailLoading(true);
     }
     try {
-      const res = await getJobRecordDetail(id);
+      const res = await getJobRecordDetailRef.current(id);
       setDetail(normalizeExecutionTargets(res));
+      setLastDetailRefreshAt(Date.now());
     } finally {
       if (!silent) {
         setDetailLoading(false);
       }
     }
-  }, [getJobRecordDetail]);
+  }, []);
 
   const handleCancelExecution = useCallback(() => {
     if (!detail) return;
-    Modal.confirm({
+    modal.confirm({
       title: t('job.cancelExecution'),
       content: t('job.cancelExecutionConfirm'),
       okText: t('job.confirm'),
@@ -194,7 +210,7 @@ const JobRecordPage = () => {
         }
       },
     });
-  }, [detail, cancelExecution, fetchDetail, t]);
+  }, [detail, cancelExecution, fetchDetail, modal, t]);
 
   const handleReExecute = useCallback(async () => {
     if (!detail) return;
@@ -296,34 +312,35 @@ const JobRecordPage = () => {
     }
   }, [pagination.current, pagination.pageSize]);
 
-  // Auto-refresh polling for in-progress job details
+  // 列表中只要仍有等待中、执行中或取消中的记录，就静默刷新权威状态。
   useEffect(() => {
-    // Only poll when viewing detail and status is pending or running
-    if (!recordId || !detail?.status) {
+    if (recordId || !shouldPollExecutionList(data)) {
       return;
     }
-    
-    if (detail.status !== 'pending' && detail.status !== 'running') {
-      // Clear any existing timer when status becomes terminal
-      if (pollingTimerRef.current) {
-        clearInterval(pollingTimerRef.current);
-        pollingTimerRef.current = null;
-      }
-      return;
-    }
-    
-    // Start polling every 5 seconds (silent mode - no loading spinner)
-    pollingTimerRef.current = setInterval(() => {
-      fetchDetail(Number(recordId), true);
+
+    const timer = window.setInterval(() => {
+      void fetchData({}, true);
     }, 5000);
-    
+
     return () => {
-      if (pollingTimerRef.current) {
-        clearInterval(pollingTimerRef.current);
-        pollingTimerRef.current = null;
-      }
+      window.clearInterval(timer);
     };
-  }, [detail?.status, recordId, fetchDetail]);
+  }, [data, fetchData, recordId]);
+
+  // 详情状态刷新不依赖 SSE 是否有日志；取消中同样属于非终态。
+  useEffect(() => {
+    if (!recordId || !isActiveExecutionStatus(detail?.status)) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void fetchDetail(Number(recordId), true);
+    }, 5000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [detail?.status, fetchDetail, recordId]);
 
   const handleSearchChange = useCallback((filters: SearchFilters) => {
     setSearchFilters(filters);
@@ -545,9 +562,9 @@ const JobRecordPage = () => {
     return detail.execution_targets.find(t => t.id === selectedTargetId) || detail.execution_targets[0];
   }, [detail, selectedTargetId]);
 
-  // 实时流式输出：执行中（pending/running）订阅 SSE，按 target 累积 stdout/stderr
+  // 实时流式输出：非终态订阅 SSE，按 target 累积 stdout/stderr
   const authContext = useAuth();
-  const isExecuting = detail?.status === 'pending' || detail?.status === 'running';
+  const isExecuting = isActiveExecutionStatus(detail?.status);
   const { liveOutput, streaming } = useExecutionStream({
     executionId: recordId ? Number(recordId) : null,
     enabled: !!recordId && isExecuting,
@@ -621,14 +638,7 @@ const JobRecordPage = () => {
 
   // Execution parameters text (脚本执行为按顺序拼接的位置参数字符串)
   const executeParamsText = useMemo(() => {
-    const p = detail?.params as unknown;
-    if (p === null || p === undefined || p === '') return '';
-    if (typeof p === 'string') return p;
-    try {
-      return JSON.stringify(p);
-    } catch {
-      return String(p);
-    }
+    return formatExecutionParams(detail?.params);
   }, [detail?.params]);
 
   const handlePreviewPlaybookFile = useCallback(async (filePath: string, parentPaths: string[] = []) => {
@@ -1108,7 +1118,9 @@ const JobRecordPage = () => {
                   {selectedTarget.stderr}
                 </div>
               ) : (
-                <div className="text-gray-500">{t('common.noData')}</div>
+                <div className="text-gray-500">
+                  {isExecuting ? t('job.waitingForExecutionLog') : t('common.noData')}
+                </div>
               )}
             </div>
 
@@ -1117,9 +1129,9 @@ const JobRecordPage = () => {
               <span>
                 {t('job.totalLines').replace('{count}', String(filteredLogLines.length))}
               </span>
-              {lastLogTime && (
+              {(lastDetailRefreshAt || lastLogTime) && (
                 <span>
-                  {t('job.lastUpdate')}: {dayjs(lastLogTime).format('HH:mm:ss')}
+                  {t('job.lastUpdate')}: {dayjs(lastDetailRefreshAt || lastLogTime).format('HH:mm:ss')}
                 </span>
               )}
             </div>

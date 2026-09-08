@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   applyExecutionStreamEvent,
+  consumeExecutionSseChunk,
   type LiveOutputMap,
   type StreamEventPayload,
 } from './executionStreamState';
@@ -73,19 +74,9 @@ export function useExecutionStream({
         const decoder = new TextDecoder();
         let buffer = '';
         let done = false;
-        while (!abortController.signal.aborted && !done) {
-          const { done: streamDone, value } = await reader.read();
-          if (streamDone) break;
-          buffer += decoder.decode(value, { stream: true });
-          // SSE 事件以空行分隔
-          const blocks = buffer.split('\n\n');
-          buffer = blocks.pop() ?? '';
-          for (const block of blocks) {
-            const dataLine = block
-              .split('\n')
-              .find((l) => l.startsWith('data:'));
-            if (!dataLine) continue;
-            const payloadStr = dataLine.slice('data:'.length).trim();
+        const consumePayloads = (payloads: string[]) => {
+          for (const payloadText of payloads) {
+            const payloadStr = payloadText.trim();
             if (!payloadStr) continue;
             if (payloadStr === '[DONE]') {
               done = true;
@@ -95,9 +86,29 @@ export function useExecutionStream({
             try {
               applyEvent(JSON.parse(payloadStr) as StreamEventPayload);
             } catch {
-              // 非 JSON 行忽略
+              // 非 JSON 事件忽略
             }
           }
+        };
+
+        while (!abortController.signal.aborted && !done) {
+          const { done: streamDone, value } = await reader.read();
+          if (streamDone) break;
+          const consumed = consumeExecutionSseChunk(
+            buffer,
+            decoder.decode(value, { stream: true })
+          );
+          buffer = consumed.buffer;
+          consumePayloads(consumed.payloads);
+        }
+
+        if (!abortController.signal.aborted && !done) {
+          const trailing = consumeExecutionSseChunk(
+            buffer,
+            decoder.decode(),
+            true
+          );
+          consumePayloads(trailing.payloads);
         }
         if (!cancelled) {
           onAllDoneRef.current?.();
