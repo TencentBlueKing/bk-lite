@@ -94,6 +94,33 @@ def is_complete_round(summary) -> bool:
     )
 
 
+def round_complete_skip_reason(request: CollectionRequest, summary) -> str | None:
+    """返回完成标记不能发布的稳定原因；None 表示满足发布契约。"""
+    if resolve_round_marker_identity(request.params) is None:
+        return "not_applicable"
+    if (
+        summary.total <= 0
+        or summary.collection_succeeded != summary.total
+        or summary.collection_failed
+        or summary.unreachable
+        or summary.deferred
+        or summary.skipped
+    ):
+        return "collection_incomplete"
+    if summary.publish_unknown:
+        return "delivery_unknown"
+    if (
+        summary.publish_failed
+        or summary.publish_event_failed
+        or summary.publish_permanent_failed
+        or summary.publish_succeeded + summary.publish_not_applicable != summary.total
+    ):
+        return "delivery_incomplete"
+    if summary.publish_succeeded <= 0:
+        return "no_publishable_metrics"
+    return None
+
+
 def _escape_label(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ").replace("\r", " ")
 

@@ -269,6 +269,14 @@ async def publish_metrics_to_nats(ctx: Dict, metrics_data: str, params: Dict[str
 
 async def publish_metrics_batch_to_nats(entries, *, metrics=None) -> dict[str, BaseException | None]:
     """按 (task_id, subject) 公平轮转微批，并逐目标返回结果。"""
+    outcomes = {}
+    async for result_id, outcome in iter_metrics_batch_outcomes(entries, metrics=metrics):
+        outcomes[result_id] = outcome
+    return outcomes
+
+
+async def iter_metrics_batch_outcomes(entries, *, metrics=None):
+    """公平轮转微批，并在每个目标终态后立即产出结果。"""
     outcomes: dict[str, BaseException | None] = {}
     metric_topic_prefix = os.getenv("NATS_METRIC_TOPIC", "metrics")
     lane_entries: dict[tuple[str, str], list[tuple[Any, Dict[str, Any], str, str]]] = {}
@@ -284,9 +292,11 @@ async def publish_metrics_batch_to_nats(entries, *, metrics=None) -> dict[str, B
     )
     while lanes:
         lane = lanes.popleft()
-        if await lane.publish_round():
+        has_more, terminal_outcomes = await lane.publish_round()
+        for result_id, outcome in terminal_outcomes:
+            yield result_id, outcome
+        if has_more:
             lanes.append(lane)
-    return outcomes
 
 
 class _SubjectPublishLane:
@@ -326,7 +336,7 @@ class _SubjectPublishLane:
             state["chunks"] = iter(_iter_line_chunks(_iter_metrics_to_influx(state["metrics_data"], state["params"])))
         return next(state["chunks"], None)
 
-    async def publish_round(self) -> bool:  # noqa: C901 - 发布轮次集中维护 deadline、公平性和终态归因
+    async def publish_round(self):  # noqa: C901 - 发布轮次集中维护 deadline、公平性和终态归因
         max_lines_per_flush = _transport_lines_per_flush()
         selected = [self.states.popleft() for _ in range(min(50, len(self.states)))]
         buffered_lines: list[str] = []
@@ -500,8 +510,12 @@ class _SubjectPublishLane:
                     await flush_buffer()
                 continuing_states.append(state)
         await flush_buffer()
+        continuing_result_ids = {state["result_id"] for state in continuing_states if state["result_id"] not in self.failed_result_ids}
         self.states.extend(state for state in continuing_states if state["result_id"] not in self.failed_result_ids)
-        return bool(self.states)
+        terminal_outcomes = tuple(
+            (state["result_id"], self.outcomes[state["result_id"]]) for state in selected if state["result_id"] not in continuing_result_ids
+        )
+        return bool(self.states), terminal_outcomes
 
 
 def _metrics_jetstream_enabled() -> bool:

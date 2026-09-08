@@ -392,6 +392,9 @@ class CollectionApplication:
         """在即时容量快照上附加仅供周期日志使用的计数器增量。"""
         snapshot = self.capacity_snapshot()
         for total_key, delta_key in (
+            ("nats_js_deadline_expired_total", "nats_js_deadline_expired_delta"),
+            ("nats_js_credit_wait_timeout_total", "nats_js_credit_wait_timeout_delta"),
+            ("nats_js_publish_call_timeout_total", "nats_js_publish_call_timeout_delta"),
             ("nats_js_puback_timeout_total", "nats_js_puback_timeout_delta"),
             ("nats_js_publish_retry_total", "nats_js_publish_retry_delta"),
             ("nats_js_publish_rejected_total", "nats_js_publish_rejected_delta"),
@@ -411,9 +414,11 @@ class CollectionApplication:
             "目标任务[等待执行=%s 正在执行=%s 本轮已完成=%s 累计已完成=%s] | "
             "目标并发槽位[已用=%s/%s 可用=%s 使用率=%s 峰值=%s] | "
             "配置[最大目标并发=%s 任务窗口=%s] | "
-            "发布队列[深度=%s/%s 使用率=%s 最老批次=%s P99等待=%s] | "
+            "发布队列[深度=%s/%s 使用率=%s 最老活动发布批次=%s P99等待=%s] | "
             "Payload[未终态=%s/%s] | "
-            "JetStream[在途=%s 等待信贷=%s PubAck-P99=%s 超时=%s(+%s) 重试=%s(+%s) 拒绝=%s(+%s)] | "
+            "JetStream[在途=%s 等待信贷=%s PubAck-P99=%s "
+            "截止超时=%s(+%s) 信贷超时=%s(+%s) 调用超时=%s(+%s) "
+            "PubAck超时=%s(+%s) 重试=%s(+%s) 拒绝=%s(+%s)] | "
             "发布终态[等待=%s] | "
             "SNMP池[活跃Engine=%s 总Engine=%s 安全上限=%s 排空=%s 目标条目=%s/%s] | "
             "事件循环[当前延迟=%s P99延迟=%s] | "
@@ -451,6 +456,12 @@ class CollectionApplication:
                 "ms",
                 missing_default=0,
             ),
+            snapshot.get("nats_js_deadline_expired_total", 0),
+            snapshot.get("nats_js_deadline_expired_delta", 0),
+            snapshot.get("nats_js_credit_wait_timeout_total", 0),
+            snapshot.get("nats_js_credit_wait_timeout_delta", 0),
+            snapshot.get("nats_js_publish_call_timeout_total", 0),
+            snapshot.get("nats_js_publish_call_timeout_delta", 0),
             snapshot.get("nats_js_puback_timeout_total", 0),
             snapshot.get("nats_js_puback_timeout_delta", 0),
             snapshot.get("nats_js_publish_retry_total", 0),
@@ -626,6 +637,12 @@ def _capacity_status(snapshot: dict[str, float | int]) -> tuple[str, str]:
         issues.append("发布批次超过总期限")
     if snapshot.get("nats_js_publish_waiting_messages", 0) > 0:
         issues.append("JetStream等待信贷")
+    if snapshot.get("nats_js_deadline_expired_delta", 0) > 0:
+        issues.append("发布总期限本周期发生超时")
+    if snapshot.get("nats_js_credit_wait_timeout_delta", 0) > 0:
+        issues.append("JetStream信贷等待本周期发生超时")
+    if snapshot.get("nats_js_publish_call_timeout_delta", 0) > 0:
+        issues.append("JetStream调用本周期发生超时")
     if snapshot.get("nats_js_puback_timeout_delta", 0) > 0:
         issues.append("PubAck本周期发生超时")
     if snapshot.get("nats_js_publish_rejected_delta", 0) > 0:

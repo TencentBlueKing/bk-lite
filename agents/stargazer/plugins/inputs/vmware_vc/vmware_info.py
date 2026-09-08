@@ -8,9 +8,21 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from core.decorator import timer
+from core.logger import safe_log_value
 from pyVim.connect import Disconnect, SmartConnect
 from pyVmomi import vim
 from sanic.log import logger
+
+
+def _exception_chain_text(error: BaseException) -> str:
+    parts = []
+    current: BaseException | None = error
+    seen = set()
+    while current is not None and id(current) not in seen and len(parts) < 4:
+        seen.add(id(current))
+        parts.append(str(current))
+        current = current.__cause__ or current.__context__
+    return " ".join(parts).lower()
 
 
 class VmwareManage(object):
@@ -62,7 +74,7 @@ class VmwareManage(object):
             self.connect_vc()
             return AccessProbeResult(status=AccessProbeStatus.READY)
         except Exception as err:  # noqa: BLE001 - 收敛为稳定领域结果
-            text = str(err).lower()
+            text = _exception_chain_text(err)
             if any(
                 token in text
                 for token in (
@@ -122,17 +134,33 @@ class VmwareManage(object):
                 params["disableSslCertValidation"] = True
             import time
 
-            a = time.time()
+            stage_started_at = time.monotonic()
             si = SmartConnect(**params)
             self.si = si
-            logger.error(f"SmartConnect time cost: {time.time() - a}")
+            logger.debug(
+                "event=vmware_vc_connect_timing host=%s stage=%s duration_ms=%s",
+                safe_log_value(self.host),
+                "smart_connect",
+                round((time.monotonic() - stage_started_at) * 1000, 2),
+            )
             if not si:
                 raise RuntimeError("Unable to establish a pyVmomi connection. Could you please double-check the address, username, or password?")
+            stage_started_at = time.monotonic()
             self.content = si.RetrieveContent()
-            logger.error(f"RetrieveContent time cost: {time.time() - a}")
+            logger.debug(
+                "event=vmware_vc_connect_timing host=%s stage=%s duration_ms=%s",
+                safe_log_value(self.host),
+                "retrieve_content",
+                round((time.monotonic() - stage_started_at) * 1000, 2),
+            )
         except Exception as err:
-            logger.error(f"connect_vc error! {err}")
-            raise RuntimeError("Connect vcenter error!" + str(err))
+            logger.warning(
+                "event=vmware_vc_connect_failed host=%s failed_stage=%s error_type=%s",
+                safe_log_value(self.host),
+                "connect_vc",
+                type(err).__name__,
+            )
+            raise RuntimeError("Connect vcenter error!") from err
 
     def get_hosts(self):
         result = []

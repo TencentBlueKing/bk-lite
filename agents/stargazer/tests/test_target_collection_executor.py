@@ -106,6 +106,43 @@ async def test_empty_successful_snapshot_does_not_publish_completion_marker(monk
     assert marker_calls == []
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("marker_result", "published", "failed"), ((True, 1, 0), (False, 0, 1)))
+async def test_cmdb_round_marker_terminal_is_reflected_in_run_summary(
+    monkeypatch,
+    marker_result,
+    published,
+    failed,
+):
+    async def publish_marker(_request, _round_ts):
+        return marker_result
+
+    monkeypatch.setattr(
+        "core.collection.round_complete.publish_round_complete_marker",
+        publish_marker,
+    )
+    request = CollectionRequest(
+        task_id="marker-terminal",
+        plugin_ref="network.config",
+        targets=("10.10.24.1",),
+        credentials=({"credential_id": "c1"},),
+        params={"model_id": "network", "collect_task_id": 7},
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+    executor = TargetCollectionExecutor(
+        preflight=ReachablePreflight(),
+        plugin=RecordingPlugin(),
+        publisher=RecordingPublisher(),
+        settings=TargetExecutorSettings(max_active_targets=1, target_task_window=1),
+    )
+
+    summary = await executor.execute(request, lease)
+
+    assert summary.round_complete_marker_published == published
+    assert summary.round_complete_marker_failed == failed
+    assert summary.has_errors is bool(failed)
+
+
 class OneTargetFailingPublisher:
     def __init__(self, failed_target):
         self.failed_target = failed_target

@@ -162,6 +162,12 @@ cgroup 内存利用率持续超过 80%、发布队列或 payload 生命周期容
 上调并发，应先定位事件循环阻塞、CPU/内存限额或发布瓶颈。健康接口中字段为 `-1` 表示当前平台
 不可采集。
 
+JetStream 发布窗口由进程级 `NATS_JS_PUBLISH_MAX_PENDING` 限制总在途消息，并由
+`NATS_JS_PUBLISH_MAX_PENDING_PER_CALL`（默认 64）限制单个发布调用的占用，避免大拓扑结果阻塞
+同进程其他目标。超时分别计入总期限、信贷等待、发布调用和 PubAck 四类指标；容量日志中的
+“最老活动发布批次”是应用批次年龄，不是单条 PubAck 耗时。可用
+`scripts/benchmark_jetstream_publisher.py` 的 `mixed` 场景验证慢确认下的完整性、公平性和窗口上限。
+
 `collection_capacity` 保留英文 `event` 便于日志平台检索，正文按中文分为“任务、目标并发、配置、
 发布队列、事件循环、进程、容器”七段，并自动给出 `空闲 / 正常 / 繁忙 / 需关注` 状态及中文提示。
 不可采集的进程或 cgroup 数据显示为“不可用”，不再直接展示 `-1`。

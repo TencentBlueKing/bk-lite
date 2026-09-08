@@ -12,11 +12,16 @@ from core.collection.contracts import (
     PublishOutcome,
     PublishStatus,
     StructuredMetricsPayload,
+    TargetCollectionResult,
     TargetExecutorSettings,
 )
 from core.collection.executor import TargetCollectionExecutor
-from core.collection.result_publisher import BufferedResultPublisher
+from core.collection.metrics import CollectionMetrics
+from core.collection.result_publisher import BufferedResultPublisher, NatsResultPublisher
 from core.collection.runtime import CollectionRequest, RunLease
+from core.infra import nats_utils
+from core.infra.event_loop_monitor import EventLoopLagMonitor
+from core.infra.jetstream_publish_window import JetStreamPublishWindow, JetStreamPublishWindowSettings
 
 
 @pytest.mark.asyncio
@@ -82,6 +87,9 @@ async def test_3000_targets_5_credentials_160_concurrency_keeps_loop_responsive(
             plugin_timeout_seconds=0.05,
         ),
     )
+    # 隔离前序测试遗留对象触发的整代 GC 停顿，避免把宿主机调度噪声
+    # 误判为采集协程阻塞事件循环。
+    gc.collect()
     before = set(asyncio.all_tasks())
     heartbeat_task = asyncio.create_task(heartbeat())
 
@@ -247,3 +255,104 @@ async def test_payload_lifecycle_capacity_includes_targets_waiting_for_publisher
     summary = await asyncio.wait_for(run, timeout=2)
     await publisher.shutdown()
     assert summary.publish_succeeded == 8
+
+
+@pytest.mark.asyncio
+async def test_160_mixed_topology_results_with_slow_puback_are_complete_and_bounded(monkeypatch):
+    class SlowAckJetStream:
+        def __init__(self):
+            self.message_ids = []
+            self.in_flight = 0
+            self.peak_in_flight = 0
+
+        async def publish_async(self, _subject, _payload=b"", *, headers=None, **_kwargs):
+            self.message_ids.append(headers["Nats-Msg-Id"])
+            self.in_flight += 1
+            self.peak_in_flight = max(self.peak_in_flight, self.in_flight)
+            future = asyncio.get_running_loop().create_future()
+
+            async def confirm():
+                try:
+                    await asyncio.sleep(0.002)
+                    future.set_result(object())
+                finally:
+                    self.in_flight -= 1
+
+            asyncio.create_task(confirm())
+            return future
+
+    monkeypatch.setenv("NATS_METRICS_JETSTREAM_ENABLED", "true")
+    monkeypatch.setenv("NATS_JS_PUBLISH_MAX_PENDING", "32")
+    monkeypatch.setenv("NATS_JS_PUBLISH_MAX_PENDING_PER_CALL", "8")
+    slow_ack = SlowAckJetStream()
+    window = JetStreamPublishWindow(
+        lambda: slow_ack,
+        settings=JetStreamPublishWindowSettings(
+            max_pending_messages=32,
+            max_pending_messages_per_call=8,
+            max_pending_bytes=4 * 1024 * 1024,
+            puback_timeout_seconds=1,
+            max_attempts=1,
+        ),
+    )
+    monkeypatch.setattr(nats_utils, "_metrics_js_window", window)
+    metrics = CollectionMetrics(sample_capacity=5000)
+    publisher = BufferedResultPublisher(
+        NatsResultPublisher(metrics=metrics),
+        capacity=160,
+        batch_size=50,
+        worker_count=4,
+        flush_interval_seconds=0.005,
+        metrics=metrics,
+    )
+    targets = tuple(f"10.20.0.{index + 1}" for index in range(160))
+    request = CollectionRequest(
+        task_id="load-topology-slow-puback",
+        plugin_ref="network_topo.config",
+        targets=targets,
+        params={"model_id": "network_topo", "plugin_family": "configuration"},
+    )
+    lease = RunLease(request.task_id, request.digest, "load-pod", 1, time.time() + 60)
+    large_targets = set(targets[::20])
+    results = []
+    expected_lines = 0
+    for target in targets:
+        row_count = 96 if target in large_targets else 1
+        expected_lines += row_count
+        results.append(
+            TargetCollectionResult(
+                target=target,
+                status="success",
+                attempts=1,
+                value=StructuredMetricsPayload(
+                    data={"network_topo": tuple({"target": target, "neighbor": f"neighbor-{index}"} for index in range(row_count))}
+                ),
+            )
+        )
+
+    # 压测计时前主动回收前序 fixture，保持事件循环延迟口径可重复。
+    gc.collect()
+    lag_monitor = EventLoopLagMonitor(interval_seconds=0.005)
+    lag_monitor.start()
+    started = time.perf_counter()
+    try:
+        receipts = await asyncio.gather(*(publisher.enqueue(request, result, lease) for result in results))
+        outcomes = await asyncio.wait_for(
+            asyncio.gather(*(receipt.wait() for receipt in receipts)),
+            timeout=5,
+        )
+    finally:
+        await publisher.shutdown()
+        await lag_monitor.stop()
+    elapsed = time.perf_counter() - started
+
+    assert all(outcome.status == PublishStatus.CONFIRMED for outcome in outcomes)
+    assert len(slow_ack.message_ids) == expected_lines
+    assert len(set(slow_ack.message_ids)) == expected_lines
+    assert window.snapshot().confirmed_total == expected_lines
+    assert window.snapshot().pending_messages == 0
+    assert window.snapshot().pending_bytes == 0
+    assert slow_ack.peak_in_flight <= 32
+    assert publisher.pending_payloads == 0
+    assert lag_monitor.p99_seconds < 0.2
+    assert elapsed < 5

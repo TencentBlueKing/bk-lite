@@ -58,6 +58,43 @@ async def test_run_with_target_errors_finishes_as_completed_with_errors():
 
 
 @pytest.mark.asyncio
+async def test_round_marker_publish_failure_finishes_as_completed_with_errors():
+    tasks = []
+    store = RecordingRunStateStore()
+
+    async def execute(_request, _lease):
+        return RunSummary(
+            total=1,
+            collection_succeeded=1,
+            collection_failed=0,
+            unreachable=0,
+            deferred=0,
+            skipped=0,
+            publish_succeeded=1,
+            round_complete_marker_failed=1,
+        )
+
+    runtime = CollectionRuntime(
+        state_store=store,
+        execute=execute,
+        schedule=lambda coroutine, *, name: tasks.append(asyncio.create_task(coroutine, name=name)) or tasks[-1],
+        owner_id="pod-a",
+    )
+    await runtime.submit(
+        CollectionRequest(
+            task_id="marker-failed",
+            plugin_ref="network.config",
+            targets=("10.10.24.1",),
+        )
+    )
+
+    await tasks[0]
+
+    assert store.finishes[0][0] == RunStatus.COMPLETED_WITH_ERRORS
+    assert store.finishes[0][1]["round_complete_marker_failed"] == 1
+
+
+@pytest.mark.asyncio
 async def test_run_lifecycle_logs_merge_searchable_context(monkeypatch):
     tasks = []
     logged = []

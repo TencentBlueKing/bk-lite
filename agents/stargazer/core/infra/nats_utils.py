@@ -68,6 +68,7 @@ class NatsLinesPublishError(RuntimeError):
         self.attempted_count_before_failure = attempted_count_before_failure
         self.delivery_detected = delivery_detected
         self.error = error
+        self.timeout_stage = getattr(error, "timeout_stage", None)
         self.attempted_indices = attempted_indices
         self.confirmed_indices = confirmed_indices
         super().__init__(
@@ -292,6 +293,9 @@ def nats_metrics_connection_stats() -> dict[str, float | int]:
         "nats_js_publish_confirmed_total": window.confirmed_total if window else 0,
         "nats_js_puback_duration_seconds_p95": window.puback_duration_seconds_p95 if window else 0.0,
         "nats_js_puback_duration_seconds_p99": window.puback_duration_seconds_p99 if window else 0.0,
+        "nats_js_deadline_expired_total": window.deadline_expired_total if window else 0,
+        "nats_js_credit_wait_timeout_total": window.credit_wait_timeout_total if window else 0,
+        "nats_js_publish_call_timeout_total": window.publish_call_timeout_total if window else 0,
         "nats_js_puback_timeout_total": window.puback_timeout_total if window else 0,
         "nats_js_publish_retry_total": window.retry_total if window else 0,
         "nats_js_publish_rejected_total": window.rejected_total if window else 0,
@@ -485,6 +489,7 @@ def _get_metrics_js_window() -> JetStreamPublishWindow:
             _get_metrics_jetstream,
             settings=JetStreamPublishWindowSettings(
                 max_pending_messages=int(os.getenv("NATS_JS_PUBLISH_MAX_PENDING", "256")),
+                max_pending_messages_per_call=int(os.getenv("NATS_JS_PUBLISH_MAX_PENDING_PER_CALL", "64")),
                 max_pending_bytes=int(os.getenv("NATS_JS_PUBLISH_MAX_PENDING_BYTES", str(32 * 1024 * 1024))),
                 puback_timeout_seconds=float(
                     os.getenv(
@@ -529,7 +534,7 @@ async def _nats_publish_lines_jetstream(
         logger.error(
             "event=nats_metrics_publish_rejected subject=%s stream=%s rejected_count=%s "
             "attempted_count=%s confirmed_count=%s error_type=%s nats_code=%s nats_err_code=%s "
-            "description=%s failed_stage=metrics_publish",
+            "description=%s timeout_stage=%s failed_stage=metrics_publish",
             safe_log_value(subject),
             safe_log_value(configured_metrics_stream_name()),
             rejected_count,
@@ -539,6 +544,7 @@ async def _nats_publish_lines_jetstream(
             nats_code,
             nats_err_code,
             description,
+            safe_log_value(error.timeout_stage or "-"),
         )
         raise NatsLinesPublishError(
             subject=subject,

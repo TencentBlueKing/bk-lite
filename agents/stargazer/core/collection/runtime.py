@@ -500,5 +500,6 @@ def _summary_has_errors(summary: Mapping[str, Any]) -> bool:
             "publish_unknown",
             "publish_event_failed",
             "publish_permanent_failed",
+            "round_complete_marker_failed",
         )
     )
