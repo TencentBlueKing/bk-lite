@@ -44,7 +44,7 @@ const Ralationships = () => {
   const users = useRef(commonContext?.userList || []);
   const userList: UserItem[] = users.current;
   const assoListRef = useRef<AssoListRef>(null);
-  const [isExpand, setIsExpand] = useState<boolean>(true);
+  const [isExpand, setIsExpand] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<string>(
     searchParams.get('tab') || DEFAULT_RELATIONSHIP_TAB
   );
@@ -104,7 +104,7 @@ const Ralationships = () => {
 
   const handleTabChange = (val: string) => {
     setActiveTab(val);
-    setIsExpand(true);
+    setIsExpand(false);
     router.replace(buildRelationshipTabHref(pathname, searchParams, val));
   };
 
@@ -169,6 +169,7 @@ const Ralationships = () => {
           userList={userList}
           modelList={modelList}
           assoTypeList={assoTypes}
+          onExpandStateChange={setIsExpand}
         />
       )}
       {activeTab === 'topo' && (

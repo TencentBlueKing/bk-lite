@@ -4,21 +4,18 @@ import React, { useMemo, useEffect, useState } from 'react';
 import Link from 'next/link';
 import Icon from '@/components/icon';
 import sideMenuStyle from './index.module.scss';
-import { useModelApi, useInstanceApi } from '@/app/cmdb/api';
-import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import { useInstanceApi } from '@/app/cmdb/api';
 import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import {
   ArrowLeftOutlined, ApartmentOutlined, AppstoreOutlined, HddOutlined,
 } from '@ant-design/icons';
 import { MenuItem } from '@/types/index';
-import { useRelationships } from '@/app/cmdb/context/relationships';
 import { useTranslation } from '@/utils/i18n';
 import {
   buildRelationshipTabHref,
   DEFAULT_RELATIONSHIP_TAB,
   isRelationshipMenuActive,
 } from '../../relationshipViewNavigation';
-import { mergeRelationshipAssociations } from '../../relationshipMenuData';
 
 interface SideMenuProps {
   menuItems: MenuItem[];
@@ -27,31 +24,6 @@ interface SideMenuProps {
   showProgress?: boolean;
   taskProgressComponent?: React.ReactNode;
   onBackButtonClick?: () => void;
-}
-
-interface ListItem {
-  text: string;
-  value?: number;
-  model_asst_id: string;
-}
-
-interface RelationSection {
-  title: string;
-  children: ListItem[];
-}
-interface ModelAssociation {
-  _id: number;
-  _label: string;
-  is_pre: boolean;
-  mapping: string;
-  model_asst_id: string;
-  asst_id: string;
-  src_id: number;
-  src_model_id: string;
-  src_model_name?: string;
-  dst_id: number;
-  dst_model_id: string;
-  dst_model_name?: string;
 }
 
 const SideMenu: React.FC<SideMenuProps> = ({
@@ -65,17 +37,10 @@ const SideMenu: React.FC<SideMenuProps> = ({
   const ASSET_NAME = 'asset_relationships';
   const IP_VIEW_NAME = 'asset_ip_view';
 
-  const { getModelAssociations } = useModelApi();
-
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
   const modelId = searchParams.get('model_id');
-  const { setSelectedAssoId, assoInstances, assoTypes } =
-    useRelationships();
-  const [allAssociations, setAllAssociations] = useState<ModelAssociation[]>(
-    []
-  );
 
   // 左侧快捷入口：网络拓扑 / 应用拓扑 / 机房视图 / 机柜视图，直达关联关系页对应子视图（缩短操作路径）
   const { getTopoThemes } = useInstanceApi();
@@ -123,18 +88,6 @@ const SideMenu: React.FC<SideMenuProps> = ({
     router.push(`${relItem.url}?${params.toString()}`);
   };
 
-  const handleItemClick = (modelAsstId: string, item: MenuItem) => {
-    if (!isActive(item.url) || currentTab !== DEFAULT_RELATIONSHIP_TAB) {
-      const newUrl = buildRelationshipTabHref(
-        item.url,
-        searchParams,
-        DEFAULT_RELATIONSHIP_TAB
-      );
-      router.push(newUrl);
-    }
-    setSelectedAssoId(modelAsstId);
-  };
-
   const buildUrlWithParams = (path: string) => {
     const params = new URLSearchParams(searchParams);
     return `${path}?${params.toString()}`;
@@ -152,82 +105,6 @@ const SideMenu: React.FC<SideMenuProps> = ({
     if (item.name !== ASSET_NAME) return pathMatches;
     return isRelationshipMenuActive(pathMatches, currentTab, shortcutTabs);
   };
-
-  useEffect(() => {
-    if (!modelId) {
-      setAllAssociations([]);
-      return;
-    }
-    let cancelled = false;
-    getModelAssociations(modelId)
-      .then((data) => {
-        if (!cancelled) {
-          setAllAssociations(Array.isArray(data) ? data : []);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setAllAssociations([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [modelId]);
-
-  const relationData = useMemo<RelationSection[]>(() => {
-    const mergedAssociations: any[] = mergeRelationshipAssociations(
-      assoInstances || [],
-      allAssociations
-    );
-    if (!mergedAssociations.length) return [];
-
-    const groupedData = mergedAssociations.reduce((acc, item) => {
-      const title =
-        assoTypes.find((type) => type.asst_id === item.asst_id)?.asst_name ||
-        '--';
-      if (!acc.has(title)) {
-        acc.set(title, []);
-      }
-
-      const text =
-        item.dst_model_id === modelId
-          ? item.src_model_name || item.src_model_id
-          : item.dst_model_name || item.dst_model_id;
-
-      acc.get(title)?.push({
-        model_asst_id: item.model_asst_id,
-        text,
-        value: item.inst_list?.length || 0,
-      });
-
-      return acc;
-    }, new Map());
-
-    return Array.from(groupedData.entries()).map(([title, children]) => {
-      const dedupedMap = new Map<string, ListItem>();
-
-      children.forEach((child: ListItem) => {
-        const dedupKey = child.model_asst_id;
-        const existing = dedupedMap.get(dedupKey);
-
-        if (!existing) {
-          dedupedMap.set(dedupKey, child);
-          return;
-        }
-
-        const existingValue = existing.value || 0;
-        const currentValue = child.value || 0;
-
-        if (currentValue > existingValue) {
-          dedupedMap.set(dedupKey, child);
-        }
-      });
-
-      return {
-        title,
-        children: Array.from(dedupedMap.values()),
-      };
-    });
-  }, [assoInstances, assoTypes, allAssociations, modelId]);
 
   const orderedMenuItems = useMemo(() => {
     const items = [...menuItems];
@@ -296,40 +173,6 @@ const SideMenu: React.FC<SideMenuProps> = ({
                   {item.title}
                 </Link>
               </li>
-              {item.name === ASSET_NAME && !!relationData?.length && (
-                <div
-                  className={`ml-4 mt-2 mb-2 pb-1 border-b border-[var(--color-border-2)] ${sideMenuStyle.relationList}`}
-                >
-                  {relationData.map((section, index) => (
-                    <div key={section.title + index} className="mb-2">
-                      <div className="text-gray-400 text-xs mb-2">
-                        {section.title}
-                      </div>
-                      <div className="ml-3">
-                        {section.children.map(
-                          (subItem: ListItem, itemIndex: number) => (
-                            <div
-                              key={itemIndex}
-                              className="flex justify-between items-center p-1 cursor-pointer hover:bg-gray-100 rounded-md"
-                              onClick={() =>
-                                handleItemClick(subItem.model_asst_id, item)
-                              }
-                            >
-                              <EllipsisWithTooltip
-                                text={subItem.text}
-                                className="w-[100px] overflow-hidden text-ellipsis whitespace-nowrap"
-                              />
-                              <span className="bg-gray-100 px-2 py-0.5 rounded text-xs text-gray-600">
-                                {subItem.value}
-                              </span>
-                            </div>
-                          )
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
             </React.Fragment>
           ))}
         </ul>
