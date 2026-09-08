@@ -36,7 +36,7 @@ export function useAppCapability<K extends AppCapabilityName>(
     setState({ status: 'loading' });
     loadAuthorizedCapability(appName, {
       authorized: true,
-      load: APP_CAPABILITY_LOADERS[appName],
+      load: APP_CAPABILITY_LOADERS[appName] as () => Promise<AppCapabilityApi<K>>,
     }).then((api) => {
       if (cancelled) return;
       setState(

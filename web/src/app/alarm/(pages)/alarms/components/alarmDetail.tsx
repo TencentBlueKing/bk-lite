@@ -45,6 +45,11 @@ import {
   Pagination,
   TimeLineItem,
 } from '@/app/alarm/types/types';
+import {
+  RelatedTopologyTabContent,
+  relatedTopologyTabItem,
+  useRelatedTopologyTab,
+} from '@/app/alarm/components/related-topology-tab';
 const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
   ({ handleAction, readonly = false }, ref) => {
     const STATE_MAP = useStateMap();
@@ -63,13 +68,18 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
     const [timeLineData, setTimeLineData] = useState<TimeLineItem[]>([]);
     const timelineRef = useRef<HTMLDivElement>(null);
     const isFetchingRef = useRef<boolean>(false);
-    const isBaseInfo = activeTab === 'baseInfo';
-    const isEventTab = activeTab === 'event';
     const [pagination, setPagination] = useState<Pagination>({
       current: 1,
       total: 0,
       pageSize: 100,
     });
+    const isBaseInfo = activeTab === 'baseInfo';
+    const isEventTab = activeTab === 'event';
+    const { visible: relatedTopologyVisible, centers: relatedTopologyCenters, Widget: RelatedTopologyWidget } =
+      useRelatedTopologyTab(
+        groupVisible ? formData.monitor_objects : undefined
+      );
+    const relatedTab = relatedTopologyTabItem(t, relatedTopologyVisible);
     const tabList: TabItem[] = [
       {
         key: 'baseInfo',
@@ -87,6 +97,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
         key: 'actionRecords',
         label: t('settings.actionTab'),
       },
+      ...(relatedTab ? [relatedTab] : []),
     ];
 
     const getEventListData = async (params: any) => {
@@ -400,6 +411,12 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
                 <CompactEmptyState description={t('common.noData')} />
               )}
             </Spin>
+          )}
+          {activeTab === 'relatedTopology' && (
+            <RelatedTopologyTabContent
+              centers={relatedTopologyCenters}
+              Widget={RelatedTopologyWidget}
+            />
           )}
           {activeTab === 'actionRecords' && (
             <ActionTimeline alertId={formData.alert_id || ''} />

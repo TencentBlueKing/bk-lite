@@ -24,7 +24,7 @@ export async function loadAuthorizedCapabilityModules(
       if (!loader) return null;
       const mod = await loadAuthorizedCapability(appName, {
         authorized: true,
-        load: loader,
+        load: loader as () => Promise<AppCapabilityModule>,
       });
       if (!mod) return null;
       return {

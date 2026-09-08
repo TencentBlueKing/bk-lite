@@ -113,9 +113,23 @@
 
 > 证据来源：server/apps/system_mgmt/nats/users.py:20-22、23-38、82-119、156-181　|　同步基线：d2769559　|　【已实现】
 
+### 12. 跨模块凭据仓库
+
+| 功能项 | 功能说明 | 规格 / 约束 | 状态 |
+|---|---|---|---|
+| 无密文列表 | 其它模块按组织范围拉取可选用凭据 | NATS `list_credentials`；需 `credential-View`；`type` 必须同时带 `category`；不含密文、不含引用计数 | GA |
+| 快捷创建 | 其它模块服务端代建实例 | NATS `create_credential`；需 `credential-Add`；返回 `credential_id` 与非密字段 | GA |
+| 明文解析 | 执行侧按 ID 取字段明文 | NATS `resolve_credential`；仅服务端；需 `credential-View`；停用或越权失败；明文不进页面 | GA |
+| 页面选用组件 | 业务原表单嵌入 `CredentialPicker` 引用仓库凭据 | `web/src/components/credential-picker`；`Form.Item` 只存 `credential_id`；组件自行请求可选列表；锁 `category` + `type`；不要用 `CredentialPickerChrome` | GA |
+| 引用计数询问 | 仓库列表/删除/改组织向消费方问一批 ID 的引用条数 | 契约由系统管理规定：入参 `credential_ids`，出参 `data.counts`；方法 `cmdb_count_credential_refs` / `monitor_count_credential_refs`；系统管理 `RpcClient` 直接请求这两个 NATS 方法名，不经 CMDB/监控/`system_mgmt` RPC 门面；本期只问这两家；失败列表「—」，删除/改组织当仍有引用 | 待对接 |
+
+系统管理不改消费方任务表或执行 resolve。产品口径见 `docs/design/product-decisions/system-mgmt-credential-vault.md`，实现边界见 [[legacy-ard-modules-system-mgmt#4.2 凭据仓库跨模块契约【已实现 / 引用计数待对接】]]。
+
+> 证据来源：server/apps/system_mgmt/nats/credentials.py:59-138、server/apps/rpc/system_mgmt.py:94-116、server/apps/system_mgmt/services/credential_ref_count.py:24-35　|　【已实现：列表/创建/解析/询问】【待对接：引用计数消费方 handler】
+
 ## 三、能力边界与约束
 
-用户在同域下以用户名唯一，组织名称在同父组织下唯一且删除前需保证无用户。内置对象受保护：内置应用、内置菜单组与关键角色（admin/normal）不可误删，被用户使用的角色不可删除。同一应用同一时刻仅允许一个菜单组启用。数据权限规则在"规则名 + 组织 + 应用"维度唯一，规则与角色/菜单等权限变更后均触发权限缓存刷新。渠道凭据、密码、API Secret 等敏感信息加密存储，密码策略由系统设置统一控制并在密码操作时生效。内网白名单仅接受规范化 CIDR / IP，且禁止录入 `0.0.0.0/0`、`::/0` 这类放开全部访问范围的超网段。登录、操作、错误日志以只读方式提供，仅登录日志与操作日志支持导出。跨模块用户目录兼容仅限既有消费者，不能作为已完成身份认证与访问控制的通用能力；退出验收【待确认】，详见 [[legacy-ard-modules-system-mgmt#4.1 用户目录远程兼容契约【已实现/限时风险接受】]]。本模块不含业务应用内部流程、各业务模块自身页面、第三方身份系统控制台功能。登录认证绑定、用户同步源、集成中心与 IM 应用通知已在系统管理交付。许可管理（许可码、模块授权、容量与到期提醒）作为企业版能力挂在系统管理设置下，后端为独立 `license_mgmt` app，产品入口仍属本模块，详见 [[license-management.md]]。
+用户在同域下以用户名唯一，组织名称在同父组织下唯一且删除前需保证无用户。内置对象受保护：内置应用、内置菜单组与关键角色（admin/normal）不可误删，被用户使用的角色不可删除。同一应用同一时刻仅允许一个菜单组启用。数据权限规则在"规则名 + 组织 + 应用"维度唯一，规则与角色/菜单等权限变更后均触发权限缓存刷新。渠道凭据、密码、API Secret 等敏感信息加密存储，密码策略由系统设置统一控制并在密码操作时生效。内网白名单仅接受规范化 CIDR / IP，且禁止录入 `0.0.0.0/0`、`::/0` 这类放开全部访问范围的超网段。登录、操作、错误日志以只读方式提供，仅登录日志与操作日志支持导出。跨模块用户目录兼容仅限既有消费者，不能作为已完成身份认证与访问控制的通用能力；退出验收【待确认】，详见 [[legacy-ard-modules-system-mgmt#4.1 用户目录远程兼容契约【已实现/限时风险接受】]]。跨模块凭据仓库向业务模块提供无密文列表与明文解析，引用计数由系统管理询问消费方；扫描/监控任务落 ID、选仓库与执行 resolve 不在本模块。本模块不含业务应用内部流程、各业务模块自身页面、第三方身份系统控制台功能。登录认证绑定、用户同步源、集成中心与 IM 应用通知已在系统管理交付。许可管理（许可码、模块授权、容量与到期提醒）作为企业版能力挂在系统管理设置下，后端为独立 `license_mgmt` app，产品入口仍属本模块，详见 [[license-management.md]]。
 
 > 证据来源：server/apps/system_mgmt/nats/users.py:20-22、82-84、156-171　|　同步基线：d2769559　|　【待确认】
 

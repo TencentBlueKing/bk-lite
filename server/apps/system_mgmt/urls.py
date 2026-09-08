@@ -3,6 +3,8 @@ from rest_framework import routers
 from apps.system_mgmt.viewset import (
     AppViewSet,
     ChannelViewSet,
+    CredentialTypeViewSet,
+    CredentialViewSet,
     CustomMenuGroupViewSet,
     ErrorLogViewSet,
     GroupDataRuleViewSet,
@@ -26,6 +28,8 @@ router.register(r"role", RoleViewSet, basename="role_mgmt")
 router.register(r"integration_instance", IntegrationInstanceViewSet)
 router.register(r"im_notification_channel", IMNotificationChannelViewSet)
 router.register(r"login_auth_binding", LoginAuthBindingViewSet)
+router.register(r"credential_type", CredentialTypeViewSet)
+router.register(r"credential", CredentialViewSet)
 router.register(r"user_sync_source", UserSyncSourceViewSet)
 router.register(r"channel", ChannelViewSet)
 router.register(r"group_data_rule", GroupDataRuleViewSet)
