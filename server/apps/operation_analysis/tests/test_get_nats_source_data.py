@@ -11,7 +11,7 @@ from rest_framework.exceptions import ValidationError
 from apps.operation_analysis.common.get_nats_source_data import GetNatsData
 
 
-def _make_request(current_team_cookie=None, api_team=None, username="testuser", locale="en"):
+def _make_request(current_team_cookie=None, api_team=None, username="testuser", locale="en", group_tree=None):
     """Build a minimal fake request object."""
     user = types.SimpleNamespace(
         username=username,
@@ -19,7 +19,7 @@ def _make_request(current_team_cookie=None, api_team=None, username="testuser", 
         locale=locale,
         timezone="Asia/Shanghai",
         permission={},
-        group_tree=[],
+        group_tree=list(group_tree or []),
         is_superuser=False,
     )
     cookies = {}
@@ -151,6 +151,48 @@ class TestUpdateRequestParamsGuard:
 
         with pytest.raises(ValidationError):
             obj.update_request_params()
+
+    def test_organization_param_overrides_cookie_team(self):
+        request = _make_request(
+            current_team_cookie="7",
+            group_tree=[{"id": 7, "subGroups": [{"id": 12, "subGroups": []}]}],
+        )
+        obj = _make_get_nats_data(request)
+        obj.params = {"organization": "12"}
+        obj.update_request_params()
+        assert obj.params["user_info"]["team"] == 12
+        assert obj.params["organization"] == "12"
+
+    def test_forged_organization_param_clears_team(self):
+        request = _make_request(
+            current_team_cookie="7",
+            group_tree=[{"id": 7, "subGroups": []}],
+        )
+        obj = _make_get_nats_data(request)
+        obj.params = {"organization": "12"}
+        obj.update_request_params()
+        assert obj.params["user_info"]["team"] is None
+
+    def test_organization_matching_cookie_is_allowed_without_group_tree(self):
+        request = _make_request(current_team_cookie="7", group_tree=[])
+        obj = _make_get_nats_data(request)
+        obj.params = {"organization": "7"}
+        obj.update_request_params()
+        assert obj.params["user_info"]["team"] == 7
+
+    def test_empty_organization_param_keeps_cookie_team(self):
+        request = _make_request(current_team_cookie="7")
+        obj = _make_get_nats_data(request)
+        obj.params = {"organization": ""}
+        obj.update_request_params()
+        assert obj.params["user_info"]["team"] == 7
+
+    def test_invalid_organization_param_keeps_cookie_team(self):
+        request = _make_request(current_team_cookie="7")
+        obj = _make_get_nats_data(request)
+        obj.params = {"organization": "not-a-team"}
+        obj.update_request_params()
+        assert obj.params["user_info"]["team"] == 7
 
     def test_valid_team_user_info_structure(self, monkeypatch):
         """Sanity check: user_info dict is correctly populated on success."""

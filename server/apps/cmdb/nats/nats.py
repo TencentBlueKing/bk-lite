@@ -19,6 +19,7 @@ import nats_client
 from apps.cmdb.constants.constants import (
     APP_NAME,
     ENUM_SELECT_MODE_MULTIPLE,
+    INSTANCE,
     PERMISSION_INSTANCES,
     PERMISSION_MODEL,
     PERMISSION_TASK,
@@ -37,6 +38,7 @@ from apps.cmdb.display_field.constants import (
     USER_DISPLAY_FORMAT,
 )
 from apps.cmdb.display_field.handler import DisplayFieldConverter, DisplayFieldHandler
+from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.models.change_record import CREATE_INST, DELETE_INST, OPERATE_TYPE_CHOICES, UPDATE_INST, ChangeRecord
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.models.config_file_version import ConfigFileVersion, ConfigFileVersionStatus
@@ -232,6 +234,88 @@ def _get_collect_task_queryset(user_info):
         return CollectModels.objects.none()
 
     return CollectModels.objects.filter(is_system=False).filter(reduce(or_, team_queries)).distinct()
+
+
+def _collect_task_instance_keys(user_info):
+    keys = set()
+    for instances in _get_collect_task_queryset(user_info).values_list("instances", flat=True):
+        if not isinstance(instances, list):
+            continue
+        for item in instances:
+            if not isinstance(item, dict):
+                continue
+            key = item.get("inst_uuid") if item.get("inst_uuid") not in (None, "") else item.get("_id")
+            if key not in (None, ""):
+                keys.add(str(key))
+    return keys
+
+
+def _collect_instance_alias_keys(entity):
+    aliases = []
+    for candidate in (entity.get("inst_uuid"), entity.get("_id"), entity.get("id")):
+        if candidate in (None, ""):
+            continue
+        key = str(candidate)
+        if key not in aliases:
+            aliases.append(key)
+    return aliases
+
+
+def _find_collect_instance_alias(parent, key):
+    parent.setdefault(key, key)
+    root = key
+    while parent[root] != root:
+        root = parent[root]
+    while key != root:
+        parent[key], key = root, parent[key]
+    return root
+
+
+def _merge_collect_instance_aliases(parent, aliases):
+    if not aliases:
+        return
+    root = _find_collect_instance_alias(parent, aliases[0])
+    for alias in aliases[1:]:
+        parent[_find_collect_instance_alias(parent, alias)] = root
+
+
+def _authorized_collect_instance_keys(task_keys, permissions_map, creator=""):
+    """任务挂载钥匙与当前用户有权实例求交，排除已删/无权实例。同一实例的 uuid/_id 只计一次。"""
+    if not task_keys:
+        return set()
+
+    uuid_keys = []
+    id_keys = []
+    for key in task_keys:
+        if str(key).isdigit():
+            id_keys.append(int(key))
+        else:
+            uuid_keys.append(str(key))
+
+    format_permission_dict = InstanceManage._build_format_permission_dict(permissions_map or {}, creator)
+    query_batches = []
+    if uuid_keys:
+        query_batches.append([{"field": "inst_uuid", "type": "str[]", "value": uuid_keys}])
+    if id_keys:
+        query_batches.append([{"field": "id", "type": "id[]", "value": id_keys}])
+
+    parent = {}
+    matched_keys = set()
+    with GraphClient() as ag:
+        for params in query_batches:
+            entities, _ = ag.query_entity(
+                INSTANCE,
+                params,
+                format_permission_dict=format_permission_dict,
+            )
+            for entity in entities or []:
+                aliases = _collect_instance_alias_keys(entity)
+                if not aliases or not any(alias in task_keys for alias in aliases):
+                    continue
+                _merge_collect_instance_aliases(parent, aliases)
+                matched_keys.update(aliases)
+
+    return {_find_collect_instance_alias(parent, key) for key in matched_keys}
 
 
 def _build_authoritative_maps(instances, attrs):
@@ -1151,6 +1235,8 @@ def get_cmdb_statistics(user_info=None, **kwargs):
                 "model_with_instance_count": 0,
                 "empty_model_count": 0,
                 "model_coverage_rate": 0,
+                "collected_instance_count": 0,
+                "collect_coverage_rate": 0,
             },
             "message": "",
         }
@@ -1164,6 +1250,9 @@ def get_cmdb_statistics(user_info=None, **kwargs):
     model_with_instance_count = sum(1 for model in visible_models if model_counts.get(model.get("model_id"), 0) > 0)
     empty_model_count = max(model_count - model_with_instance_count, 0)
     model_coverage_rate = round((model_with_instance_count / model_count) * 100, 1) if model_count else 0
+    task_keys = _collect_task_instance_keys(user_info)
+    collected_instance_count = len(_authorized_collect_instance_keys(task_keys, instance_permissions_map))
+    collect_coverage_rate = round((collected_instance_count / instance_count) * 100, 1) if instance_count else 0
 
     return {
         "result": True,
@@ -1174,6 +1263,8 @@ def get_cmdb_statistics(user_info=None, **kwargs):
             "model_with_instance_count": model_with_instance_count,
             "empty_model_count": empty_model_count,
             "model_coverage_rate": model_coverage_rate,
+            "collected_instance_count": collected_instance_count,
+            "collect_coverage_rate": collect_coverage_rate,
         },
         "message": "",
     }
@@ -1983,16 +2074,17 @@ def get_model_inst_statistics(user_info=None, **kwargs):
 
 
 @nats_client.register
-def get_cmdb_model_instance_top(limit=5, classification_id=None, user_info=None, **kwargs):
-    """
-    获取模型实例数 TOP N（用于 TopN / 柱状图）
-    """
+def get_cmdb_model_instance_top(limit=5, classification_id=None, user_info=None, group_by="model", **kwargs):
+    """获取实例数 TOP N：默认按模型排行，也可按分类汇总（group_by=classification）。"""
     try:
         limit = int(limit or 5)
     except (TypeError, ValueError):
         limit = 5
     if limit <= 0:
         limit = 5
+    group_by = (group_by or kwargs.get("group_by") or "model").strip().lower()
+    if group_by not in {"model", "classification"}:
+        group_by = "model"
 
     language = _resolve_nats_cmdb_language(user_info)
     classifications = ClassificationManage.search_model_classification(language=language)
@@ -2008,6 +2100,22 @@ def get_cmdb_model_instance_top(limit=5, classification_id=None, user_info=None,
         models = [model for model in models if model.get("classification_id") == classification_id]
 
     model_counts = InstanceManage.model_inst_count(permissions_map=instance_permissions_map)
+
+    if group_by == "classification":
+        classification_counts = {}
+        for model in models:
+            class_id = model.get("classification_id")
+            classification_counts[class_id] = classification_counts.get(class_id, 0) + model_counts.get(model.get("model_id"), 0)
+        result_data = [
+            {
+                "classification": classification_map.get(class_id, class_id),
+                "classification_id": class_id,
+                "count": count,
+            }
+            for class_id, count in classification_counts.items()
+        ]
+        result_data.sort(key=lambda x: (-x["count"], x["classification"]))
+        return {"result": True, "data": result_data[:limit], "message": ""}
 
     result_data = []
     for model in models:

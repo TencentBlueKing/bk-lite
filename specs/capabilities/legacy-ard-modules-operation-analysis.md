@@ -170,6 +170,10 @@
 
 - `[operation_analysis#20260907-001]` 网络状态拓扑场景取图不再进程内调用 CMDB `InstanceManage` / `CmdbRulesFormatUtil`；经 `apps.rpc.cmdb.CMDB.network_topology_among_uuids` 转发 CMDB NATS，身份与权限留在 CMDB。无权、非网络设备、非法闭集均为失败（HTTP 400，文案 `设备列表包含无效或不允许的网络设备，请重新配置`），不是空图。`operation_analysis/services` 生产代码禁止新增 `apps.cmdb.services` / `apps.cmdb.graph` / `apps.cmdb.utils.permission_util` / `apps.monitor.{models,views,services}` 直连；应用 3D 存量写入 allowlist。告警叠层仍走已有 `get_monitor_ids_by_inst_uuids` 与 monitor NATS。
 
+## 2026-09-07 WeOpsX 平台使用仪表盘
+
+- `[operation_analysis#20260907-002]` 内置工作台盘「WeOpsX 平台使用」经 `init_builtin_canvases` 与 `support-files/weopsx_platform_usage_dashboard.yaml` 落地。画布统一筛选含组织（`inputMode: organization`，默认当前工作组织、不可清空、可在盘内改选有权组织、顶栏切换时跟随）与近 7 天时间窗；全部出数组件绑定组织，库存不绑时间。取数以画布选中组织覆盖 `user_info.team`（须落在用户组织树或当前 cookie 组织，否则 team 置空零值；`common/get_nats_source_data.py`），各模块 NATS 按组织上下文与既有权限过滤，禁止超管旁路。契约见 `specs/changes/weopsx-platform-usage-dashboard/spec.md`。
+
 ## 6. 证据来源
 `server/apps/operation_analysis/{urls.py,models/*,views/datasource_view.py,views/view.py,nats/nats.py,common/get_nats_source_data.py,constants/constants.py,tasks/tasks.py,management/commands/*,services/*}`、`apps/operation_analysis/migrations/0010_remove_namespace_groups.py`、`apps/rpc/base.py:OperationAnalysisRpc`、`web/src/app/ops-analysis/{utils/widgetRequestCache.ts,components/widgetDataRenderer.tsx,api/namespace.ts,(pages)/settings/namespace/operateModal.tsx}`。
 

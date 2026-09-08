@@ -1,15 +1,18 @@
 from datetime import datetime
 from types import SimpleNamespace
 
-from django.db.models import Q
+from django.db.models import Count, Q
 
 import nats_client
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.current_team_scope import _normalize_organization_ids
 from apps.core.utils.permission_utils import check_instance_permission, get_permission_rules, get_permissions_rules, permission_filter
+from apps.core.utils.team_utils import group_tree_allows_team
 from apps.core.utils.time_util import format_rfc3339_utc, parse_rfc3339_range_utc
 from apps.log.constants.permission import PermissionConstants
 from apps.log.constants.victoriametrics import VictoriaLogsConstants
+from apps.log.models.extractor import LogExtractor
+from apps.log.models.instance import CollectInstance
 from apps.log.models.log_group import LogGroup
 from apps.log.models.policy import Alert, Policy
 from apps.log.services.log_event_contract import to_logical_event, to_storage_field
@@ -416,3 +419,143 @@ def query_log_alert_segments(query_data: dict, *args, **kwargs):
         "data": _build_paginated_alert_segments(queryset, page, page_size),
         "message": "",
     }
+
+
+def _usage_team_scope(user_info):
+    if not isinstance(user_info, dict) or user_info.get("team") in (None, ""):
+        return None
+    try:
+        current_team = next(iter(_normalize_organization_ids([user_info.get("team")])))
+    except BaseAppException:
+        return None
+    if not group_tree_allows_team(user_info.get("group_tree"), current_team):
+        return None
+    if user_info.get("include_children"):
+        from apps.system_mgmt.utils.group_utils import GroupUtils
+
+        team_ids = GroupUtils.get_group_with_descendants(current_team)
+    else:
+        team_ids = [current_team]
+    return current_team, team_ids
+
+
+def _log_usage_actor(user_info):
+    if not isinstance(user_info, dict):
+        return None
+    user = user_info.get("user")
+    username = user if isinstance(user, str) else getattr(user, "username", None)
+    domain = user_info.get("domain") or getattr(user, "domain", None)
+    if not isinstance(username, str) or not username.strip() or not isinstance(domain, str) or not domain.strip():
+        return None
+    return SimpleNamespace(username=username, domain=domain)
+
+
+def _authorized_log_instances(user_info):
+    scope = _usage_team_scope(user_info)
+    actor = _log_usage_actor(user_info)
+    if scope is None or actor is None:
+        return CollectInstance.objects.none()
+    current_team, team_ids = scope
+    permission = get_permission_rules(
+        actor,
+        current_team,
+        "log",
+        PermissionConstants.INSTANCE_MODULE,
+        include_children=bool(user_info.get("include_children", False)),
+    )
+    if not isinstance(permission, dict):
+        permission = {}
+    return (
+        permission_filter(
+            CollectInstance,
+            permission,
+            team_key="collectinstanceorganization__organization__in",
+            id_key="id__in",
+        )
+        .filter(collectinstanceorganization__organization__in=list(team_ids))
+        .distinct()
+    )
+
+
+def _authorized_log_policies(user_info):
+    scope = _usage_team_scope(user_info)
+    actor = _log_usage_actor(user_info)
+    if scope is None or actor is None:
+        return Policy.objects.none()
+    current_team, team_ids = scope
+    permission = get_permission_rules(
+        actor,
+        current_team,
+        "log",
+        PermissionConstants.POLICY_MODULE,
+        include_children=bool(user_info.get("include_children", False)),
+    )
+    if not isinstance(permission, dict):
+        permission = {}
+    return (
+        permission_filter(
+            Policy,
+            permission,
+            team_key="policyorganization__organization__in",
+            id_key="id__in",
+        )
+        .filter(policyorganization__organization__in=list(team_ids))
+        .distinct()
+    )
+
+
+@nats_client.register
+def get_log_usage_statistics(user_info=None, **kwargs):
+    user_info = user_info or {}
+    instance_qs = _authorized_log_instances(user_info)
+    policy_qs = _authorized_log_policies(user_info)
+    collect_instance_count = instance_qs.count()
+    bound_instance_count = instance_qs.exclude(Q(node_id__isnull=True) | Q(node_id="")).count()
+    instance_ids = list(instance_qs.values_list("id", flat=True))
+    type_ids = list(instance_qs.values_list("collect_type_id", flat=True).distinct())
+    extractor_count = (
+        LogExtractor.objects.filter(Q(collect_instance_id__in=instance_ids) | Q(collect_type_id__in=type_ids)).distinct().count()
+        if instance_ids or type_ids
+        else 0
+    )
+    return {
+        "result": True,
+        "data": {
+            "collect_instance_count": collect_instance_count,
+            "extractor_count": extractor_count,
+            "policy_count": policy_qs.count(),
+            "bound_instance_count": bound_instance_count,
+            "bound_instance_rate": round(bound_instance_count / collect_instance_count * 100, 1) if collect_instance_count else 0,
+        },
+        "message": "",
+    }
+
+
+@nats_client.register
+def get_log_policy_alert_top(user_info=None, limit=10, time=None, **kwargs):
+    user_info = user_info or {}
+    policy_qs = _authorized_log_policies(user_info)
+    try:
+        start, end = parse_rfc3339_range_utc(time if time is not None else kwargs.get("time"))
+    except ValueError as exc:
+        return {"result": False, "data": [], "message": str(exc)}
+    try:
+        limit = int(limit or 10)
+    except (TypeError, ValueError):
+        limit = 10
+    if limit <= 0:
+        limit = 10
+    if limit > 100:
+        limit = 100
+    policy_ids = list(policy_qs.values_list("id", flat=True))
+    if not policy_ids:
+        return {"result": True, "data": [], "message": ""}
+    rows = (
+        Alert.objects.filter(policy_id__in=policy_ids, created_at__gte=start, created_at__lt=end)
+        .order_by()
+        .values("policy_id", "policy__name")
+        .annotate(count=Count("id"))
+        .order_by("-count", "policy__name")[:limit]
+    )
+    data = [{"policy_id": item["policy_id"], "policy_name": item["policy__name"], "count": item["count"]} for item in rows]
+    return {"result": True, "data": data, "message": ""}

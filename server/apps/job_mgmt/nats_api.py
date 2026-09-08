@@ -6,6 +6,8 @@ import nats_client
 from apps.core.logger import job_logger as logger
 from apps.core.openapi.decorators import openapi_expose
 from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
+from apps.core.utils.team_utils import group_tree_allows_team
+from apps.core.utils.time_util import parse_rfc3339_range_utc
 from apps.core.utils.viewset_utils import build_json_membership_query
 from apps.job_mgmt.constants import CallbackType, ExecutionStatus, JobType, TriggerSource
 from apps.job_mgmt.models import DistributionFile, JobExecution, Playbook, Script, Target
@@ -715,3 +717,60 @@ def job_target_list(data: dict):
         )
 
     return {"result": True, "data": {"count": total_count, "items": items}}
+
+
+def _job_usage_team_ids(user_info):
+    user_info = user_info or {}
+    team = user_info.get("team")
+    if team in (None, ""):
+        return None
+    try:
+        current_team = int(team)
+    except (TypeError, ValueError):
+        return None
+    if not group_tree_allows_team(user_info.get("group_tree"), current_team):
+        return None
+    if user_info.get("include_children"):
+        return GroupUtils.get_group_with_descendants(current_team)
+    return [current_team]
+
+
+def _empty_job_usage():
+    return {
+        "result": True,
+        "data": {
+            "job_count": 0,
+            "template_count": 0,
+            "execution_count": 0,
+            "success_count": 0,
+            "execution_success_rate": 0,
+        },
+        "message": "",
+    }
+
+
+@nats_client.register
+def get_job_usage_statistics(user_info=None, time=None, **kwargs):
+    """作业数、模板数，以及时间窗内成功执行 / 总执行。超管仍按选中组织收窄。"""
+    team_ids = _job_usage_team_ids(user_info)
+    if team_ids is None:
+        return _empty_job_usage()
+    try:
+        start, end = parse_rfc3339_range_utc(time if time is not None else kwargs.get("time"))
+    except ValueError as exc:
+        return {"result": False, "data": {}, "message": str(exc)}
+
+    execution_qs = _team_owned_queryset(JobExecution, team_ids).filter(created_at__gte=start, created_at__lt=end)
+    execution_count = execution_qs.count()
+    success_count = execution_qs.filter(status=ExecutionStatus.SUCCESS).count()
+    return {
+        "result": True,
+        "data": {
+            "job_count": _team_owned_queryset(Script, team_ids).count(),
+            "template_count": _team_owned_queryset(Playbook, team_ids).count(),
+            "execution_count": execution_count,
+            "success_count": success_count,
+            "execution_success_rate": round(success_count / execution_count * 100, 1) if execution_count else 0,
+        },
+        "message": "",
+    }

@@ -34,5 +34,6 @@ MONITOR_NATS_HANDLER_NAMES = frozenset(
         "query_metric_range_scoped",
         "query_metric_series",
         "search_monitor_policies",
+        "get_monitor_instance_alert_ranking",
     }
 )
