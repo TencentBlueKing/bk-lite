@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { COLLECTOR_LABEL } from '../../constants/collector';
+import type { TableDataItem } from '../../types';
 import {
   asCollectorStatusList,
   EXECUTOR_TYPE_TAG,
@@ -45,7 +46,8 @@ describe('hosted executor collectors', () => {
   });
 
   it('keeps executors in the hosted component list', () => {
-    const hosted = listNodeHostedCollectors({
+    const record: TableDataItem = {
+      id: 'node-1',
       status: {
         collectors: [
           { collector_id: 'natsexecutor_linux', status: 0 },
@@ -56,7 +58,8 @@ describe('hosted executor collectors', () => {
           { collector_id: 'telegraf_linux', status: 11 }
         ]
       }
-    });
+    };
+    const hosted = listNodeHostedCollectors(record);
 
     expect(hosted.map((item) => item.collector_id)).toEqual([
       'natsexecutor_linux',
