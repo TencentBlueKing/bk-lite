@@ -15,6 +15,7 @@ from apps.log.models.extractor import LogExtractor
 from apps.log.models.instance import CollectInstance
 from apps.log.models.log_group import LogGroup
 from apps.log.models.policy import Alert, Policy
+from apps.log.services.alert_access import filter_alerts_by_organizations, orphaned_log_policy_q
 from apps.log.services.log_event_contract import to_logical_event, to_storage_field
 from apps.log.services.search import SearchService
 from apps.log.utils.log_group import LogGroupQueryBuilder
@@ -278,9 +279,9 @@ def _build_log_alert_segment(alert: Alert) -> dict:
     }
 
 
-def _get_log_policy_ids(collect_type_id: str, user_info: dict):
+def _get_log_actor_scope(user_info: dict):
     if not isinstance(user_info, dict):
-        return [], {"result": False, "data": [], "message": "缺少用户或组织信息"}
+        return None, None, {"result": False, "data": [], "message": "缺少用户或组织信息"}
 
     user = user_info.get("user")
     username = user if isinstance(user, str) else getattr(user, "username", None)
@@ -294,12 +295,12 @@ def _get_log_policy_ids(collect_type_id: str, user_info: dict):
         or not domain.strip()
         or type(include_children) is not bool
     ):
-        return [], {"result": False, "data": [], "message": "缺少用户或组织信息"}
+        return None, None, {"result": False, "data": [], "message": "缺少用户或组织信息"}
 
     try:
         current_team = next(iter(_normalize_organization_ids([current_team])))
     except BaseAppException:
-        return [], {"result": False, "data": [], "message": "用户或组织权限校验失败"}
+        return None, None, {"result": False, "data": [], "message": "用户或组织权限校验失败"}
 
     actor_context = {
         "username": username,
@@ -312,15 +313,28 @@ def _get_log_policy_ids(collect_type_id: str, user_info: dict):
             include_children=include_children,
         )
     except Exception:
-        return [], {"result": False, "data": [], "message": "用户或组织权限校验失败"}
+        return None, None, {"result": False, "data": [], "message": "用户或组织权限校验失败"}
     if not isinstance(scope_result, dict) or not scope_result.get("result") or not isinstance(scope_result.get("data"), list):
-        return [], {"result": False, "data": [], "message": "用户或组织权限校验失败"}
+        return None, None, {"result": False, "data": [], "message": "用户或组织权限校验失败"}
     try:
         scope_ids = _normalize_organization_ids(scope_result["data"])
     except BaseAppException:
-        return [], {"result": False, "data": [], "message": "用户或组织权限校验失败"}
+        return None, None, {"result": False, "data": [], "message": "用户或组织权限校验失败"}
     if current_team not in scope_ids:
-        return [], {"result": False, "data": [], "message": "用户或组织权限校验失败"}
+        return None, None, {"result": False, "data": [], "message": "用户或组织权限校验失败"}
+    return scope_ids, scope_result, None
+
+
+def _get_log_policy_ids(collect_type_id: str, user_info: dict):
+    scope_ids, scope_result, error = _get_log_actor_scope(user_info)
+    if error:
+        return [], error
+
+    user = user_info.get("user")
+    username = user if isinstance(user, str) else getattr(user, "username", None)
+    domain = user_info.get("domain")
+    current_team = next(iter(_normalize_organization_ids([user_info.get("team")])))
+    include_children = user_info.get("include_children", False)
 
     policies = (
         Policy.objects.filter(
@@ -393,14 +407,13 @@ def query_log_alert_segments(query_data: dict, *args, **kwargs):
     if error:
         return error
 
-    if not policy_ids:
-        return {
-            "result": True,
-            "data": _paginate_items([], page, page_size),
-            "message": "",
-        }
+    scope_ids, _, scope_error = _get_log_actor_scope(user_info)
+    if scope_error:
+        return scope_error
 
-    queryset = Alert.objects.filter(collect_type_id=collect_type_id, policy_id__in=policy_ids)
+    queryset = Alert.objects.filter(collect_type_id=collect_type_id)
+    queryset = filter_alerts_by_organizations(queryset, scope_ids)
+    queryset = queryset.filter(Q(policy_id__in=policy_ids) | orphaned_log_policy_q())
     queryset = queryset.filter(
         Q(end_event_time__isnull=True) | Q(end_event_time__gte=start_dt),
         start_event_time__lte=end_dt,

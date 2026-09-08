@@ -12,7 +12,10 @@ import { SearchTableProps } from '@/app/log/types/search';
 import { useCopy } from '@/hooks/useCopy';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import SearchHighlight from '@/app/log/components/search-highlight';
-import { extractHighlightTerms } from '@/app/log/utils/searchHighlight';
+import {
+  extractHighlightTerms,
+  isLogContentField
+} from '@/app/log/utils/searchHighlight';
 
 const DEFAULT_FIELDS = ['timestamp', 'message'];
 
@@ -202,7 +205,9 @@ const SearchTable: React.FC<SearchTableProps> = ({
                     <span className="break-all">
                       <SearchHighlight
                         text={item.value}
-                        terms={highlightTerms}
+                        terms={
+                          isLogContentField(item.label) ? highlightTerms : []
+                        }
                       />
                     </span>
                     <CaretDownFilled

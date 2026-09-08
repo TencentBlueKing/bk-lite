@@ -102,7 +102,7 @@ describe('LogQueryInput', () => {
     expect(input.value).toBe('host.name:');
   });
 
-  it('传入 onPressEnter 时回车触发搜索而不是选中候选', async () => {
+  it('传入 onPressEnter 时回车仍会把当前字段候选写入输入框', async () => {
     const user = userEvent.setup();
     const onPressEnter = vi.fn();
     const SearchInput = () => {
@@ -120,6 +120,28 @@ describe('LogQueryInput', () => {
       );
     };
     render(<SearchInput />);
+
+    const input = screen.getByPlaceholderText('query-input') as HTMLInputElement;
+    await user.click(input);
+    await user.keyboard('{Enter}');
+
+    expect(onPressEnter).not.toHaveBeenCalled();
+    expect(input.value).toBe('host.name:');
+  });
+
+  it('没有可选项时回车才会触发搜索', async () => {
+    const user = userEvent.setup();
+    const onPressEnter = vi.fn();
+    render(
+      <LogQueryInput
+        value=""
+        onPressEnter={onPressEnter}
+        availableFields={['host.name']}
+        logGroups={[]}
+        timeRange={{ mode: 'absolute', start: 1000, end: 2000 }}
+        placeholder="query-input"
+      />
+    );
 
     const input = screen.getByPlaceholderText('query-input') as HTMLInputElement;
     await user.click(input);
