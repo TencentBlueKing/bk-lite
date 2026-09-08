@@ -1,6 +1,7 @@
 from rest_framework import viewsets
 from rest_framework.decorators import action
 
+from apps.core.utils.k8s_daemonset_tolerations import TOLERATIONS_UNSET, extract_request_tolerations
 from apps.core.utils.web_utils import WebUtils
 from apps.log.services.k8s_collect import K8sLogCollectService
 from apps.log.views.collect_config import CollectInstanceViewSet
@@ -53,6 +54,9 @@ class K8sCollectViewSet(viewsets.ViewSet):
         instances, error_response = CollectInstanceViewSet()._authorize_instances(request, [request.data.get("instance_id")])
         if error_response:
             return error_response
+        requested = extract_request_tolerations(request.data)
+        if requested is not TOLERATIONS_UNSET:
+            K8sLogCollectService.persist_tolerations(instances[0].id, requested)
         command = K8sLogCollectService.generate_install_command(
             instances[0].id,
             request.data.get("cloud_region_id"),

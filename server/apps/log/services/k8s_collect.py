@@ -8,6 +8,13 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
+from apps.core.utils.k8s_daemonset_tolerations import (
+    TOLERATIONS_UNSET,
+    apply_tolerations_to_payload,
+    include_stored_tolerations,
+    normalize_k8s_daemonset_tolerations,
+    token_tolerations_kwargs,
+)
 from apps.core.utils.k8s_image_registry import build_kubectl_install_command, normalize_k8s_image_registry_prefix
 from apps.core.utils.webhook_tls import get_webhook_tls_verify
 from apps.log.models import CollectInstance, CollectInstanceOrganization, CollectType, K8sCollectSetting, K8sInstallToken
@@ -40,6 +47,7 @@ class K8sLogCollectService:
             "cloud_region_id",
             "config_type",
             "image_registry_prefix",
+            "tolerations",
             "usage_count",
             "max_usage",
             "expires_at",
@@ -188,6 +196,7 @@ class K8sLogCollectService:
             "docker_container_log_path": setting.docker_container_log_path or None,
             "namespace_patterns": setting.namespace_patterns or [],
             "pod_patterns": setting.pod_patterns or [],
+            "tolerations": setting.tolerations,
         }
 
     @classmethod
@@ -207,19 +216,28 @@ class K8sLogCollectService:
         namespace_patterns = cls.validate_patterns(data.get("namespace_patterns"), "采集 Namespace")
         pod_patterns = cls.validate_patterns(data.get("pod_patterns"), "采集 Pod")
         cls.build_include_patterns(namespace_patterns, pod_patterns)
+        defaults = {
+            "runtime_profile": render_options["runtime_profile"],
+            "host_log_path": render_options["host_log_path"] or "",
+            "docker_container_log_path": render_options["docker_container_log_path"] or "",
+            "namespace_patterns": namespace_patterns,
+            "pod_patterns": pod_patterns,
+        }
+        if "tolerations" in data:
+            defaults["tolerations"] = normalize_k8s_daemonset_tolerations(data.get("tolerations"))
 
         with transaction.atomic():
             setting, _created = K8sCollectSetting.objects.update_or_create(
                 collect_instance_id=instance.id,
-                defaults={
-                    "runtime_profile": render_options["runtime_profile"],
-                    "host_log_path": render_options["host_log_path"] or "",
-                    "docker_container_log_path": render_options["docker_container_log_path"] or "",
-                    "namespace_patterns": namespace_patterns,
-                    "pod_patterns": pod_patterns,
-                },
+                defaults=defaults,
             )
         return cls.serialize_setting(instance, setting)
+
+    @classmethod
+    def persist_tolerations(cls, instance_id: str, tolerations) -> None:
+        instance = cls.get_k8s_instance(instance_id)
+        normalized = normalize_k8s_daemonset_tolerations(tolerations)
+        K8sCollectSetting.objects.filter(collect_instance_id=instance.id).update(tolerations=normalized)
 
     @classmethod
     def load_setting_render_options(cls, instance_id: str) -> dict:
@@ -236,6 +254,7 @@ class K8sLogCollectService:
         pod_patterns = cls.validate_patterns(setting.pod_patterns, "采集 Pod")
         render_options["namespace_patterns"] = namespace_patterns
         render_options["pod_patterns"] = pod_patterns
+        include_stored_tolerations(render_options, setting.tolerations)
         return render_options
 
     @staticmethod
@@ -289,10 +308,17 @@ class K8sLogCollectService:
         cluster_name: str,
         cloud_region_id: str,
         image_registry_prefix: str | None = None,
+        tolerations=TOLERATIONS_UNSET,
     ) -> str:
         image_registry_prefix = normalize_k8s_image_registry_prefix(image_registry_prefix)
         token = str(uuid.uuid4())
         now = timezone.now()
+        create_kwargs = {}
+        if tolerations is TOLERATIONS_UNSET:
+            setting = K8sCollectSetting.objects.filter(collect_instance_id=cluster_name).first()
+            include_stored_tolerations(create_kwargs, None if setting is None else setting.tolerations)
+        else:
+            include_stored_tolerations(create_kwargs, normalize_k8s_daemonset_tolerations(tolerations))
         K8sInstallToken.objects.filter(expires_at__lte=now).delete()
         K8sInstallToken.objects.create(
             token_hash=cls._hash_token(token),
@@ -303,6 +329,7 @@ class K8sLogCollectService:
             usage_count=0,
             max_usage=cls.TOKEN_MAX_USAGE,
             expires_at=now + timedelta(seconds=cls.TOKEN_EXPIRE_TIME),
+            **create_kwargs,
         )
         return token
 
@@ -313,13 +340,15 @@ class K8sLogCollectService:
 
         data, usage_count = cls._consume_token_usage(token)
         max_usage = data["max_usage"]
-        return {
+        result = {
             "cluster_name": data["cluster_name"],
             "cloud_region_id": data["cloud_region_id"],
             "config_type": data["config_type"],
             "image_registry_prefix": normalize_k8s_image_registry_prefix(data.get("image_registry_prefix")),
             "remaining_usage": max_usage - usage_count,
         }
+        include_stored_tolerations(result, data.get("tolerations"))
+        return result
 
     @staticmethod
     def get_cloud_region_envconfig(cloud_region_id: str) -> dict:
@@ -353,13 +382,22 @@ class K8sLogCollectService:
         instance_id: str,
         cloud_region_id: str,
         image_registry_prefix: str | None = None,
+        tolerations=TOLERATIONS_UNSET,
     ) -> str:
         instance = cls.get_k8s_instance(instance_id)
-        cls.load_setting_render_options(instance.id)
+        render_options = cls.load_setting_render_options(instance.id)
 
         env_vars = cls.get_cloud_region_public_config(cloud_region_id)
         server_url = env_vars.get("NODE_SERVER_URL")
-        token = cls.generate_install_token(instance.id, str(cloud_region_id), image_registry_prefix)
+        resolved = tolerations
+        if resolved is TOLERATIONS_UNSET and "tolerations" in render_options:
+            resolved = render_options["tolerations"]
+        token = cls.generate_install_token(
+            instance.id,
+            str(cloud_region_id),
+            image_registry_prefix,
+            **token_tolerations_kwargs(resolved),
+        )
         api_url = f"{server_url.rstrip('/')}/api/v1/log/open_api/k8s/render/"
         return build_kubectl_install_command(api_url, token)
 
@@ -369,25 +407,30 @@ class K8sLogCollectService:
         cluster_name: str,
         cloud_region_id: str,
         image_registry_prefix: str | None = None,
+        tolerations=TOLERATIONS_UNSET,
     ) -> str:
         render_options = cls.load_setting_render_options(cluster_name)
         env_vars = cls.get_cloud_region_envconfig(cloud_region_id)
         webhook_server_url = env_vars.get("WEBHOOK_SERVER_URL")
         api_url = f"{webhook_server_url.rstrip('/')}/infra/kubernetes"
+        payload = {
+            "cluster_name": cluster_name,
+            "type": "log",
+            "nats_url": env_vars.get("NATS_SERVERS"),
+            "nats_username": env_vars.get("NATS_USERNAME"),
+            "nats_password": env_vars.get("NATS_PASSWORD"),
+            "nats_ca": env_vars.get("NATS_TLS_CA"),
+            "image_registry_prefix": normalize_k8s_image_registry_prefix(image_registry_prefix),
+            **render_options,
+        }
+        if tolerations is not TOLERATIONS_UNSET:
+            payload.pop("tolerations", None)
+            apply_tolerations_to_payload(payload, normalize_k8s_daemonset_tolerations(tolerations))
 
         try:
             response = requests.post(
                 api_url,
-                json={
-                    "cluster_name": cluster_name,
-                    "type": "log",
-                    "nats_url": env_vars.get("NATS_SERVERS"),
-                    "nats_username": env_vars.get("NATS_USERNAME"),
-                    "nats_password": env_vars.get("NATS_PASSWORD"),
-                    "nats_ca": env_vars.get("NATS_TLS_CA"),
-                    "image_registry_prefix": normalize_k8s_image_registry_prefix(image_registry_prefix),
-                    **render_options,
-                },
+                json=payload,
                 headers={"Content-Type": "application/json"},
                 timeout=cls.REQUEST_TIMEOUT,
                 verify=get_webhook_tls_verify(),

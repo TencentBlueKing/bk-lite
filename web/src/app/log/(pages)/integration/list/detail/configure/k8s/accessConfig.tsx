@@ -21,6 +21,13 @@ import {
   DEFAULT_K8S_IMAGE_REGISTRY_PREFIX,
   isValidK8sImageRegistryPrefix
 } from '@/utils/k8sImageRegistry';
+import {
+  K8sDaemonSetTolerationsEditor,
+  createK8sTolerationsEditorCopy,
+  k8sTolerationRuleMessage,
+  toRequestTolerations,
+  validateK8sDaemonSetTolerations
+} from '@/app/monitor/components/k8s-collector-install-step';
 
 interface AccessConfigProps {
   onNext: (data?: K8sCommandData) => void;
@@ -83,7 +90,9 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
         namespace_patterns: commandData.namespace_patterns,
         pod_patterns: commandData.pod_patterns,
         image_registry_prefix:
-          commandData.image_registry_prefix || DEFAULT_K8S_IMAGE_REGISTRY_PREFIX
+          commandData.image_registry_prefix || DEFAULT_K8S_IMAGE_REGISTRY_PREFIX,
+        tolerations:
+          commandData.tolerations === undefined ? null : commandData.tolerations
       });
       setDockerPathForFields(commandData.docker_container_log_path);
       if (commandData.instance_id) {
@@ -129,7 +138,8 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
         host_log_path: undefined,
         docker_container_log_path: undefined,
         namespace_patterns: undefined,
-        pod_patterns: undefined
+        pod_patterns: undefined,
+        tolerations: null
       });
       return;
     }
@@ -141,7 +151,8 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
       host_log_path: setting?.host_log_path,
       docker_container_log_path: dockerPath,
       namespace_patterns: (setting?.namespace_patterns || []).join('\n'),
-      pod_patterns: (setting?.pod_patterns || []).join('\n')
+      pod_patterns: (setting?.pod_patterns || []).join('\n'),
+      tolerations: setting?.tolerations ?? null
     });
   };
 
@@ -156,7 +167,8 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
         docker_container_log_path: values.docker_container_log_path,
         namespace_patterns: values.namespace_patterns,
         pod_patterns: values.pod_patterns,
-        image_registry_prefix: values.image_registry_prefix
+        image_registry_prefix: values.image_registry_prefix,
+        tolerations: toRequestTolerations(values.tolerations)
       };
 
       let instanceId = values.k8sCluster as string;
@@ -184,7 +196,8 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
         docker_container_log_path: values.docker_container_log_path,
         namespace_patterns: values.namespace_patterns,
         pod_patterns: values.pod_patterns,
-        image_registry_prefix: values.image_registry_prefix
+        image_registry_prefix: values.image_registry_prefix,
+        tolerations: toRequestTolerations(values.tolerations)
       });
     } finally {
       setSubmitLoading(false);
@@ -202,7 +215,8 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
         initialValues={{
           accessType: 'new',
           runtime_profile: commandData?.runtime_profile || 'standard',
-          image_registry_prefix: DEFAULT_K8S_IMAGE_REGISTRY_PREFIX
+          image_registry_prefix: DEFAULT_K8S_IMAGE_REGISTRY_PREFIX,
+          tolerations: null
         }}
       >
         <div className="flex items-center mb-6">
@@ -423,6 +437,33 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
               </Form.Item>
             }
             description={t('log.integration.k8s.imageRegistryPrefixHint')}
+          />
+        </Form.Item>
+
+        <Form.Item
+          label={
+            <FieldLabel
+              label={t('log.integration.k8s.taintTolerations')}
+              detail={t('log.integration.k8s.taintTolerationsDesc')}
+            />
+          }
+          name="tolerations"
+          rules={[
+            {
+              validator: (_, value) => {
+                const code = validateK8sDaemonSetTolerations(value);
+                if (!code) return Promise.resolve();
+                return Promise.reject(
+                  new Error(
+                    k8sTolerationRuleMessage(t, 'log.integration.k8s', code)
+                  )
+                );
+              }
+            }
+          ]}
+        >
+          <K8sDaemonSetTolerationsEditor
+            copy={createK8sTolerationsEditorCopy(t, 'log.integration.k8s')}
           />
         </Form.Item>
 

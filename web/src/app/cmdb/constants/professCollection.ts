@@ -241,6 +241,7 @@ export const K8S_FORM_INITIAL_VALUES = {
   timeout: 300,
   cleanupStrategy: 'immediately',
   cleanupDays: 3,
+  tolerations: null,
 };
 
 /** IP 表单 timeout 是所选子网整次正式扫描预算，单 IP 探测由插件固定为 5 秒。 */

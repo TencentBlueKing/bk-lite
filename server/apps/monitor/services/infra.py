@@ -5,6 +5,12 @@ from django.core.cache import cache
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import monitor_logger as logger
+from apps.core.utils.k8s_daemonset_tolerations import (
+    TOLERATIONS_UNSET,
+    apply_tolerations_to_payload,
+    include_stored_tolerations,
+    normalize_k8s_daemonset_tolerations,
+)
 from apps.core.utils.k8s_image_registry import normalize_k8s_image_registry_prefix
 from apps.core.utils.webhook_tls import get_webhook_tls_verify
 from apps.monitor.constants.infra import InfraConstants
@@ -19,6 +25,7 @@ class InfraService:
         cluster_name: str,
         cloud_region_id: str,
         image_registry_prefix: str | None = None,
+        tolerations=TOLERATIONS_UNSET,
     ) -> str:
         """
         生成安装令牌（30分钟有效，最多使用5次）
@@ -41,6 +48,8 @@ class InfraService:
             "usage_count": 0,
             "max_usage": InfraConstants.TOKEN_MAX_USAGE,
         }
+        if tolerations is not TOLERATIONS_UNSET:
+            include_stored_tolerations(token_data, normalize_k8s_daemonset_tolerations(tolerations))
 
         cache.set(cache_key, token_data, timeout=InfraConstants.TOKEN_EXPIRE_TIME)
 
@@ -99,12 +108,14 @@ class InfraService:
             f"使用次数={data['usage_count']}/{max_usage}, 剩余次数={max_usage - data['usage_count']}"
         )
 
-        return {
+        result = {
             "cluster_name": data["cluster_name"],
             "cloud_region_id": data["cloud_region_id"],
             "image_registry_prefix": normalize_k8s_image_registry_prefix(data.get("image_registry_prefix")),
             "remaining_usage": max_usage - data["usage_count"],
         }
+        include_stored_tolerations(result, data.get("tolerations"))
+        return result
 
     @staticmethod
     def render_config_from_cloud_region(
@@ -112,6 +123,7 @@ class InfraService:
         cloud_region_id: str,
         config_type: str = "metric",
         image_registry_prefix: str | None = None,
+        tolerations=TOLERATIONS_UNSET,
     ) -> str:
         """
         从云区域环境变量获取参数后，调用外部 API 渲染配置
@@ -157,6 +169,10 @@ class InfraService:
             "nats_ca": nats_tls_ca,
             "image_registry_prefix": normalize_k8s_image_registry_prefix(image_registry_prefix),
         }
+        apply_tolerations_to_payload(
+            params,
+            None if tolerations is TOLERATIONS_UNSET else normalize_k8s_daemonset_tolerations(tolerations),
+        )
 
         # 调用外部 webhook API
         return InfraService.render_config_from_api(params, webhook_server_url)
