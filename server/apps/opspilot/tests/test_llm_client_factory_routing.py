@@ -45,7 +45,7 @@ def test_create_client_openai_qwen_deepseek_and_isolated(monkeypatch):
     assert created["kwargs"]["temperature"] == 0.2
 
     LLMClientFactory.create_client(_request(model="kimi-k2", temperature=0.7))
-    assert created["kwargs"]["temperature"] is None
+    assert "temperature" not in created["kwargs"]
 
     deepseek = LLMClientFactory.create_client(_request(model="deepseek-chat", extra_config={"show_think": False}))
     assert deepseek.extra_body["thinking"] == {"type": "disabled"}
@@ -63,6 +63,7 @@ def test_create_client_anthropic_and_compatible(monkeypatch):
     kwargs = anthro.call_args.kwargs
     assert kwargs["anthropic_api_url"] == "https://api.anthropic.com"
     assert kwargs["model"] == "claude-3"
+    assert kwargs["temperature"] == 0.2
 
     compat = MagicMock(name="Compat")
     monkeypatch.setattr(
@@ -118,7 +119,26 @@ def test_create_client_omits_temperature_for_kimi(monkeypatch):
 
     monkeypatch.setattr("apps.opspilot.metis.llm.common.llm_client_factory.ChatOpenAI", FakeChat)
     LLMClientFactory.create_client(_request(model="kimi-k2", temperature=0.2))
-    assert created["kwargs"]["temperature"] is None
+    assert "temperature" not in created["kwargs"]
+
+
+def test_create_client_omits_temperature_for_anthropic_fixed_unit_models(monkeypatch):
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.common.llm_client_factory.SSRFValidator.validate_llm_endpoint",
+        lambda *a, **k: None,
+    )
+    anthro = MagicMock(name="ChatAnthropic")
+    monkeypatch.setattr("apps.opspilot.metis.llm.common.llm_client_factory.ChatAnthropic", anthro)
+    LLMClientFactory.create_client(_request(protocol_type="anthropic", model="gpt-5-mini", temperature=0.2))
+    assert "temperature" not in anthro.call_args.kwargs
+
+    compat = MagicMock(name="Compat")
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.common.llm_client_factory.AnthropicCompatibleChatClient",
+        compat,
+    )
+    LLMClientFactory.create_client(_request(protocol_type="anthropic", vendor_type="deepseek", model="kimi-k2", temperature=0.2))
+    assert "temperature" not in compat.call_args.kwargs
 
 
 def test_create_client_gemma_and_openai_without_extra_body(monkeypatch):
