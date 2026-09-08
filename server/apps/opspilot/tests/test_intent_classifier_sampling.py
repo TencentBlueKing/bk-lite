@@ -4,26 +4,41 @@ from types import SimpleNamespace
 
 import pytest
 
+from apps.opspilot.enum import SkillTypeChoices
 from apps.opspilot.metis.llm.common.llm_client_factory import INTERNAL_SAMPLING_TEMPERATURE_KEY
-from apps.opspilot.models.model_provider_mgmt import LLMModel, ModelVendor
 from apps.opspilot.services.chat_service import ChatService
 from apps.opspilot.utils.chat_flow_utils.nodes.intent.intent_classifier import INTENT_CLASSIFIER_TEMPERATURE, IntentClassifierNode
 
-pytestmark = pytest.mark.django_db
+pytestmark = pytest.mark.unit
 
 
-def _vendor(**kwargs):
-    data = dict(
-        name="intent-vendor",
-        vendor_type="openai",
+def _llm_model(model_name="gpt-4"):
+    return SimpleNamespace(
+        openai_api_base="http://llm.example/v1",
+        openai_api_key="key",
+        model_name=model_name,
         protocol_type="openai",
-        api_base="https://api.example.com/v1",
-        api_key="sk-test",
-        enabled=True,
-        team=[1],
+        vendor_id=None,
+        pk=1,
+        context_window_tokens=8_000,
     )
-    data.update(kwargs)
-    return ModelVendor.objects.create(**data)
+
+
+def _chat_kwargs(**overrides):
+    data = {
+        "user_message": "current-question",
+        "chat_history": [],
+        "conversation_window_size": 10,
+        "skill_prompt": "system prompt",
+        "skill_params": [],
+        "temperature": 0.2,
+        "user_id": 1,
+        "skill_type": SkillTypeChoices.KNOWLEDGE_TOOL,
+        "enable_suggest": False,
+        "enable_query_rewrite": False,
+    }
+    data.update(overrides)
+    return data
 
 
 def _build_intent_params():
@@ -44,21 +59,32 @@ def test_intent_classifier_requests_internal_low_temperature():
     assert params[INTERNAL_SAMPLING_TEMPERATURE_KEY] == 0.1
 
 
+def test_format_chat_server_kwargs_pins_user_chat_temperature_and_ignores_slider():
+    chat_kwargs, _, _ = ChatService.format_chat_server_kwargs(_chat_kwargs(temperature=0.2), _llm_model())
+
+    assert chat_kwargs["temperature"] == 1.0
+    assert INTERNAL_SAMPLING_TEMPERATURE_KEY not in chat_kwargs
+
+
 def test_intent_internal_temperature_survives_chat_service_format():
-    model = LLMModel.objects.create(name="intent-gpt4", vendor=_vendor(), model="gpt-4", context_window_tokens=8_000)
     params = _build_intent_params()
     params["skill_params"] = []
 
-    chat_kwargs, _, _ = ChatService.format_chat_server_kwargs(params, model)
+    chat_kwargs, _, _ = ChatService.format_chat_server_kwargs(params, _llm_model("gpt-4"))
 
     assert chat_kwargs["temperature"] == 0.1
 
 
+def test_format_chat_server_kwargs_omits_pinned_temperature_for_fixed_unit_model():
+    chat_kwargs, _, _ = ChatService.format_chat_server_kwargs(_chat_kwargs(), _llm_model("kimi-k2"))
+
+    assert chat_kwargs["temperature"] is None
+
+
 def test_intent_internal_temperature_omitted_for_fixed_unit_model():
-    model = LLMModel.objects.create(name="intent-kimi", vendor=_vendor(), model="kimi-k2", context_window_tokens=8_000)
     params = _build_intent_params()
     params["skill_params"] = []
 
-    chat_kwargs, _, _ = ChatService.format_chat_server_kwargs(params, model)
+    chat_kwargs, _, _ = ChatService.format_chat_server_kwargs(params, _llm_model("gpt-5-mini"))
 
     assert chat_kwargs["temperature"] is None

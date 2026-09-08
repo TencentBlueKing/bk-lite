@@ -3,7 +3,6 @@
 import pytest
 
 from apps.opspilot.enum import SkillTypeChoices
-from apps.opspilot.metis.llm.common.llm_client_factory import INTERNAL_SAMPLING_TEMPERATURE_KEY
 from apps.opspilot.models.model_provider_mgmt import LLMModel, ModelVendor
 from apps.opspilot.services.chat_service import ChatService
 
@@ -75,31 +74,3 @@ def test_format_chat_server_kwargs_ignores_legacy_suggest_rewrite_and_think_flag
     assert chat_kwargs["enable_query_rewrite"] is False
     assert chat_kwargs["extra_config"]["show_think"] is False
     assert chat_kwargs["temperature"] == 1.0
-
-
-def test_format_chat_server_kwargs_preserves_internal_sampling_temperature():
-    model = LLMModel.objects.create(name="chat-intent", vendor=_vendor(), model="gpt-4", context_window_tokens=8_000)
-    kwargs = _kwargs([])
-    kwargs["temperature"] = 0.9
-    kwargs[INTERNAL_SAMPLING_TEMPERATURE_KEY] = 0.1
-
-    chat_kwargs, _, _ = ChatService.format_chat_server_kwargs(kwargs, model)
-
-    assert chat_kwargs["temperature"] == 0.1
-
-
-def test_format_chat_server_kwargs_omits_temperature_for_fixed_unit_models():
-    model = LLMModel.objects.create(name="chat-kimi", vendor=_vendor(), model="kimi-k2", context_window_tokens=8_000)
-    chat_kwargs, _, _ = ChatService.format_chat_server_kwargs(_kwargs([]), model)
-
-    assert chat_kwargs["temperature"] is None
-
-
-def test_format_chat_server_kwargs_omits_internal_temperature_for_fixed_unit_models():
-    model = LLMModel.objects.create(name="chat-gpt5", vendor=_vendor(), model="gpt-5-mini", context_window_tokens=8_000)
-    kwargs = _kwargs([])
-    kwargs[INTERNAL_SAMPLING_TEMPERATURE_KEY] = 0.1
-
-    chat_kwargs, _, _ = ChatService.format_chat_server_kwargs(kwargs, model)
-
-    assert chat_kwargs["temperature"] is None
