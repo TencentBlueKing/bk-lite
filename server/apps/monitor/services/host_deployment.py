@@ -13,16 +13,15 @@ class HostDeploymentStatus:
 
     @classmethod
     def applies_to(cls, monitor_object_name, collector, collect_type):
-        return (
-            monitor_object_name == cls.MONITOR_OBJECT_NAME
-            and collector == cls.COLLECTOR
-            and collect_type == cls.COLLECT_TYPE
-        )
+        return monitor_object_name == cls.MONITOR_OBJECT_NAME and collector == cls.COLLECTOR and collect_type == cls.COLLECT_TYPE
+
+    @classmethod
+    def sink_child_config(cls):
+        """节点列表在数据源侧将已接入主机监控的节点整块沉底。"""
+        return {"collector": cls.COLLECTOR, "collect_type": cls.COLLECT_TYPE}
 
     def get_configured_node_ids(self, node_ids):
-        normalized_node_ids = list(
-            dict.fromkeys(str(node_id) for node_id in node_ids if node_id not in (None, ""))
-        )
+        normalized_node_ids = list(dict.fromkeys(str(node_id) for node_id in node_ids if node_id not in (None, "")))
         if not normalized_node_ids:
             return set()
 
