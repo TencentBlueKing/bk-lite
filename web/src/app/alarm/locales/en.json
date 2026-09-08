@@ -252,6 +252,7 @@
         "note": "Note",
         "alert": "Alert",
         "changes": "Timeline",
+        "relatedTopology": "Related Topology",
         "firstEventTime": "First Event Time",
         "lastEventTime": "Last Event Time",
         "closeTime": "Close Time",
