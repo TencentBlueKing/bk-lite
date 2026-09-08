@@ -3,6 +3,7 @@ import type {
   UnifiedFilterDefinition,
 } from '@/app/ops-analysis/types/dashBoard';
 import { normalizeTimeRangeFilterValue } from '@/app/ops-analysis/utils/filterValue';
+import { normalizeUnifiedFilterInputMode } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { validateDateRangeValue } from '@/app/ops-analysis/utils/dateRange';
 import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
 import {
@@ -158,6 +159,65 @@ export const syncFilterValuesWithDefinitions = (
   });
 
   return coerceFilterValuesForDefinitions(nextDefinitions, updatedValues);
+};
+
+export const isOrganizationFilterDefinition = (
+  definition: UnifiedFilterDefinition,
+): boolean => definition.type === 'string'
+  && definition.key === 'organization'
+  && normalizeUnifiedFilterInputMode(definition.inputMode) === 'organization';
+
+export const applySelectedOrganizationToFilterValues = (
+  definitions: UnifiedFilterDefinition[],
+  values: Record<string, FilterValue>,
+  selectedOrganizationId?: string | number | null,
+): Record<string, FilterValue> => {
+  if (
+    selectedOrganizationId === undefined
+    || selectedOrganizationId === null
+    || selectedOrganizationId === ''
+  ) {
+    return values;
+  }
+
+  const nextValues = { ...values };
+  const organizationValue = String(selectedOrganizationId);
+  definitions.forEach((definition) => {
+    if (!definition.enabled || !isOrganizationFilterDefinition(definition)) {
+      return;
+    }
+    nextValues[definition.id] = organizationValue;
+  });
+  return nextValues;
+};
+
+export const fillMissingOrganizationFilterValues = (
+  definitions: UnifiedFilterDefinition[],
+  values: Record<string, FilterValue>,
+  selectedOrganizationId?: string | number | null,
+): Record<string, FilterValue> => {
+  if (
+    selectedOrganizationId === undefined
+    || selectedOrganizationId === null
+    || selectedOrganizationId === ''
+  ) {
+    return values;
+  }
+
+  const nextValues = { ...values };
+  const organizationValue = String(selectedOrganizationId);
+  let changed = false;
+  definitions.forEach((definition) => {
+    if (!definition.enabled || !isOrganizationFilterDefinition(definition)) {
+      return;
+    }
+    const current = nextValues[definition.id];
+    if (current === undefined || current === null || current === '') {
+      nextValues[definition.id] = organizationValue;
+      changed = true;
+    }
+  });
+  return changed ? nextValues : values;
 };
 
 /** 筛选配置确认：draft/applied 使用同一版 definitions 规范化 values。 */

@@ -408,6 +408,8 @@ def test_get_alert_period_statistics_uses_each_domain_time_and_half_open_window(
             "session_alert_count": 1,
             "session_alert_rate": 100.0,
             "aggregation_ratio": 2.0,
+            "closed_alert_count": 0,
+            "closed_loop_rate": 0,
         },
         "message": "",
     }
@@ -419,6 +421,177 @@ def test_get_alert_period_statistics_requires_time(user_info):
     result = N.get_alert_period_statistics(user_info=user_info)
 
     assert result == {"result": False, "data": {}, "message": "time range is required."}
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_get_alert_period_statistics_closed_loop_uses_updated_at_and_closed_status(user_info):
+    start = timezone.now().replace(microsecond=0) - datetime.timedelta(days=1)
+    end = start + datetime.timedelta(hours=2)
+    created = Alert.objects.create(
+        alert_id="LOOP-NEW",
+        level="0",
+        title="new",
+        content="c",
+        fingerprint="loop-new",
+        team=[1],
+    )
+    closed = Alert.objects.create(
+        alert_id="LOOP-CLOSED",
+        level="0",
+        title="closed",
+        content="c",
+        fingerprint="loop-closed",
+        team=[1],
+        status=AlertStatus.CLOSED,
+    )
+    auto_closed = Alert.objects.create(
+        alert_id="LOOP-AUTO",
+        level="0",
+        title="auto",
+        content="c",
+        fingerprint="loop-auto",
+        team=[1],
+        status=AlertStatus.AUTO_CLOSE,
+    )
+    outside = Alert.objects.create(
+        alert_id="LOOP-OUT",
+        level="0",
+        title="out",
+        content="c",
+        fingerprint="loop-out",
+        team=[1],
+        status=AlertStatus.CLOSED,
+    )
+    other_org = Alert.objects.create(
+        alert_id="LOOP-OTHER",
+        level="0",
+        title="other",
+        content="c",
+        fingerprint="loop-other",
+        team=[2],
+        status=AlertStatus.CLOSED,
+    )
+    Alert.objects.filter(pk=created.pk).update(created_at=start)
+    Alert.objects.filter(pk=closed.pk).update(created_at=start - datetime.timedelta(days=3), updated_at=start)
+    Alert.objects.filter(pk=auto_closed.pk).update(created_at=start - datetime.timedelta(days=3), updated_at=start + datetime.timedelta(hours=1))
+    Alert.objects.filter(pk=outside.pk).update(created_at=start - datetime.timedelta(days=3), updated_at=end)
+    Alert.objects.filter(pk=other_org.pk).update(created_at=start, updated_at=start)
+
+    result = N.get_alert_period_statistics(user_info=user_info, time=[start.isoformat(), end.isoformat()])
+
+    assert result["result"] is True
+    assert result["data"]["new_alert_count"] == 1
+    assert result["data"]["closed_alert_count"] == 2
+    assert result["data"]["closed_loop_rate"] == 200.0
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_get_alert_correlation_rule_hit_top_counts_created_alerts_by_rule(user_info):
+    from apps.alerts.models.alert_operator import AlarmStrategy
+
+    start = timezone.now().replace(microsecond=0) - datetime.timedelta(days=1)
+    end = start + datetime.timedelta(hours=2)
+    noisy = AlarmStrategy.objects.create(name="noisy-rule", strategy_type="smart_denoise", team=[1])
+    quiet = AlarmStrategy.objects.create(name="quiet-rule", strategy_type="smart_denoise", team=[1])
+    other = AlarmStrategy.objects.create(name="other-org-rule", strategy_type="smart_denoise", team=[2])
+    for index in range(3):
+        alert = Alert.objects.create(
+            alert_id=f"HIT-NOISY-{index}",
+            level="0",
+            title="noisy",
+            content="c",
+            fingerprint=f"hit-noisy-{index}",
+            team=[1],
+            rule_id=str(noisy.id),
+        )
+        Alert.objects.filter(pk=alert.pk).update(created_at=start)
+    quiet_alert = Alert.objects.create(
+        alert_id="HIT-QUIET",
+        level="0",
+        title="quiet",
+        content="c",
+        fingerprint="hit-quiet",
+        team=[1],
+        rule_id=str(quiet.id),
+    )
+    Alert.objects.filter(pk=quiet_alert.pk).update(created_at=start)
+    other_alert = Alert.objects.create(
+        alert_id="HIT-OTHER",
+        level="0",
+        title="other",
+        content="c",
+        fingerprint="hit-other",
+        team=[2],
+        rule_id=str(other.id),
+    )
+    Alert.objects.filter(pk=other_alert.pk).update(created_at=start)
+    missing = Alert.objects.create(
+        alert_id="HIT-MISSING",
+        level="0",
+        title="missing",
+        content="c",
+        fingerprint="hit-missing",
+        team=[1],
+        rule_id="",
+    )
+    Alert.objects.filter(pk=missing.pk).update(created_at=start)
+
+    result = N.get_alert_correlation_rule_hit_top(user_info=user_info, limit=10, time=[start.isoformat(), end.isoformat()])
+
+    assert result["result"] is True
+    assert result["data"] == [
+        {"rule_name": "noisy-rule", "rule_id": str(noisy.id), "count": 3},
+        {"rule_name": "quiet-rule", "rule_id": str(quiet.id), "count": 1},
+    ]
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_get_alert_correlation_rule_hit_top_excludes_non_alarm_strategy_rule_ids(user_info):
+    from apps.alerts.models.alert_operator import AlarmStrategy
+
+    start = timezone.now().replace(microsecond=0) - datetime.timedelta(days=1)
+    end = start + datetime.timedelta(hours=2)
+    strategy = AlarmStrategy.objects.create(name="keep-rule", strategy_type="smart_denoise", team=[1])
+    for index in range(2):
+        alert = Alert.objects.create(
+            alert_id=f"HIT-KEEP-{index}",
+            level="0",
+            title="keep",
+            content="c",
+            fingerprint=f"hit-keep-{index}",
+            team=[1],
+            rule_id=str(strategy.id),
+        )
+        Alert.objects.filter(pk=alert.pk).update(created_at=start)
+    for index in range(5):
+        alert = Alert.objects.create(
+            alert_id=f"HIT-TRIGGER-{index}",
+            level="0",
+            title="trigger",
+            content="c",
+            fingerprint=f"hit-trigger-{index}",
+            team=[1],
+            rule_id="trigger-abc",
+        )
+        Alert.objects.filter(pk=alert.pk).update(created_at=start)
+    orphan = Alert.objects.create(
+        alert_id="HIT-ORPHAN",
+        level="0",
+        title="orphan",
+        content="c",
+        fingerprint="hit-orphan",
+        team=[1],
+        rule_id="99999999",
+    )
+    Alert.objects.filter(pk=orphan.pk).update(created_at=start)
+
+    result = N.get_alert_correlation_rule_hit_top(user_info=user_info, limit=10, time=[start.isoformat(), end.isoformat()])
+
+    assert result["result"] is True
+    assert result["data"] == [{"rule_name": "keep-rule", "rule_id": str(strategy.id), "count": 2}]
 
 
 @pytest.mark.django_db

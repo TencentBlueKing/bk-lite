@@ -30,6 +30,7 @@ from apps.monitor.models import (
     MonitorAlertMetricSnapshot,
     MonitorEvent,
     MonitorInstance,
+    MonitorInstanceOrganization,
     MonitorObject,
     MonitorObjectType,
     MonitorPlugin,
@@ -1986,6 +1987,98 @@ def get_monitor_statistics(user_info=None, **kwargs):
         },
         "message": "",
     }
+
+
+MONITOR_INSTANCE_ALERT_RANKING_MOST = "most_alerts"
+MONITOR_INSTANCE_ALERT_RANKING_LEAST = "least_policy_alerts"
+
+
+def _policy_covered_instance_ids(policy_qs, instance_qs):
+    instance_ids = set(instance_qs.values_list("id", flat=True))
+    covered = set()
+    for policy in policy_qs.filter(enable=True).only("id", "monitor_object_id", "source"):
+        source = policy.source if isinstance(policy.source, dict) else {}
+        source_type = source.get("type")
+        source_values = source.get("values") or []
+        if source_type == "instance":
+            covered.update(value for value in source_values if value in instance_ids)
+            continue
+        if source_type == "organization":
+            covered.update(
+                MonitorInstanceOrganization.objects.filter(
+                    monitor_instance__monitor_object_id=policy.monitor_object_id,
+                    monitor_instance_id__in=instance_ids,
+                    organization__in=source_values,
+                ).values_list("monitor_instance_id", flat=True)
+            )
+            continue
+        covered.update(instance_qs.filter(monitor_object_id=policy.monitor_object_id).values_list("id", flat=True))
+    return covered
+
+
+@nats_client.register
+def get_monitor_instance_alert_ranking(user_info=None, ranking="most_alerts", limit=10, time=None, **kwargs):
+    """监控实例告警排行：告警最多，或已配策略且告警最少（含 0）。"""
+    user_info = user_info or {}
+    ranking = (ranking or kwargs.get("ranking") or MONITOR_INSTANCE_ALERT_RANKING_MOST).strip()
+    if ranking not in {MONITOR_INSTANCE_ALERT_RANKING_MOST, MONITOR_INSTANCE_ALERT_RANKING_LEAST}:
+        return {"result": False, "data": [], "message": "ranking 参数无效"}
+
+    policy_qs, policy_error = _get_nats_accessible_policy_queryset(user_info)
+    if policy_error:
+        return policy_error
+    instance_qs, instance_error = _get_nats_accessible_instance_queryset(user_info)
+    if instance_error:
+        return instance_error
+
+    try:
+        start, end = parse_rfc3339_range_utc(time if time is not None else kwargs.get("time"))
+    except ValueError as exc:
+        return {"result": False, "data": [], "message": str(exc)}
+
+    try:
+        limit = int(limit or 10)
+    except (TypeError, ValueError):
+        limit = 10
+    if limit <= 0:
+        limit = 10
+    if limit > 100:
+        limit = 100
+
+    if ranking == MONITOR_INSTANCE_ALERT_RANKING_LEAST:
+        candidate_ids = _policy_covered_instance_ids(policy_qs, instance_qs)
+    else:
+        candidate_ids = set(instance_qs.values_list("id", flat=True))
+
+    if not candidate_ids:
+        return {"result": True, "data": [], "message": ""}
+
+    alert_counts = {
+        item["monitor_instance_id"]: item["count"]
+        for item in MonitorAlert.objects.filter(
+            monitor_instance_id__in=candidate_ids,
+            created_at__gte=start,
+            created_at__lt=end,
+        )
+        .order_by()
+        .values("monitor_instance_id")
+        .annotate(count=Count("id"))
+    }
+    names = dict(instance_qs.filter(id__in=candidate_ids).values_list("id", "name"))
+    rows = [
+        {
+            "instance_id": instance_id,
+            "instance_name": names.get(instance_id) or instance_id,
+            "count": alert_counts.get(instance_id, 0),
+        }
+        for instance_id in candidate_ids
+    ]
+    if ranking == MONITOR_INSTANCE_ALERT_RANKING_MOST:
+        rows = [item for item in rows if item["count"] > 0]
+        rows.sort(key=lambda item: (-item["count"], item["instance_name"]))
+    else:
+        rows.sort(key=lambda item: (item["count"], item["instance_name"]))
+    return {"result": True, "data": rows[:limit], "message": ""}
 
 
 def _resolve_monitor_ingest_allowed_org_ids(params):
