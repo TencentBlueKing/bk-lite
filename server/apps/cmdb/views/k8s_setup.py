@@ -5,6 +5,7 @@ from rest_framework.viewsets import ViewSet
 from apps.cmdb.services.k8s_setup import K8sSetupService
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.k8s_daemonset_tolerations import TOLERATIONS_UNSET, extract_request_tolerations
 from apps.core.utils.open_base import OpenAPIViewSet
 from apps.core.utils.web_utils import WebUtils
 
@@ -19,7 +20,11 @@ class K8sSetupViewSet(ViewSet):
         cloud_region_id = request.data.get("cloud_region_id")
         if cloud_region_id in (None, ""):
             raise BaseAppException("cloud_region_id is required")
-        data = K8sSetupService.generate_install_token(collector_cluster_id, cloud_region_id)
+        extra = {}
+        requested = extract_request_tolerations(request.data)
+        if requested is not TOLERATIONS_UNSET:
+            extra["tolerations"] = requested
+        data = K8sSetupService.generate_install_token(collector_cluster_id, cloud_region_id, **extra)
         return WebUtils.response_success(data)
 
     @action(methods=["post"], detail=False, url_path="install_command")
@@ -30,7 +35,11 @@ class K8sSetupViewSet(ViewSet):
         cloud_region_id = request.data.get("cloud_region_id")
         if cloud_region_id in (None, ""):
             raise BaseAppException("cloud_region_id is required")
-        data = K8sSetupService.generate_install_command(collector_cluster_id, cloud_region_id)
+        extra = {}
+        requested = extract_request_tolerations(request.data)
+        if requested is not TOLERATIONS_UNSET:
+            extra["tolerations"] = requested
+        data = K8sSetupService.generate_install_command(collector_cluster_id, cloud_region_id, **extra)
         return WebUtils.response_success(data)
 
     @action(methods=["post"], detail=False, url_path="verify")

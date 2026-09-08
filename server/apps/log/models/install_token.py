@@ -24,6 +24,7 @@ class K8sInstallToken(models.Model):
         default="bk-lite.tencentcloudcr.com/bklite",
         verbose_name="镜像仓库前缀",
     )
+    tolerations = models.JSONField(null=True, blank=True, default=None, verbose_name="DaemonSet 污点容忍清单")
     usage_count = models.PositiveSmallIntegerField(default=0, verbose_name="已使用次数")
     max_usage = models.PositiveSmallIntegerField(default=5, verbose_name="最大使用次数")
     expires_at = models.DateTimeField(db_index=True, verbose_name="过期时间")
