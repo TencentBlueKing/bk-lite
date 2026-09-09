@@ -11,11 +11,11 @@ type: concept
 title: 页面标题
 ---`;
 
-export type MarkdownImportGovernanceErrorView = {
+export interface MarkdownImportGovernanceErrorView {
   title: string;
   description?: string;
   example?: string;
-};
+}
 
 export const markdownImportAccept = (
   importFormat: WikiMarkdownImportFormat = "markdown",
@@ -140,8 +140,8 @@ export const markdownImportGovernanceErrorView = (
     const extra =
       details?.truncated && (details.total || 0) > missing.length
         ? `\n${interpolate(t("wiki.okfImageMissingTruncated"), {
-            count: (details.total || 0) - missing.length,
-          })}`
+          count: (details.total || 0) - missing.length,
+        })}`
         : "";
     return {
       title: t("wiki.okfImagesMissing"),

@@ -27,7 +27,8 @@ vi.mock('@/hooks/useLocalizedTime', () => ({
 
 vi.mock('@/app/monitor/hooks/useUnitTransform', () => ({
   useUnitTransform: () => ({
-    getEnumValueUnit: (_metric: unknown, value: unknown) => String(value ?? '')
+    getEnumValueUnit: (_metric: unknown, value: unknown) => String(value ?? ''),
+    findUnitNameById: (unitId?: string) => unitId || ''
   })
 }));
 
@@ -146,11 +147,15 @@ describe('告警详情事件时间线', { timeout: 15000 }, () => {
     });
 
     await screen.findByText('CPU 超阈值');
-    await userEvent.click(screen.getByText('事件'));
 
     await waitFor(() => {
-      expect(getMonitorEventDetail).toHaveBeenCalled();
+      expect(getMonitorEventDetail).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ page: 1, page_size: -1 }),
+      );
     });
+
+    await userEvent.click(screen.getByText('事件'));
     expect(await screen.findByText('触发')).toBeTruthy();
     expect(await screen.findByText('认领')).toBeTruthy();
     expect(await screen.findByText('分派')).toBeTruthy();

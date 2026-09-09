@@ -113,38 +113,38 @@ describe('日志告警详情事件序列', () => {
   it(
     '展示认领/分派/关闭动作，且热力图与详情不把生命周期当命中',
     async () => {
-    const ref = createRef<ModalRef>();
-    render(
+      const ref = createRef<ModalRef>();
+      render(
       <AlertDetail ref={ref} objects={[]} userList={[]} onSuccess={vi.fn()} />
-    );
+      );
 
-    await act(async () => {
-      ref.current?.showModal({
-        type: 'alert',
-        title: '告警详情',
-        form: {
-          id: 'a1',
-          status: 'new',
-          level: 'warning',
-          content: 'error keyword',
-          alert_type: 'keyword',
-          updated_at: '2026-01-01 12:00:00'
-        }
+      await act(async () => {
+        ref.current?.showModal({
+          type: 'alert',
+          title: '告警详情',
+          form: {
+            id: 'a1',
+            status: 'new',
+            level: 'warning',
+            content: 'error keyword',
+            alert_type: 'keyword',
+            updated_at: '2026-01-01 12:00:00'
+          }
+        });
       });
-    });
 
-    await userEvent.click(screen.getByText('事件'));
-    await waitFor(() => {
-      expect(geEventList).toHaveBeenCalled();
-    });
+      await userEvent.click(screen.getByText('事件'));
+      await waitFor(() => {
+        expect(geEventList).toHaveBeenCalled();
+      });
 
-    expect(await screen.findByText('认领')).toBeTruthy();
-    expect(screen.getByText('分派')).toBeTruthy();
-    expect(screen.getByText('关闭')).toBeTruthy();
-    expect(screen.getByText('error keyword')).toBeTruthy();
-    expect(screen.getByTestId('event-heat-map').textContent).toBe('hit-1');
-    expect(screen.getAllByRole('button', { name: '详情' })).toHaveLength(1);
-  },
+      expect(await screen.findByText('认领')).toBeTruthy();
+      expect(screen.getByText('分派')).toBeTruthy();
+      expect(screen.getByText('关闭')).toBeTruthy();
+      expect(screen.getByText('error keyword')).toBeTruthy();
+      expect(screen.getByTestId('event-heat-map').textContent).toBe('hit-1');
+      expect(screen.getAllByRole('button', { name: '详情' })).toHaveLength(1);
+    },
     15000
   );
 });

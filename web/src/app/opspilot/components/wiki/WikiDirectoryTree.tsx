@@ -119,8 +119,8 @@ const WikiDirectoryTree: React.FC<WikiDirectoryTreeProps> = ({
           </span>
           {onDeletePage
             ? renderDeleteControl(t("wiki.deletePageConfirm"), () => {
-                onDeletePage(page.id);
-              })
+              onDeletePage(page.id);
+            })
             : null}
         </span>
       ),
@@ -154,8 +154,8 @@ const WikiDirectoryTree: React.FC<WikiDirectoryTreeProps> = ({
             </span>
             {showDirectoryDelete
               ? renderDeleteControl(t("wiki.deleteDirectoryConfirm"), () => {
-                  onDeleteDirectory?.(directory.id);
-                })
+                onDeleteDirectory?.(directory.id);
+              })
               : null}
           </span>
         ),

@@ -134,6 +134,12 @@ async function assertSelectedAlertIds() {
     'link payload must be selected IDs only, never a union with visible or hidden table rows'
   );
 
+  assert.deepEqual(
+    collectSelectedAlertIds([12, '34', 56n, 'x']),
+    [12, 34],
+    'bigint React keys must be dropped, numeric strings kept'
+  );
+
   const unlinkIds = collectSelectedAlertIds([101]);
   assert.deepEqual(unlinkIds, [101]);
   assert.notDeepEqual(
