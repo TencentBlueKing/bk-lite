@@ -5024,8 +5024,8 @@
         <text data-detail="fine" x="855" y="387" class="t-database" font-size="7" text-anchor="middle">单行事实与锁热点</text>
         </g>
 
-        <g id="node-celery" data-node-id="celery" data-node-label="Celery / Beat" tabindex="0" role="button" aria-label="Focus Celery / Beat, dispatch / schedule / cancel fallback, 执行与生命周期运行时" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="dispatch / schedule / cancel fallback" data-node-tag="无执行 lease" data-node-context="执行与生命周期运行时">
-          <title>Celery / Beat · dispatch / schedule / cancel fallback · 执行与生命周期运行时 · 无执行 lease</title>
+        <g id="node-celery" data-node-id="celery" data-node-label="Celery / Beat" tabindex="0" role="button" aria-label="Focus Celery / Beat, dispatch / schedule / deadline fallback, 执行与生命周期运行时" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="dispatch / schedule / deadline fallback" data-node-tag="执行 deadline 扫描" data-node-context="执行与生命周期运行时">
+          <title>Celery / Beat · dispatch / schedule / deadline fallback · 执行与生命周期运行时 · 执行 deadline 扫描</title>
           <rect x="745" y="85" width="220" height="92" rx="6" class="c-mask"/>
           <rect x="745" y="85" width="220" height="92" rx="6" class="c-messagebus" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(751 91) scale(0.6875)">
@@ -5035,8 +5035,8 @@
             <circle cx="7" cy="11.5" r="1" class="sigil-fill"/>
           </g>
           <text data-detail-anchor x="855" y="129" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Celery / Beat</text>
-        <text data-detail="context" x="855" y="145" class="t-muted" font-size="9" text-anchor="middle">dispatch / schedule / cancel fallback</text>
-        <text data-detail="fine" x="855" y="169" class="t-messagebus" font-size="7" text-anchor="middle">无执行 lease</text>
+        <text data-detail="context" x="855" y="145" class="t-muted" font-size="9" text-anchor="middle">dispatch / schedule / deadline fallback</text>
+        <text data-detail="fine" x="855" y="169" class="t-messagebus" font-size="7" text-anchor="middle">执行 deadline 扫描</text>
         </g>
 
         <g id="node-sidecar" data-node-id="sidecar" data-node-label="Sidecar Runners" tabindex="0" role="button" aria-label="Focus Sidecar Runners, Script / File + ThreadPoolExecutor, 执行与生命周期运行时" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Script / File + ThreadPoolExecutor" data-node-tag="每 execution ≤10 线程" data-node-context="执行与生命周期运行时">
@@ -5345,7 +5345,7 @@
         </div>
         <ul>
           <li>&bull; 执行 claim、取消行锁与一次性 callback identity 已形成明确裁决点</li>
-          <li>&bull; Completion Outbox 有幂等键、短 lease、重试与 Beat 重扫</li>
+          <li>&bull; JobExecution deadline 与 Completion Outbox 均由 Beat 定期重扫</li>
         </ul>
       </div>
 
@@ -5367,7 +5367,7 @@
         </div>
         <ul>
           <li>&bull; 目标和输出聚合成一个 JSON 行，终态与回调复制完整结果</li>
-          <li>&bull; 每 execution 自建线程池；无共享预算与 RUNNING 租约回收</li>
+          <li>&bull; 每 execution 自建线程池；只有批次 deadline，无细粒度 heartbeat/attempt lease</li>
         </ul>
       </div>
     </div>
