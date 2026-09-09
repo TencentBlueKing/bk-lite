@@ -10,6 +10,7 @@ const DEFAULT_PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
 /**
  * APM 列表只为稳定窄列保留固定宽度；名称等主信息列不设置 width，由表格分配剩余空间。
+ * 主信息列禁止使用百分比宽度：`table-layout: fixed` 下像素列占满表格时，百分比列会被算成 0px。
  * 调用链 Trace ID 需要放下 32 位十六进制，因此入口服务、资源收成稳定窄列，把剩余空间留给 Trace ID。
  *
  * 密度约定：工作面 16px 内边距；表头/单元格 8×12，最右列右侧 20px，避免操作贴边；高度随行数，不锁死视口。
@@ -35,6 +36,11 @@ export const APM_TABLE_COLUMN_WIDTHS = {
 type ApmDataTableProps<RecordType extends object> = Omit<TableProps<RecordType>, 'bordered'> & {
   /** @deprecated APM 表格已统一使用左对齐；保留此属性只为兼容存量调用。 */
   headerAlignment?: 'left' | 'column';
+  /**
+   * 给首列主信息列设置 col min-width。`table-layout: fixed` 下百分比/未设宽
+   * 的列会在像素列占满表格时被算成 0px；单元格 min-width 无效，必须作用在 col 上。
+   */
+  identityColumnMinWidth?: number;
 };
 
 function alignColumnsLeft<RecordType extends object>(
@@ -100,8 +106,10 @@ export default function ApmDataTable<RecordType extends object>({
   className = '',
   columns,
   headerAlignment,
+  identityColumnMinWidth,
   pagination,
   size = 'middle',
+  style,
   tableLayout = 'fixed',
   ...props
 }: ApmDataTableProps<RecordType>) {
@@ -112,10 +120,16 @@ export default function ApmDataTable<RecordType extends object>({
     <Table<RecordType>
       {...props}
       bordered={false}
-      className={`${styles.table} ${className}`.trim()}
+      className={`${styles.table} ${identityColumnMinWidth ? styles.identityFloor : ''} ${className}`.trim()}
       columns={alignColumnsLeft(columns)}
       pagination={normalizePagination(pagination as TableProps<never>['pagination'])}
       size={size}
+      style={{
+        ...style,
+        ...(identityColumnMinWidth
+          ? { ['--apm-identity-col-min-width' as string]: `${identityColumnMinWidth}px` }
+          : {}),
+      }}
       tableLayout={tableLayout}
     />
   );
