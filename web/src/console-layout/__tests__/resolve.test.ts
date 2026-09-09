@@ -97,6 +97,8 @@ describe('console chrome layout resolve', () => {
     expect(shouldHideConsoleTopNav('/opspilot/studio/chat')).toBe(true);
     expect(shouldHideConsoleTopNav('/opspilot/studio/chat/')).toBe(true);
     expect(shouldHideConsoleTopNav('/opspilot/skill/chat')).toBe(true);
+    expect(shouldHideConsoleTopNav('/opspilot/memory/document')).toBe(true);
+    expect(shouldHideConsoleTopNav('/opspilot/memory/detail/memories')).toBe(false);
     expect(shouldHideConsoleTopNav('/opspilot/studio')).toBe(false);
     expect(shouldHideConsoleTopNav('/opspilot/skill/detail/settings')).toBe(false);
     expect(shouldHideConsoleTopNav('/cmdb/assetOverview')).toBe(false);

@@ -170,6 +170,9 @@ def test_memory_create_sets_owner_and_audit(monkeypatch):
     body = _body(retrieved)
     assert body["result"] is True
     assert body["data"]["title"] == "改名"
+    assert body["data"]["content"] == "patched"
+    assert body["data"]["content_length"] == len("patched")
+    assert body["data"]["content_truncated"] is False
 
     deleted = _call(MemoryViewSet.as_view({"delete": "destroy"}), factory.delete("/x/"), user, pk=mem.id)
     assert deleted.status_code in (status.HTTP_200_OK, status.HTTP_204_NO_CONTENT)
@@ -237,3 +240,86 @@ def test_test_write_validates_input_rule_and_model(monkeypatch):
     assert failed.status_code == 500
     assert body["result"] is False
     assert body["message"] == "LLM 调用失败: llm down"
+
+
+def test_memory_retrieve_content_limit_truncates_without_full_payload():
+    user = _superuser()
+    space = MemorySpace.objects.create(name="限流空间", team=[1], scope=MemorySpace.SCOPE_TEAM)
+    huge = "B" * 4000
+    mem = Memory.objects.create(memory_space=space, title="大记忆", content=huge, owner_username="mem-su", owner_domain="domain.com")
+    view = MemoryViewSet.as_view({"get": "retrieve"})
+
+    limited = _call(view, factory.get("/x/", {"content_limit": "120"}), user, pk=mem.id)
+    body = _body(limited)
+    assert limited.status_code == status.HTTP_200_OK
+    assert body["data"]["content"] == huge[:120]
+    assert body["data"]["content_length"] == 4000
+    assert body["data"]["content_truncated"] is True
+    assert huge not in limited.content.decode("utf-8")
+
+    invalid = _call(view, factory.get("/x/", {"content_limit": "abc"}), user, pk=mem.id)
+    body = _body(invalid)
+    assert invalid.status_code == 400
+    assert body["result"] is False
+    assert body["message"] == "content_limit 必须是正整数"
+
+
+def test_memory_retrieve_content_offset_returns_middle_slice():
+    user = _superuser()
+    space = MemorySpace.objects.create(name="偏移空间", team=[1], scope=MemorySpace.SCOPE_TEAM)
+    huge = "ABCDEFGHIJ" * 40
+    mem = Memory.objects.create(memory_space=space, title="切片记忆", content=huge, owner_username="mem-su", owner_domain="domain.com")
+    view = MemoryViewSet.as_view({"get": "retrieve"})
+
+    sliced = _call(view, factory.get("/x/", {"content_offset": "10", "content_limit": "8"}), user, pk=mem.id)
+    body = _body(sliced)
+    assert sliced.status_code == status.HTTP_200_OK
+    assert body["data"]["content"] == huge[10:18]
+    assert body["data"]["content_length"] == len(huge)
+    assert body["data"]["content_offset"] == 10
+    assert body["data"]["content_truncated"] is True
+    assert huge not in sliced.content.decode("utf-8")
+
+    invalid = _call(view, factory.get("/x/", {"content_offset": "-1"}), user, pk=mem.id)
+    body = _body(invalid)
+    assert invalid.status_code == 400
+    assert body["message"] == "content_offset 必须是非负整数"
+
+
+def test_memory_partial_update_splices_current_page():
+    user = _superuser()
+    space = MemorySpace.objects.create(name="分页写入", team=[1], scope=MemorySpace.SCOPE_TEAM)
+    mem = Memory.objects.create(
+        memory_space=space,
+        title="切片改写",
+        content="ABCDEFGHIJ",
+        owner_username="mem-su",
+        owner_domain="domain.com",
+    )
+    patched = _call(
+        MemoryViewSet.as_view({"patch": "partial_update"}),
+        factory.patch(
+            "/x/",
+            {"content": "xyz", "content_offset": 3, "content_replace_length": 4},
+            format="json",
+        ),
+        user,
+        pk=mem.id,
+    )
+    assert patched.status_code == status.HTTP_200_OK
+    mem.refresh_from_db()
+    assert mem.content == "ABCxyzHIJ"
+
+    oob = _call(
+        MemoryViewSet.as_view({"patch": "partial_update"}),
+        factory.patch(
+            "/x/",
+            {"content": "x", "content_offset": 99, "content_replace_length": 1},
+            format="json",
+        ),
+        user,
+        pk=mem.id,
+    )
+    assert oob.status_code == 400
+    mem.refresh_from_db()
+    assert mem.content == "ABCxyzHIJ"
