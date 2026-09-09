@@ -47,6 +47,8 @@ class ExecutionTaskBaseService(object):
         return data.get("password")
 
     def prepare_execution(self) -> Tuple[Optional[JobExecution], list]:
+        from apps.job_mgmt.services.execution_timeout_service import ExecutionTimeoutService
+
         with transaction.atomic():
             try:
                 execution = JobExecution.objects.select_for_update().get(id=self.execution_id)
@@ -65,12 +67,14 @@ class ExecutionTaskBaseService(object):
                 execution.status = ExecutionStatus.SUCCESS
                 execution.started_at = now
                 execution.finished_at = now
-                execution.save(update_fields=["status", "started_at", "finished_at", "updated_at"])
+                execution.converge_deadline_at = None
+                execution.save(update_fields=["status", "started_at", "finished_at", "converge_deadline_at", "updated_at"])
                 return None, []
 
             execution.status = ExecutionStatus.RUNNING
             execution.started_at = now
-            execution.save(update_fields=["status", "started_at", "updated_at"])
+            execution.converge_deadline_at = ExecutionTimeoutService.running_deadline(execution.timeout, now=now)
+            execution.save(update_fields=["status", "started_at", "converge_deadline_at", "updated_at"])
         return execution, target_list
 
     @staticmethod
@@ -90,15 +94,44 @@ class ExecutionTaskBaseService(object):
         started_at: Optional[datetime] = None,
         finished_at: Optional[datetime] = None,
     ):
-        update_fields = ["status", "updated_at"]
-        execution.status = status
-        if started_at:
-            execution.started_at = started_at
-            update_fields.append("started_at")
-        if finished_at:
-            execution.finished_at = finished_at
-            update_fields.append("finished_at")
-        execution.save(update_fields=update_fields)
+        if not isinstance(execution, JobExecution):
+            update_fields = ["status", "updated_at"]
+            execution.status = status
+            if started_at:
+                execution.started_at = started_at
+                update_fields.append("started_at")
+            if finished_at:
+                execution.finished_at = finished_at
+                update_fields.append("finished_at")
+            execution.save(update_fields=update_fields)
+            return True
+
+        with transaction.atomic():
+            locked = JobExecution.objects.select_for_update().get(id=execution.id)
+            if locked.status in ExecutionStatus.TERMINAL_STATES or locked.status == ExecutionStatus.CANCELLING:
+                execution.status = locked.status
+                execution.finished_at = locked.finished_at
+                execution.converge_deadline_at = locked.converge_deadline_at
+                return False
+
+            update_fields = ["status", "updated_at"]
+            locked.status = status
+            if started_at:
+                locked.started_at = started_at
+                update_fields.append("started_at")
+            if finished_at:
+                locked.finished_at = finished_at
+                update_fields.append("finished_at")
+            if status in ExecutionStatus.TERMINAL_STATES:
+                locked.converge_deadline_at = None
+                update_fields.append("converge_deadline_at")
+            locked.save(update_fields=update_fields)
+
+        execution.status = locked.status
+        execution.started_at = locked.started_at
+        execution.finished_at = locked.finished_at
+        execution.converge_deadline_at = locked.converge_deadline_at
+        return True
 
     @staticmethod
     def is_cancelled(execution_id: int) -> bool:
@@ -131,27 +164,55 @@ class ExecutionTaskBaseService(object):
 
     @classmethod
     def finalize_execution(cls, execution: JobExecution, task_name: str, results: list):
-        execution.execution_results = results
-        execution.save(update_fields=["execution_results", "updated_at"])
-        execution.refresh_from_db()
-        if execution.status in (ExecutionStatus.CANCELLING, ExecutionStatus.CANCELLED):
-            # 取消时保留已完成的真实结果与计数，并把 CANCELLING 收敛为 CANCELLED 终态
-            cls.update_execution_counts(execution)
-            cls.update_execution_status(execution, ExecutionStatus.CANCELLED, finished_at=timezone.now())
-            logger.info(
-                f"[{task_name}] 任务被取消，保留已完成结果: execution_id={execution.id}, " f"success={execution.success_count}, failed={execution.failed_count}"
-            )
-            # 取消时也发送回调通知，让第三方系统知道任务被取消
-            execution.refresh_from_db()
-            send_callback(execution)
-            return
-        cls.update_execution_counts(execution)
-        final_status = ExecutionStatus.FAILED if execution.failed_count > 0 else ExecutionStatus.SUCCESS
-        cls.update_execution_status(execution, final_status, finished_at=timezone.now())
-        logger.info(f"[{task_name}] 任务完成: execution_id={execution.id}, status={final_status}")
+        with transaction.atomic():
+            locked = JobExecution.objects.select_for_update().get(id=execution.id)
+            if locked.status in ExecutionStatus.TERMINAL_STATES and locked.status != ExecutionStatus.CANCELLED:
+                logger.info(
+                    "[%s] 忽略迟到的执行结果: execution_id=%s, current_status=%s",
+                    task_name,
+                    execution.id,
+                    locked.status,
+                )
+                return
 
-        # 回调通知（如有 callback_url）
-        execution.refresh_from_db()
+            locked.execution_results = results
+            locked.success_count = sum(1 for result in results if result.get("status") == ExecutionStatus.SUCCESS)
+            locked.failed_count = sum(1 for result in results if result.get("status") in (ExecutionStatus.FAILED, ExecutionStatus.TIMEOUT))
+            was_cancelled = locked.status in (ExecutionStatus.CANCELLING, ExecutionStatus.CANCELLED)
+            locked.status = (
+                ExecutionStatus.CANCELLED if was_cancelled else (ExecutionStatus.FAILED if locked.failed_count > 0 else ExecutionStatus.SUCCESS)
+            )
+            locked.finished_at = timezone.now()
+            locked.converge_deadline_at = None
+            locked.save(
+                update_fields=[
+                    "status",
+                    "converge_deadline_at",
+                    "execution_results",
+                    "finished_at",
+                    "success_count",
+                    "failed_count",
+                    "updated_at",
+                ]
+            )
+
+        execution.status = locked.status
+        execution.converge_deadline_at = None
+        execution.execution_results = locked.execution_results
+        execution.finished_at = locked.finished_at
+        execution.success_count = locked.success_count
+        execution.failed_count = locked.failed_count
+        if was_cancelled:
+            logger.info(
+                "[%s] 任务被取消，保留已完成结果: execution_id=%s, success=%s, failed=%s",
+                task_name,
+                execution.id,
+                execution.success_count,
+                execution.failed_count,
+            )
+        else:
+            logger.info("[%s] 任务完成: execution_id=%s, status=%s", task_name, execution.id, execution.status)
+
         send_callback(execution)
 
     @staticmethod

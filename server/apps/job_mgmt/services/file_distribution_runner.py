@@ -9,6 +9,7 @@ from apps.job_mgmt.constants import ExecutionStatus, ExecutorDriver, OSType, Tar
 from apps.job_mgmt.models import JobExecution, Target
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
+from apps.job_mgmt.services.execution_timeout_service import ExecutionTimeoutService
 from apps.node_mgmt.models import CloudRegion
 from apps.rpc.ansible import AnsibleExecutor
 from apps.rpc.executor import Executor
@@ -53,6 +54,8 @@ class FileDistributionRunner(ExecutionTaskBaseService):
         results = []
         workers = min(self.MAX_WORKERS, len(target_list)) or 1
         for batch_start in range(0, len(target_list), workers):
+            if isinstance(execution, JobExecution) and ExecutionTimeoutService.renew_running(execution.id, work_units=len(files) or 1) is None:
+                break
             batch = target_list[batch_start : batch_start + workers]
             with ThreadPoolExecutor(max_workers=len(batch)) as pool:
                 futures = {
