@@ -67,6 +67,7 @@ export interface StrategyFields {
   notice_type?: string;
   notice_type_id?: number;
   notice_users?: string[];
+  handlers?: Array<string | number>;
   id?: number;
   group_by?: string[];
   query?: string;
