@@ -208,6 +208,9 @@ class PolicyViewSet(viewsets.ModelViewSet):
     def get_serializer_context(self):
         context = super().get_serializer_context()
         context["data_team_ids"] = self._get_data_scope(self.request).data_team_ids
+        pending = getattr(self, "_pending_policy_organizations", None)
+        if pending is not None:
+            context["policy_organizations"] = pending
         return context
 
     def _refresh_response_data(self, response, instance):
@@ -385,6 +388,7 @@ class PolicyViewSet(viewsets.ModelViewSet):
         if error_response:
             return error_response
 
+        self._pending_policy_organizations = organizations
         response = super().create(request, *args, **kwargs)
         policy_id = response.data["id"]
 
@@ -426,6 +430,7 @@ class PolicyViewSet(viewsets.ModelViewSet):
             error_response = self._authorize_target_organizations(request, organizations, effective_collect_type_id)
             if error_response:
                 return error_response
+            self._pending_policy_organizations = organizations
 
         response = super().update(request, *args, **kwargs)
         policy_id = kwargs["pk"]
@@ -470,6 +475,7 @@ class PolicyViewSet(viewsets.ModelViewSet):
             error_response = self._authorize_target_organizations(request, organizations, effective_collect_type_id)
             if error_response:
                 return error_response
+            self._pending_policy_organizations = organizations
 
         response = super().partial_update(request, *args, **kwargs)
         policy_id = kwargs["pk"]

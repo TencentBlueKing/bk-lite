@@ -60,6 +60,7 @@ def test_policy_serializer_exposes_and_persists_handlers():
         display_name="处理人甲",
         email="handler1@example.com",
         password="x",
+        group_list=[1],
     )
     policy = _policy()
     serializer = PolicySerializer(policy, data={"handlers": [user.id]}, partial=True)
@@ -77,6 +78,75 @@ def test_policy_serializer_defaults_handlers_to_empty_list():
 
     assert policy.handlers == []
     assert PolicySerializer(policy).data["handlers"] == []
+
+
+def test_policy_save_rejects_handlers_outside_policy_organizations():
+    inside = _org_user()
+    outsider = _org_user(username="outsider", organization=99)
+    disabled = _org_user(username="disabled1", disabled=True)
+    policy = _policy()
+
+    ok = PolicySerializer(policy, data={"handlers": [inside.id]}, partial=True)
+    assert ok.is_valid(), ok.errors
+    ok.save()
+    policy.refresh_from_db()
+    assert policy.handlers == [inside.id]
+
+    outside = PolicySerializer(policy, data={"handlers": [outsider.id]}, partial=True)
+    disabled_ser = PolicySerializer(policy, data={"handlers": [disabled.id]}, partial=True)
+    missing = PolicySerializer(policy, data={"handlers": [999999]}, partial=True)
+    org_change = PolicySerializer(
+        policy,
+        data={"alert_name": policy.alert_name},
+        partial=True,
+        context={"policy_organizations": [2]},
+    )
+
+    assert not outside.is_valid()
+    assert "handlers" in outside.errors
+    assert not disabled_ser.is_valid()
+    assert "handlers" in disabled_ser.errors
+    assert not missing.is_valid()
+    assert "handlers" in missing.errors
+    assert not org_change.is_valid()
+    assert "handlers" in org_change.errors
+    policy.refresh_from_db()
+    assert policy.handlers == [inside.id]
+
+
+def test_policy_create_rejects_handlers_outside_organizations(api_client, grant_all, mocker):
+    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
+    mocker.patch("apps.log.views.policy.PolicyViewSet.update_or_create_task")
+    inside = _org_user()
+    outsider = _org_user(username="outsider", organization=99)
+    api_client.cookies["current_team"] = "1"
+    payload = {
+        "name": "handler-org-policy",
+        "alert_type": "keyword",
+        "alert_name": "handler-org-policy",
+        "alert_level": "warning",
+        "alert_condition": {"query": "error"},
+        "schedule": {"type": "min", "value": 5},
+        "period": {"type": "min", "value": 5},
+        "organizations": [1],
+    }
+
+    ok = api_client.post("/api/v1/log/policy/", {**payload, "handlers": [inside.id]}, format="json")
+    outside = api_client.post(
+        "/api/v1/log/policy/",
+        {
+            **payload,
+            "name": "handler-org-policy-out",
+            "alert_name": "handler-org-policy-out",
+            "handlers": [outsider.id],
+        },
+        format="json",
+    )
+
+    assert ok.status_code == 201
+    assert ok.json()["data"]["handlers"] == [inside.id]
+    assert outside.status_code == 400
+    assert "handlers" in str(outside.json())
 
 
 def test_alert_list_exposes_handlers_and_display(grant_all):

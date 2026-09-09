@@ -100,6 +100,30 @@ class PolicySerializer(serializers.ModelSerializer):
         except ValueError as exc:
             raise serializers.ValidationError(str(exc)) from exc
 
+    def _policy_organization_ids(self, attrs):
+        if "policy_organizations" in self.context:
+            return self.context.get("policy_organizations") or []
+        if self.instance is not None:
+            return [rel.organization for rel in self.instance.policyorganization_set.all()]
+        return []
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        handlers_provided = "handlers" in attrs
+        organizations_provided = "policy_organizations" in self.context
+        if not handlers_provided and not organizations_provided:
+            return attrs
+        from apps.log.services.alert_handlers import AlertHandlerInvalid, normalize_policy_handlers
+
+        handlers = attrs["handlers"] if handlers_provided else list(getattr(self.instance, "handlers", None) or [])
+        try:
+            resolved = normalize_policy_handlers(handlers, self._policy_organization_ids(attrs))
+        except AlertHandlerInvalid as exc:
+            raise serializers.ValidationError({"handlers": str(exc)}) from exc
+        if handlers_provided:
+            attrs["handlers"] = resolved
+        return attrs
+
 
 class AlertSerializer(serializers.ModelSerializer):
     policy_name = serializers.SerializerMethodField()
