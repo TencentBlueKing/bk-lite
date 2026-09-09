@@ -28,6 +28,12 @@ const assertOperatorColumnIsHistoryOnly = (source: string) => {
   assert.equal(source.match(/dataIndex: 'operator'/g)?.length, 1);
 };
 
+const assertHandlersColumn = (source: string) => {
+  assert.match(source, /dataIndex: 'handlers'/);
+  assert.equal(source.includes("dataIndex: 'operator'"), false);
+  assert.equal(source.includes('formatAlertHandlers('), true);
+};
+
 const logAlertPagePath = fileURLToPath(
   new URL('../src/app/log/(pages)/event/alert/page.tsx', import.meta.url)
 );
@@ -48,7 +54,8 @@ const monitorAlertPagePath = fileURLToPath(
   new URL('../src/app/monitor/(pages)/event/alert/page.tsx', import.meta.url)
 );
 const monitorAlertPageSource = readFileSync(monitorAlertPagePath, 'utf8');
-assertOperatorColumnIsHistoryOnly(monitorAlertPageSource);
+assertHandlersColumn(monitorAlertPageSource);
+assert.equal(monitorAlertPageSource.includes("my_alert: 1"), true);
 
 const monitorInfoPath = fileURLToPath(
   new URL(
