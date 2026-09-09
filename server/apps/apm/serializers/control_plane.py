@@ -664,6 +664,7 @@ class ApmAlertQuerySerializer(serializers.Serializer):
     service_id = serializers.UUIDField(required=False)
     keyword = serializers.CharField(max_length=256, required=False, allow_blank=True, default="")
     limit = serializers.IntegerField(min_value=1, max_value=100, default=50)
+    my_alert = serializers.CharField(required=False, allow_blank=True, default="")
 
     def validate(self, attrs):
         ended_at = attrs.get("ended_at") or timezone.now()
@@ -674,6 +675,7 @@ class ApmAlertQuerySerializer(serializers.Serializer):
             raise serializers.ValidationError("告警查询时间窗不能超过 90 天")
         attrs["started_at"] = started_at
         attrs["ended_at"] = ended_at
+        attrs["my_alert"] = str(attrs.get("my_alert") or "").strip().lower() in {"1", "true", "yes"}
         return attrs
 
 

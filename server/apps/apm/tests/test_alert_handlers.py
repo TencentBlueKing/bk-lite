@@ -386,3 +386,31 @@ def test_claim_logs_lifecycle_template_without_handler_payload(apm_api_client, c
     assert str(alert.id) in rendered
     assert "password" not in rendered.lower()
     assert str(actor.id) not in rendered
+
+
+def test_my_alert_filters_handlers_not_operator(apm_api_client):
+    actor = _actor_user()
+    other = _org_user()
+    _, mine, _ = _trigger(suffix="-mine")
+    mine.handlers = [actor.id]
+    mine.save(update_fields=("handlers", "updated_at"))
+    _, operator_only, _ = _trigger(suffix="-operator")
+    operator_only.operator = "apm-user"
+    operator_only.save(update_fields=("operator", "updated_at"))
+    _, others, _ = _trigger(suffix="-other")
+    others.handlers = [other.id]
+    others.save(update_fields=("handlers", "updated_at"))
+    _, hidden, _ = _trigger(organization=20, suffix="-hidden")
+    hidden.handlers = [actor.id]
+    hidden.save(update_fields=("handlers", "updated_at"))
+
+    listed = apm_api_client.get("/api/v1/apm/alerts/")
+    mine_listed = apm_api_client.get("/api/v1/apm/alerts/", {"my_alert": "1"})
+
+    listed_ids = {str(item["id"]) for item in listed.data}
+    mine_ids = {str(item["id"]) for item in mine_listed.data}
+    assert listed.status_code == 200
+    assert mine_listed.status_code == 200
+    assert listed_ids == {str(mine.id), str(operator_only.id), str(others.id)}
+    assert mine_ids == {str(mine.id)}
+    assert str(hidden.id) not in listed_ids

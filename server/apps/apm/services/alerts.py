@@ -61,11 +61,15 @@ class DjangoApmAlertService:
         service_id=None,
         keyword: str = "",
         limit: int = 50,
+        my_alert: bool = False,
+        actor=None,
     ) -> list[dict]:
         queryset = self.queryset(organization_id=organization_id, organization_ids=organization_ids).filter(
             last_event_at__gte=started_at,
             last_event_at__lte=ended_at,
         )
+        if my_alert:
+            queryset = self.filter_my_handler_alerts(queryset, actor)
         if status:
             queryset = queryset.filter(status=status)
         if status_group == "active":
@@ -340,6 +344,23 @@ class DjangoApmAlertService:
         if matched is not None:
             return matched.id
         return actor.username
+
+    @staticmethod
+    def handler_match_values(actor) -> list:
+        values = []
+        identifier = DjangoApmAlertService.current_handler_identifier(actor)
+        if identifier not in (None, ""):
+            values.append(identifier)
+        username = getattr(actor, "username", None)
+        if username and username not in values:
+            values.append(username)
+        return values
+
+    @staticmethod
+    def filter_my_handler_alerts(queryset, actor):
+        return queryset.filter(
+            build_json_membership_query(queryset, "handlers", DjangoApmAlertService.handler_match_values(actor))
+        )
 
     @staticmethod
     def _lookup_user(identifier) -> User | None:

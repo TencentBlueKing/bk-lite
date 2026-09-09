@@ -980,7 +980,13 @@ class ApmAlertViewSet(viewsets.GenericViewSet):
             return Response([])
         serializer = ApmAlertQuerySerializer(data=request.query_params)
         serializer.is_valid(raise_exception=True)
-        return Response(self.alert_service.list(organization_ids=organization_ids, **serializer.validated_data))
+        return Response(
+            self.alert_service.list(
+                organization_ids=organization_ids,
+                actor=request.user,
+                **serializer.validated_data,
+            )
+        )
 
     @HasPermission("events-View")
     def retrieve(self, request, *args, **kwargs):
