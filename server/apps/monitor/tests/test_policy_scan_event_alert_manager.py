@@ -115,6 +115,24 @@ class TestCreateEventsAndAlerts:
         assert event_objs[0].alert_id == new_alerts[0].id
         assert event_objs[0].action == MonitorEvent.Action.TRIGGERED
 
+    def test_new_alert_does_not_send_assign_notice(self, stub_s3, mocker, django_capture_on_commit_callbacks):
+        notifier_cls = mocker.patch(
+            "apps.monitor.tasks.services.policy_scan.event_alert_manager.AlertLifecycleNotifier"
+        )
+        mgr = EventAlertManager(_policy(notice=True, handlers=[7]), {"h1": "主机1"}, [])
+        events = [{
+            "monitor_instance_id": "h1", "metric_instance_id": "('h1',)",
+            "dimensions": {}, "value": 95.0, "level": "critical",
+            "content": "超阈值",
+        }]
+
+        with django_capture_on_commit_callbacks(execute=True):
+            mgr.create_events_and_alerts(events)
+
+        notifier_cls.return_value.notify_alerts.assert_called_once()
+        assert notifier_cls.return_value.notify_alerts.call_args.kwargs["action"] == "created"
+        notifier_cls.return_value.notify_assigned.assert_not_called()
+
     def test_new_alert_snapshots_policy_handlers(self, stub_s3, mocker):
         mocker.patch(
             "apps.monitor.tasks.services.policy_scan.event_alert_manager.AlertLifecycleNotifier"

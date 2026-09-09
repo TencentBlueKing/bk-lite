@@ -7,7 +7,7 @@ import pytest
 from apps.monitor.models.monitor_object import MonitorObject
 from apps.monitor.models.monitor_policy import MonitorAlert, MonitorPolicy, PolicyOrganization
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
-from apps.system_mgmt.models import Group, User
+from apps.system_mgmt.models import Channel, Group, User
 
 pytestmark = pytest.mark.django_db
 
@@ -319,6 +319,115 @@ def test_claim_requires_operate_permission(api_client, grant_all, mocker):
     assert resp.status_code == 403
     alert.refresh_from_db()
     assert alert.handlers == []
+
+
+def _person_channel():
+    return Channel.objects.create(
+        name="邮件",
+        channel_type="email",
+        config={},
+        description="",
+        team=[1],
+    )
+
+
+def _alert_center_channel():
+    return Channel.objects.create(
+        name="告警中心",
+        channel_type="nats",
+        config={"method_name": "receive_alert_events"},
+        description="",
+        team=[1],
+    )
+
+
+def test_assign_sends_notice_to_handlers_not_notice_users(
+    api_client, grant_all, mocker, django_capture_on_commit_callbacks
+):
+    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
+    channel = _person_channel()
+    send = mocker.patch(
+        "apps.monitor.services.alert_lifecycle_notify.SystemMgmtUtils.send_msg_with_channel",
+        return_value={"result": True},
+    )
+    inside = _org_user()
+    policy = _policy(
+        notice=True,
+        notice_type_ids=[channel.id],
+        notice_users=["policy-notice-user"],
+    )
+    alert = _new_alert(policy, notice_type_ids=[channel.id], notice_users=["alert-notice-user"])
+    api_client.cookies["current_team"] = "1"
+
+    with django_capture_on_commit_callbacks(execute=True):
+        resp = api_client.post(
+            f"{BASE}/api/monitor_alert/{alert.id}/assign/",
+            {"handlers": [inside.id]},
+            format="json",
+        )
+
+    alert.refresh_from_db()
+    assert resp.status_code == 200
+    send.assert_called_once()
+    channel_id, title, _content, receivers = send.call_args.args
+    assert channel_id == channel.id
+    assert "分派" in title
+    assert receivers == [str(inside.id)]
+    assert "policy-notice-user" not in receivers
+    assert "alert-notice-user" not in receivers
+    assert any(entry.get("action") == "assigned" for entry in (alert.notice_logs or []))
+
+
+def test_assign_notice_skips_alert_center_and_nats(
+    api_client, grant_all, mocker, django_capture_on_commit_callbacks
+):
+    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
+    email = _person_channel()
+    nats = _alert_center_channel()
+    send = mocker.patch(
+        "apps.monitor.services.alert_lifecycle_notify.SystemMgmtUtils.send_msg_with_channel",
+        return_value={"result": True},
+    )
+    inside = _org_user()
+    policy = _policy(notice=True, notice_type_ids=[email.id, nats.id])
+    alert = _new_alert(policy, notice_type_ids=[email.id, nats.id])
+    api_client.cookies["current_team"] = "1"
+
+    with django_capture_on_commit_callbacks(execute=True):
+        resp = api_client.post(
+            f"{BASE}/api/monitor_alert/{alert.id}/assign/",
+            {"handlers": [inside.id]},
+            format="json",
+        )
+
+    assert resp.status_code == 200
+    assert send.call_count == 1
+    assert send.call_args.args[0] == email.id
+    assert send.call_args.args[3] == [str(inside.id)]
+
+
+def test_assign_notice_off_does_not_send(
+    api_client, grant_all, mocker, django_capture_on_commit_callbacks
+):
+    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
+    send = mocker.patch(
+        "apps.monitor.services.alert_lifecycle_notify.SystemMgmtUtils.send_msg_with_channel",
+        return_value={"result": True},
+    )
+    inside = _org_user()
+    policy = _policy(notice=False, notice_type_ids=[_person_channel().id])
+    alert = _new_alert(policy)
+    api_client.cookies["current_team"] = "1"
+
+    with django_capture_on_commit_callbacks(execute=True):
+        resp = api_client.post(
+            f"{BASE}/api/monitor_alert/{alert.id}/assign/",
+            {"handlers": [inside.id]},
+            format="json",
+        )
+
+    assert resp.status_code == 200
+    send.assert_not_called()
 
 
 def test_claim_logs_lifecycle_template_without_handler_payload(grant_all, caplog):

@@ -86,6 +86,10 @@ class TestBuildTitle:
         notifier = AlertLifecycleNotifier(policy=None)
         assert notifier._build_title(_alert(), "weird") == "告警通知"
 
+    def test_分派动作标题(self):
+        notifier = AlertLifecycleNotifier(policy=SimpleNamespace(name="磁盘策略"))
+        assert notifier._build_title(_alert(), "assigned") == "告警分派：磁盘策略"
+
 
 class TestBuildContent:
     def test_关闭动作含操作人与原因(self):
@@ -107,6 +111,11 @@ class TestBuildContent:
         notifier = AlertLifecycleNotifier(policy=None)
         content = notifier._build_content(_alert(), "recovered", "", "")
         assert "状态：已自动恢复" in content
+
+    def test_分派动作状态行(self):
+        notifier = AlertLifecycleNotifier(policy=None)
+        content = notifier._build_content(_alert(), "assigned", "", "")
+        assert "状态：已分派" in content
 
     def test_无实例名回退实例ID(self):
         notifier = AlertLifecycleNotifier(policy=None)
@@ -285,6 +294,23 @@ class TestIsAlertCenterChannel:
 
     def test_None渠道(self):
         assert AlertLifecycleNotifier(None)._is_alert_center_channel(None) is False
+
+
+class TestIsPersonAssignChannel:
+    def test_普通邮件渠道(self):
+        ch = SimpleNamespace(channel_type="email", config={})
+        assert AlertLifecycleNotifier(None)._is_person_assign_channel(ch) is True
+
+    def test_nats渠道跳过(self):
+        ch = SimpleNamespace(channel_type="nats", config={"method_name": "other"})
+        assert AlertLifecycleNotifier(None)._is_person_assign_channel(ch) is False
+
+    def test_告警中心渠道跳过(self):
+        ch = SimpleNamespace(channel_type="nats", config={"method_name": "receive_alert_events"})
+        assert AlertLifecycleNotifier(None)._is_person_assign_channel(ch) is False
+
+    def test_None渠道跳过(self):
+        assert AlertLifecycleNotifier(None)._is_person_assign_channel(None) is False
 
 
 class TestHasSuccessfulCreatedNotice:
