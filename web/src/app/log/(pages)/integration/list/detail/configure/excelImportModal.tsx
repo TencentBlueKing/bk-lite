@@ -152,21 +152,26 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
           const buffer = e.target?.result as ArrayBuffer;
           const workbook = new ExcelJS.Workbook();
           await workbook.xlsx.load(buffer);
-          const firstSheet = workbook.worksheets[0];
-          if (!firstSheet || firstSheet.rowCount < 2) {
+          const dataSheet =
+            workbook.getWorksheet(t('monitor.integrations.dataTemplate')) ||
+            workbook.worksheets[0];
+          const headerRow = dataSheet?.getRow(1);
+          const hasHeaderCells = Boolean(headerRow && headerRow.cellCount > 0);
+          // Header-only templates are valid empty imports; reject only missing sheet/header.
+          if (!dataSheet || dataSheet.rowCount < 1 || !hasHeaderCells) {
             message.error(t('monitor.integrations.emptyExcelFile'));
             onError(new Error('Empty file'));
             return;
           }
           // Parse headers and data. Hyperlink/rich-text cells must use excelCellToText.
           const headers: string[] = [];
-          firstSheet.getRow(1).eachCell((cell) => {
+          dataSheet.getRow(1).eachCell((cell) => {
             headers.push(excelCellToText(cell.value));
           });
           const rows: any[][] = [];
-          for (let i = 2; i <= firstSheet.rowCount; i++) {
+          for (let i = 2; i <= dataSheet.rowCount; i++) {
             const row: any[] = [];
-            firstSheet
+            dataSheet
               .getRow(i)
               .eachCell({ includeEmpty: true }, (cell, colNumber) => {
                 row[colNumber - 1] = excelCellToText(cell.value);
@@ -288,6 +293,8 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
           : col.label;
       });
       mainSheet.addRow(headers);
+      // Placeholder data row so Excel opens with a blank line and rowCount >= 2
+      mainSheet.addRow(columns.map(() => ''));
       // Set header styles
       mainSheet.getRow(1).font = { bold: true };
       mainSheet.getRow(1).fill = {

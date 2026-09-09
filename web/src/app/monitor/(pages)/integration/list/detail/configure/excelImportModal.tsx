@@ -160,21 +160,26 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
           const buffer = e.target?.result as ArrayBuffer;
           const workbook = new ExcelJS.Workbook();
           await workbook.xlsx.load(buffer);
-          const firstSheet = workbook.worksheets[0];
-          if (!firstSheet || firstSheet.rowCount < 2) {
+          const dataSheet =
+            workbook.getWorksheet(t('monitor.integrations.dataTemplate')) ||
+            workbook.worksheets[0];
+          const headerRow = dataSheet?.getRow(1);
+          const hasHeaderCells = Boolean(headerRow && headerRow.cellCount > 0);
+          // 仅表头（无数据行）视为合法空模板，不报「文件为空」；缺表或缺表头才失败。
+          if (!dataSheet || dataSheet.rowCount < 1 || !hasHeaderCells) {
             message.error(t('monitor.integrations.emptyExcelFile'));
             onError(new Error('Empty file'));
             return;
           }
           // 解析表头和数据。超链接/富文本必须走 excelCellToText，不能对 cell.value 直接 toString()。
           const headers: string[] = [];
-          firstSheet.getRow(1).eachCell((cell) => {
+          dataSheet.getRow(1).eachCell((cell) => {
             headers.push(excelCellToText(cell.value));
           });
           const rows: any[][] = [];
-          for (let i = 2; i <= firstSheet.rowCount; i++) {
+          for (let i = 2; i <= dataSheet.rowCount; i++) {
             const row: any[] = [];
-            firstSheet
+            dataSheet
               .getRow(i)
               .eachCell({ includeEmpty: true }, (cell, colNumber) => {
                 row[colNumber - 1] = excelCellToText(cell.value);
@@ -356,6 +361,8 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
           : col.label;
       });
       mainSheet.addRow(headers);
+      // 预留一行空白数据行，Excel 打开即可填写，且 rowCount >= 2
+      mainSheet.addRow(columns.map(() => ''));
       // 设置表头样式
       mainSheet.getRow(1).font = { bold: true };
       mainSheet.getRow(1).fill = {
