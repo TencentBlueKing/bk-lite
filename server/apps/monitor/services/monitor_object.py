@@ -493,27 +493,59 @@ class MonitorObjectService:
         return value_map
 
     @staticmethod
-    def _merge_reported_plugin_coverage(monitor_object_id, result, instance_plugin_map):
+    def _scope_status_query_to_instances(query, instances, label_key="instance_id"):
+        """把 status_query 限制在本页缺该插件的实例上，避免无 instance_id 的全局 any()。"""
+        primaries = set()
+        for inst in instances:
+            parsed = parse_instance_id(inst["instance_id"])
+            if parsed and parsed[0] not in (None, ""):
+                primaries.add(re.escape(str(parsed[0])))
+        if not primaries:
+            return query
+        values = MonitorObjectService._escape_promql_label_value("|".join(sorted(primaries)))
+        matcher = f'{label_key}=~"{values}"'
+        key_pattern = re.compile(rf"(?:^|,)\s*{re.escape(label_key)}\s*(=~?|!=)")
+
+        def _replacer(match):
+            body = match.group(1).strip()
+            if key_pattern.search(body):
+                return match.group(0)
+            if not body:
+                return "{" + matcher + "}"
+            return "{" + matcher + "," + body + "}"
+
+        return re.sub(r"\{([^{}]*)\}", _replacer, query)
+
+    @staticmethod
+    def _merge_reported_plugin_coverage(monitor_object_id, result, instance_plugin_map, needed_plugins=None):
         """把已上报但无对应 CollectConfig 的插件并入归属，供展示列隔离使用。
 
         实例只要缺某个展示列插件的 CollectConfig，就要按该插件 status_query 补归属。
         不能因为已经有「别的」插件配置（如本机 Host / WMI）就整行跳过，否则仅上报的
         Host Remote 会在列表留空，详情却仍能凭上报状态画出图表。
+
+        热路径约束：只查展示列真正用到的插件，且 status_query 必须带上本页缺该插件
+        的 instance_id=~。交换机对象下几十个品牌插件不能对每个未全覆盖的插件打一次
+        无界全局 any()。
         """
         if not result:
             return
+        if needed_plugins is not None and not needed_plugins:
+            return
 
-        plugin_status_qs = (
-            MonitorPlugin.objects.filter(monitor_object=monitor_object_id).exclude(status_query="").values_list("name", "status_query").distinct()
-        )
+        plugin_status_qs = MonitorPlugin.objects.filter(monitor_object=monitor_object_id).exclude(status_query="")
+        if needed_plugins is not None:
+            plugin_status_qs = plugin_status_qs.filter(name__in=needed_plugins)
+
         plugin_queries = []
-        for plugin_name, status_query in plugin_status_qs:
+        for plugin_name, status_query in plugin_status_qs.values_list("name", "status_query").distinct():
             query = (status_query or "").strip()
             if not query:
                 continue
-            if all(plugin_name in instance_plugin_map.get(inst["instance_id"], set()) for inst in result):
+            missing = [inst for inst in result if plugin_name not in instance_plugin_map.get(inst["instance_id"], set())]
+            if not missing:
                 continue
-            plugin_queries.append((plugin_name, query))
+            plugin_queries.append((plugin_name, MonitorObjectService._scope_status_query_to_instances(query, missing)))
         if not plugin_queries:
             return
 
@@ -552,7 +584,8 @@ class MonitorObjectService:
           指标互相覆盖;
         - 按插件(模板)隔离:只把“采集配置或上报状态归属该插件”的实例纳入该绑定取数,
           别的插件的实例该列留空。无 CollectConfig 但已上报的插件仍回填；已有其它插件
-          配置时，也不跳过仅上报的插件。
+          配置时，也不跳过仅上报的插件。上报状态只查展示列用到的插件，并按本页缺该
+          插件的实例加上 instance_id=~，避免交换机等多插件对象打无界全局查询。
         - 兼容:绑定缺 plugin(遗留配置)时按指标名匹配、不做隔离、用裸指标名回填;display_fields
           为空时退回 supplementary_indicators(裸指标名,不区分插件)。
         - ``skip_out_keys``: 排序阶段已写入的 out_key，本页补数时跳过同列重复 VM 查询。
@@ -585,7 +618,8 @@ class MonitorObjectService:
 
         # 派生/上报型实例(如 K8s 集群/Pod/Node 经集群内采集器上报,但 bk-lite 侧无 CollectConfig)
         # 也应纳入其「上报插件」的展示列取数;否则插件隔离会把它们一律判为 --。
-        MonitorObjectService._merge_reported_plugin_coverage(monitor_object_id, result, instance_plugin_map)
+        needed_plugins = {binding["plugin"] for binding in bindings + field_bindings if binding.get("plugin")}
+        MonitorObjectService._merge_reported_plugin_coverage(monitor_object_id, result, instance_plugin_map, needed_plugins=needed_plugins)
 
         # 同名指标可能分属多个插件,按 (plugin, name) 精确取;另留 name 兜底给遗留无 plugin 的绑定
         metric_by_plugin = {}
