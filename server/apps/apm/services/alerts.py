@@ -389,8 +389,10 @@ class DjangoApmAlertService:
         return False
 
     @staticmethod
-    def normalize_assign_handlers(identifiers, organization_ids) -> list:
+    def _normalize_handlers(identifiers, organization_ids, *, allow_empty: bool, scope_label: str) -> list:
         if not identifiers:
+            if allow_empty:
+                return []
             raise AlertHandlerInvalid("至少指定一名处理人")
         resolved = []
         seen = set()
@@ -401,7 +403,7 @@ class DjangoApmAlertService:
             if user.disabled:
                 raise AlertHandlerInvalid("处理人已禁用")
             if not DjangoApmAlertService._user_in_organizations(user, organization_ids):
-                raise AlertHandlerInvalid("处理人不属于告警所属组织")
+                raise AlertHandlerInvalid(f"处理人不属于{scope_label}所属组织")
             if user.id in seen:
                 continue
             seen.add(user.id)
@@ -409,6 +411,18 @@ class DjangoApmAlertService:
         if not resolved:
             raise AlertHandlerInvalid("至少指定一名处理人")
         return resolved
+
+    @staticmethod
+    def normalize_assign_handlers(identifiers, organization_ids) -> list:
+        return DjangoApmAlertService._normalize_handlers(
+            identifiers, organization_ids, allow_empty=False, scope_label="告警"
+        )
+
+    @staticmethod
+    def normalize_policy_handlers(identifiers, organization_ids) -> list:
+        return DjangoApmAlertService._normalize_handlers(
+            identifiers, organization_ids, allow_empty=True, scope_label="策略"
+        )
 
     @staticmethod
     def _has_person_channel(policy) -> bool:

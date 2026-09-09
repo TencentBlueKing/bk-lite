@@ -93,6 +93,7 @@ def test_policy_create_persists_handlers(apm_api_client):
         display_name="处理人甲",
         email="handler1@example.com",
         password="x",
+        group_list=[10],
     )
     service = _service(10)
     created = apm_api_client.post(
@@ -108,6 +109,76 @@ def test_policy_create_persists_handlers(apm_api_client):
     assert listed.data[0]["handlers"] == [user.id]
     assert detail.data["handlers"] == [user.id]
     assert ApmPolicy.objects.get().handlers == [user.id]
+
+
+def test_policy_save_rejects_handlers_outside_policy_organizations(apm_api_client):
+    from apps.system_mgmt.models import User
+
+    inside = User.objects.create(
+        username="assignee1",
+        display_name="assignee1",
+        email="assignee1@example.com",
+        password="x",
+        group_list=[10],
+    )
+    outsider = User.objects.create(
+        username="outsider",
+        display_name="outsider",
+        email="outsider@example.com",
+        password="x",
+        group_list=[99],
+    )
+    disabled = User.objects.create(
+        username="disabled1",
+        display_name="disabled1",
+        email="disabled1@example.com",
+        password="x",
+        disabled=True,
+        group_list=[10],
+    )
+    service = _service(10)
+    created = apm_api_client.post(
+        "/api/v1/apm/policies/",
+        {**_payload(service), "handlers": [inside.id]},
+        format="json",
+    )
+    assert created.status_code == 201
+    assert created.data["handlers"] == [inside.id]
+    policy_id = created.data["id"]
+
+    outside = apm_api_client.patch(
+        f"/api/v1/apm/policies/{policy_id}/",
+        {"handlers": [outsider.id]},
+        format="json",
+    )
+    disabled_resp = apm_api_client.patch(
+        f"/api/v1/apm/policies/{policy_id}/",
+        {"handlers": [disabled.id]},
+        format="json",
+    )
+    missing = apm_api_client.patch(
+        f"/api/v1/apm/policies/{policy_id}/",
+        {"handlers": [999999]},
+        format="json",
+    )
+    org_change = apm_api_client.patch(
+        f"/api/v1/apm/policies/{policy_id}/",
+        {"organizations": [30]},
+        format="json",
+    )
+
+    assert outside.status_code == 400
+    assert "handlers" in outside.data
+    assert disabled_resp.status_code == 400
+    assert "handlers" in disabled_resp.data
+    assert missing.status_code == 400
+    assert "handlers" in missing.data
+    assert org_change.status_code == 400
+    assert "handlers" in org_change.data
+    assert ApmPolicy.objects.get().handlers == [inside.id]
+    assert list(
+        ApmPolicy.objects.get().organization_links.values_list("organization", flat=True)
+    ) == [10]
 
 
 def test_policy_list_and_detail_are_scoped_by_policy_organizations(apm_api_client):
@@ -207,10 +278,26 @@ def test_new_alert_snapshots_policy_organizations_not_service(apm_api_client):
 
 
 def test_new_alert_snapshots_policy_handlers(apm_api_client):
+    from apps.system_mgmt.models import User
+
+    first = User.objects.create(
+        username="snap-handler-1",
+        display_name="snap-1",
+        email="snap1@example.com",
+        password="x",
+        group_list=[10],
+    )
+    second = User.objects.create(
+        username="snap-handler-2",
+        display_name="snap-2",
+        email="snap2@example.com",
+        password="x",
+        group_list=[10],
+    )
     service = _service(10)
     created = apm_api_client.post(
         "/api/v1/apm/policies/",
-        {**_payload(service), "handlers": [7, 8], "trigger_after": 1},
+        {**_payload(service), "handlers": [first.id, second.id], "trigger_after": 1},
         format="json",
     )
     evaluated_at = timezone.now().replace(second=0, microsecond=0)
@@ -228,7 +315,7 @@ def test_new_alert_snapshots_policy_handlers(apm_api_client):
     first_alert.refresh_from_db()
 
     assert created.status_code == 201
-    assert first_alert.handlers == [7, 8]
+    assert first_alert.handlers == [first.id, second.id]
     assert ApmAlert.objects.count() == 1
 
 

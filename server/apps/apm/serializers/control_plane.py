@@ -547,7 +547,30 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             channel_ids = [target["channel_id"] for target in notification_targets]
             if len(channel_ids) != len(set(channel_ids)):
                 raise serializers.ValidationError({"notification_targets": "同一通知渠道不能重复选择。"})
+        self._validate_policy_handlers(attrs)
         return attrs
+
+    def _policy_organization_ids(self, attrs):
+        if "organizations" in attrs:
+            return attrs.get("organizations") or []
+        if self.instance is not None:
+            return list(self.instance.organization_links.values_list("organization", flat=True))
+        return []
+
+    def _validate_policy_handlers(self, attrs):
+        handlers_provided = "handlers" in attrs
+        organizations_provided = "organizations" in attrs
+        if not handlers_provided and not organizations_provided:
+            return
+        from apps.apm.services.alerts import AlertHandlerInvalid, DjangoApmAlertService
+
+        handlers = attrs["handlers"] if handlers_provided else list(getattr(self.instance, "handlers", None) or [])
+        try:
+            resolved = DjangoApmAlertService.normalize_policy_handlers(handlers, self._policy_organization_ids(attrs))
+        except AlertHandlerInvalid as exc:
+            raise serializers.ValidationError({"handlers": str(exc)}) from exc
+        if handlers_provided:
+            attrs["handlers"] = resolved
 
     @staticmethod
     def _validate_thresholds(thresholds, metric_type):
