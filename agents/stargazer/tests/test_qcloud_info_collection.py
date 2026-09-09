@@ -129,3 +129,26 @@ def test_qcloud_clb_collects_instances_with_null_zone_fields():
     assert result[0]["ip_addr"] == "10.0.0.1"
     assert result[20]["master_zone"] == "ap-guangzhou-2"
     assert result[20]["backup_zone"] == "ap-guangzhou-3"
+
+
+def test_qcloud_manager_reads_persisted_access_key_aliases():
+    manager = TencentCloudManager(
+        {
+            "accessKey": "AKIDreal",
+            "accessSecret": "sk-real",
+        }
+    )
+    assert manager.secret_id == "AKIDreal"
+    assert manager.secret_key == "sk-real"
+    assert manager.get_credentials().secret_id == "AKIDreal"
+
+
+def test_qcloud_empty_secret_matches_edit_task_sdk_error():
+    manager = TencentCloudManager({"model_id": "qcloud", "cloud_id": "fusion-collector-default"})
+    try:
+        manager.get_credentials()
+    except TencentCloudSDKException as err:
+        assert err.code == "InvalidCredential"
+        assert "secret id should not be none or empty" in err.message
+        return
+    raise AssertionError("expected TencentCloudSDKException for empty secret_id")

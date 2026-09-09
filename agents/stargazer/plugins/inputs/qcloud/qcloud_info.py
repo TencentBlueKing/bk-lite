@@ -88,12 +88,20 @@ class TencentClientProxy(object):
         return self.get_client(item)
 
 
+def _first_cloud_secret(params: dict, *keys):
+    for key in keys:
+        value = params.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
 class TencentCloudManager:
     def __init__(self, params: dict):
         # 需要提供有全面只读权限的云账号，并允许进行编程访问
         self.params = params
-        self.secret_id = params.get("secret_id")
-        self.secret_key = params.get("secret_key")
+        self.secret_id = _first_cloud_secret(params, "secret_id", "accessKey", "access_key")
+        self.secret_key = _first_cloud_secret(params, "secret_key", "accessSecret", "access_secret")
         self.timeout = 60  # 请求超时硬编码；表单 timeout 由框架作单对象预算
         ssl = params.get("ssl", "false")
         self.protocol = "https" if str(ssl).strip().lower() == "true" else "http"
