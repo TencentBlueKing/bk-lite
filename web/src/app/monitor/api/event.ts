@@ -28,6 +28,7 @@ const useEventApi = () => {
       page?: number;
       page_size?: number;
       monitor_object_id?: React.Key;
+      monitor_instance_id?: string;
     } = {},
     config?: AxiosRequestConfig
   ) => {

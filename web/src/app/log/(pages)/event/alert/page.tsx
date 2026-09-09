@@ -35,6 +35,11 @@ import StackedBarChart from '@/app/log/components/charts/stackedBarChart';
 import AlertDetail from './alertDetail';
 import AlertHandlerActions from './alertHandlerActions';
 import { formatAlertHandlers } from './alertHandlerUtils';
+import {
+  createAlertRefreshQuerySnapshot,
+  resolveAlertRefreshQuery,
+  updateAlertRefreshQuerySnapshot
+} from './alertRefreshQuery';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useAlarmTabs } from '@/app/log/hooks/event';
 import dayjs from 'dayjs';
@@ -94,6 +99,19 @@ const Alert: React.FC = () => {
     state: []
   });
   const [activeTab, setActiveTab] = useState<string>('activeAlarms');
+  const [myAlert, setMyAlert] = useState(false);
+  const querySnapshotRef = useRef(
+    createAlertRefreshQuerySnapshot({
+      activeTab: 'activeAlarms',
+      filters: { level: [], state: [] },
+      myAlert: false
+    }).current
+  );
+  updateAlertRefreshQuerySnapshot(querySnapshotRef, {
+    activeTab,
+    filters,
+    myAlert
+  });
   const [chartData, setChartData] = useState<Record<string, any>[]>([]);
   const loadChartHabit = useCallback(
     () => getUserHabit(LOG_ALERT_CHART_HABIT_KEY),
@@ -110,7 +128,6 @@ const Alert: React.FC = () => {
     save: saveChartHabit
   });
   const [objects, setObjects] = useState<ObjectItem[]>([]);
-  const [myAlert, setMyAlert] = useState(false);
 
   const columns: ColumnItem[] = [
     {
@@ -266,6 +283,11 @@ const Alert: React.FC = () => {
     };
     setFilters(filtersConfig);
     setSearchText('');
+    updateAlertRefreshQuerySnapshot(querySnapshotRef, {
+      activeTab: val,
+      filters: filtersConfig,
+      myAlert
+    });
     getAssetInsts('refresh', { tab: val, filtersConfig, text: 'clear' });
     getChartData('refresh', { tab: val, filtersConfig });
   };
@@ -317,11 +339,9 @@ const Alert: React.FC = () => {
     const abortController = new AbortController();
     alertAbortControllerRef.current = abortController;
     const currentRequestId = ++alertRequestIdRef.current;
-    const params: any = getParams(
-      extra?.tab || activeTab,
-      extra?.filtersConfig || filters,
-      extra?.myAlert
-    );
+    const { activeTab: tab, filters: filtersMap, myAlert: mine } =
+      resolveAlertRefreshQuery(querySnapshotRef, extra);
+    const params: any = getParams(tab, filtersMap, mine);
     if (extra?.text === 'clear') {
       params.content = '';
     }
@@ -355,11 +375,9 @@ const Alert: React.FC = () => {
     const abortController = new AbortController();
     chartAbortControllerRef.current = abortController;
     const currentRequestId = ++chartRequestIdRef.current;
-    const params = getParams(
-      extra?.tab || activeTab,
-      extra?.filtersConfig || filters,
-      extra?.myAlert
-    );
+    const { activeTab: tab, filters: filtersMap, myAlert: mine } =
+      resolveAlertRefreshQuery(querySnapshotRef, extra);
+    const params = getParams(tab, filtersMap, mine);
     const chartParams: any = cloneDeep(params);
     delete chartParams.page;
     delete chartParams.page_size;
@@ -420,6 +438,11 @@ const Alert: React.FC = () => {
     const filtersConfig = cloneDeep(filters);
     filtersConfig[field] = checkedValues;
     setFilters(filtersConfig);
+    updateAlertRefreshQuerySnapshot(querySnapshotRef, {
+      activeTab,
+      filters: filtersConfig,
+      myAlert
+    });
     getAssetInsts('refresh', { filtersConfig });
     getChartData('refresh', { filtersConfig });
   };
@@ -531,6 +554,11 @@ const Alert: React.FC = () => {
                 onChange={(event) => {
                   const checked = event.target.checked;
                   setMyAlert(checked);
+                  updateAlertRefreshQuerySnapshot(querySnapshotRef, {
+                    activeTab,
+                    filters,
+                    myAlert: checked
+                  });
                   getAssetInsts('refresh', { myAlert: checked });
                   getChartData('refresh', { myAlert: checked });
                 }}

@@ -19,6 +19,12 @@ import {
   type TableColumnsType,
 } from 'antd';
 import useApmApi from '@/app/apm/api';
+import {
+  canRetryAlertEventDelivery,
+  commitAlertEventEvidenceSettled,
+  commitAlertEventEvidenceSuccess,
+} from '@/app/apm/utils/alertEventRequest';
+import { createLatestRequestGuard } from '@/context/latestRequestGuard';
 import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
@@ -112,6 +118,7 @@ export default function ApmAlertsPage() {
   const [eventEvidenceLoading, setEventEvidenceLoading] = useState(false);
   const loadSequence = useRef(0);
   const snapshotLoadSequence = useRef(0);
+  const [eventRequestGuard] = useState(createLatestRequestGuard);
 
   const load = useCallback(() => {
     if (authLoading) return;
@@ -172,6 +179,7 @@ export default function ApmAlertsPage() {
 
   const chooseEvent = useCallback(
     (alert: ApmAlert, event: ApmAlertEvent) => {
+      const requestId = eventRequestGuard.begin();
       setSelectedEvent(event);
       setEventEvidence(null);
       setDeliveries([]);
@@ -185,16 +193,30 @@ export default function ApmAlertsPage() {
         getNotificationDeliveries({ event_id: event.event_id }),
       ])
         .then(([snapshots, deliveryItems]) => {
-          setEventEvidence(snapshots[0] ?? null);
-          setDeliveries(deliveryItems);
+          commitAlertEventEvidenceSuccess(
+            eventRequestGuard,
+            requestId,
+            { alertId: alert.id, eventId: event.event_id },
+            snapshots,
+            deliveryItems,
+            (evidence, items) => {
+              setEventEvidence(evidence);
+              setDeliveries(items);
+            },
+          );
         })
-        .finally(() => setEventEvidenceLoading(false));
+        .finally(() => {
+          commitAlertEventEvidenceSettled(eventRequestGuard, requestId, () => {
+            setEventEvidenceLoading(false);
+          });
+        });
     },
-    [getEventEvidence, getNotificationDeliveries],
+    [eventRequestGuard, getEventEvidence, getNotificationDeliveries],
   );
 
   const resetDrawerState = useCallback(() => {
     snapshotLoadSequence.current += 1;
+    eventRequestGuard.invalidate();
     setSelected(null);
     setSelectedEvent(null);
     setEventEvidence(null);
@@ -204,11 +226,12 @@ export default function ApmAlertsPage() {
     setEventEvidenceLoading(false);
     setDeliveries([]);
     setRetryingDeliveryId(null);
-  }, []);
+  }, [eventRequestGuard]);
 
   const openDrawer = (alert: ApmAlert) => {
     const snapshotSequence = snapshotLoadSequence.current + 1;
     snapshotLoadSequence.current = snapshotSequence;
+    eventRequestGuard.invalidate();
     setSelected(alert);
     setMetricSnapshot(null);
     setMetricSnapshotError(null);
@@ -231,9 +254,13 @@ export default function ApmAlertsPage() {
   };
 
   const handleRetryDelivery = async (deliveryId: string) => {
-    setRetryingDeliveryId(deliveryId);
+    const delivery = deliveries.find((item) => item.id === deliveryId);
+    if (!canRetryAlertEventDelivery(delivery, selectedEvent)) {
+      return;
+    }
+    setRetryingDeliveryId(delivery.id);
     try {
-      await retryNotificationDelivery(deliveryId);
+      await retryNotificationDelivery(delivery.id);
       message.success(t('apm.alerts.retrySuccess', '已重新投递'));
       if (selected && selectedEvent) chooseEvent(selected, selectedEvent);
     } catch {

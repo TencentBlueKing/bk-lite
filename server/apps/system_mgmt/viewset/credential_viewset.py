@@ -26,7 +26,6 @@ from apps.system_mgmt.services.credential_service import (
 )
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
-
 _ERROR_STATUS = {
     "forbidden": 403,
     "not_found": 404,
@@ -112,7 +111,7 @@ class CredentialPageNumberPagination(PageNumberPagination):
 
 
 class CredentialTypeViewSet(MaintainerViewSet):
-    queryset = CredentialType.objects.all().order_by("key")
+    queryset = CredentialType.objects.all().order_by("-is_builtin", "id")
     serializer_class = CredentialTypeSerializer
     pagination_class = CredentialTypePageNumberPagination
     lookup_field = "key"
@@ -233,9 +232,7 @@ class CredentialViewSet(MaintainerViewSet):
     def retrieve(self, request, *args, **kwargs):
         actor = _request_actor(request)
         try:
-            payload = get_credential(
-                kwargs.get("credential_id"), actor["current_team"], actor=actor, owner_scope="manage"
-            )
+            payload = get_credential(kwargs.get("credential_id"), actor["current_team"], actor=actor, owner_scope="manage")
         except CredentialServiceError as exc:
             return _error_response(exc)
         return Response(payload)
@@ -249,9 +246,7 @@ class CredentialViewSet(MaintainerViewSet):
         payload["current_team"] = actor["current_team"]
         try:
             created = create_credential(payload, actor=actor)
-            public = get_credential(
-                created.credential_id, actor["current_team"], actor=actor, owner_scope="manage"
-            )
+            public = get_credential(created.credential_id, actor["current_team"], actor=actor, owner_scope="manage")
         except CredentialServiceError as exc:
             return _error_response(exc)
         _audit_credential(
@@ -272,9 +267,7 @@ class CredentialViewSet(MaintainerViewSet):
         payload["current_team"] = actor["current_team"]
         try:
             updated = update_credential(kwargs.get("credential_id"), payload, actor=actor)
-            public = get_credential(
-                updated.credential_id, actor["current_team"], actor=actor, owner_scope="manage"
-            )
+            public = get_credential(updated.credential_id, actor["current_team"], actor=actor, owner_scope="manage")
         except CredentialServiceError as exc:
             return _error_response(exc)
         _audit_credential(
@@ -296,9 +289,7 @@ class CredentialViewSet(MaintainerViewSet):
         actor = _request_actor(request)
         credential_id = kwargs.get("credential_id")
         try:
-            public = get_credential(
-                credential_id, actor["current_team"], actor=actor, owner_scope="manage"
-            )
+            public = get_credential(credential_id, actor["current_team"], actor=actor, owner_scope="manage")
             delete_credential(credential_id, actor=actor, current_team=actor["current_team"])
         except CredentialServiceError as exc:
             return _error_response(exc)

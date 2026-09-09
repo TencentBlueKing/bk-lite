@@ -1,0 +1,82 @@
+import { describe, expect, it } from 'vitest';
+
+import {
+  formatHostSelectionLabel,
+  resolveHostPaginationChange,
+} from '../host-selection-modal';
+import {
+  buildNodeQueryParams,
+  buildTargetQueryParams,
+} from '../jobHostSelectionModalRuntime';
+
+const filters = {
+  ip: [{ lookup_expr: 'icontains', value: '10.93.160.2' }],
+  os_type: [{ lookup_expr: 'in', value: ['linux'] }],
+};
+
+describe('buildNodeQueryParams', () => {
+  it('maps IP and operating-system filters for node-manager hosts', () => {
+    expect(buildNodeQueryParams({
+      page: 1,
+      pageSize: 20,
+      filters,
+      source: 'node_manager',
+    })).toEqual({
+      page: 1,
+      page_size: 20,
+      ip: '10.93.160.2',
+      os: 'linux',
+    });
+  });
+
+  it('maps IP and operating-system filters for target-manager hosts', () => {
+    expect(buildTargetQueryParams({
+      page: 2,
+      pageSize: 50,
+      filters,
+      source: 'target_manager',
+    })).toEqual({
+      page: 2,
+      page_size: 50,
+      ip: '10.93.160.2',
+      os_type: 'linux',
+    });
+  });
+});
+
+describe('resolveHostPaginationChange', () => {
+  it('returns to the first page when the page size changes', () => {
+    expect(resolveHostPaginationChange({
+      currentPageSize: 20,
+      nextPage: 2,
+      nextPageSize: 50,
+    })).toEqual({
+      page: 1,
+      pageSize: 50,
+    });
+  });
+
+  it('keeps the requested page when the page size is unchanged', () => {
+    expect(resolveHostPaginationChange({
+      currentPageSize: 20,
+      nextPage: 2,
+      nextPageSize: 20,
+    })).toEqual({
+      page: 2,
+      pageSize: 20,
+    });
+  });
+});
+
+describe('formatHostSelectionLabel', () => {
+  it('shows the target name followed by its IP address', () => {
+    expect(formatHostSelectionLabel({
+      key: 'host-1',
+      hostName: 'beijing-ai-01',
+      ipAddress: '10.0.1.41',
+      cloudRegion: 'default',
+      osType: 'Linux',
+      currentDriver: 'SSH',
+    }, 'host-1')).toBe('beijing-ai-01 (10.0.1.41)');
+  });
+});

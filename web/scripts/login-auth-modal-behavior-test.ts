@@ -4,7 +4,6 @@ import {
   buildLoginAuthBindingPayload,
   getLoginAuthUnavailableEditingInstance,
   getLoginAuthInstanceNotFoundContent,
-  resolveLoginAuthDefaultIcon,
   resolveLoginAuthDefaultExternalField,
   resolveLoginAuthProviderKey,
   resolveLoginAuthTemplate,
@@ -104,10 +103,6 @@ assert.equal(
   ),
   null,
 );
-assert.equal(resolveLoginAuthDefaultIcon('feishu'), 'feishu');
-assert.equal(resolveLoginAuthDefaultIcon('wechat'), 'wechat');
-assert.equal(resolveLoginAuthDefaultIcon('feishudemo'), 'default-provider');
-assert.equal(resolveLoginAuthDefaultIcon('unknown'), 'default-provider');
 assert.equal(
   resolveLoginAuthDefaultExternalField({
     title: 'Login Auth',

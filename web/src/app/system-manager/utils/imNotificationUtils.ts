@@ -100,6 +100,14 @@ export function resolveImNotificationFieldPatches(input: {
   return nextValues;
 }
 
+export function resolveExternalFieldOptionLabel(
+  field: string,
+  labels?: Record<string, string> | null,
+): string {
+  const packLabel = labels?.[field]?.trim();
+  return packLabel || field;
+}
+
 export function getDisplayStatusColor(status: string): string {
   const map: Record<string, string> = {
     pending_sync: 'default',

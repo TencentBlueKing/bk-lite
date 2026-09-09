@@ -1,14 +1,18 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Input, Button } from 'antd';
-import { SearchOutlined } from '@ant-design/icons';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Button } from 'antd';
 import CustomTable from '@/components/custom-table';
 import JobDriverBadge from '@/app/job/components/driver-badge';
 import OperateFormModal from '@/components/operate-form-modal';
+import SearchCombination from '@/components/search-combination';
+import type { FieldConfig, SearchFilters } from '@/components/search-combination/types';
 import SelectionPreviewLayout from '@/components/selection-preview-layout';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useTranslation } from '@/utils/i18n';
 import { ColumnItem } from '@/types';
+
+const DEFAULT_PAGE_SIZE = 20;
 
 export interface HostItem {
   key: string;
@@ -24,7 +28,7 @@ export type TargetSourceType = 'node_manager' | 'target_manager';
 export interface FetchHostsParams {
   page: number;
   pageSize: number;
-  search?: string;
+  filters?: SearchFilters;
   source: TargetSourceType;
 }
 
@@ -32,6 +36,27 @@ export interface FetchHostsResult {
   items: HostItem[];
   total: number;
 }
+
+interface HostPaginationChange {
+  currentPageSize: number;
+  nextPage: number;
+  nextPageSize: number;
+}
+
+export const resolveHostPaginationChange = ({
+  currentPageSize,
+  nextPage,
+  nextPageSize,
+}: HostPaginationChange) => ({
+  page: nextPageSize === currentPageSize ? nextPage : 1,
+  pageSize: nextPageSize,
+});
+
+export const formatHostSelectionLabel = (host: HostItem | undefined, fallbackKey: string) => {
+  if (!host) return fallbackKey;
+  if (host.hostName && host.ipAddress) return `${host.hostName} (${host.ipAddress})`;
+  return host.hostName || host.ipAddress || fallbackKey;
+};
 
 export interface JobHostSelectionModalProps {
   open: boolean;
@@ -56,20 +81,47 @@ const JobHostSelectionModal: React.FC<JobHostSelectionModalProps> = ({
 }) => {
   const { t } = useTranslation();
 
-  const [searchText, setSearchText] = useState('');
+  const [filters, setFilters] = useState<SearchFilters>({});
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>(initialKeys);
   const [dataSource, setDataSource] = useState<HostItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [selectedHostsMap, setSelectedHostsMap] = useState<Record<string, HostItem>>({});
-  const pageSize = 20;
+  const fetchHostsRef = useRef(fetchHosts);
+  const pendingFilterSignatureRef = useRef<string | null>(null);
+  const filterFields = useMemo<FieldConfig[]>(() => [
+    {
+      name: 'ip',
+      label: t('job.ipAddress'),
+      lookup_expr: 'icontains',
+    },
+    {
+      name: 'os_type',
+      label: t('job.osType'),
+      lookup_expr: 'in',
+      options: [
+        { id: 'linux', name: t('job.linux') },
+        { id: 'windows', name: t('job.windows') },
+      ],
+    },
+  ], [t]);
+
+  useEffect(() => {
+    fetchHostsRef.current = fetchHosts;
+  }, [fetchHosts]);
 
   const fetchData = useCallback(
-    async (page: number, search?: string) => {
+    async (page: number, nextPageSize: number, nextFilters?: SearchFilters) => {
       setLoading(true);
       try {
-        const result = await fetchHosts({ page, pageSize, search, source });
+        const result = await fetchHostsRef.current({
+          page,
+          pageSize: nextPageSize,
+          filters: nextFilters,
+          source,
+        });
         setDataSource(result.items);
         setTotal(result.total);
       } catch {
@@ -79,17 +131,17 @@ const JobHostSelectionModal: React.FC<JobHostSelectionModalProps> = ({
         setLoading(false);
       }
     },
-    [fetchHosts, source],
+    [source],
   );
 
   useEffect(() => {
     if (open) {
-      setSelectedRowKeys(initialKeys);
-      setSearchText('');
+      setFilters({});
       setCurrentPage(1);
-      fetchData(1);
+      setPageSize(DEFAULT_PAGE_SIZE);
+      fetchData(1, DEFAULT_PAGE_SIZE);
     }
-  }, [fetchData, initialKeys, open]);
+  }, [fetchData, open]);
 
   useEffect(() => {
     if (open) {
@@ -108,22 +160,31 @@ const JobHostSelectionModal: React.FC<JobHostSelectionModalProps> = ({
     );
   }, [open, selectedHosts]);
 
-  const handleSearch = () => {
+  const handleFilterChange = (nextFilters: SearchFilters) => {
+    const signature = JSON.stringify(nextFilters);
+    // tags 模式下 Enter 会在同一轮事件中重复触发相同筛选，只在请求边界合并本轮重复值。
+    if (pendingFilterSignatureRef.current === signature) return;
+
+    pendingFilterSignatureRef.current = signature;
+    queueMicrotask(() => {
+      if (pendingFilterSignatureRef.current === signature) {
+        pendingFilterSignatureRef.current = null;
+      }
+    });
+    setFilters(nextFilters);
     setCurrentPage(1);
-    fetchData(1, searchText);
+    fetchData(1, pageSize, nextFilters);
   };
 
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchText(e.target.value);
-    if (!e.target.value) {
-      setCurrentPage(1);
-      fetchData(1);
-    }
-  };
-
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-    fetchData(page, searchText);
+  const handlePageChange = (nextPage: number, nextPageSize: number) => {
+    const pagination = resolveHostPaginationChange({
+      currentPageSize: pageSize,
+      nextPage,
+      nextPageSize,
+    });
+    setCurrentPage(pagination.page);
+    setPageSize(pagination.pageSize);
+    fetchData(pagination.page, pagination.pageSize, filters);
   };
 
   const columns: ColumnItem[] = [
@@ -214,7 +275,7 @@ const JobHostSelectionModal: React.FC<JobHostSelectionModalProps> = ({
     <OperateFormModal
       title={t('job.selectTargetHost')}
       open={open}
-      width={800}
+      width={960}
       onCancel={onCancel}
       confirmText={t('job.confirm')}
       cancelText={t('job.cancel')}
@@ -222,19 +283,17 @@ const JobHostSelectionModal: React.FC<JobHostSelectionModalProps> = ({
       onConfirm={handleConfirm}
     >
       <SelectionPreviewLayout
-        primaryWidth={560}
+        primaryWidth={660}
         listHeight="420px"
         primary={(
           <div className="flex h-[480px] flex-col gap-3">
             <div className="flex items-center justify-between">
-              <Input
-                className="w-[320px]"
-                placeholder={t('job.searchHostPlaceholder')}
-                prefix={<SearchOutlined />}
-                allowClear
-                value={searchText}
-                onChange={handleSearchChange}
-                onPressEnter={handleSearch}
+              <SearchCombination
+                key={`${source}-${open ? 'open' : 'closed'}`}
+                fieldConfigs={filterFields}
+                fieldWidth={96}
+                selectWidth={190}
+                onChange={handleFilterChange}
               />
               <div className="flex gap-2">
                 <Button size="small" onClick={handleSelectAllCurrent}>
@@ -257,7 +316,7 @@ const JobHostSelectionModal: React.FC<JobHostSelectionModalProps> = ({
                   pageSize,
                   total,
                   onChange: handlePageChange,
-                  showSizeChanger: false,
+                  showSizeChanger: true,
                   showTotal: (count: number) =>
                     t('job.totalItems').replace('{total}', String(count)),
                 }}
@@ -272,7 +331,12 @@ const JobHostSelectionModal: React.FC<JobHostSelectionModalProps> = ({
         )}
         items={selectedRowKeys.map((key) => ({
           key,
-          label: selectedHostsMap[key]?.hostName || selectedHostsMap[key]?.ipAddress || key,
+          label: (
+            <EllipsisWithTooltip
+              text={formatHostSelectionLabel(selectedHostsMap[key], key)}
+              className="w-full min-w-0 truncate"
+            />
+          ),
         }))}
         onClear={handleDeselectAll}
         onRemove={(key) => {

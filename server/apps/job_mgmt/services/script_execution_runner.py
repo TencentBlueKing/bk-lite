@@ -17,6 +17,7 @@ from apps.job_mgmt.services.execution_stream_service import (
     build_stream_topic,
     publish_done_sentinel,
 )
+from apps.job_mgmt.services.execution_timeout_service import ExecutionTimeoutService
 from apps.job_mgmt.services.shell_utils import build_heredoc_command, parse_shebang
 from apps.rpc.executor import Executor
 from nats_client.clients import ensure_stream_sync
@@ -104,6 +105,8 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
         sentineled = set()
         workers = min(self.MAX_WORKERS, len(target_list)) or 1
         for batch_start in range(0, len(target_list), workers):
+            if isinstance(execution, JobExecution) and ExecutionTimeoutService.renew_running(execution.id) is None:
+                break
             batch = target_list[batch_start : batch_start + workers]
             with ThreadPoolExecutor(max_workers=len(batch)) as pool:
                 futures = {

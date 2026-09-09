@@ -1499,6 +1499,7 @@
         "added": "Added",
         "removed": "Removed",
         "selectVersionHint": "Select two versions to compare",
+        "diffOverBudgetHint": "These two versions have too many lines for row-by-row alignment. Showing original text side by side.",
         "versionNumber": "Version",
         "status": "Status",
         "fileSize": "File Size",

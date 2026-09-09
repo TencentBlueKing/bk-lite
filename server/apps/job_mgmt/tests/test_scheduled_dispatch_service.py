@@ -40,7 +40,9 @@ class TestDispatchExecutionJob:
             )
             mock_app.control.revoke.assert_called_once_with(persisted_task_id)
             mock_exec.objects.filter.assert_called_once_with(id=7)
-            mock_exec.objects.filter.return_value.update.assert_called_once_with(celery_task_id=persisted_task_id)
+            mock_exec.objects.filter.return_value.update.assert_called_once()
+            assert mock_exec.objects.filter.return_value.update.call_args.kwargs["celery_task_id"] == persisted_task_id
+            assert mock_exec.objects.filter.return_value.update.call_args.kwargs["converge_deadline_at"] is not None
 
     def test_missing_execution_returns_false_without_dispatch(self):
         with patch("apps.job_mgmt.tasks.current_app") as mock_app, patch("apps.job_mgmt.tasks.JobExecution") as mock_exec:
@@ -81,6 +83,12 @@ class TestDispatchExecutionJob:
             mock_exec.objects.filter.assert_called_once_with(id=7)
             persisted_task_id = events[0][1]["celery_task_id"]
             assert events == [
-                ("persist", {"celery_task_id": persisted_task_id}),
+                (
+                    "persist",
+                    {
+                        "celery_task_id": persisted_task_id,
+                        "converge_deadline_at": events[0][1]["converge_deadline_at"],
+                    },
+                ),
                 ("dispatch", {"args": [7], "task_id": persisted_task_id}),
             ]

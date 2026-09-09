@@ -13,6 +13,7 @@ from typing import Optional
 from apps.core.logger import job_logger as logger
 from apps.job_mgmt.constants import ExecutionStatus
 from apps.job_mgmt.models import JobExecution
+from apps.job_mgmt.services.execution_timeout_service import ExecutionTimeoutService
 
 
 def dispatch_celery_task(task_func, execution: JobExecution) -> Optional[str]:
@@ -26,12 +27,16 @@ def dispatch_celery_task(task_func, execution: JobExecution) -> Optional[str]:
         派发成功返回 Celery task id；broker 不可用等失败场景返回 ``None``，
         同时将 ``execution.status`` 标记为 :attr:`ExecutionStatus.FAILED`。
     """
+    pending_deadline = ExecutionTimeoutService.arm_pending(execution.id)
+    if pending_deadline is not None:
+        execution.converge_deadline_at = pending_deadline
     try:
         result = task_func.delay(execution.id)
     except Exception as e:
         logger.exception(f"[dispatch_celery_task] Celery 派发失败: execution_id={execution.id}, task={getattr(task_func, 'name', task_func)}, error={e}")
         execution.status = ExecutionStatus.FAILED
-        execution.save(update_fields=["status", "updated_at"])
+        execution.converge_deadline_at = None
+        execution.save(update_fields=["status", "converge_deadline_at", "updated_at"])
         return None
 
     execution.celery_task_id = result.id

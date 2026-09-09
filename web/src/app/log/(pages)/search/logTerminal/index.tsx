@@ -21,9 +21,12 @@ import terminalstyles from './index.module.scss';
 import { useAuth } from '@/context/auth';
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
-import { isJSON } from '@/app/log/utils/common';
 import SearchHighlight from '@/app/log/components/search-highlight';
 import { extractHighlightTerms } from '@/app/log/utils/searchHighlight';
+import {
+  createSseLogStreamState,
+  parseSseLogChunk,
+} from './sseLogStream';
 
 const MAX_LOGS_COUNT = 1000;
 
@@ -43,6 +46,7 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
     );
     const containerRef = useRef<HTMLDivElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
+    const sseParseStateRef = useRef(createSseLogStreamState());
     const highlightTerms = useMemo(
       () => extractHighlightTerms(highlightQuery ?? query.query),
       [highlightQuery, query.query]
@@ -108,13 +112,6 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
       });
     }, []);
 
-    const updateLogs = useCallback(
-      (log: string) => {
-        appendLogs([log]);
-      },
-      [appendLogs]
-    );
-
     // 开始日志流
     const startLogStream = useCallback(async (preserveLogs = false) => {
       // 先停止当前流；普通重启清空日志，暂停后继续则保留冻结画面。
@@ -169,35 +166,16 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
         streamReader = reader;
         readerRef.current = reader;
         const decoder = new TextDecoder();
+        sseParseStateRef.current = createSseLogStreamState();
         // 持续读取流数据
         while (!abortController.signal.aborted) {
           try {
             const { done, value } = await reader.read();
             if (done) break;
             const chunk = decoder.decode(value, { stream: true });
-            const lines = chunk.split('data:');
-            for (const line of lines) {
-              const trimmed = line.trim();
-              // 跳过空行和心跳检测
-              if (!trimmed || trimmed.startsWith(':')) {
-                continue;
-              }
-              // 处理SSE格式数据
-              try {
-                if (isJSON(trimmed)) {
-                  // 尝试解析JSON
-                  const logData = JSON.parse(trimmed);
-                  const msg = logData.message || logData._msg || trimmed;
-                  updateLogs(msg);
-                } else {
-                  const msgMatch = trimmed.match(/"(?:message|_msg)"\s*:\s*"(.*?)",/);
-                  if (msgMatch?.[1]) {
-                    updateLogs(msgMatch[1]);
-                  }
-                }
-              } catch {
-                console.log('error', trimmed);
-              }
+            const messages = parseSseLogChunk(chunk, sseParseStateRef.current);
+            if (messages.length) {
+              appendLogs(messages);
             }
           } catch (error: any) {
             if (error?.name === 'AbortError') {
@@ -226,7 +204,7 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
           isStreaming.current = false;
         }
       }
-    }, [query, stopLogStream, t, fetchData, token, updateLogs]);
+    }, [query, stopLogStream, t, fetchData, token, appendLogs]);
 
     // 暂停会真正关闭实时查询；继续时从当前时刻建立新的 tail 连接。
     const togglePause = useCallback(async () => {

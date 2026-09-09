@@ -63,16 +63,29 @@ def _parse_front_matter(front_lines):
     return metadata
 
 
-def _split_front_matter(text):
-    lines = text.splitlines()
+def split_front_matter_block(text):
+    """Split a markdown document into raw YAML front matter and body.
+
+    Returns ``(None, original_text)`` when the opening ``---`` boundary is
+    missing or unclosed, matching the historical ``_split_front_matter``
+    fallback.
+    """
+    lines = (text or "").splitlines()
     if not lines or lines[0].strip() != _FRONT_MATTER_BOUNDARY:
-        return {}, text
+        return None, text
     for index, line in enumerate(lines[1:], start=1):
         if line.strip() == _FRONT_MATTER_BOUNDARY:
-            metadata = _parse_front_matter(lines[1:index])
+            raw = "\n".join(lines[1:index])
             body = "\n".join(lines[index + 1 :]).lstrip("\n")
-            return metadata, body
-    return {}, text
+            return raw, body
+    return None, text
+
+
+def _split_front_matter(text):
+    raw, body = split_front_matter_block(text)
+    if raw is None:
+        return {}, text
+    return _parse_front_matter(raw.splitlines()), body
 
 
 def _title_from_filename(filename):

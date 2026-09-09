@@ -1,6 +1,12 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { message, Modal } from 'antd';
+import { createLatestRequestGuard } from '@/context/latestRequestGuard';
 import { useTranslation } from '@/utils/i18n';
+import {
+  commitSettingsTableListFailure,
+  commitSettingsTableListSettled,
+  commitSettingsTableListSuccess,
+} from '@/app/alarm/utils/settingsTableRequest';
 
 interface Pagination {
   current: number;
@@ -40,6 +46,7 @@ export function useSettingsTable<T>({
 }: UseSettingsTableOptions<T>): UseSettingsTableReturn<T> {
   const { t } = useTranslation();
   const listCount = useRef<number>(0);
+  const [requestGuard] = useState(createLatestRequestGuard);
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [loadingIds, setLoadingIds] = useState<Record<number, boolean>>({});
   const [operateVisible, setOperateVisible] = useState<boolean>(false);
@@ -53,8 +60,9 @@ export function useSettingsTable<T>({
   });
 
   const getTableList = useCallback(async (params: { current?: number; pageSize?: number; searchKey?: string } = {}) => {
+    const requestId = requestGuard.begin();
+    setTableLoading(true);
     try {
-      setTableLoading(true);
       const searchVal = params.searchKey !== undefined ? params.searchKey : searchKey;
       const queryParams = {
         page: params.current || pagination.current,
@@ -62,21 +70,28 @@ export function useSettingsTable<T>({
         name: searchVal || undefined,
       };
       const data = await fetchList(queryParams);
-      setDataList(data.items || []);
-      listCount.current = data.items?.length || 0;
-      setPagination((prev) => ({
-        ...prev,
-        total: data.count || 0,
-      }));
+      commitSettingsTableListSuccess(requestGuard, requestId, data, (next) => {
+        setDataList(next.dataList);
+        listCount.current = next.listCount;
+        setPagination((prev) => ({
+          ...prev,
+          total: next.paginationTotal,
+        }));
+      });
     } catch {
-      message.error(t('common.loadFailed'));
+      commitSettingsTableListFailure(requestGuard, requestId, () => {
+        message.error(t('common.loadFailed'));
+      });
     } finally {
-      setTableLoading(false);
+      commitSettingsTableListSettled(requestGuard, requestId, () => {
+        setTableLoading(false);
+      });
     }
-  }, [fetchList, pagination.current, pagination.pageSize, searchKey, t]);
+  }, [fetchList, pagination.current, pagination.pageSize, requestGuard, searchKey, t]);
 
   useEffect(() => {
     getTableList();
+    return () => requestGuard.invalidate();
   }, []);
 
   const handleEdit = useCallback((type: 'add' | 'edit', row?: T) => {

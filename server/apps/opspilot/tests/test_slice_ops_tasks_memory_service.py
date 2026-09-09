@@ -2,7 +2,7 @@
 
 聚焦真实编排与 DB 副作用，仅在 LLM 客户端与 ChatFlow 引擎工厂等外部边界打桩：
 - process_memory_write: 无模型时直接创建/追加；有模型时 write_rule 规范化 + 智能合并
-  （LLM 返回真实形态 JSON）；JSON 解析失败回退追加；记忆空间不存在抛错
+  （LLM 返回真实形态 JSON）；JSON/LLM 失败推迟写入不落原文；记忆空间不存在抛错
 - process_memory_write_cache: 缺 workflow_id/node_id 回退直接写入；未达阈值仅缓存不 flush；
   达阈值触发 flush（写入 Memory 并清空缓存）
 - _flush_memory_write_cache_group: 强制 flush 真实落库 + 缓存删除；空批内容直接清理
@@ -16,6 +16,7 @@
 cleanup_expired_workflow_attachments（存储清理）。DB 用真实 Postgres。
 """
 
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 
@@ -24,6 +25,9 @@ import pytest
 
 from apps.opspilot import tasks
 from apps.opspilot.models import Bot, BotWorkFlow, Memory, MemorySpace, MemoryWriteCache
+from apps.opspilot.tasks.memory import _MEMORY_WRITE_DEFERRED_FLUSH_LOG, _MEMORY_WRITE_DEFERRED_WRITE_LOG, MemoryWriteLlmUnavailable
+
+_LLM_PAYLOAD_SENTINEL = "RCA_PAYLOAD_SENTINEL_DO_NOT_LOG"
 
 pytestmark = pytest.mark.django_db
 
@@ -33,7 +37,8 @@ def _no_close_connections(mocker):
     """tasks 内部用 close_old_connections() 管理连接生命周期（针对 celery/eventlet 真实运行环境）。
     在 pytest-django 的事务回滚包裹下，它会关闭测试事务赖以工作的连接，与被测逻辑无关，
     属真实外部边界（连接池管理），在此打桩为 no-op，保证 DB 副作用断言可观测。"""
-    mocker.patch.object(tasks, "close_old_connections", return_value=None)
+    mocker.patch("apps.opspilot.tasks.memory.close_old_connections", return_value=None)
+    mocker.patch("apps.opspilot.tasks._common.close_old_connections", return_value=None)
 
 
 class _FakeResp:
@@ -53,10 +58,28 @@ class _FakeClient:
         return _FakeResp(self._content)
 
 
+class _SeqClient:
+    """按调用顺序返回不同 LLM 响应。"""
+
+    def __init__(self, *contents):
+        self._contents = list(contents)
+        self.calls = []
+
+    def invoke(self, messages):
+        self.calls.append(messages)
+        if not self._contents:
+            raise AssertionError("unexpected extra LLM invoke")
+        return _FakeResp(self._contents.pop(0))
+
+
 def _make_space(**kw):
     defaults = dict(name="sp", team=[1], scope=MemorySpace.SCOPE_PERSONAL, write_rule="", default_model="")
     defaults.update(kw)
     return MemorySpace.objects.create(**defaults)
+
+
+def _patch_write_client(mocker, client):
+    return mocker.patch("apps.opspilot.tasks.memory._build_memory_write_client", return_value=client)
 
 
 # ===========================================================================
@@ -137,7 +160,7 @@ class TestProcessMemoryWriteWithModel:
     def test_新记忆走write_rule规范化(self, mocker):
         sp = _make_space(write_rule="只保留要点", default_model="5")
         fake = _FakeClient("规范化后的内容")
-        mocker.patch.object(tasks, "_build_memory_write_client", return_value=fake)
+        _patch_write_client(mocker, fake)
         tasks.process_memory_write(memory_space_id=sp.id, title="T", content="原始很长内容", owner_username="u", owner_domain="d")
         mem = Memory.objects.get(memory_space=sp, owner_username="u")
         assert mem.content == "规范化后的内容"
@@ -149,29 +172,174 @@ class TestProcessMemoryWriteWithModel:
         Memory.objects.create(memory_space=sp, title="旧标题", content="旧内容", owner_username="u", owner_domain="d", created_by="u")
         merged_json = '```json\n{"title": "合并标题", "content": "合并内容"}\n```'
         fake = _FakeClient(merged_json)
-        mocker.patch.object(tasks, "_build_memory_write_client", return_value=fake)
+        _patch_write_client(mocker, fake)
         tasks.process_memory_write(memory_space_id=sp.id, title="T", content="新内容", owner_username="u", owner_domain="d")
         mem = Memory.objects.get(memory_space=sp, owner_username="u")
         assert mem.title == "合并标题"
         assert mem.content == "合并内容"
 
-    def test_合并JSON解析失败回退追加(self, mocker):
+    def test_合并JSON解析失败不改写记忆(self, mocker):
         sp = _make_space(default_model="5")
         Memory.objects.create(memory_space=sp, title="旧标题", content="旧内容", owner_username="u", owner_domain="d", created_by="u")
         fake = _FakeClient("不是合法JSON的返回")
-        mocker.patch.object(tasks, "_build_memory_write_client", return_value=fake)
-        tasks.process_memory_write(memory_space_id=sp.id, title="T", content="新内容", owner_username="u", owner_domain="d")
+        _patch_write_client(mocker, fake)
+        with pytest.raises(MemoryWriteLlmUnavailable) as exc_info:
+            tasks.process_memory_write(memory_space_id=sp.id, title="T", content="新内容", owner_username="u", owner_domain="d")
+        assert exc_info.value.failed_stage == "merge"
         mem = Memory.objects.get(memory_space=sp, owner_username="u")
-        # 解析失败 -> 简单追加（旧+新）
-        assert "旧内容" in mem.content and "新内容" in mem.content
+        assert mem.content == "旧内容"
         assert mem.title == "旧标题"
+
+    def test_write_rule调用失败不落原文(self, mocker, caplog):
+        sp = _make_space(write_rule="只保留要点", default_model="5")
+
+        class _FailingClient:
+            def invoke(self, messages):
+                raise ConnectionError(_LLM_PAYLOAD_SENTINEL)
+
+        _patch_write_client(mocker, _FailingClient())
+        caplog.set_level(logging.WARNING, logger="opspilot")
+        with pytest.raises(MemoryWriteLlmUnavailable) as exc_info:
+            tasks.process_memory_write(memory_space_id=sp.id, title="T", content=_LLM_PAYLOAD_SENTINEL, owner_username="u", owner_domain="d")
+        assert exc_info.value.failed_stage == "write_rule"
+        assert Memory.objects.filter(memory_space=sp, owner_username="u").count() == 0
+        records = [record for record in caplog.records if record.msg == _MEMORY_WRITE_DEFERRED_WRITE_LOG]
+        assert len(records) == 1
+        record = records[0]
+        assert record.levelno == logging.WARNING
+        assert record.args == (sp.id, "write_rule", "ConnectionError")
+        assert record.getMessage() == _MEMORY_WRITE_DEFERRED_WRITE_LOG % (sp.id, "write_rule", "ConnectionError")
+        assert record.exc_info is None
+        assert _LLM_PAYLOAD_SENTINEL not in record.msg
+        assert _LLM_PAYLOAD_SENTINEL not in str(record.args)
+        assert _LLM_PAYLOAD_SENTINEL not in caplog.text
 
     def test_配置模型但client构建失败回退直写(self, mocker):
         sp = _make_space(default_model="5")
-        mocker.patch.object(tasks, "_build_memory_write_client", return_value=None)
+        _patch_write_client(mocker, None)
         tasks.process_memory_write(memory_space_id=sp.id, title="T", content="直写内容", owner_username="u", owner_domain="d")
         mem = Memory.objects.get(memory_space=sp, owner_username="u")
         assert mem.content == "直写内容"
+
+    def test_卡片键命中只更新该类且不把其它类送进模型(self, mocker):
+        sp = _make_space(default_model="5")
+        Memory.objects.create(
+            memory_space=sp,
+            title="告警档案",
+            content=(
+                "### Unhealthy\n- reason: Unhealthy\n- 复发:\n"
+                "  - 2026-08-06 20:03 | web | unknown\n\n"
+                "### BackOff\n- reason: BackOff\n- 关键证据: pnpm install\n"
+            ),
+            owner_username="u",
+            owner_domain="d",
+            created_by="u",
+        )
+        fake = _SeqClient(
+            '{"card": "### Unhealthy\\n- reason: Unhealthy\\n- 复发:\\n  - 2026-08-06 20:03 | web | unknown\\n  - 2026-09-09 11:00 | web | INC-1\\n"}'
+        )
+        _patch_write_client(mocker, fake)
+        tasks.process_memory_write(
+            memory_space_id=sp.id,
+            title="T",
+            content="### Unhealthy\n- reason: Unhealthy\n- 事件编号: INC-1\n",
+            owner_username="u",
+            owner_domain="d",
+        )
+        mem = Memory.objects.get(memory_space=sp, owner_username="u")
+        assert "INC-1" in mem.content
+        assert "### BackOff" in mem.content
+        assert "pnpm install" in mem.content
+        assert len(fake.calls) == 1
+        prompt = fake.calls[0][-1].content
+        assert "### Unhealthy" in prompt
+        assert "pnpm install" not in prompt
+        assert "已有类别目录" not in prompt
+
+    def test_键未命中走目录语义归类再只更新命中卡片(self, mocker):
+        sp = _make_space(default_model="5")
+        Memory.objects.create(
+            memory_space=sp,
+            title="告警档案",
+            content="### Unhealthy\n- reason: Unhealthy\n- 关键证据: probe refused\n\n### BackOff\n- reason: BackOff\n- 关键证据: pnpm install\n",
+            owner_username="u",
+            owner_domain="d",
+            created_by="u",
+        )
+        fake = _SeqClient(
+            '{"action": "update", "index": 0}',
+            '{"card": "### Unhealthy\\n- reason: Unhealthy\\n- 复发:\\n  - 2026-09-09 11:00 | web | INC-2\\n"}',
+        )
+        _patch_write_client(mocker, fake)
+        tasks.process_memory_write(
+            memory_space_id=sp.id,
+            title="T",
+            content="Readiness probe failed: connection refused",
+            owner_username="u",
+            owner_domain="d",
+        )
+        mem = Memory.objects.get(memory_space=sp, owner_username="u")
+        assert "INC-2" in mem.content
+        assert "pnpm install" in mem.content
+        assert len(fake.calls) == 2
+        classify_prompt = fake.calls[0][-1].content
+        assert "已有类别目录" in classify_prompt
+        assert "标题=Unhealthy" in classify_prompt
+        assert "标题=BackOff" in classify_prompt
+        assert "Readiness probe failed" in classify_prompt
+        assert "### BackOff" not in classify_prompt
+        update_prompt = fake.calls[1][-1].content
+        assert "### Unhealthy" in update_prompt
+        assert "### BackOff" not in update_prompt
+
+    def test_目录判定新类则追加且不改旧卡片(self, mocker):
+        sp = _make_space(default_model="5")
+        Memory.objects.create(
+            memory_space=sp,
+            title="告警档案",
+            content="### Unhealthy\n- reason: Unhealthy\n",
+            owner_username="u",
+            owner_domain="d",
+            created_by="u",
+        )
+        fake = _SeqClient('{"action": "create"}')
+        _patch_write_client(mocker, fake)
+        tasks.process_memory_write(
+            memory_space_id=sp.id,
+            title="T",
+            content="### ImagePullBackOff\n- reason: ImagePullBackOff\n",
+            owner_username="u",
+            owner_domain="d",
+        )
+        mem = Memory.objects.get(memory_space=sp, owner_username="u")
+        assert "### Unhealthy" in mem.content
+        assert "### ImagePullBackOff" in mem.content
+        assert len(fake.calls) == 1
+        assert "已有类别目录" in fake.calls[0][-1].content
+
+    def test_目录归类失败不改写记忆(self, mocker):
+        sp = _make_space(default_model="5")
+        Memory.objects.create(
+            memory_space=sp,
+            title="告警档案",
+            content="### Unhealthy\n- reason: Unhealthy\n",
+            owner_username="u",
+            owner_domain="d",
+            created_by="u",
+        )
+        fake = _SeqClient("不是合法JSON的返回")
+        _patch_write_client(mocker, fake)
+        with pytest.raises(MemoryWriteLlmUnavailable) as exc_info:
+            tasks.process_memory_write(
+                memory_space_id=sp.id,
+                title="T",
+                content="Readiness probe failed",
+                owner_username="u",
+                owner_domain="d",
+            )
+        assert exc_info.value.failed_stage == "classify"
+        mem = Memory.objects.get(memory_space=sp, owner_username="u")
+        assert mem.content == "### Unhealthy\n- reason: Unhealthy\n"
 
 
 # ===========================================================================
@@ -237,7 +405,7 @@ class TestFlushGroup:
         MemoryWriteCache.objects.create(workflow_id=2, node_id="n", memory_target_id="u@d", content="A")
         MemoryWriteCache.objects.create(workflow_id=2, node_id="n", memory_target_id="u@d", content="B")
         # 跳过 LLM 归纳，使用原始拼接内容
-        mocker.patch.object(tasks, "_summarize_memory_batch_content", side_effect=lambda space, content, model_id=None: content)
+        mocker.patch("apps.opspilot.tasks.memory._summarize_memory_batch_content", side_effect=lambda space, content, model_id=None: content)
         ok = tasks._flush_memory_write_cache_group(
             memory_space_id=sp.id,
             title="自动记忆",
@@ -260,6 +428,78 @@ class TestFlushGroup:
             memory_space_id=sp.id, title="T", model_id=None, workflow_id=99, node_id="n", memory_target_id="x", force_flush=True
         )
         assert ok is False
+
+    def test_归纳LLM失败保留缓存且不落库(self, mocker, caplog):
+        sp = _make_space(default_model="5")
+        cache_ids = [
+            MemoryWriteCache.objects.create(workflow_id=4, node_id="n", memory_target_id="u@d", content="A").id,
+            MemoryWriteCache.objects.create(workflow_id=4, node_id="n", memory_target_id="u@d", content="B").id,
+        ]
+
+        class _FailingClient:
+            def invoke(self, messages):
+                raise ConnectionError(_LLM_PAYLOAD_SENTINEL)
+
+        _patch_write_client(mocker, _FailingClient())
+        caplog.set_level(logging.WARNING, logger="opspilot")
+        ok = tasks._flush_memory_write_cache_group(
+            memory_space_id=sp.id,
+            title="自动记忆",
+            model_id=5,
+            workflow_id=4,
+            node_id="n",
+            memory_target_id="u@d",
+            force_flush=True,
+        )
+        assert ok is False
+        remaining = list(MemoryWriteCache.objects.filter(id__in=cache_ids).order_by("id"))
+        assert len(remaining) == 2
+        assert all(item.status == MemoryWriteCache.STATUS_PENDING for item in remaining)
+        assert all(item.processing_started_at is None for item in remaining)
+        assert Memory.objects.filter(memory_space=sp).count() == 0
+        records = [record for record in caplog.records if record.msg == _MEMORY_WRITE_DEFERRED_FLUSH_LOG]
+        assert len(records) == 1
+        record = records[0]
+        assert record.levelno == logging.WARNING
+        assert record.args == (sp.id, 4, "n", 2, "summarize", "ConnectionError")
+        assert record.getMessage() == _MEMORY_WRITE_DEFERRED_FLUSH_LOG % (sp.id, 4, "n", 2, "summarize", "ConnectionError")
+        assert record.exc_info is None
+        traceback_errors = [item for item in caplog.records if item.levelno >= logging.ERROR and item.exc_info]
+        assert traceback_errors == []
+        assert _LLM_PAYLOAD_SENTINEL not in record.msg
+        assert _LLM_PAYLOAD_SENTINEL not in str(record.args)
+        assert _LLM_PAYLOAD_SENTINEL not in caplog.text
+
+    def test_合并LLM失败保留缓存且不改已有记忆(self, mocker):
+        sp = _make_space(default_model="5")
+        Memory.objects.create(memory_space=sp, title="旧标题", content="旧内容", owner_username="u", owner_domain="d", created_by="u")
+        cache_ids = [
+            MemoryWriteCache.objects.create(workflow_id=5, node_id="n", memory_target_id="u@d", content="新A").id,
+            MemoryWriteCache.objects.create(workflow_id=5, node_id="n", memory_target_id="u@d", content="新B").id,
+        ]
+        mocker.patch("apps.opspilot.tasks.memory._summarize_memory_batch_content", return_value="归纳后的内容")
+
+        class _FailingClient:
+            def invoke(self, messages):
+                raise ConnectionError("upstream down")
+
+        _patch_write_client(mocker, _FailingClient())
+        ok = tasks._flush_memory_write_cache_group(
+            memory_space_id=sp.id,
+            title="自动记忆",
+            model_id=5,
+            workflow_id=5,
+            node_id="n",
+            memory_target_id="u@d",
+            force_flush=True,
+        )
+        assert ok is False
+        remaining = list(MemoryWriteCache.objects.filter(id__in=cache_ids))
+        assert len(remaining) == 2
+        assert all(item.status == MemoryWriteCache.STATUS_PENDING for item in remaining)
+        mem = Memory.objects.get(memory_space=sp, owner_username="u")
+        assert mem.content == "旧内容"
+        assert mem.title == "旧标题"
 
 
 # ===========================================================================

@@ -338,6 +338,8 @@
       "node": "Node",
       "clickhouse_asynchronous_metrics_load_average1": "Load Average (1m)",
       "alertList": "Alert List",
+      "monitoringPolicy": "Monitoring Policy",
+      "noBoundPolicy": "No monitoring policies are bound to this asset",
       "postgresql_numbackends": "Active DB Connections",
       "postgresql_blks_read_rate": "Disk Block Read Rate",
       "postgresql_temp_files_rate": "Temporary Files Creation Rate",

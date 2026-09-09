@@ -1,3 +1,4 @@
+from django.db.models.functions import Length, Substr
 from django.http import JsonResponse
 from langchain_core.messages import HumanMessage, SystemMessage
 from rest_framework.decorators import action
@@ -10,7 +11,16 @@ from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.models import LLMModel
 from apps.opspilot.models.memory_mgmt import Memory, MemorySpace
-from apps.opspilot.serializers.memory_serializer import MemorySerializer, MemorySpaceSerializer, WorkflowMemorySpaceOptionSerializer
+from apps.opspilot.serializers.memory_serializer import (
+    MEMORY_RETRIEVE_CONTENT_LIMIT_MAX,
+    MemoryListSerializer,
+    MemorySerializer,
+    MemorySpaceSerializer,
+    WorkflowMemorySpaceOptionSerializer,
+    annotate_memory_content_preview,
+    parse_memory_content_limit,
+    parse_memory_content_offset,
+)
 from apps.opspilot.utils.prompt_safety import build_user_rule_block
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
@@ -130,23 +140,69 @@ class MemoryViewSet(AuthViewSet):
     permission_key = "memory"
     filterset_fields = ("memory_space",)
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if getattr(self, "action", None) in {"list", "retrieve"}:
+            return queryset.defer("content")
+        return queryset
+
+    def get_serializer_class(self):
+        if getattr(self, "action", None) == "list":
+            return MemoryListSerializer
+        return MemorySerializer
+
     @HasPermission("memory_list-View")
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
         # 个人记忆仅创建者可见:复用 visibility helper,与列表接口 memory_count 字段口径一致
         queryset = queryset & get_visible_memories_qs(request.user)
+        queryset = annotate_memory_content_preview(queryset)
         page = self.paginate_queryset(queryset)
         if page is not None:
-            serializer = self.get_serializer(page, many=True)
+            serializer = MemoryListSerializer(page, many=True)
             return self.get_paginated_response(serializer.data)
-        serializer = self.get_serializer(queryset, many=True)
+        serializer = MemoryListSerializer(queryset, many=True)
         return JsonResponse({"result": True, "data": serializer.data})
 
     @HasPermission("memory_list-View")
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
+        try:
+            content_limit = parse_memory_content_limit(request.query_params.get("content_limit"))
+            content_offset = parse_memory_content_offset(request.query_params.get("content_offset"))
+        except ValueError as exc:
+            return JsonResponse({"result": False, "message": str(exc)}, status=400)
+
+        if content_offset > 0 and content_limit is None:
+            content_limit = MEMORY_RETRIEVE_CONTENT_LIMIT_MAX
+
+        annotated = Memory.objects.filter(pk=instance.pk)
+        if content_limit is None:
+            row = annotated.values("content").get()
+            content = row["content"] or ""
+            content_length = len(content)
+            truncated = False
+        else:
+            row = (
+                annotated.annotate(
+                    _content_preview=Substr("content", content_offset + 1, content_limit),
+                    _content_length=Length("content"),
+                )
+                .values("_content_preview", "_content_length")
+                .get()
+            )
+            content = row["_content_preview"] or ""
+            content_length = int(row["_content_length"] or 0)
+            truncated = content_offset > 0 or content_offset + len(content) < content_length
+
         serializer = self.get_serializer(instance)
-        return JsonResponse({"result": True, "data": serializer.data})
+        serializer.fields.pop("content", None)
+        data = dict(serializer.data)
+        data["content"] = content
+        data["content_length"] = content_length
+        data["content_offset"] = content_offset
+        data["content_truncated"] = truncated
+        return JsonResponse({"result": True, "data": data})
 
     @HasPermission("memory_list-Add")
     def create(self, request, *args, **kwargs):

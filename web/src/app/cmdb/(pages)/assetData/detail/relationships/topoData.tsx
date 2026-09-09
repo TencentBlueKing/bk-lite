@@ -5,6 +5,11 @@ import { useGraphStore, useGraphInstance } from '@antv/xflow';
 import { TopoDataProps, NodeData } from '@/app/cmdb/types/assetData';
 import { registerReverseCurveConnector } from '@/app/cmdb/utils/reverse_curve';
 import { useInstanceApi } from '@/app/cmdb/api';
+import {
+  buildFirstLevelIndex,
+  lookupFirstLevel,
+  resolveTopoEdgeEndpoints,
+} from './topoLevelIndex';
 
 const CONFIG = {
   verticalGap: 100,
@@ -602,13 +607,7 @@ export const InitNode: React.FC<TopoDataProps> = ({
     type: string,
     node: NodeData,
     parentId: string | null,
-    levelNodes: {
-      [key: number]: Array<{
-        id: string;
-        parentId: string | null;
-        node: NodeData;
-      }>;
-    },
+    levelIndex: Map<string, number>,
     nodePositions: { [key: string]: { x: number; y: number } },
     isSrc: boolean,
     nodes: any[],
@@ -625,10 +624,7 @@ export const InitNode: React.FC<TopoDataProps> = ({
 
     if (!position) return;
 
-    const level = Object.keys(levelNodes).find((lvl) =>
-      levelNodes[Number(lvl)]?.some((n) => n.id === id)
-    );
-    const currentLevel = Number(level);
+    const currentLevel = Number(lookupFirstLevel(levelIndex, id));
     const isExpanded = currentLevel < CONFIG.maxExpandedLevel;
     const hasLeftBtn = (currentLevel === 1 && hasSrc) || (currentLevel !== 1 && isSrc && has_more)
     const hasRightBtn = (currentLevel === 1 && hasDst) || (currentLevel !== 1 && !isSrc && has_more) || node.has_more;
@@ -696,10 +692,11 @@ export const InitNode: React.FC<TopoDataProps> = ({
     // 如果父节点存在且父节点不是回退节点，则创建边
     if (parentId) {
       // type为当前节点类型（src或dst）
+      const { source, target } = resolveTopoEdgeEndpoints(type, id, parentId);
       edges.push({
         // 设置源节点和目标节点
-        source: type === "src" ? parentId : id,
-        target: type === "dst" ? parentId : id,
+        source,
+        target,
         attrs: {
           line: { stroke: 'var(--color-border-3)', strokeWidth: 1 },
         },
@@ -724,7 +721,7 @@ export const InitNode: React.FC<TopoDataProps> = ({
           type,
           child,
           id,
-          levelNodes,
+          levelIndex,
           nodePositions,
           isSrc,
           nodes,
@@ -751,12 +748,13 @@ export const InitNode: React.FC<TopoDataProps> = ({
     } = {};
 
     collectLevelInfo(data, null, 1, levelNodes);
+    const levelIndex = buildFirstLevelIndex(levelNodes);
     calculateNodePosition(levelNodes, nodePositions, isSrc);
     createNodesAndEdges(
       type,
       data,
       null,
-      levelNodes,
+      levelIndex,
       nodePositions,
       isSrc,
       nodes,

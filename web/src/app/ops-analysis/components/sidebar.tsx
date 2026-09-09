@@ -30,6 +30,7 @@ import { useSearchParams } from 'next/navigation';
 import { useDirectoryApi } from '@/app/ops-analysis/api/index';
 import { useUserInfoContext } from '@/context/userInfo';
 import { ExportModal, ImportModal } from './importExport';
+import CopyCanvasModal from './copyCanvasModal';
 import { ObjectType } from '@/app/ops-analysis/api/importExport';
 import { buildDefaultScreenViewSets } from '@/app/ops-analysis/(pages)/view/screen/utils/viewport';
 import {
@@ -41,6 +42,7 @@ import {
   isCanvasType,
   type CanvasType,
 } from '@/app/ops-analysis/constants/canvasTypes';
+import { shouldShowCanvasCopyAction, collectDirectoryExpandKeys } from '@/app/ops-analysis/utils/canvasDirectoryCopy';
 import {
   SidebarProps,
   SidebarRef,
@@ -84,13 +86,16 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
     const [newItemType, setNewItemType] = useState<DirectoryType>('directory');
     const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
     const [selectedKeys, setSelectedKeys] = useState<React.Key[]>([]);
-    const { getDirectoryTree, createItem, updateItem, deleteItem } =
+    const { getDirectoryTree, createItem, updateItem, deleteItem, copyItem } =
       useDirectoryApi();
     const [currentDir, setCurrentDir] = useState<DirItem | null>(null);
     const [exportModalVisible, setExportModalVisible] = useState(false);
     const [exportItem, setExportItem] = useState<DirItem | null>(null);
     const [importModalVisible, setImportModalVisible] = useState(false);
     const [importTargetDir, setImportTargetDir] = useState<DirItem | null>(null);
+    const [copyModalVisible, setCopyModalVisible] = useState(false);
+    const [copySource, setCopySource] = useState<DirItem | null>(null);
+    const [copySubmitting, setCopySubmitting] = useState(false);
     const activeCanvasType =
       selectedCanvasType || (isCanvasType(newItemType) ? newItemType : undefined);
     const isCreatingCanvas = modalAction !== 'edit' && isCanvasType(newItemType);
@@ -338,6 +343,43 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       setImportModalVisible(true);
     };
 
+    const handleCopy = (item: DirItem) => {
+      if (!hasPermission(['AddChart'])) return;
+      setCopySource(item);
+      setCopyModalVisible(true);
+    };
+
+    const handleCopyCancel = () => {
+      setCopyModalVisible(false);
+      setCopySource(null);
+    };
+
+    const handleCopySubmit = async (values: {
+      directory: number;
+      groups: number[];
+    }) => {
+      if (!copySource || !isCanvasType(copySource.type)) return;
+      setCopySubmitting(true);
+      try {
+        const copied = await copyItem(copySource.type, copySource.data_id, values);
+        const copiedName =
+          copied && typeof copied === 'object' && 'name' in copied
+            ? String((copied as { name?: string }).name || '')
+            : '';
+        message.success(
+          t('opsAnalysisSidebar.copySuccess', '已复制为 {name}', {
+            name: copiedName || copySource.name,
+          }),
+        );
+        handleCopyCancel();
+        await loadDirectories({ expandDirectoryId: values.directory });
+      } catch (error) {
+        console.error('Failed to copy canvas:', error);
+      } finally {
+        setCopySubmitting(false);
+      }
+    };
+
     const getDirectoryIcon = (type: DirectoryType) => {
       const meta = getCanvasTypeMeta(type);
       if (!meta) {
@@ -393,16 +435,24 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       const editPermission = isCatalogue ? 'EditCatalogue' : 'EditChart';
       const deletePermission = isCatalogue ? 'DeleteCatalogue' : 'DeleteChart';
 
-      // 内置对象：只显示导出按钮（非目录），其余禁用
+      const canvasResourceActions = (): MoreActionsDropdownItem[] => [
+        {
+          key: 'copy',
+          label: t('common.copy'),
+          permission: 'AddChart',
+          onClick: () => handleCopy(item),
+        },
+        {
+          key: 'export',
+          label: t('opsAnalysisSidebar.exportYaml'),
+          onClick: () => handleExport(item),
+        },
+      ];
+
+      // 内置目录：不提供复制/新建；内置画布可复制为用户副本。
       if (isBuiltIn) {
         return [
-          ...(!isGroup
-            ? [{
-              key: 'export',
-              label: t('opsAnalysisSidebar.exportYaml'),
-              onClick: () => handleExport(item),
-            }]
-            : []),
+          ...(shouldShowCanvasCopyAction(item) ? canvasResourceActions() : []),
           { key: 'edit', label: t('common.edit'), disabled: true },
           { key: 'delete', label: t('common.delete'), disabled: true },
         ];
@@ -484,12 +534,8 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
           },
         },
       );
-      if (!isGroup) {
-        items.push({
-          key: 'export',
-          label: t('opsAnalysisSidebar.exportYaml'),
-          onClick: () => handleExport(item),
-        });
+      if (shouldShowCanvasCopyAction(item)) {
+        items.push(...canvasResourceActions());
       }
       return items;
     };
@@ -625,12 +671,21 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       }
     };
 
-    const loadDirectories = async () => {
+    const loadDirectories = async (options?: { expandDirectoryId?: number }) => {
       try {
         setLoading(true);
         const data = await getDirectoryTree();
         setDirs(data);
         selectItemFromUrlParams(data);
+        if (options?.expandDirectoryId != null) {
+          const extraKeys = collectDirectoryExpandKeys(
+            data,
+            options.expandDirectoryId,
+          );
+          setExpandedKeys((keys) =>
+            Array.from(new Set([...keys, ...extraKeys])),
+          );
+        }
       } catch (error) {
         console.error('Failed to load directories:', error);
       } finally {
@@ -928,6 +983,15 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
           onSuccess={() => {
             loadDirectories();
           }}
+        />
+
+        <CopyCanvasModal
+          open={copyModalVisible}
+          directories={dirs}
+          currentGroupId={selectedGroup?.id != null ? Number(selectedGroup.id) : null}
+          confirmLoading={copySubmitting}
+          onCancel={handleCopyCancel}
+          onOk={handleCopySubmit}
         />
       </div>
     );

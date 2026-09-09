@@ -255,6 +255,8 @@
     "sourceType": "Source",
     "sourcePath": "Source Key",
     "sourceObject": "Query Object",
+    "searchPlaceholder": "Search by name",
+    "allSourceTypes": "All",
     "sourceTypes": {
       "nats": "NATS",
       "mysql": "MySQL",
@@ -1302,6 +1304,8 @@
     "reportDesc": "Best for periodic analysis and readable operations conclusions.",
     "addGroup": "Add Group",
     "exportYaml": "Export YAML",
+    "copyTargetDirectory": "Target directory",
+    "copySuccess": "Copied as {name}",
     "importYaml": "Import YAML",
     "exportSuccess": "Export success",
     "exportFailed": "Export failed",

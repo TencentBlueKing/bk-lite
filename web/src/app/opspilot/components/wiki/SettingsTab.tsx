@@ -39,11 +39,11 @@ interface TitleAliasFormValue {
   aliases?: string[];
 }
 
-const HELP_KEY: Record<SectionKey, string> = {
+const HELP_KEY = {
   basic: "wiki.helpBasicDesc",
   purpose: "wiki.helpPurposeDesc",
   danger: "wiki.helpDangerDesc",
-};
+} as const;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -124,7 +124,7 @@ const normalizeTitleAliasesForSave = (rows: TitleAliasFormValue[] = []) => {
   }));
 };
 
-// 设置工作区:顶部 Tab 切换分区;「用途与结构」恢复左右两栏 Markdown 预览/编辑。
+// 设置工作区:基础信息 / 用途与结构说明(Markdown 生成知识目录) / 危险区。
 const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const { t } = useTranslation();
   const intl = useIntl();
@@ -375,11 +375,11 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   );
 
   const renderMarkdownCard = (title: string, content: string) => (
-    <div className="min-w-0">
-      <div className="mb-2 text-sm font-medium text-[var(--color-text-1)]">
+    <div className="flex min-h-0 min-w-0 flex-col">
+      <div className="mb-2 shrink-0 text-sm font-medium text-[var(--color-text-1)]">
         {title}
       </div>
-      <div className="min-h-[420px] rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-4 py-3">
+      <div className="h-[min(520px,calc(100vh-280px))] min-h-[280px] overflow-y-auto rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-4 py-3">
         {content ? (
           <div className="max-w-full overflow-x-auto text-sm">
             <MarkdownRenderer content={content} />
@@ -428,14 +428,22 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       {purposeEditing ? (
         <div className="grid grid-cols-1 gap-x-6 lg:grid-cols-2">
           <Form.Item label={t("wiki.purpose")} name="purpose_md">
-            <Input.TextArea autoSize={{ minRows: 18, maxRows: 28 }} />
+            <Input.TextArea
+              className="!h-[min(520px,calc(100vh-280px))] min-h-[280px] overflow-y-auto"
+              autoSize={false}
+              rows={16}
+            />
           </Form.Item>
           <Form.Item label={t("wiki.schema")} name="schema_md">
-            <Input.TextArea autoSize={{ minRows: 18, maxRows: 28 }} />
+            <Input.TextArea
+              className="!h-[min(520px,calc(100vh-280px))] min-h-[280px] overflow-y-auto"
+              autoSize={false}
+              rows={16}
+            />
           </Form.Item>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="grid min-h-0 grid-cols-1 gap-6 lg:grid-cols-2">
           {renderMarkdownCard(t("wiki.purpose"), purposePreview)}
           {renderMarkdownCard(t("wiki.schema"), schemaPreview)}
         </div>

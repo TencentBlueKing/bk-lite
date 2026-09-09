@@ -332,7 +332,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
         <main
           className={`main-content flex-1 flex text-sm ${
             hideConsoleTopNav
-              ? 'min-h-0 overflow-hidden p-0'
+              ? 'min-h-0 w-full flex-col overflow-hidden p-0'
               : showAppTopSide ? 'min-h-0 min-w-0 flex-col py-4 pr-4' : 'p-4'
           } ${isDashboardShareRoute ? 'min-h-0 overflow-hidden' : ''} ${!isAuthenticated || isAuthRoute || hideConsoleTopNav ? 'h-screen' : ''}`}
           style={showAppTopSide ? { ['--custom-height' as string]: '100%' } : undefined}

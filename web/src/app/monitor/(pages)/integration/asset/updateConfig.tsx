@@ -14,7 +14,7 @@ import { useTranslation } from '@/utils/i18n';
 import OperateModal from '@/components/operate-modal';
 import useApiClient from '@/utils/request';
 import { usePluginFromJson } from '@/app/monitor/hooks/integration/usePluginFromJson';
-import { useQcloudRegionOptions } from '@/app/monitor/hooks/integration/useQcloudRegionOptions';
+import { cloudRegionProviderFromPlugin, useCloudRegionOptions } from '@/app/monitor/hooks/integration/useQcloudRegionOptions';
 import {
   getSnmpFilterMutexConflicts,
   trackSnmpFilterMutexLastChanged
@@ -82,21 +82,14 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
   }));
 
   // 获取配置信息
-  const isQcloudPlugin =
-    currentConfig?.instance_type === 'qcloud' ||
-    (Array.isArray(currentConfig?.config_type) &&
-      currentConfig.config_type.includes('qcloud')) ||
-    Boolean(
-      currentConfig?.form_fields?.some(
-        (field) => field?.options_key === 'region_option' || field?.name === 'region'
-      )
-    );
+  const regionProvider = cloudRegionProviderFromPlugin(currentConfig);
   const {
     regionOptions,
     loadingRegions,
     refreshRegions,
-  } = useQcloudRegionOptions({
-    enabled: Boolean(isQcloudPlugin && modalVisible),
+  } = useCloudRegionOptions({
+    enabled: Boolean(regionProvider && modalVisible),
+    provider: regionProvider || 'qcloud',
     form,
   });
 

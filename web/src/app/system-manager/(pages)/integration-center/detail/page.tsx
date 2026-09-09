@@ -24,7 +24,6 @@ import {
   getIntegrationDetailTopSectionContent,
   getIntegrationFieldBuckets,
   isIntegrationInstanceStarted,
-  resolveIntegrationProviderIcon,
   type IntegrationDetailTab,
 } from '@/app/system-manager/utils/integrationCenter';
 import { buildLoginAuthCallbackUrl } from '@/app/system-manager/utils/integrationLoginAuthCallbackUrl';
@@ -420,7 +419,7 @@ const IntegrationDetailPage: React.FC = () => {
           <TopSection
             title={instance.name}
             content={topSectionContent}
-            iconType={resolveIntegrationProviderIcon(instance.provider_key)}
+            iconType={instance.provider_key}
           />
         </div>
       </div>

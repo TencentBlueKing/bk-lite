@@ -13,7 +13,10 @@ pytestmark = pytest.mark.django_db
 
 def _config(*, auto_collect_enabled=True):
     return NodeMgmtSyncConfig.objects.create(
-        auto_sync_enabled=True, auto_collect_enabled=auto_collect_enabled, schedule_status="healthy", node_config_status="healthy",
+        auto_sync_enabled=True,
+        auto_collect_enabled=auto_collect_enabled,
+        schedule_status="healthy",
+        node_config_status="healthy",
     )
 
 
@@ -199,7 +202,7 @@ def test_collect_display_keeps_previous_complete_batch_while_new_run_is_active()
         task=config,
         run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
         status=NodeMgmtSyncRun.STATUS_SUBMITTED,
-        active_scope=NodeMgmtSyncService.ACTIVE_SCOPE,
+        active_scope=NodeMgmtSyncService.COLLECT_ACTIVE_SCOPE,
         deadline_at=timezone.now() + timedelta(minutes=10),
     )
     _collect_task(
