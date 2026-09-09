@@ -27,8 +27,8 @@ export const markdownImportFilePattern = (
   importFormat === "okf" ? /\.zip$/iu : /\.(?:md|markdown|zip)$/iu;
 
 export const initialCreateDirectoriesFromFolders = (
-  _importFormat: WikiMarkdownImportFormat = "markdown",
-): boolean => true;
+  importFormat: WikiMarkdownImportFormat = "markdown",
+): boolean => importFormat === "okf";
 
 const OKF_SKIP_REASON_KEYS: Record<string, string> = {
   reserved: "wiki.okfSkipReasonReserved",

@@ -8,6 +8,7 @@ from django.utils import timezone
 from apps.opspilot.models import BuildRecord, KnowledgePage, WikiImportPreflight
 from apps.opspilot.services.wiki.markdown_import_governance_service import (
     MarkdownImportGovernanceError,
+    TOKEN_TTL_MINUTES,
     execute_markdown_import,
     inspect_markdown_archive,
     preflight_markdown_import,
@@ -116,27 +117,91 @@ def test_preflight_actor_binding_mismatch_does_not_consume_token(wiki_factory):
     assert record.consumed_at is None
 
 
-def test_execute_accepts_preflight_after_recorded_expiry(wiki_factory):
+def test_execute_rejects_preflight_after_recorded_expiry(wiki_factory):
     knowledge_base = _ready_kb(wiki_factory)
-    content = "# 过期仍可执行\n\n正文。".encode("utf-8")
+    content = "# 过期应失败\n\n正文。".encode("utf-8")
     preflight = preflight_markdown_import(
         knowledge_base,
         content,
-        filename="still-valid.md",
+        filename="expired.md",
         actor="admin",
     )
+    assert preflight["expires_in_seconds"] == TOKEN_TTL_MINUTES * 60
     WikiImportPreflight.objects.filter(knowledge_base=knowledge_base).update(
         expires_at=timezone.now() - timedelta(days=1),
     )
 
-    result = execute_markdown_import(
+    with pytest.raises(MarkdownImportGovernanceError) as captured:
+        execute_markdown_import(
+            knowledge_base,
+            preflight["token"],
+            content,
+            filename="expired.md",
+            actor="admin",
+        )
+
+    assert captured.value.code == "preflight_token_expired"
+    assert captured.value.status_code == 409
+    record = WikiImportPreflight.objects.get(knowledge_base=knowledge_base)
+    assert record.status == "active"
+    assert record.consumed_at is None
+
+
+def _okf_concept(title, body="正文"):
+    return f"---\ntype: concept\ntitle: {title}\n---\n\n{body}\n"
+
+
+def test_create_folders_preflight_rejects_markdown_and_accepts_zip_kinds(wiki_factory):
+    knowledge_base = _ready_kb(wiki_factory)
+
+    with pytest.raises(MarkdownImportGovernanceError) as markdown_error:
+        preflight_markdown_import(
+            knowledge_base,
+            "# 单页\n\n正文。".encode("utf-8"),
+            filename="page.md",
+            actor="admin",
+            options={"create_directories_from_folders": True},
+        )
+    assert markdown_error.value.code == "folder_structure_requires_third_party"
+
+    markdown_default = preflight_markdown_import(
         knowledge_base,
-        preflight["token"],
-        content,
-        filename="still-valid.md",
+        "# 单页默认\n\n正文。".encode("utf-8"),
+        filename="page.md",
         actor="admin",
     )
+    assert markdown_default["preview"]["archive_kind"] == "markdown"
+    assert not (markdown_default["preview"].get("structure_preview") or {}).get("create_directories_from_folders")
 
-    assert result["counts"]["created"] == 1
-    record = WikiImportPreflight.objects.get(knowledge_base=knowledge_base)
-    assert record.status == "consumed"
+    third_party = preflight_markdown_import(
+        knowledge_base,
+        _zip([("guides/intro.md", "# Intro\n\nbody")]),
+        filename="pack.zip",
+        actor="admin",
+        options={"create_directories_from_folders": True},
+    )
+    assert third_party["preview"]["archive_kind"] == "third_party"
+    assert third_party["preview"]["structure_preview"]["create_directories_from_folders"] is True
+    assert third_party["preview"]["structure_preview"]["create_directory_count"] >= 1
+
+    okf_zip = _zip([("guides/intro.md", _okf_concept("Intro"))])
+    okf_off = preflight_markdown_import(
+        knowledge_base,
+        okf_zip,
+        filename="okf.zip",
+        actor="admin",
+        options={"import_format": "okf", "create_directories_from_folders": False},
+    )
+    assert okf_off["preview"]["archive_kind"] == "okf"
+    assert not (okf_off["preview"].get("structure_preview") or {}).get("create_directories_from_folders")
+
+    okf_on = preflight_markdown_import(
+        knowledge_base,
+        okf_zip,
+        filename="okf.zip",
+        actor="admin",
+        options={"import_format": "okf", "create_directories_from_folders": True},
+    )
+    assert okf_on["preview"]["archive_kind"] == "okf"
+    assert okf_on["preview"]["structure_preview"]["create_directories_from_folders"] is True
+    assert okf_on["preview"]["structure_preview"]["create_directory_count"] >= 1

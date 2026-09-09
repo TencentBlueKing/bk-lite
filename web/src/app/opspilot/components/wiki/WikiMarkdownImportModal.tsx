@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  Button,
   Collapse,
   Modal,
   Radio,
@@ -14,7 +15,7 @@ import {
   Upload,
   message,
 } from "antd";
-import { InboxOutlined } from "@ant-design/icons";
+import { InboxOutlined, ReloadOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import type { RcFile, UploadFile } from "antd/es/upload/interface";
 import { useWikiApi } from "@/app/opspilot/api/wiki";
@@ -33,6 +34,7 @@ import { formatPageTypeLabel } from "./wikiFormat";
 import {
   markdownImportGovernanceErrorView,
   formatArchiveBytes,
+  initialCreateDirectoriesFromFolders,
   markdownImportAccept,
   markdownImportFilePattern,
   okfSkippedReasonLabel,
@@ -88,8 +90,14 @@ const WikiMarkdownImportModal = ({
   const [targetDirectoryId, setTargetDirectoryId] = useState<number>();
   const [classificationRootId, setClassificationRootId] = useState<number>();
   const [restoreStructure, setRestoreStructure] = useState(false);
+  const [createDirectoriesFromFolders, setCreateDirectoriesFromFolders] =
+    useState(() => initialCreateDirectoriesFromFolders(importFormat));
   const [preflight, setPreflight] =
     useState<WikiMarkdownImportPreflightResult | null>(null);
+  const [preflightExpiresAt, setPreflightExpiresAt] = useState<number | null>(
+    null,
+  );
+  const [preflightExpired, setPreflightExpired] = useState(false);
   const [preflightStale, setPreflightStale] = useState(false);
   const [preflighting, setPreflighting] = useState(false);
   const [executing, setExecuting] = useState(false);
@@ -105,7 +113,7 @@ const WikiMarkdownImportModal = ({
   const preflightOptions = useMemo<WikiMarkdownImportPreflightOptions>(() => {
     const options: WikiMarkdownImportPreflightOptions = {
       restore_structure: restoreStructure,
-      create_directories_from_folders: !restoreStructure,
+      create_directories_from_folders: createDirectoriesFromFolders,
     };
     if (isOkf) options.import_format = "okf";
     if (routeMode === "target" && targetDirectoryId) {
@@ -117,6 +125,7 @@ const WikiMarkdownImportModal = ({
     return options;
   }, [
     classificationRootId,
+    createDirectoriesFromFolders,
     isOkf,
     restoreStructure,
     routeMode,
@@ -136,7 +145,12 @@ const WikiMarkdownImportModal = ({
     setTargetDirectoryId(undefined);
     setClassificationRootId(undefined);
     setRestoreStructure(false);
+    setCreateDirectoriesFromFolders(
+      initialCreateDirectoriesFromFolders(importFormat),
+    );
     setPreflight(null);
+    setPreflightExpiresAt(null);
+    setPreflightExpired(false);
     setPreflightStale(false);
     setPreflighting(false);
     setExecuting(false);
@@ -154,6 +168,21 @@ const WikiMarkdownImportModal = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  useEffect(() => {
+    setPreflightExpired(false);
+    if (preflightExpiresAt === null) return;
+    const remaining = preflightExpiresAt - Date.now();
+    if (remaining <= 0) {
+      setPreflightExpired(true);
+      return;
+    }
+    const timeout = window.setTimeout(
+      () => setPreflightExpired(true),
+      Math.min(remaining + 50, 2_147_483_647),
+    );
+    return () => window.clearTimeout(timeout);
+  }, [preflightExpiresAt]);
+
   const invalidatePreflight = () => {
     preflightSequenceRef.current += 1;
     setPreflighting(false);
@@ -170,17 +199,23 @@ const WikiMarkdownImportModal = ({
     }
     const sequence = ++preflightSequenceRef.current;
     setPreflighting(true);
+    setPreflightExpired(false);
     setPreflightStale(Boolean(preflight));
     setPreflightError(null);
     try {
       const result = await preflightKnowledgeBaseMarkdown(kbId, file, options);
       if (sequence !== preflightSequenceRef.current) return;
       setPreflight(result);
+      setPreflightExpiresAt(
+        Date.now() + Math.max(result.expires_in_seconds, 0) * 1000,
+      );
+      setPreflightExpired(result.expires_in_seconds <= 0);
       setPreflightStale(false);
       setPreflightError(null);
     } catch (error) {
       if (sequence !== preflightSequenceRef.current) return;
       setPreflight(null);
+      setPreflightExpiresAt(null);
       setPreflightStale(false);
       if (error instanceof HandledRequestError) {
         const view = markdownImportGovernanceErrorView(t, error);
@@ -202,6 +237,7 @@ const WikiMarkdownImportModal = ({
       );
       return Upload.LIST_IGNORE;
     }
+    const createFolders = initialCreateDirectoriesFromFolders(importFormat);
     preflightSequenceRef.current += 1;
     setSelectedFile(file);
     setFileList([
@@ -213,13 +249,16 @@ const WikiMarkdownImportModal = ({
       },
     ]);
     setRestoreStructure(false);
+    setCreateDirectoriesFromFolders(createFolders);
     setPreflight(null);
+    setPreflightExpiresAt(null);
+    setPreflightExpired(false);
     setPreflightStale(false);
     setPreflightError(null);
     void runPreflight(file, {
       ...preflightOptions,
       restore_structure: false,
-      create_directories_from_folders: true,
+      create_directories_from_folders: createFolders,
     });
     return false;
   };
@@ -229,7 +268,12 @@ const WikiMarkdownImportModal = ({
     setSelectedFile(null);
     setFileList([]);
     setRestoreStructure(false);
+    setCreateDirectoriesFromFolders(
+      initialCreateDirectoriesFromFolders(importFormat),
+    );
     setPreflight(null);
+    setPreflightExpiresAt(null);
+    setPreflightExpired(false);
     setPreflightStale(false);
     setPreflighting(false);
     setPreflightError(null);
@@ -253,11 +297,18 @@ const WikiMarkdownImportModal = ({
 
   const handleRestoreStructureChange = (checked: boolean) => {
     setRestoreStructure(checked);
+    if (checked) setCreateDirectoriesFromFolders(false);
+    invalidatePreflight();
+  };
+
+  const handleCreateFoldersChange = (checked: boolean) => {
+    setCreateDirectoriesFromFolders(checked);
+    if (checked) setRestoreStructure(false);
     invalidatePreflight();
   };
 
   const handleExecute = async () => {
-    if (!selectedFile || !preflight || preflightStale) {
+    if (!selectedFile || !preflight || preflightExpired || preflightStale) {
       message.warning(t("wiki.markdownImportRepreflightRequired"));
       return;
     }
@@ -406,6 +457,7 @@ const WikiMarkdownImportModal = ({
   const canExecute =
     Boolean(selectedFile && preflight) &&
     routeSelectionReady &&
+    !preflightExpired &&
     !preflightStale &&
     !preflighting &&
     !executing;
@@ -530,8 +582,20 @@ const WikiMarkdownImportModal = ({
         )}
 
         {selectedFile && (
-          <div className="min-w-0 truncate text-xs text-[var(--color-text-3)]">
-            {selectedFile.name}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="min-w-0 truncate text-xs text-[var(--color-text-3)]">
+              {selectedFile.name}
+            </span>
+            <Button
+              icon={<ReloadOutlined />}
+              loading={preflighting}
+              disabled={executing || !routeSelectionReady}
+              onClick={() => void runPreflight(selectedFile)}
+            >
+              {preflight
+                ? t("wiki.markdownImportRepreflight")
+                : t("wiki.markdownImportPreflight")}
+            </Button>
           </div>
         )}
 
@@ -545,16 +609,21 @@ const WikiMarkdownImportModal = ({
           <div className="flex flex-col gap-6">
             <Alert
               showIcon
-              type={preflightStale ? "warning" : "success"}
+              type={preflightExpired || preflightStale ? "warning" : "success"}
               message={
-                preflightStale
-                  ? t("wiki.markdownImportPreviewStale")
-                  : t("wiki.markdownImportTokenReady")
+                preflightExpired
+                  ? t("wiki.markdownImportTokenExpired")
+                  : preflightStale
+                    ? t("wiki.markdownImportPreviewStale")
+                    : t("wiki.markdownImportTokenReady")
               }
               description={
-                preflightStale
+                preflightExpired || preflightStale
                   ? t("wiki.markdownImportRepreflightRequired")
-                  : undefined
+                  : t("wiki.markdownImportSingleUseHint").replace(
+                      "{seconds}",
+                      String(preflight.expires_in_seconds),
+                    )
               }
             />
 
@@ -775,6 +844,51 @@ const WikiMarkdownImportModal = ({
                     />
                   </Space>
                 }
+              />
+            )}
+
+            {(preflight.preview.archive_kind === "third_party" ||
+              preflight.preview.archive_kind === "okf") && (
+              <Alert
+                showIcon
+                type="warning"
+                message={t(
+                  preflight.preview.archive_kind === "okf"
+                    ? "wiki.okfImportCreateFoldersTitle"
+                    : "wiki.markdownImportCreateFoldersTitle",
+                )}
+                description={t(
+                  preflight.preview.archive_kind === "okf"
+                    ? "wiki.okfImportCreateFoldersHint"
+                    : "wiki.markdownImportCreateFoldersHint",
+                )}
+                action={
+                  <Space>
+                    <span className="text-xs">
+                      {t("wiki.markdownImportCreateFolders")}
+                    </span>
+                    <Switch
+                      checked={createDirectoriesFromFolders}
+                      disabled={executing}
+                      onChange={handleCreateFoldersChange}
+                    />
+                  </Space>
+                }
+              />
+            )}
+
+            {preflight.preview.structure_preview
+              ?.create_directories_from_folders && (
+              <Alert
+                showIcon
+                type="info"
+                message={t("wiki.markdownImportCreateFoldersPreview").replace(
+                  "{count}",
+                  String(
+                    preflight.preview.structure_preview
+                      .create_directory_count ?? 0,
+                  ),
+                )}
               />
             )}
 
