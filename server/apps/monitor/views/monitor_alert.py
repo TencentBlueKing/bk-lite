@@ -363,8 +363,14 @@ class MonitorAlertViewSet(
             return WebUtils.response_403("没有操作该告警的权限")
         return None
 
+    def retrieve(self, request, *args, **kwargs):
+        return self._handler_action_response(self.get_object())
+
     def _handler_action_response(self, alert):
-        return Response(MonitorAlertSerializer(alert).data)
+        data = MonitorAlertSerializer(alert).data
+        enrich_alerts_notice_users_display([data])
+        enrich_alerts_handlers_display([data])
+        return Response(data)
 
     @action(methods=["post"], detail=True, url_path="claim")
     def claim(self, request, pk=None):

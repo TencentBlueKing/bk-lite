@@ -20,7 +20,7 @@ from apps.apm.models import (
 )
 from apps.apm.services.contracts import MetricDataState, PolicyQueryResult
 from apps.apm.services.policies import DjangoApmPolicyService
-from apps.apm.utils.user_display import format_user_identifiers
+from apps.apm.utils.user_display import build_user_display_map, format_user_identifiers
 from apps.core.logger import apm_logger as logger
 from apps.core.utils.viewset_utils import build_json_membership_query
 from apps.system_mgmt.models import User
@@ -94,7 +94,9 @@ class DjangoApmAlertService:
                 | Q(endpoint__icontains=keyword)
                 | Q(environment__icontains=keyword)
             )
-        return [self.serialize(alert) for alert in queryset.order_by("-last_event_at", "-id")[:limit]]
+        alerts = list(queryset.order_by("-last_event_at", "-id")[:limit])
+        user_map = build_user_display_map([item for alert in alerts for item in (alert.handlers or [])])
+        return [self.serialize(alert, user_map=user_map) for alert in alerts]
 
     def distribution(
         self,
@@ -104,14 +106,24 @@ class DjangoApmAlertService:
         started_at: datetime,
         ended_at: datetime,
         status_group: str | None = None,
+        my_alert: bool = False,
+        actor=None,
     ) -> list[dict]:
-        event_queryset = ApmEvent.objects.all()
+        event_queryset = ApmEvent.objects.exclude(
+            action__in=(ApmEvent.Action.CLAIMED, ApmEvent.Action.ASSIGNED)
+        )
         if status_group == "active":
             event_queryset = event_queryset.filter(alert__status=ApmAlert.Status.ACTIVE)
         elif status_group == "history":
             event_queryset = event_queryset.filter(
                 alert__status__in=(ApmAlert.Status.RECOVERED, ApmAlert.Status.CLOSED)
             )
+        if my_alert:
+            mine = self.filter_my_handler_alerts(
+                self.queryset(organization_id=organization_id, organization_ids=organization_ids),
+                actor,
+            )
+            event_queryset = event_queryset.filter(alert_id__in=mine.values("id"))
         ids = list(organization_ids) if organization_ids is not None else [organization_id]
         rows = (
             event_queryset.filter(build_json_membership_query(event_queryset, "organizations", ids))
@@ -129,7 +141,7 @@ class DjangoApmAlertService:
         return list(buckets.values())
 
     @staticmethod
-    def serialize(alert: ApmAlert) -> dict:
+    def serialize(alert: ApmAlert, user_map: dict[str, str] | None = None) -> dict:
         events = list(alert.events.all())
         outboxes_prefetched = all("outbox_entries" in getattr(event, "_prefetched_objects_cache", {}) for event in events)
         if outboxes_prefetched:
@@ -169,7 +181,7 @@ class DjangoApmAlertService:
             "current_value": alert.current_value,
             "operator": alert.operator,
             "handlers": list(alert.handlers or []),
-            "handlers_display": format_user_identifiers(alert.handlers or []),
+            "handlers_display": format_user_identifiers(alert.handlers or [], user_map),
             "started_at": alert.started_at,
             "ended_at": alert.ended_at,
             "last_event_at": alert.last_event_at,

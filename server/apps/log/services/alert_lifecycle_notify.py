@@ -2,6 +2,7 @@ import time
 from typing import Any
 
 from apps.core.logger import celery_logger as logger
+from apps.core.logger import log_logger
 from apps.log.constants.alert_policy import AlertConstants
 from apps.log.constants.web import WebConstants
 from apps.monitor.utils.system_mgmt_api import SystemMgmtUtils
@@ -263,7 +264,7 @@ class LogAlertLifecycleNotifier:
                 )
                 success, error_message = self._parse_channel_result(send_result)
                 if success:
-                    logger.info(
+                    log_logger.info(
                         "event=assign_notify_sent policy_id=%s alert_id=%s attempt=%s",
                         self.policy.id,
                         alert.id,
@@ -274,7 +275,7 @@ class LogAlertLifecycleNotifier:
                     "result": False,
                     "message": error_message,
                 }
-                logger.error(
+                log_logger.error(
                     "event=assign_notify_failed policy_id=%s alert_id=%s attempt=%s failed_stage=send error_type=%s",
                     self.policy.id,
                     alert.id,
@@ -283,13 +284,12 @@ class LogAlertLifecycleNotifier:
                 )
             except Exception as exc:
                 last_result = {"result": False, "message": type(exc).__name__}
-                logger.error(
+                log_logger.error(
                     "event=assign_notify_failed policy_id=%s alert_id=%s attempt=%s failed_stage=send error_type=%s",
                     self.policy.id,
                     alert.id,
                     attempt,
                     type(exc).__name__,
-                    exc_info=True,
                 )
             if attempt < max_attempts:
                 time.sleep(AlertConstants.NOTICE_SEND_RETRY_BACKOFF_SECONDS * attempt)

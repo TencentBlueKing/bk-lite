@@ -190,13 +190,27 @@ def test_my_alert_filters_handlers_not_operator(api_client, grant_all):
 
     listed = api_client.get("/api/v1/log/alert/", {"page": 1, "page_size": 20})
     mine_listed = api_client.get("/api/v1/log/alert/", {"page": 1, "page_size": 20, "my_alert": "1"})
+    listed_all = api_client.get("/api/v1/log/alert/all/", {"page": 1, "page_size": 20})
+    mine_all = api_client.get("/api/v1/log/alert/all/", {"page": 1, "page_size": 20, "my_alert": "1"})
+    listed_stats = api_client.get("/api/v1/log/alert/stats/", {"status": "new", "step": 60})
+    mine_stats = api_client.get("/api/v1/log/alert/stats/", {"status": "new", "step": 60, "my_alert": "1"})
 
     listed_ids = {item["id"] for item in listed.json()["data"]["items"]}
     mine_ids = {item["id"] for item in mine_listed.json()["data"]["items"]}
+    listed_all_ids = {item["id"] for item in listed_all.json()["data"]["items"]}
+    mine_all_ids = {item["id"] for item in mine_all.json()["data"]["items"]}
     assert listed.status_code == 200
     assert mine_listed.status_code == 200
+    assert listed_all.status_code == 200
+    assert mine_all.status_code == 200
+    assert listed_stats.status_code == 200
+    assert mine_stats.status_code == 200
     assert listed_ids == {mine.id, operator_only.id, others.id}
     assert mine_ids == {mine.id}
+    assert listed_all_ids == listed_ids
+    assert mine_all_ids == {mine.id}
+    assert listed_stats.json()["data"]["total"] == 3
+    assert mine_stats.json()["data"]["total"] == 1
 
 
 def _actor_user():
@@ -246,6 +260,7 @@ def test_claim_empty_active_alert_then_second_claim_conflicts(api_client, grant_
 
     assert first.status_code == 200
     assert first.json()["data"]["handlers"] == [actor.id]
+    assert first.json()["data"]["handlers_display"] == ["测试用户(testuser)"]
     alert.refresh_from_db()
     assert alert.handlers == [actor.id]
     assert alert.operator in (None, "")
@@ -565,7 +580,7 @@ def test_assign_notice_logs_without_handler_payload(grant_all, caplog, mocker):
     inside = _org_user()
     policy = _policy(notice=True, notice_type_id=channel.id)
     alert = _new_alert(policy, "assign-log", handlers=[inside.id])
-    caplog.set_level(logging.INFO, logger="celery")
+    caplog.set_level(logging.INFO, logger="log")
 
     ok, _ = LogAlertLifecycleNotifier(policy).notify_assigned(alert, max_attempts=1)
 
@@ -581,3 +596,62 @@ def test_assign_notice_logs_without_handler_payload(grant_all, caplog, mocker):
     assert str(alert.id) in rendered
     assert "password" not in rendered.lower()
     assert "handlers" not in rendered
+
+
+def test_assign_logs_lifecycle_template_without_handler_payload(grant_all, caplog):
+    from apps.log.services.alert_handlers import assign_alert as assign_alert_service
+
+    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
+    actor = _actor_user()
+    inside = _org_user()
+    policy = _policy()
+    alert = _new_alert(policy, "assign-log-event")
+    caplog.set_level(logging.INFO, logger="log")
+
+    assigned = assign_alert_service(alert, handlers=[inside.id], actor=actor)
+
+    records = [
+        record
+        for record in caplog.records
+        if record.msg == "event=alert_assigned alert_id=%s handler_count=%s"
+    ]
+    assert assigned.handlers == [inside.id]
+    assert len(records) == 1
+    assert records[0].args == (alert.pk, 1)
+    rendered = records[0].getMessage()
+    assert str(alert.pk) in rendered
+    assert "password" not in rendered.lower()
+    assert "handlers" not in rendered
+
+
+def test_assign_notify_failed_omits_traceback_and_channel_payload(grant_all, caplog, mocker):
+    from apps.log.services.alert_lifecycle_notify import LogAlertLifecycleNotifier
+
+    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
+    channel = _person_channel()
+    mocker.patch(
+        "apps.log.services.alert_lifecycle_notify.SystemMgmtUtils.send_msg_with_channel",
+        side_effect=RuntimeError("smtp-password=secret"),
+    )
+    inside = _org_user()
+    policy = _policy(notice=True, notice_type_id=channel.id)
+    alert = _new_alert(policy, "assign-fail", handlers=[inside.id])
+    caplog.set_level(logging.ERROR, logger="log")
+
+    ok, result = LogAlertLifecycleNotifier(policy).notify_assigned(alert, max_attempts=1)
+
+    records = [
+        record
+        for record in caplog.records
+        if record.msg
+        == "event=assign_notify_failed policy_id=%s alert_id=%s attempt=%s failed_stage=send error_type=%s"
+    ]
+    assert ok is False
+    assert result == {"result": False, "message": "RuntimeError"}
+    assert len(records) == 1
+    assert records[0].name == "log"
+    assert records[0].args == (policy.id, alert.id, 1, "RuntimeError")
+    assert records[0].exc_info is None
+    rendered = records[0].getMessage()
+    assert "smtp-password=secret" not in rendered
+    assert "password" not in rendered.lower()

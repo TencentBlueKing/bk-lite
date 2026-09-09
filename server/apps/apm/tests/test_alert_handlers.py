@@ -423,11 +423,57 @@ def test_my_alert_filters_handlers_not_operator(apm_api_client):
 
     listed = apm_api_client.get("/api/v1/apm/alerts/")
     mine_listed = apm_api_client.get("/api/v1/apm/alerts/", {"my_alert": "1"})
+    listed_distribution = apm_api_client.get("/api/v1/apm/alerts/distribution/")
+    mine_distribution = apm_api_client.get("/api/v1/apm/alerts/distribution/", {"my_alert": "1"})
 
     listed_ids = {str(item["id"]) for item in listed.data}
     mine_ids = {str(item["id"]) for item in mine_listed.data}
     assert listed.status_code == 200
     assert mine_listed.status_code == 200
+    assert listed_distribution.status_code == 200
+    assert mine_distribution.status_code == 200
     assert listed_ids == {str(mine.id), str(operator_only.id), str(others.id)}
     assert mine_ids == {str(mine.id)}
     assert str(hidden.id) not in listed_ids
+    assert sum(bucket["error"] for bucket in listed_distribution.data) == 3
+    assert sum(bucket["error"] for bucket in mine_distribution.data) == 1
+
+
+def test_claim_does_not_increase_distribution_count(apm_api_client):
+    actor = _actor_user()
+    _, alert, _ = _trigger(suffix="-claim-dist")
+
+    before = apm_api_client.get("/api/v1/apm/alerts/distribution/", {"status_group": "active"})
+    claimed = apm_api_client.post(f"/api/v1/apm/alerts/{alert.id}/claim/")
+    after = apm_api_client.get("/api/v1/apm/alerts/distribution/", {"status_group": "active"})
+
+    assert claimed.status_code == 200
+    assert claimed.data["handlers"] == [actor.id]
+    assert before.status_code == 200
+    assert after.status_code == 200
+    assert sum(bucket["error"] for bucket in before.data) == 1
+    assert sum(bucket["error"] for bucket in after.data) == 1
+
+
+def test_assign_logs_lifecycle_template_without_handler_payload(apm_api_client, caplog):
+    from apps.apm.services.alerts import DjangoApmAlertService
+
+    actor = _actor_user()
+    inside = _org_user()
+    _, alert, _ = _trigger(suffix="-assign-log")
+    caplog.set_level(logging.INFO, logger="apm")
+
+    assigned = DjangoApmAlertService.assign(alert, handlers=[inside.id], actor=actor)
+
+    records = [
+        record
+        for record in caplog.records
+        if record.msg == "event=alert_assigned alert_id=%s handler_count=%s"
+    ]
+    assert assigned.handlers == [inside.id]
+    assert len(records) == 1
+    assert records[0].args == (alert.id, 1)
+    rendered = records[0].getMessage()
+    assert str(alert.id) in rendered
+    assert "password" not in rendered.lower()
+    assert "handlers" not in rendered

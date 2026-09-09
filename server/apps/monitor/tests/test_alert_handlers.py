@@ -122,15 +122,19 @@ def test_alert_list_exposes_handlers_and_display(api_client, grant_all):
     )
     api_client.cookies["current_team"] = "1"
 
+    alert = MonitorAlert.objects.get(monitor_instance_id="h1")
     resp = api_client.get(
         f"{BASE}/api/monitor_alert/",
         {"status_in": "new", "page": 1, "page_size": 20},
     )
+    detail = api_client.get(f"{BASE}/api/monitor_alert/{alert.id}/")
 
     assert resp.status_code == 200
     result = resp.json()["data"]["results"][0]
     assert result["handlers"] == [user.id]
     assert result["handlers_display"] == ["处理人甲(handler1)"]
+    assert detail.status_code == 200
+    assert detail.json()["data"]["handlers_display"] == ["处理人甲(handler1)"]
 
 
 def test_my_alert_filters_handlers_not_operator(api_client, grant_all):
@@ -215,6 +219,7 @@ def test_claim_empty_active_alert_then_second_claim_conflicts(api_client, grant_
 
     assert first.status_code == 200
     assert first.json()["data"]["handlers"] == [actor.id]
+    assert first.json()["data"]["handlers_display"] == ["测试用户(testuser)"]
     alert.refresh_from_db()
     assert alert.handlers == [actor.id]
     assert alert.operator in (None, "")
@@ -532,3 +537,58 @@ def test_claim_logs_lifecycle_template_without_handler_payload(grant_all, caplog
     assert str(alert.pk) in rendered
     assert "password" not in rendered.lower()
     assert "handlers" not in rendered
+
+
+def test_assign_logs_lifecycle_template_without_handler_payload(grant_all, caplog):
+    from apps.monitor.services.alert_handlers import assign_alert as assign_alert_service
+
+    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
+    actor = _actor_user()
+    inside = _org_user()
+    policy = _policy()
+    alert = _new_alert(policy)
+    caplog.set_level(logging.INFO, logger="monitor")
+
+    assigned = assign_alert_service(alert, handlers=[inside.id], actor=actor)
+
+    records = [
+        record
+        for record in caplog.records
+        if record.msg == "event=alert_assigned alert_id=%s handler_count=%s"
+    ]
+    assert assigned.handlers == [inside.id]
+    assert len(records) == 1
+    assert records[0].args == (alert.pk, 1)
+    rendered = records[0].getMessage()
+    assert str(alert.pk) in rendered
+    assert "password" not in rendered.lower()
+    assert "handlers" not in rendered
+
+
+def test_assign_notify_failed_omits_traceback_and_channel_payload(grant_all, caplog, mocker):
+    from apps.monitor.services.alert_lifecycle_notify import AlertLifecycleNotifier
+
+    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
+    channel = _person_channel()
+    mocker.patch(
+        "apps.monitor.services.alert_lifecycle_notify.AlertLifecycleNotifier._send_normal_notice",
+        side_effect=RuntimeError("smtp-password=secret"),
+    )
+    inside = _org_user()
+    policy = _policy(notice=True, notice_type_ids=[channel.id])
+    alert = _new_alert(policy, notice_type_ids=[channel.id], handlers=[inside.id])
+    caplog.set_level(logging.ERROR, logger="monitor")
+
+    AlertLifecycleNotifier(policy).notify_assigned([alert])
+
+    records = [
+        record
+        for record in caplog.records
+        if record.msg == "event=assign_notify_failed action=assigned channel_id=%s failed_stage=send error_type=%s"
+    ]
+    assert len(records) == 1
+    assert records[0].args == (channel.id, "RuntimeError")
+    assert records[0].exc_info is None
+    rendered = records[0].getMessage()
+    assert "smtp-password=secret" not in rendered
+    assert "password" not in rendered.lower()

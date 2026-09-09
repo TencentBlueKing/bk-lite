@@ -427,9 +427,10 @@ describe('APM 告警指标快照与事件原始数据', { timeout: 15000 }, () =
     expect(screen.getByRole('button', { name: '分派' })).not.toBeNull();
     expect(screen.getByRole('button', { name: '关闭' })).not.toBeNull();
     await user.click(screen.getByText('我的告警'));
-    await waitFor(() =>
-      expect(api.getAlerts).toHaveBeenCalledWith(expect.objectContaining({ my_alert: 1 })),
-    );
+    await waitFor(() => {
+      expect(api.getAlerts).toHaveBeenCalledWith(expect.objectContaining({ my_alert: 1 }));
+      expect(api.getAlertDistribution).toHaveBeenCalledWith(expect.objectContaining({ my_alert: 1 }));
+    });
   });
 
   it('打开详情时若最新事件是认领，不请求事件快照', async () => {

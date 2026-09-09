@@ -64,4 +64,4 @@ Status: complete
 
 ## Further Notes
 
-协同规格：`specs/changes/domain-alert-handlers-assignment/spec.md`（613，Status: complete）。监控状态变更收薄见 `specs/changes/monitor-alert-lifecycle-events/spec.md`；614 只在那份契约上追加认领 / 分派，不改「扫描流水不再写成 Event」。p398_614 原文要的「事件页」按本仓库实现，就是告警详情事件序列。
+协同规格：`specs/changes/domain-alert-handlers-assignment/spec.md`（613，Status: complete）。监控状态变更收薄见 `specs/changes/monitor-alert-lifecycle-events/spec.md`；614 只在那份契约上追加认领 / 分派，不改「扫描流水不再写成 Event」。p398_614 原文要的「事件页」按本仓库实现，就是告警详情事件序列。复验跟进见 `specs/changes/domain-alert-handlers-followup/spec.md`。

@@ -1,8 +1,8 @@
 # 领域告警处理人产品决策记忆
 
 - 最近更新：2026-09-09
-- 当前规格：`specs/changes/domain-alert-lifecycle-events/spec.md`
-- 相关规格：`specs/changes/domain-alert-handlers-assignment/spec.md`
+- 当前规格：`specs/changes/domain-alert-handlers-followup/spec.md`
+- 相关规格：`specs/changes/domain-alert-handlers-assignment/spec.md`、`specs/changes/domain-alert-lifecycle-events/spec.md`
 
 ## 产品定位
 
@@ -39,6 +39,7 @@
 - 关单 / 认领 / 分派必填原因弹窗。
 - 日志自动恢复。
 - 转派、升级、认领通知、创建当分派、历史回填、告警中心回写。
+- 把监控 / 日志整份生命周期通知从历史 `celery_logger` / `exc_info` 一次迁完（跟进规格只修 613 新增的分派通知路径）。
 
 ## 仍待确认
 

@@ -108,7 +108,6 @@ class AlertLifecycleNotifier:
                     "event=assign_notify_failed action=assigned channel_id=%s failed_stage=send error_type=%s",
                     channel_id,
                     type(exc).__name__,
-                    exc_info=True,
                 )
                 now = datetime.now(timezone.utc).isoformat()
                 for alert in group_alerts:

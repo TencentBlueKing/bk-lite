@@ -120,14 +120,22 @@ export default function ApmAlertsPage() {
     setIsRefreshing(true);
     setState((current) => current === 'ready' ? current : 'loading');
     const timeParams = resolveTimeParams(activeTab, historyTimeRange);
+    const myAlertQuery = myAlert ? { my_alert: 1 } : {};
     const query: ApmAlertQuery = {
       ...timeParams,
       status_group: activeTab,
       limit: ALERT_LIST_LIMIT,
       keyword: submittedKeyword,
-      ...(myAlert ? { my_alert: 1 } : {}),
+      ...myAlertQuery,
     };
-    Promise.all([getAlerts(query), getAlertDistribution({ ...timeParams, status_group: activeTab })])
+    Promise.all([
+      getAlerts(query),
+      getAlertDistribution({
+        ...timeParams,
+        status_group: activeTab,
+        ...myAlertQuery,
+      }),
+    ])
       .then(([items, buckets]) => {
         if (sequence !== loadSequence.current) return;
         setAllAlerts(items);

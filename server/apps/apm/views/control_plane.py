@@ -1007,6 +1007,8 @@ class ApmAlertViewSet(viewsets.GenericViewSet):
                 started_at=data["started_at"],
                 ended_at=data["ended_at"],
                 status_group=data.get("status_group"),
+                my_alert=data.get("my_alert", False),
+                actor=request.user,
             )
         )
 
