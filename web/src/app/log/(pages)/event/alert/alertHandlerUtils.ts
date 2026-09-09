@@ -6,6 +6,11 @@ import {
 export const hasAlertHandlers = (handlers: unknown): boolean =>
   Array.isArray(handlers) && handlers.length > 0;
 
+export const isLogHitEvent = (item: {
+  action?: string | null;
+  [key: string]: unknown;
+}): boolean => !item.action;
+
 export const canClaimOrAssignAlert = (
   status: unknown,
   handlers: unknown,

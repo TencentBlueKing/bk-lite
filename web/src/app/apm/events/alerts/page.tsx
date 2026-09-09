@@ -167,6 +167,10 @@ export default function ApmAlertsPage() {
       setSelectedEvent(event);
       setEventEvidence(null);
       setDeliveries([]);
+      if (event.action === 'claimed' || event.action === 'assigned') {
+        setEventEvidenceLoading(false);
+        return;
+      }
       setEventEvidenceLoading(true);
       Promise.all([
         getEventEvidence(alert.id, event.event_id),
@@ -374,7 +378,7 @@ export default function ApmAlertsPage() {
   return (
     <ApmRouteShell
       title={t('apm.alerts.title', '告警')}
-      description={t('apm.alerts.lifecycleDescription', 'Alert 聚合完整生命周期；Event 记录触发、升级、恢复与人工关闭。')}
+      description={t('apm.alerts.lifecycleDescription', 'Alert 聚合完整生命周期；Event 记录触发、升级、认领、分派、恢复与人工关闭。')}
       dependency="control"
     >
       <ApmSurface>

@@ -59,6 +59,8 @@
       "event": "事件",
       "eventTriggered": "触发",
       "eventEscalated": "级别升级",
+      "eventClaimed": "认领",
+      "eventAssigned": "分派",
       "eventRecovered": "自动恢复",
       "eventClosed": "关闭",
       "noticeWay": "暂无通知渠道，可去",

@@ -41,7 +41,14 @@ import styles from '@/app/apm/events/event-workspace.module.scss';
 import AlertHandlerActions from '@/app/apm/events/alerts/alert-handler-actions';
 import { formatAlertHandlers } from '@/app/apm/events/alerts/alertHandlerUtils';
 
-const ACTION_KEY = { triggered: 'apm.alerts.trigger', escalated: 'apm.alerts.escalated', recovered: 'apm.alerts.recover', closed: 'apm.alerts.manuallyClosed' } as const;
+const ACTION_KEY = {
+  triggered: 'apm.alerts.trigger',
+  escalated: 'apm.alerts.escalated',
+  claimed: 'apm.alerts.claimed',
+  assigned: 'apm.alerts.assigned',
+  recovered: 'apm.alerts.recover',
+  closed: 'apm.alerts.manuallyClosed',
+} as const;
 const STATUS_KEY = { active: 'apm.status.firing', recovered: 'apm.status.recovered', closed: 'apm.alerts.statusClosed' } as const;
 const SEVERITY_KEY: Record<ApmPolicySeverity, string> = { critical: 'apm.severity.critical', error: 'apm.severity.error', warning: 'apm.severity.warning' };
 const METRIC_KEY: Record<ApmPolicyMetric, string> = {
@@ -442,13 +449,15 @@ export default function AlertDetailDrawer({
       };
     });
     lifecycleEvents.forEach((item) => {
-      if (item.action !== 'closed') return;
+      if (item.action !== 'closed' && item.action !== 'claimed' && item.action !== 'assigned') return;
       if (rows.some((row) => row.eventId === item.event_id)) return;
       rows.push({
         id: item.id,
         occurredAt: item.occurred_at,
         content: t(ACTION_KEY[item.action]),
-        value: formatMetricDisplayValue(alert.metric_type, item.value, unit, t('apm.common.noData', '无数据'), t),
+        value: item.action === 'closed'
+          ? formatMetricDisplayValue(alert.metric_type, item.value, unit, t('apm.common.noData', '无数据'), t)
+          : (item.description || t(ACTION_KEY[item.action])),
         inAlertWindow: true,
         danger: false,
         eventId: item.event_id,

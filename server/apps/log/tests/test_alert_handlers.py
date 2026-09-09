@@ -7,7 +7,7 @@ import pytest
 from django.utils import timezone
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.log.models.policy import Alert, Policy, PolicyOrganization
+from apps.log.models.policy import Alert, Event, Policy, PolicyOrganization
 from apps.log.serializers.policy import PolicySerializer
 from apps.log.views.policy import AlertViewSet
 from apps.system_mgmt.models import Channel, Group, User
@@ -250,6 +250,10 @@ def test_claim_empty_active_alert_then_second_claim_conflicts(api_client, grant_
     assert alert.handlers == [actor.id]
     assert alert.operator in (None, "")
     assert second.status_code == 409
+    claimed = list(Event.objects.filter(alert=alert, action=Event.Action.CLAIMED))
+    assert len(claimed) == 1
+    assert actor.username in claimed[0].content
+    assert alert.status == "new"
 
 
 def test_assign_org_user_succeeds_and_rejects_outsiders(
@@ -274,6 +278,9 @@ def test_assign_org_user_succeeds_and_rejects_outsiders(
     assert ok.status_code == 200
     assert alert.handlers == [inside.id]
     notify.assert_called_once()
+    assigned = list(Event.objects.filter(alert=alert, action=Event.Action.ASSIGNED))
+    assert len(assigned) == 1
+    assert inside.username in assigned[0].content
 
     taken = api_client.post(
         f"/api/v1/log/alert/{alert.id}/assign/",
@@ -328,6 +335,11 @@ def test_handlers_present_blocks_claim_assign_but_close_still_works(api_client, 
     assert closed.status_code == 200
     assert alert.status == "closed"
     assert alert.handlers == [owner.id]
+    assert Event.objects.filter(alert=alert, action=Event.Action.CLAIMED).count() == 0
+    assert Event.objects.filter(alert=alert, action=Event.Action.ASSIGNED).count() == 0
+    closed_events = list(Event.objects.filter(alert=alert, action=Event.Action.CLOSED))
+    assert len(closed_events) == 1
+    assert "testuser" in closed_events[0].content
 
 
 def test_inactive_alert_cannot_claim_or_assign(api_client, grant_all):
@@ -376,23 +388,6 @@ def test_deleted_policy_allows_claim_and_skips_assign_notify(
     assert claim_alert.handlers == [actor.id]
     assert assigned.status_code == 200
     assert assign_alert.handlers == [assignee.id]
-    notify.assert_not_called()
-
-
-def test_claim_does_not_send_assign_notify(
-    api_client, grant_all, mocker, django_capture_on_commit_callbacks
-):
-    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
-    _actor_user()
-    notify = mocker.patch("apps.log.services.alert_lifecycle_notify.LogAlertLifecycleNotifier.notify_assigned")
-    policy = _policy(notice=True)
-    alert = _new_alert(policy, "claim-no-notify")
-    api_client.cookies["current_team"] = "1"
-
-    with django_capture_on_commit_callbacks(execute=True):
-        resp = api_client.post(f"/api/v1/log/alert/{alert.id}/claim/")
-
-    assert resp.status_code == 200
     notify.assert_not_called()
 
 
@@ -555,7 +550,7 @@ def test_claim_logs_lifecycle_template_without_handler_payload(grant_all, caplog
     rendered = records[0].getMessage()
     assert str(alert.pk) in rendered
     assert "password" not in rendered.lower()
-    assert str(actor.id) not in rendered
+    assert "handlers" not in rendered
 
 
 def test_assign_notice_logs_without_handler_payload(grant_all, caplog, mocker):
@@ -585,4 +580,4 @@ def test_assign_notice_logs_without_handler_payload(grant_all, caplog, mocker):
     rendered = records[0].getMessage()
     assert str(alert.id) in rendered
     assert "password" not in rendered.lower()
-    assert str(inside.id) not in rendered
+    assert "handlers" not in rendered

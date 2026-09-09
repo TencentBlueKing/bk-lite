@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   canClaimOrAssignAlert,
   formatAlertHandlers,
-  hasAlertHandlers
+  hasAlertHandlers,
+  isLogHitEvent
 } from '../alertHandlerUtils';
 
 describe('日志告警处理人操作', () => {
@@ -19,5 +20,13 @@ describe('日志告警处理人操作', () => {
       formatAlertHandlers([7], [], [{ id: 7, username: 'bob', display_name: '处理人甲' }])
     ).toBe('处理人甲(bob)');
     expect(formatAlertHandlers([], [], [])).toBe('--');
+  });
+
+  it('空 action 才是命中，认领/分派/关闭不是命中', () => {
+    expect(isLogHitEvent({})).toBe(true);
+    expect(isLogHitEvent({ action: '' })).toBe(true);
+    expect(isLogHitEvent({ action: 'claimed' })).toBe(false);
+    expect(isLogHitEvent({ action: 'assigned' })).toBe(false);
+    expect(isLogHitEvent({ action: 'closed' })).toBe(false);
   });
 });

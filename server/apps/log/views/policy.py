@@ -36,6 +36,7 @@ from apps.log.services.alert_handlers import (
     claim_alert,
     filter_my_handler_alerts,
     is_my_alert_query,
+    record_closed_events,
 )
 from apps.log.services.access_scope import LogAccessScopeService
 from apps.log.services.alert_access import visible_log_alerts
@@ -508,11 +509,22 @@ class PolicyViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
             # 删除相关的定时任务
             PeriodicTask.objects.filter(name=f"log_policy_task_{policy_id}").delete()
-            Alert.objects.filter(policy_id=policy_id, status=AlertConstants.STATUS_NEW).update(
-                status=AlertConstants.STATUS_CLOSED,
-                operator=request.user.username,
-                end_event_time=datetime.now(timezone.utc),
-            )
+            closed_at = datetime.now(timezone.utc)
+            active_alerts = list(Alert.objects.filter(policy_id=policy_id, status=AlertConstants.STATUS_NEW))
+            if active_alerts:
+                Alert.objects.filter(
+                    id__in=[alert.id for alert in active_alerts],
+                    status=AlertConstants.STATUS_NEW,
+                ).update(
+                    status=AlertConstants.STATUS_CLOSED,
+                    operator=request.user.username,
+                    end_event_time=closed_at,
+                )
+                record_closed_events(
+                    active_alerts,
+                    operator=request.user.username,
+                    event_time=closed_at,
+                )
             return super().destroy(request, *args, **kwargs)
 
     def format_crontab(self, schedule):
@@ -677,6 +689,13 @@ class AlertViewSet(viewsets.ModelViewSet):
                 id=alert.id,
                 status=AlertConstants.STATUS_NEW,
             ).update(**update_values)
+            if changed:
+                closed = Alert.objects.get(id=alert.id)
+                record_closed_events(
+                    [closed],
+                    operator=request.user.username,
+                    event_time=closed_at,
+                )
             if changed and should_notify_alert_center:
                 # 提交后再发送，确保远端不会先于本地关闭状态收到事件。
                 transaction.on_commit(
@@ -785,6 +804,7 @@ class AlertViewSet(viewsets.ModelViewSet):
             updated = assign_alert(
                 alert,
                 handlers=serializer.validated_data["handlers"],
+                actor=request.user,
                 operable_qs=operable_qs,
             )
         except AlertHandlerForbidden as exc:
@@ -822,7 +842,7 @@ class AlertViewSet(viewsets.ModelViewSet):
         if not alert:
             return WebUtils.response_error("告警不存在", status_code=404)
 
-        event_qs = Event.objects.filter(alert_id=alert.id)
+        event_qs = Event.objects.filter(alert_id=alert.id, action="")
         if alert.policy_id is None:
             event_qs = event_qs.filter(policy_id__isnull=True)
         else:

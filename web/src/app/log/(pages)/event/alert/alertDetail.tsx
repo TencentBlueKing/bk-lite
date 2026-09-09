@@ -18,14 +18,14 @@ import { HeatMapDataItem } from '@/types';
 import { AlertOutlined } from '@ant-design/icons';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { HeatMapCellClickPayload } from '@/components/heat-map';
-import { useAlertDetailTabs } from '@/app/log/hooks/event';
+import { useAlertDetailTabs, useEventActionMap, useLevelList, useStateMap } from '@/app/log/hooks/event';
 import useLogEventApi from '@/app/log/api/event';
 import Information from './information';
 import EventDetail from './eventDetail';
 import { LEVEL_MAP } from '@/app/log/constants';
-import { useLevelList, useStateMap } from '@/app/log/hooks/event';
 import EventHeatMap, { getHeatMapCellColor } from '@/components/heat-map';
 import type { ListRef } from 'rc-virtual-list';
+import { isLogHitEvent } from './alertHandlerUtils';
 
 const TIMELINE_ITEM_HEIGHT = 48;
 
@@ -38,6 +38,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
     const { convertToLocalizedTime } = useLocalizedTime();
     const STATE_MAP = useStateMap();
     const LEVEL_LIST = useLevelList();
+    const EVENT_ACTION_MAP = useEventActionMap();
     const eventDetailRef = useRef<ModalRef>(null);
     const timelineRef = useRef<ListRef | null>(null);
     const timelineContainerRef = useRef<HTMLDivElement | null>(null);
@@ -65,23 +66,28 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
       return () => observer.disconnect();
     }, [activeTab, groupVisible]);
 
-    // 预计算每个事件所在小时的事件数量 → 对应热力图颜色
+    const hitEvents = useMemo(
+      () => eventData.filter((item) => isLogHitEvent(item)),
+      [eventData]
+    );
+
+    // 预计算每个命中事件所在小时的事件数量 → 对应热力图颜色
     const eventDotColors = useMemo(() => {
       const hourCountMap = new Map<string, number>();
-      eventData.forEach((item) => {
+      hitEvents.forEach((item) => {
         if (!item.event_time) return;
         const d = new Date(item.event_time);
         const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}-${d.getHours()}`;
         hourCountMap.set(key, (hourCountMap.get(key) || 0) + 1);
       });
       return eventData.map((item) => {
-        if (!item.event_time) return '#d9d9d9';
+        if (!isLogHitEvent(item) || !item.event_time) return 'var(--color-text-4)';
         const d = new Date(item.event_time);
         const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}-${d.getHours()}`;
         const count = hourCountMap.get(key) || 0;
         return getHeatMapCellColor(count, 'day');
       });
-    }, [eventData]);
+    }, [eventData, hitEvents]);
 
     useImperativeHandle(ref, () => ({
       showModal: ({ title, form }) => {
@@ -154,22 +160,31 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
     );
 
     const renderTimelineContent = useCallback(
-      (item: AlertEventItem) => (
-        <>
-          <span className="font-[600] mr-[10px] inline-block shrink-0">
-            {item.event_time ? convertToLocalizedTime(item.event_time) : '--'}
-          </span>
-          {`${formData.metric?.display_name || item.content}`}
-          <Button
-            type="link"
-            className="ml-[10px] h-auto p-0 align-baseline leading-[22px]"
-            onClick={() => openEventDetail(item)}
-          >
-            {t('common.detail')}
-          </Button>
-        </>
-      ),
-      [convertToLocalizedTime, formData.metric, openEventDetail, t]
+      (item: AlertEventItem) => {
+        const actionLabel = item.action
+          ? EVENT_ACTION_MAP[item.action as keyof typeof EVENT_ACTION_MAP]
+          : '';
+        const isHit = isLogHitEvent(item);
+        return (
+          <>
+            <span className="font-[600] mr-[10px] inline-block shrink-0">
+              {item.event_time ? convertToLocalizedTime(item.event_time) : '--'}
+            </span>
+            {actionLabel ? <Tag className="mr-[8px]">{actionLabel}</Tag> : null}
+            {`${formData.metric?.display_name || item.content}`}
+            {isHit ? (
+              <Button
+                type="link"
+                className="ml-[10px] h-auto p-0 align-baseline leading-[22px]"
+                onClick={() => openEventDetail(item)}
+              >
+                {t('common.detail')}
+              </Button>
+            ) : null}
+          </>
+        );
+      },
+      [EVENT_ACTION_MAP, convertToLocalizedTime, formData.metric, openEventDetail, t]
     );
 
     const renderTimelineItem = useCallback(
@@ -178,7 +193,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
         _index: number,
         props: { style: React.CSSProperties }
       ) => {
-        const dotColor = eventDotColors[_index] || '#d9d9d9';
+        const dotColor = eventDotColors[_index] || 'var(--color-text-4)';
         const isLast = _index === eventData.length - 1;
         return (
           <div style={props.style} className="relative">
@@ -250,17 +265,23 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
       ({ startTime, endTime }: HeatMapCellClickPayload) => {
         const startMs = new Date(startTime).getTime();
         const endMs = new Date(endTime).getTime();
-        const targetIndex = eventData.findIndex((item) => {
+        const targetIndex = hitEvents.findIndex((item) => {
           if (!item.event_time) return false;
           const eventMs = new Date(item.event_time).getTime();
           return eventMs >= startMs && eventMs < endMs;
         });
 
         if (targetIndex >= 0) {
-          timelineRef.current?.scrollTo({ index: targetIndex, align: 'top' });
+          const listIndex = eventData.findIndex(
+            (item) => item.id === hitEvents[targetIndex].id
+          );
+          timelineRef.current?.scrollTo({
+            index: listIndex >= 0 ? listIndex : targetIndex,
+            align: 'top'
+          });
         }
       },
-      [eventData]
+      [eventData, hitEvents]
     );
 
     const closeModal = () => {
@@ -349,7 +370,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
                     <div className="shrink-0">
                       <Spin spinning={eventLoading}>
                         <EventHeatMap
-                          data={eventData}
+                          data={hitEvents}
                           className="mb-4"
                           onCellClick={handleHeatMapCellClick}
                         />

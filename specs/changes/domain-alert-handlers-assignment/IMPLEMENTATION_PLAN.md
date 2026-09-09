@@ -147,12 +147,14 @@ APM：`ApmPolicy` / `ApmAlert`（APM 策略没有扁平 `notice_users`，处理�
 - 分派弹层：多选，选项来自告警所属组织用户接口。
 - 详情同样展示处理人，并提供上述操作。
 
-## 6. 614 接缝（本期只预留）
+## 6. 614 接缝
 
-- 认领 / 分派成功后的唯一扩展点在 T3 服务。
-- 监控 `MonitorEvent` 对 `triggered/recovered/closed` 的「每告警每动作一条」约束**不要**扩到认领 / 分派。614 若写事件，应允许同一告警多条分派类事件，或使用不进该约束的动作名。
-- 日志事件表尚无 `action`；614 再加，不在本期改日志 Event 模型。
-- 本期关闭 / 恢复继续走现有路径（监控已写 `closed`/`recovered` 事件），614 再对齐认领 / 分派。
+认领 / 分派事件写入见 `specs/changes/domain-alert-lifecycle-events/spec.md`。本切片已预留且必须保持：
+
+- 认领 / 分派成功后的唯一扩展点在 T3 服务；614 在同一事务内写事件。
+- 监控 `MonitorEvent` 对 `triggered/recovered/closed` 的「每告警每动作一条」约束**不要**扩到认领 / 分派。
+- 日志 Event 的 `action`、关闭补写、详情时间线由 614 做，613 不改日志 Event 模型。
+- 监控 / APM 关闭 / 恢复继续走现有路径，614 不得再插一条。
 
 ## 7. 测试切片
 

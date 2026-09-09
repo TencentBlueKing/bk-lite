@@ -614,7 +614,7 @@ export interface ApmEvent {
   title: string;
   description: string;
   severity: ApmPolicySeverity | 'info';
-  action: 'triggered' | 'escalated' | 'recovered' | 'closed';
+  action: 'triggered' | 'escalated' | 'claimed' | 'assigned' | 'recovered' | 'closed';
   status: 'active' | 'recovered' | 'closed';
   service: string;
   item: ApmPolicyMetric;

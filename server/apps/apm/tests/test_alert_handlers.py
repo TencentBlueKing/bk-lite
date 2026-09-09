@@ -11,6 +11,7 @@ from apps.apm.models import (
     ApmAlert,
     ApmAlertOutbox,
     ApmEvent,
+    ApmEventSnapshot,
     ApmPolicy,
     ApmPolicyNotificationTarget,
     ApmService,
@@ -104,7 +105,13 @@ def test_claim_empty_active_alert_then_second_claim_conflicts(apm_api_client):
     assert alert.handlers == [actor.id]
     assert alert.operator == ""
     assert second.status_code == 409
-    assert ApmEvent.objects.filter(alert=alert).exclude(action=ApmEvent.Action.TRIGGERED).count() == 0
+    claimed_events = [item for item in first.data["events"] if item["action"] == ApmEvent.Action.CLAIMED]
+    assert [item["action"] for item in first.data["events"]].count(ApmEvent.Action.TRIGGERED) == 1
+    assert len(claimed_events) == 1
+    assert actor.username in claimed_events[0]["description"]
+    assert alert.status == ApmAlert.Status.ACTIVE
+    assert ApmEventSnapshot.objects.filter(alert=alert).count() == 1
+    assert ApmEvent.objects.filter(alert=alert, action=ApmEvent.Action.CLAIMED).count() == 1
 
 
 def test_assign_org_user_succeeds_and_rejects_outsiders(
@@ -179,6 +186,9 @@ def test_handlers_present_blocks_claim_assign_but_close_still_works(apm_api_clie
     assert closed.status_code == 200
     assert alert.status == ApmAlert.Status.CLOSED
     assert alert.handlers == [owner.id]
+    assert ApmEvent.objects.filter(alert=alert, action=ApmEvent.Action.CLAIMED).count() == 0
+    assert ApmEvent.objects.filter(alert=alert, action=ApmEvent.Action.ASSIGNED).count() == 0
+    assert ApmEvent.objects.filter(alert=alert, action=ApmEvent.Action.CLOSED).count() == 1
 
 
 def test_inactive_alert_cannot_claim_or_assign(apm_api_client):
@@ -298,7 +308,12 @@ def test_assign_enqueues_person_channel_outbox_for_handlers(
     assert outbox.recipients == [str(inside.id)]
     assert outbox.payload.get("action") == "assigned"
     assert outbox.event_id is None
-    assert ApmEvent.objects.filter(alert=alert).exclude(action=ApmEvent.Action.TRIGGERED).count() == 0
+    assigned_events = [item for item in response.data["events"] if item["action"] == ApmEvent.Action.ASSIGNED]
+    assert len(assigned_events) == 1
+    assert inside.username in assigned_events[0]["description"]
+    assert ApmEvent.objects.filter(alert=alert, action=ApmEvent.Action.ASSIGNED).count() == 1
+    assert ApmEventSnapshot.objects.filter(alert=alert, action=ApmEvent.Action.ASSIGNED).count() == 0
+    assert alert.status == ApmAlert.Status.ACTIVE
 
 
 def test_assign_skips_outbox_without_person_channel(
@@ -354,6 +369,8 @@ def test_create_alert_does_not_enqueue_assign_outbox():
     assert outbox.payload["action"] == "triggered"
     assert outbox.recipients == ["1"]
     assert not str(outbox.event_key).startswith("assign:")
+    assert ApmEvent.objects.filter(alert=alert, action=ApmEvent.Action.ASSIGNED).count() == 0
+    assert ApmEvent.objects.filter(alert=alert, action=ApmEvent.Action.CLAIMED).count() == 0
 
 
 def test_claim_does_not_send_assign_notify(apm_api_client, mocker, django_capture_on_commit_callbacks):
@@ -385,7 +402,7 @@ def test_claim_logs_lifecycle_template_without_handler_payload(apm_api_client, c
     rendered = records[0].getMessage()
     assert str(alert.id) in rendered
     assert "password" not in rendered.lower()
-    assert str(actor.id) not in rendered
+    assert "handlers" not in rendered
 
 
 def test_my_alert_filters_handlers_not_operator(apm_api_client):

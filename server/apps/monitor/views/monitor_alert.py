@@ -394,6 +394,7 @@ class MonitorAlertViewSet(
             updated = assign_alert(
                 alert,
                 handlers=serializer.validated_data["handlers"],
+                actor=request.user,
                 operable_qs=operable_qs,
             )
         except AlertHandlerForbidden as exc:

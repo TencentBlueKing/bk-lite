@@ -1,12 +1,16 @@
-"""日志告警认领 / 分派。614 只允许挂在成功提交之后，本期不写事件。"""
+"""日志告警认领 / 分派，与处理人名单同一事务写认领 / 分派事件。"""
+
+import uuid
 
 from django.db import transaction
+from django.utils import timezone
 
 from apps.core.logger import log_logger as logger
 from apps.core.utils.viewset_utils import build_json_membership_query
 from apps.log.constants.alert_policy import AlertConstants
-from apps.log.models.policy import Alert, Policy
+from apps.log.models.policy import Alert, Event, Policy
 from apps.log.services.alert_lifecycle_notify import LogAlertLifecycleNotifier
+from apps.log.utils.user_display import format_user_identifiers
 from apps.system_mgmt.models import User
 
 
@@ -158,20 +162,75 @@ def _schedule_assign_notification(alert: Alert) -> None:
     transaction.on_commit(_notify)
 
 
+def _actor_name(actor) -> str:
+    return getattr(actor, "username", "") or str(actor)
+
+
+def _handler_event_content(action, *, actor, handlers) -> str:
+    names = "、".join(format_user_identifiers(handlers)) or str(handlers)
+    operator = _actor_name(actor)
+    if action == Event.Action.CLAIMED:
+        return f"{operator} 认领，处理人变为 {names}"
+    if action == Event.Action.ASSIGNED:
+        return f"{operator} 分派给 {names}"
+    return f"{operator} 关闭"
+
+
+def _write_lifecycle_event(
+    alert: Alert,
+    *,
+    action,
+    actor,
+    event_time=None,
+    content="",
+    skip_if_exists=False,
+) -> Event | None:
+    if skip_if_exists and Event.objects.filter(alert_id=alert.pk, action=action).exists():
+        return None
+    occurred_at = event_time or timezone.now()
+    return Event.objects.create(
+        id=uuid.uuid4().hex,
+        policy_id=alert.policy_id,
+        source_id=alert.source_id,
+        alert=alert,
+        event_time=occurred_at,
+        value=alert.value,
+        level=alert.level or "",
+        action=action,
+        content=content or _handler_event_content(action, actor=actor, handlers=alert.handlers),
+        notice_result=[],
+        notified=True,
+    )
+
+
+def record_closed_events(alerts, *, operator, event_time) -> None:
+    for alert in alerts:
+        _write_lifecycle_event(
+            alert,
+            action=Event.Action.CLOSED,
+            actor=operator,
+            event_time=event_time,
+            content=_handler_event_content(Event.Action.CLOSED, actor=operator, handlers=alert.handlers),
+            skip_if_exists=True,
+        )
+
+
 def claim_alert(alert: Alert, *, actor, operable_qs=None) -> Alert:
     with transaction.atomic():
         locked = _lock_assignable_alert(alert.pk, operable_qs=operable_qs)
         locked.handlers = [current_handler_identifier(actor)]
         locked.save(update_fields=["handlers", "updated_at"])
+        _write_lifecycle_event(locked, action=Event.Action.CLAIMED, actor=actor)
     logger.info("event=alert_claimed alert_id=%s", alert.pk)
     return Alert.objects.get(pk=alert.pk)
 
 
-def assign_alert(alert: Alert, *, handlers, operable_qs=None) -> Alert:
+def assign_alert(alert: Alert, *, handlers, actor, operable_qs=None) -> Alert:
     with transaction.atomic():
         locked = _lock_assignable_alert(alert.pk, operable_qs=operable_qs)
         locked.handlers = normalize_assign_handlers(handlers, locked.organizations)
         locked.save(update_fields=["handlers", "updated_at"])
+        _write_lifecycle_event(locked, action=Event.Action.ASSIGNED, actor=actor)
         _schedule_assign_notification(locked)
     logger.info("event=alert_assigned alert_id=%s handler_count=%s", alert.pk, len(locked.handlers))
     return Alert.objects.get(pk=alert.pk)

@@ -1,11 +1,15 @@
-"""监控告警认领 / 分派。614 只允许挂在成功提交之后，本期不写事件。"""
+"""监控告警认领 / 分派，与处理人名单同一事务写认领 / 分派事件。"""
+
+import uuid
 
 from django.db import transaction
+from django.utils import timezone
 
 from apps.core.logger import monitor_logger as logger
 from apps.core.utils.viewset_utils import build_json_membership_query
-from apps.monitor.models import MonitorAlert, MonitorPolicy
+from apps.monitor.models import MonitorAlert, MonitorEvent, MonitorPolicy
 from apps.monitor.services.alert_lifecycle_notify import AlertLifecycleNotifier
+from apps.monitor.utils.user_display import format_notice_users
 from apps.system_mgmt.models import User
 
 
@@ -160,20 +164,51 @@ def _schedule_assign_notification(alert: MonitorAlert) -> None:
     transaction.on_commit(_notify)
 
 
+def _actor_name(actor) -> str:
+    return getattr(actor, "username", "") or str(actor)
+
+
+def _handler_event_content(action, *, actor, handlers) -> str:
+    names = "、".join(format_notice_users(handlers)) or str(handlers)
+    operator = _actor_name(actor)
+    if action == MonitorEvent.Action.CLAIMED:
+        return f"{operator} 认领，处理人变为 {names}"
+    return f"{operator} 分派给 {names}"
+
+
+def _write_handler_event(alert: MonitorAlert, *, action, actor) -> None:
+    MonitorEvent.objects.create(
+        id=uuid.uuid4().hex,
+        alert_id=alert.id,
+        policy_id=alert.policy_id,
+        monitor_instance_id=alert.monitor_instance_id,
+        metric_instance_id=alert.metric_instance_id or "",
+        dimensions=alert.dimensions or {},
+        value=alert.value,
+        level=alert.level or "info",
+        action=action,
+        content=_handler_event_content(action, actor=actor, handlers=alert.handlers),
+        notice_result=[],
+        event_time=timezone.now(),
+    )
+
+
 def claim_alert(alert: MonitorAlert, *, actor, operable_qs=None) -> MonitorAlert:
     with transaction.atomic():
         locked = _lock_assignable_alert(alert.pk, operable_qs=operable_qs)
         locked.handlers = [current_handler_identifier(actor)]
         locked.save(update_fields=["handlers", "updated_at"])
+        _write_handler_event(locked, action=MonitorEvent.Action.CLAIMED, actor=actor)
     logger.info("event=alert_claimed alert_id=%s", alert.pk)
     return MonitorAlert.objects.get(pk=alert.pk)
 
 
-def assign_alert(alert: MonitorAlert, *, handlers, operable_qs=None) -> MonitorAlert:
+def assign_alert(alert: MonitorAlert, *, handlers, actor, operable_qs=None) -> MonitorAlert:
     with transaction.atomic():
         locked = _lock_assignable_alert(alert.pk, operable_qs=operable_qs)
         locked.handlers = normalize_assign_handlers(handlers, locked.organizations)
         locked.save(update_fields=["handlers", "updated_at"])
+        _write_handler_event(locked, action=MonitorEvent.Action.ASSIGNED, actor=actor)
         _schedule_assign_notification(locked)
     logger.info("event=alert_assigned alert_id=%s handler_count=%s", alert.pk, len(locked.handlers))
     return MonitorAlert.objects.get(pk=alert.pk)

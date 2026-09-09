@@ -91,6 +91,11 @@ class Event(TimeInfo):
     事件记录
     """
 
+    class Action(models.TextChoices):
+        CLAIMED = "claimed", "认领"
+        ASSIGNED = "assigned", "分派"
+        CLOSED = "closed", "人工关闭"
+
     id = models.CharField(primary_key=True, max_length=50, verbose_name="事件ID")
     policy = models.ForeignKey(Policy, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="关联策略")
     source_id = models.CharField(max_length=100, db_index=True, verbose_name="资源ID")
@@ -98,6 +103,14 @@ class Event(TimeInfo):
     event_time = models.DateTimeField(blank=True, null=True, verbose_name="事件发生时间")
     value = models.FloatField(blank=True, null=True, verbose_name="事件值")
     level = models.CharField(max_length=20, verbose_name="事件级别")
+    action = models.CharField(
+        max_length=20,
+        choices=Action.choices,
+        blank=True,
+        default="",
+        db_index=True,
+        verbose_name="生命周期动作",
+    )
     content = models.TextField(blank=True, verbose_name="事件内容")
     notice_result = models.JSONField(default=list, verbose_name="通知结果")
     notified = models.BooleanField(default=False, db_index=True, verbose_name="通知是否已成功")

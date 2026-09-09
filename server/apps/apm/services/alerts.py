@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import datetime, timedelta
+from uuid import uuid4
 
 from django.db import transaction
 from django.db.models import Count, Q, QuerySet
 from django.db.models.functions import TruncHour
+from django.utils import timezone
 
 from apps.apm.models import (
     ApmAlert,
@@ -469,20 +471,58 @@ class DjangoApmAlertService:
         transaction.on_commit(_notify)
 
     @staticmethod
+    def _actor_name(actor) -> str:
+        return getattr(actor, "username", "") or str(actor)
+
+    @staticmethod
+    def _handler_event_description(action, *, actor, handlers) -> str:
+        names = "、".join(format_user_identifiers(handlers)) or str(handlers)
+        operator = DjangoApmAlertService._actor_name(actor)
+        if action == ApmEvent.Action.CLAIMED:
+            return f"{operator} 认领，处理人变为 {names}"
+        return f"{operator} 分派给 {names}"
+
+    @staticmethod
+    def _write_handler_event(alert: ApmAlert, *, action, actor) -> None:
+        occurred_at = timezone.now()
+        action_label = "认领" if action == ApmEvent.Action.CLAIMED else "分派"
+        ApmEvent.objects.create(
+            event_id=f"{alert.external_id}:{action}:{uuid4().hex}",
+            alert=alert,
+            action=action,
+            title=f"APM {alert.policy_name}{action_label}",
+            description=DjangoApmAlertService._handler_event_description(
+                action, actor=actor, handlers=alert.handlers
+            ),
+            severity=alert.severity,
+            service=alert.service_name,
+            item=alert.metric_type,
+            value=alert.current_value,
+            resource_id=str(alert.service_id or ""),
+            resource_name=f"{alert.service_namespace}/{alert.service_name}".lstrip("/"),
+            policy_id=alert.policy_id_snapshot,
+            environment=alert.environment,
+            organizations=list(alert.organizations or []),
+            occurred_at=occurred_at,
+        )
+
+    @staticmethod
     def claim(alert: ApmAlert, *, actor, operable_qs=None) -> ApmAlert:
         with transaction.atomic():
             locked = DjangoApmAlertService._lock_assignable_alert(alert.id, operable_qs=operable_qs)
             locked.handlers = [DjangoApmAlertService.current_handler_identifier(actor)]
             locked.save(update_fields=("handlers", "updated_at"))
+            DjangoApmAlertService._write_handler_event(locked, action=ApmEvent.Action.CLAIMED, actor=actor)
         logger.info("event=alert_claimed alert_id=%s", alert.id)
         return ApmAlert.objects.get(id=alert.id)
 
     @staticmethod
-    def assign(alert: ApmAlert, *, handlers, operable_qs=None) -> ApmAlert:
+    def assign(alert: ApmAlert, *, handlers, actor, operable_qs=None) -> ApmAlert:
         with transaction.atomic():
             locked = DjangoApmAlertService._lock_assignable_alert(alert.id, operable_qs=operable_qs)
             locked.handlers = DjangoApmAlertService.normalize_assign_handlers(handlers, locked.organizations)
             locked.save(update_fields=("handlers", "updated_at"))
+            DjangoApmAlertService._write_handler_event(locked, action=ApmEvent.Action.ASSIGNED, actor=actor)
             DjangoApmAlertService._schedule_assign_notification(locked)
         logger.info("event=alert_assigned alert_id=%s handler_count=%s", alert.id, len(locked.handlers))
         return ApmAlert.objects.get(id=alert.id)

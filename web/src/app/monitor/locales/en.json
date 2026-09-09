@@ -59,6 +59,8 @@
       "event": "Event",
       "eventTriggered": "Triggered",
       "eventEscalated": "Escalated",
+      "eventClaimed": "Claimed",
+      "eventAssigned": "Assigned",
       "eventRecovered": "Recovered",
       "eventClosed": "Closed",
       "noticeWay": "There is currently no notification channel available. You can go to the",

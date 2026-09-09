@@ -149,6 +149,8 @@ class MonitorEvent(models.Model):
     class Action(models.TextChoices):
         TRIGGERED = "triggered", "触发"
         ESCALATED = "escalated", "级别升级"
+        CLAIMED = "claimed", "认领"
+        ASSIGNED = "assigned", "分派"
         RECOVERED = "recovered", "恢复"
         CLOSED = "closed", "人工关闭"
 

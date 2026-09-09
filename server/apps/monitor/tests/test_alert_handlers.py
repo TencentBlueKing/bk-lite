@@ -4,8 +4,9 @@ import logging
 
 import pytest
 
+from apps.monitor.models import MonitorAlert, MonitorEvent
 from apps.monitor.models.monitor_object import MonitorObject
-from apps.monitor.models.monitor_policy import MonitorAlert, MonitorPolicy, PolicyOrganization
+from apps.monitor.models.monitor_policy import MonitorPolicy, PolicyOrganization
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 from apps.system_mgmt.models import Channel, Group, User
 
@@ -218,6 +219,11 @@ def test_claim_empty_active_alert_then_second_claim_conflicts(api_client, grant_
     assert alert.handlers == [actor.id]
     assert alert.operator in (None, "")
     assert second.status_code == 409
+    events = api_client.get(f"{BASE}/api/monitor_event/query/{alert.id}/")
+    claimed = [item for item in events.json()["data"]["results"] if item["action"] == MonitorEvent.Action.CLAIMED]
+    assert len(claimed) == 1
+    assert actor.username in claimed[0]["content"]
+    assert alert.status == "new"
 
 
 def test_assign_org_user_succeeds_and_rejects_outsiders(
@@ -242,6 +248,10 @@ def test_assign_org_user_succeeds_and_rejects_outsiders(
     assert ok.status_code == 200
     assert alert.handlers == [inside.id]
     notify.assert_called_once()
+    events = api_client.get(f"{BASE}/api/monitor_event/query/{alert.id}/")
+    assigned = [item for item in events.json()["data"]["results"] if item["action"] == MonitorEvent.Action.ASSIGNED]
+    assert len(assigned) == 1
+    assert inside.username in assigned[0]["content"]
 
     taken = api_client.post(
         f"{BASE}/api/monitor_alert/{alert.id}/assign/",
@@ -300,6 +310,9 @@ def test_handlers_present_blocks_claim_assign_but_close_still_works(api_client, 
     assert closed.status_code == 200
     assert alert.status == "closed"
     assert alert.handlers == [owner.id]
+    assert MonitorEvent.objects.filter(alert_id=alert.id, action=MonitorEvent.Action.CLAIMED).count() == 0
+    assert MonitorEvent.objects.filter(alert_id=alert.id, action=MonitorEvent.Action.ASSIGNED).count() == 0
+    assert MonitorEvent.objects.filter(alert_id=alert.id, action=MonitorEvent.Action.CLOSED).count() == 1
 
 
 def test_inactive_alert_cannot_claim_or_assign(api_client, grant_all):
@@ -321,6 +334,7 @@ def test_inactive_alert_cannot_claim_or_assign(api_client, grant_all):
         assert claim.status_code == 409
         assert assign.status_code == 409
         assert alert.handlers == []
+        assert MonitorEvent.objects.filter(alert_id=alert.id).count() == 0
 
 
 def test_deleted_policy_allows_claim_and_skips_assign_notify(
@@ -517,4 +531,4 @@ def test_claim_logs_lifecycle_template_without_handler_payload(grant_all, caplog
     rendered = records[0].getMessage()
     assert str(alert.pk) in rendered
     assert "password" not in rendered.lower()
-    assert str(actor.id) not in rendered
+    assert "handlers" not in rendered

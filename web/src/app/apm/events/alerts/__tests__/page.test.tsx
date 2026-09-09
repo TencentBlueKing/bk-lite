@@ -432,6 +432,32 @@ describe('APM 告警指标快照与事件原始数据', { timeout: 15000 }, () =
     );
   });
 
+  it('打开详情时若最新事件是认领，不请求事件快照', async () => {
+    const claimed = {
+      id: 'e-claimed',
+      event_id: 'evt-claimed',
+      action: 'claimed' as const,
+      severity: 'error' as const,
+      value: '0.2',
+      occurred_at: '2026-08-14T02:05:00Z',
+      title: '认领',
+      description: 'sre 认领，处理人变为 sre',
+    };
+    api.getAlerts.mockImplementation(async (query: { status_group?: string }) => (
+      query.status_group === 'active'
+        ? [{ ...alert, events: [event, claimed], event_count: 2, last_event_at: claimed.occurred_at }]
+        : []
+    ));
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmAlertsPage />);
+    await user.click(await screen.findByRole('button', { name: 'checkout 错误率升高' }));
+    await waitFor(() => expect(api.getAlertSnapshots).toHaveBeenCalled());
+    expect(api.getEventEvidence).not.toHaveBeenCalledWith('a1', 'evt-claimed');
+    await user.click(await screen.findByRole('tab', { name: '事件' }));
+    await user.click(screen.getByRole('listitem', { name: /认领/ }));
+    expect(api.getEventEvidence).not.toHaveBeenCalledWith('a1', 'evt-claimed');
+  });
+
   it('已有处理人的活跃告警不展示认领和分派', async () => {
     api.getAlerts.mockImplementation(async (query: { status_group?: string }) => (
       query.status_group === 'active'

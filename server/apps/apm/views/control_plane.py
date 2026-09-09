@@ -1053,6 +1053,7 @@ class ApmAlertViewSet(viewsets.GenericViewSet):
             assigned = self.alert_service.assign(
                 alert,
                 handlers=serializer.validated_data["handlers"],
+                actor=request.user,
                 operable_qs=self.get_queryset(),
             )
         except AlertHandlerForbidden as exc:
