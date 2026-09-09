@@ -1,8 +1,9 @@
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import JobHostSelectionModal, { HostItem } from '..';
+import JobHostSelectionModal, { type HostItem, type JobHostSelectionModalProps } from '..';
 
 vi.mock('@/utils/i18n', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -13,8 +14,12 @@ vi.mock('@/app/job/components/driver-badge', () => ({
 }));
 
 vi.mock('@/components/operate-form-modal', () => ({
-  default: ({ children, onConfirm }: React.PropsWithChildren<{ onConfirm: () => void }>) => (
-    <div>
+  default: ({
+    children,
+    onConfirm,
+    width,
+  }: React.PropsWithChildren<{ onConfirm: () => void; width: number }>) => (
+    <div data-testid="host-modal" data-width={width}>
       {children}
       <button type="button" onClick={onConfirm}>job.confirm</button>
     </div>
@@ -24,12 +29,14 @@ vi.mock('@/components/operate-form-modal', () => ({
 vi.mock('@/components/selection-preview-layout', () => ({
   default: ({
     primary,
+    primaryWidth,
     items,
   }: {
     primary: React.ReactNode;
+    primaryWidth: number;
     items: Array<{ key: string; label: React.ReactNode }>;
   }) => (
-    <div>
+    <div data-testid="selection-layout" data-primary-width={primaryWidth}>
       {primary}
       <ul>
         {items.map((item) => <li key={item.key}>{item.label}</li>)}
@@ -50,7 +57,11 @@ vi.mock('@/components/custom-table', () => ({
       preserveSelectedRowKeys?: boolean;
       onChange: (keys: React.Key[]) => void;
     };
-    pagination: { current: number; onChange: (page: number) => void };
+    pagination: {
+      current: number;
+      pageSize: number;
+      onChange: (page: number, pageSize: number) => void;
+    };
   }) => {
     const pageKeys = new Set(dataSource.map((host) => host.key));
 
@@ -70,7 +81,9 @@ vi.mock('@/components/custom-table', () => ({
             select-{host.key}
           </button>
         ))}
-        <button type="button" onClick={() => pagination.onChange(2)}>page-2</button>
+        <button type="button" onClick={() => pagination.onChange(2, pagination.pageSize)}>
+          page-2
+        </button>
       </div>
     );
   },
@@ -98,6 +111,65 @@ const hostsByPage: Record<number, HostItem[]> = {
 };
 
 describe('JobHostSelectionModal cross-page selection', () => {
+  it('requests the IP filter once when Enter commits the search value', async () => {
+    const user = userEvent.setup();
+    const request = vi.fn<JobHostSelectionModalProps['fetchHosts']>(
+      async () => ({ items: [], total: 0 }),
+    );
+
+    render(
+      <JobHostSelectionModal
+        open
+        selectedKeys={[]}
+        selectedHosts={[]}
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+        fetchHosts={request}
+      />,
+    );
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(1));
+    request.mockClear();
+
+    const filterInput = screen.getAllByRole('combobox')[1];
+    await user.click(filterInput);
+    await user.type(filterInput, '10{Enter}');
+
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(1));
+    expect(request).toHaveBeenLastCalledWith(expect.objectContaining({
+      filters: {
+        ip: [{ lookup_expr: 'icontains', value: '10' }],
+      },
+    }));
+  });
+
+  it('does not refetch when the request callback identity changes while open', async () => {
+    const request = vi.fn<JobHostSelectionModalProps['fetchHosts']>(
+      async () => ({ items: [], total: 0 }),
+    );
+    const selectedKeys: string[] = [];
+    const selectedHosts: HostItem[] = [];
+    const onConfirm = vi.fn();
+    const onCancel = vi.fn();
+    const renderModal = () => (
+      <JobHostSelectionModal
+        open
+        selectedKeys={selectedKeys}
+        selectedHosts={selectedHosts}
+        onConfirm={onConfirm}
+        onCancel={onCancel}
+        fetchHosts={(params) => request(params)}
+      />
+    );
+
+    const { rerender } = render(renderModal());
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(1));
+
+    rerender(renderModal());
+    rerender(renderModal());
+
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(1));
+  });
+
   it('keeps hosts selected on earlier pages when another page is selected', async () => {
     const onConfirm = vi.fn();
     const fetchHosts = vi.fn(async ({ page }: { page: number }) => ({
@@ -117,7 +189,10 @@ describe('JobHostSelectionModal cross-page selection', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: 'select-host-1' }));
-    expect(screen.getByText('first-page-host')).toBeTruthy();
+    const firstSelectedLabel = screen.getByText('first-page-host (10.0.0.1)');
+    expect(firstSelectedLabel.className).toContain('truncate');
+    expect(screen.getByTestId('host-modal').getAttribute('data-width')).toBe('960');
+    expect(screen.getByTestId('selection-layout').getAttribute('data-primary-width')).toBe('660');
 
     fireEvent.click(screen.getByRole('button', { name: 'page-2' }));
     fireEvent.click(await screen.findByRole('button', { name: 'select-host-2' }));
