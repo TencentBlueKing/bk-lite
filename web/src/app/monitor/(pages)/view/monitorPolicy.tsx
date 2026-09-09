@@ -3,6 +3,8 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Button, Tag } from 'antd';
 import { useRouter } from 'next/navigation';
 import useApiClient from '@/utils/request';
+import useMonitorApi from '@/app/monitor/api';
+import { fetchAllMonitorMetrics } from '@/app/monitor/api/fetchMetricCatalogPages';
 import useEventApi from '@/app/monitor/api/event';
 import { useTranslation } from '@/utils/i18n';
 import { ColumnItem, Pagination, TableDataItem } from '@/app/monitor/types';
@@ -11,7 +13,10 @@ import CustomTable from '@/components/custom-table';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { INIT_VIEW_MODAL_FORM } from '@/app/monitor/constants/view';
 import { buildMonitorStrategyDetailUrl } from '@/app/monitor/utils/policyRouteUtils';
-import { getPolicyMetricContext } from '@/app/monitor/utils/policyDisplayName';
+import {
+  PolicyMetricCatalogItem,
+  resolvePolicyMetricDisplayName
+} from '@/app/monitor/utils/policyDisplayName';
 
 const MonitorPolicy: React.FC<ViewModalProps> = ({
   monitorObject,
@@ -19,14 +24,20 @@ const MonitorPolicy: React.FC<ViewModalProps> = ({
   form = INIT_VIEW_MODAL_FORM
 }) => {
   const { isLoading } = useApiClient();
+  const { getMonitorMetrics } = useMonitorApi();
   const { getMonitorPolicy } = useEventApi();
   const { t } = useTranslation();
   const router = useRouter();
   const { convertToLocalizedTime } = useLocalizedTime();
   const abortControllerRef = useRef<AbortController | null>(null);
   const requestIdRef = useRef<number>(0);
+  const getMonitorMetricsRef = useRef(getMonitorMetrics);
+  getMonitorMetricsRef.current = getMonitorMetrics;
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
+  const [metricCatalog, setMetricCatalog] = useState<PolicyMetricCatalogItem[]>(
+    []
+  );
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
     total: 0,
@@ -60,10 +71,9 @@ const MonitorPolicy: React.FC<ViewModalProps> = ({
       title: t('monitor.events.policyMetric'),
       dataIndex: 'query_condition',
       key: 'query_condition',
-      render: (_, record) => {
-        const metric = getPolicyMetricContext(record);
-        return <>{metric || record.alert_name || '--'}</>;
-      }
+      render: (_, record) => (
+        <>{resolvePolicyMetricDisplayName(record, metricCatalog) || '--'}</>
+      )
     },
     {
       title: t('monitor.events.alertName'),
@@ -86,6 +96,28 @@ const MonitorPolicy: React.FC<ViewModalProps> = ({
     if (isLoading) return;
     getBoundPolicies();
   }, [isLoading, pagination.current, pagination.pageSize, form.instance_id, monitorObject]);
+
+  useEffect(() => {
+    if (isLoading || !monitorObject) {
+      setMetricCatalog([]);
+      return;
+    }
+    const abortController = new AbortController();
+    fetchAllMonitorMetrics(
+      getMonitorMetricsRef.current,
+      { monitor_object_id: monitorObject },
+      { signal: abortController.signal }
+    )
+      .then((data) => {
+        if (abortController.signal.aborted) return;
+        setMetricCatalog(data.items || []);
+      })
+      .catch(() => {
+        if (abortController.signal.aborted) return;
+        setMetricCatalog([]);
+      });
+    return () => abortController.abort();
+  }, [isLoading, monitorObject]);
 
   useEffect(() => {
     return () => {
