@@ -160,12 +160,10 @@ const WikiMarkdownImportModal = ({
   useEffect(() => {
     resetState();
     // resetState 仅重置当前弹窗状态；知识库变化必须丢弃旧 token。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kbId]);
 
   useEffect(() => {
     if (!open) resetState();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   useEffect(() => {
@@ -621,9 +619,9 @@ const WikiMarkdownImportModal = ({
                 preflightExpired || preflightStale
                   ? t("wiki.markdownImportRepreflightRequired")
                   : t("wiki.markdownImportSingleUseHint").replace(
-                      "{seconds}",
-                      String(preflight.expires_in_seconds),
-                    )
+                    "{seconds}",
+                    String(preflight.expires_in_seconds),
+                  )
               }
             />
 
