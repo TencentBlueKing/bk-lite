@@ -47,6 +47,8 @@ uv run pytest -m unit         # 按 marker
 uv run pytest -m "not slow"
 ```
 
+Wiki Markdown/OKF 导入 ZIP 上限 200MB、解压合计 400MB。反向代理（Nginx `client_max_body_size`、Next `/api/proxy` 等）须放行 ≥200MB 请求体，否则浏览器到 Django 的上传会在应用校验前被截断。
+
 ### Web（`web/`）
 ```bash
 pnpm install   # 强制 pnpm（only-allow）

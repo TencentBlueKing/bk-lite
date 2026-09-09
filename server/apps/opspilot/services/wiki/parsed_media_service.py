@@ -25,7 +25,7 @@ _DATA_URI_IMAGE_RE = re.compile(
 
 # 稳定 locator（可带 ./ 或 / 前缀；不依赖 alt，避免长描述漏改写）
 _MEDIA_LOCATOR_RE = re.compile(
-    r"(?:\.?/)?wiki/media/\d+/\d+/[a-f0-9]{16,}\.[a-z0-9]+",
+    r"(?:\.?/)?wiki/media/\d+/(?:\d+|pages)/[a-f0-9]{16,}\.[a-z0-9]+",
     re.IGNORECASE,
 )
 
@@ -58,21 +58,27 @@ def _extension_for_content_type(content_type: str) -> str:
     return _CONTENT_TYPE_EXT.get(normalized, ".bin")
 
 
+def media_prefix_for_pages(knowledge_base_id) -> str:
+    return f"wiki/media/{int(knowledge_base_id)}/pages/"
+
+
 def _is_safe_media_locator(locator: str, *, knowledge_base_id=None, material_id=None) -> bool:
     parts = (locator or "").strip().replace("\\", "/").split("/")
     if len(parts) != 5:
         return False
-    root, kind, kb, mid, filename = parts
+    root, kind, kb, owner, filename = parts
     if root != "wiki" or kind != "media":
         return False
-    if not (kb.isdigit() and mid.isdigit() and filename):
+    owner_ok = owner.isdigit() or owner == "pages"
+    if not (kb.isdigit() and owner_ok and filename):
         return False
     if ".." in filename or "/" in filename or "\\" in filename:
         return False
     if knowledge_base_id is not None and int(kb) != int(knowledge_base_id):
         return False
-    if material_id is not None and int(mid) != int(material_id):
-        return False
+    if material_id is not None:
+        if not owner.isdigit() or int(owner) != int(material_id):
+            return False
     name, _, ext = filename.rpartition(".")
     if not name or not ext:
         return False
@@ -89,6 +95,21 @@ def save_media_bytes(material, data: bytes, content_type: str) -> str:
     if not _MEDIA_STORAGE.exists(path):
         _MEDIA_STORAGE.save(path, ContentFile(data))
     return path
+
+
+def save_page_media_bytes(knowledge_base_id, data: bytes, content_type: str) -> tuple[str, bool]:
+    """写入知识页共享图片，返回 (locator, created)。同一内容幂等。"""
+    digest = hashlib.sha256(data).hexdigest()
+    ext = _extension_for_content_type(content_type)
+    path = f"{media_prefix_for_pages(knowledge_base_id)}{digest}{ext}"
+    created = not _MEDIA_STORAGE.exists(path)
+    if created:
+        _MEDIA_STORAGE.save(path, ContentFile(data))
+    return path, created
+
+
+def collect_page_media_locators(text) -> set[str]:
+    return {_normalize_media_locator(match.group(0)) for match in _MEDIA_LOCATOR_RE.finditer(text or "")}
 
 
 def persist_embedded_images(material, markdown: str) -> str:

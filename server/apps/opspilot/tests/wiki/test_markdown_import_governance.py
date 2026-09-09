@@ -1,7 +1,9 @@
 import io
 import zipfile
+from datetime import timedelta
 
 import pytest
+from django.utils import timezone
 
 from apps.opspilot.models import BuildRecord, KnowledgePage, WikiImportPreflight
 from apps.opspilot.services.wiki.markdown_import_governance_service import (
@@ -28,6 +30,20 @@ def _zip(entries):
         for name, body in entries:
             archive.writestr(name, body)
     return buffer.getvalue()
+
+
+def test_archive_inspection_rejects_empty_and_oversized_payload():
+    from apps.opspilot.services.wiki.markdown_import_governance_service import MAX_ARCHIVE_BYTES
+
+    with pytest.raises(MarkdownImportGovernanceError) as empty:
+        inspect_markdown_archive(b"", "okf.zip", import_format="okf")
+    assert empty.value.code == "archive_empty"
+
+    with pytest.raises(MarkdownImportGovernanceError) as huge:
+        inspect_markdown_archive(b"x" * (MAX_ARCHIVE_BYTES + 1), "okf.zip", import_format="okf")
+    assert huge.value.code == "archive_size_exceeded"
+    assert huge.value.details["max_bytes"] == MAX_ARCHIVE_BYTES
+    assert "200MB" in str(huge.value)
 
 
 def test_archive_inspection_rejects_zip_slip_before_preflight(wiki_factory):
@@ -98,3 +114,29 @@ def test_preflight_actor_binding_mismatch_does_not_consume_token(wiki_factory):
     assert captured.value.code == "preflight_binding_mismatch"
     assert record.status == "active"
     assert record.consumed_at is None
+
+
+def test_execute_accepts_preflight_after_recorded_expiry(wiki_factory):
+    knowledge_base = _ready_kb(wiki_factory)
+    content = "# 过期仍可执行\n\n正文。".encode("utf-8")
+    preflight = preflight_markdown_import(
+        knowledge_base,
+        content,
+        filename="still-valid.md",
+        actor="admin",
+    )
+    WikiImportPreflight.objects.filter(knowledge_base=knowledge_base).update(
+        expires_at=timezone.now() - timedelta(days=1),
+    )
+
+    result = execute_markdown_import(
+        knowledge_base,
+        preflight["token"],
+        content,
+        filename="still-valid.md",
+        actor="admin",
+    )
+
+    assert result["counts"]["created"] == 1
+    record = WikiImportPreflight.objects.get(knowledge_base=knowledge_base)
+    assert record.status == "consumed"
