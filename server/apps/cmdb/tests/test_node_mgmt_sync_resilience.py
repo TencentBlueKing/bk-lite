@@ -57,9 +57,7 @@ def _collect_task(region_id):
 
 @pytest.mark.django_db
 def test_sync_hosts_marks_run_failed_when_fetch_raises(sync_config):
-    with mock.patch.object(
-        NodeMgmtSyncService, "_fetch_non_container_nodes", side_effect=RuntimeError("fetch boom")
-    ):
+    with mock.patch.object(NodeMgmtSyncService, "_fetch_non_container_nodes", side_effect=RuntimeError("fetch boom")):
         with pytest.raises(RuntimeError, match="fetch boom"):
             NodeMgmtSyncService.sync_hosts()
 
@@ -121,18 +119,27 @@ def test_sync_hosts_continues_past_single_node_failure(sync_config):
         "10.0.0.2": {"ip_addr": "10.0.0.2", "cloud": 1, "organization": [], "node_id": "n2"},
     }
 
-    with mock.patch.object(NodeMgmtSyncService, "_fetch_non_container_nodes", return_value=nodes), \
-            mock.patch.object(NodeMgmtSyncService, "_group_nodes_by_region", return_value={1: nodes}), \
-            mock.patch.object(NodeMgmtSyncService, "_pick_access_point", return_value={"id": "ap-1"}), \
-            mock.patch.object(NodeMgmtSyncService, "_normalize_org_ids", return_value=[]), \
-            mock.patch.object(NodeMgmtSyncService, "_load_existing_host_map", return_value={}), \
-            mock.patch.object(NodeMgmtSyncService, "_host_attr_map", return_value={}), \
-            mock.patch.object(NodeMgmtSyncService, "_build_host_instance_payload", side_effect=lambda node, collect_task_id=0, **kwargs: payloads[node["ip"]]), \
-            mock.patch.object(NodeMgmtSyncService, "_query_region_host_instances", return_value=[]), \
-            mock.patch.object(NodeMgmtSyncService, "_ensure_region_collect_task", return_value=mock.MagicMock()), \
-            mock.patch.object(NodeMgmtSyncService, "_ensure_host_node_id_attr"), \
-            mock.patch.object(NodeMgmtSyncService, "_backfill_node_cmdb_id"), \
-            mock.patch(f"{SERVICE}.InstanceManage.instance_create", side_effect=[RuntimeError("node boom"), {"_id": "h2"}]):
+    with mock.patch.object(NodeMgmtSyncService, "_fetch_non_container_nodes", return_value=nodes), mock.patch.object(
+        NodeMgmtSyncService, "_group_nodes_by_region", return_value={1: nodes}
+    ), mock.patch.object(NodeMgmtSyncService, "_pick_access_point", return_value={"id": "ap-1"}), mock.patch.object(
+        NodeMgmtSyncService, "_normalize_org_ids", return_value=[]
+    ), mock.patch.object(
+        NodeMgmtSyncService, "_load_existing_host_map", return_value={}
+    ), mock.patch.object(
+        NodeMgmtSyncService, "_host_attr_map", return_value={}
+    ), mock.patch.object(
+        NodeMgmtSyncService, "_build_host_instance_payload", side_effect=lambda node, collect_task_id=0, **kwargs: payloads[node["ip"]]
+    ), mock.patch.object(
+        NodeMgmtSyncService, "_query_region_host_instances", return_value=[]
+    ), mock.patch.object(
+        NodeMgmtSyncService, "_ensure_region_collect_task", return_value=mock.MagicMock()
+    ), mock.patch.object(
+        NodeMgmtSyncService, "_ensure_host_node_id_attr"
+    ), mock.patch.object(
+        NodeMgmtSyncService, "_backfill_node_cmdb_id"
+    ), mock.patch(
+        f"{SERVICE}.InstanceManage.instance_create", side_effect=[RuntimeError("node boom"), {"_id": "h2"}]
+    ):
         result = NodeMgmtSyncService.sync_hosts()
 
     run = NodeMgmtSyncRun.objects.filter(run_type=NodeMgmtSyncRun.RUN_TYPE_SYNC).latest("created_at")
@@ -147,6 +154,10 @@ def test_sync_hosts_continues_past_single_node_failure(sync_config):
 @pytest.mark.django_db
 def test_collect_hosts_marks_run_failed_when_listing_raises(sync_config):
     with mock.patch.object(
+        NodeMgmtSyncService, "_fetch_non_container_nodes", return_value=[{"ip": "10.0.0.1", "cloud_region_id": 1}]
+    ), mock.patch.object(NodeMgmtSyncService, "_load_existing_host_map", return_value={}), mock.patch.object(
+        NodeMgmtSyncService, "_refresh_region_collect_tasks_from_source", return_value=False
+    ), mock.patch.object(
         NodeMgmtSyncService, "_list_region_collect_tasks", side_effect=RuntimeError("list boom")
     ):
         with pytest.raises(RuntimeError, match="list boom"):
@@ -168,9 +179,15 @@ def test_collect_hosts_continues_past_single_task_failure(sync_config):
         task.task_id = "execution-ok"
         task.exec_status = CollectRunStatusType.RUNNING
         task.save(update_fields=["task_id", "exec_status", "updated_at"])
-        return WebUtils.response_success(task.pk)
+        return WebUtils.response_success({"id": task.pk, "execution_id": "execution-ok"})
 
-    with mock.patch.object(NodeMgmtSyncService, "_list_region_collect_tasks", return_value=[task_bad, task_ok]), mock.patch.object(
+    with mock.patch.object(
+        NodeMgmtSyncService, "_fetch_non_container_nodes", return_value=[{"ip": "10.0.0.1", "cloud_region_id": 1}]
+    ), mock.patch.object(NodeMgmtSyncService, "_load_existing_host_map", return_value={}), mock.patch.object(
+        NodeMgmtSyncService, "_refresh_region_collect_tasks_from_source", return_value=False
+    ), mock.patch.object(
+        NodeMgmtSyncService, "_list_region_collect_tasks", return_value=[task_bad, task_ok]
+    ), mock.patch.object(
         NodeMgmtSyncService, "_execute_collect_task", side_effect=[RuntimeError("exec boom"), accept(task_ok, "system")]
     ):
         NodeMgmtSyncService.collect_hosts()

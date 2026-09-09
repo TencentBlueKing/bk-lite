@@ -466,14 +466,19 @@ class Sidecar:
     def _cached_heartbeat_updates(node_id: str, node_details: dict) -> tuple[dict, str, bool]:
         """Build the bounded metadata update allowed on an ETag cache hit."""
         request_data = dict(node_details)
-        existing_node = Node.objects.filter(id=node_id).values(
-            "id",
-            "ip",
-            "operating_system",
-            "cpu_architecture",
-            "node_type",
-            "cloud_region_id",
-        ).first() or {}
+        existing_node = (
+            Node.objects.filter(id=node_id)
+            .values(
+                "id",
+                "ip",
+                "operating_system",
+                "cpu_architecture",
+                "node_type",
+                "cloud_region_id",
+            )
+            .first()
+            or {}
+        )
         for field in ("ip", "operating_system"):
             if not request_data.get(field):
                 request_data[field] = existing_node.get(field, "")
@@ -588,6 +593,20 @@ class Sidecar:
                 lock=True,
             )
             return Node.objects.create(**request_data), node_id, True
+
+    @staticmethod
+    def _consume_deferred_module_push(node):
+        """sidecar 首次建节点钩子：按安装勾选补推 CMDB/监控。失败不阻断心跳。"""
+        from apps.node_mgmt.services.module_push import ModulePushService
+
+        try:
+            ModulePushService.consume_deferred_push_for_node(node)
+        except Exception as exc:
+            logger.exception(
+                "[ModulePush] deferred consume failed node_id=%s failed_stage=deferred_consume error_type=%s",
+                getattr(node, "id", None),
+                type(exc).__name__,
+            )
 
     @staticmethod
     def _refresh_existing_sidecar_node(node, node_id, request_data):
@@ -707,6 +726,7 @@ class Sidecar:
             if created:
                 Sidecar.asso_groups(node_id, tags_data.get(ControllerConstants.GROUP_TAG, []))
                 Sidecar.create_default_config(node, node_types)
+                Sidecar._consume_deferred_module_push(node)
 
         if not created:
             Sidecar._refresh_existing_sidecar_node(node, node_id, request_data)
