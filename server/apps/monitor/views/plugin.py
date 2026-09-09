@@ -15,6 +15,7 @@ from apps.monitor.serializers.plugin import MonitorPluginListSerializer, Monitor
 from apps.monitor.services.custom_snmp_plugin import CustomSnmpPluginService
 from apps.monitor.services.plugin import MonitorPluginService
 from apps.monitor.services.plugin_guide import PluginGuideService
+from apps.monitor.services.aliyun_regions import AliyunRegionService
 from apps.monitor.services.qcloud_regions import QCloudRegionService
 from apps.monitor.services.template_access_guide import TemplateAccessGuideService
 from apps.monitor.utils.pagination import parse_page_params
@@ -382,6 +383,32 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
         cloud_region_id = payload.get("cloud_region_id")
         try:
             regions = QCloudRegionService.list_regions(
+                username=username,
+                password=password,
+                cloud_region_id=cloud_region_id,
+            )
+        except ValidationAppException as exc:
+            return WebUtils.response_error(error_message=str(exc), status_code=400)
+        except BaseAppException as exc:
+            return WebUtils.response_error(error_message=str(exc), status_code=400)
+        return WebUtils.response_success(regions)
+
+    @action(methods=["post"], detail=False, url_path="aliyun_regions")
+    @HasPermission("integration_configure-Add,integration_list-View")
+    def aliyun_regions(self, request):
+        """按阿里云账号密钥动态拉取可用地域（DescribeRegions）。"""
+        payload = request.data if isinstance(request.data, dict) else {}
+        username = payload.get("username") or payload.get("access_key") or payload.get("secret_id") or ""
+        password = (
+            payload.get("password")
+            or payload.get("ENV_PASSWORD")
+            or payload.get("access_secret")
+            or payload.get("secret_key")
+            or ""
+        )
+        cloud_region_id = payload.get("cloud_region_id")
+        try:
+            regions = AliyunRegionService.list_regions(
                 username=username,
                 password=password,
                 cloud_region_id=cloud_region_id,
