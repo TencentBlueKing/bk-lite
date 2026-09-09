@@ -43,6 +43,7 @@ import useLogUserHabitApi, {
   LOG_SEARCH_HISTOGRAM_HABIT_KEY
 } from '@/app/log/api/userHabit';
 import { useHabitExpanded } from '@/hooks/useHabitExpanded';
+import { createLatestRequestGuard } from '@/context/latestRequestGuard';
 import {
   SearchParams,
   LogTerminalRef,
@@ -137,6 +138,8 @@ const SearchView: React.FC = () => {
   const conditionRef = useRef<ModalRef>(null);
   const conditionListRef = useRef<ModalRef>(null);
   const searchTextRef = useRef<string>(queryText);
+  const searchAbortRef = useRef<AbortController | null>(null);
+  const [requestGuard] = useState(createLatestRequestGuard);
   const [hasSearchText, setHasSearchText] = useState<boolean>(!!queryText);
   const [frequence, setFrequence] = useState<number>(0);
   const [defaultSearchText, setDefaultSearchText] = useState<string>(queryText);
@@ -305,38 +308,73 @@ const SearchView: React.FC = () => {
     }
   };
 
-  const getChartData = async (type: string, extra?: SearchConfig) => {
-    setChartLoading(type !== 'timer');
+  const isCanceledRequest = (error: unknown) => {
+    const canceled = error as { name?: string; code?: string };
+    return canceled?.name === 'CanceledError' || canceled?.code === 'ERR_CANCELED';
+  };
+
+  const getChartData = async (
+    type: string,
+    extra: SearchConfig | undefined,
+    requestId: number,
+    signal: AbortSignal
+  ) => {
+    requestGuard.commitIfCurrent(requestId, () => {
+      setChartLoading(type !== 'timer');
+    });
     try {
       const params = getParams(extra);
-      const res = await getHits(params);
+      const res = await getHits(params, { signal });
       const chartData = aggregateLogs(res?.hits);
       const total = chartData.reduce((pre, cur) => (pre += cur.value), 0);
-      setPagination((pre) => ({
-        ...pre,
-        total: total,
-        current: 1
-      }));
-      setChartData(chartData);
+      requestGuard.commitIfCurrent(requestId, () => {
+        setPagination((pre) => ({
+          ...pre,
+          total: total,
+          current: 1
+        }));
+        setChartData(chartData);
+      });
+    } catch (error) {
+      if (!isCanceledRequest(error)) {
+        throw error;
+      }
     } finally {
-      setChartLoading(false);
+      requestGuard.commitIfCurrent(requestId, () => {
+        setChartLoading(false);
+      });
     }
   };
 
-  const getTableData = async (type: string, extra?: SearchConfig) => {
-    setTableLoading(type !== 'timer');
+  const getTableData = async (
+    type: string,
+    extra: SearchConfig | undefined,
+    requestId: number,
+    signal: AbortSignal
+  ) => {
+    requestGuard.commitIfCurrent(requestId, () => {
+      setTableLoading(type !== 'timer');
+    });
     try {
       const params = getParams(extra);
-      const res = await getLogs(params);
+      const res = await getLogs(params, { signal });
       const listData: TableDataItem[] = (res || []).map(
         (item: TableDataItem) => ({
           ...item,
           id: uuidv4()
         })
       );
-      setTableData(listData);
+      requestGuard.commitIfCurrent(requestId, () => {
+        setTableData(listData);
+      });
+    } catch (error) {
+      if (!isCanceledRequest(error)) {
+        throw error;
+      }
     } finally {
-      setTableLoading(false);
+      requestGuard.commitIfCurrent(requestId, () => {
+        setTableLoading(false);
+      });
     }
   };
 
@@ -344,16 +382,23 @@ const SearchView: React.FC = () => {
     if (!extra?.logGroups?.length && !groups.length) {
       return message.error(t('log.search.searchError'));
     }
+    searchAbortRef.current?.abort();
+    const abortController = new AbortController();
+    searchAbortRef.current = abortController;
+    const requestId = requestGuard.begin();
     setHighlightQuery(extra?.text || searchTextRef.current || '*');
     setTableData([]);
     setChartData([]);
     setQueryTime(new Date());
     setQueryEndTime(new Date());
-    Promise.all([getChartData(type, extra), getTableData(type, extra)]).finally(
-      () => {
+    Promise.all([
+      getChartData(type, extra, requestId, abortController.signal),
+      getTableData(type, extra, requestId, abortController.signal)
+    ]).finally(() => {
+      requestGuard.commitIfCurrent(requestId, () => {
         setQueryEndTime(new Date());
-      }
-    );
+      });
+    });
   };
 
   const getParams = (extra?: SearchConfig) => {
