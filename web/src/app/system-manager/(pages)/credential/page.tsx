@@ -31,7 +31,7 @@ const CredentialPage: React.FC = () => {
                 key: 'list',
                 label: t('system.credential.listTab'),
                 children: (
-                  <div className="h-[calc(100vh-300px)]">
+                  <div className="h-[calc(100vh-290px)]">
                     <CredentialListTab
                       active={activeKey === 'list'}
                       onGoTypes={() => setActiveKey('types')}
@@ -43,7 +43,7 @@ const CredentialPage: React.FC = () => {
                 key: 'types',
                 label: t('system.credential.typeTab'),
                 children: (
-                  <div className="h-[calc(100vh-320px)]">
+                  <div className="h-[calc(100vh-290px)]">
                     <TypeCatalogTab />
                   </div>
                 ),

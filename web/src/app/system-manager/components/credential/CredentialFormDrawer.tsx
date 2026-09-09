@@ -141,7 +141,10 @@ const CredentialFormDrawer: React.FC<CredentialFormDrawerProps> = ({
                 <Form.Item
                   label={t('system.credential.credentialType', '凭据类型')}
                 >
-                  <Tag color={selectedType?.is_builtin ? 'blue' : 'orange'} className="!m-0">
+                  <Tag
+                    bordered={false}
+                    className="m-0 rounded px-2 py-0.5 font-medium text-[var(--color-text-2)] bg-[var(--color-fill-2)]"
+                  >
                     {selectedType?.name || watchedType}
                   </Tag>
                 </Form.Item>
