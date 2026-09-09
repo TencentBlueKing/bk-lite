@@ -117,6 +117,7 @@
       "convergenceMethodTip": "分析前将收集的汇聚周期内的数据进行汇聚处理。",
       "template": "模板",
       "notifier": "通知者",
+      "handler": "处理人",
       "notifierTagsPlaceholder": "请输入通知者，按回车键添加",
       "max": "最大值",
       "createPolicy": "创建策略",
