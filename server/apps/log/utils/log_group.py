@@ -75,7 +75,7 @@ class LogGroupQueryBuilder:
         for condition in conditions:
             if not isinstance(condition, dict):
                 raise ValueError("Each rule condition must be an object")
-            if set(("field", "op", "value")) - condition.keys():
+            if {"field", "op", "value"} - condition.keys():
                 raise ValueError("Each rule condition must include field, op and value")
             if not isinstance(condition["field"], str) or not condition["field"].strip():
                 raise ValueError("Rule condition field must be a non-empty string")
@@ -92,16 +92,11 @@ class LogGroupQueryBuilder:
             if require_legacy_safe:
                 if not cls.RAW_FIELD_PATTERN.fullmatch(condition["field"]):
                     raise ValueError("Rule condition field is unsafe for legacy LogsQL syntax")
-                if condition["op"] in {"contains", "!contains"} and any(
-                    char in value_text for char in cls.LEGACY_REGEX_SPECIAL_CHARS
-                ):
+                if condition["op"] in {"contains", "!contains"} and any(char in value_text for char in cls.LEGACY_REGEX_SPECIAL_CHARS):
                     raise ValueError("Rule regex condition value is unsafe for legacy LogsQL syntax")
                 if condition["op"] == "endswith":
                     raise ValueError("Rule endswith condition is unsupported by legacy LogsQL syntax")
-                if (
-                    condition["op"] == "startswith"
-                    and not cls.LEGACY_SAFE_WILDCARD_PATTERN.fullmatch(value_text)
-                ):
+                if condition["op"] == "startswith" and not cls.LEGACY_SAFE_WILDCARD_PATTERN.fullmatch(value_text):
                     raise ValueError("Rule wildcard condition value is unsafe for legacy LogsQL syntax")
 
         return mode, used_legacy_or
@@ -176,24 +171,12 @@ class LogGroupQueryBuilder:
             return f"{prefix}{cls._encode_logsql_field(field)}:re({cls._encode_logsql_string(pattern)})"
 
         return {
-            "==": lambda field, value: (
-                f"{cls._encode_logsql_field(field)}:{cls._encode_logsql_string(value)}"
-            ),
-            "!=": lambda field, value: (
-                f"!{cls._encode_logsql_field(field)}:{cls._encode_logsql_string(value)}"
-            ),
-            "contains": lambda field, value: regex_filter(
-                field, f".*{cls._escape_regex_value(value)}.*"
-            ),
-            "!contains": lambda field, value: regex_filter(
-                field, f".*{cls._escape_regex_value(value)}.*", negate=True
-            ),
-            "startswith": lambda field, value: (
-                f"{cls._encode_logsql_field(field)}:{cls._encode_logsql_string(value)}*"
-            ),
-            "endswith": lambda field, value: regex_filter(
-                field, f".*{cls._escape_regex_value(value)}$"
-            ),
+            "==": lambda field, value: (f"{cls._encode_logsql_field(field)}:{cls._encode_logsql_string(value)}"),
+            "!=": lambda field, value: (f"!{cls._encode_logsql_field(field)}:{cls._encode_logsql_string(value)}"),
+            "contains": lambda field, value: regex_filter(field, f".*{cls._escape_regex_value(value)}.*"),
+            "!contains": lambda field, value: regex_filter(field, f".*{cls._escape_regex_value(value)}.*", negate=True),
+            "startswith": lambda field, value: (f"{cls._encode_logsql_field(field)}:{cls._encode_logsql_string(value)}*"),
+            "endswith": lambda field, value: regex_filter(field, f".*{cls._escape_regex_value(value)}$"),
         }
 
     @staticmethod
@@ -367,14 +350,10 @@ class LogGroupQueryBuilder:
 
         # 构建分组过滤器
         group_filter = f"({' OR '.join(group_conditions)})" if len(group_conditions) > 1 else group_conditions[0]
-
         logger.debug(
-            "查询合并处理",
-            extra={
-                "user_query": user_query[:100] + "..." if len(user_query) > 100 else user_query,
-                "group_filter": group_filter[:100] + "..." if len(group_filter) > 100 else group_filter,
-                "has_aggregation": bool(user_query and "|" in user_query),
-            },
+            "event=log_group_query_merged has_aggregation=%s group_condition_count=%s",
+            bool(user_query and "|" in user_query),
+            len(group_conditions),
         )
 
         # 聚合查询处理：将分组条件合并到过滤部分
@@ -391,20 +370,14 @@ class LogGroupQueryBuilder:
             else:
                 combined_filter = filter_part or "*"
 
-            final_query = f"{combined_filter} | {aggregation_part}"
-            logger.debug("聚合查询合并完成", extra={"final_query": final_query[:200] + "..." if len(final_query) > 200 else final_query})
-            return final_query
+            return f"{combined_filter} | {aggregation_part}"
 
         # 普通查询处理
         if user_query and group_filter:
-            final_query = f"({user_query}) AND ({group_filter})"
-        elif group_filter:
-            final_query = group_filter
-        else:
-            final_query = user_query if user_query else "*"
-
-        logger.debug("查询合并完成", extra={"final_query": final_query[:200] + "..." if len(final_query) > 200 else final_query})
-        return final_query
+            return f"({user_query}) AND ({group_filter})"
+        if group_filter:
+            return group_filter
+        return user_query if user_query else "*"
 
     @staticmethod
     def validate_log_groups(log_group_ids):
