@@ -18,6 +18,31 @@ class TestScriptCrud:
         assert resp.status_code == 201
         assert Script.objects.filter(name="s1").exists()
 
+    def test_create_allows_same_name_in_different_organizations(self, su_client):
+        Script.objects.create(name="巡检模板", content="echo team one", script_type="shell", team=[1])
+
+        resp = su_client.post(
+            URL,
+            {"name": "巡检模板", "content": "echo team two", "script_type": "shell", "team": [2]},
+            format="json",
+        )
+
+        assert resp.status_code == 201
+        assert Script.objects.filter(name="巡检模板").count() == 2
+
+    def test_create_rejects_same_name_in_any_selected_organization(self, su_client):
+        Script.objects.create(name="巡检模板", content="echo existing", script_type="shell", team=[2])
+
+        resp = su_client.post(
+            URL,
+            {"name": "巡检模板", "content": "echo duplicate", "script_type": "shell", "team": [1, 2]},
+            format="json",
+        )
+
+        assert resp.status_code == 400
+        assert "组织内" in str(resp.data["name"])
+        assert Script.objects.filter(name="巡检模板").count() == 1
+
     def test_create_blocked_by_dangerous_command(self, su_client):
         DangerousRule.objects.create(name="no-rm", pattern="rm -rf", level=DangerousLevel.FORBIDDEN, is_enabled=True, team=[])
         resp = su_client.post(URL, {"name": "bad", "content": "rm -rf /", "script_type": "shell", "team": [1]}, format="json")
@@ -73,6 +98,36 @@ class TestScriptCrud:
         assert resp.status_code == 200
         s.refresh_from_db()
         assert s.name == "s1-edit"
+
+    @pytest.mark.parametrize("next_team", ([2], [1, 2]))
+    def test_update_rejects_transfer_or_add_to_organization_with_same_name(self, su_client, next_team):
+        moving = Script.objects.create(name="巡检模板", content="echo moving", script_type="shell", team=[1])
+        Script.objects.create(name="巡检模板", content="echo existing", script_type="shell", team=[2])
+
+        resp = su_client.put(
+            f"{URL}{moving.id}/",
+            {"name": "巡检模板", "content": "echo moving", "script_type": "shell", "team": next_team},
+            format="json",
+        )
+
+        assert resp.status_code == 400
+        assert "组织内" in str(resp.data["name"])
+        moving.refresh_from_db()
+        assert moving.team == [1]
+
+    def test_update_rejects_rename_to_same_name_in_current_organization(self, su_client):
+        current = Script.objects.create(name="原脚本", content="echo current", script_type="shell", team=[1])
+        Script.objects.create(name="巡检模板", content="echo existing", script_type="shell", team=[1])
+
+        resp = su_client.put(
+            f"{URL}{current.id}/",
+            {"name": "巡检模板", "content": "echo current", "script_type": "shell", "team": [1]},
+            format="json",
+        )
+
+        assert resp.status_code == 400
+        current.refresh_from_db()
+        assert current.name == "原脚本"
 
     def test_update_blocked_by_dangerous_command(self, su_client):
         DangerousRule.objects.create(name="no-rm", pattern="rm -rf", level=DangerousLevel.FORBIDDEN, is_enabled=True, team=[])
