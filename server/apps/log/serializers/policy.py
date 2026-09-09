@@ -4,6 +4,7 @@ from apps.log.models.policy import Alert, Event, EventRawData, Policy
 from apps.log.services.access_scope import LogAccessScopeService
 from apps.log.utils.log_group import LogGroupQueryBuilder
 from apps.log.utils.policy_config import validate_timing_config
+from apps.log.utils.user_display import format_user_identifiers
 
 
 class PolicySerializer(serializers.ModelSerializer):
@@ -100,6 +101,7 @@ class AlertSerializer(serializers.ModelSerializer):
     alert_condition = serializers.SerializerMethodField()
     show_fields = serializers.SerializerMethodField()
     period = serializers.SerializerMethodField()
+    handlers_display = serializers.SerializerMethodField()
 
     def get_organizations(self, obj):
         organizations = list(obj.organizations or [])
@@ -137,6 +139,9 @@ class AlertSerializer(serializers.ModelSerializer):
         if obj.content:
             return obj.content
         return obj.policy.alert_name if obj.policy_id else ""
+
+    def get_handlers_display(self, obj):
+        return format_user_identifiers(obj.handlers or [])
 
     class Meta:
         model = Alert

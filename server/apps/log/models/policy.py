@@ -34,6 +34,7 @@ class Policy(TimeInfo, MaintainerInfo):
     notice_type = models.CharField(max_length=50, default="", verbose_name="通知方式")
     notice_type_id = models.IntegerField(default=0, verbose_name="通知方式ID")
     notice_users = models.JSONField(default=list, verbose_name="通知人")
+    handlers = models.JSONField(default=list, verbose_name="处理人")
 
     enable = models.BooleanField(default=True, verbose_name="是否启用")
 
@@ -75,6 +76,7 @@ class Alert(TimeInfo):
     start_event_time = models.DateTimeField(blank=True, null=True, verbose_name="开始事件时间")
     end_event_time = models.DateTimeField(blank=True, null=True, verbose_name="结束事件时间")
     operator = models.CharField(blank=True, null=True, max_length=50, verbose_name="告警处理人")
+    handlers = models.JSONField(default=list, verbose_name="处理人")
     info_event_count = models.IntegerField(default=0, verbose_name="正常事件计数")
     notice = models.BooleanField(default=False, verbose_name="是否已通知")
     organizations = models.JSONField(default=list, verbose_name="告警生成时所属组织")

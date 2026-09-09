@@ -609,6 +609,39 @@ class TestCreateEvents:
         snap = AlertSnapshot.objects.get(alert=alert)
         assert snap.policy_id == policy.id
 
+    def test_new_alert_snapshots_policy_handlers(self):
+        policy = _make_policy(handlers=[7, 8])
+        first_scan = LogPolicyScan(policy)
+        first_scan.create_events(
+            [
+                {
+                    "source_id": f"policy_{policy.id}",
+                    "level": "warning",
+                    "content": "命中",
+                    "value": 5,
+                    "raw_data": [{"_msg": "x"}],
+                }
+            ]
+        )
+        alert = Alert.objects.get(policy=policy)
+        policy.handlers = [9]
+        policy.save(update_fields=["handlers"])
+        LogPolicyScan(policy).create_events(
+            [
+                {
+                    "source_id": f"policy_{policy.id}",
+                    "level": "warning",
+                    "content": "再次命中",
+                    "value": 6,
+                    "raw_data": [{"_msg": "y"}],
+                }
+            ]
+        )
+        alert.refresh_from_db()
+
+        assert alert.handlers == [7, 8]
+        assert Alert.objects.filter(policy=policy).count() == 1
+
     def test_empty_events_returns_empty(self):
         policy = _make_policy()
         assert LogPolicyScan(policy).create_events([]) == []

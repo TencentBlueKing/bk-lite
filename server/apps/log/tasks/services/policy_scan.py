@@ -864,6 +864,7 @@ class LogPolicyScan:
                         end_event_time=self.scan_time,
                         operator="",
                         organizations=list(self.organizations),
+                        handlers=list(self.policy.handlers or []),
                     )
                     alerts_to_create.append(alert_obj)
                     # 更新映射表，供后续事件关联使用
