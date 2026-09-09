@@ -18,7 +18,7 @@ import TypeFieldsDesigner from './TypeFieldsDesigner';
 import type { ColumnItem } from '@/types';
 import { HandledRequestError } from '@/utils/request';
 
-const TYPE_DESIGNER_WIDTH = 800;
+const TYPE_DESIGNER_WIDTH = 860;
 const BUILTIN_MARK_CLASS =
   'inline-flex h-[18px] shrink-0 items-center rounded px-1.5 text-xs font-medium leading-none text-[var(--color-text-3)] bg-[var(--color-fill-2)]';
 
@@ -207,6 +207,7 @@ const TypeCatalogTab: React.FC = () => {
       title: t('common.actions'),
       key: 'actions',
       dataIndex: 'actions',
+      width: 120,
       render: (_, record: CredentialTypeItem) => (
         <Space>
           {record.is_builtin ? (
@@ -240,7 +241,8 @@ const TypeCatalogTab: React.FC = () => {
     <div className="flex h-full min-h-0 flex-col">
       <SearchActionBar
         searchProps={{
-          placeholder: t('common.search'),
+          placeholder: t('system.credential.typeSearchPlaceholder'),
+          enterButton: false,
           onSearch: (value) => {
             setSearch(value);
             void load(1, pagination.pageSize, value);
@@ -283,7 +285,7 @@ const TypeCatalogTab: React.FC = () => {
       >
         <Form form={metaForm} layout="vertical">
           <Form.Item name="name" label={t('system.credential.typeName')} rules={[{ required: true, whitespace: true }]}>
-            <Input placeholder={t('system.credential.typeNamePlaceholder')} />
+            <Input placeholder={t('common.inputTip')} />
           </Form.Item>
           <Form.Item
             name="key"
@@ -294,7 +296,7 @@ const TypeCatalogTab: React.FC = () => {
               { pattern: /^[a-z][a-z0-9_]*$/, message: t('system.credential.typeKeyHint') },
             ]}
           >
-            <Input placeholder={t('system.credential.typeKeyPlaceholder')} />
+            <Input placeholder={t('common.inputTip')} />
           </Form.Item>
           <Form.Item
             name="categories"
@@ -353,7 +355,7 @@ const TypeCatalogTab: React.FC = () => {
                   rules={[{ required: true, whitespace: true }]}
                   className="!mb-0"
                 >
-                  <Input placeholder={t('system.credential.typeNamePlaceholder')} disabled={Boolean(draft?.is_builtin)} />
+                  <Input placeholder={t('common.inputTip')} disabled={Boolean(draft?.is_builtin)} />
                 </Form.Item>
                 <Form.Item
                   name="key"

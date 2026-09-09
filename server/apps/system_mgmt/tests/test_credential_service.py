@@ -237,6 +237,12 @@ def test_list_filters_category_type_search_disabled_and_exact_owner():
     assert [row["credential_id"] for row in list_credentials({"current_team": child.id, "group_id": child.id}, actor=scoped_actor)] == [
         second.credential_id
     ]
+    id_token = second.credential_id.split("-")[-1][:8]
+    assert id_token
+    assert id_token.lower() not in first.name.lower()
+    assert id_token.lower() not in second.name.lower()
+    assert [row["credential_id"] for row in list_credentials({"current_team": child.id, "search": id_token}, actor=scoped_actor)] == []
+    assert [row["credential_id"] for row in list_credentials({"current_team": child.id, "search": typ.name}, actor=scoped_actor)] == []
 
 
 def test_manage_scope_lists_authorized_siblings_consume_scope_does_not():

@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Button, Form, Input, message, Popconfirm, Radio, Select, Tooltip } from 'antd';
-import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
+import { Button, Form, Input, message, Popconfirm, Radio, Select } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
 import OperateModal from '@/components/operate-modal';
 import CompactEmptyState from '@/components/compact-empty-state';
 import { useTranslation } from '@/utils/i18n';
@@ -26,12 +26,6 @@ interface TypeFieldsDesignerProps {
 }
 
 const CONTROL_KINDS: ControlKind[] = ['string', 'number', 'secret', 'enum', 'textarea'];
-
-const KIND_MARK_CLASS =
-  'inline-flex h-[18px] shrink-0 items-center rounded px-1.5 text-xs font-medium leading-none text-[var(--color-text-3)] bg-[var(--color-fill-2)]';
-
-const ICON_BTN_CLASS =
-  '!inline-flex !h-7 !w-7 !min-w-7 !items-center !justify-center !p-0 text-[var(--color-text-3)] hover:!bg-[var(--color-fill-2)] hover:!text-[var(--color-text-1)] disabled:!bg-transparent disabled:!text-[var(--color-text-4)]';
 
 const controlKindOf = (field?: CredentialFieldSchema): ControlKind => {
   if (field?.widget === 'textarea') {
@@ -100,10 +94,9 @@ const TypeFieldsDesigner: React.FC<TypeFieldsDesignerProps> = ({
     return t(`system.credential.kinds.${record.kind}`);
   };
 
-  const fieldMeta = (record: CredentialFieldSchema) => {
-    const displayName = record.name || record.id;
+  const fieldExtras = (record: CredentialFieldSchema) => {
     const parts = [
-      displayName !== record.id ? record.id : '',
+      fieldKindLabel(record),
       record.values?.length ? parseEnumValues(record.values).join(' / ') : '',
       record.default ? t('system.credential.defaultPrefix', '默认 {value}', { value: record.default }) : '',
     ].filter(Boolean);
@@ -198,8 +191,8 @@ const TypeFieldsDesigner: React.FC<TypeFieldsDesignerProps> = ({
           {t('system.credential.fieldDefinition')}
         </h3>
         {readOnly ? null : (
-          <Button type="link" size="small" className="!h-7 !px-0" icon={<PlusOutlined />} onClick={() => openEditor(null)}>
-            {t('system.credential.addField')}
+          <Button size="small" onClick={() => openEditor(null)}>
+            + {t('system.credential.addField')}
           </Button>
         )}
       </div>
@@ -215,91 +208,76 @@ const TypeFieldsDesigner: React.FC<TypeFieldsDesignerProps> = ({
           <div>
             {value.map((record, index) => {
               const cond = formatVisibleWhen(record);
-              const meta = fieldMeta(record);
+              const extras = fieldExtras(record);
               return (
                 <div
                   key={record.id}
-                  className="mb-1.5 flex items-start gap-2.5 rounded-lg bg-[var(--color-fill-1)] px-2.5 py-2.5 last:mb-0 hover:bg-[var(--color-fill-2)]"
+                  className="mb-2 flex gap-3 rounded-lg border border-[var(--color-border-2)] bg-[var(--color-bg)] px-3.5 py-3 last:mb-0 hover:border-[var(--color-border-1)]"
                 >
-                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded bg-[var(--color-fill-2)] text-[11px] tabular-nums leading-none text-[var(--color-text-3)]">
+                  <div className="mt-px flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-[var(--color-fill-2)] text-[11px] font-semibold text-[var(--color-text-3)]">
                     {index + 1}
-                  </span>
+                  </div>
                   <div className="min-w-0 flex-1">
-                    <div className="flex min-w-0 items-center gap-1.5">
-                      <span className="min-w-0 truncate text-sm font-medium leading-5 text-[var(--color-text-1)]">
-                        {record.name || record.id}
-                      </span>
-                      {record.required ? (
-                        <span className="shrink-0 text-[var(--color-fail)]" aria-label={t('system.credential.required')}>*</span>
-                      ) : null}
-                      <span className={KIND_MARK_CLASS}>{fieldKindLabel(record)}</span>
-                    </div>
-                    {meta ? (
-                      <div className="mt-0.5 truncate text-xs leading-5 text-[var(--color-text-3)]" title={meta}>
-                        {meta}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-sm font-semibold text-[var(--color-text-1)]">
+                        <span className="min-w-0 truncate">{record.name || record.id}</span>
+                        {record.required ? (
+                          <span className="inline-flex h-[18px] shrink-0 items-center rounded-[3px] border border-[color-mix(in_srgb,var(--color-fail)_35%,transparent)] bg-[color-mix(in_srgb,var(--color-fail)_8%,var(--color-bg))] px-1 text-[11px] font-medium text-[var(--color-fail)]">
+                            {t('system.credential.required')}
+                          </span>
+                        ) : null}
                       </div>
-                    ) : null}
+                      {readOnly ? null : (
+                        <div className="flex shrink-0 items-center gap-2.5">
+                          <Button
+                            type="link"
+                            size="small"
+                            disabled={index === 0}
+                            className="!h-auto !px-0 text-xs text-[var(--color-text-3)]"
+                            onClick={() => move(index, -1)}
+                          >
+                            {t('system.credential.moveUp')}
+                          </Button>
+                          <Button
+                            type="link"
+                            size="small"
+                            disabled={index === value.length - 1}
+                            className="!h-auto !px-0 text-xs text-[var(--color-text-3)]"
+                            onClick={() => move(index, 1)}
+                          >
+                            {t('system.credential.moveDown')}
+                          </Button>
+                          <Button
+                            type="link"
+                            size="small"
+                            className="!h-auto !px-0 text-xs"
+                            onClick={() => openEditor(index)}
+                          >
+                            {t('common.edit')}
+                          </Button>
+                          <Popconfirm
+                            title={t('common.delConfirm')}
+                            onConfirm={() => commit(value.filter((item) => item.id !== record.id))}
+                          >
+                            <Button type="link" size="small" danger className="!h-auto !px-0 text-xs">
+                              {t('common.delete')}
+                            </Button>
+                          </Popconfirm>
+                        </div>
+                      )}
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--color-text-3)]">
+                      <code className="rounded-[3px] bg-[var(--color-fill-2)] px-1.5 py-px font-mono text-[11px] text-[var(--color-text-2)]">
+                        {record.id}
+                      </code>
+                      {extras ? <span>{extras}</span> : null}
+                    </div>
                     {cond ? (
-                      <div className="mt-0.5 truncate text-xs leading-5 text-[var(--color-text-3)]">
+                      <div className="mt-1.5 text-xs leading-snug text-[var(--color-text-2)]">
                         {t('system.credential.visibleWhenOnly', undefined, { cond })}
                       </div>
                     ) : null}
                   </div>
-                  {readOnly ? null : (
-                    <div className="flex shrink-0 items-center">
-                      <Tooltip title={t('system.credential.moveUp')}>
-                        <span className="inline-flex">
-                          <Button
-                            type="text"
-                            size="small"
-                            disabled={index === 0}
-                            className={ICON_BTN_CLASS}
-                            icon={<ArrowUpOutlined aria-hidden="true" />}
-                            aria-label={t('system.credential.moveUp')}
-                            onClick={() => move(index, -1)}
-                          />
-                        </span>
-                      </Tooltip>
-                      <Tooltip title={t('system.credential.moveDown')}>
-                        <span className="inline-flex">
-                          <Button
-                            type="text"
-                            size="small"
-                            disabled={index === value.length - 1}
-                            className={ICON_BTN_CLASS}
-                            icon={<ArrowDownOutlined aria-hidden="true" />}
-                            aria-label={t('system.credential.moveDown')}
-                            onClick={() => move(index, 1)}
-                          />
-                        </span>
-                      </Tooltip>
-                      <Tooltip title={t('common.edit')}>
-                        <Button
-                          type="text"
-                          size="small"
-                          className={ICON_BTN_CLASS}
-                          icon={<EditOutlined aria-hidden="true" />}
-                          aria-label={t('common.edit')}
-                          onClick={() => openEditor(index)}
-                        />
-                      </Tooltip>
-                      <Popconfirm
-                        title={t('common.delConfirm')}
-                        onConfirm={() => commit(value.filter((item) => item.id !== record.id))}
-                      >
-                        <Tooltip title={t('common.delete')}>
-                          <Button
-                            type="text"
-                            size="small"
-                            danger
-                            className={`${ICON_BTN_CLASS} hover:!text-[var(--color-fail)]`}
-                            icon={<DeleteOutlined aria-hidden="true" />}
-                            aria-label={t('common.delete')}
-                          />
-                        </Tooltip>
-                      </Popconfirm>
-                    </div>
-                  )}
                 </div>
               );
             })}
@@ -322,10 +300,10 @@ const TypeFieldsDesigner: React.FC<TypeFieldsDesignerProps> = ({
               extra={<span className="text-xs">{t('system.credential.fieldKeyHint', '字母开头，仅含字母、数字和下划线。')}</span>}
               rules={[{ required: true, pattern: /^[A-Za-z][A-Za-z0-9_]*$/ }]}
             >
-              <Input disabled={editingIndex !== null} className="font-mono" placeholder={t('system.credential.fieldKeyPlaceholder')} />
+              <Input disabled={editingIndex !== null} className="font-mono" placeholder={t('common.inputTip')} />
             </Form.Item>
             <Form.Item name="name" label={t('system.credential.fieldName')} rules={[{ required: true, whitespace: true }]}>
-              <Input placeholder={t('system.credential.fieldNamePlaceholder', '表单上显示的中文名')} />
+              <Input placeholder={t('common.inputTip')} />
             </Form.Item>
           </div>
           <div className="grid grid-cols-2 gap-3">

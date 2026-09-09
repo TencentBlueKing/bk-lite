@@ -502,7 +502,7 @@ def query_credentials(filters=None, actor=None, **values):
         queryset = queryset.filter(type_id=type_key)
     search = data.get("search")
     if search:
-        queryset = queryset.filter(Q(name__icontains=str(search)) | Q(credential_id__icontains=str(search)))
+        queryset = queryset.filter(Q(name__icontains=str(search)))
     category = data.get("category")
     if category:
         queryset = queryset.filter(type__categories__contains=[str(category)])
