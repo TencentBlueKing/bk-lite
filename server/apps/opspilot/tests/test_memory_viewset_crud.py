@@ -1,10 +1,12 @@
 """MemorySpace / Memory CRUD 与 test_write 契约：鉴权通过后写库、审计与 LLM 校验。"""
 import json
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pydantic.root_model  # noqa
 import pytest
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
@@ -29,6 +31,8 @@ def _call(view, request, user, **kwargs):
 
 
 def _body(resp):
+    if callable(getattr(resp, "render", None)) and not getattr(resp, "is_rendered", True):
+        resp.render()
     if hasattr(resp, "content"):
         return json.loads(resp.content.decode("utf-8"))
     return resp.data
@@ -329,9 +333,9 @@ def test_memory_partial_update_splices_current_page():
                 "content": "x",
                 "content_offset": 99,
                 "content_replace_length": 1,
-                "expected_updated_at": _body(
-                    _call(MemoryViewSet.as_view({"get": "retrieve"}), factory.get("/x/"), user, pk=mem.id)
-                )["data"]["updated_at"],
+                "expected_updated_at": _body(_call(MemoryViewSet.as_view({"get": "retrieve"}), factory.get("/x/"), user, pk=mem.id))["data"][
+                    "updated_at"
+                ],
             },
             format="json",
         ),
@@ -379,11 +383,11 @@ def test_memory_partial_update_splice_omits_full_content_from_response():
         user,
         pk=mem.id,
     )
-    payload = patched.content.decode("utf-8")
     assert patched.status_code == status.HTTP_200_OK
+    body = _body(patched)
+    payload = patched.content.decode("utf-8")
     assert suffix not in payload
     assert huge not in payload
-    body = _body(patched)
     assert body["data"]["content"] == "NEW"
     assert body["data"]["content_length"] == len(prefix) + 3 + len(suffix)
     assert body["data"]["content_truncated"] is True
@@ -404,8 +408,10 @@ def test_memory_partial_update_splice_conflict_returns_409():
     )
     retrieved = _call(MemoryViewSet.as_view({"get": "retrieve"}), factory.get("/x/"), user, pk=mem.id)
     stale = _body(retrieved)["data"]["updated_at"]
-    mem.content = "ABCDEFGHIJ-changed"
-    mem.save(update_fields=["content"])
+    Memory.objects.filter(pk=mem.pk).update(
+        content="ABCDEFGHIJ-changed",
+        updated_at=timezone.now() + timedelta(seconds=5),
+    )
 
     patched = _call(
         MemoryViewSet.as_view({"patch": "partial_update"}),

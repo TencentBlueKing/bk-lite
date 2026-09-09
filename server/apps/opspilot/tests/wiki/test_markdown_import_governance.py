@@ -7,8 +7,8 @@ from django.utils import timezone
 
 from apps.opspilot.models import BuildRecord, KnowledgePage, WikiImportPreflight
 from apps.opspilot.services.wiki.markdown_import_governance_service import (
-    MarkdownImportGovernanceError,
     TOKEN_TTL_MINUTES,
+    MarkdownImportGovernanceError,
     execute_markdown_import,
     inspect_markdown_archive,
     preflight_markdown_import,
@@ -184,7 +184,12 @@ def test_create_folders_preflight_rejects_markdown_and_accepts_zip_kinds(wiki_fa
     assert third_party["preview"]["structure_preview"]["create_directories_from_folders"] is True
     assert third_party["preview"]["structure_preview"]["create_directory_count"] >= 1
 
-    okf_zip = _zip([("guides/intro.md", _okf_concept("Intro"))])
+    okf_zip = _zip(
+        [
+            ("guides/intro.md", _okf_concept("Intro")),
+            ("refs/note.md", _okf_concept("Note")),
+        ]
+    )
     okf_off = preflight_markdown_import(
         knowledge_base,
         okf_zip,

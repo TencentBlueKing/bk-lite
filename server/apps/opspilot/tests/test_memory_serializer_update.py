@@ -1,10 +1,12 @@
 """记忆条目更新只提交 content 时不必再传 memory_space/title。"""
 
-import pytest
+from datetime import timedelta
 
-from apps.opspilot.models.memory_mgmt import Memory, MemorySpace
+import pytest
+from django.utils import timezone
 from rest_framework.exceptions import APIException
 
+from apps.opspilot.models.memory_mgmt import Memory, MemorySpace
 from apps.opspilot.serializers.memory_serializer import (
     MEMORY_RETRIEVE_CONTENT_LIMIT_MAX,
     MemoryContentConflict,
@@ -135,8 +137,11 @@ def test_partial_update_splice_requires_offset_and_length_together():
 def test_partial_update_splice_rejects_stale_expected_updated_at():
     memory = _memory()
     stale = memory.updated_at
-    memory.content = "ABCDEFGHIJ"
-    memory.save(update_fields=["content"])
+    Memory.objects.filter(pk=memory.pk).update(
+        content="ABCDEFGHIJ",
+        updated_at=timezone.now() + timedelta(seconds=5),
+    )
+    memory.refresh_from_db()
     serializer = MemorySerializer(
         memory,
         data={
@@ -148,11 +153,9 @@ def test_partial_update_splice_rejects_stale_expected_updated_at():
         partial=True,
     )
     assert serializer.is_valid(), serializer.errors
-    try:
+    with pytest.raises(MemoryContentConflict) as captured:
         serializer.save()
-        raise AssertionError("stale splice should conflict")
-    except MemoryContentConflict as exc:
-        assert isinstance(exc, APIException)
-        assert exc.status_code == 409
+    assert isinstance(captured.value, APIException)
+    assert captured.value.status_code == 409
     memory.refresh_from_db()
     assert memory.content == "ABCDEFGHIJ"
