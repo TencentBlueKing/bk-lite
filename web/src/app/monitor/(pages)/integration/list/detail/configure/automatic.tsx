@@ -41,7 +41,7 @@ import Permission from '@/components/permission';
 import { cloneDeep } from 'lodash';
 import { usePluginFromJson } from '@/app/monitor/hooks/integration/usePluginFromJson';
 import { useConfigRenderer } from '@/app/monitor/hooks/integration/useConfigRenderer';
-import { useQcloudRegionOptions } from '@/app/monitor/hooks/integration/useQcloudRegionOptions';
+import { cloudRegionProviderFromPlugin, useCloudRegionOptions } from '@/app/monitor/hooks/integration/useQcloudRegionOptions';
 import {
   getSnmpFilterMutexConflicts,
   trackSnmpFilterMutexLastChanged
@@ -234,22 +234,14 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     return currentConfig;
   }, [configLoading, currentConfig]);
 
-  const isQcloudPlugin =
-    baseConfig?.instance_type === 'qcloud' ||
-    (Array.isArray(baseConfig?.config_type) &&
-      baseConfig.config_type.includes('qcloud')) ||
-    Boolean(
-      baseConfig?.form_fields?.some(
-        (field: { name?: string; options_key?: string }) =>
-          field?.options_key === 'region_option' || field?.name === 'region'
-      )
-    );
+  const regionProvider = cloudRegionProviderFromPlugin(baseConfig);
   const {
     regionOptions,
     loadingRegions,
     refreshRegions,
-  } = useQcloudRegionOptions({
-    enabled: Boolean(isQcloudPlugin),
+  } = useCloudRegionOptions({
+    enabled: Boolean(regionProvider),
+    provider: regionProvider || 'qcloud',
     form,
   });
 
