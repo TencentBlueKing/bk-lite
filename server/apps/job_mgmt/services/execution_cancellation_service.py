@@ -60,7 +60,8 @@ def request_execution_cancel(
             execution.status = ExecutionStatus.CANCELLED
             execution.finished_at = now
             execution.cancel_finalize_at = None
-            execution.save(update_fields=["status", "finished_at", "cancel_finalize_at", "updated_at"])
+            execution.converge_deadline_at = None
+            execution.save(update_fields=["status", "finished_at", "cancel_finalize_at", "converge_deadline_at", "updated_at"])
             enqueue_terminal_effects(execution)
             message = "已取消执行"
         elif execution.status == ExecutionStatus.RUNNING:
@@ -69,7 +70,8 @@ def request_execution_cancel(
             countdown = CANCEL_CONVERGE_BUFFER_SECONDS
             execution.status = ExecutionStatus.CANCELLING
             execution.cancel_finalize_at = now + timedelta(seconds=countdown)
-            execution.save(update_fields=["status", "cancel_finalize_at", "updated_at"])
+            execution.converge_deadline_at = None
+            execution.save(update_fields=["status", "cancel_finalize_at", "converge_deadline_at", "updated_at"])
             message = "正在取消执行"
         else:
             raise ExecutionCancellationError("状态已变更，请刷新后重试")

@@ -259,6 +259,7 @@ class MonitorAlert(TimeInfo):
     # Receiver-first rollout 中保持 False，直到 outbox 明确完成渠道解析与意图落库。
     # 这样 producer 关闭期和进程在生命周期提交后退出的窗口都会由有界对账收敛。
     alert_center_delivery_backfilled = models.BooleanField(default=False, verbose_name="告警中心投递意图已对账")
+    organizations = models.JSONField(default=list, verbose_name="告警生成时所属组织")
 
     class Meta:
         verbose_name = "监控告警"

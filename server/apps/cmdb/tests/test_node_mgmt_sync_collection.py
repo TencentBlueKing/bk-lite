@@ -22,6 +22,20 @@ from apps.core.utils.web_utils import WebUtils
 pytestmark = pytest.mark.django_db
 
 
+@pytest.fixture(autouse=True)
+def _keep_precreated_collect_tasks(mocker, request):
+    """默认不走源侧刷新，避免空源退役测试里预创建的区域任务。"""
+    if request.node.get_closest_marker("live_collect_source"):
+        return
+    mocker.patch.object(
+        NodeMgmtSyncService,
+        "_fetch_non_container_nodes",
+        return_value=[{"ip": "10.0.0.1", "cloud_region_id": 1, "organization_ids": []}],
+    )
+    mocker.patch.object(NodeMgmtSyncService, "_load_existing_host_map", return_value={})
+    mocker.patch.object(NodeMgmtSyncService, "_refresh_region_collect_tasks_from_source", return_value=False)
+
+
 @pytest.fixture
 def config():
     return NodeMgmtSyncConfig.objects.create(
@@ -68,114 +82,46 @@ def _accept_with_execution(task, execution_id):
     task.task_id = execution_id
     task.exec_status = CollectRunStatusType.RUNNING
     task.save(update_fields=["task_id", "exec_status", "updated_at"])
-    return WebUtils.response_success(task.pk)
+    return WebUtils.response_success({"id": task.pk, "execution_id": execution_id})
 
 
-def test_collect_waits_for_first_successful_sync(config):
-    with patch.object(NodeMgmtSyncService, "_list_region_collect_tasks") as collect_tasks:
-        run = NodeMgmtSyncService.execute_collect(operator="system")
-
-    assert run.status == NodeMgmtSyncRun.STATUS_WAITING_SYNC
-    assert run.reason_code == "SYNC_REQUIRED"
-    assert run.active_scope is None
-    assert run.finished_at is None
-    collect_tasks.assert_not_called()
-
-
-def test_waiting_sync_is_reused_for_same_config_version(config):
-    first = NodeMgmtSyncService.execute_collect(operator="first")
-    second = NodeMgmtSyncService.execute_collect(operator="second")
-
-    assert second.pk == first.pk
-    assert (
-        NodeMgmtSyncRun.objects.filter(
-            task=config,
-            run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
-            status=NodeMgmtSyncRun.STATUS_WAITING_SYNC,
-        ).count()
-        == 1
-    )
-    assert second.detail_json == {
-        "config_version": config.version,
-        "operator": "second",
-        "trigger": "periodic",
-    }
-
-
-def test_waiting_sync_is_scoped_by_config_version(config):
-    first = NodeMgmtSyncService.execute_collect(operator="first")
-    config.version += 1
-    config.save(update_fields=["version", "updated_at"])
-
-    second = NodeMgmtSyncService.execute_collect(operator="second", trigger="manual")
-
-    assert second.pk == first.pk
-    assert (
-        NodeMgmtSyncRun.objects.filter(
-            task=config,
-            run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
-            status=NodeMgmtSyncRun.STATUS_WAITING_SYNC,
-        ).count()
-        == 1
-    )
-    assert second.detail_json == {
-        "config_version": config.version,
-        "operator": "second",
-        "trigger": "manual",
-    }
-
-
-def test_waiting_builder_rechecks_successful_sync_after_taking_config_lock(
-    config,
-    mocker,
-):
+def test_collect_runs_without_successful_sync(config):
     collect_task = _collect_task(7)
-    original_select_for_update = NodeMgmtSyncConfig.objects.select_for_update
-    sync_created = False
-
-    def sync_wins_before_lock(*args, **kwargs):
-        nonlocal sync_created
-        if not sync_created:
-            sync_created = True
-            _successful_sync(config)
-        return original_select_for_update(*args, **kwargs)
-
-    mocker.patch.object(
-        NodeMgmtSyncConfig.objects,
-        "select_for_update",
-        side_effect=sync_wins_before_lock,
-    )
-    mocker.patch.object(
+    with patch.object(
         CollectModelService,
         "exec_task",
-        side_effect=lambda task, operator: _accept_with_execution(task, "execution-after-race"),
-    )
-
-    run = NodeMgmtSyncService.execute_collect(operator="system")
+        side_effect=lambda task, operator: _accept_with_execution(task, "execution-no-sync"),
+    ):
+        run = NodeMgmtSyncService.execute_collect(operator="system")
 
     assert run.status == NodeMgmtSyncRun.STATUS_SUBMITTED
+    assert run.active_scope == NodeMgmtSyncService.COLLECT_ACTIVE_SCOPE
     assert run.region_states.get().collect_task_id == collect_task.pk
     assert not NodeMgmtSyncRun.objects.filter(status=NodeMgmtSyncRun.STATUS_WAITING_SYNC).exists()
 
 
-def test_collect_reloads_current_version_inside_serialized_precondition(config):
-    _successful_sync(config)
-    stale = NodeMgmtSyncConfig.objects.get(pk=config.pk)
-    NodeMgmtSyncConfig.objects.filter(pk=config.pk).update(version=config.version + 1)
+def test_collect_does_not_wait_when_latest_sync_is_empty_blocked(config):
+    NodeMgmtSyncRun.objects.create(
+        task=config,
+        run_type=NodeMgmtSyncRun.RUN_TYPE_SYNC,
+        status=NodeMgmtSyncRun.STATUS_BLOCKED,
+        reason_code=NodeMgmtSyncService.REASON_NODE_SOURCE_EMPTY,
+        detail_json={"config_version": config.version},
+    )
+    _collect_task(7)
+    with patch.object(
+        CollectModelService,
+        "exec_task",
+        side_effect=lambda task, operator: _accept_with_execution(task, "execution-after-empty-sync"),
+    ):
+        run = NodeMgmtSyncService.execute_collect(operator="system")
 
-    with patch.object(NodeMgmtSyncService, "get_task", return_value=stale):
-        with patch.object(CollectModelService, "exec_task") as submit:
-            run = NodeMgmtSyncService.execute_collect(operator="system")
-
-    assert run.status == NodeMgmtSyncRun.STATUS_WAITING_SYNC
-    assert run.detail_json["config_version"] == config.version + 1
-    submit.assert_not_called()
+    assert run.status == NodeMgmtSyncRun.STATUS_SUBMITTED
 
 
 def test_collect_blocks_without_submission_when_config_changes_before_children(
     config,
 ):
-    _successful_sync(config)
     _collect_task(7)
     original_list = NodeMgmtSyncService._list_region_collect_tasks
 
@@ -195,34 +141,6 @@ def test_collect_blocks_without_submission_when_config_changes_before_children(
     assert run.status == NodeMgmtSyncRun.STATUS_BLOCKED
     assert run.reason_code == "COLLECT_SUBMISSION_BLOCKED"
     submit.assert_not_called()
-
-
-def test_successful_sync_does_not_reuse_waiting_collect_run(config):
-    waiting = NodeMgmtSyncService.execute_collect(operator="before-sync")
-    _successful_sync(config)
-    collect_task = _collect_task(7)
-
-    with patch.object(
-        CollectModelService,
-        "exec_task",
-        side_effect=lambda task, operator: _accept_with_execution(task, "execution-after-sync"),
-    ):
-        submitted = NodeMgmtSyncService.execute_collect(operator="after-sync")
-
-    assert submitted.pk != waiting.pk
-    assert submitted.status == NodeMgmtSyncRun.STATUS_SUBMITTED
-    assert submitted.region_states.get().collect_task_id == collect_task.pk
-
-
-def test_collect_waits_when_successful_sync_is_for_older_config_version(config):
-    _successful_sync(config, config_version=config.version)
-    config.version += 1
-    config.save(update_fields=["version", "updated_at"])
-
-    run = NodeMgmtSyncService.execute_collect(operator="system")
-
-    assert run.status == NodeMgmtSyncRun.STATUS_WAITING_SYNC
-    assert run.reason_code == "SYNC_REQUIRED"
 
 
 def test_rejected_child_submission_is_blocked_not_success(config):
@@ -295,7 +213,7 @@ def test_accepted_child_makes_parent_submitted_not_success(config):
     assert run.status == NodeMgmtSyncRun.STATUS_SUBMITTED
     assert run.submitted_at is not None
     assert run.finished_at is None
-    assert run.active_scope == NodeMgmtSyncService.ACTIVE_SCOPE
+    assert run.active_scope == NodeMgmtSyncService.COLLECT_ACTIVE_SCOPE
     assert state.status == NodeMgmtSyncRun.STATUS_SUBMITTED
     assert state.child_execution_id == "execution-7"
     assert state.submitted_at is not None
@@ -410,7 +328,7 @@ def test_parent_stays_submitted_while_any_child_is_running(config):
 
     assert refreshed.status == NodeMgmtSyncRun.STATUS_SUBMITTED
     assert refreshed.finished_at is None
-    assert refreshed.active_scope == NodeMgmtSyncService.ACTIVE_SCOPE
+    assert refreshed.active_scope == NodeMgmtSyncService.COLLECT_ACTIVE_SCOPE
     assert refreshed.region_states.get(collect_task=first).status == "success"
     assert refreshed.region_states.get(collect_task=second).status == "submitted"
 
@@ -727,6 +645,24 @@ def test_invalid_region_child_is_persisted_and_makes_mixed_result_partial(config
     assert refreshed.status == NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS
 
 
+def test_collect_binds_execution_id_from_exec_task_response_not_stale_instance(config, settings, mocker):
+    settings.DEBUG = False
+    _successful_sync(config)
+    collect_task = _collect_task(7)
+    CollectModels.objects.filter(pk=collect_task.pk).update(task_id="stale-previous-execution")
+    mocker.patch.object(CollectModelService, "repair_host_cloud_snapshot", return_value=False)
+    mocker.patch("apps.cmdb.services.collect_service.create_change_record")
+    mocker.patch("apps.cmdb.services.collect_service.sync_collect_task.delay")
+
+    run = NodeMgmtSyncService.execute_collect(operator="system")
+
+    collect_task.refresh_from_db()
+    state = run.region_states.get()
+    assert run.status == NodeMgmtSyncRun.STATUS_SUBMITTED
+    assert state.child_execution_id == collect_task.task_id
+    assert state.child_execution_id != "stale-previous-execution"
+
+
 def test_submission_binds_in_memory_execution_id_not_concurrently_overwritten_db_value(config):
     _successful_sync(config)
     _collect_task(7)
@@ -853,7 +789,7 @@ def test_submitted_active_run_without_dispatch_claim_can_be_disabled(config):
 
     config.refresh_from_db()
     assert run.status == NodeMgmtSyncRun.STATUS_SUBMITTED
-    assert run.active_scope == NodeMgmtSyncService.ACTIVE_SCOPE
+    assert run.active_scope == NodeMgmtSyncService.COLLECT_ACTIVE_SCOPE
     assert config.collect_dispatch_claim_token is None
 
     updated = NodeMgmtSyncService.update_task({"auto_sync_enabled": False, "auto_collect_enabled": False})
@@ -886,7 +822,7 @@ def test_stale_dispatch_owner_cannot_submit_after_config_is_disabled(config):
         task=config,
         run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
         status=NodeMgmtSyncRun.STATUS_RUNNING,
-        active_scope=NodeMgmtSyncService.ACTIVE_SCOPE,
+        active_scope=NodeMgmtSyncService.COLLECT_ACTIVE_SCOPE,
     )
     claim_token = NodeMgmtSyncService._claim_collect_dispatch_version(
         run_id=run.pk,
@@ -956,7 +892,7 @@ def test_refresh_batch_isolates_one_run_error_and_sanitizes_log(config, mocker, 
         task=config,
         run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
         status=NodeMgmtSyncRun.STATUS_SUBMITTED,
-        active_scope=NodeMgmtSyncService.ACTIVE_SCOPE,
+        active_scope=NodeMgmtSyncService.COLLECT_ACTIVE_SCOPE,
         deadline_at=timezone.now() + timezone.timedelta(minutes=5),
     )
     second = NodeMgmtSyncRun.objects.create(
@@ -1075,3 +1011,54 @@ def test_region_and_parent_terminal_cas_rejects_reverse_worker_result(config):
     run.refresh_from_db()
     assert stale_state.status == NodeMgmtSyncRun.STATUS_SUCCESS
     assert run.status == NodeMgmtSyncRun.STATUS_SUCCESS
+
+
+@pytest.mark.live_collect_source
+def test_collect_refresh_writes_claimed_hosts_and_skips_missing_inventory(config, mocker):
+    sidecar_id = "a" * 32
+    existing = {
+        ("10.0.0.7", 7): {
+            "_id": 701,
+            "inst_uuid": "11111111-1111-4111-8111-111111111111",
+            "ip_addr": "10.0.0.7",
+            "cloud": 7,
+            "node_id": sidecar_id,
+            "inst_name": "10.0.0.7[华东]",
+        }
+    }
+    mocker.patch.object(
+        NodeMgmtSyncService,
+        "_fetch_non_container_nodes",
+        return_value=[
+            {
+                "id": sidecar_id,
+                "ip": "10.0.0.7",
+                "cloud_region_id": 7,
+                "cloud_region_name": "华东",
+                "organization_ids": [1],
+            },
+            {
+                "id": "b" * 32,
+                "ip": "10.0.0.9",
+                "cloud_region_id": 7,
+                "cloud_region_name": "华东",
+                "organization_ids": [1],
+            },
+        ],
+    )
+    mocker.patch.object(NodeMgmtSyncService, "_load_existing_host_map", return_value=existing)
+    mocker.patch.object(NodeMgmtSyncService, "_pick_access_point", return_value={"id": "ap-7"})
+    persist = mocker.patch.object(NodeMgmtSyncService, "_persist_hosts")
+    mocker.patch.object(
+        CollectModelService,
+        "exec_task",
+        side_effect=lambda task, operator: _accept_with_execution(task, "execution-refresh"),
+    )
+
+    run = NodeMgmtSyncService.execute_collect(operator="system")
+
+    persist.assert_not_called()
+    task = CollectModels.objects.get(system_code=f"{NodeMgmtSyncService.SYSTEM_TASK_PREFIX}7")
+    assert {item.get("ip_addr") for item in task.instances} == {"10.0.0.7"}
+    assert run.status == NodeMgmtSyncRun.STATUS_SUBMITTED
+    assert run.active_scope == NodeMgmtSyncService.COLLECT_ACTIVE_SCOPE

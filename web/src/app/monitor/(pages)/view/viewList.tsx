@@ -37,7 +37,6 @@ import {
 } from './viewColumnPreference';
 import {
   INSTANCE_VIEW_ACTION_KEY,
-  RESOURCE_IP_ROLE,
   buildInstanceViewColumns,
   buildReportTimeColumn,
   displayFieldKey,
@@ -216,10 +215,10 @@ const ViewList: React.FC<ViewListProps> = ({
     return summaryColumns.some((column) => column.fact === 'asset.ip');
   }, [objects, objectId]);
 
-  // 云平台子对象的内置 IP 列（role=resource_ip）：候选值需要后端下发，走同一个枚举接口。
+  // 带 role 的字段展示列（云平台子对象 IP、K8s Pod Namespace）：候选值需要后端下发。
   const roleFieldColumns = useMemo(() => {
     return (findByMonitorId(objects, objectId)?.display_fields || []).filter(
-      (column) => column.type === 'field' && column.role === RESOURCE_IP_ROLE
+      (column) => column.type === 'field' && Boolean(column.role)
     );
   }, [objects, objectId]);
 
@@ -336,7 +335,10 @@ const ViewList: React.FC<ViewListProps> = ({
           filters: assetIpFilters.length ? assetIpFilters : undefined
         };
       }
-      if (col.role === RESOURCE_IP_ROLE) {
+      if (
+        col.filterParam &&
+        String(col.filterParam).startsWith('field:')
+      ) {
         const options = fieldFilters[String(col.filterParam)] || [];
         next = {
           ...next,

@@ -67,6 +67,7 @@ from apps.monitor.services.metric_series import (
     validate_mode,
 )
 from apps.monitor.services.metrics import Metrics, MetricsQueryBudgetExceeded
+from apps.monitor.services.alert_access import filter_alerts_by_organizations, orphaned_monitor_policy_q
 from apps.monitor.services.nats_query_contract import build_vm_query_failure_result as _build_vm_query_failure_result
 from apps.monitor.services.nats_query_contract import normalize_bool
 from apps.monitor.services.nats_query_contract import normalize_dimensions as _normalize_dimensions
@@ -86,6 +87,11 @@ from apps.monitor.utils.vm_query_batch import run_unique_vm_queries
 from apps.rpc.system_mgmt import SystemMgmt
 
 _normalize_bool = normalize_bool
+
+
+def _filter_nats_visible_alerts(queryset, scope_ids, accessible_policy_qs):
+    queryset = filter_alerts_by_organizations(queryset, scope_ids)
+    return queryset.filter(Q(policy_id__in=accessible_policy_qs.values("id")) | orphaned_monitor_policy_q())
 
 
 def _build_query_budget_failure(exc: MetricsQueryBudgetExceeded) -> dict:
@@ -1151,9 +1157,10 @@ def query_monitor_alert_segments(query_data: dict, *args, **kwargs):
     if policy_error:
         return policy_error
 
-    queryset = MonitorAlert.objects.filter(
-        monitor_instance_id__in=authorized_instance_ids,
-        policy_id__in=accessible_policy_qs.values_list("id", flat=True),
+    queryset = _filter_nats_visible_alerts(
+        MonitorAlert.objects.filter(monitor_instance_id__in=authorized_instance_ids),
+        scope_ids,
+        accessible_policy_qs,
     )
     queryset = queryset.filter(Q(start_event_time__lte=end_dt) | Q(start_event_time__isnull=True, created_at__lte=end_dt))
     queryset = queryset.filter(Q(end_event_time__gte=start_dt) | Q(end_event_time__isnull=True, updated_at__gte=start_dt))
@@ -1337,10 +1344,13 @@ def query_latest_active_alerts(query_data: Optional[dict] = None, *args, **kwarg
     if policy_error:
         return policy_error
 
-    queryset = MonitorAlert.objects.filter(
-        monitor_instance_id__in=authorized_instance_ids,
-        policy_id__in=accessible_policy_qs.values_list("id", flat=True),
-        status="new",
+    queryset = _filter_nats_visible_alerts(
+        MonitorAlert.objects.filter(
+            monitor_instance_id__in=authorized_instance_ids,
+            status="new",
+        ),
+        scope_ids,
+        accessible_policy_qs,
     )
     if level_values:
         queryset = queryset.filter(level__in=level_values)
@@ -1894,6 +1904,9 @@ def get_monitor_statistics(user_info=None, **kwargs):
         { "result": True, "data": { 各项计数 ... }, "message": "" }
     """
     user_info = user_info or {}
+    _, _, _, scope_ids, _, scope_error = _get_nats_actor_scope(user_info)
+    if scope_error:
+        return scope_error
     policy_qs, policy_error = _get_nats_accessible_policy_queryset(user_info)
     if policy_error:
         return policy_error
@@ -1930,7 +1943,7 @@ def get_monitor_statistics(user_info=None, **kwargs):
     policy_threshold = policy_qs.exclude(threshold=[]).count()
     policy_no_data = policy_qs.exclude(no_data_level="").count()
 
-    alert_qs = MonitorAlert.objects.filter(policy_id__in=policy_qs.values_list("id", flat=True))
+    alert_qs = _filter_nats_visible_alerts(MonitorAlert.objects.all(), scope_ids, policy_qs)
     alert_history = alert_qs.count()
     alert_current = alert_qs.filter(status="new").count()
     alert_recovered = alert_qs.filter(status="recovered").count()
@@ -1939,15 +1952,14 @@ def get_monitor_statistics(user_info=None, **kwargs):
     today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
     alert_today = alert_qs.filter(created_at__gte=today_start).count()
 
-    event_qs = MonitorEvent.objects.filter(policy_id__in=policy_qs.values_list("id", flat=True)).filter(
-        Q(alert__isnull=True) | Q(alert__policy_id=F("policy_id"))
-    )
+    event_qs = MonitorEvent.objects.filter(
+        Q(alert_id__in=alert_qs.values("id")) | Q(alert__isnull=True, policy_id__in=policy_qs.values("id"))
+    ).filter(Q(alert__isnull=True) | Q(alert__policy_id=F("policy_id")))
     event_total = event_qs.count()
     event_today = event_qs.filter(created_at__gte=today_start).count()
 
     alert_snapshot_total = MonitorAlertMetricSnapshot.objects.filter(
-        policy_id__in=policy_qs.values_list("id", flat=True),
-        alert__policy_id=F("policy_id"),
+        Q(alert_id__in=alert_qs.values("id")) | Q(policy_id__in=policy_qs.values("id"), alert__policy_id=F("policy_id"))
     ).count()
 
     no_data_baseline_total = PolicyInstanceBaseline.objects.filter(policy_id__in=policy_qs.values_list("id", flat=True)).count()

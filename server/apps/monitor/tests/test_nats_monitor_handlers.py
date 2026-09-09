@@ -854,6 +854,7 @@ class TestQueryMonitorAlertSegments:
             monitor_instance_id="('h1',)",
             status="new",
             level="critical",
+            organizations=[1],
             start_event_time=datetime(2026, 1, 1, 12, tzinfo=timezone.utc),
         )
         mocker.patch("apps.monitor.nats.monitor.get_permission_rules", return_value={"team": [1]})
@@ -910,6 +911,7 @@ class TestQueryMonitorAlertSegments:
                 monitor_instance_id="('h1',)",
                 status="new",
                 level="critical",
+                organizations=[1],
                 start_event_time=datetime(2026, 1, 1, hour, tzinfo=timezone.utc),
             )
         mocker.patch("apps.monitor.nats.monitor.get_permission_rules", return_value={"team": [1]})

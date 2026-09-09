@@ -403,6 +403,7 @@
     "defaultExecuteUser": "root",
     "executionLog": "执行日志",
     "streamingLive": "实时",
+    "waitingForExecutionLog": "等待执行日志，任务状态仍会自动刷新。可通过上方入口查看执行内容和参数。",
     "searchLog": "搜索日志...",
     "sortAsc": "升序",
     "sortDesc": "降序",

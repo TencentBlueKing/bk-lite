@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 
-import { applyExecutionStreamEvent } from '../src/app/job/hooks/executionStreamState';
+import {
+  applyExecutionStreamEvent,
+  consumeExecutionSseChunk,
+} from '../src/app/job/hooks/executionStreamState';
 
 const gapLine =
   '[实时日志缺口] 省略 12 行；请以任务终态输出为准（终态可能截断）';
@@ -27,5 +30,14 @@ const completed = applyExecutionStreamEvent(withGap, {
 assert.equal(completed.ansible.stdout, `${gapLine}\n`);
 assert.equal(completed.ansible.done, true);
 assert.equal(completed.ansible.status, 'success');
+
+const firstChunk = consumeExecutionSseChunk('', 'data: {"target_key":"edge"}\r');
+assert.deepEqual(firstChunk.payloads, []);
+const secondChunk = consumeExecutionSseChunk(
+  firstChunk.buffer,
+  '\n\r\ndata: [DONE]\r\n\r\n'
+);
+assert.deepEqual(secondChunk.payloads, ['{"target_key":"edge"}', '[DONE]']);
+assert.equal(secondChunk.buffer, '');
 
 console.log('job execution stream gap contract passed');

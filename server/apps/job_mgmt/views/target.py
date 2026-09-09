@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import job_logger as logger
+from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.job_mgmt.constants import OSType, SSHCredentialType, WinRMTransport
 from apps.job_mgmt.filters.target import TargetFilter
@@ -24,7 +25,6 @@ from apps.rpc.executor import Executor
 from apps.rpc.node_mgmt import NodeMgmt
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.utils.operation_log_utils import log_operation
-from apps.core.utils.team_utils import get_current_team
 
 
 def _get_executor_node(cloud_region_id: int) -> str:
@@ -155,6 +155,7 @@ class TargetViewSet(BatchDeleteMixin, AuthViewSet):
 
         查询参数:
             cloud_region_id: 云区域ID (可选)
+            keyword: 节点名称或IP，模糊匹配 (可选)
             name: 节点名称，模糊匹配 (可选)
             ip: IP地址，模糊匹配 (可选)
             os: 操作系统 linux/windows (可选)
@@ -190,6 +191,10 @@ class TargetViewSet(BatchDeleteMixin, AuthViewSet):
         cloud_region_id = request.query_params.get("cloud_region_id")
         if cloud_region_id:
             query_data["cloud_region_id"] = int(cloud_region_id)
+
+        keyword = request.query_params.get("keyword")
+        if keyword:
+            query_data["keyword"] = keyword
 
         name = request.query_params.get("name")
         if name:
@@ -419,15 +424,17 @@ class TargetViewSet(BatchDeleteMixin, AuthViewSet):
                 "password": validated_data.get("winrm_password"),
             }
 
-        credential.update({
-            "host": str(validated_data.get("ip")),
-            "port": validated_data.get("winrm_port", 5986),
-            "user": validated_data.get("winrm_user", ""),
-            "connection": "winrm",
-            "winrm_scheme": validated_data.get("winrm_scheme", "https"),
-            "winrm_transport": validated_data.get("winrm_transport", WinRMTransport.NTLM),
-            "winrm_cert_validation": validated_data.get("winrm_cert_validation", True),
-        })
+        credential.update(
+            {
+                "host": str(validated_data.get("ip")),
+                "port": validated_data.get("winrm_port", 5986),
+                "user": validated_data.get("winrm_user", ""),
+                "connection": "winrm",
+                "winrm_scheme": validated_data.get("winrm_scheme", "https"),
+                "winrm_transport": validated_data.get("winrm_transport", WinRMTransport.NTLM),
+                "winrm_cert_validation": validated_data.get("winrm_cert_validation", True),
+            }
+        )
         if validated_data.get("winrm_password"):
             credential["password"] = validated_data["winrm_password"]
 

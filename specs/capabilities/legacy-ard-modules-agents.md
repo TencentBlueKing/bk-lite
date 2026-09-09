@@ -17,14 +17,14 @@
 - 统一调度与容量边界【已实现/已存在】：应用运行时按 `MAX_ACTIVE_RUNS`、`MAX_ACTIVE_RUN_TARGETS`、`MAX_ACTIVE_TARGETS`、`TARGET_TASK_WINDOW` 构造全局容量边界；`MAX_ACTIVE_RUN_TARGETS` 限制全部已接纳 Run 的目标总数，避免仅按 Run 数接纳多个超大任务；跨 `CollectionRun` 的目标由 round-robin 调度器在同一 in-flight 窗口内公平派发，新 Run 优先获得下一空闲槽位，避免大 Run 长时间占用。运行统计暴露活动 Run/目标、准入目标预算、排队目标与峰值，作为容量观测契约。
 - 结果发布背压【已实现/已存在】：采集执行器将每个目标结果交给有界 `BufferedResultPublisher`；队列容量随目标任务窗口/目标上限确定，队列接纳与最终投递确认分离。发布阶段在统一截止时间内有限重试，投递状态区分 succeeded、failed 与 unknown，运行关闭时按宽限期排空或终止。这一队列是 NATS 结果发布链路的本地有界背压点。
 - 执行计划与阶段超时【已实现/已存在】：每次采集从环境变量与插件 YAML 解析为不可变 `ExecutionPlan`，统一约束预检、可达性/访问探测、插件采集和结果发布四个阶段的超时，并标记 `sync`、`async`、`remote` 执行模式及 `snmp`、`sync_sdk`、`remote_job`、`default` 容量组。YAML 缺失时回退默认计划；插件具体配置到真实连接的全链路重校验【待确认】。
-- 预检与出站安全【已实现/已存在】：目标在协议采集前由异步预检处理，预检结果区分通过、不可达及超时等状态；预检路径会在连接前校验出站地址或受信云端点声明。部署策略与插件真实连接是否逐项复用该校验【待确认】。
+- 预检与出站安全【已实现/已存在】：目标在协议采集前由异步预检处理，预检结果区分通过、不可达及超时等状态。配置采集与 IP 预检不按 CIDR/域名白名单拦截目标，公网地址可采。云插件仍校验 plugin YAML 声明的受信 SDK 域名后缀格式。
 - 指标与健康【已实现/已存在】：Sanic 生命周期启动/停止统一运行时及事件循环滞后观测；`/health/ready` 以运行时和 Redis 状态决定就绪性，`/health/stats` 返回容量、发布队列、线程、文件描述符及运行指标，`/health/metrics` 以 Prometheus 文本输出阶段耗时、超时、调度等待、发布和执行模式/容量组指标。
 - 原生异步与线程隔离矩阵【已实现/已存在】：插件矩阵将网络 I/O 明确分为原生异步（直接 `await`）、同步隔离（同步 SDK 在线程中执行）和远程异步（通过 NATS 等待独立执行端）；当前 protocol executor 统计为 15 个原生异步、6 个同步隔离，同步隔离仍受全局目标容量边界约束。矩阵中的插件适用范围及其与生产真实连接的逐项全链路一致性【待确认】。
 - 能力：协议采集（SNMP/IPMI/SSH/HTTP/WMI 等）、凭据状态管理、YAML 驱动采集（`service/collection_service.py`）、远程命令运行时。
 - 配置采集插件矩阵【已实现/已存在】：`plugins/inputs/` 下 `*_info.py` 以当前仓库枚举为准（约 30 个，含 highgo/iris/nacos/oceanbase/sap_hana 等新增采集对象）。另有 `keepalived`、`minio` 以非 `*_info.py` 形态存在；IP 发现位于 `plugins/inputs/ip/`。历史“19 个 *_info.py、仅 x86 采集器”口径作废。
 - 多租户与安全收敛【已实现/已存在】：配置采集查询节点信息时优先携带 `organization_id` 缩小查询范围，未提供组织上下文时才回退 `skip_permission=True`；HTTP 监控接口对凭证/实例标识做 Prometheus label 转义与日志脱敏，避免泄露原始凭据（`service/collection_service.py:347-363`、`api/collect.py:355-521`、`api/monitor.py:12-17,247,270,429`）。
 
-> 证据来源：agents/stargazer/core/collection/scheduler.py:30-142；agents/stargazer/core/collection/application.py:48-147；agents/stargazer/core/collection/execution_plan.py:29；agents/stargazer/core/collection/executor.py:465,808；agents/stargazer/core/collection/result_publisher.py:68；agents/stargazer/core/collection/preflight.py:24；agents/stargazer/core/infra/outbound_policy.py:16；agents/stargazer/api/health.py:100；agents/stargazer/docs/configuration-plugin-async-matrix.md:46　|　同步基线：b98b782a7　|　【已实现/推断/待确认】
+> 证据来源：agents/stargazer/core/collection/scheduler.py:30-142；agents/stargazer/core/collection/application.py:48-147；agents/stargazer/core/collection/execution_plan.py:29；agents/stargazer/core/collection/executor.py:465,808；agents/stargazer/core/collection/result_publisher.py:68；agents/stargazer/core/collection/preflight.py:24；agents/stargazer/api/health.py:100；agents/stargazer/docs/configuration-plugin-async-matrix.md:46　|　同步基线：b98b782a7　|　【已实现/推断/待确认】
 
 ## nats-executor —— 命令执行 agent【已实现/已存在】
 - 运行时：Go（`main.go` v3.0.0）。

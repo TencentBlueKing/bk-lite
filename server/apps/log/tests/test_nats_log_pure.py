@@ -542,6 +542,16 @@ def test_query_log_alert_segments_page_size_too_large():
 
 def test_query_log_alert_segments_empty_policy_ids_returns_empty_page(mocker):
     mocker.patch.object(nats_log, "_get_log_policy_ids", return_value=([], None))
+    mocker.patch.object(nats_log, "_get_log_actor_scope", return_value=([1], {"is_superuser": True}, None))
+    mocker.patch.object(nats_log, "orphaned_log_policy_q", return_value=Q(pk__in=[]))
+    queryset = mocker.MagicMock()
+    queryset.filter.return_value = queryset
+    mocker.patch.object(nats_log.Alert.objects, "filter", return_value=queryset)
+    mocker.patch.object(
+        nats_log,
+        "_build_paginated_alert_segments",
+        return_value={"count": 0, "page": 1, "page_size": 100, "items": []},
+    )
     out = nats_log.query_log_alert_segments(
         {
             "collect_type_id": "ct",
@@ -569,8 +579,10 @@ def test_query_log_alert_segments_propagates_policy_error(mocker):
 
 def test_query_log_alert_segments_filters_by_overlapping_event_time(mocker):
     mocker.patch.object(nats_log, "_get_log_policy_ids", return_value=(["policy-1"], None))
+    mocker.patch.object(nats_log, "_get_log_actor_scope", return_value=([1], {"is_superuser": True}, None))
+    mocker.patch.object(nats_log, "orphaned_log_policy_q", return_value=Q())
     queryset = mocker.MagicMock()
-    filtered_queryset = queryset.filter.return_value
+    queryset.filter.return_value = queryset
     mocker.patch.object(nats_log.Alert.objects, "filter", return_value=queryset)
     mocker.patch.object(
         nats_log,
@@ -587,8 +599,8 @@ def test_query_log_alert_segments_filters_by_overlapping_event_time(mocker):
     )
 
     assert out["result"] is True
-    queryset.filter.assert_called_once_with(
+    queryset.filter.assert_any_call(
         Q(end_event_time__isnull=True) | Q(end_event_time__gte=datetime(2024, 1, 1, 1, 0, 0)),
         start_event_time__lte=datetime(2024, 1, 1, 2, 0, 0),
     )
-    nats_log._build_paginated_alert_segments.assert_called_once_with(filtered_queryset, 1, 100)
+    nats_log._build_paginated_alert_segments.assert_called_once_with(queryset, 1, 100)

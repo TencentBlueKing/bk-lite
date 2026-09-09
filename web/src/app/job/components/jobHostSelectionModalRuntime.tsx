@@ -12,6 +12,12 @@ import useJobApi from '@/app/job/api';
 
 type RuntimeProps = Omit<JobHostSelectionModalProps, 'fetchHosts'>;
 
+export const buildNodeQueryParams = ({ page, pageSize, search }: FetchHostsParams) => ({
+  page,
+  page_size: pageSize,
+  keyword: search || undefined,
+});
+
 const JobHostSelectionModalRuntime: React.FC<RuntimeProps> = (props) => {
   const { getTargetList, queryNodes } = useJobApi();
 
@@ -23,11 +29,7 @@ const JobHostSelectionModalRuntime: React.FC<RuntimeProps> = (props) => {
       source,
     }: FetchHostsParams): Promise<FetchHostsResult> => {
       if (source === 'node_manager') {
-        const res = await queryNodes({
-          page,
-          page_size: pageSize,
-          name: search || undefined,
-        });
+        const res = await queryNodes(buildNodeQueryParams({ page, pageSize, search, source }));
 
         return {
           items: (res.data?.items || []).map<HostItem>((node) => ({

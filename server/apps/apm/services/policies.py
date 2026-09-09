@@ -396,7 +396,7 @@ class DjangoApmPolicyService:
             "endpoint": state.endpoint,
             "version": state.version,
         }
-        alert, _ = ApmAlert.objects.get_or_create(external_id=external_id, defaults=alert_defaults)
+        alert, created = ApmAlert.objects.get_or_create(external_id=external_id, defaults=alert_defaults)
         alert.policy = policy
         alert.service = policy.service
         alert.policy_id_snapshot = str(policy.id)
@@ -407,7 +407,8 @@ class DjangoApmPolicyService:
         alert.metric_type = policy.metric_type
         alert.severity = threshold["severity"]
         alert.current_value = result.value
-        alert.organizations = organizations
+        if created or not alert.organizations:
+            alert.organizations = organizations
         alert.last_event_at = evaluated_at
         alert.endpoint = state.endpoint
         alert.version = state.version

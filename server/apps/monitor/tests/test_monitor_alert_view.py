@@ -55,6 +55,11 @@ def _policy(**overrides):
     return policy
 
 
+def _alert(policy, **kwargs):
+    kwargs.setdefault("organizations", [1])
+    return MonitorAlert.objects.create(policy_id=policy.id, **kwargs)
+
+
 class TestGetSnapshots:
     def test_alert_not_found(self, api_client, grant_all):
         api_client.cookies["current_team"] = "1"
@@ -68,7 +73,7 @@ class TestGetSnapshots:
             calculation_unit="bytes",
             threshold_unit="kibibytes",
         )
-        alert = MonitorAlert.objects.create(policy_id=policy.id, monitor_instance_id="h1", status="new")
+        alert = _alert(policy, monitor_instance_id="h1", status="new")
         resp = api_client.get(f"{BASE}/api/monitor_alert/snapshots/{alert.id}/")
         assert resp.status_code == 200
         body = resp.json()["data"]
@@ -86,7 +91,7 @@ class TestGetSnapshots:
             threshold_unit="",
         )
         alert = MonitorAlert.objects.create(
-            policy_id=policy.id, monitor_instance_id="h1", status="new"
+            policy_id=policy.id, organizations=[1], monitor_instance_id="h1", status="new"
         )
 
         resp = api_client.get(
@@ -106,7 +111,7 @@ class TestGetSnapshots:
             threshold_unit="kibibytes",
         )
         alert = MonitorAlert.objects.create(
-            policy_id=policy.id, monitor_instance_id="h1", status="new"
+            policy_id=policy.id, organizations=[1], monitor_instance_id="h1", status="new"
         )
         source_snapshots = [
             {
@@ -143,7 +148,7 @@ class TestGetSnapshots:
     def test_returns_snapshot_data(self, api_client, grant_all, mocker):
         api_client.cookies["current_team"] = "1"
         policy = _policy()
-        alert = MonitorAlert.objects.create(policy_id=policy.id, monitor_instance_id="h1", status="new")
+        alert = _alert(policy, monitor_instance_id="h1", status="new")
         mocker.patch(
             "apps.core.fields.s3_json_field.S3JSONField._load_from_s3",
             return_value=[{"type": "info", "raw_data": {"v": 1}}],
@@ -162,7 +167,7 @@ class TestAlertUpdateClose:
         api_client.cookies["current_team"] = "1"
         notifier = mocker.patch("apps.monitor.views.monitor_alert.AlertLifecycleNotifier")
         policy = _policy()
-        alert = MonitorAlert.objects.create(policy_id=policy.id, monitor_instance_id="h1", status="new")
+        alert = _alert(policy, monitor_instance_id="h1", status="new")
         with django_capture_on_commit_callbacks(execute=True):
             resp = api_client.patch(
                 f"{BASE}/api/monitor_alert/{alert.id}/",
@@ -191,7 +196,7 @@ class TestAlertUpdateClose:
         mocker.patch("apps.monitor.views.monitor_alert.AlertLifecycleNotifier")
         policy = _policy()
         alert = MonitorAlert.objects.create(
-            policy_id=policy.id, monitor_instance_id="h1", status="recovered"
+            policy_id=policy.id, organizations=[1], monitor_instance_id="h1", status="recovered"
         )
         resp = api_client.patch(
             f"{BASE}/api/monitor_alert/{alert.id}/",
@@ -214,7 +219,7 @@ class TestAlertListNoticeUsersDisplay:
         )
         policy = _policy(notice=True, notice_users=[user.id])
         MonitorAlert.objects.create(
-            policy_id=policy.id,
+            policy_id=policy.id, organizations=[1],
             monitor_instance_id="h1",
             status="new",
             notice_users=[user.id],
@@ -241,7 +246,7 @@ class TestGetEvents:
     def test_returns_events(self, api_client, grant_all):
         api_client.cookies["current_team"] = "1"
         policy = _policy()
-        alert = MonitorAlert.objects.create(policy_id=policy.id, monitor_instance_id="h1", status="new")
+        alert = _alert(policy, monitor_instance_id="h1", status="new")
         MonitorEvent.objects.create(
             id="ev1", alert_id=alert.id, policy_id=policy.id,
             monitor_instance_id="h1", level="critical", value=9.0, content="c",
@@ -257,7 +262,7 @@ class TestGetEvents:
     def test_returns_legacy_events_without_action(self, api_client, grant_all):
         api_client.cookies["current_team"] = "1"
         policy = _policy()
-        alert = MonitorAlert.objects.create(policy_id=policy.id, monitor_instance_id="h1", status="new")
+        alert = _alert(policy, monitor_instance_id="h1", status="new")
         MonitorEvent.objects.create(
             id="ev-legacy", alert_id=alert.id, policy_id=policy.id,
             monitor_instance_id="h1", level="warning", value=3.0, content="old",

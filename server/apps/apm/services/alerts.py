@@ -136,6 +136,7 @@ class DjangoApmAlertService:
             "severity": alert.severity,
             "status": alert.status,
             "notification_status": notification_status,
+            "organizations": list(alert.organizations or []),
             "current_value": alert.current_value,
             "operator": alert.operator,
             "started_at": alert.started_at,
