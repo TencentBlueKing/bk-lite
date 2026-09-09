@@ -48,6 +48,7 @@ def test_policy_serializer_exposes_and_persists_handlers():
         display_name="处理人甲",
         email="handler1@example.com",
         password="x",
+        group_list=[1],
     )
     policy = _policy()
     serializer = MonitorPolicySerializer(
@@ -69,6 +70,36 @@ def test_policy_serializer_defaults_handlers_to_empty_list():
 
     assert policy.handlers == []
     assert MonitorPolicySerializer(policy).data["handlers"] == []
+
+
+def test_policy_save_rejects_handlers_outside_policy_organizations():
+    inside = _org_user()
+    outsider = _org_user(username="outsider", organization=99)
+    disabled = _org_user(username="disabled1", disabled=True)
+    policy = _policy()
+
+    ok = MonitorPolicySerializer(policy, data={"handlers": [inside.id]}, partial=True)
+    assert ok.is_valid(), ok.errors
+    ok.save()
+    policy.refresh_from_db()
+    assert policy.handlers == [inside.id]
+
+    outside = MonitorPolicySerializer(policy, data={"handlers": [outsider.id]}, partial=True)
+    disabled_ser = MonitorPolicySerializer(policy, data={"handlers": [disabled.id]}, partial=True)
+    missing = MonitorPolicySerializer(policy, data={"handlers": [999999]}, partial=True)
+    org_change = MonitorPolicySerializer(policy, data={"organizations": [2]}, partial=True)
+
+    assert not outside.is_valid()
+    assert "handlers" in outside.errors
+    assert not disabled_ser.is_valid()
+    assert "handlers" in disabled_ser.errors
+    assert not missing.is_valid()
+    assert "handlers" in missing.errors
+    assert not org_change.is_valid()
+    assert "handlers" in org_change.errors
+    policy.refresh_from_db()
+    assert policy.handlers == [inside.id]
+    assert policy.organizations == [1]
 
 
 def test_alert_list_exposes_handlers_and_display(api_client, grant_all):
