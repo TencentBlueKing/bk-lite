@@ -35,6 +35,11 @@ import Permission from '@/components/permission';
 import Collapse from '@/components/collapse';
 import StackedBarChart from '@/app/log/components/charts/stackedBarChart';
 import AlertDetail from './alertDetail';
+import {
+  createAlertRefreshQuerySnapshot,
+  resolveAlertRefreshQuery,
+  updateAlertRefreshQuerySnapshot
+} from './alertRefreshQuery';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useAlarmTabs } from '@/app/log/hooks/event';
 import dayjs from 'dayjs';
@@ -95,6 +100,16 @@ const Alert: React.FC = () => {
     state: []
   });
   const [activeTab, setActiveTab] = useState<string>('activeAlarms');
+  const querySnapshotRef = useRef(
+    createAlertRefreshQuerySnapshot({
+      activeTab: 'activeAlarms',
+      filters: { level: [], state: [] }
+    }).current
+  );
+  updateAlertRefreshQuerySnapshot(querySnapshotRef, {
+    activeTab,
+    filters
+  });
   const [chartData, setChartData] = useState<Record<string, any>[]>([]);
   const loadChartHabit = useCallback(
     () => getUserHabit(LOG_ALERT_CHART_HABIT_KEY),
@@ -280,6 +295,10 @@ const Alert: React.FC = () => {
     };
     setFilters(filtersConfig);
     setSearchText('');
+    updateAlertRefreshQuerySnapshot(querySnapshotRef, {
+      activeTab: val,
+      filters: filtersConfig
+    });
     getAssetInsts('refresh', { tab: val, filtersConfig, text: 'clear' });
     getChartData('refresh', { tab: val, filtersConfig });
   };
@@ -343,10 +362,11 @@ const Alert: React.FC = () => {
     const abortController = new AbortController();
     alertAbortControllerRef.current = abortController;
     const currentRequestId = ++alertRequestIdRef.current;
-    const params: any = getParams(
-      extra?.tab || activeTab,
-      extra?.filtersConfig || filters
+    const { activeTab: tab, filters: filtersMap } = resolveAlertRefreshQuery(
+      querySnapshotRef,
+      extra
     );
+    const params: any = getParams(tab, filtersMap);
     if (extra?.text === 'clear') {
       params.content = '';
     }
@@ -379,10 +399,11 @@ const Alert: React.FC = () => {
     const abortController = new AbortController();
     chartAbortControllerRef.current = abortController;
     const currentRequestId = ++chartRequestIdRef.current;
-    const params = getParams(
-      extra?.tab || activeTab,
-      extra?.filtersConfig || filters
+    const { activeTab: tab, filters: filtersMap } = resolveAlertRefreshQuery(
+      querySnapshotRef,
+      extra
     );
+    const params = getParams(tab, filtersMap);
     const chartParams: any = cloneDeep(params);
     delete chartParams.page;
     delete chartParams.page_size;
@@ -443,6 +464,10 @@ const Alert: React.FC = () => {
     const filtersConfig = cloneDeep(filters);
     filtersConfig[field] = checkedValues;
     setFilters(filtersConfig);
+    updateAlertRefreshQuerySnapshot(querySnapshotRef, {
+      activeTab,
+      filters: filtersConfig
+    });
     getAssetInsts('refresh', { filtersConfig });
     getChartData('refresh', { filtersConfig });
   };
