@@ -43,17 +43,21 @@
       "editable": true,
       "options_key": "region_option",
       "options": [],
-      "description": "填写 SecretId / SecretKey 后会自动拉取可用地域；也可点击右侧刷新图标手动更新。仅采集所选地域的资源与监控指标。",
-      "description_en": "Available regions load automatically after SecretId / SecretKey are filled; use the refresh icon to reload. Only the selected region is collected.",
+      "description": "填写 SecretId / SecretKey 后会自动拉取可用地域；也可点击右侧刷新图标手动更新。可多选，将采集所选全部地域的资源与监控指标。",
+      "description_en": "Available regions load automatically after SecretId / SecretKey are filled; use the refresh icon to reload. Multiple regions can be selected and will all be collected.",
       "widget_props": {
-        "placeholder": "请选择腾讯云地域",
-        "placeholder_en": "Select a Tencent Cloud region",
+        "placeholder": "请选择腾讯云地域（可多选）",
+        "placeholder_en": "Select Tencent Cloud regions",
+        "mode": "multiple",
+        "maxTagCount": "responsive",
         "showSearch": true,
         "optionFilterProp": "label",
         "show_refresh": true
       },
       "transform_on_edit": {
-        "origin_path": "child.content.config.http_headers.region"
+        "origin_path": "child.content.config.http_headers.region",
+        "to_form": { "split": "," },
+        "to_api": { "join": "," }
       },
       "label_en": "Tencent Cloud Region"
     }

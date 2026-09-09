@@ -455,6 +455,10 @@ export const useConfigRenderer = () => {
               : widget_props.placeholder || label,
             showSearch: true as const,
             optionFilterProp: 'label' as const,
+            maxTagCount:
+              widget_props.mode === 'multiple'
+                ? widget_props.maxTagCount || 'responsive'
+                : widget_props.maxTagCount,
             style: formWidgetWidthStyle(widgetStyle),
           };
           const optionNodes = options.map((option: any) => (

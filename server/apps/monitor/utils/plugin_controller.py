@@ -211,6 +211,15 @@ def ensure_qcloud_region_jinja(template_content: str) -> str:
     return text[: password_line.end()] + "\n" + insertion + text[password_line.end() :]
 
 
+def _normalize_qcloud_region(value) -> str:
+    """表单多选为列表，Telegraf header 为逗号串；空值回落广州。"""
+    if isinstance(value, (list, tuple)):
+        parts = [str(item).strip() for item in value if str(item).strip()]
+    else:
+        parts = [item.strip() for item in str(value or "").split(",") if item.strip()]
+    return ",".join(parts) or "ap-guangzhou"
+
+
 def _normalize_template_context(context: dict) -> dict:
     normalized = {**context}
     metrics_modules = normalized.get("metrics_modules")
@@ -227,11 +236,9 @@ def _normalize_template_context(context: dict) -> dict:
         normalized["url"] = normalize_rabbitmq_management_url(normalized.get("url"))
     # 腾讯云地域：表单未填时回落广州，与 Stargazer 采集缺省一致。
     if str(normalized.get("instance_type") or normalized.get("config_type") or "").lower() == "qcloud":
-        region = str(normalized.get("region") or "").strip()
-        normalized["region"] = region or "ap-guangzhou"
+        normalized["region"] = _normalize_qcloud_region(normalized.get("region"))
     elif str(normalized.get("type") or "").lower() == "qcloud":
-        region = str(normalized.get("region") or "").strip()
-        normalized["region"] = region or "ap-guangzhou"
+        normalized["region"] = _normalize_qcloud_region(normalized.get("region"))
     return normalized
 
 
