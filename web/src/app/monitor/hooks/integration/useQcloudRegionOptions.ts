@@ -18,6 +18,16 @@ function isUsableSecret(value: unknown): value is string {
   return true;
 }
 
+function regionSelection(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter(Boolean);
+  }
+  if (typeof value === 'string' && value.trim()) {
+    return value.split(',').map((item) => item.trim()).filter(Boolean);
+  }
+  return [];
+}
+
 /**
  * 腾讯云监控接入：密钥齐全后按账号动态拉取可用地域。
  */
@@ -69,13 +79,13 @@ export function useQcloudRegionOptions(options: {
           .filter((item) => item.value);
         setRegionOptions(next);
 
-        const currentRegion = form.getFieldValue('region');
-        if (
-          currentRegion &&
-          next.length > 0 &&
-          !next.some((item) => item.value === currentRegion)
-        ) {
-          form.setFieldsValue({ region: undefined });
+        const selected = regionSelection(form.getFieldValue('region'));
+        if (selected.length > 0 && next.length > 0) {
+          const allowed = new Set(next.map((item) => item.value));
+          const kept = selected.filter((item) => allowed.has(item));
+          if (kept.length !== selected.length) {
+            form.setFieldsValue({ region: kept.length ? kept : undefined });
+          }
         }
 
         if (next.length === 0) {
@@ -118,13 +128,18 @@ export function useQcloudRegionOptions(options: {
       return;
     }
     if (!isUsableSecret(username) || !isUsableSecret(password)) {
-      const currentRegion = form.getFieldValue('region');
-      if (typeof currentRegion === 'string' && currentRegion.trim()) {
+      const selected = regionSelection(form.getFieldValue('region'));
+      if (selected.length > 0) {
         setRegionOptions((prev) => {
-          if (prev.some((item) => item.value === currentRegion)) {
+          const existing = new Set(prev.map((item) => item.value));
+          const missing = selected.filter((item) => !existing.has(item));
+          if (missing.length === 0) {
             return prev;
           }
-          return [{ label: currentRegion, value: currentRegion }];
+          return [
+            ...prev,
+            ...missing.map((item) => ({ label: item, value: item })),
+          ];
         });
       }
       return;
