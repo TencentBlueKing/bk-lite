@@ -16,6 +16,7 @@ import type {
 } from '@/app/cmdb/types/subscription';
 import { useChannelApi } from '@/app/system-manager/api/channel';
 import type { AttrFieldType } from '@/app/cmdb/types/assetManage';
+import { pruneRelationFieldsCache } from '@/app/cmdb/utils/relationFieldsCache';
 
 interface SubscriptionRuleFormProps {
   initialValues?: SubscriptionRule;
@@ -162,8 +163,8 @@ const SubscriptionRuleForm = forwardRef<SubscriptionRuleFormRef, SubscriptionRul
 
   useEffect(() => {
     const selectedModelIds = relationChangeModels.map((item) => item.related_model);
+    setRelationFieldsByModel((prev) => pruneRelationFieldsCache(prev, selectedModelIds));
     if (selectedModelIds.length === 0) {
-      setRelationFieldsByModel({});
       return;
     }
 
@@ -212,17 +213,6 @@ const SubscriptionRuleForm = forwardRef<SubscriptionRuleFormRef, SubscriptionRul
           }));
         });
     });
-
-    setRelationFieldsByModel((prev) => {
-      const next: Record<string, AttrFieldType[]> = {};
-      selectedModelIds.forEach((id) => {
-        if (prev[id]) {
-          next[id] = prev[id];
-        }
-      });
-      return next;
-    });
-     
   }, [
     relationChangeModels,
     getModelAttrGroupsFullInfo,
