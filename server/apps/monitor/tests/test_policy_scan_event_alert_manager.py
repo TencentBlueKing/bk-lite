@@ -33,6 +33,7 @@ def _policy(**kwargs):
         notice=False,
         notice_type_ids=[],
         notice_users=[],
+        handlers=[],
         no_data_level="warning",
         last_run_time=datetime(2026, 1, 1, tzinfo=timezone.utc),
     )
@@ -113,6 +114,29 @@ class TestCreateEventsAndAlerts:
         # 事件 alert_id 关联到新建告警
         assert event_objs[0].alert_id == new_alerts[0].id
         assert event_objs[0].action == MonitorEvent.Action.TRIGGERED
+
+    def test_new_alert_snapshots_policy_handlers(self, stub_s3, mocker):
+        mocker.patch(
+            "apps.monitor.tasks.services.policy_scan.event_alert_manager.AlertLifecycleNotifier"
+        )
+        mgr = EventAlertManager(_policy(handlers=[7, 8]), {"h1": "主机1"}, [])
+        events = [{
+            "monitor_instance_id": "h1", "metric_instance_id": "('h1',)",
+            "dimensions": {}, "value": 95.0, "level": "critical",
+            "content": "超阈值",
+        }]
+        _, new_alerts = mgr.create_events_and_alerts(events)
+        existing = new_alerts[0]
+        later = EventAlertManager(_policy(handlers=[9]), {"h1": "主机1"}, [existing])
+        later.create_events_and_alerts([{
+            "monitor_instance_id": "h1", "metric_instance_id": "('h1',)",
+            "dimensions": {}, "value": 99.0, "level": "critical",
+            "content": "仍超阈值",
+        }])
+        existing.refresh_from_db()
+
+        assert new_alerts[0].handlers == [7, 8]
+        assert existing.handlers == [7, 8]
 
     def test_reuses_existing_active_alert(self, stub_s3, mocker):
         mocker.patch(

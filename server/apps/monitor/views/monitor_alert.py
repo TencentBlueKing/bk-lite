@@ -24,7 +24,10 @@ from apps.monitor.services.chart_unit import convert_snapshots_copy, resolve_cha
 from apps.monitor.services.policy_baseline import PolicyBaselineService
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.pagination import parse_page_params
-from apps.monitor.utils.user_display import enrich_alerts_notice_users_display
+from apps.monitor.utils.user_display import (
+    enrich_alerts_handlers_display,
+    enrich_alerts_notice_users_display,
+)
 from config.drf.pagination import CustomPageNumberPagination
 
 
@@ -251,6 +254,7 @@ class MonitorAlertViewSet(
             )
 
         enrich_alerts_notice_users_display(results)
+        enrich_alerts_handlers_display(results)
         return WebUtils.response_success(dict(count=queryset.count(), results=results))
 
     def update(self, request, *args, **kwargs):

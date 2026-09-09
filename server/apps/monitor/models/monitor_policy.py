@@ -123,6 +123,7 @@ class MonitorPolicy(TimeInfo, MaintainerInfo):
     notice_type = models.CharField(max_length=50, default="", verbose_name="通知方式")
     notice_type_ids = models.JSONField(default=list, verbose_name="通知方式ID列表")
     notice_users = models.JSONField(default=list, verbose_name="通知人")
+    handlers = models.JSONField(default=list, verbose_name="处理人")
 
     # 是否启动策略
     enable = models.BooleanField(default=True, verbose_name="是否启用")
@@ -253,6 +254,7 @@ class MonitorAlert(TimeInfo):
     operation_logs = models.JSONField(default=list, verbose_name="操作记录")
     notice_type_ids = models.JSONField(default=list, verbose_name="通知方式ID列表")
     notice_users = models.JSONField(default=list, verbose_name="通知人")
+    handlers = models.JSONField(default=list, verbose_name="处理人")
     notice_logs = models.JSONField(default=list, verbose_name="通知记录")
     alert_center_notified = models.BooleanField(default=True, verbose_name="告警中心已同步")
     alert_center_retry_count = models.IntegerField(default=0, verbose_name="告警中心通知重试次数")

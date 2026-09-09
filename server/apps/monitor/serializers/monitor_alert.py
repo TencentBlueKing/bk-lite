@@ -27,6 +27,7 @@ class MonitorAlertSerializer(serializers.ModelSerializer):
             "operation_logs",
             "notice_type_ids",
             "notice_users",
+            "handlers",
             "notice_logs",
             "alert_center_notified",
             "alert_center_retry_count",
