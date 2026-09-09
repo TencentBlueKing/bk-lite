@@ -7,6 +7,10 @@ import { IntegrationLogInstance } from '@/app/log/types/integration';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { cloneDeep } from 'lodash';
 import { v4 as uuidv4 } from 'uuid';
+import {
+  buildSelectedNodeIdSet,
+  filterAvailableNodes
+} from './filterAvailableNodes';
 const useCommonColumns = () => {
   const { t } = useTranslation();
 
@@ -17,15 +21,9 @@ const useCommonColumns = () => {
       initTableItems: IntegrationLogInstance;
       onTableDataChange: (data: TableDataItem[]) => void;
     }) => {
-      const getFilterNodes = (id: string) => {
-        const nodeIds = config.dataSource
-          .map((item) => item.node_ids)
-          .filter((item) => item !== id);
-        const _nodeList = config.nodeList.filter(
-          (item) => !nodeIds.includes(item.id as string)
-        );
-        return _nodeList;
-      };
+      const selectedNodeIds = buildSelectedNodeIdSet(config.dataSource);
+      const getFilterNodes = (id: string) =>
+        filterAvailableNodes(config.nodeList, selectedNodeIds, id);
 
       const handleFilterNodeChange = (val: string, index: number) => {
         const _dataSource = cloneDeep(config.dataSource);
