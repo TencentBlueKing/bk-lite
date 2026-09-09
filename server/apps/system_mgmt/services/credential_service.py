@@ -13,17 +13,9 @@ from apps.core.models.maintainer_info import maintainer_kwargs
 from apps.system_mgmt.models.credential import Credential, CredentialType
 from apps.system_mgmt.models.user import Group
 from apps.system_mgmt.services.credential_builtin import builtin_type_payloads
-from apps.system_mgmt.services.credential_crypto import (
-    decrypt_instance_fields,
-    encrypt_instance_fields,
-    public_instance_fields,
-)
-from apps.system_mgmt.services.credential_scope import (
-    is_current_team_authorized,
-    manageable_owner_group_ids,
-    usable_owner_group_ids,
-)
+from apps.system_mgmt.services.credential_crypto import decrypt_instance_fields, encrypt_instance_fields, public_instance_fields
 from apps.system_mgmt.services.credential_schema import SchemaError, validate_instance_fields, validate_type_fields
+from apps.system_mgmt.services.credential_scope import is_current_team_authorized, manageable_owner_group_ids, usable_owner_group_ids
 
 
 class CredentialServiceError(ValueError):
@@ -54,6 +46,7 @@ def _actor_scope(actor, *, current_team=None, group_list=None, is_superuser=None
     if is_superuser is None:
         is_superuser = bool(_value(actor, "is_superuser", False))
     return current_team, group_list, is_superuser
+
 
 def _maintainer(actor, *, include_created=True):
     if actor is None or isinstance(actor, Mapping):
@@ -117,27 +110,21 @@ public_credential = _public_credential
 
 
 def _require_current_team(actor, *, current_team=None, group_list=None, is_superuser=None):
-    current_team, group_list, is_superuser = _actor_scope(
-        actor, current_team=current_team, group_list=group_list, is_superuser=is_superuser
-    )
+    current_team, group_list, is_superuser = _actor_scope(actor, current_team=current_team, group_list=group_list, is_superuser=is_superuser)
     if not is_current_team_authorized(current_team, group_list, is_superuser):
         raise CredentialServiceError("forbidden")
     return current_team, group_list, is_superuser
 
 
 def _require_manageable(owner_id, actor, *, current_team=None, group_list=None, is_superuser=None):
-    current_team, group_list, is_superuser = _actor_scope(
-        actor, current_team=current_team, group_list=group_list, is_superuser=is_superuser
-    )
+    current_team, group_list, is_superuser = _actor_scope(actor, current_team=current_team, group_list=group_list, is_superuser=is_superuser)
     if owner_id not in manageable_owner_group_ids(current_team, group_list, is_superuser):
         raise CredentialServiceError("forbidden")
     return current_team, group_list, is_superuser
 
 
 def _require_current_owner(owner_id, actor, *, current_team=None, group_list=None, is_superuser=None):
-    current_team, group_list, is_superuser = _require_current_team(
-        actor, current_team=current_team, group_list=group_list, is_superuser=is_superuser
-    )
+    current_team, group_list, is_superuser = _require_current_team(actor, current_team=current_team, group_list=group_list, is_superuser=is_superuser)
     if _coerce_owner_id(owner_id) != _coerce_owner_id(current_team):
         raise CredentialServiceError("forbidden")
     return current_team, group_list, is_superuser
@@ -233,9 +220,7 @@ def update_type(type_ref, payload=None, actor=None, **values):
         requested_categories = data.get("categories", credential_type.categories)
         requested_fields = data.get("fields", credential_type.fields)
         if credential_type.is_builtin and (
-            requested_key != credential_type.key
-            or requested_categories != credential_type.categories
-            or requested_fields != credential_type.fields
+            requested_key != credential_type.key or requested_categories != credential_type.categories or requested_fields != credential_type.fields
         ):
             raise CredentialServiceError("immutable")
         if requested_key != credential_type.key and CredentialType.objects.filter(key=requested_key).exists():
@@ -244,9 +229,7 @@ def update_type(type_ref, payload=None, actor=None, **values):
             validate_type_fields(requested_fields)
         except SchemaError as exc:
             raise CredentialServiceError("invalid", str(exc)) from exc
-        if not isinstance(requested_categories, list) or any(
-            not isinstance(category, str) or not category for category in requested_categories
-        ):
+        if not isinstance(requested_categories, list) or any(not isinstance(category, str) or not category for category in requested_categories):
             raise CredentialServiceError("invalid")
         requested_name = data.get("name", credential_type.name)
         if not isinstance(requested_name, str) or not requested_name:
@@ -445,9 +428,7 @@ def get_credential(
     owner_scope="consume",
 ):
     credential = _load_credential(credential_id)
-    current_team, group_list, is_superuser = _require_current_team(
-        actor, current_team=current_team, group_list=group_list, is_superuser=is_superuser
-    )
+    current_team, group_list, is_superuser = _require_current_team(actor, current_team=current_team, group_list=group_list, is_superuser=is_superuser)
     if credential.group_id not in _owner_ids_for_scope(owner_scope, current_team, group_list, is_superuser):
         raise CredentialServiceError("forbidden")
     return _public_credential(credential)
@@ -455,7 +436,7 @@ def get_credential(
 
 def list_types(filters=None, **values):
     data = _payload(filters, values)
-    queryset = CredentialType.objects.annotate(credential_count=Count("credential")).order_by("key")
+    queryset = CredentialType.objects.annotate(credential_count=Count("credential")).order_by("-is_builtin", "id")
     search = data.get("search")
     if search:
         queryset = queryset.filter(Q(name__icontains=str(search)) | Q(key__icontains=str(search)))
@@ -473,24 +454,18 @@ def _group_options(group_ids):
 
 
 def list_assignable_groups(actor=None, *, current_team=None, group_list=None, is_superuser=None):
-    current_team, group_list, is_superuser = _require_current_team(
-        actor, current_team=current_team, group_list=group_list, is_superuser=is_superuser
-    )
+    current_team, group_list, is_superuser = _require_current_team(actor, current_team=current_team, group_list=group_list, is_superuser=is_superuser)
     return _group_options(manageable_owner_group_ids(current_team, group_list, is_superuser))
 
 
 def list_usable_groups(actor=None, *, current_team=None, group_list=None, is_superuser=None):
-    current_team, group_list, is_superuser = _require_current_team(
-        actor, current_team=current_team, group_list=group_list, is_superuser=is_superuser
-    )
+    current_team, group_list, is_superuser = _require_current_team(actor, current_team=current_team, group_list=group_list, is_superuser=is_superuser)
     return _group_options(manageable_owner_group_ids(current_team, group_list, is_superuser))
 
 
 def resolve_credential(credential_id, current_team, actor=None, *, group_list=None, is_superuser=None):
     credential = _load_credential(credential_id)
-    current_team, group_list, is_superuser = _require_current_team(
-        actor, current_team=current_team, group_list=group_list, is_superuser=is_superuser
-    )
+    current_team, group_list, is_superuser = _require_current_team(actor, current_team=current_team, group_list=group_list, is_superuser=is_superuser)
     if credential.group_id not in usable_owner_group_ids(current_team):
         raise CredentialServiceError("forbidden")
     if credential.disabled:

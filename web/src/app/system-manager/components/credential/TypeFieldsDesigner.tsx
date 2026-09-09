@@ -1,11 +1,14 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Button, Checkbox, Form, Input, message, Popconfirm, Select } from 'antd';
+import { Button, Form, Input, message, Popconfirm, Radio, Select, Tooltip } from 'antd';
+import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import OperateModal from '@/components/operate-modal';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { useTranslation } from '@/utils/i18n';
 import type { CredentialFieldKind, CredentialFieldSchema } from '@/components/credential-picker/types';
 import { formatVisibleWhen } from '@/components/credential-picker/visibleWhen';
+import { parseEnumValues } from '@/components/credential-picker/enumValues';
 
 type ControlKind = CredentialFieldKind | 'textarea';
 
@@ -23,6 +26,12 @@ interface TypeFieldsDesignerProps {
 }
 
 const CONTROL_KINDS: ControlKind[] = ['string', 'number', 'secret', 'enum', 'textarea'];
+
+const KIND_MARK_CLASS =
+  'inline-flex h-[18px] shrink-0 items-center rounded px-1.5 text-xs font-medium leading-none text-[var(--color-text-3)] bg-[var(--color-fill-2)]';
+
+const ICON_BTN_CLASS =
+  '!inline-flex !h-7 !w-7 !min-w-7 !items-center !justify-center !p-0 text-[var(--color-text-3)] hover:!bg-[var(--color-fill-2)] hover:!text-[var(--color-text-1)] disabled:!bg-transparent disabled:!text-[var(--color-text-4)]';
 
 const controlKindOf = (field?: CredentialFieldSchema): ControlKind => {
   if (field?.widget === 'textarea') {
@@ -79,7 +88,7 @@ const TypeFieldsDesigner: React.FC<TypeFieldsDesignerProps> = ({
       kind: controlKindOf(current),
       required: Boolean(current?.required),
       defaultValue: current?.default || '',
-      values: (current?.values || []).join(','),
+      values: parseEnumValues(current?.values).join(', '),
     });
     setOpen(true);
   };
@@ -91,10 +100,11 @@ const TypeFieldsDesigner: React.FC<TypeFieldsDesignerProps> = ({
     return t(`system.credential.kinds.${record.kind}`);
   };
 
-  const fieldExtras = (record: CredentialFieldSchema) => {
+  const fieldMeta = (record: CredentialFieldSchema) => {
+    const displayName = record.name || record.id;
     const parts = [
-      fieldKindLabel(record),
-      record.values?.length ? record.values.join(' / ') : '',
+      displayName !== record.id ? record.id : '',
+      record.values?.length ? parseEnumValues(record.values).join(' / ') : '',
       record.default ? t('system.credential.defaultPrefix', '默认 {value}', { value: record.default }) : '',
     ].filter(Boolean);
     return parts.join(' · ');
@@ -106,8 +116,9 @@ const TypeFieldsDesigner: React.FC<TypeFieldsDesignerProps> = ({
       const merged = { ...next[index], ...patch };
       if (patch.field) {
         const dep = others.find((item) => item.id === patch.field);
-        if (dep?.kind === 'enum' && dep.values?.length && !dep.values.includes(merged.value)) {
-          merged.value = dep.values[0];
+        const options = parseEnumValues(dep?.values);
+        if (dep?.kind === 'enum' && options.length && !options.includes(merged.value)) {
+          merged.value = options[0];
         }
       }
       next[index] = merged;
@@ -117,16 +128,17 @@ const TypeFieldsDesigner: React.FC<TypeFieldsDesignerProps> = ({
 
   const addCondition = () => {
     if (!others.length) {
-      message.warning(t('system.credential.visibleWhenNeedOther', '显示条件要依赖其他字段。请先添加并保存至少一个字段，再给后续字段加条件。'));
+      message.warning(t('system.credential.visibleWhenNeedOther', '请先添加并保存其他字段，再设置显示条件'));
       return;
     }
     const first = others[0];
+    const firstOptions = parseEnumValues(first.values);
     setConditions((current) => [
       ...current,
       {
         field: first.id,
         op: 'eq',
-        value: first.kind === 'enum' && first.values?.length ? first.values[0] : '',
+        value: first.kind === 'enum' && firstOptions.length ? firstOptions[0] : '',
       },
     ]);
   };
@@ -139,7 +151,7 @@ const TypeFieldsDesigner: React.FC<TypeFieldsDesignerProps> = ({
     }
     for (const condition of conditions) {
       if (!condition.field || !String(condition.value || '').trim()) {
-        message.error(t('system.credential.visibleWhenHint', '显示条件需选择字段、比较方式并填写取值'));
+        message.error(t('system.credential.visibleWhenIncomplete', '请为每条显示条件选择字段并填写取值'));
         return;
       }
     }
@@ -153,10 +165,7 @@ const TypeFieldsDesigner: React.FC<TypeFieldsDesignerProps> = ({
       field.widget = 'textarea';
     }
     if (values.kind === 'enum') {
-      field.values = String(values.values || '')
-        .split(',')
-        .map((item: string) => item.trim())
-        .filter(Boolean);
+      field.values = parseEnumValues(values.values);
     }
     const defaultValue = String(values.defaultValue || '').trim();
     if (defaultValue) {
@@ -183,98 +192,120 @@ const TypeFieldsDesigner: React.FC<TypeFieldsDesignerProps> = ({
   const titlePrefix = editingIndex === null ? t('system.credential.addField') : t('system.credential.editField');
 
   return (
-    <div className="w-full">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <h3 className="text-[13px] font-semibold text-[var(--color-text-1)]">
-          {t('system.credential.fieldDefinition')} · {value.length}
+    <div className="flex h-full min-h-0 w-full flex-col">
+      <div className="mb-3 flex h-8 shrink-0 items-center justify-between gap-3">
+        <h3 className="text-sm font-medium leading-5 text-[var(--color-text-1)]">
+          {t('system.credential.fieldDefinition')}
         </h3>
         {readOnly ? null : (
-          <Button size="small" onClick={() => openEditor(null)}>
-            + {t('system.credential.addField')}
+          <Button type="link" size="small" className="!h-7 !px-0" icon={<PlusOutlined />} onClick={() => openEditor(null)}>
+            {t('system.credential.addField')}
           </Button>
         )}
       </div>
-      {value.length === 0 ? (
-        <div className="rounded-md border border-dashed border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-9 text-center text-[13px] leading-relaxed text-[var(--color-text-3)]">
-          <div>{t('system.credential.fieldEmpty')}</div>
-          {readOnly ? null : <div>{t('system.credential.fieldEmptyHint')}</div>}
-        </div>
-      ) : (
-        value.map((record, index) => {
-          const cond = formatVisibleWhen(record);
-          return (
-            <div
-              key={record.id}
-              className="mb-2 flex gap-3 rounded-md border border-[var(--color-fill-2)] bg-[var(--color-bg)] px-3.5 py-3 transition-[border-color] hover:border-[var(--color-border)]"
-            >
-              <div className="mt-px flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-[var(--color-fill-2)] text-[11px] font-semibold text-[var(--color-text-3)]">
-                {index + 1}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex flex-wrap items-center gap-1.5 text-[13px] font-semibold text-[var(--color-text-1)]">
-                    <span>{record.name || record.id}</span>
-                    {record.required ? (
-                      <span className="inline-flex h-[18px] items-center rounded-[3px] border border-[color-mix(in_srgb,var(--color-fail)_35%,transparent)] bg-[color-mix(in_srgb,var(--color-fail)_8%,var(--color-bg))] px-1 text-[11px] font-medium text-[var(--color-fail)]">
-                        {t('system.credential.required')}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {value.length === 0 ? (
+          <div className="flex min-h-[120px] flex-col items-center justify-center rounded-lg bg-[var(--color-fill-1)] px-6 py-10 text-center">
+            <p className="mb-0 text-sm leading-6 text-[var(--color-text-3)]">{t('system.credential.fieldEmpty')}</p>
+            {readOnly ? null : (
+              <p className="mb-0 mt-1 text-xs leading-5 text-[var(--color-text-3)]">{t('system.credential.fieldEmptyHint')}</p>
+            )}
+          </div>
+        ) : (
+          <div>
+            {value.map((record, index) => {
+              const cond = formatVisibleWhen(record);
+              const meta = fieldMeta(record);
+              return (
+                <div
+                  key={record.id}
+                  className="mb-1.5 flex items-start gap-2.5 rounded-lg bg-[var(--color-fill-1)] px-2.5 py-2.5 last:mb-0 hover:bg-[var(--color-fill-2)]"
+                >
+                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded bg-[var(--color-fill-2)] text-[11px] tabular-nums leading-none text-[var(--color-text-3)]">
+                    {index + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <span className="min-w-0 truncate text-sm font-medium leading-5 text-[var(--color-text-1)]">
+                        {record.name || record.id}
                       </span>
+                      {record.required ? (
+                        <span className="shrink-0 text-[var(--color-fail)]" aria-label={t('system.credential.required')}>*</span>
+                      ) : null}
+                      <span className={KIND_MARK_CLASS}>{fieldKindLabel(record)}</span>
+                    </div>
+                    {meta ? (
+                      <div className="mt-0.5 truncate text-xs leading-5 text-[var(--color-text-3)]" title={meta}>
+                        {meta}
+                      </div>
+                    ) : null}
+                    {cond ? (
+                      <div className="mt-0.5 truncate text-xs leading-5 text-[var(--color-text-3)]">
+                        {t('system.credential.visibleWhenOnly', undefined, { cond })}
+                      </div>
                     ) : null}
                   </div>
                   {readOnly ? null : (
-                    <div className="flex shrink-0 items-center gap-2.5">
-                      <Button
-                        type="link"
-                        size="small"
-                        disabled={index === 0}
-                        className="!h-auto !px-0 text-xs text-[var(--color-text-3)]"
-                        onClick={() => move(index, -1)}
-                      >
-                        {t('system.credential.moveUp')}
-                      </Button>
-                      <Button
-                        type="link"
-                        size="small"
-                        disabled={index === value.length - 1}
-                        className="!h-auto !px-0 text-xs text-[var(--color-text-3)]"
-                        onClick={() => move(index, 1)}
-                      >
-                        {t('system.credential.moveDown')}
-                      </Button>
-                      <Button
-                        type="link"
-                        size="small"
-                        className="!h-auto !px-0 text-xs"
-                        onClick={() => openEditor(index)}
-                      >
-                        {t('common.edit')}
-                      </Button>
+                    <div className="flex shrink-0 items-center">
+                      <Tooltip title={t('system.credential.moveUp')}>
+                        <span className="inline-flex">
+                          <Button
+                            type="text"
+                            size="small"
+                            disabled={index === 0}
+                            className={ICON_BTN_CLASS}
+                            icon={<ArrowUpOutlined aria-hidden="true" />}
+                            aria-label={t('system.credential.moveUp')}
+                            onClick={() => move(index, -1)}
+                          />
+                        </span>
+                      </Tooltip>
+                      <Tooltip title={t('system.credential.moveDown')}>
+                        <span className="inline-flex">
+                          <Button
+                            type="text"
+                            size="small"
+                            disabled={index === value.length - 1}
+                            className={ICON_BTN_CLASS}
+                            icon={<ArrowDownOutlined aria-hidden="true" />}
+                            aria-label={t('system.credential.moveDown')}
+                            onClick={() => move(index, 1)}
+                          />
+                        </span>
+                      </Tooltip>
+                      <Tooltip title={t('common.edit')}>
+                        <Button
+                          type="text"
+                          size="small"
+                          className={ICON_BTN_CLASS}
+                          icon={<EditOutlined aria-hidden="true" />}
+                          aria-label={t('common.edit')}
+                          onClick={() => openEditor(index)}
+                        />
+                      </Tooltip>
                       <Popconfirm
                         title={t('common.delConfirm')}
                         onConfirm={() => commit(value.filter((item) => item.id !== record.id))}
                       >
-                        <Button type="link" size="small" danger className="!h-auto !px-0 text-xs">
-                          {t('common.delete')}
-                        </Button>
+                        <Tooltip title={t('common.delete')}>
+                          <Button
+                            type="text"
+                            size="small"
+                            danger
+                            className={`${ICON_BTN_CLASS} hover:!text-[var(--color-fail)]`}
+                            icon={<DeleteOutlined aria-hidden="true" />}
+                            aria-label={t('common.delete')}
+                          />
+                        </Tooltip>
                       </Popconfirm>
                     </div>
                   )}
                 </div>
-                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--color-text-3)]">
-                  <code className="rounded-[3px] bg-[var(--color-fill-2)] px-1.5 py-px font-mono text-[11px] text-[var(--color-text-2)]">
-                    {record.id}
-                  </code>
-                  <span>{fieldExtras(record)}</span>
-                </div>
-                {cond ? (
-                  <div className="mt-1.5 text-xs leading-snug text-[var(--color-text-2)]">
-                    {t('system.credential.visibleWhenOnly', undefined, { cond })}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          );
-        })
-      )}
+              );
+            })}
+          </div>
+        )}
+      </div>
       <OperateModal
         title={typeName ? `${titlePrefix} · ${typeName}` : titlePrefix}
         open={open}
@@ -291,7 +322,7 @@ const TypeFieldsDesigner: React.FC<TypeFieldsDesignerProps> = ({
               extra={<span className="text-xs">{t('system.credential.fieldKeyHint', '字母开头，仅含字母、数字和下划线。')}</span>}
               rules={[{ required: true, pattern: /^[A-Za-z][A-Za-z0-9_]*$/ }]}
             >
-              <Input disabled={editingIndex !== null} className="font-mono" placeholder={t('system.credential.fieldKeyPlaceholder', '如 username、token')} />
+              <Input disabled={editingIndex !== null} className="font-mono" placeholder={t('system.credential.fieldKeyPlaceholder')} />
             </Form.Item>
             <Form.Item name="name" label={t('system.credential.fieldName')} rules={[{ required: true, whitespace: true }]}>
               <Input placeholder={t('system.credential.fieldNamePlaceholder', '表单上显示的中文名')} />
@@ -311,73 +342,122 @@ const TypeFieldsDesigner: React.FC<TypeFieldsDesignerProps> = ({
             </Form.Item>
           </div>
           {kind === 'enum' ? (
-            <Form.Item name="values" label={t('system.credential.enumValues')} rules={[{ required: true }]}>
-              <Input placeholder={t('system.credential.enumValuesPlaceholder', '英文逗号分隔，如 v2c,v3')} />
+            <Form.Item
+              name="values"
+              label={t('system.credential.enumValues')}
+              extra={t('system.credential.enumValuesHint')}
+              rules={[
+                { required: true, whitespace: true },
+                {
+                  validator: async (_, value) => {
+                    if (!parseEnumValues(value).length) {
+                      throw new Error(t('system.credential.enumValuesHint'));
+                    }
+                  },
+                },
+              ]}
+            >
+              <Input placeholder={t('system.credential.enumValuesPlaceholder')} />
             </Form.Item>
           ) : null}
-          <Form.Item name="required" valuePropName="checked" className="!mb-3">
-            <Checkbox>{t('system.credential.requiredField', '必填字段')}</Checkbox>
-          </Form.Item>
-          <div>
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-[var(--color-text-2)]">
-                {t('system.credential.visibleWhenHint', '显示条件（可选，多条件同时满足才显示）')}
-              </span>
-              <Button size="small" onClick={addCondition}>
-                <span className="text-xs">+ {t('system.credential.addCondition', '添加条件')}</span>
-              </Button>
-            </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Form.Item
+              name="required"
+              label={t('system.credential.fieldRequired', '字段必填')}
+              className="!mb-3"
+            >
+              <Radio.Group>
+                <Radio value={true}>{t('common.yes')}</Radio>
+                <Radio value={false}>{t('common.no')}</Radio>
+              </Radio.Group>
+            </Form.Item>
+          </div>
+          <div className="relative">
+            <Button
+              size="small"
+              htmlType="button"
+              className="absolute right-0 top-0 z-10"
+              icon={<PlusOutlined />}
+              onClick={addCondition}
+            >
+              {t('system.credential.addCondition', '添加条件')}
+            </Button>
+            <Form.Item
+              label={t('system.credential.visibleWhen')}
+              tooltip={{
+                title: t(
+                  'system.credential.visibleWhenTooltip',
+                  '控制此字段何时出现。例如仅当「认证方式 = 密码」时显示密码框。不设置则始终显示；多条条件需同时满足。',
+                ),
+                overlayInnerStyle: { maxWidth: 366 },
+              }}
+              className="!mb-0 [&_.ant-form-item-label]:pr-28 [&_.ant-form-item-label]:!pb-3"
+            >
             {conditions.length ? (
-              conditions.map((condition, index) => {
-                const dep = others.find((item) => item.id === condition.field) || others[0];
-                return (
-                  <div key={`${condition.field}-${index}`} className="mb-2 flex items-center gap-2">
-                    <span className="shrink-0 text-xs text-[var(--color-text-3)]">
-                      {t('system.credential.visibleWhenWhen', '当')}
-                    </span>
-                    <Select
-                      className="w-32"
-                      value={condition.field}
-                      options={others.map((item) => ({ value: item.id, label: item.name || item.id }))}
-                      onChange={(field) => updateCondition(index, { field })}
-                    />
-                    <Select
-                      className="w-16"
-                      value={condition.op}
-                      options={[
-                        { value: 'eq', label: '=' },
-                        { value: 'ne', label: '≠' },
-                      ]}
-                      onChange={(op) => updateCondition(index, { op })}
-                    />
-                    {dep?.kind === 'enum' && dep.values?.length ? (
-                      <Select
-                        className="min-w-0 flex-1"
-                        value={condition.value}
-                        options={dep.values.map((item) => ({ value: item, label: item }))}
-                        onChange={(nextValue) => updateCondition(index, { value: nextValue })}
-                      />
-                    ) : (
-                      <Input
-                        className="min-w-0 flex-1"
-                        value={condition.value}
-                        placeholder={t('system.credential.condValuePlaceholder', '输入值')}
-                        onChange={(event) => updateCondition(index, { value: event.target.value })}
-                      />
-                    )}
-                    <Button type="link" danger className="!h-auto !px-0" onClick={() => setConditions((current) => current.filter((_, i) => i !== index))}>
-                      ✕
-                    </Button>
-                  </div>
-                );
-              })
+              <div>
+                {conditions.map((condition, index) => {
+                  const dep = others.find((item) => item.id === condition.field) || others[0];
+                  return (
+                    <div key={`${condition.field}-${index}`} className="mb-2 flex items-center gap-2 last:mb-0">
+                      <span className="shrink-0 text-xs text-[var(--color-text-3)]">
+                        {t('system.credential.visibleWhenWhen', '当')}
+                      </span>
+                      <div className="w-40 shrink-0">
+                        <Select
+                          className="w-full"
+                          value={condition.field}
+                          options={others.map((item) => ({ value: item.id, label: item.name || item.id }))}
+                          onChange={(field) => updateCondition(index, { field })}
+                        />
+                      </div>
+                      <div className="w-16 shrink-0">
+                        <Select
+                          className="w-full"
+                          value={condition.op}
+                          options={[
+                            { value: 'eq', label: '=' },
+                            { value: 'ne', label: '≠' },
+                          ]}
+                          onChange={(op) => updateCondition(index, { op })}
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        {dep?.kind === 'enum' && parseEnumValues(dep.values).length ? (
+                          <Select
+                            className="w-full"
+                            value={condition.value}
+                            options={parseEnumValues(dep.values).map((item) => ({ value: item, label: item }))}
+                            onChange={(nextValue) => updateCondition(index, { value: nextValue })}
+                          />
+                        ) : (
+                          <Input
+                            className="w-full"
+                            value={condition.value}
+                            placeholder={t('system.credential.condValuePlaceholder', '输入值')}
+                            onChange={(event) => updateCondition(index, { value: event.target.value })}
+                          />
+                        )}
+                      </div>
+                      <Button type="link" danger className="!h-auto !px-0 shrink-0" onClick={() => setConditions((current) => current.filter((_, i) => i !== index))}>
+                        ✕
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
             ) : (
-              <p className="mb-0 text-xs text-[var(--color-text-3)]">
-                {others.length
-                  ? t('system.credential.visibleWhenAlways', '不添加条件则始终显示。')
-                  : t('system.credential.visibleWhenNeedOther', '显示条件要依赖其他字段。请先添加并保存至少一个字段，再给后续字段加条件。')}
-              </p>
+              <div className="rounded-lg bg-[var(--color-fill-1)]">
+                <CompactEmptyState
+                  className="py-6"
+                  description={
+                    others.length
+                      ? t('system.credential.visibleWhenEmpty', '未设置条件，此字段将始终显示')
+                      : t('system.credential.visibleWhenNeedOther', '请先添加并保存其他字段，再设置显示条件')
+                  }
+                />
+              </div>
             )}
+            </Form.Item>
           </div>
         </Form>
       </OperateModal>
