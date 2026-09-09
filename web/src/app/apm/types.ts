@@ -669,6 +669,9 @@ export interface ApmAlert {
   notification_status?: 'none' | 'pending' | 'delivered' | 'partial' | 'failed';
   current_value: string | null;
   operator: string;
+  handlers?: Array<string | number>;
+  handlers_display?: string[];
+  organizations?: number[];
   started_at: string;
   ended_at: string | null;
   last_event_at: string;
@@ -686,6 +689,7 @@ export interface ApmAlertQuery {
   started_at?: string;
   ended_at?: string;
   limit?: number;
+  my_alert?: number | string;
 }
 
 export interface ApmAlertMetricSnapshotItem {

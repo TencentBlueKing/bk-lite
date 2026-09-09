@@ -306,6 +306,17 @@ const useApmApi = () => {
     [post]
   );
 
+  const claimAlert = useCallback(
+    (alertId: string) => post<ApmAlert>(`/apm/alerts/${alertId}/claim/`),
+    [post]
+  );
+
+  const assignAlert = useCallback(
+    (alertId: string, handlers: Array<string | number>) =>
+      post<ApmAlert>(`/apm/alerts/${alertId}/assign/`, { handlers }),
+    [post]
+  );
+
   const getNotificationChannels = useCallback(
     () => get<ApmNotificationChannel[]>('/apm/notification-channels/'),
     [get]
@@ -373,6 +384,8 @@ const useApmApi = () => {
     getAlertSnapshots,
     getEventEvidence,
     closeAlert,
+    claimAlert,
+    assignAlert,
     getNotificationChannels,
     getNotificationDeliveries,
     getNotificationRecipients,

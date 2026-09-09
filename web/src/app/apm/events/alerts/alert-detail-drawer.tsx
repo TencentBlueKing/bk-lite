@@ -6,7 +6,6 @@ import {
   Button,
   Descriptions,
   Drawer,
-  Popconfirm,
   Space,
   Tabs,
   Tag,
@@ -39,6 +38,8 @@ import type {
   ApmPolicySeverity,
 } from '@/app/apm/types';
 import styles from '@/app/apm/events/event-workspace.module.scss';
+import AlertHandlerActions from '@/app/apm/events/alerts/alert-handler-actions';
+import { formatAlertHandlers } from '@/app/apm/events/alerts/alertHandlerUtils';
 
 const ACTION_KEY = { triggered: 'apm.alerts.trigger', escalated: 'apm.alerts.escalated', recovered: 'apm.alerts.recover', closed: 'apm.alerts.manuallyClosed' } as const;
 const STATUS_KEY = { active: 'apm.status.firing', recovered: 'apm.status.recovered', closed: 'apm.alerts.statusClosed' } as const;
@@ -374,7 +375,7 @@ interface AlertDetailDrawerProps {
   deliveries: ApmNotificationDelivery[];
   retryingDeliveryId: string | null;
   onClose: () => void;
-  onCloseAlert: (alert: ApmAlert) => void;
+  onHandlerActionSuccess: () => void;
   onRetrySnapshot: (alert: ApmAlert) => void;
   onSelectEvent: (alert: ApmAlert, event: ApmAlertEvent) => void;
   onRetryDelivery: (deliveryId: string) => void;
@@ -391,7 +392,7 @@ export default function AlertDetailDrawer({
   deliveries,
   retryingDeliveryId,
   onClose,
-  onCloseAlert,
+  onHandlerActionSuccess,
   onRetrySnapshot,
   onSelectEvent,
   onRetryDelivery,
@@ -647,8 +648,8 @@ export default function AlertDetailDrawer({
                       </Tag>
                     )}
                   </Descriptions.Item>
-                  <Descriptions.Item label={t('apm.alerts.operator', '操作人')}>
-                    {alert.operator || '--'}
+                  <Descriptions.Item label={t('apm.alerts.handlers', '处理人')}>
+                    {formatAlertHandlers(alert.handlers, alert.handlers_display)}
                   </Descriptions.Item>
                   <Descriptions.Item label={t('apm.alerts.notifiedPeople', '通知人')} span={alert.status === 'active' ? 2 : 1}>
                     {notifiers.length ? notifiers.join(', ') : '--'}
@@ -656,15 +657,13 @@ export default function AlertDetailDrawer({
                 </Descriptions>
 
                 <div className={styles.alertDetailCloseRow}>
-                  <Popconfirm
-                    title={t('apm.alerts.manualCloseConfirm', '人工关闭会追加 closed 事件和不可变快照，确认继续？')}
-                    disabled={alert.status !== 'active'}
-                    onConfirm={() => onCloseAlert(alert)}
-                  >
-                    <Button type="primary" danger disabled={alert.status !== 'active'}>
-                      {t('apm.alerts.closeAlert', '关闭告警')}
-                    </Button>
-                  </Popconfirm>
+                  <AlertHandlerActions
+                    alert={alert}
+                    closeText={t('apm.alerts.closeAlert', '关闭告警')}
+                    closeDanger
+                    size="middle"
+                    onSuccess={onHandlerActionSuccess}
+                  />
                 </div>
 
                 <div className={styles.alertDetailChartCard}>
