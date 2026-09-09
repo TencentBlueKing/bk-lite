@@ -11,7 +11,8 @@ support-files/weopsx_platform_usage_dashboard.yaml 中的内置定义，
 - 命名空间冲突复用已有对象，内置数据源按稳定 key 覆盖更新
 - 内置画布按 build_in_key 原位同步，保留主键和组织可见性
 - 新增画布遇到用户同名对象时跳过，避免覆盖用户数据
-- 新建内置对象默认属于 Default 组织；存量 groups 作为运营配置保留
+- 新建内置画布/目录默认属于 Default 组织；存量 groups 作为运营配置保留
+- 新建内置数据源 groups=[]（全员可见）；存量仅 Default 的名单清成空，已收口名单保留
 """
 
 import os
@@ -45,10 +46,24 @@ DEFAULT_RETIRE_LIMIT = 200
 
 
 def _get_default_group_ids():
-    """获取 Default 组织 ID（内置对象只属于 Default 组织）"""
+    """获取 Default 组织 ID（内置画布/目录默认属于 Default 组织）"""
     from apps.operation_analysis.management.commands.init_default_groups import get_default_group_id
 
     return get_default_group_id()
+
+
+def _clear_default_only_builtin_datasource_groups(default_group_ids):
+    """把仅 Default 的内置数据源名单清成空，已收口或已是空名单的保持不变。"""
+    from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
+
+    default_ids = list(default_group_ids or [])
+    to_clear = []
+    for datasource in DataSourceAPIModel.objects.filter(is_build_in=True).only("id", "groups").iterator():
+        groups = list(datasource.groups or [])
+        if groups and groups == default_ids:
+            to_clear.append(datasource.id)
+    if to_clear:
+        DataSourceAPIModel.objects.filter(id__in=to_clear).update(groups=[])
 
 
 def _get_or_create_builtin_directory(groups):
@@ -504,6 +519,7 @@ class Command(BaseCommand):
                     created_by="system",
                     updated_by="system",
                     groups=groups,
+                    datasource_groups=[],
                     existing_canvas_ids=existing_canvas_ids,
                     preserve_existing_canvas_groups=True,
                 )
@@ -557,6 +573,7 @@ class Command(BaseCommand):
                         build_in_key=item.key,
                         updated_by="system",
                     )
+                _clear_default_only_builtin_datasource_groups(groups)
 
         except Exception as error:
             # 非关键本地初始化保持 fail-open；事务已回滚，不留下半更新。

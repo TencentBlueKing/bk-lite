@@ -488,6 +488,21 @@ def test_init_builtin_canvases_creates_builtin_directory():
 
 
 @pytest.mark.django_db
+def test_init_builtin_canvases_creates_builtin_datasources_without_organization():
+    from apps.system_mgmt.models.user import Group
+
+    default, _ = Group.objects.get_or_create(name="Default")
+    _ensure_default_namespace()
+    call_command("init_builtin_canvases")
+
+    builtin_sources = list(DataSourceAPIModel.objects.filter(is_build_in=True))
+    assert builtin_sources
+    assert all(source.groups == [] for source in builtin_sources)
+    directory = Directory.objects.get(build_in_key="__builtin__")
+    assert directory.groups == [default.pk]
+
+
+@pytest.mark.django_db
 def test_init_builtin_canvases_rerun_is_idempotent():
     from apps.system_mgmt.models.user import Group
 
@@ -610,6 +625,24 @@ def test_init_builtin_canvases_rerun_preserves_datasource_identity_and_visibilit
     assert datasource.rest_api == "/issue-4743-v2"
     assert datasource.desc == "新版内容"
     assert set(datasource.groups) == set(expected_groups)
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_init_builtin_canvases_clears_default_only_builtin_datasource_groups(monkeypatch, tmp_path):
+    from apps.system_mgmt.models.user import Group
+
+    default, _ = Group.objects.get_or_create(name="Default")
+    _configure_minimal_builtin_datasource(monkeypatch, tmp_path)
+    call_command("init_builtin_canvases")
+
+    datasource = DataSourceAPIModel.objects.get(build_in_key="datasource::issue-4743")
+    DataSourceAPIModel.objects.filter(pk=datasource.pk).update(groups=[default.pk])
+
+    call_command("init_builtin_canvases")
+
+    datasource.refresh_from_db()
+    assert datasource.groups == []
 
 
 @pytest.mark.django_db
