@@ -326,6 +326,8 @@
       "node": "节点",
       "clickhouse_asynchronous_metrics_load_average1": "系统负载（1分钟）",
       "alertList": "告警列表",
+      "monitoringPolicy": "监控策略",
+      "noBoundPolicy": "该资产暂无绑定的监控策略",
       "postgresql_numbackends": "当前活跃数据库连接数",
       "postgresql_blks_read_rate": "磁盘数据块读取速率",
       "postgresql_temp_files_rate": "临时文件创建速率",
