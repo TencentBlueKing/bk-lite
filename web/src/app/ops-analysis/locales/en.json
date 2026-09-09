@@ -255,6 +255,8 @@
     "sourceType": "Source",
     "sourcePath": "Source Key",
     "sourceObject": "Query Object",
+    "searchPlaceholder": "Search by name",
+    "allSourceTypes": "All",
     "sourceTypes": {
       "nats": "NATS",
       "mysql": "MySQL",
