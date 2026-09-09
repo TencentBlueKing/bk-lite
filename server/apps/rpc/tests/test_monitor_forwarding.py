@@ -225,3 +225,12 @@ def test_query_metric_series(ana_rpc):
         (),
         {"metric": "device_flow_bytes_rate", "mode": "range", "instance_ids": ["sw-1"]},
     )
+
+
+def test_get_zombie_host_report(ana_rpc):
+    ana_rpc.get_zombie_host_report(inst_uuids=["u1"], time=10080)
+    assert _last(ana_rpc.client) == (
+        "get_zombie_host_report",
+        (),
+        {"inst_uuids": ["u1"], "time": 10080},
+    )

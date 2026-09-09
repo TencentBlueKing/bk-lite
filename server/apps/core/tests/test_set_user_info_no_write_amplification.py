@@ -9,9 +9,7 @@ Issue #3483: set_user_info 热路径写放大修复单元测试
 """
 
 import contextlib
-from unittest.mock import MagicMock, patch, call
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 from apps.base.models import User
 from apps.core.backends import AuthBackend
@@ -96,6 +94,7 @@ def _base_user_info(**overrides):
 # 核心修复：用户信息未变时不写库
 # -------------------------------------------------------
 
+
 class TestNoWriteWhenUnchanged:
     """当用户信息与 DB 中完全一致时，save() 不应被调用。"""
 
@@ -123,9 +122,7 @@ class TestNoWriteWhenUnchanged:
             result = backend.set_user_info(_make_request(), user_info, {})
 
         assert result is user
-        user.save.assert_not_called(), (
-            "用户信息未变时不应执行 DB UPDATE（Issue #3483 核心修复）"
-        )
+        user.save.assert_not_called(), ("用户信息未变时不应执行 DB UPDATE（Issue #3483 核心修复）")
 
     def test_revert_save_is_called_unconditionally(self):
         """验证：如果把修复 revert（改回 user.save()），本测试必须失败。
@@ -149,6 +146,7 @@ class TestNoWriteWhenUnchanged:
 # -------------------------------------------------------
 # 回归保护：信息有变化时必须写库
 # -------------------------------------------------------
+
 
 class TestWriteWhenChanged:
     """当用户信息确实发生变化时，save() 必须被调用且 update_fields 精确。"""
@@ -225,6 +223,7 @@ class TestWriteWhenChanged:
 # 回归保护：新建用户时执行完整 save
 # -------------------------------------------------------
 
+
 class TestNewUserSave:
     """新建用户（created=True）时，应执行完整 save（不带 update_fields 限制）。"""
 
@@ -249,6 +248,7 @@ class TestNewUserSave:
 # -------------------------------------------------------
 # 运行时属性验证（不持久化到 DB）
 # -------------------------------------------------------
+
 
 class TestRuntimeAttributes:
     """运行时属性（timezone/rules/permission 等）应被设置到 user 对象，但不触发 save。"""
@@ -279,4 +279,24 @@ class TestRuntimeAttributes:
         assert result.display_name == "显示名"
         assert result.group_tree == [{"id": 1}]
         # 用户信息未变，不应有额外 save
+        assert user.save.call_count == 0
+
+    def test_runtime_locale_follows_account_without_persisting(self):
+        """账号语言与 AUTH_USER_MODEL 默认值不一致时，请求应使用账号语言，且不写回 DB。
+
+        CMDB 分类/模型名按 request.user.locale 覆盖。个人设置改的是 system_mgmt.User，
+        verify_token 已带回当前 locale，但热路径过去不把它赋到 request.user，
+        导致英文界面仍返回中文内置名称。
+        """
+        backend = _make_backend()
+        user = FakeUser(locale="zh-CN")
+        user_info = _base_user_info(locale="en")
+
+        with (
+            patch.object(AuthBackend, "get_is_superuser", return_value=False),
+            _patch_get_or_create(user, False),
+        ):
+            result = backend.set_user_info(_make_request(), user_info, {})
+
+        assert result.locale == "en"
         assert user.save.call_count == 0

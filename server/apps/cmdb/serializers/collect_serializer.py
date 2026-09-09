@@ -8,6 +8,7 @@ from rest_framework import serializers
 
 from apps.cmdb.collection.physical_server_protocol import PHYSICAL_SERVER_PROTOCOLS, normalize_physical_server_protocol
 from apps.cmdb.constants.constants import PERMISSION_TASK, CollectDriverTypes, CollectPluginTypes
+from apps.cmdb.language.service import overlay_collect_digest_message
 from apps.cmdb.models.collect_model import (
     ALLOWED_TOPOLOGY_FALLBACK_STRATEGIES,
     ALLOWED_TOPOLOGY_PROTOCOLS,
@@ -815,10 +816,11 @@ class CollectModelLIstSerializer(AuthSerializer):
             "expire_days",
         ]
 
-    @staticmethod
-    def get_message(instance):
+    def get_message(self, instance):
         if instance.collect_digest:
-            return instance.collect_digest
+            request = self.context.get("request")
+            locale = getattr(getattr(request, "user", None), "locale", None) if request else None
+            return overlay_collect_digest_message(instance.collect_digest, locale)
 
         data = {
             "add": 0,

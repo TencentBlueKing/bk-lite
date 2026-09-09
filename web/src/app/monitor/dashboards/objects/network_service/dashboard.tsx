@@ -7,8 +7,7 @@ import {
   FlexiblePanelSection,
   KpiSection,
   useFilteredChartPanels,
-  useFilteredSummaryCards
-} from '../common/dashboard-components';
+  useFilteredSummaryCards, DashboardSectionLabel } from '../common/dashboard-components';
 import { TrendChartPanel } from '../../shared/widgets';
 import { getBrandLabel } from '@/app/monitor/utils/common';
 import { NETWORK_SERVICE_DASHBOARD_CONFIG } from './config';
@@ -61,11 +60,11 @@ export default function NetworkServiceDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
 
           {/* Row 1: 设备收发流量 span12 */}
-          <div className={styles.sectionLabel}>性能趋势</div>
+          <DashboardSectionLabel styles={styles}>性能趋势</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {renderTrend(trafficChart, styles.span12)}
           </FlexiblePanelSection>

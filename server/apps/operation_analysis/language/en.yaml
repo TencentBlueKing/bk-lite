@@ -1,0 +1,1513 @@
+directories:
+  __builtin__:
+    name: Built-in
+dashboards:
+  "dashboard::CMDB仪表盘_内置":
+    name: CMDB Dashboard
+    desc: CMDB Dashboard
+    filters:
+      time:
+        name: Time
+    widgets:
+      47c8e06b-2023-4f5d-8ca9-e718983234bb:
+        name: Classifications
+        description: Classification count
+      1a884812-9fd1-4e01-bd95-ef93e58470bf:
+        name: Models
+        description: Model Count
+      be09cec0-aac6-4d9e-b44c-d7f7e2d75aee:
+        name: Instances
+        description: Total managed instances
+      08bebde0-1772-4199-8248-016c30bd2b23:
+        name: Host OS Distribution
+        description: Grouped by os_type; blank values are unknown
+        params:
+          model_id: Model ID
+          field: Group Field
+      4df1fa2e-a38d-48e9-b6ca-a16f91f768eb:
+        name: Change Trend
+        description: Instance create, update, and delete, following the time range
+        params:
+          time: Time Range
+          model_id: Model ID
+      7951c963-9fd3-40a4-8169-9463676bdc07:
+        name: Model Instance Details
+        description: Instance count by model
+        columns:
+          classification: Classification
+          model: Model
+          model_id: Model ID
+          count: Count
+      8461bad1-524b-499c-aebb-af9ed980aa14:
+        name: Non-empty Models
+        description: Models with at least one instance
+      c02d6a5c-39bf-46e2-95b8-f4f4d46e1352:
+        name: Empty Models
+        description: Models with no instances
+      7e5070ee-514c-4247-997b-aaad9ee81382:
+        name: Model Coverage
+        description: Non-empty models as a share of all models
+      dcbe080f-5973-4215-9ae4-d4c6c1ffd1af:
+        name: Collection Tasks
+        description: Total configured collection tasks
+      6fb9eb5e-81cc-4888-b484-6bead0b7ea64:
+        name: Scheduled Tasks
+        description: Collection tasks with scheduled polling
+      e86497c6-99d1-4245-a925-7d941416d384:
+        name: Successful Collection Tasks
+        description: Tasks whose latest run succeeded
+      81fb3757-8c04-4e2c-b603-69372e11168c:
+        name: Running Tasks
+        description: Collection tasks currently running
+      e85bcf55-fe23-4e75-bccb-7f68528ddd4a:
+        name: Timed-out Tasks
+        description: Tasks whose latest run timed out
+      db83c45b-4476-47a9-bd6f-944159fbd476:
+        name: Never-run Tasks
+        description: Tasks never executed after creation
+      cef91805-bf1d-4909-a112-4c6a5d7b5823:
+        name: Model Instance Top 5
+        description: Ranked by instance count, descending
+        params:
+          limit: Limit
+          classification_id: Classification ID
+  "dashboard::统一告警中心仪表盘_内置":
+    name: Unified Alert Center Dashboard
+    desc: ''
+    filters:
+      time:
+        name: Time Range
+    widgets:
+      99ff96a3-2055-4932-b882-bc2b896cc1e7:
+        name: Linked Events
+        description: By event received time; only events linked to authorized alerts
+      d0a485b5-9f7c-46ae-9c42-717aa5fca81b:
+        name: New Alerts
+        description: By alert created time
+      8b710945-88a5-42d3-8fdd-a52507f54fe4:
+        name: New Incidents
+        description: By incident created time
+      02ed505a-d71b-4bbc-82c8-4a5338596c37:
+        name: Active Alerts
+        description: Unassigned + pending + processing; not affected by the time range
+      0488514c-4381-408f-95c3-a645b010bdb1:
+        name: Auto-recovered Alerts
+        description: Currently auto-recovered; not affected by the time range
+      00529616-16d3-4be3-8a7f-463a175f8c53:
+        name: Auto-recovery Rate
+        description: Share of all standing alerts; not affected by the time range
+      f6ddd2a0-2adc-4e20-9513-f6ebb7426211:
+        name: Event Aggregation Ratio
+        description: Linked events ÷ affected alerts (not a percentage)
+      5c2735d3-5449-4d29-871d-545eaf7b24b9:
+        name: Session Alert Ratio
+        description: Share of new alerts that are session alerts
+      586576ee-f427-4c56-9e8a-6777c95c1290:
+        name: Alert and Linked Event Trend
+        description: Alerts, linked events, and recovered count
+        params:
+          time: Time Range
+      85bfbc48-c2b7-4621-99ca-621818d656f9:
+        name: Active Alert Severity
+        description: Active alerts by severity; not affected by the time range
+        params:
+          status_filter: Alert Status Scope
+      ad522899-2fc5-4b7a-875e-19004c33a425:
+        name: Linked Event Source Top 5
+        description: Ranked by linked event count
+        params:
+          limit: Limit
+          time: Time Range
+      e7b15832-9734-4eff-ae1b-96dc5148d286:
+        name: Alert Sources
+        description: Configured alert sources; not affected by the time range
+      190cbce2-33d1-4755-a85d-ea781c898920:
+        name: Enabled Alert Sources
+        description: Enabled alert sources
+      083e3d04-08d6-4100-9d02-6bdb4a4e5a6f:
+        name: Active Alert Sources
+        description: Alert sources with at least one event in the time range
+      a3538b40-7c46-475d-a3d9-927b8f2d7098:
+        name: Source Enablement Rate
+        description: Enabled sources as a share of all alert sources
+      80a6b436-a8c3-44f0-a054-905fb3f08a3d:
+        name: Channel Success Rate
+        description: Send success rate by Channel
+      af0ee431-54a4-4fcb-8ae4-43a7666a5aed:
+        name: Failed Notifications
+        description: Failed notification count
+      38cbdb62-671c-48a6-a883-2c41a97882f2:
+        name: Notification Failure Rate
+        description: Failed notifications as a share of all notifications
+      9fb91936-d18b-4583-b14b-d9ae04d6bb10:
+        name: Alerts Missing Rule ID
+        description: Denominator is new alerts in the time range
+      aede04f0-83f3-4fc6-b804-a2772c640623:
+        name: Alerts Missing Resource ID
+        description: Denominator is new alerts in the time range
+      063b6d01-ec91-4218-b6ad-9f34c82ea94b:
+        name: Successful Notifications
+        description: Successful notification count
+      fb51e119-3763-4a99-844f-274fa6c50577:
+        name: Notification Success Rate
+        description: Successful notifications as a share of all notifications
+      356ec2d9-0bf2-4d03-aa0b-dda3d9d7cf87:
+        name: Linked Events Missing Metric Item
+        description: Denominator is linked events in the time range
+      8c4c5cb4-dfd9-4b01-9baa-33a9f758a4b6:
+        name: Linked Events Missing External Event ID
+        description: Denominator is linked events in the time range
+      739e9aab-809e-42c6-901a-ca6d664db676:
+        name: Active Alert Duration Top 10
+        description: Longest-running active alerts
+        columns:
+          alert_id: Alert ID
+          title: Title
+          level: Level
+          status: Status
+          duration_seconds: Duration (seconds)
+          created_at: Created At
+          resource_name: Resource Name
+        params:
+          limit: Limit
+  "dashboard::监控中心仪表盘_内置":
+    name: Monitor Center Dashboard
+    desc: Monitor Center resource, capability, and alert overview
+    widgets:
+      mon-stat-r01:
+        name: Monitor Objects
+        description: All monitor objects defined in the system
+      mon-stat-r02:
+        name: Visible Monitor Objects
+        description: Monitor objects visible to the current user
+      mon-stat-r03:
+        name: Object Categories
+        description: Object categories by type
+      mon-stat-r04:
+        name: Monitor Instances
+        description: Total instances under monitoring
+      mon-stat-r05:
+        name: Active Instances
+        description: Currently enabled monitor instances
+      mon-stat-r06:
+        name: Inactive Instances
+        description: Currently disabled monitor instances
+      mon-stat-c01:
+        name: Monitor Plugins
+        description: Total registered monitor plugins
+      mon-stat-c02:
+        name: Built-in Plugins
+        description: System-provided standard plugins
+      mon-stat-c03:
+        name: Custom Plugins
+        description: User-defined extension plugins
+      mon-stat-c04:
+        name: Metric Definitions
+        description: Metric entries defined in the system
+      mon-stat-c05:
+        name: Metric Groups
+        description: Number of metric groups
+      mon-stat-c06:
+        name: Collect Configs
+        description: Total configured collection tasks
+      mon-stat-a01:
+        name: Open Alerts
+        description: Unhandled active alerts
+      mon-stat-a02:
+        name: Historical Alerts
+        description: Cumulative alerts produced
+      mon-stat-a03:
+        name: Alerts Created Today
+        description: Alerts created since 00:00 today
+      mon-stat-a04:
+        name: Alert Policies
+        description: Total configured alert policies
+      mon-stat-a05:
+        name: Enabled Policies
+        description: Enabled policies
+      mon-stat-a06:
+        name: Disabled Policies
+        description: Disabled policies
+      mon-stat-a07:
+        name: Threshold Policies
+        description: Policies with threshold conditions
+      mon-stat-a08:
+        name: No-data Policies
+        description: Policies with no-data detection
+      mon-stat-a09:
+        name: Recovered Alerts
+        description: Auto-recovered alerts
+      mon-stat-a10:
+        name: Closed Alerts
+        description: Manually closed alerts
+      mon-stat-a11:
+        name: Monitor Events
+        description: Cumulative monitor events
+      mon-stat-a12:
+        name: Events Created Today
+        description: Events created since 00:00 today
+      mon-stat-a13:
+        name: Alert Snapshots
+        description: Full-lifecycle alert snapshots
+      mon-stat-a14:
+        name: No-data Baselines
+        description: Instance baselines for no-data detection
+  "dashboard::Flow网络流量分析仪表盘":
+    name: Flow Network Traffic Analysis Dashboard
+    desc: Flow traffic, trends, protocol distribution, TopN, conversations, and communication graphs for selected network devices.
+    filters:
+      instance_ids:
+        name: Devices
+      time:
+        name: Time Range
+    widgets:
+      group-overview:
+        name: Traffic Overview
+        description: Total traffic, packet rate, average packet size, and effective sampling rate for selected devices in the time window
+      flow-kpi-bytes:
+        name: Total Traffic
+        description: Normalized Flow byte rate of selected devices
+        params:
+          instance_ids: Devices
+          metric: Metric
+          mode: Query Mode
+          time: Time Range
+      flow-kpi-packets:
+        name: Packet Rate
+        description: Normalized Flow packet rate of selected devices
+        params:
+          instance_ids: Devices
+          metric: Metric
+          mode: Query Mode
+          time: Time Range
+      flow-kpi-avg-size:
+        name: Avg Packet Size
+        description: Average packet size from normalized bytes and packets
+        params:
+          instance_ids: Devices
+          metric: Metric
+          mode: Query Mode
+          time: Time Range
+      flow-kpi-sampling:
+        name: Effective Sampling Rate
+        description: Effective sampling rate used to normalize Flow traffic
+        params:
+          instance_ids: Devices
+          metric: Metric
+          mode: Query Mode
+          time: Time Range
+      group-trend:
+        name: Traffic Trend
+        description: Bytes/s, Packets/s, and protocol traffic trends
+      flow-trend-bytes:
+        name: Traffic Trend
+        description: Aggregated Flow byte rate of selected devices
+        params:
+          instance_ids: Devices
+          metric: Metric
+          mode: Query Mode
+          time: Time Range
+      flow-trend-packets:
+        name: Packet Rate Trend
+        description: Aggregated Flow packet rate of selected devices
+        params:
+          instance_ids: Devices
+          metric: Metric
+          mode: Query Mode
+          time: Time Range
+      flow-trend-protocol:
+        name: Protocol Traffic Trend
+        description: Flow byte rate rolled up by protocol
+        params:
+          instance_ids: Devices
+          metric: Metric
+          mode: Query Mode
+          time: Time Range
+      group-rank:
+        name: Protocols & TopN
+        description: Protocol share and Source / Destination / IP+port / Protocol TopN
+      flow-pie-protocol:
+        name: Protocol Distribution
+        description: Traffic share rolled up by protocol in the time window
+        params:
+          instance_ids: Devices
+          metric: Metric
+          mode: Query Mode
+          time: Time Range
+      flow-topn:
+        name: Traffic TopN
+        description: Switch among source, destination, source IP+port, destination IP+port, or protocol to view usage
+        params:
+          instance_ids: Devices
+          metric: Metric
+          mode: Query Mode
+          time: Time Range
+      group-conversation:
+        name: Conversation
+        description: Source, destination, port, protocol, and traffic of top conversations
+      flow-table-conversation:
+        name: Top Conversations
+        description: Highest-traffic conversations in the time window
+        columns:
+          name: Conversation
+          src: Source Address
+          dst: Destination Address
+          dst_port: Destination Port
+          protocol: Protocol
+          value: Traffic
+        params:
+          instance_ids: Devices
+          metric: Metric
+          mode: Query Mode
+          time: Time Range
+      group-node-graph:
+        name: Communication Graph
+        description: Host-to-host and service access from conversation traffic
+      flow-node-graph-ip:
+        name: Host Communication
+        description: Directed traffic between source IP and destination IP
+        params:
+          instance_ids: Devices
+          metric: Metric
+          mode: Query Mode
+          time: Time Range
+          limit: Limit
+      flow-node-graph-service:
+        name: Service Access
+        description: Directed traffic from source IP to destination IP:port
+        params:
+          instance_ids: Devices
+          metric: Metric
+          mode: Query Mode
+          time: Time Range
+          limit: Limit
+  "dashboard::WeOpsX平台使用_内置":
+    name: WeOpsX Platform Usage
+    desc: Current module inventory and in-module outcomes (ratios / TopN) for the selected organization. Inventory does not follow the time window.
+    filters:
+      organization:
+        name: Organization
+      time:
+        name: Time Range
+    widgets:
+      group-overview:
+        name: Platform Overview
+        description: Current inventory by module
+      weopsx-kpi-cmdb-instances:
+        name: CMDB Instances
+        description: Visible CMDB instances in the current organization
+        params:
+          organization: Organization
+      weopsx-kpi-monitor-instances:
+        name: Monitor Instances
+        description: Non-deleted monitor instances in the current organization
+        params:
+          organization: Organization
+      weopsx-kpi-monitor-metrics:
+        name: Monitor Metrics
+        description: Total metric definition entries
+        params:
+          organization: Organization
+      weopsx-kpi-log-instances:
+        name: Log Collect Instances
+        description: Visible log collect instances in the current organization
+        params:
+          organization: Organization
+      weopsx-kpi-open-alerts:
+        name: Open Alerts
+        description: Currently unassigned, pending, and processing alerts; not affected by the time window
+        params:
+          organization: Organization
+      weopsx-kpi-nodes:
+        name: Nodes
+        description: Visible nodes in the current organization
+        params:
+          organization: Organization
+      group-cmdb:
+        name: CMDB
+        description: Classification/model/instance scale, collection coverage, and classification ranking
+      weopsx-cmdb-classifications:
+        name: Classifications
+        description: Currently visible CMDB classifications
+        params:
+          organization: Organization
+      weopsx-cmdb-models:
+        name: Models
+        description: Visible CMDB models in the current organization
+        params:
+          organization: Organization
+      weopsx-cmdb-instances:
+        name: Instances
+        description: Visible CMDB instances in the current organization
+        params:
+          organization: Organization
+      weopsx-cmdb-coverage:
+        name: Collection Coverage
+        description: Visible instances with collection tasks as a share of all instances
+        params:
+          organization: Organization
+      weopsx-cmdb-class-top:
+        name: Classification Instance TopN
+        description: Instance count by classification, descending
+        params:
+          organization: Organization
+          limit: Limit
+          group_by: Rank By
+      group-monitor:
+        name: Monitor
+        description: Object, instance, metric, and policy inventory, plus instance alert ranking in the time window
+      weopsx-mon-objects:
+        name: Monitor Objects
+        description: Monitor object definitions (platform catalog)
+        params:
+          organization: Organization
+      weopsx-mon-instances:
+        name: Monitor Instances
+        description: Non-deleted monitor instances in the current organization
+        params:
+          organization: Organization
+      weopsx-mon-metrics:
+        name: Metric Definitions
+        description: Total metric definition entries
+        params:
+          organization: Organization
+      weopsx-mon-policies:
+        name: Alert Policies
+        description: Visible alert policies in the current organization
+        params:
+          organization: Organization
+      weopsx-mon-most-alerts:
+        name: Instances with Most Alerts
+        description: Monitor instances with the most alerts in the time window
+        params:
+          organization: Organization
+          time: Time Range
+          ranking: Ranking Mode
+          limit: Limit
+      weopsx-mon-least-alerts:
+        name: Fewest Alerts (Policy-covered)
+        description: Policy-covered monitor instances with the fewest alerts in the time window (including 0)
+        params:
+          organization: Organization
+          time: Time Range
+          ranking: Ranking Mode
+          limit: Limit
+      group-log:
+        name: Logs
+        description: Collect instances, extractors, alert rules, bind rate, and policy alert ranking
+      weopsx-log-instances:
+        name: Collect Instances
+        description: Visible log collect instances in the current organization
+        params:
+          organization: Organization
+      weopsx-log-extractors:
+        name: Extractors
+        description: Extractors linked to current-organization collect instances or collect types
+        params:
+          organization: Organization
+      weopsx-log-policies:
+        name: Alert Rules
+        description: Visible log alert policies in the current organization
+        params:
+          organization: Organization
+      weopsx-log-bound:
+        name: Asset-bound Ratio
+        description: Collect instances linked to assets as a share of all collect instances
+        params:
+          organization: Organization
+      weopsx-log-policy-top:
+        name: Alert Rule TopN
+        description: Log alert policies with the most alerts in the time window
+        params:
+          organization: Organization
+          time: Time Range
+          limit: Limit
+      group-alert:
+        name: Alerts
+        description: Open alerts, ingest sources, closed-loop rate, and rankings
+      weopsx-alert-active:
+        name: Open Alerts
+        description: Currently open alerts (unassigned + pending + processing); not affected by the time window
+        params:
+          organization: Organization
+      weopsx-alert-sources:
+        name: Ingest Sources
+        description: Configured alert sources; not affected by the time window
+        params:
+          organization: Organization
+      weopsx-alert-loop:
+        name: Closed-loop Rate
+        description: Closed alerts divided by new alerts in the time window; can exceed 100% when closes outnumber news
+        params:
+          time: Time Range
+          organization: Organization
+      weopsx-alert-source-top:
+        name: Ingest Source Event TopN
+        description: Alert ingest sources with the most events in the time window
+        params:
+          organization: Organization
+          time: Time Range
+          limit: Limit
+      weopsx-alert-rule-top:
+        name: Correlation Hit TopN
+        description: Correlation/aggregation rule hits in the time window (by produced alerts)
+        params:
+          organization: Organization
+          time: Time Range
+          limit: Limit
+      group-node:
+        name: Nodes
+        description: Nodes, collectors, cloud regions, and online rate
+      weopsx-node-total:
+        name: Nodes
+        description: Nodes in the current organization
+        params:
+          organization: Organization
+      weopsx-node-collectors:
+        name: Collectors
+        description: Collector catalog entries
+        params:
+          organization: Organization
+      weopsx-node-clouds:
+        name: Cloud Regions
+        description: Cloud regions used by current-organization nodes
+        params:
+          organization: Organization
+      weopsx-node-online:
+        name: Online Ratio
+        description: Online nodes as a share of all nodes
+        params:
+          organization: Organization
+      weopsx-node-cloud-top:
+        name: Cloud Region Node TopN
+        description: Ranked by node count per cloud region, descending
+        params:
+          organization: Organization
+          limit: Limit
+      group-job:
+        name: Jobs
+        description: Job and template inventory, plus execution success rate in the time window
+      weopsx-job-jobs:
+        name: Jobs
+        description: Jobs in the current organization
+        params:
+          organization: Organization
+          time: Time Range
+      weopsx-job-templates:
+        name: Templates
+        description: Job templates in the current organization
+        params:
+          organization: Organization
+          time: Time Range
+      weopsx-job-success:
+        name: Execution Success Rate
+        description: Successful executions as a share of all executions in the time window
+        params:
+          organization: Organization
+          time: Time Range
+      group-system:
+        name: System Management
+        description: Organization, user, and notification Channel scale
+      weopsx-sys-orgs:
+        name: Organizations
+        description: Selected organization and descendants, excluding archived
+        params:
+          organization: Organization
+      weopsx-sys-users:
+        name: Users
+        description: Users belonging to the current organization
+        params:
+          organization: Organization
+      weopsx-sys-channels:
+        name: Channels
+        description: Configured notification Channels (standard + IM)
+        params:
+          organization: Organization
+      weopsx-sys-enabled:
+        name: Channel Enablement Rate
+        description: Enabled Channels as a share of configured Channels. Standard notification Channels have no toggle and count as enabled once configured; IM channels use enabled.
+        params:
+          organization: Organization
+screens:
+  "screen::告警运营大屏_内置":
+    name: Alert Operations Screen
+    desc: Alert Center operations screen with configurable chart nodes for today, activity, trends, distribution, and active alerts
+    decorations:
+      title: Alert Operations Screen
+    widgets:
+      alert-kpi-created:
+        title: Created Today
+      alert-kpi-closed:
+        title: Closed Today
+      alert-kpi-processing:
+        title: Processing
+      alert-active-total:
+        title: Active Alerts
+      alert-active-pending:
+        title: Pending
+      alert-level-trend:
+        title: Severity Trend
+        params:
+          time: Time Range
+      alert-access-trend:
+        title: Alert and Linked Event Trend
+        params:
+          time: Time Range
+      alert-level-distribution:
+        title: Active Alert Severity
+        params:
+          status_filter: Alert Status Scope
+      alert-duration-top:
+        title: Active Alert Duration Top 10
+        columns:
+          alert_id: Alert ID
+          title: Alert Name
+          level: Level
+          status: Status
+          duration_seconds: Duration (s)
+          created_at: Occurred At
+          resource_name: Resource Name
+        params:
+          limit: Limit
+      alert-status-distribution:
+        title: Active Alert Status
+      alert-active-table:
+        title: Active Alert Details
+        columns:
+          alert_id: Alert ID
+          title: Alert Name
+          level: Level
+          status: Status
+          duration_seconds: Duration (s)
+          created_at: Occurred At
+          resource_name: Resource Name
+        params:
+          limit: Limit
+      alert-source-event-top:
+        title: Linked Event Source Top 10
+        params:
+          limit: Limit
+          time: Time
+      081f2a79-debe-4825-9d4d-1aeb02d9702e:
+        title: Channel Success Rate
+        params:
+          time: Time
+      f9156f59-ac47-48b9-b071-da3289f769af:
+        title: Linked Events
+        params:
+          time: Time Range
+      2bdee93c-3a75-49a6-93b2-bd0d448967b3:
+        title: New Incidents
+        params:
+          time: Time Range
+  "screen::3D机房大屏_内置":
+    name: 3D Data Center Screen
+    desc: 3D data center screen from CMDB rooms, cabinets, and devices; switch rooms inside the widget
+    decorations:
+      title: Cabinet Overview
+    widgets:
+      builtin-room3d-main:
+        title: 3D Data Center
+  "screen::3D应用大屏_内置":
+    name: 3D Application Screen
+    desc: 3D application wall showing health, active alerts, and details of visible applications
+    decorations:
+      title: Application Wall
+    widgets:
+      builtin-application3d-main:
+        title: 3D Applications
+  "screen::网络状态拓扑大屏_内置":
+    name: Network Status Topology Screen
+    desc: Built-in screen example showing CMDB relations for selected network devices, overlaid with Monitor Center active alerts.
+    decorations:
+      title: Network Status Topology Screen
+    widgets:
+      network-topology-builtin-main:
+        title: Network Status Topology Overview
+datasources:
+  "CMDB 3D机房布局::cmdb/get_room3d_layout":
+    name: CMDB 3D Data Center Layout
+    desc: Query 3D cabinet layout for a CMDB server room
+    params:
+      server_room_id: Server Room ID
+  "CMDB 变更趋势::cmdb/get_change_trend":
+    name: CMDB Change Trend
+    desc: Instance create, update, and delete trend in the time range; filterable by model
+    params:
+      time: Time Range
+      model_id: Model ID
+  "CMDB模型实例TOPN::cmdb/get_cmdb_model_instance_top":
+    name: CMDB Instance Ranking (Model/Classification)
+    desc: Rank by instance count descending; default by model, optional classification rollup. Keep the default model grouping for the legacy CMDB dashboard.
+    fields:
+      model:
+        title: Model Name
+        description: Model display name (used when ranking by model)
+      model_id:
+        title: Model ID
+        description: Model ID (used when ranking by model)
+      classification:
+        title: Classification
+        description: Classification display name; parent when ranking by model, rank item when ranking by classification
+      classification_id:
+        title: Classification ID
+        description: Classification ID
+      count:
+        title: Instances
+        description: Instance count for this rank item
+    params:
+      limit: Limit
+      classification_id: Classification ID
+      group_by: Rank By
+      organization: Organization
+  "CMDB采集健康统计::cmdb/get_cmdb_collect_statistics":
+    name: CMDB Collection Task Status
+    desc: Collection task total, scheduled tasks, and latest run status
+    fields:
+      task_count:
+        title: Total Tasks
+        description: Currently visible collection tasks
+      interval_task_count:
+        title: Scheduled Tasks
+        description: Collection tasks with scheduled polling
+      success_count:
+        title: Successful Tasks
+        description: Tasks whose latest status is success
+      error_count:
+        title: Error Tasks
+        description: Tasks whose latest status is error
+      running_count:
+        title: Running Tasks
+        description: Tasks currently running
+      timeout_count:
+        title: Timed-out Tasks
+        description: Tasks currently timed out
+      never_run_count:
+        title: Never-run Tasks
+        description: Tasks currently never run
+      partial_success_count:
+        title: Partially Successful Tasks
+        description: Tasks whose latest status is partial success
+  "主机操作系统分布::get_instance_group_by":
+    name: Host OS Distribution
+    desc: Instance count by host os_type; blank values are unknown
+    fields:
+      name:
+        title: OS
+        description: Host OS type
+      value:
+        title: Instances
+        description: Host instances of this OS type
+    params:
+      model_id: Model ID
+      field: Group Field
+  "模型/实例/分类总数统计::cmdb/get_cmdb_statistics":
+    name: CMDB Coverage Overview
+    desc: Classification, model, and instance totals, plus non-empty model coverage
+    fields:
+      classification_count:
+        title: Total Classifications
+        description: Currently visible classifications
+      model_count:
+        title: Total Models
+        description: Currently visible models
+      instance_count:
+        title: Total Instances
+        description: Currently visible instances
+      model_with_instance_count:
+        title: Non-empty Models
+        description: Models with at least one instance
+      empty_model_count:
+        title: Empty Models
+        description: Models with zero instances
+      model_coverage_rate:
+        title: Model Coverage
+        description: Non-empty models as a share of all models, in %
+      collected_instance_count:
+        title: Instances with Collection Tasks
+        description: Visible instances linked to at least one collection task
+      collect_coverage_rate:
+        title: Collection Coverage
+        description: Visible instances with collection tasks as a share of all instances, in %
+    params:
+      organization: Organization
+  "模型实例统计::get_model_inst_statistics":
+    name: CMDB Model Instance Details
+    desc: Classification, ID, and instance count per model
+    fields:
+      classification:
+        title: Classification
+        description: Parent classification name
+      model:
+        title: Model
+        description: Model display name
+      model_id:
+        title: Model ID
+        description: Model ID
+      count:
+        title: Instances
+        description: Currently visible instances of this model
+  "告警关联事件来源 TOP N::alert/get_alert_source_event_top":
+    name: Linked Event Source TopN
+    desc: Alert sources ranked by linked events, following the time range
+    fields:
+      source_name:
+        title: Alert Source
+        description: Alert Source Name
+      count:
+        title: Linked Events
+        description: Linked Event Count
+    params:
+      limit: Limit
+      time: Time Range
+      organization: Organization
+  "告警源总数/启用率/活跃数::alert/get_alert_source_statistics":
+    name: Alert Source Config & Activity
+    desc: Source total, enabled count, and enablement rate are config snapshots; active sources have at least one event in the time range
+    fields:
+      total_count:
+        title: Alert Sources
+        description: Visible alert source configs; not affected by the time range
+      enabled_count:
+        title: Enabled Alert Sources
+        description: Currently enabled alert sources; not affected by the time range
+      enabled_rate:
+        title: Source Enablement Rate
+        description: Enabled sources as a share of all alert sources, in %
+      active_count:
+        title: Active Alert Sources
+        description: Alert sources with at least one event in the selected time range
+    params:
+      time: Time Range
+      organization: Organization
+  "告警等级分布::get_alert_level_distribution":
+    name: Active Alert Severity
+    desc: Active alerts by severity; not affected by the time range
+    fields:
+      name:
+        title: Severity
+        description: 'Severity: fatal / critical / warning / info'
+      value:
+        title: Count
+        description: Active alerts at this severity
+    params:
+      status_filter: Alert Status Scope
+  "今日告警状态总览::alert/get_alert_today_status_summary":
+    name: Created/Closed Today and Currently Processing
+    desc: Alerts created and closed today, plus currently processing alerts; the first two are today-scoped, processing is a live snapshot
+    fields:
+      today_created_count:
+        title: Alerts Created Today
+        description: Alerts created since 00:00 today
+      today_closed_count:
+        title: Alerts Closed Today
+        description: Alerts closed, auto-closed, or auto-recovered today
+      processing_count:
+        title: Processing Alerts
+        description: Alerts currently processing
+  "告警状态分布::alert/get_alert_status_distribution":
+    name: Active Alert Status
+    desc: Unassigned, pending, and processing distribution; not affected by the time range
+    fields:
+      name:
+        title: Status
+        description: Alert Status
+      value:
+        title: Count
+        description: Alert Count
+  "告警等级趋势::alert/get_alert_level_trend":
+    name: Severity Trend
+    desc: Time series by severity, following the time range
+    params:
+      time: Time Range
+  "告警期间统计::alert/get_alert_period_statistics":
+    name: Alert and Event Summary
+    desc: New alerts, linked events, affected alerts, new incidents, session-alert ratio, event aggregation ratio, and closed-loop rate in the time range
+    fields:
+      new_alert_count:
+        title: New Alerts in Selected Period
+        description: Counted by alert created time
+      linked_event_count:
+        title: Linked Events in Selected Period
+        description: Counted by event received time
+      affected_alert_count:
+        title: Affected Alerts in Selected Period
+        description: Distinct alerts linked by events in the time range
+      new_incident_count:
+        title: New Incidents in Selected Period
+        description: Counted by incident created time
+      session_alert_count:
+        title: Session Alerts in Selected Period
+        description: Session alerts among new alerts in the time range
+      session_alert_rate:
+        title: Session Alert Ratio in Selected Period
+        description: Percentage from 0 to 100
+      aggregation_ratio:
+        title: Event Aggregation Ratio in Selected Period
+        description: Linked events divided by affected alerts
+      closed_alert_count:
+        title: Closed Alerts in Selected Period
+        description: Counted by alert updated time with a closed status
+      closed_loop_rate:
+        title: Closed-loop Rate in Selected Period
+        description: Closed alerts divided by new alerts in the window, in %; 0 when the denominator is 0
+    params:
+      time: Time Range
+      organization: Organization
+  "告警快照统计::alert/get_alert_snapshot_statistics":
+    name: Active Alert Snapshot
+    desc: Active alert status at query time; not affected by the time range. Includes active total, unassigned, pending, processing, and auto-recovery
+    fields:
+      active_count:
+        title: Active Alerts
+        description: Unassigned, pending, and processing alerts
+      unassigned_count:
+        title: Unassigned Alerts
+        description: Alerts currently unassigned
+      pending_count:
+        title: Pending Alerts
+        description: Alerts currently pending
+      processing_count:
+        title: Processing Alerts
+        description: Alerts currently processing
+      auto_recovery_count:
+        title: Auto-recovered Status Alerts
+        description: Alerts currently auto-recovered
+      auto_recovery_rate:
+        title: Auto-recovered Status Ratio
+        description: Percentage from 0 to 100
+    params:
+      organization: Organization
+  "按渠道通知成功率::alert/get_notification_channel_stats":
+    name: Channel Success Rate
+    desc: Send success rate by Channel, following the time range; Channels with no samples are omitted
+    fields:
+      name:
+        title: Channels
+        description: Channel Name
+      value:
+        title: Notification Success Rate
+        description: Successful sends for this Channel, in %
+    params:
+      time: Time Range
+  "数据完整性（缺失率）::alert/get_alert_data_quality":
+    name: Alert and Event Field Missing Rate
+    desc: Follows the time range; alerts by created time, events by received time, with different denominators
+    fields:
+      alert_quality.total_count:
+        title: Alerts in Selected Period
+        description: Sample count by alert created time
+      alert_quality.missing_resource_id_count:
+        title: Alerts Missing Resource ID
+        description: Alerts missing resource ID in the selected period
+      alert_quality.missing_resource_id_rate:
+        title: Alerts Missing Resource ID in Selected Period
+        description: Denominator is new alerts in the time range
+      alert_quality.missing_rule_id_count:
+        title: Alerts Missing Rule ID
+        description: Alerts missing rule ID in the selected period
+      alert_quality.missing_rule_id_rate:
+        title: Alerts Missing Rule ID in Selected Period
+        description: Denominator is new alerts in the time range
+      event_quality.total_count:
+        title: Linked Events in Selected Period
+        description: Sample count by event received time
+      event_quality.missing_service_count:
+        title: Events Missing Service
+        description: Linked events missing the service field in the selected period
+      event_quality.missing_service_rate:
+        title: Linked Events Missing Service in Selected Period
+        description: Denominator is linked events in the time range
+      event_quality.missing_item_count:
+        title: Events Missing Metric Item
+        description: Linked events missing the metric-item field in the selected period
+      event_quality.missing_item_rate:
+        title: Linked Events Missing Metric Item in Selected Period
+        description: Denominator is linked events in the time range
+      event_quality.missing_external_id_count:
+        title: Events Missing External Event ID
+        description: Linked events missing external event ID in the selected period
+      event_quality.missing_external_id_rate:
+        title: Linked Events Missing External Event ID in Selected Period
+        description: Denominator is linked events in the time range
+    params:
+      time: Time Range
+  "活跃告警 TOP N::get_active_alert_top":
+    name: Active Alert Duration TopN
+    desc: Longest-running active alerts; not affected by the time range
+    fields:
+      alert_id:
+        title: Alert ID
+        description: Alert ID
+      title:
+        title: Alert Title
+        description: Alert Title
+      level:
+        title: Severity
+        description: Severity (fatal / critical / warning / info)
+      status:
+        title: Status
+        description: Alert Status
+      duration_seconds:
+        title: Duration (seconds)
+        description: Seconds elapsed since the alert was created
+      created_at:
+        title: Created At
+        description: Alert Created At
+      resource_name:
+        title: Resource Name
+        description: Resource Name
+    params:
+      limit: Limit
+  "通知总数/成功率/失败率/按渠道分组::alert/get_notification_statistics":
+    name: Notification Summary
+    desc: Notification totals, successes, failures, and rates in the time range; rates show -- when there are no samples
+    fields:
+      total_count:
+        title: Total Notifications
+        description: Notifications in the time range
+      success_count:
+        title: Successful Notifications
+        description: Successful notifications in the time range
+      failed_count:
+        title: Failed Notifications
+        description: Failed notifications in the time range
+      success_rate:
+        title: Notification Success Rate
+        description: Successful notifications as a share of all notifications, in %
+      failed_rate:
+        title: Notification Failure Rate
+        description: Failed notifications as a share of all notifications, in %
+    params:
+      time: Time Range
+  "监控中心总览统计::monitor/get_monitor_statistics":
+    name: Monitor Center Overview
+    desc: Monitor Center resource, capability, and alert overview stats
+    fields:
+      monitor_object_total:
+        title: Monitor Objects
+        description: Total monitor object definitions
+      monitor_object_visible:
+        title: Visible Monitor Objects
+        description: Visible monitor objects
+      monitor_object_category:
+        title: Object Categories
+        description: Total monitor object categories
+      monitor_instance_total:
+        title: Monitor Instances
+        description: Non-deleted monitor instances
+      monitor_instance_active:
+        title: Active Instances
+        description: Enabled monitor instances
+      monitor_instance_inactive:
+        title: Inactive Instances
+        description: Disabled monitor instances
+      plugin_total:
+        title: Monitor Plugins
+        description: Monitor Plugins
+      plugin_builtin:
+        title: Built-in Plugins
+        description: Built-in monitor plugins
+      plugin_custom:
+        title: Custom Plugins
+        description: User-defined monitor plugins
+      metric_total:
+        title: Metric Definitions
+        description: Total metric definition entries
+      metric_group_total:
+        title: Metric Groups
+        description: Metric Groups
+      collect_config_total:
+        title: Collect Configs
+        description: Collect Configs
+      policy_total:
+        title: Alert Policies
+        description: Alert Policies
+      policy_enabled:
+        title: Enabled Policies
+        description: Enabled alert policies
+      policy_disabled:
+        title: Disabled Policies
+        description: Disabled alert policies
+      alert_current:
+        title: Open Alerts
+        description: Currently unhandled alerts
+      alert_history:
+        title: Historical Alerts
+        description: Historical Alerts
+      alert_today:
+        title: Alerts Created Today
+        description: Alerts created today
+      alert_recovered:
+        title: Recovered Alerts
+        description: Alerts in recovered status
+      alert_closed:
+        title: Closed Alerts
+        description: Alerts in closed status
+      policy_threshold:
+        title: Threshold Policies
+        description: Policies with threshold conditions
+      policy_no_data:
+        title: No-data Policies
+        description: Policies with no-data detection
+      event_total:
+        title: Monitor Events
+        description: Monitor Events
+      event_today:
+        title: Events Created Today
+        description: Monitor events created today
+      alert_snapshot_total:
+        title: Alert Snapshots
+        description: Total alert metric snapshots
+      no_data_baseline_total:
+        title: No-data Baselines
+        description: Total policy instance baselines
+    params:
+      organization: Organization
+  "监控实例列表::monitor/get_monitor_instance_list":
+    name: Monitor Instance List (Options)
+    desc: Flow-enabled switch/router/firewall/load-balancer instances in the current organization, used as a shared filter dropdown and not charted directly
+    fields:
+      instance_id:
+        title: Instance ID
+        description: ''
+      display_name:
+        title: Devices
+        description: ''
+      ip:
+        title: IP Address
+        description: ''
+      object_name:
+        title: Object Type
+        description: ''
+      enabled_protocols:
+        title: Enabled Protocols
+        description: ''
+  "受控指标趋势::monitor/query_metric_series":
+    name: Controlled Metric Trend
+    desc: Time series for selected instances by registered metric name; no all-instance fallback, and raw PromQL is not accepted
+    params:
+      instance_ids: Devices
+      metric: Metric
+      mode: Query Mode
+      time: Time Range
+  "受控指标排行::monitor/query_metric_series":
+    name: Controlled Metric Ranking
+    desc: Instant ranking or summary for selected instances by registered metric name; no all-instance fallback, and raw PromQL is not accepted
+    fields:
+      rank:
+        title: Rank
+        description: ''
+      name:
+        title: Name
+        description: ''
+      value:
+        title: Value
+        description: ''
+      src:
+        title: Source Address
+        description: ''
+      dst:
+        title: Destination Address
+        description: ''
+      src_port:
+        title: Source Port
+        description: ''
+      dst_port:
+        title: Destination Port
+        description: ''
+      protocol:
+        title: Protocol
+        description: ''
+    params:
+      instance_ids: Devices
+      metric: Metric
+      mode: Query Mode
+      time: Time Range
+      limit: Limit
+  "日志用法总览::log/get_log_usage_statistics":
+    name: Log Usage Overview
+    desc: Current-organization log collect instances, extractors, alert rules, and asset-bound ratio; not affected by the time range
+    fields:
+      collect_instance_count:
+        title: Collect Instances
+        description: Visible log collect instances in the current organization
+      extractor_count:
+        title: Extractors
+        description: Extractors on these instances and collect types
+      policy_count:
+        title: Alert Rules
+        description: Visible log alert policies in the current organization
+      bound_instance_count:
+        title: Bound Instances
+        description: Collect instances linked to assets (node_id is set)
+      bound_instance_rate:
+        title: Bound Ratio
+        description: Bound instances as a share of collect instances, in %
+    params:
+      organization: Organization
+  "日志告警规则 TOP::log/get_log_policy_alert_top":
+    name: Log Alert Rule TopN
+    desc: Log alert policies ranked by alert count, following the time range
+    fields:
+      policy_id:
+        title: Policy ID
+        description: Log alert policy ID
+      policy_name:
+        title: Policy Name
+        description: Log alert policy name
+      count:
+        title: Alerts
+        description: Alerts from this policy in the time window
+    params:
+      organization: Organization
+      time: Time Range
+      limit: Limit
+  "节点用法总览::node/get_node_usage_statistics":
+    name: Node Usage Overview
+    desc: Current-organization nodes, collector catalog, cloud regions, and online rate; not affected by the time range
+    fields:
+      node_total:
+        title: Total Nodes
+        description: Visible nodes in the current organization
+      collector_total:
+        title: Collectors
+        description: Collector catalog entries
+      cloud_region_total:
+        title: Cloud Regions
+        description: Distinct cloud regions of these nodes
+      online_count:
+        title: Online Nodes
+        description: Nodes whose sidecar status is online
+      online_rate:
+        title: Online Rate
+        description: Online nodes as a share of all nodes, in %
+    params:
+      organization: Organization
+  "云区域节点 TOP::node/get_cloud_region_node_top":
+    name: Cloud Region Node TopN
+    desc: Node count by node-management cloud region; not affected by the time range
+    fields:
+      cloud_region_id:
+        title: Cloud Region ID
+        description: Node-management cloud region ID
+      cloud_region_name:
+        title: Cloud Region
+        description: Node-management cloud region name
+      count:
+        title: Nodes
+        description: Nodes in this cloud region
+    params:
+      organization: Organization
+      limit: Limit
+  "作业用法总览::job/get_job_usage_statistics":
+    name: Job Usage Overview
+    desc: Script jobs and Playbook templates in the current organization, plus execution success rate in the time window; superadmins are still scoped to the selected organization
+    fields:
+      job_count:
+        title: Jobs
+        description: Script jobs in the current organization
+      template_count:
+        title: Templates
+        description: Playbook templates in the current organization
+      execution_count:
+        title: Executions
+        description: Job execution records in the time window
+      success_count:
+        title: Successes
+        description: Successful execution records in the time window
+      execution_success_rate:
+        title: Execution Success Rate
+        description: Successful executions as a share of all executions, in %
+    params:
+      organization: Organization
+      time: Time Range
+  "系统管理用法总览::system_mgmt/get_system_usage_statistics":
+    name: System Management Usage Overview
+    desc: Selected organization plus descendants, users in the current organization context, and Channel enablement rate
+    fields:
+      organization_count:
+        title: Organizations
+        description: Selected organization and descendants, excluding archived; ignores include_children
+      user_count:
+        title: Users
+        description: Users belonging to these organizations
+      channel_count:
+        title: Channels
+        description: Configured notification Channels (standard + IM)
+      enabled_channel_count:
+        title: Enabled Channels
+        description: Enabled notification Channels. Standard Channels have no toggle and count as enabled once configured; IM channels use enabled
+      enabled_channel_rate:
+        title: Channel Enablement Rate
+        description: 'Enabled / configured. Standard Channels count as enabled once configured; IM channels use enabled. Unit: %'
+    params:
+      organization: Organization
+  "监控实例告警排行::monitor/get_monitor_instance_alert_ranking":
+    name: Monitor Instance Alert Ranking
+    desc: Rank monitor instances by alert count in the time range; most alerts, or fewest among policy-covered instances
+    fields:
+      instance_id:
+        title: Instance ID
+        description: Monitor instance ID
+      instance_name:
+        title: Instance Name
+        description: Monitor instance display name
+      count:
+        title: Alerts
+        description: Alerts from this instance in the time window
+    params:
+      organization: Organization
+      time: Time Range
+      ranking: Ranking Mode
+      limit: Limit
+  "告警相关性命中 TOP::alert/get_alert_correlation_rule_hit_top":
+    name: Alert Correlation Hit TopN
+    desc: Ranked by alerts from correlation/aggregation rules, following the time range
+    fields:
+      rule_id:
+        title: Rule ID
+        description: Correlation/aggregation rule ID
+      rule_name:
+        title: Rule Name
+        description: Correlation/aggregation rule name
+      count:
+        title: Hits
+        description: Alerts produced by this rule in the time window
+    params:
+      organization: Organization
+      time: Time Range
+      limit: Limit
+  "应用系统::cmdb/list_application_systems":
+    name: Application Systems (options)
+    desc: Authorized CMDB application systems for the filter dropdown; not plotted
+    fields:
+      inst_uuid:
+        title: Application System UUID
+      display_name:
+        title: Application System
+      inst_name:
+        title: Application System Name
+  "僵尸机查询::monitor/get_zombie_host_report":
+    name: Zombie Host Query
+    desc: Query successful logins, inbound packet rate, CPU, memory, and IO for monitored CMDB hosts under the selected application systems, then keep idle-looking hosts by threshold. An empty system selection does not scan all hosts. Time defaults to 7 days. Thresholds do not scale with the window. Hosts without login collection are not treated as 0.
+    fields:
+      biz_name:
+        title: Business
+      host_name:
+        title: Hostname
+      os_type_label:
+        title: OS Type
+      ip:
+        title: IP Address
+      packets_recv_max:
+        title: Peak Inbound Packets (pps)
+      packets_recv_avg:
+        title: Avg Inbound Packets (pps)
+      login_count:
+        title: Successful Logins
+      login_status:
+        title: Login Collection Status
+      cpu_max:
+        title: Peak CPU (%)
+      cpu_avg:
+        title: Avg CPU (%)
+      mem_max:
+        title: Peak Memory (%)
+      mem_avg:
+        title: Avg Memory (%)
+      io_max:
+        title: Peak IO (%)
+      zombie_whitelist:
+        title: Zombie Host Allowlist
+      inst_uuid:
+        title: Host UUID
+      monitor_id:
+        title: Monitor Instance ID
+    params:
+      system_uuids: Application System
+      time: Time Range
+      os_type: OS Type
+      zombie_whitelist:
+        name: Zombie Host Allowlist
+        options:
+          yes: "Yes"
+          no: "No"
+      page: Page
+      page_size: Page Size
+      login_min: Login Count Min
+      login_max: Login Count Max
+      packets_recv_max_min: Peak Inbound Packets Min (pps)
+      packets_recv_max_max: Peak Inbound Packets Max (pps)
+      packets_recv_avg_min: Avg Inbound Packets Min (pps)
+      packets_recv_avg_max: Avg Inbound Packets Max (pps)
+      cpu_avg_min: Avg CPU Min (%)
+      cpu_avg_max: Avg CPU Max (%)
+      cpu_max_min: Peak CPU Min (%)
+      cpu_max_max: Peak CPU Max (%)
+      mem_avg_min: Avg Memory Min (%)
+      mem_avg_max: Avg Memory Max (%)
+      mem_max_min: Peak Memory Min (%)
+      mem_max_max: Peak Memory Max (%)
+      io_max_min: Peak IO Min (%)
+      io_max_max: Peak IO Max (%)
+reports:
+  "report::僵尸机报表":
+    name: Zombie Host Report
+    desc: Query successful logins, inbound packet rate, CPU, memory, and IO for monitored CMDB hosts under the selected application systems, then keep idle-looking hosts by threshold. Time defaults to 7 days. Thresholds do not scale with the window. Hosts without login collection are not treated as 0. An empty system selection does not scan all hosts.
+    filters:
+      system_uuids: Application System
+      time: Time Range
+      os_type: OS Type
+      zombie_whitelist:
+        name: Zombie Host Allowlist
+        options:
+          yes: "Yes"
+          no: "No"
+      login_min: Login Count Min
+      login_max: Login Count Max
+      packets_recv_max_min: Peak Inbound Packets Min (pps)
+      packets_recv_max_max: Peak Inbound Packets Max (pps)
+      packets_recv_avg_min: Avg Inbound Packets Min (pps)
+      packets_recv_avg_max: Avg Inbound Packets Max (pps)
+      cpu_avg_min: Avg CPU Min (%)
+      cpu_avg_max: Avg CPU Max (%)
+      cpu_max_min: Peak CPU Min (%)
+      cpu_max_max: Peak CPU Max (%)
+      mem_avg_min: Avg Memory Min (%)
+      mem_avg_max: Avg Memory Max (%)
+      mem_max_min: Peak Memory Min (%)
+      mem_max_max: Peak Memory Max (%)
+      io_max_min: Peak IO Min (%)
+      io_max_max: Peak IO Max (%)
+    widgets:
+      zombie-table:
+        name: Zombie Host List
+        description: Logins, inbound packets, CPU, memory, and IO in the time window for hosts under the selected application systems. Uncollected logins show empty and are not filtered as 0.
+        params:
+          system_uuids: Application System
+          time: Time Range
+          os_type: OS Type
+          zombie_whitelist:
+            name: Zombie Host Allowlist
+            options:
+              yes: "Yes"
+              no: "No"
+          page: Page
+          page_size: Page Size
+          login_min: Login Count Min
+          login_max: Login Count Max
+          packets_recv_max_min: Peak Inbound Packets Min (pps)
+          packets_recv_max_max: Peak Inbound Packets Max (pps)
+          packets_recv_avg_min: Avg Inbound Packets Min (pps)
+          packets_recv_avg_max: Avg Inbound Packets Max (pps)
+          cpu_avg_min: Avg CPU Min (%)
+          cpu_avg_max: Avg CPU Max (%)
+          cpu_max_min: Peak CPU Min (%)
+          cpu_max_max: Peak CPU Max (%)
+          mem_avg_min: Avg Memory Min (%)
+          mem_avg_max: Avg Memory Max (%)
+          mem_max_min: Peak Memory Min (%)
+          mem_max_max: Peak Memory Max (%)
+          io_max_min: Peak IO Min (%)
+          io_max_max: Peak IO Max (%)

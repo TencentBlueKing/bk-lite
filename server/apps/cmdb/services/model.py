@@ -1386,7 +1386,7 @@ class ModelManage(object):
         return ModelManage._clone_options(option)
 
     @staticmethod
-    def search_model_attr(model_id: str, language: str = "en"):
+    def search_model_attr(model_id: str, language: str = "zh-Hans"):
         """
         查询模型属性
         """
@@ -1394,17 +1394,13 @@ class ModelManage(object):
         attrs = ModelManage._normalize_attr_constraints(ModelManage.parse_attrs(model_info.get("attrs", "[]")))
         attrs = [ModelManage.sanitize_attr_default_value(attr, log_context="search_model_attr") for attr in attrs]
         unique_rules = build_unique_rule_context(model_id).unique_rules
-        # TODO 语言包
-        # lan = SettingLanguage(language)
-        # model_attr = lan.get_val("ATTR", model_id)
-        # for attr in attrs:
-        #     if model_attr:
-        #         attr["attr_name"] = model_attr.get(attr["attr_id"]) or attr["attr_name"]
-        #
+        from apps.cmdb.language.service import apply_attr_translations
+
+        attrs = apply_attr_translations(attrs, model_id, language)
         return enrich_attrs_with_unique_display(attrs, unique_rules, model_id)
 
     @staticmethod
-    def search_model_attr_v2(model_id: str):
+    def search_model_attr_v2(model_id: str, language: str = "zh-Hans"):
         """
         查询模型属性
         """
@@ -1433,6 +1429,9 @@ class ModelManage(object):
                 if attr["attr_type"] == USER:
                     attr.update(option=option)
 
+        from apps.cmdb.language.service import apply_attr_translations
+
+        attrs = apply_attr_translations(attrs, model_id, language)
         return enrich_attrs_with_unique_display(attrs, unique_rules, model_id)
 
     @staticmethod
@@ -2230,6 +2229,10 @@ class ModelManage(object):
         for mid in sorted(SUPPORTED_INGEST_MODELS):
             ensure_model_node_id_attr(mid, username="admin")
             ensure_model_monitor_id_attr(mid, username="admin")
+
+        from apps.cmdb.services.host_zombie_whitelist import ensure_host_zombie_whitelist_attr
+
+        ensure_host_zombie_whitelist_attr(username="admin")
 
     @staticmethod
     def import_model_config(file):

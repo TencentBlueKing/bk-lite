@@ -354,7 +354,7 @@ const attrRef = useRef<any>(null);
 
     const baseMessage = `${t('Model.deleteGroupConfirmPrefix')}"${
       modelDetail?.model_name
-    }"${t('Model.deleteGroupConfirmMiddle')}"${group.group_name}"${t(
+    }"${t('Model.deleteGroupConfirmMiddle')}"${group.display_name || group.group_name}"${t(
       'Model.deleteGroupConfirmSuffix'
     )}`;
 
@@ -580,7 +580,7 @@ const attrRef = useRef<any>(null);
               <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-100">
                 <div className="flex items-center gap-3">
                   <span className="text-sm font-medium text-gray-900">
-                    {group.group_name}
+                    {group.display_name || group.group_name}
                   </span>
                   <div className="flex items-center gap-2 ml-2">
                     <PermissionWrapper

@@ -44,11 +44,14 @@ from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.models.config_file_version import ConfigFileVersion, ConfigFileVersionStatus
 from apps.cmdb.openapi_serializers import CmdbModuleDataQuerySerializer
 from apps.cmdb.services import rack_room
+from apps.cmdb.services.application_system import build_application_system_row, expand_systems_to_host_uuids
 from apps.cmdb.services.classification import ClassificationManage
 from apps.cmdb.services.config_file_service import ConfigFileService
+from apps.cmdb.services.host_zombie_whitelist import ensure_host_zombie_whitelist_attr
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.model import ModelManage
 from apps.cmdb.services.module_ingest import CmdbModuleIngestService
+from apps.cmdb.services.monitored_host import build_monitored_host_row
 from apps.cmdb.services.rack_room import format_rack_location_label, parse_rack_location
 from apps.cmdb.services.region_resource_overview import build_region_resource_items, extract_region_options
 from apps.cmdb.utils.base import get_default_group_id
@@ -837,7 +840,8 @@ def search_model_attrs(params):
     model_id = (params or {}).get("model_id")
     if not model_id:
         raise ValueError("model_id is required")
-    return ModelManage.search_model_attr(model_id)
+    language = _resolve_nats_cmdb_language(params)
+    return ModelManage.search_model_attr(model_id, language)
 
 
 @nats_client.register
@@ -1652,6 +1656,175 @@ def get_monitor_ids_by_inst_uuids(inst_uuids=None, user_info=None, **kwargs):
             }
         )
     return {"result": True, "data": {"items": items}, "message": ""}
+
+
+@nats_client.register
+def list_monitored_hosts(user_info=None, **kwargs):
+    """当前用户有权且已接入监控的 CMDB 主机选项源。"""
+    ensure_host_zombie_whitelist_attr()
+
+    permission_map = _build_nats_permission_map(user_info, model_id="host")
+    if permission_map is None:
+        return {"result": True, "data": [], "message": ""}
+
+    instances, _count = InstanceManage.instance_list(
+        model_id="host",
+        params=[],
+        page=1,
+        page_size=5000,
+        order="inst_name",
+        permission_map=permission_map,
+    )
+
+    org_ids = set()
+    for entity in instances or []:
+        org_ids.update(_normalize_to_list(entity.get("organization")))
+    org_names = {}
+    if org_ids:
+        org_names = {group["id"]: group["name"] for group in Group.objects.filter(id__in=org_ids).values("id", "name")}
+
+    data = []
+    for entity in instances or []:
+        row = build_monitored_host_row(entity, org_names=org_names)
+        if row is not None:
+            data.append(row)
+    return {"result": True, "data": data, "message": ""}
+
+
+@nats_client.register
+def list_application_systems(user_info=None, **kwargs):
+    """当前用户有权的 CMDB 应用系统选项源。"""
+    permission_map = _build_nats_permission_map(user_info, model_id="system")
+    if permission_map is None:
+        return {"result": True, "data": [], "message": ""}
+
+    instances, _count = InstanceManage.instance_list(
+        model_id="system",
+        params=[],
+        page=1,
+        page_size=5000,
+        order="inst_name",
+        permission_map=permission_map,
+    )
+    data = []
+    for entity in instances or []:
+        row = build_application_system_row(entity)
+        if row is not None:
+            data.append(row)
+    return {"result": True, "data": data, "message": ""}
+
+
+@nats_client.register
+def list_host_uuids_for_systems(system_uuids=None, user_info=None, **kwargs):
+    """把有权的应用系统展开为去重后的主机 UUID。未选或无权则空成功。"""
+    raw = system_uuids if system_uuids is not None else kwargs.get("system_uuids")
+    unique_systems = _unique_system_uuid_list(raw)
+    if unique_systems is None:
+        return {"result": False, "data": [], "message": "system_uuids 必须是列表"}
+    if not unique_systems:
+        return {"result": True, "data": [], "message": ""}
+
+    selected = _selected_authorized_systems(unique_systems, user_info)
+    if not selected:
+        return {"result": True, "data": [], "message": ""}
+
+    host_uuids = expand_systems_to_host_uuids(selected)
+    return {"result": True, "data": [{"inst_uuid": item} for item in host_uuids], "message": ""}
+
+
+def _unique_system_uuid_list(raw):
+    if raw in (None, ""):
+        raw = []
+    if not isinstance(raw, list):
+        return None
+    unique = []
+    seen = set()
+    for item in raw:
+        text = "" if item is None else str(item).strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        unique.append(text)
+    return unique
+
+
+def _selected_authorized_systems(unique_systems, user_info):
+    permission_map = _build_nats_permission_map(user_info, model_id="system")
+    if permission_map is None:
+        return []
+    instances, _count = InstanceManage.instance_list(
+        model_id="system",
+        params=[],
+        page=1,
+        page_size=5000,
+        order="inst_name",
+        permission_map=permission_map,
+    )
+    authorized = set()
+    for entity in instances or []:
+        row = build_application_system_row(entity)
+        if row is not None:
+            authorized.add(row["inst_uuid"])
+    return [item for item in unique_systems if item in authorized]
+
+
+def _org_names_for_cmdb_entities(entities):
+    org_ids = set()
+    for entity in entities or []:
+        org_ids.update(_normalize_to_list(entity.get("organization")))
+    if not org_ids:
+        return {}
+    return {group["id"]: group["name"] for group in Group.objects.filter(id__in=org_ids).values("id", "name")}
+
+
+@nats_client.register
+def list_monitored_hosts_for_systems(system_uuids=None, user_info=None, **kwargs):
+    """一次返回应用系统下已监控主机行，避免 monitor 再串行三次 CMDB NATS。"""
+    raw = system_uuids if system_uuids is not None else kwargs.get("system_uuids")
+    unique_systems = _unique_system_uuid_list(raw)
+    if unique_systems is None:
+        return {"result": False, "data": {"items": [], "expanded_host_count": 0}, "message": "system_uuids 必须是列表"}
+    if not unique_systems:
+        return {"result": True, "data": {"items": [], "expanded_host_count": 0}, "message": ""}
+
+    selected = _selected_authorized_systems(unique_systems, user_info)
+    if not selected:
+        return {"result": True, "data": {"items": [], "expanded_host_count": 0}, "message": ""}
+
+    host_uuids = expand_systems_to_host_uuids(selected)
+    if not host_uuids:
+        return {"result": True, "data": {"items": [], "expanded_host_count": 0}, "message": ""}
+
+    ensure_host_zombie_whitelist_attr()
+    permission_map = _build_nats_permission_map(user_info, model_id="host")
+    if permission_map is None:
+        return {"result": True, "data": {"items": [], "expanded_host_count": len(host_uuids)}, "message": ""}
+
+    user = _normalize_permission_user((user_info or {}).get("user"), domain=(user_info or {}).get("domain"))
+    entities = InstanceManage.query_entity_by_uuids(host_uuids)
+    by_uuid = {}
+    for entity in entities or []:
+        if not isinstance(entity, dict):
+            continue
+        if str(entity.get("model_id") or "") not in ("", "host"):
+            continue
+        if not InstanceManage._has_topology_view_permission(entity, permission_map, user=user):
+            continue
+        inst_uuid = str(entity.get("inst_uuid") or "").strip()
+        if inst_uuid:
+            by_uuid[inst_uuid] = entity
+    ordered_entities = [by_uuid[item] for item in host_uuids if item in by_uuid]
+    org_names = _org_names_for_cmdb_entities(ordered_entities)
+    items = []
+    for entity in ordered_entities:
+        row = build_monitored_host_row(entity, org_names=org_names)
+        if row is not None:
+            items.append(row)
+    return {
+        "result": True,
+        "data": {"items": items, "expanded_host_count": len(host_uuids)},
+        "message": "",
+    }
 
 
 _NETWORK_TOPOLOGY_CLOSED_SET_ERROR = "设备列表包含无效或不允许的网络设备，请重新配置"

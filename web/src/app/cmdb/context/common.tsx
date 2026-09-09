@@ -7,6 +7,7 @@ import { useModelApi, useUserConfigApi } from '@/app/cmdb/api';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
 import { usePathname } from 'next/navigation';
 import { useAliveController } from 'react-activation';
+import { useLocale } from '@/context/locale';
 
 interface CommonContextType {
   userList: UserItem[];
@@ -28,6 +29,7 @@ const CommonContextProvider = ({ children }: { children: React.ReactNode }) => {
   const setUserConfigs = useAssetDataStore((state) => state.setUserConfigs);
   const { drop } = useAliveController();
   const pathname = usePathname();
+  const { locale } = useLocale();
 
   useEffect(() => {
     if (drop && !pathname.startsWith('/cmdb/assetData')) {
@@ -83,7 +85,7 @@ const CommonContextProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     initializeData();
-  }, []);
+  }, [locale]);
 
   // 不再用全屏 Spin 挡住子路由：布局或详情壳切换导致 remount 时也不再整页 LOADING
   return (

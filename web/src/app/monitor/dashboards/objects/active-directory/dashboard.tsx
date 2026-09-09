@@ -8,8 +8,7 @@ import {
   KpiSection,
   useFilteredChartPanels,
   useFilteredRingPanels,
-  useFilteredSummaryCards,
-} from '../common/dashboard-components';
+  useFilteredSummaryCards, DashboardSectionLabel } from '../common/dashboard-components';
 import { RingChartPanel, TrendChartPanel } from '../../shared/widgets';
 import { ACTIVE_DIRECTORY_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
@@ -59,10 +58,10 @@ export default function ActiveDirectoryDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
 
-          <div className={styles.sectionLabel}>LDAP 认证与目录服务</div>
+          <DashboardSectionLabel styles={styles}>LDAP 认证与目录服务</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {ldapRing ? (
               <RingChartPanel
@@ -83,13 +82,13 @@ export default function ActiveDirectoryDashboardPage() {
             {renderChart(atqChart, styles.span6)}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>复制与多域同步 (DRA)</div>
+          <DashboardSectionLabel styles={styles}>复制与多域同步 (DRA)</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {renderChart(replHealthChart, styles.span6)}
             {renderChart(replThroughputChart, styles.span6)}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>Synthetic 端点探测</div>
+          <DashboardSectionLabel styles={styles}>Synthetic 端点探测</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {renderChart(probeChart, styles.span12)}
           </FlexiblePanelSection>
