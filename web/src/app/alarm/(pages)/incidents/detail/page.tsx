@@ -44,6 +44,7 @@ import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { TimeLineItem } from '@/app/alarm/types/types';
 import { useUserInfoContext } from '@/context/userInfo';
 import GroupTreeSelect from '@/components/group-tree-select';
+import { toFiniteNumberIds } from '@/app/alarm/utils/incidentAlertIds';
 
 const { TabPane } = Tabs;
 
@@ -265,7 +266,7 @@ const IncidentDetail: React.FC = () => {
         else setUnlinkLoading(true);
 
         try {
-          const toRemove = keys ?? selectedRowKeys;
+          const toRemove = toFiniteNumberIds(keys ?? selectedRowKeys);
           if (!toRemove.length) return;
           const remainingIds = tableData
             .map((i) => i.id)
@@ -296,7 +297,7 @@ const IncidentDetail: React.FC = () => {
     try {
       const existingIds = tableData.map((i) => i.id);
       const newIds = Array.from(
-        new Set([...existingIds, ...(selectedKeys as number[])])
+        new Set([...existingIds, ...toFiniteNumberIds(selectedKeys)])
       );
       await modifyIncidentDetail(rowDetailId, { alert: newIds });
       message.success(t('alarmCommon.linkAlert') + t('alarmCommon.success'));
@@ -700,7 +701,7 @@ const IncidentDetail: React.FC = () => {
                   <GanttChart
                     loading={tabLoading}
                     alarmData={tableData}
-                    selectedTasks={selectedRowKeys as number[]}
+                    selectedTasks={toFiniteNumberIds(selectedRowKeys)}
                     onSelectionChange={(keys) => setSelectedRowKeys(keys)}
                   />
                 )}
