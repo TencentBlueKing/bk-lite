@@ -69,6 +69,10 @@ class AlertLifecycleNotifier:
         self.policy = policy
         self.policies_by_id = policies_by_id or {}
 
+    def notify_assigned(self, alerts):
+        """手工分派通知入口。渠道与接收人替换由后续切片补齐，本期只预留调用点。"""
+        return None
+
     def notify_alerts(self, alerts, action, operator="", reason="", notify_scope=NOTIFY_SCOPE_ALL_CONFIGURED):
         if not alerts:
             return

@@ -15,7 +15,18 @@ from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.filters.id_filters import filter_positive_int_field
 from apps.monitor.filters.monitor_alert import MonitorAlertFilter
 from apps.monitor.models import MonitorAlert, MonitorAlertMetricSnapshot, MonitorEvent, MonitorEventRawData, MonitorPolicy, PolicyInstanceBaseline
-from apps.monitor.serializers.monitor_alert import MonitorAlertSerializer, MonitorAlertUpdateSerializer
+from apps.monitor.serializers.monitor_alert import (
+    AssignHandlersSerializer,
+    MonitorAlertSerializer,
+    MonitorAlertUpdateSerializer,
+)
+from apps.monitor.services.alert_handlers import (
+    AlertHandlerConflict,
+    AlertHandlerForbidden,
+    AlertHandlerInvalid,
+    assign_alert,
+    claim_alert,
+)
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 from apps.monitor.services.alert_access import visible_monitor_alerts
 from apps.monitor.services.alert_lifecycle_events import record_lifecycle_events
@@ -342,6 +353,52 @@ class MonitorAlertViewSet(
             instance._prefetched_objects_cache = {}
 
         return Response(serializer.data)
+
+    def _authorize_alert_operate(self, request, alert):
+        if not self.get_visible_alert_queryset(request, require_operate=True).filter(pk=alert.pk).exists():
+            return WebUtils.response_403("没有操作该告警的权限")
+        return None
+
+    def _handler_action_response(self, alert):
+        return Response(MonitorAlertSerializer(alert).data)
+
+    @action(methods=["post"], detail=True, url_path="claim")
+    def claim(self, request, pk=None):
+        alert = self.get_object()
+        auth_error = self._authorize_alert_operate(request, alert)
+        if auth_error:
+            return auth_error
+        operable_qs = self.get_visible_alert_queryset(request, require_operate=True)
+        try:
+            updated = claim_alert(alert, actor=request.user, operable_qs=operable_qs)
+        except AlertHandlerForbidden as exc:
+            return WebUtils.response_403(str(exc))
+        except AlertHandlerConflict as exc:
+            return WebUtils.response_error(str(exc), status_code=409)
+        return self._handler_action_response(updated)
+
+    @action(methods=["post"], detail=True, url_path="assign")
+    def assign(self, request, pk=None):
+        alert = self.get_object()
+        auth_error = self._authorize_alert_operate(request, alert)
+        if auth_error:
+            return auth_error
+        serializer = AssignHandlersSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        operable_qs = self.get_visible_alert_queryset(request, require_operate=True)
+        try:
+            updated = assign_alert(
+                alert,
+                handlers=serializer.validated_data["handlers"],
+                operable_qs=operable_qs,
+            )
+        except AlertHandlerForbidden as exc:
+            return WebUtils.response_403(str(exc))
+        except AlertHandlerInvalid as exc:
+            return WebUtils.response_error(str(exc), status_code=400)
+        except AlertHandlerConflict as exc:
+            return WebUtils.response_error(str(exc), status_code=409)
+        return self._handler_action_response(updated)
 
     @action(methods=["get"], detail=False, url_path="snapshots/(?P<alert_id>[^/.]+)")
     def get_snapshots(self, request, alert_id):
