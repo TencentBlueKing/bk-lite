@@ -3,8 +3,11 @@
 import pytest
 
 from apps.opspilot.models.memory_mgmt import Memory, MemorySpace
+from rest_framework.exceptions import APIException
+
 from apps.opspilot.serializers.memory_serializer import (
     MEMORY_RETRIEVE_CONTENT_LIMIT_MAX,
+    MemoryContentConflict,
     MemorySerializer,
     apply_memory_content_splice,
     parse_memory_content_limit,
@@ -91,7 +94,12 @@ def test_partial_update_splices_page_without_replacing_all():
     memory.save(update_fields=["content"])
     serializer = MemorySerializer(
         memory,
-        data={"content": "xyz", "content_offset": 3, "content_replace_length": 4},
+        data={
+            "content": "xyz",
+            "content_offset": 3,
+            "content_replace_length": 4,
+            "expected_updated_at": memory.updated_at,
+        },
         partial=True,
     )
     assert serializer.is_valid(), serializer.errors
@@ -99,6 +107,21 @@ def test_partial_update_splices_page_without_replacing_all():
     memory.refresh_from_db()
     assert memory.content == "ABCxyzHIJ"
     assert memory.title == "m-1"
+    assert serializer.data["content"] == "xyz"
+    assert serializer.data["content_length"] == 9
+    assert serializer.data["content_offset"] == 3
+    assert serializer.data["content_truncated"] is True
+
+
+def test_partial_update_splice_requires_expected_updated_at():
+    memory = _memory()
+    serializer = MemorySerializer(
+        memory,
+        data={"content": "xyz", "content_offset": 0, "content_replace_length": 1},
+        partial=True,
+    )
+    assert serializer.is_valid() is False
+    assert "expected_updated_at" in serializer.errors
 
 
 def test_partial_update_splice_requires_offset_and_length_together():
@@ -107,3 +130,29 @@ def test_partial_update_splice_requires_offset_and_length_together():
     assert serializer.is_valid() is False
     serializer = MemorySerializer(memory, data={"content_offset": 0, "content_replace_length": 1}, partial=True)
     assert serializer.is_valid() is False
+
+
+def test_partial_update_splice_rejects_stale_expected_updated_at():
+    memory = _memory()
+    stale = memory.updated_at
+    memory.content = "ABCDEFGHIJ"
+    memory.save(update_fields=["content"])
+    serializer = MemorySerializer(
+        memory,
+        data={
+            "content": "xyz",
+            "content_offset": 3,
+            "content_replace_length": 4,
+            "expected_updated_at": stale,
+        },
+        partial=True,
+    )
+    assert serializer.is_valid(), serializer.errors
+    try:
+        serializer.save()
+        raise AssertionError("stale splice should conflict")
+    except MemoryContentConflict as exc:
+        assert isinstance(exc, APIException)
+        assert exc.status_code == 409
+    memory.refresh_from_db()
+    assert memory.content == "ABCDEFGHIJ"
