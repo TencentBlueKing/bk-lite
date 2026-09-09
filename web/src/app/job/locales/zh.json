@@ -480,6 +480,7 @@
     "confirmExecuteQuestion": "是否确认执行？",
     "confirmExecute": "确认执行",
     "fileDistributionNotSupported": "文件分发类型暂不支持重新执行",
+    "cronFileDistNotSupported": "定时任务暂不支持文件分发，请使用「作业执行 → 文件分发」进行即时分发。",
     "reExecuteSuccess": "重新执行已触发",
     "reExecuteFailed": "重新执行失败",
     "testConnectionSuccess": "连接测试成功",
