@@ -163,6 +163,8 @@ def test_builtin_alert_cmdb_datasource_contracts_are_complete():
             "session_alert_count",
             "session_alert_rate",
             "aggregation_ratio",
+            "closed_alert_count",
+            "closed_loop_rate",
         },
         "alert/get_alert_snapshot_statistics": {
             "active_count",
@@ -1082,6 +1084,37 @@ def test_init_builtin_canvases_creates_flow_dashboard():
 
 
 @pytest.mark.django_db
+def test_init_builtin_canvases_creates_weopsx_platform_usage_dashboard():
+    from apps.system_mgmt.models.user import Group
+
+    Group.objects.get_or_create(name="Default")
+    _ensure_default_namespace()
+    call_command("init_builtin_canvases")
+
+    dashboard = Dashboard.objects.get(name="WeOpsX 平台使用", is_build_in=True)
+    assert dashboard.build_in_key == "dashboard::WeOpsX平台使用_内置"
+    assert dashboard.directory.build_in_key == "__builtin__"
+    filter_keys = {item["key"] for item in dashboard.filters}
+    assert filter_keys == {"organization", "time"}
+    org_filter = next(item for item in dashboard.filters if item["key"] == "organization")
+    assert org_filter["type"] == "string"
+    assert org_filter["inputMode"] == "organization"
+    assert org_filter.get("defaultValue") in (None, "", {})
+    time_filter = next(item for item in dashboard.filters if item["key"] == "time")
+    assert time_filter["defaultValue"]["selectValue"] == 10080
+    widget_ids = {
+        child["id"]
+        for group in dashboard.view_sets
+        if group.get("itemType") == "group"
+        for child in (group.get("subGridOpts") or {}).get("children") or []
+    }
+    assert "weopsx-kpi-cmdb-instances" in widget_ids
+    assert "weopsx-alert-loop" in widget_ids
+    assert "weopsx-sys-enabled" in widget_ids
+    assert DataSourceAPIModel.objects.filter(build_in_key="日志用法总览::log/get_log_usage_statistics", is_build_in=True).exists()
+
+
+@pytest.mark.django_db
 def test_init_builtin_canvases_merges_extra_yaml_files(tmp_path, settings, monkeypatch):
     from apps.operation_analysis.management.commands import init_builtin_canvases
     from apps.system_mgmt.models.user import Group
@@ -1140,6 +1173,7 @@ architectures: []
 
     monkeypatch.setattr(init_builtin_canvases, "YAML_FILE_PATH", str(base_yaml))
     monkeypatch.setattr(init_builtin_canvases, "FLOW_DASHBOARD_YAML_PATH", str(missing_yaml))
+    monkeypatch.setattr(init_builtin_canvases, "WEOPSX_PLATFORM_USAGE_YAML_PATH", str(missing_yaml))
     settings.OPERATION_ANALYSIS_BUILTIN_CANVAS_FILES = [str(enterprise_yaml), str(missing_yaml)]
 
     call_command("init_builtin_canvases")

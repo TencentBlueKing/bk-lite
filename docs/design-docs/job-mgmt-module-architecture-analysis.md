@@ -12,6 +12,7 @@ JobMgmt 已经具备作业平台的关键骨架，而不只是“Celery 调一�
 - worker 使用数据库行锁 claim `PENDING → RUNNING`，避免重复消费同时执行；
 - 取消采用 `CANCELLING` 过渡态、终态行锁和超时兜底；
 - Ansible 回调具有一次性 attempt/token，陈旧回调不能覆盖当前执行；
+- `JobExecution.converge_deadline_at` 持久化调度与执行截止时间，Beat 会把失联的 `PENDING/RUNNING` 收敛到终态；
 - `JobCompletionOutbox` 已具备唯一幂等键、短 lease、失败退避和 Beat 重扫；
 - `TargetTeamMembership` 是可查询的团队投影，并能阻止并发旧对象覆盖新团队。
 
@@ -22,7 +23,7 @@ JobMgmt 已经具备作业平台的关键骨架，而不只是“Celery 调一�
 同时存在三个会直接限制维护、扩展和容量的结构性边界：
 
 1. legacy NATS 执行入口把消息体中的 `team` 当授权事实，远程脚本和文件分发缺少可信 caller boundary；
-2. worker claim 后没有 heartbeat/lease/reaper，进程退出会留下长期 `RUNNING`，并持续阻塞 scheduled `skip/queue`；
+2. worker claim 后已有批次级 deadline 与 Beat reaper，但没有独立 attempt、心跳和逐目标恢复，长批次仍只能按用户超时做粗粒度失联判断；
 3. 全部目标和 stdout/stderr 结果聚合到 `JobExecution.execution_results` 单个 JSON 行，且每个 execution 自建线程池，没有团队、区域和执行器级全局预算。
 
 建议短期先统一信任和终态，不做服务拆分；中期建立 `ExecutionPlan + TargetWorkItem + ExecutionAttempt`，将执行分区、容量预算和恢复协议持久化；长期再依据独立 SLO、吞吐和安全隔离需求决定是否拆远端执行服务。
@@ -183,7 +184,7 @@ TargetResult(work_item_id, exit_code, error_code, output_ref, summary, checksum)
 
 短 stdout/stderr 可保留摘要；长输出写 JetStream/Object Store，数据库只保存 immutable `output_ref + checksum + size + retention`。查询按 cursor 分页，完成 callback 默认只发聚合与结果查询链接；确有需要时再提供有大小上限的分页明细。
 
-### 5.5 终态分叉与不可恢复 RUNNING
+### 5.5 终态分叉与粗粒度超时恢复
 
 Sidecar 正常完成由 `finalize_execution` 先写 results、再计数、再写终态，最后调用 `send_callback`，见 [execution_base_service.py:133](../../server/apps/job_mgmt/services/execution_base_service.py#L133)。`send_callback` 只是向 Celery 投递 HTTP/NATS callback task，见 [callback_service.py:42](../../server/apps/job_mgmt/services/callback_service.py#L42)，它不与终态事务绑定。
 
@@ -194,8 +195,8 @@ Sidecar 正常完成由 `finalize_execution` 先写 results、再计数、再写
 ```text
 Sidecar：DB terminal committed → worker exits before Celery callback publish → completion lost
 Sidecar：partial targets finished → worker exits before results JSON save → durable facts lost
-Any runner：PENDING claimed as RUNNING → worker hard exits → no heartbeat/reaper → RUNNING forever
-Scheduled skip/queue：stale RUNNING counted as active → future schedule keeps skip/requeue
+Any runner：PENDING claimed as RUNNING → worker hard exits → Beat 在持久化 deadline 后收敛为 TIMEOUT
+Scheduled skip/queue：stale RUNNING 最多阻塞至用户超时 + callback grace + 下一轮 Beat 扫描
 ```
 
 应建立唯一 `TerminalReducer.complete(execution_id, expected_version, outcome)`：
@@ -215,7 +216,7 @@ Scheduled skip/queue：stale RUNNING counted as active → future schedule keeps
 |---|---|---|---|---|
 | P0 | 远程执行缺少统一可信主体 | legacy `job_script_execute/job_file_distribute` 信任消息体 team；旧文件分发默认开启 | 每个入口重复身份、团队和目标校验，新功能容易落在较弱路径 | 总线 ACL 失配时可跨团队执行脚本/分发文件；危险规则也基于伪造 team |
 | P0 | 终态与完成副作用双轨 | Sidecar/同步失败直接终态 + best-effort callback；Ansible/取消走 Outbox | 新 Runner 必须自行选择终态写法，语义继续分叉 | 崩溃窗口导致 callback/sentinel 丢失或重复，无法统一审计和补偿 |
-| P0 | RUNNING 无执行租约 | claim 后只有状态，没有 heartbeat/lease/reaper | 无法回答“任务还活着还是 worker 已死”，人工处理成为正常流程 | stale RUNNING 永久占用 scheduled skip/queue；远端结果与本地状态漂移 |
+| P1 | RUNNING 仅有粗粒度 deadline | claim/批次开始会续期，Beat 可回收过期任务；尚无独立 attempt、heartbeat/fencing token | 能避免永久 RUNNING，但无法精确回答“任务还活着还是 worker 已死”或恢复单个目标 | 长批次按用户超时粗粒度判断；远端副作用仍可能晚于本地 TIMEOUT |
 | P1 | 第一个目标决定执行路径 | driver 只看首目标，多区域只执行第一组 | 增加 driver/region 组合会形成更多条件分支和隐式约束 | 合法请求只执行部分目标；回调补失败不能恢复遗漏的远端操作 |
 | P1 | 单行结果聚合 | 全目标、stdout/stderr、文件明细写一个 JSON 行 | 字段 shape 变化影响模型、serializer、callback、stream fallback | 内存/行锁/DB/响应/消息载荷随目标和输出乘法增长；不能增量恢复 |
 | P1 | 并发仅局部受控 | 每 execution ≤10 线程，无平台/团队/区域/执行器预算 | 扩 worker 或新增 Runner 会改变全局压力，没有稳定容量契约 | 高峰可压垮 NATS/SSH/Ansible/目标网络；团队间互相抢占 |
@@ -310,13 +311,14 @@ WorkItem: READY → RUNNING → {SUCCESS, FAILED, CANCELLED, UNKNOWN}
 
 验收：任一路径 terminal 后都能查询到预期 outbox records；模拟事务提交后 worker 退出，Beat 能完成投递；重复 complete 不生成重复副作用。
 
-#### C. 增加执行 lease、heartbeat 与 stale reaper
+#### C. 从执行 deadline 演进到 attempt lease 与 heartbeat
 
-1. 在不引入 WorkItem 前，先给 JobExecution 增加 `attempt_id/lease_expires_at/heartbeat_at`；
-2. Runner 在每批目标之间、Ansible 提交前后刷新 heartbeat；
-3. Beat 将过期 RUNNING 标记为 `LOST` 或进入 reconcile，而不是直接假设 FAILED；
-4. Ansible 结合 callback attempt 决定等待、查询或失败；Sidecar 对已落日志/结果做最大程度恢复；
-5. scheduled concurrency 判断不把已过 lease 的 RUNNING 永久视为 active。
+1. 已完成第一阶段：`JobExecution.converge_deadline_at`、批次续期和 Beat stale reaper，避免 `PENDING/RUNNING` 永久悬挂；
+2. 在不引入 WorkItem 前，再给 JobExecution 增加 `attempt_id/lease_expires_at/heartbeat_at`；
+3. Runner 在每批目标之间、Ansible 提交前后刷新 heartbeat；
+4. Beat 将过期 RUNNING 标记为 `LOST` 或进入 reconcile，而不是直接假设 FAILED；
+5. Ansible 结合 callback attempt 决定等待、查询或失败；Sidecar 对已落日志/结果做最大程度恢复；
+6. scheduled concurrency 判断不把已过 lease 的 RUNNING 永久视为 active。
 
 验收：kill worker 后在明确窗口内收敛；stale execution 不永久阻塞 schedule；迟到 callback 受 fencing 控制且不覆盖新 attempt。
 

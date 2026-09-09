@@ -4,14 +4,20 @@
 # @Author: windyzhao
 import re
 
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from apps.cmdb.constants.constants import PERMISSION_TASK, CollectPluginTypes, CollectRunStatusType
+from apps.cmdb.collection.physical_server_protocol import (
+    PHYSICAL_SERVER_MODEL_ID,
+    PHYSICAL_SERVER_PROTOCOLS,
+    normalize_physical_server_protocol,
+    resolve_physical_server_plugin_id,
+)
+from apps.cmdb.constants.constants import PERMISSION_TASK, CollectDriverTypes, CollectPluginTypes, CollectRunStatusType
 from apps.cmdb.filters.collect_filters import CollectModelFilter, OidModelFilter
 from apps.cmdb.models.collect_model import CollectModels, OidMapping
 from apps.cmdb.node_configs.config_factory import NodeParamsFactory
@@ -19,7 +25,6 @@ from apps.cmdb.permissions.inst_task_permission import InstanceTaskPermission
 from apps.cmdb.serializers.collect_serializer import (
     COLLECT_RESULT_PAYLOAD_FIELDS,
     CollectModelDetailSerializer,
-    CollectModelIdStatusSerializer,
     CollectModelLIstSerializer,
     CollectModelSerializer,
     OidModelSerializer,
@@ -138,7 +143,13 @@ class CollectModelViewSet(AuthViewSet):
         # Given 页面受组织与实例权限控制，When 查询任务名，Then 先应用对象权限过滤。
         queryset = self.get_queryset_by_permission(request, queryset)
         queryset = self.apply_visibility_filter(queryset).order_by("id")
-        task_list = queryset.values("id", "name", "model_id")
+        task_list = queryset.values(
+            "id",
+            "name",
+            "model_id",
+            "driver_type",
+            "params__collection_protocol",
+        )
         collect_obj_tree = get_collect_obj_tree()
         plugin_meta_map = {
             str(child.get("id")): {
@@ -150,17 +161,28 @@ class CollectModelViewSet(AuthViewSet):
             for child in item.get("children", [])
             if child.get("id")
         }
-        data = [
-            {
-                "id": item["id"],
-                "name": item["name"],
-                "plugin": item["model_id"],
-                "category": plugin_meta_map.get(str(item["model_id"]), {}).get("category"),
-                "plugin_name": plugin_meta_map.get(str(item["model_id"]), {}).get("plugin_name"),
-                "category_name": plugin_meta_map.get(str(item["model_id"]), {}).get("category_name"),
-            }
-            for item in task_list
-        ]
+
+        def resolve_plugin_id(item):
+            return resolve_physical_server_plugin_id(
+                item["model_id"],
+                item.get("driver_type"),
+                item.get("params__collection_protocol"),
+            )
+
+        data = []
+        for item in task_list:
+            plugin_id = resolve_plugin_id(item)
+            plugin_meta = plugin_meta_map.get(plugin_id, {})
+            data.append(
+                {
+                    "id": item["id"],
+                    "name": item["name"],
+                    "plugin": plugin_id,
+                    "category": plugin_meta.get("category"),
+                    "plugin_name": plugin_meta.get("plugin_name"),
+                    "category_name": plugin_meta.get("category_name"),
+                }
+            )
         return WebUtils.response_success(data)
 
     def get_serializer_class(self):
@@ -383,22 +405,35 @@ class CollectModelViewSet(AuthViewSet):
         queryset = self.get_queryset()
         filter_queryset = self.get_queryset_by_permission(request=request, queryset=queryset)
         filter_queryset = self.apply_visibility_filter(filter_queryset)
-        filter_queryset = filter_queryset.only("model_id", "driver_type", "exec_status")
-        serializer = CollectModelIdStatusSerializer(filter_queryset, many=True, context={"request": request})
+        status_rows = filter_queryset.values(
+            "model_id",
+            "driver_type",
+            "exec_status",
+            "params__collection_protocol",
+        ).annotate(total=Count("id"))
         data = {}
-        for model_data in serializer.data:
+
+        def increment(status_key, exec_status, total=1):
+            if status_key not in data:
+                data[status_key] = {"success": 0, "failed": 0, "running": 0, "partial_success": 0}
+            if exec_status == CollectRunStatusType.SUCCESS:
+                data[status_key]["success"] += total
+            elif exec_status == CollectRunStatusType.ERROR:
+                data[status_key]["failed"] += total
+            elif exec_status == CollectRunStatusType.RUNNING:
+                data[status_key]["running"] += total
+            elif exec_status == CollectRunStatusType.PARTIAL_SUCCESS:
+                data[status_key]["partial_success"] += total
+
+        for model_data in status_rows:
             driver_type = model_data.get("driver_type") or ""
             status_key = f"{model_data['model_id']}__{driver_type}" if driver_type else model_data["model_id"]
-            if not data.get(status_key, False):
-                data[status_key] = {"success": 0, "failed": 0, "running": 0, "partial_success": 0}
-            if model_data["exec_status"] == CollectRunStatusType.SUCCESS:
-                data[status_key]["success"] += 1
-            elif model_data["exec_status"] == CollectRunStatusType.ERROR:
-                data[status_key]["failed"] += 1
-            elif model_data["exec_status"] == CollectRunStatusType.RUNNING:
-                data[status_key]["running"] += 1
-            elif model_data["exec_status"] == CollectRunStatusType.PARTIAL_SUCCESS:
-                data[status_key]["partial_success"] += 1
+            increment(status_key, model_data["exec_status"], model_data["total"])
+
+            if model_data["model_id"] == PHYSICAL_SERVER_MODEL_ID and driver_type == CollectDriverTypes.PROTOCOL:
+                protocol = normalize_physical_server_protocol(model_data.get("params__collection_protocol"))
+                if protocol in PHYSICAL_SERVER_PROTOCOLS:
+                    increment(f"{status_key}__{protocol}", model_data["exec_status"], model_data["total"])
         return WebUtils.response_success(data)
 
     @HasPermission("auto_collection-View")

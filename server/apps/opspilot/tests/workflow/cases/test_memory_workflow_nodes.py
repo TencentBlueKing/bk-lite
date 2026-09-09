@@ -896,7 +896,7 @@ class TestProcessMemoryWriteNoModel:
         memory_space_team.default_model = ""
         memory_space_team.save()
 
-        with patch("apps.opspilot.tasks.close_old_connections"):
+        with patch("apps.opspilot.tasks.memory.close_old_connections"):
             process_memory_write(
                 memory_space_id=memory_space_team.id,
                 title="Direct Memory",
@@ -916,7 +916,7 @@ class TestProcessMemoryWriteNoModel:
         memory_space_team.default_model = "99999"
         memory_space_team.save()
 
-        with patch("apps.opspilot.tasks.close_old_connections"):
+        with patch("apps.opspilot.tasks.memory.close_old_connections"):
             process_memory_write(
                 memory_space_id=memory_space_team.id,
                 title="Fallback Memory",
@@ -948,7 +948,7 @@ class TestProcessMemoryWriteNoExistingMemories:
             domain="test.com",
         )
 
-        with patch("apps.opspilot.tasks.close_old_connections"):
+        with patch("apps.opspilot.tasks.memory.close_old_connections"):
             process_memory_write(
                 memory_space_id=space.id,
                 title="First Memory",
@@ -1034,7 +1034,7 @@ class TestProcessMemoryWriteWithLLM:
         mock_client = MagicMock()
         mock_client.invoke.return_value = mock_response
 
-        with patch("apps.opspilot.tasks.close_old_connections"):
+        with patch("apps.opspilot.tasks.memory.close_old_connections"):
             with patch("apps.opspilot.metis.llm.common.llm_client_factory.LLMClientFactory.create_client", return_value=mock_client):
                 process_memory_write(
                     memory_space_id=memory_space_team.id,
@@ -1070,7 +1070,7 @@ class TestProcessMemoryWriteWithLLM:
         mock_client = MagicMock()
         mock_client.invoke.return_value = mock_response
 
-        with patch("apps.opspilot.tasks.close_old_connections"):
+        with patch("apps.opspilot.tasks.memory.close_old_connections"):
             with patch("apps.opspilot.metis.llm.common.llm_client_factory.LLMClientFactory.create_client", return_value=mock_client):
                 process_memory_write(
                     memory_space_id=memory_space_team.id,
@@ -1103,7 +1103,7 @@ class TestProcessMemoryWriteWithLLM:
 
         initial_count = Memory.objects.filter(memory_space=memory_space_team).count()
 
-        with patch("apps.opspilot.tasks.close_old_connections"):
+        with patch("apps.opspilot.tasks.memory.close_old_connections"):
             with patch("apps.opspilot.metis.llm.common.llm_client_factory.LLMClientFactory.create_client", return_value=mock_client):
                 process_memory_write(
                     memory_space_id=memory_space_team.id,
@@ -1147,7 +1147,7 @@ class TestProcessMemoryWriteWriteRule:
         mock_client = MagicMock()
         mock_client.invoke.side_effect = mock_invoke
 
-        with patch("apps.opspilot.tasks.close_old_connections"):
+        with patch("apps.opspilot.tasks.memory.close_old_connections"):
             with patch("apps.opspilot.metis.llm.common.llm_client_factory.LLMClientFactory.create_client", return_value=mock_client):
                 process_memory_write(
                     memory_space_id=memory_space_team.id,
@@ -1160,42 +1160,31 @@ class TestProcessMemoryWriteWriteRule:
         # write_rule should have been invoked
         assert call_count[0] >= 1
 
-    def test_write_rule_error_uses_original_content(self, memory_space_team):
-        """write_rule error falls back to original content."""
-        from apps.opspilot.tasks import process_memory_write
+    def test_write_rule_error_does_not_write_original_content(self, memory_space_team):
+        """write_rule LLM 失败时推迟写入，不把原文落入记忆。"""
+        from apps.opspilot.tasks import MemoryWriteLlmUnavailable, process_memory_write
 
         llm_model = create_test_llm_model(None)
         memory_space_team.default_model = str(llm_model.id)
         memory_space_team.write_rule = "Extract facts"
         memory_space_team.save()
 
-        call_count = [0]
-
-        def mock_invoke(messages):
-            call_count[0] += 1
-            if call_count[0] == 1:
-                # First call: write_rule fails
-                raise Exception("LLM error")
-            mock_resp = MagicMock()
-            mock_resp.content = '{"action": "create", "memory_id": null, "title": "Test", "content": "Original content"}'
-            return mock_resp
-
         mock_client = MagicMock()
-        mock_client.invoke.side_effect = mock_invoke
+        mock_client.invoke.side_effect = Exception("LLM error")
 
-        with patch("apps.opspilot.tasks.close_old_connections"):
+        with patch("apps.opspilot.tasks.memory.close_old_connections"):
             with patch("apps.opspilot.metis.llm.common.llm_client_factory.LLMClientFactory.create_client", return_value=mock_client):
-                process_memory_write(
-                    memory_space_id=memory_space_team.id,
-                    title="Test",
-                    content="Original content",
-                    owner_username="alice",
-                    owner_domain="test.com",
-                )
+                with pytest.raises(MemoryWriteLlmUnavailable) as exc_info:
+                    process_memory_write(
+                        memory_space_id=memory_space_team.id,
+                        title="Test",
+                        content="Original content",
+                        owner_username="alice",
+                        owner_domain="test.com",
+                    )
 
-        # Should still create memory with original content
-        memory = Memory.objects.filter(memory_space=memory_space_team, title="Test").first()
-        assert memory is not None
+        assert exc_info.value.failed_stage == "write_rule"
+        assert Memory.objects.filter(memory_space=memory_space_team, title="Test").count() == 0
 
 
 @pytest.mark.django_db
@@ -1219,7 +1208,7 @@ class TestProcessMemoryWriteUpdateTargetNotFound:
 
         initial_count = Memory.objects.filter(memory_space=memory_space_team).count()
 
-        with patch("apps.opspilot.tasks.close_old_connections"):
+        with patch("apps.opspilot.tasks.memory.close_old_connections"):
             with patch("apps.opspilot.metis.llm.common.llm_client_factory.LLMClientFactory.create_client", return_value=mock_client):
                 process_memory_write(
                     memory_space_id=memory_space_team.id,
@@ -1561,8 +1550,8 @@ class TestProcessMemoryWriteCacheBatching:
     def test_below_threshold_only_buffers(self, memory_space_team):
         from apps.opspilot.tasks import process_memory_write_cache
 
-        with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks._apply_memory_write_plan") as mock_write:
+        with patch("apps.opspilot.tasks.memory.close_old_connections"):
+            with patch("apps.opspilot.tasks.memory._apply_memory_write_plan") as mock_write:
                 process_memory_write_cache(
                     memory_space_id=memory_space_team.id,
                     title="Batch Memory",
@@ -1580,8 +1569,8 @@ class TestProcessMemoryWriteCacheBatching:
     def test_threshold_reached_writes_once_and_clears_cache(self, memory_space_team):
         from apps.opspilot.tasks import process_memory_write_cache
 
-        with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks._apply_memory_write_plan") as mock_write:
+        with patch("apps.opspilot.tasks.memory.close_old_connections"):
+            with patch("apps.opspilot.tasks.memory._apply_memory_write_plan") as mock_write:
                 process_memory_write_cache(
                     memory_space_id=memory_space_team.id,
                     title="Batch Memory",
@@ -1620,8 +1609,8 @@ class TestProcessMemoryWriteCacheBatching:
             content="event-1",
         )
 
-        with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks._apply_memory_write_plan") as mock_write:
+        with patch("apps.opspilot.tasks.memory.close_old_connections"):
+            with patch("apps.opspilot.tasks.memory._apply_memory_write_plan") as mock_write:
                 flush_memory_write_cache_for_node(
                     workflow_id=1001,
                     node_id="memory_write_node",
@@ -1652,7 +1641,7 @@ class TestProcessMemoryWriteCacheBatching:
             if close_call_count > 1 and connection.in_atomic_block:
                 raise AssertionError("must not close DB connections inside the flush write transaction")
 
-        with patch("apps.opspilot.tasks.close_old_connections", side_effect=fail_if_final_write_closes_inside_atomic):
+        with patch("apps.opspilot.tasks.memory.close_old_connections", side_effect=fail_if_final_write_closes_inside_atomic):
             flush_memory_write_cache_for_node(
                 workflow_id=1001,
                 node_id="memory_write_node",
@@ -1706,7 +1695,7 @@ class TestProcessMemoryWriteCacheBatching:
 
         mock_client.invoke.side_effect = invoke
 
-        with patch("apps.opspilot.tasks.close_old_connections"):
+        with patch("apps.opspilot.tasks.memory.close_old_connections"):
             with patch(
                 "apps.opspilot.metis.llm.common.llm_client_factory.LLMClientFactory.create_client",
                 return_value=mock_client,
@@ -1887,8 +1876,8 @@ class TestProcessMemoryWriteCacheBatching:
         )
         MemoryWriteCache.objects.filter(id=cache.id).update(created_at=timezone.now() - timedelta(seconds=MEMORY_WRITE_PROCESSING_TTL_SECONDS + 1))
 
-        with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks._apply_memory_write_plan") as mock_write:
+        with patch("apps.opspilot.tasks.memory.close_old_connections"):
+            with patch("apps.opspilot.tasks.memory._apply_memory_write_plan") as mock_write:
                 flush_memory_write_cache_for_node(
                     workflow_id=1001,
                     node_id="memory_write_node",
@@ -1910,8 +1899,8 @@ class TestProcessMemoryWriteCacheBatching:
             status=MemoryWriteCache.STATUS_PROCESSING,
         )
 
-        with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks._apply_memory_write_plan") as mock_write:
+        with patch("apps.opspilot.tasks.memory.close_old_connections"):
+            with patch("apps.opspilot.tasks.memory._apply_memory_write_plan") as mock_write:
                 flush_memory_write_cache_for_node(
                     workflow_id=1001,
                     node_id="memory_write_node",
@@ -1934,8 +1923,8 @@ class TestProcessMemoryWriteCacheBatching:
             processing_started_at=timezone.now() - timedelta(seconds=MEMORY_WRITE_PROCESSING_TTL_SECONDS + 1),
         )
 
-        with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks._apply_memory_write_plan") as mock_write:
+        with patch("apps.opspilot.tasks.memory.close_old_connections"):
+            with patch("apps.opspilot.tasks.memory._apply_memory_write_plan") as mock_write:
                 flush_memory_write_cache_for_node(
                     workflow_id=1001,
                     node_id="memory_write_node",
@@ -1958,8 +1947,8 @@ class TestProcessMemoryWriteCacheBatching:
             processing_started_at=timezone.now(),
         )
 
-        with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks._apply_memory_write_plan") as mock_write:
+        with patch("apps.opspilot.tasks.memory.close_old_connections"):
+            with patch("apps.opspilot.tasks.memory._apply_memory_write_plan") as mock_write:
                 flush_memory_write_cache_for_node(
                     workflow_id=1001,
                     node_id="memory_write_node",
@@ -2040,7 +2029,7 @@ class TestMemoryWriteCacheFlushTriggers:
         )
         MemoryWriteCache.objects.create(workflow_id=workflow.id, node_id="memory_write_node", memory_target_id="1", content="event-1")
 
-        with patch("apps.opspilot.tasks.close_old_connections"):
+        with patch("apps.opspilot.tasks.memory.close_old_connections"):
             with patch("apps.opspilot.tasks.flush_memory_write_cache_for_node") as mock_flush:
                 flush_all_pending_memory_write_cache()
 
@@ -2100,7 +2089,7 @@ class TestMemoryWriteCacheFlushTriggers:
                 content=f"event-{index + 1}",
             )
 
-        with patch("apps.opspilot.tasks.close_old_connections"):
+        with patch("apps.opspilot.tasks.memory.close_old_connections"):
             with patch("apps.opspilot.tasks.flush_memory_write_cache_for_node") as mock_flush:
                 with django_assert_num_queries(3):
                     flush_all_pending_memory_write_cache()
@@ -2125,8 +2114,8 @@ class TestMemoryWriteCacheFlushTriggers:
     def test_batching_isolated_by_node_and_memory_target(self, memory_space_personal):
         from apps.opspilot.tasks import process_memory_write_cache
 
-        with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks._apply_memory_write_plan") as mock_write:
+        with patch("apps.opspilot.tasks.memory.close_old_connections"):
+            with patch("apps.opspilot.tasks.memory._apply_memory_write_plan") as mock_write:
                 process_memory_write_cache(
                     memory_space_id=memory_space_personal.id,
                     title="Batch Memory",
@@ -2165,8 +2154,8 @@ class TestMemoryWriteCacheFlushTriggers:
     def test_batch_size_one_keeps_immediate_write_behavior(self, memory_space_team):
         from apps.opspilot.tasks import process_memory_write_cache
 
-        with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks._apply_memory_write_plan") as mock_write:
+        with patch("apps.opspilot.tasks.memory.close_old_connections"):
+            with patch("apps.opspilot.tasks.memory._apply_memory_write_plan") as mock_write:
                 process_memory_write_cache(
                     memory_space_id=memory_space_team.id,
                     title="Immediate Memory",
@@ -2194,8 +2183,8 @@ class TestMemoryWriteCacheFlushTriggers:
         mock_client = MagicMock()
         mock_client.invoke.return_value = mock_response
 
-        with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks._apply_memory_write_plan") as mock_write:
+        with patch("apps.opspilot.tasks.memory.close_old_connections"):
+            with patch("apps.opspilot.tasks.memory._apply_memory_write_plan") as mock_write:
                 with patch(
                     "apps.opspilot.metis.llm.common.llm_client_factory.LLMClientFactory.create_client",
                     return_value=mock_client,
@@ -2236,8 +2225,8 @@ class TestMemoryWriteCacheFlushTriggers:
         mock_client = MagicMock()
         mock_client.invoke.side_effect = Exception("summary failed")
 
-        with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks._apply_memory_write_plan") as mock_write:
+        with patch("apps.opspilot.tasks.memory.close_old_connections"):
+            with patch("apps.opspilot.tasks.memory._apply_memory_write_plan") as mock_write:
                 with patch(
                     "apps.opspilot.metis.llm.common.llm_client_factory.LLMClientFactory.create_client",
                     return_value=mock_client,
@@ -2480,7 +2469,7 @@ def test_memory_write_cache_flush_timing_and_org(mocker):
     )
     bot = Bot.objects.create(name="b-mem", team=[5], created_by="admin")
     wf = BotWorkFlow.objects.create(bot=bot, flow_json={"nodes": [], "edges": []})
-    mocker.patch("apps.opspilot.tasks.close_old_connections")
+    mocker.patch("apps.opspilot.tasks.memory.close_old_connections")
 
     def call(content):
         process_memory_write_cache(
@@ -2596,7 +2585,7 @@ class TestWriteRulePromptInjectionGuard:
         mock_client = MagicMock()
         mock_client.invoke.side_effect = mock_invoke
 
-        with patch("apps.opspilot.tasks.close_old_connections"):
+        with patch("apps.opspilot.tasks.memory.close_old_connections"):
             with patch(
                 "apps.opspilot.metis.llm.common.llm_client_factory.LLMClientFactory.create_client",
                 return_value=mock_client,

@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 
 from django.db.models import Q, QuerySet
 
+from apps.alerts.utils.enrichment import enrichment_orm_lookups, is_enrichment_path
 from apps.core.logger import alert_logger as logger
 
 
@@ -145,6 +146,9 @@ class RuleMatcher:
         operator = rule.get("operator", "eq")
         value = rule.get("value", "")
         model_field = self.field_mapping.get(key)
+        legacy_model_field = None
+        if not model_field and is_enrichment_path(key):
+            model_field, legacy_model_field = enrichment_orm_lookups(key)
 
         if not model_field:
             logger.warning("[AlertUtil] 未知字段键: %s", key)
@@ -157,16 +161,26 @@ class RuleMatcher:
         try:
             if operator == "eq":
                 if isinstance(value, list):
-                    return Q(**{f"{model_field}__in": value})
-                return Q(**{model_field: value})
+                    query = Q(**{f"{model_field}__in": value})
+                    legacy_query = Q(**{f"{legacy_model_field}__in": value}) if legacy_model_field else Q()
+                else:
+                    query = Q(**{model_field: value})
+                    legacy_query = Q(**{legacy_model_field: value}) if legacy_model_field else Q()
+                return query | legacy_query if legacy_model_field else query
             elif operator == "ne":
                 if isinstance(value, list):
-                    return ~Q(**{f"{model_field}__in": value})
-                return ~Q(**{model_field: value})
+                    query = Q(**{f"{model_field}__in": value})
+                    legacy_query = Q(**{f"{legacy_model_field}__in": value}) if legacy_model_field else Q()
+                else:
+                    query = Q(**{model_field: value})
+                    legacy_query = Q(**{legacy_model_field: value}) if legacy_model_field else Q()
+                return ~(query | legacy_query) if legacy_model_field else ~query
             elif operator == "contains":
-                return Q(**{f"{model_field}__icontains": value})
+                query = Q(**{f"{model_field}__icontains": value})
+                return query | Q(**{f"{legacy_model_field}__icontains": value}) if legacy_model_field else query
             elif operator == "not_contains":
-                return ~Q(**{f"{model_field}__icontains": value})
+                query = Q(**{f"{model_field}__icontains": value})
+                return ~(query | Q(**{f"{legacy_model_field}__icontains": value})) if legacy_model_field else ~query
             elif operator == "re":
                 # 验证正则表达式有效性
                 try:
@@ -174,7 +188,8 @@ class RuleMatcher:
                 except regex_module.error as e:
                     logger.error("[AlertUtil] 无效的正则表达式 '%s': %s", value, e)
                     return None
-                return Q(**{f"{model_field}__iregex": value})
+                query = Q(**{f"{model_field}__iregex": value})
+                return query | Q(**{f"{legacy_model_field}__iregex": value}) if legacy_model_field else query
             else:
                 logger.warning("[AlertUtil] 未知操作符: %s", operator)
                 return None

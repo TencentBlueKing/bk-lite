@@ -24,14 +24,14 @@
   "nodes": [
     {"id": "sources", "type": "external", "label": "原始事件", "sublabel": "HTTP / NATS / 监控源", "stage": 0, "row": 2, "width": 120, "tag": "多租户来源"},
     {"id": "adapters", "type": "backend", "label": "Source Adapter", "sublabel": "认证 / 映射 / 校验 / 幂等", "stage": 1, "row": 0, "width": 150, "tag": "批次 100"},
-    {"id": "enrichment", "type": "backend", "label": "Enrichment", "sublabel": "CMDB 批量查询 / 60s 缓存", "stage": 1, "row": 1, "width": 150, "tag": "同步 best-effort"},
+    {"id": "enrichment", "type": "backend", "label": "Enrichment", "sublabel": "CMDB 批量查询 / 3s 超时 / 60s 缓存", "stage": 1, "row": 1, "width": 170, "tag": "30s 熔断 · best-effort"},
     {"id": "events", "type": "database", "label": "Event Facts", "sublabel": "原文 / 标准字段 / team / action", "stage": 1, "row": 2, "width": 150, "tag": "唯一 ingest_key"},
     {"id": "shield", "type": "security", "label": "Shield Gate", "sublabel": "匹配活跃屏蔽策略", "stage": 1, "row": 3, "width": 150, "tag": "先于建警"},
     {"id": "instant", "type": "backend", "label": "即时检测", "sublabel": "缓存策略 / 有界异步建警", "stage": 2, "row": 0, "width": 150, "tag": "旁路"},
     {"id": "batch", "type": "backend", "label": "周期聚合与缺失检测", "sublabel": "单例锁 / Pandas + DuckDB", "stage": 2, "row": 2, "width": 150, "tag": "每分钟"},
     {"id": "recovery", "type": "backend", "label": "恢复匹配", "sublabel": "来源 / 外部标识 / team", "stage": 2, "row": 4, "width": 150, "tag": "禁止跨源"},
     {"id": "lease", "type": "database", "label": "Active Fingerprint", "sublabel": "数据库唯一活跃租约", "stage": 3, "row": 0, "width": 150, "tag": "并发裁决"},
-    {"id": "alerts", "type": "database", "label": "Alert Facts", "sublabel": "状态 / 责任人 / 维度 / 事件", "stage": 3, "row": 2, "width": 150, "tag": "运营事实"},
+    {"id": "alerts", "type": "database", "label": "Alert Facts", "sublabel": "状态 / 责任人 / 丰富维度 / 事件", "stage": 3, "row": 2, "width": 170, "tag": "可筛选 / 分派 / 通知"},
     {"id": "lifecycle_outbox", "type": "messagebus", "label": "Lifecycle + Outbox", "sublabel": "分派 / 通知 / action", "stage": 3, "row": 4, "width": 150, "tag": "幂等重试"},
     {"id": "effects", "type": "external", "label": "运营与自动化", "sublabel": "责任人 / 通道 / Job / Incident", "stage": 4, "row": 2, "width": 155, "tag": "外部副作用"}
   ],

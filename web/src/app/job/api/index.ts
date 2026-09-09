@@ -192,6 +192,7 @@ const useJobApi = () => {
   const queryNodes = async (
     params: {
       cloud_region_id?: number;
+      keyword?: string;
       name?: string;
       ip?: string;
       os?: string;

@@ -18,6 +18,7 @@ from apps.core.utils.exempt import api_exempt
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.team_utils import get_current_team
 from apps.opspilot.enum import WorkFlowTaskStatus
+from apps.opspilot.metis.llm.common.llm_client_factory import DEFAULT_CHAT_TEMPERATURE
 from apps.opspilot.models import Bot, BotChannel, BotWebChatSession, BotWorkFlow, LLMSkill, WorkFlowTaskResult
 from apps.opspilot.serializers.request_serializers import InterruptChatFlowRequestSerializer
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY, CallerIdentityError, capture_caller_identity, mark_api_secret_identity
@@ -228,11 +229,11 @@ def get_skill_and_params(kwargs, team, bot_id=None):
     params = {  # pragma: no cover
         "llm_model": skill_obj.llm_model_id,
         "skill_prompt": kwargs.get("prompt", "") or kwargs.get("skill_prompt", "") or skill_obj.skill_prompt,
-        "temperature": pick_request_value(kwargs, "temperature", skill_obj.temperature),
+        "temperature": DEFAULT_CHAT_TEMPERATURE,
         "chat_history": chat_history,
         "user_message": chat_history[-1]["message"],
         "conversation_window_size": num,
-        "show_think": skill_obj.show_think,
+        "show_think": False,
         "tools": skill_obj.tools,
         "skill_type": skill_obj.skill_type,
         "group": skill_obj.team[0],
@@ -390,6 +391,7 @@ def get_skill_execute_result(bot_id, channel, chat_history, kwargs, request, sen
             user_message=user_message,
         )
     return result
+
 
 @api_exempt
 async def execute_chat_flow(request, bot_id, node_id):  # pragma: no cover
@@ -596,6 +598,7 @@ def interrupt_chat_flow_execution(request):  # pragma: no cover
         }
     )
 
+
 @api_exempt
 def execute_chat_flow_wechat_official(request, bot_id):  # pragma: no cover
     """微信公众号ChatFlow执行入口
@@ -732,4 +735,3 @@ def execute_chat_flow_dingtalk(request, bot_id):  # pragma: no cover
 
     # 5. 处理HTTP回调模式的消息
     return dingtalk_utils.handle_dingtalk_message(request, bot_chat_flow, dingtalk_config)  # pragma: no cover
-

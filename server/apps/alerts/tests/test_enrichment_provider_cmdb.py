@@ -26,6 +26,7 @@ def test_fetch_batch_groups_by_model_and_batches_uuids(mock_cmdb_cls):
             "inst_uuids": [U1, U2],
             "organization_ids": [7],
         },
+        _timeout=3,
     )
     assert out[k1] == [{"owner": "alice"}]
     assert out[k2] == [{"owner": "bob"}]
@@ -39,3 +40,40 @@ def test_fetch_batch_miss_returns_empty_list(mock_cmdb_cls):
     k = build_binding_key({"model_id": "host", "inst_uuid": U1})
     out = CMDBProvider().fetch_batch([k], {"_authorized_team_ids": [7]})
     assert out[k] == []
+
+
+@patch("apps.alerts.enrichment.providers.cmdb.CMDB")
+def test_fetch_batch_marks_failed_keys_instead_of_real_miss(mock_cmdb_cls):
+    inst = MagicMock()
+    mock_cmdb_cls.return_value = inst
+    inst.search_instances_batch.side_effect = TimeoutError("rpc timeout")
+    key = build_binding_key({"model_id": "host", "inst_uuid": U1})
+
+    result = CMDBProvider().fetch_batch([key], {"_authorized_team_ids": [7]})
+
+    assert result.records[key] == []
+    assert result.failed_keys == {key}
+    inst.search_instances_batch.assert_called_once_with(
+        params={
+            "protocol_version": "2",
+            "model_id": "host",
+            "inst_uuids": [U1],
+            "organization_ids": [7],
+        },
+        _timeout=3,
+    )
+
+
+@patch("apps.alerts.enrichment.providers.cmdb.monotonic", return_value=10.0)
+@patch("apps.alerts.enrichment.providers.cmdb.CMDB")
+def test_fetch_batch_does_not_start_group_after_deadline(mock_cmdb_cls, _mock_clock):
+    key = build_binding_key({"model_id": "host", "inst_uuid": U1})
+
+    result = CMDBProvider().fetch_batch(
+        [key],
+        {"_authorized_team_ids": [7], "_deadline_at": 9.0},
+    )
+
+    assert result.failed_keys == {key}
+    assert result.budget_exhausted_keys == {key}
+    mock_cmdb_cls.return_value.search_instances_batch.assert_not_called()

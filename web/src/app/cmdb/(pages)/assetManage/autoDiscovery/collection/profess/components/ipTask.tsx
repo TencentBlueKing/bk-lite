@@ -10,7 +10,11 @@ import {
   getCycleFormValues,
 } from '../hooks/useTaskForm';
 import { TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
-import { IP_DISCOVERY_FORM_INITIAL_VALUES, resolveIpDiscoveryFormTimeout } from '@/app/cmdb/constants/professCollection';
+import {
+  IP_DISCOVERY_FORM_INITIAL_VALUES,
+  IP_DISCOVERY_MIN_TIMEOUT_SECONDS,
+  resolveIpDiscoveryFormTimeout,
+} from '@/app/cmdb/constants/professCollection';
 import { formatTaskValues } from '../hooks/formatTaskValues';
 import { useInstanceApi } from '@/app/cmdb/api';
 import { Form, Spin, Alert, Radio, Input, Modal, Select } from 'antd';
@@ -274,7 +278,7 @@ const IpTask: React.FC<IpTaskFormProps> = ({
           submitLoading={submitLoading}
           showAdvanced={true}
           timeoutProps={{
-            min: 1,
+            min: IP_DISCOVERY_MIN_TIMEOUT_SECONDS,
             addonAfter: t('Collection.k8sTask.second'),
             tooltip: t('Collection.IPTask.timeoutTooltip'),
           }}

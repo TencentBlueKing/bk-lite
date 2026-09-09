@@ -66,14 +66,17 @@ const OperateModal: React.FC<OperateModalProps> = ({
       setFilterType('all');
       form.setFieldsValue({
         provider_type: 'cmdb',
-        namespace: 'cmdb',
+        namespace: 'cmdb_custom',
         match_rules: DEFAULT_MATCH_RULES,
         on_multiple: 'first',
         input_binding: [
           { param: 'model_id', field: 'resource_type' },
-          { param: '_id', field: 'resource_id' },
+          { param: 'inst_uuid', field: 'resource_id' },
         ],
-        output_projection: [],
+        output_projection: [
+          { source: 'owner', as: '' },
+          { source: 'business_system', as: '' },
+        ],
       });
     }
   }, [open, isEdit, currentRow, form]);
@@ -184,7 +187,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
           tooltip={t('settings.enrichmentNamespaceTip')}
           rules={[{ required: true, message: t('common.inputTip') }]}
         >
-          <Input placeholder="cmdb" />
+          <Input placeholder="cmdb_custom" />
         </Form.Item>
 
         <Form.Item
@@ -261,7 +264,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
           </Form.List>
         </Form.Item>
 
-        <Form.Item label={t('settings.enrichmentOutputProjection')}>
+        <Form.Item label={t('settings.enrichmentOutputProjection')} required>
           <Form.List name="output_projection">
             {(fields, { add, remove }) => (
               <>

@@ -11,6 +11,7 @@
 - schedule_delayed_sync_if_needed（阈值/类型/非法值分支，mock transaction.on_commit）。
 仅 mock 真实外部边界：NodeMgmt RPC、Stargazer RPC、transaction.on_commit。
 """
+import json
 import types
 
 import pydantic.root_model  # noqa
@@ -118,6 +119,7 @@ def patch_transaction_callbacks(mocker):
     callbacks = []
     mocker.patch("apps.cmdb.services.collect_service.transaction.atomic", return_value=FakeAtomic())
     mocker.patch("apps.cmdb.services.collect_service.transaction.on_commit", side_effect=callbacks.append)
+    mocker.patch.object(CollectModelService, "schedule_first_collection_if_needed", return_value=None)
     return callbacks
 
 
@@ -609,13 +611,14 @@ def test_exec_task_passes_execution_token_to_sync_collect_task(settings, mocker)
     )
     mocker.patch("apps.cmdb.services.collect_service.create_change_record")
 
-    CollectModelService.exec_task(task, operator="tester")
+    response = CollectModelService.exec_task(task, operator="tester")
 
     assert called["saved_status"] == CollectRunStatusType.RUNNING
     assert called["saved_task_id"]
     assert called["sync_task_id"] == task.id
     assert called["sync_execution_id"] == called["saved_task_id"]
     assert called["resolve_latest_round"] is True
+    assert json.loads(response.content)["data"] == {"id": task.id, "execution_id": called["saved_task_id"]}
 
 
 def test_exec_task_defers_celery_publish_until_transaction_commit(settings, mocker):

@@ -19,6 +19,8 @@ class JobExecution(TimeInfo, MaintainerInfo):
     class TerminalSource(models.TextChoices):
         ANSIBLE_CALLBACK = "ansible_callback", "Ansible 真实回调"
         CANCEL_TIMEOUT = "cancel_timeout", "取消超时兜底"
+        EXECUTION_TIMEOUT = "execution_timeout", "执行超时兜底"
+        DISPATCH_TIMEOUT = "dispatch_timeout", "调度超时兜底"
 
     name = models.CharField(max_length=256, verbose_name="作业名称")
 
@@ -38,6 +40,11 @@ class JobExecution(TimeInfo, MaintainerInfo):
         blank=True,
         db_index=True,
         verbose_name="取消兜底收敛时间",
+    )
+    converge_deadline_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="执行状态收敛截止时间",
     )
     callback_attempt_id = models.CharField(
         max_length=64,
@@ -131,6 +138,7 @@ class JobExecution(TimeInfo, MaintainerInfo):
         ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["scheduled_task", "status"], name="jobexec_task_status_idx"),
+            models.Index(fields=["status", "converge_deadline_at"], name="jobexec_status_deadline_idx"),
         ]
 
     def __str__(self):

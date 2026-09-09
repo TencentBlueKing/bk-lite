@@ -36,6 +36,7 @@ from tasks.collectors.host_collector import (  # noqa: E402
     _extract_json_payload,
     build_script,
     classify_ansible_failure,
+    encode_ansible_raw_module_args,
     extract_ansible_failure_summary,
     parse_metrics_to_prometheus,
 )
@@ -308,6 +309,16 @@ class TestBuildScript:
         assert script.endswith(f"{LINUX_SCRIPT_WRAPPER_EOF}\n")
         assert "--noprofile --norc" in script
         assert "LC_ALL=C" in script
+
+    def test_aix_script_is_wrapped_with_ksh_heredoc(self):
+        from tasks.collectors.aix_os_monitor import AIX_COLLECT_EOF, AIX_KSH_PREFIX
+
+        script = build_script("aix", ["cpu"])
+
+        assert script.startswith(f"{AIX_KSH_PREFIX} <<'{AIX_COLLECT_EOF}'\n")
+        assert script.endswith(f"{AIX_COLLECT_EOF}\n")
+        assert "ksh -c" not in script
+        assert "PAGE_SIZE" in script
 
     def test_windows_all_modules(self):
         script = build_script("windows", ["cpu", "mem", "disk", "net"])
@@ -1107,6 +1118,16 @@ class TestHostCollectorHelpers:
 
         assert _escape_prometheus_label_value(value) == 'foo\\"bar\\\\baz\\nqux'
 
+    def test_encode_ansible_raw_module_args_wraps_aix_heredoc_as_json_raw_params(self):
+        command = build_script("aix", ["cpu"])
+        encoded = encode_ansible_raw_module_args(command)
+
+        assert encoded.startswith("{")
+        assert encoded.endswith("}")
+        parsed = json.loads(encoded)
+        assert parsed["_raw_params"] == command
+        assert "ksh -c" not in command
+
 
 class TestHostCollectorCredentialDecoding:
     """前端对 encrypted 字段做了 encodeURIComponent，后端需在送往 SSH/WinRM 前解码还原。"""
@@ -1125,6 +1146,26 @@ class TestHostCollectorCredentialDecoding:
         config = collector._resolve_execution_config()
 
         assert config["host_credentials"][0]["password"] == "CW@roger1117!@#"
+        assert json.loads(config["module_args"])["_raw_params"].startswith(f"{LINUX_SCRIPT_WRAPPER_PREFIX} <<'{LINUX_SCRIPT_WRAPPER_EOF}'\n")
+
+    def test_aix_password_is_url_decoded(self):
+        collector = HostCollector(
+            {
+                "host": "10.53.0.150",
+                "os_type": "aix",
+                "username": "root",
+                "password": "aix%40pass2021",
+                "ansible_node_id": "node1",
+            }
+        )
+
+        config = collector._resolve_execution_config()
+
+        assert config["host_credentials"][0]["password"] == "aix@pass2021"
+        assert config["module"] == "raw"
+        encoded_args = json.loads(config["module_args"])
+        assert encoded_args["_raw_params"].startswith("LC_ALL=C LANG=C /usr/bin/ksh <<'")
+        assert "ksh -c" not in encoded_args["_raw_params"]
 
     def test_windows_password_is_url_decoded(self):
         collector = HostCollector(
@@ -2124,7 +2165,7 @@ class TestHostCollectorCollect:
         assert "host_cpu_usage_percent" in result
         assert "25.0" in result
 
-    @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
+    @patch("core.infra.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_successful_collect_linux_uses_bash_wrapped_script(self, mock_adhoc):
         mock_adhoc.return_value = {
             "success": True,
@@ -2164,7 +2205,7 @@ class TestHostCollectorCollect:
         await collector.collect()
 
         call_kwargs = mock_adhoc.call_args[1]
-        assert call_kwargs["module_args"].startswith(f"{LINUX_SCRIPT_WRAPPER_PREFIX} <<'{LINUX_SCRIPT_WRAPPER_EOF}'\n")
+        assert json.loads(call_kwargs["module_args"])["_raw_params"].startswith(f"{LINUX_SCRIPT_WRAPPER_PREFIX} <<'{LINUX_SCRIPT_WRAPPER_EOF}'\n")
 
     @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_default_modules_when_invalid(self, mock_adhoc):
@@ -2583,11 +2624,7 @@ class TestHostRemoteProcessWorker:
         assert "Connection refused" in collector_records[0].getMessage()
         assert sentinel_password not in collector_records[0].getMessage()
 
-        handler_records = [
-            item
-            for item in caplog.records
-            if isinstance(item.msg, str) and "event=callback_process_failed" in item.msg
-        ]
+        handler_records = [item for item in caplog.records if isinstance(item.msg, str) and "event=callback_process_failed" in item.msg]
         assert len(handler_records) == 1
         handler_record = handler_records[0]
         assert handler_record.exc_info is None

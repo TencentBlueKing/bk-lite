@@ -13,6 +13,7 @@ from core.collection.round_complete import (
     is_complete_round,
     publish_round_complete_marker,
     resolve_round_marker_identity,
+    round_complete_skip_reason,
 )
 from core.collection.runtime import CollectionRequest
 
@@ -79,6 +80,51 @@ def test_complete_round_rejects_successful_targets_without_publishable_metrics()
     )
 
     assert is_complete_round(empty_success) is False
+
+
+@pytest.mark.parametrize(
+    ("request_params", "summary", "expected"),
+    (
+        (
+            {"model_id": "host", "tags": {"instance_id": "agent-1"}},
+            RunSummary(1, 1, 0, 0, 0, 0, publish_succeeded=1),
+            "not_applicable",
+        ),
+        (
+            {"model_id": "network", "collect_task_id": 7},
+            RunSummary(2, 1, 0, 1, 0, 0, publish_succeeded=1),
+            "collection_incomplete",
+        ),
+        (
+            {"model_id": "network", "collect_task_id": 7},
+            RunSummary(1, 1, 0, 0, 0, 0, publish_not_applicable=1),
+            "no_publishable_metrics",
+        ),
+        (
+            {"model_id": "network", "collect_task_id": 7},
+            RunSummary(1, 1, 0, 0, 0, 0, publish_unknown=1),
+            "delivery_unknown",
+        ),
+        (
+            {"model_id": "network", "collect_task_id": 7},
+            RunSummary(1, 1, 0, 0, 0, 0, publish_succeeded=1),
+            None,
+        ),
+    ),
+)
+def test_round_complete_skip_reason_distinguishes_contract_failures(
+    request_params,
+    summary,
+    expected,
+):
+    request = CollectionRequest(
+        task_id="reason",
+        plugin_ref="network.config",
+        targets=("10.0.0.1",),
+        params=request_params,
+    )
+
+    assert round_complete_skip_reason(request, summary) == expected
 
 
 def test_build_round_complete_labels_excludes_per_run_attempt_identity():

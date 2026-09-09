@@ -239,10 +239,14 @@ def build_snmp_trap_source_config():
 BUILTIN_ENRICHMENT_RULES = [
     {
         "name": "内置-CMDB资源丰富",
+        "preset_key": "builtin_cmdb_resource",
         "provider_type": "cmdb",
-        "input_binding": {"model_id": "resource_type", "_id": "resource_id"},
-        "provider_config": {},
-        "output_projection": [],
+        "input_binding": {"model_id": "resource_type", "inst_uuid": "resource_id"},
+        "provider_config": {"query_timeout_seconds": 3},
+        "output_projection": [
+            {"source": "owner"},
+            {"source": "business_system"},
+        ],
         "on_multiple": "first",
         "namespace": "cmdb",
         "match_rules": [],
@@ -252,13 +256,13 @@ BUILTIN_ENRICHMENT_RULES = [
 
 
 def init_enrichment_rules():
-    """幂等初始化内置丰富规则（按 name update_or_create）。"""
+    """幂等初始化内置丰富规则；仅首次创建，保留管理员后续配置。"""
     from apps.alerts.models.enrichment import EnrichmentRule
 
     for rule_data in BUILTIN_ENRICHMENT_RULES:
-        name = rule_data["name"]
-        defaults = {k: v for k, v in rule_data.items() if k != "name"}
-        EnrichmentRule.objects.update_or_create(name=name, defaults=defaults)
+        preset_key = rule_data["preset_key"]
+        defaults = {k: v for k, v in rule_data.items() if k != "preset_key"}
+        EnrichmentRule.objects.get_or_create(preset_key=preset_key, defaults=defaults)
 
 
 # 内置告警源配置

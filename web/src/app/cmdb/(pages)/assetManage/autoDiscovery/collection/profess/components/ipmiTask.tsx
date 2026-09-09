@@ -6,7 +6,7 @@ import { useTranslation } from '@/utils/i18n';
 import { useCollectionFormLayout } from '../hooks/useCollectionFormLayout';
 import { useTaskForm } from '../hooks/useTaskForm';
 import { getCleanupFormValues } from '../hooks/useTaskForm';
-import { TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
+import { TreeNode, ModelItem, CollectTask } from '@/app/cmdb/types/autoDiscovery';
 import {
   HOST_FORM_INITIAL_VALUES,
   PASSWORD_PLACEHOLDER,
@@ -44,7 +44,7 @@ const IPMITask: React.FC<IPMITaskFormProps> = ({
 }) => {
   const { t } = useTranslation();
   const collectionFormLayout = useCollectionFormLayout();
-  const baseRef = useRef<BaseTaskRef>(null as any);
+  const baseRef = useRef<BaseTaskRef>(null!);
   const { copyTaskData } = useAssetManageStore();
   const { model_id: modelId } = modelItem;
 
@@ -88,6 +88,10 @@ const IPMITask: React.FC<IPMITaskFormProps> = ({
       return {
         ...baseData,
         ...instanceData,
+        params: {
+          ...(baseData.params || {}),
+          collection_protocol: 'ipmi',
+        },
         // 注意：这里仍然写回现有 physcial_server 模型，但凭据语义已经变成 IPMI/BMC 登录信息。
         credential: buildCredentialPool(values.credentialPool, (item) => ({
           username: trimFormString(item.username),
@@ -99,7 +103,7 @@ const IPMITask: React.FC<IPMITaskFormProps> = ({
     },
   });
 
-  const buildFormValues = (values: any, isCopy: boolean, ipRange?: string[]) => ({
+  const buildFormValues = (values: CollectTask, isCopy: boolean, ipRange?: string[]) => ({
     ipRange,
     ...getCleanupFormValues(values),
     ...values,

@@ -6,6 +6,7 @@ import copy
 
 from rest_framework import serializers
 
+from apps.cmdb.collection.physical_server_protocol import PHYSICAL_SERVER_PROTOCOLS, normalize_physical_server_protocol
 from apps.cmdb.constants.constants import PERMISSION_TASK, CollectDriverTypes, CollectPluginTypes
 from apps.cmdb.models.collect_model import (
     ALLOWED_TOPOLOGY_FALLBACK_STRATEGIES,
@@ -41,6 +42,8 @@ COLLECT_RESULT_PAYLOAD_FIELDS = (
     "format_data",
     "topology_snapshot",
 )
+
+IP_DISCOVERY_MIN_TIMEOUT_SECONDS = 30
 
 COLLECT_MODEL_DETAIL_FIELDS = (
     "id",
@@ -132,6 +135,17 @@ class CollectModelSerializer(AuthSerializer):
         params = dict(instance_params)
         params.update(dict(raw_params or {}))
         return params
+
+    def _validate_ip_discovery_timeout(self, attrs, task_type):
+        if task_type != CollectPluginTypes.IP or "timeout" not in attrs:
+            return
+
+        timeout = attrs["timeout"]
+        existing_timeout = getattr(self.instance, "timeout", None)
+        if self.instance is not None and timeout == existing_timeout:
+            return
+        if timeout < IP_DISCOVERY_MIN_TIMEOUT_SECONDS:
+            raise serializers.ValidationError({"timeout": f"IP 采集任务超时时间不能小于 {IP_DISCOVERY_MIN_TIMEOUT_SECONDS} 秒"})
 
     def _query_authorized_instances(self, inst_uuids):
         trusted_instances = InstanceManage.query_entity_by_uuids(inst_uuids)
@@ -381,6 +395,101 @@ class CollectModelSerializer(AuthSerializer):
         )
         attrs["credential"] = [credential]
 
+    def _normalize_physical_server_protocol(self, attrs):
+        driver_type = self._get_attr_or_instance_value(attrs, "driver_type")
+        if driver_type != CollectDriverTypes.PROTOCOL:
+            return
+
+        params = self._get_effective_params(attrs)
+        protocol = normalize_physical_server_protocol(params.get("collection_protocol"))
+        if protocol not in PHYSICAL_SERVER_PROTOCOLS:
+            raise serializers.ValidationError({"params": {"collection_protocol": "物理服务器协议仅支持 ipmi 或 redfish"}})
+        params["collection_protocol"] = protocol
+        attrs["params"] = params
+
+        raw_credential = self._get_attr_or_instance_value(attrs, "credential")
+        if isinstance(raw_credential, dict):
+            credential_pool = [copy.deepcopy(raw_credential)]
+        elif isinstance(raw_credential, list):
+            credential_pool = copy.deepcopy(raw_credential)
+        else:
+            raise serializers.ValidationError({"credential": "物理服务器协议凭据格式错误"})
+
+        if not credential_pool:
+            raise serializers.ValidationError({"credential": "物理服务器协议凭据不能为空"})
+        if len(credential_pool) > CollectCredentialPoolService.MAX_POOL_SIZE:
+            raise serializers.ValidationError({"credential": "物理服务器协议凭据最多支持 3 组"})
+
+        errors = {}
+        normalized_pool = []
+        for index, credential in enumerate(credential_pool):
+            if not isinstance(credential, dict):
+                errors[index] = "物理服务器协议凭据格式错误"
+                continue
+
+            allowed_fields = {
+                "credential_id",
+                "credential_version",
+                "username",
+                "user",
+                "password",
+                "port",
+            }
+            if protocol == "redfish":
+                allowed_fields.add("verify_tls")
+            else:
+                allowed_fields.update({"ipmi_port", "privilege"})
+
+            item_errors = {}
+            unknown_fields = sorted(set(credential) - allowed_fields)
+            if unknown_fields:
+                item_errors["fields"] = f"不支持字段: {', '.join(unknown_fields)}"
+
+            username = credential.get("username", credential.get("user"))
+            if not isinstance(username, str) or not username.strip():
+                item_errors["username"] = "请输入用户名"
+
+            password = credential.get("password")
+            if not isinstance(password, str) or not password.strip():
+                item_errors["password"] = "请输入密码"
+
+            try:
+                raw_port = credential.get("port")
+                if raw_port in (None, "") and protocol == "ipmi":
+                    raw_port = credential.get("ipmi_port")
+                if raw_port in (None, ""):
+                    raw_port = 443 if protocol == "redfish" else 623
+                port = int(raw_port)
+            except (TypeError, ValueError):
+                port = 0
+            if not 1 <= port <= 65535:
+                item_errors["port"] = "端口必须在 1 到 65535 之间"
+
+            normalized = {key: value for key, value in credential.items() if key in {"credential_id", "credential_version", "password"}}
+            if isinstance(username, str):
+                normalized["username"] = username.strip()
+            normalized["port"] = port
+
+            if protocol == "redfish":
+                verify_tls = credential.get("verify_tls", True)
+                if not isinstance(verify_tls, bool):
+                    item_errors["verify_tls"] = "证书校验开关必须为布尔值"
+                normalized["verify_tls"] = verify_tls
+            else:
+                privilege = str(credential.get("privilege") or "administrator").strip().lower()
+                if privilege not in {"callback", "user", "operator", "administrator"}:
+                    item_errors["privilege"] = "IPMI 权限级别无效"
+                normalized["privilege"] = privilege
+
+            if item_errors:
+                errors[index] = item_errors
+                continue
+            normalized_pool.append(normalized)
+
+        if errors:
+            raise serializers.ValidationError({"credential": errors})
+        attrs["credential"] = normalized_pool
+
     def _validate_hwcloud_credential(self, attrs):
         raw_credential = self._get_attr_or_instance_value(attrs, "credential")
         if isinstance(raw_credential, dict):
@@ -495,6 +604,7 @@ class CollectModelSerializer(AuthSerializer):
     def validate(self, attrs):  # noqa: C901
         task_type = self._get_attr_or_instance_value(attrs, "task_type")
         model_id = self._get_attr_or_instance_value(attrs, "model_id")
+        self._validate_ip_discovery_timeout(attrs, task_type)
 
         if "instances" in attrs:
             attrs["instances"] = self._normalize_instance_identity_contract(
@@ -527,6 +637,8 @@ class CollectModelSerializer(AuthSerializer):
         ):
             raise serializers.ValidationError({"model_id": "当前版本未启用该采集能力"})
         self._reject_masked_secrets_on_create(attrs, model_id)
+        if model_id == "physcial_server":
+            self._normalize_physical_server_protocol(attrs)
         if credential_contract:
             self._validate_registered_credential(attrs, model_id)
         elif model_id == "influxdb":
@@ -673,7 +785,7 @@ class CollectModelIdStatusSerializer(AuthSerializer):
 
     class Meta:
         model = CollectModels
-        fields = ("model_id", "driver_type", "exec_status")
+        fields = ("model_id", "driver_type", "exec_status", "params")
 
 
 class CollectModelLIstSerializer(AuthSerializer):

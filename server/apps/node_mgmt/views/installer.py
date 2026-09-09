@@ -5,7 +5,6 @@ from rest_framework.viewsets import ViewSet
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.core.logger import node_logger as logger
 from apps.core.utils.current_team_scope import resolve_current_team_data_scope, validate_assignable_organizations
 from apps.core.utils.web_utils import WebUtils
 from apps.node_mgmt.constants.installer import InstallerConstants
@@ -21,13 +20,8 @@ from apps.node_mgmt.serializers.installer import (
 )
 from apps.node_mgmt.serializers.node import TaskNodesQuerySerializer
 from apps.node_mgmt.services.installer import InstallerService
-from apps.node_mgmt.services.module_push import ModulePushService, build_module_push_actor_scope
-from apps.node_mgmt.tasks.installer import (
-    install_collector,
-    install_controller,
-    retry_controller,
-    uninstall_controller,
-)
+from apps.node_mgmt.services.module_push import ModulePushService, build_module_push_actor_scope, normalize_push_targets
+from apps.node_mgmt.tasks.installer import install_collector, install_controller, retry_controller, uninstall_controller
 from apps.node_mgmt.utils.permission import authorize_node_ids, get_authorized_node_queryset
 from apps.node_mgmt.utils.task_result_schema import normalize_task_result_for_read, project_task_status_from_summary
 
@@ -85,23 +79,29 @@ class InstallerViewSet(ViewSet):
         )
         install_controller.delay(task_id)
 
-        # 创建任务成功后按勾选目标 best-effort 推送；仅对已落库节点立刻推送。
-        # 首次 sidecar 注册后的延迟推送尚未接线（见 DONE_WITH_CONCERNS）。
-        push_targets = list(data.get("push_targets") or [])
-        if push_targets and node_ids:
-            existing_ids = set(Node.objects.filter(id__in=node_ids).values_list("id", flat=True))
-            if existing_ids:
-                actor_scope = build_module_push_actor_scope(request)
-                for node_id in existing_ids:
+        # 已落库节点立刻推送；新装节点等 sidecar 首次注册后再消费勾选目标。
+        push_targets = normalize_push_targets(data.get("push_targets") or [])
+        if push_targets:
+            actor_scope = build_module_push_actor_scope(request)
+            existing_ids = set(Node.objects.filter(id__in=node_ids).values_list("id", flat=True)) if node_ids else set()
+            deferred_nodes = []
+            for node in data["nodes"]:
+                node_id = str(node.get("node_id") or "")
+                if node_id and node_id in existing_ids:
                     ModulePushService.best_effort_push_node(
                         node_id,
                         targets=push_targets,
                         actor_scope=actor_scope,
                     )
-            else:
-                logger.info(
-                    "[ModulePush] install created without existing nodes; deferred sidecar push not wired yet task_id=%s",
-                    task_id,
+                else:
+                    deferred_nodes.append(node)
+            if deferred_nodes:
+                ModulePushService.remember_deferred_push(
+                    cloud_region_id=data["cloud_region_id"],
+                    nodes=deferred_nodes,
+                    targets=push_targets,
+                    actor_scope=actor_scope,
+                    task_id=task_id,
                 )
 
         return WebUtils.response_success(dict(task_id=task_id))
@@ -220,6 +220,14 @@ class InstallerViewSet(ViewSet):
                     "node_name": node.get("node_name", ""),
                     "organizations": node.get("organizations", []),
                 }
+            )
+        push_targets = normalize_push_targets(data.get("push_targets") or [])
+        if push_targets:
+            ModulePushService.remember_deferred_push(
+                cloud_region_id=data["cloud_region_id"],
+                nodes=data["nodes"],
+                targets=push_targets,
+                actor_scope=build_module_push_actor_scope(request),
             )
         return WebUtils.response_success(result)
 

@@ -39,6 +39,7 @@ const renderWithIntl = (node: React.ReactNode) => render(
       'alarms.objectType': '对象类型',
       'alarms.monitorId': '监控实例 ID',
       'alarms.cmdbId': 'CMDB 实例 ID',
+      'alarms.enrichment': '丰富信息',
     }}
     onError={() => undefined}
   >
@@ -149,6 +150,22 @@ describe('告警关联监控对象快照', () => {
     expect(screen.getByText('对象类型')).toBeTruthy();
     expect(screen.getByText('主机')).toBeTruthy();
     expect(screen.getByText('legacy-host')).toBeTruthy();
+  });
+
+  it('告警详情展示命名空间化的丰富结果', () => {
+    renderWithIntl(
+      <AlarmBaseInfo
+        detail={{
+          enrichment: {
+            cmdb: { owner: 'alice', business_system: 'payment' },
+          },
+        }}
+      />
+    );
+
+    expect(screen.getByText('丰富信息')).toBeTruthy();
+    expect(screen.getByText(/"owner": "alice"/)).toBeTruthy();
+    expect(screen.getByText(/"business_system": "payment"/)).toBeTruthy();
   });
 
   it('关联事件表展示每条事件的 monitor_id 与 cmdb_id', () => {

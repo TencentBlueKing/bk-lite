@@ -14,6 +14,7 @@ import { clearAuthToken } from '@/utils/crossDomainAuth';
 import Cookies from 'js-cookie';
 import type { Group } from '@/types/index';
 import UserInformation from './userInformation'
+import { clearUserTeamPreference } from '@/utils/userTeamPreference';
 
 // 将 Group 转换为 Tree DataNode
 const convertGroupsToTreeData = (groups: Group[], selectedGroupId: string | undefined): DataNode[] => {
@@ -149,6 +150,7 @@ const UserInfo: React.FC = () => {
 
   const federatedLogout = useCallback(async () => {
     setIsLoading(true);
+    clearUserTeamPreference();
     try {
       // Call logout API for server-side cleanup
       await fetch('/api/auth/federated-logout', {

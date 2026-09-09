@@ -59,7 +59,7 @@ class Alert(TimeInfo):
     """
 
     id = models.CharField(primary_key=True, max_length=50, verbose_name="告警ID")
-    policy = models.ForeignKey(Policy, on_delete=models.CASCADE, verbose_name="关联策略")
+    policy = models.ForeignKey(Policy, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="关联策略")
     source_id = models.CharField(max_length=100, db_index=True, verbose_name="资源ID")
     collect_type = models.ForeignKey(
         CollectType,
@@ -77,6 +77,7 @@ class Alert(TimeInfo):
     operator = models.CharField(blank=True, null=True, max_length=50, verbose_name="告警处理人")
     info_event_count = models.IntegerField(default=0, verbose_name="正常事件计数")
     notice = models.BooleanField(default=False, verbose_name="是否已通知")
+    organizations = models.JSONField(default=list, verbose_name="告警生成时所属组织")
 
     class Meta:
         verbose_name = "告警记录"
@@ -89,7 +90,7 @@ class Event(TimeInfo):
     """
 
     id = models.CharField(primary_key=True, max_length=50, verbose_name="事件ID")
-    policy = models.ForeignKey(Policy, on_delete=models.CASCADE, verbose_name="关联策略")
+    policy = models.ForeignKey(Policy, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="关联策略")
     source_id = models.CharField(max_length=100, db_index=True, verbose_name="资源ID")
     alert = models.ForeignKey(Alert, on_delete=models.CASCADE, verbose_name="关联告警")
     event_time = models.DateTimeField(blank=True, null=True, verbose_name="事件发生时间")
@@ -138,7 +139,7 @@ class AlertSnapshot(TimeInfo):
         db_index=True,
         related_name="snapshot",
     )
-    policy = models.ForeignKey(Policy, on_delete=models.CASCADE, verbose_name="关联策略")
+    policy = models.ForeignKey(Policy, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="关联策略")
     source_id = models.CharField(max_length=100, db_index=True, verbose_name="资源ID")
 
     # 快照数据 - 使用 S3JSONField 存储到 S3/MinIO，节省数据库空间

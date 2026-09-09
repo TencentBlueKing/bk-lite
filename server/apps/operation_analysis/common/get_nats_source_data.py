@@ -8,7 +8,7 @@ from django.utils import translation
 from rest_framework.exceptions import ValidationError
 
 from apps.core.logger import operation_analysis_logger as logger
-from apps.core.utils.team_utils import get_current_team
+from apps.core.utils.team_utils import collect_group_tree_ids, get_current_team
 from apps.operation_analysis.nats.nats_client import DefaultNastClient
 from apps.rpc.base import AppClient
 
@@ -18,6 +18,23 @@ _LOCAL_RPC_OVERLAY_MODULES = {
     ("monitor", "query_latest_active_alerts"): "apps.monitor.nats.monitor",
     ("monitor", "query_latest_interface_metrics"): "apps.monitor.nats.monitor",
 }
+
+
+def parse_organization_team(value):
+    """画布组织筛选值 → 组织 ID。空或非法返回 None，调用方继续用 cookie 组织。"""
+    if value in (None, "", [], ()):
+        return None
+    if isinstance(value, (list, tuple)):
+        value = value[0] if value else None
+        if value in (None, ""):
+            return None
+    try:
+        team = int(value)
+    except (TypeError, ValueError):
+        return None
+    if team <= 0:
+        return None
+    return team
 
 
 def build_nats_user_info(request) -> dict:
@@ -76,6 +93,13 @@ class GetNatsData:
         :return:
         """
         self.params[self.user_param_key] = build_nats_user_info(self.request)
+        organization_team = parse_organization_team(self.params.get("organization"))
+        if organization_team is None:
+            return
+        user_info = self.params[self.user_param_key]
+        allowed_team_ids = collect_group_tree_ids(user_info.get("group_tree"))
+        allowed_team_ids.add(user_info["team"])
+        user_info["team"] = organization_team if organization_team in allowed_team_ids else None
 
     def set_namespace_servers(self):
         """

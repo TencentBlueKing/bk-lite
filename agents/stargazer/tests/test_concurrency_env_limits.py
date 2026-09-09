@@ -175,6 +175,7 @@ def test_env_example_uses_split_timeout_contract():
     assert "METRICS_ENCODE_WORKERS=2" in example
     assert "PUBLISH_WORKERS=4" in example
     assert "NATS_JS_PUBLISH_MAX_PENDING=256" in example
+    assert "NATS_JS_PUBLISH_MAX_PENDING_PER_CALL=64" in example
     assert "NATS_JS_PUBLISH_MAX_PENDING_BYTES=33554432" in example
     assert "NATS_METRICS_PENDING_SIZE_BYTES=34603008" in example
     assert "NATS_JS_STREAM_NAME=metrics" in example

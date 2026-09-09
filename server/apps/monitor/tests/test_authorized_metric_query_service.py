@@ -121,6 +121,32 @@ def test_range_query_forwards_gap_detection_and_card_budget(mocker):
     }
 
 
+def test_default_avg_aggregates_by_instance_and_declared_dimensions(mocker):
+    monitor_object, metric, allowed, _ = _build_metric_contract()
+    service = _service(mocker, allowed)
+    vm_query = mocker.patch(
+        "apps.monitor.services.authorized_metric_query.Metrics.get_metrics_range",
+        return_value={"status": "success", "data": {"result": []}},
+    )
+
+    service.query_range(
+        {
+            "monitor_object_id": monitor_object.id,
+            "metric_id": metric.id,
+            "instance_ids": [allowed.id],
+            "start": 1000,
+            "end": 61000,
+            "step": "60s",
+            "detect_gaps": True,
+            "collection_interval": 60,
+        }
+    )
+
+    assert vm_query.call_args.args[0] == (
+        'avg(cpu_usage{instance_id=~"allowed\\\\-host"}) by (instance_id, mode)'
+    )
+
+
 def test_host_process_scope_authorizes_parent_host_and_builds_process_matchers(mocker):
     host_object = MonitorObject.objects.create(
         name="Host",
@@ -347,6 +373,6 @@ def test_instant_query_uses_server_template_and_range_end_as_eval_time(mocker):
 
     assert result["status"] == "success"
     vm_query.assert_called_once_with(
-        'cpu_usage{instance_id=~"allowed\\\\-host"}',
+        'avg(cpu_usage{instance_id=~"allowed\\\\-host"}) by (instance_id, mode)',
         time=61.0,
     )

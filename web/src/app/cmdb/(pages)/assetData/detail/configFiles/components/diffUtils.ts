@@ -12,11 +12,38 @@ export interface DiffSegment {
   changed: boolean;
 }
 
-export const buildSideBySideDiffRows = (leftContent: string, rightContent: string): DiffRow[] => {
+export interface AlignedDiffResult {
+  kind: 'aligned';
+  rows: DiffRow[];
+}
+
+export interface OverBudgetDiffResult {
+  kind: 'over_budget';
+  cellCount: number;
+  maxCells: number;
+}
+
+export type SideBySideDiffResult = AlignedDiffResult | OverBudgetDiffResult;
+
+// 页面入口真实文案：菜单「资产」→「配置文件」；页头「配置文件列表」；按钮「与上版本对比」；抽屉「版本对比」。
+export const MAX_DIFF_LCS_CELLS = 1_000_000;
+
+export const buildSideBySideDiffRows = (
+  leftContent: string,
+  rightContent: string
+): SideBySideDiffResult => {
   const leftLines = leftContent.split(/\r?\n/);
   const rightLines = rightContent.split(/\r?\n/);
   const leftLength = leftLines.length;
   const rightLength = rightLines.length;
+  const cellCount = (leftLength + 1) * (rightLength + 1);
+  if (cellCount > MAX_DIFF_LCS_CELLS) {
+    return {
+      kind: 'over_budget',
+      cellCount,
+      maxCells: MAX_DIFF_LCS_CELLS,
+    };
+  }
   const dp = Array.from({ length: leftLength + 1 }, () => Array(rightLength + 1).fill(0));
 
   for (let leftIndex = leftLength - 1; leftIndex >= 0; leftIndex -= 1) {
@@ -120,7 +147,7 @@ export const buildSideBySideDiffRows = (leftContent: string, rightContent: strin
     rightNumber += 1;
   }
 
-  return rows;
+  return { kind: 'aligned', rows };
 };
 
 export const getDiffAccentClassName = (status: DiffRow['status'], side: 'left' | 'right') => {

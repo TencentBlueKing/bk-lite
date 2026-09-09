@@ -980,6 +980,10 @@
         "platformApiTask": {
             "tlsWarning": "Disabling certificate verification increases man-in-the-middle risk. Use it only temporarily for self-signed certificates on a trusted network."
         },
+        "RedfishTask": {
+            "verifyTls": "Verify certificate",
+            "tlsWarning": "Disabling certificate verification increases man-in-the-middle risk. Use it only temporarily for self-signed certificates on a trusted network."
+        },
         "WinSphereTask": {
             "platform": "WinSphere management platform",
             "user": "WinSphere account",
@@ -1145,7 +1149,8 @@
                 "macosSsh": "SSH",
                 "winsphereApi": "WinSphere HTTPS API",
                 "vsphereApi": "VMware vSphere HTTPS API",
-                "ipmi": "IPMI RMCP/RMCP+"
+                "ipmi": "IPMI RMCP/RMCP+",
+                "redfish": "Redfish HTTPS API"
             },
             "kind": {
                 "hostAccount": "Target host operating-system account",
@@ -1185,6 +1190,7 @@
                 "winsphere": "Enter an account that can access the WinSphere management API. Prefer a read-only or least-privilege account with certificate verification enabled.",
                 "vsphere": "Enter an account that can access the VMware vCenter SDK/API. Prefer a read-only role with certificate verification enabled.",
                 "ipmi": "Enter the IPMI account for the target server BMC. Prefer the lowest privilege that permits inventory collection.",
+                "redfish": "Enter a read-only Redfish account for the target server BMC. HTTPS is always used and certificate verification is enabled by default. Disable verification only for self-signed certificates on a trusted management network.",
                 "networkConfig": "Enter an SSH account that can run read-only configuration commands on the network device. Provide an enable password only when privileged mode is required.",
                 "configFile": "Enter an operating-system account that can sign in over SSH and read the specified configuration file."
             },
@@ -1493,6 +1499,7 @@
         "added": "Added",
         "removed": "Removed",
         "selectVersionHint": "Select two versions to compare",
+        "diffOverBudgetHint": "These two versions have too many lines for row-by-row alignment. Showing original text side by side.",
         "versionNumber": "Version",
         "status": "Status",
         "fileSize": "File Size",

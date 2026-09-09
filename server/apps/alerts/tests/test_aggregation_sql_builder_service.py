@@ -6,7 +6,6 @@ import pytest
 from apps.alerts.aggregation.query.builder import SQLBuilder
 from apps.alerts.aggregation.window.factory import WindowConfig, WindowType
 
-
 UNSAFE_DEFAULT_GLOBALS = {"lipsum", "cycler", "joiner", "namespace"}
 pytestmark = pytest.mark.integration
 
@@ -14,8 +13,8 @@ pytestmark = pytest.mark.integration
 @pytest.mark.parametrize(
     ("window_type", "expected_sha256"),
     (
-        (WindowType.SLIDING, "890b2a27a22a1dcaa76f9836e9c403526eb5ba8930ec48d71e1da2e79c151236"),
-        (WindowType.SESSION, "a476dbd96e85ac0ac159ca35647effeceb65e30086dbb733893e20a955a965e2"),
+        (WindowType.SLIDING, "f385d1f7127142f53d1853066f34da6bd244e4ef36ba25531d8a5e5e60c3f959"),
+        (WindowType.SESSION, "ff5ce8a85a269378fbd15c36015cbd94bd77f8f3535e66621bd85c684008a3f5"),
     ),
 )
 def test_sql_builder_output_matches_ordinary_environment_baseline(monkeypatch, window_type, expected_sha256):
@@ -41,3 +40,19 @@ def test_sql_builder_output_matches_ordinary_environment_baseline(monkeypatch, w
 
 def test_sql_builder_environment_has_no_default_globals():
     assert UNSAFE_DEFAULT_GLOBALS.isdisjoint(SQLBuilder().env.globals)
+
+
+def test_sql_builder_resolves_enrichment_dimension_to_safe_json_expression(monkeypatch):
+    monkeypatch.setattr(
+        WindowConfig,
+        "get_window_start",
+        lambda self: datetime.fromisoformat("2026-08-05T08:00:00+00:00"),
+    )
+    sql = SQLBuilder().build_aggregation_sql(
+        dimensions=["enrichment.cmdb.owner"],
+        window_config=WindowConfig(WindowType.SLIDING, window_size_minutes=10),
+        strategy_id=42,
+    )
+
+    assert "json_extract_string(enrichment, '$.cmdb.owner')" in sql
+    assert "enrichment.cmdb.owner=" in sql

@@ -44,6 +44,15 @@ CALLBACK_CANCEL_RECONCILE_GRACE_SECONDS = max(0, _int_env("JOB_CALLBACK_CANCEL_R
 # 取消请求后等待一个独立缓冲窗口，仍无回调才将 CANCELLING 收敛到终态。
 CANCEL_CONVERGE_BUFFER_SECONDS = max(0, _int_env("JOB_CANCEL_CONVERGE_BUFFER_SECONDS", 60))
 
+# 执行器达到用户超时后，预留短窗口等待异步回调提交；不改变用户配置的执行超时。
+EXECUTION_TIMEOUT_CALLBACK_GRACE_SECONDS = max(0, _int_env("JOB_EXECUTION_TIMEOUT_CALLBACK_GRACE_SECONDS", 60))
+
+# 任务派发后等待 worker 领取的最长时间，与用户配置的远端执行超时相互独立。
+EXECUTION_PENDING_TIMEOUT_SECONDS = max(1, _int_env("JOB_EXECUTION_PENDING_TIMEOUT_SECONDS", 300))
+
+# 每轮收敛扫描的上限，避免异常积压时单个 Beat 任务长期占用 worker。
+EXECUTION_TIMEOUT_SCAN_BATCH_SIZE = max(1, _int_env("JOB_EXECUTION_TIMEOUT_SCAN_BATCH_SIZE", 200))
+
 
 CELERY_BEAT_SCHEDULE = {
     # 恢复 broker 入队失败、worker 崩溃留下的终态副作用

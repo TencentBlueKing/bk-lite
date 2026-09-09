@@ -4,7 +4,12 @@ from pathlib import Path
 
 import yaml
 
-from apps.operation_analysis.management.commands.init_builtin_canvases import FLOW_DASHBOARD_YAML_PATH, YAML_FILE_PATH, _get_builtin_canvas_file_paths
+from apps.operation_analysis.management.commands.init_builtin_canvases import (
+    FLOW_DASHBOARD_YAML_PATH,
+    WEOPSX_PLATFORM_USAGE_YAML_PATH,
+    YAML_FILE_PATH,
+    _get_builtin_canvas_file_paths,
+)
 from apps.operation_analysis.schemas.import_export_schema import YAMLDocument
 from apps.operation_analysis.services.import_export.precheck_service import PrecheckService
 
@@ -30,6 +35,7 @@ def test_flow_yaml_is_loaded_as_builtin():
     assert Path(FLOW_DASHBOARD_YAML_PATH).resolve() == SAMPLE_PATH.resolve()
     loaded = {Path(path).resolve() for path in _get_builtin_canvas_file_paths()}
     assert SAMPLE_PATH.resolve() in loaded
+    assert Path(WEOPSX_PLATFORM_USAGE_YAML_PATH).resolve() in loaded
     builtin = yaml.safe_load(Path(YAML_FILE_PATH).read_text(encoding="utf-8"))
     builtin_keys = {item["key"] for item in builtin.get("dashboards") or []}
     assert "dashboard::Flow网络流量分析仪表盘" not in builtin_keys

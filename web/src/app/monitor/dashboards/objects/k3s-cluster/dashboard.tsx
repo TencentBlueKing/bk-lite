@@ -63,6 +63,7 @@ import {
 } from '../../shared/utils/display-mode-route';
 import {
   latestScalar,
+  latestScalarOrNull,
   seriesLatestByLabel,
   phaseCount,
   saturationColor,
@@ -392,7 +393,8 @@ export default function K3sClusterDashboardPage() {
   // 工作负载可用度条
   const workloadBars = useMemo(() => {
     const mk = (label: string, key: string, color: string) => {
-      const v = latestScalar(raw[key]);
+      const v = latestScalarOrNull(raw[key]);
+      if (v === null) return { label, value: 0, display: '--', color, max: 100 };
       return { label, value: v, display: pct(v), color, max: 100 };
     };
     return [
@@ -683,6 +685,7 @@ export default function K3sClusterDashboardPage() {
                   guide={guide('Top 命名空间 · 内存', '内存占用最高的命名空间。')}
                   items={topNsMemBars}
                   tiered
+                  isEmpty={topNsMemBars.length === 0}
                   className={styles.span4}
                   styles={styles}
                 />
@@ -690,6 +693,7 @@ export default function K3sClusterDashboardPage() {
                   title="工作负载可用度"
                   guide={guide('工作负载可用度', '各类工作负载可用副本占期望副本的比例。')}
                   items={workloadBars}
+                  isEmpty={workloadBars.every((item) => item.display === '--')}
                   className={styles.span4}
                   styles={styles}
                 />

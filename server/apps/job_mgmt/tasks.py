@@ -16,6 +16,7 @@ from apps.job_mgmt.config import (
     CALLBACK_CANCEL_RECONCILE_GRACE_SECONDS,
     DISTRIBUTION_FILE_CLEANUP_BATCH_SIZE,
     DISTRIBUTION_FILE_CLEANUP_MAX_CONCURRENCY,
+    EXECUTION_TIMEOUT_SCAN_BATCH_SIZE,
     SCHEDULED_TASK_QUEUE_RETRY_COUNTDOWN,
     SCHEDULED_TASK_TEAM_BOUNDARY_ENFORCED,
 )
@@ -23,13 +24,14 @@ from apps.job_mgmt.constants import ConcurrencyPolicy, ExecutionStatus, JobType,
 from apps.job_mgmt.models import DistributionFile, JobExecution, ScheduledTask
 from apps.job_mgmt.services import FileDistributionRunner, ScriptExecutionRunner, ScriptParamsService
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
+from apps.job_mgmt.services.execution_timeout_service import ExecutionTimeoutService
 from apps.job_mgmt.services.playbook_execution import PlaybookExecution
 from apps.job_mgmt.services.scheduled_task_authz import (
     ScheduledTaskTeamBoundaryError,
     disable_scheduled_task_and_schedule,
     validate_scheduled_task_resource_boundary,
 )
-from apps.job_mgmt.services.scheduled_task_service import ScheduledTaskService
+from apps.job_mgmt.services.scheduled_task_service import ScheduledTaskService  # noqa: F401 - 保留测试与外部 patch 接缝
 from apps.job_mgmt.utils.callback_signer import get_signed_headers
 from apps.node_mgmt.utils.s3 import delete_s3_files
 
@@ -83,6 +85,7 @@ def finalize_cancelling_execution(execution_id: int):
         execution.status = ExecutionStatus.CANCELLED
         execution.terminal_source = JobExecution.TerminalSource.CANCEL_TIMEOUT
         execution.cancel_finalize_at = None
+        execution.converge_deadline_at = None
         execution.finished_at = timezone.now()
         execution.execution_results = results
         execution.success_count = sum(1 for result in results if result.get("status") == ExecutionStatus.SUCCESS)
@@ -92,6 +95,7 @@ def finalize_cancelling_execution(execution_id: int):
                 "status",
                 "terminal_source",
                 "cancel_finalize_at",
+                "converge_deadline_at",
                 "finished_at",
                 "execution_results",
                 "success_count",
@@ -117,7 +121,7 @@ def deliver_job_completion_outbox(record_id: int):
 
 @shared_task(max_retries=0)
 def dispatch_pending_job_completion_outbox():
-    """重扫待投递副作用，并补偿 broker 入队失败的取消收敛。"""
+    """重扫待投递副作用，并补偿取消与普通执行的超时收敛。"""
     from apps.job_mgmt.services.completion_outbox_service import due_outbox_ids
 
     record_ids = due_outbox_ids()
@@ -141,7 +145,33 @@ def dispatch_pending_job_completion_outbox():
             finalize_cancelling_execution.delay(execution_id)
         except Exception:
             logger.exception("cancelling execution reschedule failed: execution_id=%s", execution_id)
-    return {"scheduled": len(record_ids), "cancel_scheduled": len(due_execution_ids)}
+
+    due_timeout_ids = list(
+        JobExecution.objects.filter(
+            status__in=(ExecutionStatus.PENDING, ExecutionStatus.RUNNING),
+            converge_deadline_at__isnull=False,
+            converge_deadline_at__lte=timezone.now(),
+        )
+        .order_by("converge_deadline_at", "pk")
+        .values_list("pk", flat=True)[:EXECUTION_TIMEOUT_SCAN_BATCH_SIZE]
+    )
+    timeout_converged = 0
+    for execution_id in due_timeout_ids:
+        try:
+            if ExecutionTimeoutService.converge(execution_id):
+                timeout_converged += 1
+        except Exception as error:
+            logger.exception(
+                "job execution timeout convergence failed: execution_id=%s, failed_stage=%s, error_type=%s",
+                execution_id,
+                "converge_terminal",
+                type(error).__name__,
+            )
+    return {
+        "scheduled": len(record_ids),
+        "cancel_scheduled": len(due_execution_ids),
+        "timeout_converged": timeout_converged,
+    }
 
 
 @shared_task(max_retries=0)
@@ -164,10 +194,7 @@ def execute_scheduled_task(scheduled_task_id: int):
 
         if not scheduled_task.is_enabled:
             if not disable_scheduled_task_and_schedule(scheduled_task_id):
-                logger.error(
-                    f"[execute_scheduled_task] 已禁用任务的 Beat 调度同步仍失败，将在下次触发重试: "
-                    f"scheduled_task_id={scheduled_task_id}"
-                )
+                logger.error(f"[execute_scheduled_task] 已禁用任务的 Beat 调度同步仍失败，将在下次触发重试: " f"scheduled_task_id={scheduled_task_id}")
             logger.info(f"[execute_scheduled_task] 定时任务已禁用: scheduled_task_id={scheduled_task_id}")
             return
 
@@ -195,10 +222,7 @@ def execute_scheduled_task(scheduled_task_id: int):
             check_result = DangerousChecker.check_command(script_content, team)
             if not check_result.can_execute:
                 forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
-                logger.warning(
-                    f"[execute_scheduled_task] 脚本包含高危命令，禁止执行: "
-                    f"scheduled_task_id={scheduled_task_id}, rules={forbidden_rules}"
-                )
+                logger.warning(f"[execute_scheduled_task] 脚本包含高危命令，禁止执行: " f"scheduled_task_id={scheduled_task_id}, rules={forbidden_rules}")
                 return
         if job_type == JobType.FILE_DISTRIBUTION and scheduled_task.target_path:
             check_result = DangerousChecker.check_path(scheduled_task.target_path, team)
@@ -384,8 +408,12 @@ def _dispatch_execution_job(job_type: str, execution_id: int) -> bool:
         return False
 
     celery_task_id = uuid4().hex
+    pending_deadline = ExecutionTimeoutService.pending_deadline()
     try:
-        updated = JobExecution.objects.filter(id=execution_id).update(celery_task_id=celery_task_id)
+        updated = JobExecution.objects.filter(id=execution_id).update(
+            celery_task_id=celery_task_id,
+            converge_deadline_at=pending_deadline,
+        )
     except Exception as e:
         logger.exception(f"[_dispatch_execution_job] Celery 任务ID持久化失败: " f"execution_id={execution_id}, job_type={job_type}, error={e}")
         return False

@@ -42,7 +42,7 @@ monitor_object_metric:
   Pod:
     pod_info:
       name: Pod 信息
-      desc: 来自 kube_pod_info 的 Pod 元数据，用作 IP 展示列的载体指标。
+      desc: 来自 kube_pod_info 的 Pod 元数据，用作 IP 与 Namespace 展示列的载体指标。
     pod_status_phase:
       name: Pod 阶段
       desc: 生命周期阶段：0 Pending / 1 Running / 2 Succeeded / 3 Failed / 4 Unknown。

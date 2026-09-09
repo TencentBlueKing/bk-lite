@@ -223,6 +223,20 @@ class TestTargetCrud:
 
 @pytest.mark.integration
 class TestQueryNodes:
+    def test_query_nodes_forwards_keyword_for_name_or_ip_fuzzy_search(self, su_client):
+        with patch("apps.job_mgmt.views.target.SystemMgmt") as MSys, patch("apps.job_mgmt.views.target.NodeMgmt") as MNode, patch(
+            "apps.job_mgmt.views.target.CloudRegion"
+        ) as MCR:
+            MSys.return_value.get_authorized_groups_scoped.return_value = {"data": [1]}
+            MNode.return_value.node_list.return_value = {"count": 0, "nodes": []}
+            MCR.objects.all.return_value.values.return_value = []
+
+            resp = su_client.get(f"{URL}query_nodes/?page=1&page_size=20&keyword=10.93.160.2")
+
+        assert resp.status_code == 200
+        query_data = MNode.return_value.node_list.call_args.args[0]
+        assert query_data["keyword"] == "10.93.160.2"
+
     def test_query_nodes_success(self, su_client):
         with patch("apps.job_mgmt.views.target.SystemMgmt") as MSys, patch("apps.job_mgmt.views.target.NodeMgmt") as MNode, patch(
             "apps.job_mgmt.views.target.CloudRegion"

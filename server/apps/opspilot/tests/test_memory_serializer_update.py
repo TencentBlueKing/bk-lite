@@ -3,7 +3,13 @@
 import pytest
 
 from apps.opspilot.models.memory_mgmt import Memory, MemorySpace
-from apps.opspilot.serializers.memory_serializer import MemorySerializer
+from apps.opspilot.serializers.memory_serializer import (
+    MEMORY_RETRIEVE_CONTENT_LIMIT_MAX,
+    MemorySerializer,
+    apply_memory_content_splice,
+    parse_memory_content_limit,
+    parse_memory_content_offset,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -46,3 +52,58 @@ def test_partial_update_accepts_content_only():
     memory.refresh_from_db()
     assert memory.content == "bbbb"
     assert memory.title == "m-1"
+
+
+def test_parse_memory_content_limit_none_invalid_and_cap():
+    assert parse_memory_content_limit(None) is None
+    assert parse_memory_content_limit("80") == 80
+    assert parse_memory_content_limit(str(MEMORY_RETRIEVE_CONTENT_LIMIT_MAX + 9)) == MEMORY_RETRIEVE_CONTENT_LIMIT_MAX
+    with pytest.raises(ValueError):
+        parse_memory_content_limit("")
+    with pytest.raises(ValueError):
+        parse_memory_content_limit("0")
+    with pytest.raises(ValueError):
+        parse_memory_content_limit("-1")
+
+
+def test_parse_memory_content_offset_defaults_and_rejects_invalid():
+    assert parse_memory_content_offset(None) == 0
+    assert parse_memory_content_offset("") == 0
+    assert parse_memory_content_offset("80") == 80
+    with pytest.raises(ValueError):
+        parse_memory_content_offset("-1")
+    with pytest.raises(ValueError):
+        parse_memory_content_offset("abc")
+
+
+def test_apply_memory_content_splice_replaces_middle_and_rejects_oob():
+    assert apply_memory_content_splice("ABCDEFGHIJ", 3, 4, "xyz") == "ABCxyzHIJ"
+    assert apply_memory_content_splice("ABCDEFGHIJ", 0, 3, "") == "DEFGHIJ"
+    with pytest.raises(ValueError, match="超出正文范围"):
+        apply_memory_content_splice("abc", 2, 4, "x")
+    with pytest.raises(ValueError, match="单次写入内容过长"):
+        apply_memory_content_splice("abc", 0, 1, "x" * (MEMORY_RETRIEVE_CONTENT_LIMIT_MAX + 1))
+
+
+def test_partial_update_splices_page_without_replacing_all():
+    memory = _memory()
+    memory.content = "ABCDEFGHIJ"
+    memory.save(update_fields=["content"])
+    serializer = MemorySerializer(
+        memory,
+        data={"content": "xyz", "content_offset": 3, "content_replace_length": 4},
+        partial=True,
+    )
+    assert serializer.is_valid(), serializer.errors
+    serializer.save()
+    memory.refresh_from_db()
+    assert memory.content == "ABCxyzHIJ"
+    assert memory.title == "m-1"
+
+
+def test_partial_update_splice_requires_offset_and_length_together():
+    memory = _memory()
+    serializer = MemorySerializer(memory, data={"content": "xyz", "content_offset": 1}, partial=True)
+    assert serializer.is_valid() is False
+    serializer = MemorySerializer(memory, data={"content_offset": 0, "content_replace_length": 1}, partial=True)
+    assert serializer.is_valid() is False

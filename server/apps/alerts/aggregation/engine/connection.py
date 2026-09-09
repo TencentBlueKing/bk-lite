@@ -1,7 +1,8 @@
-import duckdb
 import json
-from typing import List, Dict, Any
 import threading
+from typing import Any, Dict, List
+
+import duckdb
 import pandas as pd
 
 from apps.core.logger import alert_logger as logger
@@ -60,6 +61,7 @@ class DuckDBConnection:
                 "location",
                 "event_type",
                 "tags",
+                "enrichment",
             )
         )
 
@@ -73,8 +75,10 @@ class DuckDBConnection:
         for event in events_data:
             labels = event.get("labels")
             tags = event.get("tags")
+            enrichment = event.get("enrichment")
             event["labels"] = json.dumps(labels) if labels else None
             event["tags"] = json.dumps(tags) if tags else None
+            event["enrichment"] = json.dumps(enrichment) if enrichment else None
 
         # 4. 使用 pandas DataFrame 批量加载数据到 DuckDB
         events_df = pd.DataFrame(events_data)

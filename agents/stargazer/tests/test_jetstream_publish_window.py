@@ -92,6 +92,55 @@ async def test_global_window_limits_created_puback_tasks_across_concurrent_calle
 
 
 @pytest.mark.asyncio
+async def test_per_call_window_prevents_one_large_caller_from_occupying_global_credits():
+    global_window_full = asyncio.Event()
+
+    class NeverAckJetStream:
+        def __init__(self) -> None:
+            self.message_ids = []
+
+        async def publish_async(self, _subject, _payload=b"", *, headers=None, **_kwargs):
+            self.message_ids.append(headers["Nats-Msg-Id"])
+            if len(self.message_ids) == 4:
+                global_window_full.set()
+            return asyncio.get_running_loop().create_future()
+
+    jetstream = NeverAckJetStream()
+    window = JetStreamPublishWindow(
+        lambda: jetstream,
+        settings=JetStreamPublishWindowSettings(
+            max_pending_messages=4,
+            max_pending_messages_per_call=2,
+            max_pending_bytes=1024,
+            puback_timeout_seconds=30,
+            max_attempts=1,
+        ),
+    )
+    callers = tuple(
+        asyncio.create_task(
+            window.publish(
+                "metrics.network",
+                tuple(JetStreamMessage(payload=b"line", message_id=f"caller-{caller}-{index}") for index in range(4)),
+            )
+        )
+        for caller in ("large", "small")
+    )
+
+    await asyncio.wait_for(global_window_full.wait(), timeout=1)
+
+    assert Counter(message_id.split("-")[1] for message_id in jetstream.message_ids) == {
+        "large": 2,
+        "small": 2,
+    }
+    assert window.snapshot().pending_messages == 4
+
+    for caller in callers:
+        caller.cancel()
+    await asyncio.gather(*callers, return_exceptions=True)
+    assert window.snapshot().pending_messages == 0
+
+
+@pytest.mark.asyncio
 async def test_5000_network_results_publish_concurrently_with_bounded_memory():
     jetstream = RecordingJetStream(ack_delay_seconds=0.0005)
     window = JetStreamPublishWindow(
@@ -294,9 +343,38 @@ async def test_puback_timeout_bounds_jetstream_provider_wait_and_releases_window
 
     assert type(caught.value).__name__ == "JetStreamWindowPublishError"
     assert isinstance(caught.value.__cause__, TimeoutError)
-    assert window.snapshot().puback_timeout_total == 1
+    assert caught.value.timeout_stage == "publish_call"
+    assert window.snapshot().publish_call_timeout_total == 1
+    assert window.snapshot().puback_timeout_total == 0
     assert window.snapshot().pending_messages == 0
     assert window.snapshot().pending_bytes == 0
+
+
+@pytest.mark.asyncio
+async def test_puback_future_timeout_is_counted_separately_from_publish_call_timeout():
+    class NeverAckJetStream:
+        async def publish_async(self, *_args, **_kwargs):
+            return asyncio.get_running_loop().create_future()
+
+    window = JetStreamPublishWindow(
+        lambda: NeverAckJetStream(),
+        settings=JetStreamPublishWindowSettings(
+            max_pending_messages=1,
+            max_pending_bytes=1024,
+            puback_timeout_seconds=0.01,
+            max_attempts=1,
+        ),
+    )
+
+    with pytest.raises(JetStreamWindowPublishError) as caught:
+        await window.publish(
+            "metrics.network",
+            [JetStreamMessage(payload=b"line", message_id="puback-timeout")],
+        )
+
+    assert caught.value.timeout_stage == "puback"
+    assert window.snapshot().puback_timeout_total == 1
+    assert window.snapshot().publish_call_timeout_total == 0
 
 
 @pytest.mark.asyncio
@@ -397,23 +475,67 @@ async def test_result_deadline_bounds_credit_wait_and_does_not_start_expired_mes
             max_attempts=2,
         ),
     )
-    loop = asyncio.get_running_loop()
+    holder = asyncio.create_task(
+        window.publish(
+            "metrics.network",
+            (JetStreamMessage(payload=b"first", message_id="first"),),
+        )
+    )
+    await first_started.wait()
     publishing = asyncio.create_task(
         window.publish(
             "metrics.network",
             (
-                JetStreamMessage(payload=b"first", message_id="first", deadline=loop.time() + 0.03),
-                JetStreamMessage(payload=b"second", message_id="second", deadline=loop.time() + 0.03),
+                JetStreamMessage(
+                    payload=b"second",
+                    message_id="second",
+                    deadline=asyncio.get_running_loop().time() + 0.03,
+                ),
             ),
         )
     )
-    await first_started.wait()
 
     with pytest.raises(JetStreamWindowPublishError) as caught:
         await asyncio.wait_for(publishing, timeout=0.3)
 
     assert isinstance(caught.value.__cause__, TimeoutError)
-    assert caught.value.attempted_indices == (0,)
+    assert caught.value.attempted_indices == ()
     assert jetstream.started == [b"first"]
+    assert caught.value.timeout_stage == "credit_wait"
+    assert window.snapshot().credit_wait_timeout_total == 1
+    assert window.snapshot().puback_timeout_total == 0
+    holder.cancel()
+    await asyncio.gather(holder, return_exceptions=True)
     assert window.snapshot().pending_messages == 0
     assert window.snapshot().pending_bytes == 0
+
+
+@pytest.mark.asyncio
+async def test_expired_message_before_reservation_is_counted_as_deadline_not_puback_timeout():
+    jetstream = RecordingJetStream()
+    window = JetStreamPublishWindow(
+        lambda: jetstream,
+        settings=JetStreamPublishWindowSettings(
+            max_pending_messages=1,
+            max_pending_bytes=1024,
+            puback_timeout_seconds=1,
+            max_attempts=1,
+        ),
+    )
+
+    with pytest.raises(JetStreamWindowPublishError) as caught:
+        await window.publish(
+            "metrics.network",
+            [
+                JetStreamMessage(
+                    payload=b"expired",
+                    message_id="expired",
+                    deadline=asyncio.get_running_loop().time() - 1,
+                )
+            ],
+        )
+
+    assert caught.value.timeout_stage == "deadline"
+    assert window.snapshot().deadline_expired_total == 1
+    assert window.snapshot().puback_timeout_total == 0
+    assert jetstream.headers == []

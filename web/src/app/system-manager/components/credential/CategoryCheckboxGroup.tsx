@@ -18,7 +18,7 @@ const CategoryCheckboxGroup: React.FC<CategoryCheckboxGroupProps> = ({
   onChange,
 }) => {
   const items = CREDENTIAL_CATEGORIES.map((id) => (
-    <Checkbox key={id} value={id} className="!mr-0">
+    <Checkbox key={id} value={id} className="!mr-0 w-full">
       <span className="text-[13px] text-[var(--color-text-1)]">
         {CREDENTIAL_CATEGORY_ZH_LABELS[id]}（{id}）
       </span>
@@ -30,8 +30,8 @@ const CategoryCheckboxGroup: React.FC<CategoryCheckboxGroupProps> = ({
         <div
           className={
             layout === 'boxed'
-              ? 'flex flex-wrap gap-x-[18px] gap-y-2 rounded-[4px] border border-[var(--color-border)] bg-[var(--color-bg-container)] px-3 py-2.5'
-              : 'flex flex-wrap gap-x-4 gap-y-2'
+              ? 'grid grid-cols-3 gap-x-4 gap-y-2 rounded-[4px] border border-[var(--color-border)] bg-[var(--color-bg-container)] px-3 py-2.5'
+              : 'grid grid-cols-4 gap-x-3 gap-y-2'
           }
         >
           {items}

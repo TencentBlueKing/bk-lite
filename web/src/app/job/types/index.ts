@@ -453,7 +453,7 @@ export interface JobRecordDetail extends JobRecord {
   script?: number;
   playbook?: number;
   playbook_version?: string;
-  params?: Record<string, unknown>;
+  params?: string | Record<string, unknown> | Array<{ name?: string; value?: unknown }>;
   script_type?: ScriptType;
   script_type_display?: string;
   script_content?: string;

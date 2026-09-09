@@ -235,6 +235,7 @@ export interface ManualInstallController {
   cpu_architecture?: string;
   package_id?: React.Key;
   nodes?: NodeItem[];
+  push_targets?: Array<'cmdb' | 'monitor'>;
 }
 
 export interface OperationGuidanceProps {

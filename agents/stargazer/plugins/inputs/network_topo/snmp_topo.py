@@ -32,6 +32,7 @@ except ModuleNotFoundError:  # pragma: no cover - exercised in environments with
 
 
 from core.infra.snmp_engine_pool import shared_snmp_engine
+from core.logger import safe_exception_info, safe_log_value
 from plugins.inputs.network_topo.protocol_oids import PROTOCOL_OID_GROUPS, flatten_oid_registry, get_oid_meta
 from plugins.inputs.network_topo.protocol_oids import get_root_oid as lookup_root_oid
 from plugins.inputs.network_topo.topology_facts import build_topology_fact as build_protocol_topology_fact
@@ -77,6 +78,22 @@ class FallbackOidResult:
     def __init__(self, records, skipped=False):
         self.records = records
         self.skipped = skipped
+
+
+def _is_expected_collection_error(error: BaseException) -> bool:
+    if isinstance(error, (TimeoutError, asyncio.TimeoutError)):
+        return True
+    message = str(error).lower()
+    return any(
+        token in message
+        for token in (
+            "no snmp response",
+            "request timed out",
+            "request timeout",
+            "empty snmp response",
+            "snmp fallback collection returned no data",
+        )
+    )
 
 
 def get_root_oid(oid, roots=None):
@@ -444,7 +461,11 @@ class SnmpTopo:
         except RuntimeError as err:
             if not self._is_retryable_fallback_error(err):
                 raise
-            logger.warning(f"bulkCmd retryable error host={self.host}, falling back to per-OID walk: {err}")
+            logger.debug(
+                "event=snmp_topo_bulk_fallback host=%s error_type=%s",
+                safe_log_value(self.host),
+                type(err).__name__,
+            )
             return await self._fallback_walk_cmd()
 
     @staticmethod
@@ -538,12 +559,22 @@ class SnmpTopo:
         ) = await self._next_walk_oid(oid, row_consumer=append_records)
         if errorIndication:
             if self._is_retryable_fallback_error(errorIndication):
-                logger.warning(f"Skipping OID subtree host={self.host} oid={oid}: {errorIndication}")
+                logger.debug(
+                    "event=snmp_topo_oid_skipped host=%s oid=%s error_type=%s",
+                    safe_log_value(self.host),
+                    safe_log_value(oid),
+                    type(errorIndication).__name__,
+                )
                 return FallbackOidResult(records=[], skipped=True)
             raise RuntimeError(str(errorIndication))
         if errorStatus:
             if self._is_retryable_fallback_error(errorStatus):
-                logger.warning(f"Skipping OID subtree host={self.host} oid={oid}: {errorStatus.prettyPrint()}")
+                logger.debug(
+                    "event=snmp_topo_oid_skipped host=%s oid=%s error_type=%s",
+                    safe_log_value(self.host),
+                    safe_log_value(oid),
+                    type(errorStatus).__name__,
+                )
                 return FallbackOidResult(records=[], skipped=True)
             raise RuntimeError(f"SNMP error: {errorStatus.prettyPrint()} (oid={oid})")
         return FallbackOidResult(records=records)
@@ -580,7 +611,11 @@ class SnmpTopo:
             oid_result = await self._fallback_collect_oid(oid)
             if oid_result.skipped:
                 if oid in OPTIONAL_FALLBACK_ROOTS:
-                    logger.info(f"Optional fallback OID unavailable host={self.host} oid={oid}; continuing")
+                    logger.debug(
+                        "event=snmp_topo_optional_oid_unavailable host=%s oid=%s",
+                        safe_log_value(self.host),
+                        safe_log_value(oid),
+                    )
                     continue
                 skipped_required_oids.append(oid)
                 continue
@@ -823,13 +858,23 @@ class SnmpTopo:
             model_data = {"network_topo": snmp_data}
             inst_data = {"result": model_data, "success": True}
         except Exception as err:
-            logger.exception(
-                "event=snmp_topo_collect_failed host=%s task_id=%s failed_stage=%s error_type=%s",
-                self.host,
-                self.collection_task_id,
+            log_args = (
+                safe_log_value(self.host),
+                safe_log_value(self.collection_task_id),
                 "list_all_resources",
                 type(err).__name__,
             )
+            if _is_expected_collection_error(err):
+                logger.debug(
+                    "event=snmp_topo_collect_unavailable host=%s task_id=%s " "failed_stage=%s error_type=%s",
+                    *log_args,
+                )
+            else:
+                logger.error(
+                    "event=snmp_topo_collect_failed host=%s task_id=%s " "failed_stage=%s error_type=%s",
+                    *log_args,
+                    exc_info=safe_exception_info(err),
+                )
             inst_data = {"result": {"cmdb_collect_error": str(err)}, "success": False}
 
         return inst_data

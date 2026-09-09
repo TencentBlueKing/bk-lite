@@ -571,7 +571,16 @@
     "chart_type": [
         "single"
     ],
-    "params": [],
+    "params": [
+        {
+            "name": "organization",
+            "type": "string",
+            "value": "",
+            "alias_name": "组织",
+            "filterType": "filter",
+            "inputMode": "organization"
+        }
+    ],
     "field_schema": [
         {"key": "monitor_object_total", "title": "监控对象总数", "value_type": "number", "description": "监控对象定义总数"},
         {"key": "monitor_object_visible", "title": "可见监控对象数", "value_type": "number", "description": "可见的监控对象数"},

@@ -30,7 +30,9 @@ def _append_gauge(lines: list[str], name: str, labels: str, value: Any, timestam
 
 AIX_SCRIPT_PATH = Path(__file__).parent / "scripts" / "aix" / "os_monitor.ksh"
 AIX_COLLECT_EOF = "STARGAZER_AIX_COLLECT_EOF"
-AIX_KSH_C_PREFIX = "/usr/bin/ksh -c '. /dev/stdin'"
+# 与 Linux 采集一致：quoted heredoc。Ansible adhoc `-a` 的引号拆分由
+# encode_ansible_raw_module_args 的 JSON `_raw_params` 绕过。
+AIX_KSH_PREFIX = "LC_ALL=C LANG=C /usr/bin/ksh"
 
 COMMAND_EXECUTE_TIMEOUT = int(os.getenv("COMMAND_EXECUTE_TIMEOUT", "900"))
 
@@ -41,7 +43,7 @@ def load_aix_monitor_script() -> str:
 
 def wrap_ksh_collect(script_body: str | None = None) -> str:
     body = script_body if script_body is not None else load_aix_monitor_script()
-    return f"{AIX_KSH_C_PREFIX} <<'{AIX_COLLECT_EOF}'\n{body.rstrip()}\n{AIX_COLLECT_EOF}\n"
+    return f"{AIX_KSH_PREFIX} <<'{AIX_COLLECT_EOF}'\n{body.rstrip()}\n{AIX_COLLECT_EOF}\n"
 
 
 def _as_float(value: Any, default: float = 0.0) -> float:

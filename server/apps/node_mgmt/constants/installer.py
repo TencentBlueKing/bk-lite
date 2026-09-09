@@ -16,9 +16,7 @@ def _installer_alias_path(target_os: str, architecture: str = "generic") -> str:
 class InstallerConstants:
     REQUEST_TIMEOUT = 30
     CONTROLLER_INSTALL_MAX_PARALLEL = 3
-    CONTROLLER_INSTALL_MAX_CLOCK_SKEW_SECONDS = int(
-        os.getenv("CONTROLLER_INSTALL_MAX_CLOCK_SKEW_SECONDS", "300")
-    )
+    CONTROLLER_INSTALL_MAX_CLOCK_SKEW_SECONDS = int(os.getenv("CONTROLLER_INSTALL_MAX_CLOCK_SKEW_SECONDS", "300"))
 
     EXECUTION_PHASE_KEY = "execution_phase"
     EXECUTION_ATTEMPT_KEY = "execution_attempt"
@@ -117,6 +115,12 @@ class InstallerConstants:
     INSTALL_TOKEN_CACHE_PREFIX = "node_install_token"
 
     DOWNLOAD_TOKEN_CACHE_PREFIX = "package_download_token"
+
+    MODULE_PUSH_TARGETS_KEY = "module_push_targets"
+    MODULE_PUSH_ACTOR_SCOPE_KEY = "module_push_actor_scope"
+    MODULE_PUSH_CONSUMED_KEY = "module_push_consumed"
+    MODULE_PUSH_INTENT_CACHE_PREFIX = "node_module_push_intent"
+    MODULE_PUSH_INTENT_CACHE_TTL = 7 * 24 * 3600
 
     DEFAULT_INSTALLER_VERSION = os.getenv("INSTALLER_DEFAULT_VERSION", "latest")
 

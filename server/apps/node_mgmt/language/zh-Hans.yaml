@@ -12,9 +12,9 @@ collector:
   telegraf_linux:
     name: Telegraf
     description: Telegraf （Linux）是一款轻量高效的指标采集器，原生具备各类对象的监控采集能力。同时作为数据中转站将其他监控、CMDB采集器收集的数据存储到平台。
-  apm_otel_linux:
-    name: APM OTEL
-    description: APM OTEL（Linux）是区域 OpenTelemetry 采集器，由容器节点 Sidecar 托管，接收语言探针上报的 Trace。
+  otelcollector_linux:
+    name: OTel Collector
+    description: OTel Collector（Linux）是区域 OpenTelemetry 采集器，由容器节点 Sidecar 托管，接收语言探针上报的 Trace，并发布到 apm.traces.<区域>。
   jmx_weblogic_linux:
     description: WebLogic JMX（Linux）采集器基于Java管理扩展（JMX）采集WebLogic服务器的各类监控指标。
     name: WebLogic JMX

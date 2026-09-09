@@ -1,4 +1,5 @@
 from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.metis.llm.common.llm_client_factory import DEFAULT_CHAT_TEMPERATURE
 from apps.opspilot.models import LLMSkill
 from apps.opspilot.services.chat_service import chat_service
 from apps.opspilot.utils.bot_utils import get_user_info
@@ -20,15 +21,15 @@ class SkillExecuteService:
             "skill_prompt": skill_prompt,
             "chat_history": chat_history,
             "conversation_window_size": 10,
-            "temperature": llm_skill.temperature,
+            "temperature": DEFAULT_CHAT_TEMPERATURE,
             "username": user.name if user else sender_id,
             "user_id": user.user_id if user else sender_id,
             "bot_id": bot.id,
-            "show_think": llm_skill.show_think,
+            "show_think": False,
             "tools": llm_skill.tools,
             "group": llm_skill.team[0],
-            "enable_suggest": llm_skill.enable_suggest,
-            "enable_query_rewrite": llm_skill.enable_query_rewrite,
+            "enable_suggest": False,
+            "enable_query_rewrite": False,
         }
 
         return chat_service.chat(params)

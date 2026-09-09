@@ -10,6 +10,8 @@ import SelectionPreviewLayout from '@/components/selection-preview-layout';
 import { useTranslation } from '@/utils/i18n';
 import { ColumnItem } from '@/types';
 
+const DEFAULT_PAGE_SIZE = 20;
+
 export interface HostItem {
   key: string;
   hostName: string;
@@ -32,6 +34,21 @@ export interface FetchHostsResult {
   items: HostItem[];
   total: number;
 }
+
+interface HostPaginationChange {
+  currentPageSize: number;
+  nextPage: number;
+  nextPageSize: number;
+}
+
+export const resolveHostPaginationChange = ({
+  currentPageSize,
+  nextPage,
+  nextPageSize,
+}: HostPaginationChange) => ({
+  page: nextPageSize === currentPageSize ? nextPage : 1,
+  pageSize: nextPageSize,
+});
 
 export interface JobHostSelectionModalProps {
   open: boolean;
@@ -62,14 +79,14 @@ const JobHostSelectionModal: React.FC<JobHostSelectionModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [selectedHostsMap, setSelectedHostsMap] = useState<Record<string, HostItem>>({});
-  const pageSize = 20;
 
   const fetchData = useCallback(
-    async (page: number, search?: string) => {
+    async (page: number, nextPageSize: number, search?: string) => {
       setLoading(true);
       try {
-        const result = await fetchHosts({ page, pageSize, search, source });
+        const result = await fetchHosts({ page, pageSize: nextPageSize, search, source });
         setDataSource(result.items);
         setTotal(result.total);
       } catch {
@@ -87,7 +104,8 @@ const JobHostSelectionModal: React.FC<JobHostSelectionModalProps> = ({
       setSelectedRowKeys(initialKeys);
       setSearchText('');
       setCurrentPage(1);
-      fetchData(1);
+      setPageSize(DEFAULT_PAGE_SIZE);
+      fetchData(1, DEFAULT_PAGE_SIZE);
     }
   }, [fetchData, initialKeys, open]);
 
@@ -110,20 +128,26 @@ const JobHostSelectionModal: React.FC<JobHostSelectionModalProps> = ({
 
   const handleSearch = () => {
     setCurrentPage(1);
-    fetchData(1, searchText);
+    fetchData(1, pageSize, searchText);
   };
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchText(e.target.value);
     if (!e.target.value) {
       setCurrentPage(1);
-      fetchData(1);
+      fetchData(1, pageSize);
     }
   };
 
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-    fetchData(page, searchText);
+  const handlePageChange = (nextPage: number, nextPageSize: number) => {
+    const pagination = resolveHostPaginationChange({
+      currentPageSize: pageSize,
+      nextPage,
+      nextPageSize,
+    });
+    setCurrentPage(pagination.page);
+    setPageSize(pagination.pageSize);
+    fetchData(pagination.page, pagination.pageSize, searchText);
   };
 
   const columns: ColumnItem[] = [
@@ -257,7 +281,7 @@ const JobHostSelectionModal: React.FC<JobHostSelectionModalProps> = ({
                   pageSize,
                   total,
                   onChange: handlePageChange,
-                  showSizeChanger: false,
+                  showSizeChanger: true,
                   showTotal: (count: number) =>
                     t('job.totalItems').replace('{total}', String(count)),
                 }}

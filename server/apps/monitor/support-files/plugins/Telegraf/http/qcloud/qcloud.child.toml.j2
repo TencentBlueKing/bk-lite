@@ -8,6 +8,7 @@
     [inputs.prometheus.http_headers]
         username = "{{ username }}"
         password = "${PASSWORD__{{ config_id }}}"
+        region = "{{ region }}"
         instance_id = "{{ instance_id }}"
         instance_type = "{{ instance_type }}"
         collect_type = "http"

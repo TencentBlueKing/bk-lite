@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Empty, Input, message, Popconfirm, Space, Switch, Tag, Tooltip, Typography } from 'antd';
+import { Button, Empty, message, Popconfirm, Space, Switch, Tabs, Tag } from 'antd';
 import GroupTreeSelect from '@/components/group-tree-select';
 import {
   AppstoreOutlined,
@@ -10,13 +10,12 @@ import {
   DatabaseOutlined,
   DesktopOutlined,
   HddOutlined,
-  KeyOutlined,
   PlusOutlined,
-  ReloadOutlined,
   ShareAltOutlined,
 } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
 import PermissionWrapper from '@/components/permission';
+import SearchActionBar from '@/components/search-action-bar';
 import { useTranslation } from '@/utils/i18n';
 import { CREDENTIAL_CATEGORIES } from '@/components/credential-picker/types';
 import type { CredentialGroupOption, CredentialItem, CredentialTypeItem } from '@/components/credential-picker/types';
@@ -82,14 +81,6 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
     return [...CREDENTIAL_CATEGORIES, ...Array.from(new Set(extra))];
   }, [types]);
 
-  const categoryTypeCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const cat of navCategories) {
-      counts[cat] = types.filter((item) => item.categories.includes(cat)).length;
-    }
-    return counts;
-  }, [navCategories, types]);
-
   const typesInCategory = useMemo(
     () => types.filter((item) => item.categories.includes(category)),
     [types, category],
@@ -106,20 +97,25 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
     setUsableGroups(nextUsable);
   };
 
-  const loadList = async (
-    page = pagination.current,
-    pageSize = pagination.pageSize,
-    nextType = typeKey,
-    nextOwner = ownerId,
-    keyword = search,
-  ) => {
+  const loadList = async (opts: {
+    page?: number;
+    pageSize?: number;
+    type?: string;
+    owner?: number | null;
+    keyword?: string;
+  } = {}) => {
+    const page = opts.page ?? pagination.current;
+    const pageSize = opts.pageSize ?? pagination.pageSize;
+    const nextType = opts.type ?? typeKey;
+    const nextOwner = 'owner' in opts ? opts.owner : ownerId;
+    const keyword = 'keyword' in opts ? opts.keyword ?? '' : search;
     setLoading(true);
     try {
       const data = await getCredentials({
-        search: keyword,
+        search: keyword || undefined,
         category,
         type: nextType === ALL_TYPES ? undefined : nextType,
-        group_id: nextOwner,
+        ...(nextOwner != null ? { group_id: nextOwner } : {}),
         page,
         page_size: pageSize,
       });
@@ -143,15 +139,10 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
   const confirmDelete = async (credentialId: string) => {
     try {
       await deleteCredential(credentialId);
-      await loadList();
+      await Promise.all([loadMeta(), loadList()]);
     } catch (error) {
       message.error(credentialActionError(error));
     }
-  };
-
-  const reload = async () => {
-    await loadMeta();
-    await loadList();
   };
 
   useEffect(() => {
@@ -163,7 +154,7 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
 
   useEffect(() => {
     setTypeKey(ALL_TYPES);
-    void loadList(1, pagination.pageSize, ALL_TYPES, ownerId, search);
+    void loadList({ page: 1, type: ALL_TYPES, owner: ownerId, keyword: search });
   }, [category]);
 
   const openCreate = () => {
@@ -217,29 +208,15 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
       title: t('system.credential.name'),
       dataIndex: 'name',
       key: 'name',
-      width: 320,
+      width: 220,
       render: (_, record: CredentialItem) => (
-        <div className="flex items-center gap-2.5 py-0.5">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]">
-            <KeyOutlined className="text-sm" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div>
-              <Button
-                type="link"
-                className="!h-auto !p-0 font-medium text-[var(--color-text-1)] hover:!text-[var(--color-primary)]"
-                onClick={() => openRecord(record, 'view')}
-              >
-                {record.name}
-              </Button>
-            </div>
-            <div className="mt-0.5">
-              <Typography.Text className="font-mono text-xs text-[var(--color-text-3)]" copyable>
-                {record.credential_id}
-              </Typography.Text>
-            </div>
-          </div>
-        </div>
+        <Button
+          type="link"
+          className="!h-auto !p-0 font-medium text-[var(--color-text-1)] hover:!text-[var(--color-primary)]"
+          onClick={() => openRecord(record, 'view')}
+        >
+          {record.name}
+        </Button>
       ),
     },
     {
@@ -248,9 +225,9 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
       key: 'type',
       width: 140,
       render: (key: string) => (
-        <Tag bordered={false} className="rounded bg-[var(--color-fill-2)] px-2 py-0.5 font-medium text-[var(--color-text-2)]">
+        <span className="text-sm text-[var(--color-text-2)]">
           {types.find((item) => item.key === key)?.name || key}
-        </Tag>
+        </span>
       ),
     },
     {
@@ -270,26 +247,29 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
           return <span className="text-[var(--color-text-4)]">—</span>;
         }
         if (Array.isArray(refs)) {
-          const labelOf = (module: string, count: number) => {
-            if (module === 'cmdb') {
+          const labelOf = (moduleName: string, count: number) => {
+            if (moduleName === 'cmdb') {
               return t('system.credential.refCmdb', 'CMDB {count}', { count });
             }
-            if (module === 'monitor') {
+            if (moduleName === 'monitor') {
               return t('system.credential.refMonitor', '监控 {count}', { count });
             }
-            return `${module} ${count}`;
+            return `${moduleName} ${count}`;
           };
           return (
             <div className="flex flex-wrap gap-1">
               {refs.map((item) => {
-                const module = item && typeof item === 'object' ? String((item as { module?: string }).module || '') : '';
+                const moduleName =
+                  item && typeof item === 'object'
+                    ? String((item as { module?: string }).module || '')
+                    : '';
                 const count = item && typeof item === 'object' ? Number((item as { count?: number }).count) : 0;
-                if (!module || !count) {
+                if (!moduleName || !count) {
                   return null;
                 }
                 return (
-                  <Tag key={module} bordered={false} color="blue" className="rounded">
-                    {labelOf(module, count)}
+                  <Tag key={moduleName} bordered={false} color="blue" className="rounded">
+                    {labelOf(moduleName, count)}
                   </Tag>
                 );
               })}
@@ -308,11 +288,28 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
       render: (disabled: boolean, record: CredentialItem) => (
         canManageOwner(record.group_id) ? (
           <PermissionWrapper requiredPermissions={['Edit']}>
-            <Switch
-              size="small"
-              checked={!disabled}
-              onChange={(checked) => void setCredentialDisabled(record.credential_id, !checked).then(() => loadList())}
-            />
+            {disabled ? (
+              <Switch
+                size="small"
+                checked={false}
+                onChange={(checked) => {
+                  if (checked) {
+                    void setCredentialDisabled(record.credential_id, false).then(() => loadList());
+                  }
+                }}
+              />
+            ) : (
+              <Popconfirm
+                title={t('system.credential.disableConfirm')}
+                okText={t('common.confirm')}
+                cancelText={t('common.cancel')}
+                onConfirm={() => void setCredentialDisabled(record.credential_id, true).then(() => loadList())}
+              >
+                <span className="inline-flex">
+                  <Switch size="small" checked />
+                </span>
+              </Popconfirm>
+            )}
           </PermissionWrapper>
         ) : (
           <span className="text-sm text-[var(--color-text-3)]">
@@ -325,16 +322,15 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
       title: t('common.actions'),
       key: 'actions',
       dataIndex: 'actions',
-      width: 180,
+      width: 140,
       render: (_, record: CredentialItem) => (
-        <Space size={4}>
+        <Space>
           {canManageOwner(record.group_id) ? (
             <>
               <PermissionWrapper requiredPermissions={['Edit']}>
                 <Button
                   type="link"
                   size="small"
-                  className="!px-1.5"
                   onClick={() => openRecord(record, 'edit')}
                 >
                   {t('common.edit')}
@@ -346,7 +342,6 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
                     type="link"
                     size="small"
                     danger
-                    className="!px-1.5"
                   >
                     {t('common.delete')}
                   </Button>
@@ -357,7 +352,6 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
             <Button
               type="link"
               size="small"
-              className="!px-1.5"
               onClick={() => openRecord(record, 'view')}
             >
               {t('common.detail')}
@@ -371,34 +365,21 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
   return (
     <div className="flex h-full min-h-0 gap-4">
       {/* Left side: Category Navigation Bar (Primary Level) */}
-      <div className="flex w-[190px] shrink-0 flex-col overflow-hidden rounded-lg border border-[var(--color-border-2)] bg-[var(--color-bg)]">
-        <div className="flex h-11 shrink-0 items-center justify-between border-b border-[var(--color-border-2)] bg-[var(--color-fill-1)]/60 px-3.5">
-          <span className="text-xs font-semibold text-[var(--color-text-2)]">
-            {t('system.credential.category')}
-          </span>
-          <span className="rounded-full bg-[var(--color-fill-2)] px-2 py-0.5 text-[11px] text-[var(--color-text-3)]">
-            {navCategories.length}
-          </span>
-        </div>
+      <div className="flex h-full w-[16%] min-w-[180px] max-w-[220px] shrink-0 flex-col overflow-hidden border-r border-[var(--color-border-2)] bg-[var(--color-bg)]">
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
           {navCategories.map((id) => {
             const active = category === id;
-            const count = categoryTypeCounts[id] ?? 0;
             return (
               <button
                 key={id}
                 type="button"
-                className={`group relative mb-1.5 flex w-full items-center justify-between rounded-md py-2.5 pl-3 pr-2.5 text-left text-sm transition-all duration-150 ${
+                className={`group mb-1.5 flex w-full cursor-pointer items-center rounded-md py-2.5 pl-3 pr-2.5 text-left text-sm transition-all duration-150 ${
                   active
                     ? 'bg-[var(--color-primary-bg-active)] font-medium text-[var(--color-primary)]'
                     : 'text-[var(--color-text-2)] hover:bg-[var(--color-fill-2)] hover:text-[var(--color-text-1)]'
                 }`}
                 onClick={() => setCategory(id)}
               >
-                {/* Active accent pill on the left */}
-                {active && (
-                  <span className="absolute inset-y-2 left-0 w-1 rounded-r-sm bg-[var(--color-primary)]" />
-                )}
                 <div className="flex min-w-0 items-center gap-2.5">
                   <span
                     className={`text-base transition-colors ${
@@ -411,108 +392,75 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
                   </span>
                   <span className="truncate">{categoryLabel(id)}</span>
                 </div>
-                {count > 0 ? (
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-[11px] leading-tight ${
-                      active
-                        ? 'bg-[var(--color-primary)]/15 font-semibold text-[var(--color-primary)]'
-                        : 'bg-[var(--color-fill-2)] text-[var(--color-text-4)] group-hover:text-[var(--color-text-3)]'
-                    }`}
-                  >
-                    {count}
-                  </span>
-                ) : null}
               </button>
             );
           })}
         </div>
       </div>
 
-      {/* Right side: Type Pills (Secondary Level) + Filter/Actions + Table */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        {/* Top bar: Type Filter Pills (Pills) on the left, Search & Actions on the right */}
-        <div className="mb-3.5 flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border-2)] pb-3">
-          {/* Secondary Level: Segmented Tab-style Filter */}
-          <div className="inline-flex items-center gap-1 rounded-lg bg-[var(--color-fill-1)] p-1">
-            <button
-              type="button"
-              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all duration-150 ${
-                typeKey === ALL_TYPES
-                  ? 'bg-[var(--color-bg)] text-[var(--color-primary)] shadow-xs'
-                  : 'text-[var(--color-text-2)] hover:text-[var(--color-text-1)]'
-              }`}
-              onClick={() => {
-                setTypeKey(ALL_TYPES);
-                void loadList(1, pagination.pageSize, ALL_TYPES);
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="shrink-0">
+          <Tabs
+            activeKey={typeKey}
+            onChange={(key) => {
+              setTypeKey(key);
+              void loadList({ page: 1, type: key });
+            }}
+            className="[&_.ant-tabs-nav]:!mb-0 [&_.ant-tabs-nav::before]:!border-[var(--color-border-2)] [&_.ant-tabs-content]:!hidden [&_.ant-tabs-content-holder]:!hidden"
+            items={[
+              {
+                key: ALL_TYPES,
+                label: t('system.credential.allTypes'),
+              },
+              ...typesInCategory.map((item) => ({
+                key: item.key,
+                label: (
+                  <span className="inline-flex items-center">
+                    <span>{item.name}</span>
+                    <span className="ml-1 font-normal tabular-nums text-[var(--color-text-3)]">
+                      ({item.credential_count ?? 0})
+                    </span>
+                  </span>
+                ),
+              })),
+            ]}
+          />
+          <div className="py-3">
+            <SearchActionBar
+              spacing="flush"
+              searchProps={{
+                placeholder: t('system.credential.searchPlaceholder'),
+                enterButton: false,
+                onSearch: (value) => {
+                  setSearch(value);
+                  void loadList({ page: 1, keyword: value });
+                },
               }}
-            >
-              <span>{t('system.credential.allTypes')}</span>
-              <span
-                className={`rounded-full px-1.5 py-0.2 text-[10px] leading-tight ${
-                  typeKey === ALL_TYPES
-                    ? 'bg-[var(--color-primary-bg-active)] font-semibold text-[var(--color-primary)]'
-                    : 'bg-[var(--color-fill-2)] text-[var(--color-text-4)]'
-                }`}
-              >
-                {typesInCategory.length}
-              </span>
-            </button>
-            {typesInCategory.map((item) => {
-              const active = typeKey === item.key;
-              return (
-                <button
-                  key={item.key}
-                  type="button"
-                  className={`inline-flex items-center rounded-md px-3 py-1.5 text-xs font-medium transition-all duration-150 ${
-                    active
-                      ? 'bg-[var(--color-bg)] text-[var(--color-primary)] shadow-xs'
-                      : 'text-[var(--color-text-2)] hover:text-[var(--color-text-1)]'
-                  }`}
-                  onClick={() => {
-                    setTypeKey(item.key);
-                    void loadList(1, pagination.pageSize, item.key);
-                  }}
-                >
-                  <span>{item.name}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Search, Filter & Operation Tools */}
-          <div className="flex flex-wrap items-center gap-2">
-            <Input.Search
-              allowClear
-              className="w-56"
-              placeholder={t('common.search')}
-              onSearch={(value) => {
-                setSearch(value);
-                void loadList(1, pagination.pageSize, typeKey, ownerId, value);
-              }}
+              actions={(
+                <>
+                  <div className="w-48">
+                    <GroupTreeSelect
+                      multiple={false}
+                      mode="ownership"
+                      allowClear
+                      showSearch
+                      placeholder={t('system.credential.organization')}
+                      value={ownerId}
+                      onChange={(value) => {
+                        const next = typeof value === 'number' ? value : undefined;
+                        setOwnerId(next);
+                        void loadList({ page: 1, owner: next ?? null });
+                      }}
+                    />
+                  </div>
+                  <PermissionWrapper requiredPermissions={['Add']}>
+                    <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+                      {t('system.credential.addCredential')}
+                    </Button>
+                  </PermissionWrapper>
+                </>
+              )}
             />
-            <div className="w-56">
-              <GroupTreeSelect
-                multiple={false}
-                mode="ownership"
-                allowClear
-                showSearch
-                placeholder={t('system.credential.organization')}
-                value={ownerId}
-                onChange={(value) => {
-                  const next = typeof value === 'number' ? value : undefined;
-                  setOwnerId(next);
-                  void loadList(1, pagination.pageSize, typeKey, next);
-                }}
-              />
-            </div>
-            <PermissionWrapper requiredPermissions={['Add']}>
-              <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-                {t('system.credential.addCredential')}
-              </Button>
-            </PermissionWrapper>
-            <Tooltip title={t('common.refresh')}>
-              <Button type="text" icon={<ReloadOutlined />} onClick={() => void reload()} />
-            </Tooltip>
           </div>
         </div>
 
@@ -545,7 +493,7 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
                 pageSize: pagination.pageSize,
                 total: pagination.total,
                 showSizeChanger: true,
-                onChange: (page, pageSize) => void loadList(page, pageSize),
+                onChange: (page, pageSize) => void loadList({ page, pageSize }),
               }}
             />
           )}
@@ -563,10 +511,11 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
         onSubmit={async (payload) => {
           if (drawerMode === 'create') {
             await createCredential(payload);
+            await Promise.all([loadMeta(), loadList()]);
           } else if (current) {
             await updateCredential(current.credential_id, payload);
+            await loadList();
           }
-          await loadList();
         }}
       />
     </div>

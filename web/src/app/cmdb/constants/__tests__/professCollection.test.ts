@@ -5,6 +5,7 @@ import {
   getPlatformApiFormInitialValues,
   getSnmpTopologyFormValues,
   IP_DISCOVERY_FORM_INITIAL_VALUES,
+  IP_DISCOVERY_MIN_TIMEOUT_SECONDS,
   recommendedTopologyIntervalMinutes,
   resolveIpDiscoveryFormTimeout,
   SNMP_FORM_INITIAL_VALUES,
@@ -12,15 +13,19 @@ import {
 } from '../professCollection';
 
 describe('SNMP topology interval seam', () => {
-  it('defaults an IP subnet scan budget to 300 seconds', () => {
-    expect(IP_DISCOVERY_FORM_INITIAL_VALUES.timeout).toBe(300);
+  it('defaults an IP subnet scan budget to its 30-second minimum', () => {
+    expect(IP_DISCOVERY_MIN_TIMEOUT_SECONDS).toBe(30);
+    expect(IP_DISCOVERY_FORM_INITIAL_VALUES.timeout).toBe(
+      IP_DISCOVERY_MIN_TIMEOUT_SECONDS
+    );
   });
 
   it('does not copy a legacy per-IP timeout onto a new IP task', () => {
-    expect(resolveIpDiscoveryFormTimeout(true, 5)).toBe(300);
-    expect(resolveIpDiscoveryFormTimeout(true, 30)).toBe(300);
+    expect(resolveIpDiscoveryFormTimeout(true, 5)).toBe(30);
+    expect(resolveIpDiscoveryFormTimeout(true, 300)).toBe(30);
+    expect(resolveIpDiscoveryFormTimeout(false, 5)).toBe(5);
     expect(resolveIpDiscoveryFormTimeout(false, 30)).toBe(30);
-    expect(resolveIpDiscoveryFormTimeout(false)).toBe(300);
+    expect(resolveIpDiscoveryFormTimeout(false)).toBe(30);
   });
 
   it('defaults the SNMP collection timeout to 30 seconds', () => {

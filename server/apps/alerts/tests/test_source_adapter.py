@@ -938,17 +938,19 @@ def test_enrich_event_no_resource_type_returns():
 
 
 @pytest.mark.django_db
-def test_enrich_event_with_resource(monkeypatch):
+def test_enrich_event_uses_declarative_engine(monkeypatch):
     from apps.alerts.common.source_adapter import base as base_mod
 
-    class FakeCMDB:
-        def search_instances(self, params):
-            return {"vendor": "dell"}
-
-    monkeypatch.setattr(base_mod, "CMDB", FakeCMDB)
-    data = {"labels": {}, "resource_type": "host", "resource_id": "1"}
+    captured = []
+    monkeypatch.setattr(
+        base_mod.EnrichmentEngine,
+        "enrich_batch",
+        lambda self, events: captured.extend(events),
+    )
+    data = {"labels": {}, "resource_type": "host", "resource_id": "1", "team": [1]}
     base_mod.AlertSourceAdapter.enrich_event(data)
-    assert data["labels"]["vendor"] == "dell"
+    assert captured == [data]
+    assert data["enrichment"] == {}
 
 
 @pytest.mark.django_db

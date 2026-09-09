@@ -39,3 +39,32 @@ def get_current_team(request, default=None):
         return str(cookie_team)
 
     return default
+
+
+def collect_group_tree_ids(group_tree):
+    """展平会话组织树节点 ID（含 subGroups），非法节点跳过。"""
+    ids = set()
+    stack = list(group_tree or [])
+    while stack:
+        node = stack.pop()
+        if not isinstance(node, dict):
+            continue
+        try:
+            ids.add(int(node.get("id")))
+        except (TypeError, ValueError):
+            pass
+        children = node.get("subGroups")
+        if children:
+            stack.extend(children)
+    return ids
+
+
+def group_tree_allows_team(group_tree, team_id):
+    """无组织树时兼容旧 NATS 调用方；有树则选中组织必须落在树内。"""
+    tree_ids = collect_group_tree_ids(group_tree)
+    if not tree_ids:
+        return True
+    try:
+        return int(team_id) in tree_ids
+    except (TypeError, ValueError):
+        return False

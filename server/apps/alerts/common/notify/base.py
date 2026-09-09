@@ -4,6 +4,7 @@
 # @Author: windyzhao
 from apps.alerts.constants.constants import LevelType
 from apps.alerts.models.models import Level
+from apps.alerts.utils.enrichment import flatten_enrichment
 from apps.system_mgmt.models import User
 
 
@@ -49,6 +50,11 @@ class NotifyParamsFormat(object):
             content += f"内容：{alert.content} \n"
             content += f"告警时间:：{alert.format_created_at(self.user_timezone)} \n"
             content += f"负责人:：{','.join(self.username_list)} \n"
+            enrichment_items = flatten_enrichment(alert.enrichment or {})
+            if enrichment_items:
+                content += "丰富信息：\n"
+                for key, value in enrichment_items:
+                    content += f"- enrichment.{key}: {value} \n"
         else:
             content += "告警信息如下：\n"
             for index, alert in enumerate(self.alerts[:10]):  # 限制内容展示就是10条

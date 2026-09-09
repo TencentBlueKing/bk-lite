@@ -29,6 +29,11 @@ def _policy(name, organizations):
     return policy
 
 
+def _alert(policy, **kwargs):
+    kwargs.setdefault("organizations", list(policy.organizations))
+    return MonitorAlert.objects.create(policy_id=policy.id, **kwargs)
+
+
 def _patch_nats_scope(mocker, organization_ids, *, is_superuser=False):
     return mocker.patch(
         "apps.monitor.nats.monitor.SystemMgmt.get_authorized_groups_scoped",
@@ -61,10 +66,12 @@ def test_superuser_alert_list_inherits_policy_current_team(scoped_superuser):
     sibling_policy = _policy("sibling-policy", [2])
     current_alert = MonitorAlert.objects.create(
         policy_id=current_policy.id,
+        organizations=list(current_policy.organizations),
         monitor_instance_id="current-instance",
     )
     MonitorAlert.objects.create(
         policy_id=sibling_policy.id,
+        organizations=list(sibling_policy.organizations),
         monitor_instance_id="sibling-instance",
     )
 
@@ -79,6 +86,7 @@ def test_shared_policy_projection_hides_sibling_organization(scoped_superuser):
     shared_policy = _policy("shared-policy", [1, 2])
     MonitorAlert.objects.create(
         policy_id=shared_policy.id,
+        organizations=list(shared_policy.organizations),
         monitor_instance_id="shared-instance",
     )
 
@@ -93,6 +101,7 @@ def test_foreign_alert_update_is_hidden_and_has_zero_side_effect(scoped_superuse
     sibling_policy = _policy("sibling-update-policy", [2])
     alert = MonitorAlert.objects.create(
         policy_id=sibling_policy.id,
+        organizations=list(sibling_policy.organizations),
         monitor_instance_id="sibling-update-instance",
         status="new",
     )
@@ -114,6 +123,7 @@ def test_alert_update_rejects_policy_reassignment_before_notification(scoped_sup
     sibling_policy = _policy("update-sibling-policy", [2])
     alert = MonitorAlert.objects.create(
         policy_id=current_policy.id,
+        organizations=list(current_policy.organizations),
         monitor_instance_id="update-current-instance",
         status="new",
     )
@@ -138,6 +148,7 @@ def test_snapshot_policy_mismatch_is_hidden_before_s3_read(scoped_superuser, moc
     sibling_policy = _policy("snapshot-sibling-policy", [2])
     alert = MonitorAlert.objects.create(
         policy_id=current_policy.id,
+        organizations=list(current_policy.organizations),
         monitor_instance_id="snapshot-instance",
     )
     MonitorAlertMetricSnapshot.objects.create(
@@ -161,6 +172,7 @@ def test_event_policy_mismatch_is_hidden(scoped_superuser):
     sibling_policy = _policy("event-sibling-policy", [2])
     alert = MonitorAlert.objects.create(
         policy_id=current_policy.id,
+        organizations=list(current_policy.organizations),
         monitor_instance_id="event-instance",
     )
     MonitorEvent.objects.create(
@@ -182,6 +194,7 @@ def test_raw_data_mismatch_is_hidden_before_s3_read(scoped_superuser, mocker):
     sibling_policy = _policy("raw-sibling-policy", [2])
     sibling_alert = MonitorAlert.objects.create(
         policy_id=sibling_policy.id,
+        organizations=list(sibling_policy.organizations),
         monitor_instance_id="raw-instance",
     )
     event = MonitorEvent.objects.create(
@@ -206,8 +219,8 @@ def test_raw_data_mismatch_is_hidden_before_s3_read(scoped_superuser, mocker):
 def test_nats_statistics_uses_persisted_superuser_when_caller_claims_false(mocker):
     current_policy = _policy("nats-current-policy", [1])
     sibling_policy = _policy("nats-sibling-policy", [2])
-    current_alert = MonitorAlert.objects.create(policy_id=current_policy.id)
-    sibling_alert = MonitorAlert.objects.create(policy_id=sibling_policy.id)
+    current_alert = _alert(current_policy)
+    sibling_alert = _alert(sibling_policy)
     MonitorEvent.objects.create(
         id="nats-current-event",
         policy_id=current_policy.id,
@@ -338,6 +351,7 @@ def test_nats_statistics_rejects_forged_sibling_current_team(mocker):
     )
     MonitorAlert.objects.create(
         policy_id=sibling_policy.id,
+        organizations=list(sibling_policy.organizations),
         monitor_instance_id=sibling_instance.id,
         status="new",
     )
@@ -382,6 +396,7 @@ def test_nats_statistics_keeps_authorized_regular_user_scope(mocker):
     )
     MonitorAlert.objects.create(
         policy_id=policy.id,
+        organizations=list(policy.organizations),
         monitor_instance_id=instance.id,
         status="new",
     )
@@ -473,6 +488,7 @@ def _create_poisoned_nats_alert_scope(mocker, prefix):
         )
         alert = MonitorAlert.objects.create(
             policy_id=policy.id,
+            organizations=list(policy.organizations),
             monitor_instance_id=instance.id,
             status="new",
             start_event_time=datetime(2026, 1, 1, 12, tzinfo=timezone.utc),
@@ -575,6 +591,7 @@ def test_nats_alert_segments_rejects_forged_sibling_current_team(mocker):
     )
     MonitorAlert.objects.create(
         policy_id=sibling_policy.id,
+        organizations=list(sibling_policy.organizations),
         monitor_instance_id=sibling_instance.id,
         start_event_time=datetime(2026, 1, 1, 12, tzinfo=timezone.utc),
     )
@@ -609,6 +626,7 @@ def test_nats_latest_alerts_rejects_forged_sibling_current_team(mocker):
     )
     MonitorAlert.objects.create(
         policy_id=sibling_policy.id,
+        organizations=list(sibling_policy.organizations),
         monitor_instance_id=sibling_instance.id,
         status="new",
     )
@@ -643,11 +661,13 @@ def test_nats_alert_segments_also_inherit_policy_root(mocker):
     event_time = datetime(2026, 1, 1, 12, tzinfo=timezone.utc)
     current_alert = MonitorAlert.objects.create(
         policy_id=current_policy.id,
+        organizations=list(current_policy.organizations),
         monitor_instance_id=instance.id,
         start_event_time=event_time,
     )
     MonitorAlert.objects.create(
         policy_id=sibling_policy.id,
+        organizations=list(sibling_policy.organizations),
         monitor_instance_id=instance.id,
         start_event_time=event_time,
     )
@@ -682,11 +702,13 @@ def test_nats_latest_alerts_also_inherit_policy_root(mocker):
     )
     current_alert = MonitorAlert.objects.create(
         policy_id=current_policy.id,
+        organizations=list(current_policy.organizations),
         monitor_instance_id=instance.id,
         status="new",
     )
     MonitorAlert.objects.create(
         policy_id=sibling_policy.id,
+        organizations=list(sibling_policy.organizations),
         monitor_instance_id=instance.id,
         status="new",
     )
@@ -722,6 +744,7 @@ def test_nats_latest_alerts_count_is_untruncated_and_exposes_summaries(mocker):
     MonitorInstanceOrganization.objects.create(monitor_instance=noisy, organization=1)
     MonitorAlert.objects.create(
         policy_id=policy.id,
+        organizations=list(policy.organizations),
         monitor_instance_id=noisy.id,
         status="new",
         level="warning",
@@ -729,6 +752,7 @@ def test_nats_latest_alerts_count_is_untruncated_and_exposes_summaries(mocker):
     )
     newer_critical = MonitorAlert.objects.create(
         policy_id=policy.id,
+        organizations=list(policy.organizations),
         monitor_instance_id=noisy.id,
         status="new",
         level="critical",
@@ -736,6 +760,7 @@ def test_nats_latest_alerts_count_is_untruncated_and_exposes_summaries(mocker):
     )
     MonitorAlert.objects.create(
         policy_id=policy.id,
+        organizations=list(policy.organizations),
         monitor_instance_id=noisy.id,
         status="closed",
         level="error",
@@ -771,6 +796,7 @@ def test_nats_latest_alerts_omits_unauthorized_instance_from_summaries(mocker):
     MonitorInstanceOrganization.objects.create(monitor_instance=allowed, organization=1)
     MonitorAlert.objects.create(
         policy_id=policy.id,
+        organizations=list(policy.organizations),
         monitor_instance_id=allowed.id,
         status="new",
         level="error",
@@ -810,6 +836,7 @@ def test_nats_latest_alerts_without_instance_ids_does_not_emit_summaries(mocker)
     MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=1)
     MonitorAlert.objects.create(
         policy_id=policy.id,
+        organizations=list(policy.organizations),
         monitor_instance_id=instance.id,
         status="new",
         level="warning",

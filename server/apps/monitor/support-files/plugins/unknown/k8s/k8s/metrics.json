@@ -73,7 +73,7 @@
       "default_metric": "prometheus_remote_write_kube_pod_info",
       "instance_id_keys": ["instance_id", "pod"],
       "supplementary_indicators": ["pod_status_phase", "pod_cpu_utilization", "pod_memory_utilization"],
-      "display_fields": [{"name": "IP 地址", "type": "field", "role": "resource_ip", "variable_id": "vm_ip", "sort_order": 0, "metrics": [{"plugin": "K8S", "metric": "pod_info", "field": "pod_ip"}]}, {"name": "Pod Status", "sort_order": 1, "metrics": [{"plugin": "K8S", "metric": "pod_status_phase"}]}, {"name": "CPU Utilization", "sort_order": 2, "metrics": [{"plugin": "K8S", "metric": "pod_cpu_utilization"}]}, {"name": "Memory Utilization", "sort_order": 3, "metrics": [{"plugin": "K8S", "metric": "pod_memory_utilization"}]}],
+      "display_fields": [{"name": "IP 地址", "type": "field", "role": "resource_ip", "variable_id": "vm_ip", "sort_order": 0, "metrics": [{"plugin": "K8S", "metric": "pod_info", "field": "pod_ip"}]}, {"name": "Namespace", "type": "field", "role": "namespace", "sort_order": 1, "metrics": [{"plugin": "K8S", "metric": "pod_info", "field": "namespace"}]}, {"name": "Pod Status", "sort_order": 2, "metrics": [{"plugin": "K8S", "metric": "pod_status_phase"}]}, {"name": "CPU Utilization", "sort_order": 3, "metrics": [{"plugin": "K8S", "metric": "pod_cpu_utilization"}]}, {"name": "Memory Utilization", "sort_order": 4, "metrics": [{"plugin": "K8S", "metric": "pod_memory_utilization"}]}],
       "metrics": [
         {
           "metric_group": "Status",
@@ -83,7 +83,7 @@
           "data_type": "Number",
           "unit": "counts",
           "dimensions": [],
-          "description": "Pod metadata from kube_pod_info, used as the carrier metric for the IP display column.",
+          "description": "Pod metadata from kube_pod_info, used as the carrier metric for the IP and Namespace display columns.",
           "query": "prometheus_remote_write_kube_pod_info{instance_type=\"k8s\",__$labels__}"
         },
         {

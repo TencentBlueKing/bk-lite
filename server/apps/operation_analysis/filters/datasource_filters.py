@@ -29,10 +29,11 @@ class DataSourceAPIModelFilter(BaseGroupFilter):
     search = CharFilter(method="filter_search", label="名称/REST API")
     tags = CharFilter(method="filter_tags", label="标签名称")
     chart_type = CharFilter(method="filter_chart_type", label="图表类型")
+    source_type = CharFilter(field_name="source_type", lookup_expr="exact", label="数据来源类型")
 
     class Meta:
         model = DataSourceAPIModel
-        fields = ["search", "tags"]
+        fields = ["search", "tags", "source_type"]
 
     @staticmethod
     def filter_tags(queryset, name, value):

@@ -4,7 +4,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Button, Select, Spin } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
-import useApiClient from '@/utils/request';
 import { useAppCapability } from '@/context/appCapabilities';
 import type { MonitorObjectSnapshot } from '@/app/alarm/types/alarms';
 import {
@@ -12,12 +11,10 @@ import {
   resolveRelatedTopologyTabVisibility,
   type RelatedTopologyCenter,
 } from '@/app/alarm/utils/relatedTopologyCenters';
-import { probeRelatedTopologyAccess } from '@/app/alarm/utils/relatedTopologyAccess';
 
 type WidgetComponent = React.ComponentType<{ instUuid: string }>;
 
 export function useRelatedTopologyTab(monitorObjects?: MonitorObjectSnapshot[]) {
-  const { post } = useApiClient();
   const capability = useAppCapability('ops-analysis');
   const Widget =
     capability.status === 'ready'
@@ -28,32 +25,11 @@ export function useRelatedTopologyTab(monitorObjects?: MonitorObjectSnapshot[]) 
     () => listRelatedTopologyCenters(monitorObjects),
     [monitorObjects],
   );
-  const [uniqueAccess, setUniqueAccess] = useState<
-    'pending' | 'ok' | 'hidden' | 'retryable'
-  >(centers.length === 1 ? 'pending' : 'ok');
-
-  useEffect(() => {
-    if (!declared || centers.length !== 1) {
-      setUniqueAccess(centers.length > 1 ? 'ok' : 'pending');
-      return;
-    }
-    let cancelled = false;
-    setUniqueAccess('pending');
-    void probeRelatedTopologyAccess(post, centers[0].instUuid).then((access) => {
-      if (!cancelled) {
-        setUniqueAccess(access);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [centers, declared, post]);
 
   return {
     visible: resolveRelatedTopologyTabVisibility({
       declared,
       centerCount: centers.length,
-      uniqueAccess,
     }),
     centers,
     Widget,

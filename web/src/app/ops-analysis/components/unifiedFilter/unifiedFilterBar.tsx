@@ -214,7 +214,7 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
               onChange={(val) => handleLocalValueChange(definition.id, toFilterValue(val))}
               multiple={false}
               mode="ownership"
-              allowClear
+              allowClear={false}
               placeholder=" "
               style={{ minWidth: 180 }}
             />

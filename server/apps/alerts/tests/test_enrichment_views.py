@@ -3,20 +3,21 @@
 
 import pytest
 
-
 # ============================================================
 # Task 1: EnrichmentRuleModelSerializer
 # ============================================================
 
+
 @pytest.mark.django_db
 def test_serializer_roundtrips_all_rule_fields():
     from apps.alerts.serializers.enrichment import EnrichmentRuleModelSerializer
+
     payload = {
         "name": "测试规则",
         "is_active": True,
         "match_rules": [],
         "provider_type": "cmdb",
-        "input_binding": {"model_id": "resource_type", "_id": "resource_id"},
+        "input_binding": {"model_id": "resource_type", "inst_uuid": "resource_id"},
         "provider_config": {},
         "output_projection": [{"source": "responsible_person", "as": "owner"}],
         "on_multiple": "first",
@@ -25,31 +26,58 @@ def test_serializer_roundtrips_all_rule_fields():
     s = EnrichmentRuleModelSerializer(data=payload)
     assert s.is_valid(), s.errors
     obj = s.save()
-    assert obj.input_binding == {"model_id": "resource_type", "_id": "resource_id"}
+    assert obj.input_binding == {"model_id": "resource_type", "inst_uuid": "resource_id"}
     assert obj.output_projection == [{"source": "responsible_person", "as": "owner"}]
 
 
 @pytest.mark.django_db
 def test_serializer_rejects_bad_on_multiple():
     from apps.alerts.serializers.enrichment import EnrichmentRuleModelSerializer
+
     s = EnrichmentRuleModelSerializer(data={"name": "x", "on_multiple": "nonsense"})
     assert not s.is_valid()
     assert "on_multiple" in s.errors
+
+
+@pytest.mark.django_db
+def test_serializer_rejects_legacy_id_binding_and_empty_projection():
+    from apps.alerts.serializers.enrichment import EnrichmentRuleModelSerializer
+
+    base = {
+        "name": "旧配置",
+        "provider_type": "cmdb",
+        "namespace": "legacy_cmdb",
+        "input_binding": {"model_id": "resource_type", "_id": "resource_id"},
+        "output_projection": [{"source": "owner"}],
+    }
+    legacy_binding = EnrichmentRuleModelSerializer(data=base)
+    empty_projection = EnrichmentRuleModelSerializer(
+        data={
+            **base,
+            "input_binding": {"model_id": "resource_type", "inst_uuid": "resource_id"},
+            "output_projection": [],
+        }
+    )
+
+    assert not legacy_binding.is_valid()
+    assert "input_binding" in legacy_binding.errors
+    assert not empty_projection.is_valid()
+    assert "output_projection" in empty_projection.errors
 
 
 # ============================================================
 # Task 2: EnrichmentRuleModelFilter
 # ============================================================
 
+
 @pytest.mark.django_db
 def test_filter_by_name_icontains():
-    from apps.alerts.models.enrichment import EnrichmentRule
     from apps.alerts.filters.enrichment import EnrichmentRuleModelFilter
+    from apps.alerts.models.enrichment import EnrichmentRule
+
     EnrichmentRule.objects.create(name="CMDB资源丰富", provider_type="cmdb")
     EnrichmentRule.objects.create(name="其它规则", provider_type="cmdb")
-    f = EnrichmentRuleModelFilter(
-        data={"name": "cmdb"}, queryset=EnrichmentRule.objects.all()
-    )
+    f = EnrichmentRuleModelFilter(data={"name": "cmdb"}, queryset=EnrichmentRule.objects.all())
     assert f.qs.count() == 1
     assert f.qs.first().name == "CMDB资源丰富"
 
@@ -58,10 +86,12 @@ def test_filter_by_name_icontains():
 # Task 3 + 4: EnrichmentRuleModelViewSet CRUD 集成测试
 # ============================================================
 
+
 @pytest.fixture
 def superuser_client(authenticated_user):
     """api_client with is_superuser=True so HasPermission is bypassed."""
     from rest_framework.test import APIClient
+
     authenticated_user.is_superuser = True
     client = APIClient()
     client.force_authenticate(user=authenticated_user)
@@ -73,11 +103,15 @@ def superuser_client(authenticated_user):
 def test_viewset_list_create_delete(superuser_client):
     # 创建
     payload = {
-        "name": "视图测试规则", "is_active": True, "match_rules": [],
+        "name": "视图测试规则",
+        "is_active": True,
+        "match_rules": [],
         "provider_type": "cmdb",
-        "input_binding": {"model_id": "resource_type", "_id": "resource_id"},
-        "provider_config": {}, "output_projection": [], "on_multiple": "first",
-        "namespace": "cmdb",
+        "input_binding": {"model_id": "resource_type", "inst_uuid": "resource_id"},
+        "provider_config": {},
+        "output_projection": [{"source": "owner"}],
+        "on_multiple": "first",
+        "namespace": "cmdb_custom",
     }
     resp = superuser_client.post("/api/v1/alerts/api/enrichment/", payload, format="json")
     assert resp.status_code == 201, resp.content
@@ -106,6 +140,12 @@ def test_viewset_list_is_scoped_to_current_team(superuser_client):
 
     EnrichmentRule.objects.create(name="team-1", provider_type="cmdb", team=[1])
     EnrichmentRule.objects.create(name="team-2", provider_type="cmdb", team=[2])
+    EnrichmentRule.objects.create(
+        name="内置-CMDB资源丰富",
+        preset_key="builtin_cmdb_resource",
+        provider_type="cmdb",
+        team=[],
+    )
     superuser_client.cookies["current_team"] = "1"
 
     response = superuser_client.get("/api/v1/alerts/api/enrichment/")
@@ -113,17 +153,25 @@ def test_viewset_list_is_scoped_to_current_team(superuser_client):
     assert response.status_code == 200
     data = response.json().get("data", response.json())
     items = data.get("items", data) if isinstance(data, dict) else data
-    assert {item["name"] for item in items} == {"team-1"}
+    assert {item["name"] for item in items} == {"team-1", "内置-CMDB资源丰富"}
 
 
 # ============================================================
 # Task 5: metrics action 采纳漏斗
 # ============================================================
 
+
 @pytest.mark.django_db
 def test_metrics_reports_adoption_funnel(superuser_client):
     from apps.alerts.models.enrichment import EnrichmentRule
-    EnrichmentRule.objects.create(name="内置-CMDB资源丰富", provider_type="cmdb", is_active=True, team=[1])
+
+    EnrichmentRule.objects.create(
+        name="内置-CMDB资源丰富",
+        preset_key="builtin_cmdb_resource",
+        provider_type="cmdb",
+        is_active=True,
+        team=[1],
+    )
     EnrichmentRule.objects.create(name="用户自建规则", provider_type="cmdb", is_active=False, team=[1])
 
     resp = superuser_client.get("/api/v1/alerts/api/enrichment/metrics/")
@@ -131,8 +179,9 @@ def test_metrics_reports_adoption_funnel(superuser_client):
     data = resp.data
     assert data["total_rules"] == 2
     assert data["active_rules"] == 1
-    assert data["user_created_rules"] == 1   # 排除"内置-"前缀
+    assert data["user_created_rules"] == 1  # 排除"内置-"前缀
     assert "enriched_alert_ratio" in data
+    assert set(data["runtime"]) == {"batch_total", "summary", "providers"}
     assert 0.0 <= data["enriched_alert_ratio"] <= 1.0
 
 
@@ -148,16 +197,65 @@ def test_create_rejects_team_outside_current_scope(superuser_client):
     assert "team 必须位于当前授权团队范围内" in response.json()["message"]
 
 
+@pytest.mark.django_db
+def test_create_rejects_namespace_collision_in_current_team(superuser_client):
+    from apps.alerts.models.enrichment import EnrichmentRule
+
+    EnrichmentRule.objects.create(name="existing", provider_type="cmdb", namespace="asset_owner", team=[1])
+    response = superuser_client.post(
+        "/api/v1/alerts/api/enrichment/",
+        {
+            "name": "collision",
+            "provider_type": "cmdb",
+            "namespace": "asset_owner",
+            "input_binding": {"model_id": "resource_type", "inst_uuid": "resource_id"},
+            "output_projection": [{"source": "owner"}],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "唯一命名空间" in response.json()["message"]
+
+
+@pytest.mark.django_db
+def test_superuser_can_stop_and_delete_builtin_preset(superuser_client):
+    from apps.alerts.models.enrichment import EnrichmentRule
+
+    preset = EnrichmentRule.objects.create(
+        name="内置-CMDB资源丰富",
+        preset_key="builtin_cmdb_resource",
+        provider_type="cmdb",
+        namespace="cmdb",
+        input_binding={"model_id": "resource_type", "inst_uuid": "resource_id"},
+        output_projection=[{"source": "owner"}],
+        team=[],
+    )
+
+    patch_response = superuser_client.patch(
+        f"/api/v1/alerts/api/enrichment/{preset.id}/",
+        {"is_active": False},
+        format="json",
+    )
+    delete_response = superuser_client.delete(f"/api/v1/alerts/api/enrichment/{preset.id}/")
+
+    assert patch_response.status_code == 200
+    assert patch_response.data["is_active"] is False
+    assert delete_response.status_code in (200, 204)
+
+
 # ============================================================
 # Task 6: enrichment 字段在 Alert/Event API 可读
 # ============================================================
 
+
 @pytest.mark.django_db
 def test_alert_serializer_exposes_enrichment_readable(authenticated_user):
     """钉死 enrichment 字段在 Alert 序列化器中可读（非 write_only）。"""
-    from unittest.mock import patch, MagicMock
-    from apps.alerts.serializers.alert import AlertModelSerializer
+    from unittest.mock import MagicMock, patch
+
     from apps.alerts.models.models import Alert
+    from apps.alerts.serializers.alert import AlertModelSerializer
 
     request = MagicMock()
     request.user = authenticated_user
@@ -173,9 +271,10 @@ def test_alert_serializer_exposes_enrichment_readable(authenticated_user):
 @pytest.mark.django_db
 def test_event_serializer_exposes_enrichment_readable(authenticated_user):
     """钉死 enrichment 字段在 Event 序列化器中可读（非 write_only）。"""
-    from unittest.mock import patch, MagicMock, PropertyMock
-    from apps.alerts.serializers.event import EventModelSerializer
+    from unittest.mock import MagicMock, patch
+
     from apps.alerts.models.models import Event
+    from apps.alerts.serializers.event import EventModelSerializer
 
     request = MagicMock()
     request.user = authenticated_user

@@ -19,7 +19,6 @@ from apps.monitor.utils.snmp_ifmib_capability import (
     resolve_interface_filter_capability_for_migration,
 )
 from apps.monitor.utils.snmp_interface_template import (
-    PUBLIC_IFMIB_TABLE_OIDS,
     get_common_ifmib_table,
     has_managed_ifmib_section,
     is_ambiguous_ifmib_table,
@@ -27,8 +26,8 @@ from apps.monitor.utils.snmp_interface_template import (
 )
 from apps.rpc.node_mgmt import NodeMgmt
 
-# v7：保留存量 ifXTable OID；去重后删除空 snmp input；避免重复公共表无过滤副本。
-CHECKPOINT_VERSION = 7
+# v8：去掉公共 IF-MIB 表级 oid，改为显式字段 + index_as_tag，避免 MIB 整表展开。
+CHECKPOINT_VERSION = 8
 IFTYPE_FIELD = {"oid": IFTYPE_OID, "name": "ifType", "is_tag": True}
 
 
@@ -128,10 +127,9 @@ def _reconcile_common_ifmib_fields(config: dict) -> bool:
     for key, value in common_table.items():
         if key == "field":
             continue
-        # 存量若已挂 ifXTable 等公共 OID，只合并字段，不把 walk 根改成 ifTable。
-        if key == "oid" and merged_table.get("oid") in PUBLIC_IFMIB_TABLE_OIDS:
-            continue
         merged_table[key] = value
+    # 公共混采表只 walk 显式字段，禁止表级 oid 触发 MIB 整表展开。
+    merged_table.pop("oid", None)
 
     consumed_indexes: set[int] = set()
     reconciled_fields = []
@@ -140,8 +138,7 @@ def _reconcile_common_ifmib_fields(config: dict) -> bool:
             (
                 index
                 for index, field in enumerate(existing_fields)
-                if index not in consumed_indexes
-                and (field.get("name") == common_field.get("name") or field.get("oid") == common_field.get("oid"))
+                if index not in consumed_indexes and (field.get("name") == common_field.get("name") or field.get("oid") == common_field.get("oid"))
             ),
             None,
         )
@@ -274,9 +271,7 @@ def _public_tables_in_config(config: dict) -> list[dict]:
 def _snmp_input_filter_score(config: dict) -> tuple[bool, bool]:
     """优先保留承载接口过滤/仅公共表的 input，便于去掉重复注入。"""
     has_filters = "ifType" in (config.get("tagexclude") or []) or any(
-        filter_name in (config.get(filter_key) or {})
-        for filter_key in ("tagpass", "tagdrop")
-        for filter_name in ("ifType", "ifDescr")
+        filter_name in (config.get(filter_key) or {}) for filter_key in ("tagpass", "tagdrop") for filter_name in ("ifType", "ifDescr")
     )
     tables = _snmp_tables(config)
     only_public = bool(tables) and all(is_public_ifmib_table(table) for table in tables)
@@ -486,12 +481,14 @@ def _build_pending_updates(child_configs, *, overwrite_default: bool, write_patc
 
 def _apply_pending_updates(node_mgmt, pending_updates, *, compare_and_swap=None):
     if compare_and_swap is None:
+
         def compare_and_swap(client, config_id, expected, content):
             return client.compare_and_swap_child_config_content_local(
                 config_id,
                 expected,
                 content,
             )
+
     attempted: list[tuple[str, str, str]] = []
     try:
         for config_id, original_content, updated_content in pending_updates:

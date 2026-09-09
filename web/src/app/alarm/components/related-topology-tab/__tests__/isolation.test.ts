@@ -20,6 +20,7 @@ describe('alarm related topology app-capability isolation', () => {
 
     for (const source of hosts) {
       expect(source).not.toMatch(/from ['"]@\/app\/ops-analysis/);
+      expect(source).not.toContain('operation_analysis');
     }
   });
 
@@ -27,6 +28,7 @@ describe('alarm related topology app-capability isolation', () => {
     const tabSource = readSource('../index.tsx');
     expect(tabSource).toContain("useAppCapability('ops-analysis')");
     expect(tabSource).toContain('RelatedTopologyWidget');
+    expect(tabSource).not.toContain('relatedTopologyAccess');
   });
 
   it('passes a single instUuid into the widget and only shows a selector for multiple centers', () => {

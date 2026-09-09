@@ -5,16 +5,19 @@ import {useSearchParams} from 'next/navigation';
 import {useTranslation} from '@/utils/i18n';
 import {Memory, useMemoryApi} from '@/app/opspilot/api/memory';
 import {useSkillApi} from '@/app/opspilot/api/skill';
-import {Button, Form, Input, message, Select, Spin} from 'antd';
+import {Button, Form, Input, message, Select, Spin, Alert} from 'antd';
 import PermissionWrapper from '@/components/permission';
 import GroupTreeSelect from '@/components/group-tree-select';
+import { MEMORY_PREVIEW_CONTENT_LIMIT, formatMemoryContentSize } from '@/app/opspilot/utils/memoryContent';
+import { useIntl } from 'react-intl';
 
 const { TextArea } = Input;
 
 export default function MemoryConfigPage() {
   const { t } = useTranslation();
+  const intl = useIntl();
   const searchParams = useSearchParams();
-  const { fetchMemorySpace, updateMemorySpace, fetchMemories, testMemoryWrite } = useMemoryApi();
+  const { fetchMemorySpace, updateMemorySpace, fetchMemories, fetchMemory, testMemoryWrite } = useMemoryApi();
   const { fetchLlmModels } = useSkillApi();
   const [form] = Form.useForm();
   
@@ -32,6 +35,7 @@ export default function MemoryConfigPage() {
   const [testResult, setTestResult] = useState<{ result: string } | null>(null);
   const [testing, setTesting] = useState(false);
   const [activeTab, setActiveTab] = useState<'reference' | 'result'>('result');
+  const [referenceDetail, setReferenceDetail] = useState<Memory | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -53,6 +57,24 @@ export default function MemoryConfigPage() {
       }).catch(console.error);
     }
   }, [id, form]);
+
+  useEffect(() => {
+    if (!testRefId) {
+      setReferenceDetail(null);
+      return;
+    }
+    let cancelled = false;
+    fetchMemory(testRefId, { contentLimit: MEMORY_PREVIEW_CONTENT_LIMIT })
+      .then((res) => {
+        if (!cancelled) {
+          setReferenceDetail(res);
+        }
+      })
+      .catch(console.error);
+    return () => {
+      cancelled = true;
+    };
+  }, [testRefId]);
 
   useEffect(() => {
     fetchLlmModels().then(data => {
@@ -109,7 +131,8 @@ export default function MemoryConfigPage() {
     setTestResult(null);
   };
 
-  const referenceMemory = memories.find(m => m.id === testRefId);
+  const referenceMemory = referenceDetail;
+  const locale = intl.locale?.startsWith('en') ? 'en' : 'zh';
 
   const cardClassName = 'overflow-hidden rounded-[10px] border border-[var(--color-border-2)] bg-[var(--color-bg-1)]';
   const cardHeadClassName = 'flex h-10 items-center border-b border-[var(--color-border-2)] bg-[var(--color-fill-2)] px-3.5 text-[13px] font-bold text-[var(--color-text-1)]';
@@ -315,8 +338,19 @@ export default function MemoryConfigPage() {
                       <div className={hintClassName}>{t('memory.testWaitingHint')}</div>
                     </div>
                   ) : activeTab === 'reference' && referenceMemory ? (
-                    <div className="flex-1 overflow-auto whitespace-pre-wrap rounded-lg border border-[var(--color-border-2)] bg-[var(--color-fill-1)] p-3 font-mono text-[13px] leading-relaxed">
-                      {referenceMemory.content}
+                    <div className="flex min-h-0 flex-1 flex-col gap-2">
+                      {referenceMemory.content_truncated ? (
+                        <Alert
+                          type="warning"
+                          showIcon
+                          message={t('memory.previewTruncated', undefined, {
+                            size: formatMemoryContentSize(referenceMemory.content_length ?? 0, locale),
+                          })}
+                        />
+                      ) : null}
+                      <div className="flex-1 overflow-auto whitespace-pre-wrap rounded-lg border border-[var(--color-border-2)] bg-[var(--color-fill-1)] p-3 font-mono text-[13px] leading-relaxed">
+                        {referenceMemory.content}
+                      </div>
                     </div>
                   ) : (
                     <div className="flex-1 overflow-auto whitespace-pre-wrap rounded-lg border border-[var(--color-border-2)] bg-[var(--color-fill-1)] p-3 font-mono text-[13px] leading-relaxed">
