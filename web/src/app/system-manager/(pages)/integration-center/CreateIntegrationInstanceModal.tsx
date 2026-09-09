@@ -8,7 +8,6 @@ import type { ProviderManifest } from '@/app/system-manager/types/integration-ce
 import {
   filterIntegrationProvidersByQuery,
   collectIntegrationCapabilityFilterOptions,
-  resolveIntegrationProviderIcon,
   getIntegrationCapabilityLabel,
   canEnterCreateInfoStep,
   getCreateModalFooterMode,
@@ -91,7 +90,7 @@ const CreateIntegrationInstanceModal: React.FC<CreateIntegrationInstanceModalPro
       const cards = providers.map((provider) => ({
         id: provider.key,
         name: provider.name || provider.key,
-        icon: resolveIntegrationProviderIcon(provider.key),
+        icon: provider.key,
         description: provider.description || '',
         tagList: [],
         raw: provider,
@@ -200,7 +199,7 @@ const CreateIntegrationInstanceModal: React.FC<CreateIntegrationInstanceModalPro
             <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg)] p-5">
               <div className="flex items-start gap-4">
                 <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--color-primary-1)] text-[var(--color-primary)]">
-                  <Icon type={resolveIntegrationProviderIcon(selectedProvider.key)} className="text-2xl" />
+                  <Icon type={selectedProvider.key} className="text-2xl" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="text-base font-semibold text-[var(--color-text)]">{selectedProvider.name || selectedProvider.key}</div>
