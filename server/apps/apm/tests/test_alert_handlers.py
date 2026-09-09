@@ -9,6 +9,7 @@ from rest_framework.test import APIClient
 from apps.apm.adapters import InMemoryNotificationDispatcher
 from apps.apm.models import (
     ApmAlert,
+    ApmAlertOutbox,
     ApmEvent,
     ApmPolicy,
     ApmPolicyNotificationTarget,
@@ -245,6 +246,114 @@ def test_claim_requires_operate_permission(apm_user):
     assert response.status_code == 403
     alert.refresh_from_db()
     assert alert.handlers == []
+
+
+def _alert_center_channel(policy):
+    return ApmPolicyNotificationTarget.objects.create(
+        policy=policy,
+        channel_id=8,
+        channel_name="告警中心",
+        channel_type="nats",
+        delivery_mode=ApmPolicyNotificationTarget.DeliveryMode.ALERT_EVENT_COPY,
+        recipient_mode=ApmPolicyNotificationTarget.RecipientMode.NONE,
+        recipients=[],
+    )
+
+
+def _none_recipient_channel(policy):
+    return ApmPolicyNotificationTarget.objects.create(
+        policy=policy,
+        channel_id=9,
+        channel_name="Webhook",
+        channel_type="custom_webhook",
+        delivery_mode=ApmPolicyNotificationTarget.DeliveryMode.MESSAGE,
+        recipient_mode=ApmPolicyNotificationTarget.RecipientMode.NONE,
+        recipients=[],
+    )
+
+
+def test_assign_enqueues_person_channel_outbox_for_handlers(
+    apm_api_client, django_capture_on_commit_callbacks
+):
+    inside = _org_user()
+    policy, alert, _ = _trigger(suffix="-assign-notice")
+    person = _person_channel(policy)
+    _alert_center_channel(policy)
+    _none_recipient_channel(policy)
+    before = set(ApmAlertOutbox.objects.values_list("event_key", flat=True))
+
+    with django_capture_on_commit_callbacks(execute=True):
+        response = apm_api_client.post(
+            f"/api/v1/apm/alerts/{alert.id}/assign/",
+            {"handlers": [inside.id]},
+            format="json",
+        )
+
+    created = ApmAlertOutbox.objects.exclude(event_key__in=before)
+    assert response.status_code == 200
+    assert created.count() == 1
+    outbox = created.get()
+    assert outbox.channel_id == person.channel_id
+    assert outbox.delivery_mode == ApmPolicyNotificationTarget.DeliveryMode.MESSAGE
+    assert outbox.recipients == [str(inside.id)]
+    assert outbox.payload.get("action") == "assigned"
+    assert outbox.event_id is None
+    assert ApmEvent.objects.filter(alert=alert).exclude(action=ApmEvent.Action.TRIGGERED).count() == 0
+
+
+def test_assign_skips_outbox_without_person_channel(
+    apm_api_client, django_capture_on_commit_callbacks
+):
+    inside = _org_user()
+    policy, alert, _ = _trigger(suffix="-assign-no-person")
+    _alert_center_channel(policy)
+    _none_recipient_channel(policy)
+    before = ApmAlertOutbox.objects.count()
+
+    with django_capture_on_commit_callbacks(execute=True):
+        response = apm_api_client.post(
+            f"/api/v1/apm/alerts/{alert.id}/assign/",
+            {"handlers": [inside.id]},
+            format="json",
+        )
+
+    assert response.status_code == 200
+    assert ApmAlertOutbox.objects.count() == before
+    assert not ApmAlertOutbox.objects.filter(event_key__startswith="assign:").exists()
+
+
+def test_create_alert_does_not_enqueue_assign_outbox():
+    at = timezone.now().replace(second=0, microsecond=0)
+    service = ApmService.objects.create(
+        namespace="shop",
+        normalized_namespace="shop",
+        name="checkout-create-no-assign",
+        normalized_name="checkout-create-no-assign",
+        first_seen_at=at,
+        last_seen_at=at,
+    )
+    ApmServiceOrganization.objects.create(service=service, organization=10)
+    policy = ApmPolicy.objects.create(
+        name="错误率",
+        service=service,
+        environment="production",
+        endpoints=["POST /checkout"],
+        metric_type="error_rate",
+        thresholds=[{"severity": "error", "comparator": "gt", "value": "0.1"}],
+        trigger_after=1,
+        recover_after=1,
+        handlers=[99],
+    )
+    bind_policy_organizations(policy, (10,))
+    _person_channel(policy)
+    DjangoApmPolicyService(MetricStore(at), InMemoryNotificationDispatcher()).evaluate(policy.id, evaluated_at=at)
+
+    alert = ApmAlert.objects.get(policy=policy)
+    outbox = ApmAlertOutbox.objects.get()
+    assert alert.handlers == [99]
+    assert outbox.payload["action"] == "triggered"
+    assert outbox.recipients == ["1"]
+    assert not str(outbox.event_key).startswith("assign:")
 
 
 def test_claim_does_not_send_assign_notify(apm_api_client, mocker, django_capture_on_commit_callbacks):

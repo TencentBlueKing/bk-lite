@@ -11,6 +11,7 @@ APM 独立拥有策略、Alert 生命周期、Event、告警指标快照、事�
 - Alert / Event 的 `organizations` 在首次生成时从当时策略组织快照，之后不随服务或策略组织变更改写。已有告警组织不变。
 - Alert 状态统一为 `active / recovered / closed`；Event 动作统一为 `triggered / escalated / recovered / closed`。Alert 聚合完整生命周期，Event 只记录不可变状态变化。
 - 空处理人的活跃告警支持认领与分派；认领 / 分派收敛到 `DjangoApmAlertService`，不写 Event。有处理人后本期不可再分派，关闭规则不变。
+- 手工分派对 `delivery_mode=message` 且 `recipient_mode=system_user` 的目标建 outbox，接收人为本次 `handlers`；`recipient_mode=none` 与告警中心副本不发。创建与认领不发分派通知。
 - 每个 Alert 只有一份告警指标快照。自触发扫描起至自动恢复扫描止，每次成功策略扫描追加一个阈值对比点；点类型与 Monitor 一致使用 `event / info / no_data`，以扫描时间幂等。人工关闭不是策略扫描，不追加点。
 - 快照点固化当次评估值、当时阈值、数据状态和可选 Event 关联。无数据点没有伪造的数值；数据恢复后的点使用当前数值阈值，不沿用 `no_data` 条件。
 - 告警详情主趋势只读取告警指标快照，一个点表示一次策略扫描；需要诊断时再按所选 Event 读取更细的原始证据。两者都不得用当前策略或实时 VictoriaTraces 重建历史。

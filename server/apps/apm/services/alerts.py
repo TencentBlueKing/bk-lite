@@ -286,8 +286,41 @@ class DjangoApmAlertService:
 
     @staticmethod
     def notify_assigned(alert: ApmAlert) -> None:
-        """手工分派通知入口。对人渠道投递由后续切片补齐，本期只预留调用点。"""
-        return None
+        policy = ApmPolicy.objects.filter(id=alert.policy_id).first() if alert.policy_id else None
+        if policy is None:
+            return
+        handlers = [str(item) for item in (alert.handlers or []) if item not in (None, "")]
+        if not handlers:
+            return
+        title = f"APM {policy.name} 分派"
+        body = alert.policy_name or policy.name
+        payload = {
+            "action": "assigned",
+            "alert_id": str(alert.id),
+            "external_id": alert.external_id,
+            "organizations": list(alert.organizations or []),
+            "title": title,
+            "description": body,
+        }
+        for target in policy.notification_targets.filter(
+            delivery_mode=ApmPolicyNotificationTarget.DeliveryMode.MESSAGE,
+            recipient_mode=ApmPolicyNotificationTarget.RecipientMode.SYSTEM_USER,
+        ).order_by("channel_id", "id"):
+            ApmAlertOutbox.objects.get_or_create(
+                event_key=f"assign:{alert.id}:channel:{target.channel_id}",
+                defaults={
+                    "event": None,
+                    "channel_id": target.channel_id,
+                    "channel_name": target.channel_name,
+                    "channel_type": target.channel_type,
+                    "delivery_mode": target.delivery_mode,
+                    "receivers": handlers,
+                    "recipients": handlers,
+                    "title": title[:512],
+                    "body": body,
+                    "payload": payload,
+                },
+            )
 
     @staticmethod
     def _is_int_identifier(value) -> bool:
