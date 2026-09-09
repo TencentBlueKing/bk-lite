@@ -7,6 +7,7 @@ updates the active pointer, compatibility mirror, and directory-change audit.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass
 
 from django.db import transaction
@@ -30,6 +31,7 @@ from apps.opspilot.services.wiki.generation_service import (
     put_generation_member,
     remove_generation_member,
 )
+from apps.opspilot.services.wiki.structure_service import get_structure, save_structure
 
 PAGE_LIFECYCLE_PIPELINE_VERSION = "wiki-page-lifecycle-governance-v1"
 
@@ -116,6 +118,23 @@ def _page_ids(values):
             details={"limit": MAX_BATCH_PAGE_COUNT, "actual": len(result)},
         )
     return result
+
+
+def _subtree_directory_ids(root_id, directories):
+    children = {}
+    for directory in directories:
+        children.setdefault(directory.parent_id, []).append(directory.pk)
+    ordered = [root_id]
+    pending = list(children.get(root_id, []))
+    seen = {root_id}
+    while pending:
+        current = pending.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        ordered.append(current)
+        pending.extend(children.get(current, []))
+    return ordered
 
 
 def _generation_error(error):
@@ -299,6 +318,36 @@ def _page_type(member):
     display = member.page_display_snapshot or {}
     value = display.get("page_type") or member.page.page_type
     return value if isinstance(value, str) else ""
+
+
+_PAGE_TYPE_LABELS = {
+    "concept": "概念",
+    "entity": "实体",
+    "source": "来源",
+    "query": "待研究问题",
+    "comparison": "对比",
+    "synthesis": "综合",
+    "procedure": "流程",
+    "faq": "问答",
+}
+
+
+def page_type_display_name(page_type):
+    value = str(page_type or "").strip()
+    if not value:
+        return "未知"
+    return _PAGE_TYPE_LABELS.get(value.casefold(), value)
+
+
+def directory_page_type_mismatch_message(directory_name, *, page_types, allowed_page_types):
+    allowed_labels = "、".join(page_type_display_name(item) for item in allowed_page_types if str(item or "").strip())
+    actual_labels = "、".join(dict.fromkeys(page_type_display_name(item) for item in page_types if str(item or "").strip()))
+    directory = str(directory_name or "").strip() or "目标目录"
+    if allowed_labels and actual_labels:
+        return f"「{directory}」分类只允许「{allowed_labels}」类型的页面，不能放入「{actual_labels}」。"
+    if allowed_labels:
+        return f"「{directory}」分类只允许「{allowed_labels}」类型的页面。"
+    return f"「{directory}」分类不允许当前页面的类型。"
 
 
 def _allowed_by_target(target, page_type, rules_by_key):
@@ -510,12 +559,22 @@ def move_pages(
         )
     ]
     if invalid_page_ids:
+        invalid_id_set = set(invalid_page_ids)
+        actual_types = [_page_type(member) for member in members if member.page_id in invalid_id_set]
+        allowed = (rules_by_key.get(target.key) or {}).get("allowed_page_types") or []
         raise DirectoryServiceError(
             "directory_page_type_mismatch",
-            "目标目录不允许部分页面的 page_type",
+            directory_page_type_mismatch_message(
+                target.name,
+                page_types=actual_types,
+                allowed_page_types=allowed,
+            ),
             details={
                 "directory_id": target.pk,
+                "directory_name": target.name,
                 "page_ids": invalid_page_ids,
+                "page_types": actual_types,
+                "allowed_page_types": list(allowed),
             },
         )
     assignments = [
@@ -1040,10 +1099,92 @@ def restore_archived_pages(
     return result
 
 
+@transaction.atomic
+def delete_nested_directory(
+    knowledge_base,
+    *,
+    directory_id,
+    base_generation_id,
+    structure_version,
+    operator="",
+):
+    """Archive pages in a nested directory, rehome leftovers, then omit it."""
+
+    parsed_directory_id = _positive_int(directory_id, "directory_id")
+    knowledge_base, revision, base_generation = _active_pair(
+        knowledge_base,
+        base_generation_id=_positive_int(base_generation_id, "base_generation_id"),
+        structure_version=_positive_int(structure_version, "structure_version"),
+    )
+    target = WikiDirectory.objects.filter(
+        pk=parsed_directory_id,
+        knowledge_base=knowledge_base,
+        status="active",
+    ).first()
+    if target is None:
+        raise DirectoryServiceError(
+            "directory_not_found",
+            "目标目录不存在或已不可用",
+            details={"directory_id": parsed_directory_id},
+        )
+    if target.origin == "system" or target.parent_id is None:
+        raise DirectoryServiceError(
+            "nested_directory_required",
+            "一级目录和系统目录不能删除",
+            details={"directory_id": target.pk},
+        )
+    parent = WikiDirectory.objects.filter(
+        pk=target.parent_id,
+        knowledge_base=knowledge_base,
+        status="active",
+    ).first()
+    if parent is None:
+        raise DirectoryServiceError(
+            "directory_parent_missing",
+            "目标目录缺少可用的父目录",
+            details={"directory_id": target.pk, "parent_id": target.parent_id},
+        )
+    active_directories = list(WikiDirectory.objects.filter(knowledge_base=knowledge_base, status="active"))
+    subtree_ids = _subtree_directory_ids(target.pk, active_directories)
+    member_ids = list(base_generation.page_members.filter(directory_id__in=subtree_ids).values_list("page_id", flat=True))
+    if member_ids:
+        archive_pages(
+            knowledge_base,
+            page_ids=member_ids,
+            base_generation_id=base_generation.pk,
+            structure_version=revision.revision_no,
+            operator=operator,
+        )
+        knowledge_base.refresh_from_db()
+    KnowledgePage.objects.filter(
+        knowledge_base=knowledge_base,
+        directory_id__in=subtree_ids,
+    ).update(directory=parent)
+    current = get_structure(knowledge_base)
+    omit_ids = set(subtree_ids)
+    directories = [{"kind": "existing", **deepcopy(node)} for node in current["structure"]["directories"] if node.get("id") not in omit_ids]
+    return save_structure(
+        knowledge_base,
+        {
+            "structure_version": current["structure_revision"]["version"],
+            "base_generation_id": current["active_generation"]["id"],
+            "structure": {
+                "format_version": 1,
+                "page_types": list(current["structure"]["page_types"]),
+                "directories": directories,
+            },
+        },
+        operator=operator,
+    )
+
+
 __all__ = [
     "DirectoryServiceError",
     "archive_pages",
+    "delete_nested_directory",
+    "directory_page_type_mismatch_message",
     "move_pages",
+    "page_type_display_name",
     "restore_pages_auto",
     "restore_archived_pages",
 ]

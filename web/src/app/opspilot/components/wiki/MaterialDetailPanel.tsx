@@ -10,6 +10,7 @@ import {
 } from "@/app/opspilot/utils/wikiMaterialDisplay";
 import type { MaterialInfo, MaterialType } from "@/app/opspilot/types/wiki";
 import { useTranslation } from "@/utils/i18n";
+import { formatPageTypeLabel } from "./wikiFormat";
 
 const MATERIAL_TYPE_KEY: Record<MaterialType, string> = {
   file: "wiki.materialFile",
@@ -155,7 +156,7 @@ const MaterialDetailPanel: React.FC<MaterialDetailPanelProps> = ({
             renderItem={(p) => (
               <List.Item>
                 <span className="truncate mr-2">{p.title}</span>
-                <Tag>{p.page_type}</Tag>
+                <Tag>{formatPageTypeLabel(t, p.page_type)}</Tag>
               </List.Item>
             )}
           />

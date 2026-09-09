@@ -302,6 +302,7 @@ export const useWikiApi = () => {
     fd.append("options", JSON.stringify(options));
     return post(`${BASE}/knowledge_base/${id}/import_markdown_preflight/`, fd, {
       headers: { "Content-Type": "multipart/form-data" },
+      suppressErrorNotification: true,
     });
   };
 
@@ -538,6 +539,24 @@ export const useWikiApi = () => {
     post(`${BASE}/directory/operation_execute/`, payload, {
       params: { knowledge_base: kbId },
     });
+
+  const deleteNestedDirectory = (
+    kbId: number,
+    directoryId: number,
+    baseGenerationId: number,
+    structureVersion: number,
+  ): Promise<WikiStructureSaveResponse> =>
+    post(
+      `${BASE}/directory/delete_nested/`,
+      {
+        directory_id: directoryId,
+        base_generation_id: baseGenerationId,
+        structure_version: structureVersion,
+      },
+      {
+        params: { knowledge_base: kbId },
+      },
+    );
 
   const fetchPage = async (id: number): Promise<KnowledgePage> => {
     const page = (await get(`${BASE}/page/${id}/`)) as KnowledgePage;
@@ -778,6 +797,7 @@ export const useWikiApi = () => {
     saveWikiStructure,
     previewDirectoryOperation,
     executeDirectoryOperation,
+    deleteNestedDirectory,
     fetchPage,
     fetchPageSources,
     createPage,

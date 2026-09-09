@@ -45,12 +45,10 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({
   const [templates, setTemplates] = useState<PurposeSchemaTemplate[]>([]);
   const [llmModels, setLlmModels] = useState<LlmModel[]>([]);
   const [confirmLoading, setConfirmLoading] = useState(false);
-  const [templateSchemaMd, setTemplateSchemaMd] = useState("");
   const isEditing = Boolean(initialValues?.id);
 
   useEffect(() => {
     if (!visible) return;
-    setTemplateSchemaMd("");
     fetchLlmModels()
       .then((models) => setLlmModels(models || []))
       .catch(() => undefined);
@@ -61,7 +59,6 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({
           // 新建:默认套用「通用知识库」固定内容
           const def = tpls.find((x) => x.key === "general") || tpls[0];
           const templateValues = fillTemplate(def, "");
-          setTemplateSchemaMd(templateValues.schema_md);
           form.setFieldsValue({ template_key: def?.key, ...templateValues });
         })
         .catch(() => undefined);
@@ -88,23 +85,19 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, initialValues]);
 
-  // 选择模板 → 用途供用户编辑；兼容 schema_md 仅在内部随模板提交。
+  // 选择模板 → 用途与结构说明供用户编辑；实际目录树由 template_key 在服务端 bootstrap。
   const onTemplateChange = (key: string) => {
     const tpl = templates.find((x) => x.key === key);
     const templateValues = fillTemplate(
       tpl,
       form.getFieldValue("introduction") || "",
     );
-    setTemplateSchemaMd(templateValues.schema_md);
     form.setFieldsValue(templateValues);
   };
 
   const handleOk = async () => {
     const values = await form.validateFields();
-    const submitValues = {
-      ...values,
-      ...(!isEditing ? { schema_md: templateSchemaMd } : {}),
-    };
+    const submitValues = { ...values };
     if (isEditing) {
       delete submitValues.template_key;
       delete submitValues.purpose_md;
@@ -126,7 +119,7 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({
       confirmLoading={confirmLoading}
       onCancel={onCancel}
       maskClosable={false}
-      width={560}
+      width={640}
       destroyOnHidden
       // 表单较长:限制弹窗主体高度并内部滚动,确保任何视口下都不触底(前端规范:弹窗禁止触底)
       styles={{
@@ -209,11 +202,19 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({
                 options={templates.map((tp) => ({
                   value: tp.key,
                   label: tp.name,
+                  title: tp.description || tp.name,
                 }))}
               />
             </Form.Item>
             <Form.Item label={t("wiki.purpose")} name="purpose_md">
               <Input.TextArea rows={3} />
+            </Form.Item>
+            <Form.Item
+              label={t("wiki.schema")}
+              name="schema_md"
+              extra={t("wiki.schemaCreateTip")}
+            >
+              <Input.TextArea rows={6} />
             </Form.Item>
           </>
         )}
