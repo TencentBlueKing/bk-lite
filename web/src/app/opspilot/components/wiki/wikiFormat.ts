@@ -148,3 +148,53 @@ export const pageTypeLabelKey = (pageType?: string | null): string => {
     .toLowerCase();
   return PAGE_TYPE_LABEL[normalized] || "";
 };
+
+export const formatPageTypeLabel = (
+  t: (id: string) => string,
+  pageType?: string | null,
+  empty = "",
+): string => {
+  const raw = String(pageType ?? "").trim();
+  if (!raw) return empty;
+  const key = pageTypeLabelKey(raw);
+  return key ? t(key) : raw;
+};
+
+export const pageTypeSelectOption = (
+  t: (id: string) => string,
+  pageType: string,
+) => ({
+  value: pageType,
+  label: formatPageTypeLabel(t, pageType),
+});
+
+/** 导入器写入的系统标签（okf:unverified 等）；文档/LLM 自由标签不在此表。 */
+export const WIKI_SYSTEM_TAG_LABEL: Record<string, string> = {
+  "okf:unverified": "wiki.tagOkfUnverified",
+  "okf:machine_confirmed": "wiki.tagOkfMachineConfirmed",
+  "okf:human_reviewed": "wiki.tagOkfHumanReviewed",
+  "okf:deprecated": "wiki.tagOkfDeprecated",
+};
+
+type Translate = (
+  id: string,
+  defaultMessage?: string,
+  values?: Record<string, string | number>,
+) => string;
+
+export const formatWikiTagLabel = (
+  t: Translate,
+  tag?: string | null,
+  empty = "",
+): string => {
+  const raw = String(tag ?? "").trim();
+  if (!raw) return empty;
+  const identity = raw.toLowerCase();
+  const mapped = WIKI_SYSTEM_TAG_LABEL[identity];
+  if (mapped) return t(mapped);
+  if (identity.startsWith("okf:")) {
+    const okfType = raw.slice(raw.indexOf(":") + 1).trim();
+    if (okfType) return t("wiki.tagOkfType", undefined, { type: okfType });
+  }
+  return raw;
+};

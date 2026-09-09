@@ -126,6 +126,7 @@ const StrategyOperation = () => {
         notice_type_id: channelItem?.id,
         notice_type: channelItem?.channel_type,
         notice: false,
+        handlers: [],
         period: 5,
         schedule: 5,
         alert_type: lockedAlertType,
@@ -191,6 +192,20 @@ const StrategyOperation = () => {
       }
     };
 
+    const applyPrunedHandlers = (
+      current: Array<string | number>,
+      userList: UserItem[]
+    ) => {
+      const pruned = pruneNoticeUsers(current, userList);
+      if (
+        Array.isArray(current) &&
+        (pruned.length !== current.length ||
+          pruned.some((item, index) => String(item) !== String(current[index])))
+      ) {
+        form.setFieldValue('handlers', pruned);
+      }
+    };
+
     const orgIds = organizationKey
       ? organizationKey.split(',').map((item) => Number(item))
       : [];
@@ -212,6 +227,7 @@ const StrategyOperation = () => {
           form.validateFields(['notice_users']).catch(() => undefined);
         });
       }
+      applyPrunedHandlers(form.getFieldValue('handlers') || [], []);
       return;
     }
 
@@ -226,6 +242,7 @@ const StrategyOperation = () => {
         if (Array.isArray(current)) {
           maybePruneNoticeUsers(current, list);
         }
+        applyPrunedHandlers(form.getFieldValue('handlers') || [], list);
       })
       .catch(() => {
         // 拉取失败时不改动已选通知人，避免误清空
@@ -242,33 +259,43 @@ const StrategyOperation = () => {
       return;
     }
     if (
-      !shouldPruneNoticeUsers({
+      shouldPruneNoticeUsers({
         noticeTypeId: form.getFieldValue('notice_type_id'),
         channelList
       })
     ) {
-      return;
-    }
-    const current = form.getFieldValue('notice_users') || [];
-    const pruned = pruneNoticeUsers(current, noticeUserList);
-    if (
-      Array.isArray(current) &&
-      (pruned.length !== current.length ||
-        pruned.some((item, index) => String(item) !== String(current[index])))
-    ) {
-      form.setFieldValue('notice_users', pruned);
+      const current = form.getFieldValue('notice_users') || [];
+      const pruned = pruneNoticeUsers(current, noticeUserList);
       if (
-        shouldRequireNoticeUsers({
-          notice: form.getFieldValue('notice'),
-          noticeTypeId: form.getFieldValue('notice_type_id'),
-          channelList
-        }) &&
-        pruned.length === 0
+        Array.isArray(current) &&
+        (pruned.length !== current.length ||
+          pruned.some((item, index) => String(item) !== String(current[index])))
       ) {
-        Promise.resolve().then(() => {
-          form.validateFields(['notice_users']).catch(() => undefined);
-        });
+        form.setFieldValue('notice_users', pruned);
+        if (
+          shouldRequireNoticeUsers({
+            notice: form.getFieldValue('notice'),
+            noticeTypeId: form.getFieldValue('notice_type_id'),
+            channelList
+          }) &&
+          pruned.length === 0
+        ) {
+          Promise.resolve().then(() => {
+            form.validateFields(['notice_users']).catch(() => undefined);
+          });
+        }
       }
+    }
+    const currentHandlers = form.getFieldValue('handlers') || [];
+    const prunedHandlers = pruneNoticeUsers(currentHandlers, noticeUserList);
+    if (
+      Array.isArray(currentHandlers) &&
+      (prunedHandlers.length !== currentHandlers.length ||
+        prunedHandlers.some(
+          (item, index) => String(item) !== String(currentHandlers[index])
+        ))
+    ) {
+      form.setFieldValue('handlers', prunedHandlers);
     }
   }, [formData, noticeUserList, noticeUserLoadKey, organizationKey, form, channelList]);
 

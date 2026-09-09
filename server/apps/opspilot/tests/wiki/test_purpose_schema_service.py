@@ -2,11 +2,23 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 
+def test_okf_bundle_template_nests_wiki_directories():
+    from apps.opspilot.services.wiki.purpose_schema_service import get_template_structure
+
+    structure = get_template_structure("okf_bundle")
+    by_key = {item["key"]: item for item in structure["directories"]}
+    assert by_key["schema_wiki"]["name"] == "wiki"
+    assert by_key["schema_wiki"]["parent_key"] is None
+    assert by_key["schema_operations"]["name"] == "operations"
+    assert by_key["schema_operations"]["parent_key"] == "schema_wiki"
+    assert by_key["schema_product"]["rules"]["allowed_page_types"] == ["entity"]
+
+
 def test_templates_listed():
     from apps.opspilot.services.wiki.purpose_schema_service import list_templates
 
     keys = {t["key"] for t in list_templates()}
-    assert {"ops_qa", "fault_diagnosis", "operation_guide", "product_support", "general"} <= keys
+    assert {"ops_qa", "fault_diagnosis", "operation_guide", "product_support", "general", "okf_bundle"} <= keys
 
 
 def test_generate_purpose_schema_uses_llm():

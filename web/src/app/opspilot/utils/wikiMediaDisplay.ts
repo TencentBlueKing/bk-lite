@@ -1,7 +1,7 @@
 /** Wiki 解析图片稳定路径 ↔ 展示 URL */
 
 const WIKI_MEDIA_RE =
-  /(?:\.\/|\/)?wiki\/media\/\d+\/\d+\/[a-f0-9]{16,}\.[a-z0-9]+/gi;
+  /(?:\.\/|\/)?wiki\/media\/\d+\/(?:\d+|pages)\/[a-f0-9]{16,}\.[a-z0-9]+/gi;
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -27,7 +27,7 @@ export function collectWikiMediaLocators(markdown: string): string[] {
     } catch {
       // keep raw
     }
-    if (/wiki\/media\/\d+\/\d+\/[a-f0-9]{16,}\.[a-z0-9]+/i.test(raw)) {
+    if (/wiki\/media\/\d+\/(?:\d+|pages)\/[a-f0-9]{16,}\.[a-z0-9]+/i.test(raw)) {
       found.add(normalizeWikiMediaLocator(raw));
     }
   }
@@ -113,7 +113,7 @@ export function collectBareWikiMediaLocators(markdown: string): string[] {
   if (!markdown || !markdown.includes("wiki/media/")) return [];
   // lookbehind 含 =，避免把 ?locator=wiki/media/... 当成裸路径
   const re =
-    /(?<![A-Za-z0-9\-._/:=%])(?:\.\/|\/)?wiki\/media\/\d+\/\d+\/[a-f0-9]{16,}\.[a-z0-9]+/gi;
+    /(?<![A-Za-z0-9\-._/:=%])(?:\.\/|\/)?wiki\/media\/\d+\/(?:\d+|pages)\/[a-f0-9]{16,}\.[a-z0-9]+/gi;
   const found = new Set<string>();
   for (const match of markdown.matchAll(re)) {
     found.add(normalizeWikiMediaLocator(match[0]));

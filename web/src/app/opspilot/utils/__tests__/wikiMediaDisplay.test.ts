@@ -10,6 +10,11 @@ describe("wikiMediaDisplay", () => {
   const sha = "6".repeat(64);
   const locator = `wiki/media/3/5/${sha}.png`;
 
+  it("collects page-owned locators", () => {
+    const pageLocator = `wiki/media/3/pages/${sha}.png`;
+    expect(collectWikiMediaLocators(`![](${pageLocator})`)).toEqual([pageLocator]);
+  });
+
   it("collects bare and slash-prefixed locators", () => {
     const md = `![](${locator})\n<img src="/${locator}" />`;
     expect(collectWikiMediaLocators(md).sort()).toEqual([locator]);

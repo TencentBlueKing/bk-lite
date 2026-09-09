@@ -644,7 +644,8 @@ export type WikiMarkdownImportArchiveKind =
   | "markdown"
   | "native"
   | "opspilot_native"
-  | "third_party";
+  | "third_party"
+  | "okf";
 
 export type WikiMarkdownImportAction = "create" | "update" | "candidate";
 
@@ -693,6 +694,37 @@ export interface WikiMarkdownImportPreviewPage {
   existing_page_id: number | null;
   action: WikiMarkdownImportAction;
   directory?: WikiMarkdownImportDirectoryTrace;
+  renamed_from?: string;
+}
+
+export interface WikiOkfTypeMapping {
+  okf_type: string;
+  page_type: string;
+  matched: boolean;
+  count: number;
+}
+
+export interface WikiOkfSkippedEntry {
+  path: string;
+  reason: string;
+}
+
+export interface WikiOkfImportPreview {
+  okf_version: string;
+  bundle_root: string;
+  type_mapping: WikiOkfTypeMapping[];
+  skipped: WikiOkfSkippedEntry[];
+  links: {
+    rewritten: number;
+    unresolved: number;
+  };
+  renamed_count: number;
+  images?: {
+    count: number;
+    bytes: number;
+    pages: number;
+    html_unchecked: number;
+  };
 }
 
 export interface WikiMarkdownImportPreview {
@@ -710,6 +742,7 @@ export interface WikiMarkdownImportPreview {
   restore_structure_requested: boolean;
   create_directories_from_folders_requested?: boolean;
   structure_preview?: WikiMarkdownImportStructurePreview | null;
+  okf?: WikiOkfImportPreview;
 }
 
 export interface WikiMarkdownImportPreflightOptions {
@@ -719,6 +752,7 @@ export interface WikiMarkdownImportPreflightOptions {
   restore_structure?: boolean;
   restore_native_structure?: boolean;
   create_directories_from_folders?: boolean;
+  import_format?: "okf";
 }
 
 export interface WikiMarkdownImportPreflightResult {

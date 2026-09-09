@@ -5,9 +5,12 @@ import { useTranslation } from '@/utils/i18n';
 import { TableDataItem } from '@/app/log/types';
 import { IntegrationLogInstance } from '@/app/log/types/integration';
 import GroupTreeSelector from '@/components/group-tree-select';
-import { unusedIntegrationNodes } from '@/app/log/hooks/integration/common/unusedIntegrationNodes';
 import { cloneDeep } from 'lodash';
 import { v4 as uuidv4 } from 'uuid';
+import {
+  buildSelectedNodeIdSet,
+  filterAvailableNodes
+} from './filterAvailableNodes';
 const useCommonColumns = () => {
   const { t } = useTranslation();
 
@@ -18,8 +21,9 @@ const useCommonColumns = () => {
       initTableItems: IntegrationLogInstance;
       onTableDataChange: (data: IntegrationLogInstance[]) => void;
     }) => {
+      const selectedNodeIds = buildSelectedNodeIdSet(config.dataSource);
       const getFilterNodes = (id: string) =>
-        unusedIntegrationNodes(config.dataSource, config.nodeList, id);
+        filterAvailableNodes(config.nodeList, selectedNodeIds, id);
 
       const handleFilterNodeChange = (val: string, index: number) => {
         const _dataSource = cloneDeep(config.dataSource);

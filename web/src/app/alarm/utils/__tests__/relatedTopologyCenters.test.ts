@@ -63,57 +63,32 @@ describe('listRelatedTopologyCenters', () => {
 });
 
 describe('resolveRelatedTopologyTabVisibility', () => {
-  it('hides when undeclared, unbound, unique denied, or unique still pending', () => {
+  it('hides when undeclared or unbound', () => {
     expect(
       resolveRelatedTopologyTabVisibility({
         declared: false,
         centerCount: 1,
-        uniqueAccess: 'ok',
       }),
     ).toBe(false);
     expect(
       resolveRelatedTopologyTabVisibility({
         declared: true,
         centerCount: 0,
-        uniqueAccess: 'ok',
-      }),
-    ).toBe(false);
-    expect(
-      resolveRelatedTopologyTabVisibility({
-        declared: true,
-        centerCount: 1,
-        uniqueAccess: 'hidden',
-      }),
-    ).toBe(false);
-    expect(
-      resolveRelatedTopologyTabVisibility({
-        declared: true,
-        centerCount: 1,
-        uniqueAccess: 'pending',
       }),
     ).toBe(false);
   });
 
-  it('shows for unique ok/retryable and for multiple centers even if one would fail', () => {
+  it('shows once declared and at least one center exists, including a unique center', () => {
     expect(
       resolveRelatedTopologyTabVisibility({
         declared: true,
         centerCount: 1,
-        uniqueAccess: 'ok',
-      }),
-    ).toBe(true);
-    expect(
-      resolveRelatedTopologyTabVisibility({
-        declared: true,
-        centerCount: 1,
-        uniqueAccess: 'retryable',
       }),
     ).toBe(true);
     expect(
       resolveRelatedTopologyTabVisibility({
         declared: true,
         centerCount: 2,
-        uniqueAccess: 'hidden',
       }),
     ).toBe(true);
   });

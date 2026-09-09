@@ -10,7 +10,7 @@ from apps.core.logger import opspilot_logger as logger
 from apps.core.mixinx import EncryptMixin
 from apps.core.utils.loader import LanguageLoader
 from apps.opspilot.metis.llm.chain.report_renderers import strip_phantom_tool_calls
-from apps.opspilot.metis.llm.common.llm_client_factory import DEFAULT_CHAT_TEMPERATURE
+from apps.opspilot.metis.llm.common.llm_client_factory import DEFAULT_CHAT_TEMPERATURE, INTERNAL_SAMPLING_TEMPERATURE_KEY, resolve_gateway_temperature
 from apps.opspilot.models import LLMModel, SkillTools, SkillTypeChoices
 from apps.opspilot.services.builtin_tools import (
     BUILTIN_ATTACHMENT_FILE_TOOL_NAME,
@@ -583,16 +583,25 @@ class ChatService:
                 extra_config["wiki_citations"] = wiki_citations
             extra_config["wiki_budget"] = wiki_budget_trace
 
+        vendor_type = llm_model.vendor.vendor_type if llm_model.vendor_id else ""
+        # 对话温度固定 1；技能表与请求里的旧滑条值忽略。
+        # 内部节点可通过 internal_sampling_temperature 保留低温采样；
+        # 固定单位模型仍经 resolve_gateway_temperature 省略该字段。
+        if INTERNAL_SAMPLING_TEMPERATURE_KEY in kwargs:
+            requested_temperature = kwargs[INTERNAL_SAMPLING_TEMPERATURE_KEY]
+        else:
+            requested_temperature = DEFAULT_CHAT_TEMPERATURE
+        sampling_temperature = resolve_gateway_temperature(llm_model.model_name, requested_temperature, vendor_type)
+
         # 构建聊天参数
         chat_kwargs = {
             "openai_api_base": llm_model.openai_api_base,
             "openai_api_key": llm_model.openai_api_key,
             "model": llm_model.model_name,
             "protocol_type": llm_model.protocol_type,
-            "vendor_type": llm_model.vendor.vendor_type if llm_model.vendor_id else "",
+            "vendor_type": vendor_type,
             "system_message_prompt": resolved_prompt,
-            # 对话温度固定 1；技能表与请求里的旧滑条值忽略。内部低温调用走 isolated 路径。
-            "temperature": DEFAULT_CHAT_TEMPERATURE,
+            "temperature": sampling_temperature,
             "user_message": user_message,
             "chat_history": chat_history,
             "user_id": str(kwargs["user_id"]),

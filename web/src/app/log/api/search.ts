@@ -15,8 +15,8 @@ const useSearchApi = () => {
     return await post(`/log/search/search/`, data, config);
   };
 
-  const getHits = async (data: SearchParams) => {
-    return await post(`/log/search/hits/`, data);
+  const getHits = async (data: SearchParams, config?: AxiosRequestConfig) => {
+    return await post(`/log/search/hits/`, data, config);
   };
 
   const getLogTail = async (params = {}) => {

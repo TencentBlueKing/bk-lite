@@ -8,15 +8,26 @@ export interface PolicyNameSource {
   alert_name?: string;
   query_condition?: {
     type?: string;
+    metric_id?: string | number;
     metric_name?: string;
     result_name?: string;
     expression?: string;
-    queries?: Array<{ ref?: string; metric_name?: string }>;
+    queries?: Array<{
+      ref?: string;
+      metric_id?: string | number;
+      metric_name?: string;
+    }>;
     [key: string]: unknown;
   } | null;
   monitor_object_name?: string;
   monitor_object_display_name?: string;
   [key: string]: unknown;
+}
+
+export interface PolicyMetricCatalogItem {
+  id?: string | number;
+  name?: string;
+  display_name?: string;
 }
 
 /** 从策略配置提取用于区分同名的短上下文（指标优先；公式展开为指标名）。 */
@@ -54,6 +65,75 @@ export const getPolicyMetricContext = (policy?: PolicyNameSource | null): string
   const metricName = String(query.metric_name || '').trim();
   if (metricName) return metricName;
   return '';
+};
+
+const metricCatalogLabel = (metric?: PolicyMetricCatalogItem | null): string =>
+  String(metric?.display_name || metric?.name || '').trim();
+
+const lookupCatalogMetric = (
+  byId: Map<string, PolicyMetricCatalogItem>,
+  byName: Map<string, PolicyMetricCatalogItem>,
+  metricId?: string | number,
+  metricName?: string
+): PolicyMetricCatalogItem | undefined => {
+  if (metricId !== undefined && metricId !== null && metricId !== '') {
+    const hit = byId.get(String(metricId));
+    if (hit) return hit;
+  }
+  const name = String(metricName || '').trim();
+  if (name) return byName.get(name);
+  return undefined;
+};
+
+/**
+ * 策略指标列：目录 display_name 优先；有 metric_name/公式上下文时回落到 getPolicyMetricContext。
+ * 不使用 alert_name。
+ */
+export const resolvePolicyMetricDisplayName = (
+  policy?: PolicyNameSource | null,
+  metrics: PolicyMetricCatalogItem[] = []
+): string => {
+  if (!policy) return '';
+  const query = policy.query_condition || {};
+  const byId = new Map<string, PolicyMetricCatalogItem>();
+  const byName = new Map<string, PolicyMetricCatalogItem>();
+  metrics.forEach((item) => {
+    if (item.id !== undefined && item.id !== null && item.id !== '') {
+      byId.set(String(item.id), item);
+    }
+    const name = String(item.name || '').trim();
+    if (name) byName.set(name, item);
+  });
+
+  if (query.type === 'formula' && Array.isArray(query.queries)) {
+    const enrichedQueries = query.queries.map((item) => {
+      const label = metricCatalogLabel(
+        lookupCatalogMetric(byId, byName, item?.metric_id, item?.metric_name)
+      );
+      return {
+        ...item,
+        metric_name: label || String(item?.metric_name || '').trim()
+      };
+    });
+    const hasNamedMetric = enrichedQueries.some((item) =>
+      Boolean(String(item.metric_name || '').trim())
+    );
+    if (!hasNamedMetric) return '';
+    return getPolicyMetricContext({
+      ...policy,
+      query_condition: { ...query, queries: enrichedQueries }
+    });
+  }
+
+  const catalogHit = lookupCatalogMetric(
+    byId,
+    byName,
+    query.metric_id,
+    query.metric_name
+  );
+  const catalogLabel = metricCatalogLabel(catalogHit);
+  if (catalogLabel) return catalogLabel;
+  return getPolicyMetricContext(policy);
 };
 
 export const getPolicySecondaryContext = (

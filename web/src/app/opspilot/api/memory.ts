@@ -31,6 +31,9 @@ export interface Memory {
   memory_space: number;
   title: string;
   content: string;
+  content_length?: number;
+  content_offset?: number;
+  content_truncated?: boolean;
   owner_username: string;
   owner_domain: string;
   created_by: string;
@@ -103,11 +106,34 @@ export const useMemoryApi = () => {
     return await get(`/opspilot/memory_mgmt/memory/${params}`);
   };
 
+  const fetchMemory = async (
+    id: number,
+    options?: { contentLimit?: number; contentOffset?: number }
+  ): Promise<Memory> => {
+    const params = new URLSearchParams();
+    if (options?.contentLimit) {
+      params.set('content_limit', String(options.contentLimit));
+    }
+    if (options?.contentOffset != null) {
+      params.set('content_offset', String(options.contentOffset));
+    }
+    const query = params.toString();
+    const res = await get(`/opspilot/memory_mgmt/memory/${id}/${query ? `?${query}` : ''}`);
+    return res.data || res;
+  };
+
   const createMemory = async (data: Partial<Memory>): Promise<Memory> => {
     return await post('/opspilot/memory_mgmt/memory/', data);
   };
 
-  const updateMemory = async (id: number, data: Partial<Memory>): Promise<Memory> => {
+  const updateMemory = async (
+    id: number,
+    data: Partial<Memory> & {
+      content_offset?: number;
+      content_replace_length?: number;
+      expected_updated_at?: string;
+    }
+  ): Promise<Memory> => {
     return await patch(`/opspilot/memory_mgmt/memory/${id}/`, data);
   };
 
@@ -148,6 +174,7 @@ export const useMemoryApi = () => {
     updateMemorySpace,
     deleteMemorySpace,
     fetchMemories,
+    fetchMemory,
     createMemory,
     updateMemory,
     deleteMemory,

@@ -31,6 +31,10 @@ const signinClientPath = resolve(
   webRoot,
   'src/app/(core)/auth/signin/SigninClient.tsx',
 );
+const signinPageFramePath = resolve(
+  webRoot,
+  'src/app/(core)/auth/signin/login-auth/SigninPageFrame.tsx',
+);
 const zhPath = resolve(webRoot, 'src/locales/zh.json');
 const enPath = resolve(webRoot, 'src/locales/en.json');
 
@@ -149,35 +153,56 @@ for (const key of REQUIRED_KEYS) {
   }
 }
 
-// —— SigninClient 接入 —————————————————————————————————————————
+// —— SigninPageFrame / SigninClient 接入 ———————————————————————
+if (!existsSync(signinPageFramePath)) {
+  failures.push('[SigninPageFrame.tsx] 缺少组件文件');
+} else {
+  const frame = read(signinPageFramePath);
+  if (
+    !/import\s+SigninLanguageToggle\s+from\s+['"]\.\/SigninLanguageToggle['"]/.test(
+      frame,
+    )
+  ) {
+    failures.push(
+      '[SigninPageFrame.tsx] 缺 import SigninLanguageToggle from "./SigninLanguageToggle"',
+    );
+  }
+  if (!/<SigninLanguageToggle\s*\/\s*>/.test(frame)) {
+    failures.push('[SigninPageFrame.tsx] 未挂载 <SigninLanguageToggle />');
+  }
+}
+
 if (!existsSync(signinClientPath)) {
   failures.push('[SigninClient.tsx] 不存在(预期不应发生)');
 } else {
   const sc = read(signinClientPath);
 
-  // import
   if (
-    !/import\s+SigninLanguageToggle\s+from\s+['"][^'"]*login-auth\/SigninLanguageToggle['"]/.test(
+    !/import\s+SigninPageFrame\s+from\s+['"][^'"]*login-auth\/SigninPageFrame['"]/.test(
       sc,
     )
   ) {
     failures.push(
-      '[SigninClient.tsx] 缺 import SigninLanguageToggle from "./login-auth/SigninLanguageToggle"',
+      '[SigninClient.tsx] 缺 import SigninPageFrame from "./login-auth/SigninPageFrame"',
     );
   }
 
-  // page mode 渲染树挂载(必存在一处 <SigninLanguageToggle />)
-  if (!/<SigninLanguageToggle\s*\/\s*>/.test(sc)) {
-    failures.push('[SigninClient.tsx] 未挂载 <SigninLanguageToggle />');
+  if (!/<SigninPageFrame[\s\S]*?>/.test(sc)) {
+    failures.push('[SigninClient.tsx] page mode 未使用 SigninPageFrame');
   }
 
-  // modal mode 渲染树必须不挂
+  if (/<SigninLanguageToggle\s*\/\s*>/.test(sc)) {
+    failures.push(
+      '[SigninClient.tsx] 语言切换应只由 SigninPageFrame 挂载，不要再挂一份',
+    );
+  }
+
   if (
-    /if\s*\(\s*mode\s*===\s*['"]modal['"]\s*\)[\s\S]{0,500}?<SigninLanguageToggle/.test(
+    !/if\s*\(\s*mode\s*===\s*['"]modal['"]\s*\)\s*\{\s*return\s+<div[\s\S]{0,160}\{sharedContent\}<\/div>;/.test(
       sc,
     )
   ) {
-    failures.push('[SigninClient.tsx] modal mode 不该挂载 SigninLanguageToggle');
+    failures.push('[SigninClient.tsx] modal mode 应只返回 sharedContent 窄容器，不挂 SigninPageFrame');
   }
 }
 

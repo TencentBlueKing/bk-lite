@@ -40,6 +40,7 @@ class DjangoApmEventReader:
 
     @staticmethod
     def _serialize(event: ApmEvent) -> dict:
+        snapshot = getattr(event, "snapshot", None)
         return {
             "id": event.id,
             "event_id": event.event_id,
@@ -61,6 +62,6 @@ class DjangoApmEventReader:
             "environment": event.environment,
             "endpoint": event.alert.endpoint,
             "version": event.alert.version,
-            "snapshot_status": event.snapshot.payload_status if hasattr(event, "snapshot") else "unavailable",
+            "snapshot_status": snapshot.payload_status if snapshot is not None else "unavailable",
             "notification_deliveries": [DjangoNotificationDeliveryService.serialize(delivery) for delivery in event.outbox_entries.all()],
         }

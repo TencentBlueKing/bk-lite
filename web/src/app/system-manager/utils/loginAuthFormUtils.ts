@@ -7,7 +7,6 @@ import type {
   BusinessTemplate,
   ProviderManifest,
 } from '@/app/system-manager/types/integration-center';
-import { resolveIntegrationProviderIcon } from '@/app/system-manager/utils/integrationCenter';
 
 export function isBuiltinLoginAuthBinding(providerKey?: string | null): boolean {
   return providerKey === 'bk_lite_builtin';
@@ -66,14 +65,6 @@ export function resolveLoginAuthProviderKey(
   }
 
   return editingBinding?.provider_key || '';
-}
-
-export function resolveLoginAuthDefaultIcon(providerKey?: string | null): string {
-  if (!providerKey) {
-    return '';
-  }
-
-  return resolveIntegrationProviderIcon(providerKey);
 }
 
 export function resolveLoginAuthTemplate(

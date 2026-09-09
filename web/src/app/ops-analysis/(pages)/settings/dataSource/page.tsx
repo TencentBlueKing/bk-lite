@@ -6,9 +6,12 @@ import OperateModal from './operateModal';
 import CustomTable from '@/components/custom-table';
 import PermissionWrapper from '@/components/permission';
 import { Button, Input, Card, message, Modal, Space, Tag } from 'antd';
-import { UploadOutlined } from '@ant-design/icons';
+import { SearchOutlined, UploadOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
-import { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
+import {
+  DatasourceItem,
+  type DataSourceSourceType,
+} from '@/app/ops-analysis/types/dataSource';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { useImportExportApi } from '@/app/ops-analysis/api/importExport';
 import { ImportModal } from '@/app/ops-analysis/components/importExport';
@@ -17,6 +20,12 @@ import { useUserInfoContext } from '@/context/userInfo';
 import {
   canEditBuiltinDatasourceGroups,
   isBuiltinDatasource,
+  SOURCE_TYPE_EXCEL,
+  SOURCE_TYPE_MYSQL,
+  SOURCE_TYPE_NATS,
+  SOURCE_TYPE_POSTGRESQL,
+  SOURCE_TYPE_PROMETHEUS,
+  SOURCE_TYPE_REST_API,
 } from './operateModalUtils';
 
 const getRestPath = (url?: string) => {
@@ -30,6 +39,8 @@ const getRestPath = (url?: string) => {
   }
 };
 
+const ALL_SOURCE_TYPES = '';
+
 const Datasource: React.FC = () => {
   const { t } = useTranslation();
   const { isSuperUser } = useUserInfoContext();
@@ -38,6 +49,7 @@ const Datasource: React.FC = () => {
   const { exportObjects, downloadYaml } = useImportExportApi();
   const [searchKey, setSearchKey] = useState('');
   const [searchValue, setSearchValue] = useState('');
+  const [sourceTypeFilter, setSourceTypeFilter] = useState(ALL_SOURCE_TYPES);
   const [filteredList, setFilteredList] = useState<DatasourceItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
@@ -51,10 +63,33 @@ const Datasource: React.FC = () => {
     pageSize: 20,
   });
 
+  const sourceTypeLabels: Record<DataSourceSourceType, string> = {
+    nats: t('dataSource.sourceTypes.nats'),
+    mysql: t('dataSource.sourceTypes.mysql'),
+    postgresql: t('dataSource.sourceTypes.postgresql'),
+    rest_api: t('dataSource.sourceTypes.restApi'),
+    excel: t('dataSource.sourceTypes.excel'),
+    prometheus: t('dataSource.sourceTypes.prometheus'),
+  };
+
+  const sourceTypeFilterOptions: Array<{
+    value: string;
+    label: string;
+  }> = [
+    { value: ALL_SOURCE_TYPES, label: t('dataSource.allSourceTypes') },
+    { value: SOURCE_TYPE_NATS, label: sourceTypeLabels.nats },
+    { value: SOURCE_TYPE_REST_API, label: sourceTypeLabels.rest_api },
+    { value: SOURCE_TYPE_POSTGRESQL, label: sourceTypeLabels.postgresql },
+    { value: SOURCE_TYPE_MYSQL, label: sourceTypeLabels.mysql },
+    { value: SOURCE_TYPE_EXCEL, label: sourceTypeLabels.excel },
+    { value: SOURCE_TYPE_PROMETHEUS, label: sourceTypeLabels.prometheus },
+  ];
+
   // 获取数据源列表
   const fetchDataSources = async (
     searchKeyParam?: string,
-    paginationParam?: { current?: number; pageSize?: number }
+    paginationParam?: { current?: number; pageSize?: number },
+    sourceTypeParam?: string
   ) => {
     try {
       setLoading(true);
@@ -67,6 +102,11 @@ const Datasource: React.FC = () => {
         searchKeyParam !== undefined ? searchKeyParam : searchKey;
       if (currentSearchKey && currentSearchKey.trim()) {
         params.search = currentSearchKey.trim();
+      }
+      const currentSourceType =
+        sourceTypeParam !== undefined ? sourceTypeParam : sourceTypeFilter;
+      if (currentSourceType) {
+        params.source_type = currentSourceType;
       }
       const { items, count } = await getDataSourceList(params);
       if (items && Array.isArray(items)) {
@@ -96,7 +136,15 @@ const Datasource: React.FC = () => {
     setSearchValue(key);
     const newPagination = { current: 1, pageSize: pagination.pageSize };
     setPagination((prev) => ({ ...prev, current: 1 }));
-    fetchDataSources(key, newPagination);
+    fetchDataSources(key, newPagination, sourceTypeFilter);
+  };
+
+  const handleSourceTypeFilter = (type: string) => {
+    if (type === sourceTypeFilter) return;
+    setSourceTypeFilter(type);
+    const newPagination = { current: 1, pageSize: pagination.pageSize };
+    setPagination((prev) => ({ ...prev, current: 1 }));
+    fetchDataSources(searchKey, newPagination, type);
   };
 
   const handleEdit = (type: 'add' | 'edit' | 'view', row?: DatasourceItem) => {
@@ -167,15 +215,6 @@ const Datasource: React.FC = () => {
     }));
     // 直接传递新的分页信息，避免状态更新延迟
     fetchDataSources(undefined, newPagination);
-  };
-
-  const sourceTypeLabels: Record<string, string> = {
-    nats: t('dataSource.sourceTypes.nats'),
-    mysql: 'MySQL',
-    postgresql: 'PostgreSQL',
-    rest_api: 'REST API',
-    excel: 'Excel',
-    prometheus: t('dataSource.sourceTypes.prometheus'),
   };
 
   const renderSourceObject = (_: unknown, row: DatasourceItem) => {
@@ -250,7 +289,8 @@ const Datasource: React.FC = () => {
       dataIndex: 'source_type',
       key: 'source_type',
       width: 140,
-      render: (value: string) => sourceTypeLabels[value || 'nats'] || value || '-',
+      render: (value: DataSourceSourceType | string) =>
+        sourceTypeLabels[(value || 'nats') as DataSourceSourceType] || value || '-',
     },
     {
       title: t('dataSource.sourceObject'),
@@ -356,13 +396,14 @@ const Datasource: React.FC = () => {
         </p>
       </Card>
       <div className="px-6 pb-0">
-        <div className="flex justify-between mb-[20px]">
-          <div className="flex items-center">
+        <div className="flex justify-between mb-[20px] gap-4">
+          <div className="flex min-w-0 flex-wrap items-center gap-3">
             <Input
               allowClear
+              prefix={<SearchOutlined style={{ color: 'var(--color-text-3)' }} />}
               value={searchValue}
-              placeholder={t('common.search')}
-              style={{ width: 250 }}
+              placeholder={t('dataSource.searchPlaceholder')}
+              style={{ width: 260 }}
               onChange={(e) => setSearchValue(e.target.value)}
               onPressEnter={(e) => handleFilter(e.currentTarget.value)}
               onClear={() => {
@@ -370,6 +411,25 @@ const Datasource: React.FC = () => {
                 handleFilter('');
               }}
             />
+            <div className="flex flex-wrap items-center gap-2">
+              {sourceTypeFilterOptions.map((option) => {
+                const active = sourceTypeFilter === option.value;
+                return (
+                  <button
+                    key={option.value || 'all'}
+                    type="button"
+                    className={`inline-flex h-8 items-center rounded px-3 text-sm transition-all duration-150 select-none cursor-pointer ${
+                      active
+                        ? 'border border-[var(--color-primary)] bg-[var(--color-primary-bg)] text-[var(--color-primary)] font-medium shadow-[0_1px_2px_rgba(0,0,0,0.04)]'
+                        : 'border border-[var(--color-border-2)] bg-[var(--color-bg-1)] text-[var(--color-text-2)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] active:scale-[0.98]'
+                    }`}
+                    onClick={() => handleSourceTypeFilter(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
           <Space>
             <PermissionWrapper requiredPermissions={['Add']}>

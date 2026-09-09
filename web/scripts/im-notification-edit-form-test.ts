@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   getImNotificationUnavailableEditingInstance,
+  resolveExternalFieldOptionLabel,
   resolveImNotificationFieldPatches,
 } from '../src/app/system-manager/utils/imNotificationUtils';
 
@@ -42,5 +44,20 @@ assert.equal(
   ),
   null,
 );
+
+assert.equal(resolveExternalFieldOptionLabel('id', { id: 'Graph 用户 ID' }), 'Graph 用户 ID');
+assert.equal(resolveExternalFieldOptionLabel('mail', {}), 'mail');
+assert.equal(resolveExternalFieldOptionLabel('userPrincipalName'), 'userPrincipalName');
+
+const imPage = readFileSync(
+  new URL('../src/app/system-manager/(pages)/channel/im-notification/page.tsx', import.meta.url),
+  'utf8',
+);
+assert.match(imPage, /resolveExternalFieldOptionLabel/);
+assert.doesNotMatch(imPage, /externalFieldOption\.\$\{field\}/);
+const zh = JSON.parse(
+  readFileSync(new URL('../src/app/system-manager/locales/zh.json', import.meta.url), 'utf8'),
+);
+assert.equal(zh.system.channel.imNotificationPage.externalFieldOption, undefined);
 
 console.log('im-notification edit form validation passed');

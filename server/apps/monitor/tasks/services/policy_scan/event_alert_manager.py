@@ -308,6 +308,7 @@ class EventAlertManager:
                     operator="",
                     notice_type_ids=self.policy.notice_type_ids,
                     notice_users=self.policy.notice_users,
+                    handlers=list(self.policy.handlers or []),
                     organizations=list(self.organizations),
                 )
             )

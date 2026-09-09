@@ -52,6 +52,7 @@ import {
 } from '@/app/cmdb/types/autoDiscovery';
 import { useAssetManageStore } from '@/app/cmdb/store';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { createCollectionListRequest } from './collectionListRequest';
 
 type ExtendedColumnItem = ColumnType<CollectTask> & {
   key: string;
@@ -160,7 +161,7 @@ const ProfessionalCollection: React.FC = () => {
   const [docLoading, setDocLoading] = useState(false);
   const [taskStatus, setTaskStatus] = useState<TaskStatusMap>({});
   const tableCountRef = useRef<number>(0);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const [listRequest] = useState(createCollectionListRequest);
   const statusTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isSyncingTaskDetailRef = useRef(false);
   const isClosingTaskDetailRef = useRef(false);
@@ -301,9 +302,7 @@ const ProfessionalCollection: React.FC = () => {
   };
 
   const fetchData = async (showLoading = true, pluginId?: string) => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-    }
+    const requestId = listRequest.begin();
     try {
       if (!selectedCategoryRef.current.categoryId) return;
       if (showLoading) {
@@ -315,31 +314,29 @@ const ProfessionalCollection: React.FC = () => {
         count: number;
       };
       // console.log('test2.4:getCollectList', data);
-      setTableData(data.items || []);
-      tableCountRef.current = data.items.length || 0;
-      setPaginationUI((prev) => ({
-        ...prev,
-        total: data.count || 0,
-      }));
+      listRequest.commitSuccess(requestId, data, (view) => {
+        setTableData(view.items);
+        tableCountRef.current = view.listCount;
+        setPaginationUI((prev) => ({
+          ...prev,
+          total: view.total,
+        }));
+      });
     } catch (error) {
       console.error('Failed to fetch table data:', error);
     } finally {
-      if (showLoading) {
-        setTableLoading(false);
-      }
-      resetTimer(pluginId);
+      listRequest.commitSettled(requestId, () => {
+        if (showLoading) {
+          setTableLoading(false);
+        }
+        resetTimer(pluginId);
+      });
     }
   };
 
   const resetTimer = (pluginId?: string) => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-    }
     const currentPluginId = pluginId || stateRef.current.selectedPluginId;
-    timerRef.current = setTimeout(
-      () => fetchData(false, currentPluginId),
-      30 * 1000
-    );
+    listRequest.resetTimer(() => fetchData(false, currentPluginId));
   };
 
   const fetchTaskStatus = async () => {
@@ -430,10 +427,7 @@ const ProfessionalCollection: React.FC = () => {
     }, 30 * 1000);
 
     return () => {
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
+      listRequest.unmount();
       if (statusTimerRef.current) {
         clearInterval(statusTimerRef.current);
         statusTimerRef.current = null;
@@ -1045,10 +1039,7 @@ const ProfessionalCollection: React.FC = () => {
       setSelectedPluginId(pluginId);
       stateRef.current.selectedPluginId = pluginId;
 
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
+      listRequest.clearTimer();
 
       setSearchTextUI('');
       stateRef.current.searchText = '';

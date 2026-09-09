@@ -10,6 +10,7 @@ import PermissionWrapper from '@/components/permission';
 import styles from './index.module.scss';
 import { hashColor } from "@/app/mlops/utils/common";
 import { DatasetType } from '@/app/mlops/types';
+import { hasImageNameConflict } from './imageNameConflict';
 
 interface TrainDataItem {
   image_name: string;
@@ -276,6 +277,11 @@ const ImageContent = () => {
     try {
       const blob = file.originFileObj as Blob;
       const fileName = file.name;
+
+      if (hasImageNameConflict(imageBlobsRef.current, trainData, fileName)) {
+        message.warning(t('datasets.imageNameConflict'));
+        return;
+      }
       
       // 创建ObjectURL
       const imageUrl = URL.createObjectURL(blob);

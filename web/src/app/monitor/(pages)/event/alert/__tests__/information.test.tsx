@@ -23,7 +23,12 @@ vi.mock('@/app/monitor/context/common', () => ({
 }));
 
 vi.mock('@/app/monitor/api', () => ({
-  default: () => ({ patchMonitorAlert: vi.fn() })
+  default: () => ({
+    patchMonitorAlert: vi.fn(),
+    claimMonitorAlert: vi.fn(),
+    assignMonitorAlert: vi.fn(),
+    getAllUsers: vi.fn().mockResolvedValue([])
+  })
 }));
 
 vi.mock('@/app/monitor/hooks', () => ({
@@ -105,5 +110,57 @@ describe('告警详情信息', () => {
     expect(screen.queryByText('monitor.events.dimension')).toBeNull();
     expect(screen.getByText('实例:')).toBeTruthy();
     expect(screen.getAllByText('node-01')).toHaveLength(2);
+  });
+
+  it('空处理人的活跃告警展示认领、分派和关闭', () => {
+    const formData = {
+      id: 'alert-2',
+      status: 'new',
+      handlers: [],
+      permission: ['Operate', 'Detail'],
+      policy: { notice: false, query_condition: { type: 'metric' } },
+    } as unknown as TableDataItem;
+
+    render(
+      <Information
+        formData={formData}
+        chartData={[]}
+        objects={[]}
+        userList={[]}
+        onClose={vi.fn()}
+        trapData={{}}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: '认领' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: '分派' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: '关闭此告警' })).not.toBeNull();
+  });
+
+  it('已有处理人的活跃告警不展示认领和分派', () => {
+    const formData = {
+      id: 'alert-3',
+      status: 'new',
+      handlers: [7],
+      handlers_display: ['Bob(bob)'],
+      permission: ['Operate', 'Detail'],
+      policy: { notice: false, query_condition: { type: 'metric' } },
+    } as unknown as TableDataItem;
+
+    render(
+      <Information
+        formData={formData}
+        chartData={[]}
+        objects={[]}
+        userList={[]}
+        onClose={vi.fn()}
+        trapData={{}}
+      />
+    );
+
+    expect(screen.getByText('Bob(bob)')).not.toBeNull();
+    expect(screen.queryByRole('button', { name: '认领' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '分派' })).toBeNull();
+    expect(screen.getByRole('button', { name: '关闭此告警' })).not.toBeNull();
   });
 });

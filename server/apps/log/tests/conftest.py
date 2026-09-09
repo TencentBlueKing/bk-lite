@@ -4,6 +4,13 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
+def _ensure_current_team_group(db):
+    from apps.system_mgmt.models import Group
+
+    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
+
+
+@pytest.fixture(autouse=True)
 def _stub_system_mgmt_team_scope(monkeypatch):
     """权限范围仍走公开 service，只把跨服务 RPC 替换为确定性响应。"""
 

@@ -13,15 +13,15 @@ MemoryViewSet.list：
 MemorySpaceViewSet.workflow_options：
   - 返回全部记忆空间(不按 team 过滤)，仅含 id/name/scope/default_model 字段，按 -id。
 """
-import pydantic.root_model  # noqa  预热避免 mcp 导入崩溃
-
 import json
 from types import SimpleNamespace
 
+import pydantic.root_model  # noqa  预热避免 mcp 导入崩溃
 import pytest
 from rest_framework.test import APIRequestFactory
 
 from apps.opspilot.models.memory_mgmt import Memory, MemorySpace
+from apps.opspilot.serializers.memory_serializer import MEMORY_LIST_CONTENT_PREVIEW_CHARS
 from apps.opspilot.viewsets.memory_view import MemorySpaceViewSet, MemoryViewSet
 
 pytestmark = pytest.mark.django_db
@@ -63,15 +63,9 @@ def spaces_and_memories():
     team_space = MemorySpace.objects.create(name="团队空间", scope=MemorySpace.SCOPE_TEAM, team=[1])
     personal_space = MemorySpace.objects.create(name="个人空间", scope=MemorySpace.SCOPE_PERSONAL, team=[1])
 
-    team_mem = Memory.objects.create(
-        memory_space=team_space, title="团队记忆", content="c", owner_username="alice", owner_domain="d.com"
-    )
-    alice_mem = Memory.objects.create(
-        memory_space=personal_space, title="Alice个人记忆", content="c", owner_username="alice", owner_domain="d.com"
-    )
-    bob_mem = Memory.objects.create(
-        memory_space=personal_space, title="Bob个人记忆", content="c", owner_username="bob", owner_domain="d.com"
-    )
+    team_mem = Memory.objects.create(memory_space=team_space, title="团队记忆", content="c", owner_username="alice", owner_domain="d.com")
+    alice_mem = Memory.objects.create(memory_space=personal_space, title="Alice个人记忆", content="c", owner_username="alice", owner_domain="d.com")
+    bob_mem = Memory.objects.create(memory_space=personal_space, title="Bob个人记忆", content="c", owner_username="bob", owner_domain="d.com")
     return SimpleNamespace(
         team_space=team_space,
         personal_space=personal_space,
@@ -112,9 +106,7 @@ def test_list_domain_mismatch_hides_personal(spaces_and_memories):
 
 def test_list_filter_by_memory_space(spaces_and_memories):
     """filterset_fields=memory_space 真实过滤：只看团队空间时只剩团队记忆。"""
-    vs = _make_list_viewset(
-        _user("alice", "d.com"), query_params={"memory_space": spaces_and_memories.team_space.id}
-    )
+    vs = _make_list_viewset(_user("alice", "d.com"), query_params={"memory_space": spaces_and_memories.team_space.id})
     data = _resp_data(_list(vs, vs.request))
     titles = {m["title"] for m in data}
     assert titles == {"团队记忆"}
@@ -123,15 +115,41 @@ def test_list_filter_by_memory_space(spaces_and_memories):
 def test_list_user_without_domain_attr_uses_empty(spaces_and_memories):
     """用户对象无 domain 属性时按空域处理，匹配 owner_domain='' 的个人记忆。"""
     empty_domain_space = spaces_and_memories.personal_space
-    Memory.objects.create(
-        memory_space=empty_domain_space, title="无域个人记忆", content="c", owner_username="carol", owner_domain=""
-    )
+    Memory.objects.create(memory_space=empty_domain_space, title="无域个人记忆", content="c", owner_username="carol", owner_domain="")
     user = SimpleNamespace(username="carol", is_superuser=True)  # 无 domain 属性
     vs = _make_list_viewset(user)
     data = _resp_data(_list(vs, vs.request))
     titles = {m["title"] for m in data}
     assert "无域个人记忆" in titles
     assert "Alice个人记忆" not in titles
+
+
+def test_list_returns_content_preview_not_full_body(spaces_and_memories):
+    """列表不得下发完整正文，只带预览、字数和截断标记。"""
+    huge = "A" * 5000
+    mem = spaces_and_memories.team_mem
+    mem.content = huge
+    mem.save(update_fields=["content"])
+
+    vs = _make_list_viewset(_user("alice", "d.com"), query_params={"memory_space": spaces_and_memories.team_space.id})
+    resp = _list(vs, vs.request)
+    raw = resp.content.decode("utf-8")
+    assert huge not in raw
+
+    data = _resp_data(resp)
+    item = next(row for row in data if row["id"] == mem.id)
+    assert item["content"] == huge[:MEMORY_LIST_CONTENT_PREVIEW_CHARS]
+    assert item["content_length"] == 5000
+    assert item["content_truncated"] is True
+
+
+def test_list_short_content_is_not_marked_truncated(spaces_and_memories):
+    vs = _make_list_viewset(_user("alice", "d.com"), query_params={"memory_space": spaces_and_memories.team_space.id})
+    data = _resp_data(_list(vs, vs.request))
+    item = next(row for row in data if row["id"] == spaces_and_memories.team_mem.id)
+    assert item["content"] == "c"
+    assert item["content_length"] == 1
+    assert item["content_truncated"] is False
 
 
 # ---------------------------------------------------------------------------

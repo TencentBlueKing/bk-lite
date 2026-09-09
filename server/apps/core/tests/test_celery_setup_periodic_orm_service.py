@@ -339,6 +339,104 @@ def test_legacy_baseline_import_rolls_back_with_enforcement(mocker, settings):
     assert legacy.description == "管理员备注"
 
 
+def test_crontab_sync_selects_matching_timezone_when_expression_is_duplicated(mocker, settings):
+    from celery.schedules import crontab
+    from django_celery_beat.models import CrontabSchedule, PeriodicTask
+
+    utc_schedule = CrontabSchedule.objects.create(
+        minute="*/5",
+        hour="*",
+        day_of_week="*",
+        day_of_month="*",
+        month_of_year="*",
+        timezone="UTC",
+    )
+    CrontabSchedule.objects.create(
+        minute="*/5",
+        hour="*",
+        day_of_week="*",
+        day_of_month="*",
+        month_of_year="*",
+        timezone="Asia/Shanghai",
+    )
+    _allow_setup(
+        mocker,
+        settings,
+        schedule={
+            "every-five": {
+                "task": "apps.log.tasks.policy.compensate_log_notice_task",
+                "schedule": crontab(minute="*/5"),
+            }
+        },
+        mode="shadow",
+    )
+
+    celery_mod.setup_periodic_tasks(sender=None)
+
+    periodic = PeriodicTask.objects.get(name="every-five")
+    assert periodic.crontab_id == utc_schedule.id
+    assert periodic.enabled is True
+    assert str(periodic.crontab.timezone) == "UTC"
+
+
+def test_crontab_sync_reuses_oldest_row_when_timezone_is_also_duplicated(mocker, settings, caplog):
+    import logging
+
+    from celery.schedules import crontab
+    from django_celery_beat.models import CrontabSchedule, PeriodicTask
+
+    first = CrontabSchedule.objects.create(
+        minute="*/5",
+        hour="*",
+        day_of_week="*",
+        day_of_month="*",
+        month_of_year="*",
+        timezone="UTC",
+    )
+    CrontabSchedule.objects.create(
+        minute="*/5",
+        hour="*",
+        day_of_week="*",
+        day_of_month="*",
+        month_of_year="*",
+        timezone="UTC",
+    )
+    _allow_setup(
+        mocker,
+        settings,
+        schedule={
+            "every-five": {
+                "task": "apps.log.tasks.policy.compensate_log_notice_task",
+                "schedule": crontab(minute="*/5"),
+            }
+        },
+        mode="shadow",
+    )
+    caplog.set_level(logging.WARNING, logger="celery")
+
+    celery_mod.setup_periodic_tasks(sender=None)
+
+    periodic = PeriodicTask.objects.get(name="every-five")
+    assert periodic.crontab_id == first.id
+    assert periodic.enabled is True
+
+    warning_records = [
+        record
+        for record in caplog.records
+        if record.name == "celery" and record.levelno == logging.WARNING and record.msg == (
+            "event=celery_beat_duplicate_schedule model=%s reused_id=%s failed_stage=%s error_type=%s"
+        )
+    ]
+    assert len(warning_records) == 1
+    record = warning_records[0]
+    assert record.args == ("CrontabSchedule", first.pk, "get_or_create_schedule", "MultipleObjectsReturned")
+    assert record.getMessage() == (
+        "event=celery_beat_duplicate_schedule model=CrontabSchedule "
+        f"reused_id={first.pk} failed_stage=get_or_create_schedule error_type=MultipleObjectsReturned"
+    )
+    assert record.exc_info is None
+
+
 def test_timedelta_schedule_is_owned_and_reconciled(mocker, settings):
     _allow_setup(
         mocker,
