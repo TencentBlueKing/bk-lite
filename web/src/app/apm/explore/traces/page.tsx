@@ -26,7 +26,14 @@ import type {
   ApmTraceSearchParams,
   ApmTraceSummary,
 } from '@/app/apm/types';
+import {
+  beginTraceSearchRequest,
+  commitTraceSearchFailure,
+  commitTraceSearchSettled,
+  commitTraceSearchSuccess,
+} from '@/app/apm/utils/traceSearchRequest';
 import FilterToolbar from '@/components/filter-toolbar';
+import { createLatestRequestGuard } from '@/context/latestRequestGuard';
 import { useTranslation } from '@/utils/i18n';
 
 type PageState = CatalogStateKind | 'ready' | 'idle';
@@ -381,6 +388,8 @@ export default function ApmTracesPage() {
   const autoSearched = useRef(false);
   const entityModeReady = useRef(false);
   const servicesLoaded = useRef(false);
+  const currentRequestIdRef = useRef(0);
+  const [requestGuard] = useState(createLatestRequestGuard);
 
   const { serviceName } = filters;
 
@@ -401,6 +410,10 @@ export default function ApmTracesPage() {
   const search = useCallback((cursor?: string, nextFilters?: TraceFilters) => {
     const active = nextFilters ?? filters;
     if (authLoading) return;
+    const requestId = beginTraceSearchRequest(requestGuard, currentRequestIdRef.current, cursor);
+    if (!cursor) {
+      currentRequestIdRef.current = requestId;
+    }
     setSearching(true);
     if (!cursor) {
       setState('loading');
@@ -424,16 +437,20 @@ export default function ApmTracesPage() {
         limit: 50,
       };
       getSpans(query)
-        .then((page) => {
+        .then((page) => commitTraceSearchSuccess(requestGuard, requestId, () => {
           setSpanItems((current) => (cursor ? [...current, ...page.items] : page.items));
           setTraceItems([]);
           setQueryStartedAt(query.started_at);
           setQueryEndedAt(query.ended_at);
           setState(page.items.length === 0 && !cursor && !page.next_cursor ? 'empty' : 'ready');
-        })
-        .catch((error) => setState(catalogErrorKind(error)))
+        }))
+        .catch((error) => commitTraceSearchFailure(requestGuard, requestId, () => {
+          setState(catalogErrorKind(error));
+        }))
         .finally(() => {
-          setSearching(false);
+          commitTraceSearchSettled(requestGuard, requestId, () => {
+            setSearching(false);
+          });
         });
       return;
     }
@@ -450,18 +467,22 @@ export default function ApmTracesPage() {
       limit: 50,
     };
     getTraces(query)
-      .then((page) => {
+      .then((page) => commitTraceSearchSuccess(requestGuard, requestId, () => {
         setTraceItems((current) => (cursor ? [...current, ...page.items] : page.items));
         setSpanItems([]);
         setQueryStartedAt(query.started_at);
         setQueryEndedAt(query.ended_at);
         setState(page.items.length === 0 && !cursor && !page.next_cursor ? 'empty' : 'ready');
-      })
-      .catch((error) => setState(catalogErrorKind(error)))
+      }))
+      .catch((error) => commitTraceSearchFailure(requestGuard, requestId, () => {
+        setState(catalogErrorKind(error));
+      }))
       .finally(() => {
-        setSearching(false);
+        commitTraceSearchSettled(requestGuard, requestId, () => {
+          setSearching(false);
+        });
       });
-  }, [authLoading, entityMode, filters, getSpans, getTraces, timeWindow]);
+  }, [authLoading, entityMode, filters, getSpans, getTraces, requestGuard, timeWindow]);
 
   const commitQueryText = useCallback(() => {
     const next = parseFilters(queryText);
@@ -527,6 +548,10 @@ export default function ApmTracesPage() {
     if (!autoSearched.current || authLoading) return;
     search();
   }, [timeRange]);
+
+  useEffect(() => {
+    return () => requestGuard.invalidate();
+  }, [requestGuard]);
 
   const traceColumns = useMemo<TableProps<ApmTraceSummary>['columns']>(() => [
     {
@@ -863,6 +888,7 @@ export default function ApmTracesPage() {
               value={entityMode}
               onChange={(value) => {
                 if (value !== 'spans' && value !== 'traces') return;
+                requestGuard.invalidate();
                 setEntityMode(value);
                 setResultMode('detail');
                 setTraceItems([]);
@@ -894,8 +920,10 @@ export default function ApmTracesPage() {
                   minDurationMs: null,
                   maxDurationMs: null,
                 };
+                requestGuard.invalidate();
                 applyFilters(cleared);
                 setState('idle');
+                setSearching(false);
                 setTraceItems([]);
                 setSpanItems([]);
               }}
@@ -918,6 +946,7 @@ export default function ApmTracesPage() {
                 value={timeRange}
                 options={['15m', '1h', '4h', '1d', '7d'].map((value) => ({ value, label: value }))}
                 onChange={(value: TimeRange) => {
+                  requestGuard.invalidate();
                   setTimeRange(value);
                   router.replace(`/apm/explore/traces${entityMode === 'spans' ? '?entity=spans' : '?entity=traces'}`);
                 }}
