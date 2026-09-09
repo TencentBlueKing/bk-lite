@@ -126,6 +126,115 @@ const ObjectDetection = ({
     imageBlobsRef.current.clear();
   }, []);
 
+  const getObjectTrainDataInfo = useCallback(async () => {
+    // 清理旧的ObjectURL
+    cleanupImageUrls();
+
+    setLoading(true);
+    try {
+      // 1. 获取metadata (不获取train_data，避免大量数据传输)
+      const data = await getTrainDataInfo(fileId, DatasetType.OBJECT_DETECTION, false, true);
+
+      const metadata: ObjectDetectionMetadata = data.metadata || {
+        format: 'YOLO',
+        classes: defaultRectLabels,
+        num_classes: defaultRectLabels.length,
+        num_images: 0,
+        labels: {},
+        statistics: {
+          total_annotations: 0,
+          images_with_annotations: 0,
+          images_without_annotations: 0,
+          class_distribution: {}
+        }
+      };
+
+      // 更新标签列表（从metadata加载）
+      if (metadata.classes && metadata.classes.length > 0) {
+        const loadedLabels = metadata.classes.map((name, index) => ({
+          id: index + 1,
+          name,
+          color: rectLabels[index]?.color || generateUniqueRandomColor()
+        }));
+        setRectLabels(loadedLabels);
+      }
+
+      // 2. 下载ZIP
+      const response = await fetch(
+        `/api/proxy/mlops/object_detection_train_data/${fileId}/download/`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${authContext?.token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`${t('mlops-common.downloadFailed')}: ${response.status}`);
+      }
+
+      const zipBlob = await response.blob();
+
+      // 3. 解压ZIP
+      const zip = await JSZip.loadAsync(zipBlob);
+      const imageFiles: ObjectDetectionTrainData[] = [];
+      const imageExtensions = /\.(jpg|jpeg|png|gif|bmp|webp)$/i;
+
+      let batchIndex = 0;
+      type ZipFile = (typeof zip.files)[string];
+      const entries = Object.entries(zip.files) as Array<
+        [string, ZipFile]
+      >;
+      const totalImages = entries.filter(([name, file]) => !file.dir && imageExtensions.test(name)).length;
+
+      for (const [fileName, file] of entries) {
+        if (file.dir) continue;
+        if (!imageExtensions.test(fileName)) continue;
+
+        const blob = await file.async('blob');
+        const imageUrl = URL.createObjectURL(blob);
+
+        // 保存ObjectURL和Blob
+        imageUrlsRef.current.push(imageUrl);
+        imageBlobsRef.current.set(fileName, blob);
+
+        // 获取图片尺寸
+        const dimensions = await new Promise<{ width: number; height: number }>((resolve) => {
+          const img = new Image();
+          img.onload = () => {
+            resolve({ width: img.width, height: img.height });
+          };
+          img.onerror = () => {
+            resolve({ width: 800, height: 600 }); // 默认尺寸
+          };
+          img.src = imageUrl;
+        });
+
+        imageFiles.push({
+          width: dimensions.width,
+          height: dimensions.height,
+          image_name: fileName,
+          image_url: imageUrl,
+          image_size: blob.size,
+          batch_index: batchIndex++,
+          batch_total: totalImages,
+          content_type: blob.type || 'image/jpeg',
+          type: 'train' // 默认为训练集
+        });
+      }
+
+      setTrainData(imageFiles);
+      setMetadata(metadata);
+
+    } catch (e) {
+      console.error('加载训练数据失败:', e);
+      message.error(t('datasets.loadDataError'));
+    } finally {
+      setLoading(false);
+    }
+  }, [authContext?.token, cleanupImageUrls, fileId, getTrainDataInfo, t]);
+
   // 动态生成config（基于标签状态）
   const buildConfig = useCallback(() => {
     return {
@@ -430,7 +539,7 @@ const ObjectDetection = ({
   };
 
 
-  const saveResult = async () => {
+  const saveResult = useCallback(async () => {
     setLoading(true);
     try {
       // 先保存当前图片的标注到 metaData
@@ -528,7 +637,16 @@ const ObjectDetection = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [
+    currentSample,
+    fileId,
+    getObjectTrainDataInfo,
+    rectLabels,
+    setIsChange,
+    t,
+    trainData,
+    updateObjectDetectionTrainData,
+  ]);
 
   const onError = useCallback((err: any) => {
     console.error('Error:', err);
@@ -550,116 +668,7 @@ const ObjectDetection = ({
         <ReloadOutlined onClick={() => getObjectTrainDataInfo()} />
       </div>
     )
-  }, [t]);
-
-  const getObjectTrainDataInfo = async () => {
-    // 清理旧的ObjectURL
-    cleanupImageUrls();
-
-    setLoading(true);
-    try {
-      // 1. 获取metadata (不获取train_data，避免大量数据传输)
-      const data = await getTrainDataInfo(fileId, DatasetType.OBJECT_DETECTION, false, true);
-
-      const metadata: ObjectDetectionMetadata = data.metadata || {
-        format: 'YOLO',
-        classes: defaultRectLabels,
-        num_classes: defaultRectLabels.length,
-        num_images: 0,
-        labels: {},
-        statistics: {
-          total_annotations: 0,
-          images_with_annotations: 0,
-          images_without_annotations: 0,
-          class_distribution: {}
-        }
-      };
-
-      // 更新标签列表（从metadata加载）
-      if (metadata.classes && metadata.classes.length > 0) {
-        const loadedLabels = metadata.classes.map((name, index) => ({
-          id: index + 1,
-          name,
-          color: rectLabels[index]?.color || generateUniqueRandomColor()
-        }));
-        setRectLabels(loadedLabels);
-      }
-
-      // 2. 下载ZIP
-      const response = await fetch(
-        `/api/proxy/mlops/object_detection_train_data/${fileId}/download/`,
-        {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${authContext?.token}`,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`${t('mlops-common.downloadFailed')}: ${response.status}`);
-      }
-
-      const zipBlob = await response.blob();
-
-      // 3. 解压ZIP
-      const zip = await JSZip.loadAsync(zipBlob);
-      const imageFiles: ObjectDetectionTrainData[] = [];
-      const imageExtensions = /\.(jpg|jpeg|png|gif|bmp|webp)$/i;
-
-      let batchIndex = 0;
-      type ZipFile = (typeof zip.files)[string];
-      const entries = Object.entries(zip.files) as Array<
-        [string, ZipFile]
-      >;
-      const totalImages = entries.filter(([name, file]) => !file.dir && imageExtensions.test(name)).length;
-
-      for (const [fileName, file] of entries) {
-        if (file.dir) continue;
-        if (!imageExtensions.test(fileName)) continue;
-
-        const blob = await file.async('blob');
-        const imageUrl = URL.createObjectURL(blob);
-
-        // 保存ObjectURL和Blob
-        imageUrlsRef.current.push(imageUrl);
-        imageBlobsRef.current.set(fileName, blob);
-
-        // 获取图片尺寸
-        const dimensions = await new Promise<{ width: number; height: number }>((resolve) => {
-          const img = new Image();
-          img.onload = () => {
-            resolve({ width: img.width, height: img.height });
-          };
-          img.onerror = () => {
-            resolve({ width: 800, height: 600 }); // 默认尺寸
-          };
-          img.src = imageUrl;
-        });
-
-        imageFiles.push({
-          width: dimensions.width,
-          height: dimensions.height,
-          image_name: fileName,
-          image_url: imageUrl,
-          image_size: blob.size,
-          batch_index: batchIndex++,
-          batch_total: totalImages,
-          content_type: blob.type || 'image/jpeg',
-          type: 'train' // 默认为训练集
-        });
-      }
-
-      setTrainData(imageFiles);
-      setMetadata(metadata);
-
-    } catch (e) {
-      console.error('加载训练数据失败:', e);
-      message.error(t('datasets.loadDataError'));
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [getObjectTrainDataInfo, saveResult, t]);
 
   return (
     <div className={styles.container}>
