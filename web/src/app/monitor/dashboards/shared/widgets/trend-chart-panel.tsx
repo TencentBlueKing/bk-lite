@@ -6,6 +6,7 @@ import EChartsLineChart from './echarts-line-chart';
 import { ChartData, MetricItem } from '@/app/monitor/types';
 import { GuideItem, TrendLegendItem, MetricUnit } from '../types';
 import { TitleWithGuide, GuideTooltipStyles } from './guide-tooltip';
+import { tDashboardText, useDashboardText } from '../utils/content-i18n';
 
 export interface TrendChartPanelStyles extends GuideTooltipStyles {
   panel?: string;
@@ -73,6 +74,8 @@ export const TrendChartPanel = ({
   className,
   styles
 }: TrendChartPanelProps) => {
+  const { t, dt } = useDashboardText();
+  const localizedTitle = typeof title === 'string' ? tDashboardText(t, title) : title;
   const computedSeriesStyles = seriesStyles || legends.map((item) => ({
     color: item.color,
     fillOpacity: item.primary ? 0.08 : 0.03,
@@ -88,10 +91,10 @@ export const TrendChartPanel = ({
             {guide ? (
               <TitleWithGuide title={title} items={guide} className={styles.panelTitleWithGuide} styles={styles} />
             ) : (
-              title
+              localizedTitle
             )}
           </h3>
-          {subtitle ? <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>{subtitle}</div> : null}
+          {subtitle ? <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>{dt(subtitle)}</div> : null}
         </div>
         <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
           {legends.map((item) => (
@@ -100,7 +103,7 @@ export const TrendChartPanel = ({
                 className={`${styles.chartLegendDot} ${item.dashed ? styles.chartLegendDash : ''}`}
                 style={{ background: item.dashed ? 'transparent' : item.color, borderColor: item.color }}
               />
-              {item.label}
+              {dt(item.label)}
             </span>
           ))}
         </div>

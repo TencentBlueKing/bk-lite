@@ -4,6 +4,7 @@ import React from 'react';
 import { Tooltip } from 'antd';
 import { InfoCircleOutlined } from '@ant-design/icons';
 import type { GuideItem } from '@/app/monitor/components/monitor-dashboard-widgets/types';
+import { localizeGuideItems, tDashboardText, useDashboardText } from '@/app/monitor/dashboards/shared/utils/content-i18n';
 
 export interface GuideTooltipStyles {
   metricGuideTooltip?: string;
@@ -18,16 +19,20 @@ const GuideTooltipContent = ({
 }: {
   items: GuideItem[];
   styles: GuideTooltipStyles;
-}) => (
+}) => {
+  const { t } = useDashboardText();
+  const localized = localizeGuideItems(t, items);
+  return (
   <div className={styles.metricGuideTooltip}>
-    {items.map((item) => (
+    {localized.map((item) => (
       <div key={item.label} className={styles.metricGuideTooltipRow}>
         <strong>{item.label}</strong>
         <span>{item.detail}</span>
       </div>
     ))}
   </div>
-);
+  );
+};
 
 export const TitleWithGuide = ({
   title,
@@ -40,11 +45,13 @@ export const TitleWithGuide = ({
   className?: string;
   styles: GuideTooltipStyles;
 }) => {
+  const { t } = useDashboardText();
   const hasGuideItems = items.length > 0;
+  const localizedTitle = typeof title === 'string' ? tDashboardText(t, title) : title;
 
   return (
     <span className={[styles.titleWithGuide, className].filter(Boolean).join(' ')}>
-      <span>{title}</span>
+      <span>{localizedTitle}</span>
       {hasGuideItems ? (
         <Tooltip
           overlayClassName="lightMetricTooltip"

@@ -9,8 +9,7 @@ import {
   KpiSection,
   useFilteredChartPanels,
   useFilteredRingPanels,
-  useFilteredSummaryCards
-} from '../common/dashboard-components';
+  useFilteredSummaryCards, DashboardSectionLabel } from '../common/dashboard-components';
 import {
   RingChartPanel,
   TrendChartPanel
@@ -36,9 +35,9 @@ export default function NginxDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} styles={styles} />
-          <div className={styles.sectionLabel}>性能趋势与分布</div>
+          <DashboardSectionLabel styles={styles}>性能趋势与分布</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {/* R1: 速率折线 span8 + 连接分布环 span4 = 12 */}
             {rateTrendChart ? (

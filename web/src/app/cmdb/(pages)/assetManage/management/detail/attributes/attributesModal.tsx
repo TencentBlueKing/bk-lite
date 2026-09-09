@@ -762,7 +762,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
               <Select placeholder={t('common.selectMsg')}>
                 {props.groups.map((group) => (
                   <Option value={group.id} key={group.id}>
-                    {group.group_name}
+                    {group.display_name || group.group_name}
                   </Option>
                 ))}
               </Select>
