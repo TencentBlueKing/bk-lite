@@ -189,6 +189,7 @@ cd web && pnpm test 中与策略表单、告警列表相关的目标
 - T1：三域策略、告警增加 `handlers`；列表补 `handlers_display`。`apps/monitor/tests/test_alert_handlers.py`、`apps/log/tests/test_alert_handlers.py`、`test_policy_api.py::test_policy_create_persists_handlers`、`test_alert_snapshot_api.py::test_alert_list_exposes_handlers_and_display` 通过。
 - T2：新建告警快照当时策略 `handlers`，已有告警不改写。监控 / 日志扫描与 APM evaluate 的 C2 用例通过。
 - T3：三域各自认领 / 分派服务与 `POST .../claim/`、`POST .../assign/`。C3 空单认领后第二次 409；C4 组织内用户可分派、组织外 / 禁用 / 不存在 400；C5 有处理人后认领 / 分派 409、关闭仍成功；C6 非活跃 409；C14 策略已删除仍可认领空单，分派通知不发。不写事件表。
+- T5：手工分派按策略已开的人工渠道发给本次 `handlers`。C8 接收人是被分派人而不是策略通知人；C9 通知关闭不发；C10 创建不发分派通知；告警中心副本 / 仅 NATS / `recipient_mode=none` 跳过。认领仍不发。
 
 ## 8. 发布与回滚
 
