@@ -354,11 +354,14 @@ class MonitorObjectService:
         metrics = vm_api.query(query)
         metric_results = metrics.get("data", {}).get("result", [])
         timestamp_map = MonitorObjectService._query_enum_metric_sample_timestamps(vm_api, query, metric_obj, metric_results)
+        target_instance_ids = {inst["instance_id"] for inst in target_instances}
         selected_map = {}
         for metric in metric_results:
-            instance_id = str(tuple(metric["metric"].get(i) for i in metric_obj.instance_id_keys))
+            labels = metric.get("metric") or {}
+            raw_id = str(tuple(labels.get(i) for i in metric_obj.instance_id_keys))
+            instance_id = MonitorObjectService._resolve_vm_result_instance_id(metric_obj, labels, target_instance_ids)
             value = metric["value"][1]
-            sample_time = timestamp_map.get((instance_id, MonitorObjectService._vm_metric_signature(metric)))
+            sample_time = timestamp_map.get((raw_id, MonitorObjectService._vm_metric_signature(metric)))
             if MonitorObjectService._should_replace_display_metric_value(selected_map.get(instance_id), value, sample_time):
                 selected_map[instance_id] = {"value": value, "sample_time": sample_time}
         return {instance_id: item["value"] for instance_id, item in selected_map.items()}
@@ -388,6 +391,22 @@ class MonitorObjectService:
     @staticmethod
     def _vm_metric_signature(metric):
         return tuple(sorted((key, value) for key, value in metric.get("metric", {}).items() if key != "__name__"))
+
+    @staticmethod
+    def _resolve_vm_result_instance_id(metric_obj, labels, target_instance_ids):
+        """把 VM 标签还原成列表行的 instance_id，兼容裸值与 tuple 存储键。"""
+        label_values = tuple(labels.get(key) for key in metric_obj.instance_id_keys)
+        instance_id = str(label_values)
+        if instance_id in target_instance_ids:
+            return instance_id
+        for value in label_values:
+            value_str = str(value)
+            if value_str in target_instance_ids:
+                return value_str
+            parsed_key = str(parse_instance_id(value_str))
+            if parsed_key in target_instance_ids:
+                return parsed_key
+        return instance_id
 
     @staticmethod
     def _should_replace_display_metric_value(current, new_value, new_sample_time):
@@ -466,18 +485,7 @@ class MonitorObjectService:
             field_value = labels.get(field)
             if field_value in (None, ""):
                 continue
-            label_values = tuple(labels.get(i) for i in metric_obj.instance_id_keys)
-            instance_id = str(label_values)
-            if instance_id not in target_instance_ids:
-                for value in label_values:
-                    value_str = str(value)
-                    if value_str in target_instance_ids:
-                        instance_id = value_str
-                        break
-                    parsed_key = str(parse_instance_id(value_str))
-                    if parsed_key in target_instance_ids:
-                        instance_id = parsed_key
-                        break
+            instance_id = MonitorObjectService._resolve_vm_result_instance_id(metric_obj, labels, target_instance_ids)
             timestamp = metric.get("value", [0])[0]
             if instance_id not in value_map or timestamp >= time_map.get(instance_id, 0):
                 value_map[instance_id] = field_value
@@ -486,9 +494,13 @@ class MonitorObjectService:
 
     @staticmethod
     def _merge_reported_plugin_coverage(monitor_object_id, result, instance_plugin_map):
-        """把无 CollectConfig 但已上报的实例并入插件归属，供展示列隔离使用。"""
-        uncovered = [inst for inst in result if inst["instance_id"] not in instance_plugin_map]
-        if not uncovered:
+        """把已上报但无对应 CollectConfig 的插件并入归属，供展示列隔离使用。
+
+        实例只要缺某个展示列插件的 CollectConfig，就要按该插件 status_query 补归属。
+        不能因为已经有「别的」插件配置（如本机 Host / WMI）就整行跳过，否则仅上报的
+        Host Remote 会在列表留空，详情却仍能凭上报状态画出图表。
+        """
+        if not result:
             return
 
         plugin_status_qs = (
@@ -499,12 +511,16 @@ class MonitorObjectService:
             query = (status_query or "").strip()
             if not query:
                 continue
+            if all(plugin_name in instance_plugin_map.get(inst["instance_id"], set()) for inst in result):
+                continue
             plugin_queries.append((plugin_name, query))
+        if not plugin_queries:
+            return
 
         vm_api = VictoriaMetricsAPI()
         responses, errors = run_unique_vm_queries(
             (query for _, query in plugin_queries),
-            vm_api.query,
+            lambda query: vm_api.query(query, step=LAST_SAMPLE_LOOKBACK),
         )
         for plugin_name, query in plugin_queries:
             if query in errors:
@@ -520,7 +536,9 @@ class MonitorObjectService:
             reported_primary_ids.discard(None)
             if not reported_primary_ids:
                 continue
-            for inst in uncovered:
+            for inst in result:
+                if plugin_name in instance_plugin_map.get(inst["instance_id"], set()):
+                    continue
                 parsed = parse_instance_id(inst["instance_id"])
                 primary = str(parsed[0]) if parsed else None
                 if primary in reported_primary_ids:
@@ -532,8 +550,9 @@ class MonitorObjectService:
 
         - 回填 key 用复合 key ``<plugin>::<metric>``(见 display_field_key),避免不同插件的同名
           指标互相覆盖;
-        - 按插件(模板)隔离:只把“采集配置归属该插件”的实例纳入该绑定取数,别的插件的实例该列留空。
-          无采集配置的实例无法判定插件归属,不展示带插件的绑定指标(显示 --)。
+        - 按插件(模板)隔离:只把“采集配置或上报状态归属该插件”的实例纳入该绑定取数,
+          别的插件的实例该列留空。无 CollectConfig 但已上报的插件仍回填；已有其它插件
+          配置时，也不跳过仅上报的插件。
         - 兼容:绑定缺 plugin(遗留配置)时按指标名匹配、不做隔离、用裸指标名回填;display_fields
           为空时退回 supplementary_indicators(裸指标名,不区分插件)。
         - ``skip_out_keys``: 排序阶段已写入的 out_key，本页补数时跳过同列重复 VM 查询。
