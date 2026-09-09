@@ -101,6 +101,44 @@ def test_alert_list_exposes_handlers_and_display(api_client, grant_all):
     assert result["handlers_display"] == ["处理人甲(handler1)"]
 
 
+def test_my_alert_filters_handlers_not_operator(api_client, grant_all):
+    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
+    actor = _actor_user()
+    other = _org_user()
+    policy = _policy()
+    mine = _new_alert(policy, handlers=[actor.id], monitor_instance_id="mine")
+    operator_only = _new_alert(
+        policy,
+        handlers=[],
+        operator="testuser",
+        monitor_instance_id="operator-only",
+    )
+    others = _new_alert(policy, handlers=[other.id], monitor_instance_id="other")
+    _new_alert(
+        policy,
+        handlers=[actor.id],
+        organizations=[99],
+        monitor_instance_id="hidden",
+    )
+    api_client.cookies["current_team"] = "1"
+
+    listed = api_client.get(
+        f"{BASE}/api/monitor_alert/",
+        {"status_in": "new", "page": 1, "page_size": 20},
+    )
+    mine_listed = api_client.get(
+        f"{BASE}/api/monitor_alert/",
+        {"status_in": "new", "page": 1, "page_size": 20, "my_alert": "1"},
+    )
+
+    listed_ids = {item["id"] for item in listed.json()["data"]["results"]}
+    mine_ids = {item["id"] for item in mine_listed.json()["data"]["results"]}
+    assert listed.status_code == 200
+    assert mine_listed.status_code == 200
+    assert listed_ids == {mine.id, operator_only.id, others.id}
+    assert mine_ids == {mine.id}
+
+
 def _actor_user():
     return User.objects.create(
         username="testuser",

@@ -3,6 +3,7 @@
 from django.db import transaction
 
 from apps.core.logger import monitor_logger as logger
+from apps.core.utils.viewset_utils import build_json_membership_query
 from apps.monitor.models import MonitorAlert, MonitorPolicy
 from apps.monitor.services.alert_lifecycle_notify import AlertLifecycleNotifier
 from apps.system_mgmt.models import User
@@ -40,6 +41,30 @@ def current_handler_identifier(actor) -> int | str:
     if matched is not None:
         return matched.id
     return actor.username
+
+
+def is_my_alert_query(request) -> bool:
+    query_params = getattr(request, "query_params", None)
+    if query_params is not None:
+        value = query_params.get("my_alert")
+    else:
+        value = request.GET.get("my_alert")
+    return str(value or "").strip().lower() in {"1", "true", "yes"}
+
+
+def handler_match_values(actor) -> list:
+    values = []
+    identifier = current_handler_identifier(actor)
+    if identifier not in (None, ""):
+        values.append(identifier)
+    username = getattr(actor, "username", None)
+    if username and username not in values:
+        values.append(username)
+    return values
+
+
+def filter_my_handler_alerts(queryset, actor):
+    return queryset.filter(build_json_membership_query(queryset, "handlers", handler_match_values(actor)))
 
 
 def _lock_assignable_alert(alert_id, *, operable_qs=None) -> MonitorAlert:

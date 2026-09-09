@@ -26,6 +26,8 @@ from apps.monitor.services.alert_handlers import (
     AlertHandlerInvalid,
     assign_alert,
     claim_alert,
+    filter_my_handler_alerts,
+    is_my_alert_query,
 )
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 from apps.monitor.services.alert_access import visible_monitor_alerts
@@ -216,6 +218,8 @@ class MonitorAlertViewSet(
     def list(self, request, *args, **kwargs):
         monitor_object_id = request.query_params.get("monitor_object_id", None)
         queryset = self.filter_queryset(self.get_queryset())
+        if is_my_alert_query(request):
+            queryset = filter_my_handler_alerts(queryset, request.user)
         if monitor_object_id not in (None, ""):
             policy_qs = filter_positive_int_field(
                 MonitorPolicy.objects.all(),
