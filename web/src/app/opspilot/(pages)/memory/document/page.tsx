@@ -9,10 +9,12 @@ import usePermissions from '@/hooks/usePermissions';
 import { Memory, useMemoryApi } from '@/app/opspilot/api/memory';
 import PermissionWrapper from '@/components/permission';
 import MarkdownRenderer from '@/components/markdown';
+import { HandledRequestError } from '@/utils/request';
 import {
   MEMORY_DOCUMENT_PAGE_CHARS,
   MEMORY_PREVIEW_CONTENT_LIMIT,
   formatMemoryContentSize,
+  memoryContentLength,
   memoryDocumentPageCount,
   memoryDocumentPageOffset,
   shouldMarkdownRenderMemory,
@@ -137,7 +139,8 @@ export default function MemoryDocumentPage() {
         await updateMemory(memory.id, {
           content: nextContent,
           content_offset: offset,
-          content_replace_length: (memory.content || '').length,
+          content_replace_length: memoryContentLength(memory.content || ''),
+          expected_updated_at: memory.updated_at,
         });
       } else {
         await updateMemory(memory.id, { content: nextContent });
@@ -147,7 +150,13 @@ export default function MemoryDocumentPage() {
       setReloadNonce((n) => n + 1);
       message.success(t('memory.saveSuccess'));
     } catch (error) {
-      console.error(error);
+      if (error instanceof HandledRequestError && error.status === 409) {
+        message.warning(t('memory.documentVersionConflict'));
+        setEditing(false);
+        setReloadNonce((n) => n + 1);
+      } else {
+        console.error(error);
+      }
     } finally {
       setSaving(false);
     }

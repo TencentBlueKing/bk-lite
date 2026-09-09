@@ -42,6 +42,11 @@ export function memoryDocumentPageOffset(page: number, pageSize = MEMORY_DOCUMEN
   return Math.max(0, page - 1) * Math.max(1, pageSize);
 }
 
+/** 与服务端 Python `len(str)` 对齐的 Unicode code point 长度。 */
+export function memoryContentLength(value: string): number {
+  return Array.from(value).length;
+}
+
 export function buildMemoryDocumentHref(spaceId: number, memoryId: number, options?: { edit?: boolean }): string {
   const params = new URLSearchParams({
     id: String(spaceId),
