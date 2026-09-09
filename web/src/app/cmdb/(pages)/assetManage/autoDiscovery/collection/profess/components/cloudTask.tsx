@@ -18,6 +18,7 @@ import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
 import CredentialPoolEditor from './credentialPoolEditor';
 import {
   buildCloudCredential,
+  buildCloudRegionQueryParams,
   getCloudCredentialConfig,
   restoreCloudCredential,
   validateCloudCredential,
@@ -60,7 +61,8 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
   const [regions, setRegions] = useState<RegionItem[]>([]);
   const [loadingRegions, setLoadingRegions] = useState(false);
   const collectApi = useCollectApi();
-  const { copyTaskData, setCopyTaskData } = useAssetManageStore();
+  const { copyTaskData, setCopyTaskData, editingId } = useAssetManageStore();
+  const taskId = editId ?? editingId;
 
   const {
     form,
@@ -109,7 +111,7 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
       return {
         ...baseData,
         instances: instance?.origin && [instance.origin],
-        credential,
+        credential: [credential],
       };
     },
   });
@@ -137,31 +139,22 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
     refreshFlag = true,
     host?: string,
     projectId?: string,
+    savedTaskId: number | null = taskId,
   ) => {
-    if (!accessKey || !accessSecret || !cloudRegionId) return;
+    const canUseSavedTask = Boolean(savedTaskId);
+    if ((!accessKey || !accessSecret) && !canUseSavedTask) return;
+    if (!cloudRegionId) return;
     setLoadingRegions(true);
     try {
-      const isCredentialUnchanged =
-        accessKey === PASSWORD_PLACEHOLDER && accessSecret === PASSWORD_PLACEHOLDER;
-
-      const params: any = {
-        model_id: modelId,
-        cloud_id: cloudRegionId,
-      };
-
-      if (host) {
-        params.host = host;
-      }
-      if (projectId) {
-        params.project_id = projectId;
-      }
-
-      if (editId && isCredentialUnchanged) {
-        params.task_id = editId;
-      } else {
-        params.access_key = accessKey;
-        params.access_secret = accessSecret;
-      }
+      const params = buildCloudRegionQueryParams({
+        modelId,
+        cloudRegionId,
+        accessKey,
+        accessSecret,
+        editId: savedTaskId,
+        host,
+        projectId,
+      });
 
       const data = await collectApi.getCollectRegions(params);
       setRegions(data || []);
@@ -191,12 +184,17 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
       accessSecret: values.accessSecret,
     }]);
 
-    const isAccessKeyPlaceholder = values.accessKey === PASSWORD_PLACEHOLDER;
-    const isAccessSecretPlaceholder = values.accessSecret === PASSWORD_PLACEHOLDER;
+    const isAbsentSecret = (value?: string) => {
+      const normalized = trimFormString(value);
+      return !normalized || normalized === PASSWORD_PLACEHOLDER;
+    };
     const isCredentialUnchanged =
-      isAccessKeyPlaceholder && isAccessSecretPlaceholder;
+      Boolean(taskId)
+      && isAbsentSecret(values.accessKey)
+      && isAbsentSecret(values.accessSecret);
     const hasMixedCredentialState =
-      isAccessKeyPlaceholder !== isAccessSecretPlaceholder;
+      Boolean(taskId)
+      && isAbsentSecret(values.accessKey) !== isAbsentSecret(values.accessSecret);
 
     if (hasMixedCredentialState) {
       message.error(
@@ -243,6 +241,7 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
       refreshFlag,
       host,
       values.projectId,
+      taskId,
     );
   };
 
@@ -270,7 +269,15 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
 
         const cloudRegion = values.access_point?.[0]?.cloud_region || '';
         if (cloudRegion) {
-          fetchRegions(PASSWORD_PLACEHOLDER, PASSWORD_PLACEHOLDER, cloudRegion, false, values.instances?.[0]?.endpoint || undefined);
+          fetchRegions(
+            PASSWORD_PLACEHOLDER,
+            PASSWORD_PLACEHOLDER,
+            cloudRegion,
+            false,
+            values.instances?.[0]?.endpoint || undefined,
+            undefined,
+            editId,
+          );
         }
       } else {
         form.setFieldsValue({
@@ -280,7 +287,7 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
       }
     };
     initForm();
-  }, [modelId, copyTaskData, setCopyTaskData]);
+  }, [modelId, copyTaskData, setCopyTaskData, editId]);
 
   const validateCredentialPool = (_: any, value?: any[]) => {
     const credentialValue = normalizeCredentialPool(value)[0] || {};

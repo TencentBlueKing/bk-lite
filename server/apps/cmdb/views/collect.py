@@ -462,7 +462,22 @@ class CollectModelViewSet(AuthViewSet):
         task_id = self._pop_region_task_id(params)
         credential = self._build_region_query_credential(requests, params, task_id=task_id)
         model_id = credential.get("model_id")
-        if model_id in {"qcloud", "aliyun"} and self._blank_cloud_secret(credential.get("secret_id")):
+        if (
+            model_id in {"qcloud", "aliyun", "hwcloud"}
+            and self._blank_cloud_secret(credential.get("secret_id"))
+            and self._blank_cloud_secret(credential.get("accessKey") or credential.get("access_key"))
+        ):
+            logger.info(
+                "event=list_regions_missing_secret model_id=%s has_task_id=%s request_fields=%s",
+                model_id,
+                bool(task_id),
+                ",".join(sorted(str(key) for key in params.keys())),
+            )
+            if task_id:
+                return WebUtils.response_error(
+                    error_message="已保存任务中没有可用的云访问密钥，请重新填写 SecretId 和 SecretKey",
+                    status_code=400,
+                )
             return WebUtils.response_error(error_message="缺少云访问密钥，请重新填写或打开已保存的任务后再刷新区域", status_code=400)
         result = CollectModelService.list_regions(credential, cloud_name=cloud_name)
         if result.get("success"):
