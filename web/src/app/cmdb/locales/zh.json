@@ -1501,6 +1501,7 @@
         "added": "新增",
         "removed": "删除",
         "selectVersionHint": "请选择两个版本进行对比",
+        "diffOverBudgetHint": "当前两个版本行数过多，无法进行逐行对齐对比，已改为左右原文对照。",
         "versionNumber": "版本号",
         "status": "状态",
         "fileSize": "文件大小",
