@@ -1161,6 +1161,22 @@ class TestSendNotice:
         assert result == {"result": True}
         send.assert_called_once()
 
+    def test_create_notice_keeps_policy_notice_users_not_handlers(self, mocker):
+        policy = _make_policy(notice_users=["u1"], notice_type_id=2, handlers=[99])
+        scan = LogPolicyScan(policy)
+        send = mocker.patch(
+            "apps.log.tasks.services.policy_scan.SystemMgmtUtils.send_msg_with_channel",
+            return_value={"result": True},
+        )
+        event = Event(id="e1", policy=policy, source_id="s", event_time=timezone.now(), level="warning", content="c")
+
+        ok, _ = scan.send_notice(event)
+
+        assert ok is True
+        assert send.call_args.args[3] == ["u1"]
+        assert 99 not in send.call_args.args[3]
+        assert "99" not in send.call_args.args[3]
+
     def test_failure_then_returns_last_result(self, mocker):
         policy = _make_policy(notice_users=["u1"])
         scan = LogPolicyScan(policy)

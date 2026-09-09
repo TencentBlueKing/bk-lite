@@ -10,7 +10,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 from apps.log.models.policy import Alert, Policy, PolicyOrganization
 from apps.log.serializers.policy import PolicySerializer
 from apps.log.views.policy import AlertViewSet
-from apps.system_mgmt.models import Group, User
+from apps.system_mgmt.models import Channel, Group, User
 
 pytestmark = pytest.mark.django_db
 
@@ -304,6 +304,127 @@ def test_claim_does_not_send_assign_notify(
     notify.assert_not_called()
 
 
+def test_claim_does_not_send_assign_notify(
+    api_client, grant_all, mocker, django_capture_on_commit_callbacks
+):
+    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
+    _actor_user()
+    notify = mocker.patch("apps.log.services.alert_lifecycle_notify.LogAlertLifecycleNotifier.notify_assigned")
+    policy = _policy(notice=True)
+    alert = _new_alert(policy, "claim-no-notify")
+    api_client.cookies["current_team"] = "1"
+
+    with django_capture_on_commit_callbacks(execute=True):
+        resp = api_client.post(f"/api/v1/log/alert/{alert.id}/claim/")
+
+    assert resp.status_code == 200
+    notify.assert_not_called()
+
+
+def _person_channel():
+    return Channel.objects.create(
+        name="邮件",
+        channel_type="email",
+        config={},
+        description="",
+        team=[1],
+    )
+
+
+def _alert_center_channel():
+    return Channel.objects.create(
+        name="告警中心",
+        channel_type="nats",
+        config={"method_name": "receive_alert_events", "namespace": "default"},
+        description="",
+        team=[1],
+    )
+
+
+def test_assign_sends_notice_to_handlers_not_notice_users(
+    api_client, grant_all, mocker, django_capture_on_commit_callbacks
+):
+    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
+    channel = _person_channel()
+    send = mocker.patch(
+        "apps.log.services.alert_lifecycle_notify.SystemMgmtUtils.send_msg_with_channel",
+        return_value={"result": True},
+    )
+    inside = _org_user()
+    policy = _policy(
+        notice=True,
+        notice_type="email",
+        notice_type_id=channel.id,
+        notice_users=["policy-notice-user"],
+    )
+    alert = _new_alert(policy, "assign-notice")
+    api_client.cookies["current_team"] = "1"
+
+    with django_capture_on_commit_callbacks(execute=True):
+        resp = api_client.post(
+            f"/api/v1/log/alert/{alert.id}/assign/",
+            {"handlers": [inside.id]},
+            format="json",
+        )
+
+    assert resp.status_code == 200
+    send.assert_called_once()
+    channel_id, title, _content, receivers = send.call_args.args
+    assert channel_id == channel.id
+    assert "分派" in title
+    assert receivers == [str(inside.id)]
+    assert "policy-notice-user" not in receivers
+
+
+def test_assign_notice_skips_alert_center_channel(
+    api_client, grant_all, mocker, django_capture_on_commit_callbacks
+):
+    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
+    channel = _alert_center_channel()
+    send = mocker.patch(
+        "apps.log.services.alert_lifecycle_notify.SystemMgmtUtils.send_msg_with_channel",
+        return_value={"result": True},
+    )
+    inside = _org_user()
+    policy = _policy(notice=True, notice_type="nats", notice_type_id=channel.id)
+    alert = _new_alert(policy, "assign-nats")
+    api_client.cookies["current_team"] = "1"
+
+    with django_capture_on_commit_callbacks(execute=True):
+        resp = api_client.post(
+            f"/api/v1/log/alert/{alert.id}/assign/",
+            {"handlers": [inside.id]},
+            format="json",
+        )
+
+    assert resp.status_code == 200
+    send.assert_not_called()
+
+
+def test_assign_notice_off_does_not_send(
+    api_client, grant_all, mocker, django_capture_on_commit_callbacks
+):
+    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
+    send = mocker.patch(
+        "apps.log.services.alert_lifecycle_notify.SystemMgmtUtils.send_msg_with_channel",
+        return_value={"result": True},
+    )
+    inside = _org_user()
+    policy = _policy(notice=False, notice_type_id=_person_channel().id, notice_users=["u1"])
+    alert = _new_alert(policy, "assign-silent")
+    api_client.cookies["current_team"] = "1"
+
+    with django_capture_on_commit_callbacks(execute=True):
+        resp = api_client.post(
+            f"/api/v1/log/alert/{alert.id}/assign/",
+            {"handlers": [inside.id]},
+            format="json",
+        )
+
+    assert resp.status_code == 200
+    send.assert_not_called()
+
+
 def test_claim_requires_operate_permission(api_client, grant_all, mocker):
     from apps.core.utils.web_utils import WebUtils
 
@@ -343,3 +464,33 @@ def test_claim_logs_lifecycle_template_without_handler_payload(grant_all, caplog
     assert str(alert.pk) in rendered
     assert "password" not in rendered.lower()
     assert str(actor.id) not in rendered
+
+
+def test_assign_notice_logs_without_handler_payload(grant_all, caplog, mocker):
+    from apps.log.services.alert_lifecycle_notify import LogAlertLifecycleNotifier
+
+    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
+    channel = _person_channel()
+    mocker.patch(
+        "apps.log.services.alert_lifecycle_notify.SystemMgmtUtils.send_msg_with_channel",
+        return_value={"result": True},
+    )
+    inside = _org_user()
+    policy = _policy(notice=True, notice_type_id=channel.id)
+    alert = _new_alert(policy, "assign-log", handlers=[inside.id])
+    caplog.set_level(logging.INFO, logger="celery")
+
+    ok, _ = LogAlertLifecycleNotifier(policy).notify_assigned(alert, max_attempts=1)
+
+    records = [
+        record
+        for record in caplog.records
+        if record.msg == "event=assign_notify_sent policy_id=%s alert_id=%s attempt=%s"
+    ]
+    assert ok is True
+    assert len(records) == 1
+    assert records[0].args == (policy.id, alert.id, 1)
+    rendered = records[0].getMessage()
+    assert str(alert.id) in rendered
+    assert "password" not in rendered.lower()
+    assert str(inside.id) not in rendered
