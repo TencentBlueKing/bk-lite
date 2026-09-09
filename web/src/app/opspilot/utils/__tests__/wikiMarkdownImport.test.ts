@@ -16,10 +16,10 @@ describe("wikiMarkdownImport", () => {
     expect(initialCreateDirectoriesFromFolders("okf")).toBe(true);
   });
 
-  it("keeps markdown accept and still creates folders from ZIP", () => {
+  it("keeps markdown accept and defaults folders off", () => {
     expect(markdownImportAccept("markdown")).toBe(".md,.markdown,.zip");
     expect(markdownImportFilePattern("markdown").test("page.md")).toBe(true);
-    expect(initialCreateDirectoriesFromFolders("markdown")).toBe(true);
+    expect(initialCreateDirectoriesFromFolders("markdown")).toBe(false);
   });
 
   it("explains reserved OKF skips in plain language", () => {

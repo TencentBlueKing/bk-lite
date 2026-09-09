@@ -2,6 +2,8 @@ import { EnumList, FullInfoAttrItem, PublicEnumLibraryItem } from '@/app/cmdb/ty
 
 export type EnumSelectMode = 'single' | 'multiple';
 
+export type PublicEnumLibraryLoadState = 'unloaded' | 'ready' | 'failed';
+
 export const normalizeDefaultValue = (value: unknown): string[] => {
   const source = Array.isArray(value)
     ? value
@@ -51,6 +53,38 @@ export const getAttributeEnumOptionIds = ({
     return getEnumOptionIds(currentLibrary?.options || []);
   }
   return getEnumOptionIds(enumList);
+};
+
+export const resolveEnumDefaultValue = ({
+  candidate,
+  validOptionIds,
+  selectMode,
+  enumRuleType,
+  publicLibraryLoadState,
+}: {
+  candidate: unknown;
+  validOptionIds: Iterable<string>;
+  selectMode: EnumSelectMode;
+  enumRuleType: 'custom' | 'public_library';
+  publicLibraryLoadState: PublicEnumLibraryLoadState;
+}): string[] => {
+  if (enumRuleType === 'public_library' && publicLibraryLoadState !== 'ready') {
+    return normalizeDefaultValue(candidate);
+  }
+  return sanitizeDefaultValue(candidate, validOptionIds, selectMode);
+};
+
+export const canSubmitEnumDefaultValue = ({
+  enumRuleType,
+  publicLibraryLoadState,
+}: {
+  enumRuleType: 'custom' | 'public_library';
+  publicLibraryLoadState: PublicEnumLibraryLoadState;
+}): boolean => {
+  if (enumRuleType !== 'public_library') {
+    return true;
+  }
+  return publicLibraryLoadState === 'ready';
 };
 
 export const getEnumDefaultValueForForm = (field: FullInfoAttrItem): string | string[] | undefined => {
