@@ -15,6 +15,7 @@ SECTION_BY_PREFIX = {
     "screen::": "screens",
     "topology::": "topologies",
     "architecture::": "architectures",
+    "report::": "reports",
 }
 
 
@@ -119,6 +120,8 @@ def _overlay_node(node: dict, widgets: dict) -> None:
         _apply_text(node, "title", entry.get("title") or entry.get("name"))
         value_config = node.get("valueConfig")
         if isinstance(value_config, dict):
+            _apply_text(value_config, "name", entry.get("name"))
+            _apply_text(value_config, "description", entry.get("description"))
             table_config = value_config.get("tableConfig")
             if isinstance(table_config, dict):
                 _overlay_columns(table_config.get("columns"), entry.get("columns") or {})
@@ -151,6 +154,13 @@ def _overlay_view_sets(view_sets: Any, entry: dict) -> Any:
             for node in items:
                 if isinstance(node, dict):
                     _overlay_node(node, widgets)
+        sections = cloned.get("sections")
+        if isinstance(sections, list):
+            for node in sections:
+                if isinstance(node, dict):
+                    _overlay_node(node, widgets)
+        if "filters" in cloned:
+            cloned["filters"] = _overlay_filters(cloned.get("filters"), entry.get("filters") or {})
         decorations = cloned.get("decorations")
         deco_entry = entry.get("decorations") or {}
         if isinstance(decorations, dict):
@@ -167,12 +177,20 @@ def _overlay_filters(filters: Any, filter_map: dict) -> Any:
         if not isinstance(item, dict):
             continue
         translated = filter_map.get(item.get("key")) or filter_map.get(item.get("id"))
-        if translated:
-            if isinstance(translated, dict):
-                _apply_text(item, "name", translated.get("name"))
-                _overlay_choice_labels(item.get("options"), translated.get("options") or {})
-            elif isinstance(translated, str):
-                item["name"] = translated
+        if not translated:
+            continue
+        option_map = {}
+        if isinstance(translated, dict):
+            _apply_text(item, "name", translated.get("name"))
+            option_map = translated.get("options") or {}
+            _overlay_choice_labels(item.get("options"), option_map)
+        elif isinstance(translated, str):
+            item["name"] = translated
+        input_config = item.get("inputConfig")
+        if isinstance(input_config, dict) and option_map:
+            source = input_config.get("optionsSource")
+            if isinstance(source, dict):
+                _overlay_choice_labels(source.get("staticItems"), option_map)
     return cloned
 
 

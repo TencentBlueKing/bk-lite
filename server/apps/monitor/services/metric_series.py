@@ -176,11 +176,17 @@ def instance_matches_protocol(instance: Any, protocol: str | None) -> bool:
     return protocol in enabled
 
 
-def build_monitor_instance_rows(instances: Iterable[Any], *, protocol: str | None = None) -> list[dict[str, Any]]:
+def build_monitor_instance_rows(
+    instances: Iterable[Any],
+    *,
+    protocol: str | None = None,
+    require_enabled_protocols: bool = True,
+) -> list[dict[str, Any]]:
     rows = []
     for instance in instances:
-        if not instance_matches_protocol(instance, protocol):
-            continue
+        if require_enabled_protocols or protocol is not None:
+            if not instance_matches_protocol(instance, protocol):
+                continue
         instance_id = str(getattr(instance, "id", "") or "")
         if not instance_id:
             continue

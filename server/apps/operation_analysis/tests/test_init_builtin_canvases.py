@@ -1207,6 +1207,7 @@ architectures: []
     monkeypatch.setattr(init_builtin_canvases, "YAML_FILE_PATH", str(base_yaml))
     monkeypatch.setattr(init_builtin_canvases, "FLOW_DASHBOARD_YAML_PATH", str(missing_yaml))
     monkeypatch.setattr(init_builtin_canvases, "WEOPSX_PLATFORM_USAGE_YAML_PATH", str(missing_yaml))
+    monkeypatch.setattr(init_builtin_canvases, "ZOMBIE_HOST_REPORT_YAML_PATH", str(missing_yaml))
     settings.OPERATION_ANALYSIS_BUILTIN_CANVAS_FILES = [str(enterprise_yaml), str(missing_yaml)]
 
     call_command("init_builtin_canvases")

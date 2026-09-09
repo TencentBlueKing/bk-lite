@@ -1378,3 +1378,136 @@ datasources:
       organization: Organization
       time: Time Range
       limit: Limit
+  "应用系统::cmdb/list_application_systems":
+    name: Application Systems (options)
+    desc: Authorized CMDB application systems for the filter dropdown; not plotted
+    fields:
+      inst_uuid:
+        title: Application System UUID
+      display_name:
+        title: Application System
+      inst_name:
+        title: Application System Name
+  "僵尸机查询::monitor/get_zombie_host_report":
+    name: Zombie Host Query
+    desc: Query successful logins, inbound packet rate, CPU, memory, and IO for monitored CMDB hosts under the selected application systems, then keep idle-looking hosts by threshold. An empty system selection does not scan all hosts. Time defaults to 7 days. Thresholds do not scale with the window. Hosts without login collection are not treated as 0.
+    fields:
+      biz_name:
+        title: Business
+      host_name:
+        title: Hostname
+      os_type_label:
+        title: OS Type
+      ip:
+        title: IP Address
+      packets_recv_max:
+        title: Peak Inbound Packets (pps)
+      packets_recv_avg:
+        title: Avg Inbound Packets (pps)
+      login_count:
+        title: Successful Logins
+      login_status:
+        title: Login Collection Status
+      cpu_max:
+        title: Peak CPU (%)
+      cpu_avg:
+        title: Avg CPU (%)
+      mem_max:
+        title: Peak Memory (%)
+      mem_avg:
+        title: Avg Memory (%)
+      io_max:
+        title: Peak IO (%)
+      zombie_whitelist:
+        title: Zombie Host Allowlist
+      inst_uuid:
+        title: Host UUID
+      monitor_id:
+        title: Monitor Instance ID
+    params:
+      system_uuids: Application System
+      time: Time Range
+      os_type: OS Type
+      zombie_whitelist:
+        name: Zombie Host Allowlist
+        options:
+          yes: "Yes"
+          no: "No"
+      page: Page
+      page_size: Page Size
+      login_min: Login Count Min
+      login_max: Login Count Max
+      packets_recv_max_min: Peak Inbound Packets Min (pps)
+      packets_recv_max_max: Peak Inbound Packets Max (pps)
+      packets_recv_avg_min: Avg Inbound Packets Min (pps)
+      packets_recv_avg_max: Avg Inbound Packets Max (pps)
+      cpu_avg_min: Avg CPU Min (%)
+      cpu_avg_max: Avg CPU Max (%)
+      cpu_max_min: Peak CPU Min (%)
+      cpu_max_max: Peak CPU Max (%)
+      mem_avg_min: Avg Memory Min (%)
+      mem_avg_max: Avg Memory Max (%)
+      mem_max_min: Peak Memory Min (%)
+      mem_max_max: Peak Memory Max (%)
+      io_max_min: Peak IO Min (%)
+      io_max_max: Peak IO Max (%)
+reports:
+  "report::僵尸机报表":
+    name: Zombie Host Report
+    desc: Query successful logins, inbound packet rate, CPU, memory, and IO for monitored CMDB hosts under the selected application systems, then keep idle-looking hosts by threshold. Time defaults to 7 days. Thresholds do not scale with the window. Hosts without login collection are not treated as 0. An empty system selection does not scan all hosts.
+    filters:
+      system_uuids: Application System
+      time: Time Range
+      os_type: OS Type
+      zombie_whitelist:
+        name: Zombie Host Allowlist
+        options:
+          yes: "Yes"
+          no: "No"
+      login_min: Login Count Min
+      login_max: Login Count Max
+      packets_recv_max_min: Peak Inbound Packets Min (pps)
+      packets_recv_max_max: Peak Inbound Packets Max (pps)
+      packets_recv_avg_min: Avg Inbound Packets Min (pps)
+      packets_recv_avg_max: Avg Inbound Packets Max (pps)
+      cpu_avg_min: Avg CPU Min (%)
+      cpu_avg_max: Avg CPU Max (%)
+      cpu_max_min: Peak CPU Min (%)
+      cpu_max_max: Peak CPU Max (%)
+      mem_avg_min: Avg Memory Min (%)
+      mem_avg_max: Avg Memory Max (%)
+      mem_max_min: Peak Memory Min (%)
+      mem_max_max: Peak Memory Max (%)
+      io_max_min: Peak IO Min (%)
+      io_max_max: Peak IO Max (%)
+    widgets:
+      zombie-table:
+        name: Zombie Host List
+        description: Logins, inbound packets, CPU, memory, and IO in the time window for hosts under the selected application systems. Uncollected logins show empty and are not filtered as 0.
+        params:
+          system_uuids: Application System
+          time: Time Range
+          os_type: OS Type
+          zombie_whitelist:
+            name: Zombie Host Allowlist
+            options:
+              yes: "Yes"
+              no: "No"
+          page: Page
+          page_size: Page Size
+          login_min: Login Count Min
+          login_max: Login Count Max
+          packets_recv_max_min: Peak Inbound Packets Min (pps)
+          packets_recv_max_max: Peak Inbound Packets Max (pps)
+          packets_recv_avg_min: Avg Inbound Packets Min (pps)
+          packets_recv_avg_max: Avg Inbound Packets Max (pps)
+          cpu_avg_min: Avg CPU Min (%)
+          cpu_avg_max: Avg CPU Max (%)
+          cpu_max_min: Peak CPU Min (%)
+          cpu_max_max: Peak CPU Max (%)
+          mem_avg_min: Avg Memory Min (%)
+          mem_avg_max: Avg Memory Max (%)
+          mem_max_min: Peak Memory Min (%)
+          mem_max_max: Peak Memory Max (%)
+          io_max_min: Peak IO Min (%)
+          io_max_max: Peak IO Max (%)

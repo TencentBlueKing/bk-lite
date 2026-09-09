@@ -64,6 +64,7 @@ const FilterBindingPanel: React.FC<FilterBindingPanelProps> = ({
   const getTypeLabel = (type: string): string => {
     if (type === 'timeRange') return t('dashboard.timeRange');
     if (type === 'dateRange') return t('dashboard.dateRange');
+    if (type === 'number') return t('dataSource.paramTypes.number');
     return t('dashboard.string');
   };
 

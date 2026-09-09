@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Input, Button, ConfigProvider } from 'antd';
+import { Input, InputNumber, Button, ConfigProvider } from 'antd';
 import { SearchOutlined, ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import TimeSelector from '@/components/time-selector';
@@ -41,6 +41,12 @@ const toSingleOrganizationValue = (value: FilterValue): number | undefined => {
 const toFilterValue = (value: number | number[] | undefined): FilterValue => {
   if (Array.isArray(value)) return value[0] ?? null;
   return value ?? null;
+};
+
+const toNumberFilterValue = (value: number | string | null): FilterValue => {
+  if (value === null || value === undefined || value === '') return null;
+  const numeric = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
 };
 
 const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
@@ -202,6 +208,18 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
             onChange={(nextValue) =>
               handleLocalValueChange(definition.id, nextValue)
             }
+          />
+        );
+
+      case 'number':
+        return (
+          <InputNumber
+            value={typeof value === 'number' ? value : null}
+            onChange={(nextValue) =>
+              handleLocalValueChange(definition.id, toNumberFilterValue(nextValue))
+            }
+            placeholder={definition.name}
+            className="min-w-40"
           />
         );
 

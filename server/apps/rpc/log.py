@@ -1,6 +1,6 @@
 import os
 
-from apps.rpc.base import RpcClient, AppClient, BaseOperationAnaRpc
+from apps.rpc.base import AppClient, BaseOperationAnaRpc, RpcClient
 
 
 class Log(object):
@@ -90,3 +90,12 @@ class LogOperationAnaRpc(BaseOperationAnaRpc):
         }
         """
         return self.client.run("query_log_alert_segments", query_data=query_data, **kwargs)
+
+    def count_successful_logins_by_host(self, hosts, time_range, **kwargs):
+        """按主机统计时间窗内成功登录次数（counted / uncollected）。"""
+        return self.client.run(
+            "count_successful_logins_by_host",
+            hosts=hosts,
+            time_range=time_range,
+            **kwargs,
+        )

@@ -92,6 +92,25 @@ assert.equal(
   undefined,
 );
 
+assert.equal(
+  resolveDynamicSourceId(
+    {
+      type: 'dynamic',
+      sourceRef: {
+        type: 'rest_api',
+        value: 'K8S集群实例::monitor/get_monitor_instance_list',
+      },
+      valueField: 'instance_id',
+      labelField: 'display_name',
+    },
+    [
+      { id: 1, name: '监控实例列表', rest_api: 'monitor/get_monitor_instance_list' },
+      { id: 22, name: 'K8S集群实例', rest_api: 'monitor/get_monitor_instance_list' },
+    ],
+  ),
+  22,
+);
+
 assert.deepEqual(extractDataSourceItems({ items: [{ _id: 1 }] }), [{ _id: 1 }]);
 assert.deepEqual(extractDataSourceItems({ data: { items: [{ _id: 2 }] } }), [{ _id: 2 }]);
 assert.deepEqual(extractDataSourceItems([{ _id: 3 }]), [{ _id: 3 }]);

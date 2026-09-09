@@ -2230,6 +2230,10 @@ class ModelManage(object):
             ensure_model_node_id_attr(mid, username="admin")
             ensure_model_monitor_id_attr(mid, username="admin")
 
+        from apps.cmdb.services.host_zombie_whitelist import ensure_host_zombie_whitelist_attr
+
+        ensure_host_zombie_whitelist_attr(username="admin")
+
     @staticmethod
     def import_model_config(file):
         from apps.cmdb.model_migrate.migrete_service import ModelMigrate

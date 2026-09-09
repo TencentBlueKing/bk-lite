@@ -13,6 +13,8 @@ SCREEN_KEY = "screen::告警运营大屏_内置"
 DIRECTORY_KEY = "__builtin__"
 DATASOURCE_KEY = "CMDB 覆盖概览::cmdb/get_cmdb_statistics"
 
+REPORT_KEY = "report::僵尸机报表"
+
 CATALOG = {
     "directories": {DIRECTORY_KEY: {"name": "Built-in"}},
     "dashboards": {
@@ -52,6 +54,26 @@ CATALOG = {
             "desc": "Classification / model / instance coverage",
             "fields": {"model_count": {"title": "Models", "description": "Model total"}},
             "params": {"time": "Time Range"},
+        }
+    },
+    "reports": {
+        REPORT_KEY: {
+            "name": "Zombie Host Report",
+            "desc": "Idle host report",
+            "filters": {
+                "system_uuids": "Application System",
+                "zombie_whitelist": {
+                    "name": "Zombie Host Allowlist",
+                    "options": {"yes": "Yes", "no": "No"},
+                },
+            },
+            "widgets": {
+                "zombie-table": {
+                    "name": "Zombie Host List",
+                    "description": "Logins and resource usage for selected systems",
+                    "params": {"login_max": "Login Count Max"},
+                }
+            },
         }
     },
 }
@@ -207,3 +229,64 @@ def test_language_pack_overlays_cmdb_dashboard_from_loader():
     assert result["name"] == "CMDB Dashboard"
     zh = overlay_canvas_payload({"name": "CMDB仪表盘"}, instance, "zh-CN")
     assert zh["name"] == "CMDB仪表盘"
+
+
+def test_overlay_report_name_filters_section_and_static_options():
+    data = {
+        "name": "僵尸机报表",
+        "desc": "中文说明",
+        "view_sets": {
+            "schema_version": 1,
+            "filters": [
+                {"id": "system_uuids__string", "key": "system_uuids", "name": "应用系统"},
+                {
+                    "id": "zombie_whitelist__string",
+                    "key": "zombie_whitelist",
+                    "name": "僵尸机白名单",
+                    "inputConfig": {
+                        "optionsSource": {
+                            "type": "static",
+                            "staticItems": [
+                                {"label": "是", "value": "yes"},
+                                {"label": "否", "value": "no"},
+                            ],
+                        }
+                    },
+                },
+            ],
+            "sections": [
+                {
+                    "id": "zombie-table",
+                    "valueConfig": {
+                        "name": "僵尸机列表",
+                        "description": "中文描述",
+                        "dataSourceParams": [{"name": "login_max", "alias_name": "登录次数上限"}],
+                    },
+                }
+            ],
+        },
+    }
+    instance = SimpleNamespace(is_build_in=True, build_in_key=REPORT_KEY)
+    result = overlay_canvas_payload(data, instance, "en", catalog=CATALOG)
+    assert result["name"] == "Zombie Host Report"
+    assert result["desc"] == "Idle host report"
+    filters = result["view_sets"]["filters"]
+    assert filters[0]["name"] == "Application System"
+    assert filters[1]["name"] == "Zombie Host Allowlist"
+    assert filters[1]["inputConfig"]["optionsSource"]["staticItems"][0]["label"] == "Yes"
+    assert filters[1]["inputConfig"]["optionsSource"]["staticItems"][1]["label"] == "No"
+    section = result["view_sets"]["sections"][0]
+    assert section["valueConfig"]["name"] == "Zombie Host List"
+    assert section["valueConfig"]["description"] == "Logins and resource usage for selected systems"
+    assert section["valueConfig"]["dataSourceParams"][0]["alias_name"] == "Login Count Max"
+
+
+def test_language_pack_overlays_zombie_report_from_loader():
+    from apps.core.utils.loader import clear_language_cache
+
+    clear_language_cache("operation_analysis")
+    instance = SimpleNamespace(is_build_in=True, build_in_key=REPORT_KEY)
+    en = overlay_canvas_payload({"name": "僵尸机报表", "desc": "中文说明"}, instance, "en")
+    assert en["name"] == "Zombie Host Report"
+    zh = overlay_canvas_payload({"name": "僵尸机报表"}, instance, "zh-CN")
+    assert zh["name"] == "僵尸机报表"
