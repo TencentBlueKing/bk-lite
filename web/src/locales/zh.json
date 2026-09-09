@@ -338,7 +338,8 @@
     },
     "legacyThirdLogin": {
       "title": "登录成功",
-      "returning": "正在返回原页面..."
+      "returning": "正在返回原页面...",
+      "continue": "手动继续"
     },
     "loginAuth": {
       "methodsTitle": "登陆方式",

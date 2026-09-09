@@ -338,7 +338,8 @@
     },
     "legacyThirdLogin": {
       "title": "Signed in",
-      "returning": "Returning to the original page..."
+      "returning": "Returning to the original page...",
+      "continue": "Continue"
     },
     "loginAuth": {
       "methodsTitle": "Switch login method",

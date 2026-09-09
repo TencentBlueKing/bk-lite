@@ -1,9 +1,12 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { Button } from 'antd';
+import { LoadingOutlined } from '@ant-design/icons';
 import { requestLegacyThirdLoginAuthorize } from '@/utils/legacyThirdLogin';
 import { useTranslation } from '@/utils/i18n';
 import { PORTAL_HOME_PATH } from '@/utils/route';
+import SigninPageFrame from './login-auth/SigninPageFrame';
 
 interface LegacyThirdLoginAuthorizeBridgeProps {
   callbackUrl?: string;
@@ -11,27 +14,42 @@ interface LegacyThirdLoginAuthorizeBridgeProps {
   token?: string;
 }
 
+const MANUAL_CONTINUE_DELAY_MS = 3000;
+
 export default function LegacyThirdLoginAuthorizeBridge({
   callbackUrl,
   thirdLoginCode,
   token,
 }: LegacyThirdLoginAuthorizeBridgeProps) {
   const { t } = useTranslation();
+  const [targetUrl, setTargetUrl] = useState<string | null>(null);
+  const [showContinue, setShowContinue] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setShowContinue(true);
+    }, MANUAL_CONTINUE_DELAY_MS);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
 
     const redirect = async () => {
-      const targetUrl = token
+      const url = token
         ? await requestLegacyThirdLoginAuthorize({
           callbackUrl: callbackUrl || PORTAL_HOME_PATH,
           thirdLoginCode,
           token,
         })
         : PORTAL_HOME_PATH;
-      if (!cancelled) {
-        window.location.href = targetUrl;
+      if (cancelled) {
+        return;
       }
+      setTargetUrl(url);
+      window.location.replace(url);
     };
 
     void redirect();
@@ -41,15 +59,27 @@ export default function LegacyThirdLoginAuthorizeBridge({
   }, [callbackUrl, thirdLoginCode, token]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-6 text-center">
-      <div>
-        <div className="text-lg font-semibold text-(--color-text-1)">
-          {t('signin.legacyThirdLogin.title')}
-        </div>
-        <div className="mt-2 text-sm text-(--color-text-3)">
+    <SigninPageFrame title={t('signin.legacyThirdLogin.title')}>
+      <div className="text-center" aria-live="polite">
+        <LoadingOutlined
+          aria-hidden
+          className="text-xl text-(--color-primary)"
+        />
+        <p className="mt-3 text-sm text-(--color-text-3)">
           {t('signin.legacyThirdLogin.returning')}
-        </div>
+        </p>
+        {showContinue ? (
+          <Button
+            type="link"
+            className="mt-1 px-0"
+            onClick={() => {
+              window.location.replace(targetUrl || PORTAL_HOME_PATH);
+            }}
+          >
+            {t('signin.legacyThirdLogin.continue')}
+          </Button>
+        ) : null}
       </div>
-    </div>
+    </SigninPageFrame>
   );
 }

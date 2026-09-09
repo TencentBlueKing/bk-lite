@@ -52,6 +52,7 @@ const requiredLocaleKeys = [
   'signin.loginAuth.validation.popupBlocked',
   'signin.legacyThirdLogin.title',
   'signin.legacyThirdLogin.returning',
+  'signin.legacyThirdLogin.continue',
 ] as const;
 
 const forbiddenHardcodedCopy: Array<{
@@ -243,6 +244,11 @@ const forbiddenHardcodedCopy: Array<{
     file: 'legacyThirdLoginAuthorizeBridge',
     snippet: '>正在返回原页面...</div>',
     copy: '正在返回原页面... legacy third-login returning copy',
+  },
+  {
+    file: 'legacyThirdLoginAuthorizeBridge',
+    snippet: '手动继续',
+    copy: '手动继续 legacy third-login continue copy',
   },
 ];
 
