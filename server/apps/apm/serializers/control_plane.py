@@ -677,6 +677,20 @@ class ApmAlertQuerySerializer(serializers.Serializer):
         return attrs
 
 
+class ApmAlertAssignSerializer(serializers.Serializer):
+    handlers = serializers.ListField(child=serializers.JSONField(), allow_empty=False)
+
+    def validate_handlers(self, value):
+        cleaned = []
+        for item in value:
+            if item in (None, "") or isinstance(item, bool):
+                raise serializers.ValidationError("处理人标识无效")
+            cleaned.append(item)
+        if not cleaned:
+            raise serializers.ValidationError("至少指定一名处理人")
+        return cleaned
+
+
 class NotificationDeliveryQuerySerializer(serializers.Serializer):
     event_id = serializers.CharField(max_length=320, required=False)
     status = serializers.ChoiceField(choices=("pending", "delivered", "failed"), required=False)

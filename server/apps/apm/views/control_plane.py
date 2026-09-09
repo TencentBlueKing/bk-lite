@@ -25,6 +25,7 @@ from apps.apm.models import (
 from apps.apm.pagination import ApmCatalogPagination
 from apps.apm.renderers import ApmRenderer
 from apps.apm.serializers import (
+    ApmAlertAssignSerializer,
     ApmAlertQuerySerializer,
     ApmApplicationSerializer,
     ApmEventQuerySerializer,
@@ -58,6 +59,7 @@ from apps.apm.services import (
     DjangoTelemetryQueryService,
     NotificationChannelDirectory,
 )
+from apps.apm.services.alerts import AlertHandlerConflict, AlertHandlerForbidden, AlertHandlerInvalid
 from apps.apm.services.access import current_organization_id, filter_current_organization, validate_assignable_organizations, visible_organization_ids
 from apps.apm.services.contracts import IngestSnippetRequest, MetricDataState, ServiceErrorBreakdownQuery, ServiceMetricQuery
 from apps.apm.services.integration_configuration import CloudRegionConfigurationError
@@ -1012,6 +1014,57 @@ class ApmAlertViewSet(viewsets.GenericViewSet):
             occurred_at=timezone.now(),
         )
         return Response(self.alert_service.serialize(closed))
+
+    @action(methods=("post",), detail=True)
+    @HasPermission("policies-Operate")
+    def claim(self, request, *args, **kwargs):
+        alert = self.get_object()
+        try:
+            claimed = self.alert_service.claim(
+                alert,
+                actor=request.user,
+                operable_qs=self.get_queryset(),
+            )
+        except AlertHandlerForbidden as exc:
+            return Response(
+                {"code": "handler_forbidden", "detail": str(exc)},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        except AlertHandlerConflict as exc:
+            return Response(
+                {"code": "handler_conflict", "detail": str(exc)},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return Response(self.alert_service.serialize(claimed))
+
+    @action(methods=("post",), detail=True)
+    @HasPermission("policies-Operate")
+    def assign(self, request, *args, **kwargs):
+        alert = self.get_object()
+        serializer = ApmAlertAssignSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            assigned = self.alert_service.assign(
+                alert,
+                handlers=serializer.validated_data["handlers"],
+                operable_qs=self.get_queryset(),
+            )
+        except AlertHandlerForbidden as exc:
+            return Response(
+                {"code": "handler_forbidden", "detail": str(exc)},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        except AlertHandlerInvalid as exc:
+            return Response(
+                {"code": "handler_invalid", "detail": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except AlertHandlerConflict as exc:
+            return Response(
+                {"code": "handler_conflict", "detail": str(exc)},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return Response(self.alert_service.serialize(assigned))
 
     @action(methods=("get",), detail=True)
     @HasPermission("events-View")

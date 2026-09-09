@@ -7,11 +7,33 @@ from django.db import transaction
 from django.db.models import Count, Q, QuerySet
 from django.db.models.functions import TruncHour
 
-from apps.apm.models import ApmAlert, ApmAlertOutbox, ApmEvent, ApmEventSnapshot, ApmPolicyTargetState
+from apps.apm.models import (
+    ApmAlert,
+    ApmAlertOutbox,
+    ApmEvent,
+    ApmEventSnapshot,
+    ApmPolicy,
+    ApmPolicyNotificationTarget,
+    ApmPolicyTargetState,
+)
 from apps.apm.services.contracts import MetricDataState, PolicyQueryResult
 from apps.apm.services.policies import DjangoApmPolicyService
 from apps.apm.utils.user_display import format_user_identifiers
+from apps.core.logger import apm_logger as logger
 from apps.core.utils.viewset_utils import build_json_membership_query
+from apps.system_mgmt.models import User
+
+
+class AlertHandlerConflict(Exception):
+    """已有处理人或告警非活跃。"""
+
+
+class AlertHandlerInvalid(Exception):
+    """分派名单校验失败。"""
+
+
+class AlertHandlerForbidden(Exception):
+    """看不见或无操作权限。"""
 
 
 class DjangoApmAlertService:
@@ -260,4 +282,139 @@ class DjangoApmAlertService:
             locked.ended_at = occurred_at
             locked.last_event_at = occurred_at
             locked.save(update_fields=("operator", "status", "ended_at", "last_event_at", "updated_at"))
+        return ApmAlert.objects.get(id=alert.id)
+
+    @staticmethod
+    def notify_assigned(alert: ApmAlert) -> None:
+        """手工分派通知入口。对人渠道投递由后续切片补齐，本期只预留调用点。"""
+        return None
+
+    @staticmethod
+    def _is_int_identifier(value) -> bool:
+        if isinstance(value, bool):
+            return False
+        return isinstance(value, int) or (isinstance(value, str) and value.isdigit())
+
+    @staticmethod
+    def current_handler_identifier(actor) -> int | str:
+        queryset = User.objects.filter(username=actor.username)
+        domain = getattr(actor, "domain", None)
+        if domain:
+            matched = queryset.filter(domain=domain).first()
+            if matched is not None:
+                return matched.id
+        matched = queryset.first()
+        if matched is not None:
+            return matched.id
+        return actor.username
+
+    @staticmethod
+    def _lookup_user(identifier) -> User | None:
+        if identifier in (None, "") or isinstance(identifier, bool):
+            return None
+        if DjangoApmAlertService._is_int_identifier(identifier):
+            user = User.objects.filter(id=int(identifier)).first()
+            if user is not None:
+                return user
+        return User.objects.filter(username=str(identifier)).first()
+
+    @staticmethod
+    def _user_in_organizations(user, organization_ids) -> bool:
+        allowed = {int(item) for item in organization_ids or [] if item not in (None, "")}
+        if not allowed:
+            return False
+        for item in user.group_list or []:
+            group_id = item.get("id") if isinstance(item, dict) else item
+            if group_id in (None, ""):
+                continue
+            try:
+                if int(group_id) in allowed:
+                    return True
+            except (TypeError, ValueError):
+                continue
+        return False
+
+    @staticmethod
+    def normalize_assign_handlers(identifiers, organization_ids) -> list:
+        if not identifiers:
+            raise AlertHandlerInvalid("至少指定一名处理人")
+        resolved = []
+        seen = set()
+        for raw in identifiers:
+            user = DjangoApmAlertService._lookup_user(raw)
+            if user is None:
+                raise AlertHandlerInvalid("处理人不存在")
+            if user.disabled:
+                raise AlertHandlerInvalid("处理人已禁用")
+            if not DjangoApmAlertService._user_in_organizations(user, organization_ids):
+                raise AlertHandlerInvalid("处理人不属于告警所属组织")
+            if user.id in seen:
+                continue
+            seen.add(user.id)
+            resolved.append(user.id)
+        if not resolved:
+            raise AlertHandlerInvalid("至少指定一名处理人")
+        return resolved
+
+    @staticmethod
+    def _has_person_channel(policy) -> bool:
+        if policy is None:
+            return False
+        return policy.notification_targets.filter(
+            delivery_mode=ApmPolicyNotificationTarget.DeliveryMode.MESSAGE,
+            recipient_mode=ApmPolicyNotificationTarget.RecipientMode.SYSTEM_USER,
+        ).exists()
+
+    @staticmethod
+    def _lock_assignable_alert(alert_id, *, operable_qs=None) -> ApmAlert:
+        try:
+            locked = ApmAlert.objects.select_for_update().get(id=alert_id)
+        except ApmAlert.DoesNotExist as exc:
+            raise AlertHandlerForbidden("没有操作该告警的权限") from exc
+        if operable_qs is not None and not operable_qs.filter(pk=locked.pk).exists():
+            raise AlertHandlerForbidden("没有操作该告警的权限")
+        if locked.status != ApmAlert.Status.ACTIVE:
+            raise AlertHandlerConflict("只有空处理人的活跃告警可以认领或分派")
+        if list(locked.handlers or []):
+            raise AlertHandlerConflict("告警已有处理人")
+        return locked
+
+    @staticmethod
+    def _schedule_assign_notification(alert: ApmAlert) -> None:
+        policy_id = alert.policy_id
+        alert_id = alert.id
+
+        def _notify():
+            policy = ApmPolicy.objects.filter(id=policy_id).first() if policy_id else None
+            if policy is None or not DjangoApmAlertService._has_person_channel(policy):
+                logger.debug(
+                    "event=assign_notify_skipped alert_id=%s reason=%s",
+                    alert_id,
+                    "policy_deleted" if policy is None else "no_person_channel",
+                )
+                return
+            current = ApmAlert.objects.filter(id=alert_id).first()
+            if current is None:
+                return
+            DjangoApmAlertService.notify_assigned(current)
+
+        transaction.on_commit(_notify)
+
+    @staticmethod
+    def claim(alert: ApmAlert, *, actor, operable_qs=None) -> ApmAlert:
+        with transaction.atomic():
+            locked = DjangoApmAlertService._lock_assignable_alert(alert.id, operable_qs=operable_qs)
+            locked.handlers = [DjangoApmAlertService.current_handler_identifier(actor)]
+            locked.save(update_fields=("handlers", "updated_at"))
+        logger.info("event=alert_claimed alert_id=%s", alert.id)
+        return ApmAlert.objects.get(id=alert.id)
+
+    @staticmethod
+    def assign(alert: ApmAlert, *, handlers, operable_qs=None) -> ApmAlert:
+        with transaction.atomic():
+            locked = DjangoApmAlertService._lock_assignable_alert(alert.id, operable_qs=operable_qs)
+            locked.handlers = DjangoApmAlertService.normalize_assign_handlers(handlers, locked.organizations)
+            locked.save(update_fields=("handlers", "updated_at"))
+            DjangoApmAlertService._schedule_assign_notification(locked)
+        logger.info("event=alert_assigned alert_id=%s handler_count=%s", alert.id, len(locked.handlers))
         return ApmAlert.objects.get(id=alert.id)
