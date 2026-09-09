@@ -34,6 +34,8 @@ from apps.log.services.alert_handlers import (
     AlertHandlerInvalid,
     assign_alert,
     claim_alert,
+    filter_my_handler_alerts,
+    is_my_alert_query,
 )
 from apps.log.services.access_scope import LogAccessScopeService
 from apps.log.services.alert_access import visible_log_alerts
@@ -701,6 +703,8 @@ class AlertViewSet(viewsets.ModelViewSet):
         """
         collect_type_id = request.query_params.get("collect_type", None)
         queryset = self.filter_queryset(get_visible_log_alert_queryset(request, collect_type_id=collect_type_id))
+        if is_my_alert_query(request):
+            queryset = filter_my_handler_alerts(queryset, request.user)
 
         # 获取分页参数
         page = _to_positive_int(request.GET.get("page"), 1)
