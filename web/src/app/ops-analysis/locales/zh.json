@@ -255,6 +255,8 @@
     "sourceType": "数据来源",
     "sourcePath": "来源标识",
     "sourceObject": "取数对象",
+    "searchPlaceholder": "搜索名称",
+    "allSourceTypes": "全部",
     "sourceTypes": {
       "nats": "NATS",
       "mysql": "MySQL",
