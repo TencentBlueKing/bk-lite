@@ -570,6 +570,7 @@ export interface ApmPolicyInput {
   no_data_severity?: ApmPolicySeverity | '';
   no_data_alert_name?: string;
   notification_targets: ApmPolicyNotificationTarget[];
+  handlers?: Array<string | number>;
   is_enabled?: boolean;
 }
 

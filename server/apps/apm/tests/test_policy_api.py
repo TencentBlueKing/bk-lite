@@ -615,6 +615,19 @@ def test_notification_recipient_view_returns_scoped_stable_user_options(apm_api_
     assert call["limit"] == 20
 
 
+def test_notification_recipients_accept_policy_organization_ids(apm_api_client, mocker):
+    directory = mocker.patch("apps.apm.views.control_plane.ApmNotificationRecipientViewSet.directory")
+    directory.search_recipients.return_value = [NotificationRecipient(id=7, username="bob", display_name="Bob")]
+
+    ok = apm_api_client.get("/api/v1/apm/notification-recipients/?organization_ids=10,30")
+    forbidden = apm_api_client.get("/api/v1/apm/notification-recipients/?organization_ids=99")
+
+    assert ok.status_code == 200
+    assert ok.data == [{"id": 7, "username": "bob", "display_name": "Bob"}]
+    assert directory.search_recipients.call_args.kwargs["organization_ids"] == [10, 30]
+    assert forbidden.status_code == 403
+
+
 def test_notification_delivery_status_and_manual_retry_are_real_and_scoped(apm_api_client, apm_user):
     service = _service(10)
     policy = ApmPolicy.objects.create(

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from apps.apm.services.contracts import NotificationChannel, NotificationRecipient
 from apps.rpc.system_mgmt import SystemMgmt
 
@@ -64,10 +66,12 @@ class NotificationChannelDirectory:
         include_children: bool,
         search: str,
         limit: int,
+        organization_ids: Sequence[int] | None = None,
     ) -> list[NotificationRecipient]:
+        teams = list(organization_ids) if organization_ids else [organization_id]
         response = self.client.search_notification_recipients_scoped(
             actor_context,
-            teams=[organization_id],
+            teams=teams,
             include_children=include_children,
             search=search,
             limit=limit,

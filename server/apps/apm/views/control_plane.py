@@ -1170,12 +1170,21 @@ class ApmNotificationRecipientViewSet(viewsets.GenericViewSet):
             return Response([])
         serializer = NotificationRecipientQuerySerializer(data=request.query_params)
         serializer.is_valid(raise_exception=True)
+        organization_ids = serializer.validated_data.pop("organization_ids", [])
+        if organization_ids:
+            try:
+                validate_assignable_organizations(request, organization_ids)
+            except ValueError as exc:
+                raise ValidationError({"organization_ids": str(exc)}) from exc
+            except PermissionError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_403_FORBIDDEN)
         actor_context = _notification_actor_context(request, organization_id)
         try:
             recipients = self.directory.search_recipients(
                 actor_context=actor_context,
                 organization_id=organization_id,
                 include_children=actor_context["include_children"],
+                organization_ids=organization_ids or None,
                 **serializer.validated_data,
             )
         except RuntimeError as exc:

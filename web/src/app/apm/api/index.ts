@@ -318,7 +318,7 @@ const useApmApi = () => {
   );
 
   const getNotificationRecipients = useCallback(
-    (params: { search?: string; limit?: number } = {}) =>
+    (params: { search?: string; limit?: number; organization_ids?: string } = {}) =>
       get<ApmNotificationRecipient[]>('/apm/notification-recipients/', { params }),
     [get]
   );

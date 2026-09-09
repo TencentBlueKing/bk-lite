@@ -725,6 +725,16 @@ class NotificationDeliveryQuerySerializer(serializers.Serializer):
 class NotificationRecipientQuerySerializer(serializers.Serializer):
     search = serializers.CharField(max_length=100, required=False, allow_blank=True, default="")
     limit = serializers.IntegerField(min_value=1, max_value=100, default=100)
+    organization_ids = serializers.CharField(required=False, allow_blank=True, default="")
+
+    def validate_organization_ids(self, value):
+        if not value:
+            return []
+        parts = [part.strip() for part in str(value).split(",") if part.strip()]
+        try:
+            return sorted({int(part) for part in parts})
+        except (TypeError, ValueError) as exc:
+            raise serializers.ValidationError("organization_ids 必须是逗号分隔的正整数。") from exc
 
 
 class NotificationDeliveryRetrySerializer(serializers.Serializer):

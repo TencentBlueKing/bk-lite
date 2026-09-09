@@ -29,8 +29,10 @@ import GroupTreeSelect from '@/components/group-tree-select';
 import TimeSeriesComposedChart from '@/components/time-series-composed-chart';
 import { ALERT_LEVEL_COLORS, OBSERVABILITY_SERIES_COLORS } from '@/constants/observabilityChart';
 import { useTranslation } from '@/utils/i18n';
+import { formatUserName } from '@/utils/userDisplay';
 import type {
   ApmNotificationChannel,
+  ApmNotificationRecipient,
   ApmPolicy,
   ApmPolicyComparator,
   ApmPolicyInput,
@@ -56,6 +58,7 @@ interface PolicyEditorValues extends Omit<
   no_data_alert_name: string;
   notification_channel_ids: number[];
   notification_recipients: string[];
+  handlers: Array<string | number>;
   thresholds: ThresholdEditorRow[];
 }
 
@@ -87,6 +90,7 @@ const DEFAULT_VALUES: PolicyEditorValues = {
   no_data_alert_name: '${service} ${metric}',
   notification_channel_ids: [],
   notification_recipients: [],
+  handlers: [],
 };
 
 const METRICS: Array<{ value: ApmPolicyMetric; i18nKey: string }> = [
@@ -121,6 +125,25 @@ function decodeServiceScope(scope: string) {
     serviceId: scope.slice(0, separator),
     environment: decodeURIComponent(scope.slice(separator + 1)),
   };
+}
+
+function pruneByCandidateIds<T extends string | number>(
+  current: T[] | undefined,
+  candidates: Array<{ id: number | string }>,
+): T[] {
+  if (!Array.isArray(current) || !current.length) return [];
+  if (!candidates.length) return [];
+  const allowed = new Set(candidates.map((item) => String(item.id)));
+  return current.filter((item) => allowed.has(String(item)));
+}
+
+function seedRecipientsFromHandlers(
+  recipients: string[] | undefined,
+  handlers: Array<string | number> | undefined,
+): string[] | null {
+  if (Array.isArray(recipients) && recipients.length) return null;
+  if (!Array.isArray(handlers) || !handlers.length) return null;
+  return handlers.map(String);
 }
 
 function thresholdToEditorValue(metric: ApmPolicyMetric, value: number | string) {
@@ -180,6 +203,7 @@ function toEditorValues(policy: ApmPolicy, defaultNoDataAlertName: string): Poli
     notification_recipients: Array.from(
       new Set(policy.notification_targets.flatMap((target) => target.recipients)),
     ),
+    handlers: policy.handlers || [],
   };
 }
 
@@ -246,6 +270,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
     createPolicy,
     deletePolicy,
     getNotificationChannels,
+    getNotificationRecipients,
     getPolicy,
     getServiceRed,
     getServices,
@@ -263,6 +288,8 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const selectedEndpoints = Form.useWatch('endpoints', form);
   const noDataSeverity = Form.useWatch('no_data_severity', form);
   const notificationChannelIds = Form.useWatch('notification_channel_ids', form);
+  const organizations = Form.useWatch('organizations', form);
+  const organizationKey = (organizations || []).join(',');
   const policyName = Form.useWatch('name', form);
   const [services, setServices] = useState<ApmService[]>([]);
   const [channels, setChannels] = useState<ApmNotificationChannel[]>([]);
@@ -275,6 +302,8 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const [previewing, setPreviewing] = useState(false);
   const [previewFailed, setPreviewFailed] = useState(false);
   const [noticeEnabled, setNoticeEnabled] = useState(false);
+  const [handlerUsers, setHandlerUsers] = useState<ApmNotificationRecipient[]>([]);
+  const seededRecipients = useRef(false);
   const previewRequestRef = useRef(0);
   const previewDebounceRef = useRef<number | null>(null);
 
@@ -297,6 +326,56 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
       })
       .finally(() => setLoading(false));
   }, [form, getNotificationChannels, getPolicy, getServices, isLoading, policyId]);
+
+  useEffect(() => {
+    const orgIds = organizationKey
+      ? organizationKey.split(',').map((item) => Number(item)).filter((item) => Number.isInteger(item) && item > 0)
+      : [];
+    if (!orgIds.length) {
+      const formOrganizations = form.getFieldValue('organizations') || [];
+      if (Array.isArray(formOrganizations) && formOrganizations.length) {
+        return;
+      }
+      setHandlerUsers((prev) => (prev.length ? [] : prev));
+      const current = form.getFieldValue('handlers') || [];
+      if (Array.isArray(current) && current.length) {
+        form.setFieldValue('handlers', []);
+      }
+      return;
+    }
+    let cancelled = false;
+    void getNotificationRecipients({ organization_ids: orgIds.join(','), limit: 100 })
+      .then((users) => {
+        if (cancelled) return;
+        const list = Array.isArray(users) ? users : [];
+        setHandlerUsers((prev) => {
+          if (
+            prev.length === list.length
+            && prev.every((item, index) => item.id === list[index]?.id)
+          ) {
+            return prev;
+          }
+          return list;
+        });
+        const current = form.getFieldValue('handlers') || [];
+        const pruned = pruneByCandidateIds(current, list);
+        if (
+          Array.isArray(current)
+          && (
+            pruned.length !== current.length
+            || pruned.some((item, index) => String(item) !== String(current[index]))
+          )
+        ) {
+          form.setFieldValue('handlers', pruned);
+        }
+      })
+      .catch(() => {
+        // 拉取失败时不改动已选处理人，避免误清空
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [form, getNotificationRecipients, organizationKey]);
 
   useEffect(() => {
     const scope = decodeServiceScope(serviceScope ?? '');
@@ -393,6 +472,26 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const needsNotificationRecipients = (notificationChannelIds || []).some(
     (channelId) => channelRecipientModeMap.get(channelId) !== 'none',
   );
+  const needsSystemUserRecipients = (notificationChannelIds || []).some(
+    (channelId) => channelRecipientModeMap.get(channelId) === 'system_user',
+  );
+
+  useEffect(() => {
+    const recipientsVisible = noticeEnabled && needsNotificationRecipients && needsSystemUserRecipients;
+    if (!recipientsVisible) {
+      seededRecipients.current = false;
+      return;
+    }
+    if (seededRecipients.current) return;
+    const seeded = seedRecipientsFromHandlers(
+      form.getFieldValue('notification_recipients'),
+      form.getFieldValue('handlers'),
+    );
+    if (seeded) {
+      form.setFieldValue('notification_recipients', seeded);
+    }
+    seededRecipients.current = true;
+  }, [form, needsNotificationRecipients, needsSystemUserRecipients, noticeEnabled]);
 
   const selectedScope = decodeServiceScope(serviceScope ?? '');
   const thresholdUnit = metricType === 'error_rate'
@@ -466,6 +565,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
       no_data_after: values.no_data_after,
       no_data_severity: values.no_data_severity,
       no_data_alert_name: values.no_data_severity ? values.no_data_alert_name : '',
+      handlers: values.handlers || [],
       notification_targets: noticeEnabled
         ? values.notification_channel_ids.map((channelId) => ({
           channel_id: channelId,
@@ -657,6 +757,25 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
               mode="ownership"
               showSearch
               placeholder={t('apm.common.selectOrganization', '选择组织')}
+            />
+          </Form.Item>
+          <Form.Item
+            name="handlers"
+            label={t('apm.policies.handlers', '处理人')}
+          >
+            <Select
+              mode="multiple"
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              disabled={!organizationKey}
+              options={handlerUsers.map((item) => ({
+                value: item.id,
+                label: formatUserName(item),
+              }))}
+              placeholder={organizationKey
+                ? t('apm.policies.handlersPlaceholder', '从策略所属组织选择处理人')
+                : t('apm.policies.selectOrganizationFirst', '请先选择所属组织')}
             />
           </Form.Item>
           <Form.Item name="endpoints" label={t('apm.common.endpoint', '端点')} extra={t('apm.policies.endpointScopeHint', '不选则按服务级别监控（整体聚合）')}>
