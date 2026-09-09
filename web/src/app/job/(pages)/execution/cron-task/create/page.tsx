@@ -25,6 +25,7 @@ import dayjs from 'dayjs';
 import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/components/jobHostSelectionModalRuntime';
 import { AddTargetHostButton, TargetSourceSelector } from '@/app/job/components/target-selection-controls';
 import { createDefaultExecutionName } from '@/app/job/utils/execution-name';
+import { buildScheduledTaskTemplatePayload } from '@/app/job/utils/scheduledTaskPayload';
 import { useUserInfoContext } from '@/context/userInfo';
 
 const CreateCronTaskPage = () => {
@@ -215,7 +216,12 @@ const CreateCronTaskPage = () => {
       const formData: ScheduledTaskFormData = {
         name: values.name,
         description: values.description,
-        job_type: jobType,
+        ...buildScheduledTaskTemplatePayload({
+          jobType,
+          templateType,
+          script: values.script,
+          playbook: values.playbook,
+        }),
         ...scheduleData,
         target_source: targetSource === 'node_manager' ? 'node_mgmt' : 'manual',
         target_list: targetList,
@@ -224,13 +230,7 @@ const CreateCronTaskPage = () => {
         team: selectedGroup ? [Number(selectedGroup.id)] : [],
       };
 
-      if (jobType === 'script') {
-        if (templateType === 'script') {
-          formData.script = values.script;
-        } else {
-          formData.playbook = values.playbook;
-        }
-      } else if (jobType === 'file') {
+      if (jobType === 'file') {
         formData.target_path = values.target_path;
       }
 
