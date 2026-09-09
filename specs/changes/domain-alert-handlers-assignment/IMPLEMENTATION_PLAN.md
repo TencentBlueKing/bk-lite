@@ -1,6 +1,6 @@
 # 监控 / 日志 / APM 告警处理人与分派——实施计划
 
-Status: in-progress
+Status: complete
 
 Date: 2026-09-09
 
@@ -193,6 +193,7 @@ cd web && pnpm test 中与策略表单、告警列表相关的目标
 - T4：三域列表 `my_alert=1` 在组织可见集合上再筛 `handlers` 含当前用户 id 或 username。C7：处理人匹配才出，`operator` 是自己但处理人为空不出，组织外告警仍不可见。
 - T6：策略保存处理人须为策略组织内未禁用用户。C1：组织内用户可保存；组织外 / 禁用 / 不存在 400；组织变更后越界处理人 400。
 - T7：三域策略表单可配置处理人；候选来自策略组织。监控 / 日志通知人空且处理人非空时默认带入，删除后不补；组织变更一并剔除越界处理人与通知人。APM 处理人在所属组织之后，系统用户接收人同样默认带入。监控模板批量套用强制 `handlers: []`。APM 本域 `notification-recipients/?organization_ids=` 按策略组织取用户。
+- T8：三域告警列表 / 详情列名改为「处理人」并绑定 `handlers` / `handlers_display`。「我的告警」请求带 `my_alert=1`。空处理人活跃告警展示认领、分派、关闭；有处理人后无认领 / 分派。分派弹层多选告警所属组织用户；APM 复用本域 `organization_ids` 接收人接口。C11 前端用例与 `event-user-display-test.ts` 通过。
 
 ## 8. 发布与回滚
 
