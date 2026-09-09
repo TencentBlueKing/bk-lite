@@ -21,7 +21,20 @@ from apps.log.constants.alert_policy import AlertConstants
 from apps.log.constants.permission import PermissionConstants
 from apps.log.filters.policy import AlertFilter, EventFilter, EventRawDataFilter, PolicyFilter
 from apps.log.models.policy import Alert, AlertSnapshot, Event, EventRawData, Policy, PolicyOrganization
-from apps.log.serializers.policy import AlertSerializer, EventRawDataSerializer, EventSerializer, PolicySerializer
+from apps.log.serializers.policy import (
+    AlertSerializer,
+    AssignHandlersSerializer,
+    EventRawDataSerializer,
+    EventSerializer,
+    PolicySerializer,
+)
+from apps.log.services.alert_handlers import (
+    AlertHandlerConflict,
+    AlertHandlerForbidden,
+    AlertHandlerInvalid,
+    assign_alert,
+    claim_alert,
+)
 from apps.log.services.access_scope import LogAccessScopeService
 from apps.log.services.alert_access import visible_log_alerts
 from apps.log.services.alert_lifecycle_notify import LogAlertLifecycleNotifier
@@ -733,6 +746,44 @@ class AlertViewSet(viewsets.ModelViewSet):
         results = serializer.data
 
         return WebUtils.response_success({"count": total_count, "items": results})
+
+    @action(methods=["post"], detail=True, url_path="claim")
+    def claim(self, request, pk=None):
+        alert = self.get_object()
+        auth_error = self._authorize_alert_operate(request, alert)
+        if auth_error:
+            return auth_error
+        operable_qs = get_visible_log_alert_queryset(request, require_operate=True)
+        try:
+            updated = claim_alert(alert, actor=request.user, operable_qs=operable_qs)
+        except AlertHandlerForbidden as exc:
+            return WebUtils.response_403(str(exc))
+        except AlertHandlerConflict as exc:
+            return WebUtils.response_error(str(exc), status_code=409)
+        return WebUtils.response_success(self.get_serializer(updated).data)
+
+    @action(methods=["post"], detail=True, url_path="assign")
+    def assign(self, request, pk=None):
+        alert = self.get_object()
+        auth_error = self._authorize_alert_operate(request, alert)
+        if auth_error:
+            return auth_error
+        serializer = AssignHandlersSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        operable_qs = get_visible_log_alert_queryset(request, require_operate=True)
+        try:
+            updated = assign_alert(
+                alert,
+                handlers=serializer.validated_data["handlers"],
+                operable_qs=operable_qs,
+            )
+        except AlertHandlerForbidden as exc:
+            return WebUtils.response_403(str(exc))
+        except AlertHandlerInvalid as exc:
+            return WebUtils.response_error(str(exc), status_code=400)
+        except AlertHandlerConflict as exc:
+            return WebUtils.response_error(str(exc), status_code=409)
+        return WebUtils.response_success(self.get_serializer(updated).data)
 
     @action(methods=["post"], detail=True, url_path="closed")
     def closed(self, request, pk=None):

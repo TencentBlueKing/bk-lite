@@ -1,6 +1,7 @@
 """日志策略 / 告警 handlers 序列化。"""
 
 import json
+import logging
 
 import pytest
 from django.utils import timezone
@@ -104,3 +105,241 @@ def test_alert_list_exposes_handlers_and_display(grant_all):
     item = json.loads(listed.content)["data"]["items"][0]
     assert item["handlers"] == [user.id]
     assert item["handlers_display"] == ["处理人甲(handler1)"]
+
+
+def _actor_user():
+    return User.objects.create(
+        username="testuser",
+        display_name="测试用户",
+        email="testuser@example.com",
+        password="x",
+        group_list=[1],
+    )
+
+
+def _org_user(*, username="assignee1", organization=1, disabled=False):
+    return User.objects.create(
+        username=username,
+        display_name=username,
+        email=f"{username}@example.com",
+        password="x",
+        disabled=disabled,
+        group_list=[organization],
+    )
+
+
+def _new_alert(policy, alert_id, **kwargs):
+    kwargs.setdefault("organizations", [1])
+    kwargs.setdefault("handlers", [])
+    kwargs.setdefault("status", "new")
+    return Alert.objects.create(
+        id=alert_id,
+        policy=policy,
+        source_id=f"source-{alert_id}",
+        level="warning",
+        start_event_time=timezone.now(),
+        **kwargs,
+    )
+
+
+def test_claim_empty_active_alert_then_second_claim_conflicts(api_client, grant_all):
+    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
+    actor = _actor_user()
+    policy = _policy()
+    alert = _new_alert(policy, "claim-1")
+    api_client.cookies["current_team"] = "1"
+
+    first = api_client.post(f"/api/v1/log/alert/{alert.id}/claim/")
+    second = api_client.post(f"/api/v1/log/alert/{alert.id}/claim/")
+
+    assert first.status_code == 200
+    assert first.json()["data"]["handlers"] == [actor.id]
+    alert.refresh_from_db()
+    assert alert.handlers == [actor.id]
+    assert alert.operator in (None, "")
+    assert second.status_code == 409
+
+
+def test_assign_org_user_succeeds_and_rejects_outsiders(
+    api_client, grant_all, mocker, django_capture_on_commit_callbacks
+):
+    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
+    notify = mocker.patch("apps.log.services.alert_lifecycle_notify.LogAlertLifecycleNotifier.notify_assigned")
+    inside = _org_user()
+    outsider = _org_user(username="outsider", organization=99)
+    disabled = _org_user(username="disabled1", disabled=True)
+    policy = _policy(notice=True)
+    alert = _new_alert(policy, "assign-ok")
+    api_client.cookies["current_team"] = "1"
+
+    with django_capture_on_commit_callbacks(execute=True):
+        ok = api_client.post(
+            f"/api/v1/log/alert/{alert.id}/assign/",
+            {"handlers": [inside.id]},
+            format="json",
+        )
+    alert.refresh_from_db()
+    assert ok.status_code == 200
+    assert alert.handlers == [inside.id]
+    notify.assert_called_once()
+
+    taken = api_client.post(
+        f"/api/v1/log/alert/{alert.id}/assign/",
+        {"handlers": [inside.id]},
+        format="json",
+    )
+    assert taken.status_code == 409
+
+    empty = _new_alert(policy, "assign-empty")
+    outside = api_client.post(
+        f"/api/v1/log/alert/{empty.id}/assign/",
+        {"handlers": [outsider.id]},
+        format="json",
+    )
+    disabled_resp = api_client.post(
+        f"/api/v1/log/alert/{empty.id}/assign/",
+        {"handlers": [disabled.id]},
+        format="json",
+    )
+    empty.refresh_from_db()
+    assert outside.status_code == 400
+    assert disabled_resp.status_code == 400
+    missing = api_client.post(
+        f"/api/v1/log/alert/{empty.id}/assign/",
+        {"handlers": [999999]},
+        format="json",
+    )
+    empty.refresh_from_db()
+    assert missing.status_code == 400
+    assert empty.handlers == []
+
+
+def test_handlers_present_blocks_claim_assign_but_close_still_works(api_client, grant_all, mocker):
+    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
+    mocker.patch("apps.log.views.policy.LogAlertLifecycleNotifier")
+    owner = _org_user()
+    policy = _policy()
+    alert = _new_alert(policy, "owned-1", handlers=[owner.id])
+    api_client.cookies["current_team"] = "1"
+
+    claimed = api_client.post(f"/api/v1/log/alert/{alert.id}/claim/")
+    assigned = api_client.post(
+        f"/api/v1/log/alert/{alert.id}/assign/",
+        {"handlers": [owner.id]},
+        format="json",
+    )
+    closed = api_client.post(f"/api/v1/log/alert/{alert.id}/closed/")
+
+    alert.refresh_from_db()
+    assert claimed.status_code == 409
+    assert assigned.status_code == 409
+    assert closed.status_code == 200
+    assert alert.status == "closed"
+    assert alert.handlers == [owner.id]
+
+
+def test_inactive_alert_cannot_claim_or_assign(api_client, grant_all):
+    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
+    owner = _org_user()
+    policy = _policy()
+    closed = _new_alert(policy, "closed-1", status="closed")
+    api_client.cookies["current_team"] = "1"
+
+    claim = api_client.post(f"/api/v1/log/alert/{closed.id}/claim/")
+    assign = api_client.post(
+        f"/api/v1/log/alert/{closed.id}/assign/",
+        {"handlers": [owner.id]},
+        format="json",
+    )
+    closed.refresh_from_db()
+    assert claim.status_code == 409
+    assert assign.status_code == 409
+    assert closed.handlers == []
+
+
+def test_deleted_policy_allows_claim_and_skips_assign_notify(
+    api_client, grant_all, mocker, django_capture_on_commit_callbacks
+):
+    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
+    actor = _actor_user()
+    notify = mocker.patch("apps.log.services.alert_lifecycle_notify.LogAlertLifecycleNotifier.notify_assigned")
+    assignee = _org_user()
+    policy = _policy(notice=True)
+    claim_alert = _new_alert(policy, "claim-orphan")
+    assign_alert = _new_alert(policy, "assign-orphan")
+    policy.delete()
+    api_client.cookies["current_team"] = "1"
+
+    with django_capture_on_commit_callbacks(execute=True):
+        claimed = api_client.post(f"/api/v1/log/alert/{claim_alert.id}/claim/")
+        assigned = api_client.post(
+            f"/api/v1/log/alert/{assign_alert.id}/assign/",
+            {"handlers": [assignee.id]},
+            format="json",
+        )
+
+    claim_alert.refresh_from_db()
+    assign_alert.refresh_from_db()
+    assert claimed.status_code == 200
+    assert claim_alert.handlers == [actor.id]
+    assert assigned.status_code == 200
+    assert assign_alert.handlers == [assignee.id]
+    notify.assert_not_called()
+
+
+def test_claim_does_not_send_assign_notify(
+    api_client, grant_all, mocker, django_capture_on_commit_callbacks
+):
+    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
+    _actor_user()
+    notify = mocker.patch("apps.log.services.alert_lifecycle_notify.LogAlertLifecycleNotifier.notify_assigned")
+    policy = _policy(notice=True)
+    alert = _new_alert(policy, "claim-no-notify")
+    api_client.cookies["current_team"] = "1"
+
+    with django_capture_on_commit_callbacks(execute=True):
+        resp = api_client.post(f"/api/v1/log/alert/{alert.id}/claim/")
+
+    assert resp.status_code == 200
+    notify.assert_not_called()
+
+
+def test_claim_requires_operate_permission(api_client, grant_all, mocker):
+    from apps.core.utils.web_utils import WebUtils
+
+    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
+    _actor_user()
+    policy = _policy()
+    alert = _new_alert(policy, "claim-denied")
+    mocker.patch(
+        "apps.log.views.policy.AlertViewSet._authorize_alert_operate",
+        return_value=WebUtils.response_403("User does not have permission to operate this alert"),
+    )
+    api_client.cookies["current_team"] = "1"
+
+    resp = api_client.post(f"/api/v1/log/alert/{alert.id}/claim/")
+
+    assert resp.status_code == 403
+    alert.refresh_from_db()
+    assert alert.handlers == []
+
+
+def test_claim_logs_lifecycle_template_without_handler_payload(grant_all, caplog):
+    from apps.log.services.alert_handlers import claim_alert as claim_alert_service
+
+    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
+    actor = _actor_user()
+    policy = _policy()
+    alert = _new_alert(policy, "claim-log")
+    caplog.set_level(logging.INFO, logger="log")
+
+    claimed = claim_alert_service(alert, actor=actor)
+
+    records = [record for record in caplog.records if record.msg == "event=alert_claimed alert_id=%s"]
+    assert claimed.handlers == [actor.id]
+    assert len(records) == 1
+    assert records[0].args == (alert.pk,)
+    rendered = records[0].getMessage()
+    assert str(alert.pk) in rendered
+    assert "password" not in rendered.lower()
+    assert str(actor.id) not in rendered

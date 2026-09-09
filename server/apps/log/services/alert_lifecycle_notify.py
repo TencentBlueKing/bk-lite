@@ -219,6 +219,10 @@ class LogAlertLifecycleNotifier:
 
         return False, last_result
 
+    def notify_assigned(self, alert, max_attempts=None) -> tuple[bool, dict]:
+        """手工分派通知入口。渠道与接收人替换由后续切片补齐，本期只预留调用点。"""
+        return False, {}
+
     def notify_created(self, event, max_attempts=None) -> tuple[bool, dict]:
         return self._notify(self.build_created_event(event), max_attempts=max_attempts)
 
