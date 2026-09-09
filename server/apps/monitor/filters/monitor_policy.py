@@ -1,8 +1,6 @@
-from django.db.models import Q
 from django_filters import CharFilter, FilterSet
 
 from apps.monitor.filters.id_filters import filter_positive_int_field
-from apps.monitor.models.monitor_object import MonitorInstanceOrganization
 from apps.monitor.models.monitor_policy import MonitorPolicy
 from apps.monitor.utils.dimension import normalize_instance_identity
 
@@ -38,43 +36,29 @@ def _normalized_source_values(values) -> set:
             continue
         normalized.add(item)
         normalized.add(str(item))
-        text = str(item).strip()
-        if text.isdigit():
-            normalized.add(int(text))
     return normalized
 
 
-def source_covers_instance(source, instance_ids, org_ids) -> bool:
-    """判断策略 source 是否覆盖当前实例（显式实例或所属组织）。"""
+def source_covers_instance(source, instance_ids) -> bool:
+    """仅匹配显式绑定当前实例的策略，不含组织范围策略。"""
     if not isinstance(source, dict):
         return False
-    source_type = source.get("type")
+    if source.get("type") != "instance":
+        return False
     value_set = _normalized_source_values(source.get("values"))
-    if source_type == "instance":
-        return bool(value_set.intersection(instance_ids))
-    if source_type == "organization":
-        org_value_set = set(org_ids)
-        org_value_set.update(str(item) for item in org_ids)
-        return bool(value_set.intersection(org_value_set))
-    return False
+    return bool(value_set.intersection(instance_ids))
 
 
 def filter_policy_queryset_by_instance(queryset, instance_id):
-    """按实例绑定过滤策略。不依赖 JSON contains，SQLite / PostgreSQL 均可。"""
+    """按实例显式绑定过滤策略。不依赖 JSON contains，SQLite / PostgreSQL 均可。"""
     instance_ids = set(policy_instance_id_candidates(instance_id))
     if not instance_ids:
         return queryset.none()
 
-    org_ids = set(
-        MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=instance_ids).values_list(
-            "organization",
-            flat=True,
-        )
-    )
     matched_ids = [
         policy_id
-        for policy_id, source in queryset.filter(Q(source__type="instance") | Q(source__type="organization")).values_list("id", "source")
-        if source_covers_instance(source, instance_ids, org_ids)
+        for policy_id, source in queryset.filter(source__type="instance").values_list("id", "source")
+        if source_covers_instance(source, instance_ids)
     ]
     return queryset.filter(id__in=matched_ids)
 
