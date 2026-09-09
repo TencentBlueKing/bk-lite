@@ -108,6 +108,14 @@ function assertPageUsesGeneration(source: string) {
   );
   assert.match(source, /AbortController/, '新查询必须 abort 旧请求');
   assert.match(source, /\.abort\(\)/, '新查询必须 abort 旧请求');
+  const canceledGuards = source.match(
+    /if \(signal\.aborted \|\| isCanceledRequest\(error\)\)/g,
+  );
+  assert.equal(
+    canceledGuards?.length,
+    2,
+    'getChartData 与 getTableData 必须在 catch 中用 signal.aborted 识别取消，避免拦截器把 CanceledError 包成 HandledRequestError 后误抛',
+  );
   assert.match(
     source,
     /getHits\([\s\S]*?\{\s*signal/,

@@ -336,9 +336,10 @@ const SearchView: React.FC = () => {
         setChartData(chartData);
       });
     } catch (error) {
-      if (!isCanceledRequest(error)) {
-        throw error;
+      if (signal.aborted || isCanceledRequest(error)) {
+        return;
       }
+      throw error;
     } finally {
       requestGuard.commitIfCurrent(requestId, () => {
         setChartLoading(false);
@@ -368,9 +369,10 @@ const SearchView: React.FC = () => {
         setTableData(listData);
       });
     } catch (error) {
-      if (!isCanceledRequest(error)) {
-        throw error;
+      if (signal.aborted || isCanceledRequest(error)) {
+        return;
       }
+      throw error;
     } finally {
       requestGuard.commitIfCurrent(requestId, () => {
         setTableLoading(false);
