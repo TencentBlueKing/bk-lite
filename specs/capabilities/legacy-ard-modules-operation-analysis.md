@@ -83,6 +83,8 @@
 - `screen`：前端提供独立页面、全屏、统一筛选、命名空间选择、组件布局与保存接口（`(pages)/view/screen/index.tsx:76-213`、`api/screen.ts:4-28`）。
 - 网络状态拓扑布局【已实现】：组件提供层级、力导向、环形三种布局；编辑态的节点位置和连线形态按布局分别持久化及重置。几何写回只替换布局字段，保留流量阈值与连线展示。查看与分享态只读取已保存布局，不回写配置（证据：`web/src/app/ops-analysis/utils/networkStatusTopologyLayout.ts`、`web/src/app/ops-analysis/components/widgets/networkStatusTopology/index.tsx`）。
 - `report`：前端提供独立的纵向报表构建器；非内置且具备 `EditChart` 权限的报表可在草稿态添加、配置、排序和删除组件，当前 `report` surface 只开放 `table` 与 `eventTable`。`section` 仅保存稳定 `id` 与单个组件 `valueConfig`；画布保存统一筛选定义，组件通过 `filterBindings` 选择联动，运行时按数据源的 `filterType=filter` 及 `key + type` 严格匹配注入查询参数，不默认展示或接管时间参数。保存使用保留六位微秒的 `updated_at` 条件令牌防止旧草稿覆盖新版本，后端创建、更新与 YAML 导入统一校验版本化 `view_sets`。查看态工具栏对齐仪表盘：周期刷新（`refresh_interval`）、全屏 overlay、客户端 A4 横向分页 PDF、画布分享与邮件订阅；订阅 Chromium 使用仪表盘视口与分页，不套用大屏单页等比缩小（证据：`web/src/app/ops-analysis/(pages)/view/report/`、`web/src/app/ops-analysis/utils/{chartTypeSurface,reportBuilder,widgetDataTransform}.ts`、`server/apps/operation_analysis/services/report_view_sets.py`、`server/apps/operation_analysis/serializers/directory_serializers.py`）。
+- 画布分享目的地【已实现】：`/ops-analysis/share/*` 隐藏平台顶栏（`shouldHideConsoleTopNav`）、左侧 App 导航（既有 chrome exception）与全局助手（`GLOBAL_WEBCHAT_EXCLUDED_PATH_PREFIXES`），`main` 无内边距；不进入订阅 Render 专用 layout，仍保留 User/Menus/Permissions providers。产品内 `/ops-analysis/view` 保持完整壳层。证据：`web/src/console-layout/resolve.ts`、`web/src/app/layout.tsx`、`web/src/app/(core)/components/global-webchat/visibility.ts`。
+- 网络拓扑分享入口【已实现】：查看态工具栏复用 `useCanvasShareAction('networkTopology')`；分享会话只返回脱敏配置，运行态经 session proxy 取数，WeOps token / `base_url` 不进分享响应。证据：`web/src/app/ops-analysis/(pages)/view/networkTopology/components/networkToolbar.tsx`、`server/apps/operation_analysis/views/share_view.py`、`server/apps/operation_analysis/tests/test_share_network_topology.py`。
 
 ## 4. 依赖与通信【已实现/已存在】
 - NATS：`nats/nats.py` 仅注册签名入口 `get_operation_analysis_module_data_v2` 与 `get_operation_analysis_module_list`（仅暴露自身数据源模块）；旧 subject 只由滚动发布期间尚未升级的旧 listener 服务，新镜像不注册旧 subject、也不保留 unsigned 开关。系统管理 producer 使用 v2 subject，并以 Django `SECRET_KEY` 签发绑定完整查询参数的短时令牌；所有安装 `system_mgmt` / `operation_analysis` 的 Server 实例必须共享密钥。轮换分两步：先让全部旧实例在维持旧主密钥时把未来新密钥加入 `SECRET_KEY_FALLBACKS`，再滚动切换新主密钥并保留旧密钥 fallback；超过令牌最大有效期后移除旧密钥。这样混合实例可双向验证新旧令牌。发布顺序固定为：并存旧/新 listener，确认 v2 responder 后切换 producer，排空并下线全部旧 producer 后才移除最后一个旧 listener；回滚通过恢复旧镜像完成，不在新镜像恢复 Agent 可调用的 unsigned 路径。`common/get_nats_source_data.py:GetNatsData.get_data()` 为**通用数据源取数器**。其当前实现为**单命名空间取数**：先经 `_get_target_namespace()` 从 `params.namespace_id` 解析目标命名空间（运行时选择；未指定则取第一个可用命名空间，显式指定但数据源未关联该命名空间则报错），再按 `path` 在该命名空间的 NATS 客户端上解析函数；当客户端存在 `DEFAULT_NATS` 属性时改调 `get_customization_nast_data`，否则按 `path` 取同名函数（`common/get_nats_source_data.py:83-138`）。
@@ -178,6 +180,10 @@
 ## 2026-09-08 画布跨目录复制
 
 - `[operation_analysis#20260908-001]` 六类画布支持复制到另一 Directory：侧栏「复制」弹窗选目标目录与 `groups`（须 ⊆ 目录链）；服务端生成语言化后缀名称；副本独立、不继承内置身份；复制路径校验 `current_team` 属于用户 `group_list`。证据：`services/canvas/copy_service.py`、`views/view.py`、`views/network_topology_view.py`、`web/src/app/ops-analysis/components/{sidebar.tsx,copyCanvasModal.tsx}`、`tests/test_canvas_directory_copy.py`。
+
+## 2026-09-09 分享页去掉平台壳层
+
+- `[operation_analysis#20260909-001]` `/ops-analysis/share/*` 作为分享目的地隐藏 TopMenu、左侧菜单与 GlobalWebchat，保留只读画布与画布内查看控件；`/ops-analysis/view` 壳层不变。不复用画布放大 overlay，也不走订阅 Render 专用 layout。
 
 ## 6. 证据来源
 `server/apps/operation_analysis/{urls.py,models/*,views/datasource_view.py,views/view.py,nats/nats.py,common/get_nats_source_data.py,constants/constants.py,tasks/tasks.py,management/commands/*,services/*}`、`apps/operation_analysis/migrations/0010_remove_namespace_groups.py`、`apps/rpc/base.py:OperationAnalysisRpc`、`web/src/app/ops-analysis/{utils/widgetRequestCache.ts,components/widgetDataRenderer.tsx,api/namespace.ts,(pages)/settings/namespace/operateModal.tsx}`。
