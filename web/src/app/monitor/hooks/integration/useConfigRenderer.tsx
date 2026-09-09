@@ -33,6 +33,44 @@ export type FormFieldOptionControls = Record<
   }
 >;
 
+type SelectWithRefreshProps = React.ComponentProps<typeof Select> & {
+  onRefresh: () => void;
+  refreshLabel: string;
+  refreshTip: string;
+  regionLoading?: boolean;
+};
+
+// Form.Item 只把 value/onChange 注入直接子节点。刷新按钮必须放在转发包装里，
+// 否则选中地域只改 Select 内部展示，表单仍为空，必填校验会误报。
+const SelectWithRefresh = React.forwardRef<any, SelectWithRefreshProps>(
+  function SelectWithRefresh(
+    { onRefresh, refreshLabel, refreshTip, regionLoading, ...selectProps },
+    ref
+  ) {
+    return (
+      <div className="mr-[10px] inline-flex items-center gap-1">
+        <Select ref={ref} {...selectProps} />
+        <Tooltip title={refreshTip}>
+          <Button
+            type="text"
+            aria-label={refreshLabel}
+            disabled={Boolean(regionLoading)}
+            className="!inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--color-text-3)] hover:!bg-[var(--color-fill-2)] hover:!text-[var(--color-primary)]"
+            icon={
+              <SyncOutlined
+                spin={Boolean(regionLoading)}
+                className="text-[14px]"
+                aria-hidden
+              />
+            }
+            onClick={onRefresh}
+          />
+        </Tooltip>
+      </div>
+    );
+  }
+);
+
 const mutexValuesEqual = (left: any, right: any) => {
   if (left === right) return true;
   if (Array.isArray(left) || Array.isArray(right)) {
@@ -426,60 +464,44 @@ export const useConfigRenderer = () => {
           ));
           if (shouldShowRegionRefresh && optionControl?.onRefresh) {
             const regionLoading = Boolean(optionControl.loading);
-            const refreshLabel = t(
-              'monitor.integrations.fetchQcloudRegions',
-              '获取地域'
-            );
-            const refreshTip = t(
-              'monitor.integrations.refreshQcloudRegionsTip',
-              '根据 SecretId / SecretKey 刷新可用地域'
-            );
             return (
-              <div className="mr-[10px] inline-flex items-center gap-1">
-                <Select
-                  {...selectProps}
-                  placeholder={
-                    selectProps.placeholder ||
-                    t('monitor.integrations.selectQcloudRegion', '请选择腾讯云地域')
-                  }
-                  notFoundContent={
-                    regionLoading ? (
-                      <div className="flex items-center justify-center gap-2 py-3 text-[var(--color-text-3)]">
-                        <Spin size="small" />
-                        <span>
-                          {t(
-                            'monitor.integrations.fetchingQcloudRegions',
-                            '正在获取地域…'
-                          )}
-                        </span>
-                      </div>
-                    ) : (
-                      t(
-                        'monitor.integrations.qcloudRegionNoOptions',
-                        '暂无地域，请先填写密钥后点击刷新'
-                      )
+              <SelectWithRefresh
+                {...selectProps}
+                placeholder={
+                  selectProps.placeholder ||
+                  t('monitor.integrations.selectQcloudRegion', '请选择腾讯云地域')
+                }
+                notFoundContent={
+                  regionLoading ? (
+                    <div className="flex items-center justify-center gap-2 py-3 text-[var(--color-text-3)]">
+                      <Spin size="small" />
+                      <span>
+                        {t(
+                          'monitor.integrations.fetchingQcloudRegions',
+                          '正在获取地域…'
+                        )}
+                      </span>
+                    </div>
+                  ) : (
+                    t(
+                      'monitor.integrations.qcloudRegionNoOptions',
+                      '暂无地域，请先填写密钥后点击刷新'
                     )
-                  }
-                >
-                  {optionNodes}
-                </Select>
-                <Tooltip title={refreshTip}>
-                  <Button
-                    type="text"
-                    aria-label={refreshLabel}
-                    disabled={regionLoading}
-                    className="!inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--color-text-3)] hover:!bg-[var(--color-fill-2)] hover:!text-[var(--color-primary)]"
-                    icon={
-                      <SyncOutlined
-                        spin={regionLoading}
-                        className="text-[14px]"
-                        aria-hidden
-                      />
-                    }
-                    onClick={optionControl.onRefresh}
-                  />
-                </Tooltip>
-              </div>
+                  )
+                }
+                onRefresh={optionControl.onRefresh}
+                refreshLabel={t(
+                  'monitor.integrations.fetchQcloudRegions',
+                  '获取地域'
+                )}
+                refreshTip={t(
+                  'monitor.integrations.refreshQcloudRegionsTip',
+                  '根据 SecretId / SecretKey 刷新可用地域'
+                )}
+                regionLoading={regionLoading}
+              >
+                {optionNodes}
+              </SelectWithRefresh>
             );
           }
           return (
