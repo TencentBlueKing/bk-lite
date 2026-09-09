@@ -25,6 +25,7 @@ import ApmPageBreadcrumb from '@/app/apm/components/apm-page-breadcrumb';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState from '@/app/apm/components/catalog-state';
 import { formatClockTime, formatErrorRate } from '@/app/apm/components/metric-format';
+import GroupTreeSelect from '@/components/group-tree-select';
 import TimeSeriesComposedChart from '@/components/time-series-composed-chart';
 import { ALERT_LEVEL_COLORS, OBSERVABILITY_SERIES_COLORS } from '@/constants/observabilityChart';
 import { useTranslation } from '@/utils/i18n';
@@ -48,9 +49,10 @@ interface ThresholdEditorRow {
 
 interface PolicyEditorValues extends Omit<
   ApmPolicyInput,
-  'service_id' | 'environment' | 'version_mode' | 'versions' | 'thresholds' | 'notification_targets'
+  'service_id' | 'environment' | 'version_mode' | 'versions' | 'thresholds' | 'notification_targets' | 'organizations'
 > {
   service_scope: string;
+  organizations: number[];
   no_data_alert_name: string;
   notification_channel_ids: number[];
   notification_recipients: string[];
@@ -66,6 +68,7 @@ const SEVERITIES: Array<{ value: ApmPolicySeverity; i18nKey: string; color: stri
 const DEFAULT_VALUES: PolicyEditorValues = {
   name: '',
   service_scope: '',
+  organizations: [],
   alert_name: '${service} ${metric} ${comparator} ${threshold}',
   endpoints: [],
   metric_type: 'error_rate',
@@ -153,6 +156,7 @@ function toEditorValues(policy: ApmPolicy, defaultNoDataAlertName: string): Poli
   return {
     name: policy.name,
     service_scope: encodeServiceScope(policy.service_id, policy.environment),
+    organizations: policy.organizations || [],
     alert_name: policy.alert_name,
     metric_type: policy.metric_type,
     evaluation_interval: policy.evaluation_interval,
@@ -201,6 +205,7 @@ function buildMetricPreviewPayload(
   return {
     name: values.name?.trim() || previewName,
     service_id: scope.serviceId,
+    organizations: values.organizations || [],
     environment: scope.environment,
     alert_name: values.alert_name || '',
     endpoints: values.endpoints || [],
@@ -445,6 +450,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
     return {
       name: values.name,
       service_id: scope.serviceId,
+      organizations: values.organizations || [],
       environment: scope.environment,
       alert_name: values.alert_name,
       endpoints: values.endpoints,
@@ -628,10 +634,29 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
               optionFilterProp="label"
               options={serviceOptions}
               placeholder={t('apm.common.selectService', '选择服务')}
-              onChange={() => {
+              onChange={(value) => {
                 form.setFieldValue('endpoints', []);
                 setPreview(null);
+                const currentOrganizations = form.getFieldValue('organizations') || [];
+                if (currentOrganizations.length) return;
+                const selected = decodeServiceScope(value);
+                const service = services.find((item) => item.id === selected.serviceId);
+                if (service?.organization_ids?.length) {
+                  form.setFieldValue('organizations', service.organization_ids);
+                }
               }}
+            />
+          </Form.Item>
+          <Form.Item
+            name="organizations"
+            label={t('apm.policies.organizations', '所属组织')}
+            rules={[{ required: true, message: t('apm.common.organizationRequired', '请至少选择一个组织') }]}
+          >
+            <GroupTreeSelect
+              multiple
+              mode="ownership"
+              showSearch
+              placeholder={t('apm.common.selectOrganization', '选择组织')}
             />
           </Form.Item>
           <Form.Item name="endpoints" label={t('apm.common.endpoint', '端点')} extra={t('apm.policies.endpointScopeHint', '不选则按服务级别监控（整体聚合）')}>

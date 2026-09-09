@@ -10,6 +10,7 @@ from django.db.models.functions import TruncHour
 from apps.apm.models import ApmAlert, ApmAlertOutbox, ApmEvent, ApmEventSnapshot, ApmPolicyTargetState
 from apps.apm.services.contracts import MetricDataState, PolicyQueryResult
 from apps.apm.services.policies import DjangoApmPolicyService
+from apps.apm.utils.user_display import format_user_identifiers
 from apps.core.utils.viewset_utils import build_json_membership_query
 
 
@@ -139,6 +140,8 @@ class DjangoApmAlertService:
             "organizations": list(alert.organizations or []),
             "current_value": alert.current_value,
             "operator": alert.operator,
+            "handlers": list(alert.handlers or []),
+            "handlers_display": format_user_identifiers(alert.handlers or []),
             "started_at": alert.started_at,
             "ended_at": alert.ended_at,
             "last_event_at": alert.last_event_at,

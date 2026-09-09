@@ -464,6 +464,7 @@
       "namePlaceholder": "例如：结算服务错误率过高",
       "severity": "告警级别",
       "serviceRequired": "请选择服务",
+      "organizations": "所属组织",
       "environmentRequired": "请输入环境",
       "environmentHint": "没有 deployment.environment 标签时可留空。",
       "metric": "指标",

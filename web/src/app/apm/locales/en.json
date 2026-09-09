@@ -464,6 +464,7 @@
       "namePlaceholder": "Example: Checkout service error rate too high",
       "severity": "Alert severity",
       "serviceRequired": "Please select a service",
+      "organizations": "Owning organizations",
       "environmentRequired": "Please enter an environment",
       "environmentHint": "Leave empty if there is no deployment.environment tag.",
       "metric": "Metric",

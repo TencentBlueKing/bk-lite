@@ -10,6 +10,7 @@ const { chartRender } = vi.hoisted(() => ({ chartRender: vi.fn() }));
 const input = {
   name: '错误率策略',
   service_id: 'svc-1',
+  organizations: [10],
   environment: 'production',
   alert_name: '${service}',
   endpoints: ['POST /checkout'],
@@ -58,6 +59,21 @@ vi.mock('@/app/apm/components/apm-route-shell', () => ({
   default: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
   ApmSurface: ({ children }: { children: React.ReactNode }) => <section>{children}</section>,
 }));
+vi.mock('@/components/group-tree-select', () => ({
+  default: ({
+    value = [],
+    onChange,
+    placeholder,
+  }: {
+    value?: number[];
+    onChange?: (next: number[]) => void;
+    placeholder?: string;
+  }) => (
+    <button type="button" aria-label={placeholder || '选择组织'} onClick={() => onChange?.([10])}>
+      {(value || []).join(',') || placeholder}
+    </button>
+  ),
+}));
 vi.mock('@/components/time-series-composed-chart', () => ({
   default: (props: { series: Array<Record<string, unknown>> }) => {
     chartRender(props);
@@ -80,6 +96,7 @@ beforeEach(() => {
     namespace: 'shop',
     name: 'checkout',
     archived_at: null,
+    organization_ids: [10],
     environment_views: [{ environment: 'production' }],
   }]);
   api.getNotificationChannels.mockResolvedValue([]);
@@ -118,6 +135,7 @@ describe('APM 四步策略编辑器', () => {
     expect(screen.queryByLabelText('无数据告警名称')).toBeNull();
     expect(screen.queryByText(/LogSQL|MonitorObject|采集插件/)).toBeNull();
     expect(screen.getByRole('switch', { name: '启用通知' })).not.toBeNull();
+    expect(screen.getByText('所属组织')).not.toBeNull();
   });
 
   it('启用无数据告警后展示无数据告警名称', async () => {
@@ -250,6 +268,7 @@ describe('APM 四步策略编辑器', () => {
         namespace: 'shop',
         name: 'catalog',
         archived_at: null,
+        organization_ids: [10],
         environment_views: [{ environment: 'production' }],
       },
     ]);
@@ -289,5 +308,26 @@ describe('APM 四步策略编辑器', () => {
     await user.click(screen.getByRole('button', { name: '保存策略' }));
     expect(await screen.findByText('已失效，保存前请移除')).not.toBeNull();
     expect(api.updatePolicy).not.toHaveBeenCalled();
+  });
+
+  it('选服务且组织为空时带入服务组织，保存时提交所属组织', async () => {
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmPolicyEditor />);
+
+    await user.type(await screen.findByLabelText('策略名称'), '新策略');
+    expect(screen.getByLabelText('选择组织').textContent).toBe('选择组织');
+    await user.click(screen.getByLabelText('服务'));
+    await user.click(await screen.findByText('shop / checkout'));
+    expect(screen.getByLabelText('选择组织').textContent).toBe('10');
+
+    await user.click(screen.getByRole('button', { name: '创建策略' }));
+    await waitFor(() =>
+      expect(api.createPolicy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          organizations: [10],
+          service_id: 'svc-1',
+        }),
+      ),
+    );
   });
 });

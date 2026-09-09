@@ -553,6 +553,7 @@ export interface ApmPolicyNotificationTarget {
 export interface ApmPolicyInput {
   name: string;
   service_id: string;
+  organizations: number[];
   environment: string;
   alert_name?: string;
   endpoints: string[];

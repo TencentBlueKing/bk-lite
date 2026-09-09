@@ -16,6 +16,7 @@ from apps.apm.models import (
     ApmApplication,
     ApmEventSnapshot,
     ApmPolicy,
+    ApmPolicyOrganization,
     ApmPolicyNotificationTarget,
     ApmService,
     ApmServiceInstance,
@@ -675,11 +676,39 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
 
     def get_queryset(self):
         queryset = ApmPolicy.objects.select_related("service").prefetch_related(
-            "service__organization_links",
+            "organization_links",
             "notification_targets",
             "target_states",
         )
-        return filter_current_organization(queryset, self.request, "service__organization_links")
+        return filter_current_organization(queryset, self.request, "organization_links")
+
+    def _authorize_policy_organizations(self, organizations, *, required):
+        if organizations is None:
+            if required:
+                raise ValidationError({"organizations": "该字段必填。"})
+            return None
+        try:
+            validate_assignable_organizations(self.request, organizations)
+        except ValueError as exc:
+            raise ValidationError({"organizations": str(exc)}) from exc
+        except PermissionError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        return organizations
+
+    @staticmethod
+    def _replace_organizations(policy, organizations, *, actor):
+        policy.organization_links.all().delete()
+        ApmPolicyOrganization.objects.bulk_create(
+            [
+                ApmPolicyOrganization(
+                    policy=policy,
+                    organization=organization,
+                    created_by=actor,
+                    updated_by=actor,
+                )
+                for organization in organizations
+            ]
+        )
 
     def _visible_service(self, service_id):
         queryset = filter_current_organization(
@@ -768,6 +797,12 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
         targets = self._validate_notification_channels(serializer)
         if isinstance(targets, Response):
             return targets
+        organizations = self._authorize_policy_organizations(
+            serializer.validated_data.pop("organizations", None),
+            required=True,
+        )
+        if isinstance(organizations, Response):
+            return organizations
         service_id = serializer.validated_data.pop("service_id")
         serializer.validated_data.pop("notification_targets", None)
         with transaction.atomic():
@@ -776,6 +811,7 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
                 created_by=request.user.username,
                 updated_by=request.user.username,
             )
+            self._replace_organizations(policy, organizations, actor=request.user.username)
             self._replace_notification_targets(policy, targets or [], actor=request.user.username)
             self._service().save_policy(policy)
         return Response(self.get_serializer(policy).data, status=status.HTTP_201_CREATED)
@@ -788,6 +824,16 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
         targets = self._validate_notification_channels(serializer, policy)
         if isinstance(targets, Response):
             return targets
+        organizations = None
+        if "organizations" in request.data:
+            organizations = self._authorize_policy_organizations(
+                serializer.validated_data.pop("organizations", None),
+                required=True,
+            )
+            if isinstance(organizations, Response):
+                return organizations
+        else:
+            serializer.validated_data.pop("organizations", None)
         service_id = serializer.validated_data.pop("service_id", None)
         serializer.validated_data.pop("notification_targets", None)
         save_kwargs = {"updated_by": request.user.username}
@@ -795,6 +841,8 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
             save_kwargs["service"] = self._visible_service(service_id)
         with transaction.atomic():
             policy = serializer.save(**save_kwargs)
+            if organizations is not None:
+                self._replace_organizations(policy, organizations, actor=request.user.username)
             if targets is not None:
                 self._replace_notification_targets(policy, targets, actor=request.user.username)
             policy.target_states.all().delete()
@@ -869,6 +917,7 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
         values = dict(serializer.validated_data)
         service_id = values.pop("service_id")
         values.pop("notification_targets", None)
+        values.pop("organizations", None)
         policy = ApmPolicy(service=self._visible_service(service_id), **values)
         try:
             result = self._service().test_query(policy, evaluated_at=timezone.now())

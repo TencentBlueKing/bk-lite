@@ -28,6 +28,7 @@ def _payload(service):
         "name": "结账错误率",
         "alert_name": "${service} 错误率超过 ${threshold}",
         "service_id": str(service.id),
+        "organizations": [10],
         "environment": "production",
         "endpoints": ["POST /checkout", "GET /cart"],
         "version_mode": "specific",

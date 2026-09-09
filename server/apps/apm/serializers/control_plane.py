@@ -410,10 +410,20 @@ class ApmPolicyThresholdSerializer(serializers.Serializer):
     value = serializers.DecimalField(max_digits=20, decimal_places=6)
 
 
+class PolicyOrganizationsField(serializers.ListField):
+    def get_attribute(self, instance):
+        return list(instance.organization_links.order_by("organization").values_list("organization", flat=True))
+
+
 class ApmPolicySerializer(serializers.ModelSerializer):
     service_id = serializers.UUIDField(required=False)
     service_namespace = serializers.CharField(source="service.namespace", read_only=True)
     service_name = serializers.CharField(source="service.name", read_only=True)
+    organizations = PolicyOrganizationsField(
+        child=serializers.IntegerField(min_value=1),
+        required=False,
+        allow_empty=False,
+    )
     notification_targets = ApmPolicyNotificationTargetSerializer(many=True, required=False)
     thresholds = ApmPolicyThresholdSerializer(many=True, required=False, min_length=1, max_length=3)
     endpoints = serializers.ListField(
@@ -438,6 +448,7 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             "service_id",
             "service_namespace",
             "service_name",
+            "organizations",
             "environment",
             "alert_name",
             "endpoints",
@@ -454,6 +465,7 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             "no_data_severity",
             "no_data_alert_name",
             "notification_targets",
+            "handlers",
             "is_enabled",
             "state",
             "created_at",
@@ -488,6 +500,9 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             "last_succeeded_at": last_succeeded_at,
             "last_failed_at": last_failed_at,
         }
+
+    def validate_organizations(self, value):
+        return sorted(set(value))
 
     def validate(self, attrs):
         if self.instance is None and "service_id" not in attrs:

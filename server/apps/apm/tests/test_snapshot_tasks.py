@@ -7,6 +7,7 @@ from apps.apm.adapters import InMemoryNotificationDispatcher
 from apps.apm.config import CELERY_BEAT_SCHEDULE
 from apps.apm.models import ApmEventSnapshot, ApmEventSnapshotPayload, ApmPolicy, ApmService, ApmServiceOrganization
 from apps.apm.services import DjangoApmPolicyService
+from apps.apm.tests.helpers import bind_policy_organizations
 from apps.apm.services.contracts import ServiceRed, ServiceRedPoint
 from apps.apm.tasks import expire_apm_event_snapshot_payloads, persist_apm_event_snapshot_payloads
 
@@ -50,6 +51,7 @@ def _trigger():
         trigger_after=1,
         recover_after=1,
     )
+    bind_policy_organizations(policy)
     DjangoApmPolicyService(MetricStore(at), InMemoryNotificationDispatcher()).evaluate(policy.id, evaluated_at=at)
     return ApmEventSnapshot.objects.get(), at
 
