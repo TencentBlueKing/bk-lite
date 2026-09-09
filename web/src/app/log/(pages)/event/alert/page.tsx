@@ -5,11 +5,10 @@ import {
   Button,
   Select,
   Tag,
-  message,
   Tabs,
   Spin,
   Tooltip,
-  Popconfirm
+  Checkbox
 } from 'antd';
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
@@ -31,10 +30,11 @@ import { FiltersConfig } from '@/app/log/types/event';
 import CustomTable from '@/components/custom-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import TimeSelector from '@/components/time-selector';
-import Permission from '@/components/permission';
 import Collapse from '@/components/collapse';
 import StackedBarChart from '@/app/log/components/charts/stackedBarChart';
 import AlertDetail from './alertDetail';
+import AlertHandlerActions from './alertHandlerActions';
+import { formatAlertHandlers } from './alertHandlerUtils';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useAlarmTabs } from '@/app/log/hooks/event';
 import dayjs from 'dayjs';
@@ -46,7 +46,6 @@ import useLogEventApi from '@/app/log/api/event';
 import useLogIntegrationApi from '@/app/log/api/integration';
 import { cloneDeep } from 'lodash';
 import UserAvatar from '@/components/user-avatar';
-import { formatUserDisplayName } from '@/utils/userDisplay';
 import { useHabitExpanded } from '@/hooks/useHabitExpanded';
 import useLogUserHabitApi, {
   LOG_ALERT_CHART_HABIT_KEY
@@ -56,7 +55,7 @@ const { Option } = Select;
 
 const Alert: React.FC = () => {
   const { isLoading } = useApiClient();
-  const { getLogAlert, patchLogAlert, getLogAlertStats } = useLogEventApi();
+  const { getLogAlert, getLogAlertStats } = useLogEventApi();
   const { getCollectTypes } = useLogIntegrationApi();
   const { getUserHabit, saveUserHabit } = useLogUserHabitApi();
   const { t } = useTranslation();
@@ -111,7 +110,7 @@ const Alert: React.FC = () => {
     save: saveChartHabit
   });
   const [objects, setObjects] = useState<ObjectItem[]>([]);
-  const [confirmLoading, setConfirmLoading] = useState(false);
+  const [myAlert, setMyAlert] = useState(false);
 
   const columns: ColumnItem[] = [
     {
@@ -171,29 +170,28 @@ const Alert: React.FC = () => {
         <>{t(`log.event.${record.notice ? 'notified' : 'unnotified'}`)}</>
       )
     },
-    ...(activeTab === 'historicalAlarms'
-      ? [
-        {
-          title: t('common.operator'),
-          dataIndex: 'operator',
-          key: 'operator',
-          render: (_: unknown, { operator }: TableDataItem) =>
-            operator ? (
-              <UserAvatar
-                userName={formatUserDisplayName(operator, userList)}
-                size="small"
-              />
-            ) : (
-              <>--</>
-            )
-        }
-      ]
-      : []),
+    {
+      title: t('log.event.handler'),
+      dataIndex: 'handlers',
+      key: 'handlers',
+      render: (_: unknown, record: TableDataItem) => {
+        const text = formatAlertHandlers(
+          record.handlers,
+          record.handlers_display,
+          userList
+        );
+        return text !== '--' ? (
+          <UserAvatar userName={text} size="small" />
+        ) : (
+          <>--</>
+        );
+      }
+    },
     {
       title: t('common.action'),
       key: 'action',
       dataIndex: 'action',
-      width: 120,
+      width: 280,
       fixed: 'right',
       render: (_, record) => (
         <>
@@ -204,23 +202,11 @@ const Alert: React.FC = () => {
           >
             {t('common.detail')}
           </Button>
-          <Permission
-            requiredPermissions={['Operate']}
-            instPermissions={record.permission}
-          >
-            <Popconfirm
-              title={t('log.event.closeTitle')}
-              description={t('log.event.closeContent')}
-              okText={t('common.confirm')}
-              cancelText={t('common.cancel')}
-              okButtonProps={{ loading: confirmLoading }}
-              onConfirm={() => alertCloseConfirm(record.id)}
-            >
-              <Button type="link" disabled={record.status !== 'new'}>
-                {t('common.close')}
-              </Button>
-            </Popconfirm>
-          </Permission>
+          <AlertHandlerActions
+            record={record}
+            closeText={t('common.close')}
+            onSuccess={onRefresh}
+          />
         </>
       )
     }
@@ -293,26 +279,12 @@ const Alert: React.FC = () => {
     }
   };
 
-  const alertCloseConfirm = async (id: string | number) => {
-    setConfirmLoading(true);
-    try {
-      await patchLogAlert({
-        id,
-        status: 'closed'
-      });
-      message.success(t('log.event.successfullyClosed'));
-      onRefresh();
-    } finally {
-      setConfirmLoading(false);
-    }
-  };
-
   const clearTimer = () => {
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
   };
 
-  const getParams = (tab: string, filtersMap: FiltersConfig) => {
+  const getParams = (tab: string, filtersMap: FiltersConfig, mine = myAlert) => {
     const recentTimeRange = getRecentTimeRange(timeValues);
     const isActive = tab === 'activeAlarms';
     const params = {
@@ -322,7 +294,8 @@ const Alert: React.FC = () => {
       page: pagination.current,
       page_size: pagination.pageSize,
       end_event_time: isActive ? '' : dayjs(recentTimeRange[0]).toISOString(),
-      start_event_time: isActive ? '' : dayjs(recentTimeRange[1]).toISOString()
+      start_event_time: isActive ? '' : dayjs(recentTimeRange[1]).toISOString(),
+      ...(mine ? { my_alert: 1 } : {})
     };
     return params;
   };
@@ -337,6 +310,7 @@ const Alert: React.FC = () => {
       text?: string;
       tab?: string;
       filtersConfig?: FiltersConfig;
+      myAlert?: boolean;
     }
   ) => {
     alertAbortControllerRef.current?.abort();
@@ -345,7 +319,8 @@ const Alert: React.FC = () => {
     const currentRequestId = ++alertRequestIdRef.current;
     const params: any = getParams(
       extra?.tab || activeTab,
-      extra?.filtersConfig || filters
+      extra?.filtersConfig || filters,
+      extra?.myAlert
     );
     if (extra?.text === 'clear') {
       params.content = '';
@@ -373,6 +348,7 @@ const Alert: React.FC = () => {
     extra?: {
       tab?: string;
       filtersConfig?: FiltersConfig;
+      myAlert?: boolean;
     }
   ) => {
     chartAbortControllerRef.current?.abort();
@@ -381,7 +357,8 @@ const Alert: React.FC = () => {
     const currentRequestId = ++chartRequestIdRef.current;
     const params = getParams(
       extra?.tab || activeTab,
-      extra?.filtersConfig || filters
+      extra?.filtersConfig || filters,
+      extra?.myAlert
     );
     const chartParams: any = cloneDeep(params);
     delete chartParams.page;
@@ -539,15 +516,28 @@ const Alert: React.FC = () => {
             </div>
           </Spin>
           <div className={alertStyle.table}>
-            <Search
-              allowClear
-              className="w-[240px] mb-[10px]"
-              placeholder={t('common.searchPlaceHolder')}
-              value={searchText}
-              enterButton
-              onChange={(e) => setSearchText(e.target.value)}
-              onSearch={handleSearch}
-            />
+            <div className="mb-[10px] flex items-center gap-3">
+              <Search
+                allowClear
+                className="w-[240px]"
+                placeholder={t('common.searchPlaceHolder')}
+                value={searchText}
+                enterButton
+                onChange={(e) => setSearchText(e.target.value)}
+                onSearch={handleSearch}
+              />
+              <Checkbox
+                checked={myAlert}
+                onChange={(event) => {
+                  const checked = event.target.checked;
+                  setMyAlert(checked);
+                  getAssetInsts('refresh', { myAlert: checked });
+                  getChartData('refresh', { myAlert: checked });
+                }}
+              >
+                {t('log.event.myAlert')}
+              </Checkbox>
+            </div>
             <CustomTable
               className="w-full"
               scroll={{

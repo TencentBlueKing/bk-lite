@@ -120,4 +120,5 @@ export interface LogAlertParams {
   page_size?: number;
   start_event_time?: string;
   end_event_time?: string;
+  my_alert?: number | string;
 }
