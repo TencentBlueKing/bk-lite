@@ -672,6 +672,8 @@ default_external_match_field
 default_external_receive_field
 ```
 
+如果实现 IM 应用通知，其选项双语一般放在 pack 的 `language/` 里即可。
+
 #### `list_external_users()`
 
 常见参数：

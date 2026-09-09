@@ -52,6 +52,7 @@ import {
   isChannelSyncRunning,
   parseScheduleConfig,
   resolveImNotificationFieldPatches,
+  resolveExternalFieldOptionLabel,
 } from '@/app/system-manager/utils/imNotificationUtils';
 import { useTranslation } from '@/utils/i18n';
 
@@ -174,18 +175,18 @@ const ImNotificationPage: React.FC = () => {
     () =>
       (resolvedTemplate?.matchable_fields || []).map((field) => ({
         value: field,
-        label: t(`system.channel.imNotificationPage.externalFieldOption.${field}`),
+        label: resolveExternalFieldOptionLabel(field, resolvedTemplate?.external_field_labels),
       })),
-    [resolvedTemplate, t],
+    [resolvedTemplate],
   );
 
   const externalReceiveOptions = useMemo(
     () =>
       (resolvedTemplate?.receivable_fields || []).map((field) => ({
         value: field,
-        label: t(`system.channel.imNotificationPage.externalFieldOption.${field}`),
+        label: resolveExternalFieldOptionLabel(field, resolvedTemplate?.external_field_labels),
       })),
-    [resolvedTemplate, t],
+    [resolvedTemplate],
   );
 
   const platformMatchOptions = useMemo(
@@ -496,7 +497,7 @@ const ImNotificationPage: React.FC = () => {
         const dependencyStatus = record.dependency_status;
         return (
           <div className="flex items-center gap-2">
-            <span>{record.integration_instance_name} / {record.provider_name || t(`system.integrationCenter.provider.${record.provider_key}`, record.provider_key)}</span>
+            <span>{record.integration_instance_name} / {record.provider_name || record.provider_key}</span>
             {dependencyStatus?.available === false ? (
               <Tooltip title={t(`system.channel.imNotificationPage.dependencyReason.${dependencyStatus.reason}`)}>
                 <Tag color="warning">{t('system.channel.imNotificationPage.dependencyPaused')}</Tag>

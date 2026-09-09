@@ -1,11 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import {
-  computeVisibleCapabilityTagCount,
-  DEFAULT_INTEGRATION_PROVIDER_ICON,
-  resolveIntegrationProviderIcon,
-} from '../src/app/system-manager/utils/integrationCenter';
+import { computeVisibleCapabilityTagCount } from '../src/app/system-manager/utils/integrationCenter';
 
 const page = readFileSync(
   new URL('../src/app/system-manager/(pages)/integration-center/page.tsx', import.meta.url),
@@ -13,6 +9,10 @@ const page = readFileSync(
 );
 const modal = readFileSync(
   new URL('../src/app/system-manager/(pages)/integration-center/CreateIntegrationInstanceModal.tsx', import.meta.url),
+  'utf8',
+);
+const utils = readFileSync(
+  new URL('../src/app/system-manager/utils/integrationCenter.ts', import.meta.url),
   'utf8',
 );
 const tags = readFileSync(
@@ -31,9 +31,10 @@ assert.equal(computeVisibleCapabilityTagCount([200, 40], 80, 28), 1);
 assert.equal(computeVisibleCapabilityTagCount([], 200, 28), 0);
 assert.equal(computeVisibleCapabilityTagCount([40], 0, 28), 0);
 
-assert.equal(resolveIntegrationProviderIcon('wecom'), 'wecom');
-assert.equal(resolveIntegrationProviderIcon('acmedemo'), DEFAULT_INTEGRATION_PROVIDER_ICON);
-assert.equal(DEFAULT_INTEGRATION_PROVIDER_ICON, 'default-provider');
+assert.match(modal, /icon:\s*provider\.key/);
+assert.doesNotMatch(modal, /resolveIntegrationProviderIcon/);
+assert.doesNotMatch(utils, /resolveIntegrationProviderIcon/);
+assert.doesNotMatch(utils, /DEFAULT_INTEGRATION_PROVIDER_ICON/);
 
 assert.doesNotMatch(tags, /grid-cols-2/);
 assert.match(tags, /ResizeObserver/);

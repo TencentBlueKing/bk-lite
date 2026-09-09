@@ -336,6 +336,11 @@
       "loading": "正在加载二维码...",
       "unableToDisplay": "无法显示二维码"
     },
+    "legacyThirdLogin": {
+      "title": "登录成功",
+      "returning": "正在返回原页面...",
+      "continue": "手动继续"
+    },
     "loginAuth": {
       "methodsTitle": "登陆方式",
       "bindingPassword": {

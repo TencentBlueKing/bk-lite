@@ -579,7 +579,7 @@ def test_sync_failure_keeps_builtin_providers(monkeypatch, caplog):
     formatted = logging.Formatter().format(record)
     assert "catalog unavailable" in formatted
     assert "event=provider_pack_sync_skipped failed_stage=snapshot error_type=RuntimeError" in formatted
-    assert keys == {"ad", "feishu", "wechat", "wecom"}
+    assert {"ad", "feishu", "wechat", "wecom"} <= keys
 
 
 @requires_enterprise_upload

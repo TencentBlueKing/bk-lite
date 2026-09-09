@@ -36,7 +36,6 @@ import { ColumnItem } from '@/types';
 import {
   buildLoginAuthBindingPayload,
   getLoginAuthUnavailableEditingInstance,
-  resolveLoginAuthDefaultIcon,
   resolveLoginAuthDefaultExternalField,
   getLoginAuthInstanceNotFoundContent,
   resolveLoginAuthProviderKey,
@@ -129,7 +128,7 @@ const LoginAuthPage: React.FC = () => {
   const integrationInstanceOptions = useMemo(() => {
     const availableOptions = availableInstances.map((instance) => ({
       value: instance.id,
-      label: formatIntegrationInstanceDisplayName(instance, t),
+      label: formatIntegrationInstanceDisplayName(instance),
     }));
     if (!unavailableEditingInstance) {
       return availableOptions;
@@ -137,7 +136,7 @@ const LoginAuthPage: React.FC = () => {
 
     return [{
       value: unavailableEditingInstance.id,
-      label: `${formatIntegrationInstanceDisplayName(unavailableEditingInstance, t)} (${t('system.user.loginAuthPage.currentInstanceUnavailable')})`,
+      label: `${formatIntegrationInstanceDisplayName(unavailableEditingInstance)} (${t('system.user.loginAuthPage.currentInstanceUnavailable')})`,
       disabled: true,
     }, ...availableOptions];
   }, [availableInstances, t, unavailableEditingInstance]);
@@ -296,7 +295,7 @@ const LoginAuthPage: React.FC = () => {
   const handleIntegrationInstanceChange = (instanceId: number) => {
     const providerKey = availableInstances.find((item) => item.id === instanceId)?.provider_key || '';
     const template = resolveLoginAuthTemplate(instanceId, availableInstances, providers);
-    const nextIcon = resolveLoginAuthDefaultIcon(providerKey);
+    const nextIcon = providerKey;
     const nextExternalField = resolveLoginAuthDefaultExternalField(template);
     // 微信登录认证默认开启"未匹配时创建用户",首次登录创建组织弹窗
     // (init_user_set) 所需的 OpsPilotGuest 组由后端 fallback 兜底,
@@ -355,7 +354,7 @@ const LoginAuthPage: React.FC = () => {
           <div className="flex items-center gap-2">
             <span>
               {record.provider_key && record.provider_key !== 'bk_lite_builtin'
-                ? `${record.integration_instance_name} / ${record.provider_name || t(`system.integrationCenter.provider.${record.provider_key}`, record.provider_key)}`
+                ? `${record.integration_instance_name} / ${record.provider_name || record.provider_key}`
                 : record.integration_instance_name}
             </span>
             {dependencyStatus?.available === false ? (

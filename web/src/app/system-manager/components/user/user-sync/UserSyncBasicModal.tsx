@@ -38,7 +38,7 @@ const UserSyncBasicModal: React.FC<UserSyncBasicModalProps> = ({
 
   const instanceOptions = availableInstances.map((inst) => ({
     value: inst.id,
-    label: formatIntegrationInstanceDisplayName(inst, t),
+    label: formatIntegrationInstanceDisplayName(inst),
   }));
 
   const handleSubmit = async () => {
