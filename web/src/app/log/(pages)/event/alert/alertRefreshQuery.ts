@@ -6,11 +6,13 @@ export interface AlertRefreshFilters {
 export interface AlertRefreshQueryState {
   activeTab: string;
   filters: AlertRefreshFilters;
+  myAlert: boolean;
 }
 
 export interface AlertRefreshExtra {
   tab?: string;
   filtersConfig?: AlertRefreshFilters;
+  myAlert?: boolean;
 }
 
 export interface AlertRefreshQuerySnapshot {
@@ -26,7 +28,8 @@ const cloneQueryState = (
   state: AlertRefreshQueryState
 ): AlertRefreshQueryState => ({
   activeTab: state.activeTab,
-  filters: cloneFilters(state.filters)
+  filters: cloneFilters(state.filters),
+  myAlert: state.myAlert
 });
 
 export const createAlertRefreshQuerySnapshot = (
@@ -49,5 +52,6 @@ export const resolveAlertRefreshQuery = (
   activeTab: extra?.tab ?? snapshot.current.activeTab,
   filters: extra?.filtersConfig
     ? cloneFilters(extra.filtersConfig)
-    : snapshot.current.filters
+    : snapshot.current.filters,
+  myAlert: extra?.myAlert ?? snapshot.current.myAlert
 });

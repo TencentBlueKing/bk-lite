@@ -11,11 +11,13 @@ interface AlertRefreshFilters {
 interface AlertRefreshQueryState {
   activeTab: string;
   filters: AlertRefreshFilters;
+  myAlert: boolean;
 }
 
 interface AlertRefreshExtra {
   tab?: string;
   filtersConfig?: AlertRefreshFilters;
+  myAlert?: boolean;
 }
 
 interface AlertRefreshQuerySnapshot {
@@ -79,7 +81,8 @@ async function main() {
 
   const snapshot = loaded.createAlertRefreshQuerySnapshot!({
     activeTab: 'activeAlarms',
-    filters: { level: [], state: [] }
+    filters: { level: [], state: [] },
+    myAlert: false
   });
 
   // 模拟 setInterval：创建定时器时不带 extra，后续 tick 必须读最新快照
@@ -91,7 +94,8 @@ async function main() {
 
   loaded.updateAlertRefreshQuerySnapshot!(snapshot, {
     activeTab: 'activeAlarms',
-    filters: { level: ['critical'], state: [] }
+    filters: { level: ['critical'], state: [] },
+    myAlert: false
   });
   const afterLevel = toQueryFields(timerTick());
   assert.equal(
@@ -103,7 +107,8 @@ async function main() {
 
   loaded.updateAlertRefreshQuerySnapshot!(snapshot, {
     activeTab: 'historicalAlarms',
-    filters: { level: ['critical'], state: [] }
+    filters: { level: ['critical'], state: [] },
+    myAlert: false
   });
   const afterTab = toQueryFields(timerTick());
   assert.equal(
@@ -121,6 +126,23 @@ async function main() {
   );
   assert.equal(withExtra.status, 'new');
   assert.equal(withExtra.levels, 'error');
+
+  loaded.updateAlertRefreshQuerySnapshot!(snapshot, {
+    activeTab: 'historicalAlarms',
+    filters: { level: ['critical'], state: [] },
+    myAlert: true
+  });
+  const afterMine = timerTick();
+  assert.equal(
+    afterMine.myAlert,
+    true,
+    '勾选我的告警后下一 tick 仍应带 myAlert'
+  );
+  assert.equal(
+    loaded.resolveAlertRefreshQuery!(snapshot, { myAlert: false }).myAlert,
+    false,
+    '手工刷新 extra.myAlert 覆盖快照'
+  );
 
   const page = readFileSync(pagePath, 'utf8');
   assert.match(

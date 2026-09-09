@@ -96,3 +96,6 @@ def test_deleted_policy_log_alert_remains_visible(grant_all):
     assert {item["id"] for item in items} == {alert.id}
     assert items[0]["organizations"] == [1]
     assert items[0]["policy_name"] == ""
+    closed_events = list(Event.objects.filter(alert=alert, action="closed"))
+    assert len(closed_events) == 1
+    assert grant_all.username in closed_events[0].content

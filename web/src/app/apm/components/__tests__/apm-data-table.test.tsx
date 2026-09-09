@@ -152,4 +152,27 @@ describe('ApmDataTable', () => {
     expect(APM_TABLE_COLUMN_WIDTHS.entryService).toBe(168);
     expect(APM_TABLE_COLUMN_WIDTHS.resource).toBe(220);
   });
+
+  it('给主信息列的 col 设置 min-width，避免固定布局把未设宽列算成 0', () => {
+    const { container } = renderWithApmIntl(
+      <ApmDataTable<Row>
+        columns={[
+          { title: '名称', dataIndex: 'name' },
+          { title: '状态', dataIndex: 'count', width: APM_TABLE_COLUMN_WIDTHS.status },
+        ]}
+        dataSource={[{ id: 1, name: 'checkout', count: 1 }]}
+        identityColumnMinWidth={APM_TABLE_COLUMN_WIDTHS.entryService}
+        pagination={false}
+        rowKey="id"
+      />,
+    );
+
+    const wrapper = container.querySelector('.ant-table-wrapper') as HTMLElement | null;
+    expect(wrapper?.style.getPropertyValue('--apm-identity-col-min-width')).toBe(
+      `${APM_TABLE_COLUMN_WIDTHS.entryService}px`,
+    );
+    expect(wrapper?.className).toMatch(/identityFloor/);
+    const cols = Array.from(container.querySelectorAll<HTMLElement>('.ant-table colgroup col'));
+    expect(cols.map((column) => column.style.width)).toEqual(['', `${APM_TABLE_COLUMN_WIDTHS.status}px`]);
+  });
 });

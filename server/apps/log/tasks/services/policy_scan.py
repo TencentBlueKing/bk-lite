@@ -69,7 +69,10 @@ class LogPolicyScan:
         return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:32]
 
     def _find_existing_events(self, event_ids, source_ids):
-        existing_by_id = {event.id: event for event in Event.objects.filter(id__in=event_ids).select_related("alert")}
+        existing_by_id = {
+            event.id: event
+            for event in Event.objects.filter(id__in=event_ids, action="").select_related("alert")
+        }
         source_id_candidates = [self._normalize_source_id_candidates(source_id) for source_id in source_ids]
         missing_source_ids = {
             candidate for event_id, candidates in zip(event_ids, source_id_candidates) if event_id not in existing_by_id for candidate in candidates
@@ -80,6 +83,7 @@ class LogPolicyScan:
         legacy_events = Event.objects.filter(
             policy_id=self.policy.id,
             source_id__in=missing_source_ids,
+            action="",
         ).select_related("alert")
         cursor_time = getattr(self, "cursor_time", None)
         if cursor_time is None:
@@ -116,7 +120,7 @@ class LogPolicyScan:
         claims_by_alias = {}
         current_alerts = {}
         claim_rows = (
-            Event.objects.filter(alert_id__in=alerts_by_id)
+            Event.objects.filter(alert_id__in=alerts_by_id, action="")
             .exclude(source_id=F("alert__source_id"))
             .values_list("alert_id", "source_id")
             .distinct()
@@ -733,6 +737,7 @@ class LogPolicyScan:
                     Event.objects.filter(
                         policy_id=self.policy.id,
                         source_id__in=source_ids,
+                        action="",
                         alert__status=AlertConstants.STATUS_NEW,
                     )
                     .values_list("alert_id", flat=True)
@@ -864,6 +869,7 @@ class LogPolicyScan:
                         end_event_time=self.scan_time,
                         operator="",
                         organizations=list(self.organizations),
+                        handlers=list(self.policy.handlers or []),
                     )
                     alerts_to_create.append(alert_obj)
                     # 更新映射表，供后续事件关联使用

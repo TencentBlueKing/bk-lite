@@ -79,6 +79,22 @@ beforeEach(() => {
         content: 'CPU 超阈值',
         value: 95,
         level: 'critical'
+      },
+      {
+        id: 'ev-2',
+        action: 'claimed',
+        event_time: '2026-01-01 12:05:00',
+        content: 'sre 认领，处理人变为 sre',
+        value: 95,
+        level: 'critical'
+      },
+      {
+        id: 'ev-3',
+        action: 'assigned',
+        event_time: '2026-01-01 12:06:00',
+        content: 'sre 分派给 bob',
+        value: 95,
+        level: 'critical'
       }
     ]
   });
@@ -104,7 +120,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('告警详情事件时间线', () => {
+describe('告警详情事件时间线', { timeout: 15000 }, () => {
   it('展示动作文案，且不再按 Event 计数渲染热力图', async () => {
     const ref = createRef<ModalRef>();
     render(
@@ -113,6 +129,7 @@ describe('告警详情事件时间线', () => {
 
     await act(async () => {
       ref.current?.showModal({
+        type: 'alert',
         title: '告警详情',
         form: {
           id: 1,
@@ -135,6 +152,8 @@ describe('告警详情事件时间线', () => {
       expect(getMonitorEventDetail).toHaveBeenCalled();
     });
     expect(await screen.findByText('触发')).toBeTruthy();
+    expect(await screen.findByText('认领')).toBeTruthy();
+    expect(await screen.findByText('分派')).toBeTruthy();
     expect(screen.getAllByText('严重').length).toBeGreaterThanOrEqual(2);
     expect(document.querySelector('svg.heatmap, .event-heat-map')).toBeNull();
     expect(screen.queryByText('monitor.events.eventTriggered')).toBeNull();

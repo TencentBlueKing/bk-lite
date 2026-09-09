@@ -280,7 +280,7 @@ const useApmApi = () => {
   );
 
   const getAlertDistribution = useCallback(
-    (params: Pick<ApmAlertQuery, 'started_at' | 'ended_at' | 'status_group'>) =>
+    (params: Pick<ApmAlertQuery, 'started_at' | 'ended_at' | 'status_group' | 'my_alert'>) =>
       get<Array<{ time: string; critical: number; error: number; warning: number }>>(
         '/apm/alerts/distribution/',
         { params }
@@ -306,6 +306,17 @@ const useApmApi = () => {
     [post]
   );
 
+  const claimAlert = useCallback(
+    (alertId: string) => post<ApmAlert>(`/apm/alerts/${alertId}/claim/`),
+    [post]
+  );
+
+  const assignAlert = useCallback(
+    (alertId: string, handlers: Array<string | number>) =>
+      post<ApmAlert>(`/apm/alerts/${alertId}/assign/`, { handlers }),
+    [post]
+  );
+
   const getNotificationChannels = useCallback(
     () => get<ApmNotificationChannel[]>('/apm/notification-channels/'),
     [get]
@@ -318,7 +329,7 @@ const useApmApi = () => {
   );
 
   const getNotificationRecipients = useCallback(
-    (params: { search?: string; limit?: number } = {}) =>
+    (params: { search?: string; limit?: number; organization_ids?: string } = {}) =>
       get<ApmNotificationRecipient[]>('/apm/notification-recipients/', { params }),
     [get]
   );
@@ -373,6 +384,8 @@ const useApmApi = () => {
     getAlertSnapshots,
     getEventEvidence,
     closeAlert,
+    claimAlert,
+    assignAlert,
     getNotificationChannels,
     getNotificationDeliveries,
     getNotificationRecipients,

@@ -135,6 +135,7 @@ const BulkApplyModal: React.FC<BulkApplyModalProps> = ({
     notice_type: '',
     notice_type_ids: [],
     notice_users: [],
+    handlers: [],
     enable_alerts: ['threshold'],
     no_data_enabled: false,
     no_data_period: { type: 'min', value: 5 },

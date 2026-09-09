@@ -15,7 +15,10 @@ BASE = "/api/v1/monitor"
 
 
 @pytest.fixture
-def grant_all(mocker):
+def grant_all(db, mocker):
+    from apps.system_mgmt.models import Group
+
+    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
     # 两个 ViewSet 共享策略权限根。
     mocker.patch(
         "apps.monitor.views.monitor_alert.get_permissions_rules",
