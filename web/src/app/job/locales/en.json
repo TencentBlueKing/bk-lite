@@ -89,6 +89,7 @@
     "processNamePlaceholder": "e.g.: nginx",
     "selectTargetHost": "Select Target Host",
     "searchHostPlaceholder": "Search host name or IP, supports fuzzy matching",
+    "hostNameOrIp": "Host Name / IP",
     "selectAllCurrent": "Select All",
     "deselectAll": "Deselect All",
     "hostName": "Host Name",

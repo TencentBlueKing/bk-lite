@@ -32,14 +32,14 @@ const getOperatingSystemFilter = (params: FetchHostsParams) => {
 export const buildNodeQueryParams = (params: FetchHostsParams) => ({
   page: params.page,
   page_size: params.pageSize,
-  ip: getLastTextFilter(params, 'ip'),
+  keyword: getLastTextFilter(params, 'keyword'),
   os: getOperatingSystemFilter(params),
 });
 
 export const buildTargetQueryParams = (params: FetchHostsParams) => ({
   page: params.page,
   page_size: params.pageSize,
-  ip: getLastTextFilter(params, 'ip'),
+  search: getLastTextFilter(params, 'keyword'),
   os_type: getOperatingSystemFilter(params),
 });
 
@@ -52,9 +52,10 @@ const JobHostSelectionModalRuntime: React.FC<RuntimeProps> = (props) => {
       pageSize,
       filters,
       source,
+      signal,
     }: FetchHostsParams): Promise<FetchHostsResult> => {
       if (source === 'node_manager') {
-        const res = await queryNodes(buildNodeQueryParams({ page, pageSize, filters, source }));
+        const res = await queryNodes(buildNodeQueryParams({ page, pageSize, filters, source, signal }), { signal });
 
         return {
           items: (res.data?.items || []).map<HostItem>((node) => ({
@@ -69,7 +70,7 @@ const JobHostSelectionModalRuntime: React.FC<RuntimeProps> = (props) => {
         };
       }
 
-      const res = await getTargetList(buildTargetQueryParams({ page, pageSize, filters, source }));
+      const res = await getTargetList(buildTargetQueryParams({ page, pageSize, filters, source, signal }), { signal });
 
       return {
         items: (res.items || []).map((target) => ({
