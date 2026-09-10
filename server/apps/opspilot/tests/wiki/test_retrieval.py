@@ -240,3 +240,119 @@ class TestRetrievalViews:
         assert '"event": "meta"' in body or '"event":"meta"' in body
         assert "fallback" in body
         assert "未使用模型" in body
+
+
+def test_policy_intent_prefers_policy_over_handbook():
+    from types import SimpleNamespace
+
+    from apps.opspilot.services.wiki.retrieval_service import _index_score, _tokenize
+
+    query = "VPN使用有什么制度要求？"
+    terms = _tokenize(query)
+    policy = SimpleNamespace(
+        title="嘉为公司用户VPN使用管理规范",
+        aliases=[],
+        tags=["VPN"],
+        headings=[],
+        keywords=["VPN", "制度"],
+        entities=[],
+        summary="VPN使用管理制度要求",
+        page_type="Policy",
+        normalized_title="嘉为公司用户vpn使用管理规范",
+    )
+    handbook = SimpleNamespace(
+        title="嘉为公司用户VPN使用手册",
+        aliases=[],
+        tags=["VPN"],
+        headings=[],
+        keywords=["VPN"],
+        entities=[],
+        summary="VPN客户端安装与使用步骤",
+        page_type="User Guide",
+        normalized_title="嘉为公司用户vpn使用手册",
+    )
+    account = SimpleNamespace(
+        title="嘉为公司账号安全性使用规范",
+        aliases=[],
+        tags=["账号"],
+        headings=[],
+        keywords=["账号", "规范"],
+        entities=[],
+        summary="账号安全使用规范",
+        page_type="Policy",
+        normalized_title="嘉为公司账号安全性使用规范",
+    )
+    policy_score, _ = _index_score(policy, terms, query)
+    handbook_score, _ = _index_score(handbook, terms, query)
+    account_score, _ = _index_score(account, terms, query)
+    assert policy_score > handbook_score
+    assert policy_score > account_score
+
+
+def test_adapt_context_k_exact_title_keeps_one_or_two():
+    """Strong exact-title head should shrink to 1-2 contexts, not max_k."""
+    from apps.opspilot.services.wiki.retrieval_service import _adapt_context_k
+
+    hits = [
+        {
+            "id": 1,
+            "title": "exact",
+            "score": 220,
+            "explanation": {"exact_title_or_alias": True, "matched_terms": ["exact"]},
+        },
+        {
+            "id": 2,
+            "title": "weak-a",
+            "score": 40,
+            "explanation": {"exact_title_or_alias": False, "matched_terms": ["a"]},
+        },
+        {
+            "id": 3,
+            "title": "weak-b",
+            "score": 35,
+            "explanation": {"exact_title_or_alias": False, "matched_terms": ["b"]},
+        },
+        {
+            "id": 4,
+            "title": "weak-c",
+            "score": 30,
+            "explanation": {"exact_title_or_alias": False, "matched_terms": ["c"]},
+        },
+        {
+            "id": 5,
+            "title": "weak-d",
+            "score": 25,
+            "explanation": {"exact_title_or_alias": False, "matched_terms": ["d"]},
+        },
+    ]
+    kept = _adapt_context_k(hits, max_k=5)
+    assert 1 <= len(kept) <= 2
+    assert kept[0]["id"] == 1
+    assert [h["id"] for h in kept] == sorted((h["id"] for h in kept), key=lambda i: -{1: 220, 2: 40, 3: 35, 4: 30, 5: 25}[i])
+
+
+def test_adapt_context_k_flat_scores_keep_up_to_max_k():
+    """Similar/strong scores should be allowed to fill max_k."""
+    from apps.opspilot.services.wiki.retrieval_service import _adapt_context_k
+
+    hits = [
+        {"id": i, "title": f"t{i}", "score": 110 - i, "explanation": {"exact_title_or_alias": False, "matched_terms": ["x", "y"]}}
+        for i in range(1, 6)
+    ]
+    kept = _adapt_context_k(hits, max_k=5)
+    assert len(kept) == 5
+    assert [h["id"] for h in kept] == [1, 2, 3, 4, 5]
+
+
+def test_adapt_context_k_strong_top_with_close_second_then_gap():
+    """Keep a close second under a strong top, then stop on a large gap."""
+    from apps.opspilot.services.wiki.retrieval_service import _adapt_context_k
+
+    hits = [
+        {"id": 1, "title": "top", "score": 200, "explanation": {"exact_title_or_alias": True}},
+        {"id": 2, "title": "near", "score": 150, "explanation": {"exact_title_or_alias": False, "matched_terms": ["a", "b"]}},
+        {"id": 3, "title": "far", "score": 50, "explanation": {"exact_title_or_alias": False, "matched_terms": ["a"]}},
+        {"id": 4, "title": "far2", "score": 40, "explanation": {"exact_title_or_alias": False, "matched_terms": ["b"]}},
+    ]
+    kept = _adapt_context_k(hits, max_k=5)
+    assert [h["id"] for h in kept] == [1, 2]
