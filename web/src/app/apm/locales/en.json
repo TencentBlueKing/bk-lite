@@ -114,6 +114,8 @@
       "forbiddenDescription": "Contact the organization administrator to request view permission.",
       "degradedTitle": "Telemetry storage is temporarily unavailable",
       "degradedDescription": "Catalog metadata is still available. Retry the telemetry query later.",
+      "capacityTitle": "This query returned too much data",
+      "capacityDescription": "Narrow the time window and retry. Catalog data and loaded metrics remain available.",
       "errorTitle": "Failed to load APM data",
       "errorDescription": "Check the filters or network status and retry."
     },

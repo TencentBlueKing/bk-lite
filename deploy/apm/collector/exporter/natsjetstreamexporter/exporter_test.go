@@ -2,6 +2,8 @@ package natsjetstreamexporter
 
 import (
 	"bytes"
+	"errors"
+	"strings"
 	"testing"
 
 	"go.opentelemetry.io/collector/consumer/consumererror"
@@ -60,10 +62,45 @@ func TestEncodeMessagePreservesOTLPProtobufAndStableMessageID(t *testing.T) {
 	}
 }
 
-func TestEncodeMessagePermanentlyRejectsOversizedBatch(t *testing.T) {
+func TestEncodeMessageRejectsOversizedBatchWithoutSplitting(t *testing.T) {
 	_, err := encodeMessage("apm.traces.7", sampleTraces(), 1)
+	var oversized *oversizedBatchError
+	if !errors.As(err, &oversized) {
+		t.Fatalf("oversized batch must be a size error before splitting: %v", err)
+	}
+}
+
+func TestEncodeMessagesSplitsOversizedMultiSpanBatch(t *testing.T) {
+	traces := ptrace.NewTraces()
+	resourceSpans := traces.ResourceSpans().AppendEmpty()
+	resourceSpans.Resource().Attributes().PutStr("service.name", "checkout")
+	scope := resourceSpans.ScopeSpans().AppendEmpty()
+	for index := 0; index < 2; index++ {
+		span := scope.Spans().AppendEmpty()
+		span.SetTraceID(pcommon.TraceID{1})
+		span.SetSpanID(pcommon.SpanID{byte(index + 1)})
+		span.SetName(strings.Repeat("x", 64))
+	}
+	full, err := encodeMessage("apm.traces.7", traces, 1024*1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages, err := encodeMessages("apm.traces.7", traces, len(full.Data)-1)
+	if err != nil {
+		t.Fatalf("splittable oversized batch must not be a permanent rejection: %v", err)
+	}
+	if consumererror.IsPermanent(err) {
+		t.Fatalf("splittable oversized batch must not be permanent: %v", err)
+	}
+	if len(messages) < 2 {
+		t.Fatalf("expected at least two messages after split, got %d", len(messages))
+	}
+}
+
+func TestEncodeMessagesPermanentlyRejectsSingleOversizedSpan(t *testing.T) {
+	_, err := encodeMessages("apm.traces.7", sampleTraces(), 1)
 	if err == nil || !consumererror.IsPermanent(err) {
-		t.Fatalf("oversized batch must be a permanent exporter rejection: %v", err)
+		t.Fatalf("single oversized span must be a permanent exporter rejection: %v", err)
 	}
 }
 

@@ -5,7 +5,7 @@ from dataclasses import replace
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 
-from apps.apm.adapters import TelemetryStoreUnavailable, VictoriaTracesTelemetryStore
+from apps.apm.adapters import TelemetryStoreUnavailable, VictoriaTracesTelemetryStore, telemetry_error_payload
 from apps.apm.adapters.victoriatraces import _encode_cursor
 from apps.apm.renderers import ApmRenderer
 from apps.apm.serializers import SpanSearchSerializer
@@ -89,8 +89,5 @@ class ApmSpanViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         except TelemetryStoreUnavailable as exc:
-            return Response(
-                {"detail": str(exc), "code": "telemetry_unavailable"},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
+            return Response(telemetry_error_payload(exc), status=status.HTTP_503_SERVICE_UNAVAILABLE)
         return Response({"items": [_span_summary_data(item) for item in visible], "next_cursor": next_cursor})

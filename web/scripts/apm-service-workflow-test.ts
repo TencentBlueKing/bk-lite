@@ -68,11 +68,10 @@ assert.match(topologyPage, /服务拓扑/, '服务拓扑页面标题缺失');
 assert.match(topologyPage, /options=\{\['15m', '1h', '4h', '1d', '7d'\]\}/, '拓扑必须提供时间窗切换');
 assert.match(topologyPage, /只看异常/, '拓扑必须支持异常筛选');
 assert.match(topologyPage, /getTopology/, '拓扑必须来自服务端的真实 Trace 聚合');
-assert.match(topologyPage, /TopologyLayoutMode/, '拓扑必须把层次与力导向都作为可选布局');
-assert.match(topologyPage, /apm\.topology\.force/, '拓扑必须提供力导向作为额外布局选项');
-assert.match(applicationObservability, /apm\.topology\.layoutForce/, '应用详情拓扑必须提供力导向作为额外布局选项');
-assert.match(applicationObservability, /useState<TopologyLayoutMode>\('layered'\)/, '应用详情默认必须是层次布局');
-assert.match(topologyPage, /useState<TopologyLayoutMode>\('layered'\)/, '全局拓扑默认必须是层次布局');
+assert.match(topologyPage, /layout="layered"/, '全局拓扑默认必须是层次布局');
+assert.match(applicationObservability, /getServiceRedBatch/, '应用观测必须走批量 RED');
+assert.match(applicationObservability, /application_id: application.application_id/, '应用观测拓扑必须传 application_id');
+assert.match(applicationObservability, /layout="layered"/, '应用详情默认必须是层次布局');
 assert.match(topologyCanvas, /layoutForceTopology/, '画布必须支持力导向布局');
 assert.match(topologyCanvas, /layoutLayeredTopology/, '拓扑必须保留自动层次布局');
 assert.match(topologyCanvas, /layout === 'force' \? layoutForceTopology : layoutLayeredTopology/, '力导向不得硬切掉层次布局');
@@ -131,7 +130,7 @@ assert.doesNotMatch(topologyPage, /min-w-\[960px\]|scroll=\{\{ x:/, '拓扑不�
 assert.doesNotMatch(topologyPage, /设计预览|Storybook 示例数据/, '已有后端契约时不得继续展示示例拓扑');
 assert.match(applicationObservability, /关键信息/, '应用详情必须使用关键信息而不是应用 KPI');
 assert.match(applicationObservability, /focusNamespace/, '应用拓扑必须区分本应用与上下游');
-assert.match(applicationObservability, /ServiceCatalogTable/, '应用内服务列表必须复用服务目录表格');
+assert.doesNotMatch(applicationObservability, /ServiceCatalogTable/, '应用观测改为关键信息与 Top 端点，不再内嵌服务目录表格');
 
 assert.match(sloPage, /编辑 SLO/, 'SLO 必须支持新建和编辑');
 assert.match(sloPage, /onFinish=\{submit\}/, 'SLO 保存必须通过 Ant Design Form 校验后提交');

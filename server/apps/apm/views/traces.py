@@ -7,7 +7,7 @@ from django.http import Http404
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 
-from apps.apm.adapters import TelemetryStoreUnavailable, VictoriaTracesTelemetryStore
+from apps.apm.adapters import TelemetryStoreUnavailable, VictoriaTracesTelemetryStore, telemetry_error_payload
 from apps.apm.adapters.victoriatraces import _encode_cursor
 from apps.apm.renderers import ApmRenderer
 from apps.apm.serializers import TraceSearchSerializer
@@ -118,10 +118,7 @@ class ApmTraceViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         except TelemetryStoreUnavailable as exc:
-            return Response(
-                {"detail": str(exc), "code": "telemetry_unavailable"},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
+            return Response(telemetry_error_payload(exc), status=status.HTTP_503_SERVICE_UNAVAILABLE)
         return Response({"items": [_summary_data(item) for item in visible], "next_cursor": next_cursor})
 
     @HasPermission("traces-View")
@@ -131,10 +128,7 @@ class ApmTraceViewSet(viewsets.ViewSet):
         try:
             detail = self._query_service().get_trace(pk.lower())
         except TelemetryStoreUnavailable as exc:
-            return Response(
-                {"detail": str(exc), "code": "telemetry_unavailable"},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
+            return Response(telemetry_error_payload(exc), status=status.HTTP_503_SERVICE_UNAVAILABLE)
         organization_ids = visible_organization_ids(request)
         if detail is None or not organization_ids or not self.access.can_view_detail(detail, organization_ids):
             raise Http404

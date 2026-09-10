@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict
 
 from django.db import transaction
@@ -9,7 +10,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 
-from apps.apm.adapters import SystemMgmtNotificationDispatcher, TelemetryStoreUnavailable, VictoriaTracesTelemetryStore
+from apps.apm.adapters import SystemMgmtNotificationDispatcher, TelemetryStoreUnavailable, VictoriaTracesTelemetryStore, telemetry_error_payload
 from apps.apm.models import (
     ApmAlert,
     ApmAlertOutbox,
@@ -42,6 +43,7 @@ from apps.apm.serializers import (
     NotificationRecipientQuerySerializer,
     OrganizationAssignmentSerializer,
     ServiceErrorBreakdownQuerySerializer,
+    ServiceMetricBatchSerializer,
     ServiceMetricQuerySerializer,
 )
 from apps.apm.services import (
@@ -71,6 +73,44 @@ from apps.core.utils.user_group import normalize_user_group_ids
 from apps.rpc.node_mgmt import NodeMgmt
 
 MAX_CATALOG_KEYWORD_TOKENS = 8
+MAX_METRIC_BATCH_TARGETS = 40
+METRIC_BATCH_WORKERS = 8
+
+
+def _service_red_payload(service_id: str, environment: str, started_at, ended_at, red) -> dict:
+    return {
+        "service_id": str(service_id),
+        "environment": environment,
+        "started_at": started_at,
+        "ended_at": ended_at,
+        "data_state": str(MetricDataState.NO_DATA if red.request_rate is None else MetricDataState.AVAILABLE),
+        "request_rate": red.request_rate,
+        "error_rate": red.error_rate,
+        "p95_ms": red.p95_ms,
+        "p99_ms": red.p99_ms,
+        "request_count": red.request_count,
+        "error_count": red.error_count,
+        "timeseries": [
+            {
+                "timestamp": point.timestamp,
+                "request_rate": point.request_rate,
+                "error_rate": point.error_rate,
+                "p95_ms": point.p95_ms,
+                "p99_ms": point.p99_ms,
+            }
+            for point in red.timeseries
+        ],
+        "top_endpoints": [
+            {
+                "endpoint": endpoint.endpoint,
+                "request_rate": endpoint.request_rate,
+                "error_rate": endpoint.error_rate,
+                "p95_ms": endpoint.p95_ms,
+                "p99_ms": endpoint.p99_ms,
+            }
+            for endpoint in red.top_endpoints
+        ],
+    }
 
 
 def _catalog_list_params(view) -> dict:
@@ -366,7 +406,7 @@ class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
             environment=data["environment"],
             started_at=data["started_at"],
             ended_at=data["ended_at"],
-            include_breakdown=True,
+            include_breakdown=bool(data.get("include_breakdown", True)),
             endpoint=data["endpoint"],
         )
         try:
@@ -377,45 +417,69 @@ class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         except TelemetryStoreUnavailable as exc:
+            return Response(telemetry_error_payload(exc), status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        return Response(_service_red_payload(service.id, data["environment"], data["started_at"], data["ended_at"], red))
+
+    @action(methods=("post",), detail=False, url_path="metrics/batch")
+    @HasPermission("services-View")
+    def metrics_batch(self, request, *args, **kwargs):
+        serializer = ServiceMetricBatchSerializer(data=request.data)
+        if not serializer.is_valid():
             return Response(
-                {"detail": str(exc), "code": "telemetry_unavailable"},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                {"code": "invalid_query", "detail": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-        return Response(
-            {
-                "service_id": str(service.id),
-                "environment": data["environment"],
-                "started_at": data["started_at"],
-                "ended_at": data["ended_at"],
-                "data_state": str(MetricDataState.NO_DATA if red.request_rate is None else MetricDataState.AVAILABLE),
-                "request_rate": red.request_rate,
-                "error_rate": red.error_rate,
-                "p95_ms": red.p95_ms,
-                "p99_ms": red.p99_ms,
-                "request_count": red.request_count,
-                "error_count": red.error_count,
-                "timeseries": [
-                    {
-                        "timestamp": point.timestamp,
-                        "request_rate": point.request_rate,
-                        "error_rate": point.error_rate,
-                        "p95_ms": point.p95_ms,
-                        "p99_ms": point.p99_ms,
-                    }
-                    for point in red.timeseries
-                ],
-                "top_endpoints": [
-                    {
-                        "endpoint": endpoint.endpoint,
-                        "request_rate": endpoint.request_rate,
-                        "error_rate": endpoint.error_rate,
-                        "p95_ms": endpoint.p95_ms,
-                        "p99_ms": endpoint.p99_ms,
-                    }
-                    for endpoint in red.top_endpoints
-                ],
-            }
-        )
+        data = serializer.validated_data
+        targets = data["targets"][:MAX_METRIC_BATCH_TARGETS]
+        service_ids = [target["service_id"] for target in targets]
+        services = {str(service.id): service for service in self.get_queryset().filter(id__in=service_ids)}
+
+        def query_one(target: dict):
+            service = services.get(str(target["service_id"]))
+            if service is None:
+                return {
+                    "service_id": str(target["service_id"]),
+                    "environment": target["environment"],
+                    "ok": False,
+                    "code": "not_found",
+                    "detail": "服务不存在或当前组织不可见",
+                }
+            query = ServiceMetricQuery(
+                service_namespace=service.namespace,
+                service_name=service.name,
+                environment=target["environment"],
+                started_at=data["started_at"],
+                ended_at=data["ended_at"],
+                include_breakdown=bool(data.get("include_breakdown", True)),
+            )
+            try:
+                red = DjangoTelemetryQueryService(VictoriaTracesTelemetryStore()).service_red(query)
+            except ValueError as exc:
+                return {
+                    "service_id": str(service.id),
+                    "environment": target["environment"],
+                    "ok": False,
+                    "code": "invalid_query",
+                    "detail": str(exc),
+                }
+            except TelemetryStoreUnavailable as exc:
+                return {
+                    "service_id": str(service.id),
+                    "environment": target["environment"],
+                    "ok": False,
+                    **telemetry_error_payload(exc),
+                }
+            payload = _service_red_payload(service.id, target["environment"], data["started_at"], data["ended_at"], red)
+            payload["ok"] = True
+            return payload
+
+        items: list[dict | None] = [None] * len(targets)
+        workers = min(METRIC_BATCH_WORKERS, len(targets)) or 1
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(query_one, target): index for index, target in enumerate(targets)}
+            for future in as_completed(futures):
+                items[futures[future]] = future.result()
+        return Response({"items": items})
 
     @action(methods=("get",), detail=True, url_path="error-breakdown")
     @HasPermission("services-View")
@@ -445,10 +509,7 @@ class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         except TelemetryStoreUnavailable as exc:
-            return Response(
-                {"detail": str(exc), "code": "telemetry_unavailable"},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
+            return Response(telemetry_error_payload(exc), status=status.HTTP_503_SERVICE_UNAVAILABLE)
         from apps.apm.views.spans import _span_summary_data
 
         return Response(
@@ -885,10 +946,7 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
         try:
             result = self._service().test_query(policy, evaluated_at=timezone.now())
         except TelemetryStoreUnavailable as exc:
-            return Response(
-                {"detail": str(exc), "code": "telemetry_unavailable"},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
+            return Response(telemetry_error_payload(exc), status=status.HTTP_503_SERVICE_UNAVAILABLE)
         return Response(
             {
                 "value": str(result.value) if result.value is not None else None,
@@ -924,10 +982,7 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
         try:
             result = self._service().test_query(policy, evaluated_at=timezone.now())
         except TelemetryStoreUnavailable as exc:
-            return Response(
-                {"detail": str(exc), "code": "telemetry_unavailable"},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
+            return Response(telemetry_error_payload(exc), status=status.HTTP_503_SERVICE_UNAVAILABLE)
         return Response(
             {
                 "value": str(result.value) if result.value is not None else None,

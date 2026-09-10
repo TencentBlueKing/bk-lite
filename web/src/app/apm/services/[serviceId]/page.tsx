@@ -180,53 +180,65 @@ export default function ApmServiceDetailPage() {
     setTracesState('loading');
     const endedAt = new Date().toISOString();
     const startedAt = new Date(new Date(endedAt).getTime() - RANGE_MS[timeRange]).toISOString();
-    Promise.all([
-      getTraces({
-        service_namespace: service.namespace,
-        service_name: service.name,
-        environment,
-        started_at: startedAt,
-        ended_at: endedAt,
-        limit: 20,
-      }),
-      getTopology({ started_at: startedAt, ended_at: endedAt, environment }).catch(() => null),
-      getSlos().catch(() => [] as ApmSlo[]),
-    ])
-      .then(([page, topology, slos]) => {
+    getTraces({
+      service_namespace: service.namespace,
+      service_name: service.name,
+      environment,
+      started_at: startedAt,
+      ended_at: endedAt,
+      limit: 20,
+    })
+      .then((page) => {
         if (!active) return;
         setTraces(page.items);
         setTracesState(page.items.length ? 'ready' : 'empty');
-        setServiceSlos(slos.filter((slo) => slo.service_id === service.id && slo.environment === environment));
-        if (topology) {
-          const self = topology.nodes.find(
-            (node) => node.service_namespace === service.namespace && node.service_name === service.name
-          );
-          if (self) {
-            const nodeMap = new Map<string, ApmTopologyNode>(topology.nodes.map((node) => [node.id, node]));
-            setUpstream(
-              topology.edges
-                .filter((edge) => edge.target === self.id)
-                .flatMap((edge) => {
-                  const node = nodeMap.get(edge.source);
-                  return node && !isInferredTopologyNode(node) ? [{ node, edge }] : [];
-                })
-            );
-            setDownstream(
-              topology.edges
-                .filter((edge) => edge.source === self.id)
-                .flatMap((edge) => {
-                  const node = nodeMap.get(edge.target);
-                  return node && !isInferredTopologyNode(node) ? [{ node, edge }] : [];
-                })
-            );
-          } else {
-            setUpstream([]);
-            setDownstream([]);
-          }
-        }
       })
       .catch((error) => {
         if (active) setTracesState(catalogErrorKind(error));
+      });
+    getTopology({ started_at: startedAt, ended_at: endedAt, environment })
+      .then((topology) => {
+        if (!active) return;
+        const self = topology.nodes.find(
+          (node) => node.service_namespace === service.namespace && node.service_name === service.name
+        );
+        if (self) {
+          const nodeMap = new Map<string, ApmTopologyNode>(topology.nodes.map((node) => [node.id, node]));
+          setUpstream(
+            topology.edges
+              .filter((edge) => edge.target === self.id)
+              .flatMap((edge) => {
+                const node = nodeMap.get(edge.source);
+                return node && !isInferredTopologyNode(node) ? [{ node, edge }] : [];
+              })
+          );
+          setDownstream(
+            topology.edges
+              .filter((edge) => edge.source === self.id)
+              .flatMap((edge) => {
+                const node = nodeMap.get(edge.target);
+                return node && !isInferredTopologyNode(node) ? [{ node, edge }] : [];
+              })
+          );
+        } else {
+          setUpstream([]);
+          setDownstream([]);
+        }
+      })
+      .catch(() => {
+        if (!active) {
+          return;
+        }
+        setUpstream([]);
+        setDownstream([]);
+      });
+    getSlos()
+      .then((slos) => {
+        if (!active) return;
+        setServiceSlos(slos.filter((slo) => slo.service_id === service.id && slo.environment === environment));
+      })
+      .catch(() => {
+        if (active) setServiceSlos([]);
       });
     return () => {
       active = false;

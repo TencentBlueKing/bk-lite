@@ -91,9 +91,7 @@ func encodeMessage(subject string, traces ptrace.Traces, maxMessageBytes int) (*
 		return nil, errors.New("refusing to publish an empty OTLP trace request")
 	}
 	if len(payload) > maxMessageBytes {
-		return nil, consumererror.NewPermanent(
-			fmt.Errorf("OTLP trace request is %d bytes and exceeds max_message_bytes %d", len(payload), maxMessageBytes),
-		)
+		return nil, &oversizedBatchError{size: len(payload), max: maxMessageBytes}
 	}
 	regionID := strings.TrimPrefix(subject, "apm.traces.")
 	digest := sha256.New()
@@ -111,21 +109,115 @@ func encodeMessage(subject string, traces ptrace.Traces, maxMessageBytes int) (*
 	return message, nil
 }
 
+type oversizedBatchError struct {
+	size int
+	max  int
+}
+
+func (err *oversizedBatchError) Error() string {
+	return fmt.Sprintf("OTLP trace request is %d bytes and exceeds max_message_bytes %d", err.size, err.max)
+}
+
+func encodeMessages(subject string, traces ptrace.Traces, maxMessageBytes int) ([]*nats.Msg, error) {
+	message, err := encodeMessage(subject, traces, maxMessageBytes)
+	if err == nil {
+		return []*nats.Msg{message}, nil
+	}
+	var oversized *oversizedBatchError
+	if !errors.As(err, &oversized) {
+		return nil, err
+	}
+	left, right, splitErr := splitOversizedTraces(traces)
+	if splitErr != nil {
+		return nil, consumererror.NewPermanent(splitErr)
+	}
+	leftMessages, err := encodeMessages(subject, left, maxMessageBytes)
+	if err != nil {
+		return nil, err
+	}
+	rightMessages, err := encodeMessages(subject, right, maxMessageBytes)
+	if err != nil {
+		return nil, err
+	}
+	return append(leftMessages, rightMessages...), nil
+}
+
+func splitOversizedTraces(traces ptrace.Traces) (ptrace.Traces, ptrace.Traces, error) {
+	resources := traces.ResourceSpans()
+	if resources.Len() > 1 {
+		mid := resources.Len() / 2
+		return cloneResourceRange(traces, 0, mid), cloneResourceRange(traces, mid, resources.Len()), nil
+	}
+	if resources.Len() == 0 {
+		return ptrace.Traces{}, ptrace.Traces{}, errors.New("cannot split an empty OTLP trace batch")
+	}
+	scopes := resources.At(0).ScopeSpans()
+	if scopes.Len() > 1 {
+		mid := scopes.Len() / 2
+		return cloneScopeRange(resources.At(0), 0, mid), cloneScopeRange(resources.At(0), mid, scopes.Len()), nil
+	}
+	if scopes.Len() == 0 {
+		return ptrace.Traces{}, ptrace.Traces{}, errors.New("cannot split a resource without spans")
+	}
+	spans := scopes.At(0).Spans()
+	if spans.Len() > 1 {
+		mid := spans.Len() / 2
+		return cloneSpanRange(resources.At(0), scopes.At(0), 0, mid), cloneSpanRange(resources.At(0), scopes.At(0), mid, spans.Len()), nil
+	}
+	return ptrace.Traces{}, ptrace.Traces{}, fmt.Errorf("single span exceeds max_message_bytes")
+}
+
+func cloneResourceRange(traces ptrace.Traces, start, end int) ptrace.Traces {
+	out := ptrace.NewTraces()
+	for index := start; index < end; index++ {
+		traces.ResourceSpans().At(index).CopyTo(out.ResourceSpans().AppendEmpty())
+	}
+	return out
+}
+
+func cloneScopeRange(src ptrace.ResourceSpans, start, end int) ptrace.Traces {
+	out := ptrace.NewTraces()
+	dest := out.ResourceSpans().AppendEmpty()
+	src.Resource().CopyTo(dest.Resource())
+	dest.SetSchemaUrl(src.SchemaUrl())
+	for index := start; index < end; index++ {
+		src.ScopeSpans().At(index).CopyTo(dest.ScopeSpans().AppendEmpty())
+	}
+	return out
+}
+
+func cloneSpanRange(srcResource ptrace.ResourceSpans, srcScope ptrace.ScopeSpans, start, end int) ptrace.Traces {
+	out := ptrace.NewTraces()
+	destResource := out.ResourceSpans().AppendEmpty()
+	srcResource.Resource().CopyTo(destResource.Resource())
+	destResource.SetSchemaUrl(srcResource.SchemaUrl())
+	destScope := destResource.ScopeSpans().AppendEmpty()
+	srcScope.Scope().CopyTo(destScope.Scope())
+	destScope.SetSchemaUrl(srcScope.SchemaUrl())
+	for index := start; index < end; index++ {
+		srcScope.Spans().At(index).CopyTo(destScope.Spans().AppendEmpty())
+	}
+	return out
+}
+
 func (exporter *tracesExporter) pushTraces(ctx context.Context, traces ptrace.Traces) error {
 	if exporter.publisher == nil {
 		return errors.New("NATS JetStream publisher is not started")
 	}
-	message, err := encodeMessage(exporter.cfg.Subject, traces, exporter.cfg.MaxMessageBytes)
+	messages, err := encodeMessages(exporter.cfg.Subject, traces, exporter.cfg.MaxMessageBytes)
 	if err != nil {
 		return err
 	}
-	ack, err := exporter.publisher.PublishMsg(ctx, message)
-	if err == nil {
+	for _, message := range messages {
+		ack, err := exporter.publisher.PublishMsg(ctx, message)
+		if err != nil {
+			return err
+		}
 		exporter.publishACKs.Add(ctx, 1)
 		exporter.lastPublishACK.Record(ctx, time.Now().Unix())
 		if ack.Duplicate {
 			exporter.duplicateACKs.Add(ctx, 1)
 		}
 	}
-	return err
+	return nil
 }
