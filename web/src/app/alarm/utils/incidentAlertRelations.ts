@@ -1,5 +1,7 @@
+import type { Key } from 'react';
+
 export function collectSelectedAlertIds(
-  keys: ReadonlyArray<string | number> | null | undefined
+  keys: ReadonlyArray<Key> | null | undefined
 ): number[] {
   if (!keys?.length) {
     return [];
