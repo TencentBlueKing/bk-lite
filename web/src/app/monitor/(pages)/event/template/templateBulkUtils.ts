@@ -70,6 +70,7 @@ export interface BulkConfig {
   notice_type?: string;
   notice_type_ids?: Array<string | number>;
   notice_users?: string[];
+  handlers?: Array<string | number>;
   enable_alerts?: string[];
   no_data_enabled?: boolean;
   no_data_period?: { type: string; value: number };
@@ -461,6 +462,8 @@ export const normalizeBulkConfig = (
     normalized.notice_users = [];
   }
 
+  normalized.handlers = [];
+
   if (noDataEnabled) {
     const noDataPeriod = config.no_data_period || { type: 'min', value: 5 };
     normalized.no_data_period = noDataPeriod;
@@ -488,6 +491,7 @@ export const COLLECTION_POLICY_BULK_CONFIG_DEFAULTS: BulkConfig = {
   notice_type: '',
   notice_type_ids: [],
   notice_users: [],
+  handlers: [],
   enable_alerts: ['threshold'],
   no_data_enabled: false,
 };
@@ -567,5 +571,8 @@ export const buildBulkApplyPayload = ({
   monitor_object: monitorObjectId,
   template_keys: templates.map((template) => template.template_key),
   asset_ids: assets.map((asset) => asset.instance_id),
-  config,
+  config: {
+    ...config,
+    handlers: [],
+  },
 });

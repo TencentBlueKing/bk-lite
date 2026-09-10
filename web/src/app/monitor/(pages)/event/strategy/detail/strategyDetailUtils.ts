@@ -57,6 +57,20 @@ export const shouldRequireNoticeUsers = ({
   return selectedChannels.some((channel) => channel.channel_type !== 'nats');
 };
 
+/** 通知人表单项刚出现且仍为空时，把已选处理人带入；调用方负责只做一次。 */
+export const seedNoticeUsersFromHandlers = <T>(
+  noticeUsers: T[] | undefined,
+  handlers: T[] | undefined
+): T[] | null => {
+  if (Array.isArray(noticeUsers) && noticeUsers.length) {
+    return null;
+  }
+  if (!Array.isArray(handlers) || !handlers.length) {
+    return null;
+  }
+  return [...handlers];
+};
+
 const INVALID_THRESHOLD_UNIT_IDS = new Set(['none', 'short']);
 
 /** 无量纲 / 不参与阈值单位选配的单位（none、short、空） */

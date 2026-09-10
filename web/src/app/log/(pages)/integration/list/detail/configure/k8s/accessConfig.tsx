@@ -17,6 +17,7 @@ import CollectSettingFields, {
 import IntegrationStepCallout, {
   createLogK8sStepCalloutPreset,
 } from '@/components/integration-step-callout';
+import { createLatestRequestGuard } from '@/context/latestRequestGuard';
 import {
   DEFAULT_K8S_IMAGE_REGISTRY_PREFIX,
   isValidK8sImageRegistryPrefix
@@ -67,6 +68,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
   const [k8sClusterLoading, setK8sClusterLoading] = useState(false);
   const [k8sClusterList, setK8sClusterList] = useState<InstanceItem[]>([]);
   const [settingUnknown, setSettingUnknown] = useState(false);
+  const [requestGuard] = useState(createLatestRequestGuard);
   const [dockerPathForFields, setDockerPathForFields] = useState(
     commandData?.docker_container_log_path
   );
@@ -77,6 +79,10 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
       void getK8sClusters();
     }
   }, [isLoading]);
+
+  useEffect(() => {
+    return () => requestGuard.invalidate();
+  }, [requestGuard]);
 
   useEffect(() => {
     if (commandData) {
@@ -129,30 +135,36 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
   };
 
   const loadSetting = async (instanceId: string) => {
+    const requestId = requestGuard.begin();
     const setting = await getK8sCollectSetting(instanceId);
-    if (setting?.unknown) {
-      setSettingUnknown(true);
-      setDockerPathForFields(undefined);
+    requestGuard.commitIfCurrent(requestId, () => {
+      if (form.getFieldValue('k8sCluster') !== instanceId) {
+        return;
+      }
+      if (setting?.unknown) {
+        setSettingUnknown(true);
+        setDockerPathForFields(undefined);
+        form.setFieldsValue({
+          runtime_profile: undefined,
+          host_log_path: undefined,
+          docker_container_log_path: undefined,
+          namespace_patterns: undefined,
+          pod_patterns: undefined,
+          tolerations: null
+        });
+        return;
+      }
+      setSettingUnknown(false);
+      const dockerPath = setting?.docker_container_log_path;
+      setDockerPathForFields(dockerPath);
       form.setFieldsValue({
-        runtime_profile: undefined,
-        host_log_path: undefined,
-        docker_container_log_path: undefined,
-        namespace_patterns: undefined,
-        pod_patterns: undefined,
-        tolerations: null
+        runtime_profile: setting?.runtime_profile,
+        host_log_path: setting?.host_log_path,
+        docker_container_log_path: dockerPath,
+        namespace_patterns: (setting?.namespace_patterns || []).join('\n'),
+        pod_patterns: (setting?.pod_patterns || []).join('\n'),
+        tolerations: setting?.tolerations ?? null
       });
-      return;
-    }
-    setSettingUnknown(false);
-    const dockerPath = setting?.docker_container_log_path;
-    setDockerPathForFields(dockerPath);
-    form.setFieldsValue({
-      runtime_profile: setting?.runtime_profile,
-      host_log_path: setting?.host_log_path,
-      docker_container_log_path: dockerPath,
-      namespace_patterns: (setting?.namespace_patterns || []).join('\n'),
-      pod_patterns: (setting?.pod_patterns || []).join('\n'),
-      tolerations: setting?.tolerations ?? null
     });
   };
 
@@ -246,6 +258,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
                   className="w-[300px]"
                   onChange={(event) => {
                     if (event.target.value === 'new') {
+                      requestGuard.invalidate();
                       setSettingUnknown(false);
                       form.setFieldsValue({ runtime_profile: 'standard' });
                     }
@@ -356,6 +369,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
                           value: item.id
                         }))}
                         onChange={(value) => {
+                          requestGuard.invalidate();
                           if (value) {
                             void loadSetting(String(value));
                           }

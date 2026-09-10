@@ -89,6 +89,7 @@
     "processNamePlaceholder": "例如：nginx",
     "selectTargetHost": "选择目标主机",
     "searchHostPlaceholder": "搜索主机名或IP，支持模糊匹配",
+    "hostNameOrIp": "主机名 / IP",
     "selectAllCurrent": "全选当前",
     "deselectAll": "取消全选",
     "hostName": "目标名称",

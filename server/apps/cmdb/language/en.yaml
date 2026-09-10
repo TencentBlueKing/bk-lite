@@ -25,6 +25,13 @@ CLASSIFICATION:
   fusioninsight: FusionInsight
   ip_manager: IP Manager
   h3c_cas: H3C UIS
+  hardware_components: Hardware Components
+  fusioncompute: FusionCompute
+  inspurincloudrail: Inspur HCI
+  sangforscp: Sangfor Platform
+  nutanixhci: Nutanix HCI
+  zstack: ZStack
+  winsphere: WinSphere
 MODEL:
   biz: Biz
   module: Module
@@ -157,6 +164,123 @@ MODEL:
   h3c_cas_ds_pool: UIS Disk Pool
   h3c_cas_data_pool: UIS Data Pool
   h3c_cas_vswitch: UIS Virtual Switch
+  keepalive: Keepalived
+  tuxedo: Tuxedo
+  jetty: Jetty
+  memcached: Memcached
+  rocketmq: RocketMQ
+  openresty: OpenResty
+  ceph: Ceph
+  jboss: JBoss
+  squid: Squid
+  haproxy: HAProxy
+  spark: Spark
+  hbase: HBase
+  disk: Server Disk
+  memory: Server Memory
+  nic: Server NIC
+  gpu: GPU
+  influxdb: InfluxDB
+  storage_pool: Storage Pool
+  storage_disk: Storage Disk
+  storage_volume: Storage Volume
+  storage_eth_port: Storage Ethernet Port
+  storage_fc_port: Storage FC Port
+  hwcloud_evs: Huawei Cloud EVS
+  hwcloud_obs: Huawei Cloud OBS
+  hwcloud_vpc: Huawei Cloud VPC
+  hwcloud_subnet: Huawei Cloud Subnet
+  hwcloud_eip: Huawei Cloud EIP
+  hwcloud_sg: Huawei Cloud Security Group
+  hwcloud_elb: Huawei Cloud ELB
+  hwcloud_rds: Huawei Cloud RDS
+  hwcloud_dcs: Huawei Cloud DCS Redis
+  openstack_vpc: OpenStack Network
+  openstack_subnet: OpenStack Subnet
+  openstack_eip: OpenStack Floating IP
+  openstack_sg: OpenStack Security Group
+  manageone_eip: ManageOne EIP
+  fusioncompute: FusionCompute
+  fusioncompute_host: FusionCompute Host
+  fusioncompute_datastore: FusionCompute Datastore
+  fusioncompute_vm: FusionCompute VM
+  azure_redis: Azure Redis
+  azure_mysql: Azure MySQL
+  azure_nat_gateway: Azure NAT Gateway
+  azure_elb: Azure Load Balancer
+  azure_dns: Azure DNS
+  inspurincloudrail: Inspur HCI
+  inspurincloudrail_vm: Inspur HCI VM
+  sangforscp: Sangfor SCP
+  sangforscp_host: Sangfor SCP Host
+  sangforscp_vm: Sangfor SCP VM
+  nutanixhci: Nutanix HCI
+  nutanixhci_host: Nutanix Host
+  nutanixhci_sp: Nutanix Storage Pool
+  nutanixhci_sc: Nutanix Storage Container
+  nutanixhci_vm: Nutanix VM
+  nutanixhci_vg: Nutanix Volume Group
+  nutanixhci_vd: Nutanix Virtual Disk
+  nutanixhci_disk: Nutanix Physical Disk
+  opengauss: openGauss
+  kingbase: KingbaseES
+  vastbase: Vastbase
+  greenplum: Greenplum
+  gbase8a: GBase 8a
+  nacos_node: Nacos Node
+  nacos_namespace: Nacos Namespace
+  nacos_service: Nacos Service
+  ibmmq_channel: IBM MQ Channel
+  ibmmq_listener: IBM MQ Listener
+  ibmmq_localqueue: IBM MQ Local Queue
+  ibmmq_remotequeue: IBM MQ Remote Queue
+  oceanbase: OceanBase
+  oceanbase_zone: OceanBase Zone
+  oceanbase_server: OceanBase Node
+  oceanbase_tenant: OceanBase Tenant
+  highgo: HighGo
+  server_bmc: Server BMC
+  server_bmc_cpu: BMC CPU
+  server_bmc_memory: BMC Memory
+  server_bmc_disk: BMC Physical Disk
+  server_bmc_vdisk: BMC Virtual Disk
+  server_bmc_nic: BMC NIC
+  tonglinkq: TongLINK/Q
+  tonggtp: TongGTP
+  ihs: IBM HTTP Server
+  cics: CICS
+  tape_library: Tape Library
+  informix: Informix
+  sybase: Sybase
+  couchbase: Couchbase
+  mycat: MyCat
+  sap_hana: SAP HANA
+  iris: IRIS
+  hdfs: HDFS
+  yarn: YARN
+  storm: Storm
+  ambari: Ambari
+  redis_sentinel: Redis Sentinel
+  bes: BES
+  apusic: Apusic
+  inforsuite_as: InforSuite AS
+  gbase8s: GBase 8s
+  oscar: Oscar
+  security_device: Security Device
+  tongrds: TongRDS
+  tdsql: TDSQL
+  zstack: ZStack
+  pc_software: PC Installed Software
+  winsphere: WinSphere
+  winsphere_host_pool: WinSphere Host Pool
+  winsphere_cluster: WinSphere Cluster
+  winsphere_host: WinSphere Host
+  winsphere_vm: WinSphere VM
+  winsphere_storage_pool: WinSphere Storage Pool
+  winsphere_vswitch: WinSphere vSwitch
+  winsphere_port_group: WinSphere Port Group
+  sangforhci: Sangfor HCI
+  sangforhci_vm: Sangfor HCI VM
 ATTR:
   pc:
     inst_name: Name
@@ -180,6 +304,19 @@ ATTR:
     type: Type
     asset_value: Asset Value
     comment: Comment
+    asset_status: Asset Status
+    host_name: Host Name
+    ip_addr: IP Address
+    os_type: Type
+    os_name: Os Name
+    os_version: Version
+    os_build: OS Build
+    architecture: Architecture
+    hardware_uuid: Hardware Uuid
+    serial_number: Serial Number
+    device_model: Device Model
+    logged_in_user: Logged In User
+    last_collect_time: Last Collect Time
   office:
     inst_name: Name
     organization: Organization
@@ -199,6 +336,7 @@ ATTR:
     purchase_cost: Purchase Cost
     asset_value: Asset Value
     comment: Comment
+    asset_status: Asset Status
   peripherals:
     inst_name: Name
     organization: Organization
@@ -218,6 +356,7 @@ ATTR:
     purchase_cost: Purchase Cost
     asset_value: Asset Value
     comment: Comment
+    asset_status: Asset Status
   subnet:
     inst_name: Name
     organization: Organization
@@ -228,6 +367,10 @@ ATTR:
     subnet_used_size: IP Used Size
     subnet_available_size: IP Available Size
     description: Description
+    gateway: Gateway
+    vlan_id: VLAN
+    usage_type: Usage Type
+    owner: Owner
   ip:
     inst_name: Name
     organization: Organization
@@ -237,6 +380,11 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    description: Description
+    ip_status: IP Status
+    ip_allocated_status: IP Allocated Status
+    ip_type: IP Type
+    ip_user: IP User
   application:
     inst_name: Application Name
     organization: Organization
@@ -289,6 +437,8 @@ ATTR:
     auto_collect: Auto Collect
     cloud: Cloud
     collect_time: Last Updated Time
+    tag: Tag
+    proc: Proc
   system:
     inst_name: System Name
     organization: Organization
@@ -317,6 +467,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     service_name: Service Name
+    tag: Tag
   mysql:
     inst_name: Name
     organization: Organization
@@ -341,6 +492,7 @@ ATTR:
     datadir: Database File Path
     log_error: Error Log File Path
     slow_query_log: Slow Query Log
+    tag: Tag
   mssql:
     inst_name: Name
     organization: Organization
@@ -361,6 +513,7 @@ ATTR:
     auto_collect: Auto Collect
     max_conn: Maximum Number Of Connections
     collect_time: Last Updated Time
+    tag: Tag
   redis:
     inst_name: Name
     organization: Organization
@@ -378,6 +531,7 @@ ATTR:
     install_path: Bin Path
     topo_mode: Topology Mode
     cluster_uuid: Cluster UUID
+    tag: Tag
   mongodb:
     inst_name: Name
     organization: Organization
@@ -397,6 +551,7 @@ ATTR:
     max_incoming_conn: Max Incoming Connection
     config: Configuration File Path
     system_log: System Log Path
+    tag: Tag
   es:
     inst_name: Name
     organization: Organization
@@ -417,6 +572,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   elasticsearch:
     inst_name: Name
     organization: Organization
@@ -435,6 +591,12 @@ ATTR:
     auto_collect: Auto Collect
     operator: Main Operator
     collect_time: Last Updated Time
+    tag: Tag
+    config: Configuration File Path
+    data_path: Data Path
+    max_connect: MAX Connect
+    shared_buffer: Shared Buffer (MB)
+    log_directory: Log Directory
   db2:
     inst_name: Name
     organization: Organization
@@ -455,6 +617,7 @@ ATTR:
     collect_time: Last Updated Time
     ha_mode: enum High Database Availability
     replication_managerole: Replication Manage Role
+    tag: Tag
   tidb:
     inst_name: Name
     organization: Organization
@@ -479,6 +642,20 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
+    db_name: Database Name
+    db_max_sessions: Db Max Sessions
+    arch_mode: Arch Mode
+    global_charset: Global Charset
+    arch_dest: Arch Dest
+    dba_roles: Dba Roles
+    mode: Mode
+    install_path: Bin Path
+    home_bash: Home Bash
+    ctl_path: Ctl Path
+    redo_log: Redo Log
+    datafile: Datafile
+    tablespace: Tablespace
   dameng:
     inst_name: Name
     organization: Organization
@@ -503,6 +680,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   db_cluster:
     inst_name: Name
     organization: Organization
@@ -526,6 +704,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     custom_Log: Custom Log Path
+    tag: Tag
   tomcat:
     inst_name: Name
     organization: Organization
@@ -545,6 +724,7 @@ ATTR:
     auto_collect: Auto Collect
     max_perm_size: Maximum Non-Heap Memory
     collect_time: Last Updated Time
+    tag: Tag
   nginx:
     inst_name: Name
     organization: Organization
@@ -562,6 +742,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     conf_path: Configuration File Path
+    tag: Tag
   iis:
     inst_name: Name
     organization: Organization
@@ -583,6 +764,7 @@ ATTR:
     bak_operator: Backup Operator
     collect_time: Last Updated Time
     configfile: Configuration File Path
+    tag: Tag
   rabbitmq:
     inst_name: Name
     organization: Organization
@@ -601,6 +783,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     conf_path: Configuration File Path
+    tag: Tag
   weblogic:
     inst_name: Name
     organization: Organization
@@ -623,6 +806,7 @@ ATTR:
     console_context_path: Console Context Path
     application_name: Application List
     console_enabled: Console Enabled
+    tag: Tag
   websphere:
     inst_name: Name
     organization: Organization
@@ -645,6 +829,7 @@ ATTR:
     java_path: Java Path
     collect_time: Last Updated Time
     maximum_heap_size: Maximum Heap Size
+    tag: Tag
   kafka:
     inst_name: Name
     organization: Organization
@@ -669,10 +854,19 @@ ATTR:
     socket_request_max_bytes: Socket Request Max Bytes
     version: Version
     network_threads: Network Threads
+    tag: Tag
   ibmmq:
     inst_name: Name
     organization: Organization
     ip_addr: IP Address
+    tag: Tag
+    qmgr_name: Qmgr Name
+    version: Version
+    port: Port
+    deadq: Deadq
+    install_path: Bin Path
+    hostname: Host Name
+    status: Status
   activemq:
     inst_name: Name
     organization: Organization
@@ -690,6 +884,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   tongweb:
     inst_name: Name
     organization: Organization
@@ -709,6 +904,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   etcd:
     inst_name: Name
     organization: Organization
@@ -724,21 +920,25 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   datacenter:
     inst_name: Name
     addr: Address
+    organization: Organization
   server_room:
     inst_name: Name
     location: Location
     duty_phone: Duty Phone
     operator: Main Operator
     bak_operator: Backup Operator
+    organization: Organization
   rack:
     inst_name: Name
     location: Location
     u_count: U Count
     datacenter_type: Datacenter Type
     datacenter_state: Datacenter State
+    organization: Organization
   zookeeper:
     inst_name: Name
     organization: Organization
@@ -760,14 +960,40 @@ ATTR:
     sync_limit: Maximum heartbeat number requested and agreed
     collect_time: Last Updated Time
     version: Version
+    tag: Tag
   nacos:
     inst_name: Name
     organization: Organization
     ip_addr: IP Address
+    port: Port
+    name: WebLogic Name
+    tag: Tag
+    version: Version
+    mode: Mode
+    node_count: Node Count
+    service_count: Service Count
+    instance_count: Instance Count
+    config_count: Config Count
+    namespace_count: Namespace Count
   minio:
     inst_name: Name
     organization: Organization
     ip_addr: IP Address
+    port: Port
+    tag: Tag
+    version: Version
+    bin_path: Bin Directory
+    data_path: Data Path
+    conf_path: Configuration File Path
+    console_port: Console Port
+    deploy_mode: Deploy Mode
+    region: Region
+    start_args: Start Args
+    operator: Main Operator
+    bak_operator: Backup Operator
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
   docker:
     inst_name: Name
     organization: Organization
@@ -784,6 +1010,10 @@ ATTR:
     container_id: Container ID
     ip_addr: IP
     created: Container Creation Time
+    ports: Ports
+    mounts: Mounts
+    networks: Networks
+    command: Command
   docker_container:
     inst_name: Name
     organization: Organization
@@ -836,6 +1066,10 @@ ATTR:
     collect_time: Last Updated Time
     soid: sysObjectID
     comment: Comment
+    sys_desc: System Description
+    asset_status: Asset Status
+    rack_u_start: Start U
+    u_size: U Size
   router:
     inst_name: Name
     organization: Organization
@@ -854,6 +1088,10 @@ ATTR:
     collect_time: Last Updated Time
     soid: sysObjectID
     comment: Comment
+    sys_desc: System Description
+    asset_status: Asset Status
+    rack_u_start: Start U
+    u_size: U Size
   loadbalance:
     inst_name: Name
     organization: Organization
@@ -872,6 +1110,9 @@ ATTR:
     collect_time: Last Updated Time
     soid: sysObjectID
     comment: Comment
+    asset_status: Asset Status
+    rack_u_start: Start U
+    u_size: U Size
   firewall:
     inst_name: Name
     organization: Organization
@@ -890,6 +1131,10 @@ ATTR:
     collect_time: Last Updated Time
     soid: sysObjectID
     comment: Comment
+    sys_desc: System Description
+    asset_status: Asset Status
+    rack_u_start: Start U
+    u_size: U Size
   physcial_server:
     inst_name: Name
     organization: Organization
@@ -912,6 +1157,15 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
+    cpu_vendor: CPU Architecture
+    cpu_threads: CPU Threads
+    board_vendor: Board Vendor
+    board_model: Board Model
+    board_serial: Board Serial
+    asset_status: Asset Status
+    rack_u_start: Start U
+    u_size: U Size
   hard_server:
     inst_name: Name
     organization: Organization
@@ -928,6 +1182,28 @@ ATTR:
     model: Model
     snmp_version: Version
     port: Port
+    device_sn: Device Sn
+    asset_code: Asset Code
+    storage_type: Storage Type
+    firmware_version: Firmware Version
+    sys_desc: System Description
+    comment: Comment
+    tag: Tag
+    total_capacity: Total Capacity
+    used_capacity: Used Capacity
+    available_capacity: Available Capacity
+    pool_count: Pool Count
+    disk_count: Disk Count
+    volume_count: Volume Count
+    running_status: Running Status
+    operator: Main Operator
+    bak_operator: Backup Operator
+    cabinet: Cabinet
+    room: Room
+    asset_status: Asset Status
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
   security_equipment:
     inst_name: Name
     organization: Organization
@@ -956,6 +1232,9 @@ ATTR:
     comment: Comment
     modify_time: Modification Time
     apiserver: ApiServer
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
   k8s_namespace:
     inst_name: Name
     name: Namespace Name
@@ -1013,6 +1292,10 @@ ATTR:
     organization: Organization
     ip_addr: IP address
     vc_version: VC Version
+    tag: Tag
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
   vmware_vm:
     inst_name: Name
     organization: Organization
@@ -1036,6 +1319,7 @@ ATTR:
     self_esxi: Self Host
     collect_task: Collect Task
     self_vc: Self vCenter
+    tag: Tag
   vmware_esxi:
     inst_name: Name
     organization: Organization
@@ -1050,6 +1334,7 @@ ATTR:
     collect_time: Last Updated Time
     collect_task: Collect Task
     self_vc: Self vCenter
+    tag: Tag
   vmware_ds:
     inst_name: Name
     organization: Organization
@@ -1061,10 +1346,12 @@ ATTR:
     collect_time: Last Updated Time
     auto_collect: Auto Collect
     self_vc: Self vCenter
+    tag: Tag
   aliyun_account:
     inst_name: Name
     organization: Organization
     endpoint: Endpoint
+    tag: Tag
   aliyun_ecs:
     inst_name: Name
     organization: Organization
@@ -1087,6 +1374,7 @@ ATTR:
     collect_time: Last Updated Time
     resource_name: Resource Name
     collect_task: Collect Task
+    tag: Tag
   aliyun_bucket:
     inst_name: Name
     organization: Organization
@@ -1102,6 +1390,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   aliyun_mysql:
     inst_name: Name
     organization: Organization
@@ -1128,6 +1417,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   aliyun_pgsql:
     inst_name: Name
     organization: Organization
@@ -1154,6 +1444,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   aliyun_mongodb:
     inst_name: Name
     organization: Organization
@@ -1176,6 +1467,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   aliyun_redis:
     inst_name: Name
     organization: Organization
@@ -1200,6 +1492,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   aliyun_clb:
     inst_name: Name
     organization: Organization
@@ -1217,6 +1510,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   aliyun_kafka_inst:
     inst_name: Name
     organization: Organization
@@ -1238,10 +1532,12 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   qcloud:
     inst_name: Name
     organization: Organization
     endpoint: Endpoint
+    tag: Tag
   qcloud_cvm:
     inst_name: Name
     organization: Organization
@@ -1264,6 +1560,7 @@ ATTR:
     resource_name: Resource Name
     auto_collect: Auto Collect
     collect_time: Last Updated Time
+    tag: Tag
   qcloud_rocketmq:
     inst_name: Name
     organization: Organization
@@ -1280,6 +1577,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   qcloud_mysql:
     inst_name: Name
     organization: Organization
@@ -1297,6 +1595,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   qcloud_redis:
     inst_name: Name
     organization: Organization
@@ -1325,6 +1624,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   qcloud_mongodb:
     inst_name: Name
     organization: Organization
@@ -1488,6 +1788,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   qcloud_filesystem:
     inst_name: Name
     organization: Organization
@@ -1517,9 +1818,12 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   sangforhci:
     inst_name: Name
     organization: Organization
+    endpoint: Endpoint
+    tag: Tag
   sangforhci_vm:
     inst_name: Name
     organization: Organization
@@ -1555,6 +1859,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   aws_rds:
     inst_name: Name
     organization: Organization
@@ -1576,6 +1881,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   aws_msk:
     inst_name: Name
     organization: Organization
@@ -1591,6 +1897,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   aws_elasticache:
     inst_name: Name
     organization: Organization
@@ -1605,6 +1912,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   aws_eks:
     inst_name: Name
     organization: Organization
@@ -1617,6 +1925,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   aws_cf:
     inst_name: Name
     organization: Organization
@@ -1632,6 +1941,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   aws_elb:
     inst_name: Name
     organization: Organization
@@ -1647,6 +1957,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   aws_s3_bucket:
     inst_name: Name
     organization: Organization
@@ -1657,6 +1968,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   aws_docdb:
     inst_name: Name
     organization: Organization
@@ -1673,6 +1985,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   aws_memdb:
     inst_name: Name
     organization: Organization
@@ -1690,10 +2003,12 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   openstack:
     inst_name: Name
     organization: Organization
     global_domain_name: Domain
+    tag: Tag
   openstack_node:
     inst_name: Name
     organization: Organization
@@ -1706,6 +2021,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   openstack_vm:
     inst_name: Name
     organization: Organization
@@ -1723,6 +2039,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   openstack_vg:
     inst_name: Name
     organization: Organization
@@ -1736,6 +2053,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   openstack_sp:
     inst_name: Name
     organization: Organization
@@ -1749,10 +2067,12 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   smartx:
     inst_name: Name
     organization: Organization
     global_domain_name: Domain
+    tag: Tag
   smartx_cluster:
     inst_name: Name
     organization: Organization
@@ -1770,6 +2090,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   smartx_host:
     inst_name: Name
     organization: Organization
@@ -1787,6 +2108,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   smartx_vm:
     inst_name: Name
     organization: Organization
@@ -1800,6 +2122,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   smartx_vmvolume:
     inst_name: Name
     organization: Organization
@@ -1809,9 +2132,11 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   fusioninsight:
     inst_name: Name
     organization: Organization
+    tag: Tag
   fusioninsight_cluster:
     inst_name: Name
     organization: Organization
@@ -1820,6 +2145,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   fusioninsight_host:
     inst_name: Name
     organization: Organization
@@ -1834,10 +2160,12 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   hwcloud:
     inst_name: Name
     organization: Organization
     endpoint: Endpoint
+    tag: Tag
   hwcloud_ecs:
     inst_name: Name
     organization: Organization
@@ -1860,11 +2188,13 @@ ATTR:
     resource_name: Resource Name
     auto_collect: Auto Collect
     collect_time: Last Updated Time
+    tag: Tag
   manageone:
     inst_name: Name
     organization: Organization
     global_domain_name: Global Domain
     region: Region
+    tag: Tag
   manageone_cloud:
     inst_name: Name
     organization: Organization
@@ -1878,6 +2208,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   manageone_server:
     inst_name: Name
     organization: Organization
@@ -1894,6 +2225,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   manageone_host:
     inst_name: Name
     organization: Organization
@@ -1906,6 +2238,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   manageone_ds:
     inst_name: Name
     organization: Organization
@@ -1916,6 +2249,7 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+    tag: Tag
   manageone_elb:
     inst_name: Name
     organization: Organization
@@ -1937,6 +2271,21 @@ ATTR:
     architecture: Architecture
     size: Size
     image: Image
+    resource_name: Resource Name
+    resource_id: Resource ID
+    tag: Tag
+    subscription_id: Subscription ID
+    resource_group: Resource Group
+    location: Location
+    instance_type: Type
+    os_type: Type
+    os_name: Os Name
+    status: Status
+    public_ip: Public IP
+    disk_count: Disk Count
+    os_disk_size_gb: OS Disk Size Gb
+    data_disk_total_size_gb: Data Disk Total Size Gb
+    create_time: Create Time
   ssl_cer:
     inst_name: Name
     organization: Organization
@@ -1953,6 +2302,1795 @@ ATTR:
     registration_date: Registration Date
     expiration_time: Expiration Time
     owner: Owner
+  keepalive:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    tag: Tag
+    version: Version
+    priority: Priority
+    state: State
+    virtual_router_id: Virtual Router ID
+    install_path: Bin Path
+    config_file: Config File
+    user_name: User Name
+    operator: Main Operator
+    bak_operator: Backup Operator
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  tuxedo:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    tag: Tag
+    version: Version
+    install_path: Bin Path
+    bin_path: Bin Directory
+    conf_file: Conf File
+    domainid: Domain ID
+    ipckey: IPC Key
+    lmid: LMID
+    patch_level: Patch Level
+    maxdispatchthreads: Maxdispatchthreads
+    mindispatchthreads: Mindispatchthreads
+    operator: Main Operator
+    bak_operator: Backup Operator
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  jetty:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    tag: Tag
+    version: Version
+    jetty_home: Jetty Home
+    bin_path: Bin Directory
+    monitored_dir: Monitored Dir
+    java_path: Java path
+    java_version: Java Version
+    conf_path: Configuration File Path
+    java_vendor: Java Vendor
+    operator: Main Operator
+    bak_operator: Backup Operator
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  memcached:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    tag: Tag
+    version: Version
+    install_path: Bin Path
+    maxconn: Maxconn
+    cachesize: Cachesize
+    user_name: User Name
+    operator: Main Operator
+    bak_operator: Backup Operator
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  rocketmq:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    tag: Tag
+    version: Version
+    install_path: Bin Path
+    configfile: Configuration File Path
+    broker_id: Broker Id
+    broker_name: Broker Name
+    cluster_name: Cluster Name
+    namesrv_addr: Namesrv Addr
+    java_path: Java path
+    operator: Main Operator
+    bak_operator: Backup Operator
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  openresty:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    tag: Tag
+    version: Version
+    openresty_path: Openresty Path
+    log_path: Log Path
+    config_path: Config Path
+    doc_root: Doc Root
+    operator: Main Operator
+    bak_operator: Backup Operator
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  ceph:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    tag: Tag
+    version: Version
+    role: Role
+    install_path: Bin Path
+    config_file: Config File
+    cmdline: Cmdline
+    ceph_exe: Ceph Exe
+    operator: Main Operator
+    bak_operator: Backup Operator
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  jboss:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    tag: Tag
+    version: Version
+    install_path: Bin Path
+    jvm_xms: Jvm Xms
+    jvm_xmx: Jvm Xmx
+    role: Role
+    config_file: Config File
+    operator: Main Operator
+    bak_operator: Backup Operator
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  squid:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    tag: Tag
+    version: Version
+    install_path: Bin Path
+    config_file_path: Config File Path
+    cache_dir: Cache Dir
+    access_log: Access Log
+    error_log: Error Log Path
+    visible_hostname: Visible Hostname
+    operator: Main Operator
+    bak_operator: Backup Operator
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  haproxy:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    tag: Tag
+    version: Version
+    install_path: Bin Path
+    conf_file: Conf File
+    defaults_maxconn: Defaults Maxconn
+    defaults_mode: Defaults Mode
+    defaults_retries: Defaults Retries
+    global_group_name: Global Group Name
+    global_maxconn: Global Maxconn
+    global_pidfile: Global Pidfile
+    global_user_name: Global User Name
+    operator: Main Operator
+    bak_operator: Backup Operator
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  spark:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    tag: Tag
+    version: Version
+    install_path: Bin Path
+    webui_port: Webui Port
+    java_path: Java path
+    java_version: Java Version
+    log_path: Log Path
+    operator: Main Operator
+    bak_operator: Backup Operator
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  hbase:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    tag: Tag
+    version: Version
+    install_path: Bin Path
+    log_path: Log Path
+    config_file: Config File
+    tmp_dir: Tmp Dir
+    cluster_distributed: Cluster Distributed
+    java_path: Java path
+    java_version: Java Version
+    operator: Main Operator
+    bak_operator: Backup Operator
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  disk:
+    inst_name: Name
+    organization: Organization
+    self_device: Self Device
+    tag: Tag
+    disk_vendor: Disk Vendor
+    disk: Hard Disk Information
+    disk_type: Disk Type
+    disk_sn: Disk Sn
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  memory:
+    inst_name: Name
+    organization: Organization
+    self_device: Self Device
+    tag: Tag
+    mem_locator: Mem Locator
+    mem_part_number: Mem Part Number
+    mem_type: Mem Type
+    mem_size: Mem Size
+    mem_sn: Mem Sn
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  nic:
+    inst_name: Name
+    organization: Organization
+    self_device: Self Device
+    tag: Tag
+    nic_pci_addr: Nic Pci Addr
+    nic_type: Nic Type
+    nic_vendor: Nic Vendor
+    nic_model: Nic Model
+    nic_iface: Nic Iface
+    nic_mac: Nic MAC
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  gpu:
+    inst_name: Name
+    organization: Organization
+    self_device: Self Device
+    tag: Tag
+    gpu_name: GPU
+    gpu_type: Gpu Type
+    gpu_desc: Gpu Desc
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  influxdb:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    tag: Tag
+    version: Version
+    data_dir: Snapshot File Path
+    wal_dir: Wal Dir
+    meta_dir: Meta Dir
+    engine: Engine
+    http_bind_address: Http Bind Address
+    auth_enabled: Auth Enabled
+    https_enabled: Https Enabled
+    max_concurrent_queries: Max Concurrent Queries
+    operator: Main Operator
+    bak_operator: Backup Operator
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  storage_pool:
+    inst_name: Name
+    organization: Organization
+    self_device: Self Device
+    tag: Tag
+    pool_type: Pool Type
+    total_capacity: Total Capacity
+    used_capacity: Used Capacity
+    available_capacity: Available Capacity
+    running_status: Running Status
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  storage_disk:
+    inst_name: Name
+    organization: Organization
+    self_device: Self Device
+    tag: Tag
+    slot: Slot
+    disk_vendor: Disk Vendor
+    disk_model: Disk Model
+    disk_type: Disk Type
+    disk_capacity: Disk Capacity
+    disk_sn: Disk Sn
+    rotate_speed: Rotate Speed
+    firmware_version: Firmware Version
+    running_status: Running Status
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  storage_volume:
+    inst_name: Name
+    organization: Organization
+    self_device: Self Device
+    parent_pool: Parent Pool
+    tag: Tag
+    wwn: WWN
+    volume_capacity: Volume Capacity
+    alloc_capacity: Alloc Capacity
+    alloc_type: Alloc Type
+    running_status: Running Status
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  storage_eth_port:
+    inst_name: Name
+    organization: Organization
+    self_device: Self Device
+    tag: Tag
+    name: WebLogic Name
+    location: Location
+    mac: MAC
+    ip_addr: IP Address
+    running_status: Running Status
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  storage_fc_port:
+    inst_name: Name
+    organization: Organization
+    self_device: Self Device
+    tag: Tag
+    name: WebLogic Name
+    location: Location
+    wwpn: WWPN
+    speed: Speed
+    running_status: Running Status
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  hwcloud_evs:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    tag: Tag
+    disk_size: Disk Size
+    disk_type: Disk Type
+    category: Category
+    status: Status
+    charge_type: Charge Type
+    zone: Zone
+    region: Region
+    create_time: Create Time
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  hwcloud_obs:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    tag: Tag
+    bucket_type: Bucket Type
+    region: Region
+    create_time: Create Time
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  hwcloud_vpc:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    tag: Tag
+    status: Status
+    cidr: Cidr
+    is_default: Is Default
+    region: Region
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  hwcloud_subnet:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    tag: Tag
+    status: Status
+    cidr: Cidr
+    gateway: Gateway
+    zone: Zone
+    region: Region
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  hwcloud_eip:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    ip_addr: IP Address
+    tag: Tag
+    status: Status
+    bandwidth: Bandwidth(MB/s)
+    charge_type: Charge Type
+    region: Region
+    create_time: Create Time
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  hwcloud_sg:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    tag: Tag
+    is_default: Is Default
+    region: Region
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  hwcloud_elb:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    tag: Tag
+    status: Status
+    ip_version: IP Version
+    ipv6_addr: Ipv6 Addr
+    charge_type: Charge Type
+    region: Region
+    create_time: Create Time
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  hwcloud_rds:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    ip_addr: IP Address
+    public_ip: Public IP
+    tag: Tag
+    status: Status
+    db_type: Db Type
+    engine: Engine
+    engine_version: Engine Version
+    volume_type: Volume Type
+    volume_size: Volume Size
+    vcpus: vCPU Count
+    memory_gb: Memory Gb
+    port: Port
+    region: Region
+    charge_type: Charge Type
+    create_time: Create Time
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  hwcloud_dcs:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    ip_addr: IP Address
+    tag: Tag
+    port: Port
+    status: Status
+    engine: Engine
+    engine_version: Engine Version
+    capacity_gb: Capacity Gb
+    cache_mode: Cache Mode
+    charge_type: Charge Type
+    region: Region
+    create_time: Create Time
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  openstack_vpc:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    tag: Tag
+    status: Status
+    project_name: Project Name
+    region: Region
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  openstack_subnet:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    cidr: Cidr
+    gateway: Gateway
+    tag: Tag
+    status: Status
+    project_name: Project Name
+    region: Region
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  openstack_eip:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    ip_addr: IP Address
+    private_ip_addr: Private IP Addr
+    tag: Tag
+    status: Status
+    project_name: Project Name
+    region: Region
+    create_time: Create Time
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  openstack_sg:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    project_name: Project Name
+    region: Region
+    tag: Tag
+    create_time: Create Time
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  manageone_eip:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    ip_addr: IP Address
+    tag: Tag
+    status: Status
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  fusioncompute:
+    inst_name: Name
+    organization: Organization
+    tag: Tag
+  fusioncompute_host:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    ip_addr: IP Address
+    tag: Tag
+    cpu_arch: CPU Architecture
+    cpu_vendor: CPU Architecture
+    os_vendor: OS Vendor
+    version: Version
+    cpu_cores: CPU Cores
+    vcpus: vCPU Count
+    memory_mb: Memory(MB)
+    status: Status
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  fusioncompute_datastore:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    tag: Tag
+    status: Status
+    storage_type: Storage Type
+    storage_gb: Storage(GB)
+    is_thin: Is Thin
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  fusioncompute_vm:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    ip_addr: IP Address
+    tag: Tag
+    cpu_arch: CPU Architecture
+    status: Status
+    vm_type: VM Type
+    os_type: Type
+    os_name: Os Name
+    vcpus: vCPU Count
+    memory_mb: Memory(MB)
+    disk_gb: Storage(GB)
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  azure_redis:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    tag: Tag
+    subscription_id: Subscription ID
+    resource_group: Resource Group
+    location: Location
+    instance_type: Type
+    shard_num: Number Of Shards
+    version: Version
+    port: Port
+    ssl_port: Ssl Port
+  azure_mysql:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    tag: Tag
+    subscription_id: Subscription ID
+    resource_group: Resource Group
+    location: Location
+    instance_type: Type
+    version: Version
+    storage_gb: Storage(GB)
+    status: Status
+    availability_zone: Availability Zone
+    backup_retention_days: Backup Retention Days
+    earliest_restore_point: Earliest Restore Point
+    create_time: Create Time
+  azure_nat_gateway:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    tag: Tag
+    subscription_id: Subscription ID
+    resource_group: Resource Group
+    location: Location
+    instance_type: Type
+    public_ip_count: Public IP Count
+    subnet_count: Subnet Count
+  azure_elb:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    tag: Tag
+    subscription_id: Subscription ID
+    resource_group: Resource Group
+    location: Location
+    instance_type: Type
+    backend_pool_count: Backend Pool Count
+    load_balancing_rule_count: Load Balancing Rule Count
+    health_probe_count: Health Probe Count
+    inbound_nat_rule_count: Inbound Nat Rule Count
+    outbound_rule_count: Outbound Rule Count
+    frontend_ip_configuration_count: Frontend IP Configuration Count
+  azure_dns:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    tag: Tag
+    subscription_id: Subscription ID
+    resource_group: Resource Group
+    location: Location
+    record_set_count: Record Set Count
+    virtual_network_link_count: Virtual Network Link Count
+    registration_virtual_network_link_count: Registration Virtual Network Link Count
+  inspurincloudrail:
+    inst_name: Name
+    organization: Organization
+    tag: Tag
+  inspurincloudrail_vm:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    tag: Tag
+    status: Status
+    ip_addr: IP Address
+    vcpus: vCPU Count
+    memory: Memory
+    disk: Hard Disk Information
+    os_type: Type
+    os_label: OS Label
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  sangforscp:
+    inst_name: Name
+    organization: Organization
+    endpoint: Endpoint
+    tag: Tag
+  sangforscp_host:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    ip_addr: IP Address
+    tag: Tag
+    serial_number: Serial Number
+    az: Az
+    vcpus: vCPU Count
+    memory_gb: Memory Gb
+    disk_gb: Storage(GB)
+    description: Description
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  sangforscp_vm:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    ip_addr: IP Address
+    tag: Tag
+    az: Az
+    set_type: Set Type
+    group: Group
+    os_type: Type
+    running_site: Running Site
+    storage_site: Storage Site
+    net_type: Network Connect Type
+    vcpus: vCPU Count
+    memory_gb: Memory Gb
+    disk_gb: Storage(GB)
+    description: Description
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  nutanixhci:
+    inst_name: Name
+    organization: Organization
+    tag: Tag
+  nutanixhci_host:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    ip_addr: IP Address
+    tag: Tag
+    ip_ipmi: IP Ipmi
+    ip_cvm: IP Cvm
+    storage_gb: Storage(GB)
+    free_storage: Free Storage
+    hdd_num: Hdd Num
+    ssd_num: Ssd Num
+    memory_mb: Memory(MB)
+    cpu_ghz: CPU Ghz
+    cpu_model: 'CPU  Model '
+    vcpus: vCPU Count
+    hypervisor_type: Virtualization Type
+  nutanixhci_sp:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    tag: Tag
+    storage_gb: Storage(GB)
+    disks: Disks
+  nutanixhci_sc:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    tag: Tag
+    storage_gb: Storage(GB)
+    replication_factor: Replication Factor
+    vms: Vms
+  nutanixhci_vm:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    ip_addr: IP Address
+    tag: Tag
+    network_adapters: Network Adapters
+    memory_mb: Memory(MB)
+    vcpus: vCPU Count
+    storage_gb: Storage(GB)
+    status: Status
+    os_name: Os Name
+  nutanixhci_vg:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    tag: Tag
+    storage_gb: Storage(GB)
+    disks: Disks
+  nutanixhci_vd:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    tag: Tag
+    storage_gb: Storage(GB)
+  nutanixhci_disk:
+    inst_name: Name
+    organization: Organization
+    resource_name: Resource Name
+    resource_id: Resource ID
+    tag: Tag
+    storage_gb: Storage(GB)
+    status: Status
+    serial_number: Serial Number
+    disk_type: Disk Type
+  opengauss:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    tag: Tag
+    version: Version
+    config: Configuration File Path
+    data_path: Data Path
+    max_connect: MAX Connect
+    shared_buffer: Shared Buffer (MB)
+    log_directory: Log Directory
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  kingbase:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    tag: Tag
+    version: Version
+    config: Configuration File Path
+    data_path: Data Path
+    max_connect: MAX Connect
+    shared_buffer: Shared Buffer (MB)
+    log_directory: Log Directory
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  vastbase:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    tag: Tag
+    version: Version
+    config: Configuration File Path
+    data_path: Data Path
+    max_connect: MAX Connect
+    shared_buffer: Shared Buffer (MB)
+    log_directory: Log Directory
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  greenplum:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    tag: Tag
+    version: Version
+    config: Configuration File Path
+    data_path: Data Path
+    max_connect: MAX Connect
+    shared_buffer: Shared Buffer (MB)
+    log_directory: Log Directory
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  gbase8a:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    tag: Tag
+    version: Version
+    enable_binlog: Binlog
+    sync_binlog: Binlog Synchronization Frequency
+    max_conn: MAX Connect
+    max_mem: MAX Memory
+    basedir: Root Directory
+    datadir: Database File Path
+    socket: Socket File Path
+    bind_address: The Bound IP Address
+    slow_query_log: Slow Query Log
+    slow_query_log_file: Slow Query Log Path
+    log_error: Error Log File Path
+    wait_timeout: Wait Timeout Time
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  nacos_node:
+    inst_name: Name
+    ip: IP
+    port: Port
+    tag: Tag
+    state: State
+    version: Version
+    raft_role: Raft Role
+    last_refresh: Last Refresh
+    organization: Organization
+  nacos_namespace:
+    inst_name: Name
+    tag: Tag
+    namespace_id: Namespace ID
+    name: WebLogic Name
+    config_count: Config Count
+    quota: Quota
+    type: Type
+    organization: Organization
+  nacos_service:
+    inst_name: Name
+    tag: Tag
+    service_name: Service Name
+    group_name: Group Name
+    namespace: Namespace
+    instance_count: Instance Count
+    healthy_count: Healthy Count
+    protect_threshold: Protect Threshold
+    organization: Organization
+  ibmmq_channel:
+    inst_name: Name
+    name: WebLogic Name
+    tag: Tag
+    channel_type: Channel Type
+    xmitq: Xmitq
+    remote_ip: Remote IP
+    remote_port: Remote Port
+    organization: Organization
+  ibmmq_listener:
+    inst_name: Name
+    name: WebLogic Name
+    port: Port
+    tag: Tag
+    status: Status
+    organization: Organization
+  ibmmq_localqueue:
+    inst_name: Name
+    name: WebLogic Name
+    tag: Tag
+    q_type: Q Type
+    maxmsgl: Maxmsgl
+    q_max_depth: Q Max Depth
+    q_trigdata: Q Trigdata
+    curdepth: Curdepth
+    organization: Organization
+  ibmmq_remotequeue:
+    inst_name: Name
+    name: WebLogic Name
+    tag: Tag
+    q_type: Q Type
+    destq: Destq
+    remote_qmgr_name: Remote Qmgr Name
+    organization: Organization
+  oceanbase:
+    inst_name: Name
+    ip_addr: IP Address
+    port: Port
+    tag: Tag
+    cluster_name: Cluster Name
+    version: Version
+    server_count: Server Count
+    zone_count: Zone Count
+    tenant_count: Tenant Count
+    compatibility: Compatibility
+    organization: Organization
+  oceanbase_zone:
+    inst_name: Name
+    tag: Tag
+    zone_name: Zone Name
+    region: Region
+    status: Status
+    idc: Idc
+    server_count: Server Count
+    organization: Organization
+  oceanbase_server:
+    inst_name: Name
+    tag: Tag
+    svr_ip: Svr IP
+    svr_port: Svr Port
+    zone: Zone
+    status: Status
+    build_version: Build Version
+    cpu_capacity: CPU Capacity
+    memory_capacity: Memory Capacity
+    start_time: Start Time
+    stop_time: Stop Time
+    organization: Organization
+  oceanbase_tenant:
+    inst_name: Name
+    tag: Tag
+    tenant_id: Tenant ID
+    tenant_name: Tenant Name
+    tenant_type: Tenant Type
+    compatibility_mode: Compatibility Mode
+    status: Status
+    primary_zone: Primary Zone
+    locality: Locality
+    organization: Organization
+  highgo:
+    inst_name: Name
+    ip_addr: IP Address
+    port: Port
+    tag: Tag
+    version: Version
+    config: Configuration File Path
+    data_path: Data Path
+    max_connect: MAX Connect
+    shared_buffer: Shared Buffer (MB)
+    log_directory: Log Directory
+    organization: Organization
+  server_bmc:
+    inst_name: Name
+    ip_addr: IP Address
+    tag: Tag
+    brand: Brand
+    model: Model
+    serial_number: Serial Number
+    bmc_version: BMC Version
+    bios_version: Bios Version
+    power_state: Power State
+    health: Health
+    cpu_total: CPU Total
+    memory_total: Memory Total
+    phys_size: Phys Size
+    organization: Organization
+  server_bmc_cpu:
+    inst_name: Name
+    name: WebLogic Name
+    tag: Tag
+    model: Model
+    cores: Cores
+    speed: Speed
+    status: Status
+    organization: Organization
+  server_bmc_memory:
+    inst_name: Name
+    name: WebLogic Name
+    tag: Tag
+    capacity: Capacity
+    speed: Speed
+    type: Type
+    slot: Slot
+    status: Status
+    organization: Organization
+  server_bmc_disk:
+    inst_name: Name
+    name: WebLogic Name
+    tag: Tag
+    disk_size: Disk Size
+    disk_type: Disk Type
+    disk_media: Disk Media
+    disk_rpm: Disk Rpm
+    status: Status
+    organization: Organization
+  server_bmc_vdisk:
+    inst_name: Name
+    name: WebLogic Name
+    tag: Tag
+    raid_level: Raid Level
+    vdisk_size: Vdisk Size
+    disk_media: Disk Media
+    status: Status
+    organization: Organization
+  server_bmc_nic:
+    inst_name: Name
+    name: WebLogic Name
+    tag: Tag
+    mac_addr: MAC Addr
+    speed: Speed
+    status: Status
+    organization: Organization
+  tonglinkq:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    name: WebLogic Name
+    version: Version
+    status: Status
+    vendor: Vendor
+    model: Model
+    serial_number: Serial Number
+    description: Description
+    tag: Tag
+  tonggtp:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    name: WebLogic Name
+    version: Version
+    status: Status
+    vendor: Vendor
+    model: Model
+    serial_number: Serial Number
+    description: Description
+    tag: Tag
+  ihs:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    name: WebLogic Name
+    version: Version
+    status: Status
+    vendor: Vendor
+    model: Model
+    serial_number: Serial Number
+    description: Description
+    tag: Tag
+  cics:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    name: WebLogic Name
+    version: Version
+    status: Status
+    vendor: Vendor
+    model: Model
+    serial_number: Serial Number
+    description: Description
+    tag: Tag
+  tape_library:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    name: WebLogic Name
+    version: Version
+    status: Status
+    vendor: Vendor
+    model: Model
+    serial_number: Serial Number
+    description: Description
+    tag: Tag
+  informix:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    name: WebLogic Name
+    version: Version
+    status: Status
+    vendor: Vendor
+    model: Model
+    serial_number: Serial Number
+    description: Description
+    tag: Tag
+  sybase:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    name: WebLogic Name
+    version: Version
+    status: Status
+    vendor: Vendor
+    model: Model
+    serial_number: Serial Number
+    description: Description
+    tag: Tag
+  couchbase:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    name: WebLogic Name
+    version: Version
+    status: Status
+    vendor: Vendor
+    model: Model
+    serial_number: Serial Number
+    description: Description
+    tag: Tag
+  mycat:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    name: WebLogic Name
+    version: Version
+    status: Status
+    vendor: Vendor
+    model: Model
+    serial_number: Serial Number
+    description: Description
+    tag: Tag
+  sap_hana:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    name: WebLogic Name
+    version: Version
+    status: Status
+    vendor: Vendor
+    model: Model
+    serial_number: Serial Number
+    description: Description
+    tag: Tag
+  iris:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    name: WebLogic Name
+    version: Version
+    status: Status
+    vendor: Vendor
+    model: Model
+    serial_number: Serial Number
+    description: Description
+    tag: Tag
+  hdfs:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    name: WebLogic Name
+    version: Version
+    status: Status
+    vendor: Vendor
+    model: Model
+    serial_number: Serial Number
+    description: Description
+    tag: Tag
+  yarn:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    name: WebLogic Name
+    version: Version
+    status: Status
+    vendor: Vendor
+    model: Model
+    serial_number: Serial Number
+    description: Description
+    tag: Tag
+  storm:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    name: WebLogic Name
+    version: Version
+    status: Status
+    vendor: Vendor
+    model: Model
+    serial_number: Serial Number
+    description: Description
+    tag: Tag
+  ambari:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    name: WebLogic Name
+    version: Version
+    status: Status
+    vendor: Vendor
+    model: Model
+    serial_number: Serial Number
+    description: Description
+    tag: Tag
+  redis_sentinel:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    name: WebLogic Name
+    version: Version
+    status: Status
+    vendor: Vendor
+    model: Model
+    serial_number: Serial Number
+    description: Description
+    tag: Tag
+  bes:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    name: WebLogic Name
+    version: Version
+    status: Status
+    vendor: Vendor
+    model: Model
+    serial_number: Serial Number
+    description: Description
+    tag: Tag
+  apusic:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    name: WebLogic Name
+    version: Version
+    status: Status
+    vendor: Vendor
+    model: Model
+    serial_number: Serial Number
+    description: Description
+    tag: Tag
+  inforsuite_as:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    name: WebLogic Name
+    version: Version
+    status: Status
+    vendor: Vendor
+    model: Model
+    serial_number: Serial Number
+    description: Description
+    tag: Tag
+  gbase8s:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    name: WebLogic Name
+    version: Version
+    status: Status
+    vendor: Vendor
+    model: Model
+    serial_number: Serial Number
+    description: Description
+    tag: Tag
+  oscar:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    name: WebLogic Name
+    version: Version
+    status: Status
+    vendor: Vendor
+    model: Model
+    serial_number: Serial Number
+    description: Description
+    tag: Tag
+  security_device:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    name: WebLogic Name
+    version: Version
+    status: Status
+    vendor: Vendor
+    model: Model
+    serial_number: Serial Number
+    description: Description
+  tongrds:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    name: WebLogic Name
+    version: Version
+    status: Status
+    vendor: Vendor
+    model: Model
+    serial_number: Serial Number
+    description: Description
+    tag: Tag
+  tdsql:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    name: WebLogic Name
+    version: Version
+    status: Status
+    vendor: Vendor
+    model: Model
+    serial_number: Serial Number
+    description: Description
+    tag: Tag
+  zstack:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP Address
+    port: Port
+    name: WebLogic Name
+    version: Version
+    status: Status
+    vendor: Vendor
+    model: Model
+    serial_number: Serial Number
+    description: Description
+  h3c_cas:
+    inst_name: Name
+    organization: Organization
+    endpoint: Endpoint
+    uis_version: Uis Version
+    tag: Tag
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  pc_software:
+    inst_name: Name
+    organization: Organization
+    name: WebLogic Name
+    version: Version
+    publisher: Publisher
+    software_key: Software Key
+    product_id: Product ID
+    install_location: Install Location
+    install_date: Install Date
+    architecture: Architecture
+    source: Source
+    last_collect_time: Last Collect Time
+  winsphere:
+    inst_name: Name
+    organization: Organization
+    resource_id: Resource ID
+    platform_id: Platform ID
+    name: WebLogic Name
+    tag: Tag
+    management_address: Management Address
+    https_port: Https Port
+    vendor: Vendor
+    product: Product
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  winsphere_host_pool:
+    inst_name: Name
+    organization: Organization
+    resource_id: Resource ID
+    platform_id: Platform ID
+    name: WebLogic Name
+    tag: Tag
+    remark: Remark
+    cluster_num: Cluster Num
+    host_num: Host Num
+    vm_num: VM Num
+    storage_pool_num: Storage Pool Num
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  winsphere_cluster:
+    inst_name: Name
+    organization: Organization
+    resource_id: Resource ID
+    platform_id: Platform ID
+    name: WebLogic Name
+    tag: Tag
+    pool_id: Pool ID
+    pool_name: Pool Name
+    remark: Remark
+    ha_level: Ha Level
+    enabled_drs: Enabled Drs
+    enable_storage_drs: Enable Storage Drs
+    enable_dmp: Enable Dmp
+    cpu_architecture: CPU Architecture
+    sbd_type: Sbd Type
+    host_num: Host Num
+    vm_num: VM Num
+    cpu_mode: CPU Mode
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  winsphere_host:
+    inst_name: Name
+    organization: Organization
+    resource_id: Resource ID
+    platform_id: Platform ID
+    name: WebLogic Name
+    tag: Tag
+    pool_id: Pool ID
+    pool_name: Pool Name
+    cluster_id: Cluster ID
+    cluster_name: Cluster Name
+    ip: IP
+    hostname: Host Name
+    serial_number: Serial Number
+    remark: Remark
+    cpu_architecture: CPU Architecture
+    cpu_threads: CPU Threads
+    cpu_sockets: CPU Slots
+    cpu_cores: CPU Cores
+    cpu_model_name: CPU Model Name
+    cpu_vendor: CPU Architecture
+    memory_gib: Memory Gib
+    storage_gib: Storage Gib
+    is_ha: Is Ha
+    is_maintain: Is Maintain
+    is_connected: Is Connected
+    system: System
+    kv_version: Kv Version
+    create_time: Create Time
+    vm_count: VM Count
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  winsphere_vm:
+    inst_name: Name
+    organization: Organization
+    resource_id: Resource ID
+    platform_id: Platform ID
+    name: WebLogic Name
+    tag: Tag
+    pool_id: Pool ID
+    pool_name: Pool Name
+    cluster_id: Cluster ID
+    cluster_name: Cluster Name
+    host_id: Host ID
+    host_name: Host Name
+    host_ip: Host IP
+    uuid: UUID
+    os_type: Type
+    os_version: Version
+    remark: Remark
+    status: Status
+    is_losing_contact: Is Losing Contact
+    bind_ip_list: Bind IP List
+    vcpu: Vcpu
+    ip: IP
+    memory_gib: Memory Gib
+    disk_size_gib: Disk Size Gib
+    sys_disk_size_gib: Sys Disk Size Gib
+    create_time: Create Time
+    cpu_arch: CPU Architecture
+    tool_version: Tool Version
+    tools_version: Tools Version
+    up_time_seconds: Up Time Seconds
+    mac: MAC
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  winsphere_storage_pool:
+    inst_name: Name
+    organization: Organization
+    resource_id: Resource ID
+    platform_id: Platform ID
+    name: WebLogic Name
+    tag: Tag
+    storage_san_id: Storage San ID
+    storage_san_name: Storage San Name
+    storage_type: Storage Type
+    use_type: Use Type
+    type: Type
+    status: Status
+    time: Time
+    remark: Remark
+    format_type: Format Type
+    host_ids: Host Ids
+    capacity_gib: Capacity Gib
+    available_gib: Available Gib
+    allocation_gib: Allocation Gib
+    used_capacity_gib: Used Capacity Gib
+    alloc_capacity_gib: Alloc Capacity Gib
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  winsphere_vswitch:
+    inst_name: Name
+    organization: Organization
+    resource_id: Resource ID
+    platform_id: Platform ID
+    name: WebLogic Name
+    tag: Tag
+    native_id: Native ID
+    switch_type: Switch Type
+    host_ids: Host Ids
+    description: Description
+    slots: Slots
+    vlan_id: VLAN ID
+    mode: Mode
+    lacp: Lacp
+    balance_mode: Balance Mode
+    pnics: Pnics
+    ip: IP
+    netmask: Netmask
+    gateway: Gateway
+    status: Status
+    display_name: Display Name
+    network_tag: Network Tag
+    dpdk_status: Dpdk Status
+    migrate_net: Migrate Net
+    network_types: Network Types
+    mtu: MTU
+    remark: Remark
+    host_num: Host Num
+    port_group_num: Port Group Num
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  winsphere_port_group:
+    inst_name: Name
+    organization: Organization
+    resource_id: Resource ID
+    platform_id: Platform ID
+    name: WebLogic Name
+    tag: Tag
+    native_id: Native ID
+    switch_id: Switch ID
+    switch_type: Switch Type
+    vlan_id: VLAN ID
+    vswitch_name: Vswitch Name
+    dvswitch_name: Dvswitch Name
+    dvswitch_display_name: Dvswitch Display Name
+    port_num: Port Num
+    distributed_flag: Distributed Flag
+    trunk_port: Trunk Port
+    dpdk_status: Dpdk Status
+    host_id: Host ID
+    host_name: Host Name
+    cluster_name: Cluster Name
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  h3c_cas_host_pool:
+    inst_name: Name
+    organization: Organization
+    self_platform: Self Platform
+    resource_name: Resource Name
+    resource_id: Resource ID
+    tag: Tag
+    status: Status
+    description: Description
+    host_count: Host Count
+    cluster_count: Cluster Count
+    vm_count: VM Count
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  h3c_cas_cluster:
+    inst_name: Name
+    organization: Organization
+    self_platform: Self Platform
+    resource_name: Resource Name
+    resource_id: Resource ID
+    tag: Tag
+    host_pool_id: Host Pool ID
+    status: Status
+    ha_enabled: Ha Enabled
+    drs_enabled: Drs Enabled
+    host_count: Host Count
+    vm_count: VM Count
+    cpu_total: CPU Total
+    memory_gb: Memory Gb
+    description: Description
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  h3c_cas_host:
+    inst_name: Name
+    organization: Organization
+    self_platform: Self Platform
+    resource_name: Resource Name
+    resource_id: Resource ID
+    tag: Tag
+    ip_addr: IP Address
+    cluster_id: Cluster ID
+    host_pool_id: Host Pool ID
+    status: Status
+    serial_number: Serial Number
+    cpu_model: 'CPU  Model '
+    cpu_cores: CPU Cores
+    vcpus: vCPU Count
+    memory_mb: Memory(MB)
+    disk_gb: Storage(GB)
+    cvk_version: Cvk Version
+    maintain_status: Maintain Status
+    description: Description
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  h3c_cas_vm:
+    inst_name: Name
+    organization: Organization
+    self_platform: Self Platform
+    resource_name: Resource Name
+    resource_id: Resource ID
+    tag: Tag
+    ip_addr: IP Address
+    host_id: Host ID
+    cluster_id: Cluster ID
+    storage_id: Storage ID
+    power_status: Power Status
+    os_name: Os Name
+    vcpus: vCPU Count
+    memory_mb: Memory(MB)
+    disks: Disks
+    nics: Nics
+    uuid: UUID
+    description: Description
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  h3c_cas_storage:
+    inst_name: Name
+    organization: Organization
+    self_platform: Self Platform
+    resource_name: Resource Name
+    resource_id: Resource ID
+    tag: Tag
+    cluster_id: Cluster ID
+    storage_type: Storage Type
+    status: Status
+    capacity_gb: Capacity Gb
+    used_gb: Used Gb
+    free_gb: Free Gb
+    path: Path
+    description: Description
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  h3c_cas_ds_pool:
+    inst_name: Name
+    organization: Organization
+    self_platform: Self Platform
+    resource_name: Resource Name
+    resource_id: Resource ID
+    tag: Tag
+    cluster_id: Cluster ID
+    status: Status
+    capacity_gb: Capacity Gb
+    used_gb: Used Gb
+    disk_count: Disk Count
+    description: Description
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  h3c_cas_data_pool:
+    inst_name: Name
+    organization: Organization
+    self_platform: Self Platform
+    resource_name: Resource Name
+    resource_id: Resource ID
+    tag: Tag
+    ds_pool_id: Ds Pool ID
+    cluster_id: Cluster ID
+    status: Status
+    capacity_gb: Capacity Gb
+    used_gb: Used Gb
+    replica_policy: Replica Policy
+    description: Description
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  h3c_cas_vswitch:
+    inst_name: Name
+    organization: Organization
+    self_platform: Self Platform
+    resource_name: Resource Name
+    resource_id: Resource ID
+    tag: Tag
+    cluster_id: Cluster ID
+    status: Status
+    switch_type: Switch Type
+    mtu: MTU
+    port_count: Port Count
+    description: Description
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+ATTR_GROUP:
+  基本信息: Basic Information
+  归属信息: Ownership
+  技术信息: Technical Information
+  状态信息: Status
+  管理信息: Management
+  系统内置: Built-in
+  自动发现信息: Auto Discovery
+  连接信息: Connection
+  默认分组: Default Group
 DEFAULT_ATTR:
   inst_name: Name
   organization: Organization
@@ -1969,7 +4107,6 @@ ChangeRecordType:
   update_entity: Update
   create_edge: Create Association
   delete_edge: Delete Association
-
 ChangeRecordScenario:
   device_lifecycle: Device Lifecycle
   relation_change: Relation Change

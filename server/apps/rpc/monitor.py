@@ -242,3 +242,7 @@ class MonitorOperationAnaRpc(BaseOperationAnaRpc):
     def query_metric_series(self, **kwargs):
         """按已注册指标名查询趋势或排行，未选实例不退化为全量。"""
         return self.client.run("query_metric_series", **kwargs)
+
+    def get_zombie_host_report(self, **kwargs):
+        """按所选 CMDB 主机查询僵尸机报表（阈值过滤后分页）。"""
+        return self.client.run("get_zombie_host_report", **kwargs)

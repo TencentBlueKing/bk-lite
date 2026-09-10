@@ -11,6 +11,7 @@ import { findByMonitorId } from '@/app/monitor/utils/monitorIds';
 import { useSimpleDashboardData } from '../common/simple-dashboard-core';
 import {
   DashboardShell,
+  DashboardSectionLabel,
   KpiSection,
   useFilteredSummaryCards,
 } from '../common/dashboard-components';
@@ -65,10 +66,10 @@ function FlowDashboardMetricsView({
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={5} styles={styles} />
 
-          <div className={styles.sectionLabel}>流量分析</div>
+          <DashboardSectionLabel styles={styles}>流量分析</DashboardSectionLabel>
           <section className={styles.dashboardSection}>
             <div className={`${styles.sectionGrid} ${styles.flowAnalysisGrid}`}>
               <FlowConversationTable

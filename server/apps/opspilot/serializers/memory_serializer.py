@@ -1,6 +1,7 @@
 from django.db import transaction
 from django.db.models.functions import Left, Length
-from rest_framework import serializers
+from rest_framework import serializers, status
+from rest_framework.exceptions import APIException
 
 from apps.core.utils.serializers import AuthSerializer, TeamSerializer
 from apps.opspilot.memory.visibility import get_visible_memories_qs
@@ -10,6 +11,14 @@ from apps.opspilot.models.memory_mgmt import Memory, MemorySpace
 MEMORY_LIST_CONTENT_PREVIEW_CHARS = 240
 # 详情预览上限；完整正文仅在不带 content_limit 时返回。
 MEMORY_RETRIEVE_CONTENT_LIMIT_MAX = 200_000
+# updated_at 同时作为切片写乐观锁令牌，必须保留微秒，不能用全局秒级 DATETIME_FORMAT。
+MEMORY_VERSION_DATETIME_FORMAT = "%Y-%m-%dT%H:%M:%S.%f%z"
+
+
+class MemoryContentConflict(APIException):
+    status_code = status.HTTP_409_CONFLICT
+    default_code = "memory_content_conflict"
+    default_detail = "记忆已被其他人更新，请刷新后重试"
 
 
 def parse_memory_content_limit(raw) -> int | None:
@@ -126,6 +135,8 @@ class WorkflowMemorySpaceOptionSerializer(serializers.ModelSerializer):
 
 
 class MemorySerializer(serializers.ModelSerializer):
+    updated_at = serializers.DateTimeField(read_only=True, format=MEMORY_VERSION_DATETIME_FORMAT)
+    expected_updated_at = serializers.DateTimeField(write_only=True, required=False)
     content_offset = serializers.IntegerField(write_only=True, required=False, min_value=0)
     content_replace_length = serializers.IntegerField(write_only=True, required=False, min_value=0)
 
@@ -135,6 +146,7 @@ class MemorySerializer(serializers.ModelSerializer):
             "id",
             "created_at",
             "updated_at",
+            "expected_updated_at",
             "created_by",
             "updated_by",
             "domain",
@@ -164,29 +176,28 @@ class MemorySerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("content_offset 与 content_replace_length 必须同时提供")
         if has_offset and "content" not in attrs:
             raise serializers.ValidationError("分页写入必须提供 content")
-        if has_offset and self.instance is not None:
-            try:
-                apply_memory_content_splice(
-                    self.instance.content or "",
-                    attrs["content_offset"],
-                    attrs["content_replace_length"],
-                    attrs.get("content") or "",
-                )
-            except ValueError as exc:
-                raise serializers.ValidationError({"content": str(exc)}) from exc
+        if has_offset:
+            if "expected_updated_at" not in attrs:
+                raise serializers.ValidationError({"expected_updated_at": ["分页写入必须提供当前版本"]})
+            replacement = attrs.get("content") or ""
+            if len(replacement) > MEMORY_RETRIEVE_CONTENT_LIMIT_MAX:
+                raise serializers.ValidationError({"content": "单次写入内容过长"})
         return attrs
 
     def update(self, instance, validated_data):
         offset = validated_data.pop("content_offset", None)
         replace_length = validated_data.pop("content_replace_length", None)
+        expected_updated_at = validated_data.pop("expected_updated_at", None)
         if offset is None or replace_length is None:
             return super().update(instance, validated_data)
 
         replacement = validated_data.get("content") or ""
         with transaction.atomic():
             locked = Memory.objects.select_for_update().get(pk=instance.pk)
+            if expected_updated_at != locked.updated_at:
+                raise MemoryContentConflict()
             try:
-                validated_data["content"] = apply_memory_content_splice(
+                spliced = apply_memory_content_splice(
                     locked.content or "",
                     offset,
                     replace_length,
@@ -194,7 +205,34 @@ class MemorySerializer(serializers.ModelSerializer):
                 )
             except ValueError as exc:
                 raise serializers.ValidationError({"content": str(exc)}) from exc
-            return super().update(locked, validated_data)
+            validated_data["content"] = spliced
+            updated = super().update(locked, validated_data)
+            self._splice_response = {
+                "preview": replacement,
+                "content_length": len(spliced),
+                "offset": offset,
+            }
+            return updated
+
+    def to_representation(self, instance):
+        splice = getattr(self, "_splice_response", None)
+        if splice is None:
+            return super().to_representation(instance)
+        # 切片写成功后禁止把合并后的全文再塞回响应。
+        original_content = instance.content
+        instance.content = splice["preview"]
+        try:
+            data = super().to_representation(instance)
+        finally:
+            instance.content = original_content
+        preview = splice["preview"]
+        content_length = splice["content_length"]
+        offset = splice["offset"]
+        data["content"] = preview
+        data["content_length"] = content_length
+        data["content_offset"] = offset
+        data["content_truncated"] = offset > 0 or offset + len(preview) < content_length
+        return data
 
 
 class MemoryListSerializer(MemorySerializer):

@@ -1,0 +1,396 @@
+COLLECT_GROUP:
+  k8s: Container
+  vmware: Virtualization
+  network: Network
+  ipam: IP Address Management
+  databases: Database
+  storage_device: Storage Devices
+  cloud: Cloud Platform
+  host_manage: Logical Host
+  middleware: Middleware
+COLLECT_PLUGIN:
+  k8s_cluster:
+    name: K8S
+    desc: Collect Kubernetes cluster core objects including nodes, namespaces, workloads,
+      and pods
+  docker:
+    name: Docker
+    desc: Discover and collect Docker container configuration
+  vmware_vc:
+    name: vCenter
+    desc: Collect ESXi hosts and virtual machine inventory and attributes from vCenter
+  network:
+    name: Network
+    desc: Discover network devices and topology via SNMP
+  network_config_file:
+    name: Network Device Config File
+    desc: Collect network device command output via Netmiko and archive it as configuration
+      file versions
+  ip_discovery:
+    name: IP Discovery
+    desc: After a subnet is selected, the access point probes IPs and writes back
+      IPAM records and utilization
+  mysql:
+    name: MySQL
+    desc: Collect MySQL key configuration
+  influxdb:
+    name: '[BETA] InfluxDB'
+    desc: Collect InfluxDB key configuration (compatible with 1.x/2.x, 2.x preferred)
+  postgresql:
+    name: PostgreSQL
+    desc: Collect PostgreSQL key configuration
+  mssql:
+    name: '[BETA] MSSQL'
+    desc: Collect MSSQL key configuration
+  redis:
+    name: Redis
+    desc: Collect Redis key configuration
+  mongodb:
+    name: '[BETA] MongoDB'
+    desc: Discover and collect MongoDB basic configuration
+  es:
+    name: '[BETA] Elasticsearch'
+    desc: Collect Elasticsearch key configuration
+  hbase:
+    name: '[BETA] HBase'
+    desc: Collect HBase key configuration
+  storage:
+    name: '[BETA] Huawei Storage'
+    desc: Collect Huawei OceanStor storage devices and their pools, disks, volumes
+      (LUNs), Ethernet ports, and FC ports
+  dell_unity:
+    name: '[BETA] Dell Unity'
+    desc: Collect Dell Unity storage devices and their pools, disks, volumes (LUNs),
+      Ethernet ports, and FC ports
+  netapp_ontap:
+    name: '[BETA] NetApp ONTAP'
+    desc: Collect NetApp ONTAP storage devices and their pools, disks, volumes (LUN/FlexVol),
+      Ethernet ports, and FC ports
+  aliyun_account:
+    name: Alibaba Cloud
+    desc: Collect ECS, VPC, RDS, and other assets under an Alibaba Cloud account
+  qcloud:
+    name: Tencent Cloud
+    desc: Collect CVM, VPC, cloud databases, and other assets under a Tencent Cloud
+      account
+  hwcloud:
+    name: Huawei Cloud [beta]
+    desc: Collect Huawei Cloud and ECS assets
+  fusioninsight:
+    name: FusionInsight [beta]
+    desc: Collect FusionInsight platforms and their clusters and hosts
+  host:
+    name: Host
+    desc: Collect OS basics such as CPU and memory
+  config_file:
+    name: Config File
+    desc: Collect host OS-level text configuration files
+  physcial_server:
+    name: Physical Server SSH
+    desc: Collect physical server basics such as CPU, memory, and NICs
+  physcial_server_ipmi:
+    name: '[BETA] Physical Server IPMI'
+    desc: Collect physical server identity via the IPMI management interface
+  physcial_server_redfish:
+    name: '[BETA] Physical Server Redfish'
+    desc: Collect physical server identity via the Redfish HTTPS API
+  nginx:
+    name: Nginx
+    desc: Discover and collect Nginx basic configuration
+  minio:
+    name: '[BETA] MinIO'
+    desc: Discover and collect MinIO object storage basic configuration
+  zookeeper:
+    name: ZooKeeper
+    desc: Discover and collect ZooKeeper basic configuration
+  kafka:
+    name: Kafka
+    desc: Discover and collect Kafka basic configuration
+  consul:
+    name: Consul
+    desc: Discover and collect Consul basic configuration
+  etcd:
+    name: Etcd
+    desc: Discover and collect Etcd basic configuration
+  rabbitmq:
+    name: RabbitMQ
+    desc: Discover and collect RabbitMQ basic configuration
+  tomcat:
+    name: Tomcat
+    desc: Discover and collect Tomcat basic configuration
+  apache:
+    name: Apache
+    desc: Discover and collect Apache basic configuration
+  activemq:
+    name: ActiveMQ
+    desc: Discover and collect ActiveMQ basic configuration
+  iis:
+    name: IIS
+    desc: Discover and collect IIS basic configuration
+  tuxedo:
+    name: Tuxedo
+    desc: Discover and collect Tuxedo basic configuration
+  memcached:
+    name: Memcached
+    desc: Discover and collect Memcached basic configuration
+  rocketmq:
+    name: RocketMQ
+    desc: Discover and collect RocketMQ basic configuration
+  openresty:
+    name: OpenResty
+    desc: Discover and collect OpenResty basic configuration
+  squid:
+    name: Squid
+    desc: Discover and collect Squid basic configuration
+  haproxy:
+    name: HAProxy
+    desc: Discover and collect HAProxy basic configuration
+  keepalive:
+    name: KeepAlive [beta]
+    desc: Collect KeepAlive instance IP, port, version, priority, status, and virtual
+      router ID
+  spark:
+    name: Spark
+    desc: Discover and collect Spark basic configuration
+  nacos:
+    name: Nacos
+    desc: Collect Nacos basic configuration
+  ibmmq:
+    name: IBM MQ
+    desc: Collect IBM MQ basic configuration
+  oceanbase:
+    name: OceanBase
+    desc: Collect OceanBase basic configuration
+  highgo:
+    name: HighGo
+    desc: Collect HighGo basic configuration
+  server_bmc:
+    name: Server BMC
+    desc: Collect Server BMC basic configuration
+  tonglinkq:
+    name: TongLINK/Q
+    desc: Collect TongLINK/Q basic configuration
+  tonggtp:
+    name: TongGTP
+    desc: Collect TongGTP basic configuration
+  ihs:
+    name: IBM HTTP Server
+    desc: Collect IBM HTTP Server basic configuration
+  cics:
+    name: IBM CICS
+    desc: Collect IBM CICS basic configuration
+  ibm_storwize:
+    name: IBM Storwize
+    desc: Collect IBM Storwize basic configuration
+  ibm_ds:
+    name: IBM DS
+    desc: Collect IBM DS basic configuration
+  emc_symmetrix:
+    name: EMC Symmetrix
+    desc: Collect EMC Symmetrix basic configuration
+  hds_vsp:
+    name: '[BETA] Hitachi VSP'
+    desc: Collect Hitachi VSP and its pools, disks, volumes (LDEV), Ethernet ports,
+      and FC ports
+  macrosan:
+    name: MacroSAN
+    desc: Collect MacroSAN basic configuration
+  pure_array:
+    name: '[BETA] Pure Storage'
+    desc: Collect Pure Storage FlashArray and its pools, disks, volumes (LUNs), Ethernet
+      ports, and FC ports
+  netapp_cluster:
+    name: NetApp Cluster
+    desc: Collect NetApp Cluster basic configuration
+  oraclezfs:
+    name: Oracle ZFS
+    desc: Collect Oracle ZFS basic configuration
+  infinidat:
+    name: Infinidat
+    desc: Collect Infinidat basic configuration
+  tape_library:
+    name: Tape Library
+    desc: Collect Tape Library basic configuration
+  brocade_fc:
+    name: Brocade FC
+    desc: Collect Brocade FC basic configuration
+  cisco_fc:
+    name: Cisco FC
+    desc: Collect Cisco FC basic configuration
+  f5:
+    name: F5
+    desc: Collect F5 basic configuration
+  informix:
+    name: Informix
+    desc: Collect Informix basic configuration
+  sybase:
+    name: Sybase
+    desc: Collect Sybase basic configuration
+  couchbase:
+    name: Couchbase
+    desc: Collect Couchbase basic configuration
+  mycat:
+    name: MyCAT
+    desc: Collect MyCAT basic configuration
+  sap_hana:
+    name: SAP HANA
+    desc: Collect SAP HANA basic configuration
+  iris:
+    name: InterSystems IRIS
+    desc: Collect InterSystems IRIS basic configuration
+  aix:
+    name: AIX
+    desc: Collect AIX basic configuration
+  hpux:
+    name: HP-UX
+    desc: Collect HP-UX basic configuration
+  hmc:
+    name: HMC
+    desc: Collect HMC basic configuration
+  hdfs:
+    name: HDFS
+    desc: Collect HDFS basic configuration
+  yarn:
+    name: YARN
+    desc: Collect YARN basic configuration
+  storm:
+    name: Storm
+    desc: Collect Storm basic configuration
+  ambari:
+    name: Ambari
+    desc: Collect Ambari basic configuration
+  redis_sentinel:
+    name: Redis Sentinel
+    desc: Collect Redis Sentinel basic configuration
+  bes:
+    name: BES
+    desc: Collect BES basic configuration
+  apusic:
+    name: Apusic
+    desc: Collect Apusic basic configuration
+  inforsuite_as:
+    name: InforSuite AS
+    desc: Collect InforSuite AS basic configuration
+  gbase8s:
+    name: GBase 8s
+    desc: Collect GBase 8s basic configuration
+  oscar:
+    name: Oscar
+    desc: Collect Oscar basic configuration
+  security_device:
+    name: Security Device
+    desc: Collect Security Device basic configuration
+  domestic_linux:
+    name: Domestic Linux
+    desc: Collect Domestic Linux basic configuration
+  tongrds:
+    name: TongRDS
+    desc: Collect TongRDS basic configuration
+  tdsql:
+    name: TDSQL
+    desc: Collect TDSQL basic configuration
+  zstack:
+    name: ZStack
+    desc: Collect ZStack basic configuration
+  h3c_cas:
+    name: H3C UIS
+    desc: Collect H3C UIS basic configuration
+  xsky:
+    name: XSKY
+    desc: Collect XSKY basic configuration
+  winsphere:
+    name: WinSphere
+    desc: Collect WinSphere basic configuration
+  pc:
+    name: PC Discovery
+    desc: Collect PC Discovery basic configuration
+  dameng:
+    name: Dameng
+    desc: Collect Dameng basic configuration
+  openstack:
+    name: OpenStack
+    desc: Collect OpenStack basic configuration
+  smartx:
+    name: SmartX
+    desc: Collect SmartX basic configuration
+  manageone:
+    name: ManageOne
+    desc: Collect ManageOne basic configuration
+  fusioncompute:
+    name: FusionCompute
+    desc: Collect FusionCompute basic configuration
+  sangforhci:
+    name: Sangfor HCI
+    desc: Collect Sangfor HCI basic configuration
+  sangforscp:
+    name: Sangfor SCP
+    desc: Collect Sangfor SCP basic configuration
+  nutanixhci:
+    name: Nutanix HCI
+    desc: Collect Nutanix HCI basic configuration
+  inspurincloudrail:
+    name: Inspur InCloud Rail
+    desc: Collect Inspur InCloud Rail basic configuration
+  aws:
+    name: AWS
+    desc: Collect AWS basic configuration
+  azure:
+    name: Azure
+    desc: Collect Azure basic configuration
+  ceph:
+    name: Ceph
+    desc: Collect Ceph basic configuration
+  db2:
+    name: DB2
+    desc: Collect DB2 basic configuration
+  tidb:
+    name: TiDB
+    desc: Collect TiDB basic configuration
+  gbase8a:
+    name: GBase 8a
+    desc: Collect GBase 8a basic configuration
+  greenplum:
+    name: Greenplum
+    desc: Collect Greenplum basic configuration
+  kingbase:
+    name: KingbaseES
+    desc: Collect KingbaseES basic configuration
+  opengauss:
+    name: openGauss
+    desc: Collect openGauss basic configuration
+  vastbase:
+    name: Vastbase
+    desc: Collect Vastbase basic configuration
+  jboss:
+    name: JBoss
+    desc: Collect JBoss basic configuration
+  jetty:
+    name: Jetty
+    desc: Collect Jetty basic configuration
+  tongweb:
+    name: TongWeb
+    desc: Collect TongWeb basic configuration
+  weblogic:
+    name: WebLogic
+    desc: Collect WebLogic basic configuration
+  websphere:
+    name: WebSphere
+    desc: Collect WebSphere basic configuration
+  dell_powerstore:
+    name: '[BETA] Dell PowerStore'
+    desc: Collect Dell PowerStore storage devices and their pools, disks, volumes
+      (LUNs), Ethernet ports, and FC ports
+COLLECT_TAG:
+  国产: Domestic
+  配置中心: Config Center
+  分布式DB: Distributed DB
+  PG兼容: PG Compatible
+COLLECT:
+  DOCUMENT_NOT_FOUND: Documentation not found.
+COLLECT_MESSAGE:
+  未发现任何有效数据，请检查采集目标连通性、凭据与采集范围配置: No valid data found. Check target connectivity, credentials, and collection scope.
+  未发现 PC 最新上报结果，请检查目标采集是否已完成及数据上报时间: No latest PC report found. Check whether collection finished and data was reported.
+  本轮采集结果全部失败，请检查原始数据中的采集错误: All results in this round failed. Check collection errors in the raw data.
+  实例数据写入全部失败，请检查 add/update/delete 错误数: All instance writes failed. Check add/update/delete error counts.
+  部分采集或数据写入失败，请检查原始数据及错误数: Some collection or writes failed. Check raw data and error counts.
+  采集任务下发失败，请稍后重试: Failed to dispatch the collection task. Please try again later.

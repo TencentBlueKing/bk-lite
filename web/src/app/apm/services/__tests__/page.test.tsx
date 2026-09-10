@@ -5,6 +5,7 @@ import { Modal } from 'antd';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
+import { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import { formatDateTime } from '@/app/apm/components/metric-format';
 import ApmServicesPage from '../page';
 
@@ -265,6 +266,14 @@ describe('APM 服务目录服务视角与归档', () => {
     expect(searchInput.closest('section')).toBe(serviceHeader.closest('section'));
     expect(getComputedStyle(actionHeader).textAlign).toBe('left');
     expect(actionHeader.classList.contains('ant-table-cell-fix-right')).toBe(true);
+    const columnWidths = Array.from(document.querySelectorAll('.ant-table colgroup col'))
+      .map((column) => (column as HTMLElement).style.width);
+    expect(columnWidths[0]).toBe('');
+    expect(columnWidths[1]).toBe('');
+    expect(columnWidths.some((width) => width.includes('%'))).toBe(false);
+    expect(document.querySelector('.ant-table-wrapper')?.getAttribute('style')).toContain(
+      `--apm-identity-col-min-width: ${APM_TABLE_COLUMN_WIDTHS.entryService}px`,
+    );
     expect(screen.getByRole('button', { name: '调整组织' })).not.toBeNull();
     expect(screen.getByRole('button', { name: '归档' })).not.toBeNull();
     expect(screen.getByRole('button', { name: /已归档/ })).not.toBeNull();

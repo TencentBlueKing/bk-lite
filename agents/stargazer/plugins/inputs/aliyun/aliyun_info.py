@@ -188,8 +188,8 @@ class CwAliyun(object):
         :param region_id:
         :param kwargs:
         """
-        self.AccessKey = params["secret_id"]
-        self.AccessSecret = params["secret_key"]
+        self.AccessKey = params.get("secret_id") or params.get("accessKey") or params.get("access_key")
+        self.AccessSecret = params.get("secret_key") or params.get("accessSecret") or params.get("access_secret")
         self.RegionId = params.get("region_id", "cn-hangzhou")
         self.timeout = 30  # 连接超时硬编码；读超时用 timeout*2；表单 timeout 由框架作单对象预算
 

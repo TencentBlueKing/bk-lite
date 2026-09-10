@@ -23,7 +23,7 @@ export interface ParamInputOptionsLoad {
 export interface ParamInputOptionsLoaderOptions {
   suppressErrorNotification?: boolean;
   fallbackErrorMessage?: string;
-  knownDataSources?: Array<{ id: number; rest_api?: string }>;
+  knownDataSources?: Array<{ id: number; name?: string; rest_api?: string }>;
 }
 
 interface OptionsApi {
@@ -127,7 +127,7 @@ export const createParamInputOptionsLoader = (
           if (requestGeneration !== generation) return null;
           sourceId = resolveDynamicSourceId(
             source,
-            sourceItems as Array<{ id: number; rest_api?: string }>,
+            sourceItems as Array<{ id: number; name?: string; rest_api?: string }>,
           );
         }
         if (!sourceId) return requestGeneration === generation ? { status: 'error', options: [] } : null;

@@ -8,8 +8,7 @@ import {
   KpiSection,
   useFilteredChartPanels,
   useFilteredRingPanels,
-  useFilteredSummaryCards
-} from '../common/dashboard-components';
+  useFilteredSummaryCards, DashboardSectionLabel } from '../common/dashboard-components';
 import { RingChartPanel, TrendChartPanel } from '../../shared/widgets';
 import { SGLANG_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
@@ -58,10 +57,10 @@ export default function SglangDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
 
-          <div className={styles.sectionLabel}>队列与吞吐</div>
+          <DashboardSectionLabel styles={styles}>队列与吞吐</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {renderChart(queueTrend, styles.span8)}
             {queueRing ? (
@@ -81,7 +80,7 @@ export default function SglangDashboardPage() {
             {renderChart(tokenTrend, styles.span12)}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>时延多分位</div>
+          <DashboardSectionLabel styles={styles}>时延多分位</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {renderChart(ttftTrend, styles.span6)}
             {renderChart(e2eTrend, styles.span6)}

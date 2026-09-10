@@ -10,8 +10,7 @@ import {
   useFilteredChartPanels,
   useFilteredDetailPanels,
   useFilteredRingPanels,
-  useFilteredSummaryCards
-} from '../common/dashboard-components';
+  useFilteredSummaryCards, DashboardSectionLabel } from '../common/dashboard-components';
 import { RingChartPanel, TrendChartPanel } from '../../shared/widgets';
 import { TOMCAT_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
@@ -38,10 +37,10 @@ export default function TomcatDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
 
-          <div className={styles.sectionLabel}>性能趋势</div>
+          <DashboardSectionLabel styles={styles}>性能趋势</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {/* Row 1: two trend charts side-by-side (span6 + span6 = 12) */}
             {requestChart ? (
@@ -115,7 +114,7 @@ export default function TomcatDashboardPage() {
             ) : null}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>分布与详情</div>
+          <DashboardSectionLabel styles={styles}>分布与详情</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {/* Footer row: ring(span4) + detail(span4) + memorypool chart(span4) = 12 */}
             {threadRing ? (

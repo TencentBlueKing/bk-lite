@@ -1,10 +1,14 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { Form, Switch, Button, Select } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { StrategyFields, ChannelItem, CardItem } from '@/app/log/types/event';
 import { UserItem } from '@/app/log/types';
 import SelectCard from './selectCard';
 import { formatUserName } from '@/utils/userDisplay';
+import {
+  seedNoticeUsersFromHandlers,
+  shouldRequireNoticeUsers
+} from './policyFormUtils';
 
 const { Option } = Select;
 
@@ -46,6 +50,32 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
 }) => {
   const { t } = useTranslation();
   const form = Form.useFormInstance<StrategyFields>();
+  const notice = Form.useWatch('notice', form);
+  const noticeTypeId = Form.useWatch('notice_type_id', form);
+  const seededNoticeUsers = useRef(false);
+  const noticeUsersVisible = shouldRequireNoticeUsers({
+    notice,
+    noticeTypeId,
+    channelList
+  });
+
+  useEffect(() => {
+    if (!noticeUsersVisible) {
+      seededNoticeUsers.current = false;
+      return;
+    }
+    if (seededNoticeUsers.current) {
+      return;
+    }
+    const seeded = seedNoticeUsersFromHandlers(
+      form.getFieldValue('notice_users'),
+      form.getFieldValue('handlers')
+    );
+    if (seeded) {
+      form.setFieldValue('notice_users', seeded);
+    }
+    seededNoticeUsers.current = true;
+  }, [form, noticeUsersVisible]);
 
   // 通知渠道变更时清空通知者
   const handleChannelChange = () => {
@@ -68,6 +98,36 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
 
   return (
     <>
+      <Form.Item<StrategyFields>
+        label={<span className="w-[100px]">{t('log.event.handler')}</span>}
+        name="handlers"
+      >
+        <Select
+          style={{ width: '100%' }}
+          showSearch
+          allowClear
+          mode="multiple"
+          maxTagCount="responsive"
+          placeholder={t('log.event.handler')}
+          virtual
+          filterOption={(input, option) => {
+            const user = userList.find((u) => u.id === option?.value);
+            if (!user) return false;
+            const searchText = input.toLowerCase();
+            return (
+              user.display_name?.toLowerCase().includes(searchText) ||
+              user.username.toLowerCase().includes(searchText)
+            );
+          }}
+          optionLabelProp="label"
+        >
+          {userList.map((item) => (
+            <Option value={item.id} key={item.id} label={formatUserName(item)}>
+              {formatUserName(item)}
+            </Option>
+          ))}
+        </Select>
+      </Form.Item>
       <Form.Item<StrategyFields>
         label={
           <span className="w-[100px]">{t('log.event.notificationConfig')}</span>

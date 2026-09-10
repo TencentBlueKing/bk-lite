@@ -306,13 +306,17 @@ class CollectModels(MaintainerInfo, TimeInfo):
         if not self.credential:
             return self.credential
 
-        encrypted_fields = get_collect_model_passwords(collect_model_id=self.model_id, driver_type=self.driver_type)
+        encrypted_fields = set(get_collect_model_passwords(collect_model_id=self.model_id, driver_type=self.driver_type) or [])
 
         def decrypt_item(raw_item):
             item = copy.deepcopy(raw_item)
             if not isinstance(item, dict):
                 return item
-            for encrypted_field in encrypted_fields:
+            fields = set(encrypted_fields)
+            for key, value in item.items():
+                if isinstance(value, str) and value.startswith(ENCRYPTED_PREFIX):
+                    fields.add(key)
+            for encrypted_field in fields:
                 password = item.get(encrypted_field)
                 if not password:
                     continue

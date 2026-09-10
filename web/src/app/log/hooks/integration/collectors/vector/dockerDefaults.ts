@@ -59,14 +59,25 @@ export const getVectorDockerParams = (
 /**
  * 把后端拉回的 child.content 反解为编辑表单默认值。
  *
- * 必须与 `getVectorDockerParams` 写入结构完全一致，否则会出现
- * "编辑时多行合并开关、容器过滤开关显示为关闭"等 bug。
+ * `get_config_content` 会先解析已经渲染的 TOML，因此正常响应中的采集参数
+ * 位于 `content.sources.docker_<config_id>`（docker_host / include_containers /
+ * exclude_containers / multiline）。同时兼容尚未经过模板渲染的扁平 enable_* 结构。
+ *
+ * 无过滤字段时容器过滤关闭；无 multiline 时多行关闭。缺字段不得当成
+ * 模板默认排除列表（vector,logspout）。
  */
 export const getVectorDockerDefaultForm = (formData: TableDataItem) => {
   const content = formData?.child?.content || {};
+  const sources = content.sources || {};
+  const sourceKey =
+    Object.keys(sources).find((key) => key.startsWith('docker_')) || '';
+  const sourceData = sources[sourceKey] || content;
 
-  // CSV 字符串 → 数组（与 getParams 中的 join(',') 互逆）
+  // CSV 字符串或 TOML 数组 → 表单数组（与 getParams 中的 join(',') 互逆）
   const splitCsv = (s: unknown): string[] => {
+    if (Array.isArray(s)) {
+      return s.map((v) => String(v).trim()).filter(Boolean);
+    }
     if (typeof s !== 'string' || !s) return [];
     return s
       .split(',')
@@ -74,19 +85,43 @@ export const getVectorDockerDefaultForm = (formData: TableDataItem) => {
       .filter(Boolean);
   };
 
+  const hasInclude = Array.isArray(sourceData.include_containers);
+  const hasExclude = Array.isArray(sourceData.exclude_containers);
+  const enableContainerFilter =
+    hasInclude || hasExclude || !!sourceData.enable_container_filter;
+
+  const multilineNode = sourceData.multiline;
+  const enableMultiline =
+    !!multilineNode?.mode || !!sourceData.enable_multiline;
+
   return {
-    endpoint: content.endpoint || 'unix:///var/run/docker.sock',
+    endpoint:
+      sourceData.docker_host ||
+      sourceData.endpoint ||
+      'unix:///var/run/docker.sock',
     containerFilter: {
-      enabled: !!content.enable_container_filter
+      enabled: enableContainerFilter
     },
-    container_name_contains: splitCsv(content.container_name_contains),
-    container_name_exclude: splitCsv(content.container_name_exclude),
+    container_name_contains: hasInclude
+      ? splitCsv(sourceData.include_containers)
+      : splitCsv(sourceData.container_name_contains),
+    container_name_exclude: hasExclude
+      ? splitCsv(sourceData.exclude_containers)
+      : splitCsv(sourceData.container_name_exclude),
     multiline: {
-      enabled: !!content.enable_multiline,
-      mode: content.multiline_mode || 'continue_through',
-      condition_pattern: content.multiline_pattern || '^[\\s]+',
-      start_pattern: content.multiline_start_pattern || '^[^\\s]',
-      timeout_ms: content.multiline_timeout_ms || 1000
+      enabled: enableMultiline,
+      mode:
+        multilineNode?.mode || sourceData.multiline_mode || 'continue_through',
+      condition_pattern:
+        multilineNode?.condition_pattern ||
+        sourceData.multiline_pattern ||
+        '^[\\s]+',
+      start_pattern:
+        multilineNode?.start_pattern ||
+        sourceData.multiline_start_pattern ||
+        '^[^\\s]',
+      timeout_ms:
+        multilineNode?.timeout_ms || sourceData.multiline_timeout_ms || 1000
     }
   };
 };

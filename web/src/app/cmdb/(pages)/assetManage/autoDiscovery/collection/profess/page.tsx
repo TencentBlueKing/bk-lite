@@ -37,6 +37,7 @@ import type { ColumnType } from 'antd/es/table';
 import type { FilterValue } from 'antd/es/table/interface';
 import { Alert, Button, Drawer, Modal, Spin, Tag, Tabs, Tooltip, message } from 'antd';
 import { useTranslation } from '@/utils/i18n';
+import { useLocale } from '@/context/locale';
 import {
   getExecStatusConfig,
   EXEC_STATUS,
@@ -130,6 +131,7 @@ const getTaskStatusStats = (
 
 const ProfessionalCollection: React.FC = () => {
   const { t } = useTranslation();
+  const { locale } = useLocale();
   const collectApi = useCollectApi();
   const router = useRouter();
   const pathname = usePathname();
@@ -358,7 +360,7 @@ const ProfessionalCollection: React.FC = () => {
       const allCategory: TreeNode = {
         id: 'all',
         key: 'all',
-        name: '全部',
+        name: t('all'),
         tabItems: categories.flatMap((node: TreeNode) => node.tabItems || []),
       };
 
@@ -412,6 +414,13 @@ const ProfessionalCollection: React.FC = () => {
 
   useEffect(() => {
     fetchCategoryData();
+    setPluginDoc('');
+    if (docDrawerVisible || taskDocDrawerVisible) {
+      const pluginId = stateRef.current.selectedPluginId;
+      if (pluginId) {
+        fetchPluginDoc(pluginId);
+      }
+    }
 
     statusTimerRef.current = setInterval(() => {
       fetchTaskStatus();
@@ -424,7 +433,7 @@ const ProfessionalCollection: React.FC = () => {
         statusTimerRef.current = null;
       }
     };
-  }, []);
+  }, [locale]);
 
   const handleSearch = (value: string) => {
     setSearchTextUI(value);
@@ -1207,7 +1216,7 @@ const ProfessionalCollection: React.FC = () => {
                   pagination={{
                     ...paginationUI,
                     showSizeChanger: true,
-                    showTotal: (total) => `共 ${total} 条`,
+                    showTotal: (total) => t('Collection.taskDetail.paginationTotal', '', { total }),
                   }}
                   fieldSetting={{
                     showSetting: true,
