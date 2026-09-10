@@ -153,6 +153,9 @@ export type InputControlConfig =
     control: 'input';
   }
   | {
+    control: 'organization';
+  }
+  | {
     control: 'select' | 'radio';
     optionsSource: StaticOptionsSource | DynamicOptionsSource;
     componentSwitch?: boolean;
@@ -177,7 +180,11 @@ export interface ParamItem {
    */
   options?: Array<{ label: string; value: string | number }>;
   /**
-   * 新字段：参数输入控件配置（文本输入 / 静态选项 / 动态数据源）。
+   * 新字段：参数输入控件配置（文本输入 / 静态选项 / 动态数据源 / 组织树）。
    */
   inputConfig?: InputControlConfig;
+  /**
+   * 兼容只读：旧组织筛旁路字段。读取时归一为 inputConfig.control=organization。
+   */
+  inputMode?: string;
 }

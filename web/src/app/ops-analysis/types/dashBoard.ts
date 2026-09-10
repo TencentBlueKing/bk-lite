@@ -299,7 +299,7 @@ export interface UnifiedFilterDefinition {
   defaultValue?: FilterValue; // 默认值
   order: number; // 显示顺序
   enabled: boolean; // 是否启用
-  inputMode?: 'input' | 'select' | 'radio' | 'organization'; // 输入方式（仅 string 类型有效）
+  inputMode?: 'input' | 'select' | 'radio' | 'organization'; // 兼容只读；新保存走 inputConfig.control
   /**
    * 旧字段：手动下拉选项（仅 inputMode 为 select/radio 时有效）。
    * 读取时由 normalizeInputConfig 自动按 static 模式处理。

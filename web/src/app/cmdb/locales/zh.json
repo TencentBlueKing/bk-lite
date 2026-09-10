@@ -969,6 +969,19 @@
             "hideSecret": "隐藏凭据",
             "enablePassword": "特权密码"
         },
+        "networkConfigFileTask": {
+            "supportedVendors": "当前支持厂商：{vendors}",
+            "vendorSeparator": "、",
+            "unsupportedInstance": "缺少厂商或厂商不支持的实例不可选择",
+            "configName": "配置名称",
+            "configNameRequired": "请输入配置名称",
+            "configNamePlaceholder": "例如 running-config",
+            "commands": "采集命令",
+            "commandsRequired": "请输入采集命令",
+            "commandsPlaceholder": "每行一条命令，例如：\nshow running-config\nshow version",
+            "dangerousCommand": "命令存在高危操作：{command}",
+            "chooseNetworkDevice": "选择网络设备"
+        },
         "influxdbTask": {
             "scheme": "连接协议",
             "operatorToken": "Operator Token",

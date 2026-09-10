@@ -9,7 +9,7 @@ import { DEFAULT_REFRESH_FREQUENCY_LIST } from '../utils';
 import {
   getDashboardReturnNavigation
 } from '../utils/return-navigation';
-import { tDashboardText, useDashboardText } from '../utils/content-i18n';
+import { localizeDashboardReturnLabel, tDashboardText, useDashboardText } from '../utils/content-i18n';
 
 export interface DashboardPageHeaderStyles {
   readonly [key: string]: string | undefined;
@@ -56,7 +56,7 @@ export function DashboardPageHeader({
   const router = useRouter();
   const searchParams = useSearchParams();
   const returnNavigation = getDashboardReturnNavigation(searchParams, localizedTitle);
-  const backLabel = tDashboardText(t, returnNavigation.label);
+  const backLabel = localizeDashboardReturnLabel(t, searchParams);
   const breadcrumbItems = returnNavigation.breadcrumbItems.map((item) => ({
     ...item,
     title: typeof item.title === 'string' ? tDashboardText(t, item.title) : item.title

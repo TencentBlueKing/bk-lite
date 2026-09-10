@@ -8,7 +8,7 @@ import type {
   InputOption,
   ParamItem,
 } from '@/app/ops-analysis/types/dataSource';
-import { normalizeInputConfig } from '@/app/ops-analysis/utils/paramInputConfigUtils';
+import { isOptionInputControl, normalizeInputConfig } from '@/app/ops-analysis/utils/paramInputConfigUtils';
 
 export const LEGACY_STRING_LIST_TYPE = 'stringList';
 
@@ -75,7 +75,8 @@ export const areNormalizedInputConfigsCompatible = (
   if (!left && !right) return true;
   if (!left || !right) return false;
   if (left.control !== right.control) return false;
-  if (left.control === 'input' || right.control === 'input') {
+  if (left.control === 'input' || right.control === 'input'
+    || left.control === 'organization' || right.control === 'organization') {
     return left.control === right.control;
   }
   const leftPicker = left.picker ?? 'dropdown';
@@ -96,6 +97,9 @@ export const normalizeStringListInputConfig = (
 
   if (normalized.control === 'input') {
     return { inputConfig: { control: 'input' }, warnings };
+  }
+  if (normalized.control === 'organization') {
+    return { inputConfig: { control: 'organization' }, warnings };
   }
 
   const next: Extract<InputControlConfig, { control: 'select' | 'radio' }> = {
@@ -345,12 +349,10 @@ export const coerceValueForMultiple = (
 
 export const isMultipleSelectInputConfig = (
   inputConfig?: InputControlConfig | null,
-): boolean =>
-  Boolean(
-    inputConfig
-    && inputConfig.control !== 'input'
-    && inputConfig.multiple,
-  );
+): boolean => {
+  if (!inputConfig || !isOptionInputControl(inputConfig)) return false;
+  return Boolean(inputConfig.multiple);
+};
 
 /** 按筛选项当前 multiple 规范化运行时/默认值形状；不改变非 string 筛选项。 */
 export const coerceFilterValuesForDefinitions = (
