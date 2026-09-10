@@ -2,7 +2,7 @@ import base64
 import difflib
 import hashlib
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from django.db import IntegrityError, transaction
 from django.db.models import Max, Q
@@ -649,6 +649,28 @@ class ConfigFileService(object):
         config_state = collect_data.get("config_file") or {}
         return config_state if isinstance(config_state, dict) else {}
 
+    @staticmethod
+    def _report_time_from_versions(versions) -> str:
+        """配置版本号是采集时刻的 epoch 毫秒，上报时间需转成 ISO，避免前端把数字串当成 1789 年。"""
+        timestamps = []
+        for raw in versions:
+            text = str(raw or "").strip()
+            if not text:
+                continue
+            if text.isdigit() and len(text) >= 10:
+                value = int(text)
+                timestamps.append(value / 1000 if value >= 10**12 else value)
+                continue
+            parsed = parse_datetime(text)
+            if parsed is None:
+                continue
+            if is_naive(parsed):
+                parsed = make_aware(parsed, get_current_timezone())
+            timestamps.append(parsed.timestamp())
+        if not timestamps:
+            return ""
+        return datetime.fromtimestamp(max(timestamps), tz=timezone.utc).isoformat()
+
     @classmethod
     def _build_summary(cls, task: CollectModels, items: dict | None = None) -> dict:
         task_state = cls._build_task_state(task)
@@ -750,7 +772,7 @@ class ConfigFileService(object):
             "message": message,
         }
         if raw_items:
-            collect_digest["last_time"] = max(item.get("version", "") for item in raw_items)
+            collect_digest["last_time"] = cls._report_time_from_versions(item.get("version", "") for item in raw_items)
 
         return {
             "config_file_data": config_file_data,
