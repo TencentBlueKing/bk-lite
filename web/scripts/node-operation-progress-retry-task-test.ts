@@ -60,13 +60,13 @@ function assertPageWiresCollectorRetry(pageSource: string) {
   );
   assert.match(
     pageSource,
-    /getCollectorNodes\(\{\s*taskId:\s*taskIds\s*\}\)/,
-    '安装进度仍须查询旧 taskIds',
+    /getCollectorNodes\(\{\s*taskId:\s*taskIds[\s\S]*?page:[\s\S]*?page_size:/,
+    '安装进度仍须查询旧 taskIds（可带当前页 page/page_size）',
   );
   assert.match(
     pageSource,
-    /getCollectorOperationNodes\(\{\s*taskId:\s*taskIds\s*\}\)/,
-    '启停重启进度仍须查询旧 taskIds',
+    /getCollectorOperationNodes\(\{\s*taskId:\s*taskIds[\s\S]*?page:[\s\S]*?page_size:/,
+    '启停重启进度仍须查询旧 taskIds（可带当前页 page/page_size）',
   );
   assert.match(
     pageSource,
