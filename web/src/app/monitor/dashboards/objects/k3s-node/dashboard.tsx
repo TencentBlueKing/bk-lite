@@ -14,6 +14,7 @@ import {
 import { RingChartPanel, HorizontalBarPanel } from '../../shared/widgets';
 import { buildSearchParams, parseLegacyParamList, normalizeDisplayText } from '../../shared/utils';
 import { buildTopBars, coresDisplay, bytesDisplay } from '../k3s-cluster/parse';
+import { createNodeTopPodLoadCoordinator } from '../common/nodeTopPodLoad';
 import { NODE_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 import { K3S_NODE_TOP_POD_CPU, K3S_NODE_TOP_POD_MEM } from './queries';
@@ -38,24 +39,29 @@ export default function K3sNodeDashboardPage() {
   const [topPodMemRaw, setTopPodMemRaw] = useState<any>(null);
 
   useEffect(() => {
-    if (idValues.length === 0) return;
-    let active = true;
+    if (!dashboard.isDashboardMode || idValues.length === 0) {
+      setTopPodCpuRaw(null);
+      setTopPodMemRaw(null);
+      return;
+    }
+    const coordinator = createNodeTopPodLoadCoordinator();
+    const generation = coordinator.begin();
     const tv: TimeValuesProps = dashboard.timeValues;
     getInstanceQuery(buildSearchParams(K3S_NODE_TOP_POD_CPU, 'none', idValues, instanceIdKeys, tv, undefined, false, dashboard.currentInstanceInterval, {
       monitorObjectId: dashboard.monitorObjectId,
       instanceId: dashboard.instanceId,
     }))
-      .then((r) => { if (active) setTopPodCpuRaw(r); })
-      .catch(() => { if (active) setTopPodCpuRaw(null); });
+      .then((r) => { if (coordinator.shouldApply(generation)) setTopPodCpuRaw(r); })
+      .catch(() => { if (coordinator.shouldApply(generation)) setTopPodCpuRaw(null); });
     // 内存为字节类指标:禁用服务端单位自动换算,否则与前端 bytesDisplay 双重换算(见 k3s-cluster 同因)。
     getInstanceQuery(buildSearchParams(K3S_NODE_TOP_POD_MEM, 'bytes', idValues, instanceIdKeys, tv, undefined, false, dashboard.currentInstanceInterval, {
       monitorObjectId: dashboard.monitorObjectId,
       instanceId: dashboard.instanceId,
     }))
-      .then((r) => { if (active) setTopPodMemRaw(r); })
-      .catch(() => { if (active) setTopPodMemRaw(null); });
-    return () => { active = false; };
-  }, [idValuesKey, dashboard.currentInstanceInterval, dashboard.timeValues]);
+      .then((r) => { if (coordinator.shouldApply(generation)) setTopPodMemRaw(r); })
+      .catch(() => { if (coordinator.shouldApply(generation)) setTopPodMemRaw(null); });
+    return () => { coordinator.begin(); };
+  }, [idValuesKey, dashboard.currentInstanceInterval, dashboard.timeValues, dashboard.loadTick, dashboard.isDashboardMode]);
 
   const nodeTopPodCpuBars = useMemo(() => buildTopBars(topPodCpuRaw, 'pod', '#9254de', coresDisplay), [topPodCpuRaw]);
   const nodeTopPodMemBars = useMemo(() => buildTopBars(topPodMemRaw, 'pod', '#13c2c2', bytesDisplay), [topPodMemRaw]);
