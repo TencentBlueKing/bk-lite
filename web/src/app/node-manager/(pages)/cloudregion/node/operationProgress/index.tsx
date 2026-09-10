@@ -45,6 +45,10 @@ import {
   buildCollectorTaskNodesPageQuery,
   resolveCollectorTaskNodesPage
 } from './collectorTaskNodesPage';
+import {
+  mergeCollectorRetryRows,
+  readCollectorRetryTaskId
+} from './collectorRetryTaskState';
 
 // 操作类型
 export type OperationType =
@@ -149,6 +153,7 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
   const autoAdvanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestGuardRef = useRef(createOperationProgressRequestGuard());
   const requestGenerationRef = useRef(0);
+  const collectorRetryTaskIdsRef = useRef<Map<string, string>>(new Map());
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const [tableData, setTableData] = useState<ControllerInstallProgressRow[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
@@ -805,6 +810,27 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
                 total: resolvedPage.total
               }
         );
+        const retryTaskIds = Array.from(
+          new Set(collectorRetryTaskIdsRef.current.values())
+        );
+        if (retryTaskIds.length > 0) {
+          const fetchRetryNodes =
+            operationType === 'installCollector'
+              ? getCollectorNodes
+              : getCollectorOperationNodes;
+          for (const retryTaskId of retryTaskIds) {
+            const retryResponse = await fetchRetryNodes({
+              taskId: retryTaskId
+            });
+            if (!requestGuardRef.current.shouldContinue(currentGeneration)) {
+              return;
+            }
+            data = mergeCollectorRetryRows(
+              data,
+              retryResponse?.items || []
+            );
+          }
+        }
       }
 
       if (!requestGuardRef.current.shouldContinue(currentGeneration)) {
@@ -876,8 +902,14 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
         }
       } else {
         // 组件操作：根据返回的 status 和 summary 判断
-        // 当 status 为 'finished' 时，停止轮询
-        if (taskStatus === 'finished') {
+        const hasActiveCollectorRows = newTableData.some(
+          (item) =>
+            !['error', 'success', 'installed', 'timeout'].includes(
+              item.status || ''
+            )
+        );
+        // 当旧批次已结束但仍有重试行在跑时，继续轮询新任务
+        if (taskStatus === 'finished' && !hasActiveCollectorRows) {
           clearTimer();
           // 只有当 total === success 时才自动进入下一步
           if (
@@ -1031,6 +1063,13 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
     try {
       setRetryingNodeIds((prev) => [...prev, String(nodeId)]);
 
+      const rememberCollectorRetryTask = (payload: unknown) => {
+        const retryTaskId = readCollectorRetryTaskId(payload);
+        if (retryTaskId) {
+          collectorRetryTaskIdsRef.current.set(String(nodeId), retryTaskId);
+        }
+      };
+
       if (operationType === 'installCollector') {
         // 安装组件重试
         if (!collectorPackageId) {
@@ -1040,10 +1079,11 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
           });
           return;
         }
-        await installCollector({
+        const retryPayload = await installCollector({
           collector_package: collectorPackageId,
           nodes: [String(nodeId)]
         });
+        rememberCollectorRetryTask(retryPayload);
       } else {
         // 启动/停止/重启组件重试
         if (!collectorId) {
@@ -1058,11 +1098,12 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
           stopCollector: 'stop',
           restartCollector: 'restart'
         };
-        await batchOperationCollector({
+        const retryPayload = await batchOperationCollector({
           node_ids: [String(nodeId)],
           collector_id: collectorId,
           operation: operationMap[operationType]
         });
+        rememberCollectorRetryTask(retryPayload);
       }
 
       notification.success({
