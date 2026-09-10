@@ -56,6 +56,24 @@ describe('SigninPage session configuration', () => {
     expect(getServerSession).toHaveBeenCalledWith(authOptions);
   });
 
+  it('keeps screen query when redirecting an already authenticated user', async () => {
+    const { buildThirdLoginCallbackUrl } = await import('@/utils/authRedirect');
+    vi.mocked(buildThirdLoginCallbackUrl).mockReturnValue('/ops-console/home');
+    getServerSession.mockResolvedValueOnce({
+      user: { id: 'u1', token: 'jwt-token' },
+    });
+
+    await SigninPage({
+      searchParams: Promise.resolve({
+        callbackUrl: '/ops-console/home',
+        error: '',
+        screen: 'true',
+      }),
+    });
+
+    expect(redirect).toHaveBeenCalledWith('/ops-console/home?screen=true');
+  });
+
   it('does not send authenticated users to an external token callback', async () => {
     vi.mocked(getLegacyThirdLoginCode).mockReturnValue('attacker-state');
     getServerSession.mockResolvedValueOnce({

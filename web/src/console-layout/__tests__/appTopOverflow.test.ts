@@ -14,4 +14,22 @@ describe('app-top chrome overflow', () => {
     expect(source).toMatch(/overflow-x-auto overflow-y-hidden/);
     expect(source).toMatch(/min-w-0 flex-col py-4 pr-4/);
   });
+
+  it('keeps screen mode scrollable and drops the desktop min-width floor', () => {
+    expect(source).toMatch(/isScreenModeEnabled/);
+    expect(source).toMatch(/shouldHideConsoleChrome/);
+    expect(source).toMatch(/syncScreenModePersistence/);
+    expect(source).toMatch(/!screenMode && shouldShowAppTopSideNav/);
+    expect(source).toMatch(/lockConsoleViewport \? 'h-screen overflow-hidden'/);
+    expect(source).not.toMatch(/hideConsoleChrome \? 'h-screen'/);
+    expect(source).not.toMatch(/isDashboardShareRoute \|\| hideConsoleTopNav \? 'h-screen overflow-hidden'/);
+    expect(source).toMatch(/!isAuthRoute && !isResponsiveAppRoute && !screenMode \? 'min-w-\[1280px\]'/);
+    expect(source).toMatch(/isAuthenticated && !isAuthRoute && !screenMode && <GlobalWebchat/);
+    expect(source).toMatch(/data-console-screen-workspace/);
+    expect(source).toMatch(/min-w-0 w-full flex-1 overflow-auto/);
+    expect(source).not.toMatch(/\['--custom-height' as string\]: '100vh'/);
+    expect(source).not.toMatch(/lockConsoleViewport \|\| screenMode \? 'h-screen'/);
+    expect(source).toMatch(/shouldRenderMenu/);
+    expect(source).toMatch(/screenMode \? \(/);
+  });
 });

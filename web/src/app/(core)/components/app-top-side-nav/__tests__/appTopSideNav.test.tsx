@@ -7,10 +7,12 @@ import AppTopSideNav from '../index';
 
 let currentPath = '/job/execution/quick-exec';
 let sideNavMode: 'expanded' | 'collapsed' = 'expanded';
+let search = '';
 const setSideNav = vi.fn();
 
 vi.mock('next/navigation', () => ({
   usePathname: () => currentPath,
+  useSearchParams: () => new URLSearchParams(search),
 }));
 
 vi.mock('@/utils/i18n', () => ({
@@ -63,6 +65,7 @@ afterEach(() => {
   cleanup();
   currentPath = '/job/execution/quick-exec';
   sideNavMode = 'expanded';
+  search = '';
   setSideNav.mockReset();
 });
 
@@ -116,6 +119,17 @@ describe('AppTopSideNav', () => {
       '/job/execution/quick-exec',
     );
     expect(screen.getByRole('link', { name: '首页' }).getAttribute('href')).toBe('/job/home');
+  });
+
+  it('forwards screen=true on first-layer links', () => {
+    search = 'screen=true';
+    render(<AppTopSideNav menus={menus} pathname="/job/execution/quick-exec" />);
+    expect(screen.getByRole('link', { name: '作业执行' }).getAttribute('href')).toBe(
+      '/job/execution/quick-exec?screen=true',
+    );
+    expect(screen.getByRole('link', { name: '首页' }).getAttribute('href')).toBe(
+      '/job/home?screen=true',
+    );
   });
 
   it('collapses from the footer toggle and persists through the console layout', () => {

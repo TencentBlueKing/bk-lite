@@ -16,6 +16,7 @@
 - **UI**：antd v5 + echarts + @antv/g6/x6（拓扑/图）。
 - **本轮功能面扩展**【已实现/已存在】：`alarm` 新增告警丰富、告警处理、执行记录三组设置页；`system-manager` 新增内网白名单页；`ops-analysis` 新增大屏、报表与网络状态拓扑组件入口；`monitor` 集成页新增采集探测任务与资产视图路由组装。
 - **运营分析分享壳层【已实现】**：`/ops-analysis/share/*` 隐藏平台顶栏与全局助手，左侧导航沿用 chrome exception；产品内 `/ops-analysis/view` 保持完整壳层。证据：`web/src/console-layout/resolve.ts`、`web/src/app/layout.tsx`、`web/src/app/(core)/components/global-webchat/visibility.ts`。
+- **控制台 iframe 屏显模式【本阶段已实现】**：查询参数 `screen=true`（`true`/`1`）隐藏顶栏、一级/二级壳层导航与全局 AI；运营分析 view 另藏目录侧栏且会话内透传 `screen`。高度对齐延期。非全站嵌入闭环。证据：`web/src/console-layout/{screenMode.ts,resolve.ts}`、`web/src/app/layout.tsx`、`docs/operations/console-iframe-screen-mode.md`。
 - **构建与资源准备契约**：生产构建经显式入口串行完成企业扩展路由、语言包与菜单汇总、公共资源复制后再启动 Next.js 构建；任一准备步骤失败即中止，不再由框架配置加载时隐式触发副作用。生产类型检查使用面向交付代码的独立配置，排除脚本、端到端用例、故事与单元测试等非交付范围。
 
 > 证据来源：web/src/context/auth.tsx:78-108,339-393,496-567；web/src/context/__tests__/authColdStart.test.tsx:132-193；web/src/app/routeScope.ts:1-6；web/src/app/(core)/api/locales/route.ts:91-120；web/src/context/locale.tsx:45-64；web/src/components/time-selector/index.tsx:20-35,72-100,145-148；web/src/stories/time-selector.stories.tsx:55-72　|　同步基线：b98b782a7　|　【已实现】
@@ -61,6 +62,14 @@
 - `frequenceValue` / `onFrequenceChange` 为已被多处调用的历史拼写兼容接口；其语义已稳定，但改名会破坏调用方，作为兼容性风险记录，不建议直接改名【风险】。
 
 > 证据来源：web/src/context/auth.tsx:90,107-108,462-524,537-567；web/src/context/__tests__/authColdStart.test.tsx:132-193；web/src/components/time-selector/index.tsx:20-35,72-100,145-148；web/src/app/ops-analysis/(pages)/view/dashBoard/components/dashboardToolbar.tsx:72-76；web/src/app/ops-analysis/(pages)/view/screen/components/screenToolbar.tsx:64-68；web/src/app/ops-analysis/(pages)/view/topology/components/toolbar.tsx:166-170；web/src/app/ops-analysis/(pages)/view/networkTopology/components/networkToolbar.tsx:134-138　|　同步基线：b98b782a7　|　【已实现/待确认】
+
+## 2026-09-09 控制台 iframe 屏显模式
+
+- `[frontend#20260909-001]` Control Console 支持 `?screen=true` 屏显：隐藏平台壳层导航与全局 AI，保留业务页；URL 为权威来源，登录回跳可短时恢复参数。证据：`web/src/console-layout/screenMode.ts`、`web/src/app/layout.tsx`、`docs/operations/console-iframe-screen-mode.md`。
+
+## 2026-09-10 屏显运营分析牵头；高度延期
+
+- `[frontend#20260910-001]` 运营分析屏显藏目录并收窄透传；文档标明本阶段仅 OA 会话内透传。屏显高度对齐延期。证据：`web/src/app/layout.tsx`、`docs/operations/console-iframe-screen-mode.md`。
 
 ## 2026-07-01 Code-ARD 校准
 - `[frontend#20260701-030]` 补录 webchat monorepo、Core/UI/Demo、会话持久化、SSE、自定义 header fetch、状态机、AG-UI 事件桥接、UMD 构建和 Next demo 入口。
