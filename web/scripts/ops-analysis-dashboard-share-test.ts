@@ -142,7 +142,24 @@ assert.match(tokenPage, /share\/continue\?state=/);
 assert.doesNotMatch(tokenPage, /callbackUrl: window\.location\.href/);
 assert.match(continuePage, /exchangeShare\(\{ state \}\)/);
 assert.match(sessionPage, /ShareModeProvider/);
+assert.match(sessionPage, /ShareOrganizationProvider/);
 assert.match(sessionPage, /ShareDataSourceProvider/);
+const shareDto = fs.readFileSync(
+  'src/app/ops-analysis/types/dashboardShare.ts',
+  'utf8',
+);
+const filterBar = fs.readFileSync(
+  'src/app/ops-analysis/components/unifiedFilter/unifiedFilterBar.tsx',
+  'utf8',
+);
+assert.match(shareDto, /space_id\?: number/);
+assert.match(shareDto, /group_tree\?: Group\[\]/);
+assert.match(filterBar, /treeData=\{organizationTreeData\}/);
+assert.match(filterBar, /convertGroupTreeToTreeSelectData/);
+assert.match(dashboard, /resolveCanvasOrganizationId/);
+assert.match(screenPage, /organizationId: shareOrganizationSeed/);
+assert.match(reportPage, /fillMissingOrganizationFilterValues/);
+assert.match(topologyPage, /organizationId: shareOrganizationSeed/);
 assert.match(
   sessionPage,
   /DS_TYPES = new Set\(\[['"]dashboard['"], ['"]topology['"], ['"]screen['"], ['"]report['"]\]\)/,

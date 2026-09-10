@@ -84,6 +84,7 @@
 - 网络状态拓扑布局【已实现】：组件提供层级、力导向、环形三种布局；编辑态的节点位置和连线形态按布局分别持久化及重置。几何写回只替换布局字段，保留流量阈值与连线展示。查看与分享态只读取已保存布局，不回写配置（证据：`web/src/app/ops-analysis/utils/networkStatusTopologyLayout.ts`、`web/src/app/ops-analysis/components/widgets/networkStatusTopology/index.tsx`）。
 - `report`：前端提供独立的纵向报表构建器；非内置且具备 `EditChart` 权限的报表可在草稿态添加、配置、排序和删除组件，当前 `report` surface 只开放 `table` 与 `eventTable`。`section` 仅保存稳定 `id` 与单个组件 `valueConfig`；画布保存统一筛选定义，组件通过 `filterBindings` 选择联动，运行时按数据源的 `filterType=filter` 及 `key + type` 严格匹配注入查询参数，不默认展示或接管时间参数。保存使用保留六位微秒的 `updated_at` 条件令牌防止旧草稿覆盖新版本，后端创建、更新与 YAML 导入统一校验版本化 `view_sets`。查看态工具栏对齐仪表盘：周期刷新（`refresh_interval`）、全屏 overlay、客户端 A4 横向分页 PDF、画布分享与邮件订阅；订阅 Chromium 使用仪表盘视口与分页，不套用大屏单页等比缩小（证据：`web/src/app/ops-analysis/(pages)/view/report/`、`web/src/app/ops-analysis/utils/{chartTypeSurface,reportBuilder,widgetDataTransform}.ts`、`server/apps/operation_analysis/services/report_view_sets.py`、`server/apps/operation_analysis/serializers/directory_serializers.py`）。
 - 画布分享目的地【已实现】：`/ops-analysis/share/*` 隐藏平台顶栏（`shouldHideConsoleTopNav`）、左侧 App 导航（既有 chrome exception）与全局助手（`GLOBAL_WEBCHAT_EXCLUDED_PATH_PREFIXES`），`main` 无内边距；不进入订阅 Render 专用 layout，仍保留 User/Menus/Permissions providers。产品内 `/ops-analysis/view` 保持完整壳层。证据：`web/src/console-layout/resolve.ts`、`web/src/app/layout.tsx`、`web/src/app/(core)/components/global-webchat/visibility.ts`。
+- 分享态组织筛条【已实现】：session GET **仅当画布存在 enabled=true 的组织控件**时附带创建分享时的 `space_id` 与分享者 `group_tree`（同源 `build_user_authorization_context`，字段 allowlist，不下发 `permission`/`roles`）。关掉后定义仍在也不吐树。仪表盘 / 大屏 / 报表 / 拓扑筛条使用该树并缺省选中 `space_id`，搜索/重置仍 seed；无组织筛的画布（含架构图、网络拓扑）不吐树。证据：`server/apps/operation_analysis/views/share_view.py`、`web/src/app/ops-analysis/context/shareOrganization.tsx`、`web/src/app/ops-analysis/components/unifiedFilter/unifiedFilterBar.tsx`。
 - 网络拓扑分享入口【已实现】：查看态工具栏复用 `useCanvasShareAction('networkTopology')`；分享会话只返回脱敏配置，运行态经 session proxy 取数，WeOps token / `base_url` 不进分享响应。证据：`web/src/app/ops-analysis/(pages)/view/networkTopology/components/networkToolbar.tsx`、`server/apps/operation_analysis/views/share_view.py`、`server/apps/operation_analysis/tests/test_share_network_topology.py`。
 
 ## 4. 依赖与通信【已实现/已存在】
@@ -175,11 +176,15 @@
 
 ## 2026-09-07 WeOpsX 平台使用仪表盘
 
-- `[operation_analysis#20260907-002]` 内置工作台盘「WeOpsX 平台使用」经 `init_builtin_canvases` 与 `support-files/weopsx_platform_usage_dashboard.yaml` 落地。画布统一筛选含组织（`inputMode: organization`，默认当前工作组织、不可清空、可在盘内改选有权组织、顶栏切换时跟随）与近 7 天时间窗；全部出数组件绑定组织，库存不绑时间。取数以画布选中组织覆盖 `user_info.team`（须落在用户组织树或当前 cookie 组织，否则 team 置空零值；`common/get_nats_source_data.py`），各模块 NATS 按组织上下文与既有权限过滤，禁止超管旁路。契约见 `specs/changes/weopsx-platform-usage-dashboard/spec.md`。
+- `[operation_analysis#20260907-002]` 内置工作台盘「WeOpsX 平台使用」经 `init_builtin_canvases` 与 `support-files/weopsx_platform_usage_dashboard.yaml` 落地。画布统一筛选含组织（`inputConfig.control: organization`，默认当前工作组织、不可清空、可在盘内改选有权组织、顶栏切换时跟随）与近 7 天时间窗；全部出数组件绑定组织，库存不绑时间。取数以画布选中组织覆盖 `user_info.team`（须落在用户组织树或当前 cookie 组织，否则 team 置空零值；`common/get_nats_source_data.py`），各模块 NATS 按组织上下文与既有权限过滤，禁止超管旁路。组织控件正规化见 `specs/changes/ops-analysis-organization-input-control/spec.md`。契约见 `specs/changes/weopsx-platform-usage-dashboard/spec.md`。
 
 ## 2026-09-08 画布跨目录复制
 
 - `[operation_analysis#20260908-001]` 六类画布支持复制到另一 Directory：侧栏「复制」弹窗选目标目录与 `groups`（须 ⊆ 目录链）；服务端生成语言化后缀名称；副本独立、不继承内置身份；复制路径校验 `current_team` 属于用户 `group_list`。证据：`services/canvas/copy_service.py`、`views/view.py`、`views/network_topology_view.py`、`web/src/app/ops-analysis/components/{sidebar.tsx,copyCanvasModal.tsx}`、`tests/test_canvas_directory_copy.py`。
+
+## 2026-09-09 字符串参数组织控件
+
+- `[operation_analysis#20260909-002]` 字符串参数 `inputConfig.control` 增加 `organization`（不新增 type）。画布筛条/组件参数区可选组织树；新保存只写 `inputConfig`，旧 `inputMode: organization` 只读兼容。取数以运行时 `organization_param` 识别并覆盖 `user_info.team`，无标记回落数据源定义；禁止仅靠参数名 `organization`。内置 WeOpsX / source_api 样板迁成 `inputConfig`。契约见 `specs/changes/ops-analysis-organization-input-control/spec.md`。
 
 ## 2026-09-09 分享页去掉平台壳层
 

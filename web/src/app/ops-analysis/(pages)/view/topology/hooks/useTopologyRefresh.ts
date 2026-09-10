@@ -13,6 +13,7 @@ import {
   buildFiltersFromNodes,
   syncFilterValuesWithDefinitions,
 } from '../utils/namespaceUtils';
+import { fillMissingOrganizationFilterValues } from '@/app/ops-analysis/utils/unifiedFilterState';
 
 type RefreshScope =
   | 'filter-search'
@@ -75,6 +76,7 @@ interface UseTopologyRefreshControllerParams {
     options?: { silent?: boolean },
   ) => void;
   updateDefinitions: (definitions: UnifiedFilterDefinition[]) => void;
+  organizationId?: string | number | null;
 }
 
 export const useTopologyRefresh = ({
@@ -97,6 +99,7 @@ export const useTopologyRefresh = ({
   refreshAllSingleValueNodes,
   refreshAllChartNodes,
   updateDefinitions,
+  organizationId,
 }: UseTopologyRefreshControllerParams) => {
   const refreshTopologyNodes = useCallback(
     (
@@ -220,12 +223,17 @@ export const useTopologyRefresh = ({
   const handleFilterSearch = useCallback(
     (values: Record<string, FilterValue>) => {
       const namespaceChanged = namespaceDraftId !== appliedNamespaceId;
-      setFilterValues(values);
-      setAppliedFilterValues(values);
+      const nextValues = fillMissingOrganizationFilterValues(
+        definitions,
+        values,
+        organizationId,
+      );
+      setFilterValues(nextValues);
+      setAppliedFilterValues(nextValues);
       setAppliedNamespaceId(namespaceDraftId);
       refreshTopologyNodes(
         namespaceChanged ? 'combined-search' : 'filter-search',
-        values,
+        nextValues,
         definitions,
         namespaceDraftId,
       );
@@ -234,6 +242,7 @@ export const useTopologyRefresh = ({
       appliedNamespaceId,
       definitions,
       namespaceDraftId,
+      organizationId,
       refreshTopologyNodes,
       setAppliedFilterValues,
       setAppliedNamespaceId,

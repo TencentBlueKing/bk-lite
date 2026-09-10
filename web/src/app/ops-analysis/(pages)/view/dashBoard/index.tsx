@@ -94,7 +94,9 @@ import {
   isOrganizationFilterDefinition,
   normalizeStoredFilterState,
   buildFilterConfigConfirmSnapshot,
+  resolveCanvasOrganizationId,
 } from '@/app/ops-analysis/utils/unifiedFilterState';
+import { useShareOrganization } from '@/app/ops-analysis/context/shareOrganization';
 import { useUserInfoContext } from '@/context/userInfo';
 import { copyDashboardWidget } from '@/app/ops-analysis/utils/widgetCopy';
 import {
@@ -129,9 +131,13 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     const { t } = useTranslation();
     const { data: session } = useSession();
     const { selectedGroup } = useUserInfoContext();
-    const selectedOrganizationId = (!shareMode && !renderMode)
-      ? selectedGroup?.id
-      : undefined;
+    const shareOrganization = useShareOrganization();
+    const selectedOrganizationId = resolveCanvasOrganizationId({
+      shareMode,
+      renderMode,
+      shareSpaceId: shareOrganization?.spaceId,
+      selectedGroupId: selectedGroup?.id,
+    });
     const selectedOrganizationIdRef = useRef(selectedOrganizationId);
     selectedOrganizationIdRef.current = selectedOrganizationId;
     const previousOrganizationIdRef = useRef(selectedOrganizationId);

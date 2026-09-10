@@ -46,9 +46,10 @@ export interface ParamItem {
   filterType?: string;
   desc?: string;
   required?: boolean;
+  inputMode?: string;
   options?: Array<{ label: string; value: string | number }>;
   inputConfig?: {
-    control?: 'input' | 'select' | 'radio';
+    control?: 'input' | 'select' | 'radio' | 'organization';
     multiple?: boolean;
   };
 }
@@ -107,7 +108,7 @@ export interface UnifiedFilterDefinition {
   inputMode?: 'input' | 'select' | 'radio' | 'organization';
   options?: FilterOption[];
   inputConfig?: {
-    control?: 'input' | 'select' | 'radio';
+    control?: 'input' | 'select' | 'radio' | 'organization';
     multiple?: boolean;
   };
 }
