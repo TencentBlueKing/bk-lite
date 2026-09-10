@@ -108,9 +108,21 @@ const useNodeApi = () => {
   };
 
   // 获取采集器安装节点信息（返回完整响应，包含status和summary）
-  const getCollectorNodes = async (params: { taskId: string | number }) => {
+  const getCollectorNodes = async (params: {
+    taskId: string | number;
+    page?: number;
+    page_size?: number;
+  }) => {
+    const body: { page?: number; page_size?: number } = {};
+    if (params.page !== undefined) {
+      body.page = params.page;
+    }
+    if (params.page_size !== undefined) {
+      body.page_size = params.page_size;
+    }
     const res = await post(
-      `/node_mgmt/api/installer/collector/install/${params.taskId}/nodes/`
+      `/node_mgmt/api/installer/collector/install/${params.taskId}/nodes/`,
+      body
     );
     // 返回完整响应，让调用方处理 status 和 summary
     return (
@@ -125,9 +137,19 @@ const useNodeApi = () => {
   // 获取采集器操作节点信息（启动、停止、重启，返回完整响应，包含status和summary）
   const getCollectorOperationNodes = async (params: {
     taskId: string | number;
+    page?: number;
+    page_size?: number;
   }) => {
+    const body: { page?: number; page_size?: number } = {};
+    if (params.page !== undefined) {
+      body.page = params.page;
+    }
+    if (params.page_size !== undefined) {
+      body.page_size = params.page_size;
+    }
     const res = await post(
-      `/node_mgmt/api/node/collector/action/${params.taskId}/nodes/`
+      `/node_mgmt/api/node/collector/action/${params.taskId}/nodes/`,
+      body
     );
     // 返回完整响应，让调用方处理 status 和 summary
     return (

@@ -226,3 +226,38 @@ def test_delete_material_media_filters_prefix(monkeypatch):
     result = parsed_media_service.delete_material_media(7, 9)
     assert result["deleted"] == 1
     assert deleted == [f"wiki/media/7/9/{long_sha}.png"]
+
+
+def test_page_media_locator_is_safe_and_signed(monkeypatch):
+    _patch_proxy_secret(monkeypatch)
+    sha = "b" * 64
+    locator = f"wiki/media/7/pages/{sha}.png"
+    assert parsed_media_service._is_safe_media_locator(locator, knowledge_base_id=7)
+    assert not parsed_media_service._is_safe_media_locator(locator, knowledge_base_id=8)
+    assert not parsed_media_service._is_safe_media_locator(locator, material_id=9)
+    urls = parsed_media_service.sign_media_locators([locator], knowledge_base_id=7)
+    assert locator in urls
+    display = parsed_media_service.rewrite_media_urls_for_display(f"![x]({locator})")
+    assert "/api/proxy/opspilot/wiki_mgmt/media/" in display
+
+
+def test_save_page_media_bytes_is_idempotent(monkeypatch):
+    saved = {}
+
+    class Storage:
+        def exists(self, path):
+            return path in saved
+
+        def save(self, path, content):
+            saved[path] = content.read()
+            return path
+
+    monkeypatch.setattr(parsed_media_service, "_MEDIA_STORAGE", Storage())
+    png = b"\x89PNG\r\n\x1a\n" + b"x"
+    first, created = parsed_media_service.save_page_media_bytes(3, png, "image/png")
+    second, created_again = parsed_media_service.save_page_media_bytes(3, png, "image/png")
+    assert created is True
+    assert created_again is False
+    assert first == second
+    assert first.startswith("wiki/media/3/pages/")
+    assert saved[first] == png

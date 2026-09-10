@@ -9,8 +9,7 @@ import {
   FlexiblePanelSection,
   KpiSection,
   useFilteredChartPanels,
-  useFilteredSummaryCards
-} from '../common/dashboard-components';
+  useFilteredSummaryCards, DashboardSectionLabel } from '../common/dashboard-components';
 import { HorizontalBarPanel, TitleWithGuide, TrendChartPanel } from '../../shared/widgets';
 import type { BarItem } from '../../shared/widgets';
 import { buildSearchParams, runWithConcurrency, topLabelBars } from '../../shared/utils';
@@ -95,22 +94,22 @@ export default function OracleDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} styles={styles} />
 
-          <div className={styles.sectionLabel}>活性与事务</div>
+          <DashboardSectionLabel styles={styles}>活性与事务</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {renderChart(activityChart, styles.span6)}
             {renderChart(txnChart, styles.span6)}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>等待类与内存</div>
+          <DashboardSectionLabel styles={styles}>等待类与内存</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {renderChart(waitChart, styles.span6)}
             {renderChart(memoryChart, styles.span6)}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>表空间与资源排行</div>
+          <DashboardSectionLabel styles={styles}>表空间与资源排行</DashboardSectionLabel>
           <section className={styles.dashboardSection}>
             <div className={styles.sectionGrid}>
               {ORACLE_TOP_QUERIES.map((q) => (

@@ -49,11 +49,11 @@ class QCloudNodeParams(BaseNodeParams):
 
         """
         raw_credential = cls.primary_credential(raw_credential)
-        access_key = raw_credential.get("access_key")
-        access_secret = raw_credential.get("access_secret")
+        access_key = raw_credential.get("access_key") or raw_credential.get("accessKey") or raw_credential.get("secret_id") or ""
+        access_secret = raw_credential.get("access_secret") or raw_credential.get("accessSecret") or raw_credential.get("secret_key")
         return {
-            "secret_id": access_key or raw_credential.get("accessKey", ""),
-            "secret_key": access_secret or raw_credential.get("accessSecret"),
+            "secret_id": access_key,
+            "secret_key": access_secret,
         }
 
     @property

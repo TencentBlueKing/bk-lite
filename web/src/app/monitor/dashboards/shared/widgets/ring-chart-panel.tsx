@@ -5,6 +5,7 @@ import ChartEmptyState from '@/components/chart-empty-state';
 import { GuideItem } from '../types';
 import { TitleWithGuide, GuideTooltipStyles } from './guide-tooltip';
 import { useECharts } from './useECharts';
+import { tDashboardText, useDashboardText } from '../utils/content-i18n';
 
 export interface RingChartPanelStyles extends GuideTooltipStyles {
   panel?: string;
@@ -84,6 +85,8 @@ export const RingChartPanel = ({
   emptyDescription = '暂无数据',
   styles
 }: RingChartPanelProps) => {
+  const { t, dt } = useDashboardText();
+  const localizedTitle = typeof title === 'string' ? tDashboardText(t, title) : title;
   const total = data.reduce((sum, item) => sum + item.value, 0);
 
   const option = useMemo(() => {
@@ -123,10 +126,10 @@ export const RingChartPanel = ({
             {guide ? (
               <TitleWithGuide title={title} items={guide} className={styles.panelTitleWithGuide} styles={styles} />
             ) : (
-              title
+              localizedTitle
             )}
           </h3>
-          {subtitle ? <div className={styles.panelSubTitle}>{subtitle}</div> : null}
+          {subtitle ? <div className={styles.panelSubTitle}>{dt(subtitle)}</div> : null}
         </div>
       </div>
       <div className={ringCardClassName ? `${styles.ringCard} ${ringCardClassName}` : styles.ringCard}>
@@ -137,7 +140,10 @@ export const RingChartPanel = ({
               className={styles.ringChartCanvas}
               style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
             />
-            <ChartEmptyState description={emptyDescription} compact />
+            <ChartEmptyState
+              description={typeof emptyDescription === 'string' ? dt(emptyDescription) : emptyDescription}
+              compact
+            />
           </div>
         ) : (
           <>
@@ -149,7 +155,7 @@ export const RingChartPanel = ({
               />
               <div className={`${styles.ringCenter} ${styles.ringCenterOverlay}`}>
                 <div className={styles.ringValue}>{centerValue}</div>
-                <div className={styles.ringCaption}>{centerCaption}</div>
+                <div className={styles.ringCaption}>{dt(centerCaption)}</div>
               </div>
               {chartExtra}
             </div>
@@ -165,7 +171,7 @@ export const RingChartPanel = ({
                     <span className={styles.metricKey}>
                       <span className={styles.metricLabelGroup}>
                         <span className={styles.metricDot} style={{ background: item.color }} />
-                        <span className={styles.metricName}>{item.name}</span>
+                        <span className={styles.metricName}>{dt(item.name)}</span>
                       </span>
                     </span>
                     <span className={styles.metricValueGroup}>

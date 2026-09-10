@@ -13,6 +13,14 @@ import type { UploadProps } from 'antd';
 import { CloudUploadOutlined, DownloadOutlined } from '@ant-design/icons';
 import { useUserInfoContext } from '@/context/userInfo';
 import { convertGroupTreeToTreeSelectData } from '@/utils/index';
+import { excelCellToText } from '@/utils/excelCellText';
+import {
+  EXCEL_TEMPLATE_DATA_END_ROW,
+  addExcelOptionSheet,
+  applyExcelListValidation,
+  applyExcelRangeValidation,
+  excelColumnLetter,
+} from '@/utils/excelListDataValidation';
 import ExcelJS from 'exceljs';
 
 interface ExcelImportModalProps {
@@ -144,30 +152,35 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
           const buffer = e.target?.result as ArrayBuffer;
           const workbook = new ExcelJS.Workbook();
           await workbook.xlsx.load(buffer);
-          const firstSheet = workbook.worksheets[0];
-          if (!firstSheet || firstSheet.rowCount < 2) {
+          const dataSheet =
+            workbook.getWorksheet(t('monitor.integrations.dataTemplate')) ||
+            workbook.worksheets[0];
+          const headerRow = dataSheet?.getRow(1);
+          const hasHeaderCells = Boolean(headerRow && headerRow.cellCount > 0);
+          // Header-only templates are valid empty imports; reject only missing sheet/header.
+          if (!dataSheet || dataSheet.rowCount < 1 || !hasHeaderCells) {
             message.error(t('monitor.integrations.emptyExcelFile'));
             onError(new Error('Empty file'));
             return;
           }
-          // Parse headers and data
+          // Parse headers and data. Hyperlink/rich-text cells must use excelCellToText.
           const headers: string[] = [];
-          firstSheet.getRow(1).eachCell((cell) => {
-            headers.push(cell.value?.toString() || '');
+          dataSheet.getRow(1).eachCell((cell) => {
+            headers.push(excelCellToText(cell.value));
           });
           const rows: any[][] = [];
-          for (let i = 2; i <= firstSheet.rowCount; i++) {
+          for (let i = 2; i <= dataSheet.rowCount; i++) {
             const row: any[] = [];
-            firstSheet
+            dataSheet
               .getRow(i)
               .eachCell({ includeEmpty: true }, (cell, colNumber) => {
-                row[colNumber - 1] = cell.value;
+                row[colNumber - 1] = excelCellToText(cell.value);
               });
             rows.push(row);
           }
           // Convert data to object array
           const parsedRows = rows
-            .filter((row) => row.some((cell) => cell !== null && cell !== ''))
+            .filter((row) => row.some((cell) => excelCellToText(cell)))
             .map((row) => {
               const rowData: any = {};
               headers.forEach((header, index) => {
@@ -223,9 +236,10 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
       return { isValid: true };
     };
 
-    // Transform cell value based on column type
+    // Transform cell value based on column type. Never toString() hyperlink/rich-text objects.
     const transformCellValue = (value: any, column: ColumnConfig) => {
-      if (value === null || value === undefined || value === '') {
+      const text = excelCellToText(value);
+      if (!text) {
         return column.default_value;
       }
       const isMultiple = column.widget_props?.mode === 'multiple';
@@ -234,24 +248,18 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
         case 'select':
           if (column.name === 'node_ids') {
             // Node selection: single select
-            const nodeName = value.toString().trim();
-            const node = nodeList.find((n) => n.label === nodeName);
+            const node = nodeList.find((n) => n.label === text);
             return node ? node.value : null;
           }
           // Other select types based on mode
           if (isMultiple) {
-            const valueStr = value.toString();
-            const values = valueStr.split(',').map((v: string) => v.trim());
-            return values;
+            return text.split(',').map((v: string) => v.trim());
           }
-          return value;
+          return text;
         case 'group_select':
           // Group selection: supports multiple, format "parent/child, parent/child2"
           if (column.name === 'group_ids') {
-            const groupNames = value
-              .toString()
-              .split(',')
-              .map((g: string) => g.trim());
+            const groupNames = text.split(',').map((g: string) => g.trim());
             // Match IDs from groupList based on full path
             const groupIds = groupList
               .filter((group) => {
@@ -261,11 +269,11 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
               .map((group) => group.value);
             return groupIds.length > 0 ? groupIds : [];
           }
-          return value;
+          return text;
         case 'inputNumber':
-          return Number(value);
+          return Number(text);
         default:
-          return value;
+          return text;
       }
     };
 
@@ -285,6 +293,8 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
           : col.label;
       });
       mainSheet.addRow(headers);
+      // Placeholder data row so Excel opens with a blank line and rowCount >= 2
+      mainSheet.addRow(columns.map(() => ''));
       // Set header styles
       mainSheet.getRow(1).font = { bold: true };
       mainSheet.getRow(1).fill = {
@@ -326,116 +336,79 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
           optionsList = col.widget_props.options.map((opt: any) => opt.label);
           sheetName = `${col.label}${t('monitor.integrations.optionsSuffix')}`;
         }
-        // If there's an options list, create options sheet and data validation
+        // Node/org options live on independent sheets; main sheet uses list DV.
         if (optionsList.length > 0 && sheetName) {
-          // Ensure sheet name is unique and conforms to Excel specs (max 31 chars)
-          let finalSheetName = sheetName.substring(0, 31);
-          let counter = 1;
-          while (workbook.getWorksheet(finalSheetName)) {
-            finalSheetName = `${sheetName.substring(0, 28)}_${counter}`;
-            counter++;
-          }
-          // Create options sheet
-          const optionsSheet = workbook.addWorksheet(finalSheetName);
-          optionsList.forEach((opt) => {
-            optionsSheet.addRow([opt]);
-          });
-          optionsSheet.getColumn(1).width = 30;
-          // Record column info
+          const finalSheetName = addExcelOptionSheet(
+            workbook,
+            sheetName,
+            optionsList
+          );
           columnValidations.set(index, {
             sheetName: finalSheetName,
             options: optionsList
           });
         }
       });
-      // Add data validation for main sheet columns
+      // One range validation per column — no per-cell custom DV on rows 2–1001
       columns.forEach((column, colIndex) => {
-        const columnLetter = String.fromCharCode(65 + colIndex);
+        const columnLetter = excelColumnLetter(colIndex);
         const validation = columnValidations.get(colIndex);
-        // Add data validation for rows 2 to 1001
-        for (let row = 2; row <= 1001; row++) {
-          const cell = mainSheet.getCell(`${columnLetter}${row}`);
-          // Required validation (highest priority, text length check)
-          if (column.required && !validation && column.type !== 'inputNumber') {
-            cell.dataValidation = {
-              type: 'textLength',
-              operator: 'greaterThan',
-              allowBlank: false,
-              formulae: [0],
-              showErrorMessage: true,
+        const range = `${columnLetter}2:${columnLetter}${EXCEL_TEMPLATE_DATA_END_ROW}`;
+        if (validation) {
+          const isMultiple =
+            column.widget_props?.mode === 'multiple' ||
+            column.type === 'group_select';
+          applyExcelListValidation(
+            mainSheet,
+            colIndex,
+            validation.sheetName,
+            validation.options.length,
+            {
+              allowBlank: !column.required,
+              showErrorMessage: !isMultiple,
               errorTitle: t('monitor.integrations.inputError'),
-              error: t('common.required'),
+              error: t('monitor.integrations.selectFromDropdown'),
               promptTitle: column.label,
               showInputMessage: true
-            };
-            continue;
-          }
-          // Dropdown list validation (single/multiple select)
-          if (validation) {
-            const isMultiple =
-              column.widget_props?.mode === 'multiple' ||
-              column.type === 'group_select';
-            if (!isMultiple) {
-              // Single select: use standard dropdown validation
-              cell.dataValidation = {
-                type: 'list',
-                allowBlank: !column.required,
-                formulae: [
-                  `'${validation.sheetName}'!$A$1:$A$${validation.options.length}`
-                ],
-                showErrorMessage: true,
-                errorTitle: t('monitor.integrations.inputError'),
-                error: t('monitor.integrations.selectFromDropdown'),
-                promptTitle: column.label,
-                showInputMessage: true
-              };
-            } else {
-              // Multiple select: use custom formula validation for comma-separated values
-              const optionsList = validation.options
-                .map((opt) => `"${opt}"`)
-                .join(',');
-              const formula = `OR(LEN(${columnLetter}${row})=0,AND(LEN(${columnLetter}${row})>0,SUMPRODUCT(--ISNUMBER(MATCH(TRIM(MID(SUBSTITUTE(${columnLetter}${row},",",REPT(" ",100)),ROW(INDIRECT("1:"&LEN(${columnLetter}${row})-LEN(SUBSTITUTE(${columnLetter}${row},",",""))+1))*100-99,100)),{${optionsList}},0)))=LEN(${columnLetter}${row})-LEN(SUBSTITUTE(${columnLetter}${row},",",""))+1))`;
-              cell.dataValidation = {
-                type: 'custom',
-                allowBlank: !column.required,
-                formulae: [formula],
-                showErrorMessage: true,
-                errorTitle: t('monitor.integrations.inputError'),
-                error: t(
-                  'monitor.integrations.multipleValidationError',
-                  '',
-                  { options: validation.options.join(', ') }
-                ),
-                promptTitle: column.label,
-                showInputMessage: true
-              };
             }
-            continue;
-          }
-          // Number type validation
-          if (column.type === 'inputNumber') {
-            const min = column.widget_props?.min ?? 0;
-            const max = column.widget_props?.max ?? 999999999;
-            cell.dataValidation = {
-              type: 'whole',
-              operator: 'between',
-              allowBlank: !column.required,
-              formulae: [min, max],
-              showErrorMessage: true,
-              errorTitle: t('monitor.integrations.inputError'),
-              error: t('monitor.integrations.numberRangeError', '', {
-                min,
-                max
-              }),
-              promptTitle: column.label,
-              showInputMessage: true,
-              prompt: t('monitor.integrations.numberRangeError', '', {
-                min,
-                max
-              })
-            };
-            continue;
-          }
+          );
+          return;
+        }
+        if (column.required && column.type !== 'inputNumber') {
+          applyExcelRangeValidation(mainSheet, range, {
+            type: 'textLength',
+            operator: 'greaterThan',
+            allowBlank: false,
+            formulae: [0],
+            showErrorMessage: true,
+            errorTitle: t('monitor.integrations.inputError'),
+            error: t('common.required'),
+            promptTitle: column.label,
+            showInputMessage: true
+          });
+          return;
+        }
+        if (column.type === 'inputNumber') {
+          const min = column.widget_props?.min ?? 0;
+          const max = column.widget_props?.max ?? 999999999;
+          applyExcelRangeValidation(mainSheet, range, {
+            type: 'whole',
+            operator: 'between',
+            allowBlank: !column.required,
+            formulae: [min, max],
+            showErrorMessage: true,
+            errorTitle: t('monitor.integrations.inputError'),
+            error: t('monitor.integrations.numberRangeError', '', {
+              min,
+              max
+            }),
+            promptTitle: column.label,
+            showInputMessage: true,
+            prompt: t('monitor.integrations.numberRangeError', '', {
+              min,
+              max
+            })
+          });
         }
       });
       // Generate file and download

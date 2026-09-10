@@ -13,16 +13,16 @@ from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.models import LLMModel
 
 
-def _directory(key, name, page_type, description):
+def _directory(key, name, page_type, description, parent_key=None, *, default=True):
     return {
         "key": key,
         "name": name,
         "description": description,
-        "parent_key": None,
+        "parent_key": parent_key,
         "order": 10,
         "rules": {
             "allowed_page_types": [page_type],
-            "default_for_page_types": [page_type],
+            "default_for_page_types": [page_type] if default else [],
         },
     }
 

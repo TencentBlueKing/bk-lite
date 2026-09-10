@@ -123,6 +123,7 @@ class MonitorPolicy(TimeInfo, MaintainerInfo):
     notice_type = models.CharField(max_length=50, default="", verbose_name="通知方式")
     notice_type_ids = models.JSONField(default=list, verbose_name="通知方式ID列表")
     notice_users = models.JSONField(default=list, verbose_name="通知人")
+    handlers = models.JSONField(default=list, verbose_name="处理人")
 
     # 是否启动策略
     enable = models.BooleanField(default=True, verbose_name="是否启用")
@@ -148,6 +149,8 @@ class MonitorEvent(models.Model):
     class Action(models.TextChoices):
         TRIGGERED = "triggered", "触发"
         ESCALATED = "escalated", "级别升级"
+        CLAIMED = "claimed", "认领"
+        ASSIGNED = "assigned", "分派"
         RECOVERED = "recovered", "恢复"
         CLOSED = "closed", "人工关闭"
 
@@ -253,12 +256,14 @@ class MonitorAlert(TimeInfo):
     operation_logs = models.JSONField(default=list, verbose_name="操作记录")
     notice_type_ids = models.JSONField(default=list, verbose_name="通知方式ID列表")
     notice_users = models.JSONField(default=list, verbose_name="通知人")
+    handlers = models.JSONField(default=list, verbose_name="处理人")
     notice_logs = models.JSONField(default=list, verbose_name="通知记录")
     alert_center_notified = models.BooleanField(default=True, verbose_name="告警中心已同步")
     alert_center_retry_count = models.IntegerField(default=0, verbose_name="告警中心通知重试次数")
     # Receiver-first rollout 中保持 False，直到 outbox 明确完成渠道解析与意图落库。
     # 这样 producer 关闭期和进程在生命周期提交后退出的窗口都会由有界对账收敛。
     alert_center_delivery_backfilled = models.BooleanField(default=False, verbose_name="告警中心投递意图已对账")
+    organizations = models.JSONField(default=list, verbose_name="告警生成时所属组织")
 
     class Meta:
         verbose_name = "监控告警"

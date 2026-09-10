@@ -6,8 +6,7 @@ import {
   DashboardShell,
   FlexiblePanelSection,
   KpiSection,
-  useFilteredChartPanels
-} from '../common/dashboard-components';
+  useFilteredChartPanels, DashboardSectionLabel } from '../common/dashboard-components';
 import { TrendChartPanel } from '../../shared/widgets';
 import { PROCESS_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
@@ -26,10 +25,10 @@ export default function ProcessDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection dashboard={dashboard} summaryCards={dashboard.summaryCards} styles={styles} />
 
-          <div className={styles.sectionLabel}>资源趋势</div>
+          <DashboardSectionLabel styles={styles}>资源趋势</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {resourceCharts.map((chart) => (chart ? (
               <TrendChartPanel
@@ -50,7 +49,7 @@ export default function ProcessDashboardPage() {
             ) : null))}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>并发与句柄</div>
+          <DashboardSectionLabel styles={styles}>并发与句柄</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {concurrencyCharts.map((chart) => (chart ? (
               <TrendChartPanel

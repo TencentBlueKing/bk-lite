@@ -6,6 +6,11 @@ import type {
   UnifiedFilterDefinition,
 } from '@/app/ops-analysis/components/ops-analysis-widgets';
 
+import {
+  isOrganizationControl,
+  normalizeInputConfig,
+} from '@/app/ops-analysis/utils/paramInputConfigUtils';
+
 export type BindableParamType = 'string' | 'timeRange';
 export type UnifiedFilterInputMode =
   | 'input'
@@ -50,6 +55,16 @@ export const sanitizeUnifiedFilterDefinition = <
     return next;
   }
 
+  if (isOrganizationControl(definition)) {
+    const next = { ...definition };
+    delete next.inputMode;
+    delete next.options;
+    return {
+      ...next,
+      inputConfig: { control: 'organization' },
+    };
+  }
+
   const inputMode = normalizeUnifiedFilterInputMode(definition.inputMode);
   if (!isOptionInputMode(inputMode)) {
     const next = { ...definition };
@@ -64,7 +79,7 @@ export const sanitizeUnifiedFilterDefinition = <
   const optionValues: Array<string | number> = options.map((item) => item.value);
   const multiple = Boolean(
     definition.inputConfig
-    && definition.inputConfig.control !== 'input'
+    && definition.inputConfig.control === 'select'
     && definition.inputConfig.multiple,
   );
   const defaultValue = (() => {
@@ -191,7 +206,7 @@ export const scanUnifiedFilterParams = (
           componentCount: 1,
           sampleAlias: param.alias_name || param.name,
           sampleDefaultValue: (param.value as FilterValue) ?? null,
-          sampleInputConfig: param.inputConfig,
+          sampleInputConfig: normalizeInputConfig(param),
         });
       }
     });

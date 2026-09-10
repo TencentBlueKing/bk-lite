@@ -240,6 +240,14 @@ export const usePluginFromJson = () => {
         onTableDataChange?: (data: any[]) => void;
         form?: any;
         externalOptions?: Record<string, any[]>;
+        optionControls?: Record<
+          string,
+          {
+            loading?: boolean;
+            onRefresh?: () => void;
+            refreshTip?: string;
+          }
+        >;
       }
     ) => {
       // 如果当前没有配置或 pluginId 不匹配，返回空配置
@@ -300,7 +308,14 @@ export const usePluginFromJson = () => {
       const renderAdvancedFieldGroups = (fields: any[]) => {
         const hasSections = fields.some((field) => field.section);
         if (!hasSections) {
-          return fields.map((fieldConfig: any) => renderFormField(fieldConfig, extra.mode));
+          return fields.map((fieldConfig: any) =>
+            renderFormField(
+              fieldConfig,
+              extra.mode,
+              extra.externalOptions,
+              extra.optionControls
+            )
+          );
         }
 
         const sectionMap = new Map<string, any[]>();
@@ -331,7 +346,12 @@ export const usePluginFromJson = () => {
                 )}
                 <div className="space-y-1">
                   {(sectionMap.get(section) || []).map((fieldConfig: any) =>
-                    renderFormField(fieldConfig, extra.mode)
+                    renderFormField(
+                      fieldConfig,
+                      extra.mode,
+                      extra.externalOptions,
+                      extra.optionControls
+                    )
                   )}
                 </div>
               </section>
@@ -343,7 +363,12 @@ export const usePluginFromJson = () => {
       const formItems = (
         <>
           {basicFields.map((fieldConfig: any) =>
-            renderFormField(fieldConfig, extra.mode)
+            renderFormField(
+              fieldConfig,
+              extra.mode,
+              extra.externalOptions,
+              extra.optionControls
+            )
           )}
           {advancedFields.length > 0 && (() => {
             // Ant Design：函数子节点的 Form.Item 必须带 truthy 的 shouldUpdate/dependencies，

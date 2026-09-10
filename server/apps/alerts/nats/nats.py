@@ -20,7 +20,7 @@ from django.utils import timezone
 import nats_client
 from apps.alerts.common.source_adapter.base import AlertSourceAdapterFactory
 from apps.alerts.constants.constants import PERMISSION_ALERT, AlertsSourceTypes, AlertStatus, EventLevel, LevelType
-from apps.alerts.models.alert_operator import NotifyResult
+from apps.alerts.models.alert_operator import AlarmStrategy, NotifyResult
 from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.models.models import Alert, Event, Incident, Level
 from apps.alerts.utils.permission_scope import apply_team_scope_with_group_ids
@@ -1073,24 +1073,82 @@ def get_alert_period_statistics(**kwargs):
         .distinct()
         .count()
     )
+    closed_alert_count = queryset.filter(
+        status__in=AlertStatus.CLOSED_STATUS,
+        updated_at__gte=aware_start,
+        updated_at__lt=aware_end,
+    ).count()
+    new_alert_count = alert_counts["new_alert_count"]
 
     return {
         "result": True,
         "data": {
-            "new_alert_count": alert_counts["new_alert_count"],
+            "new_alert_count": new_alert_count,
             "linked_event_count": event_counts["linked_event_count"],
             "affected_alert_count": event_counts["affected_alert_count"],
             "new_incident_count": new_incident_count,
             "session_alert_count": alert_counts["session_alert_count"],
-            "session_alert_rate": (
-                round(alert_counts["session_alert_count"] / alert_counts["new_alert_count"] * 100, 1) if alert_counts["new_alert_count"] else 0
-            ),
+            "session_alert_rate": (round(alert_counts["session_alert_count"] / new_alert_count * 100, 1) if new_alert_count else 0),
             "aggregation_ratio": (
                 round(event_counts["linked_event_count"] / event_counts["affected_alert_count"], 2) if event_counts["affected_alert_count"] else 0
             ),
+            "closed_alert_count": closed_alert_count,
+            "closed_loop_rate": (round(closed_alert_count / new_alert_count * 100, 1) if new_alert_count else 0),
         },
         "message": "",
     }
+
+
+@nats_client.register
+def get_alert_correlation_rule_hit_top(**kwargs):
+    """时间窗内按关联/聚合规则统计产生的告警条数。"""
+    user_info = kwargs.get("user_info", {})
+    target_tz = _resolve_target_timezone((user_info or {}).get("timezone") or kwargs.get("timezone"))
+    queryset, error = _get_authorized_alert_queryset(user_info)
+    if error:
+        return error
+
+    aware_start, aware_end, time_error = _parse_required_client_time_range(kwargs.get("time", []), target_tz)
+    if time_error:
+        return {"result": False, "data": [], "message": time_error}
+
+    try:
+        limit = int(kwargs.get("limit") or 10)
+    except (TypeError, ValueError):
+        limit = 10
+    if limit <= 0:
+        limit = 10
+    if limit > 100:
+        limit = 100
+
+    rows = (
+        queryset.filter(
+            created_at__gte=aware_start,
+            created_at__lt=aware_end,
+        )
+        .exclude(Q(rule_id__isnull=True) | Q(rule_id=""))
+        .order_by()
+        .values("rule_id")
+        .annotate(count=Count("id"))
+    )
+    numeric_ids = []
+    for item in rows:
+        try:
+            numeric_ids.append(int(item["rule_id"]))
+        except (TypeError, ValueError):
+            continue
+    strategy_names = {str(strategy.id): strategy.name for strategy in AlarmStrategy.objects.filter(id__in=numeric_ids).only("id", "name")}
+    filtered = [item for item in rows if str(item["rule_id"]) in strategy_names]
+    filtered.sort(key=lambda item: (-item["count"], item["rule_id"]))
+    data = [
+        {
+            "rule_id": item["rule_id"],
+            "rule_name": strategy_names[str(item["rule_id"])],
+            "count": item["count"],
+        }
+        for item in filtered[:limit]
+    ]
+    return {"result": True, "data": data, "message": ""}
 
 
 @nats_client.register
@@ -1266,6 +1324,17 @@ def get_alert_level_distribution(status_filter=None, **kwargs):
     return {"result": True, "data": result_data, "message": ""}
 
 
+def _filter_active_alerts_by_source(queryset, kwargs):
+    """Optional source_id (AlertSource.source_id) or source_name pin. Empty keeps all sources."""
+    source_id = str(kwargs.get("source_id") or "").strip()
+    source_name = str(kwargs.get("source_name") or "").strip()
+    if source_id:
+        return queryset.filter(events__source__source_id=source_id).distinct()
+    if source_name:
+        return queryset.filter(source_name=source_name)
+    return queryset
+
+
 @nats_client.register
 def get_active_alert_top(limit=10, **kwargs):
     """
@@ -1273,6 +1342,8 @@ def get_active_alert_top(limit=10, **kwargs):
 
     Args:
         limit: int - 返回数量，默认 10
+        source_id: str - 可选，按告警源 ID 收窄（如 k8s）
+        source_name: str - 可选，按告警源显示名收窄；source_id 优先
 
     Returns:
         {
@@ -1303,7 +1374,9 @@ def get_active_alert_top(limit=10, **kwargs):
     if error:
         return error
 
-    active_alerts = queryset.filter(status__in=AlertStatus.ACTIVATE_STATUS).order_by("created_at")[:limit]
+    queryset = queryset.filter(status__in=AlertStatus.ACTIVATE_STATUS)
+    queryset = _filter_active_alerts_by_source(queryset, kwargs)
+    active_alerts = queryset.order_by("created_at")[:limit]
 
     level_map = _get_alert_level_display_map()
     status_map = dict(AlertStatus.CHOICES)
@@ -1321,6 +1394,8 @@ def get_active_alert_top(limit=10, **kwargs):
                 "duration_seconds": duration_seconds,
                 "created_at": timezone.localtime(alert.created_at, target_tz).isoformat(),
                 "resource_name": alert.resource_name or "",
+                "resource_type": alert.resource_type or "",
+                "source_name": alert.source_name or "",
             }
         )
 

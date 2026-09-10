@@ -43,7 +43,7 @@ from apps.operation_analysis.views.data_connection_view import extract_inline_co
 from config.drf.pagination import CustomPageNumberPagination
 from config.drf.viewsets import ModelViewSet
 
-RUNTIME_ALLOWED_KEYS = {"namespace_id", "page", "page_size", "query_list"}
+RUNTIME_ALLOWED_KEYS = {"namespace_id", "page", "page_size", "query_list", "organization_param"}
 
 
 def _normalize_downstream_result(result):
@@ -371,6 +371,15 @@ def _normalize_runtime_params(request_data):
             raise ValueError("参数 query_list 必须是数组或对象")
         runtime_params["query_list"] = query_list
 
+    if "organization_param" in request_data:
+        organization_param = request_data["organization_param"]
+        if organization_param not in (None, ""):
+            if not isinstance(organization_param, str):
+                raise ValueError("参数 organization_param 必须是字符串")
+            stripped = organization_param.strip()
+            if stripped:
+                runtime_params["organization_param"] = stripped
+
     return runtime_params
 
 
@@ -657,7 +666,15 @@ class DataSourceAPIModelViewSet(AuthViewSet):
         #         return Response(demo_data)
         #     return _build_error_response("演示数据源不存在", status.HTTP_404_NOT_FOUND)
 
-        client = GetNatsData(namespace=namespace, path=path, params=params, namespace_list=namespace_list, request=request)
+        param_specs = instance.params if isinstance(instance.params, list) else []
+        client = GetNatsData(
+            namespace=namespace,
+            path=path,
+            params=params,
+            namespace_list=namespace_list,
+            request=request,
+            param_specs=param_specs,
+        )
         try:
             result = _normalize_downstream_result(client.get_data())
         except Exception as e:

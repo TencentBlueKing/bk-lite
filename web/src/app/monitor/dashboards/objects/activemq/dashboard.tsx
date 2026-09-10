@@ -7,8 +7,7 @@ import {
   KpiSection,
   TrendSection,
   useFilteredChartPanels,
-  useFilteredSummaryCards
-} from '../common/dashboard-components';
+  useFilteredSummaryCards, DashboardSectionLabel } from '../common/dashboard-components';
 import { ACTIVEMQ_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 
@@ -28,13 +27,13 @@ export default function ActiveMQDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
 
-          <div className={styles.sectionLabel}>消息吞吐</div>
+          <DashboardSectionLabel styles={styles}>消息吞吐</DashboardSectionLabel>
           <TrendSection charts={throughputCharts} onXRangeChange={dashboard.onXRangeChange} loading={dashboard.loading} styles={styles} />
 
-          <div className={styles.sectionLabel}>积压与消费</div>
+          <DashboardSectionLabel styles={styles}>积压与消费</DashboardSectionLabel>
           <TrendSection charts={queueCharts} onXRangeChange={dashboard.onXRangeChange} loading={dashboard.loading} styles={styles} />
         </>
       }

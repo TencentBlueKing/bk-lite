@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Button, Checkbox, Descriptions, Empty, Input, Spin, Tag } from 'antd';
+import { Button, Checkbox, Descriptions, Input, Spin, Tag } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
 import { CopyOutlined, DownloadOutlined } from '@ant-design/icons';
 import { useTranslation } from '../../../../utils/i18n';
@@ -68,13 +68,13 @@ const K8sGuide: React.FC<K8sGuideProps> = ({
 
   if (failed) {
     return (
-      <Empty description={t('integration.k8sMetaLoadFailed')}>
+      <CompactEmptyState description={t('integration.k8sMetaLoadFailed')}>
         {onRetry ? (
           <Button type="primary" onClick={onRetry}>
             {t('common.retry')}
           </Button>
         ) : null}
-      </Empty>
+      </CompactEmptyState>
     );
   }
 

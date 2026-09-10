@@ -120,3 +120,15 @@ export const useAlertDetailTabs = () => {
     }
   ];
 };
+
+export const useEventActionMap = () => {
+  const { t } = useTranslation();
+  return useMemo(
+    () => ({
+      claimed: t('log.event.eventClaimed'),
+      assigned: t('log.event.eventAssigned'),
+      closed: t('log.event.eventClosed')
+    }),
+    [t]
+  );
+};

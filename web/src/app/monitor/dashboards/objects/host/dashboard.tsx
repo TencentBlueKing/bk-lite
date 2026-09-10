@@ -9,8 +9,7 @@ import {
   FlexiblePanelSection,
   KpiSection,
   useFilteredChartPanels,
-  useFilteredRingPanels
-} from '../common/dashboard-components';
+  useFilteredRingPanels, DashboardSectionLabel } from '../common/dashboard-components';
 import {
   HorizontalBarPanel,
   RingChartPanel,
@@ -89,10 +88,10 @@ export default function HostDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection dashboard={dashboard} summaryCards={dashboard.summaryCards} kpiCols={6} styles={styles} />
 
-          <div className={styles.sectionLabel}>性能与分布</div>
+          <DashboardSectionLabel styles={styles}>性能与分布</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {[resourceChart, loadChart].map((chart) => chart ? (
               <TrendChartPanel
@@ -127,7 +126,7 @@ export default function HostDashboardPage() {
             ) : null}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>网络观察</div>
+          <DashboardSectionLabel styles={styles}>网络观察</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {[networkChart, networkErrorChart].map((chart) => chart ? (
               <TrendChartPanel
@@ -148,7 +147,7 @@ export default function HostDashboardPage() {
             ) : null)}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>磁盘与进程</div>
+          <DashboardSectionLabel styles={styles}>磁盘与进程</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {diskChart ? (
               <TrendChartPanel

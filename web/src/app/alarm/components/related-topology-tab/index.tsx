@@ -4,7 +4,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Button, Select, Spin } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
-import useApiClient from '@/utils/request';
 import { useAppCapability } from '@/context/appCapabilities';
 import type { MonitorObjectSnapshot } from '@/app/alarm/types/alarms';
 import {
@@ -12,60 +11,69 @@ import {
   resolveRelatedTopologyTabVisibility,
   type RelatedTopologyCenter,
 } from '@/app/alarm/utils/relatedTopologyCenters';
-import { probeRelatedTopologyAccess } from '@/app/alarm/utils/relatedTopologyAccess';
 
 type WidgetComponent = React.ComponentType<{ instUuid: string }>;
+type WidgetLoader = () => Promise<{ default: WidgetComponent }>;
 
 export function useRelatedTopologyTab(monitorObjects?: MonitorObjectSnapshot[]) {
-  const { post } = useApiClient();
   const capability = useAppCapability('ops-analysis');
-  const Widget =
-    capability.status === 'ready'
+  const loadWidget: WidgetLoader | null =
+    capability.status === 'ready' &&
+    typeof capability.api.RelatedTopologyWidget === 'function'
       ? capability.api.RelatedTopologyWidget
       : null;
-  const declared = typeof Widget === 'function';
+  const declared = loadWidget !== null;
   const centers = useMemo(
     () => listRelatedTopologyCenters(monitorObjects),
     [monitorObjects],
   );
-  const [uniqueAccess, setUniqueAccess] = useState<
-    'pending' | 'ok' | 'hidden' | 'retryable'
-  >(centers.length === 1 ? 'pending' : 'ok');
+  const visible = resolveRelatedTopologyTabVisibility({
+    declared,
+    centerCount: centers.length,
+  });
+  const [Widget, setWidget] = useState<WidgetComponent | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
-    if (!declared || centers.length !== 1) {
-      setUniqueAccess(centers.length > 1 ? 'ok' : 'pending');
+    if (!visible || !loadWidget) {
       return;
     }
     let cancelled = false;
-    setUniqueAccess('pending');
-    void probeRelatedTopologyAccess(post, centers[0].instUuid).then((access) => {
-      if (!cancelled) {
-        setUniqueAccess(access);
-      }
-    });
+    setLoadFailed(false);
+    setWidget(null);
+    loadWidget()
+      .then((mod) => {
+        if (!cancelled) {
+          setWidget(() => mod.default);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setWidget(null);
+          setLoadFailed(true);
+        }
+      });
     return () => {
       cancelled = true;
     };
-  }, [centers, declared, post]);
+  }, [loadWidget, visible]);
 
   return {
-    visible: resolveRelatedTopologyTabVisibility({
-      declared,
-      centerCount: centers.length,
-      uniqueAccess,
-    }),
+    visible,
     centers,
     Widget,
+    loadFailed,
   };
 }
 
 export function RelatedTopologyTabContent({
   centers,
   Widget,
+  loadFailed = false,
 }: {
   centers: RelatedTopologyCenter[];
   Widget: WidgetComponent | null;
+  loadFailed?: boolean;
 }) {
   const { t } = useTranslation();
   const [instUuid, setInstUuid] = useState(centers[0]?.instUuid || '');
@@ -95,16 +103,24 @@ export function RelatedTopologyTabContent({
             onChange={setInstUuid}
           />
         )}
-        <Button
-          type="text"
-          className="ml-auto"
-          aria-label={t('common.refresh')}
-          icon={<ReloadOutlined />}
-          onClick={() => setRefreshNonce((current) => current + 1)}
-        />
+        {!loadFailed && (
+          <Button
+            type="text"
+            className="ml-auto"
+            aria-label={t('common.refresh')}
+            icon={<ReloadOutlined />}
+            onClick={() => {
+              setRefreshNonce((current) => current + 1);
+            }}
+          />
+        )}
       </div>
       <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
-        {Widget ? (
+        {loadFailed ? (
+          <div className="flex h-full items-center justify-center overflow-hidden rounded-lg bg-[var(--color-fill-1)] text-[var(--color-text-3)]">
+            {t('common.loadFailed')}
+          </div>
+        ) : Widget ? (
           <Widget key={`${instUuid}:${refreshNonce}`} instUuid={instUuid} />
         ) : (
           <div className="flex h-full items-center justify-center overflow-hidden rounded-lg bg-[var(--color-fill-1)]">

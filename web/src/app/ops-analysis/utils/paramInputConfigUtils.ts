@@ -4,21 +4,38 @@ import type {
   InputOption,
 } from '@/app/ops-analysis/types/dataSource';
 
+export const ORGANIZATION_PARAM_RUNTIME_KEY = 'organization_param';
+
 interface LegacyOptionsEntity {
-  inputConfig?: InputControlConfig;
+  inputConfig?: InputControlConfig | { control?: string; multiple?: boolean };
   options?: InputOption[];
+  inputMode?: string;
 }
 
 interface SourceLike {
   id: number;
+  name?: string;
   rest_api?: string;
 }
+
+export const isOptionInputControl = (
+  config?: InputControlConfig,
+): config is Extract<InputControlConfig, { control: 'select' | 'radio' }> =>
+  config?.control === 'select' || config?.control === 'radio';
 
 export const normalizeInputConfig = (
   entity?: LegacyOptionsEntity | null,
 ): InputControlConfig | undefined => {
   if (!entity) return undefined;
-  if (entity.inputConfig) return entity.inputConfig;
+  if (entity.inputConfig) {
+    if (entity.inputConfig.control === 'organization') {
+      return { control: 'organization' };
+    }
+    return entity.inputConfig as InputControlConfig;
+  }
+  if (entity.inputMode === 'organization') {
+    return { control: 'organization' };
+  }
   if (Array.isArray(entity.options) && entity.options.length > 0) {
     return {
       control: 'select',
@@ -29,6 +46,16 @@ export const normalizeInputConfig = (
     };
   }
   return undefined;
+};
+
+export const isOrganizationControl = (
+  entity?: LegacyOptionsEntity | null,
+): boolean => normalizeInputConfig(entity)?.control === 'organization';
+
+export const toSingleOrganizationValue = (value: unknown): number | undefined => {
+  if (typeof value !== 'string' && typeof value !== 'number') return undefined;
+  const normalized = Number(value);
+  return Number.isNaN(normalized) ? undefined : normalized;
 };
 
 export const extractDataSourceItems = (
@@ -74,7 +101,15 @@ export const resolveDynamicSourceId = (
   dataSources: SourceLike[],
 ): number | undefined => {
   if (source.sourceRef?.type === 'rest_api') {
-    return dataSources.find((item) => item.rest_api === source.sourceRef?.value)?.id;
+    const ref = source.sourceRef.value;
+    const byKey = dataSources.find(
+      (item) =>
+        typeof item.name === 'string' &&
+        item.name.length > 0 &&
+        `${item.name}::${item.rest_api || ''}` === ref,
+    );
+    if (byKey) return byKey.id;
+    return dataSources.find((item) => item.rest_api === ref)?.id;
   }
   return typeof source.sourceId === 'number' ? source.sourceId : undefined;
 };

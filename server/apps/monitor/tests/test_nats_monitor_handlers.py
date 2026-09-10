@@ -12,7 +12,7 @@ from django.conf import settings
 
 from apps.monitor.models.monitor_metrics import Metric, MetricGroup
 from apps.monitor.models.monitor_object import MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorObjectType
-from apps.monitor.models.monitor_policy import MonitorPolicy, PolicyOrganization
+from apps.monitor.models.monitor_policy import MonitorAlert, MonitorPolicy, PolicyOrganization
 from apps.monitor.models.plugin import MonitorPlugin
 from apps.monitor.nats import monitor as nm
 from apps.monitor.nats.contracts import MONITOR_NATS_HANDLER_NAMES
@@ -35,6 +35,7 @@ EXPECTED_MONITOR_NATS_HANDLER_NAMES = frozenset(
         "get_host_metric_range",
         "get_host_resource_snapshot",
         "get_host_resource_top",
+        "get_zombie_host_report",
         "get_monitor_instance_list",
         "get_monitor_statistics",
         "get_network_device_resource_top",
@@ -53,6 +54,7 @@ EXPECTED_MONITOR_NATS_HANDLER_NAMES = frozenset(
         "query_metric_range_scoped",
         "query_metric_series",
         "search_monitor_policies",
+        "get_monitor_instance_alert_ranking",
     }
 )
 MONITOR_NATS_PERMISSION_HANDLER_NAMES = frozenset(
@@ -853,6 +855,7 @@ class TestQueryMonitorAlertSegments:
             monitor_instance_id="('h1',)",
             status="new",
             level="critical",
+            organizations=[1],
             start_event_time=datetime(2026, 1, 1, 12, tzinfo=timezone.utc),
         )
         mocker.patch("apps.monitor.nats.monitor.get_permission_rules", return_value={"team": [1]})
@@ -909,6 +912,7 @@ class TestQueryMonitorAlertSegments:
                 monitor_instance_id="('h1',)",
                 status="new",
                 level="critical",
+                organizations=[1],
                 start_event_time=datetime(2026, 1, 1, hour, tzinfo=timezone.utc),
             )
         mocker.patch("apps.monitor.nats.monitor.get_permission_rules", return_value={"team": [1]})
@@ -1058,3 +1062,103 @@ class TestGetMonitorStatistics:
         out = nm.get_monitor_statistics(user_info={"is_superuser": False, "team": None})
         assert out["result"] is False
         assert out["data"] == {}
+
+
+class TestGetMonitorInstanceAlertRanking:
+    def _user_info(self):
+        return {
+            "user": SimpleNamespace(username="admin", domain="domain.com"),
+            "team": 1,
+            "is_superuser": False,
+            "include_children": False,
+        }
+
+    def _grant(self, mocker):
+        mocker.patch(
+            "apps.monitor.nats.monitor.get_permissions_rules",
+            return_value={"data": {"all": {"team": [1]}}, "team": [1]},
+        )
+
+    def test_most_alerts_and_least_policy_alerts(self, mocker):
+        from datetime import datetime, timedelta
+        from datetime import timezone as dt_timezone
+
+        self._grant(mocker)
+        obj = MonitorObject.objects.create(name="RankObj", level="base")
+        noisy = MonitorInstance.objects.create(id="noisy", name="noisy-host", monitor_object=obj)
+        quiet = MonitorInstance.objects.create(id="quiet", name="quiet-host", monitor_object=obj)
+        uncovered = MonitorInstance.objects.create(id="bare", name="bare-host", monitor_object=obj)
+        foreign = MonitorInstance.objects.create(id="foreign", name="foreign-host", monitor_object=obj)
+        MonitorInstanceOrganization.objects.create(monitor_instance=noisy, organization=1)
+        MonitorInstanceOrganization.objects.create(monitor_instance=quiet, organization=1)
+        MonitorInstanceOrganization.objects.create(monitor_instance=uncovered, organization=1)
+        MonitorInstanceOrganization.objects.create(monitor_instance=foreign, organization=2)
+        policy = MonitorPolicy.objects.create(
+            monitor_object=obj,
+            name="rank-policy",
+            algorithm="max",
+            query_condition={},
+            source={"type": "instance", "values": ["noisy", "quiet"]},
+            group_by=[],
+            enable=True,
+            threshold=[{"method": ">", "value": 1, "level": "warning"}],
+        )
+        PolicyOrganization.objects.create(policy=policy, organization=1)
+        start = datetime(2026, 1, 1, tzinfo=dt_timezone.utc)
+        end = start + timedelta(days=1)
+        noisy_alerts = [
+            MonitorAlert.objects.create(
+                policy_id=policy.id,
+                monitor_instance_id="noisy",
+                status="new",
+            )
+            for _ in range(3)
+        ]
+        for index, alert in enumerate(noisy_alerts):
+            MonitorAlert.objects.filter(pk=alert.pk).update(created_at=start + timedelta(hours=index + 1))
+        foreign_alert = MonitorAlert.objects.create(
+            policy_id=policy.id,
+            monitor_instance_id="foreign",
+            status="new",
+        )
+        MonitorAlert.objects.filter(pk=foreign_alert.pk).update(created_at=start + timedelta(hours=1))
+        time_range = [start.isoformat().replace("+00:00", "Z"), end.isoformat().replace("+00:00", "Z")]
+
+        most = nm.get_monitor_instance_alert_ranking(
+            user_info=self._user_info(),
+            ranking="most_alerts",
+            limit=10,
+            time=time_range,
+        )
+        least = nm.get_monitor_instance_alert_ranking(
+            user_info=self._user_info(),
+            ranking="least_policy_alerts",
+            limit=10,
+            time=time_range,
+        )
+
+        assert most["result"] is True
+        assert most["data"] == [{"instance_id": "noisy", "instance_name": "noisy-host", "count": 3}]
+        assert least["result"] is True
+        assert least["data"] == [
+            {"instance_id": "quiet", "instance_name": "quiet-host", "count": 0},
+            {"instance_id": "noisy", "instance_name": "noisy-host", "count": 3},
+        ]
+
+    def test_other_org_is_empty(self, mocker):
+        from datetime import datetime, timedelta
+        from datetime import timezone as dt_timezone
+
+        self._grant(mocker)
+        obj = MonitorObject.objects.create(name="RankObj2", level="base")
+        instance = MonitorInstance.objects.create(id="only-two", name="t2", monitor_object=obj)
+        MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=2)
+        start = datetime(2026, 1, 1, tzinfo=dt_timezone.utc)
+        end = start + timedelta(days=1)
+        out = nm.get_monitor_instance_alert_ranking(
+            user_info=self._user_info(),
+            ranking="most_alerts",
+            time=[start.isoformat().replace("+00:00", "Z"), end.isoformat().replace("+00:00", "Z")],
+        )
+        assert out["result"] is True
+        assert out["data"] == []

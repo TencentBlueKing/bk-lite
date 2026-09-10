@@ -1,11 +1,15 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Button, Space, Spin, message } from "antd";
+import { Alert, Button, Dropdown, Space, Spin, message } from "antd";
+import type { MenuProps } from "antd";
 import {
+  DownOutlined,
   DownloadOutlined,
+  FileMarkdownOutlined,
+  FileZipOutlined,
+  ImportOutlined,
   PlusOutlined,
-  UploadOutlined,
 } from "@ant-design/icons";
 import { useTranslation } from "@/utils/i18n";
 import { useWikiApi } from "@/app/opspilot/api/wiki";
@@ -41,8 +45,10 @@ const PageTab: React.FC<PageTabProps> = ({ kbId, directoryQuery }) => {
   const {
     fetchPages,
     fetchDirectoryTree,
+    deleteNestedDirectory,
     movePagesToDirectory,
     exportKnowledgeBaseMarkdown,
+    deletePage,
   } = useWikiApi();
 
   const [treePages, setTreePages] = useState<KnowledgePage[]>([]);
@@ -56,6 +62,7 @@ const PageTab: React.FC<PageTabProps> = ({ kbId, directoryQuery }) => {
   >("loading");
   const [exportingMarkdown, setExportingMarkdown] = useState(false);
   const [markdownImportOpen, setMarkdownImportOpen] = useState(false);
+  const [okfImportOpen, setOkfImportOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<KnowledgePage | null>(null);
   const [movePageIds, setMovePageIds] = useState<number[]>([]);
@@ -231,6 +238,55 @@ const PageTab: React.FC<PageTabProps> = ({ kbId, directoryQuery }) => {
     }
   };
 
+  const handleDeletePage = async (pageId: number) => {
+    if (
+      !directoryMutationReady ||
+      !directoryTree ||
+      directoryTree.active_generation_id === null ||
+      directoryTree.structure_version === null
+    ) {
+      return;
+    }
+    setDirectoryMutationLoading(true);
+    try {
+      await deletePage(
+        pageId,
+        directoryTree.active_generation_id,
+        directoryTree.structure_version,
+      );
+      message.success(t("wiki.deleteSuccess"));
+      if (selectedPageId === pageId) setSelectedPageId(null, "replace");
+      await Promise.all([loadTreePages(), refreshDirectoryTree()]);
+    } finally {
+      setDirectoryMutationLoading(false);
+    }
+  };
+
+  const handleDeleteDirectory = async (directoryId: number) => {
+    if (
+      !directoryMutationReady ||
+      !directoryTree ||
+      directoryTree.active_generation_id === null ||
+      directoryTree.structure_version === null
+    ) {
+      return;
+    }
+    setDirectoryMutationLoading(true);
+    try {
+      await deleteNestedDirectory(
+        kbId,
+        directoryId,
+        directoryTree.active_generation_id,
+        directoryTree.structure_version,
+      );
+      message.success(t("wiki.deleteSuccess"));
+      setSelectedPageId(null, "replace");
+      await Promise.all([loadTreePages(), refreshDirectoryTree()]);
+    } finally {
+      setDirectoryMutationLoading(false);
+    }
+  };
+
   const handleExportMarkdown = async () => {
     setExportingMarkdown(true);
     try {
@@ -253,8 +309,24 @@ const PageTab: React.FC<PageTabProps> = ({ kbId, directoryQuery }) => {
 
   const handleMarkdownImportCompleted = async () => {
     setMarkdownImportOpen(false);
+    setOkfImportOpen(false);
     await Promise.allSettled([refreshDirectoryTree(), loadTreePages()]);
   };
+
+  const importMenuItems: MenuProps["items"] = [
+    {
+      key: "markdown",
+      icon: <FileMarkdownOutlined />,
+      label: t("wiki.importMarkdown"),
+      onClick: () => setMarkdownImportOpen(true),
+    },
+    {
+      key: "okf",
+      icon: <FileZipOutlined />,
+      label: t("wiki.importOkf"),
+      onClick: () => setOkfImportOpen(true),
+    },
+  ];
 
   return (
     <>
@@ -281,12 +353,18 @@ const PageTab: React.FC<PageTabProps> = ({ kbId, directoryQuery }) => {
 
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
           <Space size={8} wrap>
-            <Button
-              icon={<UploadOutlined />}
-              onClick={() => setMarkdownImportOpen(true)}
+            <Dropdown
+              menu={{ items: importMenuItems }}
+              trigger={["click"]}
+              placement="bottomRight"
             >
-              {t("wiki.importMarkdown")}
-            </Button>
+              <Button icon={<ImportOutlined />}>
+                <Space size={4}>
+                  <span>{t("common.import")}</span>
+                  <DownOutlined className="text-[10px] text-[var(--color-text-3)]" />
+                </Space>
+              </Button>
+            </Dropdown>
             <Button
               icon={<DownloadOutlined />}
               loading={exportingMarkdown}
@@ -314,6 +392,13 @@ const PageTab: React.FC<PageTabProps> = ({ kbId, directoryQuery }) => {
               search={nameFilter}
               onSearchChange={(value) => setSearch(value, "replace")}
               onSelectPage={(pageId) => setSelectedPageId(pageId)}
+              canMutate={
+                directoryMutationReady && !directoryMutationLoading
+              }
+              onDeletePage={(pageId) => void handleDeletePage(pageId)}
+              onDeleteDirectory={(directoryId) =>
+                void handleDeleteDirectory(directoryId)
+              }
             />
           ) : (
             <aside className="flex w-[260px] shrink-0 items-center justify-center border-r border-[var(--color-border)] bg-[var(--color-fill-1)] px-3 text-xs text-[var(--color-text-3)]">
@@ -332,6 +417,8 @@ const PageTab: React.FC<PageTabProps> = ({ kbId, directoryQuery }) => {
               treePages={treePageItems}
               onEdit={openEdit}
               onMove={(page) => openMovePages([page.id])}
+              onDelete={(page) => void handleDeletePage(page.id)}
+              canMutate={directoryMutationReady && !directoryMutationLoading}
               onOpenRelatedPage={(pageId) => setSelectedPageId(pageId)}
             />
           </div>
@@ -353,6 +440,16 @@ const PageTab: React.FC<PageTabProps> = ({ kbId, directoryQuery }) => {
         directories={directoryTree?.directories || []}
         directoryEnabled={directoryScopeEnabled}
         onCancel={() => setMarkdownImportOpen(false)}
+        onCompleted={handleMarkdownImportCompleted}
+      />
+
+      <WikiMarkdownImportModal
+        kbId={kbId}
+        open={okfImportOpen}
+        importFormat="okf"
+        directories={directoryTree?.directories || []}
+        directoryEnabled={directoryScopeEnabled}
+        onCancel={() => setOkfImportOpen(false)}
         onCompleted={handleMarkdownImportCompleted}
       />
 

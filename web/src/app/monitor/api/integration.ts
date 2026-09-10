@@ -276,6 +276,28 @@ const useIntegrationApi = () => {
       getCollectDetectTask: async (taskId: React.Key) => {
         return await get(`/monitor/api/collect_detect/${String(taskId)}/`);
       },
+      listQcloudRegions: async (data: {
+        username?: string;
+        password?: string;
+        collect_config_id?: string;
+        collect_config_ids?: string[];
+        cloud_region_id?: number | string;
+      }) => {
+        return await post('/monitor/api/monitor_plugin/qcloud_regions/', data, {
+          suppressErrorNotification: true,
+        });
+      },
+      listAliyunRegions: async (data: {
+        username?: string;
+        password?: string;
+        collect_config_id?: string;
+        collect_config_ids?: string[];
+        cloud_region_id?: number | string;
+      }) => {
+        return await post('/monitor/api/monitor_plugin/aliyun_regions/', data, {
+          suppressErrorNotification: true,
+        });
+      },
     } satisfies FlowIntegrationApi),
     [del, get, post, put]
   );

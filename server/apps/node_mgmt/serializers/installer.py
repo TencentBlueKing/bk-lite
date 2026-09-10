@@ -200,6 +200,12 @@ class ControllerManualInstallRequestSerializer(serializers.Serializer):
     cpu_architecture = serializers.CharField(allow_blank=False)
     package_id = serializers.IntegerField()
     nodes = InstallNodeSerializer(many=True, allow_empty=False)
+    push_targets = serializers.ListField(
+        child=serializers.CharField(allow_blank=False),
+        required=False,
+        allow_empty=True,
+        default=list,
+    )
 
     def validate(self, attrs):
         InstallerService.validate_controller_package_os(attrs["package_id"], attrs["os"])

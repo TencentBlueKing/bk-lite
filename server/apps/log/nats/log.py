@@ -1,19 +1,34 @@
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from types import SimpleNamespace
 
-from django.db.models import Q
+from django.db.models import Count, Q
 
 import nats_client
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import log_logger as logger
+from apps.core.logger import safe_exception_info
 from apps.core.utils.current_team_scope import _normalize_organization_ids
 from apps.core.utils.permission_utils import check_instance_permission, get_permission_rules, get_permissions_rules, permission_filter
+from apps.core.utils.team_utils import group_tree_allows_team
 from apps.core.utils.time_util import format_rfc3339_utc, parse_rfc3339_range_utc
 from apps.log.constants.permission import PermissionConstants
 from apps.log.constants.victoriametrics import VictoriaLogsConstants
+from apps.log.models.extractor import LogExtractor
+from apps.log.models.instance import CollectInstance
 from apps.log.models.log_group import LogGroup
 from apps.log.models.policy import Alert, Policy
+from apps.log.services.alert_access import filter_alerts_by_organizations, orphaned_log_policy_q
 from apps.log.services.log_event_contract import to_logical_event, to_storage_field
 from apps.log.services.search import SearchService
+from apps.log.services.successful_login_count import (
+    build_host_match_clause,
+    build_linux_login_stats_query,
+    build_windows_login_stats_query,
+    classify_login_coverage,
+    is_windows_os,
+    merge_login_counts,
+)
 from apps.log.utils.log_group import LogGroupQueryBuilder
 from apps.log.utils.query_log import VictoriaMetricsAPI
 from apps.rpc.system_mgmt import SystemMgmt
@@ -275,9 +290,9 @@ def _build_log_alert_segment(alert: Alert) -> dict:
     }
 
 
-def _get_log_policy_ids(collect_type_id: str, user_info: dict):
+def _get_log_actor_scope(user_info: dict):
     if not isinstance(user_info, dict):
-        return [], {"result": False, "data": [], "message": "缺少用户或组织信息"}
+        return None, None, {"result": False, "data": [], "message": "缺少用户或组织信息"}
 
     user = user_info.get("user")
     username = user if isinstance(user, str) else getattr(user, "username", None)
@@ -291,12 +306,12 @@ def _get_log_policy_ids(collect_type_id: str, user_info: dict):
         or not domain.strip()
         or type(include_children) is not bool
     ):
-        return [], {"result": False, "data": [], "message": "缺少用户或组织信息"}
+        return None, None, {"result": False, "data": [], "message": "缺少用户或组织信息"}
 
     try:
         current_team = next(iter(_normalize_organization_ids([current_team])))
     except BaseAppException:
-        return [], {"result": False, "data": [], "message": "用户或组织权限校验失败"}
+        return None, None, {"result": False, "data": [], "message": "用户或组织权限校验失败"}
 
     actor_context = {
         "username": username,
@@ -309,15 +324,28 @@ def _get_log_policy_ids(collect_type_id: str, user_info: dict):
             include_children=include_children,
         )
     except Exception:
-        return [], {"result": False, "data": [], "message": "用户或组织权限校验失败"}
+        return None, None, {"result": False, "data": [], "message": "用户或组织权限校验失败"}
     if not isinstance(scope_result, dict) or not scope_result.get("result") or not isinstance(scope_result.get("data"), list):
-        return [], {"result": False, "data": [], "message": "用户或组织权限校验失败"}
+        return None, None, {"result": False, "data": [], "message": "用户或组织权限校验失败"}
     try:
         scope_ids = _normalize_organization_ids(scope_result["data"])
     except BaseAppException:
-        return [], {"result": False, "data": [], "message": "用户或组织权限校验失败"}
+        return None, None, {"result": False, "data": [], "message": "用户或组织权限校验失败"}
     if current_team not in scope_ids:
-        return [], {"result": False, "data": [], "message": "用户或组织权限校验失败"}
+        return None, None, {"result": False, "data": [], "message": "用户或组织权限校验失败"}
+    return scope_ids, scope_result, None
+
+
+def _get_log_policy_ids(collect_type_id: str, user_info: dict):
+    scope_ids, scope_result, error = _get_log_actor_scope(user_info)
+    if error:
+        return [], error
+
+    user = user_info.get("user")
+    username = user if isinstance(user, str) else getattr(user, "username", None)
+    domain = user_info.get("domain")
+    current_team = next(iter(_normalize_organization_ids([user_info.get("team")])))
+    include_children = user_info.get("include_children", False)
 
     policies = (
         Policy.objects.filter(
@@ -390,14 +418,13 @@ def query_log_alert_segments(query_data: dict, *args, **kwargs):
     if error:
         return error
 
-    if not policy_ids:
-        return {
-            "result": True,
-            "data": _paginate_items([], page, page_size),
-            "message": "",
-        }
+    scope_ids, _, scope_error = _get_log_actor_scope(user_info)
+    if scope_error:
+        return scope_error
 
-    queryset = Alert.objects.filter(collect_type_id=collect_type_id, policy_id__in=policy_ids)
+    queryset = Alert.objects.filter(collect_type_id=collect_type_id)
+    queryset = filter_alerts_by_organizations(queryset, scope_ids)
+    queryset = queryset.filter(Q(policy_id__in=policy_ids) | orphaned_log_policy_q())
     queryset = queryset.filter(
         Q(end_event_time__isnull=True) | Q(end_event_time__gte=start_dt),
         start_event_time__lte=end_dt,
@@ -416,3 +443,229 @@ def query_log_alert_segments(query_data: dict, *args, **kwargs):
         "data": _build_paginated_alert_segments(queryset, page, page_size),
         "message": "",
     }
+
+
+def _usage_team_scope(user_info):
+    if not isinstance(user_info, dict) or user_info.get("team") in (None, ""):
+        return None
+    try:
+        current_team = next(iter(_normalize_organization_ids([user_info.get("team")])))
+    except BaseAppException:
+        return None
+    if not group_tree_allows_team(user_info.get("group_tree"), current_team):
+        return None
+    if user_info.get("include_children"):
+        from apps.system_mgmt.utils.group_utils import GroupUtils
+
+        team_ids = GroupUtils.get_group_with_descendants(current_team)
+    else:
+        team_ids = [current_team]
+    return current_team, team_ids
+
+
+def _log_usage_actor(user_info):
+    if not isinstance(user_info, dict):
+        return None
+    user = user_info.get("user")
+    username = user if isinstance(user, str) else getattr(user, "username", None)
+    domain = user_info.get("domain") or getattr(user, "domain", None)
+    if not isinstance(username, str) or not username.strip() or not isinstance(domain, str) or not domain.strip():
+        return None
+    return SimpleNamespace(username=username, domain=domain)
+
+
+def _authorized_log_instances(user_info):
+    scope = _usage_team_scope(user_info)
+    actor = _log_usage_actor(user_info)
+    if scope is None or actor is None:
+        return CollectInstance.objects.none()
+    current_team, team_ids = scope
+    permission = get_permission_rules(
+        actor,
+        current_team,
+        "log",
+        PermissionConstants.INSTANCE_MODULE,
+        include_children=bool(user_info.get("include_children", False)),
+    )
+    if not isinstance(permission, dict):
+        permission = {}
+    return (
+        permission_filter(
+            CollectInstance,
+            permission,
+            team_key="collectinstanceorganization__organization__in",
+            id_key="id__in",
+        )
+        .filter(collectinstanceorganization__organization__in=list(team_ids))
+        .distinct()
+    )
+
+
+def _authorized_log_policies(user_info):
+    scope = _usage_team_scope(user_info)
+    actor = _log_usage_actor(user_info)
+    if scope is None or actor is None:
+        return Policy.objects.none()
+    current_team, team_ids = scope
+    permission = get_permission_rules(
+        actor,
+        current_team,
+        "log",
+        PermissionConstants.POLICY_MODULE,
+        include_children=bool(user_info.get("include_children", False)),
+    )
+    if not isinstance(permission, dict):
+        permission = {}
+    return (
+        permission_filter(
+            Policy,
+            permission,
+            team_key="policyorganization__organization__in",
+            id_key="id__in",
+        )
+        .filter(policyorganization__organization__in=list(team_ids))
+        .distinct()
+    )
+
+
+@nats_client.register
+def get_log_usage_statistics(user_info=None, **kwargs):
+    user_info = user_info or {}
+    instance_qs = _authorized_log_instances(user_info)
+    policy_qs = _authorized_log_policies(user_info)
+    collect_instance_count = instance_qs.count()
+    bound_instance_count = instance_qs.exclude(Q(node_id__isnull=True) | Q(node_id="")).count()
+    instance_ids = list(instance_qs.values_list("id", flat=True))
+    type_ids = list(instance_qs.values_list("collect_type_id", flat=True).distinct())
+    extractor_count = (
+        LogExtractor.objects.filter(Q(collect_instance_id__in=instance_ids) | Q(collect_type_id__in=type_ids)).distinct().count()
+        if instance_ids or type_ids
+        else 0
+    )
+    return {
+        "result": True,
+        "data": {
+            "collect_instance_count": collect_instance_count,
+            "extractor_count": extractor_count,
+            "policy_count": policy_qs.count(),
+            "bound_instance_count": bound_instance_count,
+            "bound_instance_rate": round(bound_instance_count / collect_instance_count * 100, 1) if collect_instance_count else 0,
+        },
+        "message": "",
+    }
+
+
+@nats_client.register
+def get_log_policy_alert_top(user_info=None, limit=10, time=None, **kwargs):
+    user_info = user_info or {}
+    policy_qs = _authorized_log_policies(user_info)
+    try:
+        start, end = parse_rfc3339_range_utc(time if time is not None else kwargs.get("time"))
+    except ValueError as exc:
+        return {"result": False, "data": [], "message": str(exc)}
+    try:
+        limit = int(limit or 10)
+    except (TypeError, ValueError):
+        limit = 10
+    if limit <= 0:
+        limit = 10
+    if limit > 100:
+        limit = 100
+    policy_ids = list(policy_qs.values_list("id", flat=True))
+    if not policy_ids:
+        return {"result": True, "data": [], "message": ""}
+    rows = (
+        Alert.objects.filter(policy_id__in=policy_ids, created_at__gte=start, created_at__lt=end)
+        .order_by()
+        .values("policy_id", "policy__name")
+        .annotate(count=Count("id"))
+        .order_by("-count", "policy__name")[:limit]
+    )
+    data = [{"policy_id": item["policy_id"], "policy_name": item["policy__name"], "count": item["count"]} for item in rows]
+    return {"result": True, "data": data, "message": ""}
+
+
+def _query_login_stats(vm_api, query, start_time, end_time, limit):
+    rows = vm_api.query(query, start_time, end_time, limit)
+    return rows if isinstance(rows, list) else []
+
+
+def _query_login_stats_concurrently(queries, start_time, end_time, limit):
+    """Run Windows/Linux stats queries in parallel and wait for all of them."""
+    if not queries:
+        return []
+
+    def _run(query):
+        return _query_login_stats(VictoriaMetricsAPI(), query, start_time, end_time, limit)
+
+    if len(queries) == 1:
+        return _run(queries[0])
+
+    rows = []
+    with ThreadPoolExecutor(max_workers=len(queries)) as pool:
+        futures = [pool.submit(_run, query) for query in queries]
+        for fut in futures:
+            rows.extend(fut.result())
+    return rows
+
+
+def _counted_hosts_for_os(counted_hosts, windows: bool):
+    if windows:
+        return [host for host in counted_hosts if is_windows_os(host.get("os_type"))]
+    return [host for host in counted_hosts if not is_windows_os(host.get("os_type"))]
+
+
+@nats_client.register
+def count_successful_logins_by_host(hosts, time_range, user_info=None, **kwargs):
+    """按授权采集覆盖统计主机成功登录次数。"""
+    if not isinstance(hosts, list):
+        return {"result": False, "data": [], "message": "hosts 必须是列表"}
+    try:
+        start_time, end_time = _normalize_query_time_range(time_range)
+    except ValueError as exc:
+        return {"result": False, "data": [], "message": str(exc)}
+    if not hosts:
+        return {"result": True, "data": [], "message": ""}
+
+    failed_stage = "authorize_instances"
+    try:
+        instances = list(_authorized_log_instances(user_info).select_related("collect_type"))
+        covered = classify_login_coverage(hosts, instances)
+        counted_hosts = [host for host in covered if host.get("login_status") == "counted"]
+        stats_rows = []
+        host_clause = build_host_match_clause(counted_hosts)
+        if counted_hosts and host_clause:
+            failed_stage = "victoria_logs_query"
+            has_windows = any(is_windows_os(host.get("os_type")) for host in counted_hosts)
+            has_linux = any(not is_windows_os(host.get("os_type")) for host in counted_hosts)
+            limit = max(len(counted_hosts), 1)
+            scoped_queries = []
+            if has_windows:
+                logical = build_windows_login_stats_query(_counted_hosts_for_os(counted_hosts, True))
+                if logical:
+                    scoped_queries.append(_apply_log_group_scope(logical, user_info))
+            if has_linux:
+                logical = build_linux_login_stats_query(_counted_hosts_for_os(counted_hosts, False))
+                if logical:
+                    scoped_queries.append(_apply_log_group_scope(logical, user_info))
+            runnable = [query for query in scoped_queries if query != LogGroupQueryBuilder.DENY_ALL_QUERY]
+            if runnable:
+                stats_rows.extend(_query_login_stats_concurrently(runnable, start_time, end_time, limit))
+        failed_stage = "merge_login_counts"
+        data = merge_login_counts(covered, stats_rows)
+        counted_n = sum(1 for host in data if host.get("login_status") == "counted")
+        uncollected_n = len(data) - counted_n
+        logger.info(
+            "event=successful_login_count_completed counted_hosts=%s uncollected_hosts=%s",
+            counted_n,
+            uncollected_n,
+        )
+        return {"result": True, "data": data, "message": ""}
+    except Exception as exc:
+        logger.error(
+            "event=successful_login_count_failed failed_stage=%s error_type=%s",
+            failed_stage,
+            type(exc).__name__,
+            exc_info=safe_exception_info(exc),
+        )
+        return {"result": False, "data": [], "message": "成功登录计数失败"}

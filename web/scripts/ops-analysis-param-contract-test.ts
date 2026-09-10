@@ -150,13 +150,34 @@ assert.deepEqual(
   '请求必须省略 null 参数，同时保留 0 和 false',
 );
 
-const invalidFilterParam = {
+const numberFilterParam = {
   ...numberParam,
   filterType: 'filter' as const,
 };
-const validation = validateParams([invalidFilterParam]);
-assert.equal(validation.isValid, false, '数字类型不能配置为画布筛选参数');
-assert.deepEqual(validation.invalidFilterBindingIds, ['limit-param']);
+const numberFilterValidation = validateParams([numberFilterParam]);
+assert.equal(numberFilterValidation.isValid, true, '数字类型可以配置为画布筛选参数');
+assert.deepEqual(numberFilterValidation.invalidFilterBindingIds, []);
+
+const booleanFilterParam = {
+  ...booleanParam,
+  id: 'enabled-filter',
+  filterType: 'filter' as const,
+};
+const booleanFilterValidation = validateParams([booleanFilterParam]);
+assert.equal(booleanFilterValidation.isValid, false, '布尔类型不能配置为画布筛选参数');
+assert.deepEqual(booleanFilterValidation.invalidFilterBindingIds, ['enabled-filter']);
+
+const dateFilterParam: ParamItem = {
+  id: 'created-at-param',
+  name: 'created_at',
+  alias_name: '创建时间',
+  type: 'date',
+  filterType: 'filter',
+  value: null,
+};
+const dateFilterValidation = validateParams([dateFilterParam]);
+assert.equal(dateFilterValidation.isValid, false, '日期类型不能配置为画布筛选参数');
+assert.deepEqual(dateFilterValidation.invalidFilterBindingIds, ['created-at-param']);
 
 const paramTableSource = readFileSync(
   fileURLToPath(

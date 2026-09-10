@@ -255,6 +255,8 @@
     "sourceType": "数据来源",
     "sourcePath": "来源标识",
     "sourceObject": "取数对象",
+    "searchPlaceholder": "搜索名称",
+    "allSourceTypes": "全部",
     "sourceTypes": {
       "nats": "NATS",
       "mysql": "MySQL",
@@ -1303,6 +1305,8 @@
     "addGroup": "添加分组",
     "importYaml": "导入 YAML",
     "exportYaml": "导出 YAML",
+    "copyTargetDirectory": "目标目录",
+    "copySuccess": "已复制为 {name}",
     "exportSuccess": "导出成功",
     "exportFailed": "导出失败",
     "exportConfirmMsg": "您确定要导出",
@@ -1368,7 +1372,8 @@
     "control": {
       "input": "输入框",
       "select": "下拉选择",
-      "radio": "单选按钮"
+      "radio": "单选按钮",
+      "organization": "组织"
     },
     "picker": "选择方式",
     "pickerDropdown": "下拉列表",

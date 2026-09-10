@@ -687,6 +687,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
           os: os,
           cpu_architecture: cpuArchitecture,
           package_id: values.sidecar_package || '',
+          push_targets: values.push_targets || [],
           nodes: tableData.map((item) => ({
             ip: item.ip,
             node_name: item.node_name,

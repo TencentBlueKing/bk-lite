@@ -75,7 +75,12 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
     });
     const isBaseInfo = activeTab === 'baseInfo';
     const isEventTab = activeTab === 'event';
-    const { visible: relatedTopologyVisible, centers: relatedTopologyCenters, Widget: RelatedTopologyWidget } =
+    const {
+      visible: relatedTopologyVisible,
+      centers: relatedTopologyCenters,
+      Widget: RelatedTopologyWidget,
+      loadFailed: relatedTopologyLoadFailed,
+    } =
       useRelatedTopologyTab(
         groupVisible ? formData.monitor_objects : undefined
       );
@@ -416,6 +421,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
             <RelatedTopologyTabContent
               centers={relatedTopologyCenters}
               Widget={RelatedTopologyWidget}
+              loadFailed={relatedTopologyLoadFailed}
             />
           )}
           {activeTab === 'actionRecords' && (

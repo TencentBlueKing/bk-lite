@@ -41,6 +41,7 @@ import Permission from '@/components/permission';
 import { cloneDeep } from 'lodash';
 import { usePluginFromJson } from '@/app/monitor/hooks/integration/usePluginFromJson';
 import { useConfigRenderer } from '@/app/monitor/hooks/integration/useConfigRenderer';
+import { cloudRegionProviderFromPlugin, useCloudRegionOptions } from '@/app/monitor/hooks/integration/useQcloudRegionOptions';
 import {
   getSnmpFilterMutexConflicts,
   trackSnmpFilterMutexLastChanged
@@ -115,6 +116,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const currentGroup = useRef(userContext?.selectedGroup);
   const groupId = [currentGroup?.current?.id || ''];
   const pluginId = searchParams.get('plugin_id') || '';
+  const pluginName = searchParams.get('plugin_name') || '';
   const objectId = searchParams.get('id') || '';
   const objectName = searchParams.get('name') || '';
   const enableIfmibFromUrl = searchParams.get('enable_ifmib') !== 'false';
@@ -233,6 +235,20 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     return currentConfig;
   }, [configLoading, currentConfig]);
 
+  const regionProvider = cloudRegionProviderFromPlugin(baseConfig, {
+    objectName,
+    pluginName,
+  });
+  const {
+    regionOptions,
+    loadingRegions,
+    refreshRegions,
+  } = useCloudRegionOptions({
+    enabled: Boolean(regionProvider),
+    provider: regionProvider || 'qcloud',
+    form,
+  });
+
   // 获取表单配置
   const formConfig = useMemo(() => {
     if (!baseConfig || !pluginId) {
@@ -244,15 +260,31 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       onTableDataChange,
       form,
       externalOptions: {
-        node_ids_option: nodeList
-      }
+        node_ids_option: nodeList,
+        region_option: regionOptions,
+      },
+      optionControls: {
+        region_option: {
+          loading: loadingRegions,
+          onRefresh: refreshRegions,
+        },
+      },
     });
     return {
       formItems: cfg.formItems,
       defaultForm: cfg.defaultForm,
       initTableItems: cfg.initTableItems
     };
-  }, [baseConfig, pluginId, form, nodeList, jsonConfig.buildPluginUI]);
+  }, [
+    baseConfig,
+    pluginId,
+    form,
+    nodeList,
+    regionOptions,
+    loadingRegions,
+    refreshRegions,
+    jsonConfig.buildPluginUI,
+  ]);
 
   // 获取动态配置（依赖 dataSource）
   const configsInfo = useMemo(() => {

@@ -43,6 +43,71 @@ export const initThresholdColors = (
   return DEFAULT_THRESHOLD_COLORS;
 };
 
+const clampRatio = (value: number, min: number, max: number) => {
+  if (value < min) return min;
+  if (value > max) return max;
+  return value;
+};
+
+/**
+ * 将「当值 ≥ N」阈值转为 ECharts gauge axisLine.lineStyle.color。
+ * ECharts 语义是「该颜色画到该比例为止」，因此每档颜色应延伸到下一更高阈值
+ * （最后一档延伸到 max），而不是停在本档阈值起点。
+ */
+export const buildGaugeAxisLineColor = (
+  min: number,
+  max: number,
+  thresholds: Array<{ value: string; color: string }> = [],
+  defaultColor: string = '#366CE4',
+): Array<[number, string]> => {
+  if (!thresholds.length || max <= min) {
+    return [[1, defaultColor]];
+  }
+
+  const range = max - min;
+  const sorted = [...thresholds]
+    .map((item) => ({
+      value: Number(item.value),
+      color: item.color,
+    }))
+    .filter((item) => Number.isFinite(item.value))
+    .sort((a, b) => a.value - b.value);
+
+  if (!sorted.length) {
+    return [[1, defaultColor]];
+  }
+
+  const axisLine: Array<[number, string]> = [];
+  sorted.forEach((item, index) => {
+    const endRatio =
+      index === sorted.length - 1
+        ? 1
+        : clampRatio((sorted[index + 1].value - min) / range, 0, 1);
+    if (endRatio <= 0) {
+      return;
+    }
+    const prevRatio = axisLine.length ? axisLine[axisLine.length - 1][0] : 0;
+    if (endRatio <= prevRatio) {
+      // 同比例时保留更高阈值色（后写入覆盖）
+      if (endRatio === prevRatio && axisLine.length) {
+        axisLine[axisLine.length - 1] = [endRatio, item.color];
+      }
+      return;
+    }
+    axisLine.push([endRatio, item.color]);
+  });
+
+  if (!axisLine.length) {
+    return [[1, sorted[sorted.length - 1].color]];
+  }
+
+  if (axisLine[axisLine.length - 1][0] < 1) {
+    axisLine.push([1, sorted[sorted.length - 1].color]);
+  }
+
+  return axisLine;
+};
+
 /**
  * 根据数据值和阈值配置计算对应的颜色
  * @param dataValue 数据值

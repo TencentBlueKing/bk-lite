@@ -1,4 +1,9 @@
+import re
 import time
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
+from datetime import timezone as dt_timezone
+from time import perf_counter
 from types import SimpleNamespace
 from typing import Optional
 
@@ -8,8 +13,11 @@ from django.utils import timezone
 from rest_framework import serializers
 
 import nats_client
+from apps.cmdb.services.monitored_host import normalize_zombie_whitelist
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import monitor_logger as monitor_logger
 from apps.core.logger import nats_logger as logger
+from apps.core.logger import safe_exception_info
 from apps.core.utils.current_team_scope import _normalize_organization_ids
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.permission_utils import (
@@ -19,7 +27,7 @@ from apps.core.utils.permission_utils import (
     get_permissions_rules,
     permission_filter,
 )
-from apps.core.utils.time_util import parse_rfc3339_range_utc, rfc3339_to_timestamp
+from apps.core.utils.time_util import format_rfc3339_utc, parse_rfc3339_range_utc, rfc3339_to_timestamp
 from apps.monitor.constants.language import LanguageConstants
 from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.models import (
@@ -30,6 +38,7 @@ from apps.monitor.models import (
     MonitorAlertMetricSnapshot,
     MonitorEvent,
     MonitorInstance,
+    MonitorInstanceOrganization,
     MonitorObject,
     MonitorObjectType,
     MonitorPlugin,
@@ -41,6 +50,7 @@ from apps.monitor.serializers.monitor_metrics import MetricGroupSerializer, Metr
 from apps.monitor.serializers.monitor_object import MonitorObjectSerializer, MonitorObjectTypeSerializer
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 from apps.monitor.serializers.plugin import MonitorPluginSerializer
+from apps.monitor.services.alert_access import filter_alerts_by_organizations, orphaned_monitor_policy_q
 from apps.monitor.services.authorized_metric_query import AuthorizedMetricQueryError, AuthorizedMetricQueryService
 from apps.monitor.services.host_dashboard import (
     HOST_OBJECT_NAME,
@@ -52,6 +62,7 @@ from apps.monitor.services.host_dashboard import (
 )
 from apps.monitor.services.host_resource_top import HostResourceTopService, validate_metric_type
 from apps.monitor.services.interface_metrics_query import InterfaceMetricsQueryError, normalize_instance_ids, query_interface_metric_items
+from apps.monitor.services.metric_query_contract import escape_metric_label_value
 from apps.monitor.services.metric_series import (
     DEFAULT_OBJECT_NAMES,
     DEFAULT_RANGE_STEP,
@@ -64,6 +75,7 @@ from apps.monitor.services.metric_series import (
     validate_limit,
     validate_metric_name,
     validate_mode,
+    wrap_avg_over_time,
 )
 from apps.monitor.services.metrics import Metrics, MetricsQueryBudgetExceeded
 from apps.monitor.services.nats_query_contract import build_vm_query_failure_result as _build_vm_query_failure_result
@@ -77,6 +89,19 @@ from apps.monitor.services.nats_query_contract import normalize_time_value as _n
 from apps.monitor.services.nats_query_contract import paginate_items as _paginate_items
 from apps.monitor.services.network_device_resource_top import NetworkDeviceResourceTopService
 from apps.monitor.services.network_device_resource_top import validate_metric_type as validate_network_metric_type
+from apps.monitor.services.zombie_host_query import ZombieHostQueryError, count_successful_logins, load_hosts_for_systems, load_selected_hosts
+from apps.monitor.services.zombie_host_report import (
+    FOLD_MAX,
+    FOLD_SUM,
+    ZOMBIE_METRIC_SPECS,
+    apply_thresholds,
+    fold_io_max,
+    parse_threshold,
+    range_window,
+    round_display_metrics,
+    validate_inst_uuids,
+    wrap_max_over_time,
+)
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.instance_id_keys import resolve_monitor_object_instance_id_keys
 from apps.monitor.utils.metric_enum_locale import localize_metric_enum_unit
@@ -85,6 +110,33 @@ from apps.monitor.utils.vm_query_batch import run_unique_vm_queries
 from apps.rpc.system_mgmt import SystemMgmt
 
 _normalize_bool = normalize_bool
+
+DEFAULT_ZOMBIE_WINDOW_MINUTES = 10080
+_ZOMBIE_METRIC_ROW_KEYS = (
+    "cpu_avg",
+    "cpu_max",
+    "mem_avg",
+    "mem_max",
+    "packets_recv_avg",
+    "packets_recv_max",
+    "io_max",
+    "login_count",
+    "login_status",
+)
+_ZOMBIE_FIELD_BY_METRIC = {
+    ("cpu", "avg"): "cpu_avg",
+    ("cpu", "max"): "cpu_max",
+    ("mem", "avg"): "mem_avg",
+    ("mem", "max"): "mem_max",
+    ("packets", "avg"): "packets_recv_avg",
+    ("packets", "max"): "packets_recv_max",
+    ("io", "max"): "io_max",
+}
+
+
+def _filter_nats_visible_alerts(queryset, scope_ids, accessible_policy_qs):
+    queryset = filter_alerts_by_organizations(queryset, scope_ids)
+    return queryset.filter(Q(policy_id__in=accessible_policy_qs.values("id")) | orphaned_monitor_policy_q())
 
 
 def _build_query_budget_failure(exc: MetricsQueryBudgetExceeded) -> dict:
@@ -1150,9 +1202,10 @@ def query_monitor_alert_segments(query_data: dict, *args, **kwargs):
     if policy_error:
         return policy_error
 
-    queryset = MonitorAlert.objects.filter(
-        monitor_instance_id__in=authorized_instance_ids,
-        policy_id__in=accessible_policy_qs.values_list("id", flat=True),
+    queryset = _filter_nats_visible_alerts(
+        MonitorAlert.objects.filter(monitor_instance_id__in=authorized_instance_ids),
+        scope_ids,
+        accessible_policy_qs,
     )
     queryset = queryset.filter(Q(start_event_time__lte=end_dt) | Q(start_event_time__isnull=True, created_at__lte=end_dt))
     queryset = queryset.filter(Q(end_event_time__gte=start_dt) | Q(end_event_time__isnull=True, updated_at__gte=start_dt))
@@ -1336,10 +1389,13 @@ def query_latest_active_alerts(query_data: Optional[dict] = None, *args, **kwarg
     if policy_error:
         return policy_error
 
-    queryset = MonitorAlert.objects.filter(
-        monitor_instance_id__in=authorized_instance_ids,
-        policy_id__in=accessible_policy_qs.values_list("id", flat=True),
-        status="new",
+    queryset = _filter_nats_visible_alerts(
+        MonitorAlert.objects.filter(
+            monitor_instance_id__in=authorized_instance_ids,
+            status="new",
+        ),
+        scope_ids,
+        accessible_policy_qs,
     )
     if level_values:
         queryset = queryset.filter(level__in=level_values)
@@ -1574,6 +1630,385 @@ def get_host_resource_snapshot(*args, **kwargs):
     return {"result": True, "data": snapshot, "message": ""}
 
 
+def _zombie_page_data(items, page, page_size):
+    return _paginate_items(items, page, page_size)
+
+
+def _zombie_empty_success(page, page_size):
+    return {"result": True, "data": _zombie_page_data([], page, page_size), "message": ""}
+
+
+def _zombie_fail(message, page, page_size):
+    return {
+        "result": False,
+        "data": {"items": [], "count": 0, "page": page, "page_size": page_size},
+        "message": message,
+    }
+
+
+def _zombie_log_failure(failed_stage: str, exc: BaseException):
+    monitor_logger.error(
+        "event=zombie_host_report_failed failed_stage=%s error_type=%s",
+        failed_stage,
+        type(exc).__name__,
+        exc_info=safe_exception_info(exc),
+    )
+
+
+def _coerce_selected_hosts(loaded):
+    if isinstance(loaded, dict) and isinstance(loaded.get("result"), bool):
+        if not loaded["result"]:
+            raise ZombieHostQueryError(str(loaded.get("message") or "CMDB 查询失败"))
+        loaded = loaded.get("data")
+    if loaded is None:
+        return []
+    if isinstance(loaded, list):
+        return [row for row in loaded if isinstance(row, dict)]
+    if isinstance(loaded, dict):
+        return [row for row in loaded.values() if isinstance(row, dict)]
+    raise ZombieHostQueryError("CMDB 查询结果格式错误")
+
+
+def _filter_zombie_identities(hosts, os_type, zombie_whitelist):
+    filtered = list(hosts)
+    if os_type not in (None, ""):
+        wanted = os_type if isinstance(os_type, (list, tuple)) else [os_type]
+        wanted_set = {str(item).strip() for item in wanted if item not in (None, "")}
+        if wanted_set:
+            filtered = [host for host in filtered if str(host.get("os_type") or "") in wanted_set]
+    if zombie_whitelist not in (None, ""):
+        wanted_whitelist = normalize_zombie_whitelist(zombie_whitelist)
+        filtered = [host for host in filtered if normalize_zombie_whitelist(host.get("zombie_whitelist")) == wanted_whitelist]
+    return filtered
+
+
+def _minutes_to_rfc3339_range(minutes: int):
+    if minutes <= 0:
+        raise ValueError("time 必须大于 0")
+    end = datetime.now(dt_timezone.utc)
+    start = end - timedelta(minutes=minutes)
+    rfc = [format_rfc3339_utc(start), format_rfc3339_utc(end)]
+    return rfc, float(start.timestamp()), float(end.timestamp())
+
+
+def _parse_zombie_time(time_value):
+    if time_value is None or time_value == "":
+        return _minutes_to_rfc3339_range(DEFAULT_ZOMBIE_WINDOW_MINUTES)
+    if isinstance(time_value, bool):
+        raise ValueError("time 格式错误")
+    if isinstance(time_value, (int, float)):
+        return _minutes_to_rfc3339_range(int(time_value))
+    if isinstance(time_value, str) and time_value.strip().isdigit():
+        return _minutes_to_rfc3339_range(int(time_value.strip()))
+    start_dt, end_dt = parse_rfc3339_range_utc(time_value)
+    rfc = [format_rfc3339_utc(start_dt), format_rfc3339_utc(end_dt)]
+    return rfc, float(start_dt.timestamp()), float(end_dt.timestamp())
+
+
+def _logical_monitor_instance_id(value) -> str:
+    parsed = parse_instance_id(value)
+    if not parsed:
+        return "" if value in (None, "") else str(value)
+    first = parsed[0]
+    if first in (None, ""):
+        return ""
+    return str(first)
+
+
+def _instance_id_matcher(instance_ids):
+    logical = []
+    seen = set()
+    for item in instance_ids:
+        value = _logical_monitor_instance_id(item)
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        logical.append(value)
+    escaped = "|".join(escape_metric_label_value(re.escape(str(item))) for item in logical)
+    return f'instance_id=~"{escaped}"'
+
+
+def _finite_metric_number(value):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number != number or number in (float("inf"), float("-inf")):
+        return None
+    return number
+
+
+def _vm_instant_series(resp, authorized_ids):
+    if not isinstance(resp, dict) or resp.get("status") != "success":
+        message = ""
+        if isinstance(resp, dict):
+            message = resp.get("error") or resp.get("message") or ""
+        raise ZombieHostQueryError(str(message) or "监控指标查询失败")
+    data = resp.get("data") if isinstance(resp.get("data"), dict) else {}
+    series = []
+    for item in data.get("result") or []:
+        if not isinstance(item, dict):
+            continue
+        metric = item.get("metric") if isinstance(item.get("metric"), dict) else {}
+        instance_id = _logical_monitor_instance_id(metric.get("instance_id") or metric.get("monitor_id") or "")
+        if not instance_id or instance_id not in authorized_ids:
+            continue
+        value = item.get("value")
+        raw = value[1] if isinstance(value, (list, tuple)) and len(value) >= 2 else value
+        series.append({"instance_id": instance_id, "device": metric.get("device"), "value": raw})
+    return series
+
+
+def _fold_zombie_series(series, fold):
+    if fold == FOLD_MAX:
+        return fold_io_max(series)
+    folded = {}
+    for item in series:
+        instance_id = str(item.get("instance_id") or "")
+        number = _finite_metric_number(item.get("value"))
+        if not instance_id or number is None:
+            continue
+        if fold == FOLD_SUM:
+            folded[instance_id] = folded.get(instance_id, 0.0) + number
+        else:
+            folded[instance_id] = number
+    return folded
+
+
+def _index_login_rows(rows):
+    by_monitor = {}
+    by_name = {}
+    by_ip = {}
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        monitor_id = row.get("monitor_id")
+        if monitor_id not in (None, ""):
+            by_monitor[str(monitor_id)] = row
+        host_name = str(row.get("host_name") or "").strip().lower()
+        if host_name:
+            by_name[host_name] = row
+        ip = str(row.get("ip") or "").strip().lower()
+        if ip:
+            by_ip[ip] = row
+    return by_monitor, by_name, by_ip
+
+
+def _match_login_row(host, by_monitor, by_name, by_ip):
+    monitor_id = host.get("monitor_id")
+    if monitor_id not in (None, "") and str(monitor_id) in by_monitor:
+        return by_monitor[str(monitor_id)]
+    host_name = str(host.get("host_name") or "").strip().lower()
+    if host_name and host_name in by_name:
+        return by_name[host_name]
+    ip = str(host.get("ip") or "").strip().lower()
+    if ip and ip in by_ip:
+        return by_ip[ip]
+    return None
+
+
+def _assemble_zombie_row(host, metric_maps, login_row):
+    monitor_id = str(host.get("monitor_id") or "")
+    logical_id = _logical_monitor_instance_id(monitor_id)
+    row = {
+        "biz_name": host.get("biz_name") or "",
+        "host_name": host.get("host_name") or "",
+        "os_type_label": host.get("os_type_label") or "",
+        "ip": host.get("ip") or "",
+        "zombie_whitelist": host.get("zombie_whitelist") or "no",
+        "inst_uuid": host.get("inst_uuid"),
+        "monitor_id": host.get("monitor_id"),
+        "os_type": host.get("os_type"),
+        "node_id": host.get("node_id"),
+    }
+    for key in _ZOMBIE_METRIC_ROW_KEYS:
+        row[key] = None
+    for (metric_name, window_name), values in metric_maps.items():
+        field = _ZOMBIE_FIELD_BY_METRIC.get((metric_name, window_name))
+        if field:
+            row[field] = values.get(logical_id)
+    if login_row:
+        row["login_count"] = login_row.get("login_count")
+        row["login_status"] = login_row.get("login_status") or "uncollected"
+    else:
+        row["login_count"] = None
+        row["login_status"] = "uncollected"
+    return row
+
+
+def _query_zombie_vm_metrics(matcher, window, end_ts, authorized_id_set):
+    vm_api = VictoriaMetricsAPI()
+    planned = []
+    for metric_name, spec in ZOMBIE_METRIC_SPECS.items():
+        labeled = spec["query"].replace("__$labels__", matcher)
+        for window_name in spec["windows"]:
+            if window_name == "avg":
+                query = wrap_avg_over_time(labeled, window)
+            else:
+                query = wrap_max_over_time(labeled, window)
+            planned.append((metric_name, window_name, query, spec["fold"]))
+    results, errors = run_unique_vm_queries(
+        [item[2] for item in planned],
+        lambda query: vm_api.query(query, time=str(int(end_ts))),
+    )
+    if errors:
+        raise next(iter(errors.values()))
+    metric_maps = {}
+    for metric_name, window_name, query, fold in planned:
+        series = _vm_instant_series(results.get(query), authorized_id_set)
+        metric_maps[(metric_name, window_name)] = _fold_zombie_series(series, fold)
+    return metric_maps
+
+
+def _query_zombie_logins(hosts, rfc_range, user_info):
+    login_result = count_successful_logins(hosts, rfc_range, user_info)
+    if isinstance(login_result, dict) and isinstance(login_result.get("result"), bool) and not login_result["result"]:
+        raise ZombieHostQueryError(str(login_result.get("message") or "成功登录计数失败"))
+    return login_result
+
+
+@nats_client.register
+def get_zombie_host_report(  # noqa: C901
+    inst_uuids=None,
+    system_uuids=None,
+    time=None,
+    os_type=None,
+    zombie_whitelist=None,
+    user_info=None,
+    page=1,
+    page_size=20,
+    **thresholds,
+):
+    """拼所选应用系统（或主机）下已监控主机的 CPU/内存/IO/入包与成功登录，阈值过滤后分页。"""
+    started = perf_counter()
+    try:
+        page = _normalize_positive_int(page, "page", default=1)
+        page_size = _normalize_positive_int(page_size, "page_size", default=20)
+    except ValueError as exc:
+        return _zombie_fail(str(exc), 1, 20)
+
+    unique_systems = None
+    if system_uuids is None:
+        try:
+            unique_uuids = validate_inst_uuids([] if inst_uuids is None else inst_uuids)
+        except (TypeError, ValueError) as exc:
+            return _zombie_fail(str(exc), page, page_size)
+        if not unique_uuids:
+            return _zombie_empty_success(page, page_size)
+    elif not isinstance(system_uuids, list):
+        return _zombie_fail("system_uuids 必须是列表", page, page_size)
+    else:
+        unique_systems = []
+        seen_systems = set()
+        for item in system_uuids:
+            if item is None:
+                continue
+            text = str(item).strip()
+            if not text or text in seen_systems:
+                continue
+            seen_systems.add(text)
+            unique_systems.append(text)
+        if not unique_systems:
+            return _zombie_empty_success(page, page_size)
+        unique_uuids = None
+
+    user_info = user_info or {}
+    _, _, _, scope_ids, _, scope_error = _get_nats_actor_scope(user_info)
+    if scope_error:
+        return _zombie_fail(scope_error.get("message") or "缺少用户或组织信息", page, page_size)
+    cmdb_user_info = dict(user_info)
+    cmdb_user_info["allowed_org_ids"] = list(scope_ids)
+
+    if unique_uuids is None:
+        try:
+            hosts = _coerce_selected_hosts(load_hosts_for_systems(unique_systems, cmdb_user_info))
+        except ValueError as exc:
+            return _zombie_fail(str(exc), page, page_size)
+        except Exception as exc:
+            _zombie_log_failure("load_systems", exc)
+            return _zombie_fail(str(exc) if isinstance(exc, ZombieHostQueryError) else "CMDB 应用系统查询失败", page, page_size)
+        if not hosts:
+            return _zombie_empty_success(page, page_size)
+    else:
+        try:
+            hosts = _coerce_selected_hosts(load_selected_hosts(unique_uuids, cmdb_user_info))
+        except Exception as exc:
+            _zombie_log_failure("load_hosts", exc)
+            return _zombie_fail(str(exc) if isinstance(exc, ZombieHostQueryError) else "CMDB 主机查询失败", page, page_size)
+
+    hosts = _filter_zombie_identities(hosts, os_type, zombie_whitelist)
+    identity_count = len(hosts)
+    if not hosts:
+        return _zombie_empty_success(page, page_size)
+
+    authorized_instances, auth_error = _get_authorized_monitor_instances(user_info, scope_ids)
+    if auth_error:
+        return _zombie_fail(auth_error.get("message") or "获取监控实例权限失败", page, page_size)
+
+    authorized_ids = {str(item) for item in authorized_instances}
+    hosts = [host for host in hosts if str(host.get("monitor_id") or "") in authorized_ids]
+    monitor_logger.info(
+        "event=zombie_host_report_hosts_filtered identity_count=%s authorized_count=%s",
+        identity_count,
+        len(hosts),
+    )
+    if not hosts:
+        return _zombie_empty_success(page, page_size)
+
+    try:
+        rfc_range, start_ts, end_ts = _parse_zombie_time(time)
+        bound = parse_threshold(thresholds)
+    except (TypeError, ValueError) as exc:
+        return _zombie_fail(str(exc), page, page_size)
+
+    authorized_monitor_ids = [str(host.get("monitor_id")) for host in hosts]
+    authorized_id_set = {_logical_monitor_instance_id(item) for item in authorized_monitor_ids}
+    authorized_id_set.discard("")
+    matcher = _instance_id_matcher(authorized_monitor_ids)
+    window = range_window(start_ts, end_ts)
+    vm_exc = None
+    login_exc = None
+    metric_maps = {}
+    login_result = None
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            fut_vm = executor.submit(_query_zombie_vm_metrics, matcher, window, end_ts, authorized_id_set)
+            fut_login = executor.submit(_query_zombie_logins, hosts, rfc_range, user_info)
+            try:
+                metric_maps = fut_vm.result()
+            except Exception as exc:
+                vm_exc = exc
+            try:
+                login_result = fut_login.result()
+            except Exception as exc:
+                login_exc = exc
+    except Exception as exc:
+        vm_exc = exc
+    if vm_exc is not None:
+        _zombie_log_failure("vm_query", vm_exc)
+        return _zombie_fail(str(vm_exc) if isinstance(vm_exc, ZombieHostQueryError) else "监控指标查询失败", page, page_size)
+    if login_exc is not None:
+        _zombie_log_failure("login_count", login_exc)
+        message = str(login_exc) if isinstance(login_exc, ZombieHostQueryError) else "成功登录计数失败"
+        return _zombie_fail(message, page, page_size)
+
+    login_rows = login_result.get("data") if isinstance(login_result, dict) else login_result
+    if not isinstance(login_rows, list):
+        login_rows = []
+    by_monitor, by_name, by_ip = _index_login_rows(login_rows)
+    rows = [_assemble_zombie_row(host, metric_maps, _match_login_row(host, by_monitor, by_name, by_ip)) for host in hosts]
+    filtered_rows = apply_thresholds(rows, bound)
+    display_rows = [round_display_metrics(row) for row in filtered_rows]
+    monitor_logger.info(
+        "event=zombie_host_report_completed identity_count=%s authorized_count=%s result_count=%s elapsed_ms=%s",
+        identity_count,
+        len(hosts),
+        len(filtered_rows),
+        int((perf_counter() - started) * 1000),
+    )
+    return {"result": True, "data": _zombie_page_data(display_rows, page, page_size), "message": ""}
+
+
 @nats_client.register
 def get_network_device_resource_top(metric_type: str, *args, **kwargs):
     """Return the latest authorized network-device CPU, memory, or traffic Top10."""
@@ -1652,12 +2087,20 @@ def _resolve_metric_series_items(instances, metric_name: str, collect_type: str 
 
 @nats_client.register
 def get_monitor_instance_list(*args, **kwargs):
-    """Return authorized network-device instances for ops-analysis filter options."""
+    """Return authorized monitor instances for ops-analysis filter options.
+
+    未传 object_names 时默认网络设备，且必须已启用 Flow 协议。
+    显式传入 object_names（如 Cluster）时不再要求 Flow 协议，供 K8S 等对象筛选。
+    """
     try:
         protocol = validate_collect_type(kwargs.get("protocol"))
-        object_names = _normalize_filter_values(kwargs.get("object_names"), "object_names") or list(DEFAULT_OBJECT_NAMES)
+        object_names = _normalize_filter_values(kwargs.get("object_names"), "object_names")
     except ValueError as exc:
         return {"result": False, "data": [], "message": str(exc)}
+
+    explicit_object_names = bool(object_names)
+    if not object_names:
+        object_names = list(DEFAULT_OBJECT_NAMES)
 
     user_info = kwargs.get("user_info") or {}
     _, _, _, scope_ids, _, error = _get_nats_actor_scope(user_info)
@@ -1674,7 +2117,11 @@ def get_monitor_instance_list(*args, **kwargs):
     ]
     return {
         "result": True,
-        "data": build_monitor_instance_rows(selected, protocol=protocol),
+        "data": build_monitor_instance_rows(
+            selected,
+            protocol=protocol,
+            require_enabled_protocols=not explicit_object_names,
+        ),
         "message": "",
     }
 
@@ -1893,6 +2340,9 @@ def get_monitor_statistics(user_info=None, **kwargs):
         { "result": True, "data": { 各项计数 ... }, "message": "" }
     """
     user_info = user_info or {}
+    _, _, _, scope_ids, _, scope_error = _get_nats_actor_scope(user_info)
+    if scope_error:
+        return scope_error
     policy_qs, policy_error = _get_nats_accessible_policy_queryset(user_info)
     if policy_error:
         return policy_error
@@ -1929,7 +2379,7 @@ def get_monitor_statistics(user_info=None, **kwargs):
     policy_threshold = policy_qs.exclude(threshold=[]).count()
     policy_no_data = policy_qs.exclude(no_data_level="").count()
 
-    alert_qs = MonitorAlert.objects.filter(policy_id__in=policy_qs.values_list("id", flat=True))
+    alert_qs = _filter_nats_visible_alerts(MonitorAlert.objects.all(), scope_ids, policy_qs)
     alert_history = alert_qs.count()
     alert_current = alert_qs.filter(status="new").count()
     alert_recovered = alert_qs.filter(status="recovered").count()
@@ -1938,15 +2388,14 @@ def get_monitor_statistics(user_info=None, **kwargs):
     today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
     alert_today = alert_qs.filter(created_at__gte=today_start).count()
 
-    event_qs = MonitorEvent.objects.filter(policy_id__in=policy_qs.values_list("id", flat=True)).filter(
-        Q(alert__isnull=True) | Q(alert__policy_id=F("policy_id"))
-    )
+    event_qs = MonitorEvent.objects.filter(
+        Q(alert_id__in=alert_qs.values("id")) | Q(alert__isnull=True, policy_id__in=policy_qs.values("id"))
+    ).filter(Q(alert__isnull=True) | Q(alert__policy_id=F("policy_id")))
     event_total = event_qs.count()
     event_today = event_qs.filter(created_at__gte=today_start).count()
 
     alert_snapshot_total = MonitorAlertMetricSnapshot.objects.filter(
-        policy_id__in=policy_qs.values_list("id", flat=True),
-        alert__policy_id=F("policy_id"),
+        Q(alert_id__in=alert_qs.values("id")) | Q(policy_id__in=policy_qs.values("id"), alert__policy_id=F("policy_id"))
     ).count()
 
     no_data_baseline_total = PolicyInstanceBaseline.objects.filter(policy_id__in=policy_qs.values_list("id", flat=True)).count()
@@ -1986,6 +2435,98 @@ def get_monitor_statistics(user_info=None, **kwargs):
         },
         "message": "",
     }
+
+
+MONITOR_INSTANCE_ALERT_RANKING_MOST = "most_alerts"
+MONITOR_INSTANCE_ALERT_RANKING_LEAST = "least_policy_alerts"
+
+
+def _policy_covered_instance_ids(policy_qs, instance_qs):
+    instance_ids = set(instance_qs.values_list("id", flat=True))
+    covered = set()
+    for policy in policy_qs.filter(enable=True).only("id", "monitor_object_id", "source"):
+        source = policy.source if isinstance(policy.source, dict) else {}
+        source_type = source.get("type")
+        source_values = source.get("values") or []
+        if source_type == "instance":
+            covered.update(value for value in source_values if value in instance_ids)
+            continue
+        if source_type == "organization":
+            covered.update(
+                MonitorInstanceOrganization.objects.filter(
+                    monitor_instance__monitor_object_id=policy.monitor_object_id,
+                    monitor_instance_id__in=instance_ids,
+                    organization__in=source_values,
+                ).values_list("monitor_instance_id", flat=True)
+            )
+            continue
+        covered.update(instance_qs.filter(monitor_object_id=policy.monitor_object_id).values_list("id", flat=True))
+    return covered
+
+
+@nats_client.register
+def get_monitor_instance_alert_ranking(user_info=None, ranking="most_alerts", limit=10, time=None, **kwargs):
+    """监控实例告警排行：告警最多，或已配策略且告警最少（含 0）。"""
+    user_info = user_info or {}
+    ranking = (ranking or kwargs.get("ranking") or MONITOR_INSTANCE_ALERT_RANKING_MOST).strip()
+    if ranking not in {MONITOR_INSTANCE_ALERT_RANKING_MOST, MONITOR_INSTANCE_ALERT_RANKING_LEAST}:
+        return {"result": False, "data": [], "message": "ranking 参数无效"}
+
+    policy_qs, policy_error = _get_nats_accessible_policy_queryset(user_info)
+    if policy_error:
+        return policy_error
+    instance_qs, instance_error = _get_nats_accessible_instance_queryset(user_info)
+    if instance_error:
+        return instance_error
+
+    try:
+        start, end = parse_rfc3339_range_utc(time if time is not None else kwargs.get("time"))
+    except ValueError as exc:
+        return {"result": False, "data": [], "message": str(exc)}
+
+    try:
+        limit = int(limit or 10)
+    except (TypeError, ValueError):
+        limit = 10
+    if limit <= 0:
+        limit = 10
+    if limit > 100:
+        limit = 100
+
+    if ranking == MONITOR_INSTANCE_ALERT_RANKING_LEAST:
+        candidate_ids = _policy_covered_instance_ids(policy_qs, instance_qs)
+    else:
+        candidate_ids = set(instance_qs.values_list("id", flat=True))
+
+    if not candidate_ids:
+        return {"result": True, "data": [], "message": ""}
+
+    alert_counts = {
+        item["monitor_instance_id"]: item["count"]
+        for item in MonitorAlert.objects.filter(
+            monitor_instance_id__in=candidate_ids,
+            created_at__gte=start,
+            created_at__lt=end,
+        )
+        .order_by()
+        .values("monitor_instance_id")
+        .annotate(count=Count("id"))
+    }
+    names = dict(instance_qs.filter(id__in=candidate_ids).values_list("id", "name"))
+    rows = [
+        {
+            "instance_id": instance_id,
+            "instance_name": names.get(instance_id) or instance_id,
+            "count": alert_counts.get(instance_id, 0),
+        }
+        for instance_id in candidate_ids
+    ]
+    if ranking == MONITOR_INSTANCE_ALERT_RANKING_MOST:
+        rows = [item for item in rows if item["count"] > 0]
+        rows.sort(key=lambda item: (-item["count"], item["instance_name"]))
+    else:
+        rows.sort(key=lambda item: (item["count"], item["instance_name"]))
+    return {"result": True, "data": rows[:limit], "message": ""}
 
 
 def _resolve_monitor_ingest_allowed_org_ids(params):

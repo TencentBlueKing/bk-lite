@@ -11,6 +11,7 @@ const sourceFiles = {
   bindingPasswordCopy: 'src/app/(core)/auth/signin/login-auth/bindingPasswordCopy.ts',
   loginAuthBindingContent: 'src/app/(core)/auth/signin/login-auth/LoginAuthBindingContent.tsx',
   useLoginAuthValidation: 'src/app/(core)/auth/signin/login-auth/useLoginAuthValidation.ts',
+  legacyThirdLoginAuthorizeBridge: 'src/app/(core)/auth/signin/LegacyThirdLoginAuthorizeBridge.tsx',
 } as const;
 
 const requiredLocaleKeys = [
@@ -49,6 +50,9 @@ const requiredLocaleKeys = [
   'signin.loginAuth.validation.queryStatusFailed',
   'signin.loginAuth.validation.startFailed',
   'signin.loginAuth.validation.popupBlocked',
+  'signin.legacyThirdLogin.title',
+  'signin.legacyThirdLogin.returning',
+  'signin.legacyThirdLogin.continue',
 ] as const;
 
 const forbiddenHardcodedCopy: Array<{
@@ -230,6 +234,21 @@ const forbiddenHardcodedCopy: Array<{
     file: 'useLoginAuthValidation',
     snippet: 'Failed to start authentication.',
     copy: 'start authentication failed validation error',
+  },
+  {
+    file: 'legacyThirdLoginAuthorizeBridge',
+    snippet: '>登录成功</div>',
+    copy: '登录成功 legacy third-login title',
+  },
+  {
+    file: 'legacyThirdLoginAuthorizeBridge',
+    snippet: '>正在返回原页面...</div>',
+    copy: '正在返回原页面... legacy third-login returning copy',
+  },
+  {
+    file: 'legacyThirdLoginAuthorizeBridge',
+    snippet: '手动继续',
+    copy: '手动继续 legacy third-login continue copy',
   },
 ];
 

@@ -346,17 +346,27 @@ class CollectModelService(object):
         def without_masked_secrets(item):
             return {key: value for key, value in item.items() if not (key in encrypted_fields and value == API_SECRET_MASK)}
 
+        # 云任务编辑页提交的是单个凭据对象，库里已是凭据池时按单项池合并，避免冲掉密钥。
+        if isinstance(credential, dict) and isinstance(old_credential, list):
+            credential = [credential]
+
         if isinstance(credential, list):
             old_pool = old_credential if isinstance(old_credential, list) else []
             legacy_single_credential = dict(old_credential) if isinstance(old_credential, dict) and len(credential) == 1 else {}
             legacy_single_credential.pop("credential_id", None)
             old_pool_map = {item.get("credential_id"): dict(item) for item in old_pool if isinstance(item, dict) and item.get("credential_id")}
+            primary_old = dict(old_pool[0]) if old_pool and isinstance(old_pool[0], dict) else dict(legacy_single_credential)
             merged_pool = []
             for item in credential:
                 if not isinstance(item, dict):
                     raise BaseAppException("采集凭据格式错误！")
                 credential_id = item.get("credential_id")
-                merged = dict(old_pool_map.get(credential_id) or legacy_single_credential)
+                if credential_id and credential_id in old_pool_map:
+                    merged = dict(old_pool_map[credential_id])
+                elif len(credential) == 1:
+                    merged = dict(old_pool_map.get(credential_id) or primary_old)
+                else:
+                    merged = dict(old_pool_map.get(credential_id) or {})
                 merged.update(without_masked_secrets(item))
                 merged_pool.append(merged)
             data["credential"] = merged_pool
@@ -838,7 +848,7 @@ class CollectModelService(object):
             after_data=cls._snapshot_task(instance),
         )
 
-        return WebUtils.response_success(instance.id)
+        return WebUtils.response_success({"id": instance.id, "execution_id": execution_id})
 
     @staticmethod
     def _dispatch_manual_execution(task_id, execution_id, node_config_id, node_config_version):

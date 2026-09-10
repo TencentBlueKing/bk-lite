@@ -154,6 +154,7 @@ assert.deepEqual(payload.template_keys, ['host-remote:0', 'host-remote:1']);
 assert.deepEqual(payload.config.notice_type_ids, [1, 2]);
 assert.equal(payload.config.notice_type, 'email');
 assert.equal(payload.config.trigger_count, 2);
+assert.deepEqual(payload.config.handlers, []);
 assert.equal('no_data_level' in payload.config, false);
 assert.equal('no_data_alert_name' in payload.config, false);
 

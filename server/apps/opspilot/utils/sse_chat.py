@@ -237,7 +237,7 @@ def _prepare_stream_prerequisites(params):
 
 def create_stream_generator(params, skill_name, kwargs, current_ip, user_message, skill_id=None, history_log=None):
     """创建流式生成器 - 返回异步生成器供内部或外部使用"""
-    show_think = params.get("show_think", True)  # 使用 get 而不是 pop，保留值给 format_chat_server_kwargs
+    show_think = params.get("show_think", False)  # 使用 get 而不是 pop，保留值给 format_chat_server_kwargs
 
     # 用于存储最终统计信息的共享变量
     final_stats = {"content": ""}

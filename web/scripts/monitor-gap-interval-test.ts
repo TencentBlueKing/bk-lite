@@ -444,4 +444,33 @@ assert.deepEqual(
   ]
 );
 
+assert.deepEqual(
+  getRenderedGapIntervals(
+    [
+      { time: 60, value1: 3.2 },
+      { time: 120, value1: 4.1 },
+      { time: 180, value1: 5.0 },
+      { time: 240, value1: 4.4 },
+      { time: 300, value1: 6.1 },
+    ],
+    [
+      {
+        start: 0,
+        end: 360,
+        duration: 360,
+        series: [{ metric: { instance_id: 'host-a', collection_task_id: 'req-old' } }],
+      },
+      {
+        start: 0,
+        end: 240,
+        duration: 240,
+        series: [{ metric: { instance_id: 'host-a', collection_task_id: 'req-new' } }],
+      },
+    ],
+    [0, 360]
+  ),
+  [],
+  'merged remote-collection series must not paint a full-window no-data fill over existing samples'
+);
+
 console.log('monitor gap interval logic ok');

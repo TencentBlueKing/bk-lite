@@ -102,8 +102,8 @@ class TestGemmaOpenAIClientThinkMode:
         assert mock_llm.extra_body["chat_template_kwargs"] == {"enable_thinking": False}
 
     @patch("apps.opspilot.metis.llm.common.llm_client_factory.ChatOpenAI")
-    def test_gemma_default_show_think_enables_thinking(self, mock_cls):
-        """show_think defaults to True when absent → thinking enabled."""
+    def test_gemma_default_show_think_disables_thinking(self, mock_cls):
+        """show_think defaults to False when absent → thinking disabled."""
         mock_llm = MagicMock()
         mock_llm.extra_body = None
         mock_cls.return_value = mock_llm
@@ -115,7 +115,7 @@ class TestGemmaOpenAIClientThinkMode:
         )
         LLMClientFactory._create_openai_client(request, disable_stream=False)
 
-        assert mock_llm.extra_body["chat_template_kwargs"]["enable_thinking"] is True
+        assert mock_llm.extra_body["chat_template_kwargs"]["enable_thinking"] is False
 
     @patch("apps.opspilot.metis.llm.common.llm_client_factory.ChatOpenAI")
     def test_non_gemma_model_does_not_set_chat_template_kwargs(self, mock_cls):

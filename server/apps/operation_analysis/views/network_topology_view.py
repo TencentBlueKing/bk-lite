@@ -50,7 +50,12 @@ from apps.operation_analysis.serializers.network_topology_serializers import (
 from apps.operation_analysis.services.network_topology import canvas_config
 from apps.operation_analysis.services.network_topology.runtime import NetworkTopologyRuntimeService
 from apps.operation_analysis.services.network_topology.weops_adapter import WeOpsTopologyAdapter, WeOpsTopologyAdapterError
-from apps.operation_analysis.views.view import BuiltinVisibleMixin, _create_canvas_share_response
+from apps.operation_analysis.views.view import (
+    BuiltinVisibleMixin,
+    _copy_canvas_response,
+    _create_canvas_share_response,
+    _execute_with_clean_validation_error,
+)
 
 # --------------------------------------------------------------------------- #
 # Adapter factory                                                               #
@@ -105,7 +110,7 @@ class NetworkTopologyViewSet(BuiltinVisibleMixin, AuthViewSet):
     def required_feature_permissions(self, request):
         if self.action == "destroy":
             return {"view-DeleteChart"}
-        if self.action == "create":
+        if self.action in {"create", "copy"}:
             return {"view-AddChart"}
         if self.action == "test_connection":
             return {"view-AddChart", "view-EditChart"}
@@ -183,6 +188,12 @@ class NetworkTopologyViewSet(BuiltinVisibleMixin, AuthViewSet):
     # ------------------------------------------------------------------ #
     # Custom actions                                                       #
     # ------------------------------------------------------------------ #
+
+    @action(detail=True, methods=["post"], url_path="copy")
+    def copy(self, request, *args, **kwargs):
+        return _execute_with_clean_validation_error(
+            lambda: _copy_canvas_response(self, request, log_action="复制网络拓扑: {name}"),
+        )
 
     @action(detail=False, methods=["post"], url_path="test_connection")
     def test_connection(self, request):

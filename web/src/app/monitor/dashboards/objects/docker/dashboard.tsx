@@ -9,8 +9,7 @@ import {
   FlexiblePanelSection,
   KpiSection,
   useFilteredChartPanels,
-  useFilteredSummaryCards
-} from '../common/dashboard-components';
+  useFilteredSummaryCards, DashboardSectionLabel } from '../common/dashboard-components';
 import { HorizontalBarPanel, TitleWithGuide, TrendChartPanel } from '../../shared/widgets';
 import type { BarItem } from '../../shared/widgets';
 import { buildSearchParams, runWithConcurrency, topLabelBars } from '../../shared/utils';
@@ -80,10 +79,10 @@ export default function DockerDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
 
-          <div className={styles.sectionLabel}>性能趋势</div>
+          <DashboardSectionLabel styles={styles}>性能趋势</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {[resourceChart, blockIoChart].map((chart) => chart ? (
               <TrendChartPanel
@@ -104,7 +103,7 @@ export default function DockerDashboardPage() {
             ) : null)}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>网络观察</div>
+          <DashboardSectionLabel styles={styles}>网络观察</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {[networkChart, networkErrorChart].map((chart) => chart ? (
               <TrendChartPanel
@@ -125,7 +124,7 @@ export default function DockerDashboardPage() {
             ) : null)}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>容器资源排行</div>
+          <DashboardSectionLabel styles={styles}>容器资源排行</DashboardSectionLabel>
           <section className={styles.dashboardSection}>
             <div className={styles.sectionGrid}>
               {DOCKER_TOP_QUERIES.map((q) => (

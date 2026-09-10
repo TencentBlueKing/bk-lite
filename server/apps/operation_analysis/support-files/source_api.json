@@ -571,7 +571,16 @@
     "chart_type": [
         "single"
     ],
-    "params": [],
+    "params": [
+        {
+            "name": "organization",
+            "type": "string",
+            "value": "",
+            "alias_name": "组织",
+            "filterType": "filter",
+            "inputConfig": { "control": "organization" }
+        }
+    ],
     "field_schema": [
         {"key": "monitor_object_total", "title": "监控对象总数", "value_type": "number", "description": "监控对象定义总数"},
         {"key": "monitor_object_visible", "title": "可见监控对象数", "value_type": "number", "description": "可见的监控对象数"},
@@ -1129,6 +1138,144 @@
       {"key": "src_port", "title": "源端口", "value_type": "string"},
       {"key": "dst_port", "title": "目的端口", "value_type": "string"},
       {"key": "protocol", "title": "协议", "value_type": "string"}
+    ]
+},
+{
+    "key": "已监控CMDB主机::cmdb/list_monitored_hosts",
+    "name": "已监控CMDB主机（选项）",
+    "desc": "当前用户有权且已关联监控 ID 的 CMDB 主机，供统一筛选下拉使用，本身不直接出图",
+    "rest_api": "cmdb/list_monitored_hosts",
+    "tag": ["cmdb"],
+    "chart_type": [],
+    "params": [],
+    "field_schema": [
+      {"key": "inst_uuid", "title": "主机UUID", "value_type": "string"},
+      {"key": "display_name", "title": "主机", "value_type": "string"},
+      {"key": "host_name", "title": "主机名", "value_type": "string"},
+      {"key": "ip", "title": "IP地址", "value_type": "string"},
+      {"key": "os_type", "title": "系统类型", "value_type": "string"},
+      {"key": "os_type_label", "title": "系统类型名称", "value_type": "string"},
+      {"key": "biz_name", "title": "业务", "value_type": "string"},
+      {"key": "zombie_whitelist", "title": "僵尸机白名单", "value_type": "string"},
+      {"key": "monitor_id", "title": "监控实例ID", "value_type": "string"}
+    ]
+},
+{
+    "key": "应用系统::cmdb/list_application_systems",
+    "name": "应用系统（选项）",
+    "desc": "当前用户有权的 CMDB 应用系统，供统一筛选下拉使用，本身不直接出图",
+    "rest_api": "cmdb/list_application_systems",
+    "tag": ["cmdb"],
+    "chart_type": [],
+    "params": [],
+    "field_schema": [
+      {"key": "inst_uuid", "title": "应用系统UUID", "value_type": "string"},
+      {"key": "display_name", "title": "应用系统", "value_type": "string"},
+      {"key": "inst_name", "title": "应用系统名称", "value_type": "string"}
+    ]
+},
+{
+    "key": "僵尸机查询::monitor/get_zombie_host_report",
+    "name": "僵尸机查询",
+    "desc": "按所选应用系统下已监控 CMDB 主机查询时间窗内登录、入包、CPU/内存/IO，并按闲机口径阈值筛出疑似僵尸机。未选应用系统不退回全量；时间默认 7 天；阈值不随窗口缩放；登录未采集不按 0 过滤。",
+    "rest_api": "monitor/get_zombie_host_report",
+    "tag": ["monitor"],
+    "chart_type": ["table"],
+    "params": [
+      {
+        "name": "system_uuids",
+        "type": "string",
+        "value": [],
+        "alias_name": "应用系统",
+        "filterType": "filter",
+        "inputConfig": {
+          "control": "select",
+          "multiple": true,
+          "optionsSource": {
+            "type": "dynamic",
+            "sourceRef": {"type": "rest_api", "value": "cmdb/list_application_systems"},
+            "valueField": "inst_uuid",
+            "labelField": "display_name"
+          }
+        }
+      },
+      {
+        "name": "time",
+        "type": "timeRange",
+        "value": 10080,
+        "alias_name": "时间范围",
+        "filterType": "filter"
+      },
+      {
+        "name": "os_type",
+        "type": "string",
+        "value": "",
+        "alias_name": "系统类型",
+        "filterType": "filter",
+        "inputConfig": {
+          "control": "select",
+          "optionsSource": {
+            "type": "static",
+            "staticItems": [
+              {"label": "Linux", "value": "1"},
+              {"label": "Windows", "value": "2"}
+            ]
+          }
+        }
+      },
+      {
+        "name": "zombie_whitelist",
+        "type": "string",
+        "value": "",
+        "alias_name": "僵尸机白名单",
+        "filterType": "filter",
+        "inputConfig": {
+          "control": "select",
+          "optionsSource": {
+            "type": "static",
+            "staticItems": [
+              {"label": "是", "value": "yes"},
+              {"label": "否", "value": "no"}
+            ]
+          }
+        }
+      },
+      {"name": "page", "type": "number", "value": 1, "alias_name": "页码", "filterType": "params"},
+      {"name": "page_size", "type": "number", "value": 20, "alias_name": "每页数量", "filterType": "params"},
+      {"name": "login_min", "type": "number", "value": -1, "alias_name": "登录次数下限", "filterType": "filter"},
+      {"name": "login_max", "type": "number", "value": 2, "alias_name": "登录次数上限", "filterType": "filter"},
+      {"name": "packets_recv_max_min", "type": "number", "value": -1, "alias_name": "入包峰值下限(pps)", "filterType": "filter"},
+      {"name": "packets_recv_max_max", "type": "number", "value": 200, "alias_name": "入包峰值上限(pps)", "filterType": "filter"},
+      {"name": "packets_recv_avg_min", "type": "number", "value": -1, "alias_name": "入包均值下限(pps)", "filterType": "filter"},
+      {"name": "packets_recv_avg_max", "type": "number", "value": 50, "alias_name": "入包均值上限(pps)", "filterType": "filter"},
+      {"name": "cpu_avg_min", "type": "number", "value": -1, "alias_name": "CPU均值下限(%)", "filterType": "filter"},
+      {"name": "cpu_avg_max", "type": "number", "value": 8, "alias_name": "CPU均值上限(%)", "filterType": "filter"},
+      {"name": "cpu_max_min", "type": "number", "value": -1, "alias_name": "CPU峰值下限(%)", "filterType": "filter"},
+      {"name": "cpu_max_max", "type": "number", "value": 20, "alias_name": "CPU峰值上限(%)", "filterType": "filter"},
+      {"name": "mem_avg_min", "type": "number", "value": -1, "alias_name": "内存均值下限(%)", "filterType": "filter"},
+      {"name": "mem_avg_max", "type": "number", "value": 25, "alias_name": "内存均值上限(%)", "filterType": "filter"},
+      {"name": "mem_max_min", "type": "number", "value": -1, "alias_name": "内存峰值下限(%)", "filterType": "filter"},
+      {"name": "mem_max_max", "type": "number", "value": 40, "alias_name": "内存峰值上限(%)", "filterType": "filter"},
+      {"name": "io_max_min", "type": "number", "value": -1, "alias_name": "IO峰值下限(%)", "filterType": "filter"},
+      {"name": "io_max_max", "type": "number", "value": 10, "alias_name": "IO峰值上限(%)", "filterType": "filter"}
+    ],
+    "field_schema": [
+      {"key": "biz_name", "title": "业务", "value_type": "string"},
+      {"key": "host_name", "title": "主机名", "value_type": "string"},
+      {"key": "os_type_label", "title": "系统类型", "value_type": "string"},
+      {"key": "ip", "title": "IP地址", "value_type": "string"},
+      {"key": "packets_recv_max", "title": "入包峰值(pps)", "value_type": "number"},
+      {"key": "packets_recv_avg", "title": "入包均值(pps)", "value_type": "number"},
+      {"key": "login_count", "title": "成功登录次数", "value_type": "number"},
+      {"key": "login_status", "title": "登录采集状态", "value_type": "string"},
+      {"key": "cpu_max", "title": "CPU峰值(%)", "value_type": "number"},
+      {"key": "cpu_avg", "title": "CPU均值(%)", "value_type": "number"},
+      {"key": "mem_max", "title": "内存峰值(%)", "value_type": "number"},
+      {"key": "mem_avg", "title": "内存均值(%)", "value_type": "number"},
+      {"key": "io_max", "title": "IO峰值(%)", "value_type": "number"},
+      {"key": "zombie_whitelist", "title": "僵尸机白名单", "value_type": "string"},
+      {"key": "inst_uuid", "title": "主机UUID", "value_type": "string"},
+      {"key": "monitor_id", "title": "监控实例ID", "value_type": "string"}
     ]
 }
 ]

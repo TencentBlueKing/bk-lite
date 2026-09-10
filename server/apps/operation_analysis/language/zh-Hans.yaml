@@ -1,0 +1,1513 @@
+directories:
+  __builtin__:
+    name: 内置目录
+dashboards:
+  "dashboard::CMDB仪表盘_内置":
+    name: CMDB仪表盘
+    desc: CMDB仪表盘
+    filters:
+      time:
+        name: 时间
+    widgets:
+      47c8e06b-2023-4f5d-8ca9-e718983234bb:
+        name: 模型分类数
+        description: 模型分类数量
+      1a884812-9fd1-4e01-bd95-ef93e58470bf:
+        name: 模型数
+        description: 模型数量
+      be09cec0-aac6-4d9e-b44c-d7f7e2d75aee:
+        name: 实例数
+        description: 已纳管的实例总量
+      08bebde0-1772-4199-8248-016c30bd2b23:
+        name: 主机操作系统分布
+        description: 按 os_type 统计；未填写类型归为 unknown
+        params:
+          model_id: 模型 ID
+          field: 分组字段
+      4df1fa2e-a38d-48e9-b6ca-a16f91f768eb:
+        name: 变更趋势
+        description: 实例新增、修改、删除，跟随时间范围
+        params:
+          time: 时间范围
+          model_id: 模型ID
+      7951c963-9fd3-40a4-8169-9463676bdc07:
+        name: 模型实例明细
+        description: 各模型的实例数量
+        columns:
+          classification: 分类
+          model: 模型名
+          model_id: 模型ID
+          count: 数量
+      8461bad1-524b-499c-aebb-af9ed980aa14:
+        name: 非空模型数
+        description: 至少有 1 个实例的模型数
+      c02d6a5c-39bf-46e2-95b8-f4f4d46e1352:
+        name: 空模型数
+        description: 尚无实例的模型数
+      7e5070ee-514c-4247-997b-aaad9ee81382:
+        name: 模型覆盖率
+        description: 非空模型占全部模型的比例
+      dcbe080f-5973-4215-9ae4-d4c6c1ffd1af:
+        name: 采集任务总数
+        description: 已配置的采集任务总数
+      6fb9eb5e-81cc-4888-b484-6bead0b7ea64:
+        name: 周期任务数
+        description: 开启周期巡检的采集任务数
+      e86497c6-99d1-4245-a925-7d941416d384:
+        name: 采集成功任务数
+        description: 最近一次执行成功的任务数
+      81fb3757-8c04-4e2c-b603-69372e11168c:
+        name: 运行中任务数
+        description: 当前正在执行的采集任务数
+      e85bcf55-fe23-4e75-bccb-7f68528ddd4a:
+        name: 超时任务数
+        description: 最近一次执行超时的任务数
+      db83c45b-4476-47a9-bd6f-944159fbd476:
+        name: 从未执行任务数
+        description: 创建后从未执行过的任务数
+      cef91805-bf1d-4909-a112-4c6a5d7b5823:
+        name: 模型实例 TOP 5
+        description: 按实例数降序
+        params:
+          limit: 返回条数
+          classification_id: 模型分类ID
+  "dashboard::统一告警中心仪表盘_内置":
+    name: 统一告警中心仪表盘
+    desc: ''
+    filters:
+      time:
+        name: 时间范围
+    widgets:
+      99ff96a3-2055-4932-b882-bc2b896cc1e7:
+        name: 告警关联事件数
+        description: 按事件接收时间，仅计已关联授权告警
+      d0a485b5-9f7c-46ae-9c42-717aa5fca81b:
+        name: 新增告警数
+        description: 按告警创建时间
+      8b710945-88a5-42d3-8fdd-a52507f54fe4:
+        name: 新增事故数
+        description: 按事故创建时间
+      02ed505a-d71b-4bbc-82c8-4a5338596c37:
+        name: 活跃告警数
+        description: 未分派、待响应、处理中合计，不受时间范围影响
+      0488514c-4381-408f-95c3-a645b010bdb1:
+        name: 自动恢复告警数
+        description: 当前状态为自动恢复，不受时间范围影响
+      00529616-16d3-4be3-8a7f-463a175f8c53:
+        name: 自动恢复占比
+        description: 占全部存量告警的比例，不受时间范围影响
+      f6ddd2a0-2adc-4e20-9513-f6ebb7426211:
+        name: 事件聚合倍率
+        description: 关联事件数 ÷ 受影响告警数（非百分比）
+      5c2735d3-5449-4d29-871d-545eaf7b24b9:
+        name: 会话告警占比
+        description: 新增告警中会话类告警的比例
+      586576ee-f427-4c56-9e8a-6777c95c1290:
+        name: 告警与关联事件趋势
+        description: 告警数、关联事件数与已恢复数
+        params:
+          time: 时间范围
+      85bfbc48-c2b7-4621-99ca-621818d656f9:
+        name: 活跃告警等级分布
+        description: 当前活跃告警按等级分布，不受时间范围影响
+        params:
+          status_filter: 告警状态范围
+      ad522899-2fc5-4b7a-875e-19004c33a425:
+        name: 告警关联事件来源 TOP 5
+        description: 按关联事件数排序
+        params:
+          limit: 返回条数
+          time: 时间范围
+      e7b15832-9734-4eff-ae1b-96dc5148d286:
+        name: 告警源总数
+        description: 已配置的告警源总数，不受时间范围影响
+      190cbce2-33d1-4755-a85d-ea781c898920:
+        name: 已启用告警源数
+        description: 处于启用状态的告警源数
+      083e3d04-08d6-4100-9d02-6bdb4a4e5a6f:
+        name: 活跃告警源数
+        description: 跟随时间范围，至少收到一条事件的告警源
+      a3538b40-7c46-475d-a3d9-927b8f2d7098:
+        name: 告警源启用率
+        description: 已启用告警源占全部告警源的比例
+      80a6b436-a8c3-44f0-a054-905fb3f08a3d:
+        name: 渠道通知成功率
+        description: 各渠道发送成功占比
+      af0ee431-54a4-4fcb-8ae4-43a7666a5aed:
+        name: 通知失败数
+        description: 发送失败的通知数
+      38cbdb62-671c-48a6-a883-2c41a97882f2:
+        name: 通知失败率
+        description: 发送失败通知占全部通知的比例
+      9fb91936-d18b-4583-b14b-d9ae04d6bb10:
+        name: 告警缺少规则 ID 占比
+        description: 分母为时间范围内新增告警
+      aede04f0-83f3-4fc6-b804-a2772c640623:
+        name: 告警缺少资源 ID 占比
+        description: 分母为时间范围内新增告警
+      063b6d01-ec91-4218-b6ad-9f34c82ea94b:
+        name: 通知成功数
+        description: 发送成功的通知数
+      fb51e119-3763-4a99-844f-274fa6c50577:
+        name: 通知成功率
+        description: 发送成功通知占全部通知的比例
+      356ec2d9-0bf2-4d03-aa0b-dda3d9d7cf87:
+        name: 关联事件缺少指标项占比
+        description: 分母为时间范围内告警关联事件
+      8c4c5cb4-dfd9-4b01-9baa-33a9f758a4b6:
+        name: 关联事件缺少外部事件 ID 占比
+        description: 分母为时间范围内告警关联事件
+      739e9aab-809e-42c6-901a-ca6d664db676:
+        name: 活跃告警持续时长 TOP 10
+        description: 当前持续时间最长的活跃告警
+        columns:
+          alert_id: 告警 ID
+          title: title
+          level: level
+          status: status
+          duration_seconds: duration_seconds
+          created_at: created_at
+          resource_name: resource_name
+        params:
+          limit: 返回条数
+  "dashboard::监控中心仪表盘_内置":
+    name: 监控中心仪表盘
+    desc: 监控中心资源/能力/告警总览
+    widgets:
+      mon-stat-r01:
+        name: 监控对象总数
+        description: 系统已定义的全部监控对象
+      mon-stat-r02:
+        name: 可见监控对象数
+        description: 当前用户可见的监控对象
+      mon-stat-r03:
+        name: 监控对象分类数
+        description: 对象按类型划分的分类数
+      mon-stat-r04:
+        name: 监控实例总数
+        description: 接入监控的实例总数
+      mon-stat-r05:
+        name: 活跃实例数
+        description: 当前启用中的监控实例
+      mon-stat-r06:
+        name: 停用实例数
+        description: 当前已停用的监控实例
+      mon-stat-c01:
+        name: 监控插件总数
+        description: 已注册的监控插件总数
+      mon-stat-c02:
+        name: 内置插件数
+        description: 系统预置的标准插件
+      mon-stat-c03:
+        name: 自定义插件数
+        description: 用户自定义的扩展插件
+      mon-stat-c04:
+        name: 指标定义总数
+        description: 系统已定义的指标条目
+      mon-stat-c05:
+        name: 指标分组总数
+        description: 指标分组的数量
+      mon-stat-c06:
+        name: 采集配置总数
+        description: 已配置的采集任务总数
+      mon-stat-a01:
+        name: 告警总数
+        description: 尚未处理的活跃告警
+      mon-stat-a02:
+        name: 历史告警总数
+        description: 系统累计产生的告警
+      mon-stat-a03:
+        name: 今日新增告警数
+        description: 今日 0 点起新产生的告警
+      mon-stat-a04:
+        name: 告警策略总数
+        description: 已配置的告警策略总数
+      mon-stat-a05:
+        name: 启用策略数
+        description: 处于启用状态的策略
+      mon-stat-a06:
+        name: 禁用策略数
+        description: 处于禁用状态的策略
+      mon-stat-a07:
+        name: 阈值策略数
+        description: 配置了阈值条件的策略
+      mon-stat-a08:
+        name: 无数据策略数
+        description: 启用无数据检测的策略
+      mon-stat-a09:
+        name: 已恢复告警数
+        description: 已自动恢复的告警
+      mon-stat-a10:
+        name: 已关闭告警数
+        description: 已被人工关闭的告警
+      mon-stat-a11:
+        name: 监控事件总数
+        description: 累计产生的监控事件
+      mon-stat-a12:
+        name: 今日新增事件数
+        description: 今日 0 点起新增的事件
+      mon-stat-a13:
+        name: 告警快照总数
+        description: 告警全周期快照记录
+      mon-stat-a14:
+        name: 无数据基准总数
+        description: 无数据检测的实例基准
+  "dashboard::Flow网络流量分析仪表盘":
+    name: Flow 网络流量分析仪表盘
+    desc: 按所选网络设备查看 Flow 总流量、趋势、协议分布、TopN、会话与通信关系。
+    filters:
+      instance_ids:
+        name: 设备
+      time:
+        name: 时间范围
+    widgets:
+      group-overview:
+        name: 流量概览
+        description: 所选设备在时间窗内的总流量、包速、平均包大小与有效采样率
+      flow-kpi-bytes:
+        name: 总流量
+        description: 所选设备归一化后的 Flow 字节速率
+        params:
+          instance_ids: 设备
+          metric: 指标
+          mode: 查询模式
+          time: 时间范围
+      flow-kpi-packets:
+        name: 总包速
+        description: 所选设备归一化后的 Flow 包速率
+        params:
+          instance_ids: 设备
+          metric: 指标
+          mode: 查询模式
+          time: 时间范围
+      flow-kpi-avg-size:
+        name: 平均包大小
+        description: 由归一化字节与包数计算的平均包大小
+        params:
+          instance_ids: 设备
+          metric: 指标
+          mode: 查询模式
+          time: 时间范围
+      flow-kpi-sampling:
+        name: 有效采样率
+        description: Flow 流量归一化使用的有效采样率
+        params:
+          instance_ids: 设备
+          metric: 指标
+          mode: 查询模式
+          time: 时间范围
+      group-trend:
+        name: 流量趋势
+        description: Bytes/s、Packets/s 与协议流量趋势
+      flow-trend-bytes:
+        name: 总流量趋势
+        description: 所选设备合计的 Flow 字节速率
+        params:
+          instance_ids: 设备
+          metric: 指标
+          mode: 查询模式
+          time: 时间范围
+      flow-trend-packets:
+        name: 总包速趋势
+        description: 所选设备合计的 Flow 包速率
+        params:
+          instance_ids: 设备
+          metric: 指标
+          mode: 查询模式
+          time: 时间范围
+      flow-trend-protocol:
+        name: 协议流量趋势
+        description: 按协议折叠后的 Flow 字节速率
+        params:
+          instance_ids: 设备
+          metric: 指标
+          mode: 查询模式
+          time: 时间范围
+      group-rank:
+        name: 协议与排行
+        description: 协议占比与 Source / Destination / IP+端口 / Protocol TopN
+      flow-pie-protocol:
+        name: 协议分布
+        description: 时间窗内按协议折叠的流量占比
+        params:
+          instance_ids: 设备
+          metric: 指标
+          mode: 查询模式
+          time: 时间范围
+      flow-topn:
+        name: 流量 TopN
+        description: 切换源地址、目的地址、源 IP+端口、目标 IP+端口或协议查看占用
+        params:
+          instance_ids: 设备
+          metric: 指标
+          mode: 查询模式
+          time: 时间范围
+      group-conversation:
+        name: 会话
+        description: Top Conversation 的源、目的、端口、协议和流量
+      flow-table-conversation:
+        name: Top 会话
+        description: 时间窗内占用最高的通信对
+        columns:
+          name: 会话
+          src: 源地址
+          dst: 目的地址
+          dst_port: 目的端口
+          protocol: 协议
+          value: 流量
+        params:
+          instance_ids: 设备
+          metric: 指标
+          mode: 查询模式
+          time: 时间范围
+      group-node-graph:
+        name: 通信关系
+        description: 按会话流量画主机互访与访问服务
+      flow-node-graph-ip:
+        name: 主机通信
+        description: 源 IP 与目的 IP 之间的有向流量
+        params:
+          instance_ids: 设备
+          metric: 指标
+          mode: 查询模式
+          time: 时间范围
+          limit: 返回条数
+      flow-node-graph-service:
+        name: 访问服务
+        description: 源 IP 访问目的 IP:端口 的有向流量
+        params:
+          instance_ids: 设备
+          metric: 指标
+          mode: 查询模式
+          time: 时间范围
+          limit: 返回条数
+  "dashboard::WeOpsX平台使用_内置":
+    name: WeOpsX 平台使用
+    desc: 按所选组织查看各模块此刻库存与模块内成效（比率 / TopN）。库存不随时间窗变化。
+    filters:
+      organization:
+        name: 组织
+      time:
+        name: 时间范围
+    widgets:
+      group-overview:
+        name: 平台总览
+        description: 各模块此刻库存
+      weopsx-kpi-cmdb-instances:
+        name: CMDB 实例
+        description: 当前组织可见的 CMDB 实例总数
+        params:
+          organization: 组织
+      weopsx-kpi-monitor-instances:
+        name: 监控实例
+        description: 当前组织未删除的监控实例总数
+        params:
+          organization: 组织
+      weopsx-kpi-monitor-metrics:
+        name: 监控指标
+        description: 指标定义条目总数
+        params:
+          organization: 组织
+      weopsx-kpi-log-instances:
+        name: 日志采集实例
+        description: 当前组织可见的日志采集实例数
+        params:
+          organization: 组织
+      weopsx-kpi-open-alerts:
+        name: 未关闭告警
+        description: 当前未分派、待响应和处理中的告警总数，不受时间窗影响
+        params:
+          organization: 组织
+      weopsx-kpi-nodes:
+        name: 节点
+        description: 当前组织可见的节点总数
+        params:
+          organization: 组织
+      group-cmdb:
+        name: CMDB
+        description: 分类/模型/实例规模、采集覆盖与分类排行
+      weopsx-cmdb-classifications:
+        name: 分类数
+        description: 当前可见的 CMDB 模型分类数
+        params:
+          organization: 组织
+      weopsx-cmdb-models:
+        name: 模型数
+        description: 当前组织可见的 CMDB 模型数
+        params:
+          organization: 组织
+      weopsx-cmdb-instances:
+        name: 实例数
+        description: 当前组织可见的 CMDB 实例总数
+        params:
+          organization: 组织
+      weopsx-cmdb-coverage:
+        name: 采集覆盖率
+        description: 有权可见且已挂采集任务的实例数在实例总数中的占比
+        params:
+          organization: 组织
+      weopsx-cmdb-class-top:
+        name: 分类实例 TOP
+        description: 按分类汇总实例数降序
+        params:
+          organization: 组织
+          limit: 返回条数
+          group_by: 排行维度
+      group-monitor:
+        name: 监控
+        description: 对象、实例、指标、策略库存，以及时间窗内实例告警排行
+      weopsx-mon-objects:
+        name: 监控对象
+        description: 监控对象定义总数（平台目录）
+        params:
+          organization: 组织
+      weopsx-mon-instances:
+        name: 监控实例
+        description: 当前组织未删除的监控实例总数
+        params:
+          organization: 组织
+      weopsx-mon-metrics:
+        name: 指标定义
+        description: 指标定义条目总数
+        params:
+          organization: 组织
+      weopsx-mon-policies:
+        name: 告警策略
+        description: 当前组织可见的告警策略总数
+        params:
+          organization: 组织
+      weopsx-mon-most-alerts:
+        name: 告警最多实例
+        description: 时间窗内产生告警最多的监控实例
+        params:
+          organization: 组织
+          time: 时间范围
+          ranking: 排行模式
+          limit: 返回条数
+      weopsx-mon-least-alerts:
+        name: 已配策略告警最少
+        description: 已配策略覆盖且时间窗内告警最少（含 0）的监控实例
+        params:
+          organization: 组织
+          time: 时间范围
+          ranking: 排行模式
+          limit: 返回条数
+      group-log:
+        name: 日志
+        description: 采集实例、提取规则、告警规则与绑定率，以及策略告警排行
+      weopsx-log-instances:
+        name: 采集实例
+        description: 当前组织可见的日志采集实例数
+        params:
+          organization: 组织
+      weopsx-log-extractors:
+        name: 提取规则
+        description: 关联当前组织采集实例或采集类型的提取规则数
+        params:
+          organization: 组织
+      weopsx-log-policies:
+        name: 告警规则
+        description: 当前组织可见的日志告警策略数
+        params:
+          organization: 组织
+      weopsx-log-bound:
+        name: 已绑定资产占比
+        description: 已关联资产的采集实例占采集实例总数的比例
+        params:
+          organization: 组织
+      weopsx-log-policy-top:
+        name: 告警规则 TOP
+        description: 时间窗内产生告警最多的日志告警策略
+        params:
+          organization: 组织
+          time: 时间范围
+          limit: 返回条数
+      group-alert:
+        name: 告警
+        description: 未关闭告警、接入源、闭环率与排行
+      weopsx-alert-active:
+        name: 未关闭告警
+        description: 当前未关闭（未分派+待响应+处理中）告警数，不受时间窗影响
+        params:
+          organization: 组织
+      weopsx-alert-sources:
+        name: 接入源
+        description: 已配置的告警源总数，不受时间窗影响
+        params:
+          organization: 组织
+      weopsx-alert-loop:
+        name: 闭环率
+        description: 时间窗内关闭告警数除以新增告警数；关闭多于新增时可超过 100%
+        params:
+          time: 时间范围
+          organization: 组织
+      weopsx-alert-source-top:
+        name: 接入源事件 TOP
+        description: 时间窗内事件数最多的告警接入源
+        params:
+          organization: 组织
+          time: 时间范围
+          limit: 返回条数
+      weopsx-alert-rule-top:
+        name: 相关性命中 TOP
+        description: 时间窗内关联/聚合规则命中次数（按产生告警条数）
+        params:
+          organization: 组织
+          time: 时间范围
+          limit: 返回条数
+      group-node:
+        name: 节点
+        description: 节点、采集器、云区域与在线率
+      weopsx-node-total:
+        name: 节点数
+        description: 当前组织节点总数
+        params:
+          organization: 组织
+      weopsx-node-collectors:
+        name: 采集器数
+        description: 采集器目录条目数
+        params:
+          organization: 组织
+      weopsx-node-clouds:
+        name: 云区域数
+        description: 当前组织节点涉及的云区域数
+        params:
+          organization: 组织
+      weopsx-node-online:
+        name: 在线占比
+        description: 在线节点占节点总数的比例
+        params:
+          organization: 组织
+      weopsx-node-cloud-top:
+        name: 云区域节点 TOP
+        description: 按云区域节点数降序
+        params:
+          organization: 组织
+          limit: 返回条数
+      group-job:
+        name: 作业
+        description: 作业、模板库存与时间窗内执行成功率
+      weopsx-job-jobs:
+        name: 作业数
+        description: 当前组织作业数
+        params:
+          organization: 组织
+          time: 时间范围
+      weopsx-job-templates:
+        name: 模板数
+        description: 当前组织作业模板数
+        params:
+          organization: 组织
+          time: 时间范围
+      weopsx-job-success:
+        name: 执行成功率
+        description: 时间窗内成功执行次数占总执行次数的比例
+        params:
+          organization: 组织
+          time: 时间范围
+      group-system:
+        name: 系统管理
+        description: 组织、用户与通知渠道配置规模
+      weopsx-sys-orgs:
+        name: 组织数
+        description: 选中组织及其下级组织数（不含归档）
+        params:
+          organization: 组织
+      weopsx-sys-users:
+        name: 用户数
+        description: 归属当前组织的用户数
+        params:
+          organization: 组织
+      weopsx-sys-channels:
+        name: 通知渠道
+        description: 已配置的通知渠道数（普通渠道 + 即时通讯渠道）
+        params:
+          organization: 组织
+      weopsx-sys-enabled:
+        name: 渠道启用占比
+        description: 已启用渠道占已配置渠道的比例。普通通知渠道无独立启停开关，已配置即视为已启用；即时通讯渠道按 enabled 计。
+        params:
+          organization: 组织
+screens:
+  "screen::告警运营大屏_内置":
+    name: 告警运营大屏
+    desc: 告警中心运营态势大屏，使用页面可配置图表节点展示今日、活动、趋势、分布与活跃告警信息
+    decorations:
+      title: 告警运营大屏
+    widgets:
+      alert-kpi-created:
+        title: 今日已产生
+      alert-kpi-closed:
+        title: 今日已关闭
+      alert-kpi-processing:
+        title: 处理中
+      alert-active-total:
+        title: 活跃告警总数
+      alert-active-pending:
+        title: 待响应
+      alert-level-trend:
+        title: 告警等级趋势
+        params:
+          time: 时间范围
+      alert-access-trend:
+        title: 告警与关联事件趋势
+        params:
+          time: 时间范围
+      alert-level-distribution:
+        title: 活跃告警等级分布
+        params:
+          status_filter: 告警状态范围
+      alert-duration-top:
+        title: 活跃告警持续时长 TOP10
+        columns:
+          alert_id: 告警ID
+          title: 告警名称
+          level: 等级
+          status: 状态
+          duration_seconds: 持续秒数
+          created_at: 发生时间
+          resource_name: 资源名称
+        params:
+          limit: 返回条数
+      alert-status-distribution:
+        title: 活跃告警状态分布
+      alert-active-table:
+        title: 活跃告警信息
+        columns:
+          alert_id: 告警ID
+          title: 告警名称
+          level: 等级
+          status: 状态
+          duration_seconds: 持续秒数
+          created_at: 发生时间
+          resource_name: 资源名称
+        params:
+          limit: 返回条数
+      alert-source-event-top:
+        title: 告警关联事件来源 TOP10
+        params:
+          limit: 返回条数
+          time: 时间
+      081f2a79-debe-4825-9d4d-1aeb02d9702e:
+        title: 渠道通知成功率
+        params:
+          time: 时间
+      f9156f59-ac47-48b9-b071-da3289f769af:
+        title: 告警关联事件数
+        params:
+          time: 时间范围
+      2bdee93c-3a75-49a6-93b2-bd0d448967b3:
+        title: 新增事故数
+        params:
+          time: 时间范围
+  "screen::3D机房大屏_内置":
+    name: 3D机房大屏
+    desc: 基于 CMDB 机房、机柜和设备数据展示的 3D 机房大屏，支持在组件内切换机房
+    decorations:
+      title: 机柜全景
+    widgets:
+      builtin-room3d-main:
+        title: 3D机房
+  "screen::3D应用大屏_内置":
+    name: 3D应用大屏
+    desc: 以 3D 应用墙展示当前可见应用的健康状态、活跃告警和详情
+    decorations:
+      title: 全景应用墙
+    widgets:
+      builtin-application3d-main:
+        title: 3D应用
+  "screen::网络状态拓扑大屏_内置":
+    name: 网络状态拓扑大屏_内置
+    desc: 按勾选的网络设备展示 CMDB 关联并叠加监控中心活跃告警的内置大屏示例。
+    decorations:
+      title: 网络状态拓扑大屏
+    widgets:
+      network-topology-builtin-main:
+        title: 网络状态拓扑总览
+datasources:
+  "CMDB 3D机房布局::cmdb/get_room3d_layout":
+    name: CMDB 3D机房布局
+    desc: 查询指定 CMDB 机房的 3D 机柜布局数据
+    params:
+      server_room_id: 机房ID
+  "CMDB 变更趋势::cmdb/get_change_trend":
+    name: CMDB 变更趋势
+    desc: 跟随时间范围，统计实例新增、修改和删除趋势，可按模型筛选
+    params:
+      time: 时间范围
+      model_id: 模型 ID
+  "CMDB模型实例TOPN::cmdb/get_cmdb_model_instance_top":
+    name: CMDB 实例排行（按模型/分类）
+    desc: 按实例数降序排行；默认按模型，也可按分类汇总。老 CMDB 盘默认按模型，勿改默认值。
+    fields:
+      model:
+        title: 模型名称
+        description: 模型显示名称（排行维度为模型时使用）
+      model_id:
+        title: 模型ID
+        description: 模型唯一标识（排行维度为模型时使用）
+      classification:
+        title: 分类名称
+        description: 分类显示名称；按模型排时为所属分类，按分类排时为排行项
+      classification_id:
+        title: 分类ID
+        description: 分类标识
+      count:
+        title: 实例数
+        description: 该排行项下的实例数量
+    params:
+      limit: 返回条数
+      classification_id: 模型分类 ID
+      group_by: 排行维度
+      organization: 组织
+  "CMDB采集健康统计::cmdb/get_cmdb_collect_statistics":
+    name: CMDB 采集任务状态
+    desc: 采集任务总数、周期任务数及最近执行状态分布
+    fields:
+      task_count:
+        title: 任务总数
+        description: 当前可见采集任务总数
+      interval_task_count:
+        title: 周期任务数
+        description: 开启周期巡检的采集任务数量
+      success_count:
+        title: 成功任务数
+        description: 最近状态为成功的任务数
+      error_count:
+        title: 异常任务数
+        description: 最近状态为异常的任务数
+      running_count:
+        title: 运行中任务数
+        description: 当前状态为运行中的任务数
+      timeout_count:
+        title: 超时任务数
+        description: 当前状态为超时的任务数
+      never_run_count:
+        title: 从未执行任务数
+        description: 当前状态为未执行的任务数
+      partial_success_count:
+        title: 部分成功任务数
+        description: 最近状态为部分成功的任务数
+  "主机操作系统分布::get_instance_group_by":
+    name: 主机操作系统分布
+    desc: 按主机 os_type 统计实例数；未填写类型归为 unknown
+    fields:
+      name:
+        title: 操作系统
+        description: 主机操作系统类型
+      value:
+        title: 实例数
+        description: 该操作系统类型下的主机实例数
+    params:
+      model_id: 模型 ID
+      field: 分组字段
+  "模型/实例/分类总数统计::cmdb/get_cmdb_statistics":
+    name: CMDB 覆盖概览
+    desc: 分类、模型、实例总数，以及非空模型覆盖率
+    fields:
+      classification_count:
+        title: 分类总数
+        description: 当前可见模型分类数量
+      model_count:
+        title: 模型总数
+        description: 当前可见模型数量
+      instance_count:
+        title: 实例总数
+        description: 当前可见实例总量
+      model_with_instance_count:
+        title: 非空模型数
+        description: 实例数大于 0 的模型数量
+      empty_model_count:
+        title: 空模型数
+        description: 实例数为 0 的模型数量
+      model_coverage_rate:
+        title: 模型覆盖率
+        description: 非空模型数在全部模型中的占比，单位为 %
+      collected_instance_count:
+        title: 已挂采集任务实例数
+        description: 至少关联 1 条采集任务、且当前有权可见的实例数
+      collect_coverage_rate:
+        title: 采集覆盖率
+        description: 有权可见且已挂采集任务的实例数在实例总数中的占比，单位为 %
+    params:
+      organization: 组织
+  "模型实例统计::get_model_inst_statistics":
+    name: CMDB 模型实例明细
+    desc: 各模型的所属分类、标识和实例数量
+    fields:
+      classification:
+        title: 分类
+        description: 模型所属分类名称
+      model:
+        title: 模型名
+        description: 模型显示名称
+      model_id:
+        title: 模型ID
+        description: 模型唯一标识
+      count:
+        title: 实例数
+        description: 该模型下当前可见的实例数量
+  "告警关联事件来源 TOP N::alert/get_alert_source_event_top":
+    name: 告警关联事件来源 TOP
+    desc: 跟随时间范围，按告警关联事件数排序的告警源
+    fields:
+      source_name:
+        title: 告警源
+        description: 告警源名称
+      count:
+        title: 告警关联事件数
+        description: 关联事件数量
+    params:
+      limit: 返回条数
+      time: 时间范围
+      organization: 组织
+  "告警源总数/启用率/活跃数::alert/get_alert_source_statistics":
+    name: 告警源配置与活跃数
+    desc: 告警源总数、启用数和启用率为配置快照；活跃告警源数统计时间范围内至少收到一条事件的来源
+    fields:
+      total_count:
+        title: 告警源总数
+        description: 当前可见的告警源配置总数，不受时间范围影响
+      enabled_count:
+        title: 已启用告警源数
+        description: 当前处于启用状态的告警源数，不受时间范围影响
+      enabled_rate:
+        title: 告警源启用率
+        description: 已启用告警源占全部告警源的比例，单位为 %
+      active_count:
+        title: 活跃告警源数
+        description: 所选时间范围内至少收到一条事件的告警源数
+    params:
+      time: 时间范围
+      organization: 组织
+  "告警等级分布::get_alert_level_distribution":
+    name: 活跃告警等级分布
+    desc: 当前活跃告警按等级分布，不受时间范围影响
+    fields:
+      name:
+        title: 等级名称
+        description: '等级名称: 致命/严重/预警/提醒'
+      value:
+        title: 数量
+        description: 该告警等级下的活跃告警数量
+    params:
+      status_filter: 告警状态范围
+  "今日告警状态总览::alert/get_alert_today_status_summary":
+    name: 今日产生关闭与当前处理中
+    desc: 今日新产生与关闭的告警数，以及当前处理中告警数；前两项为今日口径，处理中为当前快照
+    fields:
+      today_created_count:
+        title: 今日产生告警数
+        description: 今日 0 点起新产生的告警数
+      today_closed_count:
+        title: 今日关闭告警数
+        description: 今日关闭、自动关闭或自动恢复的告警数
+      processing_count:
+        title: 处理中告警数
+        description: 当前处理中的告警数
+  "告警状态分布::alert/get_alert_status_distribution":
+    name: 活跃告警状态分布
+    desc: 未分派、待响应、处理中分布，不受时间范围影响
+    fields:
+      name:
+        title: 状态名称
+        description: 告警状态名称
+      value:
+        title: 数量
+        description: 告警数量
+  "告警等级趋势::alert/get_alert_level_trend":
+    name: 告警等级趋势
+    desc: 跟随时间范围，按告警等级分组的时间序列
+    params:
+      time: 时间范围
+  "告警期间统计::alert/get_alert_period_statistics":
+    name: 告警与事件汇总
+    desc: 跟随时间范围，返回新增告警、关联事件、受影响告警、新增事故、会话告警占比、事件聚合倍率和闭环率
+    fields:
+      new_alert_count:
+        title: 所选时段新增告警数
+        description: 按告警创建时间统计
+      linked_event_count:
+        title: 所选时段告警关联事件数
+        description: 按事件接收时间统计
+      affected_alert_count:
+        title: 所选时段受影响告警数
+        description: 时间范围内事件关联到的去重告警数
+      new_incident_count:
+        title: 所选时段新增事故数
+        description: 按事故创建时间统计
+      session_alert_count:
+        title: 所选时段会话告警数
+        description: 时间范围内新增告警中的会话告警数
+      session_alert_rate:
+        title: 所选时段会话告警占比
+        description: 百分比值范围 0 到 100
+      aggregation_ratio:
+        title: 所选时段事件聚合倍率
+        description: 告警关联事件数除以受影响告警数
+      closed_alert_count:
+        title: 所选时段关闭告警数
+        description: 按告警更新时间且状态属于已关闭集合统计
+      closed_loop_rate:
+        title: 所选时段告警闭环率
+        description: 窗内关闭告警数除以窗内新增告警数，单位为 %，分母为 0 时为 0
+    params:
+      time: 时间范围
+      organization: 组织
+  "告警快照统计::alert/get_alert_snapshot_statistics":
+    name: 活跃告警状态快照
+    desc: 查询时刻的活跃告警状态，不受时间范围影响；含活动总数、未分派、待响应、处理中与自动恢复
+    fields:
+      active_count:
+        title: 活跃告警数
+        description: 未分派、待响应和处理中的告警总数
+      unassigned_count:
+        title: 未分派告警数
+        description: 当前状态为未分派的告警数
+      pending_count:
+        title: 待响应告警数
+        description: 当前状态为待响应的告警数
+      processing_count:
+        title: 处理中告警数
+        description: 当前状态为处理中的告警数
+      auto_recovery_count:
+        title: 自动恢复状态告警数
+        description: 当前状态为自动恢复的告警数
+      auto_recovery_rate:
+        title: 自动恢复状态告警占比
+        description: 百分比值范围 0 到 100
+    params:
+      organization: 组织
+  "按渠道通知成功率::alert/get_notification_channel_stats":
+    name: 渠道通知成功率
+    desc: 跟随时间范围，按渠道统计发送成功率；无样本渠道不返回
+    fields:
+      name:
+        title: 通知渠道
+        description: 通知渠道名称
+      value:
+        title: 通知成功率
+        description: 该渠道发送成功的通知占比，单位为 %
+    params:
+      time: 时间范围
+  "数据完整性（缺失率）::alert/get_alert_data_quality":
+    name: 告警与事件字段缺失率
+    desc: 跟随时间范围；告警侧按创建时间、事件侧按接收时间，分母不同
+    fields:
+      alert_quality.total_count:
+        title: 所选时段告警总数
+        description: 按告警创建时间统计的样本总数
+      alert_quality.missing_resource_id_count:
+        title: 缺少资源 ID 告警数
+        description: 所选时段内缺少资源 ID 的告警数量
+      alert_quality.missing_resource_id_rate:
+        title: 所选时段告警缺少资源 ID 占比
+        description: 分母为时间范围内新增告警数
+      alert_quality.missing_rule_id_count:
+        title: 缺少规则 ID 告警数
+        description: 所选时段内缺少规则 ID 的告警数量
+      alert_quality.missing_rule_id_rate:
+        title: 所选时段告警缺少规则 ID 占比
+        description: 分母为时间范围内新增告警数
+      event_quality.total_count:
+        title: 所选时段告警关联事件总数
+        description: 按事件接收时间统计的样本总数
+      event_quality.missing_service_count:
+        title: 缺少服务事件数
+        description: 所选时段内缺少服务字段的告警关联事件数量
+      event_quality.missing_service_rate:
+        title: 所选时段告警关联事件缺少服务占比
+        description: 分母为时间范围内告警关联事件数
+      event_quality.missing_item_count:
+        title: 缺少指标项事件数
+        description: 所选时段内缺少指标项字段的告警关联事件数量
+      event_quality.missing_item_rate:
+        title: 所选时段告警关联事件缺少指标项占比
+        description: 分母为时间范围内告警关联事件数
+      event_quality.missing_external_id_count:
+        title: 缺少外部事件 ID 事件数
+        description: 所选时段内缺少外部事件 ID 的告警关联事件数量
+      event_quality.missing_external_id_rate:
+        title: 所选时段告警关联事件缺少外部事件 ID 占比
+        description: 分母为时间范围内告警关联事件数
+    params:
+      time: 时间范围
+  "活跃告警 TOP N::get_active_alert_top":
+    name: 活跃告警持续时长 TOP N
+    desc: 当前持续时间最长的活跃告警，不受时间范围影响
+    fields:
+      alert_id:
+        title: 告警 ID
+        description: 告警唯一标识
+      title:
+        title: 告警标题
+        description: 告警标题
+      level:
+        title: 告警级别
+        description: 告警级别（致命/严重/预警/提醒）
+      status:
+        title: 状态
+        description: 告警状态
+      duration_seconds:
+        title: 持续时长(秒)
+        description: 告警从创建至今的持续秒数
+      created_at:
+        title: 创建时间
+        description: 告警创建时间
+      resource_name:
+        title: 资源名称
+        description: 关联资源名称
+    params:
+      limit: 返回条数
+  "通知总数/成功率/失败率/按渠道分组::alert/get_notification_statistics":
+    name: 通知发送汇总
+    desc: 跟随时间范围，返回通知总数、成功数、失败数及成功率、失败率；无样本时比率显示 --
+    fields:
+      total_count:
+        title: 通知总数
+        description: 时间范围内的通知总量
+      success_count:
+        title: 通知成功数
+        description: 时间范围内发送成功的通知数量
+      failed_count:
+        title: 通知失败数
+        description: 时间范围内发送失败的通知数量
+      success_rate:
+        title: 通知成功率
+        description: 成功发送的通知在全部通知中的占比，单位为 %
+      failed_rate:
+        title: 通知失败率
+        description: 发送失败的通知在全部通知中的占比，单位为 %
+    params:
+      time: 时间范围
+  "监控中心总览统计::monitor/get_monitor_statistics":
+    name: 监控中心总览统计
+    desc: 监控中心资源/能力/告警总览统计数据
+    fields:
+      monitor_object_total:
+        title: 监控对象总数
+        description: 监控对象定义总数
+      monitor_object_visible:
+        title: 可见监控对象数
+        description: 可见的监控对象数
+      monitor_object_category:
+        title: 监控对象分类数
+        description: 监控对象分类总数
+      monitor_instance_total:
+        title: 监控实例总数
+        description: 未删除的监控实例总数
+      monitor_instance_active:
+        title: 活跃实例数
+        description: 处于启用状态的监控实例数
+      monitor_instance_inactive:
+        title: 停用实例数
+        description: 处于停用状态的监控实例数
+      plugin_total:
+        title: 监控插件总数
+        description: 监控插件总数
+      plugin_builtin:
+        title: 内置插件数
+        description: 系统内置的监控插件数
+      plugin_custom:
+        title: 自定义插件数
+        description: 用户自定义的监控插件数
+      metric_total:
+        title: 指标定义总数
+        description: 指标定义条目总数
+      metric_group_total:
+        title: 指标分组总数
+        description: 指标分组总数
+      collect_config_total:
+        title: 采集配置总数
+        description: 采集配置总数
+      policy_total:
+        title: 告警策略总数
+        description: 告警策略总数
+      policy_enabled:
+        title: 启用策略数
+        description: 启用的告警策略数
+      policy_disabled:
+        title: 禁用策略数
+        description: 禁用的告警策略数
+      alert_current:
+        title: 告警总数
+        description: 当前未处理的告警总数
+      alert_history:
+        title: 历史告警总数
+        description: 历史告警总数
+      alert_today:
+        title: 今日新增告警数
+        description: 今日新增的告警数
+      alert_recovered:
+        title: 已恢复告警数
+        description: 已恢复状态的告警数
+      alert_closed:
+        title: 已关闭告警数
+        description: 已关闭状态的告警数
+      policy_threshold:
+        title: 阈值策略数
+        description: 配置了阈值的策略数
+      policy_no_data:
+        title: 无数据策略数
+        description: 配置了无数据检测的策略数
+      event_total:
+        title: 监控事件总数
+        description: 监控事件总数
+      event_today:
+        title: 今日新增事件数
+        description: 今日新增的监控事件数
+      alert_snapshot_total:
+        title: 告警快照总数
+        description: 告警指标快照总数
+      no_data_baseline_total:
+        title: 无数据基准总数
+        description: 策略实例基准总数
+    params:
+      organization: 组织
+  "监控实例列表::monitor/get_monitor_instance_list":
+    name: 监控实例列表（选项）
+    desc: 当前组织权限范围内已接入 Flow 的交换机/路由器/防火墙/负载均衡实例，供统一筛选下拉使用，本身不直接出图
+    fields:
+      instance_id:
+        title: 实例ID
+        description: ''
+      display_name:
+        title: 设备
+        description: ''
+      ip:
+        title: IP地址
+        description: ''
+      object_name:
+        title: 对象类型
+        description: ''
+      enabled_protocols:
+        title: 已启用协议
+        description: ''
+  "受控指标趋势::monitor/query_metric_series":
+    name: 受控指标趋势
+    desc: 按已注册指标名查询所选实例的时间序列；未选实例不退化为全量，不接受原始 PromQL
+    params:
+      instance_ids: 设备
+      metric: 指标
+      mode: 查询模式
+      time: 时间范围
+  "受控指标排行::monitor/query_metric_series":
+    name: 受控指标排行
+    desc: 按已注册指标名查询所选实例在时间窗内的瞬时排行或汇总；未选实例不退化为全量，不接受原始 PromQL
+    fields:
+      rank:
+        title: 排名
+        description: ''
+      name:
+        title: 名称
+        description: ''
+      value:
+        title: 指标值
+        description: ''
+      src:
+        title: 源地址
+        description: ''
+      dst:
+        title: 目的地址
+        description: ''
+      src_port:
+        title: 源端口
+        description: ''
+      dst_port:
+        title: 目的端口
+        description: ''
+      protocol:
+        title: 协议
+        description: ''
+    params:
+      instance_ids: 设备
+      metric: 指标
+      mode: 查询模式
+      time: 时间范围
+      limit: 返回条数
+  "日志用法总览::log/get_log_usage_statistics":
+    name: 日志用法总览
+    desc: 当前组织日志采集实例、提取规则、告警规则与已绑定资产占比，不受时间范围影响
+    fields:
+      collect_instance_count:
+        title: 采集实例数
+        description: 当前组织可见的日志采集实例数
+      extractor_count:
+        title: 提取规则数
+        description: 这些实例及其采集方式上的提取规则数
+      policy_count:
+        title: 告警规则数
+        description: 当前组织可见的日志告警策略数
+      bound_instance_count:
+        title: 已绑定实例数
+        description: 已关联资产（node_id 非空）的采集实例数
+      bound_instance_rate:
+        title: 已绑定占比
+        description: 已绑定实例占采集实例的比例，单位为 %
+    params:
+      organization: 组织
+  "日志告警规则 TOP::log/get_log_policy_alert_top":
+    name: 日志告警规则 TOP
+    desc: 跟随时间范围，按产生告警条数排序的日志告警策略
+    fields:
+      policy_id:
+        title: 策略ID
+        description: 日志告警策略标识
+      policy_name:
+        title: 策略名称
+        description: 日志告警策略名称
+      count:
+        title: 告警数
+        description: 时间窗内该策略产生的告警条数
+    params:
+      organization: 组织
+      time: 时间范围
+      limit: 返回条数
+  "节点用法总览::node/get_node_usage_statistics":
+    name: 节点用法总览
+    desc: 当前组织节点、采集器目录、云区域与在线率，不受时间范围影响
+    fields:
+      node_total:
+        title: 节点总数
+        description: 当前组织可见的节点数
+      collector_total:
+        title: 采集器数
+        description: 采集器目录条目数
+      cloud_region_total:
+        title: 云区域数
+        description: 这些节点所属云区域去重数
+      online_count:
+        title: 在线节点数
+        description: sidecar 状态为在线的节点数
+      online_rate:
+        title: 在线率
+        description: 在线节点占节点总数的比例，单位为 %
+    params:
+      organization: 组织
+  "云区域节点 TOP::node/get_cloud_region_node_top":
+    name: 云区域节点 TOP
+    desc: 按节点管理云区域统计节点数，不受时间范围影响
+    fields:
+      cloud_region_id:
+        title: 云区域ID
+        description: 节点管理云区域标识
+      cloud_region_name:
+        title: 云区域
+        description: 节点管理云区域名称
+      count:
+        title: 节点数
+        description: 该云区域下的节点数
+    params:
+      organization: 组织
+      limit: 返回条数
+  "作业用法总览::job/get_job_usage_statistics":
+    name: 作业用法总览
+    desc: 当前组织脚本作业数、Playbook 模板数，以及时间窗内执行成功率；超管仍按选中组织收窄
+    fields:
+      job_count:
+        title: 作业数
+        description: 当前组织脚本作业数
+      template_count:
+        title: 模板数
+        description: 当前组织 Playbook 模板数
+      execution_count:
+        title: 执行次数
+        description: 时间窗内作业执行记录数
+      success_count:
+        title: 成功次数
+        description: 时间窗内成功执行记录数
+      execution_success_rate:
+        title: 执行成功率
+        description: 成功执行占全部执行的比例，单位为 %
+    params:
+      organization: 组织
+      time: 时间范围
+  "系统管理用法总览::system_mgmt/get_system_usage_statistics":
+    name: 系统管理用法总览
+    desc: 选中组织及其下级组织数、当前组织上下文下的用户数与通知渠道启用占比
+    fields:
+      organization_count:
+        title: 组织数
+        description: 选中组织及其下级组织数（不含归档；不跟随 include_children）
+      user_count:
+        title: 用户数
+        description: 归属这些组织的用户数
+      channel_count:
+        title: 通知渠道数
+        description: 已配置的通知渠道数（普通渠道 + 即时通讯渠道）
+      enabled_channel_count:
+        title: 已启用渠道数
+        description: 已启用的通知渠道数。普通 Channel 无启停开关，已配置即计为已启用；即时通讯渠道按 enabled 计
+      enabled_channel_rate:
+        title: 渠道启用占比
+        description: 已启用 / 已配置。普通 Channel 视为已配置=已启用；即时通讯渠道看 enabled。单位为 %
+    params:
+      organization: 组织
+  "监控实例告警排行::monitor/get_monitor_instance_alert_ranking":
+    name: 监控实例告警排行
+    desc: 跟随时间范围，按产生告警条数对监控实例排序；可选告警最多或已配策略且告警最少
+    fields:
+      instance_id:
+        title: 实例ID
+        description: 监控实例标识
+      instance_name:
+        title: 实例名称
+        description: 监控实例显示名称
+      count:
+        title: 告警数
+        description: 时间窗内该实例产生的告警条数
+    params:
+      organization: 组织
+      time: 时间范围
+      ranking: 排行模式
+      limit: 返回条数
+  "告警相关性命中 TOP::alert/get_alert_correlation_rule_hit_top":
+    name: 告警相关性命中 TOP
+    desc: 跟随时间范围，按关联/聚合规则产生的告警条数排序
+    fields:
+      rule_id:
+        title: 规则ID
+        description: 关联/聚合规则标识
+      rule_name:
+        title: 规则名称
+        description: 关联/聚合规则名称
+      count:
+        title: 命中次数
+        description: 时间窗内该规则产生的告警条数
+    params:
+      organization: 组织
+      time: 时间范围
+      limit: 返回条数
+  "应用系统::cmdb/list_application_systems":
+    name: 应用系统（选项）
+    desc: 当前用户有权的 CMDB 应用系统，供统一筛选下拉使用，本身不直接出图
+    fields:
+      inst_uuid:
+        title: 应用系统UUID
+      display_name:
+        title: 应用系统
+      inst_name:
+        title: 应用系统名称
+  "僵尸机查询::monitor/get_zombie_host_report":
+    name: 僵尸机查询
+    desc: 按所选应用系统下已监控 CMDB 主机查询时间窗内登录、入包、CPU/内存/IO，并按闲机口径阈值筛出疑似僵尸机。未选应用系统不退回全量；时间默认 7 天；阈值不随窗口缩放；登录未采集不按 0 过滤。
+    fields:
+      biz_name:
+        title: 业务
+      host_name:
+        title: 主机名
+      os_type_label:
+        title: 系统类型
+      ip:
+        title: IP地址
+      packets_recv_max:
+        title: 入包峰值(pps)
+      packets_recv_avg:
+        title: 入包均值(pps)
+      login_count:
+        title: 成功登录次数
+      login_status:
+        title: 登录采集状态
+      cpu_max:
+        title: CPU峰值(%)
+      cpu_avg:
+        title: CPU均值(%)
+      mem_max:
+        title: 内存峰值(%)
+      mem_avg:
+        title: 内存均值(%)
+      io_max:
+        title: IO峰值(%)
+      zombie_whitelist:
+        title: 僵尸机白名单
+      inst_uuid:
+        title: 主机UUID
+      monitor_id:
+        title: 监控实例ID
+    params:
+      system_uuids: 应用系统
+      time: 时间范围
+      os_type: 系统类型
+      zombie_whitelist:
+        name: 僵尸机白名单
+        options:
+          yes: 是
+          no: 否
+      page: 页码
+      page_size: 每页数量
+      login_min: 登录次数下限
+      login_max: 登录次数上限
+      packets_recv_max_min: 入包峰值下限(pps)
+      packets_recv_max_max: 入包峰值上限(pps)
+      packets_recv_avg_min: 入包均值下限(pps)
+      packets_recv_avg_max: 入包均值上限(pps)
+      cpu_avg_min: CPU均值下限(%)
+      cpu_avg_max: CPU均值上限(%)
+      cpu_max_min: CPU峰值下限(%)
+      cpu_max_max: CPU峰值上限(%)
+      mem_avg_min: 内存均值下限(%)
+      mem_avg_max: 内存均值上限(%)
+      mem_max_min: 内存峰值下限(%)
+      mem_max_max: 内存峰值上限(%)
+      io_max_min: IO峰值下限(%)
+      io_max_max: IO峰值上限(%)
+reports:
+  "report::僵尸机报表":
+    name: 僵尸机报表
+    desc: 按所选应用系统下已监控 CMDB 主机查询时间窗内登录、入包、CPU/内存/IO，并按闲机口径阈值筛出疑似僵尸机。时间默认 7 天；阈值不随窗口缩放；登录未采集不按 0 过滤。未选应用系统不退回全量。
+    filters:
+      system_uuids: 应用系统
+      time: 时间范围
+      os_type: 系统类型
+      zombie_whitelist:
+        name: 僵尸机白名单
+        options:
+          yes: 是
+          no: 否
+      login_min: 登录次数下限
+      login_max: 登录次数上限
+      packets_recv_max_min: 入包峰值下限(pps)
+      packets_recv_max_max: 入包峰值上限(pps)
+      packets_recv_avg_min: 入包均值下限(pps)
+      packets_recv_avg_max: 入包均值上限(pps)
+      cpu_avg_min: CPU均值下限(%)
+      cpu_avg_max: CPU均值上限(%)
+      cpu_max_min: CPU峰值下限(%)
+      cpu_max_max: CPU峰值上限(%)
+      mem_avg_min: 内存均值下限(%)
+      mem_avg_max: 内存均值上限(%)
+      mem_max_min: 内存峰值下限(%)
+      mem_max_max: 内存峰值上限(%)
+      io_max_min: IO峰值下限(%)
+      io_max_max: IO峰值上限(%)
+    widgets:
+      zombie-table:
+        name: 僵尸机列表
+        description: 所选应用系统下主机在时间窗内的登录、入包、CPU/内存/IO；未采集登录显示为空，不按 0 过滤
+        params:
+          system_uuids: 应用系统
+          time: 时间范围
+          os_type: 系统类型
+          zombie_whitelist:
+            name: 僵尸机白名单
+            options:
+              yes: 是
+              no: 否
+          page: 页码
+          page_size: 每页数量
+          login_min: 登录次数下限
+          login_max: 登录次数上限
+          packets_recv_max_min: 入包峰值下限(pps)
+          packets_recv_max_max: 入包峰值上限(pps)
+          packets_recv_avg_min: 入包均值下限(pps)
+          packets_recv_avg_max: 入包均值上限(pps)
+          cpu_avg_min: CPU均值下限(%)
+          cpu_avg_max: CPU均值上限(%)
+          cpu_max_min: CPU峰值下限(%)
+          cpu_max_max: CPU峰值上限(%)
+          mem_avg_min: 内存均值下限(%)
+          mem_avg_max: 内存均值上限(%)
+          mem_max_min: 内存峰值下限(%)
+          mem_max_max: 内存峰值上限(%)
+          io_max_min: IO峰值下限(%)
+          io_max_max: IO峰值上限(%)

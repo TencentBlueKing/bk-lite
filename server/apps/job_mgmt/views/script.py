@@ -14,6 +14,7 @@ from apps.job_mgmt.serializers.script import (
     ScriptListSerializer,
     ScriptSerializer,
     ScriptUpdateSerializer,
+    validate_script_name_unique_in_organizations,
 )
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.views.mixins import BatchDeleteMixin
@@ -61,6 +62,7 @@ class ScriptViewSet(BatchDeleteMixin, AuthViewSet):
         # 校验用户是否有目标组织的权限
         team = data.get("team", [])
         self._validate_org_field_permission(request, team)
+        validate_script_name_unique_in_organizations(data["name"], team)
 
         # 高危命令检测
         script_content = data.get("content", "")
@@ -93,6 +95,11 @@ class ScriptViewSet(BatchDeleteMixin, AuthViewSet):
         # 校验用户是否有目标组织的权限
         team = data.get("team", instance.team)
         self._validate_org_field_permission(request, team)
+        validate_script_name_unique_in_organizations(
+            data.get("name", instance.name),
+            team,
+            exclude_script_id=instance.pk,
+        )
 
         # 高危命令检测（仅当修改了脚本内容时）
         script_content = data.get("content", instance.content)

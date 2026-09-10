@@ -41,6 +41,7 @@ from apps.opspilot.services.wiki.retrieval_service import hybrid_search as wiki_
 from apps.opspilot.services.wiki.retrieval_service import search as wiki_search
 from apps.opspilot.services.wiki.retrieval_service import stream_answer as wiki_stream_answer
 from apps.opspilot.services.wiki.rollback_service import RollbackServiceError, execute_generation_rollback, preview_generation_rollback
+from apps.opspilot.services.wiki.schema_directory_sync_service import apply_schema_markdown_structure
 from apps.opspilot.services.wiki.structure_service import StructureServiceError, bootstrap_knowledge_base
 from apps.opspilot.services.wiki.title_service import canonical_title, compact_title_key, title_alias_map
 from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded
@@ -154,6 +155,11 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
                     serializer.instance,
                     operator=operator,
                 )
+                apply_schema_markdown_structure(
+                    serializer.instance,
+                    serializer.instance.schema_md,
+                    operator=operator,
+                )
         except StructureServiceError as error:
             return _governance_error(error, status=error.status_code)
         log_operation(request, "create", "opspilot", f"新增知识库: {serializer.data.get('name', '')}")
@@ -167,7 +173,18 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
             self.validate_team_assignment(request.data.get("team"))
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
+        # 旧库结构说明往往已写入、目录仍是创建时的模板；保存时即使文案未改也要同步。
+        should_sync_schema_dirs = "schema_md" in request.data
         self.perform_update(serializer)
+        if should_sync_schema_dirs:
+            try:
+                apply_schema_markdown_structure(
+                    serializer.instance,
+                    serializer.instance.schema_md,
+                    operator=getattr(request.user, "username", "") or "",
+                )
+            except StructureServiceError as error:
+                return _governance_error(error, status=error.status_code)
         log_operation(request, "update", "opspilot", f"编辑知识库: {serializer.data.get('name', '')}")
         return JsonResponse({"result": True, "data": serializer.data})
 

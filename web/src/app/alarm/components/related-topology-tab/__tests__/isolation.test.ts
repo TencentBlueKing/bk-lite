@@ -20,6 +20,7 @@ describe('alarm related topology app-capability isolation', () => {
 
     for (const source of hosts) {
       expect(source).not.toMatch(/from ['"]@\/app\/ops-analysis/);
+      expect(source).not.toContain('operation_analysis');
     }
   });
 
@@ -27,6 +28,9 @@ describe('alarm related topology app-capability isolation', () => {
     const tabSource = readSource('../index.tsx');
     expect(tabSource).toContain("useAppCapability('ops-analysis')");
     expect(tabSource).toContain('RelatedTopologyWidget');
+    expect(tabSource).toContain('loadWidget()');
+    expect(tabSource).toContain('.catch(');
+    expect(tabSource).not.toContain('relatedTopologyAccess');
   });
 
   it('passes a single instUuid into the widget and only shows a selector for multiple centers', () => {
@@ -36,10 +40,10 @@ describe('alarm related topology app-capability isolation', () => {
     expect(tabSource).toContain('centers.length > 1');
   });
 
-  it('retries from a toolbar refresh instead of an in-canvas retry button', () => {
+  it('shows a failed state instead of spinning when the chunk cannot load', () => {
     const tabSource = readSource('../index.tsx');
     expect(tabSource).toContain('ReloadOutlined');
     expect(tabSource).toContain('common.refresh');
-    expect(tabSource).toContain('setRefreshNonce');
+    expect(tabSource).toContain('common.loadFailed');
   });
 });

@@ -77,6 +77,18 @@ export class DataMapper {
           const match = processedValue.match(new RegExp(to_form.regex));
           processedValue = match ? match[1] || match[0] : processedValue;
         }
+        // 逗号串拆成数组（腾讯云地域多选回显）
+        if (to_form.split) {
+          const sep = typeof to_form.split === 'string' ? to_form.split : ',';
+          if (typeof processedValue === 'string') {
+            processedValue = processedValue
+              .split(sep)
+              .map((item: string) => item.trim())
+              .filter(Boolean);
+          } else if (processedValue == null || processedValue === '') {
+            processedValue = [];
+          }
+        }
         // 数组用分隔符拼成字符串（SNMP ifDescr 黑白名单回显）
         if (to_form.array_join) {
           const sep = typeof to_form.array_join === 'string' ? to_form.array_join : ',';
@@ -200,6 +212,18 @@ export class DataMapper {
         processedValue !== null
       ) {
         processedValue = String(processedValue) + to_api.suffix;
+      }
+      // 多选数组拼成逗号串（腾讯云地域提交）
+      if (to_api.join) {
+        const sep = typeof to_api.join === 'string' ? to_api.join : ',';
+        if (Array.isArray(processedValue)) {
+          processedValue = processedValue
+            .map((item) => String(item).trim())
+            .filter(Boolean)
+            .join(sep);
+        } else if (processedValue == null) {
+          processedValue = '';
+        }
       }
       // 字符串按分隔符拆成数组（SNMP ifDescr 黑白名单提交）
       if (to_api.split) {
@@ -383,11 +407,17 @@ export class DataMapper {
       // 普通模板继续使用既有哈希编码。
       let instance_id = row.instance_id;
       if (!instance_id && context.instance_id) {
+        // form_fields（如 qcloud 的 username/region）在顶层表单，不在表格行；
+        // 生成 instance_id 时需合并，否则 {{username}}/{{region}} 无法替换。
         instance_id =
           context.instance_id === '{{uuid}}'
             ? String(row.key).replaceAll('-', '').toLowerCase()
             : this.hashInstanceId(
-              this.applyTemplate(context.instance_id, row, context)
+              this.applyTemplate(
+                context.instance_id,
+                { ...processedFormData, ...row },
+                context
+              )
             );
       }
       // 过滤掉 key 字段和所有 _error 字段，并处理加密字段

@@ -347,12 +347,32 @@ class ApmPolicy(AuditedModel):
     no_data_after = models.PositiveIntegerField(null=True, blank=True)
     no_data_severity = models.CharField(max_length=16, choices=Severity.choices, blank=True, default="")
     no_data_alert_name = models.CharField(max_length=512, blank=True, default="")
+    handlers = models.JSONField(default=list)
     is_enabled = models.BooleanField(default=True, db_index=True)
 
     class Meta:
         verbose_name = "APM 策略"
         verbose_name_plural = "APM 策略"
         ordering = ("name", "id")
+
+
+class ApmPolicyOrganization(AuditedModel):
+    policy = models.ForeignKey(
+        ApmPolicy,
+        on_delete=models.CASCADE,
+        related_name="organization_links",
+    )
+    organization = models.BigIntegerField(db_index=True)
+
+    class Meta:
+        verbose_name = "APM 策略组织"
+        verbose_name_plural = "APM 策略组织"
+        constraints = [
+            models.UniqueConstraint(
+                fields=("policy", "organization"),
+                name="apm_policy_org_unique",
+            )
+        ]
 
 
 class ApmPolicyNotificationTarget(AuditedModel):
@@ -448,6 +468,7 @@ class ApmAlert(AuditedModel):
     endpoint = models.CharField(max_length=512, blank=True, default="")
     version = models.CharField(max_length=256, blank=True, default="")
     operator = models.CharField(max_length=150, blank=True, default="")
+    handlers = models.JSONField(default=list)
     current_value = models.DecimalField(max_digits=20, decimal_places=6, null=True, blank=True)
     organizations = models.JSONField(default=list)
     started_at = models.DateTimeField(db_index=True)
@@ -464,6 +485,8 @@ class ApmEvent(AuditedModel):
     class Action(models.TextChoices):
         TRIGGERED = "triggered", "触发"
         ESCALATED = "escalated", "级别升级"
+        CLAIMED = "claimed", "认领"
+        ASSIGNED = "assigned", "分派"
         RECOVERED = "recovered", "恢复"
         CLOSED = "closed", "人工关闭"
 

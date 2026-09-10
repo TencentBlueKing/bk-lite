@@ -1,9 +1,69 @@
 const QUERY_OPERATORS = new Set(['and', 'or', 'not', '|', '*']);
-const QUOTED_TERM = /"((?:\\.|[^"\\])*)"/g;
-const FIELD_PREFIX = /[A-Za-z_][A-Za-z0-9_.]*:/g;
+const LOG_CONTENT_FIELDS = new Set(['_msg', 'message']);
 
 const unescapeQuotedTerm = (value: string) =>
   value.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+
+const isContentField = (field: string) => LOG_CONTENT_FIELDS.has(field);
+
+export function isLogContentField(field?: string): boolean {
+  return !!field && isContentField(field);
+}
+
+const skipSpaces = (query: string, index: number) => {
+  while (index < query.length && /\s/.test(query[index])) {
+    index += 1;
+  }
+  return index;
+};
+
+const readQuoted = (
+  query: string,
+  openIndex: number
+): { value: string; next: number } => {
+  let value = '';
+  let index = openIndex + 1;
+  while (index < query.length) {
+    const char = query[index];
+    if (char === '\\' && index + 1 < query.length) {
+      value += query[index + 1];
+      index += 2;
+      continue;
+    }
+    if (char === '"') {
+      return { value: unescapeQuotedTerm(value), next: index + 1 };
+    }
+    value += char;
+    index += 1;
+  }
+  return { value: unescapeQuotedTerm(value), next: index };
+};
+
+const readBareValue = (
+  query: string,
+  start: number
+): { value: string; next: number } => {
+  let index = start;
+  while (index < query.length && !/[\s|()"]/.test(query[index])) {
+    index += 1;
+  }
+  let value = query.slice(start, index);
+  if (value.endsWith('*')) {
+    value = value.slice(0, -1);
+  }
+  return { value, next: index };
+};
+
+const readFilterValue = (
+  query: string,
+  start: number
+): { value: string; next: number } => {
+  const index = skipSpaces(query, start);
+  if (query[index] === '"') {
+    return readQuoted(query, index);
+  }
+  return readBareValue(query, index);
+};
 
 export function extractHighlightTerms(query?: string): string[] {
   if (!query) {
@@ -15,19 +75,79 @@ export function extractHighlightTerms(query?: string): string[] {
   }
 
   const terms: string[] = [];
-  for (const match of trimmed.matchAll(QUOTED_TERM)) {
-    const quoted = unescapeQuotedTerm(match[1] || '');
-    if (quoted) {
-      terms.push(quoted);
+  const emit = (term?: string) => {
+    if (term && !QUERY_OPERATORS.has(term.toLowerCase())) {
+      terms.push(term);
     }
-  }
+  };
 
-  const unquoted = trimmed.replace(QUOTED_TERM, ' ').replace(FIELD_PREFIX, ' ');
-  for (const token of unquoted.split(/[\s|()]+/)) {
-    if (!token || QUERY_OPERATORS.has(token.toLowerCase())) {
+  let index = 0;
+  while (index < trimmed.length) {
+    index = skipSpaces(trimmed, index);
+    if (index >= trimmed.length) {
+      break;
+    }
+
+    const char = trimmed[index];
+    if ('|()'.includes(char)) {
+      index += 1;
       continue;
     }
-    terms.push(token);
+
+    if (char === '"') {
+      const quoted = readQuoted(trimmed, index);
+      index = skipSpaces(trimmed, quoted.next);
+      if (trimmed[index] === ':') {
+        index = skipSpaces(trimmed, index + 1);
+        const filterValue = readFilterValue(trimmed, index);
+        index = filterValue.next;
+        if (isContentField(quoted.value)) {
+          emit(filterValue.value);
+        }
+        continue;
+      }
+      emit(quoted.value);
+      continue;
+    }
+
+    if (char === '-' || char === '!') {
+      index += 1;
+      continue;
+    }
+
+    const bare = readBareValue(trimmed, index);
+    index = bare.next;
+    const colonAt = bare.value.indexOf(':');
+    if (colonAt >= 0) {
+      const field = bare.value.slice(0, colonAt);
+      const inlineValue = bare.value.slice(colonAt + 1);
+      if (inlineValue) {
+        if (isContentField(field)) {
+          emit(inlineValue.endsWith('*') ? inlineValue.slice(0, -1) : inlineValue);
+        }
+        continue;
+      }
+      index = skipSpaces(trimmed, index);
+      const filterValue = readFilterValue(trimmed, index);
+      index = filterValue.next;
+      if (isContentField(field)) {
+        emit(filterValue.value);
+      }
+      continue;
+    }
+
+    index = skipSpaces(trimmed, index);
+    if (trimmed[index] === ':') {
+      index = skipSpaces(trimmed, index + 1);
+      const filterValue = readFilterValue(trimmed, index);
+      index = filterValue.next;
+      if (isContentField(bare.value)) {
+        emit(filterValue.value);
+      }
+      continue;
+    }
+
+    emit(bare.value);
   }
 
   const unique = [...new Set(terms.filter(Boolean))];

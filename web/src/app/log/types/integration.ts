@@ -28,7 +28,7 @@ export interface IntegrationLogInstance {
   key?: string;
   node_ids?: string | string[] | null;
   instance_name?: string | null;
-  group_ids?: string[];
+  group_ids?: Array<string | number>;
   url?: string | null;
   urls?: string | string[] | null;
   ip?: string | null;

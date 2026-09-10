@@ -1,6 +1,6 @@
 import asyncio
 import json
-import threading
+import logging
 
 import pytest
 from django.utils import timezone
@@ -8,10 +8,12 @@ from rest_framework import status
 
 from apps.log.models import CollectInstance, CollectInstanceOrganization, CollectType
 from apps.log.models.log_group import LogGroup, LogGroupOrganization, SearchCondition
+from apps.log.models.policy import Alert, AlertSnapshot, Event, EventRawData, Policy, PolicyOrganization
 from apps.log.serializers.policy import AlertSerializer
 from apps.log.utils.log_group import LogGroupQueryBuilder
-from apps.log.models.policy import Alert, AlertSnapshot, Event, EventRawData, Policy, PolicyOrganization
 from apps.log.utils.query_log import VictoriaMetricsAPI
+
+SECRET_SENTINEL = "Accepted-password-do-not-log"
 
 
 class DummyResponse:
@@ -55,6 +57,32 @@ def test_query_ignores_empty_lines(mocker):
     result = api.query("*", "", "", 10)
 
     assert result == [{"_msg": "ok"}]
+
+
+def test_query_info_omits_query_text(mocker, caplog):
+    secret_query = f'(message:"{SECRET_SENTINEL}") AND host:"web-1"'
+    response = DummyResponse([json.dumps({"_msg": "ok"})])
+    post_mock = mocker.patch("apps.log.utils.query_log.requests.post", return_value=response)
+    caplog.set_level(logging.INFO, logger="log")
+
+    api = VictoriaMetricsAPI()
+    api.host = "http://victorialogs.local"
+    result = api.query(secret_query, "2026-09-01T00:00:00Z", "2026-09-08T00:00:00Z", 3)
+
+    assert result == [{"_msg": "ok"}]
+    assert post_mock.call_args.kwargs["params"]["query"] == secret_query
+    records = [record for record in caplog.records if record.name == "log" and "event=victorialogs_query_sent" in record.getMessage()]
+    assert len(records) == 1
+    record = records[0]
+    assert record.levelno == logging.INFO
+    assert record.msg == "event=victorialogs_query_sent start=%s end=%s limit=%s"
+    assert record.args == ("2026-09-01T00:00:00Z", "2026-09-08T00:00:00Z", 3)
+    assert record.getMessage() == ("event=victorialogs_query_sent start=2026-09-01T00:00:00Z end=2026-09-08T00:00:00Z limit=3")
+    formatted = logging.Formatter().format(record)
+    for text in (record.getMessage(), formatted, caplog.text, "".join(str(arg) for arg in record.args)):
+        assert SECRET_SENTINEL not in text
+        assert secret_query not in text
+    assert not hasattr(record, "query")
 
 
 def test_query_logs_malformed_line_context(mocker):
@@ -141,6 +169,7 @@ def _create_alert_with_event(policy, alert_id, event_id):
         level="warning",
         content="raw log alert",
         start_event_time=timezone.now(),
+        organizations=list(policy.policyorganization_set.values_list("organization", flat=True)),
     )
     event = Event.objects.create(
         id=event_id,
@@ -356,10 +385,7 @@ def test_log_group_create_rejects_unauthorized_organizations(api_client, authent
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert (
-        response.json()["message"]
-        == "organizations:organization_ids 包含无权分配的组织"
-    )
+    assert response.json()["message"] == "organizations:organization_ids 包含无权分配的组织"
 
 
 @pytest.mark.django_db
@@ -431,10 +457,7 @@ def test_policy_create_rejects_invalid_organizations_payload(api_client, authent
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert (
-        response.json()["message"]
-        == "organizations entries must be canonical positive integers"
-    )
+    assert response.json()["message"] == "organizations entries must be canonical positive integers"
     assert Policy.objects.count() == 0
 
 
@@ -525,10 +548,7 @@ def test_policy_update_rejects_invalid_organizations_payload(api_client, authent
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert (
-        response.json()["message"]
-        == "organizations entries must be canonical positive integers"
-    )
+    assert response.json()["message"] == "organizations entries must be canonical positive integers"
     assert list(policy.policyorganization_set.values_list("organization", flat=True)) == [1]
 
 
@@ -713,12 +733,8 @@ def test_creation_field_discovery_does_not_require_existing_log_group_instance_p
 ):
     settings.LICENSE_MGMT_ENABLED = False
     monkeypatch.setenv("LICENSE_MGMT_ENABLED", "0")
-    collect_type = CollectType.objects.create(
-        name="file", collector="Vector", icon="file"
-    )
-    instance = CollectInstance.objects.create(
-        id="instance-1", name="instance-1", collect_type=collect_type
-    )
+    collect_type = CollectType.objects.create(name="file", collector="Vector", icon="file")
+    instance = CollectInstance.objects.create(id="instance-1", name="instance-1", collect_type=collect_type)
     CollectInstanceOrganization.objects.create(collect_instance=instance, organization=1)
     _mock_group_permission(mocker, teams=[1], instance_ids=[])
     field_names_mock = mocker.patch(
@@ -740,9 +756,7 @@ def test_creation_field_discovery_does_not_require_existing_log_group_instance_p
 
 
 @pytest.mark.django_db
-def test_normal_field_discovery_still_requires_accessible_log_group_scope(
-    api_client, authenticated_user, mocker, settings, monkeypatch
-):
+def test_normal_field_discovery_still_requires_accessible_log_group_scope(api_client, authenticated_user, mocker, settings, monkeypatch):
     settings.LICENSE_MGMT_ENABLED = False
     monkeypatch.setenv("LICENSE_MGMT_ENABLED", "0")
     _mock_group_permission(mocker, teams=[1], instance_ids=[])
@@ -920,6 +934,7 @@ def test_alert_snapshots_returns_data_for_authorized_policy(api_client, authenti
 # Issue #3359: tail_async 的 iter_lines 必须在线程池中运行，不得阻塞事件循环
 # ---------------------------------------------------------------------------
 
+
 class _BlockingStreamResponse:
     """
     模拟一个"第一行来得很慢"的流式响应：
@@ -941,6 +956,7 @@ class _BlockingStreamResponse:
 
     def iter_lines(self, chunk_size=None, decode_unicode=False):
         import time
+
         time.sleep(self._block_secs)  # 模拟等待网络数据的阻塞
         yield from self._lines
 
@@ -986,7 +1002,4 @@ async def test_tail_async_iter_lines_runs_in_thread_not_event_loop(mocker):
 
     # 修复后：iter_lines 在线程里阻塞，事件循环自由调度，counter 应已递增
     assert collected == ["line1", "line2", "line3"], f"收到的行不匹配: {collected}"
-    assert counter > 0, (
-        "counter 未递增——iter_lines 仍在事件循环线程里阻塞，事件循环被冻结。"
-        "这说明修复未生效（iter_lines 没有被卸载到线程池）。"
-    )
+    assert counter > 0, "counter 未递增——iter_lines 仍在事件循环线程里阻塞，事件循环被冻结。" "这说明修复未生效（iter_lines 没有被卸载到线程池）。"

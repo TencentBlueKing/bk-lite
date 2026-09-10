@@ -1,3 +1,4 @@
+import re
 import uuid
 from urllib.parse import urlsplit, urlunsplit
 
@@ -93,6 +94,7 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "response_timeout",
     "response_status_code",
     "response_string_match",
+    "region",
     "follow_redirects",
     "gather_binary_logs",
     "gather_global_variables",
@@ -189,6 +191,60 @@ def _is_rabbitmq_collect_config(config: dict) -> bool:
     return str(config.get("type") or config.get("instance_type") or "").lower() == "rabbitmq"
 
 
+def ensure_qcloud_region_jinja(template_content: str) -> str:
+    """确保腾讯云 Telegraf 子配置带有 region 请求头（兼容 DB 中旧模板）。"""
+    text = template_content or ""
+    if 'config_type = "qcloud"' not in text and "config_type = 'qcloud'" not in text:
+        return text
+    if re.search(r"(?m)^\s*region\s*=", text):
+        return text
+
+    password_line = re.search(
+        r'(?m)^(?P<indent>\s*)password\s*=\s*"[^"]*"\s*$',
+        text,
+    )
+    if not password_line:
+        return text
+
+    indent = password_line.group("indent")
+    insertion = f'{indent}region = "{{{{ region }}}}"\n'
+    return text[: password_line.end()] + "\n" + insertion + text[password_line.end() :]
+
+
+def _plugin_types(context: dict) -> set[str]:
+    types = {
+        str(context.get("instance_type") or "").strip().lower(),
+        str(context.get("type") or "").strip().lower(),
+    }
+    config_type = context.get("config_type")
+    if isinstance(config_type, (list, tuple)):
+        types.update(str(item).strip().lower() for item in config_type)
+    elif config_type not in (None, ""):
+        types.add(str(config_type).strip().lower())
+    types.discard("")
+    return types
+
+
+def _normalize_qcloud_region(value) -> str:
+    """表单多选为列表，Telegraf header 为逗号串；空值回落广州。"""
+    if isinstance(value, (list, tuple)):
+        parts = [str(item).strip() for item in value if str(item).strip()]
+    else:
+        parts = [item.strip() for item in str(value or "").split(",") if item.strip()]
+    return ",".join(parts) or "ap-guangzhou"
+
+
+def _normalize_aliyun_region(value) -> str:
+    """阿里云监控一配置一地域；表单若误传列表则取第一项，空值回落杭州。"""
+    if isinstance(value, (list, tuple)):
+        parts = [str(item).strip() for item in value if str(item).strip()]
+        return parts[0] if parts else "cn-hangzhou"
+    text = str(value or "").strip()
+    if "," in text:
+        text = text.split(",", 1)[0].strip()
+    return text or "cn-hangzhou"
+
+
 def _normalize_template_context(context: dict) -> dict:
     normalized = {**context}
     metrics_modules = normalized.get("metrics_modules")
@@ -203,6 +259,12 @@ def _normalize_template_context(context: dict) -> dict:
     normalized["ports"] = normalize_filter_list(normalized.get("ports"))
     if _is_rabbitmq_collect_config(normalized) and normalized.get("url") not in (None, ""):
         normalized["url"] = normalize_rabbitmq_management_url(normalized.get("url"))
+    plugin_types = _plugin_types(normalized)
+    # 腾讯云地域：表单未填时回落广州，与 Stargazer 采集缺省一致。
+    if "qcloud" in plugin_types:
+        normalized["region"] = _normalize_qcloud_region(normalized.get("region"))
+    elif "aliyun" in plugin_types:
+        normalized["region"] = _normalize_aliyun_region(normalized.get("region"))
     return normalized
 
 
@@ -311,6 +373,9 @@ class Controller:
         # 即使模板含 ifDescr，也不得静默注入默认 ifType 排除。
         if is_ifmib_capable_render_context(_context) and needs_snmp_interface_filter_jinja(template_content):
             template_content = ensure_snmp_interface_filter_jinja(template_content)
+        template_content = ensure_qcloud_region_jinja(template_content)
+        if 'region = "{{ region }}"' in template_content and not str(_context.get("region") or "").strip():
+            _context["region"] = "ap-guangzhou"
 
         safe_context = sanitize_template_context(_context)
         if escape_toml_strings:

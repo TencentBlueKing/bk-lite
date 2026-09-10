@@ -15,6 +15,8 @@ export const shouldHideConsoleTopNav = (pathname: string | null | undefined): bo
   return (
     pathname.startsWith('/opspilot/studio/chat')
     || pathname.startsWith('/opspilot/skill/chat')
+    || pathname.startsWith('/ops-analysis/share/')
+    || pathname.startsWith('/opspilot/memory/document')
   );
 };
 
@@ -28,7 +30,6 @@ export const isConsoleChromeException = (pathname: string | null | undefined): b
     || pathname === '/no-permission'
     || pathname === '/no-found'
     || shouldHideConsoleTopNav(pathname)
-    || pathname.startsWith('/ops-analysis/share/')
     || pathname.startsWith('/ops-analysis/render/execution/')
     || pathname.startsWith('/monitor/view/dashboard/')
     || pathname.startsWith('/ops-console')
@@ -180,6 +181,80 @@ const appRoutePrefix = (appUrl: string, currentOrigin: string): string | null =>
     return null;
   }
 };
+
+const menuPathname = (url: string): string => {
+  const pathname = url.split(/[?#]/, 1)[0] || '/';
+  return pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
+};
+
+const menuBelongsToPrefix = (url: string | undefined, prefix: string): boolean => {
+  if (!url) {
+    return false;
+  }
+  const path = menuPathname(url);
+  return path === prefix || path.startsWith(`${prefix}/`);
+};
+
+const findFirstMenuHrefUnderPrefix = (menus: MenuItem[], prefix: string): string | null => {
+  const walk = (items: MenuItem[]): string | null => {
+    for (const item of items) {
+      if (item.isNotMenuItem) {
+        continue;
+      }
+      if (item.url && menuBelongsToPrefix(item.url, prefix)) {
+        const href = resolveMenuNavHref(item);
+        if (href && menuBelongsToPrefix(href, prefix)) {
+          return menuPathname(href);
+        }
+      }
+      if (item.children?.length) {
+        const nested = walk(item.children);
+        if (nested) {
+          return nested;
+        }
+      }
+    }
+    return null;
+  };
+  return walk(menus);
+};
+
+/**
+ * Same-origin app chips skip `/cmdb`-style redirect stubs and land on the
+ * first real menu page, so the console does not briefly remount a blank page.
+ */
+export const resolveAppLandingHref = (
+  app: { url: string; is_build_in?: boolean },
+  currentOrigin: string,
+  menus: MenuItem[] = [],
+): AppNavTarget => {
+  const target = resolveAppNavigation(app, currentOrigin);
+  if (target.mode !== 'same-tab' || menus.length === 0) {
+    return target;
+  }
+  const prefix = appRoutePrefix(app.url, currentOrigin);
+  if (!prefix) {
+    return target;
+  }
+  let landingPath = target.href;
+  try {
+    landingPath = new URL(target.href, currentOrigin).pathname;
+  } catch {
+    landingPath = target.href.split(/[?#]/, 1)[0] || target.href;
+  }
+  landingPath = landingPath.length > 1 ? landingPath.replace(/\/+$/, '') : landingPath || '/';
+  if (landingPath !== prefix) {
+    return target;
+  }
+  const firstLeaf = findFirstMenuHrefUnderPrefix(menus, prefix);
+  return firstLeaf ? { mode: 'same-tab', href: firstLeaf } : target;
+};
+
+/** Already-active same-tab app chips must not re-enter the landing stub. */
+export const shouldStayOnCurrentAppPage = (
+  active: boolean,
+  target: AppNavTarget,
+): boolean => active && target.mode === 'same-tab';
 
 export const isAppNavActive = (
   app: { url: string; name?: string },

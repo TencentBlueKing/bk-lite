@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, RefObject } from 'react';
+import { useState, useCallback, useEffect, useRef, RefObject } from 'react';
 import { FormInstance, message, Form, Select, Input, InputNumber, Spin } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import type { Option } from '@/types';
@@ -23,6 +23,12 @@ import {
 } from '@/app/mlops/utils/algorithmConfigUtils';
 import { useAlgorithmConfigs } from '@/app/mlops/hooks/useAlgorithmConfigs';
 import type { AlgorithmType } from '@/app/mlops/types/algorithmConfig';
+import {
+  beginDatasetVersionRequest,
+  createDatasetVersionRequestState,
+  resolveDatasetVersionRestore,
+  shouldApplyDatasetVersionResponse,
+} from './datasetVersionSelection';
 
 interface ModalState {
   isOpen: boolean;
@@ -90,6 +96,7 @@ export const useGenericDatasetForm = ({
     select: false,
   });
   const [datasetVersions, setDatasetVersions] = useState<Option[]>([]);
+  const datasetVersionRequestRef = useRef(createDatasetVersionRequestState());
   const [isShow, setIsShow] = useState<boolean>(false);
   const [formValues, setFormValues] = useState<TrainJobFormValues>({
     name: '',
@@ -208,6 +215,7 @@ export const useGenericDatasetForm = ({
 
   // 显示模态框
   const showModal = useCallback(({ type, title, form }: ShowModalParams) => {
+    datasetVersionRequestRef.current = createDatasetVersionRequestState();
     setLoadingState((prev) => ({ ...prev, select: false }));
     setFormData(form);
     setModalState({
@@ -236,48 +244,78 @@ export const useGenericDatasetForm = ({
     }
   };
 
+  const loadDatasetVersions = useCallback(async (dataset: number, allowRestore: boolean) => {
+    const request = beginDatasetVersionRequest(datasetVersionRequestRef.current, dataset);
+    setLoadingState((prev) => ({ ...prev, select: true }));
+    try {
+      if (!formRef.current || !dataset) return;
+      const releases = await apiMethods.getDatasetReleases(datasetType, { dataset });
+      const currentDataset = datasetVersionRequestRef.current.dataset;
+      if (
+        currentDataset == null ||
+        !shouldApplyDatasetVersionResponse({
+          requestGeneration: request.generation,
+          currentGeneration: datasetVersionRequestRef.current.generation,
+          requestedDataset: request.dataset,
+          currentDataset,
+        })
+      ) {
+        return;
+      }
+      const nextOptions: Option[] = releases.map((item: DatasetRelease) => ({
+        label: item?.name || '',
+        value: String(item?.id)
+      }));
+      setDatasetVersions(nextOptions);
+      const restored = resolveDatasetVersionRestore({
+        restoreVersion: formData?.dataset_version,
+        options: nextOptions,
+        allowRestore,
+      });
+      if (restored) {
+        formRef.current.setFieldsValue({
+          dataset_version: restored,
+        });
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      if (request.generation === datasetVersionRequestRef.current.generation) {
+        setLoadingState((prev) => ({ ...prev, select: false }));
+      }
+    }
+  }, [formData, datasetType, apiMethods.getDatasetReleases]);
+
+  const handleDatasetChange = useCallback((dataset: number) => {
+    formRef.current?.setFieldsValue({ dataset_version: undefined });
+    setDatasetVersions([]);
+    void loadDatasetVersions(dataset, false);
+  }, [loadDatasetVersions]);
+
   // 以数据集版本文件ID获取数据集ID
   const handleAsyncDataLoading = useCallback(async (dataset_version_id: number) => {
     if (!dataset_version_id) return;
+    const generationAtStart = datasetVersionRequestRef.current.generation;
     setLoadingState((prev) => ({ ...prev, select: true }));
     try {
       const { dataset } = await apiMethods.getDatasetReleaseByID(datasetType, dataset_version_id);
+      if (datasetVersionRequestRef.current.generation !== generationAtStart) {
+        return;
+      }
       if (dataset && formRef.current) {
         formRef.current.setFieldsValue({
           dataset
         });
-        await renderOptions(dataset);
+        await loadDatasetVersions(dataset, true);
       }
     } catch (e) {
       console.error(e);
     } finally {
-      setLoadingState(prev => ({ ...prev, select: false }));
-    }
-  }, [datasetType, apiMethods.getDatasetReleaseByID]);
-
-  // 渲染数据集版本选项
-  const renderOptions = useCallback(async (dataset: number) => {
-    setLoadingState(prev => ({ ...prev, select: true }));
-    try {
-      if (!formRef.current || !dataset) return;
-      // 加载数据集版本
-      const datasetVersions = await apiMethods.getDatasetReleases(datasetType, { dataset });
-      const _versionOptions: Option[] = datasetVersions.map((item: DatasetRelease) => ({
-        label: item?.name || '',
-        value: String(item?.id)
-      }));
-      setDatasetVersions(_versionOptions);
-      if (formData?.dataset_version) {
-        formRef.current.setFieldsValue({
-          dataset_version: String(formData.dataset_version)
-        });
+      if (datasetVersionRequestRef.current.generation === generationAtStart) {
+        setLoadingState((prev) => ({ ...prev, select: false }));
       }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoadingState(prev => ({ ...prev, select: false }));
     }
-  }, [formData, datasetType, apiMethods.getDatasetReleases]);
+  }, [datasetType, apiMethods.getDatasetReleaseByID, loadDatasetVersions]);
 
   // 算法变化处理
   const onAlgorithmChange = useCallback((algorithm: string) => {
@@ -307,11 +345,16 @@ export const useGenericDatasetForm = ({
 
   // 提交处理
   const handleSubmit = useCallback(async () => {
-    if (loadingState.confirm) return;
+    if (loadingState.confirm || loadingState.select) return;
     setLoadingState((prev) => ({ ...prev, confirm: true }));
 
     try {
       const formValues = await formRef.current?.validateFields();
+      const selectedVersion = String(formValues.dataset_version ?? '');
+      if (!datasetVersions.some((item) => String(item.value) === selectedVersion)) {
+        message.error(t('traintask.selectDatasetVersion'));
+        return;
+      }
       const params = formToApi(formValues);
 
       if (modalState.type === 'add') {
@@ -330,7 +373,7 @@ export const useGenericDatasetForm = ({
     } finally {
       setLoadingState((prev) => ({ ...prev, confirm: false }));
     }
-  }, [modalState.type, formData, onSuccess, apiMethods, formToApi, t, loadingState.confirm]);
+  }, [modalState.type, formData, onSuccess, apiMethods, formToApi, t, loadingState.confirm, loadingState.select, datasetVersions]);
 
   // 取消处理
   const handleCancel = useCallback(() => {
@@ -340,6 +383,7 @@ export const useGenericDatasetForm = ({
       title: 'addtask',
     });
     formRef.current?.resetFields();
+    datasetVersionRequestRef.current = createDatasetVersionRequestState();
     setDatasetVersions([]);
     setFormData(null);
     setFormValues({
@@ -393,11 +437,25 @@ export const useGenericDatasetForm = ({
             placeholder={t('traintask.selectDatasets')}
             loading={loadingState.select}
             options={datasetOptions}
-            onChange={renderOptions}
+            onChange={handleDatasetChange}
           />
         </Form.Item>
 
-        <Form.Item name='dataset_version' label={t('traintask.datasetVersion')} rules={[{ required: true, message: t('traintask.selectDatasetVersion') }]}>
+        <Form.Item
+          name='dataset_version'
+          label={t('traintask.datasetVersion')}
+          rules={[
+            { required: true, message: t('traintask.selectDatasetVersion') },
+            {
+              validator: async (_, value) => {
+                if (!value) return;
+                if (!datasetVersions.some((item) => String(item.value) === String(value))) {
+                  return Promise.reject(new Error(t('traintask.selectDatasetVersion')));
+                }
+              },
+            },
+          ]}
+        >
           <Select
             placeholder={t('traintask.selectDatasetVersion')}
             showSearch
@@ -433,7 +491,7 @@ export const useGenericDatasetForm = ({
         )}
       </>
     );
-  }, [t, configLoading, datasetOptions, datasetVersions, loadingState.select, isShow, formValues, algorithmConfigs, algorithmScenarios, algorithmOptions, onAlgorithmChange, renderOptions]);
+  }, [t, configLoading, datasetOptions, datasetVersions, loadingState.select, isShow, formValues, algorithmConfigs, algorithmScenarios, algorithmOptions, onAlgorithmChange, handleDatasetChange]);
 
   return {
     modalState,

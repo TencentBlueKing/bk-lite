@@ -6,6 +6,7 @@ import type { FormInstance } from 'antd/es/form';
 import { useTranslation } from '@/utils/i18n';
 import type { CredentialFieldSchema } from './types';
 import { isCredentialFieldVisible } from './visibleWhen';
+import { parseEnumValues } from './enumValues';
 
 export function fieldLabel(field: CredentialFieldSchema): string {
   return field.name || field.id;
@@ -105,7 +106,7 @@ const CredentialDynamicField: React.FC<CredentialDynamicFieldProps> = ({
       >
         <Select
           disabled={readOnly}
-          options={(field.values || []).map((value) => ({ label: value, value }))}
+          options={parseEnumValues(field.values).map((value) => ({ label: value, value }))}
         />
       </Form.Item>
     );

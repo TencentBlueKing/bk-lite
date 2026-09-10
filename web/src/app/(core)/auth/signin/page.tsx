@@ -4,12 +4,12 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import SigninClient from "./SigninClient";
 import {
-  buildLegacyThirdLoginCallbackUrl,
   buildThirdLoginCallbackUrl,
   getLegacyThirdLoginCode,
   resolveThirdLoginFlag,
 } from "@/utils/authRedirect";
 import PopupAuthBridge from "./PopupAuthBridge";
+import LegacyThirdLoginAuthorizeBridge from "./LegacyThirdLoginAuthorizeBridge";
 
 const signinErrors: Record<string | "default", string> = {
   default: "signin.errors.default",
@@ -72,19 +72,23 @@ export default async function SigninPage({ searchParams }: SignInPageProp) {
       );
     }
 
+    if (thirdLoginCode) {
+      return (
+        <LegacyThirdLoginAuthorizeBridge
+          callbackUrl={resolvedSearchParams.callbackUrl}
+          thirdLoginCode={thirdLoginCode}
+          token={session.user.token}
+        />
+      );
+    }
+
     redirect(
-      thirdLoginCode
-        ? buildLegacyThirdLoginCallbackUrl(
-          resolvedSearchParams.callbackUrl,
-          session.user.token,
-          thirdLoginCode,
-        )
-        : buildThirdLoginCallbackUrl(
-          resolvedSearchParams.callbackUrl,
-          session.user.token,
-          thirdLoginFlag,
-          requestOrigin,
-        ),
+      buildThirdLoginCallbackUrl(
+        resolvedSearchParams.callbackUrl,
+        session.user.token,
+        thirdLoginFlag,
+        requestOrigin,
+      ),
     );
   }
   return <SigninClient searchParams={resolvedSearchParams} signinErrors={signinErrors} />;

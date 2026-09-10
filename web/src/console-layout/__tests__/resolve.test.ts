@@ -9,9 +9,11 @@ import {
   isConsoleChromeException,
   isDetailChromeContext,
   shouldHideConsoleTopNav,
+  resolveAppLandingHref,
   resolveAppNavigation,
   resolveEffectiveChromeLayout,
   resolveMenuNavHref,
+  shouldStayOnCurrentAppPage,
   shouldOpenAppInNewTab,
   shouldShowAppTopSideNav,
   shouldShowClassicSegmentedNav,
@@ -97,9 +99,20 @@ describe('console chrome layout resolve', () => {
     expect(shouldHideConsoleTopNav('/opspilot/studio/chat')).toBe(true);
     expect(shouldHideConsoleTopNav('/opspilot/studio/chat/')).toBe(true);
     expect(shouldHideConsoleTopNav('/opspilot/skill/chat')).toBe(true);
+    expect(shouldHideConsoleTopNav('/opspilot/memory/document')).toBe(true);
+    expect(shouldHideConsoleTopNav('/opspilot/memory/detail/memories')).toBe(false);
     expect(shouldHideConsoleTopNav('/opspilot/studio')).toBe(false);
     expect(shouldHideConsoleTopNav('/opspilot/skill/detail/settings')).toBe(false);
     expect(shouldHideConsoleTopNav('/cmdb/assetOverview')).toBe(false);
+  });
+
+  it('hides the console top nav on ops-analysis share destinations but not in-product view', () => {
+    expect(shouldHideConsoleTopNav('/ops-analysis/share/abc')).toBe(true);
+    expect(shouldHideConsoleTopNav('/ops-analysis/share/continue')).toBe(true);
+    expect(shouldHideConsoleTopNav('/ops-analysis/share/session/xyz')).toBe(true);
+    expect(shouldHideConsoleTopNav('/ops-analysis/view')).toBe(false);
+    expect(shouldHideConsoleTopNav('/ops-analysis/render/execution/7')).toBe(false);
+    expect(shouldShowAppTopSideNav('app-top', '/ops-analysis/share/abc', opspilotMenus)).toBe(false);
   });
 
   it('keeps first-layer items flat and leaves children to the original in-page side menu', () => {
@@ -159,6 +172,65 @@ describe('console chrome layout resolve', () => {
       mode: 'new-tab',
       href: 'https://mail.example/qmail',
     });
+  });
+
+  it('lands same-origin app chips on the first real menu instead of a redirect stub', () => {
+    const origin = 'https://lite.example';
+    const menus: MenuItem[] = [
+      menu({ title: '工作台', url: '/opspilot/studio', name: 'studio' }),
+      menu({ title: '搜索', url: '/cmdb/assetSearch', name: 'search' }),
+      menu({
+        title: '视图',
+        url: '/cmdb/assetOverview',
+        name: 'asset_views',
+        children: [
+          menu({ title: '资产总览', url: '/cmdb/assetOverview', name: 'overview' }),
+        ],
+      }),
+    ];
+    expect(resolveAppLandingHref({ url: '/cmdb', is_build_in: true }, origin, menus)).toEqual({
+      mode: 'same-tab',
+      href: '/cmdb/assetSearch',
+    });
+    expect(resolveAppLandingHref({ url: '/cmdb/assetSearch', is_build_in: true }, origin, menus)).toEqual({
+      mode: 'same-tab',
+      href: '/cmdb/assetSearch',
+    });
+    expect(shouldStayOnCurrentAppPage(true, { mode: 'same-tab', href: '/cmdb/assetSearch' })).toBe(true);
+    expect(shouldStayOnCurrentAppPage(false, { mode: 'same-tab', href: '/cmdb/assetSearch' })).toBe(false);
+    expect(shouldStayOnCurrentAppPage(true, { mode: 'new-tab', href: 'https://mail.example' })).toBe(false);
+  });
+
+  it('lands 节点管理 on the cloud-region list instead of a hasDetail child', () => {
+    const origin = 'https://lite.example';
+    const menus: MenuItem[] = [
+      menu({ title: '工作台', url: '/opspilot/studio', name: 'studio' }),
+      menu({
+        title: '云区域',
+        url: '/node-manager/cloudregion',
+        name: 'cloud_region_list',
+        hasDetail: true,
+        children: [
+          menu({ title: '节点', url: '/node-manager/cloudregion/node', name: 'cloud_region_node' }),
+          menu({ title: '环境', url: '/node-manager/cloudregion/environment', name: 'cloud_region_environment' }),
+        ],
+      }),
+      menu({
+        title: '组件库',
+        url: '/node-manager/collector',
+        name: 'collector_list',
+        hasDetail: true,
+      }),
+    ];
+    expect(resolveAppLandingHref(
+      { url: '/node-manager', is_build_in: true },
+      origin,
+      menus,
+    )).toEqual({
+      mode: 'same-tab',
+      href: '/node-manager/cloudregion',
+    });
+    expect(shouldStayOnCurrentAppPage(true, { mode: 'same-tab', href: '/node-manager/cloudregion' })).toBe(true);
   });
 
   it('picks the longest matching same-origin app as active', () => {

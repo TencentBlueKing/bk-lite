@@ -2,19 +2,19 @@
 # @File: config.py
 # @Time: 2025/10/21
 # @Author: GitHub Copilot
-from celery.schedules import crontab
+from apps.core.celery_schedule import beat_crontab
 
 CELERY_BEAT_SCHEDULE = {
     "reconcile_snmp_interface_filters": {
         "task": "apps.monitor.tasks.snmp_ifmib_reconcile.reconcile_snmp_interface_filters",
-        "schedule": crontab(minute="*"),
+        "schedule": beat_crontab(minute="*"),
     },
     'sync_instance_and_group': {
         'task': 'apps.monitor.tasks.grouping_rule.sync_instance_and_group',
-        'schedule': crontab(minute='*/10'),  # 每10分钟执行一次
+        'schedule': beat_crontab(minute='*/10'),  # 每10分钟执行一次
     },
     'retry_alert_center_lifecycle_notify': {
         'task': 'apps.monitor.tasks.monitor_policy.retry_alert_center_lifecycle_notify_task',
-        'schedule': crontab(minute='*/5'),  # 每5分钟执行一次
+        'schedule': beat_crontab(minute='*/5'),  # 每5分钟执行一次
     },
 }

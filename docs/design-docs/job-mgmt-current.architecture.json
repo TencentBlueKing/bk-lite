@@ -27,7 +27,7 @@
     {"id": "application", "type": "backend", "label": "Execution Application", "sublabel": "ExecutionService + 701 行 nats_api", "tag": "第二应用层", "pos": [475, 290], "size": [215, 105], "sources": [{"path": "server/apps/job_mgmt/services/execution_service.py", "line": 1, "label": "HTTP 执行服务"}, {"path": "server/apps/job_mgmt/nats_api.py", "line": 1, "label": "NATS 应用逻辑"}]},
     {"id": "catalog", "type": "database", "label": "作业资源目录", "sublabel": "Script / Playbook / Target / Schedule / File", "pos": [475, 85], "size": [215, 92]},
     {"id": "execution", "type": "database", "label": "JobExecution", "sublabel": "状态 + target_list + 全量 results JSON", "tag": "单行事实与锁热点", "pos": [745, 285], "size": [220, 110], "sources": [{"path": "server/apps/job_mgmt/models/execution.py", "line": 12, "label": "执行聚合"}]},
-    {"id": "celery", "type": "messagebus", "label": "Celery / Beat", "sublabel": "dispatch / schedule / cancel fallback", "tag": "无执行 lease", "pos": [745, 85], "size": [220, 92], "sources": [{"path": "server/apps/job_mgmt/tasks.py", "line": 37, "label": "执行任务"}]},
+    {"id": "celery", "type": "messagebus", "label": "Celery / Beat", "sublabel": "dispatch / schedule / deadline fallback", "tag": "执行 deadline 扫描", "pos": [745, 85], "size": [220, 92], "sources": [{"path": "server/apps/job_mgmt/tasks.py", "line": 37, "label": "执行任务"}]},
     {"id": "sidecar", "type": "backend", "label": "Sidecar Runners", "sublabel": "Script / File + ThreadPoolExecutor", "tag": "每 execution ≤10 线程", "pos": [1015, 83], "size": [225, 96], "sources": [{"path": "server/apps/job_mgmt/services/script_execution_runner.py", "line": 97, "label": "Sidecar 批执行"}]},
     {"id": "ansible", "type": "backend", "label": "Ansible Async Path", "sublabel": "首目标选路 / callback attempt", "tag": "仅第一云区域", "pos": [1015, 270], "size": [225, 100], "sources": [{"path": "server/apps/job_mgmt/services/execution_base_service.py", "line": 221, "label": "Ansible 脚本提交"}, {"path": "server/apps/job_mgmt/services/playbook_execution.py", "line": 107, "label": "Playbook 区域分组"}]},
     {"id": "state", "type": "security", "label": "Terminal State Services", "sublabel": "claim / callback / cancellation / timeout", "tag": "两套终态路径", "pos": [745, 535], "size": [220, 104]},
@@ -51,8 +51,8 @@
     {"id": "outbox_stream", "from": "outbox", "to": "stream", "variant": "dashed"}
   ],
   "cards": [
-    {"dot": "emerald", "title": "应保留的并发与可靠性机制", "items": ["PENDING→RUNNING claim、取消行锁与 Ansible 一次性 callback identity 已形成明确裁决点", "Completion Outbox 具备唯一幂等键、短 lease、退避重试与 Beat 重扫；TargetTeamMembership 可检测并发团队变更"]},
+    {"dot": "emerald", "title": "应保留的并发与可靠性机制", "items": ["PENDING→RUNNING claim、取消行锁与 Ansible 一次性 callback identity 已形成明确裁决点", "JobExecution 持久化调度/执行 deadline，Beat 可收敛失联任务；Completion Outbox 负责终态副作用重扫"]},
     {"dot": "rose", "title": "信任与生命周期发生分叉", "items": ["legacy NATS 执行/文件分发信任消息体 team，目标列表与状态查询可无 scope 枚举", "Sidecar/同步失败直接写终态并 best-effort 回调；只有 Ansible 回调和取消进入 Outbox"]},
-    {"dot": "amber", "title": "容量边界隐含在单行与进程内", "items": ["目标与 stdout/stderr 聚合成一个 JSON 行，终态重写和回调复制完整结果", "每个 execution 自建线程池但没有团队、区域和执行器级全局预算；worker 中断后无 RUNNING 租约回收"]}
+    {"dot": "amber", "title": "容量边界隐含在单行与进程内", "items": ["目标与 stdout/stderr 聚合成一个 JSON 行，终态重写和回调复制完整结果", "每个 execution 自建线程池但没有团队、区域和执行器级全局预算；当前只有批次级 deadline，没有细粒度 heartbeat/attempt lease"]}
   ]
 }

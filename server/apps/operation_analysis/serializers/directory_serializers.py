@@ -12,6 +12,7 @@ from apps.operation_analysis.constants.canvas_refresh import CANVAS_REFRESH_INTE
 from apps.operation_analysis.constants.import_export import ObjectType
 from apps.operation_analysis.models.models import Architecture, Dashboard, Directory, Report, Screen, Topology
 from apps.operation_analysis.serializers.base_serializers import BaseFormatTimeSerializer
+from apps.operation_analysis.services.builtin_i18n import apply_canvas_representation, apply_directory_representation
 from apps.operation_analysis.services.import_export.view_sets import normalize_canvas_view_sets_for_storage
 from apps.operation_analysis.services.report_view_sets import normalize_report_view_sets
 
@@ -79,6 +80,9 @@ class DirectoryModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
             "is_build_in": {"read_only": True},
             "build_in_key": {"read_only": True},
         }
+
+    def to_representation(self, instance):
+        return apply_directory_representation(super().to_representation(instance), instance, self.context)
 
 
 class DirectoryChainVisibilityMixin:
@@ -148,6 +152,9 @@ class CanvasObjectSerializer(DirectoryChainVisibilityMixin, BuiltinPermissionMix
             "is_build_in": {"read_only": True},
             "build_in_key": {"read_only": True},
         }
+
+    def to_representation(self, instance):
+        return apply_canvas_representation(super().to_representation(instance), instance, self.context)
 
     def create(self, validated_data):
         """

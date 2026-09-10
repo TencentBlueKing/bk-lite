@@ -8,6 +8,19 @@ from apps.job_mgmt.services.param_crypto import ParamCrypto
 from apps.job_mgmt.services.script_normalize import normalize_script_line_endings
 
 
+def validate_script_name_unique_in_organizations(name, team, exclude_script_id=None):
+    """校验同名脚本的组织集合互不重叠。"""
+    requested_teams = {str(team_id) for team_id in team}
+    same_name_scripts = Script.objects.filter(name=name)
+    if exclude_script_id is not None:
+        same_name_scripts = same_name_scripts.exclude(pk=exclude_script_id)
+
+    existing_teams = same_name_scripts.values_list("team", flat=True).iterator()
+    has_conflict = any(requested_teams.intersection(str(team_id) for team_id in (script_teams or [])) for script_teams in existing_teams)
+    if has_conflict:
+        raise serializers.ValidationError({"name": "同一组织内已存在同名脚本"})
+
+
 class ScriptListSerializer(TeamSerializer):
     """脚本列表序列化器（返回精简字段）"""
 

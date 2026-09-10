@@ -2087,9 +2087,9 @@ datasources:
   namespace_keys:
   - 默认命名空间
 - key: CMDB模型实例TOPN::cmdb/get_cmdb_model_instance_top
-  name: CMDB 模型实例排行
+  name: CMDB 实例排行（按模型/分类）
   rest_api: cmdb/get_cmdb_model_instance_top
-  desc: 按实例数从高到低展示模型，可按分类筛选
+  desc: 按实例数降序排行；默认按模型，也可按分类汇总。老 CMDB 盘默认按模型，勿改默认值。
   is_active: true
   params:
   - name: limit
@@ -2102,6 +2102,18 @@ datasources:
     value: ''
     alias_name: 模型分类 ID
     filterType: params
+  - name: group_by
+    type: string
+    value: model
+    alias_name: 排行维度
+    filterType: params
+  - name: organization
+    type: string
+    value: ''
+    alias_name: 组织
+    filterType: filter
+    inputConfig:
+      control: organization
   tags:
   - CMDB
   chart_type:
@@ -2111,23 +2123,23 @@ datasources:
   - key: model
     title: 模型名称
     value_type: string
-    description: 模型显示名称
+    description: 模型显示名称（排行维度为模型时使用）
   - key: model_id
     title: 模型ID
     value_type: string
-    description: 模型唯一标识
+    description: 模型唯一标识（排行维度为模型时使用）
   - key: classification
     title: 分类名称
     value_type: string
-    description: 所属分类显示名称
+    description: 分类显示名称；按模型排时为所属分类，按分类排时为排行项
   - key: classification_id
     title: 分类ID
     value_type: string
-    description: 所属分类标识
+    description: 分类标识
   - key: count
     title: 实例数
     value_type: number
-    description: 该模型下实例数量
+    description: 该排行项下的实例数量
   namespace_keys:
   - 默认命名空间
 - key: CMDB采集健康统计::cmdb/get_cmdb_collect_statistics
@@ -2212,11 +2224,19 @@ datasources:
   rest_api: cmdb/get_cmdb_statistics
   desc: 分类、模型、实例总数，以及非空模型覆盖率
   is_active: true
-  params: []
+  params:
+  - name: organization
+    type: string
+    value: ''
+    alias_name: 组织
+    filterType: filter
+    inputConfig:
+      control: organization
   tags:
   - CMDB
   chart_type:
   - single
+  - gauge
   field_schema:
   - key: classification_count
     title: 分类总数
@@ -2242,6 +2262,14 @@ datasources:
     title: 模型覆盖率
     value_type: number
     description: 非空模型数在全部模型中的占比，单位为 %
+  - key: collected_instance_count
+    title: 已挂采集任务实例数
+    value_type: number
+    description: 至少关联 1 条采集任务、且当前有权可见的实例数
+  - key: collect_coverage_rate
+    title: 采集覆盖率
+    value_type: number
+    description: 有权可见且已挂采集任务的实例数在实例总数中的占比，单位为 %
   namespace_keys:
   - 默认命名空间
 - key: 模型实例统计::get_model_inst_statistics
@@ -2289,6 +2317,13 @@ datasources:
     value: 10080
     alias_name: 时间范围
     filterType: filter
+  - name: organization
+    type: string
+    value: ''
+    alias_name: 组织
+    filterType: filter
+    inputConfig:
+      control: organization
   tags:
   - 告警
   chart_type:
@@ -2315,6 +2350,13 @@ datasources:
     value: 10080
     alias_name: 时间范围
     filterType: filter
+  - name: organization
+    type: string
+    value: ''
+    alias_name: 组织
+    filterType: filter
+    inputConfig:
+      control: organization
   tags:
   - 告警
   chart_type:
@@ -2432,7 +2474,7 @@ datasources:
 - key: 告警期间统计::alert/get_alert_period_statistics
   name: 告警与事件汇总
   rest_api: alert/get_alert_period_statistics
-  desc: 跟随时间范围，返回新增告警、关联事件、受影响告警、新增事故、会话告警占比和事件聚合倍率
+  desc: 跟随时间范围，返回新增告警、关联事件、受影响告警、新增事故、会话告警占比、事件聚合倍率和闭环率
   is_active: true
   params:
   - name: time
@@ -2440,10 +2482,18 @@ datasources:
     value: 10080
     alias_name: 时间范围
     filterType: filter
+  - name: organization
+    type: string
+    value: ''
+    alias_name: 组织
+    filterType: filter
+    inputConfig:
+      control: organization
   tags:
   - 告警
   chart_type:
   - single
+  - gauge
   field_schema:
   - key: new_alert_count
     title: 所选时段新增告警数
@@ -2473,6 +2523,14 @@ datasources:
     title: 所选时段事件聚合倍率
     value_type: number
     description: 告警关联事件数除以受影响告警数
+  - key: closed_alert_count
+    title: 所选时段关闭告警数
+    value_type: number
+    description: 按告警更新时间且状态属于已关闭集合统计
+  - key: closed_loop_rate
+    title: 所选时段告警闭环率
+    value_type: number
+    description: 窗内关闭告警数除以窗内新增告警数，单位为 %，分母为 0 时为 0
   namespace_keys:
   - 默认命名空间
 - key: 告警快照统计::alert/get_alert_snapshot_statistics
@@ -2480,7 +2538,14 @@ datasources:
   rest_api: alert/get_alert_snapshot_statistics
   desc: 查询时刻的活跃告警状态，不受时间范围影响；含活动总数、未分派、待响应、处理中与自动恢复
   is_active: true
-  params: []
+  params:
+  - name: organization
+    type: string
+    value: ''
+    alias_name: 组织
+    filterType: filter
+    inputConfig:
+      control: organization
   tags:
   - 告警
   chart_type:
@@ -2694,7 +2759,14 @@ datasources:
   rest_api: monitor/get_monitor_statistics
   desc: 监控中心资源/能力/告警总览统计数据
   is_active: true
-  params: []
+  params:
+  - name: organization
+    type: string
+    value: ''
+    alias_name: 组织
+    filterType: filter
+    inputConfig:
+      control: organization
   tags:
   - 监控
   chart_type:

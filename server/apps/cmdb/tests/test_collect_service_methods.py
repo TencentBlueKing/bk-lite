@@ -11,6 +11,7 @@
 - schedule_delayed_sync_if_needed（阈值/类型/非法值分支，mock transaction.on_commit）。
 仅 mock 真实外部边界：NodeMgmt RPC、Stargazer RPC、transaction.on_commit。
 """
+import json
 import types
 
 import pydantic.root_model  # noqa
@@ -440,6 +441,85 @@ class TestFormatUpdateCredential:
         assert merged["user"] == "u1-new"
         assert merged["pwd"] == "secret"
 
+    def test_云任务单凭据编辑不回传credential_id时保留密钥(self):
+        inst = fake_instance(
+            is_k8s=False,
+            decrypt_credentials=[
+                {
+                    "credential_id": "cred_edit",
+                    "accessKey": "AKIDreal",
+                    "accessSecret": "sk-real",
+                    "regions": {"resource_id": "ap-guangzhou"},
+                }
+            ],
+        )
+        data = {
+            "credential": [
+                {
+                    "regions": {"resource_id": "ap-shanghai", "resource_name": "上海"},
+                }
+            ]
+        }
+
+        CollectModelService.format_update_credential(inst, data)
+
+        merged = data["credential"][0]
+        assert merged["accessKey"] == "AKIDreal"
+        assert merged["accessSecret"] == "sk-real"
+        assert merged["regions"]["resource_id"] == "ap-shanghai"
+
+    @pytest.mark.parametrize(
+        "model_id,incoming",
+        [
+            (
+                "qcloud",
+                {
+                    "credential_id": "cred_edit",
+                    "regions": {"resource_id": "ap-shanghai", "resource_name": "上海"},
+                },
+            ),
+            (
+                "aliyun_account",
+                {
+                    "credential_id": "cred_edit",
+                    "regions": {"resource_id": "cn-hangzhou", "resource_name": "杭州"},
+                },
+            ),
+            (
+                "hwcloud",
+                {
+                    "credential_id": "cred_edit",
+                    "project_id": "project-new",
+                    "regions": {"resource_id": "cn-east-3", "resource_name": "华东三"},
+                },
+            ),
+        ],
+    )
+    def test_云任务库为凭据池页面提交单个对象时保留密钥(self, model_id, incoming):
+        inst = fake_instance(
+            is_k8s=False,
+            model_id=model_id,
+            decrypt_credentials=[
+                {
+                    "credential_id": "cred_edit",
+                    "accessKey": "AKIDreal",
+                    "accessSecret": "sk-real",
+                    "project_id": "project-old",
+                    "regions": {"resource_id": "cn-north-4"},
+                }
+            ],
+        )
+        data = {"credential": incoming}
+
+        CollectModelService.format_update_credential(inst, data)
+
+        merged = data["credential"][0]
+        assert merged["accessKey"] == "AKIDreal"
+        assert merged["accessSecret"] == "sk-real"
+        assert merged["regions"]["resource_id"] == incoming["regions"]["resource_id"]
+        if "project_id" in incoming:
+            assert merged["project_id"] == "project-new"
+
     def test_旧单凭据dict升级为单项凭据池时保留掩码密钥(self):
         inst = fake_instance(
             is_k8s=False,
@@ -610,13 +690,14 @@ def test_exec_task_passes_execution_token_to_sync_collect_task(settings, mocker)
     )
     mocker.patch("apps.cmdb.services.collect_service.create_change_record")
 
-    CollectModelService.exec_task(task, operator="tester")
+    response = CollectModelService.exec_task(task, operator="tester")
 
     assert called["saved_status"] == CollectRunStatusType.RUNNING
     assert called["saved_task_id"]
     assert called["sync_task_id"] == task.id
     assert called["sync_execution_id"] == called["saved_task_id"]
     assert called["resolve_latest_round"] is True
+    assert json.loads(response.content)["data"] == {"id": task.id, "execution_id": called["saved_task_id"]}
 
 
 def test_exec_task_defers_celery_publish_until_transaction_commit(settings, mocker):

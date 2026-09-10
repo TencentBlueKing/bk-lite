@@ -179,12 +179,12 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
         if not isinstance(value, list):
             raise serializers.ValidationError("params 必须为数组")
 
-        bindable_types = {"string", "timeRange", "dateRange"}
+        bindable_types = {"string", "timeRange", "dateRange", "number"}
         for index, param in enumerate(value):
             if not isinstance(param, dict):
                 raise serializers.ValidationError(f"[{index}] 必须为对象")
             if param.get("filterType") == "filter" and param.get("type") not in bindable_types:
-                raise serializers.ValidationError(f"[{index}].type 仅 string、timeRange、dateRange 支持筛选联动")
+                raise serializers.ValidationError(f"[{index}].type 仅 string、timeRange、dateRange、number 支持筛选联动")
         return value
 
     def validate_transform_config(self, value):
@@ -258,7 +258,9 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
         return attrs
 
     def to_representation(self, instance):
-        data = super().to_representation(instance)
+        from apps.operation_analysis.services.builtin_i18n import apply_datasource_representation
+
+        data = apply_datasource_representation(super().to_representation(instance), instance, self.context)
         data["connection_config"] = redact_sensitive_config(data.get("connection_config"))
         data["query_config"] = redact_sensitive_config(data.get("query_config"))
         data["connection_id"] = instance.connection_id

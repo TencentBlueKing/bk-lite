@@ -1,6 +1,6 @@
 """数据源过滤器、序列化器校验与 schema 校验的覆盖测试。
 
-对照 specs/capabilities/legacy-prd-运营分析-管理.md：数据源支持按名称/REST/标签/图表类型搜索，
+对照 specs/capabilities/legacy-prd-运营分析-管理.md：数据源支持按名称/REST/标签/图表类型/来源类型搜索，
 field_schema 列定义需 key 非空且不重复。
 """
 
@@ -51,6 +51,29 @@ def test_filter_chart_type_contains():
     assert DataSourceAPIModelFilter.filter_chart_type(qs, "chart_type", "line,bar").count() == 2
     # 空值返回原查询集
     assert DataSourceAPIModelFilter.filter_chart_type(qs, "chart_type", "  ").count() == 2
+
+
+@pytest.mark.django_db
+def test_filter_source_type_exact():
+    DataSourceAPIModel.objects.create(
+        name="nats-ds",
+        rest_api="m/nats",
+        source_type=DataSourceAPIModel.SOURCE_TYPE_NATS,
+        created_by="s",
+        updated_by="s",
+    )
+    DataSourceAPIModel.objects.create(
+        name="mysql-ds",
+        rest_api="m/mysql",
+        source_type=DataSourceAPIModel.SOURCE_TYPE_MYSQL,
+        created_by="s",
+        updated_by="s",
+    )
+    qs = DataSourceAPIModel.objects.all()
+    filtered = DataSourceAPIModelFilter({"source_type": "mysql"}, queryset=qs).qs
+
+    assert filtered.count() == 1
+    assert filtered.first().name == "mysql-ds"
 
 
 # --------------------------------------------------------------------------
@@ -110,10 +133,10 @@ def _validate_params(value):
     return DataSourceAPIModelSerializer.validate_params(serializer, value)
 
 
-@pytest.mark.parametrize("param_type", ["number", "boolean", "date"])
+@pytest.mark.parametrize("param_type", ["boolean", "date"])
 @pytest.mark.unit
 def test_validate_params_rejects_unsupported_unified_filter_types(param_type):
-    with pytest.raises(serializers.ValidationError):
+    with pytest.raises(serializers.ValidationError) as exc_info:
         _validate_params(
             [
                 {
@@ -125,9 +148,10 @@ def test_validate_params_rejects_unsupported_unified_filter_types(param_type):
                 }
             ]
         )
+    assert "number" in str(exc_info.value)
 
 
-@pytest.mark.parametrize("param_type", ["string", "timeRange", "dateRange"])
+@pytest.mark.parametrize("param_type", ["string", "timeRange", "dateRange", "number"])
 @pytest.mark.unit
 def test_validate_params_accepts_supported_unified_filter_types(param_type):
     value = [

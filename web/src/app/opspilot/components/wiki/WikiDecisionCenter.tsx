@@ -32,7 +32,7 @@ import {
   type KnowledgeConflictDiff,
 } from './wikiDecisionDiff';
 import ContributionTag from './ContributionTag';
-import { formatWikiTime, pageTypeLabelKey } from './wikiFormat';
+import { formatPageTypeLabel, formatWikiTime } from './wikiFormat';
 
 const markdown = new MarkdownIt({ html: false, linkify: true, breaks: true });
 const markdownHtml = (body: string) => ({ __html: DOMPurify.sanitize(markdown.render(body || '')) });
@@ -83,7 +83,6 @@ const SnapshotMeta = ({
   incoming: boolean;
 }) => {
   const { t } = useTranslation();
-  const pageTypeKey = pageTypeLabelKey(snapshot.pageType);
   return (
     <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
       {snapshot.sourceLabel && (
@@ -101,7 +100,7 @@ const SnapshotMeta = ({
       )}
       {snapshot.pageType && (
         <span className="text-[var(--color-text-3)]">
-          {pageTypeKey ? t(pageTypeKey) : snapshot.pageType}
+          {formatPageTypeLabel(t, snapshot.pageType)}
         </span>
       )}
       {snapshot.contribution && <ContributionTag value={snapshot.contribution} />}

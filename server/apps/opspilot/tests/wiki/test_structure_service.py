@@ -98,3 +98,13 @@ def test_stale_structure_cas_rolls_back_without_creating_rows(wiki_factory):
     assert WikiDirectory.objects.filter(knowledge_base=knowledge_base).count() == before["directories"]
     assert WikiStructureRevision.objects.filter(knowledge_base=knowledge_base).count() == before["revisions"]
     assert WikiGeneration.objects.filter(knowledge_base=knowledge_base).count() == before["generations"]
+
+
+def test_unknown_template_key_bootstraps_general_directories(wiki_factory):
+    knowledge_base = wiki_factory.knowledge_base(template_key="okf_bundle")
+    bootstrap_knowledge_base(knowledge_base, operator="admin")
+    names = set(
+        WikiDirectory.objects.filter(knowledge_base=knowledge_base, status="active").values_list("name", flat=True)
+    )
+    assert "实体" in names
+    assert "wiki" not in names

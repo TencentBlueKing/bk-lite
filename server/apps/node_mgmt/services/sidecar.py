@@ -254,11 +254,23 @@ class Sidecar:
         return True
 
     @staticmethod
-    def trigger_converge_tasks_if_needed(node_id: str, node_ip: str, status_payload: dict):
-        action_running_exists = CollectorActionTaskNode.objects.filter(
-            node_id=node_id,
-            status="running",
-        ).exists()
+    def trigger_converge_tasks_if_needed(
+        node_id: str,
+        node_ip: str,
+        status_payload: dict,
+        *,
+        skip_action_converge: bool = False,
+    ):
+        # Sidecar 心跳先上报当前采集器状态，再领取本轮下发的 start/restart/stop。
+        # 领取动作的这次上报仍是动作执行前的状态，不能用来结案。
+        action_running_exists = (
+            False
+            if skip_action_converge
+            else CollectorActionTaskNode.objects.filter(
+                node_id=node_id,
+                status="running",
+            ).exists()
+        )
 
         target_filter = Q(**{f"result__{InstallerConstants.INSTALL_NODE_ID_KEY}": node_id})
         if node_ip:
@@ -466,14 +478,19 @@ class Sidecar:
     def _cached_heartbeat_updates(node_id: str, node_details: dict) -> tuple[dict, str, bool]:
         """Build the bounded metadata update allowed on an ETag cache hit."""
         request_data = dict(node_details)
-        existing_node = Node.objects.filter(id=node_id).values(
-            "id",
-            "ip",
-            "operating_system",
-            "cpu_architecture",
-            "node_type",
-            "cloud_region_id",
-        ).first() or {}
+        existing_node = (
+            Node.objects.filter(id=node_id)
+            .values(
+                "id",
+                "ip",
+                "operating_system",
+                "cpu_architecture",
+                "node_type",
+                "cloud_region_id",
+            )
+            .first()
+            or {}
+        )
         for field in ("ip", "operating_system"):
             if not request_data.get(field):
                 request_data[field] = existing_node.get(field, "")
@@ -588,6 +605,20 @@ class Sidecar:
                 lock=True,
             )
             return Node.objects.create(**request_data), node_id, True
+
+    @staticmethod
+    def _consume_deferred_module_push(node):
+        """sidecar 首次建节点钩子：按安装勾选补推 CMDB/监控。失败不阻断心跳。"""
+        from apps.node_mgmt.services.module_push import ModulePushService
+
+        try:
+            ModulePushService.consume_deferred_push_for_node(node)
+        except Exception as exc:
+            logger.exception(
+                "[ModulePush] deferred consume failed node_id=%s failed_stage=deferred_consume error_type=%s",
+                getattr(node, "id", None),
+                type(exc).__name__,
+            )
 
     @staticmethod
     def _refresh_existing_sidecar_node(node, node_id, request_data):
@@ -707,6 +738,7 @@ class Sidecar:
             if created:
                 Sidecar.asso_groups(node_id, tags_data.get(ControllerConstants.GROUP_TAG, []))
                 Sidecar.create_default_config(node, node_types)
+                Sidecar._consume_deferred_module_push(node)
 
         if not created:
             Sidecar._refresh_existing_sidecar_node(node, node_id, request_data)
@@ -727,7 +759,9 @@ class Sidecar:
 
         # 节点操作信息
         action_obj = new_obj.action_set.first()
+        actions_delivered = False
         if action_obj:
+            actions_delivered = True
             response_data.update(actions=action_obj.action)
 
             for action_item in action_obj.action:
@@ -827,7 +861,12 @@ class Sidecar:
 
         # 返回响应
         node_status = request_data.get("status", {})
-        Sidecar.trigger_converge_tasks_if_needed(node_id, new_obj.ip, node_status)
+        Sidecar.trigger_converge_tasks_if_needed(
+            node_id,
+            new_obj.ip,
+            node_status,
+            skip_action_converge=actions_delivered,
+        )
         return EncryptedJsonResponse(status=202, data=response_data, headers={"ETag": new_etag}, request=request)
 
     @staticmethod

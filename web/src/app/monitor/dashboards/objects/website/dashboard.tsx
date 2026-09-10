@@ -8,8 +8,7 @@ import {
   KpiSection,
   useFilteredChartPanels,
   useFilteredRingPanels,
-  useFilteredSummaryCards
-} from '../common/dashboard-components';
+  useFilteredSummaryCards, DashboardSectionLabel } from '../common/dashboard-components';
 import { RingChartPanel, TrendChartPanel } from '../../shared/widgets';
 import { WEBSITE_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
@@ -33,10 +32,10 @@ export default function WebsiteDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={3} styles={styles} />
 
-          <div className={styles.sectionLabel}>趋势</div>
+          <DashboardSectionLabel styles={styles}>趋势</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {successChart ? (
               <TrendChartPanel
@@ -74,7 +73,7 @@ export default function WebsiteDashboardPage() {
             ) : null}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>失败归因</div>
+          <DashboardSectionLabel styles={styles}>失败归因</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {resultCodeRing ? (
               <RingChartPanel

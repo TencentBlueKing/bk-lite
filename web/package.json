@@ -114,7 +114,7 @@
     "test:proxy-request-timeout": "pnpm exec tsx scripts/proxy-request-timeout-test.ts",
     "test:job-execution-stream-gap": "pnpm exec tsx scripts/job-execution-stream-gap-test.ts",
     "test:session-expiry-trigger": "pnpm exec tsx scripts/session-expiry-trigger-test.ts && pnpm exec vitest run src/context/__tests__/authColdStart.test.tsx",
-    "test:app-capabilities": "pnpm exec vitest run src/context/appCapabilities/__tests__ src/app/alarm/__tests__/capability.test.ts src/app/alarm/components/alarm-trend-chart/__tests__/listPayload.test.ts src/app/ops-analysis/__tests__/capability.test.ts 'src/app/monitor/(pages)/event/alert/__tests__/app-slot-isolation.test.ts' src/app/alarm/components/related-topology-tab/__tests__/isolation.test.ts src/app/alarm/utils/__tests__/relatedTopologyAccess.test.ts src/app/alarm/utils/__tests__/relatedTopologyCenters.test.ts",
+    "test:app-capabilities": "pnpm exec vitest run src/context/appCapabilities/__tests__ src/app/alarm/__tests__/capability.test.ts src/app/alarm/components/alarm-trend-chart/__tests__/listPayload.test.ts src/app/ops-analysis/__tests__/capability.test.ts 'src/app/monitor/(pages)/event/alert/__tests__/app-slot-isolation.test.ts' src/app/alarm/components/related-topology-tab/__tests__/isolation.test.ts src/app/alarm/utils/__tests__/relatedTopologyCenters.test.ts",
     "test:cmdb-relationships-imports": "node scripts/cmdb-relationships-imports-test.mjs",
     "test:cmdb-ipam-grid-height": "node scripts/cmdb-ipam-grid-height-test.mjs",
     "test:cmdb-ipam-edit": "pnpm exec tsx scripts/cmdb-ipam-edit-test.ts",

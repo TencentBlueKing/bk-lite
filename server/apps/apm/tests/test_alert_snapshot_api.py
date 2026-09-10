@@ -16,6 +16,7 @@ from apps.apm.models import (
     ApmServiceOrganization,
 )
 from apps.apm.services import ApmEventSnapshotStore, DjangoApmPolicyService
+from apps.apm.tests.helpers import bind_policy_organizations
 from apps.apm.services.contracts import MetricDataState, PolicyQueryResult, ServiceRed, ServiceRedPoint
 
 pytestmark = pytest.mark.django_db
@@ -50,6 +51,7 @@ def _trigger(*, organization=10, suffix=""):
         trigger_after=1,
         recover_after=1,
     )
+    bind_policy_organizations(policy, (organization,))
     DjangoApmPolicyService(MetricStore(at), InMemoryNotificationDispatcher()).evaluate(policy.id, evaluated_at=at)
     return policy, ApmAlert.objects.get(policy=policy), at
 
@@ -77,6 +79,30 @@ def test_alert_and_snapshot_reads_are_organization_scoped(apm_api_client):
     assert visible_evidence.data[0]["payload_status"] == "pending"
     assert hidden_snapshots.status_code == 404
     assert hidden_evidence.status_code == 404
+
+
+def test_alert_list_exposes_handlers_and_display(apm_api_client):
+    from apps.system_mgmt.models import User
+
+    user = User.objects.create(
+        username="handler1",
+        display_name="处理人甲",
+        email="handler1@example.com",
+        password="x",
+    )
+    _, alert, _ = _trigger()
+    alert.handlers = [user.id]
+    alert.save(update_fields=("handlers", "updated_at"))
+
+    listed = apm_api_client.get("/api/v1/apm/alerts/")
+    detail = apm_api_client.get(f"/api/v1/apm/alerts/{alert.id}/")
+
+    assert listed.status_code == 200
+    assert listed.data[0]["handlers"] == [user.id]
+    assert listed.data[0]["handlers_display"] == ["处理人甲(handler1)"]
+    assert detail.status_code == 200
+    assert detail.data["handlers"] == [user.id]
+    assert detail.data["handlers_display"] == ["处理人甲(handler1)"]
 
 
 def test_alert_list_summarizes_notification_delivery_status(apm_api_client):
@@ -173,6 +199,30 @@ def test_policy_delete_does_not_change_or_remove_historical_snapshot():
 
     assert alert.policy is None
     assert alert.snapshots.get().policy_snapshot == before
+
+
+def test_policy_delete_keeps_alert_visible_by_generation_organizations(apm_api_client):
+    policy, alert, _ = _trigger(organization=10)
+    policy.delete()
+
+    listed = apm_api_client.get("/api/v1/apm/alerts/")
+
+    assert listed.status_code == 200
+    assert [str(item["id"]) for item in listed.data] == [str(alert.id)]
+    assert listed.data[0]["organizations"] == [10]
+
+
+def test_alert_organizations_freeze_at_generation():
+    policy, alert, at = _trigger(organization=10)
+    alert.organizations = [10]
+    alert.save(update_fields=("organizations",))
+    ApmServiceOrganization.objects.filter(service=policy.service).delete()
+    ApmServiceOrganization.objects.create(service=policy.service, organization=20)
+
+    DjangoApmPolicyService(MetricStore(at), InMemoryNotificationDispatcher()).evaluate(policy.id, evaluated_at=at)
+    alert.refresh_from_db()
+
+    assert alert.organizations == [10]
 
 
 def test_event_id_is_idempotent_and_retention_clears_available_or_failed_payload(mocker):

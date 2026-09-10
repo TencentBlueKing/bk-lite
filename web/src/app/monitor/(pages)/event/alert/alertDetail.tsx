@@ -12,6 +12,7 @@ import React, {
 import { Button, Tag, Tabs, Spin } from 'antd';
 import VirtualList from 'rc-virtual-list';
 import OperateModal from '@/components/operate-drawer';
+import { useAiPageContext } from '@/components/ai-page-context';
 import { useTranslation } from '@/utils/i18n';
 import {
   ModalRef,
@@ -35,6 +36,7 @@ import Information from './information';
 import { renderChart } from '@/app/monitor/utils/common';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { LEVEL_MAP } from '@/app/monitor/constants';
+import { formatUserDisplayName } from '@/utils/userDisplay';
 import type { ListRef } from 'rc-virtual-list';
 import {
   buildAlertDetailMetricQuery,
@@ -43,6 +45,7 @@ import {
   resolveAlertDetailChartUnit,
   resolveAlertDetailMetric
 } from './alertDetailUtils';
+import { buildAlertDetailPageContext } from './alertDetail.context';
 
 const TIMELINE_ITEM_HEIGHT = 48;
 
@@ -54,7 +57,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
     const { getMonitorMetrics } = useMonitorApi();
     const { getMonitorEventDetail, getEventRaw, getSnapshot } = useEventApi();
     const { convertToLocalizedTime } = useLocalizedTime();
-    const { getEnumValueUnit } = useUnitTransform();
+    const { getEnumValueUnit, findUnitNameById } = useUnitTransform();
     const STATE_MAP = useStateMap();
     const ALERT_TYPE_MAP = useAlertTypeMap();
     const LEVEL_LIST = useLevelList();
@@ -74,6 +77,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
     const [pageLoading, setPageLoading] = useState<boolean>(false);
     const tabs: TabItem[] = useAlertDetailTabs();
     const [eventData, setEventData] = useState<AlertEventItem[]>([]);
+    const eventRequestIdRef = useRef(0);
     const timelineRef = useRef<ListRef | null>(null);
     const timelineContainerRef = useRef<HTMLDivElement | null>(null);
     const [timelineHeight, setTimelineHeight] = useState(200);
@@ -93,9 +97,17 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
 
     useImperativeHandle(ref, () => ({
       showModal: ({ title, form }) => {
+        eventRequestIdRef.current += 1;
         setGroupVisible(true);
         setTitle(title);
+        setFormData(form || {});
+        setEventData([]);
+        setTrapData({});
+        setChartData([]);
+        setChartXAxisDomain(null);
+        setChartUnit('');
         getMetrics(form);
+        getEventData(form?.id);
       }
     }));
 
@@ -195,17 +207,22 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
 
     const getEventData = async (formId?: string | number) => {
       if (!formId) return;
+      const requestId = ++eventRequestIdRef.current;
       setEventLoading(true);
       try {
         const _data = await getMonitorEventDetail(formId, {
           page: 1,
           page_size: -1
         });
+        if (requestId !== eventRequestIdRef.current) return;
         setEventData(_data.results || []);
       } catch {
+        if (requestId !== eventRequestIdRef.current) return;
         setEventData([]);
       } finally {
-        setEventLoading(false);
+        if (requestId === eventRequestIdRef.current) {
+          setEventLoading(false);
+        }
       }
     };
 
@@ -299,6 +316,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
     );
 
     const handleCancel = () => {
+      eventRequestIdRef.current += 1;
       setGroupVisible(false);
       setActiveTab('information');
       setChartData([]);
@@ -306,6 +324,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
       setChartUnit('');
       setTrapData({});
       setEventData([]);
+      setFormData({});
       timelineRef.current?.scrollTo(0);
     };
 
@@ -330,6 +349,69 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
       handleCancel();
       onSuccess?.();
     };
+
+    const detailContextLabels = useMemo(
+      () => ({
+        level: (value?: string) =>
+          LEVEL_LIST.find((item) => item.value === value)?.label ||
+          value ||
+          '--',
+        state: (value?: string) => STATE_MAP[value || ''] || value || '--',
+        alertType: (value?: string) =>
+          ALERT_TYPE_MAP[value || ''] || value || '--',
+        action: (value?: string) =>
+          (value
+            ? EVENT_ACTION_MAP[value as keyof typeof EVENT_ACTION_MAP]
+            : '') || '',
+        formatTime: (value?: string) =>
+          value ? convertToLocalizedTime(value) : '--',
+        formatValue: (metric: unknown, value: unknown) =>
+          String(
+            getEnumValueUnit(metric as MetricItem, value as number | string) ??
+              ''
+          ),
+        notice: (noticed?: boolean) =>
+          t(`monitor.events.${noticed ? 'notified' : 'unnotified'}`),
+        formatPerson: (value?: unknown) =>
+          formatUserDisplayName(value, userList),
+        formatUnit: (unitId?: string) => findUnitNameById(unitId || '')
+      }),
+      [
+        LEVEL_LIST,
+        STATE_MAP,
+        ALERT_TYPE_MAP,
+        EVENT_ACTION_MAP,
+        convertToLocalizedTime,
+        getEnumValueUnit,
+        t,
+        userList,
+        findUnitNameById
+      ]
+    );
+
+    useAiPageContext(
+      () =>
+        buildAlertDetailPageContext({
+          visible: groupVisible,
+          pageLoading,
+          eventLoading,
+          formData,
+          eventData,
+          trapData,
+          chartUnit,
+          labels: detailContextLabels
+        }),
+      [
+        groupVisible,
+        pageLoading,
+        eventLoading,
+        formData,
+        eventData,
+        trapData,
+        chartUnit,
+        detailContextLabels
+      ]
+    );
 
     return (
       <div>

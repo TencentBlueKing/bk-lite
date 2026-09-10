@@ -12,7 +12,10 @@ import { SearchTableProps } from '@/app/log/types/search';
 import { useCopy } from '@/hooks/useCopy';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import SearchHighlight from '@/app/log/components/search-highlight';
-import { extractHighlightTerms } from '@/app/log/utils/searchHighlight';
+import {
+  extractHighlightTerms,
+  isLogContentField
+} from '@/app/log/utils/searchHighlight';
 
 const DEFAULT_FIELDS = ['timestamp', 'message'];
 
@@ -125,15 +128,6 @@ const SearchTable: React.FC<SearchTableProps> = ({
               </span>
               <span>{record.collect_type || '--'}</span>
             </span>
-            {onCreateExtractor && (
-              <Button
-                type="link"
-                className="ml-3 px-0"
-                onClick={() => onCreateExtractor(record)}
-              >
-                {t('log.extractor.createFromLog')}
-              </Button>
-            )}
           </div>
         </div>
         <ul>
@@ -162,6 +156,20 @@ const SearchTable: React.FC<SearchTableProps> = ({
                             {t('log.search.addToQuery')}
                           </Button>
                         </li>
+                        {onCreateExtractor && (
+                          <li>
+                            <Button
+                              type="link"
+                              size="small"
+                              onClick={() => {
+                                onClose();
+                                onCreateExtractor(record, String(item.label));
+                              }}
+                            >
+                              {t('log.extractor.createFromLog')}
+                            </Button>
+                          </li>
+                        )}
                       </ul>
                     )}
                   >
@@ -202,7 +210,9 @@ const SearchTable: React.FC<SearchTableProps> = ({
                     <span className="break-all">
                       <SearchHighlight
                         text={item.value}
-                        terms={highlightTerms}
+                        terms={
+                          isLogContentField(item.label) ? highlightTerms : []
+                        }
                       />
                     </span>
                     <CaretDownFilled

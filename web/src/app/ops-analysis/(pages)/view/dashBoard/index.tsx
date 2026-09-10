@@ -88,7 +88,16 @@ import {
   type CanvasDraftPayload,
 } from '@/app/ops-analysis/api/canvasDraft';
 import { bindCanvasDraftControls } from '@/app/ops-analysis/components/canvasDraftControls';
-import { normalizeStoredFilterState, buildFilterConfigConfirmSnapshot } from '@/app/ops-analysis/utils/unifiedFilterState';
+import {
+  applySelectedOrganizationToFilterValues,
+  fillMissingOrganizationFilterValues,
+  isOrganizationFilterDefinition,
+  normalizeStoredFilterState,
+  buildFilterConfigConfirmSnapshot,
+  resolveCanvasOrganizationId,
+} from '@/app/ops-analysis/utils/unifiedFilterState';
+import { useShareOrganization } from '@/app/ops-analysis/context/shareOrganization';
+import { useUserInfoContext } from '@/context/userInfo';
 import { copyDashboardWidget } from '@/app/ops-analysis/utils/widgetCopy';
 import {
   migrateFilterBindings,
@@ -121,6 +130,17 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
   }, ref) => {
     const { t } = useTranslation();
     const { data: session } = useSession();
+    const { selectedGroup } = useUserInfoContext();
+    const shareOrganization = useShareOrganization();
+    const selectedOrganizationId = resolveCanvasOrganizationId({
+      shareMode,
+      renderMode,
+      shareSpaceId: shareOrganization?.spaceId,
+      selectedGroupId: selectedGroup?.id,
+    });
+    const selectedOrganizationIdRef = useRef(selectedOrganizationId);
+    selectedOrganizationIdRef.current = selectedOrganizationId;
+    const previousOrganizationIdRef = useRef(selectedOrganizationId);
     const themeName = renderMode ? 'light' : resolveOpsChartThemeName();
     const chartTheme = getOpsChartTheme(themeName);
     const isDarkTheme = themeName === 'dark';
@@ -285,7 +305,11 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         )
           ? payload.filters
           : [];
-        const nextValues = syncFilterValuesWithDefinitions(loadedDefinitions, {});
+        const nextValues = fillMissingOrganizationFilterValues(
+          loadedDefinitions,
+          syncFilterValuesWithDefinitions(loadedDefinitions, {}),
+          selectedOrganizationId,
+        );
 
         restoreDraftRefreshInterval(payload, setSavedRefreshInterval);
         setLayout(nextLayout);
@@ -303,6 +327,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         setSavedRefreshInterval,
         syncDashboardCanvasResources,
         syncFilterValuesWithDefinitions,
+        selectedOrganizationId,
       ],
     );
     const dashboardDraft = useCanvasDraft({
@@ -514,9 +539,13 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
               { canvasId: selectedDashboard.data_id },
             );
 
-          const initialValues = syncFilterValuesWithDefinitions(
+          const initialValues = fillMissingOrganizationFilterValues(
             loadedDefinitions,
-            migratedValues,
+            syncFilterValuesWithDefinitions(
+              loadedDefinitions,
+              migratedValues,
+            ),
+            selectedOrganizationIdRef.current,
           );
 
           setDefinitions(loadedDefinitions);
@@ -559,6 +588,51 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       syncDashboardCanvasResources,
       renderMode,
       renderFilterValues,
+    ]);
+
+    useEffect(() => {
+      const previousOrganizationId = previousOrganizationIdRef.current;
+      previousOrganizationIdRef.current = selectedOrganizationId;
+      if (selectedOrganizationId === undefined || !definitions.length) {
+        return;
+      }
+      if (previousOrganizationId === selectedOrganizationId) {
+        return;
+      }
+      const nextFilterValues = applySelectedOrganizationToFilterValues(
+        definitions,
+        filterValues,
+        selectedOrganizationId,
+      );
+      const appliedDefs = appliedFilterDefinitions.length
+        ? appliedFilterDefinitions
+        : definitions;
+      const nextAppliedValues = applySelectedOrganizationToFilterValues(
+        appliedDefs,
+        appliedFilterValues,
+        selectedOrganizationId,
+      );
+      const organizationFilterIds = definitions
+        .filter((definition) => definition.enabled && isOrganizationFilterDefinition(definition))
+        .map((definition) => definition.id);
+      const unchanged = organizationFilterIds.every(
+        (filterId) => nextFilterValues[filterId] === filterValues[filterId]
+          && nextAppliedValues[filterId] === appliedFilterValues[filterId],
+      );
+      if (unchanged) {
+        return;
+      }
+      setFilterValues(nextFilterValues);
+      applyQueryState(appliedDefs, nextAppliedValues, appliedNamespaceId);
+      setFilterSearchVersion((prev) => prev + 1);
+    }, [
+      appliedFilterDefinitions,
+      appliedFilterValues,
+      appliedNamespaceId,
+      applyQueryState,
+      definitions,
+      filterValues,
+      selectedOrganizationId,
     ]);
 
     // 监听 selectedDashboard 的变化，重置状态
@@ -1321,9 +1395,14 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
 
     const handleFilterSearch = (values: Record<string, FilterValue>) => {
       const namespaceChanged = namespaceDraftId !== appliedNamespaceId;
+      const nextValues = fillMissingOrganizationFilterValues(
+        definitions,
+        values,
+        selectedOrganizationId,
+      );
 
-      setFilterValues(values);
-      applyQueryState(definitions, values, namespaceDraftId);
+      setFilterValues(nextValues);
+      applyQueryState(definitions, nextValues, namespaceDraftId);
 
       setFilterSearchVersion((prev) => prev + 1);
       if (namespaceChanged) {

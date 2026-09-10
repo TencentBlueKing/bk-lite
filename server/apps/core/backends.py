@@ -52,10 +52,7 @@ def _collect_ancestor_group_ids(seed_ids: List) -> Set[int]:
     if not seed_ids:
         return set()
     # 一次轻量查询：只取活动组织的 (id, parent_id, allow_inherit_roles)
-    all_meta = {
-        row[0]: (row[1], row[2])
-        for row in GroupUtils.active_queryset().values_list("id", "parent_id", "allow_inherit_roles")
-    }
+    all_meta = {row[0]: (row[1], row[2]) for row in GroupUtils.active_queryset().values_list("id", "parent_id", "allow_inherit_roles")}
     result: Set[int] = set()
     stack = list(seed_ids)
     while stack:
@@ -476,6 +473,9 @@ class AuthBackend(ModelBackend):
             if created or update_fields:
                 user.save(update_fields=update_fields if not created else None)
             # 设置运行时属性（不持久化到 DB）
+            # locale 必须跟 verify_token 带回的账号语言，否则 CMDB 等按 request.user.locale
+            # 覆盖展示名的接口会一直用 AUTH_USER_MODEL 默认的 zh-CN，英文界面仍返回中文内置名。
+            user.locale = user_info.get("locale") or user.locale
             user.timezone = user_info.get("timezone", "Asia/Shanghai")
             user.rules = rules
             user.permission = {key: set(value) for key, value in user_info.get("permission", {}).items()}
