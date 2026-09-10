@@ -3,8 +3,10 @@
 import { useCallback } from 'react';
 import { useTranslation } from '@/utils/i18n';
 import { DASHBOARD_TEXT_IDS } from './dashboard-text-map.generated';
+import { getDashboardReturnContext, type SearchParamsLike } from './return-navigation';
 
-type Translate = (id: string, defaultMessage?: string) => string;
+type TranslateValues = Record<string, string | number>;
+type Translate = (id: string, defaultMessage?: string, values?: TranslateValues) => string;
 
 export const dashboardTextKey = (text: string): string | undefined => DASHBOARD_TEXT_IDS[text];
 
@@ -28,9 +30,33 @@ export const localizeGuideItems = <T extends { label: string; detail: string }>(
   }));
 };
 
+export const localizeDashboardReturnLabel = (t: Translate, params: SearchParamsLike): string => {
+  const { objectName, source } = getDashboardReturnContext(params);
+  if (source === 'integration') {
+    return objectName
+      ? t(
+        'monitor.dashboards.common.backToObjectIntegrationAssets',
+        '返回{objectName}集成资产列表',
+        { objectName }
+      )
+      : tDashboardText(t, '返回集成资产列表');
+  }
+  return objectName
+    ? t(
+      'monitor.dashboards.common.backToObjectViewList',
+      '返回{objectName}视图列表',
+      { objectName }
+    )
+    : tDashboardText(t, '返回监控视图');
+};
+
 export const useDashboardText = () => {
   const { t } = useTranslation();
   const dt = useCallback((text: string) => tDashboardText(t, text), [t]);
-  const common = useCallback((key: string, fallback: string) => t(`monitor.dashboards.common.${key}`, fallback), [t]);
+  const common = useCallback(
+    (key: string, fallback: string, values?: TranslateValues) =>
+      t(`monitor.dashboards.common.${key}`, fallback, values),
+    [t]
+  );
   return { t, dt, common };
 };

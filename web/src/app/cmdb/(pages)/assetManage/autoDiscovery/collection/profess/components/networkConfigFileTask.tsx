@@ -11,7 +11,6 @@ import { useTaskForm, getCleanupFormValues, getCycleFormValues } from '../hooks/
 import { TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
 import {
   NETWORK_CONFIG_FILE_FORM_INITIAL_VALUES,
-  NETWORK_CONFIG_SUPPORTED_BRANDS,
   PASSWORD_PLACEHOLDER,
   validateNetworkConfigCommands,
 } from '@/app/cmdb/constants/professCollection';
@@ -34,7 +33,14 @@ interface NetworkConfigFileTaskProps {
   editId?: number | null;
 }
 
-const defaultBrandTip = `当前支持厂商：${NETWORK_CONFIG_SUPPORTED_BRANDS.join('、')}`;
+const DEFAULT_BRAND_LABELS = [
+  'Huawei',
+  'H3C / HP Comware',
+  'Cisco',
+  'Juniper',
+  'F5',
+  'Fortinet',
+];
 
 const NetworkConfigFileTask: React.FC<NetworkConfigFileTaskProps> = ({
   onClose,
@@ -49,7 +55,13 @@ const NetworkConfigFileTask: React.FC<NetworkConfigFileTaskProps> = ({
   const baseRef = useRef<BaseTaskRef>(null as any);
   const copyTaskData = useAssetManageStore((state) => state.copyTaskData);
   const collectApi = useCollectApi();
-  const [brandTip, setBrandTip] = useState(defaultBrandTip);
+  const formatBrandTip = (labels: string[]) =>
+    t('Collection.networkConfigFileTask.supportedVendors', '当前支持厂商：{vendors}', {
+      vendors: labels.join(
+        t('Collection.networkConfigFileTask.vendorSeparator', '、')
+      ),
+    });
+  const [brandTip, setBrandTip] = useState(() => formatBrandTip(DEFAULT_BRAND_LABELS));
   const { model_id: modelId } = modelItem;
   const initialFormValues = useMemo(
     () => ({
@@ -121,10 +133,10 @@ const NetworkConfigFileTask: React.FC<NetworkConfigFileTaskProps> = ({
     collectApi.getNetworkConfigBrands().then((data: any) => {
       const labels = (data?.items || []).map((item: any) => item.label).filter(Boolean);
       if (labels.length) {
-        setBrandTip(`当前支持厂商：${labels.join('、')}`);
+        setBrandTip(formatBrandTip(labels));
       }
     });
-  }, [collectApi]);
+  }, [collectApi, t]);
 
   const buildFormValues = (values: any, isCopy: boolean) => ({
     ...NETWORK_CONFIG_FILE_FORM_INITIAL_VALUES,
@@ -180,11 +192,11 @@ const NetworkConfigFileTask: React.FC<NetworkConfigFileTaskProps> = ({
           modelItem={modelItem}
           onClose={onClose}
           submitLoading={submitLoading}
-          instPlaceholder="选择网络设备"
-          assetOptionLabel="选择网络设备"
+          instPlaceholder={t('Collection.networkConfigFileTask.chooseNetworkDevice', '选择网络设备')}
+          assetOptionLabel={t('Collection.networkConfigFileTask.chooseNetworkDevice', '选择网络设备')}
           timeoutProps={{
             min: 1,
-            addonAfter: '秒',
+            addonAfter: t('Collection.k8sTask.second', '秒'),
           }}
         >
           <Alert
@@ -194,7 +206,7 @@ const NetworkConfigFileTask: React.FC<NetworkConfigFileTaskProps> = ({
             message={(
               <span>
                 {brandTip}
-                <Tooltip title="缺少厂商或厂商不支持的实例不可选择">
+                <Tooltip title={t('Collection.networkConfigFileTask.unsupportedInstance', '缺少厂商或厂商不支持的实例不可选择')}>
                   <InfoCircleOutlined className="ml-1 text-gray-400" />
                 </Tooltip>
               </span>
@@ -202,20 +214,20 @@ const NetworkConfigFileTask: React.FC<NetworkConfigFileTaskProps> = ({
           />
 
           <Form.Item
-            label="配置名称"
+            label={t('Collection.networkConfigFileTask.configName', '配置名称')}
             name="configName"
-            rules={[{ required: true, message: '请输入配置名称' }]}
+            rules={[{ required: true, message: t('Collection.networkConfigFileTask.configNameRequired', '请输入配置名称') }]}
           >
-            <Input autoComplete="off" placeholder="例如 running-config" />
+            <Input autoComplete="off" placeholder={t('Collection.networkConfigFileTask.configNamePlaceholder', '例如 running-config')} />
           </Form.Item>
 
           <Form.Item
-            label="采集命令"
+            label={t('Collection.networkConfigFileTask.commands', '采集命令')}
             name="commands"
             rules={[
               {
                 validator: async (_, value) => {
-                  const error = validateNetworkConfigCommands(value);
+                  const error = validateNetworkConfigCommands(value, t);
                   if (error) {
                     throw new Error(error);
                   }
@@ -226,7 +238,10 @@ const NetworkConfigFileTask: React.FC<NetworkConfigFileTaskProps> = ({
             <Input.TextArea
               autoComplete="off"
               rows={6}
-              placeholder={'每行一条命令，例如：\nshow running-config\nshow version'}
+              placeholder={t(
+                'Collection.networkConfigFileTask.commandsPlaceholder',
+                '每行一条命令，例如：\nshow running-config\nshow version'
+              )}
             />
           </Form.Item>
 
