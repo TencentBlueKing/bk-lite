@@ -25,7 +25,12 @@ import { useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useCommon } from '@/app/alarm/context/common';
+import { createLatestRequestGuard } from '@/context/latestRequestGuard';
 import { useUserInfoContext } from '@/context/userInfo';
+import {
+  commitIntegrationEventListSettled,
+  commitIntegrationEventListSuccess,
+} from './integrationEventListRequest';
 import { AlertSourceIntegrationGuide, K8sMeta, SourceItem, TeamSecretItem } from '@/app/alarm/types/integration';
 import { useAlarmApi } from '@/app/alarm/api/alarms';
 import { EventItem } from '@/app/alarm/types/alarms';
@@ -63,6 +68,7 @@ const IntegrationDetail: FC = () => {
   const [integrationGuideLoading, setIntegrationGuideLoading] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<string>('event');
   const [eventList, setEventList] = useState<EventItem[]>([]);
+  const [eventListRequestGuard] = useState(createLatestRequestGuard);
   const [eventLoading, setEventLoading] = useState<boolean>(false);
   const [hasLoadedEvents, setHasLoadedEvents] = useState<boolean>(false);
   const [hasInitializedK8sTab, setHasInitializedK8sTab] = useState<boolean>(false);
@@ -264,6 +270,7 @@ const IntegrationDetail: FC = () => {
   };
 
   const fetchEventList = async () => {
+    const requestId = eventListRequestGuard.begin();
     setEventLoading(true);
     try {
       const params: any = {
@@ -281,11 +288,18 @@ const IntegrationDetail: FC = () => {
         }
       }
       const res = await getEventList(params);
-      setEventList(res.items || []);
-      setPagination((prev) => ({ ...prev, total: res.count }));
-      setHasLoadedEvents(true);
+      commitIntegrationEventListSuccess(eventListRequestGuard, requestId, () => {
+        const items = res.items || [];
+        setEventList(items);
+        setPagination((prev) => ({ ...prev, total: res.count }));
+        setHasLoadedEvents(true);
+      });
+    } catch (error) {
+      console.error(error);
     } finally {
-      setEventLoading(false);
+      commitIntegrationEventListSettled(eventListRequestGuard, requestId, () => {
+        setEventLoading(false);
+      });
     }
   };
 
@@ -293,6 +307,9 @@ const IntegrationDetail: FC = () => {
     if ((activeTab === 'event' || isK8sSource) && source?.source_id) {
       fetchEventList();
     }
+    return () => {
+      eventListRequestGuard.invalidate();
+    };
   }, [
     activeTab,
     source,
