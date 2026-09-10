@@ -21,6 +21,7 @@ FETCH_TIMEOUT_SECONDS = 5
 
 
 async def _fetch_async():
+    from nats.js.errors import NoKeysError
     from nats_client.clients import get_nc_client
 
     nc = await get_nc_client()
@@ -38,8 +39,8 @@ async def _fetch_async():
 
         try:
             keys = await kv.keys()
-        except Exception:
-            # 空 bucket 时 nats-py 抛 NoKeysError
+        except NoKeysError:
+            # 空 bucket 时 nats-py 抛 NoKeysError，与「无外部服务」同义
             return {}
 
         entries = {}

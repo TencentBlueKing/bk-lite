@@ -1,6 +1,9 @@
 # -- coding: utf-8 --
+import json
+
 from django.db.models import Q
 from django_filters import CharFilter, FilterSet
+from rest_framework.exceptions import ValidationError
 
 from apps.alerts.constants.constants import AlertStatus
 from apps.alerts.models.models import Alert
@@ -28,6 +31,7 @@ class AlertModelFilter(FilterSet):
     level = CharFilter(method="filter_level", label="告警级别")
     status = CharFilter(method="filter_status", label="告警状态")
     source_name = CharFilter(method="filter_source_name", label="告警源")
+    source_names = CharFilter(method="filter_source_names", label="告警源名称集合")
     created_at_after = CharFilter(field_name="created_at", lookup_expr="gte", label="创建时间（起始）")
     created_at_before = CharFilter(field_name="created_at", lookup_expr="lte", label="创建时间（结束）")
     incident_id = CharFilter(field_name="incident__id", lookup_expr="exact", label="事故ID")
@@ -49,6 +53,7 @@ class AlertModelFilter(FilterSet):
             "level",
             "status",
             "source_name",
+            "source_names",
             "created_at_after",
             "created_at_before",
             "incident_id",
@@ -113,6 +118,19 @@ class AlertModelFilter(FilterSet):
             source_names = [source.strip() for source in value.split(",")]
             return qs.filter(source_name__in=source_names)
         return qs
+
+    @staticmethod
+    def filter_source_names(qs, field_name, value):
+        from apps.alerts.utils.rule_catalog import validate_rules_for_serializer
+        from apps.alerts.utils.typed_rules import rules_q
+
+        try:
+            names = json.loads(value)
+        except (ValueError, TypeError) as error:
+            raise ValidationError({"source_names": "告警源须为 JSON 名称数组"}) from error
+        rules = [[{"key": "source_names", "operator": "any_of", "value": names}]]
+        validate_rules_for_serializer(rules, "assignment")
+        return qs.filter(rules_q(rules, "assignment"))
 
     def filter_incident(self, qs, field_name, value):
         """过滤是否有事故"""

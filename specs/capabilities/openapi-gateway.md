@@ -75,8 +75,12 @@
 
 ## 5. 外部服务注册与部署侧红线
 
-- ✅ **注册条目只存引用不存明文**：`shared_secret_ref` / `token_ref` 用 `env:VAR` 形式。
+- ✅ **注册条目只存引用不存明文**：`shared_secret_ref` / `token_ref` 用 `credential:<凭据ID>[#<字段ID>]`
+  （系统管理凭据，密文落库，改值无需重建 server）或 `env:VAR`（server 环境变量）形式；
+  渲染器只认这两种前缀，其余一律不可解析。
   - ❌ 把密钥明文写进 KV 条目——KV 无加密语义，读权限即等于拿到凭据。
+  - ⚠️ `credential:` 解析不做组织范围检查（网关密钥是平台级资源），且只在渲染期查库；
+    读侧（`_auth` / `_docs` / `_me`）从快照取已归一化条目，**不得**在请求路径上重新解引用。
 - ✅ **`base_url` 允许清单 fail-closed**：未配置 `OPENAPI_BASEURL_ALLOWLIST` 即拒绝一切外部条目；
   后缀匹配须落在**点边界**（`itsm-svc` 不得放行 `evil-itsm-svc`）。
 - ✅ **注册即封锁直连**：外部服务端口若可绕过 Traefik 直达，统一认证 / 审计 / 限流即成摆设；

@@ -106,7 +106,9 @@ def test_system_setting_update_no_dispatch_activates_task(superuser, monkeypatch
     monkeypatch.setattr(ss_mod, "CeleryUtils", FakeCelery)
 
     setting = SystemSetting.objects.create(
-        key="no_dispatch_alert_notice", value={"notify_every": 30}, is_activate=False,
+        key="no_dispatch_alert_notice",
+        value={"notify_every": 30},
+        is_activate=False,
     )
     data = {"value": {"notify_every": 30}, "is_activate": True}
     request = _request("patch", f"/settings/{setting.id}/", superuser, data=data)
@@ -136,12 +138,14 @@ def test_convert_minutes_to_crontab_non_positive_defaults_60():
 
 
 @pytest.mark.django_db
-def test_system_setting_get_channel_list(superuser):
+def test_system_setting_get_channel_list_accepts_global_config_permission(authenticated_user):
     from apps.system_mgmt.models.channel import Channel
 
-    Channel.objects.create(name="邮件", channel_type="email")
-    Channel.objects.create(name="内部", channel_type="nats")
-    request = _request("get", "/settings/get_channel_list/", superuser)
+    Channel.objects.create(name="邮件", channel_type="email", team=[1])
+    Channel.objects.create(name="内部", channel_type="nats", team=[1])
+    authenticated_user.permission = {"alarm": {"global_config-View"}}
+    request = _request("get", "/settings/get_channel_list/", authenticated_user)
+    request.COOKIES["current_team"] = "1"
     response = SystemSettingModelViewSet.as_view({"get": "get_channel_list"})(request)
     payload = _render(response)
     assert response.status_code == status.HTTP_200_OK
@@ -250,8 +254,12 @@ def test_strategy_retrieve(superuser):
 @pytest.mark.django_db
 def test_strategy_update(superuser):
     strategy = AlarmStrategy.objects.create(
-        name="s1", strategy_type="smart_denoise", team=[1], dispatch_team=[1],
-        match_rules=[], params={"window_size": 10},
+        name="s1",
+        strategy_type="smart_denoise",
+        team=[1],
+        dispatch_team=[1],
+        match_rules=[],
+        params={"window_size": 10},
     )
     data = {
         "name": "s1-改",
@@ -276,8 +284,12 @@ def test_strategy_update(superuser):
 @pytest.mark.django_db
 def test_strategy_partial_update(superuser):
     strategy = AlarmStrategy.objects.create(
-        name="s1", strategy_type="smart_denoise", team=[1], dispatch_team=[1],
-        match_rules=[], params={"window_size": 10},
+        name="s1",
+        strategy_type="smart_denoise",
+        team=[1],
+        dispatch_team=[1],
+        match_rules=[],
+        params={"window_size": 10},
     )
     request = _request("patch", f"/alarm_strategy/{strategy.id}/", superuser, data={"description": "新描述"})
     response = AlarmStrategyModelViewSet.as_view({"patch": "partial_update"})(request, pk=str(strategy.id))

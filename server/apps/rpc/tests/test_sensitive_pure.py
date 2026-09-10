@@ -99,6 +99,52 @@ def test_string_assignment_colon_separator():
     assert out == f"ansible_password: {MASKED_VALUE}"
 
 
+def test_string_json_quoted_key_masked():
+    marker = "JSON-PASSWORD-MARKER"
+    out = sanitize_sensitive_data(f'{{"password": "{marker}", "host": "web-1"}}')
+    assert marker not in out
+    assert out == f'{{"password": "{MASKED_VALUE}", "host": "web-1"}}'
+
+
+def test_string_python_repr_quoted_key_masked():
+    marker = "PY-PASSWORD-MARKER"
+    out = sanitize_sensitive_data(f"{{'password': '{marker}', 'host': 'web-1'}}")
+    assert marker not in out
+    assert out == f"{{'password': '{MASKED_VALUE}', 'host': 'web-1'}}"
+
+
+def test_string_embedded_json_object_in_log_masked():
+    marker = "EMBEDDED-JSON-MARKER"
+    text = f'host=web-1 output={{"password": "{marker}"}} done'
+    out = sanitize_sensitive_data(text)
+    assert marker not in out
+    assert out.startswith("host=web-1 output=")
+    assert out.endswith("} done")
+    assert MASKED_VALUE in out
+
+
+def test_string_embedded_python_repr_in_log_masked():
+    marker = "EMBEDDED-PY-MARKER"
+    text = f"callback payload {{'password': '{marker}'}} next"
+    out = sanitize_sensitive_data(text)
+    assert marker not in out
+    assert out.startswith("callback payload ")
+    assert out.endswith("} next")
+    assert MASKED_VALUE in out
+
+
+def test_string_json_escaped_quotes_in_value_masked():
+    out = sanitize_sensitive_data('{"password": "say \\"JSON-ESC-MARKER\\""}')
+    assert "JSON-ESC-MARKER" not in out
+    assert out == f'{{"password": "{MASKED_VALUE}"}}'
+
+
+def test_string_python_repr_escaped_quotes_in_value_masked():
+    out = sanitize_sensitive_data(r"{'password': 'say \'PY-ESC-MARKER\''}")
+    assert "PY-ESC-MARKER" not in out
+    assert out == f"{{'password': '{MASKED_VALUE}'}}"
+
+
 def test_string_non_sensitive_unchanged():
     assert sanitize_sensitive_data("hello world") == "hello world"
 

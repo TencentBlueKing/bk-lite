@@ -1,27 +1,29 @@
-import pytest
 from unittest.mock import patch
-from apps.alerts.models.action import ActionRule, ActionExecution
-from apps.alerts.models.models import Alert
+
+import pytest
+
 from apps.alerts.action.engine import ActionEngine
+from apps.alerts.models.action import ActionExecution, ActionRule
+from apps.alerts.models.models import Alert
 
 
 def _alert(team=[1], aid="A1"):
-    return Alert.objects.create(alert_id=aid, fingerprint="fp", title="disk full",
-                                content="c", level="1", status="unassigned",
-                                labels={"ip": "10.0.0.5"}, team=team)
+    return Alert.objects.create(
+        alert_id=aid, fingerprint="fp", title="disk full", content="c", level="1", status="unassigned", labels={"ip": "10.0.0.5"}, team=team
+    )
 
 
 def _rule(events, match_rules=None, team=[1], active=True):
-    return ActionRule.objects.create(name="r", is_active=active, team=team,
-                                     trigger_events=events, match_rules=match_rules or [],
-                                     action_type="job", action_config={"script_id": 1})
+    return ActionRule.objects.create(
+        name="r", is_active=active, team=team, trigger_events=events, match_rules=match_rules or [], action_type="job", action_config={"script_id": 1}
+    )
 
 
 @pytest.mark.django_db
 @patch("apps.alerts.action.engine.get_handler")
 def test_match_creates_running_execution_and_dispatches(mock_get):
     alert = _alert()
-    _rule(events=["created"], match_rules=[[{"key": "level", "operator": "eq", "value": "1"}]])
+    _rule(events=["created"], match_rules=[[{"key": "level", "operator": "any_of", "value": ["1"]}]])
     ActionEngine().evaluate(alert, "created")
     ex = ActionExecution.objects.get(alert=alert)
     assert ex.trigger_event == "created"
@@ -43,7 +45,7 @@ def test_event_not_in_trigger_events_noop(mock_get):
 @patch("apps.alerts.action.engine.get_handler")
 def test_no_match_noop(mock_get):
     alert = _alert()
-    _rule(events=["created"], match_rules=[[{"key": "level", "operator": "eq", "value": "0"}]])
+    _rule(events=["created"], match_rules=[[{"key": "level", "operator": "any_of", "value": ["0"]}]])
     ActionEngine().evaluate(alert, "created")
     assert ActionExecution.objects.count() == 0
 

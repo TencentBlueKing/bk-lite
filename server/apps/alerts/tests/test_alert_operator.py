@@ -3,9 +3,12 @@
 对照 specs/capabilities/legacy-prd-告警中心-告警.md：未分派→待响应→处理中→关闭，含转派/认领与权限校验。
 """
 
+from datetime import datetime
 from unittest import mock
+from zoneinfo import ZoneInfo
 
 import pytest
+from django.utils import timezone as django_timezone
 
 from apps.alerts.constants.constants import AlertStatus
 from apps.alerts.models.models import Alert
@@ -393,17 +396,117 @@ def test_format_notify_data_no_channel_returns_empty():
 @pytest.mark.django_db
 @mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_content", return_value="c")
 @mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_title", return_value="t")
-@mock.patch("apps.alerts.service.alter_operator.get_default_notify_params", return_value=("email", 5))
+@mock.patch(
+    "apps.alerts.notification_templates.operation.get_alert_operation_channel",
+    return_value={"channel_type": "email", "id": 5},
+)
 def test_format_notify_data_returns_list_of_params(_mock_chan, _mt, _mc):
     """收口后:配了默认渠道时返回 list[dict](修掉原先返回单 dict 致 sync_notify 崩的 bug)。"""
     alert = _make_alert(status=AlertStatus.PENDING, alert_id="A-NOTIFY")
     op = AlertOperator(user="u1")
-    result = op.format_notify_data(["op1", "u1"], alert)  # u1 是操作者自己,应被排除
+    result = op.format_notify_data(["op1", "u1"], alert)
     assert isinstance(result, list) and len(result) == 1
     assert result[0]["channel_type"] == "email"
     assert result[0]["channel_id"] == 5
-    assert result[0]["username_list"] == ["op1"]
+    assert result[0]["username_list"] == ["op1", "u1"]
     assert result[0]["object_id"] == alert.alert_id
+
+
+@pytest.mark.django_db
+@mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_content", return_value="c")
+@mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_title", return_value="t")
+@mock.patch(
+    "apps.alerts.notification_templates.operation.get_alert_operation_channel",
+    return_value={"channel_type": "email", "id": 5},
+)
+def test_manual_assignment_notifies_when_operator_assigns_to_self(_mock_chan, _mt, _mc):
+    alert = _make_alert(status=AlertStatus.PENDING, alert_id="A-SELF-NOTIFY")
+    op = AlertOperator(user="u1")
+
+    result = op.format_notify_data(["u1"], alert)
+
+    assert len(result) == 1
+    assert result[0]["username_list"] == ["u1"]
+
+
+@pytest.mark.django_db
+def test_manual_assignment_uses_team_alert_operation_template():
+    from apps.alerts.models.notification_template import NotificationTemplate, NotificationTemplateContent
+    from apps.system_mgmt.models.channel import Channel
+
+    channel = Channel.objects.create(
+        name="告警操作企微",
+        channel_type="enterprise_wechat_bot",
+        config={},
+        description="test",
+        team=[1],
+    )
+    template = NotificationTemplate.objects.create(
+        name="告警操作通知",
+        team=[1],
+        scope="alert_operation",
+        builtin_key="alert_operation:1",
+        channel_id=channel.id,
+    )
+    NotificationTemplateContent.objects.create(
+        template=template,
+        channel_type="enterprise_wechat_bot",
+        subject_template="",
+        body_template="### {{ notification.scene_name }}｜{{ alert.title }}",
+    )
+    alert = _make_alert(status=AlertStatus.PENDING, alert_id="A-OPERATION", team=[1])
+
+    result = AlertOperator(user="op1").format_notify_data(["op1"], alert)
+
+    assert len(result) == 1
+    assert result[0]["channel_id"] == channel.id
+    assert result[0]["channel_type"] == "enterprise_wechat_bot"
+    assert result[0]["content"] == "### 告警分派｜t"
+    assert result[0]["template_snapshot"]["id"] == template.id
+
+
+@pytest.mark.django_db
+def test_reassignment_operation_template_receives_actor_previous_receiver_and_action_time():
+    from apps.alerts.models.notification_template import NotificationTemplate, NotificationTemplateContent
+    from apps.system_mgmt.models.channel import Channel
+
+    channel = Channel.objects.create(
+        name="告警操作文本",
+        channel_type="custom_webhook",
+        config={},
+        description="test",
+        team=[1],
+    )
+    template = NotificationTemplate.objects.create(
+        name="告警操作通知",
+        team=[1],
+        scope="alert_operation",
+        builtin_key="alert_operation:1",
+        channel_id=channel.id,
+    )
+    NotificationTemplateContent.objects.create(
+        template=template,
+        channel_type="custom_webhook",
+        subject_template="",
+        body_template=(
+            "{{ notification.action_summary }}\n"
+            "操作人：{{ notification.actor_name }}\n"
+            "原处理人：{{ notification.previous_receiver_names }}\n"
+            "操作时间：{{ notification.action_time }}"
+        ),
+    )
+    alert = _make_alert(status=AlertStatus.PENDING, alert_id="A-OPERATION-CONTEXT", team=[1])
+    alert.updated_at = datetime(2026, 9, 10, 11, 30, tzinfo=ZoneInfo("Asia/Shanghai"))
+
+    with django_timezone.override(ZoneInfo("Asia/Shanghai")):
+        result = AlertOperator(user="admin").format_notify_data(
+            ["zhangsan"],
+            alert,
+            scene="reassignment",
+            previous_assignee=["lisi"],
+        )
+
+    assert result[0]["content"] == ("该告警已由 admin 从 lisi 转派给 zhangsan，请新的处理人及时认领并处理。\n" "操作人：admin\n" "原处理人：lisi\n" "操作时间：2026-09-10 11:30:00")
 
 
 @pytest.mark.django_db
@@ -509,7 +612,7 @@ def test_format_assignment_notify_data_empty_channels_returns_empty():
 
 
 # --------------------------------------------------------------------------
-# _assign_alert 通知分流：auto→notify_channels / manual→默认邮件
+# _assign_alert 通知分流：auto→notify_channels / manual→告警操作内置模板
 # --------------------------------------------------------------------------
 
 
@@ -544,32 +647,39 @@ def test_assign_auto_dispatch_notifies_via_notify_channels(mock_enqueue, _mt, _m
 
 
 @pytest.mark.django_db
-@mock.patch("apps.alerts.service.alter_operator.get_default_notify_params", return_value=("email", 5))
+@mock.patch(
+    "apps.alerts.notification_templates.operation.get_alert_operation_channel",
+    return_value={"channel_type": "email", "id": 5},
+)
 @mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_content", return_value="c")
 @mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_title", return_value="t")
 @mock.patch("apps.alerts.common.notify.dispatcher.enqueue_notifications")
-def test_assign_manual_still_uses_default_email(mock_enqueue, _mt, _mc, _chan, sys_user):
+def test_assign_manual_uses_alert_operation_channel(mock_enqueue, _mt, _mc, _chan, sys_user):
     _make_alert(status=AlertStatus.UNASSIGNED, team=[1], alert_id="A1")
-    op = AlertOperator(user="system")
+    op = AlertOperator(user="op1")
 
-    result = op.operate("assign", "A1", {"assignee": ["op1"]})  # 无 assignment_id → manual
+    result = op.operate("assign", "A1", {"assignee": ["op1"]})  # 人工分派给自己
 
     assert result["result"] is True
     assert mock_enqueue.called
     params = mock_enqueue.call_args.args[0]
     assert len(params) == 1
     assert params[0]["channel_type"] == "email" and params[0]["channel_id"] == 5
+    assert params[0]["username_list"] == ["op1"]
 
 
 @pytest.mark.django_db
-@mock.patch("apps.alerts.service.alter_operator.get_default_notify_params", return_value=("email", 5))
+@mock.patch(
+    "apps.alerts.notification_templates.operation.get_alert_operation_channel",
+    return_value={"channel_type": "email", "id": 5},
+)
 @mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_content", return_value="c")
 @mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_title", return_value="t")
 @mock.patch("apps.alerts.common.notify.dispatcher.enqueue_notifications")
-def test_assign_inactive_assignment_falls_back_to_default_email(mock_enqueue, _mt, _mc, _chan, sys_user):
+def test_assign_inactive_assignment_uses_alert_operation_channel(mock_enqueue, _mt, _mc, _chan, sys_user):
     from apps.alerts.models.alert_operator import AlertAssignment
 
-    # 非活跃策略：_assign_alert 用 is_active=True 查不到 → assignment=None → 回退默认邮件
+    # 非活跃策略：_assign_alert 用 is_active=True 查不到 → assignment=None → 使用告警操作模板
     assignment = AlertAssignment.objects.create(
         name="分派",
         match_type="all",

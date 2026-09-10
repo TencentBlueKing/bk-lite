@@ -4,6 +4,7 @@ import type {
   PageContextMessage,
   PageContextToolkit,
 } from '@/components/ai-page-context/types';
+import { fingerprintAlertListRows } from './alertListStamp';
 
 const TITLE_PREFIX = 'monitor-alert:';
 const HOST_TABS = new Set(['activeAlarms', 'historicalAlarms']);
@@ -120,7 +121,7 @@ export const readAlertListStamp = (): AlertListStamp => {
     objectLabel: cleanLabel(document.querySelector('[class*="filters"] .ant-tree-node-selected')?.textContent || ''),
     filterText: readFilterFields().join('；'),
     rangeText: readRangeText(),
-    rowFingerprint: rows.slice(0, 4).join('|'),
+    rowFingerprint: fingerprintAlertListRows(rows),
     chartText: '',
     loading: Boolean(table?.querySelector('.ant-spin-spinning')),
     emptyText: cleanLabel(table?.querySelector('.ant-empty-description')?.textContent || '')

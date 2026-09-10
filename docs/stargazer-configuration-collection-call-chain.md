@@ -50,8 +50,8 @@ flowchart TD
     H3 --> I["TargetCollectionExecutor.execute()"]
 
     I --> J["跨 Run 公平调度器"]
-    J --> J1["全局目标并发<br/>MAX_ACTIVE_TARGETS=250"]
-    J1 --> J2["任务窗口<br/>TARGET_TASK_WINDOW=250"]
+    J --> J1["单 worker 目标并发<br/>MAX_ACTIVE_TARGETS=120"]
+    J1 --> J2["任务窗口<br/>TARGET_TASK_WINDOW=120"]
 
     J2 --> K["每个 Target 独立执行"]
     K --> L["出站安全检查 / 可选预检"]
@@ -279,12 +279,12 @@ Server 补齐节点信息。
 
 ```text
 MAX_ACTIVE_RUNS=16
-MAX_ACTIVE_TARGETS=250
-TARGET_TASK_WINDOW=250
+MAX_ACTIVE_TARGETS=120
+TARGET_TASK_WINDOW=120
 ```
 
 - `MAX_ACTIVE_RUNS`：单个 Stargazer 进程同时接纳的 Collection Run 上限。
-- `MAX_ACTIVE_TARGETS`：跨所有 Run 共用的目标执行槽位上限。
+- `MAX_ACTIVE_TARGETS`：单 worker 内跨所有 Run 共用的目标执行槽位上限。
 - `TARGET_TASK_WINDOW`：允许创建的目标 worker 任务窗口，防止一次性创建大量 Task。
 - 公平调度器按 Run 轮转分配目标，单个大 Run 不能预占全部 worker。
 - 目标槽位覆盖预检、凭据尝试、插件执行和进入发布路径；发布队列另有独立容量与背压。
