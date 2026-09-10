@@ -1,5 +1,6 @@
 'use client';
 
+import './register-dashboard-pilot';
 import React, { useEffect, useState, useRef } from 'react';
 import Sidebar from '../../components/sidebar';
 import ViewEmptyState from '../../components/viewEmptyState';

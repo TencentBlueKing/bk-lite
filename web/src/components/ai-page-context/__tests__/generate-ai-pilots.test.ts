@@ -19,7 +19,7 @@ describe('generate-ai-pilots', () => {
     );
   });
 
-  it('builds a deterministic manifest', () => {
+  it('emits an empty shared manifest without @/app reverse imports', () => {
     const root = 'D:/app/github/bk-lite/web';
     const source = buildPilotsManifestSource(
       [
@@ -28,9 +28,7 @@ describe('generate-ai-pilots', () => {
       ],
       root,
     );
-    expect(source).toContain("pathname.includes('/alarm/list/')");
-    expect(source).toContain("pathname.includes('/monitor/view/dashboard/')");
-    expect(source.indexOf('/alarm/list/')).toBeLessThan(source.indexOf('/monitor/view/dashboard/'));
-    expect(source).toContain("import('@/app/monitor/(pages)/view/dashboard/dashboard.pilot')");
+    expect(source).toContain('GENERATED_PAGE_CONTEXT_PILOTS: AiPageContextPilot[] = []');
+    expect(source).not.toContain("import('@/app/");
   });
 });

@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Empty, Spin } from 'antd';
+import { Alert, Spin } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { useSearchParams } from 'next/navigation';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
@@ -166,7 +167,7 @@ export function FlowDashboardPage({ protocol }: FlowDashboardPageProps) {
   if (missingFlowContext) {
     return (
       <FlowDashboardPlaceholder>
-        <Empty description="当前环境暂无支持 Flow 分析的网络设备（Switch/Router/Firewall/Loadbalance），请先在集成中接入后再进入。" />
+        <CompactEmptyState description="当前环境暂无支持 Flow 分析的网络设备（Switch/Router/Firewall/Loadbalance），请先在集成中接入后再进入。" />
       </FlowDashboardPlaceholder>
     );
   }
