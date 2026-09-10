@@ -19,6 +19,8 @@ interface CommonContextType {
 
 const CommonContext = createContext<CommonContextType | null>(null);
 
+const EMPTY_USER_LIST: UserItem[] = [];
+
 const CommonContextProvider = ({ children }: { children: React.ReactNode }) => {
   const [userList, setUserList] = useState<UserItem[]>([]);
   const [modelList, setModelList] = useState<ModelItem[]>([]);
@@ -103,5 +105,10 @@ const CommonContextProvider = ({ children }: { children: React.ReactNode }) => {
 };
 
 export const useCommon = () => useContext(CommonContext);
+
+/** 跟随 CommonContext 更新；页面可先空着，用户列表加载完后下拉再补齐。 */
+export const useCmdbUserList = (): UserItem[] => {
+  return useCommon()?.userList ?? EMPTY_USER_LIST;
+};
 
 export default CommonContextProvider;

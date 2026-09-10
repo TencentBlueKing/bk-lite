@@ -17,6 +17,8 @@ from apps.node_mgmt.services.sidecar import Sidecar
 
 pytestmark = pytest.mark.django_db
 
+SIDECAR_START_RETRY_EXHAUSTED = "Unable to start collector after 3 tries, giving up!"
+
 
 def _region(suffix=None):
     suffix = suffix or uuid.uuid4().hex[:8]
@@ -76,6 +78,38 @@ def test_trigger_converge_schedules_action_on_signature_change():
             {"collectors": [{"collector_id": collector.id, "status": "ok"}]},
         )
     conv.delay.assert_called_once_with(node.id)
+
+
+def test_trigger_converge_skip_action_does_not_schedule_running_action():
+    region = _region()
+    node = _node(region)
+    collector = Collector.objects.create(
+        id=f"c-skip-{uuid.uuid4().hex[:8]}",
+        name="NATS-Executor",
+        service_type="exec",
+        node_operating_system="linux",
+        executable_path="/bin",
+        execute_parameters="-c",
+    )
+    task = CollectorActionTask.objects.create(collector=collector, action="restart", status="running")
+    CollectorActionTaskNode.objects.create(task=task, node=node, status="running", result={})
+
+    with patch("apps.node_mgmt.services.sidecar.converge_collector_action_task_for_node") as conv:
+        Sidecar.trigger_converge_tasks_if_needed(
+            node.id,
+            node.ip,
+            {
+                "collectors": [
+                    {
+                        "collector_id": collector.id,
+                        "status": 2,
+                        "verbose_message": SIDECAR_START_RETRY_EXHAUSTED,
+                    }
+                ]
+            },
+            skip_action_converge=True,
+        )
+    conv.delay.assert_not_called()
 
 
 # --------------------------------------------------------------------------
@@ -228,6 +262,143 @@ def test_update_node_client_updates_running_action_consume_ack():
     assert "execute_command" in steps
     task.refresh_from_db()
     assert task.status == "running"
+
+
+def _heartbeat_request(node, collectors_status):
+    return SimpleNamespace(
+        headers={},
+        META={},
+        data={
+            "node_name": node.name,
+            "node_details": {
+                "ip": node.ip,
+                "operating_system": "linux",
+                "collector_configuration_directory": "/etc/sidecar",
+                "metrics": {},
+                "status": {"collectors": collectors_status},
+                "log_file_list": [],
+                "tags": [],
+            },
+        },
+    )
+
+
+def _eager_converge_delay(node_id):
+    from apps.node_mgmt.tasks.action_task import converge_collector_action_task_for_node
+
+    converge_collector_action_task_for_node(node_id)
+
+
+def test_restart_ack_heartbeat_does_not_close_task_with_pre_action_failed_status():
+    """Sidecar 在领取 restart 动作的心跳里上报的是动作执行前的状态。
+
+    若用这份旧失败状态立刻结案，页面会把「执行采集器操作」显示成
+    Unable to start collector after 3 tries，即使这次重启还没开始。
+    """
+    region = _region()
+    node = _node(region)
+    collector = Collector.objects.create(
+        id=f"natsexecutor_linux_{uuid.uuid4().hex[:8]}",
+        name="NATS-Executor",
+        service_type="exec",
+        node_operating_system="linux",
+        executable_path="/opt/fusion-collectors/bin/nats-executor",
+        execute_parameters="--config %s",
+    )
+    pre_action_status = [
+        {
+            "collector_id": collector.id,
+            "status": 2,
+            "message": SIDECAR_START_RETRY_EXHAUSTED,
+            "verbose_message": SIDECAR_START_RETRY_EXHAUSTED,
+        }
+    ]
+    node.status = {"collectors": pre_action_status}
+    node.save(update_fields=["status"])
+
+    task = CollectorActionTask.objects.create(
+        collector=collector,
+        cloud_region=region,
+        action="restart",
+        status="waiting",
+        total_count=1,
+    )
+    task_node = CollectorActionTaskNode.objects.create(task=task, node=node, status="waiting", result={})
+    Action.objects.create(
+        node=node,
+        action=[{"task_id": task.id, "collector_id": collector.id, "properties": {"restart": True}}],
+    )
+
+    req = _heartbeat_request(node, pre_action_status)
+    with (
+        patch("apps.node_mgmt.services.sidecar.cache.get", return_value=None),
+        patch("apps.node_mgmt.services.sidecar.cache.set"),
+        patch(
+            "apps.node_mgmt.services.sidecar.converge_collector_action_task_for_node.delay",
+            side_effect=_eager_converge_delay,
+        ),
+    ):
+        resp = Sidecar.update_node_client(req, node.id)
+
+    assert resp.status_code == 202
+    assert not Action.objects.filter(node=node).exists()
+    task_node.refresh_from_db()
+    steps = {step["action"]: step for step in task_node.result.get("steps", [])}
+    assert steps["consume_ack"]["status"] == "success"
+    assert task_node.status == "running"
+    assert steps["execute_command"]["status"] == "running"
+    assert SIDECAR_START_RETRY_EXHAUSTED not in (task_node.result.get("final_message") or "")
+
+
+def test_later_heartbeat_can_close_restart_after_sidecar_reports_post_action_failure():
+    region = _region()
+    node = _node(region)
+    collector = Collector.objects.create(
+        id=f"natsexecutor_linux_{uuid.uuid4().hex[:8]}",
+        name="NATS-Executor",
+        service_type="exec",
+        node_operating_system="linux",
+        executable_path="/opt/fusion-collectors/bin/nats-executor",
+        execute_parameters="--config %s",
+    )
+    task = CollectorActionTask.objects.create(
+        collector=collector,
+        cloud_region=region,
+        action="restart",
+        status="running",
+        total_count=1,
+    )
+    task_node = CollectorActionTaskNode.objects.create(
+        task=task,
+        node=node,
+        status="running",
+        result={
+            "steps": [
+                {"action": "dispatch_command", "status": "success", "message": "Submit collector action"},
+                {"action": "consume_ack", "status": "success", "message": "Sidecar acknowledged action"},
+                {"action": "execute_command", "status": "running", "message": "Execute collector action"},
+            ]
+        },
+    )
+    node.status = {
+        "collectors": [
+            {
+                "collector_id": collector.id,
+                "status": 2,
+                "message": SIDECAR_START_RETRY_EXHAUSTED,
+                "verbose_message": SIDECAR_START_RETRY_EXHAUSTED,
+            }
+        ]
+    }
+    node.save(update_fields=["status"])
+
+    from apps.node_mgmt.tasks.action_task import converge_collector_action_task_for_node
+
+    converge_collector_action_task_for_node(node.id)
+
+    task_node.refresh_from_db()
+    assert task_node.status == "error"
+    assert SIDECAR_START_RETRY_EXHAUSTED in (task_node.result.get("final_message") or "")
 
 
 # --------------------------------------------------------------------------

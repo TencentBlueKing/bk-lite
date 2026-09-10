@@ -25,7 +25,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import dayjs from 'dayjs';
 import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/components/jobHostSelectionModalRuntime';
 import { AddTargetHostButton, TargetSourceSelector } from '@/app/job/components/target-selection-controls';
-import { buildScheduledTaskTemplatePayload, restoreScheduledTaskTemplateUi } from '@/app/job/utils/scheduledTaskPayload';
+import { buildScheduledTaskTemplatePayload, resolveScheduledTaskConcurrencyPolicy, restoreScheduledTaskTemplateUi } from '@/app/job/utils/scheduledTaskPayload';
 import { useUserInfoContext } from '@/context/userInfo';
 
 const EditCronTaskContent = () => {
@@ -333,6 +333,7 @@ const EditCronTaskContent = () => {
         target_list: targetList,
         timeout: values.timeout || 60,
         is_enabled: enableAfterSave,
+        concurrency_policy: resolveScheduledTaskConcurrencyPolicy(values.concurrency_policy),
         team: selectedGroup ? [Number(selectedGroup.id)] : [],
       };
 
@@ -641,7 +642,7 @@ const EditCronTaskContent = () => {
           </Form.Item>
 
           <Form.Item label={t('job.concurrencyStrategy')} name="concurrency_policy">
-            <Select defaultValue="skip">
+            <Select>
               <Select.Option value="skip">{t('job.skipIfRunning')}</Select.Option>
               <Select.Option value="run">{t('job.runAnyway')}</Select.Option>
               <Select.Option value="queue">{t('job.queueWait')}</Select.Option>

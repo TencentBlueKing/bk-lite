@@ -393,7 +393,7 @@ const Alert: React.FC = () => {
   );
 
   return (
-    <div className="w-full">
+    <div className="h-full min-h-0 min-w-0 w-full">
       <div className={alertStyle.alert}>
         <AlarmFilters
           filters={filters}
@@ -453,7 +453,7 @@ const Alert: React.FC = () => {
           </Spin>
           <div className={alertStyle.table}>
             <Tabs activeKey={activeTab} items={tabList} onChange={changeTab} />
-            <div className="flex items-center justify-between mb-[16px] min-w-[900px]">
+            <div className="mb-[16px] flex min-w-0 flex-wrap items-center justify-between gap-y-2">
               <div className="flex items-center space-x-4">
                 <SearchFilter
                   attrList={alarmAttrList}
