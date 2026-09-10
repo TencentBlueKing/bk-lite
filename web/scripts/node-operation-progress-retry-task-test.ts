@@ -78,6 +78,11 @@ function assertPageWiresCollectorRetry(pageSource: string) {
     /AbortController|\.abort\(/,
     '不得 abort 后端请求',
   );
+  assert.doesNotMatch(
+    pageSource,
+    /import \{\s*import \{/,
+    'index 不得出现重复 import {',
+  );
 }
 
 async function main() {

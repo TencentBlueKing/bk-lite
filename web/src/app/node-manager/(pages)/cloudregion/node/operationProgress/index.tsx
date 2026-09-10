@@ -42,7 +42,6 @@ import {
 } from '@/app/node-manager/utils/installerProgress';
 import { createOperationProgressRequestGuard } from './operationProgressRequestGuard';
 import {
-import {
   buildCollectorTaskNodesPageQuery,
   resolveCollectorTaskNodesPage
 } from './collectorTaskNodesPage';
