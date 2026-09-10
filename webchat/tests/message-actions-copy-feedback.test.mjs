@@ -37,6 +37,8 @@ const { COPY_SUCCESS_LABEL, MessageActions } = await import(
   pathToFileURL(outputPath)
 );
 
+assert.equal(COPY_SUCCESS_LABEL, '已复制到剪贴板');
+
 const writes = [];
 Object.defineProperty(globalThis, 'navigator', {
   configurable: true,
