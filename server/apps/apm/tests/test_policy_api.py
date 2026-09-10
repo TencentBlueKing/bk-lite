@@ -16,6 +16,7 @@ from apps.apm.models import (
     ApmService,
     ApmServiceOrganization,
 )
+from apps.apm.serializers.control_plane import ApmPolicyNotificationTargetSerializer
 from apps.apm.services import DjangoApmPolicyService
 from apps.apm.services.contracts import NotificationChannel, NotificationRecipient, ServiceRed
 from apps.apm.tests.helpers import bind_policy_organizations
@@ -413,6 +414,7 @@ def test_policy_notification_channel_is_revalidated_in_current_scope(apm_api_cli
             availability="available",
         )
     ]
+    directory.validate_recipient_ids.return_value = {42}
     payload = _payload(_service(10))
     payload.update(
         {
@@ -438,6 +440,74 @@ def test_policy_notification_channel_is_revalidated_in_current_scope(apm_api_cli
         }
     ]
     assert ApmPolicyNotificationTarget.objects.filter(policy_id=created.data["id"]).count() == 1
+
+
+def test_policy_rejects_system_user_outside_current_organization(apm_api_client, mocker):
+    directory = mocker.patch("apps.apm.views.control_plane.ApmPolicyViewSet.notification_directory")
+    directory.list_available.return_value = [
+        NotificationChannel(
+            id=23,
+            name="邮件",
+            channel_type="email",
+            description="值班邮件",
+            delivery_mode="message",
+            recipient_mode="system_user",
+            availability="available",
+        )
+    ]
+    directory.validate_recipient_ids.return_value = set()
+    payload = _payload(_service(10))
+    payload["notification_targets"] = [{"channel_id": 23, "recipients": ["42"]}]
+
+    response = apm_api_client.post("/api/v1/apm/policies/", payload, format="json")
+
+    assert response.status_code == 400
+    assert "当前组织不可用" in response.data["notification_targets"]
+
+
+def test_policy_reports_recipient_directory_outage(apm_api_client, mocker):
+    directory = mocker.patch("apps.apm.views.control_plane.ApmPolicyViewSet.notification_directory")
+    directory.list_available.return_value = [
+        NotificationChannel(
+            id=23,
+            name="邮件",
+            channel_type="email",
+            description="值班邮件",
+            delivery_mode="message",
+            recipient_mode="system_user",
+            availability="available",
+        )
+    ]
+    directory.validate_recipient_ids.side_effect = RuntimeError("system management unavailable")
+    payload = _payload(_service(10))
+    payload["notification_targets"] = [{"channel_id": 23, "recipients": ["42"]}]
+
+    response = apm_api_client.post("/api/v1/apm/policies/", payload, format="json")
+
+    assert response.status_code == 503
+    assert response.data["code"] == "notification_recipients_unavailable"
+
+
+def test_policy_notification_target_accepts_exact_recipient_boundaries():
+    recipients = ["x" * 150, *[f"recipient-{index}" for index in range(99)]]
+    serializer = ApmPolicyNotificationTargetSerializer(data={"channel_id": 23, "recipients": recipients})
+
+    assert serializer.is_valid(), serializer.errors
+    assert len(serializer.validated_data["recipients"]) == 100
+
+
+@pytest.mark.parametrize(
+    "recipients",
+    [
+        [*[f"recipient-{index}" for index in range(100)], "recipient-over-limit"],
+        ["x" * 151],
+    ],
+)
+def test_policy_notification_target_rejects_recipient_bounds(recipients):
+    serializer = ApmPolicyNotificationTargetSerializer(data={"channel_id": 23, "recipients": recipients})
+
+    assert serializer.is_valid() is False
+    assert "recipients" in serializer.errors
 
 
 def test_notification_directory_outage_only_blocks_notification_configuration(apm_api_client, mocker):

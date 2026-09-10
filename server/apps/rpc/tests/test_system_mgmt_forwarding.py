@@ -4,6 +4,7 @@
 替换传输 seam（self.client）为记录器，断言方法名 + 参数（位置/具名）契约。
 能抓到方法名拼写、参数名/顺序回归。不触达真实 NATS。
 """
+
 import pydantic.root_model  # noqa
 import pytest
 
@@ -308,6 +309,29 @@ def test_search_notification_recipients_scoped_转发组织内用户查询(clien
             "include_children": True,
             "search": "alice",
             "limit": 20,
+        },
+    )
+
+
+def test_search_notification_recipients_scoped_仅在显式校验时转发用户ID(client):
+    ctx = {"username": "a"}
+    client.search_notification_recipients_scoped(
+        ctx,
+        teams=[1],
+        include_children=False,
+        recipient_ids=[42, 43],
+        limit=2,
+    )
+    assert _last(client) == (
+        "search_notification_recipients_scoped",
+        (),
+        {
+            "actor_context": ctx,
+            "teams": [1],
+            "include_children": False,
+            "search": "",
+            "limit": 2,
+            "recipient_ids": [42, 43],
         },
     )
 

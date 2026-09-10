@@ -10,6 +10,7 @@ const api = read('src/app/apm/api/index.ts');
 const policies = [
   read('src/app/apm/events/policies/page.tsx'),
   read('src/app/apm/events/policies/policy-editor.tsx'),
+  read('src/app/apm/events/policies/notification-target-fields.tsx'),
 ].join('\n');
 const events = [
   read('src/app/apm/events/alerts/page.tsx'),

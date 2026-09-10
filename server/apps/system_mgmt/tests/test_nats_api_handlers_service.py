@@ -10,7 +10,6 @@ from unittest.mock import Mock
 import pytest
 from django.db import connection
 
-import nats_client
 from apps.core.utils.internal_event_auth import sign_internal_event, verify_internal_event
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt import nats_api
@@ -600,10 +599,15 @@ def test_search_channel_list_filters_nats_method_without_exposing_config():
         }
     ]
 
+
 def test_search_channel_list_projects_notify_person_only_for_nats():
     Channel.objects.create(name="nats-enabled", channel_type=ChannelChoices.NATS, config={"supports_notify_person": True}, description="d", team=[8])
-    Channel.objects.create(name="nats-disabled", channel_type=ChannelChoices.NATS, config={"supports_notify_person": "true"}, description="d", team=[8])
-    Channel.objects.create(name="email", channel_type=ChannelChoices.EMAIL, config={"supports_notify_person": True, "secret": "hidden"}, description="d", team=[8])
+    Channel.objects.create(
+        name="nats-disabled", channel_type=ChannelChoices.NATS, config={"supports_notify_person": "true"}, description="d", team=[8]
+    )
+    Channel.objects.create(
+        name="email", channel_type=ChannelChoices.EMAIL, config={"supports_notify_person": True, "secret": "hidden"}, description="d", team=[8]
+    )
 
     result = nats_api.search_channel_list(teams=[8])
 
@@ -718,7 +722,7 @@ def test_probe_notification_channel_capability_only_does_not_touch_responder(
         config={"namespace": "bklite", "method_name": "receive_alert_events"},
         team=[group.id],
     )
-    send = monkeypatch.setattr(
+    monkeypatch.setattr(
         "apps.system_mgmt.nats.channels.send_nats_message",
         lambda *args, **kwargs: pytest.fail("capability-only probe must not call responder"),
     )
@@ -759,6 +763,58 @@ def test_public_notification_recipient_search_is_scoped_and_bounded():
         "result": True,
         "data": [{"id": matching.id, "username": "alice", "display_name": "Alice On-call"}],
     }
+
+
+def test_public_notification_recipient_validation_filters_ids_before_scoping():
+    group = Group.objects.create(name="recipient-team-ids", parent_id=0)
+    other_group = Group.objects.create(name="other-team-ids", parent_id=0)
+    actor = User.objects.create(username="id-actor", domain="domain.com", password="x", group_list=[group.id])
+    matching = User.objects.create(
+        username="id-alice",
+        display_name="ID Alice",
+        domain="domain.com",
+        password="x",
+        group_list=[group.id],
+    )
+    hidden = User.objects.create(
+        username="id-hidden",
+        display_name="ID Hidden",
+        domain="domain.com",
+        password="x",
+        group_list=[other_group.id],
+    )
+
+    response = nats_api.search_notification_recipients_scoped(
+        {"username": actor.username, "domain": actor.domain, "current_team": group.id},
+        teams=[group.id],
+        recipient_ids=[matching.id, hidden.id],
+        limit=2,
+    )
+
+    assert response == {
+        "result": True,
+        "data": [{"id": matching.id, "username": "id-alice", "display_name": "ID Alice"}],
+    }
+
+
+def test_public_notification_recipient_validation_rejects_unbounded_or_duplicate_ids():
+    group = Group.objects.create(name="recipient-team-invalid", parent_id=0)
+    actor = User.objects.create(username="invalid-actor", domain="domain.com", password="x", group_list=[group.id])
+    actor_context = {"username": actor.username, "domain": actor.domain, "current_team": group.id}
+
+    duplicate = nats_api.search_notification_recipients_scoped(
+        actor_context,
+        teams=[group.id],
+        recipient_ids=[1, 1],
+    )
+    unbounded = nats_api.search_notification_recipients_scoped(
+        actor_context,
+        teams=[group.id],
+        recipient_ids=list(range(1, 102)),
+    )
+
+    assert duplicate["code"] == "invalid_payload"
+    assert unbounded["code"] == "invalid_payload"
 
 
 def test_public_notification_dispatch_normalizes_success_and_terminal_failure(monkeypatch):
@@ -844,9 +900,7 @@ def test_public_notification_dispatch_builds_alert_center_event_copy(monkeypatch
         "pusher": "lite-apm",
         "events": [{"event_key": "event-1", "organizations": [9]}],
     }
-    assert verify_internal_event(
-        "alerts.receive_alert_events", sent["content"], receiver_auth, caller="lite-apm"
-    ) is True
+    assert verify_internal_event("alerts.receive_alert_events", sent["content"], receiver_auth, caller="lite-apm") is True
 
 
 @pytest.mark.parametrize("producer", ["lite-apm", "lite-patch"])
@@ -981,6 +1035,73 @@ def test_public_notification_dispatch_rejects_missing_system_user_without_retry(
     send.assert_not_called()
 
 
+def test_public_notification_dispatch_rejects_system_user_from_another_organization(monkeypatch):
+    group = Group.objects.create(name="dispatch-team", parent_id=0)
+    other_group = Group.objects.create(name="dispatch-other-team", parent_id=0)
+    recipient = User.objects.create(
+        username="cross-org-recipient",
+        domain="domain.com",
+        password="x",
+        group_list=[other_group.id],
+    )
+    channel = Channel.objects.create(
+        name="组织邮件",
+        channel_type=ChannelChoices.EMAIL,
+        config={},
+        description="mail",
+        team=[group.id],
+    )
+    send = Mock()
+    monkeypatch.setattr("apps.system_mgmt.nats.channels.send_msg_with_channel", send)
+
+    result = nats_api.dispatch_notification(
+        delivery_key="apm:event:email:cross-org",
+        channel_id=channel.id,
+        organization_ids=[group.id],
+        recipients=[str(recipient.id)],
+        title="title",
+        body="body",
+        event_payload={},
+    )
+
+    assert result["code"] == "invalid_recipients"
+    assert result["retryable"] is False
+    send.assert_not_called()
+
+
+def test_public_notification_dispatch_accepts_user_in_any_shared_organization(monkeypatch):
+    first_group = Group.objects.create(name="dispatch-first-team", parent_id=0)
+    second_group = Group.objects.create(name="dispatch-second-team", parent_id=0)
+    recipient = User.objects.create(
+        username="shared-recipient",
+        domain="domain.com",
+        password="x",
+        group_list=[second_group.id],
+    )
+    channel = Channel.objects.create(
+        name="共享邮件",
+        channel_type=ChannelChoices.EMAIL,
+        config={},
+        description="mail",
+        team=[first_group.id, second_group.id],
+    )
+    send = Mock(return_value={"result": True})
+    monkeypatch.setattr("apps.system_mgmt.nats.channels.send_msg_with_channel", send)
+
+    result = nats_api.dispatch_notification(
+        delivery_key="apm:event:email:shared",
+        channel_id=channel.id,
+        organization_ids=[first_group.id, second_group.id],
+        recipients=[str(recipient.id)],
+        title="title",
+        body="body",
+        event_payload={},
+    )
+
+    assert result["result"] is True
+    send.assert_called_once()
+
+
 def test_public_notification_dispatch_escapes_rich_text_before_transport(monkeypatch):
     channel = Channel.objects.create(
         name="飞书",
@@ -1089,9 +1210,7 @@ def test_send_msg_with_channel_rejects_unsigned_alert_center_copy(monkeypatch):
     assert result == {"result": True}
     signed_content = send.call_args.args[1]
     receiver_auth = signed_content.pop("internal_auth")
-    assert verify_internal_event(
-        "alerts.receive_alert_events", signed_content, receiver_auth, caller="lite-monitor"
-    ) is True
+    assert verify_internal_event("alerts.receive_alert_events", signed_content, receiver_auth, caller="lite-monitor") is True
 
 
 def test_send_msg_with_channel_legacy_sender_is_accepted_during_rolling_upgrade(monkeypatch):
@@ -1137,16 +1256,12 @@ def test_send_msg_with_channel_rejects_caller_or_channel_organization_mismatch(m
         "receivers": [],
         "attachments": None,
     }
-    wrong_caller = sign_internal_event(
-        "system_mgmt.send_msg_with_channel", request_payload, caller="lite-log"
-    )
+    wrong_caller = sign_internal_event("system_mgmt.send_msg_with_channel", request_payload, caller="lite-log")
     assert nats_api.send_msg_with_channel(channel.id, "", content, [], internal_auth=wrong_caller)["code"] == "internal_auth_required"
 
     forbidden = {**content, "events": [{"organizations": [99]}]}
     forbidden_payload = {**request_payload, "content": forbidden}
-    forbidden_auth = sign_internal_event(
-        "system_mgmt.send_msg_with_channel", forbidden_payload, caller="lite-monitor"
-    )
+    forbidden_auth = sign_internal_event("system_mgmt.send_msg_with_channel", forbidden_payload, caller="lite-monitor")
     assert nats_api.send_msg_with_channel(channel.id, "", forbidden, [], internal_auth=forbidden_auth)["code"] == "channel_forbidden"
     send.assert_not_called()
 

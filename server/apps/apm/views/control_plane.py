@@ -757,6 +757,22 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
                 raise ValidationError({"notification_targets": f"渠道 {channel.name} 必须配置接收人。"})
             if channel.recipient_mode == "system_user" and not all(value.isdigit() for value in recipients):
                 raise ValidationError({"notification_targets": f"渠道 {channel.name} 只接受系统用户 ID。"})
+            if channel.recipient_mode == "system_user":
+                requested_recipient_ids = {int(value) for value in recipients}
+                try:
+                    valid_recipient_ids = self.notification_directory.validate_recipient_ids(
+                        actor_context=actor_context,
+                        organization_id=organization_id,
+                        include_children=actor_context["include_children"],
+                        recipient_ids=requested_recipient_ids,
+                    )
+                except RuntimeError as exc:
+                    return Response(
+                        {"detail": str(exc), "code": "notification_recipients_unavailable"},
+                        status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    )
+                if valid_recipient_ids != requested_recipient_ids:
+                    raise ValidationError({"notification_targets": f"渠道 {channel.name} 包含当前组织不可用的系统用户。"})
             normalized_targets.append(
                 {
                     "channel_id": channel.id,

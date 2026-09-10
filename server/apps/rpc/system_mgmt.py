@@ -307,15 +307,18 @@ class SystemMgmt(object):
         include_children=False,
         search="",
         limit=100,
+        recipient_ids=None,
     ):
-        return self.client.run(
-            "search_notification_recipients_scoped",
-            actor_context=actor_context,
-            teams=teams,
-            include_children=include_children,
-            search=search,
-            limit=limit,
-        )
+        kwargs = {
+            "actor_context": actor_context,
+            "teams": teams,
+            "include_children": include_children,
+            "search": search,
+            "limit": limit,
+        }
+        if recipient_ids is not None:
+            kwargs["recipient_ids"] = recipient_ids
+        return self.client.run("search_notification_recipients_scoped", **kwargs)
 
     def dispatch_notification(
         self,

@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ApmPolicyEditor from '../policy-editor';
 import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
+import { HandledRequestError } from '@/utils/request';
 
 const { chartRender } = vi.hoisted(() => ({ chartRender: vi.fn() }));
 
@@ -161,7 +162,7 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     expect(await screen.findByLabelText('无数据告警名称')).not.toBeNull();
   });
 
-  it('通知渠道支持多选，并仅在所选渠道需要接收人时展示通知对象', async () => {
+  it('新策略按渠道能力逐个添加通知目标，并能远程搜索首批目录之外的系统用户', async () => {
     const user = userEvent.setup();
     api.getNotificationChannels.mockResolvedValue([
       {
@@ -174,6 +175,15 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
         availability: 'available',
       },
       {
+        id: 22,
+        name: 'Webhook',
+        channel_type: 'custom_webhook',
+        description: '外部值班通知',
+        delivery_mode: 'message',
+        recipient_mode: 'free_text',
+        availability: 'available',
+      },
+      {
         id: 23,
         name: '告警中心',
         channel_type: 'nats',
@@ -183,18 +193,116 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
         availability: 'available',
       },
     ]);
+    api.getNotificationRecipients.mockImplementation(({ search }: { search?: string } = {}) =>
+      Promise.resolve(search === 'late'
+        ? [{ id: 142, username: 'late-user', display_name: 'Late User' }]
+        : []));
     renderWithApmIntl(<ApmPolicyEditor />);
 
     await user.click(await screen.findByRole('switch', { name: '启用通知' }));
-    const channelSelect = screen.getByLabelText('通知通道');
-    expect(channelSelect.closest('.ant-select')?.className).toContain('ant-select-multiple');
-    await user.click(channelSelect);
-    const natsOptions = await screen.findAllByText('告警中心');
-    await user.click(natsOptions.at(-1)!);
-    expect(screen.queryByLabelText('通知对象')).toBeNull();
-    const emailOptions = await screen.findAllByText('邮件');
-    await user.click(emailOptions.at(-1)!);
+    await user.click(screen.getByRole('button', { name: /邮件.*普通通知/ }));
+    const recipientSearch = await screen.findByLabelText('系统用户 ID');
+    await user.click(recipientSearch);
+    await user.type(recipientSearch, 'late');
+    await waitFor(() => expect(api.getNotificationRecipients).toHaveBeenLastCalledWith({ search: 'late', limit: 100 }));
+    expect(api.getNotificationRecipients.mock.calls.filter(([params]) => params?.search)).toEqual([
+      [{ search: 'late', limit: 100 }],
+    ]);
+    await user.click(await screen.findByText('Late User (late-user)'));
+
+    await user.click(screen.getByRole('button', { name: /Webhook.*普通通知/ }));
     expect(screen.getByLabelText('通知对象')).not.toBeNull();
+    await user.click(screen.getByRole('button', { name: /告警中心.*告警中心副本/ }));
+    expect(screen.getByText('该渠道接收告警事件副本，无需配置接收人。')).not.toBeNull();
+  });
+
+  it('编辑时按 system_user、free_text、none 分别回显并提交原始接收人', async () => {
+    const user = userEvent.setup();
+    api.getNotificationChannels.mockResolvedValue([
+      { id: 21, name: '邮件', channel_type: 'email', description: '', delivery_mode: 'message', recipient_mode: 'system_user', availability: 'available' },
+      { id: 22, name: 'Webhook', channel_type: 'custom_webhook', description: '', delivery_mode: 'message', recipient_mode: 'free_text', availability: 'available' },
+      { id: 23, name: '告警中心', channel_type: 'nats', description: '', delivery_mode: 'alert_event_copy', recipient_mode: 'none', availability: 'available' },
+    ]);
+    api.getNotificationRecipients.mockResolvedValue([{ id: 42, username: 'alice', display_name: 'Alice' }]);
+    api.getPolicy.mockResolvedValue({
+      ...policy,
+      notification_targets: [
+        { channel_id: 21, channel_name: '邮件', channel_type: 'email', delivery_mode: 'message', recipient_mode: 'system_user', recipients: ['42'] },
+        { channel_id: 22, channel_name: 'Webhook', channel_type: 'custom_webhook', delivery_mode: 'message', recipient_mode: 'free_text', recipients: ['on-call@example.com'] },
+        { channel_id: 23, channel_name: '告警中心', channel_type: 'nats', delivery_mode: 'alert_event_copy', recipient_mode: 'none', recipients: [] },
+      ],
+    });
+
+    renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+
+    expect(await screen.findByText('Alice (alice)')).not.toBeNull();
+    expect(screen.getByText('on-call@example.com')).not.toBeNull();
+    await user.click(screen.getByRole('button', { name: '保存策略' }));
+    await waitFor(() => expect(api.updatePolicy).toHaveBeenCalledWith(
+      'p1',
+      expect.objectContaining({
+        notification_targets: [
+          { channel_id: 21, recipients: ['42'] },
+          { channel_id: 22, recipients: ['on-call@example.com'] },
+          { channel_id: 23, recipients: [] },
+        ],
+      }),
+    ));
+  });
+
+  it('none 渠道会清理历史遗留接收人', async () => {
+    const user = userEvent.setup();
+    api.getNotificationChannels.mockResolvedValue([
+      { id: 23, name: '告警中心', channel_type: 'nats', description: '', delivery_mode: 'alert_event_copy', recipient_mode: 'none', availability: 'available' },
+    ]);
+    api.getPolicy.mockResolvedValue({
+      ...policy,
+      notification_targets: [
+        { channel_id: 23, channel_name: '告警中心', channel_type: 'nats', delivery_mode: 'alert_event_copy', recipient_mode: 'none', recipients: ['stale'] },
+      ],
+    });
+
+    renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+    await user.click(await screen.findByRole('button', { name: '保存策略' }));
+    await waitFor(() => expect(api.updatePolicy).toHaveBeenCalledWith(
+      'p1',
+      expect.objectContaining({ notification_targets: [{ channel_id: 23, recipients: [] }] }),
+    ));
+  });
+
+  it('接收人目录故障时仍回显已有稳定 ID，但禁止新增', async () => {
+    api.getNotificationChannels.mockResolvedValue([
+      { id: 21, name: '邮件', channel_type: 'email', description: '', delivery_mode: 'message', recipient_mode: 'system_user', availability: 'available' },
+    ]);
+    api.getNotificationRecipients.mockRejectedValue(new HandledRequestError('unavailable', { status: 503 }));
+    api.getPolicy.mockResolvedValue({
+      ...policy,
+      notification_targets: [
+        { channel_id: 21, channel_name: '邮件', channel_type: 'email', delivery_mode: 'message', recipient_mode: 'system_user', recipients: ['42'] },
+      ],
+    });
+
+    renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+
+    expect(await screen.findByText('用户 42（当前不可用）')).not.toBeNull();
+    expect(screen.getByLabelText('系统用户 ID').closest('.ant-select')?.className).toContain('ant-select-disabled');
+  });
+
+  it('渠道目录故障不会把历史渠道误判为失效', async () => {
+    const user = userEvent.setup();
+    api.getNotificationChannels.mockRejectedValue(new HandledRequestError('unavailable', { status: 503 }));
+    api.getPolicy.mockResolvedValue({
+      ...policy,
+      notification_targets: [
+        { channel_id: 23, channel_name: '告警中心', channel_type: 'nats', delivery_mode: 'alert_event_copy', recipient_mode: 'none', recipients: [] },
+      ],
+    });
+
+    renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+    expect(await screen.findByText('暂时无法读取系统通知渠道')).not.toBeNull();
+    await user.click(screen.getByRole('button', { name: '保存策略' }));
+    await waitFor(() => expect(api.updatePolicy).toHaveBeenCalled());
+    expect(screen.queryByText('已失效，保存前请移除')).toBeNull();
   });
 
   it('页面加载后自动把当前指标配置提交给真实预览接口', async () => {
@@ -311,7 +419,8 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
 
     expect(await screen.findByText('shop / checkout（已归档）')).not.toBeNull();
-    expect(screen.getByText('告警中心（当前不可用）')).not.toBeNull();
+    expect(screen.getByText('告警中心')).not.toBeNull();
+    expect(screen.getByText('已失效，保存前请移除')).not.toBeNull();
     expect(screen.queryByText('svc-1')).toBeNull();
     expect(screen.queryByText('23')).toBeNull();
     expect(api.getServices).toHaveBeenCalledWith({ include_archived: true });
