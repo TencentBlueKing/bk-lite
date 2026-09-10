@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Input, InputNumber, Button, ConfigProvider } from 'antd';
 import { SearchOutlined, ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import TimeSelector from '@/components/time-selector';
 import DateRangeSelector from '@/app/ops-analysis/components/dateRangeSelector';
 import GroupTreeSelect from '@/components/group-tree-select';
+import { convertGroupTreeToTreeSelectData } from '@/utils/index';
 import { normalizeUnifiedFilterInputMode } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { ParamInputControl } from '@/app/ops-analysis/components/paramInputControl';
 import { normalizeInputConfig, toSingleOrganizationValue } from '@/app/ops-analysis/utils/paramInputConfigUtils';
@@ -19,7 +20,16 @@ import type {
 import type { InputControlConfig } from '@/app/ops-analysis/types/dataSource';
 import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
 import { useTranslation } from '@/utils/i18n';
-import { buildResetFilterValues, isOrganizationFilterDefinition } from '@/app/ops-analysis/utils/unifiedFilterState';
+import { useShareMode } from '@/app/ops-analysis/context/shareMode';
+import {
+  useShareOrganization,
+  useShareOrganizationSeed,
+} from '@/app/ops-analysis/context/shareOrganization';
+import {
+  buildResetFilterValues,
+  fillMissingOrganizationFilterValues,
+  isOrganizationFilterDefinition,
+} from '@/app/ops-analysis/utils/unifiedFilterState';
 
 interface UnifiedFilterBarProps {
   definitions: UnifiedFilterDefinition[];
@@ -56,8 +66,17 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   popupZIndex,
 }) => {
   const { t } = useTranslation();
+  const shareMode = useShareMode();
+  const shareOrganization = useShareOrganization();
+  const organizationSeed = useShareOrganizationSeed();
   const [localValues, setLocalValues] =
     useState<Record<string, FilterValue>>(values);
+  const organizationTreeData = useMemo(
+    () => (shareMode
+      ? convertGroupTreeToTreeSelectData(shareOrganization?.groupTree ?? [])
+      : undefined),
+    [shareMode, shareOrganization],
+  );
 
   const enabledDefinitions = definitions
     .filter((d) => d.enabled)
@@ -132,7 +151,11 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   };
 
   const handleReset = () => {
-    const emptyValues = buildResetFilterValues(enabledDefinitions);
+    const emptyValues = fillMissingOrganizationFilterValues(
+      enabledDefinitions,
+      buildResetFilterValues(enabledDefinitions),
+      organizationSeed,
+    );
     setLocalValues(emptyValues);
 
     if (onReset) {
@@ -226,6 +249,7 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
         if (isOrganizationFilterDefinition(definition)) {
           return (
             <GroupTreeSelect
+              treeData={organizationTreeData}
               value={toSingleOrganizationValue(value)}
               onChange={(val) => handleLocalValueChange(definition.id, toFilterValue(val))}
               multiple={false}

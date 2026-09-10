@@ -12,6 +12,7 @@ import useBtnPermissions from '@/hooks/usePermissions';
 import { useReportApi } from '@/app/ops-analysis/api/report';
 import { useDirectoryApi } from '@/app/ops-analysis/api';
 import { useDataSourceManager } from '@/app/ops-analysis/hooks/useDataSource';
+import { useShareOrganizationSeed } from '@/app/ops-analysis/context/shareOrganization';
 import { useCanvasPeriodicRefresh } from '@/app/ops-analysis/hooks/useCanvasPeriodicRefresh';
 import { useCanvasShareAction } from '@/app/ops-analysis/hooks/useCanvasShareAction';
 import type { ComponentSelectorConfigItem, FilterValue, LayoutItem, UnifiedFilterDefinition, WidgetConfig } from '@/app/ops-analysis/types/dashBoard';
@@ -35,6 +36,7 @@ import { copyReportSection } from '@/app/ops-analysis/utils/widgetCopy';
 import {
   buildFilterConfigConfirmSnapshot,
   buildResetFilterValues,
+  fillMissingOrganizationFilterValues,
   syncFilterValuesWithDefinitions,
 } from '@/app/ops-analysis/utils/unifiedFilterState';
 import {
@@ -127,6 +129,7 @@ const Report = forwardRef<ReportRef, ReportProps>(({
   const { updateItem } = useDirectoryApi();
   const { hasPermission } = useBtnPermissions();
   const dataSourceManager = useDataSourceManager();
+  const shareOrganizationSeed = useShareOrganizationSeed();
   const { shareLoading, openShare } = useCanvasShareAction('report');
   const { isFullscreen, enterFullscreen, exitFullscreen } = useAppViewFullscreen();
   const resumeEditModeAfterFullscreenRef = useRef(false);
@@ -242,9 +245,14 @@ const Report = forwardRef<ReportRef, ReportProps>(({
       setDraftViewSets(normalized);
       setSavedVersion(detail.updated_at || '');
       setSavedRefreshInterval(normalizeCanvasRefreshInterval(detail.refresh_interval));
-      const initialFilterValues = renderMode
+      const restoredValues = renderMode
         ? syncFilterValuesWithDefinitions(normalized.filters, renderFilterValues ?? {})
-        : buildResetFilterValues(normalized.filters);
+        : fillMissingOrganizationFilterValues(
+          normalized.filters,
+          buildResetFilterValues(normalized.filters),
+          shareOrganizationSeed,
+        );
+      const initialFilterValues = restoredValues;
       setFilterValues(initialFilterValues);
       setAppliedFilterValues(initialFilterValues);
       setAppliedFilterDefinitions(normalized.filters);
@@ -283,7 +291,7 @@ const Report = forwardRef<ReportRef, ReportProps>(({
         setLoading(false);
       }
     }
-  }, [loadCanvasDataSources, renderDataSourceIds, renderFilterValues, renderMode, selectedReport?.data_id, t]);
+  }, [loadCanvasDataSources, renderDataSourceIds, renderFilterValues, renderMode, selectedReport?.data_id, shareOrganizationSeed, t]);
 
   useEffect(() => {
     setEditing(false);
@@ -313,8 +321,13 @@ const Report = forwardRef<ReportRef, ReportProps>(({
   });
 
   const handleFilterSearch = (values: Record<string, FilterValue>) => {
-    setFilterValues(values);
-    setAppliedFilterValues(values);
+    const nextValues = fillMissingOrganizationFilterValues(
+      visibleViewSets.filters,
+      values,
+      shareOrganizationSeed,
+    );
+    setFilterValues(nextValues);
+    setAppliedFilterValues(nextValues);
     setAppliedFilterDefinitions(visibleViewSets.filters);
     setFilterSearchVersion((previous) => previous + 1);
   };

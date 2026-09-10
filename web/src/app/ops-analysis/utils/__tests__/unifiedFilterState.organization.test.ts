@@ -4,6 +4,7 @@ import {
   applySelectedOrganizationToFilterValues,
   fillMissingOrganizationFilterValues,
   isOrganizationFilterDefinition,
+  resolveCanvasOrganizationId,
 } from '@/app/ops-analysis/utils/unifiedFilterState';
 
 const ORGANIZATION_FILTER: UnifiedFilterDefinition = {
@@ -83,6 +84,41 @@ describe('applySelectedOrganizationToFilterValues', () => {
     const current = { organization__string: '3' };
     expect(
       applySelectedOrganizationToFilterValues([ORGANIZATION_FILTER], current, null),
+    ).toBe(current);
+  });
+
+  test('分享态用 space_id 作缺省组织，不用登录态工作组织', () => {
+    expect(resolveCanvasOrganizationId({
+      shareMode: true,
+      shareSpaceId: 8,
+      selectedGroupId: 99,
+    })).toBe(8);
+  });
+
+  test('非分享查看态用当前工作组织', () => {
+    expect(resolveCanvasOrganizationId({
+      shareMode: false,
+      selectedGroupId: 12,
+      shareSpaceId: 8,
+    })).toBe(12);
+  });
+
+  test('订阅渲染不回填组织', () => {
+    expect(resolveCanvasOrganizationId({
+      shareMode: false,
+      renderMode: true,
+      selectedGroupId: 12,
+      shareSpaceId: 8,
+    })).toBeUndefined();
+  });
+
+  test('分享态缺省填入 space_id，保留已选组织', () => {
+    const current = { organization__string: '3' };
+    expect(
+      fillMissingOrganizationFilterValues([ORGANIZATION_FILTER], {}, 8),
+    ).toEqual({ organization__string: '8' });
+    expect(
+      fillMissingOrganizationFilterValues([ORGANIZATION_FILTER], current, 8),
     ).toBe(current);
   });
 });
