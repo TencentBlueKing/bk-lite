@@ -1,6 +1,7 @@
 'use client';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Empty, Segmented, Spin } from 'antd';
+import { Segmented, Spin } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { useSearchParams } from 'next/navigation';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
@@ -157,9 +158,9 @@ const Integration = () => {
             <Spin />
           </div>
         ) : !objects.length ? (
-          <Empty description="暂无监控对象" className="mt-[80px]" />
+          <CompactEmptyState description="暂无监控对象" className="mt-[80px]" />
         ) : !activeObject ? (
-          <Empty description="请选择左侧监控对象" className="mt-[80px]" />
+          <CompactEmptyState description="请选择左侧监控对象" className="mt-[80px]" />
         ) : displayType === 'list' ? (
           <ViewList
             key={objectId}

@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Button, Checkbox, Descriptions, Empty, Input, Spin, Tag } from 'antd';
+import { Button, Checkbox, Descriptions, Input, Spin, Tag } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { CopyOutlined, DownloadOutlined } from '@ant-design/icons';
 import { useTranslation } from '../../../../utils/i18n';
 import { useCopy } from '../../../../hooks/useCopy';
@@ -11,6 +12,8 @@ interface K8sGuideProps {
   source?: SourceItem;
   meta?: K8sMeta;
   loading?: boolean;
+  failed?: boolean;
+  onRetry?: () => void;
   onDownload: (fileKey: string, fileName: string, params: K8sRenderParams) => Promise<void>;
   credentialsSlot?: React.ReactNode;
   selectedTeamId?: string;
@@ -21,6 +24,8 @@ const K8sGuide: React.FC<K8sGuideProps> = ({
   source,
   meta,
   loading = false,
+  failed = false,
+  onRetry,
   onDownload,
   credentialsSlot,
   selectedTeamId,
@@ -61,8 +66,20 @@ const K8sGuide: React.FC<K8sGuideProps> = ({
     );
   }
 
+  if (failed) {
+    return (
+      <Empty description={t('integration.k8sMetaLoadFailed')}>
+        {onRetry ? (
+          <Button type="primary" onClick={onRetry}>
+            {t('common.retry')}
+          </Button>
+        ) : null}
+      </Empty>
+    );
+  }
+
   if (!source || !meta) {
-    return <Empty description={t('common.noData')} />;
+    return <CompactEmptyState description={t('common.noData')} />;
   }
 
   const deployFile = meta.download_files.find((file) => file.key === 'deploy_yaml');

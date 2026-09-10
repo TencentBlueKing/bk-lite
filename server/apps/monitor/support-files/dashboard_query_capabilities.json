@@ -212,13 +212,6 @@
       "template": "count(prometheus_remote_write_kube_deployment_status_replicas_unavailable{instance_type=\"k3s\",__$labels__} > 0)"
     },
     {
-      "id": "dashboard:v1:07aee933",
-      "object_names": [
-        "Tomcat"
-      ],
-      "template": "100 * (rate(tomcat_connector_error_count{__$labels__}[__$window__]) / clamp_min(rate(tomcat_connector_request_count{__$labels__}[__$window__]), 1))"
-    },
-    {
       "id": "dashboard:v1:08002511",
       "object_names": [
         "Postgres"
@@ -4735,6 +4728,13 @@
         "SGLang"
       ],
       "template": "count({instance_type='sglang', collect_type='bkpull', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:ca3c51c1",
+      "object_names": [
+        "Tomcat"
+      ],
+      "template": "100 * (rate(tomcat_connector_error_count{__$labels__}[__$window__]) / clamp_min(rate(tomcat_connector_request_count{__$labels__}[__$window__]), 1e-6))"
     },
     {
       "id": "dashboard:v1:ca5b5e26",

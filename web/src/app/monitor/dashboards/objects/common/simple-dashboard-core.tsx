@@ -1005,7 +1005,9 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     collectionStatusMetric?.loadState,
     collectionStatusMetric?.viewData,
     activeTimeRange?.startMs ?? Date.now() - 15 * 60_000,
-    activeTimeRange?.endMs ?? Date.now()
+    activeTimeRange?.endMs ?? Date.now(),
+    undefined,
+    currentInstanceInterval ? currentInstanceInterval * 1000 : undefined
   );
   const collectionStatusTimelineHint = activeTimeRange
     ? formatCollectionStatusTimelineHint(activeTimeRange.startMs, activeTimeRange.endMs)
