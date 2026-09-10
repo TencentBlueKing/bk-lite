@@ -7,7 +7,7 @@ from django.utils import timezone
 from rest_framework import serializers, status, viewsets
 from rest_framework.response import Response
 
-from apps.apm.adapters import TelemetryStoreUnavailable, VictoriaTracesTelemetryStore
+from apps.apm.adapters import TelemetryStoreUnavailable, VictoriaTracesTelemetryStore, telemetry_error_payload
 from apps.apm.models import ApmService, ApmServiceInstance
 from apps.apm.renderers import ApmRenderer
 from apps.apm.services import DjangoApmTopologyService
@@ -25,6 +25,7 @@ class TopologyQuerySerializer(serializers.Serializer):
     min_duration_ms = serializers.FloatField(required=False, min_value=0)
     include_inferred = serializers.BooleanField(required=False, default=False)
     include_user_request = serializers.BooleanField(required=False, default=False)
+    application_id = serializers.CharField(max_length=128, required=False, allow_blank=False)
 
     def validate(self, attrs):
         unsupported = sorted(set(self.initial_data) - set(self.fields))
@@ -71,11 +72,25 @@ class ApmTopologyViewSet(viewsets.ViewSet):
         )
         if environment := data.get("environment"):
             instances = instances.filter(environment=environment)
-        target_rows = (
-            instances.values("service_id", "service__namespace", "service__name", "service__language", "environment")
+        target_rows = list(
+            instances.values(
+                "service_id",
+                "service__namespace",
+                "service__name",
+                "service__language",
+                "service__application__application_id",
+                "environment",
+            )
             .order_by("service_id", "environment")
             .distinct()
         )
+        application_id = data.get("application_id")
+        sample_service_names = None
+        if application_id:
+            app_rows = [row for row in target_rows if row["service__application__application_id"] == application_id]
+            other_rows = [row for row in target_rows if row["service__application__application_id"] != application_id]
+            target_rows = app_rows + other_rows
+            sample_service_names = tuple(dict.fromkeys(row["service__name"] for row in app_rows if row["service__name"]))
         targets = [
             TopologyTarget(
                 row["service__namespace"],
@@ -96,12 +111,10 @@ class ApmTopologyViewSet(viewsets.ViewSet):
                 min_duration_ms=data.get("min_duration_ms"),
                 include_inferred=bool(data.get("include_inferred")),
                 include_user_request=bool(data.get("include_user_request")),
+                sample_service_names=sample_service_names,
             )
         except ValueError as exc:
             return Response({"code": "invalid_query", "detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         except TelemetryStoreUnavailable as exc:
-            return Response(
-                {"code": "telemetry_unavailable", "detail": str(exc)},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
+            return Response(telemetry_error_payload(exc), status=status.HTTP_503_SERVICE_UNAVAILABLE)
         return Response(asdict(graph))

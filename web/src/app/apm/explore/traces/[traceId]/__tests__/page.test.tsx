@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
+import { HandledRequestError } from '@/utils/request';
 import ApmTraceDetailPage from '../page';
 
 const api = {
@@ -84,6 +85,18 @@ afterEach(() => {
 });
 
 describe('APM Trace 详情', () => {
+  it('Trace 超限时展示数据量过大而不是存储不可用', async () => {
+    api.getTrace.mockRejectedValue(new HandledRequestError('VictoriaTraces 响应超过大小上限', {
+      status: 503,
+      code: 'query_too_large',
+    }));
+
+    renderWithApmIntl(<ApmTraceDetailPage />);
+
+    expect(await screen.findByText('本次查询数据量过大')).not.toBeNull();
+    expect(screen.queryByText('遥测存储暂不可用')).toBeNull();
+  });
+
   it('默认选中首个错误 Span，并支持跳到首个错误', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithApmIntl(<ApmTraceDetailPage />);

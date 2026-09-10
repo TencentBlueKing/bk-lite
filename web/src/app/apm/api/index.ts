@@ -21,6 +21,7 @@ import type {
   ApmService,
   ApmServiceInstance,
   ApmServiceRed,
+  ApmServiceRedBatchItem,
   ApmServiceErrorBreakdown,
   ApmSlo,
   ApmSloInput,
@@ -160,11 +161,34 @@ const useApmApi = () => {
   );
 
   const getServiceRed = useCallback(
-    (serviceId: string, environment: string, startedAt?: string, endedAt?: string, endpoint?: string) =>
+    (
+      serviceId: string,
+      environment: string,
+      startedAt?: string,
+      endedAt?: string,
+      endpoint?: string,
+      options?: { include_breakdown?: boolean },
+    ) =>
       get<ApmServiceRed>(`/apm/services/${serviceId}/metrics/`, {
-        params: { environment, started_at: startedAt, ended_at: endedAt, endpoint },
+        params: {
+          environment,
+          started_at: startedAt,
+          ended_at: endedAt,
+          endpoint,
+          include_breakdown: options?.include_breakdown,
+        },
       }),
     [get]
+  );
+
+  const getServiceRedBatch = useCallback(
+    (payload: {
+      started_at: string;
+      ended_at: string;
+      include_breakdown?: boolean;
+      targets: Array<{ service_id: string; environment: string }>;
+    }) => post<{ items: ApmServiceRedBatchItem[] }>('/apm/services/metrics/batch/', payload),
+    [post]
   );
 
   const getServiceErrorBreakdown = useCallback(
@@ -222,7 +246,8 @@ const useApmApi = () => {
       min_duration_ms?: number;
       include_inferred?: boolean;
       include_user_request?: boolean;
-    }) => get<ApmTopologyGraph>('/apm/topology/', { params }),
+      application_id?: string;
+    }) => get<ApmTopologyGraph>('/apm/topology/', { params, suppressErrorNotification: true }),
     [get]
   );
 
@@ -359,6 +384,7 @@ const useApmApi = () => {
     getDeployments,
     getDashboard,
     getServiceRed,
+    getServiceRedBatch,
     getServiceErrorBreakdown,
     getSlos,
     createSlo,
