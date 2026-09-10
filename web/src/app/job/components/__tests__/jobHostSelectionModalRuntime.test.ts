@@ -10,35 +10,56 @@ import {
 } from '../jobHostSelectionModalRuntime';
 
 const filters = {
-  ip: [{ lookup_expr: 'icontains', value: '10.93.160.2' }],
+  keyword: [{ lookup_expr: 'icontains', value: '10.93.160.2' }],
   os_type: [{ lookup_expr: 'in', value: ['linux'] }],
 };
 
+const signal = new AbortController().signal;
+
 describe('buildNodeQueryParams', () => {
-  it('maps IP and operating-system filters for node-manager hosts', () => {
+  it('maps the host-name filter for node-manager hosts', () => {
+    expect(buildNodeQueryParams({
+      page: 1,
+      pageSize: 20,
+      filters: {
+        keyword: [{ lookup_expr: 'icontains', value: 'OneDC_UICamA01' }],
+      },
+      source: 'node_manager',
+      signal,
+    })).toEqual({
+      page: 1,
+      page_size: 20,
+      keyword: 'OneDC_UICamA01',
+      os: undefined,
+    });
+  });
+
+  it('maps fuzzy search and operating-system filters for node-manager hosts', () => {
     expect(buildNodeQueryParams({
       page: 1,
       pageSize: 20,
       filters,
       source: 'node_manager',
+      signal,
     })).toEqual({
       page: 1,
       page_size: 20,
-      ip: '10.93.160.2',
+      keyword: '10.93.160.2',
       os: 'linux',
     });
   });
 
-  it('maps IP and operating-system filters for target-manager hosts', () => {
+  it('maps fuzzy search and operating-system filters for target-manager hosts', () => {
     expect(buildTargetQueryParams({
       page: 2,
       pageSize: 50,
       filters,
       source: 'target_manager',
+      signal,
     })).toEqual({
       page: 2,
       page_size: 50,
-      ip: '10.93.160.2',
+      search: '10.93.160.2',
       os_type: 'linux',
     });
   });
