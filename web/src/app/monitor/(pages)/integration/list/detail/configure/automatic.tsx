@@ -243,6 +243,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     regionOptions,
     loadingRegions,
     refreshRegions,
+    multiple: regionMultiple,
   } = useCloudRegionOptions({
     enabled: Boolean(regionProvider),
     provider: regionProvider || 'qcloud',
@@ -267,6 +268,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         region_option: {
           loading: loadingRegions,
           onRefresh: refreshRegions,
+          multiple: regionMultiple,
         },
       },
     });
@@ -283,6 +285,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     regionOptions,
     loadingRegions,
     refreshRegions,
+    regionMultiple,
     jsonConfig.buildPluginUI,
   ]);
 

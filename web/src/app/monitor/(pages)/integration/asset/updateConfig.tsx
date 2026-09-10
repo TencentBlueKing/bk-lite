@@ -108,6 +108,7 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
     regionOptions,
     loadingRegions,
     refreshRegions,
+    multiple: regionMultiple,
   } = useCloudRegionOptions({
     enabled: Boolean(regionProvider && modalVisible),
     provider: regionProvider || 'qcloud',
@@ -134,6 +135,7 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
         region_option: {
           loading: loadingRegions,
           onRefresh: refreshRegions,
+          multiple: regionMultiple,
           refreshTip: t(
             'monitor.integrations.refreshStoredCloudRegionsTip',
             '刷新可用地域'
@@ -149,6 +151,7 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
     regionOptions,
     loadingRegions,
     refreshRegions,
+    regionMultiple,
     jsonConfig.buildPluginUI,
     t,
   ]);

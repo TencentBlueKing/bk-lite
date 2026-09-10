@@ -523,6 +523,7 @@ export function useCloudRegionOptions(options: {
     regionOptions,
     loadingRegions,
     refreshRegions: () => fetchRegions({ silent: false }),
+    multiple,
   };
 }
 
