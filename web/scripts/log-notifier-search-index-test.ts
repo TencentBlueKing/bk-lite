@@ -11,7 +11,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 interface UserItem {
-  id: string;
+  id: string | number;
   username: string;
   display_name: string;
 }
@@ -21,7 +21,7 @@ interface NotifierSearchFns {
   matchNotifierUser: (user: UserItem | undefined, input: string) => boolean;
   filterNotifierOption: (
     input: string,
-    option: { value?: string } | undefined,
+    option: { value?: string | number } | undefined,
     userIndex: Map<string, UserItem>,
   ) => boolean;
 }
@@ -30,6 +30,10 @@ const here = dirname(fileURLToPath(import.meta.url));
 const formPath = resolve(
   here,
   '../src/app/log/(pages)/event/strategy/detail/notificationForm.tsx',
+);
+const searchPath = resolve(
+  here,
+  '../src/app/log/(pages)/event/strategy/detail/notifierSearch.ts',
 );
 
 function makeUsers(n: number): UserItem[] {
@@ -113,7 +117,12 @@ async function main(): Promise<void> {
     username: 'bob.li',
     display_name: '李四',
   };
-  const namedIndex = fns.buildNotifierUserIndex([alice, bob]);
+  const numericAlice: UserItem = {
+    id: 17,
+    username: 'alice.numeric',
+    display_name: 'Numeric Alice',
+  };
+  const namedIndex = fns.buildNotifierUserIndex([alice, bob, numericAlice]);
 
   assert.equal(
     fns.filterNotifierOption('alice dis', { value: 'alice-id' }, namedIndex),
@@ -145,8 +154,39 @@ async function main(): Promise<void> {
     false,
     '未知 id 不应命中',
   );
+  assert.equal(
+    fns.filterNotifierOption('numeric alice', { value: 17 }, namedIndex),
+    true,
+    '数字主键 17 应按 display_name 命中',
+  );
+  assert.equal(
+    fns.filterNotifierOption('numeric alice', { value: '17' }, namedIndex),
+    true,
+    '字符串 "17" 应按 display_name 命中数字主键用户',
+  );
+  assert.equal(
+    fns.filterNotifierOption('ALICE.NUMERIC', { value: 17 }, namedIndex),
+    true,
+    '数字主键 17 应按 username 大小写不敏感命中',
+  );
+  assert.equal(
+    fns.filterNotifierOption('alice.numeric', { value: '17' }, namedIndex),
+    true,
+    '字符串 "17" 应按 username 命中数字主键用户',
+  );
 
   const source = readFileSync(formPath, 'utf8');
+  const searchSource = readFileSync(searchPath, 'utf8');
+  assert.match(
+    searchSource,
+    /String\(user\.id\)/,
+    'buildNotifierUserIndex 必须用 String(user.id) 规范化索引键',
+  );
+  assert.doesNotMatch(
+    searchSource,
+    /\[user\.id,\s*user\]/,
+    '不得把未规范化的 user.id 当 Map 键',
+  );
   assert.doesNotMatch(
     source,
     /userList\.find/,
