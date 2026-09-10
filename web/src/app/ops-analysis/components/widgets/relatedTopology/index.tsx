@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Empty, Spin } from 'antd';
+import { Spin } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { useTranslation } from '@/utils/i18n';
 import { HandledRequestError } from '@/utils/request';
 import { useRelatedTopologyApi } from '@/app/ops-analysis/api/relatedTopology';
@@ -79,7 +80,7 @@ const RelatedTopology = ({ instUuid }: RelatedTopologyProps) => {
         className="flex h-full min-h-[280px] items-center justify-center"
         style={RELATED_TOPOLOGY_CANVAS_STYLE}
       >
-        <Empty description={t('dashboard.relatedTopologyEmpty')} />
+        <CompactEmptyState description={t('dashboard.relatedTopologyEmpty')} />
       </div>
     );
   }

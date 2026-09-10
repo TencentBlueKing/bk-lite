@@ -1,7 +1,9 @@
 'use client';
 
+import '../register-dashboard-pilot';
 import { useEffect, useState } from 'react';
-import { Empty, Spin } from 'antd';
+import { Spin } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { useParams } from 'next/navigation';
 import type { ComponentType } from 'react';
 import { loadDashboardComponent } from '@/app/monitor/dashboards/component-loaders';
@@ -52,11 +54,16 @@ export default function ProfessionalDashboardPage() {
 
   if (loadState === 'loading') {
     return (
-      <div className="flex justify-center items-center" style={{ minHeight: 240 }}>
+      <div className="flex min-h-[240px] items-center justify-center">
         <Spin />
       </div>
     );
   }
 
-  return <Empty description="未找到对应的专业仪表盘" style={{ margin: '120px auto' }} />;
+  return (
+    <CompactEmptyState
+      description="未找到对应的专业仪表盘"
+      className="mx-auto my-[120px]"
+    />
+  );
 }
