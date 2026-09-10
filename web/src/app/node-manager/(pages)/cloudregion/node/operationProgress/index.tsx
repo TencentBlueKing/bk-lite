@@ -40,6 +40,7 @@ import {
   normalizeControllerInstallRows,
   normalizeInstallerStatus
 } from '@/app/node-manager/utils/installerProgress';
+import { createOperationProgressRequestGuard } from './operationProgressRequestGuard';
 
 // 操作类型
 export type OperationType =
@@ -141,6 +142,9 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
   const retryModalRef = useRef<ModalRef>(null);
   const operationGuidanceRef = useRef<ModalRef>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const autoAdvanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestGuardRef = useRef(createOperationProgressRequestGuard());
+  const requestGenerationRef = useRef(0);
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const [tableData, setTableData] = useState<ControllerInstallProgressRow[]>([]);
   // 使用 ref 保存 currentViewingNode 的最新值，避免闭包问题
@@ -599,10 +603,12 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
 
   useEffect(() => {
     if (taskIds && !isLoading) {
-      getNodeList('refresh');
-      schedulePolling();
+      requestGenerationRef.current = requestGuardRef.current.begin();
+      const generation = requestGenerationRef.current;
+      getNodeList('refresh', generation);
+      schedulePolling(undefined, generation);
       return () => {
-        clearTimer();
+        stopProgressRequests();
       };
     }
   }, [taskIds, isLoading, isInstallController, installMethod]);
@@ -610,6 +616,19 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
   const clearTimer = () => {
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
+  };
+
+  const clearAutoAdvanceTimer = () => {
+    if (autoAdvanceTimerRef.current) {
+      clearTimeout(autoAdvanceTimerRef.current);
+      autoAdvanceTimerRef.current = null;
+    }
+  };
+
+  const stopProgressRequests = () => {
+    requestGuardRef.current.invalidate();
+    clearTimer();
+    clearAutoAdvanceTimer();
   };
 
   const getPollingInterval = (rows?: ControllerInstallProgressRow[]) => {
@@ -642,17 +661,29 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
       : CONTROLLER_INSTALL_CONNECTIVITY_POLL_INTERVAL;
   };
 
-  const schedulePolling = (rows?: ControllerInstallProgressRow[]) => {
+  const schedulePolling = (
+    rows?: ControllerInstallProgressRow[],
+    generation?: number
+  ) => {
+    const currentGeneration = generation ?? requestGenerationRef.current;
     clearTimer();
+    if (!requestGuardRef.current.shouldContinue(currentGeneration)) {
+      return;
+    }
     timerRef.current = setInterval(() => {
-      getNodeList('timer');
+      if (!requestGuardRef.current.shouldContinue(currentGeneration)) {
+        return;
+      }
+      getNodeList('timer', currentGeneration);
     }, getPollingInterval(rows));
   };
 
   // 重新启动轮询（重试成功后调用）
   const restartPolling = () => {
-    getNodeList('refresh');
-    schedulePolling();
+    requestGenerationRef.current = requestGuardRef.current.begin();
+    const generation = requestGenerationRef.current;
+    getNodeList('refresh', generation);
+    schedulePolling(undefined, generation);
   };
 
   const checkDetail = (type: string, row: ControllerInstallProgressRow) => {
@@ -675,7 +706,11 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
     });
   };
 
-  const getNodeList = async (refreshType: string) => {
+  const getNodeList = async (refreshType: string, generation?: number) => {
+    const currentGeneration = generation ?? requestGenerationRef.current;
+    if (!requestGuardRef.current.shouldContinue(currentGeneration)) {
+      return;
+    }
     try {
       setPageLoading(refreshType !== 'timer');
       let data: ControllerInstallProgressRow[] = [];
@@ -693,12 +728,18 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
         if (installMethod === 'remoteInstall' || isUninstallController) {
           // 远程安装或卸载控制器，都使用 getControllerNodes 接口
           data = await getControllerNodes({ taskId: taskIds });
+          if (!requestGuardRef.current.shouldContinue(currentGeneration)) {
+            return;
+          }
         } else {
           // 手动安装控制器
           if (manualTaskList.length > 0) {
             const statusData = await getManualInstallStatus({
               node_ids: taskIds
             });
+            if (!requestGuardRef.current.shouldContinue(currentGeneration)) {
+              return;
+            }
             data = manualTaskList.map((item: TableDataItem) => {
               const statusInfo = statusData.find(
                 (status: ControllerManualInstallStatusItem) =>
@@ -717,6 +758,9 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
         if (operationType === 'installCollector') {
           // 安装采集器使用原接口
           const response = await getCollectorNodes({ taskId: taskIds });
+          if (!requestGuardRef.current.shouldContinue(currentGeneration)) {
+            return;
+          }
           data = response?.items || [];
           taskStatus = response?.status || 'running';
           taskSummary = response?.summary || null;
@@ -725,10 +769,17 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
           const response = await getCollectorOperationNodes({
             taskId: taskIds
           });
+          if (!requestGuardRef.current.shouldContinue(currentGeneration)) {
+            return;
+          }
           data = response?.items || [];
           taskStatus = response?.status || 'running';
           taskSummary = response?.summary || null;
         }
+      }
+
+      if (!requestGuardRef.current.shouldContinue(currentGeneration)) {
+        return;
       }
 
       const newTableData = normalizeControllerInstallRows(
@@ -742,7 +793,7 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
       setTableData(newTableData);
 
       if (refreshType === 'timer' || refreshType === 'refresh') {
-        schedulePolling(newTableData);
+        schedulePolling(newTableData, currentGeneration);
       }
 
       // 如果弹窗正在查看某个节点的日志,实时更新该节点的日志（仅远程安装模式）
@@ -781,9 +832,16 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
           ['success', 'installed'].includes(item.status || '')
         );
         if (allSuccess && newTableData.length > 0) {
+          if (!requestGuardRef.current.shouldContinue(currentGeneration)) {
+            return;
+          }
           clearTimer();
-          // 延迟5秒再跳转
-          setTimeout(() => {
+          clearAutoAdvanceTimer();
+          autoAdvanceTimerRef.current = setTimeout(() => {
+            autoAdvanceTimerRef.current = null;
+            if (!requestGuardRef.current.shouldContinue(currentGeneration)) {
+              return;
+            }
             onNext();
           }, AUTO_ADVANCE_DELAY);
         }
@@ -798,15 +856,24 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
             taskSummary.total === taskSummary.success &&
             taskSummary.total > 0
           ) {
-            // 延迟5秒再跳转
-            setTimeout(() => {
+            if (!requestGuardRef.current.shouldContinue(currentGeneration)) {
+              return;
+            }
+            clearAutoAdvanceTimer();
+            autoAdvanceTimerRef.current = setTimeout(() => {
+              autoAdvanceTimerRef.current = null;
+              if (!requestGuardRef.current.shouldContinue(currentGeneration)) {
+                return;
+              }
               onNext();
             }, AUTO_ADVANCE_DELAY);
           }
         }
       }
     } finally {
-      setPageLoading(false);
+      if (requestGuardRef.current.shouldContinue(currentGeneration)) {
+        setPageLoading(false);
+      }
     }
   };
 
@@ -866,7 +933,7 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
 
     // 如果没有进行中的节点，直接返回，不需要二次确认
     if (installingCount === 0) {
-      clearTimer();
+      stopProgressRequests();
       cancel();
       return;
     }
@@ -887,7 +954,7 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
       okText: t('node-manager.cloudregion.node.confirmFinish'),
       cancelText: t('common.cancel'),
       onOk: () => {
-        clearTimer();
+        stopProgressRequests();
         cancel();
       }
     });
