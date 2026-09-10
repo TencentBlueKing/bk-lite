@@ -27,45 +27,6 @@ def _directory(key, name, page_type, description, parent_key=None, *, default=Tr
     }
 
 
-_OKF_PAGE_TYPES = ["entity", "concept", "source", "query", "comparison", "synthesis"]
-_OKF_WIKI_KEY = "schema_wiki"
-
-
-def _okf_bundle_structure():
-    wiki = {
-        "key": _OKF_WIKI_KEY,
-        "name": "wiki",
-        "description": "Hermes/OKF 压缩包第一层目录；导入按该名称对齐",
-        "parent_key": None,
-        "order": 10,
-        "rules": {
-            "allowed_page_types": list(_OKF_PAGE_TYPES),
-            "default_for_page_types": [],
-        },
-    }
-    children = [
-        _directory("schema_architecture", "architecture", "concept", "运行架构与数据流", _OKF_WIKI_KEY),
-        _directory("schema_operations", "operations", "concept", "部署、升级、容量、排障与验收", _OKF_WIKI_KEY, default=False),
-        _directory("schema_product", "product", "entity", "产品矩阵、文档与交付导航", _OKF_WIKI_KEY),
-        _directory("schema_security", "security", "concept", "安全修复与 playbook", _OKF_WIKI_KEY, default=False),
-        _directory("schema_incidents", "incidents", "concept", "故障复盘", _OKF_WIKI_KEY, default=False),
-        _directory("schema_market", "market", "comparison", "竞争对照", _OKF_WIKI_KEY),
-        _directory("schema_sources", "sources", "source", "来源摘录与 ingest 说明", _OKF_WIKI_KEY),
-    ]
-    directories = [wiki, *children]
-    return {
-        "format_version": 1,
-        "page_types": list(_OKF_PAGE_TYPES),
-        "directories": [
-            {
-                **directory,
-                "order": (index + 1) * 10,
-            }
-            for index, directory in enumerate(directories)
-        ],
-    }
-
-
 def _structure(*directories):
     return {
         "format_version": 1,
@@ -253,46 +214,6 @@ _TEMPLATES = {
                 "跨主题或多来源证据支持的综合结论和适用边界",
             ),
         ),
-    },
-    "okf_bundle": {
-        "name": "OKF 知识包",
-        "description": "对齐 Hermes/OKF zip：根目录 wiki，子目录 architecture / operations / product 等。",
-        "purpose_md": _PURPOSE_SKELETON,
-        "schema_md": """## Schema
-
-### 目录（对齐 OKF / Hermes zip）
-压缩包去掉仓库根后第一层为 `wiki/`。导入只匹配这一层。
-
-- `wiki/architecture`：运行架构与数据流（`concept`）
-- `wiki/operations`：部署、升级、容量、排障、验收（`concept`）
-- `wiki/product`：产品矩阵、文档与交付导航（`entity`）
-- `wiki/security`：安全修复与 playbook（`concept`）
-- `wiki/incidents`：故障复盘（`concept`）
-- `wiki/market`：竞争对照（`comparison`）
-- `wiki/sources`：来源摘录（`source`）
-
-`index.md` / `log.md` 为 OKF 保留文件，导入跳过。
-
-### 知识类型
-- 实体 (`entity`: 定义/核心能力/依赖/体系角色)
-- 概念 (`concept`: 定义/机制/架构或关系/边界)
-- 来源 (`source`: 一份资料一个摘要/覆盖范围/信息缺口)
-- 待研究问题 (`query`: 资料明确提出但尚未解决的问题)
-- 对比 (`comparison`: 有明确证据和共同维度的对象对比)
-- 综合 (`synthesis`: 多主题或多来源证据支持的综合结论)
-
-### 命名
-- 标题用名词短语。
-- 结构目录名与 zip 文件夹名一致。
-
-### 关系
-- 页面之间用 `[[页面标题]]` 建立关联。
-- Index 与 Overview 由系统按 Generation 派生，不作为普通知识页面生成。
-
-### 冲突处理
-- 冲突信息保留多观点并进入检查。
-""",
-        "structure": _okf_bundle_structure(),
     },
 }
 
