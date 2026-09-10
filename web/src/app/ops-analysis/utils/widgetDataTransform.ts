@@ -22,6 +22,10 @@ import {
   getDateRangeTimezone,
   resolveDateRange,
 } from '@/app/ops-analysis/utils/dateRange';
+import {
+  isOrganizationControl,
+  ORGANIZATION_PARAM_RUNTIME_KEY,
+} from '@/app/ops-analysis/utils/paramInputConfigUtils';
 
 export type BindableParamType = BindableDataSourceParamType;
 export type UnifiedFilterInputMode = 'input' | 'select' | 'radio' | 'organization';
@@ -59,13 +63,20 @@ export const sanitizeUnifiedFilterDefinition = <T extends UnifiedFilterDefinitio
     return next;
   }
 
+  if (isOrganizationControl(definition)) {
+    const next = { ...definition };
+    delete next.inputMode;
+    delete next.options;
+    return {
+      ...next,
+      inputConfig: { control: 'organization' },
+    };
+  }
+
   const inputMode = normalizeUnifiedFilterInputMode(definition.inputMode);
   if (!isOptionInputMode(inputMode)) {
     const next = { ...definition };
     delete next.options;
-    if (inputMode === 'organization') {
-      delete next.inputConfig;
-    }
     return { ...next, inputMode };
   }
 
@@ -83,9 +94,7 @@ export const sanitizeUnifiedFilterDefinition = <T extends UnifiedFilterDefinitio
 
   const multiple =
     definition.type === 'string'
-    && definition.inputConfig
-    && definition.inputConfig.control !== 'input'
-    && Boolean(definition.inputConfig.multiple);
+    && isMultipleSelectInputConfig(definition.inputConfig);
 
   const defaultValue = sanitizeFilterDefaultValue(
     definition.defaultValue,
@@ -497,6 +506,7 @@ export const buildWidgetRequestParams = ({
 
   const requestParams = processDataSourceParams({
     sourceParams,
+    definitionParams: Array.isArray(dataSource?.params) ? dataSource.params : undefined,
     userParams,
     unifiedFilterValues,
     filterBindings,
@@ -538,6 +548,7 @@ export const buildWidgetRequestSignatureParams = ({
 
   const requestParams = processDataSourceParams({
     sourceParams,
+    definitionParams: Array.isArray(dataSource?.params) ? dataSource.params : undefined,
     userParams,
     unifiedFilterValues,
     filterBindings,
@@ -551,6 +562,7 @@ export const buildWidgetRequestSignatureParams = ({
 
 export const processDataSourceParams = ({
   sourceParams,
+  definitionParams,
   userParams = {},
   unifiedFilterValues,
   filterBindings,
@@ -559,6 +571,7 @@ export const processDataSourceParams = ({
   timeRangeFormatter = formatTimeRange,
 }: {
   sourceParams: any;
+  definitionParams?: ParamItem[];
   userParams?: Record<string, any>;
   unifiedFilterValues?: Record<string, FilterValue>;
   filterBindings?: FilterBindings;
@@ -576,7 +589,11 @@ export const processDataSourceParams = ({
   }
 
   const processedParams: Record<string, unknown> = { ...userParams };
+  delete processedParams[ORGANIZATION_PARAM_RUNTIME_KEY];
   const migratedSourceParams = migrateParamItemsFromStringList(sourceParams).params;
+  const definitionByName = new Map(
+    migrateParamItemsFromStringList(definitionParams).params.map((param) => [param.name, param]),
+  );
   const setProcessedParam = (name: string, type: string, value: unknown) => {
     const formatted = formatDataSourceParamValue(
       type,
@@ -688,6 +705,25 @@ export const processDataSourceParams = ({
     setProcessedParam(name, type, value);
   };
 
+  const organizationNames: string[] = [];
+  const seenOrgNames = new Set<string>();
+  const hitsOrganizationSemantic = (
+    param: ParamItem,
+    boundDefinition?: UnifiedFilterDefinition,
+    hasBinding = false,
+    bindingDisabled = false,
+  ): boolean => {
+    if (bindingDisabled) return false;
+    if (hasBinding && isOrganizationControl(boundDefinition)) return true;
+    if (isOrganizationControl(param)) return true;
+    return isOrganizationControl(definitionByName.get(param.name));
+  };
+  const noteOrganizationParam = (name: string, isOrg: boolean) => {
+    if (!name || !isOrg || seenOrgNames.has(name)) return;
+    seenOrgNames.add(name);
+    organizationNames.push(name);
+  };
+
   migratedSourceParams.forEach((param: any) => {
     const { name, filterType, value: defaultValue, type } = param;
 
@@ -695,6 +731,7 @@ export const processDataSourceParams = ({
     switch (filterType) {
       case 'fixed':
         // 固定参数：直接使用配置值（形状仍按参数自身 multiple）
+        noteOrganizationParam(name, hitsOrganizationSemantic(param));
         setShapedParam(
           name,
           type,
@@ -712,6 +749,10 @@ export const processDataSourceParams = ({
           definition,
         } = getUnifiedFilterValue(name, type);
 
+        noteOrganizationParam(
+          name,
+          hitsOrganizationSemantic(param, definition, hasBinding, bindingDisabled),
+        );
         if (hasBinding) {
           if (bindingDisabled) {
             // 绑定的统一筛选被禁用：不传该参数
@@ -738,6 +779,7 @@ export const processDataSourceParams = ({
       }
 
       case 'params':
+        noteOrganizationParam(name, hitsOrganizationSemantic(param));
         // 私有参数：使用用户传入的参数值，按组件参数/覆盖的 multiple
         if (Object.prototype.hasOwnProperty.call(processedParams, name)) {
           setShapedParam(
@@ -758,6 +800,7 @@ export const processDataSourceParams = ({
 
       default:
         // 默认：使用配置的默认值
+        noteOrganizationParam(name, hitsOrganizationSemantic(param));
         if (defaultValue !== undefined) {
           setShapedParam(
             name,
@@ -768,6 +811,13 @@ export const processDataSourceParams = ({
         }
     }
   });
+
+  if (organizationNames.length > 1) {
+    throw new Error('同一请求不能声明多个组织控件参数');
+  }
+  if (organizationNames.length === 1) {
+    processedParams[ORGANIZATION_PARAM_RUNTIME_KEY] = organizationNames[0];
+  }
 
   return Object.fromEntries(
     Object.entries(processedParams).filter(

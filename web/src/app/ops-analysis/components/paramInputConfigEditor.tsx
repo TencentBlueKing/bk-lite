@@ -139,6 +139,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
   const [picker, setPicker] = useState<'dropdown' | 'table'>('dropdown');
   const [componentSwitch, setComponentSwitch] = useState(false);
   const [multiple, setMultiple] = useState(false);
+  const isOptionsControl = control === 'select' || control === 'radio';
   const [sourceType, setSourceType] = useState<'static' | 'dynamic'>('static');
   const [staticRows, setStaticRows] = useState<StaticRow[]>([createRow()]);
   const [dataSourceList, setDataSourceList] = useState<DatasourceItem[]>([]);
@@ -176,12 +177,14 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
     setControl(value.control);
     setPicker(value.control === 'select' && value.picker === 'table' ? 'table' : 'dropdown');
     setComponentSwitch(
-      value.control === 'input' ? false : Boolean(value.componentSwitch),
+      value.control === 'select' || value.control === 'radio'
+        ? Boolean(value.componentSwitch)
+        : false,
     );
     setMultiple(
       value.control === 'select' ? Boolean(value.multiple) : false,
     );
-    if (value.control === 'input') {
+    if (value.control === 'input' || value.control === 'organization') {
       setSourceType('static');
       setStaticRows([createRow()]);
       setDynamicSourceId(undefined);
@@ -268,7 +271,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
   );
 
   useEffect(() => {
-    if (!open || sourceType !== 'dynamic' || control === 'input') return;
+    if (!open || sourceType !== 'dynamic' || !isOptionsControl) return;
     setDsLoading(true);
     getDataSourceList({ page_size: -1 })
       .then((response) => {
@@ -285,10 +288,12 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
     if (
       !open ||
       control === 'input' ||
+      control === 'organization' ||
       sourceType !== 'dynamic' ||
       dynamicSourceId ||
       !value ||
       value.control === 'input' ||
+      value.control === 'organization' ||
       value.optionsSource.type !== 'dynamic' ||
       !value.optionsSource.sourceRef ||
       dataSourceList.length === 0
@@ -329,7 +334,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
   }, [getSourceDataByApiId, t]);
 
   useEffect(() => {
-    if (!open || control === 'input' || sourceType !== 'dynamic' || !dynamicSourceId) {
+    if (!open || !isOptionsControl || sourceType !== 'dynamic' || !dynamicSourceId) {
       return;
     }
 
@@ -381,7 +386,9 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
     Extract<InputControlConfig, { control: 'select' | 'radio' }>,
     'multiple' | 'maxCount' | 'picker'
   > => {
-    const current = value && value.control !== 'input' ? value : undefined;
+    const current = value && (value.control === 'select' || value.control === 'radio')
+      ? value
+      : undefined;
     return {
       ...(control === 'select' && multiple
         ? { multiple: true as const, maxCount: current?.maxCount }
@@ -393,6 +400,10 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
   const handleConfirm = async () => {
     if (control === 'input') {
       onConfirm({ control: 'input' });
+      return;
+    }
+    if (control === 'organization') {
+      onConfirm({ control: 'organization' });
       return;
     }
 
@@ -490,7 +501,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
               if (nextControl !== 'select') {
                 setPicker('dropdown');
               }
-              if (nextControl === 'input') {
+              if (nextControl === 'input' || nextControl === 'organization') {
                 setComponentSwitch(false);
                 setDynamicSourceId(undefined);
                 setDynamicValueField(undefined);
@@ -503,6 +514,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
               { label: t('paramInput.control.input'), value: 'input' },
               { label: t('paramInput.control.select'), value: 'select' },
               { label: t('paramInput.control.radio'), value: 'radio' },
+              { label: t('paramInput.control.organization'), value: 'organization' },
             ]}
           />
         </Form.Item>
@@ -544,7 +556,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
           </Form.Item>
         )}
 
-        {control !== 'input' && (
+        {isOptionsControl && (
           <>
             {componentSwitchEnabled && (
               <Form.Item

@@ -9,7 +9,8 @@ import DateRangeSelector from '@/app/ops-analysis/components/dateRangeSelector';
 import GroupTreeSelect from '@/components/group-tree-select';
 import { normalizeUnifiedFilterInputMode } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { ParamInputControl } from '@/app/ops-analysis/components/paramInputControl';
-import { normalizeInputConfig } from '@/app/ops-analysis/utils/paramInputConfigUtils';
+import { normalizeInputConfig, toSingleOrganizationValue } from '@/app/ops-analysis/utils/paramInputConfigUtils';
+import { isMultipleSelectInputConfig } from '@/app/ops-analysis/utils/stringParamMultipleMigrate';
 import type {
   UnifiedFilterDefinition,
   FilterValue,
@@ -18,7 +19,7 @@ import type {
 import type { InputControlConfig } from '@/app/ops-analysis/types/dataSource';
 import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
 import { useTranslation } from '@/utils/i18n';
-import { buildResetFilterValues } from '@/app/ops-analysis/utils/unifiedFilterState';
+import { buildResetFilterValues, isOrganizationFilterDefinition } from '@/app/ops-analysis/utils/unifiedFilterState';
 
 interface UnifiedFilterBarProps {
   definitions: UnifiedFilterDefinition[];
@@ -31,12 +32,6 @@ interface UnifiedFilterBarProps {
   appearance?: 'default' | 'embedded';
   popupZIndex?: number;
 }
-
-const toSingleOrganizationValue = (value: FilterValue): number | undefined => {
-  if (typeof value !== 'string' && typeof value !== 'number') return undefined;
-  const normalized = Number(value);
-  return Number.isNaN(normalized) ? undefined : normalized;
-};
 
 const toFilterValue = (value: number | number[] | undefined): FilterValue => {
   if (Array.isArray(value)) return value[0] ?? null;
@@ -154,6 +149,9 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
     const normalized = normalizeInputConfig(definition);
     const inputMode = normalizeUnifiedFilterInputMode(definition.inputMode);
     if (normalized) {
+      if (normalized.control === 'organization') {
+        return normalized;
+      }
       if (inputMode === 'select' || inputMode === 'radio') {
         if (normalized.control === 'input') {
           return {
@@ -225,7 +223,7 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
 
       case 'string':
       default: {
-        if (normalizeUnifiedFilterInputMode(definition.inputMode) === 'organization') {
+        if (isOrganizationFilterDefinition(definition)) {
           return (
             <GroupTreeSelect
               value={toSingleOrganizationValue(value)}
@@ -240,9 +238,7 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
         }
 
         const inputConfig = getFilterInputConfig(definition);
-        const isMultiple = Boolean(
-          inputConfig && inputConfig.control !== 'input' && inputConfig.multiple,
-        );
+        const isMultiple = isMultipleSelectInputConfig(inputConfig);
 
         const fallbackInput = (
           <Input

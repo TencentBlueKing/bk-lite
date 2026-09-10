@@ -32,6 +32,24 @@ describe('applySelectedOrganizationToFilterValues', () => {
     expect(isOrganizationFilterDefinition(TIME_FILTER)).toBe(false);
   });
 
+  test('改名后的组织控件仍识别，不要求 key 为 organization', () => {
+    expect(isOrganizationFilterDefinition({
+      ...ORGANIZATION_FILTER,
+      id: 'org_id__string',
+      key: 'org_id',
+      inputMode: undefined,
+      inputConfig: { control: 'organization' },
+    })).toBe(true);
+  });
+
+  test('仅参数名为 organization 但控件不是组织时不识别', () => {
+    expect(isOrganizationFilterDefinition({
+      ...ORGANIZATION_FILTER,
+      inputMode: 'input',
+      inputConfig: { control: 'input' },
+    })).toBe(false);
+  });
+
   test('用当前工作组织填入空的组织筛选，不改时间筛选', () => {
     const next = fillMissingOrganizationFilterValues(
       [ORGANIZATION_FILTER, TIME_FILTER],

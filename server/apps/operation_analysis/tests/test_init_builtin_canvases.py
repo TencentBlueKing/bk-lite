@@ -1131,7 +1131,8 @@ def test_init_builtin_canvases_creates_weopsx_platform_usage_dashboard():
     assert filter_keys == {"organization", "time"}
     org_filter = next(item for item in dashboard.filters if item["key"] == "organization")
     assert org_filter["type"] == "string"
-    assert org_filter["inputMode"] == "organization"
+    assert (org_filter.get("inputConfig") or {}).get("control") == "organization"
+    assert "inputMode" not in org_filter
     assert org_filter.get("defaultValue") in (None, "", {})
     time_filter = next(item for item in dashboard.filters if item["key"] == "time")
     assert time_filter["defaultValue"]["selectValue"] == 10080

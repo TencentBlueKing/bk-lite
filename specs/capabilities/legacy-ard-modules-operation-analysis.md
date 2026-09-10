@@ -175,11 +175,15 @@
 
 ## 2026-09-07 WeOpsX 平台使用仪表盘
 
-- `[operation_analysis#20260907-002]` 内置工作台盘「WeOpsX 平台使用」经 `init_builtin_canvases` 与 `support-files/weopsx_platform_usage_dashboard.yaml` 落地。画布统一筛选含组织（`inputMode: organization`，默认当前工作组织、不可清空、可在盘内改选有权组织、顶栏切换时跟随）与近 7 天时间窗；全部出数组件绑定组织，库存不绑时间。取数以画布选中组织覆盖 `user_info.team`（须落在用户组织树或当前 cookie 组织，否则 team 置空零值；`common/get_nats_source_data.py`），各模块 NATS 按组织上下文与既有权限过滤，禁止超管旁路。契约见 `specs/changes/weopsx-platform-usage-dashboard/spec.md`。
+- `[operation_analysis#20260907-002]` 内置工作台盘「WeOpsX 平台使用」经 `init_builtin_canvases` 与 `support-files/weopsx_platform_usage_dashboard.yaml` 落地。画布统一筛选含组织（`inputConfig.control: organization`，默认当前工作组织、不可清空、可在盘内改选有权组织、顶栏切换时跟随）与近 7 天时间窗；全部出数组件绑定组织，库存不绑时间。取数以画布选中组织覆盖 `user_info.team`（须落在用户组织树或当前 cookie 组织，否则 team 置空零值；`common/get_nats_source_data.py`），各模块 NATS 按组织上下文与既有权限过滤，禁止超管旁路。组织控件正规化见 `specs/changes/ops-analysis-organization-input-control/spec.md`。契约见 `specs/changes/weopsx-platform-usage-dashboard/spec.md`。
 
 ## 2026-09-08 画布跨目录复制
 
 - `[operation_analysis#20260908-001]` 六类画布支持复制到另一 Directory：侧栏「复制」弹窗选目标目录与 `groups`（须 ⊆ 目录链）；服务端生成语言化后缀名称；副本独立、不继承内置身份；复制路径校验 `current_team` 属于用户 `group_list`。证据：`services/canvas/copy_service.py`、`views/view.py`、`views/network_topology_view.py`、`web/src/app/ops-analysis/components/{sidebar.tsx,copyCanvasModal.tsx}`、`tests/test_canvas_directory_copy.py`。
+
+## 2026-09-09 字符串参数组织控件
+
+- `[operation_analysis#20260909-002]` 字符串参数 `inputConfig.control` 增加 `organization`（不新增 type）。画布筛条/组件参数区可选组织树；新保存只写 `inputConfig`，旧 `inputMode: organization` 只读兼容。取数以运行时 `organization_param` 识别并覆盖 `user_info.team`，无标记回落数据源定义；禁止仅靠参数名 `organization`。内置 WeOpsX / source_api 样板迁成 `inputConfig`。契约见 `specs/changes/ops-analysis-organization-input-control/spec.md`。
 
 ## 2026-09-09 分享页去掉平台壳层
 

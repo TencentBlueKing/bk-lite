@@ -3,9 +3,9 @@ import type {
   UnifiedFilterDefinition,
 } from '@/app/ops-analysis/types/dashBoard';
 import { normalizeTimeRangeFilterValue } from '@/app/ops-analysis/utils/filterValue';
-import { normalizeUnifiedFilterInputMode } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { validateDateRangeValue } from '@/app/ops-analysis/utils/dateRange';
 import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
+import { isOrganizationControl } from '@/app/ops-analysis/utils/paramInputConfigUtils';
 import {
   coerceFilterValuesForDefinitions,
   logStringParamMigrationWarnings,
@@ -164,8 +164,7 @@ export const syncFilterValuesWithDefinitions = (
 export const isOrganizationFilterDefinition = (
   definition: UnifiedFilterDefinition,
 ): boolean => definition.type === 'string'
-  && definition.key === 'organization'
-  && normalizeUnifiedFilterInputMode(definition.inputMode) === 'organization';
+  && isOrganizationControl(definition);
 
 export const applySelectedOrganizationToFilterValues = (
   definitions: UnifiedFilterDefinition[],
