@@ -1,4 +1,8 @@
-import type { ExtractorType } from '@/app/log/types/extractor';
+import type {
+  ExtractorCondition,
+  ExtractorConditionItem,
+  ExtractorType
+} from '@/app/log/types/extractor';
 
 export const TYPE_SCOPED_COLLECT_TYPES = ['syslog', 'snmp_trap'] as const;
 export const EXTRACTOR_CREATE_SAMPLE_STORAGE_KEY =
@@ -415,3 +419,105 @@ export const extractorPreviewStatusLabelKey = (
 ) =>
   PREVIEW_STATUS_LABEL_KEYS[status as keyof typeof PREVIEW_STATUS_LABEL_KEYS] ||
   PREVIEW_STATUS_LABEL_KEYS.failed;
+
+export const EXTRACTOR_CONDITION_OPERATORS = [
+  '==',
+  '!=',
+  'contains',
+  '!contains',
+  'startswith',
+  'endswith'
+] as const;
+
+export type ExtractorConditionOperator =
+  (typeof EXTRACTOR_CONDITION_OPERATORS)[number];
+
+const EXTRACTOR_CONDITION_OPERATOR_LABEL_KEYS: Record<
+  ExtractorConditionOperator,
+  string
+> = {
+  '==': 'log.extractor.conditionOpEq',
+  '!=': 'log.extractor.conditionOpNe',
+  contains: 'log.extractor.conditionOpContains',
+  '!contains': 'log.extractor.conditionOpNotContains',
+  startswith: 'log.extractor.conditionOpStartsWith',
+  endswith: 'log.extractor.conditionOpEndsWith'
+};
+
+export const isExtractorConditionOperator = (
+  value: unknown
+): value is ExtractorConditionOperator =>
+  EXTRACTOR_CONDITION_OPERATORS.includes(value as ExtractorConditionOperator);
+
+export const extractorConditionOperatorLabelKey = (
+  op: ExtractorConditionItem['op'] | ExtractorConditionOperator
+) =>
+  EXTRACTOR_CONDITION_OPERATOR_LABEL_KEYS[op as ExtractorConditionOperator] ||
+  (op === 'exists'
+    ? 'log.extractor.conditionOpExists'
+    : op === '!exists'
+      ? 'log.extractor.conditionOpNotExists'
+      : 'log.extractor.condition');
+
+export const extractorConditionNeedsValue = (op: unknown) =>
+  op !== 'exists' && op !== '!exists';
+
+export const extractorConditionModeLabelKey = (mode: 'AND' | 'OR') =>
+  mode === 'OR'
+    ? 'log.extractor.conditionModeOr'
+    : 'log.extractor.conditionModeAnd';
+
+export const emptyExtractorCondition = (): ExtractorCondition => ({
+  mode: 'AND',
+  conditions: []
+});
+
+export const defaultExtractorConditionItem = (): ExtractorConditionItem => ({
+  field: 'message',
+  op: '==',
+  value: ''
+});
+
+export const normalizeExtractorCondition = (input: {
+  mode?: string | null;
+  conditions?: Array<{
+    field?: string;
+    op?: string;
+    value?: unknown;
+  }> | null;
+}): ExtractorCondition => {
+  const conditions: ExtractorConditionItem[] = [];
+  for (const item of input.conditions || []) {
+    const field = String(item.field || '').trim();
+    const op = item.op;
+    if (!field || !isExtractorConditionOperator(op)) continue;
+    const value = item.value;
+    conditions.push({
+      field,
+      op,
+      value:
+        typeof value === 'string' ||
+        typeof value === 'number' ||
+        typeof value === 'boolean'
+          ? value
+          : value == null
+            ? ''
+            : String(value)
+    });
+  }
+  return {
+    mode: input.mode === 'OR' ? 'OR' : 'AND',
+    conditions
+  };
+};
+
+export const getExtractorConditionSummary = (
+  condition?: ExtractorCondition | null
+): { mode: 'AND' | 'OR'; items: ExtractorConditionItem[] } | null => {
+  const items = condition?.conditions || [];
+  if (!items.length) return null;
+  return {
+    mode: condition?.mode === 'OR' ? 'OR' : 'AND',
+    items
+  };
+};

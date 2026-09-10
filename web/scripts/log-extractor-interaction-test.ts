@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
+  EXTRACTOR_CONDITION_OPERATORS,
   buildInstanceExtractorPath,
   buildTypeExtractorPath,
+  defaultExtractorConditionItem,
   diffExtractorPreviewFields,
+  extractorConditionNeedsValue,
+  extractorConditionOperatorLabelKey,
   extractorCreateHandoffKey,
   extractorCreateSampleKey,
   extractorPreviewStatusLabelKey,
@@ -12,7 +16,9 @@ import {
   extractorUsesSingleTargetField,
   flattenExtractorPaths,
   formatExtractorPreviewValue,
+  getExtractorConditionSummary,
   moveExtractorItem,
+  normalizeExtractorCondition,
   normalizeExtractorSamples,
   parseExtractorCreateHandoff,
   reorderExtractorItem,
@@ -228,15 +234,103 @@ assert.match(
 assert.ok(zhLocale.log.extractor.pathSyntaxHint, '中文应提供属性路径语法说明');
 assert.ok(enLocale.log.extractor.pathSyntaxHint, '英文应提供属性路径语法说明');
 
-assert.doesNotMatch(
+assert.deepEqual(
+  [...EXTRACTOR_CONDITION_OPERATORS],
+  ['==', '!=', 'contains', '!contains', 'startswith', 'endswith'],
+  '条件编辑器只暴露等于、包含和首尾匹配，不含存在性和正则'
+);
+assert.equal(
+  EXTRACTOR_CONDITION_OPERATORS.includes('exists' as never),
+  false,
+  '条件编辑器不能提供 exists'
+);
+assert.equal(
+  EXTRACTOR_CONDITION_OPERATORS.includes('!exists' as never),
+  false,
+  '条件编辑器不能提供 !exists'
+);
+assert.equal(
+  EXTRACTOR_CONDITION_OPERATORS.includes('match' as never),
+  false,
+  '条件操作符不能包含正则 match'
+);
+assert.equal(extractorConditionNeedsValue('startswith'), true);
+assert.equal(extractorConditionNeedsValue('endswith'), true);
+for (const op of EXTRACTOR_CONDITION_OPERATORS) {
+  assert.equal(
+    extractorConditionNeedsValue(op),
+    true,
+    `${op} 必须填写比较值`
+  );
+}
+assert.deepEqual(
+  defaultExtractorConditionItem(),
+  { field: 'message', op: '==', value: '' },
+  '新增条件行默认匹配 message 等于'
+);
+assert.deepEqual(
+  normalizeExtractorCondition({
+    mode: 'OR',
+    conditions: [
+      { field: ' message ', op: 'contains', value: '%ASA-' },
+      { field: 'hostname', op: 'exists', value: 'ignored' },
+      { field: 'app', op: 'startswith', value: 'snmp' },
+      { field: 'source', op: 'endswith', value: '.log' },
+      { field: '', op: '==', value: 'drop' },
+      { field: 'message', op: 'match', value: 'x' }
+    ]
+  }),
+  {
+    mode: 'OR',
+    conditions: [
+      { field: 'message', op: 'contains', value: '%ASA-' },
+      { field: 'app', op: 'startswith', value: 'snmp' },
+      { field: 'source', op: 'endswith', value: '.log' }
+    ]
+  },
+  '保存时应丢弃存在性、空字段和正则操作符'
+);
+assert.equal(
+  getExtractorConditionSummary({ mode: 'AND', conditions: [] }),
+  null,
+  '空条件在列表中应显示为无附加条件'
+);
+assert.deepEqual(
+  getExtractorConditionSummary({
+    mode: 'OR',
+    conditions: [{ field: 'hostname', op: 'startswith', value: 'core-' }]
+  }),
+  {
+    mode: 'OR',
+    items: [{ field: 'hostname', op: 'startswith', value: 'core-' }]
+  },
+  '列表摘要应保留条件关系和比较值'
+);
+
+assert.match(
   drawerSource,
   /<Form\.List name="conditions">/,
-  '本期不展示附加条件编辑'
+  '提取器表单应展示附加条件编辑'
+);
+assert.match(
+  drawerSource,
+  /title: t\('log\.extractor\.condition'\)/,
+  '列表应展示附加条件列'
+);
+assert.match(
+  drawerSource,
+  /normalizeExtractorCondition\(\{[\s\S]{0,80}mode: values\.condition_mode/,
+  '保存和预览必须使用表单里正在编辑的条件，而不是旧规则上的空条件'
+);
+assert.match(
+  drawerSource,
+  /name=\{\[field\.name, 'value'\]\}/,
+  '六个可编辑操作符都必须填写比较值'
 );
 assert.doesNotMatch(
   drawerSource,
-  /title: t\('log\.extractor\.condition'\)/,
-  '列表不应再展示附加条件列'
+  /ExtractorConditionValueInput/,
+  '编辑器不再为存在性条件隐藏比较值'
 );
 assert.match(
   drawerSource,
@@ -280,6 +374,14 @@ assert.match(
 );
 assert.equal(extractorTypeLabelKey('copy'), 'log.extractor.typeCopy');
 assert.equal(extractorTypeLabelKey('regex_replace'), 'log.extractor.typeRegexReplace');
+assert.equal(
+  extractorConditionOperatorLabelKey('startswith'),
+  'log.extractor.conditionOpStartsWith'
+);
+assert.equal(
+  extractorConditionOperatorLabelKey('endswith'),
+  'log.extractor.conditionOpEndsWith'
+);
 for (const key of [
   'typeCopy',
   'typeSplit',
@@ -297,7 +399,20 @@ for (const key of [
   'previewStatusSuccess',
   'previewStatusFailed',
   'popupBlocked',
-  'createFromLog'
+  'createFromLog',
+  'condition',
+  'conditionHint',
+  'conditionValidate',
+  'conditionModeAnd',
+  'conditionModeOr',
+  'conditionOpEq',
+  'conditionOpNe',
+  'conditionOpContains',
+  'conditionOpNotContains',
+  'conditionOpStartsWith',
+  'conditionOpEndsWith',
+  'addCondition',
+  'noCondition'
 ]) {
   assert.ok(zhLocale.log.extractor[key], `中文应提供 ${key}`);
   assert.ok(enLocale.log.extractor[key], `英文应提供 ${key}`);
