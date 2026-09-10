@@ -25,7 +25,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import dayjs from 'dayjs';
 import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/components/jobHostSelectionModalRuntime';
 import { AddTargetHostButton, TargetSourceSelector } from '@/app/job/components/target-selection-controls';
-import { buildScheduledTaskTemplatePayload, restoreScheduledTaskTemplateUi } from '@/app/job/utils/scheduledTaskPayload';
+import { buildScheduledTaskTemplatePayload, resolveScheduledTaskConcurrencyPolicy, restoreScheduledTaskTemplateUi } from '@/app/job/utils/scheduledTaskPayload';
 import { useUserInfoContext } from '@/context/userInfo';
 
 const EditCronTaskContent = () => {
@@ -314,6 +314,11 @@ const EditCronTaskContent = () => {
         os: h.osType?.toLowerCase() as 'linux' | 'windows',
       }));
 
+      if (jobType === 'file') {
+        message.warning(t('job.cronFileDistNotSupported'));
+        return;
+      }
+
       const formData: ScheduledTaskFormData = {
         name: values.name,
         description: values.description,
@@ -328,12 +333,9 @@ const EditCronTaskContent = () => {
         target_list: targetList,
         timeout: values.timeout || 60,
         is_enabled: enableAfterSave,
+        concurrency_policy: resolveScheduledTaskConcurrencyPolicy(values.concurrency_policy),
         team: selectedGroup ? [Number(selectedGroup.id)] : [],
       };
-
-      if (jobType === 'file') {
-        formData.target_path = values.target_path;
-      }
 
       await updateScheduledTask(taskId, formData);
       message.success(t('job.editTaskSuccess'));
@@ -456,8 +458,10 @@ const EditCronTaskContent = () => {
               onChange={(e) => setJobType(e.target.value)}
             >
               <Radio value="script">{t('job.scriptExecution')}</Radio>
-              <Radio value="file">{t('job.fileDistribution')}</Radio>
             </Radio.Group>
+            <p className="text-xs mt-2 m-0 text-[var(--color-text-3)]">
+              {t('job.cronFileDistNotSupported')}
+            </p>
           </Form.Item>
 
           {jobType === 'script' && (
@@ -522,16 +526,6 @@ const EditCronTaskContent = () => {
                   </Select>
                 </Form.Item>
               )}
-            </Form.Item>
-          )}
-
-          {jobType === 'file' && (
-            <Form.Item
-              label={t('job.fileDistTargetPath')}
-              name="target_path"
-              rules={[{ required: true, message: t('job.targetPathRequired') }]}
-            >
-              <Input placeholder={t('job.fileDistTargetPathPlaceholder')} />
             </Form.Item>
           )}
 
@@ -648,7 +642,7 @@ const EditCronTaskContent = () => {
           </Form.Item>
 
           <Form.Item label={t('job.concurrencyStrategy')} name="concurrency_policy">
-            <Select defaultValue="skip">
+            <Select>
               <Select.Option value="skip">{t('job.skipIfRunning')}</Select.Option>
               <Select.Option value="run">{t('job.runAnyway')}</Select.Option>
               <Select.Option value="queue">{t('job.queueWait')}</Select.Option>

@@ -13,11 +13,17 @@ const capabilitySource = readFileSync(
 );
 
 describe('ops-analysis capability', () => {
-  it('registers the related topology widget for authorized hosts', () => {
+  it('registers the related topology widget as a per-widget dynamic import', () => {
     expect(APP_CAPABILITY_LOADERS['ops-analysis']).toBeTypeOf('function');
     expect(capabilitySource).toContain('export const RelatedTopologyWidget');
+    expect(capabilitySource).toMatch(
+      /RelatedTopologyWidget = \(\) =>\s*import\(/,
+    );
     expect(capabilitySource).toContain(
-      "import RelatedTopology from '@/app/ops-analysis/components/widgets/relatedTopology'",
+      "import('@/app/ops-analysis/components/widgets/relatedTopology')",
+    );
+    expect(capabilitySource).not.toMatch(
+      /import RelatedTopology from ['"]@\/app\/ops-analysis\/components\/widgets\/relatedTopology['"]/,
     );
   });
 

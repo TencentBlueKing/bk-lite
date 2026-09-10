@@ -106,6 +106,15 @@ describe('console chrome layout resolve', () => {
     expect(shouldHideConsoleTopNav('/cmdb/assetOverview')).toBe(false);
   });
 
+  it('hides the console top nav on ops-analysis share destinations but not in-product view', () => {
+    expect(shouldHideConsoleTopNav('/ops-analysis/share/abc')).toBe(true);
+    expect(shouldHideConsoleTopNav('/ops-analysis/share/continue')).toBe(true);
+    expect(shouldHideConsoleTopNav('/ops-analysis/share/session/xyz')).toBe(true);
+    expect(shouldHideConsoleTopNav('/ops-analysis/view')).toBe(false);
+    expect(shouldHideConsoleTopNav('/ops-analysis/render/execution/7')).toBe(false);
+    expect(shouldShowAppTopSideNav('app-top', '/ops-analysis/share/abc', opspilotMenus)).toBe(false);
+  });
+
   it('keeps first-layer items flat and leaves children to the original in-page side menu', () => {
     const groups = buildAppTopSideNavGroups(jobMenus, '/job/execution/quick-exec');
     expect(groups.map((group) => group.item.name)).toEqual(['home', 'execution']);

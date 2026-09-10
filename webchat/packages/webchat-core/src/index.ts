@@ -12,6 +12,7 @@ export { SSEStreamParser } from './sseParser';
 export { assembleAguiHistoryText, assembleAguiHistoryParts, isSilentCustomEvent } from './aguiHistoryText';
 export { extractMessageText } from './messageContent';
 export * from './utils';
+export * from './imeKeyboard';
 export * from './platform';
 export {
   CONTEXT_USAGE_EVENT,

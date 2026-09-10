@@ -1372,7 +1372,8 @@
     "control": {
       "input": "输入框",
       "select": "下拉选择",
-      "radio": "单选按钮"
+      "radio": "单选按钮",
+      "organization": "组织"
     },
     "picker": "选择方式",
     "pickerDropdown": "下拉列表",

@@ -6,6 +6,10 @@ import type {
   PluginItem,
   QueryGroup
 } from '@/app/monitor/types/search';
+import {
+  collectMetricIdsByResource,
+  mergeMetricsById
+} from './savedQueryMetricMerge';
 
 interface LoadSavedQueryResourcesArgs {
   queryGroups: QueryGroup[];
@@ -86,41 +90,75 @@ export const loadSavedQueryResources = async ({
         (group) => group.object === objectId
       );
 
+      for (const group of groupsForObject) {
+        const pluginId = resolvePlugin(plugins, group);
+        if (pluginId && !group.plugin) group.plugin = pluginId;
+      }
+
+      const resourceIds = collectMetricIdsByResource(
+        groupsForObject,
+        getResourceKey
+      );
+
       await Promise.all(
-        groupsForObject.map(async (group) => {
-          const pluginId = resolvePlugin(plugins, group);
-          if (pluginId && !group.plugin) group.plugin = pluginId;
-          const resourceKey = getResourceKey(objectId, pluginId);
-          const metricRequestKey = `${resourceKey}|${String(group.metric || '')}`;
-          const metricsPromise = loadedMetricsMap[resourceKey]?.some(
-            (metric) => String(metric.id) === String(group.metric)
-          )
-            ? Promise.resolve(loadedMetricsMap[resourceKey])
-            : getOrCreateRequest(metricRequests, metricRequestKey, () =>
-              loadMetrics(objectId, pluginId, group.metric)
-            );
+        [...resourceIds.entries()].map(async ([resourceKey, resource]) => {
+          const { pluginId, metricIds } = resource;
+          const groupsForResource = groupsForObject.filter(
+            (group) => getResourceKey(objectId, group.plugin) === resourceKey
+          );
           const instancesPromise = loadedInstancesMap[resourceKey]
             ? Promise.resolve(loadedInstancesMap[resourceKey])
             : getOrCreateRequest(instanceRequests, resourceKey, () =>
               loadInstances(objectId, pluginId)
             );
-          const [metrics, instances] = await Promise.all([
-            metricsPromise,
-            instancesPromise
-          ]);
 
-          if (group.legacyMetricName && !group.metric) {
-            const legacyMetric = resolveLegacyMetric(
-              metrics,
-              group.legacyMetricName
+          const cached = loadedMetricsMap[resourceKey] || [];
+          const missingFromCache = metricIds.filter(
+            (id) => !cached.some((metric) => String(metric.id) === String(id))
+          );
+          let metrics = cached;
+          if (!cached.length || missingFromCache.length) {
+            const catalog = cached.length
+              ? cached
+              : await getOrCreateRequest(
+                metricRequests,
+                `${resourceKey}|catalog`,
+                () => loadMetrics(objectId, pluginId)
+              );
+            metrics = mergeMetricsById(metrics, catalog);
+            const stillMissing = metricIds.filter(
+              (id) =>
+                !metrics.some((metric) => String(metric.id) === String(id))
             );
-            if (legacyMetric) {
-              group.metric = legacyMetric.id;
-              group.legacyMetricName = null;
+            const extras = await Promise.all(
+              stillMissing.map((id) =>
+                getOrCreateRequest(
+                  metricRequests,
+                  `${resourceKey}|${String(id)}`,
+                  () => loadMetrics(objectId, pluginId, id)
+                )
+              )
+            );
+            for (const extra of extras) {
+              metrics = mergeMetricsById(metrics, extra);
             }
           }
+
           loadedMetricsMap[resourceKey] = metrics;
-          loadedInstancesMap[resourceKey] = instances;
+          loadedInstancesMap[resourceKey] = await instancesPromise;
+
+          for (const group of groupsForResource) {
+            if (group.legacyMetricName && !group.metric) {
+              const legacyMetric = resolveLegacyMetric(
+                metrics,
+                group.legacyMetricName
+              );
+              if (legacyMetric) {
+                group.metric = legacyMetric.id;
+                group.legacyMetricName = null;
+              }
+            }
+          }
         })
       );
     })

@@ -10,7 +10,7 @@ export function collectSelectedAlertIds(
   const ids: number[] = [];
   const seen = new Set<number>();
   for (const key of keys) {
-    if (typeof key === 'bigint') {
+    if (typeof key !== 'string' && typeof key !== 'number') {
       continue;
     }
     const id = typeof key === 'number' ? key : Number(key);

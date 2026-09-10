@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { RadarChartOutlined } from '@ant-design/icons';
-import { Button, Empty, Tag, Typography } from 'antd';
+import { Button, Tag, Typography } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { formatDateTime, formatLatency, formatNumber, formatRequestRate } from '@/app/apm/components/metric-format';
 import ServiceLanguageIcon from '@/app/apm/components/service-language-icon';
 import type { ApmTopologyEdge, ApmTopologyNode, ApmTopologySampleTrace, ApmTraceSummary } from '@/app/apm/types';
@@ -242,7 +243,10 @@ export default function TopologyInspectPanel({
                 })}
               </ul>
             ) : (
-              <Empty className="!mt-3" image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('apm.topology.noSampleTraces', '当前选择没有样本 Trace')} />
+              <CompactEmptyState
+                className="mt-3"
+                description={t('apm.topology.noSampleTraces', '当前选择没有样本 Trace')}
+              />
             )}
           </section>
         ) : null}
@@ -275,7 +279,11 @@ function OverviewList({ nodes, onSelectNode }: { nodes: ApmTopologyNode[]; onSel
   const { t } = useTranslation();
   const sorted = [...nodes].sort((left, right) => left.service_name.localeCompare(right.service_name));
   if (!sorted.length) {
-    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('apm.topology.empty', '当前范围内没有观测到可用于构建拓扑的调用链。')} />;
+    return (
+      <CompactEmptyState
+        description={t('apm.topology.empty', '当前范围内没有观测到可用于构建拓扑的调用链。')}
+      />
+    );
   }
   return (
     <div className="flex flex-col gap-1.5">

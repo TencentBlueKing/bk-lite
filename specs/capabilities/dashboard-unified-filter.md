@@ -16,6 +16,12 @@
 - **WHEN** 用户在统一筛选配置弹窗中添加一个 key='time_range'、type='timeRange' 的筛选项
 - **THEN** 系统创建筛选项定义并存储到 Dashboard.filters.definitions
 
+#### Scenario: 添加组织筛选
+- **WHEN** 用户在统一筛选配置中为 string 筛选项选择控件「组织」（`inputConfig.control='organization'`）
+- **THEN** 系统存储组织控件配置（不新增 type），绑定 id 仍为 `key__string`，不要求 key 必须为 `organization`
+
+---
+
 #### Scenario: 编辑筛选项显示名称
 - **WHEN** 用户修改筛选项的显示名称
 - **THEN** 系统更新 Dashboard.filters.definitions 中对应筛选项的 name 字段
@@ -167,6 +173,18 @@
 #### Scenario: 筛选栏渲染
 - **WHEN** Dashboard.filters.definitions 中存在 enabled=true 的筛选项
 - **THEN** 仪表盘顶部显示筛选栏，按 order 字段排序渲染各筛选控件
+
+#### Scenario: 组织筛选栏渲染
+- **WHEN** 已启用筛选项的 `inputConfig.control` 为 `organization`（或旧 `inputMode: organization`）
+- **THEN** 筛选栏渲染登录态组织树单选控件，不可清空；不要求 key 为 `organization`
+
+#### Scenario: 分享态组织筛选栏
+- **WHEN** 已启用组织筛选项且画布处于分享会话（仪表盘 / 大屏 / 报表 / 拓扑）
+- **THEN** 筛选栏使用分享者可见组织树（完整 `group_tree`，不裁成 space 子树），缺省选中创建分享时的 `space_id`；不回落到被分享者登录态树；session GET 仅在画布存在 `enabled=true` 的组织控件时下发 `space_id` 与 `group_tree`，且不下发 `permission` / `roles`；无组织筛或组织筛已关闭则响应不含 `group_tree`
+
+#### Scenario: 组织筛选请求改写查询组织
+- **WHEN** 绑定组件取数且本次请求命中组织控件
+- **THEN** 请求携带该参数值与运行时标记 `organization_param=<参数名>`；运营分析取数按该值覆盖 `user_info.team`（须落在可见组织树或当前 cookie 组织，否则 team 置空）
 
 #### Scenario: 空状态不显示
 - **WHEN** Dashboard.filters.definitions 为空或所有筛选项 enabled=false

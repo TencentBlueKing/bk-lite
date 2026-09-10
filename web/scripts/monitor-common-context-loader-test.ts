@@ -32,6 +32,19 @@ assert.equal(
   false
 );
 
+const sampleUnit = {
+  category: 'time',
+  unit_id: 'min',
+  unit_name: '分钟',
+  display_unit: 'min',
+  description: '',
+  is_standalone: false,
+  system: 'time',
+  label: '分钟',
+  value: 'min',
+  unit: 'min',
+};
+
 async function main() {
   clearMonitorCommonDataCache();
   const data = await loadMonitorCommonData({
@@ -46,56 +59,100 @@ async function main() {
   assert.deepEqual(data.units, []);
   assert.deepEqual(data.groupedUnits, []);
 
-  // 同 key 命中会话缓存,不再打 API
+  // 单位失败不得当成成功空结果缓存；再次加载必须重试单位，并保留已成功用户
   let secondUsersCalls = 0;
-  const cached = await loadMonitorCommonData({
+  let secondUnitCalls = 0;
+  const retried = await loadMonitorCommonData({
     cacheKey: 'case-users-ok',
     getAllUsers: async () => {
       secondUsersCalls += 1;
       return [];
     },
-    getUnitList: async () => [],
+    getUnitList: async () => {
+      secondUnitCalls += 1;
+      return [sampleUnit];
+    },
   });
-  assert.equal(secondUsersCalls, 0);
-  assert.deepEqual(cached.users, data.users);
+  assert.equal(secondUsersCalls, 0, '成功用户不得因单位失败而重拉');
+  assert.equal(secondUnitCalls, 1, '单位失败后再次加载必须重试 getUnitList');
+  assert.deepEqual(retried.users, data.users);
+  assert.deepEqual(retried.units, [sampleUnit]);
+
+  clearMonitorCommonDataCache();
+  let emptyUserCalls = 0;
+  let emptyUnitCalls = 0;
+  const emptyFirst = await loadMonitorCommonData({
+    cacheKey: 'case-empty-success',
+    getAllUsers: async () => {
+      emptyUserCalls += 1;
+      return [];
+    },
+    getUnitList: async () => {
+      emptyUnitCalls += 1;
+      return [];
+    },
+  });
+  assert.deepEqual(emptyFirst.users, []);
+  assert.deepEqual(emptyFirst.units, []);
+  assert.equal(emptyUserCalls, 1);
+  assert.equal(emptyUnitCalls, 1);
+
+  const emptyCached = await loadMonitorCommonData({
+    cacheKey: 'case-empty-success',
+    getAllUsers: async () => {
+      emptyUserCalls += 1;
+      return [{ id: '2', username: 'bob', display_name: 'Bob' }];
+    },
+    getUnitList: async () => {
+      emptyUnitCalls += 1;
+      return [sampleUnit];
+    },
+  });
+  assert.equal(emptyUserCalls, 1, '成功空用户列表必须缓存');
+  assert.equal(emptyUnitCalls, 1, '成功空单位列表必须缓存，不再请求');
+  assert.deepEqual(emptyCached.users, []);
+  assert.deepEqual(emptyCached.units, []);
+
+  clearMonitorCommonDataCache();
+  let concurrentUserCalls = 0;
+  let concurrentUnitCalls = 0;
+  const getAllUsers = async () => {
+    concurrentUserCalls += 1;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    return [{ id: '1', username: 'alice', display_name: 'Alice' }];
+  };
+  const getUnitList = async () => {
+    concurrentUnitCalls += 1;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    return [] as typeof sampleUnit[];
+  };
+  const [firstInflight, secondInflight] = await Promise.all([
+    loadMonitorCommonData({
+      cacheKey: 'case-inflight',
+      getAllUsers,
+      getUnitList,
+    }),
+    loadMonitorCommonData({
+      cacheKey: 'case-inflight',
+      getAllUsers,
+      getUnitList,
+    }),
+  ]);
+  assert.equal(concurrentUserCalls, 1, '同 key 并发必须去重用户请求');
+  assert.equal(concurrentUnitCalls, 1, '同 key 并发必须去重单位请求');
+  assert.deepEqual(firstInflight.users, secondInflight.users);
 
   clearMonitorCommonDataCache();
   const grouped = await loadMonitorCommonData({
     cacheKey: 'case-grouped',
     getAllUsers: async () => [],
-    getUnitList: async () => [
-      {
-        category: 'time',
-        unit_id: 'min',
-        unit_name: '分钟',
-        display_unit: 'min',
-        description: '',
-        is_standalone: false,
-        system: 'time',
-        label: '分钟',
-        value: 'min',
-        unit: 'min',
-      },
-    ],
+    getUnitList: async () => [sampleUnit],
   });
 
   assert.deepEqual(grouped.groupedUnits, [
     {
       label: 'time',
-      children: [
-        {
-          category: 'time',
-          unit_id: 'min',
-          unit_name: '分钟',
-          display_unit: 'min',
-          description: '',
-          is_standalone: false,
-          system: 'time',
-          label: '分钟',
-          value: 'min',
-          unit: 'min',
-        },
-      ],
+      children: [sampleUnit],
     },
   ]);
 

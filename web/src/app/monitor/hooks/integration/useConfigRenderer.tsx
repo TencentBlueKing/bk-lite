@@ -30,6 +30,7 @@ export type FormFieldOptionControls = Record<
   {
     loading?: boolean;
     onRefresh?: () => void;
+    refreshTip?: string;
   }
 >;
 
@@ -47,9 +48,22 @@ const SelectWithRefresh = React.forwardRef<any, SelectWithRefreshProps>(
     { onRefresh, refreshLabel, refreshTip, regionLoading, ...selectProps },
     ref
   ) {
+    const popupWrapRef = React.useRef<HTMLDivElement>(null);
     return (
-      <div className="mr-[10px] inline-flex items-center gap-1">
-        <Select ref={ref} {...selectProps} />
+      <div
+        ref={popupWrapRef}
+        className="relative z-[20] mr-[10px] inline-flex items-center gap-1"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <Select
+          ref={ref}
+          {...selectProps}
+          virtual={selectProps.virtual ?? false}
+          getPopupContainer={
+            selectProps.getPopupContainer ||
+            (() => popupWrapRef.current || document.body)
+          }
+        />
         <Tooltip title={refreshTip}>
           <Button
             type="text"
@@ -498,10 +512,13 @@ export const useConfigRenderer = () => {
                   'monitor.integrations.fetchCloudRegions',
                   '获取地域'
                 )}
-                refreshTip={t(
-                  'monitor.integrations.refreshCloudRegionsTip',
-                  '根据已填密钥刷新可用地域'
-                )}
+                refreshTip={
+                  optionControl.refreshTip ||
+                  t(
+                    'monitor.integrations.refreshCloudRegionsTip',
+                    '根据已填密钥刷新可用地域'
+                  )
+                }
                 regionLoading={regionLoading}
               >
                 {optionNodes}

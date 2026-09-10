@@ -69,6 +69,7 @@ const virtualModules = new Map([
     `import React from 'react'; export const PillComposer = (props) => React.createElement(
       React.Fragment,
       null,
+      props.leftExtra,
       React.createElement('button', { 'data-test': 'stop', onClick: props.onCancel }, 'stop'),
       React.createElement('button', { 'data-test': 'submit', onClick: () => props.onSubmit('hi') }, 'submit')
     );`,
