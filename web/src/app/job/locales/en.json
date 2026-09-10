@@ -480,6 +480,7 @@
     "confirmExecuteQuestion": "Do you want to proceed with execution?",
     "confirmExecute": "Confirm Execution",
     "fileDistributionNotSupported": "Re-execution is not supported for file distribution jobs",
+    "cronFileDistNotSupported": "Scheduled tasks do not support file distribution yet. Use Execution → File Distribution for immediate distribution.",
     "reExecuteSuccess": "Re-execution has been triggered",
     "reExecuteFailed": "Failed to re-execute",
     "testConnectionSuccess": "Connection test succeeded",
