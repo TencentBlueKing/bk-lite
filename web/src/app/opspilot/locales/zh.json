@@ -19,7 +19,7 @@
     "introduction": "简介",
     "purpose": "用途",
     "schema": "结构说明",
-    "schemaCreateTip": "结构说明会生成知识目录。用 `- `wiki/operations`` 列出路径；创建或保存「用途与结构」后生效。导入 OKF 请选「OKF 知识包」。",
+    "schemaCreateTip": "结构说明会生成知识目录。用 `- `wiki/operations`` 列出路径；创建或保存「用途与结构」后生效。",
     "template": "模板",
     "generateByAI": "AI 生成",
     "deleteConfirm": "确定要删除该知识库吗?",
