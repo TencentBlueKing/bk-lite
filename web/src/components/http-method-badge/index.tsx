@@ -20,7 +20,7 @@ const STYLE_BY_METHOD: Record<string, { backgroundColor: string; color: string }
     color: '#ffffff',
   },
   DELETE: {
-    backgroundColor: 'var(--color-error)',
+    backgroundColor: 'var(--color-fail)',
     color: '#ffffff',
   },
   PATCH: {
