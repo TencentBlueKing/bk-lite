@@ -2,10 +2,41 @@
 
 from __future__ import annotations
 
+import re
+
 from apps.core.exceptions.base_app_exception import ValidationAppException
 from apps.core.logger import monitor_logger as logger
+from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.rpc.node_mgmt import NodeMgmt
 from apps.rpc.stargazer import Stargazer
+
+_STORED_CREDENTIALS_MISSING_TEMPLATE = (
+    "event=cloud_region_stored_credentials_missing failed_stage=load_collect_config " "config_id=%s error_type=missing_child"
+)
+_ENV_PASSWORD_PLAIN_FALLBACK_TEMPLATE = "event=cloud_region_env_password_plain_fallback failed_stage=decrypt_env_password " "error_type=%s"
+
+
+_AES_BLOB_RE = re.compile(r"^[A-Za-z0-9_-]{40,}$")
+
+
+def maybe_decrypt_posted_cloud_secret(raw) -> str:
+    """编辑回填的 SecretKey 是 AES 密文；明文密钥原样返回。"""
+    text = str(raw or "").strip()
+    if not text:
+        return ""
+    if not _AES_BLOB_RE.fullmatch(text):
+        return text
+    decoded = AESCryptor().try_decode(text)
+    return decoded if decoded else text
+
+
+def _normalize_collect_config_ids(value) -> list[str]:
+    if value in (None, ""):
+        return []
+    if isinstance(value, (list, tuple, set)):
+        return [str(item).strip() for item in value if item not in (None, "") and str(item).strip()]
+    text = str(value).strip()
+    return [text] if text else []
 
 
 def _normalize_qcloud_regions(regions: list) -> list[dict]:
@@ -67,17 +98,79 @@ def _resolve_stargazer_cloud_name(cloud_region_id=None) -> str:
     return "default"
 
 
+def _extract_child_username(child: dict) -> str:
+    content = child.get("content")
+    if not isinstance(content, dict):
+        return ""
+    config = content.get("config")
+    if not isinstance(config, dict):
+        return ""
+    headers = config.get("http_headers")
+    if not isinstance(headers, dict):
+        return ""
+    return str(headers.get("username") or "").strip()
+
+
+def _extract_child_password(child: dict) -> str:
+    env_config = child.get("env_config")
+    if not isinstance(env_config, dict):
+        return ""
+    aes_obj = AESCryptor()
+    for key, value in env_config.items():
+        if "password" not in str(key).lower() or not value:
+            continue
+        raw = str(value)
+        try:
+            return aes_obj.decode(raw)
+        except Exception as exc:
+            logger.debug(
+                _ENV_PASSWORD_PLAIN_FALLBACK_TEMPLATE,
+                type(exc).__name__,
+            )
+            return raw
+    return ""
+
+
+def resolve_stored_cloud_credentials(collect_config_id, actor_context=None) -> tuple[str, str]:
+    """从已授权的采集子配置解密云账号密钥；不信任前端回填的密文。"""
+    from apps.monitor.services.node_mgmt import InstanceConfigService
+
+    ids = _normalize_collect_config_ids(collect_config_id)
+    if not ids:
+        raise ValidationAppException("配置不存在或无权限")
+
+    payload = InstanceConfigService.get_config_content(ids, actor_context)
+    child = payload.get("child") if isinstance(payload, dict) else None
+    if not isinstance(child, dict):
+        logger.warning(
+            _STORED_CREDENTIALS_MISSING_TEMPLATE,
+            ",".join(ids)[:64],
+        )
+        raise ValidationAppException("配置不存在或无权限")
+
+    username = _extract_child_username(child)
+    password = _extract_child_password(child)
+    if not username or not password:
+        raise ValidationAppException("配置中缺少云账号密钥")
+    return username, password
+
+
 class QCloudRegionService:
     @classmethod
     def list_regions(
         cls,
         *,
-        username: str,
-        password: str,
+        username: str = "",
+        password: str = "",
         cloud_region_id=None,
+        collect_config_id=None,
+        actor_context=None,
     ) -> list[dict]:
+        config_ids = _normalize_collect_config_ids(collect_config_id)
+        if config_ids:
+            username, password = resolve_stored_cloud_credentials(config_ids, actor_context)
         secret_id = str(username or "").strip()
-        secret_key = str(password or "").strip()
+        secret_key = maybe_decrypt_posted_cloud_secret(password)
         if not secret_id or not secret_key:
             raise ValidationAppException("SecretId 与 SecretKey 均必填")
 

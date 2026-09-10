@@ -116,6 +116,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const currentGroup = useRef(userContext?.selectedGroup);
   const groupId = [currentGroup?.current?.id || ''];
   const pluginId = searchParams.get('plugin_id') || '';
+  const pluginName = searchParams.get('plugin_name') || '';
   const objectId = searchParams.get('id') || '';
   const objectName = searchParams.get('name') || '';
   const enableIfmibFromUrl = searchParams.get('enable_ifmib') !== 'false';
@@ -234,7 +235,10 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     return currentConfig;
   }, [configLoading, currentConfig]);
 
-  const regionProvider = cloudRegionProviderFromPlugin(baseConfig);
+  const regionProvider = cloudRegionProviderFromPlugin(baseConfig, {
+    objectName,
+    pluginName,
+  });
   const {
     regionOptions,
     loadingRegions,
