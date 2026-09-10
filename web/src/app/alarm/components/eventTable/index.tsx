@@ -131,6 +131,13 @@ const EventTable: React.FC<EventTableProps> = ({
       width: 120,
     },
     {
+      title: t('integration.pushSourceId'),
+      dataIndex: 'push_source_id',
+      key: 'push_source_id',
+      width: 140,
+      render: (text: string) => text || '--',
+    },
+    {
       title: t('alarmCommon.action'),
       key: 'action',
       fixed: 'right',

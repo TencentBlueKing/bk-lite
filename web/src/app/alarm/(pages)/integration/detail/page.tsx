@@ -237,11 +237,7 @@ const IntegrationDetail: FC = () => {
         received_at_after: timeRange?.[0]?.toISOString(),
       };
       if (searchCondition) {
-        if (isK8sSource && searchCondition.field === 'push_source_id') {
-          params.push_source_id = searchCondition.value;
-        } else {
-          params[searchCondition.field] = searchCondition.value;
-        }
+        params[searchCondition.field] = searchCondition.value;
       }
       const res = await getEventList(params);
       setEventList(res.items || []);
@@ -294,9 +290,7 @@ const IntegrationDetail: FC = () => {
   const eventAttrList = [
     { attr_id: 'title', attr_name: '标题', attr_type: 'str', option: [] },
     { attr_id: 'description', attr_name: '内容', attr_type: 'str', option: [] },
-    ...(isK8sSource
-      ? [{ attr_id: 'push_source_id', attr_name: t('integration.pushSourceId'), attr_type: 'str', option: [] }]
-      : []),
+    { attr_id: 'push_source_id', attr_name: t('integration.pushSourceId'), attr_type: 'str', option: [] },
   ];
 
   const handleK8sDownload = async (fileKey: string, fileName: string, params: any) => {
