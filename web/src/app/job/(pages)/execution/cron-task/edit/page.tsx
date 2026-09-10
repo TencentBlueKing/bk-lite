@@ -314,6 +314,11 @@ const EditCronTaskContent = () => {
         os: h.osType?.toLowerCase() as 'linux' | 'windows',
       }));
 
+      if (jobType === 'file') {
+        message.warning(t('job.cronFileDistNotSupported'));
+        return;
+      }
+
       const formData: ScheduledTaskFormData = {
         name: values.name,
         description: values.description,
@@ -330,10 +335,6 @@ const EditCronTaskContent = () => {
         is_enabled: enableAfterSave,
         team: selectedGroup ? [Number(selectedGroup.id)] : [],
       };
-
-      if (jobType === 'file') {
-        formData.target_path = values.target_path;
-      }
 
       await updateScheduledTask(taskId, formData);
       message.success(t('job.editTaskSuccess'));
@@ -456,8 +457,10 @@ const EditCronTaskContent = () => {
               onChange={(e) => setJobType(e.target.value)}
             >
               <Radio value="script">{t('job.scriptExecution')}</Radio>
-              <Radio value="file">{t('job.fileDistribution')}</Radio>
             </Radio.Group>
+            <p className="text-xs mt-2 m-0 text-[var(--color-text-3)]">
+              {t('job.cronFileDistNotSupported')}
+            </p>
           </Form.Item>
 
           {jobType === 'script' && (
@@ -522,16 +525,6 @@ const EditCronTaskContent = () => {
                   </Select>
                 </Form.Item>
               )}
-            </Form.Item>
-          )}
-
-          {jobType === 'file' && (
-            <Form.Item
-              label={t('job.fileDistTargetPath')}
-              name="target_path"
-              rules={[{ required: true, message: t('job.targetPathRequired') }]}
-            >
-              <Input placeholder={t('job.fileDistTargetPathPlaceholder')} />
             </Form.Item>
           )}
 
