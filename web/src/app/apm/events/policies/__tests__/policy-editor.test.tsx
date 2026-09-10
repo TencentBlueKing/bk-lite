@@ -452,7 +452,7 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     );
   });
 
-  it('按策略组织拉取处理人候选，系统用户接收人空时默认带入处理人且删除后不补', async () => {
+  it('按策略组织拉取处理人候选，添加系统用户渠道时不把处理人写入接收人', async () => {
     const user = userEvent.setup();
     api.getPolicy.mockResolvedValue({
       ...policy,
@@ -479,18 +479,8 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     );
 
     await user.click(await screen.findByRole('switch', { name: '启用通知' }));
-    await user.click(screen.getByLabelText('通知通道'));
-    const emailOptions = await screen.findAllByText('邮件');
-    await user.click(emailOptions.at(-1)!);
-
-    const recipients = await screen.findByLabelText('通知对象');
-    await waitFor(() => {
-      expect(recipients.closest('.ant-select')?.textContent).toContain('7');
-    });
-
-    const removeRecipient = recipients.closest('.ant-select')?.querySelector('.ant-select-selection-item-remove');
-    expect(removeRecipient).not.toBeNull();
-    await user.click(removeRecipient as Element);
+    await user.click(screen.getByRole('button', { name: /邮件.*普通通知/ }));
+    const recipients = await screen.findByLabelText('系统用户 ID');
     expect(recipients.closest('.ant-select')?.textContent).not.toContain('7');
   });
 });

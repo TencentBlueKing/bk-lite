@@ -60,6 +60,8 @@
       "serviceCount": "{count} total",
       "routeShellEmpty": "The routing and permission shell is ready. Business data will be connected in later slices.",
       "clearFilters": "Clear filters",
+      "clear": "Clear",
+      "detail": "Details",
       "readOnly": "Read-only",
       "adjustOrg": "Adjust organization",
       "metricQueryFailedHint": "The RED metric query failed. Click to retry",
@@ -75,7 +77,7 @@
       "perSecondValue": "{value}/s",
       "requestsPerSecondValue": "{value} req/s",
       "percentUnit": "%",
-      "countUnit": "",
+      "countUnit": "items",
       "secondUnit": "s",
       "millisecondUnit": "ms",
       "requestsPerSecondUnit": "req/s"

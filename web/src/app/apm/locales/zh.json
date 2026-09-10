@@ -60,6 +60,8 @@
       "serviceCount": "共 {count} 个",
       "routeShellEmpty": "路由与权限壳已就绪，业务数据将在后续切片接入。",
       "clearFilters": "清除筛选",
+      "clear": "清空",
+      "detail": "详情",
       "readOnly": "只读",
       "adjustOrg": "调整组织",
       "metricQueryFailedHint": "RED 指标查询失败，可点击重试",
