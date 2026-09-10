@@ -3,13 +3,22 @@ import { readFileSync } from 'node:fs';
 import {
   buildInstanceExtractorPath,
   buildTypeExtractorPath,
+  diffExtractorPreviewFields,
+  extractorCreateHandoffKey,
   extractorCreateSampleKey,
+  extractorPreviewStatusLabelKey,
+  extractorRequiresTargetField,
   extractorTypeLabelKey,
+  extractorUsesSingleTargetField,
   flattenExtractorPaths,
+  formatExtractorPreviewValue,
   moveExtractorItem,
   normalizeExtractorSamples,
+  parseExtractorCreateHandoff,
   reorderExtractorItem,
   resolveExtractorCreateTarget,
+  restoreExtractorEventShape,
+  serializeExtractorCreateHandoff,
   shouldShowExtractorHeaderAdd,
   shouldShowExtractorPublicationAlert
 } from '../src/app/log/(pages)/integration/receive/logExtractorLogic';
@@ -136,6 +145,66 @@ assert.equal(
   '/log/integration/receive?extractor=nginx-1&create=1',
   '实例级创建应打开日志接收页现有抽屉'
 );
+assert.match(
+  buildInstanceExtractorPath('nginx-1', {
+    create: true,
+    handoff: 'abc',
+    sourceField: 'message'
+  }),
+  /extractor=nginx-1.*create=1.*handoff=abc.*source_field=message/,
+  '实例级创建应携带一次性 handoff 和源属性'
+);
+assert.equal(extractorCreateHandoffKey('abc'), 'bk-lite.log-extractor.create-handoff:abc');
+assert.deepEqual(
+  restoreExtractorEventShape({ message: 'keep', 'http.status': 201 }),
+  { message: 'keep', http: { status: 201 } },
+  '搜索页点号字段应还原成提取器使用的嵌套事件'
+);
+assert.deepEqual(
+  parseExtractorCreateHandoff(
+    serializeExtractorCreateHandoff({
+      event: { message: 'deny', 'http.status': 201 },
+      source_field: 'message'
+    })
+  ),
+  {
+    event: { message: 'deny', http: { status: 201 } },
+    source_field: 'message'
+  },
+  '创建跳转应同时带上还原后的样本和源属性'
+);
+assert.equal(
+  parseExtractorCreateHandoff('{"event":{"message":"x"}}'),
+  null,
+  '缺少源属性的 handoff 不能当成有效创建上下文'
+);
+assert.equal(extractorUsesSingleTargetField('copy'), true);
+assert.equal(extractorUsesSingleTargetField('json'), true);
+assert.equal(extractorUsesSingleTargetField('regex'), false);
+assert.equal(extractorUsesSingleTargetField('kv'), false);
+assert.equal(extractorRequiresTargetField('copy'), true);
+assert.equal(extractorRequiresTargetField('json'), false);
+assert.deepEqual(
+  diffExtractorPreviewFields(
+    { message: 'type=deny', status: 'old' },
+    { message: 'type=deny', status: 'deny', firewall_log_type: 'deny' }
+  ),
+  [
+    { path: 'status', kind: 'changed', before: 'old', after: 'deny' },
+    { path: 'firewall_log_type', kind: 'added', after: 'deny' }
+  ],
+  '预览应只列出相对样本新增、变更或删除的叶子字段'
+);
+assert.deepEqual(
+  diffExtractorPreviewFields({ payload: 'raw' }, {}),
+  [{ path: 'payload', kind: 'removed', before: 'raw' }],
+  '删除源属性应出现在预览效果里'
+);
+assert.equal(formatExtractorPreviewValue({ ok: true }), '{"ok":true}');
+assert.equal(
+  extractorPreviewStatusLabelKey('success'),
+  'log.extractor.previewStatusSuccess'
+);
 
 const drawerSource = readFileSync(
   new URL(
@@ -171,8 +240,38 @@ assert.doesNotMatch(
 );
 assert.match(
   drawerSource,
-  /name="target_field"[\s\S]{0,80}label=\{t\('log\.extractor\.targetField'\)\}/,
-  '所有类型都应展示通用目标属性'
+  /extractorUsesSingleTargetField\(extractorType\)/,
+  '目标属性应按提取类型显隐，而不是六种类型共用一格'
+);
+assert.match(
+  drawerSource,
+  /extractorRequiresTargetField\(extractorType\)/,
+  '只有单值动作才把目标属性设为必填'
+);
+assert.match(
+  drawerSource,
+  /extractorUsesSingleTargetField\(values\.extractor_type\)[\s\S]{0,80}\? values\.target_field \|\| null[\s\S]{0,40}: null/,
+  '正则和键值对应强制清空单一目标属性，避免沿用表单脏值'
+);
+assert.match(
+  drawerSource,
+  /log\.extractor\.regexNamedGroupHint/,
+  '正则提取应说明命名捕获组就是字段名'
+);
+assert.match(
+  drawerSource,
+  /className="min-w-0 flex-1"/,
+  '样本下拉应收缩，给读取样本和运行预览留出同一行空间'
+);
+assert.match(
+  drawerSource,
+  /ExtractorPreviewResult/,
+  '运行预览应展示状态和写出字段，而不是只丢一份原始 JSON'
+);
+assert.match(
+  drawerSource,
+  /log\.extractor\.previewEffect/,
+  '预览应单独列出相对样本的字段变化'
 );
 assert.match(
   drawerSource,
@@ -187,7 +286,18 @@ for (const key of [
   'typeKv',
   'typeRegex',
   'typeRegexReplace',
-  'typeJson'
+  'typeJson',
+  'regexNamedGroupHint',
+  'kvMappingHint',
+  'previewEffect',
+  'previewAdded',
+  'previewChanged',
+  'previewRemoved',
+  'previewUnchanged',
+  'previewStatusSuccess',
+  'previewStatusFailed',
+  'popupBlocked',
+  'createFromLog'
 ]) {
   assert.ok(zhLocale.log.extractor[key], `中文应提供 ${key}`);
   assert.ok(enLocale.log.extractor[key], `英文应提供 ${key}`);
@@ -264,9 +374,48 @@ assert.match(
   '搜索页创建实例提取器必须确认当前团队对该实例有编辑权限'
 );
 assert.match(
+  searchPageSource,
+  /storeExtractorCreateHandoff\(\{\s*event,\s*source_field\s*\}\)/,
+  '搜索页创建提取器应写入可跨新窗口读取的样本和源属性'
+);
+assert.match(
+  searchPageSource,
+  /window\.open\('about:blank', '_blank'\)/,
+  '搜索页创建提取器应在用户点击时先打开新窗口，避免 await 后被拦截'
+);
+assert.match(
+  searchPageSource,
+  /popup\.location\.replace\([\s\S]{0,80}build(Type|Instance)ExtractorPath/,
+  '权限校验通过后再把新窗口导航到提取器页'
+);
+assert.doesNotMatch(
+  searchPageSource,
+  /router\.push\(build(Type|Instance)ExtractorPath/,
+  '搜索页创建提取器不应再占用当前搜索页'
+);
+const searchTableSource = readFileSync(
+  new URL('../src/app/log/(pages)/search/searchTable.tsx', import.meta.url),
+  'utf8'
+);
+assert.match(
+  searchTableSource,
+  /onCreateExtractor\(record, String\(item\.label\)\)/,
+  '创建提取器应放在属性操作栏并带上当前属性'
+);
+assert.doesNotMatch(
+  searchTableSource,
+  /collector[\s\S]{0,400}log\.extractor\.createFromLog/,
+  '展开行头部不应再保留创建提取器入口'
+);
+assert.match(
+  typeExtractorPageSource,
+  /consumeExtractorCreateHandoff\(searchParams\.get\('handoff'\)\)/,
+  '类型级创建页应按一次性 handoff 读取搜索页写入的样本'
+);
+assert.match(
   typeExtractorPageSource,
   /consumeExtractorCreateSample\(\{\s*kind: 'type'/,
-  '类型级创建页应按采集类型读取搜索页写入的样本'
+  '类型级创建页可回退读取同页跳转留下的样本'
 );
 assert.match(
   receivePageSource,
@@ -275,8 +424,13 @@ assert.match(
 );
 assert.match(
   receivePageSource,
+  /consumeExtractorCreateHandoff\(searchParams\.get\('handoff'\)\)/,
+  '实例级创建抽屉应按一次性 handoff 读取搜索页写入的样本'
+);
+assert.match(
+  receivePageSource,
   /consumeExtractorCreateSample\(\{\s*kind: 'instance'/,
-  '实例级创建抽屉应按实例读取搜索页写入的样本'
+  '实例级创建抽屉可回退读取同页跳转留下的样本'
 );
 
 console.log('log-extractor-interaction tests passed');

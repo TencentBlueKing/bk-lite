@@ -11,7 +11,7 @@ export interface SearchTableProps {
     y?: string | number;
   };
   addToQuery: (row: TableDataItem, type: string) => void;
-  onCreateExtractor?: (row: TableDataItem) => void;
+  onCreateExtractor?: (row: TableDataItem, sourceField: string) => void;
   onLoadMore?: () => void;
 }
 
