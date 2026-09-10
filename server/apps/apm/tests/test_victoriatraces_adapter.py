@@ -159,6 +159,93 @@ def test_empty_trace_search_uses_bounded_trace_id_aggregation_and_cursor():
     assert session.get.call_count == 2
 
 
+def test_search_pages_newest_first_across_sample_slices_without_skipping_traces():
+    """1h 窗口被切成 4 个 15m 切片；列表分页必须最新优先，且游标翻页不能漏掉任何 Trace。"""
+
+    import re
+
+    ended_at = timezone.now().replace(microsecond=0)
+    started_at = ended_at - timedelta(hours=1)
+    traces = {f"t{index:03d}".ljust(32, "0"): ended_at - timedelta(seconds=1 + index * 120) for index in range(30)}
+    id_queries: list[tuple[str, object, object]] = []
+
+    def fake_query_rows(logs_query, slice_started_at, slice_ended_at, limit=None):
+        if "stats by (trace_id)" in logs_query:
+            id_queries.append((logs_query, slice_started_at, slice_ended_at))
+            vt_limit = int(re.search(r"\| limit (\d+)$", logs_query).group(1))
+            rows = [
+                {"trace_id": trace_id, "matched_at": str(int(matched_at.timestamp() * 1_000_000_000)), "spans": "1"}
+                for trace_id, matched_at in traces.items()
+                if slice_started_at <= matched_at < slice_ended_at
+            ]
+            rows.sort(key=lambda row: -int(row["matched_at"]))
+            return rows[:vt_limit]
+        requested = re.findall(r'"(t\d{3}0+)"', logs_query)
+        return [
+            _span_row(trace_id, f"s{trace_id[:15]}", traces[trace_id], service="datart")
+            for trace_id in requested
+            if slice_started_at <= traces[trace_id] < slice_ended_at
+        ]
+
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=Mock())
+    store._query_rows = fake_query_rows
+
+    paged: list[str] = []
+    cursor = None
+    first_page_id_queries = 0
+    for page_no in range(10):
+        page = store.search(
+            TraceSearchQuery(
+                started_at=started_at,
+                ended_at=ended_at,
+                service_name="datart",
+                environment=None,
+                limit=8,
+                cursor=cursor,
+            )
+        )
+        if page_no == 0:
+            first_page_id_queries = len(id_queries)
+        paged.extend(item.trace_id for item in page.items)
+        cursor = page.next_cursor
+        if cursor is None:
+            break
+
+    expected = sorted(traces, key=lambda trace_id: traces[trace_id], reverse=True)
+    assert paged[:8] == expected[:8]
+    assert paged == expected
+    # 较新切片已凑够一页（8 + 8 > 9）时不再向更旧切片发 trace_id 查询：4 个切片只查了 2 个。
+    assert first_page_id_queries == 2
+
+
+def test_topology_sampling_keeps_round_robin_across_slices():
+    ended_at = timezone.now().replace(microsecond=0)
+    started_at = ended_at - timedelta(hours=1)
+    candidates = (
+        ("a" * 32, ended_at - timedelta(minutes=1)),
+        ("b" * 32, ended_at - timedelta(minutes=2)),
+        ("o" * 32, ended_at - timedelta(minutes=50)),
+    )
+
+    def fake_query_rows(logs_query, slice_started_at, slice_ended_at, limit=None):
+        return [
+            {"trace_id": trace_id, "matched_at": str(int(matched_at.timestamp() * 1_000_000_000)), "spans": "1"}
+            for trace_id, matched_at in candidates
+            if slice_started_at <= matched_at < slice_ended_at
+        ]
+
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=Mock())
+    store._query_rows = fake_query_rows
+
+    selected, _matched, _counts, truncated = store._sample_trace_ids(["*"], started_at=started_at, ended_at=ended_at, limit=2)
+    newest_first, *_ = store._sample_trace_ids(["*"], started_at=started_at, ended_at=ended_at, limit=2, fill="newest_first")
+
+    # 拓扑取样跨时段轮转：最新切片与最旧切片各取一条；列表分页则严格最新优先。
+    assert selected == ["a" * 32, "o" * 32]
+    assert truncated is True
+    assert newest_first == ["a" * 32, "b" * 32]
+
+
 def test_detail_preserves_waterfall_identity_for_server_side_authorization():
     now = timezone.now()
     structure = "\n".join(
@@ -269,6 +356,8 @@ def test_get_trace_reads_structure_then_span_attributes_via_logsql():
     assert detail.instance_id == "pod-a"
     assert [span.name for span in detail.spans] == ["POST /checkout"]
     assert detail.spans[0].attributes["http.route"] == "/checkout"
+    assert detail.spans[0].attributes["service.name"] == "checkout"
+    assert not [key for key in detail.spans[0].attributes if key.startswith(("span_attr:", "resource_attr:"))]
     assert session.get.call_args_list[0].args[0].endswith("/select/logsql/query")
     assert session.get.call_args_list[1].args[0].endswith("/select/logsql/query")
     assert session.get.call_args_list[0].kwargs["params"]["query"].startswith(f'trace_id:={json.dumps("a" * 32)}')

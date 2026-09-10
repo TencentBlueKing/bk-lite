@@ -406,6 +406,7 @@ class VictoriaTracesTelemetryStore:
             started_at=query.started_at,
             ended_at=ended_at,
             limit=query.limit + 1,
+            fill="newest_first",
         )
         traces, _omitted = self._fetch_topology_traces(
             selected,
@@ -497,12 +498,14 @@ class VictoriaTracesTelemetryStore:
         merged: list = []
         truncated = detail.truncated
         for span in detail.spans:
+            # 结构阶段的属性带 span_attr:/resource_attr: 前缀，统一归一化后再与属性阶段合并，避免同一属性出现两个键。
+            base = _row_detail_attributes(span.attributes)
             extra = attributes_by_id.get(span.span_id)
             if extra is None:
                 truncated = True
-                merged.append(span)
+                merged.append(replace(span, attributes=base))
                 continue
-            merged.append(replace(span, attributes={**span.attributes, **extra}))
+            merged.append(replace(span, attributes={**base, **extra}))
         return replace(detail, spans=tuple(merged), truncated=truncated)
 
     def _fetch_trace_span_attributes(
@@ -1009,11 +1012,19 @@ class VictoriaTracesTelemetryStore:
         started_at: datetime,
         ended_at: datetime,
         limit: int,
+        fill: str = "round_robin",
     ) -> tuple[list[str], dict[str, datetime], dict[str, int], bool]:
+        """按切片取 trace_id；``round_robin`` 供拓扑跨时段取样，``newest_first`` 供列表分页保持最新优先。"""
+
+        if fill not in ("round_robin", "newest_first"):
+            raise ValueError("fill 仅支持 round_robin 或 newest_first")
         per_slice_ids: list[list[str]] = []
         matched_at_by_id: dict[str, datetime] = {}
         span_counts: dict[str, int] = {}
+        collected = 0
         for slice_started_at, slice_ended_at in _sample_slices(started_at, ended_at):
+            if fill == "newest_first" and collected > limit:
+                break
             logs_query = _topology_trace_id_query(
                 filters,
                 limit,
@@ -1037,17 +1048,24 @@ class VictoriaTracesTelemetryStore:
                     if previous is None or matched_at > previous:
                         matched_at_by_id[trace_id] = matched_at
             per_slice_ids.append(slice_ids)
+            collected += len(slice_ids)
         trace_ids: list[str] = []
         seen: set[str] = set()
-        for index in range(max((len(ids) for ids in per_slice_ids), default=0)):
-            for slice_ids in per_slice_ids:
-                if index >= len(slice_ids):
-                    continue
-                trace_id = slice_ids[index]
-                if trace_id in seen:
-                    continue
-                seen.add(trace_id)
-                trace_ids.append(trace_id)
+        if fill == "newest_first":
+            # 切片从新到旧、切片内按 matched_at 降序，顺序拼接即为全窗最新优先，游标翻页不会跳过。
+            ordered = (trace_id for slice_ids in per_slice_ids for trace_id in slice_ids)
+        else:
+            ordered = (
+                slice_ids[index]
+                for index in range(max((len(ids) for ids in per_slice_ids), default=0))
+                for slice_ids in per_slice_ids
+                if index < len(slice_ids)
+            )
+        for trace_id in ordered:
+            if trace_id in seen:
+                continue
+            seen.add(trace_id)
+            trace_ids.append(trace_id)
         truncated = len(trace_ids) > limit
         selected_ids = trace_ids[:limit]
         return selected_ids, matched_at_by_id, {trace_id: span_counts.get(trace_id, 0) for trace_id in selected_ids}, truncated
