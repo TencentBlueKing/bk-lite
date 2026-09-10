@@ -9,6 +9,7 @@ from django.db import transaction
 
 from apps.opspilot.models import KnowledgePage, PageVersion, WikiDirectory, WikiKnowledgeBase
 from apps.opspilot.services.wiki.decision_service import revoke_rules_for_identity_change, subject_key_for_page
+from apps.opspilot.services.wiki.directory_service import directory_page_type_mismatch_message
 from apps.opspilot.services.wiki.generation_relation_service import GenerationRelationError, rebuild_generation_relations
 from apps.opspilot.services.wiki.generation_service import (
     GenerationServiceError,
@@ -153,8 +154,17 @@ def _target_directory(locked_kb, revision, page_type, directory_id=None):
     if isinstance(allowed, list) and allowed and page_type not in allowed:
         raise PageServiceError(
             "directory_page_type_not_allowed",
-            "目标目录不接收该页面类型",
-            details={"directory_id": target.pk, "page_type": page_type},
+            directory_page_type_mismatch_message(
+                target.name,
+                page_types=[page_type],
+                allowed_page_types=allowed,
+            ),
+            details={
+                "directory_id": target.pk,
+                "directory_name": target.name,
+                "page_type": page_type,
+                "allowed_page_types": list(allowed),
+            },
         )
     return target
 

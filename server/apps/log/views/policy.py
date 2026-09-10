@@ -21,7 +21,23 @@ from apps.log.constants.alert_policy import AlertConstants
 from apps.log.constants.permission import PermissionConstants
 from apps.log.filters.policy import AlertFilter, EventFilter, EventRawDataFilter, PolicyFilter
 from apps.log.models.policy import Alert, AlertSnapshot, Event, EventRawData, Policy, PolicyOrganization
-from apps.log.serializers.policy import AlertSerializer, EventRawDataSerializer, EventSerializer, PolicySerializer
+from apps.log.serializers.policy import (
+    AlertSerializer,
+    AssignHandlersSerializer,
+    EventRawDataSerializer,
+    EventSerializer,
+    PolicySerializer,
+)
+from apps.log.services.alert_handlers import (
+    AlertHandlerConflict,
+    AlertHandlerForbidden,
+    AlertHandlerInvalid,
+    assign_alert,
+    claim_alert,
+    filter_my_handler_alerts,
+    is_my_alert_query,
+    record_closed_events,
+)
 from apps.log.services.access_scope import LogAccessScopeService
 from apps.log.services.alert_access import visible_log_alerts
 from apps.log.services.alert_lifecycle_notify import LogAlertLifecycleNotifier
@@ -193,6 +209,9 @@ class PolicyViewSet(viewsets.ModelViewSet):
     def get_serializer_context(self):
         context = super().get_serializer_context()
         context["data_team_ids"] = self._get_data_scope(self.request).data_team_ids
+        pending = getattr(self, "_pending_policy_organizations", None)
+        if pending is not None:
+            context["policy_organizations"] = pending
         return context
 
     def _refresh_response_data(self, response, instance):
@@ -370,6 +389,7 @@ class PolicyViewSet(viewsets.ModelViewSet):
         if error_response:
             return error_response
 
+        self._pending_policy_organizations = organizations
         response = super().create(request, *args, **kwargs)
         policy_id = response.data["id"]
 
@@ -411,6 +431,7 @@ class PolicyViewSet(viewsets.ModelViewSet):
             error_response = self._authorize_target_organizations(request, organizations, effective_collect_type_id)
             if error_response:
                 return error_response
+            self._pending_policy_organizations = organizations
 
         response = super().update(request, *args, **kwargs)
         policy_id = kwargs["pk"]
@@ -455,6 +476,7 @@ class PolicyViewSet(viewsets.ModelViewSet):
             error_response = self._authorize_target_organizations(request, organizations, effective_collect_type_id)
             if error_response:
                 return error_response
+            self._pending_policy_organizations = organizations
 
         response = super().partial_update(request, *args, **kwargs)
         policy_id = kwargs["pk"]
@@ -487,11 +509,22 @@ class PolicyViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
             # 删除相关的定时任务
             PeriodicTask.objects.filter(name=f"log_policy_task_{policy_id}").delete()
-            Alert.objects.filter(policy_id=policy_id, status=AlertConstants.STATUS_NEW).update(
-                status=AlertConstants.STATUS_CLOSED,
-                operator=request.user.username,
-                end_event_time=datetime.now(timezone.utc),
-            )
+            closed_at = datetime.now(timezone.utc)
+            active_alerts = list(Alert.objects.filter(policy_id=policy_id, status=AlertConstants.STATUS_NEW))
+            if active_alerts:
+                Alert.objects.filter(
+                    id__in=[alert.id for alert in active_alerts],
+                    status=AlertConstants.STATUS_NEW,
+                ).update(
+                    status=AlertConstants.STATUS_CLOSED,
+                    operator=request.user.username,
+                    end_event_time=closed_at,
+                )
+                record_closed_events(
+                    active_alerts,
+                    operator=request.user.username,
+                    event_time=closed_at,
+                )
             return super().destroy(request, *args, **kwargs)
 
     def format_crontab(self, schedule):
@@ -656,6 +689,13 @@ class AlertViewSet(viewsets.ModelViewSet):
                 id=alert.id,
                 status=AlertConstants.STATUS_NEW,
             ).update(**update_values)
+            if changed:
+                closed = Alert.objects.get(id=alert.id)
+                record_closed_events(
+                    [closed],
+                    operator=request.user.username,
+                    event_time=closed_at,
+                )
             if changed and should_notify_alert_center:
                 # 提交后再发送，确保远端不会先于本地关闭状态收到事件。
                 transaction.on_commit(
@@ -688,6 +728,8 @@ class AlertViewSet(viewsets.ModelViewSet):
         """
         collect_type_id = request.query_params.get("collect_type", None)
         queryset = self.filter_queryset(get_visible_log_alert_queryset(request, collect_type_id=collect_type_id))
+        if is_my_alert_query(request):
+            queryset = filter_my_handler_alerts(queryset, request.user)
 
         # 获取分页参数
         page = _to_positive_int(request.GET.get("page"), 1)
@@ -715,6 +757,8 @@ class AlertViewSet(viewsets.ModelViewSet):
         URL: /api/alerts/all/
         """
         queryset = self.filter_queryset(get_visible_log_alert_queryset(request))
+        if is_my_alert_query(request):
+            queryset = filter_my_handler_alerts(queryset, request.user)
 
         # 获取分页参数
         page = _to_positive_int(request.GET.get("page"), 1)
@@ -733,6 +777,45 @@ class AlertViewSet(viewsets.ModelViewSet):
         results = serializer.data
 
         return WebUtils.response_success({"count": total_count, "items": results})
+
+    @action(methods=["post"], detail=True, url_path="claim")
+    def claim(self, request, pk=None):
+        alert = self.get_object()
+        auth_error = self._authorize_alert_operate(request, alert)
+        if auth_error:
+            return auth_error
+        operable_qs = get_visible_log_alert_queryset(request, require_operate=True)
+        try:
+            updated = claim_alert(alert, actor=request.user, operable_qs=operable_qs)
+        except AlertHandlerForbidden as exc:
+            return WebUtils.response_403(str(exc))
+        except AlertHandlerConflict as exc:
+            return WebUtils.response_error(str(exc), status_code=409)
+        return WebUtils.response_success(self.get_serializer(updated).data)
+
+    @action(methods=["post"], detail=True, url_path="assign")
+    def assign(self, request, pk=None):
+        alert = self.get_object()
+        auth_error = self._authorize_alert_operate(request, alert)
+        if auth_error:
+            return auth_error
+        serializer = AssignHandlersSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        operable_qs = get_visible_log_alert_queryset(request, require_operate=True)
+        try:
+            updated = assign_alert(
+                alert,
+                handlers=serializer.validated_data["handlers"],
+                actor=request.user,
+                operable_qs=operable_qs,
+            )
+        except AlertHandlerForbidden as exc:
+            return WebUtils.response_403(str(exc))
+        except AlertHandlerInvalid as exc:
+            return WebUtils.response_error(str(exc), status_code=400)
+        except AlertHandlerConflict as exc:
+            return WebUtils.response_error(str(exc), status_code=409)
+        return WebUtils.response_success(self.get_serializer(updated).data)
 
     @action(methods=["post"], detail=True, url_path="closed")
     def closed(self, request, pk=None):
@@ -761,7 +844,7 @@ class AlertViewSet(viewsets.ModelViewSet):
         if not alert:
             return WebUtils.response_error("告警不存在", status_code=404)
 
-        event_qs = Event.objects.filter(alert_id=alert.id)
+        event_qs = Event.objects.filter(alert_id=alert.id, action="")
         if alert.policy_id is None:
             event_qs = event_qs.filter(policy_id__isnull=True)
         else:
@@ -796,6 +879,8 @@ class AlertViewSet(viewsets.ModelViewSet):
         """
         collect_type_id = request.query_params.get("collect_type", None)
         queryset = self.filter_queryset(get_visible_log_alert_queryset(request, collect_type_id=collect_type_id))
+        if is_my_alert_query(request):
+            queryset = filter_my_handler_alerts(queryset, request.user)
 
         # 获取参数
         status = request.query_params.get("status", AlertConstants.STATUS_NEW)

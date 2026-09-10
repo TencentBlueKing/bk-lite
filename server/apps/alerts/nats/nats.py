@@ -1324,6 +1324,17 @@ def get_alert_level_distribution(status_filter=None, **kwargs):
     return {"result": True, "data": result_data, "message": ""}
 
 
+def _filter_active_alerts_by_source(queryset, kwargs):
+    """Optional source_id (AlertSource.source_id) or source_name pin. Empty keeps all sources."""
+    source_id = str(kwargs.get("source_id") or "").strip()
+    source_name = str(kwargs.get("source_name") or "").strip()
+    if source_id:
+        return queryset.filter(events__source__source_id=source_id).distinct()
+    if source_name:
+        return queryset.filter(source_name=source_name)
+    return queryset
+
+
 @nats_client.register
 def get_active_alert_top(limit=10, **kwargs):
     """
@@ -1331,6 +1342,8 @@ def get_active_alert_top(limit=10, **kwargs):
 
     Args:
         limit: int - 返回数量，默认 10
+        source_id: str - 可选，按告警源 ID 收窄（如 k8s）
+        source_name: str - 可选，按告警源显示名收窄；source_id 优先
 
     Returns:
         {
@@ -1361,7 +1374,9 @@ def get_active_alert_top(limit=10, **kwargs):
     if error:
         return error
 
-    active_alerts = queryset.filter(status__in=AlertStatus.ACTIVATE_STATUS).order_by("created_at")[:limit]
+    queryset = queryset.filter(status__in=AlertStatus.ACTIVATE_STATUS)
+    queryset = _filter_active_alerts_by_source(queryset, kwargs)
+    active_alerts = queryset.order_by("created_at")[:limit]
 
     level_map = _get_alert_level_display_map()
     status_map = dict(AlertStatus.CHOICES)
@@ -1379,6 +1394,8 @@ def get_active_alert_top(limit=10, **kwargs):
                 "duration_seconds": duration_seconds,
                 "created_at": timezone.localtime(alert.created_at, target_tz).isoformat(),
                 "resource_name": alert.resource_name or "",
+                "resource_type": alert.resource_type or "",
+                "source_name": alert.source_name or "",
             }
         )
 

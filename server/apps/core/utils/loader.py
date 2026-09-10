@@ -75,7 +75,7 @@ class LanguageLoader:
                 #   以及无语言后缀的子目录文件(如中文遗留文件 core/monitor_object.yaml)
                 # 规则: name 包含目标语言后缀 OR (无任何语言后缀 AND lang in (en, zh-Hans))
                 has_lang_suffix = name.startswith(f"{lang}.") or name.endswith(f"_{lang}.yaml") or name == f"{lang}.yaml"
-                has_any_lang_suffix = any(name.endswith(f"_{l}.yaml") or name == f"{l}.yaml" for l in ("en", "zh-Hans"))
+                has_any_lang_suffix = any(name.endswith(f"_{suffix}.yaml") or name == f"{suffix}.yaml" for suffix in ("en", "zh-Hans"))
                 if not has_lang_suffix and has_any_lang_suffix:
                     continue
                 path = os.path.join(root, name)
@@ -180,14 +180,8 @@ class LanguageLoader:
                 if not name.endswith(".yaml"):
                     continue
                 # 与 _load_language_dir 相同过滤:跳过其他语言后缀的 yaml
-                has_lang_suffix = (
-                    name.startswith(f"{lang}.")
-                    or name.endswith(f"_{lang}.yaml")
-                    or name == f"{lang}.yaml"
-                )
-                has_any_lang_suffix = any(
-                    name.endswith(f"_{l}.yaml") or name == f"{l}.yaml" for l in ("en", "zh-Hans")
-                )
+                has_lang_suffix = name.startswith(f"{lang}.") or name.endswith(f"_{lang}.yaml") or name == f"{lang}.yaml"
+                has_any_lang_suffix = any(name.endswith(f"_{suffix}.yaml") or name == f"{suffix}.yaml" for suffix in ("en", "zh-Hans"))
                 if not has_lang_suffix and has_any_lang_suffix:
                     continue
                 path = os.path.join(root, name)
@@ -290,7 +284,7 @@ def clear_language_cache(app: Optional[str] = None, lang: Optional[str] = None) 
 SUPPORTED_LANGUAGES = ["en", "zh-Hans"]
 
 # 需要预热的应用列表
-PRELOAD_APPS = ["opspilot", "core", "cmdb", "monitor", "node_mgmt", "system_mgmt"]
+PRELOAD_APPS = ["opspilot", "core", "cmdb", "monitor", "node_mgmt", "system_mgmt", "operation_analysis"]
 
 
 def preload_language_cache(apps: Optional[List[str]] = None, languages: Optional[List[str]] = None) -> dict:

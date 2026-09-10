@@ -8,18 +8,22 @@ class TreeNodeBuilder:
     """树节点构建器基类"""
 
     @staticmethod
-    def get_directory_nodes(directories):
+    def get_directory_nodes(directories, language=None):
         """构建目录节点"""
+        from apps.operation_analysis.services.builtin_i18n import overlay_directory_payload
+
         nodes = {}
         parent_children_map = {}
 
         for directory in directories:
+            payload = {"name": directory.name, "desc": directory.desc}
+            overlay_directory_payload(payload, directory, language)
             node_key = f"directory_{directory.id}"
             nodes[node_key] = {
                 "id": node_key,
                 "data_id": directory.id,
-                "desc": directory.desc,
-                "name": directory.name,
+                "desc": payload["desc"],
+                "name": payload["name"],
                 "type": "directory",
                 "groups": directory.groups,
                 "is_build_in": directory.is_build_in,
@@ -37,31 +41,35 @@ class TreeNodeBuilder:
         return nodes, parent_children_map
 
     @staticmethod
-    def get_dashboard_nodes(dashboards, parent_children_map):
+    def get_dashboard_nodes(dashboards, parent_children_map, language=None):
         """构建仪表盘节点"""
-        return TreeNodeBuilder.get_canvas_nodes(dashboards, parent_children_map, "dashboard")
+        return TreeNodeBuilder.get_canvas_nodes(dashboards, parent_children_map, "dashboard", language=language)
 
     @staticmethod
-    def get_topology_nodes(topologies, parent_children_map):
+    def get_topology_nodes(topologies, parent_children_map, language=None):
         """构建拓扑图节点"""
-        return TreeNodeBuilder.get_canvas_nodes(topologies, parent_children_map, "topology")
+        return TreeNodeBuilder.get_canvas_nodes(topologies, parent_children_map, "topology", language=language)
 
     @staticmethod
-    def get_architecture_nodes(architectures, parent_children_map):
+    def get_architecture_nodes(architectures, parent_children_map, language=None):
         """构建架构图节点"""
-        return TreeNodeBuilder.get_canvas_nodes(architectures, parent_children_map, "architecture")
+        return TreeNodeBuilder.get_canvas_nodes(architectures, parent_children_map, "architecture", language=language)
 
     @staticmethod
-    def get_canvas_nodes(instances, parent_children_map, object_type):
+    def get_canvas_nodes(instances, parent_children_map, object_type, language=None):
         """构建通用画布节点"""
+        from apps.operation_analysis.services.builtin_i18n import overlay_canvas_payload
+
         nodes = {}
         for instance in instances:
+            payload = {"name": instance.name, "desc": instance.desc}
+            overlay_canvas_payload(payload, instance, language)
             node_key = f"{object_type}_{instance.id}"
             nodes[node_key] = {
                 "id": node_key,
                 "data_id": instance.id,
-                "name": instance.name,
-                "desc": instance.desc,
+                "name": payload["name"],
+                "desc": payload["desc"],
                 "type": object_type,
                 "groups": instance.groups,
                 "is_build_in": instance.is_build_in,

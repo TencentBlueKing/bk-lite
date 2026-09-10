@@ -258,6 +258,7 @@ def test_skill_execution_disables_legacy_suggest_and_rewrite_flags(action_name, 
     assert forwarded_params["enable_query_rewrite"] is False
     assert forwarded_params["show_think"] is False
     assert forwarded_params["temperature"] == 1.0
+    assert "internal_sampling_temperature" not in forwarded_params
 
 
 @pytest.mark.parametrize(

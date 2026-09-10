@@ -25,6 +25,22 @@ assert.deepEqual(getCloudCredentialConfig('hwcloud'), {
   requiresProjectId: true,
 });
 
+assert.deepEqual(
+  buildCloudCredential(
+    'qcloud',
+    {
+      credential_id: 'cred-qcloud',
+      accessKey: '******',
+      accessSecret: '******',
+      regionId: 'ap-guangzhou',
+    },
+    { resource_id: 'ap-guangzhou', resource_name: '广州' },
+  ),
+  {
+    credential_id: 'cred-qcloud',
+    regions: { resource_id: 'ap-guangzhou', resource_name: '广州' },
+  },
+);
 const region = { resource_id: 'cn-north-4', resource_name: '华北四' };
 assert.deepEqual(
   buildCloudCredential(

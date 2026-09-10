@@ -8,8 +8,7 @@ import {
   KpiSection,
   useFilteredChartPanels,
   useFilteredRingPanels,
-  useFilteredSummaryCards
-} from '../common/dashboard-components';
+  useFilteredSummaryCards, DashboardSectionLabel } from '../common/dashboard-components';
 import { RingChartPanel, TrendChartPanel } from '../../shared/widgets';
 import { CONSUL_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
@@ -33,10 +32,10 @@ export default function ConsulDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={5} styles={styles} />
 
-          <div className={styles.sectionLabel}>趋势与分布</div>
+          <DashboardSectionLabel styles={styles}>趋势与分布</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {trendChart ? (
               <TrendChartPanel

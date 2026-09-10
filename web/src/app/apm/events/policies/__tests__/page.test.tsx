@@ -10,6 +10,7 @@ const policy = {
   id: 'policy-1',
   name: '结账接口 P95 过慢',
   service_id: 'svc-1',
+  organizations: [10],
   service_namespace: 'shop',
   service_name: 'checkout',
   environment: 'production',

@@ -53,6 +53,10 @@ vi.mock('@/context/userInfo', () => ({
   useUserInfoContext: () => ({ userId: 'u1' }),
 }));
 
+vi.mock('@/context/menus', () => ({
+  useMenus: () => ({ configMenus: [], loading: false }),
+}));
+
 vi.mock('@/hooks/usePortalBranding', () => ({
   usePortalBranding: () => ({ portalName: 'BlueKing Lite', logoUrl: '/logo.png' }),
 }));

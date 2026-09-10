@@ -140,6 +140,11 @@ class NetworkTopologySerializer(
             }
         )
 
+    def to_representation(self, instance: NetworkTopology) -> dict[str, Any]:
+        from apps.operation_analysis.services.builtin_i18n import apply_canvas_representation
+
+        return apply_canvas_representation(super().to_representation(instance), instance, self.context)
+
     # ---- token round-trip ------------------------------------------------- #
 
     def get_token_set(self, instance: NetworkTopology) -> bool:

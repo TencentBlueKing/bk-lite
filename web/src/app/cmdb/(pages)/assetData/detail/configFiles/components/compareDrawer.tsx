@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useRef } from 'react';
-import { Drawer, Flex, Select, Space, Spin, Tag } from 'antd';
+import { Alert, Drawer, Flex, Select, Space, Spin, Tag } from 'antd';
 import type { ConfigFileItem, ConfigFileVersion } from '@/app/cmdb/types/configFile';
 import { useTranslation } from '@/utils/i18n';
 import { buildSideBySideDiffRows, buildInlineSegments, getDiffAccentClassName } from './diffUtils';
@@ -84,10 +84,14 @@ const CompareDrawer = ({
     [rightVersionId, versionList]
   );
 
-  const diffRows = useMemo(
+  const diffResult = useMemo(
     () => buildSideBySideDiffRows(leftContent, rightContent),
     [leftContent, rightContent]
   );
+  const isOverBudget = diffResult.kind === 'over_budget';
+  const diffRows = diffResult.kind === 'aligned' ? diffResult.rows : [];
+  const plainLeftLines = useMemo(() => leftContent.split(/\r?\n/), [leftContent]);
+  const plainRightLines = useMemo(() => rightContent.split(/\r?\n/), [rightContent]);
 
   const diffRowsWithSegments = useMemo(
     () => diffRows.map((row) => ({
@@ -143,19 +147,29 @@ const CompareDrawer = ({
                 allowClear
               />
             </Space>
-            <Space wrap size={8}>
-              <Tag color="gold">
-                {t('ConfigFile.modified')} {diffSummary.changed}
-              </Tag>
-              <Tag color="green">
-                {t('ConfigFile.added')} {diffSummary.added}
-              </Tag>
-              <Tag color="red">
-                {t('ConfigFile.removed')} {diffSummary.removed}
-              </Tag>
-            </Space>
+            {!isOverBudget && (
+              <Space wrap size={8}>
+                <Tag color="gold">
+                  {t('ConfigFile.modified')} {diffSummary.changed}
+                </Tag>
+                <Tag color="green">
+                  {t('ConfigFile.added')} {diffSummary.added}
+                </Tag>
+                <Tag color="red">
+                  {t('ConfigFile.removed')} {diffSummary.removed}
+                </Tag>
+              </Space>
+            )}
           </Flex>
         </div>
+
+        {isOverBudget && (
+          <Alert
+            type="warning"
+            showIcon
+            message={t('ConfigFile.diffOverBudgetHint')}
+          />
+        )}
 
         <Spin spinning={loading}>
           <div className="grid h-[calc(100vh-220px)] grid-cols-2 gap-4">
@@ -176,7 +190,21 @@ const CompareDrawer = ({
                 onScroll={() => syncScroll('left')}
                 className="min-h-0 flex-1 overflow-auto bg-[#0f172a] px-0 py-3"
               >
-                {diffRowsWithSegments.length ? (
+                {isOverBudget ? (
+                  plainLeftLines.map((line, index) => (
+                    <div
+                      key={`plain-left-${index}`}
+                      className="grid grid-cols-[56px_1fr] text-xs leading-6 text-[#e2e8f0]"
+                    >
+                      <div className="px-3 py-1 text-right font-mono text-[#64748b]">
+                        {index + 1}
+                      </div>
+                      <pre className="overflow-x-auto px-3 py-1 whitespace-pre-wrap break-all border-l-2 border-l-transparent">
+                        {line || ' '}
+                      </pre>
+                    </div>
+                  ))
+                ) : diffRowsWithSegments.length ? (
                   diffRowsWithSegments.map((row) => (
                     <div
                       key={`${row.key}-left`}
@@ -228,7 +256,21 @@ const CompareDrawer = ({
                 onScroll={() => syncScroll('right')}
                 className="min-h-0 flex-1 overflow-auto bg-[#0f172a] px-0 py-3"
               >
-                {diffRowsWithSegments.length ? (
+                {isOverBudget ? (
+                  plainRightLines.map((line, index) => (
+                    <div
+                      key={`plain-right-${index}`}
+                      className="grid grid-cols-[56px_1fr] text-xs leading-6 text-[#e2e8f0]"
+                    >
+                      <div className="px-3 py-1 text-right font-mono text-[#64748b]">
+                        {index + 1}
+                      </div>
+                      <pre className="overflow-x-auto px-3 py-1 whitespace-pre-wrap break-all border-l-2 border-l-transparent">
+                        {line || ' '}
+                      </pre>
+                    </div>
+                  ))
+                ) : diffRowsWithSegments.length ? (
                   diffRowsWithSegments.map((row) => (
                     <div
                       key={`${row.key}-right`}

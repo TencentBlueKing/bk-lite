@@ -12,6 +12,7 @@ import {
 import { PlusOutlined } from '@ant-design/icons';
 import CompactEmptyState from '@/components/compact-empty-state';
 import { useTranslation } from '@/utils/i18n';
+import { createLatestRequestGuard } from '@/context/latestRequestGuard';
 import { useCommon } from '@/app/cmdb/context/common';
 import { useModelApi, useSceneViewApi, useInstanceApi } from '@/app/cmdb/api';
 import type { AttrFieldType, ColumnItem, ModelItem, UserItem } from '@/app/cmdb/types/assetManage';
@@ -36,6 +37,11 @@ import type {
   SceneExecuteResult,
   SceneViewPayload,
 } from '@/app/cmdb/api/sceneView';
+import {
+  beginSceneViewExecute,
+  commitSceneViewExecuteSettled,
+  commitSceneViewExecuteSuccess,
+} from './sceneViewExecuteRequest';
 
 const DEFAULT_PAGE_SIZE = 20;
 const GROUP_LABEL: Record<SceneViewRecord['visibility'], string> = {
@@ -73,6 +79,7 @@ const SceneViewPage = () => {
     saveAsSceneView,
     exportSceneView,
   } = useSceneViewApi();
+  const [requestGuard] = useState(createLatestRequestGuard);
 
   const [scenes, setScenes] = useState<SceneViewRecord[]>([]);
   const [capabilities, setCapabilities] = useState({
@@ -127,27 +134,32 @@ const SceneViewPage = () => {
       searches: Record<string, ModelSearchPreference>,
       scope: 'all' | string
     ) => {
+      const requestId = beginSceneViewExecute(requestGuard);
       setLoadingScope(scope);
       try {
         const data = await executeSceneView(id, {
           pagination: toPaginationPayload(pagers),
           searches: toSearchPayload(searches),
         });
-        setResult(data);
-        setModelPagers(() => {
-          const next = { ...pagers };
-          for (const item of data?.models || []) {
-            if (!next[item.model_id]) {
-              next[item.model_id] = { page: 1, pageSize: DEFAULT_PAGE_SIZE };
+        commitSceneViewExecuteSuccess(requestGuard, requestId, () => {
+          setResult(data);
+          setModelPagers(() => {
+            const next = { ...pagers };
+            for (const item of data?.models || []) {
+              if (!next[item.model_id]) {
+                next[item.model_id] = { page: 1, pageSize: DEFAULT_PAGE_SIZE };
+              }
             }
-          }
-          return next;
+            return next;
+          });
         });
       } finally {
-        setLoadingScope(null);
+        commitSceneViewExecuteSettled(requestGuard, requestId, () => {
+          setLoadingScope(null);
+        });
       }
     },
-    [executeSceneView]
+    [executeSceneView, requestGuard]
   );
 
   useEffect(() => {
@@ -160,14 +172,21 @@ const SceneViewPage = () => {
       setModelPagers({});
       setModelSearches({});
       setCollapsed({});
-      return;
+      setLoadingScope(null);
+      return () => {
+        requestGuard.invalidate();
+      };
     }
     const searches = readModelSearches(browserStorage(), selectedId);
+    setResult(null);
     setModelPagers({});
     setModelSearches(searches);
     setCollapsed({});
     runExecute(selectedId, {}, searches, 'all');
-  }, [runExecute, selectedId]);
+    return () => {
+      requestGuard.invalidate();
+    };
+  }, [requestGuard, runExecute, selectedId]);
 
   const selectedModelKey = (selected?.model_ids || []).join(',');
 

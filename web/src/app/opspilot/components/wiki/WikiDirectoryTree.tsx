@@ -1,13 +1,16 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { Input, Tooltip, Tree } from "antd";
+import { Button, Input, Popconfirm, Tree } from "antd";
 import type { DataNode as TreeDataNode } from "antd/lib/tree";
+import { DeleteOutlined } from "@ant-design/icons";
 import { useTranslation } from "@/utils/i18n";
+import PermissionWrapper from "@/components/permission";
 import type {
   KnowledgePage,
   WikiDirectoryNode,
 } from "@/app/opspilot/types/wiki";
+import { canDeleteKnowledgeDirectory } from "@/app/opspilot/utils/wikiDirectoryTreeOps";
 
 const directoryKey = (id: number) => `directory:${id}`;
 const pageKey = (id: number) => `page:${id}`;
@@ -27,6 +30,9 @@ interface WikiDirectoryTreeProps {
   search: string;
   onSearchChange: (value: string) => void;
   onSelectPage: (pageId: number) => void;
+  canMutate?: boolean;
+  onDeletePage?: (pageId: number) => void;
+  onDeleteDirectory?: (directoryId: number) => void;
 }
 
 const WikiDirectoryTree: React.FC<WikiDirectoryTreeProps> = ({
@@ -37,6 +43,9 @@ const WikiDirectoryTree: React.FC<WikiDirectoryTreeProps> = ({
   search,
   onSearchChange,
   onSelectPage,
+  canMutate = false,
+  onDeletePage,
+  onDeleteDirectory,
 }) => {
   const { t } = useTranslation();
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
@@ -70,15 +79,50 @@ const WikiDirectoryTree: React.FC<WikiDirectoryTreeProps> = ({
       return left.order - right.order || left.name.localeCompare(right.name);
     };
 
+    const stopTreeSelect = (event: React.MouseEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    const renderDeleteControl = (
+      confirm: string,
+      onConfirm: () => void,
+    ) => (
+      <PermissionWrapper requiredPermissions={["Edit"]}>
+        <Popconfirm
+          title={confirm}
+          disabled={!canMutate}
+          onConfirm={onConfirm}
+        >
+          <Button
+            type="text"
+            size="small"
+            danger
+            disabled={!canMutate}
+            icon={<DeleteOutlined />}
+            className="h-6 w-6 min-w-6 p-0 opacity-0 group-hover:opacity-100"
+            aria-label={t("common.delete")}
+            onMouseDown={stopTreeSelect}
+            onClick={stopTreeSelect}
+          />
+        </Popconfirm>
+      </PermissionWrapper>
+    );
+
     const toPageNode = (page: WikiTreePageItem): TreeDataNode => ({
       key: pageKey(page.id),
       isLeaf: true,
       title: (
-        <Tooltip title={page.page_type || page.title} placement="right">
-          <span className="block truncate text-[13px] leading-5">
+        <span className="group flex min-w-0 items-center gap-1">
+          <span className="block min-w-0 flex-1 truncate text-[13px] leading-5">
             {page.title}
           </span>
-        </Tooltip>
+          {onDeletePage
+            ? renderDeleteControl(t("wiki.deletePageConfirm"), () => {
+              onDeletePage(page.id);
+            })
+            : null}
+        </span>
       ),
     });
 
@@ -92,22 +136,28 @@ const WikiDirectoryTree: React.FC<WikiDirectoryTreeProps> = ({
       );
       const childPages = pagesByDirectory.get(directory.id) || [];
 
+      const showDirectoryDelete =
+        Boolean(onDeleteDirectory) &&
+        canDeleteKnowledgeDirectory(
+          directories,
+          directory,
+          unclassifiedDirectoryId,
+        );
+
       return {
         key: directoryKey(directory.id),
         selectable: false,
         title: (
-          <Tooltip
-            title={
-              isUnclassified
-                ? t("wiki.directoryUnclassifiedTip")
-                : directory.description || label
-            }
-            placement="right"
-          >
-            <span className="block truncate text-[13px] font-medium leading-5 text-[var(--color-text-1)]">
+          <span className="group flex min-w-0 items-center gap-1">
+            <span className="block min-w-0 flex-1 truncate text-[13px] font-medium leading-5 text-[var(--color-text-1)]">
               {label}
             </span>
-          </Tooltip>
+            {showDirectoryDelete
+              ? renderDeleteControl(t("wiki.deleteDirectoryConfirm"), () => {
+                onDeleteDirectory?.(directory.id);
+              })
+              : null}
+          </span>
         ),
         children: [
           ...childDirectories.map(toTreeNode),
@@ -122,7 +172,15 @@ const WikiDirectoryTree: React.FC<WikiDirectoryTreeProps> = ({
       ...[...directories].sort(compareDirectories).map(toTreeNode),
       ...orphanPages.map(toPageNode),
     ];
-  }, [directories, pagesByDirectory, t, unclassifiedDirectoryId]);
+  }, [
+    canMutate,
+    directories,
+    onDeleteDirectory,
+    onDeletePage,
+    pagesByDirectory,
+    t,
+    unclassifiedDirectoryId,
+  ]);
 
   const defaultExpanded = useMemo(() => {
     const keys: React.Key[] = [];

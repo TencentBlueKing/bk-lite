@@ -7,8 +7,7 @@ import {
   FlexiblePanelSection,
   KpiSection,
   useFilteredChartPanels,
-  useFilteredSummaryCards
-} from '../common/dashboard-components';
+  useFilteredSummaryCards, DashboardSectionLabel } from '../common/dashboard-components';
 import { TrendChartPanel } from '../../shared/widgets';
 import { ETCD_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
@@ -48,10 +47,10 @@ export default function EtcdDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={5} styles={styles} />
 
-          <div className={styles.sectionLabel}>磁盘与共识</div>
+          <DashboardSectionLabel styles={styles}>磁盘与共识</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {renderChart(disk, styles.span6)}
             {renderChart(leader, styles.span6)}
@@ -59,7 +58,7 @@ export default function EtcdDashboardPage() {
             {renderChart(proposal, styles.span6)}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>容量与写入</div>
+          <DashboardSectionLabel styles={styles}>容量与写入</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {renderChart(frag, styles.span6)}
             {renderChart(putDelete, styles.span6)}

@@ -98,3 +98,13 @@ def test_stale_structure_cas_rolls_back_without_creating_rows(wiki_factory):
     assert WikiDirectory.objects.filter(knowledge_base=knowledge_base).count() == before["directories"]
     assert WikiStructureRevision.objects.filter(knowledge_base=knowledge_base).count() == before["revisions"]
     assert WikiGeneration.objects.filter(knowledge_base=knowledge_base).count() == before["generations"]
+
+
+def test_okf_bundle_bootstrap_creates_nested_wiki_directories(wiki_factory):
+    knowledge_base = wiki_factory.knowledge_base(template_key="okf_bundle")
+    bootstrap_knowledge_base(knowledge_base, operator="admin")
+    wiki = WikiDirectory.objects.get(knowledge_base=knowledge_base, name="wiki", status="active")
+    operations = WikiDirectory.objects.get(knowledge_base=knowledge_base, name="operations", status="active")
+    assert wiki.parent_id is None
+    assert operations.parent_id == wiki.pk
+    assert operations.key != wiki.key

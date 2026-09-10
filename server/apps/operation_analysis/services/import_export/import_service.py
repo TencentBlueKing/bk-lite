@@ -78,6 +78,7 @@ class ImportService:
         groups: list[int] | None = None,
         existing_canvas_ids: dict[tuple[str, str], int] | None = None,
         preserve_existing_canvas_groups: bool = False,
+        datasource_groups: list[int] | None = None,
     ):
         """
         初始化导入服务
@@ -89,9 +90,10 @@ class ImportService:
             secret_supplements: 敏感字段补充，key为object_key，value为{field: value}
             created_by: 创建者
             updated_by: 更新者
-            groups: 导入对象所属的组织ID列表
+            groups: 导入画布所属的组织ID列表
             existing_canvas_ids: 由受信调用方按（对象类型，稳定键）解析的存量画布 ID
             preserve_existing_canvas_groups: 覆盖存量画布时保留其组织可见性配置
+            datasource_groups: 新建数据源的组织名单；None 时沿用 groups
         """
         self.doc = doc
         self.target_directory_id = target_directory_id
@@ -100,6 +102,7 @@ class ImportService:
         self.created_by = created_by
         self.updated_by = updated_by
         self.groups = groups or []
+        self.datasource_groups = self.groups if datasource_groups is None else list(datasource_groups)
         self.existing_canvas_ids = existing_canvas_ids or {}
         self.preserve_existing_canvas_groups = preserve_existing_canvas_groups
 
@@ -464,7 +467,7 @@ class ImportService:
                     field_schema=ds_item.field_schema,
                     created_by=self.created_by,
                     updated_by=self.updated_by,
-                    groups=self.groups,
+                    groups=self.datasource_groups,
                 )
                 ds.namespaces.set(namespace_ids)
                 ds.tag.set(tag_ids)
@@ -504,7 +507,7 @@ class ImportService:
                 field_schema=ds_item.field_schema,
                 created_by=self.created_by,
                 updated_by=self.updated_by,
-                groups=self.groups,
+                groups=self.datasource_groups,
             )
             ds.namespaces.set(namespace_ids)
             ds.tag.set(tag_ids)

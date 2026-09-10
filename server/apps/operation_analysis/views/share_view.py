@@ -93,11 +93,13 @@ def _view_sets_has_scene_widget(value, scene_widget_type: str) -> bool:
     return False
 
 
-def _serialize_shared_resource(principal):
+def _serialize_shared_resource(principal, language=None):
     resource = principal.resource
+    from apps.operation_analysis.services.builtin_i18n import overlay_canvas_payload
+
     if principal.resource_type == "networkTopology":
         # Phase A：只返回脱敏配置；禁止 token / base_url / runtime cache 等 WeOps 凭证面。
-        return {
+        payload = {
             "resource_type": principal.resource_type,
             "id": resource.id,
             "name": resource.name,
@@ -107,6 +109,8 @@ def _serialize_shared_resource(principal):
             "refresh_interval": normalize_canvas_refresh_interval(getattr(resource, "refresh_interval", 0)),
             "status": getattr(resource, "status", "") or "",
         }
+        overlay_canvas_payload(payload, resource, language)
+        return payload
     payload = {
         "resource_type": principal.resource_type,
         "id": resource.id,
@@ -121,6 +125,7 @@ def _serialize_shared_resource(principal):
         payload["other"] = resource.other
     if hasattr(resource, "refresh_interval"):
         payload["refresh_interval"] = normalize_canvas_refresh_interval(resource.refresh_interval)
+    overlay_canvas_payload(payload, resource, language)
     return payload
 
 
@@ -249,7 +254,7 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
             return Response(INVALID_SHARE_RESPONSE, status=status.HTTP_404_NOT_FOUND)
 
         log_share_access(request, action="open", principal=principal, visitor=request.user, result="ok")
-        return Response(_serialize_shared_resource(principal))
+        return Response(_serialize_shared_resource(principal, language=getattr(request.user, "locale", None)))
 
     @action(
         detail=False,

@@ -1,0 +1,547 @@
+# 可导入的非内置画布：K8S 运维仪表盘。
+# 不会被 init_builtin_canvases 加载。
+# 导入前请先执行 init_source_api_data；同名内置数据源冲突策略选「跳过」。
+# 告警列表走告警中心 get_active_alert_top，固定 source_id=k8s（Event 通道）。
+# 监控走已注册 Cluster 指标，不新增 NATS 接口。
+meta:
+  schema_version: 1.2.0
+  exported_at: '2026-09-09T19:00:00+08:00'
+  source:
+    organization_id: 0
+  object_counts:
+    dashboards: 1
+    topologies: 0
+    screens: 0
+    reports: 0
+    architectures: 0
+    datasources: 4
+    namespaces: 0
+dashboards:
+- key: dashboard::K8S运维仪表盘
+  name: K8S 运维仪表盘
+  desc: 按所选单个 K8S 集群查看节点/Pod/内存/磁盘态势、趋势，以及告警中心 K8s Event 通道的活跃告警。供运维排障与 AI 排查共用。集群筛选为单选，避免多集群把使用率加总。
+  other:
+    timeSelector:
+      selectValue: 360
+      rangePickerVaule: null
+  view_sets:
+  - id: group-overview
+    itemType: group
+    name: 集群态势
+    description: 所选集群的 Pod/节点数量与内存、磁盘使用率
+    x: 0
+    y: 0
+    w: 12
+    h: 4
+    headerH: 1
+    sizeToContent: true
+    subGridOpts:
+      children:
+      - h: 3
+        w: 3
+        x: 0
+        y: 0
+        id: k8s-kpi-pods
+        name: Pod 数
+        itemType: widget
+        description: 当前筛选集群的 Pod 总数
+        valueConfig:
+          chartType: single
+          dataSource: K8S集群指标快照::monitor/query_metric_series
+          selectedFields:
+          - value
+          decimalPlaces: 0
+          filterBindings:
+            instance_ids__string: true
+            time__timeRange: true
+          dataSourceParams:
+          - &id001
+            name: instance_ids
+            type: string
+            value: ''
+            alias_name: 集群
+            filterType: filter
+            inputConfig: &id006
+              control: select
+              multiple: false
+              picker: table
+              optionsSource:
+                type: dynamic
+                sourceRef:
+                  type: rest_api
+                  value: K8S集群实例::monitor/get_monitor_instance_list
+                valueField: instance_id
+                labelField: display_name
+          - name: metric
+            type: string
+            value: cluster_pod_count
+            alias_name: 指标
+            filterType: params
+            required: true
+          - &id008
+            name: mode
+            type: string
+            value: instant
+            alias_name: 查询模式
+            filterType: fixed
+            required: true
+          - &id004
+            name: time
+            type: timeRange
+            value: 360
+            alias_name: 时间范围
+            filterType: filter
+          thresholdColors: &id002
+          - color: '#366ce4'
+            value: '70'
+          - color: '#366ce4'
+            value: '30'
+          - color: '#366ce4'
+            value: '0'
+      - h: 3
+        w: 3
+        x: 3
+        y: 0
+        id: k8s-kpi-nodes
+        name: 节点数
+        itemType: widget
+        description: 当前筛选集群的节点总数
+        valueConfig:
+          chartType: single
+          dataSource: K8S集群指标快照::monitor/query_metric_series
+          selectedFields:
+          - value
+          decimalPlaces: 0
+          filterBindings:
+            instance_ids__string: true
+            time__timeRange: true
+          dataSourceParams:
+          - *id001
+          - name: metric
+            type: string
+            value: cluster_node_count
+            alias_name: 指标
+            filterType: params
+            required: true
+          - *id008
+          - *id004
+          thresholdColors: *id002
+      - h: 3
+        w: 3
+        x: 6
+        y: 0
+        id: k8s-kpi-memory
+        name: 内存使用率
+        itemType: widget
+        description: 集群节点内存使用率
+        valueConfig:
+          chartType: single
+          dataSource: K8S集群指标快照::monitor/query_metric_series
+          selectedFields:
+          - value
+          unitId: percent
+          decimalPlaces: 1
+          filterBindings:
+            instance_ids__string: true
+            time__timeRange: true
+          dataSourceParams:
+          - *id001
+          - name: metric
+            type: string
+            value: cluster_memory_utilization
+            alias_name: 指标
+            filterType: params
+            required: true
+          - *id008
+          - *id004
+          thresholdColors:
+          - color: '#fd666d'
+            value: '85'
+          - color: '#EAB839'
+            value: '70'
+          - color: '#67a567'
+            value: '0'
+      - h: 3
+        w: 3
+        x: 9
+        y: 0
+        id: k8s-kpi-disk
+        name: 磁盘使用率
+        itemType: widget
+        description: 集群节点磁盘使用率
+        valueConfig:
+          chartType: single
+          dataSource: K8S集群指标快照::monitor/query_metric_series
+          selectedFields:
+          - value
+          unitId: percent
+          decimalPlaces: 1
+          filterBindings:
+            instance_ids__string: true
+            time__timeRange: true
+          dataSourceParams:
+          - *id001
+          - name: metric
+            type: string
+            value: cluster_disk_utilization
+            alias_name: 指标
+            filterType: params
+            required: true
+          - *id008
+          - *id004
+          thresholdColors:
+          - color: '#fd666d'
+            value: '85'
+          - color: '#EAB839'
+            value: '70'
+          - color: '#67a567'
+            value: '0'
+  - id: group-alerts
+    itemType: group
+    name: K8S 活跃告警
+    description: 告警中心 K8s Event 通道当前未关闭告警，按持续时长升序
+    x: 0
+    y: 4
+    w: 12
+    h: 9
+    headerH: 1
+    sizeToContent: true
+    subGridOpts:
+      children:
+      - h: 8
+        w: 12
+        x: 0
+        y: 0
+        id: k8s-active-alerts
+        name: K8S 活跃告警
+        itemType: widget
+        description: 仅 source_id=k8s 的活跃告警，供排障与 AI 上下文使用
+        valueConfig:
+          chartType: table
+          dataSource: K8S活跃告警::get_active_alert_top
+          tableConfig:
+            columns:
+            - key: alert_id
+              order: 0
+              title: 告警 ID
+              visible: true
+            - key: title
+              order: 1
+              title: 标题
+              visible: true
+            - key: level
+              order: 2
+              title: 级别
+              visible: true
+            - key: status
+              order: 3
+              title: 状态
+              visible: true
+            - key: resource_name
+              order: 4
+              title: 资源
+              visible: true
+            - key: resource_type
+              order: 5
+              title: 资源类型
+              visible: true
+            - key: source_name
+              order: 6
+              title: 告警源
+              visible: true
+            - key: duration_seconds
+              order: 7
+              title: 持续秒数
+              visible: true
+            - key: created_at
+              order: 8
+              title: 创建时间
+              visible: true
+          dataSourceParams:
+          - name: limit
+            type: number
+            value: 50
+            alias_name: 返回条数
+            filterType: params
+          - name: source_id
+            type: string
+            value: k8s
+            alias_name: 告警源 ID
+            filterType: fixed
+  - id: group-trend
+    itemType: group
+    name: 资源趋势
+    description: 所选集群内存与磁盘使用率趋势
+    x: 0
+    y: 13
+    w: 12
+    h: 7
+    headerH: 1
+    sizeToContent: true
+    subGridOpts:
+      children:
+      - h: 6
+        w: 6
+        x: 0
+        y: 0
+        id: k8s-trend-memory
+        name: 内存使用率趋势
+        itemType: widget
+        description: 所选集群内存使用率
+        valueConfig:
+          chartType: line
+          dataSource: K8S集群指标趋势::monitor/query_metric_series
+          unitId: percent
+          decimalPlaces: 1
+          filterBindings:
+            instance_ids__string: true
+            time__timeRange: true
+          dataSourceParams:
+          - *id001
+          - name: metric
+            type: string
+            value: cluster_memory_utilization
+            alias_name: 指标
+            filterType: params
+            required: true
+          - &id009
+            name: mode
+            type: string
+            value: range
+            alias_name: 查询模式
+            filterType: fixed
+            required: true
+          - *id004
+      - h: 6
+        w: 6
+        x: 6
+        y: 0
+        id: k8s-trend-disk
+        name: 磁盘使用率趋势
+        itemType: widget
+        description: 所选集群磁盘使用率
+        valueConfig:
+          chartType: line
+          dataSource: K8S集群指标趋势::monitor/query_metric_series
+          unitId: percent
+          decimalPlaces: 1
+          filterBindings:
+            instance_ids__string: true
+            time__timeRange: true
+          dataSourceParams:
+          - *id001
+          - name: metric
+            type: string
+            value: cluster_disk_utilization
+            alias_name: 指标
+            filterType: params
+            required: true
+          - *id009
+          - *id004
+  refs:
+    datasource_keys:
+    - K8S集群实例::monitor/get_monitor_instance_list
+    - K8S集群指标快照::monitor/query_metric_series
+    - K8S集群指标趋势::monitor/query_metric_series
+    - K8S活跃告警::get_active_alert_top
+    namespace_keys: []
+  filters:
+  - id: instance_ids__string
+    key: instance_ids
+    name: 集群
+    type: string
+    defaultValue: ''
+    order: 0
+    enabled: true
+    inputMode: select
+    inputConfig: *id006
+  - id: time__timeRange
+    key: time
+    name: 时间范围
+    type: timeRange
+    defaultValue:
+      selectValue: 360
+      rangePickerVaule: null
+    order: 1
+    enabled: true
+topologies: []
+architectures: []
+screens: []
+reports: []
+datasources:
+- key: K8S集群实例::monitor/get_monitor_instance_list
+  name: K8S集群实例
+  rest_api: monitor/get_monitor_instance_list
+  desc: 当前组织权限范围内的 K8S Cluster 实例，供统一筛选下拉使用
+  is_active: true
+  params:
+  - name: object_names
+    type: string
+    value:
+    - Cluster
+    alias_name: 监控对象
+    filterType: fixed
+  tags:
+  - 监控
+  chart_type: []
+  field_schema:
+  - key: instance_id
+    title: 实例ID
+    value_type: string
+  - key: display_name
+    title: 集群
+    value_type: string
+  namespace_keys: []
+- key: K8S集群指标快照::monitor/query_metric_series
+  name: K8S集群指标快照
+  rest_api: monitor/query_metric_series
+  desc: 按已注册 Cluster 指标查询所选集群瞬时值；未选集群不退化为全量
+  is_active: true
+  params:
+  - name: instance_ids
+    type: string
+    value: ''
+    alias_name: 集群
+    filterType: filter
+    inputConfig: *id006
+  - name: metric
+    type: string
+    value: cluster_pod_count
+    alias_name: 指标
+    filterType: params
+    required: true
+    inputConfig:
+      control: select
+      componentSwitch: false
+      optionsSource:
+        type: static
+        staticItems: &id007
+        - label: Pod 数
+          value: cluster_pod_count
+        - label: 节点数
+          value: cluster_node_count
+        - label: 内存使用率
+          value: cluster_memory_utilization
+        - label: 磁盘使用率
+          value: cluster_disk_utilization
+  - name: mode
+    type: string
+    value: instant
+    alias_name: 查询模式
+    filterType: fixed
+    required: true
+  - name: time
+    type: timeRange
+    value: 360
+    alias_name: 时间范围
+    filterType: filter
+  tags:
+  - 监控
+  chart_type:
+  - single
+  - topN
+  - table
+  field_schema:
+  - key: rank
+    title: 排名
+    value_type: number
+  - key: name
+    title: 名称
+    value_type: string
+  - key: value
+    title: 指标值
+    value_type: number
+  namespace_keys: []
+- key: K8S集群指标趋势::monitor/query_metric_series
+  name: K8S集群指标趋势
+  rest_api: monitor/query_metric_series
+  desc: 按已注册 Cluster 指标查询所选集群时间序列；未选集群不退化为全量
+  is_active: true
+  params:
+  - name: instance_ids
+    type: string
+    value: ''
+    alias_name: 集群
+    filterType: filter
+    inputConfig: *id006
+  - name: metric
+    type: string
+    value: cluster_memory_utilization
+    alias_name: 指标
+    filterType: params
+    required: true
+    inputConfig:
+      control: select
+      componentSwitch: false
+      optionsSource:
+        type: static
+        staticItems: *id007
+  - name: mode
+    type: string
+    value: range
+    alias_name: 查询模式
+    filterType: fixed
+    required: true
+  - name: time
+    type: timeRange
+    value: 360
+    alias_name: 时间范围
+    filterType: filter
+  tags:
+  - 监控
+  chart_type:
+  - line
+  - bar
+  field_schema: []
+  namespace_keys: []
+- key: K8S活跃告警::get_active_alert_top
+  name: K8S活跃告警
+  rest_api: get_active_alert_top
+  desc: 告警中心当前活跃告警，可按 source_id 收窄到 K8s Event 通道
+  is_active: true
+  params:
+  - name: limit
+    type: number
+    value: 50
+    alias_name: 返回条数
+    filterType: params
+  - name: source_id
+    type: string
+    value: k8s
+    alias_name: 告警源 ID
+    filterType: fixed
+  tags:
+  - 告警
+  chart_type:
+  - table
+  - topN
+  field_schema:
+  - key: alert_id
+    title: 告警 ID
+    value_type: string
+  - key: title
+    title: 告警标题
+    value_type: string
+  - key: level
+    title: 告警级别
+    value_type: string
+  - key: status
+    title: 状态
+    value_type: string
+  - key: duration_seconds
+    title: 持续时长(秒)
+    value_type: number
+  - key: created_at
+    title: 创建时间
+    value_type: string
+  - key: resource_name
+    title: 资源名称
+    value_type: string
+  - key: resource_type
+    title: 资源类型
+    value_type: string
+  - key: source_name
+    title: 告警源
+    value_type: string
+  namespace_keys: []
+namespaces: []

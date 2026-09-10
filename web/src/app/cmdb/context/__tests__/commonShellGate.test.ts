@@ -13,4 +13,10 @@ describe('cmdb CommonProvider route shell', () => {
     expect(source).toMatch(/commonLoading/);
     expect(source).toMatch(/\{children\}/);
   });
+
+  it('refetches model list when locale changes', () => {
+    const source = readFileSync(resolve(root, '../common.tsx'), 'utf8');
+    expect(source).toMatch(/useLocale\(\)/);
+    expect(source).toMatch(/initializeData\(\);\s*\}, \[locale\]\)/s);
+  });
 });

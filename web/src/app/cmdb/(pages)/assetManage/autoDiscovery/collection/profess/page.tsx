@@ -37,6 +37,7 @@ import type { ColumnType } from 'antd/es/table';
 import type { FilterValue } from 'antd/es/table/interface';
 import { Alert, Button, Drawer, Modal, Spin, Tag, Tabs, Tooltip, message } from 'antd';
 import { useTranslation } from '@/utils/i18n';
+import { useLocale } from '@/context/locale';
 import {
   getExecStatusConfig,
   EXEC_STATUS,
@@ -51,6 +52,7 @@ import {
 } from '@/app/cmdb/types/autoDiscovery';
 import { useAssetManageStore } from '@/app/cmdb/store';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { createCollectionListRequest } from './collectionListRequest';
 
 type ExtendedColumnItem = ColumnType<CollectTask> & {
   key: string;
@@ -129,6 +131,7 @@ const getTaskStatusStats = (
 
 const ProfessionalCollection: React.FC = () => {
   const { t } = useTranslation();
+  const { locale } = useLocale();
   const collectApi = useCollectApi();
   const router = useRouter();
   const pathname = usePathname();
@@ -158,7 +161,7 @@ const ProfessionalCollection: React.FC = () => {
   const [docLoading, setDocLoading] = useState(false);
   const [taskStatus, setTaskStatus] = useState<TaskStatusMap>({});
   const tableCountRef = useRef<number>(0);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const [listRequest] = useState(createCollectionListRequest);
   const statusTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isSyncingTaskDetailRef = useRef(false);
   const isClosingTaskDetailRef = useRef(false);
@@ -299,9 +302,7 @@ const ProfessionalCollection: React.FC = () => {
   };
 
   const fetchData = async (showLoading = true, pluginId?: string) => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-    }
+    const requestId = listRequest.begin();
     try {
       if (!selectedCategoryRef.current.categoryId) return;
       if (showLoading) {
@@ -313,31 +314,29 @@ const ProfessionalCollection: React.FC = () => {
         count: number;
       };
       // console.log('test2.4:getCollectList', data);
-      setTableData(data.items || []);
-      tableCountRef.current = data.items.length || 0;
-      setPaginationUI((prev) => ({
-        ...prev,
-        total: data.count || 0,
-      }));
+      listRequest.commitSuccess(requestId, data, (view) => {
+        setTableData(view.items);
+        tableCountRef.current = view.listCount;
+        setPaginationUI((prev) => ({
+          ...prev,
+          total: view.total,
+        }));
+      });
     } catch (error) {
       console.error('Failed to fetch table data:', error);
     } finally {
-      if (showLoading) {
-        setTableLoading(false);
-      }
-      resetTimer(pluginId);
+      listRequest.commitSettled(requestId, () => {
+        if (showLoading) {
+          setTableLoading(false);
+        }
+        resetTimer(pluginId);
+      });
     }
   };
 
   const resetTimer = (pluginId?: string) => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-    }
     const currentPluginId = pluginId || stateRef.current.selectedPluginId;
-    timerRef.current = setTimeout(
-      () => fetchData(false, currentPluginId),
-      30 * 1000
-    );
+    listRequest.resetTimer(() => fetchData(false, currentPluginId));
   };
 
   const fetchTaskStatus = async () => {
@@ -361,7 +360,7 @@ const ProfessionalCollection: React.FC = () => {
       const allCategory: TreeNode = {
         id: 'all',
         key: 'all',
-        name: '全部',
+        name: t('all'),
         tabItems: categories.flatMap((node: TreeNode) => node.tabItems || []),
       };
 
@@ -415,22 +414,26 @@ const ProfessionalCollection: React.FC = () => {
 
   useEffect(() => {
     fetchCategoryData();
+    setPluginDoc('');
+    if (docDrawerVisible || taskDocDrawerVisible) {
+      const pluginId = stateRef.current.selectedPluginId;
+      if (pluginId) {
+        fetchPluginDoc(pluginId);
+      }
+    }
 
     statusTimerRef.current = setInterval(() => {
       fetchTaskStatus();
     }, 30 * 1000);
 
     return () => {
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
+      listRequest.unmount();
       if (statusTimerRef.current) {
         clearInterval(statusTimerRef.current);
         statusTimerRef.current = null;
       }
     };
-  }, []);
+  }, [locale]);
 
   const handleSearch = (value: string) => {
     setSearchTextUI(value);
@@ -1036,10 +1039,7 @@ const ProfessionalCollection: React.FC = () => {
       setSelectedPluginId(pluginId);
       stateRef.current.selectedPluginId = pluginId;
 
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
+      listRequest.clearTimer();
 
       setSearchTextUI('');
       stateRef.current.searchText = '';
@@ -1216,7 +1216,7 @@ const ProfessionalCollection: React.FC = () => {
                   pagination={{
                     ...paginationUI,
                     showSizeChanger: true,
-                    showTotal: (total) => `共 ${total} 条`,
+                    showTotal: (total) => t('Collection.taskDetail.paginationTotal', '', { total }),
                   }}
                   fieldSetting={{
                     showSetting: true,

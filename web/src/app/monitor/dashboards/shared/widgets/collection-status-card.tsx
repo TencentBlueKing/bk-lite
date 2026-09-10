@@ -12,6 +12,7 @@ import {
   getCollectionStatusToneLabel
 } from '../utils/collection-status';
 import { TitleWithGuide, GuideTooltipStyles } from './guide-tooltip';
+import { tDashboardText, useDashboardText } from '../utils/content-i18n';
 
 export interface CollectionStatusLegendItem {
   key: string;
@@ -151,8 +152,16 @@ export const CollectionStatusCard = ({
   className,
   styles
 }: CollectionStatusCardProps) => {
+  const { t, dt, common } = useDashboardText();
   const resolvedTone = getStatusTone(status, statusTone);
   const toneSuffix = resolveToneSuffix(resolvedTone);
+  const localizedTitle = typeof title === 'string' ? tDashboardText(t, title) : title;
+  const localizedTimelineTitle = typeof timelineTitle === 'string' ? tDashboardText(t, timelineTitle) : timelineTitle;
+  const localizedEmpty = typeof emptyTimelineText === 'string' ? tDashboardText(t, emptyTimelineText) : emptyTimelineText;
+  const localizedLegend = (legendItems || COLLECTION_STATUS_LEGEND).map((item) => ({
+    ...item,
+    label: tDashboardText(t, item.label)
+  }));
 
   const scaleRange = React.useMemo(() => {
     if (timeline.length < 2) return null;
@@ -163,7 +172,7 @@ export const CollectionStatusCard = ({
     const startText = dayjs(first.startMs).format('HH:mm');
     const now = Date.now();
     const isNearNow = Math.abs(now - last.endMs) < 120_000;
-    const endText = isNearNow ? '刚刚' : dayjs(last.endMs).format('HH:mm');
+    const endText = isNearNow ? common('justNow', '刚刚') : dayjs(last.endMs).format('HH:mm');
 
     return { startText, endText };
   }, [timeline]);
@@ -175,7 +184,7 @@ export const CollectionStatusCard = ({
       <div className={headerClass}>
         <div className={styles.statLabel}>
           <TitleWithGuide
-            title={title}
+            title={localizedTitle}
             items={guideItems}
             className={styles.statTitleWithGuide}
             styles={styles}
@@ -215,16 +224,16 @@ export const CollectionStatusCard = ({
                 'w-[7px] h-[7px] rounded-full shrink-0'
               ].filter(Boolean).join(' ')}
             />
-            <span className={styles.collectionStatusPillText}>{status.label}</span>
+            <span className={styles.collectionStatusPillText}>{dt(status.label)}</span>
           </div>
         </div>
 
         <div className={[styles.collectionStatusTimelineBlock, 'mt-auto flex flex-col gap-1.5 pt-1.5'].filter(Boolean).join(' ')}>
           <div className={[styles.collectionStatusTimelineTitle, 'flex items-center justify-between gap-2 text-[11px] font-medium text-[var(--color-text-3)]'].filter(Boolean).join(' ')}>
-            <span>{timelineTitle}</span>
+            <span>{localizedTimelineTitle}</span>
             {timelineHint ? (
               <span className={[styles.collectionStatusTimelineHint, 'shrink-0 text-[11px] text-[var(--color-text-4)]'].filter(Boolean).join(' ')}>
-                {timelineHint}
+                {dt(timelineHint)}
               </span>
             ) : null}
           </div>
@@ -237,7 +246,7 @@ export const CollectionStatusCard = ({
                   return (
                     <Tooltip
                       key={`${segment.tone}-${segment.startMs ?? index}-${index}`}
-                      title={<span style={{ whiteSpace: 'pre-line' }}>{formatSegmentTooltip(segment)}</span>}
+                      title={<span style={{ whiteSpace: 'pre-line' }}>{formatSegmentTooltip(segment).replace(getToneLabel(segment.tone), dt(getToneLabel(segment.tone)))}</span>}
                     >
                       <span
                         className={[
@@ -261,7 +270,7 @@ export const CollectionStatusCard = ({
                   </span>
                 </div>
                 <div className={[styles.collectionStatusLegend, 'flex items-center gap-2 whitespace-nowrap text-[11px] text-[var(--color-text-3)]'].filter(Boolean).join(' ')}>
-                  {legendItems.map((item) => (
+                  {localizedLegend.map((item) => (
                     <span key={item.key} className={[styles.collectionStatusLegendItem, 'inline-flex items-center gap-1 text-[11px]'].filter(Boolean).join(' ')}>
                       <span
                         className={[styles.collectionStatusLegendDot, 'w-1.5 h-1.5 rounded-full shrink-0'].filter(Boolean).join(' ')}
@@ -273,9 +282,9 @@ export const CollectionStatusCard = ({
                 </div>
               </div>
             </>
-          ) : emptyTimelineText ? (
+          ) : localizedEmpty ? (
             <div className={[styles.collectionStatusTimelineEmpty, 'py-2 text-center text-[12px] text-[var(--color-text-3)]'].filter(Boolean).join(' ')}>
-              {emptyTimelineText}
+              {localizedEmpty}
             </div>
           ) : (
             <div className={styles.collectionStatusTimeline} />

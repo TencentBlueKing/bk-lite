@@ -44,6 +44,7 @@ import type {
 import { HandledRequestError } from "@/utils/request";
 import { useTranslation } from "@/utils/i18n";
 import WikiDirectoryImpactDrawer from "./WikiDirectoryImpactDrawer";
+import { formatPageTypeLabel, pageTypeSelectOption } from "./wikiFormat";
 
 const UNCLASSIFIED_DIRECTORY_KEY = "__unclassified__";
 const ROOT_PARENT_KEY = "root";
@@ -873,6 +874,26 @@ const WikiStructureEditor: React.FC<WikiStructureEditorProps> = ({
       );
     });
   }
+  const labeledPageTypeOptions = pageTypes.map((pageType) =>
+    pageTypeSelectOption(t, pageType),
+  );
+  const labeledDefaultPageTypeOptions = defaultPageTypeOptions.map((pageType) =>
+    pageTypeSelectOption(t, pageType),
+  );
+  const renderPageTypeTag = (props: {
+    label?: React.ReactNode;
+    value?: string | number;
+    closable?: boolean;
+    onClose?: (event?: React.MouseEvent<HTMLElement, MouseEvent>) => void;
+  }) => (
+    <Tag
+      closable={props.closable}
+      onClose={props.onClose}
+      className="mr-1"
+    >
+      {formatPageTypeLabel(t, String(props.value ?? "")) || props.label}
+    </Tag>
+  );
   const deleteDisabledReason = selectedIsSystem
     ? t("wiki.structureSystemLocked")
     : selectedHasChildren
@@ -1186,10 +1207,8 @@ const WikiStructureEditor: React.FC<WikiStructureEditorProps> = ({
             status={pageTypes.length ? undefined : "error"}
             placeholder={t("wiki.structurePageTypesPlaceholder")}
             tokenSeparators={[",", "，"]}
-            options={pageTypes.map((pageType) => ({
-              value: pageType,
-              label: pageType,
-            }))}
+            options={labeledPageTypeOptions}
+            tagRender={renderPageTypeTag}
             className="w-full"
             aria-label={t("wiki.structurePageTypes")}
             onChange={handlePageTypesChange}
@@ -1436,10 +1455,7 @@ const WikiStructureEditor: React.FC<WikiStructureEditorProps> = ({
                       mode="multiple"
                       value={selectedDirectory.rules.allowed_page_types}
                       disabled={selectedLocked}
-                      options={pageTypes.map((pageType) => ({
-                        value: pageType,
-                        label: pageType,
-                      }))}
+                      options={labeledPageTypeOptions}
                       className="w-full"
                       aria-label={t("wiki.structureAllowedPageTypes")}
                       onChange={(values: string[]) =>
@@ -1476,10 +1492,7 @@ const WikiStructureEditor: React.FC<WikiStructureEditorProps> = ({
                       mode="multiple"
                       value={selectedDirectory.rules.default_for_page_types}
                       disabled={selectedLocked}
-                      options={defaultPageTypeOptions.map((pageType) => ({
-                        value: pageType,
-                        label: pageType,
-                      }))}
+                      options={labeledDefaultPageTypeOptions}
                       className="w-full"
                       aria-label={t("wiki.structureDefaultPageTypes")}
                       onChange={(values: string[]) =>

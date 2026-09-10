@@ -5,6 +5,7 @@ import {
   Modal,
   Table,
   Input,
+  InputNumber,
   Switch,
   Empty,
   Button,
@@ -63,7 +64,10 @@ import type {
   InputControlConfig,
   ParamItem,
 } from '@/app/ops-analysis/types/dataSource';
-import { isBindableDataSourceParamType } from '@/app/ops-analysis/utils/dataSourceParamContract';
+import {
+  isBindableDataSourceParamType,
+  type BindableDataSourceParamType,
+} from '@/app/ops-analysis/utils/dataSourceParamContract';
 
 interface UnifiedFilterConfigModalProps {
   open: boolean;
@@ -80,7 +84,7 @@ interface SortableRowProps extends React.HTMLAttributes<HTMLTableRowElement> {
 
 interface ScannedParam {
   key: string;
-  type: 'string' | 'timeRange' | 'dateRange';
+  type: BindableDataSourceParamType;
   componentCount: number;
   sampleAlias: string;
   sampleDefaultValue: FilterValue;
@@ -160,6 +164,12 @@ const toSingleOrganizationValue = (value: FilterValue): number | undefined => {
 const toFilterValue = (value: number | number[] | undefined): FilterValue => {
   if (Array.isArray(value)) return value[0] ?? null;
   return value ?? null;
+};
+
+const toNumberFilterValue = (value: number | string | null): FilterValue => {
+  if (value === null || value === undefined || value === '') return null;
+  const numeric = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
 };
 
 const scanFilterParams = (
@@ -495,7 +505,7 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
       width: 140,
       onCell: fillCell,
       render: (_: unknown, record: UnifiedFilterDefinition) => {
-        if (record.type === 'timeRange' || record.type === 'dateRange') {
+        if (record.type === 'timeRange' || record.type === 'dateRange' || record.type === 'number') {
           return (
             <Select
               disabled
@@ -506,7 +516,9 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
                   label:
                     record.type === 'timeRange'
                       ? t('dashboard.timeRange')
-                      : t('dashboard.dateRange'),
+                      : record.type === 'dateRange'
+                        ? t('dashboard.dateRange')
+                        : t('dataSource.paramTypes.number'),
                 },
               ]}
               className="w-full"
@@ -615,6 +627,23 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
               onChange={(nextValue) =>
                 handleFieldChange(record.id, 'defaultValue', nextValue)
               }
+            />
+          );
+        }
+
+        if (record.type === 'number') {
+          return (
+            <InputNumber
+              value={typeof value === 'number' ? value : null}
+              onChange={(nextValue) =>
+                handleFieldChange(
+                  record.id,
+                  'defaultValue',
+                  toNumberFilterValue(nextValue),
+                )
+              }
+              placeholder={t('common.inputTip')}
+              className="w-full"
             />
           );
         }

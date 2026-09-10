@@ -2,17 +2,26 @@
 
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useIntl } from 'react-intl';
 import { useTranslation } from '@/utils/i18n';
 import { useMemoryApi, Memory } from '@/app/opspilot/api/memory';
-import { Table, Select, Button, message, Input, Popconfirm } from 'antd';
+import { Table, Select, Button, message, Input, Popconfirm, Alert, Spin } from 'antd';
 import PermissionWrapper from '@/components/permission';
 import MarkdownRenderer from '@/components/markdown';
 import { useMemoryContext } from '../layout';
+import {
+  MEMORY_LIST_CONTENT_PREVIEW_CHARS,
+  MEMORY_PREVIEW_CONTENT_LIMIT,
+  canInlineEditMemory,
+  formatMemoryContentSize,
+  openMemoryDocument,
+} from '@/app/opspilot/utils/memoryContent';
 
 export default function MemoriesPage() {
   const { t } = useTranslation();
+  const intl = useIntl();
   const searchParams = useSearchParams();
-  const { fetchMemories, updateMemory, deleteMemory } = useMemoryApi();
+  const { fetchMemories, fetchMemory, updateMemory, deleteMemory } = useMemoryApi();
   const { space } = useMemoryContext();
   
   const idStr = searchParams.get('id');
@@ -25,6 +34,8 @@ export default function MemoriesPage() {
   const [memories, setMemories] = useState<Memory[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [selectedUser, setSelectedUser] = useState<string | undefined>(undefined);
+  const [detail, setDetail] = useState<Memory | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
   // Preview & Edit states
   const [editing, setEditing] = useState(false);
@@ -36,6 +47,36 @@ export default function MemoriesPage() {
       loadMemories();
     }
   }, [id]);
+
+  useEffect(() => {
+    if (!selectedId) {
+      setDetail(null);
+      return;
+    }
+    let cancelled = false;
+    setDetailLoading(true);
+    setEditing(false);
+    fetchMemory(selectedId, { contentLimit: MEMORY_PREVIEW_CONTENT_LIMIT })
+      .then((res) => {
+        if (!cancelled) {
+          setDetail(res);
+        }
+      })
+      .catch((e) => {
+        console.error(e);
+        if (!cancelled) {
+          setDetail(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setDetailLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId]);
 
   const loadMemories = async () => {
     setLoading(true);
@@ -52,15 +93,21 @@ export default function MemoriesPage() {
     }
   };
 
-  const selectedMemory = memories.find(m => m.id === selectedId);
+  const locale = intl.locale?.startsWith('en') ? 'en' : 'zh';
+  const contentSize = formatMemoryContentSize(detail?.content_length ?? 0, locale);
 
   const handleSave = async () => {
-    if (!selectedMemory) return;
+    if (!detail) return;
     setSaving(true);
     try {
-      await updateMemory(selectedMemory.id, { content: editContent });
+      await updateMemory(detail.id, { content: editContent });
       message.success(t('memory.saveSuccess'));
-      setMemories(memories.map(m => m.id === selectedMemory.id ? { ...m, content: editContent } : m));
+      setMemories(memories.map((m) => (
+        m.id === detail.id
+          ? { ...m, content: editContent.slice(0, MEMORY_LIST_CONTENT_PREVIEW_CHARS), content_length: editContent.length, content_truncated: editContent.length > MEMORY_LIST_CONTENT_PREVIEW_CHARS }
+          : m
+      )));
+      setDetail({ ...detail, content: editContent, content_length: editContent.length, content_truncated: false });
       setEditing(false);
     } catch (e) {
       console.error(e);
@@ -70,10 +117,13 @@ export default function MemoriesPage() {
   };
 
   const handleEdit = () => {
-    if (selectedMemory) {
-      setEditContent(selectedMemory.content);
-      setEditing(true);
+    if (!detail) return;
+    if (detail.content_truncated || !canInlineEditMemory(detail.content_length)) {
+      openMemoryDocument(id, detail.id, { edit: true });
+      return;
     }
+    setEditContent(detail.content);
+    setEditing(true);
   };
 
   const handleCancel = () => {
@@ -226,7 +276,7 @@ export default function MemoriesPage() {
         {/* Header */}
         <div className="h-10 border-b border-(--color-border-1) px-4 flex items-center justify-between bg-(--color-fill-1) shrink-0">
           <span className="text-[13px] font-bold text-(--color-text-1)">{t('memory.preview')}</span>
-          {selectedMemory && !editing && (
+          {detail && !editing && (
             <PermissionWrapper requiredPermissions={['Edit']}>
               <Button
                 type="link"
@@ -260,7 +310,11 @@ export default function MemoriesPage() {
 
         {/* Content */}
         <div className="flex-1 min-h-0 p-4 overflow-y-auto">
-          {selectedMemory ? (
+          {detailLoading ? (
+            <div className="flex items-center justify-center h-full">
+              <Spin />
+            </div>
+          ) : detail ? (
             editing ? (
               <Input.TextArea
                 value={editContent}
@@ -269,8 +323,22 @@ export default function MemoriesPage() {
                 style={{ minHeight: '100%' }}
               />
             ) : (
-              <div className="prose dark:prose-invert max-w-none text-[13px] text-(--color-text-2) leading-relaxed">
-                <MarkdownRenderer content={selectedMemory.content || ''} />
+              <div className="flex flex-col gap-3">
+                {detail.content_truncated ? (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    message={t('memory.previewTruncated', undefined, { size: contentSize })}
+                    action={
+                      <Button size="small" type="link" onClick={() => openMemoryDocument(id, detail.id)}>
+                        {t('memory.openDocument')}
+                      </Button>
+                    }
+                  />
+                ) : null}
+                <div className="prose dark:prose-invert max-w-none text-[13px] text-(--color-text-2) leading-relaxed">
+                  <MarkdownRenderer content={detail.content || ''} />
+                </div>
               </div>
             )
           ) : (

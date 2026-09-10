@@ -451,7 +451,7 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
 
               return (
                 <div key={group.id}>
-                  <div className={styles.groupOther}>{group.group_name}</div>
+                  <div className={styles.groupOther}>{group.display_name || group.group_name}</div>
                   <Row gutter={24}>
                     {otherAttrs.map((item) => (
                       <Col span={item.attr_type === 'table' ? 24 : 12} key={item.attr_id}>

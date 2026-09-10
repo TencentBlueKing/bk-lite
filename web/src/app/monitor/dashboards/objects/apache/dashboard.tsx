@@ -10,8 +10,7 @@ import {
   useFilteredChartPanels,
   useFilteredDetailPanels,
   useFilteredRingPanels,
-  useFilteredSummaryCards
-} from '../common/dashboard-components';
+  useFilteredSummaryCards, DashboardSectionLabel } from '../common/dashboard-components';
 import { RingChartPanel, TrendChartPanel } from '../../shared/widgets';
 import { APACHE_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
@@ -38,11 +37,11 @@ export default function ApacheDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
 
           {/* Row 1: 请求速率 + 传输速率；Worker 状态 */}
-          <div className={styles.sectionLabel}>性能趋势</div>
+          <DashboardSectionLabel styles={styles}>性能趋势</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {[reqRateChart, byteRateChart, workerChart].map((chart) =>
               chart ? (
@@ -66,7 +65,7 @@ export default function ApacheDashboardPage() {
           </FlexiblePanelSection>
 
           {/* Row 2: Worker 使用环 span4 + 系统负载趋势 span8 = 12 —— 环图配折线消除中部留白 */}
-          <div className={styles.sectionLabel}>分布与负载</div>
+          <DashboardSectionLabel styles={styles}>分布与负载</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {workerRing ? (
               <RingChartPanel
@@ -102,7 +101,7 @@ export default function ApacheDashboardPage() {
           </FlexiblePanelSection>
 
           {/* Row 3: Scoreboard 趋势 span6 + 运行细节详情 span6 = 12 —— 详情配折线 */}
-          <div className={styles.sectionLabel}>连接与详情</div>
+          <DashboardSectionLabel styles={styles}>连接与详情</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {scoreboardChart ? (
               <TrendChartPanel

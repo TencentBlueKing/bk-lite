@@ -1,0 +1,577 @@
+# 内置画布：僵尸机报表。
+# 由 init_builtin_canvases 与 builtin_canvases.yaml 合并加载。
+# 数据源以 source_api.json 为准；本文件保留同名定义以便单独导入。
+# 第一期只含统一筛选与一张表格，不是仪表盘。
+meta:
+  schema_version: 1.2.0
+  exported_at: '2026-09-09T17:00:00+08:00'
+  source:
+    organization_id: 0
+  object_counts:
+    dashboards: 0
+    topologies: 0
+    screens: 0
+    reports: 1
+    architectures: 0
+    datasources: 2
+    namespaces: 1
+dashboards: []
+topologies: []
+architectures: []
+screens: []
+reports:
+- key: report::僵尸机报表
+  name: 僵尸机报表
+  desc: 按所选应用系统下已监控 CMDB 主机查询时间窗内登录、入包、CPU/内存/IO，并按闲机口径阈值筛出疑似僵尸机。时间默认 7 天；阈值不随窗口缩放；登录未采集不按 0 过滤。未选应用系统不退回全量。
+  other: {}
+  view_sets:
+    schema_version: 1
+    filters:
+    - id: system_uuids__string
+      key: system_uuids
+      name: 应用系统
+      type: string
+      defaultValue: []
+      order: 0
+      enabled: true
+      inputMode: select
+      inputConfig: &systemOptions
+        control: select
+        multiple: true
+        optionsSource:
+          type: dynamic
+          sourceRef:
+            type: rest_api
+            value: cmdb/list_application_systems
+          valueField: inst_uuid
+          labelField: display_name
+    - id: time__timeRange
+      key: time
+      name: 时间范围
+      type: timeRange
+      defaultValue:
+        selectValue: 10080
+        rangePickerVaule: null
+      order: 1
+      enabled: true
+    - id: os_type__string
+      key: os_type
+      name: 系统类型
+      type: string
+      defaultValue: ''
+      order: 2
+      enabled: true
+      inputConfig: &osTypeOptions
+        control: select
+        optionsSource:
+          type: static
+          staticItems:
+          - label: Linux
+            value: '1'
+          - label: Windows
+            value: '2'
+    - id: zombie_whitelist__string
+      key: zombie_whitelist
+      name: 僵尸机白名单
+      type: string
+      defaultValue: ''
+      order: 3
+      enabled: true
+      inputConfig: &whitelistOptions
+        control: select
+        optionsSource:
+          type: static
+          staticItems:
+          - label: 是
+            value: 'yes'
+          - label: 否
+            value: 'no'
+    - id: login_min__number
+      key: login_min
+      name: 登录次数下限
+      type: number
+      defaultValue: -1
+      order: 4
+      enabled: true
+    - id: login_max__number
+      key: login_max
+      name: 登录次数上限
+      type: number
+      defaultValue: 2
+      order: 5
+      enabled: true
+    - id: packets_recv_max_min__number
+      key: packets_recv_max_min
+      name: 入包峰值下限(pps)
+      type: number
+      defaultValue: -1
+      order: 6
+      enabled: true
+    - id: packets_recv_max_max__number
+      key: packets_recv_max_max
+      name: 入包峰值上限(pps)
+      type: number
+      defaultValue: 200
+      order: 7
+      enabled: true
+    - id: packets_recv_avg_min__number
+      key: packets_recv_avg_min
+      name: 入包均值下限(pps)
+      type: number
+      defaultValue: -1
+      order: 8
+      enabled: true
+    - id: packets_recv_avg_max__number
+      key: packets_recv_avg_max
+      name: 入包均值上限(pps)
+      type: number
+      defaultValue: 50
+      order: 9
+      enabled: true
+    - id: cpu_avg_min__number
+      key: cpu_avg_min
+      name: CPU均值下限(%)
+      type: number
+      defaultValue: -1
+      order: 10
+      enabled: true
+    - id: cpu_avg_max__number
+      key: cpu_avg_max
+      name: CPU均值上限(%)
+      type: number
+      defaultValue: 8
+      order: 11
+      enabled: true
+    - id: cpu_max_min__number
+      key: cpu_max_min
+      name: CPU峰值下限(%)
+      type: number
+      defaultValue: -1
+      order: 12
+      enabled: true
+    - id: cpu_max_max__number
+      key: cpu_max_max
+      name: CPU峰值上限(%)
+      type: number
+      defaultValue: 20
+      order: 13
+      enabled: true
+    - id: mem_avg_min__number
+      key: mem_avg_min
+      name: 内存均值下限(%)
+      type: number
+      defaultValue: -1
+      order: 14
+      enabled: true
+    - id: mem_avg_max__number
+      key: mem_avg_max
+      name: 内存均值上限(%)
+      type: number
+      defaultValue: 25
+      order: 15
+      enabled: true
+    - id: mem_max_min__number
+      key: mem_max_min
+      name: 内存峰值下限(%)
+      type: number
+      defaultValue: -1
+      order: 16
+      enabled: true
+    - id: mem_max_max__number
+      key: mem_max_max
+      name: 内存峰值上限(%)
+      type: number
+      defaultValue: 40
+      order: 17
+      enabled: true
+    - id: io_max_min__number
+      key: io_max_min
+      name: IO峰值下限(%)
+      type: number
+      defaultValue: -1
+      order: 18
+      enabled: true
+    - id: io_max_max__number
+      key: io_max_max
+      name: IO峰值上限(%)
+      type: number
+      defaultValue: 10
+      order: 19
+      enabled: true
+    sections:
+    - id: zombie-table
+      valueConfig:
+        chartType: table
+        dataSource: 僵尸机查询::monitor/get_zombie_host_report
+        name: 僵尸机列表
+        description: 所选应用系统下主机在时间窗内的登录、入包、CPU/内存/IO；未采集登录显示为空，不按 0 过滤
+        filterBindings:
+          system_uuids__string: true
+          time__timeRange: true
+          os_type__string: true
+          zombie_whitelist__string: true
+          login_min__number: true
+          login_max__number: true
+          packets_recv_max_min__number: true
+          packets_recv_max_max__number: true
+          packets_recv_avg_min__number: true
+          packets_recv_avg_max__number: true
+          cpu_avg_min__number: true
+          cpu_avg_max__number: true
+          cpu_max_min__number: true
+          cpu_max_max__number: true
+          mem_avg_min__number: true
+          mem_avg_max__number: true
+          mem_max_min__number: true
+          mem_max_max__number: true
+          io_max_min__number: true
+          io_max_max__number: true
+        dataSourceParams:
+        - name: system_uuids
+          type: string
+          value: []
+          alias_name: 应用系统
+          filterType: filter
+          inputConfig: *systemOptions
+        - name: time
+          type: timeRange
+          value: 10080
+          alias_name: 时间范围
+          filterType: filter
+        - name: os_type
+          type: string
+          value: ''
+          alias_name: 系统类型
+          filterType: filter
+          inputConfig: *osTypeOptions
+        - name: zombie_whitelist
+          type: string
+          value: ''
+          alias_name: 僵尸机白名单
+          filterType: filter
+          inputConfig: *whitelistOptions
+        - name: page
+          type: number
+          value: 1
+          alias_name: 页码
+          filterType: params
+        - name: page_size
+          type: number
+          value: 20
+          alias_name: 每页数量
+          filterType: params
+        - name: login_min
+          type: number
+          value: -1
+          alias_name: 登录次数下限
+          filterType: filter
+        - name: login_max
+          type: number
+          value: 2
+          alias_name: 登录次数上限
+          filterType: filter
+        - name: packets_recv_max_min
+          type: number
+          value: -1
+          alias_name: 入包峰值下限(pps)
+          filterType: filter
+        - name: packets_recv_max_max
+          type: number
+          value: 200
+          alias_name: 入包峰值上限(pps)
+          filterType: filter
+        - name: packets_recv_avg_min
+          type: number
+          value: -1
+          alias_name: 入包均值下限(pps)
+          filterType: filter
+        - name: packets_recv_avg_max
+          type: number
+          value: 50
+          alias_name: 入包均值上限(pps)
+          filterType: filter
+        - name: cpu_avg_min
+          type: number
+          value: -1
+          alias_name: CPU均值下限(%)
+          filterType: filter
+        - name: cpu_avg_max
+          type: number
+          value: 8
+          alias_name: CPU均值上限(%)
+          filterType: filter
+        - name: cpu_max_min
+          type: number
+          value: -1
+          alias_name: CPU峰值下限(%)
+          filterType: filter
+        - name: cpu_max_max
+          type: number
+          value: 20
+          alias_name: CPU峰值上限(%)
+          filterType: filter
+        - name: mem_avg_min
+          type: number
+          value: -1
+          alias_name: 内存均值下限(%)
+          filterType: filter
+        - name: mem_avg_max
+          type: number
+          value: 25
+          alias_name: 内存均值上限(%)
+          filterType: filter
+        - name: mem_max_min
+          type: number
+          value: -1
+          alias_name: 内存峰值下限(%)
+          filterType: filter
+        - name: mem_max_max
+          type: number
+          value: 40
+          alias_name: 内存峰值上限(%)
+          filterType: filter
+        - name: io_max_min
+          type: number
+          value: -1
+          alias_name: IO峰值下限(%)
+          filterType: filter
+        - name: io_max_max
+          type: number
+          value: 10
+          alias_name: IO峰值上限(%)
+          filterType: filter
+  refs:
+    datasource_keys:
+    - 应用系统::cmdb/list_application_systems
+    - 僵尸机查询::monitor/get_zombie_host_report
+    namespace_keys: []
+datasources:
+- key: 应用系统::cmdb/list_application_systems
+  name: 应用系统（选项）
+  rest_api: cmdb/list_application_systems
+  desc: 当前用户有权的 CMDB 应用系统，供统一筛选下拉使用，本身不直接出图
+  is_active: true
+  params: []
+  tags:
+  - CMDB
+  chart_type: []
+  field_schema:
+  - key: inst_uuid
+    title: 应用系统UUID
+    value_type: string
+  - key: display_name
+    title: 应用系统
+    value_type: string
+  - key: inst_name
+    title: 应用系统名称
+    value_type: string
+  namespace_keys:
+  - 默认命名空间
+- key: 僵尸机查询::monitor/get_zombie_host_report
+  name: 僵尸机查询
+  rest_api: monitor/get_zombie_host_report
+  desc: 按所选应用系统下已监控 CMDB 主机查询时间窗内登录、入包、CPU/内存/IO，并按闲机口径阈值筛出疑似僵尸机。未选应用系统不退回全量；时间默认 7 天；阈值不随窗口缩放；登录未采集不按 0 过滤。
+  is_active: true
+  params:
+  - name: system_uuids
+    type: string
+    value: []
+    alias_name: 应用系统
+    filterType: filter
+    inputConfig:
+      control: select
+      multiple: true
+      optionsSource:
+        type: dynamic
+        sourceRef:
+          type: rest_api
+          value: cmdb/list_application_systems
+        valueField: inst_uuid
+        labelField: display_name
+  - name: time
+    type: timeRange
+    value: 10080
+    alias_name: 时间范围
+    filterType: filter
+  - name: os_type
+    type: string
+    value: ''
+    alias_name: 系统类型
+    filterType: filter
+    inputConfig:
+      control: select
+      optionsSource:
+        type: static
+        staticItems:
+        - label: Linux
+          value: '1'
+        - label: Windows
+          value: '2'
+  - name: zombie_whitelist
+    type: string
+    value: ''
+    alias_name: 僵尸机白名单
+    filterType: filter
+    inputConfig:
+      control: select
+      optionsSource:
+        type: static
+        staticItems:
+        - label: 是
+          value: 'yes'
+        - label: 否
+          value: 'no'
+  - name: page
+    type: number
+    value: 1
+    alias_name: 页码
+    filterType: params
+  - name: page_size
+    type: number
+    value: 20
+    alias_name: 每页数量
+    filterType: params
+  - name: login_min
+    type: number
+    value: -1
+    alias_name: 登录次数下限
+    filterType: filter
+  - name: login_max
+    type: number
+    value: 2
+    alias_name: 登录次数上限
+    filterType: filter
+  - name: packets_recv_max_min
+    type: number
+    value: -1
+    alias_name: 入包峰值下限(pps)
+    filterType: filter
+  - name: packets_recv_max_max
+    type: number
+    value: 200
+    alias_name: 入包峰值上限(pps)
+    filterType: filter
+  - name: packets_recv_avg_min
+    type: number
+    value: -1
+    alias_name: 入包均值下限(pps)
+    filterType: filter
+  - name: packets_recv_avg_max
+    type: number
+    value: 50
+    alias_name: 入包均值上限(pps)
+    filterType: filter
+  - name: cpu_avg_min
+    type: number
+    value: -1
+    alias_name: CPU均值下限(%)
+    filterType: filter
+  - name: cpu_avg_max
+    type: number
+    value: 8
+    alias_name: CPU均值上限(%)
+    filterType: filter
+  - name: cpu_max_min
+    type: number
+    value: -1
+    alias_name: CPU峰值下限(%)
+    filterType: filter
+  - name: cpu_max_max
+    type: number
+    value: 20
+    alias_name: CPU峰值上限(%)
+    filterType: filter
+  - name: mem_avg_min
+    type: number
+    value: -1
+    alias_name: 内存均值下限(%)
+    filterType: filter
+  - name: mem_avg_max
+    type: number
+    value: 25
+    alias_name: 内存均值上限(%)
+    filterType: filter
+  - name: mem_max_min
+    type: number
+    value: -1
+    alias_name: 内存峰值下限(%)
+    filterType: filter
+  - name: mem_max_max
+    type: number
+    value: 40
+    alias_name: 内存峰值上限(%)
+    filterType: filter
+  - name: io_max_min
+    type: number
+    value: -1
+    alias_name: IO峰值下限(%)
+    filterType: filter
+  - name: io_max_max
+    type: number
+    value: 10
+    alias_name: IO峰值上限(%)
+    filterType: filter
+  tags:
+  - 监控
+  chart_type:
+  - table
+  field_schema:
+  - key: biz_name
+    title: 业务
+    value_type: string
+  - key: host_name
+    title: 主机名
+    value_type: string
+  - key: os_type_label
+    title: 系统类型
+    value_type: string
+  - key: ip
+    title: IP地址
+    value_type: string
+  - key: packets_recv_max
+    title: 入包峰值(pps)
+    value_type: number
+  - key: packets_recv_avg
+    title: 入包均值(pps)
+    value_type: number
+  - key: login_count
+    title: 成功登录次数
+    value_type: number
+  - key: login_status
+    title: 登录采集状态
+    value_type: string
+  - key: cpu_max
+    title: CPU峰值(%)
+    value_type: number
+  - key: cpu_avg
+    title: CPU均值(%)
+    value_type: number
+  - key: mem_max
+    title: 内存峰值(%)
+    value_type: number
+  - key: mem_avg
+    title: 内存均值(%)
+    value_type: number
+  - key: io_max
+    title: IO峰值(%)
+    value_type: number
+  - key: zombie_whitelist
+    title: 僵尸机白名单
+    value_type: string
+  - key: inst_uuid
+    title: 主机UUID
+    value_type: string
+  - key: monitor_id
+    title: 监控实例ID
+    value_type: string
+  namespace_keys:
+  - 默认命名空间
+namespaces:
+- key: 默认命名空间
+  name: 默认命名空间
+  domain: 10.10.41.149:4222
+  namespace: bklite_hong_local
+  account: admin
+  password: '******'
+  enable_tls: true
+  desc: 系统初始化创建的默认命名空间

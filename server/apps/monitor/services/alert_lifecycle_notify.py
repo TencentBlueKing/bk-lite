@@ -69,6 +69,68 @@ class AlertLifecycleNotifier:
         self.policy = policy
         self.policies_by_id = policies_by_id or {}
 
+    def notify_assigned(self, alerts):
+        if not alerts:
+            return None
+
+        alert_log_entries = defaultdict(list)
+        groups = defaultdict(list)
+        for alert in alerts:
+            handlers = [str(item) for item in (alert.handlers or []) if item not in (None, "")]
+            if not handlers:
+                continue
+            for channel_id in self._resolve_notice_type_ids(alert):
+                channel = Channel.objects.filter(id=channel_id).first()
+                if not self._is_person_assign_channel(channel):
+                    logger.debug(
+                        "event=assign_notify_channel_skipped channel_id=%s reason=%s",
+                        channel_id,
+                        "missing" if channel is None else "not_person_channel",
+                    )
+                    continue
+                groups[(channel_id, channel.name or str(channel_id), tuple(handlers))].append(alert)
+
+        for (channel_id, channel_name, handlers_tuple), group_alerts in groups.items():
+            try:
+                results = self._send_normal_notice(
+                    channel_id,
+                    channel_name,
+                    list(handlers_tuple),
+                    group_alerts,
+                    "assigned",
+                    "",
+                    "",
+                )
+                for alert, log_entry in results:
+                    alert_log_entries[alert.id].append(log_entry)
+            except Exception as exc:
+                logger.error(
+                    "event=assign_notify_failed action=assigned channel_id=%s failed_stage=send error_type=%s",
+                    channel_id,
+                    type(exc).__name__,
+                )
+                now = datetime.now(timezone.utc).isoformat()
+                for alert in group_alerts:
+                    alert_log_entries[alert.id].append(
+                        {
+                            "time": now,
+                            "action": "assigned",
+                            "channel_id": channel_id,
+                            "success": False,
+                            "error": type(exc).__name__,
+                        }
+                    )
+
+        self._persist_notice_logs(alerts, alert_log_entries)
+        return None
+
+    def _is_person_assign_channel(self, channel):
+        if channel is None:
+            return False
+        if channel.channel_type == "nats":
+            return False
+        return not self._is_alert_center_channel(channel)
+
     def notify_alerts(self, alerts, action, operator="", reason="", notify_scope=NOTIFY_SCOPE_ALL_CONFIGURED):
         if not alerts:
             return
@@ -594,6 +656,7 @@ class AlertLifecycleNotifier:
             "upgraded": "告警升级",
             "closed": "告警关闭",
             "recovered": "告警恢复",
+            "assigned": "告警分派",
         }
         label = action_labels.get(action, "告警通知")
         policy = self.policies_by_id.get(alert.policy_id, self.policy)
@@ -653,6 +716,8 @@ class AlertLifecycleNotifier:
                 parts.append(f"原因：{reason}")
         elif action == "recovered":
             parts.append("状态：已自动恢复")
+        elif action == "assigned":
+            parts.append("状态：已分派")
 
         if alert.start_event_time:
             parts.append(f"开始时间：{self._format_notice_time(alert.start_event_time, target_timezone)}")

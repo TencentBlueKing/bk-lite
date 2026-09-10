@@ -25,6 +25,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import dayjs from 'dayjs';
 import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/components/jobHostSelectionModalRuntime';
 import { AddTargetHostButton, TargetSourceSelector } from '@/app/job/components/target-selection-controls';
+import { buildScheduledTaskTemplatePayload, restoreScheduledTaskTemplateUi } from '@/app/job/utils/scheduledTaskPayload';
 import { useUserInfoContext } from '@/context/userInfo';
 
 const EditCronTaskContent = () => {
@@ -123,7 +124,9 @@ const EditCronTaskContent = () => {
     setPageLoading(true);
     try {
       const task = await getScheduledTaskDetail(taskId);
-      setJobType(task.job_type);
+      const restoredTemplate = restoreScheduledTaskTemplateUi(task);
+      setJobType(restoredTemplate.jobType);
+      setTemplateType(restoredTemplate.templateType);
 
       form.setFieldsValue?.({}) // ensure form is ready
       form.setFieldsValue({
@@ -135,15 +138,6 @@ const EditCronTaskContent = () => {
         playbook: (task as any).playbook,
         target_path: (task as any).target_path,
       });
-
-      // Set template type based on job_type and presence of playbook
-      if (task.job_type === 'script') {
-        if ((task as any).playbook) {
-          setTemplateType('playbook');
-        } else {
-          setTemplateType('script');
-        }
-      }
 
       // Set host selection from target_list
       const taskTargetSource = (task as any).target_source;
@@ -323,7 +317,12 @@ const EditCronTaskContent = () => {
       const formData: ScheduledTaskFormData = {
         name: values.name,
         description: values.description,
-        job_type: jobType,
+        ...buildScheduledTaskTemplatePayload({
+          jobType,
+          templateType,
+          script: values.script,
+          playbook: values.playbook,
+        }),
         ...scheduleData,
         target_source: targetSource === 'node_manager' ? 'node_mgmt' : 'manual',
         target_list: targetList,
@@ -332,13 +331,7 @@ const EditCronTaskContent = () => {
         team: selectedGroup ? [Number(selectedGroup.id)] : [],
       };
 
-      if (jobType === 'script') {
-        if (templateType === 'script') {
-          formData.script = values.script;
-        } else {
-          formData.playbook = values.playbook;
-        }
-      } else if (jobType === 'file') {
+      if (jobType === 'file') {
         formData.target_path = values.target_path;
       }
 

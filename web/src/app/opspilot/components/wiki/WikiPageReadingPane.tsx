@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   Button,
   Drawer,
+  Popconfirm,
   Space,
   Spin,
   Tag,
@@ -12,6 +13,7 @@ import {
   message,
 } from "antd";
 import {
+  DeleteOutlined,
   EditOutlined,
   ExportOutlined,
   FolderOpenOutlined,
@@ -20,12 +22,14 @@ import MarkdownRenderer from "@/components/markdown";
 import { useTranslation } from "@/utils/i18n";
 import { useWikiApi } from "@/app/opspilot/api/wiki";
 import { openWikiMaterialDetailInNewWindow } from "@/app/opspilot/utils/wikiMaterialRoutes";
+import PermissionWrapper from "@/components/permission";
 import type {
   GraphEdge,
   GraphNode,
   KnowledgePage,
   WikiPageSource,
 } from "@/app/opspilot/types/wiki";
+import { formatPageTypeLabel, formatWikiTagLabel } from "./wikiFormat";
 
 const WIKILINK_RE = /\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]/g;
 
@@ -41,7 +45,9 @@ interface WikiPageReadingPaneProps {
   treePages: Array<{ id: number; title: string; page_type: string }>;
   onEdit: (page: KnowledgePage) => void;
   onMove: (page: KnowledgePage) => void;
+  onDelete?: (page: KnowledgePage) => void;
   onOpenRelatedPage: (pageId: number) => void;
+  canMutate?: boolean;
 }
 
 const WikiPageReadingPane: React.FC<WikiPageReadingPaneProps> = ({
@@ -51,6 +57,8 @@ const WikiPageReadingPane: React.FC<WikiPageReadingPaneProps> = ({
   onEdit,
   onMove,
   onOpenRelatedPage,
+  onDelete,
+  canMutate = false,
 }) => {
   const { t } = useTranslation();
   const { fetchPage, fetchPageSources, fetchGraph } = useWikiApi();
@@ -210,6 +218,24 @@ const WikiPageReadingPane: React.FC<WikiPageReadingPaneProps> = ({
                 >
                   {t("common.edit")}
                 </Button>
+                {onDelete ? (
+                  <PermissionWrapper requiredPermissions={["Edit"]}>
+                    <Popconfirm
+                      title={t("wiki.deletePageConfirm")}
+                      disabled={!canMutate}
+                      onConfirm={() => onDelete(page)}
+                    >
+                      <Button
+                        size="small"
+                        danger
+                        icon={<DeleteOutlined />}
+                        disabled={!canMutate}
+                      >
+                        {t("common.delete")}
+                      </Button>
+                    </Popconfirm>
+                  </PermissionWrapper>
+                ) : null}
               </Space>
             </div>
 
@@ -218,14 +244,16 @@ const WikiPageReadingPane: React.FC<WikiPageReadingPaneProps> = ({
                 <Typography.Title level={4} className="!mb-0 !text-base">
                   {page.title}
                 </Typography.Title>
-                <Tag color="blue">{page.page_type || "--"}</Tag>
+                <Tag color="blue">
+                  {formatPageTypeLabel(t, page.page_type, "--")}
+                </Tag>
                 {page.updated_at && (
                   <span className="text-xs text-[var(--color-text-3)]">
                     {page.updated_at}
                   </span>
                 )}
                 {(page.tags || []).map((tag) => (
-                  <Tag key={tag}>{tag}</Tag>
+                  <Tag key={tag}>{formatWikiTagLabel(t, tag)}</Tag>
                 ))}
               </div>
 
@@ -320,7 +348,9 @@ const WikiPageReadingPane: React.FC<WikiPageReadingPaneProps> = ({
                 {drawerRelated.title}
               </div>
               {drawerRelated.page_type && (
-                <Tag className="mt-2">{drawerRelated.page_type}</Tag>
+                <Tag className="mt-2">
+                  {formatPageTypeLabel(t, drawerRelated.page_type)}
+                </Tag>
               )}
             </div>
             <Button

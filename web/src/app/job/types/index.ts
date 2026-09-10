@@ -383,8 +383,8 @@ export interface ScheduledTaskFormData {
   schedule_type: ScheduleType;
   cron_expression?: string;
   scheduled_time?: string;
-  script?: number;
-  playbook?: number;
+  script?: number | null;
+  playbook?: number | null;
   target_source: ExecutionTargetSource;
   target_list: TargetListItem[];
   params?: Record<string, unknown>;

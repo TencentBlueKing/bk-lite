@@ -222,7 +222,7 @@ const UserSyncOperateModal: React.FC<UserSyncOperateModalProps> = ({
     () =>
       availableInstances.map((inst) => ({
         value: inst.id,
-        label: formatIntegrationInstanceDisplayName(inst, t),
+        label: formatIntegrationInstanceDisplayName(inst),
       })),
     [availableInstances, t],
   );

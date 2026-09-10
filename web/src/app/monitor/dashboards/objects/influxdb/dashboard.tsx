@@ -7,8 +7,7 @@ import {
   FlexiblePanelSection,
   KpiSection,
   useFilteredChartPanels,
-  useFilteredSummaryCards
-} from '../common/dashboard-components';
+  useFilteredSummaryCards, DashboardSectionLabel } from '../common/dashboard-components';
 import { TrendChartPanel } from '../../shared/widgets';
 import { INFLUXDB_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
@@ -29,10 +28,10 @@ export default function InfluxdbDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} styles={styles} />
 
-          <div className={styles.sectionLabel}>请求与完整性</div>
+          <DashboardSectionLabel styles={styles}>请求与完整性</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {rwChart ? (
               <TrendChartPanel
@@ -70,7 +69,7 @@ export default function InfluxdbDashboardPage() {
             ) : null}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>服务错误与内存</div>
+          <DashboardSectionLabel styles={styles}>服务错误与内存</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {errorChart ? (
               <TrendChartPanel

@@ -1113,14 +1113,6 @@
           "email": "邮箱",
           "phone": "手机号"
         },
-        "externalFieldOption": {
-          "userid": "用户 ID",
-          "user_id": "用户ID",
-          "open_id": "OpenID",
-          "email": "邮箱",
-          "mobile": "手机号",
-          "name": "名称"
-        },
         "mappingColumns": {
           "username": "用户名",
           "externalDisplayName": "外部名称",
@@ -1317,13 +1309,6 @@
         "loginAuth": "登录认证",
         "imNotification": "IM应用通知",
         "imGroup": "群协作"
-      },
-      "provider": {
-        "label": "集成类型",
-        "ldap": "LDAP",
-        "oidc": "OIDC",
-        "saml": "SAML",
-        "github": "GitHub"
       },
       "providerTypeLabel": "集成类型",
       "statusSummary": "状态摘要",

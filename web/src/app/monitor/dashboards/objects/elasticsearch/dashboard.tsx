@@ -10,8 +10,7 @@ import {
   FlexiblePanelSection,
   KpiSection,
   useFilteredChartPanels,
-  useFilteredSummaryCards
-} from '../common/dashboard-components';
+  useFilteredSummaryCards, DashboardSectionLabel } from '../common/dashboard-components';
 import { HorizontalBarPanel, TitleWithGuide, TrendChartPanel } from '../../shared/widgets';
 import type { BarItem } from '../../shared/widgets';
 import { buildSearchParams, runWithConcurrency } from '../../shared/utils';
@@ -105,7 +104,7 @@ export default function ElasticsearchDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection
             dashboard={dashboard}
             summaryCards={summaryCards}
@@ -114,14 +113,14 @@ export default function ElasticsearchDashboardPage() {
           />
 
           {/* 线程池队列 + 熔断器触发 两张折线同行 span6 + span6 = 12 */}
-          <div className={styles.sectionLabel}>线程池与熔断</div>
+          <DashboardSectionLabel styles={styles}>线程池与熔断</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {renderChart(threadQueueChart, styles.span6)}
             {renderChart(breakerTrigChart, styles.span6)}
           </FlexiblePanelSection>
 
           {/* 节点压力排行:按 node_name 的 topk/bottomk,HorizontalBarPanel × span4 = 12 */}
-          <div className={styles.sectionLabel}>节点压力排行</div>
+          <DashboardSectionLabel styles={styles}>节点压力排行</DashboardSectionLabel>
           <section className={styles.dashboardSection}>
             <div className={styles.sectionGrid}>
               {ES_TOP_NODE_QUERIES.map((q) => (
@@ -137,13 +136,13 @@ export default function ElasticsearchDashboardPage() {
           </section>
 
           {/* 资源使用率 + GC 耗时趋势 两张折线同行 span6 + span6 = 12 */}
-          <div className={styles.sectionLabel}>资源与 GC</div>
+          <DashboardSectionLabel styles={styles}>资源与 GC</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {renderChart(resourceChart, styles.span6)}
             {renderChart(gcChart, styles.span6)}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>流量与连接</div>
+          <DashboardSectionLabel styles={styles}>流量与连接</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {renderChart(httpChart, styles.span12)}
           </FlexiblePanelSection>

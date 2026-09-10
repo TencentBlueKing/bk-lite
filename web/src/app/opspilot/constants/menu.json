@@ -126,6 +126,13 @@
           "icon": "shiyongwendang",
           "name": "memory_detail_memories",
           "isNotMenuItem": true
+        },
+        {
+          "title": "记忆正文",
+          "url": "/opspilot/memory/document",
+          "icon": "shiyongwendang",
+          "name": "memory_detail_document",
+          "isNotMenuItem": true
         }
       ]
     },
@@ -272,6 +279,13 @@
           "url": "/opspilot/memory/detail/memories",
           "icon": "shiyongwendang",
           "name": "memory_detail_memories",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "Memory document",
+          "url": "/opspilot/memory/document",
+          "icon": "shiyongwendang",
+          "name": "memory_detail_document",
           "isNotMenuItem": true
         }
       ]

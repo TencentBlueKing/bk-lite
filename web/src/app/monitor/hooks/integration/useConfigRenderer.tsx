@@ -473,7 +473,7 @@ export const useConfigRenderer = () => {
                 {...selectProps}
                 placeholder={
                   selectProps.placeholder ||
-                  t('monitor.integrations.selectQcloudRegion', '请选择腾讯云地域')
+                  t('monitor.integrations.selectCloudRegion', '请选择地域')
                 }
                 notFoundContent={
                   regionLoading ? (
@@ -481,26 +481,26 @@ export const useConfigRenderer = () => {
                       <Spin size="small" />
                       <span>
                         {t(
-                          'monitor.integrations.fetchingQcloudRegions',
+                          'monitor.integrations.fetchingCloudRegions',
                           '正在获取地域…'
                         )}
                       </span>
                     </div>
                   ) : (
                     t(
-                      'monitor.integrations.qcloudRegionNoOptions',
+                      'monitor.integrations.cloudRegionNoOptions',
                       '暂无地域，请先填写密钥后点击刷新'
                     )
                   )
                 }
                 onRefresh={optionControl.onRefresh}
                 refreshLabel={t(
-                  'monitor.integrations.fetchQcloudRegions',
+                  'monitor.integrations.fetchCloudRegions',
                   '获取地域'
                 )}
                 refreshTip={t(
-                  'monitor.integrations.refreshQcloudRegionsTip',
-                  '根据 SecretId / SecretKey 刷新可用地域'
+                  'monitor.integrations.refreshCloudRegionsTip',
+                  '根据已填密钥刷新可用地域'
                 )}
                 regionLoading={regionLoading}
               >

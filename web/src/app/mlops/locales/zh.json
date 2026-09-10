@@ -125,6 +125,7 @@
     "labelExists": "标签已存在",
     "labelInUse": "该标签已被使用",
     "addImageFailed": "添加图片失败",
+    "imageNameConflict": "已存在同名图片，未添加以免覆盖原图",
     "pressEnterToAdd": "按下回车添加",
     "fileNameVaild": "文件名不符合规范(只能包含英文字母、数字、下划线, 长度不超过64个字符)",
     "fileNameEmpty": "文件名不能为空",
