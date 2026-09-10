@@ -23,9 +23,26 @@ export interface MonitorCommonData {
   groupedUnits: GroupedUnitList[];
 }
 
-// 会话级缓存:同组织下只拉一次 user_all / unit/list
-const commonDataCache = new Map<string, MonitorCommonData>();
+interface CachedCommonPartial {
+  users?: UserItem[];
+  units?: UnitListItem[];
+  usersReady: boolean;
+  unitsReady: boolean;
+}
+
+// 会话级缓存:同组织下成功的 user_all / unit/list 只拉一次；失败部分可重试
+const commonDataCache = new Map<string, CachedCommonPartial>();
 const commonDataInflight = new Map<string, Promise<MonitorCommonData>>();
+
+const toMonitorCommonData = (partial: CachedCommonPartial): MonitorCommonData => {
+  const users = partial.usersReady && Array.isArray(partial.users) ? partial.users : [];
+  const units = partial.unitsReady && Array.isArray(partial.units) ? partial.units : [];
+  return {
+    users,
+    units,
+    groupedUnits: buildGroupedUnitList(units),
+  };
+};
 
 export const shouldLoadMonitorCommonData = ({
   requestLoading,
@@ -65,8 +82,8 @@ export const loadMonitorCommonData = async ({
 }: LoadMonitorCommonDataParams & { cacheKey?: string }): Promise<MonitorCommonData> => {
   const key = cacheKey || '__default__';
   const cached = commonDataCache.get(key);
-  if (cached) {
-    return cached;
+  if (cached?.usersReady && cached.unitsReady) {
+    return toMonitorCommonData(cached);
   }
 
   const inflight = commonDataInflight.get(key);
@@ -75,26 +92,34 @@ export const loadMonitorCommonData = async ({
   }
 
   const request = (async () => {
+    const previous = commonDataCache.get(key) ?? { usersReady: false, unitsReady: false };
+    const needUsers = !previous.usersReady;
+    const needUnits = !previous.unitsReady;
     const [usersResult, unitsResult] = await Promise.allSettled([
-      getAllUsers(),
-      getUnitList(),
+      needUsers ? getAllUsers() : Promise.resolve(previous.users ?? []),
+      needUnits ? getUnitList() : Promise.resolve(previous.units ?? []),
     ]);
-    const users =
-      usersResult.status === 'fulfilled' && Array.isArray(usersResult.value)
-        ? usersResult.value
-        : [];
-    const units =
-      unitsResult.status === 'fulfilled' && Array.isArray(unitsResult.value)
-        ? unitsResult.value
-        : [];
 
-    const data: MonitorCommonData = {
-      users,
-      units,
-      groupedUnits: buildGroupedUnitList(units),
-    };
-    commonDataCache.set(key, data);
-    return data;
+    const next: CachedCommonPartial = { ...previous };
+    if (
+      needUsers &&
+      usersResult.status === 'fulfilled' &&
+      Array.isArray(usersResult.value)
+    ) {
+      next.users = usersResult.value;
+      next.usersReady = true;
+    }
+    if (
+      needUnits &&
+      unitsResult.status === 'fulfilled' &&
+      Array.isArray(unitsResult.value)
+    ) {
+      next.units = unitsResult.value;
+      next.unitsReady = true;
+    }
+
+    commonDataCache.set(key, next);
+    return toMonitorCommonData(next);
   })();
 
   commonDataInflight.set(key, request);

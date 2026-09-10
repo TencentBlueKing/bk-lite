@@ -19,6 +19,7 @@ import nats_client
 from apps.cmdb.constants.constants import (
     APP_NAME,
     ENUM_SELECT_MODE_MULTIPLE,
+    INSTANCE,
     PERMISSION_INSTANCES,
     PERMISSION_MODEL,
     PERMISSION_TASK,
@@ -37,16 +38,20 @@ from apps.cmdb.display_field.constants import (
     USER_DISPLAY_FORMAT,
 )
 from apps.cmdb.display_field.handler import DisplayFieldConverter, DisplayFieldHandler
+from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.models.change_record import CREATE_INST, DELETE_INST, OPERATE_TYPE_CHOICES, UPDATE_INST, ChangeRecord
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.models.config_file_version import ConfigFileVersion, ConfigFileVersionStatus
 from apps.cmdb.openapi_serializers import CmdbModuleDataQuerySerializer
 from apps.cmdb.services import rack_room
+from apps.cmdb.services.application_system import build_application_system_row, expand_systems_to_host_uuids
 from apps.cmdb.services.classification import ClassificationManage
 from apps.cmdb.services.config_file_service import ConfigFileService
+from apps.cmdb.services.host_zombie_whitelist import ensure_host_zombie_whitelist_attr
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.model import ModelManage
 from apps.cmdb.services.module_ingest import CmdbModuleIngestService
+from apps.cmdb.services.monitored_host import build_monitored_host_row
 from apps.cmdb.services.rack_room import format_rack_location_label, parse_rack_location
 from apps.cmdb.services.region_resource_overview import build_region_resource_items, extract_region_options
 from apps.cmdb.utils.base import get_default_group_id
@@ -232,6 +237,88 @@ def _get_collect_task_queryset(user_info):
         return CollectModels.objects.none()
 
     return CollectModels.objects.filter(is_system=False).filter(reduce(or_, team_queries)).distinct()
+
+
+def _collect_task_instance_keys(user_info):
+    keys = set()
+    for instances in _get_collect_task_queryset(user_info).values_list("instances", flat=True):
+        if not isinstance(instances, list):
+            continue
+        for item in instances:
+            if not isinstance(item, dict):
+                continue
+            key = item.get("inst_uuid") if item.get("inst_uuid") not in (None, "") else item.get("_id")
+            if key not in (None, ""):
+                keys.add(str(key))
+    return keys
+
+
+def _collect_instance_alias_keys(entity):
+    aliases = []
+    for candidate in (entity.get("inst_uuid"), entity.get("_id"), entity.get("id")):
+        if candidate in (None, ""):
+            continue
+        key = str(candidate)
+        if key not in aliases:
+            aliases.append(key)
+    return aliases
+
+
+def _find_collect_instance_alias(parent, key):
+    parent.setdefault(key, key)
+    root = key
+    while parent[root] != root:
+        root = parent[root]
+    while key != root:
+        parent[key], key = root, parent[key]
+    return root
+
+
+def _merge_collect_instance_aliases(parent, aliases):
+    if not aliases:
+        return
+    root = _find_collect_instance_alias(parent, aliases[0])
+    for alias in aliases[1:]:
+        parent[_find_collect_instance_alias(parent, alias)] = root
+
+
+def _authorized_collect_instance_keys(task_keys, permissions_map, creator=""):
+    """任务挂载钥匙与当前用户有权实例求交，排除已删/无权实例。同一实例的 uuid/_id 只计一次。"""
+    if not task_keys:
+        return set()
+
+    uuid_keys = []
+    id_keys = []
+    for key in task_keys:
+        if str(key).isdigit():
+            id_keys.append(int(key))
+        else:
+            uuid_keys.append(str(key))
+
+    format_permission_dict = InstanceManage._build_format_permission_dict(permissions_map or {}, creator)
+    query_batches = []
+    if uuid_keys:
+        query_batches.append([{"field": "inst_uuid", "type": "str[]", "value": uuid_keys}])
+    if id_keys:
+        query_batches.append([{"field": "id", "type": "id[]", "value": id_keys}])
+
+    parent = {}
+    matched_keys = set()
+    with GraphClient() as ag:
+        for params in query_batches:
+            entities, _ = ag.query_entity(
+                INSTANCE,
+                params,
+                format_permission_dict=format_permission_dict,
+            )
+            for entity in entities or []:
+                aliases = _collect_instance_alias_keys(entity)
+                if not aliases or not any(alias in task_keys for alias in aliases):
+                    continue
+                _merge_collect_instance_aliases(parent, aliases)
+                matched_keys.update(aliases)
+
+    return {_find_collect_instance_alias(parent, key) for key in matched_keys}
 
 
 def _build_authoritative_maps(instances, attrs):
@@ -753,7 +840,8 @@ def search_model_attrs(params):
     model_id = (params or {}).get("model_id")
     if not model_id:
         raise ValueError("model_id is required")
-    return ModelManage.search_model_attr(model_id)
+    language = _resolve_nats_cmdb_language(params)
+    return ModelManage.search_model_attr(model_id, language)
 
 
 @nats_client.register
@@ -1151,6 +1239,8 @@ def get_cmdb_statistics(user_info=None, **kwargs):
                 "model_with_instance_count": 0,
                 "empty_model_count": 0,
                 "model_coverage_rate": 0,
+                "collected_instance_count": 0,
+                "collect_coverage_rate": 0,
             },
             "message": "",
         }
@@ -1164,6 +1254,9 @@ def get_cmdb_statistics(user_info=None, **kwargs):
     model_with_instance_count = sum(1 for model in visible_models if model_counts.get(model.get("model_id"), 0) > 0)
     empty_model_count = max(model_count - model_with_instance_count, 0)
     model_coverage_rate = round((model_with_instance_count / model_count) * 100, 1) if model_count else 0
+    task_keys = _collect_task_instance_keys(user_info)
+    collected_instance_count = len(_authorized_collect_instance_keys(task_keys, instance_permissions_map))
+    collect_coverage_rate = round((collected_instance_count / instance_count) * 100, 1) if instance_count else 0
 
     return {
         "result": True,
@@ -1174,6 +1267,8 @@ def get_cmdb_statistics(user_info=None, **kwargs):
             "model_with_instance_count": model_with_instance_count,
             "empty_model_count": empty_model_count,
             "model_coverage_rate": model_coverage_rate,
+            "collected_instance_count": collected_instance_count,
+            "collect_coverage_rate": collect_coverage_rate,
         },
         "message": "",
     }
@@ -1242,6 +1337,7 @@ def _format_room3d_device(device):
     locator = _parse_room3d_server_room_locator(device.get("inst_uuid"))
     if not locator or locator[0] != "uuid":
         return None
+    monitor_id = device.get("monitor_id")
     return {
         "device_id": locator[1],
         "device_name": device.get("inst_name") or "",
@@ -1249,6 +1345,7 @@ def _format_room3d_device(device):
         "rack_u_start": device.get("rack_u_start"),
         "u_size": device.get("u_size"),
         "status": device.get("status"),
+        "monitor_id": "" if monitor_id in (None, "") else str(monitor_id),
     }
 
 
@@ -1385,6 +1482,23 @@ def get_room3d_layout(server_room_id=None, user_info=None, **kwargs):
         "room": {"id": room_uuid_locator[1], "name": room.get("inst_name") or ""},
         "racks": racks,
     }
+    try:
+        from apps.cmdb.services.room3d_device_alarms import enrich_room3d_devices_with_alarms
+
+        enrich_room3d_devices_with_alarms(racks, user_info=user_info)
+    except Exception as exc:
+        from apps.cmdb.services.room3d_device_alarms import soft_fail_device_alarm_fields
+
+        logger.exception(
+            "room3d layout alarm enrich unexpected failure server_room_id=%s " "failed_stage=enrich error_type=%s",
+            room_uuid_locator[1],
+            type(exc).__name__,
+        )
+        # Soft-fail: strip any residual monitor_id and mark bound devices unavailable.
+        for rack in racks:
+            for device in rack.get("devices") or []:
+                if isinstance(device, dict):
+                    soft_fail_device_alarm_fields(device)
     notice = _format_room3d_invalid_location_notice(
         invalid_location_racks,
         _resolve_room3d_locale(user_info),
@@ -1542,6 +1656,289 @@ def get_monitor_ids_by_inst_uuids(inst_uuids=None, user_info=None, **kwargs):
             }
         )
     return {"result": True, "data": {"items": items}, "message": ""}
+
+
+@nats_client.register
+def list_monitored_hosts(user_info=None, **kwargs):
+    """当前用户有权且已接入监控的 CMDB 主机选项源。"""
+    ensure_host_zombie_whitelist_attr()
+
+    permission_map = _build_nats_permission_map(user_info, model_id="host")
+    if permission_map is None:
+        return {"result": True, "data": [], "message": ""}
+
+    instances, _count = InstanceManage.instance_list(
+        model_id="host",
+        params=[],
+        page=1,
+        page_size=5000,
+        order="inst_name",
+        permission_map=permission_map,
+    )
+
+    org_ids = set()
+    for entity in instances or []:
+        org_ids.update(_normalize_to_list(entity.get("organization")))
+    org_names = {}
+    if org_ids:
+        org_names = {group["id"]: group["name"] for group in Group.objects.filter(id__in=org_ids).values("id", "name")}
+
+    data = []
+    for entity in instances or []:
+        row = build_monitored_host_row(entity, org_names=org_names)
+        if row is not None:
+            data.append(row)
+    return {"result": True, "data": data, "message": ""}
+
+
+@nats_client.register
+def list_application_systems(user_info=None, **kwargs):
+    """当前用户有权的 CMDB 应用系统选项源。"""
+    permission_map = _build_nats_permission_map(user_info, model_id="system")
+    if permission_map is None:
+        return {"result": True, "data": [], "message": ""}
+
+    instances, _count = InstanceManage.instance_list(
+        model_id="system",
+        params=[],
+        page=1,
+        page_size=5000,
+        order="inst_name",
+        permission_map=permission_map,
+    )
+    data = []
+    for entity in instances or []:
+        row = build_application_system_row(entity)
+        if row is not None:
+            data.append(row)
+    return {"result": True, "data": data, "message": ""}
+
+
+@nats_client.register
+def list_host_uuids_for_systems(system_uuids=None, user_info=None, **kwargs):
+    """把有权的应用系统展开为去重后的主机 UUID。未选或无权则空成功。"""
+    raw = system_uuids if system_uuids is not None else kwargs.get("system_uuids")
+    unique_systems = _unique_system_uuid_list(raw)
+    if unique_systems is None:
+        return {"result": False, "data": [], "message": "system_uuids 必须是列表"}
+    if not unique_systems:
+        return {"result": True, "data": [], "message": ""}
+
+    selected = _selected_authorized_systems(unique_systems, user_info)
+    if not selected:
+        return {"result": True, "data": [], "message": ""}
+
+    host_uuids = expand_systems_to_host_uuids(selected)
+    return {"result": True, "data": [{"inst_uuid": item} for item in host_uuids], "message": ""}
+
+
+def _unique_system_uuid_list(raw):
+    if raw in (None, ""):
+        raw = []
+    if not isinstance(raw, list):
+        return None
+    unique = []
+    seen = set()
+    for item in raw:
+        text = "" if item is None else str(item).strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        unique.append(text)
+    return unique
+
+
+def _selected_authorized_systems(unique_systems, user_info):
+    permission_map = _build_nats_permission_map(user_info, model_id="system")
+    if permission_map is None:
+        return []
+    instances, _count = InstanceManage.instance_list(
+        model_id="system",
+        params=[],
+        page=1,
+        page_size=5000,
+        order="inst_name",
+        permission_map=permission_map,
+    )
+    authorized = set()
+    for entity in instances or []:
+        row = build_application_system_row(entity)
+        if row is not None:
+            authorized.add(row["inst_uuid"])
+    return [item for item in unique_systems if item in authorized]
+
+
+def _org_names_for_cmdb_entities(entities):
+    org_ids = set()
+    for entity in entities or []:
+        org_ids.update(_normalize_to_list(entity.get("organization")))
+    if not org_ids:
+        return {}
+    return {group["id"]: group["name"] for group in Group.objects.filter(id__in=org_ids).values("id", "name")}
+
+
+@nats_client.register
+def list_monitored_hosts_for_systems(system_uuids=None, user_info=None, **kwargs):
+    """一次返回应用系统下已监控主机行，避免 monitor 再串行三次 CMDB NATS。"""
+    raw = system_uuids if system_uuids is not None else kwargs.get("system_uuids")
+    unique_systems = _unique_system_uuid_list(raw)
+    if unique_systems is None:
+        return {"result": False, "data": {"items": [], "expanded_host_count": 0}, "message": "system_uuids 必须是列表"}
+    if not unique_systems:
+        return {"result": True, "data": {"items": [], "expanded_host_count": 0}, "message": ""}
+
+    selected = _selected_authorized_systems(unique_systems, user_info)
+    if not selected:
+        return {"result": True, "data": {"items": [], "expanded_host_count": 0}, "message": ""}
+
+    host_uuids = expand_systems_to_host_uuids(selected)
+    if not host_uuids:
+        return {"result": True, "data": {"items": [], "expanded_host_count": 0}, "message": ""}
+
+    ensure_host_zombie_whitelist_attr()
+    permission_map = _build_nats_permission_map(user_info, model_id="host")
+    if permission_map is None:
+        return {"result": True, "data": {"items": [], "expanded_host_count": len(host_uuids)}, "message": ""}
+
+    user = _normalize_permission_user((user_info or {}).get("user"), domain=(user_info or {}).get("domain"))
+    entities = InstanceManage.query_entity_by_uuids(host_uuids)
+    by_uuid = {}
+    for entity in entities or []:
+        if not isinstance(entity, dict):
+            continue
+        if str(entity.get("model_id") or "") not in ("", "host"):
+            continue
+        if not InstanceManage._has_topology_view_permission(entity, permission_map, user=user):
+            continue
+        inst_uuid = str(entity.get("inst_uuid") or "").strip()
+        if inst_uuid:
+            by_uuid[inst_uuid] = entity
+    ordered_entities = [by_uuid[item] for item in host_uuids if item in by_uuid]
+    org_names = _org_names_for_cmdb_entities(ordered_entities)
+    items = []
+    for entity in ordered_entities:
+        row = build_monitored_host_row(entity, org_names=org_names)
+        if row is not None:
+            items.append(row)
+    return {
+        "result": True,
+        "data": {"items": items, "expanded_host_count": len(host_uuids)},
+        "message": "",
+    }
+
+
+_NETWORK_TOPOLOGY_CLOSED_SET_ERROR = "设备列表包含无效或不允许的网络设备，请重新配置"
+
+
+def _network_topology_closed_set_failure(message=_NETWORK_TOPOLOGY_CLOSED_SET_ERROR):
+    return {"result": False, "data": {"nodes": [], "links": []}, "message": message}
+
+
+@nats_client.register
+def network_topology_among_uuids(inst_uuids=None, user_info=None, **kwargs):
+    from apps.cmdb.constants.constants import NETWORK_STATUS_TOPOLOGY_MAX_NODES
+    from apps.cmdb.services.instance_identity import normalize_inst_uuid
+    from apps.core.exceptions.base_app_exception import BaseAppException
+
+    raw = inst_uuids if inst_uuids is not None else kwargs.get("inst_uuids")
+    if raw in (None, ""):
+        raw = []
+    if not isinstance(raw, list):
+        return _network_topology_closed_set_failure("inst_uuids 必须是列表")
+
+    unique = []
+    seen = set()
+    for value in raw:
+        if value in (None, ""):
+            return _network_topology_closed_set_failure()
+        try:
+            normalized = normalize_inst_uuid(value)
+        except BaseAppException:
+            return _network_topology_closed_set_failure()
+        if normalized in seen:
+            return _network_topology_closed_set_failure()
+        seen.add(normalized)
+        unique.append(normalized)
+
+    if not unique or len(unique) > NETWORK_STATUS_TOPOLOGY_MAX_NODES:
+        return _network_topology_closed_set_failure(
+            _NETWORK_TOPOLOGY_CLOSED_SET_ERROR if not unique else f"inst_uuids 不能超过 {NETWORK_STATUS_TOPOLOGY_MAX_NODES}"
+        )
+
+    entities = InstanceManage.query_entity_by_uuids(unique)
+    if len(entities) != len(unique):
+        return _network_topology_closed_set_failure()
+
+    permission_maps = {}
+    for entity in entities:
+        model_id = str(entity.get("model_id") or "")
+        if model_id in permission_maps:
+            continue
+        permission_map = _build_nats_permission_map(user_info, model_id=model_id)
+        if permission_map is None:
+            return _network_topology_closed_set_failure()
+        permission_maps[model_id] = permission_map
+
+    try:
+        topology = InstanceManage.network_topology_among_uuids(
+            unique,
+            permission_maps=permission_maps,
+            user=_normalize_permission_user((user_info or {}).get("user"), domain=(user_info or {}).get("domain")),
+        )
+    except BaseAppException:
+        return _network_topology_closed_set_failure()
+
+    return {
+        "result": True,
+        "message": "",
+        "data": {
+            "nodes": topology.get("nodes") or [],
+            "links": topology.get("links") or [],
+            "truncated": bool(topology.get("truncated")),
+        },
+    }
+
+
+def _topo_search_lite_failure(code: str, message: str):
+    return {"result": False, "data": {"code": code}, "message": message}
+
+
+@nats_client.register
+def topo_search_lite_by_uuid(inst_uuid=None, user_info=None, **kwargs):
+    """按实例 UUID 返回资产详情同源的轻量关联拓扑（默认深度 3，含权限裁剪）。
+
+    调用方不传模型 ID。圆心无权或不存在返回失败，空邻居返回成功空树。
+    """
+    from apps.cmdb.services.instance_identity import normalize_inst_uuid
+    from apps.core.exceptions.base_app_exception import BaseAppException
+
+    raw = inst_uuid if inst_uuid is not None else kwargs.get("inst_uuid")
+    try:
+        normalized = normalize_inst_uuid(raw)
+    except BaseAppException:
+        return _topo_search_lite_failure("invalid_inst_uuid", "inst_uuid 必须是 UUIDv4")
+
+    instance = InstanceManage.query_entity_by_uuid(normalized)
+    if not instance:
+        return _topo_search_lite_failure("not_found", "实例不存在")
+
+    permission_map = _build_nats_permission_map(user_info, model_id=str(instance.get("model_id") or ""))
+    user = _normalize_permission_user((user_info or {}).get("user"), domain=(user_info or {}).get("domain"))
+    if permission_map is None or not InstanceManage._has_topology_view_permission(instance, permission_map, user=user):
+        return _topo_search_lite_failure("permission_denied", "无权限查看该实例")
+
+    try:
+        result = InstanceManage.topo_search_lite_by_uuid(
+            normalized,
+            depth=3,
+            permission_map=permission_map,
+            user=user,
+            language=_resolve_nats_cmdb_language(user_info),
+        )
+    except BaseAppException:
+        return _topo_search_lite_failure("not_found", "实例不存在")
+
+    return {"result": True, "data": result, "message": ""}
 
 
 @nats_client.register
@@ -1850,16 +2247,17 @@ def get_model_inst_statistics(user_info=None, **kwargs):
 
 
 @nats_client.register
-def get_cmdb_model_instance_top(limit=5, classification_id=None, user_info=None, **kwargs):
-    """
-    获取模型实例数 TOP N（用于 TopN / 柱状图）
-    """
+def get_cmdb_model_instance_top(limit=5, classification_id=None, user_info=None, group_by="model", **kwargs):
+    """获取实例数 TOP N：默认按模型排行，也可按分类汇总（group_by=classification）。"""
     try:
         limit = int(limit or 5)
     except (TypeError, ValueError):
         limit = 5
     if limit <= 0:
         limit = 5
+    group_by = (group_by or kwargs.get("group_by") or "model").strip().lower()
+    if group_by not in {"model", "classification"}:
+        group_by = "model"
 
     language = _resolve_nats_cmdb_language(user_info)
     classifications = ClassificationManage.search_model_classification(language=language)
@@ -1875,6 +2273,22 @@ def get_cmdb_model_instance_top(limit=5, classification_id=None, user_info=None,
         models = [model for model in models if model.get("classification_id") == classification_id]
 
     model_counts = InstanceManage.model_inst_count(permissions_map=instance_permissions_map)
+
+    if group_by == "classification":
+        classification_counts = {}
+        for model in models:
+            class_id = model.get("classification_id")
+            classification_counts[class_id] = classification_counts.get(class_id, 0) + model_counts.get(model.get("model_id"), 0)
+        result_data = [
+            {
+                "classification": classification_map.get(class_id, class_id),
+                "classification_id": class_id,
+                "count": count,
+            }
+            for class_id, count in classification_counts.items()
+        ]
+        result_data.sort(key=lambda x: (-x["count"], x["classification"]))
+        return {"result": True, "data": result_data[:limit], "message": ""}
 
     result_data = []
     for model in models:
@@ -1928,6 +2342,13 @@ def model_inst_count(*args, **kwargs):
     获取模型实例数量
     """
     result = InstanceManage.model_inst_count(permissions_map={}, creator="")
+    return {"result": True, "message": "", "data": result}
+
+
+@nats_client.register
+def license_cmdb_instance_count(*args, **kwargs):
+    """许可管理专用：原生自动发现的收费模型实例数量。"""
+    result = InstanceManage.license_instance_count()
     return {"result": True, "message": "", "data": result}
 
 

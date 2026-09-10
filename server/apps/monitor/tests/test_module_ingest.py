@@ -1,4 +1,4 @@
-"""MonitorModuleIngestService：按 node_id / cmdb_id / ip+cloud 归并。"""
+"""MonitorModuleIngestService：按 node_id / cmdb_id / ip+cloud / 同名 归并。"""
 
 import pytest
 
@@ -467,6 +467,103 @@ def test_cmdb_uncredentialed_does_not_claim_host_as_switch(host_object, db):
     assert result["ignored"] is True
     assert result["id"] is None
     assert MonitorInstance.objects.filter(cmdb_id="sw-uuid").count() == 0
+
+
+@pytest.mark.django_db
+def test_cmdb_uncredentialed_claims_host_by_exact_name_when_ip_misses(host_object):
+    """IP/云区域认领失败时，同名唯一命中可作为最低优先级关联。"""
+    existing = MonitorInstance.objects.create(
+        id="('host-ecom-inventory-02',)",
+        name="host-ecom-inventory-02",
+        monitor_object=host_object,
+    )
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="96ca6630-afda-4916-aba6-76139b311d62",
+            link_ids={"cmdb_id": "96ca6630-afda-4916-aba6-76139b311d62"},
+            raw={
+                "name": "host-ecom-inventory-02",
+                "inst_name": "host-ecom-inventory-02",
+                "ip": "10.20.1.23",
+                "cloud_region_id": 1,
+                "model_id": "host",
+                "organization_ids": [1],
+            },
+        )
+    )
+    assert result["id"] == existing.id
+    existing.refresh_from_db()
+    assert existing.cmdb_id == "96ca6630-afda-4916-aba6-76139b311d62"
+    assert existing.name == "host-ecom-inventory-02"
+
+
+@pytest.mark.django_db
+def test_cmdb_uncredentialed_prefers_ip_cloud_over_same_name(host_object):
+    """同名兜底不得抢过 IP+云区域认领。"""
+    by_ip = MonitorInstance.objects.create(
+        id="('1_os_10.20.1.23',)",
+        name="other-name",
+        monitor_object=host_object,
+        ip="10.20.1.23",
+        cloud_region_id=1,
+    )
+    MonitorInstance.objects.create(
+        id="('named-shell',)",
+        name="host-ecom-inventory-02",
+        monitor_object=host_object,
+    )
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="cmdb-uuid",
+            link_ids={"cmdb_id": "cmdb-uuid"},
+            raw={
+                "name": "host-ecom-inventory-02",
+                "inst_name": "host-ecom-inventory-02",
+                "ip": "10.20.1.23",
+                "cloud_region_id": 1,
+                "model_id": "host",
+                "organization_ids": [1],
+            },
+        )
+    )
+    assert result["id"] == by_ip.id
+    by_ip.refresh_from_db()
+    assert by_ip.cmdb_id == "cmdb-uuid"
+    assert MonitorInstance.objects.get(name="host-ecom-inventory-02").cmdb_id in (None, "")
+
+
+@pytest.mark.django_db
+def test_cmdb_uncredentialed_does_not_claim_ambiguous_host_name(host_object):
+    MonitorInstance.objects.create(
+        id="('dup-a',)",
+        name="dup-host",
+        monitor_object=host_object,
+    )
+    MonitorInstance.objects.create(
+        id="('dup-b',)",
+        name="dup-host",
+        monitor_object=host_object,
+    )
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="cmdb-uuid",
+            link_ids={"cmdb_id": "cmdb-uuid"},
+            raw={
+                "name": "dup-host",
+                "inst_name": "dup-host",
+                "ip": "10.20.9.9",
+                "cloud_region_id": 1,
+                "model_id": "host",
+                "organization_ids": [1],
+            },
+        )
+    )
+    assert result["ignored"] is True
+    assert result["id"] is None
+    assert MonitorInstance.objects.filter(cmdb_id="cmdb-uuid").count() == 0
 
 
 @pytest.mark.django_db

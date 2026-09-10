@@ -53,6 +53,7 @@ import {
   useSimpleDashboardData
 } from './simple-dashboard-core';
 import { ChartData } from '@/app/monitor/types';
+import { useDashboardText } from '../../shared/utils/content-i18n';
 
 // ─── Icon helper ─────────────────────────────────────────────────────────────
 
@@ -77,6 +78,17 @@ export const getIcon = (type: SummaryCardConfig['icon']): React.ReactNode => {
 
 const pickDefined = <T,>(items: Array<T | undefined>): T[] =>
   items.filter((item): item is T => Boolean(item));
+
+export const DashboardSectionLabel = ({
+  children,
+  styles
+}: {
+  children: string;
+  styles: DashboardStyles;
+}) => {
+  const { dt } = useDashboardText();
+  return <div className={styles.sectionLabel}>{dt(children)}</div>;
+};
 
 /**
  * Filters prepared panels by an ordered list of titles, preserving order.
@@ -190,6 +202,7 @@ export interface SummaryStatCardProps {
  * grid) and by dashboards that need a standalone KPI card inside a panel row.
  */
 export const SummaryStatCard = ({ summaryCard, className, styles }: SummaryStatCardProps) => {
+  const { dt } = useDashboardText();
   const { card, mainValue, valueColor, compare, footerItems, trendData, noDataType, uptimeState } = summaryCard;
   const isUptime = card.isUptimeCard;
   // 运行时长卡统一样式:不画折线,只显示「所选时间范围内是否发生重启」(运行正常 / 期间有重启 / 状态未知)。
@@ -203,10 +216,13 @@ export const SummaryStatCard = ({ summaryCard, className, styles }: SummaryStatC
       value={mainValue.value}
       unit={mainValue.unit}
       icon={getIcon(card.icon)}
-      iconStyle={{ background: `${valueColor ?? card.color}1f`, color: valueColor ?? card.color }}
+      iconStyle={{ background: `${valueColor ?? card.color}1c`, color: valueColor ?? card.color }}
       color={valueColor ?? card.color}
       footer={footerItems.map((item) => (
-        <span key={item.label}>{item.label} {item.value}</span>
+        <span key={item.label} className={styles.statMetaItem}>
+          <span className={styles.statMetaLabel}>{dt(item.label)}</span>
+          <span className={styles.statMetaValue}>{item.value}</span>
+        </span>
       ))}
       compare={compare}
       compareFavorableDirection={card.compareFavorableDirection}
@@ -220,7 +236,7 @@ export const SummaryStatCard = ({ summaryCard, className, styles }: SummaryStatC
           <span className={styles.uptimeStatusDot} />
           <div className={styles.uptimeStatusMainWrap}>
             <span className={styles.uptimeStatusMain}>
-              {uptimeState?.label ?? '状态未知'}
+              {dt(uptimeState?.label ?? '状态未知')}
             </span>
           </div>
         </div>
@@ -498,6 +514,7 @@ export interface DetailPanelCardProps {
 }
 
 export const DetailPanelCard = ({ detailPanel, className, styles }: DetailPanelCardProps) => {
+  const { dt } = useDashboardText();
   const { panel, rows, hasData } = detailPanel;
   const useTiles = isDetailTilesLayout(panel);
 
@@ -505,8 +522,8 @@ export const DetailPanelCard = ({ detailPanel, className, styles }: DetailPanelC
     return (
       <div className={[styles.panel, styles.snapshotTilesPanel, className].filter(Boolean).join(' ')}>
         <div className={styles.snapshotTilesHeader}>
-          <h3 className={styles.snapshotTilesTitle}>{panel.title}</h3>
-          {panel.subtitle ? <div className={styles.snapshotTilesSubTitle}>{panel.subtitle}</div> : null}
+          <h3 className={styles.snapshotTilesTitle}>{dt(panel.title)}</h3>
+          {panel.subtitle ? <div className={styles.snapshotTilesSubTitle}>{dt(panel.subtitle)}</div> : null}
         </div>
         {hasData ? (
           <div className={styles.snapshotTilesGrid}>
@@ -515,7 +532,7 @@ export const DetailPanelCard = ({ detailPanel, className, styles }: DetailPanelC
               const valueColor = row.statusColor ?? (row.tone === 'normal' ? undefined : toneColor);
               return (
                 <div key={row.label} className={styles.snapshotTile}>
-                  <div className={styles.snapshotTileLabel}>{row.label}</div>
+                  <div className={styles.snapshotTileLabel}>{dt(row.label)}</div>
                   <div
                     className={styles.snapshotTileValue}
                     style={valueColor ? { color: valueColor } : undefined}
@@ -530,7 +547,7 @@ export const DetailPanelCard = ({ detailPanel, className, styles }: DetailPanelC
             })}
           </div>
         ) : (
-          <div className={styles.detailEmpty}>当前时间范围内暂无可展示详情</div>
+          <div className={styles.detailEmpty}>{dt('当前时间范围内暂无可展示详情')}</div>
         )}
       </div>
     );
@@ -538,14 +555,14 @@ export const DetailPanelCard = ({ detailPanel, className, styles }: DetailPanelC
 
   return (
     <div className={[styles.panel, className].filter(Boolean).join(' ')}>
-      <h3 className={styles.panelTitle}>{panel.title}</h3>
-      <div className={styles.panelSubTitle}>{panel.subtitle}</div>
+      <h3 className={styles.panelTitle}>{dt(panel.title)}</h3>
+      <div className={styles.panelSubTitle}>{dt(panel.subtitle)}</div>
       {hasData ? (
         <div className={styles.detailRowsFill}>
           {rows.map((row) => (
             <DetailMetricRow
               key={row.label}
-              label={row.label}
+              label={dt(row.label)}
               value={row.value}
               viz={row.viz}
               trend={row.trend}
@@ -558,7 +575,7 @@ export const DetailPanelCard = ({ detailPanel, className, styles }: DetailPanelC
           ))}
         </div>
       ) : (
-        <div className={styles.detailEmpty}>当前时间范围内暂无可展示详情</div>
+        <div className={styles.detailEmpty}>{dt('当前时间范围内暂无可展示详情')}</div>
       )}
     </div>
   );
@@ -699,6 +716,7 @@ export const DashboardShell = ({
   brandLabel,
   styles
 }: DashboardShellProps) => {
+  const { dt } = useDashboardText();
   const showProtocolBar = FLOW_VIEW_SWITCH_ROUTE_KEYS.has(dashboard.routeKey);
 
   return (
@@ -721,11 +739,11 @@ export const DashboardShell = ({
           metaItems={[
             ...(brandLabel
               ? [
-                <span key="brand" className={styles.instanceMetaInline}>{brandLabel}</span>
+                <span key="brand" className={styles.instanceMetaInline}>{dt(brandLabel)}</span>
               ]
               : []),
             ...dashboard.objectMetaItems.map((item, index) => (
-              <span key={index} className={styles.instanceMetaInline}>{item}</span>
+              <span key={index} className={styles.instanceMetaInline}>{typeof item === 'string' ? dt(item) : item}</span>
             ))
           ]}
           icon={<DatabaseOutlined />}
@@ -737,7 +755,7 @@ export const DashboardShell = ({
           clusterValue={dashboard.clusterFilterValue}
           onClusterChange={dashboard.onClusterFilterChange}
           selectorPlaceholder={
-            dashboard.resolvedInstanceName !== '--' ? dashboard.resolvedInstanceName : '选择实例'
+            dashboard.resolvedInstanceName !== '--' ? dashboard.resolvedInstanceName : dt('选择实例')
           }
           selectorTitle={dashboard.currentInstanceLabel}
           isDashboardMode={dashboard.isDashboardMode}

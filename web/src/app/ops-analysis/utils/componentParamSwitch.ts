@@ -1,10 +1,11 @@
 import type { InputOption, ParamItem } from '@/app/ops-analysis/types/dataSource';
+import { isOptionInputControl } from '@/app/ops-analysis/utils/paramInputConfigUtils';
 
 type SwitchableInputConfig = NonNullable<ParamItem['inputConfig']> & {
   componentSwitch?: boolean;
 };
 
-const COMPONENT_SWITCH_CHART_TYPES = new Set(['topN', 'room3D']);
+const COMPONENT_SWITCH_CHART_TYPES = new Set(['topN', 'room3D', 'nodeGraph']);
 
 export const supportsComponentSwitch = (chartType?: string): boolean =>
   Boolean(chartType && COMPONENT_SWITCH_CHART_TYPES.has(chartType));
@@ -92,7 +93,7 @@ export const reconcileComponentSwitchResult = (
 export const clearComponentParamSwitch = (param: ParamItem): ParamItem => {
   const inputConfig = param.inputConfig as SwitchableInputConfig | undefined;
   if (!inputConfig || !('componentSwitch' in inputConfig)) return param;
-  if (inputConfig.control === 'input') {
+  if (!isOptionInputControl(inputConfig)) {
     const nextInputConfig = { ...inputConfig } as Record<string, unknown>;
     delete nextInputConfig.componentSwitch;
     return { ...param, inputConfig: nextInputConfig as ParamItem['inputConfig'] };

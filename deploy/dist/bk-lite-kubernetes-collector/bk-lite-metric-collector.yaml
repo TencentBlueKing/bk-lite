@@ -666,8 +666,12 @@ data:
           target_label: pod
           regex: (.+)
           action: replace
-        # id(cgroup 路径)/name/image 超长且无查询消费；pod_name 已复制为 pod
-        - regex: id|name|image|container_label_io_kubernetes_pod_name
+        - source_labels: [container_label_io_kubernetes_pod_namespace]
+          target_label: namespace
+          regex: (.+)
+          action: replace
+        # id(cgroup 路径)/name/image 超长且无查询消费；docker label 已复制为 pod/namespace
+        - regex: id|name|image|container_label_io_kubernetes_pod_name|container_label_io_kubernetes_pod_namespace
           action: labeldrop
       - job_name: 'kubernetes-kube-state-metrics'
         kubernetes_sd_configs:

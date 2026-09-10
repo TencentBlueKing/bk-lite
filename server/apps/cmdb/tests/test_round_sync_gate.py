@@ -16,6 +16,7 @@ from apps.cmdb.collection.round_sync import (
     query_instance_ids_with_vm_data,
     query_latest_completed_round,
     query_latest_completed_rounds,
+    resolve_latest_completed_round_for_task,
     uses_vm_reconciliation,
 )
 from apps.cmdb.constants.constants import CollectPluginTypes, CollectRunStatusType
@@ -87,6 +88,30 @@ def test_completed_round_only_trusts_versioned_snapshot_contract():
 
     assert legacy.snapshot_complete is False
     assert strict.snapshot_complete is True
+
+
+def test_resolve_latest_completed_round_for_task_prefers_device_then_legacy(monkeypatch):
+    task = mock.MagicMock(
+        id=11,
+        is_interval=True,
+        cycle_value_type="cycle",
+        cycle_value="480",
+    )
+    collection = mock.MagicMock()
+    legacy_round = CompletedRound(started_at=100, completed_at=160)
+    calls = []
+
+    def fake_query(instance_id, **kwargs):
+        calls.append((instance_id, kwargs["lookback_seconds"], kwargs["collection_role"], kwargs["collection"]))
+        return legacy_round if kwargs["collection_role"] == "" else None
+
+    monkeypatch.setattr("apps.cmdb.collection.round_sync.query_latest_completed_round", fake_query)
+
+    assert resolve_latest_completed_round_for_task(task, collection=collection) is legacy_round
+    assert calls == [
+        ("cmdb_11", 115_620, "device", collection),
+        ("cmdb_11", 115_620, "", collection),
+    ]
 
 
 def test_query_latest_completed_round_returns_start_and_completion_time():

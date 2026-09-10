@@ -5,12 +5,15 @@ from typing import Any, Dict
 from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.safe_template import TemplateSecurityError, safe_render
 from apps.opspilot.enum import SkillTypeChoices
+from apps.opspilot.metis.llm.common.llm_client_factory import INTERNAL_SAMPLING_TEMPERATURE_KEY
 from apps.opspilot.services.chat_service import ChatService
 from apps.opspilot.utils.chat_flow_utils.conversation_history import build_node_chat_history
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
 
 # 意图分类读取最近 N 条会话消息用于解析省略/指代（如"深圳呢"），由下游 process_chat_history 精确加窗
 INTENT_HISTORY_WINDOW = 5
+# 分类需要低且稳定的采样，走 ChatService 内部 hatch，不被对话温度钉死为 1.0。
+INTENT_CLASSIFIER_TEMPERATURE = 0.1
 
 
 class IntentClassifierNode(BaseNodeExecutor):
@@ -89,7 +92,8 @@ class IntentClassifierNode(BaseNodeExecutor):
         return {
             "llm_model": llm_model,
             "skill_prompt": self._build_intent_prompt(node_id, intent_names, config.get("classificationRules", "")),
-            "temperature": 0.1,
+            "temperature": INTENT_CLASSIFIER_TEMPERATURE,
+            INTERNAL_SAMPLING_TEMPERATURE_KEY: INTENT_CLASSIFIER_TEMPERATURE,
             "chat_history": build_node_chat_history(self.variable_manager, message, message),
             "user_message": message,
             "conversation_window_size": INTENT_HISTORY_WINDOW,

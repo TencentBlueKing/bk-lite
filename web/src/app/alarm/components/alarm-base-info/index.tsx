@@ -2,6 +2,8 @@
 
 import React from 'react';
 import DetailListPanel from '@/components/detail-list-panel';
+import MonitorObjectList from '@/app/alarm/components/monitor-object-list';
+import type { MonitorObjectSnapshot } from '@/app/alarm/types/alarms';
 import { useTranslation } from '@/utils/i18n';
 
 export interface AlarmBaseInfoDetail {
@@ -11,6 +13,8 @@ export interface AlarmBaseInfoDetail {
   notify_status?: string | null;
   resource_type?: string | null;
   resource_name?: string | null;
+  monitor_objects?: MonitorObjectSnapshot[];
+  enrichment?: Record<string, unknown>;
 }
 
 export interface AlarmBaseInfoProps {
@@ -29,6 +33,10 @@ const AlarmBaseInfo: React.FC<AlarmBaseInfoProps> = ({ detail }) => {
   };
   const notificationStatus =
     detail.notification_status || detail.notify_status || '';
+  const hasMonitorObjects = Boolean(detail.monitor_objects?.length);
+  const hasEnrichment = Boolean(
+    detail.enrichment && Object.keys(detail.enrichment).length
+  );
 
   const descriptionItems = [
     {
@@ -56,18 +64,31 @@ const AlarmBaseInfo: React.FC<AlarmBaseInfoProps> = ({ detail }) => {
         ] || PLACEHOLDER,
       copyable: false,
     },
-    {
+    ...(hasMonitorObjects ? [] : [{
       key: 'objectType',
       label: t('alarms.objectType'),
       value: detail.resource_type,
       copyable: false,
-    },
+    }]),
     {
       key: 'object',
       label: t('alarms.object'),
       value: detail.resource_name,
+      displayValue: hasMonitorObjects ? (
+        <MonitorObjectList objects={detail.monitor_objects || []} />
+      ) : undefined,
       copyable: false,
     },
+    ...(hasEnrichment ? [{
+      key: 'enrichment',
+      label: t('alarms.enrichment'),
+      displayValue: (
+        <pre className="max-h-[180px] overflow-auto whitespace-pre-wrap break-all text-xs">
+          {JSON.stringify(detail.enrichment, null, 2)}
+        </pre>
+      ),
+      copyable: false,
+    }] : []),
   ];
 
   return (

@@ -128,6 +128,31 @@ class NodeMgmt(object):
         return_data = self.client.run("get_child_configs_by_ids", ids)
         return return_data
 
+    def run_telegraf_child_configs_once(self, request_id, config_ids, expected_node_id, organization_ids):
+        """在配置所属节点上一次性执行已保存的 CMDB Telegraf 子配置。"""
+        from apps.core.utils.current_team_scope import _normalize_organization_ids
+        from apps.node_mgmt.services.telegraf_oneshot import TelegrafOneShotService
+
+        normalized_organizations = sorted(_normalize_organization_ids(organization_ids))
+        authorization = TelegrafOneShotService.build_authorization(
+            request_id=request_id,
+            config_ids=config_ids,
+            expected_node_id=expected_node_id,
+            organization_ids=normalized_organizations,
+        )
+        timeout_options = {} if self.is_local_client else {"_timeout": 61}
+        return self.client.run(
+            "run_telegraf_child_configs_once",
+            {
+                "request_id": request_id,
+                "config_ids": config_ids,
+                "expected_node_id": expected_node_id,
+                "organization_ids": normalized_organizations,
+                "authorization": authorization,
+            },
+            **timeout_options,
+        )
+
     def get_child_config_nodes_by_ids(self, ids, organization_ids):
         """按子配置 ID 批量获取当前组织范围内的采集节点。"""
         return self.client.run(
@@ -246,3 +271,7 @@ class NodeMgmt(object):
         NATS handler 签名为 node_ingest_from_source(params)，须整包为 params。
         """
         return self.client.run("node_ingest_from_source", params=kwargs)
+
+    def install_controller(self, data: dict, organization_ids: list):
+        """通过 NATS 触发控制器远程安装。不含卸载、重试、手动安装或任务查询。"""
+        return self.client.run("install_controller", data, organization_ids)

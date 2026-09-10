@@ -69,6 +69,21 @@
       ]
     },
     {
+      "name": "Credential",
+      "children": [
+        {
+          "id": "credential",
+          "name": "Credential",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        }
+      ]
+    },
+    {
       "name": "Application",
       "children": [
         {
@@ -204,6 +219,13 @@
             "Edit",
             "Delete"
           ]
+        },
+        {
+          "id": "openapi_docs",
+          "name": "Interface Documentation",
+          "operation": [
+            "View"
+          ]
         }
       ]
     }
@@ -236,7 +258,11 @@
         "security_settings-View",
         "security_settings-Add",
         "security_settings-Edit",
-        "security_settings-Delete"
+        "security_settings-Delete",
+        "credential-View",
+        "credential-Add",
+        "credential-Edit",
+        "credential-Delete"
       ]
     },
     {

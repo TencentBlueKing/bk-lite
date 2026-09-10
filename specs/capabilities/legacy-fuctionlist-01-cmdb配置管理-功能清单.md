@@ -73,7 +73,7 @@ CMDB 是平台统一的资产与配置数据中心，围绕模型定义、资产
 | 常用筛选保存 | 用户保存常用筛选条件并按模型复用 | 保存于用户个人配置，非浏览器本地临时记录 | GA |
 | 资产视图 | 按模型统计资产数量并提供快速跳转入口 | — | GA |
 | 机房俯视平面图 | 以 row/col 网格展示机房内机柜的物理位置、类型与 U 位占用率；可在格位新建或放置已有机柜，也可移出布局 | 移出仅解除当前机房关联并清空位置，不删除机柜；同格冲突、已归属其他机房、已在当前布局及无操作权限均阻断放置；未定位机柜单独成列不丢弃 | GA |
-| 机房 3D 布局取数（供大屏消费） | 3D 大屏组件消费机房布局取数接口，返回 row/col/U 占用与设备摘要；类型字段同时返回 `datacenter_type` 枚举 id 与可读名称 `rack_type_name`（计算/网络/存储/安全/其他/未分类），无值时不带 `rack_type_name` | 只读；经 NATS `get_room3d_layout` 暴露（server/apps/cmdb/nats/nats.py:939-1050）；`rack_id`/`rack_name` 字段源统一为 `item['rack_id']` / `item['rack_name']`，`instance_name` 缺失时 fallback 到 `rack_id`；供运营分析 3D 大屏图例与机柜顶贴图渲染 | GA |
+| 机房 3D 布局取数（供大屏消费） | 3D 大屏组件消费机房布局取数接口，返回 row/col/U 占用与设备摘要；类型字段同时返回 `datacenter_type` 枚举 id 与可读名称 `rack_type_name`；已上架设备附带监控告警摘要（条数/最高级别，不含 info；告警失败软降级） | 只读；经 NATS `get_room3d_layout` 暴露；告警经 Monitor `query_active_alert_summaries_by_monitor_ids`；`rack_id`/`rack_name` 字段源统一为 `item['rack_id']` / `item['rack_name']` | GA |
 | 机柜正视 U 图 | 展示机柜内设备的 U 位排布（u_start/u_end）、越界与重叠标记，以及空闲 U 汇总（free_u/max_free_u）；可在 U 位新建或放置已有设备，也可移出布局 | 移出仅解除当前机柜关联并清空起始 U 位，不删除设备；U 位重叠/越界、已归属其他机柜、已在当前布局、不可放置模型及无操作权限均阻断放置 | GA |
 | 网络设备拓扑跳数 | 网络设备拓扑按选定跳数加载，并可在边界节点继续展开 | 支持 1、2、3 跳；后端限制在允许的跳数范围内 | GA |
 
@@ -94,17 +94,18 @@ CMDB 是平台统一的资产与配置数据中心，围绕模型定义、资产
 | 插件说明 | 查看采集插件说明文档 | — | GA |
 | 实例侧关联任务 | 在实例侧查看可关联的采集任务名称 | — | GA |
 | 部分数据库采集 | MongoDB、Elasticsearch、HBase、TiDB、MSSQL 等数据库对象采集 | 部分对象处于试验阶段 | Beta |
-| 网段扫描发现 | 按网段创建扫描任务，查看执行与命中并回写采集/资产 | 允许家族：网络/主机/物理服务器/MySQL/PostgreSQL/MSSQL/InfluxDB；网段前缀不得宽于 /21 | GA |
+| 网段扫描发现 | 按网段创建扫描任务，查看执行与命中并回写采集/资产 | 允许家族：网络/主机/物理服务器/数据库/InfluxDB；数据库凭据为统一用户名密码池，探测端口与类型来自特征库端口指纹，登录成功仍写 mysql/postgresql/mssql CI；网段前缀不得宽于 /21；命中详情分已匹配/未匹配；未知 SOID 可写指纹或手选类型后推监控/生成采集；数据库鉴权失败可补端口指纹或按预判类型建 CI，失败行不可推监控/生成采集 | GA |
 
 相关 PRD：[[legacy-prd-cmdb-自动发现.md#3.2 采集任务]]；相关架构：[[legacy-ard-modules-cmdb.md#3. 接口]]
 > 证据来源：server/apps/cmdb/urls.py:27，server/apps/cmdb/models/scan_model.py:10-22,39，web/src/app/cmdb/(pages)/assetManage/autoDiscovery/scan/page.tsx　|　同步基线：61bace9f　|　【已实现】
 > 证据来源：server/apps/cmdb/constants/constants.py:377-403，server/apps/cmdb/node_configs/network_config_file.py:5-63，server/apps/cmdb/services/ipam_discovery.py:104-175　|　同步基线：83091efe　|　【已实现】
 
-### 6. SOID 特征库
+### 6. 特征库
 
 | 功能项 | 功能说明 | 规格 / 约束 | 状态 |
 |---|---|---|---|
 | sysObjectID 映射维护 | 设备 sysObjectID 映射的新增、编辑、删除、列表查询 | 用于 SNMP 网络设备类型识别 | GA |
+| 端口指纹维护 | TCP 端口到 CMDB 模型的映射新增、列表、删除用户行 | 唯一约束 `(端口, 类型)`；内置 3306/mysql、5432/postgresql、1433/mssql 不可删；中间件类型可登记但不参与本轮扫描探测 | GA |
 
 ### 7. 数据订阅
 

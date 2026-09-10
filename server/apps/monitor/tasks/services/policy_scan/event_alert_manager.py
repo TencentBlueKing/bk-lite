@@ -7,6 +7,7 @@ from apps.core.utils.database import bulk_create_with_primary_keys
 from apps.monitor.constants.alert_policy import AlertConstants
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.models import MonitorAlert, MonitorEvent, MonitorEventRawData
+from apps.monitor.services.alert_access import snapshot_policy_organization_ids
 from apps.monitor.services.alert_lifecycle_notify import AlertLifecycleNotifier
 from apps.monitor.utils.dimension import format_dimension_str
 
@@ -16,6 +17,7 @@ class EventAlertManager:
         self.policy = policy
         self.instances_map = instances_map
         self.active_alerts = active_alerts
+        self.organizations = snapshot_policy_organization_ids(policy)
 
     def create_events(self, events):
         if not events:
@@ -38,6 +40,7 @@ class EventAlertManager:
                     dimensions=event.get("dimensions", {}),
                     value=event["value"],
                     level=event["level"],
+                    action=event.get("action") or "",
                     content=event["content"],
                     notice_result=[],
                     event_time=self.policy.last_run_time,
@@ -46,14 +49,13 @@ class EventAlertManager:
             if event.get("raw_data"):
                 events_with_raw_data.append({"event_id": event_id, "raw_data": event["raw_data"]})
 
-        event_objs = MonitorEvent.objects.bulk_create(create_events, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
-
-        if not event_objs or not hasattr(event_objs[0], "id"):
-            event_objs = list(
-                MonitorEvent.objects.filter(policy_id=self.policy.id, event_time=self.policy.last_run_time).order_by("-created_at")[
-                    : len(create_events)
-                ]
-            )
+        event_ids = [event.id for event in create_events]
+        MonitorEvent.objects.bulk_create(
+            create_events,
+            batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
+            ignore_conflicts=True,
+        )
+        event_objs = list(MonitorEvent.objects.filter(id__in=event_ids))
 
         if events_with_raw_data:
             self._create_raw_data_records(events_with_raw_data, event_objs)
@@ -153,7 +155,8 @@ class EventAlertManager:
                     f"events without alert_id for policy {self.policy.id}"
                 )
 
-            event_objs = self.create_events(valid_events)
+            lifecycle_events = self._select_lifecycle_events(valid_events, new_alerts)
+            event_objs = self.create_events(lifecycle_events)
 
             if existing_alert_events:
                 upgraded_alerts = self._update_existing_alerts_from_events(existing_alert_events) or []
@@ -206,6 +209,58 @@ class EventAlertManager:
         identity = monitor_instance_id if alert_type == "no_data" and monitor_instance_id else metric_instance_id
         return identity, alert_type
 
+    def _select_lifecycle_events(self, events, new_alerts):
+        """只保留触发和新高峰升级；持续命中、级别回落不落 Event。"""
+        new_alert_ids = {alert.id for alert in new_alerts}
+        selected = []
+        seen_new_alert_ids = set()
+        for event in events:
+            alert = event.get("_alert_obj")
+            if not alert:
+                continue
+            if alert.id in new_alert_ids:
+                if alert.id in seen_new_alert_ids:
+                    continue
+                event["action"] = MonitorEvent.Action.TRIGGERED
+                selected.append(event)
+                seen_new_alert_ids.add(alert.id)
+                continue
+            if event.get("level") == "no_data":
+                continue
+            event_level = event.get("level")
+            current_weight = AlertConstants.LEVEL_WEIGHT.get(event_level, 0)
+            alert_weight = AlertConstants.LEVEL_WEIGHT.get(alert.level, 0)
+            if current_weight > alert_weight:
+                event["action"] = MonitorEvent.Action.ESCALATED
+                selected.append(event)
+        return self._dedupe_existing_escalations(selected)
+
+    def _dedupe_existing_escalations(self, events):
+        escalated = [
+            event
+            for event in events
+            if event.get("action") == MonitorEvent.Action.ESCALATED and event.get("alert_id")
+        ]
+        if not escalated:
+            return events
+        existing = set(
+            MonitorEvent.objects.filter(
+                alert_id__in=[event["alert_id"] for event in escalated],
+                action=MonitorEvent.Action.ESCALATED,
+            ).values_list("alert_id", "level")
+        )
+        filtered = []
+        for event in events:
+            if event.get("action") != MonitorEvent.Action.ESCALATED:
+                filtered.append(event)
+                continue
+            key = (event.get("alert_id"), event.get("level"))
+            if key in existing:
+                continue
+            existing.add(key)
+            filtered.append(event)
+        return filtered
+
     def _get_event_alert_key(self, event) -> tuple:
         return self._build_alert_key(
             event.get("metric_instance_id", ""),
@@ -253,6 +308,8 @@ class EventAlertManager:
                     operator="",
                     notice_type_ids=self.policy.notice_type_ids,
                     notice_users=self.policy.notice_users,
+                    handlers=list(self.policy.handlers or []),
+                    organizations=list(self.organizations),
                 )
             )
 

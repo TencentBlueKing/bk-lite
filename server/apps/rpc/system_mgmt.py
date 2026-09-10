@@ -91,6 +91,30 @@ class SystemMgmt(object):
     def get_assignable_groups(self, actor_context):
         return self.client.run("get_assignable_groups", actor_context=actor_context)
 
+    def list_credentials(self, actor_context, category=None, type=None, search="", page=1, page_size=20):
+        return self.client.run(
+            "list_credentials",
+            actor_context=actor_context,
+            category=category,
+            type=type,
+            search=search,
+            page=page,
+            page_size=page_size,
+        )
+
+    def create_credential(self, actor_context, name, type, group_id, fields):
+        return self.client.run(
+            "create_credential",
+            actor_context=actor_context,
+            name=name,
+            type=type,
+            group_id=group_id,
+            fields=fields,
+        )
+
+    def resolve_credential(self, actor_context, credential_id):
+        return self.client.run("resolve_credential", actor_context=actor_context, credential_id=credential_id)
+
     def get_client(self, client_id, username="", domain="domain.com"):
         return_data = self.client.run("get_client", client_id=client_id, username=username, domain=domain)
         return return_data
@@ -283,15 +307,18 @@ class SystemMgmt(object):
         include_children=False,
         search="",
         limit=100,
+        recipient_ids=None,
     ):
-        return self.client.run(
-            "search_notification_recipients_scoped",
-            actor_context=actor_context,
-            teams=teams,
-            include_children=include_children,
-            search=search,
-            limit=limit,
-        )
+        kwargs = {
+            "actor_context": actor_context,
+            "teams": teams,
+            "include_children": include_children,
+            "search": search,
+            "limit": limit,
+        }
+        if recipient_ids is not None:
+            kwargs["recipient_ids"] = recipient_ids
+        return self.client.run("search_notification_recipients_scoped", **kwargs)
 
     def dispatch_notification(
         self,

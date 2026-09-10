@@ -15,9 +15,13 @@ import type {
   ValueConfig,
 } from "@/app/ops-analysis/types/dashBoard";
 import {
+  aggregateRackAlarmSummary,
+  formatRoom3DDeviceAlarmCountValue,
+  formatRoom3DSeverityLabel,
   getRoom3DDisplayOptions,
   getRoom3DPositionLabel,
   getRoom3DRackDevices,
+  shouldShowRoom3DDeviceHighestSeverity,
   type Room3DRenderableDevice,
   type Room3DRack,
   type Room3DResponse,
@@ -263,6 +267,19 @@ const Room3D: React.FC<Room3DProps> = ({
         value: rack.unplaced_device_count,
       });
     }
+    const alarmSummary = aggregateRackAlarmSummary(getRoom3DRackDevices(rack));
+    if (alarmSummary.count > 0) {
+      fields.push({
+        label: t("dashboard.room3DActiveAlarms"),
+        value: `${alarmSummary.count}${t("dashboard.room3DCountUnit")}`,
+      });
+      if (alarmSummary.highest_severity) {
+        fields.push({
+          label: t("dashboard.room3DHighestSeverity"),
+          value: formatRoom3DSeverityLabel(alarmSummary.highest_severity, t),
+        });
+      }
+    }
     return fields;
   }, [hoverState?.rack, t]);
   useLayoutEffect(() => {
@@ -381,6 +398,19 @@ const Room3D: React.FC<Room3DProps> = ({
       fields.push({
         label: t("dashboard.room3DDeviceStatus"),
         value: selectedDevice.device.status,
+      });
+    }
+    fields.push({
+      label: t("dashboard.room3DActiveAlarms"),
+      value: formatRoom3DDeviceAlarmCountValue(selectedDevice.device, t),
+    });
+    if (shouldShowRoom3DDeviceHighestSeverity(selectedDevice.device)) {
+      fields.push({
+        label: t("dashboard.room3DHighestSeverity"),
+        value: formatRoom3DSeverityLabel(
+          selectedDevice.device.highest_severity,
+          t,
+        ),
       });
     }
     return fields;

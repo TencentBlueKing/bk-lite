@@ -19,7 +19,7 @@ import {
   isIpRangeOrderValid,
   isIpRangeWithinLimit,
 } from '@/app/cmdb/components/ipInput/ipRangeLimits';
-import { useCommon } from '@/app/cmdb/context/common';
+import { useCmdbUserList } from '@/app/cmdb/context/common';
 import { FieldModalRef } from '@/app/cmdb/types/assetManage';
 import { useTranslation } from '@/utils/i18n';
 import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
@@ -119,8 +119,8 @@ interface BaseTaskFormProps {
   timeoutProps?: {
     min?: number;
     max?: number;
-    defaultValue?: number;
     addonAfter?: string;
+    tooltip?: React.ReactNode;
   };
   onClose: () => void;
   onTest?: () => void;
@@ -150,7 +150,6 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       modelItem,
       timeoutProps = {
         max: 86400,
-        defaultValue: 600,
         addonAfter: '',
       },
       instPlaceholder,
@@ -177,10 +176,8 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     const modelApi = useModelApi();
     const form = Form.useFormInstance();
     const fieldRef = useRef<FieldModalRef>(null);
-    const commonContext = useCommon();
+    const userList = useCmdbUserList();
     const { selectedGroup } = useUserInfoContext();
-    const users = useRef(commonContext?.userList || []);
-    const userList = users.current;
     const [instOptLoading, setOptLoading] = useState(false);
     const [instOptions, setOptions] = useState<CmdbInstanceOption[]>([]);
     const [ipRange, setIpRange] = useState<string[]>([]);
@@ -1030,7 +1027,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                   label={
                     <span>
                       {t('Collection.timeout')}
-                      <Tooltip title={t('Collection.timeoutTooltip')}>
+                      <Tooltip title={timeoutProps.tooltip ?? t('Collection.timeoutTooltip')}>
                         <QuestionCircleOutlined className="ml-1 text-gray-400" />
                       </Tooltip>
                     </span>

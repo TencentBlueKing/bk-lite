@@ -89,7 +89,12 @@ class AlertsOpenAPIService:
         payload = parse_operator_payload(action, data)
         if not self._base_alert_qs().filter(alert_id=alert_id).exists():
             self._not_found()
-        operator = AlertOperator(user=self.context.username, allowed_alert_ids={alert_id}, api_close=True)
+        operator = AlertOperator(
+            user=self.context.username,
+            allowed_alert_ids={alert_id},
+            api_close=True,
+            is_superuser=bool(getattr(self.context.user, "is_superuser", False)),
+        )
         result = operator.operate(action=action, alert_id=alert_id, data=payload)
         return self._map_operator_result(alert_id, result)
 

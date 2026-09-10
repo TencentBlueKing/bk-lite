@@ -19,11 +19,15 @@ import DeviceDetailDrawer from './deviceDetailDrawer';
 import IpamMatrix from '../ipView/ipamMatrix';
 import type { RackDevice } from '@/app/cmdb/types/rackRoom';
 import { useInstanceApi } from '@/app/cmdb/api/instance';
-import { useCommon } from '@/app/cmdb/context/common';
-import { useSearchParams } from 'next/navigation';
+import { useCmdbUserList } from '@/app/cmdb/context/common';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import PermissionWrapper from '@/components/permission';
 import { useRelationships } from '@/app/cmdb/context/relationships';
 import usePermissions from '@/hooks/usePermissions';
+import {
+  buildRelationshipTabHref,
+  DEFAULT_RELATIONSHIP_TAB,
+} from '../../relationshipViewNavigation';
 import {
   RACK_ROOM_ASSET_PERMISSION_PATH,
   canUnplaceFromLayout,
@@ -32,15 +36,15 @@ import {
 
 const Ralationships = () => {
   const { t } = useTranslation();
-  const commonContext = useCommon();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const router = useRouter();
   const { modelList, assoTypes, loading } = useRelationships();
-  const users = useRef(commonContext?.userList || []);
-  const userList: UserItem[] = users.current;
+  const userList: UserItem[] = useCmdbUserList();
   const assoListRef = useRef<AssoListRef>(null);
-  const [isExpand, setIsExpand] = useState<boolean>(true);
+  const [isExpand, setIsExpand] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<string>(
-    searchParams.get('tab') || 'list'
+    searchParams.get('tab') || DEFAULT_RELATIONSHIP_TAB
   );
   const modelId: string = searchParams.get('model_id') || '';
   const instUuid: string = searchParams.get('inst_uuid') || '';
@@ -98,12 +102,12 @@ const Ralationships = () => {
 
   const handleTabChange = (val: string) => {
     setActiveTab(val);
-    setIsExpand(true);
+    setIsExpand(false);
+    router.replace(buildRelationshipTabHref(pathname, searchParams, val));
   };
 
   const handleExpand = () => {
     assoListRef.current?.expandAll(!isExpand);
-    setIsExpand(!isExpand);
   };
 
   const handleRelate = () => {
@@ -162,6 +166,7 @@ const Ralationships = () => {
           userList={userList}
           modelList={modelList}
           assoTypeList={assoTypes}
+          onExpandStateChange={setIsExpand}
         />
       )}
       {activeTab === 'topo' && (

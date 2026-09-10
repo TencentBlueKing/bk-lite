@@ -38,15 +38,12 @@ class Notify:
         return emails
 
     def notify(self):
-
         send_result = SystemMgmtUtils.send_msg_with_channel(
-            channel_id=self.channel_id,
-            title=self.title,
-            content=self.content,
-            receivers=[user["id"] for user in self.user_list]
+            channel_id=self.channel_id, title=self.title, content=self.content, receivers=[user["id"] for user in self.user_list]
         )
         logger.info(
-            "[AlertNotify] 通知已发送: channel_id=%s, content=%s, 下游返回=%s",
-            self.channel_id, self.content, send_result,
+            "[AlertNotify] 通知已发送: channel_id=%s, receiver_count=%s",
+            self.channel_id,
+            len(self.user_list),
         )
         return send_result

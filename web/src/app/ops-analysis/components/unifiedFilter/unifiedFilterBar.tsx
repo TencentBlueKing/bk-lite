@@ -1,15 +1,17 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Input, Button, ConfigProvider } from 'antd';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Input, InputNumber, Button, ConfigProvider } from 'antd';
 import { SearchOutlined, ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import TimeSelector from '@/components/time-selector';
 import DateRangeSelector from '@/app/ops-analysis/components/dateRangeSelector';
 import GroupTreeSelect from '@/components/group-tree-select';
+import { convertGroupTreeToTreeSelectData } from '@/utils/index';
 import { normalizeUnifiedFilterInputMode } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { ParamInputControl } from '@/app/ops-analysis/components/paramInputControl';
-import { normalizeInputConfig } from '@/app/ops-analysis/utils/paramInputConfigUtils';
+import { normalizeInputConfig, toSingleOrganizationValue } from '@/app/ops-analysis/utils/paramInputConfigUtils';
+import { isMultipleSelectInputConfig } from '@/app/ops-analysis/utils/stringParamMultipleMigrate';
 import type {
   UnifiedFilterDefinition,
   FilterValue,
@@ -18,7 +20,16 @@ import type {
 import type { InputControlConfig } from '@/app/ops-analysis/types/dataSource';
 import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
 import { useTranslation } from '@/utils/i18n';
-import { buildResetFilterValues } from '@/app/ops-analysis/utils/unifiedFilterState';
+import { useShareMode } from '@/app/ops-analysis/context/shareMode';
+import {
+  useShareOrganization,
+  useShareOrganizationSeed,
+} from '@/app/ops-analysis/context/shareOrganization';
+import {
+  buildResetFilterValues,
+  fillMissingOrganizationFilterValues,
+  isOrganizationFilterDefinition,
+} from '@/app/ops-analysis/utils/unifiedFilterState';
 
 interface UnifiedFilterBarProps {
   definitions: UnifiedFilterDefinition[];
@@ -32,15 +43,15 @@ interface UnifiedFilterBarProps {
   popupZIndex?: number;
 }
 
-const toSingleOrganizationValue = (value: FilterValue): number | undefined => {
-  if (typeof value !== 'string' && typeof value !== 'number') return undefined;
-  const normalized = Number(value);
-  return Number.isNaN(normalized) ? undefined : normalized;
-};
-
 const toFilterValue = (value: number | number[] | undefined): FilterValue => {
   if (Array.isArray(value)) return value[0] ?? null;
   return value ?? null;
+};
+
+const toNumberFilterValue = (value: number | string | null): FilterValue => {
+  if (value === null || value === undefined || value === '') return null;
+  const numeric = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
 };
 
 const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
@@ -55,8 +66,17 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   popupZIndex,
 }) => {
   const { t } = useTranslation();
+  const shareMode = useShareMode();
+  const shareOrganization = useShareOrganization();
+  const organizationSeed = useShareOrganizationSeed();
   const [localValues, setLocalValues] =
     useState<Record<string, FilterValue>>(values);
+  const organizationTreeData = useMemo(
+    () => (shareMode
+      ? convertGroupTreeToTreeSelectData(shareOrganization?.groupTree ?? [])
+      : undefined),
+    [shareMode, shareOrganization],
+  );
 
   const enabledDefinitions = definitions
     .filter((d) => d.enabled)
@@ -131,7 +151,11 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   };
 
   const handleReset = () => {
-    const emptyValues = buildResetFilterValues(enabledDefinitions);
+    const emptyValues = fillMissingOrganizationFilterValues(
+      enabledDefinitions,
+      buildResetFilterValues(enabledDefinitions),
+      organizationSeed,
+    );
     setLocalValues(emptyValues);
 
     if (onReset) {
@@ -148,6 +172,9 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
     const normalized = normalizeInputConfig(definition);
     const inputMode = normalizeUnifiedFilterInputMode(definition.inputMode);
     if (normalized) {
+      if (normalized.control === 'organization') {
+        return normalized;
+      }
       if (inputMode === 'select' || inputMode === 'radio') {
         if (normalized.control === 'input') {
           return {
@@ -205,16 +232,29 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
           />
         );
 
+      case 'number':
+        return (
+          <InputNumber
+            value={typeof value === 'number' ? value : null}
+            onChange={(nextValue) =>
+              handleLocalValueChange(definition.id, toNumberFilterValue(nextValue))
+            }
+            placeholder={definition.name}
+            className="min-w-40"
+          />
+        );
+
       case 'string':
       default: {
-        if (normalizeUnifiedFilterInputMode(definition.inputMode) === 'organization') {
+        if (isOrganizationFilterDefinition(definition)) {
           return (
             <GroupTreeSelect
+              treeData={organizationTreeData}
               value={toSingleOrganizationValue(value)}
               onChange={(val) => handleLocalValueChange(definition.id, toFilterValue(val))}
               multiple={false}
               mode="ownership"
-              allowClear
+              allowClear={false}
               placeholder=" "
               style={{ minWidth: 180 }}
             />
@@ -222,9 +262,7 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
         }
 
         const inputConfig = getFilterInputConfig(definition);
-        const isMultiple = Boolean(
-          inputConfig && inputConfig.control !== 'input' && inputConfig.multiple,
-        );
+        const isMultiple = isMultipleSelectInputConfig(inputConfig);
 
         const fallbackInput = (
           <Input

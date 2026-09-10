@@ -25,5 +25,7 @@ ASGI_APPLICATION = "asgi.application"
 
 DEBUG = os.getenv("DEBUG", "0").lower() in ["1", "true"]
 WEB_BASE_URL = os.getenv("WEB_BASE_URL", "").rstrip("/")
+# 逗号分隔、host 精确匹配。默认空 = 禁用 legacy 外部回调。现网示例：bklite.ai,bklite.cn
+LEGACY_THIRD_LOGIN_ALLOWED_CALLBACK_HOSTS = os.getenv("LEGACY_THIRD_LOGIN_ALLOWED_CALLBACK_HOSTS", "")
 STATIC_URL = "static/"
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles/")

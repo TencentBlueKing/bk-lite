@@ -119,6 +119,11 @@ export interface ValueConfig {
   descriptionField?: string;
   topNLabelField?: string;
   topNValueField?: string;
+  nodeGraphIdentityMode?: 'ip' | 'service';
+  nodeGraphSourceField?: string;
+  nodeGraphTargetField?: string;
+  nodeGraphValueField?: string;
+  nodeGraphTargetPortField?: string;
   unit?: string;
   /** 结构化单位 id（bytesIEC/bps/ms/percent/short…）。设置后启用单位库自动量纲；
    *  未设置时回退到自由文本 unit（向后兼容）。 */
@@ -290,11 +295,11 @@ export interface UnifiedFilterDefinition {
   id: string;
   key: string; // 参数 key（如 "time_range", "env", "namespace"）
   name: string; // 显示名称（用户可编辑）
-  type: 'timeRange' | 'dateRange' | 'string'; // 参数类型，用于绑定匹配；列表传参由 inputConfig.multiple 表达
+  type: 'timeRange' | 'dateRange' | 'string' | 'number'; // 参数类型，用于绑定匹配；列表传参由 inputConfig.multiple 表达
   defaultValue?: FilterValue; // 默认值
   order: number; // 显示顺序
   enabled: boolean; // 是否启用
-  inputMode?: 'input' | 'select' | 'radio' | 'organization'; // 输入方式（仅 string 类型有效）
+  inputMode?: 'input' | 'select' | 'radio' | 'organization'; // 兼容只读；新保存走 inputConfig.control
   /**
    * 旧字段：手动下拉选项（仅 inputMode 为 select/radio 时有效）。
    * 读取时由 normalizeInputConfig 自动按 static 模式处理。
@@ -320,7 +325,7 @@ export interface FilterBindings {
 /** 扫描结果结构（用于配置弹窗） */
 export interface ScannedFilterParam {
   key: string;
-  type: 'string' | 'timeRange' | 'dateRange';
+  type: 'string' | 'timeRange' | 'dateRange' | 'number';
   componentCount: number;
   sampleAlias: string;
   sampleDefaultValue: FilterValue;

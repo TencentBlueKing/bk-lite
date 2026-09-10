@@ -106,7 +106,8 @@ const reportPage = fs.readFileSync(
 );
 
 assert.match(screenToolbar, /onOpenShare/);
-assert.match(screenToolbar, /!shareMode && !editMode && onOpenShare/);
+assert.match(screenToolbar, /if \(!shareMode && editMode\)/);
+assert.match(screenToolbar, /!shareMode && onOpenShare/);
 assert.match(screenPage, /useCanvasShareAction\(['"]screen['"]\)/);
 assert.match(topologyToolbar, /onOpenShare/);
 assert.match(topologyToolbar, /!shareMode && !isEditMode && onOpenShare/);
@@ -114,6 +115,18 @@ assert.match(topologyPage, /useCanvasShareAction\(['"]topology['"]\)/);
 assert.match(architectureToolbar, /onOpenShare/);
 assert.match(architectureToolbar, /!shareMode && !isEditMode && onOpenShare/);
 assert.match(architecturePage, /useCanvasShareAction\(['"]architecture['"]\)/);
+const networkToolbar = fs.readFileSync(
+  'src/app/ops-analysis/(pages)/view/networkTopology/components/networkToolbar.tsx',
+  'utf8',
+);
+const networkPage = fs.readFileSync(
+  'src/app/ops-analysis/(pages)/view/networkTopology/index.tsx',
+  'utf8',
+);
+assert.match(networkToolbar, /onOpenShare/);
+assert.match(networkToolbar, /!shareMode && !editMode && onOpenShare/);
+assert.match(networkPage, /useCanvasShareAction\(['"]networkTopology['"]\)/);
+assert.match(networkPage, /onOpenShare=/);
 const reportToolbar = fs.readFileSync(
   'src/app/ops-analysis/(pages)/view/report/components/reportToolbar.tsx',
   'utf8',
@@ -121,14 +134,32 @@ const reportToolbar = fs.readFileSync(
 assert.match(reportPage, /useCanvasShareAction\(['"]report['"]\)/);
 assert.match(reportPage, /onOpenShare/);
 assert.match(reportToolbar, /ShareAltOutlined/);
-assert.match(reportToolbar, /!shareMode && !editing && onOpenShare/);
+assert.match(reportToolbar, /if \(!shareMode && editing\)/);
+assert.match(reportToolbar, /\{onOpenShare && \(/);
 
 assert.match(tokenPage, /prepareShareToken/);
 assert.match(tokenPage, /share\/continue\?state=/);
 assert.doesNotMatch(tokenPage, /callbackUrl: window\.location\.href/);
 assert.match(continuePage, /exchangeShare\(\{ state \}\)/);
 assert.match(sessionPage, /ShareModeProvider/);
+assert.match(sessionPage, /ShareOrganizationProvider/);
 assert.match(sessionPage, /ShareDataSourceProvider/);
+const shareDto = fs.readFileSync(
+  'src/app/ops-analysis/types/dashboardShare.ts',
+  'utf8',
+);
+const filterBar = fs.readFileSync(
+  'src/app/ops-analysis/components/unifiedFilter/unifiedFilterBar.tsx',
+  'utf8',
+);
+assert.match(shareDto, /space_id\?: number/);
+assert.match(shareDto, /group_tree\?: Group\[\]/);
+assert.match(filterBar, /treeData=\{organizationTreeData\}/);
+assert.match(filterBar, /convertGroupTreeToTreeSelectData/);
+assert.match(dashboard, /resolveCanvasOrganizationId/);
+assert.match(screenPage, /organizationId: shareOrganizationSeed/);
+assert.match(reportPage, /fillMissingOrganizationFilterValues/);
+assert.match(topologyPage, /organizationId: shareOrganizationSeed/);
 assert.match(
   sessionPage,
   /DS_TYPES = new Set\(\[['"]dashboard['"], ['"]topology['"], ['"]screen['"], ['"]report['"]\]\)/,
@@ -181,6 +212,41 @@ assert.match(
   rootLayout,
   /isDashboardShareRoute[\s\S]*h-screen overflow-hidden/,
   'share routes must bound the root layout to the viewport',
+);
+assert.match(
+  rootLayout,
+  /!hideConsoleTopNav && \(/,
+  'share destinations reuse hideConsoleTopNav to omit TopMenu',
+);
+const consoleLayoutResolve = fs.readFileSync(
+  'src/console-layout/resolve.ts',
+  'utf8',
+);
+const hideConsoleTopNavFn = consoleLayoutResolve.match(
+  /export const shouldHideConsoleTopNav[\s\S]*?^};/m,
+)?.[0];
+assert.ok(
+  hideConsoleTopNavFn,
+  'shouldHideConsoleTopNav definition must be present',
+);
+assert.match(
+  hideConsoleTopNavFn,
+  /pathname\.startsWith\(['"]\/ops-analysis\/share\/['"]\)/,
+  'share destinations must hide the console top nav',
+);
+assert.doesNotMatch(
+  hideConsoleTopNavFn,
+  /\/ops-analysis\/view/,
+  'in-product ops-analysis view must keep console top nav',
+);
+const webchatVisibility = fs.readFileSync(
+  'src/app/(core)/components/global-webchat/visibility.ts',
+  'utf8',
+);
+assert.match(
+  webchatVisibility,
+  /GLOBAL_WEBCHAT_EXCLUDED_PATH_PREFIXES[\s\S]*['"]\/ops-analysis\/share\/['"]/,
+  'share destinations must exclude the global assistant',
 );
 const sessionExpiry = fs.readFileSync('src/utils/sessionExpiry.ts', 'utf8');
 assert.match(

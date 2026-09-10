@@ -1,0 +1,27 @@
+name: dell_unity
+version: 1.0.0
+category: storage
+metadata:
+  display_name: Dell Unity 存储【BETA】
+  description: Dell Unity Unisphere REST 采集插件（Beta），采集阵列及存储池/磁盘/卷/以太口/FC口
+  author: WeOps
+  tags:
+  - storage
+  - dell
+  - unity
+  - beta
+  cloud_protocol: true
+  model_id: dell_unity
+executors:
+  protocol:
+    type: protocol
+    execution_mode: async
+    capacity_group: default
+    collector:
+      module: plugins.inputs.dell_unity.dell_unity_info
+      class: DellUnityManager
+    target_policy:
+      mode: tls
+      port: 443
+      tls: true
+default_executor: protocol

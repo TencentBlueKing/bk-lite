@@ -9,6 +9,7 @@ from apps.operation_analysis.constants.constants import PERMISSION_DATASOURCE, P
 from apps.operation_analysis.filters.base_filters import GroupPermissionMixin
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
 from apps.operation_analysis.models.models import Directory
+from apps.operation_analysis.services.builtin_i18n import overlay_canvas_payload, overlay_datasource_payload, overlay_directory_payload
 from apps.operation_analysis.services.canvas.registry import CANVAS_TYPE_REGISTRY
 from apps.operation_analysis.services.node_tree import TreeNodeBuilder
 
@@ -51,16 +52,18 @@ class DictDirectoryService:
             for object_type, meta in CANVAS_TYPE_REGISTRY.items()
         }
 
+        language = getattr(getattr(request, "user", None), "locale", None)
+
         # 构建所有节点映射
         all_nodes = {}
 
         # 构建目录节点
-        directory_nodes, parent_children_map = TreeNodeBuilder.get_directory_nodes(directories)
+        directory_nodes, parent_children_map = TreeNodeBuilder.get_directory_nodes(directories, language=language)
         all_nodes.update(directory_nodes)
 
         # 构建画布节点
         for object_type, instances in canvas_queryset_map.items():
-            all_nodes.update(TreeNodeBuilder.get_canvas_nodes(instances, parent_children_map, object_type))
+            all_nodes.update(TreeNodeBuilder.get_canvas_nodes(instances, parent_children_map, object_type, language=language))
 
         def sort_node_key(node_key):
             node = all_nodes[node_key]
@@ -119,7 +122,15 @@ class DictDirectoryService:
         queryset_count = filter_queryset.count()
         instances = filter_queryset[(page - 1) * page_size : page * page_size]
         for instance in instances:
-            result.append({"id": instance.id, "name": f"【{instance.directory.name}】{instance.name}" if instance.directory else instance.name})
+            payload = {"name": instance.name, "desc": getattr(instance, "desc", "") or ""}
+            overlay_canvas_payload(payload, instance, None)
+            directory_name = instance.directory.name if instance.directory else ""
+            if instance.directory:
+                directory_payload = {"name": directory_name}
+                overlay_directory_payload(directory_payload, instance.directory, None)
+                directory_name = directory_payload["name"]
+            display_name = payload["name"]
+            result.append({"id": instance.id, "name": f"【{directory_name}】{display_name}" if instance.directory else display_name})
 
         return {"count": queryset_count, "items": result}
 
@@ -133,6 +144,12 @@ class DictDirectoryService:
         :return: 数据源信息列表
         """
         queryset = DataSourceAPIModel.objects.all()
-        data_sources = GroupPermissionMixin.apply_group_filter(queryset, group_id).values("id", "name")
-        result = data_sources[(page - 1) * page_size : page * page_size]
-        return {"count": data_sources.count(), "items": list(result)}
+        data_sources = GroupPermissionMixin.apply_group_filter(queryset, group_id)
+        queryset_count = data_sources.count()
+        page_items = list(data_sources[(page - 1) * page_size : page * page_size])
+        items = []
+        for instance in page_items:
+            payload = {"name": instance.name, "desc": instance.desc or ""}
+            overlay_datasource_payload(payload, instance, None)
+            items.append({"id": instance.id, "name": payload["name"]})
+        return {"count": queryset_count, "items": items}

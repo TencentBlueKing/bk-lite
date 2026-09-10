@@ -8,6 +8,7 @@ from urllib.parse import unquote
 import pytest
 import yaml
 
+from apps.apm.serializers.control_plane import IngestSnippetSerializer
 from apps.apm.services import DjangoIntegrationConfigurationService
 from apps.apm.services.contracts import IngestSnippetRequest
 from apps.apm.services.integration_configuration import CloudRegionConfigurationError
@@ -69,6 +70,8 @@ def test_snippet_uses_a_runtime_instance_identity_instead_of_a_shared_constant(r
     assert "service.name=checkout" in snippet.environment["OTEL_RESOURCE_ATTRIBUTES"]
     assert "service.version=1.2.3" in snippet.environment["OTEL_RESOURCE_ATTRIBUTES"]
     assert snippet.environment["OTEL_EXPORTER_OTLP_ENDPOINT"] == "https://apm.example.com"
+    assert "OTEL_TRACES_SAMPLER" not in snippet.environment
+    assert "OTEL_TRACES_SAMPLER" not in snippet.code
 
 
 def test_snippet_uses_http_protocol_and_language_specific_launch_command():
@@ -86,6 +89,88 @@ def test_snippet_uses_http_protocol_and_language_specific_launch_command():
 
     assert snippet.environment["OTEL_EXPORTER_OTLP_PROTOCOL"] == "http/protobuf"
     assert "opentelemetry-javaagent.jar" in snippet.code
+
+
+def _snippet_payload(**overrides):
+    payload = {
+        "application_id": "shop",
+        "cloud_region_id": 7,
+        "language": "python",
+        "runtime": "host",
+        "service_name": "checkout",
+        "environment": "production",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_ingest_snippet_serializer_defaults_sample_rate_to_full():
+    serializer = IngestSnippetSerializer(data=_snippet_payload())
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["sample_rate"] == 100
+
+
+@pytest.mark.parametrize("sample_rate", [0, 101])
+def test_ingest_snippet_serializer_rejects_sample_rate_outside_percent(sample_rate):
+    serializer = IngestSnippetSerializer(data=_snippet_payload(sample_rate=sample_rate))
+
+    assert serializer.is_valid() is False
+    assert "sample_rate" in serializer.errors
+
+
+@pytest.mark.parametrize("runtime", ["kubernetes", "docker", "host"])
+def test_reduced_sample_rate_writes_parentbased_traceidratio(runtime):
+    snippet = DjangoIntegrationConfigurationService().render_snippet(
+        _request(
+            language="python",
+            runtime=runtime,
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="1.0",
+            environment="production",
+            sample_rate=10,
+        )
+    )
+
+    assert snippet.environment["OTEL_TRACES_SAMPLER"] == "parentbased_traceidratio"
+    assert snippet.environment["OTEL_TRACES_SAMPLER_ARG"] == "0.1"
+    assert "OTEL_TRACES_SAMPLER" in snippet.code
+    assert "0.1" in snippet.code
+
+
+def test_one_percent_sample_rate_uses_two_decimal_ratio():
+    snippet = DjangoIntegrationConfigurationService().render_snippet(
+        _request(
+            language="java",
+            runtime="host",
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="1.0",
+            environment="production",
+            sample_rate=1,
+        )
+    )
+
+    assert snippet.environment["OTEL_TRACES_SAMPLER_ARG"] == "0.01"
+
+
+def test_invalid_sample_rate_is_rejected_before_rendering():
+    with pytest.raises(ValueError, match="sample_rate"):
+        DjangoIntegrationConfigurationService().render_snippet(
+            _request(
+                language="python",
+                runtime="host",
+                endpoint="https://apm.example.com",
+                service_namespace="shop",
+                service_name="checkout",
+                service_version="1.0",
+                environment="production",
+                sample_rate=0,
+            )
+        )
 
 
 def test_host_snippet_generates_a_valid_instance_id_without_platform_variables():

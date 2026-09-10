@@ -13,6 +13,7 @@ import PlatformApiTask from './components/platformApiTask';
 import CloudTask from './components/cloudTask';
 import HostTask from './components/hostTask';
 import IPMITask from './components/ipmiTask';
+import RedfishTask from './components/redfishTask';
 import ConfigFileTask from './components/configFileTask';
 import NetworkConfigFileTask from './components/networkConfigFileTask';
 import IpTask from './components/ipTask';
@@ -34,8 +35,9 @@ import type { TableColumnType, TablePaginationConfig } from 'antd';
 import type { ColumnItem } from '@/app/cmdb/types/assetManage';
 import type { ColumnType } from 'antd/es/table';
 import type { FilterValue } from 'antd/es/table/interface';
-import { Alert, Button, Drawer, Input, Modal, Spin, Tag, Tabs, Tooltip, message } from 'antd';
+import { Alert, Button, Drawer, Modal, Spin, Tag, Tabs, Tooltip, message } from 'antd';
 import { useTranslation } from '@/utils/i18n';
+import { useLocale } from '@/context/locale';
 import {
   getExecStatusConfig,
   EXEC_STATUS,
@@ -50,6 +52,7 @@ import {
 } from '@/app/cmdb/types/autoDiscovery';
 import { useAssetManageStore } from '@/app/cmdb/store';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { createCollectionListRequest } from './collectionListRequest';
 
 type ExtendedColumnItem = ColumnType<CollectTask> & {
   key: string;
@@ -100,18 +103,39 @@ const getCollectToolProtocol = (pluginId?: string | null) => {
 
 const getTaskStatusKey = (tab: Pick<TreeNode, 'id' | 'model_id' | 'type'>) => {
   if (tab.model_id && tab.type) {
+    if (tab.id === 'physcial_server_ipmi') {
+      return `${tab.model_id}__${tab.type}__ipmi`;
+    }
+    if (tab.id === 'physcial_server_redfish') {
+      return `${tab.model_id}__${tab.type}__redfish`;
+    }
     return `${tab.model_id}__${tab.type}`;
   }
   return tab.model_id || tab.id;
 };
 
+const getTaskStatusStats = (
+  statusMap: TaskStatusMap,
+  tab: Pick<TreeNode, 'id' | 'model_id' | 'type'>,
+) => {
+  const specificStats = statusMap[getTaskStatusKey(tab)];
+  if (
+    specificStats ||
+    tab.id === 'physcial_server_ipmi' ||
+    tab.id === 'physcial_server_redfish'
+  ) {
+    return specificStats;
+  }
+  return statusMap[tab.model_id || tab.id];
+};
+
 const ProfessionalCollection: React.FC = () => {
   const { t } = useTranslation();
+  const { locale } = useLocale();
   const collectApi = useCollectApi();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const editingId = useAssetManageStore((state) => state.editingId);
   const setEditingId = useAssetManageStore((state) => state.setEditingId);
   const setCopyTaskData = useAssetManageStore((state) => state.setCopyTaskData);
@@ -137,7 +161,7 @@ const ProfessionalCollection: React.FC = () => {
   const [docLoading, setDocLoading] = useState(false);
   const [taskStatus, setTaskStatus] = useState<TaskStatusMap>({});
   const tableCountRef = useRef<number>(0);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const [listRequest] = useState(createCollectionListRequest);
   const statusTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isSyncingTaskDetailRef = useRef(false);
   const isClosingTaskDetailRef = useRef(false);
@@ -264,6 +288,12 @@ const ProfessionalCollection: React.FC = () => {
       page_size: stateRef.current.pagination.pageSize,
       model_id: plugin?.model_id || currentPluginId,
       ...(plugin?.type && { driver_type: plugin.type }),
+      ...(plugin?.id === 'physcial_server_ipmi' && {
+        collection_protocol: 'ipmi',
+      }),
+      ...(plugin?.id === 'physcial_server_redfish' && {
+        collection_protocol: 'redfish',
+      }),
       name: stateRef.current.searchText,
       ...(stateRef.current.currentExecStatus !== undefined && {
         exec_status: stateRef.current.currentExecStatus,
@@ -272,9 +302,7 @@ const ProfessionalCollection: React.FC = () => {
   };
 
   const fetchData = async (showLoading = true, pluginId?: string) => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-    }
+    const requestId = listRequest.begin();
     try {
       if (!selectedCategoryRef.current.categoryId) return;
       if (showLoading) {
@@ -286,31 +314,29 @@ const ProfessionalCollection: React.FC = () => {
         count: number;
       };
       // console.log('test2.4:getCollectList', data);
-      setTableData(data.items || []);
-      tableCountRef.current = data.items.length || 0;
-      setPaginationUI((prev) => ({
-        ...prev,
-        total: data.count || 0,
-      }));
+      listRequest.commitSuccess(requestId, data, (view) => {
+        setTableData(view.items);
+        tableCountRef.current = view.listCount;
+        setPaginationUI((prev) => ({
+          ...prev,
+          total: view.total,
+        }));
+      });
     } catch (error) {
       console.error('Failed to fetch table data:', error);
     } finally {
-      if (showLoading) {
-        setTableLoading(false);
-      }
-      resetTimer(pluginId);
+      listRequest.commitSettled(requestId, () => {
+        if (showLoading) {
+          setTableLoading(false);
+        }
+        resetTimer(pluginId);
+      });
     }
   };
 
   const resetTimer = (pluginId?: string) => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-    }
     const currentPluginId = pluginId || stateRef.current.selectedPluginId;
-    timerRef.current = setTimeout(
-      () => fetchData(false, currentPluginId),
-      30 * 1000
-    );
+    listRequest.resetTimer(() => fetchData(false, currentPluginId));
   };
 
   const fetchTaskStatus = async () => {
@@ -334,7 +360,7 @@ const ProfessionalCollection: React.FC = () => {
       const allCategory: TreeNode = {
         id: 'all',
         key: 'all',
-        name: '全部',
+        name: t('all'),
         tabItems: categories.flatMap((node: TreeNode) => node.tabItems || []),
       };
 
@@ -388,22 +414,26 @@ const ProfessionalCollection: React.FC = () => {
 
   useEffect(() => {
     fetchCategoryData();
+    setPluginDoc('');
+    if (docDrawerVisible || taskDocDrawerVisible) {
+      const pluginId = stateRef.current.selectedPluginId;
+      if (pluginId) {
+        fetchPluginDoc(pluginId);
+      }
+    }
 
     statusTimerRef.current = setInterval(() => {
       fetchTaskStatus();
     }, 30 * 1000);
 
     return () => {
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
+      listRequest.unmount();
       if (statusTimerRef.current) {
         clearInterval(statusTimerRef.current);
         statusTimerRef.current = null;
       }
     };
-  }, []);
+  }, [locale]);
 
   const handleSearch = (value: string) => {
     setSearchTextUI(value);
@@ -652,6 +682,10 @@ const ProfessionalCollection: React.FC = () => {
 
     if (currentPlugin.id === 'physcial_server_ipmi') {
       return <IPMITask {...taskProps} />;
+    }
+
+    if (currentPlugin.id === 'physcial_server_redfish') {
+      return <RedfishTask {...taskProps} />;
     }
 
     if (currentPlugin.model_id === 'network_config_file') {
@@ -1005,10 +1039,7 @@ const ProfessionalCollection: React.FC = () => {
       setSelectedPluginId(pluginId);
       stateRef.current.selectedPluginId = pluginId;
 
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
+      listRequest.clearTimer();
 
       setSearchTextUI('');
       stateRef.current.searchText = '';
@@ -1113,19 +1144,13 @@ const ProfessionalCollection: React.FC = () => {
                   successLabel={t('Collection.statusLabel.syncSuccess')}
                   failedLabel={t('Collection.statusLabel.syncFailed')}
                   runningCount={
-                    taskStatus[getTaskStatusKey(tab)]?.running ||
-                    taskStatus[tab.model_id || tab.id]?.running ||
-                    0
+                    getTaskStatusStats(taskStatus, tab)?.running ?? 0
                   }
                   successCount={
-                    taskStatus[getTaskStatusKey(tab)]?.success ||
-                    taskStatus[tab.model_id || tab.id]?.success ||
-                    0
+                    getTaskStatusStats(taskStatus, tab)?.success ?? 0
                   }
                   failedCount={
-                    taskStatus[getTaskStatusKey(tab)]?.failed ||
-                    taskStatus[tab.model_id || tab.id]?.failed ||
-                    0
+                    getTaskStatusStats(taskStatus, tab)?.failed ?? 0
                   }
                 />
               ))}
@@ -1191,7 +1216,7 @@ const ProfessionalCollection: React.FC = () => {
                   pagination={{
                     ...paginationUI,
                     showSizeChanger: true,
-                    showTotal: (total) => `共 ${total} 条`,
+                    showTotal: (total) => t('Collection.taskDetail.paginationTotal', '', { total }),
                   }}
                   fieldSetting={{
                     showSetting: true,

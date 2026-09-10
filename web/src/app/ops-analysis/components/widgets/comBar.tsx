@@ -21,6 +21,7 @@ import {
   scaleScreenMetric,
   scaleScreenMetricFloat,
 } from './shared/screenMetrics';
+import { placeEChartsAxisTooltip, useChartTooltipWheelScrollRef } from '@/components/echarts-tooltip-card';
 import {
   formatLineBarAxisTick,
   formatVisibleChartValue,
@@ -44,6 +45,7 @@ const BarChart: React.FC<BarChartProps> = ({
 }) => {
   const { t } = useTranslation();
   const chartRef = useRef<any>(null);
+  const chartPaneRef = useChartTooltipWheelScrollRef();
   const themeName = resolveOpsChartThemeName();
   const usesScreenChartTheme = isScreenChartThemeMode(config?.chartThemeMode);
   const chartTheme = getOpsChartThemeByMode(config?.chartThemeMode);
@@ -87,6 +89,13 @@ const BarChart: React.FC<BarChartProps> = ({
       },
       enterable: true,
       confine: true,
+      hideDelay: 300,
+      position: function (point: number[], _params: any, el: HTMLElement, _rect: any, size: any) {
+        return placeEChartsAxisTooltip(point, size, el, {
+          x: scaleScreenMetric(40, screenRenderContext),
+          y: scaleScreenMetric(10, screenRenderContext),
+        });
+      },
       backgroundColor: chartTheme.tooltipBackgroundColor,
       borderWidth: 1,
       borderColor: chartTheme.tooltipBorderColor,
@@ -103,7 +112,7 @@ const BarChart: React.FC<BarChartProps> = ({
         const markerSize = scaleScreenMetric(10, screenRenderContext);
         const markerGap = scaleScreenMetric(6, screenRenderContext);
         let content = `<div style="padding: ${tooltipPaddingY}px ${tooltipPaddingX}px;">
-          <div style="margin-bottom: ${tooltipGap}px; font-weight: bold;">${params[0].axisValueLabel}</div>`;
+          <div style="position: sticky; top: 0; z-index: 1; margin-bottom: ${tooltipGap}px; font-weight: bold; background: ${chartTheme.tooltipBackgroundColor};">${params[0].axisValueLabel}</div>`;
 
         params.forEach((param: any) => {
           content += `
@@ -290,7 +299,7 @@ const BarChart: React.FC<BarChartProps> = ({
   return (
     <div className="h-full flex flex-row">
       {/* 图表区域 */}
-      <div className="flex-1 min-h-0">
+      <div ref={chartPaneRef} className="flex-1 min-h-0">
         <ReactEcharts
           ref={chartRef}
           option={option}

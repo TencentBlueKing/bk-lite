@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from apps.apm.services.contracts import NotificationChannel, NotificationRecipient
 from apps.rpc.system_mgmt import SystemMgmt
-
 
 CHANNEL_DELIVERY_MODES = {"message", "alert_event_copy"}
 CHANNEL_RECIPIENT_MODES = {"none", "system_user", "free_text"}
@@ -64,10 +65,12 @@ class NotificationChannelDirectory:
         include_children: bool,
         search: str,
         limit: int,
+        organization_ids: Sequence[int] | None = None,
     ) -> list[NotificationRecipient]:
+        teams = list(organization_ids) if organization_ids else [organization_id]
         response = self.client.search_notification_recipients_scoped(
             actor_context,
-            teams=[organization_id],
+            teams=teams,
             include_children=include_children,
             search=search,
             limit=limit,
@@ -87,5 +90,45 @@ class NotificationChannelDirectory:
                 )
                 for recipient in recipients
             ]
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RuntimeError("通知接收人目录返回格式无效") from exc
+
+    def validate_recipient_ids(
+        self,
+        *,
+        actor_context: dict,
+        organization_id: int,
+        include_children: bool,
+        recipient_ids: set[int],
+    ) -> set[int]:
+        """返回仍属于当前组织范围的接收人 ID。
+
+        按 ID 定向查询确保请求与响应规模均受接收人数上限约束。部署时应先升级
+        System Management responder，再升级 APM producer；旧 responder 不支持
+        ``recipient_ids`` 时失败关闭，禁止回退拉取无界组织成员目录。
+        """
+        requested_ids = sorted(recipient_ids)
+        if not requested_ids:
+            return set()
+        try:
+            response = self.client.search_notification_recipients_scoped(
+                actor_context,
+                teams=[organization_id],
+                include_children=include_children,
+                search="",
+                limit=len(requested_ids),
+                recipient_ids=requested_ids,
+            )
+        except (TypeError, RuntimeError) as exc:
+            raise RuntimeError(f"通知接收人目录不可用: {exc}") from exc
+
+        if not isinstance(response, dict) or response.get("result") is False:
+            message = response.get("message") if isinstance(response, dict) else "返回格式无效"
+            raise RuntimeError(message or "通知接收人目录不可用")
+        recipients = response.get("data") or []
+        if not isinstance(recipients, list):
+            raise RuntimeError("通知接收人目录返回格式无效")
+        try:
+            return {int(recipient["id"]) for recipient in recipients if int(recipient["id"]) in recipient_ids}
         except (KeyError, TypeError, ValueError) as exc:
             raise RuntimeError("通知接收人目录返回格式无效") from exc

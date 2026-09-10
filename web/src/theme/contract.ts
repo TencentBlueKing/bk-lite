@@ -37,6 +37,10 @@ export interface SemanticColorTokens {
   statusWarning: string;
   statusInfo: string;
   statusError: string;
+  metaCount: string;
+  metaCountSoft: string;
+  metaCountAlt: string;
+  metaCountAltSoft: string;
   navigationButtonText: string;
   navigationButtonActiveText: string;
   navigationButtonBackground: string;

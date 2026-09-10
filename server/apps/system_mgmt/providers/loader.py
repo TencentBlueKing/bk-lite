@@ -13,6 +13,7 @@ from .schemas import ProviderManifest
 
 BUILTIN_PROVIDER_ROOT = Path(__file__).resolve().parent / "builtin"
 BUILTIN_IMPORT_PREFIX = "apps.system_mgmt.providers.builtin"
+ENTERPRISE_BUILTIN_IMPORT_PREFIX = "apps.system_mgmt.enterprise.providers.builtin"
 _SKIP_DIR_NAMES = {"__pycache__"}
 _REQUIRED_PACK_FILES = ("__init__.py", "adapters/client.py", "adapters/base_connection.py")
 
@@ -52,6 +53,15 @@ def discover_provider_packs(
 
 def discover_builtin_provider_packs(root: Path | None = None) -> list[tuple[str, Path]]:
     return discover_provider_packs(root or BUILTIN_PROVIDER_ROOT, BUILTIN_IMPORT_PREFIX, required=True)
+
+
+def discover_enterprise_builtin_provider_packs() -> list[tuple[str, Path]]:
+    try:
+        import apps.system_mgmt.enterprise as enterprise_pkg
+    except ImportError:
+        return []
+    root = Path(enterprise_pkg.__file__).resolve().parent / "providers" / "builtin"
+    return discover_provider_packs(root, ENTERPRISE_BUILTIN_IMPORT_PREFIX, required=False)
 
 
 def _require_adapter_key_prefix(manifest_key: str, adapter_key: str) -> None:
@@ -201,6 +211,9 @@ def load_builtin_providers(force: bool = False):
         builtin_packs = discover_builtin_provider_packs()
 
         for module_path, pack_dir in builtin_packs:
+            _try_load_pack(module_path, pack_dir)
+
+        for module_path, pack_dir in discover_enterprise_builtin_provider_packs():
             _try_load_pack(module_path, pack_dir)
 
         _providers_loaded = True

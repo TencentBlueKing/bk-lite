@@ -155,9 +155,9 @@ export const buildAlertSnapshotChartModel = (
     .map(([timestamp, value]) => [timestamp, value] as AlertSnapshotPoint);
   const gapIntervals = isNoDataAlert
     ? buildNoDataGapIntervals(
-        uniqueNoDataTimes,
-        dataValues.map(([timestamp]) => timestamp)
-      )
+      uniqueNoDataTimes,
+      dataValues.map(([timestamp]) => timestamp)
+    )
     : [];
   const domainTimes = isNoDataAlert
     ? [...dataPoints.keys(), ...uniqueNoDataTimes]

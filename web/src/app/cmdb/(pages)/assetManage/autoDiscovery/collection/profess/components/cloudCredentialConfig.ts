@@ -40,6 +40,9 @@ export function buildCloudCredential(
 ) {
   const config = getCloudCredentialConfig(modelId);
   const credential: Record<string, any> = { regions: region };
+  if (raw.credential_id) {
+    credential.credential_id = raw.credential_id;
+  }
   const accessKey = String(raw.accessKey || '').trim();
   const accessSecret = String(raw.accessSecret || '').trim();
   if (accessKey && accessKey !== PASSWORD_PLACEHOLDER) {
@@ -96,4 +99,42 @@ export function validateCloudCredential(
     return 'regionId';
   }
   return null;
+}
+
+export interface CloudRegionQueryInput {
+  modelId: string;
+  cloudRegionId: string;
+  accessKey?: string;
+  accessSecret?: string;
+  editId?: number | null;
+  host?: string;
+  projectId?: string;
+}
+
+function isUsableCloudSecret(value?: string) {
+  const normalized = String(value || '').trim();
+  return Boolean(normalized) && normalized !== PASSWORD_PLACEHOLDER;
+}
+
+export function buildCloudRegionQueryParams(input: CloudRegionQueryInput) {
+  const accessKey = String(input.accessKey || '').trim();
+  const accessSecret = String(input.accessSecret || '').trim();
+  const params: Record<string, string | number> = {
+    model_id: input.modelId,
+    cloud_id: input.cloudRegionId,
+  };
+  if (input.host) {
+    params.host = input.host;
+  }
+  if (input.projectId) {
+    params.project_id = input.projectId;
+  }
+  if (input.editId) {
+    params.task_id = input.editId as number;
+  }
+  if (isUsableCloudSecret(accessKey) && isUsableCloudSecret(accessSecret)) {
+    params.access_key = accessKey;
+    params.access_secret = accessSecret;
+  }
+  return params;
 }

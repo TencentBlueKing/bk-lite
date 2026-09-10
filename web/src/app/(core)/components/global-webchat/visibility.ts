@@ -6,6 +6,10 @@ export const GLOBAL_WEBCHAT_EXCLUDED_PATHS = [
   '/no-found',
 ];
 
+export const GLOBAL_WEBCHAT_EXCLUDED_PATH_PREFIXES = [
+  '/ops-analysis/share/',
+];
+
 export function hasOpsPilotClientAccess(
   apps: Array<{ name?: string | null }> | null | undefined
 ): boolean {
@@ -16,7 +20,10 @@ export function isGlobalWebchatExcludedPath(pathname: string | null | undefined)
   if (!pathname) {
     return true;
   }
-  return GLOBAL_WEBCHAT_EXCLUDED_PATHS.includes(pathname);
+  if (GLOBAL_WEBCHAT_EXCLUDED_PATHS.includes(pathname)) {
+    return true;
+  }
+  return GLOBAL_WEBCHAT_EXCLUDED_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
 
 export function shouldMountGlobalWebchat(options: {

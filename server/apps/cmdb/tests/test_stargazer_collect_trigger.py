@@ -3,11 +3,10 @@ import types
 import pytest
 import requests
 
-from apps.cmdb.services.stargazer_collect_trigger import (
-    StargazerCollectPermanentError,
-    StargazerCollectRetryableError,
-    StargazerCollectTriggerClient,
-)
+from apps.cmdb.node_configs.cloud.aliyun import AliyunNodeParams  # noqa: F401
+from apps.cmdb.node_configs.cloud.hwcloud import HwCloudNodeParams  # noqa: F401
+from apps.cmdb.node_configs.cloud.qcloud import QCloudNodeParams  # noqa: F401
+from apps.cmdb.services.stargazer_collect_trigger import StargazerCollectPermanentError, StargazerCollectRetryableError, StargazerCollectTriggerClient
 
 pytestmark = pytest.mark.unit
 
@@ -39,6 +38,58 @@ def node_params():
     )
 
 
+def qcloud_task_with_persisted_credential():
+    return types.SimpleNamespace(
+        id=3,
+        model_id="qcloud",
+        driver_type="protocol",
+        timeout=60,
+        decrypt_credentials={
+            "access_key": "SENTINEL_QCLOUD_SECRET_ID",
+            "access_secret": "SENTINEL_QCLOUD_SECRET_KEY",
+            "regions": {
+                "resource_id": "ap-guangzhou",
+                "resource_name": "华南地区（广州）",
+            },
+        },
+        instances=[],
+        params={},
+        access_point=[{"id": "node-1"}],
+        ip_range="",
+    )
+
+
+def aliyun_task_with_persisted_credential():
+    task = qcloud_task_with_persisted_credential()
+    task.id = 2
+    task.model_id = "aliyun"
+    task.decrypt_credentials = {
+        "access_key": "SENTINEL_ALIYUN_ACCESS_KEY_ID",
+        "access_secret": "SENTINEL_ALIYUN_ACCESS_KEY_SECRET",
+        "regions": {
+            "resource_id": "cn-guangzhou",
+            "resource_name": "华南3（广州）",
+        },
+    }
+    return task
+
+
+def hwcloud_task_with_persisted_credential():
+    task = qcloud_task_with_persisted_credential()
+    task.id = 4
+    task.model_id = "hwcloud"
+    task.decrypt_credentials = {
+        "access_key": "SENTINEL_HWCLOUD_ACCESS_KEY",
+        "access_secret": "SENTINEL_HWCLOUD_ACCESS_SECRET",
+        "project_id": "sentinel-project-id",
+        "regions": {
+            "resource_id": "cn-south-1",
+            "resource_name": "华南-广州",
+        },
+    }
+    return task
+
+
 def patch_node_params(mocker):
     mocker.patch(
         "apps.cmdb.services.stargazer_collect_trigger.NodeParamsFactory.get_node_params",
@@ -48,9 +99,7 @@ def patch_node_params(mocker):
 
 @pytest.mark.parametrize("failure_source", ["factory", "custom_headers"])
 def test_request_build_errors_are_permanent_and_sanitized(mocker, failure_source):
-    sensitive_message = (
-        "token=top-secret broker=nats://user:password@broker.internal:4222"
-    )
+    sensitive_message = "token=top-secret broker=nats://user:password@broker.internal:4222"
     if failure_source == "factory":
         mocker.patch(
             "apps.cmdb.services.stargazer_collect_trigger.NodeParamsFactory.get_node_params",
@@ -132,6 +181,49 @@ def test_direct_request_resolves_node_password_placeholders(mocker):
     assert request_kwargs["params"] == {}
     assert request_kwargs["headers"]["cmdbsecret_id"] == "real-access-key"
     assert request_kwargs["headers"]["cmdbsecret_key"] == "real-access-secret"
+
+
+def test_qcloud_persisted_credential_reaches_direct_collection_request(mocker):
+    get = mocker.patch(
+        "apps.cmdb.services.stargazer_collect_trigger.requests.get",
+        return_value=Response(headers={"X-Task-Status": "queued"}),
+    )
+
+    StargazerCollectTriggerClient().trigger(qcloud_task_with_persisted_credential())
+
+    headers = get.call_args.kwargs["headers"]
+    assert headers["cmdbsecret_id"] == "SENTINEL_QCLOUD_SECRET_ID"
+    assert headers["cmdbsecret_key"] == "SENTINEL_QCLOUD_SECRET_KEY"
+    assert headers["cmdbregion_id"] == "ap-guangzhou"
+
+
+def test_aliyun_persisted_credential_reaches_direct_collection_request(mocker):
+    get = mocker.patch(
+        "apps.cmdb.services.stargazer_collect_trigger.requests.get",
+        return_value=Response(headers={"X-Task-Status": "queued"}),
+    )
+
+    StargazerCollectTriggerClient().trigger(aliyun_task_with_persisted_credential())
+
+    headers = get.call_args.kwargs["headers"]
+    assert headers["cmdbsecret_id"] == "SENTINEL_ALIYUN_ACCESS_KEY_ID"
+    assert headers["cmdbsecret_key"] == "SENTINEL_ALIYUN_ACCESS_KEY_SECRET"
+    assert headers["cmdbregion_id"] == "cn-guangzhou"
+
+
+def test_hwcloud_persisted_credential_reaches_direct_collection_request(mocker):
+    get = mocker.patch(
+        "apps.cmdb.services.stargazer_collect_trigger.requests.get",
+        return_value=Response(headers={"X-Task-Status": "queued"}),
+    )
+
+    StargazerCollectTriggerClient().trigger(hwcloud_task_with_persisted_credential())
+
+    headers = get.call_args.kwargs["headers"]
+    assert headers["cmdbaccessKey"] == "SENTINEL_HWCLOUD_ACCESS_KEY"
+    assert headers["cmdbaccessSecret"] == "SENTINEL_HWCLOUD_ACCESS_SECRET"
+    assert headers["cmdbproject_id"] == "sentinel-project-id"
+    assert headers["cmdbregion"] == "cn-south-1"
 
 
 def test_direct_request_rejects_unresolved_placeholders(mocker):

@@ -12,6 +12,7 @@ import type {
   TimeRangeValue,
 } from '@/app/ops-analysis/components/ops-analysis-widgets';
 import { useTranslation } from '@/utils/i18n';
+import { isOrganizationControl, toSingleOrganizationValue } from '@/app/ops-analysis/utils/paramInputConfigUtils';
 import { normalizeUnifiedFilterInputMode } from './runtime';
 
 interface UnifiedFilterBarProps {
@@ -26,12 +27,6 @@ interface UnifiedFilterBarProps {
   popupZIndex?: number;
 }
 
-const toSingleOrganizationValue = (value: FilterValue): number | undefined => {
-  if (typeof value !== 'string' && typeof value !== 'number') return undefined;
-  const normalized = Number(value);
-  return Number.isNaN(normalized) ? undefined : normalized;
-};
-
 const toFilterValue = (value: number | number[] | undefined): FilterValue => {
   if (Array.isArray(value)) return value[0] ?? null;
   return value ?? null;
@@ -40,7 +35,7 @@ const toFilterValue = (value: number | number[] | undefined): FilterValue => {
 const isMultipleStringFilter = (definition: UnifiedFilterDefinition): boolean =>
   Boolean(
     definition.inputConfig
-    && definition.inputConfig.control !== 'input'
+    && definition.inputConfig.control === 'select'
     && definition.inputConfig.multiple,
   );
 
@@ -168,6 +163,21 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
       case 'string':
       default: {
         const isMultiple = isMultipleStringFilter(definition);
+
+        if (isOrganizationControl(definition)) {
+          return (
+            <GroupTreeSelect
+              value={toSingleOrganizationValue(value)}
+              onChange={(val) => handleLocalValueChange(definition.id, toFilterValue(val))}
+              multiple={false}
+              mode="ownership"
+              allowClear={false}
+              placeholder=" "
+              style={{ minWidth: 180 }}
+            />
+          );
+        }
+
         const inputMode = normalizeUnifiedFilterInputMode(definition.inputMode);
 
         if (inputMode === 'select' || isMultiple) {
@@ -213,20 +223,6 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
               options={definition.options}
               optionType="button"
               buttonStyle="outline"
-            />
-          );
-        }
-
-        if (inputMode === 'organization') {
-          return (
-            <GroupTreeSelect
-              value={toSingleOrganizationValue(value)}
-              onChange={(val) => handleLocalValueChange(definition.id, toFilterValue(val))}
-              multiple={false}
-              mode="ownership"
-              allowClear
-              placeholder=" "
-              style={{ minWidth: 180 }}
             />
           );
         }

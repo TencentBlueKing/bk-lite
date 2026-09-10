@@ -123,10 +123,49 @@ def test_cmdb_model_inst_count(cmdb):
     assert _last(cmdb.client) == ("run", "model_inst_count", (), {"model_id": "host"})
 
 
+def test_cmdb_license_instance_count(cmdb):
+    cmdb.license_instance_count()
+    assert _last(cmdb.client) == ("run", "license_cmdb_instance_count", (), {})
+
+
 def test_cmdb_get_monitor_ids_by_inst_uuids(cmdb):
     payload = {"inst_uuids": ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"], "user_info": {"team": 1}}
     cmdb.get_monitor_ids_by_inst_uuids(**payload)
     assert _last(cmdb.client) == ("run", "get_monitor_ids_by_inst_uuids", (), payload)
+
+
+def test_cmdb_list_monitored_hosts(cmdb):
+    cmdb.list_monitored_hosts(user_info={"team": 1})
+    assert _last(cmdb.client) == ("run", "list_monitored_hosts", (), {"user_info": {"team": 1}})
+
+
+def test_cmdb_list_application_systems(cmdb):
+    cmdb.list_application_systems(user_info={"team": 1})
+    assert _last(cmdb.client) == ("run", "list_application_systems", (), {"user_info": {"team": 1}})
+
+
+def test_cmdb_list_host_uuids_for_systems(cmdb):
+    payload = {"system_uuids": ["s1"], "user_info": {"team": 1}}
+    cmdb.list_host_uuids_for_systems(**payload)
+    assert _last(cmdb.client) == ("run", "list_host_uuids_for_systems", (), payload)
+
+
+def test_cmdb_list_monitored_hosts_for_systems(cmdb):
+    payload = {"system_uuids": ["s1"], "user_info": {"team": 1}}
+    cmdb.list_monitored_hosts_for_systems(**payload)
+    assert _last(cmdb.client) == ("run", "list_monitored_hosts_for_systems", (), payload)
+
+
+def test_cmdb_network_topology_among_uuids(cmdb):
+    payload = {"inst_uuids": ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"], "user_info": {"team": 1}}
+    cmdb.network_topology_among_uuids(**payload)
+    assert _last(cmdb.client) == ("run", "network_topology_among_uuids", (), payload)
+
+
+def test_cmdb_topo_search_lite_by_uuid(cmdb):
+    payload = {"inst_uuid": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "user_info": {"team": 1}}
+    cmdb.topo_search_lite_by_uuid(**payload)
+    assert _last(cmdb.client) == ("run", "topo_search_lite_by_uuid", (), payload)
 
 
 def test_cmdb_ingest_from_source_wraps_flat_kwargs_as_params(cmdb):
@@ -289,6 +328,16 @@ def test_log_ana_query_alert_segments(log_ana):
         "query_log_alert_segments",
         (),
         {"query_data": qd, "user_info": {"team": 1}},
+    )
+
+
+def test_log_ana_count_successful_logins_by_host(log_ana):
+    log_ana.count_successful_logins_by_host(hosts=[], time_range="7d")
+    assert _last(log_ana.client) == (
+        "run",
+        "count_successful_logins_by_host",
+        (),
+        {"hosts": [], "time_range": "7d"},
     )
 
 

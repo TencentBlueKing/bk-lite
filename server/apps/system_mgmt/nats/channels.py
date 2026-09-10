@@ -10,6 +10,7 @@ from apps.core.utils.internal_event_auth import (
     sign_internal_event,
     verify_internal_event,
 )
+from apps.core.utils.user_group import normalize_user_group_ids
 from apps.system_mgmt.utils.group_utils import GroupUtils
 
 from .common import *  # noqa: F401,F403
@@ -273,6 +274,7 @@ def search_notification_recipients_scoped(
     include_children=False,
     search="",
     limit=100,
+    recipient_ids=None,
 ):
     """返回通知配置可引用的组织内系统用户稳定 ID，不暴露用户敏感字段。"""
     user_obj, authorized_groups, error_response = _actor_scope_response(actor_context, include_children=include_children)
@@ -283,14 +285,24 @@ def search_notification_recipients_scoped(
     try:
         requested = {int(value) for value in teams} if teams else set(authorized_groups)
         bounded_limit = min(max(int(limit), 1), 100)
+        requested_recipient_ids = None
+        if recipient_ids is not None:
+            if not isinstance(recipient_ids, list) or not 1 <= len(recipient_ids) <= 100:
+                raise ValueError
+            requested_recipient_ids = {int(value) for value in recipient_ids}
+            if len(requested_recipient_ids) != len(recipient_ids) or any(value <= 0 for value in requested_recipient_ids):
+                raise ValueError
     except (TypeError, ValueError):
         return _notification_failure("invalid_payload", "接收人查询参数无效。")
     scoped_groups = set(authorized_groups).intersection(requested)
     if not scoped_groups:
         return {"result": True, "data": []}
     needle = str(search or "").strip().casefold()[:100]
+    users = User.objects.order_by("id")
+    if requested_recipient_ids is not None:
+        users = users.filter(id__in=requested_recipient_ids)
     result = []
-    for user in User.objects.order_by("id").only("id", "username", "display_name", "group_list"):
+    for user in users.only("id", "username", "display_name", "group_list"):
         group_ids = set()
         for value in user.group_list or []:
             try:
@@ -458,8 +470,14 @@ def dispatch_notification(
         return _notification_failure("invalid_recipients", "通知接收人不符合渠道能力。")
     if capability["recipient_mode"] == "system_user":
         requested_user_ids = {int(value) for value in normalized_recipients}
-        if User.objects.filter(id__in=requested_user_ids).count() != len(requested_user_ids):
-            return _notification_failure("invalid_recipients", "通知接收人不存在或已失效。")
+        delivery_organizations = set(_channel_delivery_organizations(channel, organization_ids))
+        users = User.objects.filter(id__in=requested_user_ids).only("id", "group_list")
+        scoped_user_ids = {user.id for user in users if delivery_organizations.intersection(normalize_user_group_ids(user.group_list))}
+        if scoped_user_ids != requested_user_ids:
+            return _notification_failure(
+                "invalid_recipients",
+                "通知接收人不存在、已失效或不属于事件组织。",
+            )
     if (
         not isinstance(title, str)
         or len(title) > MAX_NOTIFICATION_TITLE_LENGTH
@@ -585,13 +603,13 @@ def send_msg_with_channel(channel_id, title, content, receivers, attachments=Non
         organizations = _alert_event_organizations(content)
         trusted_caller = content["pusher"] in TRUSTED_INTERNAL_EVENT_CALLERS
         if trusted_caller:
-            if organizations is None or (
-                organizations and _channel_delivery_organizations(channel_obj, organizations) != sorted(set(organizations))
-            ):
+            if organizations is None or (organizations and _channel_delivery_organizations(channel_obj, organizations) != sorted(set(organizations))):
                 return _notification_failure("channel_forbidden", "告警事件组织不属于通知渠道范围。")
         request_payload = build_internal_event_payload("system_mgmt.send_msg_with_channel", locals())
-        if organizations and trusted_caller and not _accept_internal_request(
-            "system_mgmt.send_msg_with_channel", request_payload, internal_auth, caller=content.get("pusher")
+        if (
+            organizations
+            and trusted_caller
+            and not _accept_internal_request("system_mgmt.send_msg_with_channel", request_payload, internal_auth, caller=content.get("pusher"))
         ):
             return _internal_auth_failure()
     # 兼容用户ID列表和用户名列表两种情况

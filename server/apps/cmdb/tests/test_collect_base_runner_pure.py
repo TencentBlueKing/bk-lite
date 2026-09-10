@@ -46,6 +46,20 @@ def test_format_params_ip_range_mode_uses_team():
     assert c.filter_collect_task is False  # is_host=True → not is_host = False
 
 
+def test_physical_server_ssh_filters_existing_instances_by_collect_task():
+    """物理服务器三种采集方式都遵循“首任务占有”规则。"""
+    t = _task(
+        model_id="physcial_server",
+        instances=[],
+        team=[7],
+        is_host=True,
+    )
+
+    c = BaseCollect(instance_id=None, task=t)
+
+    assert c.filter_collect_task is True
+
+
 def test_format_params_ip_range_falls_back_to_params_org():
     t = _task(instances=[], team=None, params={"organization": 9}, is_host=False)
     c = BaseCollect(instance_id=None, task=t)
@@ -67,6 +81,17 @@ def test_format_params_dict_instances_falls_back_to_task_mode():
     assert c.inst_id is None
     assert c.organization == [9]
     assert c.filter_collect_task is True
+
+
+def test_format_params_network_switch_instance_uses_task_model_id():
+    t = _task(
+        model_id="network",
+        is_host=False,
+        instances=[{"_id": "s1", "model_id": "switch", "inst_name": "10.0.0.1-switch", "organization": 3}],
+    )
+    c = BaseCollect(instance_id=None, task=t)
+    assert c.model_id == "network"
+    assert c.inst_name == "10.0.0.1-switch"
 
 
 def test_format_params_instance_mode():
@@ -99,6 +124,23 @@ def test_format_params_instance_mode_missing_graph_id():
     assert c.model_id == "host"
     assert c.inst_name == "10.0.0.1"
     assert c.inst_id is None
+
+
+def test_format_params_multi_instance_does_not_collapse_to_first_identity():
+    t = _task(
+        instances=[
+            {"_id": "h1", "model_id": "host", "inst_name": "10.0.0.1", "organization": 3},
+            {"_id": "h2", "model_id": "host", "inst_name": "10.0.0.2", "organization": 3},
+        ],
+        team=[7],
+        is_host=True,
+    )
+    c = BaseCollect(instance_id=None, task=t)
+    assert c.model_id == "host"
+    assert c.inst_name is None
+    assert c.inst_id is None
+    assert c.organization == [7]
+    assert c.filter_collect_task is False
 
 
 # --------------------------------------------------------------------------

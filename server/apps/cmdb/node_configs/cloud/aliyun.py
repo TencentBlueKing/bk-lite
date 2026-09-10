@@ -19,17 +19,13 @@ class AliyunNodeParams(BaseNodeParams):
         _access_key = f"PASSWORD_secret_id_{self._instance_id}"
         _access_secret = f"PASSWORD_secret_key_{self._instance_id}"
         regions_id = self.credential["regions"]["resource_id"]
-        credential_data = {
-            "secret_id": "${" + _access_key + "}",
-            "secret_key": "${" + _access_secret + "}",
-            "region_id": regions_id
-        }
+        credential_data = {"secret_id": "${" + _access_key + "}", "secret_key": "${" + _access_secret + "}", "region_id": regions_id}
         return credential_data
 
     def env_config(self, *args, **kwargs):
         env_config = {
-            f"PASSWORD_secret_id_{self._instance_id}": self.credential.get("accessKey", ""),
-            f"PASSWORD_secret_key_{self._instance_id}": self.credential.get("accessSecret", ""),
+            f"PASSWORD_secret_id_{self._instance_id}": self.credential.get("accessKey") or self.credential.get("access_key", ""),
+            f"PASSWORD_secret_key_{self._instance_id}": self.credential.get("accessSecret") or self.credential.get("access_secret", ""),
         }
         return env_config
 
@@ -46,12 +42,13 @@ class AliyunNodeParams(BaseNodeParams):
 
         """
         raw_credential = cls.primary_credential(raw_credential)
-        access_key = raw_credential.get("access_key")
-        access_secret = raw_credential.get("access_secret")
+        access_key = raw_credential.get("access_key") or raw_credential.get("accessKey") or raw_credential.get("secret_id") or ""
+        access_secret = raw_credential.get("access_secret") or raw_credential.get("accessSecret") or raw_credential.get("secret_key")
         return {
-            "secret_id": access_key or raw_credential.get("accessKey", ""),
-            "secret_key": access_secret or raw_credential.get("accessSecret"),
+            "secret_id": access_key,
+            "secret_key": access_secret,
         }
+
     @property
     def password(self):
         # 返回腾讯云的密码数据

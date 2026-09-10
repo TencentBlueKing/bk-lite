@@ -19,10 +19,10 @@ import type {
 import { formatNetworkMetricValue } from './metricValueFormat';
 import { resolveActiveThreshold } from './nodeStatus';
 
-/** 节点的客户端唯一 ID —— 与 WeOps 归一化字段一致:`bk_obj_id:bk_inst_uuid`。 */
+/** 节点的客户端唯一 ID —— 与 WeOps 归一化字段一致:`bk_obj_id:bk_inst_id`。 */
 export const buildNetworkNodeClientId = (
-  node: Pick<NetworkTopologyNode, 'bk_obj_id' | 'bk_inst_uuid'> | NetworkNodeLibraryItem,
-): string => `${node.bk_obj_id}:${node.bk_inst_uuid}`;
+  node: Pick<NetworkTopologyNode, 'bk_obj_id' | 'bk_inst_id'> | NetworkNodeLibraryItem,
+): string => `${node.bk_obj_id}:${node.bk_inst_id}`;
 
 /** 用 WeOps 节点库条目构造一个画布节点(position 由调用方提供)。 */
 export const buildNetworkTopologyNode = (
@@ -42,7 +42,7 @@ export const buildNetworkTopologyNode = (
 ): NetworkTopologyNode => ({
   id: buildNetworkNodeClientId(item),
   bk_obj_id: item.bk_obj_id,
-  bk_inst_uuid: item.bk_inst_uuid,
+  bk_inst_id: item.bk_inst_id,
   bk_inst_name: item.bk_inst_name,
   ip_addr: item.ip_addr ?? '',
   network_collect_task_id: Number(source.network_collect_task_id ?? 0),
@@ -347,9 +347,17 @@ export interface LinkDetailPortRow {
 
 export interface LinkInterfaceMetricRow {
   key: string;
+  groupKey: string;
+  endpoint?: 'source' | 'target';
   interfaceName: string;
   metricLabel: string;
   value: string;
+}
+
+export interface LinkInterfaceMetricGroup {
+  key: string;
+  interfaceName: string;
+  metrics: Array<{ key: string; metricLabel: string; value: string }>;
 }
 
 export const DEFAULT_LINK_INTERFACE_METRICS = [
@@ -463,11 +471,11 @@ export const buildBoundMetricConfigRows = (
 const findRuntimeInterface = (
   runtime: NetworkLinkRuntime | undefined,
   endpoint: 'source' | 'target',
-  ref: { bk_inst_uuid: string; interface_name: string },
+  ref: { bk_inst_id: number; interface_name: string },
 ): NetworkInterfaceRuntime | undefined =>
   runtime?.interfaces.find((item) => {
     const sameEndpoint = !item.endpoint || item.endpoint === endpoint;
-    const sameId = item.bk_inst_uuid === ref.bk_inst_uuid;
+    const sameId = item.bk_inst_id === ref.bk_inst_id;
     const sameName = item.interface_name === ref.interface_name;
     return sameEndpoint && (sameId || sameName);
   });
@@ -524,10 +532,14 @@ export const buildLinkInterfaceMetricRows = (
   if (runtimeInterfaces.length > 0) {
     return runtimeInterfaces.flatMap((iface, ifaceIndex) => {
       const interfaceName = iface.interface_name || '--';
+      const endpoint = iface.endpoint;
+      const groupKey = `${link.id}:${endpoint ?? 'interface'}:${ifaceIndex}:${iface.bk_inst_id ?? interfaceName}`;
       return selectedMetrics.map((field) => {
         const metric = iface.metrics?.[field];
         return {
-          key: `${link.id}:${iface.endpoint ?? 'interface'}:${ifaceIndex}:${iface.bk_inst_uuid ?? interfaceName}:${field}`,
+          key: `${groupKey}:${field}`,
+          groupKey,
+          endpoint,
           interfaceName,
           metricLabel: labels[field] ?? field,
           value:
@@ -542,15 +554,40 @@ export const buildLinkInterfaceMetricRows = (
     ([
       ['source', pair.source_interface],
       ['target', pair.target_interface],
-    ] as const).flatMap(([endpoint, ref]) =>
-      selectedMetrics.map((field) => ({
-        key: `${link.id}:${index}:${endpoint}:${ref.bk_inst_uuid || ref.interface_name || 'interface'}:${field}`,
-        interfaceName: ref.interface_name || '--',
+    ] as const).flatMap(([endpoint, ref]) => {
+      const interfaceName = ref.interface_name || '--';
+      const groupKey = `${link.id}:${index}:${endpoint}:${ref.bk_inst_id || interfaceName}`;
+      return selectedMetrics.map((field) => ({
+        key: `${groupKey}:${field}`,
+        groupKey,
+        endpoint,
+        interfaceName,
         metricLabel: labels[field] ?? field,
         value: '--',
-      })),
-    ),
+      }));
+    }),
   );
+};
+
+/** 源/宿端口即使同名也分成两组，避免两端 GigabitEthernet1/0/1 叠成一份重复指标。 */
+export const groupLinkMetricRowsByInterface = (
+  rows: ReadonlyArray<LinkInterfaceMetricRow>,
+): LinkInterfaceMetricGroup[] => {
+  const groups = new Map<string, LinkInterfaceMetricGroup>();
+  rows.forEach((row) => {
+    const group = groups.get(row.groupKey) ?? {
+      key: row.groupKey,
+      interfaceName: row.interfaceName,
+      metrics: [],
+    };
+    group.metrics.push({
+      key: row.key,
+      metricLabel: row.metricLabel,
+      value: row.value,
+    });
+    groups.set(row.groupKey, group);
+  });
+  return Array.from(groups.values());
 };
 
 export const updateNetworkTopologyLinkTerminals = (

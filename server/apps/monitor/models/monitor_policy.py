@@ -1,4 +1,5 @@
 from django.db import IntegrityError, models
+from django.db.models import Q
 from django.db.models.functions import Cast, Concat
 
 from apps.core.fields.s3_json_field import S3JSONField
@@ -122,6 +123,7 @@ class MonitorPolicy(TimeInfo, MaintainerInfo):
     notice_type = models.CharField(max_length=50, default="", verbose_name="通知方式")
     notice_type_ids = models.JSONField(default=list, verbose_name="通知方式ID列表")
     notice_users = models.JSONField(default=list, verbose_name="通知人")
+    handlers = models.JSONField(default=list, verbose_name="处理人")
 
     # 是否启动策略
     enable = models.BooleanField(default=True, verbose_name="是否启用")
@@ -144,6 +146,14 @@ class PolicyOrganization(TimeInfo, MaintainerInfo):
 
 
 class MonitorEvent(models.Model):
+    class Action(models.TextChoices):
+        TRIGGERED = "triggered", "触发"
+        ESCALATED = "escalated", "级别升级"
+        CLAIMED = "claimed", "认领"
+        ASSIGNED = "assigned", "分派"
+        RECOVERED = "recovered", "恢复"
+        CLOSED = "closed", "人工关闭"
+
     LEVEL_CHOICES = [
         ("no_data", "No Data"),
         ("info", "Info"),
@@ -172,13 +182,34 @@ class MonitorEvent(models.Model):
     event_time = models.DateTimeField(blank=True, null=True, verbose_name="事件发生时间")
     value = models.FloatField(blank=True, null=True, verbose_name="事件值")
     level = models.CharField(max_length=20, choices=LEVEL_CHOICES, verbose_name="事件级别")
+    action = models.CharField(
+        max_length=20,
+        choices=Action.choices,
+        blank=True,
+        default="",
+        db_index=True,
+        verbose_name="生命周期动作",
+    )
     content = models.TextField(blank=True, verbose_name="事件内容")
     notice_result = models.JSONField(default=list, verbose_name="通知结果")
 
     class Meta:
         indexes = [
             models.Index(fields=["policy_id", "monitor_instance_id", "created_at"]),
-            models.Index(fields=["alert", "created_at"]),  # ✅ 新增索引，优化查询性能
+            models.Index(fields=["alert", "created_at"]),
+            models.Index(fields=["alert", "action"], name="idx_mon_event_alert_action"),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=("alert", "action"),
+                condition=Q(alert__isnull=False, action__in=["triggered", "recovered", "closed"]),
+                name="uniq_monitor_event_alert_status_action",
+            ),
+            models.UniqueConstraint(
+                fields=("alert", "action", "level"),
+                condition=Q(alert__isnull=False, action="escalated"),
+                name="uniq_monitor_event_alert_escalated_level",
+            ),
         ]
 
 
@@ -225,12 +256,14 @@ class MonitorAlert(TimeInfo):
     operation_logs = models.JSONField(default=list, verbose_name="操作记录")
     notice_type_ids = models.JSONField(default=list, verbose_name="通知方式ID列表")
     notice_users = models.JSONField(default=list, verbose_name="通知人")
+    handlers = models.JSONField(default=list, verbose_name="处理人")
     notice_logs = models.JSONField(default=list, verbose_name="通知记录")
     alert_center_notified = models.BooleanField(default=True, verbose_name="告警中心已同步")
     alert_center_retry_count = models.IntegerField(default=0, verbose_name="告警中心通知重试次数")
     # Receiver-first rollout 中保持 False，直到 outbox 明确完成渠道解析与意图落库。
     # 这样 producer 关闭期和进程在生命周期提交后退出的窗口都会由有界对账收敛。
     alert_center_delivery_backfilled = models.BooleanField(default=False, verbose_name="告警中心投递意图已对账")
+    organizations = models.JSONField(default=list, verbose_name="告警生成时所属组织")
 
     class Meta:
         verbose_name = "监控告警"

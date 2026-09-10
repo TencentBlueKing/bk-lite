@@ -47,6 +47,7 @@ class QCloudVMChargeType(Enum):
     PREPAID = "PREPAID"  # 包年包月
     POSTPAID_BY_HOUR = "POSTPAID_BY_HOUR"  # 按量计费
     CDHPAID = "CDHPAID"  # CDH计费 只对CDH计费，不对CDH上的实例计费
+    CDCPAID = "CDCPAID"  # 专用集群 CDC 上的实例，集群侧计费
     SPOTPAID = "SPOTPAID"  # 竞价实例付费
 
 

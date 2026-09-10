@@ -989,6 +989,30 @@ describe('networkStatusTopology monitor overlay', () => {
     expect(overlayParamsFor(32)).toEqual([]);
   });
 
+  it('reports fetched topology payload for preview raw data', async () => {
+    testState.getNetworkStatusTopology.mockResolvedValue(successPayload);
+    overlayState.getSourceDataByApiId.mockImplementation(
+      () => new Promise(() => undefined),
+    );
+    const onRawData = vi.fn();
+
+    render(
+      <NetworkStatusTopology
+        config={widgetConfig}
+        refreshKey="0"
+        refreshCause="initial"
+        onRawData={onRawData}
+      />,
+    );
+
+    await waitFor(() => {
+      const payload = onRawData.mock.calls.at(-1)?.[0] as {
+        nodes?: Array<{ id: string }>;
+      };
+      expect(payload?.nodes?.some((node) => node.id === 'core-1')).toBe(true);
+    });
+  });
+
   it('shows 0 for monitored quiet nodes and does not open the alert modal', async () => {
     testState.getNetworkStatusTopology.mockResolvedValue(successPayload);
     overlayState.getSourceDataByApiId.mockImplementation(

@@ -8,6 +8,7 @@ import {
   labelFromDashboardCard,
   readDashboardKpiReadings,
   readDashboardPageDataStamp,
+  readDashboardRankPanels,
 } from '../dashboard.pilot';
 
 describe('dashboard.pilot chart labeling', () => {
@@ -60,6 +61,34 @@ describe('dashboard.pilot chart labeling', () => {
     );
     expect(caption).toBe('CPU 时间分布；序列: 用户态 76.4% (21.8%), 内核态 0.0% (--)');
     expect(caption).not.toContain('21.759');
+  });
+
+  it('reads horizontal bar rank rows as series readings', () => {
+    document.body.innerHTML = `
+      <div class="panel">
+        <h3 class="panelTitle"><span class="titleWithGuide"><span>磁盘使用率 Top</span></span></h3>
+        <div class="barRow">
+          <div class="barLabel"><span>1</span><div>/</div></div>
+          <div class="barValue">82.9%</div>
+        </div>
+        <div class="barRow">
+          <div class="barLabel"><div>/var</div></div>
+          <div class="barValue">80.1%</div>
+        </div>
+        <div class="barRow">
+          <div class="barLabel"><div>/boot</div></div>
+          <div class="barValue">16.8%</div>
+        </div>
+      </div>
+    `;
+    expect(readDashboardRankPanels()).toEqual([{
+      title: '磁盘使用率 Top',
+      legends: ['/ 82.9%', '/var 80.1%', '/boot 16.8%'],
+      readings: ['/ 82.9%', '/var 80.1%', '/boot 16.8%'],
+    }]);
+    const text = getTextContext().sections?.map((section) => section.content).join('\n') || '';
+    expect(text).toContain('磁盘使用率 Top；序列: / 82.9%, /var 80.1%, /boot 16.8%');
+    expect(readDashboardPageDataStamp().rankFingerprint).toBe('磁盘使用率 Top:/ 82.9%|/var 80.1%|/boot 16.8%');
   });
 });
 

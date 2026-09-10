@@ -37,7 +37,6 @@ import {
 } from './viewColumnPreference';
 import {
   INSTANCE_VIEW_ACTION_KEY,
-  RESOURCE_IP_ROLE,
   buildInstanceViewColumns,
   buildReportTimeColumn,
   displayFieldKey,
@@ -81,6 +80,10 @@ const ViewList: React.FC<ViewListProps> = ({
     total: 0,
     pageSize: 20
   });
+  const tableSortRef = useRef<{
+    key: string;
+    order: 'ascend' | 'descend';
+  } | null>(null);
   const [searchText, setSearchText] = useState<string>('');
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
@@ -89,6 +92,10 @@ const ViewList: React.FC<ViewListProps> = ({
     total: 0,
     pageSize: 20
   });
+  const [tableSort, setTableSort] = useState<{
+    key: string;
+    order: 'ascend' | 'descend';
+  } | null>(null);
   const [frequence, setFrequence] = useState<number>(0);
   const [plugins, setPlugins] = useState<ViewPluginOption[]>([]);
   const columns: ColumnItem[] = [
@@ -152,6 +159,9 @@ const ViewList: React.FC<ViewListProps> = ({
   useEffect(() => {
     paginationRef.current = pagination;
   }, [pagination]);
+  useEffect(() => {
+    tableSortRef.current = tableSort;
+  }, [tableSort]);
 
   const sameStringArray = (left: string[], right: string[]) =>
     left.length === right.length && left.every((item) => right.includes(item));
@@ -205,10 +215,10 @@ const ViewList: React.FC<ViewListProps> = ({
     return summaryColumns.some((column) => column.fact === 'asset.ip');
   }, [objects, objectId]);
 
-  // 云平台子对象的内置 IP 列（role=resource_ip）：候选值需要后端下发，走同一个枚举接口。
+  // 带 role 的字段展示列（云平台子对象 IP、K8s Pod Namespace）：候选值需要后端下发。
   const roleFieldColumns = useMemo(() => {
     return (findByMonitorId(objects, objectId)?.display_fields || []).filter(
-      (column) => column.type === 'field' && column.role === RESOURCE_IP_ROLE
+      (column) => column.type === 'field' && Boolean(column.role)
     );
   }, [objects, objectId]);
 
@@ -301,6 +311,13 @@ const ViewList: React.FC<ViewListProps> = ({
           width: tableData.length > 0 ? 300 : undefined
         };
       }
+      if (col.sorter) {
+        next = {
+          ...next,
+          sortOrder:
+            tableSort?.key === String(col.key) ? tableSort.order : null
+        };
+      }
       if (col.key === 'base_instance_name') {
         next = {
           ...next,
@@ -318,7 +335,10 @@ const ViewList: React.FC<ViewListProps> = ({
           filters: assetIpFilters.length ? assetIpFilters : undefined
         };
       }
-      if (col.role === RESOURCE_IP_ROLE) {
+      if (
+        col.filterParam &&
+        String(col.filterParam).startsWith('field:')
+      ) {
         const options = fieldFilters[String(col.filterParam)] || [];
         next = {
           ...next,
@@ -342,7 +362,8 @@ const ViewList: React.FC<ViewListProps> = ({
     columnFilters,
     ipFilterOptions,
     fieldFilterOptions,
-    roleFieldColumns
+    roleFieldColumns,
+    tableSort
   ]);
 
   const fieldGroups = useMemo(() => {
@@ -393,6 +414,8 @@ const ViewList: React.FC<ViewListProps> = ({
       colonyRef.current = nextColony;
       setColumnFilters({});
       columnFiltersRef.current = {};
+      setTableSort(null);
+      tableSortRef.current = null;
       setIpFilterOptions([]);
       setFieldFilterOptions({});
       getColoumnAndData();
@@ -466,13 +489,22 @@ const ViewList: React.FC<ViewListProps> = ({
       }
       vm_params[key] = key.startsWith('field:') ? [...values] : values.join(',');
     });
-    return {
+    const params = {
       page: paginationRef.current.current,
       page_size: paginationRef.current.pageSize,
       add_metrics: true,
       name: searchTextRef.current,
       vm_params
     };
+    if (tableSortRef.current) {
+      return {
+        ...params,
+        ordering: tableSortRef.current.key,
+        order:
+          tableSortRef.current.order === 'descend' ? ('desc' as const) : ('asc' as const)
+      };
+    }
+    return params;
   };
 
   const getColoumnAndData = async () => {
@@ -621,7 +653,8 @@ const ViewList: React.FC<ViewListProps> = ({
 
   const handleTableChange = (
     pagination: any,
-    filters?: Record<string, (React.Key | boolean)[] | null>
+    filters?: Record<string, (React.Key | boolean)[] | null>,
+    sorter?: any
   ) => {
     let filterChanged = false;
     if (filters) {
@@ -673,6 +706,36 @@ const ViewList: React.FC<ViewListProps> = ({
       }));
       return;
     }
+
+    const sorterResult = Array.isArray(sorter) ? sorter[0] : sorter;
+    const nextKey =
+      sorterResult?.order &&
+      (sorterResult.columnKey != null || sorterResult.field != null)
+        ? String(sorterResult.columnKey ?? sorterResult.field)
+        : '';
+    const nextOrder =
+      sorterResult?.order === 'ascend' || sorterResult?.order === 'descend'
+        ? sorterResult.order
+        : null;
+    const nextSort =
+      nextKey && nextOrder ? { key: nextKey, order: nextOrder } : null;
+    const sortChanged =
+      (tableSortRef.current?.key || '') !== (nextSort?.key || '') ||
+      (tableSortRef.current?.order || null) !== (nextSort?.order || null);
+    if (sortChanged) {
+      setTableSort(nextSort);
+      tableSortRef.current = nextSort;
+      if (paginationRef.current.current !== 1) {
+        setPagination((prev: Pagination) => ({
+          ...prev,
+          current: 1
+        }));
+      } else {
+        onRefresh();
+      }
+      return;
+    }
+
     setPagination(pagination);
   };
 

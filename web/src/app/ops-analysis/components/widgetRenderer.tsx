@@ -34,6 +34,7 @@ interface WidgetRendererProps {
   runtimePriority?: RuntimeRequestPriority;
   fallback?: React.ReactNode;
   surface?: OpsAnalysisWidgetSurface;
+  onRawData?: (data: unknown) => void;
 }
 
 const WidgetRenderer: React.FC<WidgetRendererProps> = ({
@@ -58,6 +59,7 @@ const WidgetRenderer: React.FC<WidgetRendererProps> = ({
   runtimePriority,
   fallback = null,
   surface = 'dashboard',
+  onRawData,
 }) => {
   const Component = getWidgetComponent(chartType, surface);
   if (!Component) {
@@ -74,6 +76,7 @@ const WidgetRenderer: React.FC<WidgetRendererProps> = ({
       refreshCause={refreshCause}
       dataSource={dataSource}
       screenRenderContext={screenRenderContext}
+      surface={surface}
       onReady={onReady}
       onError={onError}
       onQueryChange={onQueryChange}
@@ -83,6 +86,7 @@ const WidgetRenderer: React.FC<WidgetRendererProps> = ({
       runtimeOwnerId={runtimeOwnerId}
       runtimeActive={runtimeActive}
       runtimePriority={runtimePriority}
+      onRawData={onRawData}
       {...(supportsComponentSwitch(chartType) ? { componentSwitchControl, errorMessage } : {})}
     />
   );

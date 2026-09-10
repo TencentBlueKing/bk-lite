@@ -1,22 +1,33 @@
 # -*- coding: utf-8 -*-
 """华为 OceanStor 存储采集映射基类（多对象，复用云家族机制，对齐 SmartX）。
 
-主对象 storage；子对象 storage_pool / storage_disk / storage_volume。
-- 子对象 inst_name 统一拼接所属存储名 `{storage}/{原生名}` 防冲突；
+主对象 storage；子对象 storage_pool / storage_disk / storage_volume /
+storage_eth_port / storage_fc_port。
+- 池/磁盘/卷 inst_name 拼接所属存储名 `{storage}/{原生名}` 防冲突；
+- 以太口 / FC 口 inst_name 用归一化 MAC / WWPN（与 nic 同一约定）；
 - 容量扇区数 ×SECTORSIZE 归一化为 GB(int)；
 - HEALTHSTATUS/RUNNINGSTATUS 数字码归一化到公共库 opera_status；
-- 关联：池/磁盘/卷 belong storage；卷 belong 所属池。
+- 关联：池/磁盘/卷 belong storage；卷 belong 所属池；
+  口对象写 storage_contains_storage_*_port（storage → 口）。
 """
 from apps.cmdb.collection.collect_plugin.base import CollectBase
 from apps.cmdb.collection.collect_util import timestamp_gt_one_day_ago
 from apps.cmdb.collection.plugins import get_collection_plugin
+from apps.cmdb.collection.storage_port_inventory import eth_port_identity, fc_port_identity, optional_ipv4, optional_speed, port_display_name
 from apps.cmdb.constants.constants import CollectPluginTypes
 from apps.core.logger import cmdb_logger as logger
 
 
 class OceanStorCollectMetrics(CollectBase):
     _MODEL_ID = "storage"
-    MODEL_ORDER = ["storage", "storage_pool", "storage_disk", "storage_volume"]
+    MODEL_ORDER = [
+        "storage",
+        "storage_pool",
+        "storage_disk",
+        "storage_volume",
+        "storage_eth_port",
+        "storage_fc_port",
+    ]
 
     @property
     def _metrics(self):
@@ -40,7 +51,7 @@ class OceanStorCollectMetrics(CollectBase):
         """扇区数 × 扇区大小(字节) → GB(int)。空值/异常 → 0。"""
         try:
             total_bytes = int(float(sectors)) * int(float(sectorsize))
-            return int(total_bytes / (1024 ** 3))
+            return int(total_bytes / (1024**3))
         except (TypeError, ValueError):
             return 0
 
@@ -87,8 +98,29 @@ class OceanStorCollectMetrics(CollectBase):
     def volume_alloc_gb(self, data, *args, **kwargs):
         return self.sectors_to_gb(data.get("ALLOCCAPACITY"), data.get("SECTORSIZE", "512"))
 
+    def set_eth_mac(self, data, *args, **kwargs):
+        return eth_port_identity(data)
+
+    def set_eth_inst_name(self, data, *args, **kwargs):
+        return eth_port_identity(data)
+
+    def set_eth_ip(self, data, *args, **kwargs):
+        return optional_ipv4(data.get("IPV4ADDR"))
+
+    def set_port_name(self, data, *args, **kwargs):
+        return port_display_name(data)
+
+    def set_fc_wwpn(self, data, *args, **kwargs):
+        return fc_port_identity(data)
+
+    def set_fc_inst_name(self, data, *args, **kwargs):
+        return fc_port_identity(data)
+
+    def set_fc_speed(self, data, *args, **kwargs):
+        return optional_speed(data)
+
     # ------------------------------------------------------------------
-    # 关联（子对象 belong storage；卷 belong 所属池）
+    # 关联（池/磁盘/卷 belong storage；口对象 contains：storage → 口）
     # ------------------------------------------------------------------
     def _belong_storage(self, child_model):
         return {
@@ -96,6 +128,14 @@ class OceanStorCollectMetrics(CollectBase):
             "inst_name": self.inst_name,
             "asst_id": "belong",
             "model_asst_id": f"{child_model}_belong_storage",
+        }
+
+    def _contains_storage(self, child_model):
+        return {
+            "model_id": "storage",
+            "inst_name": self.inst_name,
+            "asst_id": "contains",
+            "model_asst_id": f"storage_contains_{child_model}",
         }
 
     def asso_pool(self, data, *args, **kwargs):
@@ -108,13 +148,21 @@ class OceanStorCollectMetrics(CollectBase):
         out = [self._belong_storage("storage_volume")]
         parent = data.get("PARENTNAME")
         if parent:
-            out.append({
-                "model_id": "storage_pool",
-                "inst_name": f"{self.inst_name}/{parent}",
-                "asst_id": "belong",
-                "model_asst_id": "storage_volume_belong_storage_pool",
-            })
+            out.append(
+                {
+                    "model_id": "storage_pool",
+                    "inst_name": f"{self.inst_name}/{parent}",
+                    "asst_id": "belong",
+                    "model_asst_id": "storage_volume_belong_storage_pool",
+                }
+            )
         return out
+
+    def asso_eth_port(self, data, *args, **kwargs):
+        return [self._contains_storage("storage_eth_port")]
+
+    def asso_fc_port(self, data, *args, **kwargs):
+        return [self._contains_storage("storage_fc_port")]
 
     # ------------------------------------------------------------------
     # 采集数据处理（对齐 SmartX）
@@ -141,6 +189,10 @@ class OceanStorCollectMetrics(CollectBase):
     def _child_has_identity(self, model_id, data):
         if model_id == "storage_disk":
             return bool(data.get("LOCATION") or data.get("MODEL"))
+        if model_id == "storage_eth_port":
+            return bool(eth_port_identity(data))
+        if model_id == "storage_fc_port":
+            return bool(fc_port_identity(data))
         return bool(data.get("NAME") or data.get("name"))
 
     def format_metrics(self):
@@ -171,5 +223,7 @@ class OceanStorCollectMetrics(CollectBase):
                     else:
                         data[field] = index_data.get(key_or_func, "")
                 if data:
+                    if model_id == self._MODEL_ID and not data.get("inst_name"):
+                        data["inst_name"] = self.inst_name
                     result.append(data)
             self.result[model_id] = result

@@ -4,15 +4,12 @@ from django.utils import timezone
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.models import MonitorPlugin, MonitorPluginUITemplate
-from apps.monitor.models.monitor_metrics import MetricGroup, Metric
+from apps.monitor.models.monitor_metrics import Metric, MetricGroup
 from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectType
-from apps.monitor.utils.display_fields_seed import build_seed_display_fields
-from apps.monitor.utils.instance_id_keys import (
-    resolve_metric_instance_id_keys,
-    resolve_monitor_object_instance_id_keys,
-)
-from apps.monitor.utils.node_selector import normalize_node_selector
 from apps.monitor.services.instance_facts import InstanceFactResolver
+from apps.monitor.utils.display_fields_seed import build_seed_display_fields, merge_display_fields_bindings
+from apps.monitor.utils.instance_id_keys import resolve_metric_instance_id_keys, resolve_monitor_object_instance_id_keys
+from apps.monitor.utils.node_selector import normalize_node_selector
 
 
 class MonitorPluginService:
@@ -60,18 +57,25 @@ class MonitorPluginService:
         plugin_obj.monitor_object.set(monitor_objects)
 
     @staticmethod
-    def get_ui_template_by_params(collector, collect_type, monitor_object_id):
-        """获取插件的 UI 模板"""
-        obj = (
-            MonitorPluginUITemplate.objects.filter(
-                plugin__monitor_object__id=monitor_object_id,
-                plugin__collector=collector,
-                plugin__collect_type=collect_type,
-                plugin__template_type="builtin",
-            )
-            .select_related("plugin")
-            .first()
-        )
+    def get_ui_template_by_params(collector, collect_type, monitor_object_id, monitor_plugin_id=None):
+        """获取插件的 UI 模板。
+
+        Telegraf/http 下 Host AIX Remote、Host Remote、Windows WMI 共享
+        collector+collect_type+对象，必须按 plugin id 取值；多个匹配且未指定
+        plugin 时不返回，避免把 WMI 用户名帮助套到 SSH 表单。
+        """
+        queryset = MonitorPluginUITemplate.objects.filter(
+            plugin__monitor_object__id=monitor_object_id,
+            plugin__collector=collector,
+            plugin__collect_type=collect_type,
+            plugin__template_type="builtin",
+        ).select_related("plugin")
+        if monitor_plugin_id not in (None, ""):
+            queryset = queryset.filter(plugin_id=monitor_plugin_id)
+            obj = queryset.first()
+        else:
+            matches = list(queryset[:2])
+            obj = matches[0] if len(matches) == 1 else None
         return {
             "ui_template": obj.content if obj else None,
             "node_selector": getattr(obj.plugin, "node_selector", {}) if obj else {},
@@ -114,8 +118,9 @@ class MonitorPluginService:
 
         若文件已存在且非空,不覆盖。
         """
-        import yaml
         from pathlib import Path
+
+        import yaml
 
         lang_dir = Path(plugin_dir) / "language"
         lang_dir.mkdir(parents=True, exist_ok=True)
@@ -203,6 +208,8 @@ class MonitorPluginService:
                     metrics,
                 )
             if seeded:
+                if monitor_obj.display_fields:
+                    seeded = merge_display_fields_bindings(monitor_obj.display_fields, seeded)
                 monitor_obj.display_fields = seeded
                 monitor_obj.save(update_fields=["display_fields"])
 
@@ -255,9 +262,7 @@ class MonitorPluginService:
                 existing_metrics.pop(metric_name)
 
         for metric in metrics:
-            metric["dimensions"] = MonitorPluginService.normalize_metric_dimensions(
-                metric.get("dimensions", [])
-            )
+            metric["dimensions"] = MonitorPluginService.normalize_metric_dimensions(metric.get("dimensions", []))
             metric_instance_id_keys = resolve_metric_instance_id_keys(
                 metric.get("instance_id_keys", []),
                 monitor_obj.instance_id_keys,

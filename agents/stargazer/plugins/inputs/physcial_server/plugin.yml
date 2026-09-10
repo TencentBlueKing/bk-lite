@@ -3,7 +3,7 @@ version: 2.0.0
 category: infrastructure
 metadata:
   display_name: 物理服务器
-  description: 物理服务器硬件信息采集插件，支持脚本方式采集
+  description: 物理服务器硬件信息采集插件，支持 SSH、IPMI 和 Redfish
   author: WeOps
   tags:
   - infrastructure
@@ -31,8 +31,7 @@ executors:
     capacity_group: sync_sdk
     collector:
       module: plugins.inputs.physcial_server.physcial_server_info
-      class: PhyscialServerIPMIInfo
+      class: PhyscialServerProtocolInfo
     target_policy:
-      mode: udp
-      port: 623
+      mode: none
 default_executor: job

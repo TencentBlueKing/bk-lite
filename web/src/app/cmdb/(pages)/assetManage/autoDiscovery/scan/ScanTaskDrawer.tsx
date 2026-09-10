@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Button, Checkbox, Drawer, Form, Input, InputNumber, Select, Spin, Switch, message } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { Button, Checkbox, Drawer, Form, Input, InputNumber, Select, Spin, message } from 'antd';
+import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import GroupTreeSelector from '@/components/group-tree-select';
 import IpRangeInput from '@/app/cmdb/components/ipInput';
 import { isIpRangeOrderValid, isIpRangeWithinLimit } from '@/app/cmdb/components/ipInput/ipRangeLimits';
@@ -14,6 +14,11 @@ import { useCollectApi, useScanApi } from '@/app/cmdb/api';
 import type { CredentialPoolItem } from '@/app/cmdb/types/autoDiscovery';
 import { useUserInfoContext } from '@/context/userInfo';
 import { useTranslation } from '@/utils/i18n';
+import {
+  buildScanTaskSubmitMeta,
+  hasScanCloudRegion,
+  mapScanDetailToFormValues,
+} from './scanTaskForm';
 
 const SCAN_CREDENTIAL_LIMIT = 32;
 
@@ -25,9 +30,7 @@ export const SCAN_FAMILIES: Array<{
   { modelId: 'network', labelKey: 'Scan.familyNetwork', shape: 'snmp' },
   { modelId: 'host', labelKey: 'Scan.familyHost', shape: 'ssh' },
   { modelId: 'physcial_server', labelKey: 'Scan.familyPhysical', shape: 'ipmi' },
-  { modelId: 'mysql', labelKey: 'Scan.familyMysql', shape: 'sql' },
-  { modelId: 'postgresql', labelKey: 'Scan.familyPostgresql', shape: 'sql' },
-  { modelId: 'mssql', labelKey: 'Scan.familyMssql', shape: 'sql' },
+  { modelId: 'database', labelKey: 'Scan.familyDatabase', shape: 'sql' },
   { modelId: 'influxdb', labelKey: 'Scan.familyInfluxdb', shape: 'influxdb' },
 ];
 
@@ -70,6 +73,13 @@ function IpRangeAdapter({
   );
 }
 
+const FormSectionHeader: React.FC<{ title: string }> = ({ title }) => (
+  <div className="mb-4 flex items-center gap-2 border-b border-[var(--color-border-2)] pb-2 pt-1">
+    <div className="h-3.5 w-1 rounded-full bg-[var(--color-primary)]" />
+    <span className="text-sm font-semibold text-[var(--color-text-1)]">{title}</span>
+  </div>
+);
+
 const ScanTaskDrawer: React.FC<ScanTaskDrawerProps> = ({
   open,
   editId,
@@ -82,7 +92,9 @@ const ScanTaskDrawer: React.FC<ScanTaskDrawerProps> = ({
   const { getScanDetail, createScan, updateScan } = useScanApi();
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
-  const [detailLoading, setDetailLoading] = useState(false);
+  const [formReady, setFormReady] = useState(false);
+  const [savedAccessPoint, setSavedAccessPoint] = useState<Record<string, unknown> | null>(null);
+  const [savedCloudRegion, setSavedCloudRegion] = useState<unknown>();
   const [accessPoints, setAccessPoints] = useState<
     { label: string; value: string; origin: Record<string, unknown> }[]
   >([]);
@@ -90,17 +102,26 @@ const ScanTaskDrawer: React.FC<ScanTaskDrawerProps> = ({
 
   useEffect(() => {
     if (!open) {
+      setFormReady(false);
       return;
     }
+    let cancelled = false;
     const load = async () => {
+      setFormReady(false);
       try {
-        const res = await getCollectNodes({
-          page: 1,
-          page_size: 10000,
-          name: '',
-        });
+        const [nodesRes, detail] = await Promise.all([
+          getCollectNodes({
+            page: 1,
+            page_size: 10000,
+            name: '',
+          }),
+          editId ? getScanDetail(editId) : Promise.resolve(null),
+        ]);
+        if (cancelled) {
+          return;
+        }
         setAccessPoints(
-          res.nodes
+          nodesRes.nodes
             ?.filter((node: { node_type?: string }) => node?.node_type === 'container')
             .map((node: { name: string; id: string }) => ({
               label: node.name,
@@ -108,55 +129,36 @@ const ScanTaskDrawer: React.FC<ScanTaskDrawerProps> = ({
               origin: node,
             })) || []
         );
-      } catch (error) {
-        console.error(error);
-      }
-    };
-    load();
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    if (!editId) {
-      setDetailLoading(false);
-      form.setFieldsValue({
-        name: '',
-        team: selectedGroup?.id ? [selectedGroup.id] : [],
-        ipRanges: [{ begin: '', end: '' }],
-        families: [],
-        credentials: {},
-        accessPointId: undefined,
-        timeout: 0,
-        auto_push_monitor: false,
-        auto_generate_collect: false,
-      });
-      return;
-    }
-    const loadDetail = async () => {
-      setDetailLoading(true);
-      try {
-        const detail = await getScanDetail(editId);
-        form.setFieldsValue({
-          name: detail.name,
-          team: detail.team,
-          ipRanges: detail.ip_ranges?.length ? detail.ip_ranges : [{ begin: '', end: '' }],
-          families: detail.families || [],
-          credentials: detail.credentials || {},
-          accessPointId: detail.access_point?.[0]?.id,
-          timeout: detail.timeout || 0,
-          auto_push_monitor: Boolean(detail.auto_push_monitor),
-          auto_generate_collect: Boolean(detail.auto_generate_collect),
-        });
+        if (!editId || !detail) {
+          setSavedAccessPoint(null);
+          setSavedCloudRegion(undefined);
+          form.setFieldsValue({
+            name: '',
+            team: selectedGroup?.id ? [selectedGroup.id] : [],
+            ipRanges: [{ begin: '', end: '' }],
+            families: [],
+            credentials: {},
+            accessPointId: undefined,
+            timeout: 0,
+          });
+          return;
+        }
+        setSavedAccessPoint(detail.access_point?.[0] || null);
+        setSavedCloudRegion(detail.cloud_region);
+        form.setFieldsValue(mapScanDetailToFormValues(detail));
       } catch (error) {
         console.error(error);
         message.error(t('loadFailed'));
       } finally {
-        setDetailLoading(false);
+        if (!cancelled) {
+          setFormReady(true);
+        }
       }
     };
-    loadDetail();
+    load();
+    return () => {
+      cancelled = true;
+    };
   }, [open, editId, selectedGroup?.id]);
 
   const handleFinish = async (values: Record<string, any>) => {
@@ -183,30 +185,38 @@ const ScanTaskDrawer: React.FC<ScanTaskDrawerProps> = ({
       message.error(t('Scan.families'));
       return;
     }
-    const accessPoint = accessPoints.find((item) => item.value === values.accessPointId);
-    const origin = accessPoint?.origin || {};
+    const includeHost = selectedFamilies.includes('host');
+    const submitMeta = buildScanTaskSubmitMeta({
+      accessPointId: values.accessPointId,
+      accessPoints,
+      fallbackAccessPoint: savedAccessPoint,
+      includeHost,
+      existingCloudRegion: savedCloudRegion,
+      timeout: values.timeout,
+    });
     const credentials: Record<string, CredentialPoolItem[]> = {};
     selectedFamilies.forEach((modelId) => {
-      credentials[modelId] = sanitizePool(values.credentials?.[modelId] || []);
+      const pool = sanitizePool(values.credentials?.[modelId] || []);
+      if (modelId === 'database') {
+        pool.forEach((item) => {
+          delete item.port;
+        });
+      }
+      credentials[modelId] = pool;
     });
     const payload = {
       name: values.name,
       team: values.team,
-      access_point: accessPoint ? [origin] : [],
+      access_point: submitMeta.access_point,
       ip_ranges: ranges,
       families: selectedFamilies,
       credentials,
-      timeout: values.timeout || 0,
-      auto_push_monitor: Boolean(values.auto_push_monitor),
-      auto_generate_collect: Boolean(values.auto_generate_collect),
-      cloud_region: selectedFamilies.includes('host')
-        ? origin.cloud_region || {
-          id: origin.cloud_region_id,
-          name: origin.cloud_region_name,
-        }
-        : {},
+      timeout: submitMeta.timeout,
+      auto_push_monitor: false,
+      auto_generate_collect: false,
+      cloud_region: submitMeta.cloud_region,
     };
-    if (selectedFamilies.includes('host') && !payload.cloud_region) {
+    if (includeHost && !hasScanCloudRegion(payload.cloud_region)) {
       message.error(t('Scan.cloudRegionRequired'));
       return;
     }
@@ -239,103 +249,150 @@ const ScanTaskDrawer: React.FC<ScanTaskDrawerProps> = ({
       footer={
         <div className="flex justify-end gap-2">
           <Button onClick={onClose}>{t('common.cancel')}</Button>
-          <Button type="primary" loading={submitting || detailLoading} disabled={detailLoading} onClick={() => form.submit()}>
+          <Button
+            type="primary"
+            loading={submitting || !formReady}
+            disabled={!formReady}
+            onClick={() => form.submit()}
+          >
             {t('common.confirm')}
           </Button>
         </div>
       }
     >
-      <Spin spinning={detailLoading}>
-      <Form
-        form={form}
-        layout="vertical"
-        onFinish={handleFinish}
-        initialValues={{
-          auto_push_monitor: false,
-          auto_generate_collect: false,
-          ipRanges: [{ begin: '', end: '' }],
-        }}
-      >
-        <Form.Item
-          label={t('Scan.taskName')}
-          name="name"
-          rules={[{ required: true, message: t('common.inputMsg') }]}
+      <Spin spinning={!formReady}>
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={handleFinish}
+          initialValues={{
+            ipRanges: [{ begin: '', end: '' }],
+          }}
+          className="flex flex-col gap-6"
         >
-          <Input />
-        </Form.Item>
-        <Form.Item
-          label={t('organization')}
-          name="team"
-          rules={[{ required: true, message: t('common.selectTip') }]}
-        >
-          <GroupTreeSelector multiple placeholder={t('common.selectTip')} />
-        </Form.Item>
-        <Form.Item
-          label={t('Collection.accessPoint')}
-          name="accessPointId"
-          rules={[{ required: true, message: t('common.selectTip') }]}
-        >
-          <Select options={accessPoints} placeholder={t('common.selectTip')} />
-        </Form.Item>
-        <Form.Item label={t('Scan.ipRanges')} required>
-          <Form.List name="ipRanges">
-            {(fields, { add, remove }) => (
-              <div className="flex flex-col gap-3">
-                {fields.map((field) => (
-                  <div key={field.key} className="flex items-center gap-3">
-                    <Form.Item {...field} className="mb-0">
-                      <IpRangeAdapter />
-                    </Form.Item>
-                    {fields.length > 1 ? (
-                      <Button type="link" onClick={() => remove(field.name)}>
-                        {t('common.delete')}
+          {/* Section 1: 基础信息 */}
+          <div className="rounded-lg border border-[var(--color-border-2)] bg-[var(--color-bg-2)] p-4 shadow-sm">
+            <FormSectionHeader title={t('Scan.sectionBasic')} />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Form.Item
+                label={t('Scan.taskName')}
+                name="name"
+                rules={[{ required: true, message: t('common.inputMsg') }]}
+                className="md:col-span-2"
+              >
+                <Input placeholder={t('common.inputMsg')} />
+              </Form.Item>
+              <Form.Item
+                label={t('organization')}
+                name="team"
+                rules={[{ required: true, message: t('common.selectTip') }]}
+              >
+                <GroupTreeSelector multiple placeholder={t('common.selectTip')} />
+              </Form.Item>
+              <Form.Item
+                label={t('Collection.accessPoint')}
+                name="accessPointId"
+                rules={[{ required: true, message: t('common.selectTip') }]}
+              >
+                <Select options={accessPoints} placeholder={t('common.selectTip')} />
+              </Form.Item>
+              <Form.Item label={t('Collection.timeout')}>
+                <div className="flex items-center gap-2">
+                  <Form.Item name="timeout" noStyle>
+                    <InputNumber min={0} className="w-32" />
+                  </Form.Item>
+                  <span className="text-xs text-[var(--color-text-3)]">{t('Scan.timeoutSeconds')}</span>
+                </div>
+              </Form.Item>
+            </div>
+          </div>
+
+          {/* Section 2: 扫描范围与凭据 */}
+          <div className="rounded-lg border border-[var(--color-border-2)] bg-[var(--color-bg-2)] p-4 shadow-sm">
+            <FormSectionHeader title={t('Scan.sectionScope')} />
+            <Form.Item label={t('Scan.ipRanges')} required>
+              <Form.List name="ipRanges">
+                {(fields, { add, remove }) => (
+                  <div className="flex flex-col gap-2.5">
+                    {fields.map(({ key, name, ...restField }) => (
+                      <div key={key} className="flex items-center gap-3">
+                        <Form.Item {...restField} name={name} className="!mb-0 flex-1">
+                          <IpRangeAdapter />
+                        </Form.Item>
+                        {fields.length > 1 ? (
+                          <Button
+                            type="text"
+                            danger
+                            icon={<DeleteOutlined />}
+                            onClick={() => remove(name)}
+                          />
+                        ) : null}
+                      </div>
+                    ))}
+                    <div>
+                      <Button
+                        type="dashed"
+                        icon={<PlusOutlined />}
+                        onClick={() => add({ begin: '', end: '' })}
+                        className="w-full"
+                      >
+                        {t('Scan.addRange')}
                       </Button>
-                    ) : null}
+                    </div>
+                  </div>
+                )}
+              </Form.List>
+            </Form.Item>
+
+            <Form.Item
+              label={t('Scan.families')}
+              name="families"
+              rules={[{ required: true, message: t('common.selectTip') }]}
+            >
+              <Checkbox.Group className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                {SCAN_FAMILIES.map((family) => (
+                  <div
+                    key={family.modelId}
+                    className="flex items-center rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-1)] px-3 py-2"
+                  >
+                    <Checkbox value={family.modelId} className="w-full">
+                      <span className="text-sm">{t(family.labelKey)}</span>
+                    </Checkbox>
                   </div>
                 ))}
-                <Button type="dashed" icon={<PlusOutlined />} onClick={() => add({ begin: '', end: '' })}>
-                  {t('Scan.addRange')}
-                </Button>
+              </Checkbox.Group>
+            </Form.Item>
+
+            {SCAN_FAMILIES.filter((family) => families.includes(family.modelId)).map((family) => (
+              <div
+                key={family.modelId}
+                className="mt-3 rounded-lg border border-[var(--color-border-2)] bg-[var(--color-bg-1)] p-3.5"
+              >
+                <Form.Item
+                  label={
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-[var(--color-text-1)]">{t(family.labelKey)}</span>
+                      {family.modelId === 'database' ? (
+                        <span className="text-xs font-normal text-[var(--color-text-3)]">
+                          （{t('Scan.databasePortHint')}）
+                        </span>
+                      ) : null}
+                    </div>
+                  }
+                  name={['credentials', family.modelId]}
+                  className="!mb-0"
+                >
+                  <CredentialPoolEditor
+                    credentialShape={family.shape}
+                    showPort={family.modelId !== 'database'}
+                    maxCount={SCAN_CREDENTIAL_LIMIT}
+                    editMode={Boolean(editId)}
+                  />
+                </Form.Item>
               </div>
-            )}
-          </Form.List>
-        </Form.Item>
-        <Form.Item
-          label={t('Scan.families')}
-          name="families"
-          rules={[{ required: true, message: t('common.selectTip') }]}
-        >
-          <Checkbox.Group className="flex flex-col gap-2">
-            {SCAN_FAMILIES.map((family) => (
-              <Checkbox key={family.modelId} value={family.modelId}>
-                {t(family.labelKey)}
-              </Checkbox>
             ))}
-          </Checkbox.Group>
-        </Form.Item>
-        {SCAN_FAMILIES.filter((family) => families.includes(family.modelId)).map((family) => (
-          <Form.Item
-            key={family.modelId}
-            label={t(family.labelKey)}
-            name={['credentials', family.modelId]}
-          >
-            <CredentialPoolEditor
-              credentialShape={family.shape}
-              maxCount={SCAN_CREDENTIAL_LIMIT}
-              editMode={Boolean(editId)}
-            />
-          </Form.Item>
-        ))}
-        <Form.Item label={t('Collection.timeout')} name="timeout">
-          <InputNumber min={0} className="w-40" />
-        </Form.Item>
-        <Form.Item label={t('Scan.autoPushMonitor')} name="auto_push_monitor" valuePropName="checked">
-          <Switch />
-        </Form.Item>
-        <Form.Item label={t('Scan.autoGenerateCollect')} name="auto_generate_collect" valuePropName="checked">
-          <Switch />
-        </Form.Item>
-      </Form>
+          </div>
+        </Form>
       </Spin>
     </Drawer>
   );

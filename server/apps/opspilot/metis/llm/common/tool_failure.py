@@ -145,7 +145,8 @@ def classify_tool_failure_kind(content: Any, status: str = "") -> str:
         return TOOL_FAILURE_AUTHN
     if _AUTHZ_FAILURE_RE.search(text):
         return TOOL_FAILURE_AUTHZ
-    if _INTERNAL_FAILURE_RE.search(text):
+    # 应用 previous 日志常带 Traceback；只有工具硬失败才算实现异常。
+    if _INTERNAL_FAILURE_RE.search(text) and is_tool_result_failure(content, status):
         return TOOL_FAILURE_INTERNAL
     if _CONFIG_FAILURE_RE.search(text):
         return TOOL_FAILURE_CONFIG

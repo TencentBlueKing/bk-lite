@@ -42,6 +42,10 @@ def test_create_client_openai_qwen_deepseek_and_isolated(monkeypatch):
     qwen = LLMClientFactory.create_client(_request(model="Qwen2.5-72B"), isolated=True)
     assert qwen.callbacks is None
     assert qwen.extra_body["enable_thinking"] is True
+    assert created["kwargs"]["temperature"] == 0.2
+
+    LLMClientFactory.create_client(_request(model="kimi-k2", temperature=0.7))
+    assert created["kwargs"]["temperature"] is None
 
     deepseek = LLMClientFactory.create_client(_request(model="deepseek-chat", extra_config={"show_think": False}))
     assert deepseek.extra_body["thinking"] == {"type": "disabled"}
@@ -59,6 +63,7 @@ def test_create_client_anthropic_and_compatible(monkeypatch):
     kwargs = anthro.call_args.kwargs
     assert kwargs["anthropic_api_url"] == "https://api.anthropic.com"
     assert kwargs["model"] == "claude-3"
+    assert kwargs["temperature"] == 0.2
 
     compat = MagicMock(name="Compat")
     monkeypatch.setattr(
@@ -96,6 +101,63 @@ def test_create_isolated_clients_and_invoke(monkeypatch):
     assert text == "rewritten"
     payload = openai_cls.return_value.chat.completions.create.call_args.kwargs
     assert payload["messages"][0] == {"role": "user", "content": "hi"}
+    assert payload["temperature"] == 0.2
+
+
+def test_create_client_passes_explicit_none_temperature_for_fixed_unit_openai(monkeypatch):
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.common.llm_client_factory.SSRFValidator.validate_llm_endpoint",
+        lambda *a, **k: None,
+    )
+    created = {}
+
+    class FakeChat:
+        def __init__(self, **kwargs):
+            created["kwargs"] = kwargs
+            self.extra_body = None
+            self.callbacks = "keep"
+
+    monkeypatch.setattr("apps.opspilot.metis.llm.common.llm_client_factory.ChatOpenAI", FakeChat)
+    LLMClientFactory.create_client(_request(model="kimi-k2", temperature=0.2))
+    assert created["kwargs"]["temperature"] is None
+
+    LLMClientFactory.create_client(_request(model="o1", temperature=0.7))
+    assert created["kwargs"]["temperature"] is None
+
+    LLMClientFactory.create_client(_request(model="o1-mini", temperature=0.7))
+    assert created["kwargs"]["temperature"] is None
+
+
+@pytest.mark.parametrize("model", ["o1", "o1-mini"])
+def test_create_client_o1_chatopenai_does_not_inject_unit_temperature(monkeypatch, model):
+    """ChatOpenAI 缺 temperature 键会给 o1 注入 1；显式 None 才能真正 omit。"""
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.common.llm_client_factory.SSRFValidator.validate_llm_endpoint",
+        lambda *a, **k: None,
+    )
+    llm = LLMClientFactory.create_client(_request(model=model, temperature=0.7))
+    assert llm.temperature is None
+    assert "temperature" not in llm._default_params
+    assert llm._default_params.get("temperature") != 1
+
+
+def test_create_client_omits_temperature_for_anthropic_fixed_unit_models(monkeypatch):
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.common.llm_client_factory.SSRFValidator.validate_llm_endpoint",
+        lambda *a, **k: None,
+    )
+    anthro = MagicMock(name="ChatAnthropic")
+    monkeypatch.setattr("apps.opspilot.metis.llm.common.llm_client_factory.ChatAnthropic", anthro)
+    LLMClientFactory.create_client(_request(protocol_type="anthropic", model="gpt-5-mini", temperature=0.2))
+    assert anthro.call_args.kwargs["temperature"] is None
+
+    compat = MagicMock(name="Compat")
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.common.llm_client_factory.AnthropicCompatibleChatClient",
+        compat,
+    )
+    LLMClientFactory.create_client(_request(protocol_type="anthropic", vendor_type="deepseek", model="kimi-k2", temperature=0.2))
+    assert compat.call_args.kwargs["temperature"] is None
 
 
 def test_create_client_gemma_and_openai_without_extra_body(monkeypatch):

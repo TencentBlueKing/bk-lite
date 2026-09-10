@@ -3,10 +3,10 @@ import {
   DASHBOARD_INSTANCE_SELECTOR_PAGE_SIZE
 } from './constants';
 
-type InstanceListResponse = {
+interface InstanceListResponse {
   count?: number;
   results?: unknown[];
-};
+}
 
 type GetInstanceList = (
   objectId: string | number,

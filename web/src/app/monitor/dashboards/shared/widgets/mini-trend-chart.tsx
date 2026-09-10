@@ -90,14 +90,14 @@ export const MiniTrendChart = ({
           showSymbol: isSinglePoint,
           symbol: isSinglePoint ? 'circle' : 'none',
           symbolSize: isSinglePoint ? 6 : 0,
-          lineStyle: { color, width: 2 },
+          lineStyle: { color, width: 2.2 },
           areaStyle: {
             color: {
               type: 'linear' as const,
               x: 0, y: 0, x2: 0, y2: 1,
               colorStops: [
-                { offset: 0, color: `${color}3d` },
-                { offset: 1, color: `${color}05` }
+                { offset: 0, color: `${color}40` },
+                { offset: 1, color: `${color}00` }
               ]
             }
           }

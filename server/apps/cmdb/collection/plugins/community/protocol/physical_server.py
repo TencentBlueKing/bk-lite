@@ -1,8 +1,12 @@
-from apps.cmdb.collection.collect_plugin.protocol import ProtocolCollectMetrics
+from apps.cmdb.collection.physical_server_identity import resolve_physical_server_inst_name
+from apps.cmdb.collection.plugins.base import bind_collection_mapping
 from apps.cmdb.collection.plugins.community.protocol.base import BaseProtocolCollectionPlugin
 
 
-class PhysicalServerIPMICollectionPlugin(BaseProtocolCollectionPlugin):
+class PhysicalServerProtocolCollectionPlugin(BaseProtocolCollectionPlugin):
+    def get_inst_name(self, data):
+        return resolve_physical_server_inst_name(data, fallback=self.inst_name)
+
     supported_model_id = "physcial_server"
     metric_names = ("physcial_server_info_gauge",)
     field_mapping = {
@@ -14,26 +18,12 @@ class PhysicalServerIPMICollectionPlugin(BaseProtocolCollectionPlugin):
         "board_vendor": "board_vendor",
         "board_model": "board_model",
         "board_serial": "board_serial",
-        "inst_name": lambda self, data: self.get_inst_name(data),
+        "inst_name": get_inst_name,
     }
-
-    def get_inst_name(self, data):
-        # IPMI 路径只拿带外基础身份信息，实例识别优先级遵循变更约定：
-        # serial_number > ip_addr > model，避免直接复用 protocol 默认实例名规则。
-        serial_number = data.get("serial_number")
-        if serial_number:
-            return serial_number
-        ip_addr = data.get("ip_addr")
-        if ip_addr:
-            return ip_addr
-        model = data.get("model")
-        if model and ip_addr:
-            return f"{model}-{ip_addr}"
-        return model or "physcial_server"
 
     @property
     def model_field_mapping(self):
-        return {self.model_id: self.field_mapping}
+        return {self.model_id: bind_collection_mapping(self, self.field_mapping)}
 
     def format_data(self, data):
         if not isinstance(data, dict):
@@ -64,3 +54,7 @@ class PhysicalServerIPMICollectionPlugin(BaseProtocolCollectionPlugin):
                 if data:
                     result.append(data)
         self.result[self.model_id] = result
+
+
+# 保留旧导入名，避免企业扩展直接导入时中断。
+PhysicalServerIPMICollectionPlugin = PhysicalServerProtocolCollectionPlugin

@@ -33,12 +33,15 @@ class InfraViewSet(OpenAPIViewSet):
         remaining_usage = token_data.get("remaining_usage", 0)
 
         # 调用 InfraService 渲染配置
-        yaml_content = InfraService.render_config_from_cloud_region(
-            cluster_name=cluster_name,
-            cloud_region_id=cloud_region_id,
-            config_type="metric",
-            image_registry_prefix=token_data.get("image_registry_prefix"),
-        )
+        yaml_kwargs = {
+            "cluster_name": cluster_name,
+            "cloud_region_id": cloud_region_id,
+            "config_type": "metric",
+            "image_registry_prefix": token_data.get("image_registry_prefix"),
+        }
+        if "tolerations" in token_data:
+            yaml_kwargs["tolerations"] = token_data.get("tolerations")
+        yaml_content = InfraService.render_config_from_cloud_region(**yaml_kwargs)
 
         # 在响应头中添加剩余使用次数信息
         response = HttpResponse(yaml_content, content_type="text/yaml; charset=utf-8")

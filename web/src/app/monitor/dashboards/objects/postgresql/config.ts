@@ -1,5 +1,16 @@
 import type { SimpleDashboardConfig } from '../common/simple-dashboard-core';
 
+/** PostgreSQL 监控高对比鲜活科技色板 */
+const PG_PALETTE = {
+  emerald: '#10B981',   // 事务提交速率、缓存命中率
+  blue: '#2563EB',      // 活跃连接数、查询返回行、检查点写入
+  cyan: '#06B6D4',      // 查询提取行、缓冲区分配
+  indigo: '#6366F1',    // 检查点定时、后台清理
+  amber: '#F59E0B',     // 临时文件、并发冲突
+  orange: '#F97316',    // 磁盘读取、后端写入、行更新
+  rose: '#EF4444'       // 事务回滚、死锁、行删除
+} as const;
+
 export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   routeKey: 'postgres',
   pageTitle: 'PostgreSQL 监控仪表盘',
@@ -14,7 +25,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '活跃数据库会话数量。',
       unit: 'counts',
       query: 'sum without (db) (postgresql_numbackends{__$labels__})',
-      color: '#2f6bff'
+      color: PG_PALETTE.blue
     },
     {
       name: 'postgresql_xact_commit_rate',
@@ -22,7 +33,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '已提交事务的速率。',
       unit: 'cps',
       query: 'sum without (db) (rate(postgresql_xact_commit{__$labels__}[__$window__]))',
-      color: '#27c274'
+      color: PG_PALETTE.emerald
     },
     {
       name: 'postgresql_xact_rollback_rate',
@@ -30,7 +41,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '回滚事务的速率。',
       unit: 'cps',
       query: 'sum without (db) (rate(postgresql_xact_rollback{__$labels__}[__$window__]))',
-      color: '#ff4d4f'
+      color: PG_PALETTE.rose
     },
     {
       name: 'postgresql_tup_returned_rate',
@@ -38,7 +49,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '查询结果集中返回行的速率。',
       unit: 'cps',
       query: 'sum without (db) (rate(postgresql_tup_returned{__$labels__}[__$window__]))',
-      color: '#2f6bff'
+      color: PG_PALETTE.blue
     },
     {
       name: 'postgresql_tup_fetched_rate',
@@ -46,7 +57,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '查询期间从存储中提取行的速率。',
       unit: 'cps',
       query: 'sum without (db) (rate(postgresql_tup_fetched{__$labels__}[__$window__]))',
-      color: '#13c2c2'
+      color: PG_PALETTE.cyan
     },
     {
       name: 'postgresql_tup_inserted_rate',
@@ -54,7 +65,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '行插入操作速率。',
       unit: 'cps',
       query: 'sum without (db) (rate(postgresql_tup_inserted{__$labels__}[__$window__]))',
-      color: '#2f6bff'
+      color: PG_PALETTE.blue
     },
     {
       name: 'postgresql_tup_updated_rate',
@@ -62,7 +73,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '行更新操作速率。',
       unit: 'cps',
       query: 'sum without (db) (rate(postgresql_tup_updated{__$labels__}[__$window__]))',
-      color: '#ff8a1f'
+      color: PG_PALETTE.orange
     },
     {
       name: 'postgresql_tup_deleted_rate',
@@ -70,7 +81,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '行删除操作速率。',
       unit: 'cps',
       query: 'sum without (db) (rate(postgresql_tup_deleted{__$labels__}[__$window__]))',
-      color: '#ff4d4f'
+      color: PG_PALETTE.rose
     },
     {
       name: 'postgresql_blks_hit_rate',
@@ -78,7 +89,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '共享缓冲区命中块速率。',
       unit: 'cps',
       query: 'sum without (db) (rate(postgresql_blks_hit{__$labels__}[__$window__]))',
-      color: '#27c274'
+      color: PG_PALETTE.emerald
     },
     {
       name: 'postgresql_blks_read_rate',
@@ -86,7 +97,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '需从磁盘读取块的速率。',
       unit: 'cps',
       query: 'sum without (db) (rate(postgresql_blks_read{__$labels__}[__$window__]))',
-      color: '#ff8a1f'
+      color: PG_PALETTE.orange
     },
     {
       name: 'postgresql_cache_hit_ratio',
@@ -94,7 +105,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '共享缓冲区缓存命中比例。',
       unit: 'percent',
       query: '100 * sum without (db) (rate(postgresql_blks_hit{__$labels__}[__$window__])) / clamp_min(sum without (db) (rate(postgresql_blks_hit{__$labels__}[__$window__])) + sum without (db) (rate(postgresql_blks_read{__$labels__}[__$window__])), 1e-6)',
-      color: '#27c274'
+      color: PG_PALETTE.emerald
     },
     {
       name: 'postgresql_deadlocks_rate',
@@ -102,7 +113,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '事务死锁发生速率。',
       unit: 'cps',
       query: 'sum without (db) (rate(postgresql_deadlocks{__$labels__}[__$window__]))',
-      color: '#ff4d4f'
+      color: PG_PALETTE.rose
     },
     {
       name: 'postgresql_conflicts_rate',
@@ -110,7 +121,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '并发操作冲突速率。',
       unit: 'cps',
       query: 'sum without (db) (rate(postgresql_conflicts{__$labels__}[__$window__]))',
-      color: '#faad14'
+      color: PG_PALETTE.amber
     },
     {
       name: 'postgresql_temp_files_rate',
@@ -118,7 +129,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '复杂查询创建临时文件的速率。',
       unit: 'cps',
       query: 'sum without (db) (rate(postgresql_temp_files{__$labels__}[__$window__]))',
-      color: '#ff8a1f'
+      color: PG_PALETTE.amber
     },
     {
       name: 'postgresql_temp_bytes_rate',
@@ -126,7 +137,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '临时文件写入数据速率。',
       unit: 'byteps',
       query: 'sum without (db) (rate(postgresql_temp_bytes{__$labels__}[__$window__]))',
-      color: '#8a5cff'
+      color: PG_PALETTE.indigo
     },
     {
       name: 'postgresql_checkpoints_timed_rate',
@@ -134,7 +145,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '系统触发检查点速率。',
       unit: 'cps',
       query: 'sum without (db) (rate(postgresql_checkpoints_timed{__$labels__}[__$window__]))',
-      color: '#2f6bff'
+      color: PG_PALETTE.blue
     },
     {
       name: 'postgresql_checkpoints_req_rate',
@@ -142,7 +153,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '请求触发检查点速率。',
       unit: 'cps',
       query: 'sum without (db) (rate(postgresql_checkpoints_req{__$labels__}[__$window__]))',
-      color: '#ff8a1f'
+      color: PG_PALETTE.orange
     },
     {
       name: 'postgresql_buffers_alloc_rate',
@@ -150,7 +161,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '共享缓冲区分配速率。',
       unit: 'cps',
       query: 'sum without (db) (rate(postgresql_buffers_alloc{__$labels__}[__$window__]))',
-      color: '#13c2c2'
+      color: PG_PALETTE.cyan
     },
     {
       name: 'postgresql_buffers_backend_rate',
@@ -158,7 +169,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '后端进程直接写出缓冲区的速率。',
       unit: 'cps',
       query: 'sum without (db) (rate(postgresql_buffers_backend{__$labels__}[__$window__]))',
-      color: '#ff8a1f'
+      color: PG_PALETTE.orange
     },
     {
       name: 'postgresql_buffers_checkpoint_rate',
@@ -166,7 +177,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '检查点期间写出缓冲区的速率。',
       unit: 'cps',
       query: 'sum without (db) (rate(postgresql_buffers_checkpoint{__$labels__}[__$window__]))',
-      color: '#2f6bff'
+      color: PG_PALETTE.blue
     },
     {
       name: 'postgresql_maxwritten_clean_rate',
@@ -174,14 +185,14 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '后台清理进程写出页的速率。',
       unit: 'cps',
       query: 'sum without (db) (rate(postgresql_maxwritten_clean{__$labels__}[__$window__]))',
-      color: '#8a5cff'
+      color: PG_PALETTE.indigo
     }
   ],
   summaryCards: [
     {
       title: '活跃连接数',
       metric: 'postgresql_numbackends',
-      color: '#2f6bff',
+      color: PG_PALETTE.blue,
       icon: 'node',
       guide: [{ label: '活跃连接', detail: '当前活跃数据库会话数量，用于评估并发负载。' }],
       footer: [{ label: '冲突速率', metric: 'postgresql_conflicts_rate', unit: 'cps' }]
@@ -189,7 +200,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       title: '事务提交速率',
       metric: 'postgresql_xact_commit_rate',
-      color: '#27c274',
+      color: PG_PALETTE.emerald,
       icon: 'thunder',
       guide: [{ label: '事务提交', detail: '每秒成功提交的事务数(次/秒);越高代表写入业务越繁忙。' }],
       footer: [{ label: '回滚速率', metric: 'postgresql_xact_rollback_rate', unit: 'cps' }]
@@ -197,7 +208,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       title: '事务回滚速率',
       metric: 'postgresql_xact_rollback_rate',
-      color: '#ff4d4f',
+      color: PG_PALETTE.rose,
       icon: 'thunder',
       compare: true,
       guide: [{ label: '事务回滚', detail: '回滚事务速率，持续升高需检查失败或冲突原因。' }],
@@ -206,7 +217,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       title: '磁盘块读取',
       metric: 'postgresql_blks_read_rate',
-      color: '#ff8a1f',
+      color: PG_PALETTE.orange,
       icon: 'database',
       guide: [{ label: '磁盘块读取', detail: '需从磁盘读取块的速率，高值通常表示缓存未命中较多。' }],
       footer: [
@@ -217,7 +228,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       title: '缓存命中率',
       metric: 'postgresql_cache_hit_ratio',
-      color: '#27c274',
+      color: PG_PALETTE.emerald,
       icon: 'database',
       compare: true,
       compareFavorableDirection: 'up',
@@ -227,7 +238,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       title: '死锁速率',
       metric: 'postgresql_deadlocks_rate',
-      color: '#ff4d4f',
+      color: PG_PALETTE.rose,
       icon: 'api',
       compare: true,
       guide: [{ label: '死锁速率', detail: '事务死锁发生速率，非零时需要关注事务设计。' }],
@@ -236,7 +247,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       title: '临时文件速率',
       metric: 'postgresql_temp_files_rate',
-      color: '#faad14',
+      color: PG_PALETTE.amber,
       icon: 'thunder',
       compare: true,
       guide: [{ label: '临时文件', detail: '临时文件创建速率，高值通常与复杂查询和 work_mem 配置相关。' }],
@@ -253,8 +264,8 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
         { label: '回滚', detail: '失败或冲突回滚的事务速率。' }
       ],
       series: [
-        { metric: 'postgresql_xact_commit_rate', label: '提交速率', color: '#27c274', unit: 'cps' },
-        { metric: 'postgresql_xact_rollback_rate', label: '回滚速率', color: '#ff4d4f', unit: 'cps' }
+        { metric: 'postgresql_xact_commit_rate', label: '提交速率', color: PG_PALETTE.emerald, unit: 'cps' },
+        { metric: 'postgresql_xact_rollback_rate', label: '回滚速率', color: PG_PALETTE.rose, unit: 'cps' }
       ]
     },
     {
@@ -263,9 +274,9 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       metric: 'postgresql_tup_inserted_rate',
       guide: [{ label: '数据操作', detail: '行级插入、更新、删除操作速率。' }],
       series: [
-        { metric: 'postgresql_tup_inserted_rate', label: '插入', color: '#2f6bff', unit: 'cps' },
-        { metric: 'postgresql_tup_updated_rate', label: '更新', color: '#ff8a1f', unit: 'cps' },
-        { metric: 'postgresql_tup_deleted_rate', label: '删除', color: '#ff4d4f', unit: 'cps' }
+        { metric: 'postgresql_tup_inserted_rate', label: '插入', color: PG_PALETTE.blue, unit: 'cps' },
+        { metric: 'postgresql_tup_updated_rate', label: '更新', color: PG_PALETTE.orange, unit: 'cps' },
+        { metric: 'postgresql_tup_deleted_rate', label: '删除', color: PG_PALETTE.rose, unit: 'cps' }
       ]
     },
     {
@@ -277,8 +288,8 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
         { label: '磁盘读取', detail: '需要从磁盘读取的块速率。' }
       ],
       series: [
-        { metric: 'postgresql_blks_hit_rate', label: '缓存命中', color: '#27c274', unit: 'cps' },
-        { metric: 'postgresql_blks_read_rate', label: '磁盘读取', color: '#ff8a1f', unit: 'cps' }
+        { metric: 'postgresql_blks_hit_rate', label: '缓存命中', color: PG_PALETTE.emerald, unit: 'cps' },
+        { metric: 'postgresql_blks_read_rate', label: '磁盘读取', color: PG_PALETTE.orange, unit: 'cps' }
       ]
     },
     {
@@ -287,9 +298,9 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       metric: 'postgresql_buffers_checkpoint_rate',
       guide: [{ label: '缓冲区写入', detail: '检查点、后端和后台清理写出缓冲区的速率。' }],
       series: [
-        { metric: 'postgresql_buffers_checkpoint_rate', label: '检查点写入', color: '#2f6bff', unit: 'cps' },
-        { metric: 'postgresql_buffers_backend_rate', label: '后端写入', color: '#ff8a1f', unit: 'cps' },
-        { metric: 'postgresql_maxwritten_clean_rate', label: '后台清理', color: '#8a5cff', unit: 'cps' }
+        { metric: 'postgresql_buffers_checkpoint_rate', label: '检查点写入', color: PG_PALETTE.blue, unit: 'cps' },
+        { metric: 'postgresql_buffers_backend_rate', label: '后端写入', color: PG_PALETTE.orange, unit: 'cps' },
+        { metric: 'postgresql_maxwritten_clean_rate', label: '后台清理', color: PG_PALETTE.indigo, unit: 'cps' }
       ]
     },
     {
@@ -301,8 +312,8 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
         { label: '提取行', detail: '查询期间从存储提取行速率。' }
       ],
       series: [
-        { metric: 'postgresql_tup_returned_rate', label: '返回行', color: '#2f6bff', unit: 'cps' },
-        { metric: 'postgresql_tup_fetched_rate', label: '提取行', color: '#13c2c2', unit: 'cps' }
+        { metric: 'postgresql_tup_returned_rate', label: '返回行', color: PG_PALETTE.blue, unit: 'cps' },
+        { metric: 'postgresql_tup_fetched_rate', label: '提取行', color: PG_PALETTE.cyan, unit: 'cps' }
       ]
     },
     {
@@ -314,8 +325,8 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
         { label: '请求检查点', detail: '因 WAL 压力请求触发的检查点速率。' }
       ],
       series: [
-        { metric: 'postgresql_checkpoints_timed_rate', label: '定时检查点', color: '#2f6bff', unit: 'cps' },
-        { metric: 'postgresql_checkpoints_req_rate', label: '请求检查点', color: '#ff8a1f', unit: 'cps' }
+        { metric: 'postgresql_checkpoints_timed_rate', label: '定时检查点', color: PG_PALETTE.blue, unit: 'cps' },
+        { metric: 'postgresql_checkpoints_req_rate', label: '请求检查点', color: PG_PALETTE.orange, unit: 'cps' }
       ]
     }
   ],
@@ -326,10 +337,10 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       showTrend: true,
       guide: [{ label: '异常事件', detail: '回滚、死锁、并发冲突与临时文件创建速率，用于快速定位异常负载。' }],
       items: [
-        { label: '回滚速率', metric: 'postgresql_xact_rollback_rate', color: '#ff4d4f', unit: 'cps' },
-        { label: '死锁速率', metric: 'postgresql_deadlocks_rate', color: '#fa8c16', unit: 'cps' },
-        { label: '并发冲突', metric: 'postgresql_conflicts_rate', color: '#faad14', unit: 'cps' },
-        { label: '临时文件', metric: 'postgresql_temp_files_rate', color: '#8a5cff', unit: 'cps' }
+        { label: '回滚速率', metric: 'postgresql_xact_rollback_rate', color: PG_PALETTE.rose, unit: 'cps' },
+        { label: '死锁速率', metric: 'postgresql_deadlocks_rate', color: PG_PALETTE.orange, unit: 'cps' },
+        { label: '并发冲突', metric: 'postgresql_conflicts_rate', color: PG_PALETTE.amber, unit: 'cps' },
+        { label: '临时文件', metric: 'postgresql_temp_files_rate', color: PG_PALETTE.indigo, unit: 'cps' }
       ]
     },
     {
@@ -338,9 +349,9 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       showTrend: true,
       guide: [{ label: '写入来源', detail: '比较检查点、后端和后台清理写出缓冲区的压力来源。' }],
       items: [
-        { label: '检查点写入', metric: 'postgresql_buffers_checkpoint_rate', color: '#2f6bff', unit: 'cps' },
-        { label: '后端写入', metric: 'postgresql_buffers_backend_rate', color: '#ff8a1f', unit: 'cps' },
-        { label: '后台清理', metric: 'postgresql_maxwritten_clean_rate', color: '#8a5cff', unit: 'cps' }
+        { label: '检查点写入', metric: 'postgresql_buffers_checkpoint_rate', color: PG_PALETTE.blue, unit: 'cps' },
+        { label: '后端写入', metric: 'postgresql_buffers_backend_rate', color: PG_PALETTE.orange, unit: 'cps' },
+        { label: '后台清理', metric: 'postgresql_maxwritten_clean_rate', color: PG_PALETTE.indigo, unit: 'cps' }
       ]
     }
   ],

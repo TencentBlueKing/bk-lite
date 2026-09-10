@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import copy
 from typing import Any
-from uuid import UUID
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 
@@ -42,12 +41,24 @@ INTERFACE_METRIC_FIELDS = {
 }
 
 
-def _is_uuid(value: Any) -> bool:
-    try:
-        UUID(str(value))
-        return True
-    except (TypeError, ValueError, AttributeError):
-        return False
+def parse_weops_inst_id(value: Any) -> int | None:
+    """Parse a WeOps / 蓝鲸 CMDB instance id.
+
+    Identity is a positive integer (JSON may stringify it). Reject bool, 0,
+    negatives, UUID strings, and other non-integers. ``True`` is an ``int``
+    subclass and must not pass.
+    """
+    if isinstance(value, bool) or value is None or value == "":
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped.isascii() or not stripped.isdigit():
+            return None
+        parsed = int(stripped, 10)
+        return parsed if parsed > 0 else None
+    return None
 
 
 def dump(topology) -> dict[str, Any]:
@@ -129,19 +140,15 @@ def _validate_single_node(
     seen_node_ids.add(node_id)
 
     bk_obj_id = raw_node.get("bk_obj_id")
-    bk_inst_uuid = raw_node.get("bk_inst_uuid")
-    if not bk_obj_id or bk_inst_uuid in (None, ""):
-        errors.append(f"节点 {node_id} 缺少 bk_obj_id 或 bk_inst_uuid")
+    # WeOps / 蓝鲸 CMDB 实例身份是数字 bk_inst_id，不是 BK-Lite inst_uuid。
+    bk_inst_id = parse_weops_inst_id(raw_node.get("bk_inst_id"))
+    if not bk_obj_id or bk_inst_id is None:
+        errors.append(f"节点 {node_id} 缺少 bk_obj_id 或 bk_inst_id")
         return None, errors
-    try:
-        bk_inst_uuid = str(UUID(str(bk_inst_uuid)))
-    except (TypeError, ValueError, AttributeError):
-        errors.append(f"节点 {node_id} 的 bk_inst_uuid 不是有效 UUID")
-        return None, errors
-    raw_node = {**raw_node, "bk_inst_uuid": bk_inst_uuid}
-    asset_key = (bk_obj_id, bk_inst_uuid)
+    raw_node["bk_inst_id"] = bk_inst_id
+    asset_key = (bk_obj_id, bk_inst_id)
     if asset_key in seen_asset_keys:
-        errors.append(f"节点 {node_id} 与画布中已有节点 ({bk_obj_id}, {bk_inst_uuid}) 重复")
+        errors.append(f"节点 {node_id} 与画布中已有节点 ({bk_obj_id}, {bk_inst_id}) 重复")
         return None, errors
     seen_asset_keys.add(asset_key)
 
@@ -215,14 +222,22 @@ def _validate_single_link(
             continue
         source_iface = pair.get("source_interface")
         target_iface = pair.get("target_interface")
-        if not isinstance(source_iface, dict) or not source_iface.get("bk_inst_uuid"):
-            errors.append(f"连线 {link_id} 端口对 #{pair_index} 缺少源接口 bk_inst_uuid")
-        elif not _is_uuid(source_iface.get("bk_inst_uuid")):
-            errors.append(f"连线 {link_id} 端口对 #{pair_index} 的源接口 bk_inst_uuid 非法")
-        if not isinstance(target_iface, dict) or not target_iface.get("bk_inst_uuid"):
-            errors.append(f"连线 {link_id} 端口对 #{pair_index} 缺少目标接口 bk_inst_uuid")
-        elif not _is_uuid(target_iface.get("bk_inst_uuid")):
-            errors.append(f"连线 {link_id} 端口对 #{pair_index} 的目标接口 bk_inst_uuid 非法")
+        if not isinstance(source_iface, dict):
+            errors.append(f"连线 {link_id} 端口对 #{pair_index} 缺少源接口 bk_inst_id")
+        else:
+            source_id = parse_weops_inst_id(source_iface.get("bk_inst_id"))
+            if source_id is None:
+                errors.append(f"连线 {link_id} 端口对 #{pair_index} 缺少源接口 bk_inst_id")
+            else:
+                source_iface["bk_inst_id"] = source_id
+        if not isinstance(target_iface, dict):
+            errors.append(f"连线 {link_id} 端口对 #{pair_index} 缺少目标接口 bk_inst_id")
+        else:
+            target_id = parse_weops_inst_id(target_iface.get("bk_inst_id"))
+            if target_id is None:
+                errors.append(f"连线 {link_id} 端口对 #{pair_index} 缺少目标接口 bk_inst_id")
+            else:
+                target_iface["bk_inst_id"] = target_id
     return errors
 
 
@@ -238,12 +253,14 @@ def _validate_payload(payload: dict[str, Any] | None) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValidationError({"view_sets": ["view_sets 必须是 JSON 对象"]})
 
-    nodes = payload.get("nodes") or []
-    links = payload.get("links") or []
-    if not isinstance(nodes, list):
+    raw_nodes = payload.get("nodes") or []
+    raw_links = payload.get("links") or []
+    if not isinstance(raw_nodes, list):
         raise ValidationError({"view_sets": ["nodes 必须是数组"]})
-    if not isinstance(links, list):
+    if not isinstance(raw_links, list):
         raise ValidationError({"view_sets": ["links 必须是数组"]})
+    nodes = copy.deepcopy(raw_nodes)
+    links = copy.deepcopy(raw_links)
 
     node_errors: list[str] = []
     link_errors: list[str] = []
@@ -276,4 +293,4 @@ def _validate_payload(payload: dict[str, Any] | None) -> dict[str, Any]:
         # keeps working unchanged.
         raise ValidationError(detail)
 
-    return {"nodes": copy.deepcopy(nodes), "links": copy.deepcopy(links)}
+    return {"nodes": nodes, "links": links}

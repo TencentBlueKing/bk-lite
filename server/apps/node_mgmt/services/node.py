@@ -2,6 +2,7 @@ import ipaddress
 import os
 from datetime import datetime, timedelta, timezone
 
+from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone as dj_timezone
 
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -430,6 +431,8 @@ class NodeService:
         is_container,
         permission_data={},
         skip_permission=False,
+        keyword=None,
+        sink_child_config=None,
     ):
         """获取节点列表"""
         if permission_data:
@@ -463,6 +466,9 @@ class NodeService:
             qs = qs.filter(name__icontains=name)
         if ip:
             qs = qs.filter(ip__icontains=ip)
+        keyword = NodeService._normalize_keyword(keyword)
+        if keyword:
+            qs = qs.filter(Q(name__icontains=keyword) | Q(ip__icontains=keyword))
         if os:
             qs = qs.filter(operating_system__icontains=os)
 
@@ -487,6 +493,8 @@ class NodeService:
             qs = qs.filter(updated_at__gte=one_minute_ago)
         elif is_active is False:
             qs = qs.filter(updated_at__lt=one_minute_ago)
+
+        qs = NodeService._apply_configured_sink_order(qs, sink_child_config)
 
         count = qs.count()
         page = NodeService._normalize_page(page)
@@ -576,6 +584,43 @@ class NodeService:
             collect_type=collect_type,
         ).values_list("collector_config__nodes__id", flat=True)
         return sorted(set(configured_node_ids))
+
+    @staticmethod
+    def _normalize_keyword(keyword):
+        if keyword in (None, ""):
+            return None
+        if not isinstance(keyword, str):
+            raise BaseAppException("keyword 必须是字符串")
+        keyword = keyword.strip()
+        return keyword or None
+
+    @staticmethod
+    def _normalize_sink_child_config(sink_child_config):
+        if sink_child_config in (None, ""):
+            return None
+        if not isinstance(sink_child_config, dict):
+            raise BaseAppException("sink_child_config 必须是对象")
+        collector = sink_child_config.get("collector")
+        collect_type = sink_child_config.get("collect_type")
+        if not isinstance(collector, str) or not collector.strip():
+            raise BaseAppException("sink_child_config.collector 非法")
+        if not isinstance(collect_type, str) or not collect_type.strip():
+            raise BaseAppException("sink_child_config.collect_type 非法")
+        return collector.strip(), collect_type.strip()
+
+    @staticmethod
+    def _apply_configured_sink_order(qs, sink_child_config):
+        """将已绑定指定子配置的节点整块沉到过滤结果末尾，再交给分页。"""
+        normalized = NodeService._normalize_sink_child_config(sink_child_config)
+        if normalized is None:
+            return qs
+        collector, collect_type = normalized
+        configured = ChildConfig.objects.filter(
+            collector_config__collector__name=collector,
+            collect_type=collect_type,
+            collector_config__nodes__id=OuterRef("pk"),
+        )
+        return qs.annotate(_sink_configured=Exists(configured)).order_by("_sink_configured", "id")
 
     @staticmethod
     def _normalize_page(page):

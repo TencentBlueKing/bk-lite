@@ -11,6 +11,42 @@ export const isMenuPathMatch = (menuUrl: string, currentPath: string): boolean =
   return path === menu || path.startsWith(`${menu}/`);
 };
 
+const normalizeMenuPath = (path: string) => {
+  const pathname = path.split(/[?#]/, 1)[0] || '/';
+  return pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
+};
+
+/**
+ * Whether a route belongs to the configured menu tree.
+ * Covers deep pages (`/log/search` under `/log/search`) and app landings
+ * (`/log` while menus only list `/log/search`), so top-bar app entry does not
+ * race RedirectToFirstMenu into `/no-found`.
+ */
+export const isPathCoveredByMenus = (path: string, menus: MenuItem[]): boolean => {
+  const requested = normalizeMenuPath(path);
+
+  const walk = (items: MenuItem[]): boolean => {
+    for (const menu of items) {
+      if (menu.url) {
+        const menuPath = normalizeMenuPath(menu.url);
+        if (
+          requested === menuPath
+          || (menuPath !== '/' && requested.startsWith(`${menuPath}/`))
+          || (requested !== '/' && menuPath.startsWith(`${requested}/`))
+        ) {
+          return true;
+        }
+      }
+      if (menu.children?.length && walk(menu.children)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  return walk(menus);
+};
+
 const pathScore = (items: MenuItem[]): [number, number] => {
   const leafUrl = items[items.length - 1]?.url?.replace(/\/+$/, '') || '';
   return [items.length, leafUrl.length];

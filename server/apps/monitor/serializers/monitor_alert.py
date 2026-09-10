@@ -3,6 +3,20 @@ from rest_framework import serializers
 from apps.monitor.models.monitor_policy import MonitorAlert, MonitorAlertMetricSnapshot
 
 
+class AssignHandlersSerializer(serializers.Serializer):
+    handlers = serializers.ListField(child=serializers.JSONField(), allow_empty=False)
+
+    def validate_handlers(self, value):
+        cleaned = []
+        for item in value:
+            if item in (None, "") or isinstance(item, bool):
+                raise serializers.ValidationError("处理人标识无效")
+            cleaned.append(item)
+        if not cleaned:
+            raise serializers.ValidationError("至少指定一名处理人")
+        return cleaned
+
+
 class MonitorAlertSerializer(serializers.ModelSerializer):
     class Meta:
         model = MonitorAlert
@@ -27,9 +41,11 @@ class MonitorAlertSerializer(serializers.ModelSerializer):
             "operation_logs",
             "notice_type_ids",
             "notice_users",
+            "handlers",
             "notice_logs",
             "alert_center_notified",
             "alert_center_retry_count",
+            "organizations",
         ]
         # 告警中心补偿状态机的内部簿记字段，仅由服务端维护，禁止客户端写入
         read_only_fields = ["alert_center_notified", "alert_center_retry_count"]

@@ -2,12 +2,18 @@
 import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { usePermissions } from '@/context/permissions';
-import { PORTAL_HOME_PATH } from '@/utils/route';
+import { getClientIdFromRoute, PORTAL_HOME_PATH } from '@/utils/route';
+
+const menuBelongsToClient = (menuUrl: string, clientId: string) => {
+  const normalized = menuUrl.replace(/\/+$/, '') || '/';
+  const root = `/${clientId}`;
+  return normalized === root || normalized.startsWith(`${root}/`);
+};
 
 export default function RedirectToFirstMenu() {
   const router = useRouter();
   const pathname = usePathname();
-  const { menus, loading } = usePermissions();
+  const { menus } = usePermissions();
 
   useEffect(() => {
     if (pathname === '/') {
@@ -15,10 +21,12 @@ export default function RedirectToFirstMenu() {
       return;
     }
 
-    if (!loading && menus?.length > 0 && menus[0]?.url) {
-      router.replace(menus[0].url);
+    const clientId = getClientIdFromRoute(pathname);
+    const firstUrl = menus?.find((item) => item.url)?.url;
+    if (firstUrl && menuBelongsToClient(firstUrl, clientId)) {
+      router.replace(firstUrl);
     }
-  }, [loading, menus, pathname, router]);
+  }, [menus, pathname, router]);
 
   return null;
 }

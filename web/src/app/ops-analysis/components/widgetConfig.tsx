@@ -10,6 +10,7 @@ import {
   ValueConfig,
   FilterValue,
   DashboardActionConfig,
+  WidgetConfig,
 } from '@/app/ops-analysis/types/dashBoard';
 import {
   Drawer,
@@ -24,7 +25,24 @@ import {
   InputNumber,
   message,
 } from 'antd';
-import { QuestionCircleOutlined, SwapOutlined } from '@ant-design/icons';
+import {
+  EyeOutlined,
+  QuestionCircleOutlined,
+  SwapOutlined,
+  LineChartOutlined,
+  BarChartOutlined,
+  PieChartOutlined,
+  NumberOutlined,
+  AppstoreOutlined,
+  DashboardOutlined,
+  TableOutlined,
+  OrderedListOutlined,
+  ClockCircleOutlined,
+  RadarChartOutlined,
+  SortDescendingOutlined,
+  ApartmentOutlined,
+  FundOutlined,
+} from '@ant-design/icons';
 import { useDataSourceManager } from '@/app/ops-analysis/hooks/useDataSource';
 import { useSingleValueConfig } from '@/app/ops-analysis/hooks/useSingleValueConfig';
 import {
@@ -60,10 +78,14 @@ import { ValueFormatConfigSection } from '@/app/ops-analysis/components/ops-anal
 import { ThresholdColorConfigSection } from '@/app/ops-analysis/components/thresholdColorConfigSection';
 import { ValueMappingsConfigSection } from '@/app/ops-analysis/components/valueMappingsConfigSection';
 import ComponentSelector from './widgetSelector';
-
+import {
+  ConfigGroupTitle,
+  ConfigSectionTitle,
+} from './widgetConfig/configTitles';
 import { useTableConfig } from './widgetConfig/hooks/useTableConfig';
 import { TableSettingsSection } from './widgetConfig/sections/tableSettingsSection';
 import { TopNSettingsSection } from './widgetConfig/sections/topNSettingsSection';
+import { NodeGraphSettingsSection } from './widgetConfig/sections/nodeGraphSettingsSection';
 import { GaugeSettingsSection } from './widgetConfig/sections/gaugeSettingsSection';
 import { RadarSettingsSection } from './widgetConfig/sections/radarSettingsSection';
 import { CardListSettingsSection } from './widgetConfig/sections/cardListSettingsSection';
@@ -79,9 +101,11 @@ import {
   shouldShowTableFilterFields,
 } from './widgetConfig/utils/tableSettingsBehavior';
 import {
+  buildWidgetDraftConfig,
   buildWidgetSubmitConfig,
   type WidgetConfigFormValues,
 } from './widgetConfig/utils/submitConfig';
+import WidgetConfigPreview from './widgetConfig/widgetConfigPreview';
 import { useNetworkStatusTopologyConfig } from './widgetConfig/hooks/useNetworkStatusTopologyConfig';
 import { NetworkStatusTopologyDeviceList } from './widgetConfig/sections/networkStatusTopologyDeviceList';
 import {
@@ -110,7 +134,7 @@ interface ViewConfigPropsWithManager extends ViewConfigProps {
 }
 
 const NETWORK_STATUS_TOPOLOGY = 'networkStatusTopology';
-const VALUE_FORMAT_CHART_TYPES = new Set(['line', 'bar', 'pie', 'multiValue']);
+const VALUE_FORMAT_CHART_TYPES = new Set(['line', 'bar', 'pie', 'multiValue', 'nodeGraph']);
 
 interface SelectorLike {
   id?: unknown;
@@ -121,6 +145,45 @@ interface SelectorLike {
 const isSceneWidgetSelection = (item?: SelectorLike | null): boolean => {
   return Boolean(getSceneWidgetSelectionType(item));
 };
+
+const getChartTypeIcon = (type: string) => {
+  switch (type) {
+    case 'line':
+      return <LineChartOutlined />;
+    case 'bar':
+      return <BarChartOutlined />;
+    case 'pie':
+      return <PieChartOutlined />;
+    case 'single':
+      return <NumberOutlined />;
+    case 'multiValue':
+      return <AppstoreOutlined />;
+    case 'gauge':
+      return <DashboardOutlined />;
+    case 'table':
+      return <TableOutlined />;
+    case 'eventTable':
+      return <OrderedListOutlined />;
+    case 'eventTimeline':
+      return <ClockCircleOutlined />;
+    case 'topN':
+      return <SortDescendingOutlined />;
+    case 'radar':
+      return <RadarChartOutlined />;
+    case 'cardList':
+      return <AppstoreOutlined />;
+    case 'topologyMap':
+    case 'networkStatusTopology':
+      return <ApartmentOutlined />;
+    case 'room3D':
+      return <FundOutlined />;
+    default:
+      return <LineChartOutlined />;
+  }
+};
+
+const CHART_TYPE_CHIP =
+  '!m-0 !inline-flex !h-8 !items-center !justify-center !rounded-md !px-2.5 !leading-none before:!hidden [&>span:last-child]:inline-flex [&>span:last-child]:h-full [&>span:last-child]:items-center [&>span:last-child]:gap-1.5 [&>span:last-child]:leading-none';
 
 function getSceneWidgetSelectionType(
   item?: SelectorLike | null,
@@ -135,6 +198,31 @@ function getSceneWidgetSelectionType(
   }
   return undefined;
 }
+
+const buildDataFetchSignature = (config: WidgetConfig | undefined): string => {
+  if (!config) return '';
+  return JSON.stringify({
+    dataSource: config.dataSource,
+    chartType: config.chartType,
+    sceneWidgetType: config.sceneWidgetType,
+    compare: Boolean(config.compare),
+    compareMode: config.compareMode,
+    filterBindings: config.filterBindings,
+    dataSourceParams: Array.isArray(config.dataSourceParams)
+      ? config.dataSourceParams.map((p) => ({ name: p.name, value: p.value }))
+      : [],
+    topNLabelField: config.topNLabelField,
+    topNValueField: config.topNValueField,
+    cardListTitleField: config.cardList?.titleField,
+    networkStatusTopology: config.networkStatusTopology
+      ? {
+        instUuids: config.networkStatusTopology.instUuids,
+        nodeLimit: config.networkStatusTopology.nodeLimit,
+        linkTrafficDisplays: config.networkStatusTopology.linkTrafficDisplays,
+      }
+      : undefined,
+  });
+};
 
 const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   open,
@@ -158,6 +246,19 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   const [dataSourceSelectorVisible, setDataSourceSelectorVisible] = useState(false);
   const [editingInputConfigParam, setEditingInputConfigParam] = useState<ParamItem | null>(null);
   const [widgetParamOverrides, setWidgetParamOverrides] = useState<ParamItem[]>([]);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewSnapshotConfig, setPreviewSnapshotConfig] = useState<WidgetConfig | null>(null);
+  const [previewSnapshotDataSource, setPreviewSnapshotDataSource] = useState<
+    DatasourceItem | undefined
+  >(undefined);
+  const [previewSnapshotFilterDefinitions, setPreviewSnapshotFilterDefinitions] =
+    useState<UnifiedFilterDefinition[]>([]);
+  const [previewSnapshotNamespaceId, setPreviewSnapshotNamespaceId] = useState<
+    number | undefined
+  >(undefined);
+  const [previewDataFetchSignature, setPreviewDataFetchSignature] = useState<string | null>(null);
+  const [previewReloadVersion, setPreviewReloadVersion] = useState(0);
+  const [previewRawData, setPreviewRawData] = useState<unknown>(null);
   const { getSourceDataByApiId } = useDataSourceApi();
   const configRequestIdRef = useRef(0);
   const resolvedParamOptionsRef = useRef(new Map<string, InputOption[]>());
@@ -288,6 +389,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     ['networkStatusTopology', 'nodeLimit'],
     form,
   );
+  const watchedFormValues = Form.useWatch([], form);
 
   const singleValueConfig = useSingleValueConfig({
     form,
@@ -343,6 +445,11 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           selectedFields: [],
           topNLabelField: undefined,
           topNValueField: undefined,
+          nodeGraphIdentityMode: 'ip',
+          nodeGraphSourceField: undefined,
+          nodeGraphTargetField: undefined,
+          nodeGraphValueField: undefined,
+          nodeGraphTargetPortField: undefined,
           unit: undefined,
           unitId: undefined,
           valueMappings: undefined,
@@ -416,6 +523,11 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         selectedFields: [],
         topNLabelField: undefined,
         topNValueField: undefined,
+        nodeGraphIdentityMode: 'ip',
+        nodeGraphSourceField: undefined,
+        nodeGraphTargetField: undefined,
+        nodeGraphValueField: undefined,
+        nodeGraphTargetPortField: undefined,
         unit: undefined,
         unitId: undefined,
         valueMappings: undefined,
@@ -589,6 +701,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       singleValueConfig.setThresholdColors((prev) =>
         prev.length > 0 ? prev : initThresholdColors(undefined),
       );
+    }
+    if (newChartType === 'nodeGraph' && !form.getFieldValue('nodeGraphIdentityMode')) {
+      form.setFieldValue('nodeGraphIdentityMode', 'ip');
     }
     if (surface === 'screen') {
       form.setFieldValue(
@@ -833,6 +948,23 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     if (valueConfig?.topNValueField !== undefined) {
       formValues.topNValueField = valueConfig.topNValueField;
     }
+    if (valueConfig?.nodeGraphIdentityMode !== undefined) {
+      formValues.nodeGraphIdentityMode = valueConfig.nodeGraphIdentityMode;
+    } else if (valueConfig?.chartType === 'nodeGraph') {
+      formValues.nodeGraphIdentityMode = 'ip';
+    }
+    if (valueConfig?.nodeGraphSourceField !== undefined) {
+      formValues.nodeGraphSourceField = valueConfig.nodeGraphSourceField;
+    }
+    if (valueConfig?.nodeGraphTargetField !== undefined) {
+      formValues.nodeGraphTargetField = valueConfig.nodeGraphTargetField;
+    }
+    if (valueConfig?.nodeGraphValueField !== undefined) {
+      formValues.nodeGraphValueField = valueConfig.nodeGraphValueField;
+    }
+    if (valueConfig?.nodeGraphTargetPortField !== undefined) {
+      formValues.nodeGraphTargetPortField = valueConfig.nodeGraphTargetPortField;
+    }
     if (valueConfig?.unit !== undefined) {
       formValues.unit = valueConfig.unit;
     }
@@ -906,6 +1038,14 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     setDataSourceSelectorVisible(false);
     setEditingInputConfigParam(null);
     setWidgetParamOverrides([]);
+    setPreviewOpen(false);
+    setPreviewSnapshotConfig(null);
+    setPreviewSnapshotDataSource(undefined);
+    setPreviewSnapshotFilterDefinitions([]);
+    setPreviewSnapshotNamespaceId(undefined);
+    setPreviewDataFetchSignature(null);
+    setPreviewReloadVersion(0);
+    setPreviewRawData(null);
     networkTopologyConfig.resetInstanceOptions();
     tableConfig.resetTableConfig();
     singleValueConfig.resetSingleValueConfig();
@@ -1036,51 +1176,56 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     }
   }, [tableConfig.displayColumns, tableConfig.displayColumnsError]);
 
-  const handleConfirm = async () => {
-    try {
-      const values: WidgetConfigFormValues = await form.validateFields();
+  const hydrateWidgetFormValues = useCallback(
+    (
+      values: WidgetConfigFormValues,
+      options?: { persistReconcile?: boolean },
+    ): WidgetConfigFormValues => {
+      const persistReconcile = options?.persistReconcile !== false;
+      const next: WidgetConfigFormValues = { ...values };
 
-      if (!isSceneWidgetType(values.sceneWidgetType) && effectiveDataSource?.params?.length) {
-        const formParams = values.params || form.getFieldValue('params') || {};
+      if (
+        !isSceneWidgetType(next.sceneWidgetType) &&
+        effectiveDataSource?.params?.length
+      ) {
+        const formParams = next.params || form.getFieldValue('params') || {};
         const reconciledFormParams = { ...formParams };
-        effectiveDataSource?.params.forEach((param) => {
-          const options = resolvedParamOptionsRef.current.get(param.name);
-          if (!options?.length) return;
+        effectiveDataSource.params.forEach((param) => {
+          const optionsForParam = resolvedParamOptionsRef.current.get(param.name);
+          if (!optionsForParam?.length) return;
           reconciledFormParams[param.name] = reconcileComponentParamValue(
             reconciledFormParams[param.name],
-            options,
+            optionsForParam,
           );
         });
-        if (Object.keys(reconciledFormParams).some(
-          (name) => reconciledFormParams[name] !== formParams[name],
-        )) {
+        if (
+          persistReconcile &&
+          Object.keys(reconciledFormParams).some(
+            (name) => reconciledFormParams[name] !== formParams[name],
+          )
+        ) {
           form.setFieldValue('params', reconciledFormParams);
         }
         const processed = processFormParamsForSubmit(
           reconciledFormParams,
           effectiveDataSource.params,
         );
-        // 合并组件级 inputConfig 覆盖
-        values.dataSourceParams = processed.map((param) => {
+        next.dataSourceParams = processed.map((param) => {
           const override = widgetParamOverrides.find((o) => o.name === param.name);
           return override?.inputConfig !== undefined
             ? { ...param, inputConfig: override.inputConfig }
             : param;
         });
-        delete values.params;
-      }
-
-      if (isTableLikeChartType) {
-        tableConfig.setDisplayColumnsError('');
+        delete next.params;
       }
 
       if (
-        values.sceneWidgetType === 'networkStatusTopology' ||
+        next.sceneWidgetType === 'networkStatusTopology' ||
         chartType === 'networkStatusTopology'
       ) {
         const existingTopology = widgetItem?.valueConfig?.networkStatusTopology;
-        const formTopology = values.networkStatusTopology;
-        values.networkStatusTopology = {
+        const formTopology = next.networkStatusTopology;
+        next.networkStatusTopology = {
           instUuids: formTopology?.instUuids || existingTopology?.instUuids || [],
           nodeLimit: formTopology?.nodeLimit ?? existingTopology?.nodeLimit ?? 100,
           linkTrafficDisplays:
@@ -1099,6 +1244,137 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           linkVertices:
             formTopology?.linkVertices ?? existingTopology?.linkVertices,
         };
+      }
+
+      return next;
+    },
+    [
+      chartType,
+      effectiveDataSource,
+      form,
+      processFormParamsForSubmit,
+      widgetItem?.valueConfig?.networkStatusTopology,
+      widgetParamOverrides,
+    ],
+  );
+
+  const buildCurrentDraftConfig = useCallback((persistReconcile = false): WidgetConfig | undefined => {
+    const values = hydrateWidgetFormValues(
+      form.getFieldsValue(true) as WidgetConfigFormValues,
+      { persistReconcile },
+    );
+    return buildWidgetDraftConfig({
+      values,
+      chartType,
+      showChartThemeMode,
+      showTableFilterFields,
+      selectedFields: singleValueConfig.selectedFields,
+      thresholdColors: singleValueConfig.thresholdColors,
+      filterBindings,
+      displayColumns: tableConfig.displayColumns,
+      filterFields: tableConfig.filterFields,
+      actions,
+    });
+  }, [
+    actions,
+    chartType,
+    filterBindings,
+    form,
+    hydrateWidgetFormValues,
+    showChartThemeMode,
+    showTableFilterFields,
+    singleValueConfig.selectedFields,
+    singleValueConfig.thresholdColors,
+    tableConfig.displayColumns,
+    tableConfig.filterFields,
+  ]);
+
+  const liveDraft = useMemo(() => {
+    return buildCurrentDraftConfig();
+  }, [
+    actions,
+    buildCurrentDraftConfig,
+    chartType,
+    filterBindings,
+    selectedDataSource,
+    singleValueConfig.selectedFields,
+    singleValueConfig.thresholdColors,
+    tableConfig.displayColumns,
+    tableConfig.filterFields,
+    watchedFormValues,
+    widgetParamOverrides,
+  ]);
+
+  const liveDataFetchSignature = useMemo(() => {
+    return buildDataFetchSignature(liveDraft);
+  }, [liveDraft]);
+
+  const widgetPreviewId = `config-preview:${
+    (widgetItem && 'i' in widgetItem && widgetItem.i) ||
+    (widgetItem && 'id' in widgetItem && (widgetItem as { id?: string }).id) ||
+    'new'
+  }`;
+
+  const hasDataFetchChanged =
+    previewDataFetchSignature !== null &&
+    liveDataFetchSignature !== previewDataFetchSignature;
+  const previewStale = hasDataFetchChanged;
+  const effectivePreviewConfig = hasDataFetchChanged
+    ? previewSnapshotConfig
+    : liveDraft || previewSnapshotConfig;
+  // 取数签名变了时，配置、数据源、筛选定义必须一起冻住。
+  // 只冻 config 会让渲染器用旧参数打新数据源（或反过来），触发「未声明参数」。
+  const previewRequestDataSource = hasDataFetchChanged
+    ? previewSnapshotDataSource
+    : effectiveDataSource;
+  const previewRequestFilterDefinitions = hasDataFetchChanged
+    ? previewSnapshotFilterDefinitions
+    : previewFilterDefinitions;
+  const previewRequestNamespaceId = hasDataFetchChanged
+    ? previewSnapshotNamespaceId
+    : effectiveNamespaceId;
+
+  const formDrawerWidth = isNetworkStatusTopology ? 760 : 680;
+  const previewPaneWidth = 480;
+  const drawerWidth = previewOpen
+    ? formDrawerWidth + previewPaneWidth
+    : formDrawerWidth;
+
+  const handlePreview = useCallback(() => {
+    if (!isSceneWidget && !effectiveDataSource) {
+      message.warning(t('dashboard.configPreviewNeedDataSource'));
+      return;
+    }
+    const draft = buildCurrentDraftConfig(true);
+    if (!draft) {
+      message.warning(t('dashboard.configPreviewNeedDataSource'));
+      return;
+    }
+    setPreviewRawData(null);
+    setPreviewSnapshotConfig(draft);
+    setPreviewSnapshotDataSource(effectiveDataSource);
+    setPreviewSnapshotFilterDefinitions(previewFilterDefinitions);
+    setPreviewSnapshotNamespaceId(effectiveNamespaceId);
+    setPreviewDataFetchSignature(buildDataFetchSignature(draft));
+    setPreviewReloadVersion((version) => version + 1);
+    setPreviewOpen(true);
+  }, [
+    buildCurrentDraftConfig,
+    effectiveDataSource,
+    effectiveNamespaceId,
+    isSceneWidget,
+    previewFilterDefinitions,
+    t,
+  ]);
+
+  const handleConfirm = async () => {
+    try {
+      const values: WidgetConfigFormValues = hydrateWidgetFormValues(
+        await form.validateFields(),
+      );
+
+      if (isTableLikeChartType) {
+        tableConfig.setDisplayColumnsError('');
       }
 
       const submitResult = buildWidgetSubmitConfig({
@@ -1154,31 +1430,91 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     <Drawer
       title={t('dashboard.viewConfig')}
       placement="right"
-      width={isNetworkStatusTopology ? 760 : 700}
+      width={drawerWidth}
       open={open}
       maskClosable={false}
       onClose={handleClose}
+      styles={{
+        body: {
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          padding: 0,
+        },
+        footer: {
+          padding: '12px 24px',
+          borderTop: '1px solid var(--color-border-1)',
+        },
+      }}
       footer={
-        <div style={{ textAlign: 'right' }}>
-          <Button type="primary" onClick={handleConfirm}>
-            {t('common.confirm')}
-          </Button>
-          <Button style={{ marginLeft: 8 }} onClick={handleClose}>
-            {t('common.cancel')}
-          </Button>
+        <div className="flex items-center justify-between">
+          <div>
+            <Button
+              data-testid="widget-config-preview-button"
+              icon={<EyeOutlined />}
+              onClick={() => {
+                if (previewOpen) {
+                  setPreviewOpen(false);
+                } else {
+                  handlePreview();
+                }
+              }}
+            >
+              {previewOpen
+                ? t('dashboard.configPreviewCollapse', '收起预览')
+                : t('common.preview', '预览')}
+            </Button>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button onClick={handleClose}>
+              {t('common.cancel')}
+            </Button>
+            <Button type="primary" onClick={handleConfirm}>
+              {t('common.confirm')}
+            </Button>
+          </div>
         </div>
       }
     >
+      <div className="flex min-h-0 flex-1">
+        {previewOpen ? (
+          <aside
+            className="flex h-full min-h-0 w-[480px] shrink-0 flex-col overflow-hidden border-r border-(--color-border-1) bg-(--color-fill-1)/20 p-4"
+            data-testid="widget-config-preview-aside"
+          >
+            <WidgetConfigPreview
+              widgetId={widgetPreviewId}
+              previewed
+              stale={previewStale}
+              config={effectivePreviewConfig}
+              dataSource={previewRequestDataSource}
+              unifiedFilterValues={unifiedFilterValues}
+              filterDefinitions={previewRequestFilterDefinitions}
+              builtinNamespaceId={previewRequestNamespaceId}
+              surface={surface}
+              reloadVersion={previewReloadVersion}
+              rawData={previewRawData}
+              onRawData={setPreviewRawData}
+              liveName={watchedFormValues?.name}
+              liveDescription={watchedFormValues?.description}
+              onRefresh={handlePreview}
+            />
+          </aside>
+        ) : null}
+        <div className="min-w-0 flex-1 overflow-y-auto p-6 bg-(--color-bg)">
       <Form
         form={form}
         layout="vertical"
         initialValues={{ compare: false, compareMode: 'percent' }}
         onValuesChange={handleFormValuesChange}
+        className="space-y-8"
       >
-        <div className="mb-6">
-          <div className="font-bold text-(--color-text-1) mb-4">
-            {t('dashboard.basicSettings')}
-          </div>
+        {/* ================= 1. 基本信息 ================= */}
+        <section>
+          <ConfigSectionTitle>
+            {t('dashboard.basicInfoSection', '基本信息')}
+          </ConfigSectionTitle>
+
           <Form.Item
             label={t('dashboard.widgetName')}
             name="name"
@@ -1186,145 +1522,14 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           >
             <Input placeholder={t('dashboard.inputName')} />
           </Form.Item>
-          <Form.Item name="sceneWidgetType" hidden>
-            <Input />
+
+          <Form.Item label={t('dataSource.describe')} name="description">
+            <Input.TextArea
+              placeholder={t('common.inputMsg')}
+              autoSize={{ minRows: 2, maxRows: 3 }}
+            />
           </Form.Item>
-          {isNetworkStatusTopology ? (
-            <>
-              <Form.Item
-                label={t('dashboard.networkTopoDevices')}
-                name={['networkStatusTopology', 'instUuids']}
-                dependencies={[['networkStatusTopology', 'nodeLimit']]}
-                rules={[
-                  { required: true, message: t('dashboard.networkTopoSelectDevicesRequired') },
-                  {
-                    validator: async (_, value) => {
-                      if (
-                        networkStatusTopologySelectionExceedsLimit(
-                          value,
-                          form.getFieldValue(['networkStatusTopology', 'nodeLimit']),
-                        )
-                      ) {
-                        throw new Error(t('dashboard.networkTopoSelectionExceedsLimit'));
-                      }
-                    },
-                  },
-                ]}
-                tooltip={t('dashboard.networkTopoDevicesHelp')}
-              >
-                <NetworkStatusTopologyDeviceList
-                  nodeLimit={networkTopoNodeLimit}
-                  listedOptions={networkTopologyConfig.instanceOptions}
-                  instanceTotal={networkTopologyConfig.instanceTotal}
-                  instancePage={networkTopologyConfig.instancePage}
-                  instancePageSize={networkTopologyConfig.instancePageSize}
-                  instanceKeyword={networkTopologyConfig.instanceKeyword}
-                  instancesLoading={networkTopologyConfig.instancesLoading}
-                  modelsLoading={networkTopologyConfig.modelsLoading}
-                  modelFilter={networkTopologyConfig.modelFilter}
-                  modelOptions={networkTopologyConfig.modelOptions}
-                  onModelFilterChange={networkTopologyConfig.handleModelFilterChange}
-                  onSearch={networkTopologyConfig.handleInstanceSearch}
-                  onPageChange={networkTopologyConfig.handleInstancePageChange}
-                />
-              </Form.Item>
-              <Form.Item
-                label={t('dashboard.networkTopoNodeLimit')}
-                name={['networkStatusTopology', 'nodeLimit']}
-                initialValue={100}
-                tooltip={t('dashboard.networkTopoNodeLimitHelp')}
-              >
-                <InputNumber
-                  min={1}
-                  max={NETWORK_STATUS_TOPOLOGY_MAX_NODE_LIMIT}
-                  precision={0}
-                  className="w-full"
-                />
-              </Form.Item>
-              <Form.Item
-                label={t('dashboard.networkTopoLinkTraffic')}
-                name={['networkStatusTopology', 'linkTrafficDisplays']}
-                initialValue={['inbound', 'outbound']}
-              >
-                <Checkbox.Group
-                  options={[
-                    {
-                      label: t('dashboard.networkTopoLinkTrafficInbound'),
-                      value: 'inbound',
-                    },
-                    {
-                      label: t('dashboard.networkTopoLinkTrafficOutbound'),
-                      value: 'outbound',
-                    },
-                  ]}
-                />
-              </Form.Item>
-              <Form.Item
-                name={['networkStatusTopology', 'inboundTrafficThresholds']}
-                noStyle
-              >
-                <ThresholdColorListField
-                  t={t}
-                  label={t('dashboard.networkTopoLinkTrafficInboundThresholds')}
-                  extra={t('dashboard.networkTopoTrafficThresholdHint')}
-                />
-              </Form.Item>
-              <Form.Item
-                name={['networkStatusTopology', 'outboundTrafficThresholds']}
-                noStyle
-              >
-                <ThresholdColorListField
-                  t={t}
-                  label={t('dashboard.networkTopoLinkTrafficOutboundThresholds')}
-                  extra={t('dashboard.networkTopoTrafficThresholdHint')}
-                />
-              </Form.Item>
-            </>
-          ) : isSceneWidget ? null : (
-            <>
-              <Form.Item
-                label={t('dashboard.dataSource')}
-                name="dataSource"
-                rules={[{ required: true, message: t('common.selectTip') }]}
-                getValueProps={() => ({
-                  value: selectedDataSource
-                    ? `${selectedDataSource.name}${
-                        selectedDataSource.rest_api
-                          ? `（${selectedDataSource.rest_api}）`
-                          : ''
-                      }`
-                    : '',
-                })}
-              >
-                <Input
-                  readOnly
-                  placeholder={t('common.selectTip')}
-                  suffix={
-                    <SwapOutlined
-                      className="cursor-pointer text-(--color-primary)"
-                      onClick={() => setDataSourceSelectorVisible(true)}
-                    />
-                  }
-                  onClick={() => setDataSourceSelectorVisible(true)}
-                  className="cursor-pointer"
-                />
-              </Form.Item>
-              <Form.Item
-                label={t('dashboard.chartTypeLabel')}
-                name="chartType"
-                rules={[{ required: true, message: t('common.selectTip') }]}
-                initialValue={getDataSourceChartTypes[0]?.value}
-              >
-                <Radio.Group onChange={handleChartTypeChange}>
-                  {getDataSourceChartTypes.map((item: ChartTypeItem) => (
-                    <Radio.Button key={item.value} value={item.value}>
-                      {t(item.label)}
-                    </Radio.Button>
-                  ))}
-                </Radio.Group>
-              </Form.Item>
-            </>
-          )}
+
           {showChartThemeMode && !isNetworkStatusTopology && (
             <Form.Item
               label={t('dashboard.chartThemeMode')}
@@ -1349,6 +1554,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
               />
             </Form.Item>
           )}
+
           {surface === 'screen' && canConfigureScreenWidgetFrame(chartType) && (
             <Form.Item
               label={t('opsAnalysis.screen.widgetAppearance')}
@@ -1371,220 +1577,406 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
               />
             </Form.Item>
           )}
-          <Form.Item label={t('dataSource.describe')} name="description">
-            <Input.TextArea
-              placeholder={t('common.inputMsg')}
-              autoSize={{ minRows: 2, maxRows: 4 }}
-            />
-          </Form.Item>
-        </div>
+        </section>
 
-        {hasQueryParams && (
-          <div className="mb-6">
-            <div className="font-bold text-(--color-text-1) mb-4">
-              {t('dashboard.queryParams')}
-            </div>
-            <DataSourceParamsConfig
-              selectedDataSource={effectiveDataSource}
-              includeFilterTypes={['params', 'fixed']}
-              onEditInputConfig={handleEditInputConfig}
-              onParamOptionsResolved={(param, options) =>
-                reconcileParamWithOptions(param.name, options)
-              }
-            />
-          </div>
-        )}
+        <Form.Item name="sceneWidgetType" hidden>
+          <Input />
+        </Form.Item>
 
-        {shouldShowUnifiedFilterSection && hasUnifiedFilterBindings && (
-          <div className="mb-6">
-            <div className="font-bold text-(--color-text-1) mb-4 flex items-center gap-1">
-              {t('dashboard.unifiedFilterLinkage')}
-              <Tooltip title={t('dashboard.unifiedFilterBindingTip')}>
-                <QuestionCircleOutlined className="text-(--color-text-3) cursor-help" />
-              </Tooltip>
-            </div>
-            <FilterBindingPanel
-              definitions={previewFilterDefinitions}
-              dataSourceParams={selectedDataSource.params}
-              filterBindings={filterBindings}
-              onChange={setFilterBindings}
-            />
-          </div>
-        )}
-
-        {isTableLikeChartType && (
-          <TableSettingsSection
-            t={t}
-            displayColumns={tableConfig.displayColumns}
-            displayColumnOptions={displayColumnOptions}
-            actions={actions}
-            filterFields={tableConfig.filterFields}
-            filterFieldOptions={filterFieldOptions}
-            showFilterFields={showTableFilterFields}
-            showColumnCellStyle={chartType === 'table'}
-            invalidConfiguredFieldKeys={invalidConfiguredFieldKeys}
-            isProbingColumns={tableConfig.isProbingColumns}
-            paramsChangedAfterProbe={tableConfig.paramsChangedAfterProbe}
-            displayColumnsError={tableConfig.displayColumnsError}
-            onAddFilterField={tableConfig.handleAddFilterField}
-            onDeleteFilterField={tableConfig.handleDeleteFilterField}
-            onFilterFieldChange={tableConfig.handleFilterFieldChange}
-            onAddDisplayColumn={tableConfig.handleAddDisplayColumn}
-            onDeleteDisplayColumn={(id) => {
-              const deletingColumn = tableConfig.displayColumns.find(
-                (column) => column.id === id,
-              );
-              tableConfig.handleDeleteDisplayColumn(id);
-              if (deletingColumn?.columnType === 'actions') {
-                setActions((prev) =>
-                  prev.filter(
-                    (action) =>
-                      action.columnKey !== deletingColumn.key,
-                  ),
-                );
-              }
-            }}
-            onDisplayColumnChange={tableConfig.handleDisplayColumnChange}
-            onDisplayColumnStyleChange={
-              tableConfig.handleDisplayColumnStyleChange
-            }
-            onDisplayColumnKeyBlur={tableConfig.handleDisplayColumnKeyBlur}
-            onDisplayColumnDragEnd={tableConfig.handleDisplayColumnDragEnd}
-            onReProbeColumns={tableConfig.handleReProbeColumns}
-            onAddNewFilterField={() =>
-              tableConfig.setFilterFields([
-                ...tableConfig.filterFields,
-                tableConfig.createDefaultFilterField(),
-              ])
-            }
-            onAddNewDisplayColumn={(columnType = 'data') =>
-              tableConfig.setDisplayColumns([
-                ...tableConfig.displayColumns,
-                columnType === 'actions'
-                  ? tableConfig.createDefaultOperationColumn()
-                  : tableConfig.createDefaultDisplayColumn(),
-              ])
-            }
-            onActionsChange={setActions}
-          />
-        )}
-
-        {chartType === 'single' && (
-          <SingleValueSettingsSection
-            t={t}
-            sectionTitle={t('dashboard.displaySettings')}
-            selectedDataSource={selectedDataSource}
-            singleValueTreeData={singleValueConfig.singleValueTreeData}
-            selectedFields={singleValueConfig.selectedFields}
-            loadingSingleValueData={singleValueConfig.loadingSingleValueData}
-            thresholdColors={singleValueConfig.thresholdColors}
-            onFetchSingleValueDataFields={
-              singleValueConfig.fetchSingleValueDataFields
-            }
-            onSingleValueFieldChange={
-              singleValueConfig.handleSingleValueFieldChange
-            }
-            onThresholdChange={singleValueConfig.handleThresholdChange}
-            onThresholdBlur={singleValueConfig.handleThresholdBlur}
-            onAddThreshold={singleValueConfig.addThreshold}
-            onRemoveThreshold={singleValueConfig.removeThreshold}
-            compareAvailable={singleValueConfig.compareAvailable}
-            showDescriptionField
-          />
-        )}
-
-        {chartType === 'gauge' && (
-          <GaugeSettingsSection
-            t={t}
-            sectionTitle={t('dashboard.gaugeSettings')}
-            selectedDataSource={selectedDataSource}
-            singleValueTreeData={singleValueConfig.singleValueTreeData}
-            selectedFields={singleValueConfig.selectedFields}
-            loadingSingleValueData={singleValueConfig.loadingSingleValueData}
-            thresholdColors={singleValueConfig.thresholdColors}
-            onFetchSingleValueDataFields={
-              singleValueConfig.fetchSingleValueDataFields
-            }
-            onSingleValueFieldChange={
-              singleValueConfig.handleSingleValueFieldChange
-            }
-            onThresholdChange={singleValueConfig.handleThresholdChange}
-            onThresholdBlur={singleValueConfig.handleThresholdBlur}
-            onAddThreshold={singleValueConfig.addThreshold}
-            onRemoveThreshold={singleValueConfig.removeThreshold}
-          />
-        )}
-
-        {VALUE_FORMAT_CHART_TYPES.has(chartType) && (
-          <div className="mb-6">
-            <div className="font-medium mb-4">{t('dashboard.displaySettings')}</div>
-            <ValueFormatConfigSection t={t} />
-            {chartType === 'multiValue' && (
-              <>
-                <ThresholdColorConfigSection
-                  t={t}
-                  thresholdColors={singleValueConfig.thresholdColors}
-                  onThresholdChange={singleValueConfig.handleThresholdChange}
-                  onThresholdBlur={singleValueConfig.handleThresholdBlur}
-                  onAddThreshold={singleValueConfig.addThreshold}
-                  onRemoveThreshold={singleValueConfig.removeThreshold}
-                  allowEmpty
-                />
-                <Form.Item
-                  label={t('topology.nodeConfig.valueMappings')}
-                  name="valueMappings"
-                >
-                  <ValueMappingsConfigSection t={t} />
-                </Form.Item>
-              </>
-            )}
-          </div>
-        )}
-
-        {chartType === 'eventTimeline' && (
-          <div className="mb-6">
-            <div className="font-medium mb-4">{t('dashboard.eventTimelineSettings')}</div>
+        {/* ================= 2. 图表配置 / 场景数据 ================= */}
+        {isNetworkStatusTopology ? (
+          <section>
+            <ConfigSectionTitle>
+              {t('dashboard.dataConfigSection', '数据配置')}
+            </ConfigSectionTitle>
             <Form.Item
-              label={t('dashboard.eventTimelineSortOrder')}
-              name={['eventTimeline', 'sortOrder']}
-              initialValue="desc"
+              label={t('dashboard.networkTopoDevices')}
+              name={['networkStatusTopology', 'instUuids']}
+              dependencies={[['networkStatusTopology', 'nodeLimit']]}
+              rules={[
+                { required: true, message: t('dashboard.networkTopoSelectDevicesRequired') },
+                {
+                  validator: async (_, value) => {
+                    if (
+                      networkStatusTopologySelectionExceedsLimit(
+                        value,
+                        form.getFieldValue(['networkStatusTopology', 'nodeLimit']),
+                      )
+                    ) {
+                      throw new Error(t('dashboard.networkTopoSelectionExceedsLimit'));
+                    }
+                  },
+                },
+              ]}
+              tooltip={t('dashboard.networkTopoDevicesHelp')}
             >
-              <Select
+              <NetworkStatusTopologyDeviceList
+                nodeLimit={networkTopoNodeLimit}
+                listedOptions={networkTopologyConfig.instanceOptions}
+                instanceTotal={networkTopologyConfig.instanceTotal}
+                instancePage={networkTopologyConfig.instancePage}
+                instancePageSize={networkTopologyConfig.instancePageSize}
+                instanceKeyword={networkTopologyConfig.instanceKeyword}
+                instancesLoading={networkTopologyConfig.instancesLoading}
+                modelsLoading={networkTopologyConfig.modelsLoading}
+                modelFilter={networkTopologyConfig.modelFilter}
+                modelOptions={networkTopologyConfig.modelOptions}
+                onModelFilterChange={networkTopologyConfig.handleModelFilterChange}
+                onSearch={networkTopologyConfig.handleInstanceSearch}
+                onPageChange={networkTopologyConfig.handleInstancePageChange}
+              />
+            </Form.Item>
+            <Form.Item
+              label={t('dashboard.networkTopoNodeLimit')}
+              name={['networkStatusTopology', 'nodeLimit']}
+              initialValue={100}
+              tooltip={t('dashboard.networkTopoNodeLimitHelp')}
+            >
+              <InputNumber
+                min={1}
+                max={NETWORK_STATUS_TOPOLOGY_MAX_NODE_LIMIT}
+                precision={0}
+                className="w-full"
+              />
+            </Form.Item>
+            <Form.Item
+              label={t('dashboard.networkTopoLinkTraffic')}
+              name={['networkStatusTopology', 'linkTrafficDisplays']}
+              initialValue={['inbound', 'outbound']}
+            >
+              <Checkbox.Group
                 options={[
-                  { label: t('dashboard.eventTimelineSortDesc'), value: 'desc' },
-                  { label: t('dashboard.eventTimelineSortAsc'), value: 'asc' },
+                  {
+                    label: t('dashboard.networkTopoLinkTrafficInbound'),
+                    value: 'inbound',
+                  },
+                  {
+                    label: t('dashboard.networkTopoLinkTrafficOutbound'),
+                    value: 'outbound',
+                  },
                 ]}
               />
             </Form.Item>
-          </div>
-        )}
+            <Form.Item
+              name={['networkStatusTopology', 'inboundTrafficThresholds']}
+              noStyle
+            >
+              <ThresholdColorListField
+                t={t}
+                label={t('dashboard.networkTopoLinkTrafficInboundThresholds')}
+                extra={t('dashboard.networkTopoTrafficThresholdHint')}
+              />
+            </Form.Item>
+            <Form.Item
+              name={['networkStatusTopology', 'outboundTrafficThresholds']}
+              noStyle
+            >
+              <ThresholdColorListField
+                t={t}
+                label={t('dashboard.networkTopoLinkTrafficOutboundThresholds')}
+                extra={t('dashboard.networkTopoTrafficThresholdHint')}
+              />
+            </Form.Item>
+          </section>
+        ) : isSceneWidget ? null : (
+          <section>
+            <ConfigSectionTitle>
+              {t('dashboard.chartConfigSection', '图表配置')}
+            </ConfigSectionTitle>
 
-        {chartType === 'radar' && (
-          <RadarSettingsSection
-            t={t}
-            availableFields={availableFields}
-          />
-        )}
+            <Form.Item
+              label={t('dashboard.dataSource')}
+              name="dataSource"
+              rules={[{ required: true, message: t('common.selectTip') }]}
+              getValueProps={() => ({
+                value: selectedDataSource
+                  ? `${selectedDataSource.name}${
+                      selectedDataSource.rest_api
+                        ? `（${selectedDataSource.rest_api}）`
+                        : ''
+                    }`
+                  : '',
+              })}
+            >
+              <Input
+                readOnly
+                placeholder={t('common.selectTip')}
+                suffix={
+                  <SwapOutlined
+                    className="cursor-pointer text-(--color-primary)"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setDataSourceSelectorVisible(true);
+                    }}
+                  />
+                }
+                onClick={() => setDataSourceSelectorVisible(true)}
+                className="cursor-pointer"
+              />
+            </Form.Item>
 
-        {chartType === 'topN' && (
-          <TopNSettingsSection
-            t={t}
-            sectionTitle={t('dashboard.displaySettings')}
-            selectedDataSource={selectedDataSource}
-            topNLabelFieldOptions={topNLabelFieldOptions}
-            topNValueFieldOptions={topNValueFieldOptions}
-          />
-        )}
+            {hasQueryParams ? (
+              <div className="mb-6">
+                <ConfigGroupTitle>
+                  {t('dashboard.queryParams')}
+                </ConfigGroupTitle>
+                <DataSourceParamsConfig
+                  selectedDataSource={effectiveDataSource}
+                  includeFilterTypes={['params', 'fixed']}
+                  onEditInputConfig={handleEditInputConfig}
+                  onParamOptionsResolved={(param, options) =>
+                    reconcileParamWithOptions(param.name, options)
+                  }
+                />
+              </div>
+            ) : null}
 
-        {chartType === 'cardList' && (
-          <CardListSettingsSection
-            key={resolveCardListSettingsRemountKey(widgetItem)}
-            t={t}
-            availableFields={availableFields}
-          />
-        )}
+            {shouldShowUnifiedFilterSection && hasUnifiedFilterBindings ? (
+              <div className="mb-6">
+                <ConfigGroupTitle
+                  extra={
+                    <Tooltip
+                      title={
+                        <span className="whitespace-pre-line">
+                          {t('dashboard.unifiedFilterBindingTip')}
+                        </span>
+                      }
+                      overlayInnerStyle={{ maxWidth: 360 }}
+                    >
+                      <QuestionCircleOutlined className="cursor-help text-(--color-text-3)" />
+                    </Tooltip>
+                  }
+                >
+                  {t('dashboard.unifiedFilterLinkage')}
+                </ConfigGroupTitle>
+                <FilterBindingPanel
+                  definitions={previewFilterDefinitions}
+                  dataSourceParams={selectedDataSource.params}
+                  filterBindings={filterBindings}
+                  onChange={setFilterBindings}
+                />
+              </div>
+            ) : null}
 
+            <Form.Item
+              label={t('dashboard.chartTypeLabel')}
+              name="chartType"
+              rules={[{ required: true, message: t('common.selectTip') }]}
+              initialValue={getDataSourceChartTypes[0]?.value}
+              className="!mb-5"
+            >
+              <Radio.Group
+                value={chartType}
+                onChange={handleChartTypeChange}
+                className="flex flex-wrap gap-2"
+              >
+                {getDataSourceChartTypes.map((item: ChartTypeItem) => {
+                  const isSelected = chartType === item.value;
+                  return (
+                    <Radio.Button
+                      key={item.value}
+                      value={item.value}
+                      className={`${CHART_TYPE_CHIP} ${
+                        isSelected
+                          ? '!border-(--color-primary) !bg-(--color-primary-bg-active) !text-(--color-primary)'
+                          : '!border-transparent !bg-(--color-fill-2) !text-(--color-text-2) hover:!text-(--color-text-1)'
+                      }`}
+                    >
+                      <span className="inline-flex items-center gap-1.5 leading-none">
+                        <span className="flex h-3.5 w-3.5 items-center justify-center text-[13px] leading-none">
+                          {getChartTypeIcon(item.value)}
+                        </span>
+                        <span className="text-xs leading-none">{t(item.label)}</span>
+                      </span>
+                    </Radio.Button>
+                  );
+                })}
+              </Radio.Group>
+            </Form.Item>
+
+            {isTableLikeChartType && (
+              <TableSettingsSection
+                t={t}
+                displayColumns={tableConfig.displayColumns}
+                displayColumnOptions={displayColumnOptions}
+                actions={actions}
+                filterFields={tableConfig.filterFields}
+                filterFieldOptions={filterFieldOptions}
+                showFilterFields={showTableFilterFields}
+                showColumnCellStyle={chartType === 'table'}
+                invalidConfiguredFieldKeys={invalidConfiguredFieldKeys}
+                isProbingColumns={tableConfig.isProbingColumns}
+                paramsChangedAfterProbe={tableConfig.paramsChangedAfterProbe}
+                displayColumnsError={tableConfig.displayColumnsError}
+                onAddFilterField={tableConfig.handleAddFilterField}
+                onDeleteFilterField={tableConfig.handleDeleteFilterField}
+                onFilterFieldChange={tableConfig.handleFilterFieldChange}
+                onAddDisplayColumn={tableConfig.handleAddDisplayColumn}
+                onDeleteDisplayColumn={(id) => {
+                  const deletingColumn = tableConfig.displayColumns.find(
+                    (column) => column.id === id,
+                  );
+                  tableConfig.handleDeleteDisplayColumn(id);
+                  if (deletingColumn?.columnType === 'actions') {
+                    setActions((prev) =>
+                      prev.filter(
+                        (action) =>
+                          action.columnKey !== deletingColumn.key,
+                      ),
+                    );
+                  }
+                }}
+                onDisplayColumnChange={tableConfig.handleDisplayColumnChange}
+                onDisplayColumnStyleChange={
+                  tableConfig.handleDisplayColumnStyleChange
+                }
+                onDisplayColumnKeyBlur={tableConfig.handleDisplayColumnKeyBlur}
+                onDisplayColumnDragEnd={tableConfig.handleDisplayColumnDragEnd}
+                onReProbeColumns={tableConfig.handleReProbeColumns}
+                onAddNewFilterField={() =>
+                  tableConfig.setFilterFields([
+                    ...tableConfig.filterFields,
+                    tableConfig.createDefaultFilterField(),
+                  ])
+                }
+                onAddNewDisplayColumn={(columnType = 'data') =>
+                  tableConfig.setDisplayColumns([
+                    ...tableConfig.displayColumns,
+                    columnType === 'actions'
+                      ? tableConfig.createDefaultOperationColumn()
+                      : tableConfig.createDefaultDisplayColumn(),
+                  ])
+                }
+                onActionsChange={setActions}
+              />
+            )}
+
+            {chartType === 'single' && (
+              <SingleValueSettingsSection
+                t={t}
+                sectionTitle=""
+                selectedDataSource={selectedDataSource}
+                singleValueTreeData={singleValueConfig.singleValueTreeData}
+                selectedFields={singleValueConfig.selectedFields}
+                loadingSingleValueData={singleValueConfig.loadingSingleValueData}
+                thresholdColors={singleValueConfig.thresholdColors}
+                onFetchSingleValueDataFields={
+                  singleValueConfig.fetchSingleValueDataFields
+                }
+                onSingleValueFieldChange={
+                  singleValueConfig.handleSingleValueFieldChange
+                }
+                onThresholdChange={singleValueConfig.handleThresholdChange}
+                onThresholdBlur={singleValueConfig.handleThresholdBlur}
+                onAddThreshold={singleValueConfig.addThreshold}
+                onRemoveThreshold={singleValueConfig.removeThreshold}
+                compareAvailable={singleValueConfig.compareAvailable}
+                showDescriptionField
+              />
+            )}
+
+            {chartType === 'gauge' && (
+              <GaugeSettingsSection
+                t={t}
+                sectionTitle=""
+                selectedDataSource={selectedDataSource}
+                singleValueTreeData={singleValueConfig.singleValueTreeData}
+                selectedFields={singleValueConfig.selectedFields}
+                loadingSingleValueData={singleValueConfig.loadingSingleValueData}
+                thresholdColors={singleValueConfig.thresholdColors}
+                onFetchSingleValueDataFields={
+                  singleValueConfig.fetchSingleValueDataFields
+                }
+                onSingleValueFieldChange={
+                  singleValueConfig.handleSingleValueFieldChange
+                }
+                onThresholdChange={singleValueConfig.handleThresholdChange}
+                onThresholdBlur={singleValueConfig.handleThresholdBlur}
+                onAddThreshold={singleValueConfig.addThreshold}
+                onRemoveThreshold={singleValueConfig.removeThreshold}
+              />
+            )}
+
+            {chartType === 'nodeGraph' && (
+              <NodeGraphSettingsSection
+                t={t}
+                sectionTitle=""
+                selectedDataSource={selectedDataSource}
+                fieldOptions={topNLabelFieldOptions}
+                valueFieldOptions={topNValueFieldOptions}
+              />
+            )}
+
+            {VALUE_FORMAT_CHART_TYPES.has(chartType) && (
+              <div className="space-y-4">
+                <ValueFormatConfigSection t={t} />
+                {chartType === 'multiValue' && (
+                  <>
+                    <ThresholdColorConfigSection
+                      t={t}
+                      thresholdColors={singleValueConfig.thresholdColors}
+                      onThresholdChange={singleValueConfig.handleThresholdChange}
+                      onThresholdBlur={singleValueConfig.handleThresholdBlur}
+                      onAddThreshold={singleValueConfig.addThreshold}
+                      onRemoveThreshold={singleValueConfig.removeThreshold}
+                      allowEmpty
+                    />
+                    <Form.Item
+                      label={t('topology.nodeConfig.valueMappings')}
+                      name="valueMappings"
+                    >
+                      <ValueMappingsConfigSection t={t} />
+                    </Form.Item>
+                  </>
+                )}
+              </div>
+            )}
+
+            {chartType === 'eventTimeline' && (
+              <Form.Item
+                label={t('dashboard.eventTimelineSortOrder')}
+                name={['eventTimeline', 'sortOrder']}
+                initialValue="desc"
+              >
+                <Select
+                  options={[
+                    { label: t('dashboard.eventTimelineSortDesc'), value: 'desc' },
+                    { label: t('dashboard.eventTimelineSortAsc'), value: 'asc' },
+                  ]}
+                />
+              </Form.Item>
+            )}
+
+            {chartType === 'radar' && (
+              <RadarSettingsSection
+                t={t}
+                availableFields={availableFields}
+              />
+            )}
+
+            {chartType === 'topN' && (
+              <TopNSettingsSection
+                t={t}
+                sectionTitle=""
+                selectedDataSource={selectedDataSource}
+                topNLabelFieldOptions={topNLabelFieldOptions}
+                topNValueFieldOptions={topNValueFieldOptions}
+              />
+            )}
+
+            {chartType === 'cardList' && (
+              <CardListSettingsSection
+                key={resolveCardListSettingsRemountKey(widgetItem)}
+                t={t}
+                availableFields={availableFields}
+              />
+            )}
+          </section>
+        )}
       </Form>
+        </div>
+      </div>
       <ComponentSelector
         visible={dataSourceSelectorVisible}
         onCancel={() => setDataSourceSelectorVisible(false)}

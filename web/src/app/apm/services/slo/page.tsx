@@ -252,19 +252,21 @@ export default function ApmSloPage() {
     {
       title: t('apm.slo.name', '名称'),
       dataIndex: 'name',
+      width: '22%',
       render: (value, row) => (
         <div className="flex min-w-0 items-center gap-2">
-          <EllipsisWithTooltip className="min-w-0 truncate text-[var(--color-text-1)]" text={value} />
+          <EllipsisWithTooltip className="min-w-0 truncate font-medium text-[var(--color-text-1)]" text={value} />
           <EvaluationTag row={row} />
         </div>
       ),
     },
     {
       title: t('apm.slo.target', '目标对象'),
+      width: '26%',
       responsive: ['md'],
       render: (_, row) => (
         <Space direction="vertical" size={2} className="!flex w-full min-w-0">
-          <EllipsisWithTooltip className="truncate" text={`${row.service_namespace ? `${row.service_namespace} / ` : ''}${row.service_name}`} />
+          <EllipsisWithTooltip className="truncate font-medium text-[var(--color-text-1)]" text={`${row.service_namespace ? `${row.service_namespace} / ` : ''}${row.service_name}`} />
           <EllipsisWithTooltip className="truncate text-xs text-[var(--color-text-3)]" text={[row.environment, row.endpoint || t('apm.slo.serviceLevel', '服务级')].join(' · ')} />
         </Space>
       ),
@@ -272,6 +274,7 @@ export default function ApmSloPage() {
     {
       title: t('apm.slo.sliType', 'SLI 类型'),
       dataIndex: 'sli_type',
+      width: '20%',
       responsive: ['xl'],
       render: (value: ApmSliType, row) => (
         <EllipsisWithTooltip

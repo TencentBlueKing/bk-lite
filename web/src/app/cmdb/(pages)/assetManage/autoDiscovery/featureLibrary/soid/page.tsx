@@ -10,6 +10,7 @@ import { getNetworkDeviceOptions } from '@/app/cmdb/constants/professCollection'
 import { Button, Input, Select, Modal, message, Space } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useOidApi } from '@/app/cmdb/api';
+import { useSearchParams } from 'next/navigation';
 
 const { Option } = Select;
 
@@ -25,6 +26,8 @@ interface ListItem {
 
 const OidLibrary: React.FC = () => {
   const { t } = useTranslation();
+  const searchParams = useSearchParams();
+  const oidFromUrl = (searchParams.get('oid') || '').trim();
 
   const { getOidList, deleteOid } = useOidApi();
 
@@ -41,8 +44,8 @@ const OidLibrary: React.FC = () => {
   const [deviceType, setDeviceType] = useState<string[]>([]);
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [operateVisible, setOperateVisible] = useState<boolean>(false);
-  const [searchKey, setSearchKey] = useState<string>('');
-  const [filterType, setFilterType] = useState<string>('version');
+  const [searchKey, setSearchKey] = useState<string>(oidFromUrl);
+  const [filterType, setFilterType] = useState<string>(oidFromUrl ? 'oid' : 'version');
   const [dataList, setDataList] = useState<ListItem[]>([]);
   const [columns, setColumns] = useState<any[]>([]);
   const [currentRow, setCurrentRow] = useState<ListItem | null>(null);

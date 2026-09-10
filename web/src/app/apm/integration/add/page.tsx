@@ -156,34 +156,34 @@ export default function ApmIntegrationAddPage() {
   const integrationGroups = useMemo(() => {
     const copy: Record<string, { description: string; badge?: string; title?: string }> = {
       nodejs: {
-        description: t('apm.integration.nodejsDesc', '零代码自动探针，支持 Express / Nest / Koa / Fastify'),
+        description: t('apm.integration.nodejsDesc', '自动探针，支持 Express / Nest / Koa / Fastify'),
         badge: t('apm.integration.recommended', '推荐'),
       },
       java: {
-        description: t('apm.integration.javaDesc', 'Java Agent 字节码注入，支持 Spring / Dubbo / gRPC'),
+        description: t('apm.integration.javaDesc', '自动探针，支持 Spring / Dubbo / gRPC'),
         badge: t('apm.integration.recommended', '推荐'),
       },
       python: {
-        description: t('apm.integration.pythonDesc', '自动探针接入，支持 Django / Flask / FastAPI'),
+        description: t('apm.integration.pythonDesc', '自动探针，支持 Django / Flask / FastAPI'),
       },
       dotnet: {
-        description: t('apm.integration.dotnetDesc', '自动探针接入，仅支持 Linux x86_64 glibc（Ubuntu / Debian / CentOS 及同类镜像）；不支持 Alpine、ARM64、Windows'),
+        description: t('apm.integration.dotnetDesc', '自动探针，支持 Linux x86_64 glibc'),
       },
       go: {
-        description: t('apm.integration.goDesc', '手动初始化 OpenTelemetry Go SDK，生成完整 Provider 示例'),
+        description: t('apm.integration.goDesc', '手动接入，生成 OpenTelemetry Provider 示例'),
         badge: t('apm.integration.manualSdk', '手动 SDK'),
       },
       'otel-collector': {
-        description: t('apm.integration.otelDesc', '复用自建 Collector，将链路转发到平台 OTLP 端点'),
+        description: t('apm.integration.otelDesc', '转发自建 Collector 链路到平台 OTLP 端点'),
       },
       'ebpf-obi': {
         title: t('apm.integration.ebpfTitle', 'eBPF 自动注入（OBI）'),
-        description: t('apm.integration.ebpfDesc', '无需修改业务代码，通过内核态捕获服务链路'),
+        description: t('apm.integration.ebpfDesc', '内核态自动采集服务链路'),
         badge: t('apm.integration.lowIntrusion', '低侵入'),
       },
       'otel-operator': {
         title: t('apm.integration.k8sTitle', 'Kubernetes 自动注入'),
-        description: t('apm.integration.k8sDesc', '通过 OTel Operator 和 Pod 注解自动注入探针'),
+        description: t('apm.integration.k8sDesc', 'OTel Operator 注解注入，自动接入集群服务'),
       },
     };
     return INTEGRATION_GROUPS.map((group) => ({
@@ -347,12 +347,12 @@ export default function ApmIntegrationAddPage() {
                     key={method.key}
                     aria-label={method.available
                       ? t('apm.integration.methodAria', '{title} 接入', { title: method.title })
-                      : t('apm.integration.methodAriaClosed', '{title} 接入，尚未开放', { title: method.title })}
+                      : t('apm.integration.methodAriaClosed', '{title} 接入，规划中', { title: method.title })}
                     className="min-h-32 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4 text-left transition-colors duration-150 enabled:cursor-pointer enabled:hover:border-[var(--color-primary)] enabled:hover:bg-[var(--color-fill-1)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)] disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={!method.available}
                     title={method.available
                       ? t('apm.integration.selectMethod', '选择 {title} 接入', { title: method.title })
-                      : t('apm.integration.methodClosed', '{title} 接入尚未开放', { title: method.title })}
+                      : t('apm.integration.methodClosed', '{title} 接入规划中', { title: method.title })}
                     type="button"
                     onClick={() => openMethod(method)}
                   >
@@ -364,11 +364,6 @@ export default function ApmIntegrationAddPage() {
                         <div className="min-w-0">
                           <Typography.Title level={5} className="!mb-2 !text-sm">{method.title}</Typography.Title>
                           <Typography.Text type="secondary" className="text-xs leading-5">{method.description}</Typography.Text>
-                          {!method.available ? (
-                            <Typography.Text type="secondary" className="!mt-2 !block !text-xs">
-                              {t('apm.integration.methodUnavailable', '当前 MVP 尚未开放此接入方式。')}
-                            </Typography.Text>
-                          ) : null}
                         </div>
                       </div>
                       <Space direction="vertical" align="end" size={4}>{method.badge ? <Tag color="blue">{method.badge}</Tag> : null}{!method.available ? <Tag>{t('apm.integration.planned', '规划中')}</Tag> : null}</Space>
@@ -393,7 +388,7 @@ export default function ApmIntegrationAddPage() {
         <div className="flex flex-col gap-4 pt-2">
           <div className="rounded-lg bg-[var(--color-fill-1)] p-4">
             <div className="mb-1 flex items-center gap-2"><span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--color-primary)] text-sm font-semibold text-[var(--color-primary-foreground)]">1</span><Typography.Text strong>{t('apm.integration.configTitle', '接入配置')}</Typography.Text></div>
-            <Typography.Text type="secondary" className="mb-4 block text-xs">{t('apm.integration.configHint', '应用 ID、服务名称和版本将映射到标准 OpenTelemetry 资源属性；平台根据所选云区域分配上报端点。')}</Typography.Text>
+            <Typography.Text type="secondary" className="mb-4 block text-xs">{t('apm.integration.configHint', '应用 ID、服务名称和版本将映射到标准 OpenTelemetry 资源属性；平台根据所选云区域分配上报端点，填写后自动生成临时配置。')}</Typography.Text>
             <Form<SnippetForm>
               form={form}
               key={`${selectedMethod?.key ?? 'integration-form'}:${preferredApplicationId ?? ''}`}
@@ -404,6 +399,7 @@ export default function ApmIntegrationAddPage() {
                 service_name: '',
                 service_version: '',
                 environment: 'production',
+                sample_rate: 100,
               }}
               onValuesChange={() => {
                 setSnippet(null);
@@ -416,6 +412,14 @@ export default function ApmIntegrationAddPage() {
                 <Form.Item name="service_name" label={t('apm.integration.serviceName', '服务名称')} rules={[{ required: true, whitespace: true, message: t('apm.integration.serviceNameRequired', '请输入服务名称') }, { max: 256 }]}><Input placeholder={t('apm.integration.serviceNamePlaceholder', 'service.name，例如 checkout')} /></Form.Item>
                 <Form.Item name="service_version" label={t('apm.integration.serviceVersion', '服务版本')} rules={[{ max: 256 }]}><Input placeholder={t('apm.integration.serviceVersionPlaceholder', 'service.version，例如 1.4.0（可选）')} /></Form.Item>
                 <Form.Item name="environment" label={t('apm.integration.deployEnv', '部署环境')} rules={[{ required: true, whitespace: true, message: t('apm.integration.deployEnvRequired', '请输入部署环境') }, { max: 256 }]}><Input placeholder={t('apm.integration.deployEnvPlaceholder', 'deployment.environment，例如 production')} /></Form.Item>
+                <Form.Item name="sample_rate" label={t('apm.integration.sampleRate', '采样率')} rules={[{ required: true, message: t('apm.integration.sampleRateRequired', '请选择采样率') }]}>
+                  <Select
+                    options={[100, 50, 20, 10, 5, 1].map((value) => ({
+                      value,
+                      label: `${value}%`,
+                    }))}
+                  />
+                </Form.Item>
               </div>
               <Form.Item label={t('apm.integration.runtime', '运行方式')} className="!mb-4">
                 <Segmented

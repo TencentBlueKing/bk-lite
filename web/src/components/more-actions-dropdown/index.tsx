@@ -31,6 +31,8 @@ export interface MoreActionsDropdownProps {
   buttonClassName?: string;
   overlayClassName?: string;
   iconStyle?: React.CSSProperties;
+  /** 菜单文字对齐。默认居中，画布等纯文字菜单可传 start。 */
+  labelAlign?: 'center' | 'start';
 }
 
 const MoreActionsDropdown: React.FC<MoreActionsDropdownProps> = ({
@@ -44,6 +46,7 @@ const MoreActionsDropdown: React.FC<MoreActionsDropdownProps> = ({
   buttonClassName,
   overlayClassName,
   iconStyle,
+  labelAlign = 'center',
 }) => {
   const { t } = useTranslation();
   const label = ariaLabel ?? t('common.more');
@@ -64,6 +67,15 @@ const MoreActionsDropdown: React.FC<MoreActionsDropdownProps> = ({
     Promise.resolve(item.onClick?.()).catch(() => undefined);
   };
 
+  const menuOverlayClassName = [
+    overlayClassName,
+    labelAlign === 'start'
+      ? '[&_.ant-dropdown-menu]:!min-w-0 [&_.ant-dropdown-menu]:w-max'
+      : null,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   return (
     <Dropdown
       menu={{
@@ -74,7 +86,13 @@ const MoreActionsDropdown: React.FC<MoreActionsDropdownProps> = ({
               : [item.permission]
             : null;
           const itemNode = (
-            <span className="flex w-full items-center justify-center gap-2 text-center">
+            <span
+              className={
+                labelAlign === 'start'
+                  ? 'flex items-center justify-start gap-2 whitespace-nowrap text-left'
+                  : 'flex w-full items-center justify-center gap-2 text-center'
+              }
+            >
               {item.icon}
               {item.label}
             </span>
@@ -99,7 +117,7 @@ const MoreActionsDropdown: React.FC<MoreActionsDropdownProps> = ({
       }}
       trigger={trigger}
       placement={placement}
-      overlayClassName={overlayClassName}
+      overlayClassName={menuOverlayClassName || undefined}
     >
       <Button
         type={buttonType}

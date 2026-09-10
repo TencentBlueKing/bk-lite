@@ -1,6 +1,7 @@
 """Kubernetes基础资源查询工具"""
 
 import json
+import re
 
 import yaml
 from kubernetes import client
@@ -11,6 +12,91 @@ from langchain_core.tools import tool
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.tools.kubernetes.instance_scope import prepare_point_instance, run_scan_tool
 from apps.opspilot.metis.llm.tools.kubernetes.utils import coerce_bool, coerce_int, prepare_context
+
+_DEFAULT_LOG_HOURS = 24
+_MAX_LOG_HOURS = 168
+_DEFAULT_POD_LOG_LINES = 80
+_MAX_POD_LOG_LINES = 80
+_POD_LOG_RCA_MAX_CHARS = 3500
+_POD_LOG_RCA_TAIL_LINES = 40
+_POD_LOG_NO_RETRY = "这是有效证据，禁止降低 lines 再次调用本工具。"
+_POD_LOG_NO_LINES_RETRY = "禁止降低 lines 再次调用本工具。"
+_POD_LOG_HEAD_TRUNCATION_SUFFIX = "\n...(truncated)"
+_POD_LOG_COMPACT_PREFIX = "【日志已按 RCA 压缩，禁止为获取更多行再次调用本工具。】"
+_POD_LOG_ERROR_RE = re.compile(
+    r"error|exception|traceback|panic|fatal|oomkilled|\boom\b|failed|denied|refused|timeout|crash|resource_does_not_exist",
+    re.I,
+)
+
+
+def _pod_log_since_seconds(hours, *, default=_DEFAULT_LOG_HOURS):
+    """hours -> kubelet sinceSeconds（相对当前时间的滚动窗口）。
+
+    default=None 表示省略 hours 时不限窗，不传 since_seconds。
+    """
+    if default is None and (hours is None or hours == ""):
+        return None
+    fallback = _DEFAULT_LOG_HOURS if default is None else default
+    return coerce_int(hours, fallback, lo=1, hi=_MAX_LOG_HOURS) * 3600
+
+
+def _coerce_pod_log_lines(lines) -> int:
+    return coerce_int(lines, _DEFAULT_POD_LOG_LINES, lo=1, hi=_MAX_POD_LOG_LINES)
+
+
+def _empty_pod_log_message(pod_name, container, *, previous: bool) -> str:
+    if previous:
+        return f"Pod {pod_name} 容器 {container} 没有上一次实例的日志输出。{_POD_LOG_NO_RETRY}"
+    return f"Pod {pod_name} 容器 {container} 没有日志输出。{_POD_LOG_NO_RETRY}"
+
+
+def _unavailable_previous_log_message(pod_name, container) -> str:
+    return f"Pod {pod_name} 容器 {container} 没有可用的 previous 日志。{_POD_LOG_NO_RETRY}"
+
+
+def _cap_pod_logs_head(logs: str, *, max_chars: int = _POD_LOG_RCA_MAX_CHARS) -> str:
+    """tail=false：只做长度上限的头截断，不套「最近日志」式 RCA 尾摘录。"""
+    if not logs or len(logs) <= max_chars:
+        return logs
+    keep = max(0, max_chars - len(_POD_LOG_HEAD_TRUNCATION_SUFFIX))
+    return logs[:keep] + _POD_LOG_HEAD_TRUNCATION_SUFFIX
+
+
+def excerpt_pod_logs_for_rca(logs: str, *, max_chars: int = _POD_LOG_RCA_MAX_CHARS, tail_lines: int = _POD_LOG_RCA_TAIL_LINES) -> str:
+    """把超长容器日志压成 RCA 可用摘录：保住错误行和尾部，避免模型降 lines 重拉。"""
+    if not logs:
+        return logs
+    if len(logs) <= max_chars:
+        return logs
+    lines = logs.split("\n")
+    error_hits = [line for line in lines if _POD_LOG_ERROR_RE.search(line)]
+    if len(error_hits) > 40:
+        error_hits = error_hits[:8] + ["..."] + error_hits[-32:]
+    parts = [_POD_LOG_COMPACT_PREFIX]
+    if error_hits:
+        parts.append("【错误相关行】")
+        parts.extend(error_hits)
+    parts.append("【最近日志】")
+    parts.extend(lines[-tail_lines:])
+    text = "\n".join(parts)
+    if len(text) <= max_chars:
+        return text
+    omitted = "...(earlier logs omitted)\n"
+    keep = max_chars - len(_POD_LOG_COMPACT_PREFIX) - 1 - len(omitted)
+    if keep <= 0:
+        return logs[-max_chars:]
+    return _POD_LOG_COMPACT_PREFIX + "\n" + omitted + text[-keep:]
+
+
+def _finalize_pod_logs(logs, *, pod_name, container, previous: bool, tail: bool, lines: int) -> str:
+    if not tail and logs:
+        log_lines = logs.split("\n")
+        logs = "\n".join(log_lines[:lines])
+    if not logs:
+        return _empty_pod_log_message(pod_name, container, previous=previous)
+    if not tail:
+        return _cap_pod_logs_head(logs)
+    return excerpt_pod_logs_for_rca(logs)
 
 
 @tool()
@@ -474,7 +560,14 @@ def get_kubernetes_resource_yaml(namespace, resource_type, resource_name, instan
 
 @tool()
 def get_kubernetes_pod_logs(
-    namespace, pod_name, container=None, lines: int = 100, tail: bool = True, instance_name=None, config: RunnableConfig = None
+    namespace,
+    pod_name,
+    container=None,
+    lines: int = 80,
+    tail: bool = True,
+    hours: int = 24,
+    instance_name=None,
+    config: RunnableConfig = None,
 ):
     """
     获取Pod容器日志 - 定位应用程序错误
@@ -493,15 +586,16 @@ def get_kubernetes_pod_logs(
     - 自动处理单容器Pod（无需指定容器名）
 
     **日志分析场景：**
-    - CrashLoopBackOff → 查看最后100行，找panic/error
+    - CrashLoopBackOff → 查看最近日志，找panic/error
     - ImagePullBackOff → 日志为空，检查镜像地址
     - OOMKilled → 查看崩溃前日志，分析内存占用
     - 应用错误 → 搜索Exception、Error、Failed关键词
 
     **重要提示：**
     - 本工具只能获取当前运行容器的日志
-    - 如果容器已重启，无法获取上一次的日志（需要--previous参数，暂不支持）
-    - 日志默认最多1MB，超大日志会被截断
+    - 容器已重启时，上一轮日志用 get_kubernetes_previous_pod_logs
+    - 默认只取近 24 小时（滚动窗口），再按 lines 截取；频繁重启先看当天即可
+    - 超长日志会压缩为错误行+尾部；空日志是有效证据，禁止降 lines 重试
 
     Args:
         namespace (str): Pod所在命名空间（必填）
@@ -509,13 +603,11 @@ def get_kubernetes_pod_logs(
         container (str, optional): 容器名称，多容器Pod必须指定
             - None: 自动选择第一个容器（仅适用于单容器Pod）
             - "app": 指定名为app的容器
-        lines (int, optional): 日志行数，默认100
-            - 100: 适合快速查看最近日志
-            - 500: 查看更多上下文
-            - 50: 只看最关键的错误
+        lines (int, optional): 日志行数，默认80，最大80。超长日志由工具压缩，禁止降 lines 重试。
         tail (bool, optional): True=最后N行，False=开头N行，默认True
             - True: 查看最新日志（推荐）
             - False: 查看启动初期日志
+        hours (int, optional): 近 N 小时（滚动窗口），默认24；最大168
         config (RunnableConfig): 工具配置（自动传递）
 
     Returns:
@@ -533,8 +625,9 @@ def get_kubernetes_pod_logs(
     if instance_error:
         return instance_error
     prepare_context(config)
-    lines = coerce_int(lines, 100, lo=1, hi=10000)
+    lines = _coerce_pod_log_lines(lines)
     tail = coerce_bool(tail, True)
+    since_seconds = _pod_log_since_seconds(hours)
     try:
         core_v1 = client.CoreV1Api()
 
@@ -560,20 +653,11 @@ def get_kubernetes_pod_logs(
             name=pod_name,
             namespace=namespace,
             container=container,
+            since_seconds=since_seconds,
             tail_lines=lines if tail else None,
             limit_bytes=None if lines else 1024 * 1024,  # 1MB limit if no line limit
         )
-
-        # 如果获取日志的开头部分，需要手动截取
-        if not tail and logs:
-            log_lines = logs.split("\n")
-            logs = "\n".join(log_lines[:lines])
-
-        # 返回日志内容或空日志提示
-        if not logs:
-            return f"Pod {pod_name} 容器 {container} 没有日志输出"
-
-        return logs
+        return _finalize_pod_logs(logs, pod_name=pod_name, container=container, previous=False, tail=tail, lines=lines)
 
     except ApiException as e:
         error_message = str(e)
@@ -589,17 +673,34 @@ def get_kubernetes_pod_logs(
 
 @tool()
 def get_kubernetes_previous_pod_logs(
-    namespace, pod_name, container=None, lines: int = 100, tail: bool = True, instance_name=None, config: RunnableConfig = None
+    namespace,
+    pod_name,
+    container=None,
+    lines: int = 80,
+    tail: bool = True,
+    hours=None,
+    instance_name=None,
+    config: RunnableConfig = None,
 ):
     """
     获取Pod容器上一次实例的日志，用于重启类故障采集。
 
+    **何时使用此工具：**
+    - 已知具体 Pod，分析频繁重启的上一轮死因
+    - diagnose 已给出 last_state，需要对照崩溃现场日志
+    - 当前轮日志干净，但 restart_count > 0
+
+    **重要提示：**
+    - kubelet 只保留最近一次 previous 日志，不能还原全部历史重启
+    - 不要用本工具扫全集群；必须带 namespace 和 pod_name
+
     Args:
         namespace (str): Pod所在命名空间
         pod_name (str): Pod名称
-        container (str, optional): 容器名称，多容器Pod建议显式指定
-        lines (int, optional): 日志行数，默认100
+        container (str, optional): 容器名称，多容器Pod必须指定
+        lines (int, optional): 日志行数，默认80，最大80。超长由工具压缩；没有 previous 是有效证据，禁止降 lines 重试
         tail (bool, optional): True=最后N行，False=开头N行
+        hours (int, optional): 近 N 小时（滚动窗口）；默认不限窗。仅显式传入时才按 sinceSeconds 过滤
         instance_name (str, optional): 多实例时必须指定集群
         config (RunnableConfig): 工具配置
 
@@ -610,8 +711,9 @@ def get_kubernetes_previous_pod_logs(
     if instance_error:
         return instance_error
     prepare_context(config)
-    lines = coerce_int(lines, 100, lo=1, hi=10000)
+    lines = _coerce_pod_log_lines(lines)
     tail = coerce_bool(tail, True)
+    since_seconds = _pod_log_since_seconds(hours, default=None)
     try:
         core_v1 = client.CoreV1Api()
 
@@ -629,28 +731,34 @@ def get_kubernetes_previous_pod_logs(
         if not container and pod.spec.containers and len(pod.spec.containers) == 1:
             container = pod.spec.containers[0].name
 
-        logs = core_v1.read_namespaced_pod_log(
-            name=pod_name,
-            namespace=namespace,
-            container=container,
-            previous=True,
-            tail_lines=lines if tail else None,
-            limit_bytes=None if lines else 1024 * 1024,
-        )
-
-        if not tail and logs:
-            log_lines = logs.split("\n")
-            logs = "\n".join(log_lines[:lines])
+        log_kwargs = {
+            "name": pod_name,
+            "namespace": namespace,
+            "container": container,
+            "previous": True,
+            "tail_lines": lines if tail else None,
+            "limit_bytes": None if lines else 1024 * 1024,
+        }
+        if since_seconds is not None:
+            log_kwargs["since_seconds"] = since_seconds
+        logs = core_v1.read_namespaced_pod_log(**log_kwargs)
 
         if not logs:
-            return f"Pod {pod_name} 容器 {container} 没有上一次实例的日志输出"
+            if since_seconds is not None:
+                window_hours = since_seconds // 3600
+                return (
+                    f"Pod {pod_name} 容器 {container} 在近 {window_hours} 小时滚动窗口内没有 previous 日志。"
+                    f"这不等于没有 previous 容器；可加大 hours 或不传 hours（不限窗）再查。"
+                    f"{_POD_LOG_NO_LINES_RETRY}"
+                )
+            return _empty_pod_log_message(pod_name, container, previous=True)
 
-        return logs
+        return _finalize_pod_logs(logs, pod_name=pod_name, container=container, previous=True, tail=tail, lines=lines)
 
     except ApiException as e:
         error_message = str(e)
         if "previous terminated container" in error_message or "not found" in error_message.lower():
-            return f"Pod {pod_name} 容器 {container} 没有可用的 previous 日志"
+            return _unavailable_previous_log_message(pod_name, container)
         elif "ContainerNotFound" in error_message:
             return f"在 Pod {pod_name} 中找不到容器 {container}"
         else:

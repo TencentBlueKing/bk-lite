@@ -34,6 +34,8 @@
 | `network` | 是 | `pysnmp.hlapi.asyncio.getCmd/bulkCmd/nextCmd` | system GET 与 probe 合并；接口默认 GETBULK，兼容错误有界回退 GETNEXT；`SnmpEngine` 由 `core.infra.snmp_engine_pool` 按凭据作用域进程级共享，空闲或进程退出时才关闭 dispatcher |
 | `network_config_file` | 是 | `scrapli.AsyncScrapli` + `asyncssh` transport | 原 Netmiko 整轮线程包装已移除；保持 host key 严格校验 |
 | `network_topo` | 是 | `pysnmp.hlapi.asyncio.getCmd/nextCmd/bulkCmd` | SNMP 拓扑采集和 fallback 均直接 `await`，与 `network` 共用同一个共享 `SnmpEngine` 池 |
+| `dell_unity` | 是 | `httpx.AsyncClient.get()` | Unity Unisphere REST Basic + `X-EMC-REST-CLIENT` 分页采集均直接 `await` |
+| `netapp_ontap` | 是 | `httpx.AsyncClient.get()` | ONTAP REST Basic 分页采集均直接 `await` |
 | `oceanstor` | 是 | `httpx.AsyncClient` | 登录、分页采集和登出均直接 `await` |
 | `opengauss` | 是 | 继承 `PostgresqlInfo`，使用 `psycopg.AsyncConnection` | PostgreSQL 兼容协议 |
 | `oracle` | 是 | `oracledb.connect_async()` | 仅 Oracle Thin async 模式属于原生异步 |
@@ -43,7 +45,7 @@
 | `vastbase` | 是 | 继承 `PostgresqlInfo`，使用 `psycopg.AsyncConnection` | PostgreSQL 兼容协议 |
 | `vmware_vc` | 否 | `asyncio.to_thread` + `pyVmomi` | SOAP SDK 同步隔离；需 vSphere REST 覆盖后才能原生异步 |
 
-当前 21 个 protocol executor 中：15 个原生异步，6 个同步隔离。同步隔离项继续受到
+当前 23 个 protocol executor 中：17 个原生异步，6 个同步隔离。同步隔离项继续受到
 `MAX_ACTIVE_TARGETS` 全局边界保护，不新增插件级并发参数。
 
 ## Enterprise protocol executor
@@ -125,4 +127,5 @@ job 插件通过 `SSHPlugin.list_all_resources()` 调用异步 `nats_request()`�
 3. 同步 SDK 必须标记为 `sync` 并在插件内部隔离，不能阻塞 `PluginExecutor` 所在事件循环。
 4. job executor 保持 `remote`，不得因为远端脚本是同步 shell 就改成 `sync`。
 5. 插件改造后必须验证输出契约、超时、取消、连接释放和凭据不进入日志。
-6. 全局容量继续只使用 `MAX_ACTIVE_RUNS`、`MAX_ACTIVE_TARGETS`、`TARGET_TASK_WINDOW`。
+6. 全局容量使用 `MAX_ACTIVE_RUNS`、`MAX_ACTIVE_RUN_TARGETS`、`MAX_ACTIVE_TARGETS`、
+   `TARGET_TASK_WINDOW`；SNMP 不增加独立目标并发参数。

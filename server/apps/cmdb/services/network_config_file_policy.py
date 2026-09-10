@@ -21,12 +21,12 @@ BRAND_DEVICE_TYPE_ALIASES = {
 }
 
 SUPPORTED_BRAND_OPTIONS = [
-    {"label": "华为 / Huawei", "device_type": "huawei"},
-    {"label": "H3C / HP Comware", "device_type": "hp_comware"},
-    {"label": "Cisco", "device_type": "cisco_ios"},
-    {"label": "Juniper", "device_type": "juniper_junos"},
-    {"label": "F5", "device_type": "f5_tmsh"},
-    {"label": "Fortinet", "device_type": "fortinet"},
+    {"label": "华为 / Huawei", "label_en": "Huawei", "device_type": "huawei"},
+    {"label": "H3C / HP Comware", "label_en": "H3C / HP Comware", "device_type": "hp_comware"},
+    {"label": "Cisco", "label_en": "Cisco", "device_type": "cisco_ios"},
+    {"label": "Juniper", "label_en": "Juniper", "device_type": "juniper_junos"},
+    {"label": "F5", "label_en": "F5", "device_type": "f5_tmsh"},
+    {"label": "Fortinet", "label_en": "Fortinet", "device_type": "fortinet"},
 ]
 
 DANGEROUS_EXACT_COMMANDS = {"conf t", "write erase"}
@@ -86,8 +86,15 @@ def resolve_device_type(brand: str | None) -> str:
     return device_type
 
 
-def get_supported_brand_options() -> list[dict]:
-    return [dict(item) for item in SUPPORTED_BRAND_OPTIONS]
+def get_supported_brand_options(locale: str | None = None) -> list[dict]:
+    use_en = str(locale or "").lower().replace("_", "-").startswith("en")
+    return [
+        {
+            "label": item["label_en"] if use_en else item["label"],
+            "device_type": item["device_type"],
+        }
+        for item in SUPPORTED_BRAND_OPTIONS
+    ]
 
 
 def split_commands(raw_commands: str | Iterable[str] | None) -> list[str]:

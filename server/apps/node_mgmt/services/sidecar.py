@@ -25,7 +25,7 @@ from apps.node_mgmt.models.installer import ControllerTaskNode
 from apps.node_mgmt.models.sidecar import Collector, CollectorConfiguration, Node, NodeCollectorConfiguration, NodeOrganization
 from apps.node_mgmt.services.cloudregion import RegionService
 from apps.node_mgmt.services.node_host_metadata import NodeHostMetadataRenderContext
-from apps.node_mgmt.services.node_identity import assert_cloud_ip_available
+from apps.node_mgmt.services.node_identity import assert_cloud_ip_available, nodes_for_cloud_ip
 from apps.node_mgmt.services.sidecar_cache import build_configuration_etag_cache_key, invalidate_node_configuration_etags
 from apps.node_mgmt.tasks.action_task import converge_collector_action_task_for_node
 from apps.node_mgmt.tasks.installer import _matches_install_connectivity_target, converge_controller_install_connectivity_for_node
@@ -254,11 +254,23 @@ class Sidecar:
         return True
 
     @staticmethod
-    def trigger_converge_tasks_if_needed(node_id: str, node_ip: str, status_payload: dict):
-        action_running_exists = CollectorActionTaskNode.objects.filter(
-            node_id=node_id,
-            status="running",
-        ).exists()
+    def trigger_converge_tasks_if_needed(
+        node_id: str,
+        node_ip: str,
+        status_payload: dict,
+        *,
+        skip_action_converge: bool = False,
+    ):
+        # Sidecar 心跳先上报当前采集器状态，再领取本轮下发的 start/restart/stop。
+        # 领取动作的这次上报仍是动作执行前的状态，不能用来结案。
+        action_running_exists = (
+            False
+            if skip_action_converge
+            else CollectorActionTaskNode.objects.filter(
+                node_id=node_id,
+                status="running",
+            ).exists()
+        )
 
         target_filter = Q(**{f"result__{InstallerConstants.INSTALL_NODE_ID_KEY}": node_id})
         if node_ip:
@@ -373,45 +385,121 @@ class Sidecar:
         return ""
 
     @staticmethod
-    def _resolve_reported_ip(node_id: str, reported_ip: str) -> str:
-        """Replace an unusable link-local address with the authenticated install target."""
-        try:
-            reported_address = ipaddress.ip_address(reported_ip)
-        except ValueError:
-            return reported_ip
-        if not reported_address.is_link_local:
-            return reported_ip
+    def _node_attr(existing_node, field, default=""):
+        if existing_node is None:
+            return default
+        if isinstance(existing_node, dict):
+            return existing_node.get(field, default)
+        return getattr(existing_node, field, default)
 
+    @staticmethod
+    def _usable_management_ip(raw_ip: str) -> str:
+        candidate = str(raw_ip or "").strip()
+        if not candidate:
+            return ""
+        try:
+            address = ipaddress.ip_address(candidate)
+        except ValueError:
+            return ""
+        if address.is_link_local or address.is_loopback or address.is_unspecified:
+            return ""
+        return candidate
+
+    @staticmethod
+    def _install_target_ip(node_id: str) -> str:
         task_node = (
             ControllerTaskNode.objects.filter(
                 **{f"result__{InstallerConstants.INSTALL_NODE_ID_KEY}": node_id},
                 task__type="install",
-                os=NodeConstants.WINDOWS_OS,
             )
+            .exclude(ip="")
             .order_by("-id")
             .first()
         )
-        if not task_node or not task_node.ip:
-            return reported_ip
-        try:
-            target_address = ipaddress.ip_address(task_node.ip)
-        except ValueError:
-            return reported_ip
-        if target_address.is_link_local or target_address.is_loopback or target_address.is_unspecified:
-            return reported_ip
-        logger.info("Use authenticated Windows install target IP for link-local node %s", node_id)
-        return task_node.ip
+        if not task_node:
+            return ""
+        return Sidecar._usable_management_ip(task_node.ip)
+
+    @staticmethod
+    def _identity_ip_conflicts(existing_node, candidate_ip: str) -> bool:
+        node_id = Sidecar._node_attr(existing_node, "id")
+        cloud_region_id = Sidecar._node_attr(existing_node, "cloud_region_id")
+        if cloud_region_id in (None, ""):
+            return False
+        return any(match.id != node_id for match in nodes_for_cloud_ip(cloud_region_id, candidate_ip))
+
+    @staticmethod
+    def _adopt_existing_identity_ip(existing_node, candidate_ip: str, reported_ip: str, reason: str) -> str:
+        node_id = Sidecar._node_attr(existing_node, "id")
+        existing_ip = str(Sidecar._node_attr(existing_node, "ip") or "")
+        if not candidate_ip or candidate_ip == existing_ip:
+            return existing_ip or candidate_ip
+        if Sidecar._identity_ip_conflicts(existing_node, candidate_ip):
+            logger.warning(
+                "Skip %s IP update for node %s because IP is taken",
+                reason,
+                node_id,
+            )
+            return existing_ip
+        logger.info(
+            "Update node %s IP via %s reported_ip=%s identity_ip=%s",
+            node_id,
+            reason,
+            reported_ip,
+            candidate_ip,
+        )
+        return candidate_ip
+
+    @staticmethod
+    def _resolve_reported_ip(node_id: str, reported_ip: str, existing_node=None) -> str:
+        """Resolve Node.ip from install target, sidecar report, and persisted node type."""
+        install_ip = Sidecar._install_target_ip(node_id)
+        reported = str(reported_ip or "").strip()
+
+        if existing_node is None:
+            if install_ip and install_ip != reported:
+                logger.info(
+                    "Use install target IP for new node %s reported_ip=%s install_ip=%s",
+                    node_id,
+                    reported,
+                    install_ip,
+                )
+            return install_ip or reported
+
+        if Sidecar._node_attr(existing_node, "node_type") == ControllerConstants.NODE_TYPE_CONTAINER:
+            return Sidecar._adopt_existing_identity_ip(existing_node, reported, reported, "container_report")
+
+        existing_ip = str(Sidecar._node_attr(existing_node, "ip") or "")
+        if install_ip:
+            return Sidecar._adopt_existing_identity_ip(existing_node, install_ip, reported, "install_target")
+        return existing_ip or reported
 
     @staticmethod
     def _cached_heartbeat_updates(node_id: str, node_details: dict) -> tuple[dict, str, bool]:
         """Build the bounded metadata update allowed on an ETag cache hit."""
         request_data = dict(node_details)
-        existing_node = Node.objects.filter(id=node_id).values("ip", "operating_system", "cpu_architecture").first() or {}
+        existing_node = (
+            Node.objects.filter(id=node_id)
+            .values(
+                "id",
+                "ip",
+                "operating_system",
+                "cpu_architecture",
+                "node_type",
+                "cloud_region_id",
+            )
+            .first()
+            or {}
+        )
         for field in ("ip", "operating_system"):
             if not request_data.get(field):
                 request_data[field] = existing_node.get(field, "")
 
-        resolved_ip = Sidecar._resolve_reported_ip(node_id, request_data.get("ip", ""))
+        resolved_ip = Sidecar._resolve_reported_ip(
+            node_id,
+            request_data.get("ip", ""),
+            existing_node=existing_node or None,
+        )
         ip_changed = bool(existing_node) and resolved_ip != existing_node.get("ip", "")
 
         updates = {
@@ -519,6 +607,20 @@ class Sidecar:
             return Node.objects.create(**request_data), node_id, True
 
     @staticmethod
+    def _consume_deferred_module_push(node):
+        """sidecar 首次建节点钩子：按安装勾选补推 CMDB/监控。失败不阻断心跳。"""
+        from apps.node_mgmt.services.module_push import ModulePushService
+
+        try:
+            ModulePushService.consume_deferred_push_for_node(node)
+        except Exception as exc:
+            logger.exception(
+                "[ModulePush] deferred consume failed node_id=%s failed_stage=deferred_consume error_type=%s",
+                getattr(node, "id", None),
+                type(exc).__name__,
+            )
+
+    @staticmethod
     def _refresh_existing_sidecar_node(node, node_id, request_data):
         # Existing node organization ownership is managed by the server/UI.
         # Sidecar may heartbeat with stale group tags before sidecar.yaml is
@@ -569,10 +671,10 @@ class Sidecar:
 
         # 操作系统转小写
         request_data.update(operating_system=request_data["operating_system"].lower())
-        request_data.update(ip=Sidecar._resolve_reported_ip(node_id, request_data.get("ip", "")))
 
         # 更新或创建 Sidecar 信息
         node = Node.objects.filter(id=node_id).first()
+        request_data.update(ip=Sidecar._resolve_reported_ip(node_id, request_data.get("ip", ""), existing_node=node))
         request_data.update(
             cpu_architecture=Sidecar._fallback_cpu_architecture(
                 node_id,
@@ -636,6 +738,7 @@ class Sidecar:
             if created:
                 Sidecar.asso_groups(node_id, tags_data.get(ControllerConstants.GROUP_TAG, []))
                 Sidecar.create_default_config(node, node_types)
+                Sidecar._consume_deferred_module_push(node)
 
         if not created:
             Sidecar._refresh_existing_sidecar_node(node, node_id, request_data)
@@ -656,7 +759,9 @@ class Sidecar:
 
         # 节点操作信息
         action_obj = new_obj.action_set.first()
+        actions_delivered = False
         if action_obj:
+            actions_delivered = True
             response_data.update(actions=action_obj.action)
 
             for action_item in action_obj.action:
@@ -756,7 +861,12 @@ class Sidecar:
 
         # 返回响应
         node_status = request_data.get("status", {})
-        Sidecar.trigger_converge_tasks_if_needed(node_id, new_obj.ip, node_status)
+        Sidecar.trigger_converge_tasks_if_needed(
+            node_id,
+            new_obj.ip,
+            node_status,
+            skip_action_converge=actions_delivered,
+        )
         return EncryptedJsonResponse(status=202, data=response_data, headers={"ETag": new_etag}, request=request)
 
     @staticmethod

@@ -33,12 +33,12 @@ from apps.operation_analysis.services.network_topology import canvas_config
 from apps.operation_analysis.services.network_topology.weops_adapter import WEOPS_TOKEN_INVALID, WeOpsTopologyAdapterError
 from apps.operation_analysis.views.network_topology_view import NetworkTopologyViewSet
 
-INST_UUID_10001 = "00000000-0000-4000-8000-000000010001"
-INST_UUID_10002 = "00000000-0000-4000-8000-000000010002"
-INST_UUID_383680 = "00000000-0000-4000-8000-000000383680"
-INST_UUID_1 = "00000000-0000-4000-8000-000000000001"
-IFACE_UUID_90001 = "00000000-0000-4000-8000-000000090001"
-IFACE_UUID_90002 = "00000000-0000-4000-8000-000000090002"
+INST_ID_10001 = 10001
+INST_ID_10002 = 10002
+INST_ID_383680 = 383680
+INST_ID_1 = 1
+IFACE_ID_90001 = 90001
+IFACE_ID_90002 = 90002
 
 # --------------------------------------------------------------------------- #
 # Helpers                                                                       #
@@ -369,8 +369,8 @@ def test_weops_link_runtime_preview_returns_single_link_runtime(monkeypatch, aut
     topology = _make_topology()
     topology.view_sets = {
         "nodes": [
-            _node_payload("node-1", "bk_switch", INST_UUID_10001),
-            _node_payload("node-2", "bk_router", INST_UUID_10002),
+            _node_payload("node-1", "bk_switch", INST_ID_10001),
+            _node_payload("node-2", "bk_router", INST_ID_10002),
         ],
         "links": [],
     }
@@ -434,12 +434,12 @@ def test_weops_link_runtime_preview_returns_single_link_runtime(monkeypatch, aut
 # --------------------------------------------------------------------------- #
 
 
-def _node_payload(node_id, bk_obj_id="bk_switch", bk_inst_uuid=INST_UUID_10001):
+def _node_payload(node_id, bk_obj_id="bk_switch", bk_inst_id=INST_ID_10001):
     return {
         "id": node_id,
         "bk_obj_id": bk_obj_id,
-        "bk_inst_uuid": bk_inst_uuid,
-        "bk_inst_name": f"{bk_obj_id}-{bk_inst_uuid}",
+        "bk_inst_id": bk_inst_id,
+        "bk_inst_name": f"{bk_obj_id}-{bk_inst_id}",
         "ip_addr": "10.0.0.1",
         "network_collect_task_id": 12,
         "network_collect_instance_id": 345,
@@ -459,8 +459,8 @@ def _link_payload(link_id, source, target):
         "is_draft": False,
         "port_pairs": [
             {
-                "source_interface": {"bk_obj_id": "bk_interface", "bk_inst_uuid": IFACE_UUID_90001, "interface_name": "GigE0/1"},
-                "target_interface": {"bk_obj_id": "bk_interface", "bk_inst_uuid": IFACE_UUID_90002, "interface_name": "GigE0/1"},
+                "source_interface": {"bk_obj_id": "bk_interface", "bk_inst_id": IFACE_ID_90001, "interface_name": "GigE0/1"},
+                "target_interface": {"bk_obj_id": "bk_interface", "bk_inst_id": IFACE_ID_90002, "interface_name": "GigE0/1"},
             }
         ],
         "style": {},
@@ -475,7 +475,7 @@ def test_put_config_validates_and_persists_view_sets(authenticated_user):
     payload = {
         "nodes": [
             _node_payload("node-1"),
-            _node_payload("node-2", "bk_router", INST_UUID_10002),
+            _node_payload("node-2", "bk_router", INST_ID_10002),
         ],
         "links": [_link_payload("link-1", "node-1", "node-2")],
     }
@@ -494,7 +494,7 @@ def test_put_config_validates_and_persists_view_sets(authenticated_user):
     assert response.status_code == status.HTTP_200_OK
     topology.refresh_from_db()
     assert {n["id"] for n in canvas_config.dump(topology)["nodes"]} == {"node-1", "node-2"}
-    assert body["data"]["links"][0]["port_pairs"][0]["source_interface"]["bk_inst_uuid"] == IFACE_UUID_90001
+    assert body["data"]["links"][0]["port_pairs"][0]["source_interface"]["bk_inst_id"] == IFACE_ID_90001
 
 
 @pytest.mark.django_db
@@ -502,7 +502,7 @@ def test_get_config_returns_persisted_view_sets(authenticated_user):
     authenticated_user.is_superuser = True
     topology = _make_topology()
     topology.view_sets = {
-        "nodes": [_node_payload("node-1"), _node_payload("node-2", "bk_router", INST_UUID_10002)],
+        "nodes": [_node_payload("node-1"), _node_payload("node-2", "bk_router", INST_ID_10002)],
         "links": [],
     }
     topology.save()
@@ -553,7 +553,7 @@ def test_delete_node_endpoint_cascades_to_links(authenticated_user):
     authenticated_user.is_superuser = True
     topology = _make_topology()
     topology.view_sets = {
-        "nodes": [_node_payload("node-1"), _node_payload("node-2", "bk_router", INST_UUID_10002)],
+        "nodes": [_node_payload("node-1"), _node_payload("node-2", "bk_router", INST_ID_10002)],
         "links": [_link_payload("link-1", "node-1", "node-2")],
     }
     topology.save()
@@ -668,7 +668,7 @@ def test_weops_proxy_node_interfaces_decodes_node_ref(authenticated_user, monkey
 
     node_ref = {
         "bk_obj_id": "bk_switch",
-        "bk_inst_uuid": INST_UUID_383680,
+        "bk_inst_id": INST_ID_383680,
         "network_collect_task_id": 170,
         "network_collect_instance_id": 1935,
         "plugin_template_id": 1934,
@@ -717,7 +717,7 @@ def test_weops_proxy_dimension_values_forwards_payload(authenticated_user, monke
         f"/operation_analysis/api/network_topology/{topology.id}/weops/dimension_values/",
         authenticated_user,
         data={
-            "node_ref": {"bk_obj_id": "bk_switch", "bk_inst_uuid": INST_UUID_1},
+            "node_ref": {"bk_obj_id": "bk_switch", "bk_inst_id": INST_ID_1},
             "metric_ref": {"metric_field": "ifHCInOctets", "result_table_id": "rt"},
             "dimension_keys": ["ifDescr"],
         },
@@ -727,7 +727,7 @@ def test_weops_proxy_dimension_values_forwards_payload(authenticated_user, monke
     assert response.status_code == status.HTTP_200_OK
     assert log[0][0] == "list_dimension_values"
     node_ref, metric_ref, keys = log[0][1], log[0][2], log[0][3]
-    assert node_ref == {"bk_obj_id": "bk_switch", "bk_inst_uuid": INST_UUID_1}
+    assert node_ref == {"bk_obj_id": "bk_switch", "bk_inst_id": INST_ID_1}
     assert metric_ref == {"metric_field": "ifHCInOctets", "result_table_id": "rt"}
     assert keys == ["ifDescr"]
 

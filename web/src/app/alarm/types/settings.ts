@@ -181,6 +181,8 @@ export interface EnrichmentRuleListItem {
   output_projection: EnrichmentProjectionItem[];
   on_multiple: 'first' | 'merge' | 'list';
   namespace: string;
+  preset_key: string;
+  is_builtin: boolean;
   created_at: string;
 }
 

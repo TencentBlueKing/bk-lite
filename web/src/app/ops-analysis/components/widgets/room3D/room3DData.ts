@@ -25,6 +25,8 @@ export interface Room3DRack {
   conflict_racks?: Room3DRack[];
 }
 
+export type Room3DAlarmSeverity = 'critical' | 'error' | 'warning';
+
 export interface Room3DDevice {
   device_id: string;
   device_name: string;
@@ -32,9 +34,189 @@ export interface Room3DDevice {
   rack_u_start?: number | null;
   u_size?: number | null;
   status?: string | null;
+  /** false / missing → treat as unbound for backward compatibility */
+  monitor_bound?: boolean;
+  alarm_unavailable?: boolean;
+  active_alarm_count?: number | null;
+  highest_severity?: Room3DAlarmSeverity | null;
 }
 
 export type Room3DRenderableDevice = Room3DDevice;
+
+export interface Room3DRackAlarmSummary {
+  count: number;
+  highest_severity: Room3DAlarmSeverity | null;
+}
+
+const ROOM3D_ALARM_SEVERITIES: readonly Room3DAlarmSeverity[] = [
+  'critical',
+  'error',
+  'warning',
+];
+
+const ROOM3D_SEVERITY_RANK: Record<Room3DAlarmSeverity, number> = {
+  critical: 3,
+  error: 2,
+  warning: 1,
+};
+
+const isRoom3DAlarmSeverity = (value: unknown): value is Room3DAlarmSeverity =>
+  typeof value === 'string' &&
+  (ROOM3D_ALARM_SEVERITIES as readonly string[]).includes(value);
+
+const normalizeRoom3DAlarmFields = (
+  device: Record<string, unknown>,
+): Pick<
+  Room3DDevice,
+  'monitor_bound' | 'alarm_unavailable' | 'active_alarm_count' | 'highest_severity'
+> => {
+  const monitor_bound = device.monitor_bound === true;
+  const alarm_unavailable = device.alarm_unavailable === true;
+
+  let active_alarm_count: number | null = null;
+  if (
+    typeof device.active_alarm_count === 'number' &&
+    Number.isInteger(device.active_alarm_count) &&
+    device.active_alarm_count >= 0
+  ) {
+    active_alarm_count = device.active_alarm_count;
+  }
+
+  const highest_severity = isRoom3DAlarmSeverity(device.highest_severity)
+    ? device.highest_severity
+    : null;
+
+  // Coerce to Spec four-state table; reject illegal combinations.
+  if (alarm_unavailable) {
+    return {
+      monitor_bound,
+      alarm_unavailable: true,
+      active_alarm_count: null,
+      highest_severity: null,
+    };
+  }
+  if (!monitor_bound) {
+    return {
+      monitor_bound: false,
+      alarm_unavailable: false,
+      active_alarm_count: null,
+      highest_severity: null,
+    };
+  }
+  if (active_alarm_count === null) {
+    return {
+      monitor_bound: true,
+      alarm_unavailable: true,
+      active_alarm_count: null,
+      highest_severity: null,
+    };
+  }
+  if (active_alarm_count <= 0) {
+    return {
+      monitor_bound: true,
+      alarm_unavailable: false,
+      active_alarm_count: 0,
+      highest_severity: null,
+    };
+  }
+  return {
+    monitor_bound: true,
+    alarm_unavailable: false,
+    active_alarm_count,
+    highest_severity,
+  };
+};
+
+/** Glow only for available devices with a positive active alarm count. */
+export const deviceHasAlarmGlow = (
+  device: Pick<Room3DDevice, 'active_alarm_count'> &
+    Partial<Pick<Room3DDevice, 'alarm_unavailable'>>,
+): boolean =>
+  device.alarm_unavailable !== true &&
+  typeof device.active_alarm_count === 'number' &&
+  device.active_alarm_count > 0;
+
+export const formatRoom3DSeverityLabel = (
+  severity: Room3DAlarmSeverity | null | undefined,
+  translate: (id: string) => string,
+): string => {
+  if (!severity) {
+    return '';
+  }
+  return translate(`dashboard.application3DSeverity_${severity}`);
+};
+
+/** Sidebar active-alarm value for the four Spec states. */
+export const formatRoom3DDeviceAlarmCountValue = (
+  device: Pick<
+    Room3DDevice,
+    'monitor_bound' | 'alarm_unavailable' | 'active_alarm_count'
+  >,
+  translate: (id: string) => string,
+): string => {
+  if (device.alarm_unavailable) {
+    return translate('dashboard.room3DAlarmUnavailable');
+  }
+  if (!device.monitor_bound) {
+    return translate('dashboard.room3DMonitorUnbound');
+  }
+  const count = device.active_alarm_count ?? 0;
+  if (count <= 0) {
+    return translate('dashboard.room3DNoAlarms');
+  }
+  return `${count}${translate('dashboard.room3DCountUnit')}`;
+};
+
+/** Second sidebar row: highest severity only when bound, available, and count > 0. */
+export const shouldShowRoom3DDeviceHighestSeverity = (
+  device: Pick<
+    Room3DDevice,
+    | 'monitor_bound'
+    | 'alarm_unavailable'
+    | 'active_alarm_count'
+    | 'highest_severity'
+  >,
+): boolean =>
+  !device.alarm_unavailable &&
+  device.monitor_bound === true &&
+  (device.active_alarm_count ?? 0) > 0 &&
+  isRoom3DAlarmSeverity(device.highest_severity);
+
+export const aggregateRackAlarmSummary = (
+  devices: ReadonlyArray<
+    Pick<Room3DDevice, 'active_alarm_count' | 'highest_severity'> &
+      Partial<Room3DDevice>
+  >,
+): Room3DRackAlarmSummary => {
+  let count = 0;
+  let highest_severity: Room3DAlarmSeverity | null = null;
+  let highestRank = 0;
+
+  devices.forEach((device) => {
+    if (
+      device.alarm_unavailable === true ||
+      typeof device.active_alarm_count !== 'number' ||
+      !Number.isFinite(device.active_alarm_count)
+    ) {
+      // null / unavailable contribute neither count nor severity
+    } else {
+      count += device.active_alarm_count;
+    }
+    if (
+      !deviceHasAlarmGlow(device) ||
+      !isRoom3DAlarmSeverity(device.highest_severity)
+    ) {
+      return;
+    }
+    const rank = ROOM3D_SEVERITY_RANK[device.highest_severity];
+    if (rank > highestRank) {
+      highestRank = rank;
+      highest_severity = device.highest_severity;
+    }
+  });
+
+  return { count, highest_severity };
+};
 
 export type Room3DValidationResult =
   | { ok: true; data: Room3DResponse }
@@ -142,6 +324,7 @@ const normalizeRoom3DDevices = (
           : device.status === null
             ? null
             : undefined,
+      ...normalizeRoom3DAlarmFields(device),
     });
   }
 

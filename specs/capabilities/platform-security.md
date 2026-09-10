@@ -13,6 +13,7 @@
 
 - 自定义用户模型 `base.User`,多后端(Session / API Secret / 标准)。
 - Web → 后端经 `/api/proxy/core/api/login/`，统一由现行认证辅助函数设置 `bklite_token` cookie；具体函数名以当前代码为准。
+- Legacy 外部站点登录（bklite.ai / bklite.cn playground）：回跳 URL **不得**携带 JWT。服务端按 `LEGACY_THIRD_LOGIN_ALLOWED_CALLBACK_HOSTS`（默认空=禁用）校验回调 host 后签发一次性 `bk_lite_code`，外站再 POST `/api/proxy/core/api/legacy_third_login/exchange/` 兑 token。authorize/exchange 属登录链路，**不走** OpenAPI 网关。
 - `bk_lite_login` 是内部函数,**不暴露为 URL 路由**。
 - 认证源 / SSO 经 NATS 接入，接口规范见 [SSO NATS 接入规格](sso-nats-integration.md)。
 
@@ -26,7 +27,7 @@
 
 ## 4. 外部输入与出站连接
 
-- **用户可配置的出站目标必须经过统一策略**:REST、数据库、Webhook 等目标在 DNS 解析、重定向和实际连接阶段均须校验;允许范围与存量默认行为必须在 capability 或 change spec 中明确,不得由各调用点自行硬编码或隐式放行。
+- **用户可配置的出站目标必须经过统一策略**:REST、数据库、Webhook 等目标在 DNS 解析、重定向和实际连接阶段均须校验;允许范围与存量默认行为必须在 capability 或 change spec 中明确,不得由各调用点自行硬编码或隐式放行。Stargazer 配置采集与 IP 预检不对采集目标做 CIDR/域名白名单拦截；这与 Server Webhook/SSRF 内网白名单不是同一套策略。
 - **运营分析 Python 转换不得共享 Server 出站权**:`TransformExecutor` 仅调用独立 Runner；Runner 不接收数据源凭据、不访问业务网/公网；须服务间认证、可杀进程超时、V1 单副本单 Worker；脚本 import 白名单只作能力限制，不是安全边界。证据：`specs/changes/ops-analysis-data-connection-transform/spec.md`、`agents/ops-analysis-transform-runner/`、`services/transform/`。
 - **可膨胀输入必须在分配前设置多维上界**:图片、压缩包和归档文件同时限制编码大小、条目数、解码后尺寸/像素及预计内存,不得只限制请求体或压缩大小。
 - **初始凭据必须有受控交付和恢复路径**:随机凭据须支持安全交付、首次轮换和恢复;生成、存储或解密失败时不得回退到固定弱密码、明文或可预测默认值。

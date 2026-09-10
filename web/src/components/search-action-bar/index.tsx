@@ -21,21 +21,22 @@ const SearchActionBar: React.FC<SearchActionBarProps> = ({
   spacing = 'default',
 }) => {
   const { className: rawSearchClassName, allowClear, enterButton, ...restSearchProps } = searchProps;
-  const spacingClassName = spacing === 'flush' ? 'mb-0' : 'mb-4';
+  const spacingClassName = spacing === 'flush' ? '!mb-0' : undefined;
 
   return (
     <ToolbarSplitShell
-      className={`${spacingClassName} ${className}`.trim()}
-      leadingClassName="flex-1"
-      leading={(
-        <Search
-          allowClear={allowClear ?? true}
-          enterButton={enterButton ?? true}
-          className={`w-60 ${rawSearchClassName || ''} ${searchClassName}`.trim()}
-          {...restSearchProps}
-        />
+      className={`${spacingClassName || ''} ${className}`.trim()}
+      trailing={(
+        <>
+          <Search
+            allowClear={allowClear ?? true}
+            enterButton={enterButton ?? true}
+            className={`w-60 ${rawSearchClassName || ''} ${searchClassName}`.trim()}
+            {...restSearchProps}
+          />
+          {actions}
+        </>
       )}
-      trailing={actions}
     />
   );
 };

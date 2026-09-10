@@ -20,6 +20,7 @@ from pydantic import BaseModel as PydanticBaseModel
 from pydantic import Field as PydanticField
 
 from apps.core.logger import opspilot_logger as logger
+from apps.core.logger import safe_exception_info
 from apps.opspilot.metis.llm.chain.approval_tools import ApprovalToolsMixin, _build_approval_tool, _build_choice_tool  # noqa: E402,F401
 from apps.opspilot.metis.llm.chain.deepagent_assembly import (  # noqa: E402,F401
     DeepAgentAssemblyMixin,
@@ -2329,11 +2330,25 @@ class ToolsNodes(
                 ToolPlanningError,
                 classify_tool_failure_kind,
                 drop_k8s_followup_steps_after_unresolved_target,
+                extract_llm_upstream_request_id,
                 is_context_size_error,
+                is_llm_upstream_error,
                 is_non_replanable_tool_failure,
                 is_tool_result_failure,
+                llm_upstream_user_message,
                 merge_replanned_pending_steps,
             )
+
+            def _llm_upstream_failure_result(exc: BaseException, *, failed_stage: str) -> Dict[str, Any]:
+                logger.error(
+                    "event=deepagent_llm_upstream_failed failed_stage=%s error_type=%s request_id=%s",
+                    failed_stage,
+                    type(exc).__name__,
+                    extract_llm_upstream_request_id(exc) or "-",
+                    exc_info=safe_exception_info(exc),
+                )
+                return {"messages": [AIMessage(content=llm_upstream_user_message(exc))]}
+
             from apps.opspilot.metis.llm.tools.kubernetes.data_collection import k8s_target_lookup_exhausted_from_messages
 
             graph_request = config["configurable"]["graph_request"]
@@ -2359,6 +2374,7 @@ class ToolsNodes(
             registered_tools = list(tools)
             original_messages = list(state.get("messages") or [])
             collected_output_messages: List[BaseMessage] = []
+            summary_ran = False
             skill_packages = self._resolve_skill_packages(graph_request)
             has_skill_packages = bool(skill_packages)
             # 渐进路径推迟沙箱物化：空计划寒暄不应为技能包付 DeepAgent/FS 税。
@@ -2415,6 +2431,8 @@ class ToolsNodes(
                     )
                     result = await deep_agent.ainvoke({"messages": deep_input_messages}, config=deep_config)
                 except Exception as _await_exc:
+                    if is_llm_upstream_error(_await_exc):
+                        return _llm_upstream_failure_result(_await_exc, failed_stage="legacy_deepagent")
                     try:
                         err_prompt = (
                             f"上一轮工具执行失败(异常 {type(_await_exc).__name__}:"
@@ -2683,15 +2701,7 @@ class ToolsNodes(
                 return {"messages": without_system_messages(original_messages) + [summary]}
 
             def _step_summary(messages: List[BaseMessage]) -> str:
-                for message in reversed(messages):
-                    if isinstance(message, AIMessage):
-                        text = str(message.content or "").strip()
-                        if text:
-                            return text[:1200]
-                for message in reversed(messages):
-                    if isinstance(message, ToolMessage):
-                        return str(message.content or "")[:1200]
-                return "步骤已完成"
+                return self._summarize_planned_step_messages(messages)
 
             def _resolve_step_tools(step_tool_names: List[str]) -> list:
                 selected = [tool_by_name[name] for name in step_tool_names if name in tool_by_name]
@@ -2730,6 +2740,9 @@ class ToolsNodes(
                 agent_state: Dict[str, Any] = {"messages": without_system_messages(original_messages)}
                 replan_count = 0
                 total_steps = len(plan.steps)
+                summary_ran = False
+                require_formatted_report = False
+                self._set_hide_planned_step_text(graph_request, True)
 
                 while pending_steps:
                     step = pending_steps.pop(0)
@@ -2754,7 +2767,12 @@ class ToolsNodes(
                     ):
                         step_guidance = "\n" + self._skill_only_step_guidance(skill_packages)
                     else:
-                        step_guidance = "\n" + self._planned_tool_step_guidance()
+                        is_last_step = not pending_steps
+                        step_guidance = "\n" + self._planned_tool_step_guidance(
+                            is_last_step=is_last_step,
+                            user_message=planning_question,
+                            agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
+                        )
                     step_message = _internal_message(
                         f"执行计划当前步骤：{step.objective}\n"
                         f"本步骤计划工具：{', '.join(step.tools) or '无'}。\n"
@@ -2871,6 +2889,8 @@ class ToolsNodes(
                             )
                         except Exception as step_exc:
                             failure = f"步骤“{step.objective}”执行异常 " f"{type(step_exc).__name__}: {str(step_exc)[:800]}"
+                            if is_llm_upstream_error(step_exc):
+                                raise
                             # 上下文溢出：不带着全量工具目录重规划，但压缩上下文后继续后续步骤。
                             if is_context_size_error(step_exc):
                                 logger.warning(
@@ -2955,6 +2975,7 @@ class ToolsNodes(
                         if k8s_target_lookup_exhausted_from_messages(step_messages):
                             _collect_output_messages(step_messages)
                             remaining_steps = drop_k8s_followup_steps_after_unresolved_target(pending_steps)
+                            require_formatted_report = True
                             logger.info(
                                 "DeepAgent k8s 目标反查已收口，跳过后续需 namespace 步骤 dropped=%s",
                                 len(pending_steps) - len(remaining_steps),
@@ -3045,6 +3066,7 @@ class ToolsNodes(
                 active_tools.clear()
                 visibility_middleware.include_always_visible = False
                 limit_middleware.enforce_limits = False
+                self._set_hide_planned_step_text(graph_request, False)
                 # 若分析步因上限提前结束，仍要在最终总结前补上修复闭环。
                 await _maybe_run_repair_workflow()
                 completed_text = "\n".join(f"- {step.objective}: {step.result}" for step in completed_steps) or "没有需要执行工具的步骤"
@@ -3063,6 +3085,11 @@ class ToolsNodes(
                 elif self._should_skip_planned_summary(
                     collected_output_messages,
                     completed_step_count=len(completed_steps),
+                    report_mode=self._planned_report_mode(
+                        user_message=planning_question,
+                        agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
+                    ),
+                    require_formatted_report=require_formatted_report,
                 ):
                     # 步骤正文已经给过表格或完整答案。再跑总结轮会换个说法复述。
                     result = {"messages": list(agent_state.get("messages") or [])}
@@ -3071,11 +3098,13 @@ class ToolsNodes(
                     final_message = _internal_message(
                         f"工具执行计划目标：{plan.goal or planning_question}\n"
                         f"已完成步骤及结果：\n{completed_text}\n\n"
-                        "现在向用户给出最终答案。当前没有可用工具，不要继续调用工具；"
-                        "请基于已有证据直接总结结论、依据和下一步建议。"
-                        "禁止再输出 Markdown 表格或重复名单；用户若已看过步骤结果，最多补一两句。"
+                        + self._planned_summary_guidance(
+                            user_message=planning_question,
+                            agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
+                        )
                     )
                 if final_message is not None:
+                    summary_ran = True
                     final_payload = {
                         **agent_state,
                         "messages": list(agent_state.get("messages") or []) + [final_message],
@@ -3093,7 +3122,9 @@ class ToolsNodes(
             except Exception as _await_exc:
                 # deepagent 框架层异常(典型:execute 工具撞 sandbox 命令白名单)会把整
                 # 个 graph 标 ERROR,LLM 没机会拿到 ToolMessage 写 follow-up。
-                # 上下文不足时不要再喂长 system/工具目录给模型“解释失败”，避免二次浪费。
+                # 模型网关 500 / 上下文不足时不要再喂同一上游“解释失败”，避免二次浪费。
+                if is_llm_upstream_error(_await_exc):
+                    return _llm_upstream_failure_result(_await_exc, failed_stage="planned_execution")
                 if is_context_size_error(_await_exc):
                     logger.warning(
                         "DeepAgent 因上下文窗口不足失败，直接返回短提示: %s",
@@ -3125,6 +3156,7 @@ class ToolsNodes(
                         ]
                     }
             finally:
+                self._set_hide_planned_step_text(graph_request, False)
                 # 用完即弃：销毁本次运行的一次性技能沙箱目录
                 # _cleanup_sandbox 内部有 None 守卫,但这里再写一次防御:
                 # sandbox_dir 只在 _build_skill_backend_and_sources 成功返回时
@@ -3135,7 +3167,10 @@ class ToolsNodes(
             # 分步执行路径已单独累积对外消息；其余路径仍从最终 state 截取新增消息。
             final_messages = result.get("messages", [])
             if collected_output_messages:
-                new_messages = collected_output_messages
+                new_messages = self._select_visible_planned_messages(
+                    collected_output_messages,
+                    summary_ran=summary_ran,
+                )
             else:
                 if not final_messages:
                     return {"messages": [AIMessage(content="DeepAgent 未返回任何消息")]}

@@ -1,4 +1,14 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+  useMemo,
+  useRef,
+  ReactNode,
+} from 'react';
 import { usePathname } from 'next/navigation';
 import useApiClient from '@/utils/request';
 import { useMenus } from '@/context/menus';
@@ -17,6 +27,11 @@ interface Permissions {
   [url: string]: string[];
 }
 
+interface ClientMenuCacheEntry {
+  menus: MenuItem[];
+  permissions: Permissions;
+}
+
 interface PermissionsContextValue {
   menus: MenuItem[];
   permissions: Permissions;
@@ -33,6 +48,19 @@ const PermissionsContext = createContext<PermissionsContextValue>({
   hasPermission: () => false,
 });
 
+const collectMenuNamesAsView = (
+  menus: MenuItem[],
+  permissionMap: { [key: string]: string[] } = {},
+): { [key: string]: string[] } => {
+  for (const item of menus) {
+    permissionMap[item.name] = item.operation?.length ? item.operation : ['View'];
+    if (item.children?.length) {
+      collectMenuNamesAsView(item.children, permissionMap);
+    }
+  }
+  return permissionMap;
+};
+
 export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
   const pathname = usePathname();
   const routeClientId = getClientIdFromRoute(pathname);
@@ -44,6 +72,7 @@ export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [menuClientId, setMenuClientId] = useState<string | null>(null);
   const [requestGuard] = useState(createLatestRequestGuard);
+  const clientMenuCacheRef = useRef<Record<string, ClientMenuCacheEntry>>({});
 
   const extractPermissions = (
     menus: MenuItem[],
@@ -154,6 +183,26 @@ export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
       });
   };
 
+  useEffect(() => {
+    clientMenuCacheRef.current = {};
+  }, [configMenus]);
+
+  // Apply per-app cache before paint so top-bar switches do not keep the previous
+  // left rail / loading gate for an extra network round-trip.
+  useLayoutEffect(() => {
+    if (!shouldFetchAppMenus) {
+      return;
+    }
+    const cached = clientMenuCacheRef.current[routeClientId];
+    if (!cached || menuClientId === routeClientId) {
+      return;
+    }
+    setMenuItems(cached.menus);
+    setPermissions(cached.permissions);
+    setMenuClientId(routeClientId);
+    setLoading(false);
+  }, [menuClientId, routeClientId, shouldFetchAppMenus]);
+
   const fetchMenus = useCallback(async () => {
     if (isSessionExpiredState()) {
       setLoading(false);
@@ -165,47 +214,69 @@ export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    if (!apiLoading && !menuLoading) {
-      const requestId = requestGuard.begin();
-      setLoading(true);
-      try {
-        const clientName = mapClientName(routeClientId);
-        let allMenuData: MenuItem[] = [];
-        let menusToFilter: MenuItem[] = configMenus;
+    if (apiLoading || menuLoading) {
+      return;
+    }
 
-        if (clientName) {
-          const menuData = await get('/core/api/get_user_menus/', { params: { name: clientName } });
-          allMenuData = menuData || [];
-        }
+    const cached = clientMenuCacheRef.current[routeClientId];
+    if (cached) {
+      setMenuItems(cached.menus);
+      setPermissions(cached.permissions);
+      setMenuClientId(routeClientId);
+      setLoading(false);
+      return;
+    }
 
-        if (routeClientId) {
-          try {
-            const customMenuData = await get('/system_mgmt/custom_menu_group/get_menus/', {
-              params: { app: clientName }
-            });
-            if (customMenuData && !customMenuData.is_build_in && customMenuData.menus) {
-              menusToFilter = customMenuData.menus;
-            }
-          } catch (error) {
+    const requestId = requestGuard.begin();
+    const optimisticMenus = filterMenusByPermission(
+      collectMenuNamesAsView(configMenus),
+      configMenus,
+      routeClientId,
+    );
+    setMenuItems(optimisticMenus);
+    setMenuClientId(routeClientId);
+    setLoading(true);
+
+    try {
+      const clientName = mapClientName(routeClientId);
+      const [menuData, customMenuData] = await Promise.all([
+        clientName
+          ? get('/core/api/get_user_menus/', { params: { name: clientName } })
+          : Promise.resolve([]),
+        routeClientId
+          ? get('/system_mgmt/custom_menu_group/get_menus/', {
+            params: { app: clientName },
+          }).catch((error: unknown) => {
             console.warn('Failed to fetch custom menus, using default configMenus:', error);
-          }
-        }
-        const permissionMap = collectPermissionOperations(allMenuData);
-        const filteredMenus = filterMenusByPermission(permissionMap, menusToFilter, routeClientId);
-        const parsedPermissions = extractPermissions(filteredMenus);
-        requestGuard.commitIfCurrent(requestId, () => {
-          setMenuItems(filteredMenus);
-          setPermissions(parsedPermissions);
-          setMenuClientId(routeClientId);
-          setLoading(false);
-        });
-      } catch (err) {
-        console.error('Failed to fetch menus:', err);
-        requestGuard.commitIfCurrent(requestId, () => {
-          setMenuClientId(routeClientId);
-          setLoading(false);
-        });
+            return null;
+          })
+          : Promise.resolve(null),
+      ]);
+
+      let menusToFilter: MenuItem[] = configMenus;
+      if (customMenuData && !customMenuData.is_build_in && customMenuData.menus) {
+        menusToFilter = customMenuData.menus;
       }
+
+      const permissionMap = collectPermissionOperations(menuData || []);
+      const filteredMenus = filterMenusByPermission(permissionMap, menusToFilter, routeClientId);
+      const parsedPermissions = extractPermissions(filteredMenus);
+      requestGuard.commitIfCurrent(requestId, () => {
+        clientMenuCacheRef.current[routeClientId] = {
+          menus: filteredMenus,
+          permissions: parsedPermissions,
+        };
+        setMenuItems(filteredMenus);
+        setPermissions(parsedPermissions);
+        setMenuClientId(routeClientId);
+        setLoading(false);
+      });
+    } catch (err) {
+      console.error('Failed to fetch menus:', err);
+      requestGuard.commitIfCurrent(requestId, () => {
+        setMenuClientId(routeClientId);
+        setLoading(false);
+      });
     }
   }, [get, apiLoading, menuLoading, configMenus, routeClientId, shouldFetchAppMenus, requestGuard]);
 

@@ -144,9 +144,12 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
     const seriesList = areaKeys.map((key, idx) => {
       const style = seriesStyles[idx] || {};
       const color = style.color || CHART_COLORS[idx % CHART_COLORS.length];
-      const fillOpacity = style.fillOpacity ?? 0.05;
+      // 多系列折线图避免多层面积重叠导致色彩混色发暗发脏；单系列保持轻盈明亮渐变。
+      const hasMultipleSeries = areaKeys.length > 1;
+      const defaultFill = hasMultipleSeries ? 0.02 : 0.08;
+      const fillOpacity = style.fillOpacity ?? defaultFill;
       const strokeOpacity = style.strokeOpacity ?? 1;
-      const strokeWidth = style.strokeWidth ?? 2;
+      const strokeWidth = style.strokeWidth ?? 2.2;
       // 数据线一律实线，多系列靠颜色区分；仅显式 strokeDasharray（阈值/上限线，由 style:'limit' 注入）才虚线。
       const lineType: 'solid' | 'dashed' = style.strokeDasharray ? 'dashed' : 'solid';
 
@@ -160,7 +163,7 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
           const scaledValue = scaleDivisor > 1 ? v / scaleDivisor : v;
           return [d.time, roundChartValueToDisplayPrecision(scaledValue)];
         }),
-        smooth: false,
+        smooth: 0.2,
         symbol: 'none',
         lineStyle: {
           width: strokeWidth,
@@ -174,7 +177,7 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
             x: 0, y: 0, x2: 0, y2: 1,
             colorStops: [
               { offset: 0, color: `${color}${Math.round(fillOpacity * 255).toString(16).padStart(2, '0')}` },
-              { offset: 1, color: `${color}03` }
+              { offset: 1, color: `${color}02` }
             ]
           }
         } : undefined,
@@ -201,7 +204,7 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
         axisLabel: {
           formatter: (val: number) => dayjs(val * 1000).format(xAxisTimeFormat),
           fontSize: 11,
-          color: '#8c8c8c'
+          color: '#475467'
         },
         axisTick: { show: false },
         axisLine: { lineStyle: { color: '#e8e8e8' } },
@@ -214,7 +217,7 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
         axisLabel: {
           formatter: (val: number) => allSeriesValuesAreZero && val !== 0 ? '' : formatAxisNumber(val),
           fontSize: 11,
-          color: '#8c8c8c'
+          color: '#475467'
         },
         splitLine: { lineStyle: { color: '#f0f0f0', type: 'dashed' as const } },
         axisLine: { show: false },

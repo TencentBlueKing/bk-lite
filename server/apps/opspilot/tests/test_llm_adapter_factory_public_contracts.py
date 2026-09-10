@@ -149,6 +149,18 @@ def test_anthropic_payload_omits_disabled_optional_fields():
     assert "system" not in payload
     assert "tools" not in payload
     assert "tool_choice" not in payload
+    assert payload["temperature"] == 0
+
+
+def test_anthropic_payload_omits_temperature_when_unset():
+    payload = adapter.build_messages_payload(
+        model="m",
+        messages=[HumanMessage(content="hi")],
+        temperature=None,
+    )
+    assert "temperature" not in payload
+    assert payload["messages"] == [{"role": "user", "content": "hi"}]
+    assert payload["max_tokens"] == 4096
 
 
 def test_anthropic_connection_validation_posts_minimal_request(monkeypatch):
@@ -283,15 +295,15 @@ def test_llm_factory_public_isolated_invocation_routes_protocol(monkeypatch, pro
     [
         ("gpt-4o", 0.2, "", 0.2),
         ("o10", 0.2, "", 0.2),
-        ("kimi-k2", 0.2, "", 1.0),
-        ("kimi-for-coding", 0.2, "", 1.0),
-        ("kimi-for-coding-highspeed", 0.2, "", 1.0),
-        ("k3", 0.2, "", 1.0),
-        ("k3-256k", 0.2, "", 1.0),
-        ("moonshot/kimi-k2", 0.2, "", 1.0),
-        ("moonshot-v1-128k", 0.2, "", 1.0),
-        ("custom-k2", 0.2, "moonshot", 1.0),
-        ("gpt-5-mini", 0.2, "", 1.0),
+        ("kimi-k2", 0.2, "", None),
+        ("kimi-for-coding", 0.2, "", None),
+        ("kimi-for-coding-highspeed", 0.2, "", None),
+        ("k3", 0.2, "", None),
+        ("k3-256k", 0.2, "", None),
+        ("moonshot/kimi-k2", 0.2, "", None),
+        ("moonshot-v1-128k", 0.2, "", None),
+        ("custom-k2", 0.2, "moonshot", None),
+        ("gpt-5-mini", 0.2, "", None),
     ],
 )
 def test_resolve_gateway_temperature_for_unit_only_models(model_name, requested, vendor_type, expected):
@@ -300,7 +312,7 @@ def test_resolve_gateway_temperature_for_unit_only_models(model_name, requested,
     assert resolve_gateway_temperature(model_name, requested, vendor_type) == expected
 
 
-def test_isolated_openai_uses_unit_temperature_for_kimi(monkeypatch):
+def test_isolated_openai_omits_temperature_for_kimi(monkeypatch):
     calls = {}
     completion = SimpleNamespace(
         create=lambda **kwargs: (calls.update(kwargs) or SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="ok"))]))
@@ -310,7 +322,7 @@ def test_isolated_openai_uses_unit_temperature_for_kimi(monkeypatch):
     request = BasicLLMRequest(model="kimi-k2", temperature=0.2)
 
     assert LLMClientFactory._invoke_isolated_openai(request, [HumanMessage(content="hello")]) == "ok"
-    assert calls["temperature"] == 1.0
+    assert "temperature" not in calls
 
 
 def test_isolated_openai_invocation_converts_mixed_messages(monkeypatch):
@@ -336,6 +348,7 @@ def test_isolated_openai_invocation_converts_mixed_messages(monkeypatch):
         {"role": "user", "content": "world"},
         {"role": "assistant", "content": "prior"},
     ]
+    assert calls["temperature"] == 0.3
     assert calls["extra_body"] == {
         "enable_thinking": False,
         "chat_template_kwargs": {"enable_thinking": False},

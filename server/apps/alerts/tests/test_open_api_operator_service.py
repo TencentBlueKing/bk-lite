@@ -125,3 +125,30 @@ def test_operate_alert_api_close_rejects_unassigned():
 
     assert exc.value.code == "alerts.operator.invalid_state"
     assert exc.value.status_code == 409
+
+
+@pytest.mark.django_db
+@patch("apps.alerts.action.engine.ActionEngine.dispatch_async")
+@patch("apps.alerts.common.notify.dispatcher.enqueue_notifications")
+@patch("apps.alerts.service.alter_operator.validate_alert_assignees")
+def test_operate_alert_superuser_reassign_pending(mock_validate, _mock_notify, _mock_dispatch):
+    mock_validate.return_value = (["new-op"], None)
+    _create_alert(alert_id="A-pending-reassign", status=AlertStatus.PENDING, operator=["other-user"])
+
+    result = _service(username="admin", is_superuser=True).operate_alert("A-pending-reassign", "reassign", {"assignee": ["new-op"]})
+
+    assert result["alert_id"] == "A-pending-reassign"
+    assert result["status"] == AlertStatus.PENDING
+    assert Alert.objects.get(alert_id="A-pending-reassign").operator == ["new-op"]
+
+
+@pytest.mark.django_db
+@patch("apps.alerts.open_api.services.get_permission_rules", return_value={"team": [1], "instance": []})
+def test_operate_alert_non_superuser_cannot_reassign_pending(_mock_rules):
+    _create_alert(alert_id="A-pending-blocked", status=AlertStatus.PENDING, operator=["other-user"])
+
+    with pytest.raises(AlertsOpenAPIError) as exc:
+        _service(username="admin", is_superuser=False).operate_alert("A-pending-blocked", "reassign", {"assignee": ["admin"]})
+
+    assert exc.value.code == "alerts.operator.invalid_state"
+    assert exc.value.status_code == 409

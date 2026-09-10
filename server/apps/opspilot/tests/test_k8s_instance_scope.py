@@ -12,7 +12,13 @@ import pydantic.root_model  # noqa
 import yaml
 
 from apps.core.logger import SafeLogException, opspilot_logger
-from apps.opspilot.metis.llm.tools.kubernetes.instance_scope import bind_instance_config, point_instance_error, route_alert_cluster, run_scan_tool
+from apps.opspilot.metis.llm.tools.kubernetes.instance_scope import (
+    bind_instance_config,
+    point_instance_error,
+    prepare_point_instance,
+    route_alert_cluster,
+    run_scan_tool,
+)
 
 _LOOKUP_NAMESPACES = "apps.opspilot.metis.llm.tools.kubernetes.data_collection._lookup_namespaces_by_resource_name"
 _LOOKUP_SECRET_SENTINEL = "kc-secret-hunter2-not-for-logs"
@@ -119,6 +125,27 @@ class TestPointInstanceError:
         config, _ = _multi_config()
         config["configurable"]["instance_name"] = "bk-lite-k3s"
         assert point_instance_error(config) is None
+
+
+class TestPreparePointInstance:
+    def test_ignores_pod_name_when_already_bound(self):
+        config, _ = _multi_config()
+        config["configurable"]["instance_name"] = "bk-lite-k3s"
+        bound, error = prepare_point_instance(config, "classification-serving-2-55b8c94f55-kr98z")
+        assert error is None
+        assert bound["configurable"]["instance_name"] == "bk-lite-k3s"
+
+    def test_unknown_name_uses_unique_instance(self):
+        config = {"configurable": {"kubernetes_instances": [{"id": "i1", "name": "bk-lite-k8s", "kubeconfig_data": "kc"}]}}
+        bound, error = prepare_point_instance(config, "classification-serving-2-55b8c94f55-kr98z")
+        assert error is None
+        assert bound["configurable"]["instance_name"] == "bk-lite-k8s"
+
+    def test_unknown_name_still_errors_when_multi_unbound(self):
+        config, _ = _multi_config()
+        bound, error = prepare_point_instance(config, "classification-serving-2-55b8c94f55-kr98z")
+        assert bound is None
+        assert "Kubernetes instance not found" in json.loads(error)["error"]
 
 
 class TestRunScanTool:

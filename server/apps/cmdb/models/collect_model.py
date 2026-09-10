@@ -24,7 +24,7 @@ from apps.core.utils.crypto.password_crypto import PasswordCrypto
 
 # 加密密码的标记前缀
 ENCRYPTED_PREFIX = "enc:"
-ALLOWED_TOPOLOGY_PROTOCOLS = ("lldp", "cdp", "fdb", "arp")
+ALLOWED_TOPOLOGY_PROTOCOLS = ("lldp", "huawei_ndp", "cdp", "fdb", "arp")
 ALLOWED_TOPOLOGY_FALLBACK_STRATEGIES = (
     "prefer_neighbors_then_fdb_then_arp",
     "strict_neighbors_only",
@@ -306,13 +306,17 @@ class CollectModels(MaintainerInfo, TimeInfo):
         if not self.credential:
             return self.credential
 
-        encrypted_fields = get_collect_model_passwords(collect_model_id=self.model_id, driver_type=self.driver_type)
+        encrypted_fields = set(get_collect_model_passwords(collect_model_id=self.model_id, driver_type=self.driver_type) or [])
 
         def decrypt_item(raw_item):
             item = copy.deepcopy(raw_item)
             if not isinstance(item, dict):
                 return item
-            for encrypted_field in encrypted_fields:
+            fields = set(encrypted_fields)
+            for key, value in item.items():
+                if isinstance(value, str) and value.startswith(ENCRYPTED_PREFIX):
+                    fields.add(key)
+            for encrypted_field in fields:
                 password = item.get(encrypted_field)
                 if not password:
                     continue
@@ -360,3 +364,19 @@ class OidMapping(MaintainerInfo, TimeInfo):
     brand = models.CharField(max_length=64, null=True, help_text="品牌")
     device_type = models.CharField(max_length=128, help_text="设备类型")
     built_in = models.BooleanField(default=False, verbose_name="是否内置")
+
+
+class PortFingerprint(MaintainerInfo, TimeInfo):
+    """端口指纹：同一端口可对应多种类型，扫描数据库白名单另算。"""
+
+    PROTOCOL_TCP = "tcp"
+
+    port = models.PositiveIntegerField(validators=[MinValueValidator(1), MaxValueValidator(65535)], help_text="TCP 端口")
+    protocol = models.CharField(max_length=16, default=PROTOCOL_TCP, help_text="协议")
+    target_type = models.CharField(max_length=128, help_text="CMDB 模型 ID")
+    built_in = models.BooleanField(default=False, verbose_name="是否内置")
+
+    class Meta:
+        verbose_name = "端口指纹"
+        verbose_name_plural = verbose_name
+        unique_together = (("port", "target_type"),)

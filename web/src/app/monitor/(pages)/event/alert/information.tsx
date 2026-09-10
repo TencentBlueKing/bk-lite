@@ -1,6 +1,6 @@
 'use client';
-import React, { useRef, useState } from 'react';
-import { Descriptions } from 'antd';
+import React, { useRef } from 'react';
+import { Button, Descriptions } from 'antd';
 import { TableDataItem, Organization } from '@/app/monitor/types';
 import { useTranslation } from '@/utils/i18n';
 import informationStyle from './index.module.scss';
@@ -10,8 +10,6 @@ import { ObjectItem } from '@/app/monitor/types';
 import { showGroupName } from '@/app/monitor/utils/common';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { useCommon } from '@/app/monitor/context/common';
-import { Popconfirm, message, Button } from 'antd';
-import useMonitorApi from '@/app/monitor/api';
 import { useLevelList } from '@/app/monitor/hooks';
 import { OBJECT_DEFAULT_ICON, LEVEL_MAP } from '@/app/monitor/constants';
 import Permission from '@/components/permission';
@@ -19,6 +17,8 @@ import { formatUserDisplayName } from '@/utils/userDisplay';
 import { getPolicySecondaryContext } from '@/app/monitor/utils/policyDisplayName';
 import { buildMonitorStrategyDetailUrl } from '@/app/monitor/utils/policyRouteUtils';
 import { buildAlertDimensionDisplayItems } from './alertDimensionUtils';
+import AlertHandlerActions from './alertHandlerActions';
+import { formatAlertHandlers } from './alertHandlerUtils';
 
 interface InformationProps extends TableDataItem {
   eventData?: TableDataItem[];
@@ -40,11 +40,9 @@ const Information: React.FC<InformationProps> = ({
   const { convertToLocalizedTime } = useLocalizedTime();
   const { findUnitNameById } = useUnitTransform();
   const LEVEL_LIST = useLevelList();
-  const { patchMonitorAlert } = useMonitorApi();
   const commonContext = useCommon();
   const authList = useRef(commonContext?.authOrganizations || []);
   const organizationList: Organization[] = authList.current;
-  const [confirmLoading, setConfirmLoading] = useState(false);
   const dimensionItems = buildAlertDimensionDisplayItems(
     formData.metric?.dimensions,
     formData.dimensions
@@ -80,19 +78,6 @@ const Information: React.FC<InformationProps> = ({
       name: row.policy.name || ''
     });
     window.open(url, '_blank', 'noopener,noreferrer');
-  };
-
-  const handleCloseConfirm = async (row: TableDataItem) => {
-    setConfirmLoading(true);
-    try {
-      await patchMonitorAlert(row.id as string, {
-        status: 'closed'
-      });
-      message.success(t('monitor.events.successfullyClosed'));
-      onClose();
-    } finally {
-      setConfirmLoading(false);
-    }
   };
 
   const showNotifiers = (row: TableDataItem) => {
@@ -245,31 +230,20 @@ const Information: React.FC<InformationProps> = ({
             }`
           )}
         </Descriptions.Item>
-        <Descriptions.Item label={t('common.operator')}>
-          {formatUserDisplayName(formData.operator, userList)}
+        <Descriptions.Item label={t('monitor.events.handler')}>
+          {formatAlertHandlers(formData.handlers, formData.handlers_display, userList)}
         </Descriptions.Item>
         <Descriptions.Item label={t('monitor.events.notifier')}>
           {showNotifiers(formData)}
         </Descriptions.Item>
       </Descriptions>
       <div className="mt-4">
-        <Permission
+        <AlertHandlerActions
+          record={formData}
+          closeText={t('monitor.events.closeAlert')}
           requiredPermissions={['Operate', 'Detail']}
-          instPermissions={formData.permission}
-        >
-          <Popconfirm
-            title={t('monitor.events.closeTitle')}
-            description={t('monitor.events.closeContent')}
-            okText={t('common.confirm')}
-            cancelText={t('common.cancel')}
-            okButtonProps={{ loading: confirmLoading }}
-            onConfirm={() => handleCloseConfirm(formData)}
-          >
-            <Button type="link" disabled={formData.status !== 'new'}>
-              {t('monitor.events.closeAlert')}
-            </Button>
-          </Popconfirm>
-        </Permission>
+          onSuccess={onClose}
+        />
       </div>
       <div className="mt-4">
         {formData.policy?.query_condition?.type === 'pmq' ? (

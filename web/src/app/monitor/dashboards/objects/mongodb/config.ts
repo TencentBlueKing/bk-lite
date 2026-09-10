@@ -218,42 +218,42 @@ export const DASHBOARD_METRICS: MongoMetricConfig[] = [
 ];
 
 export const DEFAULT_METRIC_COLORS = [
-  '#2f6bff',
-  '#27c274',
-  '#ff9f43',
-  '#ff4d4f',
-  '#13c2c2',
-  '#5b8ff9',
-  '#9aa9bf',
-  '#faad14'
+  '#2563EB',
+  '#10B981',
+  '#F97316',
+  '#EF4444',
+  '#06B6D4',
+  '#6366F1',
+  '#94A3B8',
+  '#F59E0B'
 ];
 
 export const TREND_LEGENDS: Record<string, TrendLegendItem[]> = {
   throughput: [
-    { label: '命令吞吐', color: '#2f6bff', primary: true },
-    { label: '查询吞吐', color: '#13c2c2' },
-    { label: '写入吞吐', color: '#ff9f43' }
+    { label: '命令吞吐', color: '#2563EB', primary: true },
+    { label: '查询吞吐', color: '#06B6D4' },
+    { label: '写入吞吐', color: '#F97316' }
   ],
   latency: [
-    { label: '读延迟', color: '#27c274', primary: true },
-    { label: '命令延迟', color: '#8a5cff' }
+    { label: '读延迟', color: '#10B981', primary: true },
+    { label: '命令延迟', color: '#6366F1' }
   ],
   queue: [
-    { label: '活跃读', color: '#2f6bff', primary: true },
-    { label: '活跃写', color: '#27c274' },
-    { label: '排队读', color: '#5b8ff9' },
-    { label: '排队写', color: '#ff9f43' }
+    { label: '活跃读', color: '#2563EB', primary: true },
+    { label: '活跃写', color: '#10B981' },
+    { label: '排队读', color: '#6366F1' },
+    { label: '排队写', color: '#F97316' }
   ],
   cache: [
-    { label: '缓存已用', color: '#2f6bff', primary: true },
-    { label: '缓存上限', color: '#9aa9bf', dashed: true }
+    { label: '缓存已用', color: '#2563EB', primary: true },
+    { label: '缓存上限', color: '#94A3B8', dashed: true }
   ],
   memory: [
-    { label: '常驻内存', color: '#27c274', primary: true },
-    { label: '虚拟内存', color: '#9aa9bf' }
+    { label: '常驻内存', color: '#10B981', primary: true },
+    { label: '虚拟内存', color: '#94A3B8' }
   ],
   network: [
-    { label: '入流量', color: '#2f6bff', primary: true },
-    { label: '出流量', color: '#27c274' }
+    { label: '入流量', color: '#2563EB', primary: true },
+    { label: '出流量', color: '#10B981' }
   ]
 };

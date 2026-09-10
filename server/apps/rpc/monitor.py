@@ -40,6 +40,14 @@ class Monitor(object):
         """
         return self.ingest_client.run("monitor_ingest_from_source", params=kwargs)
 
+    def query_active_alert_summaries_by_monitor_ids(self, monitor_ids, **kwargs):
+        """CMDB room3D 等调用方：按 monitor_id 批量查活跃告警摘要。"""
+        return self.ingest_client.run(
+            "query_active_alert_summaries_by_monitor_ids",
+            monitor_ids=monitor_ids,
+            **kwargs,
+        )
+
 
 class MonitorOperationAnaRpc(BaseOperationAnaRpc):
     def create_monitor_object_type(self, data: dict, **kwargs):
@@ -81,6 +89,10 @@ class MonitorOperationAnaRpc(BaseOperationAnaRpc):
     def monitor_object_instance_count(self, **kwargs):
         """统计全部监控对象实例数量（不过滤权限）"""
         return self.client.run("monitor_object_instance_count", **kwargs)
+
+    def license_instance_count(self, **kwargs):
+        """许可管理专用：已启用且属于收费对象目录的监控资产实例数量。"""
+        return self.client.run("license_monitor_instance_count", **kwargs)
 
     def monitor_metrics(self, monitor_obj_id: str, **kwargs):
         """查询指标信息"""
@@ -222,3 +234,15 @@ class MonitorOperationAnaRpc(BaseOperationAnaRpc):
     def get_host_resource_top(self, metric_type: str, **kwargs):
         """查询主机资源使用率 Top10，可选 instance_ids 收窄。"""
         return self.client.run("get_host_resource_top", metric_type=metric_type, **kwargs)
+
+    def get_monitor_instance_list(self, **kwargs):
+        """查询当前组织权限范围内的监控实例，供下拉选项使用。"""
+        return self.client.run("get_monitor_instance_list", **kwargs)
+
+    def query_metric_series(self, **kwargs):
+        """按已注册指标名查询趋势或排行，未选实例不退化为全量。"""
+        return self.client.run("query_metric_series", **kwargs)
+
+    def get_zombie_host_report(self, **kwargs):
+        """按所选 CMDB 主机查询僵尸机报表（阈值过滤后分页）。"""
+        return self.client.run("get_zombie_host_report", **kwargs)

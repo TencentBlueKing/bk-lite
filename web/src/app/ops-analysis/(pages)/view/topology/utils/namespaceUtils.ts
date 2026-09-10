@@ -199,6 +199,7 @@ const VALUE_FORMAT_CHART_TYPES = new Set([
   'bar',
   'pie',
   'multiValue',
+  'nodeGraph',
 ]);
 
 const applyValueFormatFields = (
@@ -269,6 +270,16 @@ export const buildValueConfig = (
   if (values.chartType === 'topN') {
     valueConfig.topNLabelField = values.topNLabelField;
     valueConfig.topNValueField = values.topNValueField;
+  }
+  if (values.chartType === 'nodeGraph') {
+    const identityMode = values.nodeGraphIdentityMode || 'ip';
+    valueConfig.nodeGraphIdentityMode = identityMode;
+    valueConfig.nodeGraphSourceField = values.nodeGraphSourceField;
+    valueConfig.nodeGraphTargetField = values.nodeGraphTargetField;
+    valueConfig.nodeGraphValueField = values.nodeGraphValueField;
+    if (identityMode === 'service') {
+      valueConfig.nodeGraphTargetPortField = values.nodeGraphTargetPortField;
+    }
   }
   return valueConfig;
 };

@@ -512,18 +512,21 @@ toolkits:
     description: "深度诊断单个Pod的所有问题 - 一站式故障排查\n\n**何时使用此工具：**\n- 用户说\"这个Pod有问题，帮我看看\"\
       \n- 已知具体Pod名称，需要全面分析\n- 从 get_failed_pods 或 get_pending_pods 发现问题Pod后\n- 需要详细的诊断报告（状态+事件+资源+卷）\n\
       \n**工具能力（最全面的Pod诊断）：**\n- Pod所有Conditions（Ready、Initialized、ContainersReady等）\n\
-      - 容器状态详情（waiting/running/terminated，含退出码）\n- Init容器状态（初始化失败诊断）\n- 资源requests和limits配置\n\
+      - 容器状态详情（waiting/running/terminated，含退出码）\n- 每个容器的 last_state（上一轮终止原因和退出码）\n\
+      - Init容器状态（初始化失败诊断）\n- 资源requests和limits配置\n\
       - 挂载卷配置（PVC/ConfigMap/Secret/HostPath）\n- 最近10个相关事件（时间排序）\n- 重启策略和节点信息\n\n**诊断维度：**\n\
       1. 容器健康：状态、退出码、重启次数\n2. 资源配置：CPU/内存requests和limits\n3. 依赖检查：ConfigMap、Secret、PVC是否存在\n\
       4. 事件分析：Warning/Error事件的原因和消息\n5. 节点信息：调度到哪个节点，节点是否健康\n\nArgs:\n    namespace\
       \ (str): Pod所在命名空间（必填）\n    pod_name (str): Pod名称（必填）\n    config (RunnableConfig):\
       \ 工具配置（自动传递）\n\nReturns:\n    JSON格式，包含完整的诊断信息：\n    - phase: Pod状态（Running/Pending/Failed）\n\
-      \    - conditions[]: 所有Condition详情\n    - containers[]: 容器状态（state、restart_count、image）\n\
-      \    - init_containers[]: Init容器状态\n    - resource_requests: 资源请求配置\n    - resource_limits:\
+      \    - conditions[]: 所有Condition详情\n    - containers[]: 容器状态（state、restart_count、last_state、image）\n\
+      \    - init_containers[]: Init容器状态（含 last_state）\n    - resource_requests: 资源请求配置\n    - resource_limits:\
       \ 资源限制配置\n    - volumes[]: 卷挂载信息\n    - recent_events[]: 最近事件（按时间排序）\n    -\
-      \ node: 所在节点\n    - restart_policy: 重启策略\n\n**配合其他工具使用：**\n- 查看日志定位错误 → 使用 get_kubernetes_pod_logs\n\
+      \ node: 所在节点\n    - restart_policy: 重启策略\n\n**配合其他工具使用：**\n- 容器已重启、需要上一轮日志 →\
+      \ 使用 get_kubernetes_previous_pod_logs\n- 查看当前轮日志 → 使用 get_kubernetes_pod_logs\n\
       - 检查镜像拉取问题 → 查看events中的ImagePull相关错误\n- 资源不足 → 使用 get_kubernetes_node_capacity\
-      \ 检查节点容量\n- 需要重启恢复 → 使用 restart_pod\n- 卷挂载问题 → 使用 check_kubernetes_persistent_volumes"
+      \ 检查节点容量\n- 怀疑探针误杀 → 使用 validate_probe_configuration\n- 需要重启恢复 → 使用 restart_pod\n\
+      - 卷挂载问题 → 使用 check_kubernetes_persistent_volumes"
     parameters:
       namespace:
         type: string
@@ -699,17 +702,19 @@ toolkits:
       - 分析应用崩溃、异常退出的具体原因\n\n**工具能力：**\n- 获取容器的标准输出日志（stdout/stderr）\n- 支持多容器Pod（可指定容器名）\n\
       - 可获取最近N行或开头N行\n- 自动处理单容器Pod（无需指定容器名）\n\n**日志分析场景：**\n- CrashLoopBackOff → 查看最后100行，找panic/error\n\
       - ImagePullBackOff → 日志为空，检查镜像地址\n- OOMKilled → 查看崩溃前日志，分析内存占用\n- 应用错误 → 搜索Exception、Error、Failed关键词\n\
-      \n**重要提示：**\n- 本工具只能获取当前运行容器的日志\n- 如果容器已重启，无法获取上一次的日志（需要--previous参数，暂不支持）\n\
+      \n**重要提示：**\n- 本工具只能获取当前运行容器的日志\n- 容器已重启时，上一轮日志用 get_kubernetes_previous_pod_logs\n\
+      - 默认只取近 24 小时，再按 lines 截取\n\
       - 日志默认最多1MB，超大日志会被截断\n\nArgs:\n    namespace (str): Pod所在命名空间（必填）\n    pod_name\
       \ (str): Pod名称（必填）\n    container (str, optional): 容器名称，多容器Pod必须指定\n       \
       \ - None: 自动选择第一个容器（仅适用于单容器Pod）\n        - \"app\": 指定名为app的容器\n    lines (int,\
-      \ optional): 日志行数，默认100\n        - 100: 适合快速查看最近日志\n        - 500: 查看更多上下文\n\
+      optional): 日志行数，默认100\n        - 100: 适合快速查看最近日志\n        - 500: 查看更多上下文\n\
       \        - 50: 只看最关键的错误\n    tail (bool, optional): True=最后N行，False=开头N行，默认True\n\
-      \        - True: 查看最新日志（推荐）\n        - False: 查看启动初期日志\n    config (RunnableConfig):\
-      \ 工具配置（自动传递）\n\nReturns:\n    日志文本内容，或错误信息：\n    - 成功: 容器的实际日志输出\n    - 失败:\
+      \        - True: 查看最新日志（推荐）\n        - False: 查看启动初期日志\n    hours (int, optional):\
+      \ 时间窗（小时），默认24；最大168\n    config (RunnableConfig): 工具配置（自动传递）\n\nReturns:\n\
+      \    日志文本内容，或错误信息：\n    - 成功: 容器的实际日志输出\n    - 失败:\
       \ 错误原因（Pod不存在、容器不存在、容器创建中等）\n\n**配合其他工具使用：**\n- 发现Pod问题 → 使用 diagnose_kubernetes_pod_issues\
-      \ 确定需要查看哪个Pod\n- 日志显示OOM → 使用 check_oom_events 分析内存配置\n- 日志显示网络错误 → 使用 trace_service_chain\
-      \ 检查服务链路\n- 需要重启恢复 → 使用 restart_pod"
+      \ 确定需要查看哪个Pod\n- 容器已重启 → 使用 get_kubernetes_previous_pod_logs\n- 日志显示OOM → 使用 check_oom_events 分析内存配置\n\
+      - 日志显示网络错误 → 使用 trace_service_chain 检查服务链路\n- 需要重启恢复 → 使用 restart_pod"
     parameters:
       namespace:
         type: string
@@ -728,6 +733,44 @@ toolkits:
         description: ''
         required: false
       tail:
+        type: string
+        description: ''
+        required: false
+      hours:
+        type: string
+        description: ''
+        required: false
+  - name: get_kubernetes_previous_pod_logs
+    description: "获取Pod容器上一次实例的日志，用于重启类故障采集。\n\n**何时使用此工具：**\n- 已知具体 Pod，分析频繁重启的上一轮死因\n\
+      - diagnose 已给出 last_state，需要对照崩溃现场日志\n- 当前轮日志干净，但 restart_count > 0\n\n**重要提示：**\n\
+      - kubelet 只保留最近一次 previous 日志，不能还原全部历史重启\n- 不要用本工具扫全集群；必须带 namespace 和 pod_name\n\
+      \nArgs:\n    namespace (str): Pod所在命名空间\n    pod_name (str): Pod名称\n    container\
+      \ (str, optional): 容器名称，多容器Pod必须指定\n    lines (int, optional): 日志行数，默认100\n\
+      \    tail (bool, optional): True=最后N行，False=开头N行\n    hours (int, optional):\
+      \ 时间窗（小时），默认24\n    config (RunnableConfig): 工具配置\n\nReturns:\n    str: previous\
+      \ 容器日志文本，或错误信息"
+    parameters:
+      namespace:
+        type: string
+        description: ''
+        required: true
+      pod_name:
+        type: string
+        description: ''
+        required: true
+      container:
+        type: string
+        description: ''
+        required: false
+      lines:
+        type: string
+        description: ''
+        required: false
+      tail:
+        type: string
+        description: ''
+        required: false
+      hours:
         type: string
         description: ''
         required: false
@@ -770,6 +813,26 @@ toolkits:
       - 调度问题深入分析 → 使用 diagnose_pending_pod_issues\n- 检查节点状态 → 使用 diagnose_node_issues\n\
       - 存储问题 → 使用 check_kubernetes_persistent_volumes"
     parameters: {}
+  - name: get_recently_restarted_kubernetes_pods
+    description: "按最近一次重启时间列出最近重启过的 Pod（默认 Top 10）\n\n**何时使用此工具：**\n- 用户要按重启时间排序、列出最近重启的\
+      \ Pod\n- 「最近 10 个重启的 Pod」「按照重启时间排序」\n- 需要看谁最近刚重启过，而不是谁累计 restartCount 最高\n\n\
+      **不要用此工具：**\n- 已知具体 Pod 问重启原因 → diagnose_kubernetes_pod_issues\n- 只想按累计次数找长期不稳定\
+      \ Pod → get_high_restart_kubernetes_pods\n- 问今天/近 N 小时重启了几次 → 本工具给不出时间窗次数\n\n\
+      **工具能力：**\n- 一次 list pods，按每个 Pod 最近一次重启时间降序取 Top-N\n- 重启时间优先取当前轮 startedAt，否则上一轮\
+      \ finishedAt；没有时间戳则跳过\n- restart_count 只展示累计值，不是排序键，也不是窗口次数\n\nArgs:\n    namespace\
+      \ (str, optional): 命名空间；省略则扫描全部命名空间\n    top_n (int, optional): 返回条数，默认 10，最大\
+      \ 50\n    instance_name (str, optional): 多实例时指定集群；省略则扫描全部已配置实例\n    config (RunnableConfig):\
+      \ 工具配置（自动传递）\n\nReturns:\n    JSON 对象：\n    - sort: last_restart_time_desc\n\
+      \    - restart_count_note: 累计次数口径说明\n    - items[]: pod、namespace、container、last_restart_time、restart_count、ready、node"
+    parameters:
+      namespace:
+        type: string
+        description: ''
+        required: false
+      top_n:
+        type: string
+        description: ''
+        required: false
   - name: get_resource_events_timeline
     description: "获取资源的事件时间线，追溯问题演变过程\n\n**何时使用此工具：**\n- 回溯资源的历史状态变化和事件序列\n- 分析间歇性或周期性发生的故障模式\n\
       - 确定问题首次出现的时间点和触发条件\n- 为根因分析提供时间维度的事件上下文\n\n**工具能力：**\n- 按时间顺序展示所有Kubernetes事件\n\

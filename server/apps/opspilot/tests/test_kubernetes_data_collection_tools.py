@@ -756,7 +756,12 @@ def test_kubernetes_tools_loader_metadata_includes_node_diagnostics_and_collecti
     assert "collect_k8s_context_by_target_type" in tool_names
     assert "build_incident_evidence_package" in tool_names
     assert "get_kubernetes_previous_pod_logs" in tool_names
+    previous = next(tool for tool in kubernetes_item["tools"] if tool["name"] == "get_kubernetes_previous_pod_logs")
+    assert "上一轮" in previous["description"]
     assert "get_not_ready_kubernetes_pods" in tool_names
+    assert "get_recently_restarted_kubernetes_pods" in tool_names
+    recent = next(tool for tool in kubernetes_item["tools"] if tool["name"] == "get_recently_restarted_kubernetes_pods")
+    assert "重启时间" in recent["description"]
     assert "get_kubernetes_pods_top" in tool_names
     assert "get_kubernetes_nodes_top" in tool_names
     assert "exec_in_pod" in tool_names
@@ -784,6 +789,7 @@ def test_kubernetes_data_collection_toolkit_exposes_only_collection_focused_tool
     assert "rollback_deployment" not in tool_names
     assert "delete_kubernetes_resource" not in tool_names
     assert "exec_in_pod" not in tool_names
+    assert "collect_pod_restart_evidence" not in tool_names
 
 
 def test_builtin_k8s_chatflow_uses_kubernetes_toolkit():

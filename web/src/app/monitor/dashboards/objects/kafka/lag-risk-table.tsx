@@ -54,9 +54,12 @@ export function KafkaLagRiskTable({ dashboard, styles }: KafkaLagRiskTableProps)
   const timeKey = JSON.stringify(dashboard.timeValues);
 
   useEffect(() => {
-    if (!dashboard.isDashboardMode) {
+    if (!dashboard.isDashboardMode || !dashboard.idValues.length) {
       setRows([]);
+      setHistory([]);
       setSelectedKey(null);
+      setLoading(false);
+      setHistoryLoading(false);
       return;
     }
 

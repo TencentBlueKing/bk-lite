@@ -8,9 +8,10 @@ import {
   Button,
   Tooltip,
   Switch,
-  Segmented
+  Segmented,
+  Spin,
 } from 'antd';
-import { ExclamationCircleFilled, MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
+import { ExclamationCircleFilled, MinusCircleOutlined, PlusOutlined, SyncOutlined } from '@ant-design/icons';
 import Password from '@/components/password';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { useTranslation } from '@/utils/i18n';
@@ -23,6 +24,66 @@ import {
   normalizeIfTypeTags,
   normalizeMutexValues
 } from './snmpFilterMutex';
+
+export type FormFieldOptionControls = Record<
+  string,
+  {
+    loading?: boolean;
+    onRefresh?: () => void;
+    refreshTip?: string;
+  }
+>;
+
+type SelectWithRefreshProps = React.ComponentProps<typeof Select> & {
+  onRefresh: () => void;
+  refreshLabel: string;
+  refreshTip: string;
+  regionLoading?: boolean;
+};
+
+// Form.Item 只把 value/onChange 注入直接子节点。刷新按钮必须放在转发包装里，
+// 否则选中地域只改 Select 内部展示，表单仍为空，必填校验会误报。
+const SelectWithRefresh = React.forwardRef<any, SelectWithRefreshProps>(
+  function SelectWithRefresh(
+    { onRefresh, refreshLabel, refreshTip, regionLoading, ...selectProps },
+    ref
+  ) {
+    const popupWrapRef = React.useRef<HTMLDivElement>(null);
+    return (
+      <div
+        ref={popupWrapRef}
+        className="relative z-[20] mr-[10px] inline-flex items-center gap-1"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <Select
+          ref={ref}
+          {...selectProps}
+          virtual={selectProps.virtual ?? false}
+          getPopupContainer={
+            selectProps.getPopupContainer ||
+            (() => popupWrapRef.current || document.body)
+          }
+        />
+        <Tooltip title={refreshTip}>
+          <Button
+            type="text"
+            aria-label={refreshLabel}
+            disabled={Boolean(regionLoading)}
+            className="!inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--color-text-3)] hover:!bg-[var(--color-fill-2)] hover:!text-[var(--color-primary)]"
+            icon={
+              <SyncOutlined
+                spin={Boolean(regionLoading)}
+                className="text-[14px]"
+                aria-hidden
+              />
+            }
+            onClick={onRefresh}
+          />
+        </Tooltip>
+      </div>
+    );
+  }
+);
 
 const mutexValuesEqual = (left: any, right: any) => {
   if (left === right) return true;
@@ -50,7 +111,12 @@ export const useConfigRenderer = () => {
   });
   const fieldGuideTitle = t('monitor.integrations.fieldGuideTip');
 
-  const renderFormField = (fieldConfig: any, mode?: string) => {
+  const renderFormField = (
+    fieldConfig: any,
+    mode?: string,
+    externalOptions?: Record<string, any[]>,
+    optionControls?: FormFieldOptionControls
+  ) => {
     const {
       name,
       label,
@@ -58,7 +124,8 @@ export const useConfigRenderer = () => {
       required = false,
       default_value,
       widget_props = {},
-      options = [],
+      options: staticOptions = [],
+      options_key,
       dependency,
       rules = [],
       description,
@@ -66,6 +133,22 @@ export const useConfigRenderer = () => {
       guide_short,
       tooltip
     } = fieldConfig;
+    let options = staticOptions || [];
+    const resolvedOptionsKey =
+      options_key || (name === 'region' ? 'region_option' : undefined);
+    // 空数组 [] 在 JS 中为 falsy，必须用 `in` 判断，否则动态 options 永远回落静态列表。
+    if (
+      resolvedOptionsKey &&
+      externalOptions &&
+      Object.prototype.hasOwnProperty.call(externalOptions, resolvedOptionsKey)
+    ) {
+      options = externalOptions[resolvedOptionsKey] || [];
+    }
+    const optionControl = resolvedOptionsKey
+      ? optionControls?.[resolvedOptionsKey]
+      : undefined;
+    // 帮助文案只使用当前插件字段自身的 description/tooltip/guide_short，
+    // 禁止按 name === "username" 去套 monitor.integrations.usernameDes 或 WMI 文案。
     const guideTip = guide_short || tooltip || description;
     const hasGuideTip = Boolean(guideTip);
     // 悬浮提示已承载说明时，不再在控件旁重复展示同一段 description
@@ -361,33 +444,90 @@ export const useConfigRenderer = () => {
         case 'select': {
           const allowCustomTags =
             name === 'iftype_exclude' || name === 'iftype_include';
-          const { style: widgetStyle, ...restSelectProps } = widget_props;
+          const {
+            style: widgetStyle,
+            show_refresh: showRefresh,
+            ...restSelectProps
+          } = widget_props;
+          // 腾讯云地域：即使 UI.json 未带 show_refresh / options_key，也展示刷新按钮。
+          const shouldShowRegionRefresh =
+            Boolean(optionControl?.onRefresh) &&
+            (Boolean(showRefresh) ||
+              resolvedOptionsKey === 'region_option' ||
+              name === 'region');
+          const selectProps = {
+            ...restSelectProps,
+            mode: allowCustomTags ? ('tags' as const) : widget_props.mode,
+            tokenSeparators: allowCustomTags
+              ? widget_props.tokenSeparators || [',']
+              : widget_props.tokenSeparators,
+            disabled: Boolean(locked || widget_props.disabled),
+            loading: Boolean(optionControl?.loading),
+            placeholder: allowCustomTags
+              ? widget_props.placeholder ||
+                t('monitor.integrations.filterIfTypeTagsPlaceholder')
+              : widget_props.placeholder || label,
+            showSearch: true as const,
+            optionFilterProp: 'label' as const,
+            maxTagCount:
+              widget_props.mode === 'multiple'
+                ? widget_props.maxTagCount || 'responsive'
+                : widget_props.maxTagCount,
+            style: formWidgetWidthStyle(widgetStyle),
+          };
+          const optionNodes = options.map((option: any) => (
+            <Select.Option key={option.value} value={option.value} label={option.label}>
+              {option.label}
+            </Select.Option>
+          ));
+          if (shouldShowRegionRefresh && optionControl?.onRefresh) {
+            const regionLoading = Boolean(optionControl.loading);
+            return (
+              <SelectWithRefresh
+                {...selectProps}
+                placeholder={
+                  selectProps.placeholder ||
+                  t('monitor.integrations.selectCloudRegion', '请选择地域')
+                }
+                notFoundContent={
+                  regionLoading ? (
+                    <div className="flex items-center justify-center gap-2 py-3 text-[var(--color-text-3)]">
+                      <Spin size="small" />
+                      <span>
+                        {t(
+                          'monitor.integrations.fetchingCloudRegions',
+                          '正在获取地域…'
+                        )}
+                      </span>
+                    </div>
+                  ) : (
+                    t(
+                      'monitor.integrations.cloudRegionNoOptions',
+                      '暂无地域，请先填写密钥后点击刷新'
+                    )
+                  )
+                }
+                onRefresh={optionControl.onRefresh}
+                refreshLabel={t(
+                  'monitor.integrations.fetchCloudRegions',
+                  '获取地域'
+                )}
+                refreshTip={
+                  optionControl.refreshTip ||
+                  t(
+                    'monitor.integrations.refreshCloudRegionsTip',
+                    '根据已填密钥刷新可用地域'
+                  )
+                }
+                regionLoading={regionLoading}
+              >
+                {optionNodes}
+              </SelectWithRefresh>
+            );
+          }
           return (
-            <Select
-              {...restSelectProps}
-              mode={allowCustomTags ? 'tags' : widget_props.mode}
-              tokenSeparators={
-                allowCustomTags
-                  ? widget_props.tokenSeparators || [',']
-                  : widget_props.tokenSeparators
-              }
-              disabled={Boolean(locked || widget_props.disabled)}
-              placeholder={
-                allowCustomTags
-                  ? widget_props.placeholder ||
-                    t('monitor.integrations.filterIfTypeTagsPlaceholder')
-                  : widget_props.placeholder || label
-              }
-              showSearch
-              optionFilterProp="label"
-              className="mr-[10px]"
-              style={formWidgetWidthStyle(widgetStyle)}
-            >
-              {options.map((option: any) => (
-                <Select.Option key={option.value} value={option.value} label={option.label}>
-                  {option.label}
-                </Select.Option>
-              ))}
+            <Select {...selectProps} className="mr-[10px]">
+              {optionNodes}
             </Select>
           );
         }

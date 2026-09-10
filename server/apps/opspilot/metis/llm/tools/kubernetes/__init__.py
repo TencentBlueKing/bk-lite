@@ -35,6 +35,7 @@ from apps.opspilot.metis.llm.tools.kubernetes.data_collection import (
     resolve_k8s_target_from_alert,
 )
 from apps.opspilot.metis.llm.tools.kubernetes.diagnostics import (
+    collect_pod_restart_evidence,
     diagnose_kubernetes_pod_issues,
     get_failed_kubernetes_pods,
     get_high_restart_kubernetes_pods,
@@ -42,6 +43,7 @@ from apps.opspilot.metis.llm.tools.kubernetes.diagnostics import (
     get_kubernetes_orphaned_resources,
     get_not_ready_kubernetes_pods,
     get_pending_kubernetes_pods,
+    get_recently_restarted_kubernetes_pods,
 )
 from apps.opspilot.metis.llm.tools.kubernetes.diagnostics_advanced import (
     check_network_policies_blocking,
@@ -116,9 +118,11 @@ __all__ = [
     "get_pending_kubernetes_pods",
     "get_not_ready_kubernetes_pods",
     "get_high_restart_kubernetes_pods",
+    "get_recently_restarted_kubernetes_pods",
     "get_kubernetes_node_capacity",
     "get_kubernetes_orphaned_resources",
     "diagnose_kubernetes_pod_issues",
+    "collect_pod_restart_evidence",
     "diagnose_node_issues",
     # 配置分析和策略检查工具
     "check_kubernetes_resource_quotas",

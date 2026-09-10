@@ -20,6 +20,7 @@ import {
   resolveCardListPreviewSlots,
   type CardListFormState,
 } from '../utils/cardListSettingsModel';
+import { ConfigGroupTitle } from '../configTitles';
 
 interface CardListSettingsSectionProps {
   t: (key: string) => string;
@@ -383,7 +384,6 @@ export const CardListSettingsSection: React.FC<CardListSettingsSectionProps> = (
       <Form.Item name={['cardList', 'badgeStyle']} noStyle>
         <StoredAccentStyle />
       </Form.Item>
-      <div className="mb-4 font-medium">{t('dashboard.cardListSettings')}</div>
       {availableFields.length === 0 ? (
         <div className="mb-4 text-center text-sm text-(--color-text-3)">
           {t('topology.nodeConfig.noAvailableFields')}
@@ -395,7 +395,9 @@ export const CardListSettingsSection: React.FC<CardListSettingsSectionProps> = (
         slots={previewSlots}
       />
 
-      <div className="mt-5 mb-2 font-medium">{t('dashboard.cardListContent')}</div>
+      <ConfigGroupTitle className="mt-5">
+        {t('dashboard.cardListContent')}
+      </ConfigGroupTitle>
       <Form.Item
         label={t('dashboard.cardListTitleField')}
         name={['cardList', 'titleField']}
@@ -417,7 +419,9 @@ export const CardListSettingsSection: React.FC<CardListSettingsSectionProps> = (
         />
       </Form.Item>
 
-      <div className="mt-5 mb-2 font-medium">{t('dashboard.cardListOptional')}</div>
+      <ConfigGroupTitle className="mt-5">
+        {t('dashboard.cardListOptional')}
+      </ConfigGroupTitle>
       <div className="flex flex-col gap-3">
         <OptionalGroup
           title={t('dashboard.cardListAddLeading')}
@@ -537,7 +541,9 @@ export const CardListSettingsSection: React.FC<CardListSettingsSectionProps> = (
         </OptionalGroup>
       </div>
 
-      <div className="mt-5 mb-2 font-medium">{t('dashboard.cardListLayout')}</div>
+      <ConfigGroupTitle className="mt-5">
+        {t('dashboard.cardListLayout')}
+      </ConfigGroupTitle>
       <Form.Item name={['cardList', 'layout']} className="mb-0">
         <LayoutPicker
           listLabel={t('dashboard.cardListLayoutList')}

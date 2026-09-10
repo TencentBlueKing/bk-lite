@@ -10,6 +10,15 @@ from django.shortcuts import render
 from rest_framework.decorators import api_view
 
 from apps.core.logger import logger, safe_exception_call_chain, safe_exception_info
+from apps.core.services.legacy_third_login_service import (
+    GENERIC_EXCHANGE_ERROR,
+    apply_exchange_cors,
+    authorize_legacy_redirect,
+    consume_legacy_third_login_code,
+    extract_bearer_token,
+    is_safe_legacy_external_callback_url,
+    json_error,
+)
 from apps.core.services.login_auth_request_service import (
     AUTH_REQUEST_TTL,
     build_auth_request_state,
@@ -129,11 +138,7 @@ def _is_safe_relative_callback_url(callback_url: str) -> bool:
 
 
 def _is_safe_legacy_external_callback_url(callback_url: str) -> bool:
-    try:
-        parsed = urlparse(callback_url)
-    except (TypeError, ValueError):
-        return False
-    return parsed.scheme in ("http", "https") and bool(parsed.netloc)
+    return is_safe_legacy_external_callback_url(callback_url)
 
 
 def _build_login_auth_result_redirect(
@@ -970,7 +975,7 @@ def start_login_auth(request):
         if legacy_external_callback_url and not legacy_third_login_code:
             return JsonResponse({"result": False, "message": "legacy_external_callback_url requires third_login_code"}, status=400)
         if legacy_external_callback_url and not _is_safe_legacy_external_callback_url(legacy_external_callback_url):
-            return JsonResponse({"result": False, "message": "legacy_external_callback_url must be an absolute HTTP(S) URL"}, status=400)
+            return JsonResponse({"result": False, "message": "legacy_external_callback_url is not allowed"}, status=400)
         if redirect_origin and not validate_redirect_origin(request, redirect_origin):
             redirect_origin = None
 
@@ -1155,9 +1160,23 @@ def login_auth_callback(request):
 
     login_result = result.get("data", {}) or {}
     login_result.setdefault("redirect_url", state_payload["callback_url"])
-    if auth_request.get("legacy_external_callback_url") and auth_request.get("legacy_third_login_code"):
-        login_result["legacy_external_callback_url"] = auth_request["legacy_external_callback_url"]
-        login_result["legacy_third_login_code"] = auth_request["legacy_third_login_code"]
+    legacy_external_callback_url = auth_request.get("legacy_external_callback_url") or ""
+    legacy_third_login_code = auth_request.get("legacy_third_login_code") or ""
+    login_token = login_result.get("token") or ""
+    if legacy_external_callback_url and legacy_third_login_code and login_token:
+        if not _is_safe_legacy_external_callback_url(legacy_external_callback_url):
+            logger.info(
+                "event=legacy_third_login_auth_callback result=rejected callback_host=%s",
+                urlparse(legacy_external_callback_url).hostname or "-",
+            )
+        else:
+            legacy_redirect_url = authorize_legacy_redirect(
+                token=login_token,
+                callback_url=legacy_external_callback_url,
+                third_login_code=legacy_third_login_code,
+            )
+            if legacy_redirect_url:
+                login_result["legacy_redirect_url"] = legacy_redirect_url
     update_auth_request_status(
         auth_request_id,
         status="success",
@@ -1168,3 +1187,64 @@ def login_auth_callback(request):
     if login_result.get("token"):
         _set_auth_cookie_on_response(response, login_result["token"])
     return response
+
+
+def legacy_third_login_authorize(request):
+    if request.method != "POST":
+        return json_error("Method not allowed", status=405)
+
+    token = extract_bearer_token(request)
+    if not token:
+        return json_error("Authentication required", status=401)
+
+    try:
+        data = _parse_request_data(request)
+        callback_url = (data.get("callback_url") or "").strip()
+        third_login_code = (data.get("third_login_code") or "").strip()
+        redirect_url = authorize_legacy_redirect(
+            token=token,
+            callback_url=callback_url,
+            third_login_code=third_login_code,
+        )
+        if not redirect_url:
+            return json_error("legacy callback is not allowed", status=400)
+        return JsonResponse({"redirect_url": redirect_url})
+    except Exception as error:
+        logger.error(
+            "event=legacy_third_login_authorize_failed failed_stage=authorize error_type=%s call_chain=%s",
+            type(error).__name__,
+            safe_exception_call_chain(error),
+            exc_info=safe_exception_info(error),
+        )
+        return json_error(_get_loader(request).get("error.system_error", "System error occurred"), status=500)
+
+
+@api_exempt
+def legacy_third_login_exchange(request):
+    if request.method == "OPTIONS":
+        return apply_exchange_cors(request, JsonResponse({"result": True}))
+    if request.method != "POST":
+        return apply_exchange_cors(request, json_error("Method not allowed", status=405))
+
+    try:
+        data = _parse_request_data(request)
+        code = (data.get("code") or "").strip()
+        origin = request.META.get("HTTP_ORIGIN", "")
+        payload = consume_legacy_third_login_code(code, origin)
+        if not payload:
+            return apply_exchange_cors(request, json_error(GENERIC_EXCHANGE_ERROR, status=400))
+        return apply_exchange_cors(
+            request,
+            JsonResponse({"result": True, "data": {"token": payload["token"]}}),
+        )
+    except Exception as error:
+        logger.error(
+            "event=legacy_third_login_exchange_failed failed_stage=exchange error_type=%s call_chain=%s",
+            type(error).__name__,
+            safe_exception_call_chain(error),
+            exc_info=safe_exception_info(error),
+        )
+        return apply_exchange_cors(
+            request,
+            json_error(_get_loader(request).get("error.system_error", "System error occurred"), status=500),
+        )

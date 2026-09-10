@@ -1,10 +1,10 @@
+import time
 from types import SimpleNamespace
 
 from apps.cmdb.collection.metrics_cannula import MetricsCannula
 from apps.cmdb.collection.plugins import get_collection_plugin
 from apps.cmdb.constants.constants import DataCleanupStrategy
 from apps.cmdb.models.scan_model import ScanExecution, ScanFamilyRun, ScanHit, scan_task_type_for_model
-from apps.cmdb.services.scan_identity import refine_scan_metrics
 from apps.core.logger import cmdb_logger as logger
 
 _PHYSICAL_SNAPSHOT_KEYS = ("serial_number", "uuid", "board_serial")
@@ -33,15 +33,25 @@ _NETWORK_SNAPSHOT_KEYS = (
     "model",
 )
 _DB_SNAPSHOT_KEYS = ("inst_name", "ip_addr", "port", "version", "db_version")
+_HOST_OS_TYPE_LABELS = {"1": "Linux", "2": "Windows", "3": "AIX", "4": "Unix"}
+_SCAN_METRICS_RETRY_ATTEMPTS = 12
+_SCAN_METRICS_RETRY_SECONDS = 5
 
 
 def build_scan_collect_shim(family_run: ScanFamilyRun):
+    params = {"has_network_topo": False}
+    if family_run.model_id == "host":
+        from apps.cmdb.services.scan_host_cloud import host_cloud_from_scan
+
+        task = getattr(getattr(family_run, "execution", None), "task", None)
+        if task is not None:
+            params.update(host_cloud_from_scan(task))
     return SimpleNamespace(
         id=family_run.id,
         model_id=family_run.model_id,
         instances=[],
         is_network_topo=False,
-        params={"has_network_topo": False},
+        params=params,
         driver_type=family_run.driver_type,
         topology_snapshot={},
         topology_contract={},
@@ -60,6 +70,40 @@ def collect_family_metrics(family_run: ScanFamilyRun):
         collect_inst=build_scan_collect_shim(family_run),
     )
     return plugin.run() or {}
+
+
+def _missing_success_hosts(family_run: ScanFamilyRun, plugin_result: dict) -> int:
+    success_hosts = {host for host in family_run.hits.filter(status=ScanHit.STATUS_SUCCESS).values_list("host", flat=True) if str(host or "").strip()}
+    if not success_hosts:
+        return 0
+    covered = {host for host, row in _rows_by_host(plugin_result).items() if _row_has_snapshot_facts(family_run.model_id, row)}
+    return len(success_hosts - covered)
+
+
+def collect_family_metrics_until_hits(family_run: ScanFamilyRun) -> dict:
+    metrics = {}
+    last_missing = 0
+    for attempt in range(1, _SCAN_METRICS_RETRY_ATTEMPTS + 1):
+        metrics = collect_family_metrics(family_run)
+        last_missing = _missing_success_hosts(family_run, metrics)
+        if last_missing == 0:
+            return metrics
+        logger.debug(
+            "[ScanFinalize] 指标尚未覆盖成功命中 execution=%s family=%s missing=%s attempt=%s",
+            family_run.execution_id,
+            family_run.model_id,
+            last_missing,
+            attempt,
+        )
+        if attempt < _SCAN_METRICS_RETRY_ATTEMPTS:
+            time.sleep(_SCAN_METRICS_RETRY_SECONDS)
+    logger.info(
+        "[ScanFinalize] 收口时指标仍未覆盖成功命中 execution=%s family=%s missing=%s",
+        family_run.execution_id,
+        family_run.model_id,
+        last_missing,
+    )
+    return metrics
 
 
 def write_refined_metrics(family_run: ScanFamilyRun, organization, refined: dict):
@@ -141,6 +185,10 @@ def _snapshot_keys_for_family(model_id: str):
     return _DB_SNAPSHOT_KEYS
 
 
+def _row_has_snapshot_facts(model_id: str, row: dict) -> bool:
+    return any(row.get(key) not in (None, "") for key in _snapshot_keys_for_family(model_id))
+
+
 def _rows_by_host(plugin_result: dict):
     by_host = {}
     for model_id, rows in (plugin_result or {}).items():
@@ -177,9 +225,18 @@ def annotate_hit_snapshots(family_run: ScanFamilyRun, plugin_result: dict, oid_m
             value = row.get(key)
             if value in (None, ""):
                 continue
+            if family_run.model_id == "host" and key == "os_type":
+                value = _HOST_OS_TYPE_LABELS.get(str(value), value)
             if snapshot.get(key) != value:
                 snapshot[key] = value
                 changed = True
+        if family_run.model_id == "network" and not snapshot.get("sysname"):
+            for key in ("sys_desc", "sysdescr"):
+                value = row.get(key)
+                if value not in (None, ""):
+                    snapshot["sysname"] = value
+                    changed = True
+                    break
         soid = str(row.get("soid") or row.get("sysobjectid") or snapshot.get("soid") or snapshot.get("sysobjectid") or "")
         if soid and family_run.model_id == "network":
             mapped = oid_map.get(soid) if isinstance(oid_map, dict) else None
@@ -229,42 +286,57 @@ def attach_snmp_hits_to_physical(execution: ScanExecution):
         hit.save(update_fields=["attached_inst_uuid", "updated_at"])
 
 
-def write_scan_execution(execution: ScanExecution):
-    task = execution.task
-    organization = task.team or []
-    if organization is not None and not isinstance(organization, list):
-        organization = [organization]
+def polish_hit_snapshots(family_run: ScanFamilyRun):
+    """收口只整理 snapshot，不写图、不拉 VM。网络用特征库给建议类型。"""
+    if family_run.model_id == "network":
+        from apps.cmdb.collection.collect_plugin.network import CollectNetworkMetrics
 
+        oid_map = CollectNetworkMetrics.get_oid_map()
+        for hit in family_run.hits.filter(status=ScanHit.STATUS_SUCCESS):
+            snapshot = dict(hit.snapshot or {}) if isinstance(hit.snapshot, dict) else {}
+            soid = str(hit.soid or snapshot.get("soid") or snapshot.get("sysobjectid") or "").strip()
+            changed = False
+            update_fields = []
+            if soid:
+                mapped = oid_map.get(soid) if isinstance(oid_map, dict) else None
+                if isinstance(mapped, dict):
+                    for key in ("brand", "model", "device_type"):
+                        value = mapped.get(key)
+                        if value and snapshot.get(key) != value:
+                            snapshot[key] = value
+                            changed = True
+                if hit.soid != soid:
+                    hit.soid = soid
+                    update_fields.append("soid")
+            if changed:
+                hit.snapshot = snapshot
+                update_fields.extend(["snapshot", "updated_at"])
+            elif update_fields:
+                update_fields.append("updated_at")
+            if update_fields:
+                hit.save(update_fields=list(dict.fromkeys(update_fields)))
+        return
+    if family_run.model_id != "host":
+        return
+    for hit in family_run.hits.filter(status=ScanHit.STATUS_SUCCESS):
+        snapshot = dict(hit.snapshot or {}) if isinstance(hit.snapshot, dict) else {}
+        os_type = snapshot.get("os_type")
+        mapped = _HOST_OS_TYPE_LABELS.get(str(os_type)) if os_type not in (None, "") else None
+        if mapped and snapshot.get("os_type") != mapped:
+            snapshot["os_type"] = mapped
+            hit.snapshot = snapshot
+            hit.save(update_fields=["snapshot", "updated_at"])
+
+
+def write_scan_execution(execution: ScanExecution):
     for family_run in execution.family_runs.all():
         try:
-            metrics = collect_family_metrics(family_run)
+            polish_hit_snapshots(family_run)
         except Exception:
             logger.exception(
-                "[ScanFinalize] 族 mapping 失败 execution=%s family=%s",
+                "[ScanFinalize] 整理 snapshot 失败 execution=%s family=%s",
                 execution.id,
                 family_run.model_id,
             )
             continue
-
-        oid_map = None
-        if family_run.model_id == "network":
-            from apps.cmdb.collection.collect_plugin.network import CollectNetworkMetrics
-
-            oid_map = CollectNetworkMetrics.get_oid_map()
-        refined = refine_scan_metrics(family_run.model_id, metrics, oid_map=oid_map)
-        annotate_hit_snapshots(family_run, metrics, oid_map=oid_map)
-        if not refined:
-            continue
-        try:
-            controller_result = write_refined_metrics(family_run, organization, refined)
-        except Exception:
-            logger.exception(
-                "[ScanFinalize] 写 CI 失败 execution=%s family=%s",
-                execution.id,
-                family_run.model_id,
-            )
-            continue
-        backfill_hit_identities(family_run, refined, controller_result)
-
-    attach_snmp_hits_to_physical(execution)
     return {"status": "written", "execution_id": execution.id}

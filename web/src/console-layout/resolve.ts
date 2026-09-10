@@ -8,6 +8,18 @@ import {
   type ConsoleChromeLayout,
 } from './contract';
 
+export const shouldHideConsoleTopNav = (pathname: string | null | undefined): boolean => {
+  if (!pathname) {
+    return false;
+  }
+  return (
+    pathname.startsWith('/opspilot/studio/chat')
+    || pathname.startsWith('/opspilot/skill/chat')
+    || pathname.startsWith('/ops-analysis/share/')
+    || pathname.startsWith('/opspilot/memory/document')
+  );
+};
+
 export const isConsoleChromeException = (pathname: string | null | undefined): boolean => {
   if (!pathname) {
     return false;
@@ -17,8 +29,7 @@ export const isConsoleChromeException = (pathname: string | null | undefined): b
     || pathname.startsWith('/auth/signout')
     || pathname === '/no-permission'
     || pathname === '/no-found'
-    || pathname.startsWith('/opspilot/studio/chat')
-    || pathname.startsWith('/ops-analysis/share/')
+    || shouldHideConsoleTopNav(pathname)
     || pathname.startsWith('/ops-analysis/render/execution/')
     || pathname.startsWith('/monitor/view/dashboard/')
     || pathname.startsWith('/ops-console')
@@ -88,6 +99,43 @@ export const buildAppTopSideNavGroups = (
   }));
 };
 
+/**
+ * App-top first-layer links: real list pages with hasDetail keep their own URL;
+ * container menus with children jump to the first visible leaf so we skip
+ * client redirect stubs that briefly render null.
+ */
+export const resolveMenuNavHref = (item: MenuItem): string => {
+  if (!item.url) {
+    return '';
+  }
+  if (item.hasDetail || !item.children?.length) {
+    return item.url;
+  }
+
+  const findFirstVisibleHref = (items: MenuItem[]): string | null => {
+    for (const child of items) {
+      if (child.isNotMenuItem) {
+        continue;
+      }
+      if (child.isDirectory) {
+        if (child.children?.length) {
+          const nested = findFirstVisibleHref(child.children);
+          if (nested) {
+            return nested;
+          }
+        }
+        continue;
+      }
+      if (child.url) {
+        return child.url;
+      }
+    }
+    return null;
+  };
+
+  return findFirstVisibleHref(item.children) || item.url;
+};
+
 export const shouldOpenAppInNewTab = (
   app: { url: string; is_build_in?: boolean },
   currentOrigin: string,
@@ -133,6 +181,80 @@ const appRoutePrefix = (appUrl: string, currentOrigin: string): string | null =>
     return null;
   }
 };
+
+const menuPathname = (url: string): string => {
+  const pathname = url.split(/[?#]/, 1)[0] || '/';
+  return pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
+};
+
+const menuBelongsToPrefix = (url: string | undefined, prefix: string): boolean => {
+  if (!url) {
+    return false;
+  }
+  const path = menuPathname(url);
+  return path === prefix || path.startsWith(`${prefix}/`);
+};
+
+const findFirstMenuHrefUnderPrefix = (menus: MenuItem[], prefix: string): string | null => {
+  const walk = (items: MenuItem[]): string | null => {
+    for (const item of items) {
+      if (item.isNotMenuItem) {
+        continue;
+      }
+      if (item.url && menuBelongsToPrefix(item.url, prefix)) {
+        const href = resolveMenuNavHref(item);
+        if (href && menuBelongsToPrefix(href, prefix)) {
+          return menuPathname(href);
+        }
+      }
+      if (item.children?.length) {
+        const nested = walk(item.children);
+        if (nested) {
+          return nested;
+        }
+      }
+    }
+    return null;
+  };
+  return walk(menus);
+};
+
+/**
+ * Same-origin app chips skip `/cmdb`-style redirect stubs and land on the
+ * first real menu page, so the console does not briefly remount a blank page.
+ */
+export const resolveAppLandingHref = (
+  app: { url: string; is_build_in?: boolean },
+  currentOrigin: string,
+  menus: MenuItem[] = [],
+): AppNavTarget => {
+  const target = resolveAppNavigation(app, currentOrigin);
+  if (target.mode !== 'same-tab' || menus.length === 0) {
+    return target;
+  }
+  const prefix = appRoutePrefix(app.url, currentOrigin);
+  if (!prefix) {
+    return target;
+  }
+  let landingPath = target.href;
+  try {
+    landingPath = new URL(target.href, currentOrigin).pathname;
+  } catch {
+    landingPath = target.href.split(/[?#]/, 1)[0] || target.href;
+  }
+  landingPath = landingPath.length > 1 ? landingPath.replace(/\/+$/, '') : landingPath || '/';
+  if (landingPath !== prefix) {
+    return target;
+  }
+  const firstLeaf = findFirstMenuHrefUnderPrefix(menus, prefix);
+  return firstLeaf ? { mode: 'same-tab', href: firstLeaf } : target;
+};
+
+/** Already-active same-tab app chips must not re-enter the landing stub. */
+export const shouldStayOnCurrentAppPage = (
+  active: boolean,
+  target: AppNavTarget,
+): boolean => active && target.mode === 'same-tab';
 
 export const isAppNavActive = (
   app: { url: string; name?: string },
@@ -207,4 +329,20 @@ export const countVisibleAppSlots = (containerWidth: number, appCount: number): 
     1,
     Math.floor((containerWidth - APP_TOP_NAV_MORE_WIDTH_PX) / APP_TOP_NAV_CHIP_WIDTH_PX),
   );
+};
+
+const APP_STRIP_OVERFLOW_EDGE_PX = 2;
+
+export const getAppStripOverflow = (
+  scrollLeft: number,
+  clientWidth: number,
+  scrollWidth: number,
+): { left: boolean; right: boolean } => {
+  if (clientWidth <= 0 || scrollWidth <= clientWidth + APP_STRIP_OVERFLOW_EDGE_PX) {
+    return { left: false, right: false };
+  }
+  return {
+    left: scrollLeft > APP_STRIP_OVERFLOW_EDGE_PX,
+    right: scrollLeft + clientWidth < scrollWidth - APP_STRIP_OVERFLOW_EDGE_PX,
+  };
 };

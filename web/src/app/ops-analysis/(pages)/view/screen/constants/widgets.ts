@@ -94,6 +94,13 @@ export const SCREEN_WIDGET_DEFINITIONS: ScreenWidgetDefinition[] = [
     defaultHeight: 300,
   },
   {
+    chartType: 'nodeGraph',
+    titleKey: 'opsAnalysis.screen.widgets.nodeGraph',
+    descriptionKey: 'opsAnalysis.screen.widgetDescriptions.nodeGraph',
+    defaultWidth: 620,
+    defaultHeight: 420,
+  },
+  {
     chartType: 'topologyMap',
     titleKey: 'opsAnalysis.screen.widgets.topologyMap',
     descriptionKey: 'opsAnalysis.screen.widgetDescriptions.topologyMap',

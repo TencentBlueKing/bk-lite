@@ -66,9 +66,10 @@ describe('application3D wall entrance motion', () => {
 
   it('expands planes first, then racks, then labels, then inter-plane tubes', () => {
     expect(architecturePlaneDelayMs(0)).toBe(0);
-    expect(architecturePlaneDelayMs(1)).toBe(ARCHITECTURE_MOTION.staggerMs);
+    expect(architecturePlaneDelayMs(1)).toBe(ARCHITECTURE_MOTION.planeMs);
+    expect(architecturePlaneDelayMs(1)).not.toBe(ARCHITECTURE_MOTION.staggerMs);
     expect(architecturePlanesDoneMs()).toBe(
-      ARCHITECTURE_MOTION.staggerMs + ARCHITECTURE_MOTION.planeMs,
+      ARCHITECTURE_MOTION.planeMs + ARCHITECTURE_MOTION.planeMs,
     );
     expect(architectureNodeDelayMs(0, 4)).toBe(architecturePlanesDoneMs());
     expect(architectureNodeDelayMs(1, 4)).toBe(architecturePlanesDoneMs());

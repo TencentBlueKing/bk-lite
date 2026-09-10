@@ -18,24 +18,29 @@ export const TopNSettingsSection: React.FC<TopNSettingsSectionProps> = ({
   topNValueFieldOptions,
 }) => {
   const resolvedSectionTitle =
-    sectionTitle || t('topology.nodeConfig.dataSettings');
+    sectionTitle !== undefined ? sectionTitle : t('topology.nodeConfig.dataSettings');
 
   return (
-    <div className="mb-6">
-      <div className="mb-6">
-        <div className="font-medium mb-4">{resolvedSectionTitle}</div>
+    <div className="space-y-4">
+      {resolvedSectionTitle ? (
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-[13px] font-semibold text-(--color-text-2)">
+            {resolvedSectionTitle}
+          </span>
+        </div>
+      ) : null}
 
-        {!selectedDataSource ? (
-          <div className="text-center py-4 text-gray-500">
-            {t('topology.nodeConfig.selectDataSourceFirst')}
-          </div>
-        ) : null}
+      {!selectedDataSource ? (
+        <div className="text-center py-4 text-xs text-(--color-text-3)">
+          {t('topology.nodeConfig.selectDataSourceFirst')}
+        </div>
+      ) : null}
 
-        {selectedDataSource && topNLabelFieldOptions.length === 0 ? (
-          <div className="text-center py-4 text-gray-500">
-            {t('topology.nodeConfig.noAvailableFields')}
-          </div>
-        ) : null}
+      {selectedDataSource && topNLabelFieldOptions.length === 0 ? (
+        <div className="text-center py-4 text-xs text-(--color-text-3)">
+          {t('topology.nodeConfig.noAvailableFields')}
+        </div>
+      ) : null}
 
         <Form.Item
           label={t('topology.nodeConfig.displayField')}
@@ -74,7 +79,6 @@ export const TopNSettingsSection: React.FC<TopNSettingsSectionProps> = ({
             optionFilterProp="value"
           />
         </Form.Item>
-      </div>
     </div>
   );
 };

@@ -5,6 +5,7 @@ import {
   getDeepestMatchedMenuItems,
   getFirstLayerSiblingMenuItems,
   isMenuPathMatch,
+  isPathCoveredByMenus,
   resolveMenuIcon,
 } from '../menuHelpers';
 import type { MenuItem } from '@/types/index';
@@ -91,13 +92,44 @@ const cmdbAutoDiscoveryMenus: MenuItem[] = [
         name: 'autoDiscovery',
         children: [
           menu({ title: '采集', url: '/cmdb/assetManage/autoDiscovery/collection', name: 'collection' }),
-          menu({ title: 'SOID特征库', url: '/cmdb/assetManage/autoDiscovery/featureLibrary/soid', name: 'soid' }),
+          menu({ title: '特征库', url: '/cmdb/assetManage/autoDiscovery/featureLibrary/soid', name: 'soid' }),
+          menu({
+            title: '端口指纹',
+            url: '/cmdb/assetManage/autoDiscovery/featureLibrary/port',
+            name: 'soid',
+            isNotMenuItem: true,
+          }),
           menu({ title: '采集工具', url: '/cmdb/assetManage/autoDiscovery/featureLibrary/collectionTool', name: 'tool' }),
         ],
       }),
     ],
   }),
 ];
+
+describe('isPathCoveredByMenus', () => {
+  it('treats an app landing as covered when menus only list deeper leaves', () => {
+    const logMenus: MenuItem[] = [
+      menu({
+        title: '检索',
+        url: '/log/search',
+        name: 'search',
+      }),
+      menu({
+        title: '事件',
+        url: '/log/event',
+        name: 'event',
+        children: [
+          menu({ title: '告警', url: '/log/event/alert', name: 'alert' }),
+        ],
+      }),
+    ];
+
+    expect(isPathCoveredByMenus('/log', logMenus)).toBe(true);
+    expect(isPathCoveredByMenus('/log/search', logMenus)).toBe(true);
+    expect(isPathCoveredByMenus('/log/event/alert', logMenus)).toBe(true);
+    expect(isPathCoveredByMenus('/monitor', logMenus)).toBe(false);
+  });
+});
 
 describe('isMenuPathMatch', () => {
   it('matches exact and descendant paths on segment boundary', () => {
@@ -192,7 +224,15 @@ describe('getDeepestMatchedMenuItems', () => {
       cmdbAutoDiscoveryMenus,
       '/cmdb/assetManage/autoDiscovery/collection',
     ).map((item) => item.title);
-    expect(items).toEqual(['采集', 'SOID特征库', '采集工具']);
+    expect(items).toEqual(['采集', '特征库', '采集工具']);
+  });
+
+  it('keeps the port fingerprint tab off the auto-discovery sidebar', () => {
+    const items = getDeepestMatchedMenuItems(
+      cmdbAutoDiscoveryMenus,
+      '/cmdb/assetManage/autoDiscovery/featureLibrary/port',
+    ).map((item) => item.title);
+    expect(items).toEqual(['采集', '特征库', '采集工具']);
   });
 
   it('returns children when the deepest match still has children', () => {

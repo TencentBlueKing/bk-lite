@@ -220,6 +220,8 @@ class Application3DQueryService:
                 host_id: {
                     "name": cls._instance_name(host),
                     "health": cls._architecture_member_health(scope, system_id, hosts=[host], expected_host_ids=[host_id]),
+                    "ip_addr": str(host.get("ip_addr") or ""),
+                    "os_name": str(host.get("os_name") or ""),
                 }
                 for host_id, host in visible_host_map.items()
             },

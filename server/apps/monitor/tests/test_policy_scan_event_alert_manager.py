@@ -33,6 +33,7 @@ def _policy(**kwargs):
         notice=False,
         notice_type_ids=[],
         notice_users=[],
+        handlers=[],
         no_data_level="warning",
         last_run_time=datetime(2026, 1, 1, tzinfo=timezone.utc),
     )
@@ -112,6 +113,48 @@ class TestCreateEventsAndAlerts:
         assert len(event_objs) == 1
         # 事件 alert_id 关联到新建告警
         assert event_objs[0].alert_id == new_alerts[0].id
+        assert event_objs[0].action == MonitorEvent.Action.TRIGGERED
+
+    def test_new_alert_does_not_send_assign_notice(self, stub_s3, mocker, django_capture_on_commit_callbacks):
+        notifier_cls = mocker.patch(
+            "apps.monitor.tasks.services.policy_scan.event_alert_manager.AlertLifecycleNotifier"
+        )
+        mgr = EventAlertManager(_policy(notice=True, handlers=[7]), {"h1": "主机1"}, [])
+        events = [{
+            "monitor_instance_id": "h1", "metric_instance_id": "('h1',)",
+            "dimensions": {}, "value": 95.0, "level": "critical",
+            "content": "超阈值",
+        }]
+
+        with django_capture_on_commit_callbacks(execute=True):
+            mgr.create_events_and_alerts(events)
+
+        notifier_cls.return_value.notify_alerts.assert_called_once()
+        assert notifier_cls.return_value.notify_alerts.call_args.kwargs["action"] == "created"
+        notifier_cls.return_value.notify_assigned.assert_not_called()
+
+    def test_new_alert_snapshots_policy_handlers(self, stub_s3, mocker):
+        mocker.patch(
+            "apps.monitor.tasks.services.policy_scan.event_alert_manager.AlertLifecycleNotifier"
+        )
+        mgr = EventAlertManager(_policy(handlers=[7, 8]), {"h1": "主机1"}, [])
+        events = [{
+            "monitor_instance_id": "h1", "metric_instance_id": "('h1',)",
+            "dimensions": {}, "value": 95.0, "level": "critical",
+            "content": "超阈值",
+        }]
+        _, new_alerts = mgr.create_events_and_alerts(events)
+        existing = new_alerts[0]
+        later = EventAlertManager(_policy(handlers=[9]), {"h1": "主机1"}, [existing])
+        later.create_events_and_alerts([{
+            "monitor_instance_id": "h1", "metric_instance_id": "('h1',)",
+            "dimensions": {}, "value": 99.0, "level": "critical",
+            "content": "仍超阈值",
+        }])
+        existing.refresh_from_db()
+
+        assert new_alerts[0].handlers == [7, 8]
+        assert existing.handlers == [7, 8]
 
     def test_reuses_existing_active_alert(self, stub_s3, mocker):
         mocker.patch(
@@ -135,6 +178,72 @@ class TestCreateEventsAndAlerts:
         # critical(4) > warning(2) → 升级
         assert existing.level == "critical"
         assert existing.value == 99.0
+        assert len(event_objs) == 1
+        assert event_objs[0].action == MonitorEvent.Action.ESCALATED
+
+    def test_escalate_still_notifies_upgraded(self, stub_s3, mocker, django_capture_on_commit_callbacks):
+        notifier_cls = mocker.patch(
+            "apps.monitor.tasks.services.policy_scan.event_alert_manager.AlertLifecycleNotifier"
+        )
+        existing = MonitorAlert.objects.create(
+            policy_id=1, monitor_instance_id="h1", metric_instance_id="('h1',)",
+            alert_type="alert", level="warning", status="new",
+        )
+        mgr = EventAlertManager(_policy(notice=True), {"h1": "主机1"}, [existing])
+        events = [{
+            "monitor_instance_id": "h1", "metric_instance_id": "('h1',)",
+            "dimensions": {}, "value": 99.0, "level": "critical",
+            "content": "升级", "raw_data": {},
+        }]
+        with django_capture_on_commit_callbacks(execute=True):
+            event_objs, new_alerts = mgr.create_events_and_alerts(events)
+        assert new_alerts == []
+        assert event_objs[0].action == MonitorEvent.Action.ESCALATED
+        notifier_cls.return_value.notify_alerts.assert_called_once()
+        assert notifier_cls.return_value.notify_alerts.call_args.kwargs["action"] == "upgraded"
+
+    def test_same_level_hit_does_not_create_event(self, stub_s3, mocker, django_capture_on_commit_callbacks):
+        notifier_cls = mocker.patch(
+            "apps.monitor.tasks.services.policy_scan.event_alert_manager.AlertLifecycleNotifier"
+        )
+        existing = MonitorAlert.objects.create(
+            policy_id=1, monitor_instance_id="h1", metric_instance_id="('h1',)",
+            alert_type="alert", level="critical", status="new",
+        )
+        mgr = EventAlertManager(_policy(notice=True), {"h1": "主机1"}, [existing])
+        events = [{
+            "monitor_instance_id": "h1", "metric_instance_id": "('h1',)",
+            "dimensions": {}, "value": 99.0, "level": "critical",
+            "content": "仍超阈", "raw_data": {"k": "v"},
+        }]
+        with django_capture_on_commit_callbacks(execute=True):
+            event_objs, new_alerts = mgr.create_events_and_alerts(events)
+        assert new_alerts == []
+        assert event_objs == []
+        assert MonitorEvent.objects.filter(alert_id=existing.id).count() == 0
+        notifier_cls.return_value.notify_alerts.assert_not_called()
+
+    def test_level_fall_does_not_create_event_or_downgrade_alert(self, stub_s3, mocker):
+        mocker.patch(
+            "apps.monitor.tasks.services.policy_scan.event_alert_manager.AlertLifecycleNotifier"
+        )
+        existing = MonitorAlert.objects.create(
+            policy_id=1, monitor_instance_id="h1", metric_instance_id="('h1',)",
+            alert_type="alert", level="critical", status="new", value=99.0,
+        )
+        mgr = EventAlertManager(_policy(), {"h1": "主机1"}, [existing])
+        events = [{
+            "monitor_instance_id": "h1", "metric_instance_id": "('h1',)",
+            "dimensions": {}, "value": 81.0, "level": "warning",
+            "content": "回落", "raw_data": {"k": "v"},
+        }]
+        event_objs, new_alerts = mgr.create_events_and_alerts(events)
+        existing.refresh_from_db()
+        assert new_alerts == []
+        assert event_objs == []
+        assert existing.level == "critical"
+        assert existing.value == 99.0
+        assert MonitorEvent.objects.filter(alert_id=existing.id).count() == 0
 
     def test_no_data_alert_uses_policy_level(self, stub_s3, mocker):
         mocker.patch(
@@ -178,7 +287,8 @@ class TestCreateEventsAndAlerts:
         event_objs, new_alerts = mgr.create_events_and_alerts(events)
 
         assert len(new_alerts) == 1
-        assert len(event_objs) == 2
+        assert len(event_objs) == 1
+        assert event_objs[0].action == MonitorEvent.Action.TRIGGERED
         assert {event.alert_id for event in event_objs} == {new_alerts[0].id}
 
     def test_no_data_event_reuses_active_alert_for_same_instance(self, stub_s3, mocker):
@@ -206,7 +316,8 @@ class TestCreateEventsAndAlerts:
         event_objs, new_alerts = mgr.create_events_and_alerts(events)
 
         assert new_alerts == []
-        assert event_objs[0].alert_id == existing.id
+        assert event_objs == []
+        assert MonitorEvent.objects.filter(alert_id=existing.id).count() == 0
 
     def test_threshold_events_keep_metric_instance_granularity(self, stub_s3, mocker):
         mocker.patch(

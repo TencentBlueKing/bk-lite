@@ -1,6 +1,6 @@
 import React from 'react';
-import { ReloadOutlined } from '@ant-design/icons';
-import { Button, Form, TreeSelect } from 'antd';
+import { QuestionCircleOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Button, Form, Tooltip, TreeSelect } from 'antd';
 
 interface MetricFieldSelectorFormItemProps {
   t: (key: string, defaultMessage?: string) => string;
@@ -74,7 +74,17 @@ export const MetricFieldSelectorFormItem: React.FC<
 
   return (
     <Form.Item
-      label={t('topology.nodeConfig.displayField')}
+      label={
+        <span>
+          {t('topology.nodeConfig.displayField')}
+          <Tooltip
+            title={t('dashboard.displayFieldTip')}
+            overlayInnerStyle={{ maxWidth: 360 }}
+          >
+            <QuestionCircleOutlined className="ml-1 text-(--color-text-3) cursor-help" />
+          </Tooltip>
+        </span>
+      }
       name="selectedFields"
       rules={[
         {

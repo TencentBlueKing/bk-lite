@@ -74,15 +74,18 @@ export const ValueMappingsConfigSection: React.FC<
   };
 
   return (
-    <div className="rounded-md border border-(--color-border-1) bg-(--color-fill-1) px-3 py-2">
+    <div className="rounded-lg border border-(--color-border-1) bg-(--color-fill-1)/40 p-2.5 space-y-2">
       {mappings.length === 0 ? (
-        <div className="py-1 text-sm text-gray-400">
+        <div className="py-2 text-center text-xs text-(--color-text-3)">
           {t('topology.nodeConfig.valueMappingsEmpty')}
         </div>
       ) : null}
 
       {mappings.map((m, index) => (
-        <div key={index} className="flex flex-wrap items-center gap-2 py-1.5">
+        <div
+          key={index}
+          className="flex flex-wrap items-center gap-2 rounded-md bg-(--color-bg) px-3 py-2 border border-(--color-border-1)/60 shadow-xs"
+        >
           <Select<ValueMappingType>
             value={m.type}
             onChange={(type) =>
@@ -97,7 +100,7 @@ export const ValueMappingsConfigSection: React.FC<
             }
             options={TYPE_OPTIONS}
             size="small"
-            style={{ width: 100 }}
+            className="!w-24 shrink-0"
             disabled={readonly}
           />
 
@@ -107,18 +110,18 @@ export const ValueMappingsConfigSection: React.FC<
               onChange={(e) => updateAt(index, { value: e.target.value })}
               placeholder={t('common.inputMsg')}
               size="small"
-              style={{ width: 110 }}
+              className="!w-28 shrink-0"
               disabled={readonly}
             />
           )}
           {m.type === 'range' && (
-            <>
+            <div className="flex items-center gap-1 shrink-0">
               <InputNumber
                 value={m.from}
                 onChange={(v) => updateAt(index, { from: v ?? undefined })}
                 placeholder="≥"
                 size="small"
-                style={{ width: 80 }}
+                className="!w-20"
                 disabled={readonly}
               />
               <InputNumber
@@ -126,10 +129,10 @@ export const ValueMappingsConfigSection: React.FC<
                 onChange={(v) => updateAt(index, { to: v ?? undefined })}
                 placeholder="≤"
                 size="small"
-                style={{ width: 80 }}
+                className="!w-20"
                 disabled={readonly}
               />
-            </>
+            </div>
           )}
           {m.type === 'regex' && (
             <Input
@@ -137,7 +140,7 @@ export const ValueMappingsConfigSection: React.FC<
               onChange={(e) => updateAt(index, { pattern: e.target.value })}
               placeholder="^prod-"
               size="small"
-              style={{ width: 110 }}
+              className="!w-28 shrink-0"
               disabled={readonly}
             />
           )}
@@ -147,20 +150,22 @@ export const ValueMappingsConfigSection: React.FC<
               onChange={(match) => updateAt(index, { match })}
               options={SPECIAL_OPTIONS}
               size="small"
-              style={{ width: 110 }}
+              className="!w-28 shrink-0"
               disabled={readonly}
             />
           )}
 
-          <span className="text-sm text-gray-500">→</span>
+          <span className="text-xs text-(--color-text-3) shrink-0 font-medium">→</span>
+
           <Input
             value={m.result?.text ?? ''}
             onChange={(e) => updateResult(index, { text: e.target.value })}
             placeholder={t('topology.nodeConfig.valueMappingsResultText')}
             size="small"
-            style={{ width: 110 }}
+            className="!w-28 shrink-0"
             disabled={readonly}
           />
+
           <ColorPicker
             value={m.result?.color ?? null}
             allowClear
@@ -173,27 +178,32 @@ export const ValueMappingsConfigSection: React.FC<
             showText
             disabled={readonly}
           />
+
           {!readonly && (
             <Button
               type="text"
               size="small"
-              icon={<MinusCircleOutlined />}
+              icon={<MinusCircleOutlined className="text-(--color-text-3) hover:text-(--color-fail)" />}
               onClick={() => removeAt(index)}
+              className="ml-auto"
             />
           )}
         </div>
       ))}
 
       {!readonly && (
-        <Button
-          type="link"
-          size="small"
-          icon={<PlusCircleOutlined />}
-          onClick={addRule}
-          className="mt-1 px-0"
-        >
-          {t('topology.nodeConfig.valueMappingsAdd')}
-        </Button>
+        <div className="pt-1">
+          <Button
+            type="dashed"
+            size="small"
+            block
+            icon={<PlusCircleOutlined />}
+            onClick={addRule}
+            className="text-xs text-(--color-primary)"
+          >
+            {t('topology.nodeConfig.valueMappingsAdd')}
+          </Button>
+        </div>
       )}
     </div>
   );

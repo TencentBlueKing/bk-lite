@@ -36,9 +36,10 @@
 | 架构图管理 | 架构图的新增、编辑、删除 | 名称全局唯一 | GA |
 | 大屏管理 | 大屏的新增、编辑、删除 | 名称全局唯一 | GA |
 | 报表管理 | 报表的读取、编辑草稿、筛选、刷新、全屏、分享、PDF 与订阅 | 名称全局唯一 | GA |
-| 网络拓扑管理 | 网络拓扑画布的新增、编辑、删除与运行态预览 | 依赖 WeOps 连接与视图集 | GA |
+| 网络拓扑管理 | 网络拓扑画布的新增、编辑、删除、运行态预览与分享 | 依赖 WeOps 连接与视图集；分享走画布分享会话，凭证不进分享响应 | GA |
 | 挂载方式 | 分析对象可挂载到目录，也可以空目录形态存在 | — | GA |
 | 对象配置项 | 分析对象具备描述、视图配置与扩展配置 | — | GA |
+| 画布分享页 | 分享链接打开后仅展示只读画布，不带平台顶栏、左侧菜单与全局助手 | 路由前缀 `/ops-analysis/share/`；产品内 `/ops-analysis/view` 导航不变；不授予编辑权 | GA |
 | 内置画布 | 系统可预置内置仪表盘/拓扑/架构画布 | 内置对象带内置标识，初始化时写入 | GA |
 
 ### 3. 仪表盘组件
@@ -166,7 +167,7 @@
 
 ### 5.2 内置数据源 API（DataSourceAPIModel）
 
-平台随包预置 **21** 个数据源 API（以 `support-files/source_api.json` 为单一事实来源）；数据源支持用户自定义新增（REST API + 命名空间 + 标签 + 图表类型）。本轮告警口径校正如下：
+平台随包预置 **30** 个数据源 API（以 `support-files/source_api.json` 为单一事实来源）；数据源支持用户自定义新增（REST API + 命名空间 + 标签 + 图表类型）。本轮告警口径校正如下：
 
 - 「告警与关联事件趋势」随时间范围返回告警、关联事件及已恢复告警的时间序列。
 - 「今日产生关闭与当前处理中」同时呈现今日产生、今日关闭与当前处理中；前两项按当日口径，处理中为当前快照。
@@ -192,7 +193,7 @@
 | 多值 | `multiValue` | ComMultiValue |
 | 文本 | `text` | OpsAnalysisTextPanel |
 | 网络状态拓扑 | `networkStatusTopology` | NetworkStatusTopology |
-| 3D 机房 | `room3D` | Room3D（消费 CMDB NATS `get_room3d_layout`，渲染机房 row/col 网格、机柜 U 占用与类型名图例） |
+| 3D 机房 | `room3D` | Room3D（消费 CMDB NATS `get_room3d_layout`，渲染机房布局；设备告警摘要驱动侧栏/tooltip 与内部红光晕） |
 | 拓扑地图 | `topologyMap` | TopologyMap |
 
 共 16 种，由前端 `components/widgetRegistry.ts` 实际注册并由 `getWidgetComponent()` 解析。后端 `chart_type` 字段仅作 JSON 透传，不再维护独立图表枚举（以前端落地为准）。
@@ -253,12 +254,12 @@
 | 多值 | `multiValue` | 多值展示组件 |
 | 文本 | `text` | 文本面板组件 |
 | 网络状态拓扑 | `networkStatusTopology` | 网络状态拓扑组件 |
-| 3D 机房 | `room3D` | 3D 机房大屏组件（消费 CMDB NATS `get_room3d_layout`，含 `rack_type_name` 字段） |
+| 3D 机房 | `room3D` | 3D 机房大屏组件（消费 `get_room3d_layout`，含设备告警摘要与红光晕） |
 | 拓扑地图 | `topologyMap` | 通用关系拓扑地图组件 |
 
 ### 内置数据源 API（代表性摘录）
 
-完整的 21 项内置数据源定义以 `server/apps/operation_analysis/support-files/source_api.json` 为单一事实来源；下表仅列常用代表项，不作为完整枚举。
+完整的 30 项内置数据源定义以 `server/apps/operation_analysis/support-files/source_api.json` 为单一事实来源；下表仅列常用代表项，不作为完整枚举。
 
 | 枚举项 | 取值 | 中文含义 |
 |---|---|---|
@@ -267,6 +268,9 @@
 | 日志搜索 | `log/log_search` | 日志搜索查询 |
 | 监控活跃告警 | `monitor/query_latest_active_alerts` | 查询最新活跃告警信息 |
 | 监控中心总览统计 | `monitor/get_monitor_statistics` | 监控资源/能力/告警总览统计 |
+| 监控实例列表 | `monitor/get_monitor_instance_list` | 已接入 Flow 的网络设备实例选项 |
+| 受控指标趋势 | `monitor/query_metric_series` | 按已注册指标名查询时间序列 |
+| 受控指标排行 | `monitor/query_metric_series` | 按已注册指标名查询瞬时排行或汇总 |
 
 `monitor/mm_query` 与 `monitor/mm_query_range` 已停止作为新装内置数据源发布；存量数据源、画布和 RPC/NATS 契约在受控查询迁移完成前继续兼容。
 

@@ -136,13 +136,13 @@ def _patch_side_effects(mocker):
     )
     mocker.patch("apps.cmdb.permissions.inst_task_permission.get_cmdb_rules", return_value={})
     mocker.patch(
-        "apps.cmdb.services.scan_collect_generate.InstanceManage.query_entity_by_uuids",
+        "apps.cmdb.services.scan_collect_task.InstanceManage.query_entity_by_uuids",
         side_effect=lambda uuids: [{"_id": index + 1, **_graph_row(item)} for index, item in enumerate(uuids)],
     )
     fake_graph = mocker.MagicMock()
     fake_graph.set_entity_properties.return_value = []
     mocker.patch(
-        "apps.cmdb.services.scan_collect_generate.GraphClient",
+        "apps.cmdb.services.scan_collect_task.GraphClient",
         return_value=mocker.MagicMock(__enter__=mocker.Mock(return_value=fake_graph), __exit__=mocker.Mock(return_value=False)),
     )
     return fake_graph
@@ -196,8 +196,9 @@ def test_one_credential_multiple_ips_creates_single_collect_task(mocker, authent
     assert collect.model_id == "network"
     assert collect.task_type == "snmp"
     assert collect.driver_type == "protocol"
-    assert list(collect.instances or []) == []
-    assert collect.ip_range == "10.0.1.1-10.0.1.20"
+    assert collect.ip_range in ("", None)
+    instance_uuids = {item.get("inst_uuid") for item in (collect.instances or [])}
+    assert instance_uuids == {HOST_UUIDS["10.0.1.10"], HOST_UUIDS["10.0.1.12"]}
     creds = collect.decrypt_credentials
     assert len(creds) == 1
     assert creds[0]["credential_id"] == "cred-snmp-1"
@@ -206,7 +207,7 @@ def test_one_credential_multiple_ips_creates_single_collect_task(mocker, authent
     assert "integrity" not in creds[0]
     assert "privacy" not in creds[0]
     assert collect.params["has_network_topo"] is True
-    assert collect.params["topology_protocols"] == ["lldp", "cdp", "fdb", "arp"]
+    assert collect.params["topology_protocols"] == ["lldp", "huawei_ndp", "cdp", "fdb", "arp"]
     assert collect.params["topology_fallback_strategy"] == "prefer_neighbors_then_fdb_then_arp"
     assert collect.params["min_confidence"] == 0.0
     runner = BaseCollect(instance_id=None, task=collect)
@@ -239,8 +240,9 @@ def test_generate_uses_scan_range_that_contains_hits(mocker, authenticated_user)
     )
 
     collect = CollectModels.objects.get()
-    assert collect.ip_range == "10.0.1.1-10.0.1.20"
-    assert list(collect.instances or []) == []
+    assert collect.ip_range in ("", None)
+    instance_uuids = {item.get("inst_uuid") for item in (collect.instances or [])}
+    assert instance_uuids == {HOST_UUIDS["10.0.1.10"], HOST_UUIDS["10.0.1.12"]}
 
 
 def test_second_generate_appends_to_scan_created_task(mocker, authenticated_user):
@@ -258,10 +260,11 @@ def test_second_generate_appends_to_scan_created_task(mocker, authenticated_user
     assert second["appended"] == 1
     assert second["created"] == 0
     collect = CollectModels.objects.get()
-    assert list(collect.instances or []) == []
-    assert collect.ip_range == "10.0.1.1-10.0.1.20"
-    assert delete.call_count == 0
-    assert push.call_count == 1
+    instance_uuids = {item.get("inst_uuid") for item in (collect.instances or [])}
+    assert instance_uuids == {HOST_UUIDS["10.0.1.10"], HOST_UUIDS["10.0.1.12"]}
+    assert collect.ip_range in ("", None)
+    assert delete.call_count == 1
+    assert push.call_count == 2
 
 
 def test_existing_collect_instance_is_skipped(mocker):
@@ -352,6 +355,7 @@ def test_regenerate_claims_when_scan_collect_already_hit(mocker, authenticated_u
 
     assert result["created"] == 0
     assert result["skipped"] == 0
+    assert result["appended"] == 1
     assert CollectModels.objects.count() == 1
     collect.refresh_from_db()
     assert collect.input_method == CollectInputMethod.AUTO
@@ -559,9 +563,112 @@ def test_host_generate_copies_scan_cloud_region(mocker, authenticated_user):
     assert collect.model_id == "host"
     assert collect.task_type == "host"
     assert collect.driver_type == "job"
-    assert list(collect.instances or []) == []
-    assert collect.ip_range == "10.0.1.1-10.0.1.20"
+    assert collect.ip_range in ("", None)
+    assert collect.instances[0]["inst_uuid"] == HOST_FAMILY_UUIDS["10.0.1.70"]
     assert collect.params["cloud"] == 7
     assert collect.params["cloud_name"] == "gz"
     runner = BaseCollect(instance_id=None, task=collect)
     assert runner.model_id == "host"
+
+
+def test_two_credentials_same_family_merge_into_one_task(mocker, authenticated_user):
+    _patch_side_effects(mocker)
+    mocker.patch.object(CollectModelService, "push_butch_node_params")
+    mocker.patch.object(CollectModelService, "delete_butch_node_params")
+    task = _task(
+        credentials={
+            "network": [
+                {"credential_id": "cred-snmp-1", "version": "v2", "community": "public", "snmp_port": "161"},
+                {"credential_id": "cred-snmp-2", "version": "v2", "community": "private", "snmp_port": "161"},
+            ]
+        }
+    )
+    execution, hits_a = _execution_with_hits(task, ["10.0.1.10"], credential_id="cred-snmp-1")
+    hits_b = []
+    family_run = hits_a[0].family_run
+    hits_b.append(
+        ScanHit.objects.create(
+            execution=execution,
+            family_run=family_run,
+            protocol="network",
+            host="10.0.1.12",
+            port=161,
+            credential_id="cred-snmp-2",
+            status=ScanHit.STATUS_SUCCESS,
+            cmdb_model_id="switch",
+            inst_uuid=HOST_UUIDS["10.0.1.12"],
+            snapshot={"host": "10.0.1.12"},
+        )
+    )
+
+    result = ScanCollectGenerateService.generate(
+        execution,
+        [hits_a[0].id, hits_b[0].id],
+        operator="alice",
+        request=_request(authenticated_user),
+    )
+
+    assert result["failed"] == 0
+    assert CollectModels.objects.count() == 1
+    collect = CollectModels.objects.get()
+    cred_ids = {item["credential_id"] for item in collect.decrypt_credentials}
+    assert cred_ids == {"cred-snmp-1", "cred-snmp-2"}
+    instance_uuids = {item.get("inst_uuid") for item in (collect.instances or [])}
+    assert instance_uuids == {HOST_UUIDS["10.0.1.10"], HOST_UUIDS["10.0.1.12"]}
+    runner = BaseCollect(instance_id=None, task=collect)
+    assert runner.model_id == "network"
+
+
+def test_scan_generate_allows_more_than_three_credentials(mocker, authenticated_user):
+    _patch_side_effects(mocker)
+    mocker.patch.object(CollectModelService, "push_butch_node_params")
+    mocker.patch.object(CollectModelService, "delete_butch_node_params")
+    extra_hosts = {
+        "10.0.1.30": "aaaaaaa1-1111-4111-8111-111111111111",
+    }
+    ALL_UUIDS.update(extra_hosts)
+    HOST_UUIDS.update(extra_hosts)
+    extra_hosts = {
+        "10.0.1.30": "aaaaaaa1-1111-4111-8111-111111111111",
+    }
+    ALL_UUIDS.update(extra_hosts)
+    HOST_UUIDS.update(extra_hosts)
+    credentials = [{"credential_id": f"cred-snmp-{index}", "version": "v2", "community": f"c{index}", "snmp_port": "161"} for index in range(1, 5)]
+    task = _task(credentials={"network": credentials})
+    execution = ScanExecution.objects.create(task=task, status=ScanExecution.STATUS_COMPLETED)
+    family_run = ScanFamilyRun.objects.create(
+        execution=execution,
+        model_id="network",
+        driver_type="protocol",
+        admit_status=ScanFamilyRun.ADMIT_ACCEPTED,
+    )
+    hosts = ["10.0.1.10", "10.0.1.12", "10.0.1.11", "10.0.1.20"]
+    hits = []
+    for index, host in enumerate(hosts, start=1):
+        hits.append(
+            ScanHit.objects.create(
+                execution=execution,
+                family_run=family_run,
+                protocol="network",
+                host=host,
+                port=161,
+                credential_id=f"cred-snmp-{index}",
+                status=ScanHit.STATUS_SUCCESS,
+                cmdb_model_id="switch",
+                inst_uuid=HOST_UUIDS[host],
+                snapshot={"host": host},
+            )
+        )
+
+    result = ScanCollectGenerateService.generate(
+        execution,
+        [hit.id for hit in hits],
+        operator="alice",
+        request=_request(authenticated_user),
+    )
+
+    assert result["failed"] == 0
+    collect = CollectModels.objects.get()
+    assert len(collect.decrypt_credentials) == 4
+    assert collect.ip_range in ("", None)
+    assert len(collect.instances) == 4

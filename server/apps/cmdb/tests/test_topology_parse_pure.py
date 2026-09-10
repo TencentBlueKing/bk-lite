@@ -28,6 +28,32 @@ class ParseTopologyTest(unittest.TestCase):
         self.assertEqual(indexed, rollback)
         return indexed
 
+    def test_authoritative_reconciliation_prefers_lldp_over_huawei_ndp(self) -> None:
+        common = {
+            "relationship_type": "authoritative",
+            "confidence": 100,
+            "source_device": "sw1",
+            "source_port_id": "sw1:1",
+            "target_device": "sw2",
+            "target_port_id": "sw2:2",
+            "status": "current",
+        }
+        ndp = {**common, "relationship_id": "ndp", "evidence_source": "huawei_ndp"}
+        lldp = {**common, "relationship_id": "lldp", "evidence_source": "lldp"}
+
+        result = topology_parse.reconcile_topology(
+            {"devices": [], "ports": [], "arp_observations": [], "fdb_observations": []},
+            {
+                "authoritative_links": [ndp, lldp],
+                "inferred_links": [],
+                "unresolved_neighbors": [],
+                "device_labels": {},
+            },
+        )
+
+        self.assertEqual(result["topology"]["authoritative_links"][0]["evidence_source"], "lldp")
+        self.assertEqual(result["topology"]["stale_links"][0]["evidence_source"], "huawei_ndp")
+
     def test_device_mac_correlations_index_avoids_per_fdb_membership_scans(self) -> None:
         class CountingSet(set):
             contains_calls = 0
@@ -36,10 +62,7 @@ class ParseTopologyTest(unittest.TestCase):
                 type(self).contains_calls += 1
                 return super().__contains__(item)
 
-        observed_mac_sets = {
-            f"target-{index}": CountingSet({f"00:00:00:00:{index:02x}:01"})
-            for index in range(64)
-        }
+        observed_mac_sets = {f"target-{index}": CountingSet({f"00:00:00:00:{index:02x}:01"}) for index in range(64)}
         observed_mac_sets["source"] = CountingSet({"ff:ff:ff:ff:ff:fe"})
         ports = {
             "source:1": NormalizedPort(
@@ -51,9 +74,7 @@ class ParseTopologyTest(unittest.TestCase):
             )
         }
         devices = {"source": {"host": "source", "ips": []}}
-        devices.update(
-            {device_id: {"host": device_id, "ips": []} for device_id in observed_mac_sets}
-        )
+        devices.update({device_id: {"host": device_id, "ips": []} for device_id in observed_mac_sets})
         normalized = {
             "arp_observations": [],
             "fdb_observations": [
@@ -831,6 +852,65 @@ class ParseTopologyTest(unittest.TestCase):
         self.assertEqual(link["source_port_id"], "sw1:10")
         self.assertEqual(link["target_port_id"], "sw2:2")
 
+    def test_huawei_ndp_neighbor_produces_authoritative_link(self) -> None:
+        suffix = "10.0.0.0.187.187.187.187.187.187.7"
+        aggregate = {
+            "devices": [
+                {
+                    "device": {"host": "sw1"},
+                    "success": True,
+                    "collector_result": {
+                        "result": {
+                            "evidence": {
+                                "system": [{"tag": "System-SysName", "ifindex": "", "val": "sw1"}],
+                                "interfaces": [{"tag": "IFXTable-IfName", "ifindex": "10", "val": "GigabitEthernet0/0/1"}],
+                                "ip": [],
+                                "arp": [],
+                                "neighbors": [
+                                    {"tag": "HNDP-RemDeviceId", "ifindex": suffix, "val": "0x00000000bbbbbbbbbbbb"},
+                                    {"tag": "HNDP-RemPortName", "ifindex": suffix, "val": "GigabitEthernet0/0/2"},
+                                    {"tag": "HNDP-RemDeviceName", "ifindex": suffix, "val": "sw2"},
+                                ],
+                                "bridge": [],
+                                "fdb": [],
+                            }
+                        }
+                    },
+                },
+                {
+                    "device": {"host": "sw2"},
+                    "success": True,
+                    "collector_result": {
+                        "result": {
+                            "evidence": {
+                                "system": [{"tag": "System-SysName", "ifindex": "", "val": "sw2"}],
+                                "interfaces": [
+                                    {"tag": "IFXTable-IfName", "ifindex": "2", "val": "GigabitEthernet0/0/2"},
+                                    {"tag": "IFTable-PhysAddress", "ifindex": "2", "val": "0xbbbbbbbbbbbb"},
+                                ],
+                                "ip": [],
+                                "arp": [],
+                                "neighbors": [],
+                                "bridge": [],
+                                "fdb": [],
+                            }
+                        }
+                    },
+                },
+            ]
+        }
+
+        result = parse_aggregate_result(aggregate)
+
+        self.assertEqual(result["summary"]["authoritative_links"], 1)
+        observation = result["normalized"]["neighbor_observations"][0]
+        self.assertEqual(observation["protocol"], "huawei_ndp")
+        self.assertEqual(observation["remote_chassis_id"], "bb:bb:bb:bb:bb:bb")
+        link = result["topology"]["authoritative_links"][0]
+        self.assertEqual(link["evidence_source"], "huawei_ndp")
+        self.assertEqual(link["source_port_id"], "sw1:10")
+        self.assertEqual(link["target_port_id"], "sw2:2")
+
     def test_fdp_neighbor_without_remote_port_keeps_unresolved_neighbor(self) -> None:
         aggregate = {
             "devices": [
@@ -1086,10 +1166,13 @@ class ParseTopologyTest(unittest.TestCase):
         inferred_links = result["topology"]["inferred_links"]
         self.assertEqual(len(inferred_links), 2)
         self.assertEqual(sorted(link["vlan"] for link in inferred_links), ["100", "200"])
-        self.assertEqual(sorted(link["relationship_id"] for link in inferred_links), [
-            "inf:sw1:1:sw2:2:fdb:100",
-            "inf:sw1:1:sw2:2:fdb:200",
-        ])
+        self.assertEqual(
+            sorted(link["relationship_id"] for link in inferred_links),
+            [
+                "inf:sw1:1:sw2:2:fdb:100",
+                "inf:sw1:1:sw2:2:fdb:200",
+            ],
+        )
         summary = result["topology"]["multi_vlan_corroboration_summary"]
         self.assertEqual(len(summary), 1)
         self.assertEqual(summary[0]["vlan_ids"], ["100", "200"])
@@ -2089,7 +2172,10 @@ class ParseTopologyTest(unittest.TestCase):
                                     {"tag": "IFTable-PhysAddress", "ifindex": "1", "val": "0xaaaaaaaaaaaa"},
                                 ],
                                 "ip": [],
-                                "arp": [{"tag": "ARP-IfIndex", "ifindex": "10.0.0.2", "val": "1"}, {"tag": "ARP-PhysAddress", "ifindex": "10.0.0.2", "val": "0xbbbbbbbbbbbb"}],
+                                "arp": [
+                                    {"tag": "ARP-IfIndex", "ifindex": "10.0.0.2", "val": "1"},
+                                    {"tag": "ARP-PhysAddress", "ifindex": "10.0.0.2", "val": "0xbbbbbbbbbbbb"},
+                                ],
                                 "neighbors": [{"tag": "LLDP-RemSysName", "ifindex": "0.1.1", "val": "sw3"}],
                                 "bridge": [],
                                 "fdb": [],
@@ -2140,7 +2226,10 @@ class ParseTopologyTest(unittest.TestCase):
                                     {"tag": "IFTable-PhysAddress", "ifindex": "1", "val": "0xaaaaaaaaaaaa"},
                                 ],
                                 "ip": [],
-                                "arp": [{"tag": "ARP-IfIndex", "ifindex": "10.0.0.2", "val": "1"}, {"tag": "ARP-PhysAddress", "ifindex": "10.0.0.2", "val": "0xbbbbbbbbbbbb"}],
+                                "arp": [
+                                    {"tag": "ARP-IfIndex", "ifindex": "10.0.0.2", "val": "1"},
+                                    {"tag": "ARP-PhysAddress", "ifindex": "10.0.0.2", "val": "0xbbbbbbbbbbbb"},
+                                ],
                                 "neighbors": [
                                     {"tag": "LLDP-RemSysName", "ifindex": "0.1.1", "val": "sw3"},
                                     {"tag": "LLDP-RemPortId", "ifindex": "0.1.1", "val": "Eth9"},
@@ -2236,7 +2325,10 @@ class ParseTopologyTest(unittest.TestCase):
                                     {"tag": "IFTable-PhysAddress", "ifindex": "1", "val": "0xaaaaaaaaaaaa"},
                                 ],
                                 "ip": [],
-                                "arp": [{"tag": "ARP-IfIndex", "ifindex": "10.0.0.2", "val": "1"}, {"tag": "ARP-PhysAddress", "ifindex": "10.0.0.2", "val": "0xbbbbbbbbbbbb"}],
+                                "arp": [
+                                    {"tag": "ARP-IfIndex", "ifindex": "10.0.0.2", "val": "1"},
+                                    {"tag": "ARP-PhysAddress", "ifindex": "10.0.0.2", "val": "0xbbbbbbbbbbbb"},
+                                ],
                                 "neighbors": [{"tag": "LLDP-RemSysName", "ifindex": "0.1.1", "val": "switch-2"}],
                                 "bridge": [],
                                 "fdb": [],
@@ -2340,7 +2432,6 @@ class ParseTopologyTest(unittest.TestCase):
         )
         self.assertEqual(port_id, "dev:23")
         self.assertEqual(state, "resolved")
-
 
     def test_reverse_direction_duplicate_becomes_supporting_evidence(self) -> None:
         # 两台设备互指的 ARP 记录：正向 ARP 产生 inferred_link，反向 ARP 应成为 supporting_evidence

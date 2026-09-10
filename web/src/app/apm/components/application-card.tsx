@@ -80,7 +80,7 @@ export default function ApplicationCard({
       >
         <span className="sr-only">{t('apm.application.viewDetail', '查看应用详情')}</span>
       </Link>
-      <div className="pointer-events-none flex h-full min-w-0 flex-col gap-3 p-4">
+      <div className="pointer-events-none grid h-full min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-3 p-4 [&>*]:min-w-0">
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2.5">
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
@@ -191,7 +191,7 @@ export default function ApplicationCard({
           </div>
         </div>
 
-        <div className="relative z-20 mt-auto border-t border-[var(--color-border)] pt-3 pointer-events-auto">
+        <div className="relative z-20 min-w-0 overflow-hidden border-t border-[var(--color-border)] pt-3 pointer-events-auto">
           <ServiceTagOverflow services={services} />
         </div>
       </div>

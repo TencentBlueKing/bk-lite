@@ -16,6 +16,7 @@ from apps.apm.models import (
 )
 from apps.apm.services import DjangoApmPolicyService
 from apps.apm.services.contracts import MetricDataState, NotificationDeliveryResult, ServiceRed
+from apps.apm.tests.helpers import bind_policy_organizations
 
 pytestmark = pytest.mark.django_db
 
@@ -64,6 +65,7 @@ def policy():
         trigger_after=2,
         recover_after=2,
     )
+    bind_policy_organizations(policy)
     ApmPolicyNotificationTarget.objects.create(
         policy=policy,
         channel_id=7,

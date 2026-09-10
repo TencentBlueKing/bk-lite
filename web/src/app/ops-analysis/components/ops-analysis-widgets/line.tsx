@@ -9,7 +9,11 @@ import {
 import type { ValueConfig } from '@/app/ops-analysis/components/ops-analysis-widgets';
 import ChartLegend from '@/components/chart-legend';
 import ChartWithSidebarLegend from '@/components/chart-with-sidebar-legend';
-import { renderEChartsTooltipCard } from '@/components/echarts-tooltip-card';
+import {
+  placeEChartsAxisTooltip,
+  renderEChartsTooltipCard,
+  useChartTooltipWheelScrollRef,
+} from '@/components/echarts-tooltip-card';
 import { useTranslation } from '@/utils/i18n';
 import {
   formatLineBarAxisTick,
@@ -79,6 +83,7 @@ const OpsAnalysisLine: React.FC<OpsAnalysisLineProps> = ({
 }) => {
   const { t } = useTranslation();
   const chartRef = useRef<any>(null);
+  const chartPaneRef = useChartTooltipWheelScrollRef();
   const themeName = resolveOpsChartThemeName();
   const chartTheme = getOpsChartTheme(themeName);
   const chartColors = randomColorForLegend(themeName);
@@ -210,17 +215,11 @@ const OpsAnalysisLine: React.FC<OpsAnalysisLineProps> = ({
           width: 1,
         },
       },
-      enterable: false,
+      enterable: true,
       confine: true,
-      position: function (point: number[], _params: any, _dom: any, _rect: any, size: any) {
-        const tooltipWidth = size.contentSize[0];
-        const chartWidth = size.viewSize[0];
-        let x = point[0] + 40;
-        const y = 10;
-        if (x + tooltipWidth > chartWidth) {
-          x = point[0] - tooltipWidth - 40;
-        }
-        return [x, y];
+      hideDelay: 300,
+      position: function (point: number[], _params: any, el: HTMLElement, _rect: any, size: any) {
+        return placeEChartsAxisTooltip(point, size, el);
       },
       backgroundColor: 'transparent',
       borderWidth: 0,
@@ -461,7 +460,7 @@ const OpsAnalysisLine: React.FC<OpsAnalysisLineProps> = ({
   return (
     <ChartWithSidebarLegend
       chart={
-        <div className="relative flex-1 min-w-0">
+        <div ref={chartPaneRef} className="relative flex-1 min-w-0">
           {isZoomed && (
             <button
               onClick={handleResetZoom}
@@ -507,7 +506,7 @@ const OpsAnalysisLine: React.FC<OpsAnalysisLineProps> = ({
       surfaceProps={{
         loading,
         hasData: !!(isDataReady && chartData && chartData.categories.length > 0),
-        containerClassName: 'flex h-full w-full',
+        containerClassName: 'flex h-full min-h-0 w-full',
         loadingClassName: 'flex h-full w-full items-center justify-center',
         emptyClassName: 'flex h-full w-full items-center justify-center',
       }}

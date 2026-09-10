@@ -316,6 +316,8 @@ tools:
         description: 描述指定的Kubernetes资源，获取资源的详细信息，类似于 kubectl describe
       diagnose_kubernetes_pod_issues:
         description: 深度诊断单个Pod的所有问题 - 一站式故障排查
+      collect_pod_restart_evidence:
+        description: 已知具体Pod时采集重启原因取证包（时钟、lastState、事件、上一轮死前日志），不要用于告警RCA或查看当前日志
       diagnose_pending_pod_issues:
         description: 诊断Pod Pending调度失败的根本原因
       explain_kubernetes_resource:
@@ -328,6 +330,8 @@ tools:
         description: 发现集群中所有失败或异常的Pod
       get_high_restart_kubernetes_pods:
         description: 发现频繁重启的不稳定Pod
+      get_recently_restarted_kubernetes_pods:
+        description: 按最近一次重启时间列出最近重启过的Pod
       get_kubernetes_contexts:
         description: 获取kubectl上下文信息，显示当前可用的上下文和当前活动的上下文
       get_kubernetes_namespaces:

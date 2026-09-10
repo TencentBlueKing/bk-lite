@@ -45,6 +45,8 @@ import WikiDirectorySelect from "./WikiDirectorySelect";
 import {
   MATERIAL_DISPLAY_STATUS_OPTIONS,
   MATERIAL_STATUS_META,
+  PAGE_STATUS_LABEL,
+  formatPageTypeLabel,
   formatWikiDuration,
   formatWikiTime,
   materialDisplayStatus,
@@ -671,8 +673,14 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
             )}
             <Space size={[4, 4]} wrap className="mt-1">
               <Tag className="m-0">#{pageItem.id}</Tag>
-              <Tag className="m-0">{pageItem.page_type}</Tag>
-              <Tag className="m-0">{pageItem.status}</Tag>
+              <Tag className="m-0">
+                {formatPageTypeLabel(t, pageItem.page_type)}
+              </Tag>
+              <Tag className="m-0">
+                {PAGE_STATUS_LABEL[pageItem.status]
+                  ? t(PAGE_STATUS_LABEL[pageItem.status])
+                  : pageItem.status}
+              </Tag>
             </Space>
           </div>
         </List.Item>

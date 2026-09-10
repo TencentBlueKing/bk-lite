@@ -14,9 +14,11 @@ Telegraf ACK 语义、不新增 Metric Ingester，也不得把 PubAck 表述为 
 
 2026-08-14 补充锁定：以同目录
 `collection-failure-remediation-plan-2026-08-14.md` 为准。请求未开启 `params.ip_precheck` 时跳过
-全部采集前探测但保留出站安全检查；全局容量默认
+全部采集前探测；全局容量默认
 `MAX_ACTIVE_RUNS=16`、`MAX_ACTIVE_TARGETS=250`、`TARGET_TASK_WINDOW=250`；单目标发布失败不得取消
 同 Run 其他目标，Run 汇总为 `completed_with_errors`。
+2026-09-08 出站网段修正：配置采集与 IP 预检不再按 CIDR/域名白名单拦截目标；已删除
+`OUTBOUND_ALLOWED_CIDRS` / `OutboundTargetPolicy`。
 
 2026-08-20 容量补充锁定：单 Pod 默认目标并发与任务窗口由 `150/150` 提升为 `250/250`；
 `collection_capacity` 同步记录进程 CPU/RSS/线程/FD 与 cgroup CPU、内存、throttling，供压测后
@@ -460,6 +462,7 @@ Stargazer 与 CMDB 凭据命中事件字段对齐，以及 CMDB「查询 VM → 
 | 参数 | 含义 |
 | --- | --- |
 | `MAX_ACTIVE_RUNS` | 单 Pod 同时运行的 `CollectionRun` 数量 |
+| `MAX_ACTIVE_RUN_TARGETS` | 单进程全部已接纳 Run 的目标总数预算；空闲时允许单个超大 Run 独占预算 |
 | `MAX_ACTIVE_TARGETS` | 单 Pod 同时活跃的 `TargetCollection` 数量 |
 | `NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS` | 网络拓扑 workload 的基础目标配额；普通采集完全空闲时可动态借槽 |
 | `TARGET_TASK_WINDOW` | 已创建但未完成的目标协程上限，并复用为有界发布队列容量 |

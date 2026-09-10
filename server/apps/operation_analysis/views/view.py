@@ -27,6 +27,7 @@ from apps.operation_analysis.serializers.directory_serializers import (
     ScreenModelSerializer,
     TopologyModelSerializer,
 )
+from apps.operation_analysis.services.canvas.copy_service import copy_canvas
 from apps.operation_analysis.services.directory_service import DictDirectoryService
 from apps.operation_analysis.services.share_service import SharePermissionDenied, create_or_get_share
 from config.drf.pagination import CustomPageNumberPagination
@@ -65,6 +66,14 @@ def _destroy_subscribable_canvas(viewset, request, *, resource_type: str, log_ac
         viewset.perform_destroy(instance)
     response = Response(status=204)
     log_ops_analysis_success(request, response, "delete", log_action.format(name=name))
+    return response
+
+
+def _copy_canvas_response(viewset, request, *, log_action: str):
+    source = viewset.get_object()
+    instance = copy_canvas(viewset=viewset, request=request, source=source)
+    response = Response(viewset.get_serializer(instance).data, status=201)
+    log_ops_analysis_success(request, response, "create", log_action.format(name=instance.name))
     return response
 
 
@@ -336,6 +345,13 @@ class DashboardModelViewSet(BuiltinVisibleMixin, AuthViewSet):
             resource_label="仪表盘",
         )
 
+    @HasPermission("view-AddChart")
+    @action(detail=True, methods=["post"], url_path="copy")
+    def copy(self, request, *args, **kwargs):
+        return _execute_with_clean_validation_error(
+            lambda: _copy_canvas_response(self, request, log_action="复制仪表盘: {name}"),
+        )
+
 
 class TopologyModelViewSet(BuiltinVisibleMixin, AuthViewSet):
     """
@@ -401,6 +417,13 @@ class TopologyModelViewSet(BuiltinVisibleMixin, AuthViewSet):
             request,
             resource_type="topology",
             resource_label="拓扑图",
+        )
+
+    @HasPermission("view-AddChart")
+    @action(detail=True, methods=["post"], url_path="copy")
+    def copy(self, request, *args, **kwargs):
+        return _execute_with_clean_validation_error(
+            lambda: _copy_canvas_response(self, request, log_action="复制拓扑图: {name}"),
         )
 
 
@@ -470,6 +493,13 @@ class ArchitectureModelViewSet(BuiltinVisibleMixin, AuthViewSet):
             resource_label="架构图",
         )
 
+    @HasPermission("view-AddChart")
+    @action(detail=True, methods=["post"], url_path="copy")
+    def copy(self, request, *args, **kwargs):
+        return _execute_with_clean_validation_error(
+            lambda: _copy_canvas_response(self, request, log_action="复制架构图: {name}"),
+        )
+
 
 class CanvasModelViewSet(BuiltinVisibleMixin, AuthViewSet):
     """
@@ -537,6 +567,13 @@ class CanvasModelViewSet(BuiltinVisibleMixin, AuthViewSet):
             request,
             resource_type=self.share_resource_type,
             resource_label=self.canvas_label,
+        )
+
+    @HasPermission("view-AddChart")
+    @action(detail=True, methods=["post"], url_path="copy")
+    def copy(self, request, *args, **kwargs):
+        return _execute_with_clean_validation_error(
+            lambda: _copy_canvas_response(self, request, log_action=f"复制{self.canvas_label}: {{name}}"),
         )
 
 

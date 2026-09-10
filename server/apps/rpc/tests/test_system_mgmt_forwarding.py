@@ -4,6 +4,7 @@
 替换传输 seam（self.client）为记录器，断言方法名 + 参数（位置/具名）契约。
 能抓到方法名拼写、参数名/顺序回归。不触达真实 NATS。
 """
+
 import pydantic.root_model  # noqa
 import pytest
 
@@ -100,6 +101,41 @@ def test_get_client_转发默认domain(client):
 def test_get_group_id_转发(client):
     client.get_group_id("OpsPilotGuest")
     assert _last(client) == ("get_group_id", (), {"group_name": "OpsPilotGuest"})
+
+
+def test_list_credentials_转发(client):
+    ctx = {"username": "a", "current_team": 1}
+    client.list_credentials(ctx, category="database", type="sql", search="db", page=2, page_size=10)
+    assert _last(client) == (
+        "list_credentials",
+        (),
+        {
+            "actor_context": ctx,
+            "category": "database",
+            "type": "sql",
+            "search": "db",
+            "page": 2,
+            "page_size": 10,
+        },
+    )
+
+
+def test_create_and_resolve_credential_转发(client):
+    ctx = {"username": "a", "current_team": 1}
+    client.create_credential(ctx, "db", "sql", 1, {"username": "u"})
+    assert _last(client) == (
+        "create_credential",
+        (),
+        {
+            "actor_context": ctx,
+            "name": "db",
+            "type": "sql",
+            "group_id": 1,
+            "fields": {"username": "u"},
+        },
+    )
+    client.resolve_credential(ctx, "crd-sql-abc")
+    assert _last(client) == ("resolve_credential", (), {"actor_context": ctx, "credential_id": "crd-sql-abc"})
 
 
 def test_get_group_users_默认include_children(client):
@@ -273,6 +309,29 @@ def test_search_notification_recipients_scoped_转发组织内用户查询(clien
             "include_children": True,
             "search": "alice",
             "limit": 20,
+        },
+    )
+
+
+def test_search_notification_recipients_scoped_仅在显式校验时转发用户ID(client):
+    ctx = {"username": "a"}
+    client.search_notification_recipients_scoped(
+        ctx,
+        teams=[1],
+        include_children=False,
+        recipient_ids=[42, 43],
+        limit=2,
+    )
+    assert _last(client) == (
+        "search_notification_recipients_scoped",
+        (),
+        {
+            "actor_context": ctx,
+            "teams": [1],
+            "include_children": False,
+            "search": "",
+            "limit": 2,
+            "recipient_ids": [42, 43],
         },
     )
 

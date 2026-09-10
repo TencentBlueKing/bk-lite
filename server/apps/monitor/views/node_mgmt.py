@@ -48,6 +48,7 @@ class NodeMgmtView(ViewSet):
             is_active=request.data.get("is_active"),
             is_manual=request.data.get("is_manual"),
             is_container=request.data.get("is_container"),
+            keyword=request.data.get("keyword"),
             permission_data={
                 "username": request.user.username,
                 "domain": request.user.domain,
@@ -59,11 +60,13 @@ class NodeMgmtView(ViewSet):
         if monitor_plugin_id and hasattr(InstanceConfigService, "_get_plugin_node_selector"):
             node_selector = InstanceConfigService._get_plugin_node_selector(monitor_plugin_id)
             query_data = merge_node_query_with_selector(query_data, node_selector)
-        data = NodeMgmt().node_list(query_data)
         plugin = MonitorPlugin.objects.filter(id=monitor_plugin_id).prefetch_related("monitor_object").first() if monitor_plugin_id else None
         is_host_monitoring_plugin = bool(
             plugin and any(HostDeploymentStatus.applies_to(obj.name, plugin.collector, plugin.collect_type) for obj in plugin.monitor_object.all())
         )
+        if is_host_monitoring_plugin:
+            query_data["sink_child_config"] = HostDeploymentStatus.sink_child_config()
+        data = NodeMgmt().node_list(query_data)
         if is_host_monitoring_plugin:
             nodes = data.get("nodes", [])
             try:

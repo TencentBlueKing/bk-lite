@@ -39,6 +39,8 @@ class ServiceConfig:
     js_backoff: list[int] | None = None
     dlq_subject: str = "ansible.tasks.dlq"
     state_db_path: str = "/tmp/ansible-executor/task_state.db"
+    terminal_task_retention_seconds: int = 86400
+    terminal_task_purge_interval_seconds: int = 300
     allowed_callback_subjects: list[str] | None = None
     allowed_stream_subjects: list[str] | None = None
 
@@ -131,6 +133,8 @@ def load_config(path: str | None = None) -> ServiceConfig:
     js_backoff_fallback = os.getenv("ANSIBLE_JS_BACKOFF", "5,15,30,60")
     dlq_subject_fallback = os.getenv("ANSIBLE_DLQ_SUBJECT", "ansible.tasks.dlq")
     state_db_path_fallback = os.getenv("ANSIBLE_STATE_DB_PATH", "/tmp/ansible-executor/task_state.db")
+    terminal_task_retention_fallback = os.getenv("ANSIBLE_TERMINAL_TASK_RETENTION_SECONDS", "86400")
+    terminal_task_purge_interval_fallback = os.getenv("ANSIBLE_TERMINAL_TASK_PURGE_INTERVAL_SECONDS", "300")
     callback_timeout_fallback = os.getenv("ANSIBLE_CALLBACK_TIMEOUT", "10")
     ansible_work_dir_fallback = os.getenv("ANSIBLE_WORK_DIR", "/tmp/ansible-executor")
     allowed_callback_subjects_fallback = os.getenv(
@@ -341,6 +345,34 @@ def load_config(path: str | None = None) -> ServiceConfig:
         ).strip()
         or state_db_path_fallback
     )
+    raw_terminal_retention = _as_string(
+        _pick_value(
+            data,
+            [
+                ("terminal_task_retention_seconds",),
+                ("runtime", "terminal_task_retention_seconds"),
+            ],
+            terminal_task_retention_fallback,
+        )
+    ).strip()
+    try:
+        terminal_task_retention_seconds = int(raw_terminal_retention)
+    except ValueError:
+        terminal_task_retention_seconds = int(terminal_task_retention_fallback)
+    raw_terminal_purge_interval = _as_string(
+        _pick_value(
+            data,
+            [
+                ("terminal_task_purge_interval_seconds",),
+                ("runtime", "terminal_task_purge_interval_seconds"),
+            ],
+            terminal_task_purge_interval_fallback,
+        )
+    ).strip()
+    try:
+        terminal_task_purge_interval_seconds = int(raw_terminal_purge_interval)
+    except ValueError:
+        terminal_task_purge_interval_seconds = int(terminal_task_purge_interval_fallback)
     allowed_callback_subjects = _parse_string_list(
         _pick_value(
             data,
@@ -375,6 +407,8 @@ def load_config(path: str | None = None) -> ServiceConfig:
         js_backoff=js_backoff,
         dlq_subject=dlq_subject,
         state_db_path=state_db_path,
+        terminal_task_retention_seconds=max(0, terminal_task_retention_seconds),
+        terminal_task_purge_interval_seconds=max(30, terminal_task_purge_interval_seconds),
         allowed_callback_subjects=allowed_callback_subjects,
         allowed_stream_subjects=allowed_stream_subjects,
     )

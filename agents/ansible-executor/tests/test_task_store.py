@@ -676,3 +676,65 @@ def test_sensitive_credential_keys_is_comprehensive():
         "inventory_content",
     }
     assert SENSITIVE_CREDENTIAL_KEYS == expected_keys
+
+
+def test_purge_expired_terminal_tasks_keeps_recent_inflight_and_pending(tmp_path):
+    store = TaskStore(str(tmp_path / "task.db"))
+    now = "2026-09-07T12:00:00+00:00"
+    callback = {"subject": "job.ansible_task_callback"}
+
+    store.create_if_absent("old-sent", "queued", {"task_id": "old-sent"}, callback, "2026-09-06T00:00:00+00:00")
+    store.update_execution_result("old-sent", "failed", {"success": False}, "2026-09-06T00:01:00+00:00")
+    store.update_callback_status("old-sent", "sent", {"success": False}, "2026-09-06T00:02:00+00:00", preserve_status="failed")
+
+    store.create_if_absent("recent-sent", "queued", {"task_id": "recent-sent"}, callback, "2026-09-07T11:00:00+00:00")
+    store.update_execution_result("recent-sent", "success", {"success": True}, "2026-09-07T11:30:00+00:00")
+    store.update_callback_status("recent-sent", "sent", {"success": True}, "2026-09-07T11:31:00+00:00", preserve_status="success")
+
+    store.create_if_absent("old-pending", "queued", {"task_id": "old-pending"}, callback, "2026-09-06T00:00:00+00:00")
+    store.update_execution_result("old-pending", "failed", {"success": False}, "2026-09-06T00:01:00+00:00")
+
+    store.create_if_absent("running", "queued", {"task_id": "running"}, {}, "2026-09-06T00:00:00+00:00")
+    store.claim_task("running", "owner-a", "2026-09-07T12:10:00+00:00", "2026-09-06T00:01:00+00:00")
+
+    deleted = store.purge_expired_terminal_tasks(now, 3600)
+
+    assert deleted == 1
+    assert store.get_task("old-sent") is None
+    assert store.get_task("recent-sent") is not None
+    assert store.get_task("old-pending")["callback_status"] == "pending"
+    assert store.get_task("running")["status"] == "running"
+
+
+def test_purge_expired_terminal_tasks_clears_old_callback_failed(tmp_path):
+    store = TaskStore(str(tmp_path / "task.db"))
+    store.create_if_absent(
+        "old-callback-failed",
+        "queued",
+        {"task_id": "old-callback-failed"},
+        {"subject": "job.ansible_task_callback"},
+        "2026-09-06T00:00:00+00:00",
+    )
+    store.update_execution_result("old-callback-failed", "success", {"success": True}, "2026-09-06T00:01:00+00:00")
+    store.update_callback_status(
+        "old-callback-failed",
+        "failed",
+        {"success": True},
+        "2026-09-06T00:02:00+00:00",
+        preserve_status="success",
+    )
+
+    deleted = store.purge_expired_terminal_tasks("2026-09-07T12:00:00+00:00", 3600)
+
+    assert deleted == 1
+    assert store.get_task("old-callback-failed") is None
+
+
+def test_purge_expired_terminal_tasks_disabled_when_retention_is_zero(tmp_path):
+    store = TaskStore(str(tmp_path / "task.db"))
+    store.create_if_absent("old-sent", "queued", {"task_id": "old-sent"}, {}, "2026-09-06T00:00:00+00:00")
+    store.update_execution_result("old-sent", "failed", {"success": False}, "2026-09-06T00:01:00+00:00")
+    store.update_callback_status("old-sent", "none", {"success": False}, "2026-09-06T00:02:00+00:00", preserve_status="failed")
+
+    assert store.purge_expired_terminal_tasks("2026-09-07T12:00:00+00:00", 0) == 0
+    assert store.get_task("old-sent") is not None

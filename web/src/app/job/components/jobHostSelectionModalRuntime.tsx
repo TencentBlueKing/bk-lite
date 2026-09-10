@@ -12,6 +12,37 @@ import useJobApi from '@/app/job/api';
 
 type RuntimeProps = Omit<JobHostSelectionModalProps, 'fetchHosts'>;
 
+const getLastTextFilter = (params: FetchHostsParams, field: string) => {
+  const values = params.filters?.[field] || [];
+  const value = values[values.length - 1]?.value;
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+};
+
+const getEnumFilterValues = (params: FetchHostsParams, field: string) => {
+  const values = params.filters?.[field] || [];
+  const value = values[values.length - 1]?.value;
+  return Array.isArray(value) ? value : [];
+};
+
+const getOperatingSystemFilter = (params: FetchHostsParams) => {
+  const values = getEnumFilterValues(params, 'os_type');
+  return values.length === 1 ? values[0] : undefined;
+};
+
+export const buildNodeQueryParams = (params: FetchHostsParams) => ({
+  page: params.page,
+  page_size: params.pageSize,
+  keyword: getLastTextFilter(params, 'keyword'),
+  os: getOperatingSystemFilter(params),
+});
+
+export const buildTargetQueryParams = (params: FetchHostsParams) => ({
+  page: params.page,
+  page_size: params.pageSize,
+  search: getLastTextFilter(params, 'keyword'),
+  os_type: getOperatingSystemFilter(params),
+});
+
 const JobHostSelectionModalRuntime: React.FC<RuntimeProps> = (props) => {
   const { getTargetList, queryNodes } = useJobApi();
 
@@ -19,15 +50,12 @@ const JobHostSelectionModalRuntime: React.FC<RuntimeProps> = (props) => {
     async ({
       page,
       pageSize,
-      search,
+      filters,
       source,
+      signal,
     }: FetchHostsParams): Promise<FetchHostsResult> => {
       if (source === 'node_manager') {
-        const res = await queryNodes({
-          page,
-          page_size: pageSize,
-          name: search || undefined,
-        });
+        const res = await queryNodes(buildNodeQueryParams({ page, pageSize, filters, source, signal }), { signal });
 
         return {
           items: (res.data?.items || []).map<HostItem>((node) => ({
@@ -42,11 +70,7 @@ const JobHostSelectionModalRuntime: React.FC<RuntimeProps> = (props) => {
         };
       }
 
-      const res = await getTargetList({
-        page,
-        page_size: pageSize,
-        search: search || undefined,
-      });
+      const res = await getTargetList(buildTargetQueryParams({ page, pageSize, filters, source, signal }), { signal });
 
       return {
         items: (res.items || []).map((target) => ({

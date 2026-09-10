@@ -230,6 +230,7 @@ class AlertModelViewSet(AuthViewSet):
         operator = AlertOperator(
             user=self.request.user.username,
             allowed_alert_ids=allowed_alert_ids,
+            is_superuser=bool(getattr(self.request.user, "is_superuser", False)),
         )
         result_list = {}
         status_list = []

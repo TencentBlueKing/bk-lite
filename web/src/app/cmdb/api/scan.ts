@@ -46,6 +46,22 @@ export const useScanApi = () => {
     [get]
   );
 
+  const writeCmdb = useCallback(
+    (executionId: number | string, hitIds: number[]) =>
+      post(`/cmdb/api/scan/executions/${executionId}/write_cmdb/`, {
+        hit_ids: hitIds,
+      }),
+    [post]
+  );
+
+  const writeCmdbAndGenerateCollect = useCallback(
+    (executionId: number | string, hitIds: number[]) =>
+      post(`/cmdb/api/scan/executions/${executionId}/write_cmdb_and_generate_collect/`, {
+        hit_ids: hitIds,
+      }),
+    [post]
+  );
+
   const generateCollect = useCallback(
     (executionId: number | string, hitIds: number[]) =>
       post(`/cmdb/api/scan/executions/${executionId}/generate_collect/`, {
@@ -62,6 +78,24 @@ export const useScanApi = () => {
     [post]
   );
 
+  const classifyHits = useCallback(
+    (executionId: number | string, hitIds: number[], cmdbModelId: string) =>
+      post(`/cmdb/api/scan/executions/${executionId}/classify_hits/`, {
+        hit_ids: hitIds,
+        cmdb_model_id: cmdbModelId,
+      }),
+    [post]
+  );
+
+  const rematchSoid = useCallback(
+    (executionId: number | string, soid: string, hitIds?: number[]) =>
+      post(`/cmdb/api/scan/executions/${executionId}/rematch_soid/`, {
+        soid,
+        ...(hitIds?.length ? { hit_ids: hitIds } : {}),
+      }),
+    [post]
+  );
+
   return {
     getScanList,
     getScanDetail,
@@ -71,7 +105,11 @@ export const useScanApi = () => {
     executeScan,
     getScanExecution,
     getScanHits,
+    writeCmdb,
+    writeCmdbAndGenerateCollect,
     generateCollect,
     pushMonitor,
+    classifyHits,
+    rematchSoid,
   };
 };

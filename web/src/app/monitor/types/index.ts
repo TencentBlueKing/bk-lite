@@ -207,7 +207,16 @@ export interface InstanceParam {
   name?: string;
   /** 精确匹配存储键；用于回填已选实例展示名 */
   instance_id?: string;
+  /**
+   * 批量精确匹配存储键（JSON 数组字符串由 API 层序列化）。
+   * 用于已选资产回填，避免逐实例并发打满后端连接。
+   */
+  instance_id_in?: string[];
   vm_params?: any;
+  /** 视图列表服务端排序列（time / column_key / plugin::metric） */
+  ordering?: string;
+  /** asc | desc */
+  order?: 'asc' | 'desc';
 }
 
 export interface GroupInfo {
@@ -245,7 +254,7 @@ export interface ObjectItem {
     column_key?: string;
     name: string;
     type?: 'metric' | 'field';
-    role?: 'resource_ip';
+    role?: 'resource_ip' | 'namespace';
     sort_order: number;
     variable_id?: string;
     metrics: { plugin: string; metric: string; field?: string }[];

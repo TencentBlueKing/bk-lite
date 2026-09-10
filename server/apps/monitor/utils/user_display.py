@@ -77,3 +77,13 @@ def enrich_alerts_notice_users_display(alerts: list[dict]) -> None:
             resolve_alert_notice_users(alert),
             user_map,
         )
+
+
+def enrich_alerts_handlers_display(alerts: list[dict]) -> None:
+    """就地为告警列表补充 handlers_display，复用通知人展示名解析。"""
+    identifiers = []
+    for alert in alerts:
+        identifiers.extend(alert.get("handlers") or [])
+    user_map = build_user_display_map(identifiers)
+    for alert in alerts:
+        alert["handlers_display"] = format_notice_users(alert.get("handlers") or [], user_map)

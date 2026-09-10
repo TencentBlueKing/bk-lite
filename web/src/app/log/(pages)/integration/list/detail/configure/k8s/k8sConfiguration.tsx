@@ -7,6 +7,7 @@ import IntegrationK8sConfigurationShell from '@/components/integration-k8s-confi
 import { createLogK8sAccessCompletePreset } from '@/components/integration-access-complete';
 import AccessConfig from './accessConfig';
 import CollectorInstall from './collectorInstall';
+import type { K8sDaemonSetToleration } from '@/app/monitor/components/k8s-collector-install-step';
 
 export interface K8sCommandData {
   command?: string;
@@ -18,6 +19,7 @@ export interface K8sCommandData {
   namespace_patterns?: string;
   pod_patterns?: string;
   image_registry_prefix?: string;
+  tolerations?: K8sDaemonSetToleration[] | null;
 }
 
 const K8sConfiguration: React.FC = () => {

@@ -339,6 +339,11 @@ export interface ViewConfigFormValues {
   selectedFields?: string[];
   topNLabelField?: string;
   topNValueField?: string;
+  nodeGraphIdentityMode?: 'ip' | 'service';
+  nodeGraphSourceField?: string;
+  nodeGraphTargetField?: string;
+  nodeGraphValueField?: string;
+  nodeGraphTargetPortField?: string;
   unit?: string;
   unitId?: string;
   conversionFactor?: number;
@@ -371,6 +376,11 @@ export interface NodeConfigFormValues {
   builtinNamespaceId?: number;
   topNLabelField?: string;
   topNValueField?: string;
+  nodeGraphIdentityMode?: 'ip' | 'service';
+  nodeGraphSourceField?: string;
+  nodeGraphTargetField?: string;
+  nodeGraphValueField?: string;
+  nodeGraphTargetPortField?: string;
   width?: number;
   height?: number;
   backgroundColor?: string;

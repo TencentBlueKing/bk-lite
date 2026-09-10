@@ -152,6 +152,7 @@ const useIntegrationApi = () => {
         collector: string;
         collect_type: string;
         monitor_object_id: string;
+        monitor_plugin_id?: string | number;
       }) => {
         return await get(`/monitor/api/monitor_plugin/ui_template_by_params/`, {
           params,
@@ -177,6 +178,7 @@ const useIntegrationApi = () => {
           page?: number;
           page_size?: number;
           name?: string;
+          vm_params?: Record<string, string | string[]>;
         } = {},
         config?: AxiosRequestConfig
       ) => {
@@ -206,6 +208,9 @@ const useIntegrationApi = () => {
           cloud_region_id?: React.Key;
           interval?: number;
           image_registry_prefix?: string;
+          tolerations?:
+            | { key: string; effect: 'NoSchedule' | 'NoExecute'; value?: string }[]
+            | null;
         } = {}
       ) => {
         return await post(
@@ -270,6 +275,28 @@ const useIntegrationApi = () => {
       },
       getCollectDetectTask: async (taskId: React.Key) => {
         return await get(`/monitor/api/collect_detect/${String(taskId)}/`);
+      },
+      listQcloudRegions: async (data: {
+        username?: string;
+        password?: string;
+        collect_config_id?: string;
+        collect_config_ids?: string[];
+        cloud_region_id?: number | string;
+      }) => {
+        return await post('/monitor/api/monitor_plugin/qcloud_regions/', data, {
+          suppressErrorNotification: true,
+        });
+      },
+      listAliyunRegions: async (data: {
+        username?: string;
+        password?: string;
+        collect_config_id?: string;
+        collect_config_ids?: string[];
+        cloud_region_id?: number | string;
+      }) => {
+        return await post('/monitor/api/monitor_plugin/aliyun_regions/', data, {
+          suppressErrorNotification: true,
+        });
       },
     } satisfies FlowIntegrationApi),
     [del, get, post, put]

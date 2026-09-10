@@ -5,7 +5,7 @@
 > 路径 `server/apps/system_mgmt` ｜ API 前缀 `api/v1/system_mgmt/`
 
 ## 1. 职责【已实现/已存在】
-多租户用户/组/角色/权限管理、登录流程（密码/OTP/外部认证）、权限矩阵、审计日志、系统设置与通知渠道。
+多租户用户/组/角色/权限管理、登录流程（密码/OTP/外部认证）、权限矩阵、审计日志、系统设置、通知渠道与凭据仓库。
 
 ## 2. 数据模型与存储【已实现/已存在 / PostgreSQL】
 | 模型 | 文件 | 说明 |
@@ -19,13 +19,14 @@
 | SensitiveInfoAuthorization | `models/sensitive_info_authorization.py` | 敏感信息脱敏授权白名单（企业版）：`username`+`domain` 唯一，`sensitive_types`（JSON，限 email/phone）记录被授权可见的敏感字段类型 |
 | NetworkWhiteList | `models/network_white_list.py:7` | 网络白名单，CIDR 校验后供权限接口维护并触发缓存失效 |
 | OperationLog / UserLoginLog / ErrorLog | `models/*.py` | 审计追踪 |
+| CredentialType / Credential | `models/credential.py` | 凭据类型目录与实例仓库；实例对外身份为 `credential_id`（`crd-{type_key}-{uuid}`），密文字段加密存 JSON |
 
 ## 3. 接口【已实现/已存在】
 DRF Router 注册 13 个路由组：`group`/`user`/`role`/`channel`/`group_data_rule`/`system_settings`/`app`（AppViewSet，应用清单）/`login_module`/`custom_menu_group`/`user_login_log`/`operation_log`/`error_log`/`network_white_list`。企业版路由在 `enterprise/urls.py` 存在时追加合并。
 - `network_white_list`【已实现/已存在】：提供内网白名单的 CRUD 接口，按 `network_white_list-View/Add/Edit/Delete` 权限控制；写操作会主动失效白名单缓存并写入操作日志（`viewset/network_white_list_viewset.py:10-55`）。
 
 ## 4. 认证与权限【已实现/已存在】
-- 真实 NATS handler 分布在 `nats/auth.py`、`nats/login.py`、`nats/otp.py`、`nats/settings.py`、`nats/wechat.py`、`nats/users.py` 等子模块；`nats_api.py` 现为旧导入路径兼容导出层，会同步 `_verify_token`、`_build_jwt_payload`、`create_challenge` 等 legacy helper，再转发到真实 handler。
+- 真实 NATS handler 分布在 `nats/auth.py`、`nats/login.py`、`nats/otp.py`、`nats/settings.py`、`nats/wechat.py`、`nats/users.py`、`nats/credentials.py` 等子模块；`nats_api.py` 现为旧导入路径兼容导出层，会同步 `_verify_token`、`_build_jwt_payload`、`create_challenge` 等 legacy helper，再转发到真实 handler。
 - `wechat_user_register` 只保留为同进程兼容导出：旧微信 HTTP 入口先校验微信 code，再由 `SystemMgmt` 的本地 `AppClient` 调用；它不注册为 NATS subject，远程请求按“无订阅者/无 handler”失败。
 - 仓库内 `server`、`web`、`agents`、`algorithms`、`mobile`、部署模板、配置样例和测试未发现该 subject 的合法远程生产者；部署若有仓外消费者，升级前须迁移到已校验 code 的 HTTP 登录链路。
 - 此边界调整不迁移数据库或角色数据，也不改变本地函数参数和响应。紧急回滚时可恢复 `nats/wechat.py` 的注册装饰器；回滚会重新暴露未校验调用方身份的入口，只可作为短期止血。
@@ -40,6 +41,18 @@ DRF Router 注册 13 个路由组：`group`/`user`/`role`/`channel`/`group_data_
 - 四个入口仅为已知仓外消费者限时恢复，禁止新增消费者；风险接受与 NATS 身份/ACL 迁移跟踪见 #4533，截止 2026-09-04。产品使用边界见 [[legacy-prd-系统管理-组织#3.1 跨模块用户目录查询兼容]]，交付状态见 [[legacy-fuctionlist-07-系统管理-功能清单#11. 跨模块用户目录兼容]]。
 
 > 证据来源：server/apps/system_mgmt/nats/users.py:20-38、41-119、156-181　|　同步基线：d2769559　|　【已实现】
+
+### 4.2 凭据仓库跨模块契约【已实现 / 引用计数待对接】
+
+- 系统管理拥有类型目录与实例仓库。其它模块只保存 `credential_id`，不存口令。消费可见性为归属向下共享：`group_id ∈ {current_team} ∪ 活动祖先`。台账列表/创建/编辑归属为编辑者授权组织，不按当前节点裁子孙。
+- 已注册 NATS（RPC 封装 `server/apps/rpc/system_mgmt.py`）：`list_credentials`（无密文分页列表，不附引用计数）、`create_credential`、`resolve_credential`（明文只走这条，页面与 picker 不调用）。`list`/`resolve` 需 `credential-View`；`create` 需 `credential-Add`。带 `type` 时必须同时带 `category`。
+- 引用次数不建账本。契约由系统管理规定，消费方在本模块 NATS 实现同名载荷。方法名：`cmdb_count_credential_refs`、`monitor_count_credential_refs`（共用 namespace，必须前缀）。系统管理用 `RpcClient().run` **直接请求这两个方法名**（`server/apps/system_mgmt/services/credential_ref_count.py`），不经 `apps/rpc/cmdb.py`、`apps/rpc/monitor.py`，也不经 `apps/rpc/system_mgmt.py`。入参 `{ "credential_ids": [..] }`，上限 100；出参 `{ "result": true, "data": { "counts": { "<id>": n } } }`，入参中的 ID 都要有键，无引用为 `0`。系统管理在列表、删除、改组织时只定向问这两家。列表：成功的模块按模块加总画芯片；两家都失败或未接线显示「—」，禁止写死 0。删除/改组织：任一家超时、无订阅者、`result: false` 或 `count > 0` 则拦截。作业等后置，同一载荷另加方法即可。
+- 页面要引用仓库凭据时，把 `CredentialPicker`（`web/src/components/credential-picker`）嵌进业务原表单的 `Form.Item`，字段值为 `credential_id`；组件自己向系统管理拉可选列表，调用方只传 `category` / `type` 与表单值。不要自绘下拉或复用 `CredentialPickerChrome`。明文仍只走 `resolve_credential`。
+- 系统管理不负责消费方任务表加列、执行或测试连接调用 `resolve_credential`，也不规定消费方如何从任务表算出 `counts`。
+
+产品口径见 `docs/design/product-decisions/system-mgmt-credential-vault.md`，交付标识见 [[legacy-fuctionlist-07-系统管理-功能清单#12. 跨模块凭据仓库]]。
+
+> 证据来源：server/apps/system_mgmt/nats/credentials.py:59-138、server/apps/rpc/system_mgmt.py:94-116、server/apps/system_mgmt/services/credential_ref_count.py:24-35、server/apps/system_mgmt/models/credential.py:7-32　|　【已实现：列表/创建/解析/询问】【待对接：消费方 handler】
 
 ## 5. 通知渠道【已实现/已存在】
 `models/channel.py` 的 `ChannelChoices` 定义 7 类渠道：`email`（邮件）、`enterprise_wechat`（企微）、`enterprise_wechat_bot`（企微机器人）、`nats`（NATS 消息）、`feishu_bot`（飞书机器人）、`dingtalk_bot`（钉钉机器人）、`custom_webhook`（自定义 Webhook）。发送实现见 `utils/channel_utils.py`；BK 用户对接 `utils/bk_user_utils.py`。
@@ -64,7 +77,7 @@ DRF Router 注册 13 个路由组：`group`/`user`/`role`/`channel`/`group_data_
 
 ## 8. 证据来源
 - 路由：`server/apps/system_mgmt/urls.py:19-39`（含 `app` 路由 `urls.py:26`、`network_white_list` 路由 `urls.py:32`、企业版合并 `urls.py:35-39`）。
-- 模型：`server/apps/system_mgmt/models/user.py:7-62`（User 字段与 `save()` 重写）、`models/network_white_list.py:7-20`、`models/sensitive_info_authorization.py:33-42`、`models/channel.py:7-14`（ChannelChoices 7 类）、`models/role.py`、`models/group_data_rule.py`。
-- 认证/权限：`server/apps/system_mgmt/nats_api.py:1-109`（兼容导出层）、`nats/auth.py:5-118`、`nats/login.py:5-220`、`nats/otp.py:5-186`、`nats/settings.py:21-79`、`nats/wechat.py:6-48`；缓存 TTL `server/apps/core/utils/permission_cache.py:22,25`。
+- 模型：`server/apps/system_mgmt/models/user.py:7-62`（User 字段与 `save()` 重写）、`models/network_white_list.py:7-20`、`models/sensitive_info_authorization.py:33-42`、`models/channel.py:7-14`（ChannelChoices 7 类）、`models/role.py`、`models/group_data_rule.py`、`models/credential.py:7-32`。
+- 认证/权限：`server/apps/system_mgmt/nats_api.py:1-109`（兼容导出层）、`nats/auth.py:5-118`、`nats/login.py:5-220`、`nats/otp.py:5-186`、`nats/settings.py:21-79`、`nats/wechat.py:6-48`、`nats/credentials.py:59-138`；缓存 TTL `server/apps/core/utils/permission_cache.py:22,25`。
 - Celery 任务：`server/apps/system_mgmt/tasks.py:14`（write_error_log_async）、`tasks.py:42`（sync_user_and_group_by_login_module）、`tasks.py:251`（check_password_expiry_and_notify）。
 - 其他：`server/apps/system_mgmt/{services/role_manage.py,utils/*}`。

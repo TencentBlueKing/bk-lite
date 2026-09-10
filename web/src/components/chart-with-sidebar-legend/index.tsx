@@ -25,7 +25,7 @@ const ChartWithSidebarLegend: React.FC<ChartWithSidebarLegendProps> = ({
   legendWidthPx = 120,
   legendGapPx = 8,
   chartPaneClassName = 'flex-1 min-w-0',
-  legendPaneClassName = 'ml-2 h-full w-[120px] shrink-0 min-w-0',
+  legendPaneClassName = 'ml-2 h-full min-h-0 w-[120px] shrink-0 min-w-0 overflow-hidden',
   surfaceProps,
 }) => {
   const [showLegend, setShowLegend] = useState(

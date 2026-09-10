@@ -36,6 +36,10 @@ import {
   resolveDashboardActionParams,
 } from '@/app/ops-analysis/utils/dashboardActions';
 import { resolveTableCellPresentation } from '@/app/ops-analysis/utils/tableCellStyle';
+import {
+  formatVisibleChartValue,
+  hasValueFormatConfigured,
+} from '@/app/ops-analysis/utils/chartValueFormat';
 import { getScreenWidgetScale } from './shared/screenMetrics';
 import { supportsServerPagination } from '@/app/ops-analysis/utils/tablePagination';
 import {
@@ -256,39 +260,48 @@ const ComTable: React.FC<ComTableProps> = ({
           }
 
           const presentation = resolveTableCellPresentation(text, col);
-          if (presentation.mode === 'colorBackground') {
+          const formattedPresentation =
+            presentation.mode === 'text' &&
+            col.key === 'value' &&
+            hasValueFormatConfigured(config)
+              ? {
+                ...presentation,
+                displayText: formatVisibleChartValue(text, config),
+              }
+              : presentation;
+          if (formattedPresentation.mode === 'colorBackground') {
             return (
-              <Tooltip placement="topLeft" title={presentation.tooltipText}>
+              <Tooltip placement="topLeft" title={formattedPresentation.tooltipText}>
                 <div
                   role="img"
-                  aria-label={presentation.tooltipText}
+                  aria-label={formattedPresentation.tooltipText}
                   style={{
                     width: 16,
                     height: 16,
                     borderRadius: 3,
-                    background: presentation.color,
+                    background: formattedPresentation.color,
                   }}
                 >
-                  <span className="sr-only">{presentation.tooltipText}</span>
+                  <span className="sr-only">{formattedPresentation.tooltipText}</span>
                 </div>
               </Tooltip>
             );
           }
 
           return (
-            <Tooltip placement="topLeft" title={presentation.displayText}>
+            <Tooltip placement="topLeft" title={formattedPresentation.displayText}>
               <div
                 style={{
                   maxWidth: DEFAULT_CELL_MAX_WIDTH,
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
-                  ...(presentation.color
-                    ? { color: presentation.color, fontWeight: 600 }
+                  ...(formattedPresentation.color
+                    ? { color: formattedPresentation.color, fontWeight: 600 }
                     : {}),
                 }}
               >
-                {presentation.displayText}
+                {formattedPresentation.displayText}
               </div>
             </Tooltip>
           );
@@ -297,7 +310,7 @@ const ComTable: React.FC<ComTableProps> = ({
 
       return column;
     });
-  }, [columnConfigs, config?.actions, renderActionButtons]);
+  }, [columnConfigs, config, renderActionButtons]);
 
   useEffect(() => {
     if (!onQueryChange) return;
@@ -525,9 +538,16 @@ const ComTable: React.FC<ComTableProps> = ({
           columns={antColumns}
           dataSource={displayedTableData}
           loading={loading}
-          rowKey={(record, index) =>
-            record.id || record.key || index?.toString() || '0'
-          }
+          rowKey={(record) => {
+            const row = record as Record<string, unknown>;
+            if (row.id != null && row.id !== '') return String(row.id);
+            if (row.key != null && row.key !== '') return String(row.key);
+            try {
+              return JSON.stringify(row);
+            } catch {
+              return 'row';
+            }
+          }}
           size="small"
           pagination={
             isPaginated

@@ -3,7 +3,8 @@ from typing import Dict, List
 
 def _project_one(record: Dict, projection: List[Dict]) -> Dict:
     if not projection:
-        return dict(record)
+        # 数据最小化：未声明字段时不把整条 CMDB 实例复制到告警。
+        return {}
     out = {}
     for item in projection:
         src = item.get("source")

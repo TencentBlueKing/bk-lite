@@ -5,6 +5,10 @@
 from celery.schedules import crontab
 
 CELERY_BEAT_SCHEDULE = {
+    "recover_first_collection_runs": {
+        "task": "apps.cmdb.tasks.celery_tasks.recover_first_collection_runs",
+        "schedule": crontab(minute="*"),
+    },
     "node_mgmt_sync_recovery_watchdog": {"task": "apps.cmdb.tasks.node_mgmt_sync.watch_node_mgmt_sync_recovery", "schedule": crontab(minute="*/5")},
     "sync_periodic_update_task_status": {"task": "apps.cmdb.tasks.celery_tasks.sync_periodic_update_task_status", "schedule": crontab(minute="*/5")},
     "sync_collect_tasks_gate": {"task": "apps.cmdb.tasks.celery_tasks.sync_collect_tasks_gate", "schedule": crontab(minute="*/5")},
@@ -13,6 +17,10 @@ CELERY_BEAT_SCHEDULE = {
     "reconcile_ipam_task": {"task": "apps.cmdb.tasks.celery_tasks.reconcile_ipam_task", "schedule": crontab(minute="0")},
     "reconcile_config_file_content_task": {
         "task": "apps.cmdb.tasks.celery_tasks.reconcile_config_file_content_task",
+        "schedule": crontab(minute="*/15"),
+    },
+    "cleanup_config_file_orphan_temp_task": {
+        "task": "apps.cmdb.tasks.celery_tasks.cleanup_config_file_orphan_temp_task",
         "schedule": crontab(minute="*/15"),
     },
     "reconcile_cmdb_operations_task": {"task": "apps.cmdb.tasks.celery_tasks.reconcile_cmdb_operations_task", "schedule": crontab(minute="*/5")},

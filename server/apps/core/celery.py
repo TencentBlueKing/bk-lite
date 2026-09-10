@@ -354,6 +354,40 @@ def _reconcile_removed_config_tasks(periodic_task_model, change_tracker, current
     _apply_reconcile_state(stale_tasks, change_tracker, restore=False)
 
 
+def _crontab_schedule_lookup(task_schedule):
+    tz = getattr(task_schedule, "tz", None)
+    if tz is None:
+        from django.utils import timezone as dj_timezone
+
+        tz = dj_timezone.get_default_timezone()
+    return {
+        "minute": task_schedule._orig_minute,
+        "hour": task_schedule._orig_hour,
+        "day_of_week": task_schedule._orig_day_of_week,
+        "day_of_month": task_schedule._orig_day_of_month,
+        "month_of_year": task_schedule._orig_month_of_year,
+        "timezone": tz,
+    }
+
+
+def _get_or_create_schedule(model, **lookup):
+    try:
+        return model.objects.get_or_create(**lookup)
+    except model.MultipleObjectsReturned:
+        existing = model.objects.filter(**lookup).order_by("id").first()
+        reused_id = getattr(existing, "pk", None)
+        logger.warning(
+            "event=celery_beat_duplicate_schedule model=%s reused_id=%s failed_stage=%s error_type=%s",
+            model.__name__,
+            reused_id,
+            "get_or_create_schedule",
+            "MultipleObjectsReturned",
+        )
+        if existing is None:
+            raise
+        return existing, False
+
+
 @app.on_after_finalize.connect
 def setup_periodic_tasks(sender, **kwargs):
     """将 CELERY_BEAT_SCHEDULE 同步到 django_celery_beat 数据库表"""
@@ -378,13 +412,7 @@ def setup_periodic_tasks(sender, **kwargs):
             task_kwargs = task_config.get("kwargs", {})
 
             if isinstance(task_schedule, crontab):
-                schedule_obj, _ = CrontabSchedule.objects.get_or_create(
-                    minute=task_schedule._orig_minute,
-                    hour=task_schedule._orig_hour,
-                    day_of_week=task_schedule._orig_day_of_week,
-                    day_of_month=task_schedule._orig_day_of_month,
-                    month_of_year=task_schedule._orig_month_of_year,
-                )
+                schedule_obj, _ = _get_or_create_schedule(CrontabSchedule, **_crontab_schedule_lookup(task_schedule))
                 periodic_task, _ = PeriodicTask.objects.update_or_create(
                     name=task_name,
                     defaults={
@@ -410,7 +438,8 @@ def setup_periodic_tasks(sender, **kwargs):
                 else:
                     every = int(task_schedule)
                     period = IntervalSchedule.SECONDS
-                schedule_obj, _ = IntervalSchedule.objects.get_or_create(
+                schedule_obj, _ = _get_or_create_schedule(
+                    IntervalSchedule,
                     every=every,
                     period=period,
                 )

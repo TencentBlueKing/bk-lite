@@ -65,3 +65,10 @@ class Application3DAlarmDetailRequestSerializer(_Application3DStrictSerializer):
 
 class Application3DMetricRequestSerializer(Application3DAlarmDetailRequestSerializer):
     pass
+
+
+class RelatedTopologyRequestSerializer(_Application3DStrictSerializer):
+    inst_uuid = serializers.UUIDField()
+
+    def validate_inst_uuid(self, value):
+        return str(value)

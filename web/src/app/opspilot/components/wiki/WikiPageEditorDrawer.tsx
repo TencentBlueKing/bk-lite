@@ -1,9 +1,8 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
-  AutoComplete,
   Button,
   Drawer,
   Form,
@@ -17,6 +16,10 @@ import {
 import { useWikiApi } from "@/app/opspilot/api/wiki";
 import type { KnowledgePage, PageVersion } from "@/app/opspilot/types/wiki";
 import { useTranslation } from "@/utils/i18n";
+import {
+  PAGE_TYPE_LABEL,
+  pageTypeSelectOption,
+} from "./wikiFormat";
 
 interface WikiPageEditorDrawerProps {
   kbId: number;
@@ -65,6 +68,16 @@ const WikiPageEditorDrawer: React.FC<WikiPageEditorDrawerProps> = ({
     !!page &&
     !readOnly &&
     String(watchedTitle ?? "").trim() !== page.title.trim();
+  const pageTypeSelectOptions = useMemo(() => {
+    const values = new Set<string>(
+      Object.keys(PAGE_TYPE_LABEL).filter((key) => key !== "other"),
+    );
+    typeOptions.forEach((option) => {
+      if (option.value) values.add(option.value);
+    });
+    if (page?.page_type) values.add(page.page_type);
+    return Array.from(values).map((value) => pageTypeSelectOption(t, value));
+  }, [page?.page_type, t, typeOptions]);
 
   useEffect(() => {
     if (!open) return;
@@ -211,15 +224,12 @@ const WikiPageEditorDrawer: React.FC<WikiPageEditorDrawerProps> = ({
           rules={[{ required: true, message: t("wiki.typeRequired") }]}
           tooltip={page ? t("wiki.typeLockedTip") : undefined}
         >
-          <AutoComplete
-            options={typeOptions}
+          <Select
+            options={pageTypeSelectOptions}
+            showSearch
+            optionFilterProp="label"
             disabled={!!page || readOnly}
             placeholder={t("wiki.type")}
-            filterOption={(input, option) =>
-              String(option?.value ?? "")
-                .toLowerCase()
-                .includes(input.toLowerCase())
-            }
           />
         </Form.Item>
         <Form.Item

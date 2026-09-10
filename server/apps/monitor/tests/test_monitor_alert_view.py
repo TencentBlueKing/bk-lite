@@ -15,7 +15,10 @@ BASE = "/api/v1/monitor"
 
 
 @pytest.fixture
-def grant_all(mocker):
+def grant_all(db, mocker):
+    from apps.system_mgmt.models import Group
+
+    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
     # 两个 ViewSet 共享策略权限根。
     mocker.patch(
         "apps.monitor.views.monitor_alert.get_permissions_rules",
@@ -55,6 +58,11 @@ def _policy(**overrides):
     return policy
 
 
+def _alert(policy, **kwargs):
+    kwargs.setdefault("organizations", [1])
+    return MonitorAlert.objects.create(policy_id=policy.id, **kwargs)
+
+
 class TestGetSnapshots:
     def test_alert_not_found(self, api_client, grant_all):
         api_client.cookies["current_team"] = "1"
@@ -68,7 +76,7 @@ class TestGetSnapshots:
             calculation_unit="bytes",
             threshold_unit="kibibytes",
         )
-        alert = MonitorAlert.objects.create(policy_id=policy.id, monitor_instance_id="h1", status="new")
+        alert = _alert(policy, monitor_instance_id="h1", status="new")
         resp = api_client.get(f"{BASE}/api/monitor_alert/snapshots/{alert.id}/")
         assert resp.status_code == 200
         body = resp.json()["data"]
@@ -86,7 +94,7 @@ class TestGetSnapshots:
             threshold_unit="",
         )
         alert = MonitorAlert.objects.create(
-            policy_id=policy.id, monitor_instance_id="h1", status="new"
+            policy_id=policy.id, organizations=[1], monitor_instance_id="h1", status="new"
         )
 
         resp = api_client.get(
@@ -106,7 +114,7 @@ class TestGetSnapshots:
             threshold_unit="kibibytes",
         )
         alert = MonitorAlert.objects.create(
-            policy_id=policy.id, monitor_instance_id="h1", status="new"
+            policy_id=policy.id, organizations=[1], monitor_instance_id="h1", status="new"
         )
         source_snapshots = [
             {
@@ -143,7 +151,7 @@ class TestGetSnapshots:
     def test_returns_snapshot_data(self, api_client, grant_all, mocker):
         api_client.cookies["current_team"] = "1"
         policy = _policy()
-        alert = MonitorAlert.objects.create(policy_id=policy.id, monitor_instance_id="h1", status="new")
+        alert = _alert(policy, monitor_instance_id="h1", status="new")
         mocker.patch(
             "apps.core.fields.s3_json_field.S3JSONField._load_from_s3",
             return_value=[{"type": "info", "raw_data": {"v": 1}}],
@@ -158,21 +166,47 @@ class TestGetSnapshots:
 
 
 class TestAlertUpdateClose:
-    def test_close_new_alert(self, api_client, grant_all, mocker):
+    def test_close_new_alert(self, api_client, grant_all, mocker, django_capture_on_commit_callbacks):
         api_client.cookies["current_team"] = "1"
         notifier = mocker.patch("apps.monitor.views.monitor_alert.AlertLifecycleNotifier")
         policy = _policy()
-        alert = MonitorAlert.objects.create(policy_id=policy.id, monitor_instance_id="h1", status="new")
-        resp = api_client.patch(
-            f"{BASE}/api/monitor_alert/{alert.id}/",
-            {"status": "closed"}, format="json",
-        )
+        alert = _alert(policy, monitor_instance_id="h1", status="new")
+        with django_capture_on_commit_callbacks(execute=True):
+            resp = api_client.patch(
+                f"{BASE}/api/monitor_alert/{alert.id}/",
+                {"status": "closed"}, format="json",
+            )
         assert resp.status_code == 200
         alert.refresh_from_db()
         assert alert.status == "closed"
         assert alert.operator == "testuser"
         assert alert.operation_logs[-1]["action"] == "closed"
         notifier.return_value.notify_alerts.assert_called_once()
+        closed_events = MonitorEvent.objects.filter(alert_id=alert.id, action=MonitorEvent.Action.CLOSED)
+        assert closed_events.count() == 1
+        assert MonitorAlertMetricSnapshot.objects.filter(alert_id=alert.id).count() == 0
+
+        resp = api_client.patch(
+            f"{BASE}/api/monitor_alert/{alert.id}/",
+            {"status": "closed"}, format="json",
+        )
+        assert resp.status_code == 200
+        assert MonitorEvent.objects.filter(alert_id=alert.id, action=MonitorEvent.Action.CLOSED).count() == 1
+        notifier.return_value.notify_alerts.assert_called_once()
+
+    def test_close_recovered_alert_does_not_create_closed_event(self, api_client, grant_all, mocker):
+        api_client.cookies["current_team"] = "1"
+        mocker.patch("apps.monitor.views.monitor_alert.AlertLifecycleNotifier")
+        policy = _policy()
+        alert = MonitorAlert.objects.create(
+            policy_id=policy.id, organizations=[1], monitor_instance_id="h1", status="recovered"
+        )
+        resp = api_client.patch(
+            f"{BASE}/api/monitor_alert/{alert.id}/",
+            {"status": "closed"}, format="json",
+        )
+        assert resp.status_code == 200
+        assert MonitorEvent.objects.filter(alert_id=alert.id, action=MonitorEvent.Action.CLOSED).count() == 0
 
 
 class TestAlertListNoticeUsersDisplay:
@@ -188,7 +222,7 @@ class TestAlertListNoticeUsersDisplay:
         )
         policy = _policy(notice=True, notice_users=[user.id])
         MonitorAlert.objects.create(
-            policy_id=policy.id,
+            policy_id=policy.id, organizations=[1],
             monitor_instance_id="h1",
             status="new",
             notice_users=[user.id],
@@ -215,16 +249,32 @@ class TestGetEvents:
     def test_returns_events(self, api_client, grant_all):
         api_client.cookies["current_team"] = "1"
         policy = _policy()
-        alert = MonitorAlert.objects.create(policy_id=policy.id, monitor_instance_id="h1", status="new")
+        alert = _alert(policy, monitor_instance_id="h1", status="new")
         MonitorEvent.objects.create(
             id="ev1", alert_id=alert.id, policy_id=policy.id,
             monitor_instance_id="h1", level="critical", value=9.0, content="c",
+            action=MonitorEvent.Action.TRIGGERED,
         )
         resp = api_client.get(f"{BASE}/api/monitor_event/query/{alert.id}/")
         assert resp.status_code == 200
         body = resp.json()["data"]
         assert body["count"] == 1
         assert body["results"][0]["level"] == "critical"
+        assert body["results"][0]["action"] == MonitorEvent.Action.TRIGGERED
+
+    def test_returns_legacy_events_without_action(self, api_client, grant_all):
+        api_client.cookies["current_team"] = "1"
+        policy = _policy()
+        alert = _alert(policy, monitor_instance_id="h1", status="new")
+        MonitorEvent.objects.create(
+            id="ev-legacy", alert_id=alert.id, policy_id=policy.id,
+            monitor_instance_id="h1", level="warning", value=3.0, content="old",
+        )
+        resp = api_client.get(f"{BASE}/api/monitor_event/query/{alert.id}/")
+        assert resp.status_code == 200
+        body = resp.json()["data"]
+        assert body["count"] == 1
+        assert body["results"][0]["action"] == ""
 
 
 class TestGetRawData:

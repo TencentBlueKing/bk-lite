@@ -25,6 +25,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from tasks.collectors.host_collector import (  # noqa: E402
+    ANSIBLE_ADHOC_FAILED_LOG_TEMPLATE,
     HOST_REMOTE_CALLBACK_REQUEST_TIMEOUT,
     LINUX_SCRIPT_WRAPPER_EOF,
     LINUX_SCRIPT_WRAPPER_PREFIX,
@@ -34,6 +35,9 @@ from tasks.collectors.host_collector import (  # noqa: E402
     _escape_prometheus_label_value,
     _extract_json_payload,
     build_script,
+    classify_ansible_failure,
+    encode_ansible_raw_module_args,
+    extract_ansible_failure_summary,
     parse_metrics_to_prometheus,
 )
 
@@ -97,7 +101,7 @@ def _load_host_remote_handler_module(monkeypatch):
 
 
 def _install_fake_host_remote_callback_store(monkeypatch):
-    import core.host_remote_callback as host_remote_callback_module
+    import core.collection.host_remote.callback as host_remote_callback_module
 
     callback_contexts = {}
 
@@ -305,6 +309,16 @@ class TestBuildScript:
         assert script.endswith(f"{LINUX_SCRIPT_WRAPPER_EOF}\n")
         assert "--noprofile --norc" in script
         assert "LC_ALL=C" in script
+
+    def test_aix_script_is_wrapped_with_ksh_heredoc(self):
+        from tasks.collectors.aix_os_monitor import AIX_COLLECT_EOF, AIX_KSH_PREFIX
+
+        script = build_script("aix", ["cpu"])
+
+        assert script.startswith(f"{AIX_KSH_PREFIX} <<'{AIX_COLLECT_EOF}'\n")
+        assert script.endswith(f"{AIX_COLLECT_EOF}\n")
+        assert "ksh -c" not in script
+        assert "PAGE_SIZE" in script
 
     def test_windows_all_modules(self):
         script = build_script("windows", ["cpu", "mem", "disk", "net"])
@@ -957,6 +971,137 @@ class TestHostCollectorExtractStdout:
         assert stdout == "{}"
 
 
+class TestAnsibleFailureSummary:
+    SENTINEL_PASSWORD = "must-not-be-logged-password-xyz"
+
+    def _collector(self):
+        return HostCollector(
+            {
+                "host": "10.233.2.31",
+                "os_type": "linux",
+                "username": "root",
+                "password": self.SENTINEL_PASSWORD,
+                "ansible_node_id": "region1",
+                "metrics_modules": "cpu",
+                "tags": {"instance_id": "x"},
+            }
+        )
+
+    def test_extracts_unreachable_stderr_without_full_payload(self, caplog):
+        result = {
+            "success": False,
+            "error": "ansible adhoc failed with exit code 4",
+            "result": [
+                {
+                    "host": "10.233.2.31",
+                    "status": "failed",
+                    "raw_status": "UNREACHABLE",
+                    "exit_code": 4,
+                    "stdout": "",
+                    "stderr": "Failed to connect to the host via ssh: Connection timed out",
+                    "error_message": "Failed to connect to the host via ssh: Connection timed out",
+                    "password": self.SENTINEL_PASSWORD,
+                }
+            ],
+        }
+
+        with caplog.at_level("ERROR", logger="stargazer.host_collector"):
+            with pytest.raises(RuntimeError) as exc_info:
+                self._collector().process_adhoc_result(result)
+
+        message = str(exc_info.value)
+        assert "Host collection failed: ansible adhoc failed with exit code 4" in message
+        assert "host_status=UNREACHABLE" in message
+        assert "exit_code=4" in message
+        assert "Connection timed out" in message
+        assert self.SENTINEL_PASSWORD not in message
+        records = [item for item in caplog.records if item.name == "stargazer.host_collector"]
+        assert len(records) == 1
+        record = records[0]
+        assert record.msg == ANSIBLE_ADHOC_FAILED_LOG_TEMPLATE
+        assert record.args == (
+            "10.233.2.31",
+            "ansible adhoc failed with exit code 4",
+            "UNREACHABLE",
+            "4",
+            "Failed to connect to the host via ssh: Connection timed out",
+            False,
+            "target_unreachable",
+        )
+        assert record.getMessage().startswith("[Host Collector] event=ansible_adhoc_failed")
+        assert "Connection timed out" in record.getMessage()
+        assert self.SENTINEL_PASSWORD not in record.getMessage()
+        assert self.SENTINEL_PASSWORD not in "".join(map(str, record.args))
+
+    def test_omits_credential_assignment_from_stderr_and_logs(self, caplog):
+        result = {
+            "success": False,
+            "error": "ansible adhoc failed with exit code 4",
+            "result": [
+                {
+                    "host": "10.233.2.31",
+                    "raw_status": "UNREACHABLE",
+                    "exit_code": 4,
+                    "stderr": f"password={self.SENTINEL_PASSWORD} Failed to connect",
+                }
+            ],
+        }
+
+        with caplog.at_level("ERROR", logger="stargazer.host_collector"):
+            with pytest.raises(RuntimeError) as exc_info:
+                self._collector().process_adhoc_result(result)
+
+        assert self.SENTINEL_PASSWORD not in str(exc_info.value)
+        assert "password=[omitted]" in str(exc_info.value)
+        record = caplog.records[-1]
+        assert record.msg == ANSIBLE_ADHOC_FAILED_LOG_TEMPLATE
+        assert self.SENTINEL_PASSWORD not in record.getMessage()
+        assert self.SENTINEL_PASSWORD not in "".join(map(str, record.args))
+
+    def test_marks_missing_stderr_when_callback_has_only_exit_code(self):
+        result = {
+            "success": False,
+            "error": "ansible adhoc failed with exit code 4",
+            "result": [{"host": "10.233.2.31", "stdout": "", "stderr": ""}],
+        }
+
+        with pytest.raises(RuntimeError, match="stderr_missing=true"):
+            self._collector().process_adhoc_result(result)
+
+        summary = extract_ansible_failure_summary(result, "10.233.2.31")
+        assert summary["stderr_missing"] is True
+        assert classify_ansible_failure(summary) == "collection_failed"
+
+    def test_reads_compacted_result_summary_when_per_host_stderr_wiped(self):
+        result = {
+            "success": False,
+            "error": "ansible adhoc failed with exit code 4",
+            "result": [
+                {
+                    "host": "10.233.2.31",
+                    "status": "failed",
+                    "stdout": "",
+                    "stderr": "",
+                    "error_message": "",
+                }
+            ],
+            "result_summary": {
+                "failure_host": "10.233.2.31",
+                "failure_status": "UNREACHABLE",
+                "failure_exit_code": 4,
+                "failure_stderr": "Failed to connect to the host via ssh: No route to host",
+            },
+        }
+
+        with pytest.raises(RuntimeError, match="No route to host"):
+            self._collector().process_adhoc_result(result)
+
+        summary = extract_ansible_failure_summary(result, "10.233.2.31")
+        assert summary["host_status"] == "UNREACHABLE"
+        assert summary["exit_code"] == "4"
+        assert classify_ansible_failure(summary) == "target_unreachable"
+
+
 class TestHostCollectorHelpers:
     def test_extract_json_payload_returns_first_complete_json_object(self):
         stdout = '[WARNING]: interpreter issue\n{"cpu":{"usage_percent":1}}\ntrailing noise'
@@ -972,6 +1117,16 @@ class TestHostCollectorHelpers:
         value = 'foo"bar\\baz\nqux'
 
         assert _escape_prometheus_label_value(value) == 'foo\\"bar\\\\baz\\nqux'
+
+    def test_encode_ansible_raw_module_args_wraps_aix_heredoc_as_json_raw_params(self):
+        command = build_script("aix", ["cpu"])
+        encoded = encode_ansible_raw_module_args(command)
+
+        assert encoded.startswith("{")
+        assert encoded.endswith("}")
+        parsed = json.loads(encoded)
+        assert parsed["_raw_params"] == command
+        assert "ksh -c" not in command
 
 
 class TestHostCollectorCredentialDecoding:
@@ -991,6 +1146,26 @@ class TestHostCollectorCredentialDecoding:
         config = collector._resolve_execution_config()
 
         assert config["host_credentials"][0]["password"] == "CW@roger1117!@#"
+        assert json.loads(config["module_args"])["_raw_params"].startswith(f"{LINUX_SCRIPT_WRAPPER_PREFIX} <<'{LINUX_SCRIPT_WRAPPER_EOF}'\n")
+
+    def test_aix_password_is_url_decoded(self):
+        collector = HostCollector(
+            {
+                "host": "10.53.0.150",
+                "os_type": "aix",
+                "username": "root",
+                "password": "aix%40pass2021",
+                "ansible_node_id": "node1",
+            }
+        )
+
+        config = collector._resolve_execution_config()
+
+        assert config["host_credentials"][0]["password"] == "aix@pass2021"
+        assert config["module"] == "raw"
+        encoded_args = json.loads(config["module_args"])
+        assert encoded_args["_raw_params"].startswith("LC_ALL=C LANG=C /usr/bin/ksh <<'")
+        assert "ksh -c" not in encoded_args["_raw_params"]
 
     def test_windows_password_is_url_decoded(self):
         collector = HostCollector(
@@ -1990,7 +2165,7 @@ class TestHostCollectorCollect:
         assert "host_cpu_usage_percent" in result
         assert "25.0" in result
 
-    @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
+    @patch("core.infra.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_successful_collect_linux_uses_bash_wrapped_script(self, mock_adhoc):
         mock_adhoc.return_value = {
             "success": True,
@@ -2030,7 +2205,7 @@ class TestHostCollectorCollect:
         await collector.collect()
 
         call_kwargs = mock_adhoc.call_args[1]
-        assert call_kwargs["module_args"].startswith(f"{LINUX_SCRIPT_WRAPPER_PREFIX} <<'{LINUX_SCRIPT_WRAPPER_EOF}'\n")
+        assert json.loads(call_kwargs["module_args"])["_raw_params"].startswith(f"{LINUX_SCRIPT_WRAPPER_PREFIX} <<'{LINUX_SCRIPT_WRAPPER_EOF}'\n")
 
     @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_default_modules_when_invalid(self, mock_adhoc):
@@ -2383,7 +2558,7 @@ class TestHostRemoteProcessWorker:
         assert "host_remote_state" in state_args[1]
         assert callback_contexts.get("task-process-1") is None
 
-    async def test_process_host_remote_callback_task_publishes_error_metrics_on_processing_failure(self, monkeypatch):
+    async def test_process_host_remote_callback_task_publishes_error_metrics_on_processing_failure(self, monkeypatch, caplog):
         handler = _load_host_remote_handler_module(monkeypatch)
         _, callback_contexts = _install_fake_host_remote_callback_store(monkeypatch)
         influxdb_client_module = types.ModuleType("influxdb_client")
@@ -2393,6 +2568,7 @@ class TestHostRemoteProcessWorker:
         import tasks.utils.metrics_helper as metrics_helper_module
         import tasks.utils.nats_helper as nats_helper_module
 
+        sentinel_password = "must-not-be-logged-password-xyz"
         params = _build_host_params()
         callback_contexts["task-process-2"] = {
             "ctx": {},
@@ -2400,7 +2576,22 @@ class TestHostRemoteProcessWorker:
             "raw_callback": {
                 "task_id": "task-process-2",
                 "success": False,
-                "error": "Connection refused",
+                "error": "ansible adhoc failed with exit code 4",
+                "result": [
+                    {
+                        "host": "10.0.0.9",
+                        "status": "failed",
+                        "raw_status": "UNREACHABLE",
+                        "exit_code": 4,
+                        "stderr": f"password={sentinel_password} Connection refused",
+                    }
+                ],
+                "result_summary": {
+                    "failure_host": "10.0.0.9",
+                    "failure_status": "UNREACHABLE",
+                    "failure_exit_code": 4,
+                    "failure_stderr": "password=[omitted] Connection refused",
+                },
             },
             "status": {"execution": "execution_finished", "delivery": "processing"},
         }
@@ -2413,14 +2604,38 @@ class TestHostRemoteProcessWorker:
             MagicMock(return_value=error_metrics),
         )
 
-        result = await handler.process_host_remote_callback_task({}, {}, "task-process-2")
+        with caplog.at_level("ERROR"):
+            result = await handler.process_host_remote_callback_task({}, {}, "task-process-2")
 
         assert result["status"] == "failed"
-        assert "Host collection failed" in result["error"]
+        assert result["error"].startswith("Host collection failed:")
+        assert result["error"].count("Host collection failed:") == 1
+        assert "Connection refused" in result["error"]
+        assert sentinel_password not in result["error"]
         assert publish_metrics.await_count == 2
         publish_metrics.assert_any_await({}, error_metrics, params, "task-process-2")
         assert "host_remote_state" in publish_metrics.await_args_list[1].args[1]
         assert callback_contexts["task-process-2"]["status"]["delivery"] == "delivery_failed"
+
+        collector_records = [item for item in caplog.records if item.name == "stargazer.host_collector"]
+        assert len(collector_records) == 1
+        assert collector_records[0].msg == ANSIBLE_ADHOC_FAILED_LOG_TEMPLATE
+        assert collector_records[0].exc_info is None
+        assert "Connection refused" in collector_records[0].getMessage()
+        assert sentinel_password not in collector_records[0].getMessage()
+
+        handler_records = [item for item in caplog.records if isinstance(item.msg, str) and "event=callback_process_failed" in item.msg]
+        assert len(handler_records) == 1
+        handler_record = handler_records[0]
+        assert handler_record.exc_info is None
+        assert handler_record.args[0] == "task-process-2"
+        handler_error = str(handler_record.args[1])
+        assert "Host collection failed" in handler_error
+        assert "Connection refused" in handler_error
+        assert sentinel_password not in handler_error
+        assert sentinel_password not in handler_record.getMessage()
+        traceback_owners = [item for item in caplog.records if item.exc_info]
+        assert traceback_owners == []
 
     async def test_process_host_remote_callback_task_marks_failure_when_publish_fails(self, monkeypatch):
         handler = _load_host_remote_handler_module(monkeypatch)

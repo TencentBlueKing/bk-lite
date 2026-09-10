@@ -25,6 +25,7 @@ import dayjs from 'dayjs';
 import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/components/jobHostSelectionModalRuntime';
 import { AddTargetHostButton, TargetSourceSelector } from '@/app/job/components/target-selection-controls';
 import { createDefaultExecutionName } from '@/app/job/utils/execution-name';
+import { buildScheduledTaskTemplatePayload, resolveScheduledTaskConcurrencyPolicy } from '@/app/job/utils/scheduledTaskPayload';
 import { useUserInfoContext } from '@/context/userInfo';
 
 const CreateCronTaskPage = () => {
@@ -212,27 +213,28 @@ const CreateCronTaskPage = () => {
         os: h.osType?.toLowerCase() as 'linux' | 'windows',
       }));
 
+      if (jobType === 'file') {
+        message.warning(t('job.cronFileDistNotSupported'));
+        return;
+      }
+
       const formData: ScheduledTaskFormData = {
         name: values.name,
         description: values.description,
-        job_type: jobType,
+        ...buildScheduledTaskTemplatePayload({
+          jobType,
+          templateType,
+          script: values.script,
+          playbook: values.playbook,
+        }),
         ...scheduleData,
         target_source: targetSource === 'node_manager' ? 'node_mgmt' : 'manual',
         target_list: targetList,
         timeout: values.timeout || 60,
         is_enabled: enableAfterSave,
+        concurrency_policy: resolveScheduledTaskConcurrencyPolicy(values.concurrency_policy),
         team: selectedGroup ? [Number(selectedGroup.id)] : [],
       };
-
-      if (jobType === 'script') {
-        if (templateType === 'script') {
-          formData.script = values.script;
-        } else {
-          formData.playbook = values.playbook;
-        }
-      } else if (jobType === 'file') {
-        formData.target_path = values.target_path;
-      }
 
       await createScheduledTask(formData);
       message.success(t('job.createTaskSuccess'));
@@ -295,6 +297,7 @@ const CreateCronTaskPage = () => {
           initialValues={{
             name: defaultTaskName,
             timeout: 300,
+            concurrency_policy: 'skip',
             dailyTime: dayjs().hour(2).minute(0),
             hourlyInterval: 1,
             hourlyMinute: 0,
@@ -335,8 +338,10 @@ const CreateCronTaskPage = () => {
               onChange={(e) => setJobType(e.target.value)}
             >
               <Radio value="script">{t('job.scriptExecution')}</Radio>
-              <Radio value="file">{t('job.fileDistribution')}</Radio>
             </Radio.Group>
+            <p className="text-xs mt-2 m-0 text-[var(--color-text-3)]">
+              {t('job.cronFileDistNotSupported')}
+            </p>
           </Form.Item>
 
           {jobType === 'script' && (
@@ -401,16 +406,6 @@ const CreateCronTaskPage = () => {
                   </Select>
                 </Form.Item>
               )}
-            </Form.Item>
-          )}
-
-          {jobType === 'file' && (
-            <Form.Item
-              label={t('job.fileDistTargetPath')}
-              name="target_path"
-              rules={[{ required: true, message: t('job.targetPathRequired') }]}
-            >
-              <Input placeholder={t('job.fileDistTargetPathPlaceholder')} />
             </Form.Item>
           )}
 
@@ -527,7 +522,7 @@ const CreateCronTaskPage = () => {
           </Form.Item>
 
           <Form.Item label={t('job.concurrencyStrategy')} name="concurrency_policy">
-            <Select defaultValue="skip">
+            <Select>
               <Select.Option value="skip">{t('job.skipIfRunning')}</Select.Option>
               <Select.Option value="run">{t('job.runAnyway')}</Select.Option>
               <Select.Option value="queue">{t('job.queueWait')}</Select.Option>

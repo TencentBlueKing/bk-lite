@@ -98,12 +98,15 @@ export const resolveApplication3DColumns = (
     }, null as { columns: number; score: number } | null)?.columns || 1;
 };
 
-const resolveCardDensity = (count: number): number => {
-  if (count <= 16) return 1;
-  if (count <= 24) return 0.82;
-  if (count <= 48) return 0.64;
-  if (count <= 80) return 0.5;
-  return 0.4;
+/** Native card size for sparse walls (≤16). */
+const CARD_DENSITY_FULL = 1;
+/** Minimum card world size; extra cards beyond 24 keep this size. */
+const CARD_DENSITY_FLOOR = 0.82;
+
+/** Card world size only. Camera pullback for ≥25 is independent of this. */
+export const resolveApplication3DCardDensity = (count: number): number => {
+  if (count <= 16) return CARD_DENSITY_FULL;
+  return CARD_DENSITY_FLOOR;
 };
 
 export const buildApplication3DLayout = (
@@ -118,7 +121,7 @@ export const buildApplication3DLayout = (
     { length: rows },
     (_, row) => (row === rows - 1 ? Math.max(finalRowCount, 0) : columns),
   );
-  const density = resolveCardDensity(safeCount);
+  const density = resolveApplication3DCardDensity(safeCount);
   const cardWidth = CARD_WORLD_WIDTH * density;
   const cardHeight = CARD_WORLD_HEIGHT * density;
   const gapX = CARD_GAP * density;
@@ -139,13 +142,24 @@ export const buildApplication3DLayout = (
 /** Default wall occupies this fraction of the tighter viewport axis. */
 export const WALL_VIEW_COVERAGE = 0.80;
 export const APPLICATION3D_CAMERA_FOV = 34;
-/** Pad only 1-card walls; 2×2 and larger frame the actual wall so cards stay readable. */
-export const REFERENCE_WALL_WIDTH = 2 * CARD_WORLD_WIDTH + CARD_GAP;
-export const REFERENCE_WALL_HEIGHT = 2 * CARD_WORLD_HEIGHT + CARD_GAP;
+/** ≤16 parks on this 4×4 density-1 frame so 1 and 16 share one camera. */
+export const PARKED_WALL_COLUMNS = 4;
+export const PARKED_WALL_ROWS = 4;
 /** Keep a slight elevation so the floor stays visible without shrinking side cards. */
 export const WALL_CAMERA_HEIGHT_FACTOR = 0.04;
 
-export const fitApplication3DCameraDistance = (
+/** Density-1 4×4 extents used for every camera in the ≤16 tier. */
+export const parkedApplication3DWallSize = (): { wallWidth: number; wallHeight: number } => ({
+  wallWidth:
+    PARKED_WALL_COLUMNS * CARD_WORLD_WIDTH +
+    Math.max(0, PARKED_WALL_COLUMNS - 1) * CARD_GAP,
+  wallHeight:
+    PARKED_WALL_ROWS * CARD_WORLD_HEIGHT +
+    Math.max(0, PARKED_WALL_ROWS - 1) * CARD_GAP,
+});
+
+/** Fit a given wall with the shared FOV/coverage contract. No minimum frame. */
+export const fitApplication3DCameraDistanceToWall = (
   wallWidth: number,
   wallHeight: number,
   viewportAspect: number,
@@ -154,12 +168,74 @@ export const fitApplication3DCameraDistance = (
 ): number => {
   const halfFov = ((fovDeg * Math.PI) / 180) / 2;
   const tan = Math.tan(halfFov);
-  const framedWidth = Math.max(wallWidth, REFERENCE_WALL_WIDTH);
-  const framedHeight = Math.max(wallHeight, REFERENCE_WALL_HEIGHT);
-  const distanceForHeight = framedHeight / (2 * tan);
+  const distanceForHeight = wallHeight / (2 * tan);
   const distanceForWidth =
-    framedWidth / (2 * tan * Math.max(viewportAspect, 0.1));
+    wallWidth / (2 * tan * Math.max(viewportAspect, 0.1));
   return Math.max(distanceForHeight, distanceForWidth) / Math.max(coverage, 0.2);
+};
+
+/** Fit the parked 4×4 density-1 wall. Does not frame the populated grid. */
+export const fitApplication3DCameraDistance = (
+  viewportAspect: number,
+  fovDeg = APPLICATION3D_CAMERA_FOV,
+  coverage = WALL_VIEW_COVERAGE,
+): number => {
+  const { wallWidth, wallHeight } = parkedApplication3DWallSize();
+  return fitApplication3DCameraDistanceToWall(
+    wallWidth,
+    wallHeight,
+    viewportAspect,
+    fovDeg,
+    coverage,
+  );
+};
+
+/**
+ * Wall home pose:
+ * ≤16 parks on the 4×4 density-1 frame;
+ * 17–24 uses that parked frame pulled back by 1/0.82;
+ * ≥25 keeps the 0.82 card size and frames the actual populated wall.
+ */
+export const resolveApplication3DWallCamera = (
+  count: number,
+  viewportAspect: number,
+  fovDeg = APPLICATION3D_CAMERA_FOV,
+): { x: number; y: number; z: number } => {
+  const safeCount = Math.max(0, Math.floor(count));
+  const parked = parkedApplication3DWallSize();
+  const parkedDistance = fitApplication3DCameraDistance(viewportAspect, fovDeg);
+  const densityFloorDistance = parkedDistance / CARD_DENSITY_FLOOR;
+
+  if (safeCount <= 16) {
+    return {
+      x: 0,
+      y: parked.wallHeight * WALL_CAMERA_HEIGHT_FACTOR,
+      z: parkedDistance,
+    };
+  }
+
+  if (safeCount <= 24) {
+    return {
+      x: 0,
+      y: parked.wallHeight * WALL_CAMERA_HEIGHT_FACTOR,
+      z: densityFloorDistance,
+    };
+  }
+
+  const layout = buildApplication3DLayout(safeCount, viewportAspect);
+  return {
+    x: 0,
+    y: layout.wallHeight * WALL_CAMERA_HEIGHT_FACTOR,
+    z: Math.max(
+      fitApplication3DCameraDistanceToWall(
+        layout.wallWidth,
+        layout.wallHeight,
+        viewportAspect,
+        fovDeg,
+      ),
+      densityFloorDistance,
+    ),
+  };
 };
 
 export const UNKNOWN_STATUS_BADGE = '--';

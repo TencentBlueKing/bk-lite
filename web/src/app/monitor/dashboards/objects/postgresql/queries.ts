@@ -21,7 +21,7 @@ export const PG_TOP_DB_QUERIES: PgTopDbQuery[] = [
     key: 'numbackends',
     title: '连接数 Top',
     unit: 'counts',
-    color: '#2f6bff',
+    color: '#2563EB',
     query: `topk(${PG_TOP_N}, sum by (db) (postgresql_numbackends{__$labels__}))`,
     guide: [{ label: '连接数排行', detail: '各数据库当前活跃会话数,定位连接集中在哪个库。' }]
   },
@@ -29,7 +29,7 @@ export const PG_TOP_DB_QUERIES: PgTopDbQuery[] = [
     key: 'rollback',
     title: '事务回滚 Top',
     unit: 'cps',
-    color: '#ff4d4f',
+    color: '#EF4444',
     query: `topk(${PG_TOP_N}, sum by (db) (rate(postgresql_xact_rollback{__$labels__}[__$window__])))`,
     guide: [{ label: '回滚排行', detail: '各数据库事务回滚速率,定位失败 / 冲突集中的库。' }]
   },
@@ -37,7 +37,7 @@ export const PG_TOP_DB_QUERIES: PgTopDbQuery[] = [
     key: 'temp_files',
     title: '临时文件 Top',
     unit: 'cps',
-    color: '#faad14',
+    color: '#F59E0B',
     query: `topk(${PG_TOP_N}, sum by (db) (rate(postgresql_temp_files{__$labels__}[__$window__])))`,
     guide: [{ label: '临时文件排行', detail: '各数据库临时文件创建速率,定位复杂查询 / work_mem 压力大的库。' }]
   }

@@ -9,14 +9,26 @@ import {
   useMemo,
   useState,
 } from 'react';
-import { DEFAULT_CONSOLE_CHROME_LAYOUT, type ConsoleChromeLayout } from './contract';
+import {
+  DEFAULT_CONSOLE_CHROME_LAYOUT,
+  DEFAULT_CONSOLE_SIDE_NAV_MODE,
+  type ConsoleChromeLayout,
+  type ConsoleSideNavMode,
+} from './contract';
 import { applyConsoleChromeLayout } from './dom';
-import { persistConsoleChromeLayout, readStoredConsoleChromeLayout } from './storage';
+import {
+  persistConsoleChromeLayout,
+  persistConsoleSideNavMode,
+  readStoredConsoleChromeLayout,
+  readStoredConsoleSideNavMode,
+} from './storage';
 import { resolveEffectiveChromeLayout } from './resolve';
 
 interface ConsoleLayoutContextValue {
   layout: ConsoleChromeLayout;
   setLayout: (layout: ConsoleChromeLayout) => void;
+  sideNav: ConsoleSideNavMode;
+  setSideNav: (mode: ConsoleSideNavMode) => void;
 }
 
 const ConsoleLayoutContext = createContext<ConsoleLayoutContextValue | undefined>(undefined);
@@ -24,6 +36,8 @@ const ConsoleLayoutContext = createContext<ConsoleLayoutContextValue | undefined
 const fallbackConsoleLayout: ConsoleLayoutContextValue = {
   layout: DEFAULT_CONSOLE_CHROME_LAYOUT,
   setLayout: () => undefined,
+  sideNav: DEFAULT_CONSOLE_SIDE_NAV_MODE,
+  setSideNav: () => undefined,
 };
 
 const getInitialLayout = (): ConsoleChromeLayout => {
@@ -35,6 +49,7 @@ const getInitialLayout = (): ConsoleChromeLayout => {
 
 export const ConsoleLayoutProvider = ({ children }: { children: ReactNode }) => {
   const [layout, setLayoutState] = useState<ConsoleChromeLayout>(getInitialLayout);
+  const [sideNav, setSideNavState] = useState<ConsoleSideNavMode>(readStoredConsoleSideNavMode);
 
   useLayoutEffect(() => {
     applyConsoleChromeLayout(layout);
@@ -48,9 +63,14 @@ export const ConsoleLayoutProvider = ({ children }: { children: ReactNode }) => 
     window.__BK_LITE_CONSOLE_LAYOUT__ = nextLayout;
   }, []);
 
+  const setSideNav = useCallback((mode: ConsoleSideNavMode) => {
+    setSideNavState(mode);
+    persistConsoleSideNavMode(mode);
+  }, []);
+
   const value = useMemo(
-    () => ({ layout, setLayout }),
-    [layout, setLayout],
+    () => ({ layout, setLayout, sideNav, setSideNav }),
+    [layout, setLayout, sideNav, setSideNav],
   );
 
   return (

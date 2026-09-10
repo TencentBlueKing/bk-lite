@@ -80,6 +80,25 @@ def test_manageone_request_logs_exclude_credentials_and_raw_response(monkeypatch
     assert log_args[1:] == ("https://manageone.example/token", "PUT", 401)
 
 
+def test_manageone_request_uses_fixed_transport_timeout(monkeypatch):
+    from common.cmp.cloud_apis.resource_apis import cw_manageone
+
+    response = MagicMock(status_code=200)
+    response.json.return_value = {"result": "ok"}
+    request = MagicMock(return_value=response)
+    monkeypatch.setattr(cw_manageone.requests, "request", request)
+
+    assert (
+        cw_manageone.handle_request(
+            "GET",
+            "https://manageone.example/resources",
+            timeout=999,
+        )["result"]
+        is True
+    )
+    assert request.call_args.kwargs["timeout"] == (10, 60)
+
+
 def test_manageone_success_log_is_bounded(monkeypatch):
     requests_module = types.ModuleType("requests")
     response = MagicMock()

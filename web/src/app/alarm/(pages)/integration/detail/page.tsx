@@ -1,12 +1,14 @@
 'use client';
+// NOCA:AI-Secret-Leak-Checker(工具误报:接入详情复制用户已揭示的示例不是硬编码密钥)
 
-import React, { useState, useEffect, FC } from 'react';
+import React, { useState, useEffect, useRef, FC } from 'react';
 import dayjs from 'dayjs';
 import SearchFilter from '@/app/alarm/components/searchFilter';
 import EventTable from '@/app/alarm/components/eventTable';
 import K8sGuide from '@/app/alarm/components/k8sGuide';
 import SnmpTrapGuide from '@/app/alarm/components/snmpTrapGuide';
 import TeamSecretsManager from '@/app/alarm/components/teamSecretsManager';
+import ExampleCopyBlock from '@/app/alarm/components/exampleCopyBlock';
 import ZabbixGuide from '@/app/alarm/components/zabbixGuide';
 import CustomBreadcrumb from '@/app/alarm/components/customBreadcrumb';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
@@ -15,7 +17,6 @@ import RefreshIconButton from '@/components/refresh-icon-button';
 import SecretValueDisplay from '@/components/secret-value-display';
 import {
   CheckCircleFilled,
-  CopyOutlined,
   PlusOutlined,
   ReloadOutlined,
   RightOutlined,
@@ -24,11 +25,20 @@ import { useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useCommon } from '@/app/alarm/context/common';
+import { createLatestRequestGuard } from '@/context/latestRequestGuard';
 import { useUserInfoContext } from '@/context/userInfo';
+import {
+  commitIntegrationEventListSettled,
+  commitIntegrationEventListSuccess,
+} from './integrationEventListRequest';
 import { AlertSourceIntegrationGuide, K8sMeta, SourceItem, TeamSecretItem } from '@/app/alarm/types/integration';
 import { useAlarmApi } from '@/app/alarm/api/alarms';
 import { EventItem } from '@/app/alarm/types/alarms';
 import { useSourceApi } from '@/app/alarm/api/integration';
+import {
+  applyK8sMetaFetchResult,
+  shouldAutoFetchK8sMeta,
+} from '@/app/alarm/utils/k8sMetaRequest';
 import { Alert, Button, Descriptions, message, Select, Tabs, DatePicker, Spin } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
 
@@ -53,9 +63,12 @@ const IntegrationDetail: FC = () => {
   const [integrationGuide, setIntegrationGuide] = useState<AlertSourceIntegrationGuide>();
   const [k8sMeta, setK8sMeta] = useState<K8sMeta>();
   const [k8sMetaLoading, setK8sMetaLoading] = useState<boolean>(false);
+  const [k8sMetaFailed, setK8sMetaFailed] = useState<boolean>(false);
+  const k8sMetaRequestSeqRef = useRef(0);
   const [integrationGuideLoading, setIntegrationGuideLoading] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<string>('event');
   const [eventList, setEventList] = useState<EventItem[]>([]);
+  const [eventListRequestGuard] = useState(createLatestRequestGuard);
   const [eventLoading, setEventLoading] = useState<boolean>(false);
   const [hasLoadedEvents, setHasLoadedEvents] = useState<boolean>(false);
   const [hasInitializedK8sTab, setHasInitializedK8sTab] = useState<boolean>(false);
@@ -105,18 +118,53 @@ const IntegrationDetail: FC = () => {
     }
   };
 
+  const applyK8sMetaSnapshot = (
+    snapshot: { meta?: K8sMeta; loading: boolean; failed: boolean },
+    requestSeq: number,
+  ) => {
+    if (requestSeq !== k8sMetaRequestSeqRef.current) {
+      return;
+    }
+    setK8sMeta(snapshot.meta);
+    setK8sMetaLoading(snapshot.loading);
+    setK8sMetaFailed(snapshot.failed);
+  };
+
   const getK8sGuideMeta = async () => {
+    const requestSeq = ++k8sMetaRequestSeqRef.current;
     setK8sMetaLoading(true);
+    setK8sMetaFailed(false);
     try {
       const res = await getK8sMeta();
-      if (res) {
-        setK8sMeta(res);
-      }
+      applyK8sMetaSnapshot(
+        applyK8sMetaFetchResult(
+          { meta: k8sMeta, loading: true, failed: false },
+          res ? { status: 'success', meta: res } : { status: 'failure' },
+          { cancelled: requestSeq !== k8sMetaRequestSeqRef.current },
+        ),
+        requestSeq,
+      );
     } catch (error) {
       console.error(error);
-    } finally {
-      setK8sMetaLoading(false);
+      applyK8sMetaSnapshot(
+        applyK8sMetaFetchResult(
+          { meta: k8sMeta, loading: true, failed: false },
+          { status: 'failure' },
+          { cancelled: requestSeq !== k8sMetaRequestSeqRef.current },
+        ),
+        requestSeq,
+      );
     }
+  };
+
+  const retryK8sGuideMeta = () => {
+    const next = applyK8sMetaFetchResult(
+      { meta: k8sMeta, loading: k8sMetaLoading, failed: k8sMetaFailed },
+      { status: 'retry' },
+    );
+    setK8sMetaLoading(next.loading);
+    setK8sMetaFailed(next.failed);
+    void getK8sGuideMeta();
   };
 
   const getIntegrationGuide = async (id: string) => {
@@ -130,11 +178,6 @@ const IntegrationDetail: FC = () => {
     } finally {
       setIntegrationGuideLoading(false);
     }
-  };
-
-  const copySecret = (text: string = '') => {
-    navigator.clipboard.writeText(text);
-    message.success(t('alarmCommon.copied'));
   };
 
   const fetchGuideTeamSecrets = async () => {
@@ -200,7 +243,7 @@ const IntegrationDetail: FC = () => {
   const renderExampleWithSelectedSecret = (raw?: string) => {
     if (!raw) return '';
     if (!selectedGuideSecret) return raw;
-    return raw.split('{{TEAM_SECRET}}').join(selectedGuideSecret);
+    return raw.split('{{TEAM_SECRET}}').join(selectedGuideSecret); // NOCA:AI-Secret-Leak-Checker(工具误报:用已揭示密钥渲染接入示例)
   };
 
   const handleInlineAddTeamSecret = async () => {
@@ -227,6 +270,7 @@ const IntegrationDetail: FC = () => {
   };
 
   const fetchEventList = async () => {
+    const requestId = eventListRequestGuard.begin();
     setEventLoading(true);
     try {
       const params: any = {
@@ -244,11 +288,18 @@ const IntegrationDetail: FC = () => {
         }
       }
       const res = await getEventList(params);
-      setEventList(res.items || []);
-      setPagination((prev) => ({ ...prev, total: res.count }));
-      setHasLoadedEvents(true);
+      commitIntegrationEventListSuccess(eventListRequestGuard, requestId, () => {
+        const items = res.items || [];
+        setEventList(items);
+        setPagination((prev) => ({ ...prev, total: res.count }));
+        setHasLoadedEvents(true);
+      });
+    } catch (error) {
+      console.error(error);
     } finally {
-      setEventLoading(false);
+      commitIntegrationEventListSettled(eventListRequestGuard, requestId, () => {
+        setEventLoading(false);
+      });
     }
   };
 
@@ -256,6 +307,9 @@ const IntegrationDetail: FC = () => {
     if ((activeTab === 'event' || isK8sSource) && source?.source_id) {
       fetchEventList();
     }
+    return () => {
+      eventListRequestGuard.invalidate();
+    };
   }, [
     activeTab,
     source,
@@ -273,10 +327,36 @@ const IntegrationDetail: FC = () => {
   }, [isK8sSource, hasInitializedK8sTab]);
 
   useEffect(() => {
-    if (isK8sSource && !k8sMeta && !k8sMetaLoading) {
+    if (!isK8sSource) {
+      k8sMetaRequestSeqRef.current += 1;
+      const next = applyK8sMetaFetchResult(
+        { meta: k8sMeta, loading: k8sMetaLoading, failed: k8sMetaFailed },
+        { status: 'reset' },
+      );
+      setK8sMeta(next.meta);
+      setK8sMetaLoading(next.loading);
+      setK8sMetaFailed(next.failed);
+    }
+  }, [isK8sSource]);
+
+  useEffect(() => {
+    return () => {
+      k8sMetaRequestSeqRef.current += 1;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (
+      shouldAutoFetchK8sMeta({
+        isK8sSource,
+        hasMeta: Boolean(k8sMeta),
+        loading: k8sMetaLoading,
+        failed: k8sMetaFailed,
+      })
+    ) {
       getK8sGuideMeta();
     }
-  }, [isK8sSource, k8sMeta, k8sMetaLoading]);
+  }, [isK8sSource, k8sMeta, k8sMetaLoading, k8sMetaFailed]);
 
   useEffect(() => {
     if (sourceItemId && isZabbixSource) {
@@ -352,18 +432,20 @@ const IntegrationDetail: FC = () => {
   const sidebarMetaClassName = 'text-[11px] leading-[18px] text-[var(--color-text-2)]';
   const sidebarEllipsisClassName = 'overflow-hidden text-ellipsis whitespace-nowrap';
 
-  const k8sSummaryMetrics = [
+  const summaryMetrics = [
     {
       key: 'event_count',
       label: t('integration.cumulativeEventCount'),
       value: formatDisplayValue(source?.event_count),
-      helper: hasLoadedEvents ? '累计接收的 Kubernetes 事件数量。' : '事件列表加载后会持续更新该统计。',
+      helper: t('integration.visibleEventCountHelp'),
     },
     {
       key: 'last_event_time',
       label: t('integration.lastEventTime'),
       value: formatDisplayTime(source?.last_event_time),
-      helper: source?.last_event_time ? '最近一次接入事件时间。' : '当前还没有可展示的最近事件时间。',
+      helper: source?.last_event_time
+        ? t('integration.visibleLastEventTimeHelp')
+        : t('integration.noVisibleLastEventTimeHelp'),
     },
   ];
 
@@ -400,7 +482,7 @@ const IntegrationDetail: FC = () => {
     },
   ];
 
-  const K8sSummary = () => (
+  const IntegrationSummary = () => (
     <div className="rounded-[20px] border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-5 py-4">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex items-center gap-4 xl:min-w-0 xl:flex-[0.9]">
@@ -414,22 +496,24 @@ const IntegrationDetail: FC = () => {
                   onError={() => setLogoLoadFailed(true)}
                 />
               ) : (
-                <span className="text-base font-semibold text-[var(--color-primary)]">K8s</span>
+                <span className="px-2 text-center text-base font-semibold leading-5 text-[var(--color-primary)]">
+                  {isK8sSource ? 'K8s' : source?.name?.slice(0, 4) || '--'}
+                </span>
               )}
             </div>
           </div>
           <div className="min-w-0 flex-1">
             <h1 className="text-[21px] font-semibold leading-[28px] text-[var(--color-text-1)]">
-              {source?.name || t('integration.k8sDetailTitle')}
+              {source?.name || (isK8sSource ? t('integration.k8sDetailTitle') : '--')}
             </h1>
             <p className="mt-0.5 text-[13px] leading-5 text-[var(--color-text-2)] sm:text-sm">
-              {source?.description || t('integration.k8sDetailDescription')}
+              {source?.description || (isK8sSource ? t('integration.k8sDetailDescription') : '--')}
             </p>
           </div>
         </div>
         <div className="flex-1 border-t border-[var(--color-border-1)] pt-3 xl:min-w-[520px] xl:flex-[1.1] xl:border-t-0 xl:border-l xl:pt-0 xl:pl-7">
           <div className="grid gap-0 sm:grid-cols-2">
-            {k8sSummaryMetrics.map((item, index) => (
+            {summaryMetrics.map((item, index) => (
               <div
                 key={item.key}
                 className={[
@@ -617,37 +701,6 @@ const IntegrationDetail: FC = () => {
     </div>
   );
 
-  const IntegrationHeader = () => (
-    <div className="rounded-[20px] border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-5 py-4">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        <div className="flex h-[82px] w-[82px] shrink-0 items-center justify-center rounded-[20px] border border-[var(--color-border-1)] bg-[var(--color-fill-1)] p-2.5">
-          <div className="flex h-full w-full items-center justify-center rounded-lg bg-[var(--color-primary-bg-active)]">
-            {!logoLoadFailed && source?.logo ? (
-              <img
-                src={source.logo}
-                alt=""
-                className="h-14 w-14 shrink-0 rounded object-contain"
-                onError={() => setLogoLoadFailed(true)}
-              />
-            ) : (
-              <span className="px-2 text-center text-base font-semibold leading-5 text-[var(--color-primary)]">
-                {source?.name?.slice(0, 4) || '--'}
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="min-w-0 flex-1">
-          <h1 className="text-[21px] font-semibold leading-[28px] text-[var(--color-text-1)]">
-            {source?.name}
-          </h1>
-          <p className="mt-0.5 break-words text-[13px] leading-5 text-[var(--color-text-2)] sm:text-sm">
-            {source?.description}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-
   const renderTeamSecretSelector = (options?: { showSecretRow?: boolean; wrapperClassName?: string }) => {
     const showSecretRow = options?.showSecretRow !== false;
     const wrapperClassName = options?.wrapperClassName ?? '';
@@ -757,8 +810,9 @@ const IntegrationDetail: FC = () => {
     const placeholder = '<' + t('integration.selectTeamPlaceholder') + '>';
     const curlRendered = renderExampleWithSelectedSecret(source?.config?.examples?.CURL);
     const pythonRendered = renderExampleWithSelectedSecret(source?.config?.examples?.Python);
-    const displayCurl = selectedGuideSecret ? curlRendered : (source?.config?.examples?.CURL || '');
-    const displayPython = selectedGuideSecret ? pythonRendered : (source?.config?.examples?.Python || '');
+    const exampleReady = Boolean(selectedGuideSecret);
+    const displayCurl = exampleReady ? curlRendered : (source?.config?.examples?.CURL || '');
+    const displayPython = exampleReady ? pythonRendered : (source?.config?.examples?.Python || '');
 
     return (
       <div className="rounded-[16px] border border-[var(--color-primary-bg-active)] bg-[var(--color-bg-1)] p-4 mb-4">
@@ -770,32 +824,19 @@ const IntegrationDetail: FC = () => {
 
         <Descriptions bordered size="small" column={1} labelStyle={{ width: 120 }}>
           <Descriptions.Item label={t('integration.secret')}>
+            {/* NOCA:AI-Secret-Leak-Checker(工具误报:展示用户已揭示的接入密钥) */}
             <SecretValueDisplay
               value={selectedGuideSecret}
               placeholder={<span className="text-[var(--color-text-3)]">{placeholder}</span>}
             />
           </Descriptions.Item>
           <Descriptions.Item label="CURL">
-            <div className="relative">
-              <pre className="bg-[var(--color-bg-5)] p-2 pr-10 rounded border border-[var(--color-border-1)] text-[13px] font-mono leading-relaxed whitespace-pre-wrap break-all max-w-full">
-                <code>{displayCurl}</code>
-              </pre>
-              <CopyOutlined
-                className={`absolute top-3 right-3 ${selectedGuideSecret ? 'cursor-pointer hover:text-blue-500' : 'cursor-not-allowed text-[var(--color-text-4)]'}`}
-                onClick={() => selectedGuideSecret && copySecret(displayCurl)}
-              />
-            </div>
+            {/* NOCA:AI-Secret-Leak-Checker(工具误报:复制用户已揭示的接入示例) */}
+            <ExampleCopyBlock text={displayCurl} enabled={exampleReady} />
           </Descriptions.Item>
           <Descriptions.Item label="Python">
-            <div className="relative">
-              <pre className="bg-[var(--color-bg-5)] p-2 pr-10 rounded border border-[var(--color-border-1)] text-[13px] font-mono leading-relaxed whitespace-pre-wrap break-all max-w-full">
-                <code>{displayPython}</code>
-              </pre>
-              <CopyOutlined
-                className={`absolute top-3 right-3 ${selectedGuideSecret ? 'cursor-pointer hover:text-blue-500' : 'cursor-not-allowed text-[var(--color-text-4)]'}`}
-                onClick={() => selectedGuideSecret && copySecret(displayPython)}
-              />
-            </div>
+            {/* NOCA:AI-Secret-Leak-Checker(工具误报:复制用户已揭示的接入示例) */}
+            <ExampleCopyBlock text={displayPython} enabled={exampleReady} />
           </Descriptions.Item>
         </Descriptions>
       </div>
@@ -913,7 +954,7 @@ const IntegrationDetail: FC = () => {
             {isK8sSource ? (
               <>
                 {/** Guide-first layout keeps the sidebar tied to the guide tab only. */}
-                <K8sSummary />
+                <IntegrationSummary />
                 <div className={`mt-4 grid gap-4 xl:items-start ${activeTab === 'guide' ? 'xl:grid-cols-[minmax(0,1fr)_368px]' : 'xl:grid-cols-[minmax(0,1fr)]'}`}>
                   <div className="min-w-0 rounded-[20px] border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-4 shadow-[0_8px_24px_color-mix(in_srgb,var(--color-text-1)_3%,transparent)]">
                     <Tabs activeKey={activeTab} onChange={setActiveTab} items={[
@@ -925,6 +966,8 @@ const IntegrationDetail: FC = () => {
                             source={source}
                             meta={k8sMeta}
                             loading={k8sMetaLoading}
+                            failed={k8sMetaFailed}
+                            onRetry={retryK8sGuideMeta}
                             onDownload={handleK8sDownload}
                             selectedTeamId={selectedGuideTeamId}
                             selectedTeamSecret={selectedGuideSecret}
@@ -970,7 +1013,7 @@ const IntegrationDetail: FC = () => {
               </>
             ) : (
               <>
-                <IntegrationHeader />
+                <IntegrationSummary />
                 <div className="mt-4 rounded-[20px] border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-4 shadow-[0_8px_24px_color-mix(in_srgb,var(--color-text-1)_3%,transparent)]">
                   <Tabs activeKey={activeTab} onChange={setActiveTab}>
                     <Tabs.TabPane key="event" tab={t('integration.eventTab')}>

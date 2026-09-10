@@ -15,7 +15,7 @@
 | MetricGroup / Metric | `models/monitor_metrics.py` | 指标分组与定义（PromQL、单位、维度） |
 | MonitorPlugin / MonitorPluginConfigTemplate / MonitorPluginUITemplate | `models/plugin.py:8,26,39` | 采集插件（telegraf）、配置模板、UI 模板 |
 | MonitorPolicy / PolicyTemplate / PolicyOrganization | `models/monitor_policy.py:21,10,72` | 告警策略、模板、策略-组织关联表（权限隔离载体） |
-| MonitorEvent / MonitorEventRawData / MonitorAlert / MonitorAlertMetricSnapshot | `models/monitor_policy.py` | 事件/原始数据/告警聚合/生命周期快照（S3JSONField） |
+| MonitorAlert / MonitorEvent | `models/monitor_policy.py` | 告警聚合（含生成时组织快照 `organizations`）/ 事件 / 原始数据 / 生命周期快照 |
 | PolicyInstanceBaseline / CollectConfig | `models/*.py` | 无数据基线、采集配置 |
 | MonitorCondition / MonitorConditionOrganization | `models/monitor_condition.py:7,21` | 可复用监控条件、条件-组织关联表（权限隔离载体） |
 | CollectDetectTask | `models/collect_detect.py` | 接入前采集探测任务（状态、阶段、结果、错误信息） |
@@ -59,7 +59,7 @@
 > 证据来源：server/apps/monitor/management/commands/plugin_init.py:9-16；server/apps/monitor/management/services/plugin_migrate.py:227-268；server/apps/monitor/views/collect_detect.py:15-86；server/apps/monitor/services/collect_detect.py:29-69,198-213；server/apps/monitor/support-files/plugins/Telegraf/snmp/access_topvision/policy.json:1-5；server/apps/monitor/support-files/plugins/Telegraf/snmp/access_icotera/policy.json:1-5；server/apps/monitor/support-files/plugins/Telegraf/snmp/switch_ipinfusion/policy.json:1-18；server/apps/monitor/support-files/plugins/Telegraf/snmp/transmission_ifotec/policy.json:1-5；server/apps/monitor/support-files/plugins/Telegraf/snmp/wireless_xirrus/policy.json:1-5　|　同步基线：b98b782a7　|　【已实现】
 
 ## 5. 数据流【已实现/已存在】
-- 指标采集与告警评估：telegraf 采集 → VictoriaMetrics →（PromQL）scan_policy_task → 阈值/聚合/恢复评估 → MonitorEvent → MonitorAlert（原始快照存 MinIO）。
+- 指标采集与告警评估：telegraf 采集 → VictoriaMetrics →（PromQL）scan_policy_task → 阈值/聚合/恢复评估 → MonitorAlert（MonitorEvent 记录触发、级别升级、认领、分派、恢复或关闭；告警指标快照按扫描追加，原始快照存 MinIO；认领 / 分派不上快照图）。
 - 流量监控接入：网络设备发送 NetFlow v5(2055)、NetFlow v9/默认 NetFlow 接入端点(2056) 或 sFlow(6343) → 采集器按云区域环境变量监听（`flow_env_config.py`） → 采样率归一化（`flow_sampling.py`） → 入 VictoriaMetrics，复用上述告警评估链路。
 - 漏跑补偿机制【已实现/已存在】：`scan_policy_task` 基于策略 `last_run_time` 与当前时间计算 gap，按周期数自动补偿历史扫描点（`tasks/monitor_policy.py:59-77`）。补偿上限：单次最多 `MAX_BACKFILL_COUNT=30` 个周期、最大补偿时间范围 `MAX_BACKFILL_SECONDS=24*3600` 秒，超出范围的历史数据不再补偿（`constants/alert_policy.py:5-7`）。
 

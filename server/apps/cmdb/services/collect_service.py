@@ -25,6 +25,7 @@ from apps.cmdb.utils.base import get_current_team_from_request
 from apps.cmdb.utils.change_record import create_change_record
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
+from apps.core.logger import safe_exception_info
 from apps.core.utils.celery_utils import CeleryUtils, crontab_format
 from apps.core.utils.web_utils import WebUtils
 from apps.rpc.node_mgmt import NodeMgmt
@@ -33,7 +34,6 @@ from apps.rpc.stargazer import Stargazer
 
 class CollectModelService(object):
     TASK = "apps.cmdb.tasks.celery_tasks.sync_collect_task"
-    FIRST_COLLECTION_TASK = "apps.cmdb.tasks.celery_tasks.trigger_first_collection"
     NAME = "sync_collect_task"
     # 周期任务达到该分钟阈值时，触发一次“下发后 4 分钟补跑”
     DELAY_SYNC_THRESHOLD_MINUTES = 15
@@ -143,6 +143,10 @@ class CollectModelService(object):
         }
 
         for key in not_required:
+            if key == "ip_range" and "ip_range" in data:
+                # 扫描生成路径会显式传空串以清掉旧 IP 段；falsy 判断会把这次更新吞掉。
+                params[key] = data.get(key) or ""
+                continue
             if data.get(key):
                 params[key] = data[key]
 
@@ -342,17 +346,27 @@ class CollectModelService(object):
         def without_masked_secrets(item):
             return {key: value for key, value in item.items() if not (key in encrypted_fields and value == API_SECRET_MASK)}
 
+        # 云任务编辑页提交的是单个凭据对象，库里已是凭据池时按单项池合并，避免冲掉密钥。
+        if isinstance(credential, dict) and isinstance(old_credential, list):
+            credential = [credential]
+
         if isinstance(credential, list):
             old_pool = old_credential if isinstance(old_credential, list) else []
             legacy_single_credential = dict(old_credential) if isinstance(old_credential, dict) and len(credential) == 1 else {}
             legacy_single_credential.pop("credential_id", None)
             old_pool_map = {item.get("credential_id"): dict(item) for item in old_pool if isinstance(item, dict) and item.get("credential_id")}
+            primary_old = dict(old_pool[0]) if old_pool and isinstance(old_pool[0], dict) else dict(legacy_single_credential)
             merged_pool = []
             for item in credential:
                 if not isinstance(item, dict):
                     raise BaseAppException("采集凭据格式错误！")
                 credential_id = item.get("credential_id")
-                merged = dict(old_pool_map.get(credential_id) or legacy_single_credential)
+                if credential_id and credential_id in old_pool_map:
+                    merged = dict(old_pool_map[credential_id])
+                elif len(credential) == 1:
+                    merged = dict(old_pool_map.get(credential_id) or primary_old)
+                else:
+                    merged = dict(old_pool_map.get(credential_id) or {})
                 merged.update(without_masked_secrets(item))
                 merged_pool.append(merged)
             data["credential"] = merged_pool
@@ -372,49 +386,13 @@ class CollectModelService(object):
         old_instance=None,
         reason="create",
     ):
-        from apps.cmdb.constants import constants as cmdb_constants
-        from apps.cmdb.services.first_collection_policy import FirstCollectionPolicy
+        from apps.cmdb.services.first_collection_orchestrator import FirstCollectionOrchestrator
 
-        if not cmdb_constants.CMDB_FIRST_COLLECTION_ENABLED:
-            return False
-        if not FirstCollectionPolicy.is_eligible(instance):
-            return False
-
-        if old_instance is not None:
-            changed_fields = FirstCollectionPolicy.changed_fields(old_instance, instance)
-            if not changed_fields:
-                return False
-            reason = f"update:{','.join(changed_fields)}"
-
-        fingerprint = FirstCollectionPolicy.fingerprint(instance)
-
-        def dispatch_first_collection(
-            task_id=instance.id,
-            expected=fingerprint,
-            trigger_reason=reason,
-        ):
-            try:
-                current_app.send_task(
-                    cls.FIRST_COLLECTION_TASK,
-                    args=[task_id, expected, trigger_reason],
-                )
-            except Exception as exc:
-                logger.error(
-                    "[FirstCollection] 事务后触发投递失败 " "task_id=%s fingerprint=%s reason=%s error_type=%s",
-                    task_id,
-                    expected[:12],
-                    trigger_reason,
-                    type(exc).__name__,
-                )
-
-        transaction.on_commit(dispatch_first_collection)
-        logger.info(
-            "[FirstCollection] 已注册事务后触发 task_id=%s fingerprint=%s reason=%s",
-            instance.id,
-            fingerprint[:12],
-            reason,
+        return FirstCollectionOrchestrator.schedule(
+            instance,
+            old_task=old_instance,
+            reason=reason,
         )
-        return True
 
     @classmethod
     def schedule_delayed_sync_if_needed(cls, instance, is_interval):
@@ -514,12 +492,12 @@ class CollectModelService(object):
         return request.data
 
     @classmethod
-    def create(cls, request, view_self, payload=None):
+    def create(cls, request, view_self, payload=None, *, credential_pool_max_size=CollectCredentialPoolService.MAX_POOL_SIZE):
         create_data, is_interval, scan_cycle = cls.format_params(cls._request_payload(request, payload))
         if create_data.get("credential"):
             create_data["credential"] = CollectCredentialPoolService.normalize_pool(create_data["credential"])
             create_data["credential"] = CollectCredentialPoolService.assign_versions([], create_data["credential"])
-            CollectCredentialPoolService.validate_pool_shape(create_data["credential"])
+            CollectCredentialPoolService.validate_pool_shape(create_data["credential"], max_size=credential_pool_max_size)
         cls.enrich_host_cloud_snapshot_payload(create_data)
 
         # 使用数据库事务保证原子性：DB + 外部操作要么全成功，要么全失败
@@ -530,6 +508,8 @@ class CollectModelService(object):
             instance = serializer.instance
 
             def sync_external_resources():
+                from apps.cmdb.services.first_collection_orchestrator import FirstCollectionOrchestrator
+
                 task_name = f"{cls.NAME}_{instance.id}"
                 try:
                     # 更新定时任务：VM 对账改由全局守门；仅清理遗留 beat。
@@ -548,14 +528,17 @@ class CollectModelService(object):
                     # RPC 调用：推送节点参数
                     if cls.should_sync_node_params(instance):
                         cls.push_butch_node_params(instance)
-                except Exception as e:
+                    if first_collection_run is not None:
+                        FirstCollectionOrchestrator.mark_config_ready_and_dispatch(first_collection_run.id)
+                except Exception as exc:  # noqa: BLE001 - Post-commit external sync must remain compensatable.
                     logger.error(
-                        "[CollectTask] 创建采集任务时外部操作失败 task_name=%s, error=%s",
-                        instance.name,
-                        e,
-                        exc_info=True,
+                        "event=collect_task_external_sync_failed task_id=%s operation=create failed_stage=post_commit_sync error_type=%s",
+                        instance.id,
+                        type(exc).__name__,
+                        exc_info=safe_exception_info(exc),
                     )
-                    raise BaseAppException(f"创建采集任务失败：{str(e)}")
+                    if first_collection_run is None:
+                        raise BaseAppException("采集任务已保存，但外部资源同步失败，请重新保存任务后重试") from None
 
             # 只有所有 DB 操作都成功，才创建变更记录
             create_change_record(
@@ -569,8 +552,13 @@ class CollectModelService(object):
                 scenario=COLLECT_AUTOMATION_CHANGE,
                 after_data=cls._snapshot_task(instance),
             )
-            cls.schedule_first_collection_if_needed(instance=instance, reason="create")
-            if (is_interval and cls.should_register_sync_beat(instance)) or cls.should_sync_node_params(instance) or uses_vm_reconciliation(instance):
+            first_collection_run = cls.schedule_first_collection_if_needed(instance=instance, reason="create")
+            if (
+                (is_interval and cls.should_register_sync_beat(instance))
+                or cls.should_sync_node_params(instance)
+                or uses_vm_reconciliation(instance)
+                or first_collection_run is not None
+            ):
                 # DB 事务提交后再同步外部系统，避免回滚后留下幽灵周期任务或节点配置。
                 # VM 对账任务也需要 on_commit 以幂等清理遗留 beat。
                 transaction.on_commit(sync_external_resources)
@@ -616,7 +604,7 @@ class CollectModelService(object):
         update_data["params"] = params
 
     @classmethod
-    def update(cls, request, view_self, payload=None):
+    def update(cls, request, view_self, payload=None, *, credential_pool_max_size=CollectCredentialPoolService.MAX_POOL_SIZE):
         # 获取旧实例数据（在事务外）
         instance = view_self.get_object()
         old_instance = copy.deepcopy(instance)
@@ -629,7 +617,7 @@ class CollectModelService(object):
             old_pool = CollectCredentialPoolService.normalize_pool(instance.decrypt_credentials)
             new_pool = CollectCredentialPoolService.normalize_pool(update_data["credential"])
             new_pool = CollectCredentialPoolService.assign_versions(old_pool, new_pool)
-            CollectCredentialPoolService.validate_pool_shape(new_pool)
+            CollectCredentialPoolService.validate_pool_shape(new_pool, max_size=credential_pool_max_size)
             update_data["credential"] = new_pool
             credential_pool_diff = CollectCredentialPoolService.diff_pool(old_pool, new_pool)
         else:
@@ -643,6 +631,8 @@ class CollectModelService(object):
             view_self.perform_update(serializer)
 
             def sync_external_resources():
+                from apps.cmdb.services.first_collection_orchestrator import FirstCollectionOrchestrator
+
                 task_name = f"{cls.NAME}_{instance.id}"
                 try:
                     # 更新定时任务：VM 对账改由全局守门；关闭周期或 VM 类型时清理遗留 beat。
@@ -653,7 +643,7 @@ class CollectModelService(object):
                             args=[instance.id],
                             task=cls.TASK,
                         )
-                        if schedule_changed or first_collection_scheduled:
+                        if schedule_changed or first_collection_run is not None:
                             # update 场景仅在调度参数变更时注册延迟补跑
                             cls.schedule_delayed_sync_if_needed(instance=instance, is_interval=is_interval)
                     else:
@@ -663,20 +653,23 @@ class CollectModelService(object):
                     if cls.should_sync_node_params(instance):
                         cls.delete_butch_node_params(old_instance)
                         cls.push_butch_node_params(instance)
-                except Exception as e:
+                    if first_collection_run is not None:
+                        FirstCollectionOrchestrator.mark_config_ready_and_dispatch(first_collection_run.id)
+                except Exception as exc:  # noqa: BLE001 - Post-commit external sync must remain compensatable.
                     logger.error(
-                        "[CollectTask] 更新采集任务时外部操作失败 task_name=%s, error=%s",
-                        instance.name,
-                        e,
-                        exc_info=True,
+                        "event=collect_task_external_sync_failed task_id=%s operation=update failed_stage=post_commit_sync error_type=%s",
+                        instance.id,
+                        type(exc).__name__,
+                        exc_info=safe_exception_info(exc),
                     )
-                    raise BaseAppException(f"更新采集任务失败：{str(e)}")
+                    if first_collection_run is None:
+                        raise BaseAppException("采集任务已保存，但外部资源同步失败，请重新保存任务后重试") from None
 
             schedule_changed = cls.is_schedule_config_changed(
                 old_instance=old_instance,
                 new_instance=instance,
             )
-            first_collection_scheduled = cls.schedule_first_collection_if_needed(
+            first_collection_run = cls.schedule_first_collection_if_needed(
                 instance=instance,
                 old_instance=old_instance,
                 reason="update",
@@ -706,6 +699,8 @@ class CollectModelService(object):
                 before_data=cls._snapshot_task(old_instance),
                 after_data=cls._snapshot_task(instance),
             )
+            # Updates must always reconcile external resources: disabling a
+            # schedule still needs the callback to remove its previous beat.
             transaction.on_commit(sync_external_resources)
 
         return instance.id
@@ -837,6 +832,7 @@ class CollectModelService(object):
                 execution_id,
                 node_config_id,
                 node_config_version,
+                resolve_latest_round=True,
             )
 
         create_change_record(
@@ -852,7 +848,7 @@ class CollectModelService(object):
             after_data=cls._snapshot_task(instance),
         )
 
-        return WebUtils.response_success(instance.id)
+        return WebUtils.response_success({"id": instance.id, "execution_id": execution_id})
 
     @staticmethod
     def _dispatch_manual_execution(task_id, execution_id, node_config_id, node_config_version):
@@ -862,6 +858,7 @@ class CollectModelService(object):
                 execution_id,
                 node_config_id,
                 node_config_version,
+                resolve_latest_round=True,
             )
         except Exception:
             CollectModels.objects.filter(

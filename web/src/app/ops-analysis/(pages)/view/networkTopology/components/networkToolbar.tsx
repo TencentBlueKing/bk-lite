@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Button, Tooltip } from 'antd';
 import {
   ZoomInOutlined,
@@ -27,7 +27,7 @@ export interface NetworkToolbarProps {
   isFullscreen?: boolean;
   onFullscreenToggle?: () => void;
   /** 运行态刷新(对应 reference 的 TimeSelector.refresh)。 */
-  onRefresh: () => void;
+  onRefresh: () => void | Promise<void>;
   onFrequencyChange: (intervalMs: number) => void;
   frequenceValue?: number;
   /** 编辑 / 取消 / 保存。 */
@@ -37,6 +37,8 @@ export interface NetworkToolbarProps {
   editExtra?: React.ReactNode;
 }
 
+const MIN_REFRESH_LOADING_MS = 300;
+
 /**
  * 网络拓扑工具栏(design.md §7.6)。
  *
@@ -44,7 +46,7 @@ export interface NetworkToolbarProps {
  * - `flex items-center gap-1.5` 极简布局
  * - 左:zoom / fit / fullscreen(读 / 写共用)
  * - 中:刷新(对应 reference 的 TimeSelector 仅刷新模式)
- * - 右:只读 → 编辑;编辑 → 取消 + 保存
+ * - 右:只读 → 分享 + 编辑;编辑 → 取消 + 保存
  *
  * P0 范围(对照 spec §2.2):
  * - 不提供 undo/redo(节点位置保存即生效,无需撤销栈)
@@ -52,6 +54,7 @@ export interface NetworkToolbarProps {
  * - 不提供 setting / filterConfig(无 filter 概念)
  * - 不提供节点 / 链路级删除按钮(由 Drawer 提供)
  * - 不提供状态计数(节点 / 链路状态展示由节点外层颜色和连线颜色表达,见 spec §5/§6)
+ * 刷新 loading 留在工具栏内部,避免带动画布重渲染。
  */
 const NetworkToolbar: React.FC<NetworkToolbarProps> = ({
   editMode,
@@ -74,8 +77,41 @@ const NetworkToolbar: React.FC<NetworkToolbarProps> = ({
   editExtra,
 }) => {
   const { t } = useTranslation();
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshingRef = useRef(false);
+  const refreshLoadingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const iconButtonClassName =
     'rounded-full! h-8 w-8 min-w-8 flex items-center justify-center';
+
+  useEffect(() => {
+    return () => {
+      if (refreshLoadingTimerRef.current != null) {
+        clearTimeout(refreshLoadingTimerRef.current);
+      }
+    };
+  }, []);
+
+  const runRefresh = () => {
+    if (refreshingRef.current) {
+      return;
+    }
+    refreshingRef.current = true;
+    setRefreshing(true);
+    const startedAt = Date.now();
+    void Promise.resolve(onRefresh()).finally(() => {
+      const remain = Math.max(
+        0,
+        MIN_REFRESH_LOADING_MS - (Date.now() - startedAt),
+      );
+      refreshLoadingTimerRef.current = setTimeout(() => {
+        refreshLoadingTimerRef.current = null;
+        refreshingRef.current = false;
+        setRefreshing(false);
+      }, remain);
+    });
+  };
 
   return (
     <div className="flex items-center gap-1.5" data-testid="network-toolbar">
@@ -83,7 +119,8 @@ const NetworkToolbar: React.FC<NetworkToolbarProps> = ({
         <TimeSelector
           onlyRefresh
           frequenceValue={frequenceValue}
-          onRefresh={onRefresh}
+          refreshLoading={refreshing}
+          onRefresh={runRefresh}
           onFrequenceChange={onFrequencyChange}
           className="network-topology-refresh"
         />
@@ -170,12 +207,13 @@ const NetworkToolbar: React.FC<NetworkToolbarProps> = ({
       </div>
 
       {editMode ? (
-        <Tooltip title={t('common.refresh')}>
+        <Tooltip title={t('opsAnalysis.networkTopology.toolbar.refreshRuntime')}>
           <Button
             type="text"
             icon={<ReloadOutlined style={{ fontSize: 16 }} />}
-            aria-label={t('common.refresh')}
-            onClick={onRefresh}
+            aria-label={t('opsAnalysis.networkTopology.toolbar.refreshRuntime')}
+            loading={refreshing}
+            onClick={runRefresh}
             className={iconButtonClassName}
             data-testid="network-toolbar-refresh"
           />

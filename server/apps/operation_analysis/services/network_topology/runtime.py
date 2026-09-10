@@ -396,7 +396,7 @@ class NetworkTopologyRuntimeService:
             for pair_index, pair in enumerate(link.get("port_pairs") or []):
                 source_node = node_index.get(link.get("source_node_id") or "")
                 target_node = node_index.get(link.get("target_node_id") or "")
-                if source_node and (pair.get("source_interface") or {}).get("bk_inst_uuid"):
+                if source_node and (pair.get("source_interface") or {}).get("bk_inst_id"):
                     request_id = f"{link_id}::src::{pair_index}"
                     requests.append(
                         {
@@ -408,7 +408,7 @@ class NetworkTopologyRuntimeService:
                     interface_node_links[request_id] = link_id
                     link_port_pairs[link_id].append({"endpoint": "source", "pair": pair, "request_id": request_id})
 
-                if target_node and (pair.get("target_interface") or {}).get("bk_inst_uuid"):
+                if target_node and (pair.get("target_interface") or {}).get("bk_inst_id"):
                     request_id = f"{link_id}::dst::{pair_index}"
                     requests.append(
                         {
@@ -533,7 +533,7 @@ class NetworkTopologyRuntimeService:
                         "freshness_window": interface.get("freshness_window"),
                         "metrics": cls._filter_interface_metrics(interface.get("metrics") or {}, selected_metrics),
                         "interface_name": (pair_meta["pair"].get(pair_meta["endpoint"] + "_interface") or {}).get("interface_name"),
-                        "bk_inst_uuid": (pair_meta["pair"].get(pair_meta["endpoint"] + "_interface") or {}).get("bk_inst_uuid"),
+                        "bk_inst_id": (pair_meta["pair"].get(pair_meta["endpoint"] + "_interface") or {}).get("bk_inst_id"),
                     }
                 )
 
@@ -599,14 +599,14 @@ class NetworkTopologyRuntimeService:
             node_metrics = metrics_by_node_id.get(str(node.get("id")), [])
             configured_metrics = node.get("metrics") or []
             outer_color = resolve_node_outer_color(configured_metrics, node_metrics)
-            key = f"{node.get('bk_obj_id')}:{node.get('bk_inst_uuid')}"
+            key = f"{node.get('bk_obj_id')}:{node.get('bk_inst_id')}"
             summary = node_interface_summary.get(key)
 
             results.append(
                 {
                     "id": node.get("id"),
                     "bk_obj_id": node.get("bk_obj_id"),
-                    "bk_inst_uuid": node.get("bk_inst_uuid"),
+                    "bk_inst_id": node.get("bk_inst_id"),
                     "bk_inst_name": node.get("bk_inst_name"),
                     "outer_color": outer_color,
                     "outer_color_unknown": outer_color is None,
@@ -639,7 +639,7 @@ def _node_ref_from_view_set(node: dict[str, Any]) -> dict[str, Any]:
     """Reduce a node view_set entry to the WeOps ``node_ref`` shape."""
     return {
         "bk_obj_id": node.get("bk_obj_id"),
-        "bk_inst_uuid": node.get("bk_inst_uuid"),
+        "bk_inst_id": node.get("bk_inst_id"),
         "network_collect_task_id": node.get("network_collect_task_id") or 0,
         "network_collect_instance_id": node.get("network_collect_instance_id") or 0,
         "plugin_group_id": node.get("plugin_group_id") or 0,

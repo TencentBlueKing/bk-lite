@@ -1,23 +1,22 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Spin, Tooltip, Button, Input } from 'antd';
-import { SearchOutlined } from '@ant-design/icons';
+import { Spin, Tooltip, Button, Input, Checkbox, Space } from 'antd';
+import { SearchOutlined, ExportOutlined } from '@ant-design/icons';
 import CompactEmptyState from '@/components/compact-empty-state';
 import Icon from '@/components/icon';
-import OperateFormModal from '@/components/operate-form-modal';
+import OperateModal from '@/components/operate-modal';
 import {
-  getIconTypeByIndex,
+  resolveOptionIcon,
   type SelectorOption,
 } from '@/app/opspilot/components/opspilot-selector-shared';
 import { useTranslation } from '@/utils/i18n';
-import styles from './index.module.scss';
 
 interface OpspilotSelectorOperateModalProps {
   visible: boolean;
-  okText: string;
+  okText?: string;
   title?: string;
-  cancelText: string;
+  cancelText?: string;
   options: SelectorOption[];
   selectedOptions: number[];
   loading?: boolean;
@@ -49,6 +48,7 @@ const OpspilotSelectorOperateModal: React.FC<
   useEffect(() => {
     if (visible) {
       setTempSelectedOptions(selectedOptions);
+      setSearchTerm('');
     }
   }, [visible, selectedOptions]);
 
@@ -68,105 +68,156 @@ const OpspilotSelectorOperateModal: React.FC<
     window.open('/opspilot/knowledge', '_blank');
   };
 
-  const filteredOptions = options.filter((option) =>
-    option.name?.toLowerCase().includes(searchTerm),
-  );
+  const filteredOptions = options.filter((option) => {
+    const keyword = searchTerm.trim().toLowerCase();
+    if (!keyword) return true;
+    return (
+      option.name?.toLowerCase().includes(keyword) ||
+      option.description?.toLowerCase().includes(keyword)
+    );
+  });
 
   return (
-    <OperateFormModal
+    <OperateModal
       title={title || t('skill.selectKnowledgeBase')}
-      visible={visible}
-      confirmText={okText}
-      cancelText={cancelText}
-      onConfirm={() => onOk(tempSelectedOptions)}
+      open={visible}
       onCancel={onCancel}
-      width={700}
+      width={720}
+      footer={
+        <div className="flex w-full items-center justify-between">
+          <div className="text-xs text-[var(--color-text-3)]">
+            {t('skill.selectedCount', '已选择数量')}:{' '}
+            <span className="font-semibold tabular-nums text-[var(--color-text-1)]">
+              {tempSelectedOptions.length}
+            </span>
+          </div>
+          <Space>
+            <Button onClick={onCancel}>{cancelText || t('common.cancel')}</Button>
+            <Button type="primary" onClick={() => onOk(tempSelectedOptions)}>
+              {okText || t('common.confirm')}
+            </Button>
+          </Space>
+        </div>
+      }
     >
       <Spin spinning={loading}>
         {options.length === 0 ? (
           isNeedGuide ? (
-            <div className="text-center">
-              <p>{t('skill.settings.noKnowledgeBase')}</p>
-              <Button type="link" onClick={handleConfigureOptions}>
+            <div className="py-8 text-center">
+              <p className="text-sm text-[var(--color-text-3)]">{t('skill.settings.noKnowledgeBase')}</p>
+              <Button type="link" onClick={handleConfigureOptions} className="p-0">
                 {t('skill.settings.clickHere')}
               </Button>
-              {t('skill.settings.toConfigureKnowledgeBase')}
+              <span className="text-sm text-[var(--color-text-3)]">
+                {t('skill.settings.toConfigureKnowledgeBase')}
+              </span>
             </div>
           ) : (
             <CompactEmptyState
               description={t('common.noData')}
-              className="py-6"
+              className="py-8"
             />
           )
         ) : (
           <>
-            <div className="flex justify-end">
+            <div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-[var(--color-text-3)]">
+                  {t('common.total', '共')} {filteredOptions.length} {t('tool.items', '项')}
+                </span>
+                {tempSelectedOptions.length > 0 && (
+                  <span className="inline-flex h-5 items-center rounded-full bg-[var(--color-count-alt-bg)] px-2 text-[11px] font-medium tabular-nums text-[var(--color-count-alt)]">
+                    已选 {tempSelectedOptions.length} 项
+                  </span>
+                )}
+              </div>
               <Input
-                className="w-[300px]"
+                allowClear
+                className="w-64"
                 placeholder={`${t('common.search')}...`}
-                suffix={<SearchOutlined />}
+                prefix={<SearchOutlined className="text-[var(--color-text-4)]" />}
+                value={searchTerm}
                 onChange={handleSearch}
               />
             </div>
-            <div className="grid max-h-[50vh] grid-cols-3 gap-4 overflow-y-auto py-4">
-              {filteredOptions.map((option, index) => {
-                const tooltipContent = showToolDetail ? (
-                  <div className="max-w-[280px]">
-                    <div className="mb-1 font-medium">{option.name}</div>
-                    {option.description && (
-                      <div className="mb-2 line-clamp-3 text-xs text-gray-400">
-                        {option.description}
+            {filteredOptions.length === 0 ? (
+              <div className="py-8">
+                <CompactEmptyState description={t('common.noData')} />
+              </div>
+            ) : (
+              <div className="grid max-h-[440px] grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
+                {filteredOptions.map((option) => {
+                  const isSelected = tempSelectedOptions.includes(option.id);
+                  const resolvedIcon = resolveOptionIcon(option.name, option.icon);
+                  return (
+                    <div
+                      key={option.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-pressed={isSelected}
+                      className={`group relative flex flex-col justify-between rounded-lg border p-3.5 cursor-pointer transition-all duration-150 select-none ${
+                        isSelected
+                          ? 'border-[var(--color-primary)] bg-[var(--color-primary-bg-active)]/45 shadow-2xs'
+                          : 'border-[var(--color-border-1)] bg-[var(--color-bg)] hover:border-[var(--color-primary)]/40 hover:bg-[var(--color-fill-1)]/40'
+                      }`}
+                      onClick={() => handleOptionSelect(option.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleOptionSelect(option.id);
+                        }
+                      }}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--color-fill-1)] text-[var(--color-primary)] transition-colors group-hover:bg-[var(--color-fill-2)]">
+                            <Icon type={resolvedIcon} className="text-xl" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <Tooltip title={option.name}>
+                              <div className="truncate text-[13px] font-semibold leading-snug text-[var(--color-text-1)]">
+                                {option.name}
+                              </div>
+                            </Tooltip>
+                          </div>
+                        </div>
+                        <div className="shrink-0 pt-0.5" onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                            checked={isSelected}
+                            onChange={() => handleOptionSelect(option.id)}
+                          />
+                        </div>
                       </div>
-                    )}
-                    <a
-                      href={`/opspilot/tool?id=${option.id}&name=${encodeURIComponent(option.name || '')}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-blue-400 hover:text-blue-300"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {t('common.viewDetails')}
-                    </a>
-                  </div>
-                ) : (
-                  option.name
-                );
 
-                return (
-                  <div
-                    key={option.id}
-                    className={`flex cursor-pointer items-center rounded-md border p-4 ${
-                      tempSelectedOptions.includes(option.id)
-                        ? styles.selectedKnowledge
-                        : ''
-                    }`}
-                    onClick={() => handleOptionSelect(option.id)}
-                  >
-                    <div className="w-8 flex-shrink-0">
-                      <Icon
-                        type={option.icon || getIconTypeByIndex(index)}
-                        className="text-2xl"
-                      />
+                      <div className="mt-2 min-h-[36px]">
+                        <p className="line-clamp-2 text-xs leading-relaxed text-[var(--color-text-3)] m-0">
+                          {option.description || t('skill.toolDescriptionDefault', '提供智能体外部接口调用与自动化能力')}
+                        </p>
+                      </div>
+
+                      {showToolDetail && (
+                        <div className="mt-2 flex items-center justify-end border-t border-[var(--color-border-1)]/40 pt-2">
+                          <a
+                            href={`/opspilot/tool?id=${option.id}&name=${encodeURIComponent(option.name || '')}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[11px] text-[var(--color-primary)] hover:underline"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {t('common.viewDetails')}
+                            <ExportOutlined className="text-[10px]" />
+                          </a>
+                        </div>
+                      )}
                     </div>
-                    <Tooltip
-                      title={tooltipContent}
-                      overlayInnerStyle={showToolDetail ? { padding: '12px' } : undefined}
-                    >
-                      <span className="ml-2 inline-block max-w-[150px] overflow-hidden text-ellipsis whitespace-nowrap">
-                        {option.name}
-                      </span>
-                    </Tooltip>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="pt-4">
-              {t('skill.selectedCount')}: {tempSelectedOptions.length}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </>
         )}
       </Spin>
-    </OperateFormModal>
+    </OperateModal>
   );
 };
 

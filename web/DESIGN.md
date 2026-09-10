@@ -31,7 +31,7 @@ Markdown 不复制维护运行时颜色值。修改品牌色或主题值时先�
 
 日常改 UI **不要默认通读本文全文**。可执行短清单在根目录 `CLAUDE.md` / `AGENTS.md` →「Web UI 硬约束」（会话常驻）。
 
-**仅当**新建视觉组件、改 token/设计语义、组件治理大迁移、设计走查，或短规则不够用时，再分段阅读本文相关章节（优先 **Layout & Styling**、**Do's and Don'ts**）和 `COMPONENT_GOVERNANCE.md`。做**实体网格列表页**（统一卡、页头、骨架、新建文案）时，另读 **Components → Entity List Cards**。
+**仅当**新建视觉组件、改 token/设计语义、组件治理大迁移、设计走查，或短规则不够用时，再分段阅读本文相关章节（优先 **Overview**、**Layout & Styling**、**Do's and Don'ts**）和 `COMPONENT_GOVERNANCE.md`。做**实体网格列表页**时另读 **Components → Entity List Cards**；做**列表/表格上方搜索与操作**时另读 **List / Table Toolbar**；做**设置双栏 / 已选对象 / 对话**时另读 **Studio Workbench** 与 **Chat / AI Output**；做**加载态**时另读 **Loading / Skeleton**。
 
 ### Code Agent / 开发者开始写 UI 前
 
@@ -48,17 +48,24 @@ Markdown 不复制维护运行时颜色值。修改品牌色或主题值时先�
 
 ## 1. Overview
 
-**Creative North Star: "Light Operations Desk"**
+**气质：浅色、克制的企业控制台（Light Operations Desk）**
 
-BK-Lite Web 是面向运维管理员的产品界面，不是营销页、数据大屏或视觉实验场。设计服务于日常运维动作：发现资源、筛选对象、查看状态、处理告警、执行作业、确认高风险操作。界面应当轻量、智能、友好，但这种友好来自清晰结构、可预期控件和及时反馈，而不是装饰。
+BK-Lite Web 的默认气质是 **浅色、克制的企业控制台**：少装饰、少线框，用留白和浅底表达结构；让人觉得能工作，而不是在看科技展览。四个词：**干净、扁平、少框、留白分层**。
 
-默认 register 是 product。优先保留熟悉的企业后台模式：顶栏、侧栏、筛选区、表格、抽屉、弹窗、状态标签、批量操作。视觉策略是 restrained：白色/浅灰工作面 + 蓝色主操作 + 少量语义状态色。AI 能力出现时要像一个明确的工作助手，展示输入、输出、风险、下一步，而不是制造舞台感。
+这不是「科技风」。科技大屏（深色、霓虹、发光、巨大指标）、营销 SaaS（大 hero、渐变标题、很满的卡片墙）、旧式后台（每块都描边、开关套开关、灰底输入框）都不属于默认界面。OpsPilot 的列表卡、智能体设置双栏、测试对话是这套气质的当前参考面；其他 app 做同类 UI 时靠过来，不要平行发明第二套皮肤。
+
+界面服务于日常运维：发现资源、筛选对象、查看状态、处理告警、执行作业、确认高风险操作。友好来自清晰结构、可预期控件和及时反馈，而不是装饰。默认 register 是 product：顶栏、侧栏、筛选、表格、抽屉、弹窗、状态标签、批量操作。视觉策略是 restrained：白色/浅灰工作面 + 蓝色主操作 + 少量语义状态色。AI 出现时像工作助手，展示输入、输出、风险、下一步，不制造舞台感。
 
 **Key Characteristics:**
-- 密集但不拥挤：表格、筛选、详情和操作区可以信息密度高，但必须有清晰分组。
-- 克制用色：`--color-primary` 只用于主操作、链接、选中、focus，不做装饰。
+- 干净：白底工作面，浅灰分区，品牌蓝只用于主操作和少量状态点。
+- 扁平：靠边框和 `fill-*` 色阶分层，默认无阴影、无渐变、无玻璃拟态。
+- 少框：外层最多一块面板；里面用标题、分割线、浅底小卡，不再套盒子。
+- 过程让路：思考、工具、计划是可收起的旁白；正文和输入才是主体。可输入区域必须白底。
+- 同构骨架：首次加载与整页刷新用与最终布局同构的骨架屏，不用居中 `Spin` 罩空白页。
+- 密集但不拥挤：表格、筛选、详情可以信息密度高，但必须有清晰分组。
+- 克制用色：`--color-primary` 只用于主操作、链接、选中、focus，不做装饰。智能体设置里的集合数量用非主色胶囊（技能包青绿、工具琥珀），列表卡 `+N` 保持原样。
 - 可预测交互：按钮、表单、表格、弹窗沿用 Ant Design 语义，不自造控件词汇。
-- 框架优先：新 UI 先使用 Ant Design、`web/src/components` 和当前模块已有组件，避免重写已有控件。
+- 框架优先：新 UI 先使用 Ant Design、`web/src/components` 和当前模块已有组件。
 - className 优先：布局/间距用 Tailwind；颜色走语义 token；行内 `style` 仅用于动态值与 AntD 契约例外。
 - 渐进展示：空状态、错误状态、加载状态都要告诉用户下一步。
 - 中英双语安全：中文、英文和长资源名都必须能换行、省略或 tooltip 展示完整内容。
@@ -78,6 +85,7 @@ BK-Lite Web 的颜色系统是“低压工作台”：中性底色承载长时�
 | 二级面、筛选区、分组头 | `var(--color-fill-1)` / `var(--color-fill-2)` | 临时灰色 hex |
 | 默认边框与分割线 | `var(--color-border)`，按层级使用 `--color-border-1` 至 `-4` | 固定浅灰边框 |
 | 标题、正文、辅助、disabled | `var(--color-text-1)` 至 `--color-text-4` | 固定黑色、白色或不透明度猜测 |
+| 设置页集合数量 | 技能包 `var(--color-count)` / `--color-count-bg`；工具 `var(--color-count-alt)` / `--color-count-alt-bg` | 主色蓝胶囊、无底色灰字、全页只用一种计数色 |
 | 成功/健康 | `var(--color-success)` | 仅用绿色表达状态 |
 | 失败/危险 | `var(--color-fail)` | 仅用红色表达状态 |
 | 导航、弹窗等组件级语义 | `--color-components-*`、`--color-modal-*` | 页面内覆盖 Ant Design 全局样式 |
@@ -127,6 +135,8 @@ BK-Lite Web 的颜色系统是“低压工作台”：中性底色承载长时�
 
 BK-Lite Web 以边框和色阶分层为主，阴影为辅。默认面板不应该漂浮，只有弹窗、Popover、Dropdown、悬浮菜单、少量工作台入口可以使用阴影。卡片如果已经有 `1px` 边框，就不要再叠加大模糊阴影。
 
+**去框分层：** 结构优先用留白、`border-t` / `divide-y` 和 `var(--color-fill-1)` 浅底，而不是给每个小组再套线框。一页外层最多一层面板（例如设置左栏 / 测试右栏各一块）；栏内禁止卡套卡。灰底只给只读弱容器，不给可输入区域。
+
 ### Shadow Vocabulary
 - **Inset Content Edge** (`box-shadow: inset 0 6px 10px -6px rgba(0, 0, 0, 0.03)`): 主内容区顶部的轻微压线，来自 `.main-content`。
 - **Popover Shadow** (`box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15)`): 顶部菜单 Popover 和临时浮层。
@@ -137,6 +147,8 @@ BK-Lite Web 以边框和色阶分层为主，阴影为辅。默认面板不应�
 **The Flat By Default Rule.** 表格、筛选区、详情区、设置页默认靠边框和背景分层。阴影不作为装饰。
 
 **The No Ghost Card Rule.** 不要在同一元素上组合 `border: 1px solid ...` 和大于 `16px` 模糊的阴影。二选一，产品界面通常选边框。
+
+**The De-box Rule.** 能用留白、分割线和 `fill-1` 就不要新边框。设置页内块、对话过程态、发送框默认无阴影、无灰底。
 
 **The Z Index Rule.** 禁止随手写 `9999` / `10000`。现有 `.ant-dropdown { z-index: 10000; }` 是平台遗留，新增浮层应使用 Ant Design Portal 或集中 z-index token。
 
@@ -224,10 +236,11 @@ BK-Lite Web 已启用 Tailwind。**布局、间距、对齐的默认且优先表
 ### Cards / Containers
 - **选择顺序:** 普通容器优先 Ant Design `Card`；指标摘要用 `SummaryMetricCard`；可选择卡片组用 `SelectableCardGrid`；页面表单头用 `PageFormHeaderCard`；故障排查语义用 `TroubleshootingCard`。实体、技能、集成等业务卡片保持 app-local，并组合已有 primitive。
 - **Corner Style:** 默认 `8px`，业务卡片可用 `12px`。不要超过 `16px`。
-- **Background:** 主容器 `var(--color-bg)`，弱容器 `var(--color-fill-1)`。
-- **Border:** 默认 `1px solid var(--color-border)`。不要用 `border-left` / `border-right` 大于 `1px` 做彩色侧边条。
-- **Internal Padding:** 默认 `16px`，弹窗主体可用 `24px`，密集行内块用 `8px`。
+- **Background:** 主容器 `var(--color-bg)`，弱容器 `var(--color-fill-1)`。已选对象小卡用 `bg-[var(--color-fill-1)]/70`，不要再加描边和阴影。
+- **Border:** 默认 `1px solid var(--color-border)`。禁止卡片左侧通高彩色 `border-left` / `border-right`（大于 `1px`）。章节标题允许 **约 `4×14px` 的品牌色短竖条** 作标记，不得铺满卡片高度。
+- **Internal Padding:** 默认 `16px`，弹窗主体可用 `24px`，密集行内块用 `8px`；已选对象小卡用 `p-2.5`。
 - **Nesting:** 禁止卡片套卡片。需要分组时用标题、分割线、表格分组或背景色阶。
+- **已选对象小卡：** 技能包、工具、已挂载项等共用一套缩小解剖：标题行左「名称 + 数量胶囊」、右「+ 添加xxx」（AntD `link` + `small`）；下一句说明；下方网格小卡（`rounded-lg p-2.5`，左 `20×20` 图标容器 + 名称，右配置/删除）。有选中即启用，空列表即关闭，**不要再给集合加总开关**；后端仍传列表（空数组即关）。数量必须有底色小胶囊（少数允许 `rounded-full`）；技能包用青绿、工具用琥珀，不要再用主色蓝，也不要做成无底色数字。空列表不显示数量。参考：OpsPilot 智能体设置页的技能包 / 工具。列表实体卡底栏 `+N` 不走这套，保持原样。
 - **新增前提:** 新卡片必须先说明现有 Card/primitive 为什么无法承载；不能因为局部间距或颜色不同就复制一个新卡片组件。
 
 ### Entity List Cards（统一实体列表卡）
@@ -258,13 +271,51 @@ BK-Lite Web 已启用 Tailwind。**布局、间距、对齐的默认且优先表
 - 卡片 `min-h` 与 `h-full` 保证同排等高；meta 行保留 `min-h`。副行有无内容时卡头高度可不同，由下方弹性区消化。
 - 颜色、边框、hover 洗色一律语义 token；禁止硬编码主题色。
 - 图标用项目 iconfont `type`；模块内轮换图标池时用业务域图标，不要把别的模块图标集硬搬过来。
+- 设置页里的技能包 / 工具小卡是这套解剖的缩小版（`20×20` 图标、无底栏），不是另一套皮肤。
 
 #### 列表页壳
 
-- **页头一行：** 左标题 + 短描述，右搜索 / 刷新 / 主操作同一行（可 `flex-wrap`）。参考 `OpsPilotListPageHeader`。
+- **页头一行：** 左标题 + 短描述，右 **搜索与操作成组**。参考 `OpsPilotListPageHeader`。细则见 **List / Table Toolbar**。
 - **主新建按钮：** 文案统一为「新建」（`common.new`），`type="primary"` + `PlusOutlined`。弹窗标题仍可用「添加…」；导入类动作保留「导入…」等专名，不硬改成「新建」。
 - **入口位置：** 新建在工具条主按钮，不在网格里塞「新增」空卡（除非产品明确要求）。
-- **筛选 / 视图切换：** 放在页头下方或工具条旁，保持与卡网格的 `gap` 节奏。
+- **筛选 / 视图切换：** 分段/类型筛选放在搜索左侧、仍在右侧成组内；不要单独占一行，除非筛选项非常多。
+
+### List / Table Toolbar
+
+列表、表格上方的搜索和操作是全平台最容易乱的一行。统一规则：**标题靠左，搜索与操作成组靠右，中间不要拉空。**
+
+参考：OpsPilot 智能体列表、`OpsPilotListPageHeader`、`SearchActionBar`、`ToolbarSplitShell`。
+
+```
+[标题 + 短描述]                         [筛选] [搜索] [刷新] [新建]
+                                        └──────── 成组靠右 ────────┘
+```
+
+无页内标题时（标题已在 TopSection）：
+
+```
+                                        [筛选] [搜索] [刷新] [新建]
+```
+
+**左右：**
+- **左：** 只放页内标题 / 描述，或视图切换（Segmented / Tabs 那种「这是哪一页数据」）。
+- **右：** 筛选、搜索、次要按钮、主操作，**从左到右**固定为：`筛选 → 搜索 → 刷新/更多 → 新建`。
+- 搜索不要单独贴左、新建不要单独贴右。二者必须紧挨着出现在右侧组里。
+
+**间距（不要各写一套）：**
+- 标题区与右侧组：`justify-between` + `gap-x-4`
+- 右侧组内部：`gap-2`
+- 换行：`flex-wrap` + `gap-y-3`，垂直居中 `items-center`
+- 工具条到列表/表格：`mb-4`（16px）。内嵌在已有间距容器里用 `SearchActionBar` 的 `spacing="flush"`
+- 搜索默认宽 `w-60`（240px），需要更长时再用 `w-80`，不要拉满整行
+
+**实现：**
+- 有标题的列表页：`OpsPilotListPageHeader`，`actions` 里放搜索 + 新建。
+- 无标题的表格页：`SearchActionBar`（搜索与 actions 已成组靠右）。
+- 左视图切换 + 右搜索操作：`ToolbarSplitShell`（`leading` / `trailing`）。
+- 禁止手写 `justify-between` 把 `Input.Search` 和「新建」拆到两端。
+
+**The Clustered Toolbar Rule.** 搜索和主操作必须成组靠右；页内标题才靠左。不要为了把一行撑满而把搜索和新建拉开。
 
 #### 加载 / 刷新 / 空态
 
@@ -288,9 +339,43 @@ BK-Lite Web 已启用 Tailwind。**布局、间距、对齐的默认且优先表
 
 ### Inputs / Fields
 - **Style:** 使用 AntD 表单控件，桌面最小高度 `40px`，移动/触摸场景目标热区不低于 `44px`。
+- **Editable surface:** 可输入区域必须是 `var(--color-bg)` 白底。`fill-1` 只给只读弱容器、禁用态或分组底。灰底输入框会被当成不能输入。
 - **Focus:** 使用 `var(--color-primary)` 或 AntD 默认 focus ring，必须可见。
 - **Validation:** 错误信息紧邻字段；多错误提交后焦点回到第一个错误字段。
 - **Long Text:** 多行文本用 `TextArea` + `showCount` + `maxLength`。资源名、路径、命令要支持换行、横向滚动或 tooltip。
+- **Switches:** 开关只表示独立偏好（如聊天历史、展示思考）。集合「有没有成员」用添加/删除表达，不要再套一层启用总开关。
+
+### Studio Workbench（设置双栏）
+
+配置 + 实时预览（如智能体设置）走同一套工作台，不要做成左右两堆互不相干的卡片墙。参考：`web/src/app/opspilot/(pages)/skill/detail/settings/page.tsx`。
+
+- **两栏：** 各一块白底面板（`rounded-lg` + `1px` 边框），`h-full min-h-0` 内部滚动。禁止用 `calc(100vh - Npx)` 估高度。
+- **栏头：** `fill-1/60` 浅底 + 小图标 + 标题；右侧轻量徽章（ID、模型名），不要再套卡。
+- **章节：** 短竖条 + `13px semibold` 标题；章节之间 `border-t` + 较大 `pt`。表单横向标签、统一标签宽。
+- **设置行：** 开关做成「一行一项」`divide-y`，不要每个开关一张小卡。
+- **已选项：** 见上方「已选对象小卡」。添加按钮在标题行右上，与「添加技能包」对齐，不要单独再占一行。
+- **底栏：** 栏内 sticky：左一句说明，右 AntD `primary`「保存」，圆角 `6px`。
+- **加载：** 用 `OpsPilotStudioWorkbenchSkeleton`，左右栏、栏头、表单行、已选小卡、发送框占位与最终布局同构。禁止用居中 `Spin` 替换整页。
+
+### Loading / Skeleton
+
+页面加载是界面的一部分，不是临时转圈。骨架必须 **复刻即将出现的结构**（栏数、栏头、字段行、卡片网格、底栏），占位条圆角跟最终控件一致（按钮/chip `6px`，卡片 `8px`）。
+
+| 页面类型 | 骨架 | 不要 |
+| --- | --- | --- |
+| 实体网格列表 | `OpsPilotCardGridSkeleton`（与 Look B 卡同解剖） | `Spin` 罩住旧卡或空白网格 |
+| 设置双栏 / Studio | `OpsPilotStudioWorkbenchSkeleton`（左右面板同构） | 整页居中 `Spin` |
+| 表格 | 表头保留，行用 Skeleton；或表格 `loading` 配骨架行 | 整表消失只剩转圈 |
+| 分页加载更多 | 底部小 `Spin` | 再刷一整页骨架 |
+
+参考实现（OpsPilot，app-local）：
+
+| 能力 | 路径 |
+| --- | --- |
+| 列表卡骨架 | `web/src/app/opspilot/components/opspilot-card-grid-skeleton` |
+| 设置双栏骨架 | `web/src/app/opspilot/components/opspilot-studio-workbench-skeleton` |
+
+**The Layout-Isomorphic Skeleton Rule.** 骨架与最终布局同构：同样的分栏、同样的 header/footer 槽位、同样的内容节奏。失败时不要假骨架假装有数据；保存等局部提交只用按钮 `loading`。
 
 ### Tables
 - **Density:** 表格可以高密度，但列头、操作列和筛选条件必须清晰。
@@ -300,8 +385,8 @@ BK-Lite Web 已启用 Tailwind。**布局、间距、对齐的默认且优先表
 - **Pagination:** 默认 20 条，提供 10 / 20 / 50 / 100，显示总数。
 
 ### Navigation
-- **Top Menu:** 顶栏背景跟随主题，active 使用 `var(--color-primary)` 或 active 背景。图标使用统一图标库，不手绘临时 SVG。
-- **Side Menu:** 侧栏默认 `var(--color-components-side-nav-bg)`，hover 用 `var(--color-components-side-nav-hover-bg)`，active 用 `var(--color-components-side-nav-text-active-bg)`。
+- **Top Menu:** 顶栏背景跟随主题，active 使用 `var(--color-primary)` 或 active 背景。图标使用统一图标库，不手绘临时 SVG。应用顶栏（app-top）列出全部应用，空间不够时在顶栏内左右滚动，溢出侧只用小箭头提示，不要「详情 / 更多」文字。
+- **Side Menu:** 侧栏默认 `var(--color-components-side-nav-bg)`，hover 用 `var(--color-components-side-nav-hover-bg)`，active 用 `var(--color-components-side-nav-text-active-bg)`。app-top 左栏 200px，可从底部图标按钮收起为 56px 纯图标栏；收起后移入只是浮出完整导航（不挤内容），点展开才真正占位。
 - **Segmented:** 二级视图切换优先用 AntD Segmented 或项目 `sub-layout` 约定，保持 `gap-2` 节奏。
 
 ### Modals / Drawers
@@ -311,7 +396,17 @@ BK-Lite Web 已启用 Tailwind。**布局、间距、对齐的默认且优先表
 - **Viewport Fit（禁止触底）:** 弹窗必须自适应视口高度，任意屏幕下都不能触底（底部按钮被截断或贴住视口底边）。表单较长时给 `Modal` 主体限高并内部滚动：`styles={{ body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto' } }}`，保证底部按钮始终可见且与视口底部留有间距；若内容仍然过长、滚动割裂，改用 `Drawer`（抽屉）承载长表单。
 
 ### Chat / AI Output
-- **Reports:** 聊天区中的报告卡保持轻量正式，不做深色大屏化，不做渐变标题。
+
+对话是同一块白底工作面：问候、消息、输入是一条流，不要三块各带灰底的岛。参考：`web/src/app/opspilot/components/custom-chat-sse`。
+
+- **引导语：** 当作第一条助手消息，不要外框卡。
+- **快捷问答：** 圆角 `6px`（同保存按钮），底 `fill-1/70`（同已选技能包小卡）。不要胶囊大圆角、不要深灰、不要描边阴影。
+- **用户问题：** 右对齐气泡，底 `fill-1/70`，尾巴圆角保留。单行上下 padding 约 `8px`，markdown 首尾 `p` 无外边距，不要被段落 margin 撑成方块。不要饱和的 `primary-bg-active`。
+- **助手回复：** 左对齐纯文本，不要气泡壳。
+- **消息操作：** 回复下方是无框幽灵图标行（复制优先，成功变勾约 1.6s），不要描边/灰底胶囊工具条，也不要在「更多」里重复复制和重新生成。图标与相对时间同为 `11px`，用 `text-4` 时间跟在后面。用户和助手都是悬停（或键盘聚焦）才出现，不要常驻。
+- **思考 / 执行计划 / 工具：** 一行可折叠过程态（如 `▶ 已完成思考`、`▶ 执行计划 (已完成 n 步)`）。展开用 `fill-3` 的 `2px` 引用线，不是品牌色谱边，也不是灰底大卡。流式中默认展开，结束后可收起。过程态是旁白，回复才是主体。
+- **发送框：** 白底 + `1px` `border-1`；聚焦才品牌描边 + ring。禁止灰底、禁止为「看起来像组件」而加阴影。
+- **Reports:** 报告卡保持轻量正式，不做深色大屏化，不做渐变标题。
 - **Commands:** 命令块必须可复制，复制失败有反馈，空命令有空状态。
 - **Choices:** 用户选择必须使用真实 `button` / 表单控件，支持键盘、disabled、loading、已选择态。
 - **Streaming:** 流式内容默认可见，不依赖动画 class 才显示。
@@ -337,21 +432,31 @@ BK-Lite Web 已启用 Tailwind。**布局、间距、对齐的默认且优先表
 - **Do** 为图标按钮提供 `aria-label`，为可展开区域提供 `aria-expanded` / `aria-controls`。
 - **Do** 给 loading、empty、error、permission denied、readonly 状态写清楚下一步。
 - **Do** 让中文、英文、长资源名、命令、路径、emoji 都能安全换行或省略。
-- **Do** 保持产品界面轻量、智能、友好：让操作更清楚，而不是让界面更热闹。
-- **Do** 实体网格列表复用「Entity List Cards」解剖与页壳；整页刷新用卡片骨架，主按钮用「新建」。
+- **Do** 保持浅色、克制的企业控制台：干净、扁平、少框、留白分层；让操作更清楚，而不是让界面更热闹。
+- **Do** 列表/表格工具条：标题靠左，搜索与操作成组靠右（`gap-2`，到内容 `mb-4`）；优先 `OpsPilotListPageHeader` / `SearchActionBar` / `ToolbarSplitShell`。
+- **Do** 设置双栏、已选对象小卡、对话过程态对齐 Studio Workbench 与 Chat 节；其他 app 靠这套，不要平行发明皮肤。
+- **Do** 首次加载与整页刷新用与最终布局同构的骨架屏（列表卡网格 / 设置双栏）；局部提交用按钮 `loading`。
 - **Do** 治理/功能改动触及的布局区块，把可替换的行内 flex/间距改为 `className`。
 
 ### Don't:
-- **Don't** 做深色运维大屏化，除非该路由明确是监控展示大屏。
+- **Don't** 做「科技风」大屏：深色、霓虹、发光、巨大指标，除非该路由明确是监控展示大屏。
 - **Don't** 做营销感 SaaS 官网风：大 hero、巨大指标卡、渐变大标题、宣传话术都不属于控制台默认界面。
-- **Don't** 使用 `border-left` 或 `border-right` 大于 `1px` 作为彩色侧边强调。
+- **Don't** 给每个小组再套线框，或在对话里把问候 / 过程态 / 输入做成三块互不相干的灰底岛。
+- **Don't** 给可输入区域加灰底或厚阴影（会像禁用）。灰底只给只读弱容器。
+- **Don't** 给「已选技能/工具」再套启用总开关；有选中即开，空列表即关。
+- **Don't** 把思考、工具执行、执行计划做成独立线框卡；用一行可折叠过程态。
+- **Don't** 给快捷问答、普通按钮使用胶囊大圆角；与保存按钮一样用 `6px`。数量胶囊除外。
+- **Don't** 用主色蓝给设置页集合计数上色，也不要把数量做成无底色灰字。技能包 / 工具各用一套 count token，不要全页一种计数色；不要改列表卡底栏 `+N`。
+- **Don't** 使用卡片通高彩色 `border-left` / `border-right` 大于 `1px`。章节标题短竖条、对话引用线见 Cards / Chat 节。
 - **Don't** 使用 gradient text、装饰性玻璃拟态、重复卡片网格、手绘 sketch SVG、条纹背景。
 - **Don't** 为了视觉新鲜感重写 Ant Design 已有的 Button、Modal、Drawer、Table、Form、Select、Tabs、Segmented、Tooltip、Popover。
 - **Don't** 在组件内直写品牌色或状态色 hex；需要时加 token 或语义映射。
 - **Don't** 用 `bg-white`、`text-black`、固定浅灰边框等只适用于单一主题的样式代替语义 token。
 - **Don't** 新增大段行内布局对象（`style={{ display:'flex', gap, padding, width... }}`）替代 Tailwind/`className`。
 - **Don't** 复制已有组件只为改变颜色、圆角、边框或间距；优先复用现有 variant 或补一个稳定 variant。
+- **Don't** 把搜索甩到最左、新建甩到最右，中间拉一条空白。搜索和主操作必须成组。
 - **Don't** 为实体列表另起一套卡片壳或用 Spin 罩住旧卡冒充刷新；没有时间字段时不要为展示去改后端加列。
+- **Don't** 用居中 `Spin` 代替整页加载。骨架必须与最终分栏、栏头、底栏同构；失败时不要假骨架假装有数据。
 - **Don't** 用 placeholder 当 label，不要只靠 toast 汇总表单错误。
 - **Don't** 把 `div onClick` 当按钮。可点击就用 `button`、AntD Button、链接或正确 ARIA 语义。
 - **Don't** 给卡片、输入框、面板使用 `32px+` 大圆角。

@@ -56,6 +56,7 @@ def _create_alert(policy, alert_id, status_value="new"):
         content="alert content",
         status=status_value,
         start_event_time=timezone.now(),
+        organizations=list(policy.policyorganization_set.values_list("organization", flat=True)),
     )
 
 
@@ -247,6 +248,9 @@ def test_patch_close_sends_closed_event_after_persisting_stable_time(authenticat
     sent_alert = notify_closed.call_args.args[0]
     assert sent_alert.id == alert.id
     assert sent_alert.end_event_time == alert.end_event_time
+    closed_events = list(Event.objects.filter(alert=alert, action=Event.Action.CLOSED))
+    assert len(closed_events) == 1
+    assert authenticated_user.username in closed_events[0].content
 
 
 @pytest.mark.django_db
@@ -299,6 +303,7 @@ def test_patch_close_failure_is_idempotent_and_keeps_pending_notice(authenticate
     assert alert.end_event_time == closed_at
     assert alert.notice is False
     notify_closed.assert_called_once()
+    assert Event.objects.filter(alert=alert, action=Event.Action.CLOSED).count() == 1
 
 
 @pytest.mark.django_db
@@ -435,6 +440,45 @@ def test_last_event_success_returns_event_and_raw_data(api_client, authenticated
     data = response.json()["data"]
     assert data["event"]["id"] == event.id
     assert data["raw_data"]["data"]["message"] == "raw"
+
+
+@pytest.mark.django_db
+def test_last_event_skips_lifecycle_and_returns_hit(api_client, authenticated_user, mocker):
+    from datetime import timedelta
+
+    policy = _create_policy("last-event-hit", organization=1)
+    alert = _create_alert(policy, "alert-le-hit")
+    hit_time = timezone.now()
+    hit = Event.objects.create(
+        id="event-le-hit",
+        policy=policy,
+        alert=alert,
+        source_id=alert.source_id,
+        event_time=hit_time,
+        level="warning",
+        content="hit",
+    )
+    EventRawData.objects.create(event=hit, data={"message": "raw-hit"})
+    Event.objects.create(
+        id="event-le-claimed",
+        policy=policy,
+        alert=alert,
+        source_id=alert.source_id,
+        event_time=hit_time + timedelta(minutes=1),
+        level="warning",
+        action=Event.Action.CLAIMED,
+        content="claimed",
+        notified=True,
+    )
+    _mock_policy_permission(mocker, policy_id=policy.id, organization=1)
+    api_client.cookies["current_team"] = "1"
+
+    response = api_client.get(f"/api/v1/log/alert/last_event/?alert_id={alert.id}")
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()["data"]
+    assert data["event"]["id"] == hit.id
+    assert data["raw_data"]["data"]["message"] == "raw-hit"
 
 
 @pytest.mark.django_db

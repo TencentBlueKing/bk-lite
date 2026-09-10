@@ -1,15 +1,15 @@
 'use client';
+import './register-alert-pilot';
 import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import {
   Input,
   Button,
   Select,
   Tag,
-  message,
   Tabs,
   Spin,
   Tooltip,
-  Popconfirm
+  Checkbox
 } from 'antd';
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
@@ -31,10 +31,11 @@ import { AlertOutlined } from '@ant-design/icons';
 import { FiltersConfig } from '@/app/monitor/types/event';
 import CustomTable from '@/components/custom-table';
 import TimeSelector from '@/components/time-selector';
-import Permission from '@/components/permission';
 import Collapse from '@/components/collapse';
 import StackedBarChart from '@/app/monitor/components/charts/stackedBarChart';
 import AlertDetail from './alertDetail';
+import AlertHandlerActions from './alertHandlerActions';
+import { formatAlertHandlers } from './alertHandlerUtils';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useAlarmTabs, useStateList } from '@/app/monitor/hooks/event';
 import {
@@ -51,7 +52,6 @@ import TreeSelector from '@/app/monitor/components/treeSelector';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import { cloneDeep } from 'lodash';
 import UserAvatar from '@/components/user-avatar';
-import { formatUserDisplayName } from '@/utils/userDisplay';
 import { useHabitExpanded } from '@/hooks/useHabitExpanded';
 import useMonitorUserHabitApi, {
   MONITOR_ALERT_CHART_HABIT_KEY
@@ -61,12 +61,17 @@ import {
   resolveMonitorObjectQueryId,
   resolveMonitorObjectTreeKey
 } from '@/app/monitor/utils/monitorObjectQuery';
+import {
+  AppSlot,
+  isHostTab,
+  useAppSlotTabs
+} from '@/context/appCapabilities';
 const { Search } = Input;
 const { Option } = Select;
 
 const Alert: React.FC = () => {
   const { isLoading } = useApiClient();
-  const { getMonitorAlert, getMonitorObject, patchMonitorAlert } =
+  const { getMonitorAlert, getMonitorObject } =
     useMonitorApi();
   const { getUserHabit, saveUserHabit } = useMonitorUserHabitApi();
   const { t } = useTranslation();
@@ -74,7 +79,19 @@ const Alert: React.FC = () => {
   const ALERT_TYPE_MAP = useAlertTypeMap();
   const LEVEL_LIST = useLevelList();
   const stateList = useStateList();
-  const tabs: TabItem[] = useAlarmTabs();
+  const hostTabs: TabItem[] = useAlarmTabs();
+  const { tabs: extraTabs, loading: extraTabsLoading } = useAppSlotTabs(
+    'monitor.event.extraTabs'
+  );
+  const extraTabKeys = useMemo(
+    () => extraTabs.map((item) => item.key),
+    [extraTabs]
+  );
+  const extraTabKeySet = useMemo(() => new Set(extraTabKeys), [extraTabKeys]);
+  const tabs: TabItem[] = useMemo(
+    () => [...hostTabs, ...extraTabs],
+    [extraTabs, hostTabs]
+  );
   const { convertToLocalizedTime } = useLocalizedTime();
   const commonContext = useCommon();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -107,6 +124,12 @@ const Alert: React.FC = () => {
     state: []
   });
   const [activeTab, setActiveTab] = useState<string>('activeAlarms');
+  const [slotRefreshKey, setSlotRefreshKey] = useState(0);
+  const showingHostTab = isHostTab(activeTab, extraTabKeySet);
+  const slotTimeRange = useMemo(
+    () => getRecentTimeRange(timeValues),
+    [timeValues]
+  );
   const [chartData, setChartData] = useState<Record<string, any>[]>([]);
   const loadChartHabit = useCallback(
     () => getUserHabit(MONITOR_ALERT_CHART_HABIT_KEY),
@@ -125,9 +148,9 @@ const Alert: React.FC = () => {
   const [treeLoading, setTreeLoading] = useState<boolean>(false);
   const [objects, setObjects] = useState<ObjectItem[]>([]);
   const [treeData, setTreeData] = useState<TreeItem[]>([]);
-  const [confirmLoading, setConfirmLoading] = useState(false);
   const [objectId, setObjectId] = useState<React.Key>('');
   const [defaultSelectObj, setDefaultSelectObj] = useState<React.Key>('');
+  const [myAlert, setMyAlert] = useState(false);
   const { syncObjectId, searchParams } = useMonitorObjectQuery();
 
   const columns: ColumnItem[] = [
@@ -198,29 +221,28 @@ const Alert: React.FC = () => {
         </>
       )
     },
-    ...(activeTab === 'historicalAlarms'
-      ? [
-        {
-          title: t('common.operator'),
-          dataIndex: 'operator',
-          key: 'operator',
-          render: (_: unknown, { operator }: TableDataItem) =>
-            operator ? (
-              <UserAvatar
-                userName={formatUserDisplayName(operator, userList)}
-                size="small"
-              />
-            ) : (
-              <>--</>
-            )
-        }
-      ]
-      : []),
+    {
+      title: t('monitor.events.handler'),
+      dataIndex: 'handlers',
+      key: 'handlers',
+      render: (_: unknown, record: TableDataItem) => {
+        const text = formatAlertHandlers(
+          record.handlers,
+          record.handlers_display,
+          userList
+        );
+        return text !== '--' ? (
+          <UserAvatar userName={text} size="small" />
+        ) : (
+          <>--</>
+        );
+      }
+    },
     {
       title: t('common.action'),
       key: 'action',
       dataIndex: 'action',
-      width: 120,
+      width: 280,
       fixed: 'right',
       render: (_, record) => (
         <>
@@ -231,23 +253,11 @@ const Alert: React.FC = () => {
           >
             {t('common.detail')}
           </Button>
-          <Permission
-            requiredPermissions={['Operate']}
-            instPermissions={record.permission}
-          >
-            <Popconfirm
-              title={t('monitor.events.closeTitle')}
-              description={t('monitor.events.closeContent')}
-              okText={t('common.confirm')}
-              cancelText={t('common.cancel')}
-              okButtonProps={{ loading: confirmLoading }}
-              onConfirm={() => alertCloseConfirm(record.id as number)}
-            >
-              <Button type="link" disabled={record.status !== 'new'}>
-                {t('common.close')}
-              </Button>
-            </Popconfirm>
-          </Permission>
+          <AlertHandlerActions
+            record={record}
+            closeText={t('common.close')}
+            onSuccess={onRefresh}
+          />
         </>
       )
     }
@@ -268,7 +278,7 @@ const Alert: React.FC = () => {
       return;
     }
     timerRef.current = setInterval(() => {
-      if (objectId) {
+      if (objectId && showingHostTab) {
         getAssetInsts('timer');
         getChartData('timer');
       }
@@ -282,24 +292,33 @@ const Alert: React.FC = () => {
     objectId,
     searchText,
     pagination.current,
-    pagination.pageSize
+    pagination.pageSize,
+    showingHostTab
   ]);
 
   useEffect(() => {
-    if (isLoading || !objectId) return;
+    if (isLoading || !objectId || !showingHostTab) return;
     getAssetInsts('refresh');
   }, [
     isLoading,
     timeValues,
     objectId,
     pagination.current,
-    pagination.pageSize
+    pagination.pageSize,
+    showingHostTab
   ]);
 
   useEffect(() => {
-    if (isLoading || !objectId) return;
+    if (isLoading || !objectId || !showingHostTab) return;
     getChartData('refresh');
-  }, [isLoading, timeValues, objectId]);
+  }, [isLoading, timeValues, objectId, showingHostTab]);
+
+  useEffect(() => {
+    if (extraTabsLoading) return;
+    if (!showingHostTab && !extraTabKeySet.has(activeTab)) {
+      setActiveTab('activeAlarms');
+    }
+  }, [activeTab, extraTabKeySet, extraTabsLoading, showingHostTab]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -314,6 +333,9 @@ const Alert: React.FC = () => {
 
   const changeTab = (val: string) => {
     setActiveTab(val);
+    if (!isHostTab(val, extraTabKeySet)) {
+      return;
+    }
     const filtersConfig = {
       level: [],
       state: []
@@ -381,25 +403,12 @@ const Alert: React.FC = () => {
     ];
   };
 
-  const alertCloseConfirm = async (id: React.Key) => {
-    setConfirmLoading(true);
-    try {
-      await patchMonitorAlert(id, {
-        status: 'closed'
-      });
-      message.success(t('monitor.events.successfullyClosed'));
-      onRefresh();
-    } finally {
-      setConfirmLoading(false);
-    }
-  };
-
   const clearTimer = () => {
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
   };
 
-  const getParams = (tab: string, filtersMap: FiltersConfig) => {
+  const getParams = (tab: string, filtersMap: FiltersConfig, mine = myAlert) => {
     const recentTimeRange = getRecentTimeRange(timeValues);
     const isActive = tab === 'activeAlarms';
     const params = {
@@ -412,7 +421,8 @@ const Alert: React.FC = () => {
       page: pagination.current,
       page_size: pagination.pageSize,
       created_at_after: isActive ? '' : dayjs(recentTimeRange[0]).toISOString(),
-      created_at_before: isActive ? '' : dayjs(recentTimeRange[1]).toISOString()
+      created_at_before: isActive ? '' : dayjs(recentTimeRange[1]).toISOString(),
+      ...(mine ? { my_alert: 1 } : {})
     };
     return params;
   };
@@ -434,6 +444,7 @@ const Alert: React.FC = () => {
       text?: string;
       tab?: string;
       filtersConfig?: FiltersConfig;
+      myAlert?: boolean;
     }
   ) => {
     alertAbortControllerRef.current?.abort();
@@ -442,7 +453,8 @@ const Alert: React.FC = () => {
     const currentRequestId = ++alertRequestIdRef.current;
     const params: any = getParams(
       extra?.tab || activeTab,
-      extra?.filtersConfig || filters
+      extra?.filtersConfig || filters,
+      extra?.myAlert
     );
     if (extra?.text === 'clear') {
       params.content = '';
@@ -470,6 +482,7 @@ const Alert: React.FC = () => {
     extra?: {
       tab?: string;
       filtersConfig?: FiltersConfig;
+      myAlert?: boolean;
     }
   ) => {
     chartAbortControllerRef.current?.abort();
@@ -478,7 +491,8 @@ const Alert: React.FC = () => {
     const currentRequestId = ++chartRequestIdRef.current;
     const params = getParams(
       extra?.tab || activeTab,
-      extra?.filtersConfig || filters
+      extra?.filtersConfig || filters,
+      extra?.myAlert
     );
     const chartParams: any = cloneDeep(params);
     delete chartParams.page;
@@ -508,6 +522,10 @@ const Alert: React.FC = () => {
   };
 
   const onRefresh = () => {
+    if (!showingHostTab) {
+      setSlotRefreshKey((key) => key + 1);
+      return;
+    }
     getAssetInsts('refresh');
     getChartData('refresh');
   };
@@ -635,7 +653,9 @@ const Alert: React.FC = () => {
         </ResizableSidebar>
         <div className={alertStyle.alarmList}>
           <Tabs activeKey={activeTab} items={tabs} onChange={changeTab} />
-          <div className={alertStyle.searchCondition}>
+          {showingHostTab ? (
+            <>
+              <div className={alertStyle.searchCondition}>
             <div className="mb-[10px]">
               {t('monitor.search.searchCriteria')}
             </div>
@@ -726,15 +746,28 @@ const Alert: React.FC = () => {
             </div>
           </Spin>
           <div className={alertStyle.table}>
-            <Search
-              allowClear
-              className="w-[240px] mb-[10px]"
-              placeholder={t('common.searchPlaceHolder')}
-              value={searchText}
-              enterButton
-              onChange={(e) => setSearchText(e.target.value)}
-              onSearch={handleSearch}
-            />
+            <div className="mb-[10px] flex items-center gap-3">
+              <Search
+                allowClear
+                className="w-[240px]"
+                placeholder={t('common.searchPlaceHolder')}
+                value={searchText}
+                enterButton
+                onChange={(e) => setSearchText(e.target.value)}
+                onSearch={handleSearch}
+              />
+              <Checkbox
+                checked={myAlert}
+                onChange={(event) => {
+                  const checked = event.target.checked;
+                  setMyAlert(checked);
+                  getAssetInsts('refresh', { myAlert: checked });
+                  getChartData('refresh', { myAlert: checked });
+                }}
+              >
+                {t('monitor.events.myAlert')}
+              </Checkbox>
+            </div>
             <CustomTable
               className="w-full"
               scroll={{
@@ -751,6 +784,29 @@ const Alert: React.FC = () => {
               onChange={handleTableChange}
             />
           </div>
+            </>
+          ) : (
+            <>
+              <div className={alertStyle.searchCondition}>
+                <div className="flex justify-end">
+                  <TimeSelector
+                    defaultValue={timeDefaultValue}
+                    onChange={onTimeChange}
+                    onFrequenceChange={onFrequenceChange}
+                    onRefresh={onRefresh}
+                  />
+                </div>
+              </div>
+              <div className="bg-[var(--color-bg-1)] p-4">
+                <AppSlot
+                  id="monitor.event.extraTabs"
+                  slotKey={activeTab}
+                  timeRange={slotTimeRange}
+                  refreshKey={slotRefreshKey}
+                />
+              </div>
+            </>
+          )}
         </div>
       </div>
       <AlertDetail

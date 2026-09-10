@@ -771,6 +771,7 @@ def _import_defs():
     defs = _directory_defs()
     defs["import_options"] = _object(
         {
+            "import_format": {"type": "string", "enum": ["okf"]},
             "restore_native_structure": {"type": "boolean"},
             "create_directories_from_folders": {"type": "boolean"},
             "allow_fallback": {"type": "boolean"},
@@ -796,7 +797,7 @@ def _import_target_properties():
 
 def _import_preflight_request():
     properties = {
-        "archive_kind": {"type": "string", "enum": ["opspilot_native", "third_party"]},
+        "archive_kind": {"type": "string", "enum": ["opspilot_native", "third_party", "okf"]},
         **_import_target_properties(),
     }
     return _root(
@@ -818,7 +819,7 @@ def _import_binding():
         "archive_hash": _hash(),
         "knowledge_base_id": _positive_id(read_only=True),
         "actor_id": _positive_id(read_only=True),
-        "archive_kind": {"type": "string", "enum": ["opspilot_native", "third_party"]},
+        "archive_kind": {"type": "string", "enum": ["opspilot_native", "third_party", "okf"]},
         **_import_target_properties(),
         "quota_version": {"type": "string", "minLength": 1},
     }

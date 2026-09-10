@@ -17,7 +17,7 @@
 | CollectType | `models/collect_type.py` | 采集方式（采集器、默认查询） |
 | CollectInstance / CollectInstanceOrganization / CollectConfig | `models/instance.py` | 采集实例（绑定 node）、组织权限、采集配置 |
 | LogGroup / LogGroupOrganization / SearchCondition | `models/log_group.py` | 多租户日志分组、组织权限、保存的搜索条件 |
-| Policy / PolicyOrganization / Alert / Event / EventRawData | `models/policy.py` | 日志告警策略、生成的告警/事件/原始日志 |
+| Policy / PolicyOrganization / Alert / Event / EventRawData | `models/policy.py` | 日志告警策略、策略组织、生成时快照组织的告警/事件/原始日志；策略删除 SET_NULL 保留历史告警 |
 | AlertSnapshot | `models/policy.py:127` | 告警生命周期快照（存 S3/MinIO，支持压缩） |
 
 **存储**：PostgreSQL（元数据）；**VictoriaLogs**（日志，`utils/query_log.py` + `constants/victoriametrics.py`，环境变量 `VICTORIALOGS_*`）；MinIO/S3 bucket `log-alert-raw-data`（`EventRawData.data` 与 `AlertSnapshot.snapshots` 均使用 `S3JSONField`，raw data 保存失败会回滚主事务）。
@@ -33,6 +33,7 @@
 - 被动接收日志提取器【已实现】：syslog / snmptrap 的提取规则归属采集类型而非日志采集实例，中心 Vector 按 `collect_type` 匹配；其余采集类型仍按实例 `instance_id` 匹配。契约见 `specs/changes/log-extractor-passive-collect/spec.md`。
 - Vector 采集配置编辑约定【已实现/已存在】：`file` 与 `docker` 两类 Vector 采集器在前端编辑模式中统一读写 `child.content` 扁平结构；保存与回显保持同构，避免多行合并、容器过滤等字段在“保存后再次编辑”时丢失（`web/src/app/log/hooks/integration/collectors/vector/fileDefaults.ts:4-75`、`web/src/app/log/hooks/integration/collectors/vector/dockerDefaults.ts:4-92`）。
 - Celery（静态 beat）：仅 `compensate_log_notice_task`（通知补偿，`config.py:5` 静态注册于 `CELERY_BEAT_SCHEDULE`，crontab `*/5` 每 5 分钟一次；实现见 `tasks/policy.py`）。
+- 空处理人的活跃告警可认领 / 分派；认领、分派、关闭写入 Event。`my_alert` 在当前可见集合上再筛处理人（主列表、`/all`、stats 同一套），不靠 `operator`。
 - Celery（动态 PeriodicTask）：`tasks/policy.py:scan_log_policy_task(policy_id)` 不在静态 `CELERY_BEAT_SCHEDULE` 中，而是在策略保存/启停时由 `views/policy.py:482` `update_or_create_task` 按策略动态创建 `django-celery-beat` 的 `PeriodicTask`（name=`log_policy_task_<policy_id>`，crontab 调度，`args=[policy_id]`）来周期触发（扫描时间窗，支持补扫，更新 `last_run_time`）。
 - 策略删除路径同事务原子化【已实现/已存在】：`PolicyViewSet.destroy`（`views/policy.py:438-444`）以 `transaction.atomic()` 包裹「先按 `name=log_policy_task_<policy_id>` 删除关联 `PeriodicTask`、再调 `super().destroy` 删除策略本身」两步；任一步抛异常时整体回滚，避免产生周期性漏扫的孤儿策略（issue #3948）。配套静态分析测试 `test_policy_destroy_atomic_3948.py` 校验 `transaction.atomic` 块与 `from django.db import transaction` 同时存在、且包裹顺序敏感（先 `PeriodicTask.delete` 后 `super().destroy`），不依赖 Django/DB，任意环境可跑。
 - 管理命令：`management/commands/log_init.py:7,12,16` 调用 `management/services/plugin.py:11` 的 `migrate_collect_type` 同步采集插件，并调用 `management/services/stream.py:5` 的 `init_stream` 创建默认 LogGroup/组织绑定。

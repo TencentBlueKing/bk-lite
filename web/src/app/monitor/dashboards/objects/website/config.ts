@@ -6,6 +6,19 @@ import type { SimpleDashboardConfig } from '../common/simple-dashboard-core';
 const SUCCESS_RATE_EXPR =
   'avg by (instance_id) ((sum without (result) (count_over_time(http_response_result_type{result="success",__$labels__}[__$window__])) or sum without (result) (count_over_time(http_response_result_type{__$labels__}[__$window__])) * 0) / sum without (result) (count_over_time(http_response_result_type{__$labels__}[__$window__])) * 100)';
 
+/** 网站拨测监控高对比鲜活色板 */
+const WEBSITE_PALETTE = {
+  emerald: '#10B981',   // 成功/健康 (探测成功率、2xx 节点)
+  blue: '#2563EB',      // 响应时间主色 (平均响应时间)
+  cyan: '#06B6D4',      // 3xx 节点
+  indigo: '#6366F1',    // 峰值响应时间
+  amber: '#F59E0B',     // 警告/不匹配 (4xx 节点、内容/状态码不匹配)
+  orange: '#F97316',    // 读体失败、失败占比
+  rose: '#EF4444',      // 严重失败 (5xx 节点、连接失败)
+  crimson: '#E11D48',   // 超时
+  ruby: '#991B1B'       // DNS 错误
+} as const;
+
 export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   routeKey: 'website',
   pageTitle: '网站监控仪表盘',
@@ -21,7 +34,7 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '网站探测节点平均成功率（Telegraf result_type=success，不等于 HTTP 2xx）。',
       unit: 'percent',
       query: SUCCESS_RATE_EXPR,
-      color: '#27c274'
+      color: WEBSITE_PALETTE.emerald
     },
     {
       name: 'website_failure_rate_avg',
@@ -29,7 +42,7 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '网站探测节点平均失败占比。',
       unit: 'percent',
       query: `clamp_max(100 - ${SUCCESS_RATE_EXPR}, 100)`,
-      color: '#ff8a1f'
+      color: WEBSITE_PALETTE.orange
     },
     {
       name: 'website_response_time_avg',
@@ -37,7 +50,7 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '网站探测平均响应时间。',
       unit: 's',
       query: 'avg by (instance_id) (http_response_response_time{__$labels__})',
-      color: '#2f6bff'
+      color: WEBSITE_PALETTE.blue
     },
     {
       name: 'website_response_time_max',
@@ -45,7 +58,7 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '网站探测最大响应时间。',
       unit: 's',
       query: 'max by (instance_id) (http_response_response_time{__$labels__})',
-      color: '#8a5cff'
+      color: WEBSITE_PALETTE.indigo
     },
     {
       name: 'website_result_success_rate',
@@ -53,7 +66,7 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: 'result_code=0 的探测占比。',
       unit: 'percent',
       query: 'avg(http_response_result_code{__$labels__} == bool 0) * 100',
-      color: '#27c274'
+      color: WEBSITE_PALETTE.emerald
     },
     {
       name: 'website_result_body_mismatch_rate',
@@ -61,7 +74,7 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: 'result_code=1 的探测占比。',
       unit: 'percent',
       query: 'avg(http_response_result_code{__$labels__} == bool 1) * 100',
-      color: '#faad14'
+      color: WEBSITE_PALETTE.amber
     },
     {
       name: 'website_result_body_read_fail_rate',
@@ -69,7 +82,7 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: 'result_code=2 的探测占比。',
       unit: 'percent',
       query: 'avg(http_response_result_code{__$labels__} == bool 2) * 100',
-      color: '#d48806'
+      color: WEBSITE_PALETTE.orange
     },
     {
       name: 'website_result_conn_fail_rate',
@@ -77,7 +90,7 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: 'result_code=3 的探测占比。',
       unit: 'percent',
       query: 'avg(http_response_result_code{__$labels__} == bool 3) * 100',
-      color: '#ff4d4f'
+      color: WEBSITE_PALETTE.rose
     },
     {
       name: 'website_result_timeout_rate',
@@ -85,7 +98,7 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: 'result_code=4 的探测占比。',
       unit: 'percent',
       query: 'avg(http_response_result_code{__$labels__} == bool 4) * 100',
-      color: '#ff7875'
+      color: WEBSITE_PALETTE.crimson
     },
     {
       name: 'website_result_dns_fail_rate',
@@ -93,7 +106,7 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: 'result_code=5 的探测占比。',
       unit: 'percent',
       query: 'avg(http_response_result_code{__$labels__} == bool 5) * 100',
-      color: '#cf1322'
+      color: WEBSITE_PALETTE.ruby
     },
     {
       name: 'website_result_status_mismatch_rate',
@@ -101,7 +114,7 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: 'result_code=6 的探测占比。',
       unit: 'percent',
       query: 'avg(http_response_result_code{__$labels__} == bool 6) * 100',
-      color: '#ffa940'
+      color: WEBSITE_PALETTE.amber
     },
     {
       name: 'website_status_code_2xx_count',
@@ -109,7 +122,7 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '当前返回 2xx 状态码的探测节点数。',
       unit: 'counts',
       query: 'count((http_response_http_response_code{__$labels__} >= 200) and (http_response_http_response_code{__$labels__} < 300)) or on() vector(0)',
-      color: '#27c274'
+      color: WEBSITE_PALETTE.emerald
     },
     {
       name: 'website_status_code_3xx_count',
@@ -117,7 +130,7 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '当前返回 3xx 状态码的探测节点数。',
       unit: 'counts',
       query: 'count((http_response_http_response_code{__$labels__} >= 300) and (http_response_http_response_code{__$labels__} < 400)) or on() vector(0)',
-      color: '#2f6bff'
+      color: WEBSITE_PALETTE.cyan
     },
     {
       name: 'website_status_code_4xx_count',
@@ -125,7 +138,7 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '当前返回 4xx 状态码的探测节点数。',
       unit: 'counts',
       query: 'count((http_response_http_response_code{__$labels__} >= 400) and (http_response_http_response_code{__$labels__} < 500)) or on() vector(0)',
-      color: '#ff8a1f'
+      color: WEBSITE_PALETTE.amber
     },
     {
       name: 'website_status_code_5xx_count',
@@ -133,7 +146,7 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '当前返回 5xx 状态码的探测节点数。',
       unit: 'counts',
       query: 'count(http_response_http_response_code{__$labels__} >= 500) or on() vector(0)',
-      color: '#ff4d4f'
+      color: WEBSITE_PALETTE.rose
     }
   ],
   // Layer0 + A 成功率 + B 响应时间；失败归因交给下方「探测结果分布 / 状态码分布」
@@ -151,7 +164,7 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
         }
       ],
       metric: 'website_success_rate_avg',
-      color: '#27c274',
+      color: WEBSITE_PALETTE.emerald,
       icon: 'api',
       compare: true,
       compareFavorableDirection: 'up',
@@ -161,7 +174,7 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       title: '平均响应时间',
       guide: [{ label: '平均响应时间', detail: '优先观察平均响应是否持续升高，再对比峰值判断是整体变慢还是尖刺。' }],
       metric: 'website_response_time_avg',
-      color: '#2f6bff',
+      color: WEBSITE_PALETTE.blue,
       icon: 'clock',
       compare: true,
       footer: [{ label: '峰值响应', metric: 'website_response_time_max', unit: 's' }]
@@ -178,7 +191,7 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
           detail: '下跌时先看探测结果分布与响应时间；连接失败/超时/DNS 不会产生 HTTP 状态码。'
         }
       ],
-      series: [{ metric: 'website_success_rate_avg', label: '探测成功率', color: '#27c274', unit: 'percent' }]
+      series: [{ metric: 'website_success_rate_avg', label: '探测成功率', color: WEBSITE_PALETTE.emerald, unit: 'percent' }]
     },
     {
       title: '响应时间趋势',
@@ -186,8 +199,8 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       guide: [{ label: '响应时间趋势', detail: '对比平均值与峰值，优先识别整体变慢还是局部尖刺。' }],
       metric: 'website_response_time_avg',
       series: [
-        { metric: 'website_response_time_avg', label: '平均响应', color: '#2f6bff', unit: 's' },
-        { metric: 'website_response_time_max', label: '峰值响应', color: '#8a5cff', unit: 's' }
+        { metric: 'website_response_time_avg', label: '平均响应', color: WEBSITE_PALETTE.blue, unit: 's' },
+        { metric: 'website_response_time_max', label: '峰值响应', color: WEBSITE_PALETTE.indigo, unit: 's' }
       ]
     }
   ],
@@ -207,13 +220,13 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       emptyWhenAllZero: true,
       emptyDescription: '当前窗口无探测结果码样本',
       segments: [
-        { label: '成功', metric: 'website_result_success_rate', color: '#27c274', unit: 'percent' },
-        { label: '内容不匹配', metric: 'website_result_body_mismatch_rate', color: '#faad14', unit: 'percent' },
-        { label: '读体失败', metric: 'website_result_body_read_fail_rate', color: '#d48806', unit: 'percent' },
-        { label: '连接失败', metric: 'website_result_conn_fail_rate', color: '#ff4d4f', unit: 'percent' },
-        { label: '超时', metric: 'website_result_timeout_rate', color: '#ff7875', unit: 'percent' },
-        { label: 'DNS错误', metric: 'website_result_dns_fail_rate', color: '#cf1322', unit: 'percent' },
-        { label: '状态码不匹配', metric: 'website_result_status_mismatch_rate', color: '#ffa940', unit: 'percent' }
+        { label: '成功', metric: 'website_result_success_rate', color: WEBSITE_PALETTE.emerald, unit: 'percent' },
+        { label: '内容不匹配', metric: 'website_result_body_mismatch_rate', color: WEBSITE_PALETTE.amber, unit: 'percent' },
+        { label: '读体失败', metric: 'website_result_body_read_fail_rate', color: WEBSITE_PALETTE.orange, unit: 'percent' },
+        { label: '连接失败', metric: 'website_result_conn_fail_rate', color: WEBSITE_PALETTE.rose, unit: 'percent' },
+        { label: '超时', metric: 'website_result_timeout_rate', color: WEBSITE_PALETTE.crimson, unit: 'percent' },
+        { label: 'DNS错误', metric: 'website_result_dns_fail_rate', color: WEBSITE_PALETTE.ruby, unit: 'percent' },
+        { label: '状态码不匹配', metric: 'website_result_status_mismatch_rate', color: WEBSITE_PALETTE.amber, unit: 'percent' }
       ]
     },
     {
@@ -231,10 +244,10 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       emptyWhenAllZero: true,
       emptyDescription: '当前窗口无 HTTP 状态码（失败可能发生在建连/TLS/超时阶段，或尚未采集到状态码）',
       segments: [
-        { label: '2xx', metric: 'website_status_code_2xx_count', color: '#27c274', unit: 'counts' },
-        { label: '3xx', metric: 'website_status_code_3xx_count', color: '#2f6bff', unit: 'counts' },
-        { label: '4xx', metric: 'website_status_code_4xx_count', color: '#ff8a1f', unit: 'counts' },
-        { label: '5xx', metric: 'website_status_code_5xx_count', color: '#ff4d4f', unit: 'counts' }
+        { label: '2xx', metric: 'website_status_code_2xx_count', color: WEBSITE_PALETTE.emerald, unit: 'counts' },
+        { label: '3xx', metric: 'website_status_code_3xx_count', color: WEBSITE_PALETTE.cyan, unit: 'counts' },
+        { label: '4xx', metric: 'website_status_code_4xx_count', color: WEBSITE_PALETTE.amber, unit: 'counts' },
+        { label: '5xx', metric: 'website_status_code_5xx_count', color: WEBSITE_PALETTE.rose, unit: 'counts' }
       ]
     }
   ],

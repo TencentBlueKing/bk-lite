@@ -91,6 +91,66 @@ describe('LogQueryInput', () => {
     expect(input.value).toBe('host.name:');
   });
 
+  it('Tab 也可以选中当前高亮的字段候选', async () => {
+    const user = userEvent.setup();
+    render(<ControlledInput />);
+
+    const input = screen.getByPlaceholderText('query-input') as HTMLInputElement;
+    await user.click(input);
+    await user.keyboard('{Tab}');
+
+    expect(input.value).toBe('host.name:');
+  });
+
+  it('传入 onPressEnter 时回车仍会把当前字段候选写入输入框', async () => {
+    const user = userEvent.setup();
+    const onPressEnter = vi.fn();
+    const SearchInput = () => {
+      const [value, setValue] = useState('');
+      return (
+        <LogQueryInput
+          value={value}
+          onChange={setValue}
+          onPressEnter={onPressEnter}
+          availableFields={['host.name', 'level']}
+          logGroups={['group-a']}
+          timeRange={{ mode: 'absolute', start: 1000, end: 2000 }}
+          placeholder="query-input"
+        />
+      );
+    };
+    render(<SearchInput />);
+
+    const input = screen.getByPlaceholderText('query-input') as HTMLInputElement;
+    await user.click(input);
+    await user.keyboard('{Enter}');
+
+    expect(onPressEnter).not.toHaveBeenCalled();
+    expect(input.value).toBe('host.name:');
+  });
+
+  it('没有可选项时回车才会触发搜索', async () => {
+    const user = userEvent.setup();
+    const onPressEnter = vi.fn();
+    render(
+      <LogQueryInput
+        value=""
+        onPressEnter={onPressEnter}
+        availableFields={['host.name']}
+        logGroups={[]}
+        timeRange={{ mode: 'absolute', start: 1000, end: 2000 }}
+        placeholder="query-input"
+      />
+    );
+
+    const input = screen.getByPlaceholderText('query-input') as HTMLInputElement;
+    await user.click(input);
+    await user.keyboard('{Enter}');
+
+    expect(onPressEnter).toHaveBeenCalledTimes(1);
+    expect(input.value).toBe('');
+  });
+
   it('方向键高亮的字段与回车选中的字段一致', async () => {
     const user = userEvent.setup();
     render(<ControlledInput />);
@@ -104,6 +164,23 @@ describe('LogQueryInput', () => {
       which: 40
     });
     await user.keyboard('{Enter}');
+
+    expect(input.value).toBe('host.os.family:');
+  });
+
+  it('方向键高亮的字段与 Tab 选中的字段一致', async () => {
+    const user = userEvent.setup();
+    render(<ControlledInput />);
+
+    const input = screen.getByPlaceholderText('query-input') as HTMLInputElement;
+    await user.click(input);
+    fireEvent.keyDown(input, {
+      key: 'ArrowDown',
+      code: 'ArrowDown',
+      keyCode: 40,
+      which: 40
+    });
+    await user.keyboard('{Tab}');
 
     expect(input.value).toBe('host.os.family:');
   });

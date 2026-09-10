@@ -4,26 +4,33 @@
 # @Author: windyzhao
 import re
 
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from apps.cmdb.constants.constants import PERMISSION_TASK, CollectPluginTypes, CollectRunStatusType
+from apps.cmdb.collection.physical_server_protocol import (
+    PHYSICAL_SERVER_MODEL_ID,
+    PHYSICAL_SERVER_PROTOCOLS,
+    normalize_physical_server_protocol,
+    resolve_physical_server_plugin_id,
+)
+from apps.cmdb.constants.constants import PERMISSION_TASK, CollectDriverTypes, CollectPluginTypes, CollectRunStatusType
 from apps.cmdb.filters.collect_filters import CollectModelFilter, OidModelFilter
-from apps.cmdb.models.collect_model import CollectModels, OidMapping
+from apps.cmdb.language.service import apply_collect_tree_translations
+from apps.cmdb.models.collect_model import ENCRYPTED_PREFIX, CollectModels, OidMapping
 from apps.cmdb.node_configs.config_factory import NodeParamsFactory
 from apps.cmdb.permissions.inst_task_permission import InstanceTaskPermission
 from apps.cmdb.serializers.collect_serializer import (
     COLLECT_RESULT_PAYLOAD_FIELDS,
     CollectModelDetailSerializer,
-    CollectModelIdStatusSerializer,
     CollectModelLIstSerializer,
     CollectModelSerializer,
     OidModelSerializer,
 )
+from apps.cmdb.services.collect_credential_contract import API_SECRET_MASK
 from apps.cmdb.services.collect_document import get_collect_model_document
 from apps.cmdb.services.collect_object_tree import get_collect_obj_tree
 from apps.cmdb.services.collect_service import CollectModelService
@@ -77,7 +84,7 @@ class CollectModelViewSet(AuthViewSet):
     @HasPermission("auto_collection-View")
     @action(methods=["get"], detail=False, url_path="network_config_file_supported_brands")
     def network_config_file_supported_brands(self, request):
-        return Response({"items": get_supported_brand_options()})
+        return Response({"items": get_supported_brand_options(getattr(request.user, "locale", None))})
 
     @staticmethod
     def _parse_positive_int(value, field_name, default):
@@ -107,27 +114,92 @@ class CollectModelViewSet(AuthViewSet):
         queryset = self.get_queryset_by_permission(request, self.queryset.all())
         return get_object_or_404(queryset, id=task_id)
 
+    _CLOUD_SECRET_FIELD_NAMES = (
+        "accessKey",
+        "accessSecret",
+        "access_key",
+        "access_secret",
+        "secret_id",
+        "secret_key",
+    )
+
+    @staticmethod
+    def _blank_cloud_secret(value):
+        if not isinstance(value, str):
+            return value in (None, "")
+        return value.strip() in ("", API_SECRET_MASK)
+
+    @classmethod
+    def _pop_region_task_id(cls, params):
+        task_id = params.pop("task_id", None) or params.pop("taskId", None)
+        if isinstance(task_id, (list, tuple)):
+            task_id = task_id[0] if task_id else None
+        return task_id or None
+
+    def _page_region_secrets(self, params):
+        access_key = params.get("access_key") or params.get("accessKey") or params.get("secret_id")
+        access_secret = params.get("access_secret") or params.get("accessSecret") or params.get("secret_key")
+        if self._blank_cloud_secret(access_key) or self._blank_cloud_secret(access_secret):
+            return None
+        if str(access_key).startswith(ENCRYPTED_PREFIX) or str(access_secret).startswith(ENCRYPTED_PREFIX):
+            return None
+        return {
+            "access_key": access_key,
+            "access_secret": access_secret,
+            "accessKey": access_key,
+            "accessSecret": access_secret,
+        }
+
+    def _decrypt_region_credential(self, raw_credential):
+        def decrypt_item(item):
+            if not isinstance(item, dict):
+                return item
+            decrypted = dict(item)
+            for key, value in list(decrypted.items()):
+                if not isinstance(value, str) or not value:
+                    continue
+                if key in self._CLOUD_SECRET_FIELD_NAMES or value.startswith(ENCRYPTED_PREFIX):
+                    decrypted[key] = CollectModels.decrypt_password(value)
+            return decrypted
+
+        if isinstance(raw_credential, list):
+            return [decrypt_item(item) for item in raw_credential]
+        return decrypt_item(raw_credential)
+
     def _build_region_query_credential(self, request, params, task_id=None):
         credential = dict(params)
         model_id = (credential.get("model_id") or "").split("_account", 1)[0]
         credential["model_id"] = model_id
 
         driver_type = credential.get("driver_type")
-        if task_id:
+        page_secrets = self._page_region_secrets(credential)
+        if page_secrets:
+            raw_credential = page_secrets
+        elif task_id:
             instance = self._get_authorized_task(request, task_id)
-            raw_credential = instance.decrypt_credentials or {}
+            raw_credential = self._decrypt_region_credential(instance.decrypt_credentials or instance.credential or {})
             driver_type = instance.driver_type
         else:
-            raw_credential = credential
+            raw_credential = {key: value for key, value in credential.items() if not self._blank_cloud_secret(value)}
 
         params_cls = NodeParamsFactory.get_params_class(model_id, driver_type)
         credential.update(params_cls.build_region_credential(raw_credential))
+        if self._blank_cloud_secret(credential.get("secret_id")):
+            fallback_key = credential.get("access_key") or credential.get("accessKey")
+            if page_secrets:
+                fallback_key = fallback_key or page_secrets.get("access_key")
+            if not self._blank_cloud_secret(fallback_key):
+                credential["secret_id"] = fallback_key
+        if isinstance(credential.get("secret_id"), str) and credential["secret_id"].startswith(ENCRYPTED_PREFIX):
+            credential["secret_id"] = CollectModels.decrypt_password(credential["secret_id"])
+        if isinstance(credential.get("secret_key"), str) and credential["secret_key"].startswith(ENCRYPTED_PREFIX):
+            credential["secret_key"] = CollectModels.decrypt_password(credential["secret_key"])
         return credential
 
     @HasPermission("auto_collection-View")
     @action(methods=["get"], detail=False, url_path="collect_model_tree")
     def tree(self, request, *args, **kwargs):
-        data = get_collect_obj_tree()
+        data = apply_collect_tree_translations(get_collect_obj_tree(), request.user.locale)
         return WebUtils.response_success(data)
 
     @HasPermission("auto_collection-View")
@@ -138,8 +210,14 @@ class CollectModelViewSet(AuthViewSet):
         # Given 页面受组织与实例权限控制，When 查询任务名，Then 先应用对象权限过滤。
         queryset = self.get_queryset_by_permission(request, queryset)
         queryset = self.apply_visibility_filter(queryset).order_by("id")
-        task_list = queryset.values("id", "name", "model_id")
-        collect_obj_tree = get_collect_obj_tree()
+        task_list = queryset.values(
+            "id",
+            "name",
+            "model_id",
+            "driver_type",
+            "params__collection_protocol",
+        )
+        collect_obj_tree = apply_collect_tree_translations(get_collect_obj_tree(), request.user.locale)
         plugin_meta_map = {
             str(child.get("id")): {
                 "category": str(item.get("id")),
@@ -150,17 +228,28 @@ class CollectModelViewSet(AuthViewSet):
             for child in item.get("children", [])
             if child.get("id")
         }
-        data = [
-            {
-                "id": item["id"],
-                "name": item["name"],
-                "plugin": item["model_id"],
-                "category": plugin_meta_map.get(str(item["model_id"]), {}).get("category"),
-                "plugin_name": plugin_meta_map.get(str(item["model_id"]), {}).get("plugin_name"),
-                "category_name": plugin_meta_map.get(str(item["model_id"]), {}).get("category_name"),
-            }
-            for item in task_list
-        ]
+
+        def resolve_plugin_id(item):
+            return resolve_physical_server_plugin_id(
+                item["model_id"],
+                item.get("driver_type"),
+                item.get("params__collection_protocol"),
+            )
+
+        data = []
+        for item in task_list:
+            plugin_id = resolve_plugin_id(item)
+            plugin_meta = plugin_meta_map.get(plugin_id, {})
+            data.append(
+                {
+                    "id": item["id"],
+                    "name": item["name"],
+                    "plugin": plugin_id,
+                    "category": plugin_meta.get("category"),
+                    "plugin_name": plugin_meta.get("plugin_name"),
+                    "category_name": plugin_meta.get("category_name"),
+                }
+            )
         return WebUtils.response_success(data)
 
     def get_serializer_class(self):
@@ -363,15 +452,33 @@ class CollectModelViewSet(AuthViewSet):
         TODO 看看未来需不需要使用实例的endpoint和认证信息，目前先使用公共接口，后续如果有需要再调整
         "host": "ecs.private-cloud.example.com"
         """
-        params = requests.data.copy()
+        params = dict(requests.data)
         cloud_id = requests.data["cloud_id"]
         cloud_list = NodeMgmt().cloud_region_list()
         cloud_id_map = {i["id"]: i["name"] for i in cloud_list}
         cloud_name = cloud_id_map.get(cloud_id)
         if not cloud_name:
             return WebUtils.response_error(error_message="cloud_id 不存在", status_code=400)
-        task_id = params.pop("task_id", None)
+        task_id = self._pop_region_task_id(params)
         credential = self._build_region_query_credential(requests, params, task_id=task_id)
+        model_id = credential.get("model_id")
+        if (
+            model_id in {"qcloud", "aliyun", "hwcloud"}
+            and self._blank_cloud_secret(credential.get("secret_id"))
+            and self._blank_cloud_secret(credential.get("accessKey") or credential.get("access_key"))
+        ):
+            logger.info(
+                "event=list_regions_missing_secret model_id=%s has_task_id=%s request_fields=%s",
+                model_id,
+                bool(task_id),
+                ",".join(sorted(str(key) for key in params.keys())),
+            )
+            if task_id:
+                return WebUtils.response_error(
+                    error_message="已保存任务中没有可用的云访问密钥，请重新填写 SecretId 和 SecretKey",
+                    status_code=400,
+                )
+            return WebUtils.response_error(error_message="缺少云访问密钥，请重新填写或打开已保存的任务后再刷新区域", status_code=400)
         result = CollectModelService.list_regions(credential, cloud_name=cloud_name)
         if result.get("success"):
             return WebUtils.response_success(result.get("result", []))
@@ -383,22 +490,35 @@ class CollectModelViewSet(AuthViewSet):
         queryset = self.get_queryset()
         filter_queryset = self.get_queryset_by_permission(request=request, queryset=queryset)
         filter_queryset = self.apply_visibility_filter(filter_queryset)
-        filter_queryset = filter_queryset.only("model_id", "driver_type", "exec_status")
-        serializer = CollectModelIdStatusSerializer(filter_queryset, many=True, context={"request": request})
+        status_rows = filter_queryset.values(
+            "model_id",
+            "driver_type",
+            "exec_status",
+            "params__collection_protocol",
+        ).annotate(total=Count("id"))
         data = {}
-        for model_data in serializer.data:
+
+        def increment(status_key, exec_status, total=1):
+            if status_key not in data:
+                data[status_key] = {"success": 0, "failed": 0, "running": 0, "partial_success": 0}
+            if exec_status == CollectRunStatusType.SUCCESS:
+                data[status_key]["success"] += total
+            elif exec_status == CollectRunStatusType.ERROR:
+                data[status_key]["failed"] += total
+            elif exec_status == CollectRunStatusType.RUNNING:
+                data[status_key]["running"] += total
+            elif exec_status == CollectRunStatusType.PARTIAL_SUCCESS:
+                data[status_key]["partial_success"] += total
+
+        for model_data in status_rows:
             driver_type = model_data.get("driver_type") or ""
             status_key = f"{model_data['model_id']}__{driver_type}" if driver_type else model_data["model_id"]
-            if not data.get(status_key, False):
-                data[status_key] = {"success": 0, "failed": 0, "running": 0, "partial_success": 0}
-            if model_data["exec_status"] == CollectRunStatusType.SUCCESS:
-                data[status_key]["success"] += 1
-            elif model_data["exec_status"] == CollectRunStatusType.ERROR:
-                data[status_key]["failed"] += 1
-            elif model_data["exec_status"] == CollectRunStatusType.RUNNING:
-                data[status_key]["running"] += 1
-            elif model_data["exec_status"] == CollectRunStatusType.PARTIAL_SUCCESS:
-                data[status_key]["partial_success"] += 1
+            increment(status_key, model_data["exec_status"], model_data["total"])
+
+            if model_data["model_id"] == PHYSICAL_SERVER_MODEL_ID and driver_type == CollectDriverTypes.PROTOCOL:
+                protocol = normalize_physical_server_protocol(model_data.get("params__collection_protocol"))
+                if protocol in PHYSICAL_SERVER_PROTOCOLS:
+                    increment(f"{status_key}__{protocol}", model_data["exec_status"], model_data["total"])
         return WebUtils.response_success(data)
 
     @HasPermission("auto_collection-View")
@@ -451,7 +571,7 @@ class CollectModelViewSet(AuthViewSet):
         if not re.fullmatch(r"[A-Za-z0-9_]+", model_id):
             return WebUtils.response_error(error_message="id 参数非法", status_code=400)
 
-        return WebUtils.response_success(get_collect_model_document(model_id))
+        return WebUtils.response_success(get_collect_model_document(model_id, request.user.locale))
 
 
 class OidModelViewSet(ModelViewSet):

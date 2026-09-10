@@ -7,6 +7,7 @@ import type {
   ValueConfig,
 } from '@/app/ops-analysis/types/dashBoard';
 import {
+  buildGaugeAxisLineColor,
   formatDisplayValue,
   getColorByThreshold,
 } from '@/app/ops-analysis/utils/thresholdUtils';
@@ -37,45 +38,6 @@ const clamp = (value: number, min: number, max: number) => {
   if (value < min) return min;
   if (value > max) return max;
   return value;
-};
-
-const buildAxisLineColor = (
-  min: number,
-  max: number,
-  thresholds: Array<{ value: string; color: string }> = [],
-): Array<[number, string]> => {
-  if (!thresholds.length || max <= min) {
-    return [[1, '#366CE4']];
-  }
-
-  const range = max - min;
-  const sorted = [...thresholds]
-    .map((item) => ({
-      value: Number(item.value),
-      color: item.color,
-    }))
-    .filter((item) => Number.isFinite(item.value))
-    .sort((a, b) => a.value - b.value);
-
-  if (!sorted.length) {
-    return [[1, '#366CE4']];
-  }
-
-  const axisLine: Array<[number, string]> = [];
-  sorted.forEach((item, index) => {
-    const ratio = clamp((item.value - min) / range, 0, 1);
-    if (index === sorted.length - 1) {
-      axisLine.push([1, item.color]);
-      return;
-    }
-    axisLine.push([ratio, item.color]);
-  });
-
-  if (!axisLine.length) {
-    return [[1, sorted[sorted.length - 1].color]];
-  }
-
-  return axisLine;
 };
 
 const ComGauge: React.FC<ComGaugeProps> = ({
@@ -174,7 +136,7 @@ const ComGauge: React.FC<ComGaugeProps> = ({
                 : 14,
               color: usesScreenTheme
                 ? [[1, chartTheme.axisLineColor]]
-                : buildAxisLineColor(safeMin, safeMax, thresholds),
+                : buildGaugeAxisLineColor(safeMin, safeMax, thresholds),
             },
           },
           axisTick: {

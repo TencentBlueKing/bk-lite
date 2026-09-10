@@ -54,7 +54,7 @@ import {
   type ModulePushTarget
 } from '@/app/node-manager/utils/modulePush';
 import {
-  asCollectorStatusList,
+  listNodeHostedCollectors,
   resolveMainConfig
 } from '@/app/node-manager/utils/collectorConfig';
 
@@ -108,31 +108,9 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
     const [inputValue, setInputValue] = useState<string>('');
 
     useImperativeHandle(ref, () => ({
-      showModal: ({ collectors, row }) => {
+      showModal: ({ row }) => {
         setVisible(true);
-        // 过滤采集器列表:如果同一个collector_id同时存在于collectors和collectors_install中,只保留collectors中的
-        const collectorsFromStatus = asCollectorStatusList(
-          row.status?.collectors
-        );
-        const collectorsInstallFromStatus = asCollectorStatusList(
-          row.status?.collectors_install
-        );
-        const collectorIds = new Set(
-          collectorsFromStatus.map((c: any) => c.collector_id)
-        );
-        const filteredCollectors = [
-          ...collectors.filter((c: any) =>
-            collectorsFromStatus.some(
-              (sc: any) => sc.collector_id === c.collector_id
-            )
-          ),
-          ...collectors.filter(
-            (c: any) =>
-              collectorsInstallFromStatus.some(
-                (sc: any) => sc.collector_id === c.collector_id
-              ) && !collectorIds.has(c.collector_id)
-          )
-        ].filter((c: any) => c.collector_id !== 'ansibleexecutor_linux'); // 过滤掉 Ansible-Executor
+        const filteredCollectors = listNodeHostedCollectors(row);
         setCollectors(filteredCollectors);
         setForm(row);
         selectedCollectorRef.current = null;

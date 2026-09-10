@@ -12,6 +12,7 @@ export type CredentialFormKind =
   | 'winsphere'
   | 'vmware'
   | 'ipmi'
+  | 'redfish'
   | 'network_config_file';
 
 export interface CredentialFieldDescriptor {
@@ -136,6 +137,24 @@ export const CREDENTIAL_DESCRIPTORS = {
       defaultPort: 161,
       defaultPortLabel: 'UDP 161',
       fields: SNMP_FIELDS,
+    },
+    redfish: {
+      formKind: 'redfish',
+      protocolKey: 'redfish',
+      credentialKindKey: 'bmcAccount',
+      instructionKey: 'redfish',
+      defaultPort: 443,
+      defaultPortLabel: 'HTTPS 443',
+      fields: [
+        { key: 'platformUsername' },
+        { key: 'platformPassword' },
+        { key: 'platformPort', defaultValue: '443' },
+        {
+          key: 'tlsVerify',
+          defaultValueKey: 'enabled',
+          recommendedValueKey: 'enabled',
+        },
+      ],
     },
   },
   models: {
@@ -408,18 +427,21 @@ export function getCredentialDescriptor(
   if (model.model_id === 'physcial_server' && model.type !== 'protocol') {
     return CREDENTIAL_DESCRIPTORS.protocols.ssh;
   }
+  if (model.credential_protocol) {
+    const protocolDescriptor = CREDENTIAL_DESCRIPTORS.protocols[
+      model.credential_protocol as keyof typeof CREDENTIAL_DESCRIPTORS.protocols
+    ];
+    if (protocolDescriptor) {
+      return protocolDescriptor;
+    }
+  }
   const modelDescriptor = CREDENTIAL_DESCRIPTORS.models[
     model.model_id as keyof typeof CREDENTIAL_DESCRIPTORS.models
   ];
   if (modelDescriptor) {
     return modelDescriptor;
   }
-  if (!model.credential_protocol) {
-    return null;
-  }
-  return CREDENTIAL_DESCRIPTORS.protocols[
-    model.credential_protocol as keyof typeof CREDENTIAL_DESCRIPTORS.protocols
-  ] || null;
+  return null;
 }
 
 export function getCredentialDefaultPort(model: CredentialModel): number | undefined {

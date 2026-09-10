@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from apps.cmdb.models.scan_model import ScanExecution, ScanFamilyRun, ScanTask
@@ -84,3 +86,69 @@ def test_finalize_with_stale_token_does_not_mutate(mocker):
     execution.refresh_from_db()
     assert execution.status == ScanExecution.STATUS_RUNNING
     assert execution.claim_token == "token-new"
+
+
+def test_trigger_database_family_splits_catalog_ports_and_skips_middleware(mocker):
+    from apps.cmdb.models.collect_model import PortFingerprint
+    from apps.cmdb.services.port_fingerprint import sync_builtin_port_fingerprints
+
+    sync_builtin_port_fingerprints()
+    PortFingerprint.objects.create(port=3307, target_type="mysql", protocol="tcp", built_in=False)
+    PortFingerprint.objects.create(port=6379, target_type="redis", protocol="tcp", built_in=False)
+    task = _scan_task(
+        families=["database", "network"],
+        credentials={
+            "database": [{"credential_id": "cred-db", "username": "u", "password": "p"}],
+            "network": [{"version": "v2c", "community": "public"}],
+        },
+    )
+    execution = ScanExecution.objects.create(task=task)
+    headers_by_model = {}
+
+    def fake_admit(headers):
+        headers_by_model[headers.get("cmdbmodel_id") or headers.get("config_type")] = headers
+        return TriggerResult("accepted", 2, 2)
+
+    mocker.patch(
+        "apps.cmdb.services.scan_trigger_service.StargazerCollectTriggerClient.admit",
+        side_effect=fake_admit,
+    )
+    mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.apply_async")
+
+    result = trigger_scan_execution(execution.id)
+
+    model_ids = set(ScanFamilyRun.objects.filter(execution=execution).values_list("model_id", flat=True))
+    assert model_ids == {"mysql", "postgresql", "mssql", "network"}
+    assert "database" not in model_ids
+    mysql_headers = headers_by_model["mysql"]
+    mysql_ports = {
+        mysql_headers.get("cmdbcredential_0_port"),
+        mysql_headers.get("cmdbcredential_1_port"),
+    }
+    assert mysql_ports == {"3306", "3307"}
+    assert "6379" not in json.dumps(mysql_headers)
+    assert result["target_count"] == 8
+
+
+def test_trigger_database_family_skips_sql_when_catalog_empty(mocker):
+    from apps.cmdb.models.collect_model import PortFingerprint
+
+    PortFingerprint.objects.all().delete()
+    task = _scan_task(
+        families=["database", "network"],
+        credentials={
+            "database": [{"username": "u", "password": "p"}],
+            "network": [{"version": "v2c", "community": "public"}],
+        },
+    )
+    execution = ScanExecution.objects.create(task=task)
+    admit = mocker.patch(
+        "apps.cmdb.services.scan_trigger_service.StargazerCollectTriggerClient.admit",
+        return_value=TriggerResult("accepted", 3, 3),
+    )
+    mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.apply_async")
+
+    trigger_scan_execution(execution.id)
+
+    assert admit.call_count == 1
+    assert set(ScanFamilyRun.objects.filter(execution=execution).values_list("model_id", flat=True)) == {"network"}

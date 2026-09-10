@@ -132,11 +132,12 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
   // vertical layout (right side)
   return (
     <div
-      className="flex h-full shrink-0 min-w-0 items-center"
+      className="flex h-full min-h-0 shrink-0 min-w-0"
       style={{ width: VERTICAL_LEGEND_WIDTH_PX * scale }}
     >
       <div
-        className="max-h-full w-full min-w-0 overflow-y-auto"
+        className="h-full min-h-0 w-full min-w-0 overflow-y-auto"
+        data-testid="chart-legend-scroll"
         style={{
           paddingBottom: 4 * scale,
           paddingTop: 4 * scale,

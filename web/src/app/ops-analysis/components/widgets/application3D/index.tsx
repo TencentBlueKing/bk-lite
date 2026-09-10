@@ -2,7 +2,8 @@
 
 import './application3DChrome.css';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Button, Empty, Select, Spin } from 'antd';
+import { Alert, Button, Select, Spin } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { ReloadOutlined } from '@ant-design/icons';
 import { useParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
@@ -16,16 +17,28 @@ import type {
   Application3DWallItem,
 } from '@/app/ops-analysis/types/sceneWidget';
 import type { ScreenRenderContext } from '@/app/ops-analysis/types/dashBoard';
+import type { OpsAnalysisWidgetSurface } from '@/app/ops-analysis/utils/chartTypeSurface';
+import { isSceneWidgetAllowedOnSurface } from '@/app/ops-analysis/types/sceneWidgetCapability';
 import type { Application3DSceneController } from './application3DScene';
 import Application3DDetail from './application3DDetail';
+import {
+  formatArchitectureHostAlarmCount,
+  formatArchitectureHostIp,
+  formatArchitectureHostOs,
+  formatArchitectureHostSeverity,
+  formatArchitectureHostState,
+  type ArchitectureHostSelection,
+} from './application3DArchitectureOverlay';
 
 interface Application3DProps {
   refreshKey?: string | number;
   editMode?: boolean;
   screenRenderContext?: ScreenRenderContext;
+  surface?: OpsAnalysisWidgetSurface;
   onReady?: (ready: boolean) => void;
   onError?: (message: string) => void;
   runtimeActive?: boolean;
+  onRawData?: (data: unknown) => void;
 }
 
 const getErrorCode = (error: unknown): string | undefined => {
@@ -46,9 +59,11 @@ export default function Application3D({
   refreshKey,
   editMode = false,
   screenRenderContext,
+  surface,
   onReady,
   onError,
   runtimeActive = true,
+  onRawData,
 }: Application3DProps) {
   const { t } = useTranslation();
   const translateRef = useRef(t);
@@ -94,8 +109,11 @@ export default function Application3D({
   const [architectureOpen, setArchitectureOpen] = useState(false);
   const [architectureLoading, setArchitectureLoading] = useState(false);
   const [architectureError, setArchitectureError] = useState('');
+  const [architectureHost, setArchitectureHost] = useState<ArchitectureHostSelection | null>(null);
   const architectureOpenRef = useRef(false);
-  const allowedOnSurface = screenRenderContext?.enabled === true;
+  const allowedOnSurface =
+    isSceneWidgetAllowedOnSurface('application3D', surface) ||
+    screenRenderContext?.enabled === true;
   const wallMotionRef = useRef<'intro' | 'filter' | 'none'>('intro');
   const wallRef = useRef(wall);
   const selectedRef = useRef(selected);
@@ -104,6 +122,12 @@ export default function Application3D({
   selectedRef.current = selected;
   detailOpenRef.current = detailOpen;
   architectureOpenRef.current = architectureOpen;
+
+  const onRawDataRef = useRef(onRawData);
+  onRawDataRef.current = onRawData;
+  useEffect(() => {
+    onRawDataRef.current?.(wall);
+  }, [wall]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -143,6 +167,10 @@ export default function Application3D({
           controller.focus(null);
           selectedRef.current = null;
           setSelected(null);
+        },
+        onArchitectureHostSelect: (selection) => {
+          if (editMode) return;
+          setArchitectureHost(selection);
         },
       });
       controllerRef.current = controller;
@@ -232,6 +260,7 @@ export default function Application3D({
     setArchitectureOpen(false);
     setArchitectureLoading(false);
     setArchitectureError('');
+    setArchitectureHost(null);
     controllerRef.current?.hideArchitecture();
     controllerRef.current?.focus(null);
   }, []);
@@ -333,6 +362,7 @@ export default function Application3D({
     setArchitectureOpen(false);
     setArchitectureLoading(false);
     setArchitectureError('');
+    setArchitectureHost(null);
     controllerRef.current?.hideArchitecture();
     controllerRef.current?.focus(null);
     controllerRef.current?.resetCamera();
@@ -391,6 +421,7 @@ export default function Application3D({
     setArchitectureOpen(false);
     setArchitectureLoading(false);
     setArchitectureError('');
+    setArchitectureHost(null);
     controllerRef.current?.hideArchitecture();
     controllerRef.current?.focus(null);
     selectedRef.current = null;
@@ -403,6 +434,7 @@ export default function Application3D({
     setArchitectureOpen(false);
     setArchitectureLoading(false);
     setArchitectureError('');
+    setArchitectureHost(null);
     selectedRef.current = null;
     setSelected(null);
     controllerRef.current?.hideArchitecture();
@@ -582,7 +614,7 @@ export default function Application3D({
       )}
       {!loading && !error && wall?.items.length === 0 && (
         <div className="pointer-events-none absolute inset-0 z-[5] flex items-center justify-center">
-          <Empty description={t('dashboard.application3DEmpty')} />
+          <CompactEmptyState description={t('dashboard.application3DEmpty')} />
         </div>
       )}
       {!editMode && (
@@ -652,11 +684,120 @@ export default function Application3D({
                 else handleBackFromFocus();
               }}
             >
-              {t('dashboard.application3DBackWall', '返回应用墙')}
+              {t('dashboard.application3DBackWall', '\u8fd4\u56de')}
             </button>
           </div>
         </div>
       )}
+      {!editMode && architectureOpen && architectureHost && (() => {
+        const state = architectureHost.node.health?.state;
+        const badgeModifier = state === 'alarming' ? 'alarming' : state === 'normal' ? 'normal' : 'unknown';
+        const isAlarming = state === 'alarming';
+        const isNormal = state === 'normal';
+        const alarmCount = formatArchitectureHostAlarmCount(architectureHost.node.health?.activeAlarmCount);
+        const severityLabel = formatArchitectureHostSeverity(architectureHost.node.health?.highestSeverity?.label);
+        const dismissHostOverlay = (event: { stopPropagation: () => void }) => {
+          event.stopPropagation();
+          setArchitectureHost(null);
+          controllerRef.current?.dismissArchitectureOverlay?.();
+        };
+
+        return (
+          <div
+            className={`app3d-arch-host-chip app3d-arch-host-chip--${badgeModifier}`}
+            style={{
+              left: architectureHost.overlay.left,
+              top: architectureHost.overlay.top,
+            }}
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            <div className="app3d-arch-host-chip__header">
+              <div className="app3d-arch-host-chip__meta">
+                <span
+                  className={`app3d-arch-host-chip__status-dot app3d-arch-host-chip__status-dot--${badgeModifier}`}
+                  aria-hidden="true"
+                />
+                <span className="app3d-arch-host-chip__title" title={architectureHost.node.name}>
+                  {architectureHost.node.name}
+                </span>
+              </div>
+              <span
+                role="button"
+                tabIndex={0}
+                className="app3d-arch-host-chip__close"
+                onClick={dismissHostOverlay}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    dismissHostOverlay(e);
+                  }
+                }}
+                title={t('common.close', '关闭')}
+                aria-label={t('common.close', '关闭')}
+              >
+                ✕
+              </span>
+            </div>
+
+            <div className="app3d-arch-host-chip__body">
+              <div className="app3d-arch-host-chip__metric">
+                <div className={`app3d-arch-host-chip__metric-val app3d-arch-host-chip__metric-val--${badgeModifier}`}>
+                  {isAlarming ? alarmCount : isNormal ? '0' : '-'}
+                </div>
+                <div className="app3d-arch-host-chip__metric-lbl">
+                  {t('dashboard.application3DHostAlarmCount', '条数')}
+                </div>
+              </div>
+
+              <div className="app3d-arch-host-chip__details">
+                <div className="app3d-arch-host-chip__row">
+                  <span className="app3d-arch-host-chip__label">
+                    {t('dashboard.application3DHostIp', 'IP 地址')}
+                  </span>
+                  <span className="app3d-arch-host-chip__value app3d-arch-host-chip__value--ip">
+                    {formatArchitectureHostIp(architectureHost.node.ip_addr)}
+                  </span>
+                </div>
+                <div className="app3d-arch-host-chip__row">
+                  <span className="app3d-arch-host-chip__label">
+                    {t('dashboard.application3DHostOs', '操作系统')}
+                  </span>
+                  <span
+                    className="app3d-arch-host-chip__value"
+                    title={formatArchitectureHostOs(architectureHost.node.os_name)}
+                  >
+                    {formatArchitectureHostOs(architectureHost.node.os_name)}
+                  </span>
+                </div>
+                <div className="app3d-arch-host-chip__row">
+                  <span className="app3d-arch-host-chip__label">
+                    {isAlarming
+                      ? t('dashboard.application3DHostHighestSeverity', '最高级别')
+                      : t('dashboard.application3DHostStatus', '状态')}
+                  </span>
+                  <span
+                    className={`app3d-arch-host-chip__value app3d-arch-host-chip__value--${badgeModifier}`}
+                  >
+                    {isAlarming
+                      ? severityLabel
+                      : formatArchitectureHostState(state, t)}
+                  </span>
+                  {isAlarming && (
+                    <span className="sr-only">
+                      {t('dashboard.application3DHostStatus', '状态')}: {formatArchitectureHostState(state, t)}
+                    </span>
+                  )}
+                  {!isAlarming && (
+                    <span className="sr-only">
+                      {t('dashboard.application3DHostHighestSeverity', '最高级别')}: {severityLabel}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       {detailOpen && selected && !editMode && (
         <Application3DDetail
           selected={selected}

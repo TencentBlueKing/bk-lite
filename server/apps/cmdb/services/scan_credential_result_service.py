@@ -2,7 +2,7 @@ import hashlib
 
 from django.db import transaction
 
-from apps.cmdb.models.scan_model import ScanExecution, ScanFamilyRun, ScanHit
+from apps.cmdb.models.scan_model import SCAN_DATABASE_TYPES, ScanExecution, ScanFamilyRun, ScanHit
 from apps.core.logger import cmdb_logger as logger
 
 _STATUS_MAP = {
@@ -232,8 +232,15 @@ class ScanCredentialResultService:
             else:
                 execution = family_run.execution
 
-            # 大网段×多凭据场景下失败/不可达不进清单，只计入进度。
+            # 大网段×多凭据场景下失败/不可达默认不进清单；三库鉴权失败例外写入一条空凭据占位。
             if hit_status == ScanHit.STATUS_SUCCESS and credential_id:
+                ScanHit.objects.filter(
+                    family_run=family_run,
+                    host=host,
+                    port=port,
+                    credential_id="",
+                    status=ScanHit.STATUS_FAILED,
+                ).delete()
                 hit, _created = ScanHit.objects.update_or_create(
                     family_run=family_run,
                     host=host,
@@ -245,6 +252,26 @@ class ScanCredentialResultService:
                         "status": ScanHit.STATUS_SUCCESS,
                         "soid": soid,
                         "error_code": "",
+                        "snapshot": snapshot,
+                    },
+                )
+                hit_id = hit.id
+            elif (
+                hit_status == ScanHit.STATUS_FAILED
+                and family_run.model_id in SCAN_DATABASE_TYPES
+                and str(data.get("error_code") or "").strip() in _CREDENTIAL_FAILURE_ERROR_CODES
+            ):
+                hit, _created = ScanHit.objects.update_or_create(
+                    family_run=family_run,
+                    host=host,
+                    port=port,
+                    credential_id="",
+                    defaults={
+                        "execution": family_run.execution,
+                        "protocol": family_run.model_id,
+                        "status": ScanHit.STATUS_FAILED,
+                        "soid": soid,
+                        "error_code": str(data.get("error_code") or "").strip(),
                         "snapshot": snapshot,
                     },
                 )

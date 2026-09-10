@@ -33,7 +33,11 @@ def optimize_email_content_with_llm(*, model_id: int, title: str, content: str, 
         model=llm_model.model_name,
         protocol_type=llm_model.protocol_type,
         vendor_type=llm_model.vendor.vendor_type if llm_model.vendor_id else "",
-        temperature=resolve_gateway_temperature(llm_model.model_name, 0.2),
+        temperature=resolve_gateway_temperature(
+            llm_model.model_name,
+            0.2,
+            llm_model.vendor.vendor_type if llm_model.vendor_id else "",
+        ),
         system_message_prompt=(
             "你是邮件正文格式化助手。请将用户提供的邮件正文整理成适合直接发送的 HTML 邮件正文。"
             "要求：保留全部事实信息，不新增未提供的信息；结构清晰、语气专业；"

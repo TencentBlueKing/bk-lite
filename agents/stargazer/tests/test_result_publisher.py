@@ -1,10 +1,55 @@
 import asyncio
+from types import SimpleNamespace
 
 import core.infra.nats_utils as nats_utils
 import pytest
 from core.collection.contracts import PublishStatus, StructuredMetricsPayload, TargetCollectionResult, build_collection_result_id
+from core.collection.result_delivery import _requires_delivery
 from core.collection.result_publisher import BufferedResultPublisher, NatsResultPublisher, PublishShutdownError
 from core.collection.runtime import CollectionRequest, RunLease
+
+
+@pytest.mark.asyncio
+async def test_expired_deadline_stops_before_round_metadata_and_metrics_delivery():
+    events = []
+
+    class Store:
+        async def save(self, _envelope):
+            events.append("metadata")
+
+    async def publish_metrics_batch(_entries):
+        events.append("metrics")
+        return {}
+
+    request = CollectionRequest(
+        task_id="expired-before-publish",
+        plugin_ref="network.config",
+        targets=("10.0.0.8",),
+        params={"model_id": "network", "plugin_family": "configuration"},
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999, attempt_id="attempt-a")
+    result = TargetCollectionResult(
+        target="10.0.0.8",
+        status="success",
+        attempts=1,
+        value=StructuredMetricsPayload(
+            data={"network": [{"host": "10.0.0.8"}]},
+            round_metadata={
+                "snapshot_id": "snapshot-1",
+                "snapshot_status": "complete",
+                "details": {},
+            },
+        ),
+    )
+
+    outcomes = await NatsResultPublisher(
+        metrics_publish_batch=publish_metrics_batch,
+        round_metadata_store=Store(),
+    ).publish_batch(((request, result, lease, SimpleNamespace(deadline=0.0)),))
+
+    assert events == []
+    assert list(outcomes.values())[0].status == PublishStatus.RETRYABLE_FAILED
+    assert list(outcomes.values())[0].error_code == "publish_total_timeout_before_delivery"
 
 
 @pytest.mark.asyncio
@@ -235,6 +280,96 @@ async def test_publish_receipt_exposes_queue_and_delivery_telemetry():
 
 
 @pytest.mark.asyncio
+async def test_buffered_publisher_carries_the_result_deadline_to_the_transport_attempt():
+    observed_deadline = None
+
+    class DeadlineAwareDelegate:
+        async def publish_batch(self, items):
+            nonlocal observed_deadline
+            observed_deadline = items[0][3].deadline
+
+    publisher = BufferedResultPublisher(DeadlineAwareDelegate(), capacity=1, batch_size=1)
+    request = CollectionRequest(
+        task_id="publish-deadline",
+        plugin_ref="network.config",
+        targets=("10.10.24.1",),
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+    deadline = asyncio.get_running_loop().time() + 30
+
+    receipt = await publisher.enqueue(
+        request,
+        TargetCollectionResult(target="10.10.24.1", status="success", attempts=1, value="metric 1"),
+        lease,
+        deadline=deadline,
+    )
+
+    await receipt.wait()
+    assert observed_deadline == deadline
+    await publisher.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_payload_capacity_includes_results_already_taken_by_active_writers():
+    two_started = asyncio.Event()
+    release = asyncio.Event()
+    started = []
+
+    class BlockingDelegate:
+        async def publish_batch(self, items):
+            started.extend(item[1].target for item in items)
+            if len(started) >= 2:
+                two_started.set()
+            await release.wait()
+
+    publisher = BufferedResultPublisher(
+        BlockingDelegate(),
+        capacity=2,
+        batch_size=1,
+        worker_count=2,
+    )
+    request = CollectionRequest(
+        task_id="payload-capacity",
+        plugin_ref="network.config",
+        targets=("10.10.24.1", "10.10.24.2", "10.10.24.3"),
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+
+    first, second = await asyncio.gather(
+        *(
+            publisher.enqueue(
+                request,
+                TargetCollectionResult(target=target, status="success", attempts=1, value="metric 1"),
+                lease,
+            )
+            for target in request.targets[:2]
+        )
+    )
+    await asyncio.wait_for(two_started.wait(), timeout=1)
+    assert publisher.queue_depth == 0
+    assert publisher.pending_payloads == 2
+
+    third_enqueue = asyncio.create_task(
+        publisher.enqueue(
+            request,
+            TargetCollectionResult(target="10.10.24.3", status="success", attempts=1, value="metric 1"),
+            lease,
+        )
+    )
+    await asyncio.sleep(0)
+
+    assert third_enqueue.done() is False
+    assert publisher.peak_pending_payloads == 2
+
+    release.set()
+    await asyncio.gather(first.wait(), second.wait())
+    third = await asyncio.wait_for(third_enqueue, timeout=1)
+    await third.wait()
+    assert publisher.pending_payloads == 0
+    await publisher.shutdown()
+
+
+@pytest.mark.asyncio
 async def test_queued_receipt_can_be_cancelled_before_transport_and_is_not_delivered_later():
     release = asyncio.Event()
     delivered = []
@@ -392,6 +527,167 @@ async def test_batch_delegate_can_report_one_failed_result_without_poisoning_pee
 
 
 @pytest.mark.asyncio
+async def test_streaming_batch_completes_each_receipt_without_waiting_for_slow_peer():
+    release_slow = asyncio.Event()
+    fast_terminal = asyncio.Event()
+
+    request = CollectionRequest(
+        task_id="batch-streaming-result",
+        plugin_ref="network_topo.config",
+        targets=("10.10.24.1", "10.10.24.2"),
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 8, 999999)
+    fast_id = build_collection_result_id(
+        task_id=request.task_id,
+        plugin_ref=request.plugin_ref,
+        target="10.10.24.1",
+        fence=lease.fence,
+    )
+    slow_id = build_collection_result_id(
+        task_id=request.task_id,
+        plugin_ref=request.plugin_ref,
+        target="10.10.24.2",
+        fence=lease.fence,
+    )
+
+    class StreamingDelegate:
+        async def publish_batch_events(self, _items):
+            yield fast_id, None
+            fast_terminal.set()
+            await release_slow.wait()
+            yield slow_id, None
+
+    publisher = BufferedResultPublisher(
+        StreamingDelegate(),
+        capacity=2,
+        batch_size=2,
+        flush_interval_seconds=0.01,
+    )
+    receipts = await asyncio.gather(
+        *(
+            publisher.enqueue(
+                request,
+                TargetCollectionResult(target=target, status="success", attempts=1, value="metric 1"),
+                lease,
+            )
+            for target in request.targets
+        )
+    )
+
+    await asyncio.wait_for(fast_terminal.wait(), timeout=1)
+    await asyncio.sleep(0)
+
+    assert receipts[0].done() is True
+    assert receipts[1].done() is False
+    assert (await receipts[0].wait()).status == PublishStatus.CONFIRMED
+
+    release_slow.set()
+    assert (await receipts[1].wait()).status == PublishStatus.CONFIRMED
+    await publisher.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_streaming_batch_never_confirms_a_result_without_a_terminal_event():
+    request = CollectionRequest(
+        task_id="batch-streaming-incomplete",
+        plugin_ref="network_topo.config",
+        targets=("10.10.26.1", "10.10.26.2"),
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 10, 999999)
+    first_id = build_collection_result_id(
+        task_id=request.task_id,
+        plugin_ref=request.plugin_ref,
+        target=request.targets[0],
+        fence=lease.fence,
+    )
+
+    class IncompleteDelegate:
+        async def publish_batch_events(self, _items):
+            yield first_id, None
+
+    publisher = BufferedResultPublisher(
+        IncompleteDelegate(),
+        capacity=2,
+        batch_size=2,
+        flush_interval_seconds=0.01,
+    )
+    receipts = await asyncio.gather(
+        *(
+            publisher.enqueue(
+                request,
+                TargetCollectionResult(target=target, status="success", attempts=1, value="metric 1"),
+                lease,
+            )
+            for target in request.targets
+        )
+    )
+
+    first, missing = await asyncio.gather(*(receipt.wait() for receipt in receipts))
+
+    assert first.status == PublishStatus.CONFIRMED
+    assert missing.status == PublishStatus.RETRYABLE_FAILED
+    assert missing.error_code == "publish_batch_terminal_missing"
+    await publisher.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_default_nats_pipeline_forwards_per_target_terminal_events(monkeypatch):
+    release_slow = asyncio.Event()
+    fast_terminal = asyncio.Event()
+    request = CollectionRequest(
+        task_id="default-nats-streaming",
+        plugin_ref="network_topo.config",
+        targets=("10.10.25.1", "10.10.25.2"),
+        params={"model_id": "network_topo", "plugin_family": "configuration"},
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 9, 999999)
+
+    async def iter_outcomes(entries, *, metrics=None):
+        del metrics
+        result_ids = [entry[2]["collection_result_id"] for entry in entries]
+        yield result_ids[0], None
+        fast_terminal.set()
+        await release_slow.wait()
+        yield result_ids[1], None
+
+    monkeypatch.setattr(
+        "tasks.utils.nats_helper.iter_metrics_batch_outcomes",
+        iter_outcomes,
+    )
+    publisher = BufferedResultPublisher(
+        NatsResultPublisher(),
+        capacity=2,
+        batch_size=2,
+        flush_interval_seconds=0.01,
+    )
+    receipts = await asyncio.gather(
+        *(
+            publisher.enqueue(
+                request,
+                TargetCollectionResult(
+                    target=target,
+                    status="success",
+                    attempts=1,
+                    value=f"network_topo_info,host={target} gauge=1",
+                ),
+                lease,
+            )
+            for target in request.targets
+        )
+    )
+
+    await asyncio.wait_for(fast_terminal.wait(), timeout=1)
+    await asyncio.sleep(0)
+
+    assert receipts[0].done() is True
+    assert receipts[1].done() is False
+
+    release_slow.set()
+    await asyncio.gather(*(receipt.wait() for receipt in receipts))
+    await publisher.shutdown()
+
+
+@pytest.mark.asyncio
 async def test_nats_result_publisher_uses_one_metrics_batch_adapter_call():
     batches = []
 
@@ -432,13 +728,18 @@ async def test_nats_result_publisher_uses_one_metrics_batch_adapter_call():
 @pytest.mark.asyncio
 async def test_ordinary_failures_do_not_enter_metrics_or_credential_adapters():
     batches = []
+    published_credentials = []
 
     async def publish_metrics_batch(entries):
         batches.append(entries)
         return {entry[2]["collection_result_id"]: None for entry in entries}
 
+    async def publish_credential(result, params, task_id):
+        published_credentials.append((result, params, task_id))
+
     publisher = NatsResultPublisher(
         metrics_publish_batch=publish_metrics_batch,
+        credential_result_publish=publish_credential,
     )
     request = CollectionRequest(
         task_id="configuration-failure-event-only",
@@ -499,7 +800,7 @@ async def test_ordinary_failures_do_not_enter_metrics_or_credential_adapters():
     assert len(batches) == 1
     assert len(batches[0]) == 1
     assert batches[0][0][1] == "network_info value=1"
-    assert not hasattr(publisher, "_credential_result_publish")
+    assert published_credentials == []
     assert not hasattr(publisher, "_result_event_sink")
     assert all(outcome is None for outcome in outcomes.values())
 
@@ -892,3 +1193,185 @@ async def test_buffered_publisher_can_run_multiple_publish_batches_concurrently(
     release.set()
     await asyncio.gather(*(receipt.wait() for receipt in receipts))
     await publisher.shutdown()
+
+
+def test_scan_failures_require_delivery_collect_failures_do_not():
+    scan_request = CollectionRequest(
+        task_id="scan-family-run-5",
+        plugin_ref="network.config",
+        targets=("10.10.24.1",),
+        params={"credential_result_subject": "receive_scan_credential_result"},
+    )
+    collect_request = CollectionRequest(
+        task_id="collect-task-9",
+        plugin_ref="network.config",
+        targets=("10.10.24.1",),
+        params={"credential_result_subject": "receive_collect_credential_result"},
+    )
+    failed = TargetCollectionResult(
+        target="10.10.24.1",
+        status="failed",
+        attempts=1,
+        error_code="authentication_failed",
+    )
+    assert _requires_delivery(scan_request, failed) is True
+    assert _requires_delivery(collect_request, failed) is False
+
+
+@pytest.mark.asyncio
+async def test_scan_credential_result_publishes_success_and_failure():
+    published = []
+    batches = []
+
+    async def publish_metrics_batch(entries):
+        batches.append(entries)
+        return {entry[2]["collection_result_id"]: None for entry in entries}
+
+    async def publish_credential(result, params, task_id):
+        published.append((dict(result), dict(params), task_id))
+
+    publisher = NatsResultPublisher(
+        metrics_publish_batch=publish_metrics_batch,
+        credential_result_publish=publish_credential,
+    )
+    request = CollectionRequest(
+        task_id="scan-family-run-5",
+        plugin_ref="network.config",
+        targets=("10.10.24.1", "10.10.24.2"),
+        params={
+            "collect_task_id": "5",
+            "credential_result_subject": "receive_scan_credential_result",
+            "snmp_port": "161",
+        },
+    )
+    lease = RunLease(
+        request.task_id,
+        request.digest,
+        "pod-a",
+        3,
+        999999,
+        attempt_id="run-attempt-1",
+    )
+
+    await publisher.publish_batch(
+        (
+            (
+                request,
+                TargetCollectionResult(
+                    target="10.10.24.1",
+                    status="success",
+                    attempts=1,
+                    credential_id="credential-1",
+                    value=StructuredMetricsPayload(
+                        data={
+                            "system": {
+                                "sysobjectid": "1.3.6.1.4.1.9.1.1",
+                                "sysname": "sw-core",
+                                "port": 161,
+                            }
+                        }
+                    ),
+                ),
+                lease,
+            ),
+            (
+                request,
+                TargetCollectionResult(
+                    target="10.10.24.2",
+                    status="unreachable",
+                    attempts=0,
+                    error_code="target_unreachable",
+                ),
+                lease,
+            ),
+        )
+    )
+
+    assert len(batches) == 1
+    assert len(published) == 2
+    success_event, success_params, success_task_id = published[0]
+    failure_event, _, failure_task_id = published[1]
+    assert success_task_id == failure_task_id == "scan-family-run-5"
+    assert success_params["credential_result_subject"] == "receive_scan_credential_result"
+    assert success_event["host"] == "10.10.24.1"
+    assert success_event["credential_id"] == "credential-1"
+    assert success_event["collect_task_id"] == "5"
+    assert success_event["status"] == "success"
+    assert success_event["producer"] == "stargazer"
+    assert success_event["event_version"] == "2"
+    assert success_event["finished_at"]
+    assert success_event["port"] == 161
+    assert success_event["snapshot"]["sysobjectid"] == "1.3.6.1.4.1.9.1.1"
+    assert success_event["snapshot"]["sysname"] == "sw-core"
+    assert failure_event["host"] == "10.10.24.2"
+    assert failure_event["status"] == "unreachable"
+    assert failure_event["port"] == 161
+    assert failure_event["snapshot"]["host"] == "10.10.24.2"
+
+
+def test_scan_credential_snapshot_unwraps_network_system_and_host_buckets():
+    network_request = CollectionRequest(
+        task_id="scan-network",
+        plugin_ref="network.config",
+        targets=("10.10.69.248",),
+        params={"snmp_port": "161"},
+    )
+    network_snapshot, network_port = NatsResultPublisher._extract_scan_snapshot(
+        network_request,
+        TargetCollectionResult(
+            target="10.10.69.248",
+            status="success",
+            attempts=1,
+            value=StructuredMetricsPayload(
+                data={
+                    "network_system": [
+                        {
+                            "sysobjectid": "1.3.6.1.4.1.9.1.3210",
+                            "sysname": "Catalyst-1200",
+                            "sysdescr": "Cisco IOS",
+                            "ip_addr": "10.10.69.248",
+                            "port": 161,
+                        }
+                    ],
+                    "network_interfaces": [{"index": "1"}],
+                }
+            ),
+        ),
+    )
+    assert network_port == 161
+    assert network_snapshot["sysobjectid"] == "1.3.6.1.4.1.9.1.3210"
+    assert network_snapshot["sysname"] == "Catalyst-1200"
+    assert network_snapshot["sysdescr"] == "Cisco IOS"
+
+    host_request = CollectionRequest(
+        task_id="scan-host",
+        plugin_ref="host.config",
+        targets=("10.11.27.147",),
+        params={"port": "22"},
+    )
+    host_snapshot, host_port = NatsResultPublisher._extract_scan_snapshot(
+        host_request,
+        TargetCollectionResult(
+            target="10.11.27.147",
+            status="success",
+            attempts=1,
+            value=StructuredMetricsPayload(
+                data={
+                    "host": [
+                        {
+                            "hostname": "localhost",
+                            "os_type": "Linux",
+                            "os_name": "CentOS Linux",
+                            "os_version": "7.9",
+                            "ip_addr": "10.11.27.147",
+                        }
+                    ]
+                }
+            ),
+        ),
+    )
+    assert host_port == 22
+    assert host_snapshot["hostname"] == "localhost"
+    assert host_snapshot["os_type"] == "Linux"
+    assert host_snapshot["os_name"] == "CentOS Linux"
+    assert host_snapshot["os_version"] == "7.9"

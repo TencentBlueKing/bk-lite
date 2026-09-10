@@ -1,11 +1,10 @@
 'use client';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { Tooltip, Card, Segmented } from 'antd';
+import { Card, Segmented } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
 import {
   AppstoreOutlined,
-  BarsOutlined,
-  QuestionCircleFilled
+  BarsOutlined
 } from '@ant-design/icons';
 import useApiClient from '@/utils/request';
 import TimeSelector from '@/components/time-selector';
@@ -141,6 +140,18 @@ const SearchView: React.FC = () => {
           instances,
           timeRange: _timeRange
         });
+        // 实例列表尚未对齐时 selectedInstances 可能为空；勿发受控查询以免触发 instance_ids 校验刷屏。
+        if (!Array.isArray(params.instance_ids) || params.instance_ids.length === 0) {
+          if (currentRequestId !== searchRequestIdRef.current) return;
+          setChartItems((prev) =>
+            prev.map((item, i) =>
+              i === index
+                ? { ...item, data: [], loading: false, duration: Date.now() - startTime }
+                : item
+            )
+          );
+          return;
+        }
         const responseData = await post(
           '/monitor/api/metrics_instance/query_by_metric_range/',
           params,
@@ -288,21 +299,14 @@ const SearchView: React.FC = () => {
                             <span className="text-[var(--color-text-3)] text-[12px]">
                               {getUnit(item.unit)}
                             </span>
-                            {item.metric?.display_description && (
-                              <Tooltip title={item.metric.display_description}>
-                                <QuestionCircleFilled
-                                  className={`cursor-help text-xs align-super ${getUnit(item.unit) ? 'ml-[-6px]' : ''} text-[var(--color-text-3)]`}
-                                />
-                              </Tooltip>
-                            )}
                           </span>
                         </div>
-                        {item.metric?.name ? (
+                        {item.metric?.display_description ? (
                           <div
-                            className="mt-[2px] text-[12px] leading-[18px] text-[var(--color-text-3)] overflow-hidden text-ellipsis whitespace-nowrap"
-                            title={item.metric.name}
+                            className="mt-[2px] text-[12px] leading-[18px] text-[var(--color-text-3)] line-clamp-2"
+                            title={item.metric.display_description}
                           >
-                            {item.metric.name}
+                            {item.metric.display_description}
                           </div>
                         ) : null}
                       </div>

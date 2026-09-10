@@ -5,27 +5,33 @@ import useApiClient from '@/utils/request';
 import { UserItem, ModelItem } from '@/app/cmdb/types/assetManage';
 import { useModelApi, useUserConfigApi } from '@/app/cmdb/api';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
-import Spin from '@/components/spin';
 import { usePathname } from 'next/navigation';
 import { useAliveController } from 'react-activation';
+import { useLocale } from '@/context/locale';
+
 interface CommonContextType {
   userList: UserItem[];
   modelList: ModelItem[];
   refreshModelList: () => Promise<void>;
+  /** 公共数据后台加载中；页面可先渲染再等模型/用户补齐 */
+  commonLoading: boolean;
 }
 
 const CommonContext = createContext<CommonContextType | null>(null);
 
+const EMPTY_USER_LIST: UserItem[] = [];
+
 const CommonContextProvider = ({ children }: { children: React.ReactNode }) => {
   const [userList, setUserList] = useState<UserItem[]>([]);
   const [modelList, setModelList] = useState<ModelItem[]>([]);
-  const [pageLoading, setPageLoading] = useState(false);
+  const [commonLoading, setCommonLoading] = useState(false);
   const { get } = useApiClient();
   const { getModelList } = useModelApi();
   const { getAllConfigs } = useUserConfigApi();
   const setUserConfigs = useAssetDataStore((state) => state.setUserConfigs);
   const { drop } = useAliveController();
   const pathname = usePathname();
+  const { locale } = useLocale();
 
   useEffect(() => {
     if (drop && !pathname.startsWith('/cmdb/assetData')) {
@@ -72,23 +78,24 @@ const CommonContextProvider = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     const initializeData = async () => {
-      setPageLoading(true);
+      setCommonLoading(true);
       try {
         await Promise.all([fetchUserList(), fetchModelList(), fetchUserConfigs()]);
       } finally {
-        setPageLoading(false);
+        setCommonLoading(false);
       }
     };
 
     initializeData();
-  }, []);
-  return pageLoading ? (
-    <Spin></Spin>
-  ) : (
+  }, [locale]);
+
+  // 不再用全屏 Spin 挡住子路由：布局或详情壳切换导致 remount 时也不再整页 LOADING
+  return (
     <CommonContext.Provider
       value={{
         userList,
         modelList,
+        commonLoading,
         refreshModelList: fetchModelList,
       }}
     >
@@ -98,5 +105,10 @@ const CommonContextProvider = ({ children }: { children: React.ReactNode }) => {
 };
 
 export const useCommon = () => useContext(CommonContext);
+
+/** 跟随 CommonContext 更新；页面可先空着，用户列表加载完后下拉再补齐。 */
+export const useCmdbUserList = (): UserItem[] => {
+  return useCommon()?.userList ?? EMPTY_USER_LIST;
+};
 
 export default CommonContextProvider;

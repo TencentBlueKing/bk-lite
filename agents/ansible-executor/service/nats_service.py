@@ -23,6 +23,7 @@ from service.ansible_runner import (
     to_playbook_request,
 )
 from service.callback_delivery_service import CallbackDeliveryMixin
+from service.failure_summary import build_task_failure_summary, log_ansible_task_failed
 from service.nats_topology_service import NATSTopologyMixin
 from service.remote_shell_stream import run_remote_shell_stream
 from service.task_store import TERMINAL_TASK_STATUSES, TaskStore, _sanitize_callback_for_storage, _sanitize_payload_for_storage
@@ -203,6 +204,19 @@ class AnsibleNATSService(NATSTopologyMixin, CallbackDeliveryMixin):
             "stream_flush_timed_out": bool(output_meta.get("stream_flush_timed_out", False)),
             "stream_line_chunks": int(output_meta.get("stream_line_chunks", 0)),
         }
+        if not success:
+            # 失败摘要只进 Executor 日志，不写入回调 / task_query 结果，避免改共享契约。
+            log_ansible_task_failed(
+                logger,
+                task_id=task.task_id,
+                task_type=task.task_type,
+                error=error,
+                summary=build_task_failure_summary(
+                    parsed_results,
+                    error=error,
+                    exit_code=code,
+                ),
+            )
 
         return {
             "task_id": task.task_id,
@@ -386,6 +400,37 @@ class AnsibleNATSService(NATSTopologyMixin, CallbackDeliveryMixin):
                 else:
                     await msg.nak()
 
+    TERMINAL_TASK_PURGED_LOG_TEMPLATE = (
+        "event=terminal_tasks_purged deleted=%s retention_seconds=%s"
+    )
+    TERMINAL_TASK_PURGE_FAILED_LOG_TEMPLATE = (
+        "event=terminal_task_purge_failed failed_stage=task_store_purge error_type=%s"
+    )
+
+    def _purge_expired_terminal_tasks(self) -> int:
+        return self.task_store.purge_expired_terminal_tasks(
+            self._now_iso(),
+            int(self.config.terminal_task_retention_seconds),
+        )
+
+    async def _terminal_task_purge_loop(self):
+        interval = max(30, int(self.config.terminal_task_purge_interval_seconds))
+        while True:
+            try:
+                deleted = self._purge_expired_terminal_tasks()
+                if deleted:
+                    logger.info(
+                        self.TERMINAL_TASK_PURGED_LOG_TEMPLATE,
+                        deleted,
+                        int(self.config.terminal_task_retention_seconds),
+                    )
+            except Exception as err:
+                logger.warning(
+                    self.TERMINAL_TASK_PURGE_FAILED_LOG_TEMPLATE,
+                    type(err).__name__,
+                )
+            await asyncio.sleep(interval)
+
     async def _handle_task_query(self, msg, instance_id: str):
         try:
             payload = _extract_payload(msg.data)
@@ -494,6 +539,7 @@ class AnsibleNATSService(NATSTopologyMixin, CallbackDeliveryMixin):
         worker_count = max(1, self.config.max_workers)
         self.workers = [asyncio.create_task(self._worker_loop(i + 1)) for i in range(worker_count)]
         self.workers.append(asyncio.create_task(self._callback_retry_loop()))
+        self.workers.append(asyncio.create_task(self._terminal_task_purge_loop()))
         logger.info("workers started: %s", worker_count)
 
         await asyncio.Event().wait()

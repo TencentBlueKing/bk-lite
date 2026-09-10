@@ -109,6 +109,10 @@ def test_get_room3d_layout_ok_contract(monkeypatch):
                         "rack_u_start": 1,
                         "u_size": 2,
                         "status": "running",
+                        "monitor_bound": False,
+                        "alarm_unavailable": False,
+                        "active_alarm_count": None,
+                        "highest_severity": None,
                     },
                 ],
             }
@@ -121,6 +125,199 @@ def test_get_room3d_layout_ok_contract(monkeypatch):
     assert captured["summary_rack_ids"] == [RACK_UUID]
     assert captured["summary_permission_map"] is permission_map
     assert captured["summary_user"].username == "alice"
+
+
+@pytest.mark.unit
+def test_get_room3d_layout_enriches_bound_device_alarms(monkeypatch):
+    _install_permission(monkeypatch)
+
+    def fake_get_room_layout(server_room_id, permission_map=None, user=None):
+        return {"racks": [_rack()], "unplaced": [], "conflicts": [], "grid": {"max_row": 0, "max_col": 0}}
+
+    def fake_get_room3d_rack_device_summaries(rack_ids, permission_map=None, user=None):
+        return {
+            RACK_UUID: {
+                "devices": [
+                    {
+                        "device_id": DEVICE_UUID,
+                        "device_name": "SW-01",
+                        "model_id": "switch",
+                        "rack_u_start": 1,
+                        "u_size": 2,
+                        "status": "running",
+                        "monitor_id": "mon-sw-01",
+                    },
+                ],
+                "device_count": 1,
+                "unplaced_device_count": 0,
+            }
+        }
+
+    monkeypatch.setattr(N.InstanceManage, "query_entity_by_uuid", lambda inst_uuid: _room())
+    monkeypatch.setattr(
+        N,
+        "rack_room",
+        SimpleNamespace(
+            get_room_layout=fake_get_room_layout,
+            get_room3d_rack_device_summaries=fake_get_room3d_rack_device_summaries,
+            get_rack_layout=lambda *a, **k: pytest.fail("should not call"),
+        ),
+        raising=False,
+    )
+
+    class FakeMonitor:
+        def query_active_alert_summaries_by_monitor_ids(self, monitor_ids, **kwargs):
+            assert monitor_ids == ["mon-sw-01"]
+            return {
+                "result": True,
+                "data": {
+                    "items": [
+                        {
+                            "monitor_id": "mon-sw-01",
+                            "active_alarm_count": 2,
+                            "highest_severity": "error",
+                        }
+                    ]
+                },
+                "message": "",
+            }
+
+    monkeypatch.setattr(
+        "apps.cmdb.services.room3d_device_alarms._default_monitor_client",
+        FakeMonitor,
+    )
+
+    result = N.get_room3d_layout(server_room_id=ROOM_UUID, user_info=USER_INFO)
+    device = result["data"]["racks"][0]["devices"][0]
+    assert "monitor_id" not in device
+    assert device["monitor_bound"] is True
+    assert device["alarm_unavailable"] is False
+    assert device["active_alarm_count"] == 2
+    assert device["highest_severity"] == "error"
+
+
+@pytest.mark.unit
+def test_get_room3d_layout_soft_fails_when_monitor_rpc_raises(monkeypatch):
+    _install_permission(monkeypatch)
+
+    def fake_get_room_layout(server_room_id, permission_map=None, user=None):
+        return {"racks": [_rack()], "unplaced": [], "conflicts": [], "grid": {"max_row": 0, "max_col": 0}}
+
+    def fake_get_room3d_rack_device_summaries(rack_ids, permission_map=None, user=None):
+        return {
+            RACK_UUID: {
+                "devices": [
+                    {
+                        "device_id": DEVICE_UUID,
+                        "device_name": "SW-01",
+                        "model_id": "switch",
+                        "rack_u_start": 1,
+                        "u_size": 2,
+                        "status": "running",
+                        "monitor_id": "mon-sw-01",
+                    },
+                ],
+                "device_count": 1,
+                "unplaced_device_count": 0,
+            }
+        }
+
+    monkeypatch.setattr(N.InstanceManage, "query_entity_by_uuid", lambda inst_uuid: _room())
+    monkeypatch.setattr(
+        N,
+        "rack_room",
+        SimpleNamespace(
+            get_room_layout=fake_get_room_layout,
+            get_room3d_rack_device_summaries=fake_get_room3d_rack_device_summaries,
+            get_rack_layout=lambda *a, **k: pytest.fail("should not call"),
+        ),
+        raising=False,
+    )
+
+    class BoomMonitor:
+        def query_active_alert_summaries_by_monitor_ids(self, *args, **kwargs):
+            raise RuntimeError("nats down")
+
+    monkeypatch.setattr(
+        "apps.cmdb.services.room3d_device_alarms._default_monitor_client",
+        BoomMonitor,
+    )
+
+    result = N.get_room3d_layout(server_room_id=ROOM_UUID, user_info=USER_INFO)
+    assert result["result"] is True
+    device = result["data"]["racks"][0]["devices"][0]
+    assert "monitor_id" not in device
+    assert device["monitor_bound"] is True
+    assert device["alarm_unavailable"] is True
+    assert device["active_alarm_count"] is None
+    assert device["highest_severity"] is None
+    assert result["data"]["racks"][0]["rack_id"] == RACK_UUID
+
+
+@pytest.mark.unit
+def test_get_room3d_layout_soft_fails_when_enrich_raises_unexpectedly(monkeypatch, caplog):
+    import logging
+
+    _install_permission(monkeypatch)
+
+    def fake_get_room_layout(server_room_id, permission_map=None, user=None):
+        return {"racks": [_rack()], "unplaced": [], "conflicts": [], "grid": {"max_row": 0, "max_col": 0}}
+
+    def fake_get_room3d_rack_device_summaries(rack_ids, permission_map=None, user=None):
+        return {
+            RACK_UUID: {
+                "devices": [
+                    {
+                        "device_id": DEVICE_UUID,
+                        "device_name": "SW-01",
+                        "model_id": "switch",
+                        "rack_u_start": 1,
+                        "u_size": 2,
+                        "status": "running",
+                        "monitor_id": "mon-sw-01",
+                    },
+                ],
+                "device_count": 1,
+                "unplaced_device_count": 0,
+            }
+        }
+
+    monkeypatch.setattr(N.InstanceManage, "query_entity_by_uuid", lambda inst_uuid: _room())
+    monkeypatch.setattr(
+        N,
+        "rack_room",
+        SimpleNamespace(
+            get_room_layout=fake_get_room_layout,
+            get_room3d_rack_device_summaries=fake_get_room3d_rack_device_summaries,
+            get_rack_layout=lambda *a, **k: pytest.fail("should not call"),
+        ),
+        raising=False,
+    )
+
+    template = "room3d layout alarm enrich unexpected failure server_room_id=%s " "failed_stage=enrich error_type=%s"
+
+    def boom_enrich(*args, **kwargs):
+        raise RuntimeError("unexpected enrich crash")
+
+    monkeypatch.setattr(
+        "apps.cmdb.services.room3d_device_alarms.enrich_room3d_devices_with_alarms",
+        boom_enrich,
+    )
+
+    with caplog.at_level(logging.ERROR, logger="cmdb"):
+        result = N.get_room3d_layout(server_room_id=ROOM_UUID, user_info=USER_INFO)
+
+    assert result["result"] is True
+    device = result["data"]["racks"][0]["devices"][0]
+    assert "monitor_id" not in device
+    assert device["monitor_bound"] is True
+    assert device["alarm_unavailable"] is True
+
+    records = [record for record in caplog.records if record.msg == template]
+    assert len(records) == 1
+    assert records[0].args == (ROOM_UUID, "RuntimeError")
+    assert records[0].exc_info is not None
+    assert records[0].exc_info[0] is RuntimeError
 
 
 def test_room3d_fallback_summary_skips_devices_without_uuid(monkeypatch):

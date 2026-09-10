@@ -559,6 +559,183 @@ async def test_planner_catalog_prepends_k8s_namespace_lookup_hint():
 
 
 @pytest.mark.asyncio
+async def test_planner_catalog_prepends_known_pod_restart_rca_hint():
+    tools = [
+        _tool("diagnose_kubernetes_pod_issues", "诊断 Pod"),
+        _tool("get_kubernetes_previous_pod_logs", "上一轮日志"),
+        _tool("get_resource_events_timeline", "事件时间线"),
+        _tool("analyze_pod_restart_pattern", "扫描重启模式"),
+        _tool("describe_kubernetes_resource", "描述资源"),
+        _tool("list_kubernetes_pods", "列出 Pod"),
+        _tool("list_kubernetes_events", "列出事件"),
+    ]
+
+    class FakeLLM:
+        def __init__(self):
+            self.messages = None
+
+        async def ainvoke(self, messages, config=None):
+            self.messages = messages
+            return AIMessage(
+                content=json.dumps(
+                    {
+                        "goal": "分析指定 Pod 重启原因",
+                        "steps": [
+                            {
+                                "objective": "诊断",
+                                "tools": [
+                                    "diagnose_kubernetes_pod_issues",
+                                    "analyze_pod_restart_pattern",
+                                    "describe_kubernetes_resource",
+                                    "list_kubernetes_events",
+                                ],
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                )
+            )
+
+    llm = FakeLLM()
+    plan = await ToolExecutionPlanner(llm).plan("分析 kube-system/coredns-xxx 频繁重启的原因", tools)
+    prompt = "\n".join(str(message.content) for message in llm.messages)
+    assert "已指定具体 Pod 问重启原因" in prompt
+    assert "get_kubernetes_previous_pod_logs" in prompt
+    assert "禁止降低 lines" in prompt
+    assert "没有 previous" in prompt or "无 previous" in prompt or "没有可用的 previous" in prompt
+    assert "禁止 analyze_pod_restart_pattern" in prompt
+    assert "describe_kubernetes_resource" in prompt
+    assert [step.tools for step in plan.steps] == [["diagnose_kubernetes_pod_issues"]]
+
+
+@pytest.mark.asyncio
+async def test_planner_collapses_restart_reason_to_evidence_tool():
+    tools = [
+        _tool("diagnose_kubernetes_pod_issues", "诊断 Pod"),
+        _tool("get_kubernetes_pod_logs", "当前日志"),
+        _tool("get_kubernetes_previous_pod_logs", "上一轮日志"),
+        _tool("get_resource_events_timeline", "事件时间线"),
+        _tool("collect_pod_restart_evidence", "重启取证包"),
+        _tool("current_time", "当前时间"),
+    ]
+
+    class FakeLLM:
+        def __init__(self):
+            self.messages = None
+
+        async def ainvoke(self, messages, config=None):
+            self.messages = messages
+            return AIMessage(
+                content=json.dumps(
+                    {
+                        "goal": "分析指定 Pod 重启原因",
+                        "steps": [
+                            {"objective": "对时", "tools": ["current_time"]},
+                            {
+                                "objective": "诊断和日志",
+                                "tools": [
+                                    "diagnose_kubernetes_pod_issues",
+                                    "get_kubernetes_pod_logs",
+                                    "get_kubernetes_previous_pod_logs",
+                                ],
+                            },
+                        ],
+                    },
+                    ensure_ascii=False,
+                )
+            )
+
+    llm = FakeLLM()
+    plan = await ToolExecutionPlanner(llm).plan("分析 argocd/argocd-repo-server 频繁重启的原因", tools)
+    prompt = "\n".join(str(message.content) for message in llm.messages)
+    assert "collect_pod_restart_evidence" in prompt
+    assert "只规划 collect_pod_restart_evidence" in prompt
+    assert "禁止再规划 diagnose_kubernetes_pod_issues" in prompt
+    assert [step.tools for step in plan.steps] == [["current_time"], ["collect_pod_restart_evidence"]]
+
+
+@pytest.mark.asyncio
+async def test_planner_does_not_collapse_alert_rca_when_evidence_tool_present():
+    tools = [
+        _tool("diagnose_kubernetes_pod_issues", "诊断 Pod"),
+        _tool("get_kubernetes_pod_logs", "当前日志"),
+        _tool("get_kubernetes_previous_pod_logs", "上一轮日志"),
+        _tool("get_resource_events_timeline", "事件时间线"),
+        _tool("collect_pod_restart_evidence", "重启取证包"),
+        _tool("resolve_k8s_target_from_alert", "反查 namespace"),
+    ]
+
+    class FakeLLM:
+        def __init__(self):
+            self.messages = None
+
+        async def ainvoke(self, messages, config=None):
+            self.messages = messages
+            return AIMessage(
+                content=json.dumps(
+                    {
+                        "goal": "告警 RCA",
+                        "steps": [
+                            {"objective": "反查", "tools": ["resolve_k8s_target_from_alert"]},
+                            {
+                                "objective": "诊断",
+                                "tools": ["diagnose_kubernetes_pod_issues", "get_kubernetes_pod_logs"],
+                            },
+                        ],
+                    },
+                    ensure_ascii=False,
+                )
+            )
+
+    llm = FakeLLM()
+    plan = await ToolExecutionPlanner(llm).plan(
+        "告警：Unhealthy（kubernetes，bk-lite-k3s，nacos-0） 检测到异常\nReadiness probe failed",
+        tools,
+        agent_system_prompt="你是 Kubernetes 集群 RCA 助手。\n## 告警怎么读\n",
+    )
+    prompt = "\n".join(str(message.content) for message in llm.messages)
+    assert "只规划 collect_pod_restart_evidence" not in prompt
+    assert [step.tools for step in plan.steps] == [
+        ["resolve_k8s_target_from_alert"],
+        ["diagnose_kubernetes_pod_issues", "get_kubernetes_pod_logs"],
+    ]
+
+
+@pytest.mark.asyncio
+async def test_planner_catalog_prepends_restart_time_sort_hint():
+    tools = [
+        _tool("get_high_restart_kubernetes_pods", "发现频繁重启的不稳定Pod"),
+        _tool("get_recently_restarted_kubernetes_pods", "按最近一次重启时间列出最近重启过的 Pod"),
+    ]
+
+    class FakeLLM:
+        def __init__(self):
+            self.messages = None
+
+        async def ainvoke(self, messages, config=None):
+            self.messages = messages
+            return AIMessage(
+                content=json.dumps(
+                    {
+                        "goal": "按重启时间列最近 Pod",
+                        "steps": [{"objective": "累计高重启", "tools": ["get_high_restart_kubernetes_pods"]}],
+                    },
+                    ensure_ascii=False,
+                )
+            )
+
+    llm = FakeLLM()
+    plan = await ToolExecutionPlanner(llm).plan(
+        "按照重启时间排序，列出最近的 10 个重启的 pod，并展示重启时间和次数",
+        tools,
+    )
+    prompt = "\n".join(str(message.content) for message in llm.messages)
+    assert "必须规划 get_recently_restarted_kubernetes_pods" in prompt
+    assert "禁止 get_high_restart_kubernetes_pods" in prompt
+    assert [step.tools for step in plan.steps] == [["get_recently_restarted_kubernetes_pods"]]
+
+
+@pytest.mark.asyncio
 async def test_planner_task_prompt_includes_agent_system_prompt():
     tools = [
         _tool("resolve_k8s_target_from_alert", "从告警解析目标"),
@@ -739,6 +916,32 @@ def test_is_context_size_error_detects_provider_messages():
     assert not is_context_size_error("connection refused")
 
 
+def test_is_llm_upstream_error_detects_gateway_failures():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import extract_llm_upstream_request_id, is_llm_upstream_error, llm_upstream_user_message
+
+    class InternalServerError(Exception):
+        pass
+
+    class RateLimitError(Exception):
+        pass
+
+    gateway = InternalServerError(
+        "Error code: 500 - {'error': {'message': 'upstream error: do request failed "
+        "(request id: 202609051131219225871028268d9d61rWfvQV9)', "
+        "'type': 'new_api_error', 'param': '', 'code': 'do_request_failed'}}"
+    )
+    assert is_llm_upstream_error(gateway)
+    assert extract_llm_upstream_request_id(gateway) == "202609051131219225871028268d9d61rWfvQV9"
+    text = llm_upstream_user_message(gateway)
+    assert "上游请求失败" in text
+    assert "202609051131219225871028268d9d61rWfvQV9" in text
+    assert "uvx" not in text
+    assert is_llm_upstream_error(RateLimitError("rate limited"))
+    assert not is_llm_upstream_error("connection refused")
+    assert not is_llm_upstream_error("BadRequestError: request exceeds the available context size")
+    assert not is_llm_upstream_error('{"error": "Pod not found", "code": 500}')
+
+
 def test_is_tool_result_failure_detects_json_error_payload():
     from apps.opspilot.metis.llm.agent.tool_execution_planner import is_tool_result_failure
 
@@ -771,6 +974,7 @@ def test_classify_tool_failure_kind_separates_auth_from_retryable():
         TOOL_FAILURE_OTHER,
         classify_tool_failure_kind,
         is_non_replanable_tool_failure,
+        is_tool_result_failure,
     )
     from apps.opspilot.metis.llm.common.tool_failure import unrecoverable_skill_result_hint
 
@@ -826,6 +1030,14 @@ def test_classify_tool_failure_kind_separates_auth_from_retryable():
     assert hint is not None and "禁止重试" in hint
     assert unrecoverable_skill_result_hint("timed out") is None
     assert unrecoverable_skill_result_hint('{"ok":false,"error":{"code":6,"message":"Cannot reach"}}') is None
+    app_previous_log = (
+        "Traceback (most recent call last):\n"
+        '  File "/usr/local/lib/python3.12/site-packages/mlflow/store/model_registry/base_rest_store.py", line 42, in _call_endpoint\n'
+        "mlflow.exceptions.RestException: RESOURCE_DOES_NOT_EXIST: Registered Model with name=classification_XGBoost_1.1 not found"
+    )
+    assert classify_tool_failure_kind(app_previous_log) == TOOL_FAILURE_OTHER
+    assert not is_tool_result_failure(app_previous_log)
+    assert not is_non_replanable_tool_failure(app_previous_log)
 
 
 def test_resolve_planned_execution_compact_limits_scales_with_working_budget():
@@ -868,6 +1080,54 @@ def test_compact_planned_execution_messages_truncates_tool_and_ai_text():
     assert out[0].content.endswith("...(truncated)")
     assert len(out[1].content) <= 80
     assert out[2].content == "keep tool call"
+
+
+def test_compact_pod_logs_keeps_tail_error_and_forbids_retry():
+    from langchain_core.messages import ToolMessage
+
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import compact_planned_execution_messages
+
+    body = ("INFO heartbeat " + ("x" * 40) + "\n") * 80 + "ERROR boom RESOURCE_DOES_NOT_EXIST"
+    out = compact_planned_execution_messages(
+        [ToolMessage(content=body, tool_call_id="c1", name="get_kubernetes_pod_logs")],
+        max_tool_chars=180,
+        max_ai_chars=80,
+    )
+    text = out[0].content
+    assert len(text) <= 180
+    assert "RESOURCE_DOES_NOT_EXIST" in text
+    assert "禁止" in text
+    assert not text.endswith("...(truncated)")
+
+
+def test_compact_pod_restart_evidence_keeps_previous_tail():
+    import json
+
+    from langchain_core.messages import ToolMessage
+
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import compact_planned_execution_messages
+
+    payload = {
+        "pod_name": "px",
+        "namespace": "ns",
+        "clock": {"finished_at": "2026-09-04T05:00:00+00:00", "started_at": "2026-09-04T05:01:00+00:00"},
+        "last_state": {"reason": "Error", "exit_code": 1},
+        "events": [{"reason": "BackOff", "message": "x" * 400}],
+        "logs": {
+            "previous_tail": {"available": True, "content": ("INFO " + "y" * 80 + "\n") * 40 + "ERROR boom RESOURCE_DOES_NOT_EXIST"},
+            "current_tail": {"skipped": True},
+            "current_head": {"skipped": True},
+        },
+        "missing": [],
+    }
+    out = compact_planned_execution_messages(
+        [ToolMessage(content=json.dumps(payload, ensure_ascii=False), tool_call_id="c1", name="collect_pod_restart_evidence")],
+        max_tool_chars=1800,
+        max_ai_chars=80,
+    )
+    parsed = json.loads(out[0].content)
+    assert parsed["clock"]["finished_at"].startswith("2026-09-04T05:00:00")
+    assert "RESOURCE_DOES_NOT_EXIST" in parsed["logs"]["previous_tail"]["content"]
 
 
 def test_compact_execute_skill_json_keeps_all_entries_under_budget():
@@ -1046,6 +1306,220 @@ def test_enforce_k8s_namespace_lookup_strips_cluster_wide_scans():
     assert [step.tools for step in fixed_scanned.steps] == [
         ["resolve_k8s_target_from_alert"],
         ["diagnose_kubernetes_pod_issues"],
+    ]
+
+
+def test_enforce_k8s_namespace_lookup_skips_resolve_after_cluster_discovery(caplog):
+    import logging
+
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import ToolExecutionPlan, ToolExecutionStep, enforce_k8s_namespace_lookup_first
+
+    caplog.set_level(logging.INFO, logger="opspilot")
+    plan = ToolExecutionPlan(
+        goal="统计今天重启",
+        steps=[
+            ToolExecutionStep(objective="找高频重启", tools=["get_high_restart_kubernetes_pods"]),
+            ToolExecutionStep(objective="事件时间线", tools=["get_resource_events_timeline"]),
+        ],
+    )
+    fixed = enforce_k8s_namespace_lookup_first(
+        plan,
+        {
+            "resolve_k8s_target_from_alert",
+            "get_high_restart_kubernetes_pods",
+            "get_resource_events_timeline",
+        },
+        max_steps=4,
+    )
+    assert [step.tools for step in fixed.steps] == [
+        ["get_high_restart_kubernetes_pods"],
+        ["get_resource_events_timeline"],
+    ]
+    records = [rec for rec in caplog.records if rec.name == "opspilot" and rec.msg.startswith("DeepAgent 规划硬校验：前置发现工具已带 namespace，跳过插入反查")]
+    assert len(records) == 1
+    assert records[0].args == (["get_high_restart_kubernetes_pods"],)
+    assert "get_high_restart_kubernetes_pods" in records[0].getMessage()
+
+
+def test_drop_cluster_scan_tools_for_known_pod_diagnose():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import (
+        ToolExecutionPlan,
+        ToolExecutionStep,
+        drop_cluster_scan_tools_for_known_pod_diagnose,
+    )
+
+    plan = ToolExecutionPlan(
+        goal="分析指定 Pod 重启",
+        steps=[
+            ToolExecutionStep(
+                objective="诊断",
+                tools=["diagnose_kubernetes_pod_issues", "list_kubernetes_events", "describe_kubernetes_resource"],
+            ),
+            ToolExecutionStep(objective="扫集群", tools=["analyze_pod_restart_pattern", "list_kubernetes_pods"]),
+            ToolExecutionStep(objective="上一轮日志", tools=["get_kubernetes_previous_pod_logs"]),
+        ],
+    )
+    fixed = drop_cluster_scan_tools_for_known_pod_diagnose(plan)
+    assert [step.tools for step in fixed.steps] == [
+        ["diagnose_kubernetes_pod_issues"],
+        ["get_kubernetes_previous_pod_logs"],
+    ]
+
+    mixed = ToolExecutionPlan(
+        goal="先巡检再诊断",
+        steps=[
+            ToolExecutionStep(objective="高重启名单", tools=["get_high_restart_kubernetes_pods"]),
+            ToolExecutionStep(objective="诊断", tools=["diagnose_kubernetes_pod_issues"]),
+        ],
+    )
+    kept = drop_cluster_scan_tools_for_known_pod_diagnose(mixed)
+    assert [step.tools for step in kept.steps] == [
+        ["get_high_restart_kubernetes_pods"],
+        ["diagnose_kubernetes_pod_issues"],
+    ]
+
+
+def test_collapse_known_pod_restart_to_evidence_tool_only_for_restart_reason():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import (
+        ToolExecutionPlan,
+        ToolExecutionStep,
+        collapse_known_pod_restart_to_evidence_tool,
+        is_pod_restart_reason_query,
+    )
+
+    available = {
+        "current_time",
+        "resolve_k8s_target_from_alert",
+        "diagnose_kubernetes_pod_issues",
+        "get_kubernetes_pod_logs",
+        "get_kubernetes_previous_pod_logs",
+        "get_resource_events_timeline",
+        "collect_pod_restart_evidence",
+    }
+    noisy = ToolExecutionPlan(
+        goal="分析重启",
+        steps=[
+            ToolExecutionStep(objective="对时", tools=["current_time"]),
+            ToolExecutionStep(objective="反查", tools=["resolve_k8s_target_from_alert"]),
+            ToolExecutionStep(objective="诊断", tools=["diagnose_kubernetes_pod_issues"]),
+            ToolExecutionStep(objective="当前日志", tools=["get_kubernetes_pod_logs"]),
+            ToolExecutionStep(objective="上一轮日志", tools=["get_kubernetes_previous_pod_logs"]),
+            ToolExecutionStep(objective="事件", tools=["get_resource_events_timeline"]),
+        ],
+    )
+    restart_q = "分析 argocd/argocd-repo-server-f6d44484c-kkss8 频繁重启的原因"
+    assert is_pod_restart_reason_query(restart_q) is True
+    collapsed = collapse_known_pod_restart_to_evidence_tool(noisy, available, user_message=restart_q)
+    assert [step.tools for step in collapsed.steps] == [
+        ["current_time"],
+        ["resolve_k8s_target_from_alert"],
+        ["collect_pod_restart_evidence"],
+    ]
+
+    alert_q = "告警：Unhealthy（kubernetes，bk-lite-k3s，nacos-0） 检测到异常\nReadiness probe failed"
+    assert is_pod_restart_reason_query(alert_q) is False
+    kept_alert = collapse_known_pod_restart_to_evidence_tool(noisy, available, user_message=alert_q)
+    assert [step.tools for step in kept_alert.steps] == [step.tools for step in noisy.steps]
+
+    rca_prompt = "你是 Kubernetes 集群 RCA 助手。\n## 告警怎么读\n"
+    kept_prompt = collapse_known_pod_restart_to_evidence_tool(
+        noisy,
+        available,
+        user_message="这个 Pod 为什么重启",
+        agent_system_prompt=rca_prompt,
+    )
+    assert [step.tools for step in kept_prompt.steps] == [step.tools for step in noisy.steps]
+
+    assert is_pod_restart_reason_query("看看 argocd-repo-server 当前日志") is False
+    assert is_pod_restart_reason_query("按重启时间列出最近 10 个重启的 Pod") is False
+    assert is_pod_restart_reason_query("巡检 Deployment 探针配置") is False
+    kept_logs = collapse_known_pod_restart_to_evidence_tool(
+        noisy,
+        available,
+        user_message="看看 argocd-repo-server 当前日志",
+    )
+    assert [step.tools for step in kept_logs.steps] == [step.tools for step in noisy.steps]
+
+    for list_q in ("列出频繁重启的 Pod", "哪些 Pod 频繁重启", "有 CrashLoopBackOff"):
+        assert is_pod_restart_reason_query(list_q) is False
+        kept_list = collapse_known_pod_restart_to_evidence_tool(noisy, available, user_message=list_q)
+        assert [step.tools for step in kept_list.steps] == [step.tools for step in noisy.steps]
+        assert all("collect_pod_restart_evidence" not in (step.tools or []) for step in kept_list.steps)
+
+    empty = ToolExecutionPlan(goal="名单", steps=[])
+    inserted = collapse_known_pod_restart_to_evidence_tool(empty, available, user_message="列出频繁重启的 Pod")
+    assert inserted.steps == []
+    assert is_pod_restart_reason_query("分析 Deployment 的重启策略") is False
+    assert is_pod_restart_reason_query("帮我分析一下重启") is False
+    assert is_pod_restart_reason_query("集群里有很多 CrashLoopBackOff 怎么办") is False
+    assert is_pod_restart_reason_query("这个 Pod 为什么重启") is True
+    collapsed_deixis = collapse_known_pod_restart_to_evidence_tool(noisy, available, user_message="这个 Pod 为什么重启")
+    assert [step.tools for step in collapsed_deixis.steps] == [
+        ["current_time"],
+        ["resolve_k8s_target_from_alert"],
+        ["collect_pod_restart_evidence"],
+    ]
+
+
+def test_rewrite_high_restart_to_recent_for_time_sort():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import (
+        ToolExecutionPlan,
+        ToolExecutionStep,
+        rewrite_high_restart_to_recent_for_time_sort,
+    )
+
+    available = {"get_high_restart_kubernetes_pods", "get_recently_restarted_kubernetes_pods"}
+    plan = ToolExecutionPlan(
+        goal="按重启时间列最近 Pod",
+        steps=[ToolExecutionStep(objective="找高频重启", tools=["get_high_restart_kubernetes_pods"])],
+    )
+    fixed = rewrite_high_restart_to_recent_for_time_sort(
+        plan,
+        available,
+        user_message="按照重启时间排序，列出最近的 10 个重启的 pod，并展示重启时间和次数",
+    )
+    assert [step.tools for step in fixed.steps] == [["get_recently_restarted_kubernetes_pods"]]
+
+    count_only = rewrite_high_restart_to_recent_for_time_sort(
+        plan,
+        available,
+        user_message="找出累计重启次数很高的不稳定 Pod",
+    )
+    assert [step.tools for step in count_only.steps] == [["get_high_restart_kubernetes_pods"]]
+
+    mixed = ToolExecutionPlan(
+        goal="先名单再诊断",
+        steps=[
+            ToolExecutionStep(objective="高重启名单", tools=["get_high_restart_kubernetes_pods"]),
+            ToolExecutionStep(objective="诊断", tools=["diagnose_kubernetes_pod_issues"]),
+        ],
+    )
+    kept = rewrite_high_restart_to_recent_for_time_sort(
+        mixed,
+        available | {"diagnose_kubernetes_pod_issues"},
+        user_message="按照重启时间排序，列出最近的 10 个重启的 pod",
+    )
+    assert [step.tools for step in kept.steps] == [
+        ["get_high_restart_kubernetes_pods"],
+        ["diagnose_kubernetes_pod_issues"],
+    ]
+
+
+def test_enforce_k8s_namespace_lookup_first_prepends_for_previous_logs():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import ToolExecutionPlan, ToolExecutionStep, enforce_k8s_namespace_lookup_first
+
+    plan = ToolExecutionPlan(
+        goal="上一轮日志",
+        steps=[ToolExecutionStep(objective="取 previous 日志", tools=["get_kubernetes_previous_pod_logs"])],
+    )
+    fixed = enforce_k8s_namespace_lookup_first(
+        plan,
+        {"resolve_k8s_target_from_alert", "get_kubernetes_previous_pod_logs"},
+        max_steps=4,
+    )
+    assert [step.tools for step in fixed.steps] == [
+        ["resolve_k8s_target_from_alert"],
+        ["get_kubernetes_previous_pod_logs"],
     ]
 
 

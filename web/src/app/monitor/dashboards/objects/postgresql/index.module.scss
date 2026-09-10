@@ -1,22 +1,37 @@
 @use '../common/simple-dashboard.module.scss';
 
-// 区块小标题:给分区加语义标题,提升可扫读性(与 MySQL/k8s 同款)
-.sectionLabel {
-  margin: 2px 2px 4px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid #eceff4;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #8c95a8;
+// sectionLabel 已上收到共享壳（带品牌蓝指示条与现代间距）；此处仅保留趋势图高度与图例微调。
+
+.chartLegendHeader {
+  justify-content: flex-end;
+  max-width: none;
+  white-space: nowrap;
 }
 
-.dashboardSection + .sectionLabel {
-  margin-top: 8px;
+.compactTrend {
+  .chartWrap {
+    height: 180px;
+  }
 }
 
-:global(html.dark) .sectionLabel {
-  border-bottom-color: rgba(255, 255, 255, 0.08);
+@media (max-width: 768px) {
+  .chartLegendHeader {
+    justify-content: flex-start;
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .compactTrend {
+    .chartWrap {
+      height: 140px;
+    }
+  }
 }
 
+@media (max-width: 480px) {
+  .compactTrend {
+    .chartWrap {
+      height: 120px;
+    }
+  }
+}

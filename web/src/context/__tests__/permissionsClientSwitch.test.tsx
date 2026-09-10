@@ -75,12 +75,13 @@ vi.mock('@/utils/request', () => ({
 }));
 
 const Probe = () => {
-  const { loading, hasPermission } = usePermissions();
+  const { loading, hasPermission, menus } = usePermissions();
   return (
     <>
       <span data-testid="loading">{String(loading)}</span>
       <span data-testid="cmdb">{String(hasPermission('/cmdb/assetOverview'))}</span>
       <span data-testid="setting">{String(hasPermission('/system-manager/user'))}</span>
+      <span data-testid="menu-root">{menus[0]?.url || ''}</span>
     </>
   );
 };
@@ -118,6 +119,43 @@ describe('PermissionsProvider same-tab app switch', () => {
       expect(screen.getByTestId('loading').textContent).toBe('false');
     });
     expect(screen.getByTestId('setting').textContent).toBe('true');
+  });
+
+  it('restores a previously loaded app menu immediately without waiting on the network', async () => {
+    const { rerender } = render(
+      <PermissionsProvider>
+        <Probe />
+      </PermissionsProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('loading').textContent).toBe('false');
+    });
+    expect(screen.getByTestId('menu-root').textContent).toBe('/cmdb/assetOverview');
+
+    pathname = '/system-manager/user';
+    rerender(
+      <PermissionsProvider>
+        <Probe />
+      </PermissionsProvider>,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('loading').textContent).toBe('false');
+    });
+    expect(screen.getByTestId('menu-root').textContent).toBe('/system-manager/user');
+    const fetchesAfterBothApps = menuFetch.count;
+
+    pathname = '/cmdb/assetOverview';
+    rerender(
+      <PermissionsProvider>
+        <Probe />
+      </PermissionsProvider>,
+    );
+
+    expect(screen.getByTestId('loading').textContent).toBe('false');
+    expect(screen.getByTestId('menu-root').textContent).toBe('/cmdb/assetOverview');
+    expect(screen.getByTestId('cmdb').textContent).toBe('true');
+    expect(menuFetch.count).toBe(fetchesAfterBothApps);
   });
 
   it('does not go back to loading when switching menus inside the same app', async () => {

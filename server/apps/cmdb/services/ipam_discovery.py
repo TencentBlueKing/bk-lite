@@ -166,29 +166,10 @@ def _ensure_subnet_ip_association(subnet_id, ip_id) -> dict:
 
 
 def _system_create_or_update(model_id: str, instance_info: dict, existing_id=None, organization=None) -> dict:
-    """已有 _id 走 update,否则 create。统一走 system 操作员 + 跳过权限校验。"""
-    from apps.cmdb.services.instance import InstanceManage
+    """已有 _id 走 update,否则 create。统一走 system 操作员 + 组织范围。"""
+    from apps.cmdb.services.system_instance_write import system_create_or_update
 
-    if existing_id:
-        InstanceManage.instance_update(
-            [],
-            [],
-            existing_id,
-            instance_info,
-            "system",
-            skip_permission_check=True,
-            allowed_org_ids=organization or [],
-            record_change=False,
-        )
-        return {"_id": existing_id, **instance_info}
-    created = InstanceManage.instance_create(
-        model_id,
-        instance_info,
-        "system",
-        allowed_org_ids=organization or [],
-        record_change=False,
-    )
-    return {"_id": created["_id"], **instance_info}
+    return system_create_or_update(model_id, instance_info, existing_id=existing_id, organization=organization)
 
 
 def _system_update(instance_id, instance_info: dict) -> None:

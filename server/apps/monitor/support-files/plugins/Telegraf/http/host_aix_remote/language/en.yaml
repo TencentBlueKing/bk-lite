@@ -1,0 +1,118 @@
+Host AIX Remote:
+  name: AIX Host Remote Collection
+  desc: A Linux collect node SSHes to AIX on each interval and runs system commands. It collects CPU (including LPAR), memory paging and svmon, load, process state, disk capacity and inodes, read/write and busy, NICs, and uptime. The target does not need a collector installed. Fill in IP, SSH username (for example root), password or private key, port (default 22), interval, and a Linux collect node. It does not collect hardware inventory, lastlog, lsof, or connection tables. There is no version picker; the version is detected automatically.
+monitor_object:
+  Host: Host
+monitor_object_type:
+  OS: Operating System
+monitor_object_metric:
+  Host:
+    cpu_usage_total:
+      name: CPU Usage
+      desc: AIX CPU usage as mpstat user + sys + iowait.
+    cpu_usage_iowait_total:
+      name: CPU IOWait Rate
+      desc: Indicates the proportion of CPU time spent waiting for I/O operations to complete, commonly used to identify disk or I/O performance constraints.
+    cpu_usage_system_total:
+      name: CPU System Usage
+      desc: Represents the percentage of CPU time spent executing kernel-level tasks. Abnormally high values may indicate increased system overhead or frequent system calls.
+    cpu_usage_user_total:
+      name: CPU User Usage
+      desc: Indicates the percentage of CPU time spent executing user-space application logic, commonly used to evaluate application CPU consumption.
+    system_load1:
+      name: 1 Minute Average Load
+      desc: Represents the average system load over the last 1 minute, primarily used to observe short-term load fluctuations.
+    system_load5:
+      name: 5 Minute Average Load
+      desc: Represents the average system load over the last 5 minutes, useful for analyzing short-term load trends.
+    system_load15:
+      name: 15 Minute Average Load
+      desc: Represents the average system load over the last 15 minutes, commonly used to evaluate long-term load stability.
+    system_uptime:
+      name: System Uptime
+      desc: Represents how long the host has been running since the last boot, in seconds, useful for observing stability and detecting unexpected restarts.
+    diskio_write_bytes_rate:
+      name: Disk Write Rate
+      desc: Indicates the amount of data written to disk per unit time, used to evaluate disk write throughput.
+    diskio_write_bytes_total:
+      name: Disk Written Bytes
+      desc: Disk write bytes for this device. Rate uses the 1s interval sample; 7.1 idle-interval fallback may use the earlier non-idle report.
+    diskio_read_bytes_rate:
+      name: Disk Read Rate
+      desc: Indicates the amount of data read from disk per unit time, used to evaluate disk read throughput.
+    diskio_read_bytes_total:
+      name: Disk Read Bytes
+      desc: Disk read bytes for this device. Rate uses the 1s interval sample; 7.1 idle-interval fallback may use the earlier non-idle report.
+    disk_tm_act:
+      name: Disk tm_act
+      desc: AIX iostat % tm_act, the share of time the disk was active. This is AIX disk busy, not Linux %util.
+    disk_total:
+      name: Disk Total
+      desc: Represents the total capacity of a disk or filesystem, used for capacity planning and resource management.
+    disk_free:
+      name: Disk Free
+      desc: Represents the currently available free space of a disk or filesystem, used to monitor capacity risks.
+    disk_used_percent:
+      name: Disk Usage
+      desc: Represents the percentage of disk space that has been consumed, a core metric for disk capacity monitoring.
+    disk_inodes_used_percent:
+      name: Inode Usage
+      desc: Filesystem inode usage percentage, used with capacity for disk monitoring.
+    disk_iused:
+      name: Used inodes
+      desc: Number of used inodes, used with capacity for filesystem monitoring.
+    disk_ifree:
+      name: Free inodes
+      desc: Number of free inodes, used with capacity for filesystem monitoring.
+    mem_total:
+      name: Total Memory
+      desc: Represents the total amount of physical memory available on the system, serving as a baseline for memory evaluation.
+    mem_used_percent:
+      name: Memory Usage
+      desc: Represents the percentage of memory currently in use, indicating overall memory pressure.
+    mem_swap_free:
+      name: Swap Free Memory
+      desc: Represents the amount of free swap space available, used to monitor buffering capacity under memory pressure.
+    svmon_work:
+      name: svmon work
+      desc: AIX svmon work segment size. Keep the AIX name; this is not Linux cached, shared, or buffered memory.
+    svmon_pers:
+      name: svmon pers
+      desc: AIX svmon persistent segment size. Keep the AIX name.
+    svmon_clnt:
+      name: svmon clnt
+      desc: AIX svmon client segment size. Keep the AIX name.
+    svmon_pin:
+      name: svmon pin
+      desc: AIX svmon pinned pages size. Keep the AIX name.
+    lpar_entitled_capacity:
+      name: Entitled Capacity
+      desc: AIX LPAR entitled capacity.
+    lpar_virtual_cpus:
+      name: Virtual CPUs
+      desc: AIX LPAR online virtual CPU count.
+    net_bytes_recv_rate:
+      name: Network Receive Throughput Rate
+      desc: Represents the amount of data received per unit time on a network interface, used to evaluate inbound bandwidth utilization.
+    net_bytes_sent_rate:
+      name: Network Send Throughput Rate
+      desc: Represents the amount of data sent per unit time on a network interface, used to evaluate outbound bandwidth utilization.
+    net_err_in_rate:
+      name: Network Receive Error Rate
+      desc: Represents the number of errored packets received per unit time, used to monitor network quality.
+    net_err_out_rate:
+      name: Network Send Error Rate
+      desc: Represents the number of errored packets sent per unit time on a network interface.
+    processes_state:
+      name: AIX Process State Count
+      desc: Process counts by AIX ps state letter (A/Z/W/I/T/O). Do not map these to Linux running or blocked.
+monitor_object_metric_group:
+  Host:
+    CPU: CPU
+    System: System
+    Disk IO: Disk I/O
+    Disk: Disk
+    Process: Process
+    Memory: Memory
+    Network: Network
+    LPAR: LPAR

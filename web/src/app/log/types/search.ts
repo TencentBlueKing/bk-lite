@@ -5,12 +5,13 @@ export interface SearchTableProps {
   dataSource: TableDataItem[];
   fields: string[];
   loading?: boolean;
+  highlightQuery?: string;
   scroll?: {
     x?: string | number;
     y?: string | number;
   };
   addToQuery: (row: TableDataItem, type: string) => void;
-  onCreateExtractor?: (row: TableDataItem) => void;
+  onCreateExtractor?: (row: TableDataItem, sourceField: string) => void;
   onLoadMore?: () => void;
 }
 
@@ -48,6 +49,7 @@ export interface AggregatedResult {
 export interface LogTerminalProps {
   className?: string;
   query: SearchParams;
+  highlightQuery?: string;
   fetchData?: (loading: boolean) => void;
 }
 

@@ -11,6 +11,16 @@ import pytest
 from apps.cmdb.collection.collect_plugin.host import HostCollectMetrics
 
 
+def _fake_task(instances=None, params=None):
+    class _T:
+        pass
+
+    t = _T()
+    t.instances = instances if instances is not None else []
+    t.params = params if params is not None else {}
+    return t
+
+
 @pytest.fixture
 def runner(monkeypatch):
     # model_id 属性会触发 DB 查询；纯方法测试直接桩为 "host"
@@ -23,6 +33,7 @@ def _runner_empty_name(monkeypatch):
     monkeypatch.setattr(HostCollectMetrics, "model_id", property(lambda self: "host"))
     r = HostCollectMetrics("placeholder", "cmdb_1", 1)
     r.inst_name = ""
+    monkeypatch.setattr(r, "get_collect_inst", lambda: _fake_task())
     return r
 
 
@@ -88,6 +99,31 @@ def test_set_inst_name_unknown(monkeypatch):
 
 def test_set_component_inst_name_existing(runner):
     assert runner.set_component_inst_name({"model_id": "nic"}) == "web01"
+
+
+@pytest.mark.parametrize(
+    "model_id,identity_field,identity_value,expected",
+    [
+        ("disk", "disk_name", "sdb", "sdb-server-b"),
+        ("memory", "mem_locator", "DIMM-B1", "DIMM-B1-server-b"),
+        ("gpu", "gpu_name", "GPU-B", "GPU-B-server-b"),
+    ],
+)
+def test_set_component_inst_name_prefers_row_parent_over_first_selected_instance(
+    runner,
+    model_id,
+    identity_field,
+    identity_value,
+    expected,
+):
+    """多资产任务必须按当前指标的 self_device 组合子资源实例名。"""
+    data = {
+        "model_id": model_id,
+        identity_field: identity_value,
+        "self_device": "server-b",
+    }
+
+    assert runner.set_component_inst_name(data) == expected
 
 
 @pytest.mark.parametrize(
@@ -196,16 +232,6 @@ def test_add_host_proc_no_key_noop(runner):
 # --------------------------------------------------------------------------
 
 
-def _fake_task(instances=None, params=None):
-    class _T:
-        pass
-
-    t = _T()
-    t.instances = instances if instances is not None else []
-    t.params = params if params is not None else {}
-    return t
-
-
 def test_set_cloud_from_matched_instance(monkeypatch, runner):
     task = _fake_task(instances=[{"ip_addr": "1.2.3.4", "cloud": "aliyun"}])
     monkeypatch.setattr(runner, "get_collect_inst", lambda: task)
@@ -236,6 +262,43 @@ def test_set_display_inst_name_without_label(monkeypatch, runner):
     assert runner.set_display_inst_name({"host": "1.2.3.4"}) == "1.2.3.4"
 
 
+def test_set_display_inst_name_uses_matched_instance_name(monkeypatch, runner):
+    runner.inst_name = ""
+    task = _fake_task(
+        instances=[
+            {"ip_addr": "10.0.0.1", "inst_name": "host-a", "cloud_name": "生产云"},
+            {"ip_addr": "10.0.0.2", "inst_name": "host-b", "cloud_name": "生产云"},
+        ]
+    )
+    monkeypatch.setattr(runner, "get_collect_inst", lambda: task)
+    assert runner.set_display_inst_name({"host": "10.0.0.2"}) == "host-b"
+    assert runner.set_display_inst_name({"host": "10.0.0.1"}) == "host-a"
+
+
+def test_set_inst_name_uses_matched_instance_when_runner_has_no_singleton(monkeypatch):
+    r = _runner_empty_name(monkeypatch)
+    task = _fake_task(
+        instances=[
+            {"ip_addr": "10.0.0.1", "inst_name": "serial-a"},
+            {"ip_addr": "10.0.0.2", "inst_name": "serial-b"},
+        ]
+    )
+    monkeypatch.setattr(r, "get_collect_inst", lambda: task)
+    assert r.set_inst_name({"host": "10.0.0.2"}) == "serial-b"
+
+
+def test_set_inst_name_unmatched_ip_does_not_steal_first_instance(monkeypatch):
+    r = _runner_empty_name(monkeypatch)
+    task = _fake_task(
+        instances=[
+            {"ip_addr": "10.0.0.1", "inst_name": "serial-a"},
+            {"ip_addr": "10.0.0.2", "inst_name": "serial-b"},
+        ]
+    )
+    monkeypatch.setattr(r, "get_collect_inst", lambda: task)
+    assert r.set_inst_name({"host": "10.0.0.9"}) == "10.0.0.9"
+
+
 def test_set_asso_instances(runner):
     out = runner.set_asso_instances({"self_device": "dev1"}, model_id="disk")
     assert out == [
@@ -244,5 +307,17 @@ def test_set_asso_instances(runner):
             "inst_name": "dev1",
             "asst_id": "contains",
             "model_asst_id": "host_contains_disk",
+        }
+    ]
+
+
+def test_set_nic_asso_instances_prefers_row_parent_over_first_selected_instance(runner):
+    """多资产任务的网卡必须关联当前指标所属服务器，而非任务首个实例。"""
+    assert runner.set_nic_asso_instances({"self_device": "server-b"}) == [
+        {
+            "model_id": "host",
+            "inst_name": "server-b",
+            "asst_id": "contains",
+            "model_asst_id": "host_contains_nic",
         }
     ]

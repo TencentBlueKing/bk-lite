@@ -134,8 +134,30 @@ class CMDB(object):
         return_data = self.client.run("model_inst_count", **kwargs)
         return return_data
 
+    def license_instance_count(self, **kwargs):
+        """许可管理专用：原生自动发现的收费模型实例数量。"""
+        return self.client.run("license_cmdb_instance_count", **kwargs)
+
     def get_monitor_ids_by_inst_uuids(self, **kwargs):
         return self.client.run("get_monitor_ids_by_inst_uuids", **kwargs)
+
+    def list_monitored_hosts(self, **kwargs):
+        return self.client.run("list_monitored_hosts", **kwargs)
+
+    def list_application_systems(self, **kwargs):
+        return self.client.run("list_application_systems", **kwargs)
+
+    def list_host_uuids_for_systems(self, **kwargs):
+        return self.client.run("list_host_uuids_for_systems", **kwargs)
+
+    def list_monitored_hosts_for_systems(self, **kwargs):
+        return self.client.run("list_monitored_hosts_for_systems", **kwargs)
+
+    def network_topology_among_uuids(self, **kwargs):
+        return self.client.run("network_topology_among_uuids", **kwargs)
+
+    def topo_search_lite_by_uuid(self, **kwargs):
+        return self.client.run("topo_search_lite_by_uuid", **kwargs)
 
     def ingest_from_source(self, **kwargs):
         """跨模块推送写入 CMDB（host：node_id 优先 + 存量认领）。

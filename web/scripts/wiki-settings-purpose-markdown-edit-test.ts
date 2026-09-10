@@ -15,8 +15,8 @@ assert.match(
 );
 assert.doesNotMatch(
   settingsTab,
-  /import WikiStructureEditor from ["']\.\/WikiStructureEditor["']/,
-  "SettingsTab should not embed the structured Schema editor",
+  /WikiStructureEditor/,
+  "Settings must not mount a separate directory structure editor",
 );
 assert.match(
   settingsTab,
@@ -106,13 +106,18 @@ assert.match(
 );
 assert.match(
   settingsTab,
-  /name=["']purpose_md["'][\s\S]*<Input\.TextArea autoSize=\{\{ minRows: 18, maxRows: 28 \}\}/,
-  "Edit mode should keep a usable purpose textarea",
+  /name=["']purpose_md["'][\s\S]*autoSize=\{false\}/,
+  "Edit mode purpose textarea uses a fixed height",
 );
 assert.match(
   settingsTab,
-  /name=["']schema_md["'][\s\S]*<Input\.TextArea autoSize=\{\{ minRows: 18, maxRows: 28 \}\}/,
-  "Edit mode should keep a usable schema textarea",
+  /name=["']schema_md["'][\s\S]*autoSize=\{false\}/,
+  "Edit mode schema textarea uses a fixed height",
+);
+assert.match(
+  settingsTab,
+  /overflow-y-auto/,
+  "Purpose and schema cards scroll internally",
 );
 assert.match(
   settingsTab,
@@ -131,13 +136,13 @@ assert.match(
 );
 assert.doesNotMatch(
   settingsTab,
-  /<WikiStructureEditor/,
-  "Purpose & Structure must not embed structured Schema editor",
+  /WikiStructureEditor/,
+  "Settings must not mount a separate directory structure editor",
 );
 assert.doesNotMatch(
   settingsTab,
   /key:\s*["']structure["']/,
-  "Settings must not expose a separate directory-structure tab",
+  "Settings must not expose a directory-structure tab",
 );
 
 console.log("wiki settings two-column purpose and schema validation passed");

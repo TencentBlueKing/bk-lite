@@ -9,7 +9,9 @@ from apps.monitor.services.metrics import Metrics
 from apps.monitor.utils.dimension import parse_instance_id
 
 ALLOWED_AGGREGATIONS = {
-    "AVG": None,
+    # AVG 按实例 + 已声明维度聚合，丢掉 collection_task_id / 采集器 host 等未声明标签。
+    # 否则 Host Remote 每轮采集都是短命序列：折线合成一条，断点却按序列并集把整窗涂红。
+    "AVG": "avg",
     "SUM": "sum",
     "MAX": "max",
     "MIN": "min",
@@ -42,16 +44,30 @@ def _metric_instance_id_keys(metric: Metric) -> list[str]:
     return normalized
 
 
-def _allowed_dimensions(metric: Metric) -> set[str]:
-    allowed = set()
+def _metric_dimension_names(metric: Metric) -> list[str]:
+    names: list[str] = []
+    seen: set[str] = set()
     for item in metric.dimensions or []:
-        if isinstance(item, dict):
-            name = item.get("name")
-        else:
-            name = item
-        if name is not None and str(name).strip():
-            allowed.add(str(name).strip())
-    return allowed
+        raw = item.get("name") if isinstance(item, dict) else item
+        name = str(raw).strip() if raw is not None else ""
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        names.append(name)
+    return names
+
+
+def _allowed_dimensions(metric: Metric) -> set[str]:
+    return set(_metric_dimension_names(metric))
+
+
+def _aggregation_grouping_labels(metric: Metric, aggregation_name: str) -> list[str]:
+    grouping = list(_metric_instance_id_keys(metric))
+    if aggregation_name == "AVG":
+        for name in _metric_dimension_names(metric):
+            if name not in grouping:
+                grouping.append(name)
+    return grouping
 
 
 def _filter_matchers(metric: Metric, filters) -> list[str]:
@@ -93,8 +109,8 @@ def _render_metric_query(metric: Metric, matchers: list[str], aggregation) -> st
         raise AuthorizedMetricQueryError("汇聚方式不受支持", code="aggregation_invalid")
     aggregation_func = ALLOWED_AGGREGATIONS[aggregation_name]
     if aggregation_func:
-        instance_keys = _metric_instance_id_keys(metric)
-        query = f'{aggregation_func}({query}) by ({", ".join(instance_keys)})'
+        grouping = _aggregation_grouping_labels(metric, aggregation_name)
+        query = f'{aggregation_func}({query}) by ({", ".join(grouping)})'
     return query
 
 
@@ -344,6 +360,9 @@ class AuthorizedMetricQueryService:
             card_budget=prepared.card_budget,
         )
 
+    def prepare(self, payload: dict) -> AuthorizedMetricQuery:
+        return self._prepare(payload)
+
     def query_instant(self, payload: dict) -> dict:
-        prepared = self._prepare(payload)
+        prepared = self.prepare(payload)
         return Metrics.get_metrics(prepared.query, time=prepared.end / 1000.0)

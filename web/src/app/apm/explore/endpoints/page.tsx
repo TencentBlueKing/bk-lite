@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import {
@@ -36,6 +36,11 @@ import {
   isErrorRateDanger,
 } from '@/app/apm/components/metric-format';
 import type { ApmService, ApmServiceRed, ApmTraceSummary } from '@/app/apm/types';
+import {
+  ENDPOINT_RED_CONCURRENCY,
+  runEndpointRedSettled,
+  selectServicesForEndpointRed,
+} from '@/app/apm/utils/endpointRedLoad';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import SummaryMetricCard from '@/components/summary-metric-card';
 import TimeSeriesComposedChart from '@/components/time-series-composed-chart';
@@ -120,13 +125,16 @@ export default function ApmEndpointsPage() {
   const [samplesLoading, setSamplesLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const loadGenerationRef = useRef(0);
 
   const load = useCallback(async () => {
     if (authLoading) return;
+    const batchId = ++loadGenerationRef.current;
     setState('loading');
     setMetricFailureCount(0);
     try {
       const serviceItems = await getServices();
+      if (batchId !== loadGenerationRef.current) return;
       setServices(serviceItems);
       const availableEnvironments = Array.from(new Set(
         serviceItems.flatMap((service) => service.environment_views.map((view) => view.environment)),
@@ -137,22 +145,12 @@ export default function ApmEndpointsPage() {
       const visibleServices = serviceItems.filter((service) => (
         service.environment_views.some((view) => view.environment === selectedEnvironment)
       ));
+      const targetServices = selectServicesForEndpointRed(visibleServices, serviceId);
       const endedAt = new Date();
       const startedAt = new Date(endedAt.getTime() - RANGE_MS[timeRange]);
-      const results = await Promise.allSettled(visibleServices.map(async (service) => ({
-        service,
-        red: await getServiceRed(service.id, selectedEnvironment, startedAt.toISOString(), endedAt.toISOString()),
-      })));
-      const successfulResults = results.filter((result) => result.status === 'fulfilled');
-      if (results.length && !successfulResults.length) {
-        const firstFailure = results.find((result) => result.status === 'rejected');
-        throw firstFailure?.reason;
-      }
-      setMetricFailureCount(results.length - successfulResults.length);
-      const endpointRows = results.flatMap((result) => {
-        if (result.status !== 'fulfilled') return [];
-        const { service, red } = result.value;
-        return red.top_endpoints.map((endpoint) => {
+      const collectedRows: EndpointRow[] = [];
+      const toEndpointRows = (service: ApmService, red: ApmServiceRed): EndpointRow[] => (
+        red.top_endpoints.map((endpoint) => {
           const identity = splitEndpoint(endpoint.endpoint);
           return {
             key: `${service.id}:${selectedEnvironment}:${endpoint.endpoint}`,
@@ -169,16 +167,44 @@ export default function ApmEndpointsPage() {
             p99Ms: endpoint.p99_ms,
             lastSeenAt: service.last_seen_at,
           };
-        });
+        })
+      );
+      const results = await runEndpointRedSettled(
+        targetServices,
+        async (service) => ({
+          service,
+          red: await getServiceRed(service.id, selectedEnvironment, startedAt.toISOString(), endedAt.toISOString()),
+        }),
+        {
+          concurrency: ENDPOINT_RED_CONCURRENCY,
+          isCancelled: () => batchId !== loadGenerationRef.current,
+          onFulfilled: ({ service, red }) => {
+            if (batchId !== loadGenerationRef.current) return;
+            collectedRows.push(...toEndpointRows(service, red));
+            setRows([...collectedRows]);
+          },
+        },
+      );
+      if (batchId !== loadGenerationRef.current) return;
+      const successfulResults = results.filter((result) => result.status === 'fulfilled');
+      if (results.length && !successfulResults.length) {
+        const firstFailure = results.find((result) => result.status === 'rejected');
+        throw firstFailure?.reason;
+      }
+      setMetricFailureCount(results.length - successfulResults.length);
+      const endpointRows = results.flatMap((result) => {
+        if (result.status !== 'fulfilled') return [];
+        return toEndpointRows(result.value.service, result.value.red);
       });
       setRows(endpointRows);
       setState(endpointRows.length ? 'ready' : 'empty');
     } catch (error) {
+      if (batchId !== loadGenerationRef.current) return;
       setRows([]);
       setMetricFailureCount(0);
       setState(catalogErrorKind(error));
     }
-  }, [authLoading, environment, getServiceRed, getServices, timeRange]);
+  }, [authLoading, environment, getServiceRed, getServices, serviceId, timeRange]);
 
   useEffect(() => {
     load();
@@ -265,6 +291,7 @@ export default function ApmEndpointsPage() {
   const columns: TableColumnsType<EndpointRow> = [
     {
       title: t('apm.common.endpoint', '端点'),
+      width: '36%',
       render: (_, row) => (
         <span className="inline-flex min-w-0 items-center gap-2">
           <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-xs font-medium ${
@@ -275,12 +302,13 @@ export default function ApmEndpointsPage() {
           >
             {row.method}
           </span>
-          <EllipsisWithTooltip className="truncate font-mono text-xs" text={row.route} />
+          <EllipsisWithTooltip className="truncate font-mono text-xs font-medium text-[var(--color-text-1)]" text={row.route} />
         </span>
       ),
     },
     {
       title: t('apm.explore.ownerService', '所属服务'),
+      width: '24%',
       responsive: ['sm'],
       render: (_, row) => (
         <Space direction="vertical" size={0} className="min-w-0">

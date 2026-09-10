@@ -70,9 +70,14 @@ export const SingleValueSettingsSection: React.FC<
   const resolvedSectionTitle =
     sectionTitle || t('topology.nodeConfig.dataSettings');
   return (
-    <div className="mb-6">
-      <div className="mb-6">
-        <div className="font-medium mb-4">{resolvedSectionTitle}</div>
+    <div className="mb-6 space-y-4">
+      <div>
+        <div className="flex items-center gap-2 mb-4 pb-2 border-b border-(--color-border-1)">
+          <span className="w-1 h-3.5 bg-(--color-primary) rounded-full shrink-0" />
+          <span className="text-[14px] font-semibold text-(--color-text-1)">
+            {resolvedSectionTitle}
+          </span>
+        </div>
 
         <MetricFieldSelectorFormItem
           t={t}
@@ -109,7 +114,7 @@ export const SingleValueSettingsSection: React.FC<
         />
       </Form.Item>
 
-      <ValueFormatConfigSection t={t} readonly={readonly} width={200} />
+      <ValueFormatConfigSection t={t} readonly={readonly} />
 
       <ThresholdColorConfigSection
         t={t}

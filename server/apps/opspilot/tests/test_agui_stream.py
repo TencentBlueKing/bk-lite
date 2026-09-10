@@ -2015,3 +2015,70 @@ def test_tool_end_marks_result_sent_so_chain_end_does_not_resend(monkeypatch):
     assert len(tool_results) == 1
     assert tool_results[0]["content"] == clean
     assert "".join(p["delta"] for p in payloads if p["type"] == "TEXT_MESSAGE_CONTENT") == "已生成附件"
+
+
+def test_agui_stream_hides_planned_step_text_but_keeps_tools(monkeypatch):
+    """分步执行步内正文不推给用户，工具结果仍要回填。"""
+
+    async def _never_interrupted(_execution_id):
+        return False
+
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.chain.graph.is_interrupt_requested_async",
+        _never_interrupted,
+    )
+    table = "| Pod | 累计重启 |\n| --- | --- |\n| calico | 9 |"
+    graph = _FakeBasicGraph(
+        [
+            {
+                "event": "on_chat_model_end",
+                "data": {
+                    "output": SimpleNamespace(
+                        content="",
+                        tool_calls=[
+                            {
+                                "id": "tool-1",
+                                "name": "get_high_restart_kubernetes_pods",
+                                "args": {"restart_threshold": 1},
+                            }
+                        ],
+                    )
+                },
+            },
+            {
+                "event": "on_chat_model_end",
+                "data": {
+                    "output": SimpleNamespace(content=table, tool_calls=[]),
+                },
+            },
+            {
+                "event": "on_chain_end",
+                "data": {
+                    "output": {
+                        "messages": [
+                            AIMessage(
+                                content="",
+                                tool_calls=[{"id": "tool-1", "name": "get_high_restart_kubernetes_pods", "args": {}}],
+                            ),
+                            ToolMessage(content='[{"name":"calico"}]', tool_call_id="tool-1"),
+                            AIMessage(content=table),
+                        ]
+                    }
+                },
+            },
+        ]
+    )
+    request = BasicLLMRequest(
+        thread_id="thread-hide-step-text",
+        extra_config={"show_think": False, "opspilot_hide_planned_step_text": True},
+    )
+
+    async def _collect():
+        return _parse_sse_payloads([line async for line in graph.agui_stream(request)])
+
+    payloads = asyncio.run(_collect())
+    types = [p["type"] for p in payloads]
+    assert "TEXT_MESSAGE_CONTENT" not in types
+    tool_results = [p for p in payloads if p["type"] == "TOOL_CALL_RESULT"]
+    assert len(tool_results) == 1
+    assert tool_results[0]["content"] == '[{"name":"calico"}]'

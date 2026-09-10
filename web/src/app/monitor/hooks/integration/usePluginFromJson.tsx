@@ -49,6 +49,57 @@ export const fillOptionalFormFields = (
   return result;
 };
 
+const WMI_USERNAME_HELP_MARKERS = [
+  String.raw`domain\user`,
+  String.raw`DOMAIN\monitor`,
+  'WMI 查询账号',
+  'WMI query account'
+];
+
+export const isWindowsWmiPluginConfig = (
+  config: { config_type?: unknown } | null | undefined
+) => {
+  const types = config?.config_type;
+  if (Array.isArray(types)) {
+    return types.some((item) => String(item) === 'windows_wmi');
+  }
+  return String(types || '') === 'windows_wmi';
+};
+
+/**
+ * 用户名帮助必须来自当前插件 UI.json，不能因为 name === "username"
+ * 就套用 Windows WMI 的 domain\\user 文案。
+ */
+export const attachPluginOwnedFieldHelp = (
+  field: any,
+  config: { config_type?: unknown } | null | undefined
+) => {
+  if (!field || field.name !== 'username' || isWindowsWmiPluginConfig(config)) {
+    return field;
+  }
+  const description = String(field.description || '');
+  const placeholder = String(field.widget_props?.placeholder || '');
+  const leaked = WMI_USERNAME_HELP_MARKERS.some(
+    (marker) => description.includes(marker) || placeholder.includes(marker)
+  );
+  if (!leaked) {
+    return field;
+  }
+  const nextWidgetProps = { ...(field.widget_props || {}) };
+  if (WMI_USERNAME_HELP_MARKERS.some((marker) => placeholder.includes(marker))) {
+    delete nextWidgetProps.placeholder;
+  }
+  return {
+    ...field,
+    description: WMI_USERNAME_HELP_MARKERS.some((marker) =>
+      description.includes(marker)
+    )
+      ? undefined
+      : field.description,
+    widget_props: nextWidgetProps
+  };
+};
+
 const INTERFACE_FILTER_FIELD_NAMES = new Set([
   'interface_filter_mode',
   'iftype_exclude',
@@ -149,6 +200,11 @@ export const usePluginFromJson = () => {
               support_collect_detect: !!data.support_collect_detect
             }
             : data;
+        if (resolvedConfig && Array.isArray(resolvedConfig.form_fields)) {
+          resolvedConfig.form_fields = resolvedConfig.form_fields.map((field: any) =>
+            attachPluginOwnedFieldHelp(field, resolvedConfig)
+          );
+        }
         setConfig(resolvedConfig);
         setCurrentPluginId(pluginId);
         return resolvedConfig;
@@ -184,6 +240,14 @@ export const usePluginFromJson = () => {
         onTableDataChange?: (data: any[]) => void;
         form?: any;
         externalOptions?: Record<string, any[]>;
+        optionControls?: Record<
+          string,
+          {
+            loading?: boolean;
+            onRefresh?: () => void;
+            refreshTip?: string;
+          }
+        >;
       }
     ) => {
       // 如果当前没有配置或 pluginId 不匹配，返回空配置
@@ -206,7 +270,7 @@ export const usePluginFromJson = () => {
       const getFieldsForMode = (fields: any[], mode: string) => {
         return fields
           ?.map((field: any) => {
-            const fieldCopy = { ...field };
+            const fieldCopy = attachPluginOwnedFieldHelp({ ...field }, config);
             if (field.visible_in) {
               if (field.visible_in === 'auto' && mode === 'edit') return null;
               if (field.visible_in === 'edit' && mode === 'auto') return null;
@@ -216,7 +280,7 @@ export const usePluginFromJson = () => {
               && (field.editable === false || field.name === 'enable_ifmib')
             ) {
               fieldCopy.widget_props = {
-                ...field.widget_props,
+                ...fieldCopy.widget_props,
                 disabled: true
               };
             }
@@ -244,7 +308,14 @@ export const usePluginFromJson = () => {
       const renderAdvancedFieldGroups = (fields: any[]) => {
         const hasSections = fields.some((field) => field.section);
         if (!hasSections) {
-          return fields.map((fieldConfig: any) => renderFormField(fieldConfig, extra.mode));
+          return fields.map((fieldConfig: any) =>
+            renderFormField(
+              fieldConfig,
+              extra.mode,
+              extra.externalOptions,
+              extra.optionControls
+            )
+          );
         }
 
         const sectionMap = new Map<string, any[]>();
@@ -275,7 +346,12 @@ export const usePluginFromJson = () => {
                 )}
                 <div className="space-y-1">
                   {(sectionMap.get(section) || []).map((fieldConfig: any) =>
-                    renderFormField(fieldConfig, extra.mode)
+                    renderFormField(
+                      fieldConfig,
+                      extra.mode,
+                      extra.externalOptions,
+                      extra.optionControls
+                    )
                   )}
                 </div>
               </section>
@@ -287,7 +363,12 @@ export const usePluginFromJson = () => {
       const formItems = (
         <>
           {basicFields.map((fieldConfig: any) =>
-            renderFormField(fieldConfig, extra.mode)
+            renderFormField(
+              fieldConfig,
+              extra.mode,
+              extra.externalOptions,
+              extra.optionControls
+            )
           )}
           {advancedFields.length > 0 && (() => {
             // Ant Design：函数子节点的 Form.Item 必须带 truthy 的 shouldUpdate/dependencies，

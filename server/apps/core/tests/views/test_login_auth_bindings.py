@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 from urllib.parse import parse_qs, urlparse
 
 import pytest
-from django.test import RequestFactory
+from django.test import RequestFactory, override_settings
 
 
 @pytest.mark.unit
@@ -227,6 +227,7 @@ class TestLoginAuthBindingViews:
         assert browser_cookie["samesite"] == "Lax"
         assert mock_create_auth_request.call_args.kwargs["browser_binding_token"] == browser_cookie.value
 
+    @override_settings(LEGACY_THIRD_LOGIN_ALLOWED_CALLBACK_HOSTS="bklite.ai,bklite.cn")
     @patch("apps.core.views.index_view.build_login_auth_redirect")
     @patch("apps.core.views.index_view.create_auth_request")
     @patch("apps.core.views.index_view._get_login_auth_binding_by_id")
@@ -295,6 +296,48 @@ class TestLoginAuthBindingViews:
 
         assert response.status_code == 400
         assert json.loads(response.content)["message"] == "legacy_external_callback_url requires third_login_code"
+
+    def test_start_login_auth_rejects_non_whitelisted_legacy_callback(self):
+        from apps.core.views.index_view import start_login_auth
+
+        with override_settings(LEGACY_THIRD_LOGIN_ALLOWED_CALLBACK_HOSTS="bklite.ai,bklite.cn"):
+            request = RequestFactory().post(
+                "/api/v1/core/api/start_login_auth/",
+                data=json.dumps(
+                    {
+                        "binding_id": 5,
+                        "callback_url": "/",
+                        "legacy_external_callback_url": "https://attacker.example/cb?third_login_code=x",
+                        "legacy_third_login_code": "x",
+                    }
+                ),
+                content_type="application/json",
+            )
+            response = start_login_auth(request)
+
+        assert response.status_code == 400
+        assert json.loads(response.content)["message"] == "legacy_external_callback_url is not allowed"
+
+    def test_start_login_auth_rejects_legacy_callback_when_whitelist_empty(self):
+        from apps.core.views.index_view import start_login_auth
+
+        with override_settings(LEGACY_THIRD_LOGIN_ALLOWED_CALLBACK_HOSTS=""):
+            request = RequestFactory().post(
+                "/api/v1/core/api/start_login_auth/",
+                data=json.dumps(
+                    {
+                        "binding_id": 5,
+                        "callback_url": "/",
+                        "legacy_external_callback_url": "https://bklite.ai/playground?third_login_code=legacy-code",
+                        "legacy_third_login_code": "legacy-code",
+                    }
+                ),
+                content_type="application/json",
+            )
+            response = start_login_auth(request)
+
+        assert response.status_code == 400
+        assert json.loads(response.content)["message"] == "legacy_external_callback_url is not allowed"
 
     @patch("apps.core.views.index_view.build_login_auth_redirect")
     @patch("apps.core.views.index_view.create_auth_request")
@@ -626,11 +669,12 @@ class TestLoginAuthBindingViews:
         mock_update_status.assert_not_called()
         self._assert_callback_redirect(response, "failed", "认证请求与发起浏览器不匹配，请返回原页面重新发起认证。")
 
+    @override_settings(LEGACY_THIRD_LOGIN_ALLOWED_CALLBACK_HOSTS="bklite.ai,bklite.cn")
     @patch("apps.core.views.index_view.get_auth_request")
     @patch("apps.core.views.index_view.parse_auth_request_state")
     @patch("apps.core.views.index_view.SystemMgmt")
     @patch("apps.core.views.index_view.update_auth_request_status")
-    def test_login_auth_callback_returns_legacy_external_callback_data(
+    def test_login_auth_callback_returns_legacy_redirect_url(
         self,
         mock_update_status,
         mock_system_mgmt,
@@ -664,10 +708,56 @@ class TestLoginAuthBindingViews:
 
         assert response.status_code == 302
         login_result = mock_update_status.call_args.kwargs["login_result"]
-        assert login_result["legacy_external_callback_url"] == (
-            "https://bklite.ai/playground?third_login_code=legacy-code"
+        redirect_url = login_result["legacy_redirect_url"]
+        query = parse_qs(urlparse(redirect_url).query)
+        assert query["third_login_code"] == ["legacy-code"]
+        assert query["bk_lite_code"]
+        assert "token" not in query
+        assert "binding-token" not in redirect_url
+        assert "legacy_external_callback_url" not in login_result
+        assert "legacy_third_login_code" not in login_result
+
+    @override_settings(LEGACY_THIRD_LOGIN_ALLOWED_CALLBACK_HOSTS="bklite.ai,bklite.cn")
+    @patch("apps.core.views.index_view.get_auth_request")
+    @patch("apps.core.views.index_view.parse_auth_request_state")
+    @patch("apps.core.views.index_view.SystemMgmt")
+    @patch("apps.core.views.index_view.update_auth_request_status")
+    def test_login_auth_callback_ignores_cached_non_whitelisted_legacy_url(
+        self,
+        mock_update_status,
+        mock_system_mgmt,
+        mock_parse_state,
+        mock_get_auth_request,
+    ):
+        from apps.core.views.index_view import login_auth_callback
+
+        mock_parse_state.return_value = {
+            "auth_request_id": "auth-legacy-stale",
+            "binding_id": 5,
+            "callback_url": "/",
+        }
+        auth_request, origin_browser_token, _other_browser_token = self._make_bound_auth_request()
+        auth_request.update(
+            {
+                "auth_request_id": "auth-legacy-stale",
+                "legacy_external_callback_url": "https://attacker.example/cb?third_login_code=legacy-code",
+                "legacy_third_login_code": "legacy-code",
+            }
         )
-        assert login_result["legacy_third_login_code"] == "legacy-code"
+        mock_get_auth_request.return_value = auth_request
+        mock_system_mgmt.return_value.login_with_binding.return_value = {
+            "result": True,
+            "data": {"id": 9, "username": "legacy-user", "token": "binding-token"},
+        }
+
+        request = RequestFactory().get("/api/v1/core/api/login_auth/callback/?state=signed&code=auth-code")
+        request.COOKIES["bklite_login_auth_browser_auth-legacy-stale"] = origin_browser_token
+        response = login_auth_callback(request)
+
+        assert response.status_code == 302
+        login_result = mock_update_status.call_args.kwargs["login_result"]
+        assert "legacy_redirect_url" not in login_result
+        assert "legacy_external_callback_url" not in login_result
 
     @patch("apps.core.views.index_view.get_auth_request")
     @patch("apps.core.views.index_view.parse_auth_request_state")

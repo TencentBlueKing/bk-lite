@@ -4,8 +4,9 @@ from uuid import uuid4
 from django.db import transaction
 from django.utils.timezone import now
 
-from apps.cmdb.models.scan_model import ScanExecution, ScanFamilyRun, ScanTask, scan_driver_type_for_model
+from apps.cmdb.models.scan_model import SCAN_DATABASE_FAMILY, SCAN_DATABASE_TYPES, ScanExecution, ScanFamilyRun, ScanTask, scan_driver_type_for_model
 from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
+from apps.cmdb.services.port_fingerprint import scan_database_ports_by_type
 from apps.cmdb.services.scan_shot import ScanShot, build_scan_collect_headers, join_ip_ranges
 from apps.cmdb.services.stargazer_collect_trigger import StargazerCollectPermanentError, StargazerCollectRetryableError, StargazerCollectTriggerClient
 from apps.core.logger import cmdb_logger as logger
@@ -55,15 +56,58 @@ def _claim_execution(execution_id) -> ScanExecution:
         return execution
 
 
-def _admit_family(task: ScanTask, execution: ScanExecution, model_id: str) -> ScanFamilyRun:
+def expand_sql_pool_with_ports(pool, ports) -> list:
+    expanded = []
+    for port in ports:
+        for item in pool or []:
+            if not isinstance(item, dict):
+                continue
+            next_item = dict(item)
+            next_item["port"] = int(port)
+            if next_item.get("username") and not next_item.get("user"):
+                next_item["user"] = next_item["username"]
+            expanded.append(next_item)
+    return expanded
+
+
+def iter_scan_family_pools(task: ScanTask):
+    decrypted = task.decrypt_credentials or {}
+    families = list(task.families or [])
+    if SCAN_DATABASE_FAMILY in families:
+        db_pool = CollectCredentialPoolService.normalize_pool(decrypted.get(SCAN_DATABASE_FAMILY) or [])
+        ports_by_type = scan_database_ports_by_type()
+        skipped = []
+        for model_id in ("mysql", "postgresql", "mssql"):
+            ports = ports_by_type.get(model_id) or []
+            if not db_pool or not ports:
+                skipped.append(model_id)
+                continue
+            yield model_id, expand_sql_pool_with_ports(db_pool, ports)
+        if skipped:
+            logger.info(
+                "[ScanTrigger] 跳过无端口或无账号的数据库族 task=%s skipped=%s",
+                task.id,
+                ",".join(skipped),
+            )
+        for model_id in families:
+            if model_id in SCAN_DATABASE_TYPES or model_id == SCAN_DATABASE_FAMILY:
+                continue
+            yield model_id, CollectCredentialPoolService.normalize_pool(decrypted.get(model_id) or [])
+        return
+    for model_id in families:
+        yield str(model_id), CollectCredentialPoolService.normalize_pool(decrypted.get(model_id) or [])
+
+
+def _admit_family(task: ScanTask, execution: ScanExecution, model_id: str, pool=None) -> ScanFamilyRun:
     driver_type = scan_driver_type_for_model(model_id)
     family_run, _ = ScanFamilyRun.objects.get_or_create(
         execution=execution,
         model_id=model_id,
         driver_type=driver_type,
     )
-    decrypted = task.decrypt_credentials or {}
-    pool = CollectCredentialPoolService.normalize_pool(decrypted.get(model_id) or [])
+    if pool is None:
+        decrypted = task.decrypt_credentials or {}
+        pool = CollectCredentialPoolService.normalize_pool(decrypted.get(model_id) or [])
     if not pool:
         family_run.admit_status = ScanFamilyRun.ADMIT_FAILED
         family_run.target_count = 0
@@ -111,11 +155,12 @@ def trigger_scan_execution(execution_id):
         return {"status": execution.status, "execution_id": execution.id}
 
     task = execution.task
-    families = list(task.families or [])
     total = 0
-    for model_id in families:
-        family_run = _admit_family(task, execution, str(model_id))
+    families = []
+    for model_id, pool in iter_scan_family_pools(task):
+        family_run = _admit_family(task, execution, str(model_id), pool)
         total += int(family_run.target_count or 0)
+        families.append(str(model_id))
 
     execution.target_count = total
     execution.deadline_at = estimate_deadline(total, task.timeout)

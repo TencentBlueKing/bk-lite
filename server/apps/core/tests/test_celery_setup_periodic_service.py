@@ -225,8 +225,11 @@ class TestScheduleSync:
 
         cron.objects.get_or_create.assert_called_once()
         gkwargs = cron.objects.get_or_create.call_args.kwargs
+        from django.utils import timezone as dj_timezone
+
         assert gkwargs["minute"] == 30
         assert gkwargs["hour"] == 2
+        assert gkwargs["timezone"] == dj_timezone.get_default_timezone()
 
         interval.objects.get_or_create.assert_not_called()
         periodic.objects.update_or_create.assert_called_once()
@@ -236,6 +239,25 @@ class TestScheduleSync:
         assert pkwargs["defaults"]["args"] == json.dumps([1, 2])
         assert pkwargs["defaults"]["kwargs"] == json.dumps({"k": "v"})
         assert pkwargs["defaults"]["interval"] is None
+
+    def test_tz_aware_crontab_uses_declared_timezone(self, mocker):
+        from zoneinfo import ZoneInfo
+
+        from apps.core.celery_schedule import beat_crontab
+
+        schedule = {
+            "shanghai-job": {
+                "task": "apps.x.tasks.do_it",
+                "schedule": beat_crontab(minute="*/5", tz="Asia/Shanghai"),
+            }
+        }
+        cron, interval, periodic = _run(mocker, schedule)
+
+        gkwargs = cron.objects.get_or_create.call_args.kwargs
+        assert gkwargs["minute"] == "*/5"
+        assert gkwargs["timezone"] == ZoneInfo("Asia/Shanghai")
+        interval.objects.get_or_create.assert_not_called()
+        assert periodic.objects.update_or_create.call_args.kwargs["name"] == "shanghai-job"
 
     def test_interval_schedule_branch(self, mocker):
         schedule = {"every-60s": {"task": "apps.y.tasks.poll", "schedule": 60}}

@@ -26,15 +26,12 @@ const PlannedExecutionStatus: React.FC<PlannedExecutionStatusProps> = ({ status 
 
   return (
     <div
-      className="my-2 rounded-md px-3 py-2"
-      style={{ background: 'var(--color-fill-1)', fontSize: 13 }}
+      className="my-1.5 flex items-center gap-1.5 py-0.5 text-xs text-[var(--color-text-3)]"
       role="status"
       aria-live="polite"
     >
-      <div className="flex items-center gap-2 text-[var(--color-text-2)]">
-        <LoadingOutlined className="text-[var(--color-primary)]" spin />
-        <span>{label}</span>
-      </div>
+      <LoadingOutlined className="text-[var(--color-primary)] text-xs" spin />
+      <span>{label}</span>
     </div>
   );
 };

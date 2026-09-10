@@ -23,7 +23,7 @@ stargazer 采集并经 NATS 分批推送到 VictoriaMetrics；server 的 Celery 
    指标；任何批次失败则不发标记，本轮视为不完整。
 2. **server 用全局 5 分钟守门任务统一对账**：只有出现新的完整轮次才执行对账流水线，
    否则跳过；移除按任务的对账 beat。
-3. **页面手动执行无条件直通**，不受守门限制。
+3. **页面手动执行直通对账，但复用最新完整轮次边界**，不受游标去重限制。
 4. **对账数据按轮次时间戳过滤**，取代模糊的 1 小时窗口。
 
 ## Implementation Decisions
@@ -76,17 +76,24 @@ stargazer 采集并经 NATS 分批推送到 VictoriaMetrics；server 的 Celery 
 
 ### 3. 手动执行直通
 
-- `exec_task` 路径不检查标记、不比较轮次，直接执行对账（消费时序库当下最新数据），
-  保持现有语义。
-- 手动对账完成后若标记存在，同样刷新 `last_synced_round`，避免守门任务紧接着重复
-  对账。
+- `exec_task` 路径不比较 `last_synced_round`，每次点击都会派发对账；worker 在执行阶段
+  解析最新设备完整轮次 `CompletedRound(T,C)`，不在 HTTP 请求事务内访问
+  VictoriaMetrics。
+- 手动对账按 `[T,C]` 消费与全局守门相同的完整快照；无新 role 标记时兼容
+  旧的无 role 标记。标记查询失败必须将任务置为采集异常，不得误报为
+  “未发现任何有效数据”。
+- 确实无完整标记时才回退现有 1h 查询，并显式设为
+  `snapshot_complete=false`，只允许 Upsert，不执行差集删除。
+- 手动对账成功后同样刷新 `last_synced_round`，避免守门任务紧接着重复对账。
 
 ### 4. 对账数据按轮次过滤（增强，本期一并做）
 
 - 拿到 `round_ts` 后，对账查询把数据行过滤为 `时间戳 >= round_ts`，取代
   `last_over_time[1h]` 的模糊窗口；`immediately` 清理的「权威快照完整」判定从
   "最近 1 小时的行"收紧为"本轮的行"。
-- 手动执行（无轮次上下文）与兼容回退路径维持现有 1h 窗口。
+- 手动执行优先使用最新完整轮次 `[T,C]`；只有无轮次标记的兼容回退路径维持
+  现有 1h 窗口。已限定 `[T,C]` 的数据不再受格式化器“距当前时间超过一天”的
+  旧鲜度判断影响。
 
 ## Testing Decisions
 
@@ -101,7 +108,8 @@ stargazer 采集并经 NATS 分批推送到 VictoriaMetrics；server 的 Celery 
   - 无标记 + 曾有标记 → 跳过，不触达图库；
   - 同 round_ts → 跳过；新 round_ts → 对账并写游标；重复执行幂等；
   - `exec_status=RUNNING` → 跳过；
-  - 手动 `exec_task` → 无条件执行，完成后游标刷新；
+  - 手动 `exec_task` → 无条件派发，worker 按最新 `[T,C]` 执行并刷新游标；
+  - 手动轮次标记查询失败 → 采集异常，不误报为无数据；
   - 轮次过滤：时序库同时存在旧轮与新轮数据时，对账只消费 `>= round_ts` 的行，
     `immediately` 不误删新轮缺失但属旧轮的实例以外的对象；
   - 兼容回退：从未有标记 + 有数据 → 按现状对账。

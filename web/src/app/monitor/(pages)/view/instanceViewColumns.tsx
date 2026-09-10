@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Progress, Tag } from 'antd';
+import { Progress } from 'antd';
 import {
   ColumnItem,
   MetricItem,
@@ -29,12 +29,25 @@ export const INSTANCE_VIEW_ACTION_KEY = 'action';
 // 云平台子对象的 IP 由采集 label 提供，走展示字段列；标记为该 role 后按内置 IP 列渲染，
 // 与基础对象的 asset.ip 摘要列保持同一列头与位置。
 export const RESOURCE_IP_ROLE = 'resource_ip';
+export const NAMESPACE_ROLE = 'namespace';
 
 // 字段展示列的筛选参数键，与主机 asset.ip 的筛选参数互不影响（后端 FIELD_PARAM_PREFIX）。
 export const displayFieldParamKey = (field?: string) => `field:${field ?? ''}`;
 
 const isResourceIpColumn = (col: DisplayCol) =>
   col.type === 'field' && col.role === RESOURCE_IP_ROLE;
+
+const isNamespaceColumn = (col: DisplayCol) =>
+  col.type === 'field' && col.role === NAMESPACE_ROLE;
+
+const isRoleFieldColumn = (col: DisplayCol) =>
+  col.type === 'field' && Boolean(col.role);
+
+const fieldColumnTitle = (col: DisplayCol, t?: (key: string) => string) => {
+  if (isResourceIpColumn(col) && t) return t('monitor.views.assetIp');
+  if (isNamespaceColumn(col) && t) return t('monitor.views.namespace');
+  return col.name;
+};
 
 export const displayFieldKey = (
   plugin?: string,
@@ -100,62 +113,24 @@ const getPercent = (value: number) => {
 interface BuildReportTimeColumnOptions {
   t: (key: string) => string;
   convertToLocalizedTime: (value: string) => string;
+  /** 服务端排序受控态：当前排序列的 Ant Design sortOrder */
+  sortOrder?: 'ascend' | 'descend' | null;
 }
 
 export const buildReportTimeColumn = ({
   t,
-  convertToLocalizedTime
+  convertToLocalizedTime,
+  sortOrder = null
 }: BuildReportTimeColumnOptions): ColumnItem => ({
   title: t('monitor.views.reportTime'),
   dataIndex: 'time',
   key: 'time',
   onCell: () => ({ style: { minWidth: 160 } }),
-  sorter: (a: any, b: any) => a.time - b.time,
+  sorter: true,
+  sortOrder,
   render: (_, { time }) => (
     <>{time ? convertToLocalizedTime(new Date(time * 1000) + '') : '--'}</>
   )
-});
-
-interface BuildReportingStatusColumnOptions {
-  t: (key: string) => string;
-  includeFilters?: boolean;
-}
-
-export const buildReportingStatusColumn = ({
-  t,
-  includeFilters = true
-}: BuildReportingStatusColumnOptions): ColumnItem => ({
-  title: t('monitor.integrations.reportingStatus'),
-  dataIndex: 'status',
-  key: 'status',
-  onCell: () => ({ style: { minWidth: 100 } }),
-  ...(includeFilters
-    ? {
-      filterMultiple: true,
-      filterParam: 'status',
-      filters: [
-        {
-          text: t('monitor.integrations.normal'),
-          value: 'normal'
-        },
-        {
-          text: t('monitor.integrations.unavailable'),
-          value: 'unavailable'
-        }
-      ]
-    }
-    : {}),
-  render: (_, record) => {
-    if (!record?.status) return <>--</>;
-    const isNormal = record.status === 'normal';
-    return (
-      <Tag color={isNormal ? 'success' : 'default'}>
-        {isNormal
-          ? t('monitor.integrations.normal')
-          : t('monitor.integrations.unavailable')}
-      </Tag>
-    );
-  }
 });
 
 interface BuildDisplayFieldColumnsOptions {
@@ -170,6 +145,8 @@ interface BuildDisplayFieldColumnsOptions {
   includeDimensionTooltip?: boolean;
   t?: (key: string) => string;
   fieldFilterOptions?: Record<string, string[]>;
+  /** 当前服务端排序列 key 与方向（Ant Design） */
+  activeSort?: { key: string; order: 'ascend' | 'descend' } | null;
 }
 
 export const buildDisplayFieldColumns = ({
@@ -179,7 +156,8 @@ export const buildDisplayFieldColumns = ({
   objectId,
   includeDimensionTooltip = true,
   t,
-  fieldFilterOptions
+  fieldFilterOptions,
+  activeSort = null
 }: BuildDisplayFieldColumnsOptions): ColumnItem[] => {
   const displayCols = (displayFields || [])
     .slice()
@@ -189,30 +167,19 @@ export const buildDisplayFieldColumns = ({
     const primaryMeta = resolveDisplayMetric(metrics, col.metrics?.[0] || {});
     const colType = getDisplayFieldType(primaryMeta);
     const dataKey = col.column_key || `df_${colIndex}`;
-
-    const baseSorter = (a: any, b: any) => {
-      const va = resolveDisplayCell(a, col).value;
-      const vb = resolveDisplayCell(b, col).value;
-      const na = va == null || va === '';
-      const nb = vb == null || vb === '';
-      if (na && nb) return 0;
-      if (na) return -1;
-      if (nb) return 1;
-      return Number(va) - Number(vb);
-    };
+    const columnSortOrder =
+      activeSort?.key === dataKey ? activeSort.order : null;
 
     if (col.type === 'field') {
-      const isResourceIp = isResourceIpColumn(col);
       const filterParam = displayFieldParamKey(col.metrics?.[0]?.field);
       const fieldFilters = (fieldFilterOptions?.[filterParam] || []).map(
         (value) => ({ text: value, value })
       );
       return {
-        title:
-          isResourceIp && t ? t('monitor.views.assetIp') : col.name,
-        ...(isResourceIp
+        title: fieldColumnTitle(col, t),
+        ...(isRoleFieldColumn(col)
           ? {
-            role: RESOURCE_IP_ROLE,
+            role: col.role,
             filterMultiple: true,
             filterSearch: true,
             filterParam,
@@ -222,11 +189,7 @@ export const buildDisplayFieldColumns = ({
         dataIndex: dataKey,
         key: dataKey,
         onCell: () => ({ style: { minWidth: 150 } }),
-        sorter: (a: any, b: any) => {
-          const va = `${resolveDisplayCell(a, col).value ?? ''}`;
-          const vb = `${resolveDisplayCell(b, col).value ?? ''}`;
-          return va.localeCompare(vb);
-        },
+        // MVP：field 列不做全局排序，避免误导性本页排序。
         render: (_: unknown, record: TableDataItem) => {
           const value = resolveDisplayCell(record, col).value;
           return (
@@ -245,7 +208,8 @@ export const buildDisplayFieldColumns = ({
         dataIndex: dataKey,
         key: dataKey,
         type: 'progress',
-        sorter: baseSorter,
+        sorter: true,
+        sortOrder: columnSortOrder,
         render: (_: unknown, record: TableDataItem) => {
           const cell = resolveDisplayCell(record, col);
           const meta =
@@ -290,7 +254,9 @@ export const buildDisplayFieldColumns = ({
       dataIndex: dataKey,
       key: dataKey,
       onCell: () => ({ style: { minWidth: 150 } }),
-      ...(colType === 'value' ? { sorter: baseSorter } : {}),
+      ...(colType === 'value'
+        ? { sorter: true, sortOrder: columnSortOrder }
+        : {}),
       ...(colType === 'enum' &&
       primaryMeta?.name &&
       isStringArray(primaryMeta?.unit || '')
@@ -358,6 +324,7 @@ interface BuildInstanceViewColumnsOptions {
   ipFilterOptions?: string[];
   fieldFilterOptions?: Record<string, string[]>;
   includeDimensionTooltip?: boolean;
+  activeSort?: { key: string; order: 'ascend' | 'descend' } | null;
 }
 
 export const buildInstanceViewColumns = ({
@@ -371,7 +338,8 @@ export const buildInstanceViewColumns = ({
   queryData,
   ipFilterOptions,
   fieldFilterOptions,
-  includeDimensionTooltip = true
+  includeDimensionTooltip = true,
+  activeSort = null
 }: BuildInstanceViewColumnsOptions): ColumnItem[] => {
   const displayColumns = buildDisplayFieldColumns({
     displayFields: targetObject?.display_fields || [],
@@ -380,14 +348,20 @@ export const buildInstanceViewColumns = ({
     objectId,
     includeDimensionTooltip,
     t,
-    fieldFilterOptions
+    fieldFilterOptions,
+    activeSort
   });
-  // 内置 IP 列紧跟基础列，与基础对象的 asset.ip 摘要列同位置；其余展示列排在上报时间之后。
+  // 命名空间紧跟集群列；内置 IP 列再跟其后，与基础对象的 asset.ip 摘要列同位置；
+  // 其余展示列排在上报时间之后。
+  const namespaceColumns = displayColumns.filter(
+    (column) => column.role === NAMESPACE_ROLE
+  );
   const resourceIpColumns = displayColumns.filter(
     (column) => column.role === RESOURCE_IP_ROLE
   );
   const restDisplayColumns = displayColumns.filter(
-    (column) => column.role !== RESOURCE_IP_ROLE
+    (column) =>
+      column.role !== RESOURCE_IP_ROLE && column.role !== NAMESPACE_ROLE
   );
   return [
     ...getBaseInstanceColumn({
@@ -397,8 +371,13 @@ export const buildInstanceViewColumns = ({
       queryData,
       ipFilterOptions
     }),
+    ...namespaceColumns,
     ...resourceIpColumns,
-    buildReportTimeColumn({ t, convertToLocalizedTime }),
+    buildReportTimeColumn({
+      t,
+      convertToLocalizedTime,
+      sortOrder: activeSort?.key === 'time' ? activeSort.order : null
+    }),
     ...restDisplayColumns
   ];
 };

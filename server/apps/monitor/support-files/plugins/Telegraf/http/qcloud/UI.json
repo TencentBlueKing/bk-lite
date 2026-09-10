@@ -6,30 +6,60 @@
     "qcloud"
   ],
   "collector": "Telegraf",
-  "instance_id": "{{cloud_region}}_qcloud_{{username}}",
+  "instance_id": "{{cloud_region}}_qcloud_{{username}}_{{region}}",
   "form_fields": [
     {
       "name": "username",
-      "label": "用户名",
+      "label": "SecretId",
       "type": "input",
       "required": true,
-      "editable": false,
+      "editable": true,
+      "description": "腾讯云 API 密钥 SecretId。新建时与 SecretKey 一起用于拉取可用地域；编辑已有配置时可直接修改。",
+      "description_en": "Tencent Cloud API SecretId. Used with SecretKey to load available regions; can be changed when editing an existing config.",
       "transform_on_edit": {
         "origin_path": "child.content.config.http_headers.username"
       },
-      "label_en": "Username"
+      "label_en": "SecretId"
     },
     {
       "name": "ENV_PASSWORD",
-      "label": "密码",
+      "label": "SecretKey",
       "type": "password",
       "required": true,
-      "editable": false,
+      "editable": true,
       "encrypted": true,
+      "description": "腾讯云 API 密钥 SecretKey。新建时与 SecretId 一起用于拉取可用地域；编辑已有配置时点击编辑图标可更换。",
+      "description_en": "Tencent Cloud API SecretKey. Used with SecretId to load available regions; click edit to replace it on an existing config.",
       "transform_on_edit": {
         "origin_path": "child.env_config.PASSWORD__{{config_id}}"
       },
-      "label_en": "Password"
+      "label_en": "SecretKey"
+    },
+    {
+      "name": "region",
+      "label": "腾讯云地域",
+      "type": "select",
+      "required": true,
+      "editable": true,
+      "options_key": "region_option",
+      "options": [],
+      "description": "新建时填写密钥后会自动拉取可用地域；编辑已有配置时未改密钥也可直接刷新。可多选，将采集所选全部地域的资源与监控指标。",
+      "description_en": "Available regions load automatically after keys are filled on create; existing configs can refresh without re-entering keys. Multiple regions can be selected and will all be collected.",
+      "widget_props": {
+        "placeholder": "请选择腾讯云地域（可多选）",
+        "placeholder_en": "Select Tencent Cloud regions",
+        "mode": "multiple",
+        "maxTagCount": "responsive",
+        "showSearch": true,
+        "optionFilterProp": "label",
+        "show_refresh": true
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.region",
+        "to_form": { "split": "," },
+        "to_api": { "join": "," }
+      },
+      "label_en": "Tencent Cloud Region"
     }
   ],
   "table_columns": [

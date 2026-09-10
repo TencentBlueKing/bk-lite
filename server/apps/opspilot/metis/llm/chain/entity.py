@@ -2,6 +2,9 @@ from typing import Any, Callable, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# 分步执行期间由引擎写入 extra_config：为 True 时 AG-UI 不推步内助手正文。
+HIDE_PLANNED_STEP_TEXT_KEY = "opspilot_hide_planned_step_text"
+
 
 class NormalizedToolCall(BaseModel):
     """规范化后的 tool_call 访问器。
@@ -410,7 +413,7 @@ class BasicLLMRequest(BaseModel):
     system_message_prompt: str = ""
     enable_suggest: bool = False
     enable_query_rewrite: bool = False
-    temperature: float = 0.7
+    temperature: Optional[float] = 0.7
     max_output_tokens: int = Field(default=0, description="单次输出 token 上限（0=provider 默认）")
 
     user_message: str = ""

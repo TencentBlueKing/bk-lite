@@ -1,8 +1,7 @@
 import React, {ReactNode, useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {Button, ButtonProps, Flex, Image, message as antMessage, Popconfirm, Tooltip, Upload} from 'antd';
-import {FullscreenExitOutlined, FullscreenOutlined, PictureOutlined, SendOutlined} from '@ant-design/icons';
+import {Button, ButtonProps, Flex, Image, Input, message as antMessage, Popconfirm, Tooltip, Upload} from 'antd';
+import {DeleteOutlined, FullscreenExitOutlined, FullscreenOutlined, LoadingOutlined, PictureOutlined, RightOutlined, SendOutlined} from '@ant-design/icons';
 import type {UploadFile} from 'antd/es/upload/interface';
-import {Bubble, Sender} from '@ant-design/x';
 import DOMPurify from 'dompurify';
 import Icon from '@/components/icon';
 import {useTranslation} from '@/utils/i18n';
@@ -66,34 +65,34 @@ const ThinkingPanel: React.FC<{ thinking?: string; isThinking?: boolean }> = ({ 
     return null;
   }
 
-  const statusText = isThinking ? '思考中' : '已完成思考';
+  const statusText = isThinking ? '思考中...' : '已完成思考';
 
   return (
-    <div className={`${styles.thinkingPanel} ${isThinking ? styles.thinkingPanelActive : styles.thinkingPanelDone}`}>
+    <div className="my-1.5">
       <button
         type="button"
-        className={styles.thinkingToggle}
+        className="inline-flex items-center gap-1.5 py-0.5 px-1 -ml-1 text-xs text-[var(--color-text-3)] hover:text-[var(--color-text-2)] hover:bg-[var(--color-fill-1)] rounded transition-colors cursor-pointer select-none group border-0 bg-transparent"
         onClick={() => setExpanded(prev => !prev)}
       >
-        <span className={styles.thinkingMeta}>
-          <span className={`${styles.thinkingBadge} ${isThinking ? styles.thinkingBadgeActive : styles.thinkingBadgeDone}`}>
-            <span className={styles.thinkingBadgeDot} />
-            {statusText}
-          </span>
+        <RightOutlined className={`text-[9px] text-[var(--color-text-4)] group-hover:text-[var(--color-text-3)] transition-transform duration-200 ${expanded ? 'rotate-90' : 'rotate-0'}`} />
+        <span className="flex items-center gap-1.5 font-normal">
+          <span className={`inline-block h-1.5 w-1.5 rounded-full ${isThinking ? 'bg-[var(--color-primary)] animate-pulse' : 'bg-emerald-500'}`} />
+          <span>{statusText}</span>
         </span>
-        <span className={styles.thinkingAside}>
-          {isThinking && <span className={styles.thinkingDots}><span /><span /><span /></span>}
-          <span className={`${styles.thinkingIconButton} ${expanded ? styles.thinkingIconButtonExpanded : ''}`}>
-            <span className={`${styles.thinkingArrow} ${expanded ? styles.thinkingArrowExpanded : ''}`}>⌟</span>
+        {isThinking && (
+          <span className="flex items-center gap-0.5 ml-0.5">
+            <span className="h-1 w-1 rounded-full bg-[var(--color-primary)] animate-bounce" />
+            <span className="h-1 w-1 rounded-full bg-[var(--color-primary)] animate-bounce [animation-delay:0.2s]" />
+            <span className="h-1 w-1 rounded-full bg-[var(--color-primary)] animate-bounce [animation-delay:0.4s]" />
           </span>
-        </span>
+        )}
       </button>
       {expanded && (
-        <div className={styles.thinkingBody}>
+        <div className="my-1.5 ml-1 pl-3 border-l-2 border-[var(--color-fill-3)] text-xs text-[var(--color-text-3)] leading-relaxed whitespace-pre-wrap">
           {normalizedThinking ? (
-            <div className={styles.thinkingText}>{normalizedThinking}</div>
+            <div>{normalizedThinking}</div>
           ) : (
-            <div className={styles.thinkingPlaceholder}>正在整理思路...</div>
+            <div className="text-[var(--color-text-4)]">正在整理思路...</div>
           )}
         </div>
       )}
@@ -313,13 +312,10 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         .replace(/'/g, '&#39;');
     };
 
-    const processedText = escapeHtml(guideText).replace(/\n/g, '<br>');
-    const renderedHtml = processedText.replace(/\[([^\]]+)\]/g, (match, content) => {
-      const escapedContent = escapeHtml(content);
-      return `<span class="guide-clickable-item" data-content="${escapedContent}" style="color: #1890ff; cursor: pointer; font-weight: 600; margin: 0 2px;">${escapedContent}</span>`;
-    });
+    // 纯文本引导语（去掉 [问题] 标签）
+    const pureIntro = escapeHtml(guideText.replace(/\[([^\]]+)\]/g, '').trim()).replace(/\n/g, '<br>');
 
-    return { text: guideText, items, renderedHtml: sanitizeHtml(renderedHtml) };
+    return { text: guideText, items, renderedHtml: pureIntro };
   }, []);
 
   // Parse links with proper HTML escaping
@@ -898,150 +894,202 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     );
   };
 
-  const renderSend = (props: ButtonProps & { ignoreLoading?: boolean; placeholder?: string } = {}) => {
-    const { ignoreLoading, placeholder, ...btnProps } = props;
+  const renderSend = (props: { ignoreLoading?: boolean; placeholder?: string } = {}) => {
+    const { ignoreLoading, placeholder } = props;
 
-    const uploadButton = (
-      <Upload
-        accept="image/*"
-        fileList={[]}
-        beforeUpload={(file) => {
-          const isImage = file.type.startsWith('image/');
-          if (!isImage) {
-            antMessage.error(t('chat.onlyImageAllowed') || '只能上传图片文件');
-            return Upload.LIST_IGNORE;
-          }
-          const isLt5M = file.size / 1024 / 1024 < 5;
-          if (!isLt5M) {
-            antMessage.error(t('chat.imageTooLarge') || '图片大小不能超过 5MB');
-            return Upload.LIST_IGNORE;
-          }
-          setImageList(prev => [...prev, {
-            uid: file.uid,
-            name: file.name,
-            status: 'done',
-            originFileObj: file
-          } as any]);
-          return Upload.LIST_IGNORE;
-        }}
-        showUploadList={false}
-      >
-        <Button
-          type="text"
-          icon={<PictureOutlined />}
-          disabled={loading}
-          title={t('chat.uploadImage') || '上传图片'}
-        />
-      </Upload>
-    );
-
-    const senderComponent = (
-      <div className="relative">
+    const composerComponent = (
+      <div className="relative rounded-xl border border-[var(--color-border-1)] bg-[var(--color-bg)] transition-all focus-within:border-[var(--color-primary)] focus-within:ring-2 focus-within:ring-[var(--color-primary-bg-active)]">
         {imageList.length > 0 && (
-          <div className="flex flex-wrap gap-2 mb-2 p-2 bg-gray-50 rounded">
+          <div className="flex flex-wrap gap-2 p-2.5 pb-0">
             {imageList.map((file) => {
               const previewUrl = file.originFileObj && typeof window !== 'undefined'
                 ? URL.createObjectURL(file.originFileObj)
                 : '';
 
               return (
-                <div key={file.uid} className="relative group">
+                <div key={file.uid} className="relative group rounded-lg overflow-hidden border border-[var(--color-border-1)] bg-[var(--color-bg)]">
                   {previewUrl && (
                     <img
                       src={previewUrl}
                       alt={file.name}
-                      className="w-16 h-16 object-cover rounded"
+                      className="w-14 h-14 object-cover"
                     />
                   )}
-                  <Button
-                    type="text"
-                    danger
-                    size="small"
-                    className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                  <button
+                    type="button"
+                    className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-black/60 text-white text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
                     onClick={() => setImageList(imageList.filter(item => item.uid !== file.uid))}
+                    aria-label="删除图片"
                   >
                     ×
-                  </Button>
+                  </button>
                 </div>
               );
             })}
           </div>
         )}
-        <Sender
-          className={styles.sender}
-          value={value}
-          onChange={setValue}
-          loading={loading && !pendingChoice}
-          onSubmit={(msg: string) => {
-            setValue('');
-            const currentImages = [...imageList];
-            setImageList([]);
-            handleSend(msg, currentImages);
-          }}
-          placeholder={pendingChoice ? (t('chat.replyToPendingChoice') || '回复上面的问题...') : placeholder}
-          onCancel={stopSSEConnection}
-          prefix={uploadButton}
-          onPaste={(event: React.ClipboardEvent) => {
-            const items = event.clipboardData?.items;
-            if (!items) return;
 
-            for (let i = 0; i < items.length; i++) {
-              const item = items[i];
-              if (item.type.startsWith('image/')) {
-                event.preventDefault();
-                const file = item.getAsFile();
-                if (file) {
-                  const isLt5M = file.size / 1024 / 1024 < 5;
-                  if (!isLt5M) {
-                    antMessage.error(t('chat.imageTooLarge') || '图片大小不能超过 5MB');
-                    continue;
-                  }
-                  setImageList(prev => [...prev, {
-                    uid: `paste-${Date.now()}-${i}`,
-                    name: file.name || `pasted-image-${Date.now()}.png`,
-                    status: 'done',
-                    originFileObj: file
-                  } as any]);
+        <div className="px-3 pt-2.5">
+          <Input.TextArea
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder={pendingChoice ? (t('chat.replyToPendingChoice') || '回复上面的问题...') : (placeholder || t('chat.inputPlaceholder') || '请输入消息...')}
+            autoSize={{ minRows: 2, maxRows: 6 }}
+            bordered={false}
+            className="!p-0 text-[13px] leading-relaxed resize-none bg-transparent placeholder:text-[var(--color-text-4)] focus:shadow-none"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if ((value.trim() || imageList.length > 0) && !loading) {
+                  const currentImages = [...imageList];
+                  setImageList([]);
+                  setValue('');
+                  handleSend(value, currentImages);
                 }
               }
-            }
-          }}
-          actions={(
-            _: any,
-            info: {
-              components: {
-                SendButton: React.ComponentType<ButtonProps>;
-                LoadingButton: React.ComponentType<ButtonProps>;
-              };
-            }
-          ) => {
-            const { SendButton, LoadingButton } = info.components;
-            if (!ignoreLoading && loading && !pendingChoice) {
-              return (
-                <Tooltip title={t('chat.clickCancel')}>
-                  <LoadingButton />
-                </Tooltip>
-              );
-            }
-            let node: ReactNode = <SendButton {...btnProps} />;
-            if (!ignoreLoading) {
-              node = (
-                <Tooltip title={value || imageList.length > 0 ? `${t('chat.send')}\u21B5` : t('chat.inputMessage')}>
-                  {node}
-                </Tooltip>
-              );
-            }
-            return node;
-          }}
-        />
+            }}
+            onPaste={(event: React.ClipboardEvent) => {
+              const items = event.clipboardData?.items;
+              if (!items) return;
+
+              for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                if (item.type.startsWith('image/')) {
+                  event.preventDefault();
+                  const file = item.getAsFile();
+                  if (file) {
+                    const isLt5M = file.size / 1024 / 1024 < 5;
+                    if (!isLt5M) {
+                      antMessage.error(t('chat.imageTooLarge') || '图片大小不能超过 5MB');
+                      continue;
+                    }
+                    setImageList(prev => [...prev, {
+                      uid: `paste-${Date.now()}-${i}`,
+                      name: file.name || `pasted-image-${Date.now()}.png`,
+                      status: 'done',
+                      originFileObj: file
+                    } as any]);
+                  }
+                }
+              }
+            }}
+          />
+        </div>
+
+        <div className="flex items-center justify-between px-3 pb-2 pt-1 border-t border-[var(--color-fill-2)]/60 mt-1">
+          <div className="flex items-center gap-1.5">
+            <Upload
+              accept="image/*"
+              fileList={[]}
+              beforeUpload={(file) => {
+                const isImage = file.type.startsWith('image/');
+                if (!isImage) {
+                  antMessage.error(t('chat.onlyImageAllowed') || '只能上传图片文件');
+                  return Upload.LIST_IGNORE;
+                }
+                const isLt5M = file.size / 1024 / 1024 < 5;
+                if (!isLt5M) {
+                  antMessage.error(t('chat.imageTooLarge') || '图片大小不能超过 5MB');
+                  return Upload.LIST_IGNORE;
+                }
+                setImageList(prev => [...prev, {
+                  uid: file.uid,
+                  name: file.name,
+                  status: 'done',
+                  originFileObj: file
+                } as any]);
+                return Upload.LIST_IGNORE;
+              }}
+              showUploadList={false}
+            >
+              <Tooltip title={t('chat.uploadImage') || '上传图片'}>
+                <button
+                  type="button"
+                  disabled={loading}
+                  className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--color-text-3)] hover:bg-[var(--color-fill-2)] hover:text-[var(--color-text-1)] transition-colors disabled:opacity-40"
+                  aria-label="上传图片"
+                >
+                  <PictureOutlined className="text-sm" />
+                </button>
+              </Tooltip>
+            </Upload>
+
+            <Popconfirm
+              title={t('chat.clearConfirm')}
+              okButtonProps={{ danger: true }}
+              onConfirm={handleClearMessages}
+              okText={t('chat.clear')}
+              cancelText={t('common.cancel')}
+              getPopupContainer={(trigger) => trigger.parentElement || document.body}
+            >
+              <Tooltip title={t('chat.clear') || '清空对话'}>
+                <button
+                  type="button"
+                  className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--color-text-3)] hover:bg-[var(--color-fail)]/10 hover:text-[var(--color-fail)] transition-colors"
+                  aria-label="清空对话"
+                >
+                  <DeleteOutlined className="text-sm" />
+                </button>
+              </Tooltip>
+            </Popconfirm>
+
+            {conversationHistoryEnabled ? (
+              <div className="ml-1 flex items-center">
+                <ContextUsageRing usage={contextUsage} />
+              </div>
+            ) : null}
+          </div>
+
+          <div className="flex items-center gap-2.5">
+            <span className="hidden select-none text-[11px] text-[var(--color-text-4)] sm:inline">
+              Enter 发送 · Shift+Enter 换行
+            </span>
+
+            {loading && !pendingChoice && !ignoreLoading ? (
+              <Tooltip title={t('chat.clickCancel') || '停止生成'}>
+                <button
+                  type="button"
+                  onClick={stopSSEConnection}
+                  className="flex h-7 w-7 items-center justify-center rounded-full bg-red-500 text-white shadow-xs hover:bg-red-600 active:scale-95 transition-all cursor-pointer"
+                  aria-label="停止生成"
+                >
+                  <span className="h-2.5 w-2.5 rounded-xs bg-white" />
+                </button>
+              </Tooltip>
+            ) : (
+              <Tooltip title={value.trim() || imageList.length > 0 ? `${t('chat.send')} ↵` : t('chat.inputMessage')}>
+                <button
+                  type="button"
+                  disabled={!value.trim() && imageList.length === 0}
+                  onClick={() => {
+                    if (value.trim() || imageList.length > 0) {
+                      const currentImages = [...imageList];
+                      setImageList([]);
+                      setValue('');
+                      handleSend(value, currentImages);
+                    }
+                  }}
+                  className={`flex h-7 w-7 items-center justify-center rounded-full shadow-xs transition-all ${
+                    (value.trim() || imageList.length > 0)
+                      ? 'bg-[var(--color-primary)] text-white hover:scale-105 active:scale-95 cursor-pointer'
+                      : 'bg-[var(--color-fill-2)] text-[var(--color-text-4)] cursor-not-allowed'
+                  }`}
+                  aria-label="发送消息"
+                >
+                  <SendOutlined className="text-xs" />
+                </button>
+              </Tooltip>
+            )}
+          </div>
+        </div>
       </div>
     );
 
     return requirePermission ? (
       <PermissionWrapper requiredPermissions={['Test']}>
-        {senderComponent}
+        {composerComponent}
       </PermissionWrapper>
-    ) : senderComponent;
+    ) : composerComponent;
   };
 
   const stopSSEConnectionRef = useRef(stopSSEConnection);
@@ -1075,80 +1123,99 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         }}
       >
         <div ref={chatContentRef} className="flex-1 chat-content-wrapper overflow-y-auto overflow-x-hidden pb-4">
-          {guide && guideData.renderedHtml && (
-            <div className="mb-4 flex items-start gap-3" onClick={handleGuideClick}>
-              <div className="flex-shrink-0 mt-1">
-                <Icon type="jiqiren3" className={styles.guideAvatar} />
-              </div>
-              <div
-                dangerouslySetInnerHTML={{ __html: guideData.renderedHtml }}
-                className={`${styles.markdownBody} ${styles.guideText} flex-1 p-3 bg-[var(--color-bg)] rounded-lg`}
-              />
+          {guide && (guideData.renderedHtml || guideData.items.length > 0) && (
+            <div className="mb-4 space-y-2.5" onClick={handleGuideClick}>
+              {guideData.renderedHtml && (
+                <div
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(guideData.renderedHtml) }}
+                  className="text-[13px] leading-relaxed text-[var(--color-text-1)]"
+                />
+              )}
+              {guideData.items.length > 0 && (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {guideData.items.map((item, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => handleSend(item, [])}
+                      className="inline-flex items-center gap-1.5 rounded-md bg-[var(--color-fill-1)]/70 hover:bg-[var(--color-fill-2)] hover:text-[var(--color-primary)] px-3 py-1.5 text-xs text-[var(--color-text-2)] font-normal transition-all cursor-pointer group active:scale-95"
+                    >
+                      <svg
+                        className="w-3.5 h-3.5 text-[var(--color-text-3)] group-hover:text-[var(--color-primary)] transition-colors"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      <span>{item}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
-          <Flex gap="small" vertical>
+          <div className="space-y-4">
             {messages.map(msg => {
+              const isUser = msg.role === 'user';
               const hasBrowserSteps = msg.browserStepsHistory && msg.browserStepsHistory.steps.length > 0;
               const hasThinking = Boolean(normalizeThinkingText(msg.thinking)) || Boolean(msg.isThinking);
               const hasPlanStatus = isActivePlannedExecutionStatus(msg.plannedExecutionStatus?.phase);
               const hasPlanSteps = Array.isArray(msg.plannedExecutionSteps) && msg.plannedExecutionSteps.length > 0;
               const isEmptyMessage = !msg.content && !hasBrowserSteps && !hasThinking && !hasPlanStatus && !hasPlanSteps;
               const isCurrentBotLoading = loading && currentBotMessageRef.current?.id === msg.id;
-              return (
-                <Bubble
-                  key={msg.id}
-                  className={`${styles.bubbleWrapper} ${msg.role === 'user' ? styles.userBubble : ''}`}
-                  placement="start"
-                  loading={isEmptyMessage && isCurrentBotLoading}
-                  content={renderContent(msg)}
-                  avatar={{
-                    icon: (
-                      <Icon
-                        type={msg.role === 'user' ? 'yonghu' : 'jiqiren3'}
-                        className={styles.avatar}
-                      />
-                    )
-                  }}
-                  footer={
-                    isCurrentBotLoading ? null : (
+
+              if (isUser) {
+                return (
+                  <div key={msg.id} className="group flex flex-col items-end w-full my-1.5">
+                    <div className={`${styles.userMessageBubble}`}>
+                      {renderContent(msg)}
+                    </div>
+                    <div className="mt-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
                       <MessageActions
                         message={msg}
                         onCopy={handleCopyMessage}
                         onRegenerate={handleRegenerateMessage}
                         onDelete={handleDeleteMessage}
                       />
-                    )
-                  }
-                />
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <div key={msg.id} className="group flex flex-col items-start w-full my-1.5 text-[13px] leading-relaxed text-[var(--color-text-1)]">
+                  <div className="w-full">
+                    {isEmptyMessage && isCurrentBotLoading ? (
+                      <div className="flex items-center gap-2 py-2 text-[var(--color-text-3)] text-xs">
+                        <LoadingOutlined className="text-[var(--color-primary)]" spin />
+                        <span>正在思考与生成回复...</span>
+                      </div>
+                    ) : (
+                      renderContent(msg)
+                    )}
+                  </div>
+                  {!isCurrentBotLoading && (
+                    <div className="mt-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+                      <MessageActions
+                        message={msg}
+                        onCopy={handleCopyMessage}
+                        onRegenerate={handleRegenerateMessage}
+                        onDelete={handleDeleteMessage}
+                      />
+                    </div>
+                  )}
+                </div>
               );
             })}
-          </Flex>
+          </div>
         </div>
 
         {mode === 'chat' && (
-          <div className="flex-shrink-0">
-            <div className="flex items-center justify-end gap-1 pb-2">
-              <Popconfirm
-                title={t('chat.clearConfirm')}
-                okButtonProps={{ danger: true }}
-                onConfirm={handleClearMessages}
-                okText={t('chat.clear')}
-                cancelText={t('common.cancel')}
-                getPopupContainer={(trigger) => trigger.parentElement || document.body}
-              >
-                <Button type="text" icon={<Icon type="shanchu" className="text-2xl" />} />
-              </Popconfirm>
-              {conversationHistoryEnabled ? <ContextUsageRing usage={contextUsage} /> : null}
-            </div>
-            <Flex vertical gap="middle">
-              {renderSend({
-                variant: 'text',
-                placeholder: `${t('chat.inputPlaceholder')}`,
-                color: 'primary',
-                icon: <SendOutlined />,
-                shape: 'default',
-              })}
-            </Flex>
+          <div className="flex-shrink-0 pt-2">
+            {renderSend({
+              placeholder: t('chat.inputPlaceholder'),
+            })}
           </div>
         )}
       </div>

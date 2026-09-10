@@ -168,6 +168,7 @@ def test_integration_config_is_stateless_and_maps_standard_resource_attributes(a
     assert "service.version=1.4.0" in resource
     assert "Authorization" not in response.data["code"]
     assert "OTEL_EXPORTER_OTLP_HEADERS" not in response.data["environment"]
+    assert "OTEL_TRACES_SAMPLER" not in response.data["environment"]
     assert response.data["cloud_region"] == {"id": 7, "name": "华东一区"}
     assert response.data["http_endpoint"] == "http://apm-east.example.com:4318/v1/traces"
     assert "grpc_endpoint" not in response.data

@@ -71,6 +71,78 @@ _K8S_NAMESPACE_LOOKUP_HINT = (
     "反查只是前置，后续取证/诊断步骤须对齐助手任务说明，不要只规划反查就结束。"
 )
 
+_K8S_POD_RESTART_RCA_HINT = (
+    "能力导读：已指定具体 Pod 问重启原因时，规划 diagnose_kubernetes_pod_issues"
+    " → get_kubernetes_previous_pod_logs → get_resource_events_timeline；"
+    "怀疑探针再加 validate_probe_configuration。"
+    "禁止 analyze_pod_restart_pattern / describe_kubernetes_resource / "
+    "list_kubernetes_pods / list_kubernetes_events。"
+    "日志工具对同一 Pod 只调用一次；返回截断/压缩后禁止降低 lines 重试。"
+    "当前日志为空或没有 previous 日志都是有效证据，立刻写报告，不要当工具失败。"
+)
+
+_K8S_POD_RESTART_EVIDENCE_TOOL = "collect_pod_restart_evidence"
+_K8S_POD_RESTART_EVIDENCE_HINT = (
+    "能力导读：已指定具体 Pod 问重启原因时，只规划 collect_pod_restart_evidence；"
+    "它已包含 lastState、事件和 previous 死前日志。"
+    "禁止再规划 diagnose_kubernetes_pod_issues、get_kubernetes_pod_logs、"
+    "get_kubernetes_previous_pod_logs、get_resource_events_timeline。"
+    "不要用当前轮尾巴代替上一轮死因。"
+)
+# 重启原因类措辞：不能单独凭 crashloopbackoff / 「分析…重启」判定，必须再钉死具体 Pod。
+_K8S_POD_RESTART_REASON_RE = re.compile(
+    r"重启原因|为什么重启|为何重启|为啥重启|频繁重启|重启的原因|重启.{0,4}原因|" r"crash.?loop.?back.?off",
+    re.I,
+)
+_K8S_POD_RESTART_LIST_RE = re.compile(
+    r"哪些|列出|有哪些|怎么找|怎么查|如何找|如何查|" r"\btop\b|top-?\s*\d*|排行|" r"有很多|集群里|全集群|整个集群|扫描集群",
+    re.I,
+)
+_K8S_DNS_LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+_K8S_NS_AND_POD_RE = re.compile(
+    rf"(?<![a-z0-9.])({_K8S_DNS_LABEL})/({_K8S_DNS_LABEL})(?![a-z0-9.-])",
+    re.I,
+)
+_K8S_THIS_POD_RE = re.compile(r"(这个|该|此)\s*(个)?\s*(Pod|pod|POD)\b")
+_K8S_POD_MENTION_RE = re.compile(rf"(?:Pod|pod|POD)[\s:：=]+({_K8S_DNS_LABEL})")
+_K8S_HYPHENATED_OBJECT_RE = re.compile(
+    rf"(?<![a-z0-9-]){_K8S_DNS_LABEL}-{_K8S_DNS_LABEL}(?![a-z0-9-])",
+    re.I,
+)
+_K8S_ALERT_LIKE_RE = re.compile(
+    r"告警\s*[:：]|检测到异常|readiness probe failed|liveness probe failed",
+    re.I,
+)
+_K8S_POD_RESTART_EVIDENCE_CONSUMED = frozenset(
+    {
+        "diagnose_kubernetes_pod_issues",
+        "get_kubernetes_pod_logs",
+        "get_kubernetes_previous_pod_logs",
+        "get_resource_events_timeline",
+        "collect_pod_restart_evidence",
+    }
+)
+_K8S_RESTART_EVIDENCE_KEEP_TOOLS = frozenset(
+    {
+        "resolve_k8s_target_from_alert",
+        "current_time",
+        "get_current_time",
+    }
+)
+
+_K8S_RECENTLY_RESTARTED_TOOL = "get_recently_restarted_kubernetes_pods"
+_K8S_HIGH_RESTART_TOOL = "get_high_restart_kubernetes_pods"
+_K8S_RESTART_TIME_SORT_RE = re.compile(
+    r"重启时间|按时间.{0,12}重启|最近的?\s*\d*\s*个?重启|最近重启|" r"recently\s+restarted|sort(?:ed)?\s+by\s+restart\s+time",
+    re.IGNORECASE,
+)
+_K8S_RESTART_TIME_SORT_HINT = (
+    "能力导读：用户要按重启时间排序、列出最近重启的 Pod 时，必须规划 "
+    "get_recently_restarted_kubernetes_pods；禁止 get_high_restart_kubernetes_pods。"
+    "后者只按累计 restartCount 过滤，没有重启时间，也不能当时间窗次数。"
+    "restart_count 只作展示，不是排序键。"
+)
+
 _K8S_NAMESPACE_RESOLVE_TOOL = "resolve_k8s_target_from_alert"
 _K8S_NAMESPACE_SCAN_TOOLS = frozenset(
     {
@@ -80,16 +152,39 @@ _K8S_NAMESPACE_SCAN_TOOLS = frozenset(
 )
 _K8S_NAMESPACE_LOOKUP_TOOLS = frozenset({_K8S_NAMESPACE_RESOLVE_TOOL})
 
+# 全集群发现类工具返回值已带 namespace；其后按对象取事件/describe 不必再插反查步。
+_K8S_CLUSTER_DISCOVERY_TOOLS = frozenset(
+    {
+        "get_high_restart_kubernetes_pods",
+        "get_recently_restarted_kubernetes_pods",
+        "get_failed_kubernetes_pods",
+        "get_pending_kubernetes_pods",
+        "get_not_ready_kubernetes_pods",
+    }
+)
+
 # 调用前通常已需要明确 namespace；若计划包含它们且未先反查，则服务端改写计划。
 _K8S_NAMESPACE_REQUIRED_TOOLS = frozenset(
     {
         "diagnose_kubernetes_pod_issues",
         "get_kubernetes_pod_logs",
+        "get_kubernetes_previous_pod_logs",
         "get_resource_events_timeline",
         "describe_kubernetes_resource",
         "get_kubernetes_resource_yaml",
         "exec_in_pod",
         "validate_probe_configuration",
+        "collect_pod_restart_evidence",
+    }
+)
+
+_K8S_KNOWN_POD_DIAGNOSE_TOOL = "diagnose_kubernetes_pod_issues"
+_K8S_KNOWN_POD_SCAN_TOOLS = frozenset(
+    {
+        "analyze_pod_restart_pattern",
+        "describe_kubernetes_resource",
+        "list_kubernetes_pods",
+        "list_kubernetes_events",
     }
 )
 
@@ -100,6 +195,14 @@ _DEFAULT_PLANNED_AI_TEXT_CHARS = 1000
 _PLANNED_COMPACT_BASELINE_WORKING_TOKENS = 6800  # derive_llm_working_budget(8000, scene_output_default=4000)
 _PLANNED_COMPACT_SINGLE_MESSAGE_RATIO = 20
 _TRUNCATION_SUFFIX = "\n...(truncated)"
+_K8S_POD_LOG_TOOLS = frozenset(
+    {
+        "get_kubernetes_pod_logs",
+        "get_kubernetes_previous_pod_logs",
+    }
+)
+_POD_LOG_COMPACT_HINT = "【日志已按 RCA 压缩，禁止为获取更多行再次调用本工具。】\n"
+_POD_LOG_EARLIER_OMITTED = "...(earlier logs omitted)\n"
 
 _FENCE_RE = re.compile(r"```(?:json|JSON)?\s*([\s\S]*?)```", re.MULTILINE)
 _EMPTY_MESSAGE_REPLY_RE = re.compile(
@@ -167,6 +270,47 @@ def is_context_size_error(exc: BaseException | str) -> bool:
     return any(needle in text for needle in needles)
 
 
+_LLM_UPSTREAM_TYPE_NAMES = frozenset(
+    {
+        "internalservererror",
+        "apitimeouterror",
+        "apiconnectionerror",
+        "ratelimiterror",
+        "serviceunavailableerror",
+    }
+)
+_LLM_UPSTREAM_REQUEST_ID_RE = re.compile(r"request id:\s*([A-Za-z0-9]+)", re.IGNORECASE)
+
+
+def is_llm_upstream_error(exc: BaseException | str) -> bool:
+    """识别模型网关/上游失败（如 new_api 500 do_request_failed），不是沙箱白名单拦截。"""
+    if is_context_size_error(exc):
+        return False
+    if isinstance(exc, BaseException) and type(exc).__name__.casefold() in _LLM_UPSTREAM_TYPE_NAMES:
+        return True
+    text = str(exc or "").casefold()
+    needles = (
+        "new_api_error",
+        "do_request_failed",
+        "upstream error: do request failed",
+    )
+    return any(needle in text for needle in needles)
+
+
+def extract_llm_upstream_request_id(exc: BaseException | str) -> str:
+    match = _LLM_UPSTREAM_REQUEST_ID_RE.search(str(exc or ""))
+    if not match:
+        return ""
+    return match.group(1)[:80]
+
+
+def llm_upstream_user_message(exc: BaseException | str) -> str:
+    request_id = extract_llm_upstream_request_id(exc)
+    if request_id:
+        return f"模型服务暂时不可用（上游请求失败），不是本地工具或沙箱命令被拦截。请稍后重试。request_id={request_id}"
+    return "模型服务暂时不可用（上游请求失败），不是本地工具或沙箱命令被拦截。请稍后重试。"
+
+
 def _coerce_positive_int(value: Any) -> int | None:
     try:
         number = int(value)
@@ -223,6 +367,73 @@ def _truncate_text(text: str, max_chars: int) -> str:
         return text
     keep = max(0, max_chars - len(_TRUNCATION_SUFFIX))
     return text[:keep] + _TRUNCATION_SUFFIX
+
+
+def compact_kubernetes_pod_log_content(content: str, max_chars: int) -> str:
+    """日志压缩保留尾部错误，避免头部截断诱使模型降低 lines 重拉。"""
+    if max_chars <= 0 or len(content) <= max_chars:
+        return content
+    prefix = _POD_LOG_COMPACT_HINT
+    omitted = _POD_LOG_EARLIER_OMITTED
+    budget = max_chars - len(prefix) - len(omitted)
+    if budget <= 0:
+        return content[-max_chars:]
+    return prefix + omitted + content[-budget:]
+
+
+def compact_pod_restart_evidence_content(content: str, max_chars: int) -> str:
+    """取证包优先保住 clock / last_state / previous_tail，避免头截断丢掉死前日志。"""
+    if max_chars <= 0 or len(content) <= max_chars:
+        return content
+    try:
+        parsed = json.loads(content)
+    except Exception:
+        return compact_kubernetes_pod_log_content(content, max_chars)
+    if not isinstance(parsed, dict):
+        return compact_kubernetes_pod_log_content(content, max_chars)
+    logs = parsed.get("logs") if isinstance(parsed.get("logs"), dict) else {}
+    previous = logs.get("previous_tail") if isinstance(logs.get("previous_tail"), dict) else {}
+    raw_previous = str(previous.get("content") or "")
+    events = (parsed.get("events") or [])[:5] if isinstance(parsed.get("events"), list) else []
+
+    def _serialized(prev_budget: int, event_items: list) -> str:
+        compact = {
+            "pod_name": parsed.get("pod_name"),
+            "namespace": parsed.get("namespace"),
+            "container": parsed.get("container"),
+            "phase": parsed.get("phase"),
+            "ready": parsed.get("ready"),
+            "restart_count": parsed.get("restart_count"),
+            "clock": parsed.get("clock"),
+            "last_state": parsed.get("last_state"),
+            "events": event_items,
+            "logs": {
+                "previous_tail": {
+                    "role": "previous_tail",
+                    "available": previous.get("available"),
+                    "skipped": previous.get("skipped"),
+                    "why": previous.get("why"),
+                    "content": compact_kubernetes_pod_log_content(raw_previous, prev_budget) if prev_budget else "",
+                },
+                "current_tail": {"skipped": True, "why": "压缩时省略；未就绪对照以 last_state/事件为准"},
+                "current_head": {"skipped": True, "why": "重启取证默认不取当前轮开头"},
+            },
+            "missing": parsed.get("missing") or [],
+            "_compacted": True,
+        }
+        return json.dumps(compact, ensure_ascii=False)
+
+    for event_items, budget in (
+        (events, max(200, max_chars // 2)),
+        (events[:1], max(200, max_chars // 3)),
+        ([], 200),
+        ([], 80),
+        ([], 0),
+    ):
+        serialized = _serialized(budget, event_items)
+        if len(serialized) <= max_chars:
+            return serialized
+    return serialized
 
 
 def compact_analyze_deployment_tool_content(content: str, max_chars: int) -> str:
@@ -431,6 +642,10 @@ def compact_planned_execution_messages(
                     new_content = compact_analyze_deployment_tool_content(content, max_tool_chars)
                 elif tool_name in {"execute", "shell"}:
                     new_content = compact_skill_ok_json_tool_content(content, max_tool_chars)
+                elif tool_name in _K8S_POD_LOG_TOOLS:
+                    new_content = compact_kubernetes_pod_log_content(content, max_tool_chars)
+                elif tool_name == _K8S_POD_RESTART_EVIDENCE_TOOL:
+                    new_content = compact_pod_restart_evidence_content(content, max_tool_chars)
                 else:
                     new_content = _truncate_text(content, max_tool_chars)
             elif content is None:
@@ -441,6 +656,10 @@ def compact_planned_execution_messages(
                     new_content = compact_analyze_deployment_tool_content(serialized, max_tool_chars)
                 elif tool_name in {"execute", "shell"}:
                     new_content = compact_skill_ok_json_tool_content(serialized, max_tool_chars)
+                elif tool_name in _K8S_POD_LOG_TOOLS:
+                    new_content = compact_kubernetes_pod_log_content(serialized, max_tool_chars)
+                elif tool_name == _K8S_POD_RESTART_EVIDENCE_TOOL:
+                    new_content = compact_pod_restart_evidence_content(serialized, max_tool_chars)
                 else:
                     new_content = _truncate_text(serialized, max_tool_chars)
             if new_content is content or new_content == content:
@@ -517,6 +736,14 @@ def enforce_k8s_namespace_lookup_first(
     if first_required_idx is None:
         return ToolExecutionPlan(goal=plan.goal, steps=cleaned)
 
+    prior_tools = {tool for step in cleaned[:first_required_idx] for tool in (step.tools or [])}
+    if prior_tools & _K8S_CLUSTER_DISCOVERY_TOOLS:
+        logger.info(
+            "DeepAgent 规划硬校验：前置发现工具已带 namespace，跳过插入反查 prior_tools=%s",
+            sorted(prior_tools & _K8S_CLUSTER_DISCOVERY_TOOLS),
+        )
+        return ToolExecutionPlan(goal=plan.goal, steps=cleaned)
+
     lookup_step = ToolExecutionStep(
         objective="反查目标命名空间与定位信息",
         tools=[_K8S_NAMESPACE_RESOLVE_TOOL],
@@ -530,6 +757,129 @@ def enforce_k8s_namespace_lookup_first(
         first_required_idx,
     )
     return ToolExecutionPlan(goal=plan.goal, steps=steps)
+
+
+def drop_cluster_scan_tools_for_known_pod_diagnose(plan: ToolExecutionPlan) -> ToolExecutionPlan:
+    """已知 Pod 走 diagnose 时去掉全集群扫描和整份 describe，避免撑爆上下文。"""
+    planned = {tool for step in plan.steps for tool in (step.tools or [])}
+    if _K8S_KNOWN_POD_DIAGNOSE_TOOL not in planned:
+        return plan
+    cleaned: list[ToolExecutionStep] = []
+    for step in plan.steps:
+        tools = [tool for tool in (step.tools or []) if tool not in _K8S_KNOWN_POD_SCAN_TOOLS]
+        if not tools:
+            continue
+        if tools != list(step.tools):
+            cleaned.append(step.model_copy(update={"tools": tools}))
+        else:
+            cleaned.append(step)
+    return ToolExecutionPlan(goal=plan.goal, steps=cleaned)
+
+
+def _has_specific_pod_object(text: str) -> bool:
+    """用户话里是否已钉死具体对象：ns/pod、Pod 名、或「这个/该 Pod」。"""
+    if _K8S_THIS_POD_RE.search(text or ""):
+        return True
+    for match in _K8S_NS_AND_POD_RE.finditer(text or ""):
+        name = match.group(2) or ""
+        if name.isdigit():
+            continue
+        if re.search(r"[a-zA-Z]", name):
+            return True
+    if _K8S_POD_MENTION_RE.search(text or ""):
+        return True
+    return bool(_K8S_HYPHENATED_OBJECT_RE.search(text or ""))
+
+
+def is_pod_restart_reason_query(user_message: str, agent_system_prompt: str = "") -> bool:
+    """是否为「已指定具体 Pod 问重启原因」。名单/扫集群、告警 RCA、按时间 Top-N 不算。"""
+    text = user_message or ""
+    prompt = agent_system_prompt or ""
+    if _K8S_RESTART_TIME_SORT_RE.search(text):
+        return False
+    if _K8S_ALERT_LIKE_RE.search(text):
+        return False
+    if "Kubernetes 集群 RCA 助手" in prompt or "告警怎么读" in prompt:
+        return False
+    if _K8S_POD_RESTART_LIST_RE.search(text):
+        return False
+    if not _has_specific_pod_object(text):
+        return False
+    if _K8S_POD_RESTART_REASON_RE.search(text):
+        return True
+    if "Pod 重启原因分析助手" in prompt and "重启" in text:
+        return True
+    return False
+
+
+def collapse_known_pod_restart_to_evidence_tool(
+    plan: ToolExecutionPlan,
+    available_names: set[str],
+    user_message: str = "",
+    agent_system_prompt: str = "",
+) -> ToolExecutionPlan:
+    """指定 Pod 问重启原因且取证包可用时，收成一步，避免再拉当前轮尾巴。"""
+    if _K8S_POD_RESTART_EVIDENCE_TOOL not in available_names:
+        return plan
+    if not is_pod_restart_reason_query(user_message, agent_system_prompt):
+        return plan
+
+    kept: list[ToolExecutionStep] = []
+    for step in plan.steps:
+        tools = list(step.tools or [])
+        if any(tool in _K8S_POD_RESTART_EVIDENCE_CONSUMED for tool in tools):
+            leftover = [tool for tool in tools if tool not in _K8S_POD_RESTART_EVIDENCE_CONSUMED]
+            if leftover:
+                kept.append(step.model_copy(update={"tools": leftover}))
+            continue
+        kept.append(step)
+
+    if not any(_K8S_POD_RESTART_EVIDENCE_TOOL in (step.tools or []) for step in kept):
+        insert_at = len(kept)
+        for index, step in enumerate(kept):
+            if any(tool in _K8S_RESTART_EVIDENCE_KEEP_TOOLS for tool in (step.tools or [])):
+                insert_at = index + 1
+        kept.insert(
+            insert_at,
+            ToolExecutionStep(objective="采集重启取证包", tools=[_K8S_POD_RESTART_EVIDENCE_TOOL]),
+        )
+    return ToolExecutionPlan(goal=plan.goal, steps=kept)
+
+
+def rewrite_high_restart_to_recent_for_time_sort(
+    plan: ToolExecutionPlan,
+    available_names: set[str],
+    user_message: str = "",
+) -> ToolExecutionPlan:
+    """按重启时间列出最近 Pod 时，把累计次数扫描改成按时间排序的扫描。"""
+    if _K8S_RECENTLY_RESTARTED_TOOL not in available_names:
+        return plan
+    if not _K8S_RESTART_TIME_SORT_RE.search(user_message or ""):
+        return plan
+    planned = {tool for step in plan.steps for tool in (step.tools or [])}
+    if _K8S_KNOWN_POD_DIAGNOSE_TOOL in planned or _K8S_HIGH_RESTART_TOOL not in planned:
+        return plan
+    cleaned: list[ToolExecutionStep] = []
+    changed = False
+    for step in plan.steps:
+        tools = []
+        for tool in step.tools or []:
+            name = _K8S_RECENTLY_RESTARTED_TOOL if tool == _K8S_HIGH_RESTART_TOOL else tool
+            if name not in tools:
+                tools.append(name)
+        if tools != list(step.tools):
+            changed = True
+            cleaned.append(step.model_copy(update={"tools": tools}))
+        else:
+            cleaned.append(step)
+    if not changed:
+        return plan
+    logger.info(
+        "DeepAgent 规划硬校验：按重启时间排序改写 tool=%s -> tool=%s",
+        _K8S_HIGH_RESTART_TOOL,
+        _K8S_RECENTLY_RESTARTED_TOOL,
+    )
+    return ToolExecutionPlan(goal=plan.goal, steps=cleaned)
 
 
 def drop_k8s_followup_steps_after_unresolved_target(steps: Sequence[ToolExecutionStep]) -> list[ToolExecutionStep]:
@@ -847,10 +1197,20 @@ class ToolExecutionPlanner:
             used += len(line) + 1
         return "\n".join(lines)
 
-    def _catalog(self, tools: Sequence[BaseTool], skill_packages: Sequence[Any] = ()) -> str:
+    def _catalog(
+        self,
+        tools: Sequence[BaseTool],
+        skill_packages: Sequence[Any] = (),
+        *,
+        user_message: str = "",
+        agent_system_prompt: str = "",
+    ) -> str:
         lines = []
         has_monitor = False
         has_k8s_lookup = False
+        has_pod_diagnose = False
+        has_restart_evidence = False
+        has_restart_time_sort = False
         has_attachment = False
         used = 0
         skill_block = self._skill_catalog(skill_packages)
@@ -866,6 +1226,12 @@ class ToolExecutionPlanner:
                 has_monitor = True
             if name in _K8S_NAMESPACE_LOOKUP_TOOLS:
                 has_k8s_lookup = True
+            if name == _K8S_KNOWN_POD_DIAGNOSE_TOOL:
+                has_pod_diagnose = True
+            if name == _K8S_POD_RESTART_EVIDENCE_TOOL:
+                has_restart_evidence = True
+            if name in {_K8S_RECENTLY_RESTARTED_TOOL, _K8S_HIGH_RESTART_TOOL}:
+                has_restart_time_sort = True
             if name == GENERATE_ATTACHMENT_FILE_TOOL_NAME:
                 has_attachment = True
             # 预算耗尽后只保留工具名，避免 60+ 长描述撑爆 8K 窗口。
@@ -885,6 +1251,12 @@ class ToolExecutionPlanner:
             hints.append(_MONITOR_CATALOG_HINT)
         if has_k8s_lookup:
             hints.append(_K8S_NAMESPACE_LOOKUP_HINT)
+        if has_restart_evidence and is_pod_restart_reason_query(user_message, agent_system_prompt):
+            hints.append(_K8S_POD_RESTART_EVIDENCE_HINT)
+        elif has_pod_diagnose:
+            hints.append(_K8S_POD_RESTART_RCA_HINT)
+        if has_restart_time_sort:
+            hints.append(_K8S_RESTART_TIME_SORT_HINT)
         if has_attachment:
             hints.append(_ATTACHMENT_CATALOG_HINT)
         if declared_source_tools:
@@ -945,6 +1317,14 @@ class ToolExecutionPlanner:
             steps=steps,
         )
         plan = enforce_k8s_namespace_lookup_first(plan, available_names, max_steps=self._max_steps)
+        plan = drop_cluster_scan_tools_for_known_pod_diagnose(plan)
+        plan = collapse_known_pod_restart_to_evidence_tool(
+            plan,
+            available_names,
+            user_message=user_message,
+            agent_system_prompt=agent_system_prompt,
+        )
+        plan = rewrite_high_restart_to_recent_for_time_sort(plan, available_names, user_message=user_message)
         plan = enforce_skill_report_source_tools(
             plan,
             available_names,
@@ -996,7 +1376,7 @@ class ToolExecutionPlanner:
             f"{agent_block}"
             f"已完成步骤:\n{completed_text}\n\n"
             f"最近失败或新证据:\n{failure_text}\n\n"
-            f"紧凑工具目录:\n{self._catalog(tools, skill_packages)}"
+            f"紧凑工具目录:\n{self._catalog(tools, skill_packages, user_message=user_message, agent_system_prompt=agent_system_prompt)}"
         )
 
     async def _ainvoke_plan(

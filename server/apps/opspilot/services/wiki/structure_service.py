@@ -487,7 +487,11 @@ def _validate_omissions(active_revision, active_generation, nodes, local_directo
             "完整结构不能省略系统目录",
             details={"directory_ids": system_directory_ids},
         )
-    active_children = [directory.pk for directory in local_directories if directory.status == "active" and directory.parent_id in omitted_ids]
+    active_children = [
+        directory.pk
+        for directory in local_directories
+        if (directory.status == "active" and directory.parent_id in omitted_ids and directory.pk not in omitted_ids)
+    ]
     if active_children:
         raise StructureServiceError(
             "directory_omission_has_active_children",
@@ -602,7 +606,7 @@ def _canonical_snapshot(page_types, nodes):
         directory = node["object"]
         parent = None
         if node["parent_token"] is not None:
-            parent_object = next(candidate["object"] for candidate in nodes if candidate["token"] == node["parent_token"])
+            parent_object = next(candidate["object"] for candidate in nodes if candidate.get("token") == node["parent_token"])
             parent = {"id": parent_object.pk, "key": parent_object.key}
         directories.append(
             {

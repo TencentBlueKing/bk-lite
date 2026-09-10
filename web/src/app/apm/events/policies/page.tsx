@@ -228,11 +228,16 @@ export default function ApmPolicyListPage() {
             rowKey="id"
             columns={columns}
             dataSource={visible}
+            locale={{ emptyText: t('apm.policies.noMatching', '没有匹配的策略，请调整搜索条件。') }}
             pagination={{ pageSize: 20 }}
             scroll={{ x: 1160 }}
           />
         ) : (
-          <CatalogState kind={state} onRetry={load} />
+          <CatalogState
+            kind={state}
+            description={t('apm.policies.empty', '暂无告警策略')}
+            onRetry={state === 'empty' ? undefined : load}
+          />
         )}
         </div>
       </ApmSurface>

@@ -14,6 +14,7 @@ import useApiClient from '@/utils/request';
 import { useSearchParams, useRouter } from 'next/navigation';
 import useMonitorApi from '@/app/monitor/api';
 import useIntegrationApi from '@/app/monitor/api/integration';
+import useViewApi from '@/app/monitor/api/view';
 import { findByMonitorId, sameMonitorId, toMonitorIdString } from '@/app/monitor/utils/monitorIds';
 import { useMonitorObjectQuery } from '@/app/monitor/hooks/useMonitorObjectQuery';
 import { resolveMonitorObjectQueryId } from '@/app/monitor/utils/monitorObjectQuery';
@@ -50,6 +51,7 @@ import { isDerivativeObject } from '@/app/monitor/utils/monitorObject';
 import Permission from '@/components/permission';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import type { TableProps, MenuProps } from 'antd';
+import type { FilterValue } from 'antd/es/table/interface';
 import { cloneDeep } from 'lodash';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import { resolveDashboardUrl } from '@/app/monitor/dashboards/registry';
@@ -59,11 +61,29 @@ import PluginTooltipContent, { PluginTooltipTrigger } from './pluginTooltip';
 type TableRowSelection<T extends object = object> =
   TableProps<T>['rowSelection'];
 
+const ASSET_IP_FACT = 'asset.ip';
+const ASSET_IP_COLUMN_KEY = `summary_fact:${ASSET_IP_FACT}`;
+
+const sameStringArray = (left: string[], right: string[]) =>
+  left.length === right.length && left.every((item) => right.includes(item));
+
+const normalizeIpList = (values: unknown): string[] => {
+  if (!Array.isArray(values)) return [];
+  return Array.from(
+    new Set(
+      values
+        .map((item) => String(item ?? '').trim())
+        .filter(Boolean)
+    )
+  );
+};
+
 const Asset = () => {
   const { isLoading } = useApiClient();
   const { getMonitorObject } = useMonitorApi();
   const { deleteMonitorInstance, getInstanceListByPrimaryObject } =
     useIntegrationApi();
+  const { getInstanceQueryParams } = useViewApi();
   const { t } = useTranslation();
   const commonContext = useCommon();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -101,7 +121,21 @@ const Asset = () => {
   const [frequence, setFrequence] = useState<number>(0);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [ipFilterOptions, setIpFilterOptions] = useState<string[]>([]);
+  const [selectedAssetIps, setSelectedAssetIps] = useState<string[]>([]);
+  const selectedAssetIpsRef = useRef<string[]>([]);
   const [modal, modalContextHolder] = Modal.useModal();
+
+  useEffect(() => {
+    selectedAssetIpsRef.current = selectedAssetIps;
+  }, [selectedAssetIps]);
+
+  const needsAssetIpFilter = useMemo(() => {
+    const target = findByMonitorId(objects, objectId);
+    return (target?.instance_summary_columns || []).some(
+      (column) => column.fact === ASSET_IP_FACT
+    );
+  }, [objects, objectId]);
 
   const handleAssetMenuClick: MenuProps['onClick'] = (e) => {
     if (e.key === 'batchDelete') {
@@ -342,15 +376,59 @@ const Asset = () => {
       }
     ];
     const row = findByMonitorId(objects, objectId) || {};
+    const mergedIpOptions = Array.from(
+      new Set(
+        [
+          ...ipFilterOptions,
+          ...selectedAssetIps,
+          ...tableData.flatMap((item) => {
+            const facts = item?.summary_facts as
+              | Record<string, unknown>
+              | undefined;
+            const factIp = facts?.[ASSET_IP_FACT];
+            const fallbackIp = item?.ip;
+            return [factIp, fallbackIp]
+              .filter((value) => value != null && value !== '')
+              .map((value) => String(value).trim());
+          })
+        ].filter(Boolean)
+      )
+    ).sort((left, right) =>
+      left.localeCompare(right, undefined, { numeric: true })
+    );
+    const assetIpFilters = mergedIpOptions.map((ip) => ({
+      text: ip,
+      value: ip
+    }));
     return [
       ...getBaseInstanceColumn({
         objects,
         row: row as ObjectItem,
-        t
+        t,
+        ipFilterOptions: mergedIpOptions
       }),
       ...columnItems
-    ];
-  }, [objects, objectId, t, convertToLocalizedTime]);
+    ].map((column) => {
+      if (String(column.key) !== ASSET_IP_COLUMN_KEY) return column;
+      return {
+        ...column,
+        filterMultiple: true,
+        filterSearch: true,
+        filterParam: ASSET_IP_FACT,
+        filters: assetIpFilters.length ? assetIpFilters : undefined,
+        filteredValue: selectedAssetIps.length ? selectedAssetIps : null
+      };
+    });
+  }, [
+    objects,
+    objectId,
+    t,
+    convertToLocalizedTime,
+    ipFilterOptions,
+    selectedAssetIps,
+    tableData,
+    organizationList
+  ]);
 
   const enableOperateAsset = useMemo(() => {
     if (!selectedRowKeys.length) return true;
@@ -380,6 +458,40 @@ const Asset = () => {
       getAssetInsts(objectId);
     }
   }, [pagination.current, pagination.pageSize]);
+
+  useEffect(() => {
+    if (objectId) {
+      getAssetInsts(objectId);
+    }
+  }, [selectedAssetIps]);
+
+  // 与监控视图一致：有 asset.ip 摘要列时拉取去重候选 IP。
+  useEffect(() => {
+    if (!objectId || !needsAssetIpFilter) {
+      setIpFilterOptions([]);
+      return;
+    }
+    const objName = findByMonitorId(objects, objectId)?.name;
+    if (!objName) return;
+    let cancelled = false;
+    getInstanceQueryParams(objName, { monitor_object_id: objectId })
+      .then((data) => {
+        if (cancelled) return;
+        setIpFilterOptions(
+          normalizeIpList(
+            Array.isArray(data?.asset_ips) ? data.asset_ips : []
+          ).sort((left, right) =>
+            left.localeCompare(right, undefined, { numeric: true })
+          )
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setIpFilterOptions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [objectId, needsAssetIpFilter, objects, getInstanceQueryParams]);
 
   useEffect(() => {
     if (!frequence) {
@@ -423,6 +535,9 @@ const Asset = () => {
     cancelAllRequests();
     setTableData([]);
     setSelectedRowKeys([]);
+    setSelectedAssetIps([]);
+    selectedAssetIpsRef.current = [];
+    setIpFilterOptions([]);
     setObjectId(id);
     syncObjectId(id);
   };
@@ -454,8 +569,24 @@ const Asset = () => {
     router.push(url);
   };
 
-  const handleTableChange = (pagination: any) => {
-    setPagination(pagination);
+  const handleTableChange = (
+    paginationConfig: any,
+    filters?: Record<string, FilterValue | null>
+  ) => {
+    if (filters && ASSET_IP_COLUMN_KEY in filters) {
+      const next = normalizeIpList(filters[ASSET_IP_COLUMN_KEY]);
+      if (!sameStringArray(next, selectedAssetIps)) {
+        setSelectedAssetIps(next);
+        selectedAssetIpsRef.current = next;
+        setTableData([]);
+        setPagination((prev: Pagination) => ({
+          ...prev,
+          current: 1
+        }));
+        return;
+      }
+    }
+    setPagination(paginationConfig);
   };
 
   const getAssetInsts = async (objectId: React.Key, type?: string) => {
@@ -465,11 +596,15 @@ const Asset = () => {
     const currentRequestId = ++assetRequestIdRef.current;
     try {
       setTableLoading(type !== 'timer');
+      const selectedIps = selectedAssetIpsRef.current;
       const params = {
         page: pagination.current,
         page_size: pagination.pageSize,
         name: type === 'clear' ? '' : searchText,
-        id: String(objectId)
+        id: String(objectId),
+        ...(selectedIps.length
+          ? { vm_params: { [ASSET_IP_FACT]: selectedIps.join(',') } }
+          : {})
       };
       const data = await getInstanceListByPrimaryObject(params, {
         signal: abortController.signal
@@ -695,6 +830,7 @@ const Asset = () => {
           </div>
         </div>
         <CustomTable
+          key={String(objectId || 'asset-table')}
           scroll={{ y: 'calc(100vh - 330px)', x: 'max-content' }}
           columns={columns}
           dataSource={tableData}

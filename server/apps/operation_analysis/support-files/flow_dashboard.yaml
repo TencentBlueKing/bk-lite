@@ -1,0 +1,843 @@
+# 内置画布：Flow 网络流量分析仪表盘。
+# 由 init_builtin_canvases 与 builtin_canvases.yaml 合并加载。
+# 数据源以 source_api.json 为准；本文件保留同名定义以便单独导入。
+# 组件按流量概览 / 趋势 / 协议与排行 / 会话 / 通信关系分组。
+meta:
+  schema_version: 1.2.0
+  exported_at: '2026-09-03T14:00:00+08:00'
+  source:
+    organization_id: 0
+  object_counts:
+    dashboards: 1
+    topologies: 0
+    screens: 0
+    reports: 0
+    architectures: 0
+    datasources: 3
+    namespaces: 1
+dashboards:
+- key: dashboard::Flow网络流量分析仪表盘
+  name: Flow 网络流量分析仪表盘
+  desc: 按所选网络设备查看 Flow 总流量、趋势、协议分布、TopN、会话与通信关系。
+  other:
+    timeSelector:
+      selectValue: 360
+      rangePickerVaule: null
+  view_sets:
+  - id: group-overview
+    itemType: group
+    name: 流量概览
+    description: 所选设备在时间窗内的总流量、包速、平均包大小与有效采样率
+    x: 0
+    y: 0
+    w: 12
+    h: 4
+    headerH: 1
+    sizeToContent: true
+    subGridOpts:
+      children:
+      - h: 3
+        w: 3
+        x: 0
+        y: 0
+        id: flow-kpi-bytes
+        name: 总流量
+        itemType: widget
+        description: 所选设备归一化后的 Flow 字节速率
+        valueConfig:
+          chartType: single
+          dataSource: 受控指标排行::monitor/query_metric_series
+          selectedFields:
+          - value
+          unitId: bps
+          conversionFactor: 8
+          decimalPlaces: 1
+          filterBindings:
+            instance_ids__string: true
+            time__timeRange: true
+          dataSourceParams:
+          - &id001
+            name: instance_ids
+            type: string
+            value: []
+            alias_name: 设备
+            filterType: filter
+            inputConfig: &id006
+              control: select
+              multiple: true
+              picker: table
+              optionsSource:
+                type: dynamic
+                sourceRef:
+                  type: rest_api
+                  value: monitor/get_monitor_instance_list
+                valueField: instance_id
+                labelField: display_name
+          - name: metric
+            type: string
+            value: device_flow_bytes_rate
+            alias_name: 指标
+            filterType: params
+            required: true
+            inputConfig:
+              control: select
+              componentSwitch: false
+              optionsSource:
+                type: static
+                staticItems: &id007
+                - label: 总流量
+                  value: device_flow_bytes_rate
+                - label: 总包速
+                  value: device_flow_packets_rate
+                - label: 平均包大小
+                  value: device_flow_avg_packet_size
+                - label: 有效采样率
+                  value: device_flow_effective_sampling_rate
+                - label: 协议流量
+                  value: device_flow_protocol_bytes_rate
+                - label: Top 源地址
+                  value: device_flow_top_src_bytes_rate
+                - label: Top 目的地址
+                  value: device_flow_top_dst_bytes_rate
+                - label: Top 源 IP+端口
+                  value: device_flow_top_src_ip_port_bytes_rate
+                - label: Top 目标 IP+端口
+                  value: device_flow_top_dst_ip_port_bytes_rate
+                - label: 源端口流量
+                  value: device_flow_src_port_bytes_rate
+                - label: 目的端口流量
+                  value: device_flow_dst_port_bytes_rate
+                - label: Top 会话
+                  value: device_flow_top_conversation_bytes_rate
+          - &id008
+            name: mode
+            type: string
+            value: instant
+            alias_name: 查询模式
+            filterType: fixed
+            required: true
+          - &id004
+            name: time
+            type: timeRange
+            value: 360
+            alias_name: 时间范围
+            filterType: filter
+          thresholdColors: &id002
+          - color: '#366ce4'
+            value: '70'
+          - color: '#366ce4'
+            value: '30'
+          - color: '#366ce4'
+            value: '0'
+      - h: 3
+        w: 3
+        x: 3
+        y: 0
+        id: flow-kpi-packets
+        name: 总包速
+        itemType: widget
+        description: 所选设备归一化后的 Flow 包速率
+        valueConfig:
+          chartType: single
+          dataSource: 受控指标排行::monitor/query_metric_series
+          selectedFields:
+          - value
+          unit: pps
+          decimalPlaces: 1
+          filterBindings:
+            instance_ids__string: true
+            time__timeRange: true
+          dataSourceParams:
+          - *id001
+          - name: metric
+            type: string
+            value: device_flow_packets_rate
+            alias_name: 指标
+            filterType: params
+            required: true
+            inputConfig:
+              control: select
+              componentSwitch: false
+              optionsSource:
+                type: static
+                staticItems: *id007
+          - *id008
+          - *id004
+          thresholdColors: *id002
+      - h: 3
+        w: 3
+        x: 6
+        y: 0
+        id: flow-kpi-avg-size
+        name: 平均包大小
+        itemType: widget
+        description: 由归一化字节与包数计算的平均包大小
+        valueConfig:
+          chartType: single
+          dataSource: 受控指标排行::monitor/query_metric_series
+          selectedFields:
+          - value
+          unitId: bytesIEC
+          decimalPlaces: 1
+          filterBindings:
+            instance_ids__string: true
+            time__timeRange: true
+          dataSourceParams:
+          - *id001
+          - name: metric
+            type: string
+            value: device_flow_avg_packet_size
+            alias_name: 指标
+            filterType: params
+            required: true
+            inputConfig:
+              control: select
+              componentSwitch: false
+              optionsSource:
+                type: static
+                staticItems: *id007
+          - *id008
+          - *id004
+          thresholdColors: *id002
+      - h: 3
+        w: 3
+        x: 9
+        y: 0
+        id: flow-kpi-sampling
+        name: 有效采样率
+        itemType: widget
+        description: Flow 流量归一化使用的有效采样率
+        valueConfig:
+          chartType: single
+          dataSource: 受控指标排行::monitor/query_metric_series
+          selectedFields:
+          - value
+          decimalPlaces: 1
+          filterBindings:
+            instance_ids__string: true
+            time__timeRange: true
+          dataSourceParams:
+          - *id001
+          - name: metric
+            type: string
+            value: device_flow_effective_sampling_rate
+            alias_name: 指标
+            filterType: params
+            required: true
+            inputConfig:
+              control: select
+              componentSwitch: false
+              optionsSource:
+                type: static
+                staticItems: *id007
+          - *id008
+          - *id004
+          thresholdColors: *id002
+  - id: group-trend
+    itemType: group
+    name: 流量趋势
+    description: Bytes/s、Packets/s 与协议流量趋势
+    x: 0
+    y: 4
+    w: 12
+    h: 7
+    headerH: 1
+    sizeToContent: true
+    subGridOpts:
+      children:
+      - h: 6
+        w: 4
+        x: 0
+        y: 0
+        id: flow-trend-bytes
+        name: 总流量趋势
+        itemType: widget
+        description: 所选设备合计的 Flow 字节速率
+        valueConfig:
+          chartType: line
+          dataSource: 受控指标趋势::monitor/query_metric_series
+          filterBindings:
+            instance_ids__string: true
+            time__timeRange: true
+          dataSourceParams:
+          - *id001
+          - name: metric
+            type: string
+            value: device_flow_bytes_rate
+            alias_name: 指标
+            filterType: params
+            required: true
+            inputConfig:
+              control: select
+              componentSwitch: false
+              optionsSource:
+                type: static
+                staticItems: &id009
+                - label: 总流量
+                  value: device_flow_bytes_rate
+                - label: 总包速
+                  value: device_flow_packets_rate
+                - label: 协议流量
+                  value: device_flow_protocol_bytes_rate
+          - &id010
+            name: mode
+            type: string
+            value: range
+            alias_name: 查询模式
+            filterType: fixed
+            required: true
+          - *id004
+          unitId: bps
+          conversionFactor: 8
+      - h: 6
+        w: 4
+        x: 4
+        y: 0
+        id: flow-trend-packets
+        name: 总包速趋势
+        itemType: widget
+        description: 所选设备合计的 Flow 包速率
+        valueConfig:
+          chartType: line
+          dataSource: 受控指标趋势::monitor/query_metric_series
+          filterBindings:
+            instance_ids__string: true
+            time__timeRange: true
+          dataSourceParams:
+          - *id001
+          - name: metric
+            type: string
+            value: device_flow_packets_rate
+            alias_name: 指标
+            filterType: params
+            required: true
+            inputConfig:
+              control: select
+              componentSwitch: false
+              optionsSource:
+                type: static
+                staticItems: *id009
+          - *id010
+          - *id004
+          unit: pps
+      - h: 6
+        w: 4
+        x: 8
+        y: 0
+        id: flow-trend-protocol
+        name: 协议流量趋势
+        itemType: widget
+        description: 按协议折叠后的 Flow 字节速率
+        valueConfig:
+          chartType: line
+          dataSource: 受控指标趋势::monitor/query_metric_series
+          filterBindings:
+            instance_ids__string: true
+            time__timeRange: true
+          dataSourceParams:
+          - *id001
+          - name: metric
+            type: string
+            value: device_flow_protocol_bytes_rate
+            alias_name: 指标
+            filterType: params
+            required: true
+            inputConfig:
+              control: select
+              componentSwitch: false
+              optionsSource:
+                type: static
+                staticItems: *id009
+          - *id010
+          - *id004
+          unitId: bps
+          conversionFactor: 8
+  - id: group-rank
+    itemType: group
+    name: 协议与排行
+    description: 协议占比与 Source / Destination / IP+端口 / Protocol TopN
+    x: 0
+    y: 11
+    w: 12
+    h: 7
+    headerH: 1
+    sizeToContent: true
+    subGridOpts:
+      children:
+      - h: 6
+        w: 6
+        x: 0
+        y: 0
+        id: flow-pie-protocol
+        name: 协议分布
+        itemType: widget
+        description: 时间窗内按协议折叠的流量占比
+        valueConfig:
+          chartType: pie
+          dataSource: 受控指标排行::monitor/query_metric_series
+          unitId: bps
+          conversionFactor: 8
+          filterBindings:
+            instance_ids__string: true
+            time__timeRange: true
+          dataSourceParams:
+          - *id001
+          - name: metric
+            type: string
+            value: device_flow_protocol_bytes_rate
+            alias_name: 指标
+            filterType: params
+            required: true
+            inputConfig:
+              control: select
+              componentSwitch: false
+              optionsSource:
+                type: static
+                staticItems: *id007
+          - *id008
+          - *id004
+      - h: 6
+        w: 6
+        x: 6
+        y: 0
+        id: flow-topn
+        name: 流量 TopN
+        itemType: widget
+        description: 切换源地址、目的地址、源 IP+端口、目标 IP+端口或协议查看占用
+        valueConfig:
+          chartType: topN
+          dataSource: 受控指标排行::monitor/query_metric_series
+          topNLabelField: name
+          topNValueField: value
+          unitId: bps
+          conversionFactor: 8
+          decimalPlaces: 1
+          filterBindings:
+            instance_ids__string: true
+            time__timeRange: true
+          dataSourceParams:
+          - *id001
+          - name: metric
+            type: string
+            value: device_flow_top_src_bytes_rate
+            alias_name: 指标
+            filterType: params
+            required: true
+            inputConfig:
+              control: select
+              componentSwitch: true
+              optionsSource:
+                type: static
+                staticItems:
+                - label: 源地址
+                  value: device_flow_top_src_bytes_rate
+                - label: 目的地址
+                  value: device_flow_top_dst_bytes_rate
+                - label: 源 IP+端口
+                  value: device_flow_top_src_ip_port_bytes_rate
+                - label: 目标 IP+端口
+                  value: device_flow_top_dst_ip_port_bytes_rate
+                - label: 协议
+                  value: device_flow_protocol_bytes_rate
+          - *id008
+          - *id004
+  - id: group-conversation
+    itemType: group
+    name: 会话
+    description: Top Conversation 的源、目的、端口、协议和流量
+    x: 0
+    y: 18
+    w: 12
+    h: 8
+    headerH: 1
+    sizeToContent: true
+    subGridOpts:
+      children:
+      - h: 7
+        w: 12
+        x: 0
+        y: 0
+        id: flow-table-conversation
+        name: Top 会话
+        itemType: widget
+        description: 时间窗内占用最高的通信对
+        valueConfig:
+          chartType: table
+          dataSource: 受控指标排行::monitor/query_metric_series
+          tableConfig:
+            columns:
+            - key: name
+              order: 0
+              title: 会话
+              visible: true
+            - key: src
+              order: 1
+              title: 源地址
+              visible: true
+            - key: dst
+              order: 2
+              title: 目的地址
+              visible: true
+            - key: dst_port
+              order: 3
+              title: 目的端口
+              visible: true
+            - key: protocol
+              order: 4
+              title: 协议
+              visible: true
+            - key: value
+              order: 5
+              title: 流量
+              visible: true
+          unitId: bps
+          conversionFactor: 8
+          decimalPlaces: 1
+          filterBindings:
+            instance_ids__string: true
+            time__timeRange: true
+          dataSourceParams:
+          - *id001
+          - name: metric
+            type: string
+            value: device_flow_top_conversation_bytes_rate
+            alias_name: 指标
+            filterType: params
+            required: true
+            inputConfig:
+              control: select
+              componentSwitch: false
+              optionsSource:
+                type: static
+                staticItems: *id007
+          - *id008
+          - *id004
+  - id: group-node-graph
+    itemType: group
+    name: 通信关系
+    description: 按会话流量画主机互访与访问服务
+    x: 0
+    y: 26
+    w: 12
+    h: 9
+    headerH: 1
+    sizeToContent: true
+    subGridOpts:
+      children:
+      - h: 8
+        w: 6
+        x: 0
+        y: 0
+        id: flow-node-graph-ip
+        name: 主机通信
+        itemType: widget
+        description: 源 IP 与目的 IP 之间的有向流量
+        valueConfig:
+          chartType: nodeGraph
+          dataSource: 受控指标排行::monitor/query_metric_series
+          nodeGraphIdentityMode: ip
+          nodeGraphSourceField: src
+          nodeGraphTargetField: dst
+          nodeGraphValueField: value
+          unitId: bps
+          conversionFactor: 8
+          decimalPlaces: 1
+          filterBindings:
+            instance_ids__string: true
+            time__timeRange: true
+          dataSourceParams:
+          - *id001
+          - name: metric
+            type: string
+            value: device_flow_top_conversation_bytes_rate
+            alias_name: 指标
+            filterType: params
+            required: true
+            inputConfig:
+              control: select
+              componentSwitch: false
+              optionsSource:
+                type: static
+                staticItems: *id007
+          - *id008
+          - *id004
+          - name: limit
+            type: number
+            value: 100
+            alias_name: 返回条数
+            filterType: params
+      - h: 8
+        w: 6
+        x: 6
+        y: 0
+        id: flow-node-graph-service
+        name: 访问服务
+        itemType: widget
+        description: 源 IP 访问目的 IP:端口 的有向流量
+        valueConfig:
+          chartType: nodeGraph
+          dataSource: 受控指标排行::monitor/query_metric_series
+          nodeGraphIdentityMode: service
+          nodeGraphSourceField: src
+          nodeGraphTargetField: dst
+          nodeGraphTargetPortField: dst_port
+          nodeGraphValueField: value
+          unitId: bps
+          conversionFactor: 8
+          decimalPlaces: 1
+          filterBindings:
+            instance_ids__string: true
+            time__timeRange: true
+          dataSourceParams:
+          - *id001
+          - name: metric
+            type: string
+            value: device_flow_top_conversation_bytes_rate
+            alias_name: 指标
+            filterType: params
+            required: true
+            inputConfig:
+              control: select
+              componentSwitch: false
+              optionsSource:
+                type: static
+                staticItems: *id007
+          - *id008
+          - *id004
+          - name: limit
+            type: number
+            value: 100
+            alias_name: 返回条数
+            filterType: params
+  refs:
+    datasource_keys:
+    - 监控实例列表::monitor/get_monitor_instance_list
+    - 受控指标趋势::monitor/query_metric_series
+    - 受控指标排行::monitor/query_metric_series
+    namespace_keys: []
+  filters:
+  - id: instance_ids__string
+    key: instance_ids
+    name: 设备
+    type: string
+    defaultValue: []
+    order: 0
+    enabled: true
+    inputMode: select
+    inputConfig: *id006
+  - id: time__timeRange
+    key: time
+    name: 时间范围
+    type: timeRange
+    defaultValue:
+      selectValue: 360
+      rangePickerVaule: null
+    order: 1
+    enabled: true
+topologies: []
+architectures: []
+screens: []
+reports: []
+datasources:
+- key: 监控实例列表::monitor/get_monitor_instance_list
+  name: 监控实例列表（选项）
+  rest_api: monitor/get_monitor_instance_list
+  desc: 当前组织权限范围内已接入 Flow 的交换机/路由器/防火墙/负载均衡实例，供统一筛选下拉使用，本身不直接出图
+  is_active: true
+  params: []
+  tags:
+  - 监控
+  chart_type: []
+  field_schema:
+  - key: instance_id
+    title: 实例ID
+    value_type: string
+  - key: display_name
+    title: 设备
+    value_type: string
+  - key: ip
+    title: IP地址
+    value_type: string
+  - key: object_name
+    title: 对象类型
+    value_type: string
+  - key: enabled_protocols
+    title: 已启用协议
+    value_type: string
+  namespace_keys:
+  - 默认命名空间
+- key: 受控指标趋势::monitor/query_metric_series
+  name: 受控指标趋势
+  rest_api: monitor/query_metric_series
+  desc: 按已注册指标名查询所选实例的时间序列；未选实例不退化为全量，不接受原始 PromQL
+  is_active: true
+  params:
+  - name: instance_ids
+    type: string
+    value: []
+    alias_name: 设备
+    filterType: filter
+    inputConfig:
+      control: select
+      multiple: true
+      optionsSource:
+        type: dynamic
+        sourceRef:
+          type: rest_api
+          value: monitor/get_monitor_instance_list
+        valueField: instance_id
+        labelField: display_name
+  - name: metric
+    type: string
+    value: device_flow_bytes_rate
+    alias_name: 指标
+    filterType: params
+    required: true
+    inputConfig:
+      control: select
+      componentSwitch: true
+      optionsSource:
+        type: static
+        staticItems:
+        - label: 总流量
+          value: device_flow_bytes_rate
+        - label: 总包速
+          value: device_flow_packets_rate
+        - label: 协议流量
+          value: device_flow_protocol_bytes_rate
+  - name: mode
+    type: string
+    value: range
+    alias_name: 查询模式
+    filterType: fixed
+    required: true
+  - name: time
+    type: timeRange
+    value: 10080
+    alias_name: 时间范围
+    filterType: filter
+  tags:
+  - 监控
+  chart_type:
+  - line
+  - bar
+  field_schema: []
+  namespace_keys:
+  - 默认命名空间
+- key: 受控指标排行::monitor/query_metric_series
+  name: 受控指标排行
+  rest_api: monitor/query_metric_series
+  desc: 按已注册指标名查询所选实例在时间窗内的瞬时排行或汇总；未选实例不退化为全量，不接受原始 PromQL
+  is_active: true
+  params:
+  - name: instance_ids
+    type: string
+    value: []
+    alias_name: 设备
+    filterType: filter
+    inputConfig:
+      control: select
+      multiple: true
+      optionsSource:
+        type: dynamic
+        sourceRef:
+          type: rest_api
+          value: monitor/get_monitor_instance_list
+        valueField: instance_id
+        labelField: display_name
+  - name: metric
+    type: string
+    value: device_flow_bytes_rate
+    alias_name: 指标
+    filterType: params
+    required: true
+    inputConfig:
+      control: select
+      componentSwitch: true
+      optionsSource:
+        type: static
+        staticItems:
+        - label: 总流量
+          value: device_flow_bytes_rate
+        - label: 总包速
+          value: device_flow_packets_rate
+        - label: 平均包大小
+          value: device_flow_avg_packet_size
+        - label: 有效采样率
+          value: device_flow_effective_sampling_rate
+        - label: 协议流量
+          value: device_flow_protocol_bytes_rate
+        - label: Top 源地址
+          value: device_flow_top_src_bytes_rate
+        - label: Top 目的地址
+          value: device_flow_top_dst_bytes_rate
+        - label: Top 源 IP+端口
+          value: device_flow_top_src_ip_port_bytes_rate
+        - label: Top 目标 IP+端口
+          value: device_flow_top_dst_ip_port_bytes_rate
+        - label: 源端口流量
+          value: device_flow_src_port_bytes_rate
+        - label: 目的端口流量
+          value: device_flow_dst_port_bytes_rate
+        - label: Top 会话
+          value: device_flow_top_conversation_bytes_rate
+  - name: mode
+    type: string
+    value: instant
+    alias_name: 查询模式
+    filterType: fixed
+    required: true
+  - name: time
+    type: timeRange
+    value: 10080
+    alias_name: 时间范围
+    filterType: filter
+  - name: limit
+    type: number
+    value: 10
+    alias_name: 返回条数
+    filterType: params
+  tags:
+  - 监控
+  chart_type:
+  - topN
+  - table
+  - single
+  - pie
+  - nodeGraph
+  field_schema:
+  - key: rank
+    title: 排名
+    value_type: number
+  - key: name
+    title: 名称
+    value_type: string
+  - key: value
+    title: 指标值
+    value_type: number
+  - key: src
+    title: 源地址
+    value_type: string
+  - key: dst
+    title: 目的地址
+    value_type: string
+  - key: src_port
+    title: 源端口
+    value_type: string
+  - key: dst_port
+    title: 目的端口
+    value_type: string
+  - key: protocol
+    title: 协议
+    value_type: string
+  namespace_keys:
+  - 默认命名空间
+namespaces:
+- key: 默认命名空间
+  name: 默认命名空间
+  domain: 10.10.41.149:4222
+  namespace: bklite_hong_local
+  account: admin
+  password: '******'
+  enable_tls: true
+  desc: 系统初始化创建的默认命名空间

@@ -52,7 +52,7 @@ templates:
           root_dns:
             label: 同步拉取 DN
             placeholder: "OU=BizA,DC=example,DC=com\nOU=BizC,DC=example,DC=com"
-            help_text: 每行一个完整 DN。只填一个时，该目录下的子组织直接挂在同步源根组织下；填多个时，每个 OU 都会作为根组织下的独立组织显示。
+            help_text: 支持填写一个或多个 DN。填写多个 DN 时，请按 Enter 键换行，每行输入一个完整的 DN，不要使用逗号或其他分隔符。填写一个 DN 时，将同步该目录及其子组织；填写多个 DN 时，每个 DN 都会作为本地根组织下的独立组织进行同步。
           user_object_class:
             label: 用户对象类
             help_text: 指定 AD/LDAP 中用户账号的类别，常用user类型，若无需要，保持默认即可。

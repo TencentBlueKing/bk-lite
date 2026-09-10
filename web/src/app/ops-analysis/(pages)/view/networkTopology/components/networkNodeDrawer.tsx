@@ -705,7 +705,7 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
                 },
                 {
                   label: t('opsAnalysis.networkTopology.node.labelAssetId'),
-                  value: `${node.bk_obj_id}:${node.bk_inst_uuid}`,
+                  value: `${node.bk_obj_id}:${node.bk_inst_id}`,
                 },
                 {
                   label: t('opsAnalysis.networkTopology.node.labelAddress'),

@@ -35,7 +35,6 @@ REQUIRED_OA_UUID_MODEL_NAMES = (
     "Architecture",
     "Screen",
     "Report",
-    "NetworkTopology",
     "DashboardReportRenderSnapshot",
 )
 

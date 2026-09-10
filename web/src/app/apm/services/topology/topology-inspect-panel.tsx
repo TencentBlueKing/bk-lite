@@ -1,10 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { Button, Empty, Tag, Typography } from 'antd';
+import { RadarChartOutlined } from '@ant-design/icons';
+import { Button, Tag, Typography } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { formatDateTime, formatLatency, formatNumber, formatRequestRate } from '@/app/apm/components/metric-format';
+import ServiceLanguageIcon from '@/app/apm/components/service-language-icon';
 import type { ApmTopologyEdge, ApmTopologyNode, ApmTopologySampleTrace, ApmTraceSummary } from '@/app/apm/types';
-import type { TopologyCanvasSelection } from '@/app/apm/services/topology/topology-canvas';
+import { topologyHealthColors, type TopologyCanvasSelection } from '@/app/apm/services/topology/topology-canvas';
 import { isInferredTopologyNode } from '@/app/apm/services/topology/topology-layout';
 import { useTranslation } from '@/utils/i18n';
 
@@ -101,20 +104,36 @@ export default function TopologyInspectPanel({
     : selectedEdge && source && target
       ? t('apm.topology.edgeName', '{source} → {target}', { source: source.service_name, target: target.service_name })
       : t('apm.topology.overview', '总览');
+  const selectedServiceHref = selectedNode ? serviceHref(selectedNode) : null;
 
   return (
-    <aside aria-label={t('apm.topology.inspectPanel', '拓扑调查栏')} className="flex h-[640px] w-[320px] shrink-0 flex-col border-l border-[var(--color-border)] bg-[var(--color-bg)]">
-      <div className="flex items-start justify-between gap-2 border-b border-[var(--color-border)] px-4 py-3">
-        <div className="min-w-0">
-          <Typography.Text type="secondary" className="!text-xs">{t('apm.topology.inspect', '调查')}</Typography.Text>
+    <aside aria-label={t('apm.topology.inspectPanel', '服务概况')} className="flex h-[640px] w-[320px] shrink-0 flex-col border-l border-[var(--color-border)] bg-[var(--color-bg)]">
+      <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] bg-[var(--color-fill-1)]/50 px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <div className="mb-0.5 flex items-center gap-1.5 text-xs text-[var(--color-text-3)]">
+            <RadarChartOutlined className="text-xs text-[var(--color-primary)]" aria-hidden="true" />
+            <span>{t('apm.topology.inspect', '服务概况')}</span>
+          </div>
           <div className="flex items-center gap-2">
             <Typography.Title level={5} className="!mb-0 truncate" title={title}>{title}</Typography.Title>
             {isInferredTopologyNode(selectedNode) ? <Tag bordered={false}>{t('apm.topology.inferredBadge', '推断')}</Tag> : null}
           </div>
         </div>
-        {isolated ? (
-          <Button size="small" onClick={onShowFullMap}>{t('apm.topology.showFullMap', '显示全图')}</Button>
-        ) : null}
+        <div className="flex shrink-0 items-center gap-2">
+          {selectedServiceHref ? (
+            <Link
+              className="text-xs text-[var(--color-primary)]"
+              href={selectedServiceHref}
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              {t('apm.topology.viewDetail', '查看详情')}
+            </Link>
+          ) : null}
+          {isolated ? (
+            <Button size="small" onClick={onShowFullMap}>{t('apm.topology.showFullMap', '显示全图')}</Button>
+          ) : null}
+        </div>
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
         {!selectedNode && !selectedEdge ? (
@@ -122,23 +141,29 @@ export default function TopologyInspectPanel({
         ) : null}
         {selectedNode ? (
           <>
-            <dl className="grid grid-cols-1 gap-2 text-sm">
-              <MetricRow label={t('apm.topology.errorCount', '错误数')} value={formatNumber(selectedNode.error_spans)} />
-              <MetricRow label={t('apm.topology.totalCount', '总数')} value={formatNumber(selectedNode.sampled_spans)} />
-              <MetricRow label={t('apm.common.p95', 'P95')} value={formatLatency(selectedNode.p95_ms ?? null, false, t)} />
+            <div className="grid grid-cols-2 gap-2">
+              <MetricCard label={t('apm.topology.totalCount', '总数')} value={formatNumber(selectedNode.sampled_spans)} />
+              <MetricCard label={t('apm.topology.errorCount', '错误数')} value={formatNumber(selectedNode.error_spans)} highlightError={selectedNode.error_spans > 0} />
+              <MetricCard label={t('apm.common.p95', 'P95')} value={formatLatency(selectedNode.p95_ms ?? null, false, t)} />
               {isInferredTopologyNode(selectedNode) ? null : (
-                <MetricRow label={t('apm.common.throughput', '吞吐量')} value={formatRequestRate(selectedNode.request_rate ?? null, false, t)} />
+                <MetricCard label={t('apm.common.throughput', '吞吐量')} value={formatRequestRate(selectedNode.request_rate ?? null, false, t)} />
               )}
-              {isInferredTopologyNode(selectedNode) && selectedNode.peer_address ? (
-                <MetricRow label={t('apm.topology.peerAddress', '地址')} value={selectedNode.peer_address} />
-              ) : null}
-              {isInferredTopologyNode(selectedNode) && selectedNode.db_name ? (
-                <MetricRow label={t('apm.topology.dbName', '库名')} value={selectedNode.db_name} />
-              ) : null}
-              {isInferredTopologyNode(selectedNode) && (selectedNode.peer_address || selectedNode.db_name) ? null : (
-                <MetricRow label={t('apm.common.environment', '环境')} value={selectedNode.environment || t('apm.common.unset', '未设置')} />
-              )}
-            </dl>
+            </div>
+
+            {(isInferredTopologyNode(selectedNode) && (selectedNode.peer_address || selectedNode.db_name)) || !isInferredTopologyNode(selectedNode) ? (
+              <dl className="flex flex-col gap-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-fill-1)]/40 p-3 text-xs">
+                {isInferredTopologyNode(selectedNode) && selectedNode.peer_address ? (
+                  <MetricRow label={t('apm.topology.peerAddress', '地址')} value={selectedNode.peer_address} />
+                ) : null}
+                {isInferredTopologyNode(selectedNode) && selectedNode.db_name ? (
+                  <MetricRow label={t('apm.topology.dbName', '库名')} value={selectedNode.db_name} />
+                ) : null}
+                {isInferredTopologyNode(selectedNode) && (selectedNode.peer_address || selectedNode.db_name) ? null : (
+                  <MetricRow label={t('apm.common.environment', '环境')} value={selectedNode.environment || t('apm.common.unset', '未设置')} />
+                )}
+              </dl>
+            ) : null}
+
             <div className="flex flex-wrap gap-2">
               <Button size="small" onClick={() => onIsolate(selectedNode.id)}>{t('apm.topology.isolate', '隔离一跳')}</Button>
               {serviceHref(selectedNode) ? (
@@ -168,11 +193,11 @@ export default function TopologyInspectPanel({
         ) : null}
         {selectedEdge && source && target ? (
           <>
-            <dl className="grid grid-cols-1 gap-2 text-sm">
-              <MetricRow label={t('apm.topology.errorCount', '错误数')} value={formatNumber(selectedEdge.error_calls)} />
-              <MetricRow label={t('apm.topology.totalCount', '总数')} value={formatNumber(selectedEdge.sampled_calls)} />
-              <MetricRow label={t('apm.common.p95', 'P95')} value={formatLatency(selectedEdge.p95_ms ?? null, false, t)} />
-            </dl>
+            <div className="grid grid-cols-3 gap-2">
+              <MetricCard label={t('apm.topology.totalCount', '总数')} value={formatNumber(selectedEdge.sampled_calls)} />
+              <MetricCard label={t('apm.topology.errorCount', '错误数')} value={formatNumber(selectedEdge.error_calls)} highlightError={selectedEdge.error_calls > 0} />
+              <MetricCard label={t('apm.common.p95', 'P95')} value={formatLatency(selectedEdge.p95_ms ?? null, false, t)} />
+            </div>
             {exploreNode ? (
               <Link href={topologyExploreHref(exploreNode, startedAt, endedAt, slice)}>
                 <Button size="small">{t('apm.topology.seeMoreTraces', '更多调用链')}</Button>
@@ -182,7 +207,7 @@ export default function TopologyInspectPanel({
         ) : null}
         {selectedNode || selectedEdge ? (
           <section>
-            <Typography.Text strong>{sampleTitle}</Typography.Text>
+            <Typography.Text strong className="!text-xs uppercase tracking-wider text-[var(--color-text-3)]">{sampleTitle}</Typography.Text>
             {tracesLoading ? (
               <Typography.Text type="secondary" className="mt-2 block !text-xs">{t('apm.catalog.loading', '加载 APM 数据')}</Typography.Text>
             ) : sampleTraces.length ? (
@@ -204,11 +229,11 @@ export default function TopologyInspectPanel({
                   return (
                     <li key={`${trace.trace_id}:${spanId || ''}`}>
                       <Link
-                        className="block rounded-md border border-[var(--color-border)] px-2 py-1.5 hover:border-[var(--color-primary)]"
+                        className="block rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-2.5 py-2 transition-all hover:border-[var(--color-primary)] hover:shadow-sm"
                         href={href}
                       >
-                        <span className="block truncate text-sm">{label}</span>
-                        <span className="text-xs text-[var(--color-text-3)]">
+                        <span className="block truncate text-sm font-medium text-[var(--color-text-1)]">{label}</span>
+                        <span className="mt-0.5 block text-xs text-[var(--color-text-3)]">
                           {formatLatency(trace.duration_ms, false, t)} · {formatDateTime(trace.started_at, false)}
                           {samplePeer ? ` · ${samplePeer}` : ''}
                         </span>
@@ -218,7 +243,10 @@ export default function TopologyInspectPanel({
                 })}
               </ul>
             ) : (
-              <Empty className="!mt-3" image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('apm.topology.noSampleTraces', '当前选择没有样本 Trace')} />
+              <CompactEmptyState
+                className="mt-3"
+                description={t('apm.topology.noSampleTraces', '当前选择没有样本 Trace')}
+              />
             )}
           </section>
         ) : null}
@@ -227,11 +255,22 @@ export default function TopologyInspectPanel({
   );
 }
 
+function MetricCard({ label, value, highlightError }: { label: string; value: string; highlightError?: boolean }) {
+  return (
+    <div className="flex flex-col gap-0.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-fill-1)]/40 p-2.5">
+      <span className="text-xs text-[var(--color-text-3)]">{label}</span>
+      <span className={`text-sm font-semibold tabular-nums ${highlightError ? 'text-[var(--color-fail)]' : 'text-[var(--color-text-1)]'}`}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
 function MetricRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
       <dt className="text-[var(--color-text-3)]">{label}</dt>
-      <dd className="m-0 tabular-nums text-[var(--color-text-1)]">{value}</dd>
+      <dd className="m-0 tabular-nums text-[var(--color-text-1)] font-medium">{value}</dd>
     </div>
   );
 }
@@ -240,28 +279,39 @@ function OverviewList({ nodes, onSelectNode }: { nodes: ApmTopologyNode[]; onSel
   const { t } = useTranslation();
   const sorted = [...nodes].sort((left, right) => left.service_name.localeCompare(right.service_name));
   if (!sorted.length) {
-    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('apm.topology.empty', '当前范围内没有观测到可用于构建拓扑的调用链。')} />;
+    return (
+      <CompactEmptyState
+        description={t('apm.topology.empty', '当前范围内没有观测到可用于构建拓扑的调用链。')}
+      />
+    );
   }
   return (
-    <ul className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1.5">
       {sorted.map((node) => (
-        <li key={node.id}>
-          <button
-            type="button"
-            className="flex w-full items-baseline justify-between gap-2 rounded-md px-2 py-1.5 text-left hover:bg-[var(--color-fill-1)]"
-            onClick={() => onSelectNode(node.id)}
-          >
-            <span className="truncate text-sm">
+        <button
+          key={node.id}
+          type="button"
+          className="flex w-full items-center justify-between gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-fill-1)]/40 px-3 py-2 text-left transition-all hover:border-[var(--color-primary)] hover:bg-[var(--color-bg)] hover:shadow-sm"
+          onClick={() => onSelectNode(node.id)}
+        >
+          <div className="flex min-w-0 items-center gap-2">
+            <span
+              className="h-2 w-2 shrink-0 rounded-full"
+              style={{ backgroundColor: topologyHealthColors[node.health] }}
+              aria-hidden="true"
+            />
+            <ServiceLanguageIcon language={node.language} size={15} className="shrink-0" />
+            <span className="truncate text-sm font-medium text-[var(--color-text-1)]">
               {node.service_name}
               {isInferredTopologyNode(node) ? ` · ${t('apm.topology.inferredBadge', '推断')}` : ''}
             </span>
-            <span className="shrink-0 tabular-nums text-xs text-[var(--color-text-3)]">
-              {node.p95_ms == null ? t('apm.common.noData', '无数据') : formatLatency(node.p95_ms, false, t)}
-            </span>
-          </button>
-        </li>
+          </div>
+          <span className="shrink-0 tabular-nums text-xs text-[var(--color-text-3)]">
+            {node.p95_ms == null ? t('apm.common.noData', '无数据') : formatLatency(node.p95_ms, false, t)}
+          </span>
+        </button>
       ))}
-    </ul>
+    </div>
   );
 }
 
@@ -277,29 +327,36 @@ function NeighborList({
   const { t } = useTranslation();
   return (
     <section>
-      <Typography.Text strong>{title}</Typography.Text>
+      <Typography.Text strong className="!text-xs uppercase tracking-wider text-[var(--color-text-3)]">{title}</Typography.Text>
       {items.length ? (
-        <ul className="mt-2 flex flex-col gap-1">
+        <div className="mt-1.5 flex flex-col gap-1.5">
           {items.map(({ node, edge }) => (
-            <li key={`${edge.source}-${edge.target}`}>
-              <button
-                type="button"
-                className="flex w-full items-baseline justify-between gap-2 rounded-md px-2 py-1 text-left hover:bg-[var(--color-fill-1)]"
-                onClick={() => onSelectNode(node.id)}
-              >
-                <span className="truncate text-sm">
+            <button
+              key={`${edge.source}-${edge.target}`}
+              type="button"
+              className="flex w-full items-center justify-between gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-2.5 py-1.5 text-left transition-all hover:border-[var(--color-primary)] hover:bg-[var(--color-fill-1)]"
+              onClick={() => onSelectNode(node.id)}
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                <span
+                  className="h-2 w-2 shrink-0 rounded-full"
+                  style={{ backgroundColor: topologyHealthColors[node.health] }}
+                  aria-hidden="true"
+                />
+                <ServiceLanguageIcon language={node.language} size={14} className="shrink-0" />
+                <span className="truncate text-sm font-medium text-[var(--color-text-1)]">
                   {node.service_name}
                   {isInferredTopologyNode(node) ? ` · ${t('apm.topology.inferredBadge', '推断')}` : ''}
                 </span>
-                <span className="shrink-0 tabular-nums text-xs text-[var(--color-text-3)]">
-                  {t('apm.topology.callCount', '{count} 次', { count: formatNumber(edge.sampled_calls) })}
-                </span>
-              </button>
-            </li>
+              </div>
+              <span className="shrink-0 tabular-nums text-xs text-[var(--color-text-3)]">
+                {t('apm.topology.callCount', '{count} 次', { count: formatNumber(edge.sampled_calls) })}
+              </span>
+            </button>
           ))}
-        </ul>
+        </div>
       ) : (
-        <Typography.Text type="secondary" className="mt-2 block !text-xs">{t('apm.topology.none', '无')}</Typography.Text>
+        <Typography.Text type="secondary" className="mt-1 block !text-xs">{t('apm.topology.none', '无')}</Typography.Text>
       )}
     </section>
   );

@@ -38,8 +38,9 @@ REST 路由组：`node`/`cloud_region`/`sidecar_env`/`collector`/`controller`/`c
 `open_api` 安装链路【已实现/已存在】：安装令牌有效期 30 分钟、最多 5 次使用；下载令牌有效期 10 分钟、最多 3 次使用；脚本渲染会调用 webhook，Linux bootstrap 入口生成安装会话，安装会话为 sidecar 生成 NATS 下载配置并按 CPU 架构选择包（证据：`views/sidecar.py:338,395,532,564,583`、`services/install_token.py:11,103`、`services/installer_session.py:51`）。
 
 NATS handlers（`@nats_client.register`，`nats/node.py`）：
-- `install_collector(data)` / `install_managed_component(data)`：经 NATS 触发采集器 / 受管组件安装，二者复用同一安装流程（`nats/node.py:701-710`）。
-- `get_cloud_region_proxy_address(cloud_region_id, organization_ids)`：返回云区域代理地址，支持按组织过滤；优先读 `CloudRegion.proxy_address`，为空时回退环境变量 `PROXY_ADDRESS`（`nats/node.py:534-569`）。
+- `install_collector(data)` / `install_managed_component(data)`：经 NATS 触发采集器 / 受管组件安装，二者复用同一安装流程。
+- `install_controller(data, organization_ids)`：经 NATS 触发控制器远程安装，契约对齐 REST `controller/install`；不含卸载、重试、手动安装或任务查询。调用方须单独传入已授权 `organization_ids`，不得把身份或组织范围写进 `data`。
+- `get_cloud_region_proxy_address(cloud_region_id, organization_ids)`：返回云区域代理地址，支持按组织过滤；优先读 `CloudRegion.proxy_address`，为空时回退环境变量 `PROXY_ADDRESS`。
 
 ## 4. 通信机制【已实现/已存在】
 - NATS：`nats/{node,permission}.py` 节点数据同步与权限。安装日志事件流走 NATS core 订阅：`installer.py` 通过 `subscribe_lines_sync` 订阅普通 subject `executor.stream.{execution_id}`，并未使用 JetStream 持久消费者（`tasks/installer.py:591-604`）。`subscribe_lines_sync` 定义在服务端顶层包 `server/nats_client/clients.py:256-285`（用 `nc.subscribe(subject, cb=...)` 即 core 订阅）；同文件另有 JetStream 原语 `ensure_stream`/`iter_jetstream_subject`（`server/nats_client/clients.py:304,332`），但 node_mgmt installer 未引用。
@@ -71,7 +72,7 @@ NATS handlers（`@nats_client.register`，`nats/node.py`）：
 ## 6. 证据来源
 - `server/apps/node_mgmt/{urls.py,models/*,nats/*,tasks/*,utils/{s3,installer}.py,constants/cloudregion_service.py}`。
 - 模型：`models/sidecar.py:44-49`（Node.node_type/install_method）、`models/sidecar.py:162-168`（SidecarApiToken）、`models/cloud_region.py:9`（CloudRegion.proxy_address）、`models/cloud_region.py:30-42`（CloudRegionService）。
-- NATS handlers：`nats/node.py:534-569`（get_cloud_region_proxy_address）、`nats/node.py:701-710`（install_collector / install_managed_component）。
+- NATS handlers：`nats/node.py` 的 `get_cloud_region_proxy_address`、`install_collector` / `install_managed_component`、`install_controller`。
 - 安装事件流（NATS core）：`tasks/installer.py:591-604`、`server/nats_client/clients.py:256-285`。
 - Celery 收敛/超时与卸载：`tasks/installer.py:722,766`、采集器卸载占位任务 `tasks/installer.py:1148-1150`、`tasks/action_task.py:153,217`。
 - migration：`migrations/0027_cloudregion_proxy_address.py`、`migrations/0035_backfill_container_node_cpu_architecture.py`。

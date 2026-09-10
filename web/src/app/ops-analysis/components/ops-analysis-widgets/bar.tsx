@@ -9,7 +9,11 @@ import {
 import type { ValueConfig } from '@/app/ops-analysis/components/ops-analysis-widgets';
 import ChartLegend from '@/components/chart-legend';
 import ChartWithSidebarLegend from '@/components/chart-with-sidebar-legend';
-import { renderEChartsTooltipCard } from '@/components/echarts-tooltip-card';
+import {
+  placeEChartsAxisTooltip,
+  renderEChartsTooltipCard,
+  useChartTooltipWheelScrollRef,
+} from '@/components/echarts-tooltip-card';
 import { useTranslation } from '@/utils/i18n';
 import {
   formatLineBarAxisTick,
@@ -32,6 +36,7 @@ const OpsAnalysisBar: React.FC<OpsAnalysisBarProps> = ({
 }) => {
   const { t } = useTranslation();
   const chartRef = useRef<any>(null);
+  const chartPaneRef = useChartTooltipWheelScrollRef();
   const themeName = resolveOpsChartThemeName();
   const chartTheme = getOpsChartTheme(themeName);
   const chartColors = randomColorForLegend(themeName);
@@ -65,6 +70,10 @@ const OpsAnalysisBar: React.FC<OpsAnalysisBarProps> = ({
       },
       enterable: true,
       confine: true,
+      hideDelay: 300,
+      position: function (point: number[], _params: any, el: HTMLElement, _rect: any, size: any) {
+        return placeEChartsAxisTooltip(point, size, el);
+      },
       backgroundColor: 'transparent',
       borderWidth: 0,
       borderColor: 'transparent',
@@ -215,12 +224,14 @@ const OpsAnalysisBar: React.FC<OpsAnalysisBarProps> = ({
   return (
     <ChartWithSidebarLegend
       chart={
-        <ReactEcharts
-          ref={chartRef}
-          option={option}
-          notMerge={true}
-          style={{ height: '100%', width: '100%' }}
-        />
+        <div ref={chartPaneRef} className="h-full min-h-0 w-full">
+          <ReactEcharts
+            ref={chartRef}
+            option={option}
+            notMerge={true}
+            style={{ height: '100%', width: '100%' }}
+          />
+        </div>
       }
       legend={
         <ChartLegend
@@ -235,7 +246,7 @@ const OpsAnalysisBar: React.FC<OpsAnalysisBarProps> = ({
       surfaceProps={{
         loading,
         hasData: !!(isDataReady && chartData && chartData.categories.length > 0),
-        containerClassName: 'flex h-full w-full flex-row',
+        containerClassName: 'flex h-full min-h-0 w-full flex-row',
         loadingClassName: 'flex h-full w-full items-center justify-center',
         emptyClassName: 'flex h-full w-full items-center justify-center',
       }}

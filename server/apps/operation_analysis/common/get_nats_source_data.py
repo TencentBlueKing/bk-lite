@@ -8,7 +8,7 @@ from django.utils import translation
 from rest_framework.exceptions import ValidationError
 
 from apps.core.logger import operation_analysis_logger as logger
-from apps.core.utils.team_utils import get_current_team
+from apps.core.utils.team_utils import collect_group_tree_ids, get_current_team
 from apps.operation_analysis.nats.nats_client import DefaultNastClient
 from apps.rpc.base import AppClient
 
@@ -20,15 +20,114 @@ _LOCAL_RPC_OVERLAY_MODULES = {
 }
 
 
+def parse_organization_team(value):
+    """画布组织筛选值 → 组织 ID。空或非法返回 None，调用方继续用 cookie 组织。"""
+    if value in (None, "", [], ()):
+        return None
+    if isinstance(value, (list, tuple)):
+        value = value[0] if value else None
+        if value in (None, ""):
+            return None
+    try:
+        team = int(value)
+    except (TypeError, ValueError):
+        return None
+    if team <= 0:
+        return None
+    return team
+
+
+def build_nats_user_info(request) -> dict:
+    username = request.user.username
+    team_str = get_current_team(request)
+    try:
+        team = int(team_str)
+    except (TypeError, ValueError):
+        raise ValidationError("current_team cookie 缺失或格式错误，请重新登录或刷新页面")
+    include_children = request.COOKIES.get("include_children", "0") == "1"
+    permission = getattr(request.user, "permission", {})
+    if isinstance(permission, dict):
+        permission = {key: list(value) if isinstance(value, set) else value for key, value in permission.items()}
+    return {
+        "team": team,
+        "user": username,
+        "domain": request.user.domain,
+        "locale": translation.get_language() or getattr(request.user, "locale", None),
+        "timezone": getattr(request.user, "timezone", None),
+        "permission": permission,
+        "group_tree": getattr(request.user, "group_tree", []),
+        "is_superuser": getattr(request.user, "is_superuser", False),
+        "include_children": include_children,
+    }
+
+
+ORGANIZATION_PARAM_KEY = "organization_param"
+
+
+def is_organization_param_spec(spec) -> bool:
+    """参数定义是否为组织控件（inputConfig 优先，旧 inputMode 只读兼容）。"""
+    if not isinstance(spec, dict):
+        return False
+    input_config = spec.get("inputConfig")
+    if isinstance(input_config, dict):
+        return input_config.get("control") == "organization"
+    return spec.get("inputMode") == "organization"
+
+
+def _organization_param_names_from_specs(param_specs) -> list[str]:
+    names = []
+    seen = set()
+    for spec in param_specs or []:
+        if not is_organization_param_spec(spec):
+            continue
+        raw_name = spec.get("name")
+        if not isinstance(raw_name, str):
+            continue
+        name = raw_name.strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        names.append(name)
+    return names
+
+
+def resolve_organization_param_name(params: dict, param_specs=None) -> str | None:
+    """解析本次请求的组织语义参数名。标记优先；无标记回落定义；多个定义报错。"""
+    spec_names = _organization_param_names_from_specs(param_specs)
+    if len(spec_names) > 1:
+        raise ValidationError("同一请求不能声明多个组织控件参数")
+
+    marker = params.get(ORGANIZATION_PARAM_KEY) if isinstance(params, dict) else None
+    if marker not in (None, ""):
+        if not isinstance(marker, str):
+            raise ValidationError("organization_param 必须是参数名字符串")
+        name = marker.strip()
+        if name:
+            return name
+
+    if len(spec_names) == 1:
+        return spec_names[0]
+    return None
+
+
 class GetNatsData:
     """
     获取NATS数据源数据
     """
 
-    def __init__(self, namespace: str, path: str, namespace_list: list, params: dict = None, request=None):
+    def __init__(
+        self,
+        namespace: str,
+        path: str,
+        namespace_list: list,
+        params: dict = None,
+        request=None,
+        param_specs=None,
+    ):
         self.request = request
         self.path = path
         self.params = params if params is not None else {}
+        self.param_specs = param_specs if param_specs is not None else []
         self.update_request_params()
         self.namespace = namespace
         self.namespace_list = namespace_list
@@ -51,27 +150,18 @@ class GetNatsData:
         更新请求参数 带上当前请求的用户和组织信息
         :return:
         """
-        username = self.request.user.username
-        team_str = get_current_team(self.request)
-        try:
-            team = int(team_str)
-        except (TypeError, ValueError):
-            raise ValidationError("current_team cookie 缺失或格式错误，请重新登录或刷新页面")
-        include_children = self.request.COOKIES.get("include_children", "0") == "1"
-        permission = getattr(self.request.user, "permission", {})
-        if isinstance(permission, dict):
-            permission = {key: list(value) if isinstance(value, set) else value for key, value in permission.items()}
-        self.params[self.user_param_key] = {
-            "team": team,
-            "user": username,
-            "domain": self.request.user.domain,
-            "locale": translation.get_language() or getattr(self.request.user, "locale", None),
-            "timezone": getattr(self.request.user, "timezone", None),
-            "permission": permission,
-            "group_tree": getattr(self.request.user, "group_tree", []),
-            "is_superuser": getattr(self.request.user, "is_superuser", False),
-            "include_children": include_children,
-        }
+        self.params[self.user_param_key] = build_nats_user_info(self.request)
+        param_name = resolve_organization_param_name(self.params, self.param_specs)
+        self.params.pop(ORGANIZATION_PARAM_KEY, None)
+        if not param_name:
+            return
+        organization_team = parse_organization_team(self.params.get(param_name))
+        if organization_team is None:
+            return
+        user_info = self.params[self.user_param_key]
+        allowed_team_ids = collect_group_tree_ids(user_info.get("group_tree"))
+        allowed_team_ids.add(user_info["team"])
+        user_info["team"] = organization_team if organization_team in allowed_team_ids else None
 
     def set_namespace_servers(self):
         """
@@ -130,6 +220,7 @@ class GetNatsData:
         """
         local_module = _LOCAL_RPC_OVERLAY_MODULES.get((self.namespace, self.path))
         if local_module and os.getenv("IS_LOCAL_RPC", "0") == "1":
+            self.params.pop(ORGANIZATION_PARAM_KEY, None)
             self.params.pop("namespace_id", None)
             logger.debug(
                 "[DataSourceQuery] IS_LOCAL_RPC 本进程取数 namespace=%s path=%s",

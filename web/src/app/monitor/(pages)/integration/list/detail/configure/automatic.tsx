@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Form, Button, message, Spin, Dropdown, Modal, Tag, Select } from 'antd';
+import { Form, Button, Input, message, Spin, Dropdown, Modal, Tag, Select } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   CheckCircleOutlined,
@@ -21,6 +21,7 @@ import type { PolicyTemplateItem } from '@/app/monitor/(pages)/event/template/te
 import {
   COLLECTION_POLICY_CONTROL_WIDTH,
   COLLECTION_POLICY_FIELD,
+  COLLECTION_POLICY_NAME_PREFIX_FIELD,
   buildCollectionPolicyApplyPayload,
   defaultSelectedTemplateKeys,
   extractCollectInstanceIds,
@@ -29,6 +30,7 @@ import {
   resolvePolicyTemplateList,
   selectedPolicyTemplates
 } from './automaticPolicyApply';
+import { COLLECTION_POLICY_BULK_CONFIG_DEFAULTS } from '@/app/monitor/(pages)/event/template/templateBulkUtils';
 import { TableDataItem } from '@/app/monitor/types';
 import {
   IntegrationAccessProps,
@@ -39,6 +41,7 @@ import Permission from '@/components/permission';
 import { cloneDeep } from 'lodash';
 import { usePluginFromJson } from '@/app/monitor/hooks/integration/usePluginFromJson';
 import { useConfigRenderer } from '@/app/monitor/hooks/integration/useConfigRenderer';
+import { cloudRegionProviderFromPlugin, useCloudRegionOptions } from '@/app/monitor/hooks/integration/useQcloudRegionOptions';
 import {
   getSnmpFilterMutexConflicts,
   trackSnmpFilterMutexLastChanged
@@ -113,6 +116,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const currentGroup = useRef(userContext?.selectedGroup);
   const groupId = [currentGroup?.current?.id || ''];
   const pluginId = searchParams.get('plugin_id') || '';
+  const pluginName = searchParams.get('plugin_name') || '';
   const objectId = searchParams.get('id') || '';
   const objectName = searchParams.get('name') || '';
   const enableIfmibFromUrl = searchParams.get('enable_ifmib') !== 'false';
@@ -180,7 +184,11 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     if (isLoading || !pluginId || !objectName) {
       setPolicyTemplates([]);
       setPolicyTemplatesLoading(false);
-      form.setFieldsValue({ [COLLECTION_POLICY_FIELD]: [] });
+      form.setFieldsValue({
+        [COLLECTION_POLICY_FIELD]: [],
+        [COLLECTION_POLICY_NAME_PREFIX_FIELD]:
+          COLLECTION_POLICY_BULK_CONFIG_DEFAULTS.name_prefix
+      });
       return;
     }
     let cancelled = false;
@@ -194,13 +202,19 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         const templates = resolvePolicyTemplateList(data, pluginId);
         setPolicyTemplates(templates);
         form.setFieldsValue({
-          [COLLECTION_POLICY_FIELD]: defaultSelectedTemplateKeys(templates)
+          [COLLECTION_POLICY_FIELD]: defaultSelectedTemplateKeys(templates),
+          [COLLECTION_POLICY_NAME_PREFIX_FIELD]:
+            COLLECTION_POLICY_BULK_CONFIG_DEFAULTS.name_prefix
         });
       })
       .catch(() => {
         if (cancelled) return;
         setPolicyTemplates([]);
-        form.setFieldsValue({ [COLLECTION_POLICY_FIELD]: [] });
+        form.setFieldsValue({
+          [COLLECTION_POLICY_FIELD]: [],
+          [COLLECTION_POLICY_NAME_PREFIX_FIELD]:
+            COLLECTION_POLICY_BULK_CONFIG_DEFAULTS.name_prefix
+        });
       })
       .finally(() => {
         if (!cancelled) {
@@ -221,6 +235,20 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     return currentConfig;
   }, [configLoading, currentConfig]);
 
+  const regionProvider = cloudRegionProviderFromPlugin(baseConfig, {
+    objectName,
+    pluginName,
+  });
+  const {
+    regionOptions,
+    loadingRegions,
+    refreshRegions,
+  } = useCloudRegionOptions({
+    enabled: Boolean(regionProvider),
+    provider: regionProvider || 'qcloud',
+    form,
+  });
+
   // 获取表单配置
   const formConfig = useMemo(() => {
     if (!baseConfig || !pluginId) {
@@ -232,15 +260,31 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       onTableDataChange,
       form,
       externalOptions: {
-        node_ids_option: nodeList
-      }
+        node_ids_option: nodeList,
+        region_option: regionOptions,
+      },
+      optionControls: {
+        region_option: {
+          loading: loadingRegions,
+          onRefresh: refreshRegions,
+        },
+      },
     });
     return {
       formItems: cfg.formItems,
       defaultForm: cfg.defaultForm,
       initTableItems: cfg.initTableItems
     };
-  }, [baseConfig, pluginId, form, nodeList, jsonConfig.buildPluginUI]);
+  }, [
+    baseConfig,
+    pluginId,
+    form,
+    nodeList,
+    regionOptions,
+    loadingRegions,
+    refreshRegions,
+    jsonConfig.buildPluginUI,
+  ]);
 
   // 获取动态配置（依赖 dataSource）
   const configsInfo = useMemo(() => {
@@ -785,7 +829,6 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       return unchanged ? prev : next;
     });
     // 刻意依赖 defaultFormKey 而非 defaultForm 对象引用。
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- stabilize defaultForm identity
   }, [configLoading, defaultFormKey, enableIfmibFromUrl, form]);
 
   const handleAdd = (key: string) => {
@@ -1077,7 +1120,11 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           }) || {};
         params.monitor_object_id = Number(objectId);
         params.monitor_plugin_id = Number(pluginId);
-        addNodesConfig(params, templatesToApply);
+        addNodesConfig(
+          params,
+          templatesToApply,
+          values[COLLECTION_POLICY_NAME_PREFIX_FIELD]
+        );
       } catch (error: any) {
         message.error(error?.message || t('common.operationFailed'));
       }
@@ -1086,7 +1133,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
 
   const addNodesConfig = async (
     params: Record<string, any> = {},
-    templatesToApply: PolicyTemplateItem[] = []
+    templatesToApply: PolicyTemplateItem[] = [],
+    namePrefix?: string
   ) => {
     try {
       setConfirmLoading(true);
@@ -1095,7 +1143,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         const policyPayload = buildCollectionPolicyApplyPayload({
           monitorObjectId: objectId,
           templates: templatesToApply,
-          instanceIds: extractCollectInstanceIds(collectResult, params)
+          instanceIds: extractCollectInstanceIds(collectResult, params),
+          namePrefix
         });
         if (!policyPayload) {
           message.success(t('common.addSuccess'));
@@ -1159,14 +1208,22 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       form={form}
       name="basic"
       layout="vertical"
+      initialValues={{
+        [COLLECTION_POLICY_NAME_PREFIX_FIELD]: t(
+          'monitor.integrations.collectionNamePrefixDefault',
+          '接入批量'
+        )
+      }}
       onValuesChange={(changed, all) => {
         const changedKeys = Object.keys(changed);
-        if (
-          !(
-            changedKeys.length === 1 &&
-            changedKeys[0] === COLLECTION_POLICY_FIELD
-          )
-        ) {
+        const isPolicyUiOnlyChange =
+          changedKeys.length > 0 &&
+          changedKeys.every(
+            (key) =>
+              key === COLLECTION_POLICY_FIELD ||
+              key === COLLECTION_POLICY_NAME_PREFIX_FIELD
+          );
+        if (!isPolicyUiOnlyChange) {
           clearCollectDetectState();
         }
         const defaultIfTypeExclude = currentConfig?.form_fields?.find(
@@ -1228,6 +1285,45 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           )}
           style={{ width: COLLECTION_POLICY_CONTROL_WIDTH }}
         />
+      </Form.Item>
+      <Form.Item
+        noStyle
+        shouldUpdate={(prev, next) =>
+          prev[COLLECTION_POLICY_FIELD] !== next[COLLECTION_POLICY_FIELD]
+        }
+      >
+        {() => {
+          const selectedKeys = form.getFieldValue(COLLECTION_POLICY_FIELD);
+          const hasSelectedTemplates =
+            Array.isArray(selectedKeys) && selectedKeys.length > 0;
+          return (
+            <Form.Item
+              name={COLLECTION_POLICY_NAME_PREFIX_FIELD}
+              label={t('monitor.events.namePrefix', '策略名称前缀')}
+              rules={
+                hasSelectedTemplates
+                  ? [
+                    {
+                      required: true,
+                      message: t(
+                        'monitor.events.namePrefixRequired',
+                        '请输入策略名称前缀'
+                      )
+                    }
+                  ]
+                  : []
+              }
+            >
+              <Input
+                placeholder={t(
+                  'monitor.events.namePrefixPlaceholder',
+                  '例如：生产环境-'
+                )}
+                style={{ width: COLLECTION_POLICY_CONTROL_WIDTH }}
+              />
+            </Form.Item>
+          );
+        }}
       </Form.Item>
       <b className="text-[14px] flex mb-[10px] ml-[-10px]">
         {t('monitor.integrations.basicInformation')}

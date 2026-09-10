@@ -5,10 +5,15 @@ import {
   buildAppTopSideNavGroups,
   countVisibleAppSlots,
   findActiveApp,
+  getAppStripOverflow,
   isConsoleChromeException,
   isDetailChromeContext,
+  shouldHideConsoleTopNav,
+  resolveAppLandingHref,
   resolveAppNavigation,
   resolveEffectiveChromeLayout,
+  resolveMenuNavHref,
+  shouldStayOnCurrentAppPage,
   shouldOpenAppInNewTab,
   shouldShowAppTopSideNav,
   shouldShowClassicSegmentedNav,
@@ -67,6 +72,7 @@ describe('console chrome layout resolve', () => {
   it('forces classic chrome on exception routes', () => {
     expect(isConsoleChromeException('/ops-console/home')).toBe(true);
     expect(isConsoleChromeException('/opspilot/studio/chat')).toBe(true);
+    expect(isConsoleChromeException('/opspilot/skill/chat')).toBe(true);
     expect(isConsoleChromeException('/ops-analysis/share/abc')).toBe(true);
     expect(isConsoleChromeException('/ops-analysis/render/execution/7')).toBe(true);
     expect(isConsoleChromeException('/monitor/view/dashboard/1')).toBe(true);
@@ -85,6 +91,28 @@ describe('console chrome layout resolve', () => {
     expect(shouldShowAppTopSideNav('classic', '/opspilot/studio', opspilotMenus)).toBe(false);
     expect(shouldShowAppTopSideNav('app-top', '/ops-console/home', opspilotMenus)).toBe(false);
     expect(shouldShowAppTopSideNav('app-top', '/no-permission', opspilotMenus)).toBe(false);
+    expect(shouldShowAppTopSideNav('app-top', '/opspilot/studio/chat', opspilotMenus)).toBe(false);
+    expect(shouldShowAppTopSideNav('app-top', '/opspilot/skill/chat', opspilotMenus)).toBe(false);
+  });
+
+  it('hides the console top nav on immersive OpsPilot chat pages', () => {
+    expect(shouldHideConsoleTopNav('/opspilot/studio/chat')).toBe(true);
+    expect(shouldHideConsoleTopNav('/opspilot/studio/chat/')).toBe(true);
+    expect(shouldHideConsoleTopNav('/opspilot/skill/chat')).toBe(true);
+    expect(shouldHideConsoleTopNav('/opspilot/memory/document')).toBe(true);
+    expect(shouldHideConsoleTopNav('/opspilot/memory/detail/memories')).toBe(false);
+    expect(shouldHideConsoleTopNav('/opspilot/studio')).toBe(false);
+    expect(shouldHideConsoleTopNav('/opspilot/skill/detail/settings')).toBe(false);
+    expect(shouldHideConsoleTopNav('/cmdb/assetOverview')).toBe(false);
+  });
+
+  it('hides the console top nav on ops-analysis share destinations but not in-product view', () => {
+    expect(shouldHideConsoleTopNav('/ops-analysis/share/abc')).toBe(true);
+    expect(shouldHideConsoleTopNav('/ops-analysis/share/continue')).toBe(true);
+    expect(shouldHideConsoleTopNav('/ops-analysis/share/session/xyz')).toBe(true);
+    expect(shouldHideConsoleTopNav('/ops-analysis/view')).toBe(false);
+    expect(shouldHideConsoleTopNav('/ops-analysis/render/execution/7')).toBe(false);
+    expect(shouldShowAppTopSideNav('app-top', '/ops-analysis/share/abc', opspilotMenus)).toBe(false);
   });
 
   it('keeps first-layer items flat and leaves children to the original in-page side menu', () => {
@@ -98,6 +126,30 @@ describe('console chrome layout resolve', () => {
     const groups = buildAppTopSideNavGroups(opspilotMenus, '/opspilot/studio');
     expect(groups[0].children).toEqual([]);
     expect(groups[1].children).toEqual([]);
+  });
+
+  it('jumps container menus to the first leaf while keeping hasDetail list pages on themselves', () => {
+    const logEvent = menu({
+      title: '事件',
+      url: '/log/event',
+      name: 'event',
+      children: [
+        menu({ title: '告警', url: '/log/event/alert', name: 'alert' }),
+        menu({ title: '策略', url: '/log/event/strategy', name: 'strategy' }),
+      ],
+    });
+    const assetData = menu({
+      title: '资产',
+      url: '/cmdb/assetData',
+      name: 'asset_data',
+      hasDetail: true,
+      children: [
+        menu({ title: '详情', url: '/cmdb/assetData/detail/baseInfo', name: 'base' }),
+      ],
+    });
+    expect(resolveMenuNavHref(logEvent)).toBe('/log/event/alert');
+    expect(resolveMenuNavHref(assetData)).toBe('/cmdb/assetData');
+    expect(resolveMenuNavHref(menu({ title: '搜索', url: '/log/search', name: 'search' }))).toBe('/log/search');
   });
 
   it('keeps classic segmented nav only when classic chrome is effective', () => {
@@ -120,6 +172,65 @@ describe('console chrome layout resolve', () => {
       mode: 'new-tab',
       href: 'https://mail.example/qmail',
     });
+  });
+
+  it('lands same-origin app chips on the first real menu instead of a redirect stub', () => {
+    const origin = 'https://lite.example';
+    const menus: MenuItem[] = [
+      menu({ title: '工作台', url: '/opspilot/studio', name: 'studio' }),
+      menu({ title: '搜索', url: '/cmdb/assetSearch', name: 'search' }),
+      menu({
+        title: '视图',
+        url: '/cmdb/assetOverview',
+        name: 'asset_views',
+        children: [
+          menu({ title: '资产总览', url: '/cmdb/assetOverview', name: 'overview' }),
+        ],
+      }),
+    ];
+    expect(resolveAppLandingHref({ url: '/cmdb', is_build_in: true }, origin, menus)).toEqual({
+      mode: 'same-tab',
+      href: '/cmdb/assetSearch',
+    });
+    expect(resolveAppLandingHref({ url: '/cmdb/assetSearch', is_build_in: true }, origin, menus)).toEqual({
+      mode: 'same-tab',
+      href: '/cmdb/assetSearch',
+    });
+    expect(shouldStayOnCurrentAppPage(true, { mode: 'same-tab', href: '/cmdb/assetSearch' })).toBe(true);
+    expect(shouldStayOnCurrentAppPage(false, { mode: 'same-tab', href: '/cmdb/assetSearch' })).toBe(false);
+    expect(shouldStayOnCurrentAppPage(true, { mode: 'new-tab', href: 'https://mail.example' })).toBe(false);
+  });
+
+  it('lands 节点管理 on the cloud-region list instead of a hasDetail child', () => {
+    const origin = 'https://lite.example';
+    const menus: MenuItem[] = [
+      menu({ title: '工作台', url: '/opspilot/studio', name: 'studio' }),
+      menu({
+        title: '云区域',
+        url: '/node-manager/cloudregion',
+        name: 'cloud_region_list',
+        hasDetail: true,
+        children: [
+          menu({ title: '节点', url: '/node-manager/cloudregion/node', name: 'cloud_region_node' }),
+          menu({ title: '环境', url: '/node-manager/cloudregion/environment', name: 'cloud_region_environment' }),
+        ],
+      }),
+      menu({
+        title: '组件库',
+        url: '/node-manager/collector',
+        name: 'collector_list',
+        hasDetail: true,
+      }),
+    ];
+    expect(resolveAppLandingHref(
+      { url: '/node-manager', is_build_in: true },
+      origin,
+      menus,
+    )).toEqual({
+      mode: 'same-tab',
+      href: '/node-manager/cloudregion',
+    });
+    expect(shouldStayOnCurrentAppPage(true, { mode: 'same-tab', href: '/node-manager/cloudregion' })).toBe(true);
   });
 
   it('picks the longest matching same-origin app as active', () => {
@@ -160,5 +271,13 @@ describe('console chrome layout resolve', () => {
     expect(countVisibleAppSlots(500, 3)).toBe(3);
     expect(countVisibleAppSlots(400, 3)).toBe(2);
     expect(countVisibleAppSlots(200, 8)).toBe(1);
+  });
+
+  it('detects which side of an app strip can still scroll', () => {
+    expect(getAppStripOverflow(0, 0, 800)).toEqual({ left: false, right: false });
+    expect(getAppStripOverflow(0, 400, 400)).toEqual({ left: false, right: false });
+    expect(getAppStripOverflow(0, 400, 900)).toEqual({ left: false, right: true });
+    expect(getAppStripOverflow(240, 400, 900)).toEqual({ left: true, right: true });
+    expect(getAppStripOverflow(500, 400, 900)).toEqual({ left: true, right: false });
   });
 });

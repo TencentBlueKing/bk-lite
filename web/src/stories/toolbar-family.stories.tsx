@@ -101,7 +101,6 @@ const FamilyOverview = () => {
           <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-2)] p-4">
             <SearchActionBar
               spacing="flush"
-              className="justify-between"
               searchProps={{
                 placeholder: 'Search metrics',
                 className: 'w-[400px]',

@@ -8,7 +8,12 @@ from typing import Any
 
 from core.infra.nats_utils import nats_publish
 
-_COLLECTION_CALLBACKS = frozenset({"receive_config_file_result"})
+_COLLECTION_CALLBACKS = frozenset(
+    {
+        "receive_config_file_result",
+        "receive_scan_credential_result",
+    }
+)
 
 
 class UnsupportedControlSubject(ValueError):

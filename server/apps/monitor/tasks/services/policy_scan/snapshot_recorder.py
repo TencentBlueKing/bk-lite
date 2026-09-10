@@ -59,7 +59,7 @@ class SnapshotRecorder:
             if related_events or raw_data or is_new_alert or is_no_data_alert:
                 self._update_alert_snapshot(
                     alert,
-                    [] if is_no_data_alert else related_events,
+                    related_events,
                     raw_data,
                     self.policy.last_run_time,
                     is_new_alert,
@@ -142,10 +142,9 @@ class SnapshotRecorder:
                     logger.info(f"Added pre-alert snapshot for alert {alert.id}, metric_instance {metric_id}")
 
             if is_no_data_alert:
-                event_objs = []
                 raw_data = {}
 
-            if event_objs and raw_data:
+            if event_objs:
                 for event_obj in event_objs:
                     event_snapshot = {
                         "type": "event",

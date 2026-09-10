@@ -86,6 +86,30 @@ def test_shared_log_group_response_projects_organizations_to_current_team(
     assert json.loads(response.content)["data"][0]["organizations"] == [1]
 
 
+def test_shared_log_group_response_keeps_assignable_organizations(
+    authenticated_user,
+    mocker,
+):
+    authenticated_user.is_superuser = True
+    authenticated_user.save(update_fields=["is_superuser"])
+    shared = LogGroup.objects.create(id="shared-assignable", name="shared", rule={})
+    LogGroupOrganization.objects.create(log_group=shared, organization=1)
+    LogGroupOrganization.objects.create(log_group=shared, organization=2)
+    _patch_actor_scope(mocker, scoped_ids=[1], assignable_ids=[1, 2])
+    mocker.patch(
+        "apps.log.services.access_scope.get_permission_rules",
+        return_value={"team": [1, 2], "instance": []},
+    )
+    request = APIRequestFactory().get("/api/v1/log/log_group/", {"page_size": "-1"})
+    request.COOKIES["current_team"] = "1"
+    force_authenticate(request, user=authenticated_user)
+
+    response = LogGroupViewSet.as_view({"get": "list"})(request)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert set(json.loads(response.content)["data"][0]["organizations"]) == {1, 2}
+
+
 def test_log_group_create_requires_organizations(mocker):
     request = _request(is_superuser=False)
     _patch_actor_scope(mocker, scoped_ids=[1], assignable_ids=[1, 2])

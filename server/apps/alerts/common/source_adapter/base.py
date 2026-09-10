@@ -23,9 +23,17 @@ from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.models.models import Alert, Event, Level
 from apps.alerts.utils.permission_scope import normalize_team_ids
 from apps.alerts.utils.util import decode_team_secret, split_list
-from apps.rpc.cmdb import CMDB
 
 INTEGRATION_SECRET_PLACEHOLDER = "{{TEAM_SECRET}}"
+MONITOR_IDENTITY_FIELDS = {"monitor_id", "cmdb_id"}
+
+
+class InvalidMonitorIdentity(ValueError):
+    """监控身份快照字段不符合可持久化契约。"""
+
+    def __init__(self, field: str):
+        self.field = field
+        super().__init__(field)
 
 
 class AlertSourceAdapter(ABC):
@@ -82,29 +90,11 @@ class AlertSourceAdapter(ABC):
 
     @staticmethod
     def enrich_event(data: Dict[str, Any]) -> None:
-        resource_type = data.get("resource_type")
-        resource_id = data.get("resource_id")
-        if not resource_type or not resource_id:
+        """兼容旧扩展点，但统一进入声明式丰富引擎并写入 enrichment。"""
+        if not data.get("resource_type") or not data.get("resource_id"):
             return
-
-        authorized_team_ids = list(data.get("_authorized_team_ids") or [])
-        if not authorized_team_ids:
-            logger.warning("[AlertSource] 单事件 CMDB 丰富缺少组织上下文")
-            return
-        params = {
-            "protocol_version": "2",
-            "model_id": resource_type,
-            "inst_uuid": resource_id,
-            "organization_ids": authorized_team_ids,
-        }
-        try:
-            resource = CMDB().search_instances(params=params)
-        except Exception:
-            logger.error("[AlertSource] 单事件 CMDB 丰富失败: %s", params, exc_info=True)
-            return
-
-        if isinstance(resource, dict) and resource:
-            data.setdefault("labels", {}).update(resource)
+        data.setdefault("enrichment", {})
+        EnrichmentEngine().enrich_batch([data])
 
     def rich_event(self, data: Dict[str, Any]) -> None:
         if not getattr(self, "enable_rich_event", self.enable_enrich()):
@@ -197,6 +187,13 @@ class AlertSourceAdapter(ABC):
             if key == "value":
                 _value = float(_value) if _value and isinstance(_value, str) and _value.isdigit() else _value
 
+            if key in MONITOR_IDENTITY_FIELDS and _value is not None:
+                model_field = Event._meta.get_field(key)
+                if not isinstance(_value, str):
+                    raise InvalidMonitorIdentity(key)
+                if model_field.max_length and len(_value) > model_field.max_length:
+                    raise InvalidMonitorIdentity(key)
+
             result[key] = _value
 
         self.add_start_time(result)
@@ -214,6 +211,7 @@ class AlertSourceAdapter(ABC):
         """将原始告警数据转换为Event对象（批量丰富）"""
         event_dicts = []
         skipped_missing = 0  # 预期内丢弃：缺必填字段
+        rejected_invalid = 0  # 预期内丢弃：字段不符合接入契约
         errored = 0  # 非预期错误：转换异常
         for event_index, add_event in enumerate(add_events):
             try:
@@ -229,8 +227,19 @@ class AlertSourceAdapter(ABC):
                     )
                     continue
                 data["team"] = self._resolve_event_team(add_event)
+                # 丰富在 Event 实例化前执行，因此需先补齐规则可选的告警源字段。
+                data["source_id"] = self.alert_source.source_id
+                data["source_name"] = getattr(self.alert_source, "name", "")
                 data.setdefault("enrichment", {})
                 event_dicts.append((data, add_event, event_index))
+            except InvalidMonitorIdentity as exc:
+                rejected_invalid += 1
+                logger.warning(
+                    "[AlertSource] 事件身份字段校验失败: source_id=%s event_index=%s field=%s",
+                    self.alert_source.source_id,
+                    event_index,
+                    exc.field,
+                )
             except Exception as e:
                 errored += 1
                 logger.error(
@@ -242,7 +251,16 @@ class AlertSourceAdapter(ABC):
 
         # 整批丰富（尽力而为，内部已隔离异常）
         try:
-            EnrichmentEngine().enrich_batch([data for data, _, _ in event_dicts])
+            enrichment_result = EnrichmentEngine().enrich_batch([data for data, _, _ in event_dicts])
+            if enrichment_result is not None:
+                logger.debug(
+                    "[AlertSource] 批量丰富完成: source_id=%s received=%s enriched=%s failed=%s duration_ms=%s",
+                    self.alert_source.source_id,
+                    enrichment_result.summary.received,
+                    enrichment_result.summary.enriched,
+                    enrichment_result.summary.failed,
+                    enrichment_result.summary.duration_ms,
+                )
         except Exception:
             logger.error("[AlertSource] 批量丰富失败，跳过", exc_info=True)
 
@@ -251,6 +269,9 @@ class AlertSourceAdapter(ABC):
             try:
                 # 取出"系统补全 start_time"标记（非模型字段，不能传入 Event(**data)）
                 synthesized = data.pop("_start_time_synthesized", False)
+                # 告警源标识仅用于丰富规则上下文；source 外键由 add_base_fields 赋值。
+                data.pop("source_id", None)
+                data.pop("source_name", None)
                 event = Event(**data)
                 event._start_time_synthesized = synthesized
                 self.add_base_fields(event, add_event)
@@ -264,13 +285,14 @@ class AlertSourceAdapter(ABC):
                     type(e).__name__,
                 )
         # D3：让接入过程中的丢弃可观测，区分"预期跳过"与"非预期错误"，避免静默丢数据。
-        if skipped_missing or errored:
+        if skipped_missing or rejected_invalid or errored:
             logger.warning(
-                "[AlertSource] 接入丢弃统计: source_id=%s received=%s transformed=%s skipped_missing=%s errored=%s",
+                "[AlertSource] 接入丢弃统计: source_id=%s received=%s transformed=%s skipped_missing=%s rejected_invalid=%s errored=%s",
                 self.alert_source.source_id,
                 len(add_events),
                 len(events),
                 skipped_missing,
+                rejected_invalid,
                 errored,
             )
         else:
@@ -282,7 +304,7 @@ class AlertSourceAdapter(ABC):
             )
         bulk_events = self.bulk_save_events(events)
         accepted = sum(len(batch or []) for batch in (bulk_events or []))
-        rejected = skipped_missing
+        rejected = skipped_missing + rejected_invalid
         duplicates = max(0, len(add_events) - accepted - rejected - errored)
         self.last_ingestion_result = {
             "received": len(add_events),

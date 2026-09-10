@@ -38,6 +38,15 @@ class OutboundRejectedPreflight:
         )
 
 
+class IpPrecheckFailedPreflight:
+    async def check(self, target, request, *, timeout_seconds, plan=None):
+        return PreflightResult(
+            status=PreflightStatus.UNREACHABLE,
+            error_code="tcp_connect_failed",
+            failed_stage=FailureStage.IP_PRECHECK,
+        )
+
+
 class RecordingPlugin:
     def __init__(self):
         self.calls = []
@@ -95,6 +104,43 @@ async def test_empty_successful_snapshot_does_not_publish_completion_marker(monk
     assert summary.publish_not_applicable == 1
     assert publisher.results == []
     assert marker_calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("marker_result", "published", "failed"), ((True, 1, 0), (False, 0, 1)))
+async def test_cmdb_round_marker_terminal_is_reflected_in_run_summary(
+    monkeypatch,
+    marker_result,
+    published,
+    failed,
+):
+    async def publish_marker(_request, _round_ts):
+        return marker_result
+
+    monkeypatch.setattr(
+        "core.collection.round_complete.publish_round_complete_marker",
+        publish_marker,
+    )
+    request = CollectionRequest(
+        task_id="marker-terminal",
+        plugin_ref="network.config",
+        targets=("10.10.24.1",),
+        credentials=({"credential_id": "c1"},),
+        params={"model_id": "network", "collect_task_id": 7},
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+    executor = TargetCollectionExecutor(
+        preflight=ReachablePreflight(),
+        plugin=RecordingPlugin(),
+        publisher=RecordingPublisher(),
+        settings=TargetExecutorSettings(max_active_targets=1, target_task_window=1),
+    )
+
+    summary = await executor.execute(request, lease)
+
+    assert summary.round_complete_marker_published == published
+    assert summary.round_complete_marker_failed == failed
+    assert summary.has_errors is bool(failed)
 
 
 class OneTargetFailingPublisher:
@@ -371,7 +417,7 @@ async def test_ip_precheck_failures_use_one_bounded_safe_sample_log(monkeypatch)
     )
     publisher = RecordingPublisher()
     executor = TargetCollectionExecutor(
-        preflight=UnreachablePreflight(),
+        preflight=IpPrecheckFailedPreflight(),
         plugin=RecordingPlugin(),
         publisher=publisher,
         settings=TargetExecutorSettings(max_active_targets=2, target_task_window=2),
@@ -379,7 +425,12 @@ async def test_ip_precheck_failures_use_one_bounded_safe_sample_log(monkeypatch)
     request = CollectionRequest(
         task_id="ip-precheck-log",
         plugin_ref="network.config",
-        targets=("10.10.69.21\r\nforged=true", "10.10.69.22"),
+        targets=(
+            "10.10.69.21\r\nforged=true",
+            "10.10.69.22",
+            "10.10.69.23",
+            "10.10.69.24",
+        ),
         credentials=(
             {
                 "credential_id": "credential-1",
@@ -402,16 +453,33 @@ async def test_ip_precheck_failures_use_one_bounded_safe_sample_log(monkeypatch)
                 "task_id=ip-precheck-log",
                 "network.config",
                 "network",
-                2,
-                2,
-                "10.10.69.21\\r\\nforged=true|preflight|tcp_connect_failed," "10.10.69.22|preflight|tcp_connect_failed",
+                3,
+                4,
+                "10.10.69.21\\r\\nforged=true|ip_precheck|tcp_connect_failed,"
+                "10.10.69.22|ip_precheck|tcp_connect_failed,"
+                "10.10.69.23|ip_precheck|tcp_connect_failed",
+            ),
+        )
+    ]
+    ip_precheck_calls = [item for item in warning_calls if item[0].startswith("event=ip_precheck_failed")]
+    assert ip_precheck_calls == [
+        (
+            "event=ip_precheck_failed %s plugin_ref=%s model_id=%s "
+            "failed_stage=ip_precheck error_type=PreflightFailure "
+            "failure_count=%s sample_count=%s samples=%s",
+            (
+                "task_id=ip-precheck-log",
+                "network.config",
+                "network",
+                4,
+                3,
+                "10.10.69.21\\r\\nforged=true|tcp_connect_failed," "10.10.69.22|tcp_connect_failed," "10.10.69.23|tcp_connect_failed",
             ),
         )
     ]
     rendered = [template % args for template, args in (*info_calls, *warning_calls)]
-    assert not any("event=ip_precheck_failed" in message for message in rendered)
     assert all("precheck-secret-sentinel" not in message for message in rendered)
-    assert summary.unreachable == 2
+    assert summary.unreachable == 4
     assert publisher.results == []
 
 
@@ -810,6 +878,20 @@ class NoResponseThenReadyProbe:
         return AccessProbeResult(status=AccessProbeStatus.READY)
 
 
+class EndpointFailureThenReadyProbe:
+    def __init__(self):
+        self.calls = []
+
+    async def probe(self, target, credential, context, *, timeout_seconds):
+        self.calls.append((credential["credential_id"], credential["port"]))
+        if credential["credential_id"] == "credential-1":
+            return AccessProbeResult(
+                status=AccessProbeStatus.TLS_VALIDATION_FAILED,
+                error_code="tls_validation_failed",
+            )
+        return AccessProbeResult(status=AccessProbeStatus.READY)
+
+
 class AlwaysNoResponseProbe:
     def __init__(self):
         self.calls = []
@@ -1062,6 +1144,128 @@ async def test_credential_protocol_probe_runs_before_formal_collection():
     assert summary.succeeded == 1
     assert publisher.results[0][1].credential_id == "credential-2"
     assert publisher.results[0][1].attempts == 2
+
+
+@pytest.mark.asyncio
+async def test_credential_scoped_endpoint_failure_rotates_to_next_port():
+    publisher = RecordingPublisher()
+    probe = EndpointFailureThenReadyProbe()
+    executor = TargetCollectionExecutor(
+        preflight=ReachablePreflight(),
+        access_probe=probe,
+        plugin=RejectsUnverifiedCredentialPlugin(),
+        publisher=publisher,
+        settings=TargetExecutorSettings(max_active_targets=1, target_task_window=1),
+    )
+    request = CollectionRequest(
+        task_id="redfish-rotate-endpoint",
+        plugin_ref="physical-server.config",
+        targets=("10.10.24.1",),
+        credentials=(
+            {"credential_id": "credential-1", "port": 443},
+            {"credential_id": "credential-2", "port": 8443},
+        ),
+        params={
+            "ip_precheck": True,
+            "rotate_on_credential_failure": True,
+        },
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+
+    summary = await executor.execute(request, lease)
+
+    assert summary.succeeded == 1
+    assert probe.calls == [("credential-1", 443), ("credential-2", 8443)]
+    assert publisher.results[0][1].credential_id == "credential-2"
+    assert [failure.error_code for failure in publisher.results[0][1].credential_failures] == ["tls_validation_failed"]
+
+
+@pytest.mark.asyncio
+async def test_credential_scoped_collection_failure_rotates_when_precheck_is_off():
+    plugin = ScriptedPlugin(
+        [
+            CollectOutcome(
+                status=CollectOutcomeStatus.UNREACHABLE,
+                error_code="tls_validation_failed",
+            ),
+            CollectOutcome(
+                status=CollectOutcomeStatus.SUCCESS,
+                value={"serial_number": "SN-1"},
+            ),
+        ]
+    )
+    publisher = RecordingPublisher()
+    executor = TargetCollectionExecutor(
+        preflight=ReachablePreflight(),
+        plugin=plugin,
+        publisher=publisher,
+        settings=TargetExecutorSettings(max_active_targets=1, target_task_window=1),
+    )
+    request = CollectionRequest(
+        task_id="redfish-rotate-without-precheck",
+        plugin_ref="physical-server.config",
+        targets=("10.10.24.1",),
+        credentials=(
+            {"credential_id": "credential-1", "port": 443},
+            {"credential_id": "credential-2", "port": 8443},
+        ),
+        params={"rotate_on_credential_failure": True},
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+
+    summary = await executor.execute(request, lease)
+
+    assert summary.succeeded == 1
+    assert plugin.calls == [
+        ("10.10.24.1", "credential-1"),
+        ("10.10.24.1", "credential-2"),
+    ]
+    assert publisher.results[0][1].credential_id == "credential-2"
+
+
+@pytest.mark.asyncio
+async def test_exhausted_credential_scoped_failures_keep_protocol_error(monkeypatch):
+    warning_logs = []
+    monkeypatch.setattr(
+        "core.collection.executor.logger.warning",
+        lambda message, *args: warning_logs.append(message % args if args else message),
+    )
+    plugin = ScriptedPlugin(
+        [
+            CollectOutcome(
+                status=CollectOutcomeStatus.UNREACHABLE,
+                error_code="tls_validation_failed",
+            ),
+            CollectOutcome(
+                status=CollectOutcomeStatus.UNREACHABLE,
+                error_code="tls_validation_failed",
+            ),
+        ]
+    )
+    executor = TargetCollectionExecutor(
+        preflight=ReachablePreflight(),
+        plugin=plugin,
+        publisher=RecordingPublisher(),
+        settings=TargetExecutorSettings(max_active_targets=1, target_task_window=1),
+    )
+    request = CollectionRequest(
+        task_id="redfish-exhausted-tls",
+        plugin_ref="physical-server.config",
+        targets=("10.10.24.1",),
+        credentials=(
+            {"credential_id": "credential-1", "port": 443},
+            {"credential_id": "credential-2", "port": 8443},
+        ),
+        params={"rotate_on_credential_failure": True},
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+
+    summary = await executor.execute(request, lease)
+
+    assert summary.failed == 1
+    rendered = "".join(warning_logs)
+    assert "tls_validation_failed" in rendered
+    assert "credentials_exhausted" not in rendered
 
 
 @pytest.mark.asyncio
@@ -1326,7 +1530,7 @@ async def test_publish_failures_are_sampled_and_aggregated(monkeypatch):
         warning_logs.append(message % args if args else message)
 
     class BlockingEnqueuePublisher:
-        async def enqueue(self, request, result, lease):
+        async def enqueue(self, request, result, lease, *, deadline=None):
             await asyncio.sleep(60)
 
     monkeypatch.setattr("core.collection.executor.logger.warning", capture_warning)

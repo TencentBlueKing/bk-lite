@@ -218,6 +218,53 @@ def _form_i18n_manifest() -> ProviderManifest:
     )
 
 
+def test_localize_public_manifest_overlays_external_field_labels():
+    manifest = ProviderManifest.model_validate(
+        {
+            "key": "custom",
+            "name": "Custom",
+            "description": "desc",
+            "business_templates": {
+                "im_notification_form": {
+                    "title": "IM",
+                    "groups": [],
+                    "matchable_fields": ["id", "mail"],
+                    "receivable_fields": ["id"],
+                }
+            },
+            "pack_i18n": {
+                "en": {
+                    "name": "Custom",
+                    "description": "EN",
+                    "templates": {
+                        "im_notification_form": {
+                            "external_fields": {
+                                "id": {"label": "Directory ID"},
+                                "mail": "Email",
+                            }
+                        }
+                    },
+                },
+                "zh-Hans": {
+                    "name": "自定义",
+                    "description": "中文",
+                    "templates": {
+                        "im_notification_form": {
+                            "external_fields": {
+                                "id": {"label": "目录 ID"},
+                            }
+                        }
+                    },
+                },
+            },
+        }
+    )
+    payload = localize_public_manifest(manifest, "zh-Hans")
+    labels = payload["business_templates"]["im_notification_form"]["external_field_labels"]
+    assert labels["id"] == "目录 ID"
+    assert labels["mail"] == "Email"
+
+
 def test_localize_public_manifest_overlays_form_copy_for_zh_hans():
     payload = localize_public_manifest(_form_i18n_manifest(), "zh-Hans")
     template = payload["instance_templates"]["base_connection"]

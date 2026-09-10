@@ -58,12 +58,15 @@ import {
   getThresholdUnitOnCalculationUnitChange,
   pruneNoticeUsers,
   shouldRequireNoticeUsers,
+  collectMetricQueryTexts,
   resolveEffectiveCalculationUnit,
+  resolveFunctionDelayMinutes,
   resolveInitialMetricPluginId,
   resolveThresholdUnit,
   resolveUnitOnMetricSelect,
   restoreCalculationUnitState,
-  scaleThresholdValuesForUnitChange
+  scaleThresholdValuesForUnitChange,
+  scheduleValueToMinutes
 } from './strategyDetailUtils';
 import { MetricExpressionRow } from './metricExpressionTypes';
 import {
@@ -236,6 +239,26 @@ const StrategyOperation = () => {
     calculationUnit: effectiveCalculationUnit,
     unitList
   });
+  const functionDelayMinutes = useMemo(
+    () =>
+      resolveFunctionDelayMinutes(
+        collectMetricQueryTexts({
+          rows: metricRows,
+          metrics,
+          formulaExpression:
+            metricExpressionMode === 'formula' ? formulaExpression : undefined
+        }),
+        scheduleValueToMinutes(period, periodUnit)
+      ),
+    [
+      formulaExpression,
+      metricExpressionMode,
+      metricRows,
+      metrics,
+      period,
+      periodUnit
+    ]
+  );
 
   useEffect(() => {
     if (!unitList.length) return;
@@ -263,7 +286,7 @@ const StrategyOperation = () => {
     }
   }, [isLoading]);
 
-  // 通知人候选按策略所属组织渲染；组织变更后自动剔除越界已选通知人
+  // 通知人 / 处理人候选按策略所属组织渲染；组织变更后自动剔除越界已选
   useEffect(() => {
     const applyPrunedNoticeUsers = (
       pruned: Array<string | number>
@@ -281,6 +304,20 @@ const StrategyOperation = () => {
         Promise.resolve().then(() => {
           form.validateFields(['notice_users']).catch(() => undefined);
         });
+      }
+    };
+
+    const applyPrunedHandlers = (
+      current: Array<string | number>,
+      userList: UserItem[]
+    ) => {
+      const pruned = pruneNoticeUsers(current, userList);
+      if (
+        Array.isArray(current) &&
+        (pruned.length !== current.length ||
+          pruned.some((item, index) => String(item) !== String(current[index])))
+      ) {
+        form.setFieldValue('handlers', pruned);
       }
     };
 
@@ -305,6 +342,7 @@ const StrategyOperation = () => {
           form.validateFields(['notice_users']).catch(() => undefined);
         });
       }
+      applyPrunedHandlers(form.getFieldValue('handlers') || [], []);
       return;
     }
 
@@ -337,6 +375,7 @@ const StrategyOperation = () => {
             form.validateFields(['notice_users']).catch(() => undefined);
           });
         }
+        applyPrunedHandlers(form.getFieldValue('handlers') || [], list);
       })
       .catch(() => {
         // 拉取失败时不改动已选通知人，避免误清空
@@ -373,6 +412,17 @@ const StrategyOperation = () => {
         });
       }
     }
+    const currentHandlers = form.getFieldValue('handlers') || [];
+    const prunedHandlers = pruneNoticeUsers(currentHandlers, noticeUserList);
+    if (
+      Array.isArray(currentHandlers) &&
+      (prunedHandlers.length !== currentHandlers.length ||
+        prunedHandlers.some(
+          (item, index) => String(item) !== String(currentHandlers[index])
+        ))
+    ) {
+      form.setFieldValue('handlers', prunedHandlers);
+    }
   }, [formData, noticeUserList, noticeUserLoadKey, organizationKey, form, channelList]);
 
   useEffect(() => {
@@ -387,6 +437,7 @@ const StrategyOperation = () => {
         notice_type_ids: channelItem ? [channelItem.id] : [],
         notice_type: channelItem?.channel_type,
         notice: false,
+        handlers: [],
         period: 5,
         schedule: 5,
         trigger_count: 1,
@@ -1265,6 +1316,7 @@ const StrategyOperation = () => {
                           noDataRecoveryUnit={noDataRecoveryUnit}
                           noDataAlertLevel={noDataAlertLevel}
                           noDataAlertName={noDataAlertName}
+                          functionDelayMinutes={functionDelayMinutes}
                           metricUnit={
                             metrics.find((item) => item.name === metric)
                               ?.unit || null

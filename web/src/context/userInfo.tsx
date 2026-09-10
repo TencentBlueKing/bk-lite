@@ -1,10 +1,17 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import useApiClient from '@/utils/request';
 import { Group, UserInfoContextType } from '@/types/index'
 import { convertTreeDataToGroupOptions } from '@/utils/index'
 import Cookies from 'js-cookie';
 import { useSession } from 'next-auth/react';
 import { useAuth } from '@/context/auth';
+import {
+  clearUserTeamPreference,
+  CURRENT_TEAM_COOKIE,
+  CURRENT_TEAM_OWNER_COOKIE,
+  persistUserTeamPreference,
+  resolveInitialGroup,
+} from '@/utils/userTeamPreference';
 
 export const UserInfoContext = createContext<UserInfoContextType | undefined>(undefined);
 
@@ -22,6 +29,11 @@ export const UserInfoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const { get } = useApiClient();
   const { data: session, status } = useSession();
   const { isCheckingAuth } = useAuth(); // 添加 auth context
+  const sessionUser = session?.user as any;
+  const sessionUserIdentity = status === 'authenticated' && sessionUser?.id
+    ? String(sessionUser.id)
+    : '';
+  const sessionUsername = sessionUser?.username;
   const [selectedGroup, setSelectedGroupState] = useState<Group | null>(null);
   const [userId, setUserId] = useState<string>('');
   const [username, setUsername] = useState<string>('');
@@ -36,52 +48,78 @@ export const UserInfoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [groupTree, setGroupTree] = useState<Group[]>([]);
   const [isSuperUser, setIsSuperUser] = useState<boolean>(true);
   const [isFirstLogin, setIsFirstLogin] = useState<boolean>(false);
+  const [loadedSessionIdentity, setLoadedSessionIdentity] = useState<string>('');
+  const requestVersionRef = useRef(0);
+  const activeSessionIdentityRef = useRef(sessionUserIdentity);
+  activeSessionIdentityRef.current = sessionUserIdentity;
 
-  const fetchLoginInfo = async () => {
+  const fetchLoginInfo = useCallback(async (expectedSessionIdentity: string) => {
+    const requestVersion = ++requestVersionRef.current;
     setLoading(true);
     try {
       const data = await get('/core/api/login_info/');
+      if (
+        requestVersion !== requestVersionRef.current
+        || activeSessionIdentityRef.current !== expectedSessionIdentity
+      ) {
+        return;
+      }
       if (!data) {
         console.error('Failed to fetch login info: No data received');
-        setLoading(false);
         return;
       }
 
       const { group_list: groupList, group_tree: groupTreeData, roles, is_superuser, is_first_login, user_id, display_name, username } = data;
+      const currentUserId = String(user_id || expectedSessionIdentity);
       setGroups(groupList || []);
       const shouldSkipFilter = username === 'kayla';
-      setGroupTree(is_superuser || shouldSkipFilter ? groupTreeData : filterOpsPilotGuest(groupTreeData || []));
+      setGroupTree(is_superuser || shouldSkipFilter ? (groupTreeData || []) : filterOpsPilotGuest(groupTreeData || []));
       setRoles(roles || []);
       setIsSuperUser(!!is_superuser);
       setIsFirstLogin(!!is_first_login);
-      setUserId(user_id || '');
-      setUsername(username || (session?.user as any)?.username || 'admin');
-      setDisplayName(display_name || (session?.user as any)?.username || 'User');
+      setUserId(currentUserId);
+      setUsername(username || sessionUsername || 'admin');
+      setDisplayName(display_name || sessionUsername || 'User');
 
       if (groupList?.length) {
         const flattenedGroups = convertTreeDataToGroupOptions(groupList);
         setFlatGroups(flattenedGroups);
 
-        const groupIdFromCookie = Cookies.get('current_team');
-        const initialGroup = flattenedGroups.find((group: Group) => String(group.id) === String(groupIdFromCookie));
+        const filteredGroups = is_superuser || shouldSkipFilter
+          ? [...flattenedGroups]
+          : flattenedGroups.filter((group: Group) => group.name !== 'OpsPilotGuest');
+        const initialGroup = resolveInitialGroup({
+          groups: flattenedGroups,
+          defaultGroup: filteredGroups[0],
+          rememberedGroupId: Cookies.get(CURRENT_TEAM_COOKIE),
+          rememberedOwnerId: Cookies.get(CURRENT_TEAM_OWNER_COOKIE),
+          currentUserId,
+        });
 
         if (initialGroup) {
           setSelectedGroupState(initialGroup);
+          persistUserTeamPreference(initialGroup.id, currentUserId);
         } else {
-          const filteredGroups = is_superuser || shouldSkipFilter
-            ? [...flattenedGroups]
-            : flattenedGroups.filter((group: Group) => group.name !== 'OpsPilotGuest');
-          const defaultGroup = filteredGroups[0];
-          setSelectedGroupState(defaultGroup);
-          Cookies.set('current_team', defaultGroup.id);
+          setSelectedGroupState(null);
+          clearUserTeamPreference();
         }
+      } else {
+        setFlatGroups([]);
+        setSelectedGroupState(null);
+        clearUserTeamPreference();
       }
     } catch (err) {
       console.error('Failed to fetch login_info:', err);
     } finally {
-      setLoading(false);
+      if (
+        requestVersion === requestVersionRef.current
+        && activeSessionIdentityRef.current === expectedSessionIdentity
+      ) {
+        setLoadedSessionIdentity(expectedSessionIdentity);
+        setLoading(false);
+      }
     }
-  };
+  }, [get, sessionUsername]);
 
   useEffect(() => {
     // 如果还在检查认证状态，不要进行API调用
@@ -89,22 +127,46 @@ export const UserInfoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return;
     }
 
-    if (status === 'authenticated' && session && (session.user as any)?.id) {
-      fetchLoginInfo();
+    if (status === 'authenticated' && sessionUserIdentity) {
+      setSelectedGroupState(null);
+      setGroups([]);
+      setFlatGroups([]);
+      setGroupTree([]);
+      setRoles([]);
+      setUserId('');
+      setUsername('');
+      setDisplayName('');
+      setLoadedSessionIdentity('');
+      void fetchLoginInfo(sessionUserIdentity);
+      return;
     }
-  }, [status, isCheckingAuth]);
+
+    requestVersionRef.current += 1;
+    setSelectedGroupState(null);
+    setLoadedSessionIdentity('');
+    setLoading(status === 'loading');
+  }, [fetchLoginInfo, isCheckingAuth, sessionUserIdentity, status]);
 
   const setSelectedGroup = (group: Group) => {
     setSelectedGroupState(group);
-    Cookies.set('current_team', group.id);
+    persistUserTeamPreference(group.id, userId || sessionUserIdentity);
   };
 
   const refreshUserInfo = async () => {
-    await fetchLoginInfo();
+    if (sessionUserIdentity) {
+      await fetchLoginInfo(sessionUserIdentity);
+    }
   };
 
+  const hasCurrentSessionData = Boolean(
+    sessionUserIdentity && loadedSessionIdentity === sessionUserIdentity,
+  );
+  const isSessionIdentityChanging = Boolean(
+    status === 'authenticated' && sessionUserIdentity && !hasCurrentSessionData,
+  );
+
   return (
-    <UserInfoContext.Provider value={{ loading, roles, groups, groupTree, selectedGroup, flatGroups, isSuperUser, isFirstLogin, userId, username, displayName, setSelectedGroup, refreshUserInfo }}>
+    <UserInfoContext.Provider value={{ loading: loading || isSessionIdentityChanging, roles, groups, groupTree, selectedGroup: hasCurrentSessionData ? selectedGroup : null, flatGroups, isSuperUser, isFirstLogin, userId, username, displayName, setSelectedGroup, refreshUserInfo }}>
       {children}
     </UserInfoContext.Provider>
   );

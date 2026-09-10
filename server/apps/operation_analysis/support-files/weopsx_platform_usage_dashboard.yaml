@@ -1,0 +1,1732 @@
+meta:
+  schema_version: 1.2.0
+  exported_at: '2026-09-07T12:00:00+08:00'
+  source:
+    organization_id: 0
+  object_counts:
+    dashboards: 1
+    topologies: 0
+    screens: 0
+    reports: 0
+    architectures: 0
+    datasources: 8
+    namespaces: 0
+dashboards:
+- key: dashboard::WeOpsX平台使用_内置
+  name: WeOpsX 平台使用
+  desc: 按所选组织查看各模块此刻库存与模块内成效（比率 / TopN）。库存不随时间窗变化。
+  other:
+    timeSelector:
+      selectValue: 10080
+      rangePickerVaule: null
+  view_sets:
+  - h: 4
+    w: 12
+    x: 0
+    y: 0
+    id: group-overview
+    name: 平台总览
+    headerH: 1
+    itemType: group
+    description: 各模块此刻库存
+    subGridOpts:
+      children:
+      - h: 3
+        w: 2
+        x: 0
+        y: 0
+        id: weopsx-kpi-cmdb-instances
+        name: CMDB 实例
+        itemType: widget
+        description: 当前组织可见的 CMDB 实例总数
+        valueConfig:
+          chartType: single
+          dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
+          filterBindings:
+            organization__string: true
+          selectedFields:
+          - instance_count
+          thresholdColors:
+          - color: '#366ce4'
+            value: '70'
+          - color: '#366ce4'
+            value: '30'
+          - color: '#366ce4'
+            value: '0'
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+      - h: 3
+        w: 2
+        x: 2
+        y: 0
+        id: weopsx-kpi-monitor-instances
+        name: 监控实例
+        itemType: widget
+        description: 当前组织未删除的监控实例总数
+        valueConfig:
+          chartType: single
+          dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+          filterBindings:
+            organization__string: true
+          selectedFields:
+          - monitor_instance_total
+          thresholdColors:
+          - color: '#366ce4'
+            value: '70'
+          - color: '#366ce4'
+            value: '30'
+          - color: '#366ce4'
+            value: '0'
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+      - h: 3
+        w: 2
+        x: 4
+        y: 0
+        id: weopsx-kpi-monitor-metrics
+        name: 监控指标
+        itemType: widget
+        description: 指标定义条目总数
+        valueConfig:
+          chartType: single
+          dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+          filterBindings:
+            organization__string: true
+          selectedFields:
+          - metric_total
+          thresholdColors:
+          - color: '#366ce4'
+            value: '70'
+          - color: '#366ce4'
+            value: '30'
+          - color: '#366ce4'
+            value: '0'
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+      - h: 3
+        w: 2
+        x: 6
+        y: 0
+        id: weopsx-kpi-log-instances
+        name: 日志采集实例
+        itemType: widget
+        description: 当前组织可见的日志采集实例数
+        valueConfig:
+          chartType: single
+          dataSource: 日志用法总览::log/get_log_usage_statistics
+          filterBindings:
+            organization__string: true
+          selectedFields:
+          - collect_instance_count
+          thresholdColors:
+          - color: '#366ce4'
+            value: '70'
+          - color: '#366ce4'
+            value: '30'
+          - color: '#366ce4'
+            value: '0'
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+      - h: 3
+        w: 2
+        x: 8
+        y: 0
+        id: weopsx-kpi-open-alerts
+        name: 未关闭告警
+        itemType: widget
+        description: 当前未分派、待响应和处理中的告警总数，不受时间窗影响
+        valueConfig:
+          chartType: single
+          dataSource: 告警快照统计::alert/get_alert_snapshot_statistics
+          filterBindings:
+            organization__string: true
+          selectedFields:
+          - active_count
+          thresholdColors:
+          - color: '#fd666d'
+            value: '70'
+          - color: '#EAB839'
+            value: '30'
+          - color: '#366ce4'
+            value: '0'
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+      - h: 3
+        w: 2
+        x: 10
+        y: 0
+        id: weopsx-kpi-nodes
+        name: 节点
+        itemType: widget
+        description: 当前组织可见的节点总数
+        valueConfig:
+          chartType: single
+          dataSource: 节点用法总览::node/get_node_usage_statistics
+          filterBindings:
+            organization__string: true
+          selectedFields:
+          - node_total
+          thresholdColors:
+          - color: '#366ce4'
+            value: '70'
+          - color: '#366ce4'
+            value: '30'
+          - color: '#366ce4'
+            value: '0'
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+    sizeToContent: true
+  - h: 6
+    w: 12
+    x: 0
+    y: 4
+    id: group-cmdb
+    name: CMDB
+    headerH: 1
+    itemType: group
+    description: 分类/模型/实例规模、采集覆盖与分类排行
+    subGridOpts:
+      children:
+      - h: 5
+        w: 2
+        x: 0
+        y: 0
+        id: weopsx-cmdb-classifications
+        name: 分类数
+        itemType: widget
+        description: 当前可见的 CMDB 模型分类数
+        valueConfig:
+          chartType: single
+          dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
+          filterBindings:
+            organization__string: true
+          selectedFields:
+          - classification_count
+          thresholdColors:
+          - color: '#366ce4'
+            value: '70'
+          - color: '#366ce4'
+            value: '30'
+          - color: '#366ce4'
+            value: '0'
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+      - h: 5
+        w: 2
+        x: 2
+        y: 0
+        id: weopsx-cmdb-models
+        name: 模型数
+        itemType: widget
+        description: 当前组织可见的 CMDB 模型数
+        valueConfig:
+          chartType: single
+          dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
+          filterBindings:
+            organization__string: true
+          selectedFields:
+          - model_count
+          thresholdColors:
+          - color: '#366ce4'
+            value: '70'
+          - color: '#366ce4'
+            value: '30'
+          - color: '#366ce4'
+            value: '0'
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+      - h: 5
+        w: 2
+        x: 4
+        y: 0
+        id: weopsx-cmdb-instances
+        name: 实例数
+        itemType: widget
+        description: 当前组织可见的 CMDB 实例总数
+        valueConfig:
+          chartType: single
+          dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
+          filterBindings:
+            organization__string: true
+          selectedFields:
+          - instance_count
+          thresholdColors:
+          - color: '#366ce4'
+            value: '70'
+          - color: '#366ce4'
+            value: '30'
+          - color: '#366ce4'
+            value: '0'
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+      - h: 5
+        w: 2
+        x: 6
+        y: 0
+        id: weopsx-cmdb-coverage
+        name: 采集覆盖率
+        itemType: widget
+        description: 有权可见且已挂采集任务的实例数在实例总数中的占比
+        valueConfig:
+          unitId: percent
+          gaugeMax: 100
+          gaugeMin: 0
+          chartType: gauge
+          dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
+          gaugeShape: semicircle
+          decimalPlaces: 1
+          filterBindings:
+            organization__string: true
+          selectedFields:
+          - collect_coverage_rate
+          thresholdColors:
+          - color: '#dc2626'
+            value: '70'
+          - color: '#d97706'
+            value: '30'
+          - color: '#2563eb'
+            value: '0'
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: null
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+      - h: 5
+        w: 4
+        x: 8
+        y: 0
+        id: weopsx-cmdb-class-top
+        name: 分类实例 TOP
+        itemType: widget
+        description: 按分类汇总实例数降序
+        valueConfig:
+          chartType: topN
+          dataSource: CMDB模型实例TOPN::cmdb/get_cmdb_model_instance_top
+          filterBindings:
+            organization__string: true
+          topNLabelField: classification
+          topNValueField: count
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+          - name: limit
+            type: number
+            value: 10
+            alias_name: 返回条数
+            filterType: params
+          - name: group_by
+            type: string
+            value: classification
+            alias_name: 排行维度
+            filterType: params
+    sizeToContent: true
+  - h: 11
+    w: 12
+    x: 0
+    y: 10
+    id: group-monitor
+    name: 监控
+    headerH: 1
+    itemType: group
+    description: 对象、实例、指标、策略库存，以及时间窗内实例告警排行
+    subGridOpts:
+      children:
+      - h: 5
+        w: 3
+        x: 0
+        y: 0
+        id: weopsx-mon-objects
+        name: 监控对象
+        itemType: widget
+        description: 监控对象定义总数（平台目录）
+        valueConfig:
+          chartType: single
+          dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+          filterBindings:
+            organization__string: true
+          selectedFields:
+          - monitor_object_total
+          thresholdColors:
+          - color: '#366ce4'
+            value: '70'
+          - color: '#366ce4'
+            value: '30'
+          - color: '#366ce4'
+            value: '0'
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+      - h: 5
+        w: 3
+        x: 3
+        y: 0
+        id: weopsx-mon-instances
+        name: 监控实例
+        itemType: widget
+        description: 当前组织未删除的监控实例总数
+        valueConfig:
+          chartType: single
+          dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+          filterBindings:
+            organization__string: true
+          selectedFields:
+          - monitor_instance_total
+          thresholdColors:
+          - color: '#366ce4'
+            value: '70'
+          - color: '#366ce4'
+            value: '30'
+          - color: '#366ce4'
+            value: '0'
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+      - h: 5
+        w: 3
+        x: 6
+        y: 0
+        id: weopsx-mon-metrics
+        name: 指标定义
+        itemType: widget
+        description: 指标定义条目总数
+        valueConfig:
+          chartType: single
+          dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+          filterBindings:
+            organization__string: true
+          selectedFields:
+          - metric_total
+          thresholdColors:
+          - color: '#366ce4'
+            value: '70'
+          - color: '#366ce4'
+            value: '30'
+          - color: '#366ce4'
+            value: '0'
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+      - h: 5
+        w: 3
+        x: 9
+        y: 0
+        id: weopsx-mon-policies
+        name: 告警策略
+        itemType: widget
+        description: 当前组织可见的告警策略总数
+        valueConfig:
+          chartType: single
+          dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+          filterBindings:
+            organization__string: true
+          selectedFields:
+          - policy_total
+          thresholdColors:
+          - color: '#366ce4'
+            value: '70'
+          - color: '#366ce4'
+            value: '30'
+          - color: '#366ce4'
+            value: '0'
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+      - h: 5
+        w: 6
+        x: 0
+        y: 5
+        id: weopsx-mon-most-alerts
+        name: 告警最多实例
+        itemType: widget
+        description: 时间窗内产生告警最多的监控实例
+        valueConfig:
+          chartType: topN
+          dataSource: 监控实例告警排行::monitor/get_monitor_instance_alert_ranking
+          filterBindings:
+            time__timeRange: true
+            organization__string: true
+          topNLabelField: instance_name
+          topNValueField: count
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+          - name: time
+            type: timeRange
+            value: 10080
+            alias_name: 时间范围
+            filterType: filter
+          - name: ranking
+            type: string
+            value: most_alerts
+            alias_name: 排行模式
+            filterType: params
+          - name: limit
+            type: number
+            value: 10
+            alias_name: 返回条数
+            filterType: params
+      - h: 5
+        w: 6
+        x: 6
+        y: 5
+        id: weopsx-mon-least-alerts
+        name: 已配策略告警最少
+        itemType: widget
+        description: 已配策略覆盖且时间窗内告警最少（含 0）的监控实例
+        valueConfig:
+          chartType: topN
+          dataSource: 监控实例告警排行::monitor/get_monitor_instance_alert_ranking
+          filterBindings:
+            time__timeRange: true
+            organization__string: true
+          topNLabelField: instance_name
+          topNValueField: count
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+          - name: time
+            type: timeRange
+            value: 10080
+            alias_name: 时间范围
+            filterType: filter
+          - name: ranking
+            type: string
+            value: least_policy_alerts
+            alias_name: 排行模式
+            filterType: params
+          - name: limit
+            type: number
+            value: 10
+            alias_name: 返回条数
+            filterType: params
+    sizeToContent: true
+  - h: 6
+    w: 12
+    x: 0
+    y: 21
+    id: group-log
+    name: 日志
+    headerH: 1
+    itemType: group
+    description: 采集实例、提取规则、告警规则与绑定率，以及策略告警排行
+    subGridOpts:
+      children:
+      - h: 5
+        w: 2
+        x: 0
+        y: 0
+        id: weopsx-log-instances
+        name: 采集实例
+        itemType: widget
+        description: 当前组织可见的日志采集实例数
+        valueConfig:
+          chartType: single
+          dataSource: 日志用法总览::log/get_log_usage_statistics
+          filterBindings:
+            organization__string: true
+          selectedFields:
+          - collect_instance_count
+          thresholdColors:
+          - color: '#366ce4'
+            value: '70'
+          - color: '#366ce4'
+            value: '30'
+          - color: '#366ce4'
+            value: '0'
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+      - h: 5
+        w: 2
+        x: 2
+        y: 0
+        id: weopsx-log-extractors
+        name: 提取规则
+        itemType: widget
+        description: 关联当前组织采集实例或采集类型的提取规则数
+        valueConfig:
+          chartType: single
+          dataSource: 日志用法总览::log/get_log_usage_statistics
+          filterBindings:
+            organization__string: true
+          selectedFields:
+          - extractor_count
+          thresholdColors:
+          - color: '#366ce4'
+            value: '70'
+          - color: '#366ce4'
+            value: '30'
+          - color: '#366ce4'
+            value: '0'
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+      - h: 5
+        w: 2
+        x: 4
+        y: 0
+        id: weopsx-log-policies
+        name: 告警规则
+        itemType: widget
+        description: 当前组织可见的日志告警策略数
+        valueConfig:
+          chartType: single
+          dataSource: 日志用法总览::log/get_log_usage_statistics
+          filterBindings:
+            organization__string: true
+          selectedFields:
+          - policy_count
+          thresholdColors:
+          - color: '#366ce4'
+            value: '70'
+          - color: '#366ce4'
+            value: '30'
+          - color: '#366ce4'
+            value: '0'
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+      - h: 5
+        w: 2
+        x: 6
+        y: 0
+        id: weopsx-log-bound
+        name: 已绑定资产占比
+        itemType: widget
+        description: 已关联资产的采集实例占采集实例总数的比例
+        valueConfig:
+          unitId: percent
+          gaugeMax: 100
+          gaugeMin: 0
+          chartType: gauge
+          dataSource: 日志用法总览::log/get_log_usage_statistics
+          decimalPlaces: 1
+          filterBindings:
+            organization__string: true
+          selectedFields:
+          - bound_instance_rate
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+      - h: 5
+        w: 4
+        x: 8
+        y: 0
+        id: weopsx-log-policy-top
+        name: 告警规则 TOP
+        itemType: widget
+        description: 时间窗内产生告警最多的日志告警策略
+        valueConfig:
+          chartType: topN
+          dataSource: 日志告警规则 TOP::log/get_log_policy_alert_top
+          filterBindings:
+            time__timeRange: true
+            organization__string: true
+          topNLabelField: policy_name
+          topNValueField: count
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+          - name: time
+            type: timeRange
+            value: 10080
+            alias_name: 时间范围
+            filterType: filter
+          - name: limit
+            type: number
+            value: 10
+            alias_name: 返回条数
+            filterType: params
+    sizeToContent: true
+  - h: 11
+    w: 12
+    x: 0
+    y: 27
+    id: group-alert
+    name: 告警
+    headerH: 1
+    itemType: group
+    description: 未关闭告警、接入源、闭环率与排行
+    subGridOpts:
+      children:
+      - h: 5
+        w: 4
+        x: 0
+        y: 0
+        id: weopsx-alert-active
+        name: 未关闭告警
+        itemType: widget
+        description: 当前未关闭（未分派+待响应+处理中）告警数，不受时间窗影响
+        valueConfig:
+          chartType: single
+          dataSource: 告警快照统计::alert/get_alert_snapshot_statistics
+          filterBindings:
+            organization__string: true
+          selectedFields:
+          - active_count
+          thresholdColors:
+          - color: '#fd666d'
+            value: '70'
+          - color: '#EAB839'
+            value: '30'
+          - color: '#366ce4'
+            value: '0'
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+      - h: 5
+        w: 4
+        x: 4
+        y: 0
+        id: weopsx-alert-sources
+        name: 接入源
+        itemType: widget
+        description: 已配置的告警源总数，不受时间窗影响
+        valueConfig:
+          chartType: single
+          dataSource: 告警源总数/启用率/活跃数::alert/get_alert_source_statistics
+          filterBindings:
+            organization__string: true
+          selectedFields:
+          - total_count
+          thresholdColors:
+          - color: '#366ce4'
+            value: '70'
+          - color: '#366ce4'
+            value: '30'
+          - color: '#366ce4'
+            value: '0'
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+      - h: 5
+        w: 4
+        x: 8
+        y: 0
+        id: weopsx-alert-loop
+        name: 闭环率
+        itemType: widget
+        description: 时间窗内关闭告警数除以新增告警数；关闭多于新增时可超过 100%
+        valueConfig:
+          unitId: percent
+          gaugeMax: 200
+          gaugeMin: 0
+          chartType: gauge
+          dataSource: 告警期间统计::alert/get_alert_period_statistics
+          gaugeShape: semicircle
+          decimalPlaces: 1
+          filterBindings:
+            time__timeRange: true
+            organization__string: true
+          selectedFields:
+          - closed_loop_rate
+          thresholdColors:
+          - color: '#dc2626'
+            value: '70'
+          - color: '#d97706'
+            value: '30'
+          - color: '#2563eb'
+            value: '0'
+          dataSourceParams:
+          - name: time
+            type: timeRange
+            value: 10080
+            alias_name: 时间范围
+            filterType: filter
+          - name: organization
+            type: string
+            value: null
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+      - h: 5
+        w: 6
+        x: 0
+        y: 5
+        id: weopsx-alert-source-top
+        name: 接入源事件 TOP
+        itemType: widget
+        description: 时间窗内事件数最多的告警接入源
+        valueConfig:
+          chartType: topN
+          dataSource: 告警关联事件来源 TOP N::alert/get_alert_source_event_top
+          filterBindings:
+            time__timeRange: true
+            organization__string: true
+          topNLabelField: source_name
+          topNValueField: count
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+          - name: time
+            type: timeRange
+            value: 10080
+            alias_name: 时间范围
+            filterType: filter
+          - name: limit
+            type: number
+            value: 10
+            alias_name: 返回条数
+            filterType: params
+      - h: 5
+        w: 6
+        x: 6
+        y: 5
+        id: weopsx-alert-rule-top
+        name: 相关性命中 TOP
+        itemType: widget
+        description: 时间窗内关联/聚合规则命中次数（按产生告警条数）
+        valueConfig:
+          chartType: topN
+          dataSource: 告警相关性命中 TOP::alert/get_alert_correlation_rule_hit_top
+          filterBindings:
+            time__timeRange: true
+            organization__string: true
+          topNLabelField: rule_name
+          topNValueField: count
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+          - name: time
+            type: timeRange
+            value: 10080
+            alias_name: 时间范围
+            filterType: filter
+          - name: limit
+            type: number
+            value: 10
+            alias_name: 返回条数
+            filterType: params
+    sizeToContent: true
+  - h: 6
+    w: 12
+    x: 0
+    y: 38
+    id: group-node
+    name: 节点
+    headerH: 1
+    itemType: group
+    description: 节点、采集器、云区域与在线率
+    subGridOpts:
+      children:
+      - h: 5
+        w: 2
+        x: 0
+        y: 0
+        id: weopsx-node-total
+        name: 节点数
+        itemType: widget
+        description: 当前组织节点总数
+        valueConfig:
+          chartType: single
+          dataSource: 节点用法总览::node/get_node_usage_statistics
+          filterBindings:
+            organization__string: true
+          selectedFields:
+          - node_total
+          thresholdColors:
+          - color: '#366ce4'
+            value: '70'
+          - color: '#366ce4'
+            value: '30'
+          - color: '#366ce4'
+            value: '0'
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+      - h: 5
+        w: 2
+        x: 2
+        y: 0
+        id: weopsx-node-collectors
+        name: 采集器数
+        itemType: widget
+        description: 采集器目录条目数
+        valueConfig:
+          chartType: single
+          dataSource: 节点用法总览::node/get_node_usage_statistics
+          filterBindings:
+            organization__string: true
+          selectedFields:
+          - collector_total
+          thresholdColors:
+          - color: '#366ce4'
+            value: '70'
+          - color: '#366ce4'
+            value: '30'
+          - color: '#366ce4'
+            value: '0'
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+      - h: 5
+        w: 2
+        x: 4
+        y: 0
+        id: weopsx-node-clouds
+        name: 云区域数
+        itemType: widget
+        description: 当前组织节点涉及的云区域数
+        valueConfig:
+          chartType: single
+          dataSource: 节点用法总览::node/get_node_usage_statistics
+          filterBindings:
+            organization__string: true
+          selectedFields:
+          - cloud_region_total
+          thresholdColors:
+          - color: '#366ce4'
+            value: '70'
+          - color: '#366ce4'
+            value: '30'
+          - color: '#366ce4'
+            value: '0'
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+      - h: 5
+        w: 2
+        x: 6
+        y: 0
+        id: weopsx-node-online
+        name: 在线占比
+        itemType: widget
+        description: 在线节点占节点总数的比例
+        valueConfig:
+          unitId: percent
+          gaugeMax: 100
+          gaugeMin: 0
+          chartType: gauge
+          dataSource: 节点用法总览::node/get_node_usage_statistics
+          decimalPlaces: 1
+          filterBindings:
+            organization__string: true
+          selectedFields:
+          - online_rate
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+      - h: 5
+        w: 4
+        x: 8
+        y: 0
+        id: weopsx-node-cloud-top
+        name: 云区域节点 TOP
+        itemType: widget
+        description: 按云区域节点数降序
+        valueConfig:
+          chartType: topN
+          dataSource: 云区域节点 TOP::node/get_cloud_region_node_top
+          filterBindings:
+            organization__string: true
+          topNLabelField: cloud_region_name
+          topNValueField: count
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+          - name: limit
+            type: number
+            value: 10
+            alias_name: 返回条数
+            filterType: params
+    sizeToContent: true
+  - h: 6
+    w: 12
+    x: 0
+    y: 44
+    id: group-job
+    name: 作业
+    headerH: 1
+    itemType: group
+    description: 作业、模板库存与时间窗内执行成功率
+    subGridOpts:
+      children:
+      - h: 5
+        w: 4
+        x: 0
+        y: 0
+        id: weopsx-job-jobs
+        name: 作业数
+        itemType: widget
+        description: 当前组织作业数
+        valueConfig:
+          chartType: single
+          dataSource: 作业用法总览::job/get_job_usage_statistics
+          filterBindings:
+            organization__string: true
+          selectedFields:
+          - job_count
+          thresholdColors:
+          - color: '#366ce4'
+            value: '70'
+          - color: '#366ce4'
+            value: '30'
+          - color: '#366ce4'
+            value: '0'
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+          - name: time
+            type: timeRange
+            value: 10080
+            alias_name: 时间范围
+            filterType: params
+      - h: 5
+        w: 4
+        x: 4
+        y: 0
+        id: weopsx-job-templates
+        name: 模板数
+        itemType: widget
+        description: 当前组织作业模板数
+        valueConfig:
+          chartType: single
+          dataSource: 作业用法总览::job/get_job_usage_statistics
+          filterBindings:
+            organization__string: true
+          selectedFields:
+          - template_count
+          thresholdColors:
+          - color: '#366ce4'
+            value: '70'
+          - color: '#366ce4'
+            value: '30'
+          - color: '#366ce4'
+            value: '0'
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+          - name: time
+            type: timeRange
+            value: 10080
+            alias_name: 时间范围
+            filterType: params
+      - h: 5
+        w: 4
+        x: 8
+        y: 0
+        id: weopsx-job-success
+        name: 执行成功率
+        itemType: widget
+        description: 时间窗内成功执行次数占总执行次数的比例
+        valueConfig:
+          unitId: percent
+          gaugeMax: 100
+          gaugeMin: 0
+          chartType: gauge
+          dataSource: 作业用法总览::job/get_job_usage_statistics
+          gaugeShape: semicircle
+          decimalPlaces: 1
+          filterBindings:
+            time__timeRange: true
+            organization__string: true
+          selectedFields:
+          - execution_success_rate
+          thresholdColors:
+          - color: '#dc2626'
+            value: '70'
+          - color: '#d97706'
+            value: '30'
+          - color: '#2563eb'
+            value: '0'
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: null
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+          - name: time
+            type: timeRange
+            value: 10080
+            alias_name: 时间范围
+            filterType: filter
+    sizeToContent: true
+  - h: 6
+    w: 12
+    x: 0
+    y: 50
+    id: group-system
+    name: 系统管理
+    headerH: 1
+    itemType: group
+    description: 组织、用户与通知渠道配置规模
+    subGridOpts:
+      children:
+      - h: 5
+        w: 3
+        x: 0
+        y: 0
+        id: weopsx-sys-orgs
+        name: 组织数
+        itemType: widget
+        description: 选中组织及其下级组织数（不含归档）
+        valueConfig:
+          chartType: single
+          dataSource: 系统管理用法总览::system_mgmt/get_system_usage_statistics
+          filterBindings:
+            organization__string: true
+          selectedFields:
+          - organization_count
+          thresholdColors:
+          - color: '#366ce4'
+            value: '70'
+          - color: '#366ce4'
+            value: '30'
+          - color: '#366ce4'
+            value: '0'
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+      - h: 5
+        w: 3
+        x: 3
+        y: 0
+        id: weopsx-sys-users
+        name: 用户数
+        itemType: widget
+        description: 归属当前组织的用户数
+        valueConfig:
+          chartType: single
+          dataSource: 系统管理用法总览::system_mgmt/get_system_usage_statistics
+          filterBindings:
+            organization__string: true
+          selectedFields:
+          - user_count
+          thresholdColors:
+          - color: '#366ce4'
+            value: '70'
+          - color: '#366ce4'
+            value: '30'
+          - color: '#366ce4'
+            value: '0'
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+      - h: 5
+        w: 3
+        x: 6
+        y: 0
+        id: weopsx-sys-channels
+        name: 通知渠道
+        itemType: widget
+        description: 已配置的通知渠道数（普通渠道 + 即时通讯渠道）
+        valueConfig:
+          chartType: single
+          dataSource: 系统管理用法总览::system_mgmt/get_system_usage_statistics
+          filterBindings:
+            organization__string: true
+          selectedFields:
+          - channel_count
+          thresholdColors:
+          - color: '#366ce4'
+            value: '70'
+          - color: '#366ce4'
+            value: '30'
+          - color: '#366ce4'
+            value: '0'
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: ''
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+      - h: 5
+        w: 3
+        x: 9
+        y: 0
+        id: weopsx-sys-enabled
+        name: 渠道启用占比
+        itemType: widget
+        description: 已启用渠道占已配置渠道的比例。普通通知渠道无独立启停开关，已配置即视为已启用；即时通讯渠道按 enabled 计。
+        valueConfig:
+          unitId: percent
+          gaugeMax: 100
+          gaugeMin: 0
+          chartType: gauge
+          dataSource: 系统管理用法总览::system_mgmt/get_system_usage_statistics
+          gaugeShape: semicircle
+          decimalPlaces: 1
+          filterBindings:
+            organization__string: true
+          selectedFields:
+          - enabled_channel_rate
+          thresholdColors:
+          - color: '#dc2626'
+            value: '70'
+          - color: '#d97706'
+            value: '30'
+          - color: '#2563eb'
+            value: '0'
+          dataSourceParams:
+          - name: organization
+            type: string
+            value: null
+            inputConfig:
+              control: organization
+            alias_name: 组织
+            filterType: filter
+    sizeToContent: true
+  refs:
+    datasource_keys:
+    - CMDB模型实例TOPN::cmdb/get_cmdb_model_instance_top
+    - 云区域节点 TOP::node/get_cloud_region_node_top
+    - 作业用法总览::job/get_job_usage_statistics
+    - 告警关联事件来源 TOP N::alert/get_alert_source_event_top
+    - 告警快照统计::alert/get_alert_snapshot_statistics
+    - 告警期间统计::alert/get_alert_period_statistics
+    - 告警源总数/启用率/活跃数::alert/get_alert_source_statistics
+    - 告警相关性命中 TOP::alert/get_alert_correlation_rule_hit_top
+    - 日志告警规则 TOP::log/get_log_policy_alert_top
+    - 日志用法总览::log/get_log_usage_statistics
+    - 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
+    - 监控中心总览统计::monitor/get_monitor_statistics
+    - 监控实例告警排行::monitor/get_monitor_instance_alert_ranking
+    - 系统管理用法总览::system_mgmt/get_system_usage_statistics
+    - 节点用法总览::node/get_node_usage_statistics
+    namespace_keys: []
+  filters:
+  - id: organization__string
+    key: organization
+    name: 组织
+    type: string
+    order: 0
+    enabled: true
+    inputConfig:
+      control: organization
+  - id: time__timeRange
+    key: time
+    name: 时间范围
+    type: timeRange
+    order: 1
+    enabled: true
+    defaultValue:
+      selectValue: 10080
+topologies: []
+architectures: []
+screens: []
+reports: []
+datasources:
+- key: 日志用法总览::log/get_log_usage_statistics
+  name: 日志用法总览
+  rest_api: log/get_log_usage_statistics
+  desc: 当前组织日志采集实例、提取规则、告警规则与已绑定资产占比，不受时间范围影响
+  is_active: true
+  params:
+  - name: organization
+    type: string
+    value: ''
+    alias_name: 组织
+    filterType: filter
+    inputConfig:
+      control: organization
+  tags:
+  - 日志
+  chart_type:
+  - single
+  - gauge
+  field_schema:
+  - key: collect_instance_count
+    title: 采集实例数
+    value_type: number
+    description: 当前组织可见的日志采集实例数
+  - key: extractor_count
+    title: 提取规则数
+    value_type: number
+    description: 这些实例及其采集方式上的提取规则数
+  - key: policy_count
+    title: 告警规则数
+    value_type: number
+    description: 当前组织可见的日志告警策略数
+  - key: bound_instance_count
+    title: 已绑定实例数
+    value_type: number
+    description: 已关联资产（node_id 非空）的采集实例数
+  - key: bound_instance_rate
+    title: 已绑定占比
+    value_type: number
+    description: 已绑定实例占采集实例的比例，单位为 %
+  namespace_keys:
+  - 默认命名空间
+- key: 日志告警规则 TOP::log/get_log_policy_alert_top
+  name: 日志告警规则 TOP
+  rest_api: log/get_log_policy_alert_top
+  desc: 跟随时间范围，按产生告警条数排序的日志告警策略
+  is_active: true
+  params:
+  - name: organization
+    type: string
+    value: ''
+    alias_name: 组织
+    filterType: filter
+    inputConfig:
+      control: organization
+  - name: time
+    type: timeRange
+    value: 10080
+    alias_name: 时间范围
+    filterType: filter
+  - name: limit
+    type: number
+    value: 10
+    alias_name: 返回条数
+    filterType: params
+  tags:
+  - 日志
+  chart_type:
+  - topN
+  field_schema:
+  - key: policy_id
+    title: 策略ID
+    value_type: number
+    description: 日志告警策略标识
+  - key: policy_name
+    title: 策略名称
+    value_type: string
+    description: 日志告警策略名称
+  - key: count
+    title: 告警数
+    value_type: number
+    description: 时间窗内该策略产生的告警条数
+  namespace_keys:
+  - 默认命名空间
+- key: 节点用法总览::node/get_node_usage_statistics
+  name: 节点用法总览
+  rest_api: node/get_node_usage_statistics
+  desc: 当前组织节点、采集器目录、云区域与在线率，不受时间范围影响
+  is_active: true
+  params:
+  - name: organization
+    type: string
+    value: ''
+    alias_name: 组织
+    filterType: filter
+    inputConfig:
+      control: organization
+  tags:
+  - 其他
+  chart_type:
+  - single
+  - gauge
+  field_schema:
+  - key: node_total
+    title: 节点总数
+    value_type: number
+    description: 当前组织可见的节点数
+  - key: collector_total
+    title: 采集器数
+    value_type: number
+    description: 采集器目录条目数
+  - key: cloud_region_total
+    title: 云区域数
+    value_type: number
+    description: 这些节点所属云区域去重数
+  - key: online_count
+    title: 在线节点数
+    value_type: number
+    description: sidecar 状态为在线的节点数
+  - key: online_rate
+    title: 在线率
+    value_type: number
+    description: 在线节点占节点总数的比例，单位为 %
+  namespace_keys:
+  - 默认命名空间
+- key: 云区域节点 TOP::node/get_cloud_region_node_top
+  name: 云区域节点 TOP
+  rest_api: node/get_cloud_region_node_top
+  desc: 按节点管理云区域统计节点数，不受时间范围影响
+  is_active: true
+  params:
+  - name: organization
+    type: string
+    value: ''
+    alias_name: 组织
+    filterType: filter
+    inputConfig:
+      control: organization
+  - name: limit
+    type: number
+    value: 10
+    alias_name: 返回条数
+    filterType: params
+  tags:
+  - 其他
+  chart_type:
+  - topN
+  field_schema:
+  - key: cloud_region_id
+    title: 云区域ID
+    value_type: number
+    description: 节点管理云区域标识
+  - key: cloud_region_name
+    title: 云区域
+    value_type: string
+    description: 节点管理云区域名称
+  - key: count
+    title: 节点数
+    value_type: number
+    description: 该云区域下的节点数
+  namespace_keys:
+  - 默认命名空间
+- key: 作业用法总览::job/get_job_usage_statistics
+  name: 作业用法总览
+  rest_api: job/get_job_usage_statistics
+  desc: 当前组织脚本作业数、Playbook 模板数，以及时间窗内执行成功率；超管仍按选中组织收窄
+  is_active: true
+  params:
+  - name: organization
+    type: string
+    value: ''
+    alias_name: 组织
+    filterType: filter
+    inputConfig:
+      control: organization
+  - name: time
+    type: timeRange
+    value: 10080
+    alias_name: 时间范围
+    filterType: filter
+  tags:
+  - 其他
+  chart_type:
+  - single
+  - gauge
+  field_schema:
+  - key: job_count
+    title: 作业数
+    value_type: number
+    description: 当前组织脚本作业数
+  - key: template_count
+    title: 模板数
+    value_type: number
+    description: 当前组织 Playbook 模板数
+  - key: execution_count
+    title: 执行次数
+    value_type: number
+    description: 时间窗内作业执行记录数
+  - key: success_count
+    title: 成功次数
+    value_type: number
+    description: 时间窗内成功执行记录数
+  - key: execution_success_rate
+    title: 执行成功率
+    value_type: number
+    description: 成功执行占全部执行的比例，单位为 %
+  namespace_keys:
+  - 默认命名空间
+- key: 系统管理用法总览::system_mgmt/get_system_usage_statistics
+  name: 系统管理用法总览
+  rest_api: system_mgmt/get_system_usage_statistics
+  desc: 选中组织及其下级组织数、当前组织上下文下的用户数与通知渠道启用占比
+  is_active: true
+  params:
+  - name: organization
+    type: string
+    value: ''
+    alias_name: 组织
+    filterType: filter
+    inputConfig:
+      control: organization
+  tags:
+  - 其他
+  chart_type:
+  - single
+  - gauge
+  field_schema:
+  - key: organization_count
+    title: 组织数
+    value_type: number
+    description: 选中组织及其下级组织数（不含归档；不跟随 include_children）
+  - key: user_count
+    title: 用户数
+    value_type: number
+    description: 归属这些组织的用户数
+  - key: channel_count
+    title: 通知渠道数
+    value_type: number
+    description: 已配置的通知渠道数（普通渠道 + 即时通讯渠道）
+  - key: enabled_channel_count
+    title: 已启用渠道数
+    value_type: number
+    description: 已启用的通知渠道数。普通 Channel 无启停开关，已配置即计为已启用；即时通讯渠道按 enabled 计
+  - key: enabled_channel_rate
+    title: 渠道启用占比
+    value_type: number
+    description: 已启用 / 已配置。普通 Channel 视为已配置=已启用；即时通讯渠道看 enabled。单位为 %
+  namespace_keys:
+  - 默认命名空间
+- key: 监控实例告警排行::monitor/get_monitor_instance_alert_ranking
+  name: 监控实例告警排行
+  rest_api: monitor/get_monitor_instance_alert_ranking
+  desc: 跟随时间范围，按产生告警条数对监控实例排序；可选告警最多或已配策略且告警最少
+  is_active: true
+  params:
+  - name: organization
+    type: string
+    value: ''
+    alias_name: 组织
+    filterType: filter
+    inputConfig:
+      control: organization
+  - name: time
+    type: timeRange
+    value: 10080
+    alias_name: 时间范围
+    filterType: filter
+  - name: ranking
+    type: string
+    value: most_alerts
+    alias_name: 排行模式
+    filterType: params
+  - name: limit
+    type: number
+    value: 10
+    alias_name: 返回条数
+    filterType: params
+  tags:
+  - 监控
+  chart_type:
+  - topN
+  field_schema:
+  - key: instance_id
+    title: 实例ID
+    value_type: string
+    description: 监控实例标识
+  - key: instance_name
+    title: 实例名称
+    value_type: string
+    description: 监控实例显示名称
+  - key: count
+    title: 告警数
+    value_type: number
+    description: 时间窗内该实例产生的告警条数
+  namespace_keys:
+  - 默认命名空间
+- key: 告警相关性命中 TOP::alert/get_alert_correlation_rule_hit_top
+  name: 告警相关性命中 TOP
+  rest_api: alert/get_alert_correlation_rule_hit_top
+  desc: 跟随时间范围，按关联/聚合规则产生的告警条数排序
+  is_active: true
+  params:
+  - name: organization
+    type: string
+    value: ''
+    alias_name: 组织
+    filterType: filter
+    inputConfig:
+      control: organization
+  - name: time
+    type: timeRange
+    value: 10080
+    alias_name: 时间范围
+    filterType: filter
+  - name: limit
+    type: number
+    value: 10
+    alias_name: 返回条数
+    filterType: params
+  tags:
+  - 告警
+  chart_type:
+  - topN
+  field_schema:
+  - key: rule_id
+    title: 规则ID
+    value_type: string
+    description: 关联/聚合规则标识
+  - key: rule_name
+    title: 规则名称
+    value_type: string
+    description: 关联/聚合规则名称
+  - key: count
+    title: 命中次数
+    value_type: number
+    description: 时间窗内该规则产生的告警条数
+  namespace_keys:
+  - 默认命名空间

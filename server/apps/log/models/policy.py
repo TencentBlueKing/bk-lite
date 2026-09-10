@@ -34,6 +34,7 @@ class Policy(TimeInfo, MaintainerInfo):
     notice_type = models.CharField(max_length=50, default="", verbose_name="通知方式")
     notice_type_id = models.IntegerField(default=0, verbose_name="通知方式ID")
     notice_users = models.JSONField(default=list, verbose_name="通知人")
+    handlers = models.JSONField(default=list, verbose_name="处理人")
 
     enable = models.BooleanField(default=True, verbose_name="是否启用")
 
@@ -59,7 +60,7 @@ class Alert(TimeInfo):
     """
 
     id = models.CharField(primary_key=True, max_length=50, verbose_name="告警ID")
-    policy = models.ForeignKey(Policy, on_delete=models.CASCADE, verbose_name="关联策略")
+    policy = models.ForeignKey(Policy, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="关联策略")
     source_id = models.CharField(max_length=100, db_index=True, verbose_name="资源ID")
     collect_type = models.ForeignKey(
         CollectType,
@@ -75,8 +76,10 @@ class Alert(TimeInfo):
     start_event_time = models.DateTimeField(blank=True, null=True, verbose_name="开始事件时间")
     end_event_time = models.DateTimeField(blank=True, null=True, verbose_name="结束事件时间")
     operator = models.CharField(blank=True, null=True, max_length=50, verbose_name="告警处理人")
+    handlers = models.JSONField(default=list, verbose_name="处理人")
     info_event_count = models.IntegerField(default=0, verbose_name="正常事件计数")
     notice = models.BooleanField(default=False, verbose_name="是否已通知")
+    organizations = models.JSONField(default=list, verbose_name="告警生成时所属组织")
 
     class Meta:
         verbose_name = "告警记录"
@@ -88,13 +91,26 @@ class Event(TimeInfo):
     事件记录
     """
 
+    class Action(models.TextChoices):
+        CLAIMED = "claimed", "认领"
+        ASSIGNED = "assigned", "分派"
+        CLOSED = "closed", "人工关闭"
+
     id = models.CharField(primary_key=True, max_length=50, verbose_name="事件ID")
-    policy = models.ForeignKey(Policy, on_delete=models.CASCADE, verbose_name="关联策略")
+    policy = models.ForeignKey(Policy, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="关联策略")
     source_id = models.CharField(max_length=100, db_index=True, verbose_name="资源ID")
     alert = models.ForeignKey(Alert, on_delete=models.CASCADE, verbose_name="关联告警")
     event_time = models.DateTimeField(blank=True, null=True, verbose_name="事件发生时间")
     value = models.FloatField(blank=True, null=True, verbose_name="事件值")
     level = models.CharField(max_length=20, verbose_name="事件级别")
+    action = models.CharField(
+        max_length=20,
+        choices=Action.choices,
+        blank=True,
+        default="",
+        db_index=True,
+        verbose_name="生命周期动作",
+    )
     content = models.TextField(blank=True, verbose_name="事件内容")
     notice_result = models.JSONField(default=list, verbose_name="通知结果")
     notified = models.BooleanField(default=False, db_index=True, verbose_name="通知是否已成功")
@@ -138,7 +154,7 @@ class AlertSnapshot(TimeInfo):
         db_index=True,
         related_name="snapshot",
     )
-    policy = models.ForeignKey(Policy, on_delete=models.CASCADE, verbose_name="关联策略")
+    policy = models.ForeignKey(Policy, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="关联策略")
     source_id = models.CharField(max_length=100, db_index=True, verbose_name="资源ID")
 
     # 快照数据 - 使用 S3JSONField 存储到 S3/MinIO，节省数据库空间

@@ -80,7 +80,7 @@ describe('ReportWidgetCard copy menu', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: 'common.more' }));
+    await user.hover(screen.getByRole('button', { name: 'common.more' }));
     expect(await screen.findByText('common.copy')).toBeTruthy();
   });
 
@@ -119,7 +119,7 @@ describe('ReportWidgetCard copy menu', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: 'common.more' }));
+    await user.hover(screen.getByRole('button', { name: 'common.more' }));
     expect(await screen.findByText('common.edit')).toBeTruthy();
     expect(screen.queryByText('common.copy')).toBeNull();
     expect(screen.getByText('common.delete')).toBeTruthy();
@@ -142,7 +142,7 @@ describe('ReportWidgetCard copy menu', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: 'common.more' }));
+    await user.hover(screen.getByRole('button', { name: 'common.more' }));
     expect(await screen.findByText('common.edit')).toBeTruthy();
     expect(screen.queryByText('common.copy')).toBeNull();
     expect(screen.getByText('common.delete')).toBeTruthy();
@@ -165,7 +165,7 @@ describe('ReportWidgetCard copy menu', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: 'common.more' }));
+    await user.hover(screen.getByRole('button', { name: 'common.more' }));
     expect(await screen.findByText('common.edit')).toBeTruthy();
     expect(screen.queryByText('common.copy')).toBeNull();
     expect(screen.getByText('common.delete')).toBeTruthy();

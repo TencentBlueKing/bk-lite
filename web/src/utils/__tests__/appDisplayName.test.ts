@@ -41,6 +41,7 @@ describe('resolveAppDisplayName', () => {
     expect(resolveAppDisplayName({ name: 'node', display_name: 'Node', is_build_in: true }, tZh)).toBe('节点管理');
     expect(resolveAppDisplayName({ name: 'opspilot', display_name: 'OpsPilot', is_build_in: true }, tZh)).toBe('OpsPilot');
     expect(resolveAppDisplayName({ name: 'mlops', display_name: 'MLOps', is_build_in: true }, tZh)).toBe('MLOps');
+    expect(resolveAppDisplayName({ name: 'apm', display_name: 'APM', is_build_in: true }, tZh)).toBe('APM');
   });
 
   it('keeps custom app display names', () => {
@@ -83,6 +84,18 @@ describe('resolveAppDescription', () => {
         tEn
       )
     ).toBe(en.app.monitor);
+    expect(
+      resolveAppDescription(
+        { name: 'apm', description: 'app.apm', is_build_in: true },
+        tZh
+      )
+    ).toBe(zh.app.apm);
+    expect(
+      resolveAppDescription(
+        { name: 'apm', description: 'app.apm', is_build_in: true },
+        tEn
+      )
+    ).toBe(en.app.apm);
   });
 
   it('keeps custom app descriptions such as ITSM placeholders', () => {
@@ -101,6 +114,11 @@ describe('resolveAppTag', () => {
     expect(resolveAppTag('用户管理', tEn)).toBe('User Management');
     expect(resolveAppTag('多对象接入', tEn)).toBe('Multi-Object Access');
     expect(resolveAppTag('补丁扫描', tEn)).toBe('Patch Scanning');
+    expect(resolveAppTag('tag.apm_integration', tZh)).toBe('应用接入');
+    expect(resolveAppTag('tag.service_red', tZh)).toBe('服务指标');
+    expect(resolveAppTag('tag.trace_explore', tZh)).toBe('调用链');
+    expect(resolveAppTag('tag.alert_center', tZh)).toBe('告警策略');
+    expect(resolveAppTag('tag.apm_integration', tEn)).toBe('App Integration');
   });
 
   it('keeps unknown custom tags', () => {

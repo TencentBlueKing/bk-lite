@@ -97,10 +97,11 @@ def test_scan_failed_counts_progress_success_lists_once():
         }
     )
     family_run.refresh_from_db()
-    assert failed["listed"] is False
+    assert failed["listed"] is True
     assert success["listed"] is True
     assert ScanHit.objects.filter(family_run=family_run).count() == 1
     assert ScanHit.objects.get().credential_id == "cred-2"
+    assert ScanHit.objects.get().status == ScanHit.STATUS_SUCCESS
     assert family_run.received_count == 1
     assert family_run.progress_hosts == ["10.0.1.20"]
 
@@ -128,3 +129,50 @@ def test_scan_credentials_exhausted_without_credential_id_counts_progress(mocker
     assert family_run.received_count == 1
     assert family_run.progress_hosts == ["10.0.1.40"]
     delay.assert_called_once_with(family_run.execution_id, "token-nats")
+
+
+def test_db_auth_failed_upserts_one_placeholder_without_credential():
+    family_run = _scan_family_run(target_count=3)
+    first = receive_scan_credential_result(
+        data={
+            "collect_task_id": family_run.id,
+            "host": "10.0.1.50",
+            "port": 3306,
+            "credential_id": "cred-1",
+            "status": "failed",
+            "error_code": "auth_failed",
+        }
+    )
+    second = receive_scan_credential_result(
+        data={
+            "collect_task_id": family_run.id,
+            "host": "10.0.1.50",
+            "port": 3306,
+            "credential_id": "cred-2",
+            "status": "failed",
+            "error_code": "unauthorized",
+        }
+    )
+    assert first["listed"] is True
+    assert second["listed"] is True
+    hits = list(ScanHit.objects.filter(family_run=family_run))
+    assert len(hits) == 1
+    assert hits[0].credential_id == ""
+    assert hits[0].status == ScanHit.STATUS_FAILED
+    assert hits[0].port == 3306
+    assert hits[0].error_code == "unauthorized"
+
+
+def test_db_plain_failed_without_auth_code_is_not_listed():
+    family_run = _scan_family_run(target_count=2)
+    response = receive_scan_credential_result(
+        data={
+            "collect_task_id": family_run.id,
+            "host": "10.0.1.51",
+            "port": 3306,
+            "status": "failed",
+            "error_code": "timeout",
+        }
+    )
+    assert response["listed"] is False
+    assert ScanHit.objects.count() == 0

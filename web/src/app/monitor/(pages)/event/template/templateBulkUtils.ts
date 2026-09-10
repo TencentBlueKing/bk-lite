@@ -70,6 +70,7 @@ export interface BulkConfig {
   notice_type?: string;
   notice_type_ids?: Array<string | number>;
   notice_users?: string[];
+  handlers?: Array<string | number>;
   enable_alerts?: string[];
   no_data_enabled?: boolean;
   no_data_period?: { type: string; value: number };
@@ -461,6 +462,8 @@ export const normalizeBulkConfig = (
     normalized.notice_users = [];
   }
 
+  normalized.handlers = [];
+
   if (noDataEnabled) {
     const noDataPeriod = config.no_data_period || { type: 'min', value: 5 };
     normalized.no_data_period = noDataPeriod;
@@ -478,7 +481,8 @@ export const normalizeBulkConfig = (
 };
 
 export const COLLECTION_POLICY_BULK_CONFIG_DEFAULTS: BulkConfig = {
-  name_prefix: '',
+  // 与模板批量应用的「模板批量」区分，便于识别接入下发产生的策略
+  name_prefix: '接入批量',
   enable: true,
   schedule: { type: 'min', value: 5 },
   period: { type: 'min', value: 5 },
@@ -487,12 +491,18 @@ export const COLLECTION_POLICY_BULK_CONFIG_DEFAULTS: BulkConfig = {
   notice_type: '',
   notice_type_ids: [],
   notice_users: [],
+  handlers: [],
   enable_alerts: ['threshold'],
   no_data_enabled: false,
 };
 
-export const buildCollectionPolicyBulkConfig = (): BulkConfig =>
-  normalizeBulkConfig({ ...COLLECTION_POLICY_BULK_CONFIG_DEFAULTS });
+export const buildCollectionPolicyBulkConfig = (
+  overrides: Partial<BulkConfig> = {}
+): BulkConfig =>
+  normalizeBulkConfig({
+    ...COLLECTION_POLICY_BULK_CONFIG_DEFAULTS,
+    ...overrides,
+  });
 
 interface OrganizationOption {
   value?: string | number;
@@ -561,5 +571,8 @@ export const buildBulkApplyPayload = ({
   monitor_object: monitorObjectId,
   template_keys: templates.map((template) => template.template_key),
   asset_ids: assets.map((asset) => asset.instance_id),
-  config,
+  config: {
+    ...config,
+    handlers: [],
+  },
 });

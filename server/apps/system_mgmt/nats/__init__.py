@@ -3,7 +3,6 @@
 
 from importlib import import_module
 
-
 _MODULES = (
     "common",
     "auth",
@@ -17,6 +16,8 @@ _MODULES = (
     "otp",
     "settings",
     "audit",
+    "credentials",
+    "usage",
 )
 
 for _module_name in _MODULES:

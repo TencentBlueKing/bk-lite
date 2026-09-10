@@ -1,24 +1,6 @@
 @use '../common/simple-dashboard.module.scss';
 
-// 区块小标题:给分区加语义标题,提升可扫读性(与 MySQL/PostgreSQL 同款)
-.sectionLabel {
-  margin: 2px 2px 4px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid #eceff4;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #8c95a8;
-}
-
-.dashboardSection + .sectionLabel {
-  margin-top: 8px;
-}
-
-:global(html.dark) .sectionLabel {
-  border-bottom-color: rgba(255, 255, 255, 0.08);
-}
+// sectionLabel 已上收到共享壳（带品牌蓝指示条与现代间距）
 
 .modeContent {
   width: 100%;
@@ -40,39 +22,60 @@
 .pageHeader {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-bottom: 10px;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 16px 20px 14px;
+  background: var(--color-bg, #fff);
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.03), 0 1px 2px -1px rgba(15, 23, 42, 0.02);
+  transition: border-color 0.15s ease;
+}
+
+.pageHeader:hover {
+  border-color: color-mix(in srgb, var(--color-primary, #155aef) 18%, var(--color-border, #e2e8f0));
 }
 
 .pageTitleRow {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0;
 }
 
 .titleBlock {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   min-width: 0;
   flex: 1;
+}
+
+.titleControlsRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
 }
 
 .title {
   margin: 0;
   color: #182132;
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 700;
-  line-height: 1.15;
+  line-height: 1.25;
   letter-spacing: -0.02em;
   word-break: break-word;
+  min-width: 0;
+  flex: 1;
 }
 
 .meta {
   display: flex;
-  align-items: center;
-  gap: 8px 10px;
+  align-items: baseline;
+  gap: 4px;
   flex-wrap: wrap;
   color: #3f5370;
   min-width: 0;
@@ -83,9 +86,11 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 6px 0 8px;
-  border-bottom: 1px solid #e7edf5;
+  gap: 16px;
+  padding-top: 12px;
+  padding-bottom: 0;
+  border-top: 1px solid var(--color-border-1, #e7edf5);
+  border-bottom: none;
   background: transparent;
   border-radius: 0;
   box-shadow: none;
@@ -112,26 +117,29 @@
 }
 
 .instanceIcon {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #fff0f0 0%, #fff7f7 100%);
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-primary, #155aef) 10%, var(--color-bg, #fff));
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #ff4d4f;
-  font-size: 20px;
-  box-shadow: inset 0 0 0 1px rgba(255, 77, 79, 0.08);
+  color: var(--color-primary, #155aef);
+  font-size: 19px;
   flex-shrink: 0;
+  border: none;
+  box-shadow: none;
 }
 
 .instanceName {
-  font-size: 18px;
-  font-weight: 700;
+  font-size: 16px;
+  font-weight: 600;
   color: #182132;
-  line-height: 1.22;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
   min-width: 0;
   word-break: break-word;
+  margin-right: 4px;
 }
 
 // 头部布局/控件样式（实例选择器、时间选择器、刷新两-pill）统一继承基座
@@ -270,21 +278,21 @@
 }
 
 .statLabel {
-  color: #334861;
-  font-size: 15px;
-  font-weight: 700;
-  line-height: 1.3;
+  color: var(--color-text-1);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
   min-width: 0;
 }
 
 .statIcon {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: 15px;
 }
 
 .statBody {
@@ -301,34 +309,41 @@
 }
 
 .statValue {
-  color: #182132;
-  font-size: 30px;
+  color: var(--color-text-1);
+  font-size: 26px;
   font-weight: 700;
-  line-height: 1.08;
-  letter-spacing: -0.03em;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
   word-break: break-word;
   display: inline-flex;
   align-items: baseline;
   gap: 4px;
   flex-wrap: wrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .statUnit {
-  font-size: 14px;
-  margin-left: 0;
-  color: #5d728b;
+  font-size: 13px;
+  margin-left: 2px;
+  color: var(--color-text-2);
+  font-weight: 600;
   line-height: 1;
 }
 
 .statMeta {
   display: flex;
   align-items: center;
-  gap: 6px 10px;
+  gap: 8px 12px;
   flex-wrap: wrap;
-  color: #64748b;
-  font-size: 14px;
-  line-height: 1.5;
-  min-height: 22px;
+  font-size: 11px;
+  line-height: 1.4;
+  min-height: 18px;
+  color: var(--color-text-3);
+
+  span {
+    color: var(--color-text-3);
+    font-weight: 400;
+  }
 }
 
 .statCompare {
@@ -485,127 +500,7 @@
   height: 100%;
 }
 
-.collectionStatusCard {
-  justify-content: flex-start;
-  min-height: 122px;
-}
-
-.collectionStatusHeader {
-  min-height: 32px;
-}
-
-.collectionStatusBody {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  gap: 10px;
-  min-height: 0;
-}
-
-.collectionStatusValue {
-  font-size: 30px;
-  font-weight: 700;
-  line-height: 1.05;
-  letter-spacing: -0.03em;
-  min-height: 40px;
-  display: flex;
-  align-items: center;
-}
-
-.collectionStatusValueSuccess {
-  color: #22c55e;
-}
-
-.collectionStatusValueError {
-  color: #ff4d4f;
-}
-
-.collectionStatusValueEmpty {
-  color: #94a3b8;
-}
-
-.collectionStatusTimelineBlock {
-  margin-top: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-
-.collectionStatusTimelineTitle {
-  margin-top: 0;
-  color: #536882;
-  font-size: 14px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.collectionStatusTimelineHint {
-  flex-shrink: 0;
-  color: #94a3b8;
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-
-.collectionStatusTimeline {
-  display: grid;
-  grid-template-columns: repeat(18, minmax(0, 1fr));
-  gap: 4px;
-  margin-top: 8px;
-}
-
-.collectionStatusSegment {
-  display: block;
-  min-width: 0;
-  width: 100%;
-  height: 22px;
-  border-radius: 4px;
-  border: 1px solid transparent;
-  cursor: default;
-}
-
-.collectionStatusSegmentSuccess {
-  background: #22c55e;
-  border-color: #b6f0c8;
-}
-
-.collectionStatusSegmentEmpty {
-  background: #d7dfeb;
-  border-color: #edf2f9;
-}
-
-.collectionStatusSegmentError {
-  background: #ff4d4f;
-  border-color: #ffc3c3;
-}
-
-.collectionStatusLegend {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  flex-wrap: wrap;
-  margin-top: 8px;
-  color: #42556d;
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.collectionStatusLegendItem {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.collectionStatusLegendDot {
-  width: 14px;
-  height: 14px;
-  border-radius: 4px;
-  box-shadow: inset 0 0 0 1px rgba(19, 33, 56, 0.04);
-}
+// 采集状态卡片样式统一走共享壳 simple-dashboard，避免本地旧版覆盖。
 
 .panel {
   padding: 16px;
@@ -682,18 +577,18 @@
 
 .panelTitle {
   margin: 0;
-  color: #1d2f47;
-  font-size: 17px;
+  color: var(--color-text-1);
+  font-size: 16px;
   font-weight: 700;
-  line-height: 1.25;
+  line-height: 1.3;
   letter-spacing: -0.01em;
 }
 
 .panelSubTitle {
-  color: #9caabd;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.4;
+  color: var(--color-text-3);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
 }
 
 .chartLegend {
@@ -797,6 +692,155 @@
   font-weight: 850;
   line-height: 1.2;
   white-space: nowrap;
+}
+
+// 详情磁贴填充容器：替代传统行容器，使磁贴网格充满剩余高度
+.detailTilesFill {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 6px 0 2px;
+}
+
+// 现代指标磁贴网格 (Metric Tiles)
+.metricTileGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: 1fr;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+}
+
+.metricTile {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--color-fill-1);
+  border: 1px solid var(--color-border);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-sizing: border-box;
+
+  &:hover {
+    border-color: color-mix(in srgb, var(--color-primary) 36%, var(--color-border));
+    box-shadow: 0 2px 10px rgba(18, 38, 63, 0.05);
+  }
+}
+
+.metricTileSpan2 {
+  grid-column: span 2;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.metricTileSpan2Left {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.metricTileSpan2Right {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.metricTileHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.metricTileLabelWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.metricTileDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.metricTileLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-2);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.metricTileSubtext {
+  font-size: 11px;
+  color: var(--color-text-3);
+  line-height: 1.3;
+  margin-top: 1px;
+}
+
+.metricTileValueWrap {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  min-width: 0;
+  margin-top: 4px;
+}
+
+.metricTileValue {
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--color-text-1);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.metricTileUnit {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-3);
+  line-height: 1;
+}
+
+.metricTileBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.metricTileBadgeSuccess {
+  color: #10b981;
+  background: color-mix(in srgb, #10b981 12%, transparent);
+}
+
+.metricTileBadgeWarn {
+  color: #faad14;
+  background: color-mix(in srgb, #faad14 14%, transparent);
+}
+
+.metricTileBadgeDanger {
+  color: #ff4d4f;
+  background: color-mix(in srgb, #ff4d4f 14%, transparent);
 }
 
 .fragmentationWarning {
@@ -1297,6 +1341,29 @@
   border-bottom-color: rgba(255, 255, 255, 0.08);
 }
 
+:global(html.dark) .metricTile {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+:global(html.dark) .metricTile:hover {
+  background: rgba(255, 255, 255, 0.07) !important;
+  border-color: rgba(47, 107, 255, 0.4) !important;
+}
+
+:global(html.dark) .metricTileValue {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+:global(html.dark) .metricTileLabel {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+:global(html.dark) .metricTileSubtext,
+:global(html.dark) .metricTileUnit {
+  color: rgba(255, 255, 255, 0.45);
+}
+
 :global(html.dark) .uptimeStatus {
   background: rgba(255, 255, 255, 0.06) !important;
   border-color: rgba(255, 255, 255, 0.1) !important;
@@ -1330,28 +1397,6 @@
   background: rgba(255, 77, 79, 0.14);
   border-color: rgba(255, 159, 159, 0.2);
   color: #ffb3b3;
-}
-
-:global(html.dark) .collectionStatusSegmentEmpty {
-  background: rgba(255, 255, 255, 0.08);
-}
-
-:global(html.dark) .collectionStatusSegment {
-  border-color: transparent;
-}
-
-:global(html.dark) .collectionStatusSegmentSuccess {
-  background: #22c55e;
-  border-color: rgba(162, 243, 196, 0.35);
-}
-
-:global(html.dark) .collectionStatusSegmentError {
-  background: #ff4d4f;
-  border-color: rgba(255, 166, 166, 0.28);
-}
-
-:global(html.dark) .collectionStatusLegendDot {
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 
 :global(html.dark) .toolbarTimeSelector > div > div:first-child :global(.ant-select-selector),
@@ -1504,8 +1549,11 @@
 
   .pageTitleRow {
     width: 100%;
-    align-items: flex-start;
+  }
+
+  .titleControlsRow {
     flex-direction: column;
+    align-items: flex-start;
   }
 
   .instanceCard {

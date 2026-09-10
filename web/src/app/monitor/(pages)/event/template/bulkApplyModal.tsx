@@ -126,7 +126,7 @@ const BulkApplyModal: React.FC<BulkApplyModalProps> = ({
   const commonContext = useCommon();
   const organizationList = commonContext?.authOrganizations || [];
   const defaultConfig = useMemo<BulkConfig>(() => ({
-    name_prefix: t('monitor.events.bulkNamePrefixDefault', '批量策略'),
+    name_prefix: t('monitor.events.bulkNamePrefixDefault', '模板批量'),
     enable: true,
     schedule: { type: 'min', value: 5 },
     period: { type: 'min', value: 5 },
@@ -135,6 +135,7 @@ const BulkApplyModal: React.FC<BulkApplyModalProps> = ({
     notice_type: '',
     notice_type_ids: [],
     notice_users: [],
+    handlers: [],
     enable_alerts: ['threshold'],
     no_data_enabled: false,
     no_data_period: { type: 'min', value: 5 },

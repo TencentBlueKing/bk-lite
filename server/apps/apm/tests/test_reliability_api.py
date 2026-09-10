@@ -7,6 +7,7 @@ from django.utils import timezone
 from apps.apm.adapters import InMemoryNotificationDispatcher
 from apps.apm.models import ApmAlertOutbox, ApmPolicy, ApmService, ApmServiceOrganization
 from apps.apm.services import DjangoApmPolicyService
+from apps.apm.tests.helpers import bind_policy_organizations
 from apps.apm.services.contracts import NotificationChannel, NotificationRecipient, ServiceRed, SloEvaluation
 
 pytestmark = pytest.mark.django_db
@@ -51,6 +52,7 @@ def test_slo_policy_event_delivery_and_recipient_http_path(apm_api_client, mocke
             availability="available",
         )
     ]
+    directory.validate_recipient_ids.return_value = {42}
     recipients = mocker.patch("apps.apm.views.control_plane.ApmNotificationRecipientViewSet.directory")
     recipients.search_recipients.return_value = [NotificationRecipient(id=42, username="alice", display_name="Alice On-call")]
 
@@ -73,6 +75,7 @@ def test_slo_policy_event_delivery_and_recipient_http_path(apm_api_client, mocke
         {
             "name": "生产错误率",
             "service_id": str(service.id),
+            "organizations": [10],
             "environment": "production",
             "metric_type": "error_rate",
             "metric_window": 2,
@@ -148,6 +151,7 @@ def test_events_and_deliveries_are_hidden_outside_current_organization(apm_api_c
         trigger_after=1,
         recover_after=1,
     )
+    bind_policy_organizations(policy, (20,))
     evaluated_at = timezone.now().replace(second=0, microsecond=0)
     DjangoApmPolicyService(
         SimpleNamespace(service_red=lambda query: ServiceRed(20, 0.10, 100, 150)),

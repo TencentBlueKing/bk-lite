@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Button,
+  Collapse,
   Modal,
   Radio,
   Space,
@@ -29,6 +30,17 @@ import type {
 import { HandledRequestError } from "@/utils/request";
 import { useTranslation } from "@/utils/i18n";
 import WikiDirectorySelect from "./WikiDirectorySelect";
+import { formatPageTypeLabel } from "./wikiFormat";
+import {
+  markdownImportGovernanceErrorView,
+  formatArchiveBytes,
+  initialCreateDirectoriesFromFolders,
+  markdownImportAccept,
+  markdownImportFilePattern,
+  okfSkippedReasonLabel,
+  type MarkdownImportGovernanceErrorView,
+  type WikiMarkdownImportFormat,
+} from "@/app/opspilot/utils/wikiMarkdownImport";
 
 type ImportRouteMode = "auto" | "target" | "classification";
 
@@ -37,13 +49,12 @@ interface WikiMarkdownImportModalProps {
   open: boolean;
   directories: WikiDirectoryNode[];
   directoryEnabled: boolean;
+  importFormat?: WikiMarkdownImportFormat;
   onCancel: () => void;
   onCompleted: (
     result: WikiMarkdownImportExecuteResult,
   ) => void | Promise<void>;
 }
-
-const MARKDOWN_ARCHIVE_PATTERN = /\.(?:md|markdown|zip)$/iu;
 const UNCLASSIFIED_DIRECTORY_KEY = "__unclassified__";
 
 const directoryPathMap = (
@@ -64,12 +75,15 @@ const WikiMarkdownImportModal = ({
   open,
   directories,
   directoryEnabled,
+  importFormat = "markdown",
   onCancel,
   onCompleted,
 }: WikiMarkdownImportModalProps) => {
   const { t } = useTranslation();
   const { preflightKnowledgeBaseMarkdown, executeKnowledgeBaseMarkdown } =
     useWikiApi();
+  const isOkf = importFormat === "okf";
+  const archivePattern = markdownImportFilePattern(importFormat);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [routeMode, setRouteMode] = useState<ImportRouteMode>("auto");
@@ -77,7 +91,7 @@ const WikiMarkdownImportModal = ({
   const [classificationRootId, setClassificationRootId] = useState<number>();
   const [restoreStructure, setRestoreStructure] = useState(false);
   const [createDirectoriesFromFolders, setCreateDirectoriesFromFolders] =
-    useState(false);
+    useState(() => initialCreateDirectoriesFromFolders(importFormat));
   const [preflight, setPreflight] =
     useState<WikiMarkdownImportPreflightResult | null>(null);
   const [preflightExpiresAt, setPreflightExpiresAt] = useState<number | null>(
@@ -87,6 +101,8 @@ const WikiMarkdownImportModal = ({
   const [preflightStale, setPreflightStale] = useState(false);
   const [preflighting, setPreflighting] = useState(false);
   const [executing, setExecuting] = useState(false);
+  const [preflightError, setPreflightError] =
+    useState<MarkdownImportGovernanceErrorView | null>(null);
   const preflightSequenceRef = useRef(0);
 
   const pathsByDirectoryId = useMemo(
@@ -99,6 +115,7 @@ const WikiMarkdownImportModal = ({
       restore_structure: restoreStructure,
       create_directories_from_folders: createDirectoriesFromFolders,
     };
+    if (isOkf) options.import_format = "okf";
     if (routeMode === "target" && targetDirectoryId) {
       options.target_directory_id = targetDirectoryId;
     }
@@ -109,6 +126,7 @@ const WikiMarkdownImportModal = ({
   }, [
     classificationRootId,
     createDirectoriesFromFolders,
+    isOkf,
     restoreStructure,
     routeMode,
     targetDirectoryId,
@@ -127,24 +145,25 @@ const WikiMarkdownImportModal = ({
     setTargetDirectoryId(undefined);
     setClassificationRootId(undefined);
     setRestoreStructure(false);
-    setCreateDirectoriesFromFolders(false);
+    setCreateDirectoriesFromFolders(
+      initialCreateDirectoriesFromFolders(importFormat),
+    );
     setPreflight(null);
     setPreflightExpiresAt(null);
     setPreflightExpired(false);
     setPreflightStale(false);
     setPreflighting(false);
     setExecuting(false);
+    setPreflightError(null);
   };
 
   useEffect(() => {
     resetState();
     // resetState 仅重置当前弹窗状态；知识库变化必须丢弃旧 token。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kbId]);
 
   useEffect(() => {
     if (!open) resetState();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   useEffect(() => {
@@ -180,6 +199,7 @@ const WikiMarkdownImportModal = ({
     setPreflighting(true);
     setPreflightExpired(false);
     setPreflightStale(Boolean(preflight));
+    setPreflightError(null);
     try {
       const result = await preflightKnowledgeBaseMarkdown(kbId, file, options);
       if (sequence !== preflightSequenceRef.current) return;
@@ -189,12 +209,18 @@ const WikiMarkdownImportModal = ({
       );
       setPreflightExpired(result.expires_in_seconds <= 0);
       setPreflightStale(false);
+      setPreflightError(null);
     } catch (error) {
       if (sequence !== preflightSequenceRef.current) return;
       setPreflight(null);
       setPreflightExpiresAt(null);
       setPreflightStale(false);
-      if (!(error instanceof HandledRequestError)) {
+      if (error instanceof HandledRequestError) {
+        const view = markdownImportGovernanceErrorView(t, error);
+        setPreflightError(view);
+        message.error(view.title);
+      } else {
+        setPreflightError(null);
         message.error(t("wiki.markdownImportPreflightFailed"));
       }
     } finally {
@@ -203,10 +229,13 @@ const WikiMarkdownImportModal = ({
   };
 
   const handleFileSelect = (file: RcFile) => {
-    if (!MARKDOWN_ARCHIVE_PATTERN.test(file.name)) {
-      message.error(t("wiki.markdownImportFileTypeInvalid"));
+    if (!archivePattern.test(file.name)) {
+      message.error(
+        t(isOkf ? "wiki.okfImportFileTypeInvalid" : "wiki.markdownImportFileTypeInvalid"),
+      );
       return Upload.LIST_IGNORE;
     }
+    const createFolders = initialCreateDirectoriesFromFolders(importFormat);
     preflightSequenceRef.current += 1;
     setSelectedFile(file);
     setFileList([
@@ -218,15 +247,16 @@ const WikiMarkdownImportModal = ({
       },
     ]);
     setRestoreStructure(false);
-    setCreateDirectoriesFromFolders(false);
+    setCreateDirectoriesFromFolders(createFolders);
     setPreflight(null);
     setPreflightExpiresAt(null);
     setPreflightExpired(false);
     setPreflightStale(false);
+    setPreflightError(null);
     void runPreflight(file, {
       ...preflightOptions,
       restore_structure: false,
-      create_directories_from_folders: false,
+      create_directories_from_folders: createFolders,
     });
     return false;
   };
@@ -236,12 +266,15 @@ const WikiMarkdownImportModal = ({
     setSelectedFile(null);
     setFileList([]);
     setRestoreStructure(false);
-    setCreateDirectoriesFromFolders(false);
+    setCreateDirectoriesFromFolders(
+      initialCreateDirectoriesFromFolders(importFormat),
+    );
     setPreflight(null);
     setPreflightExpiresAt(null);
     setPreflightExpired(false);
     setPreflightStale(false);
     setPreflighting(false);
+    setPreflightError(null);
     return true;
   };
 
@@ -288,7 +321,6 @@ const WikiMarkdownImportModal = ({
       const updated = result.counts?.updated ?? result.updated ?? 0;
       const candidate = result.counts?.candidate ?? 0;
       setPreflight(null);
-      setPreflightExpiresAt(null);
       message.success(
         t("wiki.markdownImportDone")
           .replace("{created}", String(created))
@@ -298,9 +330,6 @@ const WikiMarkdownImportModal = ({
       await onCompleted(result);
     } catch (error) {
       setPreflightStale(true);
-      setPreflightExpired(
-        error instanceof HandledRequestError && error.status === 409,
-      );
       if (error instanceof HandledRequestError && error.status === 409) {
         message.warning(t("wiki.markdownImportRepreflightRequired"));
       } else if (!(error instanceof HandledRequestError)) {
@@ -317,6 +346,7 @@ const WikiMarkdownImportModal = ({
       native: "wiki.markdownImportArchiveNative",
       opspilot_native: "wiki.markdownImportArchiveNative",
       third_party: "wiki.markdownImportArchiveThirdParty",
+      okf: "wiki.okfImportArchiveKind",
     };
     return t(keyByKind[kind]);
   };
@@ -340,6 +370,17 @@ const WikiMarkdownImportModal = ({
           <div className="truncate font-medium" title={record.title}>
             {record.title}
           </div>
+          {record.renamed_from && (
+            <div
+              className="truncate text-xs text-[var(--color-text-3)]"
+              title={record.renamed_from}
+            >
+              {t("wiki.okfImportRenamedFrom").replace(
+                "{title}",
+                record.renamed_from,
+              )}
+            </div>
+          )}
           <div
             className="truncate text-xs text-[var(--color-text-3)]"
             title={record.archive_path}
@@ -409,40 +450,6 @@ const WikiMarkdownImportModal = ({
         );
       },
     },
-    {
-      title: t("wiki.markdownImportRouteTrace"),
-      key: "route",
-      width: 340,
-      render: (_: unknown, record) => {
-        const directory = record.directory;
-        if (!directory) return "--";
-        const trace = directory.trace.join(" → ") || directory.source;
-        const detail = [
-          directory.route_reason,
-          directory.suggestion?.reason,
-          directory.redirect_chain.length
-            ? directory.redirect_chain.join(" → ")
-            : "",
-        ]
-          .filter(Boolean)
-          .join(" · ");
-        return (
-          <div className="min-w-0">
-            <div className="break-words text-xs" title={trace}>
-              {trace}
-            </div>
-            {detail && (
-              <div
-                className="mt-1 break-words text-xs text-[var(--color-text-3)]"
-                title={detail}
-              >
-                {detail}
-              </div>
-            )}
-          </div>
-        );
-      },
-    },
   ];
 
   const canExecute =
@@ -455,7 +462,7 @@ const WikiMarkdownImportModal = ({
 
   return (
     <Modal
-      title={t("wiki.markdownImportTitle")}
+      title={t(isOkf ? "wiki.okfImportTitle" : "wiki.markdownImportTitle")}
       open={open}
       width={1080}
       okText={t("wiki.markdownImportExecute")}
@@ -534,7 +541,7 @@ const WikiMarkdownImportModal = ({
         )}
 
         <Upload.Dragger
-          accept=".md,.markdown,.zip"
+          accept={markdownImportAccept(importFormat)}
           maxCount={1}
           fileList={fileList}
           disabled={preflighting || executing}
@@ -544,11 +551,33 @@ const WikiMarkdownImportModal = ({
           <p className="ant-upload-drag-icon">
             <InboxOutlined />
           </p>
-          <p className="ant-upload-text">{t("wiki.markdownImportDropHint")}</p>
+          <p className="ant-upload-text">
+            {t(isOkf ? "wiki.okfImportDropHint" : "wiki.markdownImportDropHint")}
+          </p>
           <p className="ant-upload-hint">
-            {t("wiki.markdownImportSecurityHint")}
+            {t("wiki.markdownImportSizeHint")}
           </p>
         </Upload.Dragger>
+
+        {preflightError && (
+          <Alert
+            showIcon
+            type="error"
+            message={preflightError.title}
+            description={
+              <div className="space-y-2">
+                {preflightError.description ? (
+                  <div className="whitespace-pre-wrap">{preflightError.description}</div>
+                ) : null}
+                {preflightError.example ? (
+                  <pre className="mb-0 overflow-x-auto rounded-md bg-[var(--color-fill-2)] px-3 py-2 text-xs text-[var(--color-text-2)]">
+                    {preflightError.example}
+                  </pre>
+                ) : null}
+              </div>
+            }
+          />
+        )}
 
         {selectedFile && (
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -575,7 +604,7 @@ const WikiMarkdownImportModal = ({
         )}
 
         {preflight && (
-          <>
+          <div className="flex flex-col gap-6">
             <Alert
               showIcon
               type={preflightExpired || preflightStale ? "warning" : "success"}
@@ -646,6 +675,155 @@ const WikiMarkdownImportModal = ({
               />
             )}
 
+            {preflight.preview.okf && (
+              <section className="space-y-3 rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-4">
+                <div className="text-sm font-medium">
+                  {t("wiki.okfImportSummaryTitle")}
+                </div>
+                <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                  {[
+                    {
+                      label: t("wiki.okfImportVersion"),
+                      value: preflight.preview.okf.okf_version || "--",
+                    },
+                    {
+                      label: t("wiki.okfImportBundleRoot"),
+                      value: preflight.preview.okf.bundle_root || "/",
+                    },
+                    {
+                      label: t("wiki.okfImportLinksRewritten"),
+                      value: preflight.preview.okf.links.rewritten,
+                    },
+                    {
+                      label: t("wiki.okfImportLinksUnresolved"),
+                      value: preflight.preview.okf.links.unresolved,
+                    },
+                    {
+                      label: t("wiki.okfImportRenamedCount"),
+                      value: preflight.preview.okf.renamed_count,
+                    },
+                    {
+                      label: t("wiki.okfImportImagesCount"),
+                      value: preflight.preview.okf.images?.count ?? 0,
+                    },
+                    {
+                      label: t("wiki.okfImportImagesBytes"),
+                      value: formatArchiveBytes(preflight.preview.okf.images?.bytes),
+                    },
+                    {
+                      label: t("wiki.okfImportImagesPages"),
+                      value: preflight.preview.okf.images?.pages ?? 0,
+                    },
+                  ].map((item) => (
+                    <div
+                      key={item.label}
+                      className="rounded-md border border-[var(--color-border-1)] px-3 py-2"
+                    >
+                      <div className="text-xs text-[var(--color-text-3)]">
+                        {item.label}
+                      </div>
+                      <div className="mt-1 truncate text-sm font-semibold">
+                        {item.value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {preflight.preview.okf.type_mapping.length > 0 && (
+                  <Table
+                    size="small"
+                    pagination={false}
+                    rowKey={(row) => `${row.okf_type}:${row.page_type}`}
+                    dataSource={preflight.preview.okf.type_mapping}
+                    columns={[
+                      {
+                        title: t("wiki.okfImportType"),
+                        dataIndex: "okf_type",
+                        key: "okf_type",
+                      },
+                      {
+                        title: t("wiki.okfImportPageType"),
+                        dataIndex: "page_type",
+                        key: "page_type",
+                        render: (pageType: string) =>
+                          formatPageTypeLabel(t, pageType),
+                      },
+                      {
+                        title: t("wiki.okfImportTypeMatched"),
+                        dataIndex: "matched",
+                        key: "matched",
+                        render: (matched: boolean) => (
+                          <Tag color={matched ? "green" : "orange"}>
+                            {matched
+                              ? t("wiki.okfImportMatched")
+                              : t("wiki.okfImportUnmatched")}
+                          </Tag>
+                        ),
+                      },
+                      {
+                        title: t("wiki.okfImportTypeCount"),
+                        dataIndex: "count",
+                        key: "count",
+                        width: 80,
+                      },
+                    ]}
+                  />
+                )}
+                {Number(preflight.preview.okf.images?.html_unchecked) > 0 && (
+                  <Alert
+                    showIcon
+                    type="info"
+                    message={t("wiki.okfImportHtmlImagesHint").replace(
+                      "{count}",
+                      String(preflight.preview.okf.images?.html_unchecked),
+                    )}
+                  />
+                )}
+                {preflight.preview.okf.skipped.length > 0 && (
+                  <Collapse
+                    ghost
+                    size="small"
+                    items={[
+                      {
+                        key: "skipped",
+                        label: `${t("wiki.okfImportSkippedList")} (${preflight.preview.okf.skipped.length})`,
+                        children: (
+                          <div className="space-y-2">
+                            {preflight.preview.okf.skipped.some(
+                              (item) => item.reason === "reserved",
+                            ) && (
+                              <Alert
+                                showIcon
+                                type="info"
+                                message={t("wiki.okfImportSkippedReservedHint")}
+                              />
+                            )}
+                            <ul className="max-h-48 overflow-y-auto text-xs">
+                              {preflight.preview.okf.skipped.map((item) => (
+                                <li
+                                  key={`${item.path}:${item.reason}`}
+                                  className="border-b border-[var(--color-border-1)] py-1.5 last:border-b-0"
+                                >
+                                  <div
+                                    className="truncate text-[var(--color-text-2)]"
+                                    title={item.path}
+                                  >
+                                    {item.path}
+                                  </div>
+                                  <div className="mt-0.5 text-[var(--color-text-3)]">
+                                    {okfSkippedReasonLabel(t, item.reason)}
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ),
+                      },
+                    ]}
+                  />
+                )}
+              </section>
+            )}
+
             {preflight.preview.native_structure_available && (
               <Alert
                 showIcon
@@ -667,12 +845,21 @@ const WikiMarkdownImportModal = ({
               />
             )}
 
-            {preflight.preview.archive_kind === "third_party" && (
+            {(preflight.preview.archive_kind === "third_party" ||
+              preflight.preview.archive_kind === "okf") && (
               <Alert
                 showIcon
                 type="warning"
-                message={t("wiki.markdownImportCreateFoldersTitle")}
-                description={t("wiki.markdownImportCreateFoldersHint")}
+                message={t(
+                  preflight.preview.archive_kind === "okf"
+                    ? "wiki.okfImportCreateFoldersTitle"
+                    : "wiki.markdownImportCreateFoldersTitle",
+                )}
+                description={t(
+                  preflight.preview.archive_kind === "okf"
+                    ? "wiki.okfImportCreateFoldersHint"
+                    : "wiki.markdownImportCreateFoldersHint",
+                )}
                 action={
                   <Space>
                     <span className="text-xs">
@@ -717,10 +904,10 @@ const WikiMarkdownImportModal = ({
                   showSizeChanger: false,
                   hideOnSinglePage: true,
                 }}
-                scroll={{ x: 980 }}
+                scroll={{ x: 640 }}
               />
             </section>
-          </>
+          </div>
         )}
       </div>
     </Modal>

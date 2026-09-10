@@ -4,15 +4,18 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import type { Application3DArchitectureData, Application3DWallItem } from '@/app/ops-analysis/types/sceneWidget';
+import type {
+  Application3DArchitectureData,
+  Application3DArchitectureNode,
+  Application3DWallItem,
+} from '@/app/ops-analysis/types/sceneWidget';
 import {
   APPLICATION3D_CAMERA_FOV,
   buildApplication3DLayout,
   defaultApplication3DTranslate,
-  fitApplication3DCameraDistance,
   formatApplication3DCardTitle,
   resolveApplication3DCardVisual,
-  WALL_CAMERA_HEIGHT_FACTOR,
+  resolveApplication3DWallCamera,
   type Application3DCardTone,
   type Application3DTranslate,
 } from './application3DLayout';
@@ -45,7 +48,19 @@ import {
   easeLinear,
   easeOutEntrance,
 } from './application3DMotion';
-import { createArchitectureTreeGroup, type Application3DArchitectureView } from './application3DArchitectureView';
+import {
+  createArchitectureTreeGroup,
+  findArchitectureRackRoot,
+  type Application3DArchitectureView,
+} from './application3DArchitectureView';
+import {
+  ARCH_HOST_OVERLAY_GAP,
+  ARCH_HOST_OVERLAY_SIZE,
+  expandArchitectureCabinetWorldBox,
+  placeOverlayOutsideRect,
+  projectWorldBoxToScreenRect,
+  type ArchitectureHostSelection,
+} from './application3DArchitectureOverlay';
 import {
   ARCH_PLANE_EMISSIVE_INTENSITY,
   ARCH_PLANE_OPACITY,
@@ -55,9 +70,21 @@ import {
 } from './application3DArchitecture';
 
 export const APPLICATION3D_WALL_GROUP_NAME = 'application3d-wall';
-const WALL_POLAR = { min: Math.PI * 0.28, max: Math.PI * 0.72 } as const;
-/** Keep orbit near the just-above-eye-level pose; block bird’s-eye / 图1. */
-const ARCH_POLAR = { min: Math.PI * 0.40, max: Math.PI * 0.72 } as const;
+/**
+ * User orbit polar clamp (OrbitControls: 0 = straight overhead / +Y,
+ * π/2 = horizon). Landing poses stay on WALL_CAMERA_HEIGHT_FACTOR and
+ * ARCH_CAMERA_PHI — only the *user* clamp opens to zenith.
+ */
+export const APPLICATION3D_USER_POLAR = {
+  min: 1e-3,
+  max: Math.PI * 0.72,
+} as const;
+export const APPLICATION3D_ORBIT_PAN = {
+  enablePan: true,
+  screenSpacePanning: true,
+} as const;
+const WALL_POLAR = APPLICATION3D_USER_POLAR;
+const ARCH_POLAR = APPLICATION3D_USER_POLAR;
 
 export interface Application3DSceneController {
   reconcile: (
@@ -71,6 +98,7 @@ export interface Application3DSceneController {
   focus: (applicationId: string | null) => void;
   showArchitecture: (data: Application3DArchitectureData) => void;
   hideArchitecture: () => void;
+  dismissArchitectureOverlay?: () => void;
   dispose: () => void;
 }
 
@@ -459,6 +487,7 @@ export const createApplication3DScene = (
     translate?: Application3DTranslate;
     onSelect: (item: Application3DWallItem) => void;
     onBackgroundClick?: () => void;
+    onArchitectureHostSelect?: (selection: ArchitectureHostSelection | null) => void;
     onFirstRender?: () => void;
   },
 ): Application3DSceneController => {
@@ -585,7 +614,8 @@ export const createApplication3DScene = (
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
-  controls.enablePan = false;
+  controls.enablePan = APPLICATION3D_ORBIT_PAN.enablePan;
+  controls.screenSpacePanning = APPLICATION3D_ORBIT_PAN.screenSpacePanning;
   controls.minDistance = 6;
   controls.maxDistance = 80;
   controls.minPolarAngle = WALL_POLAR.min;
@@ -835,7 +865,7 @@ export const createApplication3DScene = (
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
 
-  let wallCameraPosition = new THREE.Vector3(0, 0, 20);
+  const wallCameraPosition = new THREE.Vector3(0, 0, 20);
   const desiredCameraPosition = wallCameraPosition.clone();
   const desiredTarget = new THREE.Vector3();
   const cameraOrbitOffset = new THREE.Vector3();
@@ -859,12 +889,14 @@ export const createApplication3DScene = (
   let pointerDown: { x: number; y: number } | null = null;
   let hoveredId = '';
   let introSafetyTimer: number | null = null;
-  let introTimeouts: number[] = [];
   let resizeLayoutTimer: number | null = null;
   let particlesBuilt = false;
   let entrancePlayed = false;
   let focusedId = '';
   let architectureView: Application3DArchitectureView | null = null;
+  let architectureHostId = '';
+  let architectureHoveredId: string | null = null;
+  let architectureSelectedId: string | null = null;
   const focusLift = new THREE.Vector3();
   const architectureCameraPosition = new THREE.Vector3();
   const architectureLookTarget = new THREE.Vector3();
@@ -917,8 +949,6 @@ export const createApplication3DScene = (
       window.clearTimeout(introSafetyTimer);
       introSafetyTimer = null;
     }
-    introTimeouts.forEach((id) => window.clearTimeout(id));
-    introTimeouts = [];
   };
 
   const finishIntro = () => {
@@ -1062,13 +1092,18 @@ export const createApplication3DScene = (
     }
   }
 
-  const fitCameraDistance = (layout: ReturnType<typeof buildApplication3DLayout>) =>
-    fitApplication3DCameraDistance(
-      layout.wallWidth,
-      layout.wallHeight,
-      camera.aspect,
-      camera.fov,
-    );
+  const snapCameraHome = () => {
+    cameraComplete = null;
+    cameraAnimating = false;
+    desiredCameraPosition.copy(wallCameraPosition);
+    desiredTarget.copy(wallLookTarget);
+    camera.position.copy(wallCameraPosition);
+    controls.target.copy(wallLookTarget);
+    camera.up.set(0, 1, 0);
+    camera.lookAt(controls.target);
+    controls.update();
+    controls.saveState();
+  };
 
   const fadeSceneCanvas = (durationMs: number) => {
     renderer.domElement.style.opacity = '0';
@@ -1195,7 +1230,6 @@ export const createApplication3DScene = (
   };
 
   const layoutVisuals = (layoutOptions?: {
-    snapCamera?: boolean;
     playIntro?: boolean;
     playFilter?: boolean;
   }) => {
@@ -1247,11 +1281,12 @@ export const createApplication3DScene = (
     stageRoot.position.y = floorY;
     floorGridMaterial.uniforms.uFade.value = Math.max(layout.wallWidth * 3.1, 32);
     wallLookTarget.set(0, 0, 0);
-    wallCameraPosition = new THREE.Vector3(
-      0,
-      layout.wallHeight * WALL_CAMERA_HEIGHT_FACTOR,
-      fitCameraDistance(layout),
+    const wallPose = resolveApplication3DWallCamera(
+      visuals.size,
+      camera.aspect,
+      camera.fov,
     );
+    wallCameraPosition.set(wallPose.x, wallPose.y, wallPose.z);
     if (phase !== 'architecture') {
       controls.minDistance = Math.max(wallCameraPosition.z * 0.45, 6);
       controls.maxDistance = wallCameraPosition.z * 2.2;
@@ -1264,27 +1299,13 @@ export const createApplication3DScene = (
       return;
     }
 
-    desiredTarget.copy(wallLookTarget);
     if (layoutOptions?.playIntro) {
       playEntrance();
-    } else if (layoutOptions?.playFilter) {
-      playFilterTransition();
-      desiredCameraPosition.copy(wallCameraPosition);
-      if (phase === 'initializing') {
-        phase = 'wall';
-        setOrbitEnabled(true);
-      }
     } else {
-      desiredCameraPosition.copy(wallCameraPosition);
-      if (layoutOptions?.snapCamera || phase === 'initializing') {
-        camera.position.copy(desiredCameraPosition);
-        controls.target.copy(desiredTarget);
-        camera.up.set(0, 1, 0);
-        camera.lookAt(controls.target);
-        controls.update();
-        controls.saveState();
-        cameraAnimating = false;
+      if (layoutOptions?.playFilter) {
+        playFilterTransition();
       }
+      snapCameraHome();
       if (phase === 'initializing') {
         phase = 'wall';
         setOrbitEnabled(true);
@@ -1320,6 +1341,8 @@ export const createApplication3DScene = (
     } else if (playFilter) {
       clearIntroTimers();
       cancelTweens();
+      cameraComplete = null;
+      cameraAnimating = false;
     }
 
     const nextIds = new Set(items.map((item) => item.id));
@@ -1475,18 +1498,6 @@ export const createApplication3DScene = (
     requestRender();
   };
 
-  const snapCameraHome = () => {
-    camera.position.copy(wallCameraPosition);
-    controls.target.copy(wallLookTarget);
-    desiredCameraPosition.copy(wallCameraPosition);
-    desiredTarget.copy(wallLookTarget);
-    camera.up.set(0, 1, 0);
-    camera.lookAt(controls.target);
-    controls.update();
-    controls.saveState();
-    cameraAnimating = false;
-  };
-
   const resetCamera = () => {
     if (disposed) return;
     easeCameraTo(wallCameraPosition, wallLookTarget, 0.55);
@@ -1578,7 +1589,73 @@ export const createApplication3DScene = (
     setOrbitEnabled(true);
   };
 
+  const setPointerFromClient = (clientX: number, clientY: number) => {
+    const rect = renderer.domElement.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    pointer.set(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1,
+    );
+    raycaster.setFromCamera(pointer, camera);
+    return rect;
+  };
+
+  const clearArchitectureHost = () => {
+    if (!architectureHostId) return;
+    architectureHostId = '';
+    options.onArchitectureHostSelect?.(null);
+    requestRender();
+  };
+
+  const selectArchitectureHost = (node: Application3DArchitectureNode) => {
+    const nodeGroup = architectureView?.nodeGroups.get(node.id);
+    if (!nodeGroup) {
+      clearArchitectureHost();
+      return;
+    }
+    camera.updateMatrixWorld();
+    const box = expandArchitectureCabinetWorldBox(nodeGroup);
+    const viewport = {
+      width: Math.max(viewportWidth, 1),
+      height: Math.max(viewportHeight, 1),
+    };
+    const hostScreenRect = projectWorldBoxToScreenRect(box, camera, viewport);
+    const overlay = placeOverlayOutsideRect(
+      hostScreenRect,
+      ARCH_HOST_OVERLAY_SIZE,
+      viewport,
+      ARCH_HOST_OVERLAY_GAP,
+    );
+    architectureHostId = node.id;
+    options.onArchitectureHostSelect?.({
+      node,
+      hostScreenRect,
+      overlay: { left: overlay.left, top: overlay.top },
+    });
+    requestRender();
+  };
+
+  const pickArchitectureNode = (clientX: number, clientY: number) => {
+    if (!architectureView || phase !== 'architecture') return undefined;
+    if (!setPointerFromClient(clientX, clientY)) return undefined;
+    const targets = Array.from(architectureView.nodeGroups.values());
+    const hits = raycaster.intersectObjects(targets.length > 0 ? targets : [architectureView.group], true);
+    for (const hit of hits) {
+      const root = findArchitectureRackRoot(hit.object);
+      if (root && typeof root.userData.nodeId === 'string') {
+        return architectureView.layout.nodes.find((node) => node.id === root.userData.nodeId);
+      }
+    }
+    return undefined;
+  };
+
   const disposeArchitecture = () => {
+    architectureSelectedId = null;
+    if (architectureHoveredId) {
+      architectureHoveredId = null;
+      architectureView?.setHoveredNode?.(null);
+    }
+    clearArchitectureHost();
     architectureView?.dispose();
     architectureView = null;
   };
@@ -1653,10 +1730,22 @@ export const createApplication3DScene = (
       const rest = (planeGroup.userData.restPosition as THREE.Vector3 | undefined)?.clone()
         ?? new THREE.Vector3();
       const delay = reducedMotion ? 0 : architecturePlaneDelayMs(index) / 1000;
-      planeGroup.position.copy(inFront);
-      planeGroup.scale.setScalar(start);
-      setPlaneReveal(planeGroup, 0);
+      let launched = false;
+      const launchPlaneFlyIn = () => {
+        if (launched) return;
+        launched = true;
+        planeGroup.position.copy(inFront);
+        planeGroup.scale.setScalar(start);
+        setPlaneReveal(planeGroup, 0);
+      };
+      if (delay <= 0) {
+        launchPlaneFlyIn();
+      } else {
+        planeGroup.scale.setScalar(0);
+        setPlaneReveal(planeGroup, 0);
+      }
       startTween(planeMs, (t) => {
+        launchPlaneFlyIn();
         planeGroup.position.lerpVectors(inFront, rest, t);
         planeGroup.scale.setScalar(start + (1 - start) * t);
         setPlaneReveal(planeGroup, t);
@@ -1711,13 +1800,12 @@ export const createApplication3DScene = (
     applyPolarLimits(ARCH_POLAR);
     const pose = resolveArchitectureCameraPose(
       architectureView.layout,
-      { position: wallCameraPosition, target: wallLookTarget },
       camera.aspect,
       camera.fov,
     );
     architectureLookTarget.set(pose.target.x, pose.target.y, pose.target.z);
     architectureCameraPosition.set(pose.position.x, pose.position.y, pose.position.z);
-    controls.minDistance = Math.max(pose.radius * 0.35, 8);
+    controls.minDistance = Math.max(pose.radius * 0.35, 1.5);
     controls.maxDistance = pose.radius * 2.8;
     const cameraMs = reducedMotion ? WALL_ENTRANCE.reducedMotionMs : ARCHITECTURE_MOTION.cameraMs;
     easeCameraTo(
@@ -1775,13 +1863,7 @@ export const createApplication3DScene = (
   };
 
   const pickApplicationId = (clientX: number, clientY: number) => {
-    const rect = renderer.domElement.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return undefined;
-    pointer.set(
-      ((clientX - rect.left) / rect.width) * 2 - 1,
-      -((clientY - rect.top) / rect.height) * 2 + 1,
-    );
-    raycaster.setFromCamera(pointer, camera);
+    if (!setPointerFromClient(clientX, clientY)) return undefined;
     const hit = raycaster.intersectObjects(
       Array.from(visuals.values(), (visual) => visual.mesh),
       true,
@@ -1793,6 +1875,12 @@ export const createApplication3DScene = (
 
   const syncCursor = (clientX: number, clientY: number) => {
     if (!active || !options.interactive) return;
+    if (phase === 'architecture') {
+      renderer.domElement.style.cursor = pickArchitectureNode(clientX, clientY)
+        ? 'pointer'
+        : idleCursor();
+      return;
+    }
     renderer.domElement.style.cursor = pickApplicationId(clientX, clientY)
       ? 'pointer'
       : idleCursor();
@@ -1806,6 +1894,36 @@ export const createApplication3DScene = (
 
   const handlePointerMove = (event: PointerEvent) => {
     syncCursor(event.clientX, event.clientY);
+    if (
+      phase === 'architecture'
+      && architectureHostId
+      && pointerDown
+      && Math.hypot(event.clientX - pointerDown.x, event.clientY - pointerDown.y) > CLICK_DRAG_THRESHOLD_PX
+    ) {
+      clearArchitectureHost();
+    }
+    if (phase === 'architecture') {
+      if (pointerDown) {
+        if (!architectureSelectedId && architectureHoveredId) {
+          architectureHoveredId = null;
+          architectureView?.setHoveredNode?.(null);
+          renderer.domElement.title = '';
+          requestRender();
+        }
+      } else {
+        const hitNode = pickArchitectureNode(event.clientX, event.clientY);
+        const nextHovered = hitNode?.id ?? null;
+        if (nextHovered !== architectureHoveredId) {
+          architectureHoveredId = nextHovered;
+          if (!architectureSelectedId) {
+            architectureView?.setHoveredNode?.(architectureHoveredId);
+          }
+          renderer.domElement.title = hitNode ? hitNode.name : '';
+          requestRender();
+        }
+      }
+      return;
+    }
     if (!active || !options.interactive || pointerDown || phase !== 'wall') {
       if (hoveredId) {
         hoveredId = '';
@@ -1824,18 +1942,74 @@ export const createApplication3DScene = (
   };
 
   const handlePointerLeave = () => {
+    if (phase === 'architecture' && architectureHoveredId) {
+      architectureHoveredId = null;
+      if (!architectureSelectedId) {
+        architectureView?.setHoveredNode?.(null);
+      }
+      renderer.domElement.title = '';
+      requestRender();
+    }
     if (!hoveredId) return;
     hoveredId = '';
     renderer.domElement.title = '';
     requestRender();
   };
 
+  const handleContextMenu = (event: Event) => {
+    event.preventDefault();
+  };
+
+  const handleWheel = () => {
+    if (phase !== 'architecture') return;
+    clearArchitectureHost();
+  };
+
   const handlePointerUp = (event: PointerEvent) => {
     if (!active || !options.interactive || !pointerDown) return;
     const dx = event.clientX - pointerDown.x;
     const dy = event.clientY - pointerDown.y;
+    const dragged = Math.hypot(dx, dy) > CLICK_DRAG_THRESHOLD_PX;
     pointerDown = null;
-    if (Math.hypot(dx, dy) > CLICK_DRAG_THRESHOLD_PX) {
+    if (event.button !== 0) {
+      syncCursor(event.clientX, event.clientY);
+      return;
+    }
+    if (phase === 'architecture') {
+      if (dragged) {
+        clearArchitectureHost();
+        syncCursor(event.clientX, event.clientY);
+        return;
+      }
+      const hitNode = pickArchitectureNode(event.clientX, event.clientY);
+      if (hitNode) {
+        if (architectureSelectedId === hitNode.id) {
+          if (hitNode.kind === 'host' && !architectureHostId) {
+            selectArchitectureHost(hitNode);
+          } else {
+            architectureSelectedId = null;
+            clearArchitectureHost();
+            architectureView?.setHoveredNode?.(null);
+          }
+        } else {
+          architectureSelectedId = hitNode.id;
+          architectureView?.setHoveredNode?.(architectureSelectedId);
+          if (hitNode.kind === 'host') {
+            selectArchitectureHost(hitNode);
+          } else {
+            clearArchitectureHost();
+          }
+        }
+      } else {
+        architectureSelectedId = null;
+        clearArchitectureHost();
+        architectureView?.setHoveredNode?.(null);
+      }
+      syncCursor(event.clientX, event.clientY);
+      requestRender();
+      return;
+    }
+    if (dragged) {
       syncCursor(event.clientX, event.clientY);
       return;
     }
@@ -1843,7 +2017,6 @@ export const createApplication3DScene = (
     const applicationId = pickApplicationId(event.clientX, event.clientY);
     const visual = applicationId ? visuals.get(applicationId) : undefined;
     if (visual) {
-      if (phase === 'architecture') return;
       options.onSelect(visual.item);
       renderer.domElement.style.cursor = 'pointer';
       return;
@@ -1886,7 +2059,7 @@ export const createApplication3DScene = (
       resizeLayoutTimer = null;
       if (disposed) return;
       if (phase === 'initializing') return;
-      layoutVisuals({ snapCamera: phase === 'wall' });
+      layoutVisuals();
       if (phase === 'focused') applyFocusPose(false);
     }, RESIZE_LAYOUT_DEBOUNCE_MS);
   };
@@ -1899,11 +2072,13 @@ export const createApplication3DScene = (
     });
   };
 
+  renderer.domElement.addEventListener('contextmenu', handleContextMenu);
   if (options.interactive) {
     renderer.domElement.addEventListener('pointerdown', handlePointerDown);
     renderer.domElement.addEventListener('pointermove', handlePointerMove);
     renderer.domElement.addEventListener('pointerup', handlePointerUp);
     renderer.domElement.addEventListener('pointerleave', handlePointerLeave);
+    renderer.domElement.addEventListener('wheel', handleWheel, { passive: true });
     renderer.domElement.style.cursor = 'grab';
   }
   const resizeObserver = new ResizeObserver(resize);
@@ -1918,6 +2093,9 @@ export const createApplication3DScene = (
     focus,
     showArchitecture,
     hideArchitecture,
+    dismissArchitectureOverlay: () => {
+      clearArchitectureHost();
+    },
     setActive: (nextActive) => {
       if (disposed || active === nextActive) return;
       active = nextActive;
@@ -1944,10 +2122,12 @@ export const createApplication3DScene = (
       if (frameId !== null) window.cancelAnimationFrame(frameId);
       if (resizeRaf !== null) window.cancelAnimationFrame(resizeRaf);
       resizeObserver.disconnect();
+      renderer.domElement.removeEventListener('contextmenu', handleContextMenu);
       renderer.domElement.removeEventListener('pointerdown', handlePointerDown);
       renderer.domElement.removeEventListener('pointermove', handlePointerMove);
       renderer.domElement.removeEventListener('pointerup', handlePointerUp);
       renderer.domElement.removeEventListener('pointerleave', handlePointerLeave);
+      renderer.domElement.removeEventListener('wheel', handleWheel);
       controls.dispose();
       visuals.forEach(disposeVisual);
       visuals.clear();

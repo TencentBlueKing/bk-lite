@@ -33,6 +33,12 @@ import type {
   AlarmActionContextProps,
   AlarmActionRowData,
 } from '@/app/alarm/components/alarm-action/types';
+import type { MonitorObjectSnapshot } from '@/app/alarm/types/alarms';
+import {
+  RelatedTopologyTabContent,
+  relatedTopologyTabItem,
+  useRelatedTopologyTab,
+} from '@/app/alarm/components/related-topology-tab';
 
 export interface AlarmDetailLevelOption {
   color?: string;
@@ -76,6 +82,7 @@ export interface AlarmDetailDrawerData extends AlarmActionRowData {
   operator_user?: string;
   resource_name?: string;
   resource_type?: string;
+  monitor_objects?: MonitorObjectSnapshot[];
   title?: string;
 }
 
@@ -162,13 +169,24 @@ const AlarmDetailDrawer = forwardRef<
     const [timeLineData, setTimeLineData] = useState<Array<{ color: string; children: React.ReactNode }>>([]);
     const timelineRef = useRef<HTMLDivElement>(null);
     const isFetchingRef = useRef<boolean>(false);
-    const isBaseInfo = activeTab === 'baseInfo';
-    const isEventTab = activeTab === 'event';
     const [pagination, setPagination] = useState<AlarmDetailPagination>({
       current: 1,
       total: 0,
       pageSize: 100,
     });
+    const isBaseInfo = activeTab === 'baseInfo';
+    const isEventTab = activeTab === 'event';
+    const isRelatedTopologyTab = activeTab === 'relatedTopology';
+    const {
+      visible: relatedTopologyVisible,
+      centers: relatedTopologyCenters,
+      Widget: RelatedTopologyWidget,
+      loadFailed: relatedTopologyLoadFailed,
+    } =
+      useRelatedTopologyTab(
+        groupVisible ? formData.monitor_objects : undefined
+      );
+    const relatedTab = relatedTopologyTabItem(t, relatedTopologyVisible);
     const tabList = [
       {
         key: 'baseInfo',
@@ -182,6 +200,7 @@ const AlarmDetailDrawer = forwardRef<
         key: 'timeline',
         label: t('alarms.changes'),
       },
+      ...(relatedTab ? [relatedTab] : []),
     ];
 
     const getEventListData = async (params: Record<string, unknown>) => {
@@ -482,7 +501,15 @@ const AlarmDetailDrawer = forwardRef<
             </div>
           )}
 
-          {!isBaseInfo && !isEventTab && (
+          {isRelatedTopologyTab && (
+            <RelatedTopologyTabContent
+              centers={relatedTopologyCenters}
+              Widget={RelatedTopologyWidget}
+              loadFailed={relatedTopologyLoadFailed}
+            />
+          )}
+
+          {!isBaseInfo && !isEventTab && !isRelatedTopologyTab && (
             <Spin spinning={recordLoading}>
               {timeLineData.length > 1 ? (
                 <div

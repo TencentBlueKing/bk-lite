@@ -22,9 +22,19 @@ const toTimestampMs = (value: number): number => (value < 1e12 ? value * 1000 : 
 
 /**
  * 采样间隔常大于桶宽（如默认 15m / 18 格 ≈ 50s，而 scrape/step 多为 60s），
- * 仅按「点落在桶内」会出现周期性假灰。用相邻成功点的中位间隔作为覆盖半径。
+ * 仅按「点落在桶内」会出现周期性假灰。用相邻成功点的中位间隔估计覆盖宽度，
+ * 但必须封顶：不能把跨缺数的成功点距离当成采集频率。
+ * 有实例间隔时 cap = max(bucketWidth, interval×1.5)，保证 60s 采样 / 50s 桶不假灰。
  */
-const estimateSampleCoverageMs = (successTimes: number[], bucketWidth: number): number => {
+const estimateSampleCoverageMs = (
+  successTimes: number[],
+  bucketWidth: number,
+  sampleIntervalMs?: number
+): number => {
+  const hasInterval =
+    sampleIntervalMs != null && Number.isFinite(sampleIntervalMs) && sampleIntervalMs > 0;
+  const coverageCap = hasInterval ? Math.max(bucketWidth, sampleIntervalMs * 1.5) : bucketWidth * 3;
+
   if (successTimes.length < 2) return bucketWidth;
   const gaps: number[] = [];
   for (let i = 1; i < successTimes.length; i += 1) {
@@ -34,7 +44,7 @@ const estimateSampleCoverageMs = (successTimes: number[], bucketWidth: number): 
   if (gaps.length === 0) return bucketWidth;
   gaps.sort((a, b) => a - b);
   const medianGap = gaps[Math.floor(gaps.length / 2)];
-  return Math.max(bucketWidth, medianGap);
+  return Math.min(Math.max(bucketWidth, medianGap), coverageCap);
 };
 
 export const getCollectionStatusToneLabel = (tone: CollectionStatusTone): string =>
@@ -68,7 +78,8 @@ export const buildCollectionStatusTimeline = (
   viewData: ChartData[] | undefined,
   startMs: number,
   endMs: number,
-  segmentCount = COLLECTION_STATUS_SEGMENT_COUNT
+  segmentCount = COLLECTION_STATUS_SEGMENT_COUNT,
+  sampleIntervalMs?: number
 ): CollectionStatusTimelineSegment[] => {
   const safeStart = Number(startMs);
   const safeEnd = Number(endMs);
@@ -100,7 +111,7 @@ export const buildCollectionStatusTimeline = (
     }
   }
   successTimes.sort((a, b) => a - b);
-  const coverageMs = estimateSampleCoverageMs(successTimes, bucketWidth);
+  const coverageMs = estimateSampleCoverageMs(successTimes, bucketWidth, sampleIntervalMs);
   const halfCoverage = coverageMs / 2;
   for (const pointMs of successTimes) {
     const coverStart = Math.max(resolvedStart, pointMs - halfCoverage);

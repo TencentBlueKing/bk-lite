@@ -737,7 +737,9 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
                 {isEditMode && (
                   <MoreActionsDropdown
                     items={menuItems}
-                    buttonClassName="no-drag text-(--color-text-2) hover:text-(--color-text-1) transition-colors cursor-pointer"
+                    trigger={['hover']}
+                    labelAlign="start"
+                    buttonClassName="no-drag cursor-pointer text-(--color-text-2) transition-colors hover:!bg-transparent hover:text-(--color-text-1)"
                     iconStyle={{ fontSize: '18px' }}
                   />
                 )}

@@ -1,11 +1,16 @@
 import json
-from typing import Dict, List, Any, Optional
 import uuid
+from typing import Any, Dict, List, Optional
+
 from django.utils import timezone
-from apps.alerts.models.models import Alert, Event, Level
-from apps.alerts.models.alert_operator import AlarmStrategy
-from apps.alerts.constants.constants import AlertStatus, SessionStatus, LevelType
+
 from apps.alerts.aggregation.window.factory import WindowFactory
+from apps.alerts.constants.constants import AlertStatus, EventAction, LevelType, SessionStatus
+from apps.alerts.enrichment.merge import merge_namespace_payload
+from apps.alerts.models.alert_operator import AlarmStrategy
+from apps.alerts.models.models import Alert, Event, Level
+from apps.alerts.service.monitor_object_snapshot import resolve_monitor_objects
+from apps.alerts.utils.enrichment import resolve_data_path
 from apps.alerts.utils.permission_scope import normalize_team_ids
 from apps.core.logger import alert_logger as logger
 
@@ -29,11 +34,7 @@ class AlertBuilder:
             set: ALERT类型的level_id集合，如{0, 1, 2}
         """
         if cls._valid_alert_levels is None:
-            cls._valid_alert_levels = set(
-                Level.objects.filter(level_type=LevelType.ALERT).values_list(
-                    "level_id", flat=True
-                )
-            )
+            cls._valid_alert_levels = set(Level.objects.filter(level_type=LevelType.ALERT).values_list("level_id", flat=True))
             logger.info("[AlertBuild] 加载ALERT类型有效级别: %s", sorted(cls._valid_alert_levels))
         return cls._valid_alert_levels
 
@@ -75,21 +76,24 @@ class AlertBuilder:
             mapped_level = sorted_levels[0]
             logger.debug(
                 "[AlertBuild] Event级别%s比ALERT最严重级别还严重，映射到%s(最严重)",
-                level_id, mapped_level,
+                level_id,
+                mapped_level,
             )
         elif level_id > sorted_levels[-1]:
             # Event比ALERT最轻微的级别还要轻微，映射到ALERT最轻微级别
             mapped_level = sorted_levels[-1]
             logger.warning(
                 "[AlertBuild] Event级别%s(更轻微)超出ALERT范围，映射到%s(ALERT最轻微级别)",
-                level_id, mapped_level,
+                level_id,
+                mapped_level,
             )
         else:
             # 在范围内但不存在，向更严重方向取最接近的有效值
             mapped_level = max(lvl for lvl in sorted_levels if lvl < level_id)
             logger.debug(
                 "[AlertBuild] Event级别%s不存在于ALERT，向严重方向映射到%s",
-                level_id, mapped_level,
+                level_id,
+                mapped_level,
             )
 
         return str(mapped_level)
@@ -120,29 +124,45 @@ class AlertBuilder:
 
     @staticmethod
     def _merge_enrichment(events) -> dict:
-        """按命名空间合并成员事件 enrichment：首条非空者优先。"""
-        merged = {}
+        """合并成员事件 enrichment；命名空间保持稳定对象，冲突写入 _meta。"""
+        merged_by_namespace = {}
         for event in events:
             data = getattr(event, "enrichment", None) or {}
             for namespace, payload in data.items():
-                if namespace not in merged and payload:
-                    merged[namespace] = payload
-        return merged
+                if not payload:
+                    continue
+                existing = merged_by_namespace.get(namespace)
+                if existing is None:
+                    merged_by_namespace[namespace], _ = merge_namespace_payload({}, payload)
+                elif existing != payload:
+                    merged_by_namespace[namespace], _ = merge_namespace_payload(existing, payload)
+        return merged_by_namespace
 
     @staticmethod
     def _get_consistent_labels(events: List[Event]) -> Dict[str, Any]:
         if not events:
             return {}
 
-        serialized_labels = [
-            json.dumps(event.labels or {}, sort_keys=True, ensure_ascii=False)
-            for event in events
-        ]
+        serialized_labels = [json.dumps(event.labels or {}, sort_keys=True, ensure_ascii=False) for event in events]
 
         if len(set(serialized_labels)) == 1:
             return events[0].labels or {}
 
         return {}
+
+    @staticmethod
+    def _merge_enrichment_meta(events) -> dict:
+        status_counts: Dict[str, int] = {}
+        event_count = 0
+        for event in events:
+            event_count += 1
+            status = (getattr(event, "enrichment_meta", None) or {}).get("status", "skipped")
+            status_counts[status] = status_counts.get(status, 0) + 1
+        return {
+            "schema_version": 1,
+            "event_count": event_count,
+            "status_counts": status_counts,
+        }
 
     @staticmethod
     def _resolve_standard_fields(events) -> Dict[str, Any]:
@@ -156,26 +176,18 @@ class AlertBuilder:
                 "item": None,
                 "labels": {},
                 "enrichment": {},
+                "enrichment_meta": {"schema_version": 1, "event_count": 0, "status_counts": {}},
             }
 
         return {
-            "source_name": AlertBuilder._get_unique_scalar_value(
-                [event.source.name for event in event_list]
-            ),
-            "resource_id": AlertBuilder._get_unique_scalar_value(
-                [event.resource_id for event in event_list]
-            ),
-            "resource_name": AlertBuilder._get_unique_scalar_value(
-                [event.resource_name for event in event_list]
-            ),
-            "resource_type": AlertBuilder._get_unique_scalar_value(
-                [event.resource_type for event in event_list]
-            ),
-            "item": AlertBuilder._get_unique_scalar_value(
-                [event.item for event in event_list]
-            ),
+            "source_name": AlertBuilder._get_unique_scalar_value([event.source.name for event in event_list]),
+            "resource_id": AlertBuilder._get_unique_scalar_value([event.resource_id for event in event_list]),
+            "resource_name": AlertBuilder._get_unique_scalar_value([event.resource_name for event in event_list]),
+            "resource_type": AlertBuilder._get_unique_scalar_value([event.resource_type for event in event_list]),
+            "item": AlertBuilder._get_unique_scalar_value([event.item for event in event_list]),
             "labels": AlertBuilder._get_consistent_labels(event_list),
             "enrichment": AlertBuilder._merge_enrichment(event_list),
+            "enrichment_meta": AlertBuilder._merge_enrichment_meta(event_list),
         }
 
     @staticmethod
@@ -190,7 +202,13 @@ class AlertBuilder:
         for dimension_name in dimension_names:
             values = set()
             for event in event_list:
-                value = getattr(event, dimension_name, None)
+                if dimension_name.startswith("enrichment."):
+                    value = resolve_data_path(
+                        {"enrichment": getattr(event, "enrichment", None) or {}},
+                        dimension_name,
+                    )
+                else:
+                    value = getattr(event, dimension_name, None)
                 if value is None:
                     continue
                 normalized_value = str(value).strip()
@@ -204,11 +222,7 @@ class AlertBuilder:
 
     @staticmethod
     def _get_events_by_ids(event_ids: List) -> List[Event]:
-        return list(
-            Event.objects.select_related("source")
-            .filter(event_id__in=event_ids)
-            .order_by("pk")
-        )
+        return list(Event.objects.select_related("source").filter(event_id__in=event_ids).order_by("pk"))
 
     @staticmethod
     def create_or_update_alert(
@@ -224,20 +238,13 @@ class AlertBuilder:
         fingerprint = aggregation_result.get("fingerprint")
         event_ids = aggregation_result.get("event_ids", [])
 
-        from apps.alerts.service.active_fingerprint import (
-            bind_active_fingerprint,
-            claim_active_fingerprint,
-        )
+        from apps.alerts.service.active_fingerprint import bind_active_fingerprint, claim_active_fingerprint
 
         lease, alert = claim_active_fingerprint(fingerprint)
         if alert:
-            return AlertBuilder._update_existing_alert(
-                alert, aggregation_result, event_ids, strategy
-            )
+            return AlertBuilder._update_existing_alert(alert, aggregation_result, event_ids, strategy)
 
-        alert = AlertBuilder._create_new_alert(
-            aggregation_result, strategy, event_ids, group_by_field
-        )
+        alert = AlertBuilder._create_new_alert(aggregation_result, strategy, event_ids, group_by_field)
         bind_active_fingerprint(lease, alert)
         return alert
 
@@ -252,6 +259,7 @@ class AlertBuilder:
         events = AlertBuilder._get_events_by_ids(event_ids) if event_ids else []
         standard_fields = AlertBuilder._resolve_standard_fields(events)
         dimensions = AlertBuilder._resolve_dimensions(events, group_by_field)
+        monitor_objects = resolve_monitor_objects(event for event in events if event.action == EventAction.CREATED)
 
         window_config = WindowFactory.create_from_strategy(strategy)
 
@@ -272,20 +280,18 @@ class AlertBuilder:
             last_event_time=result["last_event_time"],
             labels=standard_fields["labels"],
             enrichment=standard_fields["enrichment"],
+            enrichment_meta=standard_fields["enrichment_meta"],
             item=standard_fields["item"],
             resource_id=standard_fields["resource_id"],
             resource_name=standard_fields["resource_name"],
             resource_type=standard_fields["resource_type"],
+            monitor_objects=monitor_objects,
             source_name=standard_fields["source_name"],
             group_by_field=group_by_field,
             dimensions=dimensions,
             is_session_alert=is_session_alert,
-            session_status=SessionStatus.OBSERVING
-            if is_session_alert and session_timeout_minutes
-            else None,
-            session_end_time=window_config.get_session_end_time()
-            if is_session_alert and session_timeout_minutes
-            else None,
+            session_status=SessionStatus.OBSERVING if is_session_alert and session_timeout_minutes else None,
+            session_end_time=window_config.get_session_end_time() if is_session_alert and session_timeout_minutes else None,
             rule_id=strategy.id,  # 软关联告警策略
             team=AlertBuilder._get_safe_strategy_team(strategy),
         )
@@ -297,11 +303,10 @@ class AlertBuilder:
             AlertBuilder._alert_event_cache[alert.pk] = set(event_ids)
 
         from django.db import transaction
+
         from apps.alerts.service.alert_lifecycle import dispatch_alert_lifecycle
 
-        transaction.on_commit(
-            lambda aid=alert.alert_id: dispatch_alert_lifecycle([aid], "created")
-        )
+        transaction.on_commit(lambda aid=alert.alert_id: dispatch_alert_lifecycle([aid], "created"))
 
         return alert
 
@@ -312,7 +317,6 @@ class AlertBuilder:
         event_ids: List,
         strategy: AlarmStrategy,
     ) -> Alert:
-        events_to_validate = AlertBuilder._get_events_by_ids(event_ids) if event_ids else []
         alert.last_event_time = result["last_event_time"]
         # 确保level在ALERT类型的有效范围内
         alert.level = AlertBuilder._map_event_level_to_alert(result["alert_level"])
@@ -329,9 +333,7 @@ class AlertBuilder:
         if event_ids:
             # 性能优化：使用类级别缓存避免重复查询已关联的event_id
             if alert.pk not in AlertBuilder._alert_event_cache:
-                AlertBuilder._alert_event_cache[alert.pk] = set(
-                    alert.events.values_list("event_id", flat=True)
-                )
+                AlertBuilder._alert_event_cache[alert.pk] = set(alert.events.values_list("event_id", flat=True))
 
             existing_event_ids = AlertBuilder._alert_event_cache[alert.pk]
             new_event_ids = [eid for eid in event_ids if eid not in existing_event_ids]
@@ -342,11 +344,11 @@ class AlertBuilder:
                 # 更新缓存
                 existing_event_ids.update(new_event_ids)
 
-        standard_fields = AlertBuilder._resolve_standard_fields(
-            alert.events.select_related("source").all().order_by("pk")
-        )
+        related_events = alert.events.select_related("source").all().order_by("pk")
+        standard_fields = AlertBuilder._resolve_standard_fields(related_events)
+        alert.monitor_objects = resolve_monitor_objects(event for event in related_events if event.action == EventAction.CREATED)
         dimensions = AlertBuilder._resolve_dimensions(
-            alert.events.all().order_by("pk"),
+            related_events,
             alert.group_by_field or "",
         )
         alert.source_name = standard_fields["source_name"]
@@ -356,6 +358,7 @@ class AlertBuilder:
         alert.item = standard_fields["item"]
         alert.labels = standard_fields["labels"]
         alert.enrichment = standard_fields["enrichment"]
+        alert.enrichment_meta = standard_fields["enrichment_meta"]
         alert.dimensions = dimensions
         alert.save(
             update_fields=[
@@ -367,9 +370,11 @@ class AlertBuilder:
                 "resource_id",
                 "resource_name",
                 "resource_type",
+                "monitor_objects",
                 "item",
                 "labels",
                 "enrichment",
+                "enrichment_meta",
                 "dimensions",
             ]
         )

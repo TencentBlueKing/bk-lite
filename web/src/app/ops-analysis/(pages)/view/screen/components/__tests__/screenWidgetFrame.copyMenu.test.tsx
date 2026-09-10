@@ -58,7 +58,7 @@ afterEach(() => {
 
 const openMoreMenu = async () => {
   const user = userEvent.setup();
-  await user.click(screen.getByRole('button', { name: 'common.more' }));
+  await user.hover(screen.getByRole('button', { name: 'common.more' }));
 };
 
 describe('ScreenWidgetFrame copy menu', () => {
@@ -81,7 +81,7 @@ describe('ScreenWidgetFrame copy menu', () => {
     );
 
     await openMoreMenu();
-    expect(await screen.findByText('opsAnalysis.screen.editWidget')).toBeTruthy();
+    expect(await screen.findByText('common.edit')).toBeTruthy();
     expect(screen.queryByText('common.copy')).toBeNull();
   });
 
@@ -111,9 +111,9 @@ describe('ScreenWidgetFrame copy menu', () => {
     );
 
     await openMoreMenu();
-    expect(await screen.findByText('opsAnalysis.screen.editWidget')).toBeTruthy();
+    expect(await screen.findByText('common.edit')).toBeTruthy();
     expect(screen.queryByText('common.copy')).toBeNull();
-    expect(screen.getByText('opsAnalysis.screen.deleteWidget')).toBeTruthy();
+    expect(screen.getByText('common.delete')).toBeTruthy();
   });
 
   it('omits 复制 on a builtin canvas', async () => {
@@ -131,8 +131,8 @@ describe('ScreenWidgetFrame copy menu', () => {
     );
 
     await openMoreMenu();
-    expect(await screen.findByText('opsAnalysis.screen.editWidget')).toBeTruthy();
+    expect(await screen.findByText('common.edit')).toBeTruthy();
     expect(screen.queryByText('common.copy')).toBeNull();
-    expect(screen.getByText('opsAnalysis.screen.deleteWidget')).toBeTruthy();
+    expect(screen.getByText('common.delete')).toBeTruthy();
   });
 });

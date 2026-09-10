@@ -10,7 +10,7 @@
 ## 2. 数据模型与存储【已实现/已存在】
 | 模型 | 文件 | 说明 |
 |------|------|------|
-| CollectModels / OidMapping | `models/collect_model.py` | 采集任务（SNMP/云/协议/K8s/DB/拓扑），加密凭据，结果 JSON |
+| CollectModels / OidMapping / PortFingerprint | `models/collect_model.py` | 采集任务（SNMP/云/协议/K8s/DB/拓扑），加密凭据，结果 JSON；端口指纹 `(port, target_type)` 唯一 |
 | ChangeRecord | `models/change_record.py` | 变更审计（前后快照、操作类型、场景） |
 | ConfigFileVersion | `models/config_file_version.py` | 配置文件版本，内容存 MinIO |
 | ShowField | `models/show_field.py:7` | 实例列表展示字段配置，按 创建人×model_id 保存 `show_fields` 列表（JSON） |
@@ -19,7 +19,7 @@
 | NodeMgmtSyncConfig / NodeMgmtSyncRun | `models/node_mgmt_sync.py:7,22` | 节点管理同步配置与运行记录（两个独立模型） |
 | CollectTaskCredentialHit | `models/collect_task_credential_hit.py` | 采集任务凭据使用审计 |
 | IPAMReconcileSource | `models/ipam_models.py:7` | IPAM 自动对账来源登记表，记录参与对账的 `(model_id, ip_attr_id)`，默认由迁移预置 `host.ip_addr` 与 `network.ip` |
-| ScanTask / ScanExecution / ScanFamilyRun / ScanHit | `models/scan_model.py:39,115,148,177` | 网段扫描任务、执行、家族运行与命中；允许家族 `network/host/physcial_server/mysql/postgresql/mssql/influxdb`，网段前缀下限 /21 |
+| ScanTask / ScanExecution / ScanFamilyRun / ScanHit | `models/scan_model.py:39,115,148,177` | 网段扫描任务、执行、家族运行与命中；任务勾选 `network/host/physcial_server/database/influxdb`（读取旧 mysql/postgresql/mssql 合并为 database）；触发时 database 按端口指纹拆 mysql/postgresql/mssql 三枪；网段前缀下限 /21 |
 
 **存储**：PostgreSQL（ORM）；**Neo4j / FalkorDB**（关系图谱，驱动实现 `graph/{neo4j,falkordb}.py`，运行期由 `graph/drivers/graph_client.py:46-52` 按环境变量 `FALKORDB_HOST` 动态二选一——设置则用 FalkorDB，否则回落 Neo4j，并非两者并存【已实现/已存在】）；Neo4j 搜索/过滤路径已参数化（`graph/neo4j.py:10,301`，引入 `FORMAT_TYPE_PARAMS + ParameterCollector`，`format_search_params/format_final_params` 返回 `(params_str, query_params)` 元组并以 `session.run(**query_params)` 执行，权限过滤条件同步参数化，该路径的 Cypher 注入风险已消除【已实现/已存在】；但写入与按 id 取详情等路径仍为 f-string 拼接、未参数化——`create_entity` `CREATE (n:{label} {properties_str})`（`:197`）、`MATCH (n) WHERE id(n) = {id}`（`:408`），属局部加固而非全面消除【已实现/待确认风险】）；MinIO（配置文件，`cmdb-config-file` bucket）；VictoriaMetrics（K8s 指标查询，`collection/query_vm.py`）。
 
@@ -54,7 +54,7 @@
 > 证据来源：server/apps/cmdb/services/ipam_edit.py:81-88，server/apps/cmdb/services/ipam_edit.py:104-121，server/apps/cmdb/services/ipam_edit.py:169-245，server/apps/cmdb/views/instance.py:1452-1540　|　同步基线：b98b782a7　|　【已实现】
 
 ## 3. 接口【已实现/已存在】
-`urls.py` 路由组：`classification`/`model`/`instance`/`change_record`/`collect`/`scan`/`config_file_versions`/`oid`/`field_groups`/`user_configs`/`public_enum_libraries`/`subscription`/`node_mgmt_sync`/`collect_tool`/`k8s_setup`；开放端点 `open_api/k8s_setup` 与 `api/open/*`（分类/模型/属性/关联/实例的开放 CRUD）；企业特性 `custom_reporting/{tasks,ingest}`（CE 为扩展门面，实现在企业包）。
+`urls.py` 路由组：`classification`/`model`/`instance`/`change_record`/`collect`/`scan`/`config_file_versions`/`oid`/`port_fingerprint`/`field_groups`/`user_configs`/`public_enum_libraries`/`subscription`/`node_mgmt_sync`/`collect_tool`/`k8s_setup`；开放端点 `open_api/k8s_setup` 与 `api/open/*`（分类/模型/属性/关联/实例的开放 CRUD）；企业特性 `custom_reporting/{tasks,ingest}`（CE 为扩展门面，实现在企业包）。
 
 > 证据来源：server/apps/cmdb/urls.py:27,41-87，server/apps/cmdb/models/scan_model.py:10-22,39　|　同步基线：61bace9f　|　【已实现】
 
@@ -88,7 +88,7 @@
   - **实例 CRUD / 显示字段**：`update_instance`(:396)、`sync_display_fields`(:736)。
   - **采集结果回传（Stargazer→CMDB）**：`receive_config_file_result`(:696，配置文件落库为 ConfigFileVersion)、`receive_collect_credential_result`(:711，凭据探测命中)。**注：原 `receive_ip_discovery_result` handler 已下线，IP 发现结果回写由服务层 `services/ipam_discovery.py:205` `apply_discovery_result`（落库 `ip` 台账并更新在线/离线状态）与 `:299` `apply_ip_discovery_vm_rows`（回写 VictoriaMetrics 离线 IP 行）协同完成。**
   - **运营分析统计取数**：`get_cmdb_statistics`(:758)、`get_change_trend`(:887)、`get_instance_group_by`(:960)、`get_model_inst_statistics`(:1024)、`get_cmdb_model_instance_top`(:1075)、`get_cmdb_collect_statistics`(:1120)。
-  - **机房 3D 布局取数**【已实现/已存在】：`get_room3d_layout`(`nats/nats.py:952-1050`) 返回机房的 row/col 网格、U 占用与设备摘要；payload 中 `rack_type`（`datacenter_type` 枚举 id）由 `_get_room3d_rack_type_name_map`(`nats/nats.py:942-949`) 解析为可读名称 `rack_type_name`（无值时不带该字段），供 3D 大屏图例与机柜顶贴图渲染；`rack_id`/`rack_name` 字段源统一改取 `item['rack_id']` / `item['rack_name']`（当 `instance_name` 缺失时 fallback 到 `rack_id`）。
+  - **机房 3D 布局取数**【已实现/已存在】：`get_room3d_layout` 返回机房的 row/col 网格、U 占用与设备摘要；payload 中 `rack_type`（`datacenter_type` 枚举 id）解析为可读名称 `rack_type_name`（无值时不带该字段）；已上架设备附加告警摘要字段 `monitor_bound` / `alarm_unavailable` / `active_alarm_count` / `highest_severity`（经 Monitor `query_active_alert_summaries_by_monitor_ids`，不下发 `monitor_id`；告警失败软降级）。`rack_id`/`rack_name` 取自 `item['rack_id']` / `item['rack_name']`（`instance_name` 缺失时 fallback 到 `rack_id`）。
   - **实例/模型/关联通用查询与 CRUD（对外 RPC 供数与维护）**【已实现/已存在】（`nats/nats.py:453-679`，供跨模块经 RPC 调用）：
     | handler | 行号 | 说明 |
     |---------|------|------|
@@ -176,6 +176,13 @@
 - `[cmdb#20260709-001]` NATS `get_room3d_layout` payload 增 `rack_type_name` 字段：依据 `rack` 模型 `datacenter_type` 枚举属性将 id 解析为可读名称（计算/网络/存储/安全/其他/未分类），无值时不带该字段。消费方为运营分析 3D 大屏 `web/src/app/ops-analysis/components/widgets/room3D/`（数据源 `cmdb/get_room3d_layout` 注册于 `server/apps/operation_analysis/support-files/source_api.json:406`）。
 - `[cmdb#20260709-002]` `get_room3d_layout` 中 `rack_id`/`rack_name` 来源统一为 `item['rack_id']` / `item['rack_name']`（`instance_name` 缺失时 fallback 到 `rack_id`），并配套新增 `test_get_room3d_layout_falls_back_to_rack_id_when_name_missing`、`test_get_room3d_layout_returns_rack_type_name_from_cmdb_enum` 两个测试。
 - `[cmdb#20260709-003]` 双向校验修订：`InstanceViewSet.room3d_layout` REST 端点**不存在**（3D 数据走内置数据源 rest_api，不在 ViewSet 路由表内）；NATS `receive_ip_discovery_result` handler 与 `services.ipam_discovery.maybe_dispatch_ip_discovery` 函数**已下线**（功能下沉到 `services/ipam_discovery.py:205,299` 服务层直连 Stargazer 回调）。spec 删除相关端点行，证据行按代码当前位置刷新。
+
+## 2026-09-04 Code-ARD 校准
+- `[cmdb#20260904-001]` `get_room3d_layout` 已上架设备附加监控告警摘要（`monitor_bound` / `alarm_unavailable` / `active_alarm_count` / `highest_severity`）；经 Monitor `query_active_alert_summaries_by_monitor_ids` 聚合，不下发 `monitor_id`；告警失败软降级。契约见 `specs/changes/ops-analysis-room3d-device-alarms/spec.md`。
+
+## 2026-09-07 网络状态拓扑闭集 NATS
+
+- `[cmdb#20260907-001]` 新增 NATS `network_topology_among_uuids`：入参 `inst_uuids` + `user_info`，按模型构建 permission_map，调用 `InstanceManage.network_topology_among_uuids`。无权 / 非网络设备 / 非法 UUID / 超上限 / 闭集不完整一律 `{result: False, data: {nodes:[], links:[]}}`，不返回空成功图。RPC 包装：`apps.rpc.cmdb.CMDB.network_topology_among_uuids`。消费方为运营分析网络状态拓扑场景。
 
 ## 7. 证据来源
 `server/apps/cmdb/{urls.py,models/*,models/ipam_models.py:7,graph/*,graph/neo4j.py,graph/drivers/graph_client.py,collection/*,collection/collect_plugin/oceanstor.py,constants/constants.py,tasks/celery_tasks.py:72-74,397,408,nats/nats.py:696,711,942-949,952-1050,services/rack_room.py,services/ipam_*.py,services/ipam_discovery.py:205,299,services/ipam_reconcile.py,utils/ipam_cidr.py,node_configs/network_config_file.py:5-63,views/collect.py:66-68,views/instance.py:1145,1190,1212,1282,management/commands/{model_init.py:7,init_oid.py:11,init_field_groups.py:15,init_display_fields.py:24},support-files/model_config.xlsx}`、`server/apps/operation_analysis/support-files/source_api.json:406`（3D 机房数据源 `cmdb/get_room3d_layout` 注册）；`server/apps/rpc/cmdb.py:44-94`。

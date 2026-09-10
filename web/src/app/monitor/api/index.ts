@@ -118,6 +118,7 @@ const useMonitorApi = () => {
       page_size?: number;
       created_at_after?: string;
       created_at_before?: string;
+      my_alert?: number | string;
     } = {},
     config?: AxiosRequestConfig
   ) => {
@@ -132,8 +133,14 @@ const useMonitorApi = () => {
     params: InstanceParam = {},
     config?: AxiosRequestConfig
   ) => {
+    const { instance_id_in, ...rest } = params;
     return await get(`/monitor/api/monitor_instance/${String(objectId)}/list/`, {
-      params,
+      params: {
+        ...rest,
+        ...(instance_id_in?.length
+          ? { instance_id_in: JSON.stringify(instance_id_in) }
+          : {}),
+      },
       ...config
     });
   };
@@ -180,6 +187,19 @@ const useMonitorApi = () => {
     return await patch(`/monitor/api/monitor_alert/${String(id)}/`, data);
   };
 
+  const claimMonitorAlert = async (id: React.Key) => {
+    return await post(`/monitor/api/monitor_alert/${String(id)}/claim/`);
+  };
+
+  const assignMonitorAlert = async (
+    id: React.Key,
+    handlers: Array<string | number>
+  ) => {
+    return await post(`/monitor/api/monitor_alert/${String(id)}/assign/`, {
+      handlers
+    });
+  };
+
   const getAllUsers = async (organizationIds?: Array<string | number>) => {
     const params =
       organizationIds && organizationIds.length
@@ -219,6 +239,8 @@ const useMonitorApi = () => {
     getEffectivePlugins,
     getMonitorPlugin,
     patchMonitorAlert,
+    claimMonitorAlert,
+    assignMonitorAlert,
     getAllUsers,
     getUnitList,
     getVmMetricNames,

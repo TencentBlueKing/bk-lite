@@ -26,4 +26,17 @@ describe('ops-analysis ChartLegend long labels', () => {
     expect(label.className).toMatch(/text-ellipsis/);
     expect(label.className).toMatch(/whitespace-nowrap/);
   });
+
+  it('scrolls the vertical legend when there are more dimensions than the chart height', () => {
+    const { getByTestId } = render(
+      <ChartLegend
+        data={[{ name: longName }, { name: '1111' }]}
+        colors={['#1677ff', '#52c41a']}
+      />,
+    );
+
+    const scroller = getByTestId('chart-legend-scroll');
+    expect(scroller.className).toMatch(/overflow-y-auto/);
+    expect(scroller.className).toMatch(/min-h-0/);
+  });
 });

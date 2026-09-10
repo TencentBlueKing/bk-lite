@@ -9,6 +9,7 @@ import { ViewModalProps } from '@/app/monitor/types/view';
 import { useTranslation } from '@/utils/i18n';
 import MonitorView from './monitorView';
 import MonitorAlarm from './monitorAlarm';
+import MonitorPolicy from './monitorPolicy';
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
 import { INIT_VIEW_MODAL_FORM } from '@/app/monitor/constants/view';
 import { resolveDashboardUrl } from '@/app/monitor/dashboards/registry';
@@ -32,6 +33,10 @@ const ViewModal = forwardRef<ModalRef, ViewModalProps>(
       {
         label: t('monitor.views.alertList'),
         key: 'alertList',
+      },
+      {
+        label: t('monitor.views.monitoringPolicy'),
+        key: 'monitorPolicy',
       },
     ];
     const [currentTab, setCurrentTab] = useState<string>('monitorView');
@@ -127,13 +132,21 @@ const ViewModal = forwardRef<ModalRef, ViewModalProps>(
               plugins={plugins}
               form={viewConfig}
             />
-          ) : (
+          ) : currentTab === 'alertList' ? (
             <MonitorAlarm
               monitorObject={monitorObject}
               monitorName={monitorName}
               plugins={plugins}
               form={viewConfig}
               metrics={metrics}
+              objects={objects}
+            />
+          ) : (
+            <MonitorPolicy
+              monitorObject={monitorObject}
+              monitorName={monitorName}
+              plugins={plugins}
+              form={viewConfig}
               objects={objects}
             />
           )}

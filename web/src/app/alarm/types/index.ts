@@ -154,6 +154,8 @@ export interface CommonContextType {
     levelListIncident: LevelItem[];
     levelMapIncident: Record<string, string>;
     levelMeta: Record<string, LevelMetaGroup>;
+    /** 公共用户/级别后台加载中；页面可先渲染再等数据补齐 */
+    commonLoading: boolean;
     refreshLevels: () => Promise<void>;
     getLevelMeta: (type: string, levelId: string | number | null | undefined) => LevelItem | undefined;
 }

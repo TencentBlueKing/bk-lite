@@ -6,7 +6,7 @@ import type { HeatMapDataItem } from '@/types';
 import EventHeatMap, {
   getHeatMapCellColor,
   type HeatMapCellClickPayload,
-} from './heatMap';
+} from '@/components/heat-map';
 
 const TIMELINE_ITEM_HEIGHT = 48;
 

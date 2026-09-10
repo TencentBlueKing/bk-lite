@@ -448,7 +448,7 @@ def test_email_content_optimizer_requests_html_output(mocker):
     assert "<p>" in result
 
 
-def test_email_content_optimizer_uses_unit_temperature_for_kimi(mocker):
+def test_email_content_optimizer_omits_temperature_for_kimi(mocker):
     llm_model = mocker.Mock()
     llm_model.openai_api_base = "https://api.moonshot.cn/v1"
     llm_model.openai_api_key = "key"
@@ -473,7 +473,7 @@ def test_email_content_optimizer_uses_unit_temperature_for_kimi(mocker):
         node_id="notify_node",
     )
 
-    assert create_client.call_args.args[0].temperature == 1.0
+    assert create_client.call_args.args[0].temperature is None
 
 
 @pytest.mark.parametrize(("configured_timeout", "expected_timeout"), [("17", 17), (None, 300), ("", 300)])

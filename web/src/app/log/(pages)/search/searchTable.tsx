@@ -11,6 +11,11 @@ import { TableDataItem } from '@/app/log/types';
 import { SearchTableProps } from '@/app/log/types/search';
 import { useCopy } from '@/hooks/useCopy';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
+import SearchHighlight from '@/app/log/components/search-highlight';
+import {
+  extractHighlightTerms,
+  isLogContentField
+} from '@/app/log/utils/searchHighlight';
 
 const DEFAULT_FIELDS = ['timestamp', 'message'];
 
@@ -19,6 +24,7 @@ const SearchTable: React.FC<SearchTableProps> = ({
   loading = false,
   scroll,
   fields = [],
+  highlightQuery,
   addToQuery,
   onCreateExtractor,
   onLoadMore
@@ -27,6 +33,10 @@ const SearchTable: React.FC<SearchTableProps> = ({
   const { copy } = useCopy();
   const { convertToLocalizedTime } = useLocalizedTime();
   const [expandedRowKeys, setExpandedRowKeys] = useState<React.Key[]>([]);
+  const highlightTerms = useMemo(
+    () => extractHighlightTerms(highlightQuery),
+    [highlightQuery]
+  );
 
   const activeColumns = useMemo(() => {
     let orderedFields = [...fields];
@@ -59,7 +69,11 @@ const SearchTable: React.FC<SearchTableProps> = ({
           title: 'message',
           dataIndex: 'message',
           key: 'message',
-          render: (val: string) => val || '--',
+          render: (val: string) => (
+            <span className="break-all">
+              <SearchHighlight text={val} terms={highlightTerms} />
+            </span>
+          ),
           width: 800
         };
       }
@@ -75,7 +89,7 @@ const SearchTable: React.FC<SearchTableProps> = ({
     });
 
     return columns;
-  }, [fields]);
+  }, [convertToLocalizedTime, fields, highlightTerms]);
 
   const getRowExpandRender = (record: TableDataItem) => {
     return (
@@ -86,7 +100,9 @@ const SearchTable: React.FC<SearchTableProps> = ({
               className="cursor-pointer mr-[4px]"
               onClick={() => copy(record.message)}
             />
-            <span className="font-[500] break-all">{record.message}</span>
+            <span className="font-[500] break-all">
+              <SearchHighlight text={record.message} terms={highlightTerms} />
+            </span>
           </div>
           <div>
             <span className="mr-3">
@@ -112,15 +128,6 @@ const SearchTable: React.FC<SearchTableProps> = ({
               </span>
               <span>{record.collect_type || '--'}</span>
             </span>
-            {onCreateExtractor && (
-              <Button
-                type="link"
-                className="ml-3 px-0"
-                onClick={() => onCreateExtractor(record)}
-              >
-                {t('log.extractor.createFromLog')}
-              </Button>
-            )}
           </div>
         </div>
         <ul>
@@ -149,6 +156,20 @@ const SearchTable: React.FC<SearchTableProps> = ({
                             {t('log.search.addToQuery')}
                           </Button>
                         </li>
+                        {onCreateExtractor && (
+                          <li>
+                            <Button
+                              type="link"
+                              size="small"
+                              onClick={() => {
+                                onClose();
+                                onCreateExtractor(record, String(item.label));
+                              }}
+                            >
+                              {t('log.extractor.createFromLog')}
+                            </Button>
+                          </li>
+                        )}
                       </ul>
                     )}
                   >
@@ -186,7 +207,14 @@ const SearchTable: React.FC<SearchTableProps> = ({
                       </ul>
                     )}
                   >
-                    <span className="break-all">{item.value}</span>
+                    <span className="break-all">
+                      <SearchHighlight
+                        text={item.value}
+                        terms={
+                          isLogContentField(item.label) ? highlightTerms : []
+                        }
+                      />
+                    </span>
                     <CaretDownFilled
                       className={`text-[12px] ${searchStyle.arrow}`}
                     />

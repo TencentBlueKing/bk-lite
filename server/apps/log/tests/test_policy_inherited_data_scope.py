@@ -32,7 +32,7 @@ def _policy(name, organizations, collect_type=None):
 
 
 def _alert(policy, alert_id, collect_type=None):
-    return Alert.objects.create(
+        return Alert.objects.create(
         id=alert_id,
         policy=policy,
         collect_type=collect_type,
@@ -40,6 +40,7 @@ def _alert(policy, alert_id, collect_type=None):
         level="warning",
         status="new",
         start_event_time=timezone.now(),
+        organizations=list(policy.policyorganization_set.values_list("organization", flat=True)),
     )
 
 

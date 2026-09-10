@@ -49,7 +49,7 @@ import type { CredentialHelpDefinition } from './credentialHelp';
 
 import styles from '../index.module.scss';
 
-type CredentialShape = 'ssh' | 'sql' | 'snmp' | 'config_file' | 'network_config_file' | 'vm' | 'winsphere' | 'cloud' | 'ipmi' | 'winrm' | 'macos_ssh' | 'influxdb' | 'platform_api';
+type CredentialShape = 'ssh' | 'sql' | 'snmp' | 'config_file' | 'network_config_file' | 'vm' | 'winsphere' | 'cloud' | 'ipmi' | 'redfish' | 'winrm' | 'macos_ssh' | 'influxdb' | 'platform_api';
 interface CredentialDragEndEvent {
   active: { id: string | number };
   over: { id: string | number } | null;
@@ -69,6 +69,7 @@ export interface CredentialPoolEditorProps {
   onChange?: (value: CredentialPoolItem[]) => void;
   editMode?: boolean;
   showDatabase?: boolean;
+  showPort?: boolean;
   allowAdd?: boolean;
   allowRemove?: boolean;
   showCount?: boolean;
@@ -99,6 +100,7 @@ const createEmptyCredential = (
   showDatabase?: boolean,
   defaultPort?: number | string,
   credentialSchema?: CredentialSchema,
+  showPort: boolean = true,
 ): CredentialPoolItem => {
   if (shape === 'snmp') {
     return {
@@ -163,14 +165,20 @@ const createEmptyCredential = (
 
   return {
     _client_id: makeClientId(),
-    port: shape === 'sql'
-      ? (defaultPort ?? (showDatabase ? '1433' : '3306'))
-      : shape === 'vm'
-        ? '443'
-        : '22',
+    ...(showPort
+      ? {
+        port:
+          shape === 'sql'
+            ? (defaultPort ?? (showDatabase ? '1433' : '3306'))
+            : shape === 'vm'
+              ? '443'
+              : '22',
+      }
+      : {}),
     ...(shape === 'vm' ? { ssl: false } : {}),
     ...(shape === 'cloud' ? { accessKey: '', accessSecret: '', regionId: '' } : {}),
     ...(shape === 'ipmi' ? { port: '623', privilege: 'administrator' } : {}),
+    ...(shape === 'redfish' ? { port: '443', verify_tls: true } : {}),
     ...(shape === 'sql' && showDatabase ? { database: 'master' } : {}),
   };
 };
@@ -196,6 +204,7 @@ function getPreviewFields(
     accessSecret: string;
     projectId?: string;
   },
+  showPort: boolean = true,
 ) {
   if (shape === 'winsphere') {
     return [
@@ -334,8 +343,19 @@ function getPreviewFields(
       value: passwordVisible && item.password && item.password !== PASSWORD_PLACEHOLDER ? item.password : getMaskedSecret(item.password),
       isSecret: true,
     },
-    { label: t('Collection.port', '端口'), value: String(item.port || (shape === 'sql' ? '3306' : shape === 'vm' ? '443' : shape === 'ipmi' ? '623' : '22')) },
   ];
+  if (showPort) {
+    fields.push({
+      label: t('Collection.port', '端口'),
+      value: String(item.port || (shape === 'sql' ? '3306' : shape === 'vm' || shape === 'redfish' ? '443' : shape === 'ipmi' ? '623' : '22')),
+    });
+  }
+  if (shape === 'redfish') {
+    fields.push({
+      label: t('Collection.RedfishTask.verifyTls', '校验证书'),
+      value: item.verify_tls !== false ? t('common.yes', '是') : t('common.no', '否'),
+    });
+  }
   if (shape === 'network_config_file') {
     fields.push({
       label: t('Collection.credentialPool.enablePassword', '特权密码'),
@@ -453,6 +473,7 @@ function renderCredentialFields({
   shape,
   editMode,
   showDatabase,
+  showPort,
   cloudRegionOptions,
   cloudRegionLoading,
   onCloudRegionRefresh,
@@ -467,6 +488,7 @@ function renderCredentialFields({
   shape: CredentialShape;
   editMode: boolean;
   showDatabase: boolean;
+  showPort: boolean;
   cloudRegionOptions: { label: string; value: string }[];
   cloudRegionLoading: boolean;
   onCloudRegionRefresh?: () => void;
@@ -996,15 +1018,37 @@ function renderCredentialFields({
           onChange={(nextValue) => updateItem(index, { password: nextValue })}
         />
       </InputRow>
-      <InputRow label={t('Collection.port', '端口')}>
-        <InputNumber
-          min={1}
-          max={65535}
-          className="w-32"
-          value={item.port}
-          onChange={(nextValue) => updateItem(index, { port: nextValue ?? undefined })}
-        />
-      </InputRow>
+      {showPort && (
+        <InputRow label={t('Collection.port', '端口')}>
+          <InputNumber
+            min={1}
+            max={65535}
+            className="w-32"
+            value={item.port}
+            onChange={(nextValue) => updateItem(index, { port: nextValue ?? undefined })}
+          />
+        </InputRow>
+      )}
+      {shape === 'redfish' && (
+        <>
+          <InputRow label={t('Collection.RedfishTask.verifyTls', '校验证书')}>
+            <Switch
+              checked={item.verify_tls !== false}
+              onChange={(verify_tls) => updateItem(index, { verify_tls })}
+            />
+          </InputRow>
+          {item.verify_tls === false && (
+            <Alert
+              type="warning"
+              showIcon
+              message={t(
+                'Collection.RedfishTask.tlsWarning',
+                '关闭证书校验会增加中间人攻击风险，仅应临时用于受信任网络中的自签名证书。',
+              )}
+            />
+          )}
+        </>
+      )}
       {shape === 'sql' && showDatabase && (
         <InputRow label={t('Collection.database', '数据库')}>
           <Input
@@ -1023,7 +1067,7 @@ function renderCredentialFields({
         </InputRow>
       )}
       {shape === 'network_config_file' && (
-        <InputRow label="特权密码" required={false}>
+        <InputRow label={t('Collection.credentialPool.enablePassword', '特权密码')} required={false}>
           <SecretInput
             value={item.enable_password}
             placeholder={t('common.inputTip', '请输入')}
@@ -1053,6 +1097,7 @@ export default function CredentialPoolEditor({
   onChange,
   editMode = false,
   showDatabase = false,
+  showPort = true,
   allowAdd = true,
   allowRemove = true,
   showCount = true,
@@ -1109,6 +1154,7 @@ export default function CredentialPoolEditor({
       showDatabase,
       defaultPort,
       credentialSchema,
+      showPort,
     );
     const nextItems = [...normalizedValue, nextItem];
     emitChange(nextItems);
@@ -1241,6 +1287,7 @@ export default function CredentialPoolEditor({
       t,
       passwordVisible,
       cloudCredentialLabels,
+      showPort,
     );
 
     return (
@@ -1320,6 +1367,7 @@ export default function CredentialPoolEditor({
                 shape: credentialShape,
                 editMode,
                 showDatabase,
+                showPort,
                 cloudRegionOptions,
                 cloudRegionLoading,
                 onCloudRegionRefresh,

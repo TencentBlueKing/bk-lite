@@ -1,5 +1,16 @@
 import type { SimpleDashboardConfig } from '../common/simple-dashboard-core';
 
+/** InfluxDB 监控高对比鲜活科技色板 */
+const INFLUX_PALETTE = {
+  emerald: '#10B981',   // 写请求速率
+  blue: '#2563EB',      // Series 数
+  cyan: '#06B6D4',      // 查询请求速率
+  indigo: '#6366F1',    // 堆内存、认证失败
+  amber: '#F59E0B',     // HTTP 4XX 速率
+  orange: '#F97316',    // 写点丢弃速率
+  rose: '#EF4444'       // 写入持久化失败、HTTP 5XX
+} as const;
+
 /**
  * InfluxDB v1 专业盘：叙事中心是高基数 (series) + 写入持久化完整性，
  * 不是通用 RDBMS 会话/表空间模型。仅 9 个指标，刻意做瘦盘。
@@ -19,7 +30,7 @@ export const INFLUXDB_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '所有数据库序列总数，是 InfluxDB 高基数风险的核心指标。',
       unit: 'counts',
       query: 'sum by (instance_id) (influxdb_database_numSeries{__$labels__})',
-      color: '#2f6bff'
+      color: INFLUX_PALETTE.blue
     },
     {
       name: 'influxdb_write_req_rate',
@@ -27,7 +38,7 @@ export const INFLUXDB_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: 'HTTP 写入请求速率。',
       unit: 'cps',
       query: 'sum by (instance_id) (rate(influxdb_httpd_writeReq{__$labels__}[__$window__]))',
-      color: '#27c274'
+      color: INFLUX_PALETTE.emerald
     },
     {
       name: 'influxdb_query_req_rate',
@@ -35,7 +46,7 @@ export const INFLUXDB_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: 'HTTP 查询请求速率。',
       unit: 'cps',
       query: 'sum by (instance_id) (rate(influxdb_httpd_queryReq{__$labels__}[__$window__]))',
-      color: '#13c2c2'
+      color: INFLUX_PALETTE.cyan
     },
     {
       name: 'influxdb_points_fail_rate',
@@ -43,7 +54,7 @@ export const INFLUXDB_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '已接收但持久化失败的数据点速率，直接关联数据丢失风险。',
       unit: 'cps',
       query: 'sum by (instance_id) (rate(influxdb_httpd_pointsWrittenFail{__$labels__}[__$window__]))',
-      color: '#ff4d4f'
+      color: INFLUX_PALETTE.rose
     },
     {
       name: 'influxdb_points_dropped_rate',
@@ -51,7 +62,7 @@ export const INFLUXDB_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '已接收但在持久化前被丢弃的数据点速率。',
       unit: 'cps',
       query: 'sum by (instance_id) (rate(influxdb_httpd_pointsWrittenDropped{__$labels__}[__$window__]))',
-      color: '#ff8a1f'
+      color: INFLUX_PALETTE.orange
     },
     {
       name: 'influxdb_server_error_rate',
@@ -59,7 +70,7 @@ export const INFLUXDB_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: 'HTTP 5XX 错误速率。',
       unit: 'cps',
       query: 'sum by (instance_id) (rate(influxdb_httpd_serverError{__$labels__}[__$window__]))',
-      color: '#ff4d4f'
+      color: INFLUX_PALETTE.rose
     },
     {
       name: 'influxdb_client_error_rate',
@@ -67,7 +78,7 @@ export const INFLUXDB_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: 'HTTP 4XX 错误速率。',
       unit: 'cps',
       query: 'sum by (instance_id) (rate(influxdb_httpd_clientError{__$labels__}[__$window__]))',
-      color: '#faad14'
+      color: INFLUX_PALETTE.amber
     },
     {
       name: 'influxdb_auth_fail_rate',
@@ -75,7 +86,7 @@ export const INFLUXDB_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: 'HTTP 认证失败速率。',
       unit: 'cps',
       query: 'sum by (instance_id) (rate(influxdb_httpd_authFail{__$labels__}[__$window__]))',
-      color: '#722ed1'
+      color: INFLUX_PALETTE.indigo
     },
     {
       name: 'influxdb_heap_alloc',
@@ -83,7 +94,7 @@ export const INFLUXDB_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: 'Go 运行时堆上已分配且正在使用的内存。',
       unit: 'bytes',
       query: 'max by (instance_id) (influxdb_runtime_HeapAlloc{__$labels__})',
-      color: '#8a5cff'
+      color: INFLUX_PALETTE.indigo
     }
   ],
   summaryCards: [
@@ -91,7 +102,7 @@ export const INFLUXDB_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       title: 'Series 数',
       metric: 'influxdb_num_series',
       unit: 'counts',
-      color: '#2f6bff',
+      color: INFLUX_PALETTE.blue,
       icon: 'database',
       compare: true,
       compareFavorableDirection: 'down',
@@ -106,7 +117,7 @@ export const INFLUXDB_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       title: '写请求速率',
       metric: 'influxdb_write_req_rate',
       unit: 'cps',
-      color: '#27c274',
+      color: INFLUX_PALETTE.emerald,
       icon: 'publish',
       compare: true,
       guide: [
@@ -121,7 +132,7 @@ export const INFLUXDB_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       title: '持久化失败',
       metric: 'influxdb_points_fail_rate',
       unit: 'cps',
-      color: '#ff4d4f',
+      color: INFLUX_PALETTE.rose,
       icon: 'thunder',
       compare: true,
       compareFavorableDirection: 'down',
@@ -147,8 +158,8 @@ export const INFLUXDB_DASHBOARD_CONFIG: SimpleDashboardConfig = {
         { label: '查询', detail: 'HTTP 查询请求速率。' }
       ],
       series: [
-        { metric: 'influxdb_write_req_rate', label: '写入', color: '#27c274', unit: 'cps' },
-        { metric: 'influxdb_query_req_rate', label: '查询', color: '#13c2c2', unit: 'cps' }
+        { metric: 'influxdb_write_req_rate', label: '写入', color: INFLUX_PALETTE.emerald, unit: 'cps' },
+        { metric: 'influxdb_query_req_rate', label: '查询', color: INFLUX_PALETTE.cyan, unit: 'cps' }
       ]
     },
     {
@@ -162,8 +173,8 @@ export const INFLUXDB_DASHBOARD_CONFIG: SimpleDashboardConfig = {
         }
       ],
       series: [
-        { metric: 'influxdb_points_fail_rate', label: '持久化失败', color: '#ff4d4f', unit: 'cps' },
-        { metric: 'influxdb_points_dropped_rate', label: '丢弃', color: '#ff8a1f', unit: 'cps' }
+        { metric: 'influxdb_points_fail_rate', label: '持久化失败', color: INFLUX_PALETTE.rose, unit: 'cps' },
+        { metric: 'influxdb_points_dropped_rate', label: '丢弃', color: INFLUX_PALETTE.orange, unit: 'cps' }
       ]
     },
     {
@@ -176,9 +187,9 @@ export const INFLUXDB_DASHBOARD_CONFIG: SimpleDashboardConfig = {
         { label: '认证失败', detail: '鉴权失败，可能是配置错误或扫描噪声。' }
       ],
       series: [
-        { metric: 'influxdb_server_error_rate', label: '5XX', color: '#ff4d4f', unit: 'cps' },
-        { metric: 'influxdb_client_error_rate', label: '4XX', color: '#faad14', unit: 'cps' },
-        { metric: 'influxdb_auth_fail_rate', label: '认证失败', color: '#722ed1', unit: 'cps' }
+        { metric: 'influxdb_server_error_rate', label: '5XX', color: INFLUX_PALETTE.rose, unit: 'cps' },
+        { metric: 'influxdb_client_error_rate', label: '4XX', color: INFLUX_PALETTE.amber, unit: 'cps' },
+        { metric: 'influxdb_auth_fail_rate', label: '认证失败', color: INFLUX_PALETTE.indigo, unit: 'cps' }
       ]
     },
     {
@@ -187,7 +198,7 @@ export const INFLUXDB_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       metric: 'influxdb_heap_alloc',
       guide: [{ label: '堆内存', detail: 'Go 运行时堆分配大小随时间变化。' }],
       series: [
-        { metric: 'influxdb_heap_alloc', label: 'HeapAlloc', color: '#8a5cff', unit: 'bytes' }
+        { metric: 'influxdb_heap_alloc', label: 'HeapAlloc', color: INFLUX_PALETTE.indigo, unit: 'bytes' }
       ]
     }
   ],

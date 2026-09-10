@@ -280,6 +280,8 @@ class InstanceSearch:
 
     def search(self):
         """特殊搜索接口，特殊对象不通用的查询条件"""
+        from apps.monitor.services.instance_list_ordering import apply_ordering_to_instances, parse_ordering_params
+
         objs_map = self.get_objs()
         if not objs_map:
             return dict(count=0, results=[])
@@ -311,6 +313,23 @@ class InstanceSearch:
         if isinstance(vm_params, dict):
             items = InstanceSearch.apply_status_filter_to_items(items, vm_params.get("status"))
 
+        ordering_key, order_dir = parse_ordering_params(
+            self.query_data.get("ordering"),
+            self.query_data.get("order", "asc"),
+        )
+        skip_out_keys = None
+        if ordering_key:
+            filled_out_key = apply_ordering_to_instances(
+                self.monitor_obj.id,
+                self.obj_metric_map,
+                items,
+                ordering_key,
+                order_dir,
+                query_metric_values=MonitorObjectService._query_metric_values,
+            )
+            if filled_out_key:
+                skip_out_keys = {filled_out_key}
+
         # 数据合并，取objs和vm_metrics的交集
         page = self.query_data.get("page", 1)
         page_size = self.query_data.get("page_size", 10)
@@ -323,7 +342,12 @@ class InstanceSearch:
             results = items[start:end]
 
         if self.query_data.get("add_metrics", False) and page_size != -1:
-            MonitorObjectService._fill_display_metrics(self.monitor_obj.id, self.obj_metric_map, results)
+            MonitorObjectService._fill_display_metrics(
+                self.monitor_obj.id,
+                self.obj_metric_map,
+                results,
+                skip_out_keys=skip_out_keys,
+            )
 
         MonitorObjectService.add_attr(results, self.visible_organization_ids)
 
@@ -589,7 +613,7 @@ class InstanceSearch:
 
     @staticmethod
     def role_display_field_bindings(monitor_object_id):
-        """取该对象带 role 的字段展示列绑定（当前为云平台子对象 IP）。
+        """取该对象带 role 的字段展示列绑定（云平台子对象 IP、K8s Pod Namespace）。
 
         只认 role 列：普通字段展示列由用户自由配置，不承诺筛选能力。
         """
@@ -879,9 +903,7 @@ class InstanceSearch:
         if not statuses or statuses == {"normal", "unavailable"}:
             return qs
         normal_ids = {
-            instance_id
-            for instance_id, info in (instance_map or {}).items()
-            if list_reporting_status((info or {}).get("time")) == "normal"
+            instance_id for instance_id, info in (instance_map or {}).items() if list_reporting_status((info or {}).get("time")) == "normal"
         }
         if statuses == {"normal"}:
             return qs.filter(id__in=normal_ids)

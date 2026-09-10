@@ -40,8 +40,10 @@ function isValidInterfaceRef(input: unknown): input is NetworkInterfaceRef {
   const ref = input as Partial<NetworkInterfaceRef>;
   return (
     typeof ref.bk_obj_id === 'string' &&
-    typeof ref.bk_inst_uuid === 'string' &&
-    ref.bk_inst_uuid.length > 0 &&
+    ref.bk_inst_id !== undefined &&
+    ref.bk_inst_id !== null &&
+    Number.isFinite(Number(ref.bk_inst_id)) &&
+    Number(ref.bk_inst_id) > 0 &&
     typeof ref.interface_name === 'string' &&
     ref.interface_name.length > 0
   );
@@ -58,13 +60,13 @@ export function summarizePortPairs(pairs: ReadonlyArray<NetworkPortPair>): {
   uniqueSourceIds: number;
   uniqueTargetIds: number;
 } {
-  const sources = new Set<string>();
-  const targets = new Set<string>();
+  const sources = new Set<number>();
+  const targets = new Set<number>();
   let count = 0;
   for (const pair of pairs) {
     count += 1;
-    sources.add(String(pair.source_interface.bk_inst_uuid));
-    targets.add(String(pair.target_interface.bk_inst_uuid));
+    sources.add(Number(pair.source_interface.bk_inst_id));
+    targets.add(Number(pair.target_interface.bk_inst_id));
   }
   return {
     count,
@@ -119,8 +121,8 @@ export function ensureMinimumPortPair(
   if (pairs.length > 0) return pairs.slice();
   return [
     {
-      source_interface: { bk_obj_id: 'bk_interface', bk_inst_uuid: '', interface_name: '' },
-      target_interface: { bk_obj_id: 'bk_interface', bk_inst_uuid: '', interface_name: '' },
+      source_interface: { bk_obj_id: 'bk_interface', bk_inst_id: 0, interface_name: '' },
+      target_interface: { bk_obj_id: 'bk_interface', bk_inst_id: 0, interface_name: '' },
     },
   ];
 }

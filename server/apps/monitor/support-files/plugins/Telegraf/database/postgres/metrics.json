@@ -183,7 +183,7 @@
       "unit": "percent",
       "dimensions": [],
       "description": "Ratio of shared buffer cache hits to total block accesses",
-      "query": "100 * sum(rate(postgresql_blks_hit{__$labels__}[5m])) / clamp_min(sum(rate(postgresql_blks_hit{__$labels__}[5m])) + sum(rate(postgresql_blks_read{__$labels__}[5m])), 1e-6)"
+      "query": "100 * sum without (db) (rate(postgresql_blks_hit{__$labels__}[5m])) / clamp_min(sum without (db) (rate(postgresql_blks_hit{__$labels__}[5m])) + sum without (db) (rate(postgresql_blks_read{__$labels__}[5m])), 1e-6)"
     },
     {
       "metric_group": "Concurrency",

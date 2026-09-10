@@ -1,6 +1,7 @@
 import pytest
 
 from apps.log.serializers.log_group import LogGroupSerializer
+from apps.log.utils.log_group import LogGroupQueryBuilder
 
 
 pytestmark = pytest.mark.unit
@@ -15,12 +16,35 @@ def _payload(rule):
     }
 
 
-@pytest.mark.parametrize("mode", ["ADN", "", None, 1])
+@pytest.mark.parametrize("mode", ["ADN", "", 1])
 def test_serializer_rejects_unknown_rule_mode(mode):
     serializer = LogGroupSerializer(data=_payload({"mode": mode, "conditions": []}))
 
     assert serializer.is_valid() is False
-    assert "AND or OR" in str(serializer.errors["rule"])
+    assert str(serializer.errors["rule"][0]) == LogGroupQueryBuilder.INVALID_RULE_MODE_MESSAGE
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [
+        {"mode": None, "conditions": []},
+        {"mode": None},
+    ],
+)
+def test_serializer_normalizes_null_mode_empty_conditions_to_star_rule(rule):
+    serializer = LogGroupSerializer(data=_payload(rule))
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["rule"] == {}
+
+
+def test_serializer_still_rejects_null_mode_when_conditions_present():
+    serializer = LogGroupSerializer(
+        data=_payload({"mode": None, "conditions": [{"field": "cluster", "op": "==", "value": "prod"}]})
+    )
+
+    assert serializer.is_valid() is False
+    assert str(serializer.errors["rule"][0]) == LogGroupQueryBuilder.INVALID_RULE_MODE_MESSAGE
 
 
 def test_serializer_rejects_non_object_rule():

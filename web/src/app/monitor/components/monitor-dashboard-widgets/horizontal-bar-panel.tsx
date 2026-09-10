@@ -10,6 +10,7 @@ import { MiniTrendChart } from '@/app/monitor/components/monitor-dashboard-widge
 import ChartEmptyState from '@/components/chart-empty-state';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useTranslation } from '@/utils/i18n';
+import { tDashboardText } from '@/app/monitor/dashboards/shared/utils/content-i18n';
 
 const RANK_TOP3 = ['#f5a623', '#9aa7bd', '#cd7f32'];
 
@@ -168,6 +169,8 @@ export const HorizontalBarPanel = ({
   styles,
 }: HorizontalBarPanelProps) => {
   const { t } = useTranslation();
+  const localizedTitle = typeof title === 'string' ? tDashboardText(t, title) : title;
+  const localizedItems = items.map((item) => ({ ...item, label: tDashboardText(t, item.label) }));
 
   return (
     <div className={[styles.panel, className].filter(Boolean).join(' ')}>
@@ -182,21 +185,27 @@ export const HorizontalBarPanel = ({
                 styles={styles}
               />
             ) : (
-              title
+              localizedTitle
             )}
           </h3>
-          {subtitle ? <div className={styles.panelSubTitle}>{subtitle}</div> : null}
+          {subtitle ? <div className={styles.panelSubTitle}>{tDashboardText(t, subtitle)}</div> : null}
         </div>
       </div>
       {isEmpty ? (
         <div className="flex min-h-[176px] items-center justify-center">
           <ChartEmptyState
-            description={emptyDescription === undefined ? t('common.noData') : emptyDescription}
+            description={
+              emptyDescription === undefined
+                ? t('common.noData')
+                : typeof emptyDescription === 'string'
+                  ? tDashboardText(t, emptyDescription)
+                  : emptyDescription
+            }
             compact
           />
         </div>
       ) : (
-        <BarList items={items} emphasizeTop={emphasizeTop} tiered={tiered} styles={styles} />
+        <BarList items={localizedItems} emphasizeTop={emphasizeTop} tiered={tiered} styles={styles} />
       )}
     </div>
   );

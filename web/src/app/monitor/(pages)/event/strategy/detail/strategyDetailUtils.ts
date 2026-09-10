@@ -57,6 +57,20 @@ export const shouldRequireNoticeUsers = ({
   return selectedChannels.some((channel) => channel.channel_type !== 'nats');
 };
 
+/** 通知人表单项刚出现且仍为空时，把已选处理人带入；调用方负责只做一次。 */
+export const seedNoticeUsersFromHandlers = <T>(
+  noticeUsers: T[] | undefined,
+  handlers: T[] | undefined
+): T[] | null => {
+  if (Array.isArray(noticeUsers) && noticeUsers.length) {
+    return null;
+  }
+  if (!Array.isArray(handlers) || !handlers.length) {
+    return null;
+  }
+  return [...handlers];
+};
+
 const INVALID_THRESHOLD_UNIT_IDS = new Set(['none', 'short']);
 
 /** 无量纲 / 不参与阈值单位选配的单位（none、short、空） */
@@ -457,4 +471,98 @@ export const buildMetricDimensionVariables = (groupBy?: string[] | null) => {
     });
   }
   return items;
+};
+
+const RANGE_DURATION_RE =
+  /\[(?:__\$window__|(\d+(?:\.\d+)?)(ms|s|m|h|d|w|y))(?::[^\]]*)?\]/gi;
+
+const DURATION_MINUTES: Record<string, number> = {
+  ms: 1 / 60000,
+  s: 1 / 60,
+  m: 1,
+  h: 60,
+  d: 1440,
+  w: 10080,
+  y: 525600
+};
+
+export const scheduleValueToMinutes = (
+  value: number | null | undefined,
+  unit: string | null | undefined
+): number => {
+  if (value == null || !Number.isFinite(value) || value <= 0) {
+    return 0;
+  }
+  if (unit === 'hour') {
+    return value * 60;
+  }
+  if (unit === 'day') {
+    return value * 1440;
+  }
+  if (unit === 's' || unit === 'sec') {
+    return value / 60;
+  }
+  return value;
+};
+
+const durationToMinutes = (value: number, unit: string): number => {
+  const factor = DURATION_MINUTES[unit.toLowerCase()];
+  if (!factor) {
+    return 0;
+  }
+  return value * factor;
+};
+
+export const collectMetricQueryTexts = ({
+  rows,
+  metrics,
+  formulaExpression
+}: {
+  rows: Array<{ metricId?: number | null; metricName?: string }>;
+  metrics: MetricItem[];
+  formulaExpression?: string;
+}): string[] => {
+  const queries: string[] = [];
+  rows.forEach((row) => {
+    const metric = metrics.find(
+      (item) =>
+        (row.metricId != null && String(item.id) === String(row.metricId)) ||
+        (!!row.metricName && item.name === row.metricName)
+    );
+    if (metric?.query) {
+      queries.push(metric.query);
+    }
+  });
+  if (formulaExpression?.trim()) {
+    queries.push(formulaExpression);
+  }
+  return queries;
+};
+
+export const resolveFunctionDelayMinutes = (
+  queries: string[],
+  windowMinutes = 0
+): number | null => {
+  let maxMinutes = 0;
+  queries.forEach((query) => {
+    if (!query) {
+      return;
+    }
+    RANGE_DURATION_RE.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = RANGE_DURATION_RE.exec(query)) !== null) {
+      if (match[1] == null) {
+        maxMinutes = Math.max(maxMinutes, windowMinutes);
+        continue;
+      }
+      maxMinutes = Math.max(
+        maxMinutes,
+        durationToMinutes(Number(match[1]), match[2])
+      );
+    }
+  });
+  if (maxMinutes <= 0) {
+    return null;
+  }
+  return Math.max(1, Math.ceil(maxMinutes));
 };

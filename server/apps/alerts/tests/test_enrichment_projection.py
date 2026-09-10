@@ -7,9 +7,9 @@ def test_project_selects_and_renames():
     assert project(records, proj, "first") == {"owner": "alice", "biz": "pay"}
 
 
-def test_empty_projection_takes_all_fields():
+def test_empty_projection_does_not_expose_provider_fields():
     records = [{"a": 1, "b": 2}]
-    assert project(records, [], "first") == {"a": 1, "b": 2}
+    assert project(records, [], "first") == {}
 
 
 def test_zero_records_returns_empty():
@@ -26,6 +26,6 @@ def test_on_multiple_list():
     assert project(records, [{"source": "a"}], "list") == {"a": [1, 2]}
 
 
-def test_on_multiple_merge_last_wins():
+def test_empty_projection_does_not_merge_provider_fields():
     records = [{"a": 1, "b": 1}, {"a": 2}]
-    assert project(records, [], "merge") == {"a": 2, "b": 1}
+    assert project(records, [], "merge") == {}

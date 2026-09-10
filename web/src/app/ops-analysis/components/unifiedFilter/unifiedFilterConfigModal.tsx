@@ -5,19 +5,20 @@ import {
   Modal,
   Table,
   Input,
+  InputNumber,
   Switch,
   Empty,
   Button,
-  Tooltip,
+  Select,
+  Tag,
 } from 'antd';
 import {
   HolderOutlined,
-  SettingOutlined,
 } from '@ant-design/icons';
 import { ParamInputConfigEditor } from '@/app/ops-analysis/components/paramInputConfigEditor';
 import { ParamInputControl } from '@/app/ops-analysis/components/paramInputControl';
 import GroupTreeSelect from '@/components/group-tree-select';
-import { normalizeInputConfig } from '@/app/ops-analysis/utils/paramInputConfigUtils';
+import { normalizeInputConfig, isOrganizationControl, toSingleOrganizationValue } from '@/app/ops-analysis/utils/paramInputConfigUtils';
 import {
   coerceValueForMultiple,
   isMultipleSelectInputConfig,
@@ -29,6 +30,7 @@ import DateRangeSelector from '@/app/ops-analysis/components/dateRangeSelector';
 import {
   normalizeUnifiedFilterInputMode,
   sanitizeUnifiedFilterDefinition,
+  type UnifiedFilterInputMode,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
 import {
   DndContext,
@@ -62,7 +64,10 @@ import type {
   InputControlConfig,
   ParamItem,
 } from '@/app/ops-analysis/types/dataSource';
-import { isBindableDataSourceParamType } from '@/app/ops-analysis/utils/dataSourceParamContract';
+import {
+  isBindableDataSourceParamType,
+  type BindableDataSourceParamType,
+} from '@/app/ops-analysis/utils/dataSourceParamContract';
 
 interface UnifiedFilterConfigModalProps {
   open: boolean;
@@ -79,12 +84,23 @@ interface SortableRowProps extends React.HTMLAttributes<HTMLTableRowElement> {
 
 interface ScannedParam {
   key: string;
-  type: 'string' | 'timeRange' | 'dateRange';
+  type: BindableDataSourceParamType;
   componentCount: number;
   sampleAlias: string;
   sampleDefaultValue: FilterValue;
   sampleInputConfig?: InputControlConfig;
 }
+
+const PARAM_TYPE_LABEL_KEYS = new Set([
+  'string',
+  'number',
+  'boolean',
+  'date',
+  'timeRange',
+  'dateRange',
+]);
+
+const fillCell = () => ({ className: 'max-w-0 overflow-hidden' });
 
 const coerceDefaultValueForInputConfig = (
   defaultValue: FilterValue | undefined,
@@ -139,15 +155,15 @@ const DragHandleContext = React.createContext<{
   listeners: Record<string, any> | undefined;
 } | null>(null);
 
-const toSingleOrganizationValue = (value: FilterValue): number | undefined => {
-  if (typeof value !== 'string' && typeof value !== 'number') return undefined;
-  const normalized = Number(value);
-  return Number.isNaN(normalized) ? undefined : normalized;
-};
-
 const toFilterValue = (value: number | number[] | undefined): FilterValue => {
   if (Array.isArray(value)) return value[0] ?? null;
   return value ?? null;
+};
+
+const toNumberFilterValue = (value: number | string | null): FilterValue => {
+  if (value === null || value === undefined || value === '') return null;
+  const numeric = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
 };
 
 const scanFilterParams = (
@@ -186,7 +202,7 @@ const scanFilterParams = (
           componentCount: 1,
           sampleAlias: param.alias_name || param.name,
           sampleDefaultValue: (param.value as FilterValue) ?? null,
-          sampleInputConfig: param.inputConfig,
+          sampleInputConfig: normalizeInputConfig(param),
         });
       }
     });
@@ -230,6 +246,9 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
     const normalized = normalizeInputConfig(definition);
     const inputMode = normalizeUnifiedFilterInputMode(definition.inputMode);
     if (normalized) {
+      if (normalized.control === 'organization') {
+        return normalized;
+      }
       if (inputMode === 'select' || inputMode === 'radio') {
         if (normalized.control === 'input') {
           return {
@@ -289,7 +308,10 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
         order: initialDefinitions.length + index,
         enabled: true,
         inputConfig: param.sampleInputConfig,
-        inputMode: param.sampleInputConfig?.control,
+        inputMode:
+          param.sampleInputConfig?.control === 'organization'
+            ? undefined
+            : param.sampleInputConfig?.control,
       };
     });
 
@@ -338,6 +360,82 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
     setInputConfigModalOpen(true);
   };
 
+  const handleControlTypeChange = (
+    filterId: string,
+    nextMode: UnifiedFilterInputMode,
+  ) => {
+    setDefinitions(
+      definitions.map((definition) => {
+        if (definition.id !== filterId) return definition;
+
+        if (nextMode === 'input') {
+          const inputConfig: InputControlConfig = { control: 'input' };
+          return sanitizeUnifiedFilterDefinition({
+            ...definition,
+            inputMode: 'input',
+            inputConfig,
+            defaultValue: coerceDefaultValueForInputConfig(
+              definition.defaultValue,
+              inputConfig,
+            ),
+          });
+        }
+
+        if (nextMode === 'organization') {
+          return sanitizeUnifiedFilterDefinition({
+            ...definition,
+            inputConfig: { control: 'organization' },
+            defaultValue: coerceDefaultValueForInputConfig(
+              definition.defaultValue,
+              { control: 'organization' },
+            ),
+          });
+        }
+
+        const currentConfig = getFilterInputConfig(definition);
+        const inputConfig: InputControlConfig =
+          currentConfig && (currentConfig.control === 'select' || currentConfig.control === 'radio')
+            ? {
+              ...currentConfig,
+              control: nextMode,
+              ...(nextMode === 'radio'
+                ? { multiple: undefined, picker: undefined }
+                : {}),
+            }
+            : {
+              control: nextMode,
+              optionsSource: {
+                type: 'static',
+                staticItems: [],
+              },
+            };
+
+        return sanitizeUnifiedFilterDefinition({
+          ...definition,
+          inputMode: nextMode,
+          inputConfig,
+          defaultValue: coerceDefaultValueForInputConfig(
+            definition.defaultValue,
+            inputConfig,
+          ),
+        });
+      }),
+    );
+  };
+
+  const getStringControlMode = (
+    definition: UnifiedFilterDefinition,
+  ): UnifiedFilterInputMode => {
+    if (isOrganizationControl(definition)) return 'organization';
+    const inputMode = normalizeUnifiedFilterInputMode(definition.inputMode);
+    const inputConfig = getFilterInputConfig(definition);
+    if (inputConfig?.control === 'select' || inputConfig?.control === 'radio') {
+      return inputConfig.control;
+    }
+    if (inputMode === 'organization') return 'organization';
+    return 'input';
+  };
+
   const handleInputConfigConfirm = (inputConfig: InputControlConfig) => {
     if (!editingFilterId) return;
     setDefinitions(
@@ -346,7 +444,10 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
           ? sanitizeUnifiedFilterDefinition({
             ...definition,
             inputConfig,
-            inputMode: inputConfig.control,
+            inputMode:
+              inputConfig.control === 'organization'
+                ? undefined
+                : inputConfig.control,
             options: undefined,
             defaultValue: coerceDefaultValueForInputConfig(
               definition.defaultValue,
@@ -369,23 +470,32 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
     {
       title: '',
       dataIndex: 'drag',
-      width: 30,
+      width: 20,
       render: () => <DragHandle />,
     },
     {
       title: t('dashboard.filterKey'),
       dataIndex: 'key',
-      width: 120,
-      render: (value: string) => (
-        <span className="font-mono text-xs">{value}</span>
+      width: 170,
+      render: (value: string, record: UnifiedFilterDefinition) => (
+        <div className="flex min-w-0 flex-wrap items-center gap-1">
+          <span className="font-mono text-xs">{value}</span>
+          <Tag className="m-0 px-1.5 text-[11px] leading-[18px]">
+            {PARAM_TYPE_LABEL_KEYS.has(record.type)
+              ? t(`dataSource.paramTypes.${record.type}`)
+              : record.type}
+          </Tag>
+        </div>
       ),
     },
     {
       title: t('dashboard.filterName'),
       dataIndex: 'name',
-      width: 180,
+      width: 140,
+      onCell: fillCell,
       render: (value: string, record: UnifiedFilterDefinition) => (
         <Input
+          className="w-full"
           value={value}
           onChange={(e) => handleFieldChange(record.id, 'name', e.target.value)}
           placeholder={t('common.inputTip')}
@@ -393,30 +503,65 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
       ),
     },
     {
-      title: t('dashboard.filterType'),
-      dataIndex: 'type',
-      width: 160,
+      title: t('paramInput.controlType'),
+      dataIndex: 'inputMode',
+      width: 140,
+      onCell: fillCell,
       render: (_: unknown, record: UnifiedFilterDefinition) => {
-        if (record.type === 'timeRange') {
-          return <span>{t('dashboard.timeRange')}</span>;
+        if (record.type === 'timeRange' || record.type === 'dateRange' || record.type === 'number') {
+          return (
+            <Select
+              disabled
+              value={record.type}
+              options={[
+                {
+                  value: record.type,
+                  label:
+                    record.type === 'timeRange'
+                      ? t('dashboard.timeRange')
+                      : record.type === 'dateRange'
+                        ? t('dashboard.dateRange')
+                        : t('dataSource.paramTypes.number'),
+                },
+              ]}
+              className="w-full"
+            />
+          );
         }
 
-        if (record.type === 'dateRange') {
-          return <span>{t('dashboard.dateRange')}</span>;
-        }
+        const currentMode = getStringControlMode(record);
+        const controlTypeOptions = [
+          { value: 'input', label: t('paramInput.control.input') },
+          { value: 'select', label: t('paramInput.control.select') },
+          { value: 'radio', label: t('paramInput.control.radio') },
+          { value: 'organization', label: t('paramInput.control.organization') },
+        ];
 
         return (
-          <div className="flex w-full items-center justify-between">
-            <span>{t('dashboard.string')}</span>
-            <Tooltip title={t('dashboard.configOptions')}>
-              <Button
-                type="text"
-                size="small"
-                icon={<SettingOutlined />}
-                className="shrink-0 text-[var(--color-text-3)] hover:text-[var(--color-text-2)]"
-                onClick={() => handleOpenInputConfigModal(record.id)}
+          <div className="flex w-full min-w-0 items-center gap-1">
+            <div className="min-w-0 flex-1">
+              <Select
+                value={currentMode}
+                options={controlTypeOptions}
+                onChange={(value) =>
+                  handleControlTypeChange(
+                    record.id,
+                    value as UnifiedFilterInputMode,
+                  )
+                }
+                className="w-full"
               />
-            </Tooltip>
+            </div>
+            {(currentMode === 'select' || currentMode === 'radio') && (
+              <Button
+                type="link"
+                size="small"
+                className="h-auto shrink-0 px-0"
+                onClick={() => handleOpenInputConfigModal(record.id)}
+              >
+                {t('dashboard.configure')}
+              </Button>
+            )}
           </div>
         );
       },
@@ -424,10 +569,13 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
     {
       title: t('dashboard.defaultValue'),
       dataIndex: 'defaultValue',
-      width: 260,
+      width: 350,
       render: (value: FilterValue, record: UnifiedFilterDefinition) => {
         if (record.type === 'timeRange') {
-          const getDefaultValue = (): { selectValue: number; rangePickerVaule: [dayjs.Dayjs, dayjs.Dayjs] | null } => {
+          const getDefaultValue = (): {
+            selectValue: number;
+            rangePickerVaule: [dayjs.Dayjs, dayjs.Dayjs] | null;
+          } => {
             if (value === null || value === undefined) {
               return { selectValue: 15, rangePickerVaule: null };
             }
@@ -479,23 +627,42 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
           );
         }
 
-        const currentMode = normalizeUnifiedFilterInputMode(record.inputMode);
+        if (record.type === 'number') {
+          return (
+            <InputNumber
+              value={typeof value === 'number' ? value : null}
+              onChange={(nextValue) =>
+                handleFieldChange(
+                  record.id,
+                  'defaultValue',
+                  toNumberFilterValue(nextValue),
+                )
+              }
+              placeholder={t('common.inputTip')}
+              className="w-full"
+            />
+          );
+        }
+
+        const currentMode = getStringControlMode(record);
 
         if (currentMode !== 'organization') {
           const inputConfig = getFilterInputConfig(record);
-          const isMultiple = Boolean(
-            inputConfig && inputConfig.control !== 'input' && inputConfig.multiple,
-          );
+          const isMultiple = isMultipleSelectInputConfig(inputConfig);
           const controlValue = Array.isArray(value)
             ? value
-            : (typeof value === 'string' || typeof value === 'number')
+            : typeof value === 'string' || typeof value === 'number'
               ? value
               : undefined;
           const fallbackInput = (
             <Input
-              value={Array.isArray(value)
-                ? value.map(String).join(', ')
-                : (typeof value === 'string' || typeof value === 'number') ? String(value) : ''}
+              value={
+                Array.isArray(value)
+                  ? value.map(String).join(', ')
+                  : typeof value === 'string' || typeof value === 'number'
+                    ? String(value)
+                    : ''
+              }
               onChange={(e) =>
                 handleFieldChange(
                   record.id,
@@ -519,7 +686,10 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
                     handleFieldChange(record.id, 'defaultValue', nextValue);
                     return;
                   }
-                  if (typeof nextValue === 'string' || typeof nextValue === 'number') {
+                  if (
+                    typeof nextValue === 'string' ||
+                    typeof nextValue === 'number'
+                  ) {
                     handleFieldChange(record.id, 'defaultValue', [nextValue]);
                     return;
                   }
@@ -529,7 +699,6 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
                 handleFieldChange(record.id, 'defaultValue', nextValue ?? null);
               }}
               placeholder={record.name}
-              style={{ minWidth: 160 }}
             />
           );
         }
@@ -538,7 +707,13 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
           return (
             <GroupTreeSelect
               value={toSingleOrganizationValue(value)}
-              onChange={(nextValue) => handleFieldChange(record.id, 'defaultValue', toFilterValue(nextValue))}
+              onChange={(nextValue) =>
+                handleFieldChange(
+                  record.id,
+                  'defaultValue',
+                  toFilterValue(nextValue),
+                )
+              }
               multiple={false}
               mode="ownership"
               allowClear
@@ -549,7 +724,11 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
 
         return (
           <Input
-            value={(typeof value === 'string' || typeof value === 'number') ? String(value) : ''}
+            value={
+              typeof value === 'string' || typeof value === 'number'
+                ? String(value)
+                : ''
+            }
             onChange={(e) =>
               handleFieldChange(
                 record.id,
@@ -587,7 +766,7 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
       onOk={handleConfirm}
       okText={t('common.confirm')}
       cancelText={t('common.cancel')}
-      width={920}
+      width={1000}
       maskClosable={false}
       centered
       destroyOnHidden
@@ -607,6 +786,7 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
             dataSource={definitions}
             pagination={false}
             size="small"
+            tableLayout="fixed"
             components={{
               body: {
                 row: SortableRow,

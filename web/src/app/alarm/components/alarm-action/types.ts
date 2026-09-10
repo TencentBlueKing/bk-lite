@@ -31,6 +31,7 @@ export interface AlarmActionProps {
   displayMode?: 'inline' | 'dropdown';
   from?: 'alarm' | 'incident';
   currentUsername: string;
+  isSuperUser?: boolean;
   assigneeOptions: AlarmAssigneeOption[];
   operateAction: AlarmOperateAction;
   onAction: () => void;

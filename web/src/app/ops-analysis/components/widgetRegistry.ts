@@ -15,6 +15,7 @@ import ComCardList from '@/app/ops-analysis/components/widgets/comCardList';
 import ComRadar from '@/app/ops-analysis/components/widgets/comRadar';
 import OpsAnalysisTextPanel from '@/app/ops-analysis/components/ops-analysis-widgets/text-panel';
 import TopologyMap from '@/app/ops-analysis/components/widgets/topologyMap';
+import NodeGraph from '@/app/ops-analysis/components/widgets/nodeGraph';
 import Application3D from '@/app/ops-analysis/components/widgets/application3D';
 import { isSceneWidgetAllowedOnSurface, isSceneWidgetType } from '@/app/ops-analysis/types/sceneWidgetCapability';
 import type { OpsAnalysisWidgetSurface } from '@/app/ops-analysis/utils/chartTypeSurface';
@@ -37,6 +38,7 @@ export const widgetRegistry: Record<string, ComponentType<any>> = {
   multiValue: ComMultiValue,
   text: OpsAnalysisTextPanel,
   topologyMap: TopologyMap,
+  nodeGraph: NodeGraph,
 };
 
 export const getWidgetComponent = (

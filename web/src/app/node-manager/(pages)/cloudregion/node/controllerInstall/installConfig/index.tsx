@@ -38,7 +38,8 @@ import { message } from 'antd';
 import {
   applyIpAsDefaultNodeName,
   applyWinrmCertificateValidation,
-  DEFAULT_WINRM_CERTIFICATE_VALIDATION
+  DEFAULT_WINRM_CERTIFICATE_VALIDATION,
+  pickLatestPackage
 } from './utils';
 import { buildOrganizationOptions } from './excelImportUtils';
 import {
@@ -625,7 +626,10 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
         type: 'controller',
         object: 'Controller'
       });
-      setSidecarVersionList(data);
+      const packages = Array.isArray(data) ? data : [];
+      setSidecarVersionList(packages);
+      const latestPackage = pickLatestPackage(packages);
+      form.setFieldValue('sidecar_package', latestPackage?.id ?? null);
     } finally {
       setVersionLoading(false);
     }
@@ -683,6 +687,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
           os: os,
           cpu_architecture: cpuArchitecture,
           package_id: values.sidecar_package || '',
+          push_targets: values.push_targets || [],
           nodes: tableData.map((item) => ({
             ip: item.ip,
             node_name: item.node_name,

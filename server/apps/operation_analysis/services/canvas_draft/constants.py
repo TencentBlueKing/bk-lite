@@ -30,6 +30,7 @@ WIDGET_CHART_TYPES = frozenset(
         "multiValue",
         "text",
         "topologyMap",
+        "nodeGraph",
     }
 )
 

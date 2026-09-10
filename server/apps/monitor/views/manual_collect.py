@@ -7,6 +7,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 
 from apps.core.exceptions.base_app_exception import ValidationAppException
+from apps.core.utils.k8s_daemonset_tolerations import TOLERATIONS_UNSET, extract_request_tolerations
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.services.flow_access_guide import FlowAccessGuideService
 from apps.monitor.services.flow_onboarding import FlowOnboardingService
@@ -311,10 +312,21 @@ class ManualCollect(viewsets.ViewSet):
     def generate_install_command(self, request):
         actor_context = _build_actor_context(request)
         _ensure_operate_instances(request, [request.data["instance_id"]], actor_context)
+        instance_id = request.data["instance_id"]
+        command_kwargs = {}
+        requested = extract_request_tolerations(request.data)
+        if requested is not TOLERATIONS_UNSET:
+            ManualCollectService.persist_k8s_daemonset_tolerations(instance_id, requested)
+            command_kwargs["tolerations"] = requested
+        else:
+            stored = ManualCollectService.load_k8s_daemonset_tolerations(instance_id)
+            if stored is not TOLERATIONS_UNSET and stored is not None:
+                command_kwargs["tolerations"] = stored
         data = ManualCollectService.generate_install_command(
-            request.data["instance_id"],
+            instance_id,
             request.data["cloud_region_id"],
             request.data.get("image_registry_prefix"),
+            **command_kwargs,
         )
         return WebUtils.response_success(data)
 

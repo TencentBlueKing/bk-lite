@@ -1,6 +1,7 @@
 import { signOut } from 'next-auth/react';
 import { clearAuthToken } from '@/utils/crossDomainAuth';
 import { isAuthPath, resetSessionExpiredState } from '@/utils/sessionExpiry';
+import { clearUserTeamPreference } from '@/utils/userTeamPreference';
 
 let forceLogoutInProgress = false;
 
@@ -19,6 +20,7 @@ export const forceLogoutAndRedirect = async () => {
   }
 
   forceLogoutInProgress = true;
+  clearUserTeamPreference();
 
   try {
     resetSessionExpiredState();

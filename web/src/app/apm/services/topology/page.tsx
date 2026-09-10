@@ -8,12 +8,17 @@ import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell'
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import TopologyCanvas, {
   type TopologyCanvasSelection,
-  type TopologyLayoutMode,
 } from '@/app/apm/services/topology/topology-canvas';
 import TopologyInspectPanel from '@/app/apm/services/topology/topology-inspect-panel';
 import { filterAnomalousTopology, filterTopologyByKeyword, isolateTopologyNeighborhood } from '@/app/apm/services/topology/topology-layout';
 import type { ApmTopologyGraph, ApmTraceSummary } from '@/app/apm/types';
+import {
+  beginTopologyLoad,
+  commitTopologyLoadFailure,
+  commitTopologyLoadSuccess,
+} from '@/app/apm/utils/topologyLoadRequest';
 import FilterToolbar from '@/components/filter-toolbar';
+import { createLatestRequestGuard } from '@/context/latestRequestGuard';
 import { useTranslation } from '@/utils/i18n';
 
 export { default as TopologyCanvas } from '@/app/apm/services/topology/topology-canvas';
@@ -32,13 +37,13 @@ const windowMs: Record<TimeWindow, number> = {
 export default function ApmTopologyPage() {
   const { t } = useTranslation();
   const { getServices, getTopology, getTraces } = useApmApi();
+  const [requestGuard] = useState(createLatestRequestGuard);
   const [graph, setGraph] = useState<ApmTopologyGraph>({ nodes: [], edges: [], sampled_traces: 0, truncated: false, data_state: 'no_data' });
   const [state, setState] = useState<PageState>('loading');
   const [timeWindow, setTimeWindow] = useState<TimeWindow>('1h');
   const [environment, setEnvironment] = useState<string>();
   const [environmentOptions, setEnvironmentOptions] = useState<{ value: string; label: string }[]>([]);
   const [serviceIds, setServiceIds] = useState<Map<string, string>>(new Map());
-  const [layout, setLayout] = useState<TopologyLayoutMode>('layered');
   const [anomalyOnly, setAnomalyOnly] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [minDurationMs, setMinDurationMs] = useState<number | null>(null);
@@ -60,11 +65,11 @@ export default function ApmTopologyPage() {
   }, [getServices]);
 
   const load = useCallback(async () => {
+    const requestId = beginTopologyLoad(requestGuard);
     setState((current) => (current === 'ready' || current === 'empty' ? current : 'loading'));
     const endedAt = new Date();
     const startedAt = new Date(endedAt.getTime() - windowMs[timeWindow]);
     const nextRange = { startedAt: startedAt.toISOString(), endedAt: endedAt.toISOString() };
-    setRange(nextRange);
     try {
       const result = await getTopology({
         started_at: nextRange.startedAt,
@@ -73,16 +78,22 @@ export default function ApmTopologyPage() {
         include_inferred: false,
         min_duration_ms: minDurationMs ?? undefined,
       });
-      setGraph(result);
-      setState(result.nodes.length ? 'ready' : 'empty');
+      commitTopologyLoadSuccess(requestGuard, requestId, { graph: result, range: nextRange }, ({ graph: nextGraph, range, state: nextState }) => {
+        setGraph(nextGraph);
+        setRange(range);
+        setState(nextState);
+      });
     } catch (error) {
-      setState(catalogErrorKind(error));
+      commitTopologyLoadFailure(requestGuard, requestId, () => {
+        setState(catalogErrorKind(error));
+      });
     }
-  }, [environment, getTopology, minDurationMs, timeWindow]);
+  }, [environment, getTopology, minDurationMs, requestGuard, timeWindow]);
 
   useEffect(() => {
     void load();
-  }, [load]);
+    return () => requestGuard.invalidate();
+  }, [load, requestGuard]);
 
   const visibleGraph = useMemo(() => {
     const scoped = anomalyOnly ? filterAnomalousTopology(graph.nodes, graph.edges) : { nodes: graph.nodes, edges: graph.edges };
@@ -157,33 +168,44 @@ export default function ApmTopologyPage() {
   return (
     <ApmRouteShell dependency="telemetry" description={t('apm.topology.description', '按时间窗内观测到的 Trace 聚合服务依赖；数字为总数 / P95 / 错误数，节点宽度表示观测调用量，颜色表示健康。点选节点或边可在右侧查看样本 Trace。')} title={t('apm.topology.title', '服务拓扑')}>
       <div className="flex flex-col gap-3">
-        {graph.truncated ? <Alert showIcon type="warning" message={t('apm.topology.truncated', '当前拓扑按最多 200 条 Trace 抽样聚合，指标不代表所选时间窗的全量流量。')} /> : null}
-        {isolatedNodeId ? <Alert showIcon type="info" message={t('apm.topology.isolateBanner', '正在隔离查看一个服务及其直接依赖。')} action={<Button type="link" onClick={() => setIsolatedNodeId(null)}>{t('apm.topology.showFullMap', '显示全图')}</Button>} /> : null}
-        <ApmSurface className="overflow-hidden" padding="none">
+        {graph.truncated ? (
+          <Alert
+            showIcon
+            type="warning"
+            className="!rounded-xl border border-[var(--color-border)] shadow-2xs"
+            message={t('apm.topology.truncated', '当前拓扑按最多 200 条 Trace 抽样聚合，指标不代表所选时间窗的全量流量。')}
+          />
+        ) : null}
+        {isolatedNodeId ? (
+          <Alert
+            showIcon
+            type="info"
+            className="!rounded-xl border border-[var(--color-border)] shadow-2xs"
+            message={t('apm.topology.isolateBanner', '正在隔离查看一个服务及其直接依赖。')}
+            action={<Button type="link" onClick={() => setIsolatedNodeId(null)}>{t('apm.topology.showFullMap', '显示全图')}</Button>}
+          />
+        ) : null}
+        <ApmSurface className="overflow-hidden !rounded-xl shadow-2xs" padding="none">
           <div className="border-b border-[var(--color-border)] p-4">
-            <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
-              <div className="inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-fill-1)] px-3 py-1.5 text-xs">
+            <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full flex-wrap items-center gap-3">
+              <div className="inline-flex shrink-0 items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-fill-1)] px-3 py-1.5 text-xs font-medium">
                 <strong className="tabular-nums text-sm">{serviceCount}</strong><span className="text-[var(--color-text-3)]">{t('apm.common.service', '服务')}</span>
                 <span className="text-[var(--color-border)]">·</span>
                 <strong className="tabular-nums text-sm text-[var(--color-fail)]">{anomalyCount}</strong><span className="text-[var(--color-text-3)]">{t('apm.health.abnormal', '异常')}</span>
                 <span className="text-[var(--color-border)]">·</span>
                 <strong className="tabular-nums text-sm">{totalCalls}</strong><span className="text-[var(--color-text-3)]">{t('apm.topology.totalCalls', '调用')}</span>
               </div>
+
+              <div className="h-4 w-px shrink-0 bg-[var(--color-border)]" aria-hidden="true" />
+
               <Segmented<TimeWindow> aria-label={t('apm.topology.window', '拓扑时间窗口')} options={['15m', '1h', '4h', '1d', '7d']} value={timeWindow} onChange={setTimeWindow} />
               <Select allowClear aria-label={t('apm.topology.filterEnvironment', '按环境筛选拓扑')} className="w-36" placeholder={t('apm.common.allEnvironments', '全部环境')} options={environmentOptions} value={environment} onChange={setEnvironment} />
-              <Segmented<TopologyLayoutMode>
-                aria-label={t('apm.topology.layout', '拓扑布局')}
-                className="shrink-0"
-                options={[
-                  { value: 'layered', label: t('apm.topology.layered', '层次') },
-                  { value: 'force', label: t('apm.topology.force', '力导向') },
-                ]}
-                value={layout}
-                onChange={setLayout}
-              />
+
+              <div className="h-4 w-px shrink-0 bg-[var(--color-border)]" aria-hidden="true" />
+
               <InputNumber
                 aria-label={t('apm.topology.minDuration', '耗时下限')}
-                className="w-32"
+                className="w-36"
                 min={0}
                 placeholder={t('apm.topology.minDurationPlaceholder', '耗时下限 ms')}
                 value={minDurationMs ?? undefined}
@@ -195,7 +217,10 @@ export default function ApmTopologyPage() {
                 </Button>
               ) : null}
               <Button danger={anomalyOnly} icon={<WarningOutlined aria-hidden="true" />} type={anomalyOnly ? 'primary' : 'default'} onClick={() => setAnomalyOnly((value) => !value)}>{t('apm.topology.anomalyOnly', '只看异常')}</Button>
-              <Button aria-label={t('apm.topology.refresh', '刷新拓扑')} icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={() => void load()} />
+
+              <div className="ml-auto flex items-center">
+                <Button aria-label={t('apm.topology.refresh', '刷新拓扑')} icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={() => void load()} />
+              </div>
             </FilterToolbar>
           </div>
           {state === 'ready' && visibleGraph.nodes.length ? (
@@ -203,7 +228,7 @@ export default function ApmTopologyPage() {
               <div className="relative min-w-0 flex-1">
                 <TopologyCanvas
                   edges={visibleGraph.edges}
-                  layout={layout}
+                  layout="layered"
                   nodes={visibleGraph.nodes}
                   selected={selection}
                   toolbar={(

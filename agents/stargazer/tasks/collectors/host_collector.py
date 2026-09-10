@@ -2,15 +2,56 @@
 import asyncio
 import json
 import logging
+import re
 import time
 from pathlib import Path
 from typing import Any, Dict, List
 from urllib.parse import unquote
 
+from core.logger import safe_log_value
+
 from .base_collector import BaseCollector
 from .disk_filter import should_collect_disk
 
 logger = logging.getLogger("stargazer.host_collector")
+
+ANSIBLE_FAILURE_TEXT_MAX_CHARS = 200
+ANSIBLE_ADHOC_FAILED_LOG_TEMPLATE = (
+    "[Host Collector] event=ansible_adhoc_failed host=%s error=%s "
+    "host_status=%s exit_code=%s stderr=%s stderr_missing=%s "
+    "failed_stage=callback_process error_type=%s"
+)
+_SECRET_ASSIGNMENT_RE = re.compile(r"(?i)\b(password|passwd|secret|token|authorization|passphrase|" r"private_key(?:_content)?)\s*[:=]\s*\S+")
+_PEM_BLOCK_RE = re.compile(
+    r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----",
+    re.DOTALL,
+)
+_AUTH_FAILURE_MARKERS = (
+    "permission denied",
+    "authentication",
+    "auth fail",
+    "invalid user",
+    "sshpass",
+)
+_UNREACHABLE_MARKERS = (
+    "unreachable",
+    "connection timed out",
+    "connection refused",
+    "no route to host",
+    "name or service not known",
+)
+
+
+def encode_ansible_raw_module_args(command: str) -> str:
+    """把 raw 命令编码成 Ansible adhoc `-a` 可安全解析的 JSON。
+
+    AdHocCLI 对非 JSON 的 `-a` 会走 ``parse_kv`` / ``split_args``。AIX ksh
+    heredoc 和脚本正文里的引号会触发
+    ``failed at splitting arguments, either an unbalanced jinja2 block or quotes``
+    （进程退出码 4），SSH 根本不会发生。JSON ``{"_raw_params": "..."}`` 走
+    ``from_yaml(..., json_only=True)``，跳过引号拆分。
+    """
+    return json.dumps({"_raw_params": command}, ensure_ascii=False)
 
 
 def _url_decode_secret(value: Any, credential_encoding: Any = "url") -> str:
@@ -38,9 +79,97 @@ VALID_MODULES = {"cpu", "mem", "disk", "net", "diskio", "processes", "system"}
 HOST_REMOTE_CALLBACK_REQUEST_TIMEOUT = 60
 LINUX_SCRIPT_WRAPPER_EOF = "STARGAZER_HOST_COLLECT_EOF"
 LINUX_SCRIPT_WRAPPER_PREFIX = "LC_ALL=C LANG=C bash --noprofile --norc"
+SUPPORTED_OS_TYPES = {"linux", "windows", "aix"}
 
 
-def build_script(os_type: str, modules: List[str], monitor_type: str | None = None) -> str:
+def sanitize_ansible_failure_text(value: Any, *, max_length: int = ANSIBLE_FAILURE_TEXT_MAX_CHARS) -> str:
+    text = _PEM_BLOCK_RE.sub("[omitted]", str(value or ""))
+    text = _SECRET_ASSIGNMENT_RE.sub(r"\1=[omitted]", text)
+    return safe_log_value(text, max_length=max_length)
+
+
+def _lookup_host_result(result: Dict[str, Any], host: str) -> Dict[str, Any]:
+    task_result = result.get("result")
+    expected_host = str(host or "").strip()
+    if isinstance(task_result, list):
+        for item in task_result:
+            if isinstance(item, dict) and str(item.get("host") or "") == expected_host:
+                return item
+        for item in task_result:
+            if isinstance(item, dict):
+                return item
+    if isinstance(task_result, dict):
+        hosts_result = task_result.get("contacted", task_result)
+        if isinstance(hosts_result, dict):
+            host_data = hosts_result.get(expected_host)
+            if isinstance(host_data, dict):
+                return host_data
+            for item in hosts_result.values():
+                if isinstance(item, dict):
+                    return item
+    return {}
+
+
+def extract_ansible_failure_summary(result: Dict[str, Any], host: str) -> Dict[str, Any]:
+    payload = result if isinstance(result, dict) else {}
+    error = payload.get("error") or payload.get("message") or "Ansible adhoc failed"
+    host_result = _lookup_host_result(payload, host)
+    summary_meta = payload.get("result_summary")
+    if not isinstance(summary_meta, dict):
+        summary_meta = {}
+    raw_status = str(host_result.get("raw_status") or summary_meta.get("failure_status") or host_result.get("status") or "")
+    exit_code = host_result.get("exit_code")
+    if exit_code is None:
+        exit_code = host_result.get("rc", summary_meta.get("failure_exit_code"))
+    stderr = str(host_result.get("stderr") or host_result.get("error_message") or summary_meta.get("failure_stderr") or "")
+    sanitized_stderr = sanitize_ansible_failure_text(stderr)
+    return {
+        "error": sanitize_ansible_failure_text(error),
+        "host_status": sanitize_ansible_failure_text(raw_status, max_length=32),
+        "exit_code": "" if exit_code in (None, "") else str(exit_code),
+        "stderr": sanitized_stderr,
+        "stderr_missing": not bool(sanitized_stderr),
+    }
+
+
+def classify_ansible_failure(summary: Dict[str, Any]) -> str:
+    host_status = str(summary.get("host_status") or "").upper()
+    text = " ".join(str(summary.get(key) or "") for key in ("error", "stderr", "host_status")).lower()
+    if host_status.startswith("UNREACHABLE"):
+        return "target_unreachable"
+    if any(marker in text for marker in _AUTH_FAILURE_MARKERS):
+        return "authentication_failed"
+    if any(marker in text for marker in _UNREACHABLE_MARKERS):
+        return "target_unreachable"
+    return "collection_failed"
+
+
+def format_ansible_failure_message(summary: Dict[str, Any]) -> str:
+    parts = [f"Host collection failed: {summary.get('error') or 'Ansible adhoc failed'}"]
+    if summary.get("host_status"):
+        parts.append(f"host_status={summary['host_status']}")
+    if summary.get("exit_code"):
+        parts.append(f"exit_code={summary['exit_code']}")
+    if summary.get("stderr"):
+        parts.append(f"stderr={summary['stderr']}")
+    else:
+        parts.append("stderr_missing=true")
+    return "; ".join(parts)
+
+
+def build_script(
+    os_type: str,
+    modules: List[str],
+    monitor_type: str | None = None,
+    config_type: str | None = None,
+) -> str:
+    os_type = str(os_type or "").strip().lower()
+    if os_type == "aix":
+        from .aix_os_monitor import wrap_ksh_collect
+
+        return wrap_ksh_collect()
+    if os_type not in {"linux", "windows"}:
+        raise ValueError(f"unsupported os_type: {os_type}")
     base_dir = SCRIPTS_DIR / ("linux" if os_type == "linux" else "windows")
     monitor_base_dir = MONITOR_SCRIPTS_DIR / ("linux" if os_type == "linux" else "windows")
     ext = ".sh" if os_type == "linux" else ".ps1"
@@ -58,11 +187,7 @@ def build_script(os_type: str, modules: List[str], monitor_type: str | None = No
     body = "\n".join(parts)
 
     if os_type == "linux":
-        body = (
-            f"{LINUX_SCRIPT_WRAPPER_PREFIX} <<'{LINUX_SCRIPT_WRAPPER_EOF}'\n"
-            f"{body}\n"
-            f"{LINUX_SCRIPT_WRAPPER_EOF}\n"
-        )
+        body = f"{LINUX_SCRIPT_WRAPPER_PREFIX} <<'{LINUX_SCRIPT_WRAPPER_EOF}'\n" f"{body}\n" f"{LINUX_SCRIPT_WRAPPER_EOF}\n"
 
     return body
 
@@ -70,6 +195,27 @@ def build_script(os_type: str, modules: List[str], monitor_type: str | None = No
 def _read_script(path: Path) -> str:
     with open(path, "r", encoding="utf-8") as f:
         return f.read()
+
+
+def _adhoc_stdout_preview(result: Dict[str, Any]) -> str:
+    task_result = result.get("result", {})
+    if isinstance(task_result, str):
+        return task_result
+    if isinstance(task_result, list):
+        chunks = []
+        for host_data in task_result:
+            if isinstance(host_data, dict) and host_data.get("stdout"):
+                chunks.append(str(host_data.get("stdout") or ""))
+        return "\n".join(chunks)
+    if isinstance(task_result, dict):
+        hosts_result = task_result.get("contacted", task_result)
+        if isinstance(hosts_result, dict):
+            chunks = []
+            for host_data in hosts_result.values():
+                if isinstance(host_data, dict) and host_data.get("stdout"):
+                    chunks.append(str(host_data.get("stdout") or ""))
+            return "\n".join(chunks)
+    return ""
 
 
 def _extract_json_payload(stdout: str) -> str:
@@ -126,10 +272,7 @@ def _metrics_json_failure_message(host: str, stdout: str, err: json.JSONDecodeEr
         stdout[:500],
     )
     if unclosed:
-        return (
-            f"Failed to parse metrics JSON from {host}: incomplete JSON "
-            f"(stdout_len={len(stdout)}, unclosed=true)"
-        )
+        return f"Failed to parse metrics JSON from {host}: incomplete JSON " f"(stdout_len={len(stdout)}, unclosed=true)"
     return f"Failed to parse metrics JSON from {host}: {err}"
 
 
@@ -308,22 +451,35 @@ class HostCollector(BaseCollector):
 
     def _resolve_execution_config(self) -> Dict[str, Any]:
         host = self.params["host"]
-        os_type = self.params.get("os_type", "linux")
+        os_type = str(self.params.get("os_type", "linux") or "linux").strip().lower()
+        if os_type not in SUPPORTED_OS_TYPES:
+            raise ValueError(f"unsupported os_type: {os_type}")
         username = self.params["username"]
         raw_port = self.params.get("port")
-        port = int(raw_port) if raw_port not in (None, "") else (22 if os_type == "linux" else 5986)
+        ssh_like = os_type in {"linux", "aix"}
+        port = int(raw_port) if raw_port not in (None, "") else (22 if ssh_like else 5986)
         ansible_node_id = self.params["ansible_node_id"]
-        execute_timeout = 60  # 脚本执行上限硬编码；表单 timeout 由框架作单对象预算
+        if os_type == "aix":
+            from .aix_os_monitor import COMMAND_EXECUTE_TIMEOUT
+
+            execute_timeout = COMMAND_EXECUTE_TIMEOUT
+        else:
+            execute_timeout = 60  # 脚本执行上限硬编码；表单 timeout 由框架作单对象预算
 
         modules = self._resolve_modules()
         credential_encoding = self.params.get("credential_encoding") or self.params.get("credentials_encoding") or "url"
 
-        logger.info(f"[Host Collector] host={host}, os={os_type}, modules={modules}")
+        logger.info("[Host Collector] host=%s, os=%s, modules=%s", host, os_type, modules)
 
-        script = build_script(os_type, modules, monitor_type=self.params.get("monitor_type"))
+        script = build_script(
+            os_type,
+            modules,
+            monitor_type=self.params.get("monitor_type"),
+        )
 
-        connection = "ssh" if os_type == "linux" else "winrm"
-        module = "raw" if os_type == "linux" else "win_shell"
+        connection = "ssh" if ssh_like else "winrm"
+        module = "raw" if ssh_like else "win_shell"
+        module_args = encode_ansible_raw_module_args(script) if ssh_like else script
 
         host_credential = {
             "host": host,
@@ -331,7 +487,7 @@ class HostCollector(BaseCollector):
             "connection": connection,
             "port": port,
         }
-        if os_type == "linux":
+        if ssh_like:
             auth_type = self.params.get("auth_type", "password") or "password"
             if auth_type == "private_key":
                 private_key_content = self.params.get("private_key_content")
@@ -359,11 +515,16 @@ class HostCollector(BaseCollector):
             "ansible_node_id": ansible_node_id,
             "host_credentials": host_credentials,
             "module": module,
-            "module_args": script,
+            "module_args": module_args,
             "execute_timeout": execute_timeout,
         }
 
     def _resolve_callback_timeout(self) -> int:
+        os_type = str(self.params.get("os_type", "") or "").strip().lower()
+        if os_type == "aix":
+            from .aix_os_monitor import COMMAND_EXECUTE_TIMEOUT
+
+            return int(self.params.get("host_remote_callback_timeout", COMMAND_EXECUTE_TIMEOUT))
         return int(
             self.params.get(
                 "host_remote_callback_timeout",
@@ -403,9 +564,19 @@ class HostCollector(BaseCollector):
         os_type = self.params.get("os_type", "linux")
 
         if not result.get("success"):
-            error_msg = result.get("error") or result.get("message") or "Ansible adhoc failed"
-            logger.error(f"[Host Collector] Ansible adhoc failed for {host}: {error_msg}")
-            raise RuntimeError(f"Host collection failed: {error_msg}")
+            summary = extract_ansible_failure_summary(result, host)
+            error_type = classify_ansible_failure(summary)
+            logger.error(
+                ANSIBLE_ADHOC_FAILED_LOG_TEMPLATE,
+                host,
+                summary["error"],
+                summary["host_status"] or "-",
+                summary["exit_code"] or "-",
+                summary["stderr"] or "-",
+                summary["stderr_missing"],
+                error_type,
+            )
+            raise RuntimeError(format_ansible_failure_message(summary))
 
         stdout = self._extract_stdout(result)
         if not stdout or not stdout.strip():
@@ -428,14 +599,24 @@ class HostCollector(BaseCollector):
 
         instance_id = self.params.get("tags", {}).get("instance_id", host)
         callback_timestamp = self.params.get("callback_timestamp")
-        prometheus_metrics = parse_metrics_to_prometheus(
-            metrics_data,
-            instance_id,
-            os_type,
-            timestamp=callback_timestamp,
-            disk_include_fstypes=self.params.get("disk_include_fstypes"),
-            disk_exclude_fstypes=self.params.get("disk_exclude_fstypes"),
-        )
+        if os_type == "aix":
+            from .aix_os_monitor import parse_aix_metrics_to_prometheus
+
+            prometheus_metrics = parse_aix_metrics_to_prometheus(
+                metrics_data,
+                instance_id,
+                os_type,
+                int(callback_timestamp) if callback_timestamp is not None else int(time.time() * 1000),
+            )
+        else:
+            prometheus_metrics = parse_metrics_to_prometheus(
+                metrics_data,
+                instance_id,
+                os_type,
+                timestamp=callback_timestamp,
+                disk_include_fstypes=self.params.get("disk_include_fstypes"),
+                disk_exclude_fstypes=self.params.get("disk_exclude_fstypes"),
+            )
 
         logger.info(f"[Host Collector] Completed: host={host}, metrics_size={len(prometheus_metrics)}")
         return prometheus_metrics

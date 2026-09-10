@@ -66,6 +66,17 @@ templates:
             label: Mapping strategy
           message_type:
             label: Message type
+    external_fields:
+      user_id:
+        label: User ID
+      open_id:
+        label: Open ID
+      email:
+        label: Email
+      mobile:
+        label: Mobile
+      name:
+        label: Name
 
 capabilities:
   login_auth:

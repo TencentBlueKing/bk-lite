@@ -49,6 +49,7 @@ class Event(models.Model):
     end_time = models.DateTimeField(null=True, blank=True, db_index=True, help_text="事件结束时间")
     labels = JSONField(default=dict, help_text="事件元数据")
     enrichment = JSONField(default=dict, help_text="丰富数据，按来源命名空间分区")
+    enrichment_meta = JSONField(default=dict, help_text="丰富执行诊断（有界状态摘要）")
     action = models.CharField(
         max_length=32,
         choices=EventAction.CHOICES,
@@ -60,8 +61,10 @@ class Event(models.Model):
     # f"EVENT-{uuid.uuid4().hex}"
     event_id = models.CharField(max_length=100, unique=True, db_index=True, help_text="事件唯一ID")
     item = models.CharField(max_length=128, null=True, blank=True, db_index=True, help_text="事件指标")
-    resource_id = models.CharField(max_length=64, null=True, blank=True, db_index=True, help_text="资源唯一ID")
-    resource_type = models.CharField(max_length=64, null=True, blank=True, help_text="资源类型")
+    monitor_id = models.CharField(max_length=100, null=True, blank=True, help_text="监控实例ID快照")
+    cmdb_id = models.CharField(max_length=100, null=True, blank=True, help_text="CMDB实例ID快照")
+    resource_id = models.CharField(max_length=100, null=True, blank=True, db_index=True, help_text="资源唯一ID")
+    resource_type = models.CharField(max_length=100, null=True, blank=True, help_text="资源类型")
     resource_name = models.CharField(max_length=128, null=True, blank=True, help_text="资源名称")
     status = models.CharField(
         max_length=32,
@@ -148,6 +151,7 @@ class Alert(models.Model):
     content = models.TextField(help_text="内容")
     labels = JSONField(default=dict, help_text="标签")
     enrichment = JSONField(default=dict, help_text="丰富数据，按来源命名空间分区")
+    enrichment_meta = JSONField(default=dict, help_text="成员事件丰富执行聚合摘要")
     first_event_time = models.DateTimeField(null=True, blank=True, help_text="首次事件时间")
     last_event_time = models.DateTimeField(null=True, blank=True, help_text="最近事件时间")
     closed_at = models.DateTimeField(
@@ -160,7 +164,8 @@ class Alert(models.Model):
     item = models.CharField(max_length=128, null=True, blank=True, db_index=True, help_text="事件指标")
     resource_id = models.CharField(max_length=128, null=True, blank=True, db_index=True, help_text="资源唯一ID")
     resource_name = models.CharField(max_length=128, null=True, blank=True, help_text="资源名称")
-    resource_type = models.CharField(max_length=64, null=True, blank=True, help_text="资源类型")
+    resource_type = models.CharField(max_length=100, null=True, blank=True, help_text="资源类型")
+    monitor_objects = JSONField(default=list, blank=True, help_text="关联监控对象身份快照")
     operate = models.CharField(
         max_length=64,
         choices=AlertOperate.CHOICES,

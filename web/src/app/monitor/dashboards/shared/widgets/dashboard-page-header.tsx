@@ -9,6 +9,7 @@ import { DEFAULT_REFRESH_FREQUENCY_LIST } from '../utils';
 import {
   getDashboardReturnNavigation
 } from '../utils/return-navigation';
+import { localizeDashboardReturnLabel, tDashboardText, useDashboardText } from '../utils/content-i18n';
 
 export interface DashboardPageHeaderStyles {
   readonly [key: string]: string | undefined;
@@ -31,8 +32,8 @@ export interface DashboardPageHeaderProps {
 }
 
 const DISPLAY_MODE_OPTIONS = [
-  { label: '监控仪表盘', value: 'dashboard' },
-  { label: '全量指标', value: 'metrics' }
+  { labelKey: 'dashboardMode', fallback: '监控仪表盘', value: 'dashboard' },
+  { labelKey: 'metricsMode', fallback: '全量指标', value: 'metrics' }
 ] as const;
 
 export function DashboardPageHeader({
@@ -48,9 +49,18 @@ export function DashboardPageHeader({
   viewSwitchSlot,
   styles
 }: DashboardPageHeaderProps) {
+  const { t, common } = useDashboardText();
+  const localizedTitle = title.endsWith(' 全量指标')
+    ? `${title.slice(0, -' 全量指标'.length)} ${common('fullMetrics', '全量指标')}`
+    : tDashboardText(t, title);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const returnNavigation = getDashboardReturnNavigation(searchParams, title);
+  const returnNavigation = getDashboardReturnNavigation(searchParams, localizedTitle);
+  const backLabel = localizeDashboardReturnLabel(t, searchParams);
+  const breadcrumbItems = returnNavigation.breadcrumbItems.map((item) => ({
+    ...item,
+    title: typeof item.title === 'string' ? tDashboardText(t, item.title) : item.title
+  }));
   const onBack = () => router.push(returnNavigation.href);
 
   const backButton = (
@@ -58,47 +68,53 @@ export function DashboardPageHeader({
       className={`${styles.toolbarBackBtn ?? ''} inline-flex max-w-[260px] items-center`}
       icon={<ArrowLeftOutlined aria-hidden="true" />}
       onClick={onBack}
-      aria-label={returnNavigation.label}
+      aria-label={backLabel}
     >
       <EllipsisWithTooltip
         className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"
-        text={returnNavigation.label}
+        text={backLabel}
       />
     </Button>
   );
 
   return (
     <div className={styles.pageTitleRow}>
-      <div className={styles.titleBlock}>
-        <Breadcrumb className={styles.breadcrumb} items={returnNavigation.breadcrumbItems} />
-        <h1 className={styles.title}>{title}</h1>
-      </div>
-      <div className={styles.controlsWrap}>
-        {viewSwitchSlot}
-        <Segmented
-          size="middle"
-          className={styles.modeSegmented}
-          value={displayMode}
-          options={[...DISPLAY_MODE_OPTIONS]}
-          onChange={(value) => onDisplayModeChange(value as 'dashboard' | 'metrics')}
-        />
-        {showTimeSelector ? (
+      <Breadcrumb className={styles.breadcrumb} items={breadcrumbItems} />
+      <div className={styles.titleControlsRow}>
+        <h1 className={styles.title}>{localizedTitle}</h1>
+        <div className={styles.controlsWrap}>
+          {viewSwitchSlot}
+          <Segmented
+            size="middle"
+            className={styles.modeSegmented}
+            value={displayMode}
+            options={DISPLAY_MODE_OPTIONS.map((item) => ({
+              value: item.value,
+              label: common(item.labelKey, item.fallback)
+            }))}
+            onChange={(value) => onDisplayModeChange(value as 'dashboard' | 'metrics')}
+          />
+          {showTimeSelector ? (
             <div className={styles.toolbarTimeSelector}>
-            <TimeSelector
-              appearance="toolbar"
-              defaultValue={timeDefaultValue}
-              customFrequencyList={frequencyList}
-              onChange={onTimeChange}
-              onFrequenceChange={onFrequenceChange}
-              onRefresh={onRefresh}
-            />
-          </div>
-        ) : null}
-        {styles.actionButtons ? (
-          <div className={styles.actionButtons}>{backButton}</div>
-        ) : (
-          backButton
-        )}
+              <TimeSelector
+                appearance="toolbar"
+                defaultValue={timeDefaultValue}
+                customFrequencyList={frequencyList.map((item) => ({
+                  ...item,
+                  label: tDashboardText(t, String(item.label))
+                }))}
+                onChange={onTimeChange}
+                onFrequenceChange={onFrequenceChange}
+                onRefresh={onRefresh}
+              />
+            </div>
+          ) : null}
+          {styles.actionButtons ? (
+            <div className={styles.actionButtons}>{backButton}</div>
+          ) : (
+            backButton
+          )}
+        </div>
       </div>
     </div>
   );

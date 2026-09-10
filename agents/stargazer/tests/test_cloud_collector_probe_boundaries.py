@@ -21,6 +21,21 @@ def test_qcloud_manager_accepts_boolean_tls_from_plugin_policy():
     assert manager.protocol == "https"
 
 
+def test_aliyun_manager_reads_persisted_access_key_aliases():
+    from plugins.inputs.aliyun.aliyun_info import CwAliyun
+
+    manager = CwAliyun(
+        {
+            "accessKey": "LTAIreal",
+            "accessSecret": "sk-real",
+            "region_id": "cn-hangzhou",
+        }
+    )
+
+    assert manager.AccessKey == "LTAIreal"
+    assert manager.AccessSecret == "sk-real"
+
+
 def test_qcloud_bucket_collection_accepts_empty_bucket_payload():
     class EmptyBucketClient:
         @staticmethod

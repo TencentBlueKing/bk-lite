@@ -60,6 +60,7 @@ export interface AssoListProps {
   userList: UserItem[];
   modelList: ModelItem[]; 
   assoTypeList: AssoTypeItem[];
+  onExpandStateChange?: (allExpanded: boolean) => void;
 }
 
 export interface SelectInstanceProps {

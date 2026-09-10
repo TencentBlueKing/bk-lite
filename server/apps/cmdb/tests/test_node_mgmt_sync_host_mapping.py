@@ -25,7 +25,8 @@ def test_existing_hosts_are_indexed_by_ip_and_cloud_and_invalid_rows_are_ignored
     indexed = NodeMgmtSyncService._load_existing_host_map(task_id=99)
 
     search_inst.assert_called_once_with(
-        model_id="host", page=1,
+        model_id="host",
+        page=1,
         page_size=NodeMgmtSyncService.EXISTING_HOST_PAGE_SIZE,
     )
     assert indexed == {
@@ -67,10 +68,13 @@ def test_existing_host_scan_stops_before_second_page_when_count_exceeds_budget(m
         InstanceManage,
         "search_inst",
         side_effect=[
-            ([
-                {"_id": 1, "ip_addr": "10.0.0.1", "cloud": 1},
-                {"_id": 2, "ip_addr": "10.0.0.2", "cloud": 1},
-            ], 3),
+            (
+                [
+                    {"_id": 1, "ip_addr": "10.0.0.1", "cloud": 1},
+                    {"_id": 2, "ip_addr": "10.0.0.2", "cloud": 1},
+                ],
+                3,
+            ),
             AssertionError("不应请求或物化第二页"),
         ],
     )
@@ -88,9 +92,31 @@ def test_region_collection_reuses_only_hosts_matching_both_ip_and_cloud(mocker):
     }
     mocker.patch.object(NodeMgmtSyncService, "_load_existing_host_map", return_value=existing)
 
-    instances = NodeMgmtSyncService._query_region_host_instances(7, [{"ip": "10.0.0.1"}, {"ip_addr": "10.0.0.2"}, {"ip": ""},],)
+    instances = NodeMgmtSyncService._query_region_host_instances(
+        7,
+        [
+            {"ip": "10.0.0.1"},
+            {"ip_addr": "10.0.0.2"},
+            {"ip": ""},
+        ],
+    )
 
     assert instances == [{"_id": "region-7-host"}]
+
+
+def test_region_collection_claims_host_by_node_id_even_when_ip_differs(mocker):
+    existing = {
+        ("10.0.0.1", 7): {"_id": "by-ip", "node_id": "c" * 32, "ip_addr": "10.0.0.1"},
+        ("10.0.0.8", 7): {"_id": "by-node", "node_id": "d" * 32, "ip_addr": "10.0.0.8"},
+    }
+    mocker.patch.object(NodeMgmtSyncService, "_load_existing_host_map", return_value=existing)
+
+    instances = NodeMgmtSyncService._query_region_host_instances(
+        7,
+        [{"id": "d" * 32, "ip": "10.9.9.9"}],
+    )
+
+    assert instances == [{"_id": "by-node", "node_id": "d" * 32, "ip_addr": "10.0.0.8"}]
 
 
 def test_host_payload_normalizes_runtime_enum_keywords_and_persistence_fields(mocker):
@@ -106,7 +132,11 @@ def test_host_payload_normalizes_runtime_enum_keywords_and_persistence_fields(mo
     mocker.patch.object(
         ModelManage,
         "resolve_runtime_enum_options",
-        return_value=[{"id": "custom-linux", "name": "Custom Linux"}, {"id": "win-server", "name": "Windows Server"}, "invalid-option",],
+        return_value=[
+            {"id": "custom-linux", "name": "Custom Linux"},
+            {"id": "win-server", "name": "Windows Server"},
+            "invalid-option",
+        ],
     )
 
     custom = NodeMgmtSyncService._build_host_instance_payload(

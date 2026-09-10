@@ -124,29 +124,6 @@ export function buildThirdLoginCallbackUrl(
   }
 }
 
-export function buildLegacyThirdLoginCallbackUrl(
-  callbackUrl?: string,
-  token?: string,
-  thirdLoginCode?: string,
-): string {
-  if (!callbackUrl || !token || !thirdLoginCode) {
-    return PORTAL_HOME_PATH;
-  }
-
-  try {
-    const url = new URL(callbackUrl);
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-      return PORTAL_HOME_PATH;
-    }
-
-    url.searchParams.set('third_login_code', thirdLoginCode);
-    url.searchParams.set('token', token);
-    return url.toString();
-  } catch {
-    return PORTAL_HOME_PATH;
-  }
-}
-
 export function getLegacyThirdLoginCode(callbackUrl?: string): string | undefined {
   if (!callbackUrl) {
     return undefined;

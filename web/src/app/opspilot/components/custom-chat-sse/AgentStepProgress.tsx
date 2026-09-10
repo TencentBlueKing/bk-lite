@@ -21,61 +21,48 @@ const AgentStepProgress: React.FC<AgentStepProgressProps> = ({ steps }) => {
   
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'started': case 'running': case 'parallel_started': return '#1890ff';
-      case 'completed': case 'parallel_completed': return '#52c41a';
-      case 'error': return '#ff4d4f';
-      default: return '#8c8c8c';
+      case 'started': case 'running': case 'parallel_started': return 'var(--color-primary)';
+      case 'completed': case 'parallel_completed': return 'var(--color-success, #52c41a)';
+      case 'error': return 'var(--color-error)';
+      default: return 'var(--color-text-3)';
     }
   };
   
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'started': case 'running': case 'parallel_started': return '⏳';
-      case 'completed': case 'parallel_completed': return '✅';
-      case 'error': return '❌';
-      default: return '⚙️';
+      case 'completed': case 'parallel_completed': return '✓';
+      case 'error': return '✕';
+      default: return '·';
     }
   };
   
   return (
-    <div style={{ 
-      margin: '8px 0', 
-      padding: '8px 12px', 
-      background: '#f6f8fa', 
-      borderRadius: '6px',
-      fontSize: '13px',
-      lineHeight: '1.6'
-    }}>
+    <div className="my-1.5 ml-1 space-y-1 border-l-2 border-[var(--color-fill-3)] pl-3 text-xs">
       {Array.from(agentGroups.entries()).map(([agentName, agentSteps]) => {
         const latestStep = agentSteps[agentSteps.length - 1];
         const isActive = ['started', 'running', 'parallel_started'].includes(latestStep.status);
         
         return (
-          <div key={agentName} style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '8px',
-            padding: '2px 0',
-            opacity: isActive ? 1 : 0.7,
-          }}>
-            <span>{getStatusIcon(latestStep.status)}</span>
+          <div key={agentName} className={`flex items-center gap-2 py-0.5 ${isActive ? 'opacity-100' : 'opacity-80'}`}>
+            <span className="text-[11px] font-mono">{getStatusIcon(latestStep.status)}</span>
             <span style={{ 
               fontWeight: 500, 
               color: getStatusColor(latestStep.status),
-              minWidth: '80px',
+              minWidth: '70px',
             }}>
               {agentName === 'main' ? t('chatflow.mainAgent') : agentName}
             </span>
             {latestStep.max_steps > 0 && (
-              <span style={{ color: '#8c8c8c' }}>
+              <span className="text-[var(--color-text-4)] font-mono">
                 {t('chatflow.stepProgress', '', { current: latestStep.step, total: latestStep.max_steps })}
               </span>
             )}
-            <span style={{ color: '#595959', flex: 1 }}>
+            <span className="text-[var(--color-text-3)] flex-1 truncate">
               {latestStep.description || latestStep.tool_name || ''}
             </span>
             {latestStep.total_elapsed_seconds != null && latestStep.total_elapsed_seconds > 0 && (
-              <span style={{ color: '#8c8c8c', fontSize: '12px' }}>
+              <span className="text-[var(--color-text-4)] font-mono text-[11px]">
                 {latestStep.total_elapsed_seconds.toFixed(1)}s
               </span>
             )}

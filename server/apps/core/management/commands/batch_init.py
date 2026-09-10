@@ -6,12 +6,13 @@
 import os
 from pathlib import Path
 
-from apps.core.logger import logger
-from apps.core.utils.loader import preload_language_cache
 from django.apps import apps as django_apps
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+
+from apps.core.logger import logger
+from apps.core.utils.loader import preload_language_cache
 
 _ADMIN_PASSWORD_FILE_MAX_CHARS = 4096
 
@@ -181,6 +182,7 @@ class Command(BaseCommand):
         self.stdout.write("CMDB资源初始化...")
         call_command("model_init")
         call_command("init_oid")
+        call_command("init_port_fingerprint")
         call_command("update_collect_task_data")
         call_command("init_field_groups")
         call_command("init_display_fields")

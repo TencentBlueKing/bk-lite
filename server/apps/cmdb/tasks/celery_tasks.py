@@ -31,6 +31,7 @@ from apps.cmdb.collection.round_sync import (
     query_instance_ids_with_vm_data,
     query_latest_completed_rounds,
     query_latest_round_ts,
+    resolve_latest_completed_round_for_task,
     uses_vm_reconciliation,
 )
 from apps.cmdb.constants.constants import CollectPluginTypes, CollectRunStatusType
@@ -377,110 +378,34 @@ def _count_raw_collection_outcomes(raw_data) -> tuple[int, int]:
 
 @shared_task(
     bind=True,
-    max_retries=2,
-    name="apps.cmdb.tasks.celery_tasks.trigger_first_collection",
+    max_retries=8,
+    name="apps.cmdb.tasks.celery_tasks.execute_first_collection_run",
 )
-def trigger_first_collection(self, task_id, expected_fingerprint, reason):
-    from apps.cmdb.constants import constants as cmdb_constants
-    from apps.cmdb.services.first_collection_policy import FirstCollectionPolicy
-    from apps.cmdb.services.stargazer_collect_trigger import (
-        StargazerCollectPermanentError,
-        StargazerCollectRetryableError,
-        StargazerCollectTriggerClient,
-    )
+def execute_first_collection_run(self, run_id):
+    from apps.cmdb.services.first_collection_orchestrator import FirstCollectionOrchestrator
 
-    started_at = time.monotonic()
-    if not cmdb_constants.CMDB_FIRST_COLLECTION_ENABLED:
-        return {"status": "disabled", "task_id": task_id, "reason": reason}
+    result = FirstCollectionOrchestrator.execute(run_id)
+    if result.get("status") == "retry_wait":
+        raise self.retry(countdown=int(result["retry_after"]))
+    return result
 
-    task = CollectModels._default_manager.filter(id=task_id).first()
-    if not task:
-        return {"status": "missing", "task_id": task_id, "reason": reason}
-    if not FirstCollectionPolicy.is_eligible(task):
-        return {"status": "ineligible", "task_id": task_id, "reason": reason}
 
-    cycle_minutes = int(task.cycle_value)
-    attempt = int(self.request.retries) + 1
-    current_fingerprint = FirstCollectionPolicy.fingerprint(task)
-    fingerprint_short = current_fingerprint[:12]
-    if current_fingerprint != expected_fingerprint:
-        logger.info(
-            "[FirstCollection] 跳过过期配置 task_id=%s fingerprint=%s reason=%s " "cycle=%s attempt=%s elapsed_ms=%s result=stale",
-            task_id,
-            fingerprint_short,
-            reason,
-            cycle_minutes,
-            attempt,
-            int((time.monotonic() - started_at) * 1000),
-        )
-        return {"status": "stale", "task_id": task_id, "reason": reason}
-
-    try:
-        result = StargazerCollectTriggerClient().trigger(task)
-    except StargazerCollectRetryableError as exc:
-        retry_number = int(self.request.retries)
-        if retry_number >= self.max_retries:
-            logger.warning(
-                "[FirstCollection] 可重试次数耗尽 task_id=%s fingerprint=%s reason=%s "
-                "cycle=%s attempt=%s elapsed_ms=%s error_type=%s "
-                "result=failed retry_exhausted=true",
-                task_id,
-                fingerprint_short,
-                reason,
-                cycle_minutes,
-                attempt,
-                int((time.monotonic() - started_at) * 1000),
-                exc.__class__.__name__,
-            )
-            return {
-                "status": "failed",
-                "task_id": task_id,
-                "reason": reason,
-                "retry_exhausted": True,
-            }
-
-        countdown = 10 * (2**retry_number)
-        logger.warning(
-            "[FirstCollection] 可重试失败 task_id=%s fingerprint=%s reason=%s " "cycle=%s attempt=%s elapsed_ms=%s error_type=%s",
-            task_id,
-            fingerprint_short,
-            reason,
-            cycle_minutes,
-            attempt,
-            int((time.monotonic() - started_at) * 1000),
-            exc.__class__.__name__,
-        )
-        raise self.retry(exc=exc, countdown=countdown)
-    except StargazerCollectPermanentError as exc:
-        logger.warning(
-            "[FirstCollection] 永久失败 task_id=%s fingerprint=%s reason=%s " "cycle=%s attempt=%s elapsed_ms=%s error_type=%s",
-            task_id,
-            fingerprint_short,
-            reason,
-            cycle_minutes,
-            attempt,
-            int((time.monotonic() - started_at) * 1000),
-            exc.__class__.__name__,
-        )
-        return {"status": "failed", "task_id": task_id, "reason": reason}
-
-    logger.info(
-        "[FirstCollection] 已接收 task_id=%s fingerprint=%s reason=%s " "cycle=%s attempt=%s elapsed_ms=%s result=%s",
+@shared_task(name="apps.cmdb.tasks.celery_tasks.trigger_first_collection")
+def trigger_first_collection(task_id, _expected_fingerprint, reason):
+    """滚动升级兼容：安全消费旧三参数消息，不再走 Server 直连 Stargazer。"""
+    logger.warning(
+        "event=first_collection_legacy_message_retired task_id=%s failed_stage=protocol_retired error_type=%s",
         task_id,
-        fingerprint_short,
-        reason,
-        cycle_minutes,
-        attempt,
-        int((time.monotonic() - started_at) * 1000),
-        result.status,
+        "LegacyMessage",
     )
-    return {
-        "status": result.status,
-        "task_id": task_id,
-        "reason": reason,
-        "total": result.total,
-        "accepted": result.accepted,
-    }
+    return {"status": "retired", "task_id": task_id, "reason": reason}
+
+
+@shared_task(name="apps.cmdb.tasks.celery_tasks.recover_first_collection_runs")
+def recover_first_collection_runs():
+    from apps.cmdb.services.first_collection_orchestrator import FirstCollectionOrchestrator
+
+    return FirstCollectionOrchestrator.recover()
 
 
 @shared_task(bind=True)
@@ -493,6 +418,7 @@ def sync_collect_task(  # noqa: C901
     sync_round_ts=None,
     sync_round_completed_at=None,
     sync_snapshot_complete=None,
+    resolve_latest_round=False,
 ):
     """
     同步采集任务
@@ -540,13 +466,10 @@ def sync_collect_task(  # noqa: C901
             )
             resolved_round_ts = None
     if resolved_round_ts is not None:
-        instance._sync_round_ts = resolved_round_ts
         try:
             resolved_round_completed_at = float(sync_round_completed_at)
         except (TypeError, ValueError):
             resolved_round_completed_at = None
-        if resolved_round_completed_at is not None and resolved_round_completed_at >= resolved_round_ts:
-            instance._sync_round_completed_at = resolved_round_completed_at
     if isinstance(sync_snapshot_complete, bool):
         resolved_snapshot_complete = bool(
             sync_snapshot_complete
@@ -554,7 +477,6 @@ def sync_collect_task(  # noqa: C901
             and resolved_round_completed_at is not None
             and resolved_round_completed_at >= resolved_round_ts
         )
-        instance._sync_snapshot_complete = resolved_snapshot_complete
     logger.info(
         "event=collect_task_execution_started task_id=%s execution_id=%s",
         instance_id,
@@ -569,6 +491,25 @@ def sync_collect_task(  # noqa: C901
     failed_stage = "-"
     result_persisted = False
     try:
+        if resolve_latest_round and sync_round_ts in (None, "") and uses_vm_reconciliation(instance):
+            failed_stage = "round_resolution"
+            completed_round = resolve_latest_completed_round_for_task(instance)
+            if completed_round is None:
+                # 没有完整轮次只能做兼容 upsert，不能执行差集删除。
+                resolved_snapshot_complete = False
+            else:
+                resolved_round_ts = completed_round.started_at
+                resolved_round_completed_at = completed_round.completed_at
+                resolved_snapshot_complete = completed_round.snapshot_complete
+
+        if resolved_round_ts is not None:
+            instance._sync_round_ts = resolved_round_ts
+        if resolved_round_ts is not None and resolved_round_completed_at is not None and resolved_round_completed_at >= resolved_round_ts:
+            instance._sync_round_completed_at = resolved_round_completed_at
+        if isinstance(resolved_snapshot_complete, bool):
+            instance._sync_snapshot_complete = resolved_snapshot_complete
+
+        failed_stage = "collection"
         CollectModelService.repair_host_cloud_snapshot(instance)
         if instance.is_job:
             collect = JobCollect(task=instance)
@@ -578,12 +519,12 @@ def sync_collect_task(  # noqa: C901
             result, format_data = collect.main()
 
         instance.exec_status = CollectRunStatusType.SUCCESS
+        failed_stage = "-"
 
     except Exception as err:
         import traceback
 
         traceback_text = traceback.format_exc()
-        failed_stage = "collection"
         logger.exception(
             "event=collect_task_stage_failed task_id=%s execution_id=%s " "failed_stage=%s error_type=%s",
             instance_id,
@@ -603,6 +544,9 @@ def sync_collect_task(  # noqa: C901
 
     try:
         node_mgmt_raw_summary = _bound_node_mgmt_raw_data(instance, format_data)
+        from apps.cmdb.services.collect_snapshot_uuid import normalize_collect_result_payloads
+
+        result, format_data = normalize_collect_result_payloads(result, format_data)
         instance.collect_data = result
         instance.format_data = format_data
         collect_digest = {
@@ -1309,9 +1253,17 @@ def reconcile_config_file_content_task() -> dict:
     from apps.cmdb.services.config_file_content_lifecycle import ConfigFileContentLifecycle
 
     recovery = ConfigFileContentLifecycle.recover_stale()
+    logger.info("[ConfigFileContent] 周期正文补偿完成: %s", recovery)
+    return recovery
+
+
+@shared_task
+def cleanup_config_file_orphan_temp_task() -> dict:
+    from apps.cmdb.services.config_file_content_lifecycle import ConfigFileContentLifecycle
+
     orphans_deleted = ConfigFileContentLifecycle.cleanup_orphan_temp_objects()
-    result = {**recovery, "orphans_deleted": orphans_deleted}
-    logger.info("[ConfigFileContent] 周期补偿完成: %s", result)
+    result = {"orphans_deleted": orphans_deleted}
+    logger.info("[ConfigFileContent] 周期孤儿临时对象清理完成: %s", result)
     return result
 
 

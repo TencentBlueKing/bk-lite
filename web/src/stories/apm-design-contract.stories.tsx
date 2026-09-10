@@ -60,10 +60,19 @@ const services = [
   { name: 'legacy-worker', silent: true },
 ];
 
+const manyServices = [
+  ...services,
+  { name: 'demo-inventory', silent: false },
+  { name: 'demo-orders', silent: false },
+  { name: 'demo-payment', silent: false },
+  { name: 'demo-storefront', silent: false },
+  { name: 'ingest-verify-django', silent: false },
+];
+
 export const ApplicationCardStates: Story = {
   name: '应用卡状态与长文本',
   render: () => (
-    <div className="grid gap-4 bg-[var(--color-background-body)] p-4 lg:grid-cols-2">
+    <div className="grid grid-cols-1 gap-3 bg-[var(--color-background-body)] p-4 md:grid-cols-2">
       <ApplicationCard
         label="交易清结算 / production 🚦"
         status="critical"
@@ -94,6 +103,36 @@ export const ApplicationCardStates: Story = {
         eventsHref="/apm/events/alerts"
         href="/apm/integration/applications/payment"
         onRetryMetrics={() => undefined}
+      />
+      <ApplicationCard
+        label="本机 APM 演示商城"
+        status="warning"
+        services={manyServices}
+        requestRate={6.5}
+        errorRate={0.112}
+        requestRateTrend={[4, 5, 6, 6.5]}
+        errorRateTrend={[0.08, 0.09, 0.1, 0.112]}
+        metricUnavailable={false}
+        alertCount={1}
+        timeWindow="1h"
+        servicesHref="/apm/services?perspective=service&namespace=demo-shop"
+        eventsHref="/apm/events/alerts"
+        href="/apm/integration/applications/demo-shop"
+      />
+      <ApplicationCard
+        label="bklite"
+        status="normal"
+        services={[{ name: 'bklite-server', silent: false }]}
+        requestRate={0.00167}
+        errorRate={0}
+        requestRateTrend={[0.001, 0.0014, 0.00167]}
+        errorRateTrend={[0, 0, 0]}
+        metricUnavailable={false}
+        alertCount={0}
+        timeWindow="1h"
+        servicesHref="/apm/services?perspective=service&namespace=bklite"
+        eventsHref="/apm/events/alerts"
+        href="/apm/integration/applications/bklite"
       />
     </div>
   ),

@@ -203,6 +203,42 @@ def query_latest_completed_round(
     ).get(instance_id)
 
 
+def resolve_latest_completed_round_for_task(
+    task,
+    *,
+    collection: Collection | None = None,
+) -> CompletedRound | None:
+    """为单个手动同步任务解析最新完整轮次。
+
+    优先使用新协议的 device 标记，仅在未找到时兼容旧的无 role 标记。
+    查询异常由调用方持有，不得降级为“无数据”。
+    """
+    from apps.cmdb.models.collect_model import COLLECTION_ROLE_DEVICE
+
+    requested_lookback = completed_round_lookback_seconds(
+        is_interval=bool(getattr(task, "is_interval", False)),
+        cycle_value_type=getattr(task, "cycle_value_type", None),
+        cycle_value=getattr(task, "cycle_value", None),
+    )
+    lookback_seconds, _ = cap_completed_round_lookback_seconds(requested_lookback)
+    instance_id = cmdb_instance_id(task.id)
+    coll = collection or Collection()
+    completed_round = query_latest_completed_round(
+        instance_id,
+        lookback_seconds=lookback_seconds,
+        collection=coll,
+        collection_role=COLLECTION_ROLE_DEVICE,
+    )
+    if completed_round is not None:
+        return completed_round
+    return query_latest_completed_round(
+        instance_id,
+        lookback_seconds=lookback_seconds,
+        collection=coll,
+        collection_role="",
+    )
+
+
 def query_latest_round_ts(
     instance_id: str,
     *,

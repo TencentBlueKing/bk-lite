@@ -26,6 +26,7 @@ import {
 } from '@/app/log/hooks/integration/common/other';
 import { v4 as uuidv4 } from 'uuid';
 import type { LogGroupFieldSource } from './fieldBootstrap';
+import { buildLogGroupSubmitPayload } from './logGroupWritePayload';
 
 const EditInstance = forwardRef<ModalRef, ModalProps>(
   ({ onSuccess, fields = [], fieldSource }, ref) => {
@@ -120,14 +121,13 @@ const EditInstance = forwardRef<ModalRef, ModalProps>(
 
     const handleSubmit = () => {
       formRef.current?.validateFields().then((values) => {
-        const params = {
-          ...values,
-          rule: {
-            mode: term,
-            conditions
-          },
-          id: isAdd ? uuidv4() : configForm.id
-        };
+        const params = buildLogGroupSubmitPayload({
+          values,
+          term,
+          conditions,
+          id: isAdd ? uuidv4() : configForm.id,
+          isBuiltIn
+        });
         handleOperate(params);
       });
     };
@@ -183,7 +183,10 @@ const EditInstance = forwardRef<ModalRef, ModalProps>(
 
     // 自定义验证条件列表
     const validateDimensions = async () => {
-      if (!conditions.length || !term) {
+      if (!term) {
+        return Promise.reject(new Error(t('log.integration.ruleModeRequired')));
+      }
+      if (!conditions.length) {
         return Promise.reject(new Error(t('common.required')));
       }
       if (
@@ -239,7 +242,7 @@ const EditInstance = forwardRef<ModalRef, ModalProps>(
                     <span>{t('log.integration.meetRule')}</span>
                     <Select
                       className="ml-[8px] flex-1"
-                      placeholder={t('log.integration.rule')}
+                      placeholder={t('log.integration.ruleModePlaceholder')}
                       showSearch
                       optionFilterProp="label"
                       value={term}

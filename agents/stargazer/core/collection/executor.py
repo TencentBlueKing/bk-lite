@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from dataclasses import replace
 
 from core.collection.capacity import TargetActivityTracker, TargetWorkerBudget, unlimited_target_gate
 from core.collection.contracts import (
@@ -147,6 +148,10 @@ class TargetCollectionExecutor:
             nonlocal progress_completed
             target = targets[index]
             target_started_at = time.monotonic()
+            payload_permit = None
+            reserve_payload = getattr(self._publisher, "reserve_payload", None)
+            if callable(reserve_payload):
+                payload_permit = await reserve_payload()
             # 目标槽位只覆盖目标执行与进入发布路径；发布异常在目标内隔离。
             try:
                 async with self._target_semaphore:
@@ -192,6 +197,8 @@ class TargetCollectionExecutor:
                         active_targets.discard(target)
                         await self._activity_tracker.exit()
             except asyncio.CancelledError:
+                if payload_permit is not None:
+                    payload_permit.release()
                 raise
             except Exception as error:  # noqa: BLE001 - 单目标框架异常不得取消 Run
                 self._metrics.increment("target_execution_error_total")
@@ -249,7 +256,12 @@ class TargetCollectionExecutor:
                     _target_status_zh(result.status),
                     active_samples,
                 )
-            return await delivery.enqueue(index, result)
+            try:
+                return await delivery.enqueue(index, result, payload_permit=payload_permit)
+            except BaseException:
+                if payload_permit is not None:
+                    payload_permit.release()
+                raise
 
         if self._scheduler is not None:
             workload_class = (
@@ -322,6 +334,18 @@ class TargetCollectionExecutor:
                 report.total_failures,
                 report.failure_samples,
             )
+        if report.ip_precheck_failure_count:
+            logger.warning(
+                "event=ip_precheck_failed %s plugin_ref=%s model_id=%s "
+                "failed_stage=ip_precheck error_type=PreflightFailure "
+                "failure_count=%s sample_count=%s samples=%s",
+                _request_log_identity(request, instance_id),
+                safe_log_value(request.plugin_ref),
+                safe_log_value(request.params.get("model_id") or "-"),
+                report.ip_precheck_failure_count,
+                report.ip_precheck_failure_sample_count,
+                report.ip_precheck_failure_samples,
+            )
         log_summary = (
             logger.warning
             if report.total_failures
@@ -357,20 +381,34 @@ class TargetCollectionExecutor:
             report.publish_failure_codes,
             report.publish_failure_samples,
         )
-        from core.collection.round_complete import is_complete_round
+        from core.collection.round_complete import publish_round_complete_marker, round_complete_skip_reason
 
-        publish_clean = is_complete_round(summary)
-        if publish_clean:
-            from core.collection.round_complete import publish_round_complete_marker
-
-            await publish_round_complete_marker(request, round_ts)
-        else:
+        marker_skip_reason = round_complete_skip_reason(request, summary)
+        if marker_skip_reason is None:
+            marker_published = await publish_round_complete_marker(request, round_ts)
+            summary = replace(
+                summary,
+                round_complete_marker_published=int(marker_published),
+                round_complete_marker_failed=int(not marker_published),
+            )
+        elif marker_skip_reason != "not_applicable":
             logger.info(
-                "event=round_complete_marker_skipped %s reason=publish_incomplete "
-                "round_ts=%s publish_failed=%s publish_unknown=%s "
-                "publish_event_failed=%s publish_permanent_failed=%s",
+                "event=round_complete_marker_skipped %s reason=%s round_ts=%s "
+                "total=%s collection_succeeded=%s collection_failed=%s unreachable=%s "
+                "deferred=%s skipped=%s publish_succeeded=%s publish_not_applicable=%s "
+                "publish_failed=%s publish_unknown=%s publish_event_failed=%s "
+                "publish_permanent_failed=%s",
                 _request_log_identity(request, instance_id),
+                marker_skip_reason,
                 round_ts,
+                summary.total,
+                summary.collection_succeeded,
+                summary.collection_failed,
+                summary.unreachable,
+                summary.deferred,
+                summary.skipped,
+                summary.publish_succeeded,
+                summary.publish_not_applicable,
                 summary.publish_failed,
                 summary.publish_unknown,
                 summary.publish_event_failed,

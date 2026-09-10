@@ -7,6 +7,7 @@ import {
 } from '@/app/monitor/(pages)/event/template/templateBulkUtils';
 
 export const COLLECTION_POLICY_FIELD = 'monitor_policy_template_keys';
+export const COLLECTION_POLICY_NAME_PREFIX_FIELD = 'monitor_policy_name_prefix';
 export const COLLECTION_POLICY_CONTROL_WIDTH = 300;
 
 export const samePluginId = (
@@ -37,9 +38,13 @@ export const shouldSkipPolicyCreate = (selectedKeys: unknown): boolean =>
 
 export const omitCollectionPolicyField = <T extends object>(
   values: T
-): Omit<T, typeof COLLECTION_POLICY_FIELD> => {
+): Omit<
+  T,
+  typeof COLLECTION_POLICY_FIELD | typeof COLLECTION_POLICY_NAME_PREFIX_FIELD
+> => {
   const next = { ...values } as T & Record<string, unknown>;
   delete next[COLLECTION_POLICY_FIELD];
+  delete next[COLLECTION_POLICY_NAME_PREFIX_FIELD];
   return next;
 };
 
@@ -89,17 +94,21 @@ export const extractCollectInstanceIds = (
 export const buildCollectionPolicyApplyPayload = ({
   monitorObjectId,
   templates,
-  instanceIds
+  instanceIds,
+  namePrefix
 }: {
   monitorObjectId: string | number;
   templates: PolicyTemplateItem[];
   instanceIds: string[];
+  namePrefix?: string;
 }) => {
   if (!templates.length || !instanceIds.length) return null;
   return buildBulkApplyPayload({
     monitorObjectId,
     templates,
     assets: instanceIds.map((instance_id) => ({ instance_id })),
-    config: buildCollectionPolicyBulkConfig()
+    config: buildCollectionPolicyBulkConfig(
+      namePrefix === undefined ? {} : { name_prefix: namePrefix }
+    )
   });
 };

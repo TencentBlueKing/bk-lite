@@ -4,10 +4,17 @@ import { TOP_N } from './queries';
 
 type QueryResult = { data?: { result?: Array<{ metric?: Record<string, string>; values?: Array<[number, string | number | null]> }> } } | null;
 
-/** 取单序列结果的最新标量(无数据 → 0)。 */
+/** 取单序列结果的最新标量(无数据 → 0)。KPI 计数用；百分比条请用 latestScalarOrNull。 */
 export const latestScalar = (result: QueryResult): number => {
   const series = result?.data?.result;
   if (!series || series.length === 0) return 0;
+  return latestFiniteValue(series[0].values);
+};
+
+/** 无序列时返回 null，避免把查空画成 0%。 */
+export const latestScalarOrNull = (result: QueryResult): number | null => {
+  const series = result?.data?.result;
+  if (!series || series.length === 0) return null;
   return latestFiniteValue(series[0].values);
 };
 
@@ -54,7 +61,7 @@ export interface TopBarItem { label: string; value: number; display: string; col
 /** 由 topk 结果按某 label 构建排行 bar items(降序、取前 TOP_N、max 取本卡最大值)。 */
 export const buildTopBars = (
   result: Parameters<typeof seriesLatestByLabel>[0],
-  label: string,
+  label: string | string[],
   color: string,
   format: (n: number) => string
 ): TopBarItem[] => {

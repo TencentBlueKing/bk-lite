@@ -7,6 +7,8 @@ import styles from './index.module.scss';
 import {
   IP_RANGE_LOCKED_PREFIX_OCTETS,
   IP_RANGE_MAX_SIZE,
+  displayedIpFromOctets,
+  ipOctetsFromValue,
   ipRangeSize,
   isIpRangeOrderValid,
   isIpRangeWithinLimit,
@@ -23,54 +25,43 @@ interface IpInputProps {
   onChange: (val: string[]) => void;
 }
 
+const segmentsFromIp = (ip: string, type: string, lockPrefix: boolean): IpSegment[] =>
+  ipOctetsFromValue(ip).map((octet, index) => ({
+    value: octet,
+    type,
+    disabled: lockPrefix && index < IP_RANGE_LOCKED_PREFIX_OCTETS,
+  }));
+
 const IpInput: React.FC<IpInputProps> = ({ value = ['', ''], onChange }) => {
   const [beginFocus, setBeginFocus] = useState(false);
   const [endFocus, setEndFocus] = useState(false);
   const [beginError, setBeginError] = useState(false);
   const [endError, setEndError] = useState(false);
-  const [beginIpAddress, setBeginIpAddress] = useState<IpSegment[]>([
-    { value: '', type: 'beginInput', disabled: false },
-    { value: '', type: 'beginInput', disabled: false },
-    { value: '', type: 'beginInput', disabled: false },
-    { value: '', type: 'beginInput', disabled: false },
-  ]);
+  const [beginIpAddress, setBeginIpAddress] = useState<IpSegment[]>(() =>
+    segmentsFromIp(value[0] || '', 'beginInput', false)
+  );
   // /21：仅锁定前 2 段；第 3、4 段可编辑（相对原 /24 仅末段可编辑）
-  const [endIpAddress, setEndIpAddress] = useState<IpSegment[]>([
-    { value: '', type: 'endInput', disabled: true },
-    { value: '', type: 'endInput', disabled: true },
-    { value: '', type: 'endInput', disabled: false },
-    { value: '', type: 'endInput', disabled: false },
-  ]);
+  const [endIpAddress, setEndIpAddress] = useState<IpSegment[]>(() =>
+    segmentsFromIp(value[1] || '', 'endInput', true)
+  );
 
   const inputRefs = useRef<(InputRef | null)[]>([]);
-  const prevValueRef = useRef(value);
+  const beginValue = value?.[0] || '';
+  const endValue = value?.[1] || '';
 
   useEffect(() => {
-    if (
-      value?.length &&
-      (value[0] !== prevValueRef.current[0] ||
-        value[1] !== prevValueRef.current[1])
-    ) {
-      const beginIp = value[0].split('.');
-      const endIp = value[1].split('.');
-
-      setBeginIpAddress((prev) =>
-        prev.map((item, index) => ({
-          ...item,
-          value: beginIp[index] || '',
-        }))
-      );
-
-      setEndIpAddress((prev) =>
-        prev.map((item, index) => ({
-          ...item,
-          value: endIp[index] || '',
-        }))
-      );
-
-      prevValueRef.current = value;
-    }
-  }, [value]);
+    const incoming = [beginValue, endValue];
+    setBeginIpAddress((prev) =>
+      displayedIpFromOctets(prev) === incoming[0]
+        ? prev
+        : segmentsFromIp(incoming[0], 'beginInput', false)
+    );
+    setEndIpAddress((prev) =>
+      displayedIpFromOctets(prev) === incoming[1]
+        ? prev
+        : segmentsFromIp(incoming[1], 'endInput', true)
+    );
+  }, [beginValue, endValue]);
 
   const formatIpSegment = useCallback((raw: string) => {
     const num = parseInt(raw.trim(), 10);

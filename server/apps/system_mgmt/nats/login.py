@@ -183,11 +183,11 @@ def get_user_login_token(user, username, skip_token_for_otp=False):
     if skip_token_for_otp and enable_otp:
         # Generate QR code for first-time OTP binding if user hasn't configured OTP yet
         qr_code_base64 = None
+        pending_otp_secret = None
         if not user_has_otp:
-            # Generate new OTP secret and QR code
-            user.otp_secret = pyotp.random_base32()
-            user.save()
-            totp = pyotp.TOTP(user.otp_secret)
+            # Keep the secret on the challenge until the first successful verify.
+            pending_otp_secret = pyotp.random_base32()
+            totp = pyotp.TOTP(pending_otp_secret)
             provisioning_uri = totp.provisioning_uri(name=username, issuer_name="WeopsX")
 
             qr = qrcode.QRCode(
@@ -204,7 +204,7 @@ def get_user_login_token(user, username, skip_token_for_otp=False):
             img.save(buffer, format="PNG")
             qr_code_base64 = base64.b64encode(buffer.getvalue()).decode()
 
-        challenge_id = create_challenge(user.id, username)
+        challenge_id = create_challenge(user.id, username, pending_otp_secret=pending_otp_secret)
         apps_value = SystemSettings.objects.filter(key="otp_recommended_apps").values_list("value", flat=True).first() or ""
         otp_recommended_apps = parse_otp_recommended_apps(apps_value)
         response_data = {

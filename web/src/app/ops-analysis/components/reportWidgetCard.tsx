@@ -164,6 +164,9 @@ const ReportWidgetCard: React.FC<ReportWidgetCardProps> = ({
               )}
               {editing && (
                 <MoreActionsDropdown
+                  trigger={['hover']}
+                  labelAlign="start"
+                  buttonClassName="cursor-pointer text-(--color-text-2) transition-colors hover:!bg-transparent hover:text-(--color-text-1)"
                   items={[
                     {
                       key: 'edit',

@@ -12,12 +12,13 @@
 service / NodeMgmt / 权限规则在真实边界打桩，断言真实 JSON 响应与 DB 副作用。
 """
 import json
+import logging
 
 import pydantic.root_model  # noqa: F401
 import pytest
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.cmdb.constants.constants import CollectPluginTypes, CollectRunStatusType
+from apps.cmdb.constants.constants import CollectDriverTypes, CollectPluginTypes, CollectRunStatusType
 from apps.cmdb.models.collect_model import CollectModels, OidMapping
 from apps.cmdb.models.node_mgmt_sync import NodeMgmtSyncConfig
 from apps.cmdb.views.collect import CollectModelViewSet, OidModelViewSet
@@ -268,6 +269,311 @@ def test_list_regions_service_failure(superuser, monkeypatch):
     assert body["message"] == "鉴权失败"
 
 
+def _create_cloud_collect_task(model_id, access_key):
+    return CollectModels.objects.create(
+        name="ssss",
+        task_type=CollectPluginTypes.CLOUD,
+        driver_type=CollectDriverTypes.PROTOCOL,
+        model_id=model_id,
+        cycle_value_type="cycle",
+        cycle_value="10",
+        team=[1],
+        access_point=[{"id": "fusion-collector-default", "cloud_region": "fusion-collector-default"}],
+        instances=[{"endpoint": "cvm.tencentcloudapi.com"}],
+        credential=[
+            {
+                "credential_id": "cred_edit",
+                "accessKey": access_key,
+                "accessSecret": "sk-real",
+                "regions": {"resource_id": "ap-guangzhou", "resource_name": "华南地区(广州)"},
+            }
+        ],
+        timeout=60,
+        params={},
+    )
+
+
+def _capture_list_regions(monkeypatch, cloud_id="fusion-collector-default"):
+    captured = {}
+    monkeypatch.setattr(
+        "apps.cmdb.views.collect.NodeMgmt.cloud_region_list",
+        lambda self: [{"id": cloud_id, "name": "tencent"}],
+    )
+
+    def fake_list_regions(credential, cloud_name):
+        captured["credential"] = credential
+        captured["cloud_name"] = cloud_name
+        if not credential.get("secret_id"):
+            return {
+                "success": False,
+                "message": "[TencentCloudSDKException] code:InvalidCredential message:secret id should not be none or empty requestId:None",
+            }
+        return {"success": True, "result": [{"resource_id": "ap-guangzhou", "resource_name": "广州"}]}
+
+    monkeypatch.setattr("apps.cmdb.views.collect.CollectModelService.list_regions", fake_list_regions)
+    return captured
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "model_id,access_key",
+    [
+        ("qcloud", "AKIDreal"),
+        ("aliyun_account", "LTAIreal"),
+    ],
+)
+def test_edit_list_regions_reuses_stored_secrets_instead_of_mask(model_id, access_key, superuser, monkeypatch):
+    _bypass_permission(monkeypatch)
+    task = _create_cloud_collect_task(model_id, access_key)
+    captured = _capture_list_regions(monkeypatch)
+    request = _req(
+        "post",
+        superuser,
+        data={
+            "model_id": model_id,
+            "cloud_id": "fusion-collector-default",
+            "task_id": task.id,
+        },
+    )
+    resp = CollectModelViewSet.as_view({"post": "list_regions"})(request)
+    body = _body(resp)
+    assert body["result"] is True, body
+    assert captured["credential"]["secret_id"] == access_key
+    assert captured["credential"]["secret_key"] == "sk-real"
+    assert captured["credential"].get("access_key") != "******"
+
+
+@pytest.mark.django_db
+def test_list_regions_saved_task_without_secrets_asks_user_to_refill(superuser, monkeypatch, caplog):
+    _bypass_permission(monkeypatch)
+    task = CollectModels.objects.create(
+        name="ssss-empty",
+        task_type=CollectPluginTypes.CLOUD,
+        driver_type=CollectDriverTypes.PROTOCOL,
+        model_id="qcloud",
+        cycle_value_type="cycle",
+        cycle_value="10",
+        team=[1],
+        access_point=[{"id": "fusion-collector-default", "cloud_region": "fusion-collector-default"}],
+        instances=[{"endpoint": "cvm.tencentcloudapi.com"}],
+        credential=[
+            {
+                "credential_id": "cred_edit",
+                "credential_version": 2,
+                "regions": {"resource_id": "ap-guangzhou", "resource_name": "华南地区(广州)"},
+            }
+        ],
+        timeout=60,
+        params={},
+    )
+    captured = _capture_list_regions(monkeypatch)
+    caplog.set_level(logging.INFO, logger="cmdb")
+    request = _req(
+        "post",
+        superuser,
+        data={
+            "model_id": "qcloud",
+            "cloud_id": "fusion-collector-default",
+            "task_id": task.id,
+        },
+    )
+    resp = CollectModelViewSet.as_view({"post": "list_regions"})(request)
+    body = _body(resp)
+    assert body["result"] is False
+    assert body.get("message") == "已保存任务中没有可用的云访问密钥，请重新填写 SecretId 和 SecretKey"
+    assert "credential" not in captured
+    records = [record for record in caplog.records if record.name == "cmdb" and record.msg.startswith("event=list_regions_missing_secret")]
+    assert len(records) == 1
+    record = records[0]
+    template = "event=list_regions_missing_secret model_id=%s has_task_id=%s request_fields=%s"
+    args = ("qcloud", True, "cloud_id,model_id")
+    assert record.levelno == logging.INFO
+    assert record.msg == template
+    assert record.args == args
+    assert record.getMessage() == template % args
+    assert "AKIDreal" not in record.getMessage()
+    assert "sk-real" not in record.getMessage()
+
+
+@pytest.mark.django_db
+def test_list_regions_without_task_or_keys_does_not_call_cloud_sdk(superuser, monkeypatch, caplog):
+    captured = _capture_list_regions(monkeypatch)
+    caplog.set_level(logging.INFO, logger="cmdb")
+    request = _req(
+        "post",
+        superuser,
+        data={
+            "model_id": "qcloud",
+            "cloud_id": "fusion-collector-default",
+        },
+    )
+    resp = CollectModelViewSet.as_view({"post": "list_regions"})(request)
+    body = _body(resp)
+    assert body["result"] is False
+    assert "secret id should not be none or empty" not in (body.get("message") or "")
+    assert body.get("message") == "缺少云访问密钥，请重新填写或打开已保存的任务后再刷新区域"
+    assert "credential" not in captured
+    records = [record for record in caplog.records if record.name == "cmdb" and record.msg.startswith("event=list_regions_missing_secret")]
+    assert len(records) == 1
+    record = records[0]
+    template = "event=list_regions_missing_secret model_id=%s has_task_id=%s request_fields=%s"
+    args = ("qcloud", False, "cloud_id,model_id")
+    assert record.levelno == logging.INFO
+    assert record.msg == template
+    assert record.args == args
+    assert record.getMessage() == template % args
+
+
+@pytest.mark.django_db
+def test_list_regions_rejects_masked_secrets_without_task(superuser, monkeypatch):
+    captured = _capture_list_regions(monkeypatch)
+    request = _req(
+        "post",
+        superuser,
+        data={
+            "model_id": "qcloud",
+            "cloud_id": "fusion-collector-default",
+            "access_key": "******",
+            "access_secret": "******",
+        },
+    )
+    resp = CollectModelViewSet.as_view({"post": "list_regions"})(request)
+    body = _body(resp)
+    assert body["result"] is False
+    assert "secret id should not be none or empty" not in (body.get("message") or "")
+    assert "credential" not in captured
+
+
+@pytest.mark.django_db
+def test_list_regions_uses_page_secrets_when_user_changes_them(superuser, monkeypatch):
+    _bypass_permission(monkeypatch)
+    _create_cloud_collect_task("qcloud", "AKIDstored")
+    captured = _capture_list_regions(monkeypatch)
+    request = _req(
+        "post",
+        superuser,
+        data={
+            "model_id": "qcloud",
+            "cloud_id": "fusion-collector-default",
+            "access_key": "AKIDchanged",
+            "access_secret": "sk-changed",
+        },
+    )
+    resp = CollectModelViewSet.as_view({"post": "list_regions"})(request)
+    body = _body(resp)
+    assert body["result"] is True, body
+    assert captured["credential"]["secret_id"] == "AKIDchanged"
+    assert captured["credential"]["secret_key"] == "sk-changed"
+
+
+@pytest.mark.django_db
+def test_list_regions_empty_keys_with_task_id_reuse_stored_secrets(superuser, monkeypatch):
+    _bypass_permission(monkeypatch)
+    task = _create_cloud_collect_task("qcloud", "AKIDreal")
+    captured = _capture_list_regions(monkeypatch)
+    request = _req(
+        "post",
+        superuser,
+        data={
+            "model_id": "qcloud",
+            "cloud_id": "fusion-collector-default",
+            "task_id": task.id,
+            "access_key": "",
+            "access_secret": "",
+        },
+    )
+    resp = CollectModelViewSet.as_view({"post": "list_regions"})(request)
+    body = _body(resp)
+    assert body["result"] is True, body
+    assert captured["credential"]["secret_id"] == "AKIDreal"
+    assert captured["credential"]["secret_key"] == "sk-real"
+
+
+@pytest.mark.django_db
+def test_list_regions_masks_with_task_id_reuse_stored_secrets(superuser, monkeypatch):
+    _bypass_permission(monkeypatch)
+    task = _create_cloud_collect_task("qcloud", "AKIDreal")
+    captured = _capture_list_regions(monkeypatch)
+    request = _req(
+        "post",
+        superuser,
+        data={
+            "model_id": "qcloud",
+            "cloud_id": "fusion-collector-default",
+            "task_id": task.id,
+            "access_key": "******",
+            "access_secret": "******",
+        },
+    )
+    resp = CollectModelViewSet.as_view({"post": "list_regions"})(request)
+    body = _body(resp)
+    assert body["result"] is True, body
+    assert captured["credential"]["secret_id"] == "AKIDreal"
+    assert captured["credential"]["secret_key"] == "sk-real"
+
+
+@pytest.mark.django_db
+def test_list_regions_decrypts_encrypted_db_secrets_before_calling_cloud(superuser, monkeypatch):
+    _bypass_permission(monkeypatch)
+    task = _create_cloud_collect_task("qcloud", "AKIDreal")
+    encrypted_credential = [
+        {
+            **task.credential[0],
+            "accessKey": CollectModels.encrypt_password("AKIDreal"),
+            "accessSecret": CollectModels.encrypt_password("sk-real"),
+        }
+    ]
+    CollectModels.objects.filter(pk=task.id).update(credential=encrypted_credential)
+    task.refresh_from_db()
+    assert task.credential[0]["accessKey"].startswith("enc:")
+    assert task.credential[0]["accessSecret"].startswith("enc:")
+
+    monkeypatch.setattr(
+        "apps.cmdb.models.collect_model.get_collect_model_passwords",
+        lambda *args, **kwargs: [],
+    )
+    captured = _capture_list_regions(monkeypatch)
+    request = _req(
+        "post",
+        superuser,
+        data={
+            "model_id": "qcloud",
+            "cloud_id": "fusion-collector-default",
+            "task_id": task.id,
+        },
+    )
+    resp = CollectModelViewSet.as_view({"post": "list_regions"})(request)
+    body = _body(resp)
+    assert body["result"] is True, body
+    assert captured["credential"]["secret_id"] == "AKIDreal"
+    assert captured["credential"]["secret_key"] == "sk-real"
+    assert not str(captured["credential"]["secret_id"]).startswith("enc:")
+    assert not str(captured["credential"]["secret_key"]).startswith("enc:")
+
+
+@pytest.mark.django_db
+def test_list_regions_prefers_page_secrets_when_task_id_and_keys_are_both_sent(superuser, monkeypatch):
+    _bypass_permission(monkeypatch)
+    task = _create_cloud_collect_task("qcloud", "AKIDstored")
+    captured = _capture_list_regions(monkeypatch)
+    request = _req(
+        "post",
+        superuser,
+        data={
+            "model_id": "qcloud",
+            "cloud_id": "fusion-collector-default",
+            "task_id": task.id,
+            "access_key": "AKIDchanged",
+            "access_secret": "sk-changed",
+        },
+    )
+    resp = CollectModelViewSet.as_view({"post": "list_regions"})(request)
+    body = _body(resp)
+    assert body["result"] is True, body
+    assert captured["credential"]["secret_id"] == "AKIDchanged"
+    assert captured["credential"]["secret_key"] == "sk-changed"
+
+
 # --------------------------------------------------------------------------
 # task_status / task_overview / model_instances / collect_task_names
 # --------------------------------------------------------------------------
@@ -378,6 +684,56 @@ def test_collect_task_names_includes_plugin_meta(superuser, monkeypatch):
     assert body[0]["plugin"] == "host"
     assert body[0]["category"] == "compute"
     assert body[0]["plugin_name"] == "主机"
+
+
+@pytest.mark.django_db
+def test_collect_task_names_distinguishes_physical_server_protocol_plugins(superuser, monkeypatch):
+    _bypass_permission(monkeypatch)
+    CollectModels.objects.create(
+        name="ssh",
+        task_type=CollectPluginTypes.HOST,
+        driver_type="job",
+        model_id="physcial_server",
+        cycle_value_type="cycle",
+        team=[1],
+        is_visible=True,
+        params={},
+    )
+    common = {
+        "task_type": CollectPluginTypes.PROTOCOL,
+        "driver_type": "protocol",
+        "model_id": "physcial_server",
+        "cycle_value_type": "cycle",
+        "team": [1],
+        "is_visible": True,
+    }
+    CollectModels.objects.create(name="legacy-ipmi", params={}, **common)
+    CollectModels.objects.create(name="redfish", params={"collection_protocol": "redfish"}, **common)
+    monkeypatch.setattr(
+        "apps.cmdb.views.collect.get_collect_obj_tree",
+        lambda: [
+            {
+                "id": "host_manage",
+                "name": "主机物理主机",
+                "children": [
+                    {"id": "physcial_server", "name": "物理服务器 SSH"},
+                    {"id": "physcial_server_ipmi", "name": "物理服务器 IPMI"},
+                    {"id": "physcial_server_redfish", "name": "物理服务器 Redfish"},
+                ],
+            }
+        ],
+    )
+    request = _req("get", superuser, current_team="1")
+
+    response = CollectModelViewSet.as_view({"get": "collect_task_names"})(request)
+
+    by_name = {item["name"]: item for item in _body(response)["data"]}
+    assert by_name["ssh"]["plugin"] == "physcial_server"
+    assert by_name["ssh"]["plugin_name"] == "物理服务器 SSH"
+    assert by_name["legacy-ipmi"]["plugin"] == "physcial_server_ipmi"
+    assert by_name["legacy-ipmi"]["plugin_name"] == "物理服务器 IPMI"
+    assert by_name["redfish"]["plugin"] == "physcial_server_redfish"
+    assert by_name["redfish"]["plugin_name"] == "物理服务器 Redfish"
 
 
 @pytest.mark.django_db

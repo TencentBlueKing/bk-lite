@@ -13,8 +13,12 @@ export interface ServiceTagItem {
 
 const TAG_GAP = 6;
 
+/** 服务 tag 与 +N 必须同高，避免应用卡底栏把同排分割线顶歪。 */
+const SERVICE_TAG_ROW_CLASS = 'flex h-6 min-w-0 flex-nowrap items-center gap-1.5 overflow-hidden';
+const CHIP_SIZE_CLASS = 'inline-flex h-6 max-w-full shrink-0 items-center rounded border px-2 text-xs leading-4 whitespace-nowrap';
+
 const chipClassName = (silent: boolean) => (
-  `inline-flex max-w-full shrink-0 items-center gap-1 rounded border px-2 py-0.5 text-xs whitespace-nowrap ${
+  `${CHIP_SIZE_CLASS} gap-1 ${
     silent
       ? 'border-[var(--color-border)] bg-[var(--color-fill-1)] text-[var(--color-text-3)]'
       : 'border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-1)]'
@@ -22,8 +26,8 @@ const chipClassName = (silent: boolean) => (
 );
 
 const overflowChipClassName = (
-  'inline-flex min-h-10 shrink-0 cursor-pointer items-center rounded border border-[color-mix(in_srgb,var(--color-primary)_28%,var(--color-border))] '
-  + 'bg-[var(--color-primary-bg-active)] px-2 py-0.5 text-xs font-medium tabular-nums text-[var(--color-primary)] '
+  `${CHIP_SIZE_CLASS} cursor-pointer border-[color-mix(in_srgb,var(--color-primary)_28%,var(--color-border))] `
+  + 'bg-[var(--color-primary-bg-active)] font-medium tabular-nums text-[var(--color-primary)] '
   + 'transition-colors duration-150 hover:border-[var(--color-primary)] focus-visible:outline-2 '
   + 'focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]'
 );
@@ -133,7 +137,11 @@ export default function ServiceTagOverflow({
   }, [serviceKey]);
 
   if (!services.length) {
-    return <Typography.Text type="secondary" className="!text-xs">{resolvedEmpty}</Typography.Text>;
+    return (
+      <div className={SERVICE_TAG_ROW_CLASS}>
+        <Typography.Text type="secondary" className="!text-xs">{resolvedEmpty}</Typography.Text>
+      </div>
+    );
   }
 
   const safeVisible = Math.min(visibleCount, services.length);
@@ -181,8 +189,8 @@ export default function ServiceTagOverflow({
   }
 
   return (
-    <div ref={containerRef} className="relative min-w-0">
-      <div className="flex flex-nowrap items-center gap-1.5 overflow-hidden">
+    <div ref={containerRef} className="relative w-full min-w-0 overflow-hidden">
+      <div className={SERVICE_TAG_ROW_CLASS}>
         {visibleServices.map((service) => (
           <ServiceChip key={service.name} {...service} />
         ))}

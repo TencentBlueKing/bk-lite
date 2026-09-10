@@ -51,9 +51,10 @@ describe('ServiceTagOverflow', () => {
     vi.unstubAllGlobals();
   });
 
-  it('无服务时展示空态文案', () => {
-    renderWithApmIntl(<ServiceTagOverflow services={[]} />);
+  it('无服务时展示空态文案且占用同一行高', () => {
+    const { container } = renderWithApmIntl(<ServiceTagOverflow services={[]} />);
     expect(screen.getByText('尚无服务上报')).not.toBeNull();
+    expect(container.querySelector('.h-6')).not.toBeNull();
   });
 
   it('溢出徽章可打开完整服务列表且不冒泡', async () => {
@@ -103,5 +104,12 @@ describe('ServiceTagOverflow', () => {
     expect(within(list).getByText('demo-inventory')).not.toBeNull();
     expect(within(list).getByText('静默')).not.toBeNull();
     expect(screen.getByText('共 3 个')).not.toBeNull();
+    expect(overflow.className).not.toMatch(/min-h-10/);
+    expect(overflow.className).toMatch(/\bh-6\b/);
+    expect(overflow.parentElement?.className).toContain('h-6');
+    const track = overflow.closest('.relative');
+    expect(track?.className).toContain('w-full');
+    expect(track?.className).toContain('min-w-0');
+    expect(track?.className).toContain('overflow-hidden');
   });
 });

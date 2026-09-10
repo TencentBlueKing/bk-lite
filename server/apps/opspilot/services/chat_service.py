@@ -10,6 +10,7 @@ from apps.core.logger import opspilot_logger as logger
 from apps.core.mixinx import EncryptMixin
 from apps.core.utils.loader import LanguageLoader
 from apps.opspilot.metis.llm.chain.report_renderers import strip_phantom_tool_calls
+from apps.opspilot.metis.llm.common.llm_client_factory import DEFAULT_CHAT_TEMPERATURE, INTERNAL_SAMPLING_TEMPERATURE_KEY, resolve_gateway_temperature
 from apps.opspilot.models import LLMModel, SkillTools, SkillTypeChoices
 from apps.opspilot.services.builtin_tools import (
     BUILTIN_ATTACHMENT_FILE_TOOL_NAME,
@@ -203,10 +204,10 @@ class ChatService:
         wiki_kb_ids = kwargs.get("wiki_kb_ids") or []
 
         llm_model = LLMModel.objects.get(id=request.llm_model)
-        show_think = request.show_think
+        show_think = False
         skill_type = request.skill_type
         # 与历史行为一致：在转发给 format_chat_server_kwargs 之前从原始 dict 中移除这些键。
-        kwargs.pop("show_think", True)
+        kwargs.pop("show_think", False)
         kwargs.pop("group", 0)
 
         # 处理用户消息和图片
@@ -542,7 +543,7 @@ class ChatService:
         Returns:
             chat_kwargs字典、doc_map字典、title_map字典
         """
-        show_think = kwargs.get("show_think", True)
+        show_think = False
         title_map = doc_map = {}
         extra_config = {"show_think": show_think}
 
@@ -582,22 +583,34 @@ class ChatService:
                 extra_config["wiki_citations"] = wiki_citations
             extra_config["wiki_budget"] = wiki_budget_trace
 
+        vendor_type = llm_model.vendor.vendor_type if llm_model.vendor_id else ""
+        # 对话温度固定 1；技能表与请求里的旧滑条值忽略。
+        # 内部节点可通过 internal_sampling_temperature 保留低温采样；
+        # 固定单位模型仍经 resolve_gateway_temperature 省略该字段。
+        if INTERNAL_SAMPLING_TEMPERATURE_KEY in kwargs:
+            requested_temperature = kwargs[INTERNAL_SAMPLING_TEMPERATURE_KEY]
+        else:
+            requested_temperature = DEFAULT_CHAT_TEMPERATURE
+        sampling_temperature = resolve_gateway_temperature(llm_model.model_name, requested_temperature, vendor_type)
+
         # 构建聊天参数
         chat_kwargs = {
             "openai_api_base": llm_model.openai_api_base,
             "openai_api_key": llm_model.openai_api_key,
             "model": llm_model.model_name,
             "protocol_type": llm_model.protocol_type,
-            "vendor_type": llm_model.vendor.vendor_type if llm_model.vendor_id else "",
+            "vendor_type": vendor_type,
             "system_message_prompt": resolved_prompt,
-            "temperature": kwargs["temperature"],
+            "temperature": sampling_temperature,
             "user_message": user_message,
             "chat_history": chat_history,
             "user_id": str(kwargs["user_id"]),
             "enable_naive_rag": False,
             "rag_stage": "string",
-            "enable_suggest": kwargs.get("enable_suggest", False),
-            "enable_query_rewrite": kwargs.get("enable_query_rewrite", False),
+            # 问题建议 / 问题优化 / 展示思考已下线：忽略技能表与请求里的旧开关。
+            # <think> 标签仍由 stream_common / invoke_chat 硬匹配剥离，不展示思考过程。
+            "enable_suggest": False,
+            "enable_query_rewrite": False,
             "locale": kwargs.get("locale", "en"),
         }
 
@@ -623,8 +636,6 @@ class ChatService:
                 )
             chat_kwargs["max_steps"] = remaining_calls
             chat_kwargs["max_model_calls"] = 1
-            chat_kwargs["enable_query_rewrite"] = False
-            chat_kwargs["enable_suggest"] = False
             extra_config["wiki_budget"] = {
                 **wiki_budget_trace,
                 "remaining_answer_calls": remaining_calls,

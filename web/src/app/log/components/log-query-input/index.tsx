@@ -642,24 +642,37 @@ const LogQueryInput: React.FC<LogQueryInputProps> = React.memo(
 
     const handleKeyDown = useCallback(
       (event: React.KeyboardEvent<HTMLInputElement>) => {
-        if (event.key !== 'Enter') return;
         const selectableOptions = options.filter((option) => !option.disabled);
-        if (dropdownOpen && selectableOptions.length) {
+        const canApplySuggestion = selectableOptions.length > 0;
+
+        if (event.key === 'Tab' && canApplySuggestion) {
           event.preventDefault();
           event.stopPropagation();
           const selectedOption = getHighlightedOption(selectableOptions);
           applySelection(String(selectedOption.value), selectedOption);
           return;
         }
-        event.preventDefault();
-        event.stopPropagation();
-        closeDropdown();
-        onPressEnter?.();
+
+        if (event.key !== 'Enter') return;
+
+        if (canApplySuggestion) {
+          event.preventDefault();
+          event.stopPropagation();
+          const selectedOption = getHighlightedOption(selectableOptions);
+          applySelection(String(selectedOption.value), selectedOption);
+          return;
+        }
+
+        if (onPressEnter) {
+          event.preventDefault();
+          event.stopPropagation();
+          closeDropdown();
+          onPressEnter();
+        }
       },
       [
         applySelection,
         closeDropdown,
-        dropdownOpen,
         getHighlightedOption,
         onPressEnter,
         options
@@ -695,6 +708,10 @@ const LogQueryInput: React.FC<LogQueryInputProps> = React.memo(
           onClick={(event) => {
             inputProps.onClick?.(event);
             realCursorPosRef.current = event.currentTarget.selectionStart || 0;
+            refreshSuggestions(
+              valueRef.current,
+              realCursorPosRef.current
+            );
           }}
         />
       ),
@@ -719,7 +736,16 @@ const LogQueryInput: React.FC<LogQueryInputProps> = React.memo(
         onChange={handleChange}
         onSelect={handleSelect}
         open={dropdownOpen && options.length > 0}
-        onOpenChange={setDropdownOpen}
+        onOpenChange={(nextOpen) => {
+          if (nextOpen) {
+            setDropdownOpen(true);
+            return;
+          }
+          if (inputRef.current?.input === document.activeElement) {
+            return;
+          }
+          setDropdownOpen(false);
+        }}
         defaultActiveFirstOption
         filterOption={false}
         popupMatchSelectWidth

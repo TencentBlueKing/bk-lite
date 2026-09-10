@@ -26,6 +26,20 @@ class FakeSession:
         return response
 
 
+def test_plugin_request_timeout_does_not_read_form_budget():
+    collector = WinSphereInfo(
+        {
+            "host": "winsphere.example.com",
+            "user": "collector",
+            "password": "secret",
+            "timeout": 999,
+            "session": FakeSession([]),
+        }
+    )
+
+    assert collector.client.timeout == 30
+
+
 @pytest.mark.parametrize(
     "host",
     [

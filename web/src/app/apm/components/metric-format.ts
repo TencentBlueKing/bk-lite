@@ -89,12 +89,12 @@ export function formatCompactLatency(ms: number): string {
   return `${Math.round(ms)}ms`;
 }
 
-export type TopologyMetricParts = {
+export interface TopologyMetricParts {
   total: string;
   latency: string;
   errors: string;
   hasErrors: boolean;
-};
+}
 
 export function topologyMetricParts(input: {
   errorCount: number;
@@ -243,4 +243,70 @@ export function aggregateApplicationRedTrends(
       point.errorWeight > 0 ? point.errorWeighted / point.errorWeight : 0
     )),
   };
+}
+
+export interface ApplicationRedSeriesPoint extends Record<string, unknown> {
+  timestamp: string;
+  request_rate: number | null;
+  error_rate_percent: number | null;
+  p95_ms: number | null;
+  p99_ms: number | null;
+}
+
+/**
+ * 将应用下多个服务环境的 RED 时序按时间戳对齐为应用级趋势：
+ * 吞吐求和、错误率按吞吐加权、延迟取各服务最差值（与关键信息卡片的 P99 口径一致）。
+ */
+export function aggregateApplicationRedSeries(
+  metrics: Array<{ timeseries?: Array<{
+    timestamp: string;
+    request_rate: number | null;
+    error_rate: number | null;
+    p95_ms: number | null;
+    p99_ms: number | null;
+  }> }>,
+): ApplicationRedSeriesPoint[] {
+  const byTimestamp = new Map<string, {
+    requestRate: number | null;
+    errorWeighted: number;
+    errorWeight: number;
+    p95: number | null;
+    p99: number | null;
+  }>();
+
+  metrics.forEach((metric) => {
+    (metric.timeseries ?? []).forEach((point) => {
+      const current = byTimestamp.get(point.timestamp) ?? {
+        requestRate: null,
+        errorWeighted: 0,
+        errorWeight: 0,
+        p95: null,
+        p99: null,
+      };
+      if (point.request_rate !== null && Number.isFinite(point.request_rate)) {
+        current.requestRate = (current.requestRate ?? 0) + point.request_rate;
+        if (point.error_rate !== null && Number.isFinite(point.error_rate)) {
+          current.errorWeighted += point.request_rate * point.error_rate;
+          current.errorWeight += point.request_rate;
+        }
+      }
+      if (point.p95_ms !== null && Number.isFinite(point.p95_ms)) {
+        current.p95 = Math.max(current.p95 ?? 0, point.p95_ms);
+      }
+      if (point.p99_ms !== null && Number.isFinite(point.p99_ms)) {
+        current.p99 = Math.max(current.p99 ?? 0, point.p99_ms);
+      }
+      byTimestamp.set(point.timestamp, current);
+    });
+  });
+
+  return Array.from(byTimestamp.entries())
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([timestamp, point]) => ({
+      timestamp,
+      request_rate: point.requestRate,
+      error_rate_percent: point.errorWeight > 0 ? (point.errorWeighted / point.errorWeight) * 100 : null,
+      p95_ms: point.p95,
+      p99_ms: point.p99,
+    }));
 }

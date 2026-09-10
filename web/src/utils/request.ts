@@ -5,7 +5,6 @@ import axios, {
 } from "axios";
 import { useEffect, useCallback, useState } from "react";
 import { useAuth } from "@/context/auth";
-import { message } from "antd";
 import { useSession } from "next-auth/react";
 import {
   createSessionExpiredRequestError,
@@ -20,6 +19,7 @@ import {
   renderRequestErrorPresentation,
   type RequestErrorPresentation,
 } from '@/utils/requestErrorPresentation';
+import { showRequestErrorToast } from '@/utils/requestErrorToast';
 import {
   getProxyTimeoutHeaderValue,
   PROXY_TIMEOUT_HEADER,
@@ -136,19 +136,23 @@ apiClient.interceptors.response.use(
         return Promise.reject(error);
       } else if ([400, 403].includes(status)) {
         if (!suppressErrorNotification && presentation) {
-          message.error({
-            content: renderRequestErrorPresentation(presentation),
+          showRequestErrorToast(renderRequestErrorPresentation(presentation), {
             duration: 8,
+            dedupeKey: presentation.message,
           });
         } else if (!suppressErrorNotification && messageText) {
-          message.error(messageText);
+          showRequestErrorToast(messageText);
         }
         return Promise.reject(handledError);
       } else if (status === 500) {
-        if (!suppressErrorNotification && messageText) message.error(messageText);
+        if (!suppressErrorNotification && messageText) {
+          showRequestErrorToast(messageText);
+        }
         return Promise.reject(handledError);
       } else {
-        if (!suppressErrorNotification && messageText) message.error(messageText);
+        if (!suppressErrorNotification && messageText) {
+          showRequestErrorToast(messageText);
+        }
         return Promise.reject(handledError);
       }
     }

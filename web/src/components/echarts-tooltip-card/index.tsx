@@ -1,5 +1,113 @@
-import React from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+
+export const ECHARTS_AXIS_TOOLTIP_MAX_HEIGHT_RATIO = 0.6;
+export const ECHARTS_AXIS_TOOLTIP_MIN_HEIGHT_PX = 96;
+export const ECHARTS_AXIS_TOOLTIP_SCROLL_ATTR = 'data-echarts-axis-tooltip';
+
+export interface EChartsAxisTooltipSize {
+  contentSize: number[];
+  viewSize: number[];
+}
+
+export interface EChartsAxisTooltipOffset {
+  x?: number;
+  y?: number;
+}
+
+export function applyScrollableEChartsTooltip(
+  el: HTMLElement | null | undefined,
+  viewHeight: number,
+): void {
+  if (!el) {
+    return;
+  }
+
+  const maxHeight = Math.max(
+    ECHARTS_AXIS_TOOLTIP_MIN_HEIGHT_PX,
+    Math.floor(viewHeight * ECHARTS_AXIS_TOOLTIP_MAX_HEIGHT_RATIO),
+  );
+  el.style.maxHeight = `${maxHeight}px`;
+  el.style.overflowY = 'auto';
+  el.style.overscrollBehavior = 'contain';
+  el.setAttribute(ECHARTS_AXIS_TOOLTIP_SCROLL_ATTR, 'scroll');
+}
+
+export function findScrollableEChartsTooltip(root: ParentNode): HTMLElement | null {
+  return root.querySelector(`[${ECHARTS_AXIS_TOOLTIP_SCROLL_ATTR}="scroll"]`);
+}
+
+export function resolveWheelDeltaY(event: Pick<WheelEvent, 'deltaY' | 'deltaMode'>): number {
+  return event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY;
+}
+
+export function shouldForwardWheelToEChartsTooltip(
+  event: Pick<WheelEvent, 'target'>,
+  root: ParentNode,
+): HTMLElement | null {
+  const tooltip = findScrollableEChartsTooltip(root);
+  if (!tooltip) {
+    return null;
+  }
+  if (event.target instanceof Node && tooltip.contains(event.target)) {
+    return null;
+  }
+  if (tooltip.scrollHeight <= tooltip.clientHeight + 1) {
+    return null;
+  }
+  return tooltip;
+}
+
+export function bindChartTooltipWheelScroll(root: HTMLElement): () => void {
+  const onWheel = (event: WheelEvent) => {
+    const tooltip = shouldForwardWheelToEChartsTooltip(event, root);
+    if (!tooltip) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    tooltip.scrollTop += resolveWheelDeltaY(event);
+  };
+
+  root.addEventListener('wheel', onWheel, { capture: true, passive: false });
+  return () => {
+    root.removeEventListener('wheel', onWheel, { capture: true });
+  };
+}
+
+export function useChartTooltipWheelScrollRef() {
+  const unbindRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    return () => {
+      unbindRef.current?.();
+      unbindRef.current = null;
+    };
+  }, []);
+
+  return useCallback((node: HTMLElement | null) => {
+    unbindRef.current?.();
+    unbindRef.current = node ? bindChartTooltipWheelScroll(node) : null;
+  }, []);
+}
+
+export function placeEChartsAxisTooltip(
+  point: number[],
+  size: EChartsAxisTooltipSize,
+  el?: HTMLElement | null,
+  offset?: EChartsAxisTooltipOffset,
+): [number, number] {
+  applyScrollableEChartsTooltip(el, size.viewSize[1] || 0);
+  const offsetX = offset?.x ?? 40;
+  const offsetY = offset?.y ?? 10;
+  const tooltipWidth = size.contentSize[0];
+  const chartWidth = size.viewSize[0];
+  let x = point[0] + offsetX;
+  if (x + tooltipWidth > chartWidth) {
+    x = Math.max(0, point[0] - tooltipWidth - offsetX);
+  }
+  return [x, offsetY];
+}
 
 export interface EChartsTooltipCardRow {
   key?: React.Key;
@@ -26,7 +134,11 @@ const containerStyle: React.CSSProperties = {
 };
 
 const titleStyle: React.CSSProperties = {
+  position: 'sticky',
+  top: 0,
+  zIndex: 1,
   marginBottom: 6,
+  background: 'var(--color-bg-1)',
   color: 'var(--color-text-2)',
   fontSize: 12,
   fontWeight: 600,

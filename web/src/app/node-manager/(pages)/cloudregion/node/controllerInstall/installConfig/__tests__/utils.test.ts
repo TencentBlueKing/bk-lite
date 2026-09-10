@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   applyIpAsDefaultNodeName,
   applyWinrmCertificateValidation,
-  DEFAULT_WINRM_CERTIFICATE_VALIDATION
+  DEFAULT_WINRM_CERTIFICATE_VALIDATION,
+  parseControllerVersion,
+  pickLatestPackage
 } from '../utils';
 
 describe('applyIpAsDefaultNodeName', () => {
@@ -85,5 +87,34 @@ describe('applyWinrmCertificateValidation', () => {
       { key: 'node-2', ip: '10.0.0.9', winrm_cert_validation: false }
     ]);
     expect(rows.every((row) => row.winrm_cert_validation)).toBe(true);
+  });
+});
+
+describe('pickLatestPackage', () => {
+  it('parses standard and v-prefixed versions like the backend', () => {
+    expect(parseControllerVersion('1.2.3')).toEqual([1, 2, 3]);
+    expect(parseControllerVersion('v2.0.0')).toEqual([2, 0, 0]);
+    expect(parseControllerVersion('1.4')).toEqual([1, 4, 0]);
+    expect(parseControllerVersion('1.2.3-rc1')).toEqual([0, 0, 0]);
+  });
+
+  it('selects the highest semver and uses id as a tie-breaker', () => {
+    expect(
+      pickLatestPackage([
+        { id: 1, version: '1.9.0' },
+        { id: 3, version: '1.10.0' },
+        { id: 2, version: '1.2.8' }
+      ])?.id
+    ).toBe(3);
+    expect(
+      pickLatestPackage([
+        { id: 8, version: '2.0.0' },
+        { id: 11, version: '2.0.0' }
+      ])?.id
+    ).toBe(11);
+  });
+
+  it('returns undefined for an empty list', () => {
+    expect(pickLatestPackage([])).toBeUndefined();
   });
 });
