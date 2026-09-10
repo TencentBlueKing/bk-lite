@@ -11,7 +11,7 @@ import {
 } from '@ant-design/icons';
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
-import { ModalRef, TableDataItem } from '@/app/node-manager/types';
+import { ModalRef, Pagination, TableDataItem } from '@/app/node-manager/types';
 import { OPERATE_SYSTEMS } from '@/app/node-manager/constants/cloudregion';
 import { useGroupNames } from '@/app/node-manager/hooks/node';
 import useCommandCopyDialog from '@/app/node-manager/hooks/useCommandCopyDialog';
@@ -41,6 +41,10 @@ import {
   normalizeInstallerStatus
 } from '@/app/node-manager/utils/installerProgress';
 import { createOperationProgressRequestGuard } from './operationProgressRequestGuard';
+import {
+  buildCollectorTaskNodesPageQuery,
+  resolveCollectorTaskNodesPage
+} from './collectorTaskNodesPage';
 
 // 操作类型
 export type OperationType =
@@ -147,6 +151,13 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
   const requestGenerationRef = useRef(0);
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const [tableData, setTableData] = useState<ControllerInstallProgressRow[]>([]);
+  const [pagination, setPagination] = useState<Pagination>({
+    current: 1,
+    total: 0,
+    pageSize: 20
+  });
+  const paginationRef = useRef(pagination);
+  paginationRef.current = pagination;
   // 使用 ref 保存 currentViewingNode 的最新值，避免闭包问题
   const currentViewingNodeRef = useRef<ControllerInstallProgressRow | null>(null);
   const [copyingNodeIds, setCopyingNodeIds] = useState<Array<string | number>>([]);
@@ -611,7 +622,14 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
         stopProgressRequests();
       };
     }
-  }, [taskIds, isLoading, isInstallController, installMethod]);
+  }, [
+    taskIds,
+    isLoading,
+    isInstallController,
+    installMethod,
+    pagination.current,
+    pagination.pageSize
+  ]);
 
   const clearTimer = () => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -754,28 +772,39 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
           }
         }
       } else {
-        // 组件操作的逻辑
-        if (operationType === 'installCollector') {
-          // 安装采集器使用原接口
-          const response = await getCollectorNodes({ taskId: taskIds });
-          if (!requestGuardRef.current.shouldContinue(currentGeneration)) {
-            return;
-          }
-          data = response?.items || [];
-          taskStatus = response?.status || 'running';
-          taskSummary = response?.summary || null;
-        } else {
-          // 启动、停止、重启使用新接口
-          const response = await getCollectorOperationNodes({
-            taskId: taskIds
-          });
-          if (!requestGuardRef.current.shouldContinue(currentGeneration)) {
-            return;
-          }
-          data = response?.items || [];
-          taskStatus = response?.status || 'running';
-          taskSummary = response?.summary || null;
+        // 组件操作：按当前页向服务端分页拉取，用 count 作为表格 total
+        const pageQuery = buildCollectorTaskNodesPageQuery({
+          current: paginationRef.current.current,
+          pageSize: paginationRef.current.pageSize
+        });
+        const response =
+          operationType === 'installCollector'
+            ? await getCollectorNodes({
+                taskId: taskIds,
+                page: pageQuery.page,
+                page_size: pageQuery.page_size
+              })
+            : await getCollectorOperationNodes({
+                taskId: taskIds,
+                page: pageQuery.page,
+                page_size: pageQuery.page_size
+              });
+        if (!requestGuardRef.current.shouldContinue(currentGeneration)) {
+          return;
         }
+        const resolvedPage =
+          resolveCollectorTaskNodesPage<ControllerInstallProgressRow>(response);
+        data = resolvedPage.items;
+        taskStatus = response?.status || 'running';
+        taskSummary = response?.summary || null;
+        setPagination((prev) =>
+          prev.total === resolvedPage.total
+            ? prev
+            : {
+                ...prev,
+                total: resolvedPage.total
+              }
+        );
       }
 
       if (!requestGuardRef.current.shouldContinue(currentGeneration)) {
@@ -924,6 +953,17 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
     };
     return operationTextMap[operationType];
   }, [operationType, t]);
+
+  const handleTableChange = (nextPagination: {
+    current?: number;
+    pageSize?: number;
+  }) => {
+    setPagination((prev) => ({
+      ...prev,
+      current: nextPagination.current ?? prev.current,
+      pageSize: nextPagination.pageSize ?? prev.pageSize
+    }));
+  };
 
   const handleFinish = () => {
     const installingCount = tableData.filter(
@@ -1092,6 +1132,8 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
           loading={pageLoading}
           columns={columns}
           dataSource={tableData}
+          pagination={isControllerOperation ? undefined : pagination}
+          onChange={isControllerOperation ? undefined : handleTableChange}
         />
       </div>
       <div className="pt-[16px] flex justify-center">
