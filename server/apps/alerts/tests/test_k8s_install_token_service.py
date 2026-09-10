@@ -6,6 +6,7 @@ from django.core.cache import caches
 from django.core.cache.backends.locmem import LocMemCache
 from django.core.exceptions import ImproperlyConfigured
 from django.db import IntegrityError, close_old_connections
+from django.test import skipUnlessDBFeature
 from django.utils import timezone
 
 from apps.alerts.models.alert_source import AlertSource
@@ -213,6 +214,7 @@ def test_unknown_ciphertext_version_does_not_consume_usage(token_payload):
 
 
 @pytest.mark.django_db(transaction=True)
+@skipUnlessDBFeature("has_select_for_update")
 def test_concurrent_validation_never_exceeds_max_usage(token_payload):
     from apps.alerts.models.install_token import K8sInstallToken
 
@@ -368,9 +370,7 @@ def test_render_endpoint_preserves_error_responses(token_payload, api_client):
     expired_token = K8sInstallService.generate_install_token(token_payload)
     from apps.alerts.models.install_token import K8sInstallToken
 
-    K8sInstallToken.objects.filter(token_hash=K8sInstallService._hash_token(expired_token)).update(
-        expires_at=timezone.now() - timedelta(seconds=1)
-    )
+    K8sInstallToken.objects.filter(token_hash=K8sInstallService._hash_token(expired_token)).update(expires_at=timezone.now() - timedelta(seconds=1))
     expired = api_client.post(
         "/api/v1/alerts/open_api/k8s/render/",
         {"token": expired_token},

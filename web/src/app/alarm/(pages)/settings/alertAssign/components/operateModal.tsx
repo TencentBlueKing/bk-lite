@@ -478,15 +478,16 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
               className="text-base"
             />
           )}
-        >
-          <Collapse.Panel
-            header={
+          items={[
+            {
+              key: 'advanced',
+              label: (
               <div className="flex items-center text-base font-bold">
                 {t('alarmCommon.advanced')}
               </div>
-            }
-            key="advanced"
-          >
+              ),
+              children: (
+                <>
             <Form.Item
               name="config"
               initialValue={defaultEffectiveTime}
@@ -515,7 +516,6 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
               />
             </Form.Item>
             <Form.Item
-              name="notification_frequency"
               label={t('settings.assignStrategy.notificationFrequency')}
             >
               <div className="mt-[5px]">
@@ -535,23 +535,25 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
                         </div>
                       </Tag>
                       <span>{t('settings.assignStrategy.notifyEvery')}</span>
-                      <Form.Item
-                        name={[
-                          'notification_frequency',
-                          level_id,
-                          'interval_minutes',
-                        ]}
-                        initialValue={0}
-                        noStyle
-                      >
+                      <Space.Compact className="ml-2">
+                        <Form.Item
+                          name={[
+                            'notification_frequency',
+                            level_id,
+                            'interval_minutes',
+                          ]}
+                          initialValue={0}
+                          noStyle
+                        >
                         <InputNumber
-                          className="ml-2 w-[150px]"
+                          className="w-[110px]"
                           min={0}
-                          addonAfter={t(
-                            'settings.assignStrategy.frequencyUnit'
-                          )}
                         />
-                      </Form.Item>
+                        </Form.Item>
+                        <span className="flex items-center rounded-r-md border border-l-0 border-[var(--color-border-2)] bg-[var(--color-fill-1)] px-3 text-[var(--color-text-2)]">
+                          {t('settings.assignStrategy.frequencyUnit')}
+                        </span>
+                      </Space.Compact>
                     </div>
                   ))}
                 </div>
@@ -562,8 +564,11 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
               personnelOptions={personnelOptions}
               channelOptions={channelCheckOptions}
             />
-          </Collapse.Panel>
-        </Collapse>
+                </>
+              ),
+            },
+          ]}
+        />
       </Form>
       </Drawer>
     </>
