@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import styles from './index.module.scss';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
@@ -10,7 +10,7 @@ import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { Input, Select, DatePicker, message, Button } from 'antd';
 import { DownloadOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
-import { useCommon } from '@/app/cmdb/context/common';
+import { useCmdbUserList } from '@/app/cmdb/context/common';
 import { UserItem } from '@/app/cmdb/types/assetManage';
 import { useChangeRecordApi } from '@/app/cmdb/api';
 
@@ -41,13 +41,9 @@ const DEFAULT_SCENARIOS = [
 
 const OperationLog: React.FC = () => {
   const { t } = useTranslation();
-  const commonContext = useCommon();
-
+  const userList = useCmdbUserList();
   const { getChangeRecords, getChangeRecordScenarioEnum, exportChangeRecords } =
     useChangeRecordApi();
-
-  const users = useRef(commonContext?.userList || []);
-  const userList: UserItem[] = users.current;
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [exporting, setExporting] = useState<boolean>(false);
   const [dataList, setDataList] = useState<ListItem[]>([]);

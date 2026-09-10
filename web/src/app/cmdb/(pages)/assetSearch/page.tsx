@@ -27,7 +27,7 @@ import {
 } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
 import useApiClient from '@/utils/request';
-import { useCommon } from '@/app/cmdb/context/common';
+import { useCommon, useCmdbUserList } from '@/app/cmdb/context/common';
 import { deepClone, getFieldItem } from '@/app/cmdb/utils/common';
 import {
   useChangeRecordApi,
@@ -106,8 +106,7 @@ const AssetSearch = () => {
     unfollowAsset,
   } = useFollowedAssets();
 
-  const users = useRef(commonContext?.userList || []);
-  const userList: UserItem[] = users.current;
+  const userList: UserItem[] = useCmdbUserList();
   const modelList = commonContext?.modelList || [];
   const [propertyList, setPropertyList] = useState<AttrFieldType[]>([]);
   const [searchText, setSearchText] = useState<string>('');
