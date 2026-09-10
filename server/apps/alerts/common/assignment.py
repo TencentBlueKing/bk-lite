@@ -105,7 +105,7 @@ class AlertAssignmentOperator:
             }
 
         # 获取所有活跃的分派策略
-        active_assignments = AlertAssignment.objects.filter(is_active=True).order_by("created_at")
+        active_assignments = AlertAssignment.objects.filter(is_active=True).order_by("-priority", "-created_at", "-id")
 
         results = {
             "total_alerts": len(self.alerts),
@@ -114,14 +114,8 @@ class AlertAssignmentOperator:
             "assignment_results": [],
         }
 
-        # 记录已分派的告警ID，避免重复分派
-        # TODO(多策略都生效): 当前为"先到先得+排他"——按 created_at 最早创建的命中策略
-        #   抢走告警，后续策略因 assigned_alert_ids 被排除而拿不到。导致一个告警即使命中
-        #   多个策略，也只有一个策略生效(处理人/通知/提醒/升级都来自它)。
-        #   期望改为"逐告警聚合命中"：收集某告警命中的全部策略 → 处理人取并集、每个策略各发
-        #   自己的通知(含 opspilot)。注意约束：AlertReminderTask/AlertEscalationTask 的 alert
-        #   是 OneToOne 主键，一个告警只能存一份提醒/升级任务——若要每个策略各自独立提醒/升级，
-        #   需把这两张表 OneToOne→FK + unique(alert, assignment) 并写数据迁移。详见探讨记录。
+        # 记录已分派的告警ID，避免重复分派。策略已经按优先级、创建时间和 ID
+        # 从高到低排序，因此同一告警只会被第一个成功分派的策略处理。
         assigned_alert_ids = set()
 
         # 按分派策略批量处理告警

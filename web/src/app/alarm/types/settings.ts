@@ -14,6 +14,7 @@ export interface AssignmentEscalationLayer {
 
 export interface AlertAssignListItem {
     id: number;
+    priority: number;
     created_at: string;
     updated_at: string;
     created_by: string;

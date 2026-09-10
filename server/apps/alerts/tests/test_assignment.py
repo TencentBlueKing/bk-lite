@@ -4,8 +4,10 @@
 """
 
 import logging
+from datetime import timedelta
 
 import pytest
+from django.utils import timezone
 
 from apps.alerts.common.assignment import AlertAssignmentOperator, execute_auto_assignment_for_alerts
 from apps.alerts.constants.constants import AlertStatus
@@ -218,3 +220,30 @@ def test_auto_assignment_no_active_assignments(sys_user):
     operator = AlertAssignmentOperator(["A1"])
     result = operator.execute_auto_assignment()
     assert result["assigned_alerts"] == 0
+
+
+@pytest.mark.django_db
+def test_equal_priority_prefers_newer_assignment(sys_user):
+    alert = _make_alert("A-NEWER")
+    older = _make_assignment(name="较早创建", priority=50)
+    newer = _make_assignment(name="较晚创建", priority=50)
+    now = timezone.now()
+    AlertAssignment.objects.filter(pk=older.pk).update(created_at=now - timedelta(minutes=1))
+    AlertAssignment.objects.filter(pk=newer.pk).update(created_at=now)
+
+    result = AlertAssignmentOperator([alert.alert_id]).execute_auto_assignment()
+
+    assert result["assignment_results"][0]["assignment_id"] == newer.id
+
+
+@pytest.mark.django_db
+def test_equal_priority_and_created_at_prefers_larger_id(sys_user):
+    alert = _make_alert("A-LARGER-ID")
+    smaller_id = _make_assignment(name="较小ID", priority=50)
+    larger_id = _make_assignment(name="较大ID", priority=50)
+    same_created_at = timezone.now()
+    AlertAssignment.objects.filter(pk__in=[smaller_id.pk, larger_id.pk]).update(created_at=same_created_at)
+
+    result = AlertAssignmentOperator([alert.alert_id]).execute_auto_assignment()
+
+    assert result["assignment_results"][0]["assignment_id"] == larger_id.id

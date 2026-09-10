@@ -25,8 +25,8 @@ class AlertAssignmentModelViewSet(ModelViewSet):
 
     queryset = AlertAssignment.objects.all()
     serializer_class = AlertAssignmentModelSerializer
-    ordering_fields = ["created_at"]
-    ordering = ["-created_at"]
+    ordering_fields = ["priority", "created_at", "id"]
+    ordering = ["-priority", "-created_at", "-id"]
     filterset_class = AlertAssignmentModelFilter
     pagination_class = CustomPageNumberPagination
 

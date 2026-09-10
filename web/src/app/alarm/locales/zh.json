@@ -597,6 +597,7 @@
         "assignPersonnel": "分派对象",
         "assignTime": "生效时间",
         "assignStatus": "状态",
+        "assignPriority": "优先级",
         "assignCreateTime": "创建时间",
         "assignStartStop": "启/停",
         "assignActions": "操作",
@@ -769,6 +770,8 @@
         "assignStrategy": {
             "ruleAll": "全部",
             "ruleFilter": "筛选",
+            "priority": "优先级",
+            "priorityHelp": "数值越大优先级越高；数值相同时，后创建的策略优先；创建时间也相同时，ID 较大的策略优先。",
             "editTitle": "编辑分派策略",
             "addTitle": "新增分派策略",
             "formMatchingRules": "匹配规则",

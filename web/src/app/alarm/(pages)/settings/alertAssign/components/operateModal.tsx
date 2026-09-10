@@ -179,6 +179,7 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
       } else {
         form.resetFields();
         form.setFieldsValue({
+          priority: 100,
           config: defaultEffectiveTime,
           target_type: 'user',
         });
@@ -223,6 +224,7 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
     const notificationTarget = buildNotificationTarget(values);
     const params: any = {
       name: values.name,
+      priority: values.priority,
       match_type: values.match_type,
       notify_channels: notifyChannels,
       personnel:
@@ -359,6 +361,22 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
             />
           </Form.Item>
         )}
+
+        <Form.Item
+          name="priority"
+          label={t('settings.assignStrategy.priority')}
+          initialValue={100}
+          extra={t('settings.assignStrategy.priorityHelp')}
+          rules={[{ required: true, message: t('common.inputTip') }]}
+        >
+          <InputNumber
+            aria-label={t('settings.assignStrategy.priority')}
+            min={0}
+            max={100}
+            precision={0}
+            className="w-[150px]"
+          />
+        </Form.Item>
 
         <NotificationTargetFields
           personnelOptions={personnelOptions}

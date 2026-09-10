@@ -597,6 +597,7 @@
         "assignPersonnel": "Assignment Target",
         "assignTime": "Effective Time",
         "assignStatus": "Status",
+        "assignPriority": "Priority",
         "assignCreateTime": "Create Time",
         "assignStartStop": "Start/Stop",
         "assignActions": "Actions",
@@ -769,6 +770,8 @@
         "assignStrategy": {
             "ruleAll": "All",
             "ruleFilter": "Filter",
+            "priority": "Priority",
+            "priorityHelp": "Higher values take precedence. Ties prefer the newer strategy, then the larger ID when creation times are equal.",
             "editTitle": "Edit Assignment Strategy",
             "addTitle": "Add Assignment Strategy",
             "formMatchingRules": "Match Rules",
