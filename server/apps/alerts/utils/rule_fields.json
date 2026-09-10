@@ -1,0 +1,297 @@
+[
+  {
+    "key": "title",
+    "label": {
+      "zh": "标题",
+      "en": "Title"
+    },
+    "contexts": [
+      "event",
+      "alert"
+    ],
+    "options": "",
+    "type": "str",
+    "role": "text",
+    "operators": [
+      "eq",
+      "ne",
+      "contains",
+      "not_contains"
+    ],
+    "max_length": 256,
+    "orm": "title"
+  },
+  {
+    "key": "source_name",
+    "label": {
+      "zh": "告警源",
+      "en": "Alert source name"
+    },
+    "contexts": [
+      "event"
+    ],
+    "options": "",
+    "type": "str",
+    "role": "candidate",
+    "operators": [
+      "any_of",
+      "none_of"
+    ],
+    "max_length": 256,
+    "orm": "source__name"
+  },
+  {
+    "key": "source_names",
+    "label": {
+      "zh": "告警源",
+      "en": "Alert source"
+    },
+    "contexts": [
+      "alert"
+    ],
+    "options": "",
+    "type": "list",
+    "role": "list",
+    "operators": [
+      "any_of",
+      "all_of",
+      "none_of"
+    ],
+    "max_length": 256,
+    "item_type": "str",
+    "orm": "source_names",
+    "resolver": "alert_sources"
+  },
+  {
+    "key": "level",
+    "label": {
+      "zh": "级别",
+      "en": "Severity"
+    },
+    "contexts": [
+      "event",
+      "alert"
+    ],
+    "options": "level",
+    "type": "str",
+    "role": "enum",
+    "operators": [
+      "any_of",
+      "none_of"
+    ],
+    "max_length": 256,
+    "orm": "level"
+  },
+  {
+    "key": "resource_type",
+    "label": {
+      "zh": "类型对象",
+      "en": "Resource type"
+    },
+    "contexts": [
+      "event",
+      "alert"
+    ],
+    "options": "",
+    "type": "str",
+    "role": "candidate",
+    "operators": [
+      "any_of",
+      "none_of"
+    ],
+    "max_length": 256,
+    "orm": "resource_type"
+  },
+  {
+    "key": "resource_id",
+    "label": {
+      "zh": "对象实例",
+      "en": "Resource ID"
+    },
+    "contexts": [
+      "event",
+      "alert"
+    ],
+    "options": "",
+    "type": "str",
+    "role": "candidate",
+    "operators": [
+      "any_of",
+      "none_of"
+    ],
+    "max_length": 256,
+    "orm": "resource_id"
+  },
+  {
+    "key": "description",
+    "label": {
+      "zh": "内容",
+      "en": "Content"
+    },
+    "contexts": [
+      "event"
+    ],
+    "options": "",
+    "type": "str",
+    "role": "text",
+    "operators": [
+      "eq",
+      "ne",
+      "contains",
+      "not_contains"
+    ],
+    "max_length": 256,
+    "orm": "description"
+  },
+  {
+    "key": "content",
+    "label": {
+      "zh": "内容",
+      "en": "Content"
+    },
+    "contexts": [
+      "alert"
+    ],
+    "options": "",
+    "type": "str",
+    "role": "text",
+    "operators": [
+      "eq",
+      "ne",
+      "contains",
+      "not_contains"
+    ],
+    "max_length": 256,
+    "orm": "content"
+  },
+  {
+    "key": "service",
+    "label": {
+      "zh": "服务",
+      "en": "Service"
+    },
+    "contexts": [
+      "event"
+    ],
+    "options": "",
+    "type": "str",
+    "role": "text",
+    "operators": [
+      "any_of",
+      "none_of",
+      "contains",
+      "not_contains",
+      "re"
+    ],
+    "max_length": 256,
+    "orm": "service"
+  },
+  {
+    "key": "location",
+    "label": {
+      "zh": "位置",
+      "en": "Location"
+    },
+    "contexts": [
+      "event"
+    ],
+    "options": "",
+    "type": "str",
+    "role": "text",
+    "operators": [
+      "any_of",
+      "none_of",
+      "contains",
+      "not_contains",
+      "re"
+    ],
+    "max_length": 256,
+    "orm": "location"
+  },
+  {
+    "key": "resource_name",
+    "label": {
+      "zh": "资源名称",
+      "en": "Resource name"
+    },
+    "contexts": [
+      "event",
+      "alert"
+    ],
+    "options": "",
+    "type": "str",
+    "role": "text",
+    "operators": [
+      "any_of",
+      "none_of",
+      "contains",
+      "not_contains",
+      "re"
+    ],
+    "max_length": 256,
+    "orm": "resource_name"
+  },
+  {
+    "key": "item",
+    "label": {
+      "zh": "指标",
+      "en": "Metric"
+    },
+    "contexts": [
+      "event",
+      "alert"
+    ],
+    "options": "",
+    "type": "str",
+    "role": "text",
+    "operators": [
+      "any_of",
+      "none_of",
+      "contains",
+      "not_contains",
+      "re"
+    ],
+    "max_length": 256,
+    "orm": "item"
+  },
+  {
+    "key": "push_source_id",
+    "label": {
+      "zh": "监控源",
+      "en": "Monitoring source"
+    },
+    "contexts": [
+      "event"
+    ],
+    "options": "",
+    "type": "str",
+    "role": "candidate",
+    "operators": [
+      "any_of",
+      "none_of"
+    ],
+    "max_length": 256,
+    "orm": "push_source_id"
+  },
+  {
+    "key": "push_source_ids",
+    "label": {
+      "zh": "监控源",
+      "en": "Monitoring sources"
+    },
+    "contexts": [
+      "alert"
+    ],
+    "options": "",
+    "type": "list",
+    "role": "list",
+    "operators": [
+      "any_of",
+      "all_of",
+      "none_of"
+    ],
+    "max_length": 256,
+    "item_type": "str",
+    "orm": "push_source_ids"
+  }
+]

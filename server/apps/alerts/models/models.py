@@ -175,6 +175,7 @@ class Alert(models.Model):
     )
     operator = JSONField(default=list, blank=True, help_text="告警处理人")
     source_name = models.CharField(max_length=100, null=True, blank=True, help_text="告警源名称")
+    push_source_ids = JSONField(default=list, blank=True, editable=False, help_text="监控源，关联事件推送来源去重集合")
     # 核心指纹字段（用于聚合）
     fingerprint = models.CharField(max_length=32, db_index=True, help_text="告警指纹")  # group_by_field:group_by_value
     group_by_field = models.CharField(max_length=200, null=True, blank=True, help_text="聚合字段")

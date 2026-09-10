@@ -1,10 +1,10 @@
 'use client';
 
+import { invalidMatchRules } from '@/app/alarm/utils/multivalueRules';
+
 import React, { useEffect, useState } from 'react';
 import './operateModal.scss';
 import MatchRule from '@/app/alarm/(pages)/settings/components/matchRule';
-import { isEmptyMatchRuleValue } from '@/app/alarm/(pages)/settings/components/matchRuleValue';
-import { ruleList } from '@/app/alarm/constants/settings';
 import EffectiveTime, {
   defaultEffectiveTime,
 } from '@/app/alarm/(pages)/settings/components/effectiveTime';
@@ -294,45 +294,22 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
           <Form.Item
             name="match_rules"
             validateTrigger={[]}
-            style={{
-              marginTop: '-10px',
-              marginBottom: '26px',
-            }}
+            className="mb-6"
             rules={[
               {
                 validator: (_, value: any[][]) => {
-                  if (!Array.isArray(value) || value.length === 0) {
+                  if (invalidMatchRules(value, false, "assignment")) {
                     return Promise.reject(new Error(t('common.inputTip')));
-                  }
-                  for (const orGroup of value) {
-                    if (!Array.isArray(orGroup) || orGroup.length === 0) {
-                      return Promise.reject(new Error(t('common.inputTip')));
-                    }
-                    for (const item of orGroup) {
-                      if (
-                        !item.key ||
-                        !item.operator ||
-                        isEmptyMatchRuleValue(item.value)
-                      ) {
-                        return Promise.reject(new Error(t('common.inputTip')));
-                      }
-                    }
                   }
                   return Promise.resolve();
                 },
               },
             ]}
           >
-            {/* 告警分派（alert 级）：通过 ruleOptions 把 location / service 这两个
-                Event-only ghost key 从下拉里筛掉，避免规则永远匹配失败。共享 MatchRule
-                仍然不带过滤，传一个过滤后的列表进来即可；其它层（event 级）继续传
-                完整 ruleList，跟此处无关。 */}
-            <MatchRule
+            <MatchRule scope="assignment"
+              monitorSourceField="push_source_ids"
               levelType="alert"
-              enableLevelMultiSelect
-              ruleOptions={ruleList.filter(
-                (item) => item.name !== 'location' && item.name !== 'service'
-              )}
+
             />
           </Form.Item>
         )}

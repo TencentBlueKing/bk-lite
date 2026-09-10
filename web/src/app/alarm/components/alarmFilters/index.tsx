@@ -1,13 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import Collapse from '@/components/collapse';
 import alertStyle from './index.module.scss';
-import { Checkbox, Space, Spin } from 'antd';
+import { Checkbox, Space, Select } from 'antd';
 import { ClearOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { FiltersConfig } from '@/app/alarm/types/alarms';
-import { useSourceApi } from '@/app/alarm/api/integration';
-import { AlertSourceOption } from '@/app/alarm/types/integration';
 import { useCommon } from '@/app/alarm/context/common';
+import { normalizeRuleTags } from '@/app/alarm/utils/multivalueRules';
 
 interface Props {
   filters: FiltersConfig;
@@ -25,27 +24,7 @@ const AlarmFilters: React.FC<Props> = ({
   clearFilters,
 }) => {
   const { t } = useTranslation();
-  const { getAlertSourceOptions } = useSourceApi();
   const { levelList, levelMap } = useCommon();
-  const [sourceOptions, setSourcesOptions] = useState<AlertSourceOption[]>([]);
-  const [loadingSources, setLoadingSources] = useState<boolean>(false);
-
-  useEffect(() => {
-    if (!filterSource) return;
-    const fetchSources = async () => {
-      setLoadingSources(true);
-      try {
-        const res = await getAlertSourceOptions();
-        if (res) setSourcesOptions(res);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoadingSources(false);
-      }
-    };
-    fetchSources();
-  }, [filterSource]);
-
   const filterConfigs = [
     {
       field: 'level' as keyof FiltersConfig,
@@ -121,23 +100,10 @@ const AlarmFilters: React.FC<Props> = ({
                 </div>
               }
             >
-              <Spin size="small" spinning={loadingSources}>
-                <Checkbox.Group
-                  className={alertStyle.group}
-                  value={filters.alarm_source}
-                  onChange={(vals) =>
-                    onFilterChange(vals as string[], 'alarm_source')
-                  }
-                >
-                  <Space direction="vertical">
-                    {sourceOptions.map((o: AlertSourceOption) => (
-                      <Checkbox key={o.name} value={o.name}>
-                        {o.name}
-                      </Checkbox>
-                    ))}
-                  </Space>
-                </Checkbox.Group>
-              </Spin>
+              <Select className="w-full" mode="tags" open={false} options={[]} suffixIcon={null}
+                aria-label={t('alarms.source')} placeholder={t('alarmCommon.multiValuePlaceholder')}
+                value={filters.alarm_source} maxCount={50} maxLength={256}
+                onChange={values => onFilterChange(normalizeRuleTags(values), 'alarm_source')} />
             </Collapse>
           </div>
         )}

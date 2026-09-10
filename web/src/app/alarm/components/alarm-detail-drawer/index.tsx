@@ -68,6 +68,8 @@ export interface AlarmDetailLogItem {
 }
 
 export interface AlarmDetailDrawerData extends AlarmActionRowData {
+  push_source_ids?: string[];
+  source_names?: string[];
   alert_id?: string | number;
   content?: string;
   duration?: string;

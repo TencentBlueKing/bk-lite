@@ -53,7 +53,7 @@ export interface AlertShieldListItem {
     match_type: string;
     match_rules: Array<Array<{
         key: string;
-        value: string;
+        value: string | number | (string | number)[];
         operator: string;
     }>>;
     suppression_time: {
@@ -81,7 +81,7 @@ export interface AggregationRule {
 export interface FilterRule {
     key: string;
     operator: string;
-    value: string | number;
+    value: string | number | (string | number)[];
 }
 
 export interface AlarmStrategyParams {
@@ -218,7 +218,7 @@ export interface ActionRuleListItem {
   is_active: boolean;
   team: number[];
   trigger_events: string[];
-  match_rules: Array<Array<{ key: string; operator: string; value: string }>>;
+  match_rules: Array<Array<{ key: string; operator: string; value: string | number | (string | number)[] }>>;
   action_type: 'job' | 'itsm' | 'webhook';
   action_config: ActionConfig;
   updated_at: string;

@@ -23,8 +23,14 @@ def sys_user(db):
 
 def _make_alert(alert_id="A1", status=AlertStatus.UNASSIGNED, **over):
     defaults = dict(
-        alert_id=alert_id, level="0", title="CPU高", content="c", fingerprint="fp" + alert_id,
-        status=status, source_name="prometheus", team=[1],
+        alert_id=alert_id,
+        level="0",
+        title="CPU高",
+        content="c",
+        fingerprint="fp" + alert_id,
+        status=status,
+        source_name="prometheus",
+        team=[1],
     )
     defaults.update(over)
     return Alert.objects.create(**defaults)
@@ -32,8 +38,14 @@ def _make_alert(alert_id="A1", status=AlertStatus.UNASSIGNED, **over):
 
 def _make_assignment(name="分派", match_type="all", **over):
     defaults = dict(
-        name=name, match_type=match_type, is_active=True, personnel=["op1"],
-        match_rules=[], config={}, notify_channels=[], notification_scenario=[],
+        name=name,
+        match_type=match_type,
+        is_active=True,
+        personnel=["op1"],
+        match_rules=[],
+        config={},
+        notify_channels=[],
+        notification_scenario=[],
         notification_frequency={},
     )
     defaults.update(over)
@@ -81,19 +93,19 @@ def test_auto_assignment_filter_match(sys_user):
         match_rules=[[{"key": "title", "operator": "contains", "value": "CPU"}]],
     )
     operator = AlertAssignmentOperator(["A1", "A2"])
-    result = operator.execute_auto_assignment()
+    operator.execute_auto_assignment()
     assert Alert.objects.get(alert_id="A1").status == AlertStatus.PENDING
     assert Alert.objects.get(alert_id="A2").status == AlertStatus.UNASSIGNED
 
 
 @pytest.mark.django_db
-def test_auto_assignment_level_eq_list_matches_any_selected_level(sys_user):
+def test_auto_assignment_level_or_matches_either_enum(sys_user):
     _make_alert("A1", level="0")
     _make_alert("A2", level="1")
     _make_alert("A3", level="2")
     _make_assignment(
         match_type="filter",
-        match_rules=[[{"key": "level", "operator": "eq", "value": ["0", "1"]}]],
+        match_rules=[[{"key": "level", "operator": "any_of", "value": ["0"]}], [{"key": "level", "operator": "any_of", "value": ["1"]}]],
     )
 
     AlertAssignmentOperator(["A1", "A2", "A3"]).execute_auto_assignment()
@@ -104,13 +116,13 @@ def test_auto_assignment_level_eq_list_matches_any_selected_level(sys_user):
 
 
 @pytest.mark.django_db
-def test_auto_assignment_level_ne_list_excludes_all_selected_levels(sys_user):
+def test_auto_assignment_level_and_excludes_both_enums(sys_user):
     _make_alert("A1", level="0")
     _make_alert("A2", level="1")
     _make_alert("A3", level="2")
     _make_assignment(
         match_type="filter",
-        match_rules=[[{"key": "level", "operator": "ne", "value": ["0", "1"]}]],
+        match_rules=[[{"key": "level", "operator": "none_of", "value": ["0"]}, {"key": "level", "operator": "none_of", "value": ["1"]}]],
     )
 
     AlertAssignmentOperator(["A1", "A2", "A3"]).execute_auto_assignment()

@@ -73,7 +73,7 @@ def _given_rule_created(db):
         is_active=True,
         team=[1],
         trigger_events=["created"],
-        match_rules=[[{"key": "level", "operator": "eq", "value": "1"}]],
+        match_rules=[[{"key": "level", "operator": "any_of", "value": ["1"]}]],
         action_type="job",
         action_config={
             "script_id": 42,
@@ -108,8 +108,9 @@ def _when_alert_created_and_evaluated(s1_ctx):
     )
     s1_ctx["alert"] = alert
 
-    with patch("apps.alerts.action.handlers.job.resolve_node_target", return_value=MOCK_NODE), \
-         patch("apps.alerts.action.handlers.job.JobMgmt") as mock_job_cls:
+    with patch("apps.alerts.action.handlers.job.resolve_node_target", return_value=MOCK_NODE), patch(
+        "apps.alerts.action.handlers.job.JobMgmt"
+    ) as mock_job_cls:
         mock_job = mock_job_cls.return_value
         mock_job.get_script.return_value = MOCK_SCRIPT
         mock_job.job_script_execute.return_value = {
@@ -117,6 +118,7 @@ def _when_alert_created_and_evaluated(s1_ctx):
             "data": {"task_id": s1_ctx["task_id"]},
         }
         from apps.alerts.action.engine import ActionEngine
+
         ActionEngine().evaluate(alert, "created")
 
 
@@ -124,15 +126,10 @@ def _when_alert_created_and_evaluated(s1_ctx):
 def _then_execution_running(s1_ctx):
     alert = s1_ctx["alert"]
     execs = ActionExecution.objects.filter(alert=alert, trigger_type="auto")
-    assert execs.exists(), (
-        f"期望存在 alert={alert.alert_id} 的 auto 执行记录，"
-        f"但实际 ActionExecution 数量为 {ActionExecution.objects.count()}"
-    )
+    assert execs.exists(), f"期望存在 alert={alert.alert_id} 的 auto 执行记录，" f"但实际 ActionExecution 数量为 {ActionExecution.objects.count()}"
     ex = execs.first()
     assert ex.status == "running", f"期望 status=running，实际 status={ex.status}"
-    assert ex.job_task_id == s1_ctx["task_id"], (
-        f"期望 job_task_id={s1_ctx['task_id']}，实际={ex.job_task_id}"
-    )
+    assert ex.job_task_id == s1_ctx["task_id"], f"期望 job_task_id={s1_ctx['task_id']}，实际={ex.job_task_id}"
     s1_ctx["execution"] = ex
 
 
@@ -185,7 +182,7 @@ def _given_rule_no_match(db):
         is_active=True,
         team=[1],
         trigger_events=["created"],
-        match_rules=[[{"key": "level", "operator": "eq", "value": "9"}]],  # 不命中
+        match_rules=[[{"key": "level", "operator": "any_of", "value": ["9"]}]],  # 不命中
         action_type="job",
         action_config={"script_id": 42},
     )
@@ -206,9 +203,7 @@ def _when_manual_trigger_twice(s2_ctx, superuser_client):
                 format="json",
                 HTTP_IDEMPOTENCY_KEY="bdd-manual-1",
             )
-            assert resp.status_code in (200, 201), (
-                f"手动触发失败: status={resp.status_code}, body={resp.content}"
-            )
+            assert resp.status_code in (200, 201), f"手动触发失败: status={resp.status_code}, body={resp.content}"
 
 
 @then("应只生成一条手动执行记录")
