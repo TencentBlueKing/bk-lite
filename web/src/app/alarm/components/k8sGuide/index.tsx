@@ -11,6 +11,8 @@ interface K8sGuideProps {
   source?: SourceItem;
   meta?: K8sMeta;
   loading?: boolean;
+  failed?: boolean;
+  onRetry?: () => void;
   onDownload: (fileKey: string, fileName: string, params: K8sRenderParams) => Promise<void>;
   credentialsSlot?: React.ReactNode;
   selectedTeamId?: string;
@@ -21,6 +23,8 @@ const K8sGuide: React.FC<K8sGuideProps> = ({
   source,
   meta,
   loading = false,
+  failed = false,
+  onRetry,
   onDownload,
   credentialsSlot,
   selectedTeamId,
@@ -58,6 +62,18 @@ const K8sGuide: React.FC<K8sGuideProps> = ({
       <div className="p-4">
         <Spin spinning />
       </div>
+    );
+  }
+
+  if (failed) {
+    return (
+      <Empty description={t('integration.k8sMetaLoadFailed')}>
+        {onRetry ? (
+          <Button type="primary" onClick={onRetry}>
+            {t('common.retry')}
+          </Button>
+        ) : null}
+      </Empty>
     );
   }
 
