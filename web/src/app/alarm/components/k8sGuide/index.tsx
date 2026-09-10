@@ -68,13 +68,13 @@ const K8sGuide: React.FC<K8sGuideProps> = ({
 
   if (failed) {
     return (
-      <Empty description={t('integration.k8sMetaLoadFailed')}>
+      <CompactEmptyState description={t('integration.k8sMetaLoadFailed')}>
         {onRetry ? (
           <Button type="primary" onClick={onRetry}>
             {t('common.retry')}
           </Button>
         ) : null}
-      </Empty>
+      </CompactEmptyState>
     );
   }
 
