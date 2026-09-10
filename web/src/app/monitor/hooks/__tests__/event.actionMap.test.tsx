@@ -19,11 +19,13 @@ vi.mock('@/utils/i18n', () => ({
 }));
 
 describe('useEventActionMap', () => {
-  it('用语言包展示触发、升级、恢复和关闭', () => {
+  it('用语言包展示触发、升级、认领、分派、恢复和关闭', () => {
     const { result } = renderHook(() => useEventActionMap());
     expect(result.current).toEqual({
       triggered: '触发',
       escalated: '级别升级',
+      claimed: '认领',
+      assigned: '分派',
       recovered: '自动恢复',
       closed: '关闭'
     });

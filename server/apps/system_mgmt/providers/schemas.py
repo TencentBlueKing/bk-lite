@@ -48,6 +48,10 @@ class BusinessTemplateManifest(BaseModel):
     identity_fields: list[str] = Field(default_factory=list, description="可作为外部稳定身份的字段列表")
     default_external_match_field: str = Field(default="", description="默认外部匹配字段")
     default_external_receive_field: str = Field(default="", description="默认外部接收字段")
+    external_field_labels: dict[str, str] = Field(
+        default_factory=dict,
+        description="外部字段展示名，由 pack 语言文件 templates.<form>.external_fields 覆盖",
+    )
 
     @model_validator(mode="after")
     def validate_unique_field_keys(self):

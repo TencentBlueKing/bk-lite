@@ -11,11 +11,11 @@ type: concept
 title: 页面标题
 ---`;
 
-export type MarkdownImportGovernanceErrorView = {
+export interface MarkdownImportGovernanceErrorView {
   title: string;
   description?: string;
   example?: string;
-};
+}
 
 export const markdownImportAccept = (
   importFormat: WikiMarkdownImportFormat = "markdown",
@@ -27,8 +27,8 @@ export const markdownImportFilePattern = (
   importFormat === "okf" ? /\.zip$/iu : /\.(?:md|markdown|zip)$/iu;
 
 export const initialCreateDirectoriesFromFolders = (
-  _importFormat: WikiMarkdownImportFormat = "markdown",
-): boolean => true;
+  importFormat: WikiMarkdownImportFormat = "markdown",
+): boolean => importFormat === "okf";
 
 const OKF_SKIP_REASON_KEYS: Record<string, string> = {
   reserved: "wiki.okfSkipReasonReserved",
@@ -140,8 +140,8 @@ export const markdownImportGovernanceErrorView = (
     const extra =
       details?.truncated && (details.total || 0) > missing.length
         ? `\n${interpolate(t("wiki.okfImageMissingTruncated"), {
-            count: (details.total || 0) - missing.length,
-          })}`
+          count: (details.total || 0) - missing.length,
+        })}`
         : "";
     return {
       title: t("wiki.okfImagesMissing"),

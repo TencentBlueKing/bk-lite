@@ -1113,14 +1113,6 @@
           "email": "Email",
           "phone": "Phone"
         },
-        "externalFieldOption": {
-          "userid": "User ID",
-          "user_id": "User ID",
-          "open_id": "Open ID",
-          "email": "Email",
-          "mobile": "Mobile",
-          "name": "Name"
-        },
         "mappingColumns": {
           "username": "Username",
           "externalDisplayName": "External Name",
@@ -1317,13 +1309,6 @@
         "loginAuth": "Login Authentication",
         "imNotification": "IM Notification",
         "imGroup": "Group Collaboration"
-      },
-      "provider": {
-        "label": "Integration Type",
-        "ldap": "LDAP",
-        "oidc": "OIDC",
-        "saml": "SAML",
-        "github": "GitHub"
       },
       "providerTypeLabel": "Integration Type",
       "statusSummary": "Status Summary",

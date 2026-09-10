@@ -13,8 +13,7 @@ import {
   useFilteredBarPanels,
   useFilteredChartPanels,
   useFilteredRingPanels,
-  useFilteredSummaryCards
-} from '../common/dashboard-components';
+  useFilteredSummaryCards, DashboardSectionLabel } from '../common/dashboard-components';
 import { HorizontalBarPanel, TitleWithGuide } from '../../shared/widgets';
 import type { BarItem } from '../../shared/widgets';
 import { buildSearchParams, runWithConcurrency } from '../../shared/utils';
@@ -89,13 +88,13 @@ export default function MssqlDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
 
-          <div className={styles.sectionLabel}>性能与等待趋势</div>
+          <DashboardSectionLabel styles={styles}>性能与等待趋势</DashboardSectionLabel>
           <TrendSection charts={primaryCharts} onXRangeChange={dashboard.onXRangeChange} loading={dashboard.loading} styles={styles} />
 
-          <div className={styles.sectionLabel}>并发与故障</div>
+          <DashboardSectionLabel styles={styles}>并发与故障</DashboardSectionLabel>
           <TrendSection
             charts={concurrencyCharts}
             onXRangeChange={dashboard.onXRangeChange}
@@ -104,7 +103,7 @@ export default function MssqlDashboardPage() {
             styles={styles}
           />
 
-          <div className={styles.sectionLabel}>存储与调度</div>
+          <DashboardSectionLabel styles={styles}>存储与调度</DashboardSectionLabel>
           <InsightSection
             rings={rings}
             bars={bars}
@@ -113,7 +112,7 @@ export default function MssqlDashboardPage() {
             styles={styles}
           />
 
-          <div className={styles.sectionLabel}>CPU 与 I/O 吞吐</div>
+          <DashboardSectionLabel styles={styles}>CPU 与 I/O 吞吐</DashboardSectionLabel>
           <TrendSection
             charts={secondaryCharts}
             onXRangeChange={dashboard.onXRangeChange}
@@ -122,7 +121,7 @@ export default function MssqlDashboardPage() {
             styles={styles}
           />
 
-          <div className={styles.sectionLabel}>数据库压力排行</div>
+          <DashboardSectionLabel styles={styles}>数据库压力排行</DashboardSectionLabel>
           <section className={styles.dashboardSection}>
             <div className={styles.sectionGrid}>
               {MSSQL_TOP_DB_QUERIES.map((q) => (

@@ -283,6 +283,13 @@ const useIntegrationApi = () => {
       }) => {
         return await post('/monitor/api/monitor_plugin/qcloud_regions/', data);
       },
+      listAliyunRegions: async (data: {
+        username: string;
+        password: string;
+        cloud_region_id?: number | string;
+      }) => {
+        return await post('/monitor/api/monitor_plugin/aliyun_regions/', data);
+      },
     } satisfies FlowIntegrationApi),
     [del, get, post, put]
   );

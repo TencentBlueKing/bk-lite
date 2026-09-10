@@ -11,6 +11,7 @@ interface LegacyOptionsEntity {
 
 interface SourceLike {
   id: number;
+  name?: string;
   rest_api?: string;
 }
 
@@ -74,7 +75,15 @@ export const resolveDynamicSourceId = (
   dataSources: SourceLike[],
 ): number | undefined => {
   if (source.sourceRef?.type === 'rest_api') {
-    return dataSources.find((item) => item.rest_api === source.sourceRef?.value)?.id;
+    const ref = source.sourceRef.value;
+    const byKey = dataSources.find(
+      (item) =>
+        typeof item.name === 'string' &&
+        item.name.length > 0 &&
+        `${item.name}::${item.rest_api || ''}` === ref,
+    );
+    if (byKey) return byKey.id;
+    return dataSources.find((item) => item.rest_api === ref)?.id;
   }
   return typeof source.sourceId === 'number' ? source.sourceId : undefined;
 };

@@ -122,3 +122,26 @@ def test_portable_datasource_key_is_rejected_for_storage():
 
     with pytest.raises(ValueError, match="sections\\[0\\].valueConfig.dataSource"):
         normalize_report_view_sets({"schema_version": 1, "sections": [section]})
+
+
+def test_number_filter_type_is_accepted():
+    normalized = normalize_report_view_sets(
+        {
+            "schema_version": 1,
+            "filters": [
+                {
+                    "id": "login_max__number",
+                    "key": "login_max",
+                    "name": "登录次数上限",
+                    "type": "number",
+                    "defaultValue": 9,
+                    "order": 0,
+                    "enabled": True,
+                }
+            ],
+            "sections": [],
+        }
+    )
+
+    assert normalized["filters"][0]["type"] == "number"
+    assert normalized["filters"][0]["defaultValue"] == 9

@@ -10,8 +10,7 @@ import {
   KpiSection,
   TrendSection,
   FlexiblePanelSection,
-  DetailPanelCard
-} from '../common/dashboard-components';
+  DetailPanelCard, DashboardSectionLabel } from '../common/dashboard-components';
 import { RingChartPanel, HorizontalBarPanel } from '../../shared/widgets';
 import { buildSearchParams, parseLegacyParamList, normalizeDisplayText } from '../../shared/utils';
 import { buildTopBars, coresDisplay, bytesDisplay } from '../k3s-cluster/parse';
@@ -67,9 +66,9 @@ export default function K3sNodeDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection dashboard={dashboard} summaryCards={dashboard.summaryCards} kpiCols={6} styles={styles} />
-          <div className={styles.sectionLabel}>资源趋势</div>
+          <DashboardSectionLabel styles={styles}>资源趋势</DashboardSectionLabel>
           <TrendSection
             charts={dashboard.chartPanels}
             onXRangeChange={dashboard.onXRangeChange}
@@ -77,7 +76,7 @@ export default function K3sNodeDashboardPage() {
             spanClass={() => `${styles.span6} ${styles.compactTrend}`}
             styles={styles}
           />
-          <div className={styles.sectionLabel}>分布与详情</div>
+          <DashboardSectionLabel styles={styles}>分布与详情</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {dashboard.ringPanels.map((ring) => (
               <RingChartPanel
@@ -102,7 +101,7 @@ export default function K3sNodeDashboardPage() {
               />
             ))}
           </FlexiblePanelSection>
-          <div className={styles.sectionLabel}>Pod 资源排行</div>
+          <DashboardSectionLabel styles={styles}>Pod 资源排行</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             <HorizontalBarPanel
               title="Top Pod · CPU"

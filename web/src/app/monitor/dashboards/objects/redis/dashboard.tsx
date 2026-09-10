@@ -7,8 +7,7 @@ import {
   KpiSection,
   TrendSection,
   useFilteredChartPanels,
-  useFilteredSummaryCards
-} from '../common/dashboard-components';
+  useFilteredSummaryCards, DashboardSectionLabel } from '../common/dashboard-components';
 import { TrendChartPanel } from '../../shared/widgets';
 import { REDIS_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
@@ -33,13 +32,13 @@ export default function RedisDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
 
-          <div className={styles.sectionLabel}>性能与缓存</div>
+          <DashboardSectionLabel styles={styles}>性能与缓存</DashboardSectionLabel>
           <TrendSection charts={trendCharts} onXRangeChange={dashboard.onXRangeChange} loading={dashboard.loading} styles={styles} />
 
-          <div className={styles.sectionLabel}>内存与客户端</div>
+          <DashboardSectionLabel styles={styles}>内存与客户端</DashboardSectionLabel>
           <section className={styles.dashboardSection}>
             <div className={styles.sectionGrid}>
               {fragChart && (
@@ -77,7 +76,7 @@ export default function RedisDashboardPage() {
             </div>
           </section>
 
-          <div className={styles.sectionLabel}>键生命周期与网络</div>
+          <DashboardSectionLabel styles={styles}>键生命周期与网络</DashboardSectionLabel>
           <TrendSection charts={lifecycleCharts} onXRangeChange={dashboard.onXRangeChange} loading={dashboard.loading} styles={styles} />
         </>
       }

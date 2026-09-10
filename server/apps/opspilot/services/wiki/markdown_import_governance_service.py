@@ -53,7 +53,8 @@ MAX_ENTRIES = 5000
 MAX_UNCOMPRESSED_BYTES = 400 * 1024 * 1024
 MAX_FILE_BYTES = 10 * 1024 * 1024
 MAX_COMPRESSION_RATIO = 1000
-TOKEN_TTL_MINUTES = 7 * 24 * 60
+# 大包二次上传需要时间，但不能无限有效。
+TOKEN_TTL_MINUTES = 120
 _MARKDOWN_SUFFIXES = {".md", ".markdown"}
 _KEY_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._:-]{0,63}$")
 _ERROR_DETAIL_TEXT_LIMIT = 160
@@ -1400,6 +1401,8 @@ def _claim_preflight(knowledge_base, token, inspected, actor, preview):
             raise MarkdownImportGovernanceError("preflight_token_invalid", "导入预检 token 无效", status_code=409)
         if record.status != "active":
             raise MarkdownImportGovernanceError("preflight_token_consumed", "导入预检 token 已使用", status_code=409)
+        if record.expires_at <= timezone.now():
+            raise MarkdownImportGovernanceError("preflight_token_expired", "导入预检 token 已过期", status_code=409)
         if record.actor != str(actor or "")[:150] or record.archive_sha256 != inspected.archive_sha256:
             raise MarkdownImportGovernanceError("preflight_binding_mismatch", "导入归档或操作者与预检不一致", status_code=409)
         if (

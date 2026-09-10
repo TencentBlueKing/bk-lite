@@ -1,5 +1,7 @@
+import type { Key } from 'react';
+
 export function collectSelectedAlertIds(
-  keys: ReadonlyArray<string | number> | null | undefined
+  keys: ReadonlyArray<Key> | null | undefined
 ): number[] {
   if (!keys?.length) {
     return [];
@@ -8,6 +10,9 @@ export function collectSelectedAlertIds(
   const ids: number[] = [];
   const seen = new Set<number>();
   for (const key of keys) {
+    if (typeof key === 'bigint') {
+      continue;
+    }
     const id = typeof key === 'number' ? key : Number(key);
     if (!Number.isInteger(id) || seen.has(id)) {
       continue;

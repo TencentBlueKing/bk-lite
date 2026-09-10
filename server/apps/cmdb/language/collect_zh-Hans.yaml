@@ -1,0 +1,385 @@
+COLLECT_GROUP:
+  k8s: 容器
+  vmware: 虚拟化
+  network: NetWork
+  ipam: IP 地址管理
+  databases: 数据库
+  storage_device: 存储设备
+  cloud: 云平台
+  host_manage: 主机逻辑主机
+  middleware: 中间件
+COLLECT_PLUGIN:
+  k8s_cluster:
+    name: K8S
+    desc: 采集k8s集群核心对象node节点、命名空间、工作负载、pod
+  docker:
+    name: Docker
+    desc: 发现与采集Docker容器配置信息
+  vmware_vc:
+    name: vCenter
+    desc: 通过采集vCenter内ESXi与虚拟机清单及其属性信息
+  network:
+    name: NetWork
+    desc: 通过SNMP协议发现网络设备和网络拓扑及其基本信息
+  network_config_file:
+    name: 网络设备配置文件
+    desc: 通过 Netmiko 采集网络设备配置命令输出并归档为配置文件版本
+  ip_discovery:
+    name: IP 发现
+    desc: 选择子网后由接入点执行 IP 探活，回写 IPAM 台账与利用率
+  mysql:
+    name: Mysql
+    desc: 采集MySQL关键配置信息
+  influxdb:
+    name: 【BETA】InfluxDB
+    desc: 采集InfluxDB关键配置信息（兼容1.x/2.x，优先2.x）
+  postgresql:
+    name: PostgreSQL
+    desc: 采集PostgreSQL关键配置信息
+  mssql:
+    name: 【BETA】MSSQL
+    desc: 采集MSSQL关键配置信息
+  redis:
+    name: Redis
+    desc: 采集Redis关键配置信息
+  mongodb:
+    name: 【BETA】MongoDB
+    desc: 发现与采集MongoDB基础配置信息
+  es:
+    name: 【BETA】Elasticsearch
+    desc: 采集Elasticsearch关键配置信息
+  hbase:
+    name: 【BETA】HBase
+    desc: 采集HBase关键配置信息
+  storage:
+    name: 【BETA】华为存储
+    desc: 采集华为 OceanStor 存储设备及其存储池、磁盘、卷（LUN）、以太口与 FC 口
+  dell_unity:
+    name: 【BETA】Dell Unity
+    desc: 采集 Dell Unity 存储设备及其存储池、磁盘、卷（LUN）、以太口与 FC 口
+  netapp_ontap:
+    name: 【BETA】NetApp ONTAP
+    desc: 采集 NetApp ONTAP 存储设备及其存储池、磁盘、卷（LUN/FlexVol）、以太口与 FC 口
+  aliyun_account:
+    name: 阿里云
+    desc: 采集阿里云账户下ECS、VPC、RDS等资产清单
+  qcloud:
+    name: 腾讯云
+    desc: 采集腾讯云账户下CVM、VPC、云数据库等资产清单
+  hwcloud:
+    name: 华为云【beta】
+    desc: 采集华为云平台及其下 ECS 等资产清单
+  fusioninsight:
+    name: FusionInsight【beta】
+    desc: 采集 FusionInsight 平台及其下集群、主机
+  host:
+    name: 主机
+    desc: 采集操作系统基础信息CPU内存等
+  config_file:
+    name: 配置文件
+    desc: 采集主机操作系统层文本配置文件内容
+  physcial_server:
+    name: 物理服务器 SSH
+    desc: 采集物理服务器基础信息CPU、内存、网卡等
+  physcial_server_ipmi:
+    name: 【BETA】物理服务器 IPMI
+    desc: 通过 IPMI 管理口采集物理服务器基础身份信息
+  physcial_server_redfish:
+    name: 【BETA】物理服务器 Redfish
+    desc: 通过 Redfish HTTPS API 采集物理服务器基础身份信息
+  nginx:
+    name: Nginx
+    desc: 发现与采集Nginx基础配置信息
+  minio:
+    name: 【BETA】MinIO
+    desc: 发现与采集MinIO对象存储的基础配置信息
+  zookeeper:
+    name: Zookeeper
+    desc: 发现与采集ZK基础配置信息
+  kafka:
+    name: Kafka
+    desc: 发现与采集Kafka基础配置信息
+  consul:
+    name: Consul
+    desc: 发现与采集Consul基础配置信息
+  etcd:
+    name: Etcd
+    desc: 发现与采集Etcd基础配置信息
+  rabbitmq:
+    name: RabbitMQ
+    desc: 发现与采集Rabbitmq基础配置信息
+  tomcat:
+    name: Tomcat
+    desc: 发现与采集Tomcat基础配置信息
+  apache:
+    name: Apache
+    desc: 发现与采集Apache基础配置信息
+  activemq:
+    name: ActiveMQ
+    desc: 发现与采集ActiveMQ基础配置信息
+  iis:
+    name: IIS
+    desc: 发现与采集IIS基础配置信息
+  tuxedo:
+    name: Tuxedo
+    desc: 发现与采集Tuxedo基础配置信息
+  memcached:
+    name: Memcached
+    desc: 发现与采集Memcached基础配置信息
+  rocketmq:
+    name: RocketMQ
+    desc: 发现与采集RocketMQ基础配置信息
+  openresty:
+    name: OpenResty
+    desc: 发现与采集OpenResty基础配置信息
+  squid:
+    name: Squid
+    desc: 发现与采集Squid基础配置信息
+  haproxy:
+    name: HAProxy
+    desc: 发现与采集HAProxy基础配置信息
+  keepalive:
+    name: KeepAlive【beta】
+    desc: 采集 KeepAlive 实例的 IP、端口、版本、优先级、状态、虚拟路由 ID 等信息
+  spark:
+    name: Spark
+    desc: 发现与采集Spark基础配置信息
+  nacos:
+    name: Nacos
+    desc: 采集Nacos基础配置信息
+  ibmmq:
+    name: IBM MQ
+    desc: 采集IBM MQ基础配置信息
+  oceanbase:
+    name: OceanBase
+    desc: 采集OceanBase基础配置信息
+  highgo:
+    name: 瀚高HighGo
+    desc: 采集瀚高HighGo基础配置信息
+  server_bmc:
+    name: 服务器BMC
+    desc: 采集服务器BMC基础配置信息
+  tonglinkq:
+    name: TongLINK/Q
+    desc: 采集TongLINK/Q基础配置信息
+  tonggtp:
+    name: TongGTP
+    desc: 采集TongGTP基础配置信息
+  ihs:
+    name: IBM HTTP Server
+    desc: 采集IBM HTTP Server基础配置信息
+  cics:
+    name: IBM CICS
+    desc: 采集IBM CICS基础配置信息
+  ibm_storwize:
+    name: IBM Storwize
+    desc: 采集IBM Storwize基础配置信息
+  ibm_ds:
+    name: IBM DS
+    desc: 采集IBM DS基础配置信息
+  emc_symmetrix:
+    name: EMC Symmetrix
+    desc: 采集EMC Symmetrix基础配置信息
+  hds_vsp:
+    name: 【BETA】Hitachi VSP
+    desc: 采集 Hitachi VSP 及其存储池、磁盘、卷（LDEV）、以太口与 FC 口
+  macrosan:
+    name: 宏杉存储
+    desc: 采集宏杉存储基础配置信息
+  pure_array:
+    name: 【BETA】Pure Storage
+    desc: 采集 Pure Storage FlashArray 及其存储池、磁盘、卷（LUN）、以太口与 FC 口
+  netapp_cluster:
+    name: NetApp Cluster
+    desc: 采集NetApp Cluster基础配置信息
+  oraclezfs:
+    name: Oracle ZFS
+    desc: 采集Oracle ZFS基础配置信息
+  infinidat:
+    name: Infinidat
+    desc: 采集Infinidat基础配置信息
+  tape_library:
+    name: 磁带库
+    desc: 采集磁带库基础配置信息
+  brocade_fc:
+    name: Brocade FC
+    desc: 采集Brocade FC基础配置信息
+  cisco_fc:
+    name: Cisco FC
+    desc: 采集Cisco FC基础配置信息
+  f5:
+    name: F5
+    desc: 采集F5基础配置信息
+  informix:
+    name: Informix
+    desc: 采集Informix基础配置信息
+  sybase:
+    name: Sybase
+    desc: 采集Sybase基础配置信息
+  couchbase:
+    name: Couchbase
+    desc: 采集Couchbase基础配置信息
+  mycat:
+    name: MyCAT
+    desc: 采集MyCAT基础配置信息
+  sap_hana:
+    name: SAP HANA
+    desc: 采集SAP HANA基础配置信息
+  iris:
+    name: InterSystems IRIS
+    desc: 采集InterSystems IRIS基础配置信息
+  aix:
+    name: AIX
+    desc: 采集AIX基础配置信息
+  hpux:
+    name: HP-UX
+    desc: 采集HP-UX基础配置信息
+  hmc:
+    name: HMC
+    desc: 采集HMC基础配置信息
+  hdfs:
+    name: HDFS
+    desc: 采集HDFS基础配置信息
+  yarn:
+    name: YARN
+    desc: 采集YARN基础配置信息
+  storm:
+    name: Storm
+    desc: 采集Storm基础配置信息
+  ambari:
+    name: Ambari
+    desc: 采集Ambari基础配置信息
+  redis_sentinel:
+    name: Redis Sentinel
+    desc: 采集Redis Sentinel基础配置信息
+  bes:
+    name: BES
+    desc: 采集BES基础配置信息
+  apusic:
+    name: Apusic
+    desc: 采集Apusic基础配置信息
+  inforsuite_as:
+    name: InforSuite AS
+    desc: 采集InforSuite AS基础配置信息
+  gbase8s:
+    name: GBase 8s
+    desc: 采集GBase 8s基础配置信息
+  oscar:
+    name: 神通 Oscar
+    desc: 采集神通 Oscar基础配置信息
+  security_device:
+    name: 安全设备
+    desc: 采集安全设备基础配置信息
+  domestic_linux:
+    name: 国产 Linux
+    desc: 采集国产 Linux基础配置信息
+  tongrds:
+    name: TongRDS
+    desc: 采集TongRDS基础配置信息
+  tdsql:
+    name: TDSQL
+    desc: 采集TDSQL基础配置信息
+  zstack:
+    name: ZStack
+    desc: 采集ZStack基础配置信息
+  h3c_cas:
+    name: 华三 UIS
+    desc: 采集华三 UIS基础配置信息
+  xsky:
+    name: XSKY
+    desc: 采集XSKY基础配置信息
+  winsphere:
+    name: 云宏 WinSphere
+    desc: 采集云宏 WinSphere基础配置信息
+  pc:
+    name: PC发现
+    desc: 采集PC发现基础配置信息
+  dameng:
+    name: 达梦数据库
+    desc: 采集达梦数据库基础配置信息
+  openstack:
+    name: OpenStack
+    desc: 采集OpenStack基础配置信息
+  smartx:
+    name: SmartX
+    desc: 采集SmartX基础配置信息
+  manageone:
+    name: ManageOne
+    desc: 采集ManageOne基础配置信息
+  fusioncompute:
+    name: FusionCompute
+    desc: 采集FusionCompute基础配置信息
+  sangforhci:
+    name: 深信服 HCI
+    desc: 采集深信服 HCI基础配置信息
+  sangforscp:
+    name: 深信服 SCP
+    desc: 采集深信服 SCP基础配置信息
+  nutanixhci:
+    name: Nutanix HCI
+    desc: 采集Nutanix HCI基础配置信息
+  inspurincloudrail:
+    name: 浪潮 InCloud Rail
+    desc: 采集浪潮 InCloud Rail基础配置信息
+  aws:
+    name: AWS
+    desc: 采集AWS基础配置信息
+  azure:
+    name: Azure
+    desc: 采集Azure基础配置信息
+  ceph:
+    name: Ceph
+    desc: 采集Ceph基础配置信息
+  db2:
+    name: DB2
+    desc: 采集DB2基础配置信息
+  tidb:
+    name: TiDB
+    desc: 采集TiDB基础配置信息
+  gbase8a:
+    name: GBase 8a
+    desc: 采集GBase 8a基础配置信息
+  greenplum:
+    name: Greenplum
+    desc: 采集Greenplum基础配置信息
+  kingbase:
+    name: 人大金仓
+    desc: 采集人大金仓基础配置信息
+  opengauss:
+    name: openGauss
+    desc: 采集openGauss基础配置信息
+  vastbase:
+    name: Vastbase
+    desc: 采集Vastbase基础配置信息
+  jboss:
+    name: JBoss
+    desc: 采集JBoss基础配置信息
+  jetty:
+    name: Jetty
+    desc: 采集Jetty基础配置信息
+  tongweb:
+    name: TongWeb
+    desc: 采集TongWeb基础配置信息
+  weblogic:
+    name: WebLogic
+    desc: 采集WebLogic基础配置信息
+  websphere:
+    name: WebSphere
+    desc: 采集WebSphere基础配置信息
+  dell_powerstore:
+    name: 【BETA】Dell PowerStore
+    desc: 采集 Dell PowerStore 存储设备及其存储池、磁盘、卷（LUN）、以太口与 FC 口
+COLLECT_TAG:
+  国产: 国产
+  配置中心: 配置中心
+  分布式DB: 分布式DB
+  PG兼容: PG兼容
+COLLECT:
+  DOCUMENT_NOT_FOUND: 未找到对应的文档！
+COLLECT_MESSAGE:
+  未发现任何有效数据，请检查采集目标连通性、凭据与采集范围配置: 未发现任何有效数据，请检查采集目标连通性、凭据与采集范围配置
+  未发现 PC 最新上报结果，请检查目标采集是否已完成及数据上报时间: 未发现 PC 最新上报结果，请检查目标采集是否已完成及数据上报时间
+  本轮采集结果全部失败，请检查原始数据中的采集错误: 本轮采集结果全部失败，请检查原始数据中的采集错误
+  实例数据写入全部失败，请检查 add/update/delete 错误数: 实例数据写入全部失败，请检查 add/update/delete 错误数
+  部分采集或数据写入失败，请检查原始数据及错误数: 部分采集或数据写入失败，请检查原始数据及错误数
+  采集任务下发失败，请稍后重试: 采集任务下发失败，请稍后重试

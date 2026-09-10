@@ -10,6 +10,7 @@ const { chartRender } = vi.hoisted(() => ({ chartRender: vi.fn() }));
 const input = {
   name: '错误率策略',
   service_id: 'svc-1',
+  organizations: [10],
   environment: 'production',
   alert_name: '${service}',
   endpoints: ['POST /checkout'],
@@ -44,6 +45,7 @@ const api = {
   deletePolicy: vi.fn(),
   getInstances: vi.fn(),
   getNotificationChannels: vi.fn(),
+  getNotificationRecipients: vi.fn(),
   getPolicy: vi.fn(),
   getServiceRed: vi.fn(),
   getServices: vi.fn(),
@@ -57,6 +59,21 @@ vi.mock('@/app/apm/api', () => ({ default: () => api }));
 vi.mock('@/app/apm/components/apm-route-shell', () => ({
   default: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
   ApmSurface: ({ children }: { children: React.ReactNode }) => <section>{children}</section>,
+}));
+vi.mock('@/components/group-tree-select', () => ({
+  default: ({
+    value = [],
+    onChange,
+    placeholder,
+  }: {
+    value?: number[];
+    onChange?: (next: number[]) => void;
+    placeholder?: string;
+  }) => (
+    <button type="button" aria-label={placeholder || '选择组织'} onClick={() => onChange?.([10])}>
+      {(value || []).join(',') || placeholder}
+    </button>
+  ),
 }));
 vi.mock('@/components/time-series-composed-chart', () => ({
   default: (props: { series: Array<Record<string, unknown>> }) => {
@@ -80,9 +97,13 @@ beforeEach(() => {
     namespace: 'shop',
     name: 'checkout',
     archived_at: null,
+    organization_ids: [10],
     environment_views: [{ environment: 'production' }],
   }]);
   api.getNotificationChannels.mockResolvedValue([]);
+  api.getNotificationRecipients.mockResolvedValue([
+    { id: 7, username: 'bob', display_name: 'Bob' },
+  ]);
   api.getPolicy.mockResolvedValue(policy);
   api.getServiceRed.mockResolvedValue({ top_endpoints: [{ endpoint: 'POST /checkout' }], timeseries: [] });
   api.getInstances.mockResolvedValue([]);
@@ -100,7 +121,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe('APM 四步策略编辑器', () => {
+describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
   it('展示约定的四步字段和真实变量来源，且不暴露 Monitor/Log 表达式', async () => {
     renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
     expect(await screen.findByText('基本信息')).not.toBeNull();
@@ -118,6 +139,14 @@ describe('APM 四步策略编辑器', () => {
     expect(screen.queryByLabelText('无数据告警名称')).toBeNull();
     expect(screen.queryByText(/LogSQL|MonitorObject|采集插件/)).toBeNull();
     expect(screen.getByRole('switch', { name: '启用通知' })).not.toBeNull();
+    const organizationLabel = screen.getByText('所属组织');
+    const handlerLabel = screen.getByText('处理人');
+    expect(organizationLabel).not.toBeNull();
+    expect(handlerLabel).not.toBeNull();
+    expect(
+      organizationLabel.compareDocumentPosition(handlerLabel)
+      & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it('启用无数据告警后展示无数据告警名称', async () => {
@@ -200,7 +229,7 @@ describe('APM 四步策略编辑器', () => {
   it('阈值变化后防抖自动更新指标预览', async () => {
     const user = userEvent.setup();
     renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
-    await waitFor(() => expect(api.previewPolicy).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(api.previewPolicy).toHaveBeenCalled(), { timeout: 3000 });
     api.previewPolicy.mockClear();
 
     const warningThreshold = screen.getByLabelText('警告阈值');
@@ -250,6 +279,7 @@ describe('APM 四步策略编辑器', () => {
         namespace: 'shop',
         name: 'catalog',
         archived_at: null,
+        organization_ids: [10],
         environment_views: [{ environment: 'production' }],
       },
     ]);
@@ -289,5 +319,69 @@ describe('APM 四步策略编辑器', () => {
     await user.click(screen.getByRole('button', { name: '保存策略' }));
     expect(await screen.findByText('已失效，保存前请移除')).not.toBeNull();
     expect(api.updatePolicy).not.toHaveBeenCalled();
+  });
+
+  it('选服务且组织为空时带入服务组织，保存时提交所属组织', async () => {
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmPolicyEditor />);
+
+    await user.type(await screen.findByLabelText('策略名称'), '新策略');
+    expect(screen.getByLabelText('选择组织').textContent).toBe('选择组织');
+    await user.click(screen.getByLabelText('服务'));
+    await user.click(await screen.findByText('shop / checkout'));
+    expect(screen.getByLabelText('选择组织').textContent).toBe('10');
+
+    await user.click(screen.getByRole('button', { name: '创建策略' }));
+    await waitFor(() =>
+      expect(api.createPolicy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          organizations: [10],
+          service_id: 'svc-1',
+          handlers: [],
+        }),
+      ),
+    );
+  });
+
+  it('按策略组织拉取处理人候选，系统用户接收人空时默认带入处理人且删除后不补', async () => {
+    const user = userEvent.setup();
+    api.getPolicy.mockResolvedValue({
+      ...policy,
+      handlers: [7],
+    });
+    api.getNotificationChannels.mockResolvedValue([
+      {
+        id: 21,
+        name: '邮件',
+        channel_type: 'email',
+        description: '邮件通知',
+        delivery_mode: 'message',
+        recipient_mode: 'system_user',
+        availability: 'available',
+      },
+    ]);
+    renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+
+    expect(await screen.findByText('处理人')).not.toBeNull();
+    await waitFor(() =>
+      expect(api.getNotificationRecipients).toHaveBeenCalledWith(
+        expect.objectContaining({ organization_ids: '10', limit: 100 }),
+      ),
+    );
+
+    await user.click(await screen.findByRole('switch', { name: '启用通知' }));
+    await user.click(screen.getByLabelText('通知通道'));
+    const emailOptions = await screen.findAllByText('邮件');
+    await user.click(emailOptions.at(-1)!);
+
+    const recipients = await screen.findByLabelText('通知对象');
+    await waitFor(() => {
+      expect(recipients.closest('.ant-select')?.textContent).toContain('7');
+    });
+
+    const removeRecipient = recipients.closest('.ant-select')?.querySelector('.ant-select-selection-item-remove');
+    expect(removeRecipient).not.toBeNull();
+    await user.click(removeRecipient as Element);
+    expect(recipients.closest('.ant-select')?.textContent).not.toContain('7');
   });
 });

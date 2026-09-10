@@ -31,6 +31,7 @@ export interface BusinessTemplate {
   receivable_fields: string[];
   default_external_match_field: string;
   default_external_receive_field: string;
+  external_field_labels?: Record<string, string>;
 }
 
 export interface ProviderCapability {

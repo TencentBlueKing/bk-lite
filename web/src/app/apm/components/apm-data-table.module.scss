@@ -3,6 +3,15 @@
   min-width: 0;
 }
 
+.identityFloor :global(.ant-table-container) {
+  overflow-x: auto;
+}
+
+.identityFloor :global(.ant-table-selection-col + col),
+.identityFloor :global(colgroup col:first-child:not(.ant-table-selection-col)) {
+  min-width: var(--apm-identity-col-min-width, 168px);
+}
+
 .table :global(.ant-table) {
   color: var(--color-text-1);
   font-size: 14px;

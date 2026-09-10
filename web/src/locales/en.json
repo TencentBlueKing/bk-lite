@@ -336,6 +336,11 @@
       "loading": "Loading QR code...",
       "unableToDisplay": "Unable to display QR code"
     },
+    "legacyThirdLogin": {
+      "title": "Signed in",
+      "returning": "Returning to the original page...",
+      "continue": "Continue"
+    },
     "loginAuth": {
       "methodsTitle": "Switch login method",
       "bindingPassword": {

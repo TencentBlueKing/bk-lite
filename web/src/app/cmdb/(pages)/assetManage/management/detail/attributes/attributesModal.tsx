@@ -45,9 +45,11 @@ import {
   PublicEnumLibraryItem,
 } from '@/app/cmdb/types/assetManage';
 import {
+  canSubmitEnumDefaultValue,
   getAttributeEnumOptionIds,
   normalizeDefaultValue,
-  sanitizeDefaultValue,
+  resolveEnumDefaultValue,
+  type PublicEnumLibraryLoadState,
 } from '@/app/cmdb/utils/enumDefaultValue';
 import {
   getFileFieldConstraintMeta,
@@ -126,6 +128,8 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
     const [enumRuleType, setEnumRuleType] = useState<EnumRuleType>('custom');
     const [publicLibraryId, setPublicLibraryId] = useState<string>('');
     const [publicLibraries, setPublicLibraries] = useState<PublicEnumLibraryItem[]>([]);
+    const [publicLibraryLoadState, setPublicLibraryLoadState] =
+      useState<PublicEnumLibraryLoadState>('unloaded');
     const [enumSelectMode, setEnumSelectMode] = useState<'single' | 'multiple'>('single');
     const formRef = useRef<FormInstance>(null);
     const searchParams = useSearchParams();
@@ -151,16 +155,17 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
     };
 
     const syncEnumDefaultValue = (candidate?: unknown) => {
-      const sanitized = sanitizeDefaultValue(
-        candidate ?? formRef.current?.getFieldValue('default_value'),
-        getCurrentEnumOptionIds(),
-        enumSelectMode,
-      );
+      const next = resolveEnumDefaultValue({
+        candidate: candidate ?? formRef.current?.getFieldValue('default_value'),
+        validOptionIds: getCurrentEnumOptionIds(),
+        selectMode: enumSelectMode,
+        enumRuleType,
+        publicLibraryLoadState,
+      });
       formRef.current?.setFieldsValue({
-        default_value: enumSelectMode === 'multiple' ? sanitized : sanitized[0] ?? undefined,
+        default_value: enumSelectMode === 'multiple' ? next : next[0] ?? undefined,
       });
     };
-
 
     useEffect(() => {
       if (modelVisible) {
@@ -184,7 +189,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
     useEffect(() => {
       if (!modelVisible || attrInfo.attr_type !== 'enum') return;
       syncEnumDefaultValue();
-    }, [modelVisible, attrInfo.attr_type, enumRuleType, publicLibraryId, publicLibraries, enumList, enumSelectMode]);
+    }, [modelVisible, attrInfo.attr_type, enumRuleType, publicLibraryId, publicLibraries, enumList, enumSelectMode, publicLibraryLoadState]);
 
     useImperativeHandle(ref, () => ({
       showModal: ({ type, attrInfo, subTitle, title }) => {
@@ -192,10 +197,12 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
         setSubTitle(subTitle);
         setType(type);
         setTitle(title);
+        setPublicLibraryLoadState('unloaded');
         getPublicEnumLibraries().then((res: any) => {
           setPublicLibraries(res || []);
+          setPublicLibraryLoadState('ready');
         }).catch(() => {
-          setPublicLibraries([]);
+          setPublicLibraryLoadState('failed');
         });
         if (type === 'add') {
           Object.assign(attrInfo, {
@@ -276,10 +283,12 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
         setAttrInfo(attrInfo);
       },
       refreshPublicLibraries: () => {
+        setPublicLibraryLoadState('unloaded');
         getPublicEnumLibraries().then((res: any) => {
           setPublicLibraries(res || []);
+          setPublicLibraryLoadState('ready');
         }).catch(() => {
-          setPublicLibraries([]);
+          setPublicLibraryLoadState('failed');
         });
       },
     }));
@@ -362,11 +371,16 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
         };
 
         if (values.attr_type === 'enum') {
-          const sanitizedDefaultValue = sanitizeDefaultValue(
-            values.default_value,
-            getCurrentEnumOptionIds(),
-            enumSelectMode,
-          );
+          if (!canSubmitEnumDefaultValue({ enumRuleType, publicLibraryLoadState })) {
+            return;
+          }
+          const sanitizedDefaultValue = resolveEnumDefaultValue({
+            candidate: values.default_value,
+            validOptionIds: getCurrentEnumOptionIds(),
+            selectMode: enumSelectMode,
+            enumRuleType,
+            publicLibraryLoadState,
+          });
           submitParams.enum_rule_type = enumRuleType;
           submitParams.enum_select_mode = enumSelectMode;
           submitParams.default_value = sanitizedDefaultValue;
@@ -762,7 +776,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
               <Select placeholder={t('common.selectMsg')}>
                 {props.groups.map((group) => (
                   <Option value={group.id} key={group.id}>
-                    {group.group_name}
+                    {group.display_name || group.group_name}
                   </Option>
                 ))}
               </Select>

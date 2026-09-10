@@ -11,12 +11,15 @@ from apps.cmdb.models.field_group import FieldGroup
 class FieldGroupSerializer(serializers.ModelSerializer):
     """字段分组序列化器"""
 
+    display_name = serializers.SerializerMethodField()
+
     class Meta:
         model = FieldGroup
         fields = (
             "id",
             "model_id",
             "group_name",
+            "display_name",
             "order",
             "is_collapsed",
             "description",
@@ -25,7 +28,14 @@ class FieldGroupSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         )
-        read_only_fields = ("id", "created_at", "updated_at")
+        read_only_fields = ("id", "created_at", "updated_at", "display_name")
+
+    def get_display_name(self, instance):
+        from apps.cmdb.language.service import group_display_name
+
+        request = self.context.get("request")
+        locale = getattr(getattr(request, "user", None), "locale", None) if request else None
+        return group_display_name(instance.group_name, locale)
 
 
 class FieldGroupCreateSerializer(serializers.Serializer):
@@ -40,9 +50,7 @@ class FieldGroupCreateSerializer(serializers.Serializer):
             "max_length": "分组名称不能超过200个字符",
         },
     )
-    description = serializers.CharField(
-        required=False, allow_blank=True, default="", max_length=500
-    )
+    description = serializers.CharField(required=False, allow_blank=True, default="", max_length=500)
     is_collapsed = serializers.BooleanField(required=False, default=False)
 
 
@@ -58,9 +66,7 @@ class FieldGroupUpdateSerializer(serializers.Serializer):
             "max_length": "分组名称不能超过200个字符",
         },
     )
-    description = serializers.CharField(
-        required=False, allow_blank=True, max_length=500
-    )
+    description = serializers.CharField(required=False, allow_blank=True, max_length=500)
     is_collapsed = serializers.BooleanField(required=False)
 
 

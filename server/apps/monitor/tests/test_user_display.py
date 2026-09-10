@@ -2,6 +2,7 @@ import pytest
 
 from apps.monitor.utils.user_display import (
     build_user_display_map,
+    enrich_alerts_handlers_display,
     enrich_alerts_notice_users_display,
     format_notice_users,
     resolve_alert_notice_users,
@@ -62,3 +63,13 @@ def test_enrich_alerts_notice_users_display_in_place():
 
     assert alerts[0]["notice_users_display"] == ["甲(a)"]
     assert alerts[1]["notice_users_display"] == ["乙(b)", "gone"]
+
+
+def test_enrich_alerts_handlers_display_in_place():
+    user = _create_user(username="handler1", display_name="处理人甲")
+    alerts = [{"handlers": [user.id]}, {"handlers": []}]
+
+    enrich_alerts_handlers_display(alerts)
+
+    assert alerts[0]["handlers_display"] == ["处理人甲(handler1)"]
+    assert alerts[1]["handlers_display"] == []

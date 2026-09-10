@@ -6,8 +6,7 @@ import {
   DashboardShell,
   KpiSection,
   FlexiblePanelSection,
-  DetailPanelCard
-} from '../common/dashboard-components';
+  DetailPanelCard, DashboardSectionLabel } from '../common/dashboard-components';
 import { TrendChartPanel } from '../../shared/widgets';
 import { POD_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
@@ -21,9 +20,9 @@ export default function K8sPodDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection dashboard={dashboard} summaryCards={dashboard.summaryCards} kpiCols={5} styles={styles} />
-          <div className={styles.sectionLabel}>资源趋势</div>
+          <DashboardSectionLabel styles={styles}>资源趋势</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {dashboard.chartPanels.map((chart) => (
               <TrendChartPanel
@@ -43,7 +42,7 @@ export default function K8sPodDashboardPage() {
               />
             ))}
           </FlexiblePanelSection>
-          <div className={styles.sectionLabel}>详情</div>
+          <DashboardSectionLabel styles={styles}>详情</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {dashboard.detailPanels.map((detailPanel) => (
               <DetailPanelCard
