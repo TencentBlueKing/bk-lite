@@ -392,7 +392,17 @@ class SystemMgmt(object):
         return_data = self.client.run("send_email_to_receiver", title=title, content=content, receiver=receiver)
         return return_data
 
-    def send_msg_with_channel(self, channel_id, title, content, receivers, attachments=None, *, internal_caller=""):
+    def send_msg_with_channel(
+        self,
+        channel_id,
+        title,
+        content,
+        receivers,
+        attachments=None,
+        *,
+        internal_caller="",
+        append_receivers=True,
+    ):
         """
         通过指定通道发送消息
         :param channel_id: 1 通道id
@@ -413,11 +423,10 @@ class SystemMgmt(object):
                 request_payload,
                 caller=internal_caller,
             )
-        return self.client.run(
-            "send_msg_with_channel",
-            **request_payload,
-            internal_auth=internal_auth,
-        )
+        request_payload["internal_auth"] = internal_auth
+        if not append_receivers:
+            request_payload["append_receivers"] = False
+        return self.client.run("send_msg_with_channel", **request_payload)
 
     def sync_opspilot_nats_channels(self, bot_id, bot_name, team, nodes, timeout=60):
         """对账 OpsPilot 某个 bot 的 NATS 触发节点对应的通道（增/改/删）。

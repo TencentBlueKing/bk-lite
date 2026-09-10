@@ -21,6 +21,12 @@ import {
 import LevelIcon from '@/app/alarm/components/levelIcon';
 import { ChannelItem, NotifyOption } from '@/app/alarm/types/settings';
 import {
+  buildChannelsWithTemplateBindings,
+  getNotificationTemplateBindings,
+  NotificationTemplateOption,
+} from './notificationTemplateBinding';
+import { getNotificationTemplateChannel } from '@/app/alarm/utils/notificationTemplateChannels';
+import {
   Tag,
   Form,
   Input,
@@ -31,7 +37,11 @@ import {
   Collapse,
   InputNumber,
   message,
+  Space,
   Spin,
+  Select,
+  Typography,
+  Alert,
 } from 'antd';
 
 interface OperateModalProps {
@@ -49,7 +59,7 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
 }) => {
   const { t } = useTranslation();
   const { levelList, levelMap, userList } = useCommon();
-  const { createAssignment, updateAssignment, getChannelList } =
+  const { createAssignment, updateAssignment, getChannelList, getNotificationTemplateOptions } =
     useSettingApi();
 
   const personnelOptions = userList.map(({ display_name, username }) => ({
@@ -58,32 +68,60 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
   }));
 
   const [form] = Form.useForm();
+  const [messageApi, messageContextHolder] = message.useMessage();
   const [submitLoading, setSubmitLoading] = useState(false);
   const [notifyOptions, setNotifyOptions] = useState<NotifyOption[]>([]);
   const [channelList, setChannelList] = useState<ChannelItem[]>([]);
   const [channelLoading, setChannelLoading] = useState(false);
+  const [channelLoadFailed, setChannelLoadFailed] = useState(false);
+  const [templateOptions, setTemplateOptions] = useState<Record<string, NotificationTemplateOption[]>>({});
+  const [templateLoading, setTemplateLoading] = useState(false);
 
   // 获取通知渠道列表
   const fetchChannelList = async () => {
     setChannelLoading(true);
+    setChannelLoadFailed(false);
+    setChannelList([]);
+    setNotifyOptions([]);
+    setTemplateOptions({});
+    setTemplateLoading(false);
+    let data: ChannelItem[];
     try {
-      const data: any = await getChannelList({});
+      data = await getChannelList({}) as ChannelItem[];
       setChannelList(data);
       const options: NotifyOption[] = data.map((channel: ChannelItem) => ({
         label: channel.name,
         value: channel.id.toString(),
       }));
       setNotifyOptions(options);
-
       if (!currentRow && data.length > 0) {
         form.setFieldsValue({
           notify_channels: [data[0].id.toString()],
         });
       }
-    } catch (error) {
-      console.error('获取通知渠道失败:', error);
+    } catch {
+      setChannelLoadFailed(true);
+      return;
     } finally {
       setChannelLoading(false);
+    }
+    setTemplateLoading(true);
+    try {
+      const channelTypes = Array.from(new Set(data.map((channel: ChannelItem) => channel.channel_type)));
+      const optionGroups = await Promise.all(
+        channelTypes.map(async (channelType) => {
+          const templates = await getNotificationTemplateOptions({ channel_type: channelType });
+          return [
+            channelType,
+            (templates || []).map((template: { id: number; name: string }) => ({ label: template.name, value: template.id })),
+          ] as const;
+        }),
+      );
+      setTemplateOptions(Object.fromEntries(optionGroups));
+    } catch (error) {
+      console.error('获取通知模板失败:', error);
+    } finally {
+      setTemplateLoading(false);
     }
   };
 
@@ -109,6 +147,7 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
           ...currentRow,
           ...targetFormValue,
           notify_channels: notifyChannelIds,
+          notification_templates: getNotificationTemplateBindings(currentRow.notify_channels || []),
           notification_frequency: currentRow.notification_frequency,
           match_rules:
             currentRow.match_type === 'filter'
@@ -149,6 +188,7 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
 
   const ruleType = Form.useWatch('match_type', form);
   const escalationEnabled = Form.useWatch(['escalation', 'enabled'], form);
+  const selectedChannelIds: string[] = Form.useWatch('notify_channels', form) || [];
   const channelCheckOptions = notifyOptions;
 
   const onFinish = async (values: any) => {
@@ -160,23 +200,25 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
       } else {
         await createAssignment(params);
       }
-      message.success(
+      messageApi.success(
         currentRow ? t('alarmCommon.successOperate') : t('common.addSuccess')
       );
       form.resetFields();
       onClose();
       onSuccess && onSuccess();
     } catch {
-      message.error(t('alarmCommon.operateFailed'));
+      messageApi.error(t('alarmCommon.operateFailed'));
     } finally {
       setSubmitLoading(false);
     }
   };
 
   const getParams = (values: any) => {
-    const notifyChannels = (values.notify_channels || [])
-      .map((id: string) => channelList.find((ch) => ch.id.toString() === id))
-      .filter(Boolean);
+    const notifyChannels = buildChannelsWithTemplateBindings(
+      values.notify_channels || [],
+      channelList,
+      values.notification_templates,
+    );
 
     const notificationTarget = buildNotificationTarget(values);
     const params: any = {
@@ -216,9 +258,11 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
           l.target_type === 'organization' ? [] : l.personnel || [],
         notification_target: buildNotificationTarget(l),
         wait_minutes: l.wait_minutes || 0,
-        notify_channels: (l.notify_channels || [])
-          .map((id: string) => channelList.find((ch) => ch.id.toString() === id))
-          .filter(Boolean),
+        notify_channels: buildChannelsWithTemplateBindings(
+          l.notify_channels || [],
+          channelList,
+          values.notification_templates,
+        ),
       }));
       params.config = {
         ...params.config,
@@ -233,7 +277,9 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
   };
 
   return (
-    <Drawer
+    <>
+      {messageContextHolder}
+      <Drawer
       title={
         currentRow
           ? t('settings.assignStrategy.editTitle') + ` - ${currentRow.name}`
@@ -319,17 +365,92 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
           typeLabel={t('settings.assignStrategy.formTargetSelect')}
         />
         <Form.Item
-          name="notify_channels"
           label={t('settings.assignStrategy.formNotifyMethod')}
-          rules={[{ required: true, message: t('common.selectTip') }]}
+          required
         >
-          <Checkbox.Group options={notifyOptions} disabled={channelLoading} />
-          {channelLoading && (
-            <div className="flex justify-center h-[32px] ">
-              <Spin spinning={channelLoading}></Spin>
-            </div>
-          )}
+          <div>
+            <Form.Item
+              name="notify_channels"
+              noStyle
+              rules={[{ required: true, message: t('common.selectTip') }]}
+            >
+              <Checkbox.Group options={notifyOptions} disabled={channelLoading} />
+            </Form.Item>
+            {channelLoading && (
+              <div className="flex h-[32px] justify-center">
+                <Spin spinning={channelLoading} />
+              </div>
+            )}
+            {!channelLoading && channelLoadFailed && (
+              <Alert
+                type="error"
+                showIcon
+                message={t('settings.assignStrategy.channelLoadFailed')}
+                action={<Button size="small" onClick={fetchChannelList}>{t('settings.assignStrategy.retryChannels')}</Button>}
+              />
+            )}
+            {!channelLoading && !channelLoadFailed && notifyOptions.length === 0 && (
+              <Alert
+                type="info"
+                showIcon
+                message={t('settings.assignStrategy.noChannels')}
+                description={
+                  <div className="flex flex-col items-start gap-2">
+                    <span>{t('settings.assignStrategy.noChannelsDescription')}</span>
+                    <Space>
+                      <Typography.Link href="/system-manager/channel" target="_blank" rel="noopener noreferrer">
+                        {t('settings.assignStrategy.configureChannels')}
+                      </Typography.Link>
+                      <Button size="small" onClick={fetchChannelList}>{t('settings.assignStrategy.retryChannels')}</Button>
+                    </Space>
+                  </div>
+                }
+              />
+            )}
+          </div>
         </Form.Item>
+        {selectedChannelIds.length > 0 && (
+          <div className="mb-6 rounded-lg border border-[var(--color-border-1)] bg-[var(--color-fill-1)] p-3">
+            <Typography.Text strong>{t('settings.notificationTemplate.bindingTitle')}</Typography.Text>
+            <div className="mb-3 mt-1 text-sm text-[var(--color-text-3)]">
+              {t('settings.notificationTemplate.bindingSteps')}
+            </div>
+            <div className="flex flex-col gap-3">
+              {selectedChannelIds.map((channelId) => {
+                const channel = channelList.find((item) => item.id.toString() === channelId);
+                if (!channel) return null;
+                const channelConfig = getNotificationTemplateChannel(channel.channel_type);
+                const options = templateOptions[channel.channel_type] || [];
+                return (
+                  <div key={channelId} className="rounded border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-3">
+                    <Space size={8} className="mb-3">
+                      <Typography.Text strong>{channel.name} [{channel.channel_type}]</Typography.Text>
+                      {channelConfig && <Tag>{t(channelConfig.labelKey)}</Tag>}
+                    </Space>
+                    <div className="grid grid-cols-1 gap-x-3 md:grid-cols-2">
+                      {([
+                        ['default', 'settings.notificationTemplate.sceneDefault'],
+                        ['reminder', 'settings.notificationTemplate.sceneReminder'],
+                        ['escalation', 'settings.notificationTemplate.sceneEscalation'],
+                        ['recovery', 'settings.notificationTemplate.sceneRecovery'],
+                      ] as const).map(([scene, labelKey]) => (
+                        <Form.Item key={scene} name={['notification_templates', channelId, scene]} label={t(labelKey)}>
+                          <Select
+                            allowClear
+                            className="w-full"
+                            loading={templateLoading}
+                            placeholder={t('settings.notificationTemplate.defaultTemplate')}
+                            options={options}
+                          />
+                        </Form.Item>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <Collapse
           defaultActiveKey={[]}
           ghost
@@ -426,7 +547,8 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
           </Collapse.Panel>
         </Collapse>
       </Form>
-    </Drawer>
+      </Drawer>
+    </>
   );
 };
 

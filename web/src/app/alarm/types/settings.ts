@@ -158,6 +158,84 @@ export interface ChannelItem {
   id: number;
   name: string;
   channel_type: string;
+  team?: Array<number | string>;
+  notification_templates?: Record<string, number | null>;
+}
+
+export interface NotificationTemplateContent {
+  id?: number;
+  channel_type: string;
+  subject_template: string;
+  body_template: string;
+}
+
+export interface NotificationTemplateItem {
+  id: number;
+  name: string;
+  description: string;
+  team: number[];
+  scope: 'single_alert' | 'unassigned_summary' | 'alert_operation';
+  is_global: boolean;
+  builtin_key: string;
+  is_builtin: boolean;
+  channel_id: number | null;
+  assignment_count: number;
+  revision: number;
+  contents: NotificationTemplateContent[];
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+  updated_by: string;
+}
+
+export interface NotificationTemplatePreview {
+  subject: string;
+  body: string;
+  missing_fields: string[];
+}
+
+export interface NotificationTemplatePayload {
+  name: string;
+  description?: string;
+  team?: number[];
+  scope: NotificationTemplateItem['scope'];
+  channel_id?: number | null;
+  revision?: number;
+  contents: NotificationTemplateContent[];
+}
+
+export interface NotificationTemplateListParams {
+  page?: number;
+  page_size?: number;
+  name?: string;
+  channel_type?: string;
+  scope?: NotificationTemplateItem['scope'];
+}
+
+export interface NotificationTemplatePreviewRequest {
+  channel_type: string;
+  scope: NotificationTemplateItem['scope'];
+  subject_template: string;
+  body_template: string;
+  sample?: Record<string, unknown>;
+}
+
+export interface NotificationTemplateTestSendRequest {
+  channel_id: number;
+  alert_id?: number;
+  receivers?: string[];
+  sample?: Record<string, unknown>;
+}
+
+export interface NotificationTemplateDraftTestSendRequest {
+  template_id?: number;
+  channel_id: number;
+  alert_id: number;
+  receivers: string[];
+  scope: NotificationTemplateItem['scope'];
+  channel_type: string;
+  subject_template: string;
+  body_template: string;
 }
 
 export interface NotifyOption {

@@ -2,7 +2,7 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-    dependencies = [("alerts", "0029_alert_event_enrichment_meta")]
+    dependencies = [("alerts", "0030_notification_templates")]
 
     operations = [
         migrations.AddField(

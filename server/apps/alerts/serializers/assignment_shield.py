@@ -5,6 +5,7 @@ from rest_framework import serializers
 
 from apps.alerts.common.notification_target import ORGANIZATION_TARGET, USER_TARGET, VALID_TARGET_TYPES, normalize_notification_target
 from apps.alerts.models.alert_operator import AlertAssignment, AlertShield
+from apps.alerts.notification_templates.binding import sync_assignment_template_references, validate_assignment_template_bindings
 from apps.alerts.utils.rule_catalog import validate_rules_for_serializer
 from apps.system_mgmt.models import Group, User
 from apps.system_mgmt.utils.group_filter_mixin import get_unauthorized_group_ids, get_user_group_ids, normalize_group_id_set
@@ -96,6 +97,11 @@ class AlertAssignmentModelSerializer(serializers.ModelSerializer):
         if not isinstance(config, dict):
             if attrs.get("personnel") and self.context.get("request") is not None:
                 self._validate_user_target(attrs.get("personnel"), "分派对象")
+            validate_assignment_template_bindings(
+                attrs.get("notify_channels", getattr(self.instance, "notify_channels", [])),
+                attrs.get("config", getattr(self.instance, "config", {})),
+                self.context.get("request"),
+            )
             return attrs
 
         normalized_config = deepcopy(config)
@@ -143,7 +149,22 @@ class AlertAssignmentModelSerializer(serializers.ModelSerializer):
 
         if changed:
             attrs["config"] = normalized_config
+        validate_assignment_template_bindings(
+            attrs.get("notify_channels", getattr(self.instance, "notify_channels", [])),
+            attrs.get("config", getattr(self.instance, "config", {})),
+            self.context.get("request"),
+        )
         return attrs
+
+    def create(self, validated_data):
+        instance = super().create(validated_data)
+        sync_assignment_template_references(instance)
+        return instance
+
+    def update(self, instance, validated_data):
+        instance = super().update(instance, validated_data)
+        sync_assignment_template_references(instance)
+        return instance
 
     class Meta:
         model = AlertAssignment
