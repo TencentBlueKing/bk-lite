@@ -17,6 +17,12 @@ describe('generate-ai-pilots', () => {
     expect(pathnamePrefixFromPilotFile('monitor/(pages)/event/alert/alert.pilot.ts')).toBe(
       '/monitor/event/alert/',
     );
+    expect(pathnamePrefixFromPilotFile('alarm/(pages)/alarms/alarms.pilot.ts')).toBe(
+      '/alarm/alarms/',
+    );
+    expect(pathnamePrefixFromPilotFile('alarm/(pages)/incidents/incidents.pilot.ts')).toBe(
+      '/alarm/incidents/',
+    );
   });
 
   it('builds a deterministic manifest', () => {

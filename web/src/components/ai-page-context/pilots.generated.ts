@@ -3,6 +3,14 @@ import type { AiPageContextPilot } from './types';
 
 export const GENERATED_PAGE_CONTEXT_PILOTS: AiPageContextPilot[] = [
   {
+    test: (pathname) => pathname.includes('/alarm/alarms/'),
+    load: () => import('@/app/alarm/(pages)/alarms/alarms.pilot'),
+  },
+  {
+    test: (pathname) => pathname.includes('/alarm/incidents/'),
+    load: () => import('@/app/alarm/(pages)/incidents/incidents.pilot'),
+  },
+  {
     test: (pathname) => pathname.includes('/monitor/event/alert/'),
     load: () => import('@/app/monitor/(pages)/event/alert/alert.pilot'),
   },
