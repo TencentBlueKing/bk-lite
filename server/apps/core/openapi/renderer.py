@@ -128,14 +128,14 @@ def validate_entry(name: str, entry, internal_services=()):
         return None, "conflicts with internal service"
 
     schema_version = entry.get("schema_version", 1)
-    if schema_version not in SUPPORTED_SCHEMA_VERSIONS:
+    if not isinstance(schema_version, int) or schema_version not in SUPPORTED_SCHEMA_VERSIONS:
         return None, f"unsupported schema_version {schema_version!r}"
 
     if entry.get("enabled", True) is False:
         return None, "disabled"
 
     entry_type = entry.get("type")
-    if entry_type not in VALID_TYPES:
+    if not isinstance(entry_type, str) or entry_type not in VALID_TYPES:
         return None, f"unknown type {entry_type!r}"
 
     base_url = entry.get("base_url")
@@ -145,7 +145,7 @@ def validate_entry(name: str, entry, internal_services=()):
         return None, "base_url not in allowlist"
 
     auth_mode = entry.get("auth_mode")
-    if auth_mode not in VALID_AUTH_MODES:
+    if not isinstance(auth_mode, str) or auth_mode not in VALID_AUTH_MODES:
         return None, f"unknown auth_mode {auth_mode!r}"
 
     secrets = {}

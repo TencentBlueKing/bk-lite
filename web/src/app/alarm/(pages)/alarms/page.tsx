@@ -1,5 +1,5 @@
 'use client';
-
+import './register-alarms-pilot';
 import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import Icon from '@/components/icon';
 import useApiClient from '@/utils/request';
