@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Empty, Spin } from 'antd';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Spin } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { useSearchParams } from 'next/navigation';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
@@ -10,6 +11,7 @@ import { findByMonitorId } from '@/app/monitor/utils/monitorIds';
 import { useSimpleDashboardData } from '../common/simple-dashboard-core';
 import {
   DashboardShell,
+  DashboardSectionLabel,
   KpiSection,
   useFilteredSummaryCards,
 } from '../common/dashboard-components';
@@ -20,6 +22,7 @@ import {
   resolveInstanceTypeFromObjectName,
 } from './constants';
 import { createFlowDashboardConfig } from './create-flow-config';
+import { createFlowObjectLoadCoordinator } from './flowObjectLoad';
 import { FlowConversationTable } from './conversation-table';
 import { FlowProtocolBreakdown } from './protocol-breakdown';
 import styles from './index.module.scss';
@@ -64,10 +67,10 @@ function FlowDashboardMetricsView({
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={5} styles={styles} />
 
-          <div className={styles.sectionLabel}>流量分析</div>
+          <DashboardSectionLabel styles={styles}>流量分析</DashboardSectionLabel>
           <section className={styles.dashboardSection}>
             <div className={`${styles.sectionGrid} ${styles.flowAnalysisGrid}`}>
               <FlowConversationTable
@@ -104,30 +107,36 @@ export function FlowDashboardPage({ protocol }: FlowDashboardPageProps) {
   const searchParams = useSearchParams();
   const { isLoading } = useApiClient();
   const { getMonitorObject } = useMonitorApi();
+  const getMonitorObjectRef = useRef(getMonitorObject);
+  const loadCoordinatorRef = useRef(createFlowObjectLoadCoordinator());
+  getMonitorObjectRef.current = getMonitorObject;
   const monitorObjId = searchParams.get('monitorObjId');
   const [objects, setObjects] = useState<ObjectItem[]>([]);
   const [objectsLoaded, setObjectsLoaded] = useState(false);
 
   useEffect(() => {
-    if (isLoading) return;
-    let active = true;
+    const coordinator = loadCoordinatorRef.current;
+    const ticket = coordinator.begin(isLoading);
+    if (!ticket) return undefined;
 
     const loadObjects = async () => {
       try {
-        const data = await getMonitorObject({});
-        if (!active) return;
+        const data = await getMonitorObjectRef.current({});
+        if (!coordinator.shouldApply(ticket)) return;
         setObjects(data || []);
       } finally {
-        if (active) setObjectsLoaded(true);
+        if (coordinator.shouldApply(ticket)) {
+          setObjectsLoaded(true);
+        }
       }
     };
 
-    loadObjects();
+    void loadObjects();
 
     return () => {
-      active = false;
+      coordinator.invalidate();
     };
-  }, [getMonitorObject, isLoading]);
+  }, [isLoading]);
 
   const monitorObject = useMemo(
     () => findByMonitorId(objects, monitorObjId || ''),
@@ -165,7 +174,7 @@ export function FlowDashboardPage({ protocol }: FlowDashboardPageProps) {
   if (missingFlowContext) {
     return (
       <FlowDashboardPlaceholder>
-        <Empty description="当前环境暂无支持 Flow 分析的网络设备（Switch/Router/Firewall/Loadbalance），请先在集成中接入后再进入。" />
+        <CompactEmptyState description="当前环境暂无支持 Flow 分析的网络设备（Switch/Router/Firewall/Loadbalance），请先在集成中接入后再进入。" />
       </FlowDashboardPlaceholder>
     );
   }

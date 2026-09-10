@@ -2,7 +2,9 @@ import time
 from typing import Any
 
 from apps.core.logger import celery_logger as logger
+from apps.core.logger import log_logger
 from apps.log.constants.alert_policy import AlertConstants
+from apps.log.constants.web import WebConstants
 from apps.monitor.utils.system_mgmt_api import SystemMgmtUtils
 from apps.system_mgmt.models.channel import Channel, ChannelChoices
 
@@ -217,6 +219,80 @@ class LogAlertLifecycleNotifier:
             if attempt < max_attempts:
                 time.sleep(AlertConstants.NOTICE_SEND_RETRY_BACKOFF_SECONDS * attempt)
 
+        return False, last_result
+
+    def _is_person_assign_channel(self, channel) -> bool:
+        if channel is None:
+            return False
+        if channel.channel_type == ChannelChoices.NATS:
+            return False
+        return not self._is_alert_center_channel(channel)
+
+    def _build_assigned_notice(self, alert) -> tuple[str, str]:
+        title = "【日志告警分派】"
+        url = f"{WebConstants.URL}/log/event/alert"
+        content = "\n".join(
+            [
+                f"告警内容：{alert.content or ''}",
+                f"策略名称：{self.policy.name}",
+                "状态：已分派",
+                f'查看告警详情：<a href="{url}">点击查看详情</a>',
+            ]
+        )
+        return title, content
+
+    def notify_assigned(self, alert, max_attempts=None) -> tuple[bool, dict]:
+        channel = self._get_channel()
+        if not self._is_person_assign_channel(channel):
+            return False, {}
+        handlers = [str(item) for item in (alert.handlers or []) if item not in (None, "")]
+        if not handlers:
+            return False, {}
+
+        title, content = self._build_assigned_notice(alert)
+        if max_attempts is None:
+            max_attempts = AlertConstants.NOTICE_SEND_MAX_ATTEMPTS
+        max_attempts = max(int(max_attempts), 1)
+        last_result = {"result": False, "message": "Unknown error"}
+        for attempt in range(1, max_attempts + 1):
+            try:
+                send_result = SystemMgmtUtils.send_msg_with_channel(
+                    channel.id,
+                    title,
+                    content,
+                    handlers,
+                )
+                success, error_message = self._parse_channel_result(send_result)
+                if success:
+                    log_logger.info(
+                        "event=assign_notify_sent policy_id=%s alert_id=%s attempt=%s",
+                        self.policy.id,
+                        alert.id,
+                        attempt,
+                    )
+                    return True, send_result if isinstance(send_result, dict) else {"result": True}
+                last_result = send_result if isinstance(send_result, dict) else {
+                    "result": False,
+                    "message": error_message,
+                }
+                log_logger.error(
+                    "event=assign_notify_failed policy_id=%s alert_id=%s attempt=%s failed_stage=send error_type=%s",
+                    self.policy.id,
+                    alert.id,
+                    attempt,
+                    "channel_result",
+                )
+            except Exception as exc:
+                last_result = {"result": False, "message": type(exc).__name__}
+                log_logger.error(
+                    "event=assign_notify_failed policy_id=%s alert_id=%s attempt=%s failed_stage=send error_type=%s",
+                    self.policy.id,
+                    alert.id,
+                    attempt,
+                    type(exc).__name__,
+                )
+            if attempt < max_attempts:
+                time.sleep(AlertConstants.NOTICE_SEND_RETRY_BACKOFF_SECONDS * attempt)
         return False, last_result
 
     def notify_created(self, event, max_attempts=None) -> tuple[bool, dict]:

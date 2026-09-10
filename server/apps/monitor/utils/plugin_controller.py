@@ -211,6 +211,20 @@ def ensure_qcloud_region_jinja(template_content: str) -> str:
     return text[: password_line.end()] + "\n" + insertion + text[password_line.end() :]
 
 
+def _plugin_types(context: dict) -> set[str]:
+    types = {
+        str(context.get("instance_type") or "").strip().lower(),
+        str(context.get("type") or "").strip().lower(),
+    }
+    config_type = context.get("config_type")
+    if isinstance(config_type, (list, tuple)):
+        types.update(str(item).strip().lower() for item in config_type)
+    elif config_type not in (None, ""):
+        types.add(str(config_type).strip().lower())
+    types.discard("")
+    return types
+
+
 def _normalize_qcloud_region(value) -> str:
     """表单多选为列表，Telegraf header 为逗号串；空值回落广州。"""
     if isinstance(value, (list, tuple)):
@@ -218,6 +232,17 @@ def _normalize_qcloud_region(value) -> str:
     else:
         parts = [item.strip() for item in str(value or "").split(",") if item.strip()]
     return ",".join(parts) or "ap-guangzhou"
+
+
+def _normalize_aliyun_region(value) -> str:
+    """阿里云监控一配置一地域；表单若误传列表则取第一项，空值回落杭州。"""
+    if isinstance(value, (list, tuple)):
+        parts = [str(item).strip() for item in value if str(item).strip()]
+        return parts[0] if parts else "cn-hangzhou"
+    text = str(value or "").strip()
+    if "," in text:
+        text = text.split(",", 1)[0].strip()
+    return text or "cn-hangzhou"
 
 
 def _normalize_template_context(context: dict) -> dict:
@@ -234,11 +259,12 @@ def _normalize_template_context(context: dict) -> dict:
     normalized["ports"] = normalize_filter_list(normalized.get("ports"))
     if _is_rabbitmq_collect_config(normalized) and normalized.get("url") not in (None, ""):
         normalized["url"] = normalize_rabbitmq_management_url(normalized.get("url"))
+    plugin_types = _plugin_types(normalized)
     # 腾讯云地域：表单未填时回落广州，与 Stargazer 采集缺省一致。
-    if str(normalized.get("instance_type") or normalized.get("config_type") or "").lower() == "qcloud":
+    if "qcloud" in plugin_types:
         normalized["region"] = _normalize_qcloud_region(normalized.get("region"))
-    elif str(normalized.get("type") or "").lower() == "qcloud":
-        normalized["region"] = _normalize_qcloud_region(normalized.get("region"))
+    elif "aliyun" in plugin_types:
+        normalized["region"] = _normalize_aliyun_region(normalized.get("region"))
     return normalized
 
 

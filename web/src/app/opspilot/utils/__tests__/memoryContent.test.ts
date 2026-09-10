@@ -5,6 +5,7 @@ import {
   canInlineEditMemory,
   formatMemoryContentSize,
   MEMORY_INLINE_EDIT_MAX_CHARS,
+  memoryContentLength,
   memoryDocumentPageCount,
   memoryDocumentPageOffset,
   shouldMarkdownRenderMemory,
@@ -39,6 +40,12 @@ describe('memory content size helpers', () => {
     expect(memoryDocumentPageCount(9_400_000)).toBe(294);
     expect(memoryDocumentPageOffset(1)).toBe(0);
     expect(memoryDocumentPageOffset(2)).toBe(32_000);
+  });
+
+  it('counts unicode code points like the server', () => {
+    expect(memoryContentLength('abc')).toBe(3);
+    expect(memoryContentLength('你好')).toBe(2);
+    expect(memoryContentLength('🙂')).toBe(1);
   });
 
   it('builds a standalone document href', () => {

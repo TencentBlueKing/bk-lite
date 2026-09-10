@@ -8,8 +8,7 @@ import {
   KpiSection,
   useFilteredChartPanels,
   useFilteredRingPanels,
-  useFilteredSummaryCards
-} from '../common/dashboard-components';
+  useFilteredSummaryCards, DashboardSectionLabel } from '../common/dashboard-components';
 import { RingChartPanel, TrendChartPanel } from '../../shared/widgets';
 import { VLLM_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
@@ -67,7 +66,7 @@ export default function VllmDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
           <FlexiblePanelSection styles={styles}>
             {renderChart(queueTrend, styles.span8)}
@@ -87,23 +86,23 @@ export default function VllmDashboardPage() {
             ) : null}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>时延拆解</div>
+          <DashboardSectionLabel styles={styles}>时延拆解</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {renderChart(latencyBreakdown, styles.span12)}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>KV 缓存</div>
+          <DashboardSectionLabel styles={styles}>KV 缓存</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {renderChart(kvTrend, styles.span12)}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>吞吐</div>
+          <DashboardSectionLabel styles={styles}>吞吐</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {renderChart(tpotTrend, styles.span6)}
             {renderChart(tpmTrend, styles.span6)}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>单实例</div>
+          <DashboardSectionLabel styles={styles}>单实例</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {renderChart(promptLenTrend, styles.span6)}
             {renderChart(genLenTrend, styles.span6)}

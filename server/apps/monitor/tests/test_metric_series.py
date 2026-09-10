@@ -125,6 +125,21 @@ def test_instance_rows_filter_protocol_and_sort():
         }
     ]
     assert instance_matches_protocol(SimpleNamespace(enabled_protocols=["netflow", "sflow"]), None) is True
+    assert (
+        build_monitor_instance_rows(
+            [
+                SimpleNamespace(
+                    id="cls-1",
+                    name="prod-k8s",
+                    ip="",
+                    enabled_protocols=[],
+                    monitor_object=SimpleNamespace(name="Cluster"),
+                )
+            ],
+            require_enabled_protocols=False,
+        )[0]["instance_id"]
+        == "cls-1"
+    )
 
 
 def test_fold_instant_sums_instances_and_maps_protocol():

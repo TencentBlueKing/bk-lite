@@ -12,8 +12,7 @@ import {
   TrendSection,
   useFilteredBarPanels,
   useFilteredChartPanels,
-  useFilteredSummaryCards
-} from '../common/dashboard-components';
+  useFilteredSummaryCards, DashboardSectionLabel } from '../common/dashboard-components';
 import { HorizontalBarPanel, TitleWithGuide } from '../../shared/widgets';
 import type { BarItem } from '../../shared/widgets';
 import { buildSearchParams, runWithConcurrency } from '../../shared/utils';
@@ -81,19 +80,19 @@ export default function PostgresqlDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} styles={styles} />
 
-          <div className={styles.sectionLabel}>事务与缓存</div>
+          <DashboardSectionLabel styles={styles}>事务与缓存</DashboardSectionLabel>
           <TrendSection charts={primaryCharts} onXRangeChange={dashboard.onXRangeChange} loading={dashboard.loading} styles={styles} />
 
-          <div className={styles.sectionLabel}>行操作与查询</div>
+          <DashboardSectionLabel styles={styles}>行操作与查询</DashboardSectionLabel>
           <TrendSection charts={secondaryCharts} onXRangeChange={dashboard.onXRangeChange} loading={dashboard.loading} styles={styles} />
 
-          <div className={styles.sectionLabel}>异常与写入来源</div>
+          <DashboardSectionLabel styles={styles}>异常与写入来源</DashboardSectionLabel>
           <InsightSection bars={bars} barSpanClass={() => styles.span6} styles={styles} />
 
-          <div className={styles.sectionLabel}>数据库压力排行</div>
+          <DashboardSectionLabel styles={styles}>数据库压力排行</DashboardSectionLabel>
           <section className={styles.dashboardSection}>
             <div className={styles.sectionGrid}>
               {PG_TOP_DB_QUERIES.map((q) => (

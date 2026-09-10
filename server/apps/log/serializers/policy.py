@@ -4,6 +4,21 @@ from apps.log.models.policy import Alert, Event, EventRawData, Policy
 from apps.log.services.access_scope import LogAccessScopeService
 from apps.log.utils.log_group import LogGroupQueryBuilder
 from apps.log.utils.policy_config import validate_timing_config
+from apps.log.utils.user_display import format_user_identifiers
+
+
+class AssignHandlersSerializer(serializers.Serializer):
+    handlers = serializers.ListField(child=serializers.JSONField(), allow_empty=False)
+
+    def validate_handlers(self, value):
+        cleaned = []
+        for item in value:
+            if item in (None, "") or isinstance(item, bool):
+                raise serializers.ValidationError("处理人标识无效")
+            cleaned.append(item)
+        if not cleaned:
+            raise serializers.ValidationError("至少指定一名处理人")
+        return cleaned
 
 
 class PolicySerializer(serializers.ModelSerializer):
@@ -85,6 +100,30 @@ class PolicySerializer(serializers.ModelSerializer):
         except ValueError as exc:
             raise serializers.ValidationError(str(exc)) from exc
 
+    def _policy_organization_ids(self, attrs):
+        if "policy_organizations" in self.context:
+            return self.context.get("policy_organizations") or []
+        if self.instance is not None:
+            return [rel.organization for rel in self.instance.policyorganization_set.all()]
+        return []
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        handlers_provided = "handlers" in attrs
+        organizations_provided = "policy_organizations" in self.context
+        if not handlers_provided and not organizations_provided:
+            return attrs
+        from apps.log.services.alert_handlers import AlertHandlerInvalid, normalize_policy_handlers
+
+        handlers = attrs["handlers"] if handlers_provided else list(getattr(self.instance, "handlers", None) or [])
+        try:
+            resolved = normalize_policy_handlers(handlers, self._policy_organization_ids(attrs))
+        except AlertHandlerInvalid as exc:
+            raise serializers.ValidationError({"handlers": str(exc)}) from exc
+        if handlers_provided:
+            attrs["handlers"] = resolved
+        return attrs
+
 
 class AlertSerializer(serializers.ModelSerializer):
     policy_name = serializers.SerializerMethodField()
@@ -100,6 +139,7 @@ class AlertSerializer(serializers.ModelSerializer):
     alert_condition = serializers.SerializerMethodField()
     show_fields = serializers.SerializerMethodField()
     period = serializers.SerializerMethodField()
+    handlers_display = serializers.SerializerMethodField()
 
     def get_organizations(self, obj):
         organizations = list(obj.organizations or [])
@@ -137,6 +177,9 @@ class AlertSerializer(serializers.ModelSerializer):
         if obj.content:
             return obj.content
         return obj.policy.alert_name if obj.policy_id else ""
+
+    def get_handlers_display(self, obj):
+        return format_user_identifiers(obj.handlers or [])
 
     class Meta:
         model = Alert

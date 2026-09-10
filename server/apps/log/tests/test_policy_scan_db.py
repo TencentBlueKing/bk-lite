@@ -609,6 +609,39 @@ class TestCreateEvents:
         snap = AlertSnapshot.objects.get(alert=alert)
         assert snap.policy_id == policy.id
 
+    def test_new_alert_snapshots_policy_handlers(self):
+        policy = _make_policy(handlers=[7, 8])
+        first_scan = LogPolicyScan(policy)
+        first_scan.create_events(
+            [
+                {
+                    "source_id": f"policy_{policy.id}",
+                    "level": "warning",
+                    "content": "命中",
+                    "value": 5,
+                    "raw_data": [{"_msg": "x"}],
+                }
+            ]
+        )
+        alert = Alert.objects.get(policy=policy)
+        policy.handlers = [9]
+        policy.save(update_fields=["handlers"])
+        LogPolicyScan(policy).create_events(
+            [
+                {
+                    "source_id": f"policy_{policy.id}",
+                    "level": "warning",
+                    "content": "再次命中",
+                    "value": 6,
+                    "raw_data": [{"_msg": "y"}],
+                }
+            ]
+        )
+        alert.refresh_from_db()
+
+        assert alert.handlers == [7, 8]
+        assert Alert.objects.filter(policy=policy).count() == 1
+
     def test_empty_events_returns_empty(self):
         policy = _make_policy()
         assert LogPolicyScan(policy).create_events([]) == []
@@ -1127,6 +1160,22 @@ class TestSendNotice:
         assert ok is True
         assert result == {"result": True}
         send.assert_called_once()
+
+    def test_create_notice_keeps_policy_notice_users_not_handlers(self, mocker):
+        policy = _make_policy(notice_users=["u1"], notice_type_id=2, handlers=[99])
+        scan = LogPolicyScan(policy)
+        send = mocker.patch(
+            "apps.log.tasks.services.policy_scan.SystemMgmtUtils.send_msg_with_channel",
+            return_value={"result": True},
+        )
+        event = Event(id="e1", policy=policy, source_id="s", event_time=timezone.now(), level="warning", content="c")
+
+        ok, _ = scan.send_notice(event)
+
+        assert ok is True
+        assert send.call_args.args[3] == ["u1"]
+        assert 99 not in send.call_args.args[3]
+        assert "99" not in send.call_args.args[3]
 
     def test_failure_then_returns_last_result(self, mocker):
         policy = _make_policy(notice_users=["u1"])

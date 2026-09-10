@@ -7,8 +7,7 @@ import {
   FlexiblePanelSection,
   KpiSection,
   useFilteredChartPanels,
-  useFilteredSummaryCards
-} from '../common/dashboard-components';
+  useFilteredSummaryCards, DashboardSectionLabel } from '../common/dashboard-components';
 import { TrendChartPanel } from '../../shared/widgets';
 import { getBrandLabel } from '@/app/monitor/utils/common';
 import { resolveCapability, isMetricVisible } from '../../shared/capability-matrix';
@@ -75,18 +74,18 @@ export default function LoadbalanceDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
 
           {/* Row 1: CPU&内存 span6 + 收发流量 span6 */}
-          <div className={styles.sectionLabel}>性能趋势</div>
+          <DashboardSectionLabel styles={styles}>性能趋势</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {renderTrend(cpuMemChart, styles.span6)}
             {renderTrend(trafficChart, styles.span6)}
           </FlexiblePanelSection>
 
           {/* Row 2: 当前连接趋势 span12 */}
-          <div className={styles.sectionLabel}>连接</div>
+          <DashboardSectionLabel styles={styles}>连接</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {renderTrend(connChart, styles.span12)}
           </FlexiblePanelSection>

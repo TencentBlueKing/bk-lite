@@ -1,6 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Form, Input, Radio, Select } from 'antd';
 import type { CmdbAttrField } from '@/app/cmdb/components/cmdb-shared';
+import { pruneRelationFieldsCache } from '@/app/cmdb/utils/relationFieldsCache';
 import { useTranslation } from '@/utils/i18n';
 import { useUserInfoContext } from '@/context/userInfo';
 import TriggerTypeConfig from './triggerTypeConfig';
@@ -159,8 +160,8 @@ const SubscriptionRuleForm = forwardRef<SubscriptionRuleFormRef, SubscriptionRul
 
   useEffect(() => {
     const selectedModelIds = relationChangeModels.map((item) => item.related_model);
+    setRelationFieldsByModel((prev) => pruneRelationFieldsCache(prev, selectedModelIds));
     if (selectedModelIds.length === 0) {
-      setRelationFieldsByModel({});
       return;
     }
 
@@ -209,17 +210,6 @@ const SubscriptionRuleForm = forwardRef<SubscriptionRuleFormRef, SubscriptionRul
           }));
         });
     });
-
-    setRelationFieldsByModel((prev) => {
-      const next: Record<string, CmdbAttrField[]> = {};
-      selectedModelIds.forEach((id) => {
-        if (prev[id]) {
-          next[id] = prev[id];
-        }
-      });
-      return next;
-    });
-     
   }, [
     relationChangeModels,
     runtime,

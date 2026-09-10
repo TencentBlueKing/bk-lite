@@ -67,6 +67,7 @@ export interface StrategyFields {
   notice_type?: string;
   notice_type_id?: number;
   notice_users?: string[];
+  handlers?: Array<string | number>;
   id?: number;
   group_by?: string[];
   query?: string;
@@ -119,4 +120,5 @@ export interface LogAlertParams {
   page_size?: number;
   start_event_time?: string;
   end_event_time?: string;
+  my_alert?: number | string;
 }

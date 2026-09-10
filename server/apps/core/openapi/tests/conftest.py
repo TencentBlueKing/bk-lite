@@ -14,6 +14,7 @@ _EMPTY_SNAPSHOT = {
     "config": None,
     "services": [],
     "entries": {},
+    "normalized": {},
     "checked_at": 0.0,
     "fetch_started_at": 0.0,
 }

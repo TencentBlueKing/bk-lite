@@ -441,6 +441,85 @@ class TestFormatUpdateCredential:
         assert merged["user"] == "u1-new"
         assert merged["pwd"] == "secret"
 
+    def test_云任务单凭据编辑不回传credential_id时保留密钥(self):
+        inst = fake_instance(
+            is_k8s=False,
+            decrypt_credentials=[
+                {
+                    "credential_id": "cred_edit",
+                    "accessKey": "AKIDreal",
+                    "accessSecret": "sk-real",
+                    "regions": {"resource_id": "ap-guangzhou"},
+                }
+            ],
+        )
+        data = {
+            "credential": [
+                {
+                    "regions": {"resource_id": "ap-shanghai", "resource_name": "上海"},
+                }
+            ]
+        }
+
+        CollectModelService.format_update_credential(inst, data)
+
+        merged = data["credential"][0]
+        assert merged["accessKey"] == "AKIDreal"
+        assert merged["accessSecret"] == "sk-real"
+        assert merged["regions"]["resource_id"] == "ap-shanghai"
+
+    @pytest.mark.parametrize(
+        "model_id,incoming",
+        [
+            (
+                "qcloud",
+                {
+                    "credential_id": "cred_edit",
+                    "regions": {"resource_id": "ap-shanghai", "resource_name": "上海"},
+                },
+            ),
+            (
+                "aliyun_account",
+                {
+                    "credential_id": "cred_edit",
+                    "regions": {"resource_id": "cn-hangzhou", "resource_name": "杭州"},
+                },
+            ),
+            (
+                "hwcloud",
+                {
+                    "credential_id": "cred_edit",
+                    "project_id": "project-new",
+                    "regions": {"resource_id": "cn-east-3", "resource_name": "华东三"},
+                },
+            ),
+        ],
+    )
+    def test_云任务库为凭据池页面提交单个对象时保留密钥(self, model_id, incoming):
+        inst = fake_instance(
+            is_k8s=False,
+            model_id=model_id,
+            decrypt_credentials=[
+                {
+                    "credential_id": "cred_edit",
+                    "accessKey": "AKIDreal",
+                    "accessSecret": "sk-real",
+                    "project_id": "project-old",
+                    "regions": {"resource_id": "cn-north-4"},
+                }
+            ],
+        )
+        data = {"credential": incoming}
+
+        CollectModelService.format_update_credential(inst, data)
+
+        merged = data["credential"][0]
+        assert merged["accessKey"] == "AKIDreal"
+        assert merged["accessSecret"] == "sk-real"
+        assert merged["regions"]["resource_id"] == incoming["regions"]["resource_id"]
+        if "project_id" in incoming:
+            assert merged["project_id"] == "project-new"
+
     def test_旧单凭据dict升级为单项凭据池时保留掩码密钥(self):
         inst = fake_instance(
             is_k8s=False,

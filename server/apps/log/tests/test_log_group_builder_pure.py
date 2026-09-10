@@ -1,10 +1,12 @@
-import pydantic.root_model  # noqa
-
+import logging
 from types import SimpleNamespace
 
+import pydantic.root_model  # noqa
 import pytest
 
 from apps.log.utils.log_group import LogGroupQueryBuilder
+
+SECRET_SENTINEL = "Accepted-password-do-not-log"
 
 
 pytestmark = pytest.mark.unit
@@ -342,9 +344,7 @@ def test_build_query_multiple_groups_uses_or_filter():
 
 
 def test_combine_query_aggregation_merges_filter_part():
-    out = LogGroupQueryBuilder._combine_query_and_groups(
-        "level:error | stats count()", ['host:"web"']
-    )
+    out = LogGroupQueryBuilder._combine_query_and_groups("level:error | stats count()", ['host:"web"'])
     assert out == '(level:error) AND (host:"web") | stats count()'
 
 
@@ -359,6 +359,29 @@ def test_combine_query_no_group_conditions_denies():
 
 def test_combine_query_group_filter_only_when_user_query_empty():
     assert LogGroupQueryBuilder._combine_query_and_groups("", ['host:"web"']) == 'host:"web"'
+
+
+def test_combine_query_logs_omit_query_text(caplog):
+    user_query = f'(message:"{SECRET_SENTINEL}") AND host:"web-1" | stats by (host) count() as entry_count'
+    caplog.set_level(logging.DEBUG, logger="log")
+
+    out = LogGroupQueryBuilder._combine_query_and_groups(user_query, ['collect_type:"winlogbeat"'])
+
+    assert out == (f'((message:"{SECRET_SENTINEL}") AND host:"web-1") AND (collect_type:"winlogbeat")' " | stats by (host) count() as entry_count")
+    records = [record for record in caplog.records if record.name == "log" and "event=log_group_query_merged" in record.getMessage()]
+    assert len(records) == 1
+    record = records[0]
+    assert record.levelno == logging.DEBUG
+    assert record.msg == "event=log_group_query_merged has_aggregation=%s group_condition_count=%s"
+    assert record.args == (True, 1)
+    assert record.getMessage() == "event=log_group_query_merged has_aggregation=True group_condition_count=1"
+    formatted = logging.Formatter().format(record)
+    for text in (record.getMessage(), formatted, caplog.text, "".join(str(arg) for arg in record.args)):
+        assert SECRET_SENTINEL not in text
+        assert user_query not in text
+    assert not hasattr(record, "user_query")
+    assert not hasattr(record, "group_filter")
+    assert not hasattr(record, "final_query")
 
 
 # ----------------------- validate_log_groups -----------------------

@@ -8,8 +8,7 @@ import {
   KpiSection,
   useFilteredChartPanels,
   useFilteredRingPanels,
-  useFilteredSummaryCards
-} from '../common/dashboard-components';
+  useFilteredSummaryCards, DashboardSectionLabel } from '../common/dashboard-components';
 import { RingChartPanel, TrendChartPanel } from '../../shared/widgets';
 import { LLAMASERVER_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
@@ -64,10 +63,10 @@ export default function LlamaServerDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
 
-          <div className={styles.sectionLabel}>队列与吞吐</div>
+          <DashboardSectionLabel styles={styles}>队列与吞吐</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {renderChart(queueTrend, styles.span8)}
             {queueRing ? (
@@ -88,7 +87,7 @@ export default function LlamaServerDashboardPage() {
             {renderChart(tpsTrend, styles.span6)}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>Decode 与累计</div>
+          <DashboardSectionLabel styles={styles}>Decode 与累计</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {renderChart(decodeTrend, styles.span6)}
             {renderChart(cumulativeTrend, styles.span6)}

@@ -41,6 +41,7 @@ def _make_get_nats_data(request):
     obj = GetNatsData.__new__(GetNatsData)
     obj.request = request
     obj.params = {}
+    obj.param_specs = []
     return obj
 
 
@@ -95,6 +96,7 @@ class TestNamespaceCredentials:
         assert captured["init"]["server"] == "nats://nats.example.com:4222"
         assert captured["call"]["_nats_user"] == "nats-user"
         assert captured["call"]["_nats_password"] == "plain-secret"
+        assert "organization_param" not in captured["call"]
 
 
 class TestUpdateRequestParamsGuard:
@@ -158,10 +160,107 @@ class TestUpdateRequestParamsGuard:
             group_tree=[{"id": 7, "subGroups": [{"id": 12, "subGroups": []}]}],
         )
         obj = _make_get_nats_data(request)
-        obj.params = {"organization": "12"}
+        obj.params = {"organization": "12", "organization_param": "organization"}
         obj.update_request_params()
         assert obj.params["user_info"]["team"] == 12
         assert obj.params["organization"] == "12"
+        assert "organization_param" not in obj.params
+
+    def test_renamed_organization_marker_overrides_cookie_team(self):
+        request = _make_request(
+            current_team_cookie="7",
+            group_tree=[{"id": 7, "subGroups": [{"id": 12, "subGroups": []}]}],
+        )
+        obj = _make_get_nats_data(request)
+        obj.params = {"org_id": "12", "organization_param": "org_id"}
+        obj.update_request_params()
+        assert obj.params["user_info"]["team"] == 12
+
+    def test_organization_name_without_marker_or_spec_keeps_cookie_team(self):
+        request = _make_request(
+            current_team_cookie="7",
+            group_tree=[{"id": 7, "subGroups": [{"id": 12, "subGroups": []}]}],
+        )
+        obj = _make_get_nats_data(request)
+        obj.params = {"organization": "12"}
+        obj.update_request_params()
+        assert obj.params["user_info"]["team"] == 7
+
+    def test_select_named_organization_does_not_override(self):
+        request = _make_request(
+            current_team_cookie="7",
+            group_tree=[{"id": 7, "subGroups": [{"id": 12, "subGroups": []}]}],
+        )
+        obj = _make_get_nats_data(request)
+        obj.param_specs = [
+            {
+                "name": "organization",
+                "inputConfig": {"control": "select", "optionsSource": {"type": "static", "staticItems": []}},
+            }
+        ]
+        obj.params = {"organization": "12"}
+        obj.update_request_params()
+        assert obj.params["user_info"]["team"] == 7
+
+    def test_datasource_spec_control_overrides_without_marker(self):
+        request = _make_request(
+            current_team_cookie="7",
+            group_tree=[{"id": 7, "subGroups": [{"id": 12, "subGroups": []}]}],
+        )
+        obj = _make_get_nats_data(request)
+        obj.param_specs = [{"name": "org_id", "inputConfig": {"control": "organization"}}]
+        obj.params = {"org_id": "12"}
+        obj.update_request_params()
+        assert obj.params["user_info"]["team"] == 12
+
+    def test_legacy_input_mode_spec_overrides_without_marker(self):
+        request = _make_request(
+            current_team_cookie="7",
+            group_tree=[{"id": 7, "subGroups": [{"id": 12, "subGroups": []}]}],
+        )
+        obj = _make_get_nats_data(request)
+        obj.param_specs = [{"name": "organization", "inputMode": "organization"}]
+        obj.params = {"organization": "12"}
+        obj.update_request_params()
+        assert obj.params["user_info"]["team"] == 12
+
+    def test_marker_wins_without_requiring_datasource_control(self):
+        request = _make_request(
+            current_team_cookie="7",
+            group_tree=[{"id": 7, "subGroups": [{"id": 12, "subGroups": []}]}],
+        )
+        obj = _make_get_nats_data(request)
+        obj.param_specs = [
+            {
+                "name": "organization",
+                "inputConfig": {"control": "select", "optionsSource": {"type": "static", "staticItems": []}},
+            }
+        ]
+        obj.params = {"team_scope": "12", "organization_param": "team_scope"}
+        obj.update_request_params()
+        assert obj.params["user_info"]["team"] == 12
+
+    def test_multiple_organization_specs_raise_validation_error(self):
+        request = _make_request(current_team_cookie="7")
+        obj = _make_get_nats_data(request)
+        obj.param_specs = [
+            {"name": "org_a", "inputConfig": {"control": "organization"}},
+            {"name": "org_b", "inputMode": "organization"},
+        ]
+        obj.params = {"org_a": "12", "org_b": "7"}
+        with pytest.raises(ValidationError, match="多个组织控件"):
+            obj.update_request_params()
+
+    def test_marker_with_multiple_organization_specs_raises_validation_error(self):
+        request = _make_request(current_team_cookie="7")
+        obj = _make_get_nats_data(request)
+        obj.param_specs = [
+            {"name": "org_a", "inputConfig": {"control": "organization"}},
+            {"name": "org_b", "inputMode": "organization"},
+        ]
+        obj.params = {"org_a": "12", "organization_param": "org_a"}
+        with pytest.raises(ValidationError, match="多个组织控件"):
+            obj.update_request_params()
 
     def test_forged_organization_param_clears_team(self):
         request = _make_request(
@@ -169,28 +268,28 @@ class TestUpdateRequestParamsGuard:
             group_tree=[{"id": 7, "subGroups": []}],
         )
         obj = _make_get_nats_data(request)
-        obj.params = {"organization": "12"}
+        obj.params = {"organization": "12", "organization_param": "organization"}
         obj.update_request_params()
         assert obj.params["user_info"]["team"] is None
 
     def test_organization_matching_cookie_is_allowed_without_group_tree(self):
         request = _make_request(current_team_cookie="7", group_tree=[])
         obj = _make_get_nats_data(request)
-        obj.params = {"organization": "7"}
+        obj.params = {"organization": "7", "organization_param": "organization"}
         obj.update_request_params()
         assert obj.params["user_info"]["team"] == 7
 
     def test_empty_organization_param_keeps_cookie_team(self):
         request = _make_request(current_team_cookie="7")
         obj = _make_get_nats_data(request)
-        obj.params = {"organization": ""}
+        obj.params = {"organization": "", "organization_param": "organization"}
         obj.update_request_params()
         assert obj.params["user_info"]["team"] == 7
 
     def test_invalid_organization_param_keeps_cookie_team(self):
         request = _make_request(current_team_cookie="7")
         obj = _make_get_nats_data(request)
-        obj.params = {"organization": "not-a-team"}
+        obj.params = {"organization": "not-a-team", "organization_param": "organization"}
         obj.update_request_params()
         assert obj.params["user_info"]["team"] == 7
 
@@ -275,6 +374,7 @@ class TestLocalRpcOverlayHandlers:
         assert captured["path"] == module
         assert captured["method"] == path
         assert "user_info" in captured["kwargs"]
+        assert "organization_param" not in captured["kwargs"]
 
     def test_unrelated_api_still_uses_nats_when_is_local_rpc(self, monkeypatch):
         monkeypatch.setenv("IS_LOCAL_RPC", "1")

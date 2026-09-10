@@ -186,6 +186,7 @@ def compensate_log_notice_task():
     pending = list(
         Event.objects.filter(
             notified=False,
+            action="",
             notice_retry_count__lt=AlertConstants.NOTICE_COMPENSATE_MAX_RETRY,
             event_time__gte=window_start,
             created_at__lte=settle_before,

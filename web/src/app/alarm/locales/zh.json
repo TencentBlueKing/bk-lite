@@ -386,6 +386,7 @@
         "verifyResultHelp": "执行 apply 后，回到当前 K8s 集成的事件页查看是否已经收到新的 Kubernetes Event。",
         "clusterNameHelp": "填写当前 Kubernetes 集群名称，用于区分事件来源。",
         "sourceIdFixed": "该值已固定，不建议修改",
+        "k8sMetaLoadFailed": "K8s 接入元数据加载失败",
         "k8sDetailTitle": "Kubernetes 事件集成",
         "k8sDetailDescription": "查看当前 Kubernetes 集成的来源标识、累计事件、最近事件时间，并继续完成事件排查或接入部署。",
         "cumulativeEventCount": "累计接收事件数",

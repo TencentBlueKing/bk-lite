@@ -30,6 +30,7 @@ export type FormFieldOptionControls = Record<
   {
     loading?: boolean;
     onRefresh?: () => void;
+    refreshTip?: string;
   }
 >;
 
@@ -47,9 +48,22 @@ const SelectWithRefresh = React.forwardRef<any, SelectWithRefreshProps>(
     { onRefresh, refreshLabel, refreshTip, regionLoading, ...selectProps },
     ref
   ) {
+    const popupWrapRef = React.useRef<HTMLDivElement>(null);
     return (
-      <div className="mr-[10px] inline-flex items-center gap-1">
-        <Select ref={ref} {...selectProps} />
+      <div
+        ref={popupWrapRef}
+        className="relative z-[20] mr-[10px] inline-flex items-center gap-1"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <Select
+          ref={ref}
+          {...selectProps}
+          virtual={selectProps.virtual ?? false}
+          getPopupContainer={
+            selectProps.getPopupContainer ||
+            (() => popupWrapRef.current || document.body)
+          }
+        />
         <Tooltip title={refreshTip}>
           <Button
             type="text"
@@ -473,7 +487,7 @@ export const useConfigRenderer = () => {
                 {...selectProps}
                 placeholder={
                   selectProps.placeholder ||
-                  t('monitor.integrations.selectQcloudRegion', '请选择腾讯云地域')
+                  t('monitor.integrations.selectCloudRegion', '请选择地域')
                 }
                 notFoundContent={
                   regionLoading ? (
@@ -481,27 +495,30 @@ export const useConfigRenderer = () => {
                       <Spin size="small" />
                       <span>
                         {t(
-                          'monitor.integrations.fetchingQcloudRegions',
+                          'monitor.integrations.fetchingCloudRegions',
                           '正在获取地域…'
                         )}
                       </span>
                     </div>
                   ) : (
                     t(
-                      'monitor.integrations.qcloudRegionNoOptions',
+                      'monitor.integrations.cloudRegionNoOptions',
                       '暂无地域，请先填写密钥后点击刷新'
                     )
                   )
                 }
                 onRefresh={optionControl.onRefresh}
                 refreshLabel={t(
-                  'monitor.integrations.fetchQcloudRegions',
+                  'monitor.integrations.fetchCloudRegions',
                   '获取地域'
                 )}
-                refreshTip={t(
-                  'monitor.integrations.refreshQcloudRegionsTip',
-                  '根据 SecretId / SecretKey 刷新可用地域'
-                )}
+                refreshTip={
+                  optionControl.refreshTip ||
+                  t(
+                    'monitor.integrations.refreshCloudRegionsTip',
+                    '根据已填密钥刷新可用地域'
+                  )
+                }
                 regionLoading={regionLoading}
               >
                 {optionNodes}

@@ -60,6 +60,7 @@ import {
   HorizontalBarPanel
 } from '../../shared/widgets';
 import { countRestartsInRange } from '../common/simple-dashboard-core';
+import { DashboardSectionLabel } from '../common/dashboard-components';
 
 interface MysqlInstanceOption {
   label: string;
@@ -610,7 +611,9 @@ export default function MysqlDashboardPage() {
     collectionStatusMetric?.loadState,
     collectionStatusMetric?.viewData,
     collectionStatusRange?.startMs ?? Date.now() - 15 * 60_000,
-    collectionStatusRange?.endMs ?? Date.now()
+    collectionStatusRange?.endMs ?? Date.now(),
+    undefined,
+    currentInstanceInterval ? currentInstanceInterval * 1000 : undefined
   );
   const collectionStatusTimelineHint = collectionStatusRange
     ? formatCollectionStatusTimelineHint(collectionStatusRange.startMs, collectionStatusRange.endMs)
@@ -1041,7 +1044,7 @@ export default function MysqlDashboardPage() {
             <>
               {displayMode === 'dashboard' ? (
                 <div className={styles.modeContent}>
-                  <div className={styles.sectionLabel}>健康概览</div>
+                  <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
                   <div className={styles.overviewSixCol}>
                     <CollectionStatusCard
                       styles={styles}
@@ -1126,7 +1129,7 @@ export default function MysqlDashboardPage() {
                   </div>
 
                   {/* 分区 1 · 连接与线程压力 */}
-                  <div className={styles.sectionLabel}>连接与线程压力</div>
+                  <DashboardSectionLabel styles={styles}>连接与线程压力</DashboardSectionLabel>
                   <section className={styles.dashboardSection}>
                     <div className={styles.sectionGrid}>
                       <TrendChartPanel
@@ -1171,7 +1174,7 @@ export default function MysqlDashboardPage() {
                   </section>
 
                   {/* 分区 2 · 查询吞吐 */}
-                  <div className={styles.sectionLabel}>查询吞吐</div>
+                  <DashboardSectionLabel styles={styles}>查询吞吐</DashboardSectionLabel>
                   <section className={styles.dashboardSection}>
                     <div className={styles.sectionGrid}>
                       <TrendChartPanel
@@ -1211,7 +1214,7 @@ export default function MysqlDashboardPage() {
                   </section>
 
                   {/* 分区 3 · 锁等待 */}
-                  <div className={styles.sectionLabel}>锁等待</div>
+                  <DashboardSectionLabel styles={styles}>锁等待</DashboardSectionLabel>
                   <section className={styles.dashboardSection}>
                     <div className={styles.sectionGrid}>
                       <TrendChartPanel
@@ -1244,7 +1247,7 @@ export default function MysqlDashboardPage() {
                   </section>
 
                   {/* 分区 4 · InnoDB 缓冲池 */}
-                  <div className={styles.sectionLabel}>InnoDB 缓冲池</div>
+                  <DashboardSectionLabel styles={styles}>InnoDB 缓冲池</DashboardSectionLabel>
                   <section className={styles.dashboardSection}>
                     <div className={styles.sectionGrid}>
                       <RingChartPanel
@@ -1289,7 +1292,7 @@ export default function MysqlDashboardPage() {
                   </section>
 
                   {/* 分区 5 · 临时表与复制状态(复制部分仅主从) */}
-                  <div className={styles.sectionLabel}>临时表与复制状态</div>
+                  <DashboardSectionLabel styles={styles}>临时表与复制状态</DashboardSectionLabel>
                   <section className={styles.dashboardSection}>
                     <div className={styles.sectionGrid}>
                       <HorizontalBarPanel

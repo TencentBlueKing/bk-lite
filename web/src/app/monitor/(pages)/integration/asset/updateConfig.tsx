@@ -14,7 +14,7 @@ import { useTranslation } from '@/utils/i18n';
 import OperateModal from '@/components/operate-modal';
 import useApiClient from '@/utils/request';
 import { usePluginFromJson } from '@/app/monitor/hooks/integration/usePluginFromJson';
-import { useQcloudRegionOptions } from '@/app/monitor/hooks/integration/useQcloudRegionOptions';
+import { cloudRegionProviderFromPlugin, resolveStoredCollectConfigId, useCloudRegionOptions } from '@/app/monitor/hooks/integration/useQcloudRegionOptions';
 import {
   getSnmpFilterMutexConflicts,
   trackSnmpFilterMutexLastChanged
@@ -35,6 +35,8 @@ interface PluginConfig {
   form_fields?: PluginFormField[];
   instance_type?: string;
   config_type?: string[];
+  object_name?: string;
+  name?: string;
 }
 
 const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
@@ -50,6 +52,14 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
   const [configForm, setConfigForm] = useState<TableDataItem>({});
   const [currentConfig, setCurrentConfig] = useState<PluginConfig | null>(null);
   const [configLoading, setConfigLoading] = useState<boolean>(false);
+  const [regionHints, setRegionHints] = useState<{
+    objectName?: string;
+    pluginName?: string;
+  }>({});
+  const [collectConfigId, setCollectConfigId] = useState<
+    string | string[] | undefined
+  >();
+  const editFormSeedKeyRef = useRef('');
 
   useImperativeHandle(ref, () => ({
     showModal: async ({ form, title }) => {
@@ -58,9 +68,19 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
       setModalVisible(true);
       setConfirmLoading(false);
       setConfigForm(_form.config_content || {});
+      setCollectConfigId(
+        resolveStoredCollectConfigId(_form) ??
+          resolveStoredCollectConfigId(_form.config_content)
+      );
       const collector = _form.collector;
       const collect_type = _form.collect_type;
       const monitor_object_id = _form.monitor_object_id;
+      setRegionHints({
+        objectName: String(
+          _form.monitor_object_name || _form.object_name || _form.name || ''
+        ),
+        pluginName: String(_form.plugin_name || collector || ''),
+      });
       const _pluginId = _form.monitor_plugin_id || `${monitor_object_id}_${collector}_${collect_type}`;
       setPluginId(_pluginId);
       setConfigLoading(true);
@@ -82,22 +102,23 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
   }));
 
   // 获取配置信息
-  const isQcloudPlugin =
-    currentConfig?.instance_type === 'qcloud' ||
-    (Array.isArray(currentConfig?.config_type) &&
-      currentConfig.config_type.includes('qcloud')) ||
-    Boolean(
-      currentConfig?.form_fields?.some(
-        (field) => field?.options_key === 'region_option' || field?.name === 'region'
-      )
-    );
+  const regionProvider = cloudRegionProviderFromPlugin(currentConfig, regionHints);
+  const resolvedCollectConfigId =
+    collectConfigId ??
+    resolveStoredCollectConfigId({
+      config_content: configForm,
+      child: (configForm as { child?: { id?: unknown } })?.child,
+    });
   const {
     regionOptions,
     loadingRegions,
     refreshRegions,
-  } = useQcloudRegionOptions({
-    enabled: Boolean(isQcloudPlugin && modalVisible),
+  } = useCloudRegionOptions({
+    enabled: Boolean(regionProvider && modalVisible),
+    provider: regionProvider || 'qcloud',
     form,
+    credentialSource: 'stored',
+    collectConfigId: resolvedCollectConfigId,
   });
 
   const configsInfo = useMemo(() => {
@@ -118,6 +139,10 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
         region_option: {
           loading: loadingRegions,
           onRefresh: refreshRegions,
+          refreshTip: t(
+            'monitor.integrations.refreshStoredCloudRegionsTip',
+            '刷新可用地域'
+          ),
         },
       },
     });
@@ -130,6 +155,7 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
     loadingRegions,
     refreshRegions,
     jsonConfig.buildPluginUI,
+    t,
   ]);
 
   const formItems = useMemo(() => {
@@ -142,10 +168,31 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
   );
 
   useEffect(() => {
-    if (configsInfo?.getDefaultForm && configForm && !configLoading) {
-      initData(cloneDeep(configForm));
+    if (!modalVisible) {
+      editFormSeedKeyRef.current = '';
+      return;
     }
-  }, [configsInfo, configForm, configLoading]);
+    if (configLoading || !currentConfig || !pluginId || !configForm) {
+      return;
+    }
+    const collectKey = Array.isArray(collectConfigId)
+      ? collectConfigId.join(',')
+      : String(collectConfigId ?? '');
+    const seedKey = `${pluginId}::${collectKey}`;
+    // 地域 options / loading 变化会重建 configsInfo；不得据此回填，否则刚选的地域会被冲掉。
+    if (editFormSeedKeyRef.current === seedKey) {
+      return;
+    }
+    editFormSeedKeyRef.current = seedKey;
+    initData(cloneDeep(configForm));
+  }, [
+    modalVisible,
+    configLoading,
+    currentConfig,
+    pluginId,
+    configForm,
+    collectConfigId,
+  ]);
 
   const initData = (row: TableDataItem) => {
     const activeFormData = configsInfo.getDefaultForm?.(row) || {};
@@ -166,6 +213,7 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
     setModalVisible(false);
     setPluginId('');
     setCurrentConfig(null);
+    setCollectConfigId(undefined);
   };
 
   const handleSubmit = () => {
@@ -222,6 +270,9 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
       title={title}
       visible={modalVisible}
       zIndex={2000}
+      styles={{
+        body: { overflow: 'visible', maxHeight: 'calc(80vh - 108px)' },
+      }}
       onCancel={handleCancel}
       footer={
         <div>

@@ -7,8 +7,7 @@ import {
   FlexiblePanelSection,
   KpiSection,
   useFilteredChartPanels,
-  useFilteredSummaryCards
-} from '../common/dashboard-components';
+  useFilteredSummaryCards, DashboardSectionLabel } from '../common/dashboard-components';
 import { TrendChartPanel } from '../../shared/widgets';
 import { HAPROXY_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
@@ -55,17 +54,17 @@ export default function HaproxyDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} styles={styles} />
 
-          <div className={styles.sectionLabel}>负载与时延</div>
+          <DashboardSectionLabel styles={styles}>负载与时延</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {renderChart(sessionChart, styles.span6)}
             {renderChart(reqChart, styles.span6)}
             {renderChart(latencyChart, styles.span12)}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>状态、健康与流量</div>
+          <DashboardSectionLabel styles={styles}>状态、健康与流量</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {renderChart(statusChart, styles.span6)}
             {renderChart(healthChart, styles.span6)}

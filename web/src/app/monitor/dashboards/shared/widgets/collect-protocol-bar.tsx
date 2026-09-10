@@ -22,6 +22,7 @@ import {
   type FlowViewKind,
 } from '../utils/flow-view-navigation';
 import { normalizeDashboardKey } from '../utils';
+import { useDashboardText } from '../utils/content-i18n';
 
 export interface CollectProtocolBarProps {
   routeKey?: string;
@@ -43,6 +44,7 @@ export function CollectProtocolBar({
   instanceId,
   styles,
 }: CollectProtocolBarProps) {
+  const { dt } = useDashboardText();
   const router = useRouter();
   const searchParams = useSearchParams();
   const params = useParams<{ objectKey?: string }>();
@@ -144,8 +146,8 @@ export function CollectProtocolBar({
   );
 
   const options = useMemo(
-    () => availableViews.map((view) => ({ label: FLOW_VIEW_LABELS[view], value: view })),
-    [availableViews],
+    () => availableViews.map((view) => ({ label: dt(FLOW_VIEW_LABELS[view]), value: view })),
+    [availableViews, dt],
   );
 
   const awaitingPlugins =
@@ -163,7 +165,7 @@ export function CollectProtocolBar({
     options.length >= 2
       ? options
       : ([currentView] as FlowViewKind[]).map((view) => ({
-        label: FLOW_VIEW_LABELS[view],
+        label: dt(FLOW_VIEW_LABELS[view]),
         value: view,
       }));
 
@@ -182,10 +184,10 @@ export function CollectProtocolBar({
     <div
       className={styles.protocolBar}
       role="region"
-      aria-label="采集视图切换"
+      aria-label={dt('采集视图切换')}
       aria-busy={pluginsLoading}
     >
-      <span className={styles.protocolBarLabel}>采集视图</span>
+      <span className={styles.protocolBarLabel}>{dt('采集视图')}</span>
       <Segmented
         size="middle"
         className={styles.protocolSegmented}
@@ -193,7 +195,7 @@ export function CollectProtocolBar({
         options={segmentedOptions}
         disabled={interactionBlocked}
         onChange={(value) => onChange(value as FlowViewKind)}
-        aria-label="采集协议"
+        aria-label={dt('采集协议')}
       />
     </div>
   );

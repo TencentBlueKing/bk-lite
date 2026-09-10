@@ -15,6 +15,7 @@
 - **共享 TimeSelector【已实现】**：`frequenceValue` 为受控的自动刷新频率展示值，单位为毫秒；属性变化仅同步下拉选择展示，用户改选通过 `onFrequenceChange` 回传，不改变调用方的计时语义。
 - **UI**：antd v5 + echarts + @antv/g6/x6（拓扑/图）。
 - **本轮功能面扩展**【已实现/已存在】：`alarm` 新增告警丰富、告警处理、执行记录三组设置页；`system-manager` 新增内网白名单页；`ops-analysis` 新增大屏、报表与网络状态拓扑组件入口；`monitor` 集成页新增采集探测任务与资产视图路由组装。
+- **运营分析分享壳层【已实现】**：`/ops-analysis/share/*` 隐藏平台顶栏与全局助手，左侧导航沿用 chrome exception；产品内 `/ops-analysis/view` 保持完整壳层。证据：`web/src/console-layout/resolve.ts`、`web/src/app/layout.tsx`、`web/src/app/(core)/components/global-webchat/visibility.ts`。
 - **构建与资源准备契约**：生产构建经显式入口串行完成企业扩展路由、语言包与菜单汇总、公共资源复制后再启动 Next.js 构建；任一准备步骤失败即中止，不再由框架配置加载时隐式触发副作用。生产类型检查使用面向交付代码的独立配置，排除脚本、端到端用例、故事与单元测试等非交付范围。
 
 > 证据来源：web/src/context/auth.tsx:78-108,339-393,496-567；web/src/context/__tests__/authColdStart.test.tsx:132-193；web/src/app/routeScope.ts:1-6；web/src/app/(core)/api/locales/route.ts:91-120；web/src/context/locale.tsx:45-64；web/src/components/time-selector/index.tsx:20-35,72-100,145-148；web/src/stories/time-selector.stories.tsx:55-72　|　同步基线：b98b782a7　|　【已实现】

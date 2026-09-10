@@ -968,6 +968,19 @@
             "hideSecret": "Hide credential",
             "enablePassword": "Enable password"
         },
+        "networkConfigFileTask": {
+            "supportedVendors": "Currently supported vendors: {vendors}",
+            "vendorSeparator": ", ",
+            "unsupportedInstance": "Instances without a vendor, or with an unsupported vendor, cannot be selected",
+            "configName": "Config name",
+            "configNameRequired": "Enter a config name",
+            "configNamePlaceholder": "e.g. running-config",
+            "commands": "Collection commands",
+            "commandsRequired": "Enter collection commands",
+            "commandsPlaceholder": "One command per line, for example:\nshow running-config\nshow version",
+            "dangerousCommand": "Command contains a high-risk operation: {command}",
+            "chooseNetworkDevice": "Select network device"
+        },
         "influxdbTask": {
             "scheme": "Protocol",
             "operatorToken": "Operator Token",

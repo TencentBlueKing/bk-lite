@@ -34,8 +34,8 @@ def _transport_instance(instance):
     return {key: value for key, value in dict(instance or {}).items() if key not in {"_id", "_labels"}}
 
 
-def _model_table_columns(model_id: str, creator: str) -> list[dict]:
-    attrs = ModelManage.search_model_attr(model_id) or []
+def _model_table_columns(model_id: str, creator: str, language: str | None = None) -> list[dict]:
+    attrs = ModelManage.search_model_attr(model_id, language) or []
     info = InstanceManage.get_info(model_id, creator)
     keys = (info or {}).get("show_fields") or [item.get("attr_id") for item in attrs]
     attr_map = {item.get("attr_id"): item for item in attrs}
@@ -234,7 +234,7 @@ class SceneViewViewSet(viewsets.ModelViewSet):
                 "model_id": item["model_id"],
                 "count": item["count"],
                 "insts": [_transport_instance(inst) for inst in item.get("insts") or []],
-                "columns": _model_table_columns(item["model_id"], request.user.username),
+                "columns": _model_table_columns(item["model_id"], request.user.username, request.user.locale),
             }
             for item in result.get("models") or []
         ]
@@ -290,7 +290,7 @@ class SceneViewViewSet(viewsets.ModelViewSet):
             ids = [inst.get("_id") for inst in item.get("insts") or [] if inst.get("_id") is not None]
             if not ids:
                 continue
-            columns = _model_table_columns(item["model_id"], request.user.username)
+            columns = _model_table_columns(item["model_id"], request.user.username, request.user.locale)
             attr_list = [col["attr_id"] for col in columns]
             payload = InstanceManage.inst_export(
                 model_id=item["model_id"],

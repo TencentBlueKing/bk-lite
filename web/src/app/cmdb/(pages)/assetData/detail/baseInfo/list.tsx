@@ -659,7 +659,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
             return (
               <Panel
                 key={String(group.id)}
-                header={group.group_name}
+                header={group.display_name || group.group_name}
               >
                 <Descriptions
                   bordered
