@@ -15,7 +15,7 @@ class UserAPISecret(TimeInfo):
 
     username = models.CharField(max_length=255)
     domain = models.CharField(max_length=255, default="domain.com")
-    api_secret = models.CharField(max_length=80)
+    api_secret = models.CharField(max_length=80, db_index=True)
     team = models.IntegerField(default=0)
 
     @staticmethod
