@@ -1,5 +1,5 @@
 'use client';
-
+import './register-incidents-pilot';
 import React, { useState, useEffect } from 'react';
 import LevelIcon from '@/app/alarm/components/levelIcon';
 import AlarmFilters from '@/app/alarm/components/alarm-filters';
