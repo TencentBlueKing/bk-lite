@@ -1,467 +1,518 @@
-# 告警中心自定义通知模板实施方案
+# 告警中心自定义通知模板实施文档
 
-状态：待用户确认；尚未实施。
+状态：第一版已完成开发、本地自动化和浏览器配置闭环验证；告警操作通知内容改版与普通模板六渠道默认内容均已确认并实施。
 
-日期：2026-09-08。
+日期：2026-09-09，内容方案补充：2026-09-10。
 
-## 1. 实施门禁
+## 1. 目标与第一版边界
 
-- 本文记录方案和验收契约，不代表已实现。
-- 用户要求：先总结完整方案、补充相关测试设计，交用户确认；只有用户明确要求“实施”后才开始。
-- 当前阶段只维护本文、[测试计划](./test-plan.md) 与 [底层渠道探索](./channel-analysis.md)，不修改业务代码、测试代码、迁移、权限配置或运行数据。
-- 页面原型已获认可；原型仅演示交互，不是正式页面，没有真实发送能力。
-- 实施时保留当前工作区中的告警丰富、CMDB 等未提交改动；实施前重新核对代码，不能覆盖这些变更。
+告警中心允许用户在页面维护可复用的通知模板组，并在告警分派策略中按通知渠道和生命周期场景选择模板组。模板组内按通知方式维护对应格式，发送时由 Alerts 根据实际渠道自动选择邮件 HTML、机器人 Markdown 等版本，填充告警变量并生成最终内容；SystemMgmt 继续负责渠道连接、认证、接收人解析及外部协议包装。
 
-## 2. 已确认的产品方向
+第一版覆盖单告警生命周期的四个场景：
 
-1. 告警中心支持用户按业务场景维护可复用通知模板。
-2. 第一版正式支持邮件 HTML、企业微信机器人 Markdown，由通知方式决定编辑格式。
-3. 页面上直接编辑标题和正文，提供变量插入、校验、效果预览及显式测试发送。
-4. 在“配置”下新增“通知模板”页签，位于“告警分派”之后，名称统一为“模板”。
-5. 模板列表采用现有配置页风格；新建、编辑使用独立页面，左侧编辑、右侧预览。
-6. 同一个业务模板可以分别维护多个通知方式的内容；分派策略按具体渠道实例选择模板。
-7. 继续使用现有告警生命周期、渠道管理、Outbox 和渠道级重试能力。
+- 告警分派 `assignment`
+- 告警提醒 `reminder`
+- 告警升级 `escalation`
+- 告警恢复 `recovery`
 
-下面的数据结构、细化语义和测试要求是待确认的实施建议，不应冒充已经上线的事实。
+第一版不改变相关性规则中的 `params.alert_template`。该字段负责生成告警事实，本功能只控制事实生成后的通知表现，不会写回 `Alert.title`、`Alert.content`、Event、聚合维度或告警状态。
 
-## 3. 当前代码事实与影响范围
+未分派告警汇总仍沿用原有固定内容。数据模型和渲染器保留了 `unassigned_summary` 范围，供后续接入；本版页面固定创建 `single_alert` 模板，`UnDispatchService` 未接入自定义模板。
 
-| 代码入口（仓库相对路径） | 已核对的事实 | 实施影响 |
-|---|---|---|
-| `server/apps/alerts/common/notify/base.py` | `NotifyParamsFormat` 拼接固定标题、正文；当前工作区已包含富化信息展示 | 保留兼容默认格式；增加独立的自定义渲染模块 |
-| `server/apps/alerts/common/notify/dispatcher.py` | 一次生成正文后组装多个渠道参数；NATS 包装为 `message/team/user_ids` | 渠道循环内选择模板与格式，保留协议字段生成权 |
-| `server/apps/alerts/models/alert_operator.py` | `AlertAssignment` 有渠道、通知场景、升级配置；没有直接的 `team` 字段 | 新绑定不能假定继承了策略组织隔离 |
-| `server/apps/alerts/service/alter_operator.py` | 自动分派走策略渠道；人工分派走默认渠道 | 自动分派接模板；人工分派保持原有默认行为 |
-| `server/apps/alerts/service/reminder_service.py` | 提醒使用当前升级层 roster/渠道，或回退策略接收人与渠道 | 显式传入 reminder 场景 |
-| `server/apps/alerts/service/escalation_service.py` | 升级层配置规范化后写入 `AlertEscalationTask.layers` 运行快照 | 模板绑定需随渠道保留，并解决继承快照 |
-| `server/apps/alerts/service/recovery_notify.py` | 通过 `AlertReminderTask` 反查策略；直接读 `assignment.personnel`；自行加恢复标题前缀 | 接 recovery 模板，核对组织目标解析；避免双重前缀 |
-| `server/apps/alerts/service/un_dispatch.py` | 未分派通知读取全局设置，独立组装参数；当前调用未显式使用汇总格式分支 | 自定义汇总独立建上下文，默认历史行为不得顺带改变 |
-| `server/apps/alerts/service/notification_delivery.py` | 渠道级持久意图、领取租约、退避重试、失败终态已存在 | 复用，不新增发送队列 |
-| `server/apps/alerts/tasks/tasks.py` | `sync_notify` 接收已生成内容并保存通知结果 | 透传模板诊断元数据与是否追加接收人 |
-| `server/apps/system_mgmt/utils/channel_utils.py` | 邮件是 HTML；企微/钉钉为 Markdown；飞书为固定卡片；机器人/Webhook 会追加接收人 | 自定义模板关闭自动追加，默认调用保持兼容 |
-| `server/apps/system_mgmt/nats/channels.py` | `send_msg_with_channel` 分发渠道；`enterprise_wechat` 枚举与实际分发支持并非完全一致 | 按实际可发送能力展示，不只按枚举展示 |
-| `web/src/app/alarm/constants/menu.json` | 中英文配置导航各维护一份 | 两份都新增模板页签 |
-| `server/support-files/system_mgmt/menus/alarm.json` | 管理应用菜单与操作权限 | 登记独立模板权限，与前端保持一致 |
+## 2. 产品与页面设计
 
-相关性规则中的 `params.alert_template` 用于构建告警事实，与本方案的通知模板分别管理。
-通知渲染不得写回 `Alert.title/content`、成员 Event、聚合维度或生命周期状态。
+在告警中心“配置”二级导航中新增“通知模板”页签，位置在“告警分派”之后。模板使用独立列表页和编辑页，不塞入“全局配置”，原因是它具有独立的增删改查、权限、组织范围、版本和引用关系。一个普通模板组代表一种业务用途，例如“生产严重告警”；组内可按需包含邮件 HTML、企业微信 Markdown 等多个渠道版本。告警分派策略才是选择模板组并让它生效的入口，列表页说明使用同一示例串起这三层关系。
 
-架构旧报告关于 notification Outbox “假确认”的描述已落后于当前代码：当前已有渠道级
-`AlertNotificationDelivery`。实施依据应为当前代码和测试，不能据旧报告再造一套投递状态机。
+列表页提供：
 
-### 3.1 系统管理底层能力校准
+- 名称搜索、分页、新建、编辑、删除和“去告警分派”入口；
+- 展示模板组名称、包含的渠道版本、适用范围、已绑定分派策略数和更新时间；
+- 全局模板只读；服务端提供复制到当前团队的 API，页面复制入口列入后续交互完善；
+- 被分派策略或活动升级任务引用的模板不可删除。
 
-补充探索见 [channel-analysis.md](./channel-analysis.md)。已核实：
+编辑页采用响应式双栏：宽屏左侧编辑、右侧预览；窄屏上下排列。页面能力包括：
 
-- 当前 Alerts → `send_msg_with_channel` 发送已生成正文，SystemMgmt 不管理业务通知模板。
-- 邮件 HTML 和机器人 Markdown 不需要在系统管理新增模板引擎；模板与变量逻辑留在 Alerts。
-- 系统管理还有 `dispatch_notification`，但它会整体转义富格式正文，并有独立的长度/接收人
-  约束；本次不替换到该接口，不删除其他业务依赖的转义行为。
-- Webhook 的 body_template 是传输请求体模板；其 `{{content}}` 与告警内容模板是两层契约。
-- 现有系统管理“测试”发送固定内容，只验证连接；告警模板试发需要自行渲染后调用发送能力。
-- `ChannelTemplate/getChannelTemp/TemplateFilter` 名称是已发现的残留定义，当前主线路由
-  没有业务通知模板管理，不据此承诺直接复用现成模板库。
-- 共享底层不新增告警专属内容限制；第 7 节的校验是待确认的 Alerts 新编辑能力策略。
+- 新建时默认只选择邮件 HTML，避免无意创建六份渠道内容；用户可按需增加一个或多个渠道版本，每种版本保存独立标题和正文；
+- 新增渠道版本时带入可直接使用的业务默认内容：标题体现通知场景、告警级别和告警标题，正文包含资源、监控来源、指标、发生时间、告警内容、告警 ID 和本次接收人；邮件使用结构化 HTML，机器人使用各自 Markdown，Webhook 与 OpsPilot 使用文本；
+- 基本信息区解释“模板组—渠道版本—分派策略”的关系，编辑区明确显示当前正在编辑的渠道及格式；
+- 配置导航名称为“通知模板”；编辑页返回按钮带明确目标文案，告警操作模板页头直接展示模板名称、内置标识和用途说明；
+- 按方式切换 Ace Editor 的 HTML、Markdown 或 Text 模式；
+- HTML 默认正文使用多行缩进源码并开启编辑器自动换行；已生成的一行式告警操作默认正文会在编辑时无损转换为多行源码；
+- 点击变量标签插入变量；
+- 350ms 防抖调用服务端预览，旧响应不会覆盖新内容；
+- HTML/Markdown 预览经过 DOMPurify，并放入带 CSP 的 sandbox iframe；
+- 预览区高度随视口在 520px 到 800px 之间调整，长内容在独立预览区内滚动；
+- 保存已有模板时携带 `revision`，并发覆盖返回 409；
+- 新建和编辑模板时都保留“测试发送”；用户必须从当前团队可见的告警中选择一条真实告警，再选择与模板渠道版本匹配且有权使用的具体通知渠道；
+- 测试接收人支持多选并默认带入当前用户；后端解析并校验所有用户名，拒绝空列表和不存在的用户，重复用户名按首次出现顺序去重；
+- 试发使用编辑器中的当前标题和正文，允许在保存前验证新建模板或尚未保存的修改，不创建临时模板，也不修改所选告警状态；邮件等定向渠道发送给所选用户，群机器人发送到所选群并使用所选用户填充接收人模板变量。
 
-## 4. 功能范围与通知方式
+每个团队同时拥有一个系统自动建立的“告警操作通知”模板。它与用户新建的业务模板组分开，专门用于没有分派策略上下文的人工分派和转派：
 
-### 4.1 通知方式能力表
+- 模板名称、用途、组织和适用范围固定，不能删除、复制或绑定到分派策略；
+- 只能选择一个具体通知渠道，并只保存与该渠道类型匹配的一份 HTML、Markdown 或 Text 内容；
+- 用户可以切换这一具体渠道，也可以修改标题和正文；测试发送固定使用已选渠道；
+- 所选渠道被删除、失效或不再属于当前团队时不静默切换到其他渠道，人工操作照常完成并记录通知未发送；
+- 列表只展示当前团队的这一条内置模板，切换团队后分别维护各自配置。
 
-| 通知方式键 | 编辑格式 | 标题 | 保留的系统职责 |
+告警分派编辑抽屉按已选通知渠道展示模板绑定卡片，每个渠道分别提供“默认（首次分派）、提醒、升级、恢复”四个场景。每个选择框只展示包含当前渠道版本的模板组，例如邮件渠道只展示带邮件 HTML 版本的模板组。场景未选择时继承当前渠道的默认绑定；默认绑定也未选择时使用系统默认内容。升级层使用同一渠道 ID 时继承策略顶层绑定。
+
+## 3. 通知方式与格式
+
+第一版按当前告警中心实际可发送的渠道支持六种格式：
+
+| 渠道类型 | 页面格式 | 标题 | 底层职责 |
 |---|---|---|---|
-| `email` | HTML 源码 | 必填邮件主题 | SMTP、接收人邮箱解析、MIME 包装 |
-| `enterprise_wechat_bot` | 渠道支持的 Markdown | 不提供独立标题字段，可自行写正文标题 | Webhook、认证、平台消息外壳 |
-| `dingtalk_bot` | 渠道支持的 Markdown | 必填 | Webhook、签名、平台消息外壳 |
-| `feishu_bot` | 固定卡片中的 Markdown 正文 | 必填卡片标题 | 固定卡片结构、Webhook、签名 |
-| `custom_webhook` | 通用字符串正文（可含 Markdown/HTML 等目标格式） | 无独立标题 | 现有 `body_template`、URL、headers、HTTP 方法 |
-| OpsPilot 托管的 `nats` | 文本正文 | 无独立标题 | `team/user_ids/bot_id/node_id` 等可信协议字段 |
+| `email` | HTML | 必填 | SMTP、邮箱解析、MIME `text/html` 包装 |
+| `enterprise_wechat_bot` | Markdown | 无独立标题 | Webhook 与企微消息外壳 |
+| `dingtalk_bot` | Markdown | 必填 | Webhook、签名与钉钉消息外壳 |
+| `feishu_bot` | Markdown | 必填 | 固定卡片结构、Webhook 与签名 |
+| `custom_webhook` | Text | 无独立标题 | 渠道自己的请求体 `body_template` 与认证 |
+| OpsPilot 托管 `nats` | Text | 无独立标题 | `message/team/user_ids` 协议包装 |
 
-- 模板对应渠道类型；绑定对应具体渠道 ID。例如两个企业微信群可以选择不同业务模板。
-- 格式表描述当前 Adapter 消息外壳与编辑方式，不规定业务字段、版式或固定正文；Webhook 通用
-  字符串不等于只能写无格式文字。
-- 模板不能覆盖渠道配置、收件人、请求 URL、认证、组织或内部调用方身份。
-- NATS 只接入当前告警通知出口支持的 OpsPilot 托管触发模式，不对所有 NATS 模式泛化。
-- `enterprise_wechat` 应用渠道不与企业微信机器人混淆；未打通的渠道不能显示为可选。
-  补齐企业微信应用渠道属于独立能力，不包含在本次新增通知模板的承诺中。
-- 本次包含完整 HTML 邮件和 Markdown 编辑；任意飞书卡片 JSON、附件设计、WebHook
-  请求结构编辑器仍属于渠道配置能力，不加入通知模板编辑器。
-- 实际渠道的格式子集与输出字节限制需要在实施时核对官方契约，并锁入能力表和测试；
-  不把本地 Markdown 预览等同于平台保证支持所有语法。
+普通内部 NATS 和 `enterprise_wechat` 应用消息不出现在模板绑定候选中。只有 `config.source == "opspilot"` 的 NATS 渠道允许绑定和试发。
 
-### 4.2 通知场景
+告警模板和自定义 Webhook 的 `body_template` 是两层契约：Alerts 先把 `{{ alert.* }}` 渲染成业务正文，SystemMgmt 再把该正文写入 Webhook 的 `{{content}}`。模板引擎不接管请求结构、密钥或签名。
 
-- 单告警模板：自动分派 `assignment`、重复提醒 `reminder`、告警升级 `escalation`、恢复 `recovery`。
-- 汇总模板：未分派告警汇总 `unassigned_summary`，不能绑定到单告警场景。
-- 不新增通知触发条件，不扩大收件人；原有未认领条件、场景开关、频率、生效时间、
-  屏蔽条件、会话观察期、升级 append/replace 规则继续有效。
-- 人工分派、Incident 协作消息、Monitor/Log/APM 自身的领域通知不纳入本次模板配置。
+## 4. 数据模型
 
-## 5. 页面设计
+迁移 `alerts.0030_notification_templates` 新增三张表：
 
-### 5.1 导航与路由
+### 4.1 `NotificationTemplate`
 
-建议路由：
+- `name`、`description`：模板元数据；
+- `team`：组织范围，保存时去重、转整数并排序；
+- `scope_key`：组织集合 SHA-256 唯一键，避免 JSON 排列顺序绕过同范围同名约束；
+- `scope`：当前页面使用 `single_alert`；`unassigned_summary` 为后续预留；
+- `is_global`、`builtin_key`：全局及内置模板的稳定标识；普通内置模板只读，告警操作内置模板按受限字段编辑；
+- `alert_operation`、`channel_id`：团队内置告警操作模板及其唯一具体渠道；
+- `revision`：更新乐观锁版本。
 
-- 列表：`/alarm/settings/notificationTemplates`
-- 新建：`/alarm/settings/notificationTemplates/new`
-- 编辑/查看：`/alarm/settings/notificationTemplates/[id]`
+数据库约束保证同一组织范围、同一适用范围内名称唯一，以及非空 `builtin_key` 唯一。
 
-导航顺序：相关性规则 → 告警分派 → 通知模板 → 屏蔽策略 → 告警丰富 → 告警处理 → …。
-使用现有 `sub-layout` 和权限过滤，不独立再造一套 Tabs 导航。
+### 4.2 `NotificationTemplateContent`
 
-### 5.2 列表页
+每个模板按 `channel_type` 保存一份 `subject_template` 和 `body_template`，并以 `(template, channel_type)` 唯一。保存时主表和所有渠道内容处于同一事务。
 
-- 页头：标题“通知模板”及一行功能说明。
-- 工具栏：通知方式/模板类型筛选、名称搜索、新建按钮成组靠右。
-- 表格：名称与说明、已配置通知方式、归属组织、引用策略数量、更新时间、操作。
-- 操作：编辑/查看、复制、查看引用；删除放更多菜单。
-- 内置模板只读，允许复制；删除有引用的模板时返回引用提示，不自动解绑。
-- 展示真实引用数量，不把通知尝试数混成策略引用数。
-- 分页默认 20，允许 10/20/50/100；加载、空态、错误、无权限态均有明确反馈。
-- 第一版不增加模板启停开关，避免“关闭模板后告警是否停止通知”的歧义。
+### 4.3 `NotificationTemplateReference`
 
-### 5.3 编辑页
+引用索引用于保护正在使用的模板：
 
-- 顶部：返回列表、页面标题、版本号；基本信息含名称、说明、组织、单告警/汇总类型。
-- 单告警/汇总类型在已有引用后不可改变，避免破坏变量契约。
-- 通知方式区域：展示已配置/未配置状态；新增方式后进入对应格式编辑器。
-- 邮件编辑 HTML 与主题，机器人编辑相应 Markdown；格式是只读标识，不能任意切换。
-- 左侧编辑区：代码高亮、变量插入、光标位置插入、字段说明与示例、错误位置、字符/字节统计。
-- 右侧预览区：通知方式预览、场景选择、平台示例/真实告警选择；主题同步渲染。
-- 切换通知方式保留各自未保存内容；保存提交整个模板的所有内容，不能只保存当前 Tab。
-- 所有已配置方式均校验；错误显示在对应方式和字段上，支持定位。
-- 删除一种方式前显示影响；被引用需要使用的方式不可移除。
-- 离开存在未保存修改的页面时提示；版本冲突不静默覆盖其他人的修改。
-- 底部操作：取消、测试发送、保存；按钮始终可达。修改生效说明：用于之后新生成的通知。
-- 小屏上下排列；桌面两栏；支持亮暗主题、键盘操作、错误聚焦和窄窗口。
-- 邮件 HTML 源码是第一版必须交付的编辑能力，所见即所得编辑器不是前置依赖。
+- 分派策略保存后同步 `source_type=assignment` 引用；
+- 创建升级任务时把实际层级渠道及模板绑定冻结到任务快照，并同步 `source_type=escalation_task` 引用；
+- 升级任务停止、到达终态或清理时释放快照引用；
+- 删除模板前最多返回 100 条引用详情；全局模板对非超级管理员只返回引用数量，避免跨组织信息泄露。
 
-### 5.4 分派策略和全局配置
+## 5. 配置契约与选择规则
 
-- 每个已选渠道一行：渠道名称、类型/格式、默认模板选择、预览入口。
-- 默认选项“系统默认模板”；候选仅包含当前用户可使用且有对应格式、场景的模板。
-- 提醒、升级、恢复在高级设置中可覆盖；默认“继承当前渠道模板”。
-- 升级层也复用相同渠道选择与模板绑定交互，不以数组序号跨层寻找模板。
-- 在全局“未分派通知”配置中，按渠道选择汇总模板，保留原开关和调度频率。
-- 全局配置没有组织字段；本方案建议仅允许全局模板用于跨组织未分派汇总。
-- 与某业务模板不兼容的渠道不可保存绑定；不在新配置中静默采用错误格式。
-
-### 5.5 组件与实现约束
-
-- 复用 Ant Design Table/Form/Tabs/Select/Modal、`CustomTable`、`Introduction`、
-  `SearchActionBar`、权限组件及适用的 `CodeEditor`。
-- 现有 `CodeEditor` 默认包含 Python/TOML 和深色样式；补 HTML/Markdown mode 和主题
-  时保证现有调用者行为，不默认整体重写共享编辑器。
-- 变量面板、渠道模板绑定、通知预览属于 alarm-local；不因 Storybook 使用而提升为 shared。
-- 新布局遵循 Tailwind 和语义 token，保留已有统一控件宽度常量。
-- HTML 预览使用隔离 iframe；Markdown 使用现有安全展示能力并落实渠道子集。
-- 中英文文案、权限态、Storybook 场景一并交付。
-
-## 6. 数据模型与绑定契约
-
-### 6.1 模板与内容
-
-建议新增 `NotificationTemplate`：
-
-| 字段 | 约束 |
-|---|---|
-| `id` | 数据库主键 |
-| `name` | 1–100 字符；同一组织范围内不重名 |
-| `description` | 最多 500 字符 |
-| `team` | 与现有组织工具兼容的 JSON ID 列表；普通模板至少一个授权组织 |
-| `is_global` | 默认 false；只允许超级管理员显式创建全局模板 |
-| `builtin_key` | 内置稳定标识，只读；普通模板为空 |
-| `scope` | `single_alert` 或 `unassigned_summary` |
-| `revision` | 正整数，主表/任一内容修改同事务递增 |
-| 创建/维护信息 | 复用项目时间与维护人规范 |
-
-`NotificationTemplateContent`：模板 FK、渠道类型、标题模板、正文模板。
-同一模板下渠道类型唯一；格式由服务端能力表推导，不允许客户端任意指定。
-
-组织范围是参与唯一性和授权的规范化集合：排序、去重，保存额外稳定 `scope_key`，
-数据库对 `(scope_key, name)` 建唯一约束，不能只用前端重名校验。
-`is_global=true` 必须 `team=[]`，反之 `team` 非空；内置字段不接受客户端写入。
-
-不新增全量版本历史表；保存当前 revision，并在投递意图中保存已渲染正文及使用的版本。
-编辑已有模板需要传 `expected_revision`，过期返回 409，整个模板保存应为原子操作。
-
-### 6.2 渠道绑定的外部结构
-
-保留现有渠道数组格式，在渠道元素中增加可选字段；字段缺失代表沿用旧行为。
+页面按渠道和场景保存模板组 ID。绑定仍保存在现有渠道对象中，以兼容旧配置和已入队通知快照：
 
 ```json
 {
-  "id": 12,
+  "id": 7,
+  "name": "生产邮件",
   "channel_type": "email",
   "notification_templates": {
-    "default": 101,
-    "reminder": 102,
-    "recovery": null
+    "default": 11,
+    "reminder": 12,
+    "escalation": 13,
+    "recovery": 14
   }
 }
 ```
 
-- 值为模板 ID：显式选择；值为 `null`：显式系统默认；key 缺失：继承。
-- `default` 用于分派及没有单独覆盖的通知；场景 key 允许 reminder/escalation/recovery。
-- 顶层策略 `notify_channels` 和升级层的 `notify_channels` 都采用相同结构。
-- `assignment` 不额外增加重复配置字段，直接使用 `default`。
-- 未分派配置只支持 `default`，目标模板必须是汇总类型。
-- 保存时服务端以可信渠道记录核对 ID、类型、可用性及范围，不信任提交的类型或名称。
-- 前端编辑旧配置时应保留未知的兼容配置字段，不能重建渠道数组时丢失新绑定。
+运行时选择规则：
 
-### 6.3 引用索引与删除保护
+1. 场景键存在且值为模板 ID：使用该模板；
+2. 场景键存在且值为 `null`：显式使用系统默认内容；
+3. 场景键缺失：继承当前渠道的 `default`；
+4. `default` 也缺失：使用系统默认内容；
+5. 升级层渠道先按相同渠道 ID 继承策略顶层绑定，再由层级自己的绑定覆盖；
+6. 渠道 ID、类型、组织范围、NATS 来源和模板渠道内容均以数据库可信数据校验，不信任前端提交的名称或类型。
 
-JSON 绑定便于兼容，但不能依靠全表扫描 JSON 支撑列表计数和删除校验。
-建议增加内部 `NotificationTemplateReference`，作为绑定的事务内引用索引：
+第一版页面暴露渠道级和场景级覆盖。只配置 `default` 时，提醒、升级和恢复自然复用该模板组；配置具体场景后，该场景使用覆盖模板。模板可使用 `notification.scene_name` 显示当前通知阶段。
 
-- 模板 FK 使用 `PROTECT`；来源分别为分派策略、未分派设置、活动升级任务。
-- 来源使用真实可空 FK，数据库约束保证恰有一个来源；记录稳定 binding path、channel ID、scene。
-- 同来源/绑定路径唯一；父配置与引用索引在同事务更新。
-- 新增绑定、修改模板组织/类型/内容、删除模板均锁定涉及的模板记录，固定按 ID 顺序加锁。
-- 活动升级任务快照引用同样受保护；任务结束释放引用。历史投递只保留 ID/版本及正文快照，
-  不以历史通知记录永久阻止删除模板。
-- 引用索引是可重建投影，不替代配置或任务快照这一事实来源；如需修复，使用受控分页命令，
-  不在启动时扫描全部数据。
-- 普通用户只能看到权限范围内的引用详情；存在不可见引用只返回通用“仍被使用”提示。
-- 运行中的历史升级任务可能没有新索引字段：迁移前没有自定义模板，保持默认行为即可；
-  不能将正在运行的旧任务重解释为新策略绑定。
+运行时若模板被异常删除、组织不匹配或渲染失败，仅该渠道回退到既有固定格式。分派、提醒、升级或恢复的主业务状态不会因此回滚。成功渲染后，模板 ID、revision、场景和缺失字段写入 Outbox 参数快照，后续重试使用已入队内容，不重新读取模板。
 
-## 7. 模板语法、变量和 HTML 安全
+自定义模板调用底层发送时设置 `append_receivers=false`，防止机器人渠道再次把接收人文本追加到用户正文；实际接收人参数仍完整传递。未绑定模板的旧调用保持原行为。
 
-### 7.1 语法
+## 6. 生命周期接入
 
-第一版采用受限变量占位符 `{{ path }}`，不开放任意表达式执行、方法调用、import、宏或 include。
-正文的 HTML/Markdown 是用户可编辑的原生格式；富格式不意味着开放通用脚本执行。
+| 入口 | 场景 | 行为 |
+|---|---|---|
+| 自动分派 | `assignment` | 使用命中分派策略的顶层渠道和模板绑定 |
+| 人工分派 | `assignment` | 使用告警所属团队的“告警操作通知”内置模板及其唯一渠道；执行人也是接收人时仍发送 |
+| 人工转派 | `reassignment` | 使用同一内置模板和唯一渠道，场景名称渲染为“告警转派” |
+| 周期提醒 | `reminder` | 使用当前有效接收人；渠道来自活动升级层快照或策略默认配置 |
+| 告警升级 | `escalation` | 使用任务创建时冻结的层级渠道和模板绑定 |
+| 告警恢复 | `recovery` | 通过既有提醒任务关联定位分派策略并应用恢复绑定 |
 
-- 仅允许注册的展示字段和受限的 labels/dimensions/enrichment 路径。
-- 未知固定字段、非法路径、未闭合占位符、禁止的语法：保存和预览返回字段级错误。
-- 可选数据路径缺失显示 `—`，预览返回 missing-fields 提示；不使整封通知失败。
-- `0` 和 `false` 必须保留，不能被当成缺失。
-- 列表按有界、稳定规则转成展示文本；复杂对象不能无界 dump。
-- 变量只替换一次；变量值中的 `{{...}}` 作为普通数据显示。
-- 不提供 raw/safe 过滤器。动态变量只允许正文文本节点或普通文本位置，不允许作为 HTML
-  标签名、属性名、CSS、URL、事件处理器或注释的一部分；HTML 属性中第一版不开放变量。
-- 静态安全超链接可以编辑；动态详情链接如需支持，应作为后续受控字段能力单独定义。
+通知仍通过现有 `AlertNotificationOutbox` 和渠道级 `AlertNotificationDelivery` 投递、领取租约、失败退避与终态记录。模板功能没有新建发送队列，也不绕过原有告警 gating。
 
-### 7.2 变量目录
+## 7. API 与权限
 
-| 命名空间 | 主要字段/语义 |
-|---|---|
-| `alert.*` | alert_id、title、content、level、level_name、status、status_name、resource_name/resource_id/resource_type、source_name、created_at、first_event_time、last_event_time、assignees_text |
-| `labels.*` / `dimensions.*` | 告警上已有的展示标签、聚合维度；不反查全部原始 Event |
-| `enrichment.<namespace>.<field>` | 复用富化路径规范和历史数组兼容；禁止 `_meta`、私有属性、诊断对象 |
-| `notification.*` | scene、scene_name、receivers_text、reminder_count、escalation_level、sent_at、timezone |
-| `summary.*` | count、displayed_count、omitted_count、items_text；仅用于汇总模板 |
+路由前缀：`/api/v1/alerts/api/notification_templates/`。
 
-- `assignees_text` 来自当前告警负责人；`receivers_text` 来自本次实际通知目标，两者不能混用。
-- `notification.sent_at` 定义为通知内容生成时刻，重试时不更新；页面说明避免理解为最终到达时间。
-- 单告警自定义模板统一使用平台配置时区，明确显示 timezone；旧默认格式保留现有时区行为。
-- 示例富化字段来自规则的显式投影，不能把 `business_name` 等演示字段当成所有告警必有字段。
-- 汇总 `items_text` 是系统生成的前 10 条有界摘要；按 created_at、alert_id 稳定排序；
-  数量真实统计；HTML 模板中作为文本转义并保留换行，不能将拼接字段当 HTML 注入。
-- 不开放任意循环；单告警/汇总不能相互引用对方专属字段。
+| API | 权限 | 说明 |
+|---|---|---|
+| `GET /`、`GET /{id}/` | `notification_templates-View` | 组织范围列表与详情 |
+| `POST /` | `notification_templates-Add` | 当前团队创建模板 |
+| `PUT/PATCH /{id}/` | `notification_templates-Edit` | 带 revision 更新；普通内置/全局不可改，告警操作内置模板仅可改渠道和内容 |
+| `DELETE /{id}/` | `notification_templates-Delete` | 有引用、全局或内置模板拒绝 |
+| `POST /preview/` | `notification_templates-View` | 使用内置或有界 sample 渲染，不发送 |
+| `GET /options/` | View 或 `alert_assign-View` | 最多 200 条可用摘要，可按渠道类型过滤 |
+| `GET /catalog/` | `notification_templates-View` | 返回可插入变量目录 |
+| `GET /{id}/references/` | `notification_templates-View` | 分页查看引用，page_size 最大 100 |
+| `POST /{id}/copy/` | `notification_templates-Add` | 复制到当前团队；告警操作内置模板不可复制 |
+| `POST /test_send/` | View + Test + Alarms View | 使用当前编辑内容、真实告警和 1～50 个所选接收人同步试发；无需先保存模板 |
+| `POST /{id}/test_send/` | View + Test + Alarms View | 已保存模板兼容试发接口；新版页面统一使用当前编辑内容接口 |
 
-### 7.3 渲染与预览安全
+菜单和操作权限登记在 `server/support-files/system_mgmt/menus/alarm.json`，前端按钮继续使用现有 `PermissionWrapper`。
 
-本节是拟议的 Alerts 编辑与渲染策略，尚待确认；不是系统管理已有的模板限制。
-不在 `send_msg_with_channel` 或各共享 sender 中添加统一 HTML 清洗、告警字段名单或业务
-模板长度约束。预览隔离、模板变量转义、运行资源上界和渠道协议限制是不同责任，需要分别验证。
+列表与详情响应包含 `assignment_count`，按不同分派策略 ID 去重计数。同一策略在多个渠道或多个场景引用同一模板组只计一次；活动升级任务的运行快照不计入该字段。
 
+## 8. 受限模板语言与安全边界
 
-- 自定义 HTML 由服务端成熟的解析/清洗库处理，白名单标签、属性和 CSS；禁止手写正则作为 sanitizer。
-- 当前已检查依赖中未见专用服务端 HTML sanitizer；实施时需选型、锁版本并验证 CSS 支持，
-  记录增加依赖的理由。客户端 DOMPurify 不能替代服务端清洗。
-- 支持邮件常用 div/p/span/table/tr/td/th/h1–h6/列表/链接/内联样式；禁止脚本、表单、iframe、
-  object、embed、事件属性、危险协议、外部样式和 CSS url/expression。
-- 第一版不加载远程图片、字体或其他外部资源，不自动获取用户 HTML 中的 URL。
-- 保存拒绝不支持/危险结构并定位原因，不以“保存成功”掩盖大量内容被删除。
-- HTML 变量按文本上下文转义；Markdown 变量转义保留字与标签，变量不能注入 @all 或卡片指令。
-- 邮件预览和实际邮件正文使用同一份服务端渲染结果；预览 iframe `sandbox` 不开放脚本、
-  同源、表单或顶层导航，CSP 禁止外部加载，预览不允许执行链接导航。
-- Markdown 预览限制与渠道契约一致；特殊语法能否真实显示仍由测试发送验证。
+模板只支持 `{{ path.to.value }}`，不使用 Jinja，不支持表达式、属性调用、循环、条件、过滤器、私有字段或模板注释。
 
-建议应用层上界：名称 100 字符、说明 500、标题模板 500、单方式源码 64 KiB、
-总模板源码 256 KiB、变量引用 200 次、数据路径深度 8、汇总展示 10 条。
-所有 byte 上界均按 UTF-8；在分配和展开前检查。渠道输出限制可能更小，必须分别校验。
-不直接截断 HTML/Markdown 成品破坏结构：编辑时超限拒绝；实际数据超限进入有界默认回退。
+可用根变量：
 
-## 8. 模板选择、生效与通知链路
+- `alert`：标题、内容、级别、状态、来源、资源、时间、负责人和组织；其中 `alert.level` 是按告警级别配置映射后的展示名称（如“警告”），`alert.level_id` 保留原始级别 ID；
+- `labels`、`dimensions`、`enrichment`：告警已有结构化数据；
+- `notification`：场景、场景名称、本次接收人和生成时间；`notification.receiver_names` 是用于正文展示的顿号分隔名称，`notification.receivers` 保留原始列表；
+- `summary`：仅为后续汇总范围预留，单告警模板禁止使用。
 
-### 8.1 选择顺序
+`notification.action_summary`、`notification.actor_name`、`notification.previous_receiver_names` 和
+`notification.action_time` 仅允许在 `alert_operation` 告警操作模板中使用，普通单告警模板即使手工输入也会被服务端拒绝。
 
-先按原有规则确定本次接收人和渠道，再为每个实际渠道选择模板。
+缺失变量渲染为 `—` 并返回 `missing_fields`。变量值不会再次作为模板解析。
 
-同一个渠道 ID 的选择优先级：
+资源上限：模板 64KB、最多 200 个变量、单值 64KB、集合最多 100 项、嵌套最多 6 层、输出 256KB、标题 200 字符。标题源和渲染值均禁止 CR/LF。
 
-1. 当前升级层显式配置的本场景模板（含显式 null）。
-2. 当前升级层显式配置的 default。
-3. 分派策略该渠道本场景模板。
-4. 分派策略该渠道 default。
-5. 场景对应的系统默认行为。
+邮件 HTML 禁止脚本、iframe、表单、事件属性、危险 URL、外部资源和危险 CSS；变量只能出现在文本位置，并在替换时 HTML 转义。Markdown 动态值转义语法字符并中和 `@all` 类提及。日志只记录对象、渠道、模板和错误类型等有界诊断字段，不记录模板正文、告警 payload、凭据或外部响应正文。
 
-不跨渠道 ID 继承，不因为渠道类型相同而取另一渠道的模板。
-新增到升级层、但顶层没有的渠道，没有显式模板时使用系统默认。
-恢复按其关联分派策略的恢复绑定，不改成向全部升级历史参与人发送。
+## 9. 系统管理底层兼容
 
-### 8.2 快照语义
+SystemMgmt 没有对告警通知模板施加业务格式限制，本次也不在该模块增加模板库。改动只扩展了两个兼容参数/查询能力：
 
-- 普通分派/提醒/恢复新建通知时读取当时有效的绑定。
-- 创建升级任务时，将各层模板 ID 继承结果解析进现有 layers 快照；活动升级链的层级绑定
-  不随之后策略编辑自动漂移。沿升级层发送的提醒使用该层快照。
-- 模板内容编辑后，后续新建通知使用新 revision；快照冻结的是绑定 ID，不是永远冻结模板正文。
-- 生成本次通知时原子读取模板主表与全部所需内容，不能混用旧 revision 和新正文。
-- Outbox 保存最终标题/正文、所选模板 ID/版本、场景、是否回退、受控原因码和协议选项。
-- 渠道投递重试只用已保存内容，禁止重新读取模板或实时告警来重新渲染。
-- 最终内容可以在授权范围内查看，不能进入生产日志；历史记录访问仍按原告警权限过滤。
-- 不承诺新增 exactly-once 语义：外部已经发送但本地 ACK 丢失时，现有投递机制仍可能重试。
+- `send_msg_with_channel(..., append_receivers=True)`：默认值保证所有旧调用行为不变；Alerts 自定义模板显式传 `false`；
+- `search_opspilot_nats_channels(...)`：只返回 OpsPilot 托管 NATS，并按请求组织在应用层过滤，兼容 PostgreSQL 和 SQLite 测试环境。
 
-### 8.3 渲染模块 Interface
+共享的 `dispatch_notification`、渠道连通测试、自定义 Webhook 请求体、SMTP/机器人协议均保持现有契约。详细代码探索记录见 [channel-analysis.md](./channel-analysis.md)。
 
-在 `alerts/common/notify` 下集中模板选择、上下文构建、渲染和校验，避免分散在各业务调用点。
-建议测试与调用跨以下 Interface：
+## 10. 迁移、发布与回滚
+
+发布顺序：
+
+1. 执行 `alerts.0030_notification_templates`、`0031_alert_push_source_ids` 和 `0032_notification_template_operation`；
+2. 初始化新增菜单及 View/Add/Edit/Delete/Test 权限；
+3. 部署兼容 `append_receivers` 的 SystemMgmt/RPC；
+4. 部署 Alerts 服务与 Worker；
+5. 部署 Web；
+6. 用受控邮件和机器人渠道完成真实效果验收。
+
+旧分派策略没有 `notification_templates` 字段时自动走固定内容，不需要数据回填。回滚 Web 或 Alerts 前应先停止创建新模板绑定，并等待新版本入队通知完成；数据库表可保留，不影响旧代码读取策略 JSON。
+
+## 11. 告警操作通知内容改版（已确认并实施）
+
+2026-09-10 已按本节标题、正文和存量升级规则完成服务端、页面默认值与人工分派/转派通知链路实施。
+邮件 HTML 采用多行结构化源码，机器人使用 Markdown，Webhook 与 OpsPilot 使用纯文本；页面切换唯一渠道时带入相应新版默认值。
+
+“告警操作通知”继续保持团队内置、不可删除、只能选择一个具体渠道、允许修改标题和正文的产品约束。它的业务范围明确为：没有有效分派策略上下文时，人工分派或人工转派成功后，通知新的处理人认领告警。自动分派继续使用分派策略所选渠道及模板；认领、关闭和解决当前不触发该内置模板。
+
+### 11.1 标题口径
+
+有独立标题的渠道使用：
 
 ```text
-render_notification(template_content, notification_context, channel_capability)
-    -> rendered_title, rendered_content, diagnostics
-
-build_channel_params(recipients, channels, alerts, object_id, scene, scene_context)
-    -> 每渠道的持久通知参数
+【{{ notification.scene_name }}】【待认领】【{{ alert.level }}】{{ alert.title }}
 ```
 
-纯渲染只接收普通、已授权、有限大小的数据，不访问数据库/文件/网络。
-上下文构建在渲染外完成；单批模板、级别和目录信息尽量批量加载，避免每告警每渠道 N+1。
-预览与发送调用同一个渲染 Interface；前端不自行维护另一套变量替换语义。
+示例：
 
-### 8.4 默认兼容与失败处理
+```text
+【告警分派】【待认领】【严重】CPU 使用率过高
+【告警转派】【待认领】【严重】CPU 使用率过高
+```
 
-- 未配置模板：走当前默认行为，原有标题、正文、接收人追加和恢复前缀不顺带改版。
-- 显式自定义模板成功：不自动追加 `To: ...`；用户通过变量决定接收人位置；
-  不在恢复模板外再强加 `【恢复】`，通过场景变量表达。
-- 保存/预览发生语法、格式、绑定错误：拒绝，不发送，也不悄悄回退。
-- 运行时数据缺失按字段默认值处理；模板被异常删除、不可用、超限或渲染失败：
-  使用当前告警事实生成的安全、有界默认模板，并记录 fallback 标识与受控原因码。
-- 模板跨组织不可用时，不能读取或泄露模板内容；回退仅使用本告警已获准发送的字段。
-- 渠道本身不可用/越权不得用回退绕过；返回明确失败并保留可追踪的通知结果。
-- 如果安全回退也无法生成：持久记录该渠道不可重试的内容错误，继续其他渠道；不回滚
-  已成功的分派、认领或恢复操作，也不能将该渠道标成发送成功。
-- 提供真正的最小默认回退，不能仅捕获异常后再次调用相同的脆弱格式化路径。
-- 模板回退与投递状态分开：回退发送成功仍为投递成功，但通知记录显示“已使用默认模板”。
+企业微信机器人等没有独立标题的渠道，在正文首行使用相同语义的 Markdown 标题。
 
-### 8.5 接收人追加的兼容扩展
+### 11.2 正文信息结构
 
-内部发送链新增可选 `append_receivers`，默认 true，自定义正文设置 false。
-贯穿 `Notify`、Alerts RPC 包装、SystemMgmt RPC、NATS handler 与相应渠道发送函数。
-只改变展示追加，不改变实际收件人或平台权限。不要通过把 receivers 清空来达到隐藏姓名的目的。
+各渠道保持相同业务信息，仅分别使用邮件 HTML、机器人 Markdown 或纯文本格式：
 
-新参数是内部协议的兼容扩展；先更新接收端，再更新发送端。
-旧调用不传新参数时行为完全不变；新发送端遇到旧接收端不能假定支持，发布顺序必须保障。
+```text
+该告警已由 admin 从 lisi 转派给 zhangsan，请新的处理人及时认领并处理。
 
-## 9. 权限、API 与测试发送
+操作信息
+操作类型：告警转派
+操作人：admin
+当前处理人：zhangsan
+操作时间：2026-09-10 11:30:00
+当前状态：待响应
 
-### 9.1 权限
+告警信息
+告警标题：CPU 使用率过高
+告警级别：严重
+告警资源：生产主机 01（host）
+监控来源：Prometheus / cpu_usage
+发生时间：2026-09-10 11:25:00
 
-- 新增 `notification_templates-View/Add/Edit/Delete/Test` 菜单权限。
-- 复制需要源模板可读和 Add 权限；预览需要 View；试发需要 View+Test 及渠道可用权限。
-- 模板集合、详情、更新、删除、引用详情均做服务端组织检查；模板 ID 不是授权依据。
-- 单条告警至少属于一个模板授权组织，才可使用组织模板；批量汇总必须覆盖全部参与组织。
-- 候选渠道查询复用 SystemMgmt 已有的授权摘要能力，再施加当前 Alerts 支持渠道范围；
-  不假定现有 Alerts `get_channel_list` 已继承系统管理页面权限过滤。
-- 组织集合规范化；变更组织要求对原范围和新范围都有管理权，不能仅凭部分交集扩大权限。
-- 全局内置模板只读；全局自定义模板只允许超级管理员创建/管理。
-- 普通用户新增模板默认当前组织；全局模板需显式选择，不将空 team 默认解释为全局。
-- 新菜单按现有角色管理方式分配，不自动授予所有普通用户编辑或测试发送权限。
-- 用于策略下拉的候选查询仅返回可用模板摘要；只具策略编辑权但无模板正文读取权的用户，
-  可选授权范围内的模板，不通过该接口读取正文；预览仍需模板 View 权限。
+告警内容
+CPU 使用率已达到 95%，并持续 5 分钟。
 
-### 9.2 内部 API 建议
+告警 ID：ALERT-20260910-001
 
-路径跟随现有 Alerts 路由挂载，以下写相对 `api/` 路径，不新开端口：
+请进入告警中心认领并处理该告警。
+```
 
-| 方法/相对路径 | 用途 |
-|---|---|
-| GET/POST `notification_templates/` | 分页列表/原子创建 |
-| GET/PUT/PATCH/DELETE `notification_templates/{id}/` | 详情/版本条件更新/保护删除 |
-| GET `notification_templates/catalog/` | 渠道格式、变量目录、限制、内置示例 |
-| GET `notification_templates/options/` | 场景/渠道/组织过滤后的模板摘要候选 |
-| POST `notification_templates/preview/` | 预览未保存或已保存内容 |
-| POST `notification_templates/{id}/copy/` | 复制到授权组织，重新校验内容 |
-| GET `notification_templates/{id}/references/` | 分页展示可见引用 |
-| POST `notification_templates/test_send/` | 显式试发，持久记录投递意图 |
+普通分派时首句改为“该告警已由 admin 分派给 zhangsan，请及时认领并处理”。模板语言不支持条件判断，因此默认正文使用服务端生成的 `notification.action_summary` 表达分派或转派差异，避免普通分派出现无意义的“原处理人：—”。
 
-- 字段显式序列化；请求对象、列表、嵌套结构全部有界，不使用裸任意 JSON 入库。
-- 真实告警预览只接受可见 alert ID，由后端读取安全上下文；不信任客户端提交的告警快照、
-  raw_data、团队或任意变量字典。系统示例来自固定服务端夹具。
-- 预览返回渲染后的主题/正文、格式、缺失字段和受控错误信息；不写库、不调渠道。
-- 新增的是控制台内部接口。若后续要求开放外部调用，另按 OpenAPI 网关能力登记并补双租户测试，
-  不新增散落 `open_api` 端点。
+### 11.3 新增操作上下文变量
 
-### 9.3 测试发送
-
-- 用户主动点击 → 选择渠道和接收人 → 显示真实目标范围 → 确认发送。
-- 第一版接收人限定为当前用户；群机器人明确显示“发送至整个已配置群”，不能暗示仅当前人可见。
-- 使用服务端示例或授权告警，校验未保存模板内容、全部权限和输出大小；不改变告警生命周期。
-- 建议共享缓存限流：每用户每分钟 5 次、每渠道每分钟 10 次，不能仅按钮 loading 限流。
-- 客户端请求 ID + 服务端幂等键确保重复提交同一次试发不创建多个意图；参数冲突返回错误。
-- 走现有渠道投递机制，响应“已入队”及可查询的测试 ID；查询结果按创建者/管理员授权。
-- 不复用系统管理 `ChannelViewSet.test_send` 的固定消息作为模板试发；只复用其底层发送
-  能力，使用已保存 channel ID，不接收或复制 SMTP/Webhook 凭据。
-- 独立标记测试通知，不伪造某条真实告警的历史业务通知或污染业务成功率统计。
-- 文档和本轮 Agent 均不执行真实试发；实施验收时由用户提供/确认测试目标后再操作。
-
-## 10. 特殊链路修正与范围控制
-
-1. 恢复通知的组织目标解析：复用当前结构化通知对象解析器，兼容旧 personnel；不得因为
-   组织模式 `personnel=[]` 而漏发。收件人保持关联策略目标，不能擅自变为累计 operator。
-2. 恢复关联策略当前依赖 reminder task。实施前用入口测试确认启用恢复、关闭重复提醒时是否仍能
-   找到策略；若不能，补持久策略关联这一最小修正，先锁定历史任务兼容，禁止猜测当前匹配策略。
-3. 未分派自定义汇总按场景构造 count/items；旧默认行为中的分支问题不混入本次静默修复。
-4. 相关性规则只决定告警事实，自定义通知只能读取告警快照；不为取变量改变聚合语义。
-5. 用户富化改动中的双读、命名空间和 `_meta` 规则作为既有约束保留，不再实现第二套解析器。
-6. 只修复直接阻碍模板链路闭合的缺陷；无关权限、日志或渠道旧问题记录证据后独立处理。
-
-## 11. 持久诊断、迁移和发布
-
-- 通知记录增加模板名称快照、ID/revision、scene、render_status、fallback_reason；
-  暴露同样的投递成功/失败字段，前端通知详情增加模板和回退说明。
-- Outbox 父记录 delivered 表示已物化渠道意图，不能在 UI 解释成“所有渠道发送成功”。
-- 生产日志只输出关联 ID、模板 ID/revision、channel ID、failed_stage、error_type 和有界计数；
-  不记录模板正文、渲染结果、告警原始数据、URL token 或响应正文。
-- 同一失败只有一个边界持有 traceback；不因新增日志改变原返回值、异常身份或重试分类。
-- 新模型迁移编号在实施时按当前叶子迁移生成，不占用正在进行的富化迁移编号。
-- 内置模板资源随代码交付，用可重复执行的数据迁移/本地初始化写入，不依赖 HTTP/RPC/Celery；
-  不改 Supervisor 启动顺序，也不在 batch_init 中等待运行期进程。
-- Schema 扩展先发布；SystemMgmt 兼容接收端 → Alerts 发送端 → Web 页面/权限依次生效。
-- 存量渠道配置、Outbox、Delivery、NotifyResult 的新字段默认值均兼容旧记录。
-- 回滚期间保留新表和字段，不破坏已入队任务；先停止新模板选择入口，保留支持新消息协议的
-  消费端处理存量任务，再回退生成端。不能直接将未排空队列交给不支持新参数的旧消费者。
-- 模板编辑与回滚不重发历史 delivered 记录。
-
-## 12. 实施切片与完成条件
-
-| 切片 | 工作与验证 | 完成标准 |
+| 变量 | 含义 | 默认正文是否使用 |
 |---|---|---|
-| A：渲染契约 | 单告警/汇总上下文、语法、HTML/Markdown、预算；先补失败测试 | 同一 Interface 支撑预览与实际内容生成，无 I/O |
-| B：配置与权限 | 模型/迁移、CRUD、引用索引、绑定校验、并发版本、组织隔离 | 双组织及并发删除/绑定测试通过 |
-| C：通知闭环 | 分派/提醒/升级/恢复/兜底接入、Outbox 内容快照、追加参数兼容 | 各入口覆盖；失败渠道独立重试；回退可追踪 |
-| D：正式页面 | 菜单、列表、编辑、变量、预览、策略绑定、全局配置、通知详情 | 原型关键流程真实接 API，中英文与权限一致 |
-| E：真实试发 | 队列、限流、幂等、结果展示；经确认的测试渠道 | HTML 邮件和企微 Markdown 平台效果验收 |
-| F：回归交付 | 完整关联链路、旧配置回归、构建检查、文档同步 | 测试计划逐项有结果或明确阻塞证据 |
+| `notification.action_summary` | 按分派/转派、执行人、原处理人和新处理人生成完整操作说明 | 是 |
+| `notification.actor_name` | 执行人工分派或转派的用户；系统身份显示为“系统” | 是 |
+| `notification.previous_receiver_names` | 转派前处理人；普通分派为空 | 否，供用户自定义 |
+| `notification.action_time` | 本次人工操作时间 | 是 |
 
-测试遵循 [test-plan.md](./test-plan.md)，以行为 Interface 为接缝，逐个纵向切片 red → green，
-不先批量写与实现镜像的测试。不为业务无关的旧代码重写测试或全仓格式化。
+实施时只向告警操作通知传入这些字段，不改变普通模板的生命周期场景。服务端变量白名单和页面变量目录同步增加对应条目。
 
-实施完成时同步长期 capability 与相关 Alerts 架构事实；当前规划阶段不把未实施方案写成既成能力。
+### 11.4 存量升级规则
 
-## 13. 本次确认清单
+- 新团队首次建立告警操作通知时直接使用新版内容；
+- 已存在模板的标题和正文同时等于旧内置默认值时，视为未编辑，可安全升级为新版；
+- 任一字段已经被用户修改，则保留整份用户内容，不做局部覆盖；
+- 切换唯一渠道时，使用该渠道对应的新版默认内容作为初始值；
+- 升级不改变模板 ID、团队、所选渠道、revision 语义和历史 Outbox 快照。
 
-用户确认本文时，重点确认以下细化约定：
+存量升级和页面编辑共用模板主表行锁，并在更新正文时再次匹配旧标题与旧正文，避免并发编辑被自动升级覆盖；只有实际替换旧默认内容时 revision 才递增。
 
-- 完整 HTML/Markdown 编辑按第 4 节能力表交付，第一版不提供任意卡片 JSON、脚本和 HTML 动态属性。
-- 模板按具体渠道绑定，场景和升级层继承优先级按第 8 节执行。
-- 内置模板只读；普通模板按组织授权；全局自定义模板仅超级管理员可管理。
-- 全局未分派自定义通知使用全局汇总模板；普通业务模板不能跨组织套用。
-- 模板修改影响之后新生成的通知；已入队内容不变；活动升级任务保持绑定快照。
-- 自定义模板运行时失败使用安全默认回退并记录原因，不回滚告警主流程。
-- 真实试发须用户主动确认目标，测试代码默认使用发送替身。
+## 12. 新建普通模板的六渠道默认内容（已确认并实施）
 
-**确认方案不等于执行授权；只有用户随后明确要求实施，才进入第 12 节。**
+2026-09-10 已在 Chrome 新建页面中使用统一测试告警逐个展示邮件 HTML、企业微信 Markdown、钉钉 Markdown、飞书 Markdown、自定义 Webhook 文本和 OpsPilot 文本，用户确认采用本节标题和正文作为新建普通模板的默认内容。该决定只影响后续新建页面带入的初始值，不回写或覆盖已保存模板。
+
+本节记录用户点击“新建”普通通知模板时由页面带入的渠道版本默认值。普通模板可绑定告警分派、提醒、升级和恢复四个场景，因此已确认内容突出 `notification.scene_name`，不写死“待认领”或具体处置动作。用户新建模板时默认只选择邮件 HTML；其他五种内容在用户增加对应渠道版本时带入。
+
+### 12.1 邮件 HTML
+
+实施前标题：
+
+```text
+【{{ notification.scene_name }}】【{{ alert.level }}】{{ alert.title }}
+```
+
+实施前正文包含通知场景、告警标题，以及告警级别、资源、监控来源、发生时间、本次接收人组成的表格；表格后展示告警内容和告警 ID。
+
+已确认标题：
+
+```text
+【{{ notification.scene_name }}·{{ alert.level }}】{{ alert.title }}（{{ alert.resource_name }}）
+```
+
+已确认正文：
+
+```html
+<div style="font-family:Arial,sans-serif;color:#1f2937;line-height:1.6;">
+  <div style="padding:16px;background:#f5f7fa;border-radius:6px;">
+    <div style="font-size:13px;color:#6b7280;">{{ notification.scene_name }}</div>
+    <h2 style="margin:4px 0 0;font-size:20px;">{{ alert.title }}</h2>
+  </div>
+  <table style="width:100%;margin-top:16px;border-collapse:collapse;">
+    <tr><td style="width:96px;padding:8px;border:1px solid #e5e7eb;">告警级别</td><td style="padding:8px;border:1px solid #e5e7eb;"><strong>{{ alert.level }}</strong></td></tr>
+    <tr><td style="padding:8px;border:1px solid #e5e7eb;">告警资源</td><td style="padding:8px;border:1px solid #e5e7eb;">{{ alert.resource_name }}（{{ alert.resource_type }}）</td></tr>
+    <tr><td style="padding:8px;border:1px solid #e5e7eb;">资源 ID</td><td style="padding:8px;border:1px solid #e5e7eb;">{{ alert.resource_id }}</td></tr>
+    <tr><td style="padding:8px;border:1px solid #e5e7eb;">监控来源</td><td style="padding:8px;border:1px solid #e5e7eb;">{{ alert.source_name }}</td></tr>
+    <tr><td style="padding:8px;border:1px solid #e5e7eb;">监控指标</td><td style="padding:8px;border:1px solid #e5e7eb;">{{ alert.item }}</td></tr>
+    <tr><td style="padding:8px;border:1px solid #e5e7eb;">发生时间</td><td style="padding:8px;border:1px solid #e5e7eb;">{{ alert.created_at }}</td></tr>
+    <tr><td style="padding:8px;border:1px solid #e5e7eb;">本次接收人</td><td style="padding:8px;border:1px solid #e5e7eb;">{{ notification.receiver_names }}</td></tr>
+  </table>
+  <div style="margin-top:16px;padding:12px;background:#f9fafb;border-left:4px solid #9ca3af;">
+    <strong>告警内容</strong><br>
+    {{ alert.content }}
+  </div>
+  <p style="margin-top:12px;color:#6b7280;font-size:12px;">告警 ID：{{ alert.alert_id }}｜通知时间：{{ notification.generated_at }}</p>
+</div>
+```
+
+确认理由：邮件主题加入资源名称，正文把监控来源和监控指标拆开，并补充资源 ID 与通知生成时间，便于邮件检索和跨系统定位。
+
+### 12.2 企业微信机器人 Markdown
+
+实施前无独立标题。实施前正文以“通知场景｜告警标题”为三级标题，引用区展示级别、资源、来源和时间，随后展示告警内容、告警 ID 和接收人。
+
+已确认标题：无独立标题，由正文首行承担标题语义。
+
+已确认正文：
+
+```markdown
+### {{ notification.scene_name }}｜{{ alert.level }}
+
+**{{ alert.title }}**
+
+> {{ alert.content }}
+
+- **告警资源：** {{ alert.resource_name }}（{{ alert.resource_type }}）
+- **监控来源：** {{ alert.source_name }}
+- **监控指标：** {{ alert.item }}
+- **发生时间：** {{ alert.created_at }}
+- **本次接收人：** {{ notification.receiver_names }}
+
+告警 ID：{{ alert.alert_id }}
+通知时间：{{ notification.generated_at }}
+```
+
+确认理由：企业微信主要在移动端查看，先展示级别、标题和内容，再展示定位字段，减少首屏被表格式信息占满。
+
+### 12.3 钉钉机器人 Markdown
+
+实施前标题：
+
+```text
+【{{ notification.scene_name }}】【{{ alert.level }}】{{ alert.title }}
+```
+
+实施前正文使用三级标题，依次展示级别、资源、来源、时间、告警内容、告警 ID 和接收人。
+
+已确认标题：
+
+```text
+【{{ notification.scene_name }}·{{ alert.level }}】{{ alert.title }}
+```
+
+已确认正文：
+
+```markdown
+### {{ notification.scene_name }}｜{{ alert.title }}
+
+> **{{ alert.level }}**｜{{ alert.resource_name }}（{{ alert.resource_type }}）
+
+**告警内容**
+
+> {{ alert.content }}
+
+- **监控来源：** {{ alert.source_name }}
+- **监控指标：** {{ alert.item }}
+- **发生时间：** {{ alert.created_at }}
+- **本次接收人：** {{ notification.receiver_names }}
+
+告警 ID：{{ alert.alert_id }}
+通知时间：{{ notification.generated_at }}
+```
+
+确认理由：标题保持短小，正文首屏把级别和资源放在同一行，适合钉钉机器人卡片快速浏览。
+
+### 12.4 飞书机器人 Markdown
+
+实施前标题：
+
+```text
+【{{ notification.scene_name }}】【{{ alert.level }}】{{ alert.title }}
+```
+
+实施前正文以加粗文本展示场景和标题，随后展示级别、资源、来源、时间、告警内容、告警 ID 和接收人。
+
+已确认标题：
+
+```text
+【{{ notification.scene_name }}·{{ alert.level }}】{{ alert.title }}
+```
+
+已确认正文：
+
+```markdown
+**{{ notification.scene_name }}｜{{ alert.title }}**
+
+**告警级别：** {{ alert.level }}
+**告警资源：** {{ alert.resource_name }}（{{ alert.resource_type }}）
+**监控来源：** {{ alert.source_name }}
+**监控指标：** {{ alert.item }}
+**发生时间：** {{ alert.created_at }}
+**本次接收人：** {{ notification.receiver_names }}
+
+**告警内容**
+
+> {{ alert.content }}
+
+告警 ID：{{ alert.alert_id }}
+通知时间：{{ notification.generated_at }}
+```
+
+确认理由：保持飞书卡片的紧凑键值布局，同时把告警内容独立成块，避免正文与字段混在一起。
+
+### 12.5 自定义 Webhook 文本
+
+实施前无独立标题。实施前正文按行展示通知场景、级别、标题、内容、资源、监控来源、发生时间、告警 ID 和接收人。
+
+已确认标题：无独立标题。
+
+已确认正文：
+
+```text
+[告警通知]
+通知场景：{{ notification.scene_name }}
+告警级别：{{ alert.level }}
+告警标题：{{ alert.title }}
+告警 ID：{{ alert.alert_id }}
+告警资源：{{ alert.resource_name }}（{{ alert.resource_type }}）
+资源 ID：{{ alert.resource_id }}
+监控来源：{{ alert.source_name }}
+监控指标：{{ alert.item }}
+发生时间：{{ alert.created_at }}
+本次接收人：{{ notification.receiver_names }}
+通知时间：{{ notification.generated_at }}
+
+告警内容：
+{{ alert.content }}
+```
+
+确认理由：保持纯文本契约，不默认生成可能被动态内容破坏的 JSON；字段顺序稳定，方便下游日志检索。Webhook 请求结构和认证仍由系统管理渠道配置负责。
+
+### 12.6 OpsPilot 文本
+
+实施前无独立标题。实施前正文以 `[通知场景][告警级别] 告警标题` 开头，随后展示资源、来源、内容、时间、告警 ID 和接收人。
+
+已确认标题：无独立标题。
+
+已确认正文：
+
+```text
+[WeOps 告警通知]
+通知场景：{{ notification.scene_name }}
+告警级别：{{ alert.level }}
+告警标题：{{ alert.title }}
+
+定位信息：
+- 告警 ID：{{ alert.alert_id }}
+- 告警资源：{{ alert.resource_name }}（{{ alert.resource_type }}）
+- 资源 ID：{{ alert.resource_id }}
+- 监控来源：{{ alert.source_name }}
+- 监控指标：{{ alert.item }}
+- 发生时间：{{ alert.created_at }}
+- 本次接收人：{{ notification.receiver_names }}
+
+告警内容：
+{{ alert.content }}
+```
+
+确认理由：OpsPilot 收到的是 `message/team/user_ids` 协议中的文本消息，确认内容提供稳定的定位字段和清晰分段，不在模板中加入自动执行指令。
+
+### 12.7 六渠道共同约束
+
+- 有标题能力的邮件、钉钉和飞书分别保存独立标题；企业微信、Webhook 和 OpsPilot 不伪造独立标题字段；
+- 默认内容只使用单告警范围已允许的变量，不依赖循环、条件或过滤器；
+- `alert.level` 使用级别展示名称，`alert.level_id` 仅在用户确有原始值需求时自行插入；
+- 页面变量入口包含 `notification.generated_at`、`alert.resource_id`，两者已在服务端模板白名单中；
+- 四个生命周期场景共用同一渠道版本时，由 `notification.scene_name` 分别渲染为告警分派、告警提醒、告警升级或告警恢复；
+- 用户调整后的标题和正文属于其模板内容，后续默认值升级不得覆盖已经保存的普通模板。
+
+## 13. 已知限制与后续项
+
+- 未分派汇总模板、系统全局配置绑定和汇总变量尚未接入；
+- 测试发送是同步调用，没有独立试发任务、共享限流或幂等查询接口；下拉首版加载当前团队最近 50 条可见告警并在前端检索；
+- 页面没有“离开未保存”确认、光标位置变量插入和完整 Storybook 场景；
+- 本地自动化未连接真实 SMTP、企微、钉钉、飞书、Webhook 或 OpsPilot；
+- 同名并发约束已落数据库，PostgreSQL 下真正的并发竞争仍需在 CI 或预发布环境验证。
+
+以上项目不影响第一版核心验收：用户可在模板组中为不同通知方式维护对应格式，在分派策略中按渠道和场景选择模板组，四个单告警生命周期自动按实际渠道取对应版本，并继续走既有可靠投递链路与默认回退。

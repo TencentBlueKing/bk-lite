@@ -1,5 +1,7 @@
 'use client';
 
+import { invalidMatchRules } from '@/app/alarm/utils/multivalueRules';
+
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Button,
@@ -37,7 +39,7 @@ interface JobScript {
 }
 
 const DEFAULT_MATCH_RULES: ActionRuleListItem['match_rules'] = [
-  [{ key: 'resource_type', operator: 'eq', value: '' }],
+  [{ key: 'title', operator: 'eq', value: '' }],
 ];
 
 const OperateModal: React.FC<OperateModalProps> = ({
@@ -320,20 +322,8 @@ const OperateModal: React.FC<OperateModalProps> = ({
           style={{ marginBottom: '16px' }}
           rules={[
             {
-              validator: (_: unknown, value: ActionRuleListItem['match_rules']) => {
-                if (!Array.isArray(value) || value.length === 0) {
-                  return Promise.resolve();
-                }
-                for (const orGroup of value) {
-                  if (!Array.isArray(orGroup)) continue;
-                  for (const item of orGroup) {
-                    if (item.key && item.operator && (!item.value && item.value !== '0')) {
-                      return Promise.reject(new Error(t('common.inputTip')));
-                    }
-                  }
-                }
-                return Promise.resolve();
-              },
+              validator: (_: unknown, value: ActionRuleListItem['match_rules']) =>
+                invalidMatchRules(value, true, "action") ? Promise.reject(new Error(t('common.inputTip'))) : Promise.resolve(),
             },
           ]}
         >

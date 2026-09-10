@@ -6,10 +6,11 @@ from rest_framework.response import Response
 
 from apps.alerts.constants.constants import LogAction, LogTargetType
 from apps.alerts.filters import SystemSettingModelFilter
-from apps.alerts.utils.operator_log import record_operator_log
-from apps.alerts.utils.system_mgmt_util import SystemMgmtUtils
 from apps.alerts.models.sys_setting import SystemSetting
 from apps.alerts.serializers import SystemSettingModelSerializer
+from apps.alerts.utils.operator_log import record_operator_log
+from apps.alerts.utils.permission_scope import apply_team_scope_with_group_ids, get_query_group_ids
+from apps.alerts.utils.system_mgmt_util import SystemMgmtUtils
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import alert_logger as logger
 from apps.core.utils.celery_utils import CeleryUtils
@@ -23,6 +24,7 @@ class SystemSettingModelViewSet(ModelViewSet):
     系统设置视图集
     no_dispatch_alert_notice: 未分派告警通知
     """
+
     queryset = SystemSetting.objects.all()
     serializer_class = SystemSettingModelSerializer
     filterset_class = SystemSettingModelFilter
@@ -33,7 +35,7 @@ class SystemSettingModelViewSet(ModelViewSet):
         return super().list(request, *args, **kwargs)
 
     @HasPermission("global_config-View")
-    @action(methods=['get'], detail=False, url_path='get_setting_key/(?P<setting_key>[^/.]+)')
+    @action(methods=["get"], detail=False, url_path="get_setting_key/(?P<setting_key>[^/.]+)")
     def get_setting_key(self, requests, setting_key):
         """
         获取系统设置的特定键值
@@ -49,7 +51,7 @@ class SystemSettingModelViewSet(ModelViewSet):
                 "value": setting.value,
                 "description": setting.description,
                 "is_activate": setting.is_activate,
-                "is_build": setting.is_build
+                "is_build": setting.is_build,
             }
             return WebUtils.response_success(data)
         except SystemSetting.DoesNotExist:
@@ -67,7 +69,7 @@ class SystemSettingModelViewSet(ModelViewSet):
             "operator": request.user.username,
             "operator_object": "系统配置-创建",
             "target_id": serializer.data["key"],
-            "overview": f"创建系统配置: key:{serializer.data['key']}"
+            "overview": f"创建系统配置: key:{serializer.data['key']}",
         }
         record_operator_log(**log_data)
 
@@ -81,10 +83,7 @@ class SystemSettingModelViewSet(ModelViewSet):
         更新完成系统配置后 若修改了时间频率 即修改celery任务
         """
         instance = self.get_object()
-        old_instance_data = {
-            'is_activate': instance.is_activate,
-            'value': instance.value
-        }
+        old_instance_data = {"is_activate": instance.is_activate, "value": instance.value}
 
         if instance.key == "no_dispatch_alert_notice":
             self.update_no_dispatch_celery_task(request.data, old_instance_data)
@@ -97,7 +96,7 @@ class SystemSettingModelViewSet(ModelViewSet):
             "operator": request.user.username,
             "operator_object": "系统配置-修改",
             "target_id": instance.key,
-            "overview": f"修改系统配置: key:{instance.key}"
+            "overview": f"修改系统配置: key:{instance.key}",
         }
         record_operator_log(**log_data)
 
@@ -111,8 +110,8 @@ class SystemSettingModelViewSet(ModelViewSet):
         task_name = "no_dispatch_alert_notice"
         task = "apps.alerts.tasks.sync_no_dispatch_alert_notice_task"
 
-        old_is_activate = old_data.get('is_activate', False)
-        old_notify_every = old_data.get('value', {}).get('notify_every', 60) if old_data.get('value') else 60
+        old_is_activate = old_data.get("is_activate", False)
+        old_notify_every = old_data.get("value", {}).get("notify_every", 60) if old_data.get("value") else 60
 
         new_is_activate = new_data.get("is_activate")
         new_value = new_data.get("value", {})
@@ -120,7 +119,10 @@ class SystemSettingModelViewSet(ModelViewSet):
 
         logger.info(
             "[AlertView] 更新未分派告警通知配置: old_activate=%s, new_activate=%s, old_notify_every=%s, new_notify_every=%s",
-            old_is_activate, new_is_activate, old_notify_every, new_notify_every,
+            old_is_activate,
+            new_is_activate,
+            old_notify_every,
+            new_notify_every,
         )
 
         # 获取当前任务状态
@@ -133,22 +135,12 @@ class SystemSettingModelViewSet(ModelViewSet):
                 if current_task_enabled is None:
                     # 任务不存在，创建新任务
                     crontab = self._convert_minutes_to_crontab(new_notify_every)
-                    CeleryUtils.create_or_update_periodic_task(
-                        name=task_name,
-                        crontab=crontab,
-                        task=task,
-                        enabled=True
-                    )
+                    CeleryUtils.create_or_update_periodic_task(name=task_name, crontab=crontab, task=task, enabled=True)
                     logger.info("[AlertView] 创建未分派告警通知任务: %s, crontab=%s", task_name, crontab)
                 else:
                     # 任务存在，启用任务并更新配置
                     crontab = self._convert_minutes_to_crontab(new_notify_every)
-                    CeleryUtils.create_or_update_periodic_task(
-                        name=task_name,
-                        crontab=crontab,
-                        task=task,
-                        enabled=True
-                    )
+                    CeleryUtils.create_or_update_periodic_task(name=task_name, crontab=crontab, task=task, enabled=True)
                     logger.info("[AlertView] 启用并更新未分派告警通知任务: %s, crontab=%s", task_name, crontab)
 
             elif not new_is_activate and old_is_activate:
@@ -161,23 +153,13 @@ class SystemSettingModelViewSet(ModelViewSet):
                 # 保持激活状态，检查是否需要更新时间间隔
                 if new_notify_every != old_notify_every:
                     crontab = self._convert_minutes_to_crontab(new_notify_every)
-                    CeleryUtils.create_or_update_periodic_task(
-                        name=task_name,
-                        crontab=crontab,
-                        task=task,
-                        enabled=True
-                    )
+                    CeleryUtils.create_or_update_periodic_task(name=task_name, crontab=crontab, task=task, enabled=True)
                     logger.info("[AlertView] 更新未分派告警通知任务时间间隔: %s, crontab=%s", task_name, crontab)
         else:
             # 如果is_activate没有变化，但仍然是激活状态且notify_every有变化
             if old_is_activate and new_notify_every != old_notify_every:
                 crontab = self._convert_minutes_to_crontab(new_notify_every)
-                CeleryUtils.create_or_update_periodic_task(
-                    name=task_name,
-                    crontab=crontab,
-                    task=task,
-                    enabled=True
-                )
+                CeleryUtils.create_or_update_periodic_task(name=task_name, crontab=crontab, task=task, enabled=True)
                 logger.info("[AlertView] 更新未分派告警通知任务时间间隔: %s, crontab=%s", task_name, crontab)
 
     @staticmethod
@@ -218,8 +200,8 @@ class SystemSettingModelViewSet(ModelViewSet):
             logger.warning("[AlertView] 复杂时间间隔 %s 分钟，简化为每小时执行", minutes)
             return "0 * * * *"
 
-    # @HasPermission("global_config-View")
-    @action(methods=['get'], detail=False, url_path='get_channel_list')
+    @HasPermission("alert_assign-View,global_config-View,notification_templates-View")
+    @action(methods=["get"], detail=False, url_path="get_channel_list")
     def get_channel_list(self, request):
         """
         获取告警通知通道列表: 排除普通 nats（内部直推），但并入 OpsPilot 托管的 NATS 触发通道。
@@ -228,23 +210,26 @@ class SystemSettingModelViewSet(ModelViewSet):
 
         result = []
 
-        channel_list = Channel.objects.exclude(channel_type="nats")
+        team_ids = get_query_group_ids(request)
+        channel_list = apply_team_scope_with_group_ids(Channel.objects.exclude(channel_type__in=["nats", "enterprise_wechat"]), team_ids)
         for channel in channel_list:
             result.append(
                 {
                     "id": channel.id,
                     "name": f"{channel.name}【{channel.get_channel_type_display()}】",
                     "channel_type": channel.channel_type,
+                    "team": channel.team,
                 }
             )
 
         # 并入 OpsPilot 托管的 NATS 触发通道（普通 nats 仍排除）
-        for ch in SystemMgmtUtils.search_opspilot_nats_channels():
+        for ch in SystemMgmtUtils.search_opspilot_nats_channels(teams=team_ids):
             result.append(
                 {
                     "id": ch["id"],
                     "name": ch["name"],
                     "channel_type": "nats",
+                    "team": ch.get("team", []),
                 }
             )
 

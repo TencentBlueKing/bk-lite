@@ -40,6 +40,7 @@ const renderWithIntl = (node: React.ReactNode) => render(
       'alarms.monitorId': '监控实例 ID',
       'alarms.cmdbId': 'CMDB 实例 ID',
       'alarms.enrichment': '丰富信息',
+      'integration.pushSourceId': '推送来源',
     }}
     onError={() => undefined}
   >
@@ -199,12 +200,13 @@ describe('告警关联监控对象快照', () => {
     expect(screen.getAllByText('--').length).toBeGreaterThan(0);
   });
 
-  it('集成详情事件表使用同一身份列并为空 cmdb_id 显示占位符', () => {
+  it('集成详情事件表展示监控身份和推送来源', () => {
     const event = {
       id: 1,
       start_time: '',
       end_time: '',
       source_name: 'NATS',
+      push_source_id: 'cluster-prod-01',
       raw_data: {},
       received_at: '',
       title: 'CPU high',
@@ -234,6 +236,8 @@ describe('告警关联监控对象快照', () => {
 
     expect(screen.getAllByText('监控实例 ID').length).toBeGreaterThan(0);
     expect(screen.getAllByText('CMDB 实例 ID').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('推送来源').length).toBeGreaterThan(0);
+    expect(screen.getByText('cluster-prod-01')).toBeTruthy();
     expect(screen.getByText('0001')).toBeTruthy();
     expect(screen.getAllByText('--').length).toBeGreaterThan(0);
   });

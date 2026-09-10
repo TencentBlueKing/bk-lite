@@ -26,6 +26,7 @@ from apps.alerts.constants.constants import AlarmStrategyType, AlertStatus, Even
 from apps.alerts.models.alert_operator import AlarmStrategy
 from apps.alerts.models.models import Alert, Event
 from apps.alerts.service.monitor_object_snapshot import resolve_monitor_objects
+from apps.alerts.service.monitor_sources import collect_push_source_ids
 from apps.alerts.utils.permission_scope import normalize_team_ids
 from apps.core.logger import alert_logger as logger
 
@@ -155,6 +156,7 @@ def _build_alert_row(strategy: AlarmStrategy, event: Event, fingerprint: str) ->
         resource_type=event.resource_type,
         monitor_objects=(resolve_monitor_objects([event]) if event.action == EventAction.CREATED else []),
         source_name=getattr(getattr(event, "source", None), "name", None),
+        push_source_ids=collect_push_source_ids([event]),
         labels=event.labels or {},
         team=_safe_team(strategy),
     )

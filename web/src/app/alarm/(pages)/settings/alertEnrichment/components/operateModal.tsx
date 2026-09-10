@@ -1,5 +1,7 @@
 'use client';
 
+import { invalidMatchRules } from '@/app/alarm/utils/multivalueRules';
+
 import React, { useEffect, useState } from 'react';
 import { Drawer, Form, Input, Select, Button, Space, message, Radio } from 'antd';
 import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
@@ -19,7 +21,7 @@ interface OperateModalProps {
 // 默认展示一条起始匹配条件行（参考相关性规则，避免空白难理解）；
 // 用户不填条件值则提交时被清理为空 = 对全部事件生效。
 const DEFAULT_MATCH_RULES = [
-  [{ key: 'resource_type', operator: 'eq', value: '' }],
+  [{ key: 'title', operator: 'eq', value: '' }],
 ];
 
 const OperateModal: React.FC<OperateModalProps> = ({
@@ -94,21 +96,8 @@ const OperateModal: React.FC<OperateModalProps> = ({
           r.as ? { source: r.source, as: r.as } : { source: r.source }
         );
 
-      // 「全部」=> 空，对全部事件生效；「筛选」=> 清理未填全的条件行
-      const match_rules =
-        filterType === 'filter'
-          ? (values.match_rules || [])
-            .map((group: any[]) =>
-              (group || []).filter(
-                (it: any) =>
-                  it?.key &&
-                  it?.operator &&
-                  it?.value !== undefined &&
-                  it?.value !== ''
-              )
-            )
-            .filter((group: any[]) => group.length > 0)
-          : [];
+      const match_rules = filterType === 'filter' ? values.match_rules : [];
+
 
       const payload = {
         name: values.name,
@@ -209,8 +198,8 @@ const OperateModal: React.FC<OperateModalProps> = ({
           </Radio.Group>
         </Form.Item>
         {filterType === 'filter' && (
-          <Form.Item name="match_rules" className="mb-4">
-            <MatchRule levelType="event" />
+          <Form.Item name="match_rules" className="mb-4" rules={[{validator: (_, value) => invalidMatchRules(value, false, "enrichment") ? Promise.reject(new Error(t('common.inputTip'))) : Promise.resolve()}]}>
+            <MatchRule scope="enrichment" levelType="event" />
           </Form.Item>
         )}
 

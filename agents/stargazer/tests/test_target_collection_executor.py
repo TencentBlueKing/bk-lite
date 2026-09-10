@@ -9,8 +9,10 @@ from core.collection.contracts import (
     CollectOutcomeStatus,
     PreflightResult,
     PreflightStatus,
+    TargetCollectionContext,
     TargetExecutorSettings,
 )
+from core.collection.credential_operations import CredentialOperationRunner
 from core.collection.credential_policy import CredentialPolicy, InMemoryCredentialStateStore
 from core.collection.enums import FailureStage
 from core.collection.execution_plan import ExecutionPlan
@@ -1780,6 +1782,51 @@ async def test_access_probe_timeout_rotates_to_next_credential():
 
     assert summary.succeeded == 1
     assert publisher.results[0][1].credential_id == "credential-2"
+
+
+@pytest.mark.asyncio
+async def test_snmp_probe_without_outer_timeout_uses_internal_budget():
+    class InternallyBoundedProbe:
+        async def probe(self, target, credential, context, *, timeout_seconds):
+            assert timeout_seconds == 30
+            await asyncio.sleep(0)
+            return AccessProbeResult(
+                status=AccessProbeStatus.NO_RESPONSE,
+                error_code="snmp_no_response",
+            )
+
+    plan = ExecutionPlan(
+        preflight_timeout_seconds=1,
+        probe_timeout_seconds=None,
+        collection_timeout_seconds=30,
+        publish_timeout_seconds=1,
+        execution_mode="async",
+        capacity_group="snmp",
+    )
+    runner = CredentialOperationRunner(
+        access_probe=InternallyBoundedProbe(),
+        plugin=MustNotCollectPlugin(),
+        plan=plan,
+        metrics=CollectionMetrics(),
+    )
+    context = TargetCollectionContext(
+        task_id="snmp-internal-probe-budget",
+        plugin_ref="network.config",
+        fence=1,
+        params={},
+    )
+
+    result = await runner.run_access_probe(
+        "192.0.2.10",
+        {"credential_id": "credential-1"},
+        context,
+        1,
+        enabled=True,
+        target_started_at=0,
+    )
+
+    assert result.status == AccessProbeStatus.NO_RESPONSE
+    assert result.error_code == "snmp_no_response"
 
 
 @pytest.mark.asyncio
