@@ -465,6 +465,7 @@ Agent 日常入口：根 `CLAUDE.md` / `AGENTS.md`「Web UI 硬约束」；**勿
 - 样式 token：登录 `SigninPageFrame` 去掉 `#f5f7fb` / rgba 渐变硬编码，改用 `--color-bg-1` / `--color-fill-4`。
 - 显式不迁：带 CTA Empty（APM 筛选清除、报表添加组件、凭据类型引导）；log `fieldList` CustomPopover；stories `design-compare/*`；entity-list 工具条与 OpsPilot 平行 entity-list 大收敛（下轮）；`viewHive` 图表 `#10e433`（画布/图元色例外，未本轮全改）。
 - 门禁：`pnpm check:component-ownership` 须通过。
+- 续合 `origin/master`：新增 Monitor `alert.pilot` 同样改为 `register-alert-pilot` 运行时注册；`spin` 仅根壳消费，补入 feedback primitive 白名单。
 
 
 - Node 24 全量 `pnpm build-storybook` 在 webpack `WasmHash._updateWithBuffer` 崩溃(#0125)。MoreActionsDropdown 的 Storybook 契约暂时以单文件 + 定向 ESLint 保障。
