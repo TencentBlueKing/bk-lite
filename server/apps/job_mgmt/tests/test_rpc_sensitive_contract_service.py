@@ -63,6 +63,59 @@ def test_ansible_task_callback_masks_sensitive_output_in_logs_and_results():
     assert persisted["error_message"] == "passphrase=***"
 
 
+@pytest.mark.integration
+@pytest.mark.django_db
+def test_ansible_task_callback_masks_json_quoted_keys_in_persisted_results():
+    execution = authorize_execution(JobExecution.objects.create(
+        name="rpc-sensitive-json-test",
+        job_type=JobType.SCRIPT,
+        trigger_source=TriggerSource.MANUAL,
+        target_source=TargetSource.MANUAL,
+        status=ExecutionStatus.RUNNING,
+        target_list=[{"target_id": 1, "name": "host-1", "ip": "10.0.0.1"}],
+        total_count=1,
+        team=[1],
+        started_at=timezone.now(),
+    ))
+    callback_payload = with_callback_identity(execution, {
+        "task_id": execution.id,
+        "task_type": "adhoc",
+        "status": "success",
+        "success": True,
+        "error": '{"ansible_password": "JSON-ERROR-MARKER"}',
+        "result": [
+            {
+                "host": "10.0.0.1",
+                "status": "success",
+                "stdout": '{"password": "JSON-STDOUT-MARKER"}',
+                "stderr": '{"private_key_content": "JSON-STDERR-MARKER"}',
+                "exit_code": 0,
+                "error_message": '{"passphrase": "JSON-ERR-MARKER"}',
+            }
+        ],
+    })
+
+    with patch("apps.job_mgmt.services.ansible_callback_service.logger") as mock_logger, patch(
+        "apps.job_mgmt.services.completion_outbox_service._schedule_deliveries"
+    ):
+        result = ansible_task_callback(callback_payload)
+
+    execution.refresh_from_db()
+    first_log = " ".join(str(arg) for arg in mock_logger.info.call_args_list[0][0])
+    persisted = execution.execution_results[0]
+
+    assert result == {"success": True, "message": "回调处理成功"}
+    assert "JSON-STDOUT-MARKER" not in first_log
+    assert "JSON-ERROR-MARKER" not in first_log
+    assert "***" in first_log
+    assert "JSON-STDOUT-MARKER" not in persisted["stdout"]
+    assert "JSON-STDERR-MARKER" not in persisted["stderr"]
+    assert "JSON-ERR-MARKER" not in persisted["error_message"]
+    assert persisted["stdout"] == '{"password": "***"}'
+    assert persisted["stderr"] == '{"private_key_content": "***"}'
+    assert persisted["error_message"] == '{"passphrase": "***"}'
+
+
 class _DummyResponse:
     def __init__(self, payload):
         self.data = json.dumps(payload).encode()
