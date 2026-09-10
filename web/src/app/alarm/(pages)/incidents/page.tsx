@@ -235,7 +235,7 @@ const IncidentsPage: React.FC = () => {
         </div>
         <CustomTable
           rowKey="id"
-          scroll={{ y: 'calc(100vh - 280px)', x: 'calc(100vw - 320px)' }}
+          scroll={{ y: 'calc(100vh - 280px)', x: 'max-content' }}
           columns={columns}
           dataSource={data}
           pagination={pagination}
