@@ -36,7 +36,10 @@ import type { TableProps, MenuProps } from 'antd';
 import TreeSelector from '@/app/log/components/tree-selector';
 import { useRouter, useSearchParams } from 'next/navigation';
 import LogExtractorDrawer from './logExtractorDrawer';
-import { consumeExtractorCreateSample } from './logExtractorLogic';
+import {
+  consumeExtractorCreateHandoff,
+  consumeExtractorCreateSample
+} from './logExtractorLogic';
 const { confirm } = Modal;
 
 type TableRowSelection<T extends object = object> =
@@ -92,6 +95,8 @@ const Asset = () => {
   const [extractorInitialSample, setExtractorInitialSample] = useState<
     Record<string, unknown> | null
   >(null);
+  const [extractorInitialSourceField, setExtractorInitialSourceField] =
+    useState<string | null>(null);
   const extractorQueryHandled = useRef<string | null>(null);
 
   const handleAssetMenuClick: MenuProps['onClick'] = (e) => {
@@ -288,13 +293,21 @@ const Asset = () => {
           canOperate
         });
         setExtractorAutoCreate(shouldCreate && canOperate);
+        const handoff = shouldCreate
+          ? consumeExtractorCreateHandoff(searchParams.get('handoff'))
+          : null;
         setExtractorInitialSample(
-          shouldCreate
-            ? consumeExtractorCreateSample({
-                kind: 'instance',
-                id: extractorId
-              })
-            : null
+          handoff?.event ||
+            (shouldCreate
+              ? consumeExtractorCreateSample({
+                  kind: 'instance',
+                  id: extractorId
+                })
+              : null)
+        );
+        setExtractorInitialSourceField(
+          handoff?.source_field ||
+            (shouldCreate ? searchParams.get('source_field') : null)
         );
       } catch {
         if (!cancelled) {
@@ -612,10 +625,12 @@ const Asset = () => {
           open={Boolean(extractorInstance)}
           autoCreate={extractorAutoCreate}
           initialSample={extractorInitialSample}
+          initialSourceField={extractorInitialSourceField}
           onClose={() => {
             setExtractorInstance(null);
             setExtractorAutoCreate(false);
             setExtractorInitialSample(null);
+            setExtractorInitialSourceField(null);
             extractorQueryHandled.current = null;
             if (searchParams.get('extractor')) {
               router.replace('/log/integration/receive');
