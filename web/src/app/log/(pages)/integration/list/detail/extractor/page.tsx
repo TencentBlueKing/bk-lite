@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Empty } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import usePermissions from '@/hooks/usePermissions';
@@ -57,7 +57,7 @@ const TypeExtractorPage = () => {
   if (!isTypeScopedCollectType(collectTypeName)) {
     return (
       <div className="p-4 bg-[var(--color-bg-1)]">
-        <Empty description={t('log.extractor.unsupportedCollectType')} />
+        <CompactEmptyState description={t('log.extractor.unsupportedCollectType')} />
       </div>
     );
   }

@@ -964,6 +964,57 @@ def test_get_active_alert_top_limit_normalized(user_info):
     assert result["result"] is True
 
 
+@pytest.mark.django_db
+def test_get_active_alert_top_filters_by_source_id(user_info):
+    from apps.alerts.models.alert_source import AlertSource
+
+    k8s = AlertSource.objects.create(name="K8s", source_id="k8s", source_type="restful", secret="x")
+    nats = AlertSource.objects.create(name="NATS", source_id="nats", source_type="nats", secret="y")
+    k8s_alert = Alert.objects.create(
+        alert_id="A-K8S",
+        level="0",
+        title="Pod CrashLoop",
+        content="c",
+        fingerprint="fp-k8s",
+        team=[1],
+        status=AlertStatus.PENDING,
+        source_name="K8s",
+        resource_name="coredns-1",
+        resource_type="k8s_pod",
+    )
+    nats_alert = Alert.objects.create(
+        alert_id="A-NATS",
+        level="0",
+        title="Host CPU",
+        content="c",
+        fingerprint="fp-nats",
+        team=[1],
+        status=AlertStatus.PENDING,
+        source_name="NATS",
+        resource_name="host-1",
+        resource_type="host",
+    )
+    k8s_event = Event.objects.create(source=k8s, raw_data={}, title="e", level="0", start_time=timezone.now(), event_id="E-K8S")
+    nats_event = Event.objects.create(source=nats, raw_data={}, title="e", level="0", start_time=timezone.now(), event_id="E-NATS")
+    k8s_alert.events.add(k8s_event)
+    nats_alert.events.add(nats_event)
+
+    all_alerts = N.get_active_alert_top(limit=10, user_info=user_info)
+    assert {item["alert_id"] for item in all_alerts["data"]} == {"A-K8S", "A-NATS"}
+
+    k8s_only = N.get_active_alert_top(limit=10, source_id="k8s", user_info=user_info)
+    assert k8s_only["result"] is True
+    assert [item["alert_id"] for item in k8s_only["data"]] == ["A-K8S"]
+    assert k8s_only["data"][0]["source_name"] == "K8s"
+    assert k8s_only["data"][0]["resource_type"] == "k8s_pod"
+
+    by_name = N.get_active_alert_top(limit=10, source_name="K8s", user_info=user_info)
+    assert [item["alert_id"] for item in by_name["data"]] == ["A-K8S"]
+
+    missing = N.get_active_alert_top(limit=10, source_id="missing", user_info=user_info)
+    assert missing["data"] == []
+
+
 # --------------------------------------------------------------------------
 # trend / source / notification / data quality
 # --------------------------------------------------------------------------

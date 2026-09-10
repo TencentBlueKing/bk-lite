@@ -17,9 +17,9 @@ const useCommonColumns = () => {
   return {
     getCommonColumns: (config: {
       nodeList: TableDataItem[];
-      dataSource: TableDataItem[];
+      dataSource: IntegrationLogInstance[];
       initTableItems: IntegrationLogInstance;
-      onTableDataChange: (data: TableDataItem[]) => void;
+      onTableDataChange: (data: IntegrationLogInstance[]) => void;
     }) => {
       const selectedNodeIds = buildSelectedNodeIdSet(config.dataSource);
       const getFilterNodes = (id: string) =>

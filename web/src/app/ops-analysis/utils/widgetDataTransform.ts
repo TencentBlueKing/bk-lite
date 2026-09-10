@@ -47,7 +47,11 @@ export const isOptionInputMode = (inputMode?: string): boolean =>
 export const sanitizeUnifiedFilterDefinition = <T extends UnifiedFilterDefinition>(
   definition: T,
 ): T => {
-  if (definition.type === 'timeRange' || definition.type === 'dateRange') {
+  if (
+    definition.type === 'timeRange'
+    || definition.type === 'dateRange'
+    || definition.type === 'number'
+  ) {
     const next = { ...definition };
     delete next.inputMode;
     delete next.options;

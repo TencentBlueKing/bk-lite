@@ -10,11 +10,11 @@ import {
   KpiSection,
   TrendSection,
   FlexiblePanelSection,
-  DetailPanelCard
-} from '../common/dashboard-components';
+  DetailPanelCard, DashboardSectionLabel } from '../common/dashboard-components';
 import { RingChartPanel, HorizontalBarPanel } from '../../shared/widgets';
 import { buildSearchParams, parseLegacyParamList, normalizeDisplayText } from '../../shared/utils';
 import { buildTopBars, coresDisplay, bytesDisplay } from '../k3s-cluster/parse';
+import { createNodeTopPodLoadCoordinator } from '../common/nodeTopPodLoad';
 import { NODE_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 import { K3S_NODE_TOP_POD_CPU, K3S_NODE_TOP_POD_MEM } from './queries';
@@ -39,24 +39,29 @@ export default function K3sNodeDashboardPage() {
   const [topPodMemRaw, setTopPodMemRaw] = useState<any>(null);
 
   useEffect(() => {
-    if (idValues.length === 0) return;
-    let active = true;
+    if (!dashboard.isDashboardMode || idValues.length === 0) {
+      setTopPodCpuRaw(null);
+      setTopPodMemRaw(null);
+      return;
+    }
+    const coordinator = createNodeTopPodLoadCoordinator();
+    const generation = coordinator.begin();
     const tv: TimeValuesProps = dashboard.timeValues;
     getInstanceQuery(buildSearchParams(K3S_NODE_TOP_POD_CPU, 'none', idValues, instanceIdKeys, tv, undefined, false, dashboard.currentInstanceInterval, {
       monitorObjectId: dashboard.monitorObjectId,
       instanceId: dashboard.instanceId,
     }))
-      .then((r) => { if (active) setTopPodCpuRaw(r); })
-      .catch(() => { if (active) setTopPodCpuRaw(null); });
+      .then((r) => { if (coordinator.shouldApply(generation)) setTopPodCpuRaw(r); })
+      .catch(() => { if (coordinator.shouldApply(generation)) setTopPodCpuRaw(null); });
     // 内存为字节类指标:禁用服务端单位自动换算,否则与前端 bytesDisplay 双重换算(见 k3s-cluster 同因)。
     getInstanceQuery(buildSearchParams(K3S_NODE_TOP_POD_MEM, 'bytes', idValues, instanceIdKeys, tv, undefined, false, dashboard.currentInstanceInterval, {
       monitorObjectId: dashboard.monitorObjectId,
       instanceId: dashboard.instanceId,
     }))
-      .then((r) => { if (active) setTopPodMemRaw(r); })
-      .catch(() => { if (active) setTopPodMemRaw(null); });
-    return () => { active = false; };
-  }, [idValuesKey, dashboard.currentInstanceInterval, dashboard.timeValues]);
+      .then((r) => { if (coordinator.shouldApply(generation)) setTopPodMemRaw(r); })
+      .catch(() => { if (coordinator.shouldApply(generation)) setTopPodMemRaw(null); });
+    return () => { coordinator.begin(); };
+  }, [idValuesKey, dashboard.currentInstanceInterval, dashboard.timeValues, dashboard.loadTick, dashboard.isDashboardMode]);
 
   const nodeTopPodCpuBars = useMemo(() => buildTopBars(topPodCpuRaw, 'pod', '#9254de', coresDisplay), [topPodCpuRaw]);
   const nodeTopPodMemBars = useMemo(() => buildTopBars(topPodMemRaw, 'pod', '#13c2c2', bytesDisplay), [topPodMemRaw]);
@@ -67,9 +72,9 @@ export default function K3sNodeDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection dashboard={dashboard} summaryCards={dashboard.summaryCards} kpiCols={6} styles={styles} />
-          <div className={styles.sectionLabel}>资源趋势</div>
+          <DashboardSectionLabel styles={styles}>资源趋势</DashboardSectionLabel>
           <TrendSection
             charts={dashboard.chartPanels}
             onXRangeChange={dashboard.onXRangeChange}
@@ -77,7 +82,7 @@ export default function K3sNodeDashboardPage() {
             spanClass={() => `${styles.span6} ${styles.compactTrend}`}
             styles={styles}
           />
-          <div className={styles.sectionLabel}>分布与详情</div>
+          <DashboardSectionLabel styles={styles}>分布与详情</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {dashboard.ringPanels.map((ring) => (
               <RingChartPanel
@@ -102,7 +107,7 @@ export default function K3sNodeDashboardPage() {
               />
             ))}
           </FlexiblePanelSection>
-          <div className={styles.sectionLabel}>Pod 资源排行</div>
+          <DashboardSectionLabel styles={styles}>Pod 资源排行</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             <HorizontalBarPanel
               title="Top Pod · CPU"

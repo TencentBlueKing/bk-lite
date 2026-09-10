@@ -1,6 +1,6 @@
 CLASSIFICATION:
   biz_manage: 应用管理
-  host_manage: 主机逻辑主机
+  host_manage: 逻辑主机
   database: 数据库
   middleware: 中间件
   docker: Docker
@@ -25,6 +25,13 @@ CLASSIFICATION:
   fusioninsight: FusionInsight
   ip_manager: IP管理
   h3c_cas: 华三 UIS
+  hardware_components: 硬件组件层
+  fusioncompute: FusionCompute
+  inspurincloudrail: 浪潮超融合
+  sangforscp: 深信服平台
+  nutanixhci: 路坦力超融合
+  zstack: ZStack
+  winsphere: 云宏 WinSphere
 MODEL:
   biz: 应用
   module: 模块
@@ -44,12 +51,12 @@ MODEL:
   iis: IIS
   rabbitmq: RabbitMQ
   weblogic: WebLogic
-  websphere: websphere
+  websphere: WebSphere
   kafka: Kafka
   ibmmq: IBM MQ
   zookeeper: ZooKeeper
   nacos: Nacos
-  minio: Minio
+  minio: MinIO
   docker: Docker
   docker_container: Docker容器
   docker_image: Docker镜像
@@ -60,18 +67,18 @@ MODEL:
   loadbalance: 负载均衡
   firewall: 防火墙
   hard_server: 硬件服务器
-  storage: 存储
+  storage: 存储设备
   security_equipment: 安全设备
   interface: 网络设备接口
-  k8s_cluster: K8S集群
-  k8s_namespace: K8S命名空间
-  k8s_workload: K8S工作负载
-  k8s_node: Node
-  k8s_pod: Pod
+  k8s_cluster: K8S Cluster
+  k8s_namespace: K8S Namespace
+  k8s_workload: K8S Workload
+  k8s_node: K8S Node
+  k8s_pod: K8S Pod
   vmware_vc: vCenter
-  vmware_vm: VMware虚拟机
+  vmware_vm: VMware VM
   vmware_esxi: ESXi
-  vmware_ds: VMware数据存储
+  vmware_ds: Data Storage
   aliyun_account: 阿里云
   aliyun_ecs: 阿里云ECS
   qcloud: 腾讯云
@@ -103,7 +110,7 @@ MODEL:
   aws_s3_bucket: AWS S3 Bucket
   dameng: 达梦
   datacenter: 数据中心
-  es: Elasticsearch
+  es: ElasticSearch
   etcd: ETCD
   fusioninsight: FusionInsight平台
   fusioninsight_cluster: FusionInsight集群
@@ -157,6 +164,123 @@ MODEL:
   h3c_cas_ds_pool: UIS 硬盘池
   h3c_cas_data_pool: UIS 数据池
   h3c_cas_vswitch: UIS 虚拟交换机
+  keepalive: KeepAlive
+  tuxedo: Tuxedo
+  jetty: Jetty
+  memcached: Memcached
+  rocketmq: RocketMQ
+  openresty: OpenResty
+  ceph: Ceph
+  jboss: Jboss
+  squid: Squid
+  haproxy: HAProxy
+  spark: Spark
+  hbase: HBase
+  disk: 服务器磁盘
+  memory: 服务器内存
+  nic: 服务器网卡
+  gpu: GPU
+  influxdb: InfluxDB
+  storage_pool: 存储池
+  storage_disk: 存储磁盘
+  storage_volume: 存储卷
+  storage_eth_port: 存储以太口
+  storage_fc_port: 存储FC口
+  hwcloud_evs: 华为云云硬盘
+  hwcloud_obs: 华为云对象存储桶
+  hwcloud_vpc: 华为云VPC
+  hwcloud_subnet: 华为云子网
+  hwcloud_eip: 华为云弹性公网IP
+  hwcloud_sg: 华为云安全组
+  hwcloud_elb: 华为云负载均衡
+  hwcloud_rds: 华为云数据库RDS
+  hwcloud_dcs: 华为云分布式缓存Redis
+  openstack_vpc: OpenStack网络
+  openstack_subnet: OpenStack子网
+  openstack_eip: OpenStack浮动IP
+  openstack_sg: OpenStack安全组
+  manageone_eip: ManageOne弹性IP
+  fusioncompute: FusionCompute平台
+  fusioncompute_host: FusionCompute主机
+  fusioncompute_datastore: FusionCompute数据存储
+  fusioncompute_vm: FusionCompute虚拟机
+  azure_redis: Azure Redis
+  azure_mysql: Azure MySQL
+  azure_nat_gateway: Azure NAT网关
+  azure_elb: Azure负载均衡
+  azure_dns: Azure DNS
+  inspurincloudrail: 浪潮超融合平台
+  inspurincloudrail_vm: 浪潮超融合虚拟机
+  sangforscp: SCP云平台
+  sangforscp_host: SCP平台主机
+  sangforscp_vm: SCP平台虚拟机
+  nutanixhci: 路坦力超融合平台
+  nutanixhci_host: 路坦力主机
+  nutanixhci_sp: 路坦力存储池
+  nutanixhci_sc: 路坦力存储容器
+  nutanixhci_vm: 路坦力虚拟机
+  nutanixhci_vg: 路坦力卷组
+  nutanixhci_vd: 路坦力虚拟磁盘
+  nutanixhci_disk: 路坦力物理盘
+  opengauss: openGauss
+  kingbase: 人大金仓KingbaseES
+  vastbase: 海量数据库Vastbase
+  greenplum: Greenplum
+  gbase8a: GBase 8a
+  nacos_node: Nacos节点
+  nacos_namespace: Nacos命名空间
+  nacos_service: Nacos服务
+  ibmmq_channel: IBM MQ通道
+  ibmmq_listener: IBM MQ监听器
+  ibmmq_localqueue: IBM MQ本地队列
+  ibmmq_remotequeue: IBM MQ远程队列
+  oceanbase: OceanBase
+  oceanbase_zone: OceanBase Zone
+  oceanbase_server: OceanBase节点
+  oceanbase_tenant: OceanBase租户
+  highgo: 瀚高HighGo
+  server_bmc: 服务器BMC
+  server_bmc_cpu: BMC CPU
+  server_bmc_memory: BMC内存
+  server_bmc_disk: BMC物理磁盘
+  server_bmc_vdisk: BMC虚拟磁盘
+  server_bmc_nic: BMC网卡
+  tonglinkq: TongLINK/Q
+  tonggtp: TongGTP
+  ihs: IBM HTTP Server
+  cics: IBM CICS
+  tape_library: 磁带库
+  informix: Informix
+  sybase: Sybase
+  couchbase: Couchbase
+  mycat: MyCAT
+  sap_hana: SAP HANA
+  iris: InterSystems IRIS
+  hdfs: HDFS
+  yarn: YARN
+  storm: Storm
+  ambari: Ambari
+  redis_sentinel: Redis Sentinel
+  bes: BES
+  apusic: Apusic
+  inforsuite_as: InforSuite AS
+  gbase8s: GBase 8s
+  oscar: 神通 Oscar
+  security_device: 安全设备
+  tongrds: TongRDS
+  tdsql: TDSQL
+  zstack: ZStack
+  pc_software: PC安装软件
+  winsphere: 云宏 WinSphere
+  winsphere_host_pool: WinSphere主机池
+  winsphere_cluster: WinSphere集群
+  winsphere_host: WinSphere主机
+  winsphere_vm: WinSphere虚拟机
+  winsphere_storage_pool: WinSphere存储池
+  winsphere_vswitch: WinSphere虚拟交换机
+  winsphere_port_group: WinSphere端口组
+  sangforhci: HCI平台
+  sangforhci_vm: HCI虚拟机
 ATTR:
   pc:
     inst_name: 实例
@@ -180,6 +304,19 @@ ATTR:
     type: 折旧类型
     asset_value: 资产净值
     comment: 备注
+    asset_status: 资产状态
+    host_name: 主机名
+    ip_addr: IP地址
+    os_type: 操作系统类型
+    os_name: 操作系统名称
+    os_version: 系统版本
+    os_build: 系统构建号
+    architecture: 架构
+    hardware_uuid: 硬件UUID
+    serial_number: 序列号
+    device_model: 设备型号
+    logged_in_user: 当前登录用户
+    last_collect_time: 最近采集时间
   office:
     inst_name: 实例
     organization: 组织
@@ -199,6 +336,7 @@ ATTR:
     purchase_cost: 采购成本
     asset_value: 资产净值
     comment: 备注
+    asset_status: 资产状态
   peripherals:
     inst_name: 实例
     organization: 组织
@@ -218,6 +356,7 @@ ATTR:
     purchase_cost: 采购成本
     asset_value: 资产净值
     comment: 备注
+    asset_status: 资产状态
   subnet:
     inst_name: 实例
     organization: 组织
@@ -228,6 +367,10 @@ ATTR:
     subnet_used_size: IP已用量
     subnet_available_size: IP剩余量
     description: 描述
+    gateway: 网关
+    vlan_id: VLAN
+    usage_type: 用途类型
+    owner: 负责人
   ip:
     inst_name: 实例
     organization: 组织
@@ -237,6 +380,11 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    description: 描述
+    ip_status: IP状态
+    ip_allocated_status: 分配状态
+    ip_type: IP类型
+    ip_user: 使用人
   application:
     inst_name: 应用名称
     organization: 组织
@@ -285,6 +433,9 @@ ATTR:
     cloud: 云区域
     collect_time: 上次更新时间
     cpu_arch: CPU架构
+    tag: 标签
+    proc: 进程
+    operator: 主要维护人
   system:
     inst_name: 系统名称
     organization: 组织
@@ -313,6 +464,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     service_name: 服务名称
+    tag: 标签
   mysql:
     inst_name: 实例名
     organization: 组织
@@ -337,6 +489,7 @@ ATTR:
     datadir: 数据库文件路径
     log_error: 错误日志文件路径
     slow_query_log: 是否启用慢查询日志
+    tag: 标签
   mssql:
     inst_name: 实例名
     organization: 组织
@@ -355,6 +508,7 @@ ATTR:
     auto_collect: 是否自动发现
     max_conn: 最大连接数
     collect_time: 上次更新时间
+    tag: 标签
   redis:
     inst_name: 实例名
     organization: 组织
@@ -372,6 +526,7 @@ ATTR:
     install_path: bin路径
     topo_mode: 拓扑模式
     cluster_uuid: 集群UUID
+    tag: 标签
   mongodb:
     inst_name: 实例名
     organization: 组织
@@ -391,6 +546,7 @@ ATTR:
     max_incoming_conn: 最大并发连接数
     config: 配置文件路径
     system_log: 系统日志路径
+    tag: 标签
   es:
     inst_name: 实例名
     organization: 组织
@@ -411,6 +567,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   elasticsearch:
     inst_name: 数据库名称
     organization: 所属组织
@@ -429,6 +586,12 @@ ATTR:
     auto_collect: 是否自动发现
     operator: 主要维护人
     collect_time: 上次更新时间
+    tag: 标签
+    config: 配置文件路径
+    data_path: data路径
+    max_connect: 最大连接数
+    shared_buffer: 缓存内存（MB）
+    log_directory: 日志路径
   db2:
     inst_name: 实例名
     organization: 组织
@@ -449,6 +612,7 @@ ATTR:
     collect_time: 上次更新时间
     ha_mode: enum数据库高可用方式
     replication_managerole: 数据库管理角色
+    tag: 标签
   tidb:
     inst_name: 实例名
     organization: 组织
@@ -473,6 +637,20 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
+    db_name: 数据库名
+    db_max_sessions: 最大连接数
+    arch_mode: 是否归档
+    global_charset: 字符集
+    arch_dest: 归档目录
+    dba_roles: 数据库角色
+    mode: 是否集群
+    install_path: 安装路径
+    home_bash: 家目录
+    ctl_path: 控制文件
+    redo_log: redo日志
+    datafile: data文件
+    tablespace: 表空间
   dameng:
     inst_name: 实例名
     organization: 组织
@@ -497,6 +675,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   db_cluster:
     inst_name: 集群名称
     organization: 所属组织
@@ -520,6 +699,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     custom_Log: 访问日志路径
+    tag: 标签
   tomcat:
     inst_name: 实例名
     organization: 组织
@@ -539,6 +719,7 @@ ATTR:
     auto_collect: 是否自动发现
     max_perm_size: 最大非堆内存
     collect_time: 上次更新时间
+    tag: 标签
   nginx:
     inst_name: 实例名
     organization: 组织
@@ -556,6 +737,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     conf_path: 配置文件路径
+    tag: 标签
   iis:
     inst_name: 实例名
     organization: 组织
@@ -577,6 +759,7 @@ ATTR:
     bak_operator: 备份维护人
     collect_time: 上次更新时间
     configfile: 配置文件路径
+    tag: 标签
   rabbitmq:
     inst_name: 实例名
     organization: 组织
@@ -584,7 +767,7 @@ ATTR:
     port: 端口
     allport: 所有端口
     node_name: 节点名称
-    version: 版本号
+    version: 版本
     erlang_version: erlang版本
     java_version: java版本
     log_path: 日志路径
@@ -595,6 +778,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     conf_path: 配置文件路径
+    tag: 标签
   weblogic:
     inst_name: 实例名
     organization: 组织
@@ -617,6 +801,7 @@ ATTR:
     console_context_path: 控制台上下文路径
     application_name: 应用列表
     console_enabled: 控制台是否启用
+    tag: 标签
   websphere:
     inst_name: 实例名
     organization: 组织
@@ -639,6 +824,7 @@ ATTR:
     collect_time: 上次更新时间
     version: 版本
     maximum_heap_size: 最大堆大小
+    tag: 标签
   kafka:
     inst_name: 实例名
     organization: 组织
@@ -663,10 +849,19 @@ ATTR:
     socket_request_max_bytes: 请求套接字的缓冲区大小
     version: 版本
     network_threads: 处理网络请求的线程数量
+    tag: 标签
   ibmmq:
     inst_name: 实例名
     organization: 所属组织
     ip_addr: IP地址
+    tag: 标签
+    qmgr_name: 队列管理器名称
+    version: 版本
+    port: 端口
+    deadq: 死信队列
+    install_path: 安装路径
+    hostname: 主机名
+    status: 状态
   activemq:
     inst_name: 实例名
     organization: 组织
@@ -684,6 +879,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   tongweb:
     inst_name: 实例名
     organization: 组织
@@ -703,6 +899,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   etcd:
     inst_name: 实例名
     organization: 组织
@@ -718,21 +915,25 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   datacenter:
     inst_name: 实例名
     addr: 地址
+    organization: 组织
   server_room:
     inst_name: 实例名
     location: 位置
     duty_phone: 值班电话
     operator: 主要维护人
     bak_operator: 备份维护人
+    organization: 组织
   rack:
     inst_name: 实例名
     location: 位置
     u_count: U数
     datacenter_type: 机柜类型
     datacenter_state: 机柜状态
+    organization: 组织
   zookeeper:
     inst_name: 实例名
     organization: 组织
@@ -754,14 +955,40 @@ ATTR:
     sync_limit: 请求和答应最大心跳数
     collect_time: 上次更新时间
     version: 版本
+    tag: 标签
   nacos:
     inst_name: 实例名
     organization: 所属组织
     ip_addr: IP地址
+    port: 端口
+    name: 名称
+    tag: 标签
+    version: 版本
+    mode: 模式
+    node_count: 节点数量
+    service_count: 服务数量
+    instance_count: 实例数量
+    config_count: 配置数量
+    namespace_count: 命名空间数量
   minio:
     inst_name: 实例名
-    organization: 所属组织
-    ip_addr: IP地址
+    organization: 组织
+    ip_addr: IP
+    port: 端口
+    tag: 标签
+    version: 版本
+    bin_path: bin路径
+    data_path: 数据目录
+    conf_path: 配置文件路径
+    console_port: 控制台端口
+    deploy_mode: 部署模式
+    region: 区域
+    start_args: 启动参数
+    operator: 主要维护人
+    bak_operator: 备份维护人
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
   docker:
     inst_name: 实例名
     organization: 所属组织
@@ -778,6 +1005,10 @@ ATTR:
     container_id: 容器ID
     ip_addr: IP
     created: 容器创建时间
+    ports: 端口映射
+    mounts: 存储卷
+    networks: 所属网络
+    command: 启动命令
   docker_container:
     inst_name: 容器名称
     organization: 所属组织
@@ -830,6 +1061,10 @@ ATTR:
     collect_time: 上次更新时间
     soid: sysObjectID
     comment: 备注
+    sys_desc: 系统描述
+    asset_status: 资产状态
+    rack_u_start: 起始U位
+    u_size: 占用U数
   router:
     inst_name: 实例名
     organization: 组织
@@ -848,6 +1083,10 @@ ATTR:
     collect_time: 上次更新时间
     soid: sysObjectID
     comment: 备注
+    sys_desc: 系统描述
+    asset_status: 资产状态
+    rack_u_start: 起始U位
+    u_size: 占用U数
   loadbalance:
     inst_name: 实例名
     organization: 组织
@@ -866,6 +1105,9 @@ ATTR:
     collect_time: 上次更新时间
     soid: sysObjectID
     comment: 备注
+    asset_status: 资产状态
+    rack_u_start: 起始U位
+    u_size: 占用U数
   firewall:
     inst_name: 实例名
     organization: 组织
@@ -884,6 +1126,10 @@ ATTR:
     collect_time: 上次更新时间
     soid: sysObjectID
     comment: 备注
+    sys_desc: 系统描述
+    asset_status: 资产状态
+    rack_u_start: 起始U位
+    u_size: 占用U数
   physcial_server:
     inst_name: 实例名
     organization: 组织
@@ -906,6 +1152,15 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
+    cpu_vendor: CPU厂商
+    cpu_threads: CPU线程数
+    board_vendor: 主板厂商
+    board_model: 主板型号
+    board_serial: 主板序列号
+    asset_status: 资产状态
+    rack_u_start: 起始U位
+    u_size: 占用U数
   hard_server:
     inst_name: 实例名
     organization: 所属组织
@@ -916,12 +1171,34 @@ ATTR:
     brand: 品牌
   storage:
     inst_name: 实例名
-    organization: 所属组织
+    organization: 组织
     ip_addr: 管理IP
     port: 管理端口
     model: 型号
     snmp_version: SNMP版本
-    brand: 品牌
+    brand: 厂商
+    device_sn: 设备序列号
+    asset_code: 资产编号
+    storage_type: 存储类型
+    firmware_version: 微码版本
+    sys_desc: 系统描述
+    comment: 备注
+    tag: 标签
+    total_capacity: 总容量（GB）
+    used_capacity: 已用容量（GB）
+    available_capacity: 可用容量（GB）
+    pool_count: 存储池数量
+    disk_count: 磁盘数量
+    volume_count: 卷数量
+    running_status: 运行状态
+    operator: 主要维护人
+    bak_operator: 备份维护人
+    cabinet: 所属机柜
+    room: 所属机房
+    asset_status: 资产状态
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
   security_equipment:
     inst_name: 实例名
     organization: 所属组织
@@ -950,6 +1227,9 @@ ATTR:
     comment: 备注
     modify_time: 修改时间
     apiserver: ApiServer
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
   k8s_namespace:
     inst_name: 实例名
     name: 命名空间名
@@ -1007,6 +1287,10 @@ ATTR:
     organization: 组织
     ip_addr: IP地址
     vc_version: 版本
+    tag: 标签
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
   vmware_vm:
     inst_name: 实例名
     organization: 组织
@@ -1030,6 +1314,7 @@ ATTR:
     self_esxi: 所属宿主机
     collect_task: 采集任务
     self_vc: 所属vCenter
+    tag: 标签
   vmware_esxi:
     inst_name: 实例名
     organization: 组织
@@ -1044,6 +1329,7 @@ ATTR:
     collect_time: 上次更新时间
     collect_task: 采集任务
     self_vc: 所属vCenter
+    tag: 标签
   vmware_ds:
     inst_name: 实例名
     organization: 组织
@@ -1055,10 +1341,12 @@ ATTR:
     collect_time: 上次更新时间
     auto_collect: 是否自动发现
     self_vc: 所属vCenter
+    tag: 标签
   aliyun_account:
     inst_name: 实例名
     organization: 组织
     endpoint: Endpoint
+    tag: 标签
   aliyun_ecs:
     inst_name: 实例名
     organization: 组织
@@ -1081,6 +1369,7 @@ ATTR:
     collect_time: 上次更新时间
     resource_name: 资源名
     collect_task: 采集任务
+    tag: 标签
   aliyun_bucket:
     inst_name: 实例名
     organization: 组织
@@ -1096,6 +1385,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   aliyun_mysql:
     inst_name: 实例名
     organization: 组织
@@ -1122,6 +1412,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   aliyun_pgsql:
     inst_name: 实例名
     organization: 组织
@@ -1148,6 +1439,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   aliyun_mongodb:
     inst_name: 实例名
     organization: 组织
@@ -1170,6 +1462,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   aliyun_redis:
     inst_name: 实例名
     organization: 组织
@@ -1194,6 +1487,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   aliyun_clb:
     inst_name: 实例名
     organization: 组织
@@ -1211,6 +1505,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   aliyun_kafka_inst:
     inst_name: 实例名
     organization: 组织
@@ -1232,10 +1527,12 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   qcloud:
     inst_name: 实例名
     organization: 组织
     endpoint: Endpoint
+    tag: 标签
   qcloud_cvm:
     inst_name: 实例名
     organization: 组织
@@ -1258,6 +1555,7 @@ ATTR:
     resource_name: 资源名
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
+    tag: 标签
   qcloud_rocketmq:
     inst_name: 实例名
     organization: 组织
@@ -1274,6 +1572,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   qcloud_mysql:
     inst_name: 实例名
     organization: 组织
@@ -1291,6 +1590,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   qcloud_redis:
     inst_name: 实例名
     organization: 组织
@@ -1319,6 +1619,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   qcloud_mongodb:
     inst_name: 实例名
     organization: 组织
@@ -1482,6 +1783,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   qcloud_filesystem:
     inst_name: 实例名
     organization: 组织
@@ -1511,9 +1813,12 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   sangforhci:
     inst_name: 实例名
     organization: 组织
+    endpoint: 平台地址
+    tag: 标签
   sangforhci_vm:
     inst_name: 实例名
     organization: 组织
@@ -1549,6 +1854,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   aws_rds:
     inst_name: 实例名
     organization: 组织
@@ -1570,6 +1876,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   aws_msk:
     inst_name: 实例名
     organization: 组织
@@ -1585,6 +1892,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   aws_elasticache:
     inst_name: 实例名
     organization: 组织
@@ -1599,6 +1907,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   aws_eks:
     inst_name: 实例名
     organization: 组织
@@ -1611,6 +1920,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   aws_cf:
     inst_name: 实例名
     organization: 组织
@@ -1626,6 +1936,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   aws_elb:
     inst_name: 实例名
     organization: 组织
@@ -1641,6 +1952,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   aws_s3_bucket:
     inst_name: 实例名
     organization: 组织
@@ -1651,6 +1963,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   aws_docdb:
     inst_name: 实例名
     organization: 组织
@@ -1667,6 +1980,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   aws_memdb:
     inst_name: 实例名
     organization: 组织
@@ -1684,10 +1998,12 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   openstack:
     inst_name: 实例名
     organization: 组织
     global_domain_name: 域名
+    tag: 标签
   openstack_node:
     inst_name: 实例名
     organization: 组织
@@ -1700,6 +2016,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   openstack_vm:
     inst_name: 实例名
     organization: 组织
@@ -1717,6 +2034,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   openstack_vg:
     inst_name: 实例名
     organization: 组织
@@ -1730,6 +2048,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   openstack_sp:
     inst_name: 实例名
     organization: 组织
@@ -1743,10 +2062,12 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   smartx:
     inst_name: 实例名
     organization: 组织
     global_domain_name: 域名
+    tag: 标签
   smartx_cluster:
     inst_name: 实例名
     organization: 组织
@@ -1764,6 +2085,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   smartx_host:
     inst_name: 实例名
     organization: 组织
@@ -1781,6 +2103,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   smartx_vm:
     inst_name: 实例名
     organization: 组织
@@ -1794,6 +2117,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   smartx_vmvolume:
     inst_name: 实例名
     organization: 组织
@@ -1803,9 +2127,11 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   fusioninsight:
     inst_name: 实例名
     organization: 组织
+    tag: 标签
   fusioninsight_cluster:
     inst_name: 实例名
     organization: 组织
@@ -1814,6 +2140,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   fusioninsight_host:
     inst_name: 实例名
     organization: 组织
@@ -1828,10 +2155,12 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   hwcloud:
     inst_name: 实例名
     organization: 组织
     endpoint: Endpoint
+    tag: 标签
   hwcloud_ecs:
     inst_name: 实例名
     organization: 组织
@@ -1854,11 +2183,13 @@ ATTR:
     resource_name: 资源名
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
+    tag: 标签
   manageone:
     inst_name: 实例名
     organization: 组织
     global_domain_name: 全局域名
     region: 运维域名
+    tag: 标签
   manageone_cloud:
     inst_name: 实例名
     organization: 组织
@@ -1872,6 +2203,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   manageone_server:
     inst_name: 实例名
     organization: 组织
@@ -1888,6 +2220,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   manageone_host:
     inst_name: 实例名
     organization: 组织
@@ -1900,6 +2233,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   manageone_ds:
     inst_name: 实例名
     organization: 组织
@@ -1910,6 +2244,7 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+    tag: 标签
   manageone_elb:
     inst_name: 实例名
     organization: 组织
@@ -1924,13 +2259,28 @@ ATTR:
     inst_name: 实例名
     organization: 所属组织
   azure_vm:
-    inst_name: 资源名称
-    organization: 所属组织
-    ip_addr: IP地址
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: 内网IP
     region: 地区
     architecture: 架构
     size: 规格
     image: 镜像
+    resource_name: 资源名
+    resource_id: 资源ID
+    tag: 标签
+    subscription_id: 订阅ID
+    resource_group: 资源组
+    location: 位置
+    instance_type: 规格型号
+    os_type: 操作系统类型
+    os_name: 操作系统名称
+    status: 状态
+    public_ip: 公网IP
+    disk_count: 磁盘数量
+    os_disk_size_gb: 系统盘容量(GB)
+    data_disk_total_size_gb: 数据盘总容量(GB)
+    create_time: 创建时间
   ssl_cer:
     inst_name: 实例名
     organization: 组织
@@ -1947,6 +2297,1795 @@ ATTR:
     registration_date: 注册时间
     expiration_time: 到期时间
     owner: 负责人
+  keepalive:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP
+    port: 端口
+    tag: 标签
+    version: 版本
+    priority: 优先级
+    state: 状态
+    virtual_router_id: 虚拟路由ID
+    install_path: 安装路径
+    config_file: 配置文件路径
+    user_name: 启用账户
+    operator: 主要维护人
+    bak_operator: 备份维护人
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  tuxedo:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP
+    port: 端口
+    tag: 标签
+    version: 版本
+    install_path: 安装路径
+    bin_path: bin路径
+    conf_file: 配置文件
+    domainid: Domain ID
+    ipckey: IPC Key
+    lmid: LMID
+    patch_level: 补丁级别
+    maxdispatchthreads: 最大调度线程数
+    mindispatchthreads: 最小调度线程数
+    operator: 主要维护人
+    bak_operator: 备份维护人
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  jetty:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP
+    port: 端口
+    tag: 标签
+    version: 版本
+    jetty_home: Jetty主目录
+    bin_path: bin目录
+    monitored_dir: 监控目录
+    java_path: java路径
+    java_version: java版本
+    conf_path: 配置路径
+    java_vendor: Java厂商
+    operator: 主要维护人
+    bak_operator: 备份维护人
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  memcached:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP
+    port: 端口
+    tag: 标签
+    version: 版本
+    install_path: 安装路径
+    maxconn: 最大连接数
+    cachesize: 缓存大小
+    user_name: 运行用户
+    operator: 主要维护人
+    bak_operator: 备份维护人
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  rocketmq:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP
+    port: 端口
+    tag: 标签
+    version: 版本
+    install_path: 安装路径
+    configfile: 配置文件路径
+    broker_id: Broker ID
+    broker_name: Broker名称
+    cluster_name: 集群名称
+    namesrv_addr: NameSrv地址
+    java_path: Java路径
+    operator: 主要维护人
+    bak_operator: 备份维护人
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  openresty:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP
+    port: 端口
+    tag: 标签
+    version: 版本
+    openresty_path: OpenResty路径
+    log_path: 日志路径
+    config_path: 配置文件路径
+    doc_root: 文档根路径
+    operator: 主要维护人
+    bak_operator: 备份维护人
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  ceph:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP
+    port: 端口
+    tag: 标签
+    version: 版本
+    role: Ceph角色
+    install_path: 安装路径
+    config_file: 配置文件路径
+    cmdline: 启动命令
+    ceph_exe: Ceph可执行文件
+    operator: 主要维护人
+    bak_operator: 备份维护人
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  jboss:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP
+    port: 端口
+    tag: 标签
+    version: 版本
+    install_path: 安装路径
+    jvm_xms: 初始堆大小
+    jvm_xmx: 最大堆大小
+    role: 角色
+    config_file: 配置文件路径
+    operator: 主要维护人
+    bak_operator: 备份维护人
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  squid:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP
+    port: 端口
+    tag: 标签
+    version: 版本
+    install_path: 安装路径
+    config_file_path: 配置文件路径
+    cache_dir: 缓存目录
+    access_log: 访问日志
+    error_log: 错误日志
+    visible_hostname: 可见主机名
+    operator: 主要维护人
+    bak_operator: 备份维护人
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  haproxy:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP
+    port: 端口
+    tag: 标签
+    version: 版本
+    install_path: 安装路径
+    conf_file: 配置文件路径
+    defaults_maxconn: 默认最大连接数
+    defaults_mode: 默认模式
+    defaults_retries: 默认重试次数
+    global_group_name: 全局组名
+    global_maxconn: 全局最大连接数
+    global_pidfile: PID文件
+    global_user_name: 全局用户名
+    operator: 主要维护人
+    bak_operator: 备份维护人
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  spark:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP
+    port: 端口
+    tag: 标签
+    version: 版本
+    install_path: 安装路径
+    webui_port: WebUI端口
+    java_path: Java路径
+    java_version: Java版本
+    log_path: 日志路径
+    operator: 主要维护人
+    bak_operator: 备份维护人
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  hbase:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP
+    port: 端口
+    tag: 标签
+    version: 版本
+    install_path: 安装路径
+    log_path: 日志路径
+    config_file: 配置文件
+    tmp_dir: 临时目录
+    cluster_distributed: 是否分布式
+    java_path: Java路径
+    java_version: Java版本
+    operator: 主要维护人
+    bak_operator: 备份维护人
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  disk:
+    inst_name: 实例名
+    organization: 组织
+    self_device: 所属设备
+    tag: 标签
+    disk_vendor: 磁盘厂商
+    disk: 磁盘（GB）
+    disk_type: 磁盘类型
+    disk_sn: 磁盘序列号
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  memory:
+    inst_name: 实例名
+    organization: 组织
+    self_device: 所属设备
+    tag: 标签
+    mem_locator: 内存插槽位置
+    mem_part_number: 部件号
+    mem_type: 内存类型
+    mem_size: 内存大小(GB)
+    mem_sn: 序列号
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  nic:
+    inst_name: 实例名
+    organization: 组织
+    self_device: 所属设备
+    tag: 标签
+    nic_pci_addr: PCI 地址
+    nic_type: 类型
+    nic_vendor: 厂商
+    nic_model: 型号
+    nic_iface: 接口名
+    nic_mac: MAC 地址
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  gpu:
+    inst_name: 实例名
+    organization: 组织
+    self_device: 所属设备
+    tag: 标签
+    gpu_name: GPU
+    gpu_type: GPU类型
+    gpu_desc: GPU描述
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  influxdb:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP
+    port: 端口
+    tag: 标签
+    version: 版本
+    data_dir: 数据目录
+    wal_dir: WAL目录
+    meta_dir: 元数据目录
+    engine: 存储引擎
+    http_bind_address: HTTP绑定地址
+    auth_enabled: 是否开启认证
+    https_enabled: 是否启用HTTPS
+    max_concurrent_queries: 最大并发查询数
+    operator: 主要维护人
+    bak_operator: 备份维护人
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  storage_pool:
+    inst_name: 实例名
+    organization: 组织
+    self_device: 所属设备
+    tag: 标签
+    pool_type: 池类型
+    total_capacity: 总容量（GB）
+    used_capacity: 已用容量（GB）
+    available_capacity: 可用容量（GB）
+    running_status: 运行状态
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  storage_disk:
+    inst_name: 实例名
+    organization: 组织
+    self_device: 所属设备
+    tag: 标签
+    slot: 槽位
+    disk_vendor: 磁盘厂商
+    disk_model: 磁盘型号
+    disk_type: 磁盘类型
+    disk_capacity: 容量（GB）
+    disk_sn: 磁盘序列号
+    rotate_speed: 转速（RPM）
+    firmware_version: 固件版本
+    running_status: 运行状态
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  storage_volume:
+    inst_name: 实例名
+    organization: 组织
+    self_device: 所属设备
+    parent_pool: 所属存储池
+    tag: 标签
+    wwn: WWN
+    volume_capacity: 容量（GB）
+    alloc_capacity: 已分配容量（GB）
+    alloc_type: 空间分配方式
+    running_status: 运行状态
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  storage_eth_port:
+    inst_name: 实例名
+    organization: 组织
+    self_device: 所属设备
+    tag: 标签
+    name: 接口名称
+    location: 位置
+    mac: MAC 地址
+    ip_addr: IP地址
+    running_status: 运行状态
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  storage_fc_port:
+    inst_name: 实例名
+    organization: 组织
+    self_device: 所属设备
+    tag: 标签
+    name: 接口名称
+    location: 位置
+    wwpn: WWPN
+    speed: 速率
+    running_status: 运行状态
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  hwcloud_evs:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    tag: 标签
+    disk_size: 硬盘大小(GB)
+    disk_type: 磁盘类型
+    category: 磁盘规格
+    status: 状态
+    charge_type: 付费类型
+    zone: 可用区
+    region: 地域
+    create_time: 创建时间
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  hwcloud_obs:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    tag: 标签
+    bucket_type: 存储类别
+    region: 地域
+    create_time: 创建时间
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  hwcloud_vpc:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    tag: 标签
+    status: 状态
+    cidr: 网段
+    is_default: 是否默认
+    region: 地域
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  hwcloud_subnet:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    tag: 标签
+    status: 状态
+    cidr: 网段
+    gateway: 网关
+    zone: 可用区
+    region: 地域
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  hwcloud_eip:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    ip_addr: 公网IP地址
+    tag: 标签
+    status: 状态
+    bandwidth: 带宽(Mbit/s)
+    charge_type: 付费类型
+    region: 地域
+    create_time: 创建时间
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  hwcloud_sg:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    tag: 标签
+    is_default: 是否默认
+    region: 地域
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  hwcloud_elb:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    tag: 标签
+    status: 状态
+    ip_version: IP版本
+    ipv6_addr: IPv6地址
+    charge_type: 付费类型
+    region: 地域
+    create_time: 创建时间
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  hwcloud_rds:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    ip_addr: 内网IP
+    public_ip: 公网IP
+    tag: 标签
+    status: 状态
+    db_type: 实例类型
+    engine: 数据库引擎
+    engine_version: 引擎版本
+    volume_type: 磁盘类型
+    volume_size: 磁盘大小(GB)
+    vcpus: vCPU数
+    memory_gb: 内存(GB)
+    port: 端口
+    region: 地域
+    charge_type: 付费类型
+    create_time: 创建时间
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  hwcloud_dcs:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    ip_addr: 连接IP
+    tag: 标签
+    port: 端口
+    status: 状态
+    engine: 引擎
+    engine_version: 引擎版本
+    capacity_gb: 容量(GB)
+    cache_mode: 实例类型
+    charge_type: 计费模式
+    region: 地域
+    create_time: 创建时间
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  openstack_vpc:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    tag: 标签
+    status: 状态
+    project_name: 项目
+    region: 地域
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  openstack_subnet:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    cidr: 网段
+    gateway: 网关
+    tag: 标签
+    status: 状态
+    project_name: 项目
+    region: 地域
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  openstack_eip:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    ip_addr: 浮动IP
+    private_ip_addr: 绑定固定IP
+    tag: 标签
+    status: 状态
+    project_name: 项目
+    region: 地域
+    create_time: 创建时间
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  openstack_sg:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    project_name: 项目
+    region: 地域
+    tag: 标签
+    create_time: 创建时间
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  manageone_eip:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    ip_addr: 浮动IP
+    tag: 标签
+    status: 状态
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  fusioncompute:
+    inst_name: 实例名
+    organization: 组织
+    tag: 标签
+  fusioncompute_host:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    ip_addr: 内网IP
+    tag: 标签
+    cpu_arch: CPU架构
+    cpu_vendor: CPU厂商
+    os_vendor: OS厂商
+    version: 版本
+    cpu_cores: 物理CPU数
+    vcpus: 逻辑CPU数
+    memory_mb: 内存容量(MB)
+    status: 状态
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  fusioncompute_datastore:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    tag: 标签
+    status: 状态
+    storage_type: 存储类型
+    storage_gb: 容量(GB)
+    is_thin: 精简置备
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  fusioncompute_vm:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    ip_addr: 内网IP
+    tag: 标签
+    cpu_arch: CPU架构
+    status: 状态
+    vm_type: 虚拟机类型
+    os_type: 操作系统类型
+    os_name: 操作系统名称
+    vcpus: vCPU数
+    memory_mb: 内存容量(MB)
+    disk_gb: 磁盘容量(GB)
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  azure_redis:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    tag: 标签
+    subscription_id: 订阅ID
+    resource_group: 资源组
+    location: 位置
+    instance_type: 规格型号
+    shard_num: 分片数量
+    version: 版本
+    port: 端口
+    ssl_port: SSL端口
+  azure_mysql:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    tag: 标签
+    subscription_id: 订阅ID
+    resource_group: 资源组
+    location: 位置
+    instance_type: 规格型号
+    version: 版本
+    storage_gb: 存储容量(GB)
+    status: 状态
+    availability_zone: 可用性区域
+    backup_retention_days: 备份保持天数
+    earliest_restore_point: 最早还原点
+    create_time: 创建时间
+  azure_nat_gateway:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    tag: 标签
+    subscription_id: 订阅ID
+    resource_group: 资源组
+    location: 位置
+    instance_type: 规格型号
+    public_ip_count: 公网IP数
+    subnet_count: 子网数
+  azure_elb:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    tag: 标签
+    subscription_id: 订阅ID
+    resource_group: 资源组
+    location: 位置
+    instance_type: 规格型号
+    backend_pool_count: 后端池数
+    load_balancing_rule_count: 负载均衡规则数
+    health_probe_count: 健康探测数
+    inbound_nat_rule_count: 入站NAT规则数
+    outbound_rule_count: 出站规则数
+    frontend_ip_configuration_count: 前端IP数
+  azure_dns:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    tag: 标签
+    subscription_id: 订阅ID
+    resource_group: 资源组
+    location: 位置
+    record_set_count: 记录集数
+    virtual_network_link_count: 虚拟网络连接数
+    registration_virtual_network_link_count: 注册虚拟网络连接数
+  inspurincloudrail:
+    inst_name: 实例名
+    organization: 组织
+    tag: 标签
+  inspurincloudrail_vm:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    tag: 标签
+    status: 状态
+    ip_addr: IP地址
+    vcpus: vCPU数
+    memory: 内存(MB)
+    disk: 磁盘容量(GB)
+    os_type: 操作系统类型
+    os_label: 操作系统标签
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  sangforscp:
+    inst_name: 实例名
+    organization: 组织
+    endpoint: 平台地址
+    tag: 标签
+  sangforscp_host:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    ip_addr: IP地址
+    tag: 标签
+    serial_number: 序列号
+    az: 可用区
+    vcpus: vCPU数
+    memory_gb: 内存(GB)
+    disk_gb: 存储(GB)
+    description: 描述
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  sangforscp_vm:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    ip_addr: IP地址
+    tag: 标签
+    az: 可用区
+    set_type: 类型
+    group: 分组
+    os_type: 操作系统
+    running_site: 运行位置
+    storage_site: 存储位置
+    net_type: 网络类型
+    vcpus: vCPU数
+    memory_gb: 内存(GB)
+    disk_gb: 存储(GB)
+    description: 描述
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  nutanixhci:
+    inst_name: 实例名
+    organization: 组织
+    tag: 标签
+  nutanixhci_host:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    ip_addr: 内网IP
+    tag: 标签
+    ip_ipmi: IPMI地址
+    ip_cvm: CVM地址
+    storage_gb: 存储容量(GB)
+    free_storage: 可用存储(GB)
+    hdd_num: 机械盘数
+    ssd_num: 固态盘数
+    memory_mb: 内存(MB)
+    cpu_ghz: CPU容量(GHz)
+    cpu_model: CPU型号
+    vcpus: vCPU数
+    hypervisor_type: 虚拟化类型
+  nutanixhci_sp:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    tag: 标签
+    storage_gb: 存储容量(GB)
+    disks: 磁盘数
+  nutanixhci_sc:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    tag: 标签
+    storage_gb: 存储容量(GB)
+    replication_factor: 副本因子
+    vms: 虚拟机数
+  nutanixhci_vm:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    ip_addr: 内网IP
+    tag: 标签
+    network_adapters: 网卡数
+    memory_mb: 内存(MB)
+    vcpus: vCPU数
+    storage_gb: 存储容量(GB)
+    status: 状态
+    os_name: 操作系统
+  nutanixhci_vg:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    tag: 标签
+    storage_gb: 存储容量(GB)
+    disks: 磁盘数
+  nutanixhci_vd:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    tag: 标签
+    storage_gb: 存储容量(GB)
+  nutanixhci_disk:
+    inst_name: 实例名
+    organization: 组织
+    resource_name: 资源名
+    resource_id: 资源ID
+    tag: 标签
+    storage_gb: 存储容量(GB)
+    status: 状态
+    serial_number: 序列号
+    disk_type: 磁盘类型
+  opengauss:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP地址
+    port: 端口
+    tag: 标签
+    version: 版本
+    config: 配置文件
+    data_path: 数据目录
+    max_connect: 最大连接数
+    shared_buffer: 共享缓冲(MB)
+    log_directory: 日志目录
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  kingbase:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP地址
+    port: 端口
+    tag: 标签
+    version: 版本
+    config: 配置文件
+    data_path: 数据目录
+    max_connect: 最大连接数
+    shared_buffer: 共享缓冲(MB)
+    log_directory: 日志目录
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  vastbase:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP地址
+    port: 端口
+    tag: 标签
+    version: 版本
+    config: 配置文件
+    data_path: 数据目录
+    max_connect: 最大连接数
+    shared_buffer: 共享缓冲(MB)
+    log_directory: 日志目录
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  greenplum:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP地址
+    port: 端口
+    tag: 标签
+    version: 版本
+    config: 配置文件
+    data_path: 数据目录
+    max_connect: 最大连接数
+    shared_buffer: 共享缓冲(MB)
+    log_directory: 日志目录
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  gbase8a:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP地址
+    port: 端口
+    tag: 标签
+    version: 版本
+    enable_binlog: 启用binlog
+    sync_binlog: sync_binlog
+    max_conn: 最大连接数
+    max_mem: 最大内存
+    basedir: 安装目录
+    datadir: 数据目录
+    socket: socket
+    bind_address: 绑定地址
+    slow_query_log: 慢查询日志
+    slow_query_log_file: 慢查询日志文件
+    log_error: 错误日志
+    wait_timeout: 等待超时
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  nacos_node:
+    inst_name: 实例名
+    ip: IP地址
+    port: 端口
+    tag: 标签
+    state: 状态
+    version: 版本
+    raft_role: Raft角色
+    last_refresh: 最后刷新时间
+    organization: 所属组织
+  nacos_namespace:
+    inst_name: 实例名
+    tag: 标签
+    namespace_id: 命名空间ID
+    name: 名称
+    config_count: 配置数量
+    quota: 配额
+    type: 类型
+    organization: 所属组织
+  nacos_service:
+    inst_name: 实例名
+    tag: 标签
+    service_name: 服务名称
+    group_name: 分组名称
+    namespace: 命名空间
+    instance_count: 实例数量
+    healthy_count: 健康实例数
+    protect_threshold: 保护阈值
+    organization: 所属组织
+  ibmmq_channel:
+    inst_name: 实例名
+    name: 名称
+    tag: 标签
+    channel_type: 通道类型
+    xmitq: 传输队列
+    remote_ip: 远端IP
+    remote_port: 远端端口
+    organization: 所属组织
+  ibmmq_listener:
+    inst_name: 实例名
+    name: 名称
+    port: 端口
+    tag: 标签
+    status: 状态
+    organization: 所属组织
+  ibmmq_localqueue:
+    inst_name: 实例名
+    name: 名称
+    tag: 标签
+    q_type: 队列类型
+    maxmsgl: 最大消息长度
+    q_max_depth: 最大队列深度
+    q_trigdata: 触发数据
+    curdepth: 当前深度
+    organization: 所属组织
+  ibmmq_remotequeue:
+    inst_name: 实例名
+    name: 名称
+    tag: 标签
+    q_type: 队列类型
+    destq: 目标队列
+    remote_qmgr_name: 远端队列管理器名称
+    organization: 所属组织
+  oceanbase:
+    inst_name: 实例名
+    ip_addr: IP地址
+    port: 端口
+    tag: 标签
+    cluster_name: 集群名称
+    version: 版本
+    server_count: 节点数量
+    zone_count: Zone数量
+    tenant_count: 租户数量
+    compatibility: 兼容性
+    organization: 所属组织
+  oceanbase_zone:
+    inst_name: 实例名
+    tag: 标签
+    zone_name: Zone名称
+    region: 区域
+    status: 状态
+    idc: 机房
+    server_count: 节点数量
+    organization: 所属组织
+  oceanbase_server:
+    inst_name: 实例名
+    tag: 标签
+    svr_ip: 节点IP
+    svr_port: 节点端口
+    zone: Zone
+    status: 状态
+    build_version: 构建版本
+    cpu_capacity: CPU容量
+    memory_capacity: 内存容量
+    start_time: 启动时间
+    stop_time: 停止时间
+    organization: 所属组织
+  oceanbase_tenant:
+    inst_name: 实例名
+    tag: 标签
+    tenant_id: 租户ID
+    tenant_name: 租户名称
+    tenant_type: 租户类型
+    compatibility_mode: 兼容模式
+    status: 状态
+    primary_zone: 主Zone
+    locality: Locality
+    organization: 所属组织
+  highgo:
+    inst_name: 实例名
+    ip_addr: IP地址
+    port: 端口
+    tag: 标签
+    version: 版本
+    config: 配置文件
+    data_path: 数据路径
+    max_connect: 最大连接数
+    shared_buffer: 共享缓冲区
+    log_directory: 日志目录
+    organization: 所属组织
+  server_bmc:
+    inst_name: 实例名
+    ip_addr: IP地址
+    tag: 标签
+    brand: 品牌
+    model: 型号
+    serial_number: 序列号
+    bmc_version: BMC版本
+    bios_version: BIOS版本
+    power_state: 电源状态
+    health: 健康状态
+    cpu_total: CPU总数
+    memory_total: 内存总量
+    phys_size: 物理容量
+    organization: 所属组织
+  server_bmc_cpu:
+    inst_name: 实例名
+    name: 名称
+    tag: 标签
+    model: 型号
+    cores: 核心数
+    speed: 速率
+    status: 状态
+    organization: 所属组织
+  server_bmc_memory:
+    inst_name: 实例名
+    name: 名称
+    tag: 标签
+    capacity: 容量
+    speed: 速率
+    type: 类型
+    slot: 槽位
+    status: 状态
+    organization: 所属组织
+  server_bmc_disk:
+    inst_name: 实例名
+    name: 名称
+    tag: 标签
+    disk_size: 磁盘容量
+    disk_type: 磁盘类型
+    disk_media: 磁盘介质
+    disk_rpm: 磁盘转速
+    status: 状态
+    organization: 所属组织
+  server_bmc_vdisk:
+    inst_name: 实例名
+    name: 名称
+    tag: 标签
+    raid_level: RAID级别
+    vdisk_size: 虚拟磁盘容量
+    disk_media: 磁盘介质
+    status: 状态
+    organization: 所属组织
+  server_bmc_nic:
+    inst_name: 实例名
+    name: 名称
+    tag: 标签
+    mac_addr: MAC地址
+    speed: 速率
+    status: 状态
+    organization: 所属组织
+  tonglinkq:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP地址
+    port: 端口
+    name: 名称
+    version: 版本
+    status: 状态
+    vendor: 厂商
+    model: 型号
+    serial_number: 序列号
+    description: 描述
+    tag: 标签
+  tonggtp:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP地址
+    port: 端口
+    name: 名称
+    version: 版本
+    status: 状态
+    vendor: 厂商
+    model: 型号
+    serial_number: 序列号
+    description: 描述
+    tag: 标签
+  ihs:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP地址
+    port: 端口
+    name: 名称
+    version: 版本
+    status: 状态
+    vendor: 厂商
+    model: 型号
+    serial_number: 序列号
+    description: 描述
+    tag: 标签
+  cics:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP地址
+    port: 端口
+    name: 名称
+    version: 版本
+    status: 状态
+    vendor: 厂商
+    model: 型号
+    serial_number: 序列号
+    description: 描述
+    tag: 标签
+  tape_library:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP地址
+    port: 端口
+    name: 名称
+    version: 版本
+    status: 状态
+    vendor: 厂商
+    model: 型号
+    serial_number: 序列号
+    description: 描述
+    tag: 标签
+  informix:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP地址
+    port: 端口
+    name: 名称
+    version: 版本
+    status: 状态
+    vendor: 厂商
+    model: 型号
+    serial_number: 序列号
+    description: 描述
+    tag: 标签
+  sybase:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP地址
+    port: 端口
+    name: 名称
+    version: 版本
+    status: 状态
+    vendor: 厂商
+    model: 型号
+    serial_number: 序列号
+    description: 描述
+    tag: 标签
+  couchbase:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP地址
+    port: 端口
+    name: 名称
+    version: 版本
+    status: 状态
+    vendor: 厂商
+    model: 型号
+    serial_number: 序列号
+    description: 描述
+    tag: 标签
+  mycat:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP地址
+    port: 端口
+    name: 名称
+    version: 版本
+    status: 状态
+    vendor: 厂商
+    model: 型号
+    serial_number: 序列号
+    description: 描述
+    tag: 标签
+  sap_hana:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP地址
+    port: 端口
+    name: 名称
+    version: 版本
+    status: 状态
+    vendor: 厂商
+    model: 型号
+    serial_number: 序列号
+    description: 描述
+    tag: 标签
+  iris:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP地址
+    port: 端口
+    name: 名称
+    version: 版本
+    status: 状态
+    vendor: 厂商
+    model: 型号
+    serial_number: 序列号
+    description: 描述
+    tag: 标签
+  hdfs:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP地址
+    port: 端口
+    name: 名称
+    version: 版本
+    status: 状态
+    vendor: 厂商
+    model: 型号
+    serial_number: 序列号
+    description: 描述
+    tag: 标签
+  yarn:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP地址
+    port: 端口
+    name: 名称
+    version: 版本
+    status: 状态
+    vendor: 厂商
+    model: 型号
+    serial_number: 序列号
+    description: 描述
+    tag: 标签
+  storm:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP地址
+    port: 端口
+    name: 名称
+    version: 版本
+    status: 状态
+    vendor: 厂商
+    model: 型号
+    serial_number: 序列号
+    description: 描述
+    tag: 标签
+  ambari:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP地址
+    port: 端口
+    name: 名称
+    version: 版本
+    status: 状态
+    vendor: 厂商
+    model: 型号
+    serial_number: 序列号
+    description: 描述
+    tag: 标签
+  redis_sentinel:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP地址
+    port: 端口
+    name: 名称
+    version: 版本
+    status: 状态
+    vendor: 厂商
+    model: 型号
+    serial_number: 序列号
+    description: 描述
+    tag: 标签
+  bes:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP地址
+    port: 端口
+    name: 名称
+    version: 版本
+    status: 状态
+    vendor: 厂商
+    model: 型号
+    serial_number: 序列号
+    description: 描述
+    tag: 标签
+  apusic:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP地址
+    port: 端口
+    name: 名称
+    version: 版本
+    status: 状态
+    vendor: 厂商
+    model: 型号
+    serial_number: 序列号
+    description: 描述
+    tag: 标签
+  inforsuite_as:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP地址
+    port: 端口
+    name: 名称
+    version: 版本
+    status: 状态
+    vendor: 厂商
+    model: 型号
+    serial_number: 序列号
+    description: 描述
+    tag: 标签
+  gbase8s:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP地址
+    port: 端口
+    name: 名称
+    version: 版本
+    status: 状态
+    vendor: 厂商
+    model: 型号
+    serial_number: 序列号
+    description: 描述
+    tag: 标签
+  oscar:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP地址
+    port: 端口
+    name: 名称
+    version: 版本
+    status: 状态
+    vendor: 厂商
+    model: 型号
+    serial_number: 序列号
+    description: 描述
+    tag: 标签
+  security_device:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP地址
+    port: 端口
+    name: 名称
+    version: 版本
+    status: 状态
+    vendor: 厂商
+    model: 型号
+    serial_number: 序列号
+    description: 描述
+  tongrds:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP地址
+    port: 端口
+    name: 名称
+    version: 版本
+    status: 状态
+    vendor: 厂商
+    model: 型号
+    serial_number: 序列号
+    description: 描述
+    tag: 标签
+  tdsql:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP地址
+    port: 端口
+    name: 名称
+    version: 版本
+    status: 状态
+    vendor: 厂商
+    model: 型号
+    serial_number: 序列号
+    description: 描述
+    tag: 标签
+  zstack:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP地址
+    port: 端口
+    name: 名称
+    version: 版本
+    status: 状态
+    vendor: 厂商
+    model: 型号
+    serial_number: 序列号
+    description: 描述
+  h3c_cas:
+    inst_name: 实例名
+    organization: 组织
+    endpoint: 平台地址
+    uis_version: 版本
+    tag: 标签
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  pc_software:
+    inst_name: 实例
+    organization: 组织
+    name: 软件名称
+    version: 版本
+    publisher: 发布者
+    software_key: 软件标识
+    product_id: 产品标识
+    install_location: 安装位置
+    install_date: 安装日期
+    architecture: 架构
+    source: 来源
+    last_collect_time: 最近采集时间
+  winsphere:
+    inst_name: 实例名
+    organization: 组织
+    resource_id: 资源ID
+    platform_id: 平台ID
+    name: 名称
+    tag: 标签
+    management_address: 管理地址
+    https_port: HTTPS端口
+    vendor: 厂商
+    product: 产品
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  winsphere_host_pool:
+    inst_name: 实例名
+    organization: 组织
+    resource_id: 资源ID
+    platform_id: 平台ID
+    name: 名称
+    tag: 标签
+    remark: 备注
+    cluster_num: 集群数
+    host_num: 主机数
+    vm_num: 虚拟机数
+    storage_pool_num: 存储池数
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  winsphere_cluster:
+    inst_name: 实例名
+    organization: 组织
+    resource_id: 资源ID
+    platform_id: 平台ID
+    name: 名称
+    tag: 标签
+    pool_id: 主机池ID
+    pool_name: 主机池名称
+    remark: 备注
+    ha_level: HA级别
+    enabled_drs: 启用DRS
+    enable_storage_drs: 启用存储DRS
+    enable_dmp: 启用DMP
+    cpu_architecture: CPU架构
+    sbd_type: SBD类型
+    host_num: 主机数
+    vm_num: 虚拟机数
+    cpu_mode: CPU模式
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  winsphere_host:
+    inst_name: 实例名
+    organization: 组织
+    resource_id: 资源ID
+    platform_id: 平台ID
+    name: 名称
+    tag: 标签
+    pool_id: 主机池ID
+    pool_name: 主机池名称
+    cluster_id: 集群ID
+    cluster_name: 集群名称
+    ip: 管理IP
+    hostname: 主机名
+    serial_number: 序列号
+    remark: 备注
+    cpu_architecture: CPU架构
+    cpu_threads: CPU线程数
+    cpu_sockets: CPU插槽数
+    cpu_cores: CPU核数
+    cpu_model_name: CPU型号
+    cpu_vendor: CPU厂商
+    memory_gib: 内存容量(GiB)
+    storage_gib: 存储容量(GiB)
+    is_ha: 启用HA
+    is_maintain: 维护状态
+    is_connected: 连接状态
+    system: 操作系统
+    kv_version: 虚拟化版本
+    create_time: 创建时间
+    vm_count: 虚拟机数
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  winsphere_vm:
+    inst_name: 实例名
+    organization: 组织
+    resource_id: 资源ID
+    platform_id: 平台ID
+    name: 名称
+    tag: 标签
+    pool_id: 主机池ID
+    pool_name: 主机池名称
+    cluster_id: 集群ID
+    cluster_name: 集群名称
+    host_id: 宿主机ID
+    host_name: 宿主机名称
+    host_ip: 宿主机IP
+    uuid: UUID
+    os_type: 操作系统类型
+    os_version: 操作系统版本
+    remark: 备注
+    status: 运行状态
+    is_losing_contact: 失联
+    bind_ip_list: 绑定IP列表
+    vcpu: vCPU数
+    ip: IP地址
+    memory_gib: 内存容量(GiB)
+    disk_size_gib: 磁盘容量(GiB)
+    sys_disk_size_gib: 系统盘容量(GiB)
+    create_time: 创建时间
+    cpu_arch: CPU架构
+    tool_version: Tools版本
+    tools_version: 增强Tools版本
+    up_time_seconds: 运行时长(秒)
+    mac: MAC地址
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  winsphere_storage_pool:
+    inst_name: 实例名
+    organization: 组织
+    resource_id: 资源ID
+    platform_id: 平台ID
+    name: 名称
+    tag: 标签
+    storage_san_id: 存储资源ID
+    storage_san_name: 存储资源名称
+    storage_type: 存储类型
+    use_type: 用途
+    type: 类型
+    status: 状态
+    time: 创建时间
+    remark: 备注
+    format_type: 格式类型
+    host_ids: 关联主机ID
+    capacity_gib: 总容量(GiB)
+    available_gib: 可用容量(GiB)
+    allocation_gib: 已分配容量(GiB)
+    used_capacity_gib: 已使用容量(GiB)
+    alloc_capacity_gib: 分配容量(GiB)
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  winsphere_vswitch:
+    inst_name: 实例名
+    organization: 组织
+    resource_id: 资源ID
+    platform_id: 平台ID
+    name: 名称
+    tag: 标签
+    native_id: 厂商原始ID
+    switch_type: 交换机类型
+    host_ids: 关联主机ID
+    description: 描述
+    slots: 槽位数
+    vlan_id: VLAN ID
+    mode: 模式
+    lacp: 链路聚合
+    balance_mode: 负载模式
+    pnics: 物理网卡
+    ip: IP地址
+    netmask: 子网掩码
+    gateway: 网关
+    status: 状态
+    display_name: 显示名称
+    network_tag: 网络标签
+    dpdk_status: DPDK状态
+    migrate_net: 迁移网络
+    network_types: 网络用途
+    mtu: MTU
+    remark: 备注
+    host_num: 主机数
+    port_group_num: 端口组数
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  winsphere_port_group:
+    inst_name: 实例名
+    organization: 组织
+    resource_id: 资源ID
+    platform_id: 平台ID
+    name: 名称
+    tag: 标签
+    native_id: 厂商原始ID
+    switch_id: 所属交换机ID
+    switch_type: 交换机类型
+    vlan_id: VLAN ID
+    vswitch_name: 标准交换机名称
+    dvswitch_name: 分布式交换机名称
+    dvswitch_display_name: 分布式交换机显示名称
+    port_num: 端口数
+    distributed_flag: 分布式端口组
+    trunk_port: Trunk配置
+    dpdk_status: DPDK状态
+    host_id: 主机ID
+    host_name: 主机名称
+    cluster_name: 集群名称
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  h3c_cas_host_pool:
+    inst_name: 实例名
+    organization: 组织
+    self_platform: 所属平台
+    resource_name: 资源名
+    resource_id: 资源ID
+    tag: 标签
+    status: 状态
+    description: 描述
+    host_count: 主机数
+    cluster_count: 集群数
+    vm_count: 虚拟机数
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  h3c_cas_cluster:
+    inst_name: 实例名
+    organization: 组织
+    self_platform: 所属平台
+    resource_name: 资源名
+    resource_id: 资源ID
+    tag: 标签
+    host_pool_id: 主机池ID
+    status: 状态
+    ha_enabled: HA开关
+    drs_enabled: DRS开关
+    host_count: 主机数
+    vm_count: 虚拟机数
+    cpu_total: CPU总量
+    memory_gb: 内存总量(GB)
+    description: 描述
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  h3c_cas_host:
+    inst_name: 实例名
+    organization: 组织
+    self_platform: 所属平台
+    resource_name: 资源名
+    resource_id: 资源ID
+    tag: 标签
+    ip_addr: IP地址
+    cluster_id: 集群ID
+    host_pool_id: 主机池ID
+    status: 状态
+    serial_number: 序列号
+    cpu_model: CPU型号
+    cpu_cores: CPU核数
+    vcpus: vCPU数
+    memory_mb: 内存容量(MB)
+    disk_gb: 本地存储(GB)
+    cvk_version: CVK版本
+    maintain_status: 维护模式
+    description: 描述
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  h3c_cas_vm:
+    inst_name: 实例名
+    organization: 组织
+    self_platform: 所属平台
+    resource_name: 资源名
+    resource_id: 资源ID
+    tag: 标签
+    ip_addr: IP地址
+    host_id: 宿主机ID
+    cluster_id: 集群ID
+    storage_id: 主存储池ID
+    power_status: 电源状态
+    os_name: 操作系统
+    vcpus: vCPU数
+    memory_mb: 内存容量(MB)
+    disks: 磁盘
+    nics: 网卡
+    uuid: UUID
+    description: 描述
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  h3c_cas_storage:
+    inst_name: 实例名
+    organization: 组织
+    self_platform: 所属平台
+    resource_name: 资源名
+    resource_id: 资源ID
+    tag: 标签
+    cluster_id: 集群ID
+    storage_type: 存储类型
+    status: 状态
+    capacity_gb: 总容量(GB)
+    used_gb: 已用(GB)
+    free_gb: 可用(GB)
+    path: 路径/挂载点
+    description: 描述
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  h3c_cas_ds_pool:
+    inst_name: 实例名
+    organization: 组织
+    self_platform: 所属平台
+    resource_name: 资源名
+    resource_id: 资源ID
+    tag: 标签
+    cluster_id: 集群ID
+    status: 状态
+    capacity_gb: 总容量(GB)
+    used_gb: 已用(GB)
+    disk_count: 磁盘数
+    description: 描述
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  h3c_cas_data_pool:
+    inst_name: 实例名
+    organization: 组织
+    self_platform: 所属平台
+    resource_name: 资源名
+    resource_id: 资源ID
+    tag: 标签
+    ds_pool_id: 硬盘池ID
+    cluster_id: 集群ID
+    status: 状态
+    capacity_gb: 总容量(GB)
+    used_gb: 已用(GB)
+    replica_policy: 副本策略
+    description: 描述
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  h3c_cas_vswitch:
+    inst_name: 实例名
+    organization: 组织
+    self_platform: 所属平台
+    resource_name: 资源名
+    resource_id: 资源ID
+    tag: 标签
+    cluster_id: 集群ID
+    status: 状态
+    switch_type: 交换机类型
+    mtu: MTU
+    port_count: 端口数
+    description: 描述
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+ATTR_GROUP:
+  基本信息: 基本信息
+  归属信息: 归属信息
+  技术信息: 技术信息
+  状态信息: 状态信息
+  管理信息: 管理信息
+  系统内置: 系统内置
+  自动发现信息: 自动发现信息
+  连接信息: 连接信息
+  默认分组: 默认分组
 DEFAULT_ATTR:
   inst_name: 实例名
   organization: 所属组织
@@ -1963,7 +4102,6 @@ ChangeRecordType:
   update_entity: 修改
   create_edge: 创建关联
   delete_edge: 取消关联
-
 ChangeRecordScenario:
   device_lifecycle: 设备流转
   relation_change: 关系变更

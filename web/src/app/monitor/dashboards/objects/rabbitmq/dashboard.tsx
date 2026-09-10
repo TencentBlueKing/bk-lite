@@ -10,8 +10,7 @@ import {
   useFilteredChartPanels,
   useFilteredDetailPanels,
   useFilteredRingPanels,
-  useFilteredSummaryCards
-} from '../common/dashboard-components';
+  useFilteredSummaryCards, DashboardSectionLabel } from '../common/dashboard-components';
 import { RingChartPanel, TrendChartPanel } from '../../shared/widgets';
 import { RABBITMQ_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
@@ -66,11 +65,11 @@ export default function RabbitMQDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
 
           {/* R1: 内存分布环 span4 + 内存压力趋势 span8 = 12 —— 环图配同主题折线,消除中部留白 */}
-          <div className={styles.sectionLabel}>内存与压力</div>
+          <DashboardSectionLabel styles={styles}>内存与压力</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {memoryRing ? (
               <RingChartPanel
@@ -90,7 +89,7 @@ export default function RabbitMQDashboardPage() {
           </FlexiblePanelSection>
 
           {/* R2: 消息存量 + 发布速率；运行队列 + Mnesia */}
-          <div className={styles.sectionLabel}>消息与负载</div>
+          <DashboardSectionLabel styles={styles}>消息与负载</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {renderChart(messageChart, styles.span6)}
             {renderChart(publishChart, styles.span6)}
@@ -99,7 +98,7 @@ export default function RabbitMQDashboardPage() {
           </FlexiblePanelSection>
 
           {/* R3: 句柄资源 span6 + 队列与资源详情 span6 = 12 —— 详情配折线 */}
-          <div className={styles.sectionLabel}>资源与详情</div>
+          <DashboardSectionLabel styles={styles}>资源与详情</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {renderChart(handleChart, styles.span6)}
             {resourceDetail ? (
@@ -112,7 +111,7 @@ export default function RabbitMQDashboardPage() {
             ) : null}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>队列</div>
+          <DashboardSectionLabel styles={styles}>队列</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {queueCharts.map((chart) => renderChart(chart, styles.span6))}
           </FlexiblePanelSection>

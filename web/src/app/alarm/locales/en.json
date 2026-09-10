@@ -386,6 +386,7 @@
         "verifyResultHelp": "After running apply, return to the current K8s integration event page to confirm new Kubernetes events are received.",
         "clusterNameHelp": "Set the current Kubernetes cluster name so the event source can be identified.",
         "sourceIdFixed": "This value is fixed and should usually not be changed",
+        "k8sMetaLoadFailed": "Failed to load Kubernetes integration metadata",
         "k8sDetailTitle": "Kubernetes Event Integration",
         "k8sDetailDescription": "Review the current Kubernetes integration identity, cumulative events, and latest event time, then continue with event inspection or deployment guidance.",
         "cumulativeEventCount": "Cumulative Events Received",

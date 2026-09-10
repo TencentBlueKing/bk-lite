@@ -701,7 +701,7 @@ const IncidentDetail: React.FC = () => {
                   <GanttChart
                     loading={tabLoading}
                     alarmData={tableData}
-                    selectedTasks={selectedRowKeys as number[]}
+                    selectedTasks={collectSelectedAlertIds(selectedRowKeys)}
                     onSelectionChange={(keys) => setSelectedRowKeys(keys)}
                   />
                 )}

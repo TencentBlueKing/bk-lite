@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from types import SimpleNamespace
 
@@ -5,6 +6,8 @@ from django.db.models import Count, Q
 
 import nats_client
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import log_logger as logger
+from apps.core.logger import safe_exception_info
 from apps.core.utils.current_team_scope import _normalize_organization_ids
 from apps.core.utils.permission_utils import check_instance_permission, get_permission_rules, get_permissions_rules, permission_filter
 from apps.core.utils.team_utils import group_tree_allows_team
@@ -18,6 +21,14 @@ from apps.log.models.policy import Alert, Policy
 from apps.log.services.alert_access import filter_alerts_by_organizations, orphaned_log_policy_q
 from apps.log.services.log_event_contract import to_logical_event, to_storage_field
 from apps.log.services.search import SearchService
+from apps.log.services.successful_login_count import (
+    build_host_match_clause,
+    build_linux_login_stats_query,
+    build_windows_login_stats_query,
+    classify_login_coverage,
+    is_windows_os,
+    merge_login_counts,
+)
 from apps.log.utils.log_group import LogGroupQueryBuilder
 from apps.log.utils.query_log import VictoriaMetricsAPI
 from apps.rpc.system_mgmt import SystemMgmt
@@ -572,3 +583,89 @@ def get_log_policy_alert_top(user_info=None, limit=10, time=None, **kwargs):
     )
     data = [{"policy_id": item["policy_id"], "policy_name": item["policy__name"], "count": item["count"]} for item in rows]
     return {"result": True, "data": data, "message": ""}
+
+
+def _query_login_stats(vm_api, query, start_time, end_time, limit):
+    rows = vm_api.query(query, start_time, end_time, limit)
+    return rows if isinstance(rows, list) else []
+
+
+def _query_login_stats_concurrently(queries, start_time, end_time, limit):
+    """Run Windows/Linux stats queries in parallel and wait for all of them."""
+    if not queries:
+        return []
+
+    def _run(query):
+        return _query_login_stats(VictoriaMetricsAPI(), query, start_time, end_time, limit)
+
+    if len(queries) == 1:
+        return _run(queries[0])
+
+    rows = []
+    with ThreadPoolExecutor(max_workers=len(queries)) as pool:
+        futures = [pool.submit(_run, query) for query in queries]
+        for fut in futures:
+            rows.extend(fut.result())
+    return rows
+
+
+def _counted_hosts_for_os(counted_hosts, windows: bool):
+    if windows:
+        return [host for host in counted_hosts if is_windows_os(host.get("os_type"))]
+    return [host for host in counted_hosts if not is_windows_os(host.get("os_type"))]
+
+
+@nats_client.register
+def count_successful_logins_by_host(hosts, time_range, user_info=None, **kwargs):
+    """按授权采集覆盖统计主机成功登录次数。"""
+    if not isinstance(hosts, list):
+        return {"result": False, "data": [], "message": "hosts 必须是列表"}
+    try:
+        start_time, end_time = _normalize_query_time_range(time_range)
+    except ValueError as exc:
+        return {"result": False, "data": [], "message": str(exc)}
+    if not hosts:
+        return {"result": True, "data": [], "message": ""}
+
+    failed_stage = "authorize_instances"
+    try:
+        instances = list(_authorized_log_instances(user_info).select_related("collect_type"))
+        covered = classify_login_coverage(hosts, instances)
+        counted_hosts = [host for host in covered if host.get("login_status") == "counted"]
+        stats_rows = []
+        host_clause = build_host_match_clause(counted_hosts)
+        if counted_hosts and host_clause:
+            failed_stage = "victoria_logs_query"
+            has_windows = any(is_windows_os(host.get("os_type")) for host in counted_hosts)
+            has_linux = any(not is_windows_os(host.get("os_type")) for host in counted_hosts)
+            limit = max(len(counted_hosts), 1)
+            scoped_queries = []
+            if has_windows:
+                logical = build_windows_login_stats_query(_counted_hosts_for_os(counted_hosts, True))
+                if logical:
+                    scoped_queries.append(_apply_log_group_scope(logical, user_info))
+            if has_linux:
+                logical = build_linux_login_stats_query(_counted_hosts_for_os(counted_hosts, False))
+                if logical:
+                    scoped_queries.append(_apply_log_group_scope(logical, user_info))
+            runnable = [query for query in scoped_queries if query != LogGroupQueryBuilder.DENY_ALL_QUERY]
+            if runnable:
+                stats_rows.extend(_query_login_stats_concurrently(runnable, start_time, end_time, limit))
+        failed_stage = "merge_login_counts"
+        data = merge_login_counts(covered, stats_rows)
+        counted_n = sum(1 for host in data if host.get("login_status") == "counted")
+        uncollected_n = len(data) - counted_n
+        logger.info(
+            "event=successful_login_count_completed counted_hosts=%s uncollected_hosts=%s",
+            counted_n,
+            uncollected_n,
+        )
+        return {"result": True, "data": data, "message": ""}
+    except Exception as exc:
+        logger.error(
+            "event=successful_login_count_failed failed_stage=%s error_type=%s",
+            failed_stage,
+            type(exc).__name__,
+            exc_info=safe_exception_info(exc),
+        )
+        return {"result": False, "data": [], "message": "成功登录计数失败"}

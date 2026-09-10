@@ -22,6 +22,7 @@ import {
   RingChartPanel
 } from '../../shared/widgets';
 import { formatDuration, countRestartsInRange } from '../common/simple-dashboard-core';
+import { DashboardSectionLabel } from '../common/dashboard-components';
 import {
   buildSearchParams,
   getLatestChartValue,
@@ -417,7 +418,9 @@ export default function MongoDashboardPage() {
     collectionStatusMetric?.loadState,
     collectionStatusMetric?.viewData,
     collectionStatusRange?.startMs ?? Date.now() - 15 * 60_000,
-    collectionStatusRange?.endMs ?? Date.now()
+    collectionStatusRange?.endMs ?? Date.now(),
+    undefined,
+    currentInstanceInterval ? currentInstanceInterval * 1000 : undefined
   );
   const collectionStatusTimelineHint = collectionStatusRange
     ? formatCollectionStatusTimelineHint(collectionStatusRange.startMs, collectionStatusRange.endMs)
@@ -651,7 +654,7 @@ export default function MongoDashboardPage() {
           {displayMode === 'dashboard' ? (
             <>
               {/* 分区 1 · 健康概览：采集状态 + 关键 KPI */}
-              <div className={styles.sectionLabel}>健康概览</div>
+              <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
               <div className={styles.primaryGrid}>
                 <CollectionStatusCard
                   styles={styles}
@@ -751,7 +754,7 @@ export default function MongoDashboardPage() {
               </div>
 
               {/* 分区 2 · 性能与队列：延迟 / 队列 / 吞吐趋势 */}
-              <div className={styles.sectionLabel}>性能与队列</div>
+              <DashboardSectionLabel styles={styles}>性能与队列</DashboardSectionLabel>
               <div className={styles.mainTrendGrid}>
                 <TrendChartPanel
                   styles={styles}
@@ -797,7 +800,7 @@ export default function MongoDashboardPage() {
               </div>
 
               {/* 分区 3 · 缓存与内存：WiredTiger 缓存 + 进程内存趋势 */}
-              <div className={styles.sectionLabel}>缓存与内存</div>
+              <DashboardSectionLabel styles={styles}>缓存与内存</DashboardSectionLabel>
               <div className={styles.detailGrid}>
                 <TrendChartPanel
                   styles={styles}
@@ -833,7 +836,7 @@ export default function MongoDashboardPage() {
               </div>
 
               {/* 分区 4 · 诊断与明细：缓存/操作分布 + 内存/网络明细 */}
-              <div className={styles.sectionLabel}>诊断与明细</div>
+              <DashboardSectionLabel styles={styles}>诊断与明细</DashboardSectionLabel>
               <div className={styles.detailGrid}>
                 <RingChartPanel
                   styles={styles}

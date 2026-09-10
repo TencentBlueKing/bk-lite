@@ -23,6 +23,7 @@ import {
 } from '@/app/ops-analysis/api/networkTopology';
 import { useDirectoryApi } from '@/app/ops-analysis/api';
 import useBtnPermissions from '@/hooks/usePermissions';
+import { useCanvasShareAction } from '@/app/ops-analysis/hooks/useCanvasShareAction';
 import { useCanvasPeriodicRefresh } from '@/app/ops-analysis/hooks/useCanvasPeriodicRefresh';
 import { canPersistCanvasRefreshInterval, normalizeCanvasRefreshInterval } from '@/app/ops-analysis/utils/canvasRefreshInterval';
 import { shouldSkipIntervalTick } from '@/app/ops-analysis/utils/canvasRefreshTimer';
@@ -148,6 +149,7 @@ const detailPortPairNameClassName =
 const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
   ({ selectedNetworkTopology, shareMode = false }, ref) => {
     const api = useNetworkTopologyApi();
+    const { shareLoading, openShare } = useCanvasShareAction('networkTopology');
     const { updateItem } = useDirectoryApi();
     const { hasPermission } = useBtnPermissions();
     const { t } = useTranslation();
@@ -1235,6 +1237,14 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
         dirty={editor.isDirty}
         saving={saving}
         shareMode={shareMode}
+        shareLoading={shareLoading}
+        onOpenShare={
+          !shareMode && selectedNetworkTopology?.data_id
+            ? () => {
+              void openShare(selectedNetworkTopology.data_id);
+            }
+            : undefined
+        }
         onZoomIn={() => graph?.zoom(0.1)}
         onZoomOut={() => graph?.zoom(-0.1)}
         onFit={() => {

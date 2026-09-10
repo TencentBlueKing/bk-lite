@@ -7,8 +7,7 @@ import {
   FlexiblePanelSection,
   KpiSection,
   useFilteredChartPanels,
-  useFilteredSummaryCards
-} from '../common/dashboard-components';
+  useFilteredSummaryCards, DashboardSectionLabel } from '../common/dashboard-components';
 import { TrendChartPanel } from '../../shared/widgets';
 import { getBrandLabel } from '@/app/monitor/utils/common';
 import { resolveCapability, isMetricVisible } from '../../shared/capability-matrix';
@@ -109,20 +108,20 @@ export default function SwitchDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
 
           {hasHealthCapability ? (
             <>
               {/* Row 1: CPU&内存 span6 + 收发流量 span6 */}
-              <div className={styles.sectionLabel}>性能趋势</div>
+              <DashboardSectionLabel styles={styles}>性能趋势</DashboardSectionLabel>
               <FlexiblePanelSection styles={styles}>
                 {renderTrend(cpuMemChart, styles.span6)}
                 {renderTrend(trafficChart, styles.span6)}
               </FlexiblePanelSection>
 
               {/* Row 2: 温度 + 风扇状态 + 电源状态 三张折线 span4 */}
-              <div className={styles.sectionLabel}>温度与硬件状态</div>
+              <DashboardSectionLabel styles={styles}>温度与硬件状态</DashboardSectionLabel>
               <FlexiblePanelSection styles={styles}>
                 {renderTrend(tempChart, styles.span4)}
                 {renderTrend(fanChart, styles.span4)}
@@ -132,7 +131,7 @@ export default function SwitchDashboardPage() {
           ) : (
             <>
               {/* 通用交换机：只展示收发流量趋势（接口/流量是所有交换机都有的标准指标） */}
-              <div className={styles.sectionLabel}>流量趋势</div>
+              <DashboardSectionLabel styles={styles}>流量趋势</DashboardSectionLabel>
               <FlexiblePanelSection styles={styles}>
                 {renderTrend(trafficChart, styles.span12)}
               </FlexiblePanelSection>
