@@ -25,7 +25,7 @@ import dayjs from 'dayjs';
 import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/components/jobHostSelectionModalRuntime';
 import { AddTargetHostButton, TargetSourceSelector } from '@/app/job/components/target-selection-controls';
 import { createDefaultExecutionName } from '@/app/job/utils/execution-name';
-import { buildScheduledTaskTemplatePayload } from '@/app/job/utils/scheduledTaskPayload';
+import { buildScheduledTaskTemplatePayload, resolveScheduledTaskConcurrencyPolicy } from '@/app/job/utils/scheduledTaskPayload';
 import { useUserInfoContext } from '@/context/userInfo';
 
 const CreateCronTaskPage = () => {
@@ -232,6 +232,7 @@ const CreateCronTaskPage = () => {
         target_list: targetList,
         timeout: values.timeout || 60,
         is_enabled: enableAfterSave,
+        concurrency_policy: resolveScheduledTaskConcurrencyPolicy(values.concurrency_policy),
         team: selectedGroup ? [Number(selectedGroup.id)] : [],
       };
 
@@ -296,6 +297,7 @@ const CreateCronTaskPage = () => {
           initialValues={{
             name: defaultTaskName,
             timeout: 300,
+            concurrency_policy: 'skip',
             dailyTime: dayjs().hour(2).minute(0),
             hourlyInterval: 1,
             hourlyMinute: 0,
@@ -520,7 +522,7 @@ const CreateCronTaskPage = () => {
           </Form.Item>
 
           <Form.Item label={t('job.concurrencyStrategy')} name="concurrency_policy">
-            <Select defaultValue="skip">
+            <Select>
               <Select.Option value="skip">{t('job.skipIfRunning')}</Select.Option>
               <Select.Option value="run">{t('job.runAnyway')}</Select.Option>
               <Select.Option value="queue">{t('job.queueWait')}</Select.Option>
