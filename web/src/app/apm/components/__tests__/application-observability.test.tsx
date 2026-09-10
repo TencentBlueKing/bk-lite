@@ -236,6 +236,39 @@ describe('APM 应用观测详情', () => {
     expect(document.querySelector('[data-kpi]')).toBeNull();
   });
 
+  it('多批 RED 中一批失败只标记该批服务，其他批次指标仍然展示', async () => {
+    api.getServices.mockResolvedValue(
+      Array.from({ length: 41 }, (_, index) => service(`svc-${index}`, 'shop', `service-${index}`)),
+    );
+    api.getServiceRedBatch
+      .mockResolvedValueOnce({
+        items: Array.from({ length: 40 }, (_, index) => ({
+          ok: true,
+          service_id: `svc-${index}`,
+          environment: 'prod',
+          request_rate: 1,
+          error_rate: 0,
+          p95_ms: 10,
+          p99_ms: 20,
+          request_count: 60,
+          error_count: 0,
+          data_state: 'available',
+          timeseries: [],
+          top_endpoints: [],
+        })),
+      })
+      .mockRejectedValueOnce(new HandledRequestError('VictoriaTraces 响应超过大小上限', {
+        status: 503,
+        code: 'query_too_large',
+      }));
+
+    renderWithApmIntl(<ApplicationObservability applicationId="app-row-1" />);
+
+    await waitFor(() => expect(api.getServiceRedBatch).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText('1 个服务指标查询失败，重试')).not.toBeNull();
+    await waitFor(() => expect(document.querySelector('[data-kpi]')).not.toBeNull());
+  });
+
   it('拓扑取数完成前展示加载而不是空状态', async () => {
     let resolveTopology: (value: unknown) => void = () => undefined;
     api.getTopology.mockImplementation(() => new Promise((resolve) => {

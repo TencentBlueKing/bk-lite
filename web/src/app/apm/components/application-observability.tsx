@@ -231,26 +231,30 @@ export default function ApplicationObservability({
     for (let offset = 0; offset < targets.length; offset += chunkSize) {
       chunks.push(targets.slice(offset, offset + chunkSize));
     }
-    Promise.all(chunks.map((chunk) => getServiceRedBatch({
+    // 任一批次整体失败只标记该批次内的服务，不影响其他批次已返回的指标。
+    void Promise.allSettled(chunks.map((chunk) => getServiceRedBatch({
       started_at: startedAt.toISOString(),
       ended_at: endedAt.toISOString(),
       include_breakdown: true,
       targets: chunk.map((row) => ({ service_id: row.serviceId, environment: row.environment })),
     })))
-      .then((pages) => {
+      .then((results) => {
         if (!active) return;
-        const items = pages.flatMap((page) => page.items);
-        setRedMetrics(Object.fromEntries(items.flatMap((item) => (
-          item.ok === false ? [] : [[metricKey(item.service_id, item.environment), item]]
-        ))));
-        setMetricFailureKeys(items.flatMap((item) => (
-          item.ok === false ? [metricKey(item.service_id, item.environment)] : []
-        )));
-      })
-      .catch(() => {
-        if (!active) return;
-        setRedMetrics({});
-        setMetricFailureKeys(targets.map((row) => metricKey(row.serviceId, row.environment)));
+        const metrics: Record<string, ApmServiceRed> = {};
+        const failureKeys: string[] = [];
+        results.forEach((result, index) => {
+          if (result.status === 'rejected') {
+            chunks[index].forEach((row) => failureKeys.push(metricKey(row.serviceId, row.environment)));
+            return;
+          }
+          result.value.items.forEach((item) => {
+            const key = metricKey(item.service_id, item.environment);
+            if (item.ok === false) failureKeys.push(key);
+            else metrics[key] = item;
+          });
+        });
+        setRedMetrics(metrics);
+        setMetricFailureKeys(failureKeys);
       });
     return () => {
       active = false;

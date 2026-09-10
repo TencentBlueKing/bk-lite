@@ -112,10 +112,13 @@ export default function ApmServiceDetailPage() {
   const [activeTab, setActiveTab] = useState<DetailTab>('overview');
   const [catalogState, setCatalogState] = useState<PageState>('loading');
   const [metricState, setMetricState] = useState<PageState>('loading');
+  const [metricError, setMetricError] = useState<unknown>();
   const [traces, setTraces] = useState<ApmTraceSummary[]>([]);
   const [tracesState, setTracesState] = useState<PageState>('loading');
+  const [tracesError, setTracesError] = useState<unknown>();
   const [errorBreakdown, setErrorBreakdown] = useState<ApmServiceErrorBreakdown>();
   const [errorsState, setErrorsState] = useState<PageState>('loading');
+  const [errorsError, setErrorsError] = useState<unknown>();
   const [upstream, setUpstream] = useState<{ node: ApmTopologyNode; edge: ApmTopologyEdge }[]>([]);
   const [downstream, setDownstream] = useState<{ node: ApmTopologyNode; edge: ApmTopologyEdge }[]>([]);
   const [serviceSlos, setServiceSlos] = useState<ApmSlo[]>([]);
@@ -159,6 +162,7 @@ export default function ApmServiceDetailPage() {
     }
     let active = true;
     setMetricState('loading');
+    setMetricError(undefined);
     const { startedAt, endedAt } = queryWindow;
     getServiceRed(service.id, environment, startedAt, endedAt)
       .then((value) => {
@@ -167,7 +171,9 @@ export default function ApmServiceDetailPage() {
         setMetricState('ready');
       })
       .catch((error) => {
-        if (active) setMetricState(catalogErrorKind(error));
+        if (!active) return;
+        setMetricError(error);
+        setMetricState(catalogErrorKind(error));
       });
     return () => {
       active = false;
@@ -178,6 +184,7 @@ export default function ApmServiceDetailPage() {
     if (!service || environment === undefined || authLoading) return;
     let active = true;
     setTracesState('loading');
+    setTracesError(undefined);
     const endedAt = new Date().toISOString();
     const startedAt = new Date(new Date(endedAt).getTime() - RANGE_MS[timeRange]).toISOString();
     getTraces({
@@ -194,7 +201,9 @@ export default function ApmServiceDetailPage() {
         setTracesState(page.items.length ? 'ready' : 'empty');
       })
       .catch((error) => {
-        if (active) setTracesState(catalogErrorKind(error));
+        if (!active) return;
+        setTracesError(error);
+        setTracesState(catalogErrorKind(error));
       });
     getTopology({ started_at: startedAt, ended_at: endedAt, environment })
       .then((topology) => {
@@ -274,6 +283,7 @@ export default function ApmServiceDetailPage() {
   const loadErrorBreakdown = useCallback(() => {
     if (!service || environment === undefined || authLoading) return;
     setErrorsState('loading');
+    setErrorsError(undefined);
     void getServiceErrorBreakdown(service.id, {
       environment,
       started_at: queryWindow.startedAt,
@@ -284,7 +294,10 @@ export default function ApmServiceDetailPage() {
         setErrorBreakdown(result);
         setErrorsState('ready');
       })
-      .catch((error) => setErrorsState(catalogErrorKind(error)));
+      .catch((error) => {
+        setErrorsError(error);
+        setErrorsState(catalogErrorKind(error));
+      });
   }, [authLoading, environment, getServiceErrorBreakdown, queryWindow, service]);
 
   useEffect(() => {
@@ -785,6 +798,7 @@ export default function ApmServiceDetailPage() {
                   <ApmSurface padding="none">
                     <CatalogState
                       kind={metricState === 'ready' ? 'error' : metricState}
+                      error={metricError}
                       description={metricState === 'empty' ? t('apm.serviceDetail.noEnvironments', '当前服务尚无可查询的环境视图。') : undefined}
                       onRetry={metricState === 'forbidden' || metricState === 'empty' ? undefined : () => setRefreshKey((value) => value + 1)}
                     />
@@ -812,6 +826,7 @@ export default function ApmServiceDetailPage() {
                     ) : (
                       <CatalogState
                         kind={tracesState}
+                        error={tracesError}
                         description={tracesState === 'empty' ? t('apm.serviceDetail.noTraces', '当前时间窗暂无调用链样本。') : undefined}
                         onRetry={tracesState === 'forbidden' || tracesState === 'empty' ? undefined : () => setRefreshKey((value) => value + 1)}
                       />
@@ -827,6 +842,7 @@ export default function ApmServiceDetailPage() {
                     <ServiceErrorTab
                       breakdown={errorBreakdown}
                       state={errorsState}
+                      error={errorsError}
                       chartData={chartData}
                       exploreHref={errorsExploreHref}
                       onRetry={loadErrorBreakdown}

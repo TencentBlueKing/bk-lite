@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
+import { HandledRequestError } from '@/utils/request';
 import ApmTracesPage from '../page';
 
 const api = {
@@ -107,6 +108,18 @@ afterEach(() => {
 });
 
 describe('APM 调用链探索', () => {
+  it('查询超限时展示数据量过大而不是存储不可用', async () => {
+    api.getTraces.mockRejectedValue(new HandledRequestError('VictoriaTraces 响应超过大小上限', {
+      status: 503,
+      code: 'query_too_large',
+    }));
+
+    renderWithApmIntl(<ApmTracesPage />);
+
+    expect(await screen.findByText('本次查询数据量过大')).not.toBeNull();
+    expect(screen.queryByText('遥测存储暂不可用')).toBeNull();
+  });
+
   it('自动检索后展示明细命中与耗时分布', async () => {
     renderWithApmIntl(<ApmTracesPage />);
 
