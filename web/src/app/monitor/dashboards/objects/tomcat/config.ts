@@ -183,7 +183,7 @@ export const TOMCAT_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '错误请求占比',
       description: '由错误请求速率与总请求速率推导出的错误占比（error_rate / request_rate × 100）。',
       unit: 'percent',
-      query: '100 * (rate(tomcat_connector_error_count{__$labels__}[__$window__]) / clamp_min(rate(tomcat_connector_request_count{__$labels__}[__$window__]), 1))',
+      query: '100 * (rate(tomcat_connector_error_count{__$labels__}[__$window__]) / clamp_min(rate(tomcat_connector_request_count{__$labels__}[__$window__]), 1e-6))',
       color: '#8a5cff'
     }
   ],
