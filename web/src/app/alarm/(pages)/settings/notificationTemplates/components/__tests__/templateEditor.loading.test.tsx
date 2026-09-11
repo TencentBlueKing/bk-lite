@@ -27,7 +27,10 @@ vi.mock('@/app/alarm/context/common', () => ({
 }));
 vi.mock('@/context/userInfo', () => ({ useUserInfoContext: () => ({ username: 'admin' }) }));
 vi.mock('@/utils/i18n', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
+}));
 vi.mock('next/dynamic', () => ({
   default: () => function Editor({ value }: { value: string }) {
     return <textarea aria-label="template-editor" value={value} readOnly />;
