@@ -117,6 +117,9 @@ export const useHostConfig = () => {
       Host: 'host',
       'Host Remote': 'http',
       'Host AIX Remote': 'http',
+      'Host FreeBSD Remote': 'http',
+      'Host HP-UX Remote': 'http',
+      'Host Solaris Remote': 'http',
     },
   };
 };
