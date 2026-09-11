@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Menu } from 'antd';
-import { useRouter } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import { useTranslation } from '@/utils/i18n';
 import PermissionWrapper from '@/components/permission';
 import UnifiedOpsCard from '@/app/opspilot/components/unified-ops-card';
@@ -56,7 +56,7 @@ const EntityCard: React.FC<EntityCardProps> = ({
   redirectUrl,
   iconTypeMapping,
 }) => {
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const { t } = useTranslation();
 
   const entityPayload = {

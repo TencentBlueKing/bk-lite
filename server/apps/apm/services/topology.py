@@ -225,6 +225,7 @@ class DjangoApmTopologyService:
         min_duration_ms: float | None = None,
         include_inferred: bool = False,
         include_user_request: bool = False,
+        sample_service_names: Sequence[str] | None = None,
     ) -> TopologyGraph:
         if ended_at <= started_at:
             raise ValueError("查询结束时间必须晚于开始时间")
@@ -244,7 +245,11 @@ class DjangoApmTopologyService:
             identity = _identity(target.service_namespace, target.service_name, target.environment)
             visible[identity] = target
             languages_by_identity[identity] = target.language
-        service_names = tuple(dict.fromkeys(target.service_name for target in selected_targets if target.service_name))
+        service_names = (
+            tuple(dict.fromkeys(name for name in sample_service_names if name))
+            if sample_service_names is not None
+            else tuple(dict.fromkeys(target.service_name for target in selected_targets if target.service_name))
+        )
 
         sample = self._load_sample(
             TopologySampleQuery(

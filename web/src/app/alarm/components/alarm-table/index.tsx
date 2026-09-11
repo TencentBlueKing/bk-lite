@@ -334,7 +334,7 @@ const AlarmTable: React.FC<AlarmTableProps> = ({
   return (
     <>
       <CustomTable
-        scroll={{ y: tableScrollY, x: 'calc(100vw - 320px)' }}
+        scroll={{ y: tableScrollY, x: 'max-content' }}
         columns={columns}
         dataSource={dataSource}
         pagination={pagination}

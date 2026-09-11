@@ -1761,6 +1761,7 @@ class AlertAssignmentOperatorTestCase(TestCase):
             notify_channels=[],
             notification_scenario=[],
             config={},
+            priority=100,
             is_active=True,
         )
         second_assignment = AlertAssignment.objects.create(
@@ -1771,6 +1772,7 @@ class AlertAssignmentOperatorTestCase(TestCase):
             notify_channels=[],
             notification_scenario=[],
             config={},
+            priority=0,
             is_active=True,
         )
 
@@ -1804,7 +1806,10 @@ class AlertAssignmentOperatorTestCase(TestCase):
 
         self.assertEqual(result["assigned_alerts"], 2)
         self.assertEqual(execute_mock.call_count, 2)
-        self.assertEqual(execute_mock.call_args_list[0].args[0], [first_alert.id, second_alert.id])
+        self.assertCountEqual(
+            execute_mock.call_args_list[0].args[0],
+            [first_alert.id, second_alert.id],
+        )
         self.assertEqual(execute_mock.call_args_list[1].args[0], [second_alert.id])
 
 

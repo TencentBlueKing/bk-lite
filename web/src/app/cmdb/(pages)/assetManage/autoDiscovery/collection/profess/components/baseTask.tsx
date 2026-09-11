@@ -19,7 +19,7 @@ import {
   isIpRangeOrderValid,
   isIpRangeWithinLimit,
 } from '@/app/cmdb/components/ipInput/ipRangeLimits';
-import { useCommon } from '@/app/cmdb/context/common';
+import { useCmdbUserList } from '@/app/cmdb/context/common';
 import { FieldModalRef } from '@/app/cmdb/types/assetManage';
 import { useTranslation } from '@/utils/i18n';
 import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
@@ -176,10 +176,8 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     const modelApi = useModelApi();
     const form = Form.useFormInstance();
     const fieldRef = useRef<FieldModalRef>(null);
-    const commonContext = useCommon();
+    const userList = useCmdbUserList();
     const { selectedGroup } = useUserInfoContext();
-    const users = useRef(commonContext?.userList || []);
-    const userList = users.current;
     const [instOptLoading, setOptLoading] = useState(false);
     const [instOptions, setOptions] = useState<CmdbInstanceOption[]>([]);
     const [ipRange, setIpRange] = useState<string[]>([]);

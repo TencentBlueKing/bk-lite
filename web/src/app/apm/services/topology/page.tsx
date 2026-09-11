@@ -40,6 +40,7 @@ export default function ApmTopologyPage() {
   const [requestGuard] = useState(createLatestRequestGuard);
   const [graph, setGraph] = useState<ApmTopologyGraph>({ nodes: [], edges: [], sampled_traces: 0, truncated: false, data_state: 'no_data' });
   const [state, setState] = useState<PageState>('loading');
+  const [loadError, setLoadError] = useState<unknown>();
   const [timeWindow, setTimeWindow] = useState<TimeWindow>('1h');
   const [environment, setEnvironment] = useState<string>();
   const [environmentOptions, setEnvironmentOptions] = useState<{ value: string; label: string }[]>([]);
@@ -81,10 +82,12 @@ export default function ApmTopologyPage() {
       commitTopologyLoadSuccess(requestGuard, requestId, { graph: result, range: nextRange }, ({ graph: nextGraph, range, state: nextState }) => {
         setGraph(nextGraph);
         setRange(range);
+        setLoadError(undefined);
         setState(nextState);
       });
     } catch (error) {
       commitTopologyLoadFailure(requestGuard, requestId, () => {
+        setLoadError(error);
         setState(catalogErrorKind(error));
       });
     }
@@ -280,7 +283,7 @@ export default function ApmTopologyPage() {
             </div>
           ) : (
             <div className="min-h-[640px]">
-              <CatalogState kind={state} onRetry={state === 'forbidden' ? undefined : () => void load()} />
+              <CatalogState kind={state} error={loadError} onRetry={state === 'forbidden' ? undefined : () => void load()} />
             </div>
           )}
         </ApmSurface>

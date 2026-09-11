@@ -5,7 +5,8 @@ import SideMenu from './side-menu';
 import sideMenuStyle from './index.module.scss';
 import Icon from '@/components/icon';
 import { Segmented } from 'antd';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
+import { isScreenModeEnabled, useScreenAwareRouter } from '@/console-layout';
 import { MenuItem } from '@/types/index';
 import { usePermissions } from '@/context/permissions';
 import { isConfigFileSupportedModel } from '@/app/cmdb/constants/configFile';
@@ -44,9 +45,10 @@ const SideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
   pagePathName,
   onBackButtonClick,
 }) => {
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const curRouterName = usePathname();
   const searchParams = useSearchParams();
+  const screenMode = isScreenModeEnabled(searchParams);
   const pathname = pagePathName ?? curRouterName;
   const modelId = searchParams.get('model_id');
   const { menus } = usePermissions();
@@ -111,7 +113,7 @@ const SideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
             </div>
           )}
           <div className="w-full flex grow flex-1 h-full overflow-hidden">
-            {showSideMenu && menuItems.length > 0 && (
+            {showSideMenu && menuItems.length > 0 && !screenMode && (
               <SideMenu
                 menuItems={menuItems}
                 showBackButton={showBackButton}
@@ -136,7 +138,7 @@ const SideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
         </>
       ) : (
         <div className={`flex flex-col w-full h-full ${sideMenuStyle.segmented}`}>
-          {menuItems.length > 0 ? (
+          {menuItems.length > 0 && !screenMode ? (
             <>
               <Segmented
                 options={menuItems.map(item => ({

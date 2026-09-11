@@ -1,6 +1,11 @@
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { buildPilotsManifestSource, pathnamePrefixFromPilotFile } from '../../../../scripts/generate-ai-pilots-lib.mjs';
+
+const root = dirname(fileURLToPath(import.meta.url));
 
 describe('generate-ai-pilots', () => {
   it('derives pathname prefixes from pilot file locations', () => {
@@ -17,9 +22,15 @@ describe('generate-ai-pilots', () => {
     expect(pathnamePrefixFromPilotFile('monitor/(pages)/event/alert/alert.pilot.ts')).toBe(
       '/monitor/event/alert/',
     );
+    expect(pathnamePrefixFromPilotFile('alarm/(pages)/alarms/alarms.pilot.ts')).toBe(
+      '/alarm/alarms/',
+    );
+    expect(pathnamePrefixFromPilotFile('alarm/(pages)/incidents/incidents.pilot.ts')).toBe(
+      '/alarm/incidents/',
+    );
   });
 
-  it('builds a deterministic manifest', () => {
+  it('emits an empty shared manifest without @/app reverse imports', () => {
     const root = 'D:/app/github/bk-lite/web';
     const source = buildPilotsManifestSource(
       [
@@ -28,9 +39,20 @@ describe('generate-ai-pilots', () => {
       ],
       root,
     );
-    expect(source).toContain("pathname.includes('/alarm/list/')");
-    expect(source).toContain("pathname.includes('/monitor/view/dashboard/')");
-    expect(source.indexOf('/alarm/list/')).toBeLessThan(source.indexOf('/monitor/view/dashboard/'));
-    expect(source).toContain("import('@/app/monitor/(pages)/view/dashboard/dashboard.pilot')");
+    expect(source).toContain('GENERATED_PAGE_CONTEXT_PILOTS: AiPageContextPilot[] = []');
+    expect(source).not.toContain("import('@/app/");
+  });
+
+  it('registers alarm pilots from app pages instead of the shared generated list', () => {
+    const alarmsPage = readFileSync(
+      resolve(root, '../../../app/alarm/(pages)/alarms/page.tsx'),
+      'utf8',
+    );
+    const incidentsPage = readFileSync(
+      resolve(root, '../../../app/alarm/(pages)/incidents/page.tsx'),
+      'utf8',
+    );
+    expect(alarmsPage).toContain("import './register-alarms-pilot'");
+    expect(incidentsPage).toContain("import './register-incidents-pilot'");
   });
 });

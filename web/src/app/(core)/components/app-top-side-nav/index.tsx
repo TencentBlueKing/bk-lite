@@ -2,15 +2,17 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
 import Icon from '@/components/icon';
 import {
   APP_TOP_SIDE_RAIL_COLLAPSED_WIDTH_PX,
   APP_TOP_SIDE_RAIL_WIDTH_PX,
   buildAppTopSideNavGroups,
+  isScreenModeEnabled,
   resolveMenuNavHref,
   useConsoleLayout,
+  withScreenQuery,
 } from '@/console-layout';
 import { isMenuPathMatch, resolveMenuIcon } from '@/utils/menuHelpers';
 import { useTranslation } from '@/utils/i18n';
@@ -32,6 +34,8 @@ const itemClassName = (active: boolean, showLabels: boolean) => (
 const AppTopSideNav = ({ menus, pathname }: AppTopSideNavProps) => {
   const { t } = useTranslation();
   const currentPath = usePathname() ?? pathname;
+  const searchParams = useSearchParams();
+  const screenMode = isScreenModeEnabled(searchParams);
   const { sideNav, setSideNav } = useConsoleLayout();
   const [peeking, setPeeking] = useState(false);
   const groups = buildAppTopSideNavGroups(menus, currentPath);
@@ -99,7 +103,7 @@ const AppTopSideNav = ({ menus, pathname }: AppTopSideNavProps) => {
                 currentPath && group.item.url && isMenuPathMatch(group.item.url, currentPath),
               );
               const iconType = resolveMenuIcon(group.item);
-              const href = resolveMenuNavHref(group.item);
+              const href = withScreenQuery(resolveMenuNavHref(group.item), screenMode);
 
               return (
                 <li key={group.item.url}>

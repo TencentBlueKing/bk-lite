@@ -6,8 +6,8 @@ from django.utils import timezone
 
 from apps.alerts.constants import AlertStatus
 from apps.alerts.models.models import Alert, Event
+from apps.alerts.service.source_names import source_names_by_alert
 from apps.alerts.utils.permission_scope import apply_team_scope_with_group_ids
-
 
 DIMENSION_PRIORITY = {
     "service": 4,
@@ -78,14 +78,17 @@ class RelatedAlertsService:
         ).exclude(pk=alert.pk)
         queryset = queryset.prefetch_related(
             "incident_set",
-            Prefetch("events", queryset=Event.objects.only(
-                "id",
-                "event_id",
-                "service",
-                "location",
-                "resource_name",
-                "item",
-            )),
+            Prefetch(
+                "events",
+                queryset=Event.objects.only(
+                    "id",
+                    "event_id",
+                    "service",
+                    "location",
+                    "resource_name",
+                    "item",
+                ),
+            ),
         ).order_by("-last_event_time")
 
         queryset = apply_team_scope_with_group_ids(queryset, group_ids, field_name="team")
@@ -100,6 +103,7 @@ class RelatedAlertsService:
         candidates: List[Alert],
     ) -> List[Dict[str, Any]]:
         result: List[Dict[str, Any]] = []
+        source_names = source_names_by_alert([item.pk for item in candidates], current_alert._state.db or "default")
         for candidate in candidates:
             candidate_dimensions = cls._get_alert_dimensions(candidate)
             score, matched_dimensions = cls._calculate_similarity(current_dimensions, candidate_dimensions)
@@ -112,6 +116,8 @@ class RelatedAlertsService:
                     "alert_id": candidate.alert_id,
                     "title": candidate.title,
                     "content": candidate.content,
+                    "push_source_ids": candidate.push_source_ids,
+                    "source_names": source_names[candidate.pk],
                     "level": candidate.level,
                     "status": candidate.status,
                     "first_event_time": candidate.first_event_time,
@@ -154,11 +160,7 @@ class RelatedAlertsService:
         dimensions: Dict[str, str] = {}
         events = list(alert.events.all())
         for dimension_name in dimension_names:
-            values = {
-                str(getattr(event, dimension_name)).strip()
-                for event in events
-                if getattr(event, dimension_name, None) not in (None, "")
-            }
+            values = {str(getattr(event, dimension_name)).strip() for event in events if getattr(event, dimension_name, None) not in (None, "")}
             if len(values) == 1:
                 dimensions[dimension_name] = values.pop()
         return dimensions
@@ -171,11 +173,7 @@ class RelatedAlertsService:
         if not current_dimensions or not candidate_dimensions:
             return 0, {}
 
-        matched_dimensions = {
-            key: value
-            for key, value in current_dimensions.items()
-            if candidate_dimensions.get(key) == value
-        }
+        matched_dimensions = {key: value for key, value in current_dimensions.items() if candidate_dimensions.get(key) == value}
         if not matched_dimensions:
             return 0, {}
 

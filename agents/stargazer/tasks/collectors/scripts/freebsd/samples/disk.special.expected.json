@@ -1,0 +1,26 @@
+[
+  {
+    "mount": "/",
+    "path": "/",
+    "fstype": "ufs",
+    "total_bytes": 102400,
+    "used_bytes": 40960,
+    "free_bytes": 61440,
+    "used_percent": 40.0,
+    "inodes_used_percent": 0.0,
+    "iused": 0,
+    "ifree": 0
+  },
+  {
+    "mount": "/mnt/data\"q /weird",
+    "path": "/mnt/data\"q /weird",
+    "fstype": "ufs",
+    "total_bytes": 204800,
+    "used_bytes": 51200,
+    "free_bytes": 153600,
+    "used_percent": 25.0,
+    "inodes_used_percent": 0.0,
+    "iused": 0,
+    "ifree": 0
+  }
+]

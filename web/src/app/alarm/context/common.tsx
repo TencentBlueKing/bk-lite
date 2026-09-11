@@ -1,6 +1,5 @@
 'use client';
 
-import Spin from '@/components/spin';
 import { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { UserItem } from '@/app/alarm/types/types';
 import { CommonContextType, LevelItem, LevelMetaGroup } from '@/app/alarm/types/index';
@@ -23,7 +22,7 @@ const CommonContextProvider = ({ children }: { children: React.ReactNode }) => {
     Record<string, string>
   >({});
   const [levelMeta, setLevelMeta] = useState<Record<string, LevelMetaGroup>>({});
-  const [pageLoading, setPageLoading] = useState(false);
+  const [commonLoading, setCommonLoading] = useState(false);
   const { getUserList, getLevelList } = useCommonApi();
   const { drop } = useAliveController();
   const pathname = usePathname();
@@ -102,21 +101,20 @@ const CommonContextProvider = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     const fetchAll = async () => {
-      setPageLoading(true);
+      setCommonLoading(true);
       try {
         const userRes = await getUserList({ page_size: 10000, page: 1 });
         setUserList(userRes.users);
         await refreshLevels();
       } finally {
-        setPageLoading(false);
+        setCommonLoading(false);
       }
     };
     fetchAll();
   }, [getUserList, refreshLevels]);
 
-  return pageLoading ? (
-    <Spin />
-  ) : (
+  // 不再用全屏 Spin 挡住子路由：切应用进入时也不再整页 LOADING
+  return (
     <CommonContext.Provider
       value={{
         userList,
@@ -127,6 +125,7 @@ const CommonContextProvider = ({ children }: { children: React.ReactNode }) => {
         levelListIncident,
         levelMapIncident,
         levelMeta,
+        commonLoading,
         refreshLevels,
         getLevelMeta,
       }}

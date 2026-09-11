@@ -1,6 +1,15 @@
-import type { JobType, ScheduledTaskFormData } from '../types';
+import type { JobType, ScheduledTaskConcurrencyPolicy, ScheduledTaskFormData } from '../types';
 
 export type CronTemplateType = 'script' | 'playbook';
+
+export function resolveScheduledTaskConcurrencyPolicy(
+  value: unknown,
+): ScheduledTaskConcurrencyPolicy {
+  if (value === 'skip' || value === 'run' || value === 'queue') {
+    return value;
+  }
+  return 'skip';
+}
 
 export interface BuildScheduledTaskTemplateInput {
   jobType: JobType;

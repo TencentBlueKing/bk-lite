@@ -6,7 +6,8 @@ import useMonitorApi from '@/app/monitor/api';
 import useViewApi from '@/app/monitor/api/view';
 import { useTranslation } from '@/utils/i18n';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import ViewModal from './viewModal';
 import {
   ColumnItem,
@@ -60,7 +61,7 @@ const ViewList: React.FC<ViewListProps> = ({
     saveViewColumnPreference
   } = useViewApi();
   const { t } = useTranslation();
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const searchParams = useSearchParams();
   const { convertToLocalizedTime } = useLocalizedTime();
   const { getEnumValueUnit } = useUnitTransform();

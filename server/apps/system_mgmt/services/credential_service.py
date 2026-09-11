@@ -14,7 +14,7 @@ from apps.system_mgmt.models.credential import Credential, CredentialType
 from apps.system_mgmt.models.user import Group
 from apps.system_mgmt.services.credential_builtin import builtin_type_payloads
 from apps.system_mgmt.services.credential_crypto import decrypt_instance_fields, encrypt_instance_fields, public_instance_fields
-from apps.system_mgmt.services.credential_schema import SchemaError, validate_instance_fields, validate_type_fields
+from apps.system_mgmt.services.credential_schema import SchemaError, secret_field_ids, validate_instance_fields, validate_type_fields
 from apps.system_mgmt.services.credential_scope import is_current_team_authorized, manageable_owner_group_ids, usable_owner_group_ids
 
 
@@ -473,6 +473,31 @@ def resolve_credential(credential_id, current_team, actor=None, *, group_list=No
     result = _public_credential(credential)
     result["fields"] = decrypt_instance_fields(credential.type.fields, credential.fields)
     return result
+
+
+def resolve_secret_field(credential_id, field_id=None):
+    """服务端专用：解出一个 secret 字段的明文（OpenAPI 网关 credential: 引用）。
+
+    不做组织范围检查——网关密钥是平台级资源，能写注册表即有权引用。
+    未指定 field_id 时该类型必须恰有一个 secret 字段，否则报 ambiguous_field。
+    结果只应进入进程内渲染快照，禁止写日志或返回给客户端。
+    """
+    credential = _load_credential(credential_id)
+    if credential.disabled:
+        raise CredentialServiceError("disabled")
+    secret_ids = secret_field_ids(credential.type.fields)
+    if field_id:
+        if field_id not in secret_ids:
+            raise CredentialServiceError("unknown_field")
+    elif len(secret_ids) == 1:
+        field_id = secret_ids[0]
+    else:
+        raise CredentialServiceError("ambiguous_field")
+    values = decrypt_instance_fields(credential.type.fields, credential.fields)
+    value = values.get(field_id)
+    if not isinstance(value, str) or not value:
+        raise CredentialServiceError("empty")
+    return value
 
 
 def query_credentials(filters=None, actor=None, **values):

@@ -5,6 +5,8 @@ export interface RelatedAlertIncidentItem {
 }
 
 export interface RelatedAlertItem {
+  push_source_ids?: string[];
+  source_names?: string[];
   id: number;
   alert_id: string;
   title: string;

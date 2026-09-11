@@ -1,11 +1,12 @@
 # -- coding: utf-8 --
 import asyncio
+import importlib
 import json
 import logging
 import re
 import time
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 from urllib.parse import unquote
 
 from core.logger import safe_log_value
@@ -79,7 +80,27 @@ VALID_MODULES = {"cpu", "mem", "disk", "net", "diskio", "processes", "system"}
 HOST_REMOTE_CALLBACK_REQUEST_TIMEOUT = 60
 LINUX_SCRIPT_WRAPPER_EOF = "STARGAZER_HOST_COLLECT_EOF"
 LINUX_SCRIPT_WRAPPER_PREFIX = "LC_ALL=C LANG=C bash --noprofile --norc"
-SUPPORTED_OS_TYPES = {"linux", "windows", "aix"}
+# 与 Host AIX/FreeBSD/HP-UX/Solaris Remote 看板、display_fields、collectTypes 取并集。
+# 采集模块按 OS 延迟导入；本 PR 不携带其它 Remote 插件树，模块存在时即可调度。
+HOST_REMOTE_OS_TYPES = frozenset({"aix", "freebsd", "hpux", "solaris"})
+SUPPORTED_OS_TYPES = {"linux", "windows", *HOST_REMOTE_OS_TYPES}
+SSH_OS_TYPES = frozenset({"linux", *HOST_REMOTE_OS_TYPES})
+DEBUG_SCRAPE_OS_TYPES = frozenset({"freebsd", "hpux", "solaris"})
+# module, wrap_attr, parse_attr — 名称对齐各 Remote 采集模块导出。
+_REMOTE_OS_MONITOR_SPECS: Dict[str, Tuple[str, str, str]] = {
+    "aix": ("aix_os_monitor", "wrap_ksh_collect", "parse_aix_metrics_to_prometheus"),
+    "freebsd": ("freebsd_os_monitor", "wrap_sh_collect", "parse_freebsd_metrics_to_prometheus"),
+    "hpux": ("hpux_os_monitor", "wrap_ksh_collect", "parse_hpux_metrics_to_prometheus"),
+    "solaris": ("solaris_os_monitor", "wrap_ksh_collect", "parse_solaris_metrics_to_prometheus"),
+}
+
+
+def _load_remote_os_monitor(os_type: str):
+    spec = _REMOTE_OS_MONITOR_SPECS[os_type]
+    try:
+        return importlib.import_module(f"{__package__ or 'tasks.collectors'}.{spec[0]}")
+    except ImportError as exc:
+        raise ValueError(f"unsupported os_type: {os_type}") from exc
 
 
 def sanitize_ansible_failure_text(value: Any, *, max_length: int = ANSIBLE_FAILURE_TEXT_MAX_CHARS) -> str:
@@ -164,10 +185,10 @@ def build_script(
     config_type: str | None = None,
 ) -> str:
     os_type = str(os_type or "").strip().lower()
-    if os_type == "aix":
-        from .aix_os_monitor import wrap_ksh_collect
-
-        return wrap_ksh_collect()
+    spec = _REMOTE_OS_MONITOR_SPECS.get(os_type)
+    if spec:
+        module = _load_remote_os_monitor(os_type)
+        return getattr(module, spec[1])()
     if os_type not in {"linux", "windows"}:
         raise ValueError(f"unsupported os_type: {os_type}")
     base_dir = SCRIPTS_DIR / ("linux" if os_type == "linux" else "windows")
@@ -456,20 +477,21 @@ class HostCollector(BaseCollector):
             raise ValueError(f"unsupported os_type: {os_type}")
         username = self.params["username"]
         raw_port = self.params.get("port")
-        ssh_like = os_type in {"linux", "aix"}
+        ssh_like = os_type in SSH_OS_TYPES
         port = int(raw_port) if raw_port not in (None, "") else (22 if ssh_like else 5986)
         ansible_node_id = self.params["ansible_node_id"]
-        if os_type == "aix":
-            from .aix_os_monitor import COMMAND_EXECUTE_TIMEOUT
-
-            execute_timeout = COMMAND_EXECUTE_TIMEOUT
+        if os_type in _REMOTE_OS_MONITOR_SPECS:
+            execute_timeout = getattr(_load_remote_os_monitor(os_type), "COMMAND_EXECUTE_TIMEOUT")
         else:
             execute_timeout = 60  # 脚本执行上限硬编码；表单 timeout 由框架作单对象预算
 
         modules = self._resolve_modules()
         credential_encoding = self.params.get("credential_encoding") or self.params.get("credentials_encoding") or "url"
 
-        logger.info("[Host Collector] host=%s, os=%s, modules=%s", host, os_type, modules)
+        if os_type in DEBUG_SCRAPE_OS_TYPES:
+            logger.debug("[Host Collector] host=%s, os=%s, modules=%s", host, os_type, modules)
+        else:
+            logger.info("[Host Collector] host=%s, os=%s, modules=%s", host, os_type, modules)
 
         script = build_script(
             os_type,
@@ -521,10 +543,9 @@ class HostCollector(BaseCollector):
 
     def _resolve_callback_timeout(self) -> int:
         os_type = str(self.params.get("os_type", "") or "").strip().lower()
-        if os_type == "aix":
-            from .aix_os_monitor import COMMAND_EXECUTE_TIMEOUT
-
-            return int(self.params.get("host_remote_callback_timeout", COMMAND_EXECUTE_TIMEOUT))
+        if os_type in _REMOTE_OS_MONITOR_SPECS:
+            execute_timeout = getattr(_load_remote_os_monitor(os_type), "COMMAND_EXECUTE_TIMEOUT")
+            return int(self.params.get("host_remote_callback_timeout", execute_timeout))
         return int(
             self.params.get(
                 "host_remote_callback_timeout",
@@ -599,13 +620,14 @@ class HostCollector(BaseCollector):
 
         instance_id = self.params.get("tags", {}).get("instance_id", host)
         callback_timestamp = self.params.get("callback_timestamp")
-        if os_type == "aix":
-            from .aix_os_monitor import parse_aix_metrics_to_prometheus
-
-            prometheus_metrics = parse_aix_metrics_to_prometheus(
+        os_key = str(os_type or "linux").strip().lower()
+        spec = _REMOTE_OS_MONITOR_SPECS.get(os_key)
+        if spec:
+            parse_metrics = getattr(_load_remote_os_monitor(os_key), spec[2])
+            prometheus_metrics = parse_metrics(
                 metrics_data,
                 instance_id,
-                os_type,
+                os_key,
                 int(callback_timestamp) if callback_timestamp is not None else int(time.time() * 1000),
             )
         else:
@@ -618,7 +640,10 @@ class HostCollector(BaseCollector):
                 disk_exclude_fstypes=self.params.get("disk_exclude_fstypes"),
             )
 
-        logger.info(f"[Host Collector] Completed: host={host}, metrics_size={len(prometheus_metrics)}")
+        if os_key in DEBUG_SCRAPE_OS_TYPES:
+            logger.debug("[Host Collector] Completed: host=%s, metrics_size=%s", host, len(prometheus_metrics))
+        else:
+            logger.info(f"[Host Collector] Completed: host={host}, metrics_size={len(prometheus_metrics)}")
         return prometheus_metrics
 
     async def collect(self) -> str:

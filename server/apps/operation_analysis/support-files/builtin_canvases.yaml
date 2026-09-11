@@ -2112,7 +2112,8 @@ datasources:
     value: ''
     alias_name: 组织
     filterType: filter
-    inputMode: organization
+    inputConfig:
+      control: organization
   tags:
   - CMDB
   chart_type:
@@ -2229,7 +2230,8 @@ datasources:
     value: ''
     alias_name: 组织
     filterType: filter
-    inputMode: organization
+    inputConfig:
+      control: organization
   tags:
   - CMDB
   chart_type:
@@ -2320,7 +2322,8 @@ datasources:
     value: ''
     alias_name: 组织
     filterType: filter
-    inputMode: organization
+    inputConfig:
+      control: organization
   tags:
   - 告警
   chart_type:
@@ -2352,7 +2355,8 @@ datasources:
     value: ''
     alias_name: 组织
     filterType: filter
-    inputMode: organization
+    inputConfig:
+      control: organization
   tags:
   - 告警
   chart_type:
@@ -2483,7 +2487,8 @@ datasources:
     value: ''
     alias_name: 组织
     filterType: filter
-    inputMode: organization
+    inputConfig:
+      control: organization
   tags:
   - 告警
   chart_type:
@@ -2539,7 +2544,8 @@ datasources:
     value: ''
     alias_name: 组织
     filterType: filter
-    inputMode: organization
+    inputConfig:
+      control: organization
   tags:
   - 告警
   chart_type:
@@ -2759,7 +2765,8 @@ datasources:
     value: ''
     alias_name: 组织
     filterType: filter
-    inputMode: organization
+    inputConfig:
+      control: organization
   tags:
   - 监控
   chart_type:

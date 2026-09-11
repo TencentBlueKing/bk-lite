@@ -104,7 +104,7 @@ class CollectionApplicationSettings:
         if any(isinstance(value, bool) or not isinstance(value, int) or value <= 0 for value in workload_limits):
             raise ValueError("workload target limits must be positive integers")
         # 三个值是活跃工作负载之间的软配额权重，不是三把独立信号量。
-        # 它们允许小于全局窗口（例如 100/20/20 + 全局 160），剩余槽位
+        # 它们允许小于全局窗口（例如 80/20/20 + 全局 120），剩余槽位
         # 由有积压的工作负载借用；也允许测试或临时缩容时按比例归一化。
         if self.target_task_window <= 0:
             raise ValueError("TARGET_TASK_WINDOW must be greater than zero")

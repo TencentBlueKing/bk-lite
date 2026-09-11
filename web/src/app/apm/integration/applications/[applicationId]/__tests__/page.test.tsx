@@ -9,6 +9,7 @@ const api = {
   getApplication: vi.fn(),
   getServices: vi.fn(),
   getServiceRed: vi.fn(),
+  getServiceRedBatch: vi.fn(),
   getTopology: vi.fn(),
   getEvents: vi.fn(),
   getSlos: vi.fn(),

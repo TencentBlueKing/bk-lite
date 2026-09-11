@@ -68,6 +68,8 @@ export interface AlarmDetailLogItem {
 }
 
 export interface AlarmDetailDrawerData extends AlarmActionRowData {
+  push_source_ids?: string[];
+  source_names?: string[];
   alert_id?: string | number;
   content?: string;
   duration?: string;
@@ -177,7 +179,12 @@ const AlarmDetailDrawer = forwardRef<
     const isBaseInfo = activeTab === 'baseInfo';
     const isEventTab = activeTab === 'event';
     const isRelatedTopologyTab = activeTab === 'relatedTopology';
-    const { visible: relatedTopologyVisible, centers: relatedTopologyCenters, Widget: RelatedTopologyWidget } =
+    const {
+      visible: relatedTopologyVisible,
+      centers: relatedTopologyCenters,
+      Widget: RelatedTopologyWidget,
+      loadFailed: relatedTopologyLoadFailed,
+    } =
       useRelatedTopologyTab(
         groupVisible ? formData.monitor_objects : undefined
       );
@@ -500,6 +507,7 @@ const AlarmDetailDrawer = forwardRef<
             <RelatedTopologyTabContent
               centers={relatedTopologyCenters}
               Widget={RelatedTopologyWidget}
+              loadFailed={relatedTopologyLoadFailed}
             />
           )}
 

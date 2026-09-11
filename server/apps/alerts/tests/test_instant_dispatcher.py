@@ -94,7 +94,7 @@ def second_instant_strategy(db):
         is_active=True,
         team=[1],
         dispatch_team=[1],
-        match_rules=[[{"key": "service", "operator": "eq", "value": "api"}]],
+        match_rules=[[{"key": "service", "operator": "any_of", "value": ["api"]}]],
         params={"alert_template": {"title": "T", "description": "D"}},
     )
 

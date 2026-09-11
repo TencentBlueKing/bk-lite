@@ -12,7 +12,8 @@ import { STATUS_TEXT } from '@/app/alarm/constants/colors';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { AlertAssignListItem } from '@/app/alarm/types/settings';
 import { useSettingApi } from '@/app/alarm/api/settings';
-import { Button, Input, Switch, Tag } from 'antd';
+import { Button, Input, Switch, Tag, Tooltip } from 'antd';
+import { QuestionCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { typeLabel, weekMap } from '@/app/alarm/constants/settings';
 import { useSettingsTable } from '@/app/alarm/hooks/useSettingsTable';
@@ -147,6 +148,19 @@ const AlertAssign: React.FC = () => {
           </span>
         );
       },
+    },
+    {
+      title: (
+        <span className="inline-flex items-center gap-1">
+          {t('settings.assignPriority')}
+          <Tooltip title={t('settings.assignStrategy.priorityHelp')}>
+            <QuestionCircleOutlined />
+          </Tooltip>
+        </span>
+      ),
+      dataIndex: 'priority',
+      key: 'priority',
+      width: 100,
     },
     {
       title: t('settings.assignCreateTime'),

@@ -26,7 +26,8 @@ import {
   StarOutlined,
   UnorderedListOutlined,
 } from '@ant-design/icons';
-import { useSearchParams, usePathname, useRouter } from 'next/navigation';
+import { useSearchParams, usePathname } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import CustomTable from '@/components/custom-table';
 import GroupTreeSelector from '@/components/group-tree-select';
 import PermissionWrapper from '@/components/permission';
@@ -38,7 +39,7 @@ import { deepClone, getAssetColumns } from '@/app/cmdb/utils/common';
 import {
   ensureCollectTaskMap,
 } from '@/app/cmdb/utils/collectTask';
-import { useCommon } from '@/app/cmdb/context/common';
+import { useCommon, useCmdbUserList } from '@/app/cmdb/context/common';
 import { resolveCmdbInstUuid } from '@/app/cmdb/utils/instUuid';
 import { useAssetDataStore, type FilterItem } from '@/app/cmdb/store';
 import { useModelApi, useClassificationApi, useInstanceApi, useCollectApi } from '@/app/cmdb/api';
@@ -212,7 +213,7 @@ const AssetDataContent = () => {
     batchDeleteInstances,
   } = useInstanceApi();
   const { getCollectTaskNames } = useCollectApi();
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const assetModelId: string = searchParams.get('modelId') || '';
@@ -220,8 +221,7 @@ const AssetDataContent = () => {
     searchParams.get('classificationId') || '';
   const urlQueryList: string = searchParams.get('query_list') || '';
   const commonContext = useCommon();
-  const users = useRef(commonContext?.userList || []);
-  const userList: UserItem[] = users.current;
+  const userList: UserItem[] = useCmdbUserList();
   const modelListFromContext = commonContext?.modelList || [];
   const fieldRef = useRef<FieldRef>(null);
   const importRef = useRef<ImportRef>(null);
@@ -1083,7 +1083,7 @@ const AssetDataContent = () => {
       .filter((col) => displayFieldKeys.includes(col.key as string))
       .sort((a, b) => displayFieldKeys.indexOf(a.key as string) - displayFieldKeys.indexOf(b.key as string));
     setCurrentColumns([...orderedColumns, actionColumn]);
-  }, [propertyList, displayFieldKeys, propertyListGroups, modelId, followPendingKey, handleFollowToggle, isFollowed, t]);
+  }, [propertyList, displayFieldKeys, propertyListGroups, modelId, followPendingKey, handleFollowToggle, isFollowed, t, userList]);
 
   const showSubscribeAction = selectedRowKeys.length > 0 || storeQueryList.length > 0;
 

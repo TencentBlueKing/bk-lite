@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import base64
 import re
 from collections.abc import Iterable
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+
+HTTP_HEADER_COMMANDS_PREFIX = "b64:"
 
 SUPPORTED_NETWORK_CONFIG_MODELS = {"switch", "router", "firewall", "loadbalance"}
 
@@ -21,12 +24,12 @@ BRAND_DEVICE_TYPE_ALIASES = {
 }
 
 SUPPORTED_BRAND_OPTIONS = [
-    {"label": "华为 / Huawei", "device_type": "huawei"},
-    {"label": "H3C / HP Comware", "device_type": "hp_comware"},
-    {"label": "Cisco", "device_type": "cisco_ios"},
-    {"label": "Juniper", "device_type": "juniper_junos"},
-    {"label": "F5", "device_type": "f5_tmsh"},
-    {"label": "Fortinet", "device_type": "fortinet"},
+    {"label": "华为 / Huawei", "label_en": "Huawei", "device_type": "huawei"},
+    {"label": "H3C / HP Comware", "label_en": "H3C / HP Comware", "device_type": "hp_comware"},
+    {"label": "Cisco", "label_en": "Cisco", "device_type": "cisco_ios"},
+    {"label": "Juniper", "label_en": "Juniper", "device_type": "juniper_junos"},
+    {"label": "F5", "label_en": "F5", "device_type": "f5_tmsh"},
+    {"label": "Fortinet", "label_en": "Fortinet", "device_type": "fortinet"},
 ]
 
 DANGEROUS_EXACT_COMMANDS = {"conf t", "write erase"}
@@ -86,8 +89,32 @@ def resolve_device_type(brand: str | None) -> str:
     return device_type
 
 
-def get_supported_brand_options() -> list[dict]:
-    return [dict(item) for item in SUPPORTED_BRAND_OPTIONS]
+def get_supported_brand_options(locale: str | None = None) -> list[dict]:
+    use_en = str(locale or "").lower().replace("_", "-").startswith("en")
+    return [
+        {
+            "label": item["label_en"] if use_en else item["label"],
+            "device_type": item["device_type"],
+        }
+        for item in SUPPORTED_BRAND_OPTIONS
+    ]
+
+
+def encode_http_header_commands(raw_commands: str | None) -> str:
+    """把多行命令编成 HTTP 头安全值：禁止 CR/LF，Telegraf 才能发出请求。"""
+    payload = base64.urlsafe_b64encode(str(raw_commands or "").encode("utf-8")).decode("ascii")
+    return f"{HTTP_HEADER_COMMANDS_PREFIX}{payload}"
+
+
+def decode_http_header_commands(raw_commands: str | None) -> str:
+    text = str(raw_commands or "")
+    if not text.startswith(HTTP_HEADER_COMMANDS_PREFIX):
+        return text
+    payload = text[len(HTTP_HEADER_COMMANDS_PREFIX) :]
+    try:
+        return base64.urlsafe_b64decode(payload.encode("ascii")).decode("utf-8")
+    except (ValueError, UnicodeDecodeError) as err:
+        raise ValueError("采集命令头编码无效") from err
 
 
 def split_commands(raw_commands: str | Iterable[str] | None) -> list[str]:

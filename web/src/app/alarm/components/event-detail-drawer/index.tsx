@@ -7,7 +7,7 @@ import EventDetailHeader, {
 import EventTimelinePanel, {
   type EventTimelineItem,
 } from './timeline-panel';
-import type { HeatMapCellClickPayload } from './heatMap';
+import type { HeatMapCellClickPayload } from '@/components/heat-map';
 
 export type { EventDetailHeaderMetaItem } from './header';
 export type { EventTimelineItem } from './timeline-panel';
@@ -124,4 +124,4 @@ const EventDetailDrawer = <T extends EventTimelineItem>({
 };
 
 export default EventDetailDrawer;
-export type { HeatMapCellClickPayload } from './heatMap';
+export type { HeatMapCellClickPayload } from '@/components/heat-map';

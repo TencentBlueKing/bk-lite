@@ -378,7 +378,7 @@ def _count_raw_collection_outcomes(raw_data) -> tuple[int, int]:
 
 @shared_task(
     bind=True,
-    max_retries=8,
+    max_retries=10,  # 8 次节点争锁重试 + 2 次业务重试；累计上限由 run 持久化。
     name="apps.cmdb.tasks.celery_tasks.execute_first_collection_run",
 )
 def execute_first_collection_run(self, run_id):

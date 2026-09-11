@@ -1372,7 +1372,8 @@
     "control": {
       "input": "Input",
       "select": "Select",
-      "radio": "Radio"
+      "radio": "Radio",
+      "organization": "Organization"
     },
     "picker": "Picker",
     "pickerDropdown": "Dropdown",

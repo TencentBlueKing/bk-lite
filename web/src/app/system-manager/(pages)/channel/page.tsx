@@ -1,13 +1,13 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import { useTranslation } from '@/utils/i18n';
 import EntityList from '@/components/entity-list';
 
 const ChannelPage = () => {
   const { t } = useTranslation();
-  const router = useRouter();
+  const router = useScreenAwareRouter();
 
   const [dataList] = useState([
     {

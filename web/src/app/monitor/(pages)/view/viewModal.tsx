@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, forwardRef, useImperativeHandle } from 'react';
-import { useRouter } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import { Button, Tabs } from 'antd';
 import OperateDrawer from '@/components/operate-drawer';
 import { ModalRef, TabItem, ChartProps, ObjectItem } from '@/app/monitor/types';
@@ -20,7 +20,7 @@ import { findByMonitorId } from '@/app/monitor/utils/monitorIds';
 const ViewModal = forwardRef<ModalRef, ViewModalProps>(
   ({ monitorObject, monitorName, plugins, metrics, objects = [] }, ref) => {
     const { t } = useTranslation();
-    const router = useRouter();
+    const router = useScreenAwareRouter();
     const [groupVisible, setGroupVisible] = useState<boolean>(false);
     const [title, setTitle] = useState<string>('');
     const [viewConfig, setViewConfig] =

@@ -4,6 +4,7 @@ import type { SourceDataResult } from '@/app/ops-analysis/utils/sourceDataRespon
 import { getRequestErrorMessage } from '@/app/ops-analysis/utils/requestError';
 import {
   extractDataSourceItems,
+  isOptionInputControl,
   mapDynamicItems,
   resolveDynamicSourceId,
 } from '@/app/ops-analysis/utils/paramInputConfigUtils';
@@ -64,7 +65,7 @@ export const createParamInputOptionsNotifier = (): ParamInputOptionsNotifier => 
 
 export const getParamInputConfigKey = (config?: InputControlConfig): string => {
   if (!config) return 'none';
-  if (config.control === 'input') return 'input';
+  if (!isOptionInputControl(config)) return config.control;
   const source = config.optionsSource;
   if (source.type === 'static') {
     return JSON.stringify(['static', config.control, source.staticItems.map(typedOption)]);
@@ -93,7 +94,7 @@ export const createParamInputOptionsLoader = (
     currentKey = key;
     const requestGeneration = ++generation;
 
-    if (!config || config.control === 'input') {
+    if (!isOptionInputControl(config)) {
       const initial: ParamInputOptionsState = { status: 'idle', options: [] };
       currentLoad = { sync: true, initial, promise: Promise.resolve(initial) };
       return currentLoad;

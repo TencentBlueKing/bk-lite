@@ -146,8 +146,8 @@ export function CollectProtocolBar({
   );
 
   const options = useMemo(
-    () => availableViews.map((view) => ({ label: FLOW_VIEW_LABELS[view], value: view })),
-    [availableViews],
+    () => availableViews.map((view) => ({ label: dt(FLOW_VIEW_LABELS[view]), value: view })),
+    [availableViews, dt],
   );
 
   const awaitingPlugins =
@@ -165,7 +165,7 @@ export function CollectProtocolBar({
     options.length >= 2
       ? options
       : ([currentView] as FlowViewKind[]).map((view) => ({
-        label: FLOW_VIEW_LABELS[view],
+        label: dt(FLOW_VIEW_LABELS[view]),
         value: view,
       }));
 

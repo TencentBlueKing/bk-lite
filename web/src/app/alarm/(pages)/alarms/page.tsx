@@ -1,5 +1,5 @@
 'use client';
-
+import './register-alarms-pilot';
 import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import Icon from '@/components/icon';
 import useApiClient from '@/utils/request';
@@ -235,7 +235,7 @@ const Alert: React.FC = () => {
     const params: any = {
       status: filters.state.join(','),
       level: filters.level.join(','),
-      source_name: filters.alarm_source.join(','),
+      source_names: filters.alarm_source.length ? JSON.stringify(filters.alarm_source) : undefined,
       page: pagination.current,
       page_size: pagination.pageSize,
       created_at_after: queryTimeRange[0]
@@ -393,7 +393,7 @@ const Alert: React.FC = () => {
   );
 
   return (
-    <div className="w-full">
+    <div className="h-full min-h-0 min-w-0 w-full">
       <div className={alertStyle.alert}>
         <AlarmFilters
           filters={filters}
@@ -453,7 +453,7 @@ const Alert: React.FC = () => {
           </Spin>
           <div className={alertStyle.table}>
             <Tabs activeKey={activeTab} items={tabList} onChange={changeTab} />
-            <div className="flex items-center justify-between mb-[16px] min-w-[900px]">
+            <div className="mb-[16px] flex min-w-0 flex-wrap items-center justify-between gap-y-2">
               <div className="flex items-center space-x-4">
                 <SearchFilter
                   attrList={alarmAttrList}

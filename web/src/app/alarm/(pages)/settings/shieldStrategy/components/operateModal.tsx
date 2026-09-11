@@ -1,5 +1,7 @@
 'use client';
 
+import { invalidMatchRules } from '@/app/alarm/utils/multivalueRules';
+
 import React, { useEffect, useState } from 'react';
 import MatchRule from '@/app/alarm/(pages)/settings/components/matchRule';
 import EffectiveTime, {
@@ -143,36 +145,19 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
           <Form.Item
             name="match_rules"
             validateTrigger={[]}
-            style={{
-              marginTop: '-10px',
-              marginBottom: '26px',
-            }}
+            className="mb-6"
             rules={[
               {
                 validator: (_, value: any[][]) => {
-                  if (!Array.isArray(value) || value.length === 0) {
+                  if (invalidMatchRules(value, false, "shield")) {
                     return Promise.reject(new Error(t('common.inputTip')));
-                  }
-                  for (const orGroup of value) {
-                    if (!Array.isArray(orGroup) || orGroup.length === 0) {
-                      return Promise.reject(new Error(t('common.inputTip')));
-                    }
-                    for (const item of orGroup) {
-                      if (
-                        !item.key ||
-                        !item.operator ||
-                        (!item.value && item.value !== 0)
-                      ) {
-                        return Promise.reject(new Error(t('common.inputTip')));
-                      }
-                    }
                   }
                   return Promise.resolve();
                 },
               },
             ]}
           >
-            <MatchRule levelType="event" />
+            <MatchRule scope="shield" levelType="event" monitorSourceField="push_source_id" />
           </Form.Item>
         )}
 
