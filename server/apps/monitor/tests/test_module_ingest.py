@@ -1,9 +1,12 @@
-"""MonitorModuleIngestService：按 node_id / cmdb_id / ip+cloud / 同名 归并。"""
+"""MonitorModuleIngestService：按 node_id / cmdb_id / 类型身份（主机 IP+云区域→IP，其它 IP）/ 同名 归并。"""
+
+import json
+from pathlib import Path
 
 import pytest
 
 from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorPlugin, MonitorPluginConfigTemplate
-from apps.monitor.services.module_ingest import DEFAULT_HOST_COLLECT_MODULES, MonitorModuleIngestService
+from apps.monitor.services.module_ingest import CMDB_MODEL_TO_MONITOR_OBJECT, DEFAULT_HOST_COLLECT_MODULES, MonitorModuleIngestService
 from apps.monitor.utils.dimension import build_safe_instance_id, normalize_instance_identity
 from apps.node_mgmt.services.module_push_contract import LINK_CONFLICT
 
@@ -387,6 +390,36 @@ def test_cmdb_uncredentialed_claims_switch_when_pk_encodes_name_not_ip(db):
 
 
 @pytest.mark.django_db
+def test_cmdb_uncredentialed_claims_switch_by_ip_ignoring_cloud(db):
+    """网络设备在 ID 之后只认唯一 IP，不看云区域。"""
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="交换机", level="base")
+    ip = "10.10.69.246"
+    existing = MonitorInstance.objects.create(
+        id=_network_storage_key(2, ip),
+        name="core-sw",
+        monitor_object=switch_object,
+    )
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="sw-uuid",
+            link_ids={"cmdb_id": "sw-uuid"},
+            raw={
+                "name": "cmdb-sw",
+                "ip": ip,
+                "cloud_region_id": 1,
+                "model_id": "switch",
+                "organization_ids": [1],
+            },
+        )
+    )
+    assert result["id"] == existing.id
+    existing.refresh_from_db()
+    assert existing.cmdb_id == "sw-uuid"
+    assert existing.name == "core-sw"
+
+
+@pytest.mark.django_db
 def test_cmdb_uncredentialed_claims_mysql_by_ip_port(db):
     mysql_object = MonitorObject.objects.create(name="Mysql", display_name="Mysql", level="base")
     existing = MonitorInstance.objects.create(
@@ -417,7 +450,8 @@ def test_cmdb_uncredentialed_claims_mysql_by_ip_port(db):
 
 
 @pytest.mark.django_db
-def test_cmdb_uncredentialed_does_not_claim_mysql_on_different_port(db):
+def test_cmdb_uncredentialed_claims_mysql_by_unique_ip_ignoring_port(db):
+    """非主机对象在 ID 之后只认唯一 IP，不再要求端口一致。"""
     mysql_object = MonitorObject.objects.create(name="Mysql", display_name="Mysql", level="base")
     existing = MonitorInstance.objects.create(
         id="('1_10.0.0.20_3307',)",
@@ -440,11 +474,142 @@ def test_cmdb_uncredentialed_does_not_claim_mysql_on_different_port(db):
             },
         )
     )
-    assert result["ignored"] is True
+    assert result["id"] == existing.id
+    existing.refresh_from_db()
+    assert existing.cmdb_id == "mysql-uuid"
+    assert existing.name == "db-other-port"
+
+
+# CMDB model_config.xlsx 内置模型 → 监控插件 metrics.json 对象名。
+# 只收一对一能对上的；云账号、组件、无插件对象都不进表。
+_EXPECTED_CMDB_MODEL_TO_MONITOR_OBJECT = {
+    "host": "Host",
+    "switch": "Switch",
+    "router": "Router",
+    "firewall": "Firewall",
+    "loadbalance": "Loadbalance",
+    "physcial_server": "Hardware Server",
+    "mysql": "Mysql",
+    "postgresql": "Postgres",
+    "mssql": "MSSQL",
+    "influxdb": "InfluxDB",
+    "oracle": "Oracle",
+    "redis": "Redis",
+    "mongodb": "MongoDB",
+    "es": "ElasticSearch",
+    "apache": "Apache",
+    "tomcat": "Tomcat",
+    "nginx": "Nginx",
+    "rabbitmq": "RabbitMQ",
+    "kafka": "Kafka",
+    "zookeeper": "Zookeeper",
+    "activemq": "ActiveMQ",
+    "minio": "Minio",
+    "etcd": "Etcd",
+    "haproxy": "Haproxy",
+    "docker": "Docker",
+    "k8s_cluster": "Cluster",
+    "k8s_node": "Node",
+    "k8s_pod": "Pod",
+    "vmware_vc": "vCenter",
+    "vmware_esxi": "ESXI",
+    "vmware_vm": "VM",
+    "vmware_ds": "DataStorage",
+    "qcloud_cvm": "CVM",
+}
+
+
+def test_cmdb_model_to_monitor_object_covers_matchable_builtins():
+    assert CMDB_MODEL_TO_MONITOR_OBJECT == _EXPECTED_CMDB_MODEL_TO_MONITOR_OBJECT
+
+
+def test_cmdb_model_to_monitor_object_values_exist_in_plugins():
+    plugin_root = Path(__file__).resolve().parents[1] / "support-files" / "plugins"
+    names = set()
+    for path in plugin_root.rglob("metrics.json"):
+        data = json.loads(path.read_text())
+        if data.get("is_compound_object"):
+            names.update(obj.get("name") for obj in data.get("objects") or [] if obj.get("name"))
+        elif data.get("name"):
+            names.add(data["name"])
+    missing = sorted(set(CMDB_MODEL_TO_MONITOR_OBJECT.values()) - names)
+    assert missing == []
+
+
+def test_unmatchable_cmdb_models_are_not_mapped():
+    for model_id in (
+        "weblogic",
+        "jetty",
+        "iis",
+        "storage",
+        "security_device",
+        "aliyun_ecs",
+        "redis_sentinel",
+        "docker_container",
+        "k8s_namespace",
+        "qcloud",
+        "sangforscp",
+        "pc",
+        "rack",
+    ):
+        assert model_id not in CMDB_MODEL_TO_MONITOR_OBJECT
+
+
+@pytest.mark.django_db
+def test_cmdb_uncredentialed_claims_oracle_by_unique_ip(db):
+    oracle_object = MonitorObject.objects.create(name="Oracle", display_name="Oracle", level="base")
+    existing = MonitorInstance.objects.create(
+        id="('1_10.0.0.30_1521',)",
+        name="ora-prod",
+        monitor_object=oracle_object,
+        ip="10.0.0.30",
+        cloud_region_id=1,
+    )
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="ora-uuid",
+            link_ids={"cmdb_id": "ora-uuid"},
+            raw={
+                "ip": "10.0.0.30",
+                "cloud_region_id": 1,
+                "model_id": "oracle",
+                "organization_ids": [1],
+            },
+        )
+    )
+    assert result["id"] == existing.id
+    existing.refresh_from_db()
+    assert existing.cmdb_id == "ora-uuid"
+    assert existing.name == "ora-prod"
+
+
+@pytest.mark.django_db
+def test_cmdb_uncredentialed_unmapped_model_does_not_claim_other_object_by_ip(db):
+    tomcat_object = MonitorObject.objects.create(name="Tomcat", display_name="Tomcat", level="base")
+    existing = MonitorInstance.objects.create(
+        id="('1_10.0.0.40_8080',)",
+        name="app-tomcat",
+        monitor_object=tomcat_object,
+        ip="10.0.0.40",
+        cloud_region_id=1,
+    )
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="wls-uuid",
+            link_ids={"cmdb_id": "wls-uuid"},
+            raw={
+                "ip": "10.0.0.40",
+                "model_id": "weblogic",
+                "organization_ids": [1],
+            },
+        )
+    )
     assert result["id"] is None
+    assert result.get("ignored") is True
     existing.refresh_from_db()
     assert existing.cmdb_id in (None, "")
-    assert MonitorInstance.objects.filter(cmdb_id="mysql-uuid").count() == 0
 
 
 @pytest.mark.django_db
@@ -532,6 +697,135 @@ def test_cmdb_uncredentialed_prefers_ip_cloud_over_same_name(host_object):
     by_ip.refresh_from_db()
     assert by_ip.cmdb_id == "cmdb-uuid"
     assert MonitorInstance.objects.get(name="host-ecom-inventory-02").cmdb_id in (None, "")
+
+
+@pytest.mark.django_db
+def test_cmdb_uncredentialed_claims_host_by_ip_when_cloud_misses(host_object):
+    """IP+云区域未命中时，同对象下唯一 IP（不看云区域）可在同名前认领。"""
+    existing = MonitorInstance.objects.create(
+        id="('ui-host',)",
+        name="keep-monitor-name",
+        monitor_object=host_object,
+        ip="10.11.27.147",
+    )
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="cmdb-uuid",
+            link_ids={"cmdb_id": "cmdb-uuid"},
+            raw={
+                "name": "10.11.27.147[default]",
+                "inst_name": "10.11.27.147[default]",
+                "ip": "10.11.27.147",
+                "cloud_region_id": 1,
+                "model_id": "host",
+                "organization_ids": [1],
+            },
+        )
+    )
+    assert result["id"] == existing.id
+    existing.refresh_from_db()
+    assert existing.cmdb_id == "cmdb-uuid"
+    assert existing.name == "keep-monitor-name"
+
+
+@pytest.mark.django_db
+def test_cmdb_uncredentialed_claims_host_by_summary_asset_ip(host_object):
+    """接入页 Host 常把 IP 写在摘要列，列上的 ip/云区域为空时仍按展示 IP 唯一认领。"""
+    existing = MonitorInstance.objects.create(
+        id="('1_os_10.11.27.147',)",
+        name="10.11.27.147",
+        monitor_object=host_object,
+        summary_facts={"asset.ip": "10.11.27.147"},
+    )
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="cmdb-uuid",
+            link_ids={"cmdb_id": "cmdb-uuid"},
+            raw={
+                "name": "10.11.27.147[default]",
+                "ip": "10.11.27.147",
+                "cloud_region_id": 1,
+                "model_id": "host",
+                "organization_ids": [1],
+            },
+        )
+    )
+    assert result["id"] == existing.id
+    existing.refresh_from_db()
+    assert existing.cmdb_id == "cmdb-uuid"
+
+
+@pytest.mark.django_db
+def test_cmdb_uncredentialed_prefers_unique_ip_over_same_name(host_object):
+    """无云区域的唯一 IP 兜底仍优先于同名。"""
+    by_ip = MonitorInstance.objects.create(
+        id="('ip-only-host',)",
+        name="other-name",
+        monitor_object=host_object,
+        ip="10.20.1.23",
+    )
+    MonitorInstance.objects.create(
+        id="('named-shell',)",
+        name="host-ecom-inventory-02",
+        monitor_object=host_object,
+    )
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="cmdb-uuid",
+            link_ids={"cmdb_id": "cmdb-uuid"},
+            raw={
+                "name": "host-ecom-inventory-02",
+                "inst_name": "host-ecom-inventory-02",
+                "ip": "10.20.1.23",
+                "cloud_region_id": 1,
+                "model_id": "host",
+                "organization_ids": [1],
+            },
+        )
+    )
+    assert result["id"] == by_ip.id
+    by_ip.refresh_from_db()
+    assert by_ip.cmdb_id == "cmdb-uuid"
+    assert MonitorInstance.objects.get(name="host-ecom-inventory-02").cmdb_id in (None, "")
+
+
+@pytest.mark.django_db
+def test_cmdb_uncredentialed_does_not_claim_ambiguous_ip_without_cloud(host_object):
+    """同一 IP 多条 Host 时，不按无云区域 IP 兜底，避免误绑。"""
+    MonitorInstance.objects.create(
+        id="('ip-a',)",
+        name="host-a",
+        monitor_object=host_object,
+        ip="10.20.9.9",
+        cloud_region_id=1,
+    )
+    MonitorInstance.objects.create(
+        id="('ip-b',)",
+        name="host-b",
+        monitor_object=host_object,
+        ip="10.20.9.9",
+        cloud_region_id=2,
+    )
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="cmdb-uuid",
+            link_ids={"cmdb_id": "cmdb-uuid"},
+            raw={
+                "name": "unrelated-name",
+                "ip": "10.20.9.9",
+                "cloud_region_id": 3,
+                "model_id": "host",
+                "organization_ids": [1],
+            },
+        )
+    )
+    assert result["ignored"] is True
+    assert result["id"] is None
+    assert MonitorInstance.objects.filter(cmdb_id="cmdb-uuid").count() == 0
 
 
 @pytest.mark.django_db
