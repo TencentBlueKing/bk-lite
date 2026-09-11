@@ -74,5 +74,7 @@ describe('SkillMemorySettingsFields', () => {
       </Form>
     );
     expect(screen.getByText('skill.memory.writeRounds')).toBeTruthy();
+    expect(screen.getByText('skill.memory.writeRoundsPrefix')).toBeTruthy();
+    expect(screen.getByText('skill.memory.writeRoundsSuffix')).toBeTruthy();
   });
 });

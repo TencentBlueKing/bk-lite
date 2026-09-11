@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Form, Input, Select, Switch, Button, InputNumber, message, Modal, Checkbox, Space, Tooltip } from 'antd';
-import { PlusOutlined, DeleteOutlined, SendOutlined, SearchOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, SendOutlined, SearchOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useSearchParams } from 'next/navigation';
 import CustomChatSSE from '@/app/opspilot/components/custom-chat-sse';
@@ -928,40 +928,77 @@ const SkillSettingsPage: React.FC = () => {
                           options={wikiKbs.map((kb) => ({ value: kb.id, label: kb.name }))}
                         />
                       </Form.Item>
-                      <Form.Item name="force_wiki_grounded" valuePropName="checked" noStyle>
-                        <Switch
-                          checkedChildren={t('skill.form.forceWikiGrounded')}
-                          unCheckedChildren={t('skill.form.forceWikiGrounded')}
-                          disabled={!hasWikiKb}
-                          className="min-w-[56px] shrink-0"
-                        />
-                      </Form.Item>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        <Form.Item name="force_wiki_grounded" valuePropName="checked" noStyle>
+                          <Switch
+                            size="small"
+                            disabled={!hasWikiKb}
+                          />
+                        </Form.Item>
+                        <span
+                          className={`text-xs select-none ${
+                            hasWikiKb
+                              ? 'cursor-pointer text-[var(--color-text-2)] hover:text-[var(--color-text-1)]'
+                              : 'cursor-not-allowed text-[var(--color-text-4)]'
+                          }`}
+                          onClick={() => {
+                            if (hasWikiKb) {
+                              form.setFieldValue(
+                                'force_wiki_grounded',
+                                !form.getFieldValue('force_wiki_grounded')
+                              );
+                            }
+                          }}
+                        >
+                          {t('skill.form.forceWikiGrounded')}
+                        </span>
+                      </div>
                     </div>
                   </Form.Item>
 
                   <SkillMemorySettingsFields spaces={memorySpaces} loading={memorySpacesLoading} />
 
-                  <Form.Item label={t('skill.chatHistory')} className="!mb-3.5">
-                    <div className="flex h-8 items-center justify-between gap-2">
+                  <Form.Item
+                    label={
+                      <span className="inline-flex items-center gap-1">
+                        {t('skill.chatHistory')}
+                        <Tooltip title={t('skill.chatHistoryTip')}>
+                          <QuestionCircleOutlined className="text-[11px] text-[var(--color-text-4)] hover:text-[var(--color-text-3)] cursor-pointer" />
+                        </Tooltip>
+                      </span>
+                    }
+                    className="!mb-3.5"
+                  >
+                    <div className="flex h-8 items-center justify-between gap-3">
                       <div className="flex items-center gap-2">
-                        <InputNumber
-                          min={1}
-                          max={100}
+                        <Switch
                           size="small"
-                          className="w-16"
-                          value={quantity}
-                          disabled={!chatHistoryEnabled}
-                          onChange={(value) => setQuantity(value ?? 1)}
+                          checked={chatHistoryEnabled}
+                          onChange={setChatHistoryEnabled}
                         />
-                        <span className={`text-xs ${chatHistoryEnabled ? 'text-[var(--color-text-3)]' : 'text-[var(--color-text-4)]'}`}>
-                          轮
-                        </span>
+                        {chatHistoryEnabled ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs text-[var(--color-text-3)]">
+                              {t('skill.chatHistoryEnabledPrefix')}
+                            </span>
+                            <InputNumber
+                              min={1}
+                              max={100}
+                              size="small"
+                              className="w-16"
+                              value={quantity}
+                              onChange={(value) => setQuantity(value ?? 1)}
+                            />
+                            <span className="text-xs text-[var(--color-text-3)]">
+                              {t('skill.chatHistoryEnabledSuffix')}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-[var(--color-text-4)]">
+                            {t('skill.chatHistoryDisabledHint')}
+                          </span>
+                        )}
                       </div>
-                      <Switch
-                        size="small"
-                        checked={chatHistoryEnabled}
-                        onChange={setChatHistoryEnabled}
-                      />
                     </div>
                   </Form.Item>
 

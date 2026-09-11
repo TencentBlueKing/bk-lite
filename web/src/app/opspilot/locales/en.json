@@ -1287,7 +1287,10 @@
       "space": "Memory space",
       "spacePlaceholder": "Disabled",
       "writeRounds": "Write every",
-      "writeRoundsTip": "After this many turns, persist unwritten conversation into the memory space"
+      "writeRoundsTip": "After this many turns, persist unwritten conversation into the memory space",
+      "writeRoundsPrefix": "Every",
+      "writeRoundsSuffix": "turns persist to memory",
+      "spaceNotEnabledHint": "Long-term memory is not persisted when no space is selected"
     },
     "channelPublish": "Publish",
     "channel": {
@@ -1459,6 +1462,9 @@
       "keepMemory": "Also keep in memory"
     },
     "chatHistory": "Chat History",
+    "chatHistoryEnabledPrefix": "Include last",
+    "chatHistoryEnabledSuffix": "turns",
+    "chatHistoryDisabledHint": "Single-turn only (no context)",
     "chatEnhancement": "Chat Enhancement",
     "capabilityExpand": "Capabilities",
     "useTemp": "Use This Template",

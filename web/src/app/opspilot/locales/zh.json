@@ -1293,7 +1293,10 @@
       "space": "记忆体",
       "spacePlaceholder": "不启用",
       "writeRounds": "写入轮次",
-      "writeRoundsTip": "每满该轮数后，将本会话尚未写入的对话沉淀到记忆体"
+      "writeRoundsTip": "每满该轮数后，将本会话尚未写入的对话沉淀到记忆体",
+      "writeRoundsPrefix": "每满",
+      "writeRoundsSuffix": "轮对话沉淀",
+      "spaceNotEnabledHint": "未选择记忆体时不会沉淀长期记忆"
     },
     "channelPublish": "发布",
     "channel": {
@@ -1465,6 +1468,9 @@
       "keepMemory": "同时保留到记忆"
     },
     "chatHistory": "聊天历史",
+    "chatHistoryEnabledPrefix": "携带最近",
+    "chatHistoryEnabledSuffix": "轮对话",
+    "chatHistoryDisabledHint": "单轮问答（不携带上下文）",
     "chatEnhancement": "聊天增强",
     "capabilityExpand": "能力拓展",
     "useTemp": "使用该模板",
