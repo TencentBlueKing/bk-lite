@@ -23,7 +23,7 @@ import {
   RightOutlined,
 } from '@ant-design/icons';
 import { Button, Modal } from 'antd';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { DirItem } from '@/app/ops-analysis/types';
 import {
   getDisplayRecentCanvases,
@@ -31,6 +31,8 @@ import {
   recordRecentCanvas,
   type RecentCanvasRecord,
 } from '@/app/ops-analysis/utils/recentCanvasStorage';
+import { isScreenModeEnabled } from '@/console-layout';
+import { buildOpsAnalysisViewHref } from '@/app/ops-analysis/utils/viewHref';
 
 type SelectedCanvasItems = Record<CanvasType, DirItem | null>;
 
@@ -43,6 +45,8 @@ const createEmptySelectedItems = (): SelectedCanvasItems =>
 const ViewPage: React.FC = () => {
   const { t } = useTranslation();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const screenMode = isScreenModeEnabled(searchParams);
   const [collapsed, setCollapsed] = useState(false);
   const [selectedType, setSelectedType] = useState<DirectoryType>('directory');
   const [selectedItem, setSelectedItem] = useState<SelectedCanvasItems>(
@@ -158,11 +162,11 @@ const ViewPage: React.FC = () => {
         }),
       );
     }
-    const params = new URLSearchParams({
-      type: itemInfo?.type || '',
-      id: itemInfo?.id || '',
-    }).toString();
-    router.push(`/ops-analysis/view?${params}`);
+    router.push(buildOpsAnalysisViewHref(
+      itemInfo?.type || '',
+      itemInfo?.id || '',
+      searchParams,
+    ));
   };
 
   const handleOpenRecent = (item: RecentCanvasRecord) => {
@@ -179,9 +183,10 @@ const ViewPage: React.FC = () => {
   return (
     <div
       className="flex w-full h-full relative rounded-lg"
-      style={{ minWidth: collapsed ? 0 : 280 }}
+      style={{ minWidth: screenMode || collapsed ? 0 : 280 }}
     >
       <div
+        hidden={screenMode}
         className={`h-full border-r border-[var(--color-border-1)] relative transition-all duration-300 ${
           collapsed ? 'w-0 min-w-0' : 'w-[280px] min-w-[280px]'
         }`}
@@ -199,17 +204,19 @@ const ViewPage: React.FC = () => {
             onDataUpdate={handleSidebarDataUpdate}
           />
         </div>
-        <Button
-          type="text"
-          onClick={() => setCollapsed(!collapsed)}
-          className={`absolute z-10 w-6 h-6 top-4 p-0 border border-[var(--color-border-3)] bg-[var(--color-bg-1)] flex items-center justify-center cursor-pointer rounded-full transition-all duration-300 ${
-            collapsed
-              ? 'left-0 border-l-0 rounded-tl-none rounded-bl-none'
-              : 'left-[100%] -translate-x-1/2'
-          }`}
-        >
-          {collapsed ? <RightOutlined /> : <LeftOutlined />}
-        </Button>
+        {!screenMode && (
+          <Button
+            type="text"
+            onClick={() => setCollapsed(!collapsed)}
+            className={`absolute z-10 w-6 h-6 top-4 p-0 border border-[var(--color-border-3)] bg-[var(--color-bg-1)] flex items-center justify-center cursor-pointer rounded-full transition-all duration-300 ${
+              collapsed
+                ? 'left-0 border-l-0 rounded-tl-none rounded-bl-none'
+                : 'left-[100%] -translate-x-1/2'
+            }`}
+          >
+            {collapsed ? <RightOutlined /> : <LeftOutlined />}
+          </Button>
+        )}
       </div>
       <div className="h-full flex-1 flex" style={{ minWidth: 0 }}>
         {selectedType === 'screen' ? (

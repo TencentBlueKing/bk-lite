@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { message } from 'antd';
 
 import { installPageContextBridge } from '@/components/ai-page-context/registry';
+import { isScreenModeEnabled } from '@/console-layout';
 import { useAuth } from '@/context/auth';
 import { useClientData } from '@/context/client';
 import { useUserInfoContext } from '@/context/userInfo';
@@ -98,6 +99,7 @@ const destroyWebChat = () => {
 
 const GlobalWebchat = () => {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { token, isAuthenticated, isCheckingAuth } = useAuth();
   const { clientData, appConfigList, loading, appConfigLoading } = useClientData();
   const { userId, selectedGroup, isSuperUser, loading: userInfoLoading } = useUserInfoContext();
@@ -113,6 +115,7 @@ const GlobalWebchat = () => {
     hasOpsPilotAccess: hasOpsPilotClientAccess(apps),
     pathname,
     alreadyMounted: mountedRef.current,
+    screenMode: isScreenModeEnabled(searchParams),
   });
   mountedRef.current = shouldMount;
 

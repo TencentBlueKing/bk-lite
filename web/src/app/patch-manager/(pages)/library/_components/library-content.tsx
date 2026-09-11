@@ -31,7 +31,7 @@ import {
   removeCandidateFromSelection,
 } from '@/app/patch-manager/components/candidate-selection';
 import { useTranslation } from '@/utils/i18n';
-import { useRouter } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import { PATCH_MANAGER_POLL_INTERVAL_MS } from '@/app/patch-manager/constants/polling';
 import {
   formatArchitecture,
@@ -102,7 +102,7 @@ function normalizeRepoType(repoType?: string): string {
 
 export default function LibraryContent({ activeTab }: { activeTab: LibraryTabKey }) {
   const { t } = useTranslation();
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const api = usePatchManagerApi();
   const { isLoading } = useApiClient();
   const { convertToLocalizedTime } = useLocalizedTime();

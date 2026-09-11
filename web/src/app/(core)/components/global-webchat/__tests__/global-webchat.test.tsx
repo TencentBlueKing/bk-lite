@@ -41,6 +41,7 @@ let pathname = '/cmdb';
 
 vi.mock('next/navigation', () => ({
   usePathname: () => pathname,
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 vi.mock('@/context/auth', () => ({

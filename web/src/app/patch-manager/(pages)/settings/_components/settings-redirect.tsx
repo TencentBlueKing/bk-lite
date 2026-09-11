@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import { usePermissions } from '@/context/permissions';
 import type { MenuItem } from '@/types';
 
@@ -22,7 +22,7 @@ export const findSettingsTargetUrl = (menus: MenuItem[]) => {
 };
 
 export default function SettingsRedirect() {
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const { menus, loading } = usePermissions();
   const targetUrl = useMemo(() => findSettingsTargetUrl(menus), [menus]);
 

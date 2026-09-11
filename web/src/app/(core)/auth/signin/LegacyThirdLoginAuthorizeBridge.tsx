@@ -6,6 +6,7 @@ import { LoadingOutlined } from '@ant-design/icons';
 import { requestLegacyThirdLoginAuthorize } from '@/utils/legacyThirdLogin';
 import { useTranslation } from '@/utils/i18n';
 import { PORTAL_HOME_PATH } from '@/utils/route';
+import { isScreenModeEnabled, withScreenQuery } from '@/console-layout';
 import SigninPageFrame from './login-auth/SigninPageFrame';
 
 interface LegacyThirdLoginAuthorizeBridgeProps {
@@ -48,8 +49,13 @@ export default function LegacyThirdLoginAuthorizeBridge({
       if (cancelled) {
         return;
       }
-      setTargetUrl(url);
-      window.location.replace(url);
+      const nextUrl = withScreenQuery(
+        url,
+        isScreenModeEnabled(window.location.search),
+        window.location.origin,
+      );
+      setTargetUrl(nextUrl);
+      window.location.replace(nextUrl);
     };
 
     void redirect();
@@ -73,7 +79,13 @@ export default function LegacyThirdLoginAuthorizeBridge({
             type="link"
             className="mt-1 px-0"
             onClick={() => {
-              window.location.replace(targetUrl || PORTAL_HOME_PATH);
+              window.location.replace(
+                withScreenQuery(
+                  targetUrl || PORTAL_HOME_PATH,
+                  isScreenModeEnabled(window.location.search),
+                  window.location.origin,
+                ),
+              );
             }}
           >
             {t('signin.legacyThirdLogin.continue')}
