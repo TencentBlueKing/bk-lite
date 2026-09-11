@@ -104,7 +104,7 @@ async def test_metrics_publish_logs_one_rejected_summary(monkeypatch, caplog):
     assert record.msg == (
         "event=nats_metrics_publish_rejected subject=%s stream=%s rejected_count=%s "
         "attempted_count=%s confirmed_count=%s error_type=%s nats_code=%s nats_err_code=%s "
-        "description=%s timeout_stage=%s failed_stage=metrics_publish"
+        "description=%s timeout_stage=%s timeout_phase=%s failed_stage=metrics_publish"
     )
     assert record.args == (
         "metrics.vmware",
@@ -116,6 +116,7 @@ async def test_metrics_publish_logs_one_rejected_summary(monkeypatch, caplog):
         400,
         10051,
         "expected stream does not match",
+        "-",
         "-",
     )
     assert secret not in record.getMessage()
