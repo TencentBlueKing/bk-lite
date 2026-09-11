@@ -81,7 +81,7 @@ HOST_REMOTE_CALLBACK_REQUEST_TIMEOUT = 60
 LINUX_SCRIPT_WRAPPER_EOF = "STARGAZER_HOST_COLLECT_EOF"
 LINUX_SCRIPT_WRAPPER_PREFIX = "LC_ALL=C LANG=C bash --noprofile --norc"
 # 与 Host AIX/FreeBSD/HP-UX/Solaris Remote 看板、display_fields、collectTypes 取并集。
-# hpux/solaris 仅延迟导入，本文件不携带那两套脚本；模块存在时即可调度。
+# 采集模块按 OS 延迟导入；本 PR 不携带其它 Remote 插件树，模块存在时即可调度。
 HOST_REMOTE_OS_TYPES = frozenset({"aix", "freebsd", "hpux", "solaris"})
 SUPPORTED_OS_TYPES = {"linux", "windows", *HOST_REMOTE_OS_TYPES}
 SSH_OS_TYPES = frozenset({"linux", *HOST_REMOTE_OS_TYPES})
