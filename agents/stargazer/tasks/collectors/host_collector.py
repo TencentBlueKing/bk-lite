@@ -79,7 +79,9 @@ VALID_MODULES = {"cpu", "mem", "disk", "net", "diskio", "processes", "system"}
 HOST_REMOTE_CALLBACK_REQUEST_TIMEOUT = 60
 LINUX_SCRIPT_WRAPPER_EOF = "STARGAZER_HOST_COLLECT_EOF"
 LINUX_SCRIPT_WRAPPER_PREFIX = "LC_ALL=C LANG=C bash --noprofile --norc"
-SUPPORTED_OS_TYPES = {"linux", "windows", "aix"}
+SUPPORTED_OS_TYPES = {"linux", "windows", "aix", "freebsd"}
+SSH_OS_TYPES = frozenset({"linux", "aix", "freebsd", "hpux", "solaris"})
+DEBUG_SCRAPE_OS_TYPES = frozenset({"freebsd", "hpux", "solaris"})
 
 
 def sanitize_ansible_failure_text(value: Any, *, max_length: int = ANSIBLE_FAILURE_TEXT_MAX_CHARS) -> str:
@@ -168,6 +170,10 @@ def build_script(
         from .aix_os_monitor import wrap_ksh_collect
 
         return wrap_ksh_collect()
+    if os_type == "freebsd":
+        from .freebsd_os_monitor import wrap_sh_collect
+
+        return wrap_sh_collect()
     if os_type not in {"linux", "windows"}:
         raise ValueError(f"unsupported os_type: {os_type}")
     base_dir = SCRIPTS_DIR / ("linux" if os_type == "linux" else "windows")
@@ -456,11 +462,15 @@ class HostCollector(BaseCollector):
             raise ValueError(f"unsupported os_type: {os_type}")
         username = self.params["username"]
         raw_port = self.params.get("port")
-        ssh_like = os_type in {"linux", "aix"}
+        ssh_like = os_type in SSH_OS_TYPES
         port = int(raw_port) if raw_port not in (None, "") else (22 if ssh_like else 5986)
         ansible_node_id = self.params["ansible_node_id"]
         if os_type == "aix":
             from .aix_os_monitor import COMMAND_EXECUTE_TIMEOUT
+
+            execute_timeout = COMMAND_EXECUTE_TIMEOUT
+        elif os_type == "freebsd":
+            from .freebsd_os_monitor import COMMAND_EXECUTE_TIMEOUT
 
             execute_timeout = COMMAND_EXECUTE_TIMEOUT
         else:
@@ -469,7 +479,10 @@ class HostCollector(BaseCollector):
         modules = self._resolve_modules()
         credential_encoding = self.params.get("credential_encoding") or self.params.get("credentials_encoding") or "url"
 
-        logger.info("[Host Collector] host=%s, os=%s, modules=%s", host, os_type, modules)
+        if os_type in DEBUG_SCRAPE_OS_TYPES:
+            logger.debug("[Host Collector] host=%s, os=%s, modules=%s", host, os_type, modules)
+        else:
+            logger.info("[Host Collector] host=%s, os=%s, modules=%s", host, os_type, modules)
 
         script = build_script(
             os_type,
@@ -523,6 +536,10 @@ class HostCollector(BaseCollector):
         os_type = str(self.params.get("os_type", "") or "").strip().lower()
         if os_type == "aix":
             from .aix_os_monitor import COMMAND_EXECUTE_TIMEOUT
+
+            return int(self.params.get("host_remote_callback_timeout", COMMAND_EXECUTE_TIMEOUT))
+        if os_type == "freebsd":
+            from .freebsd_os_monitor import COMMAND_EXECUTE_TIMEOUT
 
             return int(self.params.get("host_remote_callback_timeout", COMMAND_EXECUTE_TIMEOUT))
         return int(
@@ -608,6 +625,15 @@ class HostCollector(BaseCollector):
                 os_type,
                 int(callback_timestamp) if callback_timestamp is not None else int(time.time() * 1000),
             )
+        elif os_type == "freebsd":
+            from .freebsd_os_monitor import parse_freebsd_metrics_to_prometheus
+
+            prometheus_metrics = parse_freebsd_metrics_to_prometheus(
+                metrics_data,
+                instance_id,
+                os_type,
+                int(callback_timestamp) if callback_timestamp is not None else int(time.time() * 1000),
+            )
         else:
             prometheus_metrics = parse_metrics_to_prometheus(
                 metrics_data,
@@ -618,7 +644,10 @@ class HostCollector(BaseCollector):
                 disk_exclude_fstypes=self.params.get("disk_exclude_fstypes"),
             )
 
-        logger.info(f"[Host Collector] Completed: host={host}, metrics_size={len(prometheus_metrics)}")
+        if os_type in DEBUG_SCRAPE_OS_TYPES:
+            logger.debug("[Host Collector] Completed: host=%s, metrics_size=%s", host, len(prometheus_metrics))
+        else:
+            logger.info(f"[Host Collector] Completed: host={host}, metrics_size={len(prometheus_metrics)}")
         return prometheus_metrics
 
     async def collect(self) -> str:
