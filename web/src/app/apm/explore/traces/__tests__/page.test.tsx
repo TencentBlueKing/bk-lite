@@ -279,4 +279,43 @@ describe('APM 调用链探索', () => {
     expect(screen.queryByText('GET /stock')).toBeNull();
     expect(api.getSpans.mock.calls.length).toBe(callsAfterReady);
   });
+
+  it('明细列表的耗时和时间列可排序', async () => {
+    renderWithApmIntl(<ApmTracesPage />);
+    await screen.findAllByText('POST /pay');
+
+    expect(screen.getByRole('columnheader', { name: /总耗时/ }).querySelector('.ant-table-column-sorters')).not.toBeNull();
+    expect(screen.getByRole('columnheader', { name: /时间/ }).querySelector('.ant-table-column-sorters')).not.toBeNull();
+  });
+
+  it('当前页没有错误时仍展示时间窗内的错误数，勾选后按 status=error 重查', async () => {
+    search = 'entity=spans';
+    api.getSpans.mockImplementation((params: { status?: string }) => Promise.resolve({
+      items: params.status === 'error'
+        ? [spanItem({
+          span_id: 'err-1',
+          service_name: 'datart',
+          name: 'SHOW CREATE TABLE',
+          status: 'error',
+          kind: 'client',
+        })]
+        : [spanItem({ span_id: 'ok-1', service_name: 'datart', name: 'GET /state', kind: 'server' })],
+      next_cursor: null,
+    }));
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithApmIntl(<ApmTracesPage />);
+
+    expect(await screen.findByText('GET /state')).not.toBeNull();
+    await waitFor(() => {
+      expect(screen.getByRole('checkbox', { name: /错误/ }).closest('.justify-between')?.textContent).toContain('1');
+    });
+
+    const callsAfterReady = api.getSpans.mock.calls.length;
+    await user.click(screen.getByRole('checkbox', { name: /错误/ }));
+
+    await waitFor(() => expect(api.getSpans.mock.calls.length).toBeGreaterThan(callsAfterReady));
+    expect(api.getSpans).toHaveBeenCalledWith(expect.objectContaining({ status: 'error' }));
+    expect(await screen.findByText('SHOW CREATE TABLE')).not.toBeNull();
+    expect(screen.queryByText('GET /state')).toBeNull();
+  });
 });

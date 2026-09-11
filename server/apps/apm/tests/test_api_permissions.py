@@ -8,7 +8,7 @@ from urllib.parse import unquote
 import pytest
 from rest_framework.test import APIClient
 
-from apps.apm.models import ApmApplication
+from apps.apm.models import ApmApplication, ApmService
 from apps.apm.services import DjangoTelemetryCatalogService
 from apps.apm.services.contracts import CatalogDiscovery
 from apps.apm.tests.helpers import create_application
@@ -63,6 +63,40 @@ def test_application_crud_persists_business_boundary_without_a_token(apm_api_cli
     assert updated.data["application_id"] == "shop"
     assert updated.data["name"] == "电商应用"
     assert updated.data["is_builtin"] is False
+
+    deleted = apm_api_client.delete(f"/api/v1/apm/applications/{created.data['id']}/")
+    assert deleted.status_code in {200, 204}
+    assert not ApmApplication.objects.filter(id=created.data["id"]).exists()
+
+
+def test_application_delete_detaches_services_and_keeps_catalog_rows(apm_api_client):
+    created = apm_api_client.post(
+        "/api/v1/apm/applications/",
+        {"application_id": "shop", "name": "电商主站", "organization_ids": [10]},
+        format="json",
+    )
+    assert created.status_code == 201
+    DjangoTelemetryCatalogService().discover(CatalogDiscovery("shop", "checkout", "pod-a", "prod"))
+    service = ApmService.objects.get(normalized_namespace="shop", normalized_name="checkout")
+    assert str(service.application_id) == created.data["id"]
+
+    deleted = apm_api_client.delete(f"/api/v1/apm/applications/{created.data['id']}/")
+    assert deleted.status_code in {200, 204}
+    assert not ApmApplication.objects.filter(id=created.data["id"]).exists()
+    service.refresh_from_db()
+    assert service.application_id is None
+
+
+def test_application_delete_requires_operate_permission(apm_user):
+    application = create_application("shop", (10,))
+    client = APIClient()
+    client.force_authenticate(user=apm_user)
+    client.cookies["current_team"] = "10"
+    apm_user.permission["apm"] = {"applications-View"}
+
+    denied = client.delete(f"/api/v1/apm/applications/{application.id}/")
+    assert denied.status_code == 403
+    assert ApmApplication.objects.filter(id=application.id).exists()
 
 
 def test_application_catalog_does_not_expose_a_builtin_uncategorized_application(apm_api_client):

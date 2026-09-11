@@ -386,6 +386,7 @@ export default function ApmTracesPage() {
     min: null,
     max: null,
   });
+  const [windowErrorCount, setWindowErrorCount] = useState(0);
   const autoSearched = useRef(false);
   const entityModeReady = useRef(false);
   const servicesLoaded = useRef(false);
@@ -422,6 +423,7 @@ export default function ApmTracesPage() {
       setPage(1);
       setFacets(EMPTY_RESULT_FACETS);
       setDurationDraft({ min: null, max: null });
+      setWindowErrorCount(0);
     }
     const window = timeWindow(cursor);
     if (entityMode === 'spans') {
@@ -439,13 +441,22 @@ export default function ApmTracesPage() {
         limit: 50,
       };
       getSpans(query)
-        .then((page) => commitTraceSearchSuccess(requestGuard, requestId, () => {
-          setSpanItems((current) => (cursor ? [...current, ...page.items] : page.items));
-          setTraceItems([]);
-          setQueryStartedAt(query.started_at);
-          setQueryEndedAt(query.ended_at);
-          setState(page.items.length === 0 && !cursor && !page.next_cursor ? 'empty' : 'ready');
-        }))
+        .then((page) => {
+          const applied = commitTraceSearchSuccess(requestGuard, requestId, () => {
+            setSpanItems((current) => (cursor ? [...current, ...page.items] : page.items));
+            setTraceItems([]);
+            setQueryStartedAt(query.started_at);
+            setQueryEndedAt(query.ended_at);
+            setState(page.items.length === 0 && !cursor && !page.next_cursor ? 'empty' : 'ready');
+            if (active.status === 'error') setWindowErrorCount(page.items.length);
+          });
+          if (!applied || cursor || active.status !== 'all') return;
+          void getSpans({ ...query, status: 'error' }).then((errorPage) => {
+            commitTraceSearchSuccess(requestGuard, requestId, () => {
+              setWindowErrorCount(errorPage.items.length);
+            });
+          });
+        })
         .catch((error) => commitTraceSearchFailure(requestGuard, requestId, () => {
           setSearchError(error);
           setState(catalogErrorKind(error));
@@ -470,13 +481,22 @@ export default function ApmTracesPage() {
       limit: 50,
     };
     getTraces(query)
-      .then((page) => commitTraceSearchSuccess(requestGuard, requestId, () => {
-        setTraceItems((current) => (cursor ? [...current, ...page.items] : page.items));
-        setSpanItems([]);
-        setQueryStartedAt(query.started_at);
-        setQueryEndedAt(query.ended_at);
-        setState(page.items.length === 0 && !cursor && !page.next_cursor ? 'empty' : 'ready');
-      }))
+      .then((page) => {
+        const applied = commitTraceSearchSuccess(requestGuard, requestId, () => {
+          setTraceItems((current) => (cursor ? [...current, ...page.items] : page.items));
+          setSpanItems([]);
+          setQueryStartedAt(query.started_at);
+          setQueryEndedAt(query.ended_at);
+          setState(page.items.length === 0 && !cursor && !page.next_cursor ? 'empty' : 'ready');
+          if (active.status === 'error') setWindowErrorCount(page.items.length);
+        });
+        if (!applied || cursor || active.status !== 'all') return;
+        void getTraces({ ...query, status: 'error' }).then((errorPage) => {
+          commitTraceSearchSuccess(requestGuard, requestId, () => {
+            setWindowErrorCount(errorPage.items.length);
+          });
+        });
+      })
       .catch((error) => commitTraceSearchFailure(requestGuard, requestId, () => {
         setSearchError(error);
         setState(catalogErrorKind(error));
@@ -598,6 +618,7 @@ export default function ApmTracesPage() {
       align: 'right',
       className: 'tabular-nums',
       responsive: ['sm'],
+      sorter: (left, right) => left.duration_ms - right.duration_ms,
       render: (value: number) => <span className="font-medium text-[var(--color-text-1)]">{formatLatency(value, false, t)}</span>,
     },
     {
@@ -626,6 +647,8 @@ export default function ApmTracesPage() {
       width: APM_TABLE_COLUMN_WIDTHS.relativeTime,
       align: 'right',
       responsive: ['xl'],
+      sorter: (left, right) => left.started_at.localeCompare(right.started_at),
+      defaultSortOrder: 'descend',
       render: (value: string) => (
         <span className="text-xs tabular-nums text-[var(--color-text-3)]" title={formatDateTime(value)}>
           {formatRelativeTime(value, t)}
@@ -702,6 +725,7 @@ export default function ApmTracesPage() {
       align: 'right',
       className: 'tabular-nums',
       responsive: ['md'],
+      sorter: (left, right) => left.duration_ms - right.duration_ms,
       render: (value: number) => <span className="font-medium text-[var(--color-text-1)]">{formatLatency(value, false, t)}</span>,
     },
     {
@@ -710,6 +734,8 @@ export default function ApmTracesPage() {
       width: APM_TABLE_COLUMN_WIDTHS.relativeTime,
       align: 'right',
       responsive: ['xl'],
+      sorter: (left, right) => left.started_at.localeCompare(right.started_at),
+      defaultSortOrder: 'descend',
       render: (value: string) => (
         <span className="text-xs tabular-nums text-[var(--color-text-3)]" title={formatDateTime(value)}>
           {formatRelativeTime(value, t)}
@@ -729,11 +755,12 @@ export default function ApmTracesPage() {
   const activeItems = entityMode === 'spans' ? visibleSpans : visibleTraces;
   const statusCounts = useMemo(() => {
     const source = entityMode === 'spans' ? spanItems : traceItems;
+    const pageError = source.filter((item) => item.status === 'error').length;
     return {
       ok: source.filter((item) => item.status === 'ok').length,
-      error: source.filter((item) => item.status === 'error').length,
+      error: filters.status === 'all' ? Math.max(pageError, windowErrorCount) : pageError,
     };
-  }, [entityMode, spanItems, traceItems]);
+  }, [entityMode, filters.status, spanItems, traceItems, windowErrorCount]);
   const serviceCounts = useMemo(() => {
     const source = entityMode === 'spans' ? spanItems : traceItems;
     return Array.from(source.reduce((counts, item) => {
@@ -997,7 +1024,7 @@ export default function ApmTracesPage() {
                 <div>
                   <Typography.Text type="secondary" className="mb-2 block !text-xs font-medium">
                     {t('apm.common.status', '状态')}
-                    {facets.status !== 'all' ? (
+                    {filters.status !== 'all' ? (
                       <span className="ml-1.5 font-semibold text-[var(--color-primary)]">(1)</span>
                     ) : null}
                   </Typography.Text>
@@ -1009,17 +1036,21 @@ export default function ApmTracesPage() {
                       <div
                         key={item.value}
                         className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 transition-colors ${
-                          facets.status === item.value
+                          filters.status === item.value
                             ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]'
                             : 'hover:bg-[var(--color-fill-1)]/60'
                         }`}
                       >
                         <Checkbox
-                          checked={facets.status === item.value}
-                          onChange={(event) => setFacets((current) => ({
-                            ...current,
-                            status: event.target.checked ? item.value : 'all',
-                          }))}
+                          checked={filters.status === item.value}
+                          onChange={(event) => {
+                            const next: TraceFilters = {
+                              ...filters,
+                              status: event.target.checked ? item.value : 'all',
+                            };
+                            applyFilters(next);
+                            search(undefined, next);
+                          }}
                         >
                           <span className="inline-flex items-center gap-1.5 text-xs">
                             <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full" style={{ background: item.color }} />
