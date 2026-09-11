@@ -496,7 +496,11 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             return WebUtils.response_error("该模型不支持关联监控", status_code=status.HTTP_400_BAD_REQUEST)
         if status_name in ("not_found", "type_mismatch"):
             return WebUtils.response_error("监控实例不存在或类型不匹配", status_code=status.HTTP_404_NOT_FOUND)
-        return WebUtils.response_error(failed_message, status_code=status.HTTP_502_BAD_GATEWAY)
+        return WebUtils.response_error(
+            result or {},
+            error_message=failed_message,
+            status_code=status.HTTP_502_BAD_GATEWAY,
+        )
 
     @HasPermission("asset_info-Edit")
     @action(methods=["get"], detail=True, url_path="monitor_bind_candidates")

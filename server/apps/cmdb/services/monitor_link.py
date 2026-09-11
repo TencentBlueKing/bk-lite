@@ -199,7 +199,7 @@ class MonitorLinkService:
 
         if current and current != requested:
             if not confirm:
-                logger.info(_BIND_DONE_TEMPLATE, inst_uuid, "confirm_required")
+                logger.debug("event=cmdb_monitor_link_bind_confirm_required inst_uuid=%s", inst_uuid)
                 return {"status": "confirm_required", "monitor_id": current, "failed_side": None}
             unbind_result = cls.unbind(inst_uuid, actor_scope)
             if unbind_result.get("status") != "ok":

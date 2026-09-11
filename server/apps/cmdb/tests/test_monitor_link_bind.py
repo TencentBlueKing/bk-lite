@@ -412,6 +412,53 @@ def test_unbind_view_ok(superuser, monkeypatch):
 
 
 @pytest.mark.django_db
+def test_unbind_monitor_ingest_failure_exposes_failed_side(superuser, monkeypatch):
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_uuid", lambda pk: _entity(pk, monitor_id="m-1"))
+    monkeypatch.setattr(
+        f"{VIEWS}.MonitorLinkService.unbind",
+        lambda inst_uuid, actor_scope: {"status": "failed", "failed_side": "monitor"},
+    )
+    response = _call({"post": "unbind_monitor"}, _req("post", superuser, data={}), pk=INST_UUID)
+    assert response.status_code == status.HTTP_502_BAD_GATEWAY
+    body = _body(response)
+    assert body["result"] is False
+    assert body["data"]["status"] == "failed"
+    assert body["data"]["failed_side"] == "monitor"
+
+
+@pytest.mark.django_db
+def test_unbind_cmdb_clear_failure_exposes_failed_side(superuser, monkeypatch):
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_uuid", lambda pk: _entity(pk, monitor_id="m-1"))
+    monkeypatch.setattr(
+        f"{VIEWS}.MonitorLinkService.unbind",
+        lambda inst_uuid, actor_scope: {"status": "failed", "failed_side": "cmdb"},
+    )
+    response = _call({"post": "unbind_monitor"}, _req("post", superuser, data={}), pk=INST_UUID)
+    assert response.status_code == status.HTTP_502_BAD_GATEWAY
+    data = _body(response)["data"]
+    assert data["status"] == "failed"
+    assert data["failed_side"] == "cmdb"
+
+
+@pytest.mark.django_db
+def test_bind_backfill_failure_exposes_failed_side(superuser, monkeypatch):
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_uuid", lambda pk: _entity(pk))
+    monkeypatch.setattr(
+        f"{VIEWS}.MonitorLinkService.bind",
+        lambda *a, **k: {"status": "failed", "monitor_id": None, "failed_side": "cmdb"},
+    )
+    response = _call(
+        {"post": "bind_monitor"},
+        _req("post", superuser, data={"monitor_id": "m-new"}),
+        pk=INST_UUID,
+    )
+    assert response.status_code == status.HTTP_502_BAD_GATEWAY
+    data = _body(response)["data"]
+    assert data["status"] == "failed"
+    assert data["failed_side"] == "cmdb"
+
+
+@pytest.mark.django_db
 def test_bind_monitor_not_found_is_404(superuser, monkeypatch):
     monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_uuid", lambda pk: _entity(pk))
     monkeypatch.setattr(
