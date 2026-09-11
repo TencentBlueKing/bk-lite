@@ -32,6 +32,9 @@ import {
   buildInstanceDisplayName,
   buildInstanceSearchTokens,
   resolveDashboardInstanceIdentity,
+  resolveDashboardInstanceIdValues,
+  encodeInstanceIdValuesParam,
+  isInstanceOptionForIdentity,
   buildCollectionStatusTimeline,
   formatCollectionStatusTimelineHint,
   resolveCollectionStatusRange,
@@ -175,8 +178,7 @@ export default function MongoDashboardPage() {
           uniqueOptions.set(value, {
             label,
             value,
-            instanceIdValues:
-              Array.isArray(item.instance_id_values) && item.instance_id_values.length ? item.instance_id_values : [value],
+            instanceIdValues: resolveDashboardInstanceIdValues(item),
             searchTokens: buildInstanceSearchTokens(item, label),
             interval: Number(item.interval) || undefined
           });
@@ -195,8 +197,8 @@ export default function MongoDashboardPage() {
   }, [monitorObjectId]);
 
   const idValuesKey = JSON.stringify(idValues);
-  const currentInstanceCandidates = instanceOptions.filter(
-    (item) => item.value === String(instanceId || '') || item.instanceIdValues.some((value) => idValues.includes(value))
+  const currentInstanceCandidates = instanceOptions.filter((item) =>
+    isInstanceOptionForIdentity(item, instanceId, idValues)
   );
   const currentInstanceOption =
     currentInstanceCandidates.find((item) => normalizedInstanceName && item.label === normalizedInstanceName) ||
@@ -211,7 +213,7 @@ export default function MongoDashboardPage() {
       options.unshift({
         value: selectedValue,
         label: normalizedInstanceName,
-        instanceIdValues: idValues.length ? idValues : [selectedValue],
+        instanceIdValues: idValues.length ? idValues : resolveDashboardInstanceIdValues({ instance_id: selectedValue }),
         searchTokens: [normalizedInstanceName]
       });
     }
@@ -541,7 +543,11 @@ export default function MongoDashboardPage() {
     const params = new URLSearchParams(searchParams.toString());
     params.set('instance_id', value);
     params.set('instance_name', String(target?.label || value));
-    params.set('instance_id_values', (target?.instanceIdValues || [value]).join(','));
+    params.set('instance_id_values', encodeInstanceIdValuesParam(
+      target?.instanceIdValues?.length
+        ? target.instanceIdValues
+        : resolveDashboardInstanceIdValues({ instance_id: value }),
+    ));
     router.push(`/monitor/view/dashboard/mongodb?${params.toString()}`);
   };
 

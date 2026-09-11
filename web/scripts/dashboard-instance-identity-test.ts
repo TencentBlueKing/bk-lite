@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import {
+  encodeInstanceIdValuesParam,
   parseLegacyParamList,
+  parsePythonTupleString,
   resolveDashboardInstanceIdentity,
+  resolveDashboardInstanceIdValues,
 } from '../src/app/monitor/dashboards/shared/utils/instance.ts';
 
 const podMetricsParams = new URLSearchParams(
@@ -49,5 +52,35 @@ const k8sNodeParams = new URLSearchParams(
 const k8sNodeIdentity = resolveDashboardInstanceIdentity(k8sNodeParams);
 assert.equal(k8sNodeIdentity.instanceId, k8sNodeStorageKey);
 assert.deepEqual(k8sNodeIdentity.idValues, ['prod-cluster', 'node-1']);
+
+assert.deepEqual(
+  resolveDashboardInstanceIdValues({ instance_id: mysqlStorageKey }),
+  ['wwwdb.weops.com:3306'],
+);
+assert.deepEqual(
+  parsePythonTupleString(mysqlStorageKey),
+  ['wwwdb.weops.com:3306'],
+);
+
+const encodedMysqlValues = encodeInstanceIdValuesParam(['wwwdb.weops.com:3306']);
+assert.equal(encodedMysqlValues, '["wwwdb.weops.com:3306"]');
+const mysqlSwitchParams = new URLSearchParams();
+mysqlSwitchParams.set('instance_id', mysqlStorageKey);
+mysqlSwitchParams.set('instance_id_values', encodedMysqlValues);
+const mysqlSwitchIdentity = resolveDashboardInstanceIdentity(mysqlSwitchParams);
+assert.equal(mysqlSwitchIdentity.instanceId, mysqlStorageKey);
+assert.deepEqual(mysqlSwitchIdentity.idValues, ['wwwdb.weops.com:3306']);
+
+const encodedCommaValues = encodeInstanceIdValuesParam(['cluster-a', 'pod,with,comma']);
+const commaSwitchParams = new URLSearchParams();
+commaSwitchParams.set('instance_id', "('cluster-a','pod,with,comma')");
+commaSwitchParams.set('instance_id_values', encodedCommaValues);
+const commaSwitchIdentity = resolveDashboardInstanceIdentity(commaSwitchParams);
+assert.deepEqual(commaSwitchIdentity.idValues, ['cluster-a', 'pod,with,comma']);
+assert.notEqual(
+  commaSwitchIdentity.idValues.join('|'),
+  parseLegacyParamList('cluster-a,pod,with,comma').join('|'),
+  'comma-join must not be used as instance_id_values',
+);
 
 console.log('dashboard instance identity tests passed');

@@ -38,6 +38,9 @@ import {
   buildInstanceDisplayName,
   buildInstanceSearchTokens,
   resolveDashboardInstanceIdentity,
+  resolveDashboardInstanceIdValues,
+  encodeInstanceIdValuesParam,
+  isInstanceOptionForIdentity,
   buildCollectionStatusTimeline,
   formatCollectionStatusTimelineHint,
   resolveCollectionStatusRange,
@@ -293,7 +296,7 @@ export default function MysqlDashboardPage() {
   const instanceName = searchParams.get('instance_name') || '--';
   const idValues = instanceIdentity.idValues;
   const instanceIdKeys = (searchParams.get('instance_id_keys') || 'instance_id').split(',').filter(Boolean);
-  const instanceIdText = normalizeDisplayText(String(instanceId));
+  const instanceIdText = normalizeDisplayText(idValues[0] || '');
   const objectDisplayText = normalizeDisplayText(monitorObjDisplayName) || normalizeDisplayText(monitorObjectName) || 'MySQL';
   const isDashboardMode = displayMode === 'dashboard';
   const normalizedInstanceName = isOpaqueIdentifier(instanceName) ? '' : normalizeDisplayText(instanceName);
@@ -326,7 +329,7 @@ export default function MysqlDashboardPage() {
           uniqueOptions.set(value, {
             label,
             value,
-            instanceIdValues: Array.isArray(item.instance_id_values) && item.instance_id_values.length ? item.instance_id_values : [value],
+            instanceIdValues: resolveDashboardInstanceIdValues(item),
             searchTokens: buildInstanceSearchTokens(item, label),
             interval: Number(item.interval) || undefined
           });
@@ -354,15 +357,15 @@ export default function MysqlDashboardPage() {
   }, [monitorObjectId]);
 
   const idValuesKey = JSON.stringify(idValues);
-  const currentInstanceCandidates = instanceOptions.filter(
-    (item) => item.value === String(instanceId || '') || item.instanceIdValues.some((value) => idValues.includes(value))
+  const currentInstanceCandidates = instanceOptions.filter((item) =>
+    isInstanceOptionForIdentity(item, instanceId, idValues)
   );
   const currentInstanceOption =
     currentInstanceCandidates.find((item) => normalizedInstanceName && item.label === normalizedInstanceName) ||
     currentInstanceCandidates.find((item) => !isOpaqueIdentifier(item.label)) ||
     currentInstanceCandidates[0];
   const resolvedInstanceName =
-    currentInstanceOption?.label || normalizedInstanceName || normalizeDisplayText(String(instanceId)) || normalizeDisplayText(idValues[0]) || '--';
+    currentInstanceOption?.label || normalizedInstanceName || instanceIdText || '--';
   const currentInstanceInterval = currentInstanceOption?.interval;
   const primaryInstanceText = resolvedInstanceName;
 
@@ -973,7 +976,11 @@ export default function MysqlDashboardPage() {
     const params = new URLSearchParams(searchParams.toString());
     params.set('instance_id', value);
     params.set('instance_name', String(target?.label || value));
-    params.set('instance_id_values', (target?.instanceIdValues || [value]).join(','));
+    params.set('instance_id_values', encodeInstanceIdValuesParam(
+      target?.instanceIdValues?.length
+        ? target.instanceIdValues
+        : resolveDashboardInstanceIdValues({ instance_id: value }),
+    ));
     router.push(`/monitor/view/dashboard/mysql?${params.toString()}`);
   };
 
