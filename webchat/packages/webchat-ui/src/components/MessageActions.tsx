@@ -15,7 +15,7 @@ interface MessageActionsProps {
   onDelete?: (messageId: string) => void;
 }
 
-export const COPY_SUCCESS_LABEL = '已复制到粘贴板';
+export const COPY_SUCCESS_LABEL = '已复制到剪贴板';
 export const COPY_FEEDBACK_MS = 1600;
 export const WEBCHAT_ROOT_ID = 'webchat-root';
 
