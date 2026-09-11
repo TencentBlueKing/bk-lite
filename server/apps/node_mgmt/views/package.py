@@ -3,15 +3,18 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.viewsets import GenericViewSet
 
+from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.core.utils.web_utils import WebUtils
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.constants.package import PackageConstants
 from apps.node_mgmt.filters.package import PackageVersionFilter
 from apps.node_mgmt.models.package import PackageVersion
 from apps.node_mgmt.serializers.package import PackageVersionSerializer
+from apps.node_mgmt.services.collector_release.constants import CollectorReleaseConstants as C
+from apps.node_mgmt.services.collector_release.errors import PACK_TOO_LARGE, issue
+from apps.node_mgmt.services.collector_release.service import CollectorReleaseService
 from apps.node_mgmt.services.package import PackageService
 from config.drf.pagination import CustomPageNumberPagination
-
 
 PACKAGE_WRITE_PERMISSIONS = {
     (PackageConstants.TYPE_CONTROLLER, "create"): {
@@ -127,3 +130,61 @@ class PackageMgmtView(
         obj = PackageVersion.objects.get(pk=pk)
         file, name = PackageService.download_file(obj)
         return WebUtils.response_file(file, name)
+
+    @action(detail=False, methods=["post"], url_path="release/preview")
+    def release_preview(self, request):
+        self._require_write_permission(request, PackageConstants.TYPE_COLLECTOR, "create")
+        try:
+            content_length = int(request.META.get("CONTENT_LENGTH") or 0)
+        except (TypeError, ValueError):
+            content_length = 0
+        if content_length > C.MAX_COMPRESSED_BYTES:
+            return WebUtils.response_success(
+                {
+                    "token": "",
+                    "has_errors": True,
+                    "issues": [
+                        issue(
+                            PACK_TOO_LARGE,
+                            f"压缩包超过上限 {C.MAX_COMPRESSED_BYTES // (1024 * 1024)}MB，当前请求约 {content_length / (1024 * 1024):.1f}MB。",
+                            hint="这通常是网关或上传限制，请去掉部分架构后再导入。",
+                            details={"size": content_length, "limit": C.MAX_COMPRESSED_BYTES},
+                        ).to_dict()
+                    ],
+                    "requires_confirm": [],
+                    "keep_local_slots": [],
+                    "pack": None,
+                }
+            )
+        uploaded_file = request.FILES.get("file")
+        if not uploaded_file:
+            return WebUtils.response_error(error_message="请上传文件")
+        result = CollectorReleaseService.preview_upload(uploaded_file)
+        return WebUtils.response_success(result)
+
+    @action(detail=False, methods=["post"], url_path="release/apply")
+    def release_apply(self, request):
+        self._require_write_permission(request, PackageConstants.TYPE_COLLECTOR, "create")
+        token = request.data.get("token")
+        confirms = request.data.get("confirms") or []
+        if not token:
+            return WebUtils.response_error(error_message="缺少 preview token")
+        try:
+            result = CollectorReleaseService.apply(token, confirms)
+        except ValidationAppException as exc:
+            return WebUtils.response_error(response_data=exc.data or {}, error_message=exc.message)
+        except BaseAppException as exc:
+            return WebUtils.response_error(response_data=exc.data or {}, error_message=exc.message)
+        return WebUtils.response_success(result)
+
+    @action(detail=False, methods=["post"], url_path="release/restore")
+    def release_restore(self, request):
+        self._require_write_permission(request, PackageConstants.TYPE_COLLECTOR, "create")
+        collector = request.data.get("collector")
+        if not collector:
+            return WebUtils.response_error(error_message="缺少 collector")
+        try:
+            result = CollectorReleaseService.restore_builtin(collector)
+        except BaseAppException as exc:
+            return WebUtils.response_error(response_data=exc.data or {}, error_message=exc.message)
+        return WebUtils.response_success(result)

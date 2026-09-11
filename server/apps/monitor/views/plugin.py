@@ -291,6 +291,15 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
         MonitorPluginService.import_monitor_plugin(data)
         return WebUtils.response_success()
 
+    @action(methods=["post"], detail=True, url_path="restore_builtin")
+    @HasPermission("integration_list-Setting")
+    def restore_builtin(self, request, pk=None):
+        plugin = self.get_object()
+        from apps.node_mgmt.services.collector_release.service import CollectorReleaseService
+
+        result = CollectorReleaseService.restore_builtin(plugin.name)
+        return WebUtils.response_success(result)
+
     @action(methods=["get"], detail=False, url_path="export/(?P<pk>[^/.]+)")
     @HasPermission("integration_list-View")
     def export_monitor_object(self, request, pk):

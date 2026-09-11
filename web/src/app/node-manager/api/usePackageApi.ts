@@ -43,10 +43,37 @@ const usePackageApi = () => {
     return await del(`/node_mgmt/api/package/${id}`);
   };
 
+  const previewCollectorRelease = async (file: File) => {
+    const data = new FormData();
+    data.append('file', file);
+    return await post('/node_mgmt/api/package/release/preview/', data, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      suppressErrorNotification: true,
+    });
+  };
+
+  const applyCollectorRelease = async (params: {
+    token: string;
+    confirms?: string[];
+  }) => {
+    return await post('/node_mgmt/api/package/release/apply/', params, {
+      suppressErrorNotification: true,
+    });
+  };
+
+  const restoreCollectorRelease = async (collector: string) => {
+    return await post('/node_mgmt/api/package/release/restore/', { collector });
+  };
+
   return {
     getPackageList,
     uploadPackage,
     deletePackage,
+    previewCollectorRelease,
+    applyCollectorRelease,
+    restoreCollectorRelease,
   };
 };
 

@@ -1,0 +1,75 @@
+"""Collector release pack error codes and user-facing copy."""
+
+from dataclasses import dataclass, field
+
+LEVEL_ERROR = "error"
+LEVEL_WARNING = "warning"
+LEVEL_INFO = "info"
+
+
+@dataclass
+class PackIssue:
+    code: str
+    message: str
+    hint: str = ""
+    details: dict = field(default_factory=dict)
+    level: str = LEVEL_ERROR
+
+    def to_dict(self):
+        return {
+            "code": self.code,
+            "message": self.message,
+            "hint": self.hint,
+            "details": self.details,
+            "level": self.level,
+        }
+
+
+def issue(code, message, hint="", details=None, level=LEVEL_ERROR):
+    return PackIssue(code=code, message=message, hint=hint, details=details or {}, level=level)
+
+
+PACK_NOT_ZIP = "PACK_NOT_ZIP"
+PACK_TOO_LARGE = "PACK_TOO_LARGE"
+PACK_UNCOMPRESSED_TOO_LARGE = "PACK_UNCOMPRESSED_TOO_LARGE"
+PACK_FILE_TOO_LARGE = "PACK_FILE_TOO_LARGE"
+PACK_TOO_MANY_ENTRIES = "PACK_TOO_MANY_ENTRIES"
+PACK_BOMB = "PACK_BOMB"
+PACK_ZIP_SLIP = "PACK_ZIP_SLIP"
+PACK_SYMLINK = "PACK_SYMLINK"
+PACK_NESTED_ARCHIVE = "PACK_NESTED_ARCHIVE"
+PACK_LAYOUT_INVALID = "PACK_LAYOUT_INVALID"
+MANIFEST_MISSING = "MANIFEST_MISSING"
+MANIFEST_INVALID = "MANIFEST_INVALID"
+MANIFEST_SCHEMA = "MANIFEST_SCHEMA"
+MANIFEST_FIELD = "MANIFEST_FIELD"
+COLLECTOR_UNKNOWN = "COLLECTOR_UNKNOWN"
+FILE_MISSING = "FILE_MISSING"
+FILE_UNDECLARED = "FILE_UNDECLARED"
+SHA256_MISMATCH = "SHA256_MISMATCH"
+PLUGIN_NAME_MISMATCH = "PLUGIN_NAME_MISMATCH"
+ARCH_INVALID = "ARCH_INVALID"
+ARTIFACT_SLOT_MISSING = "ARTIFACT_SLOT_MISSING"
+ARTIFACT_EMPTY = "ARTIFACT_EMPTY"
+PARAM_EXECUTABLE_PATH = "PARAM_EXECUTABLE_PATH"
+PARAM_LISTEN = "PARAM_LISTEN"
+PARAM_SHELL = "PARAM_SHELL"
+PARAM_UNKNOWN_FLAG = "PARAM_UNKNOWN_FLAG"
+UI_UNKNOWN_FIELD = "UI_UNKNOWN_FIELD"
+PARAM_TOO_LONG = "PARAM_TOO_LONG"
+BINARY_UNCHANGED = "BINARY_UNCHANGED"
+BINARY_OVERWRITE = "BINARY_OVERWRITE"
+PLUGIN_OVERWRITE = "PLUGIN_OVERWRITE"
+PLUGIN_DOWNGRADE = "PLUGIN_DOWNGRADE"
+PARAM_KEEP_LOCAL = "PARAM_KEEP_LOCAL"
+PREVIEW_EXPIRED = "PREVIEW_EXPIRED"
+IMPORT_LOCKED = "IMPORT_LOCKED"
+STORAGE_FAILED = "STORAGE_FAILED"
+PLUGIN_IMPORT_FAILED = "PLUGIN_IMPORT_FAILED"
+PARTIAL_FORBIDDEN = "PARTIAL_FORBIDDEN"
+CONFIRM_REQUIRED = "CONFIRM_REQUIRED"
+
+
+HINT_REPACK = "请按 manifest.json + plugin/ + artifacts/{os}/{arch} 重新打包后再导入。"
+HINT_REMOVE_EXTRA = "请只保留 manifest.json、plugin/、artifacts/，删掉多余文件后重打。访达或资源管理器压缩常带入 __MACOSX、.DS_Store。"
+HINT_SIZE = "建议去掉部分架构或减小二进制后再导入。"

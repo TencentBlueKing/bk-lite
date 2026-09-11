@@ -1,10 +1,7 @@
-import os
-
-from apps.node_mgmt.models.sidecar import Collector
 from apps.core.logger import node_logger as logger
 from apps.node_mgmt.management.services.node_init.definition_loader import load_definition_records
+from apps.node_mgmt.models.sidecar import Collector
 from apps.node_mgmt.utils.collector_tags import normalize_collector_tags
-
 
 COMMUNITY_PLUGIN_DIRECTORY = "apps/node_mgmt/support-files/collectors"
 ENTERPRISE_PLUGIN_DIRECTORY = "apps/node_mgmt/enterprise/support-files/collectors"
@@ -34,23 +31,35 @@ def import_collector(collectors):
         Collector.objects.bulk_create([Collector(**i) for i in create_collectors])
 
     if update_collectors:
-        Collector.objects.bulk_update(
-            [Collector(**i) for i in update_collectors],
-            [
-                "service_type",
-                "executable_path",
-                "execute_parameters",
-                "validation_parameters",
-                "default_template",
-                "introduction",
-                "controller_default_run",
-                "default_config",
-                "tags",
-                "package_name",
-                "cpu_architecture",
-                "is_pre",
-            ],
+        imported_ids = set(
+            Collector.objects.filter(
+                id__in=[item["id"] for item in update_collectors],
+                imported_package_version__gt="",
+            ).values_list("id", flat=True)
         )
+        update_fields = [
+            "service_type",
+            "executable_path",
+            "execute_parameters",
+            "validation_parameters",
+            "default_template",
+            "introduction",
+            "controller_default_run",
+            "default_config",
+            "tags",
+            "package_name",
+            "cpu_architecture",
+            "is_pre",
+        ]
+        normal = [Collector(**item) for item in update_collectors if item["id"] not in imported_ids]
+        imported = [Collector(**item) for item in update_collectors if item["id"] in imported_ids]
+        if normal:
+            Collector.objects.bulk_update(normal, update_fields)
+        if imported:
+            Collector.objects.bulk_update(
+                imported,
+                [field for field in update_fields if field != "execute_parameters"],
+            )
 
 
 def migrate_collector():

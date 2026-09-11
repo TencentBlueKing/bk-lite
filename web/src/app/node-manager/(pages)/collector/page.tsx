@@ -8,6 +8,7 @@ import { useScreenAwareRouter } from '@/console-layout';
 import { useTranslation } from '@/utils/i18n';
 import type { CardItem } from '@/app/node-manager/types';
 import CollectorModal from '@/app/node-manager/components/sidecar/collectorModal';
+import CollectorReleaseImportModal from '@/app/node-manager/components/collectorReleaseImportModal';
 import { ModalRef } from '@/app/node-manager/types';
 import PermissionWrapper from '@/components/permission';
 import { useCollectorMenuItem } from '@/app/node-manager/hooks/collector';
@@ -20,7 +21,8 @@ const Collector = () => {
   const router = useScreenAwareRouter();
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
-  const { getCollectorlist, deleteCollector } = useNodeManagerApi();
+  const { getCollectorlist, deleteCollector, restoreCollectorRelease } =
+    useNodeManagerApi();
   const commonContext = useCommon();
   const nodeStateEnum = commonContext?.nodeStateEnum || {};
   const menuItem = useCollectorMenuItem();
@@ -30,6 +32,7 @@ const Collector = () => {
   const [collectorCards, setCollectorCards] = useState<CardItem[]>([]);
   const [search, setSearch] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
+  const [importOpen, setImportOpen] = useState(false);
   const [appTags, setAppTags] = useState<any[]>([]);
   const [osTags, setOsTags] = useState<any[]>([]);
   const [kindTags, setKindTags] = useState<any[]>([]);
@@ -47,7 +50,6 @@ const Collector = () => {
     }
   }, [isLoading]);
 
-  // 组件卸载时取消所有请求
   useEffect(() => {
     return () => {
       collectorAbortControllerRef.current?.abort();
@@ -116,6 +118,12 @@ const Collector = () => {
         (item.cpu_architecture === 'arm64'
           ? 'ARM64'
           : item.cpu_architecture || '');
+      const versionLabel = item.latest_package_version
+        ? `${t('node-manager.packetManage.latestPack')} ${item.latest_package_version}`
+        : item.pack_version
+          ? `${t('node-manager.packetManage.version')} ${item.pack_version}`
+          : t('node-manager.packetManage.builtinVersion');
+      const extraTags = [versionLabel, ...(item.covered_architectures || [])];
       return {
         ...item,
         name: item.display_name,
@@ -127,9 +135,12 @@ const Collector = () => {
           tagList.find((item: string) => ['linux', 'windows'].includes(item)) ||
           'linux',
         cpu_architecture: item.cpu_architecture,
+        latest_package_version: item.latest_package_version,
+        covered_architectures: item.covered_architectures || [],
+        pack_version: item.pack_version || '',
         tagList: architectureDisplay
-          ? [...displayTags, architectureDisplay]
-          : displayTags,
+          ? [...displayTags, architectureDisplay, ...extraTags]
+          : [...displayTags, ...extraTags],
         originalTags: tagList
       };
     });
@@ -167,7 +178,6 @@ const Collector = () => {
     architectureValues?: string[];
     tagEnum?: Record<string, any>;
   } = {}) => {
-    // 取消上一次请求
     collectorAbortControllerRef.current?.abort();
     const abortController = new AbortController();
     collectorAbortControllerRef.current = abortController;
@@ -187,11 +197,9 @@ const Collector = () => {
       const res = await getCollectorlist(requestParams, {
         signal: abortController.signal
       });
-      // 只有最新请求才处理数据
       if (currentRequestId !== collectorRequestIdRef.current) return;
       handleResult(res, enumMap);
     } finally {
-      // 只有最新请求才控制 loading
       if (currentRequestId === collectorRequestIdRef.current) {
         setLoading(false);
       }
@@ -216,6 +224,22 @@ const Collector = () => {
   const handleSubmit = (type?: string) => {
     if (type === 'upload') return;
     fetchCollectorData({ searchValue: search });
+  };
+
+  const handleRestoreBuiltin = (collectorName: string) => {
+    confirm({
+      title: t('node-manager.packetManage.restoreBuiltin'),
+      content: t('node-manager.packetManage.restoreBuiltinConfirm'),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      centered: true,
+      onOk() {
+        return restoreCollectorRelease(collectorName).then(() => {
+          message.success(t('node-manager.packetManage.restoreSuccess'));
+          fetchCollectorData({ searchValue: search });
+        });
+      }
+    });
   };
 
   const handleDelete = (id: string) => {
@@ -273,6 +297,21 @@ const Collector = () => {
               </Button>
             </PermissionWrapper>
           </Menu.Item>
+          {data.pack_version ? (
+            <Menu.Item
+              className="!p-0"
+              onClick={() => handleRestoreBuiltin(data.original_name)}
+            >
+              <PermissionWrapper
+                requiredPermissions={['AddPacket']}
+                className="!block"
+              >
+                <Button type="text" className="w-full">
+                  {t('node-manager.packetManage.restoreBuiltin')}
+                </Button>
+              </PermissionWrapper>
+            </Menu.Item>
+          ) : null}
         </Menu>
       );
     },
@@ -410,20 +449,32 @@ const Collector = () => {
           </div>
         }
         operateSection={
-          <Search
-            allowClear
-            enterButton
-            placeholder={`${t('common.search')}...`}
-            className="w-60"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onSearch={onSearch}
-          />
+          <div className="flex items-center gap-2">
+            <PermissionWrapper requiredPermissions={['AddPacket']}>
+              <Button type="primary" onClick={() => setImportOpen(true)}>
+                {t('node-manager.packetManage.importPack')}
+              </Button>
+            </PermissionWrapper>
+            <Search
+              allowClear
+              enterButton
+              placeholder={`${t('common.search')}...`}
+              className="w-60"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onSearch={onSearch}
+            />
+          </div>
         }
         {...ifOpenAddModal()}
         onCardClick={(item: CardItem) => navigateToCollectorDetail(item)}
       ></EntityList>
       <CollectorModal ref={modalRef} onSuccess={handleSubmit} />
+      <CollectorReleaseImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onSuccess={() => fetchCollectorData({ searchValue: search })}
+      />
     </div>
   );
 };
