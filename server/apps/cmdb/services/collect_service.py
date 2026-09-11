@@ -11,7 +11,8 @@ from django.db import transaction
 from django.utils.timezone import now
 
 from apps.cmdb.collection.round_sync import uses_vm_reconciliation
-from apps.cmdb.constants.constants import OPERATOR_COLLECT_TASK, CollectPluginTypes, CollectRunStatusType, DataCleanupStrategy
+from apps.cmdb.constants.constants import INSTANCE, OPERATOR_COLLECT_TASK, CollectPluginTypes, CollectRunStatusType, DataCleanupStrategy
+from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.models import CREATE_INST, DELETE_INST, EXECUTE, UPDATE_INST
 from apps.cmdb.models.change_record import COLLECT_AUTOMATION_CHANGE
 from apps.cmdb.models.collect_model import CollectModels
@@ -741,6 +742,9 @@ class CollectModelService(object):
                 # RPC 调用：删除节点参数
                 if cls.should_sync_node_params(instance_copy):
                     cls.delete_butch_node_params(instance_copy)
+
+                # 图中资产实例只把所属配置任务字段置空，不删除字段或实例。
+                cls.clear_instance_collect_task(instance_id)
             except Exception as e:
                 # 外部资源清理失败，记录错误并抛出异常，触发事务回滚
                 logger.error(
@@ -768,6 +772,28 @@ class CollectModelService(object):
         cls.delete_team(instance_copy.id, instance_copy.team, [], view_self)
 
         return instance_id
+
+    @classmethod
+    def clear_instance_collect_task(cls, task_id):
+        """把图中 collect_task 等于当前任务 ID 的值置空，保留字段，兼容 int/str 两种历史写入。"""
+        task_id_int = int(task_id)
+        match_params = [
+            [{"field": "collect_task", "type": "int=", "value": task_id_int}],
+            [{"field": "collect_task", "type": "str=", "value": str(task_id_int)}],
+        ]
+        entity_ids = []
+        seen = set()
+        with GraphClient() as ag:
+            for params in match_params:
+                instances, _ = ag.query_entity(INSTANCE, params)
+                for instance in instances or []:
+                    inst_id = instance.get("_id")
+                    if inst_id is None or inst_id in seen:
+                        continue
+                    seen.add(inst_id)
+                    entity_ids.append(inst_id)
+            if entity_ids:
+                ag.batch_update_node_properties(INSTANCE, entity_ids, {"collect_task": ""})
 
     @classmethod
     def _normalize_cloud_regions(cls, model_id, regions):
