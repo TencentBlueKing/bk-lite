@@ -2838,18 +2838,100 @@ class InstanceManage(object):
 
     @classmethod
     def license_instance_count(cls) -> dict:
-        """许可用量：原生自动发现且属于收费模型目录的实例数。"""
-        from apps.cmdb.constants.license_catalog import CMDB_LICENSE_MODEL_IDS
+        """许可用量：原生自动发现且属于收费模型目录的实例数。
 
-        return cls.group_inst_count(
-            group_by_attr="model_id",
-            permissions_map={},
-            params=[
-                {"field": "auto_collect", "type": "bool", "value": True},
-                {"field": "model_id", "type": "str[]", "value": list(CMDB_LICENSE_MODEL_IDS)},
-            ],
-            creator="",
+        仅本方法做 host 与虚拟机的 IP 去重；group_inst_count / model_inst_count 保持原语义。
+        """
+        from apps.cmdb.constants.license_catalog import (
+            CMDB_LICENSE_MODEL_IDS,
+            CMDB_LICENSE_OS_MODEL_ID,
+            CMDB_LICENSE_VM_MODEL_IDS,
         )
+
+        other_model_ids = CMDB_LICENSE_MODEL_IDS - CMDB_LICENSE_VM_MODEL_IDS - {CMDB_LICENSE_OS_MODEL_ID}
+        counts = dict(
+            cls.group_inst_count(
+                group_by_attr="model_id",
+                permissions_map={},
+                params=[
+                    {"field": "auto_collect", "type": "bool", "value": True},
+                    {"field": "model_id", "type": "str[]", "value": list(other_model_ids)},
+                ],
+                creator="",
+            )
+        )
+        counts.update(cls._license_os_vm_instance_count())
+        return counts
+
+    @staticmethod
+    def _iter_license_ips(raw):
+        """从 ip_addr 拆出非空 IP。支持逗号分隔字符串，以及已拆好的序列。"""
+        if raw is None:
+            return
+        if isinstance(raw, (list, tuple, set)):
+            parts = raw
+        else:
+            text = str(raw).strip()
+            if not text:
+                return
+            parts = text.split(",")
+        for part in parts:
+            ip = str(part).strip()
+            if ip:
+                yield ip
+
+    @classmethod
+    def _count_license_os_vm_instances(cls, inst_list) -> dict:
+        """host 全计；虚拟机 IP 与 host 有交集则不计。不按云区域拆 IP。"""
+        from apps.cmdb.constants.license_catalog import (
+            CMDB_LICENSE_OS_MODEL_ID,
+            CMDB_LICENSE_VM_MODEL_IDS,
+        )
+
+        host_ips = set()
+        host_count = 0
+        vms = []
+        for inst in inst_list or []:
+            model_id = inst.get("model_id")
+            if model_id == CMDB_LICENSE_OS_MODEL_ID:
+                host_count += 1
+                host_ips.update(cls._iter_license_ips(inst.get("ip_addr")))
+            elif model_id in CMDB_LICENSE_VM_MODEL_IDS:
+                vms.append(inst)
+
+        counts = {}
+        if host_count:
+            counts[CMDB_LICENSE_OS_MODEL_ID] = host_count
+
+        for inst in vms:
+            ips = list(cls._iter_license_ips(inst.get("ip_addr")))
+            if ips and any(ip in host_ips for ip in ips):
+                continue
+            model_id = inst.get("model_id")
+            counts[model_id] = counts.get(model_id, 0) + 1
+        return counts
+
+    @classmethod
+    def _query_license_os_vm_instances(cls) -> list:
+        from apps.cmdb.constants.license_catalog import (
+            CMDB_LICENSE_OS_MODEL_ID,
+            CMDB_LICENSE_VM_MODEL_IDS,
+        )
+
+        model_ids = [CMDB_LICENSE_OS_MODEL_ID, *sorted(CMDB_LICENSE_VM_MODEL_IDS)]
+        with GraphClient() as ag:
+            inst_list, _ = ag.query_entity(
+                INSTANCE,
+                [
+                    {"field": "auto_collect", "type": "bool", "value": True},
+                    {"field": "model_id", "type": "str[]", "value": model_ids},
+                ],
+            )
+        return inst_list or []
+
+    @classmethod
+    def _license_os_vm_instance_count(cls) -> dict:
+        return cls._count_license_os_vm_instances(cls._query_license_os_vm_instances())
 
     @classmethod
     def _build_permission_params(cls, permission_map: dict, creator: str = ""):
