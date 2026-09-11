@@ -93,11 +93,16 @@ class _EmailHTMLValidator(HTMLParser):
         "svg",
         "math",
     }
-    URL_ATTRIBUTES = {"href", "src", "action", "formaction", "background", "poster", "xlink:href"}
+    URL_ATTRIBUTES = {"href", "src", "srcset", "imagesrcset", "action", "formaction", "background", "poster", "xlink:href", "ping", "manifest"}
 
-    def __init__(self):
+    def __init__(self, marker_pattern):
         super().__init__(convert_charrefs=True)
         self.errors: list[str] = []
+        self.marker_pattern = marker_pattern
+        self.text_markers: list[str] = []
+
+    def handle_data(self, data):
+        self.text_markers.extend(self.marker_pattern.findall(data))
 
     def handle_starttag(self, tag, attrs):
         self._validate_tag(tag, attrs)
@@ -117,9 +122,12 @@ class _EmailHTMLValidator(HTMLParser):
                 self.errors.append(f"不允许使用事件属性 {name}")
             if "{{" in value or "}}" in value:
                 self.errors.append("变量只能放在 HTML 文本节点中")
-            if name in self.URL_ATTRIBUTES and not self._safe_url(lowered):
-                self.errors.append(f"属性 {name} 使用了不安全的 URL")
-            if name == "style" and any(token in lowered for token in ("url(", "expression(", "@import", "behavior:")):
+            if name in self.URL_ATTRIBUTES:
+                if normalized_tag != "a" or name != "href":
+                    self.errors.append(f"属性 {name} 不允许加载外部资源")
+                elif not self._safe_url(lowered):
+                    self.errors.append(f"属性 {name} 使用了不安全的 URL")
+            if name == "style" and any(token in lowered for token in ("url(", "image-set(", "expression(", "@import", "behavior:", "\\", "/*")):
                 self.errors.append("style 中不允许外部资源或可执行表达式")
 
     @staticmethod
@@ -178,14 +186,27 @@ def validate_source(source: str, *, channel_type: str, is_subject: bool = False,
         raise TemplateValidationError("存在未闭合或不受支持的模板标记")
 
     if channel_type == "email" and not is_subject:
-        parser = _EmailHTMLValidator()
+        # 用合法 HTML 名称替换变量后再解析，避免 <{{ path }}> 被解析器当作
+        # 普通文本。每个变量必须完整地出现在文本节点中，不能位于标签、属性或注释。
+        prefix = "bklitetemplatevariable"
+        decoded_source = html.unescape(source).lower()
+        while prefix in decoded_source:
+            prefix += "x"
+        markers = [f"{prefix}{index}end" for index in range(len(matches))]
+        marker_iter = iter(markers)
+        marked_source = PLACEHOLDER_PATTERN.sub(lambda _match: next(marker_iter), source)
+        parser = _EmailHTMLValidator(re.compile(rf"{prefix}\d+end"))
         try:
-            parser.feed(source)
+            parser.feed(marked_source)
+            if parser.rawdata:
+                raise TemplateValidationError("HTML 标签或注释未闭合")
             parser.close()
         except Exception as exc:
             raise TemplateValidationError("HTML 结构无法解析") from exc
         if parser.errors:
             raise TemplateValidationError(parser.errors[0])
+        if parser.text_markers != markers:
+            raise TemplateValidationError("变量只能放在 HTML 文本节点中")
     return paths
 
 

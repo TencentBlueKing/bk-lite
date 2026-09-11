@@ -157,6 +157,47 @@ def test_dangerous_email_html_is_rejected(source):
         validate_source(source, channel_type="email")
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        "<a {{ alert.title }}>open</a>",
+        "<{{ alert.title }}>hello",
+        "<a data-{{ alert.title }}='x'>hello</a>",
+        "</{{ alert.title }}>",
+        "<a {{ alert.title }}>open</a>&#98;klitetemplatevariable0end",
+        "<!-- {{ alert.title }} -->",
+        "<?{{ alert.title }}?>",
+        "<!DOCTYPE {{ alert.title }}>",
+        "<a title={{ alert.title }}",
+        '<img src="https://example.test/pixel">',
+        '<img srcset="https://example.test/pixel 1x">',
+        '<table background="//example.test/pixel"><tr><td>x</td></tr></table>',
+        '<a href="https://example.test" ping="https://example.test/track">open</a>',
+        '<video poster="https://example.test/pixel"></video>',
+        '<div style="background:u\\72l(https://example.test/pixel)">x</div>',
+        "<div style='background-image:image-set(\"https://example.test/pixel\" 1x)'>x</div>",
+        "<div style='background-image:-webkit-image-set(\"https://example.test/pixel\" 1x)'>x</div>",
+    ],
+)
+def test_email_rejects_nontext_placeholders_and_resource_loading(source):
+    from apps.alerts.notification_templates.renderer import TemplateValidationError, render_source
+
+    with pytest.raises(TemplateValidationError):
+        render_source(source, {"alert": {"title": "onclick=alert(1)"}}, channel_type="email")
+
+
+def test_email_allows_static_links_and_repeated_escaped_text():
+    from apps.alerts.notification_templates.renderer import render_source
+
+    result = render_source(
+        '<a href="https://example.test/alerts">{{ alert.title }}</a><p>{{ alert.title }}</p>',
+        {"alert": {"title": '<img src="https://example.test/pixel">'}},
+        channel_type="email",
+    )
+    escaped = '&lt;img src="https://example.test/pixel"&gt;'
+    assert result.value == f'<a href="https://example.test/alerts">{escaped}</a><p>{escaped}</p>'
+
+
 def test_subject_rejects_header_injection_and_unknown_root():
     from apps.alerts.notification_templates.renderer import TemplateValidationError, validate_source
 

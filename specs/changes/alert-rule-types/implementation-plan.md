@@ -59,6 +59,8 @@ Event 的 source_name 为规则取值映射，不新增 Event 数据库列。Ale
 
 不新增没有业务用途的普通数值、外键 ID、人员/组织列表、monitor_objects 对象列表或任意 JSON 路径筛选；不新增 source_pk、level_id、历史 source_id 选项。现有丰富 Provider/动作参数绑定不是本次筛选字段目录，不随之改动。
 
+2026-09-11 回归修复：动作参数绑定继续提供首个关联事件的 `source_id`；规则评估使用独立上下文，不开放历史 `source_id` 筛选，也不为该字段额外读取事件。
+
 ## 4. 统一匹配契约
 
 保留 match_rules 二维数组及 key/operator/value 结构；同组 AND、组间 OR。字段目录分别记录实际值类型、值基数、条件 value 类型、场景和取值方式。
