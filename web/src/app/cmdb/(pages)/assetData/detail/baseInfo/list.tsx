@@ -29,6 +29,7 @@ import {
   SyncOutlined,
   LinkOutlined,
   DisconnectOutlined,
+  SwapOutlined,
 } from '@ant-design/icons';
 import { useInstanceApi } from '@/app/cmdb/api';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
@@ -598,6 +599,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
   const canOperateMonitor =
     canSyncMonitor(modelId) && isMonitorSold(clientData);
   const showManualBind = canOperateMonitor && (!isMonitorLinked || lastSyncNotFound);
+  const showRebind = canOperateMonitor && isMonitorLinked;
   const showUnbind = canOperateMonitor && isMonitorLinked;
 
   const handleUnbindMonitor = () => {
@@ -742,6 +744,15 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
                       onClick={() => setBindModalOpen(true)}
                     >
                       {t('Model.systemLinkageManualBind')}
+                    </Button>
+                  )}
+                  {showRebind && (
+                    <Button
+                      size="small"
+                      icon={<SwapOutlined />}
+                      onClick={() => setBindModalOpen(true)}
+                    >
+                      {t('Model.systemLinkageRebind')}
                     </Button>
                   )}
                   {showUnbind && (

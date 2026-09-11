@@ -362,6 +362,7 @@
         "systemLinkageBindSuccess": "Linked to the monitor instance",
         "systemLinkageBindFailed": "Unable to link monitoring. Try again later.",
         "systemLinkageOccupied": "This monitor instance is already occupied by \"{name}\"",
+        "systemLinkageRebind": "Change association",
         "systemLinkageRebindConfirm": "This asset is already linked to another monitor instance. Confirm to unlink it first, then bind the selected instance.",
         "changeRecords": "Change Records",
         "changeRecord": {
