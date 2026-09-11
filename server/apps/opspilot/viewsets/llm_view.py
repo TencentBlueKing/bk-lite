@@ -60,6 +60,12 @@ from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY, C
 from apps.opspilot.services.llm_context_budget import parse_context_window_tokens
 from apps.opspilot.services.mcp_client import MCPClient
 from apps.opspilot.services.skill_channel_service import sync_skill_channel_usage_teams
+from apps.opspilot.services.skill_memory_service import (
+    SkillMemoryConfigError,
+    normalize_memory_space_id,
+    normalize_write_rounds,
+    validate_skill_memory_binding,
+)
 from apps.opspilot.services.skill_package.importer import DEFAULT_SKILL_PACKAGE_ROOT, SkillPackageImporter
 from apps.opspilot.services.skill_package.runtime import build_skill_package_prompt, build_skill_package_strategy, hydrate_skill_packages
 from apps.opspilot.services.usage_team import merge_usage_team
@@ -125,6 +131,8 @@ class LLMViewSet(PinMixin, AuthViewSet):
             "instance_id",
             "skill_id",
             "force_wiki_grounded",
+            "memory_space_id",
+            "memory_write_rounds",
         }
     )
 
@@ -280,6 +288,21 @@ class LLMViewSet(PinMixin, AuthViewSet):
             self._validate_org_field_permission(request, extra_orgs)
         if "llm_model" in params:
             params["llm_model_id"] = params.pop("llm_model")
+        if "memory_space" in params or "memory_space_id" in params:
+            raw_space = params.pop("memory_space", None)
+            if "memory_space_id" in params:
+                raw_space = params.pop("memory_space_id")
+            try:
+                space_id = normalize_memory_space_id(raw_space)
+                validate_skill_memory_binding(space_id, request.user)
+            except SkillMemoryConfigError as exc:
+                return JsonResponse({"result": False, "message": str(exc)})
+            params["memory_space_id"] = space_id
+        if "memory_write_rounds" in params:
+            try:
+                params["memory_write_rounds"] = normalize_write_rounds(params.get("memory_write_rounds"))
+            except SkillMemoryConfigError as exc:
+                return JsonResponse({"result": False, "message": str(exc)})
         for tool in params.get("tools", []):
             for i in tool.get("kwargs", []):
                 if i.get("type") == "password":

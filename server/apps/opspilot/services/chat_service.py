@@ -31,6 +31,7 @@ from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY
 from apps.opspilot.services.chat_request import ChatRequest
 from apps.opspilot.services.history_service import history_service
 from apps.opspilot.services.llm_context_budget import DEFAULT_CHAT_SCENE_OUTPUT_TOKENS, working_budget_for_model
+from apps.opspilot.services.skill_memory_service import append_skill_memory_block
 from apps.opspilot.services.wiki.active_generation_query_service import ActiveGenerationReadError
 from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, load_wiki_budget_config
 from apps.opspilot.services.wiki.wiki_context_service import augment_prompt_with_trace, should_skip_wiki_retrieval
@@ -584,6 +585,10 @@ class ChatService:
             if wiki_citations:
                 extra_config["wiki_citations"] = wiki_citations
             extra_config["wiki_budget"] = wiki_budget_trace
+
+        memory_block = kwargs.get("skill_memory_block") or ""
+        if memory_block:
+            resolved_prompt = append_skill_memory_block(resolved_prompt, memory_block)
 
         vendor_type = llm_model.vendor.vendor_type if llm_model.vendor_id else ""
         # 对话温度固定 1；技能表与请求里的旧滑条值忽略。
