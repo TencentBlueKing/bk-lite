@@ -824,7 +824,9 @@ class ModelManage(object):
 
     @staticmethod
     def parse_attrs(attrs: str):
-        return json.loads(attrs.replace('\\"', '"'))
+        from apps.cmdb.services.model_graph_query import parse_attrs as parse_model_attrs
+
+        return parse_model_attrs(attrs)
 
     @staticmethod
     def create_model_attr(model_id, attr_info, username="admin"):
@@ -1303,24 +1305,9 @@ class ModelManage(object):
         """
         查询模型详情
         """
-        query_data = [{"field": "model_id", "type": "str=", "value": model_id}]
-        with GraphClient() as ag:
-            models, _ = ag.query_entity(MODEL, query_data)
-        if len(models) == 0:
-            return {}
+        from apps.cmdb.services.model_graph_query import search_model_info as query_model_info
 
-        model = models[0]
-
-        # if not display_field:
-        #     return model
-        #
-        # # 过滤掉 is_display_field 为 true 的字段
-        # if "attrs" in model and model["attrs"]:
-        #     attrs = ModelManage.parse_attrs(model["attrs"])
-        #     filtered_attrs = [attr for attr in attrs if not attr.get("is_display_field")]
-        #     model["attrs"] = json.dumps(filtered_attrs, ensure_ascii=False)
-
-        return model
+        return query_model_info(model_id)
 
     @staticmethod
     def get_organization_option(items: list, result: list, name_prefix: str = ""):
@@ -1516,16 +1503,9 @@ class ModelManage(object):
         """
         查询模型关联详情
         """
-        with GraphClient() as ag:
-            query_data = {
-                "field": "model_asst_id",
-                "type": "str=",
-                "value": model_asst_id,
-            }
-            edges = ag.query_edge(MODEL_ASSOCIATION, [query_data])
-        if len(edges) == 0:
-            return {}
-        return edges[0]
+        from apps.cmdb.services.model_graph_query import model_association_info_search as query_association_info
+
+        return query_association_info(model_asst_id)
 
     @staticmethod
     def model_association_search(
@@ -1537,19 +1517,9 @@ class ModelManage(object):
         """
         查询模型所有的关联
         """
-        query_list = [
-            {"field": "src_model_id", "type": "str=", "value": model_id},
-            {"field": "dst_model_id", "type": "str=", "value": model_id},
-        ]
-        with GraphClient() as ag:
-            edges = ag.query_edge(MODEL_ASSOCIATION, query_list, param_type="OR")
+        from apps.cmdb.services.model_graph_query import model_association_search as query_associations
 
-        if business_only:
-            return BusinessModelVisibility.filter_associations(
-                edges,
-                language=language,
-            )
-        return edges
+        return query_associations(model_id, business_only=business_only, language=language)
 
     @staticmethod
     def get_model_auto_relation_rules(model_id: str):

@@ -27,9 +27,14 @@ class FakeGraph:
 @pytest.fixture
 def patch_graph(monkeypatch):
     def _patch(entities):
+        fake = FakeGraph(entities)
         monkeypatch.setattr(
             "apps.cmdb.services.model.GraphClient",
-            lambda *a, **k: FakeGraph(entities),
+            lambda *a, **k: fake,
+        )
+        monkeypatch.setattr(
+            "apps.cmdb.services.model_graph_query.GraphClient",
+            lambda *a, **k: fake,
         )
 
     return _patch

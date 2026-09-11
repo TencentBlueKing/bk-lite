@@ -318,7 +318,7 @@ def test_build_unique_rule_context(monkeypatch):
         {"attr_id": "sn", "attr_name": "序列号", "attr_type": "str", "is_only": True, "is_required": True},
     ]
     monkeypatch.setattr(
-        "apps.cmdb.services.model.ModelManage.search_model_info",
+        "apps.cmdb.services.unique_rule.search_model_info",
         lambda model_id: {"model_id": "host", "attrs": json.dumps(attrs), "unique_rules": "[]"},
     )
     ctx = ur.build_unique_rule_context("host")
@@ -328,7 +328,7 @@ def test_build_unique_rule_context(monkeypatch):
 
 @pytest.mark.django_db
 def test_build_unique_rule_context_model_missing(monkeypatch):
-    monkeypatch.setattr("apps.cmdb.services.model.ModelManage.search_model_info", lambda model_id: {})
+    monkeypatch.setattr("apps.cmdb.services.unique_rule.search_model_info", lambda model_id: {})
     with pytest.raises(BaseAppException):
         ur.build_unique_rule_context("nope")
 
@@ -338,7 +338,7 @@ def test_list_unique_rules(monkeypatch):
     attrs = [{"attr_id": "sn", "attr_name": "序列号", "attr_type": "str", "is_required": True}]
     rules = json.dumps([{"rule_id": "r1", "order": 1, "field_ids": ["sn"]}])
     monkeypatch.setattr(
-        "apps.cmdb.services.model.ModelManage.search_model_info",
+        "apps.cmdb.services.unique_rule.search_model_info",
         lambda model_id: {"model_id": "host", "attrs": json.dumps(attrs), "unique_rules": rules},
     )
     out = ur.list_unique_rules("host")
@@ -352,7 +352,7 @@ def test_list_unique_rule_candidate_fields(monkeypatch):
         {"attr_id": "inst_name", "attr_name": "名称", "attr_type": "str"},
     ]
     monkeypatch.setattr(
-        "apps.cmdb.services.model.ModelManage.search_model_info",
+        "apps.cmdb.services.unique_rule.search_model_info",
         lambda model_id: {"model_id": "host", "attrs": json.dumps(attrs), "unique_rules": "[]"},
     )
     out = ur.list_unique_rule_candidate_fields("host")

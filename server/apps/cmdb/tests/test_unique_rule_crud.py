@@ -52,7 +52,7 @@ def patch_save(monkeypatch):
 @pytest.mark.django_db
 def test_create_unique_rule_ok(monkeypatch, patch_save):
     monkeypatch.setattr(
-        "apps.cmdb.services.model.ModelManage.search_model_info",
+        "apps.cmdb.services.unique_rule.search_model_info",
         lambda mid: _model_info_with("[]", _BASIC_ATTRS),
     )
     out = create_unique_rule(
@@ -65,7 +65,7 @@ def test_create_unique_rule_ok(monkeypatch, patch_save):
 @pytest.mark.django_db
 def test_create_unique_rule_invalid(monkeypatch, patch_save):
     monkeypatch.setattr(
-        "apps.cmdb.services.model.ModelManage.search_model_info",
+        "apps.cmdb.services.unique_rule.search_model_info",
         lambda mid: _model_info_with("[]", _BASIC_ATTRS),
     )
     with pytest.raises(BaseAppException):
@@ -82,7 +82,7 @@ def test_create_unique_rule_invalid(monkeypatch, patch_save):
 @pytest.mark.django_db
 def test_update_unique_rule_not_found(monkeypatch, patch_save):
     monkeypatch.setattr(
-        "apps.cmdb.services.model.ModelManage.search_model_info",
+        "apps.cmdb.services.unique_rule.search_model_info",
         lambda mid: _model_info_with("[]", _BASIC_ATTRS),
     )
     with pytest.raises(BaseAppException):
@@ -95,7 +95,7 @@ def test_update_unique_rule_not_found(monkeypatch, patch_save):
 def test_update_unique_rule_ok(monkeypatch, patch_save):
     rules_json = json.dumps([{"rule_id": "r1", "order": 1, "field_ids": ["ip"]}])
     monkeypatch.setattr(
-        "apps.cmdb.services.model.ModelManage.search_model_info",
+        "apps.cmdb.services.unique_rule.search_model_info",
         lambda mid: _model_info_with(rules_json, _BASIC_ATTRS),
     )
     save_calls = []
@@ -113,7 +113,7 @@ def test_update_unique_rule_ok(monkeypatch, patch_save):
 @pytest.mark.django_db
 def test_delete_unique_rule_not_found(monkeypatch, patch_save):
     monkeypatch.setattr(
-        "apps.cmdb.services.model.ModelManage.search_model_info",
+        "apps.cmdb.services.unique_rule.search_model_info",
         lambda mid: _model_info_with("[]", _BASIC_ATTRS),
     )
     with pytest.raises(BaseAppException):
@@ -124,7 +124,7 @@ def test_delete_unique_rule_not_found(monkeypatch, patch_save):
 def test_delete_unique_rule_ok(monkeypatch, patch_save):
     rules_json = json.dumps([{"rule_id": "r1", "order": 1, "field_ids": ["ip"]}])
     monkeypatch.setattr(
-        "apps.cmdb.services.model.ModelManage.search_model_info",
+        "apps.cmdb.services.unique_rule.search_model_info",
         lambda mid: _model_info_with(rules_json, _BASIC_ATTRS),
     )
     save_calls = []
@@ -144,7 +144,7 @@ def test_delete_unique_rule_ok(monkeypatch, patch_save):
 def test_list_unique_rules(monkeypatch):
     rules_json = json.dumps([{"rule_id": "r1", "order": 1, "field_ids": ["ip"]}])
     monkeypatch.setattr(
-        "apps.cmdb.services.model.ModelManage.search_model_info",
+        "apps.cmdb.services.unique_rule.search_model_info",
         lambda mid: _model_info_with(rules_json, _BASIC_ATTRS),
     )
     out = list_unique_rules("host")
@@ -155,7 +155,7 @@ def test_list_unique_rules(monkeypatch):
 @pytest.mark.django_db
 def test_list_candidate_fields(monkeypatch):
     monkeypatch.setattr(
-        "apps.cmdb.services.model.ModelManage.search_model_info",
+        "apps.cmdb.services.unique_rule.search_model_info",
         lambda mid: _model_info_with("[]", _BASIC_ATTRS),
     )
     out = list_unique_rule_candidate_fields("host")
@@ -169,7 +169,7 @@ def test_list_candidate_fields(monkeypatch):
 def test_list_candidate_fields_with_occupied(monkeypatch):
     rules_json = json.dumps([{"rule_id": "r1", "order": 1, "field_ids": ["ip"]}])
     monkeypatch.setattr(
-        "apps.cmdb.services.model.ModelManage.search_model_info",
+        "apps.cmdb.services.unique_rule.search_model_info",
         lambda mid: _model_info_with(rules_json, _BASIC_ATTRS),
     )
     out = list_unique_rule_candidate_fields("host")
@@ -202,7 +202,7 @@ def test_reorder_unique_rules_reassigns_orders():
 @pytest.mark.django_db
 def test_build_unique_rules_from_attr_rows_invalid_order(monkeypatch):
     monkeypatch.setattr(
-        "apps.cmdb.services.model.ModelManage.search_model_info",
+        "apps.cmdb.services.unique_rule.search_model_info",
         lambda mid: _model_info_with("[]", _BASIC_ATTRS),
     )
     from apps.cmdb.services.unique_rule import build_unique_rules_from_attr_rows
@@ -215,7 +215,7 @@ def test_build_unique_rules_from_attr_rows_invalid_order(monkeypatch):
 @pytest.mark.django_db
 def test_build_unique_rules_from_attr_rows_zero_order(monkeypatch):
     monkeypatch.setattr(
-        "apps.cmdb.services.model.ModelManage.search_model_info",
+        "apps.cmdb.services.unique_rule.search_model_info",
         lambda mid: _model_info_with("[]", _BASIC_ATTRS),
     )
     from apps.cmdb.services.unique_rule import build_unique_rules_from_attr_rows
@@ -228,7 +228,7 @@ def test_build_unique_rules_from_attr_rows_zero_order(monkeypatch):
 @pytest.mark.django_db
 def test_build_unique_rules_from_attr_rows_too_many(monkeypatch):
     monkeypatch.setattr(
-        "apps.cmdb.services.model.ModelManage.search_model_info",
+        "apps.cmdb.services.unique_rule.search_model_info",
         lambda mid: _model_info_with("[]", _BASIC_ATTRS),
     )
     from apps.cmdb.services.unique_rule import build_unique_rules_from_attr_rows
@@ -246,7 +246,7 @@ def test_build_unique_rules_from_attr_rows_too_many(monkeypatch):
 @pytest.mark.django_db
 def test_build_unique_rules_from_attr_rows_ok(monkeypatch):
     monkeypatch.setattr(
-        "apps.cmdb.services.model.ModelManage.search_model_info",
+        "apps.cmdb.services.unique_rule.search_model_info",
         lambda mid: _model_info_with("[]", _BASIC_ATTRS),
     )
     from apps.cmdb.services.unique_rule import build_unique_rules_from_attr_rows
