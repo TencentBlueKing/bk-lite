@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Alert, Button, Tooltip, Form, Input,  InputNumber, Switch } from 'antd';
+import { Alert, Button, Form, Input,  InputNumber, Switch } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
 
 const { TextArea } = Input;
@@ -237,7 +237,7 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-1">
+      <div className="mb-1 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="text-[13px] font-medium text-[var(--color-text-1)]">{t('skill.tool')}</span>
           {selectedTools.length > 0 && (
@@ -250,13 +250,13 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
           添加工具
         </Button>
       </div>
-      <p className="text-xs text-[var(--color-text-3)] mb-2.5 mt-0">扩展智能体的外部 API 和插件调用能力</p>
+      <p className="mb-2.5 mt-0 text-xs text-[var(--color-text-3)]">扩展智能体的外部 API 和插件调用能力</p>
       {selectedTools.length === 0 ? (
-        <div className="text-xs text-[var(--color-text-4)] py-1">
+        <div className="py-1 text-xs text-[var(--color-text-4)]">
           暂未添加工具，可点击右上角「添加工具」进行选择
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+        <div className="grid grid-cols-1 gap-2 pt-1">
           {selectedTools.map((tool) => (
             <div
               key={tool.id}

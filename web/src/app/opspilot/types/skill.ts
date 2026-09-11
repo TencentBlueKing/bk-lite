@@ -105,6 +105,8 @@ export interface SkillDetail extends Skill {
   tools?: unknown[];
   wiki_knowledge_bases?: number[];
   force_wiki_grounded?: boolean;
+  memory_space?: number | null;
+  memory_write_rounds?: number;
   desc?: string;
   skill_packages?: SkillPackage[];
 }
