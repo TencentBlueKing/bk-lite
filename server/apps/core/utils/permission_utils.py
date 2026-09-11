@@ -5,6 +5,23 @@ from apps.core.logger import nats_logger as logger
 from apps.core.utils.permission_cache import get_cached_permission_rules, get_user_permission_version, set_cached_permission_rules
 from apps.rpc.system_mgmt import SystemMgmt
 
+_PERMISSION_RPC_FAILED = (
+    "event=permission_rpc_failed username=%s domain=%s team=%s app=%s permission_key=%s failed_stage=%s error_type=%s"
+)
+
+
+def _log_permission_rpc_failure(exc, *, user, current_team, app_name, permission_key, failed_stage):
+    logger.exception(
+        _PERMISSION_RPC_FAILED,
+        user.username,
+        user.domain,
+        current_team,
+        app_name,
+        permission_key,
+        failed_stage,
+        type(exc).__name__,
+    )
+
 
 def get_permission_rules(user, current_team, app_name, permission_key, include_children=False):
     """获取某app某类权限的某个对象的规则"""
@@ -47,10 +64,15 @@ def get_permission_rules(user, current_team, app_name, permission_key, include_c
                 permission_version=permission_version,
             ):
                 return permission_data
-        except Exception:
-            import traceback
-
-            logger.error(traceback.format_exc())
+        except Exception as exc:
+            _log_permission_rpc_failure(
+                exc,
+                user=user,
+                current_team=current_team,
+                app_name=app_name,
+                permission_key=permission_key,
+                failed_stage="get_user_rules_by_app",
+            )
             return {}
     return {}
 
@@ -120,7 +142,15 @@ def get_permissions_rules(user, current_team, app_name, permission_key, include_
                 user.domain,
                 include_children,
             )
-        except Exception:
+        except Exception as exc:
+            _log_permission_rpc_failure(
+                exc,
+                user=user,
+                current_team=current_team,
+                app_name=cache_app_name,
+                permission_key=permission_key,
+                failed_stage="get_user_rules_by_module",
+            )
             return {}
 
         if permission_version is None:
