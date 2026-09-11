@@ -31,8 +31,12 @@ export {
   splitOverflowApps,
 } from './resolve';
 export {
+  applySameOriginNavigation,
+  applyScreenAwareHref,
   isScreenModeEnabled,
+  resolveSameOriginNavigation,
   syncScreenModePersistence,
   toSearchParams,
   withScreenQuery,
 } from './screenMode';
+export { useScreenAwareRouter } from './useScreenAwareRouter';

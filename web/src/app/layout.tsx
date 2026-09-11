@@ -340,7 +340,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   }
 
   const layoutContent = (
-    <div className={`flex flex-col pr-[var(--bk-webchat-dock-width)] transition-[padding-right] duration-200 ease-out ${lockConsoleViewport ? 'h-screen overflow-hidden' : showAppTopSide ? 'h-screen overflow-x-auto overflow-y-hidden' : 'min-h-screen'} ${!isAuthRoute && !isResponsiveAppRoute && !screenMode ? 'min-w-[1280px]' : ''}`}>
+    <div className={`flex flex-col pr-[var(--bk-webchat-dock-width)] transition-[padding-right] duration-200 ease-out ${lockConsoleViewport ? 'h-screen overflow-hidden' : screenMode ? 'h-screen overflow-x-hidden' : showAppTopSide ? 'h-screen overflow-x-auto overflow-y-hidden' : 'min-h-screen'} ${!isAuthRoute && !isResponsiveAppRoute && !screenMode ? 'min-w-[1280px]' : ''}`}>
       {isAuthenticated && hasResolvedPathname && !isAuthRoute && !hideConsoleChrome && (
         <header
           className={`sticky top-0 left-0 right-0 z-20 flex shrink-0 justify-between items-center ${
@@ -361,10 +361,10 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
             lockConsoleViewport
               ? 'min-h-0 overflow-hidden p-0'
               : screenMode
-                ? 'min-w-0 flex-1 flex-col p-0'
+                ? 'min-h-0 min-w-0 h-full flex-1 flex-col p-0'
                 : showAppTopSide ? 'min-h-0 min-w-0 flex-col py-4 pr-4' : 'p-4'
           } ${isDashboardShareRoute ? 'min-h-0 overflow-hidden' : ''} ${!isAuthenticated || isAuthRoute || lockConsoleViewport ? 'h-screen' : ''}`}
-          style={showAppTopSide ? { ['--custom-height' as string]: '100%' } : undefined}
+          style={showAppTopSide || screenMode ? { ['--custom-height' as string]: '100%' } : undefined}
         >
           {showAppTopSide ? (
             <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-x-auto pl-4">
@@ -389,7 +389,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
           ) : screenMode ? (
             <div
               data-console-screen-workspace="true"
-              className="min-w-0 w-full flex-1 overflow-auto"
+              className="flex h-full min-h-0 min-w-0 w-full flex-col overflow-auto"
             >
               {children}
             </div>

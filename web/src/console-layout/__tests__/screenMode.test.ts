@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  applyScreenAwareHref,
   isScreenModeEnabled,
+  resolveSameOriginNavigation,
   syncScreenModePersistence,
   withScreenQuery,
 } from '../screenMode';
@@ -127,5 +129,62 @@ describe('screen mode query contract', () => {
       isAuthRoute: false,
       storage,
     }).restoreHref).toBeNull();
+  });
+});
+
+describe('screen-aware navigation', () => {
+  it('keeps rebuilt query hrefs in screen mode and leaves ordinary hrefs alone', () => {
+    expect(applyScreenAwareHref('/monitor/view/detail?id=9', '?screen=true')).toBe(
+      '/monitor/view/detail?id=9&screen=true',
+    );
+    expect(applyScreenAwareHref('/cmdb/assetData?modelId=host', '?type=dashboard&screen=1')).toBe(
+      '/cmdb/assetData?modelId=host&screen=true',
+    );
+    expect(applyScreenAwareHref('/log/integration/list', '')).toBe('/log/integration/list');
+    expect(applyScreenAwareHref('/cmdb/assetData?screen=true', '?screen=true')).toBe(
+      '/cmdb/assetData?screen=true',
+    );
+  });
+
+  it('keeps same-origin current-page jumps in the frame and adds screen', () => {
+    expect(resolveSameOriginNavigation('/monitor/view/dashboard/host?objId=1', {
+      currentSearch: '?screen=true',
+    })).toEqual({
+      href: '/monitor/view/dashboard/host?objId=1&screen=true',
+      mode: 'sameFrame',
+    });
+    expect(resolveSameOriginNavigation('/cmdb/assetOverview', {
+      currentSearch: '',
+    })).toEqual({
+      href: '/cmdb/assetOverview',
+      mode: 'sameFrame',
+    });
+  });
+
+  it('converts implicit new-tab same-origin jumps to the current frame while screen is on', () => {
+    expect(resolveSameOriginNavigation('/cmdb/assetData/detail/baseInfo?model_id=host', {
+      currentSearch: '?screen=true',
+      preferNewTab: true,
+    })).toEqual({
+      href: '/cmdb/assetData/detail/baseInfo?model_id=host&screen=true',
+      mode: 'sameFrame',
+    });
+    expect(resolveSameOriginNavigation('/cmdb/assetData/detail/baseInfo?model_id=host', {
+      currentSearch: '',
+      preferNewTab: true,
+    })).toEqual({
+      href: '/cmdb/assetData/detail/baseInfo?model_id=host',
+      mode: 'newTab',
+    });
+  });
+
+  it('does not force screen onto an explicit new-window product action', () => {
+    expect(resolveSameOriginNavigation('/monitor/view?id=3', {
+      currentSearch: '?screen=true',
+      explicitNewWindow: true,
+    })).toEqual({
+      href: '/monitor/view?id=3',
+      mode: 'newTab',
+    });
   });
 });

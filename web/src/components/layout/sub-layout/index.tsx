@@ -61,6 +61,7 @@ const WithSideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
   const router = useRouter();
   const curRouterName = usePathname();
   const searchParams = useSearchParams();
+  const screenMode = isScreenModeEnabled(searchParams);
   const pathname = pagePathName ?? curRouterName;
   const { menus } = usePermissions();
   const [selectedKey, setSelectedKey] = useState<string>(pathname ?? '');
@@ -186,7 +187,7 @@ const WithSideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
             </div>
           )}
           <div className="w-full flex grow flex-1 h-full">
-            {showSideMenu && menuItems.length > 0 && (
+            {showSideMenu && menuItems.length > 0 && !screenMode && (
               sideMenuContent
             )}
             <section className="flex-1 flex flex-col overflow-hidden">
@@ -203,7 +204,7 @@ const WithSideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
         </>
       ) : (
         <div className={`flex flex-col w-full h-full ${sideMenuStyle.segmented}`}>
-          {menuItems.length > 0 ? (
+          {menuItems.length > 0 && !screenMode ? (
             <>
               <div className={sideMenuStyle.segmentedNav}>
                 <Segmented

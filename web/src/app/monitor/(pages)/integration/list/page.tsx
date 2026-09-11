@@ -16,7 +16,7 @@ import useIntegrationApi from '@/app/monitor/api/integration';
 import { PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { getIconByObjectName, getPluginBrandIcon } from '@/app/monitor/utils/common';
-import { useRouter } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import { useMonitorObjectQuery } from '@/app/monitor/hooks/useMonitorObjectQuery';
 import {
   isMonitorObjectTypeQueryKey,
@@ -66,7 +66,7 @@ const Integration = () => {
     deleteCustomTemplate
   } = useIntegrationApi();
   const { t } = useTranslation();
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const importRef = useRef<ModalRef>(null);
   const createTemplateRef = useRef<ModalRef>(null);
   const authContext = useAuth();

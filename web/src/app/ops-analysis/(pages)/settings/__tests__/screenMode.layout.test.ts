@@ -9,12 +9,12 @@ const source = readFileSync(
 );
 
 describe('ops-analysis settings screen mode', () => {
-  it('skips the segmented settings menu in screen mode and keeps it otherwise', () => {
-    expect(source).toMatch(/isScreenModeEnabled\(searchParams\)/);
+  it('always wraps settings in WithSideMenuLayout so screen hide lives in the layout component', () => {
     expect(source).toMatch(/OpsAnalysisProvider/);
-    expect(source).toMatch(/screenMode \? \(\s*children\s*\) : \(/);
     expect(source).toMatch(/<WithSideMenuLayout/);
     expect(source).toMatch(/layoutType="segmented"/);
     expect(source).toMatch(/pagePathName="\/ops-analysis\/settings\/"/);
+    expect(source).not.toMatch(/isScreenModeEnabled/);
+    expect(source).not.toMatch(/screenMode \? \(\s*children\s*\) : \(/);
   });
 });

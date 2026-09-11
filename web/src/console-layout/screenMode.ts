@@ -74,6 +74,51 @@ export const withScreenQuery = (
   return `${pathname}${nextSearch ? `?${nextSearch}` : ''}${hash}`;
 };
 
+export const applyScreenAwareHref = (
+  href: string,
+  currentSearch?: string | URLSearchParams | null,
+): string => withScreenQuery(href, isScreenModeEnabled(currentSearch));
+
+interface SameOriginNavigationInput {
+  currentSearch?: string | URLSearchParams | null;
+  preferNewTab?: boolean;
+  explicitNewWindow?: boolean;
+}
+
+export const resolveSameOriginNavigation = (
+  href: string,
+  input: SameOriginNavigationInput = {},
+): { href: string; mode: 'sameFrame' | 'newTab' } => {
+  if (input.explicitNewWindow) {
+    return { href, mode: 'newTab' };
+  }
+
+  const screenMode = isScreenModeEnabled(input.currentSearch);
+  if (input.preferNewTab && !screenMode) {
+    return { href, mode: 'newTab' };
+  }
+
+  return {
+    href: withScreenQuery(href, screenMode),
+    mode: 'sameFrame',
+  };
+};
+
+export const applySameOriginNavigation = (
+  href: string,
+  input: SameOriginNavigationInput = {},
+): void => {
+  const next = resolveSameOriginNavigation(href, input);
+  if (typeof window === 'undefined') {
+    return;
+  }
+  if (next.mode === 'newTab') {
+    window.open(next.href, '_blank', 'noopener,noreferrer');
+    return;
+  }
+  window.location.href = next.href;
+};
+
 const readFlag = (storage: ScreenModeStorage, key: string): boolean => {
   try {
     return storage.getItem(key) === '1';

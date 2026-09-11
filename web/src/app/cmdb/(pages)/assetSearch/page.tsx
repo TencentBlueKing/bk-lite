@@ -38,7 +38,7 @@ import {
 import TagCapsuleGroup from '@/components/tag-capsule-group';
 import { normalizeTagValues } from '@/app/cmdb/utils/tag';
 import { resolveCmdbInstUuid } from '@/app/cmdb/utils/instUuid';
-import { useRouter } from 'next/navigation';
+import { applySameOriginNavigation, useScreenAwareRouter } from '@/console-layout';
 import { useUserInfoContext } from '@/context/userInfo';
 import dayjs from 'dayjs';
 import AssetSearchLanding, {
@@ -85,7 +85,7 @@ interface FollowedAssetDetailResponse extends AssetListItem {
 const AssetSearch = () => {
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const commonContext = useCommon();
   const { username } = useUserInfoContext();
 
@@ -716,7 +716,10 @@ const AssetSearch = () => {
     };
     const queryString = new URLSearchParams(params).toString();
     const url = `/cmdb/assetData/detail/baseInfo?${queryString}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
+    applySameOriginNavigation(url, {
+      currentSearch: window.location.search,
+      preferNewTab: true,
+    });
   };
 
   const onTabChange = async (key: string) => {
