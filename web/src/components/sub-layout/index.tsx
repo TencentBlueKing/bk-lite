@@ -29,6 +29,8 @@ interface WithSideMenuLayoutProps {
   pagePathName?: string;
   customMenuItems?: MenuItem[];
   menuLevel?: number;
+  /** separate=分卡（默认）；unified=左侧整块+分割线 */
+  introLayout?: 'separate' | 'unified';
 }
 
 const WithSideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
@@ -45,7 +47,8 @@ const WithSideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
   taskProgressComponent,
   pagePathName,
   customMenuItems,
-  menuLevel // 可选参数
+  menuLevel, // 可选参数
+  introLayout = 'separate',
 }) => {
   const router = useRouter();
   const curRouterName = usePathname();
@@ -149,6 +152,7 @@ const WithSideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
                 showProgress={showProgress}
                 taskProgressComponent={taskProgressComponent}
                 onBackButtonClick={onBackButtonClick}
+                introLayout={introLayout}
               >
                 {intro}
               </SideMenu>
