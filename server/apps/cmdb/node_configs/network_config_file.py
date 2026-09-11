@@ -1,6 +1,6 @@
 from apps.cmdb.node_configs.base import BaseNodeParams
 from apps.cmdb.node_configs.config_artifact import ConfigArtifactNodeParamsMixin
-from apps.cmdb.services.network_config_file_policy import normalize_network_config_instance
+from apps.cmdb.services.network_config_file_policy import encode_http_header_commands, normalize_network_config_instance
 
 
 class NetworkConfigFileNodeParams(ConfigArtifactNodeParamsMixin, BaseNodeParams):
@@ -37,7 +37,7 @@ class NetworkConfigFileNodeParams(ConfigArtifactNodeParamsMixin, BaseNodeParams)
             "password": "${" + self._secret_env_name("password") + "}",
             "port": credential.get("port") or target_instance.get("port") or 22,
             "config_name": params.get("config_name", ""),
-            "commands": params.get("commands", ""),
+            "commands": encode_http_header_commands(params.get("commands", "")),
             "need_enable": need_enable,
             "collect_task_id": self.instance.id,
             "target_model_id": target_instance.get("model_id"),

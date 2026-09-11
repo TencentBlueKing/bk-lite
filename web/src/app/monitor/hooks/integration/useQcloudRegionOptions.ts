@@ -23,6 +23,18 @@ function addCloudProviderTokens(tokens: Set<string>, value: unknown) {
   }
 }
 
+function isAliyunToken(token: string) {
+  return token.includes('aliyun') || token.includes('阿里云');
+}
+
+function isQcloudToken(token: string) {
+  return (
+    token.includes('qcloud') ||
+    token.includes('tencent') ||
+    token.includes('腾讯云')
+  );
+}
+
 /**
  * 按监控对象/插件身份选择地域拉取通道。
  * 阿里云对象即使 UI.json 仍残留 qcloud instance_type，也必须走阿里云 DescribeRegions，
@@ -48,11 +60,27 @@ export function cloudRegionProviderFromPlugin(
   } else if (config?.config_type) {
     addCloudProviderTokens(tokens, config.config_type);
   }
-  if ([...tokens].some((token) => token.includes('aliyun'))) return 'aliyun';
-  if ([...tokens].some((token) => token.includes('qcloud') || token.includes('tencent'))) {
-    return 'qcloud';
-  }
+  const list = [...tokens];
+  if (list.some(isAliyunToken)) return 'aliyun';
+  if (list.some(isQcloudToken)) return 'qcloud';
   return null;
+}
+
+/** 资产编辑行：抽屉传的是 objName，不是 monitor_object_name。 */
+export function cloudRegionProviderHintsFromRow(
+  row?: Record<string, unknown> | null
+): CloudRegionProviderHints {
+  if (!row) return {};
+  return {
+    objectName: String(
+      row.objName ||
+        row.monitor_object_name ||
+        row.object_name ||
+        row.name ||
+        ''
+    ),
+    pluginName: String(row.plugin_name || row.collector || ''),
+  };
 }
 
 export interface RegionOption {
@@ -495,6 +523,7 @@ export function useCloudRegionOptions(options: {
     regionOptions,
     loadingRegions,
     refreshRegions: () => fetchRegions({ silent: false }),
+    multiple,
   };
 }
 

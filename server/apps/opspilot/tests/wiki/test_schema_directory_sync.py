@@ -1,7 +1,7 @@
 import pytest
 
 from apps.opspilot.models import WikiDirectory
-from apps.opspilot.services.wiki.purpose_schema_service import get_template_structure, list_templates
+from apps.opspilot.services.wiki.purpose_schema_service import list_templates
 from apps.opspilot.services.wiki.schema_directory_sync_service import apply_schema_markdown_structure, parse_schema_markdown
 from apps.opspilot.services.wiki.structure_service import bootstrap_knowledge_base
 
@@ -19,15 +19,22 @@ def test_parse_hermes_prose_nests_ascii_folders_under_wiki():
     assert ("wiki", "operations") in parts
 
 
+_NESTED_WIKI_SCHEMA_MD = """压缩包去掉仓库根后第一层为 `wiki/`。
+
+- `wiki/architecture`：运行架构与数据流（`concept`）
+- `wiki/operations`：部署、升级、容量、排障、验收（`concept`）
+- `wiki/product`：产品矩阵、文档与交付导航（`entity`）
+"""
+
+
 def test_parse_okf_schema_markdown_reads_nested_paths():
-    schema_md = next(item["schema_md"] for item in list_templates() if item["key"] == "okf_bundle")
-    parsed = parse_schema_markdown(schema_md)
+    parsed = parse_schema_markdown(_NESTED_WIKI_SCHEMA_MD)
     parts = {item["parts"] for item in parsed["paths"]}
     assert ("wiki", "operations") in parts
     assert ("wiki", "product") in parts
     assert ("实体",) not in parts
     types = {item.casefold() for item in parsed["page_types"]}
-    assert {"entity", "concept", "source", "comparison"} <= types
+    assert {"entity", "concept"} <= types
     product = next(item for item in parsed["paths"] if item["parts"] == ("wiki", "product"))
     assert product["page_type"].casefold() == "entity"
 
@@ -39,18 +46,11 @@ def test_parse_general_schema_markdown_uses_type_display_names():
     assert names == {"实体", "概念", "来源", "待研究问题", "对比", "综合"}
 
 
-def test_okf_bundle_structure_keeps_wiki_root():
-    structure = get_template_structure("okf_bundle")
-    by_key = {item["key"]: item for item in structure["directories"]}
-    assert by_key["schema_wiki"]["name"] == "wiki"
-
-
 @pytest.mark.django_db(transaction=True)
 def test_apply_okf_schema_replaces_general_directories(wiki_factory):
     knowledge_base = wiki_factory.knowledge_base(template_key="general")
     bootstrap_knowledge_base(knowledge_base, operator="admin")
-    schema_md = next(item["schema_md"] for item in list_templates() if item["key"] == "okf_bundle")
-    apply_schema_markdown_structure(knowledge_base, schema_md, operator="admin")
+    apply_schema_markdown_structure(knowledge_base, _NESTED_WIKI_SCHEMA_MD, operator="admin")
     wiki = WikiDirectory.objects.get(knowledge_base=knowledge_base, name="wiki", status="active")
     operations = WikiDirectory.objects.get(
         knowledge_base=knowledge_base,

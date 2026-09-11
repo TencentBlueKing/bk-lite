@@ -17,8 +17,8 @@ from apps.alerts.common.assignment import AlertAssignmentOperator
 from apps.alerts.constants.constants import AlertStatus
 from apps.alerts.models.models import Alert
 from apps.alerts.models.outbox import AlertOutbox
-from apps.alerts.service.outbox import deliver_outbox_record, enqueue_outbox
 from apps.alerts.service.alter_operator import AlertOperator
+from apps.alerts.service.outbox import deliver_outbox_record, enqueue_outbox
 
 
 @pytest.fixture
@@ -30,8 +30,13 @@ def sys_user(db):
 
 def _make_alert(alert_id="ALERT-CHAIN1", status=AlertStatus.UNASSIGNED, **over):
     defaults = dict(
-        alert_id=alert_id, level="0", title="CPU高", content="c",
-        fingerprint="fp" + alert_id, status=status, source_name="prometheus",
+        alert_id=alert_id,
+        level="0",
+        title="CPU高",
+        content="c",
+        fingerprint="fp" + alert_id,
+        status=status,
+        source_name="prometheus",
         team=[1],
     )
     defaults.update(over)
@@ -42,8 +47,14 @@ def _make_assignment(name="分派", match_type="all", **over):
     from apps.alerts.models.alert_operator import AlertAssignment
 
     defaults = dict(
-        name=name, match_type=match_type, is_active=True, personnel=["op1"],
-        match_rules=[], config={}, notify_channels=[], notification_scenario=[],
+        name=name,
+        match_type=match_type,
+        is_active=True,
+        personnel=["op1"],
+        match_rules=[],
+        config={},
+        notify_channels=[],
+        notification_scenario=[],
         notification_frequency={},
     )
     defaults.update(over)
@@ -69,6 +80,38 @@ def test_aggregation_to_delivery_chain_assigns_alert(sys_user):
     # all 匹配策略应把 UNASSIGNED 告警分派出去（状态离开 UNASSIGNED）
     assert alert.status != AlertStatus.UNASSIGNED
     assert alert.operator == ["op1"]
+
+
+@pytest.mark.django_db
+def test_assignment_chain_uses_only_highest_priority_strategy_and_its_channel(sys_user):
+    """同一告警命中多策略时，只由优先级最高的策略分派并产生通知。"""
+    alert = _make_alert("ALERT-PRIORITY")
+    _make_assignment(
+        name="低优先级策略",
+        priority=10,
+        personnel=["low-owner"],
+        notify_channels=[{"id": 10, "name": "低优先级邮件", "channel_type": "email"}],
+    )
+    _make_assignment(
+        name="高优先级策略",
+        priority=100,
+        personnel=[sys_user.username],
+        notify_channels=[{"id": 100, "name": "高优先级邮件", "channel_type": "email"}],
+    )
+
+    AggregationProcessor._schedule_auto_assignment([alert.alert_id])
+    assignment_outbox = AlertOutbox.objects.get(kind="auto_assignment")
+
+    assert deliver_outbox_record(assignment_outbox.pk) is True
+
+    alert.refresh_from_db()
+    assert alert.status == AlertStatus.PENDING
+    assert alert.operator == [sys_user.username]
+
+    notification_outboxes = AlertOutbox.objects.filter(kind="notification")
+    assert notification_outboxes.count() == 1
+    notification_params = notification_outboxes.get().payload["params"]
+    assert [item["channel_id"] for item in notification_params] == [100]
 
 
 @pytest.mark.django_db
@@ -152,9 +195,7 @@ def test_delivery_with_internal_matching_error_marks_pending_for_retry(monkeypat
     def fail_matching(self, assignment, excluded_ids=None):
         raise RuntimeError("transient matching failure")
 
-    monkeypatch.setattr(
-        AlertAssignmentOperator, "_batch_find_matching_alerts", fail_matching
-    )
+    monkeypatch.setattr(AlertAssignmentOperator, "_batch_find_matching_alerts", fail_matching)
     enqueue_outbox(
         "auto_assignment",
         {"alert_ids": [alert.alert_id]},
@@ -173,9 +214,7 @@ def test_delivery_with_internal_matching_error_marks_pending_for_retry(monkeypat
 
 
 @pytest.mark.django_db
-def test_delivery_with_internal_assign_error_marks_pending_for_retry(
-    sys_user, monkeypatch
-):
+def test_delivery_with_internal_assign_error_marks_pending_for_retry(sys_user, monkeypatch):
     """单条分派执行的运行异常必须冒泡，让整个载荷稍后安全重试。"""
     alert = _make_alert("ALERT-ASSIGN-ERROR")
     _make_assignment(match_type="all")

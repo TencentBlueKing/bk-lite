@@ -926,6 +926,7 @@ const AlarmFamilyOverview = () => {
               <AlarmBaseInfo
                 detail={{
                   content: 'CPU usage stayed above 90% for 10 minutes.',
+                  push_source_ids: ['001', 'k8s-prod', 'prometheus-prod', 'zabbix-test'],
                   operator_user: 'alice',
                   notification_status: 'success',
                   resource_type: 'host',
@@ -937,6 +938,7 @@ const AlarmFamilyOverview = () => {
                   content: '',
                   operator_user: '',
                   notification_status: 'unknown',
+                  push_source_ids: [],
                   resource_type: '',
                   resource_name: '',
                 }}

@@ -375,6 +375,7 @@ export default function ApmTracesPage() {
   const [resultMode, setResultMode] = useState<ResultMode>('detail');
   const [aggregateDimension, setAggregateDimension] = useState<AggregateDimension>('service');
   const [state, setState] = useState<PageState>('loading');
+  const [searchError, setSearchError] = useState<unknown>();
   const [searching, setSearching] = useState(false);
   const [services, setServices] = useState<ApmService[]>([]);
   const [queryStartedAt, setQueryStartedAt] = useState<string>();
@@ -417,6 +418,7 @@ export default function ApmTracesPage() {
     setSearching(true);
     if (!cursor) {
       setState('loading');
+      setSearchError(undefined);
       setPage(1);
       setFacets(EMPTY_RESULT_FACETS);
       setDurationDraft({ min: null, max: null });
@@ -445,6 +447,7 @@ export default function ApmTracesPage() {
           setState(page.items.length === 0 && !cursor && !page.next_cursor ? 'empty' : 'ready');
         }))
         .catch((error) => commitTraceSearchFailure(requestGuard, requestId, () => {
+          setSearchError(error);
           setState(catalogErrorKind(error));
         }))
         .finally(() => {
@@ -475,6 +478,7 @@ export default function ApmTracesPage() {
         setState(page.items.length === 0 && !cursor && !page.next_cursor ? 'empty' : 'ready');
       }))
       .catch((error) => commitTraceSearchFailure(requestGuard, requestId, () => {
+        setSearchError(error);
         setState(catalogErrorKind(error));
       }))
       .finally(() => {
@@ -1273,6 +1277,7 @@ export default function ApmTracesPage() {
           <ApmSurface className="!rounded-xl shadow-2xs">
             <CatalogState
               kind={state}
+              error={searchError}
               onRetry={state === 'forbidden' ? undefined : () => search(undefined, filters)}
             />
           </ApmSurface>

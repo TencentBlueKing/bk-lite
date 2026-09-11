@@ -53,6 +53,7 @@ import {
 import { useAssetManageStore } from '@/app/cmdb/store';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { createCollectionListRequest } from './collectionListRequest';
+import { formatCollectReportTime } from './formatCollectReportTime';
 
 type ExtendedColumnItem = ColumnType<CollectTask> & {
   key: string;
@@ -965,7 +966,7 @@ const ProfessionalCollection: React.FC = () => {
         render: (_, record: CollectTask) => {
           const lastTime = (record.message as CollectTaskMessage)?.last_time;
           return (
-            <span>{lastTime ? dayjs(lastTime).format('YYYY-MM-DD HH:mm:ss') : '--'}</span>
+            <span>{lastTime ? formatCollectReportTime(lastTime) : '--'}</span>
           );
         },
       },

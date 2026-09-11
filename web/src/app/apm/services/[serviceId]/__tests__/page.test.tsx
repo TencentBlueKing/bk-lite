@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
+import { HandledRequestError } from '@/utils/request';
 import ApmServiceDetailPage from '../page';
 
 const api = {
@@ -136,6 +137,28 @@ describe('APM 服务详情页头', () => {
     expect(catalogLink.getAttribute('href')).toBe('/apm/services?perspective=service');
     expect(catalogLink.textContent).toBe('服务');
     expect(screen.getByRole('navigation', { name: '页面路径' })).not.toBeNull();
+  }, 15_000);
+});
+
+describe('APM 服务详情容量态', () => {
+  it('RED 与调用链查询超限时展示数据量过大而不是存储不可用', async () => {
+    const tooLarge = () => new HandledRequestError('VictoriaTraces 响应超过大小上限', {
+      status: 503,
+      code: 'query_too_large',
+    });
+    api.getServiceRed.mockRejectedValue(tooLarge());
+    api.getTraces.mockRejectedValue(tooLarge());
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmServiceDetailPage />);
+
+    expect(await screen.findByText('checkout')).not.toBeNull();
+    expect(await screen.findByText('本次查询数据量过大')).not.toBeNull();
+    expect(screen.queryByText('遥测存储暂不可用')).toBeNull();
+
+    await user.click(screen.getByRole('tab', { name: '调用链' }));
+
+    expect((await screen.findAllByText('本次查询数据量过大')).length).toBeGreaterThan(0);
+    expect(screen.queryByText('遥测存储暂不可用')).toBeNull();
   }, 15_000);
 });
 

@@ -42,12 +42,14 @@ const LOCATION_TONE: Record<ApmErrorLocation, 'info' | 'warning' | 'danger'> = {
 export default function ServiceErrorTab({
   breakdown,
   state,
+  error,
   chartData,
   exploreHref,
   onRetry,
 }: {
   breakdown?: ApmServiceErrorBreakdown;
   state: ErrorTabState;
+  error?: unknown;
   chartData: Array<Record<string, unknown> & { timestamp: string; error_rate_percent: number | null }>;
   exploreHref: string;
   onRetry: () => void;
@@ -177,6 +179,7 @@ export default function ServiceErrorTab({
     return (
       <CatalogState
         kind={state}
+        error={error}
         description={state === 'empty' ? t('apm.serviceDetail.noEntryRequests', '本窗无入口请求') : undefined}
         onRetry={state === 'forbidden' || state === 'empty' ? undefined : onRetry}
       />

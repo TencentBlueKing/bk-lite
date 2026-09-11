@@ -356,6 +356,7 @@ def test_send_email_to_user_异常(mocker):
     result = channel_utils.send_email_to_user(config, "b", ["a@x.com"], "t")
     assert result["result"] is False
     assert "conn refused" in result["message"]
+    assert result["error_type"] == "OSError"
 
 
 # ----------------------- send_nats_message -----------------------

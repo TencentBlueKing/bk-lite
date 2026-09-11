@@ -248,6 +248,11 @@ class CwAliyun(object):
         manager = self.__getattr__("list_all_resources")
         return await manager.list_all_resources(**kwargs)
 
+    def list_regions(self, ids=None):
+        """插件入口：CollectionService 直接调用此类方法，必须走阿里云 ECS DescribeRegions。"""
+        manager = self.__getattr__("list_regions")
+        return manager.list_regions(ids)
+
 
 class Aliyun(object):
     """

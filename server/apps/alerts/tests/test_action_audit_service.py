@@ -1,28 +1,36 @@
 """
 ActionEngine audit test — 每次 _dispatch 成功后应写入 OperatorLog。
 """
-import pytest
 from unittest.mock import patch
 
-from apps.alerts.models.action import ActionRule, ActionExecution
+import pytest
+
+from apps.alerts.action.engine import ActionEngine
+from apps.alerts.models.action import ActionExecution, ActionRule
 from apps.alerts.models.models import Alert
 from apps.alerts.models.operator_log import OperatorLog
-from apps.alerts.action.engine import ActionEngine
 
 
 def _alert(aid="AUDIT-1"):
     return Alert.objects.create(
-        alert_id=aid, fingerprint=f"fp-{aid}", title="disk full",
-        content="c", level="1", status="unassigned",
-        labels={"ip": "10.0.0.5"}, team=[1],
+        alert_id=aid,
+        fingerprint=f"fp-{aid}",
+        title="disk full",
+        content="c",
+        level="1",
+        status="unassigned",
+        labels={"ip": "10.0.0.5"},
+        team=[1],
     )
 
 
 def _rule(name="audit-rule", events=None):
     return ActionRule.objects.create(
-        name=name, is_active=True, team=[1],
+        name=name,
+        is_active=True,
+        team=[1],
         trigger_events=events or ["created"],
-        match_rules=[[{"key": "level", "operator": "eq", "value": "1"}]],
+        match_rules=[[{"key": "level", "operator": "any_of", "value": ["1"]}]],
         action_type="job",
         action_config={"script_id": 1},
     )
@@ -41,20 +49,13 @@ def test_dispatch_writes_operator_log(mock_get):
 
     # 核心断言：OperatorLog 中应有对应记录
     logs = OperatorLog.objects.filter(target_id=alert.alert_id)
-    assert logs.exists(), (
-        f"期望存在 target_id={alert.alert_id} 的 OperatorLog，"
-        f"但实际记录数为 {OperatorLog.objects.count()}"
-    )
+    assert logs.exists(), f"期望存在 target_id={alert.alert_id} 的 OperatorLog，" f"但实际记录数为 {OperatorLog.objects.count()}"
     log = logs.first()
     assert log.target_type == "alert"
     # overview 应提及规则名称
-    assert rule.name in (log.overview or ""), (
-        f"期望 overview 包含规则名 '{rule.name}'，实际为 '{log.overview}'"
-    )
+    assert rule.name in (log.overview or ""), f"期望 overview 包含规则名 '{rule.name}'，实际为 '{log.overview}'"
     # operator_object 应提及 "告警处理"
-    assert "告警处理" in (log.operator_object or ""), (
-        f"期望 operator_object 包含 '告警处理'，实际为 '{log.operator_object}'"
-    )
+    assert "告警处理" in (log.operator_object or ""), f"期望 operator_object 包含 '告警处理'，实际为 '{log.operator_object}'"
 
 
 @pytest.mark.django_db
