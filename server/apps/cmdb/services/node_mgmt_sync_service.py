@@ -1069,7 +1069,14 @@ class NodeMgmtSyncService:
         }
 
     @classmethod
-    def _ensure_region_collect_task(
+    def _ensure_region_collect_task(cls, **kwargs) -> CollectModels:
+        from apps.cmdb.services.collection_offset_service import CollectionOffsetService
+
+        with transaction.atomic(), CollectionOffsetService.serialize({"model_id": "host"}):
+            return cls._ensure_region_collect_task_under_lock(**kwargs)
+
+    @classmethod
+    def _ensure_region_collect_task_under_lock(
         cls,
         *,
         cloud_region_id: int,
@@ -1081,6 +1088,8 @@ class NodeMgmtSyncService:
         run: NodeMgmtSyncRun | None = None,
     ) -> CollectModels:
         from apps.cmdb.services.collect_service import CollectModelService
+        from apps.cmdb.services.collection_offset_policy import restore_owned_offsets
+        from apps.cmdb.services.collection_offset_service import CollectionOffsetService
 
         logger.debug(
             "[NodeMgmtSync] 确保区域采集任务存在, cloud_region_id=%d, cloud_region_name=%s, instances_count=%d",
@@ -1104,6 +1113,7 @@ class NodeMgmtSyncService:
         if task:
             logger.debug("[NodeMgmtSync] 更新已有采集任务, task_id=%d, cloud_region_id=%d", task.id, cloud_region_id)
             old_task = copy.deepcopy(task)
+            restore_owned_offsets(payload, old_task)
             for key, value in payload.items():
                 setattr(task, key, value)
             task.is_interval = True
@@ -1113,6 +1123,7 @@ class NodeMgmtSyncService:
             if run is not None:
                 cls.heartbeat_run(run)
             task.save()
+            CollectionOffsetService.apply(task, previous=old_task)
             if run is not None:
                 cls.heartbeat_run(run)
             needs_delivery = (
@@ -1146,10 +1157,11 @@ class NodeMgmtSyncService:
                     cycle_value=str(interval_minutes),
                     scan_cycle=cls._build_cycle(interval_minutes),
                 )
+                CollectionOffsetService.apply(task)
         except IntegrityError:
             if not CollectModels.objects.filter(system_code=cls._system_code(cloud_region_id)).exists():
                 raise
-            return cls._ensure_region_collect_task(
+            return cls._ensure_region_collect_task_under_lock(
                 cloud_region_id=cloud_region_id,
                 cloud_region_name=cloud_region_name,
                 access_point=access_point,

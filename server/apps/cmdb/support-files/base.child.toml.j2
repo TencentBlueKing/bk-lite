@@ -1,6 +1,9 @@
 [[inputs.prometheus]]
     urls = ["${STARGAZER_URL}/api/collect/collect_info"]
     interval = "{{ interval | default(60, true) }}s"
+{% if collection_offset_enabled %}
+    collection_offset = "{{ collection_offset }}s"
+{% endif %}
     timeout = "{{ telegraf_timeout | default(60, true) }}s"
     response_timeout = "{{ response_timeout | default(60, true) }}s"
     http_headers = {{ headers | default({}) | to_toml }}

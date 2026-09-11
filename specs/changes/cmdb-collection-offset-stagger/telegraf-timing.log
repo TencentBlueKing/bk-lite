@@ -1,0 +1,66 @@
+
+apps/cmdb/tests/test_collection_offset_telegraf_live.py::test_telegraf_129_keeps_phase_after_reload_and_restart phase_stage=initial timestamp=1789112964
+phase,channel=c value=1i 1789112970000000000
+phase,channel=a value=1i 1789112970000000000
+phase,channel=b value=1i 1789112975000000000
+phase,channel=c value=1i 1789112980000000000
+phase,channel=a value=1i 1789112980000000000
+phase,channel=b value=1i 1789112985000000000
+phase_stage=reload timestamp=1789112985
+phase,channel=c value=1i 1789112990000000000
+phase,channel=a value=1i 1789112990000000000
+phase,channel=b value=1i 1789112995000000000
+phase,channel=a value=1i 1789113000000000000
+phase,channel=c value=1i 1789113000000000000
+phase,channel=b value=1i 1789113005000000000
+phase_stage=restart timestamp=1789113005
+phase,channel=a value=1i 1789113010000000000
+phase,channel=c value=1i 1789113010000000000
+phase,channel=b value=1i 1789113015000000000
+phase,channel=a value=1i 1789113020000000000
+phase,channel=c value=1i 1789113020000000000
+phase,channel=b value=1i 1789113025000000000
+phase_stage=done timestamp=1789113026
+
+2026-09-11T07:49:25Z I! Loading config: /test/phase.conf
+2026-09-11T07:49:25Z I! Starting Telegraf 1.29.5 brought to you by InfluxData the makers of InfluxDB
+2026-09-11T07:49:25Z I! Available plugins: 241 inputs, 9 aggregators, 30 processors, 24 parsers, 60 outputs, 6 secret-stores
+2026-09-11T07:49:25Z I! Loaded inputs: exec (3x)
+2026-09-11T07:49:25Z I! Loaded aggregators: 
+2026-09-11T07:49:25Z I! Loaded processors: 
+2026-09-11T07:49:25Z I! Loaded secretstores: 
+2026-09-11T07:49:25Z I! Loaded outputs: file
+2026-09-11T07:49:25Z I! Tags enabled: 
+2026-09-11T07:49:25Z I! [agent] Config: Interval:10s, Quiet:false, Hostname:"", Flush Interval:1s
+2026-09-11T07:49:45Z I! Reloading Telegraf config
+2026-09-11T07:49:45Z I! [agent] Hang on, flushing any cached metrics before shutdown
+2026-09-11T07:49:45Z I! [agent] Stopping running outputs
+2026-09-11T07:49:45Z I! Loading config: /test/phase.conf
+2026-09-11T07:49:45Z I! Starting Telegraf 1.29.5 brought to you by InfluxData the makers of InfluxDB
+2026-09-11T07:49:45Z I! Available plugins: 241 inputs, 9 aggregators, 30 processors, 24 parsers, 60 outputs, 6 secret-stores
+2026-09-11T07:49:45Z I! Loaded inputs: exec (3x)
+2026-09-11T07:49:45Z I! Loaded aggregators: 
+2026-09-11T07:49:45Z I! Loaded processors: 
+2026-09-11T07:49:45Z I! Loaded secretstores: 
+2026-09-11T07:49:45Z I! Loaded outputs: file
+2026-09-11T07:49:45Z I! Tags enabled: 
+2026-09-11T07:49:45Z I! [agent] Config: Interval:10s, Quiet:false, Hostname:"", Flush Interval:1s
+2026-09-11T07:50:05Z I! [agent] Hang on, flushing any cached metrics before shutdown
+2026-09-11T07:50:05Z I! [agent] Stopping running outputs
+2026-09-11T07:50:06Z I! Loading config: /test/phase.conf
+2026-09-11T07:50:06Z I! Starting Telegraf 1.29.5 brought to you by InfluxData the makers of InfluxDB
+2026-09-11T07:50:06Z I! Available plugins: 241 inputs, 9 aggregators, 30 processors, 24 parsers, 60 outputs, 6 secret-stores
+2026-09-11T07:50:06Z I! Loaded inputs: exec (3x)
+2026-09-11T07:50:06Z I! Loaded aggregators: 
+2026-09-11T07:50:06Z I! Loaded processors: 
+2026-09-11T07:50:06Z I! Loaded secretstores: 
+2026-09-11T07:50:06Z I! Loaded outputs: file
+2026-09-11T07:50:06Z I! Tags enabled: 
+2026-09-11T07:50:06Z I! [agent] Config: Interval:10s, Quiet:false, Hostname:"", Flush Interval:1s
+2026-09-11T07:50:26Z I! [agent] Hang on, flushing any cached metrics before shutdown
+2026-09-11T07:50:26Z I! [agent] Stopping running outputs
+
+PASSED
+
+------------- generated xml file: /tmp/cmdb-offset-live-final.xml --------------
+========================= 1 passed in 62.20s (0:01:02) =========================

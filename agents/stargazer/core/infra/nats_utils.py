@@ -30,6 +30,7 @@ import os
 import time
 from collections import deque
 from collections.abc import Callable
+from contextlib import ExitStack
 from functools import partial
 from typing import Any, List, Optional, Sequence
 
@@ -69,6 +70,7 @@ class NatsLinesPublishError(RuntimeError):
         self.delivery_detected = delivery_detected
         self.error = error
         self.timeout_stage = getattr(error, "timeout_stage", None)
+        self.timeout_phase = getattr(error, "timeout_phase", None)
         self.attempted_indices = attempted_indices
         self.confirmed_indices = confirmed_indices
         super().__init__(
@@ -435,17 +437,43 @@ async def nats_publish_lines(
 
     attempted_indices: list[int] = []
     delivery_timeout = float(os.getenv("PUBLISH_DELIVERY_TIMEOUT", os.getenv("PUBLISH_TIMEOUT", "30")))
+    phase = "publish_call"
     try:
-        async with asyncio.timeout(delivery_timeout):
-            nc = await get_shared_nats("metrics")
-            for index, line in enumerate(lines):
-                if before_publish is not None and not before_publish(index):
-                    continue
-                attempted_indices.append(index)
-                await nc.publish(subject, line.encode("utf-8"))
-            if attempted_indices:
-                await nc.flush(timeout=delivery_timeout)
+        with ExitStack() as sending:
+            budget_for = getattr(before_publish, "budget_for", None)
+            budgets = {budget_for(index) for index in range(len(lines))} if callable(budget_for) else set()
+            send_deadlines = [sending.enter_context(budget.sending()) for budget in budgets if budget is not None]
+            send_deadlines.extend(deadline for deadline in (deadlines or ()) if deadline is not None)
+            if send_deadlines:
+                delivery_timeout = min(delivery_timeout, max(0.0, min(send_deadlines) - asyncio.get_running_loop().time()))
+            if delivery_timeout <= 0:
+                raise TimeoutError("Core NATS sending budget exhausted before delivery")
+            send_deadline = asyncio.get_running_loop().time() + delivery_timeout
+
+            def check_deadline():
+                if asyncio.get_running_loop().time() >= send_deadline:
+                    raise TimeoutError("Core NATS sending budget exhausted")
+
+            async with asyncio.timeout(delivery_timeout):
+                check_deadline()
+                nc = await get_shared_nats("metrics")
+                for index, line in enumerate(lines):
+                    check_deadline()
+                    if before_publish is not None and not before_publish(index):
+                        continue
+                    attempted_indices.append(index)
+                    started = getattr(before_publish, "mark_transport_started", None)
+                    if callable(started):
+                        started(index)
+                    await nc.publish(subject, line.encode("utf-8"))
+                if attempted_indices:
+                    check_deadline()
+                    phase = "core_flush"  # Core flush 不是 JetStream PubAck / CMDB 入库确认。
+                    await nc.flush(timeout=delivery_timeout)
+                    check_deadline()
     except Exception as e:
+        if isinstance(e, TimeoutError):
+            e.timeout_phase = phase
         raise NatsLinesPublishError(
             subject=subject,
             attempted_count_before_failure=len(attempted_indices),
@@ -518,6 +546,7 @@ async def _nats_publish_lines_jetstream(
             payload=payload,
             message_id=(str(message_ids[index]) if message_ids is not None else _jetstream_message_id(subject, index, payload)),
             deadline=(deadlines[index] if deadlines is not None else None),
+            budget=(before_publish.budget_for(index) if hasattr(before_publish, "budget_for") else None),
         )
         for index, payload in enumerate(payloads)
     )
@@ -534,7 +563,7 @@ async def _nats_publish_lines_jetstream(
         logger.error(
             "event=nats_metrics_publish_rejected subject=%s stream=%s rejected_count=%s "
             "attempted_count=%s confirmed_count=%s error_type=%s nats_code=%s nats_err_code=%s "
-            "description=%s timeout_stage=%s failed_stage=metrics_publish",
+            "description=%s timeout_stage=%s timeout_phase=%s failed_stage=metrics_publish",
             safe_log_value(subject),
             safe_log_value(configured_metrics_stream_name()),
             rejected_count,
@@ -545,6 +574,7 @@ async def _nats_publish_lines_jetstream(
             nats_err_code,
             description,
             safe_log_value(error.timeout_stage or "-"),
+            safe_log_value(error.timeout_phase or "-"),
         )
         raise NatsLinesPublishError(
             subject=subject,

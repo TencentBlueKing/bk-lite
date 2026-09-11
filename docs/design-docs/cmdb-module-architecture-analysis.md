@@ -376,3 +376,13 @@ server/apps/cmdb/
 - 依赖规则测试：能力模块不得反向依赖 inbound adapter，业务代码不得直接构造 GraphClient。
 
 这份文档应在以下情况更新：新增资产来源、改变图驱动、修改实例标识协议、增加写入口、调整同步状态机，或决定拆分独立服务。
+
+
+### 周期采集相位（2026-09-11）
+
+Ingestion 内部的 `collection_offset_policy.py` 集中登记主机、网络设备与网络拓扑通道；
+`collection_offset.py` 负责无 IO 的周期关系计算，`collection_offset_service.py` 在既有数据库
+写锁及任务事务内读取占位并保存偏移。`CollectModelService` 与节点同步自动生成主机任务的
+保存入口共用此实现，提交后继续沿原 NodeMgmt 配置交付路径下发。`BaseNodeParams` 只解释
+登记插件的已保存偏移；Telegraf one-shot 转换时移除调度参数，保持立即执行。
+本次未新增跨模块调度器、数据库表或外部依赖；Ingestion 的对外关系不变。

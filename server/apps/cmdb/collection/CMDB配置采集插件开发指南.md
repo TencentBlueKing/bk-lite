@@ -1389,3 +1389,16 @@ CollectBase (metaclass=ABCMeta)
 - SSH 类型：`host.py`, `redis.py`, `tomcat.py`
 - 数据库类型：`mysql.py`, `databases.py`
 - 云厂商类型：`aliyun.py`, `qcloud.py`, `aws.py`
+
+
+## 可选接入周期错峰
+
+当前仅 `host_info`、`snmp_facts`、`snmp_topo` 启用服务端固定相位，用户周期不变。
+登记入口是 `apps/cmdb/services/collection_offset_policy.py` 的 `OFFSET_CHANNELS`：记录任务
+`model_id`、实际 `plugin_name`、通道角色、偏移 params 键，以及可选的独立周期/启用字段。
+保存入口与 `BaseNodeParams` 渲染共用该登记；未登记插件不会参与占位或输出 `collection_offset`。
+
+已有 Telegraf 周期插件接入时增加登记，补 `test_collection_offset_service.py` 与
+`test_collection_offset_config_pure.py` 中的保存/渲染测试；特殊目标口径需要同时核对
+`target_count`。新建通道的偏移由服务端分配，表单不可提供；更新/重试保留已有值。
+详细范围、存量策略、测试与发布顺序见 `specs/changes/cmdb-collection-offset-stagger/spec.md`。

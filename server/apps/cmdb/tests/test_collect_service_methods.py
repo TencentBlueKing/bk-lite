@@ -116,6 +116,10 @@ class FakeAtomic:
 
 
 def patch_transaction_callbacks(mocker):
+    from contextlib import nullcontext
+
+    mocker.patch("apps.cmdb.services.collect_service.CollectionOffsetService.apply")
+    mocker.patch("apps.cmdb.services.collect_service.CollectionOffsetService.serialize", side_effect=lambda *a, **kw: nullcontext())
     callbacks = []
     mocker.patch("apps.cmdb.services.collect_service.transaction.atomic", return_value=FakeAtomic())
     mocker.patch("apps.cmdb.services.collect_service.transaction.on_commit", side_effect=callbacks.append)
