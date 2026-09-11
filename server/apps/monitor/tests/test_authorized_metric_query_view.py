@@ -3,7 +3,7 @@ import json
 import pytest
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.core.exceptions.base_app_exception import UnauthorizedException
+from apps.core.exceptions.base_app_exception import ForbiddenException
 from apps.monitor.models import Metric, MetricGroup, MonitorInstance, MonitorObject, MonitorPlugin
 from apps.monitor.services.metrics import MetricsQueryBudgetExceeded
 from apps.monitor.views.metrics_instance import MetricsInstanceViewSet
@@ -104,7 +104,7 @@ def test_authorized_range_view_rejects_mixed_scope_without_vm_call(authenticated
     vm_query = mocker.patch("apps.monitor.services.authorized_metric_query.Metrics.get_metrics_range")
     view = MetricsInstanceViewSet.as_view({"post": "query_by_metric_range"})
 
-    with pytest.raises(UnauthorizedException, match="无权访问所选监控实例"):
+    with pytest.raises(ForbiddenException, match="无权访问所选监控实例"):
         view(
             _request(
                 authenticated_user,

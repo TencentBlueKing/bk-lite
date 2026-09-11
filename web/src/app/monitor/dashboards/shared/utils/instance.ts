@@ -33,12 +33,19 @@ export const isOpaqueIdentifier = (value?: string | null) => {
   return looksOpaque(normalized);
 };
 
-const resolveInstanceIdValues = (item: any): string[] => {
+export const resolveDashboardInstanceIdValues = (item: {
+  instance_id?: unknown;
+  instance_id_values?: unknown;
+}): string[] => {
   if (Array.isArray(item?.instance_id_values) && item.instance_id_values.length) {
     return item.instance_id_values.map((value: unknown) => String(value ?? '')).filter(Boolean);
   }
-  return parsePythonTupleString(String(item?.instance_id || '')) || [];
+  const raw = String(item?.instance_id || '').trim();
+  if (!raw || raw === '--') return [];
+  return parsePythonTupleString(raw) || [raw];
 };
+
+const resolveInstanceIdValues = (item: any): string[] => resolveDashboardInstanceIdValues(item);
 
 /** 自动发现实例名：`instance_id_keys` 各维用 `__` 拼接（见 SyncInstance）。 */
 export const isAutoDiscoveryJoinedName = (
