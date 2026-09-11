@@ -30,11 +30,7 @@ class FirstCollectionOrchestrator:
 
     @staticmethod
     def expected_config_ids(task) -> list[str]:
-        config_ids = [f"cmdb_{task.id}"]
-        is_network = getattr(task, "model_id", "") == "network" or getattr(task, "task_type", "") == cmdb_constants.CollectPluginTypes.SNMP
-        if is_network and bool((getattr(task, "params", None) or {}).get("has_network_topo")):
-            config_ids.append(f"cmdb_{task.id}_topology")
-        return config_ids
+        return [f"cmdb_{task.id}{'_topology' if channel == 'topology' else ''}" for channel in FirstCollectionPolicy.eligible_channels(task)]
 
     @classmethod
     def schedule(cls, task, *, old_task=None, reason="create"):
@@ -162,7 +158,7 @@ class FirstCollectionOrchestrator:
                         if locked.status != FirstCollectionRun.STATUS_WAITING_CONFIG:
                             continue
                         task = CollectModels.objects.select_for_update().filter(id=locked.collect_task_id).first()
-                        skip_reason = cls._skip_reason(task, locked.fingerprint)
+                        skip_reason = cls._skip_reason(task, locked)
                         if skip_reason:
                             run = locked
                         else:
@@ -275,7 +271,7 @@ class FirstCollectionOrchestrator:
             }:
                 return {"run_id": run.id, "status": run.status}
             task = run.collect_task
-            skip_reason = cls._skip_reason(task, run.fingerprint)
+            skip_reason = cls._skip_reason(task, run)
             if skip_reason:
                 run.status = FirstCollectionRun.STATUS_SKIPPED
                 run.failed_stage = skip_reason
@@ -359,14 +355,18 @@ class FirstCollectionOrchestrator:
         return str(item.get("id") or "")
 
     @staticmethod
-    def _skip_reason(task, expected_fingerprint: str) -> str:
+    def _skip_reason(task, run: FirstCollectionRun) -> str:
         if task is None:
             return "missing"
         if not cmdb_constants.CMDB_FIRST_COLLECTION_ENABLED:
             return "disabled"
         if not FirstCollectionPolicy.is_eligible(task):
             return "ineligible"
-        if FirstCollectionPolicy.fingerprint(task) != expected_fingerprint:
+        if FirstCollectionPolicy.fingerprint(task) != run.fingerprint:
+            return "stale"
+        # A newer collection intent supersedes this revision even after A -> B -> A.
+        # Governance-only edits create no intent and must not cancel pending collection.
+        if FirstCollectionRun.objects.filter(collect_task_id=task.id, task_revision__gt=run.task_revision).exists():
             return "stale"
         return ""
 
@@ -393,12 +393,15 @@ class FirstCollectionOrchestrator:
             if accepted_count == len(channels):
                 status = FirstCollectionRun.STATUS_ACCEPTED
             elif node_busy:
-                # The node-wide mutex protects another one-shot; it says nothing
-                # about this collection's health and must not consume its attempt
-                # budget. Celery has a separate retry budget covering the watchdog.
-                status = FirstCollectionRun.STATUS_RETRY_WAIT
-                retry_after = cls.LOCK_RETRY_AFTER_SECONDS
+                # Persist the lock budget across recovery messages, whose Celery
+                # retry counters start over. Contention does not spend a business attempt.
                 run.attempt = max(0, run.attempt - 1)
+                if run.lock_retries < cls.MAX_LOCK_RETRIES:
+                    run.lock_retries += 1
+                    status = FirstCollectionRun.STATUS_RETRY_WAIT
+                    retry_after = cls.LOCK_RETRY_AFTER_SECONDS
+                else:
+                    status = FirstCollectionRun.STATUS_PARTIAL if accepted_count else FirstCollectionRun.STATUS_FAILED
             elif retryable and run.attempt < cls.MAX_ATTEMPTS:
                 status = FirstCollectionRun.STATUS_RETRY_WAIT
                 retry_after = 10 if run.attempt == 1 else 20
@@ -430,6 +433,7 @@ class FirstCollectionOrchestrator:
                 update_fields=[
                     "status",
                     "attempt",
+                    "lock_retries",
                     "channel_results",
                     "failed_stage",
                     "error_type",

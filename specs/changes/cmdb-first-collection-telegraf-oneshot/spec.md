@@ -93,6 +93,7 @@ run 置为可执行；配置同步或 Celery 投递失败时保留持久化意�
 - `status`：`waiting_config/pending/running/retry_wait/accepted/partial/failed/skipped`；
 - `config_attempt`、`dispatch_attempt`：配置补偿和 Celery 发布尝试次数；
 - `attempt`、`claim_token`、`lease_expires_at`：one-shot 业务尝试及领取租约；
+- `lock_retries`：已经允许的节点争锁重试次数，随 run 持久化，恢复重投不清零；
 - `channel_results`：最多两个通道的有界结构化结果；
 - `failed_stage`、`error_type`；
 - `started_at/finished_at`。
@@ -101,12 +102,19 @@ run 置为可执行；配置同步或 Celery 投递失败时保留持久化意�
 变为 B 再回到 A 时产生新的首次采集意图。领取、超时回收和结果提交必须使用 claim token；
 旧 Worker 不能覆盖新 Worker 结果。任务缺失、策略关闭、不再符合策略或 fingerprint 变化时
 终止为 `skipped`，reason code 分别为 `missing/disabled/ineligible/stale`。
+若同任务已有更晚 `task_revision` 的首采意图，旧意图也以 `stale` 跳过（包含待配置恢复），
+防止 A→B→A 回切重新执行旧 A。只修改名称等治理字段不会产生新意图，不取消原待执行首采。
 
 ### 3. 通道
 
-- 普通任务：`cmdb_<task_id>`；
-- Network 设备通道：`cmdb_<task_id>`；
-- Network 拓扑通道：`cmdb_<task_id>_topology`，仅在任务启用拓扑时包含。
+- 普通任务：周期达到 15 分钟时选择 `cmdb_<task_id>`；
+- Network 设备通道：设备周期达到 15 分钟时选择 `cmdb_<task_id>`；
+- Network 拓扑通道：启用拓扑且拓扑周期达到 15 分钟时选择 `cmdb_<task_id>_topology`。
+  拓扑周期沿用现有规范化默认值（未指定时为设备周期的 5 倍）。设备短周期不再阻止拓扑首采。
+
+所有通道仍要求周期调度已启用；K8S、主机配置文件和网络配置文件不参与首采。
+实际对象入口及下发插件映射见 [插件清单](./plugin-inventory.md)。MinIO 通过社区 SSH NodeParams
+复用现有凭据、模板与配置删除协议，不增加执行器或采集协议。
 
 一次请求只允许 1～2 个配置。部分成功时，下一次只向 NodeMgmt 传入尚未明确接纳的配置。
 
@@ -174,7 +182,9 @@ task_id=<stargazer task id>
 - `accepted` 和 `duplicate_active` 均为成功；
 - Executor 非零退出、HTTP 429、连接错误和超时按有界次数重试；
 - 互斥退出码 75 映射为 `NodeBusy`；这是节点资源竞争而非本次采集失败，不消耗 one-shot
-  的三次业务尝试，按 10 秒间隔使用独立的 8 次 Celery 重试预算，覆盖 70 秒 watchdog 窗口；
+  的三次业务尝试，按 10 秒间隔使用持久化的 8 次争锁重试预算，覆盖 70 秒 watchdog 窗口；
+  预算耗尽仍繁忙时收敛为 `failed/partial`，恢复扫描不再重投。Celery 单消息最多重试 10 次，
+  容纳 8 次争锁重试和 2 次业务重试，最终累计上限以 run 中两类计数为准；
 - 进程成功退出但缺少合法接纳指标、非法状态、配置校验失败为永久失败；
 - 不能只依据进程退出码；已经有明确接纳证据的通道不再重试；
 - 全通道成功为 `accepted`，部分通道在重试耗尽后为 `partial`，全失败为 `failed`。
@@ -250,8 +260,22 @@ payload、完整 stdout/stderr 或 Stargazer 响应正文。
 - NodeMgmt 受控转换、授权与执行：`server/apps/node_mgmt/services/telegraf_oneshot.py`、
   `server/apps/node_mgmt/nats/node.py`、`server/apps/rpc/node_mgmt.py`；
 - 数据库迁移：`server/apps/cmdb/migrations/0054_first_collection_telegraf_oneshot.py`。
+- 首采补漏：`0055_firstcollectionrun_lock_retries` 为存量 run 的争锁重试计数填充 0，部署前执行
+  CMDB 迁移。本次补漏只修改 CMDB，不修改 nats-executor 的响应字段；NodeBusy 分支仍依赖
+  NodeMgmt 返回约定的结构化结果。
 
 ### 已完成验证
+
+2026-09-11 首采补漏验证：
+
+- MinIO 节点配置、争锁预算持久化及 partial/failed 终态、争锁与业务混合重试、A→B→A 的
+  pending/waiting_config 旧修订跳过、治理字段编辑保留原首采、网络独立周期选择均先复现再修复。
+- CMDB 首采及 NodeMgmt/multicred 定向回归 120 通过、2 项 Linux 专属测试在 macOS 跳过；
+  首采策略、编排和 MinIO 适配覆盖率合计 95%。
+- `makemigrations cmdb --check --dry-run --skip-checks` 无模型漂移；全新 SQLite 库从 0001
+  迁移至 0054，再验证 0055 为存量 run 填充 `lock_retries=0`，回滚至 0054 后原状态和业务次数保留。
+- 当前社区/企业对象树 118 个入口中，115 个类型准入入口全部通过合成参数配置生成及 one-shot
+  转换检查。本次未操作真实远端节点，也未验证线上资产入库端到端。
 
 - TDD 定向测试覆盖真实 Telegraf 1.34.4 line protocol、202 accepted/duplicate_active、双通道
   partial、签名及组织越权拒绝、未知 TOML、严格解密、资源上限、配置清理、状态机 fencing、
