@@ -131,7 +131,6 @@ services:
       - "--api.dashboard=false"
       - "--providers.file.filename=/etc/traefik/dynamic.yml"
       - "--providers.file.watch=true"
-      - "--providers.file.templating=true"
       - "--accesslog"
       - "--entrypoints.websecure.address=:${TRAEFIK_WEB_PORT}"
     networks:
