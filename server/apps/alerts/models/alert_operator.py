@@ -5,6 +5,8 @@
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import JSONField
+from django.db.models.signals import pre_delete
+from django.dispatch import receiver
 
 from apps.alerts.constants.constants import AlarmStrategyType, AlertAssignmentMatchType, AlertShieldMatchType, NotifyResultStatus
 from apps.core.models.maintainer_info import MaintainerInfo
@@ -132,6 +134,14 @@ class AlertEscalationTask(models.Model):
 
     def __str__(self):
         return f"EscalationTask for Alert {self.alert.alert_id}"
+
+
+@receiver(pre_delete, sender=AlertEscalationTask, dispatch_uid="alerts_escalation_template_references_delete")
+def release_deleted_escalation_template_references(sender, instance, using, **kwargs):
+    """父策略/告警的级联删除同样释放快照引用，且随删除事务一起回滚。"""
+    from apps.alerts.models.notification_template import NotificationTemplateReference
+
+    NotificationTemplateReference.objects.using(using).filter(source_type="escalation_task", source_id=instance.alert.alert_id).delete()
 
 
 class AlarmStrategy(MaintainerInfo, TimeInfo):

@@ -1,0 +1,95 @@
+Host HP-UX Remote:
+  name: HP-UX主机远程采集
+  desc: 由 Linux 采集节点按采集间隔 SSH 到 HP-UX，执行系统命令。采集 CPU、负载、内存与交换区、磁盘容量与 inode、磁盘忙碌与吞吐、网卡、运行时长和操作系统版本。目标主机无需安装采集器。表单填写 IP、SSH 用户名（如 root）、密码或私钥、端口（默认 22）、采集间隔和 Linux 采集节点。不采集硬件清单、lastlog、lsof 和连接表。无需选择版本，版本自动识别。
+monitor_object:
+  Host: 主机
+monitor_object_type:
+  OS: 操作系统
+monitor_object_metric:
+  Host:
+    cpu_usage_total:
+      name: CPU使用率
+      desc: 由 sar -u 的 user、sys、wio 三相加得到的 CPU 使用率。
+    cpu_usage_iowait_total:
+      name: CPU等待IO占比
+      desc: 表示 CPU 因等待 I/O 操作完成而处于空闲状态的时间占比，对应 sar 的 %wio。
+    cpu_usage_system_total:
+      name: CPU系统占用率
+      desc: 表示 CPU 在内核态执行操作系统相关任务所占用的时间比例。
+    cpu_usage_user_total:
+      name: CPU用户占用率
+      desc: 表示 CPU 在用户态执行应用程序逻辑所消耗的时间占比。
+    system_load1:
+      name: 1分钟平均负载
+      desc: 表示系统在最近 1 分钟内的平均运行负载。
+    system_load5:
+      name: 5分钟平均负载
+      desc: 表示系统在最近 5 分钟内的平均运行负载。
+    system_load15:
+      name: 15分钟平均负载
+      desc: 表示系统在最近 15 分钟内的平均运行负载。
+    system_uptime:
+      name: 系统运行时长
+      desc: 表示主机自上次启动以来的持续运行时间（秒）。
+    os_info:
+      name: 操作系统版本
+      desc: 由 uname 识别的 HP-UX 版本与体系结构，维度为 os_version、arch、machine。
+    diskio_write_bytes_rate:
+      name: 磁盘写入速率
+      desc: 表示磁盘单位时间内写入的数据量。HP-UX sar -d 在无法拆分读写时该值为 0。
+    diskio_read_bytes_rate:
+      name: 磁盘读出速率
+      desc: 表示磁盘单位时间内的传输量。HP-UX sar -d 默认给出合计 blks/s，无法拆分时记入读侧。
+    disk_tm_act:
+      name: 磁盘忙碌
+      desc: 表示 HP-UX sar -d 的 %busy，即磁盘处于活动状态的时间占比。
+    disk_total:
+      name: 磁盘总空间
+      desc: 表示磁盘或文件系统的总容量。
+    disk_free:
+      name: 磁盘剩余空间
+      desc: 表示磁盘或文件系统当前可用的剩余容量。
+    disk_used_percent:
+      name: 磁盘使用率
+      desc: 表示磁盘已使用空间占总容量的比例。
+    disk_inodes_used_percent:
+      name: Inode使用率
+      desc: 表示文件系统 inode 的使用比例。
+    disk_iused:
+      name: 已用 inode
+      desc: 表示已使用的 inode 个数。
+    disk_ifree:
+      name: 空闲 inode
+      desc: 表示剩余可用的 inode 个数。
+    mem_total:
+      name: 内存总量
+      desc: 表示系统可使用的物理内存总容量。
+    mem_used_percent:
+      name: 内存使用率
+      desc: 表示已使用内存占总内存的比例。
+    mem_swap_free:
+      name: 空闲交换内存
+      desc: 表示当前剩余可用的交换区空间。
+    mem_swap_total:
+      name: 交换区总量
+      desc: 表示交换区总容量。
+    net_bytes_recv_rate:
+      name: 网络接收吞吐速率
+      desc: 表示网络接口单位时间内接收的数据量。
+    net_bytes_sent_rate:
+      name: 网络发送吞吐速率
+      desc: 表示网络接口单位时间内发送的数据量。
+    net_err_in_rate:
+      name: 网络接收错误包速率
+      desc: 表示网络接口单位时间内接收到的错误数据包数量。
+    net_err_out_rate:
+      name: 网络发送错误包速率
+      desc: 表示网络接口单位时间内发送失败的错误数据包数量。
+monitor_object_metric_group:
+  Host:
+    CPU: CPU
+    System: 系统
+    Disk IO: 磁盘 IO
+    Disk: 磁盘
+    Memory: 内存
+    Network: 网络

@@ -28,6 +28,7 @@ def test_get_channel_list_merges_opspilot_and_excludes_plain_nats(authenticated_
     authenticated_user.is_superuser = True
     authenticated_user.save(update_fields=["is_superuser"])
     Channel.objects.create(name="邮件A", channel_type="email", config={}, description="", team=[1])
+    Channel.objects.create(name="外组织邮件", channel_type="email", config={}, description="", team=[2])
     Channel.objects.create(name="企微应用", channel_type="enterprise_wechat", config={}, description="", team=[1])
     Channel.objects.create(
         name="内部直推",
@@ -50,8 +51,9 @@ def test_get_channel_list_merges_opspilot_and_excludes_plain_nats(authenticated_
         response = SystemSettingModelViewSet.as_view({"get": "get_channel_list"})(request)
 
     data = _render(response)["data"]
-    # 普通 email 在
+    # 当前组织 email 在，外组织 email 不在
     assert any(item["channel_type"] == "email" and item["team"] == [1] for item in data)
+    assert not any("外组织邮件" in item["name"] for item in data)
     # opspilot nats 通道并入（id=99, channel_type=nats）
     assert any(item["id"] == 99 and item["channel_type"] == "nats" and item["team"] == [2] for item in data)
     # 普通 nats（内部直推）被排除

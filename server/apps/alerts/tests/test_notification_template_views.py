@@ -110,9 +110,32 @@ def test_partial_update_preserves_contents_and_checks_revision(template_client):
 
 
 @pytest.mark.django_db
-def test_create_rejects_mismatched_channel_format(template_client):
+@pytest.mark.parametrize("method", ["patch", "put", "delete"])
+@pytest.mark.parametrize("target", ["deleted", "other_team"])
+def test_write_unavailable_template_returns_not_found(api_client, authenticated_user, method, target):
+    from apps.alerts.models.notification_template import NotificationTemplate
+
+    authenticated_user.permission = {"alarm": {"notification_templates-Edit", "notification_templates-Delete"}}
+    api_client.cookies["current_team"] = "1"
+    template = NotificationTemplate.objects.create(name="不可访问模板", team=[2] if target == "other_team" else [1])
+    url = f"/api/v1/alerts/api/notification_templates/{template.pk}/"
+    if target == "deleted":
+        template.delete()
+
+    response = getattr(api_client, method)(url, {"revision": 1, "name": "不应修改"}, format="json")
+
+    assert response.status_code == 404
+    if target == "other_team":
+        template.refresh_from_db()
+        assert template.name == "不可访问模板"
+        assert template.revision == 1
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("body", ["<script>alert(1)</script>", "<a {{ alert.title }}>open</a>", '<img src="https://example.test/pixel">'])
+def test_create_rejects_mismatched_channel_format(template_client, body):
     payload = _payload()
-    payload["contents"][0]["body_template"] = "<script>alert(1)</script>"
+    payload["contents"][0]["body_template"] = body
 
     response = template_client.post("/api/v1/alerts/api/notification_templates/", payload, format="json")
 
@@ -133,6 +156,28 @@ def test_list_is_scoped_and_global_templates_are_visible(template_client):
 
     assert response.status_code == 200
     assert {item["name"] for item in items} == {"team-1", "global", "告警操作通知"}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("existing", [False, True])
+def test_unauthorized_team_list_does_not_create_or_upgrade_templates(api_client, authenticated_user, existing):
+    from apps.alerts.models.notification_template import NotificationTemplate, NotificationTemplateContent
+    from apps.alerts.notification_templates.operation import _legacy_default_content
+
+    authenticated_user.permission = {"alarm": {"notification_templates-View"}}
+    api_client.cookies["current_team"] = "2"
+    if existing:
+        template = NotificationTemplate.objects.create(name="告警操作通知", team=[2], scope="alert_operation", builtin_key="alert_operation:2")
+        subject, body = _legacy_default_content("email")
+        NotificationTemplateContent.objects.create(template=template, channel_type="email", subject_template=subject, body_template=body)
+    before_templates = list(NotificationTemplate.objects.values())
+    before_contents = list(NotificationTemplateContent.objects.values())
+
+    response = api_client.get("/api/v1/alerts/api/notification_templates/")
+
+    assert response.status_code == 403
+    assert list(NotificationTemplate.objects.values()) == before_templates
+    assert list(NotificationTemplateContent.objects.values()) == before_contents
 
 
 @pytest.mark.django_db
@@ -490,6 +535,59 @@ def test_referenced_template_cannot_be_deleted(template_client):
 
     assert response.status_code == 409
     assert response.data["references"][0]["source_type"] == "assignment"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("delete_target", ["assignment", "alert", "task", "rollback"])
+def test_deleted_escalation_releases_only_its_template_references(template_client, delete_target):
+    from django.utils import timezone
+
+    from apps.alerts.models import Alert, AlertAssignment
+    from apps.alerts.models.alert_operator import AlertEscalationTask
+    from apps.alerts.notification_templates.binding import sync_escalation_template_references
+
+    templates, tasks = [], []
+    for index in range(2):
+        created = template_client.post("/api/v1/alerts/api/notification_templates/", _payload(name=f"升级模板-{index}"), format="json")
+        assert created.status_code == 201
+        templates.append(created.data)
+        assignment = AlertAssignment.objects.create(name=f"升级策略-{index}", match_type="all")
+        alert = Alert.objects.create(alert_id=f"escalation-{index}", title="升级告警", fingerprint=f"escalation-{index}", team=[1])
+        task = AlertEscalationTask.objects.create(
+            alert=alert,
+            assignment=assignment,
+            mode="append",
+            layer_started_at=timezone.now(),
+            layers=[{"notify_channels": [{"id": 1, "channel_type": "email", "notification_templates": {"default": created.data["id"]}}]}],
+        )
+        sync_escalation_template_references(task)
+        tasks.append(task)
+
+    if delete_target == "assignment":
+        response = template_client.delete(f"/api/v1/alerts/api/assignment/{tasks[0].assignment_id}/")
+        assert response.status_code == 200
+    elif delete_target == "alert":
+        tasks[0].alert.delete()
+    elif delete_target == "rollback":
+        from django.db import transaction
+
+        with pytest.raises(RuntimeError, match="删除事务回滚"):
+            with transaction.atomic():
+                tasks[0].assignment.delete()
+                raise RuntimeError("删除事务回滚")
+        assert AlertEscalationTask.objects.filter(pk=tasks[0].pk).exists()
+        assert template_client.delete(f"/api/v1/alerts/api/notification_templates/{templates[0]['id']}/").status_code == 409
+        tasks[0].delete()
+    else:
+        AlertEscalationTask.objects.filter(pk=tasks[0].pk).delete()
+
+    deleted = template_client.delete(f"/api/v1/alerts/api/notification_templates/{templates[0]['id']}/")
+    protected = template_client.delete(f"/api/v1/alerts/api/notification_templates/{templates[1]['id']}/")
+
+    assert deleted.status_code == 200, deleted.data
+    assert template_client.get(f"/api/v1/alerts/api/notification_templates/{templates[0]['id']}/").status_code == 404
+    assert protected.status_code == 409
+    assert AlertEscalationTask.objects.filter(pk=tasks[1].pk).exists()
 
 
 @pytest.mark.django_db

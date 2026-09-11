@@ -53,6 +53,7 @@ import {
   buildIntegrationConfigureUrl,
   resolveIntegrationEntryContext
 } from '@/app/monitor/utils/integrationEntryContext';
+import { downloadPluginConfig } from './exportDownload';
 
 const { confirm } = Modal;
 
@@ -276,13 +277,7 @@ const Integration = () => {
       const blob = new Blob([JSON.stringify(json.data, null, 2)], {
         type: 'application/json'
       });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${selectedApp.display_name}.json`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      downloadPluginConfig(blob, `${selectedApp.display_name}.json`);
       message.success(t('common.successfullyExported'));
     } catch (error) {
       message.error(error as string);

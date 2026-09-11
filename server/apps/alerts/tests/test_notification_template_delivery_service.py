@@ -109,3 +109,23 @@ def test_dispatcher_falls_back_to_default_when_bound_template_is_missing():
     assert "CPU 使用率过高" in params[0]["title"]
     assert params[0]["append_receivers"] is True
     assert params[0]["template_snapshot"]["fallback"] is True
+
+
+@pytest.mark.django_db
+def test_unsafe_stored_email_template_falls_back_without_interrupting_notification():
+    from apps.alerts.common.notify.dispatcher import build_channel_params
+    from apps.alerts.models.notification_template import NotificationTemplate, NotificationTemplateContent
+
+    template = NotificationTemplate.objects.create(name="升级前存量模板", team=[1])
+    NotificationTemplateContent.objects.create(
+        template=template, channel_type="email", subject_template="自定义", body_template='<img src="https://example.test/pixel">'
+    )
+    params = build_channel_params(
+        ["admin"], [{"id": 3, "channel_type": "email", "notification_templates": {"default": template.id}}], [_alert()], "ALERT-100"
+    )
+
+    assert len(params) == 1
+    assert "CPU 使用率过高" in params[0]["title"]
+    assert "https://example.test/pixel" not in params[0]["content"]
+    assert params[0]["template_snapshot"]["fallback"] is True
+    assert params[0]["template_snapshot"]["error_type"] == "TemplateValidationError"

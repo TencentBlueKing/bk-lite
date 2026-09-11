@@ -11,13 +11,13 @@ const enLocale = readFileSync(resolve(alarmDir, 'locales/en.json'), 'utf8');
 
 assert.match(
   guideSource,
-  /import \{[^}]*\bEmpty\b[^}]*\} from 'antd'/,
-  'K8s 失败态使用 antd Empty 时必须从 antd 导入，否则生产构建会报 TS2304'
+  /import CompactEmptyState from '@\/components\/compact-empty-state'/,
+  'K8s 失败态使用 CompactEmptyState 时必须导入该组件'
 );
 assert.match(
   guideSource,
-  /<Empty description=\{t\('integration\.k8sMetaLoadFailed'\)\}>/,
-  '元数据失败态必须使用 Empty 承载重试按钮'
+  /<CompactEmptyState description=\{t\('integration\.k8sMetaLoadFailed'\)\}>/,
+  '元数据失败态使用 CompactEmptyState 承载重试按钮'
 );
 assert.match(guideSource, /common\.retry/, '失败态必须提供显式重试');
 assert.match(
