@@ -6,7 +6,7 @@ import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 import { GroupItem, ModelItem } from '@/app/cmdb/types/assetManage';
 import { deepClone } from '@/app/cmdb/utils/common';
-import { useRouter } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import ModelIcon from '@/app/cmdb/components/model-icon';
 import { Spin, Input } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
@@ -17,7 +17,7 @@ import { useCommon } from '@/app/cmdb/context/common';
 const AssetsOverview: React.FC = () => {
   const { isLoading } = useApiClient();
   const { t } = useTranslation();
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const commonContext = useCommon();
   const modelListFromContext = commonContext?.modelList || [];
   const [loading, setLoading] = useState<boolean>(false);

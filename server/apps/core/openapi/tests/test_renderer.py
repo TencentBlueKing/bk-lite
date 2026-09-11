@@ -110,6 +110,41 @@ def test_bad_entries_skipped(env, mutation, reason_part):
     assert "routers" not in config["http"]
 
 
+@pytest.mark.parametrize(
+    "mutation, reason_part",
+    [
+        ({"schema_version": []}, "schema_version"),
+        ({"type": []}, "type"),
+        ({"auth_mode": {}}, "auth_mode"),
+    ],
+)
+def test_unhashable_enum_fields_skipped(env, mutation, reason_part):
+    """JSON list/dict 不可哈希：成员判断不得抛 TypeError，整条跳过。"""
+    entry = dict(GOOD, **mutation)
+    normalized, reason = renderer.validate_entry("itsm", entry)
+    assert normalized is None
+    assert reason_part in reason
+
+    config, report = render_one(entry)
+    assert report["rendered"] == []
+    assert reason_part in report["skipped"]["itsm"]
+    assert "routers" not in config["http"]
+
+
+def test_unhashable_entry_does_not_abort_batch(env):
+    """一条不可哈希枚举不得中断同批合法条目的渲染。"""
+    config, report = renderer.render_traefik_config(
+        {
+            "broken": dict(GOOD, schema_version=[]),
+            "itsm": dict(GOOD),
+        }
+    )
+    assert "itsm" in report["rendered"]
+    assert "schema_version" in report["skipped"]["broken"]
+    assert "openapi-v1-itsm" in config["http"]["routers"]
+    assert "openapi-v1-broken" not in config["http"].get("routers", {})
+
+
 def test_disabled_entry_skipped_quietly(env):
     _, report = render_one(dict(GOOD, enabled=False))
     assert report["skipped"]["itsm"] == "disabled"

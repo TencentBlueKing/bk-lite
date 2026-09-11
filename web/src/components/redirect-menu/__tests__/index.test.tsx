@@ -2,10 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from '@testing-library/react';
 
 const replace = vi.fn();
+let search = '';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace }),
   usePathname: vi.fn(() => '/'),
+  useSearchParams: () => new URLSearchParams(search),
 }));
 
 vi.mock('@/context/permissions', () => ({
@@ -20,6 +22,7 @@ import { PORTAL_HOME_PATH } from '@/utils/route';
 describe('RedirectToFirstMenu', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    search = '';
     vi.mocked(usePathname).mockReturnValue('/');
     vi.mocked(usePermissions).mockReturnValue({
       menus: [],
@@ -47,6 +50,21 @@ describe('RedirectToFirstMenu', () => {
     render(<RedirectToFirstMenu />);
 
     expect(replace).toHaveBeenCalledWith('/opspilot/studio');
+  });
+
+  it('keeps screen when redirecting from an app landing page', () => {
+    search = 'screen=true';
+    vi.mocked(usePathname).mockReturnValue('/opspilot');
+    vi.mocked(usePermissions).mockReturnValue({
+      menus: [{ url: '/opspilot/studio', name: 'studio' } as any],
+      loading: false,
+      permissions: {},
+      hasPermission: () => true,
+    });
+
+    render(<RedirectToFirstMenu />);
+
+    expect(replace).toHaveBeenCalledWith('/opspilot/studio?screen=true');
   });
 
   it('redirects with optimistic menus even while permissions are still loading', () => {

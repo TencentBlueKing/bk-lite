@@ -8,7 +8,7 @@ import attrLayoutStyle from './layout.module.scss';
 import useApiClient from '@/utils/request';
 import PermissionWrapper from '@/components/permission';
 import { Card, Modal, message, Tooltip } from 'antd';
-import { useRouter } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import ModelIcon from '@/app/cmdb/components/model-icon';
 import { EditTwoTone, DeleteTwoTone, CopyOutlined } from '@ant-design/icons';
 import { useSearchParams } from 'next/navigation';
@@ -24,7 +24,7 @@ const AboutLayout = ({ children }: { children: React.ReactNode }) => {
   const { isLoading } = useApiClient();
   const { t } = useTranslation();
   const { confirm } = Modal;
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const commonContext = useCommon();
 
   const { getClassificationList } = useClassificationApi();

@@ -32,11 +32,12 @@ export function shouldMountGlobalWebchat(options: {
   userInfoLoading?: boolean;
   hasOpsPilotAccess: boolean;
   pathname: string | null | undefined;
+  screenMode?: boolean;
 }): boolean {
   if (!options.authenticated || options.clientLoading || options.userInfoLoading) {
     return false;
   }
-  if (!options.hasOpsPilotAccess) {
+  if (!options.hasOpsPilotAccess || options.screenMode) {
     return false;
   }
   return !isGlobalWebchatExcludedPath(options.pathname);
@@ -49,8 +50,9 @@ export function shouldKeepGlobalWebchat(options: {
   hasOpsPilotAccess: boolean;
   pathname: string | null | undefined;
   alreadyMounted: boolean;
+  screenMode?: boolean;
 }): boolean {
-  if (!options.authenticated || isGlobalWebchatExcludedPath(options.pathname)) {
+  if (!options.authenticated || options.screenMode || isGlobalWebchatExcludedPath(options.pathname)) {
     return false;
   }
   if (options.userInfoLoading && !options.alreadyMounted) {

@@ -9,6 +9,7 @@ from django.db import transaction
 from django.http import JsonResponse
 from django.utils import timezone as django_timezone
 
+from apps.console_mgmt.user_info_roles import collect_prefetched_group_role_ids
 from apps.core.utils.builtin_app_i18n import localized_app_display_name
 from apps.core.utils.loader import LanguageLoader
 from apps.rpc.system_mgmt import SystemMgmt
@@ -353,8 +354,7 @@ def get_user_info(request):
         role_ids = set(user.role_list) if user.role_list else set()
         if user.group_list:
             groups = Group.objects.filter(id__in=user.group_list).prefetch_related("roles")
-            for group in groups:
-                role_ids.update(group.roles.values_list("id", flat=True))
+            role_ids.update(collect_prefetched_group_role_ids(groups))
 
         # 将role_list中的ID转换为角色信息（包含app显示名称）
         role_info = []

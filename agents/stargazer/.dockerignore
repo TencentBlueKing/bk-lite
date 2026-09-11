@@ -1,1 +1,3 @@
 .venv
+# Enterprise 必须通过 Docker named context 从主仓库子模块注入，禁止打包本地忽略副本。
+enterprise

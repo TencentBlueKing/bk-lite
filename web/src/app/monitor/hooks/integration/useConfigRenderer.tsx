@@ -31,6 +31,8 @@ export type FormFieldOptionControls = Record<
     loading?: boolean;
     onRefresh?: () => void;
     refreshTip?: string;
+    /** 云地域：true=腾讯云多选，false=阿里云单选；用来覆盖 UI.json 残留的 mode。 */
+    multiple?: boolean;
   }
 >;
 
@@ -455,9 +457,17 @@ export const useConfigRenderer = () => {
             (Boolean(showRefresh) ||
               resolvedOptionsKey === 'region_option' ||
               name === 'region');
+          const regionMultiple = optionControl?.multiple;
+          const selectMode = allowCustomTags
+            ? ('tags' as const)
+            : typeof regionMultiple === 'boolean'
+              ? regionMultiple
+                ? ('multiple' as const)
+                : undefined
+              : widget_props.mode;
           const selectProps = {
             ...restSelectProps,
-            mode: allowCustomTags ? ('tags' as const) : widget_props.mode,
+            mode: selectMode,
             tokenSeparators: allowCustomTags
               ? widget_props.tokenSeparators || [',']
               : widget_props.tokenSeparators,
@@ -470,7 +480,7 @@ export const useConfigRenderer = () => {
             showSearch: true as const,
             optionFilterProp: 'label' as const,
             maxTagCount:
-              widget_props.mode === 'multiple'
+              selectMode === 'multiple'
                 ? widget_props.maxTagCount || 'responsive'
                 : widget_props.maxTagCount,
             style: formWidgetWidthStyle(widgetStyle),

@@ -35,6 +35,7 @@ import {
   buildDashboardActionUrl,
   resolveDashboardActionParams,
 } from '@/app/ops-analysis/utils/dashboardActions';
+import { applySameOriginNavigation } from '@/console-layout';
 import { resolveTableCellPresentation } from '@/app/ops-analysis/utils/tableCellStyle';
 import {
   formatVisibleChartValue,
@@ -196,12 +197,10 @@ const ComTable: React.FC<ComTableProps> = ({
         return;
       }
 
-      if (action.openMode === 'newTab') {
-        window.open(url, '_blank', 'noopener,noreferrer');
-        return;
-      }
-
-      window.location.href = url;
+      applySameOriginNavigation(url, {
+        currentSearch: window.location.search,
+        explicitNewWindow: action.openMode === 'newTab',
+      });
     },
     [shareMode, t],
   );

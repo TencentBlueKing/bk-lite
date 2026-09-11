@@ -11,6 +11,7 @@ import type {
   NetworkTopologyNode,
 } from '@/app/cmdb/components/networkTopology';
 import { useTranslation } from '@/utils/i18n';
+import { applySameOriginNavigation } from '@/console-layout';
 import { useShareMode } from '@/app/ops-analysis/context/shareMode';
 import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
@@ -138,7 +139,10 @@ const stripDevicePrefix = (value?: string, deviceName?: string) => {
 };
 
 const openUrl = (url: string) => {
-  window.open(url, '_blank', 'noopener,noreferrer');
+  applySameOriginNavigation(url, {
+    currentSearch: window.location.search,
+    preferNewTab: true,
+  });
 };
 
 const getPortMatchReasonKey = (reason: PortMatchReason) => {

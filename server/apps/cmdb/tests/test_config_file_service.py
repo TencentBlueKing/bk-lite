@@ -286,6 +286,24 @@ def test_build_summary_error():
     assert summary["config_file_data"]["status"] == "error"
 
 
+def test_build_summary_last_time_converts_epoch_millis_to_iso():
+    task = _task(instances=[{"_id": "1"}])
+    summary = S._build_summary(
+        task,
+        items={
+            "1": {
+                "instance_id": "1",
+                "status": ConfigFileVersionStatus.SUCCESS,
+                "changed": True,
+                "version": "1789033801000",
+            }
+        },
+    )
+    last_time = summary["collect_digest"]["last_time"]
+    assert last_time.startswith("2026-09-10T09:50:01")
+    assert last_time != "1789033801000"
+
+
 # --------------------------------------------------------------------------
 # DB read helpers
 # --------------------------------------------------------------------------

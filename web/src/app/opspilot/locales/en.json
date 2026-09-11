@@ -19,7 +19,7 @@
     "introduction": "Introduction",
     "purpose": "Purpose",
     "schema": "Schema guidance",
-    "schemaCreateTip": "Schema markdown generates the knowledge directories. List paths as `- `wiki/operations``. Saving Purpose & Schema applies them. For OKF import, choose “OKF bundle”.",
+    "schemaCreateTip": "Schema markdown generates the knowledge directories. List paths as `- `wiki/operations``. Saving Purpose & Schema applies them.",
     "template": "Template",
     "generateByAI": "Generate with AI",
     "deleteConfirm": "Are you sure you want to delete this knowledge base?",

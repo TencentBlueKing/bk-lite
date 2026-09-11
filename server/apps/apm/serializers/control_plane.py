@@ -264,6 +264,7 @@ class ServiceMetricQuerySerializer(serializers.Serializer):
     endpoint = serializers.CharField(max_length=512, required=False, allow_blank=True, default="")
     started_at = serializers.DateTimeField(required=False)
     ended_at = serializers.DateTimeField(required=False)
+    include_breakdown = serializers.BooleanField(required=False, default=True)
 
     def validate(self, attrs):
         unsupported = sorted(set(self.initial_data) - set(self.fields))
@@ -275,6 +276,37 @@ class ServiceMetricQuerySerializer(serializers.Serializer):
             raise serializers.ValidationError("查询结束时间必须晚于开始时间")
         if ended_at - started_at > MAX_METRIC_WINDOW:
             raise serializers.ValidationError("RED 查询时间窗不能超过 7 天")
+        attrs["started_at"] = started_at
+        attrs["ended_at"] = ended_at
+        return attrs
+
+
+class ServiceMetricBatchTargetSerializer(serializers.Serializer):
+    service_id = serializers.UUIDField()
+    environment = serializers.CharField(max_length=256, allow_blank=True)
+
+
+class ServiceMetricBatchSerializer(serializers.Serializer):
+    started_at = serializers.DateTimeField(required=False)
+    ended_at = serializers.DateTimeField(required=False)
+    include_breakdown = serializers.BooleanField(required=False, default=True)
+    targets = ServiceMetricBatchTargetSerializer(many=True)
+
+    def validate(self, attrs):
+        unsupported = sorted(set(self.initial_data) - set(self.fields))
+        if unsupported:
+            raise serializers.ValidationError(f"不支持的批量 RED 查询参数: {', '.join(unsupported)}")
+        ended_at = attrs.get("ended_at") or timezone.now()
+        started_at = attrs.get("started_at") or ended_at - timedelta(hours=1)
+        if ended_at <= started_at:
+            raise serializers.ValidationError("查询结束时间必须晚于开始时间")
+        if ended_at - started_at > MAX_METRIC_WINDOW:
+            raise serializers.ValidationError("RED 查询时间窗不能超过 7 天")
+        targets = attrs.get("targets") or []
+        if not targets:
+            raise serializers.ValidationError({"targets": "该字段不能为空。"})
+        if len(targets) > 40:
+            raise serializers.ValidationError({"targets": "批量 RED 查询最多 40 个目标。"})
         attrs["started_at"] = started_at
         attrs["ended_at"] = ended_at
         return attrs

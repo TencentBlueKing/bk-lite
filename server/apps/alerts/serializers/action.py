@@ -1,10 +1,15 @@
 # -- coding: utf-8 --
 from rest_framework import serializers
-from apps.alerts.models.action import ActionRule, ActionExecution
+
+from apps.alerts.models.action import ActionExecution, ActionRule
 from apps.alerts.utils.permission_scope import get_authorized_group_ids, normalize_team_ids
+from apps.alerts.utils.rule_catalog import validate_rules_for_serializer
 
 
 class ActionRuleSerializer(serializers.ModelSerializer):
+    def validate_match_rules(self, value):
+        return validate_rules_for_serializer(value, "action")
+
     def validate_team(self, value):
         request = self.context.get("request")
         try:

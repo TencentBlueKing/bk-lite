@@ -51,8 +51,10 @@ import {
   TaskStatusMap,
 } from '@/app/cmdb/types/autoDiscovery';
 import { useAssetManageStore } from '@/app/cmdb/store';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import { createCollectionListRequest } from './collectionListRequest';
+import { formatCollectReportTime } from './formatCollectReportTime';
 
 type ExtendedColumnItem = ColumnType<CollectTask> & {
   key: string;
@@ -133,7 +135,7 @@ const ProfessionalCollection: React.FC = () => {
   const { t } = useTranslation();
   const { locale } = useLocale();
   const collectApi = useCollectApi();
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const editingId = useAssetManageStore((state) => state.editingId);
@@ -965,7 +967,7 @@ const ProfessionalCollection: React.FC = () => {
         render: (_, record: CollectTask) => {
           const lastTime = (record.message as CollectTaskMessage)?.last_time;
           return (
-            <span>{lastTime ? dayjs(lastTime).format('YYYY-MM-DD HH:mm:ss') : '--'}</span>
+            <span>{lastTime ? formatCollectReportTime(lastTime) : '--'}</span>
           );
         },
       },

@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { WC } from '../chrome';
+import { useImeEnterGuard } from '../useImeEnterGuard';
 
 export interface PillComposerProps {
   value: string;
@@ -11,6 +12,7 @@ export interface PillComposerProps {
   loading?: boolean;
   onCancel?: () => void;
   imageSlot?: React.ReactNode;
+  leftExtra?: React.ReactNode;
   onPaste?: React.ClipboardEventHandler<HTMLInputElement>;
 }
 
@@ -26,8 +28,11 @@ export const PillComposer = React.memo(function PillComposer({
   loading = false,
   onCancel,
   imageSlot,
+  leftExtra,
   onPaste,
 }: PillComposerProps) {
+  const imeEnterGuard = useImeEnterGuard();
+
   const submit = () => {
     const text = value.trim();
     if (!text || loading) return;
@@ -37,9 +42,13 @@ export const PillComposer = React.memo(function PillComposer({
   return (
     <div
       style={{
-        position: 'relative',
+        display: 'flex',
+        alignItems: 'center',
         height: COMPOSER_HEIGHT,
         width: '100%',
+        paddingLeft: 10,
+        paddingRight: 6,
+        gap: SIDE_GAP,
         borderRadius: 9999,
         border: `1px solid ${WC.dockEdge}`,
         background: WC.white,
@@ -48,10 +57,7 @@ export const PillComposer = React.memo(function PillComposer({
     >
       <div
         style={{
-          position: 'absolute',
-          left: 10,
-          top: '50%',
-          transform: 'translateY(-50%)',
+          flexShrink: 0,
           width: SIDE_CONTROL,
           height: SIDE_CONTROL,
           display: 'flex',
@@ -77,33 +83,48 @@ export const PillComposer = React.memo(function PillComposer({
           </svg>
         )}
       </div>
+      {leftExtra ? (
+        <div
+          style={{
+            flexShrink: 0,
+            display: 'flex',
+            alignItems: 'center',
+            minWidth: 0,
+          }}
+        >
+          {leftExtra}
+        </div>
+      ) : null}
 
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onPaste={onPaste}
+        onCompositionStart={imeEnterGuard.onCompositionStart}
+        onCompositionEnd={imeEnterGuard.onCompositionEnd}
         placeholder={placeholder}
         disabled={loading}
         style={{
           display: 'block',
           boxSizing: 'border-box',
-          width: '100%',
+          flex: 1,
+          minWidth: 0,
           height: '100%',
           margin: 0,
+          padding: 0,
           border: 'none',
           outline: 'none',
           background: 'transparent',
           color: WC.botText,
           fontSize: 14,
           lineHeight: `${COMPOSER_HEIGHT}px`,
-          paddingLeft: 10 + SIDE_CONTROL + SIDE_GAP,
-          paddingRight: 10 + SIDE_CONTROL + SIDE_GAP,
         }}
         onKeyDown={(event) => {
-          if (event.key === 'Enter' && !event.shiftKey) {
-            event.preventDefault();
-            submit();
+          if (!imeEnterGuard.shouldSubmitOnEnter(event)) {
+            return;
           }
+          event.preventDefault();
+          submit();
         }}
       />
 
@@ -112,10 +133,7 @@ export const PillComposer = React.memo(function PillComposer({
         title={loading ? '停止' : '发送'}
         onClick={loading ? onCancel : submit}
         style={{
-          position: 'absolute',
-          right: 6,
-          top: '50%',
-          transform: 'translateY(-50%)',
+          flexShrink: 0,
           width: SIDE_CONTROL,
           height: SIDE_CONTROL,
           display: 'flex',

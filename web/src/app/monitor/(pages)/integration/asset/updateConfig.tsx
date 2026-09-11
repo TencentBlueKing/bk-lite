@@ -14,7 +14,7 @@ import { useTranslation } from '@/utils/i18n';
 import OperateModal from '@/components/operate-modal';
 import useApiClient from '@/utils/request';
 import { usePluginFromJson } from '@/app/monitor/hooks/integration/usePluginFromJson';
-import { cloudRegionProviderFromPlugin, resolveStoredCollectConfigId, useCloudRegionOptions } from '@/app/monitor/hooks/integration/useQcloudRegionOptions';
+import { cloudRegionProviderFromPlugin, cloudRegionProviderHintsFromRow, resolveStoredCollectConfigId, useCloudRegionOptions } from '@/app/monitor/hooks/integration/useQcloudRegionOptions';
 import {
   getSnmpFilterMutexConflicts,
   trackSnmpFilterMutexLastChanged
@@ -75,12 +75,7 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
       const collector = _form.collector;
       const collect_type = _form.collect_type;
       const monitor_object_id = _form.monitor_object_id;
-      setRegionHints({
-        objectName: String(
-          _form.monitor_object_name || _form.object_name || _form.name || ''
-        ),
-        pluginName: String(_form.plugin_name || collector || ''),
-      });
+      setRegionHints(cloudRegionProviderHintsFromRow(_form as Record<string, unknown>));
       const _pluginId = _form.monitor_plugin_id || `${monitor_object_id}_${collector}_${collect_type}`;
       setPluginId(_pluginId);
       setConfigLoading(true);
@@ -113,6 +108,7 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
     regionOptions,
     loadingRegions,
     refreshRegions,
+    multiple: regionMultiple,
   } = useCloudRegionOptions({
     enabled: Boolean(regionProvider && modalVisible),
     provider: regionProvider || 'qcloud',
@@ -139,6 +135,7 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
         region_option: {
           loading: loadingRegions,
           onRefresh: refreshRegions,
+          multiple: regionMultiple,
           refreshTip: t(
             'monitor.integrations.refreshStoredCloudRegionsTip',
             '刷新可用地域'
@@ -154,6 +151,7 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
     regionOptions,
     loadingRegions,
     refreshRegions,
+    regionMultiple,
     jsonConfig.buildPluginUI,
     t,
   ]);

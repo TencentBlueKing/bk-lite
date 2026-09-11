@@ -1,0 +1,108 @@
+# HELP os_info HP-UX uname version and architecture
+# TYPE os_info gauge
+os_info{instance_id="sample-1",os_type="hpux",os_version="B.11.31",arch="ia64",machine="ia64 hp server"} 1 1700000000000
+# HELP cpu_usage_total CPU usage percentage (user+sys+iowait)
+# TYPE cpu_usage_total gauge
+cpu_usage_total{instance_id="sample-1",os_type="hpux"} 12.5 1700000000000
+# HELP host_cpu_usage_percent CPU usage percentage
+# TYPE host_cpu_usage_percent gauge
+host_cpu_usage_percent{instance_id="sample-1",os_type="hpux"} 12.5 1700000000000
+# HELP cpu_usage_user_total CPU user usage percentage
+# TYPE cpu_usage_user_total gauge
+cpu_usage_user_total{instance_id="sample-1",os_type="hpux"} 8.0 1700000000000
+# HELP cpu_usage_system_total CPU system usage percentage
+# TYPE cpu_usage_system_total gauge
+cpu_usage_system_total{instance_id="sample-1",os_type="hpux"} 3.0 1700000000000
+# HELP cpu_usage_iowait_total CPU iowait usage percentage
+# TYPE cpu_usage_iowait_total gauge
+cpu_usage_iowait_total{instance_id="sample-1",os_type="hpux"} 1.5 1700000000000
+# HELP mem_total Memory total bytes
+# TYPE mem_total gauge
+mem_total{instance_id="sample-1",os_type="hpux"} 8589934592 1700000000000
+# HELP mem_used_percent Memory used percent
+# TYPE mem_used_percent gauge
+mem_used_percent{instance_id="sample-1",os_type="hpux"} 50.0 1700000000000
+# HELP host_mem_used_percent Memory used percent
+# TYPE host_mem_used_percent gauge
+host_mem_used_percent{instance_id="sample-1",os_type="hpux"} 50.0 1700000000000
+# HELP mem_swap_free Swap free bytes
+# TYPE mem_swap_free gauge
+mem_swap_free{instance_id="sample-1",os_type="hpux"} 1073741824 1700000000000
+# HELP mem_swap_total Swap total bytes
+# TYPE mem_swap_total gauge
+mem_swap_total{instance_id="sample-1",os_type="hpux"} 2147483648.0 1700000000000
+# HELP disk_total Disk total bytes
+# TYPE disk_total gauge
+disk_total{instance_id="sample-1",os_type="hpux",mount="/",path="/"} 104857600.0 1700000000000
+# HELP disk_free Disk free bytes
+# TYPE disk_free gauge
+disk_free{instance_id="sample-1",os_type="hpux",mount="/",path="/"} 62914560.0 1700000000000
+# HELP disk_used_percent Disk used percent
+# TYPE disk_used_percent gauge
+disk_used_percent{instance_id="sample-1",os_type="hpux",mount="/",path="/"} 40.0 1700000000000
+# HELP host_disk_used_percent Disk used percent
+# TYPE host_disk_used_percent gauge
+host_disk_used_percent{instance_id="sample-1",os_type="hpux",mount="/",path="/"} 40.0 1700000000000
+# HELP disk_inodes_used_percent Disk inode used percent
+# TYPE disk_inodes_used_percent gauge
+disk_inodes_used_percent{instance_id="sample-1",os_type="hpux",mount="/",path="/"} 10.0 1700000000000
+# HELP disk_iused Used inode count
+# TYPE disk_iused gauge
+disk_iused{instance_id="sample-1",os_type="hpux",mount="/",path="/"} 1 1700000000000
+# HELP disk_ifree Free inode count
+# TYPE disk_ifree gauge
+disk_ifree{instance_id="sample-1",os_type="hpux",mount="/",path="/"} 9 1700000000000
+# HELP disk_total Disk total bytes
+# TYPE disk_total gauge
+disk_total{instance_id="sample-1",os_type="hpux",mount="/mnt/data\"q /weird",path="/mnt/data\"q /weird"} 209715200.0 1700000000000
+# HELP disk_free Disk free bytes
+# TYPE disk_free gauge
+disk_free{instance_id="sample-1",os_type="hpux",mount="/mnt/data\"q /weird",path="/mnt/data\"q /weird"} 157286400.0 1700000000000
+# HELP disk_used_percent Disk used percent
+# TYPE disk_used_percent gauge
+disk_used_percent{instance_id="sample-1",os_type="hpux",mount="/mnt/data\"q /weird",path="/mnt/data\"q /weird"} 25.0 1700000000000
+# HELP host_disk_used_percent Disk used percent
+# TYPE host_disk_used_percent gauge
+host_disk_used_percent{instance_id="sample-1",os_type="hpux",mount="/mnt/data\"q /weird",path="/mnt/data\"q /weird"} 25.0 1700000000000
+# HELP disk_inodes_used_percent Disk inode used percent
+# TYPE disk_inodes_used_percent gauge
+disk_inodes_used_percent{instance_id="sample-1",os_type="hpux",mount="/mnt/data\"q /weird",path="/mnt/data\"q /weird"} 5.0 1700000000000
+# HELP disk_iused Used inode count
+# TYPE disk_iused gauge
+disk_iused{instance_id="sample-1",os_type="hpux",mount="/mnt/data\"q /weird",path="/mnt/data\"q /weird"} 2 1700000000000
+# HELP disk_ifree Free inode count
+# TYPE disk_ifree gauge
+disk_ifree{instance_id="sample-1",os_type="hpux",mount="/mnt/data\"q /weird",path="/mnt/data\"q /weird"} 38 1700000000000
+# HELP net_bytes_recv Network received bytes counter
+# TYPE net_bytes_recv gauge
+net_bytes_recv{instance_id="sample-1",os_type="hpux",interface="lan0"} 1000 1700000000000
+# HELP net_bytes_sent Network transmitted bytes counter
+# TYPE net_bytes_sent gauge
+net_bytes_sent{instance_id="sample-1",os_type="hpux",interface="lan0"} 2000 1700000000000
+# HELP net_err_in Network receive errors counter
+# TYPE net_err_in gauge
+net_err_in{instance_id="sample-1",os_type="hpux",interface="lan0"} 1 1700000000000
+# HELP net_err_out Network transmit errors counter
+# TYPE net_err_out gauge
+net_err_out{instance_id="sample-1",os_type="hpux",interface="lan0"} 0 1700000000000
+# HELP diskio_read_bytes Disk read bytes from sar/iostat interval sample
+# TYPE diskio_read_bytes gauge
+diskio_read_bytes{instance_id="sample-1",os_type="hpux",device="c0t6d0"} 12288 1700000000000
+# HELP diskio_write_bytes Disk write bytes from sar/iostat interval sample
+# TYPE diskio_write_bytes gauge
+diskio_write_bytes{instance_id="sample-1",os_type="hpux",device="c0t6d0"} 0 1700000000000
+# HELP disk_tm_act HP-UX sar -d %busy disk busy
+# TYPE disk_tm_act gauge
+disk_tm_act{instance_id="sample-1",os_type="hpux",device="c0t6d0"} 5.0 1700000000000
+# HELP system_uptime System uptime seconds
+# TYPE system_uptime gauge
+system_uptime{instance_id="sample-1",os_type="hpux"} 3600 1700000000000
+# HELP system_load1 System load 1 minute
+# TYPE system_load1 gauge
+system_load1{instance_id="sample-1",os_type="hpux"} 0.2 1700000000000
+# HELP system_load5 System load 5 minutes
+# TYPE system_load5 gauge
+system_load5{instance_id="sample-1",os_type="hpux"} 0.3 1700000000000
+# HELP system_load15 System load 15 minutes
+# TYPE system_load15 gauge
+system_load15{instance_id="sample-1",os_type="hpux"} 0.4 1700000000000

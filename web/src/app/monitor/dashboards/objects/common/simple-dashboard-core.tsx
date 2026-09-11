@@ -9,7 +9,9 @@ import useViewApi from '@/app/monitor/api/view';
 import {
   normalizeDisplayText,
   resolveDashboardInstanceIdentity,
+  resolveDashboardInstanceIdValues,
   encodeInstanceIdValuesParam,
+  isInstanceOptionForIdentity,
   buildInstanceDisplayName,
   buildInstanceSearchTokens,
   formatEnumValue,
@@ -32,7 +34,6 @@ import {
   buildClusterFilterOptions,
   filterInstanceOptionsByCluster,
   selectFirstInstanceInCluster,
-  isInstanceOptionForIdentity,
   DashboardInstanceOption,
   fetchDashboardInstancePages
 } from '../../shared/utils';
@@ -441,7 +442,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
           uniqueOptions.set(value, {
             label,
             value,
-            instanceIdValues: Array.isArray(item.instance_id_values) && item.instance_id_values.length ? item.instance_id_values : [value],
+            instanceIdValues: resolveDashboardInstanceIdValues(item),
             searchTokens: buildInstanceSearchTokens(item, label),
             interval: Number(item.interval) || undefined
           });
@@ -522,7 +523,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
       options.unshift({
         value: selectedValue,
         label: normalizedInstanceName,
-        instanceIdValues: idValues.length ? idValues : [selectedValue],
+        instanceIdValues: idValues.length ? idValues : resolveDashboardInstanceIdValues({ instance_id: selectedValue }),
         searchTokens: [normalizedInstanceName],
         interval: currentInstanceOption?.interval
       });
@@ -1039,7 +1040,11 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     const params = new URLSearchParams(searchParams.toString());
     params.set('instance_id', value);
     params.set('instance_name', String(target?.label || normalizedInstanceName || resolvedInstanceName || ''));
-    params.set('instance_id_values', encodeInstanceIdValuesParam(target?.instanceIdValues || [value]));
+    params.set('instance_id_values', encodeInstanceIdValuesParam(
+      target?.instanceIdValues?.length
+        ? target.instanceIdValues
+        : resolveDashboardInstanceIdValues({ instance_id: value }),
+    ));
     router.push(`/monitor/view/dashboard/${config.routeKey}?${params.toString()}`);
   };
   const onClusterFilterChange = (cluster: string) => {

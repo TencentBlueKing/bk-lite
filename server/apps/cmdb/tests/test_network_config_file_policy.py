@@ -2,6 +2,8 @@ import pytest
 
 from apps.cmdb.services.network_config_file_policy import (
     SUPPORTED_NETWORK_CONFIG_MODELS,
+    decode_http_header_commands,
+    encode_http_header_commands,
     get_supported_brand_options,
     normalize_network_config_instance,
     resolve_device_type,
@@ -140,6 +142,16 @@ def test_validate_commands_rejects_when_any_command_is_dangerous():
     """validate_commands 必须在任一命令高危时整批拒收。"""
     with pytest.raises(BaseAppException, match="高危操作"):
         validate_commands("show version\nwrite erase\ndisplay version")
+
+
+def test_http_header_commands_roundtrip_without_control_chars():
+    raw = "show running-config\nshow version"
+    encoded = encode_http_header_commands(raw)
+    assert encoded.startswith("b64:")
+    assert "\n" not in encoded
+    assert "\r" not in encoded
+    assert decode_http_header_commands(encoded) == raw
+    assert decode_http_header_commands(raw) == raw
 
 
 # ---------------------------------------------------------------------------

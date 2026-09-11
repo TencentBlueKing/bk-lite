@@ -230,6 +230,8 @@ class AlertSourceAdapter(ABC):
                 # 丰富在 Event 实例化前执行，因此需先补齐规则可选的告警源字段。
                 data["source_id"] = self.alert_source.source_id
                 data["source_name"] = getattr(self.alert_source, "name", "")
+                data["content"] = data.get("description")
+                data["push_source_id"] = add_event.get("push_source_id") or data.get("push_source_id") or add_event.get("source_id") or "default"
                 data.setdefault("enrichment", {})
                 event_dicts.append((data, add_event, event_index))
             except InvalidMonitorIdentity as exc:
@@ -272,6 +274,7 @@ class AlertSourceAdapter(ABC):
                 # 告警源标识仅用于丰富规则上下文；source 外键由 add_base_fields 赋值。
                 data.pop("source_id", None)
                 data.pop("source_name", None)
+                data.pop("content", None)
                 event = Event(**data)
                 event._start_time_synthesized = synthesized
                 self.add_base_fields(event, add_event)

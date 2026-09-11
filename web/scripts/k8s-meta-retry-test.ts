@@ -150,6 +150,12 @@ const main = async () => {
   );
   assert.match(guideSource, /failed/, 'K8sGuide 必须有稳定失败态');
   assert.match(guideSource, /common\.retry/, '失败态必须提供显式重试');
+  assert.match(
+    guideSource,
+    /CompactEmptyState description=\{t\('integration\.k8sMetaLoadFailed'\)\}/,
+    '失败态必须走 CompactEmptyState',
+  );
+  assert.doesNotMatch(guideSource, /<Empty[\s>]/, 'K8sGuide 不得直接使用 antd Empty');
   assert.match(zhLocale, /"k8sMetaLoadFailed"/);
   assert.match(enLocale, /"k8sMetaLoadFailed"/);
   assert.doesNotMatch(

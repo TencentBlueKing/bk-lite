@@ -467,4 +467,8 @@ class CollectionService:
             import traceback
 
             logger.error(f"Error list_regions for {self.plugin_name or self.model_id}: {traceback.format_exc()}")
-            return {"result": [], "success": False, "message": str(e)}
+            message = str(e)
+            model_id = str(self.model_id or "").strip().lower()
+            if model_id == "aliyun" and ("TencentCloudSDKException" in message or "SecretIdNotFound" in message or "SecretId不存在" in message):
+                message = "AccessKey 无效或权限不足，请检查 AccessKey ID / AccessKey Secret"
+            return {"result": [], "success": False, "message": message}
