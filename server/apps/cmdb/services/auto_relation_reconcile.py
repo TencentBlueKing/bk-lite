@@ -13,6 +13,7 @@ from apps.cmdb.services.auto_relation_rule import (
     AutoRelationRule,
     parse_auto_relation_rule_set,
 )
+from apps.cmdb.services.model_graph_query import model_association_info_search, model_association_search
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
 
@@ -167,9 +168,7 @@ class AutoRelationRuleReconcileService:
 
     @classmethod
     def _list_enabled_rules_by_src_model(cls, model_id: str) -> list[tuple[dict, list[AutoRelationRule]]]:
-        from apps.cmdb.services.model import ModelManage
-
-        associations = ModelManage.model_association_search(model_id)
+        associations = model_association_search(model_id)
         result = []
         for association in associations:
             if association.get("src_model_id") != model_id:
@@ -185,9 +184,7 @@ class AutoRelationRuleReconcileService:
 
     @classmethod
     def _list_enabled_rule_ids_by_dst_model(cls, model_id: str) -> list[str]:
-        from apps.cmdb.services.model import ModelManage
-
-        associations = ModelManage.model_association_search(model_id)
+        associations = model_association_search(model_id)
         result = []
         for association in associations:
             if association.get("dst_model_id") != model_id:
@@ -506,9 +503,7 @@ class AutoRelationRuleReconcileService:
 
     @classmethod
     def full_sync_rule(cls, model_asst_id: str) -> dict:
-        from apps.cmdb.services.model import ModelManage
-
-        association = ModelManage.model_association_info_search(model_asst_id)
+        association = model_association_info_search(model_asst_id)
         rule_set = parse_auto_relation_rule_set(association.get(AUTO_RELATION_RULE_FIELD)) if association else None
         enabled_rules = [rule for rule in (rule_set.rules if rule_set else []) if rule.enabled]
         summary = {
