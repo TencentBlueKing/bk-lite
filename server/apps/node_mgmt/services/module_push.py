@@ -32,6 +32,13 @@ def normalize_push_targets(targets: list[str] | None) -> list[str]:
     return seen
 
 
+class CmdbLinkage:
+    """CMDB 联动客户端：本进程执行 ingest，避免 NATS RPC 超时三次后 skipped。"""
+
+    def ingest_from_source(self, **kwargs):
+        return CMDB(is_local_client=True).ingest_from_source(**kwargs)
+
+
 class MonitorLinkage:
     """监控联动客户端：本进程执行 Monitor ingest，避免 NATS handler 再嵌套调 NodeMgmt。"""
 
@@ -335,7 +342,7 @@ class ModulePushService:
             if target == "cmdb":
                 status = cls._push_with_retries(
                     target="cmdb",
-                    push_fn=lambda env=envelope: CMDB().ingest_from_source(
+                    push_fn=lambda env=envelope: CmdbLinkage().ingest_from_source(
                         **env,
                         allowed_org_ids=allowed_org_ids,
                         operator=operator,
@@ -399,7 +406,7 @@ class ModulePushService:
             if target == "cmdb":
                 status = cls._push_with_retries(
                     target="cmdb",
-                    push_fn=lambda: CMDB().ingest_from_source(
+                    push_fn=lambda: CmdbLinkage().ingest_from_source(
                         **envelope,
                         allowed_org_ids=allowed_org_ids,
                         operator=operator,
@@ -493,7 +500,7 @@ class ModulePushService:
         for target, push_fn in (
             (
                 "cmdb",
-                lambda: CMDB().ingest_from_source(
+                lambda: CmdbLinkage().ingest_from_source(
                     **envelope,
                     allowed_org_ids=allowed_org_ids,
                     operator=operator,
