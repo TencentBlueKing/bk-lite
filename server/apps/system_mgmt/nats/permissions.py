@@ -38,11 +38,15 @@ def _prepare_user_rules_query(group_id, username, domain, app, include_children=
     all_role_ids = get_user_all_roles(user_obj)
     is_admin = bool(set(all_role_ids).intersection(admin_list))
 
-    # 获取查询的组ID列表（包含子组）
+    # 获取查询的组ID列表（包含子组）。管理员在选中组织内拥有完整子树权限；
+    # 普通用户仍需按其持久化组织授权裁剪，避免扩大数据范围。
     query_group_ids = []
     if include_children:
-        # 使用优化后的单次查询方法替代 N+1 的 get_all_child_groups
-        query_group_ids = GroupUtils.get_group_with_descendants_filtered(int(group_id), group_list=user_obj.group_list)
+        if is_admin:
+            query_group_ids = GroupUtils.get_group_with_descendants(int(group_id))
+        else:
+            # 使用优化后的单次查询方法替代 N+1 的 get_all_child_groups
+            query_group_ids = GroupUtils.get_group_with_descendants_filtered(int(group_id), group_list=user_obj.group_list)
 
     query_group_ids.append(int(group_id))
     query_group_ids = list(set(query_group_ids))
