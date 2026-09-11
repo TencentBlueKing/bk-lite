@@ -507,15 +507,7 @@ _EXPECTED_CMDB_MODEL_TO_MONITOR_OBJECT = {
     "minio": "Minio",
     "etcd": "Etcd",
     "haproxy": "Haproxy",
-    "docker": "Docker",
-    "k8s_cluster": "Cluster",
-    "k8s_node": "Node",
-    "k8s_pod": "Pod",
-    "vmware_vc": "vCenter",
-    "vmware_esxi": "ESXI",
-    "vmware_vm": "VM",
-    "vmware_ds": "DataStorage",
-    "qcloud_cvm": "CVM",
+    "docker": "Docker Container",
 }
 
 
@@ -536,6 +528,48 @@ def test_cmdb_model_to_monitor_object_values_exist_in_plugins():
     assert missing == []
 
 
+@pytest.mark.django_db
+def test_cmdb_uncredentialed_docker_does_not_claim_by_host_ip(db):
+    obj = MonitorObject.objects.create(name="Docker Container", display_name="Docker容器", level="base")
+    existing = MonitorInstance.objects.create(
+        id="('docker-a',)",
+        name="other-container",
+        monitor_object=obj,
+        ip="10.0.0.8",
+    )
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="d-uuid",
+            link_ids={"cmdb_id": "d-uuid"},
+            raw={"ip": "10.0.0.8", "name": "web-1", "model_id": "docker", "organization_ids": [1]},
+        )
+    )
+    assert result["id"] is None
+    existing.refresh_from_db()
+    assert existing.cmdb_id in (None, "")
+
+
+@pytest.mark.django_db
+def test_cmdb_uncredentialed_docker_claims_by_unique_name(db):
+    obj = MonitorObject.objects.create(name="Docker Container", display_name="Docker容器", level="base")
+    existing = MonitorInstance.objects.create(
+        id="('docker-web',)",
+        name="web-1",
+        monitor_object=obj,
+        ip="10.0.0.8",
+    )
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="d-uuid",
+            link_ids={"cmdb_id": "d-uuid"},
+            raw={"ip": "10.0.0.8", "name": "web-1", "model_id": "docker", "organization_ids": [1]},
+        )
+    )
+    assert result["id"] == existing.id
+
+
 def test_unmatchable_cmdb_models_are_not_mapped():
     for model_id in (
         "weblogic",
@@ -546,7 +580,10 @@ def test_unmatchable_cmdb_models_are_not_mapped():
         "aliyun_ecs",
         "redis_sentinel",
         "docker_container",
+        "k8s_cluster",
         "k8s_namespace",
+        "vmware_vc",
+        "qcloud_cvm",
         "qcloud",
         "sangforscp",
         "pc",

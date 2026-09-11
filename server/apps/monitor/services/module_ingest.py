@@ -1,6 +1,6 @@
 """跨模块推送写入监控：按 node_id → cmdb_id → 类型身份 → 同名 归并 upsert。
 
-类型身份：主机为 IP+云区域 → 唯一 IP；其它对象（含网络设备）为唯一 IP，不看云区域。
+类型身份：主机为 IP+云区域 → 唯一 IP；Docker 只按唯一实例名；其它对象（含网络设备）为唯一 IP，不看云区域。
 节点来源创建/补采集必须命中 Host + Telegraf 主机模板；找不到或套用失败则整次失败。
 """
 
@@ -13,6 +13,7 @@ from typing import Any
 
 from django.db import transaction
 
+from apps.cmdb.constants.monitor_link import CMDB_MODEL_TO_MONITOR_OBJECT
 from apps.core.logger import monitor_logger as logger
 from apps.monitor.models import CollectConfig, MonitorInstance, MonitorInstanceOrganization, MonitorObject
 from apps.monitor.utils.dimension import normalize_instance_identity
@@ -44,44 +45,6 @@ CMDB_CREATE_ADAPTED_MODEL_IDS = frozenset(
 
 # CMDB 带凭据创建资产+默认策略路径：默认关闭，避免节点创建钩子突然建监控。
 CMDB_CREDENTIAL_CREATE_ENABLED = False
-
-# CMDB 内置 model_id → 监控对象 name。只收能一对一落到现有插件对象的模型；
-# 无对应监控对象（WebLogic/存储/云账号等）不进表，类型身份认领会跳过。
-CMDB_MODEL_TO_MONITOR_OBJECT = {
-    "host": HOST_OBJECT_NAME,
-    "switch": "Switch",
-    "router": "Router",
-    "firewall": "Firewall",
-    "loadbalance": "Loadbalance",
-    "physcial_server": "Hardware Server",
-    "mysql": "Mysql",
-    "postgresql": "Postgres",
-    "mssql": "MSSQL",
-    "influxdb": "InfluxDB",
-    "oracle": "Oracle",
-    "redis": "Redis",
-    "mongodb": "MongoDB",
-    "es": "ElasticSearch",
-    "apache": "Apache",
-    "tomcat": "Tomcat",
-    "nginx": "Nginx",
-    "rabbitmq": "RabbitMQ",
-    "kafka": "Kafka",
-    "zookeeper": "Zookeeper",
-    "activemq": "ActiveMQ",
-    "minio": "Minio",
-    "etcd": "Etcd",
-    "haproxy": "Haproxy",
-    "docker": "Docker",
-    "k8s_cluster": "Cluster",
-    "k8s_node": "Node",
-    "k8s_pod": "Pod",
-    "vmware_vc": "vCenter",
-    "vmware_esxi": "ESXI",
-    "vmware_vm": "VM",
-    "vmware_ds": "DataStorage",
-    "qcloud_cvm": "CVM",
-}
 
 # 扫描 / 带凭据创建按插件名查询，禁止写死数字 ID。名称与 builtin metrics.json 对齐。
 CMDB_MODEL_TO_MONITOR_PLUGIN = {
@@ -1098,7 +1061,7 @@ class MonitorModuleIngestService:
 
     @classmethod
     def _find_by_type_identity(cls, raw: dict[str, Any]) -> MonitorInstance | None:
-        """ID 之后的类型身份：主机 IP+云区域 → 唯一 IP；其它对象唯一 IP。最后由调用方再走同名。"""
+        """ID 之后的类型身份：主机 IP+云区域 → 唯一 IP；Docker 只按唯一实例名；其它对象唯一 IP。"""
         model_id = cls._resolve_cmdb_model_id(raw)
         object_name = CMDB_MODEL_TO_MONITOR_OBJECT.get(model_id)
         ip = cls._extract_ip(raw)
@@ -1111,7 +1074,8 @@ class MonitorModuleIngestService:
             if claimed is not None:
                 return claimed
 
-        if ip:
+        # Docker 容器与宿主机同 IP；按 IP 认领会误绑引擎/其它容器，只认唯一实例名。
+        if ip and model_id != "docker":
             claimed = cls._find_by_unique_ip(object_name, ip=ip)
             if claimed is not None:
                 return claimed
