@@ -293,21 +293,21 @@ async def _merge_async_streams(
             raise langgraph_error
 
     finally:
-        # 清理: 设置停止信号并取消任务
+        # 父流结束后统一收口所有子任务，避免断连时继续等待 LangGraph 自然结束。
         stop_event.set()
-        browser_task.cancel()
+        child_tasks = (langgraph_task, browser_task)
+        cancelled_by_cleanup = set()
+        for child_task in child_tasks:
+            if not child_task.done():
+                cancelled_by_cleanup.add(child_task)
+                child_task.cancel()
 
-        # 等待任务完成。旧逻辑 `except Exception: pass` 会吞掉轻量直答/节点内
-        # LLM 失败，表现为 RUN_STARTED→RUN_FINISHED、无正文、llm_call_count=0。
-        try:
-            await langgraph_task
-        except Exception as e:
-            langgraph_error = e
-
-        try:
-            await browser_task
-        except asyncio.CancelledError:
-            pass
+        task_results = await asyncio.gather(*child_tasks, return_exceptions=True)
+        langgraph_result = task_results[0]
+        if isinstance(langgraph_result, asyncio.CancelledError) and langgraph_task not in cancelled_by_cleanup:
+            raise langgraph_result
+        if langgraph_error is None and isinstance(langgraph_result, Exception):
+            langgraph_error = langgraph_result
 
     if langgraph_error is not None:
         raise langgraph_error
