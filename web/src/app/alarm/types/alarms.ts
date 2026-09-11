@@ -43,6 +43,8 @@ export interface NotifyRecord {
 }
 
 export interface AlarmTableDataItem {
+  push_source_ids?: string[];
+  source_names?: string[];
   id: number;
   event_count: number;
   duration: string;

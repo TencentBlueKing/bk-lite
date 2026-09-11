@@ -28,6 +28,7 @@ class TestWikiKBViews:
         assert resp.status_code == 200
         keys = {t["key"] for t in self._data(resp)}
         assert "ops_qa" in keys and "general" in keys
+        assert "okf_bundle" not in keys
 
     def test_generate_purpose_schema_endpoint_fallback(self, api_client):
         resp = api_client.post(

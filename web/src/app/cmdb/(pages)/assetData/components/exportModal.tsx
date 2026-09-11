@@ -20,6 +20,7 @@ import {
   ExportModalConfig,
   ExportModalRef,
 } from '@/app/cmdb/types/assetData';
+import { downloadBlobFile } from './exportDownload';
 
 const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
   ({ assoTypes }, ref) => {
@@ -217,12 +218,7 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
         const blob = new Blob([response.data], {
           type: response.headers['content-type'] as string,
         });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = `${modelId}${t('Model.assetList')}.xlsx`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        downloadBlobFile(blob, `${modelId}${t('Model.assetList')}.xlsx`);
 
         message.success(t('Model.exportSuccess'));
         setVisible(false);

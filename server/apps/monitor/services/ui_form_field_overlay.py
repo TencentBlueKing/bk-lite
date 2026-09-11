@@ -32,7 +32,7 @@ def overlay_form_field_help_from_plugin_files(content: dict | None, plugin: Moni
     """用当前插件 UI.json 覆盖 form_fields 的 description/placeholder。
 
     按字段 name 只对齐「同一个插件」的磁盘文案，不会把 Windows WMI 的
-    domain\\user 套到 Host AIX Remote 或 Host Remote。
+    domain\\user 套到 Host AIX Remote、Host FreeBSD Remote、Host HP-UX Remote、Host Solaris Remote 或 Host Remote。
     """
     if content is None or not plugin or not isinstance(content, dict):
         return content

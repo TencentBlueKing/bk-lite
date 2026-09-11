@@ -245,6 +245,8 @@ export const usePluginFromJson = () => {
           {
             loading?: boolean;
             onRefresh?: () => void;
+            refreshTip?: string;
+            multiple?: boolean;
           }
         >;
       }

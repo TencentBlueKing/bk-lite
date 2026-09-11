@@ -15,6 +15,7 @@ import { InboxOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import { useAuth } from '@/context/auth';
 import { useSession } from 'next-auth/react';
+import { downloadImportTemplate } from './importTemplateDownload';
 
 interface FieldModalProps {
   onSuccess: () => void;
@@ -77,14 +78,7 @@ const ImportInst = forwardRef<FieldModalRef, FieldModalProps>(
         const blob = new Blob([response.data], {
           type: response.headers['content-type'] as string,
         });
-        // 创建一个下载链接
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = `${modelId}导入模板.xlsx`; // 设置下载文件的名称
-        document.body.appendChild(link);
-        link.click();
-        // 移除下载链接
-        document.body.removeChild(link);
+        downloadImportTemplate(blob, `${modelId}导入模板.xlsx`);
       } catch (error: any) {
         message.error(error.message);
       } finally {

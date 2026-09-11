@@ -331,6 +331,7 @@ export interface PlaybookFilePreview {
 // Scheduled Task types
 export type JobType = 'script' | 'playbook' | 'file';
 export type ScheduleType = 'once' | 'cron';
+export type ScheduledTaskConcurrencyPolicy = 'skip' | 'run' | 'queue';
 
 export interface ScheduledTask {
   id: number;
@@ -394,6 +395,7 @@ export interface ScheduledTaskFormData {
   target_path?: string;
   timeout?: number;
   is_enabled?: boolean;
+  concurrency_policy?: ScheduledTaskConcurrencyPolicy;
   team?: number[];
 }
 

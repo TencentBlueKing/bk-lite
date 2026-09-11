@@ -16,6 +16,7 @@
 - **UI**：antd v5 + echarts + @antv/g6/x6（拓扑/图）。
 - **本轮功能面扩展**【已实现/已存在】：`alarm` 新增告警丰富、告警处理、执行记录三组设置页；`system-manager` 新增内网白名单页；`ops-analysis` 新增大屏、报表与网络状态拓扑组件入口；`monitor` 集成页新增采集探测任务与资产视图路由组装。
 - **运营分析分享壳层【已实现】**：`/ops-analysis/share/*` 隐藏平台顶栏与全局助手，左侧导航沿用 chrome exception；产品内 `/ops-analysis/view` 保持完整壳层。证据：`web/src/console-layout/resolve.ts`、`web/src/app/layout.tsx`、`web/src/app/(core)/components/global-webchat/visibility.ts`。
+- **控制台 iframe 屏显模式【本阶段已实现】**：查询参数 `screen=true`（`true`/`1`）隐藏顶栏、一级/二级壳层导航、全局 AI，以及业务自挂的路由级侧栏/分段；运营分析 view 另藏目录侧栏。合同内主路径与 OA 同站跨模块出口经 `useScreenAwareRouter` / `applySameOriginNavigation` 透传 `screen`；屏显下同站动作优先同框。对象树与页内 Tab 不藏。屏显高度链（外层 `h-screen`、main 满高、`data-console-screen-workspace` 为默认滚动口）已收口，不并入分享整页锁。alarm/job/apm/mlops 全量清扫与服务端 `redirect()` 仍延期。证据：`web/src/console-layout/{screenMode.ts,useScreenAwareRouter.ts,resolve.ts}`、`web/src/components/sub-layout/index.tsx`、`web/src/components/layout/sub-layout/index.tsx`、`web/src/app/layout.tsx`、`docs/operations/console-iframe-screen-mode.md`。
 - **构建与资源准备契约**：生产构建经显式入口串行完成企业扩展路由、语言包与菜单汇总、公共资源复制后再启动 Next.js 构建；任一准备步骤失败即中止，不再由框架配置加载时隐式触发副作用。生产类型检查使用面向交付代码的独立配置，排除脚本、端到端用例、故事与单元测试等非交付范围。
 
 > 证据来源：web/src/context/auth.tsx:78-108,339-393,496-567；web/src/context/__tests__/authColdStart.test.tsx:132-193；web/src/app/routeScope.ts:1-6；web/src/app/(core)/api/locales/route.ts:91-120；web/src/context/locale.tsx:45-64；web/src/components/time-selector/index.tsx:20-35,72-100,145-148；web/src/stories/time-selector.stories.tsx:55-72　|　同步基线：b98b782a7　|　【已实现】
@@ -61,6 +62,26 @@
 - `frequenceValue` / `onFrequenceChange` 为已被多处调用的历史拼写兼容接口；其语义已稳定，但改名会破坏调用方，作为兼容性风险记录，不建议直接改名【风险】。
 
 > 证据来源：web/src/context/auth.tsx:90,107-108,462-524,537-567；web/src/context/__tests__/authColdStart.test.tsx:132-193；web/src/components/time-selector/index.tsx:20-35,72-100,145-148；web/src/app/ops-analysis/(pages)/view/dashBoard/components/dashboardToolbar.tsx:72-76；web/src/app/ops-analysis/(pages)/view/screen/components/screenToolbar.tsx:64-68；web/src/app/ops-analysis/(pages)/view/topology/components/toolbar.tsx:166-170；web/src/app/ops-analysis/(pages)/view/networkTopology/components/networkToolbar.tsx:134-138　|　同步基线：b98b782a7　|　【已实现/待确认】
+
+## 2026-09-09 控制台 iframe 屏显模式
+
+- `[frontend#20260909-001]` Control Console 支持 `?screen=true` 屏显：隐藏平台壳层导航与全局 AI，保留业务页；URL 为权威来源，登录回跳可短时恢复参数。证据：`web/src/console-layout/screenMode.ts`、`web/src/app/layout.tsx`、`docs/operations/console-iframe-screen-mode.md`。
+
+## 2026-09-10 屏显运营分析牵头；高度延期
+
+- `[frontend#20260910-001]` 运营分析屏显藏目录。当时高度对齐延期。透传范围见 `[frontend#20260910-003]`。证据：`web/src/app/layout.tsx`、`docs/operations/console-iframe-screen-mode.md`。
+
+## 2026-09-11 屏显高度链收口
+
+- `[frontend#20260911-001]` 屏显 S1：外层 `h-screen`（非整页 `overflow-hidden`）、main `min-h-0 h-full` 并设 `--custom-height: 100%`、workspace 为唯一默认滚动口。不把 `screenMode` 并进 `lockConsoleViewport`。证据：`web/src/app/layout.tsx`、`web/src/console-layout/__tests__/appTopOverflow.test.ts`、`docs/operations/console-iframe-screen-mode.md`、`specs/changes/console-iframe-screen-height/spec.md`。
+
+## 2026-09-10 屏显隐藏路由级业务侧栏
+
+- `[frontend#20260910-002]` 屏显下 `WithSideMenuLayout`（两份）、CMDB 资产详情 fork、应用管理自挂 `SideMenu` 隐藏侧栏/分段并保留 TopSection；OA settings 改走组件收口。对象树不藏。证据：`web/src/components/sub-layout/index.tsx`、`web/src/components/layout/sub-layout/index.tsx`、`web/src/app/cmdb/(pages)/assetData/components/sub-layout/index.tsx`、`web/src/app/system-manager/(pages)/application/manage/layout.tsx`、`web/src/app/ops-analysis/(pages)/settings/layout.tsx`。
+
+## 2026-09-10 屏显合同内透传
+
+- `[frontend#20260910-003]` 新增 `useScreenAwareRouter` / `applyScreenAwareHref` / `resolveSameOriginNavigation`；合同内八模块主路径、壳层残留与 OA 同站跨模块出口透传 `screen`，屏显下同站动作优先同框。登录 backup 仍只服务回跳。alarm/job/apm/mlops 与服务端 `redirect()` 为已知缺口。证据：`web/src/console-layout/{screenMode.ts,useScreenAwareRouter.ts}`、`docs/operations/console-iframe-screen-mode.md`。
 
 ## 2026-07-01 Code-ARD 校准
 - `[frontend#20260701-030]` 补录 webchat monorepo、Core/UI/Demo、会话持久化、SSE、自定义 header fetch、状态机、AG-UI 事件桥接、UMD 构建和 Next demo 入口。

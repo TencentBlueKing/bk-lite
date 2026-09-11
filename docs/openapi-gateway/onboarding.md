@@ -32,7 +32,7 @@ BK-Lite 统一网关把对外 API 收口到 `https://<平台地址>/openapi/v1/<
 | --- | --- |
 | 服务可达 | 被接入服务与 BK-Lite 在同一 compose / K8s 网络内，Traefik 能以 `base_url` 直连 |
 | 服务名 | 满足 `^[a-z][a-z0-9-]{0,31}$`；下划线开头为网关保留（`_me`、`_docs`、`_auth`、`_provider`） |
-| 允许清单 | `base_url` 的主机必须落在 `OPENAPI_BASEURL_ALLOWLIST` 内，**缺省为空即拒绝一切**（fail-closed） |
+| 允许清单 | `base_url` 的主机必须在允许清单内（DB 侧用 `manage.py openapi_allowlist` 维护，或存量的 `OPENAPI_BASEURL_ALLOWLIST` 环境变量），**缺省为空即拒绝一切**（fail-closed） |
 | 身份传递方式 | 二选一，见第 3 节 |
 | 网络封锁 | 接入后必须封锁该服务的直连端口，否则统一认证 / 审计 / 限流可被绕过 |
 | 客户端工具 | 操作机需有 `docker compose`（v2 语法）、`jq`、`curl`；`wxc` 需为**含 `openapi` 子命令的版本**（`wxc openapi --help` 能出帮助即可），离线环境随部署包分发 |
@@ -42,14 +42,56 @@ BK-Lite 统一网关把对外 API 收口到 `https://<平台地址>/openapi/v1/<
 
 ## 2. 接入四步
 
-### 步骤 1：配置允许清单与密钥（server 侧 env）
+### 步骤 1：配置允许清单与密钥
+
+密钥有两种存放方式，注册条目里用不同前缀引用，可按服务各自选择：
+
+| 方式 | 引用写法 | 生效 | 轮转 | 适用 |
+| --- | --- | --- | --- | --- |
+| **系统管理凭据（推荐）** | `credential:<凭据ID>` | 建好凭据即可引用，**无需重建 server** | 页面改值，一个拉取周期内生效 | 常规内网系统 |
+| server 环境变量 | `env:<变量名>` | 需透传并重建 server | 改 `.env` 并重建 server | 需与平台数据库隔离的高敏密钥 |
+
+两种方式安全水位不同：凭据方式的明文以平台 `SECRET_KEY` 加密落库，与系统管理里其它凭据
+同级；环境变量方式只存在于 server 容器环境。允许清单 `OPENAPI_BASEURL_ALLOWLIST`
+不论哪种方式都必须配在 server 环境里。
+
+**方式 A：系统管理凭据**
+
+1. 系统管理 → 凭据 → 新建，类型选「OpenAPI 网关密钥」，密钥字段填 32 位随机串，
+   归属组织任选（网关按凭据 ID 引用，不做组织范围检查）；
+2. 记下凭据 ID（形如 `crd-gateway_secret-<hex>`），步骤 2 写
+   `"shared_secret_ref": "credential:crd-gateway_secret-<hex>"`；
+3. 允许清单仍按下方方式 B 的第一条配置并重建 server（仅首次接入需要）。
+
+若复用其它类型的凭据，且该类型有多个 secret 字段，需用 `#` 指定字段：
+`credential:<凭据ID>#<字段ID>`。凭据被禁用或删除后该服务条目会被渲染器跳过（fail-closed），
+调用返回 404。
+
+**方式 B：server 环境变量**
 
 在部署目录的 `.env` 中配置，然后重建 server 容器：
+
+**允许清单**（`base_url` 的主机必须在清单内，否则条目被渲染器跳过）有两处来源，
+取并集。新增主机走 DB，**不需要重建 server**：
+
+```bash
+# 查看两侧清单
+docker compose exec server python manage.py openapi_allowlist list
+
+# 新增 / 移除；下一个拉取周期内生效
+docker compose exec server python manage.py openapi_allowlist add itsm-svc
+docker compose exec server python manage.py openapi_allowlist remove itsm-svc
+```
+
+主机名支持前导点表示按点边界的后缀匹配（`.internal` 放行 `svc.internal`）；
+`itsm-svc` 不会放行 `evil-itsm-svc`。单独的 `*` 放行一切，仅限排障，勿用于生产。
+
+环境变量 `OPENAPI_BASEURL_ALLOWLIST` 为存量方式，改动需重建 server，已配置的继续有效：
 
 ```bash
 cd /opt/bk-lite/deploy/docker-compose-ha   # 单机栈为 .../docker-compose
 
-# 允许清单：逗号分隔的主机名或 IP；后缀匹配按点边界（itsm-svc 不会放行 evil-itsm-svc）
+# 逗号分隔的主机名或 IP
 echo 'OPENAPI_BASEURL_ALLOWLIST=itsm-svc,10.10.24.11' >> .env
 
 # 共享密钥（信任头模式用）。变量名自定，注册条目里以 env: 引用它
@@ -133,7 +175,7 @@ done
 | `strip_prefix` | 否 | 默认 `true`：转发前去掉 `/openapi/v1/<服务名>` 前缀 |
 | `paths` | 否 | 接口级白名单（`/x/*` 形式）；**省略表示该前缀下全部路径都被反代** |
 | `auth_mode` | 是 | `trusted-header` 或 `service-token`，见第 3 节 |
-| `shared_secret_ref` | 条件 | `trusted-header` 模式必填，形如 `env:VAR`，**只存引用不存明文** |
+| `shared_secret_ref` | 条件 | `trusted-header` 模式必填，形如 `credential:<凭据ID>` 或 `env:VAR`，**只存引用不存明文** |
 | `token_ref` | 条件 | `service-token` 模式必填，同上 |
 | `required_roles` | 否 | 服务级粗粒度授权；**空数组 = 放行任意已认证身份** |
 | `rate_limit` | 否 | `{average, burst}`，按调用方分桶 |
@@ -358,8 +400,12 @@ docker logs --since 5m <traefik容器> 2>&1 | grep -i "provider error"
 | 现象 | 原因 | 处理 |
 | --- | --- | --- |
 | 步骤 1 中 `routers` 为空 | 条目被跳过 | 查 server 日志中 `openapi_registry 条目 X 被跳过：<原因>` |
-| 跳过原因 `base_url not in allowlist` | 允许清单未含该主机 | 补 `OPENAPI_BASEURL_ALLOWLIST` 并重建 server |
-| 跳过原因 `shared_secret_ref unresolvable` | server 容器内没有该 env | 见步骤 1 的透传配置 |
+| 跳过原因 `base_url not in allowlist` | 允许清单未含该主机 | `manage.py openapi_allowlist add <host>`，无需重建 server |
+| 日志 `openapi allowlist DB 不可达，沿用最近一次成功快照` | 渲染时数据库不可用 | 清单读不全时不下发收缩后的配置；DB 恢复后下次拉取自动生效 |
+| 跳过原因 `shared_secret_ref unresolvable (env var unset)` | server 容器内没有该 env | 见步骤 1 方式 B 的透传配置 |
+| 跳过原因 `... unresolvable (credential not_found / disabled)` | 凭据 ID 写错、已删除或已禁用 | 到系统管理 → 凭据核对 ID 与状态 |
+| 跳过原因 `... unresolvable (credential ambiguous_field)` | 所引用凭据类型有多个 secret 字段 | 改用 `credential:<ID>#<字段ID>` |
+| 跳过原因 `... unresolvable (credential lookup failed)` | 渲染时数据库不可用 | 查 server 日志 `failed_stage=credential_lookup`；DB 恢复后下次拉取自动生效 |
 | 步骤 2 中查不到 router | Traefik 未拉到配置 | 查步骤 3 的错误；注意 server 重启期间的 `connection refused` 属正常瞬时现象 |
 | `provider error` 报连接被拒 | server 未就绪 | 等待 server 启动完成，Traefik 会自动重试 |
 | **此前正常的外部服务突然全部 404** | 发生过 HA 主备切换，新主注册表为空 | 在新主执行 `wxc openapi list` 核对，缺失则重新 register（见步骤 3 的 HA 注意事项） |
@@ -408,7 +454,11 @@ docker exec "$(docker compose ps -q nats)" nats kv del openapi_registry <服务�
 
 **变更** `base_url` / `paths` / 限流 / 密钥引用：改条目重新 `register` 即可，一个拉取周期内生效，无需发版或重启（HA 栈仍需两端各做一次）。
 
-**共享密钥 / 服务令牌轮转**（`shared_secret_ref`、`token_ref` 指向的 env 值）：轮转**不是**改 KV 条目就能完成的，它需要重建 server 并与上游协同，属于有停顿窗口的操作：
+**共享密钥 / 服务令牌轮转**：
+
+- 引用为 `credential:` 时：在系统管理 → 凭据页改值，一个拉取周期内生效，server 不用重建。
+  仍需与上游协同（上游同时接受新旧密钥，或安排窗口），否则改值到上游切换之间调用会失败；
+- 引用为 `env:` 时：轮转**不是**改 KV 条目就能完成的，它需要重建 server 并与上游协同，属于有停顿窗口的操作：
 
 1. 与上游约定**双密钥并存窗口**（上游同时接受新旧两个密钥），无此能力则须安排停机窗口；
 2. 改 `.env` 中该变量的值；

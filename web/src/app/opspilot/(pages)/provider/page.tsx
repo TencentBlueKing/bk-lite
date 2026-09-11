@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import { Button, Input, message } from 'antd';
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useProviderApi } from '@/app/opspilot/api/provider';
@@ -20,7 +20,7 @@ interface VendorModalSubmitValues extends Omit<ModelVendorPayload, 'api_key'> {
 const { Search } = Input;
 
 const ProviderPage: React.FC = () => {
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const { t } = useTranslation();
   const { fetchVendors, createVendor, updateVendor, deleteVendor } = useProviderApi();
 

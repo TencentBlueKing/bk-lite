@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import base64
 import re
 from collections.abc import Iterable
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+
+HTTP_HEADER_COMMANDS_PREFIX = "b64:"
 
 SUPPORTED_NETWORK_CONFIG_MODELS = {"switch", "router", "firewall", "loadbalance"}
 
@@ -95,6 +98,23 @@ def get_supported_brand_options(locale: str | None = None) -> list[dict]:
         }
         for item in SUPPORTED_BRAND_OPTIONS
     ]
+
+
+def encode_http_header_commands(raw_commands: str | None) -> str:
+    """把多行命令编成 HTTP 头安全值：禁止 CR/LF，Telegraf 才能发出请求。"""
+    payload = base64.urlsafe_b64encode(str(raw_commands or "").encode("utf-8")).decode("ascii")
+    return f"{HTTP_HEADER_COMMANDS_PREFIX}{payload}"
+
+
+def decode_http_header_commands(raw_commands: str | None) -> str:
+    text = str(raw_commands or "")
+    if not text.startswith(HTTP_HEADER_COMMANDS_PREFIX):
+        return text
+    payload = text[len(HTTP_HEADER_COMMANDS_PREFIX) :]
+    try:
+        return base64.urlsafe_b64decode(payload.encode("ascii")).decode("utf-8")
+    except (ValueError, UnicodeDecodeError) as err:
+        raise ValueError("采集命令头编码无效") from err
 
 
 def split_commands(raw_commands: str | Iterable[str] | None) -> list[str]:

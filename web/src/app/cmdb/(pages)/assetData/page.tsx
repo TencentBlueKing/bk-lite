@@ -26,7 +26,8 @@ import {
   StarOutlined,
   UnorderedListOutlined,
 } from '@ant-design/icons';
-import { useSearchParams, usePathname, useRouter } from 'next/navigation';
+import { useSearchParams, usePathname } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import CustomTable from '@/components/custom-table';
 import GroupTreeSelector from '@/components/group-tree-select';
 import PermissionWrapper from '@/components/permission';
@@ -212,7 +213,7 @@ const AssetDataContent = () => {
     batchDeleteInstances,
   } = useInstanceApi();
   const { getCollectTaskNames } = useCollectApi();
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const assetModelId: string = searchParams.get('modelId') || '';

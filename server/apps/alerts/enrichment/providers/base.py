@@ -35,6 +35,12 @@ def register_provider(cls):
 
 
 def get_provider(provider_type: str) -> EnrichmentProvider:
+    if provider_type == "cmdb" and provider_type not in _REGISTRY:
+        # 在首次运行时加载内置源；不能依赖其他模块碰巧导入装饰器完成注册。
+        from apps.alerts.enrichment.providers.cmdb import CMDBProvider
+
+        if provider_type not in _REGISTRY:
+            register_provider(CMDBProvider)
     if provider_type not in _REGISTRY:
         raise KeyError(f"未注册的 provider_type: {provider_type}")
     return _REGISTRY[provider_type]

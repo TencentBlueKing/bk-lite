@@ -35,6 +35,7 @@ import {initToolCallTooltips} from './toolCallRenderer';
 import { stripPlannedExecutionDumps } from './plannedExecutionPayload';
 import ContextUsageRing from './ContextUsageRing';
 import type { LlmContextUsage } from './llmContextUsage';
+import ImageBlobPreview from './ImageBlobPreview';
 
 const normalizeThinkingText = (value?: string) => {
   if (!value) return '';
@@ -901,31 +902,19 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
       <div className="relative rounded-xl border border-[var(--color-border-1)] bg-[var(--color-bg)] transition-all focus-within:border-[var(--color-primary)] focus-within:ring-2 focus-within:ring-[var(--color-primary-bg-active)]">
         {imageList.length > 0 && (
           <div className="flex flex-wrap gap-2 p-2.5 pb-0">
-            {imageList.map((file) => {
-              const previewUrl = file.originFileObj && typeof window !== 'undefined'
-                ? URL.createObjectURL(file.originFileObj)
-                : '';
-
-              return (
-                <div key={file.uid} className="relative group rounded-lg overflow-hidden border border-[var(--color-border-1)] bg-[var(--color-bg)]">
-                  {previewUrl && (
-                    <img
-                      src={previewUrl}
-                      alt={file.name}
-                      className="w-14 h-14 object-cover"
-                    />
-                  )}
-                  <button
-                    type="button"
-                    className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-black/60 text-white text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={() => setImageList(imageList.filter(item => item.uid !== file.uid))}
-                    aria-label="删除图片"
-                  >
-                    ×
-                  </button>
-                </div>
-              );
-            })}
+            {imageList.map((file) => (
+              <div key={file.uid} className="relative group rounded-lg overflow-hidden border border-[var(--color-border-1)] bg-[var(--color-bg)]">
+                <ImageBlobPreview file={file} />
+                <button
+                  type="button"
+                  className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-black/60 text-white text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={() => setImageList(imageList.filter(item => item.uid !== file.uid))}
+                  aria-label="删除图片"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
           </div>
         )}
 

@@ -26,6 +26,37 @@ describe('global webchat visibility', () => {
     expect(isGlobalWebchatExcludedPath('/monitor/dashboard')).toBe(false);
   });
 
+  it('hides on screen mode even when the path is otherwise eligible', () => {
+    expect(
+      shouldMountGlobalWebchat({
+        authenticated: true,
+        clientLoading: false,
+        hasOpsPilotAccess: true,
+        pathname: '/ops-analysis/view',
+        screenMode: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldKeepGlobalWebchat({
+        authenticated: true,
+        clientLoading: false,
+        hasOpsPilotAccess: true,
+        pathname: '/cmdb/assetOverview',
+        alreadyMounted: true,
+        screenMode: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldMountGlobalWebchat({
+        authenticated: true,
+        clientLoading: false,
+        hasOpsPilotAccess: true,
+        pathname: '/ops-analysis/view',
+        screenMode: false,
+      }),
+    ).toBe(true);
+  });
+
   it('waits for client loading and OpsPilot access before mounting', () => {
     expect(
       shouldMountGlobalWebchat({

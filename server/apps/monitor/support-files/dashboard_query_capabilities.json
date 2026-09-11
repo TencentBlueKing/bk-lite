@@ -781,13 +781,6 @@
       "template": "mysql_variables_max_connections{__$labels__}"
     },
     {
-      "id": "dashboard:v1:1d08f9aa",
-      "object_names": [
-        "Host"
-      ],
-      "template": "max by (instance_id) (disk_used_percent{instance_type=\"os\", __$labels__} or host_disk_used_percent_gauge{instance_type=\"os\", __$labels__} or disk_used_percent_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__} or disk_used_percent_gauge{instance_type=\"os\", config_type=\"host_aix_remote\", __$labels__})"
-    },
-    {
       "id": "dashboard:v1:1d131c0f",
       "object_names": [
         "VLLM"
@@ -1348,6 +1341,13 @@
         "K3SNode"
       ],
       "template": "topk(5, sum by (pod) (rate(prometheus_remote_write_container_cpu_usage_seconds_total{instance_type=\"k3s\",__$labels__}[5m])))"
+    },
+    {
+      "id": "dashboard:v1:34ff1076",
+      "object_names": [
+        "Host"
+      ],
+      "template": "max by (instance_id) (disk_used_percent{instance_type=\"os\", __$labels__} or host_disk_used_percent_gauge{instance_type=\"os\", __$labels__} or disk_used_percent_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__} or disk_used_percent_gauge{instance_type=\"os\", config_type=~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__})"
     },
     {
       "id": "dashboard:v1:350832a9",
@@ -2847,20 +2847,6 @@
       "template": "clamp_max(100 * (docker_n_containers_stopped{__$labels__} / clamp_min(docker_n_containers{__$labels__}, 1)), 100)"
     },
     {
-      "id": "dashboard:v1:75766335",
-      "object_names": [
-        "Host"
-      ],
-      "template": "sum by (instance_id) (rate(diskio_write_bytes{instance_type=\"os\", __$labels__}[__$window__]) or rate(diskio_write_bytes_total_gauge{instance_type=\"os\", config_type!~\"host_aix.*\", __$labels__}[__$window__]) or rate(diskio_write_bytes_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}[__$window__]) or diskio_write_bytes_gauge{instance_type=\"os\", config_type=\"host_aix_remote\", __$labels__})"
-    },
-    {
-      "id": "dashboard:v1:75cd4c37",
-      "object_names": [
-        "Host"
-      ],
-      "template": "sum by (instance_id) (rate(diskio_read_bytes{instance_type=\"os\", __$labels__}[__$window__]) or rate(diskio_read_bytes_total_gauge{instance_type=\"os\", config_type!~\"host_aix.*\", __$labels__}[__$window__]) or rate(diskio_read_bytes_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}[__$window__]) or diskio_read_bytes_gauge{instance_type=\"os\", config_type=\"host_aix_remote\", __$labels__})"
-    },
-    {
       "id": "dashboard:v1:76ff4618",
       "object_names": [
         "Exchange"
@@ -3431,6 +3417,13 @@
       "template": "avg(net_response_result_code{__$labels__} == bool 3) * 100"
     },
     {
+      "id": "dashboard:v1:8f595b4a",
+      "object_names": [
+        "Host"
+      ],
+      "template": "(100 - cpu_usage_idle{cpu=\"cpu-total\", instance_type=\"os\", __$labels__}) or host_cpu_usage_percent_gauge{instance_type=\"os\", __$labels__} or cpu_usage_total_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__} or cpu_usage_total_gauge{instance_type=\"os\", config_type=~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__}"
+    },
+    {
       "id": "dashboard:v1:904bf908",
       "object_names": [
         "ElasticSearch"
@@ -3804,6 +3797,13 @@
       "template": "mysql_connection_errors_select{__$labels__}"
     },
     {
+      "id": "dashboard:v1:9f53d908",
+      "object_names": [
+        "Host"
+      ],
+      "template": "sum by (instance_id) (rate(diskio_write_bytes{instance_type=\"os\", __$labels__}[__$window__]) or rate(diskio_write_bytes_total_gauge{instance_type=\"os\", config_type!~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__}[__$window__]) or rate(diskio_write_bytes_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}[__$window__]) or diskio_write_bytes_gauge{instance_type=\"os\", config_type=~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__})"
+    },
+    {
       "id": "dashboard:v1:9f68dff6",
       "object_names": [
         "Consul"
@@ -4086,6 +4086,13 @@
       "template": "max by (instance_id) (minio_cluster_health_capacity_usable_total_bytes_gauge{__$labels__}) or max by (instance_id) (minio_cluster_capacity_usable_total_bytes_gauge{__$labels__})"
     },
     {
+      "id": "dashboard:v1:ae5d2ac6",
+      "object_names": [
+        "Host"
+      ],
+      "template": "sum by (instance_id) (rate(diskio_read_bytes{instance_type=\"os\", __$labels__}[__$window__]) or rate(diskio_read_bytes_total_gauge{instance_type=\"os\", config_type!~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__}[__$window__]) or rate(diskio_read_bytes_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}[__$window__]) or diskio_read_bytes_gauge{instance_type=\"os\", config_type=~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__})"
+    },
+    {
       "id": "dashboard:v1:af0b870f",
       "object_names": [
         "Postgres"
@@ -4217,13 +4224,6 @@
         "Mysql"
       ],
       "template": "rate(mysql_com_select{__$labels__}[__$window__])"
-    },
-    {
-      "id": "dashboard:v1:b4e40a82",
-      "object_names": [
-        "Host"
-      ],
-      "template": "mem_used_percent{instance_type=\"os\", __$labels__} or host_mem_used_percent_gauge{instance_type=\"os\", __$labels__} or mem_used_percent_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__} or mem_used_percent_gauge{instance_type=\"os\", config_type=\"host_aix_remote\", __$labels__}"
     },
     {
       "id": "dashboard:v1:b5430b18",
@@ -4891,13 +4891,6 @@
       "template": "100 * mysql_innodb_buffer_pool_pages_dirty{__$labels__} / clamp_min(mysql_innodb_buffer_pool_pages_total{__$labels__}, 1)"
     },
     {
-      "id": "dashboard:v1:cf22232a",
-      "object_names": [
-        "Host"
-      ],
-      "template": "(100 - cpu_usage_idle{cpu=\"cpu-total\", instance_type=\"os\", __$labels__}) or host_cpu_usage_percent_gauge{instance_type=\"os\", __$labels__} or cpu_usage_total_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__} or cpu_usage_total_gauge{instance_type=\"os\", config_type=\"host_aix_remote\", __$labels__}"
-    },
-    {
       "id": "dashboard:v1:cf85f24a",
       "object_names": [
         "Docker"
@@ -5127,6 +5120,13 @@
         "K3SCluster"
       ],
       "template": "topk(5, sum by (pod) (rate(prometheus_remote_write_container_cpu_usage_seconds_total{instance_type=\"k3s\",__$labels__}[__$window__])))"
+    },
+    {
+      "id": "dashboard:v1:db942c72",
+      "object_names": [
+        "Host"
+      ],
+      "template": "mem_used_percent{instance_type=\"os\", __$labels__} or host_mem_used_percent_gauge{instance_type=\"os\", __$labels__} or mem_used_percent_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__} or mem_used_percent_gauge{instance_type=\"os\", config_type=~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__}"
     },
     {
       "id": "dashboard:v1:dc244186",

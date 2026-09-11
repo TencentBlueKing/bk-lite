@@ -4,8 +4,10 @@
 """
 
 import json
+from datetime import timedelta
 
 import pytest
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
@@ -57,7 +59,30 @@ def test_assignment_create_writes_log(superuser):
     _render(response)
     assert response.status_code == status.HTTP_201_CREATED
     assert AlertAssignment.objects.filter(name="分派策略1").exists()
+    assert AlertAssignment.objects.get(name="分派策略1").priority == 100
     assert OperatorLog.objects.filter(operator_object="告警分派策略-创建").exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("priority", [-1, 101])
+def test_assignment_create_rejects_priority_outside_range(superuser, priority):
+    data = {
+        "name": f"非法优先级-{priority}",
+        "priority": priority,
+        "match_type": "all",
+        "match_rules": [],
+        "personnel": [],
+        "notify_channels": [],
+        "notification_scenario": [],
+        "config": {},
+        "notification_frequency": {},
+    }
+
+    request = _request("post", "/assignment/", superuser, data=data)
+    response = AlertAssignmentModelViewSet.as_view({"post": "create"})(request)
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert not AlertAssignment.objects.filter(name=data["name"]).exists()
 
 
 @pytest.mark.django_db
@@ -73,10 +98,28 @@ def test_assignment_list(superuser):
 
 
 @pytest.mark.django_db
+def test_assignment_list_defaults_to_dispatch_precedence(superuser):
+    high = AlertAssignment.objects.create(name="高优先级", match_type="all", priority=100)
+    low = AlertAssignment.objects.create(name="低优先级", match_type="all", priority=0)
+    now = timezone.now()
+    AlertAssignment.objects.filter(pk=high.pk).update(created_at=now - timedelta(days=1))
+    AlertAssignment.objects.filter(pk=low.pk).update(created_at=now)
+
+    request = _request("get", "/assignment/", superuser)
+    response = AlertAssignmentModelViewSet.as_view({"get": "list"})(request)
+    payload = _render(response)
+    data = payload["data"]
+    items = data["items"] if isinstance(data, dict) else data
+
+    assert [item["id"] for item in items] == [high.id, low.id]
+
+
+@pytest.mark.django_db
 def test_assignment_update_writes_log(superuser):
     obj = AlertAssignment.objects.create(name="a1", match_type="all")
     data = {
         "name": "a1-updated",
+        "priority": 0,
         "match_type": "all",
         "match_rules": [],
         "personnel": [],
@@ -91,6 +134,7 @@ def test_assignment_update_writes_log(superuser):
     assert response.status_code == status.HTTP_200_OK
     obj.refresh_from_db()
     assert obj.name == "a1-updated"
+    assert obj.priority == 0
     assert OperatorLog.objects.filter(operator_object="告警分派策略-修改").exists()
 
 

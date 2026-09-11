@@ -20,6 +20,11 @@ export const shouldHideConsoleTopNav = (pathname: string | null | undefined): bo
   );
 };
 
+export const shouldHideConsoleChrome = (
+  pathname: string | null | undefined,
+  screenMode = false,
+): boolean => screenMode || shouldHideConsoleTopNav(pathname);
+
 export const isConsoleChromeException = (pathname: string | null | undefined): boolean => {
   if (!pathname) {
     return false;

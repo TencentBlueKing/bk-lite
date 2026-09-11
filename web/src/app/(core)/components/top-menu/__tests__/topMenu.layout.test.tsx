@@ -12,10 +12,12 @@ vi.stubGlobal('ResizeObserver', ResizeObserverStub);
 
 let chromeLayout: 'classic' | 'app-top' = 'classic';
 let pathname = '/cmdb/assetOverview';
+let search = '';
 
 vi.mock('next/navigation', () => ({
   usePathname: () => pathname,
   useRouter: () => ({ push: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(search),
 }));
 
 vi.mock('@/utils/i18n', () => ({
@@ -87,6 +89,7 @@ afterEach(() => {
   cleanup();
   chromeLayout = 'classic';
   pathname = '/cmdb/assetOverview';
+  search = '';
 });
 
 describe('TopMenu chrome layouts', () => {
@@ -143,5 +146,27 @@ describe('TopMenu chrome layouts', () => {
     expect(screen.queryByAltText('logo')).toBeNull();
     expect(screen.queryByTestId('app-top-brand')).toBeNull();
     expect(screen.getByText('CMDB')).toBeTruthy();
+  });
+
+  it('forwards screen=true on classic menu links and omits it otherwise', () => {
+    render(<TopMenu />);
+    expect(screen.getByRole('link', { name: '视图' }).getAttribute('href')).toBe('/cmdb/assetOverview');
+
+    cleanup();
+    search = 'screen=true';
+    render(<TopMenu />);
+    expect(screen.getByRole('link', { name: '视图' }).getAttribute('href')).toBe(
+      '/cmdb/assetOverview?screen=true',
+    );
+    expect(screen.getByRole('link', { name: '搜索' }).getAttribute('href')).toBe(
+      '/cmdb/assetSearch?screen=true',
+    );
+  });
+
+  it('forwards screen=true on app-top same-tab app links', () => {
+    chromeLayout = 'app-top';
+    search = 'screen=true';
+    render(<TopMenu />);
+    expect(screen.getByRole('link', { name: 'CMDB' }).getAttribute('href')).toBe('/cmdb?screen=true');
   });
 });

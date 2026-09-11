@@ -8,7 +8,7 @@ import { PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 
 import { useCollectTypeInfo } from '@/app/log/hooks/integration/common/getCollectTypeConfig';
-import { useRouter } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import { CollectTypeItem } from '@/app/log/types/integration';
 import { TableDataItem, TreeItem } from '@/app/log/types';
 import Permission from '@/components/permission';
@@ -20,7 +20,7 @@ const Integration = () => {
   const { isLoading } = useApiClient();
   const { getCollectTypes, getDisplayCategoryEnum } = useIntegrationApi();
   const { t } = useTranslation();
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const { getIcon } = useCollectTypeInfo();
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const [searchText, setSearchText] = useState<string>('');

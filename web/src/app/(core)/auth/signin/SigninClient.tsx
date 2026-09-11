@@ -31,6 +31,7 @@ import {
 import { requestLegacyThirdLoginAuthorize } from "@/utils/legacyThirdLogin";
 import type { LoginAuthLoginResult } from "./login-auth/types";
 import { PORTAL_HOME_PATH } from "@/utils/route";
+import { isScreenModeEnabled, withScreenQuery } from "@/console-layout";
 
 interface SigninClientProps {
   searchParams?: {
@@ -39,6 +40,7 @@ interface SigninClientProps {
     third_login?: string;
     thirdLogin?: string;
     popup?: string;
+    screen?: string;
   };
   signinErrors?: Record<string | "default", string>;
   mode?: 'page' | 'modal';
@@ -117,6 +119,12 @@ export default function SigninClient({
   }, [mode]);
 
   const finishAuthentication = (targetUrl: string) => {
+    const nextUrl = withScreenQuery(
+      targetUrl,
+      isScreenModeEnabled(window.location.search),
+      window.location.origin,
+    );
+
     if (onAuthenticated) {
       onAuthenticated();
       return;
@@ -125,7 +133,7 @@ export default function SigninClient({
     if (isPopupWindowMode && window.opener && !window.opener.closed) {
       window.opener.postMessage({
         type: AUTH_POPUP_SUCCESS_MESSAGE,
-        targetUrl,
+        targetUrl: nextUrl,
       }, window.location.origin);
 
       window.setTimeout(() => {
@@ -134,7 +142,7 @@ export default function SigninClient({
       return;
     }
 
-    window.location.href = targetUrl;
+    window.location.href = nextUrl;
   };
 
   const applyOtpLoginResult = (otpLoginResult: LoginAuthLoginResult) => {

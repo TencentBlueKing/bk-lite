@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { AUTH_POPUP_SUCCESS_MESSAGE, buildThirdLoginCallbackUrl } from '@/utils/authRedirect';
+import { isScreenModeEnabled, withScreenQuery } from '@/console-layout';
 import { saveAuthToken } from '@/utils/crossDomainAuth';
 
 interface PopupAuthBridgeProps {
@@ -21,7 +22,11 @@ interface PopupAuthBridgeProps {
 
 export default function PopupAuthBridge({ callbackUrl, thirdLogin, user }: PopupAuthBridgeProps) {
   useEffect(() => {
-    const targetUrl = buildThirdLoginCallbackUrl(callbackUrl, user.token, thirdLogin);
+    const targetUrl = withScreenQuery(
+      buildThirdLoginCallbackUrl(callbackUrl, user.token, thirdLogin),
+      isScreenModeEnabled(window.location.search),
+      window.location.origin,
+    );
 
     if (user.token) {
       saveAuthToken({
