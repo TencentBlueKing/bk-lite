@@ -36,6 +36,7 @@ import { stripPlannedExecutionDumps } from './plannedExecutionPayload';
 import ContextUsageRing from './ContextUsageRing';
 import type { LlmContextUsage } from './llmContextUsage';
 import ImageBlobPreview from './ImageBlobPreview';
+import { useImeEnterGuard } from '@/app/opspilot/utils/imeKeyboard';
 
 const normalizeThinkingText = (value?: string) => {
   if (!value) return '';
@@ -138,6 +139,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   initialContextUsage = null,
 }) => {
   const { t } = useTranslation();
+  const imeEnterGuard = useImeEnterGuard();
 
   let session = null;
   try {
@@ -926,15 +928,18 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
             autoSize={{ minRows: 2, maxRows: 6 }}
             bordered={false}
             className="!p-0 text-[13px] leading-relaxed resize-none bg-transparent placeholder:text-[var(--color-text-4)] focus:shadow-none"
+            onCompositionStart={imeEnterGuard.onCompositionStart}
+            onCompositionEnd={imeEnterGuard.onCompositionEnd}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                if ((value.trim() || imageList.length > 0) && !loading) {
-                  const currentImages = [...imageList];
-                  setImageList([]);
-                  setValue('');
-                  handleSend(value, currentImages);
-                }
+              if (!imeEnterGuard.shouldSubmitOnEnter(e)) {
+                return;
+              }
+              e.preventDefault();
+              if ((value.trim() || imageList.length > 0) && !loading) {
+                const currentImages = [...imageList];
+                setImageList([]);
+                setValue('');
+                handleSend(value, currentImages);
               }
             }}
             onPaste={(event: React.ClipboardEvent) => {
