@@ -11,6 +11,21 @@ export const MONITOR_SYNC_MODEL_IDS = new Set([
   'postgresql',
   'mssql',
   'influxdb',
+  'oracle',
+  'redis',
+  'mongodb',
+  'es',
+  'apache',
+  'tomcat',
+  'nginx',
+  'rabbitmq',
+  'kafka',
+  'zookeeper',
+  'activemq',
+  'minio',
+  'etcd',
+  'haproxy',
+  'docker',
 ]);
 
 export const showNodeId = (modelId: string) => modelId === 'host';
@@ -32,4 +47,43 @@ export const resolveMonitorLinkMessage = (payload: MonitorLinkPayload | null | u
   if (status === 'not_found') return 'Model.systemLinkageSyncNotFound';
   if (status === 'conflict') return 'Model.systemLinkageSyncConflict';
   return 'Model.systemLinkageSyncFailed';
+};
+
+export interface BatchPushSummary {
+  total?: number;
+  ok?: number;
+  already_linked?: number;
+  not_found?: number;
+  conflict?: number;
+  failed?: number;
+  skipped_model?: number;
+}
+
+export type BatchPushMessageLevel = 'success' | 'warning' | 'error';
+
+const toCount = (value: unknown) => {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+};
+
+export const pickBatchPushCounts = (summary: BatchPushSummary | null | undefined) => {
+  const failed = toCount(summary?.failed) + toCount(summary?.skipped_model);
+  return {
+    ok: toCount(summary?.ok),
+    already_linked: toCount(summary?.already_linked),
+    not_found: toCount(summary?.not_found),
+    conflict: toCount(summary?.conflict),
+    failed,
+  };
+};
+
+export const resolveBatchPushSummaryLevel = (
+  summary: BatchPushSummary | null | undefined
+): BatchPushMessageLevel => {
+  const counts = pickBatchPushCounts(summary);
+  const good = counts.ok + counts.already_linked;
+  const problem = counts.not_found + counts.conflict + counts.failed;
+  if (good > 0 && problem === 0) return 'success';
+  if (good > 0 && problem > 0) return 'warning';
+  return 'error';
 };

@@ -344,6 +344,9 @@
         "systemLinkageSyncNotFound": "No matching monitor instance was found. Nothing was created. Push from node management or scan to start monitoring.",
         "systemLinkageSyncConflict": "This identity matches different monitor instances. Nothing was linked.",
         "systemLinkageSyncFailed": "Unable to sync monitoring. Try again later.",
+        "systemLinkageBatchSync": "Sync to monitor",
+        "systemLinkageBatchConfirm": "Sync {count} selected assets to monitor? This only links existing monitor objects and will not create new ones.",
+        "systemLinkageBatchSummary": "{ok} succeeded, {already_linked} already linked, {not_found} not found, {conflict} conflicted, {failed} failed",
         "changeRecords": "Change Records",
         "changeRecord": {
             "allChanges": "All Changes",

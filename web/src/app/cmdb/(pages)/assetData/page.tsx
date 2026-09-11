@@ -34,7 +34,14 @@ import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import RefreshIconButton from '@/components/refresh-icon-button';
 import { useTranslation } from '@/utils/i18n';
 import { useUserInfoContext } from '@/context/userInfo';
+import { useClientData } from '@/context/client';
 import { deepClone, getAssetColumns } from '@/app/cmdb/utils/common';
+import {
+  canSyncMonitor,
+  isMonitorSold,
+  pickBatchPushCounts,
+  resolveBatchPushSummaryLevel,
+} from '@/app/cmdb/utils/systemLinkage';
 import {
   ensureCollectTaskMap,
 } from '@/app/cmdb/utils/collectTask';
@@ -200,6 +207,7 @@ interface ImportRef {
 const AssetDataContent = () => {
   const { t } = useTranslation();
   const { selectedGroup, userId } = useUserInfoContext();
+  const { clientData } = useClientData();
   const { getModelAssociationTypes, getModelAttrList, getModelAttrGroupsFullInfo } = useModelApi();
   const { getClassificationList } = useClassificationApi();
   const {
@@ -210,6 +218,7 @@ const AssetDataContent = () => {
     setInstanceShowFieldSettings,
     deleteInstance,
     batchDeleteInstances,
+    batchPushToMonitor,
   } = useInstanceApi();
   const { getCollectTaskNames } = useCollectApi();
   const router = useRouter();
@@ -698,6 +707,34 @@ const AssetDataContent = () => {
     handleDeleteWithConfirm(() => batchDeleteInstances(selectedRowKeys.map((k) => String(k))));
   };
 
+  const batchSyncMonitorConfirm = () => {
+    const instUuids = selectedRowKeys.map((k) => String(k));
+    if (!instUuids.length) return;
+    confirm({
+      title: t('Model.systemLinkageBatchConfirm', '', { count: instUuids.length }),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      centered: true,
+      async onOk() {
+        try {
+          const summary = await batchPushToMonitor(instUuids);
+          const counts = pickBatchPushCounts(summary);
+          const level = resolveBatchPushSummaryLevel(counts);
+          const text = t('Model.systemLinkageBatchSummary', '', counts);
+          if (level === 'success') {
+            message.success(text);
+          } else if (level === 'warning') {
+            message.warning(text);
+          } else {
+            message.error(text);
+          }
+        } catch {
+          message.error(t('Model.systemLinkageSyncFailed'));
+        }
+      },
+    });
+  };
+
   // 导出菜单项
   const exportItems: MenuProps['items'] = [
     {
@@ -1085,6 +1122,16 @@ const AssetDataContent = () => {
   }, [propertyList, displayFieldKeys, propertyListGroups, modelId, followPendingKey, handleFollowToggle, isFollowed, t, userList]);
 
   const showSubscribeAction = selectedRowKeys.length > 0 || storeQueryList.length > 0;
+  const showBatchSyncMonitor = canSyncMonitor(modelId) && isMonitorSold(clientData);
+  const batchSyncMonitorItem: NonNullable<MenuProps['items']>[number] = {
+    key: 'batchSyncMonitor',
+    label: (
+      <PermissionWrapper requiredPermissions={['Edit']}>
+        <a onClick={batchSyncMonitorConfirm}>{t('Model.systemLinkageBatchSync')}</a>
+      </PermissionWrapper>
+    ),
+    disabled: !selectedRowKeys.length,
+  };
 
   const batchOperateItems: MenuProps['items'] = [
     {
@@ -1111,6 +1158,7 @@ const AssetDataContent = () => {
       ),
       disabled: !selectedRowKeys.length || !propertyListGroups.length,
     },
+    ...(showBatchSyncMonitor ? [batchSyncMonitorItem] : []),
     {
       key: 'batchDelete',
       label: (

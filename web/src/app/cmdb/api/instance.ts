@@ -100,6 +100,9 @@ export const useInstanceApi = () => {
   const pushToMonitor = (instUuid: string) =>
     post(`/cmdb/api/instance/${instUuid}/push_to_monitor/`);
 
+  const batchPushToMonitor = (instUuids: string[]) =>
+    post('/cmdb/api/instance/batch_push_to_monitor/', { inst_uuids: instUuids });
+
   // 获取模型实例数量
   const getModelInstanceCount = () =>
     get('/cmdb/api/instance/model_inst_count/');
@@ -238,6 +241,7 @@ export const useInstanceApi = () => {
     batchDeleteInstances,
     getInstanceProxys,
     pushToMonitor,
+    batchPushToMonitor,
     getModelInstanceCount,
     getInstanceShowFieldDetail,
     setInstanceShowFieldSettings,
