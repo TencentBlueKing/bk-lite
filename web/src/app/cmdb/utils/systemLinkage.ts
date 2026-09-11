@@ -1,4 +1,5 @@
 import type { ClientData } from '@/types';
+import { HandledRequestError } from '@/utils/request';
 
 export const MONITOR_SYNC_MODEL_IDS = new Set([
   'host',
@@ -86,4 +87,40 @@ export const resolveBatchPushSummaryLevel = (
   if (good > 0 && problem === 0) return 'success';
   if (good > 0 && problem > 0) return 'warning';
   return 'error';
+};
+
+export interface MonitorBindCandidate {
+  id: string;
+  name: string;
+  ip?: string | null;
+  object_name?: string | null;
+  cmdb_id?: string | null;
+}
+
+export interface MonitorBindConflict {
+  status?: string;
+  occupiedLabel?: string;
+}
+
+const asRecord = (value: unknown): Record<string, unknown> | undefined =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+
+const asTrimmedString = (value: unknown): string =>
+  typeof value === 'string' ? value.trim() : '';
+
+export const parseMonitorBindConflict = (error: unknown): MonitorBindConflict => {
+  if (!(error instanceof HandledRequestError)) {
+    return {};
+  }
+  const data = asRecord(asRecord(error.payload)?.data);
+  const occupiedLabel =
+    asTrimmedString(data?.occupied_inst_name) ||
+    asTrimmedString(data?.occupied_inst_uuid) ||
+    undefined;
+  return {
+    status: typeof data?.status === 'string' ? data.status : undefined,
+    occupiedLabel,
+  };
 };

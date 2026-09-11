@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { HandledRequestError } from '@/utils/request';
 import {
   canSyncMonitor,
   showNodeId,
@@ -6,6 +7,7 @@ import {
   resolveBatchPushSummaryLevel,
   pickBatchPushCounts,
   isMonitorSold,
+  parseMonitorBindConflict,
 } from '@/app/cmdb/utils/systemLinkage';
 
 describe('systemLinkage', () => {
@@ -71,5 +73,57 @@ describe('systemLinkage', () => {
     expect(resolveBatchPushSummaryLevel({ failed: 2 })).toBe('error');
     expect(resolveBatchPushSummaryLevel({ not_found: 1, conflict: 1 })).toBe('error');
     expect(resolveBatchPushSummaryLevel({})).toBe('error');
+  });
+
+  it('parses occupied bind conflict from HandledRequestError payload', () => {
+    const error = new HandledRequestError('监控实例已被其他配置项占用', {
+      status: 409,
+      payload: {
+        result: false,
+        message: '监控实例已被其他配置项占用',
+        data: {
+          status: 'occupied',
+          occupied_inst_name: 'occupied-host',
+          occupied_inst_uuid: 'uuid-1',
+        },
+      },
+    });
+    expect(parseMonitorBindConflict(error)).toEqual({
+      status: 'occupied',
+      occupiedLabel: 'occupied-host',
+    });
+  });
+
+  it('falls back to occupied_inst_uuid when name is missing', () => {
+    const error = new HandledRequestError('监控实例已被其他配置项占用', {
+      status: 409,
+      payload: {
+        result: false,
+        data: {
+          status: 'occupied',
+          occupied_inst_name: '  ',
+          occupied_inst_uuid: 'uuid-2',
+        },
+      },
+    });
+    expect(parseMonitorBindConflict(error)).toEqual({
+      status: 'occupied',
+      occupiedLabel: 'uuid-2',
+    });
+  });
+
+  it('treats confirm_required 409 as need-confirm without occupier', () => {
+    const error = new HandledRequestError('已关联其他监控实例，确认后将先解绑再绑定', {
+      status: 409,
+      payload: {
+        result: false,
+        data: { status: 'confirm_required', monitor_id: 'm-old' },
+      },
+    });
+    expect(parseMonitorBindConflict(error)).toEqual({
+      status: 'confirm_required',
+      occupiedLabel: undefined,
+    });
+    expect(parseMonitorBindConflict(new Error('plain'))).toEqual({});
   });
 });
