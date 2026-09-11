@@ -868,7 +868,7 @@ export default function ApmTracesPage() {
       width: APM_TABLE_COLUMN_WIDTHS.metric,
       align: 'right',
       className: 'tabular-nums',
-      responsive: ['lg'],
+      responsive: ['xxl'],
       render: (value: number) => formatLatency(value, false, t),
     },
   ];

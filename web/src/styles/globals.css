@@ -14,6 +14,10 @@
 @source "../app/system-manager/(pages)/(enterprise)";
 @source "../app/system-manager/(enterprise)";
 
+@theme {
+  --breakpoint-3xl: 120rem;
+}
+
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--color-fill-4) var(--color-bg-7);

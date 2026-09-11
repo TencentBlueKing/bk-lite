@@ -53,15 +53,16 @@ vi.mock('@/app/apm/components/apm-route-shell', () => ({
 }));
 
 beforeEach(() => {
-  window.matchMedia = vi
-    .fn()
-    .mockReturnValue({
-      matches: false,
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    });
+  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+    matches: query.includes('min-width'),
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  }));
   api.getPolicies.mockResolvedValue([policy]);
   api.setPolicyEnabled.mockResolvedValue({ ...policy, is_enabled: false });
 });
@@ -128,6 +129,16 @@ describe('APM 策略列表', () => {
       '/apm/events/policies/policy-1',
     );
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('策略列表不强制表内横滚，搜索框窄屏可铺满', async () => {
+    const { container } = renderWithApmIntl(<ApmPoliciesPage />);
+    await screen.findByText('结账接口 P95 过慢');
+
+    expect(container.querySelector('.ant-table-body')).toBeNull();
+    const search = container.querySelector('.ant-input-search');
+    expect(search?.className).toContain('w-full');
+    expect(search?.className).toContain('sm:!w-80');
   });
 
   it('列表启停调用专用操作接口', async () => {
