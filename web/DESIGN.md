@@ -184,6 +184,10 @@ BK-Lite Web 已启用 Tailwind。**布局、间距、对齐的默认且优先表
 
 **The Migration Touch Rule.** 组件治理或功能改动触及的 JSX 区块，若含可用 Tailwind 表达的行内布局，应在同次改动中改为 `className`；不要只换组件壳、留下整段 `style={{ display:'flex' ... }}`。整页历史债可另开清理任务，但**禁止在新代码中扩大行内布局比例**。
 
+### 断点
+
+默认使用 Tailwind 断点（`sm`–`2xl`）。超宽屏增密使用 `3xl`（`1920px` / `120rem`），定义在 `web/src/styles/globals.css` 的 `@theme` 与 `web/tailwind.config.ts`。不要散落 `min-[1920px]:`。Ant Design Table 的 `responsive` 最宽档是 `xxl`（1600px），用来在宽屏放出次要列。
+
 ### 示例
 
 ```tsx

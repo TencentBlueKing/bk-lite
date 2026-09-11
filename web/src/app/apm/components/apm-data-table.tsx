@@ -17,6 +17,7 @@ const DEFAULT_PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
  */
 export const APM_TABLE_COLUMN_WIDTHS = {
   actionGroup: 192,
+  actionGroupWide: 260,
   actionPair: 160,
   compact: 120,
   entryService: 168,
