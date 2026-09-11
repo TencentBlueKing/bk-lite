@@ -857,10 +857,7 @@ class FalkorDBClient:
             timeout=CLOUD_COST_QUERY_TIMEOUT_SECONDS * 1000,
         )
         formatted = FormatDBResult(result)
-        headers = [
-            header[1] if isinstance(header, (list, tuple)) and len(header) > 1 else header
-            for header in result.header
-        ]
+        headers = [header[1] if isinstance(header, (list, tuple)) and len(header) > 1 else header for header in result.header]
         return [dict(zip(headers, record, strict=True)) for record in formatted.records]
 
     def query_entity_by_id(self, id: int):
@@ -1653,8 +1650,7 @@ class FalkorDBClient:
                 child_entity = self.find_entity_by_id(edge[f"{child_entity_key}_inst_id"], entities)
                 if child_entity:
                     child_node = self.create_node(child_entity, edges, entities, entity_is_src)
-                    child_node["model_asst_id"] = edge["model_asst_id"]
-                    child_node["asst_id"] = edge["asst_id"]
+                    self._attach_association_fields(child_node, edge)
                     node["children"].append(child_node)
         return node
 
@@ -1752,10 +1748,17 @@ class FalkorDBClient:
                         level=level + 1,
                         max_depth=max_depth,
                     )
-                    child_node["model_asst_id"] = edge.get("model_asst_id")
-                    child_node["asst_id"] = edge.get("asst_id")
+                    self._attach_association_fields(child_node, edge)
                     node["children"].append(child_node)
         return node
+
+    @staticmethod
+    def _attach_association_fields(child_node, edge):
+        child_node["model_asst_id"] = edge.get("model_asst_id")
+        child_node["asst_id"] = edge.get("asst_id")
+        asst_name = edge.get("asst_name")
+        if asst_name not in (None, ""):
+            child_node["asst_name"] = asst_name
 
     def find_entity_by_id(self, entity_id, entities):
         """根据ID找实体"""

@@ -22,7 +22,7 @@ import {
   LeftOutlined,
   RightOutlined,
 } from '@ant-design/icons';
-import { Button, Modal } from 'antd';
+import { Button, Modal, Tooltip } from 'antd';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { DirItem } from '@/app/ops-analysis/types';
 import {
@@ -187,7 +187,7 @@ const ViewPage: React.FC = () => {
     >
       <div
         hidden={screenMode}
-        className={`h-full border-r border-[var(--color-border-1)] relative transition-all duration-300 ${
+        className={`relative z-20 h-full border-r border-[var(--color-border-1)] transition-all duration-300 ${
           collapsed ? 'w-0 min-w-0' : 'w-[280px] min-w-[280px]'
         }`}
         style={{
@@ -197,7 +197,10 @@ const ViewPage: React.FC = () => {
           flexShrink: 0,
         }}
       >
-        <div className="w-full h-full overflow-hidden bg-[var(--color-bg-1)]">
+        <div
+          id="ops-analysis-sidebar"
+          className="w-full h-full overflow-hidden bg-[var(--color-bg-1)]"
+        >
           <Sidebar
             ref={sidebarRef}
             onSelect={handleNavigation}
@@ -205,17 +208,24 @@ const ViewPage: React.FC = () => {
           />
         </div>
         {!screenMode && (
-          <Button
-            type="text"
-            onClick={() => setCollapsed(!collapsed)}
-            className={`absolute z-10 w-6 h-6 top-4 p-0 border border-[var(--color-border-3)] bg-[var(--color-bg-1)] flex items-center justify-center cursor-pointer rounded-full transition-all duration-300 ${
-              collapsed
-                ? 'left-0 border-l-0 rounded-tl-none rounded-bl-none'
-                : 'left-[100%] -translate-x-1/2'
-            }`}
+          <Tooltip
+            title={collapsed ? t('common.expand') : t('common.collapse')}
+            placement="right"
           >
-            {collapsed ? <RightOutlined /> : <LeftOutlined />}
-          </Button>
+            <Button
+              type="text"
+              size="small"
+              onClick={() => setCollapsed(!collapsed)}
+              aria-label={collapsed ? t('common.expand') : t('common.collapse')}
+              aria-controls="ops-analysis-sidebar"
+              aria-expanded={!collapsed}
+              className={`absolute bottom-6 z-30 flex h-6 w-6 min-w-6 cursor-pointer items-center justify-center rounded-full border border-[var(--color-border-3)] bg-[var(--color-bg-1)] p-0 transition-colors duration-150 ${
+                collapsed ? '-right-4' : '-right-3'
+              }`}
+            >
+              {collapsed ? <RightOutlined /> : <LeftOutlined />}
+            </Button>
+          </Tooltip>
         )}
       </div>
       <div className="h-full flex-1 flex" style={{ minWidth: 0 }}>

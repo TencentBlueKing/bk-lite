@@ -1,10 +1,10 @@
 'use client';
 
 import React from 'react';
-import { Empty, Spin, Tag } from 'antd';
-import { useTranslation } from '@/utils/i18n';
+import { Empty, Spin } from 'antd';
 import type { DirItem } from '@/app/ops-analysis/types';
 import { resolveCanvasDescription } from '@/app/ops-analysis/utils/canvasDescription';
+import SourceOriginBadge from '@/components/source-origin-badge';
 
 interface ViewWorkspaceProps {
   selectedItem?: DirItem | null;
@@ -33,8 +33,6 @@ const ViewWorkspace: React.FC<ViewWorkspaceProps> = ({
   filterBarVisible = true,
   children,
 }) => {
-  const { t } = useTranslation();
-
   if (!selectedItem) {
     return (
       <Empty className="w-full mt-[20vh]" description={emptyDescription} />
@@ -54,9 +52,11 @@ const ViewWorkspace: React.FC<ViewWorkspaceProps> = ({
               {selectedItem.name || titleFallback}
             </h2>
             {selectedItem.is_build_in && (
-              <Tag color="blue" className="rounded-full! px-2! py-0.5! text-xs">
-                {t('common.builtIn')}
-              </Tag>
+              <SourceOriginBadge
+                kind="builtin"
+                mode="inline"
+                className="shrink-0 rounded bg-[var(--color-fill-2)] px-1.5 py-0.5 font-medium leading-4"
+              />
             )}
           </div>
           {resolvedDescription && (
