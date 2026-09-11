@@ -128,7 +128,11 @@ export const useMemoryApi = () => {
 
   const updateMemory = async (
     id: number,
-    data: Partial<Memory> & { content_offset?: number; content_replace_length?: number }
+    data: Partial<Memory> & {
+      content_offset?: number;
+      content_replace_length?: number;
+      expected_updated_at?: string;
+    }
   ): Promise<Memory> => {
     return await patch(`/opspilot/memory_mgmt/memory/${id}/`, data);
   };

@@ -3,7 +3,8 @@
 import React from 'react';
 import { Typography } from 'antd';
 import WithSideMenuLayout from '@/components/sub-layout';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import { useTranslation } from '@/utils/i18n';
 import type { MenuItem } from '@/types';
 import { getPluginBrandIcon } from '@/app/monitor/utils/common';
@@ -15,7 +16,7 @@ const IntegrationDetailLayout = ({
 }) => {
   const { t } = useTranslation();
   const searchParams = useSearchParams();
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const pluginDisplayName = searchParams.get('plugin_display_name');
   const desc = searchParams.get('plugin_description');
   const objId = searchParams.get('id') || '';

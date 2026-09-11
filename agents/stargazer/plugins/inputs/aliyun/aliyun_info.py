@@ -188,8 +188,8 @@ class CwAliyun(object):
         :param region_id:
         :param kwargs:
         """
-        self.AccessKey = params["secret_id"]
-        self.AccessSecret = params["secret_key"]
+        self.AccessKey = params.get("secret_id") or params.get("accessKey") or params.get("access_key")
+        self.AccessSecret = params.get("secret_key") or params.get("accessSecret") or params.get("access_secret")
         self.RegionId = params.get("region_id", "cn-hangzhou")
         self.timeout = 30  # 连接超时硬编码；读超时用 timeout*2；表单 timeout 由框架作单对象预算
 
@@ -247,6 +247,11 @@ class CwAliyun(object):
     async def list_all_resources(self, **kwargs):
         manager = self.__getattr__("list_all_resources")
         return await manager.list_all_resources(**kwargs)
+
+    def list_regions(self, ids=None):
+        """插件入口：CollectionService 直接调用此类方法，必须走阿里云 ECS DescribeRegions。"""
+        manager = self.__getattr__("list_regions")
+        return manager.list_regions(ids)
 
 
 class Aliyun(object):

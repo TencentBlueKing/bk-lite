@@ -1,5 +1,5 @@
 'use client';
-import React, { useRef, useState, useMemo } from 'react';
+import React, { useRef, useMemo } from 'react';
 import { Descriptions } from 'antd';
 import {
   TableDataItem,
@@ -10,15 +10,15 @@ import informationStyle from './index.module.scss';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { showGroupName } from '@/app/log/utils/common';
 import { useCommon } from '@/app/log/context/common';
-import { Popconfirm, message, Button } from 'antd';
-import useLogEventApi from '@/app/log/api/event';
+import { Button } from 'antd';
 import { LEVEL_MAP } from '@/app/log/constants';
 import { useLevelList } from '@/app/log/hooks/event';
-import Permission from '@/components/permission';
 import CustomTable from '@/components/custom-table';
 import { FilterItem } from '@/app/log/types/integration';
 import { buildLogAlertRawColumns } from './rawLogColumns';
 import { formatUserDisplayName } from '@/utils/userDisplay';
+import AlertHandlerActions from './alertHandlerActions';
+import { formatAlertHandlers } from './alertHandlerUtils';
 
 const Information: React.FC<TableDataItem> = ({
   formData,
@@ -29,11 +29,9 @@ const Information: React.FC<TableDataItem> = ({
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
   const LEVEL_LIST = useLevelList();
-  const { patchLogAlert } = useLogEventApi();
   const commonContext = useCommon();
   const authList = useRef(commonContext?.authOrganizations || []);
   const organizationList: Organization[] = authList.current;
-  const [confirmLoading, setConfirmLoading] = useState(false);
 
   const isAggregate = useMemo(
     () => formData.alert_type === 'aggregate',
@@ -200,20 +198,6 @@ const Information: React.FC<TableDataItem> = ({
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
-  const handleCloseConfirm = async (row: TableDataItem) => {
-    setConfirmLoading(true);
-    try {
-      await patchLogAlert({
-        status: 'closed',
-        id: row.id
-      });
-      message.success(t('log.event.successfullyClosed'));
-      onClose();
-    } finally {
-      setConfirmLoading(false);
-    }
-  };
-
   const showNotifiers = (row: TableDataItem) => {
     return (
       (row.notice_users || [])
@@ -281,31 +265,20 @@ const Information: React.FC<TableDataItem> = ({
         <Descriptions.Item label={t('log.event.notify')}>
           {t(`log.event.${formData.notice ? 'notified' : 'unnotified'}`)}
         </Descriptions.Item>
-        <Descriptions.Item label={t('common.operator')}>
-          {formatUserDisplayName(formData.operator, userList)}
+        <Descriptions.Item label={t('log.event.handler')}>
+          {formatAlertHandlers(formData.handlers, formData.handlers_display, userList)}
         </Descriptions.Item>
         <Descriptions.Item label={t('log.event.notifier')}>
           {showNotifiers(formData)}
         </Descriptions.Item>
       </Descriptions>
       <div className="mt-4 flex justify-between">
-        <Permission
+        <AlertHandlerActions
+          record={formData}
+          closeText={t('log.event.closeAlert')}
           requiredPermissions={['Operate', 'Detail']}
-          instPermissions={formData.permission}
-        >
-          <Popconfirm
-            title={t('log.event.closeTitle')}
-            description={t('log.event.closeContent')}
-            okText={t('common.confirm')}
-            cancelText={t('common.cancel')}
-            okButtonProps={{ loading: confirmLoading }}
-            onConfirm={() => handleCloseConfirm(formData)}
-          >
-            <Button type="link" disabled={formData.status !== 'new'}>
-              {t('log.event.closeAlert')}
-            </Button>
-          </Popconfirm>
-        </Permission>
+          onSuccess={onClose}
+        />
         <Button type="link" onClick={checkDetail}>
           {' '}
           {t('log.event.seeMore')}

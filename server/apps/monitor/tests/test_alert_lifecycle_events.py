@@ -54,3 +54,28 @@ class TestRecordLifecycleEvents:
             operator="admin",
             reason="manual",
         ) == []
+
+
+def test_claimed_assigned_are_outside_status_unique_constraint():
+    alert = _alert()
+    for suffix in ("a", "b"):
+        MonitorEvent.objects.create(
+            id=f"claimed-{suffix}",
+            alert=alert,
+            policy_id=alert.policy_id,
+            monitor_instance_id=alert.monitor_instance_id,
+            level="warning",
+            action=MonitorEvent.Action.CLAIMED,
+            content="认领",
+        )
+        MonitorEvent.objects.create(
+            id=f"assigned-{suffix}",
+            alert=alert,
+            policy_id=alert.policy_id,
+            monitor_instance_id=alert.monitor_instance_id,
+            level="warning",
+            action=MonitorEvent.Action.ASSIGNED,
+            content="分派",
+        )
+    assert MonitorEvent.objects.filter(alert=alert, action=MonitorEvent.Action.CLAIMED).count() == 2
+    assert MonitorEvent.objects.filter(alert=alert, action=MonitorEvent.Action.ASSIGNED).count() == 2

@@ -8,6 +8,12 @@ import {
   sanitizeUnifiedFilterDefinition,
 } from '../src/app/ops-analysis/utils/widgetDataTransform';
 import { coerceValueForMultiple } from '../src/app/ops-analysis/utils/stringParamMultipleMigrate';
+import { isOrganizationControl } from '../src/app/ops-analysis/utils/paramInputConfigUtils';
+import {
+  sanitizeUnifiedFilterDefinition as sanitizeCopyFilterDefinition,
+  scanUnifiedFilterParams,
+} from '../src/app/ops-analysis/components/ops-analysis-unified-filter/runtime';
+import type { DatasourceItem } from '../src/app/ops-analysis/components/ops-analysis-widgets';
 import type { FilterValue, UnifiedFilterDefinition } from '../src/app/ops-analysis/types/dashBoard';
 
 const departmentFilter: UnifiedFilterDefinition = {
@@ -513,6 +519,296 @@ assert.deepEqual(
   coerceValueForMultiple('host-a', true),
   ['host-a'],
   '开多选时标量应升为单元素数组',
+);
+
+const orgFilter: UnifiedFilterDefinition = {
+  id: 'org_id__string',
+  key: 'org_id',
+  name: '组织',
+  type: 'string',
+  order: 0,
+  enabled: true,
+  inputConfig: { control: 'organization' },
+};
+
+assert.deepEqual(
+  processDataSourceParams({
+    sourceParams: [
+      {
+        name: 'org_id',
+        alias_name: '组织',
+        type: 'string',
+        filterType: 'filter',
+        value: null,
+        inputConfig: { control: 'organization' },
+      },
+    ],
+    unifiedFilterValues: { [orgFilter.id]: 12 },
+    filterBindings: { [orgFilter.id]: true },
+    filterDefinitions: [orgFilter],
+  }),
+  { org_id: 12, organization_param: 'org_id' },
+  '组织控件应按参数名发值，并带 organization_param 标记',
+);
+
+assert.deepEqual(
+  processDataSourceParams({
+    sourceParams: [
+      {
+        name: 'organization',
+        alias_name: '组织',
+        type: 'string',
+        filterType: 'filter',
+        value: '12',
+        inputMode: 'organization',
+      },
+    ],
+  }),
+  { organization: '12', organization_param: 'organization' },
+  '旧 inputMode 无 inputConfig 时仍应发组织标记',
+);
+
+assert.deepEqual(
+  processDataSourceParams({
+    sourceParams: [
+      {
+        name: 'organization',
+        alias_name: '组织',
+        type: 'string',
+        filterType: 'filter',
+        value: '12',
+        inputConfig: {
+          control: 'select',
+          optionsSource: { type: 'static', staticItems: [{ label: 'A', value: '12' }] },
+        },
+      },
+    ],
+  }),
+  { organization: '12' },
+  '同名 organization 但控件是 select 时不得发组织标记',
+);
+
+assert.throws(
+  () => processDataSourceParams({
+    sourceParams: [
+      {
+        name: 'org_a',
+        alias_name: '组织A',
+        type: 'string',
+        filterType: 'params',
+        value: 1,
+        inputConfig: { control: 'organization' },
+      },
+      {
+        name: 'org_b',
+        alias_name: '组织B',
+        type: 'string',
+        filterType: 'params',
+        value: 2,
+        inputConfig: { control: 'organization' },
+      },
+    ],
+  }),
+  /多个组织控件/,
+  '同一请求多个组织控件应在组装层失败',
+);
+
+assert.deepEqual(
+  processDataSourceParams({
+    sourceParams: [
+      {
+        name: 'org_id',
+        alias_name: '组织',
+        type: 'string',
+        filterType: 'filter',
+        value: '12',
+      },
+    ],
+    definitionParams: [
+      {
+        name: 'org_id',
+        alias_name: '组织',
+        type: 'string',
+        filterType: 'filter',
+        value: '99',
+        inputConfig: { control: 'organization' },
+      },
+    ],
+  }),
+  { org_id: '12', organization_param: 'org_id' },
+  '组件参数无控件时，应回落数据源定义上的组织控件并发标记',
+);
+
+assert.deepEqual(
+  processDataSourceParams({
+    sourceParams: [
+      {
+        name: 'org_id',
+        alias_name: '组织',
+        type: 'string',
+        filterType: 'filter',
+        value: '1',
+        inputConfig: { control: 'organization' },
+      },
+    ],
+    unifiedFilterValues: { [orgFilter.id]: 12 },
+    filterBindings: { [orgFilter.id]: true },
+    filterDefinitions: [{
+      ...orgFilter,
+      inputConfig: undefined,
+    }],
+  }),
+  { org_id: 12, organization_param: 'org_id' },
+  '绑定的筛选项不是组织时，应回落组件级组织控件并发标记',
+);
+
+assert.deepEqual(
+  processDataSourceParams({
+    sourceParams: [
+      {
+        name: 'org_id',
+        alias_name: '组织',
+        type: 'string',
+        filterType: 'filter',
+        value: '1',
+        inputConfig: {
+          control: 'select',
+          optionsSource: { type: 'static', staticItems: [{ label: 'A', value: '1' }] },
+        },
+      },
+    ],
+    unifiedFilterValues: { [orgFilter.id]: 12 },
+    filterBindings: { [orgFilter.id]: true },
+    filterDefinitions: [orgFilter],
+  }),
+  { org_id: 12, organization_param: 'org_id' },
+  '绑定且启用的组织筛应优先于组件级 select',
+);
+
+assert.deepEqual(
+  processDataSourceParams({
+    sourceParams: [
+      {
+        name: 'org_id',
+        alias_name: '组织',
+        type: 'string',
+        filterType: 'filter',
+        value: '12',
+        inputConfig: { control: 'organization' },
+      },
+    ],
+    unifiedFilterValues: { [orgFilter.id]: 12 },
+    filterBindings: { [orgFilter.id]: false },
+    filterDefinitions: [orgFilter],
+  }),
+  {},
+  '绑定被禁用时不得发组织参数或标记',
+);
+
+assert.equal(
+  sanitizeUnifiedFilterDefinition({
+    id: 'organization__string',
+    key: 'organization',
+    name: '组织',
+    type: 'string',
+    order: 0,
+    enabled: true,
+    inputMode: 'organization',
+  }).inputConfig?.control,
+  'organization',
+  '旧 inputMode 保存时应归一成 inputConfig.control',
+);
+
+assert.equal(
+  sanitizeUnifiedFilterDefinition({
+    id: 'organization__string',
+    key: 'organization',
+    name: '组织',
+    type: 'string',
+    order: 0,
+    enabled: true,
+    inputMode: 'organization',
+  }).inputMode,
+  undefined,
+  '新保存不再写入 inputMode',
+);
+
+const copySanitized = sanitizeCopyFilterDefinition({
+  id: 'org_id__string',
+  key: 'org_id',
+  name: '组织',
+  type: 'string' as const,
+  order: 0,
+  enabled: true,
+  inputMode: 'select',
+  inputConfig: { control: 'organization' as const },
+});
+assert.equal(copySanitized.inputConfig?.control, 'organization');
+assert.equal(copySanitized.inputMode, undefined, '副本 sanitize 后不得再写 inputMode');
+
+const copySwitchedAway = sanitizeCopyFilterDefinition({
+  ...copySanitized,
+  inputMode: 'select' as const,
+  inputConfig: { control: 'select' as const },
+});
+assert.equal(copySwitchedAway.inputConfig?.control, 'select', '切走组织时应先覆盖 inputConfig 再 sanitize');
+assert.notEqual(copySwitchedAway.inputConfig?.control, 'organization');
+
+const scannedLegacyOrg = scanUnifiedFilterParams(
+  [{ valueConfig: { dataSource: 1 } }],
+  [{
+    id: 1,
+    params: [{
+      name: 'org_id',
+      alias_name: '组织',
+      type: 'string',
+      filterType: 'filter',
+      value: null,
+      inputMode: 'organization',
+    }],
+  } as DatasourceItem],
+);
+assert.equal(
+  scannedLegacyOrg[0]?.sampleInputConfig?.control,
+  'organization',
+  '仅旧 inputMode 的数据源参数扫描后应继承为组织控件',
+);
+const scannedOrgParam = scannedLegacyOrg[0];
+assert.ok(scannedOrgParam, '应扫描到组织参数');
+
+assert.equal(
+  isOrganizationControl({
+    inputConfig: { control: 'organization' },
+    inputMode: 'select',
+  }),
+  true,
+  '残留 inputMode: select 时仍按组织控件判定，筛条不得先走可清空下拉',
+);
+assert.equal(
+  isOrganizationControl(copySanitized),
+  true,
+  '副本 sanitize 后的组织定义仍是组织控件',
+);
+assert.equal(
+  isOrganizationControl(copySwitchedAway),
+  false,
+  '切走组织并覆盖 inputConfig 后不再判定为组织控件',
+);
+
+const sanitizedFromScan = sanitizeCopyFilterDefinition({
+  id: 'org_id__string',
+  key: scannedOrgParam.key,
+  name: scannedOrgParam.sampleAlias,
+  type: scannedOrgParam.type,
+  order: 0,
+  enabled: true,
+  inputConfig: scannedOrgParam.sampleInputConfig,
+});
+assert.equal(sanitizedFromScan.inputConfig?.control, 'organization');
+assert.equal(
+  sanitizedFromScan.inputMode,
+  undefined,
+  '扫描得到的组织定义保存后不得带 inputMode',
 );
 
 console.log('ops analysis unified filter input tests passed');

@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import TimeSelector from '@/components/time-selector';
 import { ListItem, TimeSelectorDefaultValue, TimeSelectorRef } from '@/types';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import {
   SearchOutlined,
   BulbFilled,
@@ -43,6 +43,7 @@ import useLogUserHabitApi, {
   LOG_SEARCH_HISTOGRAM_HABIT_KEY
 } from '@/app/log/api/userHabit';
 import { useHabitExpanded } from '@/hooks/useHabitExpanded';
+import { createLatestRequestGuard } from '@/context/latestRequestGuard';
 import {
   SearchParams,
   LogTerminalRef,
@@ -61,7 +62,8 @@ import {
   buildInstanceExtractorPath,
   buildTypeExtractorPath,
   resolveExtractorCreateTarget,
-  storeExtractorCreateSample
+  restoreExtractorEventShape,
+  storeExtractorCreateHandoff
 } from '@/app/log/(pages)/integration/receive/logExtractorLogic';
 
 const { Option } = Select;
@@ -116,7 +118,6 @@ const QUERY_CONNECTOR_REGEXP = /(\||\(|AND|OR)$/i;
 
 const SearchView: React.FC = () => {
   const { t } = useTranslation();
-  const router = useRouter();
   const searchParams = useSearchParams();
   const { isLoading } = useApiClient();
   const { getLogStreams, getFields, getCollectTypes, getLogExtractors } =
@@ -137,6 +138,8 @@ const SearchView: React.FC = () => {
   const conditionRef = useRef<ModalRef>(null);
   const conditionListRef = useRef<ModalRef>(null);
   const searchTextRef = useRef<string>(queryText);
+  const searchAbortRef = useRef<AbortController | null>(null);
+  const [requestGuard] = useState(createLatestRequestGuard);
   const [hasSearchText, setHasSearchText] = useState<boolean>(!!queryText);
   const [frequence, setFrequence] = useState<number>(0);
   const [defaultSearchText, setDefaultSearchText] = useState<string>(queryText);
@@ -305,38 +308,75 @@ const SearchView: React.FC = () => {
     }
   };
 
-  const getChartData = async (type: string, extra?: SearchConfig) => {
-    setChartLoading(type !== 'timer');
+  const isCanceledRequest = (error: unknown) => {
+    const canceled = error as { name?: string; code?: string };
+    return canceled?.name === 'CanceledError' || canceled?.code === 'ERR_CANCELED';
+  };
+
+  const getChartData = async (
+    type: string,
+    extra: SearchConfig | undefined,
+    requestId: number,
+    signal: AbortSignal
+  ) => {
+    requestGuard.commitIfCurrent(requestId, () => {
+      setChartLoading(type !== 'timer');
+    });
     try {
       const params = getParams(extra);
-      const res = await getHits(params);
+      const res = await getHits(params, { signal });
       const chartData = aggregateLogs(res?.hits);
       const total = chartData.reduce((pre, cur) => (pre += cur.value), 0);
-      setPagination((pre) => ({
-        ...pre,
-        total: total,
-        current: 1
-      }));
-      setChartData(chartData);
+      requestGuard.commitIfCurrent(requestId, () => {
+        setPagination((pre) => ({
+          ...pre,
+          total: total,
+          current: 1
+        }));
+        setChartData(chartData);
+      });
+    } catch (error) {
+      if (signal.aborted || isCanceledRequest(error)) {
+        return;
+      }
+      throw error;
     } finally {
-      setChartLoading(false);
+      requestGuard.commitIfCurrent(requestId, () => {
+        setChartLoading(false);
+      });
     }
   };
 
-  const getTableData = async (type: string, extra?: SearchConfig) => {
-    setTableLoading(type !== 'timer');
+  const getTableData = async (
+    type: string,
+    extra: SearchConfig | undefined,
+    requestId: number,
+    signal: AbortSignal
+  ) => {
+    requestGuard.commitIfCurrent(requestId, () => {
+      setTableLoading(type !== 'timer');
+    });
     try {
       const params = getParams(extra);
-      const res = await getLogs(params);
+      const res = await getLogs(params, { signal });
       const listData: TableDataItem[] = (res || []).map(
         (item: TableDataItem) => ({
           ...item,
           id: uuidv4()
         })
       );
-      setTableData(listData);
+      requestGuard.commitIfCurrent(requestId, () => {
+        setTableData(listData);
+      });
+    } catch (error) {
+      if (signal.aborted || isCanceledRequest(error)) {
+        return;
+      }
+      throw error;
     } finally {
-      setTableLoading(false);
+      requestGuard.commitIfCurrent(requestId, () => {
+        setTableLoading(false);
+      });
     }
   };
 
@@ -344,16 +384,23 @@ const SearchView: React.FC = () => {
     if (!extra?.logGroups?.length && !groups.length) {
       return message.error(t('log.search.searchError'));
     }
+    searchAbortRef.current?.abort();
+    const abortController = new AbortController();
+    searchAbortRef.current = abortController;
+    const requestId = requestGuard.begin();
     setHighlightQuery(extra?.text || searchTextRef.current || '*');
     setTableData([]);
     setChartData([]);
     setQueryTime(new Date());
     setQueryEndTime(new Date());
-    Promise.all([getChartData(type, extra), getTableData(type, extra)]).finally(
-      () => {
+    Promise.all([
+      getChartData(type, extra, requestId, abortController.signal),
+      getTableData(type, extra, requestId, abortController.signal)
+    ]).finally(() => {
+      requestGuard.commitIfCurrent(requestId, () => {
         setQueryEndTime(new Date());
-      }
-    );
+      });
+    });
   };
 
   const getParams = (extra?: SearchConfig) => {
@@ -421,7 +468,10 @@ const SearchView: React.FC = () => {
     setHasSearchText(!!searchTextRef.current);
   };
 
-  const createExtractorFromLog = async (record: TableDataItem) => {
+  const createExtractorFromLog = async (
+    record: TableDataItem,
+    sourceField: string
+  ) => {
     const target = resolveExtractorCreateTarget({
       collect_type: record.collect_type,
       instance_id: record.instance_id
@@ -430,9 +480,21 @@ const SearchView: React.FC = () => {
       message.error(t('log.extractor.missingInstance'));
       return;
     }
+    const popup = window.open('about:blank', '_blank');
+    if (!popup) {
+      message.error(t('log.extractor.popupBlocked'));
+      return;
+    }
+    popup.opener = null;
+    const fail = (key: string) => {
+      popup.close();
+      message.error(t(key));
+    };
+    const source_field = sourceField.trim() || 'message';
+    const event = restoreExtractorEventShape({ ...record });
     if (target.kind === 'type') {
       if (!hasConfigurePermission(['Add'])) {
-        message.error(t('common.noAuth'));
+        fail('common.noAuth');
         return;
       }
       try {
@@ -440,16 +502,19 @@ const SearchView: React.FC = () => {
         const list: CollectTypeItem[] = Array.isArray(types) ? types : [];
         const meta = list.find((item) => item.name === target.collectType);
         if (!meta) {
-          message.error(t('log.extractor.unsupportedCollectType'));
+          fail('log.extractor.unsupportedCollectType');
           return;
         }
-        storeExtractorCreateSample(
-          { ...record },
-          { kind: 'type', id: target.collectType }
+        const handoff = storeExtractorCreateHandoff({ event, source_field });
+        popup.location.replace(
+          buildTypeExtractorPath(meta, {
+            create: true,
+            handoff,
+            sourceField: source_field
+          })
         );
-        router.push(buildTypeExtractorPath(meta, { create: true }));
       } catch {
-        message.error(t('log.extractor.unsupportedCollectType'));
+        fail('log.extractor.unsupportedCollectType');
       }
       return;
     }
@@ -458,18 +523,21 @@ const SearchView: React.FC = () => {
         collect_instance: target.instanceId
       });
       if (list.can_operate !== true) {
-        message.error(t('log.extractor.instanceUnavailable'));
+        fail('log.extractor.instanceUnavailable');
         return;
       }
     } catch {
-      message.error(t('log.extractor.instanceUnavailable'));
+      fail('log.extractor.instanceUnavailable');
       return;
     }
-    storeExtractorCreateSample(
-      { ...record },
-      { kind: 'instance', id: target.instanceId }
+    const handoff = storeExtractorCreateHandoff({ event, source_field });
+    popup.location.replace(
+      buildInstanceExtractorPath(target.instanceId, {
+        create: true,
+        handoff,
+        sourceField: source_field
+      })
     );
-    router.push(buildInstanceExtractorPath(target.instanceId, { create: true }));
   };
 
   const onXRangeChange = (arr: [Dayjs, Dayjs]) => {
@@ -739,8 +807,8 @@ const SearchView: React.FC = () => {
                   highlightQuery={highlightQuery}
                   scroll={{ x: 'calc(100vw-350px)', y: scrollHeight }}
                   addToQuery={addToQuery}
-                  onCreateExtractor={(row) => {
-                    void createExtractorFromLog(row);
+                  onCreateExtractor={(row, sourceField) => {
+                    void createExtractorFromLog(row, sourceField);
                   }}
                 />
               </div>

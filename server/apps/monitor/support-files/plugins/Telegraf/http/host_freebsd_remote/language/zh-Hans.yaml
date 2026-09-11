@@ -1,0 +1,101 @@
+Host FreeBSD Remote:
+  name: FreeBSD主机远程采集
+  desc: 由 Linux 采集节点按采集间隔 SSH 到 FreeBSD，执行系统命令。采集 CPU、负载、内存与交换区、磁盘容量与 inode、读写与忙碌、网卡、运行时长和操作系统版本。目标主机无需安装采集器。表单填写 IP、SSH 用户名（如 root）、密码或私钥、端口（默认 22）、采集间隔和 Linux 采集节点。不采集硬件清单、lastlog、lsof 和连接表。无需选择版本，版本自动识别。
+monitor_object:
+  Host: 主机
+monitor_object_type:
+  OS: 操作系统
+monitor_object_metric:
+  Host:
+    cpu_usage_total:
+      name: CPU使用率
+      desc: 由 kern.cp_time 两次采样的 user+nice 与 sys+interrupt 相加得到的 CPU 使用率。
+    cpu_usage_iowait_total:
+      name: CPU等待IO占比
+      desc: FreeBSD 没有 Linux 风格 iowait，该指标固定为 0。
+    cpu_usage_system_total:
+      name: CPU系统占用率
+      desc: 表示 CPU 在内核态与中断处理上消耗的时间比例。
+    cpu_usage_user_total:
+      name: CPU用户占用率
+      desc: 表示 CPU 在用户态（含 nice）执行应用程序逻辑所消耗的时间占比。
+    system_load1:
+      name: 1分钟平均负载
+      desc: 表示系统在最近 1 分钟内的平均运行负载，主要用于观察系统的瞬时压力变化。
+    system_load5:
+      name: 5分钟平均负载
+      desc: 表示系统在最近 5 分钟内的平均运行负载，用于分析系统负载的短期趋势。
+    system_load15:
+      name: 15分钟平均负载
+      desc: 表示系统在最近 15 分钟内的平均运行负载，用于评估系统负载的长期稳定性。
+    system_uptime:
+      name: 系统运行时长
+      desc: 表示主机自上次启动以来的持续运行时间（秒），用于观察主机稳定性和识别异常重启。
+    os_info:
+      name: 操作系统版本
+      desc: 由 freebsd-version 或 uname 识别的 FreeBSD 版本与架构，值为 1 的信息指标。
+    diskio_write_bytes_rate:
+      name: 磁盘写入速率
+      desc: 表示磁盘单位时间内写入的数据量，用于评估磁盘写入吞吐能力。
+    diskio_write_bytes_total:
+      name: 磁盘写入字节数
+      desc: 该设备的磁盘写入字节数。速率用 1 秒间隔采样；累计来自 iostat -I。
+    diskio_read_bytes_rate:
+      name: 磁盘读出速率
+      desc: 表示磁盘单位时间内读取的数据量，用于评估磁盘读取吞吐能力。
+    diskio_read_bytes_total:
+      name: 磁盘读取字节数
+      desc: 该设备的磁盘读取字节数。速率用 1 秒间隔采样；累计来自 iostat -I。
+    disk_tm_act:
+      name: 磁盘忙碌
+      desc: 表示 iostat 的 %b，即磁盘处于活动状态的时间占比。
+    disk_total:
+      name: 磁盘总空间
+      desc: 表示磁盘或文件系统的总容量，用于容量规划与资源管理。
+    disk_free:
+      name: 磁盘剩余空间
+      desc: 表示磁盘或文件系统当前可用的剩余容量，用于监控磁盘空间风险。
+    disk_used_percent:
+      name: 磁盘使用率
+      desc: 表示磁盘已使用空间占总容量的比例，是磁盘容量监控的核心指标。
+    disk_inodes_used_percent:
+      name: Inode使用率
+      desc: 表示文件系统 inode 的使用比例，用于容量与 inode 监控。
+    disk_iused:
+      name: 已用 inode
+      desc: 表示已使用的 inode 个数，与容量一起用于文件系统监控。
+    disk_ifree:
+      name: 空闲 inode
+      desc: 表示剩余可用的 inode 个数，与容量一起用于文件系统监控。
+    mem_total:
+      name: 内存总量
+      desc: 表示系统可使用的物理内存总容量，是内存资源评估的基础指标。
+    mem_used_percent:
+      name: 内存使用率
+      desc: 表示已使用内存占总内存的比例，用于评估系统的内存压力水平。
+    mem_swap_free:
+      name: 空闲交换内存
+      desc: 表示当前剩余可用的交换区空间，用于监控内存紧张情况下的缓冲能力。
+    mem_swap_total:
+      name: 交换区总量
+      desc: 表示交换区总容量。
+    net_bytes_recv_rate:
+      name: 网络接收吞吐速率
+      desc: 表示网络接口单位时间内接收的数据量，用于评估网络接收带宽使用情况。
+    net_bytes_sent_rate:
+      name: 网络发送吞吐速率
+      desc: 表示网络接口单位时间内发送的数据量，用于评估网络发送带宽使用情况。
+    net_err_in_rate:
+      name: 网络接收错误包速率
+      desc: 表示网络接口单位时间内接收到的错误数据包数量，用于监控网络质量。
+    net_err_out_rate:
+      name: 网络发送错误包速率
+      desc: 表示网络接口单位时间内发送失败的错误数据包数量。
+monitor_object_metric_group:
+  Host:
+    CPU: CPU
+    System: 系统
+    Disk IO: 磁盘 IO
+    Disk: 磁盘
+    Memory: 内存
+    Network: 网络

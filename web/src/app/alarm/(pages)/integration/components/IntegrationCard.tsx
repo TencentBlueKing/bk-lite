@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { EyeOutlined } from '@ant-design/icons';
-import { useRouter } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import { useTranslation } from '@/utils/i18n';
 import { SourceItem } from '@/app/alarm/types/integration';
 import { getHealth, getLogoColor, formatEventCount, formatTimestamp } from '../utils/health';
@@ -13,7 +13,7 @@ interface IntegrationCardProps {
 
 const IntegrationCard: React.FC<IntegrationCardProps> = ({ src }) => {
   const { t } = useTranslation();
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const [hovered, setHovered] = useState(false);
 
   const health = getHealth(src);

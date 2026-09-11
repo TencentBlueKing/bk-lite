@@ -37,7 +37,10 @@ import {
   isOpaqueIdentifier,
   buildInstanceDisplayName,
   buildInstanceSearchTokens,
-  parseLegacyParamList,
+  resolveDashboardInstanceIdentity,
+  resolveDashboardInstanceIdValues,
+  encodeInstanceIdValuesParam,
+  isInstanceOptionForIdentity,
   buildCollectionStatusTimeline,
   formatCollectionStatusTimelineHint,
   resolveCollectionStatusRange,
@@ -60,6 +63,7 @@ import {
   HorizontalBarPanel
 } from '../../shared/widgets';
 import { countRestartsInRange } from '../common/simple-dashboard-core';
+import { DashboardSectionLabel } from '../common/dashboard-components';
 
 interface MysqlInstanceOption {
   label: string;
@@ -284,25 +288,15 @@ export default function MysqlDashboardPage() {
   const monitorObjectId = searchParams.get('monitorObjId') || '';
   const monitorObjectName = searchParams.get('name') || 'Mysql';
   const monitorObjDisplayName = searchParams.get('monitorObjDisplayName') || 'MySQL';
-  const rawInstanceId = searchParams.get('instance_id') || '';
-  const parsedLegacyInstanceIds = parseLegacyParamList(rawInstanceId);
-  const instanceId: React.Key = parsedLegacyInstanceIds[0] || rawInstanceId || '';
+  const instanceIdentity = useMemo(
+    () => resolveDashboardInstanceIdentity(new URLSearchParams(searchParams.toString())),
+    [searchParams]
+  );
+  const instanceId: React.Key = instanceIdentity.instanceId;
   const instanceName = searchParams.get('instance_name') || '--';
-  const idValues = (() => {
-    const explicitValues = parseLegacyParamList(searchParams.get('instance_id_values'));
-    if (explicitValues.length > 0) {
-      return explicitValues;
-    }
-
-    if (parsedLegacyInstanceIds.length > 0) {
-      return parsedLegacyInstanceIds;
-    }
-
-    const normalizedInstanceId = normalizeDisplayText(String(instanceId));
-    return normalizedInstanceId ? [normalizedInstanceId] : [];
-  })();
+  const idValues = instanceIdentity.idValues;
   const instanceIdKeys = (searchParams.get('instance_id_keys') || 'instance_id').split(',').filter(Boolean);
-  const instanceIdText = normalizeDisplayText(String(instanceId));
+  const instanceIdText = normalizeDisplayText(idValues[0] || '');
   const objectDisplayText = normalizeDisplayText(monitorObjDisplayName) || normalizeDisplayText(monitorObjectName) || 'MySQL';
   const isDashboardMode = displayMode === 'dashboard';
   const normalizedInstanceName = isOpaqueIdentifier(instanceName) ? '' : normalizeDisplayText(instanceName);
@@ -335,7 +329,7 @@ export default function MysqlDashboardPage() {
           uniqueOptions.set(value, {
             label,
             value,
-            instanceIdValues: Array.isArray(item.instance_id_values) && item.instance_id_values.length ? item.instance_id_values : [value],
+            instanceIdValues: resolveDashboardInstanceIdValues(item),
             searchTokens: buildInstanceSearchTokens(item, label),
             interval: Number(item.interval) || undefined
           });
@@ -363,15 +357,15 @@ export default function MysqlDashboardPage() {
   }, [monitorObjectId]);
 
   const idValuesKey = JSON.stringify(idValues);
-  const currentInstanceCandidates = instanceOptions.filter(
-    (item) => item.value === String(instanceId || '') || item.instanceIdValues.some((value) => idValues.includes(value))
+  const currentInstanceCandidates = instanceOptions.filter((item) =>
+    isInstanceOptionForIdentity(item, instanceId, idValues)
   );
   const currentInstanceOption =
     currentInstanceCandidates.find((item) => normalizedInstanceName && item.label === normalizedInstanceName) ||
     currentInstanceCandidates.find((item) => !isOpaqueIdentifier(item.label)) ||
     currentInstanceCandidates[0];
   const resolvedInstanceName =
-    currentInstanceOption?.label || normalizedInstanceName || normalizeDisplayText(String(instanceId)) || normalizeDisplayText(idValues[0]) || '--';
+    currentInstanceOption?.label || normalizedInstanceName || instanceIdText || '--';
   const currentInstanceInterval = currentInstanceOption?.interval;
   const primaryInstanceText = resolvedInstanceName;
 
@@ -610,7 +604,9 @@ export default function MysqlDashboardPage() {
     collectionStatusMetric?.loadState,
     collectionStatusMetric?.viewData,
     collectionStatusRange?.startMs ?? Date.now() - 15 * 60_000,
-    collectionStatusRange?.endMs ?? Date.now()
+    collectionStatusRange?.endMs ?? Date.now(),
+    undefined,
+    currentInstanceInterval ? currentInstanceInterval * 1000 : undefined
   );
   const collectionStatusTimelineHint = collectionStatusRange
     ? formatCollectionStatusTimelineHint(collectionStatusRange.startMs, collectionStatusRange.endMs)
@@ -980,7 +976,11 @@ export default function MysqlDashboardPage() {
     const params = new URLSearchParams(searchParams.toString());
     params.set('instance_id', value);
     params.set('instance_name', String(target?.label || value));
-    params.set('instance_id_values', (target?.instanceIdValues || [value]).join(','));
+    params.set('instance_id_values', encodeInstanceIdValuesParam(
+      target?.instanceIdValues?.length
+        ? target.instanceIdValues
+        : resolveDashboardInstanceIdValues({ instance_id: value }),
+    ));
     router.push(`/monitor/view/dashboard/mysql?${params.toString()}`);
   };
 
@@ -1041,7 +1041,7 @@ export default function MysqlDashboardPage() {
             <>
               {displayMode === 'dashboard' ? (
                 <div className={styles.modeContent}>
-                  <div className={styles.sectionLabel}>健康概览</div>
+                  <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
                   <div className={styles.overviewSixCol}>
                     <CollectionStatusCard
                       styles={styles}
@@ -1126,7 +1126,7 @@ export default function MysqlDashboardPage() {
                   </div>
 
                   {/* 分区 1 · 连接与线程压力 */}
-                  <div className={styles.sectionLabel}>连接与线程压力</div>
+                  <DashboardSectionLabel styles={styles}>连接与线程压力</DashboardSectionLabel>
                   <section className={styles.dashboardSection}>
                     <div className={styles.sectionGrid}>
                       <TrendChartPanel
@@ -1171,7 +1171,7 @@ export default function MysqlDashboardPage() {
                   </section>
 
                   {/* 分区 2 · 查询吞吐 */}
-                  <div className={styles.sectionLabel}>查询吞吐</div>
+                  <DashboardSectionLabel styles={styles}>查询吞吐</DashboardSectionLabel>
                   <section className={styles.dashboardSection}>
                     <div className={styles.sectionGrid}>
                       <TrendChartPanel
@@ -1211,7 +1211,7 @@ export default function MysqlDashboardPage() {
                   </section>
 
                   {/* 分区 3 · 锁等待 */}
-                  <div className={styles.sectionLabel}>锁等待</div>
+                  <DashboardSectionLabel styles={styles}>锁等待</DashboardSectionLabel>
                   <section className={styles.dashboardSection}>
                     <div className={styles.sectionGrid}>
                       <TrendChartPanel
@@ -1244,7 +1244,7 @@ export default function MysqlDashboardPage() {
                   </section>
 
                   {/* 分区 4 · InnoDB 缓冲池 */}
-                  <div className={styles.sectionLabel}>InnoDB 缓冲池</div>
+                  <DashboardSectionLabel styles={styles}>InnoDB 缓冲池</DashboardSectionLabel>
                   <section className={styles.dashboardSection}>
                     <div className={styles.sectionGrid}>
                       <RingChartPanel
@@ -1289,7 +1289,7 @@ export default function MysqlDashboardPage() {
                   </section>
 
                   {/* 分区 5 · 临时表与复制状态(复制部分仅主从) */}
-                  <div className={styles.sectionLabel}>临时表与复制状态</div>
+                  <DashboardSectionLabel styles={styles}>临时表与复制状态</DashboardSectionLabel>
                   <section className={styles.dashboardSection}>
                     <div className={styles.sectionGrid}>
                       <HorizontalBarPanel

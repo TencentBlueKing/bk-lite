@@ -2,6 +2,8 @@ import pytest
 
 from apps.cmdb.services.network_config_file_policy import (
     SUPPORTED_NETWORK_CONFIG_MODELS,
+    decode_http_header_commands,
+    encode_http_header_commands,
     get_supported_brand_options,
     normalize_network_config_instance,
     resolve_device_type,
@@ -64,9 +66,18 @@ def test_get_supported_brand_options_is_frontend_friendly():
     assert any("华为" in item["label"] for item in options)
 
 
+def test_get_supported_brand_options_uses_english_labels():
+    options = get_supported_brand_options("en-US")
+
+    assert {"label": "Huawei", "device_type": "huawei"} in options
+    assert all("华为" not in item["label"] for item in options)
+    assert all(set(item) == {"label", "device_type"} for item in options)
+
+
 # ---------------------------------------------------------------------------
 # P1-2.5 — validate_safe_command 必须拦截更多高危命令
 # ---------------------------------------------------------------------------
+
 
 class TestValidateSafeCommandDangerous:
     """P1-2.5: 原黑名单只覆盖 Cisco/Huawei 常见写操作,但漏了多类真高危命令:
@@ -79,29 +90,49 @@ class TestValidateSafeCommandDangerous:
 
     这些都是真实设备上能搞坏生产的高危操作。"""
 
-    @pytest.mark.parametrize("command", [
-        "write erase", "write memory", "WRITE", "write",
-        "request system reboot", "request system halt", "request",
-        "do show running-config", "do",
-    ])
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "write erase",
+            "write memory",
+            "WRITE",
+            "write",
+            "request system reboot",
+            "request system halt",
+            "request",
+            "do show running-config",
+            "do",
+        ],
+    )
     def test_dangerous_writes_and_escape_are_blocked(self, command):
         with pytest.raises(BaseAppException, match="高危操作"):
             validate_safe_command(command)
 
-    @pytest.mark.parametrize("command", [
-        "sudo reboot", "bash", "sh", "python -c 'import os'",
-        "rm -rf /", "telnet 10.0.0.1", "ssh user@host",
-    ])
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "sudo reboot",
+            "bash",
+            "sh",
+            "python -c 'import os'",
+            "rm -rf /",
+            "telnet 10.0.0.1",
+            "ssh user@host",
+        ],
+    )
     def test_shell_escape_and_jump_are_blocked(self, command):
         with pytest.raises(BaseAppException, match="高危操作"):
             validate_safe_command(command)
 
-    @pytest.mark.parametrize("command", [
-        "show running-config",
-        "display version",
-        "show version",
-        "show ip interface brief",
-    ])
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "show running-config",
+            "display version",
+            "show version",
+            "show ip interface brief",
+        ],
+    )
     def test_legitimate_read_commands_are_allowed(self, command):
         # 合法的只读命令必须能通过
         assert validate_safe_command(command) == command.lower().strip() or validate_safe_command(command) == " ".join(command.split())
@@ -113,9 +144,20 @@ def test_validate_commands_rejects_when_any_command_is_dangerous():
         validate_commands("show version\nwrite erase\ndisplay version")
 
 
+def test_http_header_commands_roundtrip_without_control_chars():
+    raw = "show running-config\nshow version"
+    encoded = encode_http_header_commands(raw)
+    assert encoded.startswith("b64:")
+    assert "\n" not in encoded
+    assert "\r" not in encoded
+    assert decode_http_header_commands(encoded) == raw
+    assert decode_http_header_commands(raw) == raw
+
+
 # ---------------------------------------------------------------------------
 # P2-2.1 — 拆分 validate_network_config_instance:validate 只校验不返回,normalize 负责改写
 # ---------------------------------------------------------------------------
+
 
 class TestValidateAndNormalizeSplit:
     """P2-2.1: 原 validate_network_config_instance 既校验又返回改写后的 dict,命名误导。

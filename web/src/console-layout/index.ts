@@ -16,13 +16,27 @@ export {
   countVisibleAppSlots,
   findActiveApp,
   getAppStripOverflow,
+  isAppNavActive,
   isConsoleChromeException,
   isDetailChromeContext,
+  shouldHideConsoleChrome,
   shouldHideConsoleTopNav,
+  resolveAppLandingHref,
   resolveAppNavigation,
   resolveEffectiveChromeLayout,
   resolveMenuNavHref,
+  shouldStayOnCurrentAppPage,
   shouldShowAppTopSideNav,
   shouldShowClassicSegmentedNav,
   splitOverflowApps,
 } from './resolve';
+export {
+  applySameOriginNavigation,
+  applyScreenAwareHref,
+  isScreenModeEnabled,
+  resolveSameOriginNavigation,
+  syncScreenModePersistence,
+  toSearchParams,
+  withScreenQuery,
+} from './screenMode';
+export { useScreenAwareRouter } from './useScreenAwareRouter';

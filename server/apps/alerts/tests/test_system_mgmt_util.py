@@ -23,8 +23,8 @@ class _FakeSystemMgmt:
         _FakeSystemMgmt.last["search_channel_list"] = channel_type
         return {"result": True, "data": [{"id": 9, "channel_type": channel_type}]}
 
-    def send_msg_with_channel(self, channel_id, title, content, receivers):
-        _FakeSystemMgmt.last["send"] = (channel_id, title, content, receivers)
+    def send_msg_with_channel(self, channel_id, title, content, receivers, append_receivers=True):
+        _FakeSystemMgmt.last["send"] = (channel_id, title, content, receivers, append_receivers)
         return {"result": True}
 
 
@@ -44,6 +44,7 @@ def test_search_channel_list_转发并取data():
     assert out == [{"id": 9, "channel_type": "email"}]
 
 
-def test_send_msg_with_channel_转发参数():
-    SystemMgmtUtils.send_msg_with_channel(5, "标题", "内容", ["a@x.com"])
-    assert _FakeSystemMgmt.last["send"] == (5, "标题", "内容", ["a@x.com"])
+@pytest.mark.parametrize("append_receivers", [True, False])
+def test_send_msg_with_channel_转发参数(append_receivers):
+    SystemMgmtUtils.send_msg_with_channel(5, "标题", "内容", ["a@x.com"], append_receivers=append_receivers)
+    assert _FakeSystemMgmt.last["send"] == (5, "标题", "内容", ["a@x.com"], append_receivers)

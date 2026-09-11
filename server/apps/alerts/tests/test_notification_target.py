@@ -214,7 +214,8 @@ def test_escalation_stays_on_empty_organization_until_member_appears():
     )
     task = EscalationService.create_escalation_task(alert, assignment)
     task.layer_started_at = timezone.now() - timedelta(minutes=2)
-    task.save(update_fields=["layer_started_at"])
+    task.next_escalation_at = timezone.now() - timedelta(minutes=1)
+    task.save(update_fields=["layer_started_at", "next_escalation_at"])
 
     with mock.patch.object(
         EscalationService,
@@ -236,6 +237,9 @@ def test_escalation_stays_on_empty_organization_until_member_appears():
         password="x",
         group_list=[group.id],
     )
+    # 空组织等待后，推进到下一次到期扫描；不能只改层起点而保留未来的调度截止时间。
+    task.next_escalation_at = timezone.now() - timedelta(seconds=1)
+    task.save(update_fields=["next_escalation_at"])
     with mock.patch.object(
         EscalationService,
         "_send_escalation_notification",

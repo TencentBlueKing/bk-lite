@@ -4,6 +4,7 @@ import {
   mapDynamicItems,
   normalizeInputConfig,
   resolveDynamicSourceId,
+  toSingleOrganizationValue,
 } from '../src/app/ops-analysis/utils/paramInputConfigUtils';
 
 const staticOptions = [
@@ -32,6 +33,38 @@ assert.deepEqual(
 );
 
 assert.equal(normalizeInputConfig({}), undefined);
+
+assert.deepEqual(
+  normalizeInputConfig({
+    inputMode: 'organization',
+  }),
+  { control: 'organization' },
+);
+
+assert.deepEqual(
+  normalizeInputConfig({
+    inputConfig: { control: 'organization' },
+    inputMode: 'select',
+  }),
+  { control: 'organization' },
+);
+
+assert.deepEqual(
+  normalizeInputConfig({
+    inputConfig: {
+      control: 'select',
+      optionsSource: { type: 'static', staticItems: staticOptions },
+    },
+    inputMode: 'organization',
+  }),
+  {
+    control: 'select',
+    optionsSource: {
+      type: 'static',
+      staticItems: staticOptions,
+    },
+  },
+);
 
 assert.equal(
   resolveDynamicSourceId(
@@ -92,6 +125,25 @@ assert.equal(
   undefined,
 );
 
+assert.equal(
+  resolveDynamicSourceId(
+    {
+      type: 'dynamic',
+      sourceRef: {
+        type: 'rest_api',
+        value: 'K8S集群实例::monitor/get_monitor_instance_list',
+      },
+      valueField: 'instance_id',
+      labelField: 'display_name',
+    },
+    [
+      { id: 1, name: '监控实例列表', rest_api: 'monitor/get_monitor_instance_list' },
+      { id: 22, name: 'K8S集群实例', rest_api: 'monitor/get_monitor_instance_list' },
+    ],
+  ),
+  22,
+);
+
 assert.deepEqual(extractDataSourceItems({ items: [{ _id: 1 }] }), [{ _id: 1 }]);
 assert.deepEqual(extractDataSourceItems({ data: { items: [{ _id: 2 }] } }), [{ _id: 2 }]);
 assert.deepEqual(extractDataSourceItems([{ _id: 3 }]), [{ _id: 3 }]);
@@ -114,5 +166,12 @@ assert.deepEqual(
     { value: 2, label: '' },
   ],
 );
+
+assert.equal(toSingleOrganizationValue(12), 12);
+assert.equal(toSingleOrganizationValue('12'), 12);
+assert.equal(toSingleOrganizationValue(''), 0);
+assert.equal(toSingleOrganizationValue(null), undefined);
+assert.equal(toSingleOrganizationValue(['12']), undefined);
+assert.equal(toSingleOrganizationValue('not-a-number'), undefined);
 
 console.log('✓ param-input-config-utils-test.ts 全部通过');

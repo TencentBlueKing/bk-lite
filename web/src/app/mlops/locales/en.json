@@ -125,6 +125,7 @@
     "labelExists": "Label already exists",
     "labelInUse": "This label is already in use",
     "addImageFailed": "Failed to add image",
+    "imageNameConflict": "An image with this name already exists. The new file was not added, so the original image is unchanged.",
     "pressEnterToAdd": "Press Enter to add",
     "fileNameVaild": "The filename does not comply with specifications (it may only contain English letters, numbers, and underscores, and must not exceed 64 characters in length)",
     "fileNameEmpty": "Filename cannot be empty",

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Popover, Spin, Tour, Tooltip } from 'antd';
 import { CaretDownFilled } from '@ant-design/icons';
@@ -7,9 +7,10 @@ import { useTranslation } from '@/utils/i18n';
 import { usePermissions } from '@/context/permissions';
 import { useClientData } from '@/context/client';
 import { useUserInfoContext } from '@/context/userInfo';
+import { useMenus } from '@/context/menus';
 import { usePortalBranding } from '@/hooks/usePortalBranding';
 import { findMatchedMenuPath, resolveMenuIcon } from '@/utils/menuHelpers';
-import { APP_TOP_SIDE_RAIL_WIDTH_PX, useConsoleLayout } from '@/console-layout';
+import { APP_TOP_SIDE_RAIL_WIDTH_PX, isScreenModeEnabled, useConsoleLayout, withScreenQuery } from '@/console-layout';
 import styles from './index.module.scss';
 import type { TourProps } from 'antd';
 import { TourItem, MenuItem, ClientData } from '@/types/index';
@@ -30,7 +31,10 @@ const TopMenu: React.FC<TopMenuProps> = ({ hideMainMenu, hideBrand }) => {
   const { t } = useTranslation();
   const { menus: menuItems } = usePermissions();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const screenMode = isScreenModeEnabled(searchParams);
   const { clientData, appConfigList, loading, appConfigLoading } = useClientData();
+  const { configMenus } = useMenus();
   const { userId } = useUserInfoContext();
   const { portalName, logoUrl } = usePortalBranding();
   const { layout: chromeLayout } = useConsoleLayout();
@@ -206,7 +210,7 @@ const TopMenu: React.FC<TopMenuProps> = ({ hideMainMenu, hideBrand }) => {
         )}
         <div className={showAppTopNav ? `z-10 min-w-0 w-full ${appTopBrandGrid ? 'pl-4' : ''}` : 'z-10'}>
           {showAppTopNav ? (
-            <AppTopNav apps={apps} pathname={pathname} />
+            <AppTopNav apps={apps} pathname={pathname} menus={configMenus} />
           ) : !hideMainMenu ? (
           <div
             className="z-10 flex items-center justify-self-center space-x-4 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
@@ -222,7 +226,7 @@ const TopMenu: React.FC<TopMenuProps> = ({ hideMainMenu, hideBrand }) => {
                 return (
                   <Link
                     key={item.url}
-                    href={item.url}
+                    href={withScreenQuery(item.url, screenMode)}
                     prefetch={false}
                     ref={menuRefs.current[item.url] || null}
                     id={item.name}

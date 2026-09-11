@@ -5,6 +5,7 @@ from rest_framework import serializers
 
 from apps.alerts.models.enrichment import EnrichmentRule
 from apps.alerts.utils.permission_scope import get_authorized_group_ids, normalize_team_ids
+from apps.alerts.utils.rule_catalog import validate_rules_for_serializer
 
 
 class EnrichmentRuleModelSerializer(serializers.ModelSerializer):
@@ -55,21 +56,7 @@ class EnrichmentRuleModelSerializer(serializers.ModelSerializer):
         return value
 
     def validate_match_rules(self, value):
-        if not isinstance(value, list):
-            raise serializers.ValidationError("匹配规则必须是 OR-of-AND 二维数组")
-        for group in value:
-            if not isinstance(group, list) or not group:
-                raise serializers.ValidationError("每个匹配规则组必须是非空数组")
-            for condition in group:
-                if not isinstance(condition, dict):
-                    raise serializers.ValidationError("匹配条件必须是对象")
-                if condition.get("key") not in self.EVENT_FIELDS:
-                    raise serializers.ValidationError(f"不支持的匹配字段: {condition.get('key')}")
-                if condition.get("operator", "eq") not in self.MATCH_OPERATORS:
-                    raise serializers.ValidationError(f"不支持的匹配操作符: {condition.get('operator')}")
-                if condition.get("value") in (None, "", []):
-                    raise serializers.ValidationError("匹配值不能为空")
-        return value
+        return validate_rules_for_serializer(value, "enrichment")
 
     def validate_namespace(self, value):
         value = str(value or "").strip()

@@ -52,8 +52,8 @@ assert.match(
 );
 assert.doesNotMatch(
   settings,
-  /<WikiStructureEditor/,
-  "Settings must not embed structured Schema editor",
+  /WikiStructureEditor/,
+  "Settings must not mount a separate directory structure editor",
 );
 assert.match(
   pageTab,

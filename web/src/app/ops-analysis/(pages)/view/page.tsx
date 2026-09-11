@@ -1,5 +1,6 @@
 'use client';
 
+import './register-dashboard-pilot';
 import React, { useEffect, useState, useRef } from 'react';
 import Sidebar from '../../components/sidebar';
 import ViewEmptyState from '../../components/viewEmptyState';
@@ -22,7 +23,7 @@ import {
   RightOutlined,
 } from '@ant-design/icons';
 import { Button, Modal, Tooltip } from 'antd';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { DirItem } from '@/app/ops-analysis/types';
 import {
   getDisplayRecentCanvases,
@@ -30,6 +31,8 @@ import {
   recordRecentCanvas,
   type RecentCanvasRecord,
 } from '@/app/ops-analysis/utils/recentCanvasStorage';
+import { isScreenModeEnabled } from '@/console-layout';
+import { buildOpsAnalysisViewHref } from '@/app/ops-analysis/utils/viewHref';
 
 type SelectedCanvasItems = Record<CanvasType, DirItem | null>;
 
@@ -42,6 +45,8 @@ const createEmptySelectedItems = (): SelectedCanvasItems =>
 const ViewPage: React.FC = () => {
   const { t } = useTranslation();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const screenMode = isScreenModeEnabled(searchParams);
   const [collapsed, setCollapsed] = useState(false);
   const [selectedType, setSelectedType] = useState<DirectoryType>('directory');
   const [selectedItem, setSelectedItem] = useState<SelectedCanvasItems>(
@@ -157,11 +162,11 @@ const ViewPage: React.FC = () => {
         }),
       );
     }
-    const params = new URLSearchParams({
-      type: itemInfo?.type || '',
-      id: itemInfo?.id || '',
-    }).toString();
-    router.push(`/ops-analysis/view?${params}`);
+    router.push(buildOpsAnalysisViewHref(
+      itemInfo?.type || '',
+      itemInfo?.id || '',
+      searchParams,
+    ));
   };
 
   const handleOpenRecent = (item: RecentCanvasRecord) => {
@@ -178,9 +183,10 @@ const ViewPage: React.FC = () => {
   return (
     <div
       className="flex w-full h-full relative rounded-lg"
-      style={{ minWidth: collapsed ? 0 : 280 }}
+      style={{ minWidth: screenMode || collapsed ? 0 : 280 }}
     >
       <div
+        hidden={screenMode}
         className={`relative z-20 h-full border-r border-[var(--color-border-1)] transition-all duration-300 ${
           collapsed ? 'w-0 min-w-0' : 'w-[280px] min-w-[280px]'
         }`}
@@ -201,24 +207,26 @@ const ViewPage: React.FC = () => {
             onDataUpdate={handleSidebarDataUpdate}
           />
         </div>
-        <Tooltip
-          title={collapsed ? t('common.expand') : t('common.collapse')}
-          placement="right"
-        >
-          <Button
-            type="text"
-            size="small"
-            onClick={() => setCollapsed(!collapsed)}
-            aria-label={collapsed ? t('common.expand') : t('common.collapse')}
-            aria-controls="ops-analysis-sidebar"
-            aria-expanded={!collapsed}
-            className={`absolute bottom-6 z-30 flex h-6 w-6 min-w-6 cursor-pointer items-center justify-center rounded-full border border-[var(--color-border-3)] bg-[var(--color-bg-1)] p-0 transition-colors duration-150 ${
-              collapsed ? '-right-4' : '-right-3'
-            }`}
+        {!screenMode && (
+          <Tooltip
+            title={collapsed ? t('common.expand') : t('common.collapse')}
+            placement="right"
           >
-            {collapsed ? <RightOutlined /> : <LeftOutlined />}
-          </Button>
-        </Tooltip>
+            <Button
+              type="text"
+              size="small"
+              onClick={() => setCollapsed(!collapsed)}
+              aria-label={collapsed ? t('common.expand') : t('common.collapse')}
+              aria-controls="ops-analysis-sidebar"
+              aria-expanded={!collapsed}
+              className={`absolute bottom-6 z-30 flex h-6 w-6 min-w-6 cursor-pointer items-center justify-center rounded-full border border-[var(--color-border-3)] bg-[var(--color-bg-1)] p-0 transition-colors duration-150 ${
+                collapsed ? '-right-4' : '-right-3'
+              }`}
+            >
+              {collapsed ? <RightOutlined /> : <LeftOutlined />}
+            </Button>
+          </Tooltip>
+        )}
       </div>
       <div className="h-full flex-1 flex" style={{ minWidth: 0 }}>
         {selectedType === 'screen' ? (

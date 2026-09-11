@@ -1,28 +1,28 @@
-from celery.schedules import crontab
+from apps.core.celery_schedule import beat_crontab
 
 CELERY_BEAT_SCHEDULE = {
     "apm_reconcile_telemetry_catalog": {
         "task": "apps.apm.tasks.reconcile_telemetry_catalog",
-        "schedule": crontab(minute="*"),
+        "schedule": beat_crontab(minute="*"),
     },
     "apm_probe_runtime_dependencies": {
         "task": "apps.apm.tasks.probe_apm_runtime_dependencies",
-        "schedule": crontab(minute="*"),
+        "schedule": beat_crontab(minute="*"),
     },
     "apm_dispatch_policy_evaluations": {
         "task": "apps.apm.tasks.dispatch_apm_policy_evaluations",
-        "schedule": crontab(minute="*"),
+        "schedule": beat_crontab(minute="*"),
     },
     "apm_deliver_alert_outbox": {
         "task": "apps.apm.tasks.deliver_apm_alert_outbox",
-        "schedule": crontab(minute="*"),
+        "schedule": beat_crontab(minute="*"),
     },
     "apm_persist_event_snapshot_payloads": {
         "task": "apps.apm.tasks.persist_apm_event_snapshot_payloads",
-        "schedule": crontab(minute="*"),
+        "schedule": beat_crontab(minute="*"),
     },
     "apm_expire_event_snapshot_payloads": {
         "task": "apps.apm.tasks.expire_apm_event_snapshot_payloads",
-        "schedule": crontab(hour="3", minute="17"),
+        "schedule": beat_crontab(hour="3", minute="17"),
     },
 }

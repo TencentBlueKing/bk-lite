@@ -305,6 +305,7 @@ export interface AttrGroup {
   id: number;
   model_id: string;
   group_name: string;
+  display_name?: string;
   order: number;
   is_collapsed: boolean;
   description: string;
@@ -428,6 +429,7 @@ export interface FullInfoAttrItem {
 export interface FullInfoGroupItem {
   id: number;
   group_name: string;
+  display_name?: string;
   order: number;
   is_collapsed: boolean;
   description: string;

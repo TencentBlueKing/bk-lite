@@ -73,7 +73,7 @@ def test_alert_list_counts_events_without_loading_event_details(superuser):
     payload = json.loads(response.content)["data"]
     item = next(item for item in payload["items"] if item["alert_id"] == alert.alert_id)
     assert item["event_count"] == 3
-    assert "source_names" not in item
+    assert item["source_names"] == ["source"]
 
     event_detail_queries = [query["sql"] for query in captured.captured_queries if "from alerts_event " in _normalized_sql(query["sql"])]
     assert not event_detail_queries, "alert list fetched Event detail rows:\n" + "\n".join(event_detail_queries)

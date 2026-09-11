@@ -15,6 +15,7 @@ from apps.apm.models import (
 )
 from apps.apm.services import ApmEventSnapshotStore, DjangoApmPolicyService
 from apps.apm.services.contracts import ServiceRed, ServiceRedPoint
+from apps.apm.tests.helpers import bind_policy_organizations
 
 pytestmark = pytest.mark.django_db
 
@@ -49,7 +50,7 @@ def multilevel_policy():
         last_seen_at=now,
     )
     ApmServiceOrganization.objects.create(service=service, organization=10)
-    return ApmPolicy.objects.create(
+    policy = ApmPolicy.objects.create(
         name="结账错误率",
         alert_name="${service} 错误率超过 ${threshold}",
         service=service,
@@ -69,6 +70,7 @@ def multilevel_policy():
         trigger_after=2,
         recover_after=2,
     )
+    return bind_policy_organizations(policy)
 
 
 def _red(at, value):

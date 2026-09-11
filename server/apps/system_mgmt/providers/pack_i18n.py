@@ -206,6 +206,33 @@ def _overlay_template(template: dict[str, Any], requested: dict[str, Any], engli
             _as_mapping(requested_group.get("fields")),
             _as_mapping(english_group.get("fields")),
         )
+    _overlay_external_field_labels(template, requested, english)
+
+
+def _external_field_label_text(entry: Any) -> str | None:
+    if isinstance(entry, str):
+        return entry
+    if isinstance(entry, dict):
+        return _pick_text(entry.get("label"))
+    return None
+
+
+def _overlay_external_field_labels(template: dict[str, Any], requested: dict[str, Any], english: dict[str, Any]) -> None:
+    requested_fields = _as_mapping(requested.get("external_fields"))
+    english_fields = _as_mapping(english.get("external_fields"))
+    existing = template.get("external_field_labels")
+    labels = dict(existing) if isinstance(existing, dict) else {}
+    keys = {str(key) for key in labels} | {str(key) for key in requested_fields} | {str(key) for key in english_fields}
+    for key in keys:
+        current = labels.get(key)
+        label = _pick_text(
+            _external_field_label_text(_lookup(requested_fields, key)),
+            _external_field_label_text(_lookup(english_fields, key)),
+            current if isinstance(current, str) else None,
+        )
+        if label:
+            labels[key] = label
+    template["external_field_labels"] = labels
 
 
 def _overlay_fields(fields: list[Any], requested_fields: dict[str, Any], english_fields: dict[str, Any]) -> None:

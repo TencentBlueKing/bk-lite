@@ -133,10 +133,10 @@ def _validate_params(value):
     return DataSourceAPIModelSerializer.validate_params(serializer, value)
 
 
-@pytest.mark.parametrize("param_type", ["number", "boolean", "date"])
+@pytest.mark.parametrize("param_type", ["boolean", "date"])
 @pytest.mark.unit
 def test_validate_params_rejects_unsupported_unified_filter_types(param_type):
-    with pytest.raises(serializers.ValidationError):
+    with pytest.raises(serializers.ValidationError) as exc_info:
         _validate_params(
             [
                 {
@@ -148,9 +148,10 @@ def test_validate_params_rejects_unsupported_unified_filter_types(param_type):
                 }
             ]
         )
+    assert "number" in str(exc_info.value)
 
 
-@pytest.mark.parametrize("param_type", ["string", "timeRange", "dateRange"])
+@pytest.mark.parametrize("param_type", ["string", "timeRange", "dateRange", "number"])
 @pytest.mark.unit
 def test_validate_params_accepts_supported_unified_filter_types(param_type):
     value = [

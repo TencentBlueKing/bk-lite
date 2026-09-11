@@ -7,8 +7,7 @@ import {
   FlexiblePanelSection,
   KpiSection,
   useFilteredChartPanels,
-  useFilteredSummaryCards
-} from '../common/dashboard-components';
+  useFilteredSummaryCards, DashboardSectionLabel } from '../common/dashboard-components';
 import { TrendChartPanel } from '../../shared/widgets';
 import { MINIO_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
@@ -48,17 +47,17 @@ export default function MinioDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={5} styles={styles} />
 
-          <div className={styles.sectionLabel}>容量与冗余</div>
+          <DashboardSectionLabel styles={styles}>容量与冗余</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {renderChart(freeChart, styles.span6)}
             {renderChart(usedPctChart, styles.span6)}
             {renderChart(redundancyChart, styles.span12)}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>S3 服务</div>
+          <DashboardSectionLabel styles={styles}>S3 服务</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {renderChart(trafficChart, styles.span6)}
             {renderChart(queueChart, styles.span6)}

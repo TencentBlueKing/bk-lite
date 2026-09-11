@@ -8,8 +8,7 @@ import {
   KpiSection,
   useFilteredChartPanels,
   useFilteredRingPanels,
-  useFilteredSummaryCards,
-} from '../common/dashboard-components';
+  useFilteredSummaryCards, DashboardSectionLabel } from '../common/dashboard-components';
 import { RingChartPanel, TrendChartPanel } from '../../shared/widgets';
 import { EXCHANGE_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
@@ -68,10 +67,10 @@ export default function ExchangeDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
 
-          <div className={styles.sectionLabel}>Hub Transport 邮件流</div>
+          <DashboardSectionLabel styles={styles}>Hub Transport 邮件流</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {queueRing ? (
               <RingChartPanel
@@ -90,20 +89,20 @@ export default function ExchangeDashboardPage() {
             {renderChart(queueChart, styles.span8)}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>客户端访问 (CAS)</div>
+          <DashboardSectionLabel styles={styles}>客户端访问 (CAS)</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {renderChart(clientChart, styles.span4)}
             {renderChart(protocolChart, styles.span4)}
             {renderChart(proxyChart, styles.span4)}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>Active Directory 依赖</div>
+          <DashboardSectionLabel styles={styles}>Active Directory 依赖</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {renderChart(adChart, styles.span6)}
             {renderChart(workloadChart, styles.span6)}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>Synthetic 端点探测</div>
+          <DashboardSectionLabel styles={styles}>Synthetic 端点探测</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {renderChart(syntheticChart, styles.span12)}
           </FlexiblePanelSection>

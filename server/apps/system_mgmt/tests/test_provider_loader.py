@@ -1,5 +1,6 @@
 import time
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from threading import Event, Lock
 from types import SimpleNamespace
 
@@ -21,6 +22,10 @@ def clean_provider_state():
     loader.reset_builtin_providers()
 
 
+def _disable_enterprise_builtin_packs(monkeypatch):
+    monkeypatch.setattr(loader, "discover_enterprise_builtin_provider_packs", lambda: [])
+
+
 def test_system_mgmt_ready_does_not_load_providers(monkeypatch):
     def fail_if_loaded():
         raise AssertionError("SystemMgmtConfig.ready() 不应主动加载 provider")
@@ -30,7 +35,8 @@ def test_system_mgmt_ready_does_not_load_providers(monkeypatch):
     HandleConfig("apps.system_mgmt", __import__("apps.system_mgmt")).ready()
 
 
-def test_provider_registry_list_lazily_loads_builtin_providers():
+def test_provider_registry_list_lazily_loads_builtin_providers(monkeypatch):
+    _disable_enterprise_builtin_packs(monkeypatch)
     manifests = provider_registry.list()
 
     assert {manifest.key for manifest in manifests} == {"ad", "feishu", "wechat", "wecom"}
@@ -44,6 +50,7 @@ def test_adapter_registry_get_lazily_loads_builtin_providers():
 
 
 def test_builtin_provider_loading_is_thread_safe(monkeypatch):
+    _disable_enterprise_builtin_packs(monkeypatch)
     monkeypatch.setattr(loader, "discover_builtin_provider_packs", lambda: (("fake.provider", None),))
 
     import_count = 0
@@ -68,6 +75,7 @@ def test_builtin_provider_loading_is_thread_safe(monkeypatch):
 
 
 def test_provider_read_waits_for_force_reload(monkeypatch):
+    _disable_enterprise_builtin_packs(monkeypatch)
     provider_registry.list()
 
     clear_started = Event()
@@ -99,6 +107,7 @@ def test_provider_read_waits_for_force_reload(monkeypatch):
 
 
 def test_provider_loading_keeps_healthy_packs_when_one_pack_fails(monkeypatch):
+    _disable_enterprise_builtin_packs(monkeypatch)
     monkeypatch.setattr(
         loader,
         "discover_builtin_provider_packs",
@@ -206,6 +215,12 @@ def test_builtin_pack_code_logs_through_provider_sdk():
         loader.BUILTIN_PROVIDER_ROOT,
         loader.BUILTIN_PROVIDER_ROOT.parent / "base.py",
     ]
+    try:
+        import apps.system_mgmt.enterprise as enterprise_pkg
+    except ImportError:
+        pass
+    else:
+        scan_roots.append(Path(enterprise_pkg.__file__).resolve().parent / "providers")
     for root in scan_roots:
         paths = [root] if root.is_file() else root.rglob("*.py")
         for path in paths:
@@ -229,6 +244,7 @@ def test_missing_language_file_skips_that_pack_only(monkeypatch, tmp_path):
         "discover_builtin_provider_packs",
         lambda: (("apps.system_mgmt.providers.builtin.feishu", pack),),
     )
+    _disable_enterprise_builtin_packs(monkeypatch)
 
     loader.load_builtin_providers()
 
@@ -249,7 +265,10 @@ def test_load_builtin_providers_only_scans_builtin_root(monkeypatch):
 
     loader.load_builtin_providers()
 
-    assert scanned_roots == [loader.BUILTIN_PROVIDER_ROOT]
+    assert scanned_roots
+    assert scanned_roots[0] == loader.BUILTIN_PROVIDER_ROOT
+    extra_roots = scanned_roots[1:]
+    assert all("enterprise" in str(root) and root.name == "builtin" for root in extra_roots)
     assert not hasattr(loader, "discover_custom_provider_packs")
     assert not hasattr(loader, "CUSTOM_PROVIDER_ROOT")
 
@@ -265,6 +284,7 @@ def test_pack_directory_resolves_relative_adapter_paths(monkeypatch, tmp_path):
     imported_paths = []
 
     monkeypatch.setattr(loader, "discover_builtin_provider_packs", lambda: (("pack.acme", pack),))
+    _disable_enterprise_builtin_packs(monkeypatch)
     monkeypatch.setattr(
         loader,
         "import_module",
@@ -319,6 +339,7 @@ def test_pack_directory_rejects_absolute_adapter_path_and_keeps_other_packs(monk
         "discover_builtin_provider_packs",
         lambda: (("pack.good", good_pack), ("pack.bad", bad_pack)),
     )
+    _disable_enterprise_builtin_packs(monkeypatch)
 
     def import_module_by_path(module_path):
         if module_path == "pack.good":
@@ -362,6 +383,7 @@ def test_pack_directory_rejects_absolute_adapter_path_and_keeps_other_packs(monk
 
 
 def test_adapter_key_must_use_manifest_key_prefix(monkeypatch):
+    _disable_enterprise_builtin_packs(monkeypatch)
     monkeypatch.setattr(
         loader,
         "discover_builtin_provider_packs",
@@ -409,6 +431,7 @@ def test_adapter_key_must_use_manifest_key_prefix(monkeypatch):
 
 
 def test_manifest_without_pack_directory_keeps_absolute_import_path(monkeypatch):
+    _disable_enterprise_builtin_packs(monkeypatch)
     monkeypatch.setattr(loader, "discover_builtin_provider_packs", lambda: (("fake.provider", None),))
     imported_paths = []
     monkeypatch.setattr(

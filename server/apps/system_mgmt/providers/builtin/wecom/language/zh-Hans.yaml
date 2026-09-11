@@ -60,6 +60,15 @@ templates:
         fields:
           mapping_strategy:
             label: 映射策略
+    external_fields:
+      userid:
+        label: 用户 ID
+      email:
+        label: 邮箱
+      mobile:
+        label: 手机号
+      name:
+        label: 名称
 
 capabilities:
   login_auth:

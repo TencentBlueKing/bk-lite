@@ -10,7 +10,7 @@ import { HandledRequestError } from '@/utils/request';
 const api = {
   getApplication: vi.fn(),
   getServices: vi.fn(),
-  getServiceRed: vi.fn(),
+  getServiceRedBatch: vi.fn(),
   getTopology: vi.fn(),
   getEvents: vi.fn(),
   getSlos: vi.fn(),
@@ -116,22 +116,27 @@ beforeEach(() => {
     ],
     sampled_traces: 2, truncated: false, data_state: 'available',
   });
-  api.getServiceRed.mockResolvedValue({
-    request_rate: 3,
-    error_rate: 0.1,
-    p95_ms: 25,
-    p99_ms: 40,
-    request_count: 1200,
-    error_count: 120,
-    data_state: 'available',
-    timeseries: [
-      { timestamp: '2026-08-14T00:00:00Z', request_rate: 2, error_rate: 0.1, p95_ms: 20, p99_ms: 35 },
-      { timestamp: '2026-08-14T00:05:00Z', request_rate: 4, error_rate: 0.1, p95_ms: 25, p99_ms: 40 },
-    ],
-    top_endpoints: [
-      { endpoint: 'GET /checkout', request_rate: 2, error_rate: 0.2, p95_ms: 25, p99_ms: 40 },
-      { endpoint: 'GET /health', request_rate: 1, error_rate: 0, p95_ms: 2, p99_ms: 3 },
-    ],
+  api.getServiceRedBatch.mockResolvedValue({
+    items: [{
+      ok: true,
+      service_id: 'shop-service',
+      environment: 'prod',
+      request_rate: 3,
+      error_rate: 0.1,
+      p95_ms: 25,
+      p99_ms: 40,
+      request_count: 1200,
+      error_count: 120,
+      data_state: 'available',
+      timeseries: [
+        { timestamp: '2026-08-14T00:00:00Z', request_rate: 2, error_rate: 0.1, p95_ms: 20, p99_ms: 35 },
+        { timestamp: '2026-08-14T00:05:00Z', request_rate: 4, error_rate: 0.1, p95_ms: 25, p99_ms: 40 },
+      ],
+      top_endpoints: [
+        { endpoint: 'GET /checkout', request_rate: 2, error_rate: 0.2, p95_ms: 25, p99_ms: 40 },
+        { endpoint: 'GET /health', request_rate: 1, error_rate: 0, p95_ms: 2, p99_ms: 3 },
+      ],
+    }],
   });
   api.getEvents.mockResolvedValue([]);
   api.getSlos.mockResolvedValue([]);
@@ -182,11 +187,14 @@ describe('APM 应用观测详情', () => {
     expect(api.getTopology).toHaveBeenCalledWith(expect.objectContaining({
       include_inferred: true,
       include_user_request: true,
+      application_id: 'shop',
     }));
     expect(api.getTopology.mock.calls[0][0].include_user_request).toBe(true);
 
-    await waitFor(() => expect(api.getServiceRed).toHaveBeenCalledTimes(1));
-    expect(api.getServiceRed.mock.calls[0][0]).toBe('shop-service');
+    await waitFor(() => expect(api.getServiceRedBatch).toHaveBeenCalledTimes(1));
+    expect(api.getServiceRedBatch.mock.calls[0][0].targets).toEqual([
+      { service_id: 'shop-service', environment: 'prod' },
+    ]);
 
     // 底部四卡：吞吐 / 错误率带窗口总量，P95 / P99 带迷你趋势；服务数只计本应用接入服务
     const kpiOf = (key: string) => document.querySelector(`[data-kpi="${key}"]`);
@@ -219,13 +227,46 @@ describe('APM 应用观测详情', () => {
   }, 15_000);
 
   it('全部服务 RED 查询失败时重点指标展示错误态并可重试', async () => {
-    api.getServiceRed.mockRejectedValue(new Error('boom'));
+    api.getServiceRedBatch.mockRejectedValue(new Error('boom'));
     renderWithApmIntl(<ApplicationObservability applicationId="app-row-1" />);
 
     expect(await screen.findByLabelText('重点指标')).not.toBeNull();
-    await waitFor(() => expect(api.getServiceRed).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(api.getServiceRedBatch).toHaveBeenCalledTimes(1));
     expect(await screen.findByText('1 个服务指标查询失败，重试')).not.toBeNull();
     expect(document.querySelector('[data-kpi]')).toBeNull();
+  });
+
+  it('多批 RED 中一批失败只标记该批服务，其他批次指标仍然展示', async () => {
+    api.getServices.mockResolvedValue(
+      Array.from({ length: 41 }, (_, index) => service(`svc-${index}`, 'shop', `service-${index}`)),
+    );
+    api.getServiceRedBatch
+      .mockResolvedValueOnce({
+        items: Array.from({ length: 40 }, (_, index) => ({
+          ok: true,
+          service_id: `svc-${index}`,
+          environment: 'prod',
+          request_rate: 1,
+          error_rate: 0,
+          p95_ms: 10,
+          p99_ms: 20,
+          request_count: 60,
+          error_count: 0,
+          data_state: 'available',
+          timeseries: [],
+          top_endpoints: [],
+        })),
+      })
+      .mockRejectedValueOnce(new HandledRequestError('VictoriaTraces 响应超过大小上限', {
+        status: 503,
+        code: 'query_too_large',
+      }));
+
+    renderWithApmIntl(<ApplicationObservability applicationId="app-row-1" />);
+
+    await waitFor(() => expect(api.getServiceRedBatch).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText('1 个服务指标查询失败，重试')).not.toBeNull();
+    await waitFor(() => expect(document.querySelector('[data-kpi]')).not.toBeNull());
   });
 
   it('拓扑取数完成前展示加载而不是空状态', async () => {
@@ -271,18 +312,33 @@ describe('APM 应用观测详情', () => {
     expect(screen.queryByTestId('application-topology')).toBeNull();
   });
 
+  it('拓扑响应超限展示数据量过大而不是存储不可用', async () => {
+    api.getTopology.mockRejectedValue(new HandledRequestError('VictoriaTraces 响应超过大小上限', {
+      status: 503,
+      code: 'query_too_large',
+    }));
+
+    renderWithApmIntl(<ApplicationObservability applicationId="app-row-1" />);
+
+    expect(await screen.findByText('电商应用')).not.toBeNull();
+    expect(await screen.findByText('本次查询数据量过大')).not.toBeNull();
+    expect(await screen.findByText('请缩小时间窗后重试。目录与已加载指标仍然可用。')).not.toBeNull();
+    expect(screen.queryByText('遥测存储暂不可用')).toBeNull();
+    expect(screen.queryByText('VictoriaTraces 响应超过大小上限')).toBeNull();
+    expect(screen.queryByTestId('application-topology')).toBeNull();
+  });
+
   it('选择 7d 窗口仍查询 RED 指标', async () => {
     const user = userEvent.setup();
     renderWithApmIntl(<ApplicationObservability applicationId="app-row-1" />);
-    await waitFor(() => expect(api.getServiceRed).toHaveBeenCalled());
-    api.getServiceRed.mockClear();
+    await waitFor(() => expect(api.getServiceRedBatch).toHaveBeenCalled());
+    api.getServiceRedBatch.mockClear();
 
     await user.click(screen.getByRole('radio', { name: '7d' }).closest('label')!);
 
-    await waitFor(() => expect(api.getServiceRed).toHaveBeenCalled());
-    const startedAt = api.getServiceRed.mock.calls[0][2] as string;
-    const endedAt = api.getServiceRed.mock.calls[0][3] as string;
-    expect(new Date(endedAt).getTime() - new Date(startedAt).getTime()).toBeGreaterThan(6 * 24 * 60 * 60 * 1000);
+    await waitFor(() => expect(api.getServiceRedBatch).toHaveBeenCalled());
+    const payload = api.getServiceRedBatch.mock.calls[0][0] as { started_at: string; ended_at: string };
+    expect(new Date(payload.ended_at).getTime() - new Date(payload.started_at).getTime()).toBeGreaterThan(6 * 24 * 60 * 60 * 1000);
     expect(screen.queryByText('RED 指标查询失败')).toBeNull();
   });
 });

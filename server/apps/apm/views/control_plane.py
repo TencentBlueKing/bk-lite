@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict
 
 from django.db import transaction
@@ -9,13 +10,14 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 
-from apps.apm.adapters import SystemMgmtNotificationDispatcher, TelemetryStoreUnavailable, VictoriaTracesTelemetryStore
+from apps.apm.adapters import SystemMgmtNotificationDispatcher, TelemetryStoreUnavailable, VictoriaTracesTelemetryStore, telemetry_error_payload
 from apps.apm.models import (
     ApmAlert,
     ApmAlertOutbox,
     ApmApplication,
     ApmEventSnapshot,
     ApmPolicy,
+    ApmPolicyOrganization,
     ApmPolicyNotificationTarget,
     ApmService,
     ApmServiceInstance,
@@ -24,6 +26,7 @@ from apps.apm.models import (
 from apps.apm.pagination import ApmCatalogPagination
 from apps.apm.renderers import ApmRenderer
 from apps.apm.serializers import (
+    ApmAlertAssignSerializer,
     ApmAlertQuerySerializer,
     ApmApplicationSerializer,
     ApmEventQuerySerializer,
@@ -40,6 +43,7 @@ from apps.apm.serializers import (
     NotificationRecipientQuerySerializer,
     OrganizationAssignmentSerializer,
     ServiceErrorBreakdownQuerySerializer,
+    ServiceMetricBatchSerializer,
     ServiceMetricQuerySerializer,
 )
 from apps.apm.services import (
@@ -57,6 +61,7 @@ from apps.apm.services import (
     DjangoTelemetryQueryService,
     NotificationChannelDirectory,
 )
+from apps.apm.services.alerts import AlertHandlerConflict, AlertHandlerForbidden, AlertHandlerInvalid
 from apps.apm.services.access import current_organization_id, filter_current_organization, validate_assignable_organizations, visible_organization_ids
 from apps.apm.services.contracts import IngestSnippetRequest, MetricDataState, ServiceErrorBreakdownQuery, ServiceMetricQuery
 from apps.apm.services.integration_configuration import CloudRegionConfigurationError
@@ -68,6 +73,44 @@ from apps.core.utils.user_group import normalize_user_group_ids
 from apps.rpc.node_mgmt import NodeMgmt
 
 MAX_CATALOG_KEYWORD_TOKENS = 8
+MAX_METRIC_BATCH_TARGETS = 40
+METRIC_BATCH_WORKERS = 8
+
+
+def _service_red_payload(service_id: str, environment: str, started_at, ended_at, red) -> dict:
+    return {
+        "service_id": str(service_id),
+        "environment": environment,
+        "started_at": started_at,
+        "ended_at": ended_at,
+        "data_state": str(MetricDataState.NO_DATA if red.request_rate is None else MetricDataState.AVAILABLE),
+        "request_rate": red.request_rate,
+        "error_rate": red.error_rate,
+        "p95_ms": red.p95_ms,
+        "p99_ms": red.p99_ms,
+        "request_count": red.request_count,
+        "error_count": red.error_count,
+        "timeseries": [
+            {
+                "timestamp": point.timestamp,
+                "request_rate": point.request_rate,
+                "error_rate": point.error_rate,
+                "p95_ms": point.p95_ms,
+                "p99_ms": point.p99_ms,
+            }
+            for point in red.timeseries
+        ],
+        "top_endpoints": [
+            {
+                "endpoint": endpoint.endpoint,
+                "request_rate": endpoint.request_rate,
+                "error_rate": endpoint.error_rate,
+                "p95_ms": endpoint.p95_ms,
+                "p99_ms": endpoint.p99_ms,
+            }
+            for endpoint in red.top_endpoints
+        ],
+    }
 
 
 def _catalog_list_params(view) -> dict:
@@ -363,7 +406,7 @@ class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
             environment=data["environment"],
             started_at=data["started_at"],
             ended_at=data["ended_at"],
-            include_breakdown=True,
+            include_breakdown=bool(data.get("include_breakdown", True)),
             endpoint=data["endpoint"],
         )
         try:
@@ -374,45 +417,69 @@ class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         except TelemetryStoreUnavailable as exc:
+            return Response(telemetry_error_payload(exc), status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        return Response(_service_red_payload(service.id, data["environment"], data["started_at"], data["ended_at"], red))
+
+    @action(methods=("post",), detail=False, url_path="metrics/batch")
+    @HasPermission("services-View")
+    def metrics_batch(self, request, *args, **kwargs):
+        serializer = ServiceMetricBatchSerializer(data=request.data)
+        if not serializer.is_valid():
             return Response(
-                {"detail": str(exc), "code": "telemetry_unavailable"},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                {"code": "invalid_query", "detail": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-        return Response(
-            {
-                "service_id": str(service.id),
-                "environment": data["environment"],
-                "started_at": data["started_at"],
-                "ended_at": data["ended_at"],
-                "data_state": str(MetricDataState.NO_DATA if red.request_rate is None else MetricDataState.AVAILABLE),
-                "request_rate": red.request_rate,
-                "error_rate": red.error_rate,
-                "p95_ms": red.p95_ms,
-                "p99_ms": red.p99_ms,
-                "request_count": red.request_count,
-                "error_count": red.error_count,
-                "timeseries": [
-                    {
-                        "timestamp": point.timestamp,
-                        "request_rate": point.request_rate,
-                        "error_rate": point.error_rate,
-                        "p95_ms": point.p95_ms,
-                        "p99_ms": point.p99_ms,
-                    }
-                    for point in red.timeseries
-                ],
-                "top_endpoints": [
-                    {
-                        "endpoint": endpoint.endpoint,
-                        "request_rate": endpoint.request_rate,
-                        "error_rate": endpoint.error_rate,
-                        "p95_ms": endpoint.p95_ms,
-                        "p99_ms": endpoint.p99_ms,
-                    }
-                    for endpoint in red.top_endpoints
-                ],
-            }
-        )
+        data = serializer.validated_data
+        targets = data["targets"][:MAX_METRIC_BATCH_TARGETS]
+        service_ids = [target["service_id"] for target in targets]
+        services = {str(service.id): service for service in self.get_queryset().filter(id__in=service_ids)}
+
+        def query_one(target: dict):
+            service = services.get(str(target["service_id"]))
+            if service is None:
+                return {
+                    "service_id": str(target["service_id"]),
+                    "environment": target["environment"],
+                    "ok": False,
+                    "code": "not_found",
+                    "detail": "服务不存在或当前组织不可见",
+                }
+            query = ServiceMetricQuery(
+                service_namespace=service.namespace,
+                service_name=service.name,
+                environment=target["environment"],
+                started_at=data["started_at"],
+                ended_at=data["ended_at"],
+                include_breakdown=bool(data.get("include_breakdown", True)),
+            )
+            try:
+                red = DjangoTelemetryQueryService(VictoriaTracesTelemetryStore()).service_red(query)
+            except ValueError as exc:
+                return {
+                    "service_id": str(service.id),
+                    "environment": target["environment"],
+                    "ok": False,
+                    "code": "invalid_query",
+                    "detail": str(exc),
+                }
+            except TelemetryStoreUnavailable as exc:
+                return {
+                    "service_id": str(service.id),
+                    "environment": target["environment"],
+                    "ok": False,
+                    **telemetry_error_payload(exc),
+                }
+            payload = _service_red_payload(service.id, target["environment"], data["started_at"], data["ended_at"], red)
+            payload["ok"] = True
+            return payload
+
+        items: list[dict | None] = [None] * len(targets)
+        workers = min(METRIC_BATCH_WORKERS, len(targets)) or 1
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(query_one, target): index for index, target in enumerate(targets)}
+            for future in as_completed(futures):
+                items[futures[future]] = future.result()
+        return Response({"items": items})
 
     @action(methods=("get",), detail=True, url_path="error-breakdown")
     @HasPermission("services-View")
@@ -442,10 +509,7 @@ class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         except TelemetryStoreUnavailable as exc:
-            return Response(
-                {"detail": str(exc), "code": "telemetry_unavailable"},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
+            return Response(telemetry_error_payload(exc), status=status.HTTP_503_SERVICE_UNAVAILABLE)
         from apps.apm.views.spans import _span_summary_data
 
         return Response(
@@ -675,11 +739,39 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
 
     def get_queryset(self):
         queryset = ApmPolicy.objects.select_related("service").prefetch_related(
-            "service__organization_links",
+            "organization_links",
             "notification_targets",
             "target_states",
         )
-        return filter_current_organization(queryset, self.request, "service__organization_links")
+        return filter_current_organization(queryset, self.request, "organization_links")
+
+    def _authorize_policy_organizations(self, organizations, *, required):
+        if organizations is None:
+            if required:
+                raise ValidationError({"organizations": "该字段必填。"})
+            return None
+        try:
+            validate_assignable_organizations(self.request, organizations)
+        except ValueError as exc:
+            raise ValidationError({"organizations": str(exc)}) from exc
+        except PermissionError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        return organizations
+
+    @staticmethod
+    def _replace_organizations(policy, organizations, *, actor):
+        policy.organization_links.all().delete()
+        ApmPolicyOrganization.objects.bulk_create(
+            [
+                ApmPolicyOrganization(
+                    policy=policy,
+                    organization=organization,
+                    created_by=actor,
+                    updated_by=actor,
+                )
+                for organization in organizations
+            ]
+        )
 
     def _visible_service(self, service_id):
         queryset = filter_current_organization(
@@ -768,6 +860,12 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
         targets = self._validate_notification_channels(serializer)
         if isinstance(targets, Response):
             return targets
+        organizations = self._authorize_policy_organizations(
+            serializer.validated_data.pop("organizations", None),
+            required=True,
+        )
+        if isinstance(organizations, Response):
+            return organizations
         service_id = serializer.validated_data.pop("service_id")
         serializer.validated_data.pop("notification_targets", None)
         with transaction.atomic():
@@ -776,6 +874,7 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
                 created_by=request.user.username,
                 updated_by=request.user.username,
             )
+            self._replace_organizations(policy, organizations, actor=request.user.username)
             self._replace_notification_targets(policy, targets or [], actor=request.user.username)
             self._service().save_policy(policy)
         return Response(self.get_serializer(policy).data, status=status.HTTP_201_CREATED)
@@ -788,6 +887,16 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
         targets = self._validate_notification_channels(serializer, policy)
         if isinstance(targets, Response):
             return targets
+        organizations = None
+        if "organizations" in request.data:
+            organizations = self._authorize_policy_organizations(
+                serializer.validated_data.pop("organizations", None),
+                required=True,
+            )
+            if isinstance(organizations, Response):
+                return organizations
+        else:
+            serializer.validated_data.pop("organizations", None)
         service_id = serializer.validated_data.pop("service_id", None)
         serializer.validated_data.pop("notification_targets", None)
         save_kwargs = {"updated_by": request.user.username}
@@ -795,6 +904,8 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
             save_kwargs["service"] = self._visible_service(service_id)
         with transaction.atomic():
             policy = serializer.save(**save_kwargs)
+            if organizations is not None:
+                self._replace_organizations(policy, organizations, actor=request.user.username)
             if targets is not None:
                 self._replace_notification_targets(policy, targets, actor=request.user.username)
             policy.target_states.all().delete()
@@ -835,10 +946,7 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
         try:
             result = self._service().test_query(policy, evaluated_at=timezone.now())
         except TelemetryStoreUnavailable as exc:
-            return Response(
-                {"detail": str(exc), "code": "telemetry_unavailable"},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
+            return Response(telemetry_error_payload(exc), status=status.HTTP_503_SERVICE_UNAVAILABLE)
         return Response(
             {
                 "value": str(result.value) if result.value is not None else None,
@@ -869,14 +977,12 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
         values = dict(serializer.validated_data)
         service_id = values.pop("service_id")
         values.pop("notification_targets", None)
+        values.pop("organizations", None)
         policy = ApmPolicy(service=self._visible_service(service_id), **values)
         try:
             result = self._service().test_query(policy, evaluated_at=timezone.now())
         except TelemetryStoreUnavailable as exc:
-            return Response(
-                {"detail": str(exc), "code": "telemetry_unavailable"},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
+            return Response(telemetry_error_payload(exc), status=status.HTTP_503_SERVICE_UNAVAILABLE)
         return Response(
             {
                 "value": str(result.value) if result.value is not None else None,
@@ -929,7 +1035,13 @@ class ApmAlertViewSet(viewsets.GenericViewSet):
             return Response([])
         serializer = ApmAlertQuerySerializer(data=request.query_params)
         serializer.is_valid(raise_exception=True)
-        return Response(self.alert_service.list(organization_ids=organization_ids, **serializer.validated_data))
+        return Response(
+            self.alert_service.list(
+                organization_ids=organization_ids,
+                actor=request.user,
+                **serializer.validated_data,
+            )
+        )
 
     @HasPermission("events-View")
     def retrieve(self, request, *args, **kwargs):
@@ -950,6 +1062,8 @@ class ApmAlertViewSet(viewsets.GenericViewSet):
                 started_at=data["started_at"],
                 ended_at=data["ended_at"],
                 status_group=data.get("status_group"),
+                my_alert=data.get("my_alert", False),
+                actor=request.user,
             )
         )
 
@@ -963,6 +1077,58 @@ class ApmAlertViewSet(viewsets.GenericViewSet):
             occurred_at=timezone.now(),
         )
         return Response(self.alert_service.serialize(closed))
+
+    @action(methods=("post",), detail=True)
+    @HasPermission("policies-Operate")
+    def claim(self, request, *args, **kwargs):
+        alert = self.get_object()
+        try:
+            claimed = self.alert_service.claim(
+                alert,
+                actor=request.user,
+                operable_qs=self.get_queryset(),
+            )
+        except AlertHandlerForbidden as exc:
+            return Response(
+                {"code": "handler_forbidden", "detail": str(exc)},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        except AlertHandlerConflict as exc:
+            return Response(
+                {"code": "handler_conflict", "detail": str(exc)},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return Response(self.alert_service.serialize(claimed))
+
+    @action(methods=("post",), detail=True)
+    @HasPermission("policies-Operate")
+    def assign(self, request, *args, **kwargs):
+        alert = self.get_object()
+        serializer = ApmAlertAssignSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            assigned = self.alert_service.assign(
+                alert,
+                handlers=serializer.validated_data["handlers"],
+                actor=request.user,
+                operable_qs=self.get_queryset(),
+            )
+        except AlertHandlerForbidden as exc:
+            return Response(
+                {"code": "handler_forbidden", "detail": str(exc)},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        except AlertHandlerInvalid as exc:
+            return Response(
+                {"code": "handler_invalid", "detail": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except AlertHandlerConflict as exc:
+            return Response(
+                {"code": "handler_conflict", "detail": str(exc)},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return Response(self.alert_service.serialize(assigned))
 
     @action(methods=("get",), detail=True)
     @HasPermission("events-View")
@@ -1062,12 +1228,21 @@ class ApmNotificationRecipientViewSet(viewsets.GenericViewSet):
             return Response([])
         serializer = NotificationRecipientQuerySerializer(data=request.query_params)
         serializer.is_valid(raise_exception=True)
+        organization_ids = serializer.validated_data.pop("organization_ids", [])
+        if organization_ids:
+            try:
+                validate_assignable_organizations(request, organization_ids)
+            except ValueError as exc:
+                raise ValidationError({"organization_ids": str(exc)}) from exc
+            except PermissionError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_403_FORBIDDEN)
         actor_context = _notification_actor_context(request, organization_id)
         try:
             recipients = self.directory.search_recipients(
                 actor_context=actor_context,
                 organization_id=organization_id,
                 include_children=actor_context["include_children"],
+                organization_ids=organization_ids or None,
                 **serializer.validated_data,
             )
         except RuntimeError as exc:

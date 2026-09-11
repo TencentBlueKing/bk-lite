@@ -2,7 +2,7 @@ from typing import Any
 
 REPORT_SCHEMA_VERSION = 1
 REPORT_COMPONENT_TYPES = frozenset({"table", "eventTable"})
-REPORT_FILTER_TYPES = frozenset({"string", "timeRange", "dateRange"})
+REPORT_FILTER_TYPES = frozenset({"string", "timeRange", "dateRange", "number"})
 
 
 def _normalize_filter(definition: Any, index: int, seen_ids: set[str]) -> dict[str, Any]:

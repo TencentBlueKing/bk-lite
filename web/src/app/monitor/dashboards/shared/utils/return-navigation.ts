@@ -4,7 +4,7 @@ export const DASHBOARD_RETURN_SOURCE_PARAM = 'return_source';
 
 export type DashboardReturnSource = 'view' | 'integration';
 
-type SearchParamsLike = Pick<URLSearchParams, 'get'>;
+export type SearchParamsLike = Pick<URLSearchParams, 'get'>;
 
 export interface DashboardReturnContext {
   objectId: string;

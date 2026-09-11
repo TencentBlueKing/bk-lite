@@ -21,6 +21,7 @@ import type {
   ApmService,
   ApmServiceInstance,
   ApmServiceRed,
+  ApmServiceRedBatchItem,
   ApmServiceErrorBreakdown,
   ApmSlo,
   ApmSloInput,
@@ -160,11 +161,34 @@ const useApmApi = () => {
   );
 
   const getServiceRed = useCallback(
-    (serviceId: string, environment: string, startedAt?: string, endedAt?: string, endpoint?: string) =>
+    (
+      serviceId: string,
+      environment: string,
+      startedAt?: string,
+      endedAt?: string,
+      endpoint?: string,
+      options?: { include_breakdown?: boolean },
+    ) =>
       get<ApmServiceRed>(`/apm/services/${serviceId}/metrics/`, {
-        params: { environment, started_at: startedAt, ended_at: endedAt, endpoint },
+        params: {
+          environment,
+          started_at: startedAt,
+          ended_at: endedAt,
+          endpoint,
+          include_breakdown: options?.include_breakdown,
+        },
       }),
     [get]
+  );
+
+  const getServiceRedBatch = useCallback(
+    (payload: {
+      started_at: string;
+      ended_at: string;
+      include_breakdown?: boolean;
+      targets: Array<{ service_id: string; environment: string }>;
+    }) => post<{ items: ApmServiceRedBatchItem[] }>('/apm/services/metrics/batch/', payload),
+    [post]
   );
 
   const getServiceErrorBreakdown = useCallback(
@@ -222,7 +246,8 @@ const useApmApi = () => {
       min_duration_ms?: number;
       include_inferred?: boolean;
       include_user_request?: boolean;
-    }) => get<ApmTopologyGraph>('/apm/topology/', { params }),
+      application_id?: string;
+    }) => get<ApmTopologyGraph>('/apm/topology/', { params, suppressErrorNotification: true }),
     [get]
   );
 
@@ -280,7 +305,7 @@ const useApmApi = () => {
   );
 
   const getAlertDistribution = useCallback(
-    (params: Pick<ApmAlertQuery, 'started_at' | 'ended_at' | 'status_group'>) =>
+    (params: Pick<ApmAlertQuery, 'started_at' | 'ended_at' | 'status_group' | 'my_alert'>) =>
       get<Array<{ time: string; critical: number; error: number; warning: number }>>(
         '/apm/alerts/distribution/',
         { params }
@@ -306,6 +331,17 @@ const useApmApi = () => {
     [post]
   );
 
+  const claimAlert = useCallback(
+    (alertId: string) => post<ApmAlert>(`/apm/alerts/${alertId}/claim/`),
+    [post]
+  );
+
+  const assignAlert = useCallback(
+    (alertId: string, handlers: Array<string | number>) =>
+      post<ApmAlert>(`/apm/alerts/${alertId}/assign/`, { handlers }),
+    [post]
+  );
+
   const getNotificationChannels = useCallback(
     () => get<ApmNotificationChannel[]>('/apm/notification-channels/'),
     [get]
@@ -318,7 +354,7 @@ const useApmApi = () => {
   );
 
   const getNotificationRecipients = useCallback(
-    (params: { search?: string; limit?: number } = {}) =>
+    (params: { search?: string; limit?: number; organization_ids?: string } = {}) =>
       get<ApmNotificationRecipient[]>('/apm/notification-recipients/', { params }),
     [get]
   );
@@ -348,6 +384,7 @@ const useApmApi = () => {
     getDeployments,
     getDashboard,
     getServiceRed,
+    getServiceRedBatch,
     getServiceErrorBreakdown,
     getSlos,
     createSlo,
@@ -373,6 +410,8 @@ const useApmApi = () => {
     getAlertSnapshots,
     getEventEvidence,
     closeAlert,
+    claimAlert,
+    assignAlert,
     getNotificationChannels,
     getNotificationDeliveries,
     getNotificationRecipients,

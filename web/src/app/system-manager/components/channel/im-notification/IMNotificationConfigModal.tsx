@@ -54,12 +54,12 @@ const IMNotificationConfigModal: React.FC<IMNotificationConfigModalProps> = ({
   const integrationInstanceOptions = [
     ...(unavailableEditingInstance ? [{
       value: unavailableEditingInstance.id,
-      label: `${formatIntegrationInstanceDisplayName(unavailableEditingInstance, t)} (${t('system.channel.imNotificationPage.currentInstanceUnavailable')})`,
+      label: `${formatIntegrationInstanceDisplayName(unavailableEditingInstance)} (${t('system.channel.imNotificationPage.currentInstanceUnavailable')})`,
       disabled: true,
     }] : []),
     ...availableInstances.map((instance) => ({
       value: instance.id,
-      label: formatIntegrationInstanceDisplayName(instance, t),
+      label: formatIntegrationInstanceDisplayName(instance),
     })),
   ];
 

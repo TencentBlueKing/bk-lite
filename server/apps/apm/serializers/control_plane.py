@@ -264,6 +264,7 @@ class ServiceMetricQuerySerializer(serializers.Serializer):
     endpoint = serializers.CharField(max_length=512, required=False, allow_blank=True, default="")
     started_at = serializers.DateTimeField(required=False)
     ended_at = serializers.DateTimeField(required=False)
+    include_breakdown = serializers.BooleanField(required=False, default=True)
 
     def validate(self, attrs):
         unsupported = sorted(set(self.initial_data) - set(self.fields))
@@ -275,6 +276,37 @@ class ServiceMetricQuerySerializer(serializers.Serializer):
             raise serializers.ValidationError("查询结束时间必须晚于开始时间")
         if ended_at - started_at > MAX_METRIC_WINDOW:
             raise serializers.ValidationError("RED 查询时间窗不能超过 7 天")
+        attrs["started_at"] = started_at
+        attrs["ended_at"] = ended_at
+        return attrs
+
+
+class ServiceMetricBatchTargetSerializer(serializers.Serializer):
+    service_id = serializers.UUIDField()
+    environment = serializers.CharField(max_length=256, allow_blank=True)
+
+
+class ServiceMetricBatchSerializer(serializers.Serializer):
+    started_at = serializers.DateTimeField(required=False)
+    ended_at = serializers.DateTimeField(required=False)
+    include_breakdown = serializers.BooleanField(required=False, default=True)
+    targets = ServiceMetricBatchTargetSerializer(many=True)
+
+    def validate(self, attrs):
+        unsupported = sorted(set(self.initial_data) - set(self.fields))
+        if unsupported:
+            raise serializers.ValidationError(f"不支持的批量 RED 查询参数: {', '.join(unsupported)}")
+        ended_at = attrs.get("ended_at") or timezone.now()
+        started_at = attrs.get("started_at") or ended_at - timedelta(hours=1)
+        if ended_at <= started_at:
+            raise serializers.ValidationError("查询结束时间必须晚于开始时间")
+        if ended_at - started_at > MAX_METRIC_WINDOW:
+            raise serializers.ValidationError("RED 查询时间窗不能超过 7 天")
+        targets = attrs.get("targets") or []
+        if not targets:
+            raise serializers.ValidationError({"targets": "该字段不能为空。"})
+        if len(targets) > 40:
+            raise serializers.ValidationError({"targets": "批量 RED 查询最多 40 个目标。"})
         attrs["started_at"] = started_at
         attrs["ended_at"] = ended_at
         return attrs
@@ -410,10 +442,20 @@ class ApmPolicyThresholdSerializer(serializers.Serializer):
     value = serializers.DecimalField(max_digits=20, decimal_places=6)
 
 
+class PolicyOrganizationsField(serializers.ListField):
+    def get_attribute(self, instance):
+        return list(instance.organization_links.order_by("organization").values_list("organization", flat=True))
+
+
 class ApmPolicySerializer(serializers.ModelSerializer):
     service_id = serializers.UUIDField(required=False)
     service_namespace = serializers.CharField(source="service.namespace", read_only=True)
     service_name = serializers.CharField(source="service.name", read_only=True)
+    organizations = PolicyOrganizationsField(
+        child=serializers.IntegerField(min_value=1),
+        required=False,
+        allow_empty=False,
+    )
     notification_targets = ApmPolicyNotificationTargetSerializer(many=True, required=False)
     thresholds = ApmPolicyThresholdSerializer(many=True, required=False, min_length=1, max_length=3)
     endpoints = serializers.ListField(
@@ -438,6 +480,7 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             "service_id",
             "service_namespace",
             "service_name",
+            "organizations",
             "environment",
             "alert_name",
             "endpoints",
@@ -454,6 +497,7 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             "no_data_severity",
             "no_data_alert_name",
             "notification_targets",
+            "handlers",
             "is_enabled",
             "state",
             "created_at",
@@ -488,6 +532,9 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             "last_succeeded_at": last_succeeded_at,
             "last_failed_at": last_failed_at,
         }
+
+    def validate_organizations(self, value):
+        return sorted(set(value))
 
     def validate(self, attrs):
         if self.instance is None and "service_id" not in attrs:
@@ -532,7 +579,30 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             channel_ids = [target["channel_id"] for target in notification_targets]
             if len(channel_ids) != len(set(channel_ids)):
                 raise serializers.ValidationError({"notification_targets": "同一通知渠道不能重复选择。"})
+        self._validate_policy_handlers(attrs)
         return attrs
+
+    def _policy_organization_ids(self, attrs):
+        if "organizations" in attrs:
+            return attrs.get("organizations") or []
+        if self.instance is not None:
+            return list(self.instance.organization_links.values_list("organization", flat=True))
+        return []
+
+    def _validate_policy_handlers(self, attrs):
+        handlers_provided = "handlers" in attrs
+        organizations_provided = "organizations" in attrs
+        if not handlers_provided and not organizations_provided:
+            return
+        from apps.apm.services.alerts import AlertHandlerInvalid, DjangoApmAlertService
+
+        handlers = attrs["handlers"] if handlers_provided else list(getattr(self.instance, "handlers", None) or [])
+        try:
+            resolved = DjangoApmAlertService.normalize_policy_handlers(handlers, self._policy_organization_ids(attrs))
+        except AlertHandlerInvalid as exc:
+            raise serializers.ValidationError({"handlers": str(exc)}) from exc
+        if handlers_provided:
+            attrs["handlers"] = resolved
 
     @staticmethod
     def _validate_thresholds(thresholds, metric_type):
@@ -623,7 +693,10 @@ class ApmDashboardQuerySerializer(serializers.Serializer):
 class ApmEventQuerySerializer(serializers.Serializer):
     started_at = serializers.DateTimeField(required=False)
     ended_at = serializers.DateTimeField(required=False)
-    action = serializers.ChoiceField(choices=("triggered", "escalated", "recovered", "closed"), required=False)
+    action = serializers.ChoiceField(
+        choices=("triggered", "escalated", "claimed", "assigned", "recovered", "closed"),
+        required=False,
+    )
     severity = serializers.ChoiceField(choices=("critical", "error", "warning"), required=False)
     limit = serializers.IntegerField(min_value=1, max_value=100, default=50)
 
@@ -649,6 +722,7 @@ class ApmAlertQuerySerializer(serializers.Serializer):
     service_id = serializers.UUIDField(required=False)
     keyword = serializers.CharField(max_length=256, required=False, allow_blank=True, default="")
     limit = serializers.IntegerField(min_value=1, max_value=100, default=50)
+    my_alert = serializers.CharField(required=False, allow_blank=True, default="")
 
     def validate(self, attrs):
         ended_at = attrs.get("ended_at") or timezone.now()
@@ -659,7 +733,22 @@ class ApmAlertQuerySerializer(serializers.Serializer):
             raise serializers.ValidationError("告警查询时间窗不能超过 90 天")
         attrs["started_at"] = started_at
         attrs["ended_at"] = ended_at
+        attrs["my_alert"] = str(attrs.get("my_alert") or "").strip().lower() in {"1", "true", "yes"}
         return attrs
+
+
+class ApmAlertAssignSerializer(serializers.Serializer):
+    handlers = serializers.ListField(child=serializers.JSONField(), allow_empty=False)
+
+    def validate_handlers(self, value):
+        cleaned = []
+        for item in value:
+            if item in (None, "") or isinstance(item, bool):
+                raise serializers.ValidationError("处理人标识无效")
+            cleaned.append(item)
+        if not cleaned:
+            raise serializers.ValidationError("至少指定一名处理人")
+        return cleaned
 
 
 class NotificationDeliveryQuerySerializer(serializers.Serializer):
@@ -671,6 +760,16 @@ class NotificationDeliveryQuerySerializer(serializers.Serializer):
 class NotificationRecipientQuerySerializer(serializers.Serializer):
     search = serializers.CharField(max_length=100, required=False, allow_blank=True, default="")
     limit = serializers.IntegerField(min_value=1, max_value=100, default=100)
+    organization_ids = serializers.CharField(required=False, allow_blank=True, default="")
+
+    def validate_organization_ids(self, value):
+        if not value:
+            return []
+        parts = [part.strip() for part in str(value).split(",") if part.strip()]
+        try:
+            return sorted({int(part) for part in parts})
+        except (TypeError, ValueError) as exc:
+            raise serializers.ValidationError("organization_ids 必须是逗号分隔的正整数。") from exc
 
 
 class NotificationDeliveryRetrySerializer(serializers.Serializer):

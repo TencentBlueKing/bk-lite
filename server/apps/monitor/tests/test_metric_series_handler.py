@@ -88,6 +88,25 @@ def test_instance_list_filters_object_protocol_and_empty_enabled(monkeypatch):
     assert out["data"][0]["display_name"] == "core-a (10.0.0.1)"
 
 
+def test_instance_list_explicit_object_names_skips_flow_protocol_filter(monkeypatch):
+    cluster = _object(35, "Cluster")
+    switch = _object(1, "Switch")
+    _patch_scope(
+        monkeypatch,
+        {
+            "cls-1": _instance("cls-1", cluster, protocols=(), name="prod-k8s", ip=""),
+            "sw-1": _instance("sw-1", switch, name="core-a", ip="10.0.0.1"),
+        },
+    )
+
+    out = nm.get_monitor_instance_list(object_names=["Cluster"], user_info=USER)
+
+    assert out["result"] is True
+    assert [row["instance_id"] for row in out["data"]] == ["cls-1"]
+    assert out["data"][0]["object_name"] == "Cluster"
+    assert out["data"][0]["enabled_protocols"] == []
+
+
 def test_query_metric_series_empty_selection_does_not_query(monkeypatch):
     class FailVM:
         def __init__(self):

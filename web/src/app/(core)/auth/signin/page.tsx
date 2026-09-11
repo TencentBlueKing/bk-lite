@@ -8,6 +8,7 @@ import {
   getLegacyThirdLoginCode,
   resolveThirdLoginFlag,
 } from "@/utils/authRedirect";
+import { isScreenModeEnabled, withScreenQuery } from "@/console-layout/screenMode";
 import PopupAuthBridge from "./PopupAuthBridge";
 import LegacyThirdLoginAuthorizeBridge from "./LegacyThirdLoginAuthorizeBridge";
 
@@ -32,6 +33,7 @@ interface SignInPageProp {
     thirdLogin?: string;
     popup?: string;
     provider?: string;
+    screen?: string;
   }>;
 }
 
@@ -83,10 +85,18 @@ export default async function SigninPage({ searchParams }: SignInPageProp) {
     }
 
     redirect(
-      buildThirdLoginCallbackUrl(
-        resolvedSearchParams.callbackUrl,
-        session.user.token,
-        thirdLoginFlag,
+      withScreenQuery(
+        buildThirdLoginCallbackUrl(
+          resolvedSearchParams.callbackUrl,
+          session.user.token,
+          thirdLoginFlag,
+          requestOrigin,
+        ),
+        isScreenModeEnabled(
+          resolvedSearchParams.screen
+            ? new URLSearchParams({ screen: resolvedSearchParams.screen })
+            : '',
+        ),
         requestOrigin,
       ),
     );

@@ -66,6 +66,17 @@ templates:
             label: 映射策略
           message_type:
             label: 消息类型
+    external_fields:
+      user_id:
+        label: 用户ID
+      open_id:
+        label: OpenID
+      email:
+        label: 邮箱
+      mobile:
+        label: 手机号
+      name:
+        label: 名称
 
 capabilities:
   login_auth:

@@ -59,6 +59,12 @@ export interface ApmServiceRed {
   top_endpoints: ApmServiceEndpointRed[];
 }
 
+export type ApmServiceRedBatchItem = ApmServiceRed & {
+  ok?: boolean;
+  code?: string;
+  detail?: string;
+};
+
 export interface ApmServiceRedPoint {
   timestamp: string;
   request_rate: number | null;
@@ -553,6 +559,7 @@ export interface ApmPolicyNotificationTarget {
 export interface ApmPolicyInput {
   name: string;
   service_id: string;
+  organizations: number[];
   environment: string;
   alert_name?: string;
   endpoints: string[];
@@ -569,6 +576,7 @@ export interface ApmPolicyInput {
   no_data_severity?: ApmPolicySeverity | '';
   no_data_alert_name?: string;
   notification_targets: ApmPolicyNotificationTarget[];
+  handlers?: Array<string | number>;
   is_enabled?: boolean;
 }
 
@@ -612,7 +620,7 @@ export interface ApmEvent {
   title: string;
   description: string;
   severity: ApmPolicySeverity | 'info';
-  action: 'triggered' | 'escalated' | 'recovered' | 'closed';
+  action: 'triggered' | 'escalated' | 'claimed' | 'assigned' | 'recovered' | 'closed';
   status: 'active' | 'recovered' | 'closed';
   service: string;
   item: ApmPolicyMetric;
@@ -667,6 +675,9 @@ export interface ApmAlert {
   notification_status?: 'none' | 'pending' | 'delivered' | 'partial' | 'failed';
   current_value: string | null;
   operator: string;
+  handlers?: Array<string | number>;
+  handlers_display?: string[];
+  organizations?: number[];
   started_at: string;
   ended_at: string | null;
   last_event_at: string;
@@ -684,6 +695,7 @@ export interface ApmAlertQuery {
   started_at?: string;
   ended_at?: string;
   limit?: number;
+  my_alert?: number | string;
 }
 
 export interface ApmAlertMetricSnapshotItem {

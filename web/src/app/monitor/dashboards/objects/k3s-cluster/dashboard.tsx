@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { DashboardSectionLabel } from '../common/dashboard-components';
 import type { Dayjs } from 'dayjs';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { DatabaseOutlined, CloudServerOutlined, AppstoreOutlined, DeploymentUnitOutlined, PartitionOutlined, ReloadOutlined } from '@ant-design/icons';
@@ -24,6 +25,9 @@ import {
   normalizeDisplayText,
   isOpaqueIdentifier,
   resolveDashboardInstanceIdentity,
+  resolveDashboardInstanceIdValues,
+  encodeInstanceIdValuesParam,
+  isInstanceOptionForIdentity,
   formatMetricValue,
   buildPreviousPeriodTimeValues,
   getPeriodCompare,
@@ -177,7 +181,7 @@ export default function K3sClusterDashboardPage() {
           map.set(value, {
             label,
             value,
-            instanceIdValues: Array.isArray(item.instance_id_values) && item.instance_id_values.length ? item.instance_id_values : [value],
+            instanceIdValues: resolveDashboardInstanceIdValues(item),
             searchTokens: buildInstanceSearchTokens(item, label),
             interval: Number(item.interval) || undefined
           });
@@ -194,7 +198,7 @@ export default function K3sClusterDashboardPage() {
     };
   }, [monitorObjectId]);
 
-  const currentOption = instanceOptions.find((o) => o.value === String(instanceId));
+  const currentOption = instanceOptions.find((o) => isInstanceOptionForIdentity(o, instanceId, idValues));
   const currentInstanceInterval = currentOption?.interval;
 
   // 数据加载:hero 先到,面板后到
@@ -303,7 +307,9 @@ export default function K3sClusterDashboardPage() {
     collectionMetric.loadState,
     collectionMetric.viewData,
     collectionStatusRange?.startMs ?? Date.now() - 15 * 60_000,
-    collectionStatusRange?.endMs ?? Date.now()
+    collectionStatusRange?.endMs ?? Date.now(),
+    undefined,
+    currentInstanceInterval ? currentInstanceInterval * 1000 : undefined
   );
   const collectionStatusTimelineHint = collectionStatusRange
     ? formatCollectionStatusTimelineHint(collectionStatusRange.startMs, collectionStatusRange.endMs)
@@ -464,7 +470,11 @@ export default function K3sClusterDashboardPage() {
     const opt = instanceOptions.find((o) => o.value === value);
     const params = new URLSearchParams(Array.from(searchParams.entries()));
     params.set('instance_id', value);
-    params.set('instance_id_values', (opt?.instanceIdValues || [value]).join(','));
+    params.set('instance_id_values', encodeInstanceIdValuesParam(
+      opt?.instanceIdValues?.length
+        ? opt.instanceIdValues
+        : resolveDashboardInstanceIdValues({ instance_id: value }),
+    ));
     params.set('instance_name', opt?.label || value);
     router.push(`?${params.toString()}`);
   };
@@ -542,7 +552,7 @@ export default function K3sClusterDashboardPage() {
         ) : (
           <>
             {/* Tier 1 · 概览:6 张等宽卡(采集状态 + 5 KPI),全 span2(=12) */}
-            <div className={styles.sectionLabel}>健康概览</div>
+            <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
             <section className={styles.dashboardSection}>
               <div className={styles.sectionGrid}>
                 <CollectionStatusCard
@@ -574,7 +584,7 @@ export default function K3sClusterDashboardPage() {
             </section>
 
         {/* Tier 2 · 健康构成:三环统一 span4 */}
-        <div className={styles.sectionLabel}>健康构成</div>
+        <DashboardSectionLabel styles={styles}>健康构成</DashboardSectionLabel>
         <section className={styles.dashboardSection}>
           <div className={styles.sectionGrid}>
             <RingChartPanel
@@ -611,7 +621,7 @@ export default function K3sClusterDashboardPage() {
         </section>
 
         {/* Tier 3 · 资源水位:趋势(span8)+ 容量配比(span4) */}
-        <div className={styles.sectionLabel}>资源水位</div>
+        <DashboardSectionLabel styles={styles}>资源水位</DashboardSectionLabel>
         <section className={styles.dashboardSection}>
           <div className={styles.sectionGrid}>
             <TrendChartPanel
@@ -639,7 +649,7 @@ export default function K3sClusterDashboardPage() {
         </section>
 
         {/* Tier 4 · 热点排行:Pod 三个维度拆成 3 张独立小卡,其余各占 span4 */}
-        <div className={styles.sectionLabel}>热点排行</div>
+        <DashboardSectionLabel styles={styles}>热点排行</DashboardSectionLabel>
         <section className={styles.dashboardSection}>
           <div className={styles.sectionGrid}>
             <HorizontalBarPanel

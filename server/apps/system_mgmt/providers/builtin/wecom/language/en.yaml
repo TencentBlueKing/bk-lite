@@ -60,6 +60,15 @@ templates:
         fields:
           mapping_strategy:
             label: Mapping strategy
+    external_fields:
+      userid:
+        label: User ID
+      email:
+        label: Email
+      mobile:
+        label: Mobile
+      name:
+        label: Name
 
 capabilities:
   login_auth:

@@ -87,6 +87,10 @@ def test_startup_unique_rule_conflict_keeps_existing_rules_and_continues(caplog)
             "apps.cmdb.services.module_ingest.SUPPORTED_INGEST_MODELS",
             set(),
         ),
+        patch(
+            "apps.cmdb.services.host_zombie_whitelist.ensure_host_zombie_whitelist_attr",
+            return_value=True,
+        ),
     ):
         ModelManage._apply_model_config_post_import_extras(
             {"attr-host": [{"attr_id": "ip_addr"}], "asso-host": []},

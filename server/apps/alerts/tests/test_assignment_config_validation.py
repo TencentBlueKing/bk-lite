@@ -24,20 +24,23 @@ def test_assignment_rejects_empty_level_value_list():
         data=_payload(
             {"enabled": False},
             match_type="filter",
-            match_rules=[[{"key": "level", "operator": "eq", "value": []}]],
+            match_rules=[[{"key": "level", "operator": "any_of", "value": []}]],
         )
     )
     assert not serializer.is_valid()
-    assert serializer.errors["match_rules"][0] == "级别至少选择一个值"
+    assert "1 到 50" in serializer.errors["match_rules"][0]
 
 
 @pytest.mark.django_db
-def test_assignment_accepts_non_empty_level_value_list():
+def test_assignment_accepts_single_level_value():
+    from apps.alerts.models.models import Level
+
+    Level.objects.create(level_type="alert", level_id=0, level_name="zero", level_display_name="零")
     serializer = AlertAssignmentModelSerializer(
         data=_payload(
             {"enabled": False},
             match_type="filter",
-            match_rules=[[{"key": "level", "operator": "ne", "value": ["0", "1"]}]],
+            match_rules=[[{"key": "level", "operator": "none_of", "value": ["0"]}]],
         )
     )
     assert serializer.is_valid(), serializer.errors

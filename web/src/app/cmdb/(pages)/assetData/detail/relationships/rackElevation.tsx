@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Spin, Alert, message } from 'antd';
-import { useRouter } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import CompactEmptyState from '@/components/compact-empty-state';
 import { useTranslation } from '@/utils/i18n';
 import { useThemeMode } from '@/theme';
@@ -37,7 +37,7 @@ const SVG_W = FRAME_X + FRAME_W + 44;
 const RackElevation: React.FC<Props> = ({ modelId, instUuid, embedded, compare, onDeviceClick }) => {
   const { t } = useTranslation();
   const { mode } = useThemeMode();
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const { getRackLayout } = useInstanceApi();
   const { hasPermission } = usePermissions(RACK_ROOM_ASSET_PERMISSION_PATH);
   const placeRef = useRef<LayoutPlaceModalRef>(null);

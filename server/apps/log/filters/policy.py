@@ -91,6 +91,7 @@ class EventFilter(django_filters.FilterSet):
     level = django_filters.CharFilter(lookup_expr="exact")
     event_time = django_filters.DateTimeFromToRangeFilter()
     created_at = django_filters.DateTimeFromToRangeFilter()
+    action = django_filters.CharFilter(lookup_expr="exact")
 
     class Meta:
         model = Event
@@ -102,6 +103,7 @@ class EventFilter(django_filters.FilterSet):
             "level",
             "event_time",
             "created_at",
+            "action",
         ]
 
 

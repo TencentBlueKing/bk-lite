@@ -15,6 +15,19 @@ from plugins.inputs.network_config_file.constants import (
 from scrapli import AsyncScrapli
 from scrapli.driver.generic.async_driver import AsyncGenericDriver
 
+HTTP_HEADER_COMMANDS_PREFIX = "b64:"
+
+
+def decode_http_header_commands(raw_commands) -> str:
+    text = str(raw_commands or "")
+    if not text.startswith(HTTP_HEADER_COMMANDS_PREFIX):
+        return text
+    payload = text[len(HTTP_HEADER_COMMANDS_PREFIX) :]
+    try:
+        return base64.urlsafe_b64decode(payload.encode("ascii")).decode("utf-8")
+    except (ValueError, UnicodeDecodeError) as err:
+        raise ValueError("采集命令头编码无效") from err
+
 
 def validate_safe_command(command: str) -> str:
     normalized = " ".join(str(command or "").strip().split())
@@ -46,7 +59,8 @@ class NetworkConfigFileInfo:
         return any(pattern in lowered for pattern in COMMAND_ERROR_PATTERNS)
 
     def _commands(self) -> list[str]:
-        return [validate_safe_command(line) for line in str(self.params.get("commands") or "").splitlines() if line.strip()]
+        raw = decode_http_header_commands(self.params.get("commands"))
+        return [validate_safe_command(line) for line in raw.splitlines() if line.strip()]
 
     def _connect_params(self) -> dict:
         device_type = str(self.params.get("device_type") or "").strip()
@@ -59,7 +73,8 @@ class NetworkConfigFileInfo:
             "auth_password": self.params.get("password"),
             "auth_secondary": self.params.get("enable_password") or "",
             "port": int(self.params.get("port") or 22),
-            "auth_strict_key": True,
+            # 目标管理 IP 已随采集任务落在 CMDB；任务下发即授权该地址，不再用 known_hosts 拒绝。
+            "auth_strict_key": False,
             "transport": "asyncssh",
             "timeout_socket": 30.0,  # 建连超时硬编码
             "timeout_transport": 30.0,

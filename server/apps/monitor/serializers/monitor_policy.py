@@ -40,6 +40,25 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
             ]
         return representation
 
+    def _validate_policy_handlers(self, attrs):
+        handlers_provided = "handlers" in attrs
+        organizations_provided = "organizations" in attrs
+        if not handlers_provided and not organizations_provided:
+            return attrs
+        from apps.monitor.services.alert_handlers import AlertHandlerInvalid, normalize_policy_handlers
+
+        handlers = attrs["handlers"] if handlers_provided else list(getattr(self.instance, "handlers", None) or [])
+        organizations = (
+            attrs["organizations"] if organizations_provided else list(getattr(self.instance, "organizations", None) or [])
+        )
+        try:
+            resolved = normalize_policy_handlers(handlers, organizations)
+        except AlertHandlerInvalid as exc:
+            raise serializers.ValidationError({"handlers": str(exc)}) from exc
+        if handlers_provided:
+            attrs["handlers"] = resolved
+        return attrs
+
     class Meta:
         model = MonitorPolicy
         fields = "__all__"
@@ -101,6 +120,7 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
+        attrs = self._validate_policy_handlers(attrs)
         relevant_fields = {
             "threshold",
             "metric_unit",

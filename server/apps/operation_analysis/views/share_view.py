@@ -8,7 +8,9 @@ from rest_framework.response import Response
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.core.utils.open_base import login_exempt
+from apps.core.utils.user_group import normalize_user_group_ids
 from apps.operation_analysis.common.datasource_visibility import can_access_datasource_in_org
+from apps.operation_analysis.common.get_nats_source_data import is_organization_param_spec
 from apps.operation_analysis.constants.canvas_refresh import normalize_canvas_refresh_interval
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
 from apps.operation_analysis.serializers.share_serializers import (
@@ -93,11 +95,54 @@ def _view_sets_has_scene_widget(value, scene_widget_type: str) -> bool:
     return False
 
 
-def _serialize_shared_resource(principal):
+def _resource_has_organization_filter(resource) -> bool:
+    """仅已启用的组织控件才下发树；关掉后定义仍在也不吐 group_tree。"""
+    return any(item.get("enabled") is True and is_organization_param_spec(item) for item in _resource_filter_definitions(resource))
+
+
+def _sanitize_share_group_tree(nodes):
+    """只保留筛条所需字段，避免把分享者 role_ids / permission 面交给访客。"""
+    cleaned = []
+    for node in nodes or []:
+        if not isinstance(node, dict):
+            continue
+        item = {
+            "id": node.get("id"),
+            "name": node.get("name"),
+            "hasAuth": bool(node.get("hasAuth")),
+            "subGroupCount": node.get("subGroupCount") or 0,
+            "subGroups": _sanitize_share_group_tree(node.get("subGroups") or []),
+        }
+        if "parentId" in node:
+            item["parentId"] = node["parentId"]
+        cleaned.append(item)
+    return cleaned
+
+
+def _attach_share_organization(payload, principal):
+    """Session GET 下发分享空间与分享者组织树，供筛条对齐委托 cookie；不含 permission/roles。"""
+    space_id = getattr(principal, "space_id", None)
+    if space_id is not None:
+        payload["space_id"] = int(space_id)
+    user = getattr(principal, "user", None)
+    if user is not None:
+        original_group_list = getattr(user, "group_list", None)
+        try:
+            user.group_list = normalize_user_group_ids(original_group_list)
+            context = build_user_authorization_context(user)
+        finally:
+            user.group_list = original_group_list
+        payload["group_tree"] = _sanitize_share_group_tree(context.get("group_tree") or [])
+    return payload
+
+
+def _serialize_shared_resource(principal, language=None):
     resource = principal.resource
+    from apps.operation_analysis.services.builtin_i18n import overlay_canvas_payload
+
     if principal.resource_type == "networkTopology":
         # Phase A：只返回脱敏配置；禁止 token / base_url / runtime cache 等 WeOps 凭证面。
-        return {
+        payload = {
             "resource_type": principal.resource_type,
             "id": resource.id,
             "name": resource.name,
@@ -107,6 +152,10 @@ def _serialize_shared_resource(principal):
             "refresh_interval": normalize_canvas_refresh_interval(getattr(resource, "refresh_interval", 0)),
             "status": getattr(resource, "status", "") or "",
         }
+        overlay_canvas_payload(payload, resource, language)
+        if _resource_has_organization_filter(resource):
+            return _attach_share_organization(payload, principal)
+        return payload
     payload = {
         "resource_type": principal.resource_type,
         "id": resource.id,
@@ -121,6 +170,9 @@ def _serialize_shared_resource(principal):
         payload["other"] = resource.other
     if hasattr(resource, "refresh_interval"):
         payload["refresh_interval"] = normalize_canvas_refresh_interval(resource.refresh_interval)
+    overlay_canvas_payload(payload, resource, language)
+    if _resource_has_organization_filter(resource):
+        return _attach_share_organization(payload, principal)
     return payload
 
 
@@ -249,7 +301,7 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
             return Response(INVALID_SHARE_RESPONSE, status=status.HTTP_404_NOT_FOUND)
 
         log_share_access(request, action="open", principal=principal, visitor=request.user, result="ok")
-        return Response(_serialize_shared_resource(principal))
+        return Response(_serialize_shared_resource(principal, language=getattr(request.user, "locale", None)))
 
     @action(
         detail=False,

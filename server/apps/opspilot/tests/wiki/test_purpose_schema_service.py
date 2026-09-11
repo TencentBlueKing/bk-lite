@@ -7,6 +7,7 @@ def test_templates_listed():
 
     keys = {t["key"] for t in list_templates()}
     assert {"ops_qa", "fault_diagnosis", "operation_guide", "product_support", "general"} <= keys
+    assert "okf_bundle" not in keys
 
 
 def test_generate_purpose_schema_uses_llm():

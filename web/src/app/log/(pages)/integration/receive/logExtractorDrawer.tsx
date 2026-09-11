@@ -24,12 +24,14 @@ import {
 import {
   ArrowDownOutlined,
   ArrowUpOutlined,
+  CloseOutlined,
   DeleteOutlined,
   HolderOutlined,
   PlusOutlined
 } from '@ant-design/icons';
 import useLogApi from '@/app/log/api/integration';
 import {
+  ExtractorConditionItem,
   ExtractorPublicationStatus,
   ExtractorType,
   LogExtractorDraft,
@@ -39,13 +41,25 @@ import {
 } from '@/app/log/types/extractor';
 import { useTranslation } from '@/utils/i18n';
 import {
+  EXTRACTOR_CONDITION_OPERATORS,
+  defaultExtractorConditionItem,
+  extractorConditionModeLabelKey,
+  extractorConditionNeedsValue,
+  extractorConditionOperatorLabelKey,
+  extractorPreviewStatusLabelKey,
+  extractorRequiresTargetField,
   extractorTypeLabelKey,
+  extractorUsesSingleTargetField,
   flattenExtractorPaths,
+  getExtractorConditionSummary,
   moveExtractorItem,
+  normalizeExtractorCondition,
   normalizeExtractorSamples,
   reorderExtractorItem,
   shouldShowExtractorHeaderAdd,
-  shouldShowExtractorPublicationAlert
+  shouldShowExtractorPublicationAlert,
+  diffExtractorPreviewFields,
+  formatExtractorPreviewValue
 } from './logExtractorLogic';
 
 interface Props {
@@ -56,6 +70,7 @@ interface Props {
   presentation?: 'drawer' | 'page';
   autoCreate?: boolean;
   initialSample?: Record<string, unknown> | null;
+  initialSourceField?: string | null;
 }
 
 interface FormValue {
@@ -64,6 +79,12 @@ interface FormValue {
   source_field: string;
   target_field?: string;
   delete_source?: boolean;
+  condition_mode?: 'AND' | 'OR';
+  conditions?: Array<{
+    field?: string;
+    op?: ExtractorConditionItem['op'];
+    value?: string;
+  }>;
   delimiter?: string;
   index?: number;
   key_value_delimiter?: string;
@@ -90,14 +111,115 @@ const publicationColor: Record<ExtractorPublicationStatus['status'], string> = {
   failed: 'error'
 };
 
+const PREVIEW_CHANGE_LABEL_KEYS = {
+  added: 'log.extractor.previewAdded',
+  changed: 'log.extractor.previewChanged',
+  removed: 'log.extractor.previewRemoved'
+} as const;
+
+const ExtractorPreviewResult = ({
+  sample,
+  preview
+}: {
+  sample: Record<string, unknown> | null;
+  preview: LogExtractorPreviewResult;
+}) => {
+  const { t } = useTranslation();
+  const draftResult = preview.results[preview.results.length - 1];
+  const status = draftResult?.status || 'failed';
+  const changes = diffExtractorPreviewFields(sample, preview.event);
+  const statusColor =
+    status === 'success'
+      ? 'success'
+      : status === 'skipped' || status === 'not_matched'
+        ? 'warning'
+        : 'error';
+
+  return (
+    <div className="mt-[8px] space-y-[8px]">
+      <div className="flex flex-wrap items-center gap-[8px]">
+        <Tag className="m-0" color={statusColor}>
+          {t(extractorPreviewStatusLabelKey(status))}
+        </Tag>
+        {draftResult?.error && (
+          <Typography.Text type="secondary">{draftResult.error}</Typography.Text>
+        )}
+      </div>
+      {changes.length > 0 && (
+        <div>
+          <Typography.Text type="secondary" className="mb-[4px] block">
+            {t('log.extractor.previewEffect')}
+          </Typography.Text>
+          <ul className="m-0 list-none space-y-[6px] p-0">
+            {changes.map((item) => (
+              <li
+                key={`${item.kind}:${item.path}`}
+                className="flex min-w-0 items-start gap-[8px] text-[13px] leading-[22px]"
+              >
+                <Tag
+                  className="m-0 shrink-0"
+                  color={item.kind === 'removed' ? 'error' : 'success'}
+                >
+                  {t(PREVIEW_CHANGE_LABEL_KEYS[item.kind])}
+                </Tag>
+                <span className="min-w-0 break-all">
+                  <Typography.Text code>{item.path}</Typography.Text>
+                  {item.kind === 'removed' ? (
+                    <s className="ml-2 text-[var(--color-text-3)]">
+                      {formatExtractorPreviewValue(item.before)}
+                    </s>
+                  ) : item.kind === 'changed' ? (
+                    <>
+                      <s className="ml-2 text-[var(--color-text-3)]">
+                        {formatExtractorPreviewValue(item.before)}
+                      </s>
+                      <span className="mx-1 text-[var(--color-text-3)]">→</span>
+                      <mark className="rounded-sm bg-[var(--color-warning)]/30 p-0 not-italic text-inherit">
+                        {formatExtractorPreviewValue(item.after)}
+                      </mark>
+                    </>
+                  ) : (
+                    <mark className="ml-2 rounded-sm bg-[var(--color-warning)]/30 p-0 not-italic text-inherit">
+                      {formatExtractorPreviewValue(item.after)}
+                    </mark>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {status === 'success' && changes.length === 0 && (
+        <Typography.Text type="secondary">
+          {t('log.extractor.previewUnchanged')}
+        </Typography.Text>
+      )}
+      <Input.TextArea
+        className="font-mono"
+        rows={8}
+        readOnly
+        value={JSON.stringify(preview.event, null, 2)}
+        aria-label={t('log.extractor.previewResult')}
+      />
+    </div>
+  );
+};
+
 const toFormValue = (rule?: LogExtractorRule): FormValue => {
   const config = rule?.config || {};
+  const condition = normalizeExtractorCondition(rule?.condition || {});
   return {
     name: rule?.name || '',
     extractor_type: rule?.extractor_type || 'copy',
     source_field: rule?.source_field || 'message',
     target_field: rule?.target_field || '',
     delete_source: rule?.delete_source || false,
+    condition_mode: condition.mode,
+    conditions: condition.conditions.map((item) => ({
+      field: item.field,
+      op: item.op,
+      value: item.value == null ? '' : String(item.value)
+    })),
     delimiter: typeof config.delimiter === 'string' ? config.delimiter : '',
     index: typeof config.index === 'number' ? config.index : 0,
     key_value_delimiter:
@@ -138,14 +260,15 @@ const LogExtractorDrawer = ({
   onClose,
   presentation = 'drawer',
   autoCreate = false,
-  initialSample = null
+  initialSample = null,
+  initialSourceField = null
 }: Props) => {
   const { t } = useTranslation();
   const api = useLogApi();
   const apiRef = useRef(api);
   apiRef.current = api;
   const [form] = Form.useForm<FormValue>();
-  const extractorType = Form.useWatch('extractor_type', form);
+  const extractorType = Form.useWatch('extractor_type', form) || 'copy';
   const [rules, setRules] = useState<LogExtractorRule[]>([]);
   const [publication, setPublication] =
     useState<ExtractorPublicationStatus | null>(null);
@@ -271,7 +394,11 @@ const LogExtractorDrawer = ({
   const openEditor = (rule?: LogExtractorRule) => {
     setEditing(rule || null);
     setPreview(null);
-    form.setFieldsValue(toFormValue(rule));
+    const values = toFormValue(rule);
+    if (!rule && initialSourceField) {
+      values.source_field = initialSourceField;
+    }
+    form.setFieldsValue(values);
     setEditorOpen(true);
   };
 
@@ -302,13 +429,15 @@ const LogExtractorDrawer = ({
     return {
       name: values.name,
       ...(scopeQuery || {}),
-      condition: editing?.condition || {
-        mode: 'AND',
-        conditions: []
-      },
+      condition: normalizeExtractorCondition({
+        mode: values.condition_mode,
+        conditions: values.conditions
+      }),
       extractor_type: values.extractor_type,
       source_field: values.source_field,
-      target_field: values.target_field || null,
+      target_field: extractorUsesSingleTargetField(values.extractor_type)
+        ? values.target_field || null
+        : null,
       delete_source: Boolean(values.delete_source),
       config
     };
@@ -556,6 +685,21 @@ const LogExtractorDrawer = ({
             },
             { title: t('log.extractor.sourceField'), dataIndex: 'source_field' },
             {
+              title: t('log.extractor.condition'),
+              ellipsis: true,
+              render: (_, rule) => {
+                const summary = getExtractorConditionSummary(rule.condition);
+                if (!summary) return t('log.extractor.noCondition');
+                const clauses = summary.items.map((item) => {
+                  const opLabel = t(extractorConditionOperatorLabelKey(item.op));
+                  return extractorConditionNeedsValue(item.op)
+                    ? `${item.field} ${opLabel} ${item.value ?? ''}`
+                    : `${item.field} ${opLabel}`;
+                });
+                return `${t(extractorConditionModeLabelKey(summary.mode))} ${clauses.join('; ')}`;
+              }
+            },
+            {
               title: t('log.extractor.targetField'),
               ellipsis: true,
               render: (_, rule) => targetSummary(rule)
@@ -667,28 +811,140 @@ const LogExtractorDrawer = ({
                   value,
                   label: t(extractorTypeLabelKey(value))
                 }))}
+                onChange={(value) => {
+                  if (!extractorUsesSingleTargetField(value)) {
+                    form.setFieldValue('target_field', undefined);
+                  }
+                }}
               />
             </Form.Item>
             <Form.Item
               name="source_field"
               label={t('log.extractor.sourceField')}
               extra={t('log.extractor.pathSyntaxHint')}
+              className={
+                extractorUsesSingleTargetField(extractorType) ? undefined : 'col-span-2'
+              }
               rules={[{ required: true }]}
             >
               <AutoComplete options={fieldOptions} placeholder={t('log.extractor.pathPlaceholder')} />
             </Form.Item>
-            <Form.Item
-              name="target_field"
-              label={t('log.extractor.targetField')}
-              rules={[
-                {
-                  required: ['copy', 'split'].includes(extractorType || '')
+            {extractorUsesSingleTargetField(extractorType) && (
+              <Form.Item
+                name="target_field"
+                label={t('log.extractor.targetField')}
+                preserve={false}
+                extra={
+                  extractorType === 'json'
+                    ? t('log.extractor.targetFieldJsonHint')
+                    : extractorType === 'regex_replace'
+                      ? t('log.extractor.targetFieldReplaceHint')
+                      : undefined
                 }
-              ]}
-            >
-              <AutoComplete options={fieldOptions} placeholder={t('log.extractor.pathPlaceholder')} />
-            </Form.Item>
+                rules={[
+                  {
+                    required: extractorRequiresTargetField(extractorType)
+                  }
+                ]}
+              >
+                <AutoComplete options={fieldOptions} placeholder={t('log.extractor.pathPlaceholder')} />
+              </Form.Item>
+            )}
           </div>
+          <Form.Item
+            name="condition_mode"
+            label={t('log.extractor.condition')}
+            extra={t('log.extractor.conditionHint')}
+          >
+            <Select
+              options={([
+                'AND',
+                'OR'
+              ] as const).map((mode) => ({
+                value: mode,
+                label: t(extractorConditionModeLabelKey(mode))
+              }))}
+            />
+          </Form.Item>
+          <Form.List name="conditions">
+            {(fields, { add, remove }) => (
+              <div className="mb-[16px]">
+                {fields.map((field, index) => (
+                  <div
+                    key={field.key}
+                    className="mb-[8px] flex items-start gap-[8px]"
+                  >
+                    <Form.Item
+                      name={[field.name, 'field']}
+                      className="mb-0 min-w-0 flex-1"
+                      rules={[
+                        {
+                          required: true,
+                          message: t('log.extractor.conditionValidate')
+                        }
+                      ]}
+                    >
+                      <AutoComplete
+                        options={fieldOptions}
+                        placeholder={t('log.extractor.conditionField')}
+                      />
+                    </Form.Item>
+                    <Form.Item
+                      name={[field.name, 'op']}
+                      className="mb-0 w-[132px] shrink-0"
+                      rules={[
+                        {
+                          required: true,
+                          message: t('log.extractor.conditionValidate')
+                        }
+                      ]}
+                    >
+                      <Select
+                        options={EXTRACTOR_CONDITION_OPERATORS.map((op) => ({
+                          value: op,
+                          label: t(extractorConditionOperatorLabelKey(op))
+                        }))}
+                      />
+                    </Form.Item>
+                    <Form.Item
+                      name={[field.name, 'value']}
+                      className="mb-0 min-w-0 flex-1"
+                      rules={[
+                        {
+                          required: true,
+                          message: t('log.extractor.conditionValidate')
+                        }
+                      ]}
+                    >
+                      <Input placeholder={t('log.extractor.conditionValue')} />
+                    </Form.Item>
+                    <Button
+                      className="shrink-0"
+                      icon={<CloseOutlined />}
+                      aria-label={t('common.delete')}
+                      onClick={() => remove(field.name)}
+                    />
+                    {index === fields.length - 1 && (
+                      <Button
+                        className="shrink-0"
+                        icon={<PlusOutlined />}
+                        aria-label={t('log.extractor.addCondition')}
+                        onClick={() => add(defaultExtractorConditionItem())}
+                      />
+                    )}
+                  </div>
+                ))}
+                {fields.length === 0 && (
+                  <Button
+                    icon={<PlusOutlined />}
+                    onClick={() => add(defaultExtractorConditionItem())}
+                  >
+                    {t('log.extractor.addCondition')}
+                  </Button>
+                )}
+              </div>
+            )}
+          </Form.List>
           <Form.Item name="delete_source" valuePropName="checked">
             <Checkbox>{t('log.extractor.deleteSource')}</Checkbox>
           </Form.Item>
@@ -731,6 +987,7 @@ const LogExtractorDrawer = ({
               <Form.Item
                 name="field_mapping_text"
                 label={t('log.extractor.fieldMapping')}
+                extra={t('log.extractor.kvMappingHint')}
               >
                 <Input.TextArea rows={3} />
               </Form.Item>
@@ -740,6 +997,11 @@ const LogExtractorDrawer = ({
             <Form.Item
               name="pattern"
               label={t('log.extractor.pattern')}
+              extra={
+                extractorType === 'regex'
+                  ? t('log.extractor.regexNamedGroupHint')
+                  : undefined
+              }
               rules={[{ required: true }]}
             >
               <Input />
@@ -749,6 +1011,7 @@ const LogExtractorDrawer = ({
             <Form.Item
               name="group_mapping_text"
               label={t('log.extractor.groupMapping')}
+              extra={t('log.extractor.regexMappingHint')}
             >
               <Input.TextArea rows={3} />
             </Form.Item>
@@ -779,9 +1042,9 @@ const LogExtractorDrawer = ({
               }
             />
           )}
-          <Space.Compact className="w-full">
+          <div className="flex w-full min-w-0 items-center gap-[8px]">
             <Select
-              className="w-full"
+              className="min-w-0 flex-1"
               value={sampleIndex}
               placeholder={t('log.extractor.selectSample')}
               options={samples.map((sample, index) => ({
@@ -792,6 +1055,7 @@ const LogExtractorDrawer = ({
               disabled={false}
             />
             <Button
+              className="shrink-0"
               loading={samplesLoading}
               disabled={false}
               onClick={() => void loadSamples().catch(() => undefined)}
@@ -799,20 +1063,18 @@ const LogExtractorDrawer = ({
               {t('log.extractor.loadSamples')}
             </Button>
             <Button
+              className="shrink-0"
               type="primary"
               disabled={sampleIndex === null}
               onClick={() => void runPreview()}
             >
               {t('log.extractor.runPreview')}
             </Button>
-          </Space.Compact>
+          </div>
           {preview && (
-            <Input.TextArea
-              className="mt-[8px] font-mono"
-              rows={8}
-              readOnly
-              value={JSON.stringify(preview, null, 2)}
-              aria-label={t('log.extractor.previewResult')}
+            <ExtractorPreviewResult
+              sample={sampleIndex === null ? null : samples[sampleIndex]}
+              preview={preview}
             />
           )}
         </Form>

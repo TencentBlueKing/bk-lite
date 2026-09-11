@@ -8,8 +8,7 @@ import {
   KpiSection,
   useFilteredChartPanels,
   useFilteredRingPanels,
-  useFilteredSummaryCards
-} from '../common/dashboard-components';
+  useFilteredSummaryCards, DashboardSectionLabel } from '../common/dashboard-components';
 import { RingChartPanel, TrendChartPanel } from '../../shared/widgets';
 import { TCP_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
@@ -33,9 +32,9 @@ export default function TcpDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={3} styles={styles} />
-          <div className={styles.sectionLabel}>趋势与归因</div>
+          <DashboardSectionLabel styles={styles}>趋势与归因</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>
             {successChart ? (
               <TrendChartPanel

@@ -7,8 +7,7 @@ import {
   SummaryStatCard,
   TrendSection,
   useFilteredChartPanels,
-  useFilteredSummaryCards,
-} from '../common/dashboard-components';
+  useFilteredSummaryCards, DashboardSectionLabel } from '../common/dashboard-components';
 import { useSimpleDashboardData } from '../common/simple-dashboard-core';
 import { KAFKA_DASHBOARD_CONFIG } from './config';
 import { KafkaLagRiskTable } from './lag-risk-table';
@@ -65,7 +64,7 @@ export default function KafkaDashboardPage() {
       styles={styles}
       dashboardContent={(
         <>
-          <div className={styles.sectionLabel}>健康概览</div>
+          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
           <KpiSection
             dashboard={dashboard}
             summaryCards={clusterHealthCards}
@@ -74,12 +73,12 @@ export default function KafkaDashboardPage() {
 
           {consumerRiskCards.length > 0 ? (
             <>
-              <div className={styles.sectionLabel}>风险信号</div>
+              <DashboardSectionLabel styles={styles}>风险信号</DashboardSectionLabel>
               <KpiCardGrid cards={consumerRiskCards} styles={styles} />
             </>
           ) : null}
 
-          <div className={styles.sectionLabel}>关键趋势</div>
+          <DashboardSectionLabel styles={styles}>关键趋势</DashboardSectionLabel>
           <TrendSection
             charts={charts}
             onXRangeChange={dashboard.onXRangeChange}
@@ -88,7 +87,7 @@ export default function KafkaDashboardPage() {
             styles={styles}
           />
 
-          <div className={styles.sectionLabel}>Lag 排行</div>
+          <DashboardSectionLabel styles={styles}>Lag 排行</DashboardSectionLabel>
           <KafkaLagRiskTable dashboard={dashboard} styles={styles} />
         </>
       )}
