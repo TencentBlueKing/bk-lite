@@ -62,7 +62,6 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
   const [collapsedTableFields, setCollapsedTableFields] = useState<Record<string, boolean>>({});
   const [isSyncingMonitor, setIsSyncingMonitor] = useState(false);
   const [isUnbindingMonitor, setIsUnbindingMonitor] = useState(false);
-  const [lastSyncNotFound, setLastSyncNotFound] = useState(false);
   const [bindModalOpen, setBindModalOpen] = useState(false);
   const { t } = useTranslation();
   const { flatGroups } = useUserInfoContext();
@@ -80,7 +79,6 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
   }));
 
   useEffect(() => {
-    setLastSyncNotFound(false);
     setBindModalOpen(false);
   }, [instUuid]);
 
@@ -577,13 +575,9 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
       const text = t(key);
       const status = res?.link_status;
       if (status === 'ok') {
-        setLastSyncNotFound(false);
         message.success(text);
         onsuccessEdit?.();
       } else if (status === 'not_found' || status === 'conflict') {
-        if (status === 'not_found') {
-          setLastSyncNotFound(true);
-        }
         message.warning(text);
       } else {
         message.error(text);
@@ -598,7 +592,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
   const isMonitorLinked = Boolean(String(instDetail?.monitor_id || '').trim());
   const canOperateMonitor =
     canSyncMonitor(modelId) && isMonitorSold(clientData);
-  const showManualBind = canOperateMonitor && (!isMonitorLinked || lastSyncNotFound);
+  const showManualBind = canOperateMonitor && !isMonitorLinked;
   const showRebind = canOperateMonitor && isMonitorLinked;
   const showUnbind = canOperateMonitor && isMonitorLinked;
 
@@ -613,7 +607,6 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
         try {
           await unbindMonitor(instUuid);
           message.success(t('Model.systemLinkageUnbindSuccess'));
-          setLastSyncNotFound(false);
           onsuccessEdit?.();
         } catch (error) {
           if (!(error instanceof HandledRequestError)) {
@@ -628,7 +621,6 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
 
   const handleBindSuccess = () => {
     setBindModalOpen(false);
-    setLastSyncNotFound(false);
     onsuccessEdit?.();
   };
 
