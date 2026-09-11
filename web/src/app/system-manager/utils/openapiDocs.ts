@@ -201,6 +201,24 @@ export const injectDescriptionKey = (inject: string): string => {
   }
 };
 
+export const OPENAPI_SECRET_KEY_HREF = '/system-manager/settings/key';
+
+const LINK_PLACEHOLDER = '{link}';
+
+export const splitLinkPlaceholder = (template: string): [string, string] => {
+  const index = template.indexOf(LINK_PLACEHOLDER);
+  if (index < 0) {
+    return [template, ''];
+  }
+  return [template.slice(0, index), template.slice(index + LINK_PLACEHOLDER.length)];
+};
+
+export const formatAuthHeaderPlainText = (
+  desc: string,
+  hint: string,
+  linkLabel: string,
+): string => `${desc} ${hint.split(LINK_PLACEHOLDER).join(linkLabel)}`.trim();
+
 export const fieldHasRange = (
   spec: Pick<OpenAPIFieldSpec, 'min_value' | 'max_value'>,
 ): boolean => spec.min_value != null || spec.max_value != null;
