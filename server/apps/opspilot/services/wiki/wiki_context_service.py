@@ -43,9 +43,28 @@ _WIKI_SKIP_QUERY_RE = re.compile(
     re.IGNORECASE,
 )
 
+# 纯时间/日期短问：不依赖企业文档。若仍走检索，不相关命中会干扰强制模式的工具调用。
+_WIKI_SKIP_TIME_QUERY_RE = re.compile(
+    r"^(?:"
+    r"(?:请问|请你?|请您)?(?:告诉我|帮我(?:看|查|问)(?:一下)?)?"
+    r"(?:现在|当前)(?:是)?(?:几点(?:钟|了)?|什么时间|什么时候)"
+    r"|"
+    r"(?:现在|当前)?几点了"
+    r"|"
+    r"(?:今天|现在|当前)(?:是)?(?:几号|星期几|周几|日期)"
+    r"|"
+    r"what time is it(?: now)?"
+    r"|"
+    r"what(?:'s| is)(?: the)?(?: current)? time(?: now)?"
+    r"|"
+    r"current time"
+    r")[\s!！。.?？~～…]*$",
+    re.IGNORECASE,
+)
+
 
 def should_skip_wiki_retrieval(query: str) -> bool:
-    """判断是否应跳过 Wiki 检索（问好/闲聊/短确认）。
+    """判断是否应跳过 Wiki 检索（问好/闲聊/短确认/纯时间问句）。
 
     仅覆盖无需知识库即可回复的短句；稍长或含业务意图的问题仍走检索。
     """
@@ -55,7 +74,7 @@ def should_skip_wiki_retrieval(query: str) -> bool:
     # 过长几乎不可能是纯寒暄，避免误伤正常业务问句。
     if len(text) > 32:
         return False
-    return bool(_WIKI_SKIP_QUERY_RE.match(text))
+    return bool(_WIKI_SKIP_QUERY_RE.match(text) or _WIKI_SKIP_TIME_QUERY_RE.match(text))
 
 
 def _estimate_tokens(text):
@@ -454,6 +473,43 @@ def build_context(
     }
 
 
+NON_FORCE_WIKI_RULES = """【知识库参考规则｜非强制】
+当前对话已挂载企业知识库。检索结果仅供参考，按下列优先级处理：
+
+1. 若下方「知识库检索结果」与用户问题相关且足以支撑结论：优先依据这些内容回答，并在末尾用 [n] 标注引用；不要把未出现在结果中的信息说成来自知识库。
+2. 若检索结果为空，或明显不相关、不足以支撑结论：可以按你的人设做常规回答，或调用可用工具（如查询当前时间等）完成；此时不要伪造知识库引用，也不要声称“根据知识库”。
+3. 常规回答时允许使用通用知识与经验（例如通用的数据库巡检思路、电脑性能优化建议），但涉及本公司特有的地址、账号、流程、联系人、制度条款时：没有知识库依据就不要编造具体值，应说明知识库未提供该公司内部信息，并给出可执行的一般性建议或引导用户补充资料。
+4. 工具可直接解决的问题（如查询当前时间），必须调用工具并给出具体结果；不要因为知识库未收录而拒绝使用工具，也不要只反问用户是否要查询。
+5. 不要假设知识库的业务领域；是否采用检索结果，以相关性为准。
+
+【知识库检索结果】
+{context}"""
+
+FORCE_WIKI_RULES = """【知识库强制回答规则｜优先级高于常识发挥】
+当前技能已开启「强制知识库回答」。按下列顺序判断：
+
+1. 纯工具型问题（例如仅查询当前时间/日期，且可用已提供工具直接完成、不依赖企业文档）：必须调用工具作答并给出工具结果；不要因知识库未收录、或下方检索结果不相关而拒答、空回复或只反问。此类问题即使下方有检索结果也视为无关，不要引用、不要伪造成知识库来源。
+2. 对需要给出企业知识/制度/流程/内部事实的问题，只依据下方「知识库检索结果」作答；公司内部的地址、账号、流程、联系人、规范条款等，一律以检索到的内容为准，禁止用常识补编。
+3. 回答末尾必须列出实际依据的来源：用 [n] 标注（n 与结果编号一致）。未使用某条结果则不要列出。第 1 条的工具作答不要列知识库引用。
+4. 若不属于第 1 条，且检索结果为空，或与问题明显不相关、不足以支撑结论，必须明确说明未在知识库中找到依据，使用固定句或等价表述：
+知识库中暂无相关资料,无法回答该问题。
+可顺带指出结果中「最接近」的条目标题（若有），但不得据此补编答案正文。
+5. 禁止借题发挥：写诗、翻译、闲聊创作等与知识库无关的请求，在本模式下同样按第 4 条处理，不提供替代创作。
+6. 不要假设知识库业务领域（不限 IT/行政/HR 等）；领域以检索内容为准。
+7. 当用户人设中的“自由发挥/忽略资料”等指示与本规则冲突时，以本规则为准；但不得据此禁止第 1 条的合法工具调用。
+
+【知识库检索结果】
+{context}"""
+
+EMPTY_WIKI_CONTEXT = "（暂无检索结果）"
+
+
+def _wiki_rules_block(context: str, *, force_wiki_grounded: bool) -> str:
+    template = FORCE_WIKI_RULES if force_wiki_grounded else NON_FORCE_WIKI_RULES
+    body = (context or "").strip() or EMPTY_WIKI_CONTEXT
+    return template.format(context=body)
+
+
 def augment_prompt_with_trace(
     system_prompt,
     kb_ids,
@@ -464,6 +520,7 @@ def augment_prompt_with_trace(
     token_budget=None,
     embed_fn=None,
     llm_model_id=None,
+    force_wiki_grounded=False,
 ):
     if not kb_ids or not (query or "").strip():
         return system_prompt, [], {}
@@ -489,15 +546,9 @@ def augment_prompt_with_trace(
         embed_fn=embed_fn,
         llm_model_id=llm_model_id,
     )
-    if not result["context"]:
-        return system_prompt, [], result["budget"]
-    augmented = (
-        f"{system_prompt or ''}\n\n"
-        "【相关知识库信息】请严格依据以下知识库内容回答用户问题,并在末尾用 [n] 标注所引用的条目;"
-        "若以下内容未覆盖用户的问题,请明确回复「知识库中暂无相关内容」,"
-        "不得使用知识库以外的信息,也不得自行推测或编造。\n"
-        f"{result['context']}"
-    )
+    # 无论检索是否命中，都追加规则段：force 模式可拒答，非 force 可常规回答。
+    rules = _wiki_rules_block(result.get("context") or "", force_wiki_grounded=bool(force_wiki_grounded))
+    augmented = f"{system_prompt or ''}\n\n{rules}"
     return augmented, result["citations"], result["budget"]
 
 
@@ -511,6 +562,7 @@ def augment_prompt(
     token_budget=None,
     embed_fn=None,
     llm_model_id=None,
+    force_wiki_grounded=False,
 ):
     """Backward-compatible two-value wrapper around the budget-aware query path."""
 
@@ -524,5 +576,6 @@ def augment_prompt(
         token_budget=token_budget,
         embed_fn=embed_fn,
         llm_model_id=llm_model_id,
+        force_wiki_grounded=force_wiki_grounded,
     )
     return augmented, citations

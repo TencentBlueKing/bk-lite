@@ -1,5 +1,7 @@
 from typing import Dict, Iterable, Tuple
 
+from apps.opspilot.memory.identity import resolve_owner_identity
+
 DEFAULT_MEMORY_WRITE_BATCH_SIZE = 30
 
 
@@ -12,10 +14,12 @@ def normalize_write_batch_size(value) -> int:
     return max(1, batch_size)
 
 
-def build_memory_target_id(owner_username: str, owner_domain: str = "", organization_id: int = None) -> str:
+def build_memory_target_id(owner_username: str, owner_domain: str = "", organization_id: int = None, owner_user_id: str = None) -> str:
     """构造缓存筛选用的记忆对象 ID"""
     if organization_id is not None:
         return str(organization_id)
+    if owner_user_id:
+        return owner_user_id
     if owner_domain:
         return f"{owner_username}@{owner_domain}"
     return owner_username
@@ -66,13 +70,14 @@ def find_memory_write_nodes_to_flush(old_flow_json, new_flow_json) -> Dict[str, 
     return flush_nodes
 
 
-def resolve_memory_target(memory_space, memory_target_id: str) -> Tuple[str, str, int]:
-    """从缓存 target_id 还原记忆写入目标"""
+def resolve_memory_target(memory_space, memory_target_id: str) -> Tuple[str, str, int, str | None]:
+    """从缓存 target_id 还原记忆写入目标。
+
+    Returns:
+        (owner_username, owner_domain, organization_id, owner_user_id)
+    """
     if memory_space.scope == memory_space.SCOPE_TEAM:
-        return "", "", int(memory_target_id)
+        return "", "", int(memory_target_id), None
 
-    if "@" in memory_target_id:
-        owner_username, owner_domain = memory_target_id.rsplit("@", 1)
-        return owner_username, owner_domain, None
-
-    return memory_target_id, "", None
+    owner = resolve_owner_identity(external_user_id=memory_target_id)
+    return owner.username, owner.domain, None, owner.user_id

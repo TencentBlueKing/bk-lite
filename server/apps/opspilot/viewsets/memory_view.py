@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
+from apps.opspilot.memory.identity import resolve_owner_identity
 from apps.opspilot.memory.visibility import get_visible_memories_qs
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
@@ -213,6 +214,14 @@ class MemoryViewSet(AuthViewSet):
             memory_title = response.data.get("title") if isinstance(response.data, dict) else request.data.get("title", "")
             log_operation(request, "create", "opspilot", f"新增记忆: {memory_title}")
         return response
+
+    def perform_create(self, serializer):
+        owner = resolve_owner_identity(user=self.request.user, assign_if_missing=True)
+        serializer.save(
+            owner_username=owner.username or self.request.user.username,
+            owner_domain=owner.domain if owner.domain else (getattr(self.request.user, "domain", "") or ""),
+            owner_user_id=owner.user_id,
+        )
 
     @HasPermission("memory_list-Edit")
     def update(self, request, *args, **kwargs):

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Form, Input, Select, Switch, Button, InputNumber, message, Modal, Checkbox, Space, Tooltip } from 'antd';
-import { PlusOutlined, DeleteOutlined, SendOutlined, SearchOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, SendOutlined, SearchOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useSearchParams } from 'next/navigation';
 import CustomChatSSE from '@/app/opspilot/components/custom-chat-sse';
@@ -12,7 +12,9 @@ import PermissionWrapper from '@/components/permission';
 import GroupTreeSelect from '@/components/group-tree-select';
 import { SkillPackage, SkillPackageParam } from '@/app/opspilot/types/skill';
 import { SelectTool } from '@/app/opspilot/types/tool';
+import SkillMemorySettingsFields from '@/app/opspilot/components/skill/skillMemorySettingsFields';
 import ToolSelector from '@/app/opspilot/components/skill/toolSelector';
+import { useMemoryApi, WorkflowMemorySpaceOption } from '@/app/opspilot/api/memory';
 import SkillPackageParamsModal, {
   countFilledParams,
   listMissingRequiredParams,
@@ -47,12 +49,15 @@ const SkillSettingsPage: React.FC = () => {
   const { t } = useTranslation();
   const { fetchSkillDetail, fetchLlmModels, fetchSkillPackages, saveSkillDetail } = useSkillApi();
   const { fetchKnowledgeBases } = useWikiApi();
+  const { fetchWorkflowMemorySpaces } = useMemoryApi();
   const { refreshSkillInfo } = useSkill();
   const searchParams = useSearchParams();
   const id = searchParams ? searchParams.get('id') : null;
   // 管理组织（group 字段）当前值：自动并入使用组织、且在使用组织里锁定不可删
   const manageGroup: number[] = Form.useWatch('group', form) || [];
   const selectedModelId = Form.useWatch('llmModel', form);
+  const wikiKbIds = Form.useWatch('wiki_knowledge_bases', form);
+  const hasWikiKb = Array.isArray(wikiKbIds) && wikiKbIds.length > 0;
 
   const [initialMessages] = useState<any[]>([]); // 稳定的空数组引用
 
@@ -69,6 +74,8 @@ const SkillSettingsPage: React.FC = () => {
   const [guideValue, setGuideValue] = useState<string>('');
   const [hasInvalidParamKeys, setHasInvalidParamKeys] = useState(false);
   const [wikiKbs, setWikiKbs] = useState<WikiKnowledgeBase[]>([]);
+  const [memorySpaces, setMemorySpaces] = useState<WorkflowMemorySpaceOption[]>([]);
+  const [memorySpacesLoading, setMemorySpacesLoading] = useState(false);
   const [availableSkillAssets, setAvailableSkillAssets] = useState<SkillPackage[]>([]);
   const [selectedSkillAssetKeys, setSelectedSkillAssetKeys] = useState<string[]>([]);
   const [isSkillPickerOpen, setIsSkillPickerOpen] = useState(false);
@@ -127,6 +134,9 @@ const SkillSettingsPage: React.FC = () => {
           prompt: data.skill_prompt,
           guide: data.guide || initialGuide,
           wiki_knowledge_bases: data.wiki_knowledge_bases || [],
+          force_wiki_grounded: data.force_wiki_grounded ?? false,
+          memory_space: data.memory_space || undefined,
+          memory_write_rounds: data.memory_write_rounds ?? 10,
           skill_params: data.skill_params || [],
         });
         setGuideValue(data.guide || initialGuide);
@@ -156,6 +166,11 @@ const SkillSettingsPage: React.FC = () => {
         fetchKnowledgeBases()
           .then(setWikiKbs)
           .catch(() => undefined);
+        setMemorySpacesLoading(true);
+        fetchWorkflowMemorySpaces()
+          .then((items) => setMemorySpaces(Array.isArray(items) ? items : []))
+          .catch(() => setMemorySpaces([]))
+          .finally(() => setMemorySpacesLoading(false));
         fetchFormData();
       } catch (error) {
         console.error(t('common.fetchFailed'), error);
@@ -178,6 +193,12 @@ const SkillSettingsPage: React.FC = () => {
     }
   }, [JSON.stringify(manageGroup)]);
 
+  useEffect(() => {
+    if (!hasWikiKb && form.getFieldValue('force_wiki_grounded')) {
+      form.setFieldValue('force_wiki_grounded', false);
+    }
+  }, [form, hasWikiKb]);
+
   const handleSave = async () => {
     try {
       const values = await form.validateFields();
@@ -198,6 +219,9 @@ const SkillSettingsPage: React.FC = () => {
         enable_query_rewrite: false,
         skill_params: (values.skill_params || []).filter((p: any) => p && p.key),
         wiki_knowledge_bases: values.wiki_knowledge_bases || [],
+        force_wiki_grounded: !!values.force_wiki_grounded,
+        memory_space: values.memory_space || null,
+        memory_write_rounds: values.memory_write_rounds ?? 10,
         skill_package_params: skillPackageParams,
         skill_packages: effectiveSkillCapabilityProfiles.map((pkg) => ({
           id: pkg.id,
@@ -409,8 +433,8 @@ const SkillSettingsPage: React.FC = () => {
   };
 
   const renderSkillPackageSelector = () => (
-    <div className="py-2.5 border-b border-[var(--color-fill-2)]/60">
-      <div className="flex items-center justify-between mb-1">
+    <div className="mt-4 border-t border-[var(--color-border-1)] pt-4">
+      <div className="mb-1 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="text-[13px] font-medium text-[var(--color-text-1)]">技能包</span>
           {effectiveSkillCapabilityProfiles.length > 0 && (
@@ -423,13 +447,13 @@ const SkillSettingsPage: React.FC = () => {
           添加技能包
         </Button>
       </div>
-      <p className="text-xs text-[var(--color-text-3)] mb-2.5 mt-0">挂载场景技能包，注入专业运维处理逻辑与提示规则</p>
+      <p className="mb-2.5 mt-0 text-xs text-[var(--color-text-3)]">挂载场景技能包，注入专业运维处理逻辑与提示规则</p>
       {effectiveSkillCapabilityProfiles.length === 0 ? (
-        <div className="text-xs text-[var(--color-text-4)] py-1">
+        <div className="py-1 text-xs text-[var(--color-text-4)]">
           暂未挂载技能包，可点击右上角「添加技能包」进行挂载
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 pt-1">
+        <div className="grid grid-cols-1 gap-2 pt-1">
           {effectiveSkillCapabilityProfiles.map((asset) => {
             const resolvedAsset = withResolvedVariables(asset);
             const assetKey = getPackageKey(resolvedAsset);
@@ -674,10 +698,14 @@ const SkillSettingsPage: React.FC = () => {
               <Form
                 form={form}
                 layout="horizontal"
-                labelCol={{ flex: '0 0 96px' }}
+                labelAlign="right"
+                labelCol={{
+                  flex: '0 0 120px',
+                  style: { width: 120, minWidth: 120, maxWidth: 120, textAlign: 'right' },
+                }}
                 wrapperCol={{ flex: 1 }}
                 colon={false}
-                className="[&_.ant-form-item]:mb-3.5 [&_.ant-form-item-label]:pr-3 text-sm"
+                className="skill-settings-form [&_.ant-form-item]:mb-3.5 text-sm"
               >
                 {/* 1. 基本信息 */}
                 <section className="mb-6">
@@ -725,12 +753,12 @@ const SkillSettingsPage: React.FC = () => {
                   </Form.Item>
                 </section>
 
-                {/* 2. 模型与知识库 */}
+                {/* 2. 模型 */}
                 <section className="mb-6 border-t border-[var(--color-border-1)] pt-5">
                   <div className="mb-3.5 flex items-center gap-2">
                     <span className="h-3.5 w-1 rounded-full bg-[var(--color-primary)]" />
                     <span className="text-[13px] font-semibold text-[var(--color-text-1)]">
-                      {t('skill.form.llmModel')}
+                      {t('skill.form.modelSection', '模型')}
                     </span>
                   </div>
 
@@ -747,23 +775,16 @@ const SkillSettingsPage: React.FC = () => {
                       ))}
                     </Select>
                   </Form.Item>
-
-                  <Form.Item label={t('wiki.title')} name="wiki_knowledge_bases">
-                    <Select
-                      mode="multiple"
-                      allowClear
-                      placeholder={t('wiki.title')}
-                      options={wikiKbs.map((kb) => ({ value: kb.id, label: kb.name }))}
-                    />
-                  </Form.Item>
                 </section>
 
-                {/* 3. 提示词与参数 */}
+                {/* 3. 提示与开场 */}
                 <section className="mb-6 border-t border-[var(--color-border-1)] pt-5">
                   <div className="mb-3.5 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="h-3.5 w-1 rounded-full bg-[var(--color-primary)]" />
-                      <span className="text-[13px] font-semibold text-[var(--color-text-1)]">{t('skill.form.prompt')}</span>
+                      <span className="text-[13px] font-semibold text-[var(--color-text-1)]">
+                        {t('skill.form.promptAndOpening', '提示与开场')}
+                      </span>
                     </div>
                     <span className="text-xs text-[var(--color-text-3)]">
                       支持 <code className="font-mono text-[var(--color-primary)]">{'{{param}}'}</code> 声明参数
@@ -771,6 +792,7 @@ const SkillSettingsPage: React.FC = () => {
                   </div>
 
                   <Form.Item
+                    label={t('skill.form.prompt')}
                     name="prompt"
                     tooltip={t('skill.form.promptTip')}
                     extra={hasInvalidParamKeys ? <span className="text-orange-500 text-xs">{t('skill.skillParams.invalidKeyWarning')}</span> : undefined}
@@ -785,7 +807,7 @@ const SkillSettingsPage: React.FC = () => {
                     />
                   </Form.Item>
 
-                  <Form.Item label={t('skill.skillParams.title')} tooltip={t('skill.skillParams.tip')} className="!mb-0">
+                  <Form.Item label={t('skill.skillParams.title')} tooltip={t('skill.skillParams.tip')} className="!mb-3">
                     <Form.List name="skill_params">
                       {(fields) => (
                         <>
@@ -855,64 +877,9 @@ const SkillSettingsPage: React.FC = () => {
                       )}
                     </Form.List>
                   </Form.Item>
-                </section>
 
-                {/* 4. 能力扩展（聊天历史、技能包、工具） */}
-                <section className="mb-6 border-t border-[var(--color-border-1)] pt-5">
-                  <div className="mb-3.5 flex items-center gap-2">
-                    <span className="h-3.5 w-1 rounded-full bg-[var(--color-primary)]" />
-                    <span className="text-[13px] font-semibold text-[var(--color-text-1)]">
-                      {t('skill.chatEnhancement')}
-                    </span>
-                  </div>
-
-                  {/* 聊天历史 */}
-                  <div className="flex items-center justify-between py-2.5 border-b border-[var(--color-fill-2)]/60">
-                    <div>
-                      <div className="text-[13px] font-medium text-[var(--color-text-1)]">{t('skill.chatHistory')}</div>
-                      <div className="text-xs text-[var(--color-text-3)]">{t('skill.chatHistoryTip')}</div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {chatHistoryEnabled && (
-                        <div className="flex items-center gap-1.5 mr-2">
-                          <InputNumber
-                            min={1}
-                            max={100}
-                            size="small"
-                            className="w-16"
-                            value={quantity}
-                            onChange={(value) => setQuantity(value ?? 1)}
-                          />
-                          <span className="text-xs text-[var(--color-text-3)]">轮</span>
-                        </div>
-                      )}
-                      <Switch
-                        size="small"
-                        checked={chatHistoryEnabled}
-                        onChange={setChatHistoryEnabled}
-                      />
-                    </div>
-                  </div>
-
-                  {/* 技能包 */}
-                  {renderSkillPackageSelector()}
-
-                  {/* 工具：有选中即启用，空列表即关闭；payload 仍走 selectedTools */}
-                  <div className="py-2.5">
-                    <ToolSelector defaultTools={selectedTools} onChange={setSelectedTools} />
-                  </div>
-                </section>
-
-                {/* 5. 引导语 */}
-                <section className="border-t border-[var(--color-border-1)] pt-5">
-                  <div className="mb-3.5 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="h-3.5 w-1 rounded-full bg-[var(--color-primary)]" />
-                      <span className="text-[13px] font-semibold text-[var(--color-text-1)]">{t('skill.form.guide')}</span>
-                    </div>
-                    <span className="text-xs text-[var(--color-text-3)]">支持 Markdown 与 [快捷提问] 语法</span>
-                  </div>
                   <Form.Item
+                    label={t('skill.form.guide')}
                     name="guide"
                     tooltip={
                       <>
@@ -920,6 +887,7 @@ const SkillSettingsPage: React.FC = () => {
                         <div>{t('skill.form.guideTip')}</div>
                       </>
                     }
+                    extra={<span className="text-xs text-[var(--color-text-3)]">支持 Markdown 与 [快捷提问] 语法</span>}
                     className="!mb-0"
                   >
                     <TextArea
@@ -929,6 +897,116 @@ const SkillSettingsPage: React.FC = () => {
                       onChange={(e) => setGuideValue(e.target.value)}
                     />
                   </Form.Item>
+                </section>
+
+                {/* 4. 能力拓展 */}
+                <section className="border-t border-[var(--color-border-1)] pt-5">
+                  <div className="mb-3.5 flex items-center gap-2">
+                    <span className="h-3.5 w-1 rounded-full bg-[var(--color-primary)]" />
+                    <span className="text-[13px] font-semibold text-[var(--color-text-1)]">
+                      {t('skill.capabilityExpand', '能力拓展')}
+                    </span>
+                  </div>
+
+                  <Form.Item
+                    label={t('wiki.title')}
+                    extra={
+                      <span className="text-xs text-[var(--color-text-3)]">
+                        {hasWikiKb
+                          ? t('skill.form.forceWikiGroundedExtra')
+                          : t('skill.form.forceWikiGroundedNeedKb')}
+                      </span>
+                    }
+                  >
+                    <div className="flex items-center gap-2">
+                      <Form.Item name="wiki_knowledge_bases" noStyle>
+                        <Select
+                          mode="multiple"
+                          allowClear
+                          placeholder={t('wiki.title')}
+                          className="min-w-0 flex-1"
+                          options={wikiKbs.map((kb) => ({ value: kb.id, label: kb.name }))}
+                        />
+                      </Form.Item>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        <Form.Item name="force_wiki_grounded" valuePropName="checked" noStyle>
+                          <Switch
+                            size="small"
+                            disabled={!hasWikiKb}
+                          />
+                        </Form.Item>
+                        <span
+                          className={`text-xs select-none ${
+                            hasWikiKb
+                              ? 'cursor-pointer text-[var(--color-text-2)] hover:text-[var(--color-text-1)]'
+                              : 'cursor-not-allowed text-[var(--color-text-4)]'
+                          }`}
+                          onClick={() => {
+                            if (hasWikiKb) {
+                              form.setFieldValue(
+                                'force_wiki_grounded',
+                                !form.getFieldValue('force_wiki_grounded')
+                              );
+                            }
+                          }}
+                        >
+                          {t('skill.form.forceWikiGrounded')}
+                        </span>
+                      </div>
+                    </div>
+                  </Form.Item>
+
+                  <SkillMemorySettingsFields spaces={memorySpaces} loading={memorySpacesLoading} />
+
+                  <Form.Item
+                    label={
+                      <span className="inline-flex items-center gap-1">
+                        {t('skill.chatHistory')}
+                        <Tooltip title={t('skill.chatHistoryTip')}>
+                          <QuestionCircleOutlined className="text-[11px] text-[var(--color-text-4)] hover:text-[var(--color-text-3)] cursor-pointer" />
+                        </Tooltip>
+                      </span>
+                    }
+                    className="!mb-3.5"
+                  >
+                    <div className="flex h-8 items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          size="small"
+                          checked={chatHistoryEnabled}
+                          onChange={setChatHistoryEnabled}
+                        />
+                        {chatHistoryEnabled ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs text-[var(--color-text-3)]">
+                              {t('skill.chatHistoryEnabledPrefix')}
+                            </span>
+                            <InputNumber
+                              min={1}
+                              max={100}
+                              size="small"
+                              className="w-16"
+                              value={quantity}
+                              onChange={(value) => setQuantity(value ?? 1)}
+                            />
+                            <span className="text-xs text-[var(--color-text-3)]">
+                              {t('skill.chatHistoryEnabledSuffix')}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-[var(--color-text-4)]">
+                            {t('skill.chatHistoryDisabledHint')}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </Form.Item>
+
+                  {renderSkillPackageSelector()}
+
+                  <div className="mt-4 border-t border-[var(--color-border-1)] pt-4">
+                    <ToolSelector defaultTools={selectedTools} onChange={setSelectedTools} />
+                  </div>
                 </section>
               </Form>
             </div>

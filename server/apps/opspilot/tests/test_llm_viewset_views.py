@@ -55,6 +55,15 @@ def test_skill_packages_are_serialized_and_updatable():
     assert "skill_packages" in LLMViewSet.UPDATABLE_SKILL_FIELDS
 
 
+def test_memory_fields_are_serialized_and_updatable():
+    assert "memory_space" in LLMSerializer.Meta.fields
+    assert "memory_write_rounds" in LLMSerializer.Meta.fields
+    assert "memory_space" not in set(LLMSerializer.Meta.read_only_fields)
+    assert "memory_write_rounds" not in set(LLMSerializer.Meta.read_only_fields)
+    assert "memory_space_id" in LLMViewSet.UPDATABLE_SKILL_FIELDS
+    assert "memory_write_rounds" in LLMViewSet.UPDATABLE_SKILL_FIELDS
+
+
 def test_apply_skill_packages_records_visible_match_summary(mocker):
     """执行智能体时要把命中的技能包注入提示词，并保留可观测的命中摘要。"""
     mocker.patch("apps.opspilot.viewsets.llm_view.hydrate_skill_packages", side_effect=lambda packages: packages)
@@ -325,6 +334,7 @@ class _FakeSkill:
         self.name = "old-name"
         self.skill_prompt = "old-prompt"
         self.team = [1]
+        self.usage_team = [1]
         self.skill_params = []
         self.skill_packages = []
         self.knowledge_base = SimpleNamespace(set=lambda *a, **k: None, clear=lambda: None)

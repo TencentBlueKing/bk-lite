@@ -48,11 +48,19 @@ class MemorySpace(MaintainerInfo, TimeInfo, EncryptMixin):
         verbose_name=_("存储类型"),
     )
     storage_config = models.JSONField(default=dict, blank=True, verbose_name=_("存储配置"))
+    is_builtin = models.BooleanField(default=False, db_index=True, verbose_name=_("是否内置"))
 
     class Meta:
         db_table = "memory_mgmt_memoryspace"
         verbose_name = "记忆空间"
         verbose_name_plural = "记忆空间"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["is_builtin"],
+                condition=models.Q(is_builtin=True),
+                name="uniq_builtin_memory_space",
+            ),
+        ]
 
     def __str__(self):
         return self.name
@@ -104,7 +112,8 @@ class MemorySpace(MaintainerInfo, TimeInfo, EncryptMixin):
 class Memory(MaintainerInfo, TimeInfo):
     """记忆条目模型
 
-    个人记忆：owner_username + owner_domain 确定唯一用户，每个用户在每个记忆空间只有一条记忆
+    个人记忆：优先 owner_user_id（系统管理 User.user_id）确定用户；
+             owner_username + owner_domain 仅作展示及无 UUID 的外部渠道回退。
     组织记忆：organization_id 确定唯一组织，每个组织在每个记忆空间只有一条记忆
              owner_username 存储组织名称（用于显示）
     """
@@ -119,6 +128,7 @@ class Memory(MaintainerInfo, TimeInfo):
     content = models.TextField(verbose_name=_("内容"))
     owner_username = models.CharField(max_length=150, verbose_name=_("创建者用户名/组织名"), db_index=True)
     owner_domain = models.CharField(max_length=255, verbose_name=_("创建者域"), db_index=True, blank=True, default="")
+    owner_user_id = models.CharField(max_length=36, verbose_name=_("系统用户UUID"), db_index=True, null=True, blank=True)
     organization_id = models.IntegerField(verbose_name=_("组织ID"), db_index=True, null=True, blank=True)
 
     class Meta:

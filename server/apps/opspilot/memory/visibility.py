@@ -6,7 +6,7 @@ MemorySpaceViewSet 序列化 memory_count、MemoryViewSet 列表过滤,
 
 helper 设计:
 - ``get_visible_memories_qs(user)``:返回当前用户可见的所有 Memory。
-  团队空间对任意用户全见;个人空间仅 owner_username+owner_domain 匹配当前用户。
+  团队空间对任意用户全见;个人空间优先系统用户 UUID，无 UUID 时回退 owner_username+owner_domain。
 - 配合外部 ``memory_space_id`` 过滤(DRF filterset_fields)使用,
   先 filter memory_space_id 再 ``&`` 上 helper 结果,保证个人记忆跨空间隔离。
 
@@ -20,6 +20,7 @@ helper 设计:
 
 from django.db.models import Q, QuerySet
 
+from apps.opspilot.memory.identity import resolve_system_user_uuid
 from apps.opspilot.models.memory_mgmt import Memory, MemorySpace
 
 
@@ -44,7 +45,8 @@ def get_visible_memories_qs(user) -> QuerySet[Memory]:
 
     规则:
     - 团队空间(scope=team):返回全部 Memory。
-    - 个人空间(scope=personal):仅 owner_username + owner_domain 与当前用户匹配的 Memory。
+    - 个人空间(scope=personal):优先 owner_user_id 与系统用户 UUID 匹配;
+      无 UUID 时回退 owner_username + owner_domain。
     - 未认证用户:返回空 queryset。
 
     实现:用单个 Q 对象表达「团队 OR (个人 且 owner 匹配)」,
@@ -55,9 +57,14 @@ def get_visible_memories_qs(user) -> QuerySet[Memory]:
         return Memory.objects.none()
     username, domain = identity
 
-    visibility_q = Q(memory_space__scope=MemorySpace.SCOPE_TEAM) | Q(
+    personal_q = Q(
         memory_space__scope=MemorySpace.SCOPE_PERSONAL,
         owner_username=username,
         owner_domain=domain,
     )
+    owner_uuid = resolve_system_user_uuid(user)
+    if owner_uuid:
+        personal_q |= Q(memory_space__scope=MemorySpace.SCOPE_PERSONAL, owner_user_id=owner_uuid)
+
+    visibility_q = Q(memory_space__scope=MemorySpace.SCOPE_TEAM) | personal_q
     return Memory.objects.filter(visibility_q)

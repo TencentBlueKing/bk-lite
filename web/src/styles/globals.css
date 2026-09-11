@@ -383,4 +383,31 @@ html:not(.dark) .header-bg-scrolled {
   }
 }
 
+/* 智能体设置：标签文字右对齐；问号紧跟文字，并留出不被控件盖住的 gutter */
+.skill-settings-form .ant-form-item-label {
+  overflow: visible;
+  padding-right: 24px;
+  text-align: right;
+}
+
+.skill-settings-form .ant-form-item-label > label {
+  position: relative;
+  display: inline-flex;
+  width: max-content;
+  max-width: 100%;
+}
+
+.skill-settings-form .ant-form-item-label > label::after {
+  display: none;
+  content: none;
+}
+
+.skill-settings-form .ant-form-item-tooltip {
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-inline-start: 4px;
+}
+
 

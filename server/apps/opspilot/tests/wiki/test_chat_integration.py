@@ -36,7 +36,7 @@ def test_augment_prompt_injects_context_and_citations():
 
     prompt, citations = augment_prompt("你是运维助手", [kb.id], "重启服务")
     assert "你是运维助手" in prompt
-    assert "相关知识库信息" in prompt
+    assert "知识库检索结果" in prompt
     assert "systemctl restart" in prompt
     assert citations and citations[0]["title"] == "重启服务"
 
@@ -77,9 +77,11 @@ def test_augment_prompt_noop_without_kb_or_match():
     # 未选知识库 -> 原样返回
     p1, c1 = augment_prompt("base", [], "任何问题")
     assert p1 == "base" and c1 == []
-    # 无命中 -> 原样返回
+    # 无命中 -> 仍追加规则段（默认非强制），citations 为空
     p2, c2 = augment_prompt("base", [kb.id], "数据库备份")
-    assert p2 == "base" and c2 == []
+    assert "知识库参考规则｜非强制" in p2
+    assert "（暂无检索结果）" in p2
+    assert c2 == []
 
 
 def test_should_skip_wiki_retrieval_for_greetings():
@@ -91,6 +93,19 @@ def test_should_skip_wiki_retrieval_for_greetings():
     assert should_skip_wiki_retrieval("在吗") is True
     assert should_skip_wiki_retrieval("如何重启 tomcat 服务") is False
     assert should_skip_wiki_retrieval("告警 Unhealthy startup probe 怎么排查") is False
+
+
+def test_should_skip_wiki_retrieval_for_time_tool_queries():
+    from apps.opspilot.services.wiki.wiki_context_service import should_skip_wiki_retrieval
+
+    assert should_skip_wiki_retrieval("现在几点了") is True
+    assert should_skip_wiki_retrieval("现在几点了？") is True
+    assert should_skip_wiki_retrieval("现在几点") is True
+    assert should_skip_wiki_retrieval("几点了") is True
+    assert should_skip_wiki_retrieval("what time is it") is True
+    assert should_skip_wiki_retrieval("现在几点开会") is False
+    assert should_skip_wiki_retrieval("怎么巡检数据库？") is False
+    assert should_skip_wiki_retrieval("帮我写一首关于月亮的诗") is False
 
 
 @pytest.mark.django_db
@@ -220,3 +235,163 @@ def test_chat_service_skips_wiki_path_for_greeting(monkeypatch):
     assert chat_kwargs["system_message_prompt"] == "你是运维助手"
     assert "max_model_calls" not in chat_kwargs
     assert chat_kwargs["extra_config"]["wiki_budget"]["overview_status"] == "skipped_chitchat"
+
+
+def test_chat_service_skips_wiki_path_for_current_time(monkeypatch):
+    from apps.opspilot.models import SkillTypeChoices
+    from apps.opspilot.services import chat_service
+
+    called = {"augment": 0}
+
+    def fake_augment_prompt_with_trace(*_args, **_kwargs):
+        called["augment"] += 1
+        raise AssertionError("纯时间问句不应触发 Wiki 检索")
+
+    monkeypatch.setattr(chat_service, "augment_prompt_with_trace", fake_augment_prompt_with_trace)
+
+    chat_kwargs, _, _ = chat_service.ChatService.format_chat_server_kwargs(
+        {
+            "show_think": True,
+            "user_message": "现在几点了？",
+            "chat_history": [],
+            "conversation_window_size": 10,
+            "skill_prompt": "你是运维助手",
+            "skill_params": [],
+            "wiki_kb_ids": [1],
+            "force_wiki_grounded": True,
+            "temperature": 0.2,
+            "user_id": "u1",
+            "skill_type": SkillTypeChoices.KNOWLEDGE_TOOL,
+        },
+        SimpleNamespace(
+            openai_api_base="http://llm",
+            openai_api_key="key",
+            model_name="model",
+            protocol_type="openai",
+            vendor_id=None,
+            pk=1,
+        ),
+    )
+
+    assert called["augment"] == 0
+    assert chat_kwargs["system_message_prompt"] == "你是运维助手"
+    assert "wiki_citations" not in chat_kwargs["extra_config"]
+    assert chat_kwargs["extra_config"]["wiki_budget"]["overview_status"] == "skipped_chitchat"
+
+
+@pytest.mark.django_db
+def test_augment_prompt_force_false_uses_non_force_rules():
+    from apps.opspilot.services.wiki.wiki_context_service import augment_prompt_with_trace
+
+    kb = _kb()
+    _page(kb, "VPN制度", "VPN 使用需要审批")
+
+    prompt, citations, _ = augment_prompt_with_trace(
+        "你是专业机器人",
+        [kb.id],
+        "VPN使用有什么制度要求",
+        force_wiki_grounded=False,
+    )
+    assert "知识库参考规则｜非强制" in prompt
+    assert "知识库强制回答规则" not in prompt
+    assert "知识库检索结果" in prompt
+    assert citations
+
+
+@pytest.mark.django_db
+def test_augment_prompt_force_true_uses_force_rules():
+    from apps.opspilot.services.wiki.wiki_context_service import augment_prompt_with_trace
+
+    kb = _kb()
+    _page(kb, "VPN制度", "VPN 使用需要审批")
+
+    prompt, citations, _ = augment_prompt_with_trace(
+        "你是专业机器人",
+        [kb.id],
+        "VPN使用有什么制度要求",
+        force_wiki_grounded=True,
+    )
+    assert "知识库强制回答规则｜优先级高于常识发挥" in prompt
+    assert "知识库参考规则｜非强制" not in prompt
+    assert "知识库中暂无相关资料,无法回答该问题。" in prompt
+    assert citations
+
+
+@pytest.mark.django_db
+def test_augment_prompt_empty_context_still_appends_rules_force_true():
+    from apps.opspilot.services.wiki.wiki_context_service import augment_prompt_with_trace
+
+    kb = _kb()
+    _page(kb, "网络", "静态路由")
+
+    prompt, citations, _ = augment_prompt_with_trace(
+        "base",
+        [kb.id],
+        "帮我写一首关于月亮的诗",
+        force_wiki_grounded=True,
+    )
+    assert "知识库强制回答规则｜优先级高于常识发挥" in prompt
+    assert "（暂无检索结果）" in prompt or "知识库检索结果" in prompt
+    assert "知识库中暂无相关资料,无法回答该问题。" in prompt
+    assert citations == []
+
+
+@pytest.mark.django_db
+def test_augment_prompt_empty_context_non_force_allows_general():
+    from apps.opspilot.services.wiki.wiki_context_service import augment_prompt_with_trace
+
+    kb = _kb()
+    _page(kb, "网络", "静态路由")
+
+    prompt, citations, _ = augment_prompt_with_trace(
+        "base",
+        [kb.id],
+        "怎么给电脑优化性能",
+        force_wiki_grounded=False,
+    )
+    assert "知识库参考规则｜非强制" in prompt
+    assert "可以按你的人设做常规回答" in prompt
+    assert citations == []
+
+
+def test_chat_service_passes_force_wiki_grounded(monkeypatch):
+    from apps.opspilot.models import SkillTypeChoices
+    from apps.opspilot.services import chat_service
+
+    captured = {}
+
+    def fake_augment_prompt_with_trace(system_prompt, kb_ids, query, **options):
+        captured["options"] = options
+        return "augmented", [], {}
+
+    monkeypatch.setattr(chat_service, "augment_prompt_with_trace", fake_augment_prompt_with_trace)
+    monkeypatch.setattr(
+        chat_service,
+        "load_wiki_budget_config",
+        lambda: SimpleNamespace(qa_max_llm_calls=3, qa_max_output_tokens=1024),
+    )
+
+    chat_service.ChatService.format_chat_server_kwargs(
+        {
+            "show_think": True,
+            "user_message": "请重启服务",
+            "chat_history": [],
+            "conversation_window_size": 10,
+            "skill_prompt": "你是运维助手",
+            "skill_params": [],
+            "wiki_kb_ids": [1],
+            "force_wiki_grounded": True,
+            "temperature": 0.2,
+            "user_id": "u1",
+            "skill_type": SkillTypeChoices.KNOWLEDGE_TOOL,
+        },
+        SimpleNamespace(
+            openai_api_base="http://llm",
+            openai_api_key="key",
+            model_name="model",
+            protocol_type="openai",
+            vendor_id=None,
+            pk=1,
+        ),
+    )
+    assert captured["options"].get("force_wiki_grounded") is True

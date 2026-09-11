@@ -192,15 +192,21 @@ def delete_skill_channel_session(request):
     if not getattr(request, "user", None) or not request.user.is_authenticated:
         return JsonResponse({"result": False, "message": "未登录"}, status=401)
     session_id = ""
+    keep_memory = False
     try:
         body = json.loads(request.body.decode("utf-8") or "{}") if request.body else {}
         session_id = body.get("session_id") or request.POST.get("session_id") or ""
+        keep_memory = bool(body.get("keep_memory"))
     except Exception:
         session_id = request.POST.get("session_id") or ""
     if not session_id:
         return JsonResponse({"result": False, "message": "session_id 必填"}, status=400)
     try:
-        delete_skill_session(session_id=session_id, external_user_id=saas_external_user_id(request.user))
+        delete_skill_session(
+            session_id=session_id,
+            external_user_id=saas_external_user_id(request.user),
+            keep_memory=keep_memory,
+        )
     except SkillChannelChatError as e:
         return JsonResponse({"result": False, "message": e.message}, status=e.status)
     return JsonResponse({"result": True})
