@@ -1,4 +1,6 @@
-from apps.alerts.action.payload import build_match_payload, resolve_field
+import pytest
+
+from apps.alerts.action.payload import build_match_payload, build_rule_payload, resolve_field
 
 
 class FakeAlert:
@@ -30,14 +32,28 @@ def test_resolve_field_dotted_and_missing():
     assert resolve_field(p, "labels.notexist") is None
 
 
-def test_payload_does_not_project_historical_source_fields_or_query_events():
+def test_rule_payload_does_not_project_historical_source_fields_or_query_events():
     from unittest.mock import MagicMock
 
     alert = FakeAlert()
     alert.events = MagicMock()
-    p = build_match_payload(alert)
+    p = build_rule_payload(alert, include_source_names=False)
     assert "source_id" not in p and "source_pk" not in p
     assert alert.events.mock_calls == []
+
+
+@pytest.mark.parametrize("script_params", [[{"name": "origin"}], [{"name": "origin", "default": 99}]])
+def test_action_parameters_keep_first_event_source_id(script_params):
+    from types import SimpleNamespace
+
+    from apps.alerts.action.resolver import resolve_params
+
+    alert = FakeAlert()
+    alert.events = SimpleNamespace(first=lambda: SimpleNamespace(source_id=7))
+
+    params = resolve_params(build_match_payload(alert), [{"name": "origin", "from": "field", "value": "source_id"}], script_params)
+
+    assert params == [{"name": "origin", "value": 7}]
 
 
 def test_payload_omits_source_id_when_no_events():

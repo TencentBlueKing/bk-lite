@@ -6,6 +6,7 @@ from django.utils import timezone
 from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
+from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 
 from apps.alerts.constants.constants import SessionStatus
@@ -124,6 +125,8 @@ class NotificationTemplateViewSet(ModelViewSet):
 
     @HasPermission("notification_templates-View")
     def list(self, request, *args, **kwargs):
+        # 内置模板初始化会写库，必须在任何写入前校验当前团队归属。
+        get_query_group_ids(request)
         current_team = get_current_team_from_request(request, required=True)
         if current_team:
             ensure_alert_operation_template(current_team, request.user)
@@ -155,7 +158,7 @@ class NotificationTemplateViewSet(ModelViewSet):
         return NotificationTemplate.objects.prefetch_related("contents", "references").filter(pk__in=visible_ids).select_for_update()
 
     def _locked_object(self):
-        return self._locked_queryset().get()
+        return get_object_or_404(self._locked_queryset())
 
     @staticmethod
     def _get_test_channel(request, channel_id):
