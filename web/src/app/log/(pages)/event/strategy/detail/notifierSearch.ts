@@ -5,7 +5,7 @@ interface NotifierOption {
 }
 
 export function buildNotifierUserIndex(users: UserItem[]): Map<string, UserItem> {
-  return new Map(users.map((user) => [user.id, user]));
+  return new Map(users.map((user) => [String(user.id), user]));
 }
 
 export function matchNotifierUser(user: UserItem | undefined, input: string): boolean {

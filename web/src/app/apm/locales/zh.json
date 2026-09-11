@@ -114,6 +114,8 @@
       "forbiddenDescription": "请联系组织管理员申请查看权限。",
       "degradedTitle": "遥测存储暂不可用",
       "degradedDescription": "目录元数据仍然可用，请稍后重试遥测查询。",
+      "capacityTitle": "本次查询数据量过大",
+      "capacityDescription": "请缩小时间窗后重试。目录与已加载指标仍然可用。",
       "errorTitle": "APM 数据加载失败",
       "errorDescription": "请检查筛选条件或网络状态后重试。"
     },

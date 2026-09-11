@@ -96,7 +96,20 @@ def test_network_config_file_yaml_policy_is_remote_channel(reader):
     enriched = apply_yaml_target_policy(request, reader=reader)
     assert enriched.params["preflight_kind"] == "remote"
     assert enriched.params["target_policy_mode"] == "remote_channel"
-    assert int(enriched.params["port"]) == 22
+
+
+def test_network_config_file_yaml_policy_keeps_task_port(reader):
+    request = build_collection_request(
+        task_id="yaml-ncf-port",
+        params={
+            "model_id": "network_config_file",
+            "executor_type": "protocol",
+            "host": "10.10.69.10",
+            "port": 2222,
+        },
+    )
+    enriched = apply_yaml_target_policy(request, reader=reader)
+    assert int(enriched.params["port"]) == 2222
 
 
 @pytest.mark.parametrize(

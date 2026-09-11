@@ -17,7 +17,11 @@ const traceDetail = read('src/app/apm/explore/traces/[traceId]/page.tsx');
 
 assert.match(api, /\/apm\/services\/\$\{serviceId\}\/metrics\//, '服务详情必须调用真实 RED API');
 assert.match(api, /\/apm\/traces\//, 'Trace 页面必须调用真实 Trace API');
-assert.match(serviceList, /new Set\(filteredRows\.map\(\(item\) => item\.serviceId\)\)\.size/, '服务统计必须跟随当前筛选结果');
+assert.match(api, /getTopology[\s\S]*?suppressErrorNotification:\s*true/, '拓扑失败由页面内错误态呈现，不应重复弹出全局 toast');
+assert.match(api, /\/apm\/services\/metrics\/batch\//, '应用观测必须走批量 RED，避免逐服务打满 breakdown');
+assert.match(api, /getTopology[\s\S]*?application_id/, '拓扑查询必须支持按应用收窄取样');
+assert.match(serviceList, /include_breakdown:\s*false/, '服务目录 RED 不得拉 breakdown');
+assert.match(serviceList, /filteredRows\.forEach\(\(row\) => \{/, '服务统计必须跟随当前筛选结果');
 assert.match(organizationModal, /afterOpenChange[\s\S]*setFieldsValue/, '组织弹窗必须在字段挂载后恢复已有值');
 assert.match(serviceDetail, /timeseries/, '服务详情必须读取真实 RED 时序');
 assert.match(serviceDetail, /TimeSeriesComposedChart/, '服务详情必须呈现真实 RED 时序图');

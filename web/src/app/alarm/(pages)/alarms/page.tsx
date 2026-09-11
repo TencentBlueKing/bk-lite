@@ -1,5 +1,5 @@
 'use client';
-
+import './register-alarms-pilot';
 import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import Icon from '@/components/icon';
 import useApiClient from '@/utils/request';
@@ -235,7 +235,7 @@ const Alert: React.FC = () => {
     const params: any = {
       status: filters.state.join(','),
       level: filters.level.join(','),
-      source_name: filters.alarm_source.join(','),
+      source_names: filters.alarm_source.length ? JSON.stringify(filters.alarm_source) : undefined,
       page: pagination.current,
       page_size: pagination.pageSize,
       created_at_after: queryTimeRange[0]

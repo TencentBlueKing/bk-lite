@@ -1,17 +1,20 @@
 import json
 from datetime import timedelta
+from logging import LogRecord
 from unittest.mock import Mock
 
 import pytest
 import requests
 from django.utils import timezone
 
-from apps.apm.adapters import TelemetryStoreUnavailable, VictoriaTracesTelemetryStore
+from apps.apm.adapters import TelemetryQueryTooLarge, TelemetryStoreUnavailable, VictoriaTracesTelemetryStore
+from apps.apm.adapters.victoriatraces import MAX_RESPONSE_BYTES, RESPONSE_TOO_LARGE, _pack_trace_ids
 from apps.apm.services.contracts import (
     InstanceActivityQuery,
     MetricDataState,
     ServiceErrorBreakdownQuery,
     ServiceMetricQuery,
+    SpanSearchQuery,
     SloMetricQuery,
     TopologyDependencyQuery,
     TopologySampleQuery,
@@ -19,14 +22,14 @@ from apps.apm.services.contracts import (
 )
 
 
-def _span_row(trace_id, span_id, now, *, name="POST /checkout", service="checkout"):
+def _span_row(trace_id, span_id, now, *, name="POST /checkout", service="checkout", parent="0" * 16, kind="2", status_code="2"):
     return {
         "trace_id": trace_id,
         "span_id": span_id,
-        "parent_span_id": "0" * 16,
+        "parent_span_id": parent,
         "name": name,
-        "kind": "2",
-        "status_code": "2",
+        "kind": kind,
+        "status_code": status_code,
         "duration": "120000000",
         "start_time_unix_nano": str(int(now.timestamp() * 1_000_000_000)),
         "resource_attr:service.name": service,
@@ -34,6 +37,12 @@ def _span_row(trace_id, span_id, now, *, name="POST /checkout", service="checkou
         "resource_attr:deployment.environment": "production",
         "resource_attr:service.instance.id": "pod-a",
     }
+
+
+def _attr_row(trace_id, span_id, now, **extra):
+    row = _span_row(trace_id, span_id, now)
+    row.update(extra)
+    return row
 
 
 def _response(payload, status_code=200, *, raw=None):
@@ -46,57 +55,36 @@ def _response(payload, status_code=200, *, raw=None):
     return response
 
 
-def _jaeger_trace(now):
-    start_us = int(now.timestamp() * 1_000_000)
-    return {
-        "traceID": "a" * 32,
-        "processes": {
-            "p1": {
-                "serviceName": "checkout",
-                "tags": [
-                    {"key": "service.namespace", "value": "shop"},
-                    {"key": "service.instance.id", "value": "pod-a"},
-                    {"key": "deployment.environment", "value": "production"},
-                ],
-            }
-        },
-        "spans": [
-            {
-                "spanID": "1" * 16,
-                "operationName": "POST /checkout",
-                "processID": "p1",
-                "startTime": start_us,
-                "duration": 120_000,
-                "references": [],
-                "tags": [
-                    {"key": "span.kind", "value": "server"},
-                    {"key": "otel.status_code", "value": "ERROR"},
-                    {"key": "Authorization", "value": "Bearer secret"},
-                ],
-            },
-            {
-                "spanID": "2" * 16,
-                "operationName": "INSERT orders",
-                "processID": "p1",
-                "startTime": start_us + 10_000,
-                "duration": 20_000,
-                "references": [{"refType": "CHILD_OF", "spanID": "1" * 16}],
-                "tags": [{"key": "span.kind", "value": "client"}],
-            },
-        ],
-    }
+def _oversized_response():
+    response = Mock()
+    response.status_code = 200
+    response.headers = {"Content-Length": str(MAX_RESPONSE_BYTES + 1)}
+    response.raise_for_status.return_value = None
+    response.iter_content.return_value = []
+    return response
 
 
-def test_search_builds_controlled_resource_filters_and_maps_jaeger_trace():
+def test_search_builds_controlled_resource_filters_and_maps_logsql_spans():
     now = timezone.now()
+    start_ns = str(int(now.timestamp() * 1_000_000_000))
+    id_rows = json.dumps({"trace_id": "a" * 32, "matched_at": start_ns, "spans": 2})
+    span_rows = "\n".join(
+        [
+            json.dumps(_span_row("a" * 32, "1" * 16, now, name="POST /checkout")),
+            json.dumps(_span_row("a" * 32, "2" * 16, now, name="INSERT orders", parent="1" * 16, kind="3")),
+        ]
+    )
     session = Mock()
-    session.get.return_value = _response({"data": [_jaeger_trace(now)]})
+    session.get.side_effect = [
+        _response({}, raw=id_rows.encode()),
+        _response({}, raw=span_rows.encode()),
+    ]
     store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
 
     page = store.search(
         TraceSearchQuery(
-            started_at=now - timedelta(hours=1),
-            ended_at=now + timedelta(minutes=1),
+            started_at=now - timedelta(minutes=15),
+            ended_at=now,
             service_namespace="shop",
             service_name="checkout",
             environment="production",
@@ -111,14 +99,16 @@ def test_search_builds_controlled_resource_filters_and_maps_jaeger_trace():
     assert summary.root_span_name == "POST /checkout"
     assert summary.status == "error"
     assert summary.span_count == 2
-    params = session.get.call_args.kwargs["params"]
-    assert params["service"] == "checkout"
-    assert params["limit"] == 21
-    assert json.loads(params["tags"]) == {
-        "resource_attr:deployment.environment": "production",
-        "resource_attr:service.namespace": "shop",
-        "resource_attr:service.instance.id": "pod-a",
-    }
+    query = session.get.call_args_list[0].kwargs["params"]["query"]
+    assert '`resource_attr:service.name`:="checkout"' in query
+    assert '`resource_attr:service.namespace`:="shop"' in query
+    assert '`resource_attr:deployment.environment`:="production"' in query
+    assert '`resource_attr:service.instance.id`:="pod-a"' in query
+    assert "count() as spans" in query
+    assert "/select/jaeger/api/traces" not in session.get.call_args_list[0].args[0]
+    span_query = session.get.call_args_list[1].kwargs["params"]["query"]
+    assert "| fields " in span_query
+    assert "exception.stacktrace" not in span_query
 
 
 def test_empty_trace_search_uses_bounded_trace_id_aggregation_and_cursor():
@@ -127,8 +117,8 @@ def test_empty_trace_search_uses_bounded_trace_id_aggregation_and_cursor():
     older_ns = str(int((now - timedelta(seconds=1)).timestamp() * 1_000_000_000))
     id_rows = "\n".join(
         [
-            json.dumps({"trace_id": "a" * 32, "matched_at": start_ns}),
-            json.dumps({"trace_id": "b" * 32, "matched_at": older_ns}),
+            json.dumps({"trace_id": "a" * 32, "matched_at": start_ns, "spans": 1}),
+            json.dumps({"trace_id": "b" * 32, "matched_at": older_ns, "spans": 1}),
         ]
     )
     span_rows = "\n".join(
@@ -147,8 +137,8 @@ def test_empty_trace_search_uses_bounded_trace_id_aggregation_and_cursor():
 
     page = store.search(
         TraceSearchQuery(
-            started_at=now - timedelta(hours=1),
-            ended_at=now + timedelta(minutes=1),
+            started_at=now - timedelta(minutes=15),
+            ended_at=now,
             service_name=None,
             environment=None,
             limit=1,
@@ -159,31 +149,134 @@ def test_empty_trace_search_uses_bounded_trace_id_aggregation_and_cursor():
     assert page.next_cursor is not None
     store.get_trace.assert_not_called()
     params = session.get.call_args_list[0].kwargs["params"]
-    assert "stats by (trace_id) max(start_time_unix_nano) as matched_at" in params["query"]
+    assert "stats by (trace_id) max(start_time_unix_nano) as matched_at, count() as spans" in params["query"]
     assert "resource_attr:service.name" not in params["query"]
     assert "resource_attr:deployment.environment" not in params["query"]
-    assert params["limit"] == 2
+    assert params["limit"] == 3
     span_path = session.get.call_args_list[1].args[0]
     assert span_path.endswith("/select/logsql/query")
     assert "/select/jaeger/api/traces/" not in span_path
     assert session.get.call_count == 2
 
 
+def test_search_pages_newest_first_across_sample_slices_without_skipping_traces():
+    """1h 窗口被切成 4 个 15m 切片；列表分页必须最新优先，且游标翻页不能漏掉任何 Trace。"""
+
+    import re
+
+    ended_at = timezone.now().replace(microsecond=0)
+    started_at = ended_at - timedelta(hours=1)
+    traces = {f"t{index:03d}".ljust(32, "0"): ended_at - timedelta(seconds=1 + index * 120) for index in range(30)}
+    id_queries: list[tuple[str, object, object]] = []
+
+    def fake_query_rows(logs_query, slice_started_at, slice_ended_at, limit=None):
+        if "stats by (trace_id)" in logs_query:
+            id_queries.append((logs_query, slice_started_at, slice_ended_at))
+            vt_limit = int(re.search(r"\| limit (\d+)$", logs_query).group(1))
+            rows = [
+                {"trace_id": trace_id, "matched_at": str(int(matched_at.timestamp() * 1_000_000_000)), "spans": "1"}
+                for trace_id, matched_at in traces.items()
+                if slice_started_at <= matched_at < slice_ended_at
+            ]
+            rows.sort(key=lambda row: -int(row["matched_at"]))
+            return rows[:vt_limit]
+        requested = re.findall(r'"(t\d{3}0+)"', logs_query)
+        return [
+            _span_row(trace_id, f"s{trace_id[:15]}", traces[trace_id], service="datart")
+            for trace_id in requested
+            if slice_started_at <= traces[trace_id] < slice_ended_at
+        ]
+
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=Mock())
+    store._query_rows = fake_query_rows
+
+    paged: list[str] = []
+    cursor = None
+    first_page_id_queries = 0
+    for page_no in range(10):
+        page = store.search(
+            TraceSearchQuery(
+                started_at=started_at,
+                ended_at=ended_at,
+                service_name="datart",
+                environment=None,
+                limit=8,
+                cursor=cursor,
+            )
+        )
+        if page_no == 0:
+            first_page_id_queries = len(id_queries)
+        paged.extend(item.trace_id for item in page.items)
+        cursor = page.next_cursor
+        if cursor is None:
+            break
+
+    expected = sorted(traces, key=lambda trace_id: traces[trace_id], reverse=True)
+    assert paged[:8] == expected[:8]
+    assert paged == expected
+    # 较新切片已凑够一页（8 + 8 > 9）时不再向更旧切片发 trace_id 查询：4 个切片只查了 2 个。
+    assert first_page_id_queries == 2
+
+
+def test_topology_sampling_keeps_round_robin_across_slices():
+    ended_at = timezone.now().replace(microsecond=0)
+    started_at = ended_at - timedelta(hours=1)
+    candidates = (
+        ("a" * 32, ended_at - timedelta(minutes=1)),
+        ("b" * 32, ended_at - timedelta(minutes=2)),
+        ("o" * 32, ended_at - timedelta(minutes=50)),
+    )
+
+    def fake_query_rows(logs_query, slice_started_at, slice_ended_at, limit=None):
+        return [
+            {"trace_id": trace_id, "matched_at": str(int(matched_at.timestamp() * 1_000_000_000)), "spans": "1"}
+            for trace_id, matched_at in candidates
+            if slice_started_at <= matched_at < slice_ended_at
+        ]
+
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=Mock())
+    store._query_rows = fake_query_rows
+
+    selected, _matched, _counts, truncated = store._sample_trace_ids(["*"], started_at=started_at, ended_at=ended_at, limit=2)
+    newest_first, *_ = store._sample_trace_ids(["*"], started_at=started_at, ended_at=ended_at, limit=2, fill="newest_first")
+
+    # 拓扑取样跨时段轮转：最新切片与最旧切片各取一条；列表分页则严格最新优先。
+    assert selected == ["a" * 32, "o" * 32]
+    assert truncated is True
+    assert newest_first == ["a" * 32, "b" * 32]
+
+
 def test_detail_preserves_waterfall_identity_for_server_side_authorization():
     now = timezone.now()
-    raw_trace = _jaeger_trace(now)
-    raw_trace["spans"][0]["logs"] = [
-        {
-            "fields": [
-                {"key": "event", "value": "exception"},
-                {"key": "exception.type", "value": "PaymentDeclinedError"},
-                {"key": "exception.message", "value": "card declined"},
-                {"key": "exception.stacktrace", "value": "at charge (payment.py:42)"},
-            ]
-        }
-    ]
+    structure = "\n".join(
+        [
+            json.dumps(_span_row("a" * 32, "1" * 16, now, name="POST /checkout")),
+            json.dumps(_span_row("a" * 32, "2" * 16, now, name="INSERT orders", parent="1" * 16, kind="3")),
+        ]
+    )
+    attributes = "\n".join(
+        [
+            json.dumps(
+                _attr_row(
+                    "a" * 32,
+                    "1" * 16,
+                    now,
+                    **{
+                        "span_attr:Authorization": "Bearer secret",
+                        "event:event_attr:exception.type:0": "PaymentDeclinedError",
+                        "event:event_attr:exception.message:0": "card declined",
+                        "event:event_attr:exception.stacktrace:0": "at charge (payment.py:42)",
+                    },
+                )
+            ),
+            json.dumps(_attr_row("a" * 32, "2" * 16, now)),
+        ]
+    )
     session = Mock()
-    session.get.return_value = _response({"data": [raw_trace]})
+    session.get.side_effect = [
+        _response({}, raw=structure.encode()),
+        _response({}, raw=attributes.encode()),
+    ]
     store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
 
     detail = store.get_trace("a" * 32)
@@ -196,14 +289,31 @@ def test_detail_preserves_waterfall_identity_for_server_side_authorization():
     assert detail.spans[0].attributes["event_attr:exception.type"] == "PaymentDeclinedError"
     assert detail.spans[0].attributes["event_attr:exception.message"] == "card declined"
     assert detail.spans[0].attributes["event_attr:exception.stacktrace"] == "at charge (payment.py:42)"
+    assert session.get.call_args_list[0].kwargs["params"]["query"].endswith(_trace_structure_suffix())
+    assert "span_id:in(" in session.get.call_args_list[1].kwargs["params"]["query"]
+    assert "/select/jaeger/api/traces/" not in session.get.call_args_list[0].args[0]
+
+
+def _trace_structure_suffix():
+    from apps.apm.adapters.victoriatraces import _trace_structure_fields_pipe
+
+    return _trace_structure_fields_pipe()
 
 
 def test_detail_deduplicates_replayed_spans_by_trace_and_span_identity():
     now = timezone.now()
-    raw_trace = _jaeger_trace(now)
-    raw_trace["spans"].append(dict(raw_trace["spans"][0]))
+    duplicated = "\n".join(
+        [
+            json.dumps(_span_row("a" * 32, "1" * 16, now)),
+            json.dumps(_span_row("a" * 32, "1" * 16, now)),
+            json.dumps(_span_row("a" * 32, "2" * 16, now, name="INSERT orders", parent="1" * 16, kind="3")),
+        ]
+    )
     session = Mock()
-    session.get.return_value = _response({"data": [raw_trace]})
+    session.get.side_effect = [
+        _response({}, raw=duplicated.encode()),
+        _response({}, raw=duplicated.encode()),
+    ]
     store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
 
     detail = store.get_trace("a" * 32)
@@ -212,15 +322,14 @@ def test_detail_deduplicates_replayed_spans_by_trace_and_span_identity():
     assert len(detail.spans) == 2
 
 
-def test_detail_maps_victoriatraces_string_error_tag_to_error_status():
+def test_detail_maps_status_code_two_to_error_status():
     now = timezone.now()
-    raw_trace = _jaeger_trace(now)
-    raw_trace["spans"][0]["tags"] = [
-        {"key": "span.kind", "value": "server"},
-        {"key": "error", "type": "string", "value": "true"},
-    ]
+    row = json.dumps(_span_row("a" * 32, "1" * 16, now, status_code="2"))
     session = Mock()
-    session.get.return_value = _response({"data": [raw_trace]})
+    session.get.side_effect = [
+        _response({}, raw=row.encode()),
+        _response({}, raw=row.encode()),
+    ]
     store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
 
     detail = store.get_trace("a" * 32)
@@ -229,12 +338,12 @@ def test_detail_maps_victoriatraces_string_error_tag_to_error_status():
     assert detail.spans[0].status == "error"
 
 
-def test_get_trace_falls_back_to_logsql_when_jaeger_index_misses_a_listed_trace():
+def test_get_trace_reads_structure_then_span_attributes_via_logsql():
     now = timezone.now()
     session = Mock()
     session.get.side_effect = [
-        _response({"data": [], "errors": [{"code": 404, "msg": "trace not found"}]}, status_code=404),
         _response({}, raw=json.dumps(_span_row("a" * 32, "1" * 16, now)).encode()),
+        _response({}, raw=json.dumps(_attr_row("a" * 32, "1" * 16, now, **{"span_attr:http.route": "/checkout"})).encode()),
     ]
     store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
 
@@ -246,17 +355,18 @@ def test_get_trace_falls_back_to_logsql_when_jaeger_index_misses_a_listed_trace(
     assert detail.service_name == "checkout"
     assert detail.instance_id == "pod-a"
     assert [span.name for span in detail.spans] == ["POST /checkout"]
-    assert session.get.call_args_list[0].args[0].endswith("/select/jaeger/api/traces/" + "a" * 32)
+    assert detail.spans[0].attributes["http.route"] == "/checkout"
+    assert detail.spans[0].attributes["service.name"] == "checkout"
+    assert not [key for key in detail.spans[0].attributes if key.startswith(("span_attr:", "resource_attr:"))]
+    assert session.get.call_args_list[0].args[0].endswith("/select/logsql/query")
     assert session.get.call_args_list[1].args[0].endswith("/select/logsql/query")
-    assert session.get.call_args_list[1].kwargs["params"]["query"].startswith(f'trace_id:={json.dumps("a" * 32)}')
+    assert session.get.call_args_list[0].kwargs["params"]["query"].startswith(f'trace_id:={json.dumps("a" * 32)}')
+    assert "span_id:in(" in session.get.call_args_list[1].kwargs["params"]["query"]
 
 
-def test_get_trace_stays_missing_when_jaeger_and_logsql_both_lack_the_trace():
+def test_get_trace_stays_missing_when_logsql_lacks_the_trace():
     session = Mock()
-    session.get.side_effect = [
-        _response({"data": [], "errors": [{"code": 404, "msg": "trace not found"}]}, status_code=404),
-        _response({}, raw=b""),
-    ]
+    session.get.return_value = _response({}, raw=b"")
     store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
 
     assert store.get_trace("a" * 32) is None
@@ -452,9 +562,13 @@ def test_sample_traces_uses_templated_logsql_and_fetches_trace_details():
     assert '`resource_attr:deployment.environment`:="prod"' in query
     assert 'name:="POST /checkout"' in query
     assert 'status_code:="2"' in query
+    assert "count() as spans" in query
     assert "first 5000 by (_time desc)" not in query
     span_query = session.get.call_args_list[1].kwargs["params"]["query"]
     assert span_query.startswith('trace_id:in("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")')
+    assert "| fields " in span_query
+    assert "`span_attr:db.system`" in span_query
+    assert "exception.stacktrace" not in span_query
     assert session.get.call_args_list[1].args[0].endswith("/select/logsql/query")
     assert "/select/jaeger/api/traces/" not in session.get.call_args_list[1].args[0]
 
@@ -544,6 +658,7 @@ def test_search_spans_builds_controlled_logsql_and_maps_rows():
     assert 'kind:="2"' in query
     assert "duration:>=1000000" in query
     assert "duration:<=50000000" in query
+    assert "| fields " in query
     assert session.get.call_args.kwargs["params"]["limit"] == 21
 
 
@@ -613,6 +728,7 @@ def test_sample_traces_slices_one_hour_by_fifteen_minutes():
     for call in session.get.call_args_list[:4]:
         query = call.kwargs["params"]["query"]
         assert "stats by (trace_id)" in query
+        assert "count() as spans" in query
         assert "first 5000 by (_time desc)" not in query
     assert {trace.trace_id for trace in sample.traces} == {trace_a, trace_b}
 
@@ -648,10 +764,11 @@ def test_sample_traces_slices_one_day_by_hour():
     assert first_slice["end"] == now.isoformat()
     last_slice = session.get.call_args_list[23].kwargs["params"]
     assert last_slice["start"] == (now - timedelta(days=1)).isoformat()
-    assert last_slice["end"] == (now - timedelta(hours=23)).isoformat()
+    assert     last_slice["end"] == (now - timedelta(hours=23)).isoformat()
     for call in session.get.call_args_list[:24]:
         query = call.kwargs["params"]["query"]
         assert "stats by (trace_id)" in query
+        assert "count() as spans" in query
         assert "first 5000 by (_time desc)" not in query
     assert {trace.trace_id for trace in sample.traces} == {trace_a, trace_b}
 
@@ -692,10 +809,95 @@ def test_sample_traces_slices_long_windows_and_round_robins_across_days():
         query = call.kwargs["params"]["query"]
         assert "first 5000 by (_time desc)" in query
         assert "stats by (trace_id)" in query
+        assert "count() as spans" in query
     span_query = session.get.call_args_list[7].kwargs["params"]["query"]
     assert f'trace_id:in("{trace_a}","{trace_b}")' in span_query
+    assert "| fields " in span_query
+    assert "exception.stacktrace" not in span_query
     assert {trace.trace_id for trace in sample.traces} == {trace_a, trace_b}
     assert sample.truncated is False
+
+
+def test_oversized_topology_span_batch_splits_and_keeps_compact_traces(caplog):
+    now = timezone.now()
+    trace_ok, trace_fat = "a" * 32, "secret-token-should-not-appear"
+    session = Mock()
+
+    def get(url, **kwargs):
+        query = str(kwargs.get("params", {}).get("query", ""))
+        if "stats by (trace_id)" in query:
+            return _response(
+                {},
+                raw="\n".join(
+                    [_sample_id_row(trace_ok, now), _sample_id_row(trace_fat, now)]
+                ).encode(),
+            )
+        if trace_ok in query and trace_fat in query:
+            return _oversized_response()
+        if trace_fat in query:
+            return _oversized_response()
+        return _response({}, raw=json.dumps(_span_row(trace_ok, "1" * 16, now)).encode())
+
+    session.get.side_effect = get
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+    caplog.set_level("WARNING", logger="apm")
+
+    sample = store.sample_traces(
+        TopologySampleQuery(
+            started_at=now - timedelta(minutes=15),
+            ended_at=now,
+            service_names=("checkout",),
+            limit=50,
+        )
+    )
+
+    assert [trace.trace_id for trace in sample.traces] == [trace_ok]
+    assert sample.omitted_trace_fetches == 1
+    records = [
+        record
+        for record in caplog.records
+        if getattr(record, "msg", "")
+        == "event=apm_topology_trace_fetch_omitted failed_stage=sample_spans error_type=%s omitted_traces=%s"
+    ]
+    assert records
+    record: LogRecord = records[0]
+    assert record.args == ("TelemetryQueryTooLarge", 1)
+    rendered = record.getMessage()
+    assert "TelemetryQueryTooLarge" in rendered
+    assert "omitted_traces=1" in rendered
+    assert RESPONSE_TOO_LARGE not in rendered
+    assert trace_fat not in rendered
+    span_queries = [
+        call.kwargs["params"]["query"]
+        for call in session.get.call_args_list
+        if "trace_id:in(" in call.kwargs["params"]["query"]
+    ]
+    assert any(trace_ok in query and trace_fat in query for query in span_queries)
+    assert any(trace_ok in query and trace_fat not in query for query in span_queries)
+
+
+def test_topology_span_fetch_still_unavailable_when_store_is_down():
+    now = timezone.now()
+    session = Mock()
+    failed = Mock()
+    failed.status_code = 500
+    failed.headers = {}
+    failed.raise_for_status.side_effect = requests.HTTPError("500", response=failed)
+    session.get.side_effect = [
+        _response({}, raw=_sample_id_row("a" * 32, now).encode()),
+        failed,
+    ]
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+
+    with pytest.raises(TelemetryStoreUnavailable, match="查询不可用"):
+        store.sample_traces(
+            TopologySampleQuery(
+                started_at=now - timedelta(minutes=15),
+                ended_at=now,
+                service_names=("checkout",),
+                limit=50,
+            )
+        )
 
 
 def test_red_long_window_skips_trace_dedup_and_streams_aggregates():
@@ -784,7 +986,7 @@ def test_vt_client_side_rejection_maps_to_capacity_hint_not_unavailable():
     session.get.return_value = rejected
     store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
 
-    with pytest.raises(TelemetryStoreUnavailable, match="超出单次查询容量"):
+    with pytest.raises(TelemetryQueryTooLarge, match="超出单次查询容量"):
         store.service_red(ServiceMetricQuery("shop", "checkout", "prod", now - timedelta(minutes=1), now))
 
 
@@ -983,4 +1185,49 @@ def test_error_breakdown_maps_upstream_failure_to_store_unavailable():
     with pytest.raises(TelemetryStoreUnavailable, match="查询不可用"):
         store.service_error_breakdown(
             ServiceErrorBreakdownQuery("shop", "checkout", "prod", now - timedelta(minutes=1), now)
+        )
+
+
+def test_pack_trace_ids_uses_span_budget_and_falls_back_to_fixed_batches():
+    packed = _pack_trace_ids([("a", 4000), ("b", 4000), ("c", 100)])
+    assert packed == [["a"], ["b"], ["c"]]
+    combined = _pack_trace_ids([("a", 2500), ("b", 2500), ("c", 100)])
+    assert combined == [["a"], ["b", "c"]]
+    fallback = _pack_trace_ids([("a", 0), ("b", 0), ("c", 0)], fallback_batch=2)
+    assert fallback == [["a", "b"], ["c"]]
+
+
+def test_slo_measurement_slices_windows_longer_than_one_day():
+    now = timezone.now()
+    session = Mock()
+    session.get.side_effect = [
+        _response(_vector(total=10, bad=2)),
+        _response(_vector(total=5, bad=1)),
+    ]
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+    result = store.slo_measurement(
+        SloMetricQuery("shop", "checkout", "prod", now - timedelta(days=2), now, "availability")
+    )
+
+    assert session.get.call_count == 2
+    assert result.compliance_percent == pytest.approx(80)
+    assert result.total_rate == pytest.approx(15 / (2 * 86400))
+    first_end = session.get.call_args_list[0].kwargs["params"]["end"]
+    second_start = session.get.call_args_list[1].kwargs["params"]["start"]
+    assert first_end == second_start
+
+
+def test_oversized_response_raises_query_too_large():
+    now = timezone.now()
+    session = Mock()
+    session.get.return_value = _oversized_response()
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+
+    with pytest.raises(TelemetryQueryTooLarge, match=RESPONSE_TOO_LARGE):
+        store.search_spans(
+            SpanSearchQuery(
+                started_at=now - timedelta(minutes=15),
+                ended_at=now,
+                limit=20,
+            )
         )

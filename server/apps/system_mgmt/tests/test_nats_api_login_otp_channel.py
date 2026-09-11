@@ -262,6 +262,44 @@ def test_get_user_rules_by_app_admin_and_instance_scope():
     assert [item["id"] for item in scoped["instance"]] == [88]
 
 
+def test_get_user_rules_by_app_admin_include_children_covers_deep_descendants():
+    group_a = Group.objects.create(name="rules-team-a", parent_id=0)
+    group_b = Group.objects.create(name="rules-team-b", parent_id=group_a.id)
+    group_c = Group.objects.create(name="rules-team-c", parent_id=group_b.id)
+    admin_role, _ = Role.objects.get_or_create(name="admin", app="")
+    admin = _user(username="rules-tree-admin", role_list=[admin_role.id], group_list=[group_a.id])
+
+    result = nats_api.get_user_rules_by_app(
+        group_a.id,
+        admin.username,
+        admin.domain,
+        "job",
+        "job_record",
+        include_children=True,
+    )
+
+    assert set(result["team"]) == {group_a.id, group_b.id, group_c.id}
+
+
+def test_get_user_rules_by_app_regular_user_include_children_keeps_authorized_scope():
+    group_a = Group.objects.create(name="rules-regular-a", parent_id=0)
+    group_b = Group.objects.create(name="rules-regular-b", parent_id=group_a.id)
+    group_c = Group.objects.create(name="rules-regular-c", parent_id=group_b.id)
+    regular = _user(username="rules-tree-regular", role_list=[], group_list=[group_a.id, group_b.id])
+
+    result = nats_api.get_user_rules_by_app(
+        group_a.id,
+        regular.username,
+        regular.domain,
+        "job",
+        "job_record",
+        include_children=True,
+    )
+
+    assert set(result["team"]) == {group_a.id, group_b.id}
+    assert group_c.id not in result["team"]
+
+
 def test_get_login_module_domain_list_always_includes_default():
     result = nats_api.get_login_module_domain_list()
     assert result["result"] is True

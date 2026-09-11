@@ -56,22 +56,31 @@ class CredentialOperationRunner:
             "target_started_to_probe_seconds",
             access_probe_started - target_started_at,
         )
-        try:
-            async with asyncio.timeout(self._plan.probe_timeout_seconds):
-                return await self._access_probe.probe(
-                    target,
-                    credential,
-                    context,
-                    timeout_seconds=self._plan.probe_timeout_seconds,
-                )
-        except TimeoutError:
-            self._metrics.observe(
-                "timeout_overshoot_seconds",
-                max(
-                    0.0,
-                    time.monotonic() - access_probe_started - self._plan.probe_timeout_seconds,
-                ),
+        probe_timeout_seconds = self._plan.probe_timeout_seconds
+        plugin_timeout_seconds = probe_timeout_seconds or self._plan.collection_timeout_seconds
+
+        async def execute_probe():
+            return await self._access_probe.probe(
+                target,
+                credential,
+                context,
+                timeout_seconds=plugin_timeout_seconds,
             )
+
+        try:
+            if probe_timeout_seconds is None:
+                return await execute_probe()
+            async with asyncio.timeout(probe_timeout_seconds):
+                return await execute_probe()
+        except TimeoutError:
+            if probe_timeout_seconds is not None:
+                self._metrics.observe(
+                    "timeout_overshoot_seconds",
+                    max(
+                        0.0,
+                        time.monotonic() - access_probe_started - probe_timeout_seconds,
+                    ),
+                )
             self._metrics.increment("access_probe_timeout_total")
             self._metrics.increment("probe_timeout_total")
             return AccessProbeResult(

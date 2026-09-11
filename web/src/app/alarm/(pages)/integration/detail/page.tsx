@@ -25,7 +25,12 @@ import { useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useCommon } from '@/app/alarm/context/common';
+import { createLatestRequestGuard } from '@/context/latestRequestGuard';
 import { useUserInfoContext } from '@/context/userInfo';
+import {
+  commitIntegrationEventListSettled,
+  commitIntegrationEventListSuccess,
+} from './integrationEventListRequest';
 import { AlertSourceIntegrationGuide, K8sMeta, SourceItem, TeamSecretItem } from '@/app/alarm/types/integration';
 import { useAlarmApi } from '@/app/alarm/api/alarms';
 import { EventItem } from '@/app/alarm/types/alarms';
@@ -63,6 +68,7 @@ const IntegrationDetail: FC = () => {
   const [integrationGuideLoading, setIntegrationGuideLoading] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<string>('event');
   const [eventList, setEventList] = useState<EventItem[]>([]);
+  const [eventListRequestGuard] = useState(createLatestRequestGuard);
   const [eventLoading, setEventLoading] = useState<boolean>(false);
   const [hasLoadedEvents, setHasLoadedEvents] = useState<boolean>(false);
   const [hasInitializedK8sTab, setHasInitializedK8sTab] = useState<boolean>(false);
@@ -264,6 +270,7 @@ const IntegrationDetail: FC = () => {
   };
 
   const fetchEventList = async () => {
+    const requestId = eventListRequestGuard.begin();
     setEventLoading(true);
     try {
       const params: any = {
@@ -274,18 +281,21 @@ const IntegrationDetail: FC = () => {
         received_at_after: timeRange?.[0]?.toISOString(),
       };
       if (searchCondition) {
-        if (isK8sSource && searchCondition.field === 'push_source_id') {
-          params.push_source_id = searchCondition.value;
-        } else {
-          params[searchCondition.field] = searchCondition.value;
-        }
+        params[searchCondition.field] = searchCondition.value;
       }
       const res = await getEventList(params);
-      setEventList(res.items || []);
-      setPagination((prev) => ({ ...prev, total: res.count }));
-      setHasLoadedEvents(true);
+      commitIntegrationEventListSuccess(eventListRequestGuard, requestId, () => {
+        const items = res.items || [];
+        setEventList(items);
+        setPagination((prev) => ({ ...prev, total: res.count }));
+        setHasLoadedEvents(true);
+      });
+    } catch (error) {
+      console.error(error);
     } finally {
-      setEventLoading(false);
+      commitIntegrationEventListSettled(eventListRequestGuard, requestId, () => {
+        setEventLoading(false);
+      });
     }
   };
 
@@ -293,6 +303,9 @@ const IntegrationDetail: FC = () => {
     if ((activeTab === 'event' || isK8sSource) && source?.source_id) {
       fetchEventList();
     }
+    return () => {
+      eventListRequestGuard.invalidate();
+    };
   }, [
     activeTab,
     source,
@@ -357,9 +370,7 @@ const IntegrationDetail: FC = () => {
   const eventAttrList = [
     { attr_id: 'title', attr_name: '标题', attr_type: 'str', option: [] },
     { attr_id: 'description', attr_name: '内容', attr_type: 'str', option: [] },
-    ...(isK8sSource
-      ? [{ attr_id: 'push_source_id', attr_name: t('integration.pushSourceId'), attr_type: 'str', option: [] }]
-      : []),
+    { attr_id: 'push_source_id', attr_name: t('integration.pushSourceId'), attr_type: 'str', option: [] },
   ];
 
   const handleK8sDownload = async (fileKey: string, fileName: string, params: any) => {

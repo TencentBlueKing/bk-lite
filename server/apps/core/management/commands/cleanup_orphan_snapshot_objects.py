@@ -1,5 +1,6 @@
 from django.core.management.base import BaseCommand
-from django.db import connections, router
+from django.db import router
+from django.utils import timezone
 
 from apps.log.models.policy import AlertSnapshot
 from apps.monitor.models.monitor_policy import MonitorAlertMetricSnapshot
@@ -69,6 +70,7 @@ class Command(BaseCommand):
         field = model._meta.get_field(field_name)
         storage = field.storage
         using = router.db_for_read(model)
+        scan_started_at = timezone.now()
         live_paths = self._fetch_live_paths(model, field, using)
         prefix = f"{model.__name__.lower()}_"
 
@@ -83,6 +85,7 @@ class Command(BaseCommand):
             "deleted_count": 0,
             "samples": [],
         }
+        pending_deletes = []
 
         for obj in storage.client.list_objects(storage.bucket, recursive=True):
             object_name = obj.object_name
@@ -93,6 +96,10 @@ class Command(BaseCommand):
             if object_name in live_paths:
                 continue
 
+            last_modified = getattr(obj, "last_modified", None)
+            if self._created_during_scan(last_modified, scan_started_at):
+                continue
+
             summary["orphan_count"] += 1
             summary["orphan_bytes"] += obj.size
 
@@ -100,26 +107,42 @@ class Command(BaseCommand):
                 summary["samples"].append({"path": object_name, "size": obj.size})
 
             if should_delete:
+                pending_deletes.append(object_name)
+
+        if should_delete and pending_deletes:
+            live_paths = self._fetch_live_paths(model, field, using)
+            for object_name in pending_deletes:
+                if object_name in live_paths:
+                    continue
                 storage.delete(object_name)
                 summary["deleted_count"] += 1
 
         return summary
 
     def _fetch_live_paths(self, model, field, using):
-        connection = connections[using]
-        meta = model._meta
-        quote_name = connection.ops.quote_name
-        query = f"SELECT {quote_name(field.column)} FROM {quote_name(meta.db_table)}"
         live_paths = set()
-
-        with connection.cursor() as cursor:
-            cursor.execute(query)
-            for row in cursor.fetchall():
-                value = row[0]
-                if isinstance(value, str) and value:
-                    live_paths.add(value)
-
+        values = model.objects.using(using).values_list(field.attname, flat=True)
+        for value in values:
+            if isinstance(value, str) and value:
+                live_paths.add(value)
         return live_paths
+
+    @staticmethod
+    def _created_during_scan(last_modified, scan_started_at):
+        if last_modified is None:
+            return False
+        left = last_modified
+        right = scan_started_at
+        try:
+            if timezone.is_aware(left) != timezone.is_aware(right):
+                tz = timezone.get_current_timezone()
+                if not timezone.is_aware(left):
+                    left = timezone.make_aware(left, tz)
+                if not timezone.is_aware(right):
+                    right = timezone.make_aware(right, tz)
+            return left >= right
+        except (TypeError, AttributeError, ValueError, OverflowError):
+            return False
 
     @staticmethod
     def _matches_prefix(object_name, prefix):

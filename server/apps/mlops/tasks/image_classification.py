@@ -25,6 +25,7 @@ from apps.mlops.tasks.base import (
     prepare_claim_storage,
     save_dataset_release_object,
 )
+from apps.mlops.utils.zip_extract_budget import ZipExtractBudget, extract_zip_with_budget
 
 ZIP_COPY_CHUNK_SIZE = 64 * 1024
 
@@ -96,6 +97,7 @@ def publish_dataset_release_async(self, release_id, train_file_id, val_file_id, 
             statistics = {"total_images": 0, "classes": set(), "splits": {}}
 
             # 处理 train/val/test 三个数据集
+            extract_budget = ZipExtractBudget.from_env()
             for data_obj, split_name in [
                 (train_obj, "train"),
                 (val_obj, "val"),
@@ -115,8 +117,7 @@ def publish_dataset_release_async(self, release_id, train_file_id, val_file_id, 
                     with data_obj.train_data.open("rb") as source, open(temp_zip, "wb") as target:
                         shutil.copyfileobj(source, target, length=ZIP_COPY_CHUNK_SIZE)
 
-                    with zipfile.ZipFile(temp_zip, "r") as zipf:
-                        zipf.extractall(temp_extract)
+                    extract_zip_with_budget(temp_zip, temp_extract, extract_budget)
 
                     # 根据 metadata 重组为 ImageFolder 格式
                     split_stats = _reorganize_images(temp_extract, split_root, data_obj.metadata)

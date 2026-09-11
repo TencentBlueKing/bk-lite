@@ -20,6 +20,14 @@
 | EnrichmentRule | `models/enrichment.py:8` | 声明式 Lookup 富化规则模型，供富化引擎批量执行并写回 Alert/Event enrichment 结果 |
 | ActionRule / ActionExecution | `models/action.py:8,29` | 告警动作规则与执行记录，承载动作匹配、执行状态与回调链路 |
 
+### 告警监控源
+
+`Alert.push_source_ids` 是接口只读的 JSON 字符串列表，保存关联 Event.push_source_id 的非空原值去重集合，并稳定排序；普通聚合创建/追加、即时告警和恢复事件关联均维护。数字字符串保持原始身份，无事件告警默认为 `[]`。两套告警详情展示「监控源」，支持展开和复制。
+
+分派/处理条件使用 `push_source_ids`（list[str]），仅支持 any_of/all_of/none_of；相关性/屏蔽/丰富使用 `push_source_id`（str）。五个入口共享当前模型字段目录：字符串仅单值 eq/ne/contains/not_contains/re，级别为字符串枚举单选 eq/ne，Event 告警源为 source_id 正整数外键主键单选 eq/ne。Event 内容使用 description，Alert 内容使用 content；Alert 告警源只有 source_name 名称快照。未知字段、历史别名/操作符及错误值类型拒绝保存，执行时整条规则不命中，不跳过错误 OR 组。缺失/空值/空列表不命中，包括否定条件。
+
+实现入口为 `utils/rule_fields.json`、`utils/rule_catalog.py`、`utils/typed_rules.py`、`utils/monitor_source_rules.py`，详见 `specs/changes/alert-rule-types/spec.md`。沿用条件组 AND/OR 和已有分派时机；来源持久化由 `service/monitor_sources.py` 维护，历史数据由独立命令 `backfill_alert_monitor_sources` 回填，详见 `specs/changes/alert-monitor-sources/spec.md`。
+
 ## 3. 接口【已实现/已存在】
 所有 ViewSet 路由组均以 `router.register(r"api/<name>", ...)` 注册（urls.py:35-55），故完整路径统一带 `api/` 段，例如 `api/v1/alerts/api/alert_source/`。路由组：`api/alert_source`/`api/alerts`/`api/events`/`api/level`/`api/settings`/`api/assignment`/`api/shield`/`api/enrichment`/`api/incident`(+`/(?P<incident_pk>\d+)/updates`)/`api/alarm_strategy`/`api/log`/`api/action_rule`/`api/action_execution`；开放端点 `open_api/k8s` 与 `api/open/alerts*`（列表/详情/事件/动作/批量动作，urls.py:45-54）。告警 OpenAPI 已经 `@openapi_expose` 注册到统一网关 `/openapi/v1/alerts/*`（list/detail/events/assign/acknowledge/reassign/close/batch-action），锚点为业务 `alert_id`。企业扩展经 `alert_extension_routes` 挂载，不是独立 app。
 path 端点（urls.py:57-63）：`api/test/`（request_test，receiver.py:107）、`api/receiver_data/`（receiver_data）、`api/source/<str:source_id>/webhook/`（receiver_source_data）、`api/action_callback/`（作业回调入口）、`api/action_job/scripts/` 与 `api/action_job/scripts/<int:script_id>/`（代理 job_mgmt 脚本列表与详情）。完整路径分别为 `api/v1/alerts/api/test/`、`api/v1/alerts/api/action_callback/` 等。

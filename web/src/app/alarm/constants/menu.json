@@ -53,6 +53,12 @@
           "icon": "gaojingfenpai"
         },
         {
+          "title": "通知模板",
+          "url": "/alarm/settings/notificationTemplates",
+          "name": "notification_templates",
+          "icon": "shiyongwendang"
+        },
+        {
           "title": "屏蔽策略",
           "url": "/alarm/settings/shieldStrategy",
           "name": "shield_strategy",
@@ -143,6 +149,12 @@
           "url": "/alarm/settings/alertAssign",
           "name": "alert_assign",
           "icon": "gaojingfenpai"
+        },
+        {
+          "title": "Notification Templates",
+          "url": "/alarm/settings/notificationTemplates",
+          "name": "notification_templates",
+          "icon": "shiyongwendang"
         },
         {
           "title": "Shield Strategy",

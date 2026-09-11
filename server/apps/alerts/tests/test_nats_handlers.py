@@ -1167,8 +1167,8 @@ def test_get_alert_source_distribution_returns_full_distribution_and_unknown():
         *[{"name": f"source-{index}", "value": 1} for index in range(3, 10)],
         {"name": "未知来源", "value": 3},
     ]
-    assert len(queries) == 1
-    assert "GROUP BY" in queries[0]["sql"].upper()
+    assert len(queries) == (1 if connection.features.supports_json_field_contains else 2)
+    assert "GROUP BY" in queries[-1]["sql"].upper()
 
 
 @pytest.mark.django_db

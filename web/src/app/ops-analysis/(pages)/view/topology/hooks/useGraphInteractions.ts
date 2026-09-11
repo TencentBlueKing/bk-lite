@@ -9,12 +9,14 @@ import { v4 as uuidv4 } from 'uuid';
 import { useTranslation } from '@/utils/i18n';
 import { createEdgeLabel, getEdgeStyleWithConfig } from '../utils/topologyUtils';
 import { createEdgeByType } from '../utils/registerEdge';
+import { applyEdgeConfigConfirm } from '../utils/edgeConfigConfirm';
 import { COLORS, SPACING } from '../constants/nodeDefaults';
 import {
   TopologyState,
   MenuClickEvent,
   UseContextMenuAndModalReturn,
   Point,
+  EdgeData,
 } from '@/app/ops-analysis/types/topology';
 
 const removeAllEdgeLabels = (edge: Edge) => {
@@ -82,30 +84,20 @@ export const useContextMenuAndModal = (
   } = state;
 
   const handleEdgeConfigConfirm = useCallback(
-    (values: {
-      lineType: 'common_line' | 'network_line';
-      lineName?: string;
-      styleConfig?: {
-        lineColor?: string;
-        lineWidth?: number;
-        lineStyle?: 'line' | 'dotted' | 'point';
-        enableAnimation?: boolean;
-      }
-    }) => {
+    (values: EdgeData) => {
       if (!currentEdgeData?.id || !graphInstance) return;
 
       const edge = graphInstance.getCellById(currentEdgeData.id) as Edge;
       if (!edge) return;
 
       const currentVertices = edge.getVertices();
+      const confirmedEdgeData = applyEdgeConfigConfirm(
+        edge.getData(),
+        values,
+        currentVertices,
+      );
 
-      edge.setData({
-        ...edge.getData(),
-        lineType: values.lineType,
-        lineName: values.lineName,
-        styleConfig: values.styleConfig,
-        vertices: currentVertices
-      });
+      edge.setData(confirmedEdgeData);
 
       if (values.styleConfig) {
         const lineAttrs: Attr.ComplexAttrs = {
@@ -152,12 +144,9 @@ export const useContextMenuAndModal = (
         }
       }
 
-      setCurrentEdgeData({
-        ...currentEdgeData,
-        lineType: values.lineType,
-        lineName: values.lineName,
-        styleConfig: values.styleConfig
-      });
+      setCurrentEdgeData(
+        applyEdgeConfigConfirm(currentEdgeData, values, currentVertices),
+      );
     },
     [currentEdgeData, graphInstance, setCurrentEdgeData]
   );

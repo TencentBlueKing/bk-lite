@@ -3,7 +3,7 @@ from datetime import timedelta
 import pytest
 from django.utils import timezone
 
-from apps.apm.adapters import InMemoryTraceStore, TelemetryStoreUnavailable
+from apps.apm.adapters import InMemoryTraceStore, TelemetryQueryTooLarge, TelemetryStoreUnavailable
 from apps.apm.services import DjangoTelemetryCatalogService, DjangoTelemetryQueryService
 from apps.apm.services.contracts import CatalogDiscovery, SpanDetail, TraceDetail, TracePage, TraceSummary
 from apps.apm.tests.helpers import create_application
@@ -144,6 +144,18 @@ def test_trace_query_limits_and_store_degradation_are_distinct(apm_api_client, m
     assert too_wide.data["code"] == "invalid_query"
     assert degraded.status_code == 503
     assert degraded.data["code"] == "telemetry_unavailable"
+
+
+def test_trace_query_capacity_rejection_uses_query_too_large_code(apm_api_client, mocker):
+    query = mocker.patch("apps.apm.views.traces.DjangoTelemetryQueryService.search_traces")
+    query.side_effect = TelemetryQueryTooLarge("VictoriaTraces 响应超过大小上限")
+    response = apm_api_client.get(
+        "/api/v1/apm/traces/",
+        {"service_name": "checkout", "environment": "production"},
+    )
+
+    assert response.status_code == 503
+    assert response.data["code"] == "query_too_large"
 
 
 def test_trace_permission_is_checked_before_querying_storage(apm_user_without_permissions, mocker):

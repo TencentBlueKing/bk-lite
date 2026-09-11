@@ -1,3 +1,4 @@
+from django.db.models import Q
 from rest_framework import serializers
 from rest_framework.fields import empty
 
@@ -5,14 +6,52 @@ from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.utils.team_utils import get_current_team
 from apps.system_mgmt.models import User
 
+_DEFAULT_DOMAIN = "domain.com"
+
 
 class UsernameSerializer(serializers.ModelSerializer):
     def __init__(self, instance=None, data=empty, **kwargs):
         super().__init__(instance=instance, data=data, **kwargs)
-        user_list = User.objects.all().values("username", "display_name", "domain")
         self.user_map = {}
+        need_created = "created_by" in self.fields
+        need_updated = "updated_by" in self.fields
+        if not need_created and not need_updated:
+            return
+        pairs = self._collect_author_pairs(instance, need_created, need_updated)
+        if not pairs:
+            return
+        query = Q()
+        for username, domain in pairs:
+            query |= Q(username=username, domain=domain)
+        user_list = User.objects.filter(query).values("username", "display_name", "domain")
         for i in user_list:
             self.user_map[f"{i['username']}@{i['domain']}"] = i["display_name"]
+
+    @staticmethod
+    def _iter_instances(instance):
+        if instance is None:
+            return ()
+        if hasattr(instance, "_meta"):
+            return (instance,)
+        if isinstance(instance, (list, tuple)):
+            return instance
+        if hasattr(instance, "__iter__") and not isinstance(instance, (str, bytes, dict)):
+            return instance
+        return (instance,)
+
+    @classmethod
+    def _collect_author_pairs(cls, instance, need_created, need_updated):
+        pairs = set()
+        for obj in cls._iter_instances(instance):
+            if need_created:
+                username = getattr(obj, "created_by", None)
+                if username:
+                    pairs.add((username, getattr(obj, "domain", None) or _DEFAULT_DOMAIN))
+            if need_updated:
+                username = getattr(obj, "updated_by", None)
+                if username:
+                    pairs.add((username, getattr(obj, "updated_by_domain", None) or _DEFAULT_DOMAIN))
+        return pairs
 
     def to_representation(self, instance):
         response = super().to_representation(instance)

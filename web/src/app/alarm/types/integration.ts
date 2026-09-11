@@ -163,6 +163,7 @@ export interface EventTableItem {
     start_time: string;
     end_time: string;
     source_name: string;
+    push_source_id?: string;
     raw_data: RawEventData;
     received_at: string;
     title: string;

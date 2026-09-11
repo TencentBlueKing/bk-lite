@@ -154,6 +154,7 @@ export default function ApmTraceDetailPage() {
   const [trace, setTrace] = useState<ApmTraceDetail>();
   const [selectedSpanId, setSelectedSpanId] = useState<string>();
   const [state, setState] = useState<PageState>('loading');
+  const [loadError, setLoadError] = useState<unknown>();
   const [viewMode, setViewMode] = useState<ViewMode>('waterfall');
   const [spanQuery, setSpanQuery] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
@@ -161,6 +162,7 @@ export default function ApmTraceDetailPage() {
   useEffect(() => {
     if (authLoading || !params.traceId) return;
     setState('loading');
+    setLoadError(undefined);
     getTrace(params.traceId)
       .then((value) => {
         setTrace(value);
@@ -175,6 +177,7 @@ export default function ApmTraceDetailPage() {
         setState(value.spans.length ? 'ready' : 'empty');
       })
       .catch((error) => {
+        setLoadError(error);
         if (error instanceof HandledRequestError && error.status === 404) setState('not-found');
         else setState(catalogErrorKind(error));
       });
@@ -259,6 +262,7 @@ export default function ApmTraceDetailPage() {
         <ApmSurface padding="none">
           <CatalogState
             kind={state}
+            error={loadError}
             onRetry={state === 'forbidden' ? undefined : () => setRefreshKey((value) => value + 1)}
           />
         </ApmSurface>
