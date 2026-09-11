@@ -53,6 +53,8 @@ const SkillSettingsPage: React.FC = () => {
   // 管理组织（group 字段）当前值：自动并入使用组织、且在使用组织里锁定不可删
   const manageGroup: number[] = Form.useWatch('group', form) || [];
   const selectedModelId = Form.useWatch('llmModel', form);
+  const wikiKbIds = Form.useWatch('wiki_knowledge_bases', form);
+  const hasWikiKb = Array.isArray(wikiKbIds) && wikiKbIds.length > 0;
 
   const [initialMessages] = useState<any[]>([]); // 稳定的空数组引用
 
@@ -127,6 +129,7 @@ const SkillSettingsPage: React.FC = () => {
           prompt: data.skill_prompt,
           guide: data.guide || initialGuide,
           wiki_knowledge_bases: data.wiki_knowledge_bases || [],
+          force_wiki_grounded: data.force_wiki_grounded ?? false,
           skill_params: data.skill_params || [],
         });
         setGuideValue(data.guide || initialGuide);
@@ -178,6 +181,12 @@ const SkillSettingsPage: React.FC = () => {
     }
   }, [JSON.stringify(manageGroup)]);
 
+  useEffect(() => {
+    if (!hasWikiKb && form.getFieldValue('force_wiki_grounded')) {
+      form.setFieldValue('force_wiki_grounded', false);
+    }
+  }, [form, hasWikiKb]);
+
   const handleSave = async () => {
     try {
       const values = await form.validateFields();
@@ -198,6 +207,7 @@ const SkillSettingsPage: React.FC = () => {
         enable_query_rewrite: false,
         skill_params: (values.skill_params || []).filter((p: any) => p && p.key),
         wiki_knowledge_bases: values.wiki_knowledge_bases || [],
+        force_wiki_grounded: !!values.force_wiki_grounded,
         skill_package_params: skillPackageParams,
         skill_packages: effectiveSkillCapabilityProfiles.map((pkg) => ({
           id: pkg.id,
@@ -755,6 +765,16 @@ const SkillSettingsPage: React.FC = () => {
                       placeholder={t('wiki.title')}
                       options={wikiKbs.map((kb) => ({ value: kb.id, label: kb.name }))}
                     />
+                  </Form.Item>
+
+                  <Form.Item
+                    label={t('skill.form.forceWikiGrounded')}
+                    name="force_wiki_grounded"
+                    valuePropName="checked"
+                    tooltip={t('skill.form.forceWikiGroundedTip')}
+                    extra={t('skill.form.forceWikiGroundedExtra')}
+                  >
+                    <Switch disabled={!hasWikiKb} />
                   </Form.Item>
                 </section>
 

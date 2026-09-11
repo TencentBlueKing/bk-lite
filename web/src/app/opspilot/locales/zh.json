@@ -1281,7 +1281,10 @@
       "name": "名称",
       "manageGroup": "管理组织",
       "usageGroup": "使用组织",
-      "usageGroupTip": "使用组织可调用该智能体进行对话/接口请求；管理组织会自动加入且不可移除"
+      "usageGroupTip": "使用组织可调用该智能体进行对话/接口请求；管理组织会自动加入且不可移除",
+      "forceWikiGrounded": "强制知识库回答",
+      "forceWikiGroundedTip": "开启后，企业知识/制度类问题只能依据知识库作答；找不到则拒答。工具类问题（如当前时间）仍可用工具。",
+      "forceWikiGroundedExtra": "关闭时：知识库仅作参考，也可常规回答或使用工具。"
     },
     "channelPublish": "发布",
     "channel": {

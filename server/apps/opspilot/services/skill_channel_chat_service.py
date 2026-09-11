@@ -738,6 +738,7 @@ def build_skill_chat_params(skill: LLMSkill, user_message: str, request_user, ex
         "tools": tools,
         "group": (skill.team or [0])[0],
         "wiki_kb_ids": list(skill.wiki_knowledge_bases.values_list("id", flat=True)),
+        "force_wiki_grounded": bool(getattr(skill, "force_wiki_grounded", False)),
         "skill_params": merge_skill_params([], skill.skill_params or []),
         "temperature": DEFAULT_CHAT_TEMPERATURE,
         "username": getattr(request_user, "username", "") or "",

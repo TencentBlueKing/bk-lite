@@ -104,6 +104,7 @@ export interface SkillDetail extends Skill {
   conversation_window_size?: number;
   tools?: unknown[];
   wiki_knowledge_bases?: number[];
+  force_wiki_grounded?: boolean;
   desc?: string;
   skill_packages?: SkillPackage[];
 }
@@ -181,6 +182,8 @@ export interface SkillDetailPayload {
   tool_ids?: number[];
   prompt_template?: string;
   skill_packages?: Partial<SkillPackage>[];
+  wiki_knowledge_bases?: number[];
+  force_wiki_grounded?: boolean;
   [key: string]: unknown;
 }
 

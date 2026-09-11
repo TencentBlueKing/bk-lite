@@ -104,6 +104,7 @@ class LLMSerializer(TeamSerializer, AuthSerializer):
             "instance_id",
             "is_builtin",
             "wiki_knowledge_bases",
+            "force_wiki_grounded",
             # 只读派生字段（保持现有读取输出不变）
             "permissions",
             "team_name",

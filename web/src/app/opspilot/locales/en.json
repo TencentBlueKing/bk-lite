@@ -1275,7 +1275,10 @@
       "name": "Name",
       "manageGroup": "Management Organization",
       "usageGroup": "Usage Organization",
-      "usageGroupTip": "Usage organizations can chat with / call this skill via API; management organizations are auto-included and cannot be removed."
+      "usageGroupTip": "Usage organizations can chat with / call this skill via API; management organizations are auto-included and cannot be removed.",
+      "forceWikiGrounded": "Force knowledge-base answers",
+      "forceWikiGroundedTip": "When on, company knowledge must come from the KB (or refuse). Tool-only questions (e.g. current time) can still use tools.",
+      "forceWikiGroundedExtra": "When off, the KB is optional reference; general answers and tools are allowed."
     },
     "channelPublish": "Publish",
     "channel": {

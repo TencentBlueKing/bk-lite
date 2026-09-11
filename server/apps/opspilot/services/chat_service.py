@@ -138,6 +138,8 @@ def _wiki_context_options(kwargs):
     top_k = _optional_positive_int(kwargs.get("wiki_top_k"))
     if top_k:
         options["top_k"] = top_k
+    if "force_wiki_grounded" in kwargs:
+        options["force_wiki_grounded"] = bool(kwargs.get("force_wiki_grounded"))
     return options
 
 

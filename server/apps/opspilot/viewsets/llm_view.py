@@ -124,6 +124,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
             "enable_query_rewrite",
             "instance_id",
             "skill_id",
+            "force_wiki_grounded",
         }
     )
 
@@ -399,6 +400,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
             # 透传技能绑定的 Wiki 知识库,触发 format_chat_server_kwargs 的检索增强;
             # 否则智能体对话不会引用知识库内容,易凭 LLM 自身知识作答(幻觉)。
             params["wiki_kb_ids"] = list(skill_obj.wiki_knowledge_bases.values_list("id", flat=True))
+            params["force_wiki_grounded"] = bool(getattr(skill_obj, "force_wiki_grounded", False))
             error_message = self._prepare_skill_package_params(params, skill_obj)
             if error_message:
                 return self.create_error_stream_response(error_message)
@@ -483,6 +485,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
             params["browser_use_force_task"] = True
             # 同 execute:透传 Wiki 知识库以触发检索增强,避免智能体不查知识库而凭空作答。
             params["wiki_kb_ids"] = list(skill_obj.wiki_knowledge_bases.values_list("id", flat=True))
+            params["force_wiki_grounded"] = bool(getattr(skill_obj, "force_wiki_grounded", False))
             error_message = self._prepare_skill_package_params(params, skill_obj)
             if error_message:
                 return self.create_error_stream_response(error_message)
