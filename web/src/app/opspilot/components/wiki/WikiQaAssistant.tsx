@@ -248,10 +248,9 @@ const InputBar: React.FC<{
         onCompositionStart={imeEnterGuard.onCompositionStart}
         onCompositionEnd={imeEnterGuard.onCompositionEnd}
         onPressEnter={(e) => {
-          if (!imeEnterGuard.shouldSubmitOnEnter(e)) {
+          if (!imeEnterGuard.handleEnterKey(e)) {
             return;
           }
-          e.preventDefault();
           onSend();
         }}
         placeholder={t('wiki.qaPlaceholder')}
