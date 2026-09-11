@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
-import { resolveDashboardInstanceIdentity } from '../src/app/monitor/dashboards/shared/utils/instance.ts';
+import {
+  parseLegacyParamList,
+  resolveDashboardInstanceIdentity,
+} from '../src/app/monitor/dashboards/shared/utils/instance.ts';
 
 const podMetricsParams = new URLSearchParams(
   `monitorObjId=45&name=Pod&monitorObjDisplayName=Pod&instance_id=${encodeURIComponent("('k8s_prod','nginx_7c9f')")}&instance_id_keys=instance_id%2Cpod&instance_id_values=k8s_prod%2Cnginx_7c9f&instance_name=nginx-pod&view=metrics`
@@ -27,5 +30,24 @@ const legacyParams = new URLSearchParams("instance_id=('host_01',)&instance_id_v
 const legacyIdentity = resolveDashboardInstanceIdentity(legacyParams);
 assert.equal(legacyIdentity.instanceId, "('host_01',)");
 assert.deepEqual(legacyIdentity.idValues, ['host_01']);
+
+const mysqlStorageKey = "('wwwdb.weops.com:3306',)";
+const mysqlParams = new URLSearchParams(`instance_id=${encodeURIComponent(mysqlStorageKey)}`);
+const mysqlIdentity = resolveDashboardInstanceIdentity(mysqlParams);
+assert.equal(mysqlIdentity.instanceId, mysqlStorageKey);
+assert.deepEqual(mysqlIdentity.idValues, ['wwwdb.weops.com:3306']);
+assert.equal(
+  parseLegacyParamList(mysqlStorageKey)[0],
+  'wwwdb.weops.com:3306',
+  'legacy comma-split must not be used as query instance_id',
+);
+
+const k8sNodeStorageKey = "('prod-cluster','node-1')";
+const k8sNodeParams = new URLSearchParams(
+  `instance_id=${encodeURIComponent(k8sNodeStorageKey)}&instance_id_keys=instance_id%2Cnode`
+);
+const k8sNodeIdentity = resolveDashboardInstanceIdentity(k8sNodeParams);
+assert.equal(k8sNodeIdentity.instanceId, k8sNodeStorageKey);
+assert.deepEqual(k8sNodeIdentity.idValues, ['prod-cluster', 'node-1']);
 
 console.log('dashboard instance identity tests passed');

@@ -3,7 +3,7 @@ import json
 import pytest
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.core.exceptions.base_app_exception import UnauthorizedException
+from apps.core.exceptions.base_app_exception import ForbiddenException
 from apps.monitor.models import Metric, MetricGroup, MonitorInstance, MonitorObject, MonitorPlugin
 from apps.monitor.services.metrics import MetricsQueryBudgetExceeded
 from apps.monitor.views.metrics_instance import MetricsInstanceViewSet
@@ -104,7 +104,7 @@ def test_authorized_range_view_rejects_mixed_scope_without_vm_call(authenticated
     vm_query = mocker.patch("apps.monitor.services.authorized_metric_query.Metrics.get_metrics_range")
     view = MetricsInstanceViewSet.as_view({"post": "query_by_metric_range"})
 
-    with pytest.raises(UnauthorizedException, match="无权访问所选监控实例"):
+    with pytest.raises(ForbiddenException, match="无权访问所选监控实例"):
         view(
             _request(
                 authenticated_user,
@@ -211,3 +211,78 @@ def test_authorized_range_view_returns_structured_422_for_budget_error(authentic
         "result": False,
         "message": error.message,
     }
+
+
+def _instance_query_request(user, params):
+    request = APIRequestFactory().get(
+        "/monitor/api/metrics_instance/query_by_instance/",
+        params,
+    )
+    request.COOKIES["current_team"] = "1"
+    force_authenticate(request, user=user)
+    return request
+
+
+def test_query_by_instance_accepts_logical_host_port(authenticated_user, mocker):
+    monitor_object, metric, _, _ = _setup_query_contract()
+    mysql_instance = MonitorInstance.objects.create(
+        id="('wwwdb.weops.com:3306',)",
+        name="wwwdb.weops.com:3306",
+        monitor_object=monitor_object,
+    )
+    mocker.patch(
+        "apps.monitor.views.metrics_instance.get_permission_rules",
+        return_value={"data": "permission"},
+    )
+    mocker.patch(
+        "apps.monitor.views.metrics_instance.permission_filter",
+        side_effect=lambda model, permission, **kwargs: model.objects.filter(id=mysql_instance.id),
+    )
+    vm_query = mocker.patch(
+        "apps.monitor.views.metrics_instance.MetricsService.query_metric_by_instance",
+        return_value={"status": "success", "data": {"result": []}},
+    )
+    view = MetricsInstanceViewSet.as_view({"get": "query_by_instance"})
+
+    response = view(
+        _instance_query_request(
+            authenticated_user,
+            {
+                "monitor_object_id": monitor_object.id,
+                "metric_id": metric.id,
+                "instance_id": "wwwdb.weops.com:3306",
+            },
+        )
+    )
+
+    assert response.status_code == 200
+    vm_query.assert_called_once()
+    assert vm_query.call_args.kwargs["instance_id"] == mysql_instance.id
+
+
+def test_query_by_instance_forbidden_returns_403_not_401(authenticated_user, mocker):
+    monitor_object, metric, allowed, denied = _setup_query_contract()
+    mocker.patch(
+        "apps.monitor.views.metrics_instance.get_permission_rules",
+        return_value={"data": "permission"},
+    )
+    mocker.patch(
+        "apps.monitor.views.metrics_instance.permission_filter",
+        side_effect=lambda model, permission, **kwargs: model.objects.filter(id=allowed.id),
+    )
+    vm_query = mocker.patch("apps.monitor.views.metrics_instance.MetricsService.query_metric_by_instance")
+    view = MetricsInstanceViewSet.as_view({"get": "query_by_instance"})
+
+    with pytest.raises(ForbiddenException, match="无权访问该监控实例"):
+        view(
+            _instance_query_request(
+                authenticated_user,
+                {
+                    "monitor_object_id": monitor_object.id,
+                    "metric_id": metric.id,
+                    "instance_id": denied.id,
+                },
+            )
+        )
+
+    vm_query.assert_not_called()

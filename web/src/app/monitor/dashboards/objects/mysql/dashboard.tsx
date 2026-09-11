@@ -37,7 +37,7 @@ import {
   isOpaqueIdentifier,
   buildInstanceDisplayName,
   buildInstanceSearchTokens,
-  parseLegacyParamList,
+  resolveDashboardInstanceIdentity,
   buildCollectionStatusTimeline,
   formatCollectionStatusTimelineHint,
   resolveCollectionStatusRange,
@@ -285,23 +285,13 @@ export default function MysqlDashboardPage() {
   const monitorObjectId = searchParams.get('monitorObjId') || '';
   const monitorObjectName = searchParams.get('name') || 'Mysql';
   const monitorObjDisplayName = searchParams.get('monitorObjDisplayName') || 'MySQL';
-  const rawInstanceId = searchParams.get('instance_id') || '';
-  const parsedLegacyInstanceIds = parseLegacyParamList(rawInstanceId);
-  const instanceId: React.Key = parsedLegacyInstanceIds[0] || rawInstanceId || '';
+  const instanceIdentity = useMemo(
+    () => resolveDashboardInstanceIdentity(new URLSearchParams(searchParams.toString())),
+    [searchParams]
+  );
+  const instanceId: React.Key = instanceIdentity.instanceId;
   const instanceName = searchParams.get('instance_name') || '--';
-  const idValues = (() => {
-    const explicitValues = parseLegacyParamList(searchParams.get('instance_id_values'));
-    if (explicitValues.length > 0) {
-      return explicitValues;
-    }
-
-    if (parsedLegacyInstanceIds.length > 0) {
-      return parsedLegacyInstanceIds;
-    }
-
-    const normalizedInstanceId = normalizeDisplayText(String(instanceId));
-    return normalizedInstanceId ? [normalizedInstanceId] : [];
-  })();
+  const idValues = instanceIdentity.idValues;
   const instanceIdKeys = (searchParams.get('instance_id_keys') || 'instance_id').split(',').filter(Boolean);
   const instanceIdText = normalizeDisplayText(String(instanceId));
   const objectDisplayText = normalizeDisplayText(monitorObjDisplayName) || normalizeDisplayText(monitorObjectName) || 'MySQL';
