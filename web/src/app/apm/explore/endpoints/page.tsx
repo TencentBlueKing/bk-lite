@@ -389,7 +389,7 @@ export default function ApmEndpointsPage() {
               <Input
                 allowClear
                 aria-label={t('apm.explore.searchEndpoint', '搜索路径模板或服务')}
-                className="w-72"
+                className="w-full sm:w-72"
                 placeholder={t('apm.explore.searchEndpointPlaceholder', '搜索路径模板 / 服务')}
                 prefix={<SearchOutlined aria-hidden="true" />}
                 value={keyword}

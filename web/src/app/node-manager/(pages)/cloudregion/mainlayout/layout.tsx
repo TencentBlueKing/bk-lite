@@ -4,7 +4,8 @@ import SubLayout from '@/components/sub-layout';
 import { useTranslation } from '@/utils/i18n';
 import { usePathname } from 'next/navigation';
 import Icon from '@/components/icon/index';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 
 const Collectorintro = () => {
   const searchParams = useSearchParams();
@@ -26,7 +27,7 @@ const CollectorLayout = ({
 }: Readonly<{
   children: React.ReactNode;
 }>) => {
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const { t } = useTranslation();
   const customMenuItems = useMemo(() => {
     const menuItems = [

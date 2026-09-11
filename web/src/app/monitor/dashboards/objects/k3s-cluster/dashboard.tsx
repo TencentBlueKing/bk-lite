@@ -25,6 +25,9 @@ import {
   normalizeDisplayText,
   isOpaqueIdentifier,
   resolveDashboardInstanceIdentity,
+  resolveDashboardInstanceIdValues,
+  encodeInstanceIdValuesParam,
+  isInstanceOptionForIdentity,
   formatMetricValue,
   buildPreviousPeriodTimeValues,
   getPeriodCompare,
@@ -178,7 +181,7 @@ export default function K3sClusterDashboardPage() {
           map.set(value, {
             label,
             value,
-            instanceIdValues: Array.isArray(item.instance_id_values) && item.instance_id_values.length ? item.instance_id_values : [value],
+            instanceIdValues: resolveDashboardInstanceIdValues(item),
             searchTokens: buildInstanceSearchTokens(item, label),
             interval: Number(item.interval) || undefined
           });
@@ -195,7 +198,7 @@ export default function K3sClusterDashboardPage() {
     };
   }, [monitorObjectId]);
 
-  const currentOption = instanceOptions.find((o) => o.value === String(instanceId));
+  const currentOption = instanceOptions.find((o) => isInstanceOptionForIdentity(o, instanceId, idValues));
   const currentInstanceInterval = currentOption?.interval;
 
   // 数据加载:hero 先到,面板后到
@@ -467,7 +470,11 @@ export default function K3sClusterDashboardPage() {
     const opt = instanceOptions.find((o) => o.value === value);
     const params = new URLSearchParams(Array.from(searchParams.entries()));
     params.set('instance_id', value);
-    params.set('instance_id_values', (opt?.instanceIdValues || [value]).join(','));
+    params.set('instance_id_values', encodeInstanceIdValuesParam(
+      opt?.instanceIdValues?.length
+        ? opt.instanceIdValues
+        : resolveDashboardInstanceIdValues({ instance_id: value }),
+    ));
     params.set('instance_name', opt?.label || value);
     router.push(`?${params.toString()}`);
   };

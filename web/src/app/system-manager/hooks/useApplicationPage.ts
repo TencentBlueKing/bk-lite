@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import { message, Modal } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useClientData } from '@/context/client';
@@ -8,7 +8,7 @@ import { useRoleApi } from '@/app/system-manager/api/application';
 
 export function useApplicationPage() {
   const { t } = useTranslation();
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const { getAll, loading, refresh } = useClientData();
   const { deleteApplication } = useRoleApi();
 

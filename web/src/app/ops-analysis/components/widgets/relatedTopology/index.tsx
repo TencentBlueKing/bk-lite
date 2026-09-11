@@ -87,7 +87,7 @@ const RelatedTopology = ({ instUuid }: RelatedTopologyProps) => {
 
   return (
     <div className="h-full min-h-[280px] min-w-0 w-full overflow-hidden">
-      <RelatedTopologyGraphView model={graph} />
+      <RelatedTopologyGraphView model={graph} onRefresh={load} />
     </div>
   );
 };

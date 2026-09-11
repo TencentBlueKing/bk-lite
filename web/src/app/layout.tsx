@@ -3,7 +3,7 @@
 import '@ant-design/v5-patch-for-react-19';
 import { useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import Script from 'next/script';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { AntdRegistry } from '@ant-design/nextjs-registry';
 import { SessionProvider, useSession } from 'next-auth/react';
 import { LocaleProvider } from '@/context/locale';
@@ -12,9 +12,13 @@ import { ThemeBootstrap, ThemeProvider } from '@/theme';
 import {
   ConsoleLayoutBootstrap,
   ConsoleLayoutProvider,
+  isScreenModeEnabled,
+  shouldHideConsoleChrome,
   shouldHideConsoleTopNav,
   shouldShowAppTopSideNav,
+  syncScreenModePersistence,
   useConsoleLayout,
+  withScreenQuery,
 } from '@/console-layout';
 import { useMenus } from '@/context/menus';
 import { useClientData } from '@/context/client';
@@ -162,6 +166,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const { portalName, watermarkEnabled, watermarkText } = usePortalBranding();
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { layout: storedChromeLayout } = useConsoleLayout();
   const [isAllowed, setIsAllowed] = useState(false);
   const [isHeaderScrolled, setIsHeaderScrolled] = useState(false);
@@ -185,6 +190,9 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const excludedPaths = ['/no-permission', '/no-found', '/', ...authPaths];
   const hasResolvedPathname = pathname !== null;
   const isAuthRoute = Boolean(pathname && authPaths.includes(pathname));
+  const screenMode = isScreenModeEnabled(searchParams);
+  const hidePathChrome = shouldHideConsoleTopNav(pathname);
+  const hideConsoleChrome = shouldHideConsoleChrome(pathname, screenMode);
   const isDashboardRoute = isProfessionalDashboardRoute(pathname);
   const isResponsiveAppRoute = pathname?.startsWith('/apm') || isDashboardRoute;
   const isDashboardShareRoute = pathname?.startsWith('/ops-analysis/share/');
@@ -194,6 +202,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const isStandaloneDashboardRoute = (
     isDashboardShareRoute || isDashboardRenderRoute
   );
+  const lockConsoleViewport = hidePathChrome || isDashboardShareRoute;
   const isLoading = isAuthLoading || (
     isAuthenticated
     && (
@@ -205,7 +214,8 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
 
   const shouldRenderMenu = useMemo(() => {
     if (
-      pathname?.startsWith('/ops-console')
+      screenMode
+      || pathname?.startsWith('/ops-console')
       || isDashboardRoute
       || isStandaloneDashboardRoute
     ) {
@@ -215,12 +225,12 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   }, [
     pathname,
     menus,
+    screenMode,
     isDashboardRoute,
     isStandaloneDashboardRoute,
   ]);
 
-  const showAppTopSide = shouldShowAppTopSideNav(storedChromeLayout, pathname, menus);
-  const hideConsoleTopNav = shouldHideConsoleTopNav(pathname);
+  const showAppTopSide = !screenMode && shouldShowAppTopSideNav(storedChromeLayout, pathname, menus);
 
   useEffect(() => {
     const checkPermission = async () => {
@@ -253,11 +263,11 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
           setIsAllowed(true);
         } else {
           setIsAllowed(false);
-          router.replace('/no-permission');
+          router.replace(withScreenQuery('/no-permission', screenMode));
         }
       } else {
         setIsAllowed(false);
-        router.replace('/no-found');
+        router.replace(withScreenQuery('/no-found', screenMode));
       }
     };
 
@@ -273,7 +283,24 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
     configMenus,
     hasPermission,
     isStandaloneDashboardRoute,
+    screenMode,
   ]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !pathname) {
+      return;
+    }
+    const search = searchParams?.toString();
+    const result = syncScreenModePersistence({
+      pathname,
+      search: search ? `?${search}` : '',
+      isAuthRoute,
+      storage: window.sessionStorage,
+    });
+    if (result.restoreHref) {
+      router.replace(result.restoreHref);
+    }
+  }, [pathname, searchParams, isAuthRoute, router]);
 
   // Show password expiry reminder after login redirect
   useEffect(() => {
@@ -313,8 +340,8 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   }
 
   const layoutContent = (
-    <div className={`flex flex-col pr-[var(--bk-webchat-dock-width)] transition-[padding-right] duration-200 ease-out ${isDashboardShareRoute || hideConsoleTopNav ? 'h-screen overflow-hidden' : showAppTopSide ? 'h-screen overflow-x-auto overflow-y-hidden' : 'min-h-screen'} ${!isAuthRoute && !isResponsiveAppRoute ? 'min-w-[1280px]' : ''}`}>
-      {isAuthenticated && hasResolvedPathname && !isAuthRoute && !hideConsoleTopNav && (
+    <div className={`flex flex-col pr-[var(--bk-webchat-dock-width)] transition-[padding-right] duration-200 ease-out ${lockConsoleViewport ? 'h-screen overflow-hidden' : screenMode ? 'h-screen overflow-x-hidden' : showAppTopSide ? 'h-screen overflow-x-auto overflow-y-hidden' : 'min-h-screen'} ${!isAuthRoute && !isResponsiveAppRoute && !screenMode ? 'min-w-[1280px]' : ''}`}>
+      {isAuthenticated && hasResolvedPathname && !isAuthRoute && !hideConsoleChrome && (
         <header
           className={`sticky top-0 left-0 right-0 z-20 flex shrink-0 justify-between items-center ${
             storedChromeLayout === 'app-top'
@@ -331,11 +358,13 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
         )}
         <main
           className={`main-content flex-1 flex text-sm ${
-            hideConsoleTopNav
-              ? 'min-h-0 w-full flex-col overflow-hidden p-0'
-              : showAppTopSide ? 'min-h-0 min-w-0 flex-col py-4 pr-4' : 'p-4'
-          } ${isDashboardShareRoute ? 'min-h-0 overflow-hidden' : ''} ${!isAuthenticated || isAuthRoute || hideConsoleTopNav ? 'h-screen' : ''}`}
-          style={showAppTopSide ? { ['--custom-height' as string]: '100%' } : undefined}
+            lockConsoleViewport
+              ? 'min-h-0 overflow-hidden p-0'
+              : screenMode
+                ? 'min-h-0 min-w-0 h-full flex-1 flex-col p-0'
+                : showAppTopSide ? 'min-h-0 min-w-0 flex-col py-4 pr-4' : 'p-4'
+          } ${isDashboardShareRoute ? 'min-h-0 overflow-hidden' : ''} ${!isAuthenticated || isAuthRoute || lockConsoleViewport ? 'h-screen' : ''}`}
+          style={showAppTopSide || screenMode ? { ['--custom-height' as string]: '100%' } : undefined}
         >
           {showAppTopSide ? (
             <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-x-auto pl-4">
@@ -357,6 +386,13 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
             >
               {children}
             </WithSideMenuLayout>
+          ) : screenMode ? (
+            <div
+              data-console-screen-workspace="true"
+              className="flex h-full min-h-0 min-w-0 w-full flex-col overflow-auto"
+            >
+              {children}
+            </div>
           ) : (
             children
           )}
@@ -369,7 +405,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
     return (
       <>
         {layoutContent}
-        {isAuthenticated && !isAuthRoute && <GlobalWebchat />}
+        {isAuthenticated && !isAuthRoute && !screenMode && <GlobalWebchat />}
       </>
     );
   }
@@ -389,7 +425,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
       >
         {layoutContent}
       </Watermark>
-      {isAuthenticated && !isAuthRoute && <GlobalWebchat />}
+      {isAuthenticated && !isAuthRoute && !screenMode && <GlobalWebchat />}
     </>
   );
 };

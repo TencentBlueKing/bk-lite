@@ -1,0 +1,4 @@
+Filesystem     Type  1024-blocks    Used   Avail Capacity  Mounted on
+/dev/da0p2     ufs           100      40      60      40%    /
+/dev/da1p1     ufs           200      50     150      25%    /mnt/data"q /weird
+devfs          devfs           1       1       0     100%    /dev

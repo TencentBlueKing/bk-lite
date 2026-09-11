@@ -41,6 +41,7 @@ let pathname = '/cmdb';
 
 vi.mock('next/navigation', () => ({
   usePathname: () => pathname,
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 vi.mock('@/context/auth', () => ({
@@ -135,10 +136,10 @@ describe('GlobalWebChat', () => {
       'script[data-bk-global-webchat]',
     );
 
-    expect(script?.getAttribute('src')).toBe('/webchat/webchat.js?v=20260910-4');
+    expect(script?.getAttribute('src')).toBe('/webchat/webchat.js?v=20260910-5');
     expect(
       document.querySelector<HTMLLinkElement>('link[data-bk-global-webchat]')?.getAttribute('href'),
-    ).toBe('/webchat/style.css?v=20260910-4');
+    ).toBe('/webchat/style.css?v=20260910-5');
 
     window.WebChat = {
       default: initialize,

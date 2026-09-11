@@ -85,6 +85,7 @@
 - `report`：前端提供独立的纵向报表构建器；非内置且具备 `EditChart` 权限的报表可在草稿态添加、配置、排序和删除组件，当前 `report` surface 只开放 `table` 与 `eventTable`。`section` 仅保存稳定 `id` 与单个组件 `valueConfig`；画布保存统一筛选定义，组件通过 `filterBindings` 选择联动，运行时按数据源的 `filterType=filter` 及 `key + type` 严格匹配注入查询参数，不默认展示或接管时间参数。保存使用保留六位微秒的 `updated_at` 条件令牌防止旧草稿覆盖新版本，后端创建、更新与 YAML 导入统一校验版本化 `view_sets`。查看态工具栏对齐仪表盘：周期刷新（`refresh_interval`）、全屏 overlay、客户端 A4 横向分页 PDF、画布分享与邮件订阅；订阅 Chromium 使用仪表盘视口与分页，不套用大屏单页等比缩小（证据：`web/src/app/ops-analysis/(pages)/view/report/`、`web/src/app/ops-analysis/utils/{chartTypeSurface,reportBuilder,widgetDataTransform}.ts`、`server/apps/operation_analysis/services/report_view_sets.py`、`server/apps/operation_analysis/serializers/directory_serializers.py`）。
 - 画布分享目的地【已实现】：`/ops-analysis/share/*` 隐藏平台顶栏（`shouldHideConsoleTopNav`）、左侧 App 导航（既有 chrome exception）与全局助手（`GLOBAL_WEBCHAT_EXCLUDED_PATH_PREFIXES`），`main` 无内边距；不进入订阅 Render 专用 layout，仍保留 User/Menus/Permissions providers。产品内 `/ops-analysis/view` 保持完整壳层。证据：`web/src/console-layout/resolve.ts`、`web/src/app/layout.tsx`、`web/src/app/(core)/components/global-webchat/visibility.ts`。
 - 分享态组织筛条【已实现】：session GET **仅当画布存在 enabled=true 的组织控件**时附带创建分享时的 `space_id` 与分享者 `group_tree`（同源 `build_user_authorization_context`，字段 allowlist，不下发 `permission`/`roles`）。关掉后定义仍在也不吐树。仪表盘 / 大屏 / 报表 / 拓扑筛条使用该树并缺省选中 `space_id`，搜索/重置仍 seed；无组织筛的画布（含架构图、网络拓扑）不吐树。证据：`server/apps/operation_analysis/views/share_view.py`、`web/src/app/ops-analysis/context/shareOrganization.tsx`、`web/src/app/ops-analysis/components/unifiedFilter/unifiedFilterBar.tsx`。
+- 控制台 iframe 屏显【本阶段已实现】：`?screen=true` 隐藏平台壳层与路由级业务侧栏/分段；运营分析 view 另藏目录侧栏，settings 分段由 `WithSideMenuLayout` 屏显收口，会话内切画布透传 `screen`；表格当前页打开与拓扑同站出口带 `screen` 且屏显下同框。屏显高度链由控制台壳层 S1 收口，画布页不另叠满高壳。不改分享链路。对象树不藏。证据：`web/src/console-layout/screenMode.ts`、`web/src/components/sub-layout/index.tsx`、`web/src/app/ops-analysis/(pages)/view/page.tsx`、`web/src/app/ops-analysis/(pages)/settings/layout.tsx`、`web/src/app/ops-analysis/utils/viewHref.ts`、`web/src/app/ops-analysis/components/widgets/comTable.tsx`、`docs/operations/console-iframe-screen-mode.md`。
 - 网络拓扑分享入口【已实现】：查看态工具栏复用 `useCanvasShareAction('networkTopology')`；分享会话只返回脱敏配置，运行态经 session proxy 取数，WeOps token / `base_url` 不进分享响应。证据：`web/src/app/ops-analysis/(pages)/view/networkTopology/components/networkToolbar.tsx`、`server/apps/operation_analysis/views/share_view.py`、`server/apps/operation_analysis/tests/test_share_network_topology.py`。
 
 ## 4. 依赖与通信【已实现/已存在】
@@ -189,6 +190,20 @@
 ## 2026-09-09 分享页去掉平台壳层
 
 - `[operation_analysis#20260909-001]` `/ops-analysis/share/*` 作为分享目的地隐藏 TopMenu、左侧菜单与 GlobalWebchat，保留只读画布与画布内查看控件；`/ops-analysis/view` 壳层不变。不复用画布放大 overlay，也不走订阅 Render 专用 layout。
+
+## 2026-09-09 控制台 iframe 屏显模式
+
+- `[operation_analysis#20260909-002]` 运营分析画布/大屏/拓扑可经 `?screen=true` 无平台壳层嵌入门户；站内切画布透传该参数。证据：`web/src/app/ops-analysis/(pages)/view/page.tsx`、`docs/operations/console-iframe-screen-mode.md`。
+
+## 2026-09-10 屏显藏目录侧栏并收窄透传
+
+- `[operation_analysis#20260910-001]` `/ops-analysis/view` 屏显下隐藏目录侧栏与折叠钮，深链仍打开画布；view 导航经 `buildOpsAnalysisViewHref` 保留 `screen`。证据：`web/src/app/ops-analysis/(pages)/view/page.tsx`、`web/src/app/ops-analysis/utils/viewHref.ts`。
+- `[operation_analysis#20260910-002]` `/ops-analysis/settings` 屏显下不再展示分段菜单（数据源 / 连接库 / 命名空间）；收口在 `WithSideMenuLayout`，settings layout 不再单独三元。证据：`web/src/app/ops-analysis/(pages)/settings/layout.tsx`、`web/src/components/sub-layout/index.tsx`。
+- `[operation_analysis#20260910-003]` 屏显下表格「当前页打开」与网络状态拓扑节点同站跳转透传 `screen` 并走当前 iframe；明确新窗口动作不强制。证据：`web/src/app/ops-analysis/components/widgets/comTable.tsx`、`web/src/app/ops-analysis/components/ops-analysis-widgets/table.tsx`、`web/src/app/ops-analysis/components/widgets/networkStatusTopology/index.tsx`。
+
+## 2026-09-11 屏显高度链收口
+
+- `[operation_analysis#20260911-001]` 屏显大屏/网络拓扑/架构依赖的壳层高度链由控制台 S1 收口，运营分析画布组件不另叠 `100vh`。证据：`web/src/app/layout.tsx`、`specs/changes/console-iframe-screen-height/spec.md`。
 
 ## 6. 证据来源
 `server/apps/operation_analysis/{urls.py,models/*,views/datasource_view.py,views/view.py,nats/nats.py,common/get_nats_source_data.py,constants/constants.py,tasks/tasks.py,management/commands/*,services/*}`、`apps/operation_analysis/migrations/0010_remove_namespace_groups.py`、`apps/rpc/base.py:OperationAnalysisRpc`、`web/src/app/ops-analysis/{utils/widgetRequestCache.ts,components/widgetDataRenderer.tsx,api/namespace.ts,(pages)/settings/namespace/operateModal.tsx}`。

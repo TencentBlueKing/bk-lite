@@ -31,7 +31,10 @@ import {
   normalizeDisplayText,
   buildInstanceDisplayName,
   buildInstanceSearchTokens,
-  parseLegacyParamList,
+  resolveDashboardInstanceIdentity,
+  resolveDashboardInstanceIdValues,
+  encodeInstanceIdValuesParam,
+  isInstanceOptionForIdentity,
   buildCollectionStatusTimeline,
   formatCollectionStatusTimelineHint,
   resolveCollectionStatusRange,
@@ -144,17 +147,13 @@ export default function MongoDashboardPage() {
   const monitorObjectId = searchParams.get('monitorObjId') || '';
   const monitorObjectName = searchParams.get('name') || 'Mongodb';
   const monitorObjDisplayName = searchParams.get('monitorObjDisplayName') || 'MongoDB';
-  const rawInstanceId = searchParams.get('instance_id') || '';
-  const parsedLegacyInstanceIds = parseLegacyParamList(rawInstanceId);
-  const instanceId: React.Key = parsedLegacyInstanceIds[0] || rawInstanceId || '';
+  const instanceIdentity = useMemo(
+    () => resolveDashboardInstanceIdentity(new URLSearchParams(searchParams.toString())),
+    [searchParams]
+  );
+  const instanceId: React.Key = instanceIdentity.instanceId;
   const instanceName = searchParams.get('instance_name') || '--';
-  const idValues = (() => {
-    const explicitValues = parseLegacyParamList(searchParams.get('instance_id_values'));
-    if (explicitValues.length > 0) return explicitValues;
-    if (parsedLegacyInstanceIds.length > 0) return parsedLegacyInstanceIds;
-    const normalizedInstanceId = normalizeDisplayText(String(instanceId));
-    return normalizedInstanceId ? [normalizedInstanceId] : [];
-  })();
+  const idValues = instanceIdentity.idValues;
   const instanceIdKeys = (searchParams.get('instance_id_keys') || 'instance_id').split(',').filter(Boolean);
   const objectDisplayText = normalizeDisplayText(monitorObjDisplayName) || normalizeDisplayText(monitorObjectName) || 'MongoDB';
   const normalizedInstanceName = normalizeDisplayText(instanceName);
@@ -179,8 +178,7 @@ export default function MongoDashboardPage() {
           uniqueOptions.set(value, {
             label,
             value,
-            instanceIdValues:
-              Array.isArray(item.instance_id_values) && item.instance_id_values.length ? item.instance_id_values : [value],
+            instanceIdValues: resolveDashboardInstanceIdValues(item),
             searchTokens: buildInstanceSearchTokens(item, label),
             interval: Number(item.interval) || undefined
           });
@@ -199,8 +197,8 @@ export default function MongoDashboardPage() {
   }, [monitorObjectId]);
 
   const idValuesKey = JSON.stringify(idValues);
-  const currentInstanceCandidates = instanceOptions.filter(
-    (item) => item.value === String(instanceId || '') || item.instanceIdValues.some((value) => idValues.includes(value))
+  const currentInstanceCandidates = instanceOptions.filter((item) =>
+    isInstanceOptionForIdentity(item, instanceId, idValues)
   );
   const currentInstanceOption =
     currentInstanceCandidates.find((item) => normalizedInstanceName && item.label === normalizedInstanceName) ||
@@ -215,7 +213,7 @@ export default function MongoDashboardPage() {
       options.unshift({
         value: selectedValue,
         label: normalizedInstanceName,
-        instanceIdValues: idValues.length ? idValues : [selectedValue],
+        instanceIdValues: idValues.length ? idValues : resolveDashboardInstanceIdValues({ instance_id: selectedValue }),
         searchTokens: [normalizedInstanceName]
       });
     }
@@ -545,7 +543,11 @@ export default function MongoDashboardPage() {
     const params = new URLSearchParams(searchParams.toString());
     params.set('instance_id', value);
     params.set('instance_name', String(target?.label || value));
-    params.set('instance_id_values', (target?.instanceIdValues || [value]).join(','));
+    params.set('instance_id_values', encodeInstanceIdValuesParam(
+      target?.instanceIdValues?.length
+        ? target.instanceIdValues
+        : resolveDashboardInstanceIdValues({ instance_id: value }),
+    ));
     router.push(`/monitor/view/dashboard/mongodb?${params.toString()}`);
   };
 

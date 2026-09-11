@@ -146,7 +146,9 @@ function assertPageUsesGeneration(source: string) {
   assert.match(source, /commitTraceSearchFailure\(/, '失败必须经 commitTraceSearchFailure 提交');
   assert.match(source, /commitTraceSearchSettled\(/, '结束 searching 必须经 commitTraceSearchSettled 提交');
   assert.match(source, /requestGuard\.invalidate\(\)/, '切换粒度、时间窗、清空、卸载必须 invalidate');
-  assert.match(source, /limit:\s*50/, '查询 limit 必须仍为 50');
+  assert.match(source, /const SAMPLE_LIMIT = 50/, '主查询上限必须仍为 50');
+  assert.match(source, /limit:\s*SAMPLE_LIMIT/, '列表查询必须使用 SAMPLE_LIMIT');
+  assert.match(source, /const ERROR_PRESENCE_LIMIT = 1/, '失败存在性探测必须是 limit=1');
   assert.match(
     source,
     /searchParams\.get\('entity'\) === 'traces' \? 'traces' : 'spans'/,
@@ -157,15 +159,15 @@ function assertPageUsesGeneration(source: string) {
     /function createLatestRequestGuard|const createLatestRequestGuard\s*=/,
     '不得在 page 内复制一套序号 guard',
   );
-  assert.doesNotMatch(
+  assert.match(
     source,
-    /getSpans\(query\)\s*\.then\(\s*\(page\)\s*=>\s*\{/,
-    'Span then 不得无条件写 items',
+    /getSpans\(query\)\s*\.then\(\s*\(page\)\s*=>\s*\{\s*const applied = commitTraceSearchSuccess/,
+    'Span then 必须先经 commitTraceSearchSuccess 再写 items',
   );
-  assert.doesNotMatch(
+  assert.match(
     source,
-    /getTraces\(query\)\s*\.then\(\s*\(page\)\s*=>\s*\{/,
-    'Trace then 不得无条件写 items',
+    /getTraces\(query\)\s*\.then\(\s*\(page\)\s*=>\s*\{\s*const applied = commitTraceSearchSuccess/,
+    'Trace then 必须先经 commitTraceSearchSuccess 再写 items',
   );
   assert.doesNotMatch(
     source,

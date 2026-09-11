@@ -15,11 +15,16 @@ const legacyTraces = read('src/app/apm/traces/page.tsx');
 
 assert.match(traces, /调用链/, 'Trace 搜索页应使用产品术语“调用链”');
 assert.match(traces, /TraceDistribution/, '调用链页应提供与原型一致的耗时分布视图');
-assert.match(traces, /快速筛选/, '调用链页应提供真实数据驱动的快速筛选');
-assert.match(traces, /matchesResultFacets/, '快速筛选必须在当前命中样本上收窄，而不是重新查询填满 limit');
+assert.match(traces, /当前结果/, '调用链页左侧是当前结果筛选，不是窗内合计');
+assert.match(traces, /matchesResultFacets/, '服务/环境/kind 必须在当前命中样本上收窄，而不是重新查询填满 limit');
 assert.match(traces, /ResultMode = 'detail' \| 'aggregate'/, '调用链页必须支持明细与聚合切换');
 assert.match(traces, /buildAggregate/, '聚合视图必须基于当前命中样本计算');
-assert.match(traces, /traces\/s/, '调用链页必须展示命中速率');
+assert.match(traces, /本页样本/, '调用链页必须标注本页样本而不是窗内命中速率');
+assert.doesNotMatch(traces, /traces\/s/, '调用链页不得再用样本条数除以窗时长冒充 traces/s');
+assert.doesNotMatch(traces, /windowErrorCount/, '调用链页不得把另一次 error 查询的条数标成错误合计');
+assert.match(traces, /ERROR_PRESENCE_LIMIT/, '当前页全绿时只允许 limit=1 的失败存在性探测');
+assert.match(traces, /hiddenWindowError/, '当前页没有失败时必须提示近窗仍有失败样本');
+assert.match(traces, /errorSampleHint/, '勾选错误后必须说明这是失败样本而不是全窗清单');
 assert.match(traces, /按 key:value 过滤/, '调用链页搜索框应对齐 Storybook 的 key:value 形态');
 assert.match(traces, /value: 'spans', label: 'Spans'/, '调用链页必须开放 Spans 视角');
 assert.match(traces, /getSpans\(/, 'Spans 视角必须调用受控 Span 检索 API');
@@ -38,6 +43,7 @@ assert.match(endpoints, /部分服务的端点指标查询失败/, '端点列表
 assert.match(endpoints, /Drawer/, '端点列表必须提供详情抽屉下钻');
 assert.match(endpoints, /样本调用链/, '端点详情必须提供样本 Trace');
 assert.match(errors, /getIssues\(/, '错误页必须来自真实 Issue 查询');
+assert.match(errors, /loadedTypes/, '错误分析必须展示已加载错误种类，不得用卡片数冒充失败次数');
 assert.match(errors, /ApmIssueList/, '错误页必须复用 Issue 卡片而不是就地渲染');
 assert.match(errors, /service_namespace/, '错误分析必须能承接服务详情带来的服务筛选');
 assert.doesNotMatch(errors, /entry_only/, '探索错误分析必须保留全量 Error Span，不得按入口 Span 收窄');

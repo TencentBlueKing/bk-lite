@@ -215,8 +215,8 @@ assert.match(
 );
 assert.match(
   rootLayout,
-  /!hideConsoleTopNav && \(/,
-  'share destinations reuse hideConsoleTopNav to omit TopMenu',
+  /!hideConsoleChrome && \(/,
+  'share destinations reuse hideConsoleChrome to omit TopMenu',
 );
 const consoleLayoutResolve = fs.readFileSync(
   'src/console-layout/resolve.ts',

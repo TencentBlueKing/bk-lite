@@ -127,9 +127,11 @@ describe('APM 调用链探索', () => {
     const columnHeaders = screen.getAllByRole('columnheader').map((header) => header.textContent);
     expect(columnHeaders.indexOf('Trace ID')).toBeLessThan(columnHeaders.indexOf('入口服务'));
     expect(screen.queryByRole('columnheader', { name: '入口服务 / Trace ID' })).toBeNull();
-    expect(screen.getByText('快速筛选')).not.toBeNull();
+    expect(screen.getByText('当前结果')).not.toBeNull();
     expect(screen.getByText('耗时分布')).not.toBeNull();
-    expect(screen.getByText(/条调用链\/秒/)).not.toBeNull();
+    expect(screen.getByText('本页样本')).not.toBeNull();
+    expect(screen.getByText(/2 条（上限 50）/)).not.toBeNull();
+    expect(screen.queryByText(/条调用链\/秒/)).toBeNull();
   });
 
   it('可切换到聚合视图并按服务汇总', async () => {
@@ -155,7 +157,7 @@ describe('APM 调用链探索', () => {
       environment: undefined,
       limit: 50,
     })));
-    expect(screen.getByText('快速筛选')).not.toBeNull();
+    expect(screen.getByText('当前结果')).not.toBeNull();
   });
 
   it('明细列表分页展示，避免一次铺开全部命中', async () => {
@@ -209,10 +211,10 @@ describe('APM 调用链探索', () => {
     const max = screen.getByPlaceholderText('max');
     await user.click(max);
     await user.keyboard('200');
-    expect(screen.getByText(/命中 2 条/)).not.toBeNull();
+    expect(screen.getByText(/2 条（上限 50）/)).not.toBeNull();
 
     await user.keyboard('{Enter}');
-    expect(await screen.findByText(/命中 1 条/)).not.toBeNull();
+    expect(await screen.findByText(/1 条（上限 50）/)).not.toBeNull();
     expect(screen.getAllByText('POST /pay')).toHaveLength(1);
     expect(api.getTraces.mock.calls.length).toBe(callsAfterReady);
     expect(api.getTraces).not.toHaveBeenCalledWith(expect.objectContaining({
@@ -262,21 +264,72 @@ describe('APM 调用链探索', () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithApmIntl(<ApmTracesPage />);
 
-    expect(await screen.findByText(/命中 6 条/)).not.toBeNull();
+    expect(await screen.findByText(/6 条（上限 50）/)).not.toBeNull();
     const callsAfterReady = api.getSpans.mock.calls.length;
 
     await user.click(screen.getByRole('checkbox', { name: /client/i }));
-    expect(await screen.findByText(/命中 2 条/)).not.toBeNull();
+    expect(await screen.findByText(/2 条（上限 50）/)).not.toBeNull();
     expect(screen.getAllByText('GET /stock')).toHaveLength(2);
     expect(screen.queryByText('GET /products')).toBeNull();
     expect(api.getSpans.mock.calls.length).toBe(callsAfterReady);
 
     await user.click(screen.getByRole('checkbox', { name: /client/i }));
-    expect(await screen.findByText(/命中 6 条/)).not.toBeNull();
+    expect(await screen.findByText(/6 条（上限 50）/)).not.toBeNull();
 
     await user.click(screen.getByRole('button', { name: /demo-storefront/ }));
-    expect(await screen.findByText(/命中 3 条/)).not.toBeNull();
+    expect(await screen.findByText(/3 条（上限 50）/)).not.toBeNull();
     expect(screen.queryByText('GET /stock')).toBeNull();
     expect(api.getSpans.mock.calls.length).toBe(callsAfterReady);
+  });
+
+  it('明细列表的耗时和时间列可排序', async () => {
+    renderWithApmIntl(<ApmTracesPage />);
+    await screen.findAllByText('POST /pay');
+
+    expect(screen.getByRole('columnheader', { name: /总耗时/ }).querySelector('.ant-table-column-sorters')).not.toBeNull();
+    expect(screen.getByRole('columnheader', { name: /时间/ }).querySelector('.ant-table-column-sorters')).not.toBeNull();
+  });
+
+  it('当前页没有错误时只提示窗内还有失败样本，不标错误数；勾选后按 status=error 重查', async () => {
+    search = 'entity=spans';
+    api.getSpans.mockImplementation((params: { status?: string }) => Promise.resolve({
+      items: params.status === 'error'
+        ? [spanItem({
+          span_id: 'err-1',
+          service_name: 'datart',
+          name: 'SHOW CREATE TABLE',
+          status: 'error',
+          kind: 'client',
+        })]
+        : [spanItem({ span_id: 'ok-1', service_name: 'datart', name: 'GET /state', kind: 'server' })],
+      next_cursor: null,
+    }));
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithApmIntl(<ApmTracesPage />);
+
+    expect(await screen.findByText('GET /state')).not.toBeNull();
+    await waitFor(() => {
+      expect(api.getSpans).toHaveBeenCalledWith(expect.objectContaining({ status: 'error', limit: 1 }));
+    });
+    expect(await screen.findByText(/近窗还有失败样本/)).not.toBeNull();
+    expect(screen.getByRole('link', { name: '在错误分析中打开' }).getAttribute('href')).toContain('/apm/explore/errors');
+    expect(screen.getByRole('checkbox', { name: /错误/ }).closest('div')?.textContent).not.toMatch(/\d/);
+
+    const callsAfterReady = api.getSpans.mock.calls.length;
+    await user.click(screen.getByRole('checkbox', { name: /错误/ }));
+
+    await waitFor(() => expect(api.getSpans.mock.calls.length).toBeGreaterThan(callsAfterReady));
+    expect(api.getSpans).toHaveBeenCalledWith(expect.objectContaining({ status: 'error', limit: 50 }));
+    expect(await screen.findByText('SHOW CREATE TABLE')).not.toBeNull();
+    expect(screen.queryByText('GET /state')).toBeNull();
+    expect(await screen.findByText(/近窗失败样本/)).not.toBeNull();
+  });
+
+  it('当前页已有错误时不再打存在性查询', async () => {
+    renderWithApmIntl(<ApmTracesPage />);
+    expect(await screen.findAllByText('POST /pay')).not.toHaveLength(0);
+    await waitFor(() => expect(api.getTraces).toHaveBeenCalled());
+    expect(api.getTraces).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'error', limit: 1 }));
+    expect(screen.queryByText(/近窗还有失败样本/)).toBeNull();
   });
 });

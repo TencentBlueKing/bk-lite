@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { SearchOutlined } from '@ant-design/icons';
-import { Button, Checkbox, Input, InputNumber, Segmented, Select, Space, Tag, Typography } from 'antd';
+import { Alert, Button, Checkbox, Input, InputNumber, Segmented, Select, Space, Tag, Typography } from 'antd';
 import type { TableProps } from 'antd';
 import useApmApi from '@/app/apm/api';
 import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
@@ -50,6 +50,8 @@ const RANGE_MS: Record<TimeRange, number> = {
   '1d': 24 * 60 * 60 * 1000,
   '7d': 7 * 24 * 60 * 60 * 1000,
 };
+const SAMPLE_LIMIT = 50;
+const ERROR_PRESENCE_LIMIT = 1;
 
 const SPAN_KINDS: SpanKind[] = ['internal', 'server', 'client', 'producer', 'consumer'];
 
@@ -63,6 +65,14 @@ interface TraceFilters {
   kind?: SpanKind;
   minDurationMs: number | null;
   maxDurationMs: number | null;
+}
+
+function errorsExploreHref(filters: TraceFilters, timeRange: TimeRange): string {
+  const params = new URLSearchParams({ window: timeRange });
+  if (filters.namespace.trim()) params.set('service_namespace', filters.namespace.trim());
+  if (filters.serviceName.trim()) params.set('service_name', filters.serviceName.trim());
+  if (filters.environment.trim()) params.set('environment', filters.environment.trim());
+  return `/apm/explore/errors?${params.toString()}`;
 }
 
 interface ResultFacets {
@@ -378,14 +388,13 @@ export default function ApmTracesPage() {
   const [searchError, setSearchError] = useState<unknown>();
   const [searching, setSearching] = useState(false);
   const [services, setServices] = useState<ApmService[]>([]);
-  const [queryStartedAt, setQueryStartedAt] = useState<string>();
-  const [queryEndedAt, setQueryEndedAt] = useState<string>();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [durationDraft, setDurationDraft] = useState<{ min: number | null; max: number | null }>({
     min: null,
     max: null,
   });
+  const [hasHiddenWindowError, setHasHiddenWindowError] = useState(false);
   const autoSearched = useRef(false);
   const entityModeReady = useRef(false);
   const servicesLoaded = useRef(false);
@@ -422,6 +431,7 @@ export default function ApmTracesPage() {
       setPage(1);
       setFacets(EMPTY_RESULT_FACETS);
       setDurationDraft({ min: null, max: null });
+      setHasHiddenWindowError(false);
     }
     const window = timeWindow(cursor);
     if (entityMode === 'spans') {
@@ -436,16 +446,22 @@ export default function ApmTracesPage() {
         min_duration_ms: active.minDurationMs ?? undefined,
         max_duration_ms: active.maxDurationMs ?? undefined,
         ...window,
-        limit: 50,
+        limit: SAMPLE_LIMIT,
       };
       getSpans(query)
-        .then((page) => commitTraceSearchSuccess(requestGuard, requestId, () => {
-          setSpanItems((current) => (cursor ? [...current, ...page.items] : page.items));
-          setTraceItems([]);
-          setQueryStartedAt(query.started_at);
-          setQueryEndedAt(query.ended_at);
-          setState(page.items.length === 0 && !cursor && !page.next_cursor ? 'empty' : 'ready');
-        }))
+        .then((page) => {
+          const applied = commitTraceSearchSuccess(requestGuard, requestId, () => {
+            setSpanItems((current) => (cursor ? [...current, ...page.items] : page.items));
+            setTraceItems([]);
+            setState(page.items.length === 0 && !cursor && !page.next_cursor ? 'empty' : 'ready');
+          });
+          if (!applied || cursor || active.status !== 'all' || page.items.some((item) => item.status === 'error')) return;
+          void getSpans({ ...query, status: 'error', limit: ERROR_PRESENCE_LIMIT }).then((errorPage) => {
+            commitTraceSearchSuccess(requestGuard, requestId, () => {
+              setHasHiddenWindowError(errorPage.items.some((item) => item.status === 'error'));
+            });
+          });
+        })
         .catch((error) => commitTraceSearchFailure(requestGuard, requestId, () => {
           setSearchError(error);
           setState(catalogErrorKind(error));
@@ -467,16 +483,22 @@ export default function ApmTracesPage() {
       min_duration_ms: active.minDurationMs ?? undefined,
       max_duration_ms: active.maxDurationMs ?? undefined,
       ...window,
-      limit: 50,
+      limit: SAMPLE_LIMIT,
     };
     getTraces(query)
-      .then((page) => commitTraceSearchSuccess(requestGuard, requestId, () => {
-        setTraceItems((current) => (cursor ? [...current, ...page.items] : page.items));
-        setSpanItems([]);
-        setQueryStartedAt(query.started_at);
-        setQueryEndedAt(query.ended_at);
-        setState(page.items.length === 0 && !cursor && !page.next_cursor ? 'empty' : 'ready');
-      }))
+      .then((page) => {
+        const applied = commitTraceSearchSuccess(requestGuard, requestId, () => {
+          setTraceItems((current) => (cursor ? [...current, ...page.items] : page.items));
+          setSpanItems([]);
+          setState(page.items.length === 0 && !cursor && !page.next_cursor ? 'empty' : 'ready');
+        });
+        if (!applied || cursor || active.status !== 'all' || page.items.some((item) => item.status === 'error')) return;
+        void getTraces({ ...query, status: 'error', limit: ERROR_PRESENCE_LIMIT }).then((errorPage) => {
+          commitTraceSearchSuccess(requestGuard, requestId, () => {
+            setHasHiddenWindowError(errorPage.items.some((item) => item.status === 'error'));
+          });
+        });
+      })
       .catch((error) => commitTraceSearchFailure(requestGuard, requestId, () => {
         setSearchError(error);
         setState(catalogErrorKind(error));
@@ -598,6 +620,7 @@ export default function ApmTracesPage() {
       align: 'right',
       className: 'tabular-nums',
       responsive: ['sm'],
+      sorter: (left, right) => left.duration_ms - right.duration_ms,
       render: (value: number) => <span className="font-medium text-[var(--color-text-1)]">{formatLatency(value, false, t)}</span>,
     },
     {
@@ -626,6 +649,8 @@ export default function ApmTracesPage() {
       width: APM_TABLE_COLUMN_WIDTHS.relativeTime,
       align: 'right',
       responsive: ['xl'],
+      sorter: (left, right) => left.started_at.localeCompare(right.started_at),
+      defaultSortOrder: 'descend',
       render: (value: string) => (
         <span className="text-xs tabular-nums text-[var(--color-text-3)]" title={formatDateTime(value)}>
           {formatRelativeTime(value, t)}
@@ -702,6 +727,7 @@ export default function ApmTracesPage() {
       align: 'right',
       className: 'tabular-nums',
       responsive: ['md'],
+      sorter: (left, right) => left.duration_ms - right.duration_ms,
       render: (value: number) => <span className="font-medium text-[var(--color-text-1)]">{formatLatency(value, false, t)}</span>,
     },
     {
@@ -710,6 +736,8 @@ export default function ApmTracesPage() {
       width: APM_TABLE_COLUMN_WIDTHS.relativeTime,
       align: 'right',
       responsive: ['xl'],
+      sorter: (left, right) => left.started_at.localeCompare(right.started_at),
+      defaultSortOrder: 'descend',
       render: (value: string) => (
         <span className="text-xs tabular-nums text-[var(--color-text-3)]" title={formatDateTime(value)}>
           {formatRelativeTime(value, t)}
@@ -727,13 +755,6 @@ export default function ApmTracesPage() {
     [facets, spanItems],
   );
   const activeItems = entityMode === 'spans' ? visibleSpans : visibleTraces;
-  const statusCounts = useMemo(() => {
-    const source = entityMode === 'spans' ? spanItems : traceItems;
-    return {
-      ok: source.filter((item) => item.status === 'ok').length,
-      error: source.filter((item) => item.status === 'error').length,
-    };
-  }, [entityMode, spanItems, traceItems]);
   const serviceCounts = useMemo(() => {
     const source = entityMode === 'spans' ? spanItems : traceItems;
     return Array.from(source.reduce((counts, item) => {
@@ -758,11 +779,6 @@ export default function ApmTracesPage() {
     }, new Map<string, number>())).sort((left, right) => right[1] - left[1]);
   }, [entityMode, spanItems]);
 
-  const windowSeconds = useMemo(() => {
-    if (!queryStartedAt || !queryEndedAt) return RANGE_MS[timeRange] / 1000;
-    return Math.max(1, (new Date(queryEndedAt).getTime() - new Date(queryStartedAt).getTime()) / 1000);
-  }, [queryEndedAt, queryStartedAt, timeRange]);
-  const hitRate = activeItems.length / windowSeconds;
   const distributionItems = useMemo<DurationPoint[]>(
     () => (entityMode === 'spans'
       ? visibleSpans.map((item) => ({
@@ -868,7 +884,7 @@ export default function ApmTracesPage() {
       width: APM_TABLE_COLUMN_WIDTHS.metric,
       align: 'right',
       className: 'tabular-nums',
-      responsive: ['lg'],
+      responsive: ['xxl'],
       render: (value: number) => formatLatency(value, false, t),
     },
   ];
@@ -876,7 +892,7 @@ export default function ApmTracesPage() {
   return (
     <ApmRouteShell
       title={t('apm.explore.tracesTitle', '调用链')}
-      description={t('apm.explore.tracesDescription', '按服务、环境与时间窗检索 Trace 或 Span，支持明细列表与客户端聚合分析。')}
+      description={t('apm.explore.tracesDescription', '按条件检索近窗 Trace / Span 样本。列表不对账窗内错误率。')}
       dependency="telemetry"
     >
       <div className="flex flex-col gap-4">
@@ -973,11 +989,11 @@ export default function ApmTracesPage() {
           </ApmSurface>
         ) : state === 'ready' || state === 'empty' ? (
           <div className="grid min-h-0 grid-cols-1 gap-4 xl:grid-cols-[250px_minmax(0,1fr)] xl:items-start">
-            {/* 左侧侧边栏快速筛选 */}
+            {/* 左侧当前结果筛选 */}
             <aside className="self-start rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-4 shadow-2xs">
               <div className="mb-3.5 flex items-center justify-between border-b border-[var(--color-border)] pb-2.5">
                 <Typography.Title level={2} className="!mb-0 !text-xs !font-bold !text-[var(--color-text-2)] uppercase tracking-wider">
-                  {t('apm.explore.quickFilter', '快速筛选')}
+                  {t('apm.explore.currentResult', '当前结果')}
                 </Typography.Title>
                 {facets.status !== 'all' || facets.serviceName || facets.environment !== undefined || facets.kind || facets.minDurationMs != null || facets.maxDurationMs != null ? (
                   <Button
@@ -997,36 +1013,39 @@ export default function ApmTracesPage() {
                 <div>
                   <Typography.Text type="secondary" className="mb-2 block !text-xs font-medium">
                     {t('apm.common.status', '状态')}
-                    {facets.status !== 'all' ? (
+                    {filters.status !== 'all' ? (
                       <span className="ml-1.5 font-semibold text-[var(--color-primary)]">(1)</span>
                     ) : null}
                   </Typography.Text>
                   <div className="flex flex-col gap-1">
                     {([
-                      { value: 'error' as const, label: statusError, count: statusCounts.error, color: 'var(--color-fail)' },
-                      { value: 'ok' as const, label: statusOk, count: statusCounts.ok, color: 'var(--color-success)' },
+                      { value: 'error' as const, label: statusError, color: 'var(--color-fail)' },
+                      { value: 'ok' as const, label: statusOk, color: 'var(--color-success)' },
                     ]).map((item) => (
                       <div
                         key={item.value}
-                        className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 transition-colors ${
-                          facets.status === item.value
+                        className={`flex w-full items-center rounded-lg px-2.5 py-1.5 transition-colors ${
+                          filters.status === item.value
                             ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]'
                             : 'hover:bg-[var(--color-fill-1)]/60'
                         }`}
                       >
                         <Checkbox
-                          checked={facets.status === item.value}
-                          onChange={(event) => setFacets((current) => ({
-                            ...current,
-                            status: event.target.checked ? item.value : 'all',
-                          }))}
+                          checked={filters.status === item.value}
+                          onChange={(event) => {
+                            const next: TraceFilters = {
+                              ...filters,
+                              status: event.target.checked ? item.value : 'all',
+                            };
+                            applyFilters(next);
+                            search(undefined, next);
+                          }}
                         >
                           <span className="inline-flex items-center gap-1.5 text-xs">
                             <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full" style={{ background: item.color }} />
                             {item.label}
                           </span>
                         </Checkbox>
-                        <span className="tabular-nums text-xs text-[var(--color-text-3)]">{item.count}</span>
                       </div>
                     ))}
                   </div>
@@ -1172,28 +1191,18 @@ export default function ApmTracesPage() {
 
             {/* 右侧主内容区域 */}
             <div className="flex min-w-0 flex-col gap-4">
-              {/* 命中统计横幅卡片 */}
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-4 shadow-2xs">
-                <div className="flex flex-wrap items-center gap-6">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-xs font-medium text-[var(--color-text-3)]">
-                      {entityMode === 'spans' ? t('apm.explore.spansPerSec', 'spans/s') : t('apm.explore.hitRate', 'traces/s')}
-                    </span>
-                    <span className="text-xl font-bold tabular-nums text-[var(--color-text-1)]">
-                      {formatNumber(hitRate, hitRate >= 10 ? 1 : 2)}
-                    </span>
-                  </div>
-                  <div className="h-8 w-px bg-[var(--color-border)]" aria-hidden="true" />
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-xs font-medium text-[var(--color-text-3)]">
-                      {t('apm.explore.matchedCount', '命中数量')}
-                    </span>
-                    <div className="flex items-baseline gap-1.5">
-                      <span className="text-xl font-bold tabular-nums text-[var(--color-text-1)]">
-                        {t('apm.explore.hitSummary', '命中 {count} 条 · 窗 {window}', { count: activeItems.length, window: timeRange })}
-                      </span>
-                    </div>
-                  </div>
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs font-medium text-[var(--color-text-3)]">
+                    {t('apm.explore.sampleCount', '本页样本')}
+                  </span>
+                  <span className="text-xl font-bold tabular-nums text-[var(--color-text-1)]">
+                    {t('apm.explore.sampleSummary', '{count} 条（上限 {limit}）· 窗 {window}', {
+                      count: activeItems.length,
+                      limit: SAMPLE_LIMIT,
+                      window: timeRange,
+                    })}
+                  </span>
                 </div>
 
                 <Segmented<ResultMode>
@@ -1205,6 +1214,27 @@ export default function ApmTracesPage() {
                   onChange={setResultMode}
                 />
               </div>
+
+              {filters.status === 'error' || hasHiddenWindowError ? (
+                <Alert
+                  showIcon
+                  type="info"
+                  message={(
+                    <span>
+                      {filters.status === 'error'
+                        ? t('apm.explore.errorSampleHint', '近窗失败样本，最多 {limit} 条。按异常类型归类请到错误分析。', { limit: SAMPLE_LIMIT })
+                        : t('apm.explore.hiddenWindowError', '近窗还有失败样本，不在最近 {limit} 条里。按异常类型归类请到错误分析。', { limit: SAMPLE_LIMIT })}
+                      {' '}
+                      <Link
+                        href={errorsExploreHref(filters, timeRange)}
+                        className="font-medium text-[var(--color-primary)] hover:underline"
+                      >
+                        {t('apm.serviceDetail.openErrorExplore', '在错误分析中打开')}
+                      </Link>
+                    </span>
+                  )}
+                />
+              ) : null}
 
               {resultMode === 'detail' ? (
                 <>

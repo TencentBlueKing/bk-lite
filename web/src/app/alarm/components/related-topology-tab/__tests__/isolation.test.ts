@@ -35,15 +35,14 @@ describe('alarm related topology app-capability isolation', () => {
 
   it('passes a single instUuid into the widget and only shows a selector for multiple centers', () => {
     const tabSource = readSource('../index.tsx');
-    expect(tabSource).toContain('<Widget key={`${instUuid}:${refreshNonce}`} instUuid={instUuid} />');
+    expect(tabSource).toContain('<Widget key={instUuid} instUuid={instUuid} />');
     expect(tabSource).not.toMatch(/instUuid=\{\[/);
     expect(tabSource).toContain('centers.length > 1');
+    expect(tabSource).not.toContain('ReloadOutlined');
   });
 
   it('shows a failed state instead of spinning when the chunk cannot load', () => {
     const tabSource = readSource('../index.tsx');
-    expect(tabSource).toContain('ReloadOutlined');
-    expect(tabSource).toContain('common.refresh');
     expect(tabSource).toContain('common.loadFailed');
   });
 });

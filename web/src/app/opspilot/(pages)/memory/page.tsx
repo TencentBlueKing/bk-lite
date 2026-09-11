@@ -1,7 +1,7 @@
 'use client';
 
 import React, {useCallback, useEffect, useState} from 'react';
-import {useRouter} from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import {Button, Form, Input, Menu, message, Modal} from 'antd';
 import {PlusOutlined} from '@ant-design/icons';
 import PermissionWrapper from '@/components/permission';
@@ -76,7 +76,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({space, onOpen, onEdit, onDelete}
   );
 };
 const MemoryPage = () => {
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const { t } = useTranslation();
   const { fetchMemorySpaces, createMemorySpace, updateMemorySpace, deleteMemorySpace } = useMemoryApi();
   const { selectedGroup } = useUserInfoContext();

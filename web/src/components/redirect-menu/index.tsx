@@ -1,6 +1,7 @@
 'use client';
 import { useEffect } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { usePathname } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import { usePermissions } from '@/context/permissions';
 import { getClientIdFromRoute, PORTAL_HOME_PATH } from '@/utils/route';
 
@@ -11,7 +12,7 @@ const menuBelongsToClient = (menuUrl: string, clientId: string) => {
 };
 
 export default function RedirectToFirstMenu() {
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const pathname = usePathname();
   const { menus } = usePermissions();
 

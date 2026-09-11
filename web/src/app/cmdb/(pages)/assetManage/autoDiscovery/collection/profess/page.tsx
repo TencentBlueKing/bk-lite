@@ -51,7 +51,8 @@ import {
   TaskStatusMap,
 } from '@/app/cmdb/types/autoDiscovery';
 import { useAssetManageStore } from '@/app/cmdb/store';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import { createCollectionListRequest } from './collectionListRequest';
 import { formatCollectReportTime } from './formatCollectReportTime';
 
@@ -134,7 +135,7 @@ const ProfessionalCollection: React.FC = () => {
   const { t } = useTranslation();
   const { locale } = useLocale();
   const collectApi = useCollectApi();
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const editingId = useAssetManageStore((state) => state.editingId);

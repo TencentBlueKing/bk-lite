@@ -15,7 +15,7 @@ import { IncidentTableDataItem } from '@/app/alarm/types/incidents';
 import { FiltersConfig } from '@/app/alarm/types/alarms';
 import { useTranslation } from '@/utils/i18n';
 import { incidentStates } from '@/app/alarm/constants/alarm';
-import { useRouter } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import { useCommon } from '@/app/alarm/context/common';
 import { toIncidentLevelFilterOptions } from '@/app/alarm/utils/incidentLevelFilters';
 import { KeepAlive, useActivate } from 'react-activation';
@@ -23,7 +23,7 @@ import { KeepAlive, useActivate } from 'react-activation';
 const IncidentsPage: React.FC = () => {
   const { getIncidentList } = useIncidentsApi();
   const { t } = useTranslation();
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const { levelListIncident, levelMapIncident } = useCommon();
   const [searchText, setSearchText] = useState('');
   const [data, setData] = useState<IncidentTableDataItem[]>([]);

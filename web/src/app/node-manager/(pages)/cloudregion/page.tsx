@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import useApiClient from '@/utils/request';
 import { Menu, Button, Modal, message } from 'antd';
 import cloudRegionStyle from './index.module.scss';
-import { useRouter } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import { useTranslation } from '@/utils/i18n';
 import useNodeManagerApi from '@/app/node-manager/api';
 import EntityList from '@/components/entity-list';
@@ -23,7 +23,7 @@ const CloudRegion = () => {
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
   const { getCloudList, deleteCloudRegion } = useNodeManagerApi();
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const modalRef = useRef<ModalRef>(null);
   const deployModalRef = useRef<ModalRef>(null);
   const divRef = useRef(null);

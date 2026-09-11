@@ -74,6 +74,8 @@ _AGUI_LIVE_DELTA_CHARS = 64
 # 低于 Next/undici body 空闲超时（约 300s），避免 RUN_STARTED 后长时间无 chunk 被掐流。
 SSE_KEEPALIVE_INTERVAL_SECONDS = 15.0
 STREAM_KEEPALIVE_EVENT_NAME = "stream_keepalive"
+# 与浏览器步骤队列使用相同的单请求容量边界，满载时由 await put 反压生产者。
+SSE_OUTPUT_QUEUE_MAXSIZE = 100
 
 
 def _split_text_deltas(text: str, max_chars: int = _AGUI_LIVE_DELTA_CHARS) -> list[str]:
@@ -221,7 +223,7 @@ async def _merge_async_streams(
         - ("langgraph", chunk) - 来自 LangGraph 的消息块
         - ("browser", event) - 来自浏览器的 SSE 事件字符串
     """
-    output_queue: asyncio.Queue = asyncio.Queue()
+    output_queue: asyncio.Queue = asyncio.Queue(maxsize=SSE_OUTPUT_QUEUE_MAXSIZE)
 
     async def langgraph_consumer():
         """消费 LangGraph 流并推送到输出队列"""
@@ -233,8 +235,10 @@ async def _merge_async_streams(
             # 表现为「问答无输出 / RUN_FINISHED 空跑」。
             await output_queue.put(("langgraph_error", exc))
         finally:
-            # 标记 LangGraph 流结束
-            await output_queue.put(("langgraph_done", None))
+            # 自然结束时通知父流继续排空队列；父流清理已设置 stop_event，
+            # 此时不能向无人消费的满队列写结束标记，否则取消流程会再次阻塞。
+            if not stop_event.is_set():
+                await output_queue.put(("langgraph_done", None))
 
     async def browser_event_consumer():
         """消费浏览器事件队列并推送到输出队列"""
@@ -293,21 +297,21 @@ async def _merge_async_streams(
             raise langgraph_error
 
     finally:
-        # 清理: 设置停止信号并取消任务
+        # 父流结束后统一收口所有子任务，避免断连时继续等待 LangGraph 自然结束。
         stop_event.set()
-        browser_task.cancel()
+        child_tasks = (langgraph_task, browser_task)
+        cancelled_by_cleanup = set()
+        for child_task in child_tasks:
+            if not child_task.done():
+                cancelled_by_cleanup.add(child_task)
+                child_task.cancel()
 
-        # 等待任务完成。旧逻辑 `except Exception: pass` 会吞掉轻量直答/节点内
-        # LLM 失败，表现为 RUN_STARTED→RUN_FINISHED、无正文、llm_call_count=0。
-        try:
-            await langgraph_task
-        except Exception as e:
-            langgraph_error = e
-
-        try:
-            await browser_task
-        except asyncio.CancelledError:
-            pass
+        task_results = await asyncio.gather(*child_tasks, return_exceptions=True)
+        langgraph_result = task_results[0]
+        if isinstance(langgraph_result, asyncio.CancelledError) and langgraph_task not in cancelled_by_cleanup:
+            raise langgraph_result
+        if langgraph_error is None and isinstance(langgraph_result, Exception):
+            langgraph_error = langgraph_result
 
     if langgraph_error is not None:
         raise langgraph_error

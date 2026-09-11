@@ -3,7 +3,7 @@ from typing import Optional
 from rest_framework import viewsets
 from rest_framework.decorators import action
 
-from apps.core.exceptions.base_app_exception import BaseAppException, UnauthorizedException, ValidationAppException
+from apps.core.exceptions.base_app_exception import BaseAppException, ForbiddenException, UnauthorizedException, ValidationAppException
 from apps.core.logger import monitor_logger as logger
 from apps.core.utils.permission_utils import get_permission_rules, permission_filter
 from apps.core.utils.team_utils import get_current_team
@@ -15,6 +15,7 @@ from apps.monitor.services.authorized_metric_query import AuthorizedMetricQueryE
 from apps.monitor.services.flow_conversations import query_flow_conversation_page
 from apps.monitor.services.metrics import Metrics as MetricsService
 from apps.monitor.services.metrics import MetricsQueryBudgetExceeded
+from apps.monitor.utils.dimension import normalize_instance_identity
 from apps.monitor.utils.unit_converter import UnitConverter
 
 
@@ -32,7 +33,9 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
 
     @staticmethod
     def _raise_authorized_query_error(exc: AuthorizedMetricQueryError):
-        if exc.code in {"monitor_instance_forbidden", "query_identity_required"}:
+        if exc.code == "monitor_instance_forbidden":
+            raise ForbiddenException(str(exc))
+        if exc.code == "query_identity_required":
             raise UnauthorizedException(str(exc))
         raise ValidationAppException(str(exc))
 
@@ -264,6 +267,11 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
         if not all([monitor_object_id, metric_id, instance_id]):
             raise BaseAppException("monitor_object_id, metric_id, instance_id are required")
 
+        try:
+            instance_id = normalize_instance_identity(instance_id)["storage_instance_key"]
+        except ValueError as exc:
+            raise ValidationAppException(str(exc)) from exc
+
         current_team = get_current_team(request)
         include_children = request.COOKIES.get("include_children", "0") == "1"
 
@@ -282,7 +290,7 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
                 id_key="id__in",
             ).filter(id=instance_id)
             if not authorized_qs.exists():
-                raise UnauthorizedException("无权访问该监控实例")
+                raise ForbiddenException("无权访问该监控实例")
 
         metric = Metric.objects.filter(id=metric_id, monitor_object_id=monitor_object_id).select_related("monitor_object").first()
         if not metric:

@@ -41,7 +41,7 @@ describe('ApmRouteShell', () => {
     expect(Array.from(shell?.classList ?? []).some((className) => className.startsWith('pt-'))).toBe(false);
   });
 
-  it('在超宽屏限制工作区宽度，同时保留窄屏自适应', () => {
+  it('工作区占满可用宽度，超宽屏不再截断到 1920px', () => {
     const { container } = renderWithApmIntl(
       <ApmRouteShell title="服务" description="服务目录">
         <div>服务工作面</div>
@@ -51,8 +51,8 @@ describe('ApmRouteShell', () => {
     const workArea = container.firstElementChild?.firstElementChild;
 
     expect(workArea?.classList.contains('w-full')).toBe(true);
-    expect(workArea?.classList.contains('mx-auto')).toBe(true);
-    expect(workArea?.classList.contains('max-w-[1920px]')).toBe(true);
+    expect(workArea?.classList.contains('min-w-0')).toBe(true);
+    expect(Array.from(workArea?.classList ?? []).some((className) => className.startsWith('max-w-'))).toBe(false);
   });
 
   it('允许事件工作区关闭二次内边距，由页面分区自行管理留白', () => {
