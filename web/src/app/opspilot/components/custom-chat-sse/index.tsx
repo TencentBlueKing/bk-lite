@@ -931,10 +931,9 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
             onCompositionStart={imeEnterGuard.onCompositionStart}
             onCompositionEnd={imeEnterGuard.onCompositionEnd}
             onKeyDown={(e) => {
-              if (!imeEnterGuard.shouldSubmitOnEnter(e)) {
+              if (!imeEnterGuard.handleEnterKey(e)) {
                 return;
               }
-              e.preventDefault();
               if ((value.trim() || imageList.length > 0) && !loading) {
                 const currentImages = [...imageList];
                 setImageList([]);
