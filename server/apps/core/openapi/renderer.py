@@ -29,6 +29,7 @@ import time
 from urllib.parse import urlparse
 
 from apps.core.logger import openapi_logger as logger
+from apps.core.openapi.allowlist import host_allowed, load_allowlist
 from apps.core.openapi.kv import fetch_entries
 from apps.core.openapi.registry import SERVICE_NAME_RE
 
@@ -100,26 +101,18 @@ def _resolve_ref(ref):
     return None, "unknown ref scheme"
 
 
-def _base_url_allowed(base_url: str) -> bool:
-    allow = [item.strip() for item in os.getenv("OPENAPI_BASEURL_ALLOWLIST", "").split(",") if item.strip()]
-    if not allow:
-        return False
-    if "*" in allow:
-        return True
-    host = (urlparse(base_url).hostname or "").lower()
-    if not host:
-        return False
-    for item in allow:
-        item = item.lower()
-        # 后缀匹配必须落在点边界上，否则 allow=itsm-svc 会放行 evil-itsm-svc
-        suffix = item if item.startswith(".") else "." + item
-        if host == item.lstrip(".") or host.endswith(suffix):
-            return True
-    return False
+def _base_url_allowed(base_url: str, allow) -> bool:
+    return host_allowed(urlparse(base_url).hostname or "", allow)
 
 
-def validate_entry(name: str, entry, internal_services=()):
-    """返回 (normalized_entry | None, reason)。reason 为空串表示有效。"""
+def validate_entry(name: str, entry, internal_services=(), allowlist=None):
+    """返回 (normalized_entry | None, reason)。reason 为空串表示有效。
+
+    allowlist 由调用方在一次渲染中统一加载后传入；缺省时本函数自行加载，
+    仅供单条校验的直接调用方使用（渲染路径不走该分支，避免每条一次查询）。
+    """
+    if allowlist is None:
+        allowlist, _ = load_allowlist()
     if not isinstance(entry, dict):
         return None, "entry is not an object"
     if name.startswith("_") or not SERVICE_NAME_RE.match(name):
@@ -141,7 +134,7 @@ def validate_entry(name: str, entry, internal_services=()):
     base_url = entry.get("base_url")
     if not isinstance(base_url, str) or urlparse(base_url).scheme not in ("http", "https"):
         return None, "invalid base_url"
-    if not _base_url_allowed(base_url):
+    if not _base_url_allowed(base_url, allowlist):
         return None, "base_url not in allowlist"
 
     auth_mode = entry.get("auth_mode")
@@ -208,7 +201,7 @@ def _router_rule(version: str, name: str, paths) -> str:
     return " || ".join(prefixes)
 
 
-def render_traefik_config(entries: dict, internal_services=()):
+def render_traefik_config(entries: dict, internal_services=(), allowlist=None):
     """将注册条目渲染为 Traefik 动态配置（原生格式，供 providers.http）。
 
     返回 (config, report)。KV 字段与 Traefik 参数经本函数显式映射，
@@ -216,6 +209,8 @@ def render_traefik_config(entries: dict, internal_services=()):
     """
     report = {"rendered": [], "skipped": {}, "normalized": {}}
     routers, middlewares, services = {}, {}, {}
+    if allowlist is None:
+        allowlist, _ = load_allowlist()
 
     auth_address = os.getenv("OPENAPI_AUTH_ADDRESS", "")
     if not auth_address:
@@ -242,7 +237,7 @@ def render_traefik_config(entries: dict, internal_services=()):
     }
 
     for name in sorted(entries):
-        normalized, reason = validate_entry(name, entries[name], internal_services)
+        normalized, reason = validate_entry(name, entries[name], internal_services, allowlist)
         if normalized is None:
             report["skipped"][name] = reason
             if reason != "disabled":
@@ -342,8 +337,16 @@ def refresh_snapshot(internal_services=()):
         if started < _snapshot["fetch_started_at"]:
             logger.warning("openapi_registry 乱序回源结果被丢弃（发起早于当前快照数据）")
             return _snapshot["config"]
+
+        allowlist, db_ok = load_allowlist()
+        if not db_ok and _snapshot["config"] is not None:
+            # 仅 env 一半的清单会让登记在 DB 的主机整批落选，已在线的路由被
+            # 摘除；宁可沿用上一份配置等 DB 恢复，也不下发收缩过的清单
+            logger.warning("openapi allowlist DB 不可达，沿用最近一次成功快照")
+            return _snapshot["config"]
+
         _snapshot["fetch_started_at"] = started
-        config, report = render_traefik_config(entries, internal_services)
+        config, report = render_traefik_config(entries, internal_services, allowlist)
         _snapshot["config"] = config
         _snapshot["entries"] = entries
         _snapshot["normalized"] = dict(report["normalized"])

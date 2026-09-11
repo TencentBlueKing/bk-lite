@@ -132,7 +132,7 @@ def test_jetstream_and_durable_consumer_are_bounded_and_ack_explicit():
     assert '--subjects "apm.traces.>"' in compose
     assert "--max-bytes" in compose
     assert "--max-age" in compose
-    assert "--max-msg-size" in compose
+    assert '--max-msg-size "${APM_NATS_MAX_MESSAGE_BYTES:-8388608}"' in compose
     assert "--dupe-window" in compose
     assert "--ack explicit" in compose
     assert '--wait "${APM_NATS_ACK_WAIT:-60s}"' in compose
@@ -149,6 +149,7 @@ def test_nats_accounts_constrain_regional_publish_and_system_ack_permissions():
     assert 'subscribe: "_INBOX.>"' in config
     assert '"$JS.API.CONSUMER.MSG.NEXT.APM_TRACES.*"' in config
     assert '"$JS.ACK.APM_TRACES.>"' in config
+    assert "max_payload: 8MB" in config
     assert "max_file_store: 1GB" in config
 
 

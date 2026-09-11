@@ -32,7 +32,7 @@ BK-Lite 统一网关把对外 API 收口到 `https://<平台地址>/openapi/v1/<
 | --- | --- |
 | 服务可达 | 被接入服务与 BK-Lite 在同一 compose / K8s 网络内，Traefik 能以 `base_url` 直连 |
 | 服务名 | 满足 `^[a-z][a-z0-9-]{0,31}$`；下划线开头为网关保留（`_me`、`_docs`、`_auth`、`_provider`） |
-| 允许清单 | `base_url` 的主机必须落在 `OPENAPI_BASEURL_ALLOWLIST` 内，**缺省为空即拒绝一切**（fail-closed） |
+| 允许清单 | `base_url` 的主机必须在允许清单内（DB 侧用 `manage.py openapi_allowlist` 维护，或存量的 `OPENAPI_BASEURL_ALLOWLIST` 环境变量），**缺省为空即拒绝一切**（fail-closed） |
 | 身份传递方式 | 二选一，见第 3 节 |
 | 网络封锁 | 接入后必须封锁该服务的直连端口，否则统一认证 / 审计 / 限流可被绕过 |
 | 客户端工具 | 操作机需有 `docker compose`（v2 语法）、`jq`、`curl`；`wxc` 需为**含 `openapi` 子命令的版本**（`wxc openapi --help` 能出帮助即可），离线环境随部署包分发 |
@@ -71,10 +71,27 @@ BK-Lite 统一网关把对外 API 收口到 `https://<平台地址>/openapi/v1/<
 
 在部署目录的 `.env` 中配置，然后重建 server 容器：
 
+**允许清单**（`base_url` 的主机必须在清单内，否则条目被渲染器跳过）有两处来源，
+取并集。新增主机走 DB，**不需要重建 server**：
+
+```bash
+# 查看两侧清单
+docker compose exec server python manage.py openapi_allowlist list
+
+# 新增 / 移除；下一个拉取周期内生效
+docker compose exec server python manage.py openapi_allowlist add itsm-svc
+docker compose exec server python manage.py openapi_allowlist remove itsm-svc
+```
+
+主机名支持前导点表示按点边界的后缀匹配（`.internal` 放行 `svc.internal`）；
+`itsm-svc` 不会放行 `evil-itsm-svc`。单独的 `*` 放行一切，仅限排障，勿用于生产。
+
+环境变量 `OPENAPI_BASEURL_ALLOWLIST` 为存量方式，改动需重建 server，已配置的继续有效：
+
 ```bash
 cd /opt/bk-lite/deploy/docker-compose-ha   # 单机栈为 .../docker-compose
 
-# 允许清单：逗号分隔的主机名或 IP；后缀匹配按点边界（itsm-svc 不会放行 evil-itsm-svc）
+# 逗号分隔的主机名或 IP
 echo 'OPENAPI_BASEURL_ALLOWLIST=itsm-svc,10.10.24.11' >> .env
 
 # 共享密钥（信任头模式用）。变量名自定，注册条目里以 env: 引用它
@@ -383,7 +400,8 @@ docker logs --since 5m <traefik容器> 2>&1 | grep -i "provider error"
 | 现象 | 原因 | 处理 |
 | --- | --- | --- |
 | 步骤 1 中 `routers` 为空 | 条目被跳过 | 查 server 日志中 `openapi_registry 条目 X 被跳过：<原因>` |
-| 跳过原因 `base_url not in allowlist` | 允许清单未含该主机 | 补 `OPENAPI_BASEURL_ALLOWLIST` 并重建 server |
+| 跳过原因 `base_url not in allowlist` | 允许清单未含该主机 | `manage.py openapi_allowlist add <host>`，无需重建 server |
+| 日志 `openapi allowlist DB 不可达，沿用最近一次成功快照` | 渲染时数据库不可用 | 清单读不全时不下发收缩后的配置；DB 恢复后下次拉取自动生效 |
 | 跳过原因 `shared_secret_ref unresolvable (env var unset)` | server 容器内没有该 env | 见步骤 1 方式 B 的透传配置 |
 | 跳过原因 `... unresolvable (credential not_found / disabled)` | 凭据 ID 写错、已删除或已禁用 | 到系统管理 → 凭据核对 ID 与状态 |
 | 跳过原因 `... unresolvable (credential ambiguous_field)` | 所引用凭据类型有多个 secret 字段 | 改用 `credential:<ID>#<字段ID>` |

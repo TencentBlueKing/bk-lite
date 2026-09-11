@@ -3,7 +3,7 @@ from apps.apm.adapters.memory import (
     InMemoryNotificationDispatcher,
     InMemoryTraceStore,
 )
-from apps.apm.adapters.errors import TelemetryStoreUnavailable
+from apps.apm.adapters.errors import TelemetryQueryTooLarge, TelemetryStoreUnavailable, telemetry_error_payload
 from apps.apm.adapters.notifications import SystemMgmtNotificationDispatcher
 from apps.apm.adapters.victoriatraces import (
     VictoriaTracesTelemetryStore,
@@ -15,7 +15,9 @@ __all__ = [
     "SystemMgmtNotificationDispatcher",
     "InMemoryMetricStore",
     "InMemoryTraceStore",
+    "TelemetryQueryTooLarge",
     "TelemetryStoreUnavailable",
+    "telemetry_error_payload",
     "VictoriaTracesTelemetryStore",
     "VictoriaTracesTraceStore",
 ]
