@@ -5,7 +5,7 @@ import { Button, Col, Drawer, Form, Input, Row, Select, Spin, Tag, message } fro
 import { ArrowRightOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useLocale } from '@/context/locale';
-import { useRouter } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import PermissionWrapper from '@/components/permission';
 import { useInstanceApi, useModelApi } from '@/app/cmdb/api';
 import { useUserInfoContext } from '@/context/userInfo';
@@ -66,7 +66,7 @@ const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({
   const { t } = useTranslation();
   const { locale } = useLocale();
   const isZh = locale.toLowerCase().startsWith('zh');
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const { getModelAttrList } = useModelApi();
   const { getInstanceDetail } = useInstanceApi();
   const { flatGroups } = useUserInfoContext();

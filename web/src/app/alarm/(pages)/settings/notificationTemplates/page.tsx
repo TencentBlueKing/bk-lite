@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Input, Modal, Space, Tag, Tooltip, message } from 'antd';
-import { useRouter } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import CustomTable from '@/components/custom-table';
 import Introduction from '@/components/introduction';
 import PermissionWrapper from '@/components/permission';
@@ -18,7 +18,7 @@ import {
 
 export default function NotificationTemplatesPage() {
   const { t } = useTranslation();
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const [messageApi, messageContextHolder] = message.useMessage();
   const [modalApi, modalContextHolder] = Modal.useModal();
   const { convertToLocalizedTime } = useLocalizedTime();

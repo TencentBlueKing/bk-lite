@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import dynamic from 'next/dynamic';
-import { useRouter } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import DOMPurify from 'dompurify';
 import MarkdownIt from 'markdown-it';
 import { Alert, Button, Card, Form, Input, Modal, Select, Space, Spin, Tabs, Tag, Typography, message } from 'antd';
@@ -72,7 +72,7 @@ const getApiError = (error: unknown) => {
 
 export default function TemplateEditor({ templateId }: TemplateEditorProps) {
   const { t } = useTranslation();
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const [form] = Form.useForm();
   const [messageApi, messageContextHolder] = message.useMessage();
   const api = useSettingApi();
