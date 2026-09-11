@@ -447,8 +447,8 @@ export default function ApmHomePage() {
                 bodyMinHeight={188}
               >
                 {healthData && healthData.total > 0 ? (
-                  <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-[180px_1fr]">
-                    <div className="relative mx-auto h-[180px] w-[180px]">
+                  <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-[180px_1fr] 3xl:grid-cols-[220px_1fr]">
+                    <div className="relative mx-auto h-[180px] w-[180px] 3xl:h-[220px] 3xl:w-[220px]">
                       <DonutChart
                         data={healthData.buckets
                           .filter((bucket) => bucket.count > 0)
