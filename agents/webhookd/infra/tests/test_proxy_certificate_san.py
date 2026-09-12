@@ -80,6 +80,36 @@ def _generate_proxy_archive(proxy_address, certificate_authority):
     return tarfile.open(fileobj=io.BytesIO(archive_bytes), mode="r:gz")
 
 
+def test_proxy_archive_traefik_startup_flags(certificate_authority):
+    with _generate_proxy_archive("proxy.example.com", certificate_authority) as archive:
+        compose = yaml.safe_load(archive.extractfile("./docker-compose.yaml"))
+
+    command = compose["services"]["traefik"]["command"]
+    assert not any(flag.startswith("--providers.file.templating") for flag in command)
+    assert "--providers.file.filename=/etc/traefik/dynamic.yml" in command
+    assert "--providers.file.watch=true" in command
+
+
+def test_proxy_archive_upstream_template_uses_injected_environment(certificate_authority):
+    with _generate_proxy_archive("proxy.example.com", certificate_authority) as archive:
+        compose = yaml.safe_load(archive.extractfile("./docker-compose.yaml"))
+        dynamic = yaml.safe_load(archive.extractfile("./conf/traefik/dynamic.yml"))
+        generated_env = dict(
+            line.split("=", 1)
+            for line in archive.extractfile("./.env").read().decode().splitlines()
+            if line and not line.startswith("#")
+        )
+
+    injected = dict(item.split("=", 1) for item in compose["services"]["traefik"]["environment"])
+    upstream = dynamic["http"]["services"]["backend"]["loadBalancer"]["servers"][0]["url"]
+    template = re.fullmatch(r'\{\{\s*env "([^"]+)"\s*\}\}', upstream)
+    assert template is not None
+    assert template[1] in injected, "上游模板必须读取 Traefik 容器实际注入的变量"
+    source = re.fullmatch(r"\$\{([^}]+)\}", injected[template[1]])
+    assert source is not None
+    assert generated_env[source[1]] == "https://server.example.com"
+
+
 @pytest.mark.parametrize(
     ("proxy_address", "expected_dns", "expected_ip"),
     [
