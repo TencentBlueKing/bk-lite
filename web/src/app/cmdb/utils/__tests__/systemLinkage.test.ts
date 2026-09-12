@@ -8,6 +8,11 @@ import {
   pickBatchPushCounts,
   isMonitorSold,
   parseMonitorBindConflict,
+  isSystemLinkAttr,
+  resolveListDisplayFieldKeys,
+  buildExternalIdLines,
+  displayExternalIdValue,
+  EXTERNAL_ID_COLUMN_KEY,
 } from '@/app/cmdb/utils/systemLinkage';
 
 describe('systemLinkage', () => {
@@ -15,6 +20,43 @@ describe('systemLinkage', () => {
     expect(showNodeId('host')).toBe(true);
     expect(showNodeId('switch')).toBe(false);
     expect(showNodeId('mysql')).toBe(false);
+  });
+
+  it('treats node_id and monitor_id as system link attrs', () => {
+    expect(isSystemLinkAttr({ attr_id: 'node_id' })).toBe(true);
+    expect(isSystemLinkAttr({ attr_id: 'monitor_id' })).toBe(true);
+    expect(isSystemLinkAttr({ attr_id: 'ip', is_system_link: true })).toBe(true);
+    expect(isSystemLinkAttr({ attr_id: 'ip' })).toBe(false);
+  });
+
+  it('keeps the external id column out of default list fields', () => {
+    const attrs = [
+      { attr_id: 'inst_name' },
+      { attr_id: 'ip' },
+      { attr_id: 'node_id' },
+      { attr_id: 'monitor_id', is_system_link: true },
+    ];
+    expect(resolveListDisplayFieldKeys(undefined, attrs)).toEqual(['inst_name', 'ip']);
+    expect(resolveListDisplayFieldKeys(['inst_name', 'node_id', EXTERNAL_ID_COLUMN_KEY], attrs)).toEqual([
+      'inst_name',
+      EXTERNAL_ID_COLUMN_KEY,
+    ]);
+    expect(resolveListDisplayFieldKeys([], attrs)).toEqual([]);
+  });
+
+  it('builds host external ids as node then monitor', () => {
+    expect(buildExternalIdLines('host', {
+      node_id: '  node-1  ',
+      monitor_id: "('1_os_10.11.27.147',)",
+    })).toEqual([
+      { key: 'node_id', value: 'node-1' },
+      { key: 'monitor_id', value: "('1_os_10.11.27.147',)" },
+    ]);
+    expect(buildExternalIdLines('switch', { node_id: 'n-1', monitor_id: 'm-1' })).toEqual([
+      { key: 'monitor_id', value: 'm-1' },
+    ]);
+    expect(displayExternalIdValue('')).toBe('--');
+    expect(displayExternalIdValue('m-1')).toBe('m-1');
   });
 
   it('allows sync on mapped models', () => {

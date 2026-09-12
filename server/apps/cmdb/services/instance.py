@@ -10,6 +10,7 @@ from apps.cmdb.constants.constants import (
     VIEW,
 )
 from apps.cmdb.constants.field_constraints import TAG_ATTR_ID, TAG_MODE_FREE
+from apps.cmdb.constants.monitor_link import CMDB_MONITOR_SYNC_MODEL_IDS
 from apps.cmdb.display_field import DisplayFieldHandler
 from apps.cmdb.display_field.constants import (
     DISPLAY_FIELD_TYPES,
@@ -985,7 +986,7 @@ class InstanceManage(object):
                     "[InstanceManage] post-create auto_relation hook failed cmdb_id=%s",
                     result.get("_id"),
                 )
-            if model_id == "host":
+            if model_id in CMDB_MONITOR_SYNC_MODEL_IDS:
                 try:
                     result = InstanceManage._best_effort_notify_peers_on_host_create(result, operator=operator, allowed_org_ids=allowed_org_ids)
                 except Exception:
@@ -1002,7 +1003,7 @@ class InstanceManage(object):
         operator: str,
         allowed_org_ids: list | None,
     ) -> dict:
-        """主机新建 IoC 钩子：通知节点 + 监控（best-effort，不阻断创建）。"""
+        """可关联模型新建 IoC 钩子：通知监控（best-effort，不阻断创建）；主机额外通知节点。"""
         try:
             from apps.cmdb.services.module_push import CmdbToMonitorPushService
 
@@ -1184,6 +1185,24 @@ class InstanceManage(object):
             operator=operator,
         )
         schedule_instance_auto_relation_reconcile([item["_id"] for item in created])
+        if model_id in CMDB_MONITOR_SYNC_MODEL_IDS:
+            notified = []
+            for item in created:
+                try:
+                    notified.append(
+                        InstanceManage._best_effort_notify_peers_on_host_create(
+                            item,
+                            operator=operator,
+                            allowed_org_ids=allowed_org_ids,
+                        )
+                    )
+                except Exception:
+                    logger.exception(
+                        "[InstanceManage] post-create IoC hook failed cmdb_id=%s",
+                        (item or {}).get("_id"),
+                    )
+                    notified.append(item)
+            return notified
         return created
 
     @staticmethod

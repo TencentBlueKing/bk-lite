@@ -72,6 +72,41 @@ def test_instance_create(fake_graph, patch_side_effects):
 
 
 @pytest.mark.django_db
+def test_instance_create_notifies_peers_for_sync_models(fake_graph, patch_side_effects, monkeypatch):
+    fake_graph(
+        MODULE,
+        query_entity=([], 0),
+        create_entity={"_id": 9, "inst_uuid": HOST_UUID, "model_id": "mysql", "inst_name": "db1"},
+    )
+    seen = []
+
+    def _notify(result, *, operator, allowed_org_ids):
+        seen.append((result.get("model_id"), operator, list(allowed_org_ids or [])))
+        return {**result, "monitor_id": "m-mysql"}
+
+    monkeypatch.setattr(f"{MODULE}.InstanceManage._best_effort_notify_peers_on_host_create", _notify)
+    out = InstanceManage.instance_create("mysql", {"inst_name": "db1"}, "admin", allowed_org_ids=[1])
+    assert seen == [("mysql", "admin", [1])]
+    assert out["monitor_id"] == "m-mysql"
+
+
+@pytest.mark.django_db
+def test_instance_create_skips_peer_notify_for_non_sync_models(fake_graph, patch_side_effects, monkeypatch):
+    fake_graph(
+        MODULE,
+        query_entity=([], 0),
+        create_entity={"_id": 9, "inst_uuid": HOST_UUID, "model_id": "biz", "inst_name": "app1"},
+    )
+    monkeypatch.setattr(
+        f"{MODULE}.InstanceManage._best_effort_notify_peers_on_host_create",
+        lambda *a, **k: pytest.fail("非关联模型不得探监控"),
+    )
+    out = InstanceManage.instance_create("biz", {"inst_name": "app1"}, "admin", allowed_org_ids=[1])
+    assert out["_id"] == 9
+    assert "monitor_id" not in out or not out.get("monitor_id")
+
+
+@pytest.mark.django_db
 def test_instance_create_rejects_client_supplied_uuid(fake_graph, patch_side_effects):
     fake_graph(MODULE, query_entity=([], 0))
     with pytest.raises(BaseAppException, match="inst_uuid 是系统保留字段"):

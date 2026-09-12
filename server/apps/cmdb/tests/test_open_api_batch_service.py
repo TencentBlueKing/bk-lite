@@ -555,6 +555,7 @@ def test_batch_update_reports_incomplete_graph_result_inst_id_before_side_effect
     mock_schedule.assert_not_called()
 
 
+@patch("apps.cmdb.services.instance.InstanceManage._best_effort_notify_peers_on_host_create")
 @patch("apps.cmdb.services.instance.schedule_instance_auto_relation_reconcile")
 @patch("apps.cmdb.services.instance.batch_create_change_record")
 @patch("apps.cmdb.services.instance.GraphClient")
@@ -566,10 +567,12 @@ def test_batch_create_writes_side_effects_after_all_graph_rows_succeed(
     mock_graph,
     mock_audit,
     mock_schedule,
+    mock_notify,
 ):
     mock_unique_rules.return_value.unique_rules = []
     mock_unique_rules.return_value.attrs_by_id = {}
     mock_attrs.return_value = []
+    mock_notify.side_effect = lambda result, **kwargs: result
     graph = mock_graph.return_value.__enter__.return_value
     graph.query_entity.return_value = ([], 0)
     graph.batch_create_entity.return_value = [
@@ -593,3 +596,4 @@ def test_batch_create_writes_side_effects_after_all_graph_rows_succeed(
     assert [item["_id"] for item in result] == [1, 2]
     mock_audit.assert_called_once()
     mock_schedule.assert_called_once_with([1, 2])
+    assert mock_notify.call_count == 2

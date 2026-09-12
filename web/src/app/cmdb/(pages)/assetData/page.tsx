@@ -41,6 +41,11 @@ import {
   isMonitorSold,
   pickBatchPushCounts,
   resolveBatchPushSummaryLevel,
+  isSystemLinkAttr,
+  resolveListDisplayFieldKeys,
+  buildExternalIdLines,
+  displayExternalIdValue,
+  EXTERNAL_ID_COLUMN_KEY,
 } from '@/app/cmdb/utils/systemLinkage';
 import {
   ensureCollectTaskMap,
@@ -388,8 +393,8 @@ const AssetDataContent = () => {
     exportRef.current?.showModal({
       title,
       modelId,
-      columns,
-      displayFieldKeys,
+      columns: columns.filter((col) => col.key !== EXTERNAL_ID_COLUMN_KEY),
+      displayFieldKeys: displayFieldKeys.filter((key) => key !== EXTERNAL_ID_COLUMN_KEY),
       selectedKeys,
       exportType,
       tableData,
@@ -642,7 +647,7 @@ const AssetDataContent = () => {
       getInstanceShowFieldDetail(id),
     ])
       .then(([attrList, instData, displayFields]) => {
-        const fieldKeys = displayFields?.show_fields || attrList.map((item: AttrFieldType) => item.attr_id);
+        const fieldKeys = resolveListDisplayFieldKeys(displayFields?.show_fields, attrList);
         setDisplayFieldKeys(fieldKeys);
         setPropertyList(attrList);
         setTableData(instData.insts);
@@ -1044,7 +1049,11 @@ const AssetDataContent = () => {
   useEffect(() => {
     if (!propertyList.length) return;
 
-    const attrList = getAssetColumns({ attrList: propertyList, userList, t });
+    const attrList = getAssetColumns({
+      attrList: propertyList.filter((item) => !isSystemLinkAttr(item)),
+      userList,
+      t,
+    });
     const columnsWithFollow = attrList.map((column) => {
       if (column.key !== 'inst_name') return column;
 
@@ -1078,6 +1087,50 @@ const AssetDataContent = () => {
         },
       };
     });
+    const externalIdColumn: ColumnItem | null = canSyncMonitor(modelId)
+      ? {
+        title: t('Model.systemLinkageExternalId'),
+        key: EXTERNAL_ID_COLUMN_KEY,
+        dataIndex: EXTERNAL_ID_COLUMN_KEY,
+        width: 100,
+        ellipsis: { showTitle: false },
+        onHeaderCell: () => ({ className: 'w-[100px] max-w-[100px]' }),
+        onCell: () => ({ className: 'w-[100px] max-w-[100px] overflow-hidden' }),
+        render: (_: unknown, record: any) => {
+          const lines = buildExternalIdLines(modelId, record);
+          const lineLabel = (key: string) =>
+            key === 'node_id'
+              ? t('Model.systemLinkageNodeId')
+              : t('Model.systemLinkageMonitorId');
+          return (
+            <Tooltip
+              title={
+                <div className="text-xs leading-5">
+                  {lines.map((line) => (
+                    <div key={line.key}>
+                      {lineLabel(line.key)}: {displayExternalIdValue(line.value)}
+                    </div>
+                  ))}
+                </div>
+              }
+            >
+              <div className="block w-[100px] max-w-[100px] overflow-hidden cursor-default">
+                {lines.map((line, index) => (
+                  <div
+                    key={line.key}
+                    className={`overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[12px] leading-[18px] ${
+                      index > 0 ? 'text-[var(--color-text-3)]' : ''
+                    }`}
+                  >
+                    {displayExternalIdValue(line.value)}
+                  </div>
+                ))}
+              </div>
+            </Tooltip>
+          );
+        },
+      }
+      : null;
     const actionColumn: ColumnItem = {
       title: t('common.actions'),
       key: 'action',
@@ -1112,7 +1165,7 @@ const AssetDataContent = () => {
         </>
       ),
     };
-    const tableColumns = [...columnsWithFollow, actionColumn];
+    const tableColumns = [...columnsWithFollow, ...(externalIdColumn ? [externalIdColumn] : []), actionColumn];
     setColumns(tableColumns);
 
     const orderedColumns = tableColumns

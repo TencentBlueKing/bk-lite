@@ -85,6 +85,59 @@ def test_cmdb_ingest_create_hook_notifies_peers_without_creating_monitor_asset(m
 
 
 @pytest.mark.django_db
+def test_create_hook_probes_monitor_for_switch_without_notifying_node(mocker):
+    monitor_ingest = mocker.patch("apps.cmdb.services.module_push.Monitor").return_value.ingest_from_source
+    monitor_ingest.return_value = {"id": "('sw-1',)", "created": False, "ignored": False, "conflict": False}
+    node_ingest = mocker.patch("apps.node_mgmt.services.module_ingest.NodeModuleIngestService.ingest")
+    mocker.patch(
+        "apps.cmdb.services.module_push.CmdbToMonitorPushService._backfill_monitor_id",
+        side_effect=lambda instance, monitor_id, **kwargs: {**instance, "monitor_id": monitor_id},
+    )
+
+    result = CmdbToMonitorPushService.best_effort_notify_on_host_create(
+        {
+            "_id": 21,
+            "inst_uuid": INST_UUID,
+            "model_id": "switch",
+            "inst_name": "sw-21",
+            "ip_addr": "10.0.0.21",
+            "organization": [1],
+        },
+        operator="alice",
+        allowed_org_ids=[1],
+    )
+    assert node_ingest.call_count == 0
+    assert monitor_ingest.call_count == 1
+    assert monitor_ingest.call_args.kwargs["raw"]["model_id"] == "switch"
+    assert result["monitor_id"] == "('sw-1',)"
+
+
+@pytest.mark.django_db
+def test_create_hook_skips_quietly_when_monitor_not_found(mocker):
+    monitor_ingest = mocker.patch("apps.cmdb.services.module_push.Monitor").return_value.ingest_from_source
+    monitor_ingest.return_value = {"id": None, "created": False, "ignored": True}
+    node_ingest = mocker.patch("apps.node_mgmt.services.module_ingest.NodeModuleIngestService.ingest")
+    backfill = mocker.patch("apps.cmdb.services.module_push.CmdbToMonitorPushService._backfill_monitor_id")
+
+    result = CmdbToMonitorPushService.best_effort_notify_on_host_create(
+        {
+            "_id": 22,
+            "inst_uuid": INST_UUID,
+            "model_id": "mysql",
+            "inst_name": "db-22",
+            "ip_addr": "10.0.0.22",
+            "organization": [1],
+        },
+        operator="alice",
+        allowed_org_ids=[1],
+    )
+    assert node_ingest.call_count == 0
+    assert monitor_ingest.call_count == 1
+    backfill.assert_not_called()
+    assert result.get("monitor_id") in (None, "")
+
+
+@pytest.mark.django_db
 def test_explicit_push_with_node_id_merges_on_monitor(mocker, host_object, host_plugin):
     mocker.patch(
         "apps.cmdb.services.module_push.InstanceManage.query_entity_by_uuid",

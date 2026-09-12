@@ -33,6 +33,55 @@ export const showNodeId = (modelId: string) => modelId === 'host';
 
 export const canSyncMonitor = (modelId: string) => MONITOR_SYNC_MODEL_IDS.has(modelId);
 
+export const EXTERNAL_ID_COLUMN_KEY = 'external_id';
+export const EXTERNAL_ID_EMPTY = '--';
+const SYSTEM_LINK_ATTR_IDS = new Set(['node_id', 'monitor_id']);
+
+export const isSystemLinkAttr = (attr: {
+  attr_id?: string;
+  is_system_link?: unknown;
+}) => Boolean(attr.is_system_link) || SYSTEM_LINK_ATTR_IDS.has(String(attr.attr_id || ''));
+
+export const isSystemLinkAttrId = (key: string) => SYSTEM_LINK_ATTR_IDS.has(key);
+
+export const resolveListDisplayFieldKeys = (
+  saved: string[] | undefined | null,
+  attrList: { attr_id: string; is_system_link?: unknown }[],
+) => {
+  if (Array.isArray(saved)) {
+    return saved.filter((key) => !isSystemLinkAttrId(key));
+  }
+  return attrList
+    .filter((item) => !isSystemLinkAttr(item))
+    .map((item) => item.attr_id);
+};
+
+export type ExternalIdLineKey = 'node_id' | 'monitor_id';
+
+export interface ExternalIdLine {
+  key: ExternalIdLineKey;
+  value: string;
+}
+
+const asLinkId = (value: unknown) =>
+  typeof value === 'string' ? value.trim() : value == null || value === '' ? '' : String(value).trim();
+
+export const buildExternalIdLines = (
+  modelId: string,
+  record: { node_id?: unknown; monitor_id?: unknown },
+): ExternalIdLine[] => {
+  const monitor = { key: 'monitor_id' as const, value: asLinkId(record.monitor_id) };
+  if (showNodeId(modelId)) {
+    return [
+      { key: 'node_id', value: asLinkId(record.node_id) },
+      monitor,
+    ];
+  }
+  return [monitor];
+};
+
+export const displayExternalIdValue = (value: string) => value || EXTERNAL_ID_EMPTY;
+
 export const isMonitorSold = (clientData: ClientData[] | undefined | null) => {
   if (!clientData?.length) return true;
   return clientData.some((item) => item.name === 'monitor');
