@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import informationList from './list.module.scss';
-import { Form, Button, Collapse, Descriptions, message, Select, Tooltip } from 'antd';
+import { Form, Button, Collapse, Descriptions, message, Modal, Select, Tooltip } from 'antd';
 import {
   deepClone,
   getFieldItem,
@@ -27,6 +27,9 @@ import {
   UpOutlined,
   QuestionCircleOutlined,
   SyncOutlined,
+  LinkOutlined,
+  DisconnectOutlined,
+  SwapOutlined,
 } from '@ant-design/icons';
 import { useInstanceApi } from '@/app/cmdb/api';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
@@ -39,6 +42,8 @@ import {
   isMonitorSold,
   resolveMonitorLinkMessage,
 } from '@/app/cmdb/utils/systemLinkage';
+import MonitorBindModal from './MonitorBindModal';
+import { HandledRequestError } from '@/utils/request';
 
 const { Panel } = Collapse;
 const InfoList: React.FC<AssetDataFieldProps> = ({
@@ -56,11 +61,13 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
   const [editScenario, setEditScenario] = useState<string>('ordinary_attribute_change');
   const [collapsedTableFields, setCollapsedTableFields] = useState<Record<string, boolean>>({});
   const [isSyncingMonitor, setIsSyncingMonitor] = useState(false);
+  const [isUnbindingMonitor, setIsUnbindingMonitor] = useState(false);
+  const [bindModalOpen, setBindModalOpen] = useState(false);
   const { t } = useTranslation();
   const { flatGroups } = useUserInfoContext();
   const { clientData } = useClientData();
 
-  const { updateInstance, getInstanceProxys, pushToMonitor } = useInstanceApi();
+  const { updateInstance, getInstanceProxys, pushToMonitor, unbindMonitor } = useInstanceApi();
 
   const searchParams = useSearchParams();
   const modelId: string = searchParams.get('model_id') || '';
@@ -70,6 +77,10 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
     proxy_id: String(item.proxy_id),
     proxy_name: item.proxy_name,
   }));
+
+  useEffect(() => {
+    setBindModalOpen(false);
+  }, [instUuid]);
 
   useEffect(() => {
     if (['host', 'subnet'].includes(modelId)) {
@@ -578,6 +589,41 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
     }
   };
 
+  const isMonitorLinked = Boolean(String(instDetail?.monitor_id || '').trim());
+  const canOperateMonitor =
+    canSyncMonitor(modelId) && isMonitorSold(clientData);
+  const showManualBind = canOperateMonitor && !isMonitorLinked;
+  const showRebind = canOperateMonitor && isMonitorLinked;
+  const showUnbind = canOperateMonitor && isMonitorLinked;
+
+  const handleUnbindMonitor = () => {
+    Modal.confirm({
+      centered: true,
+      title: t('Model.systemLinkageUnbindConfirm'),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      onOk: async () => {
+        setIsUnbindingMonitor(true);
+        try {
+          await unbindMonitor(instUuid);
+          message.success(t('Model.systemLinkageUnbindSuccess'));
+          onsuccessEdit?.();
+        } catch (error) {
+          if (!(error instanceof HandledRequestError)) {
+            message.error(t('Model.systemLinkageUnbindFailed'));
+          }
+        } finally {
+          setIsUnbindingMonitor(false);
+        }
+      },
+    });
+  };
+
+  const handleBindSuccess = () => {
+    setBindModalOpen(false);
+    onsuccessEdit?.();
+  };
+
   return (
     <div>
       {hasEditableField && (
@@ -677,19 +723,49 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
             <div className="text-sm font-medium text-[var(--color-text-1)]">
               {t('Model.systemLinkage')}
             </div>
-            {canSyncMonitor(modelId) && isMonitorSold(clientData) && (
+            {canOperateMonitor && (
               <PermissionWrapper
                 requiredPermissions={['Edit']}
                 instPermissions={instDetail.permission}
               >
-                <Button
-                  size="small"
-                  icon={<SyncOutlined />}
-                  loading={isSyncingMonitor}
-                  onClick={handleSyncMonitor}
-                >
-                  {t('Model.systemLinkageSync')}
-                </Button>
+                <div className="flex items-center gap-2">
+                  {showManualBind && (
+                    <Button
+                      size="small"
+                      icon={<LinkOutlined />}
+                      onClick={() => setBindModalOpen(true)}
+                    >
+                      {t('Model.systemLinkageManualBind')}
+                    </Button>
+                  )}
+                  {showRebind && (
+                    <Button
+                      size="small"
+                      icon={<SwapOutlined />}
+                      onClick={() => setBindModalOpen(true)}
+                    >
+                      {t('Model.systemLinkageRebind')}
+                    </Button>
+                  )}
+                  {showUnbind && (
+                    <Button
+                      size="small"
+                      icon={<DisconnectOutlined />}
+                      loading={isUnbindingMonitor}
+                      onClick={handleUnbindMonitor}
+                    >
+                      {t('Model.systemLinkageUnbind')}
+                    </Button>
+                  )}
+                  <Button
+                    size="small"
+                    icon={<SyncOutlined />}
+                    loading={isSyncingMonitor}
+                    onClick={handleSyncMonitor}
+                  >
+                    {t('Model.systemLinkageSync')}
+                  </Button>
+                </div>
               </PermissionWrapper>
             )}
           </div>
@@ -699,6 +775,13 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
           <Descriptions bordered size="small" column={1} items={systemLinkageItems} />
         </div>
       )}
+      <MonitorBindModal
+        open={bindModalOpen}
+        instUuid={instUuid}
+        alreadyLinked={isMonitorLinked}
+        onCancel={() => setBindModalOpen(false)}
+        onSuccess={handleBindSuccess}
+      />
     </div>
   );
 };

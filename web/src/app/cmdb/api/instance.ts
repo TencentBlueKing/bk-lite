@@ -100,6 +100,25 @@ export const useInstanceApi = () => {
   const pushToMonitor = (instUuid: string) =>
     post(`/cmdb/api/instance/${instUuid}/push_to_monitor/`);
 
+  const batchPushToMonitor = (instUuids: string[]) =>
+    post('/cmdb/api/instance/batch_push_to_monitor/', { inst_uuids: instUuids });
+
+  const listMonitorBindCandidates = (instUuid: string, q = '') =>
+    get(`/cmdb/api/instance/${instUuid}/monitor_bind_candidates/`, {
+      params: { q },
+    });
+
+  const bindMonitor = (
+    instUuid: string,
+    params: { monitor_id: string; confirm?: boolean },
+  ) =>
+    post(`/cmdb/api/instance/${instUuid}/bind_monitor/`, params, {
+      suppressErrorNotification: true,
+    });
+
+  const unbindMonitor = (instUuid: string) =>
+    post(`/cmdb/api/instance/${instUuid}/unbind_monitor/`);
+
   // 获取模型实例数量
   const getModelInstanceCount = () =>
     get('/cmdb/api/instance/model_inst_count/');
@@ -238,6 +257,10 @@ export const useInstanceApi = () => {
     batchDeleteInstances,
     getInstanceProxys,
     pushToMonitor,
+    batchPushToMonitor,
+    listMonitorBindCandidates,
+    bindMonitor,
+    unbindMonitor,
     getModelInstanceCount,
     getInstanceShowFieldDetail,
     setInstanceShowFieldSettings,

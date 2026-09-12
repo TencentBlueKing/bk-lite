@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from apps.cmdb.constants.monitor_link import CMDB_MONITOR_SYNC_MODEL_IDS
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.instance_identity import cmdb_link_identity, optional_inst_uuid
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -218,9 +219,9 @@ class CmdbToMonitorPushService:
         operator: str,
         allowed_org_ids: list[int] | None,
     ) -> dict[str, Any]:
-        """主机创建钩子：通知节点 + 监控（无凭据 → 监控侧只关联）。
+        """创建钩子：可关联模型通知监控（无凭据 → 只关联）；主机额外通知节点。
 
-        最外层吞掉一切异常，失败不阻断创建；返回可能回填后的 instance 字典。
+        最外层吞掉一切异常，失败不阻断创建；探测不到则跳过。返回可能回填后的 instance 字典。
         """
         try:
             result = dict(instance)
@@ -236,40 +237,43 @@ class CmdbToMonitorPushService:
                 "allowed_org_ids": list(allowed_org_ids or []),
                 "operator": operator or "",
             }
-            # 1) 节点：只关联
-            try:
-                node_result = cls._notify_node(result, cmdb_id=cmdb_id, aliases=aliases, actor_scope=scope)
-                linked = cls._normalize_optional_str((node_result or {}).get("id") if isinstance(node_result, dict) else None)
-                if linked and str(result.get("node_id") or "").strip() != linked:
-                    result = cls._backfill_node_id(result, linked, operator=operator, allowed_org_ids=allowed_org_ids)
-            except Exception:
-                logger.exception("[CmdbIoC] notify node failed cmdb_id=%s", cmdb_id)
+            model_id = str(result.get("model_id") or "")
+            # 1) 节点：仅主机尝试关联
+            if model_id == "host":
+                try:
+                    node_result = cls._notify_node(result, cmdb_id=cmdb_id, aliases=aliases, actor_scope=scope)
+                    linked = cls._normalize_optional_str((node_result or {}).get("id") if isinstance(node_result, dict) else None)
+                    if linked and str(result.get("node_id") or "").strip() != linked:
+                        result = cls._backfill_node_id(result, linked, operator=operator, allowed_org_ids=allowed_org_ids)
+                except Exception:
+                    logger.exception("[CmdbIoC] notify node failed cmdb_id=%s", cmdb_id)
 
             # 2) 监控：无凭据，有则关联 / 无则 ignored（经监控对外 ingest 入口）
-            try:
-                envelope = cls._build_envelope(
-                    result,
-                    cmdb_id=cmdb_id,
-                    aliases=aliases,
-                    node_id=cls._normalize_optional_str(result.get("node_id")),
-                )
-                monitor_result = Monitor().ingest_from_source(
-                    **envelope,
-                    allowed_org_ids=scope["allowed_org_ids"],
-                    operator=scope["operator"],
-                )
-                if not isinstance(monitor_result, dict):
-                    monitor_result = {"id": monitor_result}
-                monitor_id = monitor_result.get("id")
-                if monitor_id is not None and not monitor_result.get("ignored") and not monitor_result.get("conflict"):
-                    result = cls._backfill_monitor_id(
+            if model_id in CMDB_MONITOR_SYNC_MODEL_IDS:
+                try:
+                    envelope = cls._build_envelope(
                         result,
-                        str(monitor_id),
-                        operator=operator,
-                        allowed_org_ids=allowed_org_ids,
+                        cmdb_id=cmdb_id,
+                        aliases=aliases,
+                        node_id=cls._normalize_optional_str(result.get("node_id")),
                     )
-            except Exception:
-                logger.exception("[CmdbIoC] notify monitor failed cmdb_id=%s", cmdb_id)
+                    monitor_result = Monitor().ingest_from_source(
+                        **envelope,
+                        allowed_org_ids=scope["allowed_org_ids"],
+                        operator=scope["operator"],
+                    )
+                    if not isinstance(monitor_result, dict):
+                        monitor_result = {"id": monitor_result}
+                    monitor_id = monitor_result.get("id")
+                    if monitor_id is not None and not monitor_result.get("ignored") and not monitor_result.get("conflict"):
+                        result = cls._backfill_monitor_id(
+                            result,
+                            str(monitor_id),
+                            operator=operator,
+                            allowed_org_ids=allowed_org_ids,
+                        )
+                except Exception:
+                    logger.exception("[CmdbIoC] notify monitor failed cmdb_id=%s", cmdb_id)
             return result
         except Exception:
             logger.exception(

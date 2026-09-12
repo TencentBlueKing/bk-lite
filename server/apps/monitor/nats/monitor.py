@@ -2573,3 +2573,44 @@ def monitor_ingest_from_source(params):
     params = dict(params or {})
     params["allowed_org_ids"] = _resolve_monitor_ingest_allowed_org_ids(params)
     return MonitorModuleIngestService.ingest(params)
+
+
+@nats_client.register
+def monitor_list_cmdb_bind_candidates(params):
+    """列出可手绑的监控实例。签名为 (params)，须整包。"""
+    from apps.monitor.services.cmdb_bind import list_cmdb_bind_candidates
+
+    params = dict(params or {})
+    return list_cmdb_bind_candidates(
+        object_name=params.get("object_name"),
+        query=params.get("query"),
+        allowed_org_ids=params.get("allowed_org_ids"),
+        limit=params.get("limit", 50),
+    )
+
+
+@nats_client.register
+def monitor_bind_cmdb_id(params):
+    """按监控实例 ID 写入 cmdb_id。签名为 (params)，须整包。"""
+    from apps.monitor.services.cmdb_bind import bind_cmdb_id
+
+    params = dict(params or {})
+    return bind_cmdb_id(
+        monitor_id=params.get("monitor_id"),
+        cmdb_id=params.get("cmdb_id"),
+        object_name=params.get("object_name"),
+        allowed_org_ids=params.get("allowed_org_ids"),
+    )
+
+
+@nats_client.register
+def monitor_clear_cmdb_id(params):
+    """按 expected_cmdb_id 清空监控实例 cmdb_id。签名为 (params)，须整包。"""
+    from apps.monitor.services.cmdb_bind import clear_cmdb_id
+
+    params = dict(params or {})
+    return clear_cmdb_id(
+        monitor_id=params.get("monitor_id"),
+        expected_cmdb_id=params.get("expected_cmdb_id"),
+        allowed_org_ids=params.get("allowed_org_ids"),
+    )
