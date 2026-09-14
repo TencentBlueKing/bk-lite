@@ -5,7 +5,7 @@ Status: implemented
 ## Completion Evidence
 
 - 2026-09-08：`teams` pack 仅企业 overlay；社区 builtin 不含该 key。adapter 对 `requests` 打桩覆盖分页/`nextLink`、超页失败、Guest 过滤、双收件人 1:1 发送、第二人失败 `partial_success`、ROPC 失败码与摘要、应用令牌不能单独通过能力测试、代理与 URL 覆盖。
-- 2026-09-09：委托 `username`/`password` 从基础连接挪到 `im_notification.connection_template`；基础连接只保留 Entra 应用与代理。manifest 断言与「无委托账号时能力测试失败」覆盖该分组。
+- 2026-09-14：同步拉人第一页 `$top=999` + `$filter=userType eq 'Member'`，后页跟 nextLink；100 页帽仍超限失败。两到三万工作账号约 21–31 页。
 - 定向 pytest：社区 `test_provider_loader.py` / `test_im_notification_manifest.py` / `test_provider_loader_base_connection.py`；企业 `apps/system_mgmt/enterprise/tests/test_teams_*.py`。
 - 前端：集成中心/登录认证/用户同步直接用 provider key 作为 iconfont 名，不再维护图标解析 helper；pack 中英文文案由企业 yaml 路径的 presentation 契约覆盖。
 
@@ -32,7 +32,7 @@ Status: implemented
 - 对象仅限全球云 Microsoft 365 工作租户。默认 token 主机为 `login.microsoftonline.com`，Graph 为 `graph.microsoft.com`。允许管理员覆盖完整 HTTP(S) URL（与企微私有化地址同一模式），但不为一等中国区 21Vianet 做探测或文案。个人 Microsoft 账号、来宾、仅外部访问/联邦存在的用户不在 `list_external_users` 与发送范围内。
 - 基础连接字段：`tenant_id`、`client_id`、`client_secret`（密钥，加密存储、回显脱敏）、可选 `proxy_url`（仅 HTTP/HTTPS，禁止 SOCKS）。IM 通知能力连接字段：委托 `username`（UPN）、`password`（密钥）。变更这些字段时将 `im_notification` 重置为待验证。能力级另保留可覆盖的 Graph/token URL，默认官方地址见下表；未填则用常量，不得把 WeOps 插件里的几十个 URL 做成必填项。
 - 令牌：应用令牌使用 `client_credentials`，scope 为 Graph `.default`。委托令牌使用 `grant_type=password`（ROPC），同一 client 与 secret。应用令牌可按不可逆缓存键做进程内短缓存，临近过期或认证失败刷新。用户令牌缓存不得以明文密码入键。缓存与日志不得含 token、secret、密码。
-- `list_external_users`：应用令牌分页拉取 Graph 用户（跟随 `@odata.nextLink`，必须有页数上限，超限失败而不是截断当成功）。只保留有 `id` 且可视为本租户成员的用户（排除 Guest）。对外字段至少包含 `id`、`name`（displayName）、`mail`、`userPrincipalName`、`mobile`。无邮箱的用户仍可出现在列表中，匹配是否成功交给渠道配置。
+- `list_external_users`：应用令牌分页拉取 Graph 用户。第一页传 `$top=999`（Graph 上限）和 `$filter=userType eq 'Member'`，之后跟随 `@odata.nextLink`（后页不再重拼查询）。页数上限 100（约 10 万 Member），超限失败而不是截断当成功。客户端仍排除 Guest / `#EXT#`。对外字段至少包含 `id`、`name`（displayName）、`mail`、`userPrincipalName`、`mobile`。无邮箱的用户仍可出现在列表中，匹配是否成功交给渠道配置。
 - 通知业务模板：`identity_fields` 与 `receivable_fields` 仅为 `id`；`matchable_fields` 为 `id`、`mail`、`userPrincipalName`；默认外部匹配字段 `mail`，默认接收字段 `id`。映射、同步 run、定时任务、先同步再发送，全部走现有 IM 通知服务，不新建 Teams 专用表。
 - `send_message`：对每个 `receive_ids` 项（Graph 用户 id）独立处理。用应用令牌创建或取得委托用户与该 id 的 `oneOnOne` chat，再用委托用户令牌向该 chat 发一条文本消息。标题与正文按现有通知服务合成纯文本（与企微/飞书相同拼接），不做 Adaptive Card、Tab 深链或 HTML 卡片。多人即多次 1:1。单人失败记入 `failures` 并继续；有成功有失败则 `partial_success`。未映射用户由通知服务拦截，adapter 不按邮箱/手机号改投。
 - 连接测试：基础连接必须成功取得应用令牌。能力测试必须再成功取得委托用户令牌；只测应用令牌算未就绪。ROPC 因 MFA、无密码、联邦或 `invalid_grant` 失败时使用稳定 `provider.auth_failed`（或已有认证失败码），摘要可行动且不含 Microsoft 原始 error_description 全文、不含密码。
