@@ -89,6 +89,27 @@ Stargazer 已移除 ARQ Worker。其容器只启动 Sanic 进程；Sanic 在
 入口，例如幂等的后台任务、定时任务或带重试和补偿的对账流程。必要时启动期只
 记录“待处理”状态，由运行期消费者接管，不得同步等待处理完成。
 
+## CMDB 字段元数据缓存（运行期按需构建）
+
+CMDB 的全文检索排除字段、organization/user 字段映射和单模型 attrs 都是可从
+模型事实重建的查询投影，不属于启动硬依赖。`CmdbConfig.ready()`、`batch_init`
+和 `runserver` 启动阶段均不得读取、清理或预热这些缓存。
+
+- 全局字段元数据在运行期首次读取时查询模型事实，一次构建并发布完整快照；
+- 单模型 attrs 在首次读取时按 `model_id` 加载，不随全局快照批量预热；
+- 模型或字段结构写入成功后失效相关模型和全局快照，字段分组与唯一规则变化只
+  失效对应模型 attrs；后续读取按需回源；
+- 缓存读写异常不得阻断事实源读取或模型写入；事实源读取、解析失败必须沿调用
+  链返回，不得发布空快照掩盖故障；
+- 运维可在 Server 运行环境执行 `python manage.py refresh_cmdb_field_cache` 刷新
+  全局快照，或添加 `--model-id <model_id>` 刷新单模型 attrs。刷新失败保留旧值并
+  返回非零退出码。
+
+缓存键使用 v2 命名空间，与旧的 attrs 数据形状隔离；旧键只在相关失效或全量清理
+时定向删除，不需要在部署启动链中增加一次性清理步骤。
+多进程生产部署须配置现有的 `REDIS_CACHE_URL`，使失效通知作用于所有进程；默认
+LocMem 后端仅适合单进程开发与测试。
+
 APM 的 Collector、Trace/Metric Store 和通知 responder 健康检查属于这类运行期
 任务。通知 responder 必须通过 System Management 公开探针实际确认消费者已注册；
 探针超时或 responder 缺失只更新 `notification_responder=degraded`，不得退出或重启

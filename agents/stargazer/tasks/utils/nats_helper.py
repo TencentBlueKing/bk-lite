@@ -730,7 +730,7 @@ def _iter_structured_metrics_to_influx(payload: StructuredMetricsPayload, params
             labels = {
                 str(key): str(value).replace("\r", " ").replace("\n", " ").strip()
                 for key, value in item.items()
-                if value and not isinstance(value, (list, dict))
+                if value is not None and value != "" and not isinstance(value, (list, dict))
             }
             labels["model_id"] = str(model_id)
             labels.update(common_tags)

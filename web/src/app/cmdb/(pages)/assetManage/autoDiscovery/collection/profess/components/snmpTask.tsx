@@ -120,14 +120,15 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
             credential.community = community;
           }
           if (version === 'v3') {
-            credential.level = item.level;
+            // 与凭据编辑器显示的默认值一致，覆盖未重新选择下拉项的情况。
+            credential.level = item.level || 'authNoPriv';
             credential.username = username;
-            credential.integrity = item.integrity;
+            credential.integrity = item.integrity || 'sha';
             if (authkey && authkey !== PASSWORD_PLACEHOLDER) {
               credential.authkey = authkey;
             }
-            if (item.level === 'authPriv') {
-              credential.privacy = item.privacy;
+            if (credential.level === 'authPriv') {
+              credential.privacy = item.privacy || 'aes';
               if (privkey && privkey !== PASSWORD_PLACEHOLDER) {
                 credential.privkey = privkey;
               }
