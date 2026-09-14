@@ -93,6 +93,7 @@ const COMMUNITY_OBJECT_CONFIG_LOADERS: Record<string, ObjectConfigLoader> = {
   GBase8a: () => import('./objects/database/gBase8a').then((m) => m.useGBase8aConfig),
   VastBase: () => import('./objects/database/vastBase').then((m) => m.useVastBaseConfig),
   KingBase: () => import('./objects/database/kingBase').then((m) => m.useKingBaseConfig),
+
   'Meraki Organization': () =>
     import('./objects/ciscoMeraki/organization').then((m) => m.useMerakiOrganizationConfig),
   'Meraki Network': () =>
@@ -105,6 +106,10 @@ const COMMUNITY_OBJECT_CONFIG_LOADERS: Record<string, ObjectConfigLoader> = {
     import('./objects/ciscoMeraki/wirelessInventory').then((m) => m.useMerakiWirelessInventoryConfig),
   'Meraki Wireless AP': () =>
     import('./objects/ciscoMeraki/wirelessAp').then((m) => m.useMerakiWirelessApConfig),
+  'Meraki Switch Inventory': () =>
+    import('./objects/ciscoMeraki/switchInventory').then((m) => m.useMerakiSwitchInventoryConfig),
+  'Meraki Switch': () =>
+    import('./objects/ciscoMeraki/switch').then((m) => m.useMerakiSwitchConfig),
 
 };
 
