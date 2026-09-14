@@ -89,6 +89,9 @@ class PatchTargetViewSet(TargetRootedResourceMixin, AuthViewSet):
     def destroy(self, request, *args, **kwargs):
         target_id = self.get_object().id
         target = PatchTarget.objects.select_for_update().get(pk=target_id)
+        access_error = self._validate_destroy_access(request, target)
+        if access_error is not None:
+            return access_error
         from apps.patch_mgmt.services.governance_convergence import reconcile_stale_history
 
         reconcile_stale_history(limit=1000, target_ids=[target.id])
