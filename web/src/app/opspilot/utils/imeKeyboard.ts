@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 
 /** Keyboard-like events used by chat composers (React synthetic or Ant Design). */
-export type ImeKeyboardEventLike = {
+export interface ImeKeyboardEventLike {
   key?: string;
   shiftKey?: boolean;
   isComposing?: boolean;
@@ -10,16 +10,16 @@ export type ImeKeyboardEventLike = {
     isComposing?: boolean;
     keyCode?: number;
   };
-};
+}
 
 export type ImeEnterKeyEvent = ImeKeyboardEventLike & {
   preventDefault: () => void;
 };
 
-export type ImeEnterDecision = {
+export interface ImeEnterDecision {
   shouldSubmit: boolean;
   shouldPreventDefault: boolean;
-};
+}
 
 /**
  * IME composition (pinyin, etc.) uses Enter to commit the current candidate.

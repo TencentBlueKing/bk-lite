@@ -54,4 +54,35 @@ describe('useAppCapability', () => {
     expect(result.current.status === 'ready' && result.current.api.TrendChart).toBeTruthy();
     expect(mocks.loadAlarm).toHaveBeenCalledTimes(1);
   });
+
+  it('does not drop a ready capability when clientData is a new array of the same apps', async () => {
+    mocks.clientData = [{ name: 'alarm' }];
+    const { result, rerender } = renderHook(() => useAppCapability('alarm'));
+
+    await waitFor(() => {
+      expect(result.current.status).toBe('ready');
+    });
+
+    mocks.clientData = [{ name: 'alarm' }];
+    rerender();
+
+    expect(result.current.status).toBe('ready');
+    expect(mocks.loadAlarm).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not drop a ready capability while client data is reloading', async () => {
+    mocks.clientData = [{ name: 'alarm' }];
+    const { result, rerender } = renderHook(() => useAppCapability('alarm'));
+
+    await waitFor(() => {
+      expect(result.current.status).toBe('ready');
+    });
+
+    mocks.loading = true;
+    mocks.clientData = [];
+    rerender();
+
+    expect(result.current.status).toBe('ready');
+    expect(mocks.loadAlarm).toHaveBeenCalledTimes(1);
+  });
 });

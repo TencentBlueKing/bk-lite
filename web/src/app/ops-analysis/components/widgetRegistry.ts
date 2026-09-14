@@ -17,6 +17,7 @@ import OpsAnalysisTextPanel from '@/app/ops-analysis/components/ops-analysis-wid
 import TopologyMap from '@/app/ops-analysis/components/widgets/topologyMap';
 import NodeGraph from '@/app/ops-analysis/components/widgets/nodeGraph';
 import Application3D from '@/app/ops-analysis/components/widgets/application3D';
+import RelatedTopologyCanvas from '@/app/ops-analysis/components/widgets/relatedTopology/canvas';
 import { isSceneWidgetAllowedOnSurface, isSceneWidgetType } from '@/app/ops-analysis/types/sceneWidgetCapability';
 import type { OpsAnalysisWidgetSurface } from '@/app/ops-analysis/utils/chartTypeSurface';
 
@@ -35,6 +36,7 @@ export const widgetRegistry: Record<string, ComponentType<any>> = {
   room3D: Room3D,
   networkStatusTopology: NetworkStatusTopology,
   application3D: Application3D,
+  relatedTopology: RelatedTopologyCanvas,
   multiValue: ComMultiValue,
   text: OpsAnalysisTextPanel,
   topologyMap: TopologyMap,

@@ -4,7 +4,9 @@ import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import ScreenWidgetFrame from '../screenWidgetFrame';
+import ScreenWidgetFrame, {
+  getScreenWidgetFrameClassName,
+} from '../screenWidgetFrame';
 import type { ScreenWidgetItem } from '@/app/ops-analysis/types/screen';
 
 vi.mock('@/utils/i18n', () => ({
@@ -62,6 +64,17 @@ const openMoreMenu = async () => {
 };
 
 describe('ScreenWidgetFrame copy menu', () => {
+  it('uses topology frame chrome for related topology and network status topology', () => {
+    expect(
+      getScreenWidgetFrameClassName({ chartType: 'relatedTopology' }),
+    ).toContain('screen-widget-frame--topology');
+    expect(
+      getScreenWidgetFrameClassName({ chartType: 'networkStatusTopology' }),
+    ).toContain('screen-widget-frame--topology');
+    expect(getScreenWidgetFrameClassName({ chartType: 'line' })).toContain(
+      'screen-widget-frame--chart',
+    );
+  });
   it('includes 复制 for a data widget in edit mode', async () => {
     render(
       <ScreenWidgetFrame item={dataWidget} editMode onConfigure={vi.fn()} onDelete={vi.fn()} onCopy={vi.fn()}>

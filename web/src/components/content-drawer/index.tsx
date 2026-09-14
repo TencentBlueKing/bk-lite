@@ -11,6 +11,7 @@ interface ContentDrawerProps {
   width?: number;
   extra?: React.ReactNode;
   styles?: { header?: React.CSSProperties; body?: React.CSSProperties };
+  classNames?: { header?: string; body?: string; footer?: string; wrapper?: string };
   footer?: React.ReactNode;
   maskClosable?: boolean;
   destroyOnClose?: boolean;
@@ -18,7 +19,7 @@ interface ContentDrawerProps {
   children?: React.ReactNode;
 }
 
-const ContentDrawer: React.FC<ContentDrawerProps> = ({ visible, open, onClose, content, title, width, extra, styles, footer, maskClosable, destroyOnClose, children }) => {
+const ContentDrawer: React.FC<ContentDrawerProps> = ({ visible, open, onClose, content, title, width, extra, styles, classNames, footer, maskClosable, destroyOnClose, children }) => {
   const { t } = useTranslation();
 
   const formatContent = (text: React.ReactNode) => {
@@ -40,6 +41,7 @@ const ContentDrawer: React.FC<ContentDrawerProps> = ({ visible, open, onClose, c
       width={width || 600}
       extra={extra}
       styles={styles}
+      classNames={classNames}
       footer={footer}
       maskClosable={maskClosable}
       destroyOnClose={destroyOnClose}

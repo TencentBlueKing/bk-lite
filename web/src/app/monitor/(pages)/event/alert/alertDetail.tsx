@@ -52,7 +52,7 @@ const TIMELINE_ITEM_HEIGHT = 48;
 type AlertEventItem = TableDataItem;
 
 const AlertDetail = forwardRef<ModalRef, ModalConfig>(
-  ({ objects, userList, onSuccess }, ref) => {
+  ({ objects = [], userList, onSuccess }, ref) => {
     const { t } = useTranslation();
     const { getMonitorMetrics } = useMonitorApi();
     const { getMonitorEventDetail, getEventRaw, getSnapshot } = useEventApi();

@@ -17,39 +17,44 @@ export function useAppCapability<K extends AppCapabilityName>(
   appName: K
 ): AppCapabilityState<AppCapabilityApi<K>> {
   const { clientData, loading } = useClientData();
+  const allowed = hasAppAccess(clientData, appName);
   const [state, setState] = useState<AppCapabilityState<AppCapabilityApi<K>>>({
     status: 'loading',
   });
 
   useEffect(() => {
     if (loading) {
-      setState({ status: 'loading' });
       return;
     }
-
-    if (!hasAppAccess(clientData, appName)) {
+    if (!allowed) {
       setState({ status: 'unavailable' });
       return;
     }
 
     let cancelled = false;
-    setState({ status: 'loading' });
     loadAuthorizedCapability(appName, {
       authorized: true,
       load: APP_CAPABILITY_LOADERS[appName] as () => Promise<AppCapabilityApi<K>>,
     }).then((api) => {
       if (cancelled) return;
-      setState(
-        api
-          ? { status: 'ready', api: api as AppCapabilityApi<K> }
-          : { status: 'unavailable' }
-      );
+      setState((prev) => {
+        if (api) {
+          if (prev.status === 'ready' && prev.api === api) {
+            return prev;
+          }
+          return { status: 'ready', api: api as AppCapabilityApi<K> };
+        }
+        if (prev.status === 'unavailable') {
+          return prev;
+        }
+        return { status: 'unavailable' };
+      });
     });
 
     return () => {
       cancelled = true;
     };
-  }, [appName, clientData, loading]);
+  }, [allowed, appName, loading]);
 
   return state;
 }

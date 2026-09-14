@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Spin } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
 import { useTranslation } from '@/utils/i18n';
@@ -10,14 +10,20 @@ import WidgetErrorState from '@/app/ops-analysis/components/widgetErrorState';
 import { buildRelatedTopologyGraph } from './graphModel';
 import RelatedTopologyGraphView from './graphView';
 import type { RelatedTopologyResponse } from './types';
-import { RELATED_TOPOLOGY_CANVAS_STYLE } from './visual';
+import { isScreenChartThemeMode, type OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
+import { relatedTopologyCanvasStyle } from './visual';
 
 export interface RelatedTopologyProps {
   instUuid: string;
+  chartThemeMode?: OpsChartThemeMode;
 }
 
-const RelatedTopology = ({ instUuid }: RelatedTopologyProps) => {
+const RelatedTopology = ({ instUuid, chartThemeMode }: RelatedTopologyProps) => {
   const { t } = useTranslation();
+  const tRef = useRef(t);
+  tRef.current = t;
+  const usesScreenTheme = isScreenChartThemeMode(chartThemeMode);
+  const canvasStyle = relatedTopologyCanvasStyle(usesScreenTheme);
   const { getRelatedTopology } = useRelatedTopologyApi();
   const [loading, setLoading] = useState(true);
   const [payload, setPayload] = useState<RelatedTopologyResponse | null>(null);
@@ -32,14 +38,14 @@ const RelatedTopology = ({ instUuid }: RelatedTopologyProps) => {
     } catch (caught) {
       setPayload(null);
       if (caught instanceof HandledRequestError) {
-        setError(caught.message || t('common.loadFailed'));
+        setError(caught.message || tRef.current('common.loadFailed'));
       } else {
-        setError(t('common.loadFailed'));
+        setError(tRef.current('common.loadFailed'));
       }
     } finally {
       setLoading(false);
     }
-  }, [getRelatedTopology, instUuid, t]);
+  }, [getRelatedTopology, instUuid]);
 
   useEffect(() => {
     void load();
@@ -54,7 +60,7 @@ const RelatedTopology = ({ instUuid }: RelatedTopologyProps) => {
     return (
       <div
         className="flex h-full min-h-[280px] items-center justify-center"
-        style={RELATED_TOPOLOGY_CANVAS_STYLE}
+        style={canvasStyle}
       >
         <Spin />
       </div>
@@ -65,7 +71,7 @@ const RelatedTopology = ({ instUuid }: RelatedTopologyProps) => {
     return (
       <div
         className="flex h-full min-h-[280px] items-center justify-center"
-        style={RELATED_TOPOLOGY_CANVAS_STYLE}
+        style={canvasStyle}
       >
         <WidgetErrorState
           message={error || t('dashboard.relatedTopologyLoadFailed')}
@@ -78,7 +84,7 @@ const RelatedTopology = ({ instUuid }: RelatedTopologyProps) => {
     return (
       <div
         className="flex h-full min-h-[280px] items-center justify-center"
-        style={RELATED_TOPOLOGY_CANVAS_STYLE}
+        style={canvasStyle}
       >
         <CompactEmptyState description={t('dashboard.relatedTopologyEmpty')} />
       </div>
@@ -87,7 +93,11 @@ const RelatedTopology = ({ instUuid }: RelatedTopologyProps) => {
 
   return (
     <div className="h-full min-h-[280px] min-w-0 w-full overflow-hidden">
-      <RelatedTopologyGraphView model={graph} onRefresh={load} />
+      <RelatedTopologyGraphView
+        model={graph}
+        chartThemeMode={chartThemeMode}
+        onRefresh={load}
+      />
     </div>
   );
 };
