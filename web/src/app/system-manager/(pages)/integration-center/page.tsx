@@ -17,7 +17,7 @@ import commonStyles from '@/app/system-manager/styles/common.module.scss';
 
 import CreateIntegrationInstanceModal from './CreateIntegrationInstanceModal';
 import ProviderCapabilityTags from './ProviderCapabilityTags';
-import { buildIntegrationInstanceCardItem, filterIntegrationInstancesByName, getIntegrationCapabilityLabel, getIntegrationCapabilityTagColor, type IntegrationInstanceCardItem } from '@/app/system-manager/utils/integrationCenter';
+import { buildIntegrationInstanceCardItem, filterIntegrationInstancesByName, formatIntegrationInstanceDeleteError, getIntegrationCapabilityLabel, getIntegrationCapabilityTagColor, type IntegrationInstanceCardItem } from '@/app/system-manager/utils/integrationCenter';
 
 const IntegrationCenterPage: React.FC = () => {
   const { t } = useTranslation();
@@ -161,7 +161,7 @@ const IntegrationCenterPage: React.FC = () => {
   const handleDeleteInstance = (instance: IntegrationInstance) => {
     Modal.confirm({
       title: t('common.delConfirm'),
-      content: t('common.delConfirmCxt'),
+      content: t('system.integrationCenter.deleteConfirmContent'),
       okText: t('common.confirm'),
       cancelText: t('common.cancel'),
       onOk: async () => {
@@ -169,8 +169,8 @@ const IntegrationCenterPage: React.FC = () => {
           await deleteInstance(instance.id);
           message.success(t('common.delSuccess'));
           await fetchInstances();
-        } catch {
-          message.error(t('common.delFailed'));
+        } catch (error) {
+          message.error(formatIntegrationInstanceDeleteError(error, t, t('common.delFailed')));
         }
       },
     });

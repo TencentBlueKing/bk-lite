@@ -1321,6 +1321,8 @@
       "providerUnavailable": "Provider 不可用",
       "createSuccess": "集成实例创建成功",
       "createFailed": "集成实例创建失败",
+      "deleteBlockedInUse": "该集成实例仍被以下配置引用，请先删除后再试：{names}",
+      "deleteConfirmContent": "若仍有用户同步、IM 应用通知或登录认证配置，请先删除这些配置。实例删除后无法恢复。",
       "testStatusReady": "已测试",
       "testStatusPending": "待测试",
       "testStatusFailed": "测试失败",

@@ -49,8 +49,6 @@ const formatSummary = (rawSummary: string, kind: OpenAPIDocRow['kind'], fallback
   return { title: summary, note: '', full: summary };
 };
 
-const TABLE_SCROLL_Y = 'calc(100vh - 455px)';
-
 const OpenApiDocsPage: React.FC = () => {
   const { t } = useTranslation();
   const { fetchOpenApiDocs } = useSettingsApi();
@@ -301,15 +299,15 @@ const OpenApiDocsPage: React.FC = () => {
   ];
 
   return (
-    <div className="flex flex-col gap-3">
-      <div>
+    <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
+      <div className="shrink-0">
         <TopSection
           title={t('system.settings.openapiDocs.title')}
           content={t('system.settings.openapiDocs.content')}
         />
       </div>
 
-      <section className="flex h-[calc(100vh-235px)] flex-col rounded-md bg-[var(--color-bg)] p-4">
+      <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md bg-[var(--color-bg)] p-4">
         <OpenApiDocsToolbar
           query={query}
           onQueryChange={setQuery}
@@ -336,6 +334,7 @@ const OpenApiDocsPage: React.FC = () => {
             <div className="min-h-0 flex-1">
               <Spin
                 spinning={loading || exporting}
+                wrapperClassName="h-full [&>.ant-spin-container]:h-full"
                 tip={exporting ? t('system.settings.openapiDocs.exportingPdf') : undefined}
               >
                 <CustomTable<OpenAPIDocRow>
@@ -344,7 +343,6 @@ const OpenApiDocsPage: React.FC = () => {
                   columns={columns}
                   dataSource={pagedRows}
                   autoScrollX={false}
-                  scroll={{ y: TABLE_SCROLL_Y }}
                   pagination={{
                     current: pagination.current,
                     pageSize: pagination.pageSize,
