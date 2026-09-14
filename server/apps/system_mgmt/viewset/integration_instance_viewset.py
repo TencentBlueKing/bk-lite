@@ -16,6 +16,35 @@ from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
 from apps.system_mgmt.serializers import IntegrationInstanceSerializer
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
+INTEGRATION_INSTANCE_IN_USE_CODE = "INTEGRATION_INSTANCE_IN_USE"
+CAPABILITY_REFERENCE_LIMIT = 20
+CAPABILITY_REFERENCE_RELATIONS = (
+    ("user_sync", "user_sync_sources"),
+    ("im_notification", "im_notification_channels"),
+    ("login_auth", "login_auth_bindings"),
+)
+
+
+def collect_integration_instance_capability_references(instance):
+    references = []
+    for ref_type, related_name in CAPABILITY_REFERENCE_RELATIONS:
+        related_manager = getattr(instance, related_name)
+        for row in related_manager.order_by("id").values("id", "name")[:CAPABILITY_REFERENCE_LIMIT]:
+            references.append({"type": ref_type, "id": row["id"], "name": row["name"]})
+    return references
+
+
+def build_instance_in_use_response(references):
+    return JsonResponse(
+        {
+            "result": False,
+            "code": INTEGRATION_INSTANCE_IN_USE_CODE,
+            "message": "该集成实例仍被其他配置引用，请先删除这些配置后再试",
+            "data": {"references": references},
+        },
+        status=409,
+    )
+
 
 def build_test_connection_response(result):
     """Keep the HTTP/API transport successful when a connection validation fails."""
@@ -153,6 +182,10 @@ class IntegrationInstanceViewSet(MaintainerViewSet):
             return error_response
 
         instance_name = obj.name
+        references = collect_integration_instance_capability_references(obj)
+        if references:
+            return build_instance_in_use_response(references)
+
         response = super().destroy(request, *args, **kwargs)
         if response.status_code == 204:
             log_operation(request, "delete", "system-manager", f"删除集成实例: {instance_name}")

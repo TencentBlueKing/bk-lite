@@ -1321,6 +1321,8 @@
       "providerUnavailable": "Provider is unavailable",
       "createSuccess": "Integration instance created successfully",
       "createFailed": "Failed to create integration instance",
+      "deleteBlockedInUse": "This integration instance is still referenced. Delete these configurations first: {names}",
+      "deleteConfirmContent": "If user sync, IM notification, or login authentication still uses this instance, delete those configurations first. The instance cannot be recovered after deletion.",
       "testStatusReady": "Tested",
       "testStatusPending": "Pending Test",
       "testStatusFailed": "Test Failed",
