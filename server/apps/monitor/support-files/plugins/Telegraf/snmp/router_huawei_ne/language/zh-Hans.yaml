@@ -25,7 +25,7 @@ monitor_object_metric:
       desc: 该指标按实体报告华为 NE 设备输入电压（hwEntityVoltage，原始毫伏，查询侧除以 1000 显示为伏特）。电压偏离额定范围可能意味着供电不稳，存在硬件风险。
     device_fan_state:
       name: 风扇状态
-      desc: 该指标表示设备各散热风扇的运行状态（hwEntityFanState）。非正常状态表示散热故障，可能迅速导致过热，应立即排查。
+      desc: 该指标表示设备各散热风扇的运行状态（hwEntityFanState），维度 index 为风扇表行索引。非正常状态表示散热故障，可能迅速导致过热，应立即排查。
     device_optical_rx_power:
       name: 光模块接收功率
       desc: 该指标按光模块报告接收光功率（dBm；设备原始为 µW，查询侧 10*log10(µW/1000) 换算，<=0 丢弃），维度 descr 为 entPhysicalName。接收功率过低可能意味着链路衰减、光纤污染或对端发送异常。
@@ -55,10 +55,10 @@ monitor_object_metric:
       desc: 该指标表示各电源模块是否在位（hwEntityPwrPresent）。不在位表示槽位空置或模块被拔出，冗余能力下降。
     device_fan_speed:
       name: 风扇转速
-      desc: 该指标表示各散热风扇转速（hwEntityFanSpeed）。转速异常偏低或为 0 表示风扇卡转或故障；异常偏高可能是设备在为高温加速散热。
+      desc: 该指标表示各散热风扇转速（hwEntityFanSpeed），维度 index 为风扇表行索引。转速异常偏低或为 0 表示风扇卡转或故障；异常偏高可能是设备在为高温加速散热。
     device_fan_present:
       name: 风扇在位
-      desc: 该指标表示各散热风扇是否在位（hwEntityFanPresent）。不在位表示风扇框缺失，散热能力下降，应立即排查。
+      desc: 该指标表示各散热风扇是否在位（hwEntityFanPresent），维度 index 为风扇表行索引。不在位表示风扇框缺失，散热能力下降，应立即排查。
     device_entity_board_power:
       name: 单板功耗
       desc: 该指标按实体报告单板功耗（hwEntityBoardPower，瓦特）。功耗异常升高可能意味着单板故障、转发负载过高或散热不良。
@@ -91,7 +91,7 @@ monitor_object_metric:
       desc: 该指标按光模块报告供电电压（原始毫伏，查询侧除以 1000 显示为伏特）。电压越限会导致光模块工作不稳定。
     device_slot_oper_status:
       name: 槽位运行状态
-      desc: 该指标按槽位报告运行状态（hwSlotOperStatus）。down 表示单板缺失、未上电或故障，该槽位上的接口会全部中断。
+      desc: 该指标按槽位报告运行状态（hwSlotOperStatus）。normal(2) 为正常；null、fault、offline、shutdown 或 isolated 表示单板空置、故障或下电，该槽位上的接口会全部中断。
     interface_ifAdminStatus:
       name: 接口管理状态
       desc: 此指标表示网络接口的管理状态。它用于指示接口是否被管理人员启用（up）或禁用（down）。

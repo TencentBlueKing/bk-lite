@@ -39,8 +39,8 @@ monitor_object_metric:
     device_fan_state:
       name: Fan Status
       desc: This metric reports the operational state of each Huawei cooling fan (hwEntityFanState).
-        A non-normal state indicates a cooling fault that can quickly lead to overheating
-        and should be investigated immediately.
+        Dimension index is the fan table row index. A non-normal state indicates a cooling
+        fault that can quickly lead to overheating and should be investigated immediately.
     device_optical_rx_power:
       name: SFP RX Power
       desc: Per-module SFP/optical receive power in dBm (hwEntityOpticalRxPower). The device
@@ -91,13 +91,15 @@ monitor_object_metric:
         redundancy.
     device_fan_speed:
       name: Fan Speed
-      desc: Fan rotation speed of each Huawei NE cooling fan (hwEntityFanSpeed). Abnormally
-        low or zero speed indicates a stalled or failed fan and a risk of overheating; abnormally
-        high speed may indicate the device is compensating for high temperature.
+      desc: Fan rotation speed of each Huawei NE cooling fan (hwEntityFanSpeed). Dimension
+        index is the fan table row index. Abnormally low or zero speed indicates a stalled
+        or failed fan and a risk of overheating; abnormally high speed may indicate the device
+        is compensating for high temperature.
     device_fan_present:
       name: Fan Present
-      desc: Presence of each Huawei NE cooling fan (hwEntityFanPresent). Absent means the
-        fan tray is missing; investigate immediately because cooling capacity is reduced.
+      desc: Presence of each Huawei NE cooling fan (hwEntityFanPresent). Dimension index is
+        the fan table row index. Absent means the fan tray is missing; investigate immediately
+        because cooling capacity is reduced.
     device_entity_board_power:
       name: Board Power
       desc: Board power consumption of each Huawei NE entity (hwEntityBoardPower), in watts.
@@ -149,9 +151,9 @@ monitor_object_metric:
         voltage can cause unstable optics.
     device_slot_oper_status:
       name: Slot Oper Status
-      desc: Operational status of each Huawei NE slot (hwSlotOperStatus). A down slot means
-        the card is missing, powered off, or failed, which can drop all interfaces on that
-        slot.
+      desc: Operational status of each Huawei NE slot (hwSlotOperStatus). Healthy boards report
+        normal(2). null, fault, offline, shutdown, or isolated mean the card is empty, failed,
+        or powered off, which can drop all interfaces on that slot.
     interface_ifAdminStatus:
       name: Interface Admin Status
       desc: This metric indicates the administrative status of the network interface.

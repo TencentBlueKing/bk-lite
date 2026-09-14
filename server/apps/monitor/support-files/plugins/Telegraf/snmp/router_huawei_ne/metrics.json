@@ -118,14 +118,14 @@
       "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"critical\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"shutdown\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"notPresent\",\"id\":5,\"color\":\"#d9d9d9\"},{\"name\":\"notFunctioning\",\"id\":6,\"color\":\"#ff4d4f\"}]",
       "dimensions": [
         {
-          "name": "descr",
-          "description": "Entity description"
+          "name": "index",
+          "description": "SNMP table row index"
         }
       ],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the operational state of each Huawei cooling fan (hwEntityFanState). A non-normal state indicates a cooling fault that can quickly lead to overheating and should be investigated immediately."
+      "description": "This metric reports the operational state of each Huawei cooling fan (hwEntityFanState). Dimension index is the fan table row index (hwEntityFanIndex is not a description). A non-normal state indicates a cooling fault that can quickly lead to overheating and should be investigated immediately."
     },
     {
       "metric_group": "Hardware Status",
@@ -298,8 +298,8 @@
       "unit": "counts",
       "dimensions": [
         {
-          "name": "descr",
-          "description": "Entity description"
+          "name": "index",
+          "description": "SNMP table row index"
         }
       ],
       "instance_id_keys": [
@@ -316,8 +316,8 @@
       "unit": "[{\"name\":\"present\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"absent\",\"id\":2,\"color\":\"#d9d9d9\"}]",
       "dimensions": [
         {
-          "name": "descr",
-          "description": "Entity description"
+          "name": "index",
+          "description": "SNMP table row index"
         }
       ],
       "instance_id_keys": [
@@ -501,7 +501,7 @@
       "query": "device_slot_oper_status{instance_type='router', __$labels__}",
       "display_name": "Slot Oper Status",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"testing\",\"id\":3,\"color\":\"#faad14\"}]",
+      "unit": "[{\"name\":\"null\",\"id\":1,\"color\":\"#d9d9d9\"},{\"name\":\"normal\",\"id\":2,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"forbidden\",\"id\":4,\"color\":\"#faad14\"},{\"name\":\"autofind\",\"id\":5,\"color\":\"#1677ff\"},{\"name\":\"config\",\"id\":6,\"color\":\"#faad14\"},{\"name\":\"offline\",\"id\":7,\"color\":\"#ff4d4f\"},{\"name\":\"abnormal\",\"id\":8,\"color\":\"#ff4d4f\"},{\"name\":\"versionerr\",\"id\":9,\"color\":\"#faad14\"},{\"name\":\"autoload\",\"id\":10,\"color\":\"#1677ff\"},{\"name\":\"outofservice\",\"id\":11,\"color\":\"#ff4d4f\"},{\"name\":\"graceful\",\"id\":12,\"color\":\"#1677ff\"},{\"name\":\"shutdown\",\"id\":13,\"color\":\"#8c8c8c\"},{\"name\":\"energysavingshutdown\",\"id\":14,\"color\":\"#8c8c8c\"},{\"name\":\"hightempshutdown\",\"id\":15,\"color\":\"#ff4d4f\"},{\"name\":\"manualshutdown\",\"id\":16,\"color\":\"#8c8c8c\"},{\"name\":\"mismatch\",\"id\":17,\"color\":\"#faad14\"},{\"name\":\"acoffshutdown\",\"id\":18,\"color\":\"#ff4d4f\"},{\"name\":\"highpowershutdown\",\"id\":19,\"color\":\"#ff4d4f\"},{\"name\":\"isolated\",\"id\":20,\"color\":\"#faad14\"}]",
       "dimensions": [
         {
           "name": "index",
@@ -511,7 +511,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Operational status of each Huawei NE slot (hwSlotOperStatus). A down slot means the card is missing, powered off, or failed, which can drop all interfaces on that slot."
+      "description": "Operational status of each Huawei NE slot (hwSlotOperStatus from DEVICE-MIB). Healthy boards report normal(2). null, fault, offline, shutdown, or isolated mean the card is empty, failed, or powered off and can drop all interfaces on that slot."
     },
     {
       "metric_group": "Status",

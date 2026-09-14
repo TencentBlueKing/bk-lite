@@ -103,14 +103,12 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.2011.5.25.31.1.1.1.1.24"
         name = "board_power"
-    # ---- Fans (hwEntityFanState / Speed / Present) ----
+    # Fans (hwEntityFanState / Speed / Present).
+    # hwEntityFanIndex is a table index, not a description; use index_as_tag like PSU.
     [[inputs.snmp.table]]
         name = "device_fan"
         inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.10.1.1"
-        name = "descr"
-        is_tag = true
+        index_as_tag = true
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.2011.5.25.31.1.1.10.1.7"
         name = "state"
@@ -204,7 +202,7 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.2011.5.25.31.1.1.43.1.2"
         name = "usage"
-    # ---- Slot oper status ----
+    # Slot oper status (hwSlotOperStatus). DEVICE-MIB enum is null(1)/normal(2)/fault(3)/..., not IF-MIB up/down.
     [[inputs.snmp.table]]
         name = "device_slot"
         inherit_tags = ["source"]

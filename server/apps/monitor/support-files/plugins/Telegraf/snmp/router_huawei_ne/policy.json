@@ -43,7 +43,7 @@
     },
     {
       "name": "Huawei NE路由器风扇异常",
-      "alert_name": "路由器${resource_name} 风扇 ${metric_descr} 状态异常",
+      "alert_name": "路由器${resource_name} 风扇状态异常",
       "description": "监控华为 NetEngine 设备各散热风扇的运行状态。任何非正常状态都表示散热故障，可能迅速导致过热，应立即排查处理。",
       "metric_name": "device_fan_state",
       "algorithm": "last_over_time",
