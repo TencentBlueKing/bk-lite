@@ -16,6 +16,7 @@ import {
   DEFAULT_RELATIONSHIP_TAB,
   isRelationshipMenuActive,
 } from '../../relationshipViewNavigation';
+import { useCmdbPublicMenuItems } from '@/app/cmdb/hooks/useCmdbPublicMenuItems';
 
 interface SideMenuProps {
   menuItems: MenuItem[];
@@ -47,6 +48,7 @@ const SideMenu: React.FC<SideMenuProps> = ({
   const { t } = useTranslation();
   const [themes, setThemes] = useState<string[]>([]);
   const currentTab = searchParams.get('tab') || '';
+  const publicItems = useCmdbPublicMenuItems();
 
   useEffect(() => {
     if (!modelId) return;
@@ -93,7 +95,10 @@ const SideMenu: React.FC<SideMenuProps> = ({
     return `${path}?${params.toString()}`;
   };
 
-  const shortcutTabs = shortcuts.map((shortcut) => shortcut.tab);
+  const shortcutTabs = [
+    ...shortcuts.map((shortcut) => shortcut.tab),
+    'networkStatusTopology',
+  ];
 
   const isActive = (path: string): boolean => {
     if (pathname === null) return false;
@@ -175,6 +180,36 @@ const SideMenu: React.FC<SideMenuProps> = ({
               </li>
             </React.Fragment>
           ))}
+          {publicItems.map((item) => {
+            const relationshipUrl = relItem?.url;
+            const landsOnRelationshipTab =
+              item.key === 'networkStatusTopology' && Boolean(relationshipUrl);
+            const href =
+              landsOnRelationshipTab && relationshipUrl
+                ? buildRelationshipTabHref(
+                  relationshipUrl,
+                  searchParams,
+                  'networkStatusTopology',
+                )
+                : buildUrlWithParams(item.url);
+            const active = landsOnRelationshipTab && relationshipUrl
+              ? isActive(relationshipUrl) && currentTab === 'networkStatusTopology'
+              : isActive(item.url);
+            return (
+              <li
+                key={item.key}
+                className={`rounded-md mb-1 ${active ? sideMenuStyle.active : ''}`}
+              >
+                <Link
+                  href={href}
+                  className="group flex items-center h-9 rounded-md py-2 text-sm font-normal px-3"
+                >
+                  <ApartmentOutlined className="text-base pr-1.5" />
+                  {t(item.titleKey)}
+                </Link>
+              </li>
+            );
+          })}
         </ul>
         {showProgress && <>{taskProgressComponent}</>}
         {showBackButton && (

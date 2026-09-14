@@ -338,6 +338,7 @@
       "node": "Node",
       "clickhouse_asynchronous_metrics_load_average1": "Load Average (1m)",
       "alertList": "Alert List",
+      "publicWidgetNotFound": "The monitor instance does not exist or is no longer valid",
       "monitoringPolicy": "Monitoring Policy",
       "noBoundPolicy": "No monitoring policies are bound to this asset",
       "postgresql_numbackends": "Active DB Connections",

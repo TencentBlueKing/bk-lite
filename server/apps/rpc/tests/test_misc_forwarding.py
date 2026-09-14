@@ -162,6 +162,16 @@ def test_cmdb_network_topology_among_uuids(cmdb):
     assert _last(cmdb.client) == ("run", "network_topology_among_uuids", (), payload)
 
 
+def test_cmdb_network_topology_by_uuid(cmdb):
+    payload = {
+        "inst_uuid": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "depth": 1,
+        "user_info": {"team": 1},
+    }
+    cmdb.network_topology_by_uuid(**payload)
+    assert _last(cmdb.client) == ("run", "network_topology_by_uuid", (), payload)
+
+
 def test_cmdb_topo_search_lite_by_uuid(cmdb):
     payload = {"inst_uuid": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "user_info": {"team": 1}}
     cmdb.topo_search_lite_by_uuid(**payload)

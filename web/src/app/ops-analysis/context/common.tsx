@@ -436,3 +436,6 @@ export const useOpsAnalysis = (): OpsAnalysisContextType => {
   }
   return context;
 };
+
+export const useOpsAnalysisOptional = (): OpsAnalysisContextType | undefined =>
+  useContext(OpsAnalysisContext);

@@ -29,7 +29,7 @@ interface InformationProps extends TableDataItem {
 const Information: React.FC<InformationProps> = ({
   formData,
   chartData,
-  objects,
+  objects: objectsProp,
   userList,
   onClose,
   trapData,
@@ -43,6 +43,7 @@ const Information: React.FC<InformationProps> = ({
   const commonContext = useCommon();
   const authList = useRef(commonContext?.authOrganizations || []);
   const organizationList: Organization[] = authList.current;
+  const objects = objectsProp ?? [];
   const dimensionItems = buildAlertDimensionDisplayItems(
     formData.metric?.dimensions,
     formData.dimensions

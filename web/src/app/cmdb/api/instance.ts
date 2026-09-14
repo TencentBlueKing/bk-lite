@@ -1,11 +1,12 @@
+import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
 
 export const useInstanceApi = () => {
   const { get, post, patch, del } = useApiClient();
 
   // 搜索实例
-  const searchInstances = (params: any) =>
-    post('/cmdb/api/instance/search/', params);
+  const searchInstances = useCallback((params: any) =>
+    post('/cmdb/api/instance/search/', params), [post]);
 
   // 全文搜索实例
   const fulltextSearchInstances = (params: any) =>
@@ -20,8 +21,8 @@ export const useInstanceApi = () => {
   const topoSearchInstances = (modelId: string, instUuid: string) =>
     get(`/cmdb/api/instance/topo_search/${modelId}/${instUuid}/`);
 
-  const getTopoThemes = (modelId: string) =>
-    get(`/cmdb/api/instance/topo_themes/${modelId}/`);
+  const getTopoThemes = useCallback((modelId: string) =>
+    get(`/cmdb/api/instance/topo_themes/${modelId}/`), [get]);
 
   const getNetworkTopo = (modelId: string, instUuid: string, depth?: number) =>
     get(
@@ -68,8 +69,8 @@ export const useInstanceApi = () => {
   );
 
   // 获取实例详情
-  const getInstanceDetail = (instUuid: string) =>
-    get(`/cmdb/api/instance/${instUuid}/`);
+  const getInstanceDetail = useCallback((instUuid: string) =>
+    get(`/cmdb/api/instance/${instUuid}/`), [get]);
 
   // 创建实例
   const createInstance = (params: any) =>

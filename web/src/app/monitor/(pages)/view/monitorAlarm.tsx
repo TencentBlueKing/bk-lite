@@ -29,8 +29,9 @@ import { INIT_VIEW_MODAL_FORM } from '@/app/monitor/constants/view';
 const Alert: React.FC<ViewModalProps> = ({
   monitorObject,
   metrics,
-  objects,
-  form = INIT_VIEW_MODAL_FORM
+  objects = [],
+  form = INIT_VIEW_MODAL_FORM,
+  readOnly = false,
 }) => {
   const { isLoading } = useApiClient();
   const { getMonitorAlert, patchMonitorAlert } = useMonitorApi();
@@ -118,23 +119,25 @@ const Alert: React.FC<ViewModalProps> = ({
           >
             {t('common.detail')}
           </Button>
-          <Permission
-            requiredPermissions={['Detail']}
-            instPermissions={record.permission}
-          >
-            <Popconfirm
-              title={t('monitor.events.closeTitle')}
-              description={t('monitor.events.closeContent')}
-              okText={t('common.confirm')}
-              cancelText={t('common.cancel')}
-              okButtonProps={{ loading: confirmLoading }}
-              onConfirm={() => handleCloseConfirm(record)}
+          {!readOnly && (
+            <Permission
+              requiredPermissions={['Detail']}
+              instPermissions={record.permission}
             >
-              <Button type="link" disabled={record.status !== 'new'}>
-                {t('common.close')}
-              </Button>
-            </Popconfirm>
-          </Permission>
+              <Popconfirm
+                title={t('monitor.events.closeTitle')}
+                description={t('monitor.events.closeContent')}
+                okText={t('common.confirm')}
+                cancelText={t('common.cancel')}
+                okButtonProps={{ loading: confirmLoading }}
+                onConfirm={() => handleCloseConfirm(record)}
+              >
+                <Button type="link" disabled={record.status !== 'new'}>
+                  {t('common.close')}
+                </Button>
+              </Popconfirm>
+            </Permission>
+          )}
         </>
       )
     }

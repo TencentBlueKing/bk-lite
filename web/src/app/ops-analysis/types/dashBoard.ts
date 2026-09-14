@@ -16,6 +16,7 @@ import type { Dayjs } from 'dayjs';
 import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
 import type {
   NetworkStatusTopologyConfig,
+  RelatedTopologyConfig,
   SceneWidgetType,
 } from './sceneWidget';
 import type { OpsAnalysisWidgetSurface } from '@/app/ops-analysis/utils/chartTypeSurface';
@@ -69,6 +70,7 @@ export interface AddComponentConfig {
   chartType?: string;
   sceneWidgetType?: SceneWidgetType;
   networkStatusTopology?: NetworkStatusTopologyConfig;
+  relatedTopology?: RelatedTopologyConfig;
   dataSourceParams?: ParamItem[];
   tableConfig?: TableConfig;
 }
@@ -106,6 +108,7 @@ export interface ValueConfig {
   chartType?: string;
   sceneWidgetType?: SceneWidgetType;
   networkStatusTopology?: NetworkStatusTopologyConfig;
+  relatedTopology?: RelatedTopologyConfig;
   chartThemeMode?: OpsChartThemeMode;
   dataSource?: string | number;
   compare?: boolean;

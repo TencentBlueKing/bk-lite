@@ -444,6 +444,26 @@ describe('application3D surface gate', () => {
     await waitFor(() => expect(onRawData).toHaveBeenCalledWith(wall));
   });
 
+  it('narrows the wall query to the given application instUuid', async () => {
+    mocks.getWall.mockResolvedValue({
+      ...wall,
+      items: [wallItem],
+      capacity: { actualCount: 1, supportedCount: null },
+    });
+    render(
+      <Application3D
+        instUuid="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        runtimeActive
+        surface="screen"
+      />,
+    );
+
+    await waitFor(() => expect(mocks.getWall).toHaveBeenCalled());
+    expect(mocks.getWall.mock.calls[0][2]).toBe(
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    );
+  });
+
   it('blocks dashboard without screen canvas context', async () => {
     mocks.getWall.mockResolvedValue(wall);
     render(<Application3D refreshKey="0" runtimeActive surface="dashboard" />);

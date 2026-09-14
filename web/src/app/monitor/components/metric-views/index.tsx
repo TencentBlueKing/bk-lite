@@ -22,6 +22,7 @@ import {
   getRecentTimeRange
 } from '@/app/monitor/utils/common';
 import { loadMonitorPluginsByObjectCached } from '@/app/monitor/utils/monitorPluginCache';
+import { formatMonitorViewPluginTabs } from '@/app/monitor/utils/monitorViewPlugins';
 import { calculateQueryStep } from '@/app/monitor/utils/queryStep';
 import { attachGapIntervals, buildGapDetectionParams } from '@/app/monitor/utils/gapIntervals';
 
@@ -362,17 +363,8 @@ const MetricViews: React.FC<ViewDetailProps> = ({
         }
       }
 
-      let _plugins: { label: string; value: string }[] = responseData
-        .filter((item: IntegrationItem) => item.id != null && String(item.id) !== 'undefined')
-        .sort((a: IntegrationItem, b: IntegrationItem) => {
-          const order = (item: IntegrationItem) =>
-            item.is_pre ? 0 : !item.is_custom ? 1 : 2;
-          return order(a) - order(b);
-        })
-        .map((item: IntegrationItem) => ({
-          label: String(item.display_name || item.name || '--'),
-          value: String(item.id)
-        }));
+      let _plugins: { label: string; value: string }[] =
+        formatMonitorViewPluginTabs(responseData);
 
       let nextProcessObjectId = '';
       let nextProcessPluginId = '';

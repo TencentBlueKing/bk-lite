@@ -1,5 +1,7 @@
 export const APP_CAPABILITY_LOADERS = {
   alarm: () => import('@/app/alarm/capability'),
+  cmdb: () => import('@/app/cmdb/capability'),
+  monitor: () => import('@/app/monitor/capability'),
   'ops-analysis': () => import('@/app/ops-analysis/capability'),
 } as const;
 
