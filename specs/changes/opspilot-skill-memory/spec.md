@@ -4,7 +4,7 @@ Status: in-progress
 
 ## Completion Evidence
 
-- 模型与 migration：`LLMSkill.memory_space` / `memory_write_rounds`（默认 10，1–50），`SkillConversation.memory_written_message_id`；`MemorySpace.is_builtin` 字段保留但不参与查询筛选；`Memory.owner_user_id`；与 `force_wiki_grounded` 一并落在 `0078_force_wiki_and_skill_memory`（替换已下线的 `0078_llmskill_force_wiki_grounded`，只加字段，不创建/挂接内置记忆体）
+- 模型与 migration：`LLMSkill.memory_space` / `memory_write_rounds`（默认 10，1–50），`SkillConversation.memory_written_message_id`；`MemorySpace.is_builtin` 字段保留但不参与查询筛选；`Memory.owner_user_id`；与 `force_wiki_grounded` 一并落在 `0078_force_wiki_and_skill_memory`（只加字段，不创建/挂接内置记忆体）。已部署环境按此文件名记录，不再拆成历史 0078 + 0079
 - 不再创建或自动挂接内置记忆体：新建/默认智能体 `memory_space` 为空；查询与 ChatFlow 读写不再按 `is_builtin` 过滤
 - 配置：管理员在记忆管理页自建个人记忆体，在智能体「能力拓展」中自选记忆体与写入轮次；空 = 不启用
 - 读取注入：仅 `stream_skill_channel_chat` / `execute_skill_channel_im_sync`；未配置则不读不写；记忆块放到 Wiki 之后
