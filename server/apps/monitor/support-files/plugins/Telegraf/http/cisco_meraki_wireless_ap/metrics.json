@@ -1,0 +1,214 @@
+{
+  "plugin": "Cisco Meraki Wireless AP",
+  "plugin_desc": "Collect Cisco Meraki wireless AP ethernet statuses and packet loss from Dashboard API v1.",
+  "collector": "Telegraf",
+  "collect_type": "http",
+  "status_query": "any({instance_type='cisco_meraki_wireless_ap', collect_type='http'}) by (instance_id)",
+  "instance_fact_bindings": [
+    {
+      "fact": "collector.nodes",
+      "value_type": "node_ref_list",
+      "resolver": "selected_nodes",
+      "options": {
+        "selection_field": "node_ids"
+      }
+    },
+    {
+      "fact": "probe.target",
+      "value_type": "endpoint",
+      "resolver": "input",
+      "options": {
+        "field": "base_url"
+      }
+    }
+  ],
+  "instance_summary_columns": [
+    {
+      "fact": "collector.nodes",
+      "title": "monitor.views.probeNodes",
+      "order": 10
+    },
+    {
+      "fact": "probe.target",
+      "title": "monitor.views.probeTarget",
+      "order": 20
+    }
+  ],
+  "node_selector": {
+    "is_container": true
+  },
+  "is_compound_object": true,
+  "objects": [
+    {
+      "name": "Meraki Wireless Inventory",
+      "icon": "mm-router_路由器",
+      "type": "Cisco Meraki",
+      "level": "base",
+      "description": "",
+      "default_metric": "any({instance_type='cisco_meraki_wireless_ap'}) by (instance_id)",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "supplementary_indicators": [
+        "meraki_wireless_connect_status",
+        "meraki_wireless_ap_count"
+      ],
+      "display_fields": [
+        {
+          "name": "Connect Status",
+          "sort_order": 0,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki Wireless AP",
+              "metric": "meraki_wireless_connect_status"
+            }
+          ]
+        },
+        {
+          "name": "Wireless AP Count",
+          "sort_order": 1,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki Wireless AP",
+              "metric": "meraki_wireless_ap_count"
+            }
+          ]
+        }
+      ],
+      "metrics": [
+        {
+          "metric_group": "Base",
+          "name": "meraki_wireless_connect_status",
+          "display_name": "Connect Status",
+          "instance_id_keys": [
+            "instance_id"
+          ],
+          "data_type": "Enum",
+          "unit": "[{\"name\": \"异常\", \"id\": 0, \"color\": \"#ff4d4f\"}, {\"name\": \"正常\", \"id\": 1, \"color\": \"#1ac44a\"}]",
+          "dimensions": [],
+          "description": "Whether Dashboard API accepted the organization API key for wireless AP collection.",
+          "query": "meraki_wireless_connect_status{__$labels__}"
+        },
+        {
+          "metric_group": "Inventory",
+          "name": "meraki_wireless_ap_count",
+          "display_name": "Wireless AP Count",
+          "instance_id_keys": [
+            "instance_id"
+          ],
+          "data_type": "Number",
+          "unit": "counts",
+          "dimensions": [],
+          "description": "Number of unique wireless APs in ethernet status or packet-loss data.",
+          "query": "meraki_wireless_ap_count{__$labels__}"
+        }
+      ]
+    },
+    {
+      "name": "Meraki Wireless AP",
+      "icon": "mm-router_路由器",
+      "type": "Cisco Meraki",
+      "level": "derivative",
+      "description": "",
+      "default_metric": "any({resource_type='meraki_wireless_ap'}) by (instance_id, resource_id)",
+      "instance_id_keys": [
+        "instance_id",
+        "resource_id"
+      ],
+      "supplementary_indicators": [
+        "meraki_wireless_ap_upstream_loss_percent",
+        "meraki_wireless_ap_ethernet_link_up"
+      ],
+      "display_fields": [
+        {
+          "name": "Upstream Packet Loss",
+          "sort_order": 0,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki Wireless AP",
+              "metric": "meraki_wireless_ap_upstream_loss_percent"
+            }
+          ]
+        },
+        {
+          "name": "Ethernet Link Up",
+          "sort_order": 1,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki Wireless AP",
+              "metric": "meraki_wireless_ap_ethernet_link_up"
+            }
+          ]
+        }
+      ],
+      "metrics": [
+        {
+          "metric_group": "Packet Loss",
+          "name": "meraki_wireless_ap_upstream_loss_percent",
+          "display_name": "Upstream Packet Loss",
+          "instance_id_keys": [
+            "instance_id",
+            "resource_id"
+          ],
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [],
+          "description": "Upstream packet loss percentage for the wireless AP.",
+          "query": "meraki_wireless_ap_upstream_loss_percent{resource_type=\"meraki_wireless_ap\", __$labels__}"
+        },
+        {
+          "metric_group": "Packet Loss",
+          "name": "meraki_wireless_ap_downstream_loss_percent",
+          "display_name": "Downstream Packet Loss",
+          "instance_id_keys": [
+            "instance_id",
+            "resource_id"
+          ],
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [],
+          "description": "Downstream packet loss percentage for the wireless AP.",
+          "query": "meraki_wireless_ap_downstream_loss_percent{resource_type=\"meraki_wireless_ap\", __$labels__}"
+        },
+        {
+          "metric_group": "Ethernet",
+          "name": "meraki_wireless_ap_ethernet_speed_mbps",
+          "display_name": "Ethernet Speed",
+          "instance_id_keys": [
+            "instance_id",
+            "resource_id"
+          ],
+          "data_type": "Number",
+          "unit": "Mbit/s",
+          "dimensions": [
+            {
+              "name": "port",
+              "description": "Ethernet port name"
+            }
+          ],
+          "description": "Negotiated ethernet port speed of the wireless AP.",
+          "query": "meraki_wireless_ap_ethernet_speed_mbps{resource_type=\"meraki_wireless_ap\", __$labels__}"
+        },
+        {
+          "metric_group": "Ethernet",
+          "name": "meraki_wireless_ap_ethernet_link_up",
+          "display_name": "Ethernet Link Up",
+          "instance_id_keys": [
+            "instance_id",
+            "resource_id"
+          ],
+          "data_type": "Enum",
+          "unit": "[{\"name\": \"异常\", \"id\": 0, \"color\": \"#ff4d4f\"}, {\"name\": \"正常\", \"id\": 1, \"color\": \"#1ac44a\"}]",
+          "dimensions": [
+            {
+              "name": "port",
+              "description": "Ethernet port name"
+            }
+          ],
+          "description": "Ethernet link up prefers explicit status/linkStatus/connected fields; otherwise speed>0 or duplex full/half from linkNegotiation.",
+          "query": "meraki_wireless_ap_ethernet_link_up{resource_type=\"meraki_wireless_ap\", __$labels__}"
+        }
+      ]
+    }
+  ]
+}

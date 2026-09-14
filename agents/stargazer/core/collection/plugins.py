@@ -424,4 +424,24 @@ def _load_monitor_collector(monitor_type: str):
         from tasks.collectors.host_collector import HostCollector
 
         return HostCollector
+    if monitor_type == "cisco_meraki_organization":
+        from tasks.collectors.cisco_meraki_organization_collector import CiscoMerakiOrganizationCollector
+
+        return CiscoMerakiOrganizationCollector
+    if monitor_type == "cisco_meraki_device":
+        from tasks.collectors.cisco_meraki_device_collector import CiscoMerakiDeviceCollector
+
+        return CiscoMerakiDeviceCollector
+    if monitor_type == "cisco_meraki_wireless_ap":
+        from tasks.collectors.cisco_meraki_wireless_ap_collector import CiscoMerakiWirelessApCollector
+
+        return CiscoMerakiWirelessApCollector
+    if monitor_type == "cisco_meraki_switch":
+        from tasks.collectors.cisco_meraki_switch_collector import CiscoMerakiSwitchCollector
+
+        return CiscoMerakiSwitchCollector
+    if monitor_type == "cisco_meraki_appliance":
+        from tasks.collectors.cisco_meraki_appliance_collector import CiscoMerakiApplianceCollector
+
+        return CiscoMerakiApplianceCollector
     raise ValueError(f"unsupported monitor_type: {monitor_type}")

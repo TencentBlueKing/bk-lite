@@ -1,0 +1,37 @@
+Cisco Meraki Switch:
+  name: Cisco Meraki Switch
+  desc: Collect switch port overview, per-switch ports, and power history from Meraki
+    Dashboard API v1.
+monitor_object:
+  Meraki Switch Inventory: Meraki Switch Inventory
+  Meraki Switch: Meraki Switch
+monitor_object_type:
+  Cisco Meraki: Cisco Meraki
+monitor_object_metric_group:
+  Meraki Switch Inventory:
+    Base: Base
+    Ports: Ports
+    Power: Power
+  Meraki Switch:
+    Ports: Ports
+monitor_object_metric:
+  Meraki Switch Inventory:
+    meraki_switch_connect_status:
+      name: Connect Status
+      desc: Whether Dashboard API is available for switch collection.
+    meraki_switch_port_active_count:
+      name: Active Port Count
+      desc: Organization-wide active switch port count.
+    meraki_switch_port_inactive_count:
+      name: Inactive Port Count
+      desc: Organization-wide inactive switch port count.
+    meraki_switch_power_draw_w:
+      name: Switch PoE Power Draw
+      desc: Latest switch PoE power draw in watts.
+  Meraki Switch:
+    meraki_switch_port_enabled:
+      name: Port Enabled
+      desc: Whether the switch port is administratively enabled.
+    meraki_switch_port_poe_enabled:
+      name: Port PoE Enabled
+      desc: Whether PoE is enabled on the switch port.

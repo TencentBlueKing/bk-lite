@@ -1,0 +1,30 @@
+{
+  "object": "Meraki Switch Inventory",
+  "plugin": "Cisco Meraki Switch",
+  "templates": [
+    {
+      "name": "Meraki交换机非活动端口过多",
+      "alert_name": "Meraki组织${instance_id} 非活动端口数过多",
+      "description": "交换机非活动端口数量超过阈值时告警。",
+      "metric_name": "meraki_switch_port_inactive_count",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 20,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 10,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 5,
+          "method": ">"
+        }
+      ]
+    }
+  ]
+}

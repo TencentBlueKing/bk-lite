@@ -1,0 +1,181 @@
+{
+  "object_name": "Meraki Wireless Inventory",
+  "instance_type": "cisco_meraki_wireless_ap",
+  "collect_type": "http",
+  "config_type": [
+    "cisco_meraki_wireless_ap"
+  ],
+  "collector": "Telegraf",
+  "instance_id": "{{cloud_region}}_{{instance_type}}_{{organization_id}}",
+  "form_fields": [
+    {
+      "name": "base_url",
+      "label": "区域端点",
+      "type": "select",
+      "required": true,
+      "default_value": "https://api.meraki.com",
+      "editable": false,
+      "description": "Meraki Dashboard API 区域根地址，采集器会请求 /api/v1。",
+      "guide_short": "仅允许 api.meraki.com / api.meraki.in / api.meraki.ca / api.meraki.cn / api.gov-meraki.com。",
+      "guide_short_en": "Allowed hosts: api.meraki.com / api.meraki.in / api.meraki.ca / api.meraki.cn / api.gov-meraki.com.",
+      "widget_props": {
+        "options": [
+          {
+            "label": "Global (api.meraki.com)",
+            "value": "https://api.meraki.com",
+            "label_en": "Global (api.meraki.com)"
+          },
+          {
+            "label": "India (api.meraki.in)",
+            "value": "https://api.meraki.in",
+            "label_en": "India (api.meraki.in)"
+          },
+          {
+            "label": "Canada (api.meraki.ca)",
+            "value": "https://api.meraki.ca",
+            "label_en": "Canada (api.meraki.ca)"
+          },
+          {
+            "label": "China (api.meraki.cn)",
+            "value": "https://api.meraki.cn",
+            "label_en": "China (api.meraki.cn)"
+          },
+          {
+            "label": "US Gov (api.gov-meraki.com)",
+            "value": "https://api.gov-meraki.com",
+            "label_en": "US Gov (api.gov-meraki.com)"
+          }
+        ]
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.base_url"
+      },
+      "label_en": "Regional Endpoint",
+      "description_en": "Meraki Dashboard API regional endpoint. The collector requests /api/v1."
+    },
+    {
+      "name": "organization_id",
+      "label": "组织 ID",
+      "type": "input",
+      "required": true,
+      "visible_in": "edit",
+      "editable": false,
+      "description": "Meraki 组织 ID。",
+      "guide_short": "在 Dashboard 组织设置中查看组织 ID。",
+      "guide_short_en": "Find the organization ID in Dashboard organization settings.",
+      "widget_props": {
+        "placeholder": "123456",
+        "placeholder_en": "123456"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.organization_id"
+      },
+      "label_en": "Organization ID",
+      "description_en": "Meraki organization ID."
+    },
+    {
+      "name": "ENV_PASSWORD",
+      "label": "组织 API 密钥",
+      "type": "password",
+      "required": true,
+      "editable": false,
+      "encrypted": true,
+      "description": "Meraki 组织 API 密钥，请求头 X-Cisco-Meraki-API-Key。",
+      "guide_short": "只使用组织 API 密钥；不要把密钥写入 URL 或普通请求头。",
+      "guide_short_en": "Use an organization API key only. Do not put the key in the URL or ordinary headers.",
+      "widget_props": {
+        "placeholder": "API Key",
+        "placeholder_en": "API Key"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.env_config.PASSWORD__{{config_id}}"
+      },
+      "label_en": "Organization API Key",
+      "description_en": "Organization API key sent as X-Cisco-Meraki-API-Key."
+    },
+    {
+      "name": "interval",
+      "label": "间隔",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 120,
+      "description": "监控数据的采集时间间隔（单位：秒）",
+      "guide_short": "默认 120 秒。过短会更容易触发 Dashboard API 每组织 10 次/秒的限制。",
+      "guide_short_en": "Default 120 seconds. Shorter intervals are more likely to hit the 10 requests/second/organization budget.",
+      "widget_props": {
+        "min": 30,
+        "precision": 0,
+        "placeholder": "间隔",
+        "addonAfter": "s",
+        "placeholder_en": "Interval"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.interval",
+        "to_form": {
+          "regex": "^(\\d+)s$"
+        },
+        "to_api": {
+          "suffix": "s"
+        }
+      },
+      "label_en": "Interval",
+      "description_en": "Collection interval in seconds."
+    }
+  ],
+  "table_columns": [
+    {
+      "name": "node_ids",
+      "label": "节点",
+      "type": "select",
+      "required": true,
+      "widget_props": {
+        "placeholder": "请选择节点",
+        "placeholder_en": "Please select node"
+      },
+      "enable_row_filter": false,
+      "label_en": "Node"
+    },
+    {
+      "name": "organization_id",
+      "label": "组织 ID",
+      "type": "input",
+      "required": true,
+      "widget_props": {
+        "placeholder": "组织 ID",
+        "placeholder_en": "Organization ID"
+      },
+      "change_handler": {
+        "type": "simple",
+        "source_fields": [
+          "organization_id"
+        ],
+        "target_field": "instance_name"
+      },
+      "label_en": "Organization ID"
+    },
+    {
+      "name": "instance_name",
+      "label": "实例名称",
+      "type": "input",
+      "required": true,
+      "widget_props": {
+        "placeholder": "实例名称",
+        "disabled": false,
+        "placeholder_en": "Instance Name"
+      },
+      "label_en": "Instance Name"
+    },
+    {
+      "name": "group_ids",
+      "label": "组",
+      "type": "group_select",
+      "required": false,
+      "widget_props": {
+        "placeholder": "请选择组",
+        "placeholder_en": "Please select group"
+      },
+      "label_en": "Group"
+    }
+  ],
+  "extra_edit_fields": {}
+}

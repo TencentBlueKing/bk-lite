@@ -1,0 +1,30 @@
+Cisco Meraki Organization:
+  name: Cisco Meraki Organization
+  desc: Collect organization inventory, network list, and basic organization health
+    from Meraki Dashboard API v1.
+monitor_object:
+  Meraki Organization: Meraki Organization
+  Meraki Network: Meraki Network
+monitor_object_type:
+  Cisco Meraki: Cisco Meraki
+monitor_object_metric_group:
+  Meraki Organization:
+    Base: Base
+    Inventory: Inventory
+  Meraki Network:
+    Inventory: Inventory
+monitor_object_metric:
+  Meraki Organization:
+    meraki_org_connect_status:
+      name: Connect Status
+      desc: Whether Dashboard API returned the organization.
+    meraki_org_api_enabled:
+      name: API Enabled
+      desc: Whether the organization has Dashboard API enabled.
+    meraki_org_network_count:
+      name: Network Count
+      desc: Number of networks in the organization.
+  Meraki Network:
+    meraki_network_present:
+      name: Network Present
+      desc: Presence gauge for each network.
