@@ -61,6 +61,39 @@ def _parse_qcloud_regions(value):
     return parts or ["ap-guangzhou"]
 
 
+def _latest_sample(values):
+    """保留时间戳最大的一个点；并列时用后面的点。"""
+    latest = None
+    for item in values or ():
+        if not isinstance(item, (tuple, list)) or len(item) != 2:
+            continue
+        timestamp, value = item
+        if latest is None or (timestamp or 0) >= (latest[0] or 0):
+            latest = (timestamp, value)
+    return latest
+
+
+def _restamp_metrics(metrics, timestamp_ms):
+    """云监控周期点改写为当前毫秒，否则样本必然落在 5 分钟瞬时查询窗口外。"""
+    restamped = {}
+    for metric_name, metric_data in (metrics or {}).items():
+        if isinstance(metric_data, dict):
+            dim_samples = {}
+            for dims, values in metric_data.items():
+                latest = _latest_sample(values)
+                if latest is not None:
+                    dim_samples[dims] = [[timestamp_ms, latest[1]]]
+            if dim_samples:
+                restamped[metric_name] = dim_samples
+        elif isinstance(metric_data, list):
+            latest = _latest_sample(metric_data)
+            if latest is not None:
+                restamped[metric_name] = [[timestamp_ms, latest[1]]]
+        else:
+            restamped[metric_name] = metric_data
+    return restamped
+
+
 def _attach_ip_dimension(metrics, ip):
     """把 resource_ip 写成 convert_to_prometheus 已支持的维度，不改公共转换层。"""
     ip_dim = ("resource_ip", ip)
@@ -206,8 +239,10 @@ class QCloudCollector(BaseCollector):
                     )
                     continue
 
+        publish_ms = int(time.time() * 1000)
+        metric_dict = {key: _restamp_metrics(metrics, publish_ms) for key, metrics in metric_dict.items()}
         metric_list = convert_to_prometheus(metric_dict) if metric_dict else []
-        connect_lines = self._connect_status_lines(connected=listed_ok)
+        connect_lines = self._connect_status_lines(connected=listed_ok, timestamp_ms=publish_ms)
         influxdb_data = "\n".join(connect_lines + metric_list) + "\n"
 
         logger.info(
@@ -223,13 +258,14 @@ class QCloudCollector(BaseCollector):
 
         return influxdb_data
 
-    def _connect_status_lines(self, *, connected: bool) -> list[str]:
+    def _connect_status_lines(self, *, connected: bool, timestamp_ms: int | None = None) -> list[str]:
         """账号级连通性。NATS 会把 Prometheus gauge 写成 ConnectStatus_gauge。"""
         tags = self.params.get("tags") if isinstance(self.params.get("tags"), dict) else {}
         instance_id = tags.get("instance_id") or self.params.get("instance_id") or "qcloud"
         safe_instance_id = str(instance_id).replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
         value = 1 if connected else 0
-        timestamp_ms = int(time.time() * 1000)
+        if timestamp_ms is None:
+            timestamp_ms = int(time.time() * 1000)
         return [
             "# HELP ConnectStatus QCloud API connectivity",
             "# TYPE ConnectStatus gauge",
