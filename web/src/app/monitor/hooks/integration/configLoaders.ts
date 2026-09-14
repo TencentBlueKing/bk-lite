@@ -101,6 +101,11 @@ const COMMUNITY_OBJECT_CONFIG_LOADERS: Record<string, ObjectConfigLoader> = {
     import('./objects/ciscoMeraki/deviceInventory').then((m) => m.useMerakiDeviceInventoryConfig),
   'Meraki Device': () =>
     import('./objects/ciscoMeraki/device').then((m) => m.useMerakiDeviceConfig),
+  'Meraki Wireless Inventory': () =>
+    import('./objects/ciscoMeraki/wirelessInventory').then((m) => m.useMerakiWirelessInventoryConfig),
+  'Meraki Wireless AP': () =>
+    import('./objects/ciscoMeraki/wirelessAp').then((m) => m.useMerakiWirelessApConfig),
+
 };
 
 const configCache: Record<string, ObjectConfig> = {};
