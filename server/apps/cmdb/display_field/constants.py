@@ -61,18 +61,20 @@ USER_DISPLAY_FORMAT = "{display_name}({username})"
 
 # ========== 缓存相关常量 ==========
 
-# 排除字段列表缓存 key
-CACHE_KEY_EXCLUDE_FIELDS = "cmdb:exclude_fields:all"
-
-# 模型字段映射缓存 key
-CACHE_KEY_MODEL_FIELDS_MAPPING = "cmdb:model_fields_mapping"
+# 全文检索排除字段与模型字段映射使用同一份模型快照构建、一次发布
+CACHE_KEY_FIELD_METADATA = "cmdb:field_metadata:v2"
 
 # 模型 attrs 缓存 key 前缀
-CACHE_KEY_MODEL_ATTRS_PREFIX = "cmdb:model_attrs:"
+CACHE_KEY_MODEL_ATTRS_PREFIX = "cmdb:model_attrs:v2:"
 
-# P2-2.6: 已缓存 model_id 索引集合,用于 clear_cache 精准删具体 model attrs key
-# (本仓 cache 后端 locmem/Django-RedisCache 都不支持 delete_pattern,原兜底只 log warning)
-CACHE_KEY_MODEL_ATTRS_INDEX = "cmdb:model_attrs:__index__"
+# 已缓存 model_id 索引集合，用于 clear_cache 精准删除具体 model attrs key
+CACHE_KEY_MODEL_ATTRS_INDEX = "cmdb:model_attrs:v2:__index__"
+
+# v1 key 仅用于升级后的定向清理；新代码不读取旧格式缓存
+LEGACY_CACHE_KEY_EXCLUDE_FIELDS = "cmdb:exclude_fields:all"
+LEGACY_CACHE_KEY_MODEL_FIELDS_MAPPING = "cmdb:model_fields_mapping"
+LEGACY_CACHE_KEY_MODEL_ATTRS_PREFIX = "cmdb:model_attrs:"
+LEGACY_CACHE_KEY_MODEL_ATTRS_INDEX = "cmdb:model_attrs:__index__"
 
 # 缓存过期时间（秒）- 默认 1 小时
 CACHE_TTL_SECONDS = 3600

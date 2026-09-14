@@ -1887,8 +1887,6 @@ class FalkorDBClient:
 
         # 获取排除字段
         exclude_fields = ExcludeFieldsCache.get_exclude_fields()
-        if not exclude_fields:
-            raise BaseAppException("排除字段缓存未初始化")
 
         # 参数化查询参数（合并权限参数）
         query_params = permission_params_dict.copy() if permission_params_dict else {}
@@ -2023,8 +2021,6 @@ class FalkorDBClient:
 
         # 获取排除字段
         exclude_fields = ExcludeFieldsCache.get_exclude_fields()
-        if not exclude_fields:
-            raise BaseAppException("排除字段缓存未初始化")
 
         # 参数化查询参数（合并权限参数）
         query_params = permission_params_dict.copy() if permission_params_dict else {}
@@ -2151,8 +2147,6 @@ class FalkorDBClient:
 
         # 获取排除字段
         exclude_fields = ExcludeFieldsCache.get_exclude_fields()
-        if not exclude_fields:
-            raise BaseAppException("排除字段缓存未初始化")
 
         # 参数化查询参数
         query_params = {}
