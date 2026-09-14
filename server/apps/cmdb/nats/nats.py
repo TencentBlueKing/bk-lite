@@ -25,6 +25,8 @@ from apps.cmdb.constants.constants import (
     PERMISSION_TASK,
     CollectPluginTypes,
     CollectRunStatusType,
+    OPERATE,
+    VIEW,
 )
 from apps.cmdb.display_field.cache import ExcludeFieldsCache
 from apps.cmdb.display_field.constants import (
@@ -50,6 +52,7 @@ from apps.cmdb.services.config_file_service import ConfigFileService
 from apps.cmdb.services.host_zombie_whitelist import ensure_host_zombie_whitelist_attr
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.model import ModelManage
+from apps.cmdb.services.model_visibility import BusinessModelVisibility
 from apps.cmdb.services.module_ingest import CmdbModuleIngestService
 from apps.cmdb.services.monitored_host import build_monitored_host_row
 from apps.cmdb.services.rack_room import format_rack_location_label, parse_rack_location
@@ -2490,3 +2493,299 @@ def get_cloud_resource_cost_bill_detail(user_info=None, **kwargs):
     )
     data["items"] = [{k: _jsonable(v) for k, v in item.items()} for item in data["items"]]
     return {"result": True, "data": data, "message": ""}
+
+
+def _llm_require_permission_context(params, model_id="", permission_type=PERMISSION_INSTANCES):
+    params = params or {}
+    user_info = params.get("user_info") or {}
+    permission_map = _build_nats_permission_map(user_info, model_id=model_id, permission_type=permission_type)
+    if permission_map is None:
+        raise ValueError("insufficient CMDB permission")
+    user = _normalize_permission_user(user_info.get("user"), domain=user_info.get("domain"))
+    return user_info, permission_map, user
+
+
+def _llm_has_instance_permission(instance, permission_map, user, operator):
+    username = getattr(user, "username", "") or ""
+    if instance.get("_creator") == username:
+        return True
+    return CmdbRulesFormatUtil.has_object_permission(
+        obj_type=PERMISSION_INSTANCES,
+        operator=operator,
+        model_id=instance.get("model_id", ""),
+        permission_instances_map=permission_map,
+        instance=instance,
+    )
+
+
+def _llm_has_model_view(model_info, permission_map):
+    return CmdbRulesFormatUtil.has_object_permission(
+        obj_type=PERMISSION_MODEL,
+        operator=VIEW,
+        model_id=model_info.get("model_id", ""),
+        permission_instances_map=permission_map,
+        instance=model_info,
+        default_group_id=get_default_group_id()[0],
+    )
+
+
+@nats_client.register
+@_accept_legacy_rpc_kwargs
+def search_models_for_llm(params=None):
+    """按调用方权限列出可见模型。
+
+    权限过滤在进程内做，不把 organization list 条件推进图查询：
+    共享 Cypher 的 list[] 使用 FalkorDB `typeof`，Neo4j 后端无法执行。
+    """
+    params = params or {}
+    user_info = params.get("user_info") or {}
+    permission_map = _build_nats_model_permission_map(user_info)
+    if permission_map is None:
+        raise ValueError("insufficient CMDB permission")
+    default_group_id = get_default_group_id()[0]
+    default_perm = dict(permission_map.get(default_group_id) or {"permission_instances_map": {}, "inst_names": []})
+    default_perm["__default_model"] = [VIEW]
+    permission_map = {**permission_map, default_group_id: default_perm}
+    classification_id = params.get("classification_id")
+    models = ModelManage.search_model(
+        language=_resolve_nats_cmdb_language(user_info),
+        include_hidden=False,
+    )
+    if classification_id:
+        models = [item for item in models if item.get("classification_id") == classification_id]
+    models = [item for item in models if _llm_has_model_view(item, permission_map)]
+    return [_serialize_instance_for_transport(item) for item in models]
+
+
+@nats_client.register
+@_accept_legacy_rpc_kwargs
+def search_model_attrs_for_llm(params):
+    """按调用方权限列出模型属性，隐藏展示字段。"""
+    params = params or {}
+    model_id = params.get("model_id")
+    if not model_id:
+        raise ValueError("model_id is required")
+    user_info, permission_map, _user = _llm_require_permission_context(params, model_id=model_id, permission_type=PERMISSION_MODEL)
+    model_info = ModelManage.search_model_info(model_id)
+    if not model_info or not BusinessModelVisibility.is_visible(model_info):
+        raise ValueError("model not found")
+    if not _llm_has_model_view(model_info, permission_map):
+        raise ValueError("insufficient model permission")
+    attrs = ModelManage.search_model_attr(model_id, _resolve_nats_cmdb_language(user_info))
+    return [attr for attr in attrs if not str(attr.get("attr_id") or "").endswith(DISPLAY_SUFFIX)]
+
+
+@nats_client.register
+@_accept_legacy_rpc_kwargs
+def get_model_info(params):
+    params = params or {}
+    model_id = params.get("model_id")
+    if not model_id:
+        raise ValueError("model_id is required")
+    _user_info, permission_map, _user = _llm_require_permission_context(params, model_id=model_id, permission_type=PERMISSION_MODEL)
+    model_info = ModelManage.search_model_info(model_id)
+    if not model_info or not BusinessModelVisibility.is_visible(model_info):
+        raise ValueError("model not found")
+    if not _llm_has_model_view(model_info, permission_map):
+        raise ValueError("insufficient model permission")
+    return _serialize_instance_for_transport(model_info)
+
+
+@nats_client.register
+@_accept_legacy_rpc_kwargs
+def list_instances_for_llm(params):
+    """按调用方权限分页查询模型实例。"""
+    params = params or {}
+    _require_uuid_protocol(params)
+    model_id = params.get("model_id")
+    if not model_id:
+        raise ValueError("model_id is required")
+    user_info, permission_map, user = _llm_require_permission_context(params, model_id=model_id)
+    allowed_org_ids = _resolve_user_info_allowed_org_ids(user_info) or []
+    if not allowed_org_ids:
+        raise ValueError("insufficient CMDB permission")
+    page = int(params.get("page") or 1)
+    page_size = min(max(int(params.get("page_size") or 20), 1), 100)
+    query_params = [
+        *(params.get("params") or []),
+        {"field": "organization", "type": "list[]", "value": allowed_org_ids},
+    ]
+    instances, count = InstanceManage.instance_list(
+        model_id=model_id,
+        params=list(query_params),
+        page=page,
+        page_size=page_size,
+        order=params.get("order") or "",
+        creator=getattr(user, "username", "") or "",
+        permission_map=permission_map,
+    )
+    need_format = params.get("format", True)
+    raw_items = _format_asset_instances_response(model_id, instances) if need_format else instances
+    return {"count": count, "items": [_serialize_instance_for_transport(item) for item in raw_items]}
+
+
+@nats_client.register
+@_accept_legacy_rpc_kwargs
+def get_instance_by_uuid(params):
+    """按 UUID 查询单实例，需 user_info 权限上下文。"""
+    params = params or {}
+    _require_uuid_protocol(params)
+    inst_uuid = params.get("inst_uuid")
+    if not inst_uuid:
+        raise ValueError("inst_uuid is required")
+    instance = InstanceManage.query_entity_by_uuid(inst_uuid)
+    if not instance:
+        raise ValueError("instance not found")
+    _user_info, permission_map, user = _llm_require_permission_context(params, model_id=str(instance.get("model_id") or ""))
+    if not _llm_has_instance_permission(instance, permission_map, user, VIEW):
+        raise ValueError("insufficient instance permission")
+    return _serialize_instance_for_transport(instance)
+
+
+@nats_client.register
+@_accept_legacy_rpc_kwargs
+def search_instance_associations_for_llm(params):
+    params = dict(params or {})
+    allowed_org_ids = _resolve_user_info_allowed_org_ids(params.get("user_info"))
+    if not allowed_org_ids:
+        raise ValueError("insufficient CMDB permission")
+    params["organization_ids"] = allowed_org_ids
+    return search_instance_associations(params)
+
+
+@nats_client.register
+@_accept_legacy_rpc_kwargs
+def batch_update_instances(params):
+    params = params or {}
+    _require_uuid_protocol(params)
+    _reject_legacy_numeric_locators(params, "inst_ids", "inst_id", "_id")
+    inst_uuids = _normalize_to_list(params.get("inst_uuids"))
+    update_attr = params.get("update_attr") or {}
+    if not inst_uuids:
+        raise ValueError("inst_uuids is required")
+    if not update_attr:
+        raise ValueError("update_attr is required")
+    allowed_org_ids = _resolve_allowed_org_ids(params)
+    _ensure_organization_in_scope(update_attr, allowed_org_ids)
+    instances = InstanceManage.query_entity_by_uuids(inst_uuids)
+    if len(instances) != len(inst_uuids):
+        raise ValueError("instance not found")
+    for instance in instances:
+        _user_info, permission_map, user = _llm_require_permission_context(params, model_id=str(instance.get("model_id") or ""))
+        if not _llm_has_instance_permission(instance, permission_map, user, OPERATE):
+            raise ValueError("insufficient instance permission")
+    InstanceManage.batch_instance_update_by_uuids(
+        _build_scope_user_groups(allowed_org_ids),
+        [],
+        inst_uuids,
+        update_attr,
+        params.get("operator", ""),
+        allowed_org_ids=allowed_org_ids,
+    )
+    return {"result": True, "updated": inst_uuids}
+
+
+@nats_client.register
+@_accept_legacy_rpc_kwargs
+def fulltext_search(params):
+    params = params or {}
+    search = str(params.get("search") or "").strip()
+    if not search:
+        raise ValueError("search is required")
+    _user_info, permission_map, user = _llm_require_permission_context(params)
+    result = InstanceManage.fulltext_search(
+        search=search,
+        permission_map=permission_map,
+        creator=getattr(user, "username", "") or "",
+        case_sensitive=bool(params.get("case_sensitive")),
+    )
+    return [_serialize_instance_for_transport(item) for item in result]
+
+
+@nats_client.register
+@_accept_legacy_rpc_kwargs
+def fulltext_search_stats(params):
+    params = params or {}
+    search = str(params.get("search") or "").strip()
+    if not search:
+        raise ValueError("search is required")
+    _user_info, permission_map, user = _llm_require_permission_context(params)
+    return InstanceManage.fulltext_search_stats(
+        search=search,
+        permission_map=permission_map,
+        creator=getattr(user, "username", "") or "",
+        case_sensitive=bool(params.get("case_sensitive")),
+    )
+
+
+@nats_client.register
+@_accept_legacy_rpc_kwargs
+def fulltext_search_by_model(params):
+    params = params or {}
+    search = str(params.get("search") or "").strip()
+    model_id = params.get("model_id")
+    if not search:
+        raise ValueError("search is required")
+    if not model_id:
+        raise ValueError("model_id is required")
+    _user_info, permission_map, user = _llm_require_permission_context(params)
+    page = max(int(params.get("page") or 1), 1)
+    page_size = min(max(int(params.get("page_size") or 10), 1), 100)
+    result = InstanceManage.fulltext_search_by_model(
+        search=search,
+        model_id=model_id,
+        permission_map=permission_map,
+        creator=getattr(user, "username", "") or "",
+        page=page,
+        page_size=page_size,
+        case_sensitive=bool(params.get("case_sensitive")),
+    )
+    result = dict(result or {})
+    result["data"] = [_serialize_instance_for_transport(item) for item in result.get("data") or []]
+    return result
+
+
+@nats_client.register
+def topo_search_expand_by_uuid(inst_uuid=None, parent_uuids=None, depth=2, user_info=None, **kwargs):
+    """从实例 UUID 展开拓扑，排除 parent_uuids。"""
+    from apps.cmdb.services.instance_identity import normalize_inst_uuid
+    from apps.core.exceptions.base_app_exception import BaseAppException
+
+    raw = inst_uuid if inst_uuid is not None else kwargs.get("inst_uuid")
+    try:
+        normalized = normalize_inst_uuid(raw)
+    except BaseAppException:
+        return _topo_search_lite_failure("invalid_inst_uuid", "inst_uuid 必须是 UUIDv4")
+
+    parents = parent_uuids if parent_uuids is not None else kwargs.get("parent_uuids") or []
+    if not isinstance(parents, list):
+        parents = [parents]
+    try:
+        depth = int(depth if depth is not None else kwargs.get("depth") or 2)
+    except (TypeError, ValueError):
+        depth = 2
+    depth = min(max(depth, 1), 5)
+
+    instance = InstanceManage.query_entity_by_uuid(normalized)
+    if not instance:
+        return _topo_search_lite_failure("not_found", "实例不存在")
+
+    permission_map = _build_nats_permission_map(user_info, model_id=str(instance.get("model_id") or ""))
+    user = _normalize_permission_user((user_info or {}).get("user"), domain=(user_info or {}).get("domain"))
+    if permission_map is None or not _llm_has_instance_permission(instance, permission_map, user, VIEW):
+        return _topo_search_lite_failure("permission_denied", "无权限查看该实例")
+
+    try:
+        result = InstanceManage.topo_search_expand_by_uuid(
+            normalized,
+            parents,
+            depth=depth,
+            permission_map=permission_map,
+            user=user,
+            language=_resolve_nats_cmdb_language(user_info),
+        )
+    except BaseAppException:
+        return _topo_search_lite_failure("not_found", "实例不存在")
+
+    return {"result": True, "data": result, "message": ""}
+

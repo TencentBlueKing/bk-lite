@@ -373,6 +373,25 @@ def test_find_entity_by_id():
     assert c.find_entity_by_id(99, entities) is None
 
 
+def test_set_entity_properties_accepts_attrs_kwarg():
+    c = _client()
+    c.check_unique_attr = lambda *args, **kwargs: None
+    c.check_unique_rules = lambda *args, **kwargs: None
+    c.check_required_attr = lambda *args, **kwargs: None
+    c.get_editable_attr = lambda properties, _editable: properties
+    c.batch_update_node_properties = lambda label, entity_ids, properties: [(FakeNode(entity_ids[0], [label], properties),)]
+    out = c.set_entity_properties(
+        "instance",
+        [1],
+        {"inst_name": "renamed"},
+        {},
+        [],
+        check=False,
+        attrs=[],
+    )
+    assert out[0]["inst_name"] == "renamed"
+
+
 def test_create_node():
     c = _client()
     entity = {"_id": 1, "model_id": "host", "inst_name": "h1"}

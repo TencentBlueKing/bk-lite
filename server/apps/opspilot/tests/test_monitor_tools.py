@@ -24,6 +24,7 @@ def _monitor_tools():
         monitor_list_objects,
         monitor_query_alert_segments,
         monitor_query_metric_data,
+        monitor_get_host_resource_snapshot,
     )
 
     return [
@@ -34,6 +35,7 @@ def _monitor_tools():
         monitor_query_metric_data,
         monitor_list_active_alerts,
         monitor_query_alert_segments,
+        monitor_get_host_resource_snapshot,
     ]
 
 
@@ -231,6 +233,32 @@ def test_legacy_configurable_and_model_fields_cannot_override_snapshot(mocker):
     )
 
 
+def test_monitor_list_objects_keeps_identity_fields_and_drops_plugin_blobs(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.objects import monitor_list_objects
+
+    rpc = mocker.Mock()
+    rpc.monitor_objects.return_value = {
+        "result": True,
+        "data": [
+            {
+                "id": "host",
+                "name": "Host",
+                "type": 1,
+                "plugin_config": {"huge": "x" * 50},
+                "default_metric": {"promql": "up"},
+            }
+        ],
+    }
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = monitor_list_objects.invoke({}, config=_runtime_config())
+
+    assert result["success"] is True
+    assert result["data"] == [{"id": "host", "name": "Host", "type": 1}]
+    assert "plugin_config" not in result["data"][0]
+
+
 @pytest.mark.parametrize(
     "tool_index,tool_input,rpc_method,rpc_kwargs",
     [
@@ -331,6 +359,12 @@ def test_legacy_configurable_and_model_fields_cannot_override_snapshot(mocker):
                 }
             },
         ),
+        (
+            7,
+            {"instance_ids": ["host-1", "host-2"]},
+            "get_host_resource_snapshot",
+            {"instance_ids": ["host-1", "host-2"]},
+        ),
     ],
     ids=[
         "list-objects",
@@ -340,6 +374,7 @@ def test_legacy_configurable_and_model_fields_cannot_override_snapshot(mocker):
         "query-metric-data",
         "list-active-alerts",
         "query-alert-segments",
+        "host-resource-snapshot",
     ],
 )
 def test_monitor_tools_map_business_arguments_to_existing_rpc_methods(
@@ -366,6 +401,34 @@ def test_monitor_tools_map_business_arguments_to_existing_rpc_methods(
             "include_children": True,
         },
         **rpc_kwargs,
+    )
+
+
+def test_monitor_list_object_instances_filters_keyword_locally(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.objects import monitor_list_object_instances
+
+    rpc = mocker.Mock()
+    rpc.monitor_object_instances.return_value = {
+        "result": True,
+        "data": [{"id": "h1", "name": "web-01"}, {"id": "h2", "name": "db-01"}],
+    }
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = monitor_list_object_instances.invoke(
+        {"monitor_obj_id": "host", "keyword": "web"},
+        config=_runtime_config(),
+    )
+
+    assert result == {"success": True, "data": [{"id": "h1", "name": "web-01"}]}
+    rpc.monitor_object_instances.assert_called_once_with(
+        user_info={
+            "user": "alice",
+            "domain": "tenant-a.com",
+            "team": 12,
+            "include_children": True,
+        },
+        monitor_obj_id="host",
     )
 
 
@@ -404,11 +467,10 @@ def test_monitor_call_rpc_wraps_rpc_exception(mocker):
         (3, {"monitor_obj_id": "host", "instance_id": ""}, "instance_id is required"),
         (4, {"metric": "cpu", "start": 100, "end": 200}, "monitor_obj_id is required"),
         (4, {"monitor_obj_id": "host", "start": 100, "end": 200}, "metric is required"),
-        (4, {"monitor_obj_id": "host", "metric": "cpu", "end": 200}, "start is required"),
-        (4, {"monitor_obj_id": "host", "metric": "cpu", "start": 100}, "end is required"),
         (6, {"start": 100, "end": 200}, "monitor_obj_id is required"),
         (6, {"monitor_obj_id": "host", "end": 200}, "start is required"),
         (6, {"monitor_obj_id": "host", "start": 100}, "end is required"),
+        (7, {}, "instance_ids is required"),
     ],
 )
 def test_monitor_tools_keep_existing_business_required_validation(mocker, tool_index, tool_input, error):
@@ -419,6 +481,52 @@ def test_monitor_tools_keep_existing_business_required_validation(mocker, tool_i
 
     assert result == {"success": False, "error": error}
     rpc_call.assert_not_called()
+
+
+def test_monitor_query_metric_data_defaults_last_hour_window(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.metrics import monitor_query_metric_data
+
+    mocker.patch.object(utils.time, "time", return_value=1_789_200_000.0)
+    rpc = mocker.Mock()
+    rpc.query_monitor_data_by_metric.return_value = {"result": True, "data": {"series": []}}
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = monitor_query_metric_data.invoke(
+        {"monitor_obj_id": "12", "metric": "cpu_usage_user_total", "instance_ids": ["web-1"]},
+        config=_runtime_config(),
+    )
+
+    assert result["success"] is True
+    query_data = rpc.query_monitor_data_by_metric.call_args.kwargs["query_data"]
+    assert query_data["start"] == 1_789_200_000_000 - 3_600_000
+    assert query_data["end"] == 1_789_200_000_000
+    assert query_data["instance_ids"] == ["web-1"]
+
+
+def test_monitor_query_metric_data_converts_unix_seconds_to_ms(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.metrics import monitor_query_metric_data
+
+    rpc = mocker.Mock()
+    rpc.query_monitor_data_by_metric.return_value = {"result": True, "data": {"series": []}}
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = monitor_query_metric_data.invoke(
+        {
+            "monitor_obj_id": "12",
+            "metric": "cpu_usage_user_total",
+            "start": 1_789_200_000,
+            "end": 1_789_203_600,
+            "instance_ids": ["web-1"],
+        },
+        config=_runtime_config(),
+    )
+
+    assert result["success"] is True
+    query_data = rpc.query_monitor_data_by_metric.call_args.kwargs["query_data"]
+    assert query_data["start"] == 1_789_200_000_000
+    assert query_data["end"] == 1_789_203_600_000
 
 
 def test_builtin_monitor_tool_descriptor_shape():

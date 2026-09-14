@@ -83,6 +83,16 @@ def test_cmdb_search_models(cmdb):
     assert _last(cmdb.client) == ("run", "search_models", (), {"params": {"classification_id": "biz"}})
 
 
+def test_cmdb_search_models_for_llm(cmdb):
+    cmdb.search_models_for_llm(classification_id="biz")
+    assert _last(cmdb.client) == ("run", "search_models_for_llm", (), {"params": {"classification_id": "biz"}})
+
+
+def test_cmdb_list_instances_for_llm(cmdb):
+    cmdb.list_instances_for_llm(model_id="host", page=1)
+    assert _last(cmdb.client) == ("run", "list_instances_for_llm", (), {"params": {"model_id": "host", "page": 1}})
+
+
 def test_cmdb_search_classifications(cmdb):
     cmdb.search_classifications(include_hidden=False)
     assert _last(cmdb.client) == ("run", "search_classifications", (), {"params": {"include_hidden": False}})
@@ -111,6 +121,16 @@ def test_cmdb_create_instance_association(cmdb):
 def test_cmdb_delete_instance_association(cmdb):
     cmdb.delete_instance_association(asso_id=9)
     assert _last(cmdb.client) == ("run", "delete_instance_association", (), {"params": {"asso_id": 9}})
+
+
+def test_cmdb_create_instance(cmdb):
+    cmdb.create_instance(model_id="host", instance_info={"inst_name": "box"})
+    assert _last(cmdb.client) == (
+        "run",
+        "create_instance",
+        (),
+        {"params": {"model_id": "host", "instance_info": {"inst_name": "box"}}},
+    )
 
 
 def test_cmdb_sync_display_fields(cmdb):
@@ -298,6 +318,29 @@ def test_log_ana_search_custom_limit(log_ana):
         (),
         {"query": "q", "time_range": "1h", "limit": 50, "extra": "x"},
     )
+
+
+def test_log_ana_list_log_groups(log_ana):
+    log_ana.list_log_groups(user_info={"team": 1})
+    assert _last(log_ana.client) == ("run", "list_log_groups", (), {"user_info": {"team": 1}})
+
+
+def test_log_ana_search_structured(log_ana):
+    log_ana.search_structured({"keyword": "err"}, user_info={"team": 1})
+    assert _last(log_ana.client) == (
+        "run",
+        "log_search_structured",
+        (),
+        {"query_data": {"keyword": "err"}, "user_info": {"team": 1}},
+    )
+
+
+def test_log_ana_local_client_appclient_path(monkeypatch):
+    monkeypatch.setenv("IS_LOCAL_RPC", "1")
+    from apps.rpc.log import LogOperationAnaRpc
+
+    rpc = LogOperationAnaRpc()
+    assert rpc.client.path == "apps.log.nats.log"
 
 
 def test_log_ana_hits_defaults(log_ana):
@@ -541,12 +584,51 @@ def test_alert_get_trend_data_positional(alert_ana):
     assert _last(alert_ana.client) == ("run", "get_alert_trend_data", ("level", {"a": 1}), {})
 
 
-def test_alert_ana_uses_operation_analysis_rpc():
+def test_alert_ana_list_alerts(alert_ana):
+    alert_ana.list_alerts({"status": "unassigned"}, user_info={"team": 1})
+    assert _last(alert_ana.client) == (
+        "run",
+        "list_alerts",
+        (),
+        {"query_data": {"status": "unassigned"}, "user_info": {"team": 1}},
+    )
+
+
+def test_alert_ana_get_alert_detail(alert_ana):
+    alert_ana.get_alert_detail("ALERT-1", user_info={"team": 1})
+    assert _last(alert_ana.client) == (
+        "run",
+        "get_alert_detail",
+        (),
+        {"alert_id": "ALERT-1", "user_info": {"team": 1}},
+    )
+
+
+def test_alert_ana_list_alert_events(alert_ana):
+    alert_ana.list_alert_events("ALERT-1", {"page": 1}, user_info={"team": 1})
+    assert _last(alert_ana.client) == (
+        "run",
+        "list_alert_events",
+        (),
+        {"alert_id": "ALERT-1", "query_data": {"page": 1}, "user_info": {"team": 1}},
+    )
+
+
+def test_alert_ana_uses_operation_analysis_rpc(monkeypatch):
+    monkeypatch.setenv("IS_LOCAL_RPC", "0")
     from apps.rpc.alerts import AlertOperationAnaRpc
     from apps.rpc.base import OperationAnalysisRpc
 
     obj = AlertOperationAnaRpc()
     assert isinstance(obj.client, OperationAnalysisRpc)
+
+
+def test_alert_ana_local_client_appclient_path(monkeypatch):
+    monkeypatch.setenv("IS_LOCAL_RPC", "1")
+    from apps.rpc.alerts import AlertOperationAnaRpc
+
+    obj = AlertOperationAnaRpc()
+    assert obj.client.path == "apps.alerts.nats.nats"
 
 
 # --------------------------- Stargazer ---------------------------

@@ -50,6 +50,14 @@ class Monitor(object):
 
 
 class MonitorOperationAnaRpc(BaseOperationAnaRpc):
+    def __init__(self, *args, **kwargs):
+        is_local_client = kwargs.pop("is_local_client", False)
+        is_local_client = os.getenv("IS_LOCAL_RPC", "0") == "1" or is_local_client
+        if is_local_client:
+            self.client = AppClient("apps.monitor.nats.monitor")
+            return
+        super().__init__(*args, **kwargs)
+
     def create_monitor_object_type(self, data: dict, **kwargs):
         """创建监控对象类型"""
         return self.client.run("create_monitor_object_type", data=data, **kwargs)

@@ -67,6 +67,9 @@ class CMDB(object):
         """
         return self._run_params_handler("list_instances", kwargs)
 
+    def list_instances_for_llm(self, **kwargs):
+        return self._run_params_handler("list_instances_for_llm", kwargs)
+
     def search_model_attrs(self, **kwargs):
         """
         查询模型属性列表
@@ -74,12 +77,18 @@ class CMDB(object):
         """
         return self._run_params_handler("search_model_attrs", kwargs)
 
+    def search_model_attrs_for_llm(self, **kwargs):
+        return self._run_params_handler("search_model_attrs_for_llm", kwargs)
+
     def search_models(self, **kwargs):
         """
         查询模型列表
         :param params: {"classification_id": .., "include_hidden": False}
         """
         return self._run_params_handler("search_models", kwargs)
+
+    def search_models_for_llm(self, **kwargs):
+        return self._run_params_handler("search_models_for_llm", kwargs)
 
     def search_classifications(self, **kwargs):
         """
@@ -101,6 +110,9 @@ class CMDB(object):
         :param params: {"protocol_version": "2", "model_id": .., "inst_uuid": .., "organization_ids": [..]}
         """
         return self._run_params_handler("search_instance_associations", kwargs)
+
+    def search_instance_associations_for_llm(self, **kwargs):
+        return self._run_params_handler("search_instance_associations_for_llm", kwargs)
 
     def create_instance_association(self, **kwargs):
         """
@@ -173,3 +185,33 @@ class CMDB(object):
         :param kwargs/params: {"protocol_version": "2", "allowed_org_ids": [..], "items": [..]}
         """
         return self._run_params_handler("create_manual_config_files", kwargs)
+
+    def create_instance(self, **kwargs):
+        return self._run_params_handler("create_instance", kwargs)
+
+    def update_instance(self, **kwargs):
+        return self._run_params_handler("update_instance", kwargs)
+
+    def delete_instance(self, **kwargs):
+        return self._run_params_handler("delete_instance", kwargs)
+
+    def get_instance_by_uuid(self, **kwargs):
+        return self._run_params_handler("get_instance_by_uuid", kwargs)
+
+    def get_model_info(self, **kwargs):
+        return self._run_params_handler("get_model_info", kwargs)
+
+    def batch_update_instances(self, **kwargs):
+        return self._run_params_handler("batch_update_instances", kwargs)
+
+    def fulltext_search(self, **kwargs):
+        return self._run_params_handler("fulltext_search", kwargs)
+
+    def fulltext_search_stats(self, **kwargs):
+        return self._run_params_handler("fulltext_search_stats", kwargs)
+
+    def fulltext_search_by_model(self, **kwargs):
+        return self._run_params_handler("fulltext_search_by_model", kwargs)
+
+    def topo_search_expand_by_uuid(self, **kwargs):
+        return self.client.run("topo_search_expand_by_uuid", **kwargs)
