@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Form, Input, Select, Switch, Button, InputNumber, message, Modal, Checkbox, Space, Tooltip } from 'antd';
-import { PlusOutlined, DeleteOutlined, SendOutlined, SearchOutlined, QuestionCircleOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, SendOutlined, SearchOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useSearchParams } from 'next/navigation';
 import CustomChatSSE from '@/app/opspilot/components/custom-chat-sse';
@@ -36,11 +36,14 @@ import {
 } from '@/app/opspilot/utils/monitorToolConfig';
 import Icon from '@/components/icon';
 import OpsPilotStudioWorkbenchSkeleton from '@/app/opspilot/components/opspilot-studio-workbench-skeleton';
+import {
+  getSkillPackageKey as getPackageKey,
+  loadSkillSettingsAuxiliary,
+  mergeSkillPackageCatalog,
+} from '@/app/opspilot/utils/skillSettingsBootstrap';
 
 const { Option } = Select;
 const { TextArea } = Input;
-
-const getPackageKey = (pkg: SkillPackage) => String(pkg.id || `${pkg.package_id}:${pkg.version}`);
 
 const getPackageRequiredTools = (pkg: SkillPackage) => pkg.required_tools || [];
 
@@ -63,10 +66,7 @@ const SkillSettingsPage: React.FC = () => {
 
   const [chatHistoryEnabled, setChatHistoryEnabled] = useState(true);
   const [llmModels, setLlmModels] = useState<{ id: number, name: string, enabled: boolean, llm_model_type: string, vendor_name?: string }[]>([]);
-  const [pageLoading, setPageLoading] = useState({
-    llmModelsLoading: true,
-    formDataLoading: true,
-  });
+  const [formDataLoading, setFormDataLoading] = useState(true);
   const [saveLoading, setSaveLoading] = useState(false);
   const [quantity, setQuantity] = useState<number>(10);
   const [selectedTools, setSelectedTools] = useState<SelectTool[]>([]);
@@ -144,45 +144,38 @@ const SkillSettingsPage: React.FC = () => {
         setQuantity(data.conversation_window_size ?? 10);
         setSelectedTools(normalizeMonitorToolConfigs((data.tools || []) as SelectTool[]));
         const packages = (data.skill_packages || []) as SkillPackage[];
-        setSelectedSkillAssetKeys(packages.map(getPackageKey));
+        const resolvedPackages = packages.map(withResolvedVariables);
+        setSelectedSkillAssetKeys(resolvedPackages.map(getPackageKey));
+        setAvailableSkillAssets((prev) => mergeSkillPackageCatalog(prev, resolvedPackages));
         setSkillPackageParams(data.skill_package_params || {});
         setSkillPermissions(data.permissions || []);
       } catch (error) {
         console.error(t('common.fetchFailed'), error);
       } finally {
-        setPageLoading(prev => ({ ...prev, formDataLoading: false }));
+        setFormDataLoading(false);
       }
     };
 
     const fetchInitialData = async () => {
       if (!id) return;
-      try {
-        const [llmModelsData, skillPackageData] = await Promise.all([
-          fetchLlmModels(),
-          fetchSkillPackages({ is_enabled: 1 }),
-        ]);
-        setLlmModels(llmModelsData as { id: number; name: string; enabled: boolean; llm_model_type: string; vendor_name?: string; }[]);
-        setAvailableSkillAssets((skillPackageData.items || []).map(withResolvedVariables));
-        fetchKnowledgeBases()
-          .then(setWikiKbs)
-          .catch(() => undefined);
-        setMemorySpacesLoading(true);
-        fetchWorkflowMemorySpaces()
-          .then((items) => setMemorySpaces(Array.isArray(items) ? items : []))
-          .catch(() => setMemorySpaces([]))
-          .finally(() => setMemorySpacesLoading(false));
-        fetchFormData();
-      } catch (error) {
-        console.error(t('common.fetchFailed'), error);
-      } finally {
-        setPageLoading(prev => ({ ...prev, llmModelsLoading: false }));
-      }
+      void fetchFormData();
+      setMemorySpacesLoading(true);
+      fetchWorkflowMemorySpaces()
+        .then((items) => setMemorySpaces(Array.isArray(items) ? items : []))
+        .catch(() => setMemorySpaces([]))
+        .finally(() => setMemorySpacesLoading(false));
+      const { llmModels: llmModelsData, skillPackages, knowledgeBases } = await loadSkillSettingsAuxiliary({
+        fetchLlmModels,
+        fetchSkillPackages: () => fetchSkillPackages({ is_enabled: 1 }),
+        fetchKnowledgeBases,
+      });
+      setLlmModels(llmModelsData as { id: number; name: string; enabled: boolean; llm_model_type: string; vendor_name?: string; }[]);
+      setAvailableSkillAssets((prev) => mergeSkillPackageCatalog(skillPackages.map(withResolvedVariables), prev));
+      setWikiKbs(knowledgeBases);
     };
 
     fetchInitialData();
   }, [id]);
-
-  const allLoading = Object.values(pageLoading).some(loading => loading);
 
   useEffect(() => {
     const current = (form.getFieldValue('usage_team') || []).map(Number).filter((n: number) => !Number.isNaN(n));
@@ -674,7 +667,7 @@ const SkillSettingsPage: React.FC = () => {
         )}
       </Modal>
 
-      {allLoading ? (
+      {formDataLoading ? (
         <OpsPilotStudioWorkbenchSkeleton />
       ) : (
         <div className="flex h-full min-h-0 gap-3.5">
@@ -959,14 +952,8 @@ const SkillSettingsPage: React.FC = () => {
                   <SkillMemorySettingsFields spaces={memorySpaces} loading={memorySpacesLoading} />
 
                   <Form.Item
-                    label={
-                      <span className="inline-flex items-center gap-1">
-                        {t('skill.chatHistory')}
-                        <Tooltip title={t('skill.chatHistoryTip')}>
-                          <QuestionCircleOutlined className="text-[11px] text-[var(--color-text-4)] hover:text-[var(--color-text-3)] cursor-pointer" />
-                        </Tooltip>
-                      </span>
-                    }
+                    label={t('skill.chatHistory')}
+                    tooltip={t('skill.chatHistoryTip')}
                     className="!mb-3.5"
                   >
                     <div className="flex h-8 items-center justify-between gap-3">

@@ -898,24 +898,24 @@ class SkillPackageViewSet(AuthViewSet):
             )
         return queryset
 
-    @HasPermission("tools_list-View")
+    @HasPermission("tool_list-View")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
-    @HasPermission("tools_list-View")
+    @HasPermission("tool_list-View")
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-    @HasPermission("tools_list-Edit")
+    @HasPermission("tool_list-Edit")
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
-    @HasPermission("tools_list-Edit")
+    @HasPermission("tool_list-Edit")
     def partial_update(self, request, *args, **kwargs):
         return super().partial_update(request, *args, **kwargs)
 
     @action(methods=["POST"], detail=False)
-    @HasPermission("tools_list-Add")
+    @HasPermission("tool_list-Add")
     def import_zip(self, request):
         upload = request.FILES.get("file")
         if not upload:
@@ -974,7 +974,7 @@ class SkillPackageViewSet(AuthViewSet):
                     pass
 
     @action(methods=["POST"], detail=False)
-    @HasPermission("tools_list-Add")
+    @HasPermission("tool_list-Add")
     def import_local(self, request):
         """从本地服务器目录导入技能包。
 
