@@ -227,7 +227,7 @@ Stargazer 最终参数
 | vCenter | VMware vSphere HTTPS API | `username`、`password`、`port`、`ssl` | 443 |
 | WinSphere | WinSphere HTTPS API | `user`、`password`、`https_port`、`verify_tls` | 443；仅一组凭据 |
 | 物理服务器 IPMI | IPMI RMCP/RMCP+ | `username`、`password`、`port`、`privilege` | UDP 623 |
-| 网络配置文件 | SSH / Netmiko | `username`、`password`、`port`、可选 `enable_password` | 22 |
+| 网络配置文件 | SSH / Telnet（Scrapli） | `username`、`password`、`transport_protocol`、`port`、可选 `enable_password` | SSH 22 / Telnet 23；Telnet 明文，仅设备只开放 TCP/23 时使用 |
 | 主机配置文件 | SSH | `username`、`password`、`port` | 22 |
 | Windows PC | WinRM | 用户、密码、协议、端口、NTLM、证书校验 | HTTPS 5986 / HTTP 5985 |
 | macOS PC | SSH | 用户、端口、密码或 PEM 私钥、可选 passphrase | 22 |

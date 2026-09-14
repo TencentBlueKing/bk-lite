@@ -1,6 +1,8 @@
 from types import SimpleNamespace
 
-from apps.cmdb.node_configs.network_config_file import NetworkConfigFileNodeParams
+import pytest
+
+from apps.cmdb.node_configs.network_config_file import NetworkConfigFileNodeParams, default_port_for_transport, resolve_transport_protocol
 
 INSTANCE_UUID = "123e4567-e89b-42d3-a456-426614174000"
 
@@ -36,6 +38,65 @@ def _task():
             "port": 2222,
         },
     )
+
+
+@pytest.mark.parametrize(
+    ("credential", "expected"),
+    [
+        ({}, "ssh"),
+        ({"transport_protocol": "ssh"}, "ssh"),
+        ({"transport_protocol": "telnet"}, "telnet"),
+        ({"transport_protocol": "TELNET"}, "telnet"),
+        ({"protocol": "telnet"}, "telnet"),
+        ({"transport_protocol": "ftp"}, "ssh"),
+        ({"transport_protocol": ""}, "ssh"),
+        ({"protocol": "2"}, "ssh"),
+        (None, "ssh"),
+    ],
+)
+def test_resolve_transport_protocol_falls_back_to_ssh(credential, expected):
+    assert resolve_transport_protocol(credential) == expected
+    assert default_port_for_transport(expected) == (23 if expected == "telnet" else 22)
+
+
+def test_set_credential_defaults_ssh_transport_and_port():
+    params = NetworkConfigFileNodeParams(_task())
+
+    headers = params.custom_headers()
+
+    assert headers["cmdbtransport_protocol"] == "ssh"
+    assert headers["cmdbport"] == "2222"
+
+
+def test_set_credential_uses_telnet_default_port():
+    task = _task()
+    task.decrypt_credentials = {
+        "username": "admin",
+        "password": "secret",
+        "transport_protocol": "telnet",
+    }
+    params = NetworkConfigFileNodeParams(task)
+
+    headers = params.custom_headers()
+
+    assert headers["cmdbtransport_protocol"] == "telnet"
+    assert headers["cmdbport"] == "23"
+
+
+def test_set_credential_keeps_explicit_telnet_port():
+    task = _task()
+    task.decrypt_credentials = {
+        "username": "admin",
+        "password": "secret",
+        "transport_protocol": "telnet",
+        "port": 2323,
+    }
+    params = NetworkConfigFileNodeParams(task)
+
+    headers = params.custom_headers()
+
+    assert headers["cmdbtransport_protocol"] == "telnet"
+    assert headers["cmdbport"] == "2323"
 
 
 def test_need_enable_is_derived_from_credential_enable_password():

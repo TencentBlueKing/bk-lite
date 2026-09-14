@@ -994,7 +994,9 @@
             "collapse": "Collapse credential",
             "showSecret": "Show credential",
             "hideSecret": "Hide credential",
-            "enablePassword": "Enable password"
+            "enablePassword": "Enable password",
+            "transportProtocol": "Connection protocol",
+            "telnetWarning": "Telnet sends credentials in cleartext. Use it only on an isolated management network or when the device exposes only TCP/23."
         },
         "networkConfigFileTask": {
             "supportedVendors": "Currently supported vendors: {vendors}",
@@ -1058,6 +1060,7 @@
             "fieldNames": {
                 "sshAccount": "Account",
                 "sshPassword": "Password",
+                "transportProtocol": "Connection protocol",
                 "sshPort": "Port",
                 "databaseAccount": "Account",
                 "databasePassword": "Password",
@@ -1117,7 +1120,8 @@
             "fields": {
                 "sshAccount": "Optional. Operating-system username on the target host. Leave empty to collect via Agent; when filled, it must be allowed to run read-only collection commands.",
                 "sshPassword": "Optional. Login password for the operating-system account above; may be left blank.",
-                "sshPort": "The SSH service port on the target host. Change it when the service uses a non-standard port.",
+                "transportProtocol": "Choose SSH (default, TCP/22) or Telnet (TCP/23). Telnet sends credentials in cleartext and is insecure; use it only when the device exposes Telnet only.",
+                "sshPort": "CLI service port on the target device. SSH defaults to 22 and Telnet defaults to 23. Change it for a non-standard port.",
                 "databaseAccount": "A database username that can sign in and read configuration or metadata.",
                 "databasePassword": "The password for the database account above.",
                 "databasePort": "The target database service port. Change it when the service uses a non-standard port.",
@@ -1191,7 +1195,8 @@
                 "winsphereApi": "WinSphere HTTPS API",
                 "vsphereApi": "VMware vSphere HTTPS API",
                 "ipmi": "IPMI RMCP/RMCP+",
-                "redfish": "Redfish HTTPS API"
+                "redfish": "Redfish HTTPS API",
+                "sshOrTelnet": "SSH / Telnet"
             },
             "kind": {
                 "hostAccount": "Target host operating-system account",
@@ -1211,7 +1216,7 @@
                 "winsphereAccount": "WinSphere platform account",
                 "vsphereAccount": "vCenter platform account",
                 "bmcAccount": "Physical-server BMC account",
-                "networkDeviceAccount": "Network-device SSH account"
+                "networkDeviceAccount": "Network-device CLI account"
             },
             "instruction": {
                 "ssh": "Credentials are optional; leave them empty to collect via Agent. When filled, use an account that can sign in over SSH (Linux) or WMI (Windows) and run read-only collection commands.",
@@ -1232,7 +1237,7 @@
                 "vsphere": "Enter an account that can access the VMware vCenter SDK/API. Prefer a read-only role with certificate verification enabled.",
                 "ipmi": "Enter the IPMI account for the target server BMC. Prefer the lowest privilege that permits inventory collection.",
                 "redfish": "Enter a read-only Redfish account for the target server BMC. HTTPS is always used and certificate verification is enabled by default. Disable verification only for self-signed certificates on a trusted management network.",
-                "networkConfig": "Enter an SSH account that can run read-only configuration commands on the network device. Provide an enable password only when privileged mode is required.",
+                "networkConfig": "Enter an account that can run read-only configuration commands over SSH or Telnet. Prefer SSH. Telnet sends credentials in cleartext; use it only when the device exposes TCP/23 only. Provide an enable password only when privileged mode is required.",
                 "configFile": "Enter an operating-system account that can sign in over SSH and read the specified configuration file."
             },
             "defaultPort": {
