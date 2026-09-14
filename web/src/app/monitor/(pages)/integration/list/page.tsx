@@ -549,7 +549,7 @@ const Integration = () => {
                             </Tag>
                             <Tag className="mt-[4px] ml-[6px]">
                               {app.pack_version
-                                ? `${t('monitor.integrations.packVersion')} ${app.pack_version}`
+                                ? app.pack_version
                                 : t('monitor.integrations.builtinPack')}
                             </Tag>
                             {app.is_custom && (

@@ -13,6 +13,7 @@ import { ModalRef } from '@/app/node-manager/types';
 import PermissionWrapper from '@/components/permission';
 import { useCollectorMenuItem } from '@/app/node-manager/hooks/collector';
 import { useCommon } from '@/app/node-manager/context/common';
+import { buildCollectorPackStatusTag } from '@/app/node-manager/utils/collectorConfig';
 import { cloneDeep } from 'lodash';
 const { Search } = Input;
 const { confirm } = Modal;
@@ -118,12 +119,11 @@ const Collector = () => {
         (item.cpu_architecture === 'arm64'
           ? 'ARM64'
           : item.cpu_architecture || '');
-      const versionLabel = item.latest_package_version
-        ? `${t('node-manager.packetManage.latestPack')} ${item.latest_package_version}`
-        : item.pack_version
-          ? `${t('node-manager.packetManage.version')} ${item.pack_version}`
-          : t('node-manager.packetManage.builtinVersion');
-      const extraTags = [versionLabel, ...(item.covered_architectures || [])];
+      const packStatusTag = buildCollectorPackStatusTag(
+        item.latest_package_version,
+        t
+      );
+      const extraTags = [packStatusTag, ...(item.covered_architectures || [])];
       return {
         ...item,
         name: item.display_name,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Alert,
   Button,
@@ -17,6 +17,8 @@ import { useTranslation } from '@/utils/i18n';
 import useNodeManagerApi from '@/app/node-manager/api';
 import { HandledRequestError } from '@/utils/request';
 import PermissionWrapper from '@/components/permission';
+import { useScreenAwareRouter } from '@/console-layout';
+import { MODULE_OBJECT_QUERY_PARAM } from '@/app/monitor/utils/monitorObjectQuery';
 
 interface PackIssue {
   code: string;
@@ -44,6 +46,7 @@ interface ImportResult {
   version?: string;
   artifacts?: Array<{ os: string; arch: string; action: string }>;
   message?: string;
+  monitor_object_id?: number | string | null;
 }
 
 interface PackPreviewItem {
@@ -64,6 +67,25 @@ interface CollectorReleaseImportModalProps {
 const PACK_VERSION_COL_WIDTH = 72;
 const PACK_ARCH_COL_WIDTH = 184;
 const PACK_STATUS_COL_WIDTH = 108;
+
+const INTEGRATION_LIST_PATH = '/monitor/integration/list';
+
+export const buildCollectorReleaseIntegrationListUrl = (
+  items: Array<{ applied?: Pick<ImportResult, 'ok' | 'monitor_object_id'> | null }>
+): string => {
+  const objectId = items
+    .map((item) => item.applied)
+    .find((applied) => {
+      if (!applied?.ok || applied.monitor_object_id == null) {
+        return false;
+      }
+      return String(applied.monitor_object_id).trim() !== '';
+    })?.monitor_object_id;
+  if (objectId == null || String(objectId).trim() === '') {
+    return INTEGRATION_LIST_PATH;
+  }
+  return `${INTEGRATION_LIST_PATH}?${MODULE_OBJECT_QUERY_PARAM}=${encodeURIComponent(String(objectId))}`;
+};
 
 const fileKey = (file: File) => `${file.name}-${file.size}-${file.lastModified}`;
 
@@ -93,11 +115,27 @@ const CollectorReleaseImportModal = ({
   onSuccess
 }: CollectorReleaseImportModalProps) => {
   const { t } = useTranslation();
+  const router = useScreenAwareRouter();
   const { previewCollectorRelease, applyCollectorRelease } = useNodeManagerApi();
   const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<PackPreviewItem[] | null>(null);
   const [finished, setFinished] = useState(false);
+  const [previewProgress, setPreviewProgress] = useState<{
+    current: number;
+    total: number;
+  } | null>(null);
+  const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewingRef = useRef(false);
+  const previewSeqRef = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      if (previewTimerRef.current) {
+        clearTimeout(previewTimerRef.current);
+      }
+    };
+  }, []);
 
   const readyItems = useMemo(
     () => (items || []).filter((item) => isItemReady(item) && !item.applied && !item.applyFailed),
@@ -105,9 +143,17 @@ const CollectorReleaseImportModal = ({
   );
 
   const reset = () => {
+    previewSeqRef.current += 1;
+    previewingRef.current = false;
+    if (previewTimerRef.current) {
+      clearTimeout(previewTimerRef.current);
+      previewTimerRef.current = null;
+    }
     setFiles([]);
     setItems(null);
     setFinished(false);
+    setPreviewProgress(null);
+    setLoading(false);
   };
 
   const handleClose = () => {
@@ -168,15 +214,27 @@ const CollectorReleaseImportModal = ({
     };
   };
 
-  const handlePreview = async () => {
-    if (!files.length) {
+  const runPreview = async (targetFiles: File[]) => {
+    if (!targetFiles.length) {
       message.warning(t('node-manager.packetManage.selectZip'));
       return;
     }
+    if (previewingRef.current) {
+      return;
+    }
+    previewingRef.current = true;
+    const seq = previewSeqRef.current + 1;
+    previewSeqRef.current = seq;
     setLoading(true);
+    setPreviewProgress({ current: 1, total: targetFiles.length });
     try {
       const nextItems: PackPreviewItem[] = [];
-      for (const file of files) {
+      for (let index = 0; index < targetFiles.length; index += 1) {
+        if (seq !== previewSeqRef.current) {
+          return;
+        }
+        setPreviewProgress({ current: index + 1, total: targetFiles.length });
+        const file = targetFiles[index];
         try {
           const preview = await previewCollectorRelease(file);
           nextItems.push({
@@ -194,10 +252,43 @@ const CollectorReleaseImportModal = ({
           });
         }
       }
+      if (seq !== previewSeqRef.current) {
+        return;
+      }
       setItems(nextItems);
     } finally {
-      setLoading(false);
+      if (seq === previewSeqRef.current) {
+        previewingRef.current = false;
+        setLoading(false);
+        setPreviewProgress(null);
+      }
     }
+  };
+
+  const schedulePreview = (targetFiles: File[]) => {
+    if (previewingRef.current) {
+      return;
+    }
+    if (previewTimerRef.current) {
+      clearTimeout(previewTimerRef.current);
+    }
+    previewTimerRef.current = setTimeout(() => {
+      void runPreview(targetFiles);
+    }, 50);
+  };
+
+  const handlePreview = () => {
+    if (previewingRef.current) {
+      return;
+    }
+    if (!files.length) {
+      return;
+    }
+    if (previewTimerRef.current) {
+      clearTimeout(previewTimerRef.current);
+      previewTimerRef.current = null;
+    }
+    void runPreview(files);
   };
 
   const handleApply = async () => {
@@ -552,9 +643,30 @@ const CollectorReleaseImportModal = ({
       destroyOnHidden
       footer={
         finished ? (
-          <Button type="primary" onClick={handleClose}>
-            {t('common.close')}
-          </Button>
+          <>
+            <Button onClick={handleClose}>{t('common.close')}</Button>
+            {(items || []).some((item) => item.applied?.ok) ? (
+              <>
+                <Button
+                  onClick={() => {
+                    handleClose();
+                    router.push(buildCollectorReleaseIntegrationListUrl(items || []));
+                  }}
+                >
+                  {t('node-manager.packetManage.goToIntegration')}
+                </Button>
+                <Button
+                  type="primary"
+                  onClick={() => {
+                    handleClose();
+                    router.push('/node-manager/cloudregion/node');
+                  }}
+                >
+                  {t('node-manager.packetManage.goToNode')}
+                </Button>
+              </>
+            ) : null}
+          </>
         ) : (
           <>
             <Button onClick={handleClose}>{t('common.cancel')}</Button>
@@ -597,12 +709,17 @@ const CollectorReleaseImportModal = ({
               <Upload.Dragger
                 multiple
                 accept=".zip"
+                disabled={loading}
                 beforeUpload={(file) => {
                   if (!/\.zip$/i.test(file.name)) {
                     message.warning(t('node-manager.packetManage.selectZip'));
                     return false;
                   }
-                  setFiles((current) => mergeZipFiles(current, [file]));
+                  setFiles((current) => {
+                    const next = mergeZipFiles(current, [file]);
+                    schedulePreview(next);
+                    return next;
+                  });
                   return false;
                 }}
                 onRemove={(uploadFile) => {
@@ -617,6 +734,16 @@ const CollectorReleaseImportModal = ({
                 </p>
                 <p>{t('node-manager.packetManage.selectZip')}</p>
               </Upload.Dragger>
+              {previewProgress ? (
+                <p className="mb-0 text-sm text-[var(--color-text-3)]">
+                  {previewProgress.total > 1
+                    ? t('node-manager.packetManage.previewingProgress', '', {
+                      current: previewProgress.current,
+                      total: previewProgress.total
+                    })
+                    : t('node-manager.packetManage.previewing')}
+                </p>
+              ) : null}
             </>
           ) : (
             renderPackList(

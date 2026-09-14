@@ -5,7 +5,7 @@ class CollectorReleaseConstants:
     MAX_FILE_BYTES = 200 * 1024 * 1024
     MAX_ENTRIES = 32
     BOMB_RATIO = 50
-    PREVIEW_TTL_SECONDS = 600
+    PREVIEW_TTL_SECONDS = 1800
     LOCK_TTL_SECONDS = 300
     VERSION_PATTERN = r"^\d+\.\d+\.\d+$"
     ALLOWED_OS = ("linux", "windows")

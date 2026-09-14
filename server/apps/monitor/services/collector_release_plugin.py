@@ -57,6 +57,24 @@ class CollectorReleasePluginService:
         return bool(plugin and plugin.pack_version)
 
     @staticmethod
+    def resolve_entry_monitor_object_id(*, plugin_name: str = "", collector: str = "") -> int | None:
+        """Resolve the integration-list object id for a just-imported collector pack."""
+        plugin = None
+        names = [value for value in (plugin_name, collector) if value]
+        for name in names:
+            plugin = MonitorPlugin.objects.filter(name=name).first()
+            if plugin is not None:
+                break
+        if plugin is None and collector:
+            plugin = MonitorPlugin.objects.filter(collector=collector).order_by("id").first()
+        if plugin is None:
+            return None
+        from apps.monitor.serializers.plugin import MonitorPluginSerializer
+
+        parent = MonitorPluginSerializer.get_parent_monitor_object_instance(plugin)
+        return parent.id if parent is not None else None
+
+    @staticmethod
     def import_from_pack(payload: dict) -> dict:
         metrics = dict(payload.get("metrics") or {})
         ui = payload.get("ui") or {}

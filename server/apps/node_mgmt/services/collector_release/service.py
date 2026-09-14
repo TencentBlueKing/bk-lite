@@ -402,12 +402,19 @@ class CollectorReleaseService:
             CollectorReleaseService.refresh_collector_upgrade_hints(parsed.collector)
             cache.delete(f"{C.STAGING_CACHE_PREFIX}{token}")
             cleanup_staging = True
+            plugin_name = ""
+            if isinstance(parsed.metrics, dict):
+                plugin_name = str(parsed.metrics.get("plugin") or "").strip()
             return {
                 "ok": True,
                 "collector": parsed.collector,
                 "version": parsed.version,
                 "artifacts": artifact_results,
                 "issues": [item.to_dict() for item in all_issues if item.level != LEVEL_ERROR],
+                "monitor_object_id": CollectorReleasePluginService.resolve_entry_monitor_object_id(
+                    plugin_name=plugin_name or parsed.collector,
+                    collector=parsed.collector,
+                ),
                 "message": "导入成功。已接入实例不会自动重下发，须到接入页再保存；节点二进制须再安装或升级。",
             }
         except Exception:

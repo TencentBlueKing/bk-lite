@@ -50,7 +50,7 @@ const IntegrationDetailLayout = ({
           {pluginDisplayName}
           <Tag className="ml-2 align-middle">
             {packVersion
-              ? `${t('monitor.integrations.packVersion')} ${packVersion}`
+              ? packVersion
               : t('monitor.integrations.builtinPack')}
           </Tag>
         </h2>

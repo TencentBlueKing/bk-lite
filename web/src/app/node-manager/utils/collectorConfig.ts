@@ -193,3 +193,36 @@ export function applyConfigFormValues(
   }
   return true;
 }
+
+export interface CollectorPackStatusTag {
+  name: string;
+  color: string;
+  tooltip: string;
+}
+
+type Translate = (
+  key: string,
+  fallback?: string,
+  values?: Record<string, string | number>
+) => string;
+
+export function buildCollectorPackStatusTag(
+  version: string | null | undefined,
+  t: Translate
+): CollectorPackStatusTag {
+  const packVersion = String(version || '').trim();
+  if (packVersion) {
+    return {
+      name: packVersion,
+      color: 'blue',
+      tooltip: t('node-manager.packetManage.importedPackHint', '', {
+        version: packVersion
+      })
+    };
+  }
+  return {
+    name: t('node-manager.packetManage.missingPack'),
+    color: 'warning',
+    tooltip: t('node-manager.packetManage.missingPackHint')
+  };
+}
