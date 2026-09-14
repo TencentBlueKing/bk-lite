@@ -1,0 +1,36 @@
+Cisco Meraki Appliance:
+  name: Cisco Meraki 安全设备
+  desc: 通过 Meraki Dashboard API v1 采集 MX VPN 状态/统计与利用率摘要。
+monitor_object:
+  Meraki Appliance Inventory: Meraki 安全设备清单
+  Meraki Appliance: Meraki 安全设备
+monitor_object_type:
+  Cisco Meraki: Cisco Meraki
+monitor_object_metric_group:
+  Meraki Appliance Inventory:
+    Base: 基础
+    VPN: VPN
+  Meraki Appliance:
+    VPN: VPN
+    Utilization: 利用率
+monitor_object_metric:
+  Meraki Appliance Inventory:
+    meraki_appliance_connect_status:
+      name: 连接状态
+      desc: 安全设备采集所用 Dashboard API 是否可用。
+    meraki_appliance_vpn_network_count:
+      name: VPN 网络数
+      desc: 返回 VPN 状态的网络数量。
+  Meraki Appliance:
+    meraki_appliance_vpn_peer_reachable:
+      name: VPN 对端可达
+      desc: Auto VPN 对端是否可达。
+    meraki_appliance_vpn_avg_latency_ms:
+      name: VPN 平均时延
+      desc: Auto VPN 平均时延（毫秒）。
+    meraki_appliance_vpn_avg_loss_percent:
+      name: VPN 平均丢包率
+      desc: Auto VPN 平均丢包百分比。
+    meraki_appliance_utilization_percent:
+      name: 设备利用率
+      desc: 安全设备平均利用率。

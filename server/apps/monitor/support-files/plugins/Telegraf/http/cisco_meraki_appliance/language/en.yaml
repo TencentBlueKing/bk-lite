@@ -1,0 +1,37 @@
+Cisco Meraki Appliance:
+  name: Cisco Meraki Appliance
+  desc: Collect MX VPN statuses/stats and appliance utilization from Meraki Dashboard
+    API v1.
+monitor_object:
+  Meraki Appliance Inventory: Meraki Appliance Inventory
+  Meraki Appliance: Meraki Appliance
+monitor_object_type:
+  Cisco Meraki: Cisco Meraki
+monitor_object_metric_group:
+  Meraki Appliance Inventory:
+    Base: Base
+    VPN: VPN
+  Meraki Appliance:
+    VPN: VPN
+    Utilization: Utilization
+monitor_object_metric:
+  Meraki Appliance Inventory:
+    meraki_appliance_connect_status:
+      name: Connect Status
+      desc: Whether Dashboard API is available for appliance collection.
+    meraki_appliance_vpn_network_count:
+      name: VPN Network Count
+      desc: Number of networks that reported VPN status.
+  Meraki Appliance:
+    meraki_appliance_vpn_peer_reachable:
+      name: VPN Peer Reachable
+      desc: Whether an Auto VPN peer is reachable.
+    meraki_appliance_vpn_avg_latency_ms:
+      name: VPN Average Latency
+      desc: Average Auto VPN latency in milliseconds.
+    meraki_appliance_vpn_avg_loss_percent:
+      name: VPN Average Loss
+      desc: Average Auto VPN packet loss percentage.
+    meraki_appliance_utilization_percent:
+      name: Appliance Utilization
+      desc: Average appliance utilization percentage.
