@@ -24,9 +24,6 @@ monitor_object_metric:
     meraki_org_network_count:
       name: Network Count
       desc: Number of networks in the organization.
-    meraki_org_discovered_count:
-      name: Discovered Organization Count
-      desc: Number of organizations the API key can list.
   Meraki Network:
     meraki_network_present:
       name: Network Present

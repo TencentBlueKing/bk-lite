@@ -23,9 +23,6 @@ monitor_object_metric:
     meraki_org_network_count:
       name: 网络数量
       desc: 组织下返回的网络数量。
-    meraki_org_discovered_count:
-      name: 可见组织数
-      desc: 当前 API 密钥可列出的组织数量。
   Meraki Network:
     meraki_network_present:
       name: 网络存在

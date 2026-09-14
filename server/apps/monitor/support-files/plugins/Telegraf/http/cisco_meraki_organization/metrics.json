@@ -114,19 +114,6 @@
           "dimensions": [],
           "description": "Number of networks returned for the organization.",
           "query": "meraki_org_network_count{__$labels__}"
-        },
-        {
-          "metric_group": "Inventory",
-          "name": "meraki_org_discovered_count",
-          "display_name": "Discovered Organization Count",
-          "instance_id_keys": [
-            "instance_id"
-          ],
-          "data_type": "Number",
-          "unit": "counts",
-          "dimensions": [],
-          "description": "Number of organizations the API key can list.",
-          "query": "meraki_org_discovered_count{__$labels__}"
         }
       ]
     },

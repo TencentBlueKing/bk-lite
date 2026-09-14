@@ -1,6 +1,6 @@
 # Cisco Meraki Organization Guide
 
-This plugin uses Telegraf `inputs.prometheus` to scrape Stargazer metrics collected from Meraki Dashboard API v1. It covers organization discovery, network list, and organization health.
+This plugin uses Telegraf `inputs.prometheus` to scrape Stargazer metrics collected from Meraki Dashboard API v1. It covers the configured organization, its network list, and organization health. Collection, auth, or API failures still export `meraki_org_connect_status=0` so the unavailable-API policy can fire.
 
 ## Prerequisites
 
@@ -18,7 +18,6 @@ This plugin uses Telegraf `inputs.prometheus` to scrape Stargazer metrics collec
 
 ## APIs used by this plugin
 
-- `GET /organizations`
 - `GET /organizations/{id}`
 - `GET /organizations/{id}/networks`
 

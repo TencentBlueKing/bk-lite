@@ -195,6 +195,26 @@ class MerakiDashboardClient:
         return items
 
 
+def _connect_status_output(organization_id: str, status: int) -> str:
+    metric_dict = {
+        (organization_id, "meraki_org"): {
+            "meraki_org_connect_status": _gauge(status),
+        }
+    }
+    return "\n".join(convert_to_prometheus(metric_dict)) + "\n"
+
+
+def _failed_collect_output(organization_id: str, *, failed_stage: str, error: Exception) -> str:
+    logger.warning(
+        "event=meraki_collect_failed monitor_type=%s organization_id=%s failed_stage=%s error_type=%s",
+        MONITOR_TYPE,
+        safe_log_value(organization_id),
+        failed_stage,
+        type(error).__name__,
+    )
+    return _connect_status_output(organization_id, 0)
+
+
 class CiscoMerakiOrganizationCollector(BaseCollector):
     """Collect organization inventory, networks, and API health."""
 
@@ -202,52 +222,60 @@ class CiscoMerakiOrganizationCollector(BaseCollector):
         return await _probe_organization(self)
 
     async def collect(self) -> str:
-        params = _required_params(self)
+        try:
+            params = _required_params(self)
+        except ValueError as error:
+            organization_id = str(self.params.get("organization_id") or "").strip() or "unknown"
+            return _failed_collect_output(organization_id, failed_stage="params", error=error)
         organization_id = params["organization_id"]
         logger.info(
             "event=meraki_collect_start monitor_type=%s organization_id=%s",
             MONITOR_TYPE,
             safe_log_value(organization_id),
         )
-        async with MerakiDashboardClient(
-            base_url=params["base_url"],
-            api_key=params["api_key"],
-            timeout=params["timeout"],
-        ) as client:
-            discovered = await client.get_json("/organizations", {"perPage": 1000}) or []
-            organization = await client.get_json(f"/organizations/{organization_id}")
-            if not organization:
-                raise RuntimeError("Meraki organization not found")
-            networks = await client.get_json(f"/organizations/{organization_id}/networks", {"perPage": 1000}) or []
+        try:
+            async with MerakiDashboardClient(
+                base_url=params["base_url"],
+                api_key=params["api_key"],
+                timeout=params["timeout"],
+            ) as client:
+                organization = await _require_organization(client, organization_id)
+                networks = await _require_list(
+                    client,
+                    f"/organizations/{organization_id}/networks",
+                    {"perPage": 1000},
+                )
+        except Exception as error:  # noqa: BLE001 - 失败仍导出 connect_status=0，供告警策略消费
+            return _failed_collect_output(organization_id, failed_stage="collect", error=error)
         api_enabled = 1 if ((organization.get("api") or {}).get("enabled") is True) else 0
         metric_dict = {
             (organization_id, "meraki_org"): {
                 "meraki_org_connect_status": _gauge(1),
                 "meraki_org_api_enabled": _gauge(api_enabled),
-                "meraki_org_network_count": _gauge(len(networks) if isinstance(networks, list) else 0),
-                "meraki_org_discovered_count": _gauge(len(discovered) if isinstance(discovered, list) else 0),
+                "meraki_org_network_count": _gauge(len(networks)),
             }
         }
-        if isinstance(networks, list):
-            for network in networks:
-                network_id = str(network.get("id") or "").strip()
-                if not network_id:
-                    continue
-                product_types = ",".join(str(item) for item in (network.get("productTypes") or []) if item)
-                metric_dict[(network_id, "meraki_network")] = {
-                    "meraki_network_present": _dim_gauge(
-                        [
-                            ("network_name", str(network.get("name") or "")),
-                            ("product_types", product_types),
-                        ],
-                        1,
-                    )
-                }
+        for network in networks:
+            if not isinstance(network, dict):
+                continue
+            network_id = str(network.get("id") or "").strip()
+            if not network_id:
+                continue
+            product_types = ",".join(str(item) for item in (network.get("productTypes") or []) if item)
+            metric_dict[(network_id, "meraki_network")] = {
+                "meraki_network_present": _dim_gauge(
+                    [
+                        ("network_name", str(network.get("name") or "")),
+                        ("product_types", product_types),
+                    ],
+                    1,
+                )
+            }
         output = "\n".join(convert_to_prometheus(metric_dict)) + "\n"
         logger.info(
             "event=meraki_collect_success monitor_type=%s network_count=%s",
             MONITOR_TYPE,
-            len(networks) if isinstance(networks, list) else 0,
+            len(networks),
         )
         return output
 
@@ -313,7 +341,18 @@ async def _require_organization(client: MerakiDashboardClient, organization_id: 
     organization = await client.get_json(f"/organizations/{organization_id}")
     if not organization:
         raise RuntimeError("Meraki organization not found")
+    if not isinstance(organization, dict):
+        raise RuntimeError("Meraki organization payload is invalid")
     return organization
+
+
+async def _require_list(client: MerakiDashboardClient, path: str, params: dict[str, Any] | None = None) -> list:
+    payload = await client.get_json(path, params)
+    if payload is None:
+        return []
+    if isinstance(payload, list):
+        return payload
+    raise RuntimeError("Meraki required endpoint returned a non-list payload")
 
 
 async def _optional_list(client: MerakiDashboardClient, path: str, params: dict[str, Any] | None = None) -> list:

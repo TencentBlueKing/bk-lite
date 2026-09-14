@@ -1,6 +1,6 @@
 # Cisco Meraki 组织 接入指南
 
-本插件通过 Telegraf `inputs.prometheus` 从 Stargazer 拉取 Meraki Dashboard API v1 指标，覆盖组织发现、网络列表与组织健康。
+本插件通过 Telegraf `inputs.prometheus` 从 Stargazer 拉取 Meraki Dashboard API v1 指标，覆盖指定组织、网络列表与组织健康。采集失败时仍会导出 `meraki_org_connect_status=0`，以便「API 不可用」策略生效。
 
 ## 前置条件
 
@@ -18,7 +18,6 @@
 
 ## 本插件调用的 API
 
-- `GET /organizations`
 - `GET /organizations/{id}`
 - `GET /organizations/{id}/networks`
 
