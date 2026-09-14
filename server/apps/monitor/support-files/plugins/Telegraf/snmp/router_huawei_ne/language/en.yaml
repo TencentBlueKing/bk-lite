@@ -1,0 +1,285 @@
+Router Huawei NE SNMP:
+  name: Huawei NE (Telegraf)
+  desc: SNMP monitoring template for Huawei NetEngine router. It reports CPU, memory, temperature,
+    fan, optics, power, forwarding usage, interface traffic, BGP, BFD, and other key metrics.
+monitor_object:
+  Router: Router
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Router:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart. By monitoring
+        the uptime, network administrators can understand the stability and reliability of
+        the device and identify potential reboot or failure issues.
+    device_cpu_usage:
+      name: CPU Utilization
+      desc: Per-entity CPU utilization of the Huawei NE device control plane (hwEntityCpuUsage),
+        normalized to a 0-100 percentage. Dimension descr is entPhysicalName. Sustained high
+        CPU usage can indicate control-plane overload, routing instability, or attack traffic,
+        and may lead to slow management response or packet processing delays.
+    device_memory_usage:
+      name: Memory Utilization
+      desc: Per-entity memory utilization of the Huawei NE device (hwEntityMemUsage), reported
+        directly as a 0-100 percentage. Dimension descr is entPhysicalName. High memory usage
+        may indicate memory leaks, oversized routing tables, or insufficient capacity, and
+        can cause instability or failed allocations.
+    device_temperature_celsius:
+      name: Temperature
+      desc: This metric reports the temperature reading of each Huawei hardware sensor (hwEntityTemperature),
+        in degrees Celsius. Abnormally high temperatures may indicate fan failure, blocked
+        airflow, or excessive ambient heat, and can trigger thermal protection or hardware
+        damage if left unaddressed.
+    device_voltage_volts:
+      name: Input Voltage
+      desc: Per-entity input voltage of the Huawei NE device (hwEntityVoltage). The device
+        reports millivolts; the query divides by 1000 to display volts. Values outside the
+        rated range may indicate unstable power and hardware risk.
+    device_fan_state:
+      name: Fan Status
+      desc: This metric reports the operational state of each Huawei cooling fan (hwEntityFanState).
+        A non-normal state indicates a cooling fault that can quickly lead to overheating
+        and should be investigated immediately.
+    device_optical_rx_power:
+      name: SFP RX Power
+      desc: Per-module SFP/optical receive power in dBm (hwEntityOpticalRxPower). The device
+        reports uW; Telegraf stores raw uW and this query converts with 10*log10(uW/1000),
+        dropping <=0 (invalid/no-module). Dimension descr is entPhysicalName. A dropping RX
+        level is an early sign of fiber attenuation, dirty optics, or a failing peer transmitter.
+    device_optical_tx_power:
+      name: SFP TX Power
+      desc: Per-module SFP/optical transmit power in dBm (hwEntityOpticalTxPower). The device
+        reports uW; Telegraf stores raw uW and this query converts with 10*log10(uW/1000),
+        dropping <=0 (invalid/no-module). Dimension descr is entPhysicalName. An abnormally
+        low TX level indicates a failing laser/optic rather than fiber attenuation alone.
+    device_cpu_dev_duty:
+      name: Device CPU Duty
+      desc: Instantaneous CPU duty of each Huawei NE CPU device entry (hwCpuDevDuty), reported
+        as a 0-100 percentage. Complements per-entity hwEntityCpuUsage for control-plane load
+        on NetEngine platforms.
+    device_cpu_dev_avg_duty_1min:
+      name: Device CPU Duty (1 min)
+      desc: One-minute average CPU duty of each Huawei NE CPU device entry (hwAvgDuty1min),
+        reported as a 0-100 percentage. Use this to smooth short spikes when judging control-plane
+        pressure.
+    device_cpu_dev_avg_duty_5min:
+      name: Device CPU Duty (5 min)
+      desc: Five-minute average CPU duty of each Huawei NE CPU device entry (hwAvgDuty5min),
+        reported as a 0-100 percentage. Sustained elevation points to lasting control-plane
+        load rather than a brief burst.
+    device_memory_dev_size:
+      name: Device Memory Size
+      desc: Total memory size of each Huawei NE memory device entry (hwMemoryDevSize64), in
+        bytes. Together with free memory it shows capacity remaining on the forwarding/control
+        memory pool.
+    device_memory_dev_free:
+      name: Device Memory Free
+      desc: Free memory of each Huawei NE memory device entry (hwMemoryDevFree64), in bytes.
+        Persistently low free memory indicates rising memory pressure and risk of allocation
+        failure.
+    device_psu_state:
+      name: Power Supply Status
+      desc: Operational state of each Huawei NE power supply (hwEntityPwrState). A non-normal
+        state signals a power redundancy or hardware fault; on devices with redundant PSUs
+        a single failure may not cause an outage but removes redundancy and must be remediated
+        promptly.
+    device_psu_present:
+      name: Power Supply Present
+      desc: Presence of each Huawei NE power supply (hwEntityPwrPresent). Absent means the
+        slot is empty or the module was pulled; combined with PSU state this confirms lost
+        redundancy.
+    device_fan_speed:
+      name: Fan Speed
+      desc: Fan rotation speed of each Huawei NE cooling fan (hwEntityFanSpeed). Abnormally
+        low or zero speed indicates a stalled or failed fan and a risk of overheating; abnormally
+        high speed may indicate the device is compensating for high temperature.
+    device_fan_present:
+      name: Fan Present
+      desc: Presence of each Huawei NE cooling fan (hwEntityFanPresent). Absent means the
+        fan tray is missing; investigate immediately because cooling capacity is reduced.
+    device_entity_board_power:
+      name: Board Power
+      desc: Board power consumption of each Huawei NE entity (hwEntityBoardPower), in watts.
+        Unexpected rise can indicate a failing board, abnormal traffic load, or a cooling
+        problem that increases power draw.
+    device_power_used:
+      name: Chassis Used Power
+      desc: Chassis-level used power of the Huawei NE device (hwDevicePowerInfoUsedPower),
+        in watts. Rising used power against a stable total budget indicates growing load or
+        a hardware inefficiency.
+    device_power_total:
+      name: Chassis Total Power
+      desc: Chassis-level total power capacity of the Huawei NE device (hwDevicePowerInfoTotalPower),
+        in watts. Used as the denominator when judging how close the chassis is to its power
+        budget.
+    device_forward_performance_usage:
+      name: Forwarding Performance Usage
+      desc: Forwarding performance usage of the Huawei NE device (hwEntityForwardPerformanceUsage),
+        as a 0-100 percentage. High values mean the forwarding engine is close to its capacity
+        and new traffic may be delayed or dropped.
+    device_fwd_cpu_usage:
+      name: Forwarding CPU Usage
+      desc: Forwarding-plane CPU usage of the Huawei NE device (hwFwdCpuUsageRate), as a 0-100
+        percentage. Sustained high forwarding CPU can cause packet delay, drops, or protocol
+        flapping.
+    device_entity_oper_status:
+      name: Entity Oper Status
+      desc: Operational status of each Huawei NE entity (hwEntityOperStatus). Disabled or
+        offline entities should be correlated with standby status and slot state to locate
+        failed boards.
+    device_entity_standby_status:
+      name: Entity Standby Status
+      desc: Standby status of each Huawei NE entity (hwEntityStandbyStatus). Unexpected loss
+        of providingService or hotStandby on a redundant board indicates a switchover or a
+        failed standby.
+    device_optical_temperature:
+      name: Optical Module Temperature
+      desc: Temperature of each Huawei NE optical module (hwEntityOpticalTemperature), in
+        degrees Celsius. High module temperature accelerates laser aging and can precede optical
+        power failure.
+    device_optical_bias:
+      name: Optical Module Bias
+      desc: Laser bias current of each Huawei NE optical module (hwEntityOpticalBiasCurrent).
+        Drift away from the normal range is an early sign of a failing transmitter.
+    device_optical_voltage:
+      name: Optical Module Voltage
+      desc: Supply voltage of each Huawei NE optical module (hwEntityOpticalVoltage). The
+        device reports millivolts; the query divides by 1000 to display volts. Out-of-range
+        voltage can cause unstable optics.
+    device_slot_oper_status:
+      name: Slot Oper Status
+      desc: Operational status of each Huawei NE slot (hwSlotOperStatus). A down slot means
+        the card is missing, powered off, or failed, which can drop all interfaces on that
+        slot.
+    interface_ifAdminStatus:
+      name: Interface Admin Status
+      desc: This metric indicates the administrative status of the network interface.
+    interface_ifOperStatus:
+      name: Interface Oper Status
+      desc: This metric reflects the actual operational status of the network interface.
+    interface_ifSpeed:
+      name: Interface Bandwidth
+      desc: This metric indicates the maximum data transmission speed supported by the network
+        interface.
+    interface_ifHighSpeed:
+      name: Interface High Speed
+      desc: Interface speed in megabits per second from IF-MIB ifHighSpeed. Used together
+        with ifSpeed so high-rate NetEngine ports are not capped by the 32-bit ifSpeed gauge.
+    interface_ifInErrors:
+      name: Incoming Errors Rate
+      desc: This metric calculates the average rate of incoming error packets over the past
+        5 minutes.
+    interface_ifOutErrors:
+      name: Outgoing Errors Rate
+      desc: This metric calculates the average rate of outgoing error packets over the past
+        5 minutes.
+    interface_ifInDiscards:
+      name: Incoming Discards Rate
+      desc: This metric represents the average rate of incoming discarded packets over the
+        past 5 minutes.
+    interface_ifOutDiscards:
+      name: Outgoing Discards Rate
+      desc: This metric calculates the average rate of outgoing discarded packets over the
+        past 5 minutes.
+    interface_ifInUcastPkts:
+      name: Incoming Unicast Packets Rate
+      desc: This metric indicates the average rate of incoming unicast packets over the past
+        5 minutes.
+    interface_ifOutUcastPkts:
+      name: Outgoing Unicast Packets Rate
+      desc: This metric calculates the average rate of outgoing unicast packets over the past
+        5 minutes.
+    interface_ifInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes.
+    interface_ifOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate (HC)
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes,
+        based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate (HC)
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes,
+        based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device
+        over the past 5 minutes.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device
+        over the past 5 minutes.
+    interface_ext_input_octet_rate:
+      name: Interface Input Octet Rate
+      desc: Instantaneous inbound octet rate of each Huawei NE interface (hwIFExtInputOctetRate).
+        Unlike counter-based IF-MIB rates, this is a device-computed gauge and is useful for
+        spotting bursts between poll intervals.
+    interface_ext_output_octet_rate:
+      name: Interface Output Octet Rate
+      desc: Instantaneous outbound octet rate of each Huawei NE interface (hwIFExtOutputOctetRate).
+        Use it with the inbound rate to see whether a port is congested in one direction.
+    interface_ext_input_pkt_rate:
+      name: Interface Input Packet Rate
+      desc: Instantaneous inbound packet rate of each Huawei NE interface (hwIFExtInputPktRate).
+        A high packet rate with modest octet rate often indicates small-packet pressure.
+    interface_ext_output_pkt_rate:
+      name: Interface Output Packet Rate
+      desc: Instantaneous outbound packet rate of each Huawei NE interface (hwIFExtOutputPktRate).
+        Combined with error and discard rates it helps separate congestion from physical faults.
+    interface_ext_flow_status:
+      name: Interface Flow Status
+      desc: Flow status of each Huawei NE interface (hwIFExtFlowStatus). Abnormal flow status
+        means the interface is up but traffic is blocked or rate-limited and should be checked
+        together with QoS and protocol state.
+    device_bgp_peer_state:
+      name: BGP Peer State
+      desc: State of each Huawei NE BGP peer (hwBgpPeerState). Established is the healthy
+        state; idle, active, or connect for a configured peer indicates a session that failed
+        to come up or flapped.
+    device_bgp_peer_established_time:
+      name: BGP Peer Established Time
+      desc: Time the Huawei NE BGP peer has stayed in Established (hwBgpPeerFsmEstablishedTime),
+        in seconds. A sudden drop to near zero means the session reset; correlate with peer
+        state.
+    device_bgp_peer_session_num:
+      name: BGP Peer Session Count
+      desc: Total BGP peer session count on the Huawei NE device (hwBgpPeerSessionNum). A
+        sudden drop can mean multiple peers went down together.
+    device_bgp_ibgp_session_num:
+      name: IBGP Session Count
+      desc: IBGP session count on the Huawei NE device (hwBgpPeerIBgpSessionNum). Loss of
+        IBGP sessions can partition the IGP/BGP design inside an AS.
+    device_bgp_ebgp_session_num:
+      name: EBGP Session Count
+      desc: EBGP session count on the Huawei NE device (hwBgpPeerEBgpSessionNum). Loss of
+        EBGP sessions can withdraw external prefixes and shift traffic.
+    device_vrf_count:
+      name: Configured VRF Count
+      desc: Number of configured VRFs on the Huawei NE device (hwConfiguredVrfs). Unexpected
+        change can mean a VPN configuration rollback or a failed commit.
+    device_bfd_sess_state:
+      name: BFD Session State
+      desc: State of each Huawei NE BFD session (hwBfdSessState). Down or init on a previously
+        up session is an early sign of a forwarding-path failure, often before the routing
+        protocol times out.
+    device_bfd_sess_act_number:
+      name: Active BFD Session Count
+      desc: Number of active BFD sessions on the Huawei NE device (hwBfdSessActNumber). A
+        sudden drop means multiple sessions went down and routing reconvergence may follow.
+monitor_object_metric_group:
+  Router:
+    Base: Base
+    Status: Status
+    Bandwidth: Bandwidth
+    Packet Error: Packet Error
+    Packet Loss: Packet Loss
+    Packet: Packet
+    Traffic: Traffic
+    CPU: CPU
+    Memory: Memory
+    Temperature: Temperature
+    Hardware Status: Hardware Status
+    Routing: Routing

@@ -1,0 +1,102 @@
+{
+  "object": "Router",
+  "plugin": "Router Huawei NE SNMP",
+  "templates": [
+    {
+      "name": "Huawei NE路由器CPU使用率过高",
+      "alert_name": "路由器${resource_name} CPU 使用率过高",
+      "description": "监控华为 NetEngine 路由器控制平面 CPU 使用率，当持续高于阈值时触发告警，提示可能存在控制平面过载、路由震荡或异常流量，避免管理响应变慢或转发受影响。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {"level": "critical", "value": 90, "method": ">"},
+        {"level": "error", "value": 80, "method": ">"},
+        {"level": "warning", "value": 70, "method": ">"}
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Huawei NE路由器内存使用率过高",
+      "alert_name": "路由器${resource_name} 内存使用率过高",
+      "description": "监控华为 NetEngine 路由器内存使用率，当超过阈值时触发告警，便于及时发现内存泄漏、路由表过大或容量不足等问题，防止设备不稳定或分配失败。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {"level": "critical", "value": 90, "method": ">"},
+        {"level": "error", "value": 80, "method": ">"},
+        {"level": "warning", "value": 70, "method": ">"}
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Huawei NE路由器温度过高",
+      "alert_name": "路由器${resource_name} 传感器 ${metric_descr} 温度过高",
+      "description": "监控华为 NetEngine 设备各硬件温度传感器读数，当温度超过安全阈值时触发告警，提示可能存在风扇故障、散热不良或环境过热，避免触发热保护或硬件损坏。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {"level": "critical", "value": 70, "method": ">"},
+        {"level": "error", "value": 60, "method": ">"},
+        {"level": "warning", "value": 50, "method": ">"}
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Huawei NE路由器风扇异常",
+      "alert_name": "路由器${resource_name} 风扇 ${metric_descr} 状态异常",
+      "description": "监控华为 NetEngine 设备各散热风扇的运行状态。任何非正常状态都表示散热故障，可能迅速导致过热，应立即排查处理。",
+      "metric_name": "device_fan_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {"level": "critical", "value": 1, "method": ">"}
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Huawei NE路由器电源异常",
+      "alert_name": "路由器${resource_name} 电源状态异常",
+      "description": "监控华为 NetEngine 设备电源模块运行状态。非正常状态表示电源冗余缺失或硬件故障，需尽快修复以恢复冗余。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {"level": "critical", "value": 1, "method": ">"}
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Huawei NE路由器BGP邻居未建立",
+      "alert_name": "路由器${resource_name} BGP 邻居状态异常",
+      "description": "监控华为 NetEngine BGP 邻居状态。established 为健康态；邻居长期不在 established 表示会话未能建立或发生震荡，可能导致路由丢失。",
+      "metric_name": "device_bgp_peer_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {"level": "critical", "value": 6, "method": "<"}
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Huawei NE路由器BFD会话异常",
+      "alert_name": "路由器${resource_name} BFD 会话状态异常",
+      "description": "监控华为 NetEngine BFD 会话状态。非 up 状态通常早于路由协议超时出现，提示转发路径故障，应立即核对链路与对端。",
+      "metric_name": "device_bfd_sess_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {"level": "critical", "value": 4, "method": "<"}
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Huawei NE路由器转发CPU过高",
+      "alert_name": "路由器${resource_name} 转发 CPU 使用率过高",
+      "description": "监控华为 NetEngine 转发面 CPU 使用率，持续偏高可能导致转发时延、丢包或协议震荡。",
+      "metric_name": "device_fwd_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {"level": "critical", "value": 90, "method": ">"},
+        {"level": "error", "value": 80, "method": ">"},
+        {"level": "warning", "value": 70, "method": ">"}
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

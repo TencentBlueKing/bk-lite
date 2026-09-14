@@ -1,0 +1,285 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_huawei_ne"
+        config_type = "huawei_ne"
+        brand = "huawei_ne"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # Device identity tags (hwDeviceEsn / hwProductName).
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.188.1.1.0"
+        name = "hwDeviceEsn"
+        is_tag = true
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.188.1.4.0"
+        name = "hwProductName"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- Entity CPU (hwEntityCpuUsage, per entity, 0-100) ----
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.47.1.1.1.1.7"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.1.1.5"
+        name = "usage"
+    # ---- Entity memory (hwEntityMemUsage, direct %) ----
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.47.1.1.1.1.7"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.1.1.7"
+        name = "usage"
+    # ---- Entity temperature (hwEntityTemperature, C) ----
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.47.1.1.1.1.7"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.1.1.11"
+        name = "celsius"
+    # ---- Entity voltage (hwEntityVoltage, mV; query /1000 -> V) ----
+    [[inputs.snmp.table]]
+        name = "device_voltage"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.47.1.1.1.1.7"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.1.1.13"
+        name = "volts"
+    # ---- Entity oper / standby / board power ----
+    [[inputs.snmp.table]]
+        name = "device_entity"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.47.1.1.1.1.7"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.1.1.2"
+        name = "oper_status"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.1.1.3"
+        name = "standby_status"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.1.1.24"
+        name = "board_power"
+    # ---- Fans (hwEntityFanState / Speed / Present) ----
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.10.1.1"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.10.1.7"
+        name = "state"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.10.1.5"
+        name = "speed"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.10.1.6"
+        name = "present"
+    # ---- PSU (hwEntityPwrState / Present) ----
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.18.1.6"
+        name = "state"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.18.1.5"
+        name = "present"
+    # ---- Optical DDM (Rx/Tx uW; temp/bias/voltage) ----
+    [[inputs.snmp.table]]
+        name = "device_optical"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.47.1.1.1.1.7"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.3.1.8"
+        name = "rx_power"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.3.1.9"
+        name = "tx_power"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.3.1.5"
+        name = "temperature"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.3.1.7"
+        name = "bias"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.3.1.6"
+        name = "voltage"
+    # ---- Device CPU duty (hwCpuDevDuty / 1min / 5min) ----
+    [[inputs.snmp.table]]
+        name = "device_cpu_dev"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.6.3.4.1.2"
+        name = "duty"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.6.3.4.1.3"
+        name = "avg_duty_1min"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.6.3.4.1.4"
+        name = "avg_duty_5min"
+    # ---- Device memory 64-bit size/free ----
+    [[inputs.snmp.table]]
+        name = "device_memory_dev"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.6.3.5.1.1.8"
+        name = "size"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.6.3.5.1.1.9"
+        name = "free"
+    # ---- Chassis used/total power ----
+    [[inputs.snmp.table]]
+        name = "device_power"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.3.2.0"
+        name = "used"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.3.1.0"
+        name = "total"
+    # ---- Forwarding performance / forwarding CPU ----
+    [[inputs.snmp.table]]
+        name = "device_forward"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.28.1.1"
+        name = "performance_usage"
+    [[inputs.snmp.table]]
+        name = "device_fwd_cpu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.43.1.2"
+        name = "usage"
+    # ---- Slot oper status ----
+    [[inputs.snmp.table]]
+        name = "device_slot"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.6.3.3.2.1.8"
+        name = "oper_status"
+    # ---- Huawei IF-EXT rates / flow status (private; ifAlias tag) ----
+    [[inputs.snmp.table]]
+        name = "interface_ext"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.18"
+        name = "ifAlias"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.41.1.1.1.1.19"
+        name = "input_octet_rate"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.41.1.1.1.1.21"
+        name = "output_octet_rate"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.41.1.1.1.1.15"
+        name = "input_pkt_rate"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.41.1.1.1.1.17"
+        name = "output_pkt_rate"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.41.1.1.1.1.8"
+        name = "flow_status"
+    # ---- BGP peer state / established time ----
+    [[inputs.snmp.table]]
+        name = "device_bgp_peer"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.177.1.1.2.1.5"
+        name = "state"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.177.1.1.2.1.7"
+        name = "established_time"
+    # ---- BGP session counts / VRF count ----
+    [[inputs.snmp.table]]
+        name = "device_bgp"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.177.1.4.1.0"
+        name = "peer_session_num"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.177.1.4.2.0"
+        name = "ibgp_session_num"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.177.1.4.3.0"
+        name = "ebgp_session_num"
+    [[inputs.snmp.table]]
+        name = "device_vrf"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.177.2.3.1.0"
+        name = "count"
+    # ---- BFD session state / active session count ----
+    [[inputs.snmp.table]]
+        name = "device_bfd_sess"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.38.2.3.1.17"
+        name = "state"
+    [[inputs.snmp.table]]
+        name = "device_bfd"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.38.1.21.0"
+        name = "sess_act_number"
