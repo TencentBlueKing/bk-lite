@@ -66,3 +66,11 @@ Wireless objects are unauthorized, or the model does not expose those scalars or
 ### High-speed traffic is zero or inaccurate
 
 Confirm collection uses 64-bit `ifHCInOctets` / `ifHCOutOctets`. This template collects those counters through the shared IF-MIB table.
+
+### Two STA count series disagree
+
+`wlan_cur_assoc_sta_num` (`hwWlanCurAssocStaNum`) is the current associated session count. `wlan_sta_cur_num` (`hwWlanStaCurNum`) is the controller's current STA object count. They are different counters and may disagree across software versions or SNMP views. Compare associated count with the license `wlan_access_max_sta_number` for capacity; do not reuse one threshold on both series. Auth-success `wlan_cur_auth_success_sta_num` is a third series; a growing gap versus associated count usually means authentication failures.
+
+### Global wireless speed unit
+
+`wlan_global_up_speed` / `wlan_global_down_speed` (`hwWlanGlobalUpSpeed` / `hwWlanGlobalDownSpeed`) are collected in Kbps as defined by the MIB. The platform unit is `kbitps`; there is no conversion to bit/s.

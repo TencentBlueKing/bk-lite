@@ -68,13 +68,13 @@ monitor_object_metric:
       desc: 无线控制器允许接入的最大 AP 数量（hwWlanAccessMaxApNumber）。已接入数接近该值表示容量或许可接近上限。
     wlan_cur_assoc_sta_num:
       name: 当前关联终端数
-      desc: 当前已关联的终端数量（hwWlanCurAssocStaNum）。骤降可能表示射频、认证或控制器故障。
+      desc: 当前已关联会话数（hwWlanCurAssocStaNum）。与 hwWlanStaCurNum（当前终端对象数）口径不同；骤降可能表示射频、认证或控制器故障。
     wlan_cur_auth_success_sta_num:
       name: 认证成功终端数
       desc: 当前认证成功的终端数量（hwWlanCurAuthSuccessStaNum）。与关联数差距扩大通常表示认证失败增多。
     wlan_sta_cur_num:
       name: 当前终端数
-      desc: 当前在线终端数量（hwWlanStaCurNum）。当与关联数、认证成功数在不同软件版本上不一致时，可交叉核对。
+      desc: 当前在线终端数量（hwWlanStaCurNum）。这是与 hwWlanCurAssocStaNum（关联终端数）不同的口径：前者是控制器当前终端对象数，后者是已关联会话数；软件版本不同时两者可能不一致，应交叉核对，不要混用阈值。
     wlan_cur_assoc_2g_sta_num:
       name: 2.4G 关联终端数
       desc: 当前 2.4G 频段关联终端数量（hwWlanCurAssoc2gStaNum）。
@@ -89,10 +89,10 @@ monitor_object_metric:
       desc: 无线控制器允许接入的最大终端数量（hwWlanAccessMaxStaNumber）。
     wlan_global_up_speed:
       name: 全局上行速率
-      desc: 无线控制器全局上行速率（hwWlanGlobalUpSpeed）。
+      desc: 无线控制器全局上行速率（hwWlanGlobalUpSpeed），MIB 单位为 Kbps。采集值按 kbitps 原样展示，不做 bit/s 换算。
     wlan_global_down_speed:
       name: 全局下行速率
-      desc: 无线控制器全局下行速率（hwWlanGlobalDownSpeed）。
+      desc: 无线控制器全局下行速率（hwWlanGlobalDownSpeed），MIB 单位为 Kbps。采集值按 kbitps 原样展示，不做 bit/s 换算。
     wlan_vap_cur_num:
       name: 当前 VAP 数
       desc: 当前虚拟接入点数量（hwVapCurNum）。异常变化可能表示 SSID 部署漂移。
@@ -101,7 +101,7 @@ monitor_object_metric:
       desc: 允许配置的最大虚拟接入点数量（hwVapMaxNum）。
     wlan_ap_run_state:
       name: AP 运行状态
-      desc: 接入点运行状态（hwWlanApRunState）。应提供服务的 AP 处于故障、配置失败或空闲时需立即排查。
+      desc: 接入点运行状态（hwWlanApRunState）：idle(1)、autofind(2)、typeNotMatch(3)、fault(4)、config(5)、configFailed(6)、download(7)、normal(8)、committing(9)、commitFailed(10)、standby(11)、verMismatch(12)、nameConflicted(13)、invalid(14)、countryCodeMismatch(15)。应提供服务的 AP 处于 fault、configFailed、commitFailed 或 idle 时需立即排查。
     wlan_ap_cpu_usage:
       name: AP CPU 使用率
       desc: 各接入点 CPU 使用率（hwWlanApCpuUsage），0～100。偏高可能导致掉线和漫游变慢。
@@ -116,7 +116,7 @@ monitor_object_metric:
       desc: 各接入点当前在线用户数量（hwWlanApOnlineUserNum）。
     wlan_radio_run_state:
       name: 射频运行状态
-      desc: 射频运行状态（hwWlanRadioRunState）。射频关闭表示该频段即使 AP 已接入也不提供服务。
+      desc: 射频运行状态（hwWlanRadioRunState）：up(1)、down(2)、invalid(255)。down 表示该频段即使 AP 已接入也不提供服务。
     wlan_radio_channel:
       name: 射频信道
       desc: 射频当前工作信道（hwWlanRadioChannel）。

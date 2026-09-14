@@ -368,7 +368,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Current associated station count on this Huawei WLAN AC (hwWlanCurAssocStaNum). Sudden drops can indicate RF, authentication, or controller faults."
+      "description": "Current associated station count on this Huawei WLAN AC (hwWlanCurAssocStaNum). This is the associated-session counter, distinct from hwWlanStaCurNum (current STA objects). Sudden drops can indicate RF, authentication, or controller faults."
     },
     {
       "metric_group": "Wireless",
@@ -394,7 +394,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Current station count on this Huawei WLAN AC (hwWlanStaCurNum). Use it together with associated and auth-success counts when the three objects disagree across software versions."
+      "description": "Current STA object count on this Huawei WLAN AC (hwWlanStaCurNum). Distinct from associated-session count (hwWlanCurAssocStaNum); software versions may disagree, so do not reuse the same threshold."
     },
     {
       "metric_group": "Wireless",
@@ -454,12 +454,12 @@
       "query": "wlan_global_up_speed{instance_type='wireless', __$labels__}",
       "display_name": "Global Uplink Speed",
       "data_type": "Number",
-      "unit": "bitps",
+      "unit": "kbitps",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Global wireless uplink speed reported by the Huawei WLAN AC (hwWlanGlobalUpSpeed)."
+      "description": "Global wireless uplink speed reported by the Huawei WLAN AC (hwWlanGlobalUpSpeed), in kilobits per second (Kbps) as defined by the MIB. The raw OID value is already Kbps; this metric stores it as kbitps with no extra conversion."
     },
     {
       "metric_group": "Wireless",
@@ -467,12 +467,12 @@
       "query": "wlan_global_down_speed{instance_type='wireless', __$labels__}",
       "display_name": "Global Downlink Speed",
       "data_type": "Number",
-      "unit": "bitps",
+      "unit": "kbitps",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Global wireless downlink speed reported by the Huawei WLAN AC (hwWlanGlobalDownSpeed)."
+      "description": "Global wireless downlink speed reported by the Huawei WLAN AC (hwWlanGlobalDownSpeed), in kilobits per second (Kbps) as defined by the MIB. The raw OID value is already Kbps; this metric stores it as kbitps with no extra conversion."
     },
     {
       "metric_group": "Wireless",
@@ -506,7 +506,7 @@
       "query": "wlan_ap_run_state{instance_type='wireless', __$labels__}",
       "display_name": "AP Run State",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"idle\",\"id\":1,\"color\":\"#d9d9d9\"},{\"name\":\"autoFind\",\"id\":2,\"color\":\"#1677ff\"},{\"name\":\"typeNotMatch\",\"id\":3,\"color\":\"#faad14\"},{\"name\":\"fault\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"config\",\"id\":5,\"color\":\"#faad14\"},{\"name\":\"configFailed\",\"id\":6,\"color\":\"#ff4d4f\"},{\"name\":\"download\",\"id\":7,\"color\":\"#1677ff\"},{\"name\":\"normal\",\"id\":8,\"color\":\"#1ac44a\"},{\"name\":\"upgrading\",\"id\":9,\"color\":\"#faad14\"}]",
+      "unit": "[{\"name\":\"idle\",\"id\":1,\"color\":\"#d9d9d9\"},{\"name\":\"autofind\",\"id\":2,\"color\":\"#1677ff\"},{\"name\":\"typeNotMatch\",\"id\":3,\"color\":\"#faad14\"},{\"name\":\"fault\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"config\",\"id\":5,\"color\":\"#faad14\"},{\"name\":\"configFailed\",\"id\":6,\"color\":\"#ff4d4f\"},{\"name\":\"download\",\"id\":7,\"color\":\"#1677ff\"},{\"name\":\"normal\",\"id\":8,\"color\":\"#1ac44a\"},{\"name\":\"committing\",\"id\":9,\"color\":\"#faad14\"},{\"name\":\"commitFailed\",\"id\":10,\"color\":\"#ff4d4f\"},{\"name\":\"standby\",\"id\":11,\"color\":\"#1677ff\"},{\"name\":\"verMismatch\",\"id\":12,\"color\":\"#faad14\"},{\"name\":\"nameConflicted\",\"id\":13,\"color\":\"#faad14\"},{\"name\":\"invalid\",\"id\":14,\"color\":\"#d9d9d9\"},{\"name\":\"countryCodeMismatch\",\"id\":15,\"color\":\"#faad14\"}]",
       "dimensions": [
         {
           "name": "index",
@@ -516,7 +516,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Run state of each AP managed by this Huawei WLAN AC (hwWlanApRunState). Fault, configFailed, or idle on an AP that should be serving clients needs immediate investigation."
+      "description": "Run state of each AP managed by this Huawei WLAN AC (hwWlanApRunState): idle(1), autofind(2), typeNotMatch(3), fault(4), config(5), configFailed(6), download(7), normal(8), committing(9), commitFailed(10), standby(11), verMismatch(12), nameConflicted(13), invalid(14), countryCodeMismatch(15). Fault, configFailed, commitFailed, or idle on an AP that should be serving clients needs immediate investigation."
     },
     {
       "metric_group": "Wireless",
@@ -596,7 +596,7 @@
       "query": "wlan_radio_run_state{instance_type='wireless', __$labels__}",
       "display_name": "Radio Run State",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"testing\",\"id\":3,\"color\":\"#faad14\"}]",
+      "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"invalid\",\"id\":255,\"color\":\"#d9d9d9\"}]",
       "dimensions": [
         {
           "name": "index",
@@ -606,7 +606,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Run state of each radio (hwWlanRadioRunState). A down radio means that band is not serving clients even if the AP is joined."
+      "description": "Run state of each radio (hwWlanRadioRunState): up(1), down(2), invalid(255). A down radio means that band is not serving clients even if the AP is joined."
     },
     {
       "metric_group": "Wireless",

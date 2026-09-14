@@ -88,16 +88,18 @@ monitor_object_metric:
     wlan_cur_assoc_sta_num:
       name: Associated STA Count
       desc: Current associated station count on this Huawei WLAN AC (hwWlanCurAssocStaNum).
-        Sudden drops can indicate RF, authentication, or controller faults.
+        This is the associated-session counter, distinct from hwWlanStaCurNum. Sudden drops
+        can indicate RF, authentication, or controller faults.
     wlan_cur_auth_success_sta_num:
       name: Auth-Success STA Count
       desc: Current stations that completed authentication on this Huawei WLAN AC (hwWlanCurAuthSuccessStaNum).
         A growing gap versus associated count points to auth failures.
     wlan_sta_cur_num:
       name: Current STA Count
-      desc: Current station count on this Huawei WLAN AC (hwWlanStaCurNum). Use it together
-        with associated and auth-success counts when the three objects disagree across software
-        versions.
+      desc: Current station object count on this Huawei WLAN AC (hwWlanStaCurNum). This is a
+        different counter from associated STA count (hwWlanCurAssocStaNum). The former is the
+        controller's current STA objects, the latter is associated sessions. Software versions
+        may disagree; compare them and do not reuse the same threshold.
     wlan_cur_assoc_2g_sta_num:
       name: Associated 2.4G STA Count
       desc: Current associated 2.4 GHz station count (hwWlanCurAssoc2gStaNum). Useful for
@@ -117,9 +119,11 @@ monitor_object_metric:
     wlan_global_up_speed:
       name: Global Uplink Speed
       desc: Global wireless uplink speed reported by the Huawei WLAN AC (hwWlanGlobalUpSpeed).
+        The MIB unit is Kbps. The collected value is stored as kbitps with no conversion to bit/s.
     wlan_global_down_speed:
       name: Global Downlink Speed
       desc: Global wireless downlink speed reported by the Huawei WLAN AC (hwWlanGlobalDownSpeed).
+        The MIB unit is Kbps. The collected value is stored as kbitps with no conversion to bit/s.
     wlan_vap_cur_num:
       name: Current VAP Count
       desc: Current VAP count on this Huawei WLAN AC (hwVapCurNum). Unexpected change can
@@ -130,8 +134,11 @@ monitor_object_metric:
         this value means the controller is near VAP scale capacity.
     wlan_ap_run_state:
       name: AP Run State
-      desc: Run state of each AP managed by this Huawei WLAN AC (hwWlanApRunState). Fault,
-        configFailed, or idle on an AP that should be serving clients needs immediate investigation.
+      desc: Run state of each AP managed by this Huawei WLAN AC (hwWlanApRunState) idle(1),
+        autofind(2), typeNotMatch(3), fault(4), config(5), configFailed(6), download(7),
+        normal(8), committing(9), commitFailed(10), standby(11), verMismatch(12),
+        nameConflicted(13), invalid(14), countryCodeMismatch(15). Fault, configFailed,
+        commitFailed, or idle on an AP that should be serving clients needs immediate investigation.
     wlan_ap_cpu_usage:
       name: AP CPU Usage
       desc: CPU utilization of each managed AP (hwWlanApCpuUsage), as a 0-100 percentage.
@@ -150,8 +157,8 @@ monitor_object_metric:
         STA counts it locates overloaded APs.
     wlan_radio_run_state:
       name: Radio Run State
-      desc: Run state of each radio (hwWlanRadioRunState). A down radio means that band is
-        not serving clients even if the AP is joined.
+      desc: Run state of each radio (hwWlanRadioRunState) up(1), down(2), invalid(255). A
+        down radio means that band is not serving clients even if the AP is joined.
     wlan_radio_channel:
       name: Radio Channel
       desc: Operating channel of each radio (hwWlanRadioChannel). Unexpected channel changes

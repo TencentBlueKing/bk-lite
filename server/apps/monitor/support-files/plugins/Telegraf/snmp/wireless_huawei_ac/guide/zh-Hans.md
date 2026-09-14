@@ -66,3 +66,11 @@ snmpget -v2c -c "$SNMP_COMMUNITY" "$TARGET" 1.3.6.1.2.1.1.2.0
 ### 高速口流量为 0 或不准
 
 请确认采集到的是 64 位 `ifHCInOctets` / `ifHCOutOctets`。本模板通过公共 IF-MIB 表采集这些计数器。
+
+### 两个终端数量口径不一致
+
+`wlan_cur_assoc_sta_num`（`hwWlanCurAssocStaNum`）是当前已关联会话数；`wlan_sta_cur_num`（`hwWlanStaCurNum`）是控制器当前终端对象数。二者不是同一计数，软件版本或视图差异下可能不相等。容量判断以许可上限 `wlan_access_max_sta_number` 对照关联数；不要把两个口径混用同一阈值。认证成功数 `wlan_cur_auth_success_sta_num` 是第三口径，与关联数差距扩大通常表示认证失败增多。
+
+### 全局无线速率单位
+
+`wlan_global_up_speed` / `wlan_global_down_speed`（`hwWlanGlobalUpSpeed` / `hwWlanGlobalDownSpeed`）按 MIB 以 Kbps 采集，平台单位为 `kbitps`，不做 bit/s 换算。
