@@ -1,8 +1,11 @@
 """CMDB LLM 相关 NATS handler 契约。"""
 
+import django
 import pytest
 
-from apps.cmdb.nats.nats import (
+django.setup()
+
+from apps.cmdb.nats.nats import (  # noqa: E402
     batch_update_instances,
     create_instance_association_for_llm,
     create_instance_for_llm,
@@ -13,8 +16,6 @@ from apps.cmdb.nats.nats import (
     search_models_for_llm,
     update_instance_for_llm,
 )
-
-pytestmark = pytest.mark.django_db
 
 INST_UUID = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
 DST_UUID = "7de0c6de-f841-44b1-846d-2d75a7c59c50"
