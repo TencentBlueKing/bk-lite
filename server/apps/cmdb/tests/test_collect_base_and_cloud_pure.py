@@ -232,10 +232,10 @@ def test_aliyun_check_task_id(monkeypatch):
     assert r.check_task_id("acct_99") is False
 
 
-def test_aliyun_check_task_id_type_mismatch(monkeypatch):
-    # 真实行为锁定：task_id 为 int 时，与 split 出的字符串恒不相等 → 永远 False。
+def test_aliyun_check_task_id_accepts_django_integer_pk(monkeypatch):
+    # Django 主键是整数，必须与标签中的字符串任务 ID 匹配。
     r = _aliyun(monkeypatch, task_id=7)
-    assert r.check_task_id("acct_7") is False
+    assert r.check_task_id("acct_7") is True
 
 
 def test_aliyun_set_asso_instances(monkeypatch):
