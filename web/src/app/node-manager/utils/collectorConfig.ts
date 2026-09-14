@@ -208,16 +208,22 @@ type Translate = (
 
 export function buildCollectorPackStatusTag(
   version: string | null | undefined,
-  t: Translate
+  t: Translate,
+  options?: { pinnedVersion?: string | null }
 ): CollectorPackStatusTag {
   const packVersion = String(version || '').trim();
+  const pinnedVersion = String(options?.pinnedVersion || '').trim();
   if (packVersion) {
     return {
       name: packVersion,
       color: 'blue',
-      tooltip: t('node-manager.packetManage.importedPackHint', '', {
-        version: packVersion
-      })
+      tooltip: pinnedVersion
+        ? t('node-manager.packetManage.pinnedPackHint', '', {
+          version: pinnedVersion
+        })
+        : t('node-manager.packetManage.importedPackHint', '', {
+          version: packVersion
+        })
     };
   }
   return {

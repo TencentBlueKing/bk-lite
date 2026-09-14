@@ -18,6 +18,7 @@ from apps.node_mgmt.services.collector_release.errors import (
     FILE_UNDECLARED,
     HINT_REMOVE_EXTRA,
     HINT_REPACK,
+    HINT_SHA256_REQUIRED,
     HINT_SIZE,
     LEVEL_ERROR,
     MANIFEST_FIELD,
@@ -36,12 +37,14 @@ from apps.node_mgmt.services.collector_release.errors import (
     PACK_ZIP_SLIP,
     PLUGIN_NAME_MISMATCH,
     SHA256_MISMATCH,
+    SHA256_MISSING,
     PackIssue,
     issue,
 )
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 
 VERSION_RE = re.compile(C.VERSION_PATTERN)
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 UNIX_SYMLINK_MASK = 0o170000
 UNIX_SYMLINK_TYPE = 0o120000
 
@@ -83,6 +86,10 @@ class ParsedPack:
     artifacts: list[ArtifactSpec] = field(default_factory=list)
     files: dict[str, bytes] = field(default_factory=dict)
     wrapping_prefix: str = ""
+    # 只在 parse_release_path（读磁盘上已落地的 zip）时才会被填充；预览阶段直接解析
+    # 上传流，没有落地文件，这里保持空串。apply() 靠这个字段按需重新打开 zip、
+    # 逐个架构流式读取二进制，不再把所有架构的字节同时留在内存里（见 F1 修复说明）。
+    source_path: str = ""
 
 
 def _format_mb(num_bytes: int) -> str:
@@ -252,14 +259,28 @@ def _collect_zip_file_infos(infos: list[zipfile.ZipInfo], compressed_size: int, 
     return file_infos
 
 
-def _extract_zip_contents(zf: zipfile.ZipFile, file_infos: list[zipfile.ZipInfo], issues: list[PackIssue]) -> tuple[dict[str, bytes], str] | None:
+def _extract_zip_contents(
+    zf: zipfile.ZipFile, file_infos: list[zipfile.ZipInfo], issues: list[PackIssue]
+) -> tuple[dict[str, bytes], set[str], str] | None:
+    """读取除 artifacts/ 以外的小文件（manifest/metrics/ui/模板）到内存。
+
+    artifacts/{os}/{arch} 下的二进制单个最大 200MB、一个包最多 4 个架构，如果和
+    其它文件一样整包 read() 进 dict，一次预览请求就能占用几百 MB 常驻内存，多个
+    人同时导入会把这个和 monitor/cmdb/log 共用同一进程的 Django 服务 OOM 掉（见
+    F1）。这里只记下 artifacts/ 下的文件名用于「未声明文件」校验，实际字节留到
+    `_load_artifact_binaries` 按需边读边算哈希、读完即丢，全程不常驻。
+    """
     names = [_normalize_zip_name(info.filename) for info in file_infos]
     prefix = _detect_wrap_prefix(names)
     contents: dict[str, bytes] = {}
+    artifact_names: set[str] = set()
     actual_total = 0
     for info in file_infos:
         raw_name = _normalize_zip_name(info.filename)
         rel = _strip_prefix(raw_name, prefix)
+        if rel.startswith("artifacts/"):
+            artifact_names.add(rel)
+            continue
         payload = zf.read(info)
         actual_total += len(payload)
         if actual_total > C.MAX_UNCOMPRESSED_BYTES:
@@ -276,7 +297,7 @@ def _extract_zip_contents(zf: zipfile.ZipFile, file_infos: list[zipfile.ZipInfo]
             issues.append(issue(PACK_BOMB, f"文件 {rel} 实际大小与声明不符。", details={"file": rel}))
             return None
         contents[rel] = payload
-    return contents, prefix
+    return contents, artifact_names, prefix
 
 
 def _load_manifest(contents: dict[str, bytes], issues: list[PackIssue]) -> dict | None:
@@ -377,12 +398,24 @@ def _parse_artifact_specs(artifacts_block, declared: set[str], issues: list[Pack
                 )
             )
         declared.add(rel)
+        sha256 = str(item.get("sha256") or "").strip().lower()
+        # 二进制会被下发到所有节点执行，清单必须自带哈希，导入页才有可人工核对的指纹。
+        if not SHA256_RE.match(sha256):
+            issues.append(
+                issue(
+                    SHA256_MISSING,
+                    f"{os_name}/{arch} 的 artifact 缺少合法的 sha256。",
+                    hint=HINT_SHA256_REQUIRED,
+                    details={"file": rel, "os": os_name, "arch": arch},
+                )
+            )
+            continue
         artifact_specs.append(
             ArtifactSpec(
                 os=os_name,
                 arch=arch,
                 file=rel,
-                sha256=str(item.get("sha256") or "").strip().lower(),
+                sha256=sha256,
                 size=0,
                 computed_sha256="",
             )
@@ -390,8 +423,8 @@ def _parse_artifact_specs(artifacts_block, declared: set[str], issues: list[Pack
     return artifact_specs
 
 
-def _report_undeclared_and_layout(contents: dict[str, bytes], declared: set[str], issues: list[PackIssue]) -> None:
-    extra = sorted(path for path in contents if path not in declared)
+def _report_undeclared_and_layout(names: set[str], declared: set[str], issues: list[PackIssue]) -> None:
+    extra = sorted(path for path in names if path not in declared)
     if extra:
         issues.append(
             issue(
@@ -401,7 +434,7 @@ def _report_undeclared_and_layout(contents: dict[str, bytes], declared: set[str]
                 details={"files": extra},
             )
         )
-    layout_bad = _layout_violation_paths(list(contents))
+    layout_bad = _layout_violation_paths(list(names))
     if layout_bad:
         issues.append(
             issue(
@@ -499,14 +532,43 @@ def _load_template_spec(spec, contents: dict[str, bytes], issues: list[PackIssue
     )
 
 
-def _load_artifact_binaries(artifact_specs: list[ArtifactSpec], contents: dict[str, bytes], issues: list[PackIssue]) -> list[ArtifactSpec]:
+ARTIFACT_HASH_CHUNK_BYTES = 4 * 1024 * 1024  # 4MB 分块流式读取，不整存二进制
+
+
+def _load_artifact_binaries(zf: zipfile.ZipFile, wrap_prefix: str, artifact_specs: list[ArtifactSpec], issues: list[PackIssue]) -> list[ArtifactSpec]:
+    """流式计算每个二进制的 sha256，不把 200MB 级别的文件整份读进内存（F1）。
+
+    同时保留原来「实际字节 > 声明字节 * 2」的炸弹检测，只是把检测点从「读完整个
+    文件后比较」挪到「边读边比较、超限立刻中止」，效果等价但峰值内存从 O(单文件
+    大小) 降到 O(分块大小)。
+    """
     loaded_artifacts: list[ArtifactSpec] = []
     for spec in artifact_specs:
-        payload = contents.get(spec.file)
-        if payload is None:
+        arcname = f"{wrap_prefix}{spec.file}"
+        try:
+            info = zf.getinfo(arcname)
+        except KeyError:
             issues.append(issue(FILE_MISSING, f"缺少二进制: {spec.file}", details={"file": spec.file, "os": spec.os, "arch": spec.arch}))
             continue
-        if not payload:
+
+        hasher = hashlib.sha256()
+        actual_total = 0
+        bomb_limit = max(info.file_size * 2, ARTIFACT_HASH_CHUNK_BYTES)
+        bombed = False
+        with zf.open(info) as stream:
+            while True:
+                chunk = stream.read(ARTIFACT_HASH_CHUNK_BYTES)
+                if not chunk:
+                    break
+                actual_total += len(chunk)
+                if actual_total > C.MAX_FILE_BYTES or actual_total > bomb_limit:
+                    issues.append(issue(PACK_BOMB, f"文件 {spec.file} 实际大小与声明不符或超限。", details={"file": spec.file, "os": spec.os, "arch": spec.arch}))
+                    bombed = True
+                    break
+                hasher.update(chunk)
+        if bombed:
+            continue
+        if actual_total == 0:
             issues.append(
                 issue(
                     ARTIFACT_EMPTY,
@@ -515,7 +577,7 @@ def _load_artifact_binaries(artifact_specs: list[ArtifactSpec], contents: dict[s
                 )
             )
             continue
-        computed = _sha256_bytes(payload)
+        computed = hasher.hexdigest()
         if spec.sha256 and spec.sha256 != computed:
             issues.append(
                 issue(
@@ -525,7 +587,7 @@ def _load_artifact_binaries(artifact_specs: list[ArtifactSpec], contents: dict[s
                 )
             )
         spec.computed_sha256 = computed
-        spec.size = len(payload)
+        spec.size = actual_total
         loaded_artifacts.append(spec)
     return loaded_artifacts
 
@@ -537,7 +599,7 @@ def _parse_open_zip(zf: zipfile.ZipFile, compressed_size: int, issues: list[Pack
     extracted = _extract_zip_contents(zf, file_infos, issues)
     if extracted is None:
         return issues, None
-    contents, prefix = extracted
+    contents, artifact_names, prefix = extracted
     manifest = _load_manifest(contents, issues)
     if manifest is None:
         return issues, None
@@ -554,7 +616,7 @@ def _parse_open_zip(zf: zipfile.ZipFile, compressed_size: int, issues: list[Pack
     declared = {"manifest.json", metrics_path, ui_path}
     _declare_template_files(child_spec, base_spec, declared, issues)
     artifact_specs = _parse_artifact_specs(manifest.get("artifacts") or [], declared, issues)
-    _report_undeclared_and_layout(contents, declared, issues)
+    _report_undeclared_and_layout(set(contents) | artifact_names, declared, issues)
 
     identity_errors = {PACK_LAYOUT_INVALID, MANIFEST_FIELD, MANIFEST_SCHEMA, ARCH_INVALID}
     if any(item.code in identity_errors and item.level == LEVEL_ERROR for item in issues) and not collector:
@@ -565,7 +627,7 @@ def _parse_open_zip(zf: zipfile.ZipFile, compressed_size: int, issues: list[Pack
     )
     child_template = _load_template_spec(child_spec, contents, issues)
     base_template = _load_template_spec(base_spec, contents, issues)
-    loaded_artifacts = _load_artifact_binaries(artifact_specs, contents, issues)
+    loaded_artifacts = _load_artifact_binaries(zf, prefix, artifact_specs, issues)
     if not collector or not version:
         return issues, None
     return issues, ParsedPack(
@@ -591,4 +653,9 @@ def parse_release_path(path: str | Path) -> tuple[list[PackIssue], ParsedPack | 
     file_path = Path(path)
     size = file_path.stat().st_size if file_path.exists() else None
     with file_path.open("rb") as handle:
-        return parse_release_zip(handle, compressed_size=size)
+        issues, parsed = parse_release_zip(handle, compressed_size=size)
+    if parsed is not None:
+        # 只有落地到磁盘的包才回填 source_path；apply() 靠它按需重新打开 zip、
+        # 逐架构流式上传，不再把所有架构的二进制同时读进内存。
+        parsed.source_path = str(file_path)
+    return issues, parsed

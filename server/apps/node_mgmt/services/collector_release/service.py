@@ -7,12 +7,12 @@ import json
 import os
 import shutil
 import tempfile
+import time
 import uuid
+import zipfile
 from pathlib import Path
-from types import SimpleNamespace
 
 from django.core.cache import cache
-from django.core.files.base import ContentFile
 from django.db import transaction
 
 from apps.core.exceptions.base_app_exception import ValidationAppException
@@ -49,13 +49,105 @@ from apps.node_mgmt.services.version_upgrade import VersionUpgradeService
 from apps.node_mgmt.utils.version_utils import VersionUtils
 
 
+class _NamedZipStream(io.BufferedIOBase):
+    """给 zipfile 流式句柄补一个 `.name`，让 upload_file_to_s3 的对象存储描述字段
+    仍然是可执行文件名（如 kafka_exporter），而不是 zip 内部的成员路径。
+
+    必须真正继承 `io.BufferedIOBase`（而不是随便鸭子类型一个对象）：NATS 的
+    object store 客户端专门用 `isinstance(data, io.BufferedIOBase)` 判断是否
+    走线程化的 `readinto` 流式上传路径，普通对象会被直接拒绝
+    （`TypeError: nats: invalid type for object store`，这个坑在本地联调真实
+    NATS 时才会暴露，纯 mock 单测测不出来——已经在下面的手工联调记录里踩过）。
+    """
+
+    def __init__(self, stream, name: str):
+        super().__init__()
+        self._stream = stream
+        self.name = name
+
+    def readable(self):
+        return True
+
+    def read(self, size=-1, /):
+        return self._stream.read(size)
+
+    def readinto(self, b):
+        return self._stream.readinto(b)
+
+    def seekable(self):
+        return self._stream.seekable()
+
+    def seek(self, offset, whence=0, /):
+        return self._stream.seek(offset, whence)
+
+    def tell(self):
+        return self._stream.tell()
+
+    def close(self):
+        # 真正的关闭由外层 `with zf.open(...) as stream:` 负责；这里只是包了
+        # 一层名字，不应该在这一层就把底层的 zip 成员流关掉。
+        pass
+
+
 class CollectorReleaseService:
     @staticmethod
     def preview_upload(uploaded_file) -> dict:
+        CollectorReleaseService.sweep_stale_staging()
         uploaded_file.seek(0)
-        payload = uploaded_file.read()
-        issues, parsed = parse_release_zip(io.BytesIO(payload), compressed_size=len(payload))
-        return CollectorReleaseService._build_preview(issues, parsed, payload)
+        # 不再 uploaded_file.read() 整包进内存：Django 对 >2.5MB 的上传本来就已经落
+        # 盘成临时文件，这里直接把该文件对象交给 zipfile（它只按需 seek/read 具体
+        # 成员），避免额外复制出一份最大 200MB 的 bytes（F1，见下面 _stage_bytes
+        # 同理）。uploaded_file 本身实现了 read/seek，zipfile 可以直接使用。
+        compressed_size = getattr(uploaded_file, "size", None)
+        issues, parsed = parse_release_zip(uploaded_file, compressed_size=compressed_size)
+        return CollectorReleaseService._build_preview(issues, parsed, uploaded_file)
+
+    @staticmethod
+    def sweep_stale_staging(max_age_seconds: int | None = None, *, force: bool = False) -> int:
+        """回收超过预览有效期仍残留的暂存目录。
+
+        预览会把整包落到临时目录，只有导入成功才会清理；用户预览后关页面、
+        换包或直接不导入时目录会一直留着，因此每次预览前顺手回收一次。
+
+        这里做了节流：实际的文件系统扫描（glob + 逐个 stat）每
+        `STAGING_SWEEP_THROTTLE_SECONDS` 最多跑一次，不会随预览请求量线性增长——
+        否则请求量越大、/tmp 下残留目录越多，这个「顺手」的清理反而会变成拖慢每次
+        预览的热路径开销（F4）。用 cache.add 做节流是因为本仓库对新增 Celery Beat
+        周期任务有一套所有权指纹核对流程（见 DEVELOP.md），为一次性的清理任务走
+        完整流程成本明显大于收益；真正需要独立调度、可观测的清理时，再迁移成
+        Beat 任务不迟。
+        """
+        if not force and not cache.add(C.STAGING_SWEEP_THROTTLE_CACHE_KEY, 1, C.STAGING_SWEEP_THROTTLE_SECONDS):
+            return 0
+        max_age = max_age_seconds if max_age_seconds is not None else C.PREVIEW_TTL_SECONDS + C.STAGING_SWEEP_GRACE_SECONDS
+        now = time.time()
+        removed = 0
+        try:
+            entries = list(Path(tempfile.gettempdir()).glob(f"{C.STAGING_DIR_PREFIX}*"))
+        except OSError:
+            logger.exception("failed to scan collector release staging root")
+            return 0
+        for entry in entries:
+            try:
+                if not entry.is_dir() or now - entry.stat().st_mtime < max_age:
+                    continue
+            except OSError:
+                continue
+            shutil.rmtree(entry, ignore_errors=True)
+            removed += 1
+        if removed:
+            logger.info("collector release staging swept: removed=%s max_age=%s", removed, max_age)
+        return removed
+
+    @staticmethod
+    def discard_staging(token: str) -> dict:
+        """用户放弃本次预览时立即释放暂存包，不必等回收窗口。"""
+        staged = cache.get(f"{C.STAGING_CACHE_PREFIX}{token}")
+        cache.delete(f"{C.STAGING_CACHE_PREFIX}{token}")
+        path = (staged or {}).get("path")
+        if path:
+            shutil.rmtree(os.path.dirname(path), ignore_errors=True)
+        return {"discarded": bool(path)}
 
     @staticmethod
     def _build_preview(issues: list[PackIssue], parsed: ParsedPack | None, uploaded_file) -> dict:
@@ -70,7 +162,7 @@ class CollectorReleaseService:
         has_errors = any(item["level"] == LEVEL_ERROR for item in all_issues)
         token = ""
         if parsed and not has_errors:
-            token = CollectorReleaseService._stage_bytes(uploaded_file, parsed)
+            token = CollectorReleaseService._stage_upload(uploaded_file, parsed)
         summary = CollectorReleaseService._pack_summary(parsed) if parsed else None
         if summary is not None:
             summary["allowlist"] = {
@@ -264,17 +356,121 @@ class CollectorReleaseService:
         }
 
     @staticmethod
-    def _stage_bytes(payload: bytes, parsed: ParsedPack) -> str:
+    def _stage_upload(uploaded_file, parsed: ParsedPack) -> str:
+        """把上传流拷到暂存目录供 apply() 复用，全程不整包读进内存（F1）。"""
         token = uuid.uuid4().hex
-        staging_dir = tempfile.mkdtemp(prefix="collector_release_")
+        staging_dir = tempfile.mkdtemp(prefix=C.STAGING_DIR_PREFIX)
         zip_path = os.path.join(staging_dir, "pack.zip")
-        Path(zip_path).write_bytes(payload)
+        uploaded_file.seek(0)
+        with open(zip_path, "wb") as dest:
+            shutil.copyfileobj(uploaded_file, dest, length=1024 * 1024)
         cache.set(
             f"{C.STAGING_CACHE_PREFIX}{token}",
             {"path": zip_path, "collector": parsed.collector, "version": parsed.version},
             C.PREVIEW_TTL_SECONDS,
         )
         return token
+
+    @staticmethod
+    def _import_plugin_payload(parsed: ParsedPack, meta: dict) -> None:
+        if meta.get("skip_plugin"):
+            return
+        templates = []
+        if parsed.child_template:
+            templates.append(parsed.child_template.__dict__)
+        if parsed.base_template:
+            templates.append(parsed.base_template.__dict__)
+        try:
+            CollectorReleasePluginService.import_from_pack(
+                {
+                    "metrics": parsed.metrics,
+                    "ui": parsed.ui,
+                    "templates": templates,
+                    "collector": parsed.collector,
+                    "collect_type": parsed.collect_type,
+                    "version": parsed.version,
+                }
+            )
+        except Exception as exc:
+            logger.exception("collector release plugin import failed")
+            raise ValidationAppException("监控插件写入失败，二进制未生效。", data={"code": PLUGIN_IMPORT_FAILED}) from exc
+
+    @staticmethod
+    def _upload_one_artifact(parsed: ParsedPack, artifact, data: dict, executable_name: str) -> None:
+        """从暂存 zip 直接流式打开对应成员上传，不把整个二进制读成一份 bytes（F1）。"""
+        arcname = f"{parsed.wrapping_prefix}{artifact.file}"
+        try:
+            with zipfile.ZipFile(parsed.source_path) as zf, zf.open(arcname) as stream:
+                PackageService.upload_file(_NamedZipStream(stream, executable_name), data)
+        except Exception as exc:
+            logger.exception("collector release storage upload failed: os=%s arch=%s", artifact.os, artifact.arch)
+            raise ValidationAppException(
+                f"{artifact.os}/{artifact.arch} 对象存储写入失败。",
+                data={"code": STORAGE_FAILED, "os": artifact.os, "arch": artifact.arch},
+            ) from exc
+
+    @staticmethod
+    def _commit_one_artifact(parsed: ParsedPack, artifact, keep_local_slots: set) -> dict:
+        """单个架构「先传对象存储、传成功再落这一个架构的库表」。
+
+        不再把所有架构的库表写入和上传塞进同一个大事务（F2）：
+          1）JetStream 单次 put 超时 120s，四个架构顺序上传最坏能拖到 8 分钟；
+             之前的写法会让 Collector/PackageVersion 的行锁、DB 连接占用整个
+             上传窗口，且可能拖过 IMPORT_LOCKED 的 300s TTL，让并发导入绕开锁；
+          2）多架构之间本来就没有真正的跨对象事务——覆盖写一旦发生就不可逆
+             （H1 已经证明"先写库表、失败再整体回滚"在覆盖场景下并不可靠）。
+             现在按架构逐个提交：只要上传没成功，就完全不碰这个架构的
+             PackageVersion/Collector 行，天然不需要任何"失败后再删/再改"的
+             补偿逻辑——DB 里出现的每一行，一定对应存储里真实存在的字节。
+          3）一个架构上传失败不影响其它架构：已成功的保持已导入状态，运维只需
+             针对失败的架构重新导入同一个包（BINARY_UNCHANGED 会让已成功的架构
+             自动跳过重传）。
+        """
+        collector = Collector.objects.get(
+            name=parsed.collector,
+            node_operating_system=artifact.os,
+            cpu_architecture=artifact.arch,
+        )
+        executable_name = os.path.basename(collector.executable_path.replace("\\", "/"))
+        existing = PackageVersion.objects.filter(
+            os=artifact.os,
+            cpu_architecture=artifact.arch,
+            object=parsed.collector,
+            version=parsed.version,
+        ).first()
+        action = "skipped"
+        if not (existing and existing.sha256 == artifact.computed_sha256):
+            data = {
+                "os": artifact.os,
+                "cpu_architecture": artifact.arch,
+                "object": parsed.collector,
+                "version": parsed.version,
+                "name": executable_name,
+            }
+            CollectorReleaseService._upload_one_artifact(parsed, artifact, data, executable_name)
+            action = "overwritten" if existing else "created"
+
+        with transaction.atomic():
+            if action == "overwritten":
+                existing.name = executable_name
+                existing.sha256 = artifact.computed_sha256
+                existing.type = PackageConstants.TYPE_COLLECTOR
+                existing.save(update_fields=["name", "sha256", "type"])
+            elif action == "created":
+                PackageVersion.objects.create(
+                    type=PackageConstants.TYPE_COLLECTOR,
+                    os=artifact.os,
+                    cpu_architecture=artifact.arch,
+                    object=parsed.collector,
+                    version=parsed.version,
+                    name=executable_name,
+                    sha256=artifact.computed_sha256,
+                )
+            if collector.id not in keep_local_slots and parsed.execute_parameters:
+                collector.execute_parameters = parsed.execute_parameters
+            collector.imported_package_version = parsed.version
+            collector.save(update_fields=["execute_parameters", "imported_package_version"])
+        return {"os": artifact.os, "arch": artifact.arch, "action": action}
 
     @staticmethod
     def apply(token: str, confirms: list[str] | None = None) -> dict:
@@ -287,10 +483,15 @@ class CollectorReleaseService:
         if not cache.add(lock_key, token, C.LOCK_TTL_SECONDS):
             raise ValidationAppException("同一采集器正在导入，请稍后重试。", data={"code": IMPORT_LOCKED})
 
-        uploaded_keys = []
         cleanup_staging = False
         try:
-            issues, parsed = parse_release_path(staged["path"])
+            try:
+                issues, parsed = parse_release_path(staged["path"])
+            except OSError as exc:
+                # 暂存包落在处理预览的那个实例本地，多副本部署下 apply 可能被路由到别的实例。
+                logger.warning("collector release staging file unreadable: token=%s error_type=%s", token, type(exc).__name__)
+                cache.delete(f"{C.STAGING_CACHE_PREFIX}{token}")
+                raise ValidationAppException("预览暂存包已失效，请重新选择文件预览。", data={"code": PREVIEW_EXPIRED}) from exc
             extra, meta = ([], {})
             if parsed:
                 extra, meta = CollectorReleaseService._collect_runtime_issues(parsed)
@@ -315,93 +516,43 @@ class CollectorReleaseService:
                 }
 
             keep_local_slots = meta.get("keep_local_slots") or set()
-            artifact_results = []
+            # 插件导入独立成一个短事务：纯 DB 写入、没有网络 I/O，失败时不会碰到任何
+            # 一个架构的 Collector/PackageVersion 行（F2）。
             with transaction.atomic():
-                for artifact in parsed.artifacts:
-                    collector = Collector.objects.get(
-                        name=parsed.collector,
-                        node_operating_system=artifact.os,
-                        cpu_architecture=artifact.arch,
-                    )
-                    executable_name = os.path.basename(collector.executable_path.replace("\\", "/"))
-                    existing = PackageVersion.objects.filter(
-                        os=artifact.os,
-                        cpu_architecture=artifact.arch,
-                        object=parsed.collector,
-                        version=parsed.version,
-                    ).first()
-                    action = "created"
-                    if existing and existing.sha256 == artifact.computed_sha256:
-                        action = "skipped"
-                    else:
-                        payload = parsed.files[artifact.file]
-                        content = ContentFile(payload, name=executable_name)
-                        data = {
-                            "os": artifact.os,
-                            "cpu_architecture": artifact.arch,
-                            "object": parsed.collector,
-                            "version": parsed.version,
-                            "name": executable_name,
-                        }
-                        try:
-                            PackageService.upload_file(content, data)
-                            uploaded_keys.append(f"{artifact.os}/{artifact.arch}/{parsed.collector}/{parsed.version}/{executable_name}")
-                        except Exception as exc:
-                            logger.exception("collector release storage upload failed")
-                            raise ValidationAppException(
-                                "对象存储写入失败，已回滚库表。",
-                                data={"code": STORAGE_FAILED},
-                            ) from exc
-                        if existing:
-                            existing.name = executable_name
-                            existing.sha256 = artifact.computed_sha256
-                            existing.type = PackageConstants.TYPE_COLLECTOR
-                            existing.save(update_fields=["name", "sha256", "type"])
-                            action = "overwritten"
-                        else:
-                            PackageVersion.objects.create(
-                                type=PackageConstants.TYPE_COLLECTOR,
-                                os=artifact.os,
-                                cpu_architecture=artifact.arch,
-                                object=parsed.collector,
-                                version=parsed.version,
-                                name=executable_name,
-                                sha256=artifact.computed_sha256,
-                            )
-                            action = "created"
-                    if collector.id not in keep_local_slots and parsed.execute_parameters:
-                        collector.execute_parameters = parsed.execute_parameters
-                    collector.imported_package_version = parsed.version
-                    collector.save(update_fields=["execute_parameters", "imported_package_version"])
-                    artifact_results.append({"os": artifact.os, "arch": artifact.arch, "action": action})
+                CollectorReleaseService._import_plugin_payload(parsed, meta)
 
-                templates = []
-                if parsed.child_template:
-                    templates.append(parsed.child_template.__dict__)
-                if parsed.base_template:
-                    templates.append(parsed.base_template.__dict__)
-                if not meta.get("skip_plugin"):
-                    try:
-                        CollectorReleasePluginService.import_from_pack(
-                            {
-                                "metrics": parsed.metrics,
-                                "ui": parsed.ui,
-                                "templates": templates,
-                                "collector": parsed.collector,
-                                "collect_type": parsed.collect_type,
-                                "version": parsed.version,
-                            }
-                        )
-                    except Exception as exc:
-                        logger.exception("collector release plugin import failed")
-                        raise ValidationAppException(
-                            "监控插件写入失败，二进制未生效。",
-                            data={"code": PLUGIN_IMPORT_FAILED},
-                        ) from exc
+            artifact_results = []
+            failed_artifacts = []
+            for artifact in parsed.artifacts:
+                try:
+                    artifact_results.append(CollectorReleaseService._commit_one_artifact(parsed, artifact, keep_local_slots))
+                except Exception as exc:
+                    failed_artifacts.append({"os": artifact.os, "arch": artifact.arch, "message": str(exc)})
 
-            CollectorReleaseService.refresh_collector_upgrade_hints(parsed.collector)
-            cache.delete(f"{C.STAGING_CACHE_PREFIX}{token}")
+            # 不管有没有架构失败，暂存包这一轮的用途都已经用完了；重试同一个包会
+            # 重新走 preview 拿新 token，已成功的架构会因为哈希相同被跳过。
             cleanup_staging = True
+            if artifact_results:
+                CollectorReleaseService.refresh_collector_upgrade_hints(parsed.collector)
+
+            if failed_artifacts:
+                return {
+                    "ok": False,
+                    "collector": parsed.collector,
+                    "version": parsed.version,
+                    "artifacts": artifact_results,
+                    "issues": [
+                        issue(
+                            STORAGE_FAILED,
+                            f"{item['os']}/{item['arch']} 写入失败：{item['message']}",
+                            details=item,
+                        ).to_dict()
+                        for item in failed_artifacts
+                    ],
+                    "message": "部分架构写入失败，已成功的架构保持导入状态；重新导入同一个包会自动跳过已成功的架构，只需重试失败的部分。",
+                }
+
+            cache.delete(f"{C.STAGING_CACHE_PREFIX}{token}")
             plugin_name = ""
             if isinstance(parsed.metrics, dict):
                 plugin_name = str(parsed.metrics.get("plugin") or "").strip()
@@ -417,22 +568,6 @@ class CollectorReleaseService:
                 ),
                 "message": "导入成功。已接入实例不会自动重下发，须到接入页再保存；节点二进制须再安装或升级。",
             }
-        except Exception:
-            for key in uploaded_keys:
-                try:
-                    parts = key.split("/")
-                    PackageService.delete_file(
-                        SimpleNamespace(
-                            os=parts[0],
-                            cpu_architecture=parts[1],
-                            object=parts[2],
-                            version=parts[3],
-                            name=parts[4],
-                        )
-                    )
-                except Exception:
-                    logger.exception("failed to compensate uploaded collector release object")
-            raise
         finally:
             cache.delete(lock_key)
             if cleanup_staging:
@@ -456,15 +591,25 @@ class CollectorReleaseService:
 
     @staticmethod
     def refresh_collector_upgrade_hints(collector_name: str) -> None:
-        latest_map = VersionUpgradeService.get_latest_versions_map("collector")
-        for record in NodeComponentVersion.objects.filter(component_type="collector"):
-            collector = Collector.objects.filter(id=record.component_id).first()
-            if not collector or collector.name != collector_name:
+        collectors = {item.id: item for item in Collector.objects.filter(name=collector_name)}
+        if not collectors:
+            return
+        # 只扫这一个采集器的历史包，不必每次导入都拉全平台所有采集器的全部版本（F3）。
+        latest_map = VersionUpgradeService.get_latest_versions_map("collector", object_name=collector_name)
+        changed = []
+        for record in NodeComponentVersion.objects.filter(component_type="collector", component_id__in=list(collectors)):
+            collector = collectors.get(record.component_id)
+            if not collector:
                 continue
             latest = ((latest_map.get(collector.node_operating_system) or {}).get(collector.name) or {}).get(collector.cpu_architecture or "", "")
+            upgradeable = VersionUtils.is_upgradeable(record.version, latest)
+            if record.latest_version == latest and record.upgradeable == upgradeable:
+                continue
             record.latest_version = latest
-            record.upgradeable = VersionUtils.is_upgradeable(record.version, latest)
-            record.save(update_fields=["latest_version", "upgradeable"])
+            record.upgradeable = upgradeable
+            changed.append(record)
+        if changed:
+            NodeComponentVersion.objects.bulk_update(changed, ["latest_version", "upgradeable"], batch_size=500)
 
     @staticmethod
     def annotate_collectors(results: list[dict]) -> list[dict]:

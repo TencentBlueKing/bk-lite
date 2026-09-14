@@ -229,7 +229,7 @@ def _import_plugins_from_files(path_list):
 
             existing_plugin = MonitorPlugin.objects.filter(name=plugin_name).only("pack_version").first()
             if existing_plugin and existing_plugin.pack_version:
-                logger.info("跳过已导入探针包的插件: %s", plugin_name)
+                logger.info("插件已固定在导入包，跳过内置导入: plugin=%s pack_version=%s", plugin_name, existing_plugin.pack_version)
                 continue
             plugin_data["_mark_objects_builtin"] = True
             # 新 plugin 首次导入时,自动生成 language/ 空骨架(check_plugin_languages CI 要求)
@@ -487,7 +487,7 @@ def _collect_templates_to_process(path_list, plugins_dict, all_config_templates,
                 logger.warning(f"插件对象未找到: {plugin_name}，跳过模板导入")
                 continue
             if getattr(plugin_obj, "pack_version", ""):
-                logger.info("跳过已导入探针包的模板: %s", plugin_name)
+                logger.info("插件已固定在导入包，跳过内置模板导入: plugin=%s pack_version=%s", plugin_name, plugin_obj.pack_version)
                 continue
 
             plugin_dir = Path(file_path).parent

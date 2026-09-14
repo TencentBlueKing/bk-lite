@@ -162,4 +162,3 @@ INSTALLED_APPS += tuple(f"apps.{app}" for app in app_folders if f"apps.{app}" no
 
 # 文件上传数量限制
 DATA_UPLOAD_MAX_NUMBER_FILES = 100
-DATA_UPLOAD_MAX_MEMORY_SIZE = 210 * 1024 * 1024

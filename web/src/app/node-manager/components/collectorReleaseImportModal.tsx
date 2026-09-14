@@ -8,6 +8,7 @@ import {
   Modal,
   Result,
   Tag,
+  Tooltip,
   Upload,
   message
 } from 'antd';
@@ -116,7 +117,11 @@ const CollectorReleaseImportModal = ({
 }: CollectorReleaseImportModalProps) => {
   const { t } = useTranslation();
   const router = useScreenAwareRouter();
-  const { previewCollectorRelease, applyCollectorRelease } = useNodeManagerApi();
+  const {
+    previewCollectorRelease,
+    applyCollectorRelease,
+    discardCollectorRelease
+  } = useNodeManagerApi();
   const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<PackPreviewItem[] | null>(null);
@@ -142,6 +147,17 @@ const CollectorReleaseImportModal = ({
     [items]
   );
 
+  // 预览会在服务端暂存整包，放弃时主动释放，不必等服务端的回收窗口。
+  const discardPendingStaging = (pending: PackPreviewItem[] | null) => {
+    (pending || []).forEach((item) => {
+      const token = item.preview.token;
+      if (!token || item.applied?.ok) return;
+      void Promise.resolve(discardCollectorRelease(token)).catch(
+        () => undefined
+      );
+    });
+  };
+
   const reset = () => {
     previewSeqRef.current += 1;
     previewingRef.current = false;
@@ -149,6 +165,7 @@ const CollectorReleaseImportModal = ({
       clearTimeout(previewTimerRef.current);
       previewTimerRef.current = null;
     }
+    discardPendingStaging(items);
     setFiles([]);
     setItems(null);
     setFinished(false);
@@ -432,7 +449,7 @@ const CollectorReleaseImportModal = ({
   const renderPackRow = (
     collector?: string,
     version?: string,
-    artifacts?: Array<{ os: string; arch: string }>,
+    artifacts?: Array<{ os: string; arch: string; sha256?: string }>,
     fileName?: string,
     extra?: ReactNode,
     status?: ReactNode
@@ -454,11 +471,26 @@ const CollectorReleaseImportModal = ({
           <div className="pt-0.5 text-sm font-medium tabular-nums leading-normal text-[var(--color-text-1)]">
             {version || '—'}
           </div>,
-          (artifacts || []).map((item) => (
-            <Tag key={`${item.os}-${item.arch}`} className="m-0">
-              {item.os}/{item.arch}
-            </Tag>
-          )),
+          (artifacts || []).map((item) => {
+            const tag = (
+              <Tag key={`${item.os}-${item.arch}`} className="m-0">
+                {item.os}/{item.arch}
+              </Tag>
+            );
+            // 二进制指纹只在悬停时给出，便于与发布说明核对，又不占版面。
+            return item.sha256 ? (
+              <Tooltip
+                key={`${item.os}-${item.arch}`}
+                title={t('node-manager.packetManage.artifactFingerprint', '', {
+                  sha256: item.sha256
+                })}
+              >
+                {tag}
+              </Tooltip>
+            ) : (
+              tag
+            );
+          }),
           status
         )}
         {extra}

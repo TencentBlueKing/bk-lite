@@ -1,6 +1,5 @@
 from rest_framework import mixins
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.viewsets import GenericViewSet
 
 from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
@@ -14,21 +13,8 @@ from apps.node_mgmt.services.collector_release.constants import CollectorRelease
 from apps.node_mgmt.services.collector_release.errors import PACK_TOO_LARGE, issue
 from apps.node_mgmt.services.collector_release.service import CollectorReleaseService
 from apps.node_mgmt.services.package import PackageService
+from apps.node_mgmt.utils.package_permission import require_package_write_permission
 from config.drf.pagination import CustomPageNumberPagination
-
-PACKAGE_WRITE_PERMISSIONS = {
-    (PackageConstants.TYPE_CONTROLLER, "create"): {
-        "controller_list-AddPacket",
-        "controller_packet-AddPacket",
-    },
-    (PackageConstants.TYPE_CONTROLLER, "destroy"): {"controller_packet-Delete"},
-    (PackageConstants.TYPE_COLLECTOR, "create"): {
-        "collector_list-AddPacket",
-        "collector_packet-AddPacket",
-    },
-    (PackageConstants.TYPE_COLLECTOR, "destroy"): {"collector_packet-Delete"},
-}
-NODE_APP_ADMIN_ROLE = "node--admin"
 
 
 class PackageMgmtView(
@@ -50,20 +36,7 @@ class PackageMgmtView(
 
     @staticmethod
     def _require_write_permission(request, package_type, action):
-        required_permissions = PACKAGE_WRITE_PERMISSIONS.get((package_type, action))
-        if not required_permissions:
-            raise ValidationError({"type": ["不支持的包类型"]})
-
-        user_roles = getattr(request.user, "roles", ()) or ()
-        if getattr(request.user, "is_superuser", False) or NODE_APP_ADMIN_ROLE in user_roles:
-            return
-
-        user_permissions = getattr(request.user, "permission", set()) or set()
-        if isinstance(user_permissions, dict):
-            user_permissions = user_permissions.get("node", set())
-
-        if required_permissions.isdisjoint(user_permissions):
-            raise PermissionDenied()
+        require_package_write_permission(request, package_type, action)
 
     def destroy(self, request, *args, **kwargs):
         # 删除文件，成功了再删除数据
@@ -176,6 +149,14 @@ class PackageMgmtView(
         except BaseAppException as exc:
             return WebUtils.response_error(response_data=exc.data or {}, error_message=exc.message)
         return WebUtils.response_success(result)
+
+    @action(detail=False, methods=["post"], url_path="release/discard")
+    def release_discard(self, request):
+        self._require_write_permission(request, PackageConstants.TYPE_COLLECTOR, "create")
+        token = request.data.get("token")
+        if not token:
+            return WebUtils.response_error(error_message="缺少 preview token")
+        return WebUtils.response_success(CollectorReleaseService.discard_staging(token))
 
     @action(detail=False, methods=["post"], url_path="release/restore")
     def release_restore(self, request):

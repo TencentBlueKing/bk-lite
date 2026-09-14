@@ -1631,7 +1631,10 @@ def _install_collector_inner(task_obj):
             from apps.node_mgmt.services.version_upgrade import VersionUpgradeService
             from apps.node_mgmt.utils.version_utils import VersionUtils
 
-            latest_map = VersionUpgradeService.get_latest_versions_map("collector")
+            # 同一个方法在探针包导入成功后也会调用，那里已经按 object_name 收窄扫描
+            # 范围（见 collector_release/service.py 的 F3 说明）；这里同样只关心单个
+            # 采集器，顺手一起传，避免留一个一模一样的全表扫描在旁边。
+            latest_map = VersionUpgradeService.get_latest_versions_map("collector", object_name=resolved_package.object)
             latest = ((latest_map.get(node_obj.node.operating_system) or {}).get(resolved_package.object) or {}).get(
                 getattr(node_obj.node, "cpu_architecture", "") or "", ""
             )

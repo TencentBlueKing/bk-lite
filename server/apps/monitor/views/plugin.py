@@ -296,7 +296,10 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
     def restore_builtin(self, request, pk=None):
         plugin = self.get_object()
         from apps.node_mgmt.services.collector_release.service import CollectorReleaseService
+        from apps.node_mgmt.utils.package_permission import require_collector_pack_write
 
+        # 与组件库的导入/恢复用同一套判定，避免只有监控侧权限的人撤销别人的导入。
+        require_collector_pack_write(request)
         result = CollectorReleaseService.restore_builtin(plugin.name)
         return WebUtils.response_success(result)
 

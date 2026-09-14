@@ -5,6 +5,7 @@ import {
   Input,
   Button,
   Tag,
+  Tooltip,
   message,
   Modal,
   Pagination as AntPagination
@@ -547,11 +548,21 @@ const Integration = () => {
                                 app.collect_type ||
                                 '--'}
                             </Tag>
-                            <Tag className="mt-[4px] ml-[6px]">
-                              {app.pack_version
-                                ? app.pack_version
-                                : t('monitor.integrations.builtinPack')}
-                            </Tag>
+                            <Tooltip
+                              title={
+                                app.pack_version
+                                  ? t('monitor.integrations.pinnedPackHint', '', {
+                                    version: app.pack_version
+                                  })
+                                  : t('monitor.integrations.builtinPackHint')
+                              }
+                            >
+                              <Tag className="mt-[4px] ml-[6px]">
+                                {app.pack_version
+                                  ? app.pack_version
+                                  : t('monitor.integrations.builtinPack')}
+                              </Tag>
+                            </Tooltip>
                             {app.is_custom && (
                               <Tag className="mt-[4px] ml-[6px]">
                                 {t('monitor.integrations.selfBuilt')}

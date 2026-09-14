@@ -121,7 +121,10 @@ const Collector = () => {
           : item.cpu_architecture || '');
       const packStatusTag = buildCollectorPackStatusTag(
         item.latest_package_version,
-        t
+        t,
+        {
+          pinnedVersion: item.imported_package_version || item.pack_version
+        }
       );
       const extraTags = [packStatusTag, ...(item.covered_architectures || [])];
       return {

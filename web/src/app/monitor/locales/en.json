@@ -650,6 +650,8 @@
       "access": "Access",
       "packVersion": "Collector Pack Version",
       "builtinPack": "Built-in",
+      "builtinPackHint": "Follows the product built-in files; no collector pack imported.",
+      "pinnedPackHint": "Pinned to imported pack {version}: metrics, templates and UI no longer follow built-in updates. Use Restore Built-in to unpin.",
       "restoreBuiltin": "Restore Built-in",
       "restoreBuiltinConfirm": "Restore this plugin and collector parameters from the product built-in files. The imported pack version will be cleared. Historical binaries stay in the library.",
       "restoreBuiltinSuccess": "Built-in restored",

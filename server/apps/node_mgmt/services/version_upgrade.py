@@ -6,30 +6,41 @@
 
 from typing import Dict
 
+from apps.core.logger import node_logger as logger
 from apps.node_mgmt.models.package import PackageVersion
 from apps.node_mgmt.utils.version_utils import VersionUtils
-from apps.core.logger import node_logger as logger
 
 
 class VersionUpgradeService:
     """版本升级服务"""
 
     @staticmethod
-    def get_latest_versions_map(component_type: str = "controller") -> Dict[str, Dict[str, Dict[str, str]]]:
+    def get_latest_versions_map(component_type: str = "controller", object_name: str | None = None) -> Dict[str, Dict[str, Dict[str, str]]]:
         """
         一次性获取所有组件的最新版本映射
 
         Args:
             component_type: 组件类型 (controller/collector)
+            object_name: 只需要单个采集器/控制器时传入，缩小扫描范围（见下方说明）。
+                不传时保持原语义：扫描该 component_type 下的全部包（批量场景，如节点
+                版本巡检一次性算完所有 controller，需要完整映射，不能按需收窄）。
 
         Returns:
             {
                 'linux': {'telegraf': '1.2.3', 'sidecar': '2.0.0'},
                 'windows': {'telegraf': '1.2.1', 'sidecar': '2.0.0'}
             }
+
+        性能说明：包库版本只增不减，随时间推移只会越来越大。只关心一个采集器最新
+        版本的调用方（例如导入探针包后刷新升级提示、给单节点安装计算目标版本）如果
+        还是不带过滤地拉全表，会随着历史版本积累而越来越慢，且这个查询挂在同步请求
+        路径上。传 `object_name` 让调用方显式收窄扫描范围。
         """
         try:
-            packages = PackageVersion.objects.filter(type=component_type).values("os", "object", "version", "cpu_architecture")
+            packages = PackageVersion.objects.filter(type=component_type)
+            if object_name:
+                packages = packages.filter(object=object_name)
+            packages = packages.values("os", "object", "version", "cpu_architecture")
 
             # 按 os + object + arch 分组
             versions_map = {}

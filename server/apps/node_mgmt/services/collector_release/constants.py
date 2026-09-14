@@ -12,5 +12,9 @@ class CollectorReleaseConstants:
     ALLOWED_ARCH = ("x86_64", "arm64")
     NESTED_ARCHIVE_SUFFIXES = (".zip", ".tar", ".tgz", ".gz", ".7z")
     STAGING_CACHE_PREFIX = "collector_release_preview:"
+    STAGING_DIR_PREFIX = "collector_release_"
+    STAGING_SWEEP_GRACE_SECONDS = 300
+    STAGING_SWEEP_THROTTLE_SECONDS = 300
+    STAGING_SWEEP_THROTTLE_CACHE_KEY = "collector_release_staging_sweep_throttle"
     LOCK_CACHE_PREFIX = "collector_release_import:"
     LAYOUT_HINT = "manifest.json + plugin/ + artifacts/{os}/{arch}"

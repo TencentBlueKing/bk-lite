@@ -63,6 +63,14 @@ const usePackageApi = () => {
     });
   };
 
+  const discardCollectorRelease = async (token: string) => {
+    return await post(
+      '/node_mgmt/api/package/release/discard/',
+      { token },
+      { suppressErrorNotification: true }
+    );
+  };
+
   const restoreCollectorRelease = async (collector: string) => {
     return await post('/node_mgmt/api/package/release/restore/', { collector });
   };
@@ -73,6 +81,7 @@ const usePackageApi = () => {
     deletePackage,
     previewCollectorRelease,
     applyCollectorRelease,
+    discardCollectorRelease,
     restoreCollectorRelease,
   };
 };
