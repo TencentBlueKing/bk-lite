@@ -54,7 +54,7 @@ assert.match(
 );
 assert.match(
   configFields,
-  /onChange=\{\(\) => \{\n\s+form\.setFields\(\[\{ name: namePath, errors: \[\] \}\]\);\n\s+setDepartmentSelectionMissing\(false\);\n\s+\}\}/,
+  /onChange=\{\(\) => \{\n\s+setDepartmentSelectionMissing\(false\);\n\s+\}\}/,
   'the missing-selection warning must be cleared after a real user selection',
 );
 assert.doesNotMatch(configFields, /__all__|ALL_DEPARTMENT_SELECTION_ID|is_all/);
@@ -67,7 +67,7 @@ assert.match(
 );
 assert.match(
   configFields,
-  /const nextValue = result\.selection_missing\n\s+\? ''\n\s+: result\.selected_id;/,
+  /writeRootDepartmentValue\(result\.selection_missing \? undefined : \(result\.selected_id \|\| undefined\)\)/,
   'an empty selected_id must leave the field empty rather than selecting a default tree node',
 );
 assert.doesNotMatch(configFields, /items\[0\]/);

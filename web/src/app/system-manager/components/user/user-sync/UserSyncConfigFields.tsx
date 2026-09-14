@@ -74,25 +74,35 @@ const MappingInputRow = memo(({
   required = false,
   invalid = false,
   onChange,
-}: MappingInputRowProps) => (
-  <div className="grid grid-cols-[minmax(0,1fr)_24px_minmax(0,1fr)] gap-x-4">
-    <div className="rounded-sm border border-[var(--color-border)] bg-[var(--color-fill-1)] p-2">
-      <div className="text-[var(--color-text-1)]">
-        {PLATFORM_FIELD_META[row.platformField as keyof typeof PLATFORM_FIELD_META]?.label || row.platformField}
+}: MappingInputRowProps) => {
+  const meta = PLATFORM_FIELD_META[row.platformField as keyof typeof PLATFORM_FIELD_META];
+
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)_32px_minmax(0,1fr)] items-center gap-x-3">
+      <div className="flex h-8 items-center rounded border border-[var(--color-border)] bg-[var(--color-fill-1)] px-3 text-[13px] text-[var(--color-text-1)]">
+        <span className="font-medium">{meta?.label || row.platformField}</span>
         {required ? <span className="ml-1 text-[var(--color-error)]">*</span> : null}
+        {meta?.desc ? (
+          <span className="ml-2 hidden text-[12px] text-[var(--color-text-3)] sm:inline">
+            ({meta.desc})
+          </span>
+        ) : null}
+      </div>
+      <div className="flex items-center justify-center text-[13px] text-[var(--color-text-3)] select-none">
+        →
+      </div>
+      <div>
+        <Input
+          value={row.externalField}
+          onChange={(event) => onChange(index, event.target.value)}
+          placeholder={placeholder}
+          status={invalid ? 'error' : undefined}
+          className="w-full text-[13px]"
+        />
       </div>
     </div>
-    <div className="flex items-center justify-center text-[var(--color-primary)]">→</div>
-    <div>
-      <Input
-        value={row.externalField}
-        onChange={(event) => onChange(index, event.target.value)}
-        placeholder={placeholder}
-        status={invalid ? 'error' : undefined}
-      />
-    </div>
-  </div>
-));
+  );
+});
 
 MappingInputRow.displayName = 'MappingInputRow';
 
@@ -181,13 +191,30 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
   useEffect(() => {
     let active = true;
 
+    // antd 5 依赖的 rc-field-form 2.7 里，setFieldValue/setFields 会走 isEqual；
+    // Field 的 errors/warnings 共享 EMPTY_ERRORS 引用，被误判为 circular references。
+    // setFieldsValue 不走这条路径。校验错误用 Form.Item rules + Alert，不要 setFields({ errors })。
+    const writeRootDepartmentValue = (value: string | undefined) => {
+      const currentBusinessConfig = (form.getFieldValue('business_config') || {}) as Record<string, unknown>;
+      const currentFormValue = String(currentBusinessConfig[rootDepartmentFieldKey] || '');
+      const nextFormValue = String(value || '');
+      if (nextFormValue === currentFormValue) {
+        return;
+      }
+      form.setFieldsValue({
+        business_config: {
+          ...currentBusinessConfig,
+          [rootDepartmentFieldKey]: value,
+        },
+      });
+    };
+
     async function fetchDepartmentOptions() {
       if (!selectedInstanceId) {
         setDepartmentNodes([]);
         setDepartmentSelectionMissing(false);
         setDepartmentLoadError('');
-        form.setFieldValue(['business_config', rootDepartmentFieldKey], undefined);
-        form.setFields([{ name: ['business_config', rootDepartmentFieldKey], errors: [] }]);
+        writeRootDepartmentValue(undefined);
         return;
       }
 
@@ -211,31 +238,12 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
 
         setDepartmentNodes(result.items || []);
         setDepartmentSelectionMissing(result.selection_missing);
-
-        const currentFormValue = String(form.getFieldValue(['business_config', rootDepartmentFieldKey]) || '');
-        const nextValue = result.selection_missing
-          ? ''
-          : result.selected_id;
-
-        if (nextValue && nextValue !== currentFormValue) {
-          form.setFieldValue(['business_config', rootDepartmentFieldKey], nextValue);
-        } else if (!nextValue && currentFormValue) {
-          form.setFieldValue(['business_config', rootDepartmentFieldKey], undefined);
-        }
-
-        form.setFields([{
-          name: ['business_config', rootDepartmentFieldKey],
-          errors: result.selection_missing ? [t('system.user.userSyncPage.departmentSelectionInvalid')] : [],
-        }]);
+        writeRootDepartmentValue(result.selection_missing ? undefined : (result.selected_id || undefined));
       } catch {
         if (!active) return;
         setDepartmentNodes([]);
         setDepartmentSelectionMissing(false);
         setDepartmentLoadError(t('system.user.userSyncPage.departmentOptionsLoadFailed'));
-        form.setFields([{
-          name: ['business_config', rootDepartmentFieldKey],
-          errors: [t('system.user.userSyncPage.departmentOptionsLoadFailed')],
-        }]);
       } finally {
         if (active) {
           setDepartmentLoading(false);
@@ -319,7 +327,19 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
             name={namePath}
             label={field.label}
             required={field.required}
-            rules={[{ required: field.required }]}
+            rules={[
+              { required: field.required },
+              {
+                validator: async () => {
+                  if (departmentLoadError) {
+                    throw new Error(departmentLoadError);
+                  }
+                  if (departmentSelectionMissing) {
+                    throw new Error(t('system.user.userSyncPage.departmentSelectionInvalid'));
+                  }
+                },
+              },
+            ]}
           >
             <TreeSelect
               treeData={departmentTreeData}
@@ -330,7 +350,6 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
                 ? t('system.user.userSyncPage.departmentOptionsLoading')
                 : t('system.user.userSyncPage.rootDepartmentPlaceholder')}
               onChange={() => {
-                form.setFields([{ name: namePath, errors: [] }]);
                 setDepartmentSelectionMissing(false);
               }}
             />
@@ -473,13 +492,15 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
       {/* 本地密码初始化(每个同步源独立配置;与 manifest 字段并列) */}
       <PasswordInitSection emailChannels={emailChannels ?? []} t={t} />
       <div className="mt-6 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-4">
-        <div className="mb-4 font-semibold">{t('system.user.userSyncPage.fieldMappingTitle')}</div>
-        <div className="grid grid-cols-[minmax(0,1fr)_24px_minmax(0,1fr)] gap-x-4 gap-y-3 text-[13px] text-[var(--color-text-3)]">
+        <div className="mb-4 font-semibold text-[var(--color-text-1)]">
+          {t('system.user.userSyncPage.fieldMappingTitle')}
+        </div>
+        <div className="grid grid-cols-[minmax(0,1fr)_32px_minmax(0,1fr)] gap-x-3 text-[13px] font-medium text-[var(--color-text-3)]">
           <div>{t('system.user.userSyncPage.platformFieldColumn')}</div>
           <div />
           <div>{t('system.user.userSyncPage.externalFieldColumn')}</div>
         </div>
-        <div className="mt-3 space-y-3">
+        <div className="mt-3 space-y-2.5">
           {mappingRows.map((row, index) => (
             <MappingInputRow
               key={row.platformField}
@@ -493,9 +514,13 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
           ))}
         </div>
         {resolvedTemplate?.available_external_fields && resolvedTemplate.available_external_fields.length > 0 ? (
-          <div className="mt-3 rounded-xl bg-[var(--color-bg)] px-3 py-2 text-[12px] text-[var(--color-text-3)]">
-            {t('system.user.userSyncPage.externalFieldsHint')}
-            {resolvedTemplate.available_external_fields.join('、')}
+          <div className="mt-3.5 flex flex-wrap items-center gap-1.5 rounded-md bg-[var(--color-fill-1)] px-3 py-2 text-[12px] text-[var(--color-text-3)]">
+            <span className="font-medium text-[var(--color-text-2)]">
+              {t('system.user.userSyncPage.externalFieldsHint')}
+            </span>
+            <span className="text-[var(--color-text-3)]">
+              {resolvedTemplate.available_external_fields.join('、')}
+            </span>
           </div>
         ) : null}
       </div>
